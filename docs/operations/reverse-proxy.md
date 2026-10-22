@@ -7,7 +7,7 @@ Do not strip paths, authorization or cookies, or replace Host with the upstream 
 
 This example was exercised on Linux Docker Engine, `linux/amd64`, with Caddy **2.11.7** on
 2026-10-07. Its host network reaches the host's published Flux loopback port; this topology
-is not an installation test for Docker Desktop. The [verification record](../agents/evidence/327-https-proxy/README.md)
+is not an installation test for Docker Desktop. The [verification record](https://github.com/ColdPhase/flux/blob/b17ae9e357441e9a383eb275d1034e69ec50c98a/docs/agents/evidence/327-https-proxy/README.md)
 contains the exact image, configuration, browser and SQL observations.
 
 ## Local HTTPS example

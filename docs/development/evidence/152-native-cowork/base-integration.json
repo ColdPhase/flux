@@ -1,0 +1,9 @@
+{
+  "schema": 1,
+  "testedNativeCheckpoint": "3b6d88c00088e6915259096dfe2597a10cc10518",
+  "currentMain": "b17ae9e357441e9a383eb275d1034e69ec50c98a",
+  "integratedHead": "d3aaf860c0fbe8b094e6aa778abfc4a92528863c",
+  "tree": "c0e08cedf8662b1ea1a11d0f96319e23a569a9a1",
+  "changedNativeRuntimeAndApiInputs": [],
+  "scope": "Conflict-free current-main UI navigation integration only. Existing native44 and API12 invocations retain source pins; no new execution or independent approval claimed."
+}

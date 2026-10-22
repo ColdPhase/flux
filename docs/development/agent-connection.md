@@ -632,7 +632,8 @@ work input runs.
 - **Not built:** Pause and Stop of a running agent. The Agents view shows state but has no controls for them;
   revocation remains the only stop.
 - **Not verified:** the resume path and changed-plan reanalysis of AC-1 (later work consuming changes), and the
-  #153 inbox behaviour of AC-3 and AC-4.
+  active-client adapter's scheduling/idle behaviour of AC-3 and AC-4. The native domain composition below exercises
+  #153's inbox with sequential fresh client processes; it does not establish that adapter behaviour.
 
 ## Pinned real-client contract (#152 AC-4, 2026-10-09)
 
@@ -643,14 +644,22 @@ test Flux instance with **no vendor account, key or spend**. Per client the test
 (`codex mcp add/login/get/list`, `claude mcp add/login/list`), completes Flux's OAuth in Chromium as the person
 (sign-in, the named connection choice and consent), then lets the client list and call tools:
 
-- three personal connections of one owner: Codex on laptop, Codex on desktop (same agent) and Claude Code on laptop
-  (a second agent), each with its own OAuth grant and its own selected projects;
+- five personal connections of two owners: each owner has Codex and Claude Code; the first owner also has a second
+  independent Codex connection for the same agent. Each has its own OAuth grant and selected projects;
 - each client offers the same shared domain tool set (bootstrap, reads, task, result, decision, doc, map and
-  conversation tools) and `flux_list_contexts` returns only that connection's projects;
+  conversation and co-work unit/request/inbox tools) and `flux_list_contexts` returns only that connection's projects;
 - the first connection creates a task under an owner standing grant after `flux_bootstrap`; the bootstrap envelope the
   real client received carries the capability and playbook digest; the task is attributed to the connection's agent
-  and the other two connections read it through `flux_list_work`;
-- the owner revokes the Claude connection: its next tool call returns no project data while the Codex connection keeps working.
+  and the other four connections read it through `flux_list_work`;
+- every connection creates, claims, quietly renews, checkpoints, reconnects and completes its own unit with a recorded result;
+- Codex addresses a review to the other owner's Claude while Claude holds another task. Its inbox read and explicit
+  `busy` / `after_step` deferral preserve that task's exact live lease and version. The third, unaddressed Codex
+  connection sees no recipient inbox. At the boundary Claude records the observation and parks its busy unit before
+  claiming the review. Two reviews resolve with native result evidence: findings on the original task version, then
+  a fresh verdict after a native versioned task update. The old verdict becomes stale. Existing standing grants cover
+  the fresh assessment. Command retries replay and a repeated intent creates no second request; counts and grant
+  uses verify exactly two review requests and two verdicts;
+- the peer owner revokes their Claude connection: its next tool call returns no project data while the other four keep working.
 
 What is mocked: the models (a scripted local endpoint, `tests/app/support/client-model-mock.ts`, serving OpenAI
 Responses and Anthropic Messages SSE) and the clients' vendor sign-in, which is never used. OAuth clients are
@@ -667,8 +676,13 @@ Historical findings recorded by the pre-#460 check (2026-10-09):
 - Claude Code's `mcp login` needs a terminal (the check gives it a pty) and prints the authorization URL as a
   terminal hyperlink.
 
-Still open for #152, not delivered here: the #153 inbox composition (co-work request tools), real
-model-driven obedience of the #160 playbook (Start/Resume), and integrated acceptance.
+Still open for #152/#160: integrated Start/Resume and project-orientation acceptance, model obedience to the trusted
+playbook, an active client's safe-checkpoint scheduling and interruption behaviour, offline/idle adapter wake and
+zero-idle-model-call evidence, and integrated acceptance. Sequential fresh native processes prove the domain effects
+above, with real native transport/OAuth and scripted tool selection; they do not establish those remaining outcomes.
+
+The [2026-10-18 native composition evidence](evidence/152-native-cowork/README.md) records the tested source heads,
+both native/onboarding modes, affected API-era checks, initial failures and headless OAuth-store correction.
 
 ## Stop and questions (#347, F-026 S13 and S14)
 
@@ -715,7 +729,7 @@ domain dispatch and delivery fences. Exact admission, version refusals (missing,
 conflicting and modern-format claims), notification and batch/mixed-array refusals
 are covered by real OAuth/HTTP tests in `app/tests/app/mcp-protocol.test.ts`.
 
-Evidence: [dated author-run results](evidence/460/results.json) are **recorded on an
+Evidence: [dated author-run results](https://github.com/ColdPhase/flux/blob/b17ae9e357441e9a383eb275d1034e69ec50c98a/docs/development/evidence/460/results.json) are **recorded on an
 earlier head, `2175d249`** (69 checks per era, 13 native checks per mode, two owners
 and three independent connections). They are not regenerated for the current head.
 On the current head `a281b9ed`, `scripts/check_mcp_clients.sh` passed on 2026-10-15:

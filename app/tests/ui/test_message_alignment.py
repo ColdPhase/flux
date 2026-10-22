@@ -43,6 +43,7 @@ class MessageAlignment(unittest.TestCase):
             cls.states[key], contexts[key] = context.storage_state(), context
         owner = contexts["ada"]
         workspace = cls.post(owner, "/api/v1/workspaces", {"name": "Community garden"})
+        cls.workspace = workspace["id"]
         cls.post(owner, f"/api/v1/workspaces/{workspace['id']}/members", {
             "email": f"alignment-jonas-{stamp}@example.test", "role": "member",
         })
@@ -61,6 +62,10 @@ class MessageAlignment(unittest.TestCase):
                 "body": "Should the first sensors measure soil moisture?" if key == "ada" else "Start with the raised beds.",
                 "clientMessageId": str(uuid.uuid4()), **({"source": cls.source} if key == "ada" else {}),
             })
+        cls.quoted = cls.post(owner, f"/api/v1/projects/{cls.project}/conversations", {
+            "body": "A note from the tests.\n\n> Ada Kowalska:\n> The soil sensor reads 18%.\n> It needs a second check.",
+            "clientMessageId": str(uuid.uuid4()),
+        })
         for key in ("jonas", "ada"):
             cls.replies[key] = cls.post(contexts[key], f"/api/v1/conversations/{cls.roots['ada']['id']}/messages", {
                 "body": "I can compare the probes tomorrow." if key == "jonas" else "I will bring the readings.",
@@ -89,6 +94,11 @@ class MessageAlignment(unittest.TestCase):
             cls.dm_messages.append(cls.post(contexts[key], f"/api/v1/dms/{cls.dm['id']}/messages", {
                 "body": body, "clientMessageId": str(uuid.uuid4()),
             }))
+        # Keep the established three-message own/grouping fixture indices stable.
+        cls.dm_quoted = cls.post(contexts["jonas"], f"/api/v1/dms/{cls.dm['id']}/messages", {
+            "body": "A plan for the weekend.\n\n> Jonas Berg:\n> Meet by the greenhouse at nine.",
+            "clientMessageId": str(uuid.uuid4()),
+        })
         group_project = cls.post(owner, f"/api/v1/workspaces/{workspace['id']}/projects", {"name": "Probe planning", "visibility": "workspace"})
         cls.group_project = group_project["id"]
         cls.groups = []
@@ -220,6 +230,66 @@ class MessageAlignment(unittest.TestCase):
                     card.click()
                     expect(page).to_have_url(re.compile(f"/materials/{self.source['materialId']}/versions/1$"))
                 page.context.close()
+
+    def test_01b_quoted_messages_are_semantic_blocks_without_markers(self):
+        for phone, dark in ((False, False), (True, False), (False, True), (True, True)):
+            mode = "phone-390x844-dpr1" if phone else "desktop-1440x900-dpr1"
+            scheme = "dark" if dark else "light"
+            page = self.page(phone=phone, dark=dark)
+            page.goto(f"/projects/{self.project}")
+            project_row = page.locator(f"#message-{self.quoted['messages'][0]['id']}")
+            project_row.scroll_into_view_if_needed()
+            quote = project_row.locator("blockquote.msg-quote")
+            expect(quote).to_be_visible()
+            expect(quote.get_by_text("Ada Kowalska", exact=True)).to_be_visible()
+            expect(quote).to_contain_text("The soil sensor reads 18%.")
+            self.assertNotIn(">", quote.inner_text())
+            style = quote.evaluate("el => ({background: getComputedStyle(el).backgroundColor, accent: getComputedStyle(el).borderLeftWidth})")
+            self.assertNotIn(style["background"], ("transparent", "rgba(0, 0, 0, 0)"))
+            self.assertEqual(style["accent"], "2px")
+            shot(page, f"message-alignment-project-quote-{mode}-{scheme}-z100-{UI_BROWSER}")
+            dm = self.page(phone=phone, dark=dark)
+            dm.goto(f"/dm/{self.dm['id']}")
+            dm_row = dm.locator(f"#message-{self.dm_quoted['id']}")
+            dm_row.scroll_into_view_if_needed()
+            dm_quote = dm_row.locator("blockquote.msg-quote")
+            expect(dm_quote).to_be_visible()
+            expect(dm_quote.get_by_text("Jonas Berg", exact=True)).to_be_visible()
+            expect(dm_quote).to_contain_text("Meet by the greenhouse at nine.")
+            self.assertNotIn(">", dm_quote.inner_text())
+            shot(dm, f"message-alignment-dm-quote-{mode}-{scheme}-z100-{UI_BROWSER}")
+
+    def test_01c_project_message_menu_adds_a_server_sourced_thought(self):
+        page = self.page()
+        sketch_response = page.request.post(f"/api/v1/workspaces/{self.workspace}/sketches", data={
+            "title": "Map from a message", "scope": "project", "projectId": self.project,
+        }, headers={"origin": ORIGIN})
+        self.assertEqual(sketch_response.status, 201, sketch_response.text())
+        sketch = sketch_response.json()
+        page.goto(f"/projects/{self.project}")
+        row = page.locator(f"#message-{self.quoted['messages'][0]['id']}")
+        row.hover()
+        more = row.get_by_role("button", name="More actions", exact=True)
+        expect(more).to_be_visible()
+        more.click()
+        menu = page.get_by_role("menu", name="Message actions")
+        expect(menu.get_by_role("menuitem", name="Add to map", exact=True)).to_be_visible()
+        self.assertEqual(menu.get_by_role("menuitem", name="Create task", exact=True).count(), 0,
+                         "desktop More does not repeat the inline Create task action")
+        menu.get_by_role("menuitem", name="Add to map", exact=True).click()
+        expect(page).to_have_url(re.compile(f"/projects/{self.project}/map/{sketch['id']}$"))
+        draft = page.get_by_role("form", name="New thought draft")
+        expect(draft.get_by_role("textbox", name="Thought text")).to_have_value(self.quoted["messages"][0]["body"])
+        with page.expect_request(lambda request: request.method == "POST" and request.url.endswith(f"/api/v1/sketches/{sketch['id']}/thoughts")) as request_info:
+            with page.expect_response(lambda response: response.request.method == "POST" and response.url.endswith(f"/api/v1/sketches/{sketch['id']}/thoughts")) as response_info:
+                draft.get_by_role("button", name="Save thought", exact=True).click()
+        self.assertEqual(request_info.value.post_data_json["sourceProjectMessageId"], self.quoted["messages"][0]["id"])
+        self.assertEqual(response_info.value.status, 201, response_info.value.text())
+        thought = page.request.get(f"/api/v1/sketches/{sketch['id']}").json()["thoughts"][0]
+        self.assertEqual(thought["text"], self.quoted["messages"][0]["body"])
+        self.assertEqual(thought["source"]["projectMessageId"], self.quoted["messages"][0]["id"])
+        self.assertEqual(thought["source"]["author"], {"kind": "human", "id": self.ids["ada"], "name": NAMES["ada"]})
+        self.assertEqual(thought["source"]["sentAt"], self.quoted["messages"][0]["createdAt"])
 
     def test_02_queued_failed_and_retried_messages_stay_on_the_right(self):
         for phone in (False, True):

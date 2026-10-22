@@ -2,7 +2,7 @@
 
 Accepted 2026-10-16 in [independent review](https://github.com/ColdPhase/flux/issues/540#issuecomment-6206706524), before the product repair.
 Scope: the existing `.thread__feed` and its `useMessageReadingPosition` owner;
-retain the [native message-work contract](../agents/evidence/155-message-work-pages/README.md)
+retain the [native message-work contract](https://github.com/ColdPhase/flux/blob/b17ae9e357441e9a383eb275d1034e69ec50c98a/docs/agents/evidence/155-message-work-pages/README.md)
 and [adaptive reading-position guarantees](../design/adaptive-workspaces.md).
 This clarifies the implementation boundary, not a new interaction or design.
 

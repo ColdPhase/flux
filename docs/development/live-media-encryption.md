@@ -166,7 +166,7 @@ RTP-carrying transport, with the following values:
 In the negative control, ICE reached `connected`, then DTLS went to
 `failed`, and the connection went to `failed`. The transport carried no SRTP
 profile and 0 inbound RTP bytes. See the
-[evidence](evidence/live-encryption/2026-10-05/README.md).
+[evidence](https://github.com/ColdPhase/flux/blob/b17ae9e357441e9a383eb275d1034e69ec50c98a/docs/development/evidence/live-encryption/2026-10-05/README.md).
 
 The check does not prove:
 

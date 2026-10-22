@@ -8,7 +8,7 @@ import { ComposerFiles, MessageContent, useFileDrop } from '../composer/Files';
 import { LinkPreviews, MessageText } from './MessageText';
 import { ConnectionLine, SendAnnouncer } from '../composer/Outbox';
 import { fluxAnswers, onFluxAnswered } from '../composer/connection';
-import { Button, Icon, Input, MEDIA, sendsOnEnter, useArrivals, useMediaQuery } from '../ui';
+import { Button, Icon, Input, MEDIA, sendsOnEnter, useArrivals, useMediaQuery, useToast } from '../ui';
 import { getConversation, getMaterialVersion, getProject, listConversationRoots, listDrafts, listMaterials, listTaskNotices, listWorkspaceMembers, observeProjectMessages, olderMessages, projectReceipts, publishMaterial } from './conversation-api';
 import { pageBackTo } from './seekMessage';
 import { useShellData } from './data';
@@ -20,7 +20,7 @@ import type { MessageWorkPreview } from '../work/message-associations';
 import { useProjectWorkSummary } from '../work/WorkReadContext';
 import { useReferenceWork } from '../work/useReferenceWork';
 import { MessageWorkPages } from '../work/MessageWorkPages';
-import { audienceLine, useProjectShell } from '../project/data';
+import { audienceLine, createProjectSketch, useProjectShell } from '../project/data';
 import { useShellActions } from './shellContext';
 import { assistantUses, AssistantSuggestions, meetAssistantDismissed, noteAssistantUse } from '../assistant/MeetAssistant';
 import { useConversationAssistant } from '../assistant/useConversationAssistant';
@@ -145,6 +145,17 @@ function ProjectConversationContent({ data, variant, feed, rootHeader, rootMessa
   const helperComposer = useComposerDraft(me.user.id, project.id, `helper:${conversation?.id ?? 'new'}`);
   const composer = asking ? helperComposer : publicComposer;
   const draft = composer.draft.body;
+  const replyLocation = useLocation();
+  const preparedReply = (replyLocation.state as { assistantReplyDraft?: { id: string; ownerId: string; body: string; conversationId: string } } | null)?.assistantReplyDraft;
+  const assistantDraftLabel = !!preparedReply && preparedReply.ownerId === me.user.id && preparedReply.conversationId === conversation?.id && publicComposer.draft.body === preparedReply.body;
+  const loadedReply = useRef<string | null>(null);
+  useEffect(() => {
+    if (!preparedReply || preparedReply.ownerId !== me.user.id || preparedReply.conversationId !== conversation?.id || loadedReply.current === preparedReply.id) return;
+    loadedReply.current = preparedReply.id;
+    // Keep an existing human draft. The assistant's words are offered alongside it, never silently overwrite it.
+    if (!publicComposer.draft.body.trim()) publicComposer.setBody(preparedReply.body);
+    document.getElementById(composerId)?.focus();
+  }, [preparedReply, conversation?.id, publicComposer, composerId, me.user.id]);
   // "@" and "/" in the composer (F-026 S5): the caret decides which menu shows, if any.
   const [caret, setCaret] = useState(0);
   const [menuIndex, setMenuIndex] = useState(0);
@@ -778,6 +789,8 @@ function ProjectConversationContent({ data, variant, feed, rootHeader, rootMessa
       </div>}
       {writable && !asking ? <ComposerFiles state={publicComposer} attach="none" /> : null}
       {/* A tap on the card's empty space goes to the field, as in a messenger (#266 PF-3). */}
+      {writable && assistantDraftLabel ? <p className="assistant-answer__asked">Drafted by your assistant</p> : null}
+      {writable && preparedReply && preparedReply.ownerId === me.user.id && preparedReply.conversationId === conversation?.id && !assistantDraftLabel ? <details className="project-convo__hint"><summary>Review the reply drafted by your assistant</summary><p style={{ whiteSpace: 'pre-wrap' }}>{preparedReply.body}</p><Button variant="secondary" onClick={() => publicComposer.setBody(preparedReply.body)}>Use this draft</Button></details> : null}
       {writable ? <ComposerBox id={composerId} label={asking ? 'Ask your assistant' : conversation ? 'Reply' : 'Write a message'} value={draft}
         placeholder={asking ? 'Ask your assistant…' : conversation ? 'Reply in thread…' : 'Message · @ mention · / actions'}
         onChange={(value, position) => changeDraft(value, position)} onSelect={setCaret} onBlur={typing.stop} onKeyDown={onComposerKey} disabled={busy || askBusy}
@@ -814,12 +827,23 @@ type QueuedReplyProps = { continued?: boolean; pending: PendingSend; name: strin
  * swipe, long press) and what was made from it.
  */
 function ThreadReply(props: ThreadReplyProps | QueuedReplyProps) {
+  const projectShell = useProjectShell();
+  const navigate = useNavigate();
+  const toast = useToast();
   const stored = 'pending' in props ? null : props;
   const message = stored?.message;
   const actions = stored && message ? {
     projectId: stored.project.id, message, writable: stored.writable, onCreateWork: () => void stored.makeWork.create(message),
     onReply: () => document.getElementById('thread-composer')?.focus(),
     onCite: () => citeMessage('thread', quoteOf(message.body, stored.name)),
+    onAddToMap: () => {
+      const source = { messageId: message.id, projectId: stored.project.id, body: message.body };
+      const sketch = projectShell?.sketches?.items[0];
+      if (sketch) { navigate(`/projects/${stored.project.id}/map/${sketch.id}`, { state: { addThoughtFromMessage: source } }); return; }
+      void createProjectSketch(stored.project.workspaceId, stored.project.id, 'Untitled sketch', crypto.randomUUID())
+        .then((created) => navigate(`/projects/${stored.project.id}/map/${created.id}`, { state: { addThoughtFromMessage: source } }))
+        .catch(() => toast({ message: 'The map could not be opened. Try again.', tone: 'danger' }));
+    },
   } : null;
   const touch = useTouchActions(actions);
   if (!stored || !message || !actions) {
@@ -832,7 +856,7 @@ function ThreadReply(props: ThreadReplyProps | QueuedReplyProps) {
       <SourceTag messageId={message.id} />
       {!mine && !stored.continued ? <AuthorFace kind={message.authorId === null ? 'agent' : 'human'} name={name} mine={mine} /> : null}
       {!mine && !stored.continued ? <div className="project-convo__message-meta"><strong>{mine ? `${name} · you` : message.authorId === null ? <AgentAuthor message={message} owner={agentAuthorOwner(message.author, owners)} /> : <RefLink className="project-convo__person" to={`/dm/new?workspace=${project.workspaceId}&with=${message.authorId}`} title={`Message ${name} directly`}>{name}</RefLink>}</strong></div> : null}
-      <MessageContent body={message.body ? <WhenNoQuestion projectId={project.id} messageId={message.id}><p><MessageText body={message.body} people={people} /></p></WhenNoQuestion> : null} files={message.files} context={{ author: name, at: message.createdAt, caption: message.body, place: project.name, onReply: writable ? actions.onReply : undefined, onCreateTask: writable ? actions.onCreateWork : undefined }}>
+      <MessageContent body={message.body ? <WhenNoQuestion projectId={project.id} messageId={message.id}><div className="message-body"><MessageText body={message.body} people={people} /></div></WhenNoQuestion> : null} files={message.files} context={{ author: name, at: message.createdAt, caption: message.body, place: project.name, onReply: writable ? actions.onReply : undefined, onCreateTask: writable ? actions.onCreateWork : undefined }}>
         <LinkPreviews body={message.body} />
         <MessageObjects message={message} projectId={project.id} preview={preview} />
         {message.source ? <SourceCitation materialId={message.source.materialId} version={message.source.version} onDenied={onDenied} /> : null}

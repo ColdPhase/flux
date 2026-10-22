@@ -71,11 +71,11 @@ Screenshots are losslessly encoded as WebP, with no cropping or layout changes. 
 
 | Scenario | Screenshot |
 | --- | --- |
-| Own/right, other/left, source card | [Desktop conversation](message-alignment-stream-desktop-light-chromium.webp) |
-| Phone conversation | [Phone](message-alignment-stream-phone-light-chromium.webp) |
-| Dark phone replies | [Thread](message-alignment-thread-phone-dark-chromium.webp) |
-| Discoverable connected-thought list | [Connections](connection-labels-connections-desktop-light-chromium.webp) |
-| Dark label editor | [Editor](connection-labels-editor-desktop-dark-chromium.webp) |
-| Tablet: complete toolbar and readable label | [Map](connection-labels-map-tablet-820-chromium.webp) |
-| Tablet label editing | [Editor](connection-labels-editor-tablet-820-chromium.webp) |
-| Explicit conflict recovery | [Conflict](connection-labels-conflict-desktop-chromium.webp) |
+| Own/right, other/left, source card | [Desktop conversation](https://github.com/ColdPhase/flux/blob/b17ae9e357441e9a383eb275d1034e69ec50c98a/docs/agents/evidence/481-message-labels/message-alignment-stream-desktop-light-chromium.webp) |
+| Phone conversation | [Phone](https://github.com/ColdPhase/flux/blob/b17ae9e357441e9a383eb275d1034e69ec50c98a/docs/agents/evidence/481-message-labels/message-alignment-stream-phone-light-chromium.webp) |
+| Dark phone replies | [Thread](https://github.com/ColdPhase/flux/blob/b17ae9e357441e9a383eb275d1034e69ec50c98a/docs/agents/evidence/481-message-labels/message-alignment-thread-phone-dark-chromium.webp) |
+| Discoverable connected-thought list | [Connections](https://github.com/ColdPhase/flux/blob/b17ae9e357441e9a383eb275d1034e69ec50c98a/docs/agents/evidence/481-message-labels/connection-labels-connections-desktop-light-chromium.webp) |
+| Dark label editor | [Editor](https://github.com/ColdPhase/flux/blob/b17ae9e357441e9a383eb275d1034e69ec50c98a/docs/agents/evidence/481-message-labels/connection-labels-editor-desktop-dark-chromium.webp) |
+| Tablet: complete toolbar and readable label | [Map](https://github.com/ColdPhase/flux/blob/b17ae9e357441e9a383eb275d1034e69ec50c98a/docs/agents/evidence/481-message-labels/connection-labels-map-tablet-820-chromium.webp) |
+| Tablet label editing | [Editor](https://github.com/ColdPhase/flux/blob/b17ae9e357441e9a383eb275d1034e69ec50c98a/docs/agents/evidence/481-message-labels/connection-labels-editor-tablet-820-chromium.webp) |
+| Explicit conflict recovery | [Conflict](https://github.com/ColdPhase/flux/blob/b17ae9e357441e9a383eb275d1034e69ec50c98a/docs/agents/evidence/481-message-labels/connection-labels-conflict-desktop-chromium.webp) |

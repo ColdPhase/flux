@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { spawn, type ChildProcess } from 'node:child_process';
-import { mkdirSync, mkdtempSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import http from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -81,6 +81,9 @@ export async function seedOauthClient(pool: Pool, spec: ClientSpec) {
 export function cleanClientHome(spec: ClientSpec): ClientHome {
   const home = join(root, spec.key); const cwd = join(home, 'work');
   mkdirSync(cwd, { recursive: true }); mkdirSync(join(home, 'codex'), { recursive: true }); mkdirSync(join(home, 'claude'), { recursive: true });
+  // The headless test container has no OS keyring/DBus session. Use Codex's supported file store consistently
+  // for native login and subsequent fresh processes; OAuth still supplies every credential (never seeded tokens).
+  if (spec.client === 'codex') writeFileSync(join(home, 'codex', 'config.toml'), 'mcp_oauth_credentials_store = "file"\n', { mode: 0o600 });
   const base = { HOME: home, DISABLE_AUTOUPDATER: '1', DISABLE_TELEMETRY: '1', CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: '1' };
   return spec.client === 'codex'
     ? { spec, cwd, env: { ...base, CODEX_HOME: join(home, 'codex'), MOCK_MODEL_KEY: 'not-a-vendor-key', RUST_LOG: 'warn,codex_mcp=debug,codex_rmcp_client=debug,rmcp=debug' } }

@@ -26,30 +26,50 @@ const initials = (name: string) => name.slice(0, 2).toUpperCase();
  */
 export function MessageText({ body, linked = true, people = null }: { body: string; linked?: boolean; people?: ProjectPerson[] | null }) {
   const names = [...(people ?? [])].sort((a, b) => b.name.length - a.name.length);
-  const parts: ReactNode[] = [];
-  let last = 0;
-  let key = 0;
-  for (const match of body.matchAll(tokens(names.map((person) => person.name)))) {
-    const groups = match.groups!;
-    const lead = groups.mlead ?? groups.klead ?? groups.tlead ?? '';
-    const start = match.index! + lead.length;
-    if (start > last) parts.push(body.slice(last, start));
-    if (groups.url) parts.push(linked ? <a key={key++} className="msg-link" href={groups.url} target="_blank" rel="noopener noreferrer nofollow">{groups.url}</a> : <span key={key++}>{groups.url}</span>);
-    else if (groups.known || groups.mention) {
-      const name = (groups.known ?? groups.mention!).slice(1);
-      // "@Ada's assistant" is one chip for everyone (F-027 Journey 2): a person's assistant is not in the roster others see.
-      const agent = names.find((person) => person.name === name)?.kind === 'agent' || /['’]s assistant$/.test(name);
-      parts.push(<span key={key++} className={`ref-chip ref-chip--person${agent ? ' ref-chip--agent' : ''}`} data-ref="person">
-        {agent ? <Kreska size={12} className="ref-chip__k" /> : <span className="ref-chip__face" aria-hidden="true" data-initials={initials(name)} />}
-        <span className="ui-vh">@</span>{name}</span>);
+  const inline = (text: string, keyPrefix: string): ReactNode[] => {
+    const parts: ReactNode[] = [];
+    let last = 0;
+    let key = 0;
+    for (const match of text.matchAll(tokens(names.map((person) => person.name)))) {
+      const groups = match.groups!;
+      const lead = groups.mlead ?? groups.klead ?? groups.tlead ?? '';
+      const start = match.index! + lead.length;
+      if (start > last) parts.push(text.slice(last, start));
+      if (groups.url) parts.push(linked ? <a key={`${keyPrefix}${key++}`} className="msg-link" href={groups.url} target="_blank" rel="noopener noreferrer nofollow">{groups.url}</a> : <span key={`${keyPrefix}${key++}`}>{groups.url}</span>);
+      else if (groups.known || groups.mention) {
+        const name = (groups.known ?? groups.mention!).slice(1);
+        const agent = names.find((person) => person.name === name)?.kind === 'agent' || /['’]s assistant$/.test(name);
+        parts.push(<span key={`${keyPrefix}${key++}`} className={`ref-chip ref-chip--person${agent ? ' ref-chip--agent' : ''}`} data-ref="person">
+          {agent ? <Kreska size={12} className="ref-chip__k" /> : <span className="ref-chip__face" aria-hidden="true" data-initials={initials(name)} />}
+          <span className="ui-vh">@</span>{name}</span>);
+      }
+      else if (groups.task) parts.push(<span key={`${keyPrefix}${key++}`} className="ref-chip ref-chip--task" data-ref="task"><Icon name="tasks" size={12} />#{groups.task}</span>);
+      else if (groups.wiki) parts.push(<span key={`${keyPrefix}${key++}`} className="ref-chip ref-chip--wiki" data-ref="wiki"><Icon name="doc" size={12} />{groups.wiki}</span>);
+      last = match.index! + match[0].length;
     }
-    else if (groups.task) parts.push(<span key={key++} className="ref-chip ref-chip--task" data-ref="task"><Icon name="tasks" size={12} />#{groups.task}</span>);
-    else if (groups.wiki) parts.push(<span key={key++} className="ref-chip ref-chip--wiki" data-ref="wiki"><Icon name="doc" size={12} />{groups.wiki}</span>);
-    last = match.index! + match[0].length;
+    if (last < text.length) parts.push(text.slice(last));
+    return parts;
+  };
+  const lines = body.split('\n');
+  const blocks: ReactNode[] = [];
+  for (let i = 0; i < lines.length;) {
+    if (!/^>\s?/.test(lines[i]!)) {
+      const plain: string[] = [];
+      while (i < lines.length && !/^>\s?/.test(lines[i]!)) plain.push(lines[i++]!);
+      blocks.push(<Fragment key={`p${i}`}>{inline(plain.join('\n'), `p${i}-`)}</Fragment>);
+      continue;
+    }
+    const quoted: string[] = [];
+    while (i < lines.length && /^>\s?/.test(lines[i]!)) quoted.push(lines[i++]!.replace(/^>\s?/, ''));
+    const first = quoted[0] ?? '';
+    const attribution = /^.{1,120}:$/.test(first) ? first.slice(0, -1) : null;
+    const text = attribution ? quoted.slice(1).join('\n') : quoted.join('\n');
+    blocks.push(<blockquote key={`q${i}`} className="msg-quote" aria-label={attribution ? `Quoted message from ${attribution}` : 'Quoted message'}>
+      {attribution ? <cite className="msg-quote__author">{attribution}</cite> : null}
+      <span className="msg-quote__text">{inline(text, `q${i}-`)}</span>
+    </blockquote>);
   }
-  if (!parts.length) return <>{body}</>;
-  if (last < body.length) parts.push(body.slice(last));
-  return <>{parts.map((part, index) => <Fragment key={`t${index}`}>{part}</Fragment>)}</>;
+  return <>{blocks}</>;
 }
 
 /** A readable title from a web address alone: no page is fetched for it, so nothing leaves the reader's browser. */

@@ -17,6 +17,7 @@ import '../notifications/notifications.css';
 import './assistant.css';
 import { AssistantControls, AssistantHeader } from './AssistantScreen';
 import { AssistantProjectAccess } from './AssistantProjectAccess';
+import { AssistantReactions } from './AssistantReactions';
 import { AssistantSchedules } from './AssistantSchedules';
 
 // Your assistant (#68 AC-8, O-008 §1/§3/§6): only the signed-in person's own enablement,
@@ -59,6 +60,7 @@ export function AssistantSettings() {
         <span className="nset__saved" role="status" aria-live="polite">{saved ? <><Icon name="check" size={14} />{saved}</> : null}</span>
         <AssistantControls status={status} userId={me.user.id} />
         <AssistantSchedules status={status} userId={me.user.id} />
+        <AssistantReactions status={status} userId={me.user.id} />
       </> : <div className="inbox__head">
         <div>
           <h2>Your assistant</h2>

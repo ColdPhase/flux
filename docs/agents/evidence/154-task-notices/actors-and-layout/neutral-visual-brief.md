@@ -8,13 +8,13 @@ identical to a person's name; the distinction must remain understandable.
 
 Inputs captured from Chromium at100% zoom and source
 `72d743dfc662473ff8446bde6e3d69e3db362148`:
-[owner1280×900](current-72d743d-agent-root-desktop.png),
-[reader1280×900](current-72d743d-mixed-authors-reader-1280.png),
-[reader390×900](current-72d743d-mixed-authors-reader-390.png).
+[owner1280×900](https://github.com/ColdPhase/flux/blob/b17ae9e357441e9a383eb275d1034e69ec50c98a/docs/agents/evidence/154-task-notices/actors-and-layout/current-72d743d-agent-root-desktop.png),
+[reader1280×900](https://github.com/ColdPhase/flux/blob/b17ae9e357441e9a383eb275d1034e69ec50c98a/docs/agents/evidence/154-task-notices/actors-and-layout/current-72d743d-mixed-authors-reader-1280.png),
+[reader390×900](https://github.com/ColdPhase/flux/blob/b17ae9e357441e9a383eb275d1034e69ec50c98a/docs/agents/evidence/154-task-notices/actors-and-layout/current-72d743d-mixed-authors-reader-390.png).
 Separate identical-name inputs at2093a8c are
-[owner1280×900](independent-2093-agent-root-desktop.png),
-[reader1280×900](independent-2093-mixed-authors-reader-1280.png),
-[reader390×900](independent-2093-mixed-authors-reader-390.png).
+[owner1280×900](https://github.com/ColdPhase/flux/blob/b17ae9e357441e9a383eb275d1034e69ec50c98a/docs/agents/evidence/154-task-notices/actors-and-layout/independent-2093-agent-root-desktop.png),
+[reader1280×900](https://github.com/ColdPhase/flux/blob/b17ae9e357441e9a383eb275d1034e69ec50c98a/docs/agents/evidence/154-task-notices/actors-and-layout/independent-2093-mixed-authors-reader-1280.png),
+[reader390×900](https://github.com/ColdPhase/flux/blob/b17ae9e357441e9a383eb275d1034e69ec50c98a/docs/agents/evidence/154-task-notices/actors-and-layout/independent-2093-mixed-authors-reader-390.png).
 Use each frame's actual revision; no combined current screenshot is implied.
 
 Compare hierarchy, author/time grouping, readable compact density, audience

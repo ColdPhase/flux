@@ -59,9 +59,9 @@ is still LIMITED; no fresh visual certification is inferred.
 The [limited independent visual report](independent-visual-limited.md), at2093a8c,
 identified ambiguous audience wording and a reply-shaped reader composer. Both
 are corrected and exercised at72d743d. Current frames are
-[owner1280](current-72d743d-agent-root-desktop.png),
-[reader1280](current-72d743d-mixed-authors-reader-1280.png) and
-[reader390](current-72d743d-mixed-authors-reader-390.png).
+[owner1280](https://github.com/ColdPhase/flux/blob/b17ae9e357441e9a383eb275d1034e69ec50c98a/docs/agents/evidence/154-task-notices/actors-and-layout/current-72d743d-agent-root-desktop.png),
+[reader1280](https://github.com/ColdPhase/flux/blob/b17ae9e357441e9a383eb275d1034e69ec50c98a/docs/agents/evidence/154-task-notices/actors-and-layout/current-72d743d-mixed-authors-reader-1280.png) and
+[reader390](https://github.com/ColdPhase/flux/blob/b17ae9e357441e9a383eb275d1034e69ec50c98a/docs/agents/evidence/154-task-notices/actors-and-layout/current-72d743d-mixed-authors-reader-390.png).
 Independent same-name frames remain separately prefixed `independent-2093`.
 The evaluator had prior implementation context; a **fresh external neutral visual
 assessment remains required**. The [neutral brief](neutral-visual-brief.md) supplies

@@ -60,7 +60,7 @@ export interface BackgroundRunSpec {
   projectId: string;
   /** Where the run is anchored: the conversation a schedule posts in, or any conversation of the project for a silent run. */
   conversationId: string;
-  kind: 'scheduled' | 'morning_summary';
+  kind: 'scheduled' | 'morning_summary' | 'reaction';
   prompt: string;
   /** Deterministic per firing, so a repeated start returns the same run. */
   clientRunId: string;
@@ -471,7 +471,7 @@ export function createPersonalRunUseCases({ uow, connections, providerEnabled, t
       connectionId: enablement.connectionId, clientRunId: spec.clientRunId, requestFingerprint: `background:${spec.kind}:${spec.clientRunId}`, kind: spec.kind,
       prompt: spec.prompt, targetSketchId: null, targetThoughtId: null, continuesRunId: null, retryOfRunId: null, ...reservation, engine: enablement.engine, silent: spec.silent,
       // A schedule is the owner's own stored request: it waits behind their own requests and says what it is (AST-6 "Queue").
-      authority: 'owner_schedule', backgroundLabel: spec.label.trim().slice(0, 80) || 'Schedule',
+      authority: spec.kind === 'reaction' ? 'owner_reaction' : 'owner_schedule', backgroundLabel: spec.label.trim().slice(0, 80) || 'Schedule',
     });
     await ports.queue.enqueue(run.id);
     await taskFence.mark();

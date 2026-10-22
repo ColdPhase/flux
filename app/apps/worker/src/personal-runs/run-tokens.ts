@@ -33,7 +33,7 @@ export function runTokenIssuer(db: Database, apiUrl: string, fetchImpl: typeof f
       if (response.status !== 200) return null;
       const grant = await response.json().catch(() => null) as PersonalRunTokenGrant | null;
       if (!grant || typeof grant.token !== 'string' || !Array.isArray(grant.tools) || grant.tools.some((tool) => typeof tool !== 'string')) return null;
-      return { token: grant.token, tools: [...grant.tools], expiresAt: String(grant.expiresAt) };
+      return { token: grant.token, tools: [...grant.tools], expiresAt: String(grant.expiresAt), ...(typeof grant.context === 'string' && grant.context.length <= 17000 ? { context: grant.context } : {}) };
     },
     async close(runId) {
       await db.transaction((tx) => personalRunTokenRows(tx).close(runId));

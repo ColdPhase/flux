@@ -36,11 +36,11 @@ decision, a project sketch and a doc), 100% zoom, light theme.
 
 | Viewport | v8 · C prototype · production |
 | --- | --- |
-| 1440×900 conversation | [compare-1440x900.png](compare-1440x900.png) |
-| 1440×900 Details | [compare-1440x900-details.png](compare-1440x900-details.png) |
-| 1280×800 conversation (C · production) | [compare-1280x800.png](compare-1280x800.png) |
-| 390×844 conversation | [compare-390x844.png](compare-390x844.png) |
-| 390×844 Details | [compare-390x844-details.png](compare-390x844-details.png) |
+| 1440×900 conversation | [compare-1440x900.png](https://github.com/ColdPhase/flux/blob/b17ae9e357441e9a383eb275d1034e69ec50c98a/docs/design/project-surface/compare-1440x900.png) |
+| 1440×900 Details | [compare-1440x900-details.png](https://github.com/ColdPhase/flux/blob/b17ae9e357441e9a383eb275d1034e69ec50c98a/docs/design/project-surface/compare-1440x900-details.png) |
+| 1280×800 conversation (C · production) | [compare-1280x800.png](https://github.com/ColdPhase/flux/blob/b17ae9e357441e9a383eb275d1034e69ec50c98a/docs/design/project-surface/compare-1280x800.png) |
+| 390×844 conversation | [compare-390x844.png](https://github.com/ColdPhase/flux/blob/b17ae9e357441e9a383eb275d1034e69ec50c98a/docs/design/project-surface/compare-390x844.png) |
+| 390×844 Details | [compare-390x844-details.png](https://github.com/ColdPhase/flux/blob/b17ae9e357441e9a383eb275d1034e69ec50c98a/docs/design/project-surface/compare-390x844-details.png) |
 
 Production only: `project-*-desktop-1440.png`, `project-conversation-desktop-1280.png`,
 `project-*-phone-390.png`, and `project-long-title-phone-390.png` (a long project name truncates;

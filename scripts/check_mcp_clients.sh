@@ -3,7 +3,9 @@
 # tag with its published checksum) and Claude Code (the version in apps/runtime/src/install/pins.ts, downloaded
 # at run time from Anthropic's GPG-signed release manifest, never baked into an image) register Flux's MCP
 # server with their own `mcp add`, complete Flux's OAuth for MCP in Chromium as the person, list and call Flux's
-# tools from three personal connections, and stop when the owner revokes one. No vendor account or sign-in: the
+# tools from five personal connections of two owners, compose addressed deferred/versioned reviews, and stop when
+# an owner revokes one. Sequential fresh native processes do not prove an active adapter or idle scheduling.
+# No vendor account or sign-in: the
 # clients' model traffic goes to a scripted local endpoint (tests/app/support/client-model-mock.ts).
 #
 # Needs internet access to github.com (image build) and downloads.claude.ai (run time). Run it alone under the

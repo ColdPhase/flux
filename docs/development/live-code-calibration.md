@@ -42,7 +42,7 @@ interval/unknown semantics and actual raw receiver reports; missing counters
 and resets must not become zero loss or a good connection. This integration does not change provisional warning
 thresholds or the existing screen-selection/focus/zoom surface.
 
-The [dated measured checkpoint](evidence/live-turn/2026-09-30-code/README.md)
+The [dated measured checkpoint](https://github.com/ColdPhase/flux/blob/b17ae9e357441e9a383eb275d1034e69ec50c98a/docs/development/evidence/live-turn/2026-09-30-code/README.md)
 pins production and harness source, actual decoded/sent/encoded intervals,
 original receiver pixels, source-reference limits, resource windows, the real
 product diagnostic path and retained diagnostic failures. It is calibration

@@ -81,7 +81,7 @@ def covered_parts(page: Page, scope: str, bar: dict) -> list[str]:
     return parts
 
 
-TEXT = ".message-bubble > p, .dm-msg__body, .dm-msg__meta b, .project-convo__message-meta strong, .message-time, .dm-replies, .convo-replies button, .ws-chip, .wiki-card"
+TEXT = ".message-bubble > .message-body, .dm-msg__body, .dm-msg__meta b, .project-convo__message-meta strong, .message-time, .dm-replies, .convo-replies button, .ws-chip, .wiki-card"
 
 
 def covered_text(page: Page, scope: str, bar: dict) -> list[str]:

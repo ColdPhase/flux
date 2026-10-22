@@ -116,7 +116,7 @@ supported local clients remain integration requirements under #152/#153.
 Attachments, unused-AI undo, integrated shared drafts and the complete compatible
 migration reversal remain required; the blocker, result and public-handoff effects
 are implemented in [the next section](#explicit-native-effects-on-the-canonical-thread). The current
-[source-pinned actor and layout evidence](../agents/evidence/154-task-notices/actors-and-layout/README.md)
+[source-pinned actor and layout evidence](https://github.com/ColdPhase/flux/blob/b17ae9e357441e9a383eb275d1034e69ec50c98a/docs/agents/evidence/154-task-notices/actors-and-layout/README.md)
 is incremental verification, not a reduction of AC-1–AC-5 or whole-task acceptance.
 
 ## Accepted actor compatibility delta

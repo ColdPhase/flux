@@ -492,10 +492,20 @@ export function createPersonalRunProcessor({ uow, connections, compute, stopPoll
           session = null;
         }
       }
+      // A ready-PR event needs current G-1 proof at dispatch, including a model without tool calling.
+      const needsGithub = run.kind === 'reaction' && await uow.run(async (ports) => await ports.runs.needsCurrentGithubFacts?.(run.id) ?? false);
+      let context = session?.context;
+      let separateGrant = false;
+      if (needsGithub && !context && !session && tokens) {
+        const grant = await tokens.issue(run.id).catch(() => null);
+        context = grant?.context; separateGrant = !!grant;
+      }
       try {
-        return await dispatchRun(run, read, connection, session, beforeSend);
+        if (needsGithub && !context) return uow.run(async (ports) => (await updateAndAnnounce(ports, run.id, ended('unavailable', 'before_dispatch', free))).status);
+        return await dispatchRun(context ? { ...run, prompt: `${run.prompt}\n${context}` } : run, read, connection, session, beforeSend);
       } finally {
         await session?.close().catch(() => undefined);
+        if (separateGrant) await tokens?.close(run.id).catch(() => undefined);
       }
     },
   };

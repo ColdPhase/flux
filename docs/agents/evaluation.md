@@ -87,10 +87,15 @@ Committed evidence is downloaded by every clone, forever ([#319]). Keep it small
 
 - Prefer WebP, or PNG compressed losslessly, for screenshots. Crop to the region
   the criterion concerns instead of committing full 1440p or 4K pages.
-- Keep JSON, logs and traces to the excerpt that proves the result; gzip larger
-  machine output.
-- Put bulk evidence (recordings, full screenshot matrices, raw reports) in a CI
-  workflow artifact and link the run from the report or PR.
+- Keep the short conclusion, tested commit, commands and result in the report;
+  do not commit raw logs, traces, machine reports or screenshot matrices.
+- Put screenshots, recordings and raw runner output in a CI workflow artifact
+  and link the run from the report or PR. Keep only compact source references
+  and engineering reports in `docs/agents/evidence/` and
+  `docs/development/evidence/`.
+- Preserve already-cited historical captures through the immutable commit linked
+  by each report or through the [evidence archive](evidence/README.md); do not
+  add them back to the current tree.
 
 `python3 scripts/check_agent_setup.py` fails on any file under `docs/` above
 400 KB and any screenshot or recording there above 300 KB. Existing large files
