@@ -4,7 +4,7 @@
     python3 scripts/pack_motion_evidence.py <recordings dir> <output dir>
 
 `<recordings dir>` holds what `app/tests/ui/motion_evidence.py` (`test_clips_for_the_review`) wrote for each engine and
-scheme: `<engine>-<scheme>-<clip>.webm` and `.marks.json`. The marks say when the motion starts and which part of the page
+scheme: `<engine>-<scheme>-<clip>.webm` and `.marks.json` (a mark may ask for a frame rate, `fps`). The marks say when the motion starts and which part of the page
 it happens in; this keeps that part, a little before and after, at a lower frame rate. It needs `ffmpeg` and `img2webp`
 (libwebp) on the host and tries a ladder of frame rates and qualities until a clip is under the limit.
 """
@@ -34,7 +34,10 @@ def pack(video: Path, out: Path) -> int:
     mark = marks["marks"][0]
     x, y, w, h = crop(marks)
     start = max(0.0, mark["at"] - mark["before"])
-    for fps, quality in LADDER:
+    first = int(mark.get("fps") or 0)
+    # A clip that asks for a higher frame rate (a slide that has to be seen) starts there and comes down only as far as the size limit needs.
+    ladder = ((first, 45), (first, 35), (20, 40), (15, 35), *LADDER) if first > 12 else LADDER
+    for fps, quality in ladder:
         with tempfile.TemporaryDirectory() as scratch:
             vf = f"crop={w}:{h}:{x}:{y},scale=trunc(iw*{mark['scale']}/2)*2:-2,fps={fps}"
             subprocess.run(["ffmpeg", "-v", "error", "-y", "-ss", f"{start:.3f}", "-t", f"{mark['before'] + mark['after']:.3f}", "-i", str(video), "-vf", vf, f"{scratch}/f%03d.png"], check=True)

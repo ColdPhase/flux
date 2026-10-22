@@ -5,7 +5,8 @@ import { MOTION_ID, duration, motionAllowed, token } from './motion';
  * Rows that come, go and move keep the reader's place (#593 AC-4). An added row grows in (height and opacity), a removed
  * row collapses (height and opacity) where it stood, and a row that moved, or that other rows moved under, slides from
  * where it was to where it is (transform). It is the only animation that touches height, and only to collapse or grow
- * a row. Nothing here moves focus or scroll: the browser's own scroll anchoring keeps the reading position while the
+ * a row. A row that moves across the list instead of a few rows (to another group) is not carried the whole way: it fades in at
+ * its new place with a short slide (`--row-travel-max`, `--shift-row`). Nothing here moves focus or scroll: the browser's own scroll anchoring keeps the reading position while the
  * rows around it change size, a row slides only by how far it moved relative to the row the reader is anchored to (that row,
  * and the ones that moved with it, do not move at all), a row that comes or goes outside what the reader sees changes at once
  * (nobody watches it, and the browser's scroll anchoring holds the rows the reader is on through a change that is not gradual),
@@ -161,9 +162,16 @@ export function useRowMotion(container: RefObject<HTMLElement | null>, rows: str
     writes.push(() => {
       const ms = duration('--dur-3');
       const easing = token('--ease-sheet') || 'ease-out';
+      // Motion is short and calm (final design §2): a row that moves a few rows slides there, a row that moves across the list (to another
+      // group, far from where it was) is not carried the whole way: it comes in at its new place with a short slide from the side it came from.
+      const farther = parseFloat(token('--row-travel-max')) || 160;
+      const shift = parseFloat(token('--shift-row')) || 12;
       for (const { el, dx, dy } of slides) {
         for (const running of el.getAnimations()) if (running.id === MOTION_ID && !(running.effect as KeyframeEffect | null)?.getKeyframes().some((frame) => 'height' in frame)) running.cancel();
-        const slide = el.animate([{ transform: `translate(${dx}px, ${dy}px)` }, { transform: 'none' }], { duration: ms, easing });
+        const far = Math.hypot(dx, dy);
+        const slide = far > farther
+          ? el.animate([{ opacity: 0, transform: `translate(${(dx / far) * shift}px, ${(dy / far) * shift}px)` }, { opacity: 1, transform: 'none' }], { duration: duration('--dur-in'), easing: token('--ease-out') || 'ease-out' })
+          : el.animate([{ transform: `translate(${dx}px, ${dy}px)` }, { transform: 'none' }], { duration: ms, easing });
         slide.id = MOTION_ID;
       }
     });

@@ -96,7 +96,7 @@
      the content leaving a panel travels --shift-panel, a view --shift-view and a menu --shift-pop. */
   --dur-1: 120ms; --dur-2: 180ms; --dur-3: 260ms; --dur-4: 340ms; --dur-press: 250ms;
   --dur-in: var(--dur-2); --dur-out: var(--dur-1); --dur-view: 150ms;
-  --shift-panel: 16px; --shift-view: 10px; --shift-pop: 4px; --shift-toolbar: 6px;
+  --shift-panel: 16px; --shift-view: 10px; --shift-pop: 4px; --shift-toolbar: 6px; --shift-row: 12px; --row-travel-max: 160px;
   --press: .97;
   --ease-out: cubic-bezier(.22, 1, .36, 1);
   --ease-in: cubic-bezier(.4, 0, 1, 1);

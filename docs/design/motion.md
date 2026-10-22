@@ -15,6 +15,7 @@ surface takes the same motion from the same places. Founder direction and accept
 | `--dur-press` | 250 ms | A pressed control springs back (`--ease-spring`); the press itself takes `--dur-1`. |
 | `--press` | .97 | The one press scale. |
 | `--shift-panel` / `--shift-view` / `--shift-pop` / `--shift-toolbar` | 16 / 10 / 4 / 6 px | How far a panel's content, a view's old content, a menu and the message toolbar travel. |
+| `--shift-row` / `--row-travel-max` | 12 / 160 px | How far a row that moved across the list comes in from, and the longest distance a row is carried (see below). |
 
 Under `prefers-reduced-motion: reduce` and Settings → Appearance → Reduce motion every duration is `0ms` and `--press` is
 `1`, and script motion (`play`, `settle`, the press, row motion) does not run: the end state is there at once.
@@ -22,6 +23,10 @@ Under `prefers-reduced-motion: reduce` and Settings → Appearance → Reduce mo
 ## Rules
 
 - Only `opacity` and `transform` animate. A row's height animates only to grow it in or collapse it (`rowMotion.ts`).
+- Motion is short and calm. A row that moved a few rows slides there (260 ms); a row that moved more than `--row-travel-max` (a state
+  change that sends it to another group far down or up the list, a card to another column) is not carried across the list: it
+  fades in at its new place with a `--shift-row` slide from the side it came from (180 ms). The rows it moved past slide by their
+  own, short, displacement. `test_13b_...` holds the cap.
 - A control never changes place (Spokój rule 7). A switch of view or place and a change of a panel's content are old-to-new
   crossfades (`ui/Dissolve.tsx`): the new content is put in one commit, live and in place from the first frame; the outgoing content
   is kept as an inert picture of itself over it for `--dur-out` (a panel) or `--dur-view` (a view), fades out and travels a few

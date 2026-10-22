@@ -25,11 +25,28 @@ from playwright.sync_api import Page, expect, sync_playwright
 
 from create_window import add_task
 from light_motion_fixture import LightMotion, ready, recorded, settled
+from message_gestures import open_message_menu
+from test_work_pagination import api
 from test_app_shell import ORIGIN, UI_BROWSER, UPSTREAM, start_forwarder
 
 OUT = Path(os.environ.get("FLUX_UI_SCREENSHOTS", "/screenshots"))
 BEAT = 650  # a pause long enough to see each motion finish before the next begins
 TABS = "nav[aria-label='Project views']"
+# Slows the page's own animations (the helpers' ones carry the id `flux-motion`) so a 260 ms slide can be seen in a 25 fps video.
+# The durations in the animation log stay the real ones: this only stretches the picture.
+SLOW = """(() => { const o = Element.prototype.animate; Element.prototype.animate = function (f, opt) { const a = o.call(this, f, opt);
+  setTimeout(() => { try { if (a.id === 'flux-motion') a.playbackRate = RATE; } catch (e) {} }, 0); return a; }; })();"""
+# Every list row's place and pose on each animation frame for 800 ms after `action` (a click in the page).
+ROW_FRAMES = r"""
+async ({ action }) => {
+  const t0 = performance.now(); const frames = [];
+  const read = (t) => ({ t: Math.round(t), rows: [...document.querySelectorAll('.ws-task[data-work-id]')].map((el) => { const s = getComputedStyle(el); const r = el.getBoundingClientRect();
+    return [el.dataset.workId.slice(0, 6), el.dataset.status, Math.round(r.top * 10) / 10, s.transform === 'none' ? 'none' : s.transform.replace('matrix(', '').replace(')', ''), +(+s.opacity).toFixed(2)]; }) });
+  frames.push(read(0));
+  new Function('return (' + action + ')')()();
+  await new Promise((resolve) => { const step = () => { const t = performance.now() - t0; frames.push(read(t)); t < 800 ? requestAnimationFrame(step) : resolve(); }; requestAnimationFrame(step); });
+  return frames;
+}"""
 
 
 class MotionEvidence(unittest.TestCase):
@@ -167,7 +184,7 @@ class MotionEvidence(unittest.TestCase):
 
     # ------------------------------------------------------------------ clips for the review: one motion each, cropped by the packer
     def mark(self, page: Page, selectors: tuple[str, ...] = (), *, box: tuple[float, float, float, float] | None = None, grow: tuple[float, float, float, float] = (0, 0, 0, 0),
-             before: float = 0.3, after: float = 1.6, scale: float = 1.0, pad: float = 12, width: float | None = None) -> None:
+             before: float = 0.3, after: float = 1.6, scale: float = 1.0, pad: float = 12, width: float | None = None, fps: int | None = None) -> None:
         """Notes that a motion starts now: where on the page it happens (the union of `selectors`, grown by `grow` = left, top, right,
         bottom, or a fixed `box`), and how much of the video to keep before and after (seconds)."""
         if box is None:
@@ -179,14 +196,16 @@ class MotionEvidence(unittest.TestCase):
             box = (found[0] - grow[0] - pad, found[1] - grow[1] - pad, found[2] + grow[0] + grow[2] + 2 * pad, found[3] + grow[1] + grow[3] + 2 * pad)
         if width is not None:
             box = (box[0], box[1], width, box[3])
-        self.marks.append({"at": round(time.monotonic() - self.began, 3), "box": [round(value, 1) for value in box], "before": before, "after": after, "scale": scale})
+        self.marks.append({"at": round(time.monotonic() - self.began, 3), "box": [round(value, 1) for value in box], "before": before, "after": after, "scale": scale, **({"fps": fps} if fps else {})})
 
-    def clip(self, name: str, journey, *, scheme: str = "light", reduced: bool = False) -> None:
-        label = f"{self.engine}-{scheme}{'-reduced' if reduced else ''}-{name}"
+    def clip(self, name: str, journey, *, scheme: str = "light", reduced: bool = False, phone: bool = False, slow: float | None = None) -> None:
+        label = f"{self.engine}-{'phone-' if phone else ''}{scheme}{'-reduced' if reduced else ''}-{name}"
         scratch = OUT / f"_{label}"
         shutil.rmtree(scratch, ignore_errors=True)
-        context = self.fx.context(scheme=scheme, reduced=reduced, video_dir=str(scratch))
-        self.log, self.marks = [], []
+        context = self.fx.context(scheme=scheme, reduced=reduced, phone=phone, video_dir=str(scratch))
+        if slow:
+            context.add_init_script(SLOW.replace("RATE", str(slow)))
+        self.log, self.marks, self.frames = [], [], []
         errors: list[str] = []
         self.began = time.monotonic()
         page = context.new_page()
@@ -196,7 +215,9 @@ class MotionEvidence(unittest.TestCase):
             page.wait_for_timeout(BEAT)
             self.harvest(page)
             (OUT / f"{label}.motion.json").write_text(json.dumps(self.log, indent=1) + "\n")
-            (OUT / f"{label}.marks.json").write_text(json.dumps({"engine": self.engine, "scheme": scheme, "clip": name, "reduced": reduced, "marks": self.marks, "viewport": page.viewport_size}, indent=1) + "\n")
+            (OUT / f"{label}.marks.json").write_text(json.dumps({"engine": self.engine, "scheme": scheme, "clip": name, "reduced": reduced, "phone": phone, "slow": slow, "marks": self.marks, "viewport": page.viewport_size}, indent=1) + "\n")
+            if self.frames:
+                (OUT / f"{label}.frames.json").write_text(json.dumps(self.frames, separators=(",", ":")) + "\n")
         finally:
             video = page.video
             context.close()
@@ -215,13 +236,26 @@ class MotionEvidence(unittest.TestCase):
         page.keyboard.press("Escape"); self.beat(page, 700)
 
     def clip_message_menu(self, page: Page) -> None:
-        """AC-1: a message's ⋯ menu and its scrim leave as they came."""
+        """AC-1: a message's ⋯ menu fades in and, on Escape, out. The crop is cut to the menu (it opens under the ⋯ button, measured on a first
+        opening) with the button and the corner of the message; on a computer its scrim is the transparent catcher over the page."""
         self.go(page, self.fx.project_url()); self.beat(page, 700)
         message = page.locator(".project-convo__message").first
-        message.hover(); self.beat(page, 300)
-        self.mark(page, (".project-convo__message",), grow=(0, 0, 0, 260), after=2.4)
-        message.get_by_role("button", name="More actions").click(); self.beat(page, 900)
+        open_message_menu(message, phone=False)
+        shape = page.evaluate("""() => { const m = document.querySelector('.msg-menu').getBoundingClientRect(); const b = document.querySelector('.msg-acts button[aria-expanded="true"]');
+          const k = b ? b.getBoundingClientRect() : m; return [Math.min(m.left, k.left), Math.min(m.top, k.top), Math.max(m.right, k.right), Math.max(m.bottom, k.bottom)]; }""")
         page.keyboard.press("Escape"); self.beat(page, 700)
+        page.mouse.move(2, 2); self.beat(page, 300)
+        self.mark(page, box=(shape[0] - 24, shape[1] - 24, shape[2] - shape[0] + 48, shape[3] - shape[1] + 48), after=2.6, fps=20)
+        open_message_menu(message, phone=False); self.beat(page, 900)
+        page.keyboard.press("Escape"); self.beat(page, 700)
+
+    def clip_message_press_menu(self, page: Page) -> None:
+        """AC-1 on a phone: a long press on a message opens its menu over a shaded, blurred scrim that fades in with it and out with it."""
+        self.go(page, self.fx.project_url()); self.beat(page, 900)
+        message = page.locator(".project-convo__message").first
+        self.mark(page, box=(0, 0, 390, 844), after=2.8, scale=0.6, fps=20)
+        open_message_menu(message, phone=True); self.beat(page, 900)
+        page.keyboard.press("Escape"); self.beat(page, 800)
 
     def clip_more_menu(self, page: Page) -> None:
         """AC-1: the project header's More menu (#606's surface) leaves over the header while the controls beside it stay put."""
@@ -252,11 +286,49 @@ class MotionEvidence(unittest.TestCase):
         page.locator(TABS).get_by_role("link", name="Tasks").click(); self.beat(page, 1000)
         page.locator(TABS).get_by_role("link", name="Conversation").click(); self.beat(page, 1000)
 
-    def clip_state(self, page: Page) -> None:
-        """AC-4: the state glyph morphs and the row slides to its group."""
-        self.go(page, self.fx.tasks_url()); self.beat(page, 900)
-        self.mark(page, (".ws-task",), grow=(0, 0, 0, 300), after=2.2, scale=0.6)
-        page.locator("button.ws-task__glyph").first.click(); self.beat(page, 1200)
+    def list_box(self, page: Page, pad: float = 16) -> tuple[float, float, float, float]:
+        """Where every row of the list is, so the crop keeps whatever moves."""
+        found = page.evaluate("""() => { let l = 1e9, t = 1e9, r = -1e9, b = -1e9; for (const el of document.querySelectorAll('.ws-task')) { const q = el.getBoundingClientRect();
+          l = Math.min(l, q.left); t = Math.min(t, q.top); r = Math.max(r, q.right); b = Math.max(b, q.bottom); } return [l, t, r - l, b - t]; }""")
+        return (found[0] - pad, found[1] - pad, found[2] + 2 * pad, found[3] + 2 * pad)
+
+    def clip_state(self, page: Page, *, long: bool = False, slow: bool = False) -> None:
+        """AC-4: the state glyph morphs and the row slides to its group; the rows it moved past slide by their own short distance."""
+        if long:
+            # A project with a long list: the last row's state change sends it across the whole list to the group at the top, further than a row is carried.
+            self.go(page, f"/projects/{self.long_list()}/tasks?view=list")
+            target = page.locator(".ws-task").last
+        else:
+            self.go(page, self.fx.tasks_url())
+            target = page.locator(".ws-task", has_text="Calibrate the probes at two depths").first
+        expect(target).to_be_visible(); self.beat(page, 900)
+        self.mark(page, box=self.list_box(page), after=5.0 if slow else 2.0, scale=0.7, fps=25)
+        if slow:
+            target.locator("button.ws-task__glyph").click(); self.beat(page, 3600)
+        else:
+            work = target.get_attribute("data-work-id")
+            self.frames = page.evaluate(ROW_FRAMES, {"action": f"() => document.querySelector(\".ws-task[data-work-id='{work}'] button.ws-task__glyph\").click()"})
+            self.beat(page, 900)
+
+    def clip_state_slow(self, page: Page) -> None:
+        self.clip_state(page, slow=True)
+
+    def clip_state_far(self, page: Page) -> None:
+        self.clip_state(page, long=True)
+
+    def clip_state_far_slow(self, page: Page) -> None:
+        self.clip_state(page, long=True, slow=True)
+
+    def long_list(self) -> str:
+        """A project of ten open tasks, made once per run."""
+        if not getattr(self, "long_project", None):
+            import uuid
+            ada = self.fx.contexts["ada"]
+            project = api(ada, "POST", f"/api/v1/workspaces/{self.fx.workspace}/projects", {"name": "Long list", "visibility": "restricted"}, 201)["id"]
+            for index in range(10):
+                api(ada, "POST", f"/api/v1/projects/{project}/work", {"title": f"Long list task {index:02d}", "clientCommandId": str(uuid.uuid4())}, 201)
+            type(self).long_project = project
+        return self.long_project
 
     def clip_press(self, page: Page) -> None:
         """AC-5: a pressed control scales to .97 and springs back."""
@@ -285,6 +357,16 @@ class MotionEvidence(unittest.TestCase):
                                   ("ac5-press", self.clip_press)):
                 with self.subTest(scheme=scheme, clip=name):
                     self.clip(name, journey, scheme=scheme)
+
+    def test_clips_for_the_visual_review_gaps(self):
+        """What the neutral visual review of PR 608 found missing: the message ⋯ menu itself (desktop, and the phone's shaded scrim) and the state
+        change at a rate that shows the slide (real time at 25 fps with per-frame row positions, and slowed 4x), including a move across a long list."""
+        for scheme in ("light", "dark"):
+            for name, journey, options in (("ac1-message-menu", self.clip_message_menu, {}), ("ac1-message-press-menu", self.clip_message_press_menu, {"phone": True}),
+                                           ("ac4-state", self.clip_state, {}), ("ac4-state-slow", self.clip_state_slow, {"slow": 0.25}),
+                                           ("ac4-state-far", self.clip_state_far, {}), ("ac4-state-far-slow", self.clip_state_far_slow, {"slow": 0.25})):
+                with self.subTest(scheme=scheme, clip=name):
+                    self.clip(name, journey, scheme=scheme, **options)
 
     def test_clip_for_reduced_motion(self):
         self.clip("ac6-reduced", self.clip_reduced, reduced=True)

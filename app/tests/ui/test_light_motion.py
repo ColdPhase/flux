@@ -663,6 +663,39 @@ class LightMotionJourney(unittest.TestCase):
             if entry["props"] != ["scale"]:
                 self.assertTrue(set(entry["props"]) <= TRANSFORM_ONLY | ROW_BOX, f"{entry['target']} animates {entry['props']}")
 
+    def test_13b_a_row_that_moves_across_the_list_comes_in_with_a_short_slide_not_a_long_flight(self):
+        """Motion is short and calm (final design §2): a row sent to another group far down or up the list is not carried the whole way."""
+        import uuid
+        ada = self.fx.contexts["ada"]
+        project = api(ada, "POST", f"/api/v1/workspaces/{self.fx.workspace}/projects", {"name": "Long list for the row cap", "visibility": "restricted"}, 201)["id"]
+        ids = [api(ada, "POST", f"/api/v1/projects/{project}/work", {"title": f"Long list task {index:02d}", "clientCommandId": str(uuid.uuid4())}, 201)["id"] for index in range(10)]
+        page = self.page()
+        self.open(page, f"/projects/{project}/tasks?view=list")
+        rows = page.locator(".ws-task")
+        expect(rows).to_have_count(10)
+        settled(page)
+        last = rows.last
+        moved_id = last.get_attribute("data-work-id")
+        self.assertIn(moved_id, ids)
+        before = last.bounding_box()["y"]
+        clear(page)
+        last.locator("button.ws-task__glyph").click()
+        row = page.locator(f".ws-task[data-work-id='{moved_id}']")
+        expect(row).to_have_attribute("data-status", "in_progress")
+        settled(page)
+        travel = abs(row.bounding_box()["y"] - before)
+        self.assertGreater(travel, 160, f"the row really did move across the list ({travel:.0f} px), so the cap is what is under test")
+        slides = [entry for entry in self.by(page, r"ws-task", "script") if "transform" in entry["props"]]
+        self.assertTrue(slides, recorded(page))
+        for entry in slides:
+            distance = max(abs(n) for n in numbers(entry["from"]["transform"]))
+            self.assertLessEqual(distance, 160, f"no row is carried further than the cap: {entry}")
+        arrivals = [entry for entry in slides if (entry["from"] or {}).get("opacity") == 0]
+        self.assertTrue(arrivals, f"the row that moved far fades in at its new place instead: {slides}")
+        self.assertLessEqual(max(abs(n) for n in numbers(arrivals[0]["from"]["transform"])), 12.5, "with a short slide from the side it came from")
+        self.assertLessEqual(arrivals[0]["duration"], 180)
+        self.assertEqual(set(arrivals[0]["props"]), {"opacity", "transform"})
+
     def test_14_an_added_row_grows_in(self):
         page = self.page()
         self.open(page, self.fx.tasks_url())
