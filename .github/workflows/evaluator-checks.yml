@@ -1,0 +1,216 @@
+name: Evaluator checks
+
+# Manual, evaluator-only: runs the targeted Docker browser/API checks of docs/agents/evaluation.md
+# on an exact commit for an evaluator whose own Docker cannot build the images. Never a PR check,
+# never required, never triggered by a push, a PR or a schedule (docs/agents/ci-and-releases.md).
+# The workflow comes from main; the tested commit is only checked out and has no secrets and a
+# read-only token. Dispatch heads you have read: the candidate's own scripts run on the runner.
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: Full 40-character lowercase commit SHA to test, for example a PR head (a branch or tag name is refused)
+        required: true
+        type: string
+      kind:
+        description: ui runs scripts/check_ui.sh, api runs scripts/check_application.sh
+        required: true
+        type: choice
+        options:
+          - ui
+          - api
+      targets:
+        description: Space-separated UI test modules (test_docs or test_docs.Class.test_name) or API test files (tests/app/search.test.ts), 1 to 10
+        required: true
+        type: string
+      browser:
+        description: Browser engine for ui (ignored for api)
+        required: false
+        type: choice
+        default: chromium
+        options:
+          - chromium
+          - webkit
+      live_editing:
+        description: ui only. on runs scripts/check_live_editing.sh (the development live map/wiki editing stack); default and off use the ordinary stack, where live editing is off
+        required: false
+        type: choice
+        default: default
+        options:
+          - default
+          - "on"
+          - "off"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: evaluator-${{ inputs.kind }}-${{ inputs.ref }}-${{ inputs.kind == 'ui' && inputs.browser || 'none' }}-${{ inputs.kind == 'ui' && inputs.live_editing || 'none' }}-${{ inputs.targets }}
+  cancel-in-progress: false
+
+jobs:
+  check:
+    name: Evaluator check
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      # Inputs reach the shell only through env, and only values that pass these checks go on.
+      - name: Validate inputs
+        id: validate
+        shell: bash
+        env:
+          INPUT_REF: ${{ inputs.ref }}
+          INPUT_KIND: ${{ inputs.kind }}
+          INPUT_TARGETS: ${{ inputs.targets }}
+          INPUT_BROWSER: ${{ inputs.browser }}
+          INPUT_LIVE_EDITING: ${{ inputs.live_editing }}
+        run: |
+          set -euo pipefail
+          fail() { printf '::error::%s\n' "$1"; exit 1; }
+          [ "$GITHUB_REF" = refs/heads/main ] || fail 'Dispatch this workflow from main so the reviewed definition runs.'
+          [[ "$INPUT_REF" =~ ^[0-9a-f]{40}$ ]] || fail 'ref must be a full 40-character lowercase commit SHA, not a branch or tag name.'
+          case "$INPUT_KIND" in ui|api) ;; *) fail 'kind must be ui or api.' ;; esac
+          case "$INPUT_BROWSER" in chromium|webkit) ;; *) fail 'browser must be chromium or webkit.' ;; esac
+          case "$INPUT_LIVE_EDITING" in default|on|off) ;; *) fail 'live_editing must be default, on or off.' ;; esac
+          if [ "$INPUT_KIND" = api ] && [ "$INPUT_LIVE_EDITING" = on ]; then
+            fail 'live_editing=on applies to kind ui only.'
+          fi
+          charset='^[A-Za-z0-9_./ -]+$'
+          [[ "$INPUT_TARGETS" =~ $charset ]] || fail 'targets may contain only letters, digits, _ . / - and spaces.'
+          read -r -a named <<< "$INPUT_TARGETS"
+          if [ "${#named[@]}" -lt 1 ] || [ "${#named[@]}" -gt 10 ]; then
+            fail 'Name 1 to 10 targets. The whole suites are not run here.'
+          fi
+          ui_target='^[A-Za-z0-9_]+(\.[A-Za-z0-9_]+){0,2}$'
+          api_target='^tests/app/[A-Za-z0-9_-]+(\.[A-Za-z0-9_-]+)*\.ts$'
+          for target in "${named[@]}"; do
+            if [ "$INPUT_KIND" = ui ]; then
+              [[ "$target" =~ $ui_target ]] || fail "not a UI test module or Module.Class.test name: $target"
+            else
+              [[ "$target" =~ $api_target ]] || fail "not an API test file under app/tests/app/: $target"
+            fi
+          done
+          printf 'ref=%s\n' "$INPUT_REF" >> "$GITHUB_OUTPUT"
+          printf 'targets=%s\n' "${named[*]}" >> "$GITHUB_OUTPUT"
+
+      - name: Check out the tested commit
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ steps.validate.outputs.ref }}
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Confirm the commit and the named targets exist
+        shell: bash
+        env:
+          TESTED_SHA: ${{ steps.validate.outputs.ref }}
+          KIND: ${{ inputs.kind }}
+          TARGETS: ${{ steps.validate.outputs.targets }}
+        run: |
+          set -euo pipefail
+          [ "$(git rev-parse HEAD)" = "$TESTED_SHA" ] || { echo '::error::The checkout is not the requested commit.'; exit 1; }
+          read -r -a named <<< "$TARGETS"
+          for target in "${named[@]}"; do
+            if [ "$KIND" = ui ]; then
+              file="app/tests/ui/${target%%.*}.py"
+            else
+              file="app/$target"
+            fi
+            [ -f "$file" ] || { echo "::error::Not found at this commit: $file"; exit 1; }
+          done
+
+      - name: Run the checks
+        id: run
+        shell: bash
+        env:
+          KIND: ${{ inputs.kind }}
+          TARGETS: ${{ steps.validate.outputs.targets }}
+          LIVE_EDITING: ${{ inputs.live_editing }}
+          FLUX_UI_BROWSER: ${{ inputs.browser }}
+        run: |
+          set -euo pipefail
+          out="$RUNNER_TEMP/evaluator"
+          mkdir -p "$out/screenshots"
+          # The test containers run as another user and write the screenshots here.
+          chmod 0777 "$out/screenshots"
+          read -r -a named <<< "$TARGETS"
+          case "$KIND:$LIVE_EDITING" in
+            ui:on)
+              script=scripts/check_live_editing.sh
+              export FLUX_LIVE_EDITING_SHOTS="$out/screenshots"
+              ;;
+            ui:*)
+              script=scripts/check_ui.sh
+              export FLUX_UI_SCREENSHOT_DIR="$out/screenshots"
+              ;;
+            *)
+              script=scripts/check_application.sh
+              ;;
+          esac
+          printf './%s %s\n' "$script" "${named[*]}" > "$out/command.txt"
+          "./$script" "${named[@]}" 2>&1 | tee "$out/run.log"
+
+      # Evidence stays small: the log's tail, the final result lines and a bounded set of screenshots.
+      - name: Collect the evidence
+        if: always()
+        shell: bash
+        env:
+          RUN_OUTCOME: ${{ steps.run.outcome }}
+          TESTED_SHA: ${{ steps.validate.outputs.ref }}
+          KIND: ${{ inputs.kind }}
+          BROWSER: ${{ inputs.browser }}
+          LIVE_EDITING: ${{ inputs.live_editing }}
+        run: |
+          # Best effort: a gap in the evidence must not turn a finished run into a different result.
+          set -u +e
+          out="$RUNNER_TEMP/evaluator"
+          keep="$RUNNER_TEMP/evaluator-artifact"
+          mkdir -p "$keep"
+          fence=$(printf '\140\140\140')
+          shots_kept=0
+          shots_total=0
+          if [ -d "$out/screenshots" ]; then
+            shots_total=$(find "$out/screenshots" -type f | wc -l)
+            (cd "$out/screenshots" && find . -type f -size -500k | sort | head -n 60 | while IFS= read -r file; do
+              mkdir -p "$keep/screenshots/$(dirname "$file")" && cp "$file" "$keep/screenshots/$file"
+            done)
+            shots_kept=$(find "$keep/screenshots" -type f 2>/dev/null | wc -l)
+          fi
+          shots_line=''
+          if [ "$KIND" = ui ]; then
+            shots_line="- Screenshots in the artifact: $shots_kept of $shots_total (up to 60 files under 500 KB)"
+          fi
+          [ ! -f "$out/run.log" ] || tail -c 4000000 "$out/run.log" | gzip -9 > "$keep/run.log.gz"
+          [ ! -f "$out/command.txt" ] || cp "$out/command.txt" "$keep/command.txt"
+          {
+            echo "## Evaluator check: ${RUN_OUTCOME:-skipped}"
+            echo
+            echo "- Tested commit: \`${TESTED_SHA:-not accepted}\`"
+            echo "- Kind: \`$KIND\`; browser: \`$([ "$KIND" = ui ] && echo "$BROWSER" || echo n/a)\`; live editing: \`$([ "$KIND" = ui ] && echo "$LIVE_EDITING" || echo n/a)\`"
+            echo "- Command: \`$(cat "$out/command.txt" 2>/dev/null || echo 'did not start')\`"
+            echo "- Run: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID (attempt $GITHUB_RUN_ATTEMPT)"
+            [ -z "$shots_line" ] || echo "$shots_line"
+            echo "- The artifact keeps the last 4 MB of the log (gzipped), this summary and the command; it expires after 7 days."
+            echo
+            if [ -f "$out/run.log" ]; then
+              clean=$(sed -e 's/\x1b\[[0-9;]*[A-Za-z]//g' -e 's/\r//g' -e 's/`//g' "$out/run.log")
+              result=$(printf '%s\n' "$clean" | grep -E '^(Ran [0-9]+ tests? in [0-9.]+s|OK( \(.*\))?|FAILED \(.*\)|(ℹ|#) (tests|suites|pass|fail|cancelled|skipped|todo) [0-9]+|Named API test files only.*)$' || true)
+              if [ -n "$result" ]; then
+                echo 'Final result lines:'
+                printf '\n%s\n%s\n%s\n' "$fence" "$result" "$fence"
+              else
+                echo 'No test result lines were found; the last log lines:'
+                printf '\n%s\n%s\n%s\n' "$fence" "$(printf '%s\n' "$clean" | tail -n 25)" "$fence"
+              fi
+            fi
+          } > "$keep/summary.md"
+          cat "$keep/summary.md" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload the evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: evaluator-${{ inputs.kind }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/evaluator-artifact/
+          if-no-files-found: warn
+          retention-days: 7

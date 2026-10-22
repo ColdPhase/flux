@@ -33,6 +33,19 @@ screenshots, a neutral brief and references, separately from functional testing.
 5. Return actionable findings to the author. Submit an approving GitHub review
    only when all required criteria pass and the account is eligible and authorized.
 
+An evaluator whose local Docker cannot build the images may dispatch the manual
+[Evaluator checks](../../.github/workflows/evaluator-checks.yml) workflow on the exact head:
+
+```sh
+gh workflow run evaluator-checks.yml --ref main -f ref=<40-hex SHA> -f kind=ui \
+  -f browser=webkit -f targets='test_a test_b'
+```
+
+`kind=api` takes test files such as `tests/app/search.test.ts`; `live_editing=on` runs the
+live-mode script. Cite the run URL and the tested SHA as the evidence. It covers that SHA and
+those targets only, does not replace required remote checks, and a target that did not run
+stays `unverified`.
+
 For documentation-only changes, use relevant link, configuration, and structural
 checks. Do not run a browser suite or introduce application dependencies merely
 to validate a documentation patch.
