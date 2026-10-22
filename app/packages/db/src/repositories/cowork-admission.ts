@@ -1,6 +1,7 @@
 import { and, asc, eq, inArray, sql } from 'drizzle-orm';
 import type { CoWorkSourceRef } from '@flux/contracts';
 import * as schema from '../schema.js';
+import { aiEpochIsCurrent } from './workspace-ai.js';
 import type { CoWorkTaskLockInput } from './cowork.js';
 import { readableReferenceSet } from './cowork-recovery.js';
 import { taskUseRows } from './task-use.js';
@@ -47,7 +48,7 @@ export function coworkAdmissionRows(tx: DbExecutor) {
         ON CONFLICT DO NOTHING`);
       await tx.select().from(slots).where(and(eq(slots.workspaceId, scope.workspaceId), inArray(slots.connectionId, connections)))
         .orderBy(asc(slots.connectionId)).for('update');
-      const inProject = and(eq(units.workspaceId, scope.workspaceId), eq(units.projectId, scope.projectId));
+      const inProject = and(eq(units.workspaceId, scope.workspaceId), eq(units.projectId, scope.projectId), aiEpochIsCurrent(units.aiEpoch, units.workspaceId));
       const [sender] = await tx.select().from(units).where(and(inProject, eq(units.id, scope.senderUnitId),
         eq(units.assignmentConnectionId, scope.senderConnectionId)));
       if (!sender) return null;

@@ -72,11 +72,19 @@ export async function startAssistantSummary(ports: AssistantSummaryPorts, summar
   if (!enablement || enablement.status !== 'active') return false;
   // The note about background use was shown and accepted when the person turned this on (AST-2.1): without it, no run.
   if (backgroundNote(enablement, await ports.jobs.noteVersion(userId, accountKey(enablement))).note !== null) return false;
-  const workspaceId = enablement.agents[0]?.workspaceId;
+  // F-029: the run is anchored only in a workspace whose AI is on, and nothing of a workspace whose AI is off is given to it.
+  let workspaceId: string | undefined;
+  const aiOn = new Map<string, boolean>();
+  const allowed = async (id: string) => {
+    if (!aiOn.has(id)) aiOn.set(id, (await ports.access.workspaceAi(id, { lock: true })).state === 'allowed');
+    return aiOn.get(id)!;
+  };
+  for (const agent of enablement.agents) if (await allowed(agent.workspaceId)) { workspaceId = agent.workspaceId; break; }
   if (!workspaceId) return false;
   const rows = await summary.unread(userId, MORNING_SUMMARY_LOOKBACK + 1);
   const readable: { id: string }[] = [];
   for (const row of rows) {
+    if (!(await allowed(row.source.workspaceId))) continue;
     // Direct messages are never given to a run (AST-9); a muted or unreadable place is not counted.
     if (row.source.type === 'dm' || await summary.isMuted(userId, row.source) || !readsSource(await summary.authorizer.canRead(userId, row.source), row.source)) continue;
     readable.push({ id: row.id });
@@ -120,7 +128,9 @@ export async function settleAssistantSummaries(uow: AssistantSummaryUnitOfWork, 
         await announce(ports, stopped);
       }
       const ended = run ? await ports.runs.findRun(run.id) : null;
-      const line = ended && (ended.status === 'completed' || ended.status === 'truncated') ? summaryLine(ended.answerBody) : null;
+      // F-029: no assistant line is written for a run whose workspace has AI off now; the plain summary goes out.
+      const aiOn = !!ended && (await ports.access.workspaceAi(ended.workspaceId, { lock: true })).state === 'allowed';
+      const line = aiOn && ended && (ended.status === 'completed' || ended.status === 'truncated') ? summaryLine(ended.answerBody) : null;
       if (line) {
         // The one push carries the same text; with nothing left in the inbox there is no notification to hang it on.
         await deliverPlainSummary(summary, current.ownerUserId, line);

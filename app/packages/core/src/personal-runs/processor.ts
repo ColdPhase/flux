@@ -1,13 +1,13 @@
 import { randomUUID } from 'node:crypto';
 import { PERSONAL_RUN_LIMITS, personalRunMaxInputTokens, type AiPrice } from '@flux/contracts';
 import { boundedInputTokens, conservativeTokenEstimate } from '../ai/estimate.js';
-import { ForbiddenError, NotFoundError } from '../access/errors.js';
+import { ForbiddenError, NotFoundError, WorkspaceAiBlockedError } from '../access/errors.js';
 import type { Principal } from '../principal.js';
 import type { JobRetryPolicy } from '../push/config.js';
 import { isId } from '../work/validation.js';
 import type {
   PersonalCompute, PersonalComputeRequest, PersonalComputeResult, PersonalConnection, PersonalConnectionLookup,
-  PersonalRunPorts, PersonalRunTokenIssuer, PersonalRunUnitOfWork, PersonalRuntime, PersonalToolHost, PersonalToolSession, RunChanges, RunRecord,
+  PersonalRunPorts, PersonalRunTokenIssuer, PersonalRunUnitOfWork, PersonalRuntime, PersonalToolHost, PersonalToolSession, RunChanges, RunEndStatus, RunRecord,
 } from './ports.js';
 import { connectionOnModel } from './model.js';
 import { redactSecrets } from './redaction.js';
@@ -80,7 +80,7 @@ export interface PersonalRunProcessorDeps {
 }
 
 type Stage = 'before_read' | 'before_dispatch' | 'before_commit';
-type Refusal = Extract<RunRecord['status'], 'denied' | 'paused' | 'revoked' | 'unavailable' | 'cap_reached'>;
+type Refusal = Extract<RunRecord['status'], 'denied' | 'paused' | 'revoked' | 'unavailable' | 'cap_reached'> | 'ai_off';
 
 const MESSAGE_WINDOW = 40;
 const WORK_WINDOW = 20;
@@ -94,6 +94,9 @@ function isAccessDenial(error: unknown) {
  * status. `lock` holds the rows the decision depends on until the unit of work commits.
  */
 async function recheck(ports: PersonalRunPorts, connections: PersonalConnectionLookup, compute: PersonalCompute, run: RunRecord, stage: Stage, lock: boolean): Promise<{ refusal: Refusal } | { connection: PersonalConnection }> {
+  // F-029, first: AI on in the run's workspace, at the epoch the run was admitted under (policy row before the others).
+  const ai = await ports.access.workspaceAi(run.workspaceId, { lock });
+  if (ai.state !== 'allowed' || ai.epoch !== run.aiEpoch) return { refusal: 'ai_off' };
   const enablement = await ports.runs.enablement(run.ownerUserId, { lock });
   if (!enablement || enablement.agents.find((agent) => agent.workspaceId === run.workspaceId)?.agentId !== run.agentId) return { refusal: 'revoked' };
   if (enablement.status === 'paused') return { refusal: 'paused' };
@@ -119,14 +122,16 @@ async function recheck(ports: PersonalRunPorts, connections: PersonalConnectionL
   return { connection };
 }
 
-const ended = (status: RunRecord['status'], stage: Stage | null, extra: RunChanges = {}): RunChanges => ({
-  status, stoppedAtStage: stage, completedAt: new Date(), ...extra,
-});
+const ended = (status: RunEndStatus, stage: Stage | null, extra: RunChanges = {}): RunChanges => status === 'ai_off'
+  ? { status: 'stopped', stoppedAtStage: stage, completedAt: new Date(), ...extra, endReason: 'ai_off' }
+  : { status, stoppedAtStage: stage, completedAt: new Date(), ...extra };
 const free: RunChanges = { costState: 'released', chargedMicros: 0 };
 
 /** Reads the project-audience sources of the run as its agent. Private places are never read. */
 async function readSources(ports: PersonalRunPorts, run: RunRecord): Promise<{ sources: SuppliedSource[]; earlier: string | null } | null> {
   const agent: Principal = { kind: 'agent', id: run.agentId };
+  // F-029: the reads run under the policy row's share lock, at the run's admission epoch (a read after the change sees it).
+  await ports.access.requireWorkspaceAi(run.workspaceId, { lock: true, epoch: run.aiEpoch });
   await ports.access.requireProject(agent, 'read', run.projectId);
   const sources: SuppliedSource[] = [];
   const next = () => `S${sources.length + 1}`;
@@ -249,7 +254,7 @@ export function createPersonalRunProcessor({ uow, connections, compute, stopPoll
   }
 
   /** How a run that did not end in an answer is closed: at one of its own limits, or at a standing check. */
-  type Early = { status: RunRecord['status']; stage: Stage };
+  type Early = { status: RunEndStatus; stage: Stage };
 
   async function commit(runId: string, result: PersonalComputeResult | null, sources: SuppliedSource[],
     settle: (run: RunRecord) => Settlement, early: Early | null = null): Promise<PersonalRunOutcome> {
@@ -349,7 +354,7 @@ export function createPersonalRunProcessor({ uow, connections, compute, stopPoll
       const taskFence = !('refusal' in preliminary) && fitted && !fitted.refused
         ? await ports.runs.prepareTaskUse(located.projectId, located.conversationId, fitted.sources.map((source) => source.ref)) : null;
       const current = await ports.runs.findRun(run.id, { lock: true });
-      const end = async (status: RunRecord['status']) => ({ done: true as const, outcome: (await updateAndAnnounce(ports, run.id, ended(status, 'before_dispatch', free))).status as PersonalRunOutcome });
+      const end = async (status: RunEndStatus) => ({ done: true as const, outcome: (await updateAndAnnounce(ports, run.id, ended(status, 'before_dispatch', free))).status as PersonalRunOutcome });
       if (!current || current.status !== 'reading') return { done: true as const, outcome: 'skipped' as PersonalRunOutcome };
       if (current.stopRequestedAt) return end('stopped');
       const checked = await recheck(ports, connections, compute, current, 'before_dispatch', true).catch((error: unknown) => {
@@ -370,7 +375,7 @@ export function createPersonalRunProcessor({ uow, connections, compute, stopPoll
     if (session) {
       // A standing check between the turns of the loop: the same as before a dispatch. It also
       // touches the row, so a long loop is not swept as a crashed worker's.
-      const gate = (): Promise<{ status: RunRecord['status'] | 'gone' } | null> => uow.run(async (ports) => {
+      const gate = (): Promise<{ status: RunEndStatus | 'gone' } | null> => uow.run(async (ports) => {
         const current = await ports.runs.findRun(run.id, { lock: true });
         if (!current || current.status !== 'dispatching') return { status: 'gone' as const };
         if (current.stopRequestedAt) return { status: 'stopped' as const };
@@ -437,14 +442,15 @@ export function createPersonalRunProcessor({ uow, connections, compute, stopPoll
       const run = claimed.run;
 
       const read = await uow.run((ports) => readSources(ports, run)).catch((error: unknown) => {
+        if (error instanceof WorkspaceAiBlockedError) return 'ai_off' as const;
         if (isAccessDenial(error)) return null;
         throw error;
       });
-      if (!read) {
+      if (!read || read === 'ai_off') {
         return uow.run(async (ports) => {
           const current = await ports.runs.findRun(run.id, { lock: true });
           if (current?.status !== 'reading') return 'skipped' as const;
-          return (await updateAndAnnounce(ports, run.id, ended('denied', 'before_read', free))).status;
+          return (await updateAndAnnounce(ports, run.id, ended(read === 'ai_off' ? 'ai_off' : 'denied', 'before_read', free))).status;
         });
       }
       await hooks.afterRead?.(run);
@@ -458,7 +464,7 @@ export function createPersonalRunProcessor({ uow, connections, compute, stopPoll
       const beforeSend = (): Promise<PersonalRunOutcome | null> => uow.run(async (ports) => {
         const current = await ports.runs.findRun(run.id, { lock: true });
         if (!current || current.status !== 'reading') return current?.status ?? 'skipped';
-        const end = async (status: RunRecord['status']) => (await updateAndAnnounce(ports, run.id, ended(status, 'before_dispatch', free))).status;
+        const end = async (status: RunEndStatus) => (await updateAndAnnounce(ports, run.id, ended(status, 'before_dispatch', free))).status;
         if (current.stopRequestedAt) return end('stopped');
         const checked = await recheck(ports, connections, compute, current, 'before_dispatch', true).catch((error: unknown) => {
           if (isAccessDenial(error)) return { refusal: 'denied' as const };

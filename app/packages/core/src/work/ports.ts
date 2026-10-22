@@ -176,6 +176,8 @@ export interface WorkAccess {
   requireWorkspace(principal: Principal, workspaceId: string): Promise<void>;
   /** Whether a prospective owner can currently read the project. */
   canRead(candidate: ActorRef, projectId: string): Promise<boolean>;
+  /** F-029: whether AI is on in the project's workspace (the policy row is held `FOR SHARE`). */
+  aiAllowed(projectId: string): Promise<boolean>;
 }
 
 /** Rows only; the repository makes no access decisions (the use cases ask {@link WorkAccess}). */

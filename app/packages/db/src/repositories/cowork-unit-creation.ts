@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { and, asc, eq, inArray, sql } from 'drizzle-orm';
 import * as schema from '../schema.js';
+import { currentAiEpoch } from './workspace-ai.js';
 import type { CoWorkTaskLockInput } from './cowork.js';
 import type { DbExecutor } from './push.js';
 import { taskUseRows } from './task-use.js';
@@ -104,7 +105,7 @@ export function coworkUnitCreationRows(tx: DbExecutor) {
       unitKey: string; role: CoWorkCreatedUnitRecord['role']; assignmentConnectionId: string }) {
       const [row] = await tx.insert(units).values({ id: randomUUID(), workspaceId: scope.workspaceId, projectId: scope.projectId,
         taskId: input.taskId, lineageTaskId: input.lineageTaskId, runId: input.runId, unitKey: input.unitKey, role: input.role,
-        assignmentConnectionId: input.assignmentConnectionId })
+        assignmentConnectionId: input.assignmentConnectionId, aiEpoch: currentAiEpoch(scope.workspaceId) })
         .onConflictDoNothing({ target: [units.workspaceId, units.projectId, units.taskId, units.runId, units.unitKey] }).returning();
       return row ? unit(row) : null;
     },

@@ -8,6 +8,7 @@ import * as schema from '../schema.js';
 import { idpStandingRepository } from './idp-standing.js';
 import type { createDatabase } from '../index.js';
 import { initializeAgentMcpPolicy, lockAgentMcpPolicy } from './agent-mcp-policy.js';
+import type { DbExecutor } from './push.js';
 
 type Database = Pick<ReturnType<typeof createDatabase>['db'], 'transaction'>;
 type Transaction = Parameters<Parameters<Database['transaction']>[0]>[0];
@@ -28,6 +29,30 @@ function serialize(row: Row, selectedProjectIds: string[]): AgentConnection {
 }
 
 /** SQL and locking; the composition root supplies the existing #29 policy. */
+/**
+ * The workspace of one owner's connection, or null (F-029): lets the MCP route refuse a connection of a workspace
+ * whose AI is off with its own code before anything else is read. Makes no access decision.
+ */
+export async function agentConnectionWorkspaceId(db: DbExecutor, connectionId: string, ownerUserId: string): Promise<string | null> {
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(connectionId)) return null;
+  const [row] = await db.select({ workspaceId: schema.agentConnections.workspaceId }).from(schema.agentConnections)
+    .where(and(eq(schema.agentConnections.id, connectionId), eq(schema.agentConnections.ownerUserId, ownerUserId)));
+  return row?.workspaceId ?? null;
+}
+
+/** The workspace behind an OAuth grant reference (`flux-grant:<binding>` or an explicit historic connection id), or null. */
+export async function workspaceIdOfGrantReference(db: DbExecutor, ownerUserId: string, referenceId: string): Promise<string | null> {
+  let connectionId: string | null = referenceId;
+  if (referenceId.startsWith('flux-grant:')) {
+    const bindingId = referenceId.slice('flux-grant:'.length);
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(bindingId)) return null;
+    const [binding] = await db.select({ connectionId: schema.agentOauthBindings.connectionId }).from(schema.agentOauthBindings)
+      .where(and(eq(schema.agentOauthBindings.id, bindingId), eq(schema.agentOauthBindings.ownerUserId, ownerUserId)));
+    connectionId = binding?.connectionId ?? null;
+  }
+  return connectionId ? agentConnectionWorkspaceId(db, connectionId, ownerUserId) : null;
+}
+
 export function agentConnectionRepository(db: Database, policy: AgentConnectionPolicy) {
   const projects = async (tx: Transaction, id: string) => (await tx.select({ id: schema.agentConnectionProjects.projectId })
     .from(schema.agentConnectionProjects).where(eq(schema.agentConnectionProjects.connectionId, id)))

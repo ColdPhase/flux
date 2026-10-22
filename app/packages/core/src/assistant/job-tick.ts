@@ -33,7 +33,10 @@ async function fireDue(deps: TickDeps, now: Date): Promise<number> {
       const once = job.schedule.kind === 'once';
       // The next time after now, never the next after the missed one: there is no backlog (AST-7 "Missed runs").
       const next = once ? null : nextRuns(job.schedule, job.timeZone, now, 1)[0] ?? null;
-      await fireJob(ports, deps.startBackground, job, firedAt, 'schedule', { late });
+      // F-029: while AI is off in the job's workspace nothing fires and no history row is written; the schedule moves on
+      // to its next time after now, so a missed time never runs later (AST-7).
+      if ((await ports.access.workspaceAi(job.workspaceId, { lock: true })).state === 'allowed')
+        await fireJob(ports, deps.startBackground, job, firedAt, 'schedule', { late });
       await ports.jobs.update(job.id, { lastRunAt: firedAt, nextRunAt: next, ...(once || !next ? { enabled: false } : {}) });
       return job.id;
     });

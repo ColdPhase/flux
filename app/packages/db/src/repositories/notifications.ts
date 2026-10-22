@@ -2,6 +2,7 @@ import { messagePreview } from '@flux/contracts';
 import { and, asc, eq, gt, gte, inArray, isNotNull, isNull, ne, sql } from 'drizzle-orm';
 import * as schema from '../schema.js';
 import { assignmentNotificationActive } from './notification-lifecycle.js';
+import { notificationHiddenWhileAiOff } from './workspace-ai.js';
 import type { DbExecutor } from './push.js';
 
 /**
@@ -356,6 +357,7 @@ export function notificationEmailRows(db: DbExecutor) {
       if (!row) return null;
       return {
         lifecycleActive: await assignmentNotificationActive(db, row.notification),
+        aiOff: await notificationHiddenWhileAiOff(db, row.notification.id),
         id: row.email.id, userId: row.email.userId, addressKind: row.email.addressKind, status: row.email.status, attempts: row.email.attempts,
         notification: { id: row.notification.id, reason: row.notification.reason ?? null, source: { workspaceId: row.notification.workspaceId, type: row.notification.sourceType, id: row.notification.sourceId } },
       };

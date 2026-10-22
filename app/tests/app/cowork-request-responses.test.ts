@@ -61,7 +61,7 @@ async function world() {
   };
   const unit = async (workId: string, runId: string, role: Role, connectionId: string) => {
     const id = randomUUID();
-    await db.insert(schema.coworkUnits).values({ id, workspaceId: ws.id, projectId: p.id, taskId: workId, lineageTaskId: workId,
+    await db.insert(schema.coworkUnits).values({ aiEpoch: 1, id, workspaceId: ws.id, projectId: p.id, taskId: workId, lineageTaskId: workId,
       runId, unitKey: id, role, assignmentConnectionId: connectionId });
     return id;
   };
@@ -262,7 +262,7 @@ test('claim negative controls: unit fence, addressing, version, state, expiry, s
   const p2 = await project(w.hubert, w.ws.id, 'Other project', 'restricted');
   const t2 = expectStatus(await w.hubert.browser.request('POST', `/api/v1/projects/${p2.id}/work`, { body: { title: 'Other task' } }), 201) as WorkItem;
   const u2 = randomUUID();
-  await db.insert(schema.coworkUnits).values({ id: u2, workspaceId: w.ws.id, projectId: p2.id, taskId: t2.id, lineageTaskId: t2.id,
+  await db.insert(schema.coworkUnits).values({ aiEpoch: 1, id: u2, workspaceId: w.ws.id, projectId: p2.id, taskId: t2.id, lineageTaskId: t2.id,
     runId: randomUUID(), unitKey: u2, role: 'review', assignmentConnectionId: f.marekClaude.connection.id });
   const foreignInput = normalizeCoWorkRequest({ commandId: randomUUID(), unitId: u2, expectedUnitVersion: 1,
     recipientConnectionId: f.marekClaude.connection.id, intentKey: 'other-project', parentRequestId: null, kind: 'review',

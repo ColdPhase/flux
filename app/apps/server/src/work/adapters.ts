@@ -63,6 +63,9 @@ function workPorts(tx: Transaction, events: TransactionEventSession): WorkPorts 
       void authorId;
       const rows = proactiveOutboxRows(tx);
       eligibleComparisons.length = 0;
+      // F-029: inside the person's own write, check first and select nothing while AI is off (never fail the write).
+      const access = policyWorkAccess(tx);
+      if (!(await access.aiAllowed(projectId))) return;
       const rules = await rows.enabledRules(projectId);
       const authorized: typeof rules = [];
       for (const rule of rules) {

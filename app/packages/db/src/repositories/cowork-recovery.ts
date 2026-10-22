@@ -1,13 +1,15 @@
 import { and, asc, eq, inArray, sql, type SQL } from 'drizzle-orm';
 import { coWorkRequestStatus, type CoWorkInboxRecord } from '@flux/contracts';
 import * as schema from '../schema.js';
+import { aiEpochIsCurrent } from './workspace-ai.js';
 import type { DbExecutor } from './push.js';
 
 type Address = { workspaceId: string; projectId: string; connectionId: string };
 export interface CoWorkRecoveryPosition { createdAt: string; id: string }
 const r = schema.coworkRequests, u = schema.coworkUnits;
 function addressed(scope: Address) {
-  return and(eq(r.workspaceId, scope.workspaceId), eq(r.projectId, scope.projectId), eq(r.recipientConnectionId, scope.connectionId));
+  return and(eq(r.workspaceId, scope.workspaceId), eq(r.projectId, scope.projectId), eq(r.recipientConnectionId, scope.connectionId),
+    aiEpochIsCurrent(r.aiEpoch, r.workspaceId));
 }
 
 /** Current canonical metadata only. Project policy is held by the server caller.

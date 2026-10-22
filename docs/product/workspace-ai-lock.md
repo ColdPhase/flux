@@ -207,7 +207,7 @@ named transaction, plus epoch comparison where an item has `ai_epoch`.
 | Co-work cards and coordination | `apps/server/src/co-work/routes.ts` (coordination view, packet, review policy) | Refused while blocked; cancel stays. |
 | Agent threads | `apps/server/src/conversation/agent-thread-routes.ts` | Posting refused while blocked; existing messages stay readable as history. |
 | Background comparisons | `apps/server/src/proactive-comparison/routes.ts`: create rule, `PATCH` to `enabled`, proposal edit/use, outcome list | Refused while blocked; pause, revoke and dismiss stay. Account-level key connections (`/background-compute-connections`) are not workspace content and stay. |
-| Needs you and Inbox | `apps/server/src/needs-you/routes.ts` (`GET` and `POST /:key` resolve), inbox list and count in `apps/server/src/notifications/routes.ts` | `isAiOrigin` items of a blocked workspace are omitted from lists and counts, and resolving one answers `403 WORKSPACE_AI_BLOCKED`; human items are unchanged. |
+| Needs you and Inbox | `apps/server/src/needs-you/routes.ts` (`GET` and `POST /:key` resolve), inbox list and count in `apps/server/src/notifications/routes.ts` | `isAiOrigin` items of a blocked workspace are omitted from lists, counts and direct reads; resolving one answers `404` like any item not in the queue, so nothing about it is shown (S1 implementation, 2026-10-22); human items are unchanged. |
 | Push and e-mail delivery | `packages/core/src/push/delivery.ts` (`deliverPush`, run by `apps/worker/src/push`), `packages/core/src/notifications/email.ts` | Gated at send: an `isAiOrigin` notification of a blocked workspace is skipped ("AI is off"), including ones created before the flip and still queued. |
 | Comparison enqueue in a human's write | `apps/server/src/work/adapters.ts`, `prepareHumanNegative` and `enqueueHumanNegative` (`proactiveOutboxRows`) | `prepareHumanNegative` reads the policy `FOR SHARE` first and selects no rule when blocked; `enqueueHumanNegative` stamps the epoch read there. The human's result is recorded either way. |
 | Runtime slot and sign-in | `apps/server/src/agent-runtime/routes.ts` | Exempt: account-level, carries no workspace content. Runs that would use it are gated above and in the worker. |
@@ -235,8 +235,12 @@ named transaction, plus epoch comparison where an item has `ai_epoch`.
 - `AI_HTTP_ROUTES` in `app/packages/contracts` lists every route registered by the AI
   modules (`agent-connection`, `assistant`, `personal-runs`, `co-work`,
   `proactive-comparison`, `agent-runtime`, `conversation/agent-thread-routes`) as
-  `gated` or `exempt` with a one-line reason. An architecture test fails when a route in
-  those modules is missing from the list, like `verifyRegistrations` does for MCP entries.
+  `gated`, `use_case` (the workspace is not in the request; the use case checks or filters)
+  or `exempt` with a one-line reason. A gated entry names where its object is (path or body
+  key and kind), and `aiRoutes` (`apps/server/src/access/ai-gate.ts`) wraps each AI module:
+  the API does not start when one of its routes is missing from the list (S1, 2026-10-22),
+  like `verifyRegistrations` does for MCP entries, and a gated route refuses in
+  `preValidation`, before the handler and the body checks.
 - An API test calls every `gated` route in a blocked workspace and expects
   `403 WORKSPACE_AI_BLOCKED` with no row or event written; the same calls in an allowed
   workspace are the positive control. Every route named in the tables above is in the list.
