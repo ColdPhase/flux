@@ -31,8 +31,9 @@ finds a new AI path adds it to the [enforcement table](#enforcement-points) in t
 - **AI work item.** A row that waits for AI work: a personal run (`personal_runs`), a
   comparison candidate (`proactive_comparison_outbox`), a reaction event
   (`assistant_reaction_events`), a co-work request or unit addressed to an agent
-  (`cowork_requests`, `cowork_units`), an external runtime session
-  (`agent_runtime_sessions`) and a run token (columns on `personal_runs`).
+  (`cowork_requests`, `cowork_units`) and an external runtime session
+  (`agent_runtime_sessions`). A run token lives on its `personal_runs` row and shares the
+  run's epoch.
 
 ## Policy model
 
@@ -55,8 +56,8 @@ INSERT INTO workspace_ai_policies (workspace_id, state) SELECT id, 'allowed' FRO
   every existing workspace, so nothing changes until an administrator acts. The
   migration test asserts the row count equals the workspace count and every state is
   `allowed`. The reverse migration (`reverse/NNNN_….down.sql`) drops the table and the
-  `ai_epoch` columns and restores the 0100 `end_reason` check and the 0114 capture
-  function.
+  `ai_epoch` columns and the backstop trigger, and restores the 0110 `end_reason` check
+  and the 0114 capture function.
 - **New workspaces: AI allowed** ([founder direction 2026-10-22](#founder-answers-2026-10-22)).
   A trigger writes the row in the creating
   transaction, so every workspace always has one.
@@ -65,18 +66,29 @@ INSERT INTO workspace_ai_policies (workspace_id, state) SELECT id, 'allowed' FRO
 - A separate table, not a `workspaces` column: AI checks take `FOR SHARE` on this row
   often, and must not contend with workspace renames, version bumps or the foreign-key
   locks of ordinary inserts.
-- **`epoch`** increases by one on every state change, both directions. AI work items
-  record the epoch they were admitted under (`ai_epoch bigint NOT NULL`, added by the same
-  migration to `personal_runs`, `proactive_comparison_outbox` and
-  `assistant_reaction_events`; existing rows get `1`). Work admitted under an older epoch
-  never continues ([re-enable](#re-enable)). The same migration adds `ai_off` to the
-  `personal_runs.end_reason` check (0100) and to `ASSISTANT_RUN_END_REASONS`.
+- **`epoch`** increases by one on every state change, both directions. Every AI work item
+  records the epoch it was admitted under in `ai_epoch bigint NOT NULL`, added to
+  `personal_runs`, `proactive_comparison_outbox`, `assistant_reaction_events`,
+  `cowork_requests`, `cowork_units` and `agent_runtime_sessions`. The migration backfills
+  existing rows with `1` and then **drops the default**, so an insert site that forgets
+  the stamp fails loudly instead of writing epoch 1. Work admitted under another epoch
+  never continues ([re-enable](#re-enable)).
+- **Database backstop.** A `BEFORE INSERT` trigger `ai_work_admission` on each of these
+  tables locks the policy row `FOR SHARE` and raises `WORKSPACE_AI_BLOCKED` unless the
+  state is `allowed` and `NEW.ai_epoch` equals the current epoch. Application code never
+  relies on it: the sites that enqueue inside a human's transaction (reaction capture,
+  `enqueueHumanNegative`) check first and skip quietly, so a human write never fails
+  because AI is off.
+- The same migration adds `ai_off` to the `personal_runs.end_reason` check (last replaced
+  by 0110, which added `model_unavailable`) and to `ASSISTANT_RUN_END_REASONS`.
 - **`version`** is the optimistic-concurrency version of the setting (`If-Match`).
 
 **Wire.** `Workspace` in `app/packages/contracts/src/access.ts` gains
 `ai: { state: 'allowed' | 'blocked'; version: number; changedAt: string; changedBy: { id: string; name: string } | null }`.
-`GET /api/v1/workspaces` and `GET /api/v1/workspaces/:id` return it to every member,
-guests included (`workspace.read`), so the current state is always explicit.
+`GET /api/v1/workspaces` and `GET /api/v1/workspaces/:id` return `state`, `version` and
+`changedAt` to every member, guests included (`workspace.read`), so the current state is
+always explicit. `changedBy` is filled only for callers with `workspace.read_members`;
+guests get `null`.
 
 **Change.** `PUT /api/v1/workspaces/:id/ai-policy` with
 `{ state: 'allowed' | 'blocked', expectedVersion }`, `If-Match`, `Idempotency-Key` and
@@ -98,6 +110,8 @@ whose role is `owner` or `admin` (`isManager`), the same authority as
 on needs the same current authority, checked under the lock in the change transaction;
 an admin demoted meanwhile is refused, and an idempotent replay re-checks
 `workspace.manage_ai` before returning the stored body (as for other access commands).
+An idempotent replay of any **gated** AI command also re-checks `requireWorkspaceAi`
+inside the replay transaction, so a stored `2xx` is never returned while AI is off.
 
 ## The single check
 
@@ -114,11 +128,18 @@ export async function requireWorkspaceAi(db: Executor, workspaceId: string, opti
 - `lock: true` reads the row `FOR SHARE`; the change command takes `FOR UPDATE`. Like the
   grant locks under [Concurrency](../development/access-policy.md#concurrency), a check
   inside a commit transaction is ordered strictly before or after a state change.
+- **Lock order.** Inside `loadActor` and every explicit check, the policy row is locked
+  before the agent, membership, project and grant rows. The flip locks the policy row
+  first and afterwards takes only the changing person's membership `FOR SHARE` and the
+  event `seq` lock; the sweep never locks the policy row. No transaction therefore waits
+  for the policy row while holding a lock the flip needs. A two-connection test covers the
+  flip against a role change of the flipping admin, in both orders.
 - **Principal layer.** `loadActor` calls `workspaceAi` for every `agent` principal (with
   the caller's `lock`) and returns an inactive actor with `blockedBy: 'workspace_ai'` when
   the workspace is blocked. Every evaluator built on it (`evaluateWorkspace`,
   `evaluateProject`, `evaluateDraft`, `evaluateSketch`, `evaluateDm`, `visibleFilter`,
-  `authorizeEvent`, `eventAudience`) then denies the agent, with no per-call-site change.
+  `authorizeEvent`, `eventAudience`, `listProjectPeople`) then denies the agent, with no
+  per-call-site change.
   `evaluateAgent(…, 'agent.invoke')` also denies while the agent's workspace is blocked.
   Human principals are not changed by this layer: people keep every human right.
 - **Entry layer.** Entry points that start AI work, or that run before any agent-principal
@@ -129,6 +150,11 @@ export async function requireWorkspaceAi(db: Executor, workspaceId: string, opti
 - **Context layer.** Anything that assembles content under a *human's* authority for a
   model must drop items of blocked workspaces (today only the morning summary; see the
   table).
+- **AI origin.** One predicate, `isAiOrigin(notification)` in
+  `packages/core/src/notifications`, says whether an Inbox item came from AI work (agent
+  questions, assistant waiting changes and join requests, co-work requests and reviews
+  from agents, assistant answers and proposals, comparison proposals). Inbox lists and
+  counts, Needs you, push and e-mail all use it.
 
 ## Enforcement points
 
@@ -142,12 +168,17 @@ named transaction, plus epoch comparison where an item has `ai_epoch`.
 | Bearer verification | `apps/server/src/agent-connection/mcp-route.ts`, `handleVerified` (the transaction that calls `grantForMcp`/`grantForRun` and `lockAgentMcpPolicy`) | Check on `grant.connection.workspaceId` before the tool server is created: no `tools/list`, resource or prompt is served. Answer `403` JSON-RPC error `WORKSPACE_AI_BLOCKED`. |
 | Delivery fence | same file, `fence.check` (called by `createMcpRelay` for every chunk) | Check **first and unconditionally**, before the existing `if (!d.protectedOutput …) return`, so even a tool list or a refusal body is not handed to the transport after cutover. |
 | Every tool, resource, prompt | `apps/server/src/agent-connection/context.ts`, `agentConnectionInTransaction` | Check on `row.workspaceId` for every call, with or without `claims.dispatch` (covers project-less tools such as `flux_list_contexts`, `flux_bootstrap`, `flux_coordination_inbox`, and internal native adapters: own-agent hand-off, assistant Apply). Covers every module registered in `mcp-tools.ts`. |
-| External runtime sessions | `apps/server/src/agent-connection/runtime.ts`, `agentRuntimeInTransaction` | Covered by the row above; disable also revokes the workspace's open `agent_runtime_sessions` ([cutover](#cutover-ac-3)). |
+| External runtime sessions | `apps/server/src/agent-connection/runtime.ts`, `agentRuntimeInTransaction`, `ensureRuntime` | New sessions are stamped with the current epoch; reusing a session of another epoch answers `409 RUNTIME_UNAVAILABLE` ("start a new client session"). The sweep revokes old-epoch sessions. |
+| Co-work claims and delivery | `cowork-actions.ts` tools (claim, renew, complete, release, transfer, coordination inbox) and `packages/core/src/co-work` | Every read or transition of a request or unit requires its `ai_epoch` to equal the current epoch, in the tool's transaction. New requests and units are stamped. |
 | OAuth token issuance (code exchange and refresh) | `apps/server/src/identity/auth.ts`, `customAccessTokenClaims` | After `grantForOauth`, refuse `invalid_grant` "AI is turned off in this workspace" for a blocked connection workspace. Nothing is revoked. |
 | Consent and Connect | `apps/server/src/agent-connection/routes.ts`: `POST /api/v1/agent-connections`, `POST …/:connectionId/select-for-oauth`, `POST/PATCH …/action-grants` | `403 WORKSPACE_AI_BLOCKED` for a blocked workspace. `GET` lists, `DELETE` connection and `DELETE` grant stay available (they only reduce or show). |
-| Agent identities | `apps/server/src/access/agents.ts`, `createAgent` | Refused while blocked. `revokeAgent` and `listAgents` stay (management). |
-| Run token mint | `apps/server/src/personal-runs/run-tokens.ts`, internal `POST /api/internal/v1/personal-runs/:id/run-token` | Check with the run's `ai_epoch` before signing; refusal is the existing uniform `404`. |
-| Run token use | `apps/server/src/agent-connection/run-token.ts`, `requireLiveRun` | Covered by bearer, fence and context rows; disable also closes the tokens. |
+| Consent context | `apps/server/src/identity/oauth-context.ts`: `GET /api/v1/agent-oauth/consent-context`, `GET …/held-connection` | Gated: consent-context omits connections and workspaces that are blocked; held-connection answers `403 WORKSPACE_AI_BLOCKED` for a blocked held connection. |
+| Better Auth authorize and consent leg | `apps/server/src/identity/auth.ts`, `postLogin.consentReferenceId` (`connectionForGrant`) and `shouldRedirect` | Gated: no consent reference is issued for a connection of a blocked workspace, so no authorization code is minted; the code exchange is refused again below. |
+| Agent identities | `apps/server/src/access/agents.ts`, `createAgent`, `listAgents`, `revokeAgent` | `createAgent` gated. `listAgents` and `revokeAgent` exempt: human management of identities, no AI action; the UI does not list them while blocked. |
+| Project audience and grants | `apps/server/src/access/projects.ts` (`GET /projects/:id/people` → `listProjectPeople`; grant list) | Server-side: agents are omitted from `listProjectPeople` by the principal layer (each candidate is evaluated). The grant list is exempt (managers see and can remove agent grants). |
+| Run token mint | `apps/server/src/personal-runs/run-tokens.ts`, internal `POST /api/internal/v1/personal-runs/:id/run-token` | Check with the run's `ai_epoch` **first**, before `githubFacts(…)` and any other content assembly or outbound call, and again before signing; refusal is the existing uniform `404`. |
+| Run token use | `apps/server/src/agent-connection/run-token.ts`, `requireLiveRun` | Check with the run's `ai_epoch` in the same locked transaction; covered also by bearer, fence and context rows; the sweep closes the tokens. |
+| External agent proposals | `apps/server/src/agent-connection/routes.ts`, `GET /api/v1/projects/:projectId/agent-proposals` | Gated: pending AI suggestions are hidden while blocked and return afterwards. |
 | MCP switches and project policy | `mcp-policy-routes.ts`, `project-policy.ts`, `project-agents.ts`, `agent-stops.ts`, `agent-questions.ts` routes | Human reads and changes of AI controls: `403 WORKSPACE_AI_BLOCKED`, except Stop (harmless, already fenced). |
 
 ### API: the assistant and human-started AI work
@@ -155,35 +186,40 @@ named transaction, plus epoch comparison where an item has `ai_epoch`.
 | Point | File / function | Rule |
 | --- | --- | --- |
 | Ask, retry | `packages/core/src/personal-runs/service.ts`, `invoke`, `retry` (routes in `apps/server/src/personal-runs/routes.ts`) | Check in the insert transaction; the new run stores the current `ai_epoch`. |
+| Assistant status and history reads | `apps/server/src/personal-runs/routes.ts`: `GET` assistant status (`:92`), own runs list and run, conversation answers (`:146–150`) | Exempt: the owner's own history and account-wide status; no AI action. Status marks each blocked workspace so the UI can say "AI is off there". Committed answers are conversation history. |
 | Background start (schedules, reactions, morning summary) | same file, `startBackground` | Check; skipped with no run when blocked. |
 | Enablement per workspace | same file, `enable`, `selectAgent`, `chooseModel` | `selectAgent` and enabling for a blocked workspace refused; pause and remove stay. |
 | Schedules | `packages/core/src/assistant/jobs.ts` (`createAssistantJobs`: create, update to enabled, restore, run now, preview), routes `apps/server/src/assistant/jobs.ts` | Refused while blocked; delete and turn off stay. |
 | Reactions | `packages/core/src/assistant/reactions.ts`, `save`, `draft`; routes `apps/server/src/assistant/reactions.ts` | Refused while blocked; turn off stays. |
 | Assistant settings, join requests, operator request | `apps/server/src/assistant/routes.ts` | Refused while blocked. |
-| Waiting changes, Apply, Undo, Accept, Send | `apps/server/src/assistant/changes.ts` (all `POST …/apply`, `not-now`, `undo`, `inbox`, `dismiss`, `accept`, `send`) and pending-list `GET`s | Refused while blocked; the items are kept. The owner can still edit the underlying task, page or map directly as a person. |
-| Assistant proposals | `apps/server/src/personal-runs/routes.ts`: proposal list and decide | Refused while blocked; kept. |
+| Waiting changes, Apply, Accept, Send | `apps/server/src/assistant/changes.ts` (`POST …/apply`, `not-now`, `inbox`, `dismiss`, `accept`, `send`) and pending-list `GET`s | Gated: refused while blocked; the items are kept. |
+| Undo of an applied assistant change | same file, `POST …/undo` (change and run); `apps/server/src/assistant/undo.ts` | Exempt: a human compensating write as the owner (`updateWork(owner, …)`), never an AI action, so the owner can always reverse AI output. Reached from the change's history entry. |
+| Assistant proposals | `apps/server/src/personal-runs/routes.ts`: proposal list, `GET` proposal and decide (`:169–176`) | Gated; kept. |
 | Hand-off and agent ownership | `packages/core/src/work/service.ts`, `requireOwner` (create and update with an agent owner), `HandOff` path | An agent owner or a co-work request to an agent in a blocked workspace answers `403 WORKSPACE_AI_BLOCKED` (not `OWNER_WITHOUT_ACCESS`). |
 | Co-work cards and coordination | `apps/server/src/co-work/routes.ts` (coordination view, packet, review policy) | Refused while blocked; cancel stays. |
 | Agent threads | `apps/server/src/conversation/agent-thread-routes.ts` | Posting refused while blocked; existing messages stay readable as history. |
 | Background comparisons | `apps/server/src/proactive-comparison/routes.ts`: create rule, `PATCH` to `enabled`, proposal edit/use, outcome list | Refused while blocked; pause, revoke and dismiss stay. Account-level key connections (`/background-compute-connections`) are not workspace content and stay. |
-| Needs you and Inbox | `apps/server/src/needs-you/routes.ts`, inbox list in `apps/server/src/notifications/routes.ts` | AI-originated actionable items of a blocked workspace (agent questions, assistant waiting changes and join requests, co-work requests and reviews from agents) are omitted from lists and counts; human items are unchanged. |
+| Needs you and Inbox | `apps/server/src/needs-you/routes.ts` (`GET` and `POST /:key` resolve), inbox list and count in `apps/server/src/notifications/routes.ts` | `isAiOrigin` items of a blocked workspace are omitted from lists and counts, and resolving one answers `403 WORKSPACE_AI_BLOCKED`; human items are unchanged. |
+| Push and e-mail delivery | `packages/core/src/push/delivery.ts` (`deliverPush`, run by `apps/worker/src/push`), `packages/core/src/notifications/email.ts` | Gated at send: an `isAiOrigin` notification of a blocked workspace is skipped ("AI is off"), including ones created before the flip and still queued. |
+| Comparison enqueue in a human's write | `apps/server/src/work/adapters.ts`, `prepareHumanNegative` and `enqueueHumanNegative` (`proactiveOutboxRows`) | `prepareHumanNegative` reads the policy `FOR SHARE` first and selects no rule when blocked; `enqueueHumanNegative` stamps the epoch read there. The human's result is recorded either way. |
 | Runtime slot and sign-in | `apps/server/src/agent-runtime/routes.ts` | Exempt: account-level, carries no workspace content. Runs that would use it are gated above and in the worker. |
 
 ### Worker and runtime
 
 | Point | File / function | Rule |
 | --- | --- | --- |
-| Personal run stages | `packages/core/src/personal-runs/processor.ts`, `recheck` (before read, every count, every dispatch and tool-loop turn, commit) | Check with the run's `ai_epoch`, inside the same unit of work that already locks the run; new refusal `ai_off`, ending the run `stopped` with `end_reason = 'ai_off'` and the reservation released (or `unknown` once dispatched). |
+| Personal run stages | `packages/core/src/personal-runs/processor.ts`, `recheck` (claim, every count, every dispatch and tool-loop turn, commit) | Check with the run's `ai_epoch`, inside the unit of work that locks the run; new refusal `ai_off`, ending the run `stopped` with `end_reason = 'ai_off'` and the reservation released (or `unknown` once dispatched). |
+| Personal run source read | same file, `readSources` (its own `uow.run`, after the claim) | Check with the run's `ai_epoch` and `lock: true` **at the start of the reading transaction**, before `requireProject`; the reads then run under that lock. |
 | Runtime run stages | `packages/core/src/personal-runs/runtime-run.ts`, `recheck` and `watch` | Same check before the CLI starts, in the about-once-a-second standing poll, and in the commit; the poll also sees `stop_requested_at` set by the sweep within `stopPollMs`. |
 | Run recovery | `apps/worker/src/personal-runs/recovery.ts` | Recovered runs pass the same recheck; a stale epoch ends them. |
 | Assistant tick | `packages/core/src/assistant/job-tick.ts`, `fireDue` | A due job of a blocked workspace is not fired and records no history row; `nextRunAt` advances to the next time after now (AST-7 missed runs are skipped). |
-| Reaction capture | `assistant_capture_reaction` (migration 0114), replaced by the new migration | Insert only when the project's workspace policy is `allowed`, recording its `epoch`. |
+| Reaction capture | `assistant_capture_reaction` (migration 0114), replaced by the new migration | Only when a matching enabled reaction exists: read the project's workspace policy `FOR SHARE`, insert only when `allowed`, stamping its `epoch`. Never raises, so the human's write always commits. |
 | Reaction tick | `packages/core/src/assistant/reactions.ts`, `assistantReactionTick` | Check with the event's `ai_epoch`; stale or blocked → `skipped`, "Skipped: AI was turned off". |
 | Morning summary | `packages/core/src/assistant/morning-summary.ts`, `startAssistantSummary` | **Cross-workspace context:** `summary.unread` returns notifications of every workspace. Drop rows whose `source.workspaceId` is blocked before titles are read, and anchor the run only in an allowed workspace; with none, the plain #350 summary goes out. `settleAssistantSummaries` commits a line only after a check on the run's workspace. |
 | Comparison scheduling and reservation | `apps/worker/src/proactive-comparison/scheduling-adapter.ts`, `reservation-adapter.ts` | Check; new candidates store `ai_epoch`. |
-| Comparison dispatch and publish | `apps/worker/src/proactive-comparison/authorization.ts`, `authorizedComparison` (also polled by `watchComparisonAuthorization` every 250 ms) | Check with the candidate's `ai_epoch`; a refusal aborts the provider request through the existing `AbortController` and the final locked check refuses publication (`ComparisonStopped('AI_OFF')`). |
+| Comparison input, dispatch and publish | `apps/worker/src/proactive-comparison/authorization.ts`, `authorizedComparison`; `dispatch.ts` (`prepared` transaction, which reads the source texts with `lock = true`, and the publish transaction); `watchComparisonAuthorization` (unlocked, every 250 ms) | Locked check with the candidate's `ai_epoch` in the input and publish transactions; the unlocked watcher aborts the provider request through the existing `AbortController`; publication is refused with `ComparisonStopped('AI_OFF')`. |
 | Comparison recovery | `apps/worker/src/proactive-comparison/recovery.ts` | Same check. |
-| Event audience | `packages/core/src/events.ts`, `eventAudience` | Covered by the principal layer: no `event_audience` row is written for an agent of a blocked workspace, so no event of the blocked period is ever replayed to an agent. |
+| Event audience | `packages/core/src/events.ts`, `eventAudience` | When agent candidates exist, read the policy `FOR SHARE` once (before evaluating them) in the event's transaction; when blocked, no agent gets an `event_audience` row. An event racing the flip is therefore ordered before it (a pre-block event) or after it (no agent row), so no event of the blocked period ever reaches an agent. |
 | Runtime slot processes | `apps/runtime` supervisor and manager | No workspace knowledge needed. A run reaches Flux only through `/mcp` (gated) and is stopped by the worker (`runtime.stop`); its output is published only by the worker's commit (gated). |
 
 ### Contract tests that keep the list complete
@@ -195,7 +231,13 @@ named transaction, plus epoch comparison where an item has `ai_epoch`.
   those modules is missing from the list, like `verifyRegistrations` does for MCP entries.
 - An API test calls every `gated` route in a blocked workspace and expects
   `403 WORKSPACE_AI_BLOCKED` with no row or event written; the same calls in an allowed
-  workspace are the positive control.
+  workspace are the positive control. Every route named in the tables above is in the list.
+- `AI_WORK_QUEUES` lists every pg-boss job and schedule (`personal-run.dispatch.v1`,
+  `assistant.background.tick.v1`, the morning summary, comparison tick and recovery,
+  `workspace-ai.sweep.v1`, push and e-mail sends), every trigger that inserts AI work
+  (the 0114 reaction taps) and every AI work table with its `ai_epoch`. A test compares it
+  with the worker's actual `boss.work`/`boss.schedule` registrations, `pg_trigger` and the
+  schema, and fails on anything unlisted; each listed item has an AI-off case.
 
 ## Cutover (AC-3)
 
@@ -203,11 +245,16 @@ named transaction, plus epoch comparison where an item has `ai_epoch`.
 
 1. **The flip** (one transaction, the API's `PUT`): `SELECT … FOR UPDATE` the policy row,
    check `workspace.manage_ai` under the membership lock, set `state = 'blocked'`,
-   `epoch = epoch + 1`, `version = version + 1`, send the `workspace-ai.sweep.v1` job in
-   the same transaction, and record the event last. It touches no AI work rows, so it
-   cannot deadlock with a checker that holds a run row and waits for the policy lock.
-2. **The sweep** (idempotent; run inline by the API right after the flip commits for
-   speed, and again by the worker job so a crash cannot skip it), per workspace:
+   `epoch = E` (the old epoch plus one), `version = version + 1`, send the
+   `workspace-ai.sweep.v1` job with payload `{ workspaceId, epoch: E }` in the same
+   transaction, and record the event last. It touches no AI work rows, so it cannot
+   deadlock with a checker that holds a run row and waits for the policy lock.
+2. **The sweep** `{ workspaceId, epoch: E }` (idempotent; run inline by the API right after
+   the flip commits for speed, and again by the worker job so a crash cannot skip it). It
+   touches **only rows with `ai_epoch < E`**, whatever the current state: rows admitted
+   after a later re-enable have a larger epoch and are never touched, and a sweep that runs
+   late, even after AI is on again, still ends every item admitted before the flip. Per
+   workspace:
    - personal runs `queued` → `stopped` (`before_read`, released, `end_reason = 'ai_off'`);
      `reading`/`dispatching` → `stop_requested_at = now()`, which the existing 250 ms
      watchers turn into an aborted provider request or `runtime.stop`;
@@ -217,33 +264,54 @@ named transaction, plus epoch comparison where an item has `ai_epoch`.
    - reaction events `queued`/`proof` → `skipped` ("Skipped: AI was turned off");
    - co-work requests `queued`/`deferred`/`claimed` addressed to agents → `cancelled`;
      units `pending`/`claimed`/`paused` → `stopped`, leases cleared, the task unchanged;
-   - `agent_runtime_sessions` → `revoked_at = now()`;
+   - `agent_runtime_sessions` → `revoked_at = now()`; open run tokens are closed with
+     their runs;
    - morning summaries `writing` whose run is in this workspace → `plain`.
    Each end records its usual owner-only event. Nothing is deleted.
 
-**The boundary.** An AI effect happens only if the transaction that performs it held
-`FOR SHARE` on the policy row, saw `allowed` at the item's epoch, and committed (or, for
-MCP bytes, handed the chunk to the transport) before the flip took `FOR UPDATE`.
-Effects are: a source read, a provider or count request decision, a tool-loop turn, an
-MCP response chunk, a tool write, a run answer, a proposal, a comparison publication, an
-event-audience row and a token issuance. Ordered after the flip, every one of them sees
-`blocked` and refuses. This holds across processes because the order is decided by
-PostgreSQL row locks, not by any process's memory: every API instance, the worker and the
-runtime path (which reaches data only through API `/mcp` and the worker) read the same
-row in their own transactions.
+**The boundary.** Every check that decides a step holds `FOR SHARE` on the policy row in
+the step's transaction, so each step is ordered strictly before or after the flip. Two
+kinds of step are fenced this way:
 
-**What can still be in flight, and what happens to it.** A provider request or CLI run
-whose last check committed before the flip may still be running. It is aborted by the
-sweep's stop signal within `stopPollMs` (250 ms) plus one poll, and whatever it returns is
-discarded: the commit recheck sees `blocked` (and a newer epoch) and stores no answer,
+- **Reads** of workspace content for AI work: MCP tool reads, `readSources`, the
+  comparison input transaction, and the run-token mint (checked before `githubFacts`). A read ordered after the
+  flip sees `blocked` and returns nothing. Bytes read before the flip stay in that
+  process's memory and can leave only through an egress step.
+- **Egress and effects**: a provider count or dispatch decision, a tool-loop turn, an MCP
+  response chunk (the relay writes inside the fence transaction), a token issuance or mint,
+  a tool write, a run answer, a proposal, a comparison publication and an event-audience
+  row. Ordered after the flip, each sees `blocked` and refuses.
+
+This holds across processes because PostgreSQL row locks decide the order, not any
+process's memory: every API instance and the worker read the same row in their own
+transactions, and a runtime CLI reaches Flux data only through `/mcp`.
+
+**The in-flight window, stated exactly.** Two kinds of traffic can still leave after the
+flip commits, and nothing else can:
+
+1. A provider request whose dispatch decision committed before the flip. Between that
+   commit and the request's write to the socket the code does no database or other awaited
+   work besides opening the connection, so the request may be transmitted shortly after the
+   flip. It carries only content read before the flip. The sweep sets
+   `stop_requested_at`, and the 250 ms watcher (`stopPollMs`) aborts it; a comparison's
+   watcher polls `authorizedComparison` at the same interval. Bound: aborted within
+   `stopPollMs` plus one poll query after the sweep commits.
+2. A runtime CLI that started before the flip may keep talking to its own vendor, with
+   content it received before the flip, until `runtime.stop` ends it: at most `stopPollMs`
+   after the sweep, plus the supervisor's stop. Its next `/mcp` call is refused at once.
+
+No dispatch is **decided** after the flip, and whatever a request in the window returns is
+discarded: the commit recheck sees `blocked` and a newer epoch and stores no answer,
 proposal, change or event. Usage already incurred is charged as today (`observed` or
 `unknown`), so the cap stays honest. There is no grace window: no check reuses an earlier
 decision, and the only state a process keeps across transactions is the item's
-`ai_epoch`, which can only make it refuse.
+`ai_epoch`, which can only make it refuse. The AC-3 tests measure both bounds.
 
 **No stale caches.** Nothing caches the policy: no module-level map, no per-connection
 memo, no token claim. `McpDispatch.capturedVersion` and the run token's tool list are
-per-request snapshots that are re-checked by the fence. API responses are never cached
+per-request snapshots that are re-checked by the fence. The idempotency store keeps
+response bodies, but a replay of a gated command re-checks the policy first
+([who may change it](#who-may-change-it)). API responses are never cached
 by the service worker (`apps/web/src/pwa/sw.js` skips `/api/`). The web client's copy is
 presentation only (see [UI](#ui-contract)).
 
@@ -253,8 +321,10 @@ presentation only (see [UI](#ui-contract)).
   It sets `allowed`, bumps `epoch` and `version` and records the event.
 - **Nothing that waited, stopped or was skipped resumes.** Every AI work item admitted
   under an earlier epoch is refused by its next check, so a reaction captured concurrently
-  with the flip, a queued pg-boss job that outlived the sweep, or a recovered run cannot run
-  after re-enable. Agents receive no events of the blocked period (no audience rows exist).
+  with the flip, a queued pg-boss job that outlived the sweep, a co-work request or unit,
+  an external runtime session or a recovered run cannot run after re-enable. Nothing can be
+  admitted while blocked (the entry checks and the database backstop refuse it). A sweep
+  still pending when AI is turned back on runs normally and ends only the old-epoch rows. Agents receive no events of the blocked period (no audience rows exist).
   Scheduled jobs fire at their next time after re-enable, never for missed times.
 - **Standing configuration resumes as it was** ([founder direction
   2026-10-22](#founder-answers-2026-10-22)): connections, grants, MCP switches,
@@ -376,6 +446,10 @@ does reach it.
 | AC-3 | Two real connections: flip vs. MCP fence, run commit, comparison publish and reaction capture in both orders, detecting the wait with `pg_blocking_pids` (as `access-policy.test.ts` does); the chunk held by the relay's `testGate` is not delivered after the flip. | `tests/app/workspace-ai-cutover.test.ts` |
 | AC-3 | Late in-flight result: a mock provider that holds its response; disable; assert the provider connection is aborted within 1 s, the run ends `stopped`/`ai_off`, no answer, proposal or event is committed, and releasing the response later changes nothing. Same for a fake CLI run (`runtime.stop` observed) and a comparison. | same |
 | AC-3 | Multi-process: two API containers and the worker (pattern of [two-API fixture](../development/live-editing-two-api.md)); disable on API-1 while an MCP stream is served by API-2 and a run is in the worker; nothing crosses. | `tests/app/live/workspace-ai-two-api.test.ts`, `docker/compose.ai-lock.test.yaml` |
+| AC-3 | Disable, then enable before the sweep runs (sweep job held): old-epoch runs, requests, units, sessions and reaction events never run; the late sweep ends them; items admitted after the re-enable are untouched and run. | `workspace-ai-cutover.test.ts` |
+| AC-3 | Lock order and backstop: flip against a role change of the flipping admin in both orders (no deadlock); an insert of each AI work table with a stale or missing epoch is rejected by `ai_work_admission`; a human task write with a reaction rule during the flip still commits. | same |
+| AC-3 | In-flight window: a pre-flip dispatch is aborted within `stopPollMs` plus one poll after the sweep; no provider request arrives whose decision committed after the flip; a fake CLI is stopped within its bound. | same |
+| AC-2 | Every route and queue in `AI_HTTP_ROUTES` and `AI_WORK_QUEUES`, push and e-mail skips of `isAiOrigin` notifications created before the flip, Needs-you resolve refusal, consent-context and held-connection, run-token mint refused before `githubFacts` is called, idempotent replay of a gated command refused, guests see `changedBy: null`, the owner's Undo of an applied change still works while blocked. | `workspace-ai-routes.test.ts`, `workspace-ai-worker.test.ts` |
 | AC-3 | Re-enable: queued items from before and from the flip race do not run; missed schedule times do not fire; agents get no blocked-period events; a demoted admin cannot re-enable; standing configuration works again. | `workspace-ai-cutover.test.ts` |
 | AC-3 | Real client: pinned Claude Code in the `mcp-clients` image gets the refusal on its next call after disable and works again after re-enable and reconnect. | `tests/app/e2e/mcp-clients.e2e.ts` case |
 | AC-4 | Chromium and WebKit, desktop and phone viewports: owner and admin turn AI off and on in the workspace's People panel (Details panel on a computer, Details sheet on a phone), the row keeps its position across states, and the inline confirm works by keyboard; member and guest see no AI row; zero `[data-ai-surface]` in A's project, Home, Inbox, ⌘K, composer and message menus while blocked, and more than zero in B (control); every listed deep link shows the blocked state and makes no AI request (network log); reload keeps the state; an open second tab updates from the stream; conversation, task, map, Wiki, file and search still work for two people. | `tests/ui/test_workspace_ai_lock.py` (`./scripts/check_ui.sh`, run with `FLUX_UI_BROWSER=chromium` and `webkit`) |
@@ -383,20 +457,22 @@ does reach it.
 
 ## Delivery slices
 
-One issue, #614, one owner; each slice is its own PR with its own review.
+One issue, #614, one owner; each slice is its own PR with its own review, and each is
+safe to merge alone.
 
-- **S1 — policy and server enforcement.** Migration, `workspaceAi`/`requireWorkspaceAi`,
-  `loadActor` and `evaluateAgent`, `workspace.manage_ai`, `PUT ai-policy`, the wire field,
-  every API, MCP, OAuth, worker and context row of the enforcement table, `AI_HTTP_ROUTES`
-  and the AC-1/AC-2 API tests. Ships with the policy only changeable through the API.
-- **S2 — cutover.** The two-step disable, the sweep job, `ai_epoch` on work items,
-  re-enable semantics, and the AC-3 tests including the two-API fixture, late results and
-  the real-client case.
-- **S3 — human-only interface.** `useWorkspaceAi`, `<AiSurface>`, the People-panel row and
-  its inline confirm, every listed surface, deep-link blocked states, and the AC-4 browser
-  tests. Visual review with a neutral brief per the design guide.
-
-S1 and S2 may merge together if S2 is small; S3 needs S1's wire field.
+- **S1 — policy and enforcement, no way to switch.** Migration (table, `ai_epoch` without
+  default, backstop trigger), `workspaceAi`/`requireWorkspaceAi`, `loadActor` and
+  `evaluateAgent`, `workspace.manage_ai`, the read-only wire field, every row of the
+  enforcement tables including epoch stamping, `AI_HTTP_ROUTES`, `AI_WORK_QUEUES`, and the
+  AC-1/AC-2 tests, which block a workspace through a test fixture. There is no route that
+  changes the policy, so production stays `allowed` everywhere and every check is a no-op.
+- **S2 — the switch and cutover.** `PUT ai-policy` with the flip, the sweep and its job,
+  re-enable, and the AC-3 tests (two connections, two API processes, late results, the
+  window bounds, enable-before-sweep, the real client). The policy becomes changeable only
+  here, together with the cutover, through the API.
+- **S3 — human-only interface.** `useWorkspaceAi`, `<AiSurface>`, the People-panel row
+  and its inline confirm, every listed surface, deep-link blocked states, and the AC-4
+  browser tests, with a visual review under a neutral brief. It may merge only after S2.
 
 ## Founder answers (2026-10-22)
 
