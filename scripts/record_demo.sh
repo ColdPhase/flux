@@ -3,11 +3,13 @@
 # Starts the Compose app on its own project and loopback port, seeds the `./flux demo` data
 # through the public API (scripts/flux-demo.mjs), then walks the core journey in the pinned
 # Playwright container (app/tests/ui/record_demo.py). Writes docs/assets/demo/flux-demo.gif,
-# or the path given as the first argument.
+# or the path given as the first argument. A second argument names a directory that also receives
+# the README stills (conversation-desktop.png and home-phone.png), e.g. docs/assets/readme.
 set -eu
 
 cd "$(dirname "$0")/.."
 out="${1:-docs/assets/demo/flux-demo.gif}"
+stills="${2:-}"
 project="flux-demo-rec-$(date +%s)-$$"
 export POSTGRES_USER=flux
 export POSTGRES_DB=flux
@@ -52,3 +54,8 @@ $compose run --rm -e FLUX_DEMO_OWNER_PASSWORD="$owner_password" -e FLUX_DEMO_PAR
 mkdir -p "$(dirname "$out")"
 cp "$shots/flux-demo.gif" "$out"
 echo "Wrote $out ($(wc -c < "$out") bytes)"
+if [ -n "$stills" ]; then
+  mkdir -p "$stills"
+  cp "$shots/conversation-desktop.png" "$shots/home-phone.png" "$stills/"
+  echo "Wrote the README stills to $stills"
+fi
