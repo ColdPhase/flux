@@ -3,6 +3,8 @@ import { flushSync } from 'react-dom';
 import type { ProjectPerson } from '@flux/contracts';
 import { Outlet, useLocation, useMatches, useNavigate, useNavigationType, useParams, useRevalidator } from 'react-router';
 import { useStreamEvents } from '../api/stream';
+import { WORKSPACE_LOCKED_DOM_EVENT, isEncryptionEvent } from '../encryption/api';
+import { useLockedPlace } from '../encryption/state';
 import { Drawer, IconButton, MEDIA, SidePanel, Tabs, duration, flip, play, useMediaQuery, useToast, useSidePanelMode } from '../ui';
 import { useShellData } from './data';
 import { registerServiceWorker, syncPushSubscription } from '../pwa';
@@ -117,7 +119,11 @@ export function AppLayout() {
 }
 
 function AppLayoutContent() {
-  const { me, workspace, projects, directMessages } = useShellData();
+  const { me, workspace, workspaces, lockedWorkspaces, projects, directMessages } = useShellData();
+  // F-030 (#655): the workspaces that wait to be unlocked, as the latest read has them, for the handler of `423` below.
+  const lockedNow = useRef(lockedWorkspaces);
+  useLayoutEffect(() => { lockedNow.current = lockedWorkspaces; });
+  const lockedPlaceId = useLockedPlace();
   const location = useLocation();
   const navType = useNavigationType();
   // The entry on show, for everything that keeps or finds a place (#592). Set while rendering, so effects of this
@@ -241,16 +247,30 @@ function AppLayoutContent() {
     const refresh = () => { last = Date.now(); void revalidate(); };
     const back = () => { if (document.visibilityState === 'visible' && Date.now() - last > 60_000) refresh(); };
     window.addEventListener('flux:workspace-ai-blocked', refresh);
+    // F-030 (#655): a place answered `423` because its encrypted workspace locked since the shell last read it. A workspace the
+    // shell already shows as locked teaches nothing new: the locked panel's own reads answer `423` again, and each answer must
+    // not start another read. A shell that still shows it unlocked is read again, at most once in a few seconds.
+    let lastRefusal = 0;
+    const locked = (event: Event) => {
+      const id = (event as CustomEvent<{ workspaceId: string | null }>).detail?.workspaceId;
+      if ((id && lockedNow.current.some((space) => space.id === id)) || Date.now() - lastRefusal < 3000) return;
+      lastRefusal = Date.now();
+      refresh();
+    };
+    window.addEventListener(WORKSPACE_LOCKED_DOM_EVENT, locked);
     window.addEventListener('focus', back);
     document.addEventListener('visibilitychange', back);
     return () => {
       window.removeEventListener('flux:workspace-ai-blocked', refresh);
+      window.removeEventListener(WORKSPACE_LOCKED_DOM_EVENT, locked);
       window.removeEventListener('focus', back);
       document.removeEventListener('visibilitychange', back);
     };
   }, [revalidate]);
   useStreamEvents(me.user.id, (event) => {
     if (event.kind === WORKSPACE_AI_POLICY_CHANGED_EVENT) { revalidator.revalidate(); return; }
+    // An encrypted workspace was unlocked or locked (F-030, #655): its places turn into the locked panel, or back, without a reload.
+    if (isEncryptionEvent(event.kind)) { revalidator.revalidate(); return; }
     // A project goal changed (#520): the open project's Details, view menu and conversation read it again.
     if (event.objectType === 'project' && event.kind.startsWith('project.goal_') && location.pathname.startsWith(`/projects/${event.objectId}`)) { revalidator.revalidate(); return; }
     // Someone saw a message (#534): only the open conversation shows it, and it asks for itself.
@@ -573,7 +593,12 @@ function AppLayoutContent() {
     { id: 'messages', label: 'Messages', to: `/dm/${activeDm.id}` },
     { id: 'sketches', label: 'Sketches', to: `/dm/${activeDm.id}/sketches`, end: false, ...(dmSketches ? { count: dmSketches, countLabel: `, ${dmSketches} ${dmSketches === 1 ? 'sketch' : 'sketches'}` } : {}) },
   ] : null;
-  const place = location.pathname === '/projects'
+  // A space that waits to be unlocked: the address of its row, or any place of it that turned into the locked panel (F-030, #655).
+  const lockedId = location.pathname.match(/^\/spaces\/([^/]+)/)?.[1] ?? lockedPlaceId;
+  const lockedSpace = lockedId ? [...workspaces, ...lockedWorkspaces].find((space) => space.id === lockedId) : undefined;
+  const place = lockedId && lockedSpace?.encryption?.state === 'locked'
+    ? { crumb: null, title: lockedSpace.name, topic: 'Waiting to be unlocked', noDetails: true }
+    : location.pathname === '/projects'
     ? { crumb: null, title: 'Projects', topic: 'Every project you can open', noDetails: true }
     : /^\/settings(\/(appearance|account|notifications|agents|shortcuts)(\/.*)?)?$/.test(location.pathname)
     ? { crumb: null, title: 'Settings', topic: 'Appearance, notifications, agents and AI', noDetails: true }

@@ -5,7 +5,7 @@ import type { Agent, SearchResult } from '@flux/contracts';
 import { getAssistantStatus } from '../assistant/api';
 import { AskWhere } from '../assistant/AskWhere';
 import { useBlockedWorkspaceIds } from '../ai/workspaceAi';
-import { useShellData } from '../app/data';
+import { useShellData, type WorkspaceSummary } from '../app/data';
 import { useShellActions } from '../app/shellContext';
 import { Button, Icon, Kreska, MEDIA, Overlay, Spinner, useMediaQuery, type IconName } from '../ui';
 import { listAgents } from '../work/api';
@@ -20,7 +20,9 @@ type Option =
   | { kind: 'place'; id: string; place: RecentPlace; label: string; side?: string; icon: IconName }
   | { kind: 'all'; id: string }
   | { kind: 'command'; id: string; section: string; label: string; icon: IconName; keys?: string[]; stays?: boolean; run: () => void }
-  | { kind: 'agent'; id: string; agent: Agent };
+  | { kind: 'agent'; id: string; agent: Agent }
+  /** An encrypted space that waits to be unlocked (F-030, #655): its content is not searched until it is unlocked. */
+  | { kind: 'locked'; id: string; space: WorkspaceSummary };
 
 /**
  * A recent row as E02 draws it: the place's own name, and its kind at the end. A project's view is named by the project
@@ -56,6 +58,7 @@ const sectionOf = (option: Option, scope: Scope): string | null => {
   if (option.kind === 'command') return option.section;
   if (option.kind === 'place') return 'Recent';
   if (option.kind === 'agent') return scope === 'agents' ? 'Agents' : 'People and agents';
+  if (option.kind === 'locked') return 'Waiting to be unlocked';
   if (option.kind !== 'result') return null;
   if (scope === 'people') return 'People and agents';
   if (scope === 'wiki') return 'Files and wiki';
@@ -109,7 +112,7 @@ function JumpBody({ onClose, userId, phone }: { onClose: () => void; userId: str
   // Searches are remembered for the Search page; ⌘K's empty state lists the places the person opened (F-026 E02).
   const recent = useRecentSearches(userId);
   const recentPlaces = useRecentPlaces(userId);
-  const { projects, workspaces, directMessages } = useShellData();
+  const { projects, workspaces, lockedWorkspaces, directMessages } = useShellData();
   // F-029 (#614): agents, the assistant and the Agents scope exist only where the workspace's AI is on.
   const aiOff = useBlockedWorkspaceIds();
   const { openCreate, openDetails, toggleFocus, toggleSidebar, sidebarHidden } = useShellActions();
@@ -175,8 +178,13 @@ function JumpBody({ onClose, userId, phone }: { onClose: () => void; userId: str
   };
   const places = recentPlaces.filter((place) => place.key !== hereKey)
     .flatMap((place) => { const name = named(place); return name ? [{ place, ...name }] : []; }).slice(0, 4);
+  // Encrypted spaces that wait to be unlocked are listed, never searched: with no text all of them, with text those whose name matches.
+  const lockedOptions = (needle: string): Option[] => lockedWorkspaces
+    .filter((space) => !needle || space.name.toLowerCase().includes(needle.toLowerCase()))
+    .map((space) => ({ kind: 'locked' as const, id: `locked-${space.id}`, space }));
   const emptyOptions: Option[] = [
     ...places.map(({ place, label, side, icon }): Option => ({ kind: 'place', id: `place-${place.key}`, place, label, side, icon })),
+    ...lockedOptions(''),
     { kind: 'command', section: 'Actions', id: 'action-new-task', label: 'New task', icon: 'plus', keys: ['C'], run: () => openCreate({ kind: 'task', ...(here ? { projectId: here } : {}) }) },
     ...askMine,
     { kind: 'command', section: 'Actions', id: 'action-inbox', label: 'Go to Inbox', icon: 'inbox', keys: ['G', 'I'], run: () => navigate('/inbox') },
@@ -189,7 +197,7 @@ function JumpBody({ onClose, userId, phone }: { onClose: () => void; userId: str
   const agentMatches: Option[] = aiHere && (scope === 'people' || scope === 'agents') ? agents.filter((agent) => agent.name.toLowerCase().includes(rest.toLowerCase())).slice(0, scope === 'agents' ? 8 : 5).map((agent) => ({ kind: 'agent' as const, id: `agent-${agent.id}`, agent })) : [];
   const withResults = scope === 'people' ? [...agentMatches, ...results] : scope === 'agents' ? agentMatches : results;
   const options: Option[] = rest || scope !== 'all'
-    ? [...actions, ...withResults, ...(scope === 'all' && state.status === 'ready' && shown.length ? [{ kind: 'all' as const, id: 'all' }] : [])]
+    ? [...actions, ...withResults, ...(scope === 'all' ? lockedOptions(rest) : []), ...(scope === 'all' && state.status === 'ready' && shown.length ? [{ kind: 'all' as const, id: 'all' }] : [])]
     : emptyOptions;
   const current = Math.min(activeFor.text === text ? activeFor.index : 0, Math.max(options.length - 1, 0));
   const setActive = (index: number) => setActiveFor({ text, index });
@@ -200,6 +208,7 @@ function JumpBody({ onClose, userId, phone }: { onClose: () => void; userId: str
   const choose = (option: Option | undefined) => {
     if (!option) return;
     if (option.kind === 'place') { onClose(); navigate(option.place.path); return; }
+    if (option.kind === 'locked') { onClose(); navigate(`/spaces/${option.space.id}`); return; }
     if (option.kind === 'command') { if (!option.stays) onClose(); option.run(); return; }
     if (option.kind === 'agent') { onClose(); void follow(`/projects/${agentProject(option.agent)}/agents`); return; }
     recent.remember(text);
@@ -275,6 +284,7 @@ function JumpBody({ onClose, userId, phone }: { onClose: () => void; userId: str
                   {option.kind === 'result' ? <ResultBody result={option.result} />
                     : option.kind === 'place' ? <><Icon name={option.icon} size={15} className="jump__ric" /><span className="jump__rtext">{option.label}</span>{option.side ? <small className="jump__side">{option.side}</small> : null}</>
                     : option.kind === 'command' ? <><Icon name={option.icon} size={15} className="jump__ric" /><span className="jump__rtext">{option.label}</span>{option.keys ? <span className="jump__keys" aria-hidden="true">{option.keys.map((key) => <kbd key={key} className="jump__key">{key}</kbd>)}</span> : null}</>
+                    : option.kind === 'locked' ? <><Icon name="lock" size={15} className="jump__ric" /><span className="jump__rtext">{option.space.name}</span><small className="jump__side">Waiting to be unlocked</small></>
                     : option.kind === 'agent' ? <><Icon name="spark" size={15} className="jump__ric" /><span className="jump__rtext">{option.agent.name}</span><small className="jump__side">Agent</small></>
                     : <><span className="jump__alltext">See all results for “{rest}”</span><Icon name="chevron-right" size={14} /></>}
                 </li>
