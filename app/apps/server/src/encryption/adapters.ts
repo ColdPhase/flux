@@ -5,7 +5,7 @@ import * as zxcvbnCommon from '@zxcvbn-ts/language-common';
 import * as zxcvbnEnglish from '@zxcvbn-ts/language-en';
 import { WORKSPACE_ENCRYPTION_RESUME_JOB, type WorkspaceEncryptionResumeJob } from '@flux/contracts';
 import {
-  createEncryptionUseCases, DerivationSemaphore, evaluateWorkspace, ForbiddenError, getWorkspace, keyringFromEnv, NotFoundError, ProcessKeys,
+  authorize, createEncryptionUseCases, DerivationSemaphore, ForbiddenError, getWorkspace, keyringFromEnv, loadActor, NotFoundError, ProcessKeys,
   recordEvent, swapFiles, swapSafety, type Database, type EncryptionPorts, type EncryptionUnitOfWork, type PasswordEstimator,
 } from '@flux/core';
 import { workspaceEncryptionRows, type DbExecutor } from '@flux/db';
@@ -19,10 +19,11 @@ function encryptionPorts(tx: Database, boss: Pick<PgBoss, 'send'>): EncryptionPo
     rows: workspaceEncryptionRows(tx as unknown as DbExecutor),
     access: {
       async manager(principal, workspaceId, options = {}) {
-        const decision = await evaluateWorkspace(principal, 'workspace.manage_encryption', workspaceId, tx, { lock: options.lock ?? false });
+        const decision = await authorize(principal, 'workspace.manage_encryption', { type: 'workspace', id: workspaceId }, tx, { lock: options.lock ?? false });
         if (!decision.visible) throw new NotFoundError('Workspace', 'WORKSPACE_NOT_FOUND');
         if (!decision.allowed) throw new ForbiddenError('Only workspace owners and admins can unlock or manage encryption', 'WORKSPACE_ENCRYPTION_ADMIN_REQUIRED');
-        return { role: decision.actor.role as 'owner' | 'admin' };
+        // The membership row is already held FOR SHARE under `lock`; this reads the role it allowed.
+        return { role: (await loadActor(principal, workspaceId, tx)).role as 'owner' | 'admin' };
       },
     },
     async event(principal, workspaceId, kind, data) {

@@ -16,7 +16,7 @@ COMPOSE = ROOT / "docker" / "compose.yaml"
 ENV_EXAMPLE = ROOT / "docker" / ".env.example"
 SOURCE_ENV_EXAMPLE = ROOT / "app" / ".env.example"
 MARKER = "ghcr.io/coldphase/flux@sha256:RELEASE_DIGEST"
-FLUX_SERVICES = ("migrate", "api", "worker")
+FLUX_SERVICES = ("migrate", "api", "worker", "keyring")
 PINNED = re.compile(r"[a-z0-9][a-z0-9._/-]*(:[A-Za-z0-9._-]+)?@sha256:[0-9a-f]{64}\Z")
 # ${VAR}, ${VAR:-default}, ${VAR:?message}; `$${VAR}` is a literal for the container shell.
 REFERENCE = re.compile(r"(?<!\$)\$\{([A-Za-z_][A-Za-z0-9_]*)(?:(:?[-?])([^}]*))?\}")

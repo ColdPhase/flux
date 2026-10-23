@@ -65,6 +65,8 @@ services:
       FLUX_AUTH_RATE_LIMIT: "true"
       FLUX_TRUSTED_PROXIES: ""
       FLUX_FIXTURE_TOKEN: ""
+      # No keyring in this push-delivery fixture (F-030): encrypted workspaces stay locked here.
+      FLUX_KEYRING: "off"
     volumes:
       - files:/data/files:z
     depends_on:

@@ -13,11 +13,17 @@ if (!swapSafe(env, swapFiles(env.FLUX_TEST_SWAP_ROOT ?? ''))) {
 }
 const token = env.FLUX_KEYRING_TOKEN ?? '';
 if (token.length < 32) {
-  process.stderr.write('Flux keyring refuses to start: FLUX_KEYRING_TOKEN must be set (./flux adds it to docker/.env).\n');
-  process.exit(78);
+  // A stack without a token (an older docker/.env, a check that needs no encryption) is valid: the keyring stays
+  // idle and answers nothing, so every encrypted workspace is locked and creation answers 503 KEYRING_UNAVAILABLE.
+  process.stderr.write('Flux keyring is idle: FLUX_KEYRING_TOKEN is not set (./flux and ./flux upgrade add it to docker/.env).\n');
+  const idle = setInterval(() => undefined, 1 << 30);
+  const stopIdle = () => { clearInterval(idle); process.exit(0); };
+  process.once('SIGTERM', stopIdle);
+  process.once('SIGINT', stopIdle);
+} else {
+  const keyring = createKeyring({ token });
+  keyring.server.listen(Number(env.FLUX_KEYRING_PORT ?? 8090), '0.0.0.0', () => process.stdout.write('Flux keyring ready\n'));
+  const stop = () => { void keyring.close().then(() => process.exit(0)); };
+  process.once('SIGTERM', stop);
+  process.once('SIGINT', stop);
 }
-const keyring = createKeyring({ token });
-keyring.server.listen(Number(env.FLUX_KEYRING_PORT ?? 8090), '0.0.0.0', () => process.stdout.write('Flux keyring ready\n'));
-const stop = () => { void keyring.close().then(() => process.exit(0)); };
-process.once('SIGTERM', stop);
-process.once('SIGINT', stop);

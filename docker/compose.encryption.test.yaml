@@ -1,0 +1,8 @@
+# TEST ONLY (F-030 AC-4, #655): layered over compose.source.yaml and compose.test.yaml by scripts/check_encryption.sh.
+# PostgreSQL logs every statement with its full parameters, so the run can prove that no password, recovery code,
+# KEK, holder private key, DEK or subkey ever reaches the database, not even as a bind parameter or in an error.
+# Never use it for a deployment.
+services:
+  db:
+    command: ["postgres", "-c", "log_statement=all", "-c", "log_parameter_max_length=-1", "-c", "log_parameter_max_length_on_error=-1",
+      "-c", "log_min_error_statement=error"]
