@@ -7,12 +7,21 @@ export const COLLABORATION_INK = 'var(--t1)';
 export const PEER_SHAPES = ['circle', 'square', 'diamond', 'triangle'] as const;
 export type PeerShape = typeof PEER_SHAPES[number];
 /**
- * A person keeps one shape while they stay (the first unused one when they arrive), so a peer never changes shape because
- * someone else joined. `kept` is the caller's own memory (per room); ids that are no longer present free their shape.
+ * One shape per person, the same on every viewer's screen ("I'm the square"). A person prefers the shape their id hashes to;
+ * people in the room are taken in id order and one whose shape is taken moves on to the next free one, so every viewer who
+ * knows the same people resolves a collision the same way. `participants` is everyone in the room who shows presence,
+ * the viewer included (a viewer's own cursor is never drawn, but their shape is what others see).
  */
-export function assignShapes(kept: Map<string, PeerShape>, present: readonly string[]): Map<string, PeerShape> {
-  const here = [...new Set(present)].sort();
-  for (const id of [...kept.keys()]) if (!here.includes(id)) kept.delete(id);
-  for (const id of here) if (!kept.has(id)) kept.set(id, PEER_SHAPES.find((shape) => ![...kept.values()].includes(shape)) ?? PEER_SHAPES[kept.size % PEER_SHAPES.length]!);
-  return kept;
+export function shapesFor(participants: readonly string[]): Map<string, PeerShape> {
+  const result = new Map<string, PeerShape>();
+  const taken = new Set<number>();
+  for (const id of [...new Set(participants)].sort()) {
+    let hash = 2166136261;
+    for (let i = 0; i < id.length; i++) hash = Math.imul(hash ^ id.charCodeAt(i), 16777619) >>> 0;
+    let index = hash % PEER_SHAPES.length;
+    if (taken.size < PEER_SHAPES.length) while (taken.has(index)) index = (index + 1) % PEER_SHAPES.length;
+    taken.add(index);
+    result.set(id, PEER_SHAPES[index]!);
+  }
+  return result;
 }

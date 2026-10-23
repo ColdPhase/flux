@@ -1,5 +1,5 @@
 import { useEffect, useId, useRef, useState, type FormEvent } from 'react';
-import { COLLABORATION_INK, assignShapes, type PeerShape } from './color';
+import { COLLABORATION_INK, shapesFor, type PeerShape } from './color';
 import { Link } from 'react-router';
 import * as Y from 'yjs';
 import { EditorSelection, EditorState, Prec, StateEffect, StateField, type Range } from '@codemirror/state';
@@ -175,25 +175,21 @@ function marks(client: SharedWiki) {
     const anchor = relativeIndex(client, peer.cursor.anchor), head = relativeIndex(client, peer.cursor.head);
     if (anchor === null || head === null) continue;
     // Besides the fill, a person's selection carries a line style that goes with their shape, readable without colour.
-    if (anchor !== head) ranges.push(Decoration.mark({ class: 'editing-selection', attributes: { 'data-shape': shape.get(peer.connectionId) ?? 'circle', title: `Selected by ${peer.actor.name}` } }).range(Math.min(anchor, head), Math.max(anchor, head)));
+    if (anchor !== head) ranges.push(Decoration.mark({ class: 'editing-selection', attributes: { 'data-shape': shape.get(peer.actor.id) ?? 'circle', title: `Selected by ${peer.actor.name}` } }).range(Math.min(anchor, head), Math.max(anchor, head)));
   }
   return Decoration.set(ranges, true);
 }
-/**
- * Each person with a caret keeps one shape while they stay (the first unused one when they arrive), so the caret, its tag
- * and their entry in the strip show the same shape and a peer never changes shape because someone else joined.
- */
-const shapesOf = new WeakMap<SharedWiki, Map<string, PeerShape>>();
+/** The same shape per person on every viewer's screen (see `shapesFor`); the viewer counts as a participant when writing. */
 function shapes(client: SharedWiki): Map<string, PeerShape> {
-  const kept = shapesOf.get(client) ?? new Map<string, PeerShape>(); shapesOf.set(client, kept);
-  return assignShapes(kept, [...client.peers.values()].filter((peer) => peer.cursor).map((peer) => peer.connectionId));
+  const present = [...client.peers.values()].map((peer) => peer.actor.id);
+  return shapesFor(client.writer ? present.concat(client.userId) : present);
 }
 function carets(client: SharedWiki): RemoteCaret[] {
   const result: RemoteCaret[] = [];
   const shape = shapes(client);
   for (const peer of client.peers.values()) {
     const head = peer.cursor ? relativeIndex(client, peer.cursor.head) : null;
-    if (head !== null) result.push({ head, name: peer.actor.name, ink: COLLABORATION_INK, shape: shape.get(peer.connectionId)! });
+    if (head !== null) result.push({ head, name: peer.actor.name, ink: COLLABORATION_INK, shape: shape.get(peer.actor.id)! });
   }
   return result;
 }
@@ -269,7 +265,7 @@ export function WikiPresence({ client }: { client: SharedWiki }) {
   return <span className="editing-people" aria-label="People editing">{peers.map((peer) => {
     const index = relativeIndex(client, peer.cursor!.head);
     const line = index === null ? null : lineAt(client.text.toString(), index);
-    return <span key={peer.connectionId}><i className="editing-shape" data-shape={shape.get(peer.connectionId)} aria-hidden="true" />{peer.actor.name}{line === null ? ' is editing' : ` · line ${line}`}</span>;
+    return <span key={peer.connectionId}><i className="editing-shape" data-shape={shape.get(peer.actor.id)} aria-hidden="true" />{peer.actor.name}{line === null ? ' is editing' : ` · line ${line}`}</span>;
   })}</span>;
 }
 

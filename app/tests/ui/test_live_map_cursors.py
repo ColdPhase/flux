@@ -298,8 +298,55 @@ class LiveCursors(LiveFixture):
             label = await kai.locator(f'.sk-peer[data-live-peer="{name}"] .sk-peer__label').bounding_box()
             self.assertGreaterEqual(label['x'], 0, name)
             self.assertLessEqual(label['x'] + label['width'], 390, f'{name}: the name stays inside the screen')
+        await kai.wait_for_timeout(300)
+        await assert_clear('phone')
         await self.shoot(kai, 'map-three-peers-phone')
         self.assertEqual(self.errors, [])
+
+    async def test_every_viewer_sees_the_same_shape_for_the_same_person(self):
+        # "I'm the square": a person's shape does not depend on who is looking.
+        for key in ('lia',):
+            self.frames[key] = []
+            self.acks[key] = {}
+        await self.create_map(3)
+        lia = await self.third_writer('Lia West', 'lia')
+        await lia.goto(f'/map/{self.map_id}')
+        await expect(lia.locator('[data-live-map-status="live"]')).to_be_visible()
+        viewers = {'Ada North': self.pages['ada'], 'Kai South': self.pages['kai'], 'Lia West': lia}
+        for index, page in enumerate(viewers.values()):
+            await page.mouse.move(700 + index * 120, 500 + index * 30, steps=4)
+        seen = {}
+        for viewer_name, page in viewers.items():
+            for name in viewers:
+                if name == viewer_name:
+                    continue
+                peer = page.locator(f'.sk-peer[data-live-peer="{name}"]')
+                await expect(peer).to_have_count(1)
+                shape = await peer.get_attribute('data-shape')
+                self.assertEqual(await page.locator('.sk-here > span', has_text=name).locator('.editing-shape').get_attribute('data-shape'), shape, f'{viewer_name}: chip and cursor agree for {name}')
+                seen.setdefault(name, set()).add(shape)
+        self.assertEqual({name: len(shapes) for name, shapes in seen.items()}, {name: 1 for name in viewers}, f'one shape per person for every viewer: {seen}')
+        self.assertEqual(len({next(iter(shapes)) for shapes in seen.values()}), 3, f'three people, three shapes: {seen}')
+
+    async def test_a_cursors_name_keeps_its_spot_while_it_stays_clear(self):
+        await self.create_map(3)
+        ada, kai = self.pages['ada'], self.pages['kai']
+        box = await kai.locator(f'.sk-node[data-id="{self.thoughts[1]["id"]}"]').bounding_box()
+        label = kai.locator('.sk-peer[data-live-peer="Ada North"] .sk-peer__label')
+        spots = []
+        # Across the thought from left to right, in small steps, then back out into empty space.
+        y = box['y'] + box['height'] - 10
+        x = box['x'] - 70
+        while x < box['x'] + box['width'] + 70:
+            await ada.mouse.move(x, y)
+            await expect(kai.locator('.sk-peer[data-live-peer="Ada North"]')).to_have_count(1)
+            await kai.wait_for_timeout(60)
+            spot = await label.get_attribute('data-spot')
+            if not spots or spots[-1] != spot:
+                spots.append(spot)
+            x += 14
+        hops = [spots[i] for i in range(2, len(spots)) if spots[i] == spots[i - 2]]
+        self.assertEqual(hops, [], f'the name never hops back to a spot it just left: {spots}')
 
     async def test_map_moving_line_stays_visible_over_another_thought(self):
         await self.create_map(3)
