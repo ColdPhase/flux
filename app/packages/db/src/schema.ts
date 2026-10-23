@@ -554,7 +554,7 @@ export const notifications = pgTable('notifications', {
   summarySources: jsonb('summary_sources').$type<NotificationSourceRef[]>(),
   assistantJoinRequestId: uuid('assistant_join_request_id'),
   assistantJoinOpeningVersion: integer('assistant_join_opening_version'),
-  // Migration 0116 (F-029): came from AI work, set by whoever writes the row. While the workspace's AI is off it is hidden and never sent.
+  // Migration 0117 (F-029): came from AI work, set by whoever writes the row. While the workspace's AI is off it is hidden and never sent.
   aiOrigin: boolean('ai_origin').notNull().default(false),
 }, (table) => [
   index('notifications_user_created_idx').on(table.userId, table.createdAt.desc()),

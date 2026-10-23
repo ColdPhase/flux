@@ -65,7 +65,7 @@ INSERT INTO workspace_ai_policies (workspace_id, state) SELECT id, 'allowed' FRO
   A trigger writes the row in the creating
   transaction, so every workspace always has one. The S2 review noted that a workspace committed
   between 0115's backfill `INSERT` and its trigger could be left without a row (and so read as
-  blocked). 0115 is applied and not edited; migration 0116 re-runs the backfill idempotently
+  blocked). 0115 is applied and not edited; migration 0117 re-runs the backfill idempotently
   (`ON CONFLICT DO NOTHING`), and the race is limited to that window.
 - **A missing row means blocked.** The check fails closed, so a fixture or a bug that
   skips the row cannot open AI access.
@@ -178,7 +178,7 @@ export async function requireWorkspaceAi(db: Executor, workspaceId: string, opti
   model must drop items of blocked workspaces (today only the morning summary; see the
   table).
 - **AI origin.** Whether a notification came from AI work is decided by its **actor or source at
-  write time** and persisted on the row as `notifications.ai_origin` (migration 0116), never by
+  write time** and persisted on the row as `notifications.ai_origin` (migration 0117), never by
   matching its text. Whoever writes a notification states it; `createNotification` requires it, and
   the generator, the reaction note and the schedule notice set it explicitly. The writers:
 

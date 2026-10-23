@@ -104,9 +104,9 @@ test('0115 up: explicit allowed rows, epoch columns without default, backstop an
   }
 });
 
-// Migration 0116 (#642): `notifications.ai_origin` is backfilled conservatively from the actor and the source, people's rows stay false, a
+// Migration 0117 (#642): `notifications.ai_origin` is backfilled conservatively from the actor and the source, people's rows stay false, a
 // workspace that 0115 missed gets its `allowed` row, and the reverse drops the column.
-test('0116 up: ai_origin backfill by actor and source, the policy row of a missed workspace; reverse and reapply', async () => {
+test('0117 up: ai_origin backfill by actor and source, the policy row of a missed workspace; reverse and reapply', async () => {
   const client = await pool.connect();
   const namespace = `workspace_ai_${randomUUID().replaceAll('-', '')}`;
   const manifest = await readMigrationManifest(directory, FLUX_SCHEMA_VERSION);
@@ -115,7 +115,7 @@ test('0116 up: ai_origin backfill by actor and source, the policy row of a misse
     await client.query('BEGIN');
     await client.query(`CREATE SCHEMA ${namespace}`);
     await client.query(`SET LOCAL search_path TO ${namespace}, public, pg_catalog`);
-    for (const file of manifest.filter((file) => file.version < 116)) await client.query(await readFile(join(directory, file.name), 'utf8'));
+    for (const file of manifest.filter((file) => file.version < 117)) await client.query(await readFile(join(directory, file.name), 'utf8'));
     const [owner, ws, missed, project, agent, conversation, message] = [randomUUID(), randomUUID(), randomUUID(), randomUUID(), randomUUID(), randomUUID(), randomUUID()];
     await client.query(`INSERT INTO auth_users(id,name,email) VALUES($1,'Ada',$2)`, [owner, `${owner}@example.test`]);
     await client.query(`INSERT INTO workspaces(id,name,created_by) VALUES($1,'Studio',$2),($3,'Missed',$2)`, [ws, owner, missed]);
@@ -154,14 +154,14 @@ test('0116 up: ai_origin backfill by actor and source, the policy row of a misse
     await note('schedule notice', true, { title: 'Paused Daily: it failed', body: 'Your assistant paused this schedule. Turn it on again when it is fixed.' });
     await note('person titled like a suggestion', false, { title: 'Jonas asked you to review #8' });
 
-    await client.query(await sql(116));
+    await client.query(await sql(117));
     const stored = new Map((await client.query('SELECT id, ai_origin FROM notifications')).rows.map((row) => [row.id as string, row.ai_origin as boolean]));
     for (const [name, { id, expected }] of Object.entries(rows)) assert.equal(stored.get(id), expected, `${name}: ai_origin`);
     assert.equal((await client.query('SELECT state FROM workspace_ai_policies WHERE workspace_id = $1', [missed])).rows[0]?.state, 'allowed', 'the missed workspace gets its allowed row');
     assert.equal((await client.query('SELECT count(*)::int AS n FROM workspace_ai_policies')).rows[0].n, 2);
-    await client.query(await readFile(join(directory, 'reverse/0116_notification_ai_origin.down.sql'), 'utf8'));
+    await client.query(await readFile(join(directory, 'reverse/0117_notification_ai_origin.down.sql'), 'utf8'));
     assert.equal((await client.query(`SELECT count(*)::int AS n FROM information_schema.columns WHERE table_schema=$1 AND table_name='notifications' AND column_name='ai_origin'`, [namespace])).rows[0].n, 0);
-    await client.query(await sql(116));
+    await client.query(await sql(117));
     assert.equal((await client.query('SELECT ai_origin FROM notifications WHERE id = $1', [rows['agent actor']!.id])).rows[0].ai_origin, true, 'reapply backfills again');
   } finally {
     await client.query('ROLLBACK');
