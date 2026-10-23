@@ -1,11 +1,14 @@
 import { callSupervisor, RUNTIME_SECRET } from '@flux/runtime-protocol';
+import { notInstalledMarkers } from './report.js';
 import { listSlots, slotsFromEnv } from './server.js';
 
 // Operator steps the launcher runs inside `runtime-manager` (`docker compose exec`), without the
 // database: `slots` prints each slot's report; `sign-out-all` releases every binding directory found
 // in any slot (sign out each CLI, delete the directory, confirm `/data` is empty, restart), which
 // `./flux reset`, `./flux clean` and `./flux runtime purge` run first (F-022 "Backup, restore and
-// cleanup"). Only outcome codes are printed, never CLI output.
+// cleanup"). Only outcome codes are printed, never CLI output. A client the slot found no CLI and no files
+// for is also printed as `FLUX_RUNTIME_NOT_INSTALLED <binding> <client>`: `./flux runtime purge` passes those
+// pairs on, and the database confirms them only against its durable client history (#480).
 
 const slots = slotsFromEnv(process.env, RUNTIME_SECRET);
 const command = process.argv[2];
@@ -27,6 +30,7 @@ if (command === 'slots') {
         const { logout, dataEmpty } = outcome.result;
         const signedOut = Object.values(logout).every((step) => step === 'ok' || step === 'not_installed');
         console.log(`${entry.slot}: ${signedOut ? 'signed out' : 'sign-out NOT confirmed'} (claude_code ${logout.claude_code}, codex ${logout.codex}); cleanup attempted; /data ${dataEmpty ? 'empty' : 'NOT empty'}`);
+        for (const marker of notInstalledMarkers(bindingId, logout)) console.log(marker);
         if (!dataEmpty || !signedOut) failed += 1;
       } else {
         console.log(`${entry.slot}: release failed (${outcome.ok ? 'protocol' : outcome.code})`);

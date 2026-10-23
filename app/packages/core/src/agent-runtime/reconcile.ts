@@ -75,9 +75,13 @@ export async function reconcileAgentRuntime({ config, store, manager, now = () =
       const released = await manager.release(sighting.slot, binding.id);
       if (!released.ok) { log({ event: 'release_pending', slot: sighting.slot, code: released.code }); await store.saveSlot(seen, entry?.slot); continue; }
       const slot = released.value.dataEmpty ? wiping(sighting.bootId) : outOfPool('data_not_empty');
-      await store.completeRelease(binding.id, slot, released.value.logoutFailed);
+      // A client the slot found no CLI and no files for counts as "never had a login" only when the durable
+      // history agrees (#480); a missing directory or tools volume must not turn a possible login into a confirmation.
+      const loginPossible = released.value.notInstalled.length ? await store.loginPossible(binding.id) : [];
+      const logoutFailed = released.value.logoutFailed || released.value.notInstalled.some((client) => loginPossible.includes(client));
+      await store.completeRelease(binding.id, slot, logoutFailed);
       report.released.push(binding.id);
-      if (released.value.logoutFailed) report.logoutFailed.push(binding.id);
+      if (logoutFailed) report.logoutFailed.push(binding.id);
       if (slot.state === 'out_of_pool') report.outOfPool.push(slot.slot);
       continue;
     }
