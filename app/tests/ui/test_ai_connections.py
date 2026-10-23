@@ -398,7 +398,7 @@ class AiConnectionSettings(unittest.TestCase):
         host = page.locator(".mcp-permissions .cowork-host-actions")
         expect(host).to_have_count(1)
         expect(host.locator("summary")).to_contain_text("pending native verification")
-        expect(host).to_contain_text("no real-account Start or exact-thread Resume is recorded yet")
+        expect(host).to_contain_text("no real-account Start or exact-thread Resume through this action is recorded yet")
         expect(page.locator(".connection__guide")).to_contain_text("It is pending native verification")
         expect(page.locator(".connection__guide")).not_to_contain_text("resumes only its own saved native thread")
         shot(page, "ai-connection-1440-codex-host-pending")
