@@ -76,13 +76,13 @@ class WorkspaceAiLock(unittest.TestCase):
         cls.browser = getattr(cls.pw, UI_BROWSER).launch()
         expect.set_options(timeout=10000)
         for key, (name, email) in PEOPLE.items():
-            context = cls.browser.new_context(base_url=ORIGIN)
+            context = cls.browser.new_context(base_url=ORIGIN, service_workers="block")
             response = context.request.post("/api/auth/sign-up/email", data={"email": email, "password": PASSWORD, "name": name}, headers={"origin": ORIGIN})
             assert response.status == 200, response.text()
             cls.ids[key] = context.request.get("/api/v1/me").json()["user"]["id"]
             cls.states[key] = context.storage_state()
             context.close()
-        ada, ben = (cls.browser.new_context(base_url=ORIGIN, storage_state=cls.states[who]) for who in ("ada", "ben"))
+        ada, ben = (cls.browser.new_context(base_url=ORIGIN, storage_state=cls.states[who], service_workers="block") for who in ("ada", "ben"))
         try:
             def call(context: BrowserContext, method: str, path: str, body: dict | None = None, status: int = 201) -> dict:
                 response = context.request.fetch(path, method=method, data=json.dumps(body) if body is not None else None,
