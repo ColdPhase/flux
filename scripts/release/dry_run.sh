@@ -116,7 +116,8 @@ cp -r "$work/release-assets" "$work/tampered"; echo '# x' >> "$work/tampered/com
 refuses 'tampered overlay (checksum)' python3 scripts/release/verify_assets.py "$work/tampered"
 cp -r "$work/release-assets" "$work/swapped"
 sed -i "s#flux-agent-runtime@$runtime_digest#flux@$app_digest#" "$work/swapped/compose.runtime.yaml"
-( cd "$work/swapped" && for f in *; do [ "$f" = SHA256SUMS ] || sha256sum "$f"; done > SHA256SUMS.new && mv SHA256SUMS.new SHA256SUMS )
+# The new sums are written outside the directory: a file created inside it would be globbed into its own list.
+( cd "$work/swapped" && for f in *; do [ "$f" = SHA256SUMS ] || sha256sum "$f"; done > "$work/swapped.sums" ) && mv "$work/swapped.sums" "$work/swapped/SHA256SUMS"
 refuses 'runtime image swapped for the application image' python3 scripts/release/verify_assets.py "$work/swapped"
 refuses 'same digest for both images' python3 scripts/release/prepare_assets.py --version "$version" --source-sha "$sha" --digest "$app_digest" \
   --sbom "$work/sbom-flux.spdx.json" --runtime-digest "$app_digest" --runtime-sbom "$work/sbom-flux-agent-runtime.spdx.json" --destination "$work/same"
@@ -162,8 +163,9 @@ else
   [ -n "$(c ps -q --status running runtime-manager)" ] || fail "runtime-manager is not running"
   [ -n "$(c ps -q --status running runtime-egress)" ] || fail "runtime-egress is not running"
   [ "$(docker inspect -f '{{.State.ExitCode}}' "$(c ps -aq runtime-install)")" = 0 ] || fail "runtime-install did not exit 0"
-  c logs --no-color runtime-1 2>&1 | tail -n 4
-  c logs --no-color runtime-1 2>&1 | grep -qi 'ptrace' || fail "the slot did not name the Yama requirement"
+  slot_log=$(c logs --no-color runtime-1 2>&1 || true) # captured: `grep -q` on a pipe can SIGPIPE the writer under pipefail
+  printf '%s\n' "$slot_log" | tail -n 4
+  printf '%s' "$slot_log" | grep -qi 'ptrace' || fail "the slot did not name the Yama requirement"
   # shellcheck disable=SC2046
   docker inspect $(docker ps -q --filter "label=com.docker.compose.project=$run_id-rt") > "$work/inspect.json"
   python3 scripts/agent-runtime/inspect.py "$run_id-rt" "$work/local-assets" < "$work/inspect.json" || true
