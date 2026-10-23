@@ -18,6 +18,9 @@ from playwright.sync_api import Browser, BrowserContext, Page, Route, expect, sy
 
 from test_app_shell import DESKTOP, ORIGIN, PHONE, UPSTREAM, open_details, shot, start_forwarder, view_tab
 
+# Live editing is the wiki editor whenever it is configured (check_ui.sh sets FLUX_LIVE_EDITING=on by default).
+LIVE = os.environ.get('FLUX_LIVE_EDITING', 'on') != 'off'
+
 # Exhaust real browser storage; a subsequent larger write must be refused by its own quota.
 # No storage API, React state or success response is replaced.
 EXHAUST_STORAGE = """kind => {
@@ -283,6 +286,9 @@ class RouteChunksJourney(unittest.TestCase):
                 self.assertEqual(page.evaluate("key => localStorage.getItem(key)", key), earlier)
 
     def test_12_wiki_quota_copy_preserves_fields_base_and_attempt_before_reload(self):
+        # Live editing (#228) is the wiki editor whenever it is configured, so the shared working copy
+        # is driven and its own recovery record, save command and endpoint are checked. The ordinary
+        # editor keeps the same guarantees when live editing is off.
         for engine in self.browsers:
             with self.subTest(engine=engine):
                 page = self.page(engine)
@@ -293,31 +299,51 @@ class RouteChunksJourney(unittest.TestCase):
                 self.assertEqual(created.status, 201, created.text())
                 doc = created.json()
                 me = page.request.get(f"{ORIGIN}/api/v1/me").json()
-                key = f"flux:doc-edit:{me['user']['id']}:{doc['id']}"
+                key = f"flux:{'wiki-live' if LIVE else 'doc-edit'}:{me['user']['id']}:{doc['id']}"
                 page.goto(f"/projects/{self.project_id}/docs/{doc['id']}/edit")
-                field = page.get_by_label("Text (Markdown)", exact=True)
+                def text_field():
+                    return page.locator('.cm-content[aria-label="Shared Markdown"]') if LIVE else page.get_by_label("Text (Markdown)", exact=True)
+                def write(text):
+                    if LIVE:
+                        text_field().click(); page.keyboard.press("Control+a"); page.keyboard.insert_text(text)
+                    else:
+                        text_field().fill(text)
+                def expect_text(text):
+                    if LIVE: expect(text_field()).to_contain_text(text)
+                    else: expect(text_field()).to_have_value(text)
+                if LIVE: expect(page.locator('[data-live-status="live"]')).to_be_visible()
                 earlier = f"Earlier Wiki A {engine}"
                 latest = f"Latest Wiki B {engine}: " + "Retain the complete private edit and its save identity. " * 35
-                field.fill(earlier)
-                page.wait_for_function("([key,text]) => JSON.parse(sessionStorage.getItem(key) ?? '{}').body === text", arg=[key, earlier])
-                before = page.evaluate("key => JSON.parse(sessionStorage.getItem(key))", key)
+                write(earlier)
+                if LIVE: expect(page.get_by_role("status").filter(has_text="All changes shared")).to_be_visible()
+                else: page.wait_for_function("([key,text]) => JSON.parse(sessionStorage.getItem(key) ?? '{}').body === text", arg=[key, earlier])
                 self.assertEqual(page.evaluate(EXHAUST_STORAGE, 'session'), 'QuotaExceededError')
-                field.fill(latest)
-                self.assertEqual(page.evaluate("key => JSON.parse(sessionStorage.getItem(key)).body", key), earlier)
+                write(latest)
+                if LIVE: expect(page.get_by_role("status").filter(has_text="All changes shared")).to_be_visible()
+                else: self.assertEqual(page.evaluate("key => JSON.parse(sessionStorage.getItem(key)).body", key), earlier)
                 attempted = []
-                api_pattern = re.compile(rf"/api/v1/docs/{doc['id']}$")
+                before = page.evaluate("key => JSON.parse(sessionStorage.getItem(key))", key)
+                method = "POST" if LIVE else "PATCH"
+                api_path = f"/api/v1/docs/{doc['id']}/live/save" if LIVE else f"/api/v1/docs/{doc['id']}"
+                api_pattern = re.compile(re.escape(api_path) + "$")
                 def failed_save(route):
-                    if route.request.method != 'PATCH':
+                    if route.request.method != method:
                         route.continue_(); return
                     attempted.append({"body": route.request.post_data_json, "key": route.request.headers.get("idempotency-key"),
                         "base": route.request.headers.get("if-match")})
                     route.fulfill(status=503, content_type="application/json", body='{"message":"Save temporarily unavailable"}')
                 page.route(api_pattern, failed_save)
                 page.get_by_role("button", name="Save version", exact=True).click()
-                expect(page.locator(".doc-error")).to_be_visible()
+                if LIVE: expect(page.get_by_role("alert").filter(has_text="Save temporarily unavailable")).to_be_visible()
+                else: expect(page.locator(".doc-error")).to_be_visible()
                 self.assertEqual(len(attempted), 1)
-                self.assertEqual(attempted[0]["body"]["body"], latest)
-                self.assertNotEqual(attempted[0]["key"], before["attempt"])
+                self.assertEqual(attempted[0]["base"], f'"{doc["version"]}"')
+                if LIVE:
+                    self.assertEqual(attempted[0]["body"]["expectedVersion"], doc["version"])
+                    self.assertEqual(attempted[0]["key"], attempted[0]["body"]["clientCommandId"])
+                else:
+                    self.assertEqual(attempted[0]["body"]["body"], latest)
+                    self.assertNotEqual(attempted[0]["key"], before["attempt"])
                 pattern = re.compile(r"/assets/SettingsHome-[^/]+\.js(?:\?.*)?$")
                 def refused(route):
                     route.fulfill(status=503, headers={"cache-control": "no-store"}, content_type="text/plain", body="Real refused Wiki recovery delivery")
@@ -332,24 +358,25 @@ class RouteChunksJourney(unittest.TestCase):
                 page.get_by_role("navigation", name="Project views").get_by_role("link", name="Wiki", exact=True).click()
                 page.get_by_role("link", name=re.compile(rf"^{re.escape(doc['title'])}(?:\s*Draft)?$")).click()
                 page.locator(".wiki-bar").get_by_role("link", name="Edit", exact=True).click()
-                expect(page.get_by_label("Text (Markdown)", exact=True)).to_have_value(latest)
+                expect_text(latest)
                 page.evaluate("sessionStorage.removeItem('quota-route-recovery')")
                 page.get_by_role("button", name="Save version", exact=True).click()
-                expect(page.locator(".doc-error")).to_be_visible()
+                if LIVE: expect(page.get_by_role("alert").filter(has_text="Save temporarily unavailable")).to_be_visible()
+                else: expect(page.locator(".doc-error")).to_be_visible()
                 self.assertEqual(len(attempted), 2)
                 self.assertEqual(attempted[1], attempted[0], "B's exact body/base/save identity survives code recovery")
                 page.unroute(api_pattern, failed_save)
                 delivered = []
                 page.on("request", lambda request: delivered.append({"body": request.post_data_json,
                     "key": request.headers.get("idempotency-key"), "base": request.headers.get("if-match")})
-                    if request.method == 'PATCH' and request.url.endswith(f"/api/v1/docs/{doc['id']}") else None)
-                with page.expect_response(lambda response: response.request.method == 'PATCH' and response.url.endswith(f"/api/v1/docs/{doc['id']}")) as saved:
+                    if request.method == method and request.url.endswith(api_path) else None)
+                with page.expect_response(lambda response: response.request.method == method and response.url.endswith(api_path)) as saved:
                     page.get_by_role("button", name="Save version", exact=True).click()
                 self.assertEqual(saved.value.status, 200)
                 self.assertEqual(delivered, [attempted[0]])
                 current = page.request.get(f"{ORIGIN}/api/v1/docs/{doc['id']}").json()
                 self.assertEqual(current["body"], latest)
-                self.assertEqual(current["version"], before["base"] + 1)
+                self.assertEqual(current["version"], doc["version"] + 1)
 
     def test_13_failed_fresh_session_check_never_performs_document_reload(self):
         for engine in self.browsers:
