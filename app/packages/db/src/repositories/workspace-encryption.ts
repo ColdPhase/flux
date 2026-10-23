@@ -43,6 +43,10 @@ export interface EncryptionViewRow {
 }
 
 const rowsOf = async <T>(db: DbExecutor, query: SQL) => (await db.execute(query)).rows as unknown as T[];
+/** Raw `execute` rows carry timestamps as text; every timestamp leaves this module as a Date. */
+const at = (value: unknown): Date => (value instanceof Date ? value : new Date(String(value)));
+const atOrNull = (value: unknown): Date | null => (value === null || value === undefined ? null : at(value));
+const unlockRows = (rows: UnlockRowData[]) => rows.map((row) => ({ ...row, unlockedAt: at(row.unlockedAt) }));
 const lockClause = (lock: 'update' | 'share' | undefined) => (lock === 'update' ? sql` FOR UPDATE` : lock === 'share' ? sql` FOR SHARE` : sql``);
 
 const HOLDER = sql`id, workspace_id AS "workspaceId", kind, user_id AS "userId", kdf, public_key AS "publicKey", wrapped_private AS "wrappedPrivate",
@@ -61,8 +65,8 @@ export function workspaceEncryptionRows(db: DbExecutor) {
       // Lock order of a write to a sealed workspace: workspace_keys, then the unlock rows, both FOR SHARE, so a
       // rotation's start or finish (FOR UPDATE) and Lock now are each ordered strictly before or after it.
       if (options.lock) await db.execute(sql`SELECT 1 FROM workspace_keys WHERE workspace_id = ${workspaceId} FOR SHARE`);
-      const unlocks = await rowsOf<UnlockRowData>(db, sql`SELECT ${UNLOCK} FROM workspace_unlocks WHERE workspace_id = ${workspaceId}
-        ORDER BY key_version${options.lock ? sql` FOR SHARE` : sql``}`);
+      const unlocks = unlockRows(await rowsOf<UnlockRowData>(db, sql`SELECT ${UNLOCK} FROM workspace_unlocks WHERE workspace_id = ${workspaceId}
+        ORDER BY key_version${options.lock ? sql` FOR SHARE` : sql``}`));
       const [row] = await rowsOf<{ name: string; encrypted: boolean; tampered: boolean; currentVersion: number | null; liveVersions: number[] | null }>(db, sql`
         SELECT w.name, w.encrypted, k.tampered_at IS NOT NULL AS tampered, k.current_version AS "currentVersion", k.live_versions AS "liveVersions"
         FROM workspaces w LEFT JOIN workspace_keys k ON k.workspace_id = w.id WHERE w.id = ${workspaceId}`);
@@ -74,15 +78,15 @@ export function workspaceEncryptionRows(db: DbExecutor) {
       const [row] = await rowsOf<WorkspaceKeysRow>(db, sql`SELECT k.workspace_id AS "workspaceId", w.name, k.current_version AS "currentVersion",
         k.live_versions AS "liveVersions", k.rotation, k.tampered_at AS "tamperedAt", k.created_at AS "createdAt"
         FROM workspace_keys k JOIN workspaces w ON w.id = k.workspace_id WHERE k.workspace_id = ${workspaceId}${options.lock ? sql` FOR ${options.lock === 'update' ? sql`UPDATE` : sql`SHARE`} OF k` : sql``}`);
-      return row ?? null;
+      return row ? { ...row, tamperedAt: atOrNull(row.tamperedAt), createdAt: at(row.createdAt) } : null;
     },
     holders: (workspaceId: string) => rowsOf<HolderRow>(db, sql`SELECT ${HOLDER} FROM workspace_holders WHERE workspace_id = ${workspaceId} ORDER BY created_at, id`),
     dekWraps: (workspaceId: string) => rowsOf<DekWrapRow>(db, sql`SELECT holder_id AS "holderId", workspace_id AS "workspaceId", key_version AS "keyVersion",
       ephemeral_public AS "ephemeralPublic", sealed_dek AS "sealedDek", confirm FROM workspace_dek_wraps WHERE workspace_id = ${workspaceId}`),
     keyVersions: (workspaceId: string) => rowsOf<KeyVersionRow>(db, sql`SELECT key_version AS "keyVersion", commitment, check_value AS "checkValue"
       FROM workspace_key_versions WHERE workspace_id = ${workspaceId} ORDER BY key_version`),
-    unlocks: (workspaceId: string, options: { lock?: 'update' | 'share' } = {}) =>
-      rowsOf<UnlockRowData>(db, sql`SELECT ${UNLOCK} FROM workspace_unlocks WHERE workspace_id = ${workspaceId} ORDER BY key_version${lockClause(options.lock)}`),
+    unlocks: async (workspaceId: string, options: { lock?: 'update' | 'share' } = {}) =>
+      unlockRows(await rowsOf<UnlockRowData>(db, sql`SELECT ${UNLOCK} FROM workspace_unlocks WHERE workspace_id = ${workspaceId} ORDER BY key_version${lockClause(options.lock)}`)),
     async workspaceByCreation(createdBy: string, creationId: string): Promise<{ id: string; name: string } | null> {
       const [row] = await rowsOf<{ id: string; name: string }>(db, sql`SELECT id, name FROM workspaces WHERE created_by = ${createdBy} AND creation_id = ${creationId}`);
       return row ?? null;
@@ -170,14 +174,14 @@ export function workspaceEncryptionRows(db: DbExecutor) {
     async grant(workspaceId: string, userId: string, options: { lock?: boolean } = {}): Promise<{ grantedBy: string; expiresAt: Date } | null> {
       const [row] = await rowsOf<{ grantedBy: string; expiresAt: Date }>(db, sql`SELECT granted_by AS "grantedBy", expires_at AS "expiresAt"
         FROM workspace_wrap_grants WHERE workspace_id = ${workspaceId} AND user_id = ${userId} AND expires_at > now()${options.lock ? sql` FOR UPDATE` : sql``}`);
-      return row ?? null;
+      return row ? { grantedBy: row.grantedBy, expiresAt: at(row.expiresAt) } : null;
     },
     async putGrant(workspaceId: string, userId: string, grantedBy: string, seconds: number): Promise<Date> {
       const [row] = await rowsOf<{ expiresAt: Date }>(db, sql`INSERT INTO workspace_wrap_grants (workspace_id, user_id, granted_by, expires_at)
         VALUES (${workspaceId}, ${userId}, ${grantedBy}, now() + make_interval(secs => ${seconds}))
         ON CONFLICT (workspace_id, user_id) DO UPDATE SET granted_by = EXCLUDED.granted_by, expires_at = EXCLUDED.expires_at
         RETURNING expires_at AS "expiresAt"`);
-      return row!.expiresAt;
+      return at(row!.expiresAt);
     },
     async deleteGrant(workspaceId: string, userId: string) {
       await db.execute(sql`DELETE FROM workspace_wrap_grants WHERE workspace_id = ${workspaceId} AND user_id = ${userId}`);
@@ -225,7 +229,7 @@ export function workspaceEncryptionRows(db: DbExecutor) {
           EXISTS (SELECT 1 FROM workspace_holders h WHERE h.workspace_id = k.workspace_id AND h.kind = 'recovery') AS "recoveryCode",
           (SELECT max(v.created_at) FROM workspace_key_versions v WHERE v.workspace_id = k.workspace_id AND v.key_version > 1) AS "keyChangedAt"
         FROM workspace_keys k JOIN workspaces w ON w.id = k.workspace_id WHERE w.encrypted AND k.workspace_id IN (${ids})`);
-      return new Map(rows.map((row) => [row.workspaceId, { ...row,
+      return new Map(rows.map((row) => [row.workspaceId, { ...row, keyChangedAt: atOrNull(row.keyChangedAt),
         unlocks: (row.unlocks ?? []).map((unlock) => ({ ...unlock, unlockedAt: new Date(unlock.unlockedAt) })) }]));
     },
   };

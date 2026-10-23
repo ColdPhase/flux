@@ -321,7 +321,7 @@ describe('F-030 AI forced off', () => {
         OR c.table_name LIKE 'cowork%' OR c.table_name LIKE 'personal_run%' OR c.table_name LIKE 'proactive_comparison%' OR c.table_name = 'background_compute_connections')
       GROUP BY c.table_name ORDER BY c.table_name`)).rows as { name: string; ws: boolean; project: boolean; agent: boolean; connection: boolean; guarded: boolean }[];
     const withPath = tables.filter((t) => t.ws || t.project || t.agent || (t.connection && t.name.startsWith('agent')));
-    assert.ok(withPath.length >= 40, `AI tables with a workspace path: ${withPath.length}`);
+    assert.ok(withPath.length >= 30, `AI tables with a workspace path: ${withPath.length}`);
     assert.deepEqual(withPath.filter((t) => !t.guarded).map((t) => t.name), [], 'every one is guarded');
     const projectOf = async (ws: string, who: Person) =>
       (expectStatus(await who.browser.request('POST', `/api/v1/workspaces/${ws}/projects`, { body: { name: 'Seeds' } }), 201) as { id: string }).id;

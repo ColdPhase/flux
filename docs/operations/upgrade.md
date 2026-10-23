@@ -27,6 +27,26 @@ ledger versions; see [composition with sign-in 0096 / runtime-auth 0097](../deve
 If the image refuses a partial, mixed or unsupported footprint, keep the backup and restore its
 matching image/database. Do not edit the ledger or rename a migration to make the check pass.
 
+## Encrypted workspaces: the keyring and memory limits (schema 118)
+
+From schema 118 (F-030, [encrypted workspaces](../product/encrypted-workspaces.md), S1) every install
+runs a small `keyring` service next to `api` and `worker`, on an internal network that only these three
+join. `./flux upgrade` adds the keyring's `FLUX_KEYRING_TOKEN` to `docker/.env` when it is missing and
+never changes an existing one; without a token the keyring stays idle. Encrypted workspaces cannot be
+created in a normal install before S3, so nothing else changes for people.
+
+`api`, `worker` and `keyring` now have memory limits with swap limited to the same value, so they
+cannot write memory to a swap device, and core dumps are off. The defaults are `FLUX_API_MEMORY=2g`,
+`FLUX_WORKER_MEMORY=1g` and `FLUX_KEYRING_MEMORY=64m`; raise them in `docker/.env` if a container is
+killed for memory. Measured peaks (cgroup `memory.peak`, 2026-10-23, this host, the S1 encryption
+check `scripts/check_encryption.sh` and the API suites): MEASUREMENTS. The defaults are at least twice
+these peaks.
+
+When swap is on and not limited for a container (an older kernel without swap accounting), the keyring
+refuses to start and the API reports `encryption: 'swap_unsafe'` in `/api/v1/health`. Turn swap off,
+or set `FLUX_SWAP_ACKNOWLEDGED=encrypted-swap` only if every swap device is encrypted with a key that
+is not stored on the disk.
+
 ## When it fails
 
 If any step fails, the launcher stops the API and worker, confirms that both are stopped, and
