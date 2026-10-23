@@ -442,7 +442,7 @@ class WorkspaceAiLock(unittest.TestCase):
                 for command in ("/handoff calibrate the probes", "/ai tidy the tasks"):
                     field = page.locator("#thread-composer")
                     field.fill(command)
-                    field.press("Enter")
+                    page.get_by_role("button", name="Send reply").click()
                     expect(page.get_by_role("status").filter(has_text="AI is off in this workspace")).to_be_visible()
                     expect(field).to_have_value(command)
                 after = self.api(page, "GET", f"/api/v1/conversations/{self.ids['a_conversation']}")
@@ -548,7 +548,7 @@ class WorkspaceAiLock(unittest.TestCase):
                 expect(lee.locator("[data-ai-off]")).to_contain_text(f"AI is off in {A_NAME}.")
                 # The personal-key pages say the same, and ask for nothing; the account menu has no entry for them.
                 asked: list[str] = []
-                lee.on("request", lambda request: asked.append(request.url) if re.search(r"background-|personal-assistant|assistant-runs|working-agents", request.url) else None)
+                lee.on("request", lambda request: asked.append(request.url) if re.search(r"/api/v1/.*(background-|personal-assistant|assistant-runs|working-agents)", request.url) else None)
                 for path in ("/settings/background-compute", "/settings/ai-connections"):
                     lee.goto(path)
                     expect(lee.locator("[data-ai-off]")).to_contain_text(f"AI is off in {A_NAME}.")
