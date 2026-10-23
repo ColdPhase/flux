@@ -8,7 +8,7 @@ export { Input } from './Input';
 export { MEDIA, choosesInPlace, duration, flip, isObscured, play, sendsOnEnter, useArrivals, useLoopPause, useMediaQuery, useTravelingHighlight } from './motion';
 export { DetentSheet, SheetGrabber } from './DetentSheet';
 export { applyStoredReduceMotion, prefersReducedMotion, setReduceMotion, useReduceMotion } from './motion-preference';
-export { Drawer, Overlay, Sheet, focusableIn, trapTab } from './Overlay';
+export { Drawer, Overlay, Sheet, focusableIn, trapTab, useStripOnlyModal } from './Overlay';
 export { AgentIdentity, AgentTag } from './AgentIdentity';
 export { AGENT_HUES, FluxLockup, FluxLogo, Kreska, agentHue, type AgentHue, type KreskaExpression } from './Kreska';
 export { StatusGlyph, TaskState, TASK_STATE_WORD } from './StatusGlyph';
