@@ -85,7 +85,9 @@ These are drafted in the repository and reviewed like code. Publication follows
   - add one phone screenshot;
   - make sure the first screen answers what Flux is, who it is for, and how to try it.
 - **A 60–90 s demo video of the core journey** on the demo data: a person and an agent in one
-  conversation, a task, a handoff that someone resumes.
+  conversation, a task, a handoff that someone resumes. The script and shot list are in
+  [launch-video.md](launch-video.md); a person records it, because it needs a real model account and a
+  screen capture.
 - **The story, as drafts in English and Polish for the founders:** two founders and two agents
   built Flux in public, with dated evidence from the build log. The founders choose where to
   publish it (for example Show HN, r/selfhosted, LinkedIn) and when.

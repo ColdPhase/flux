@@ -3,13 +3,29 @@
 An open source, self-hostable workspace where people and AI agents work on the same
 projects: conversations, and the tasks, documents and decisions that come out of them.
 
+**Who it is for.** Small software teams, such as a product lead, a designer and an engineer, who
+already hand some work to coding agents like Claude Code or Codex. When you come back to a project
+after a break, Flux shows what changed, what was decided and what is next, so you do not have to ask
+around. It is pre-release: see [project status](#project-status) before you rely on it.
+
+**Try it** with Git and Docker (no host Node.js or PostgreSQL). The first start builds Flux and takes
+a few minutes ([measured times](docs/development/time-to-first-run.md)):
+
+```sh
+git clone --depth 1 https://github.com/ColdPhase/flux.git && cd flux
+./flux up      # builds and starts Flux, prints its address
+./flux demo    # sample project and two logins
+```
+
+Then open the printed address and [connect your own agent](#connect-your-own-agent) if you like.
+
 <p align="center">
-  <img src="docs/assets/readme/conversation-desktop.png" width="74%" alt="A Flux project conversation on a desktop: the sidebar lists projects and conversations; messages show the task and decisions made from them; the project's current decision, rule, work and results sit under its name.">
-  <img src="docs/assets/readme/conversation-phone.png" width="21%" alt="The same project conversation on a phone, with one line for the project's state and the reply box at the bottom.">
+  <img src="docs/assets/readme/conversation-desktop.png" width="74%" alt="The Community garden sensors project on a desktop: the conversation, with the task made from a message, and beside it the accepted decision to measure soil moisture first, with its reason and the message it is based on.">
+  <img src="docs/assets/readme/home-phone.png" width="21%" alt="Home on a phone: under Needs you, Jonas's question with a Reply button; the project below is quiet; Home, Projects and Inbox sit in the bar at the bottom.">
 </p>
 
-<p align="center"><sub>A project conversation on a 1440&nbsp;px desktop and a 390&nbsp;px phone, captured from the running
-application with fictional test data (<a href="docs/assets/readme/README.md">how these were made</a>).</sub></p>
+<p align="center"><sub>A project on a 1440&nbsp;px desktop and a 390&nbsp;px phone, captured from the running
+application on the fictional <code>./flux demo</code> data (<a href="docs/assets/readme/README.md">how these were made</a>).</sub></p>
 
 The [product foundation](docs/product/README.md) describes the direction: human and
 agent collaboration, continuity of project knowledge, self-hosting and extensibility.
@@ -63,8 +79,7 @@ Then open the URL that `./flux up` prints, <http://127.0.0.1:8081/> by default. 
 taken, start the first time with another free port, for example `FLUX_PORT=8090 ./flux up`. The first `./flux up` takes a few
 minutes, because it downloads the dependencies and builds Flux
 ([measured times](docs/development/time-to-first-run.md)). To connect your own MCP client, such
-as Claude Code or Codex, sign in, open Settings and choose Agent connections (MCP). The page
-shows the commands for this server.
+as Claude Code or Codex, follow [Connect your own agent](#connect-your-own-agent).
 
 The first `./flux up` in a terminal also asks once whether people may sign in with their own ChatGPT and Claude subscriptions (Enter means yes, for Codex; Claude Code needs a typed `y` to Anthropic's Commercial Terms; a host that cannot run it gets one line saying why instead); `./flux ai on` asks later, and without a terminal nothing is asked ([operator guide](docs/operations/agent-runtime.md)). `./flux up` never overwrites an existing `docker/.env`. An older root `.env` is moved once with its secrets and project name intact; if both files exist, choose the intended one before continuing. `app/.env.example` documents variables and is never loaded.
 Other commands: `./flux dev` (hot reload in Docker), `./flux down`, `./flux logs`,
@@ -93,52 +108,64 @@ which change.
 
 ## Connect your own agent
 
-Your own MCP client, such as Claude Code or Codex, can read the projects you choose and suggest
-next steps. It runs on your computer with your own model account, which Flux never sees. On the
-`./flux demo` data:
+Your own MCP client, such as Claude Code or Codex, can read the projects you choose. It runs on your
+computer with your own model account, which Flux never sees. On the `./flux demo` data:
 
-1. Sign in as Ada, the workspace owner (`./flux demo` prints her password), and open
-   <http://127.0.0.1:8081/connect-agent> (Settings → Agent connections (MCP)). 8081 is the
+1. Sign in as Ada, the workspace owner (`./flux demo` prints her password), and open the Connect page:
+   your name at the bottom left → **All settings** → **Agents and AI** → **Local co-work on this
+   computer** → **Manage**, or go straight to <http://127.0.0.1:8081/connect-agent>. 8081 is the
    default port; use the one `./flux up` printed.
 2. **Create your personal agent.** Keep the workspace "Riverside Makers (demo)", give the agent a
    name and choose **Create personal agent**. The form is already open on a first visit. The demo
    seeds no agent.
 3. **Grant it the project.** Under **New connection**, name the connection and pick your client.
    Next to "Community garden sensors", keep **Read and propose** and choose **Grant**; only a
-   project manager can do this, and Ada is one. Under **Allowed actions**, tick what the agent may
-   do. Claude Code asks for all three when it connects, but you can grant fewer: it gets only the
-   ones you ticked, and a tool outside them answers that the permission wasn't granted. Each
-   action still needs its own grant from you (step 6). Tick the project and choose **Save connection**.
+   project manager can do this, and Ada is one. Under **Allowed actions**, **Read selected project
+   context** and **Suggest a next step** are ticked.
+   - **Claude Code** asks for three permissions when it connects, but you can grant fewer: it gets
+     only the ones you ticked, and a tool outside them answers that the permission wasn't granted.
+     Keep the two.
+   - **Codex** is refused when you grant fewer than the three it asks for
+     ([#660](https://github.com/ColdPhase/flux/issues/660)), so also tick **Run approved project
+     actions**. That alone lets the agent change nothing: each action still needs its own standing
+     grant from you (step 6).
+
+   Tick the project and choose **Save connection**.
 4. **Add Flux to your client** with the commands the page shows:
 
    ```sh
    claude mcp add --transport http flux http://127.0.0.1:8081/mcp   # Claude Code
    claude mcp login flux
 
-   codex mcp add flux --url http://127.0.0.1:8081/mcp               # Codex; adding may start the sign-in
+   codex mcp add flux --url http://127.0.0.1:8081/mcp               # Codex; adding starts the sign-in
    codex mcp login flux
    ```
 
    `claude mcp login flux` needs a terminal: outside one it stops with "stdin isn't a terminal".
-   If the login times out before you choose **Allow access**, run it again.
+   If the login times out before you choose **Allow access**, run it again. Claude Code adds the
+   server for the folder where you run `claude mcp add` and nowhere else: start `claude` from that
+   folder, or add `--scope user` to use it from any folder.
 
 5. **Consent.** The login opens Flux in your browser. Choose the saved connection, then
    **Continue to consent**. Check that access goes to an address on your own computer and to the
-   selected project only, and choose **Allow access**.
+   selected project only, and choose **Allow access**. The client then says it is authenticated
+   (`claude mcp list` shows Connected).
 6. **Ask it something**, for example: "Using Flux, what is the Community garden sensors project
    working on, and what is still open?" The client reads the project's conversations, tasks and
-   docs, and answers in your client. A suggestion it makes waits in Flux for a person to review;
-   replying or creating tasks in Flux also needs **Approved actions** and a grant from you on the
-   same page.
+   docs with Flux's read tools, and answers in your client; nothing in Flux changes. Replying in
+   Flux or creating tasks needs **Run approved project actions** and a standing grant: on the same
+   page, under **Standing grants** for your connection, add the grant you want. A suggestion the
+   agent sends is stored, but Flux has no screen for it yet
+   ([#661](https://github.com/ColdPhase/flux/issues/661)).
 
 The loopback `http://` address works only for a client on the same computer. A client on another
 computer needs an HTTPS address: the operator sets `FLUX_PUBLIC_ORIGIN` behind a TLS reverse proxy
 ([agent connection](docs/development/agent-connection.md),
 [integrations for operators](docs/integrations/README.md#for-operators)). Flux accepts clients
 only through their public client metadata documents, so the server needs outbound HTTPS when a
-client signs in. Claude Code completed this sign-in on a loopback install on 2026-09-28; the Codex
-commands come from Codex's own documentation and have not yet been run against Flux
-([#320](https://github.com/ColdPhase/flux/issues/320) times the whole path).
+client signs in. On 2026-10-23 Claude Code 2.1.309 and Codex 0.163.0 both completed this sign-in
+against a clean clone on a loopback address; that check used no model account
+([what was run](docs/development/time-to-first-run.md)).
 
 ## Repository layout
 
