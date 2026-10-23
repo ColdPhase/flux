@@ -217,7 +217,7 @@ HORIZONTAL = r"""(el) => {
 # Every field row of the task in Details (Status, Owner, Came from, Due, ...), brought into view in the panel's own
 # scroller: whether it lies fully above the composer, and is the element hit at its centre (nothing covers it).
 # With scroll=false nothing is scrolled: it is where the rows are when the panel opens.
-TASK_FIELDS = r"""([root, scroll]) => {
+TASK_FIELDS = r"""(root, scroll) => {
   const foot = root.querySelector('.wd__foot').getBoundingClientRect().top;
   return [...root.querySelectorAll('.wd-row')].map((row) => {
     if (scroll) row.scrollIntoView({block: 'nearest'});
