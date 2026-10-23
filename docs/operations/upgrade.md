@@ -39,8 +39,9 @@ created in a normal install before S3, so nothing else changes for people.
 cannot write memory to a swap device, and core dumps are off. The defaults are `FLUX_API_MEMORY=2g`,
 `FLUX_WORKER_MEMORY=1g` and `FLUX_KEYRING_MEMORY=128m`; raise them in `docker/.env` if a container is
 killed for memory. Measured peaks (cgroup `memory.peak`, 2026-10-23, this host, the S1 encryption
-check `scripts/check_encryption.sh` and the API suites): MEASUREMENTS. The defaults are at least twice
-these peaks.
+check `scripts/check_encryption.sh` and the affected API suites of `check_application.sh`): `api` 431 MB,
+`worker` 111 MB, `keyring` 42 MB (its health check's second Node process included). The defaults are at
+least twice these peaks; the full suite was not measured.
 
 When swap is on and not limited for a container (an older kernel without swap accounting), the keyring
 refuses to start and the API reports `encryption: 'swap_unsafe'` in `/api/v1/health`. Turn swap off,
