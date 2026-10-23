@@ -14,5 +14,6 @@ export { AGENT_HUES, FluxLockup, FluxLogo, Kreska, agentHue, type AgentHue, type
 export { StatusGlyph, TaskState, TASK_STATE_WORD } from './StatusGlyph';
 export { PanelActions, PanelGlyph, PanelMeta, SidePanel, useSidePanelMode, type SidePanelMode } from './SidePanel';
 export { BottomNav, Tabs, type BottomNavItem, type TabItem } from './Tabs';
+export { publishTopEdge } from './edgeInset';
 export { ToastProvider, useToast, useToastScope, useToastTop, type ToastAction, type ToastOptions } from './Toast';
 export { GoalReached, Mascot, Opening, PullToRefresh, goalMomentSeen, markGoalMomentSeen } from './Moments';
