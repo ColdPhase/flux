@@ -120,6 +120,11 @@ remain reachable. Own messages stay on the right and other people's on the left.
   - On a first visit to a projection, the selected thought, or else the first one in view, stays
     where the person saw it.
   - Nothing auto-fits on a resize.
+- **Short stream** (ADAPT-2, tall screens): when the stream does not fill its feed, the spare height goes above it
+  (`ConversationStream`, `.project-convo__lift`), so the newest message sits 22–27 px above the field from 390×844 to
+  3840×2160 instead of up to 1800 px away. The spare height is taken when the entries or the feed's size change. A row
+  that changes height in place (a queued message becoming the stored one) only gives height back, so it never moves.
+  A stream that fills the feed has no spare height and scrolls as before.
 - Drafts, selection, the reading anchor, an open thread and the object in Details survive resize,
   rotation and a keyboard emulated as a shorter viewport. No transition saves or sends anything.
   The tests check this against the API.
