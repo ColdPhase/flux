@@ -6,3 +6,6 @@
 }
 .route-progress > span { display: flex; align-items: center; gap: 8px; font-size: inherit; }
 .route-progress .ui-btn { min-height: 44px; }
+.deferred-surface { padding: 16px; }
+.deferred-surface > p { display: flex; align-items: center; gap: 8px; color: var(--t2); }
+.deferred-surface--stage { position: absolute; inset: 0; z-index: 3; background: var(--bg); }

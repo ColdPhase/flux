@@ -414,6 +414,32 @@ class ReachabilityRows(LiveBase):
         expect(pending).to_have_count(0)
         self.assertEqual(guest.evaluate(boxes), before)
 
+    def test_09_stage_placeholder_covers_the_pane_while_its_code_is_held(self) -> None:
+        # While the stage's chunk downloads, its placeholder is the same surface as the stage: absolute over the
+        # pane (not a row in the flow that pushes the work), with its own way back.
+        host = self.start_host()
+        self.share_host_screen(host)
+        guest = self.guest_join("chromium", phone=True, block_workers=True)
+        held: list = []
+        guest.route(re.compile(r"/assets/LiveStage-[^/]+\.js(?:\?.*)?$"), lambda route: held.append(route))
+        self.addCleanup(lambda: [route.abort("aborted") for route in held])
+        bar = self.bar(guest)
+        before = bar.bounding_box()
+        bar.get_by_role("button", name="View").tap(timeout=5000)
+        placeholder = guest.locator(".deferred-surface--stage")
+        expect(placeholder).to_be_visible()
+        geometry = placeholder.evaluate("""(el) => {
+          const pane = document.getElementById('content').getBoundingClientRect();
+          const b = el.getBoundingClientRect();
+          return { position: getComputedStyle(el).position, box: [b.x, b.y, b.width, b.height].map(Math.round), pane: [pane.x, pane.y, pane.width, pane.height].map(Math.round) };
+        }""")
+        self.observed["phone-390-chromium-stage-placeholder"] = geometry
+        self.assertEqual(geometry["position"], "absolute", "the placeholder is over the pane, not in the flow")
+        self.assertEqual(geometry["box"], geometry["pane"], "the placeholder covers the pane box")
+        self.assertEqual(bar.bounding_box(), before, "the strip does not move while the stage code is held")
+        placeholder.get_by_role("button", name="Close live view").tap(timeout=5000)
+        expect(placeholder).to_have_count(0)
+
 
 if __name__ == "__main__":
     unittest.main()
