@@ -31,7 +31,9 @@ after(() => boss.stop());
 
 const sender = loadPushSenderConfig();
 const vapid = createVapidAuthorizer();
-const notify = createNotifier(db, boss);
+const notifier = createNotifier(db, boss);
+/** A person's notification unless a test says otherwise (F-029 `aiOrigin`). */
+const notify = (input: Omit<Parameters<typeof notifier>[0], 'aiOrigin'> & { aiOrigin?: boolean }) => notifier({ aiOrigin: false, ...input });
 
 async function subscriptionExists(id: string) {
   return (await pool.query('SELECT 1 FROM push_subscriptions WHERE id = $1', [id])).rowCount === 1;

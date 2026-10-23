@@ -52,7 +52,7 @@ export interface SummaryPorts {
   /** The person's newest unread inbox notifications, newest first. */
   unread(userId: string, limit: number): Promise<{ id: string; source: NotificationSourceRef }[]>;
   /** Stores the summary as a notification outside the inbox with its explicit kind and complete source list. */
-  insertSummary(row: { id: string; userId: string; source: NotificationSourceRef; sources: NotificationSourceRef[]; title: string; body: string; url: string }): Promise<void>;
+  insertSummary(row: { id: string; userId: string; source: NotificationSourceRef; sources: NotificationSourceRef[]; title: string; body: string; url: string; aiOrigin: boolean }): Promise<void>;
   deliverableSubscriptions(userId: string): Promise<string[]>;
   enqueuePush(job: { notificationId: string; subscriptionId: string; userId: string }): Promise<unknown>;
   /**
@@ -109,6 +109,8 @@ export async function deliverPlainSummary(ports: SummaryPorts, userId: string, l
   await ports.insertSummary({
     id, userId, source: readable[0]!, sources: readable, url: '/inbox',
     title: line ?? summaryTitle(Math.min(readable.length, MORNING_SUMMARY_LOOKBACK), more), body: 'Your morning summary from Flux',
+    // The assistant-written line is AI content (F-029); the plain count is not.
+    aiOrigin: line !== undefined,
   });
   for (const subscriptionId of await ports.deliverableSubscriptions(userId)) {
     await ports.enqueuePush({ notificationId: id, subscriptionId, userId });

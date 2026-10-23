@@ -146,6 +146,53 @@ export const AI_HTTP_ROUTES: Readonly<Record<string, AiRouteRule>> = {
 };
 
 /**
+ * Routes outside the AI modules that the contract's enforcement tables name (F-029). They are not wrapped by `aiRoutes`, so
+ * `tests/app/workspace-ai-queues.test.ts` scans their source files (`AI_NAMED_ROUTE_MODULES`) and fails on a route that is
+ * missing here or listed but gone. `use_case` routes check or filter in their use case; `exempt` ones are not AI work.
+ */
+export const AI_NAMED_ROUTE_MODULES = [
+  'apps/server/src/identity/oauth-context.ts', 'apps/server/src/identity/auth.ts', 'apps/server/src/access/agents.ts', 'apps/server/src/access/projects.ts',
+  'apps/server/src/needs-you/routes.ts', 'apps/server/src/notifications/routes.ts', 'apps/server/src/push/index.ts',
+] as const;
+
+const SETTINGS = 'Account or workspace settings; no AI read or action';
+const ROSTER = 'Human management of identities; the names are metadata for people, shown to members whatever the AI state';
+export const AI_ADJACENT_ROUTES: Readonly<Record<string, AiRouteRule>> = {
+  'GET /api/v1/agent-oauth/consent-context': useCase('Omits the connections and workspaces whose AI is off'),
+  'GET /api/v1/agent-oauth/held-connection': useCase('Answers 403 WORKSPACE_AI_BLOCKED for a held connection of a blocked workspace'),
+  'GET /api/v1/workspaces/:workspaceId/agents': exempt(ROSTER),
+  'POST /api/v1/workspaces/:workspaceId/agents': useCase('createAgent requires AI to be on in its transaction (403 WORKSPACE_AI_BLOCKED)'),
+  'DELETE /api/v1/agents/:agentId': exempt(REDUCES),
+  'GET /api/v1/workspaces/:workspaceId/projects': exempt(SETTINGS),
+  'POST /api/v1/workspaces/:workspaceId/projects': exempt(SETTINGS),
+  'POST /api/v1/projects/:projectId/views': exempt('Adding a view is project layout; the Agents view is hidden by the interface and its routes are gated'),
+  'GET /api/v1/projects/:projectId': exempt(SETTINGS),
+  'GET /api/v1/projects/:projectId/grants': exempt('Managers see and can remove the grants of agents'),
+  'GET /api/v1/projects/:projectId/people': useCase('Agents are omitted by the principal layer (each candidate is evaluated)'),
+  'POST /api/v1/projects/:projectId/grants': exempt('A standing grant for an agent is configuration; the agent is denied while AI is off and works again afterwards'),
+  'DELETE /api/v1/projects/:projectId/grants/:grantId': exempt(REDUCES),
+  'GET /api/v1/needs-you': useCase('Assistant changes and notes of a blocked workspace are left out, and so are AI-origin notifications'),
+  'POST /api/v1/needs-you/:key': useCase('An item of a blocked workspace is not in the queue, so resolving it answers 404'),
+  'DELETE /api/v1/needs-you/:key': exempt('Restores an item the person put aside; shows nothing the list does not'),
+  'GET /api/v1/notification-preferences': exempt(SETTINGS),
+  'PATCH /api/v1/notification-preferences': exempt(SETTINGS),
+  'PUT /api/v1/notification-preferences/mutes': exempt(SETTINGS),
+  'POST /api/v1/notification-address': exempt(SETTINGS),
+  'DELETE /api/v1/notification-address': exempt(SETTINGS),
+  'POST /api/v1/notification-address/resend': exempt(SETTINGS),
+  'POST /api/v1/notification-address/verify': exempt(SETTINGS),
+  'POST /api/v1/notifications/unsubscribe': exempt(SETTINGS),
+  'GET /api/v1/push/public-key': exempt(SETTINGS),
+  'GET /api/v1/push/subscriptions': exempt(SETTINGS),
+  'POST /api/v1/push/subscriptions': exempt(SETTINGS),
+  'DELETE /api/v1/push/subscriptions/:id': exempt(REDUCES),
+  'GET /api/v1/inbox': useCase('AI-origin notifications of a blocked workspace are left out of the list and the unread count (ai_origin)'),
+  'POST /api/v1/inbox/read-all': exempt('Marks the person\'s own notifications read'),
+  'GET /api/v1/inbox/:id': useCase('An AI-origin notification of a blocked workspace answers 404'),
+  'POST /api/v1/inbox/:id/read': useCase('An AI-origin notification of a blocked workspace answers 404'),
+};
+
+/**
  * Every queue, trigger and table of AI work (F-029), checked by `tests/app/workspace-ai-queues.test.ts` against the
  * worker's actual `boss.work`/`boss.schedule` registrations, `pg_trigger` and the schema: anything unlisted fails.
  * `ai` jobs re-check the workspace policy (and an item's epoch) at every step; `notAi` jobs touch no AI work, except that
@@ -154,7 +201,14 @@ export const AI_HTTP_ROUTES: Readonly<Record<string, AiRouteRule>> = {
 export const AI_WORK_QUEUES = {
   /** Identifiers of the job-name constants the worker registers. */
   ai: ['PERSONAL_RUN_JOB', 'ASSISTANT_TICK_JOB', 'MORNING_SUMMARY_JOB', 'COMPARISON_TICK_JOB', 'COMPARISON_RECOVERY_JOB', 'WORKSPACE_AI_SWEEP_JOB'],
-  notAi: ['DRAFT_SUMMARY_JOB', 'IDEMPOTENCY_CLEANUP_JOB', 'NOTIFICATION_EMAIL_JOB', 'PUSH_SEND_JOB', 'SAMPLE_JOB'],
+  /** Jobs that start no AI work, each with the reason (the test fails on a job that is in neither list). */
+  notAi: {
+    DRAFT_SUMMARY_JOB: 'draft.summarize.v1 is a deterministic word count with no model request; it rechecks its requester, and an agent requester is denied by the principal layer while AI is off',
+    IDEMPOTENCY_CLEANUP_JOB: 'idempotency.cleanup.v1 deletes expired idempotency keys; it reads no workspace content',
+    NOTIFICATION_EMAIL_JOB: 'notification.email.v1 sends a person\'s e-mail; it skips an AI-origin notification of a workspace whose AI is off (ai_origin)',
+    PUSH_SEND_JOB: 'push.send sends a person\'s push; it skips an AI-origin notification of a workspace whose AI is off (ai_origin)',
+    SAMPLE_JOB: 'sample.process is the platform example job: it processes a sample row and touches no workspace content',
+  } as Readonly<Record<string, string>>,
   /** Tables whose rows wait for AI work: each has `ai_epoch` (no default) and the `ai_work_admission` trigger. */
   tables: ['personal_runs', 'proactive_comparison_outbox', 'assistant_reaction_events', 'cowork_requests', 'cowork_units', 'agent_runtime_sessions'],
   /** Functions that insert AI work from inside a person's own write; each checks the policy first and never raises. */

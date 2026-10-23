@@ -133,8 +133,8 @@ describe('workspace AI lock: HTTP routes', () => {
     const eventId = randomUUID(); const aiNote = randomUUID(); const humanNote = randomUUID();
     await pool.query(`INSERT INTO events (id, workspace_id, kind, object_id, actor_id, data) VALUES ($1, $2, 'project.agent_question_asked.v1', $3, $4, '{}')`,
       [eventId, ws.id, place.id, `agent:${agentId}`]);
-    await pool.query(`INSERT INTO notifications (id, user_id, workspace_id, source_type, source_id, title, reason, event_id) VALUES
-      ($1, $2, $3, 'project', $4, 'Your agent asks', 'question', $5), ($6, $2, $3, 'project', $4, 'Jonas asks', 'question', NULL)`,
+    await pool.query(`INSERT INTO notifications (id, user_id, workspace_id, source_type, source_id, title, reason, event_id, ai_origin) VALUES
+      ($1, $2, $3, 'project', $4, 'Your agent asks', 'question', $5, true), ($6, $2, $3, 'project', $4, 'Jonas asks', 'question', NULL, false)`,
     [aiNote, owner.id, ws.id, place.id, eventId, humanNote]);
     const inbox = async () => expectStatus(await owner.browser.request('GET', INBOX_PATH), 200) as InboxResponse;
     const needsYou = async () => (expectStatus(await owner.browser.request('GET', NEEDS_YOU_PATH), 200) as { items: { key: string }[] }).items.map((item) => item.key);

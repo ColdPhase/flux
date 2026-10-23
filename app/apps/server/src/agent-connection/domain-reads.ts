@@ -134,9 +134,11 @@ export function registerAgentDomainReads(server: AgentToolRegistrar, db: Databas
     description: 'Up to 50 messages; resume with afterSequence.',
     inputSchema: z.strictObject({ taskId: z.uuid(), beforeSequence: z.int().min(1).optional(), afterSequence: z.int().min(0).optional() }), annotations },
   async ({ taskId, beforeSequence, afterSequence }) => {
-    const [task] = await db.select({ projectId: schema.projectWorkItems.projectId }).from(schema.projectWorkItems).where(eq(schema.projectWorkItems.id, taskId));
-    if (!task) return result(null, () => { throw new NotFoundError('Project', 'PROJECT_NOT_FOUND'); });
-    return result(task.projectId, async ({ tx, principal }) => {
+    // The lookup runs inside the checked transaction (F-029): a blocked workspace answers WORKSPACE_AI_BLOCKED whether or not the task exists.
+    return result(null, async ({ tx, principal, requireProject }) => {
+      const [task] = await tx.select({ projectId: schema.projectWorkItems.projectId }).from(schema.projectWorkItems).where(eq(schema.projectWorkItems.id, taskId));
+      if (!task) throw new NotFoundError('Project', 'PROJECT_NOT_FOUND');
+      await requireProject(task.projectId);
       const store = conversationStore(tx);
       const limit = pageLimit(50);
       const first = await store.getAgentThread(principal, taskId, { limit, beforeSequence: beforeSequence ?? null } as never);

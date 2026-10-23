@@ -2,7 +2,7 @@ import { messagePreview } from '@flux/contracts';
 import { and, asc, eq, gt, gte, inArray, isNotNull, isNull, ne, sql } from 'drizzle-orm';
 import * as schema from '../schema.js';
 import { assignmentNotificationActive } from './notification-lifecycle.js';
-import { notificationHiddenWhileAiOff } from './workspace-ai.js';
+import { hiddenWhileAiOff, notificationHiddenWhileAiOff } from './workspace-ai.js';
 import type { DbExecutor } from './push.js';
 
 /**
@@ -66,11 +66,11 @@ export function notificationGeneratorRows(db: DbExecutor) {
     },
     async insertNotification(row: {
       id: string; userId: string; source: { workspaceId: string; type: SourceType; id: string }; reason: Reason; eventId: string;
-      title: string; body: string; url: string; inInbox: boolean;
+      title: string; body: string; url: string; inInbox: boolean; aiOrigin: boolean;
     }) {
       const inserted = await db.insert(n).values({
         id: row.id, userId: row.userId, workspaceId: row.source.workspaceId, sourceType: row.source.type, sourceId: row.source.id,
-        reason: row.reason, eventId: row.eventId, title: row.title, body: row.body, url: row.url, inInbox: row.inInbox,
+        reason: row.reason, eventId: row.eventId, title: row.title, body: row.body, url: row.url, inInbox: row.inInbox, aiOrigin: row.aiOrigin,
       }).onConflictDoNothing({ target: [n.userId, n.eventId], where: sql`${n.eventId} IS NOT NULL` }).returning({ id: n.id });
       return inserted.length > 0;
     },
@@ -440,13 +440,13 @@ export function morningSummaryRows(db: DbExecutor) {
     },
     async unread(userId: string, limit: number) {
       const rows = await db.select({ id: n.id, workspaceId: n.workspaceId, type: n.sourceType, sourceId: n.sourceId }).from(n)
-        .where(and(eq(n.userId, userId), eq(n.inInbox, true), isNull(n.readAt))).orderBy(sql`${n.createdAt} DESC`).limit(limit);
+        .where(and(eq(n.userId, userId), eq(n.inInbox, true), isNull(n.readAt), sql`NOT ${hiddenWhileAiOff(n)}`)).orderBy(sql`${n.createdAt} DESC`).limit(limit);
       return rows.map((row) => ({ id: row.id, source: { workspaceId: row.workspaceId, type: row.type, id: row.sourceId } }));
     },
-    async insertSummary(row: { id: string; userId: string; source: { workspaceId: string; type: SourceType; id: string }; sources: { workspaceId: string; type: SourceType; id: string }[]; title: string; body: string; url: string }) {
+    async insertSummary(row: { id: string; userId: string; source: { workspaceId: string; type: SourceType; id: string }; sources: { workspaceId: string; type: SourceType; id: string }[]; title: string; body: string; url: string; aiOrigin: boolean }) {
       await db.insert(n).values({
         id: row.id, userId: row.userId, workspaceId: row.source.workspaceId, sourceType: row.source.type, sourceId: row.source.id,
-        title: row.title, body: row.body, url: row.url, inInbox: false, deliveryKind: 'morning_summary', summarySources: row.sources,
+        title: row.title, body: row.body, url: row.url, inInbox: false, deliveryKind: 'morning_summary', summarySources: row.sources, aiOrigin: row.aiOrigin,
       });
     },
   };

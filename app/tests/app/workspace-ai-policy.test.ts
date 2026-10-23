@@ -85,6 +85,11 @@ describe('workspace AI policy', () => {
     assert.equal((await loadActor({ kind: 'agent', id: agentId }, ws.id, db)).active, true);
     assert.ok((await audience()).includes(agentId), 'control: the agent is in the project audience');
     assert.equal(await agentReads(), true);
+    // The change of the policy is for people only: an agent in an allowed workspace, who may read the workspace, still never receives it.
+    const policyChanged = { kind: 'workspace.ai_policy_changed.v1', workspaceId: ws.id, objectId: ws.id };
+    assert.equal(await authorizeEvent({ kind: 'agent', id: agentId }, policyChanged, db), false, 'no agent receives workspace.ai_policy_changed.v1');
+    assert.equal(await authorizeEvent({ kind: 'human', id: member.id }, policyChanged, db), true, 'control: a member does');
+    assert.equal(await authorizeEvent({ kind: 'agent', id: agentId }, { ...policyChanged, kind: 'workspace.member_added.v1' }, db), true, 'control: other workspace events still reach the agent');
     const allowedRecipients = await recipientsOfNewEvent();
     assert.ok(allowedRecipients.includes(`agent:${agentId}`), `control: an agent audience row is written (${allowedRecipients.join(', ')})`);
     await setWorkspaceAi(ws.id, 'blocked');

@@ -46,7 +46,8 @@ export interface NotificationRecord {
   assistantRequestIdentity?: AssistantRequestIdentity | null;
 }
 
-export type NewNotification = Omit<NotificationRecord, 'createdAt' | 'readAt' | 'reason' | 'deliveryKind' | 'summarySources'>;
+/** `aiOrigin` (F-029) is required of every writer: whether the notification came from AI work, by its actor or source. */
+export type NewNotification = Omit<NotificationRecord, 'createdAt' | 'readAt' | 'reason' | 'deliveryKind' | 'summarySources'> & { aiOrigin: boolean };
 
 export interface NotificationRepository {
   insert(notification: NewNotification): Promise<void>;

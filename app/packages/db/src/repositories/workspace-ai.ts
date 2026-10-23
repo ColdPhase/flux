@@ -54,20 +54,19 @@ export async function workspaceIdOfAiScope(db: DbExecutor, kind: AiScopeKind, id
 }
 
 /**
- * F-029 "AI origin" (`isAiOrigin` of the contract): an Inbox row that came from AI work, that is, from an event an agent
- * recorded (agent questions, assistant answers, proposals and changes, co-work requests and reviews from agents) or an
- * assistant join request. True while such a row's workspace has AI off: it is then left out of lists and counts, and
- * neither pushed nor e-mailed, including rows created before AI was turned off.
+ * F-029 "AI origin" (`isAiOrigin` of the contract): the row's own `ai_origin` flag, which its writer set from the actor or
+ * the source (an agent's message, decision or result, an assistant's suggestion, note, join request or assistant-written
+ * summary). True while the row's workspace has AI off: it is then left out of lists, counts, Needs you and the plain
+ * morning summary, and neither pushed nor e-mailed, including rows created before AI was turned off.
  */
-export function hiddenWhileAiOff(n: { workspaceId: SQLWrapper; eventId: SQLWrapper; assistantJoinRequestId: SQLWrapper }): SQL<boolean> {
-  return sql<boolean>`((${n.assistantJoinRequestId} IS NOT NULL OR EXISTS (SELECT 1 FROM events ai_event WHERE ai_event.id = ${n.eventId}
-    AND ai_event.actor_id LIKE 'agent:%')) AND ${currentAiEpoch(n.workspaceId)} IS NULL)`;
+export function hiddenWhileAiOff(n: { workspaceId: SQLWrapper; aiOrigin: SQLWrapper }): SQL<boolean> {
+  return sql<boolean>`(${n.aiOrigin} AND ${currentAiEpoch(n.workspaceId)} IS NULL)`;
 }
 
 /** The same decision for one notification row. */
 export async function notificationHiddenWhileAiOff(db: DbExecutor, notificationId: string): Promise<boolean> {
-  const result = await db.execute<{ hidden: boolean }>(sql`SELECT ${hiddenWhileAiOff({ workspaceId: sql`n.workspace_id`, eventId: sql`n.event_id`,
-    assistantJoinRequestId: sql`n.assistant_join_request_id` })} AS hidden FROM notifications n WHERE n.id = ${notificationId}`);
+  const result = await db.execute<{ hidden: boolean }>(sql`SELECT ${hiddenWhileAiOff({ workspaceId: sql`n.workspace_id`, aiOrigin: sql`n.ai_origin` })} AS hidden
+    FROM notifications n WHERE n.id = ${notificationId}`);
   return result.rows[0]?.hidden === true;
 }
 
