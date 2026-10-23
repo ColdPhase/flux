@@ -102,10 +102,10 @@ export function notificationRows(db: DbExecutor) {
     };
   };
   return {
-    async insert(record: { id: string; userId: string; source: { workspaceId: string; type: NotificationRow['sourceType']; id: string }; title: string; body: string; url: string | null; aiOrigin?: boolean }) {
+    async insert(record: { id: string; userId: string; source: { workspaceId: string; type: NotificationRow['sourceType']; id: string }; title: string; body: string; url: string | null; aiOrigin: boolean }) {
       await db.insert(n).values({
         id: record.id, userId: record.userId, workspaceId: record.source.workspaceId, sourceType: record.source.type,
-        sourceId: record.source.id, title: record.title, body: record.body, url: record.url, aiOrigin: record.aiOrigin ?? false,
+        sourceId: record.source.id, title: record.title, body: record.body, url: record.url, aiOrigin: record.aiOrigin,
       });
     },
     async findForRecipient(userId: string, id: string) {

@@ -38,7 +38,7 @@ test('the real migrator fills 0068 after retained 0072 without changing GitHub o
     await fixture.query("INSERT INTO github_task_rules(task_id,workspace_id,project_id,mode,state,suspended_reason,author_user_id,author_github_user_id,author_generation,app_id,expected_version,expected_status) VALUES($1,$2,$3,'ready','suspended','repository_unavailable',$4,'456',$5,'123',1,'open')", [task, workspace, project, owner, generation]);
     await fixture.query("INSERT INTO github_task_rule_changes(id,workspace_id,project_id,task_id,code,from_status,to_status,ready_to_close,author_user_id,binding_id,origin,task_version) VALUES($1,$2,$3,$4,'suspended_repository','open','open',false,$5,$6,'binding',1)", [history, workspace, project, task, owner, binding]);
     await fixture.query('INSERT INTO notification_preferences(user_id,summary_enabled,summary_at) VALUES($1,true,615)', [owner]);
-    await fixture.query("INSERT INTO notifications(id,user_id,workspace_id,source_type,source_id,title,in_inbox,delivery_kind,summary_sources) VALUES($1,$2,$3,'workspace',$3,'Retained summary',false,'morning_summary',$4)",
+    await fixture.query("INSERT INTO notifications(id,user_id,workspace_id,source_type,source_id,title,in_inbox,delivery_kind,summary_sources,ai_origin) VALUES($1,$2,$3,'workspace',$3,'Retained summary',false,'morning_summary',$4,false)",
       [notification, owner, workspace, JSON.stringify([{ type: 'workspace', id: workspace, workspaceId: workspace }])]);
     const snapshot = async () => ({
       task: (await fixture.query('SELECT * FROM project_work_items WHERE id=$1', [task])).rows,

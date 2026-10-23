@@ -159,6 +159,11 @@ test('0117 up: ai_origin backfill by actor and source, the policy row of a misse
     for (const [name, { id, expected }] of Object.entries(rows)) assert.equal(stored.get(id), expected, `${name}: ai_origin`);
     assert.equal((await client.query('SELECT state FROM workspace_ai_policies WHERE workspace_id = $1', [missed])).rows[0]?.state, 'allowed', 'the missed workspace gets its allowed row');
     assert.equal((await client.query('SELECT count(*)::int AS n FROM workspace_ai_policies')).rows[0].n, 2);
+    // Fail closed for future writers: the default existed only for the backfill, so an insert that forgets the column is refused.
+    assert.equal((await client.query(`SELECT column_default FROM information_schema.columns WHERE table_schema=$1 AND table_name='notifications' AND column_name='ai_origin'`, [namespace])).rows[0].column_default, null, 'ai_origin has no default');
+    await client.query('SAVEPOINT forgot_ai_origin');
+    await assert.rejects(client.query(`INSERT INTO notifications(id,user_id,workspace_id,source_type,source_id,title) VALUES($1,$2,$3,'project',$4,'Forgot')`, [randomUUID(), owner, ws, project]), /ai_origin/);
+    await client.query('ROLLBACK TO SAVEPOINT forgot_ai_origin');
     await client.query(await readFile(join(directory, 'reverse/0117_notification_ai_origin.down.sql'), 'utf8'));
     assert.equal((await client.query(`SELECT count(*)::int AS n FROM information_schema.columns WHERE table_schema=$1 AND table_name='notifications' AND column_name='ai_origin'`, [namespace])).rows[0].n, 0);
     await client.query(await sql(117));

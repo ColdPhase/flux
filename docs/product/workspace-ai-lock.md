@@ -302,6 +302,12 @@ named transaction, plus epoch comparison where an item has `ai_epoch`.
   rechecked as its requester), `idempotency.cleanup.v1` (deletes keys), `notification.email.v1` and
   `push.send` (skip `ai_origin` notifications of a blocked workspace) and `sample.process` (the
   platform example); a job in neither list fails the test.
+- **Notification writers fail closed.** `notifications.ai_origin` has no default (migration 0117 drops it after
+  the backfill) and `aiOrigin` is a required field of the repository port, so a writer that omits it fails to
+  compile and fails at the database. `workspace-ai-queues.test.ts` also scans the production source of every
+  app and package for each insert into `notifications` (Drizzle `.insert(...).values({...})`, the port's
+  `insert({...})`, raw `INSERT INTO notifications`) and every database function that does, and fails unless
+  it sets `ai_origin`/`aiOrigin` explicitly.
 
 ## Cutover (AC-3)
 

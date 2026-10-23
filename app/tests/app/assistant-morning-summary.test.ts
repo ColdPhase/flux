@@ -68,9 +68,9 @@ describe('the morning summary written by the assistant (F-027 A8, #408, AST-7.6)
     await subscribe(me.browser);
     // What waits in the inbox: two things Ada can read, and one about a project she cannot.
     const source = { workspaceId: ws.id, type: 'project' as const, id: place.id };
-    await notificationRows(db).insert({ id: randomUUID(), userId: me.id, source, title: 'Jonas asked you to review #8', body: '', url: null });
-    await notificationRows(db).insert({ id: randomUUID(), userId: me.id, source, title: 'Probe drawing arrived', body: '', url: null });
-    await notificationRows(db).insert({ id: randomUUID(), userId: me.id, source: { workspaceId: hidden.workspaceId, type: 'project', id: hidden.id }, title: 'SECRET-TITLE', body: '', url: null });
+    await notificationRows(db).insert({ id: randomUUID(), userId: me.id, source, title: 'Jonas asked you to review #8', body: '', url: null, aiOrigin: false });
+    await notificationRows(db).insert({ id: randomUUID(), userId: me.id, source, title: 'Probe drawing arrived', body: '', url: null, aiOrigin: false });
+    await notificationRows(db).insert({ id: randomUUID(), userId: me.id, source: { workspaceId: hidden.workspaceId, type: 'project', id: hidden.id }, title: 'SECRET-TITLE', body: '', url: null, aiOrigin: false });
   });
   beforeEach(async () => {
     compute.dispatched = []; compute.respond = answer('Good morning, Ada. Jonas is waiting on you for #8.');

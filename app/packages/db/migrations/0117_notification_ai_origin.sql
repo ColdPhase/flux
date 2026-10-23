@@ -1,8 +1,9 @@
 -- F-029 follow-up (#642). docs/product/workspace-ai-lock.md, "AI origin".
 --  * `notifications.ai_origin`: whether the notification came from AI work, written by whoever creates the row
 --    (the event's actor or the item's author for generated ones; the assistant for its own). The lock reads this
---    column instead of guessing from labels. The default only keeps old raw inserts valid; every writer in the
---    application sets it explicitly.
+--    column instead of guessing from labels. The default exists only to add the NOT NULL column to existing rows;
+--    it is dropped after the backfill, so a writer that does not set the column fails loudly (a NOT NULL violation)
+--    instead of being treated as a person's notification.
 --  * Backfill is conservative: anything that is plausibly AI-made is marked, so a pre-existing row can only be hidden
 --    too often while AI is off, never delivered. Human rows stay false.
 --  * Re-inserts the `allowed` row of any workspace 0115 missed (a workspace committed between its INSERT and the
@@ -25,5 +26,7 @@ WHERE n.assistant_join_request_id IS NOT NULL
   OR n.title LIKE '%''s assistant asks to join'
   OR n.title LIKE '% would like to use their % plan here'
   OR n.title LIKE 'Paused %' AND n.body = 'Your assistant paused this schedule. Turn it on again when it is fixed.';
+
+ALTER TABLE notifications ALTER COLUMN ai_origin DROP DEFAULT;
 
 INSERT INTO workspace_ai_policies (workspace_id, state) SELECT id, 'allowed' FROM workspaces ON CONFLICT (workspace_id) DO NOTHING;

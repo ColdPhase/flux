@@ -165,9 +165,11 @@ describe('workspace AI lock: sweep, lock order and remaining AC-3 rows', () => {
         throw new Error(`${(error as Error).message}; waiting now: ${JSON.stringify(waiting)}`);
       }
     };
-    // 1. The real role-change route takes the workspace row first (the media fence, then lockWorkspace) and the policy share after it. The flip
-    //    does not take the workspace row, so it is not delayed by whoever holds it; the demotion that waits there commits afterwards. (The
-    //    other order, the flip holding the policy row while a demotion holds the workspace row and waits for it, is the test above.)
+    // 1. `changeRole` and `removeMember` take the AI policy share first and the workspace row (`lockWorkspace`) second, then the membership
+    //    rows (F-029 lock order: policy row, workspace row, memberships). The flip takes the policy row but not the workspace row, so a holder
+    //    of the workspace row does not delay it; the demotion started after it takes its policy share, waits at the workspace row and commits
+    //    once that is released. (The demotion arriving while the flip holds the policy row waits at the policy share, before it reaches the
+    //    workspace row; that order is the test above.) `addMember` is the exception: workspace row first, policy share last (case 2).
     let late!: Promise<{ status: number; text: string }>;
     const client = await pool.connect();
     let flipped: { status: number; text: string };
