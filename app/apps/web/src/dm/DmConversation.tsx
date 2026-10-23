@@ -1,5 +1,6 @@
 import { useTyping } from '../typing/useTyping';
 import { TypingNotice } from '../typing/TypingNotice';
+import { useSpareHeight } from '../ui/spareHeight';
 import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import { createPortal } from 'react-dom';
 import { Link, Navigate, useLoaderData, useLocation, useNavigate, useRevalidator, useSearchParams, type LoaderFunctionArgs } from 'react-router';
@@ -330,6 +331,10 @@ function DmContent({ initial }: { initial: Dm }) {
   const lines = [...shown.map((message) => ({ message, item: null, authorId: message.authorId, at: message.createdAt })),
     ...outbox.pending.map((item) => ({ message: null, item, authorId: me.user.id, at: item.at }))];
   const rows = groupRows(lines);
+  // A short conversation sits against its composer instead of at the top of a tall screen (ui/spareHeight.ts).
+  const columnRef = useRef<HTMLDivElement>(null);
+  const liftRef = useRef<HTMLDivElement>(null);
+  useSpareHeight(feedRef, columnRef, liftRef, rows.length, feedNode);
   // #534: what this person observed, and who observed every message of their own whole runs.
   const feedBox = feedRef;
   useObservation({ scope: dm.id, observe: (ids) => observeDmMessages(dm.id, ids), enabled: !gone && !selecting && !returned.pending, feed: feedBox,
@@ -402,7 +407,8 @@ function DmContent({ initial }: { initial: Dm }) {
       onKeyDown={(event) => { if (selecting && event.key === 'Escape') { event.preventDefault(); toggleSelecting(false); } }}>
       {selectButton}
       <div className={`dm__feed${returned.pending ? ' is-returning' : ''}`} ref={attachFeed}>
-        <div className="dm__in">
+        <div className="dm__lift" aria-hidden="true" ref={liftRef} />
+        <div className="dm__in" ref={columnRef}>
           {olderCursor ? null : (
             // The start of the conversation: who is in it. The top bar keeps the name and audience in view.
             <header className="dm__head">

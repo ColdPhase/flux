@@ -216,14 +216,15 @@ HORIZONTAL = r"""(el) => {
 
 # Every field row of the task in Details (Status, Owner, Came from, Due, ...), brought into view in the panel's own
 # scroller: whether it lies fully above the composer, and is the element hit at its centre (nothing covers it).
-# With scroll=false nothing is scrolled: it is where the rows are when the panel opens.
+# With scroll=false nothing is scrolled: it is where the rows are when the panel opens, and "opens" says the row's own line
+# (its first 24 px) is above the composer.
 TASK_FIELDS = r"""(root, scroll) => {
   const foot = root.querySelector('.wd__foot').getBoundingClientRect().top;
   return [...root.querySelectorAll('.wd-row')].map((row) => {
     if (scroll) row.scrollIntoView({block: 'nearest'});
     const b = row.getBoundingClientRect();
     const hit = document.elementFromPoint(b.left + b.width / 2, b.top + Math.min(b.height / 2, 12));
-    return {label: (row.querySelector('dt')?.textContent || '').trim(), above: b.height > 0 && b.bottom <= foot + 0.5, hit: !!hit && row.contains(hit),
+    return {label: (row.querySelector('dt')?.textContent || '').trim(), above: b.height > 0 && b.bottom <= foot + 0.5, opens: b.height > 0 && b.top + 24 <= foot, hit: !!hit && row.contains(hit),
             box: [Math.round(b.top), Math.round(b.bottom)], composer: Math.round(foot)};
   });
 }"""
@@ -400,7 +401,8 @@ class AdaptiveBase(unittest.TestCase):
             rows = details.evaluate(TASK_FIELDS, scroll)
             self.assertGreaterEqual(len(rows), 4, f"the task's field rows are found at {size}: {rows}")
             for row in rows:
-                self.check(row["above"] and row["hit"], f"the task field “{row['label']}” at {size}{'' if scroll else ' (before scrolling)'} lies above the composer and is not covered: {row}")
+                # On opening a row must at least show its own line above the composer; scrolled into view it lies wholly above it.
+                self.check((row["above"] if scroll else row["opens"]) and row["hit"], f"the task field “{row['label']}” at {size}{'' if scroll else ' (before scrolling)'} lies above the composer and is not covered: {row}")
 
     def shot(self, page: Page, name: str) -> None:
         if page.viewport_size["width"] in SHOTS_AT:
@@ -757,24 +759,44 @@ class AdaptiveMatrix(AdaptiveBase):
             capped = measured[3840][name] - measured[1920][name] <= 1
             self.assertTrue(capped, f"{name} now grows with the screen; remove it from WIDE_CAPS: {measured}")
 
+    def short_world(self) -> dict:
+        """Its own person, workspace, project and colleague: the shared fixture's sidebar and project list stay as the other
+        tests found them. The project holds two short roots, the first with one reply; a direct message holds two."""
+        if getattr(AdaptiveMatrix, "_short", None):
+            return AdaptiveMatrix._short
+        def sign_up(name: str, email: str):
+            context = BROWSER.new_context(base_url=ORIGIN)
+            signed_up = context.request.post("/api/auth/sign-up/email", data={"name": name, "email": email, "password": fx.PASSWORD}, headers={"origin": ORIGIN})
+            assert signed_up.status == 200, signed_up.text()
+            return context
+        email = f"ines.short+{fx.STAMP}@example.test"
+        other = f"jonas.short+{fx.STAMP}@example.test"
+        person, colleague = sign_up("Ines Short", email), sign_up("Jonas Short", other)
+        colleague_id = fx.api(colleague, "GET", "/api/v1/me")["user"]["id"]
+        workspace = fx.api(person, "POST", "/api/v1/workspaces", {"name": "Short streams"})["id"]
+        fx.api(person, "POST", f"/api/v1/workspaces/{workspace}/members", {"email": other, "role": "member"})
+        project = fx.api(person, "POST", f"/api/v1/workspaces/{workspace}/projects", {"name": "Short stream, tall screen", "visibility": "restricted"})["id"]
+        roots = [fx.api(person, "POST", f"/api/v1/projects/{project}/conversations", {"body": body, "clientMessageId": str(uuid.uuid4())})["id"]
+                 for body in ("Two sensors on the first board, please.", "Agreed. I will route the second I2C bus.")]
+        fx.api(person, "POST", f"/api/v1/conversations/{roots[0]}/messages", {"body": "Both on the first board, then.", "clientMessageId": str(uuid.uuid4())})
+        dm = fx.api(person, "POST", f"/api/v1/workspaces/{workspace}/dms", {"participantIds": [colleague_id]})["id"]
+        for body in ("Can we test the lamp tonight?", "Yes, after seven."):
+            fx.api(person, "POST", f"/api/v1/dms/{dm}/messages", {"body": body, "clientMessageId": str(uuid.uuid4())})
+        state = person.storage_state()
+        person.close()
+        colleague.close()
+        AdaptiveMatrix._short = {"state": state, "project": project, "roots": roots, "dm": dm}
+        return AdaptiveMatrix._short
+
     def test_08_a_short_stream_stays_connected_to_its_composer_on_tall_screens(self) -> None:
         """ADAPT-2: on a tall screen a short work stream and its composer stay visually connected; the extra height
         must not open a giant empty separation between the newest message and the field."""
-        # Its own person, workspace and project: the shared fixture's sidebar and project list stay as the other tests found them.
-        person = BROWSER.new_context(base_url=ORIGIN)
-        self.addCleanup(person.close)
-        signed_up = person.request.post("/api/auth/sign-up/email", data={"name": "Ines Short", "email": f"ines.short+{fx.STAMP}@example.test", "password": fx.PASSWORD}, headers={"origin": ORIGIN})
-        self.assertEqual(signed_up.status, 200, signed_up.text())
-        workspace = fx.api(person, "POST", "/api/v1/workspaces", {"name": "Short streams"})["id"]
-        project = fx.api(person, "POST", f"/api/v1/workspaces/{workspace}/projects", {"name": "Short stream, tall screen", "visibility": "restricted"})["id"]
-        for body in ("Two sensors on the first board, please.", "Agreed. I will route the second I2C bus."):
-            fx.api(person, "POST", f"/api/v1/projects/{project}/conversations", {"body": body, "clientMessageId": str(uuid.uuid4())})
-        state = person.storage_state()
+        world = self.short_world()
         gaps = {}
         for width, height in [(390, 844), (820, 1180), (900, 1600), (1440, 900), (2560, 1440), (3840, 2160)]:
             with self.subTest(width=width, height=height):
-                page = self.page(width, height, state=state)
-                page.goto(f"/projects/{project}")
+                page = self.page(width, height, state=world["state"])
+                page.goto(f"/projects/{world['project']}")
                 expect(page.locator(".project-convo__message")).to_have_count(2)
                 self.at_rest(page)
                 last = page.locator(".project-convo__message").last.bounding_box()
@@ -782,6 +804,35 @@ class AdaptiveMatrix(AdaptiveBase):
                 gaps[f"{width}×{height}"] = round(field["y"] - (last["y"] + last["height"]))
                 self.assertLessEqual(gaps[f"{width}×{height}"], MAX_STREAM_GAP, f"the newest message and the field stay together at {width}×{height}: {gaps}")
         print("\n  space between the newest message and the message field (CSS px): " + ", ".join(f"{size} {gap}" for size, gap in gaps.items()), end="")
+
+    def test_09_a_short_thread_and_a_short_direct_message_stay_connected_to_their_fields(self) -> None:
+        """ADAPT-2: the same holds for a thread (its root and one reply) and a direct message (two messages): the newest
+        message sits against the reply field or the message field. Agents' task thread is a page scroll with its own
+        sticky composer and is not covered here."""
+        world = self.short_world()
+        gaps = {"thread": {}, "direct message": {}}
+        for width, height in [(390, 844), (820, 1180), (1440, 900), (2560, 1440)]:
+            with self.subTest(width=width, height=height):
+                size = f"{width}×{height}"
+                page = self.page(width, height, state=world["state"])
+                page.goto(f"/projects/{world['project']}/conversations/{world['roots'][0]}")
+                thread = page.locator("#thread")
+                expect(thread.locator(".project-convo__message")).to_have_count(2)
+                self.at_rest(page)
+                last = thread.locator(".project-convo__message").last.bounding_box()
+                field = thread.get_by_label("Reply", exact=True).bounding_box()
+                gaps["thread"][size] = round(field["y"] - (last["y"] + last["height"]))
+                self.assertLessEqual(gaps["thread"][size], MAX_STREAM_GAP, f"the newest reply and the reply field stay together at {size}: {gaps}")
+                dm = self.page(width, height, state=world["state"])
+                dm.goto(f"/dm/{world['dm']}")
+                expect(dm.locator(".dm__list > li")).to_have_count(2)
+                self.at_rest(dm)
+                last = dm.locator(".dm__list > li").last.bounding_box()
+                field = dm.locator("#dm-composer").bounding_box()
+                gaps["direct message"][size] = round(field["y"] - (last["y"] + last["height"]))
+                self.assertLessEqual(gaps["direct message"][size], MAX_STREAM_GAP, f"the newest message and the message field stay together at {size}: {gaps}")
+        for what, values in gaps.items():
+            print(f"\n  space between the newest message and the field, {what} (CSS px): " + ", ".join(f"{size} {gap}" for size, gap in values.items()), end="")
 
 
 class AdaptiveTransitions(AdaptiveBase):
@@ -1049,6 +1100,46 @@ class AdaptiveTransitions(AdaptiveBase):
         self.assertEqual(after, stored, "nothing was moved on the shared map")
         self.no_problems()
 
+    def test_17_a_saved_task_opens_on_another_device_but_an_unsent_draft_stays_on_its_own(self) -> None:
+        """AC-3 (ADAPT-4): the saved object is the cross-device anchor. The same account on a phone, a colleague on a tablet
+        and nobody else: an unsent draft belongs to the device it was written on, and nothing is saved or sent meanwhile.
+        The object is opened by the link the app itself hands out (Home, Agents), which the app consumes when it opens."""
+        pid, task = self.ids["project"], self.ids["tasks"][fx.OPEN_TASK]
+        url = f"/projects/{pid}/tasks?open=work:{task}"
+        composer = re.compile("^(Write to this task|First message about this task)$")
+        draft = "PRIVATE-DRAFT only on the laptop"
+        laptop = self.page(1440, 900, coarse=False)
+        before = self.api(laptop, "GET", f"/api/v1/work/{task}/discussion")["messages"]
+        laptop.goto(url)
+        expect(laptop.locator("#details").get_by_role("heading", name=fx.OPEN_TASK)).to_be_visible()
+        laptop.locator("#details").get_by_label(composer).fill(draft)
+        laptop.wait_for_timeout(600)
+        # Leaving and opening the task again on this device (its link opens it once and is then consumed) finds the draft.
+        laptop.goto(f"/projects/{pid}/tasks")
+        expect(laptop.locator(".tb-board")).to_be_visible()
+        laptop.goto(url)
+        expect(laptop.locator("#details").get_by_role("heading", name=fx.OPEN_TASK)).to_be_visible()
+        expect(laptop.locator("#details").get_by_label(composer), "the draft is kept on the device it was written on").to_have_value(draft)
+        # The same account on another device: a fresh browser context has its own storage.
+        phone = self.page(390, 844)
+        phone.goto(url)
+        expect(phone.locator("#details").get_by_role("heading", name=fx.OPEN_TASK)).to_be_visible()
+        expect(phone.locator("#details").get_by_label(composer), "the draft is not synchronised").to_have_value("")
+        # A colleague with access opens the same object; a signed-in person without access is told it is not available.
+        tablet = self.page(820, 1180, who="marek")
+        tablet.goto(url)
+        expect(tablet.locator("#details").get_by_role("heading", name=fx.OPEN_TASK)).to_be_visible()
+        outsider = BROWSER.new_context(base_url=ORIGIN, viewport={"width": 1440, "height": 900}, locale="en-GB", timezone_id="Europe/Warsaw")
+        self.addCleanup(outsider.close)
+        signed_up = outsider.request.post("/api/auth/sign-up/email", data={"name": "Lee Park", "email": f"lee.adapt+{fx.STAMP}@example.test", "password": fx.PASSWORD}, headers={"origin": ORIGIN})
+        self.assertEqual(signed_up.status, 200, signed_up.text())
+        stranger = outsider.new_page()
+        stranger.goto(url)
+        expect(stranger.get_by_text("This place isn’t available")).to_be_visible()
+        expect(stranger.get_by_text(fx.OPEN_TASK), "no access shows nothing of the task").to_have_count(0)
+        self.assertEqual(self.api(laptop, "GET", f"/api/v1/work/{task}/discussion")["messages"], before, "nothing was saved or sent")
+
+
 
 def reach_result(covered: dict[str, str | None], inside: bool = True) -> dict:
     """REACH's result shape: covered maps each point the control fails on to the overlay covering it, or None."""
@@ -1060,43 +1151,6 @@ def target_result(size: tuple[int, int], across: float, down: float, stops: dict
     """TARGET_JS's result shape: stops maps each side to the overlay that stops the hit area there, or None."""
     return {"size": list(size), "across": across, "down": down, "stops": {side: "div.synthetic" for side in stops},
             "overlay": dict(stops)}
-
-    def test_17_a_saved_task_opens_on_another_device_but_an_unsent_draft_stays_on_its_own(self) -> None:
-        """AC-3 (ADAPT-4): the saved object is the cross-device anchor. The same account on a phone, a colleague on a tablet
-        and nobody else: an unsent draft belongs to the device it was written on, and nothing is saved or sent meanwhile."""
-        pid, task = self.ids["project"], self.ids["tasks"][fx.OPEN_TASK]
-        url = f"/projects/{pid}/tasks?open=work:{task}"
-        draft = "PRIVATE-DRAFT only on the laptop"
-        laptop = self.page(1440, 900, coarse=False)
-        before = self.api(laptop, "GET", f"/api/v1/work/{task}/discussion")["messages"]
-        laptop.goto(url)
-        details = laptop.locator("#details")
-        expect(details.get_by_role("heading", name=fx.OPEN_TASK)).to_be_visible()
-        field = details.get_by_label(re.compile("^(Write to this task|First message about this task)$"))
-        field.fill(draft)
-        laptop.wait_for_timeout(600)
-        laptop.reload()
-        expect(details.get_by_role("heading", name=fx.OPEN_TASK)).to_be_visible()
-        expect(field, "the draft is kept on the device it was written on").to_have_value(draft)
-        # The same account on another device: a fresh browser context has its own storage.
-        phone = self.page(390, 844)
-        phone.goto(url)
-        expect(phone.locator("#details").get_by_role("heading", name=fx.OPEN_TASK)).to_be_visible()
-        expect(phone.locator("#details").get_by_label(re.compile("^(Write to this task|First message about this task)$")), "the draft is not synchronised").to_have_value("")
-        # A colleague with access opens the same object; a signed-in person without access sees nothing of it.
-        tablet = self.page(820, 1180, who="marek")
-        tablet.goto(url)
-        expect(tablet.locator("#details").get_by_role("heading", name=fx.OPEN_TASK)).to_be_visible()
-        outsider = BROWSER.new_context(base_url=ORIGIN, viewport={"width": 1440, "height": 900}, locale="en-GB", timezone_id="Europe/Warsaw")
-        self.addCleanup(outsider.close)
-        signed_up = outsider.request.post("/api/auth/sign-up/email", data={"name": "Lee Park", "email": f"lee.adapt+{fx.STAMP}@example.test", "password": fx.PASSWORD}, headers={"origin": ORIGIN})
-        self.assertEqual(signed_up.status, 200, signed_up.text())
-        stranger = outsider.new_page()
-        stranger.goto(url)
-        expect(stranger.locator("header.top, .home, #content").first).to_be_visible()
-        self.at_rest(stranger)
-        expect(stranger.get_by_text(fx.OPEN_TASK), "no access shows nothing of the task").to_have_count(0)
-        self.assertEqual(self.api(laptop, "GET", f"/api/v1/work/{task}/discussion")["messages"], before, "nothing was saved or sent")
 
 
 class AdaptiveReflow(AdaptiveBase):

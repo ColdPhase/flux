@@ -44,6 +44,7 @@ import { ComposerMenu, composerOptions, composerTrigger, type ComposerOption } f
 import { cite as citeMessage, onCite, quoteOf } from './citeBus';
 import { QuestionCard, WhenNoQuestion } from '../agents/QuestionCard';
 import { useProjectQuestions } from '../agents/questions';
+import { useSpareHeight } from '../ui/spareHeight';
 import { useTyping } from '../typing/useTyping';
 import { TypingNotice } from '../typing/TypingNotice';
 import { listProjectGoals } from '../project/goal';
@@ -209,6 +210,10 @@ function ProjectConversationContent({ data, variant, feed, rootHeader, rootMessa
   const scrollRef = useRef<HTMLDivElement>(null);
   const [feedNode, setFeedNode] = useState<HTMLDivElement | null>(null);
   const attachFeed = useCallback((node: HTMLDivElement | null) => { scrollRef.current = node; setFeedNode(node); }, []);
+  // A short thread sits against its reply field instead of at the top of a tall panel (ui/spareHeight.ts).
+  const columnRef = useRef<HTMLDivElement>(null);
+  const liftRef = useRef<HTMLDivElement>(null);
+  useSpareHeight(scrollRef, columnRef, liftRef, conversation ? messages.length + outbox.pending.length : 0, feedNode);
   // The thread shows its root whole at the top (with what was made from it), then the replies: one bounded
   // association read covers the root and the replies around the viewport (#155).
   const sourceIds = useMemo(() => [...(rootMessageId ? [rootMessageId] : []), ...messages.filter((message) => message.sequence > 1 && message.id !== rootMessageId).map((message) => message.id)], [messages, rootMessageId]);
@@ -691,7 +696,8 @@ function ProjectConversationContent({ data, variant, feed, rootHeader, rootMessa
     data-associations-observed-at={conversation ? messageWork.page?.observedAt : undefined} data-associations-phase={conversation ? messageWork.state.phase : undefined}
     data-references-observed-at={conversation ? referenceWork.observation?.observedAt : undefined} data-references-phase={conversation ? referenceWork.state.phase : undefined}>
     {!conversation ? feed : <div className={`thread__feed${revealed ? '' : ' is-opening'}`} ref={attachFeed} aria-busy={revealed ? undefined : true}>
-      <div className="thread__in">
+      <div className="thread__lift" aria-hidden="true" ref={liftRef} />
+      <div className="thread__in" ref={columnRef}>
         {rootHeader?.({ preview: rootMessageId ? messageWork.previews?.get(rootMessageId) ?? null : null, taskRow: discussedRow })}
         <section aria-label="Replies to this message" className="project-convo__messages">
           {conversation ? <>
