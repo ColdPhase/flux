@@ -1,10 +1,11 @@
-import { useEffect, useId, useLayoutEffect, useRef, useSyncExternalStore, type KeyboardEvent, type ReactNode, type Ref } from 'react';
+import { useEffect, useId, useLayoutEffect, useRef, useSyncExternalStore, type KeyboardEvent, type ReactNode, type RefObject } from 'react';
 import { createPortal } from 'react-dom';
 import { IconButton } from './Button';
 import { Icon } from './Icon';
-import { MEDIA, duration, play, useMediaQuery } from './motion';
+import { MEDIA, duration, motionAllowed, settle, token, travelDirection, useMediaQuery } from './motion';
 import { DetentSheet } from './DetentSheet';
 import { Overlay, Sheet, usePresence } from './Overlay';
+import { Dissolve } from './Dissolve';
 
 export type SidePanelMode = 'docked' | 'overlay' | 'sheet';
 
@@ -23,9 +24,43 @@ export interface SidePanelProps {
   chip?: string;
   /** On a phone the sheet opens at full height (a thread); the height then stays while the content changes. */
   startFull?: boolean;
+  /**
+   * Names what the panel shows. When it changes while the panel stays open, the body's content slides a short
+   * way in the direction of travel and fades in; the shell and the head do not move (Spokój rule 7).
+   * Without it the kind chip and the title tell.
+   */
+  contentKey?: string;
+  /** How many steps of "‹ back" lie behind this content: a higher number than before is forward, a lower one is back. */
+  depth?: number;
   /** Told the height whenever the phone's sheet changes it, so a return to the screen can open it as it was (#592). */
   onHeight?: (full: boolean) => void;
   children: ReactNode;
+}
+
+/**
+ * The panel's content changes (task, thread, "‹ back"): what is drawn in the body fades in and travels a few pixels
+ * from the side of travel (#593 AC-2). Only the body's own content moves: the panel, its head row and its controls
+ * stay put. Content that arrives a moment later (a lazily loaded view) takes the same entrance.
+ */
+function usePanelSwap(body: RefObject<HTMLElement | null>, enabled: boolean, open: boolean, key: string, depth: number) {
+  const previous = useRef<{ key: string; depth: number } | null>(null);
+  useLayoutEffect(() => {
+    if (!enabled || !open) { previous.current = null; return; }
+    const before = previous.current;
+    previous.current = { key, depth };
+    const node = body.current;
+    if (!before || before.key === key || !node || !motionAllowed()) return;
+    const ms = duration('--dur-in');
+    if (!ms) return;
+    const direction = depth > before.depth ? 'forward' : depth < before.depth ? 'back' : travelDirection();
+    const shift = parseFloat(token('--shift-panel')) || 16;
+    const enter = (child: Element) => void settle(child, { opacity: 1, transform: 'none' }, ms, '--ease-out', { from: { opacity: 0, transform: `translateX(${direction === 'back' ? -shift : shift}px)` } });
+    for (const child of node.children) enter(child);
+    const late = new MutationObserver((records) => { for (const record of records) for (const added of record.addedNodes) if (added instanceof Element) enter(added); });
+    late.observe(node, { childList: true });
+    const stop = window.setTimeout(() => late.disconnect(), 400);
+    return () => { window.clearTimeout(stop); late.disconnect(); };
+  }, [body, enabled, open, key, depth]);
 }
 
 /** Where an object's own number ("#8") lands in the panel head; see `PanelMeta`. */
@@ -53,7 +88,7 @@ export function useSidePanelMode(): SidePanelMode {
   return phone ? 'sheet' : overlay ? 'overlay' : 'docked';
 }
 
-function PanelContent({ title, titleId, closeLabel, back, chip, context, onClose, bodyRef, children }: { title: string; titleId: string; closeLabel?: string; back?: SidePanelProps['back']; chip?: string; context?: ReactNode; onClose: () => void; bodyRef?: Ref<HTMLDivElement>; children: ReactNode }) {
+function PanelContent({ title, titleId, closeLabel, back, chip, context, onClose, bodyRef, contentKey, depth, children }: { title: string; titleId: string; closeLabel?: string; back?: SidePanelProps['back']; chip?: string; context?: ReactNode; onClose: () => void; bodyRef: RefObject<HTMLDivElement | null>; contentKey: string; depth: number; children: ReactNode }) {
   return (
     <>
       <div className="ui-panel__head">
@@ -68,13 +103,13 @@ function PanelContent({ title, titleId, closeLabel, back, chip, context, onClose
         <IconButton icon="x" label={closeLabel ?? `Close ${title.toLowerCase()}`} data-tip="Close · Esc" onClick={onClose} className="ui-panel__close" />
       </div>
       {context}
-      <div className="ui-panel__body" ref={bodyRef} tabIndex={-1}>{children}</div>
+      <div className="ui-panel__body" ref={bodyRef} tabIndex={-1}><Dissolve id={contentKey} depth={depth} host={bodyRef} dress=".ui-panel" shift="--shift-panel" time="--dur-out">{children}</Dissolve></div>
     </>
   );
 }
 
 /** Non-modal panel docked at the right edge of the app frame. Esc inside it closes it. */
-function DockedPanel({ open, onClose, title, closeLabel, back, chip, context, id, children }: SidePanelProps) {
+function DockedPanel({ open, onClose, title, closeLabel, back, chip, context, id, contentKey, depth, children }: SidePanelProps) {
   const { mounted, unmount } = usePresence(open);
   const ref = useRef<HTMLElement>(null);
   const bodyRef = useRef<HTMLDivElement>(null);
@@ -82,23 +117,25 @@ function DockedPanel({ open, onClose, title, closeLabel, back, chip, context, id
   const openRef = useRef(open);
   const titleId = useId();
   useEffect(() => { openRef.current = open; });
+  usePanelSwap(bodyRef, true, open && mounted, contentKey ?? `${chip ?? ''}|${title}`, depth ?? (back ? 1 : 0));
 
   useLayoutEffect(() => {
     if (!open || !mounted) return;
     // Remember the opener before focus moves into the surface.
     returnRef.current = document.activeElement as HTMLElement | null;
     const panel = ref.current;
-    panel?.getAnimations().forEach((animation) => animation.cancel());
     panel?.classList.remove('is-leaving');
-    void play(panel, [{ transform: 'translateX(24px)', opacity: 0 }, { transform: 'none', opacity: 1 }], duration('--dur-3'), '--ease-out', { fill: 'backwards' });
+    // Opening while it is leaving continues from where the exit had got to; opening at first paint does not move.
+    const shift = token('--shift-panel') || '16px';
+    void settle(panel, { opacity: 1, transform: 'none' }, duration('--dur-in'), '--ease-out', { from: { opacity: 0, transform: `translateX(${shift})` } });
     bodyRef.current?.focus({ preventScroll: true });
     return () => {
       const target = returnRef.current;
       returnRef.current = null;
-      // The work area takes the space back at once while the panel fades out over it.
+      // The work area takes the space back at once while the panel fades out over it; focus has already returned.
       panel?.classList.add('is-leaving');
       if (panel?.contains(document.activeElement) && target?.isConnected) target.focus({ preventScroll: true });
-      void play(panel, [{ transform: 'none', opacity: 1 }, { transform: 'translateX(16px)', opacity: 0 }], duration('--dur-2'), '--ease-in', { fill: 'forwards' })
+      void settle(panel, { opacity: 0, transform: `translateX(${shift})` }, duration('--dur-out'), '--ease-in', { from: { opacity: 1, transform: 'none' }, fill: 'forwards' })
         .then(() => { if (!openRef.current) unmount(); });
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -111,7 +148,7 @@ function DockedPanel({ open, onClose, title, closeLabel, back, chip, context, id
   };
   return (
     <aside ref={ref} id={id} className="ui-panel ui-panel--docked" aria-labelledby={titleId} onKeyDown={onKeyDown} inert={!open}>
-      <PanelContent title={title} titleId={titleId} closeLabel={closeLabel} back={back} chip={chip} context={context} onClose={onClose} bodyRef={bodyRef}>{children}</PanelContent>
+      <PanelContent title={title} titleId={titleId} closeLabel={closeLabel} back={back} chip={chip} context={context} onClose={onClose} bodyRef={bodyRef} contentKey={contentKey ?? `${chip ?? ''}|${title}`} depth={depth ?? (back ? 1 : 0)}>{children}</PanelContent>
     </aside>
   );
 }
@@ -120,8 +157,10 @@ export function SidePanel(props: SidePanelProps) {
   const mode = useSidePanelMode();
   const titleId = useId();
   const bodyRef = useRef<HTMLDivElement>(null);
+  usePanelSwap(bodyRef, mode !== 'docked', props.open, props.contentKey ?? `${props.chip ?? ''}|${props.title}`, props.depth ?? (props.back ? 1 : 0));
   if (mode === 'docked') return <DockedPanel {...props} />;
-  const content = <PanelContent title={props.title} titleId={titleId} closeLabel={props.closeLabel} back={props.back} chip={props.chip} context={props.context} onClose={props.onClose} bodyRef={bodyRef}>{props.children}</PanelContent>;
+  const content = <PanelContent title={props.title} titleId={titleId} closeLabel={props.closeLabel} back={props.back} chip={props.chip} context={props.context} onClose={props.onClose} bodyRef={bodyRef}
+    contentKey={props.contentKey ?? `${props.chip ?? ''}|${props.title}`} depth={props.depth ?? (props.back ? 1 : 0)}>{props.children}</PanelContent>;
   if (mode === 'sheet') {
     // A task, decision or result opens in the one two-height sheet; other Details stay a full sheet.
     if (props.chip) {

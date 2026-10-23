@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type MouseEvent } from 'react';
 import { createPortal } from 'react-dom';
 import type { NamedPrincipal, NativeWorkRow } from '@flux/contracts';
-import { AgentIdentity, Avatar, Icon, Kreska, prefersReducedMotion, StatusGlyph, TASK_STATE_WORD } from '../ui';
+import { AgentIdentity, Avatar, Icon, Kreska, Morph, prefersReducedMotion, StatusGlyph, TASK_STATE_WORD } from '../ui';
 import { getWorkReferenceRows } from '../work/read-api';
 import type { AgentOwners } from '../agents/owners';
 import { ago, longDate, shortDate } from './format';
@@ -192,7 +192,7 @@ function RefMark({ mark, owners }: { mark: Mark; owners: AgentOwners }) {
   return (
     <>
       <StatusGlyph status={DECISION_GLYPH[row.status]} size={18} className="doc-decision__ic" />
-      <span className="doc-decision__t"><b>{DECISION_WORD[row.status]}</b><span className="doc-decision__title"><span className="doc-decision__sep"> · </span>{row.title}</span></span>
+      <span className="doc-decision__t"><b><Morph value={row.status}>{DECISION_WORD[row.status]}</Morph></b><span className="doc-decision__title"><span className="doc-decision__sep"> · </span>{row.title}</span></span>
       <span className="doc-decision__meta">{shortDate(when)} · <WhoName who={who} owners={owners} /></span>
     </>
   );

@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import { useRevalidator } from 'react-router';
 import type { ObjectLink, Project, ProjectWorkView, WorkGroup, WorkItem, WorkRelations, WorkRowProjection, WorkStatus } from '@flux/contracts';
 import { ApiError, NetworkError } from '../api/client';
-import { AgentTag, Icon, IconButton, Kreska, StatusGlyph, initials, type IconName } from '../ui';
+import { AgentTag, Icon, IconButton, Kreska, StatusGlyph, initials, usePop, useRowMotion, type IconName } from '../ui';
 import { updateWork } from './api';
 import { useShellActions } from '../app/shellContext';
 import { STATUS_LABEL, isFinished, taskNumber } from './format';
@@ -101,9 +101,10 @@ interface Drag {
 interface Notice { tone: 'ok' | 'error'; text: string }
 
 /** One card's "Move to…" menu: the three columns, the current one checked, then Details. */
-function MoveMenu({ item, column, busy, buttonRef, onMove, onOpen, onClose }: {
+function MoveMenu({ item, column, busy, buttonRef, onMove, onOpen, onClose, popProps }: {
   item: BoardTask; column: ColumnId; busy: boolean; buttonRef: RefObject<HTMLButtonElement | null>;
   onMove: (to: ColumnId) => void; onOpen: () => void; onClose: (restore: boolean) => void;
+  popProps?: ReturnType<typeof usePop>['props'];
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const close = useRef(onClose);
@@ -131,7 +132,7 @@ function MoveMenu({ item, column, busy, buttonRef, onMove, onOpen, onClose }: {
     else if (event.key === 'Tab') onClose(false);
   };
   return (
-    <div ref={ref} className="tb-menu" role="menu" aria-label={`Move “${item.title}”`} onKeyDown={onKeyDown}>
+    <div {...popProps} ref={ref} className="tb-menu" role="menu" aria-label={`Move “${item.title}”`} onKeyDown={onKeyDown}>
       <p className="tb-menu__k" aria-hidden="true">Move to</p>
       {COLUMNS.map((choice) => (
         <button key={choice.id} type="button" role="menuitemradio" className="tb-menu__i" tabIndex={-1} aria-checked={choice.id === column}
@@ -162,6 +163,7 @@ interface CardProps {
 
 function Card({ item, agentOwner, from, column, meId, writable, hintId, saving, dragged, lifted, arrived, menuOpen, onPointerDown, onClickCapture, onKeyDown, onKeyUp, onBlur, onOpen, onMenu, onMove }: CardProps) {
   const menuButton = useRef<HTMLButtonElement>(null);
+  const pop = usePop(menuOpen);
   const blocked = item.status === 'blocked';
   const waiting = isFinished(item) ? 0 : item.prerequisiteCounts.unmet;
   const results = item.relations.results;
@@ -206,8 +208,8 @@ function Card({ item, agentOwner, from, column, meId, writable, hintId, saving, 
           </span>
         ) : null}
       </div>
-      {menuOpen ? (
-        <MoveMenu item={item} column={column} busy={saving} buttonRef={menuButton}
+      {pop.mounted ? (
+        <MoveMenu item={item} column={column} busy={saving} buttonRef={menuButton} popProps={pop.props}
           onMove={(to) => {
             onMenu(false);
             // Its own column changes nothing: focus goes back to the menu's button, as on Escape.
@@ -300,6 +302,9 @@ export function TaskBoard({ project, openRead, meId, mine, query, writable, revi
   const finishedPage = loaded(finishedRead);
   const unavailable = reads.some((read) => read.phase === 'unavailable');
   const waitingFor: Record<ColumnId, boolean> = { open: !openPage, in_progress: !progressPage || !blockedPage, done: !finishedPage };
+  // A card that moves to another column slides there, a new one grows in and one that left collapses (#593 AC-4); the first
+  // read of each column only replaces what the board showed.
+  useRowMotion(boardRef, '.tb-card[data-card-id]', (el) => el.dataset.cardId, [meId, project.id, mine, query, Object.values(waitingFor).join()].join('|'));
 
   const confirmationScope = JSON.stringify([meId, project.id, mine, query.trim().toLowerCase()]);
   const readGenerations = useRef<readonly number[]>([]);

@@ -89,9 +89,14 @@
   --panel-w: 420px;  /* Spokój: computer 1440 */
   --col: 790px;      /* reading column */
 
-  /* Motion. Only colour, opacity and transform animate. Pressing scales to .97 and springs back in
-     about 250 ms. Every duration is 0ms under reduced motion. */
+  /* Motion. Only colour, opacity and transform animate (a row's grow and collapse also animate its height).
+     Pressing scales to .97 and springs back in about 250 ms. Every duration is 0ms under reduced motion.
+     The meaning tokens (#593): something enters in --dur-in (at most 180 ms) and leaves in --dur-out (at most
+     140 ms, and never before focus has returned); a view's content crossfades in --dur-view (at most 160 ms);
+     the content leaving a panel travels --shift-panel, a view --shift-view and a menu --shift-pop. */
   --dur-1: 120ms; --dur-2: 180ms; --dur-3: 260ms; --dur-4: 340ms; --dur-press: 250ms;
+  --dur-in: var(--dur-2); --dur-out: var(--dur-1); --dur-view: 150ms;
+  --shift-panel: 16px; --shift-view: 10px; --shift-pop: 4px; --shift-toolbar: 6px; --shift-row: 12px; --row-travel-max: 160px;
   --press: .97;
   --ease-out: cubic-bezier(.22, 1, .36, 1);
   --ease-in: cubic-bezier(.4, 0, 1, 1);
@@ -99,8 +104,9 @@
   --ease-spring: cubic-bezier(.34, 1.4, .64, 1);
   /* Indicators glide into place with a barely perceptible settle (≤2% past the target, no bounce). */
   --ease-glide: cubic-bezier(.3, 1.25, .5, 1);
-  --tr: background-color var(--dur-1) ease, color var(--dur-1) ease, border-color var(--dur-1) ease,
-        box-shadow var(--dur-1) ease, opacity var(--dur-1) ease, outline-color var(--dur-1) ease,
+  --tr-fill: background-color var(--dur-1) ease, color var(--dur-1) ease, border-color var(--dur-1) ease,
+        box-shadow var(--dur-1) ease, opacity var(--dur-1) ease;
+  --tr: var(--tr-fill), outline-color var(--dur-1) ease,
         outline-offset var(--dur-1) ease, transform var(--dur-press) var(--ease-spring);
 
   /* Layers */
@@ -174,7 +180,7 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  :root { --dur-1: 0ms; --dur-2: 0ms; --dur-3: 0ms; --dur-4: 0ms; --dur-press: 0ms; --press: 1; }
+  :root { --dur-1: 0ms; --dur-2: 0ms; --dur-3: 0ms; --dur-4: 0ms; --dur-press: 0ms; --dur-view: 0ms; --press: 1; }
 }
 /* The person's own reduce-motion choice (Settings → Appearance) gives the same durations. */
-:root[data-motion="reduce"] { --dur-1: 0ms; --dur-2: 0ms; --dur-3: 0ms; --dur-4: 0ms; --dur-press: 0ms; --press: 1; }
+:root[data-motion="reduce"] { --dur-1: 0ms; --dur-2: 0ms; --dur-3: 0ms; --dur-4: 0ms; --dur-press: 0ms; --dur-view: 0ms; --press: 1; }

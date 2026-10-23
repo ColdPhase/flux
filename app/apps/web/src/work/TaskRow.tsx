@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type KeyboardEvent, type MouseEvent, type PointerEvent } from 'react';
 import type { WorkRowProjection, WorkStatus } from '@flux/contracts';
-import { AgentIdentity, Icon, Kreska, StatusGlyph, initials } from '../ui';
+import { AgentIdentity, Icon, Kreska, Morph, StatusGlyph, initials } from '../ui';
 import type { AgentOwners } from '../agents/owners';
 import { STATUS_LABEL, isFinished, taskNumber } from './format';
 import { STATE_KEYS, nextStatus, type StateTarget } from './taskState';
@@ -34,7 +34,7 @@ function meta(item: WorkRowProjection, meId: string, owners: AgentOwners) {
     <>
       <span className="ui-task-number">{taskNumber(item)}</span>
       {' · '}{who}
-      {item.parked ? null : <span className="ws-task__word">{` · ${STATUS_LABEL[item.status]}`}</span>}
+      {item.parked ? null : <Morph value={item.status} changeKey={item.id} className="ws-task__word">{` · ${STATUS_LABEL[item.status]}`}</Morph>}
       {rest.map((part) => ` · ${part}`).join('')}
     </>
   );
@@ -127,9 +127,9 @@ export function TaskRow({ item, meId, owners, writable, muted, onOpen, onChange 
         {writable ? (
           <button type="button" className="ws-task__glyph" aria-label={label} title={`${label} (keys 1 to 5)`} aria-keyshortcuts="1 2 3 4 5"
             onClick={() => onChange(item, nextStatus(item.status))}>
-            <StatusGlyph status={item.status} className={item.parked ? 'ui-glyph--parked' : undefined} />
+            <StatusGlyph status={item.status} changeKey={item.id} className={item.parked ? 'ui-glyph--parked' : undefined} />
           </button>
-        ) : <span className="ws-task__glyph ws-task__glyph--still" role="img" aria-label={word}><StatusGlyph status={item.status} /></span>}
+        ) : <span className="ws-task__glyph ws-task__glyph--still" role="img" aria-label={word}><StatusGlyph status={item.status} changeKey={item.id} /></span>}
         <button type="button" className={`ws-item${muted ? ' ws-item--muted' : ''}`} onClick={click}>
           <span className="ws-item__b"><span className="ws-item__t">{item.title}</span><span className="ws-item__s">{meta(item, meId, owners)}</span></span>
           <span className="ws-item__r">
