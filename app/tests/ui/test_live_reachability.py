@@ -21,7 +21,7 @@ import unittest
 from playwright.sync_api import Page, expect, sync_playwright
 
 from test_app_shell import DESKTOP, ORIGIN, SHOTS, UPSTREAM, shot, start_forwarder, view_tab
-from test_live_sessions import INSTRUMENT, LIVE, LiveBase
+from test_live_sessions import INSTRUMENT, LIVE, PEOPLE, LiveBase
 
 # elementFromPoint at the element's centre: the element itself (or one of its children) must be on top.
 HIT_TEST = """(el) => {
@@ -437,6 +437,110 @@ class ReachabilityRows(LiveBase):
         self.assertEqual(bar.bounding_box(), before, "the strip does not move while the stage code is held")
         placeholder.get_by_role("button", name="Close live view").tap(timeout=5000)
         expect(placeholder).to_have_count(0)
+
+    # ---- modality details of the strip over a thread sheet (#644) ----
+
+    def check_more_over_thread(self, page: Page, label: str) -> None:
+        """More, opened from the strip while a thread is open, is on top, takes the focus and is closed by Esc alone."""
+        bar = self.bar(page)
+        self.open_thread(page)
+        bar.get_by_role("button", name="Session details and more").tap(timeout=5000)
+        dialog = page.get_by_role("dialog", name="Live session")
+        expect(dialog).to_be_visible()
+        page.wait_for_timeout(600)
+        first = dialog.get_by_role("button").first
+        hit = first.evaluate(HIT_TEST)
+        centre = dialog.evaluate("(el) => { const b = el.getBoundingClientRect(); const top = document.elementFromPoint(b.x + b.width / 2, b.y + b.height / 2); return !!top && el.contains(top); }")
+        self.observed[f"{label}-more-over-thread"] = {"firstControl": hit, "centreInside": centre}
+        shot(page, f"live-reachability-{label}-more-over-thread")
+        self.assertTrue(hit["ok"], f"{label}: the first control of More is covered by {hit['top']} at {hit['centre']}")
+        self.assertTrue(centre, f"{label}: More is not painted under the thread")
+        self.assertTrue(dialog.evaluate("(el) => el.contains(document.activeElement)"), f"{label}: focus is inside the visible dialog")
+        self.assertEqual(page.locator(".lv-pop").count(), 0, f"{label}: no hidden popover is left in the page")
+        page.keyboard.press("Escape")
+        expect(dialog).to_be_hidden()
+        expect(page.locator(".ui-overlay[data-state='open']")).to_have_count(1)  # the thread stays
+        expect(bar.get_by_role("button", name="Session details and more")).to_be_focused()
+        page.keyboard.press("Escape")
+        expect(page.locator(".ui-overlay[data-state='open']")).to_have_count(0)
+        self.assert_app_interactive(page)
+
+    def check_invitation_card_stays_inert(self, host: Page, engine: str, label: str, **context) -> None:
+        """An invitation card on screen is ordinary content: a thread sheet opened over it makes it inert."""
+        self.use(engine)
+        sessions = self.api(host, "GET", f"/api/v1/projects/{self.ids['project']}/live-sessions", status=200)["items"]
+        self.api(host, "POST", f"/api/v1/live-sessions/{sessions[0]['id']}/invitations", {"recipientId": PEOPLE["kai"]["id"]}, status=201)
+        page = self.page("kai", **context)
+        page.goto("/inbox")
+        item = page.locator(".nyc", has_text="invited you to work together")
+        expect(item).to_have_count(1)
+        item.get_by_role("button", name="Open").click()
+        card = page.get_by_role("region", name="Invitation to work together")
+        expect(card).to_be_visible()
+        if page.locator(".ui-panel__close").first.is_visible():
+            page.locator(".ui-panel__close").first.click()
+            expect(page.locator(".ui-overlay[data-state='open']")).to_have_count(0)
+        later = card.get_by_role("button", name="Later")
+        expect(later).to_be_visible()
+        self.assertTrue(later.evaluate(HIT_TEST)["ok"], "the card takes pointer input before a sheet opens")
+        self.open_thread(page)
+        shot(page, f"live-reachability-{label}-invitation-under-thread")
+        hit = later.evaluate(HIT_TEST)
+        self.observed[f"{label}-invitation-under-thread"] = hit
+        self.assertFalse(hit["ok"], f"{label}: Later is still topmost under the thread sheet")
+        self.assertTrue(later.evaluate("(el) => !!el.closest('[inert]')"), f"{label}: the invitation card is inert while the sheet is open")
+        page.keyboard.press("Escape")
+        expect(page.locator(".ui-overlay[data-state='open']")).to_have_count(0)
+        self.assertTrue(later.evaluate(HIT_TEST)["ok"], "the card is usable again once the sheet closes")
+
+    def test_10_phone_more_over_a_thread(self) -> None:
+        self.start_host()
+        self.check_more_over_thread(self.guest_join("chromium", phone=True), "phone-390-chromium")
+
+    def test_11_tablet_more_over_a_thread_chromium(self) -> None:
+        self.start_host()
+        self.check_more_over_thread(self.guest_join("chromium", device="iPad (gen 7)"), "ipad-chromium")
+
+    def test_12_tablet_more_over_a_thread_webkit(self) -> None:
+        self.start_host()
+        self.check_more_over_thread(self.guest_join("webkit", device="iPad (gen 7)"), "ipad-webkit")
+
+    def test_13_tablet_popover_closes_when_a_thread_opens(self) -> None:
+        # The popover under the strip would paint under the sheet's frame; it closes as the sheet opens, and the
+        # sheet opens over a page with no hidden, focusable dialog behind it.
+        self.start_host()
+        page = self.guest_join("webkit", device="iPad (gen 7)")
+        bar = self.bar(page)
+        bar.get_by_role("button", name="Session details and more").tap(timeout=5000)
+        popover = page.locator(".lv-pop")
+        expect(popover).to_be_visible()
+        self.open_thread(page)
+        expect(popover).to_have_count(0)
+        self.assertFalse(page.evaluate("() => !!document.activeElement?.closest('.lv-pop')"))
+
+    def test_14_phone_invitation_card_is_inert_under_a_thread(self) -> None:
+        host = self.start_host()
+        self.check_invitation_card_stays_inert(host, "chromium", "phone-390-chromium", phone=True)
+
+    def test_15_tablet_invitation_card_is_inert_under_a_thread(self) -> None:
+        host = self.start_host()
+        self.check_invitation_card_stays_inert(host, "webkit", "ipad-webkit", device="iPad (gen 7)")
+
+    def test_16_leave_under_a_thread_frees_the_whole_screen_and_the_focus(self) -> None:
+        # Leave removes the strip and the focused button: the sheet then starts at the top and holds the focus,
+        # so Esc closes it, and Esc with nothing focused never closes a sheet by itself.
+        self.start_host()
+        page = self.guest_join("chromium", phone=True)
+        bar = self.bar(page)
+        self.open_thread(page)
+        bar.get_by_role("button", name="Leave", exact=True).tap(timeout=5000)
+        expect(bar).to_have_count(0, timeout=10000)
+        top = page.evaluate("() => document.querySelector('.ui-overlay[data-state=\"open\"]').getBoundingClientRect().top")
+        self.assertEqual(round(top), 0, "the frame no longer keeps room for a strip that is gone")
+        self.assertTrue(page.evaluate("() => !!document.activeElement?.closest('.ui-overlay__surface')"), "focus moved into the sheet")
+        page.keyboard.press("Escape")
+        expect(page.locator(".ui-overlay[data-state='open']")).to_have_count(0)
+        self.assert_app_interactive(page)
 
 
 if __name__ == "__main__":

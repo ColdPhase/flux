@@ -136,9 +136,9 @@ test('server-named relative cursor presence uses current writing rights, exact p
     assert.equal(Y.decodeRelativePosition(Buffer.from(end,'base64')).tname,'body','Public end-of-root encoding includes the root name');
     const connection = randomUUID(); const events = (await pool.query('SELECT count(*)::int n FROM events WHERE workspace_id=$1', [f.ws.id])).rows[0].n;
     await authority.cursor(owner, f.doc.id, head.generation, connection, { anchor, head: end });
-    let peers: { connectionId: string; actor: { id: string; name: string } }[] = [];
+    let peers: { connectionId: string; actor: { id: string; name: string }; slot: number }[] = [];
     await authority.deliver(peer, f.doc.id, head.generation, 0, (result) => { peers = result.presence; });
-    assert.equal(peers[0]?.connectionId, connection); assert.equal(peers[0]?.actor.id, owner.principal.id); assert.ok(peers[0]?.actor.name);
+    assert.equal(peers[0]?.connectionId, connection); assert.equal(peers[0]?.actor.id, owner.principal.id); assert.ok(peers[0]?.actor.name); assert.equal(peers[0]?.slot, 0, 'the first person in the room takes slot 0');
     await assert.rejects(authority.cursor(owner, f.doc.id, head.generation, connection, { anchor: anchor + 'AAAA', head: end }), refused('INVALID_CURSOR'));
     const foreign=new Y.Doc();try {
       foreign.getText('body').insert(0,'Foreign unconfirmed text');

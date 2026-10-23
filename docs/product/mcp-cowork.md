@@ -38,7 +38,8 @@ Technical inbox/outbox/webhook workers remain ordinary non-LLM infrastructure.
 
 [CW-1–CW-5](cowork-workflow.md) and the [starter playbook](cowork-playbook.md)
 make the instruction/communication loop explicit: Flux ships the workflow,
-clients load it through a tested Start/Resume path, and addressed durable requests
+clients load it through a Start/Resume path whose native verification is pending
+([evidence](../development/evidence/160-workflow/README.md)), and addressed durable requests
 survive busy/offline/context-reset states. Agents act at safe checkpoints without
 periodically scanning all GitHub issues/PRs/comments. Coordination stays in Flux;
 formal GitHub approval/check gates stay real. #160 packages content/onboarding;

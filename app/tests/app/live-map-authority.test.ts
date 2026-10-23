@@ -259,6 +259,30 @@ test('project delivery checks each producer session once, preserves first policy
   } finally {await authority.close();await database.pool.end();assert.equal(apiEditingOutputBudget.bytes,0);}
 });
 
+test('each person in a map room keeps one slot, across connections and arrivals, and the next arrival takes a freed one', {timeout:20000},async()=>{
+  const f=await scene();const database=createDatabase(connectionString);
+  const backend=mapBackend(database);const authority=mapAuthority(backend,apiEditingOutputBudget);
+  try {
+    const head=await bootstrap(backend,f.ownerSession,f.sketch.id);
+    const slots=async()=>{
+      const seen=new Map<string,number>();
+      await backend.deliver(who(f.ownerSession),f.sketch.id,head.generation,0,value=>{for(const item of value.transient)if(item.type==='map-presence')seen.set(item.actor.id,item.slot);});
+      return Object.fromEntries([...seen].map(([id,slot])=>[id===f.owner.id?'owner':'peer',slot]));
+    };
+    const show=(session:typeof f.ownerSession)=>authority.presence(session,f.sketch.id,randomUUID(),{generation:head.generation,selected:[],cursor:{x:1,y:2}});
+    await show(f.peerSession);
+    assert.deepEqual(await slots(),{peer:0},'the first person takes slot 0');
+    await show(f.ownerSession);
+    assert.deepEqual(await slots(),{peer:0,owner:1},'an arrival takes the next free slot and nobody else moves');
+    await show(f.peerSession);await show(f.ownerSession);
+    assert.deepEqual(await slots(),{peer:0,owner:1},'another connection of the same person keeps their slot');
+    await pool.query("UPDATE map_live_presence SET expires_at=clock_timestamp()-interval'1 second' WHERE sketch_id=$1 AND actor_id=$2",[f.sketch.id,f.peer.id]);
+    assert.deepEqual(await slots(),{owner:1},'a person who left keeps nobody else from their slot');
+    await show(f.peerSession);
+    assert.deepEqual(await slots(),{peer:0,owner:1},'a returning person takes the smallest free slot');
+  } finally {await authority.close();await database.pool.end();assert.equal(apiEditingOutputBudget.bytes,0);}
+});
+
 test('withheld map handoff filters expired producer sessions, transient leases and lapsed confirmation after positive checks', {timeout:20000},async()=>{
   for(const expiry of ['producer-session','transient-lease','provider-confirmation'] as const) {
     const f=await scene();

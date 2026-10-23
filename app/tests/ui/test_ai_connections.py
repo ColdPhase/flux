@@ -376,6 +376,33 @@ class AiConnectionSettings(unittest.TestCase):
             self.assertEqual(positions[f"unavailable-{device}"], positions[f"available-{device}"],
                              f"{device}: the status line, AI connections, usage, rules and Add a connection keep their places")
 
+    def test_11_a_codex_host_action_is_labelled_pending_native_verification(self) -> None:
+        """#635: the Codex Start/Resume host action says it is pending native verification, as Claude's path does,
+        and the guide does not claim a recorded real-account Resume. The Codex connection is created through the API."""
+        page = self.page()
+        headers = {"origin": ORIGIN, "content-type": "application/json"}
+
+        def post(path: str, body: dict) -> dict:
+            response = page.request.post(f"{ORIGIN}{path}", data=body, headers=headers)
+            self.assertEqual(response.status, 201, response.text())
+            return response.json()
+
+        ws = post("/api/v1/workspaces", {"name": "Codex label studio"})
+        project = post(f"/api/v1/workspaces/{ws['id']}/projects", {"name": "Codex label", "visibility": "workspace"})
+        agent = post(f"/api/v1/workspaces/{ws['id']}/agents", {"name": "Ada's Codex", "owner": "self"})
+        post(f"/api/v1/projects/{project['id']}/grants", {"principal": {"kind": "agent", "id": agent["id"]}, "role": "contributor"})
+        post("/api/v1/agent-connections", {"agentId": agent["id"], "selectedProjectIds": [project["id"]], "name": "Ada Codex laptop",
+             "scopes": ["flux.context.read", "flux.proposal.write"], "clientDesignation": "codex"})
+        page.goto("/connect-agent")
+        page.locator("label.connection__choice", has_text="Ada Codex laptop").locator("input").check()
+        host = page.locator(".mcp-permissions .cowork-host-actions")
+        expect(host).to_have_count(1)
+        expect(host.locator("summary")).to_contain_text("pending native verification")
+        expect(host).to_contain_text("no real-account Start or exact-thread Resume through this action is recorded yet")
+        expect(page.locator(".connection__guide")).to_contain_text("It is pending native verification")
+        expect(page.locator(".connection__guide")).not_to_contain_text("resumes only its own saved native thread")
+        shot(page, "ai-connection-1440-codex-host-pending")
+
 
 if __name__ == "__main__":
     unittest.main()

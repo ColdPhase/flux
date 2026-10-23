@@ -72,6 +72,10 @@ palette, demo data and single-file script were not copied.
   strip, and so does its scrim: the strip does not move, and the microphone, **More** and
   **Leave** stay on top and take taps. Tab runs through the sheet and the strip; Esc or a tap
   on the scrim still closes the sheet. A screen opened from the strip closes the sheet first.
+  Only the joined session's strip escapes `inert`: an invitation card or ended notice is ordinary
+  content and is inert under the sheet. On a tablet, **More** opened while such a sheet is open is
+  a sheet itself (a popover under the strip would sit under the sheet's frame), and a popover that is
+  already open closes when the sheet opens.
   When a
   browser cannot publish its screen (Android and iOS browsers have no `getDisplayMedia`),
   Flux shows no screen button. It says so in the sheet and still lets the person view

@@ -150,7 +150,7 @@ describe('workspace AI lock: sweep, lock order and remaining AC-3 rows', () => {
       return put(spare, 'blocked');
     }, 2);
     assert.equal((await removed).status, 204);
-    assert.notEqual(refused.status, 500, `no deadlock: ${refused.text}`);
+    assert.deepEqual([refused.status, code(refused.json)], [404, 'WORKSPACE_NOT_FOUND'], `the flip finds the admin gone: ${refused.text}`);
     assert.equal((await workspaceAiRow(ws.id))!.state, 'allowed');
   });
 

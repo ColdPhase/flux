@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router';
 import type { PersonalAssistantStatus } from '@flux/contracts';
 import { ApiError } from '../api/client';
+import { useAllAiBlocked, useBlockedWorkspaceIds } from '../ai/workspaceAi';
 import { useShellData } from '../app/data';
 import { SwitchRow } from '../app/SettingsHome';
 import { getAssistantStatus } from './api';
@@ -19,17 +20,21 @@ export function SummaryByAssistant({ byAssistant, at, onApplied }: { byAssistant
   const [status, setStatus] = useState<PersonalAssistantStatus | null>(null);
   const [sheet, setSheet] = useState(false);
   const [error, setError] = useState('');
+  const allOff = useAllAiBlocked();
+  const blocked = useBlockedWorkspaceIds();
   useEffect(() => {
+    if (allOff) return undefined;
     const controller = new AbortController();
     getAssistantStatus(controller.signal).then(setStatus, () => undefined);
     return () => controller.abort();
-  }, []);
-  const workspaceId = status?.enablement?.agents[0]?.workspaceId;
-  if (!status?.enablement || !workspaceId) return null;
+  }, [allOff]);
+  // The first workspace whose AI is on (F-029, #614); with none, the row is not shown.
+  const workspaceId = status?.enablement?.agents.find((agent) => !blocked.has(agent.workspaceId))?.workspaceId;
+  if (allOff || !status?.enablement || !workspaceId) return null;
   const scope = { workspaceId, ownerId: me.user.id };
   const first = me.user.name.trim().split(/\s+/)[0] || me.user.name;
   if (byAssistant) {
-    return <p className="nset__assistant-summary">Written by {first}&apos;s assistant · <Link className="ui-link" to="/settings/assistant">Change ›</Link></p>;
+    return <p className="nset__assistant-summary" data-ai-surface="summary-by-assistant">Written by {first}&apos;s assistant · <Link className="ui-link" to="/settings/assistant">Change ›</Link></p>;
   }
   const turnOn = async () => {
     setError('');

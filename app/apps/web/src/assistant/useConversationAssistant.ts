@@ -51,8 +51,10 @@ export interface ConversationAssistant {
   refreshStatus(): void;
 }
 
-export function useConversationAssistant({ meId, meName, projectId, conversationId, onPosted }: {
+export function useConversationAssistant({ meId, meName, projectId, conversationId, onPosted, enabled = true }: {
   meId: string; meName?: string; projectId: string; conversationId: string | null;
+  /** False while the workspace's AI is off (F-029, #614): nothing AI is asked for, and only the committed answers (history) are read. */
+  enabled?: boolean;
   /** The request as it was posted to the conversation (the stream message of Journey 1 step 6), so the pane can show it at once. */
   onPosted?: (message: ConversationMessage) => void;
 }): ConversationAssistant {
@@ -69,29 +71,30 @@ export function useConversationAssistant({ meId, meName, projectId, conversation
   const queuedRef = useRef(queued);
   useEffect(() => { queuedRef.current = queued; }, [queued]);
 
-  const refreshStatus = useCallback(() => { getAssistantStatus().then(setStatus).catch(() => { /* the ask bar keeps saying it is checking */ }); }, []);
+  const refreshStatus = useCallback(() => { if (enabled) getAssistantStatus().then(setStatus).catch(() => { /* the ask bar keeps saying it is checking */ }); }, [enabled]);
   const refreshActivity = useCallback(async () => {
-    if (!conversationId) return;
+    if (!conversationId || !enabled) return;
     try { setOthers((await getAssistantActivity(conversationId)).working.filter((item) => item.ownerId !== meId)); } catch { /* the line is a courtesy; a missing one is not an error */ }
-  }, [conversationId, meId]);
+  }, [conversationId, meId, enabled]);
   const hasAssistant = !!status?.enablement;
   const refreshMembership = useCallback(() => {
+    if (!enabled) return;
     getProjectAgents(projectId).then((view) => {
       const requested = view.joinRequests?.some((item) => item.ownerUserId === meId && item.state === 'pending') ?? false;
       setMembership({ member: view.assistantJoin ? !view.assistantJoin.canRequest && !requested : null, requested });
     }, () => undefined);
-  }, [projectId, meId]);
+  }, [projectId, meId, enabled]);
   useEffect(() => { if (hasAssistant) refreshMembership(); }, [hasAssistant, refreshMembership]);
   const refreshShared = useCallback(async () => {
     if (!conversationId) return;
     void refreshActivity();
     setTick((value) => value + 1);
     try {
-      const [items, drafted] = await Promise.all([allAnswers(conversationId), listProposals(projectId)]);
+      const [items, drafted] = await Promise.all([allAnswers(conversationId), enabled ? listProposals(projectId) : null]);
       setAnswers(items);
-      setProposals(new Map(drafted.items.map((item) => [item.id, item])));
+      if (drafted) setProposals(new Map(drafted.items.map((item) => [item.id, item])));
     } catch { /* the conversation itself reports lost access */ }
-  }, [conversationId, projectId, refreshActivity]);
+  }, [conversationId, projectId, refreshActivity, enabled]);
 
   /** A run changed: keep it while it works or when it ended without an answer; an answer shows in the feed. */
   const track = useCallback((next: AssistantRun) => {
@@ -112,6 +115,11 @@ export function useConversationAssistant({ meId, meName, projectId, conversation
   }, [conversationId, refreshShared, refreshStatus]);
 
   useEffect(() => {
+    // F-029 (#614): while the workspace's AI is off only the committed answers (conversation history) are read.
+    if (!enabled) {
+      if (conversationId) allAnswers(conversationId).then(setAnswers).catch(() => undefined);
+      return;
+    }
     refreshStatus();
     if (conversationId) {
       Promise.all([allAnswers(conversationId), listProposals(projectId)]).then(([items, drafted]) => {
@@ -129,19 +137,20 @@ export function useConversationAssistant({ meId, meName, projectId, conversation
       if (active) setRun(active);
       if (waiting) setQueued(waiting);
     }).catch(() => undefined);
-  }, [conversationId, projectId, meId, refreshStatus]);
+  }, [conversationId, projectId, meId, refreshStatus, enabled]);
 
   useStreamEvents(meId, (event) => {
+    if (!enabled) return;
     if (event.kind === ASSISTANT_RUN_CHANGED_EVENT) {
       // Owner-only: another person's run never reaches this stream.
       getRun(event.objectId).then(track).catch(() => undefined);
       return;
     }
     if (event.objectType === 'project' && event.objectId === projectId && event.kind.startsWith('project.assistant_')) void refreshShared();
-  }, () => { void refreshShared(); if (runRef.current) getRun(runRef.current.id).then(track).catch(() => undefined); });
+  }, () => { void refreshShared(); if (enabled && runRef.current) getRun(runRef.current.id).then(track).catch(() => undefined); });
 
   // A fallback while a run works, in case the stream is reconnecting.
-  const working = !!run && isWorking(run);
+  const working = enabled && !!run && isWorking(run);
   useEffect(() => {
     if (!working || !run) return;
     const timer = window.setInterval(() => { getRun(run.id).then(track).catch(() => undefined); }, 4000);
@@ -149,13 +158,15 @@ export function useConversationAssistant({ meId, meName, projectId, conversation
   }, [working, run, track]);
 
   useEffect(() => {
-    if (!queued) return;
+    if (!queued || !enabled) return;
     const timer = window.setInterval(() => { getRun(queued.id).then(track).catch(() => undefined); }, 4000);
     return () => window.clearInterval(timer);
-  }, [queued, track]);
+  }, [queued, track, enabled]);
 
   return {
-    status, answers, proposals, run, queued, others, tick, refreshStatus, member: membership.member, requested: membership.requested, refreshMembership,
+    // Masked while AI is off: a run, a suggestion or a status read before the flip is not shown.
+    status: enabled ? status : null, answers, proposals: enabled ? proposals : new Map<string, AssistantProposal>(), run: enabled ? run : null, queued: enabled ? queued : null,
+    others: enabled ? others : [], tick, refreshStatus, member: enabled ? membership.member : null, requested: enabled && membership.requested, refreshMembership,
     async cancelQueued() {
       if (!queued) return;
       track(await stopRun(queued.id));

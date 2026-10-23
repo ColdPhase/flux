@@ -51,3 +51,62 @@ console.log(JSON.stringify({type:'turn.completed'}));
     assert.deepEqual(files.sort(), ['binding.json', 'oauth-authorized']);
   } finally { await rm(root, { recursive: true }); }
 });
+
+/** A stub Codex that never finishes its native run, and a stub Docker that runs the real metadata helper. */
+async function hangingHostShell(root: string) {
+  const checkout = join(root, 'checkout'), bin = join(root, 'bin'), argsFile = join(root, 'native-args.jsonl');
+  await mkdir(join(checkout, 'docker'), { recursive: true }); await mkdir(bin); await mkdir(join(root, 'home'));
+  await copyFile('/flux-launcher', join(checkout, 'flux'));
+  await writeFile(join(checkout, 'docker', '.env'), 'FLUX_PROJECT=cowork-watchdog-test\n');
+  await writeFile(join(bin, 'docker'), `#!/usr/local/bin/node
+const {spawnSync}=require('node:child_process');
+const args=process.argv.slice(2), volume=args.indexOf('-v');
+if(volume<0) process.exit(0);
+const state=args[volume+1].split(':/cowork-state:Z')[0], helper=args.indexOf('tooling/dist/cowork.js');
+const result=spawnSync(process.execPath, ['/app/tooling/dist/cowork.js', ...args.slice(helper+1)], {env:{...process.env,FLUX_COWORK_STATE_DIR:state},stdio:'inherit'});
+process.exit(result.status??1);
+`, { mode: 0o700 });
+  await writeFile(join(bin, 'codex'), `#!/usr/local/bin/node
+const {appendFileSync}=require('node:fs');const args=process.argv.slice(2);
+if(args[0]==='--version'){console.log('codex-cli 0.160.1');process.exit(0)}
+if(args[0]==='login'){console.log('Logged in using ChatGPT');process.exit(0)}
+appendFileSync(process.env.COWORK_ARGS,JSON.stringify(args)+'\\n');
+if(args.includes('login')) process.exit(0);
+setInterval(()=>{},1000);
+`, { mode: 0o700 });
+  const env = { ...process.env, HOME: join(root, 'home'), XDG_STATE_HOME: join(root, 'state'), PATH: `${bin}:${process.env.PATH}`,
+    COWORK_ARGS: argsFile, CODEX_API_KEY: '', OPENAI_API_KEY: '', OPENAI_BASE_URL: '', FLUX_PROJECT: '', FLUX_COWORK_WATCHDOG_SECONDS: '' };
+  const common = ['--client', 'codex', '--origin', 'https://flux.example', '--connection', randomUUID(), '--project', randomUUID()];
+  const invoke = (extra: Record<string, string>, timeout = 30_000) => spawnSync('sh', [join(checkout, 'flux'), 'cowork', 'start', ...common],
+    { cwd: root, env: { ...env, ...extra }, encoding: 'utf8', timeout });
+  return { invoke, argsFile };
+}
+
+test('supplied shell action stops a native run that outlives FLUX_COWORK_WATCHDOG_SECONDS (stub CLI, no model)', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'cowork-watchdog-'));
+  try {
+    const { invoke, argsFile } = await hangingHostShell(root);
+    const started = Date.now();
+    const run = invoke({ FLUX_COWORK_WATCHDOG_SECONDS: '1' });
+    const elapsed = Date.now() - started;
+    assert.equal(run.error, undefined, 'the launcher returns on its own, without the test timeout');
+    assert.ok(elapsed < 20_000, `the 1-second watchdog ends the run well before the 300-second default (${elapsed} ms)`);
+    assert.match(run.stdout, /Flux host action /, 'the native run is recorded after the watchdog stops it');
+    const calls = (await readFile(argsFile, 'utf8')).trim().split('\n').map(line => JSON.parse(line) as string[]);
+    assert.equal(calls.filter(row => row.includes('exec')).length, 1, 'one native run was started (OAuth login is not a run)');
+  } finally { await rm(root, { recursive: true }); }
+});
+
+test('supplied shell action refuses an invalid FLUX_COWORK_WATCHDOG_SECONDS before any native start (stub CLI, no model)', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'cowork-watchdog-invalid-'));
+  try {
+    const { invoke, argsFile } = await hangingHostShell(root);
+    for (const value of ['0', '-5', '1.5', 'soon', '05']) {
+      const run = invoke({ FLUX_COWORK_WATCHDOG_SECONDS: value });
+      assert.equal(run.error, undefined, value);
+      assert.notEqual(run.status, 0, `${value} is refused`);
+      assert.match(run.stderr, /FLUX_COWORK_WATCHDOG_SECONDS must be a positive whole number/, value);
+    }
+    await assert.rejects(readFile(argsFile, 'utf8'), { code: 'ENOENT' }, 'no native invocation was started');
+  } finally { await rm(root, { recursive: true }); }
+});

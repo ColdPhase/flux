@@ -2295,6 +2295,8 @@ export const docLivePresence = pgTable('doc_live_presence', {
   generation: uuid('generation').notNull(), actorId: text('actor_id').notNull().references(() => authUsers.id),
   sessionId: text('session_id').notNull().references(() => authSessions.id, { onDelete: 'cascade' }),
   cursor: jsonb('cursor').$type<{ anchor: string; head: string }>().notNull(),
+  /** The person's slot in this room (0116): the smallest free one when they first appeared, kept while they stay. */
+  slot: smallint('slot').notNull().default(0),
   expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
 }, (t) => [check('doc_live_presence_cursor', sql`jsonb_typeof(${t.cursor}) = 'object' AND octet_length(${t.cursor}::text) <= 4096`)]);
 
@@ -2334,6 +2336,8 @@ export const mapLivePresence = pgTable('map_live_presence', {
   generation:uuid('generation').notNull(),actorId:text('actor_id').notNull().references(()=>authUsers.id),
   sessionId:text('session_id').notNull().references(()=>authSessions.id,{onDelete:'cascade'}),
   selected:jsonb('selected').$type<string[]>().notNull(),cursor:jsonb('cursor').$type<{x:number;y:number}>(),
+  /** The person's slot in this room (0116): the smallest free one when they first appeared, kept while they stay. */
+  slot:smallint('slot').notNull().default(0),
   expiresAt:timestamp('expires_at',{withTimezone:true}).notNull(),
 },t=>[foreignKey({columns:[t.sketchId,t.generation],foreignColumns:[mapLiveHeads.sketchId,mapLiveHeads.generation]}).onDelete('cascade'),check('map_live_presence_selected',sql`jsonb_typeof(${t.selected})='array' AND jsonb_array_length(${t.selected})<=16`),check('map_live_presence_cursor',sql`${t.cursor} IS NULL OR jsonb_typeof(${t.cursor})='object' AND octet_length(${t.cursor}::text)<=256`)]);
 

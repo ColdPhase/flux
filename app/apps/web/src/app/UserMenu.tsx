@@ -1,4 +1,5 @@
 import { useEffect, useId, useRef, useState, type KeyboardEvent } from 'react';
+import { useAllAiBlocked } from '../ai/workspaceAi';
 import { Form, Link, useLocation, useNavigation } from 'react-router';
 import { Avatar, Icon, Spinner, duration, play, trapTab } from '../ui';
 import { NotificationsButton } from '../pwa';
@@ -38,6 +39,8 @@ function AccountLink({ name, email, onNavigate }: { name: string; email: string;
 
 function AccountMenu({ name, email, sessionExpiresAt, compact }: { name: string; email: string; sessionExpiresAt: string; compact: boolean }) {
   const [open, setOpen] = useState(false);
+  // F-029 (#614): with AI off in every workspace the person has, there is no assistant to open from here.
+  const allAiOff = useAllAiBlocked();
   const buttonRef = useRef<HTMLButtonElement>(null);
   const popRef = useRef<HTMLDivElement>(null);
   const popId = useId();
@@ -86,10 +89,10 @@ function AccountMenu({ name, email, sessionExpiresAt, compact }: { name: string;
           <AppearanceControls idPrefix={popId} />
           <div className="me__sec">
             <Link to="/settings" className="me__item" onClick={() => close(false)}><Icon name="gear" />All settings</Link>
-            <Link to="/settings/assistant" className="me__item" onClick={() => close(false)}><Icon name="spark" />Your assistant</Link>
-            <Link className="me__item" style={{ textDecoration: 'none' }} to="/settings/background-compute" onClick={() => close(false)}>
+            {allAiOff ? null : <Link to="/settings/assistant" className="me__item" data-ai-surface="user-menu-assistant" onClick={() => close(false)}><Icon name="spark" />Your assistant</Link>}
+            {allAiOff ? null : <Link className="me__item" style={{ textDecoration: 'none' }} to="/settings/background-compute" data-ai-surface="user-menu-background" onClick={() => close(false)}>
               <Icon name="spark" />Your background suggestions
-            </Link>
+            </Link>}
           </div>
           <Form method="post" action="/sign-out" className="me__sec me__sec--end">
             <button type="submit" className="me__item" aria-disabled={signingOut || undefined}>

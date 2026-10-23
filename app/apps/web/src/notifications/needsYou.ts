@@ -12,6 +12,7 @@ import { useStreamEvents } from '../api/stream';
 import { INBOX_CHANGED, NEEDS_YOU_ACCEPTED, announceInboxChange, type AcceptedInboxItem } from './api';
 import { acceptingIds } from './pendingAccept';
 import { onPlacesForgotten } from '../place/memory';
+import { useProjectAiBlocked } from '../ai/workspaceAi';
 
 /** The Inbox "Needs you" queue (#342): what asks something of you, computed for you alone. */
 export const getNeedsYou = (signal?: AbortSignal) => request<NeedsYouResponse>(NEEDS_YOU_PATH, { signal });
@@ -57,6 +58,7 @@ let lastRead: { userId: string; response: NeedsYouResponse } | null = null;
 onPlacesForgotten(() => { lastRead = null; });
 
 export function useNeedsYou(userId: string, fromMemory = false): Queue {
+  const aiOff = useProjectAiBlocked();
   const [state, setState] = useState<{ userId: string; response: NeedsYouResponse | null; failed: boolean }>(() => ({ userId, response: fromMemory && lastRead?.userId === userId ? lastRead.response : null, failed: false }));
   const [version, setVersion] = useState(0);
   // Showing an item again re-renders even when the answer already holds it (it was only filtered out).
@@ -144,7 +146,9 @@ export function useNeedsYou(userId: string, fromMemory = false): Queue {
   const mine = state.userId === userId ? state : { userId, response: null, failed: false };
   // A decision this person just accepted is not shown while the accept is waiting or on its way.
   const accepting = acceptingIds();
-  const items = mine.response ? mine.response.items.filter((item) => !(item.decision && accepting.has(item.decision.id))) : null;
+  // F-029 (#614): what an agent or assistant asks in a workspace whose AI is off is not shown, even from a read made before it was turned off.
+  const items = mine.response ? mine.response.items.filter((item) => !(item.decision && accepting.has(item.decision.id))
+    && !(item.project && aiOff(item.project.id) && (item.from?.kind === 'agent' || item.key.startsWith('assistant:')))) : null;
   return { userId, items, count: items?.length ?? 0, later: mine.response?.later ?? 0, doneToday: mine.response?.doneToday ?? 0, failed: mine.failed, reload, hide, show };
 }
 
