@@ -18,6 +18,9 @@ from playwright.sync_api import Browser, BrowserContext, Page, Route, expect, sy
 
 from test_app_shell import DESKTOP, ORIGIN, PHONE, UPSTREAM, open_details, shot, start_forwarder, view_tab
 
+# Live editing is the wiki editor whenever it is configured (check_ui.sh sets FLUX_LIVE_EDITING=on by default).
+LIVE = os.environ.get('FLUX_LIVE_EDITING', 'on') != 'off'
+
 # Exhaust real browser storage; a subsequent larger write must be refused by its own quota.
 # No storage API, React state or success response is replaced.
 EXHAUST_STORAGE = """kind => {
@@ -71,6 +74,7 @@ class RouteChunksJourney(unittest.TestCase):
     name = "Ari Route Chunks"
     project_id = ""
     conversation_id = ""
+    email = ""
 
     @classmethod
     def setUpClass(cls):
@@ -84,7 +88,8 @@ class RouteChunksJourney(unittest.TestCase):
             page = context.new_page()
             page.goto("/sign-up")
             page.get_by_label("Name").fill(cls.name)
-            page.get_by_label("Email").fill(f"route.chunks+{uuid.uuid4()}@example.test")
+            cls.email = f"route.chunks+{uuid.uuid4()}@example.test"
+            page.get_by_label("Email").fill(cls.email)
             page.get_by_label("Password").fill("a quiet route loading passphrase")
             page.get_by_role("button", name="Create account").click()
             expect(page.get_by_role("heading", name="Home", exact=True)).to_be_visible()
@@ -283,6 +288,9 @@ class RouteChunksJourney(unittest.TestCase):
                 self.assertEqual(page.evaluate("key => localStorage.getItem(key)", key), earlier)
 
     def test_12_wiki_quota_copy_preserves_fields_base_and_attempt_before_reload(self):
+        # Live editing (#228) is the wiki editor whenever it is configured, so the shared working copy
+        # is driven and its own recovery record, save command and endpoint are checked. The ordinary
+        # editor keeps the same guarantees when live editing is off.
         for engine in self.browsers:
             with self.subTest(engine=engine):
                 page = self.page(engine)
@@ -293,31 +301,51 @@ class RouteChunksJourney(unittest.TestCase):
                 self.assertEqual(created.status, 201, created.text())
                 doc = created.json()
                 me = page.request.get(f"{ORIGIN}/api/v1/me").json()
-                key = f"flux:doc-edit:{me['user']['id']}:{doc['id']}"
+                key = f"flux:{'wiki-live' if LIVE else 'doc-edit'}:{me['user']['id']}:{doc['id']}"
                 page.goto(f"/projects/{self.project_id}/docs/{doc['id']}/edit")
-                field = page.get_by_label("Text (Markdown)", exact=True)
+                def text_field():
+                    return page.locator('.cm-content[aria-label="Shared Markdown"]') if LIVE else page.get_by_label("Text (Markdown)", exact=True)
+                def write(text):
+                    if LIVE:
+                        text_field().click(); page.keyboard.press("Control+a"); page.keyboard.insert_text(text)
+                    else:
+                        text_field().fill(text)
+                def expect_text(text):
+                    if LIVE: expect(text_field()).to_contain_text(text)
+                    else: expect(text_field()).to_have_value(text)
+                if LIVE: expect(page.locator('[data-live-status="live"]')).to_be_visible()
                 earlier = f"Earlier Wiki A {engine}"
                 latest = f"Latest Wiki B {engine}: " + "Retain the complete private edit and its save identity. " * 35
-                field.fill(earlier)
-                page.wait_for_function("([key,text]) => JSON.parse(sessionStorage.getItem(key) ?? '{}').body === text", arg=[key, earlier])
-                before = page.evaluate("key => JSON.parse(sessionStorage.getItem(key))", key)
+                write(earlier)
+                if LIVE: expect(page.get_by_role("status").filter(has_text="All changes shared")).to_be_visible()
+                else: page.wait_for_function("([key,text]) => JSON.parse(sessionStorage.getItem(key) ?? '{}').body === text", arg=[key, earlier])
                 self.assertEqual(page.evaluate(EXHAUST_STORAGE, 'session'), 'QuotaExceededError')
-                field.fill(latest)
-                self.assertEqual(page.evaluate("key => JSON.parse(sessionStorage.getItem(key)).body", key), earlier)
+                write(latest)
+                if LIVE: expect(page.get_by_role("status").filter(has_text="All changes shared")).to_be_visible()
+                else: self.assertEqual(page.evaluate("key => JSON.parse(sessionStorage.getItem(key)).body", key), earlier)
                 attempted = []
-                api_pattern = re.compile(rf"/api/v1/docs/{doc['id']}$")
+                before = page.evaluate("key => JSON.parse(sessionStorage.getItem(key))", key)
+                method = "POST" if LIVE else "PATCH"
+                api_path = f"/api/v1/docs/{doc['id']}/live/save" if LIVE else f"/api/v1/docs/{doc['id']}"
+                api_pattern = re.compile(re.escape(api_path) + "$")
                 def failed_save(route):
-                    if route.request.method != 'PATCH':
+                    if route.request.method != method:
                         route.continue_(); return
                     attempted.append({"body": route.request.post_data_json, "key": route.request.headers.get("idempotency-key"),
                         "base": route.request.headers.get("if-match")})
                     route.fulfill(status=503, content_type="application/json", body='{"message":"Save temporarily unavailable"}')
                 page.route(api_pattern, failed_save)
                 page.get_by_role("button", name="Save version", exact=True).click()
-                expect(page.locator(".doc-error")).to_be_visible()
+                if LIVE: expect(page.get_by_role("alert").filter(has_text="Save temporarily unavailable")).to_be_visible()
+                else: expect(page.locator(".doc-error")).to_be_visible()
                 self.assertEqual(len(attempted), 1)
-                self.assertEqual(attempted[0]["body"]["body"], latest)
-                self.assertNotEqual(attempted[0]["key"], before["attempt"])
+                self.assertEqual(attempted[0]["base"], f'"{doc["version"]}"')
+                if LIVE:
+                    self.assertEqual(attempted[0]["body"]["expectedVersion"], doc["version"])
+                    self.assertEqual(attempted[0]["key"], attempted[0]["body"]["clientCommandId"])
+                else:
+                    self.assertEqual(attempted[0]["body"]["body"], latest)
+                    self.assertNotEqual(attempted[0]["key"], before["attempt"])
                 pattern = re.compile(r"/assets/SettingsHome-[^/]+\.js(?:\?.*)?$")
                 def refused(route):
                     route.fulfill(status=503, headers={"cache-control": "no-store"}, content_type="text/plain", body="Real refused Wiki recovery delivery")
@@ -332,24 +360,25 @@ class RouteChunksJourney(unittest.TestCase):
                 page.get_by_role("navigation", name="Project views").get_by_role("link", name="Wiki", exact=True).click()
                 page.get_by_role("link", name=re.compile(rf"^{re.escape(doc['title'])}(?:\s*Draft)?$")).click()
                 page.locator(".wiki-bar").get_by_role("link", name="Edit", exact=True).click()
-                expect(page.get_by_label("Text (Markdown)", exact=True)).to_have_value(latest)
+                expect_text(latest)
                 page.evaluate("sessionStorage.removeItem('quota-route-recovery')")
                 page.get_by_role("button", name="Save version", exact=True).click()
-                expect(page.locator(".doc-error")).to_be_visible()
+                if LIVE: expect(page.get_by_role("alert").filter(has_text="Save temporarily unavailable")).to_be_visible()
+                else: expect(page.locator(".doc-error")).to_be_visible()
                 self.assertEqual(len(attempted), 2)
                 self.assertEqual(attempted[1], attempted[0], "B's exact body/base/save identity survives code recovery")
                 page.unroute(api_pattern, failed_save)
                 delivered = []
                 page.on("request", lambda request: delivered.append({"body": request.post_data_json,
                     "key": request.headers.get("idempotency-key"), "base": request.headers.get("if-match")})
-                    if request.method == 'PATCH' and request.url.endswith(f"/api/v1/docs/{doc['id']}") else None)
-                with page.expect_response(lambda response: response.request.method == 'PATCH' and response.url.endswith(f"/api/v1/docs/{doc['id']}")) as saved:
+                    if request.method == method and request.url.endswith(api_path) else None)
+                with page.expect_response(lambda response: response.request.method == method and response.url.endswith(api_path)) as saved:
                     page.get_by_role("button", name="Save version", exact=True).click()
                 self.assertEqual(saved.value.status, 200)
                 self.assertEqual(delivered, [attempted[0]])
                 current = page.request.get(f"{ORIGIN}/api/v1/docs/{doc['id']}").json()
                 self.assertEqual(current["body"], latest)
-                self.assertEqual(current["version"], before["base"] + 1)
+                self.assertEqual(current["version"], doc["version"] + 1)
 
     def test_13_failed_fresh_session_check_never_performs_document_reload(self):
         for engine in self.browsers:
@@ -427,6 +456,90 @@ class RouteChunksJourney(unittest.TestCase):
                         self.assertNotEqual(restored["session"]["id"], me["session"]["id"])
                         type(self).state = page.context.storage_state()
 
+
+    def test_15_sign_out_retires_the_live_visit_copy_for_the_next_account_in_this_tab(self):
+        # A refused live Save keeps Ari's visit copy only in this tab's memory (#326). Sign-out retires it
+        # like the classic drafts, so Ben signing in next reaches none of it, and Ari signing in again
+        # resumes no private copy: her Save sends a fresh command, not the refused one.
+        if not LIVE:
+            self.skipTest("The shared working copy is the Wiki editor only when live editing is on")
+        for engine in self.browsers:
+            with self.subTest(engine=engine):
+                page = self.page(engine)
+                self.home(page)
+                created = page.request.post(f"{ORIGIN}/api/v1/projects/{self.project_id}/docs",
+                    headers={"origin": ORIGIN, "idempotency-key": str(uuid.uuid4())},
+                    data={"title": f"Owned Wiki sign-out {engine}", "body": "Server baseline", "state": "draft"})
+                self.assertEqual(created.status, 201, created.text())
+                doc = created.json()
+                page.goto(f"/projects/{self.project_id}/docs/{doc['id']}/edit")
+                expect(page.locator('[data-live-status="live"]')).to_be_visible()
+                private = f"Ari's refused private text {engine}"
+                shared = page.locator('.cm-content[aria-label="Shared Markdown"]')
+                shared.click(); page.keyboard.press("Control+a"); page.keyboard.insert_text(private)
+                expect(page.get_by_role("status").filter(has_text="All changes shared")).to_be_visible()
+                self.assertEqual(page.evaluate(EXHAUST_STORAGE, 'session'), 'QuotaExceededError')
+                refused = []
+                def refuse_save(route):
+                    if route.request.method != "POST":
+                        route.continue_(); return
+                    refused.append(route.request.post_data_json)
+                    route.fulfill(status=503, content_type="application/json", body='{"message":"Save temporarily unavailable"}')
+                save_pattern = re.compile(rf"/api/v1/docs/{doc['id']}/live/save$")
+                page.route(save_pattern, refuse_save)
+                page.get_by_role("button", name="Save version", exact=True).click()
+                expect(page.get_by_role("alert").filter(has_text="Save temporarily unavailable")).to_be_visible()
+                page.unroute(save_pattern, refuse_save)
+                self.assertEqual(len(refused), 1)
+                refused_id = refused[0]["clientCommandId"]
+                # Sign out from this tab without a document reload: the visit copy is retired.
+                page.get_by_role("button", name=re.compile(self.name)).click()
+                page.get_by_role("dialog", name="Account").get_by_role("button", name="Sign out").click()
+                expect(page).to_have_url(re.compile("/sign-in"))
+                self.assertEqual(page.evaluate("() => Object.keys(sessionStorage).filter((key) => key.startsWith('flux:wiki-live:')).length"), 0)
+                # Ben signs in next in this tab: Ari's text is not on his screen and his session has no copy of it.
+                ben = self.other_account(engine)
+                page.get_by_label("Email").fill(ben)
+                page.get_by_label("Password", exact=True).fill("a quiet route loading passphrase")
+                page.get_by_role("button", name="Sign in", exact=True).click()
+                expect(page.get_by_role("heading", name="Home", exact=True)).to_be_visible()
+                self.assertNotIn(private, page.content())
+                page.get_by_role("button", name=re.compile("Ben Route Chunks")).click()
+                page.get_by_role("dialog", name="Account").get_by_role("button", name="Sign out").click()
+                expect(page).to_have_url(re.compile("/sign-in"))
+                # Ari signs in again in the same tab: no private copy from the earlier session, and her Save is a fresh command.
+                page.get_by_label("Email").fill(self.email)
+                page.get_by_label("Password", exact=True).fill("a quiet route loading passphrase")
+                page.get_by_role("button", name="Sign in", exact=True).click()
+                expect(page.get_by_role("heading", name="Home", exact=True)).to_be_visible()
+                # Through the router, not a document load: a load would clear this tab's visit copies anyway.
+                page.locator(".app__side").get_by_role("link", name=re.compile("^Chunk boundaries(?:, new activity)?$")).click()
+                page.get_by_role("navigation", name="Project views").get_by_role("link", name="Wiki", exact=True).click()
+                page.get_by_role("link", name=re.compile(rf"^{re.escape(doc['title'])}(?:\s*Draft)?$")).click()
+                page.locator(".wiki-bar").get_by_role("link", name="Edit", exact=True).click()
+                expect(page.locator('[data-live-status="live"]')).to_be_visible()
+                expect(page.get_by_text("A private copy from an earlier session is available.", exact=True)).to_have_count(0)
+                with page.expect_response(lambda response: response.request.method == "POST" and response.url.endswith(f"/api/v1/docs/{doc['id']}/live/save")) as saved:
+                    page.get_by_role("button", name="Save version", exact=True).click()
+                self.assertEqual(saved.value.status, 200)
+                self.assertNotEqual(saved.value.request.post_data_json["clientCommandId"], refused_id,
+                    "a visit copy retired by sign-out must not resume the refused Save")
+                # Sign-out revoked the shared session; the next engine starts from this fresh one (as test_14 does).
+                type(self).state = page.context.storage_state()
+
+    def other_account(self, engine: str) -> str:
+        """A second account made in a throwaway context, for the next person in the same tab."""
+        email = f"route.chunks.ben+{uuid.uuid4()}@example.test"
+        context = self.browsers[engine].new_context(base_url=ORIGIN, service_workers="block")
+        self.addCleanup(context.close)
+        page = context.new_page()
+        page.goto("/sign-up")
+        page.get_by_label("Name").fill("Ben Route Chunks")
+        page.get_by_label("Email").fill(email)
+        page.get_by_label("Password").fill("a quiet route loading passphrase")
+        page.get_by_role("button", name="Create account").click()
+        expect(page.get_by_role("heading", name="Home", exact=True)).to_be_visible()
+        return email
 
     def test_01_cold_home_omits_secondary_and_closed_surface_imports(self):
         for engine in self.browsers:
