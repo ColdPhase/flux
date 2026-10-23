@@ -4,6 +4,8 @@ export interface MapPeer {
   readonly actor: NamedPrincipal;
   readonly selected: readonly string[];
   readonly cursor: Readonly<{ x: number; y: number }> | null;
+  /** The person's slot in this room, from the server: it fixes their shape for every viewer. */
+  readonly slot: number;
   readonly expiresAt: string;
 }
 export interface MapPresenceSource {

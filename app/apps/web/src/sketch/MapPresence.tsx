@@ -1,26 +1,27 @@
 import { useMemo, useSyncExternalStore } from 'react';
 import type { MapPeer, MapPresenceSource } from '../editing/map-presence';
-import { COLLABORATION_INK, shapesFor, type PeerShape } from '../editing/color';
+import { COLLABORATION_INK, shapeOfSlot, type PeerShape } from '../editing/color';
 import type { Rect } from './geometry';
 import { MAX_LABEL, placeLabels } from './cursor-labels';
 
 /**
  * Without colour, people on the map are told apart by name and a small shape, as in the wiki: the same shape tops the
- * person's cursor, leads their name label and leads their entry in the People chip. It stays with the person while they stay.
+ * person's cursor, leads their name label and leads their entry in the People chip. The shape comes from the person's
+ * server-assigned slot in this room, so every viewer sees the same one and it never changes while they stay.
  */
-function shapesOf(peers: ReadonlyMap<string, MapPeer>, selfId: string | undefined): Map<string, PeerShape> {
-  return shapesFor([...peers.values()].map((peer) => peer.actor.id).concat(selfId ? [selfId] : []));
+function shapesOf(peers: ReadonlyMap<string, MapPeer>): Map<string, PeerShape> {
+  return new Map([...peers.values()].map((peer) => [peer.actor.id, shapeOfSlot(peer.slot)]));
 }
 const SHOWN_NAMES = 4;
 /** The spot each label had in this room's last layout, so a label keeps it while it stays clear. */
 const spotsOf = new WeakMap<MapPresenceSource, ReadonlyMap<string, string>>();
 
 /** The existing People chip updates independently of the sketch geometry/editor. */
-export function MapPeople({ source, selfId }: { source: MapPresenceSource; selfId?: string }) {
+export function MapPeople({ source }: { source: MapPresenceSource }) {
   const peers = useSyncExternalStore(source.subscribe, source.getSnapshot, source.getSnapshot);
   const here = [...new Map([...peers.values()].map((peer) => [peer.actor.id, peer.actor])).values()];
   if (!here.length) return null;
-  const shape = shapesOf(peers, selfId);
+  const shape = shapesOf(peers);
   // More than a few people: three names and the count of the rest; every full name stays in the group's label.
   const shown = here.length > SHOWN_NAMES ? here.slice(0, SHOWN_NAMES - 1) : here;
   return <p className="sk-here" role="group" aria-label={`People on this map: ${here.map((person) => person.name).join(', ')}`}>
@@ -30,9 +31,9 @@ export function MapPeople({ source, selfId }: { source: MapPresenceSource; selfI
 }
 
 /** Keep the original plane coordinates and constant on-screen cursor size at the current zoom. */
-export function MapCursors({ source, selfId, origin, zoom, rects, plane }: { source: MapPresenceSource; selfId?: string; origin: { x: number; y: number }; zoom: number; rects: ReadonlyMap<string, Rect>; plane: Rect }) {
+export function MapCursors({ source, origin, zoom, rects, plane }: { source: MapPresenceSource; origin: { x: number; y: number }; zoom: number; rects: ReadonlyMap<string, Rect>; plane: Rect }) {
   const peers = useSyncExternalStore(source.subscribe, source.getSnapshot, source.getSnapshot);
-  const shape = shapesOf(peers, selfId);
+  const shape = shapesOf(peers);
   const drawn = [...peers.entries()].flatMap(([key, peer]) => peer.cursor ? [{ key, peer, cursor: peer.cursor }] : []);
   // A label keeps its spot while it stays clear, and the thoughts' list is rebuilt only when their rectangles change.
   const thoughts = useMemo(() => [...rects.values()], [rects]);

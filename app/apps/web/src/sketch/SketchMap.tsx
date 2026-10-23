@@ -926,7 +926,7 @@ export function SketchMap(props: SketchMapProps) {
 
   return (
     <div ref={wrapRef} className={`sk-canvas-wrap sk-canvas-wrap--controls${hasComposition ? ' has-composition' : ''}`} style={(compact ? { '--sk-phone-tools-height': `${hasComposition ? compositionHeight : phoneToolsHeight}px` } : { '--sk-dock-h': `${dockHeight}px` }) as unknown as CSSProperties}>
-    {props.presenceStore ? <MapPeople source={props.presenceStore} selfId={canWrite ? meId : undefined} /> : null}
+    {props.presenceStore ? <MapPeople source={props.presenceStore} /> : null}
     <div className={`sk-canvas${panning ? ' is-panning' : ''}${panMode ? ' is-hand' : ''}${connectFrom ? ' is-connecting' : ''}${wire ? ' is-wiring' : ''}`} ref={canvasRef} role="group" tabIndex={0}
       data-live-own-gesture={props.ownGesture?.id} data-live-own-sequence={props.ownGesture?.sequence} data-live-generation={props.ownGesture?.generation}
       aria-label={`Sketch: ${sketch.title}`} aria-describedby={helpId} onKeyDown={onCanvasKeyDown}>
@@ -984,7 +984,7 @@ export function SketchMap(props: SketchMapProps) {
             })}
           </div>
           {thoughtNodes}
-          {props.presenceStore ? <MapCursors source={props.presenceStore} selfId={canWrite ? meId : undefined} origin={origin} zoom={zoom} rects={rects} plane={{ x: origin.x, y: origin.y, w: width, h: height }} /> : null}
+          {props.presenceStore ? <MapCursors source={props.presenceStore} origin={origin} zoom={zoom} rects={rects} plane={{ x: origin.x, y: origin.y, w: width, h: height }} /> : null}
           {plus && last && lastThought ? (!compact ? (hasComposition ? null : (() => {
             // Controls keep their on-screen size at every zoom (touch targets stay 44px).
             const x = plus.x + last.w / 2;

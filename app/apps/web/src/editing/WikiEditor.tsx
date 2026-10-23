@@ -1,5 +1,5 @@
 import { useEffect, useId, useRef, useState, type FormEvent } from 'react';
-import { COLLABORATION_INK, shapesFor, type PeerShape } from './color';
+import { COLLABORATION_INK, shapeOfSlot, type PeerShape } from './color';
 import { Link } from 'react-router';
 import * as Y from 'yjs';
 import { EditorSelection, EditorState, Prec, StateEffect, StateField, type Range } from '@codemirror/state';
@@ -179,10 +179,9 @@ function marks(client: SharedWiki) {
   }
   return Decoration.set(ranges, true);
 }
-/** The same shape per person on every viewer's screen (see `shapesFor`); the viewer counts as a participant when writing. */
+/** The same shape per person on every viewer's screen: it comes from the person's server-assigned slot in this room. */
 function shapes(client: SharedWiki): Map<string, PeerShape> {
-  const present = [...client.peers.values()].map((peer) => peer.actor.id);
-  return shapesFor(client.writer ? present.concat(client.userId) : present);
+  return new Map([...client.peers.values()].map((peer) => [peer.actor.id, shapeOfSlot(peer.slot)]));
 }
 function carets(client: SharedWiki): RemoteCaret[] {
   const result: RemoteCaret[] = [];

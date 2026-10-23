@@ -7,7 +7,7 @@ import { decode64, EditingConnection, encode64, type ReceivedEditing } from './w
 const REMOTE = Symbol('authorized shared update');
 interface Pending { envelope: WikiTextEnvelope; bytes: string }
 interface Recovery { generation: string; body: string; pending: Pending[]; save?: SaveSharedDoc | null }
-export interface WikiPeer { connectionId: string; actor: NamedPrincipal; cursor: LiveCursor | null; expiresAt: string }
+export interface WikiPeer { connectionId: string; actor: NamedPrincipal; cursor: LiveCursor | null; /** The person's slot in this room, from the server: it fixes their shape for every viewer. */ slot: number; expiresAt: string }
 export interface WriterRange { actor: NamedPrincipal; anchor: string; head: string }
 
 /** The Y.Doc is an editor instance. A socket reconnect renews it; a reload creates another. */

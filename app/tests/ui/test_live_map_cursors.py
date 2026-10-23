@@ -328,6 +328,35 @@ class LiveCursors(LiveFixture):
         self.assertEqual({name: len(shapes) for name, shapes in seen.items()}, {name: 1 for name in viewers}, f'one shape per person for every viewer: {seen}')
         self.assertEqual(len({next(iter(shapes)) for shapes in seen.values()}), 3, f'three people, three shapes: {seen}')
 
+    async def test_a_late_joiner_never_changes_the_shape_of_someone_already_there(self):
+        self.frames['lia'] = []
+        self.acks['lia'] = {}
+        await self.create_map(3)
+        ada, kai = self.pages['ada'], self.pages['kai']
+
+        async def shape_of(page, name):
+            peer = page.locator(f'.sk-peer[data-live-peer="{name}"]')
+            await expect(peer).to_have_count(1)
+            return await peer.get_attribute('data-shape')
+
+        await ada.mouse.move(700, 500, steps=4)
+        await expect(kai.locator('.sk-peer[data-live-peer="Ada North"]')).to_have_count(1)
+        await kai.mouse.move(820, 540, steps=4)
+        before = {'ada': await shape_of(kai, 'Ada North'), 'kai': await shape_of(ada, 'Kai South')}
+        self.assertNotEqual(before['ada'], before['kai'])
+        # A third person arrives, whatever their id: the server gives them the next free slot, nobody else's.
+        lia = await self.third_writer('Lia West', 'lia')
+        await lia.goto(f'/map/{self.map_id}')
+        await expect(lia.locator('[data-live-map-status="live"]')).to_be_visible()
+        await lia.mouse.move(940, 580, steps=4)
+        self.assertEqual(await shape_of(ada, 'Lia West'), await shape_of(kai, 'Lia West'), 'both viewers see the same shape for the newcomer')
+        newcomer = await shape_of(kai, 'Lia West')
+        self.assertNotIn(newcomer, before.values())
+        self.assertEqual(await shape_of(kai, 'Ada North'), before['ada'], 'Ada keeps her shape for the observer')
+        self.assertEqual(await shape_of(ada, 'Kai South'), before['kai'], 'Kai keeps his shape for Ada')
+        self.assertEqual(await shape_of(lia, 'Ada North'), before['ada'], 'the newcomer sees Ada with the shape everyone else sees')
+        self.assertEqual(await shape_of(lia, 'Kai South'), before['kai'], 'the newcomer sees Kai with the shape everyone else sees')
+
     async def test_a_cursors_name_keeps_its_spot_while_it_stays_clear(self):
         await self.create_map(3)
         ada, kai = self.pages['ada'], self.pages['kai']
