@@ -20,6 +20,8 @@ export interface ComposerOption {
   /** "My assistant": asks it (set up and ready), or opens its set-up (F-027 AST-10 Journey 2). */
   assistant?: 'ask' | 'setup';
 }
+/** Whether an action or mention is AI (F-029): those are not offered while the workspace's AI is off. */
+const AI_ACTIONS: ReadonlySet<SlashId> = new Set(['handoff', 'ai']);
 
 export interface ComposerTrigger { char: '@' | '/'; query: string; start: number }
 
@@ -43,15 +45,15 @@ const ACTIONS: { id: SlashId; hint: string; here: 'any' | 'thread' }[] = [
 ];
 
 /** The options for a trigger: actions by command name, or the people and agents of the project by name. */
-export function composerOptions(trigger: ComposerTrigger, { people, meId, inThread, assistant }: { people: ProjectPerson[] | null; meId: string; inThread: boolean; assistant?: { mode: 'ask' | 'setup'; last: boolean } | null }): ComposerOption[] {
+export function composerOptions(trigger: ComposerTrigger, { people, meId, inThread, assistant, aiOff = false }: { people: ProjectPerson[] | null; meId: string; inThread: boolean; assistant?: { mode: 'ask' | 'setup'; last: boolean } | null; aiOff?: boolean }): ComposerOption[] {
   const query = trigger.query.toLowerCase();
   if (trigger.char === '/') {
-    return ACTIONS.filter((action) => (action.here === 'any' || inThread) && action.id.startsWith(query))
+    return ACTIONS.filter((action) => (action.here === 'any' || inThread) && !(aiOff && AI_ACTIONS.has(action.id)) && action.id.startsWith(query))
       .map((action) => ({ id: `slash-${action.id}`, kind: 'action' as const, label: `/${action.id}`, hint: action.hint, insert: `/${action.id} `, slash: action.id }));
   }
-  const mine: ComposerOption[] = assistant && inThread && 'my assistant'.includes(query) || assistant && inThread && 'assistant'.startsWith(query)
+  const mine: ComposerOption[] = !aiOff && assistant && inThread && ('my assistant'.includes(query) || 'assistant'.startsWith(query))
     ? [{ id: 'mention-my-assistant', kind: 'agent', label: 'My assistant', hint: assistant!.mode === 'ask' ? 'Agent · for you' : 'Set up', insert: '', assistant: assistant!.mode }] : [];
-  const others = (people ?? []).filter((person) => person.id !== meId && person.name.toLowerCase().includes(query))
+  const others = (people ?? []).filter((person) => !(aiOff && person.kind === 'agent') && person.id !== meId && person.name.toLowerCase().includes(query))
     .sort((a, b) => Number(b.name.toLowerCase().startsWith(query)) - Number(a.name.toLowerCase().startsWith(query)) || a.name.localeCompare(b.name))
     .slice(0, 8)
     .map((person) => ({ id: `mention-${person.kind}-${person.id}`, kind: person.kind === 'agent' ? 'agent' as const : 'person' as const,
@@ -60,7 +62,7 @@ export function composerOptions(trigger: ComposerTrigger, { people, meId, inThre
 }
 
 /** The menu above the composer's box. `active` is the option the keys act on. */
-export function ComposerMenu({ id, options, active, onPick, onHover, trigger }: { id: string; options: ComposerOption[]; active: number; onPick: (option: ComposerOption) => void; onHover: (index: number) => void; trigger: ComposerTrigger['char'] }) {
+export function ComposerMenu({ id, options, active, onPick, onHover, trigger, aiOff = false }: { aiOff?: boolean; id: string; options: ComposerOption[]; active: number; onPick: (option: ComposerOption) => void; onHover: (index: number) => void; trigger: ComposerTrigger['char'] }) {
   return (
     <div className="cmenu" id={id} role="listbox" aria-label={trigger === '@' ? 'Mention' : 'Actions'}
       // The field keeps focus: choosing never moves it, so the press must not blur the field.
@@ -68,6 +70,7 @@ export function ComposerMenu({ id, options, active, onPick, onHover, trigger }: 
       <div className="cmenu__h" aria-hidden="true">{trigger === '@' ? 'Mention' : 'Actions'}</div>
       {options.map((option, index) => (
         <div key={option.id} id={`${id}-${option.id}`} role="option" aria-selected={index === active} className={`cmenu__o${index === active ? ' is-active' : ''}`}
+          data-ai-surface={option.kind === 'agent' || option.slash && AI_ACTIONS.has(option.slash) ? 'composer-ai-option' : undefined}
           onMouseMove={() => { if (index !== active) onHover(index); }} onClick={() => onPick(option)}>
           {option.kind === 'action' ? <code className="cmenu__cmd">{option.label}</code>
             : <Fragment>{option.kind === 'agent' ? <Kreska size={24} /> : <Avatar name={option.label} size="md" />}<span className="cmenu__name">{option.label}</span></Fragment>}
@@ -75,7 +78,7 @@ export function ComposerMenu({ id, options, active, onPick, onHover, trigger }: 
           {index === active ? <kbd className="cmenu__kbd" aria-hidden="true">↵</kbd> : null}
         </div>
       ))}
-      {trigger === '/' ? <div className="cmenu__f" aria-hidden="true">Type @ to mention people and agents</div> : null}
+      {trigger === '/' ? <div className="cmenu__f" aria-hidden="true">{aiOff ? 'Type @ to mention people' : 'Type @ to mention people and agents'}</div> : null}
     </div>
   );
 }

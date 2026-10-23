@@ -70,3 +70,15 @@
 }
 /* "Try again" in a notice is a full touch target on phones and tablets. */
 @media (pointer: coarse) { .people__notice button { min-height: 44px; padding-inline: 6px; } }
+
+/* AI in this workspace (F-029, #614): one row; the button is top-aligned and keeps its width, so turning AI off or on changes only the line and the label. */
+.details__sec.people__ai { margin-top: 24px; padding-top: 18px; border-top: 1px solid var(--line); }
+.details__sec.people__ai h4 { margin-bottom: 8px; font-size: var(--fs-md); font-weight: 600; color: var(--t1); }
+.people__ai-row { display: flex; align-items: flex-start; gap: 12px; }
+.people__ai-line { flex: 1; min-width: 0; margin: 0; }
+.people__ai-button.ui-btn { flex: none; min-width: 7.5rem; justify-content: center; }
+.people__ai .people__confirm { margin-top: 10px; }
+@media (pointer: coarse) { .people__ai-button.ui-btn { min-height: 44px; } }
+.people__ai-status { display: flex; align-items: flex-start; gap: 6px; margin: 8px 0 0; font-size: var(--fs-sm) !important; color: var(--t2) !important; }
+.people__ai-status:empty { display: none; }
+.people__ai-status svg { flex: none; margin-top: 2px; color: var(--t1); }

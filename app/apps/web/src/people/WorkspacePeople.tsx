@@ -1,11 +1,12 @@
 import { useEffect, useId, useRef, useState, type FormEvent } from 'react';
 import { useNavigate, useRevalidator } from 'react-router';
-import type { Workspace, WorkspaceMember, WorkspaceRole } from '@flux/contracts';
+import { WORKSPACE_AI_POLICY_CHANGED_EVENT, type SetWorkspaceAiPolicyResult, type Workspace, type WorkspaceMember, type WorkspaceRole } from '@flux/contracts';
 import { ApiError } from '../api/client';
 import { whenPageLive } from '../api/pageLeaving';
+import { useStreamEvents } from '../api/stream';
 import { useShellData } from '../app/data';
 import { Avatar, Button, Icon, Input, Spinner, useToast } from '../ui';
-import { ROLE_HINT, ROLE_LABEL, addMember, attemptKeys, changeRole, firstName, getWorkspace, isManagerRole, listMembers, problemText, removeMember } from './api';
+import { ROLE_HINT, ROLE_LABEL, addMember, attemptKeys, changeRole, firstName, getWorkspace, isManagerRole, listMembers, problemText, removeMember, setWorkspaceAi } from './api';
 import './people.css';
 
 const ROLES: WorkspaceRole[] = ['member', 'guest', 'admin', 'owner'];
@@ -52,6 +53,8 @@ export function WorkspacePeople({ workspaceId, onBack }: { workspaceId: string; 
     return () => { waiting(); controller.abort(); };
   }, [workspaceId, reload]);
   const load = () => setReload((n) => n + 1);
+  // Someone turned AI off or on here (F-029, #614): the row shows the state as it is now.
+  useStreamEvents(me.user.id, (event) => { if (event.kind === WORKSPACE_AI_POLICY_CHANGED_EVENT && event.objectId === workspaceId) load(); }, load);
 
   const changed = (message: string, editorClosed: boolean) => {
     setDone(message); setEditing(null);
@@ -115,6 +118,8 @@ export function WorkspacePeople({ workspaceId, onBack }: { workspaceId: string; 
             : `Guests see only the projects given to them, not everyone in ${workspace.name}.`}</p>
         ) : null}
       </section>
+
+      <AiRow workspace={workspace} manager={manager} onChanged={() => { load(); revalidator.revalidate(); }} />
 
       <Leave workspace={workspace} soleOwner={myRole === 'owner' && owners <= 1} onLeft={onBack} meId={me.user.id} />
       <p className="details__keys"><kbd>]</kbd> toggles this panel · <kbd>Esc</kbd> closes it</p>
@@ -295,6 +300,102 @@ function Leave({ workspace, soleOwner, onLeft, meId }: { workspace: Workspace; s
             </div>
           </div>
         ) : <Button variant="quiet" className="details__leave" onClick={() => setConfirm(true)}>Leave {workspace.name}</Button>}
+      {problem ? <p className="people__notice" role="alert"><Icon name="alert" size={13} />{problem}</p> : null}
+    </section>
+  );
+}
+
+const turnedOffOn = new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short' });
+
+/** "2 runs stopped." for the status line after AI is turned off (the work that was stopped at once); nothing when none was running. */
+function stoppedLine(stopped: SetWorkspaceAiPolicyResult['stopped']) {
+  if (!stopped) return '';
+  const total = stopped.runs + stopped.comparisons + stopped.requests + stopped.units + stopped.sessions;
+  return total ? ` ${total} ${total === 1 ? 'run' : 'runs'} stopped.` : '';
+}
+
+/**
+ * AI in this workspace (F-029, #614): one row after the people and before Leave. Owners and admins see the state and one
+ * quiet button; it asks first, in place, like Remove and Leave, because turning AI off stops work that cannot be restored.
+ * Only the line and the button's label change between states, so the control never moves (Spokój rule 7). Everyone else
+ * sees one read-only line while AI is off, and nothing while it is on.
+ */
+function AiRow({ workspace, manager, onChanged }: { workspace: Workspace; manager: boolean; onChanged: () => void }) {
+  const ai = workspace.ai;
+  const blocked = ai?.state === 'blocked';
+  const [confirming, setConfirming] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [status, setStatus] = useState('');
+  const [stopped, setStopped] = useState(false);
+  const [problem, setProblem] = useState('');
+  const keys = useRef(attemptKeys());
+  const trigger = useRef<HTMLButtonElement>(null);
+  const confirmFirst = useRef<HTMLButtonElement>(null);
+  const lineId = useId();
+  const confirmId = useId();
+  useEffect(() => { if (confirming) confirmFirst.current?.focus(); }, [confirming]);
+  // Another person's change (or this tab's own, once read again) ends a question about the old state.
+  const seen = useRef(ai?.version);
+  useEffect(() => { if (seen.current !== ai?.version) { seen.current = ai?.version; setConfirming(false); } }, [ai?.version]);
+  if (!ai) return null;
+
+  if (!manager) {
+    return blocked ? (
+      <section className="details__sec people__ai" aria-label={`AI in ${workspace.name}`} data-ai-row="readonly">
+        <p className="ov-note">AI is off in {workspace.name}. Its owners and admins turned it off.</p>
+      </section>
+    ) : null;
+  }
+
+  const target = blocked ? 'allowed' : 'blocked';
+  const when = turnedOffOn.format(new Date(ai.changedAt));
+  const line = blocked
+    ? `Off · turned off${ai.changedBy ? ` by ${ai.changedBy.name}` : ''} on ${when}. No agent or assistant can read or change anything here.`
+    : 'On · agents and assistants can work here.';
+  const closeConfirm = () => { setConfirming(false); requestAnimationFrame(() => trigger.current?.focus({ preventScroll: true })); };
+
+  async function change() {
+    if (busy) return;
+    setBusy(true); setProblem(''); setStatus(''); setStopped(false);
+    try {
+      const result = await setWorkspaceAi(workspace.id, target, ai!.version, keys.current.for(`${target}:${ai!.version}`));
+      keys.current.done();
+      setStatus(target === 'blocked' ? `AI is off in ${workspace.name}.${stoppedLine(result.stopped)}` : `AI is on in ${workspace.name}.`);
+      setStopped(target === 'blocked' && stoppedLine(result.stopped) !== '');
+      closeConfirm();
+      onChanged();
+    } catch (error) {
+      keys.current.done();
+      if (error instanceof ApiError && error.code === 'VERSION_CONFLICT') setProblem('Someone changed this just now.');
+      else if (error instanceof ApiError && error.status === 403) setProblem('Only owners and admins can change this.');
+      else setProblem(problemText(error, { workspace: workspace.name }));
+      closeConfirm();
+      onChanged();
+    } finally { setBusy(false); }
+  }
+
+  return (
+    <section className="details__sec people__ai" aria-labelledby={`${lineId}-h`} data-ai-row={blocked ? 'off' : 'on'}>
+      <h4 id={`${lineId}-h`}>AI in {workspace.name}</h4>
+      <div className="people__ai-row">
+        <p className="people__ai-line" id={lineId}>{line}</p>
+        <Button ref={trigger} variant="secondary" className="people__ai-button" aria-describedby={lineId} aria-expanded={confirming} aria-controls={confirming ? confirmId : undefined}
+          onClick={() => { setStatus(''); setStopped(false); setProblem(''); setConfirming(!confirming); }}>{blocked ? 'Turn on AI' : 'Turn off AI'}</Button>
+      </div>
+      {confirming ? (
+        <div className="details__confirm people__confirm" id={confirmId} role="group" aria-label={blocked ? `Turn on AI in ${workspace.name}` : `Turn off AI in ${workspace.name}`}
+          onKeyDown={(event) => { if (event.key === 'Escape') { event.stopPropagation(); closeConfirm(); } }}>
+          <p>{blocked
+            ? 'People’s assistants and connected agents can work here again, with the access they had. Nothing that was stopped starts again.'
+            : `No agent or assistant, including each person’s own, can read or change anything in ${workspace.name}. Work they are doing now stops and is not posted. Nothing is deleted.`}</p>
+          <div className="details__actions">
+            <Button ref={confirmFirst} variant="primary" busy={busy} onClick={() => void change()}>{blocked ? 'Turn on AI here' : 'Turn off AI here'}</Button>
+            <Button variant="quiet" onClick={closeConfirm}>{blocked ? 'Keep AI off' : 'Keep AI on'}</Button>
+          </div>
+        </div>
+      ) : null}
+      {/* Announced to everyone; shown only when it says something the row's own line does not (what was stopped). */}
+      <p className={stopped ? 'people__ai-status' : 'ui-vh'} role="status">{status}</p>
       {problem ? <p className="people__notice" role="alert"><Icon name="alert" size={13} />{problem}</p> : null}
     </section>
   );

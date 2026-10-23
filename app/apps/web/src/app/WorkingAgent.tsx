@@ -12,6 +12,7 @@ import { getOwnWorkingAgents } from '../agents/api';
 import { stopFailure, stopAgentWork } from '../agents/stop';
 import { useShellData } from './data';
 import { RefLink } from '../place/origin';
+import { useAllAiBlocked, useProjectAiBlocked } from '../ai/workspaceAi';
 
 const POLL_WHILE_WORKING_MS = 3000;
 interface WorkingSnapshot { identity: string; run: AssistantRun | null; stopping: boolean; failed: boolean }
@@ -19,13 +20,15 @@ interface WorkingLifetime { identity: string; live: boolean; revision: number; r
 
 /** Reads and Stop share one owner/lifetime fence; neither may restore an older working answer. */
 function useWorkingRun(identity: string) {
+  // F-029 (#614): with AI off in every workspace there is nothing of the assistant's to read.
+  const allOff = useAllAiBlocked();
   const [snapshot, setSnapshot] = useState<WorkingSnapshot>({ identity, run: null, stopping: false, failed: false });
   const lifetime = useRef<WorkingLifetime | null>(null);
   // Background reads (poll, focus, stream) wait while this page is hidden or being left (see
   // pageLeaving, #471). User-started requests never go through refresh().
   const refresh = useCallback(() => {
     const scope = lifetime.current;
-    if (!scope?.live || scope.identity !== identity || scope.stopping) return;
+    if (allOff || !scope?.live || scope.identity !== identity || scope.stopping) return;
     if (pageLeaving() || document.visibilityState === 'hidden') return;
     scope.read?.abort();
     const controller = new AbortController();
@@ -40,7 +43,7 @@ function useWorkingRun(identity: string) {
     }, () => {
       if (current()) setSnapshot({ identity, run: null, stopping: false, failed: false });
     });
-  }, [identity]);
+  }, [identity, allOff]);
   useEffect(() => {
     const scope: WorkingLifetime = { identity, live: true, revision: 0, read: null, stopping: false };
     lifetime.current = scope;
@@ -131,10 +134,12 @@ const doing = (run: AssistantRun) =>
 
 /** The person's own external agents that work on a task now. Reads on mount, focus, every event and a slow timer. */
 function useOwnWorkingAgents(identity: string) {
+  const allOff = useAllAiBlocked();
   const [state, setState] = useState<{ identity: string; items: OwnWorkingAgent[] }>({ identity, items: [] });
   const reload = useRef<() => void>(() => { /* not mounted */ });
   useEffect(() => {
     let controller: AbortController | null = null;
+    if (allOff) return undefined;
     reload.current = () => {
       controller?.abort();
       const current = new AbortController();
@@ -147,7 +152,7 @@ function useOwnWorkingAgents(identity: string) {
     const timer = window.setInterval(onFocus, 20_000);
     window.addEventListener('focus', onFocus);
     return () => { controller?.abort(); window.clearInterval(timer); window.removeEventListener('focus', onFocus); reload.current = () => { /* unmounted */ }; };
-  }, [identity]);
+  }, [identity, allOff]);
   useStreamEvents(identity, () => reload.current(), () => reload.current());
   return { items: state.identity === identity ? state.items : [], reload: useCallback(() => reload.current(), []) };
 }
@@ -183,7 +188,7 @@ function OwnAgentCard({ item, compact, onChanged }: { item: OwnWorkingAgent; com
   const destination = `/projects/${item.task.projectId}/agents`;
   const hue = agentHue(item.agent.id);
   return (
-    <div className={`agentlive agentlive--agent${compact ? ' agentlive--compact' : ''}`} role="status" aria-label={label} data-agent={item.agent.id}>
+    <div className={`agentlive agentlive--agent${compact ? ' agentlive--compact' : ''}`} role="status" aria-label={label} data-agent={item.agent.id} data-ai-surface="working-agent">
       {compact ? (
         <RefLink className="agentlive__link" to={destination} title={label} aria-label={label}><Kreska size={24} expression={expression} hue={hue} /></RefLink>
       ) : (
@@ -207,12 +212,14 @@ function OwnAgentCard({ item, compact, onChanged }: { item: OwnWorkingAgent; com
 export function WorkingAgent({ compact = false }: { compact?: boolean }) {
   const { me } = useShellData();
   const agents = useOwnWorkingAgents(me.user.id);
+  const aiOff = useProjectAiBlocked();
   // Home lists every working agent itself (HomeWorkingAgents), so the sidebar card steps aside there.
   const onHome = useLocation().pathname === '/';
-  // Several agents at once: online ones first; the card shows the first with how many more are online, so the sidebar never grows.
-  const ordered = [...agents.items.filter((item) => item.working), ...agents.items.filter((item) => !item.working)];
+  // Agents of a workspace whose AI is off (#614) are not shown. Several at once: online ones first; the card shows the first with how many more are online, so the sidebar never grows.
+  const items = agents.items.filter((item) => !aiOff(item.task.projectId));
+  const ordered = [...items.filter((item) => item.working), ...items.filter((item) => !item.working)];
   const first = ordered[0];
-  const workingCount = agents.items.filter((item) => item.working).length;
+  const workingCount = items.filter((item) => item.working).length;
   return (
     <>
       <WorkingAssistant compact={compact} />
@@ -232,12 +239,13 @@ function WorkingAssistant({ compact = false }: { compact?: boolean }) {
   const { run, stop, dismissFailure, stopping, failed } = useWorkingRun(me.user.id);
   const stopButton = useRef<HTMLButtonElement>(null);
   const moments = useSmallMoments();
-  if (!run) return null;
+  const aiOff = useProjectAiBlocked();
+  if (!run || aiOff(run.projectId)) return null;
   const label = stopping ? 'Stopping your assistant…' : `Your assistant is ${doing(run)}`;
   const destination = `/projects/${run.projectId}/conversations/${run.conversationId}`;
   return (
     <>
-    <div className={`agentlive${compact ? ' agentlive--compact' : ''}`} role="status" aria-label={label}>
+    <div className={`agentlive${compact ? ' agentlive--compact' : ''}`} role="status" aria-label={label} data-ai-surface="working-assistant">
       {compact ? (
         <RefLink className="agentlive__link" to={destination} title={label} aria-label={label}>
           {moments ? <Kreska size={24} expression={face(run)} /> : <span className="agentlive__mark" aria-hidden="true"><Icon name="spark" size={20} /></span>}
@@ -276,10 +284,12 @@ function WorkingAssistant({ compact = false }: { compact?: boolean }) {
 export function HomeWorkingAgents() {
   const { me } = useShellData();
   const agents = useOwnWorkingAgents(me.user.id);
-  if (!agents.items.length) return null;
+  const aiOff = useProjectAiBlocked();
+  const items = agents.items.filter((item) => !aiOff(item.task.projectId));
+  if (!items.length) return null;
   return (
-    <section className="home-agents" aria-label="Your agents working now">
-      {agents.items.map((item) => <OwnAgentCard key={item.task.id} item={item} compact={false} onChanged={agents.reload} />)}
+    <section className="home-agents" aria-label="Your agents working now" data-ai-surface="home-working-agents">
+      {items.map((item) => <OwnAgentCard key={item.task.id} item={item} compact={false} onChanged={agents.reload} />)}
     </section>
   );
 }
@@ -288,7 +298,8 @@ export function HomeWorkingAgents() {
 export function ProjectAgentStop({ projectId }: { projectId: string }) {
   const { me } = useShellData();
   const agents = useOwnWorkingAgents(me.user.id);
-  const item = agents.items.find((candidate) => candidate.task.projectId === projectId);
+  const aiOff = useProjectAiBlocked();
+  const item = aiOff(projectId) ? undefined : agents.items.find((candidate) => candidate.task.projectId === projectId);
   return item ? <HeaderAgentStop item={item} onChanged={agents.reload} /> : null;
 }
 

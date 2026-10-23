@@ -22,26 +22,29 @@ const made = (change: AssistantChange) => change.state === 'applied' || change.s
 const skipped = (change: AssistantChange) => change.state === 'refused' && !!change.line?.startsWith('Skipped');
 
 /** The owner's changes of this conversation, by run; undecided ones move to Inbox when the owner leaves (P2-4). */
-export function useAssistantChanges(conversationId: string | null, refreshKey: unknown) {
+export function useAssistantChanges(conversationId: string | null, refreshKey: unknown, enabled = true) {
   const [changes, setChanges] = useState<AssistantChange[]>([]);
   const refresh = useCallback(async () => {
-    if (!conversationId) { setChanges([]); return; }
+    if (!conversationId || !enabled) { setChanges([]); return; }
     try { setChanges((await listConversationChanges(conversationId)).items); } catch { /* the conversation reports lost access itself */ }
-  }, [conversationId]);
+  }, [conversationId, enabled]);
   useEffect(() => {
-    if (!conversationId) return;
+    // F-029 (#614): the waiting changes of a workspace whose AI is off are not shown and not asked for.
+    if (!conversationId || !enabled) return;
     let live = true;
     listConversationChanges(conversationId).then((page) => { if (live) setChanges(page.items); }).catch(() => undefined);
     return () => { live = false; };
-  }, [conversationId, refreshKey]);
+  }, [conversationId, refreshKey, enabled]);
+  // While the workspace's AI is off nothing is shown and nothing is moved to the Inbox, whatever was read before.
+  const shown = useMemo(() => (enabled ? changes : []), [enabled, changes]);
   const waitingRuns = useRef<string[]>([]);
-  useEffect(() => { waitingRuns.current = [...new Set(changes.filter(pending).map((change) => change.runId))]; }, [changes]);
+  useEffect(() => { waitingRuns.current = [...new Set(shown.filter(pending).map((change) => change.runId))]; }, [shown]);
   useEffect(() => () => { for (const runId of waitingRuns.current) void moveRunChangesToInbox(runId).catch(() => undefined); }, [conversationId]);
   const byRun = useMemo(() => {
     const runs = new Map<string, AssistantChange[]>();
-    for (const change of changes) if (pending(change) || deferred(change) || suggestion(change) || settled(change) || made(change) || skipped(change)) runs.set(change.runId, [...(runs.get(change.runId) ?? []), change]);
+    for (const change of shown) if (pending(change) || deferred(change) || suggestion(change) || settled(change) || made(change) || skipped(change)) runs.set(change.runId, [...(runs.get(change.runId) ?? []), change]);
     return runs;
-  }, [changes]);
+  }, [shown]);
   return { byRun, refresh };
 }
 

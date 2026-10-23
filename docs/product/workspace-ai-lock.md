@@ -139,7 +139,9 @@ export async function requireWorkspaceAi(db: Executor, workspaceId: string, opti
     audience reads the policy row) held the admin's membership exclusively while waiting for the
     policy row, and the flip held the policy row while waiting for that membership: a deadlock,
     reproduced with the real `PATCH` and `PUT`.
-  - The sweep never locks the policy row; each of its steps is its own transaction.
+  - The sweep's steps are each their own transaction, and none holds the policy row across steps. Its runs step
+    takes the policy row `FOR SHARE` through the event audiences it records; that share cannot cycle with the
+    flip, which takes the row only after its own membership share.
 - **Exception: shares inside a person's own write.** The reaction-capture function, the
   `ai_work_admission` backstop, `prepareHumanNegative`/`enqueueHumanNegative` and
   `eventAudience` take the policy share after that person's membership and project shares.
@@ -400,6 +402,13 @@ allowed; the browser tests count these markers.
   questions and assistant join reviews in Inbox (`notifications/NeedsYouCard.tsx`,
   `AssistantJoinReview.tsx`), request cards and agent-thread composers;
 - AI onboarding (`ProjectSetup.tsx` mentions of Agents, Connect agent prompts).
+- project policy and review rule (`agents/ProjectPolicy.tsx`, `agents/ReviewRule.tsx`), the
+  background-suggestion rules (`proactive-comparison/ProjectRuleSettings.tsx`, which offers
+  only projects whose workspace has AI on) and what a comparison checked
+  (`project/ComparisonEvidence.tsx`). The browser test keeps an enumerated list of these
+  surfaces (`ai_surfaces` in `tests/ui/test_workspace_ai_lock.py`): each is shown in the
+  workspace whose AI is on and absent in the blocked one, and a new AI surface is added to
+  that list in the same change.
 
 **The switch: the workspace's People panel** ([founder direction
 2026-10-22](#founder-answers-2026-10-22)). It is the panel Home → Details → People → a
@@ -410,20 +419,22 @@ only to owners and admins of that workspace; members and guests see no row. It i
 place never changes with the state (Spokój rule 7): turning AI off or on changes only the
 row's line and its button label.
 
-- On: "On · agents and assistants can work here." Quiet button **Turn off AI**.
+- On: "On · agents and assistants can work here." Raised button **Turn off AI**.
 - Off: "Off · turned off by Ada on 18 Oct. No agent or assistant can read or change
-  anything here." Quiet button **Turn on AI**.
+  anything here." Raised button **Turn on AI**.
 
 The confirmation uses the panel's existing inline confirm group (`details__confirm`,
 as for Remove and Leave), in place under the row, so nothing else moves:
 
 - Turning off: "No agent or assistant, including each person's own, can read or change
   anything in Garden club. Work they are doing now stops and is not posted. Nothing is
-  deleted." Buttons **Turn off AI** (danger) and **Keep AI on**. Afterwards the panel's
-  status line says "AI is off in Garden club. 2 runs stopped."
+  deleted." Buttons **Turn off AI here** (the emphasised, inverted action) and **Keep AI on** (quiet);
+  the label differs from the row's button so it is not repeated within a few pixels. Afterwards
+  the status line is announced to everyone and drawn only when it says something the row's own
+  line does not: "AI is off in Garden club. 2 runs stopped."
 - Turning on: "People's assistants and connected agents can work here again, with the
-  access they had. Nothing that was stopped starts again." Buttons **Turn on AI** and
-  **Keep AI off**. Afterwards: "AI is on in Garden club."
+  access they had. Nothing that was stopped starts again." Buttons **Turn on AI here** (emphasised)
+  and **Keep AI off** (quiet). Afterwards "AI is on in Garden club." is announced.
 - A version conflict closes the confirm, shows the current state in the row and says
   "Someone changed this just now." A `403` says "Only owners and admins can change this."
 
@@ -505,6 +516,13 @@ safe to merge alone.
 - **S3 — human-only interface.** `useWorkspaceAi`, `<AiSurface>`, the People-panel row
   and its inline confirm, every listed surface, deep-link blocked states, and the AC-4
   browser tests, with a visual review under a neutral brief. It may merge only after S2.
+  Implementation notes (2026-10-23): the web app reads `workspace.ai` from the shell loader
+  and needs no new server field (the assistant status stays account-level; Settings and the
+  assistant screens merge it with the loader's `ai`). The shell reads the policy again on
+  `workspace.ai_policy_changed.v1`, when the tab regains focus (at most once a minute) and on
+  any `403 WORKSPACE_AI_BLOCKED`. Surfaces are hidden by the hooks in
+  `apps/web/src/ai/workspaceAi.tsx`; those drawn from a list (composer and ⌘K options, message
+  menu, Create's owners) carry `data-ai-surface` while shown, which the browser tests count.
 
 ## Founder answers (2026-10-22)
 
