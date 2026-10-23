@@ -402,6 +402,13 @@ allowed; the browser tests count these markers.
   questions and assistant join reviews in Inbox (`notifications/NeedsYouCard.tsx`,
   `AssistantJoinReview.tsx`), request cards and agent-thread composers;
 - AI onboarding (`ProjectSetup.tsx` mentions of Agents, Connect agent prompts).
+- project policy and review rule (`agents/ProjectPolicy.tsx`, `agents/ReviewRule.tsx`), the
+  background-suggestion rules (`proactive-comparison/ProjectRuleSettings.tsx`, which offers
+  only projects whose workspace has AI on) and what a comparison checked
+  (`project/ComparisonEvidence.tsx`). The browser test keeps an enumerated list of these
+  surfaces (`ai_surfaces` in `tests/ui/test_workspace_ai_lock.py`): each is shown in the
+  workspace whose AI is on and absent in the blocked one, and a new AI surface is added to
+  that list in the same change.
 
 **The switch: the workspace's People panel** ([founder direction
 2026-10-22](#founder-answers-2026-10-22)). It is the panel Home → Details → People → a
@@ -412,20 +419,22 @@ only to owners and admins of that workspace; members and guests see no row. It i
 place never changes with the state (Spokój rule 7): turning AI off or on changes only the
 row's line and its button label.
 
-- On: "On · agents and assistants can work here." Quiet button **Turn off AI**.
+- On: "On · agents and assistants can work here." Raised button **Turn off AI**.
 - Off: "Off · turned off by Ada on 18 Oct. No agent or assistant can read or change
-  anything here." Quiet button **Turn on AI**.
+  anything here." Raised button **Turn on AI**.
 
 The confirmation uses the panel's existing inline confirm group (`details__confirm`,
 as for Remove and Leave), in place under the row, so nothing else moves:
 
 - Turning off: "No agent or assistant, including each person's own, can read or change
   anything in Garden club. Work they are doing now stops and is not posted. Nothing is
-  deleted." Buttons **Turn off AI** (danger) and **Keep AI on**. Afterwards the panel's
-  status line says "AI is off in Garden club. 2 runs stopped."
+  deleted." Buttons **Turn off AI here** (the emphasised, inverted action) and **Keep AI on** (quiet);
+  the label differs from the row's button so it is not repeated within a few pixels. Afterwards
+  the status line is announced to everyone and drawn only when it says something the row's own
+  line does not: "AI is off in Garden club. 2 runs stopped."
 - Turning on: "People's assistants and connected agents can work here again, with the
-  access they had. Nothing that was stopped starts again." Buttons **Turn on AI** and
-  **Keep AI off**. Afterwards: "AI is on in Garden club."
+  access they had. Nothing that was stopped starts again." Buttons **Turn on AI here** (emphasised)
+  and **Keep AI off** (quiet). Afterwards "AI is on in Garden club." is announced.
 - A version conflict closes the confirm, shows the current state in the row and says
   "Someone changed this just now." A `403` says "Only owners and admins can change this."
 

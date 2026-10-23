@@ -29,6 +29,7 @@ import uuid
 
 from playwright.sync_api import Browser, BrowserContext, Page, Route, expect, sync_playwright
 
+from create_window import dialog, open_from_tasks
 from project_views import project_views
 from test_app_shell import DESKTOP, ORIGIN, PHONE, UPSTREAM, open_details, shot as save_shot, start_forwarder
 
@@ -472,6 +473,84 @@ class WorkspaceAiLock(unittest.TestCase):
                 self.assertEqual(self.markers(page), 0)
                 self.assertEqual(page.refused, [])
                 shot(page, f"project-human-only-{'phone' if phone else 'desktop'}")
+
+    def ai_surfaces(self) -> list[tuple[str, object]]:
+        """Every AI surface this slice names, each as a function (page, workspace key) -> how many of it are visible.
+
+        The list is the inventory: a surface that is added to the app without being added here is not covered, so a new AI
+        surface belongs in this list in the same change (and under `<AiSurface>`)."""
+        def agents_tab(page: Page, key: str) -> int:
+            self.project_page(page, key)
+            count = project_views(page).get_by_role("link", name=re.compile("^Agents")).count()
+            if page.viewport_size["width"] <= 900:
+                page.keyboard.press("Escape")
+            return count
+
+        def policy_and_review_rule(page: Page, key: str) -> int:
+            page.goto(f"/projects/{self.ids[f'{key}_project']}/agents")
+            page.wait_for_selector("[data-ai-off], .agents-link")
+            if page.locator("[data-ai-off]").count():
+                return page.locator("[data-ai-surface]").count()
+            page.get_by_role("button", name=re.compile("^Project policy")).click()
+            expect(page.locator("[data-ai-surface='project-policy']").first).to_be_visible()
+            return page.locator("[data-ai-surface='project-policy'], [data-ai-surface='review-rule']").count()
+
+        def handoff_command(page: Page, key: str) -> int:
+            self.project_page(page, key)
+            return sum(1 for name in self.composer_actions(page, "#project-composer", "/") if name in ("/handoff", "/ai"))
+
+        def agent_mention(page: Page, key: str) -> int:
+            self.project_page(page, key)
+            return sum(1 for name in self.composer_actions(page, "#project-composer", "@") if name in (A_AGENT, B_AGENT))
+
+        def message_hand_off(page: Page, key: str) -> int:
+            self.project_page(page, key)
+            return self.message_menu_items(page, False, A_ROOT if key == "a" else B_ROOT).count("Hand off to an agent")
+
+        def jump_ask_and_agents(page: Page, key: str) -> int:
+            self.project_page(page, key)
+            self.open_jump(page, False)
+            jump = page.get_by_role("combobox", name="Jump to")
+            jump.fill("ask")
+            page.wait_for_timeout(600)
+            asks = page.get_by_role("option", name=re.compile("Ask my assistant")).count()
+            jump.fill("@" + (A_AGENT if key == "a" else B_AGENT)[:3])
+            page.wait_for_timeout(600)
+            return asks + page.get_by_role("option", name=re.compile(A_AGENT if key == "a" else B_AGENT)).count()
+
+        def task_hand_off(page: Page, key: str) -> int:
+            page.goto(f"/projects/{self.ids[f'{key}_project']}/tasks?open=work:{self.ids[f'{key}_work']}")
+            panel = page.get_by_role("complementary", name="Details")
+            expect(panel.get_by_text("wiring").first).to_be_visible()
+            return panel.get_by_role("button", name="Hand off to an agent").count() + panel.get_by_role("link", name=re.compile("^Agents’ thread")).count()
+
+        def create_agent_owner(page: Page, key: str) -> int:
+            page.goto(f"/projects/{self.ids[f'{key}_project']}/tasks")
+            open_from_tasks(page)
+            window = dialog(page)
+            expect(window.locator("optgroup[label='People']")).to_have_count(1)
+            page.wait_for_timeout(800)
+            return window.locator("optgroup[label='Agents']").count()
+
+        def background_rule_projects(page: Page, key: str) -> int:
+            page.goto("/settings/background-compute")
+            picker = page.get_by_label("Project", exact=True)
+            expect(picker.locator("option", has_text="Choose a project")).to_have_count(1)
+            return picker.locator("option", has_text=A_PROJECT if key == "a" else B_PROJECT).count()
+
+        return [("the Agents view tab", agents_tab), ("project policy and review rule", policy_and_review_rule), ("/handoff and /ai commands", handoff_command),
+                ("agent mentions", agent_mention), ("hand off in the message menu", message_hand_off), ("Cmd-K ask and agents", jump_ask_and_agents),
+                ("hand off and agents' thread on a task", task_hand_off), ("agent owners in Create", create_agent_owner), ("a project in the background rules", background_rule_projects)]
+
+    def test_06c_every_known_ai_surface_is_there_in_the_other_workspace_and_none_in_the_blocked_one(self) -> None:
+        self.set_ai(self.page("ada"), "blocked")
+        for name, reach in self.ai_surfaces():
+            with self.subTest(surface=name):
+                page = self.page("ada", ready=True)
+                self.assertGreater(reach(page, "b"), 0, f"{name}: shown where AI is on (the control)")
+                page = self.page("ada", ready=True)
+                self.assertEqual(reach(page, "a"), 0, f"{name}: not shown where AI is off")
+                self.assertEqual(page.refused, [], f"{name}: nothing AI was asked of the server")
 
     def test_07_direct_links_show_one_calm_blocked_state_and_launch_nothing(self) -> None:
         self.set_ai(self.page("ada"), "blocked")

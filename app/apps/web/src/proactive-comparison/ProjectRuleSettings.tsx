@@ -4,7 +4,7 @@ import { workspaceAgentsPath, type Agent, type BackgroundComputeConnection, type
 import { ApiError, request } from '../api/client';
 import { listAccessibleProjects } from '../app/conversation-api';
 import { useShellData } from '../app/data';
-import { useBlockedWorkspaceIds } from '../ai/workspaceAi';
+import { useAllAiBlocked, useBlockedWorkspaceIds } from '../ai/workspaceAi';
 import { createPersonalAgent, grantAgentProject, listProjectGrants } from '../agent-connection/api';
 import { Button, Spinner } from '../ui';
 import { backgroundComparisonRuntime, changeBackgroundRule, createBackgroundRule, listBackgroundRules } from './api';
@@ -16,6 +16,7 @@ const money = (cents: number) => `$${(cents / 100).toFixed(2)}`;
 export function ProjectRuleSettings({ connection }: { connection: BackgroundComputeConnection | null }) {
   const { me } = useShellData();
   const blocked = useBlockedWorkspaceIds();
+  const allOff = useAllAiBlocked();
   const [params] = useSearchParams();
   const [projects, setProjects] = useState<Project[] | null>(null);
   const [projectId, setProjectId] = useState(params.get('project') ?? '');
@@ -101,7 +102,9 @@ export function ProjectRuleSettings({ connection }: { connection: BackgroundComp
     }, 'Paused rule created. No background request was started.');
   }
 
-  return <section className="background-settings__section" aria-labelledby="background-rules">
+  // F-029 (#614): with AI off in every workspace there is no project to make a rule for.
+  if (allOff) return null;
+  return <section className="background-settings__section" aria-labelledby="background-rules" data-ai-surface="project-rules">
     <h3 id="background-rules">Rules for your projects</h3>
     <p className="background-settings__help">Each rule belongs to you. A contributor's committed negative result can ask your agent for a quiet camera/sensor comparison; people retain decisions and work changes.</p>
     <div className="background-settings__select"><label htmlFor="background-rule-project">Project</label><select id="background-rule-project" value={projectId} disabled={busy || !projects} onChange={(event) => {

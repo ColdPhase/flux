@@ -6,7 +6,7 @@ import type { AgentOperation, AgentQuestion, AgentScope, AgentStop, Conversation
 import { ApiError, NetworkError } from '../api/client';
 import { useStreamEvents } from '../api/stream';
 import { projectAiBlocked, useShellData } from '../app/data';
-import { AiOffState, isAiBlocked, useWorkspaceAi } from '../ai/workspaceAi';
+import { AiOffState, AiSurface, isAiBlocked, useWorkspaceAi } from '../ai/workspaceAi';
 import { useShellActions } from '../app/shellContext';
 import { outboxView, useComposerDraft, useComposerScope } from '../composer/draft';
 import { AttachButton, ComposerFiles, MessageContent } from '../composer/Files';
@@ -862,9 +862,13 @@ function ProjectAgentsLoaded({ data }: { data: ProjectAgentsData }) {
         </ul>
         {policyOpen ? (
           <div id="agents-policy">
-            <ProjectPolicy key={projectId} projectId={projectId} meId={me.user.id} canEdit={shell?.project.access === 'manager'}
-              managers={(shell?.people ?? []).filter((person) => person.kind === 'human' && person.access === 'manager').map((person) => person.name)} />
-            <ReviewRule key={projectId} projectId={projectId} meId={me.user.id} canEdit={shell?.project.access === 'manager'} />
+            <AiSurface workspaceId={shell?.project.workspaceId} id="project-policy">
+              <ProjectPolicy key={projectId} projectId={projectId} meId={me.user.id} canEdit={shell?.project.access === 'manager'}
+                managers={(shell?.people ?? []).filter((person) => person.kind === 'human' && person.access === 'manager').map((person) => person.name)} />
+            </AiSurface>
+            <AiSurface workspaceId={shell?.project.workspaceId} id="review-rule">
+              <ReviewRule key={projectId} projectId={projectId} meId={me.user.id} canEdit={shell?.project.access === 'manager'} />
+            </AiSurface>
           </div>
         ) : null}
         {canWrite && entries.length && rows.length ? (
