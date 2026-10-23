@@ -32,7 +32,7 @@ export function accessContext({ db, sessions, liveRevocation, verifiedEmailMembe
     db,
     verifiedEmailMembers,
     /** How this API reads a workspace's encryption state: its keyring boot (null while unreachable), or rows only. */
-    readOptions: () => (encryptionKeys ? { bootId: encryptionKeys.bootId } : {}),
+    readOptions: () => (encryptionKeys ? { bootId: encryptionKeys.openableBoot } : {}),
     ...commandRunner(db, sessions),
     workspaceScope: (id: string): ResourceRef => ({ type: 'workspace', id }),
     projectScope: (id: string): ResourceRef => ({ type: 'project', id }),

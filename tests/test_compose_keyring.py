@@ -86,7 +86,10 @@ class ComposeKeyringTest(unittest.TestCase):
                 self.assertIn(f"mem_limit: ${{{variable}:-{default}}}\n    memswap_limit: ${{{variable}:-{default}}}", block, f"{name}: {service}")
                 self.assertIn("core: 0", block)
                 self.assertIn("FLUX_KEYRING_TOKEN: ${FLUX_KEYRING_TOKEN:-}", block)
-                self.assertIn("NODE_OPTIONS: --secure-heap=65536", block)
+                # OpenSSL's Argon2 allocates its memory from the secure heap when one is set (observed 2026-10-23), so
+                # the processes that derive KEKs run without it; only the keyring does.
+                self.assertNotIn("--secure-heap", block)
+            self.assertIn("NODE_OPTIONS: --secure-heap=65536", services(text)["keyring"])
 
     def test_flux_generates_and_upgrade_adds_a_missing_token(self) -> None:
         launcher = (ROOT / "flux").read_text(encoding="utf-8")

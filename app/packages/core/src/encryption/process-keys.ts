@@ -35,6 +35,8 @@ export class ProcessKeys {
   /** The keyring boot this process last saw; null before the first answer, or with no keyring. */
   get bootId(): string | null { return this.known; }
   get swapSafe(): boolean { return this.verdict.safe; }
+  /** The boot under which this process can open keys now: null while swap is unsafe or before the keyring answered. */
+  get openableBoot(): string | null { return this.verdict.safe ? this.known : null; }
 
   get availability(): EncryptionAvailability {
     if (!this.keyring) return 'keyring_off';

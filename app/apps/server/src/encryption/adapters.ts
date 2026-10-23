@@ -68,7 +68,7 @@ export interface EncryptionComposition {
 export function composeEncryption(db: Database, boss: Pick<PgBoss, 'send'>, keys: ProcessKeys): EncryptionComposition {
   const useCases = createEncryptionUseCases({
     unit: encryptionUnitOfWork(db, boss), keys, semaphore: new DerivationSemaphore(2, 8), estimator: zxcvbnEstimator(),
-    read: (principal, workspaceId) => getWorkspace(principal, workspaceId, db, { bootId: keys.bootId }),
+    read: (principal, workspaceId) => getWorkspace(principal, workspaceId, db, { bootId: keys.openableBoot }),
   });
   return { keys, useCases };
 }

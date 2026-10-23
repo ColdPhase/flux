@@ -85,7 +85,6 @@ services:
       FLUX_KEYRING: ${FLUX_KEYRING:-on}
       FLUX_KEYRING_TOKEN: ${FLUX_KEYRING_TOKEN:-}
       FLUX_SWAP_ACKNOWLEDGED: ${FLUX_SWAP_ACKNOWLEDGED:-}
-      NODE_OPTIONS: --secure-heap=65536
       PORT: 8080
     # Memory equal to memory+swap: no swap for this container (F-030); core dumps off.
     mem_limit: ${FLUX_API_MEMORY:-2g}
@@ -126,7 +125,6 @@ services:
       FLUX_KEYRING: ${FLUX_KEYRING:-on}
       FLUX_KEYRING_TOKEN: ${FLUX_KEYRING_TOKEN:-}
       FLUX_SWAP_ACKNOWLEDGED: ${FLUX_SWAP_ACKNOWLEDGED:-}
-      NODE_OPTIONS: --secure-heap=65536
     mem_limit: ${FLUX_WORKER_MEMORY:-1g}
     memswap_limit: ${FLUX_WORKER_MEMORY:-1g}
     ulimits:
