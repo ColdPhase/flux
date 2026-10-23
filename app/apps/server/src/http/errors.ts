@@ -1,6 +1,6 @@
 import type { FastifyError, FastifyInstance } from 'fastify';
 import type { ApiError } from '@flux/contracts';
-import { DomainError } from '@flux/core';
+import { ConflictError, DomainError } from '@flux/core';
 import { taskUseDomainError } from '../work/task-use-errors.js';
 
 // The one mapping from domain errors to HTTP answers (#85). The API registers it once on its root
@@ -17,11 +17,25 @@ export function domainErrorBody(error: DomainError): ApiError {
   return { ...error.details, error: error.message, code: error.code };
 }
 
+/** The F-030 database backstops (SQLSTATE FX409, the domain code as HINT; migration 0118) answer 409 with that code. */
+const DATABASE_CONFLICTS = new Set(['WORKSPACE_ENCRYPTED_AI_OFF', 'LAST_UNLOCK_PASSWORD', 'WORKSPACE_ENCRYPTION_IMMUTABLE']);
+export function databaseConflict(error: unknown): unknown {
+  for (let candidate = error as { code?: unknown; hint?: unknown; cause?: unknown } | undefined, depth = 0; candidate && depth < 3;
+    candidate = candidate.cause as typeof candidate, depth += 1) {
+    if (candidate.code === 'FX409' && typeof candidate.hint === 'string' && DATABASE_CONFLICTS.has(candidate.hint)) {
+      return new ConflictError(candidate.hint === 'LAST_UNLOCK_PASSWORD' ? 'This space needs at least one unlock password'
+        : candidate.hint === 'WORKSPACE_ENCRYPTED_AI_OFF' ? 'AI is always off in an encrypted workspace' : 'A workspace\'s encryption cannot change', candidate.hint);
+    }
+  }
+  return error;
+}
+
 /** Maps DomainError to its status and ApiError body, and an unauthenticated request to 401. */
 export function useDomainErrors(app: FastifyInstance) {
   app.setErrorHandler((error: FastifyError | DomainError, _request, reply) => {
     // A storage task-use refusal (#238) is a known outcome; translate it without parsing a message.
     error = taskUseDomainError(error) as typeof error;
+    error = databaseConflict(error) as typeof error;
     if (error instanceof DomainError) return reply.code(error.status).send(domainErrorBody(error));
     if ((error as FastifyError).statusCode === 401) return reply.code(401).send(UNAUTHENTICATED);
     throw error;

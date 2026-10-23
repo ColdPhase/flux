@@ -67,6 +67,11 @@ import { loadGithubConfig } from './github/config.js';
 import type { ServerConfig } from './config.js';
 import { fixtureFlags, registerFixtureRoutes } from './fixture/index.js';
 import { registerHealth } from './health/routes.js';
+import { composeEncryption, encryptionUnitOfWork, processKeysFromEnv } from './encryption/adapters.js';
+import { encryptionRoutes } from './encryption/routes.js';
+import { registerLockGate } from './encryption/lock-gate.js';
+import { requestLogSerializer, SECRET_LOG_PATHS } from './http/log-serializers.js';
+import { dropStaleUnlocks } from '@flux/core';
 import { useDomainErrors } from './http/errors.js';
 import { registerUpgradeDispatcher } from './http/upgrades.js';
 import { registerEditing } from './editing/composition.js';
@@ -92,13 +97,21 @@ declare module 'fastify' {
 export async function buildApp(config: ServerConfig, migrationsDir = 'packages/db/migrations'): Promise<FastifyInstance> {
   const { connectionString, identity: identityConfig, push: pushConfig, filesDir, env } = config;
   const { exposeWork } = fixtureFlags(config.fixture);
-  const app = Fastify({ logger: true, trustProxy: identityConfig.trustedProxies.length ? identityConfig.trustedProxies : false });
+  // F-030: the request serializer drops query strings (a search text is content); bodies are never logged.
+  const app = Fastify({ logger: { serializers: { req: requestLogSerializer }, redact: SECRET_LOG_PATHS }, trustProxy: identityConfig.trustedProxies.length ? identityConfig.trustedProxies : false });
   // Domain errors and missing sessions are mapped once, here; route plugins inherit it (#85).
   useDomainErrors(app);
+  // F-030 (#655): this process's keys of encrypted workspaces, refreshed by the keyring heartbeat; and the lock gate,
+  // registered before any route so every later route gets it.
+  const testDeployment = config.fixture.token !== null && config.fixture.failureInjection;
+  const encryptionKeys = processKeysFromEnv(env, testDeployment);
   useJsonCompression(app);
   // Every response refuses framing, the OAuth consent page included (#287).
   useFramingProtection(app);
   const { pool, db } = registerDatabase(app, connectionString);
+  let gateSessions: Awaited<ReturnType<typeof startIdentity>> | null = null;
+  registerLockGate(app, { db, keys: encryptionKeys,
+    sessions: { resolveSession: (headers) => gateSessions!.resolveSession(headers), requirePrincipal: (request) => gateSessions!.requirePrincipal(request) } });
   const migrationManifest = await readMigrationManifest(migrationsDir, FLUX_SCHEMA_VERSION);
   assertExactMigrationLedger(migrationManifest, await readAppliedMigrationVersions(pool));
   const boss = new PgBoss({ connectionString, migrate: false });
@@ -106,10 +119,19 @@ export async function buildApp(config: ServerConfig, migrationsDir = 'packages/d
   await boss.start();
   app.addHook('onClose', async () => boss.stop());
   const identity = await startIdentity(app, { db, config: identityConfig });
+  gateSessions = identity;
+  const encryption = composeEncryption(db, boss, encryptionKeys);
+  // The keyring heartbeat (5 s): swap again, then the boot id; a new boot deletes the stale unlock rows and records the locks.
+  const heartbeat = encryptionKeys.startHeartbeat(async (change) => {
+    if (change.current) await dropStaleUnlocks(encryptionUnitOfWork(db, boss), change.current);
+  }, 5_000, (error) => app.log.warn({ code: (error as { code?: unknown }).code ?? null }, 'Keyring heartbeat failed'));
+  app.addHook('onClose', async () => heartbeat.stop());
+  await heartbeat.first;
+  await app.register(async (scope) => encryptionRoutes(scope, { sessions: identity, encryption, fixtureCreation: config.fixture.token !== null }));
   const liveMedia = createLiveMediaFromEnv(env, identityConfig.publicOrigin);
   const lifecycle = liveMedia ? liveLifecycle(db, pool, liveMedia.media) : null;
   const liveRevocation = liveMedia ? liveRevocationCoordinator(db, pool, liveMedia.media, lifecycle!) : null;
-  await app.register(accessRoutes, { db, sessions: identity, boss, liveRevocation, verifiedEmailMembers: identityConfig.oidc !== null });
+  await app.register(accessRoutes, { db, sessions: identity, boss, liveRevocation, verifiedEmailMembers: identityConfig.oidc !== null, encryptionKeys });
   // Live map/wiki editing (#228) is composed below, after media; native map routes reach its backend lazily.
   let editing: Awaited<ReturnType<typeof registerEditing>> = null;
   const fileStorage = await diskFileStorage(filesDir);
@@ -239,7 +261,7 @@ export async function buildApp(config: ServerConfig, migrationsDir = 'packages/d
   // The `runtime` transport (F-022 AIM-3): off unless the operator set FLUX_AGENT_RUNTIME.
   await app.register(aiRoutes(agentRuntimeRoutes), { db, sessions: identity, config: config.agentRuntime, secret: identityConfig.secret, publicOrigin: identityConfig.publicOrigin });
 
-  registerHealth(app, { pool, boss, manifest: migrationManifest, filesDir });
+  registerHealth(app, { pool, boss, manifest: migrationManifest, filesDir, encryption: () => encryptionKeys.availability });
   registerFixtureRoutes(app, { config: config.fixture, db, boss, publicOrigin: identityConfig.publicOrigin });
 
   // The build writes .br/.gz copies of the app's text files (#266 item 9); a client that accepts

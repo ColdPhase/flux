@@ -501,16 +501,21 @@ export function createEncryptionUseCases({ unit, keys, semaphore, estimator, rea
       return { recoveryCode: code };
     },
 
-    /** The heartbeat's boot change: deletes every stale unlock row and records one `workspace.locked.v1 { reason: 'restart' }` per workspace. */
-    async dropStaleUnlocks(currentBoot: string): Promise<string[]> {
-      return unit.run(async (ports) => {
-        const dropped = await ports.rows.dropStaleUnlocks(currentBoot);
-        for (const row of dropped) {
-          await ports.event(row.unlockedBy ? { kind: 'human', id: row.unlockedBy } : SYSTEM, row.workspaceId, WORKSPACE_LOCKED_EVENT, { reason: 'restart' });
-        }
-        return dropped.map((row) => row.workspaceId);
-      });
-    },
+    dropStaleUnlocks: (currentBoot: string) => dropStaleUnlocks(unit, currentBoot),
   };
 }
 export type EncryptionUseCases = ReturnType<typeof createEncryptionUseCases>;
+
+/**
+ * The heartbeat's boot change, in every API and worker process: deletes every stale unlock row and records one
+ * `workspace.locked.v1 { reason: 'restart' }` per workspace. Concurrent deleters do no harm (each row is deleted once).
+ */
+export async function dropStaleUnlocks(unit: EncryptionUnitOfWork, currentBoot: string): Promise<string[]> {
+  return unit.run(async (ports) => {
+    const dropped = await ports.rows.dropStaleUnlocks(currentBoot);
+    for (const row of dropped) {
+      await ports.event(row.unlockedBy ? { kind: 'human', id: row.unlockedBy } : SYSTEM, row.workspaceId, WORKSPACE_LOCKED_EVENT, { reason: 'restart' });
+    }
+    return dropped.map((row) => row.workspaceId);
+  });
+}
