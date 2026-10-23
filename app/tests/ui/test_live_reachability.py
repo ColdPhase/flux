@@ -20,7 +20,7 @@ import unittest
 
 from playwright.sync_api import Page, expect, sync_playwright
 
-from test_app_shell import DESKTOP, ORIGIN, SHOTS, UPSTREAM, shot, start_forwarder
+from test_app_shell import DESKTOP, ORIGIN, SHOTS, UPSTREAM, shot, start_forwarder, view_tab
 from test_live_sessions import INSTRUMENT, LIVE, LiveBase
 
 # elementFromPoint at the element's centre: the element itself (or one of its children) must be on top.
@@ -98,7 +98,7 @@ class ReachabilityRows(LiveBase):
         self.browser = self.engines[engine]
 
     def context(self, who: str | None, *, viewport: dict | None = None, phone: bool = False, reduced: bool = False,
-                dark: bool = False, device: str | None = None):
+                dark: bool = False, device: str | None = None, block_workers: bool = False):
         options: dict = {"base_url": ORIGIN, "color_scheme": "dark" if dark else "light", "locale": "en-GB", "timezone_id": "Europe/Warsaw"}
         if device:
             descriptor = {k: v for k, v in self.pw.devices[device].items() if k != "default_browser_type"}
@@ -109,6 +109,9 @@ class ReachabilityRows(LiveBase):
             options.update(viewport=viewport or DESKTOP, device_scale_factor=1)
         if reduced:
             options["reduced_motion"] = "reduce"
+        if block_workers:
+            # A held request is only seen by page.route when no service worker answers it.
+            options["service_workers"] = "block"
         if who and who in self.states:
             options["storage_state"] = self.states[who]
         context = self.browser.new_context(**options)
@@ -140,9 +143,9 @@ class ReachabilityRows(LiveBase):
         self.addCleanup(self.leave_quietly, host)
         return host
 
-    def guest_join(self, engine: str, *, phone: bool = False, device: str | None = None) -> Page:
+    def guest_join(self, engine: str, *, phone: bool = False, device: str | None = None, block_workers: bool = False) -> Page:
         self.use(engine)
-        page = self.page("kai", phone=phone, device=device)
+        page = self.page("kai", phone=phone, device=device, block_workers=block_workers)
         self.open_conversation(page, self.conversation_url())
         page.locator("header.top, header.phead").get_by_role("button", name="Join").click()
         expect(self.bar(page).get_by_role("status").first).to_contain_text("Live")
@@ -288,6 +291,12 @@ class ReachabilityRows(LiveBase):
         scrim = page.locator(".ui-overlay[data-state='open'] .ui-scrim").bounding_box()
         assert scrim
         self.assertGreaterEqual(round(scrim["y"]) + 1, before[1] + before[3], "the scrim starts below the strip")
+        # The header above the strip is inert while the sheet is open, so the scrim dims it: it is the topmost thing there.
+        above = page.evaluate("([x, y]) => document.elementFromPoint(x, y)?.className ?? null", [before[0] + before[2] / 2, before[1] / 2])
+        self.assertIn("ui-scrim", above or "", f"{label}: the inert header is under the scrim, not a live-looking control")
+        if before[0] > 8:  # a rail beside the strip is inert too, so it is dimmed as well
+            beside = page.evaluate("([x, y]) => document.elementFromPoint(x, y)?.className ?? null", [before[0] / 2, before[1] + before[3] / 2])
+            self.assertIn("ui-scrim", beside or "", f"{label}: the inert rail beside the strip is under the scrim")
         hits = {}
         for name, button in (("mic", bar.get_by_role("button", name=re.compile("^Microphone"))),
                              ("more", bar.get_by_role("button", name="Session details and more")),
@@ -377,6 +386,33 @@ class ReachabilityRows(LiveBase):
         back.tap(timeout=5000)
         expect(stage).to_be_hidden()
         self.assert_app_interactive(guest)
+
+    def test_08_pending_navigation_does_not_move_the_strip(self) -> None:
+        # A navigation waiting for its code shows "Opening ..." over the work, not above the strip: the header,
+        # the strip and the work keep their places (Spokoj: a control never changes place).
+        self.start_host()
+        guest = self.guest_join("chromium", phone=True, block_workers=True)
+        held: list = []
+        guest.route(re.compile(r"/assets/ProjectTasks-[^/]+\.js(?:\?.*)?$"), lambda route: held.append(route))
+        self.addCleanup(lambda: [route.abort("aborted") for route in held])
+        expect(guest.locator(".route-progress")).to_have_count(0)
+        boxes = """() => Object.fromEntries(['header', '.lv-bar', '.app__body'].map((s) => { const b = document.querySelector(s).getBoundingClientRect(); return [s, [b.x, b.y, b.width, b.height].map(Math.round)]; }))"""
+        before = guest.evaluate(boxes)
+        view_tab(guest, "Tasks", tap=True)
+        pending = guest.locator(".route-progress")
+        expect(pending).to_be_visible()
+        self.assertEqual(guest.evaluate(boxes), before, "header, strip and work stay put while a navigation is pending")
+        self.observed["phone-390-chromium-pending"] = before
+        shot(guest, "live-reachability-phone-pending")
+        # The strip stays usable under it, and Cancel is a 44 px target.
+        hit = self.bar(guest).get_by_role("button", name="Leave", exact=True).evaluate(HIT_TEST)
+        self.assertTrue(hit["ok"], f"Leave is covered by {hit['top']}")
+        cancel = pending.get_by_role("button", name="Cancel", exact=True).bounding_box()
+        assert cancel
+        self.assertGreaterEqual(cancel["height"], 43.5)
+        pending.get_by_role("button", name="Cancel", exact=True).tap()
+        expect(pending).to_have_count(0)
+        self.assertEqual(guest.evaluate(boxes), before)
 
 
 if __name__ == "__main__":

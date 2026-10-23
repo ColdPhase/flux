@@ -115,7 +115,12 @@ conversation APIs exist (#29 slice 2, #36); production code contains no sample d
 - Visible 2px focus ring on every control; skip link; landmarks (`Sidebar`, `Views`
   navigation, `Details` complementary or dialog).
 - Drawer, overlay panel and sheet are modal dialogs: focus moves in, Tab is trapped, the app
-  root is `inert`, Esc or the scrim closes, and focus returns to the opener. The docked panel
+  root is `inert`, Esc or the scrim closes, and focus returns to the opener. The one exception
+  is the live strip: a thread or Details sheet or panel opened during a live session starts below
+  the strip, so only the strip stays out of `inert` (Tab runs through the sheet and the strip, and
+  the scrim also dims the header above it); any other overlay makes the strip inert too.
+  A pending navigation's "Opening …" row floats over the top of the work area and never moves
+  the header, the strip or the work. The docked panel
   is non-modal; Esc inside it closes it and returns focus to Details.
 - Forms: labels above fields, `aria-invalid` + described-by errors, first invalid field focused,
   form-level errors in a focused `role="alert"`; server codes are never shown.
