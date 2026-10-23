@@ -139,14 +139,22 @@ design's monochrome tokens. Motion is restrained and respects reduced motion.
 The independent visual assessment of2026-10-18 found that floating name pills
 obscured map thoughts and Wiki prose. Keep full names in the existing People
 strips (with the current Wiki line), the actual cursor/caret and their accessible
-identity. A map cursor may show its nearby name only when its bounded label box
-does not overlap any current thought; otherwise its name stays in the People
-strip. A Wiki caret's name never floats over editor text, and it is not left
+identity. A map cursor always keeps its name (independent visual review of PR
+#613, 2026-10-23: unnamed docked cursors and stacked labels left people
+unidentified). The label is placed clear of every thought, of the other labels
+and of the other cursors (beside the cursor, flipped, or just outside the
+thought the cursor is over) and clamped inside the plane, so a phone's edge
+keeps the whole name. One shape per person, kept while they stay, tops the map
+cursor, leads its label and leads their People-chip entry, as in the Wiki; the
+chip wraps beside Map options on a phone and shows three names and the count
+beyond four people. A Wiki caret's name never floats over editor text, and it is not left
 to the strip alone either (independent review of PR #613, 2026-10-22: with the
 name hidden, two people in one paragraph were indistinguishable and the strip's
 line number is the same for both). On a wide editor (768 px and up) the editor
 reserves a lane to the right of the lines, and each caret's name tag sits in it
-level with the caret's row, stacked below a tag that would touch it. On a narrow
+level with the caret's row, stacked below a tag that would touch it; two carets
+on one row keep their tags on that row side by side, with first names. A remote
+selection adds a line style that goes with its owner's shape. On a narrow
 editor there is no lane, so the text keeps its full width and the strip names
 the person. Colour never identifies anyone; a small shape (circle, square,
 diamond, triangle), kept for as long as the person stays, tops their caret,
