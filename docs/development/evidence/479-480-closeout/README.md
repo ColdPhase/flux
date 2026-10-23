@@ -1,8 +1,9 @@
 # #479 / #480 closeout evidence, 2026-10-23
 
 Observations by claude-hubert on one workstation, for the PR that closes out what could be done on it. Code under test:
-`e90070cc` (branch `claude-hubert/479-480-closeout`, based on `origin/main` `e4b4fab7`). Only the commands named
-here were run. Raw logs are not stored in the repository (evidence size policy); the lines quoted are copied from them.
+the branch `claude-hubert/479-480-closeout` as of its code commit, tested on `origin/main` `e4b4fab7` (the code commit
+is `8c55f76c` after the later rebase onto `c7b89690`, which added only a docs file; nothing was re-run for it). Only the
+commands named here were run. Raw logs are not stored in the repository (evidence size policy); the lines quoted are copied from them.
 
 ## Host
 
