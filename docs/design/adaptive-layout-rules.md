@@ -120,11 +120,15 @@ remain reachable. Own messages stay on the right and other people's on the left.
   - On a first visit to a projection, the selected thought, or else the first one in view, stays
     where the person saw it.
   - Nothing auto-fits on a resize.
-- **Short stream** (ADAPT-2, tall screens): when the stream does not fill its feed, the spare height goes above it
-  (`ConversationStream`, `.project-convo__lift`), so the newest message sits 23–27 px above the field from 390×844 to
-  3840×2160 instead of up to 1800 px away. The spare height is taken when the entries or the feed's size change. A row
-  that changes height in place (a queued message becoming the stored one) only gives height back, so it never moves.
-  A stream that fills the feed has no spare height and scrolls as before.
+- **Short feeds** (ADAPT-2, tall screens): when the project stream, a thread or a direct message does not fill its feed,
+  the spare height goes above it (`ui/spareHeight.ts`, an empty `lift` element before the column), so the newest message
+  sits 23–27 px above its field from 390×844 to 3840×2160 instead of up to 1800 px away. The spare height is taken when
+  the entries or the feed's size change. A row that changes height in place (a queued message becoming the stored one)
+  only gives height back, so it never moves. A feed that fills its box has no spare height and scrolls as before.
+  **Not covered:** Agents' task thread (a page scroll with its own sticky composer) and a direct message's thread panel
+  still leave their spare height where it falls.
+- **Half sheet** (phone): 56% of the screen, but at least 300 px (`.ui-detent-sheet`), so on a short landscape phone the
+  composer does not leave a task's fields less than a row of room; every field row can be scrolled clear of the composer.
 - Drafts, selection, the reading anchor, an open thread and the object in Details survive resize,
   rotation and a keyboard emulated as a shorter viewport. No transition saves or sends anything.
   The tests check this against the API.
@@ -147,9 +151,10 @@ its pull request. The test covers:
   CSS boxes as ratio 1 for the pane, feed, map canvas, task board and Details, in four views;
 - the dark theme for the same journey at 390×844 and 3440×1440;
 - wide caps, measured at 1920, 2560 and 3840 px (below);
-- a short stream on a tall screen: with two messages, the newest message and the message field are at most
-  `MAX_STREAM_GAP` apart from 390×844 to 3840×2160, because a stream that does not fill its feed sits against its
-  composer instead of leaving the screen's spare height between them;
+- a short stream, thread and direct message on a tall screen: with two messages each, the newest message and its field
+  are at most `MAX_STREAM_GAP` apart from 390×844 to 3840×2160 (test_08, test_09);
+- the task in Details: every field row (Status, Owner, Came from, Due) shows its own line above the composer on opening
+  on the common phones, and lies wholly above it, hit-testable, once scrolled into view, at every fixture;
 - browser zoom and text enlargement (ADAPT-5): all five views at 1280×1024 at 400% (a 320×256 CSS viewport) and
   1280×720 at 200% (640×360), emulated as the window divided by the zoom with the pixel ratio multiplied by it, and
   at 390×844, 820×1180 and 1440×900 with the root text size at 200%, where the test first measures that a message's
