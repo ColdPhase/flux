@@ -54,7 +54,7 @@ labels, map content, presence text, the person's AI provider key and browser exp
 | Malicious server substituting keys | Registers its own key for a person | Key-holders share only to a key fingerprint bound in an entry signed by someone allowed to add that person: by invite link, by safety code, or by a visible "not verified" acceptance ([Adding people](#adding-people-key-binding)). Only the last can be exploited, and everyone sees the badge. |
 | Malicious server forking, rolling back or withholding | Shows different valid logs to different clients, serves old logs, holds back entries | Envelopes and pairing payloads carry signed log heads, so a fork or rollback is detected as soon as any envelope or device crosses it ([Heads](#log-heads-and-detection)). **Withholding cannot be prevented**: a removal takes effect for a writer only once its device receives it. |
 | Active operator or attacker who changes the served web code | Ships JavaScript that exfiltrates keys or plaintext | **Not protected** ([research §6](research/2026-10-23-e2ee.md#6-delivery-of-the-client-code)). |
-| XSS in Flux | Runs script in the origin | **Full compromise while it runs**: it can hook Web Crypto before unlock, read the user root seed when it is unwrapped and read every key and plaintext in memory. Non-extractable storage only stops a later copy of device keys through the API. CSP, Trusted Types and the [sandboxed file viewer](#product-integration-ac4) are the defense. |
+| XSS in Flux | Runs script in the origin | **Full compromise while it runs**: it can hook Web Crypto before unlock, read the user root seed when it is unwrapped and read every key and plaintext in memory. Non-extractable storage only stops a later copy of device keys through the API. CSP, Trusted Types and the [sandboxed file viewer](#product-integration-ac4) are the defense. Allowlisted AI provider origins remain exfiltration sinks, since they accept any key. |
 | Stolen device, signed in and unlocked | A running app, and the QR to pair more devices | Reads what that person can read until suspended. It can suspend the owner's other devices at once and start removals, kit replacement or a reset, but those wait (48 hours, 7 days for the kit and reset) and any **established** device of the owner, **including a suspended one**, or the kit cancels them. Devices it pairs are on **probation for 7 days**: they cannot confirm, shorten, cancel or reinstate anything, nor suspend older devices ([Sensitive actions](#sensitive-actions-on-a-trusted-device)). If the owner notices nothing until the windows close, the thief wins; the notices on every device and by email are the defense. |
 | Powered-off laptop with a persisted session cookie, no disk encryption | Boots it and opens the browser | Under the default no-prompt mode, the valid session unlocks the device: **everything that person can read**. Mitigations: passkey unlock, OS disk encryption, operator session lifetimes, and suspension from another device. Stated at setup. |
 | Revoked device plus later database or backup theft | Holds old root seeds | Reads every epoch that was wrapped to those generations, including old content, until it is re-encrypted. |
@@ -241,7 +241,8 @@ the device's own Ed25519 key, lanes need no enrollment, and clients check contig
 per device, lane and object.
 
 The server verifies `sig` against the device list, the device's account against the
-access policy, `epoch` against the scope's minimum epoch and `seq` monotonicity, then
+access policy, `epoch` against the scope's minimum epoch and `seq` monotonicity per
+device, lane and object, then
 stores the envelope opaquely.
 
 **Files.** A random file key per file, wrapped by the object key; 1 MiB chunks with
@@ -359,9 +360,16 @@ asks for persistent storage and recommends the Home Screen app on phones.
 An **established** device has been in the device list for at least 7 days. A device
 paired more recently is on **probation**: pairing starts its clock and is announced on
 every device and by email. A probation device can read and write like any device, but
-it cannot confirm, shorten, cancel or reinstate a sensitive action, nor suspend an
-established device. This stops a thief who holds one unlocked device from pairing a
-second one to confirm their own actions (review N1).
+it cannot initiate, confirm, shorten, cancel or reinstate a sensitive action (removal,
+kit replacement, reset, passkey-off, reinstatement), nor suspend an established device.
+This stops a thief who holds one unlocked device from pairing a second one to confirm
+their own actions (review N1).
+
+- A person's **first device** is established at once: there is nothing older to
+  protect, and the kit is created with it.
+- A **device recovered with the kit** is established at once, because the kit is the
+  strongest authority; when other established devices exist, they are told of the
+  recovery and can suspend it.
 
 | Action | Immediate effect | Takes cryptographic effect |
 | --- | --- | --- |
@@ -377,8 +385,10 @@ second one to confirm their own actions (review N1).
 - **Cancel** is open to any established device of the person **including a suspended
   one**: a suspended device cannot unlock, but it can still sign in and sign a
   cancellation with its device key, which the server checks against the device list.
-  The kit cancels too. A confirmation by the kit is final and cannot be canceled by a
-  device.
+  A device cannot cancel an action that targets itself (its own removal or
+  suspension). A suspended device cannot suspend another device or start an action;
+  cancelling is all it can do. The kit cancels too. A confirmation by the kit is final
+  and cannot be canceled by a device.
 - The server enforces the delays and the probation rule (the threat here is a thief
   with a device, not the server). Pending actions show on every device with Cancel.
 - The kit can also revert: reinstate suspended devices and remove devices added since
@@ -480,10 +490,12 @@ headless agent device, no server-side AI and no key ever reaches an agent.
   summary on open, starts before that.
 - **Network allowlist.** The page's CSP `connect-src` lists only Flux's origin, the
   configured LiveKit origin and the provider origins the operator configures
-  (`FLUX_AI_BROWSER_ORIGINS`, defaulting to the supported providers' API origins). A
+  (`FLUX_AI_BROWSER_ORIGINS`, **empty by default**). The provider origins are added to
+  the header only for a person who turned AI on, so the header varies per person. A
   custom or self-hosted OpenAI-compatible endpoint is an operator setting, never a
-  field a user types, because each added origin is a place XSS could send data to.
-  E3 and E6 assert the header.
+  field a user types. A provider API origin accepts any key, so even an allowlisted
+  origin remains a place XSS could send data to (with the attacker's own key). E3 and
+  E6 assert the header.
 - **The provider key is a long-lived bearer credential.** It is readable by XSS in
   memory, available on every device of the person, and not revoked by suspension,
   device removal or key rotation. The removal dialog says "Rotate your AI key at the
@@ -502,12 +514,17 @@ headless agent device, no server-side AI and no key ever reaches an agent.
   not run while the app is closed; missed runs are skipped (F-027).
 - **The local MCP bridge (mode (b)).** A small stdio MCP server that the person's agent
   app starts on their computer, holding no scope key (review N2):
-  - **Pairing.** The person runs `flux bridge pair` in a terminal. It creates an
-    ephemeral X25519 key, asks the server to reach an open, unlocked Flux tab of the
-    same person, and both run the commit-then-reveal short code above, with the tab's
-    ephemeral X25519 key in the transcript. The terminal prints the four words; the tab
-    shows them in a dialog that **names the agent connection** and lists the grant to
-    approve: projects, read or read-write, and expiry. After a match, both sides derive
+  - **Pairing.** The person first opens "Connect an agent" in the app; the tab accepts
+    a pairing request only while that dialog is open, for at most two minutes, so a
+    server cannot raise unsolicited dialogs. The person then runs `flux bridge pair` in
+    a terminal. It authenticates to the server with the agent connection's OAuth token
+    (the ordinary F-016 connection flow), creates an ephemeral X25519 key and asks the
+    server to reach that open, unlocked tab. The commit-then-reveal short code above
+    runs with fixed roles: **the bridge commits first** (to its nonce and key), the tab
+    replies with its nonce and its ephemeral X25519 key, and the bridge reveals. The
+    terminal prints the four words and **the person types them into the tab**; the
+    dialog **names the agent connection** and lists the grant to approve: projects, read
+    or read-write, and expiry. A wrong entry ends the attempt. After a match, both sides derive
     a request key and a reply key with HKDF from the X25519 shared secret and the
     transcript; the server never learns them. The paired session is stored in a file
     readable only by the OS user (mode 0600), which the stdio server started by the
@@ -772,6 +789,7 @@ Review of `356b60f5`, [PR #652 comment](https://github.com/ColdPhase/flux/pull/6
 | Re-review N1 (P1): second device confirms the thief's actions | Probation for devices paired in the last 7 days; suspended established devices can cancel; kit confirmation final; kit replacement 7 days; threat row rewritten; E1 and harness cases |
 | Re-review N2 (P1): unauthenticated bridge relay | Pairing-derived request and reply keys with counters; tab-enforced local grant; session lifetime and indicator; dialog names the connection; terminal `flux bridge pair` shows the words; local-process limit stated; harness cases |
 | Re-review N3 (P2): on-device AI honesty | CSP `connect-src` allowlist set by the operator; provider key as a bearer credential (limit 11, removal dialog); provider and agent model provider as plaintext recipients (inventory, limit 10, enable dialog); explicit turn-on |
+| Approval P3 (`89e003d9`) | Typed four words and pairing only while "Connect an agent" is open; no self-targeted cancel, suspended devices only cancel; bridge commits first, `flux bridge pair` uses the connection's OAuth token; `FLUX_AI_BROWSER_ORIGINS` empty by default and per person; probation also blocks initiating; first and kit-recovered devices established; server `seq` per device, lane and object |
 | Re-review N4 | Invite link carries the genesis hash and the adder's root and is a bearer secret; inheritance of "Not verified"; restore after reset needs the safety code; powered-off laptop row and limit 12; lane rule for tabs; Anthropic header cited to the secondary source; output rendering and prompt-injection tests in E6 |
 | P3 | HPKE labeling corrected; size/timing metadata and padding; length-prefixed encoding and key id; Web Locks `seq`; 255-byte header count; conversion residue not applicable (no conversion); history for new members stated in the add dialog |
 
