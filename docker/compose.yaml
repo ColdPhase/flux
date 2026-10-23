@@ -14,7 +14,7 @@
 #   docker compose --env-file docker/.env -f docker/compose.yaml up -d --wait
 # Install, upgrade and backup: docs/operations/install-release.md.
 #
-# api, worker and migrate run one image at one revision (O-002); PostgreSQL is pinned by
+# api, worker, keyring and migrate run one image at one revision (O-002); PostgreSQL is pinned by
 # digest. Only the API is published, on loopback: put a TLS reverse proxy in front of it.
 name: ${FLUX_PROJECT:-flux}
 
@@ -81,7 +81,17 @@ services:
       FLUX_GITHUB_APP_SLUG: ${FLUX_GITHUB_APP_SLUG:-}
       FLUX_GITHUB_WEBHOOK_SECRET: ${FLUX_GITHUB_WEBHOOK_SECRET:-}
       FLUX_GITHUB_ENCRYPTION_KEY: ${FLUX_GITHUB_ENCRYPTION_KEY:-}
+      # Encrypted workspaces (F-030): the keyring below, on its internal network. FLUX_KEYRING=off disables them.
+      FLUX_KEYRING: ${FLUX_KEYRING:-on}
+      FLUX_KEYRING_TOKEN: ${FLUX_KEYRING_TOKEN:-}
+      FLUX_SWAP_ACKNOWLEDGED: ${FLUX_SWAP_ACKNOWLEDGED:-}
       PORT: 8080
+    # Memory equal to memory+swap: no swap for this container (F-030); core dumps off.
+    mem_limit: ${FLUX_API_MEMORY:-2g}
+    memswap_limit: ${FLUX_API_MEMORY:-2g}
+    ulimits:
+      core: 0
+    networks: [default, keyring]
     volumes:
       # The image owns /data/files as its non-root user, so a new volume starts writable.
       # "z" relabels the shared volume for SELinux hosts and is ignored elsewhere.
@@ -91,6 +101,8 @@ services:
     depends_on:
       migrate:
         condition: service_completed_successfully
+      keyring:
+        condition: service_started
     healthcheck:
       test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8080/api/v1/health',{signal:AbortSignal.timeout(3000)}).then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
       interval: 3s
@@ -110,11 +122,51 @@ services:
       FLUX_VAPID_PUBLIC_KEY: ${FLUX_VAPID_PUBLIC_KEY:-}
       FLUX_VAPID_PRIVATE_KEY: ${FLUX_VAPID_PRIVATE_KEY:-}
       FLUX_VAPID_SUBJECT: ${FLUX_VAPID_SUBJECT:-}
+      FLUX_KEYRING: ${FLUX_KEYRING:-on}
+      FLUX_KEYRING_TOKEN: ${FLUX_KEYRING_TOKEN:-}
+      FLUX_SWAP_ACKNOWLEDGED: ${FLUX_SWAP_ACKNOWLEDGED:-}
+    mem_limit: ${FLUX_WORKER_MEMORY:-1g}
+    memswap_limit: ${FLUX_WORKER_MEMORY:-1g}
+    ulimits:
+      core: 0
+    networks: [default, keyring]
     volumes:
       - files:/data/files:z
     depends_on:
       migrate:
         condition: service_completed_successfully
+  keyring:
+    # Encrypted workspaces (F-030): one random boot key in RAM only, nothing on disk; exactly one per deployment,
+    # on this host only. It refuses to start where its memory could be paged to disk.
+    image: ghcr.io/coldphase/flux@sha256:RELEASE_DIGEST
+    command: ["node", "apps/keyring/dist/main.js"]
+    restart: unless-stopped
+    user: "1000:1000"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    init: true
+    ulimits:
+      core: 0
+    mem_limit: ${FLUX_KEYRING_MEMORY:-128m}
+    memswap_limit: ${FLUX_KEYRING_MEMORY:-128m}
+    pids_limit: 32
+    environment:
+      FLUX_KEYRING_TOKEN: ${FLUX_KEYRING_TOKEN:-}
+      FLUX_SWAP_ACKNOWLEDGED: ${FLUX_SWAP_ACKNOWLEDGED:-}
+      NODE_OPTIONS: --secure-heap=65536
+    networks: [keyring]
+    healthcheck:
+      test: ["CMD", "node", "-e", "const t=process.env.FLUX_KEYRING_TOKEN;if(!t)process.exit(0);fetch('http://127.0.0.1:8090/v1/boot',{headers:{authorization:'Bearer '+t},signal:AbortSignal.timeout(2000)}).then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+networks:
+  default: {}
+  # api, worker and keyring only: workspace keys cross it, and it never leaves this host.
+  keyring:
+    internal: true
 
 volumes:
   pgdata:

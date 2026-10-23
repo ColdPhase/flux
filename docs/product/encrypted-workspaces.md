@@ -59,7 +59,7 @@ workspace content and is unchanged. Live audio and video are not stored ([live m
 
 ## Data model
 
-Migration `0118_encrypted_workspaces.sql` (the next free number when S1 lands; later slices take
+Migration `0119_encrypted_workspaces.sql` (0118 was taken by #664 when S1 landed; later slices take
 the next ones):
 
 ```sql
@@ -281,8 +281,11 @@ stored value and compares it in RAM. That happens only on a replay or a Save, so
   The parameters are stored per holder (`kdf`). A successful unlock with older parameters re-wraps
   the private key under the current ones.
 - `wrapped_private` = AES-256-GCM(KEK, random nonce, X25519 private key), with AAD
-  `[flux wrap v1, workspace id, holder id, kind, user id or "", public key]`. A wrong password fails
-  the tag, so there is no separate verifier. After opening, the API derives the public key from the
+  `[flux wrap v1, workspace id, holder id, kind, user id or "", public key]`. S1 adds
+  `workspace_holders.secret_check` = `HMAC(HKDF(KEK, [flux secret-check v1, workspace id, holder id]), [holder id,
+  kind, user id or ""])`: a wrong password fails it (`400 UNLOCK_INCORRECT`), and a right password whose row no longer
+  opens (a replaced public key or wrapped private key) is tampering (`409`). It is no easier to guess against than
+  the tag (both need the Argon2id derivation). After opening, the API derives the public key from the
   private key and compares it with the stored one. A mismatch is [tampering](#authenticating-holders-and-wraps).
 - **Sealing a DEK to a holder** (`workspace_dek_wraps`), in the style of HPKE base mode (RFC 9180)
   built from Node primitives: make an ephemeral X25519 key pair; `shared = X25519(ephemeral private,
@@ -667,7 +670,8 @@ Nothing listed is text that a person wrote, a name of a thing, or file bytes.
 
 - **The seal port.** Core declares `WorkspaceSeal { sealed: boolean; seal(field, identity, value); open(field, identity, envelope); digest(domain, bytes); fileCipher(fileId) }`
   in `packages/core/src/encryption/ports.ts`. One adapter, `sealFor(tx, workspaceId, { write })`
-  in `packages/db/src/repositories/workspace-seal.ts`, returns the identity seal for a workspace
+  in `packages/core/src/encryption/seal-for.ts` over the `@flux/db` reader `workspaceEncryptionRows`
+  (S1: `@flux/db` cannot import core, which depends on it), returns the identity seal for a workspace
   that is not sealed. For a sealed one it reads the unlock rows (`FOR SHARE` when `write`) and
   returns a real seal, or throws `WorkspaceLockedError` (`423 WORKSPACE_LOCKED`). **There is no
   plaintext fallback.** A sealed workspace never gets the identity seal, so a lock fails reads and
@@ -802,8 +806,8 @@ disk, and PostgreSQL must never see it.
   - Nothing else. Bodies are never logged.
 - **Single instance.** Exactly one keyring per deployment. Two would have two boot keys. API
   replicas scale freely.
-- **Hardening.** `read_only: true`, `cap_drop: [ALL]`, `ulimits: { core: 0 }`, `mem_limit: 64m` and
-  `memswap_limit: 64m`. With `--memory-swap` equal to `--memory` the container
+- **Hardening.** `read_only: true`, `cap_drop: [ALL]`, `ulimits: { core: 0 }`, `mem_limit: 128m` and
+  `memswap_limit: 128m` (S1 measured a 40 MB peak, healthcheck included; 64m was the starting value). With `--memory-swap` equal to `--memory` the container
   "doesn't have access to swap" ([Docker resource constraints](https://docs.docker.com/engine/containers/resource_constraints/),
   read 2026-10-23). This needs kernel swap-limit support, and `docker info` warns when it is missing,
   so the keyring also [checks its own cgroup](#memory-what-is-enforced-and-what-is-not) at boot.
@@ -879,7 +883,8 @@ not only warned about.
 - **Swap check.** One function, `swapSafety()` in `packages/core/src/encryption`, passes when any of
   these holds:
   1. the process's own cgroup forbids swap: on cgroup v2 `/sys/fs/cgroup/memory.swap.max` is `0`; on
-     v1 `memory.memsw.limit_in_bytes` equals `memory.limit_in_bytes`;
+     v1 `memory.memsw.limit_in_bytes` equals `memory.limit_in_bytes` **and that limit is real** (below
+     2^62; "no limit" is a page-rounded 2^63 - 1 in both files, which are then equal without forbidding swap);
   2. `/proc/swaps`, which shows the host's swap devices inside a container, lists none, or only
      `zram` devices (compressed RAM; an operator who sets up zram writeback to disk must not use
      this case);
@@ -888,16 +893,22 @@ not only warned about.
 - **Enforced where keys appear.** The keyring refuses to start unless `swapSafety()` passes. API and
   worker processes that fail it never open a DEK: for them every sealed workspace is locked, unlock
   and creation answer `503 SWAP_UNSAFE` ("This server can write memory to disk. Its operator needs to
-  turn off swap or confirm it is encrypted."), and `/api/v1/health` reports `encryption: 'swap_unsafe'`.
+  turn off swap or confirm it is encrypted."), and the API logs a warning at start. (S1 review: the
+  unauthenticated `/api/v1/health` does not report it.) The heartbeat runs the check again every 5 s and
+  drops every key when it fails.
 - **Defaults that pass.** The shipped Compose files give `api` and `worker` `mem_limit` with
   `memswap_limit` equal (`FLUX_API_MEMORY`, default `2g`; `FLUX_WORKER_MEMORY`, default `1g`;
   configurable, never unset), so case 1 holds wherever the kernel accounts swap. Elsewhere, case 2 or 3
   must hold.
 - **Core dumps** are off (`ulimits: core: 0`) for `api`, `worker` and `keyring`.
 - **Secure heap.** The DEK and subkeys are held as `KeyObject`s, never as JavaScript strings, and the
-  three processes start with `--secure-heap=65536`. Node documents that this secure heap is used "for
+  keyring starts with `--secure-heap=65536`. Node documents that this secure heap is used "for
   selected types of allocations within OpenSSL"; it does not say whether secret `KeyObject` bytes go
-  there. So it is defence in depth only. Plaintext content in the JS heap is outside it either way.
+  there. So it is defence in depth only. **`api` and `worker` run without it** (S1, observed
+  2026-10-23 on Node 24.21.0 / OpenSSL 3.5.8): OpenSSL allocates Argon2's memory from the secure heap
+  when one is set, so with 64 KiB every derivation failed with `secure malloc failure`, and a 16 MiB
+  heap could not be mapped under Docker's default memory-lock limit; 64 MiB per derivation would not
+  fit either. Plaintext content in the JS heap is outside it either way.
   Raw key `Buffer`s that must exist briefly (Argon2 output, keyring answers) are zeroed with
   `fill(0)` after use.
 - **Not covered:** hibernation and suspend-to-disk of the host, VM memory snapshots, and a hypervisor
@@ -1144,7 +1155,7 @@ answers `Cache-Control: no-store`, and does not use the Idempotency-Key store.
 
 | Route | Body | Answers |
 | --- | --- | --- |
-| `POST /api/v1/encrypted-workspaces` | `{ name, creationId, password }` | `201 { workspace, recoveryCode }`. The same person and `creationId` again (`workspaces.creation_id`) gives `200 { workspace, recoveryCode: null }`; a different name with the same id gives `409 IDEMPOTENCY_CONFLICT`. `400 PASSWORD_TOO_WEAK`, `503 KEYRING_UNAVAILABLE` or `SWAP_UNSAFE`. In S1 and S2 the route exists only with `FLUX_FIXTURE_TOKEN` set. |
+| `POST /api/v1/encrypted-workspaces` | `{ name, creationId, password }` | `201 { workspace, recoveryCode }`. The same person and `creationId` again (`workspaces.creation_id`) gives `200 { workspace, recoveryCode: null }`; a different name with the same id gives `409 IDEMPOTENCY_CONFLICT`. `400 PASSWORD_TOO_WEAK`, `503 KEYRING_UNAVAILABLE` or `SWAP_UNSAFE`. In S1 and S2 the route exists only in a test deployment (`FLUX_FIXTURE_TOKEN` set **and** `FLUX_TEST_FAILURE_INJECTION=true`) and needs the fixture bearer besides the session; a `./flux up` install, which always has a fixture token, never gets it. |
 | `POST /api/v1/workspaces/:id/unlock` | `{ password }` or `{ recoveryCode }` | `200 { encryption }`, `400 UNLOCK_INCORRECT`, `403 WORKSPACE_ENCRYPTION_ADMIN_REQUIRED`, `409 NO_UNLOCK_PASSWORD`, `429 UNLOCK_RATE_LIMITED`, `503 KEYRING_UNAVAILABLE`, `SWAP_UNSAFE` or `UNLOCK_BUSY`. |
 | `POST /api/v1/workspaces/:id/lock` | — | `200 { encryption }`, `403`. |
 | `POST /api/v1/workspaces/:id/unlock-password-grants` | `{ userId, password }` (the holder's own) | `201 { expiresAt }`, `400 UNLOCK_INCORRECT`, `403` (not a holder, or the target is not an owner or admin), `409 ALREADY_HAS_PASSWORD`, `423`. |
@@ -1172,9 +1183,9 @@ route.
 | AC-1 | S1 | Crypto: envelope round trip. A ciphertext moved to another row, column, table or workspace fails, as do a tampered tag, a wrong key version and a wrong DEK. Wraps use the stored KDF parameters, and a wrong password fails the tag. Recovery code normalisation. A sealed digest round trip compares equal in RAM, and two equal inputs give different stored values. Sealing a DEK to a holder's public key and opening it with the private key; the wrong holder, the wrong version or a changed ephemeral key fails. Holder MAC, the public key in the private key's AAD, the confirmation and the commitment chain each reject a changed value. File object round trip, truncation and tampering refused before any byte is returned. | `tests/app/encryption-crypto.test.ts` |
 | AC-2 | S1 | Lifecycle: create, unlock with the right password (`200`), the wrong one (`400`), the sixth failure by one person (`429`) while another admin can still unlock, the recovery code. A non-holder admin gets `409`. A member, a guest and an agent get `403`. A promoted admin with only a session gets `403 UNLOCK_PASSWORD_GRANT_REQUIRED`; after a holder's grant (wrong holder password `400`) or with the recovery code they can set one, the grant is consumed, an expired grant is refused, and the other holders get the `security` notification. Change password (needs the current one), new recovery code (the old one stops working), demotion deletes the wrap, `409 LAST_UNLOCK_PASSWORD`, `PASSWORD_TOO_WEAK` under 20 characters and for `abcdefghabcdefghabcd`. **One limiter:** five wrong secrets spread over unlock, a grant, a password change and a new recovery code give `429` on all four; a third concurrent derivation waits for the shared semaphore, Lock now gives `423` on the next content call. The create retry with the same `creationId` has no code; a different name gives `409`. | `tests/app/encrypted-workspaces.test.ts` |
 | AC-2 | S1 | AI forced off: the policy is `blocked` at creation; `PUT ai-policy` gives `409`; a direct SQL update to `allowed` is refused by the trigger. A direct SQL insert into every AI-class table for A is refused by `sealed_workspace_no_ai`, while the same insert for B passes. The F-029 gated-route list gives `403 WORKSPACE_AI_BLOCKED` in A and works in B. | same, with `workspace-ai-routes.test.ts` cases |
-| AC-2 | S1 | Keyring and swap: a wrong token, a malformed or oversized body all get a fixed answer with nothing echoed or logged; token comparison is `timingSafeEqual`. The keyring refuses to start with swap possible (a test stack with `memswap_limit` unset and a fake `/proc/swaps` mounted). An API that fails `swapSafety()` answers `503 SWAP_UNSAFE` for unlock and creation; `FLUX_SWAP_ACKNOWLEDGED=encrypted-swap` lets it pass. Every Compose file with `api` has the keyring or `FLUX_KEYRING: off`; `./flux upgrade` adds a missing token. | `tests/app/encryption-keyring.test.ts`, `tests/test_compose_keyring.py` |
+| AC-2 | S1 | Keyring and swap: a wrong token, a malformed or oversized body all get a fixed answer with nothing echoed or logged; token comparison is `timingSafeEqual`. The keyring refuses to start with swap possible (S1: the keyring process run with fake cgroup and `/proc/swaps` files under the test-only `FLUX_TEST_SWAP_ROOT`, because Docker refuses a mount over `/proc`; it gives no more power than `FLUX_SWAP_ACKNOWLEDGED`). An API that fails `swapSafety()` answers `503 SWAP_UNSAFE` for unlock and creation; `FLUX_SWAP_ACKNOWLEDGED=encrypted-swap` lets it pass. Every Compose file with `api` has the keyring or `FLUX_KEYRING: off`; `./flux upgrade` adds a missing token. | `tests/app/encryption-keyring.test.ts`, `tests/test_compose_keyring.py` |
 | AC-3 | S1 | **Restart is locked.** Unlock A and write. `docker compose restart` of the whole stack makes A's content routes answer `423` and `encryption.state = 'locked'`, and unlock works again. Restarting only `api` keeps A unlocked. Restarting only `keyring` locks A within 5 s, with one `workspace.locked.v1 { reason: 'restart' }`. | `app/tests/app/encryption-restart.check.ts`, called by `check_application.sh` |
-| AC-4 | S1 | **Multiple processes.** Two API containers, the worker and the keyring (pattern of the [two-API fixture](../development/live-editing-two-api.md)). Unlock on API-1, then read on API-2 at once. Lock on API-2, then API-1's next write gives `423`. The test stack runs PostgreSQL with `log_statement = all` and `log_parameter_max_length = -1`, and the **whole PostgreSQL log** of the run is scanned for the DEK, the subkeys, the KEK, the boot key, the passwords and the recovery code (raw, hex, base64, base64url), revealed by the fixture hook below. There must be zero hits. | `tests/app/live/encryption-two-api.test.ts`, `docker/compose.encryption.test.yaml` |
+| AC-4 | S1 | **Multiple processes.** Two API containers, the worker and the keyring (pattern of the [two-API fixture](../development/live-editing-two-api.md)). Unlock on API-1, then read on API-2 at once. Lock on API-2, then API-1's next write gives `423`. The test stack runs PostgreSQL with `log_statement = all` and `log_parameter_max_length = -1`, and the **whole PostgreSQL log** of the run is scanned for the DEK, the subkeys, the KEK, the passwords and the recovery code (hex, base64, base64url, and the texts as typed). S1 needs no key hook: the test derives the KEKs, holder private keys, DEKs and subkeys from the passwords, the code and the stored rows, as the API does. The boot key never leaves the keyring process. There must be zero hits; the API, worker and keyring logs are scanned too (`scripts/check_encryption.sh`). | `tests/app/live/encryption-two-api.test.ts`, `docker/compose.encryption.test.yaml` |
 | AC-5 | S2a | Registry, read from the **live catalog** after all migrations: every table is in `TABLE_CLASSES`, and every text or jsonb column of a content table is in `SEALED_COLUMNS` or `VISIBLE_COLUMNS` (default-deny; `draft_versions` and `search_documents` included). Each sealed table has its backstop trigger. `pg_trigger` and `pg_proc` show no SQL copy of a sealed column except the allowed pair, and `preserve_draft_version` writes nothing for A. An insert of plaintext into each sealed column of A is refused, while B is unchanged. The notification backstop refuses a body or a title outside the templates; the events backstop refuses a free-text string. Every command declares a resolvable scope or an `'account'` operation in the list; the `idempotency_keys` backstop refuses an unscoped row and an unsealed row of A. The SQL source scan finds no unhandled computation over a sealed column. | `tests/app/encryption-registry.test.ts` |
 | AC-6 | S2a | Locked routes: every registered route gives `423` for A's objects or is in `LOCKED_ALLOWED_ROUTES`, with no `500` and no content. Cross-workspace lists return B's items plus `lockedWorkspaces: [A]`. Until S2b, live Wiki, live map and search requests for A answer `409 WORKSPACE_ENCRYPTED_UNSUPPORTED` and write nothing to the live tables. | `tests/app/encryption-locked-routes.test.ts` |
 | AC-7 | S2a, S2b | **A stolen dump contains no plaintext and no key.** **Writes:** random canaries go into every content type of A through the real API and live sockets, and **every mutating request carries an Idempotency-Key**: project name, message, task discussion reply, DM and group title, task title, outcome, blocker and criteria, a task title change, a doc `PATCH` and an added section, a decision accepted, result, goal, draft and a draft edit (so `draft_versions` gets a row), map title, thought text and link label (live map), Wiki text typed live and saved, material URL, file name and file bytes, a mention notification, a search for a canary, the unlock passwords and the recovery code. **Large canaries:** for each text kind, one value over 8 KiB of repetitive text, so PostgreSQL TOASTs and pglz-compresses it. **Error paths:** a canary in a request that fails validation, one that hits a constraint violation, one that causes an injected 500 (`FLUX_TEST_FAILURE_INJECTION`), a notification generation that fails, an e-mail send that fails (Mailpit refusing), a failing pg-boss job, and a write raced by Lock now mid-request. **Keys:** a fixture-only hook (`FLUX_FIXTURE_TOKEN` and `FLUX_TEST_FAILURE_INJECTION` both set) returns the DEK, `K_seal`, `K_file`, one KEK and the boot key, which become canaries too. **Scan:** the test then **stops the whole stack** and scans `pg_dump` output (the pg-boss schema included; it decompresses TOAST), the raw PostgreSQL volume including `pg_wal`, the files volume, the writable layer of every container (`docker diff` lists the changed paths and `docker export` provides them), every container's log, and the whole PostgreSQL log. Each canary is searched raw, in JSON-escaped form, in hex and in base64 (standard and URL alphabets, at all three offsets; Yjs update bytes are stored as base64 text). **Positive control:** the same canaries in B, including a large compressed one, must be found in the dump. In the raw volume only the uncompressed ones are expected; that is why the dump is scanned too. A must give zero hits, and every AI-class table must have zero rows for A. **PostgreSQL logs, two passes.** Pass 1 runs the whole journey with the production logging settings (`log_statement = none`, the default) and scans the whole PostgreSQL log for **every** canary. Pass 2 repeats it with `log_statement = all` and scans for every canary **except query text**: the search query and the task filter text are sent to PostgreSQL as bind parameters for the plain workspaces' half of a merged search, and PostgreSQL 13 and later log bind parameters in full under `log_statement` (`log_parameter_max_length` defaults to -1). They are transient there and are never written under the default setting. **Digests:** every scan also looks for the SHA-256 hex of each canary and of each request body sent, which would reveal an unkeyed digest. **Per slice:** S2a covers every canary except live Wiki and map typing and search; S2b adds those. Each PR states the canaries it covers, and the S3 PR names the S2 head SHA on which the full AC-7 passed. | `app/tests/app/encryption-dump-scan.check.ts`, `scripts/check_encryption_scan.sh` |
@@ -1189,10 +1200,11 @@ route.
 
 One issue, #655, and one owner. Each slice is its own PR with its own review, and each can be merged
 alone. **Nothing lets a sealed workspace be created in production until S3.** In S1 and S2 the create
-route exists only with `FLUX_FIXTURE_TOKEN` set, like the other fixture routes, so a real deployment
-never holds a half-sealed workspace.
+route exists only in a test deployment (`FLUX_FIXTURE_TOKEN` set and `FLUX_TEST_FAILURE_INJECTION=true`)
+and needs the fixture bearer as well as a session. `./flux up` always generates a fixture token, so the
+token alone is not enough (S1 review): a real deployment never holds a half-sealed workspace.
 
-- **S1: keys, the keyring and the lock lifecycle.** Migration 0118. `packages/core/src/encryption`
+- **S1: keys, the keyring and the lock lifecycle.** Migration 0119. `packages/core/src/encryption`
   (context encoding, envelope, per-row keys, HKDF, Argon2id wraps, recovery code, digest,
   `swapSafety`, `redactedError`). `apps/keyring` with its service, network, token, constant-time check
   and hardening in **every** Compose file with `api`, the token in `./flux` setup and `./flux upgrade`,
@@ -1205,6 +1217,13 @@ never holds a half-sealed workspace.
   sets the default limits to at least twice the observed peaks (2g, 1g and 64m are starting values),
   and records the numbers in the upgrade notes. No content is sealed yet, and that is safe because
   production cannot create a sealed workspace.
+- **Carried from the S1 review into S2a and S2c.** (1) After a rotation finishes only the current version is live, so a
+  holder who did not unlock during it has neither a confirmation for that version nor the previous DEK: accept such
+  a version by `check_value` plus an existing envelope of that version (S2a adds them), not by the chain, and test
+  the confirmation precedence and the chain with two live versions. (2) `hkdfSync` limits `info` to 1024 bytes and the
+  per-row key uses the whole AAD as `info`: S2a adds a guard test so no identity (idempotency key, principal,
+  operation) can make sealing throw. (3) The S1 lock gate names objects by route parameters and refuses the
+  cross-workspace reads (`CROSS_WORKSPACE_READ_ROUTES`); AC-6 must enumerate every route, including upgrade handlers.
 - **S2a: sealed database content and files.** `TABLE_CLASSES`, `SEALED_COLUMNS` and `VISIBLE_COLUMNS`
   with the live-catalog test, the backstops (plaintext, notifications, events, idempotency) and relaxed
   checks, **the search placeholder triggers and `search_changes`** (so no sealed column is ever

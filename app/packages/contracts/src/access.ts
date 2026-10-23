@@ -1,4 +1,5 @@
 import type { ProjectGoal } from './project-goals.js';
+import type { WorkspaceEncryption } from './encryption.js';
 
 // Wire types for workspaces, projects, grants, agents and drafts (issue #29, AC-2).
 // Every route below requires a live session. An object the caller cannot see answers
@@ -95,6 +96,8 @@ export interface Workspace {
   createdAt: string;
   /** F-029 (#614): whether agents and assistants may work here. Every member sees the state. */
   ai: WorkspaceAiPolicy;
+  /** F-030 (#655): null for a plain workspace; the lock state and the caller's unlock password otherwise. */
+  encryption: WorkspaceEncryption | null;
 }
 
 /**
@@ -106,6 +109,8 @@ export interface WorkspaceAiPolicy {
   version: number;
   changedAt: string;
   changedBy: { id: string; name: string } | null;
+  /** F-030: `'encrypted'` when AI can never be turned on here (an encrypted workspace); the client shows no switch. */
+  fixed: 'encrypted' | null;
 }
 
 /** The refusal of every AI read or action in a workspace whose AI is off (F-029). */

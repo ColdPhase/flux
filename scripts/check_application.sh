@@ -40,13 +40,27 @@ export FLUX_MAIL_FROM="Flux <flux@example.test>"
 export FLUX_AUTH_RATE_LIMIT=false
 # Short stream heartbeat so the suite observes pings and periodic session revalidation.
 export FLUX_STREAM_HEARTBEAT_MS=1000
+# F-030 (#655): the keyring of encrypted workspaces, one random token per run.
+export FLUX_KEYRING_TOKEN="$(head -c 32 /dev/urandom | base64 | tr '+/' '-_' | tr -d '=\n')"
 . scripts/test_images.sh
 compose="docker compose -p $project -f docker/compose.source.yaml -f docker/compose.test.yaml --profile test"
 
+# Peak memory of the run's long-lived services (F-030 S1 sets the default limits to at least twice the observed peaks).
+report_memory() {
+  for service in api api2 worker keyring; do
+    container=$($compose ps -q "$service" 2>/dev/null) || continue
+    [ -n "$container" ] || continue
+    peak=$(docker exec "$container" cat /sys/fs/cgroup/memory.peak 2>/dev/null || echo unknown)
+    swap=$(docker exec "$container" cat /sys/fs/cgroup/memory.swap.max 2>/dev/null || echo unknown)
+    echo "memory $service: peak ${peak} bytes since its last start, swap.max ${swap}" >&2
+  done
+}
+
 cleanup() {
   status=$?
+  report_memory || true
   if [ "$status" -ne 0 ]; then
-    $compose logs --no-color db migrate api worker mailpit pushmock test || true
+    $compose logs --no-color db migrate api worker keyring mailpit pushmock test || true
   fi
   $compose down -v || true
   remove_project_images
@@ -173,6 +187,19 @@ $compose run --rm test node_modules/.bin/tsx tests/app/session-restart.ts prepar
 $compose restart api
 $compose up -d --wait api
 $compose run --rm test node_modules/.bin/tsx tests/app/session-restart.ts verify
+
+# F-030 AC-3 (#655): restarts and the lock. A whole-stack restart locks an encrypted workspace (the keyring's boot key is
+# gone); restarting only the API keeps it unlocked; restarting only the keyring locks it within 5 s, with one event.
+$compose run --rm test node_modules/.bin/tsx tests/app/encryption-restart.check.ts prepare
+$compose restart
+$compose up -d --wait api api2 worker keyring
+$compose run --rm test node_modules/.bin/tsx tests/app/encryption-restart.check.ts stack-locked
+$compose restart api
+$compose up -d --wait api
+$compose run --rm test node_modules/.bin/tsx tests/app/encryption-restart.check.ts api-unlocked
+$compose run --rm test node_modules/.bin/tsx tests/app/encryption-restart.check.ts mark
+$compose restart keyring
+$compose run --rm test node_modules/.bin/tsx tests/app/encryption-restart.check.ts keyring-locked
 
 # Without VAPID keys the API must report push unavailable rather than fail silently.
 FLUX_VAPID_PUBLIC_KEY= $compose up -d --wait api

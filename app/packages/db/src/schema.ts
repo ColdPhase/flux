@@ -397,6 +397,10 @@ export const workspaces = pgTable('workspaces', {
   version: integer('version').notNull().default(1),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  // F-030 (#655, migration 0119): chosen at creation, immutable (trigger). The key tables are read by
+  // repositories/workspace-encryption.ts with plain SQL.
+  encrypted: boolean('encrypted').notNull().default(false),
+  creationId: uuid('creation_id'),
 });
 
 /**
@@ -547,6 +551,7 @@ export const notifications = pgTable('notifications', {
   readAt: timestamp('read_at', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   // Migration 0015 (#116): why it exists, the event it came from, and whether the inbox lists it.
+  // 0119 also allows 'security' (F-030): Inbox-only rows written by repositories/workspace-encryption.ts, never sent.
   reason: text('reason').$type<'mention' | 'question' | 'reply' | 'dm' | 'assigned' | 'review' | 'invitation'>(),
   eventId: uuid('event_id'),
   inInbox: boolean('in_inbox').notNull().default(true),
@@ -751,6 +756,8 @@ export const projectFiles = pgTable('project_files', {
   publishedAt: timestamp('published_at', { withTimezone: true }),
   /** #252: the map thought this file is the image of (no foreign key, like a placement); null unless published there. */
   thoughtId: uuid('thought_id'),
+  /** F-030 (0119): the key version of the stored object; null for a plain workspace. */
+  keyVersion: integer('key_version'),
 }, (table) => [
   unique().on(table.messageId, table.position),
   uniqueIndex('project_files_thought_idx').on(table.thoughtId).where(sql`${table.thoughtId} IS NOT NULL`),
