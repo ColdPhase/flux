@@ -28,7 +28,7 @@ esac
 
 
 class ImageTagTest(unittest.TestCase):
-    def promote(self, existing: str | None, inspect_error: str = "") -> tuple[int, str | None, bool]:
+    def promote(self, existing: str | None, inspect_error: str = "", image: str | None = None) -> tuple[int, str | None, bool]:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             (root / "docker").write_text(FAKE_DOCKER)
@@ -41,13 +41,27 @@ class ImageTagTest(unittest.TestCase):
                 MOCK_INSPECT_ERROR=inspect_error, PATH=str(root) + os.pathsep + os.environ["PATH"],
             )
             result = subprocess.run(
-                ["bash", str(SCRIPT), "v1.0.0", REVIEWED], env=env, capture_output=True, text=True,
+                ["bash", str(SCRIPT), "v1.0.0", REVIEWED, *([image] if image else [])],
+                env=env, capture_output=True, text=True,
             )
             tag = registry.read_text() if registry.exists() else None
-            return result.returncode, tag, "imagetools create" in log.read_text()
+            return result.returncode, tag, log.exists() and "imagetools create" in log.read_text()
 
     def test_absent_tag_is_created_at_the_reviewed_digest(self) -> None:
         self.assertEqual(self.promote(None), (0, REVIEWED, True))
+
+    def test_the_agent_runtime_image_has_its_own_never_retag_version_tag(self) -> None:
+        runtime = "ghcr.io/coldphase/flux-agent-runtime"
+        self.assertEqual(self.promote(None, image=runtime), (0, REVIEWED, True))
+        self.assertEqual(self.promote(REVIEWED, image=runtime), (0, REVIEWED, False))
+        code, tag, created = self.promote(OTHER, image=runtime)
+        self.assertNotEqual(code, 0)
+        self.assertEqual((tag, created), (OTHER, False))
+
+    def test_only_the_two_release_images_can_be_tagged(self) -> None:
+        code, tag, created = self.promote(None, image="ghcr.io/someone/else")
+        self.assertNotEqual(code, 0)
+        self.assertEqual((tag, created), (None, False))
 
     def test_retry_accepts_the_same_digest_without_retagging(self) -> None:
         self.assertEqual(self.promote(REVIEWED), (0, REVIEWED, False))

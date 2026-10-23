@@ -4,9 +4,11 @@ set -euo pipefail
 
 version=${1:?release version required}
 digest=${2:?image digest required}
+# The application image by default; the agent-runtime image (#358) has its own never-retag version tag.
+image=${3:-ghcr.io/coldphase/flux}
 [[ "$version" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-rc\.[1-9][0-9]*)?$ ]]
 [[ "$digest" =~ ^sha256:[0-9a-f]{64}$ ]]
-image=ghcr.io/coldphase/flux
+case "$image" in ghcr.io/coldphase/flux|ghcr.io/coldphase/flux-agent-runtime) ;; *) echo 'Unknown release image.' >&2; exit 1 ;; esac
 tag="$image:$version"
 
 # Only the registry's "not found" means the tag is free. Another inspect failure (network, rate

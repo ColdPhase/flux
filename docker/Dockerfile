@@ -111,6 +111,16 @@ RUN apk add --no-cache gnupg
 USER node
 CMD ["node", "apps/runtime/dist/install/main.js"]
 
+# The published agent-runtime image (#358, ghcr.io/coldphase/flux-agent-runtime): the slot supervisor with
+# the pinned official Codex, and gpg so the SAME digest also runs the one-shot `runtime-install`
+# (docker/compose.runtime.yaml gives that service its own command). Claude Code is never in it. The source
+# Compose keeps building the separate, gpg-free `agent-runtime` slot image above.
+FROM agent-runtime AS agent-runtime-release
+USER root
+RUN apk add --no-cache gnupg
+USER node
+CMD ["node", "--disable-sigusr1", "apps/runtime/dist/supervisor/main.js"]
+
 # The application image. It stays the LAST stage: builds without --target (Compose's migrate, the
 # release workflow) produce it.
 FROM node@sha256:ebfe2f90462722a7a4de65e91990e97fe0d401c70e0e762c5b53302f905ec1c1 AS runtime
