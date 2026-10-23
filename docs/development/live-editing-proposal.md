@@ -144,8 +144,16 @@ identity. A map cursor always keeps its name (independent visual review of PR
 unidentified). The label is placed clear of every thought, of the other labels
 and of the other cursors (beside the cursor, flipped, or just outside the
 thought the cursor is over) and clamped inside the plane, so a phone's edge
-keeps the whole name. One shape per person, kept while they stay, tops the map
-cursor, leads its label and leads their People-chip entry, as in the Wiki; the
+keeps the whole name. One shape per person tops the map
+cursor, leads its label and leads their People-chip entry, as in the Wiki. It is the
+same on every viewer's screen ("I'm the square") and does not change while the
+person stays: the server gives each person the smallest free slot of the room when
+they first show presence (a room-locked allocation in `map_live_presence.slot` and
+`doc_live_presence.slot`, migration 0116), keeps it across their connections and
+reuses it once they have gone, and the slot reaches every viewer in the presence
+frame (shape = slot mod 4, so more than four people repeat shapes; names still
+tell them apart). A label keeps its spot while
+that spot stays clear; the
 chip wraps beside Map options on a phone and shows three names and the count
 beyond four people. A Wiki caret's name never floats over editor text, and it is not left
 to the strip alone either (independent review of PR #613, 2026-10-22: with the

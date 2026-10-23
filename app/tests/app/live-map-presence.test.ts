@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import { MapPresenceStore, type MapPeer } from '../../apps/web/src/editing/map-presence.js';
 
 const peer = (expiresAt: number, cursor: MapPeer['cursor'] = { x: 40, y: 80 }): MapPeer => ({
-  actor: { kind: 'human', id: 'person', name: 'Present Person' }, selected: ['thought'], cursor,
+  actor: { kind: 'human', id: 'person', name: 'Present Person' }, selected: ['thought'], cursor, slot: 0,
   expiresAt: new Date(expiresAt).toISOString(),
 });
 

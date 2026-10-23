@@ -138,7 +138,12 @@ export function liveEditingRows<Codec extends State>(db: DbExecutor, decodeState
         const counts = await db.execute<{ total: number; room: number }>(sql`SELECT count(*)::int AS total, count(*) FILTER (WHERE doc_id=${docId})::int AS room FROM ${p}`);
         if (counts.rows[0]!.total >= 2048 || counts.rows[0]!.room >= 128) throw new EditingPresenceCapacityError('The bounded presence capacity is busy');
       }
-      await db.insert(p).values({ connectionId, docId, generation, actorId: identity.actorId, sessionId: identity.sessionId, cursor,
+      // A person's slot (and so their shape) is the same in every connection and kept while they stay: their live row's
+      // own, else the smallest slot no other live person holds. The room lock makes two arrivals take different slots.
+      if (!old) await db.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${'flux.doc.presence.slot:' + docId}, 0))`);
+      const slot = sql`COALESCE((SELECT slot FROM doc_live_presence WHERE doc_id=${docId} AND generation=${generation} AND actor_id=${identity.actorId} AND expires_at>clock_timestamp() LIMIT 1),
+        (SELECT min(s)::smallint FROM generate_series(0,127) s WHERE s NOT IN (SELECT slot FROM doc_live_presence WHERE doc_id=${docId} AND generation=${generation} AND expires_at>clock_timestamp())))`;
+      await db.insert(p).values({ connectionId, docId, generation, actorId: identity.actorId, sessionId: identity.sessionId, cursor, slot,
         expiresAt: sql`LEAST(clock_timestamp() + interval '5 seconds', (SELECT expires_at FROM auth_sessions WHERE id=${identity.sessionId}))` })
         .onConflictDoUpdate({ target: p.connectionId, set: { cursor,
           expiresAt: sql`LEAST(clock_timestamp() + interval '5 seconds', (SELECT expires_at FROM auth_sessions WHERE id=${identity.sessionId}))` },
@@ -146,12 +151,12 @@ export function liveEditingRows<Codec extends State>(db: DbExecutor, decodeState
     },
     async presence(docId: string, generation: string) {
       const p = schema.docLivePresence;
-      const rows = await db.select({ connectionId: p.connectionId, actorId: p.actorId, name: schema.authUsers.name, cursor: p.cursor, expiresAt: p.expiresAt })
+      const rows = await db.select({ connectionId: p.connectionId, actorId: p.actorId, name: schema.authUsers.name, cursor: p.cursor, slot: p.slot, expiresAt: p.expiresAt })
         .from(p).innerJoin(schema.authUsers, eq(schema.authUsers.id, p.actorId))
         .innerJoin(schema.authSessions, and(eq(schema.authSessions.id, p.sessionId), gt(schema.authSessions.expiresAt, sql`clock_timestamp()`)))
         .where(and(eq(p.docId, docId), eq(p.generation, generation), gt(p.expiresAt, sql`clock_timestamp()`),
           editingConfirmationCurrent(sql`${p.sessionId}`, sql`${p.actorId}`, confirmation))).orderBy(p.connectionId).limit(128);
-      return rows.map((row) => ({ connectionId: row.connectionId, actor: { kind: 'human' as const, id: row.actorId, name: row.name }, cursor: row.cursor, expiresAt: row.expiresAt.toISOString() }));
+      return rows.map((row) => ({ connectionId: row.connectionId, actor: { kind: 'human' as const, id: row.actorId, name: row.name }, cursor: row.cursor, slot: row.slot, expiresAt: row.expiresAt.toISOString() }));
     },
     /** One final recipient/producer clock observation; the caller hands off synchronously after it. */
     async currentPresenceFence(identity: { sessionId: string; actorId: string }, docId: string, generation: string) {

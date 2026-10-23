@@ -116,7 +116,7 @@ export function mapBackend(database:{pool:Pick<ReturnType<typeof createDatabase>
       if((await sketchRepository(c.db).lockThoughts(sketchId,selected)).length!==selected.length)throw new InvalidInputError('Selection contains another map');
       if(command.cursor){closed(command.cursor,['x','y']);if(!Number.isInteger(command.cursor.x)||!Number.isInteger(command.cursor.y)||Math.abs(command.cursor.x)>100_000||Math.abs(command.cursor.y)>100_000)throw new InvalidInputError('Invalid map cursor');}
       const rows=liveMapRows(c.db,decodeMapChange,boundary.confirmation);if(!await rows.hasPresence(connectionId))await rows.capacity('presence',sketchId);
-      const packet={type:'map-presence',generation:c.room.generation,connectionId,actor:c.actor,selected,cursor:command.cursor,expiresAt:new Date().toISOString()};
+      const packet={type:'map-presence',generation:c.room.generation,connectionId,actor:c.actor,selected,cursor:command.cursor,slot:127,expiresAt:new Date().toISOString()};
       if(Buffer.byteLength(JSON.stringify(packet))>65_536)throw new ServiceUnavailableError('The bounded presence frame is full','EDITING_MAP_CAPACITY');
       await rows.setPresence(sketchId,c.room.generation,who,id(connectionId),selected,command.cursor);await rows.notify(sketchId);
     },'transient');},
@@ -162,7 +162,7 @@ export function mapBackend(database:{pool:Pick<ReturnType<typeof createDatabase>
       }
       for(const {presence:current,name} of await rows.presence(sketchId,generation)) {
         if(!await producerAllowed(current))continue;
-        transient.push({type:'map-presence',generation,connectionId:current.connectionId,actor:{kind:'human',id:current.actorId,name},selected:current.selected,cursor:current.cursor,expiresAt:current.expiresAt.toISOString()});
+        transient.push({type:'map-presence',generation,connectionId:current.connectionId,actor:{kind:'human',id:current.actorId,name},selected:current.selected,cursor:current.cursor,slot:current.slot,expiresAt:current.expiresAt.toISOString()});
       }
       authorized.clear();
       const next=record?await delta(c.db,c.principal,c.room,c.sketch,record,c.access):null;await boundary.beforeHandoff?.();
