@@ -20,7 +20,7 @@ import unittest
 
 from playwright.sync_api import Page, expect, sync_playwright
 
-from test_app_shell import DESKTOP, ORIGIN, SHOTS, UPSTREAM, shot, start_forwarder
+from test_app_shell import DESKTOP, ORIGIN, SHOTS, UPSTREAM, shot, start_forwarder, view_tab
 from test_live_sessions import INSTRUMENT, LIVE, LiveBase
 
 # elementFromPoint at the element's centre: the element itself (or one of its children) must be on top.
@@ -99,7 +99,8 @@ class ReachabilityRows(LiveBase):
 
     def context(self, who: str | None, *, viewport: dict | None = None, phone: bool = False, reduced: bool = False,
                 dark: bool = False, device: str | None = None):
-        options: dict = {"base_url": ORIGIN, "color_scheme": "dark" if dark else "light", "locale": "en-GB", "timezone_id": "Europe/Warsaw"}
+        # Every context blocks service workers (#271): a held request is only seen by page.route when no worker answers it.
+        options: dict = {"base_url": ORIGIN, "color_scheme": "dark" if dark else "light", "locale": "en-GB", "timezone_id": "Europe/Warsaw", "service_workers": "block"}
         if device:
             descriptor = {k: v for k, v in self.pw.devices[device].items() if k != "default_browser_type"}
             options.update(descriptor)
@@ -288,6 +289,12 @@ class ReachabilityRows(LiveBase):
         scrim = page.locator(".ui-overlay[data-state='open'] .ui-scrim").bounding_box()
         assert scrim
         self.assertGreaterEqual(round(scrim["y"]) + 1, before[1] + before[3], "the scrim starts below the strip")
+        # The header above the strip is inert while the sheet is open, so the scrim dims it: it is the topmost thing there.
+        above = page.evaluate("([x, y]) => document.elementFromPoint(x, y)?.className ?? null", [before[0] + before[2] / 2, before[1] / 2])
+        self.assertIn("ui-scrim", above or "", f"{label}: the inert header is under the scrim, not a live-looking control")
+        if before[0] > 8:  # a rail beside the strip is inert too, so it is dimmed as well
+            beside = page.evaluate("([x, y]) => document.elementFromPoint(x, y)?.className ?? null", [before[0] / 2, before[1] + before[3] / 2])
+            self.assertIn("ui-scrim", beside or "", f"{label}: the inert rail beside the strip is under the scrim")
         hits = {}
         for name, button in (("mic", bar.get_by_role("button", name=re.compile("^Microphone"))),
                              ("more", bar.get_by_role("button", name="Session details and more")),
@@ -377,6 +384,59 @@ class ReachabilityRows(LiveBase):
         back.tap(timeout=5000)
         expect(stage).to_be_hidden()
         self.assert_app_interactive(guest)
+
+    def test_08_pending_navigation_does_not_move_the_strip(self) -> None:
+        # A navigation waiting for its code shows "Opening ..." over the work, not above the strip: the header,
+        # the strip and the work keep their places (Spokoj: a control never changes place).
+        self.start_host()
+        guest = self.guest_join("chromium", phone=True)
+        held: list = []
+        guest.route(re.compile(r"/assets/ProjectTasks-[^/]+\.js(?:\?.*)?$"), lambda route: held.append(route))
+        self.addCleanup(lambda: [route.abort("aborted") for route in held])
+        expect(guest.locator(".route-progress")).to_have_count(0)
+        boxes = """() => Object.fromEntries(['header', '.lv-bar', '.app__body'].map((s) => { const b = document.querySelector(s).getBoundingClientRect(); return [s, [b.x, b.y, b.width, b.height].map(Math.round)]; }))"""
+        before = guest.evaluate(boxes)
+        view_tab(guest, "Tasks", tap=True)
+        pending = guest.locator(".route-progress")
+        expect(pending).to_be_visible()
+        self.assertEqual(guest.evaluate(boxes), before, "header, strip and work stay put while a navigation is pending")
+        self.observed["phone-390-chromium-pending"] = before
+        shot(guest, "live-reachability-phone-pending")
+        # The strip stays usable under it, and Cancel is a 44 px target.
+        hit = self.bar(guest).get_by_role("button", name="Leave", exact=True).evaluate(HIT_TEST)
+        self.assertTrue(hit["ok"], f"Leave is covered by {hit['top']}")
+        cancel = pending.get_by_role("button", name="Cancel", exact=True).bounding_box()
+        assert cancel
+        self.assertGreaterEqual(cancel["height"], 43.5)
+        pending.get_by_role("button", name="Cancel", exact=True).tap()
+        expect(pending).to_have_count(0)
+        self.assertEqual(guest.evaluate(boxes), before)
+
+    def test_09_stage_placeholder_covers_the_pane_while_its_code_is_held(self) -> None:
+        # While the stage's chunk downloads, its placeholder is the same surface as the stage: absolute over the
+        # pane (not a row in the flow that pushes the work), with its own way back.
+        host = self.start_host()
+        self.share_host_screen(host)
+        guest = self.guest_join("chromium", phone=True)
+        held: list = []
+        guest.route(re.compile(r"/assets/LiveStage-[^/]+\.js(?:\?.*)?$"), lambda route: held.append(route))
+        self.addCleanup(lambda: [route.abort("aborted") for route in held])
+        bar = self.bar(guest)
+        before = bar.bounding_box()
+        bar.get_by_role("button", name="View").tap(timeout=5000)
+        placeholder = guest.locator(".deferred-surface--stage")
+        expect(placeholder).to_be_visible()
+        geometry = placeholder.evaluate("""(el) => {
+          const pane = document.getElementById('content').getBoundingClientRect();
+          const b = el.getBoundingClientRect();
+          return { position: getComputedStyle(el).position, box: [b.x, b.y, b.width, b.height].map(Math.round), pane: [pane.x, pane.y, pane.width, pane.height].map(Math.round) };
+        }""")
+        self.observed["phone-390-chromium-stage-placeholder"] = geometry
+        self.assertEqual(geometry["position"], "absolute", "the placeholder is over the pane, not in the flow")
+        self.assertEqual(geometry["box"], geometry["pane"], "the placeholder covers the pane box")
+        self.assertEqual(bar.bounding_box(), before, "the strip does not move while the stage code is held")
+        placeholder.get_by_role("button", name="Close live view").tap(timeout=5000)
+        expect(placeholder).to_have_count(0)
 
 
 if __name__ == "__main__":

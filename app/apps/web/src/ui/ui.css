@@ -194,6 +194,13 @@ svg { flex: none; }
 .ui-overlay { position: fixed; inset: 0; z-index: var(--z-overlay); pointer-events: none; }
 .ui-overlay[data-state="open"] { pointer-events: auto; }
 .ui-scrim { position: absolute; inset: 0; background: var(--scrim); }
+/* Beside a live strip the overlay starts below it; the scrim reaches up over everything inert beside it (the header above,
+   the rail at its side), leaving a hole exactly the strip's size, so no inert control keeps a live look. */
+.ui-scrim::before {
+  content: ""; position: absolute; left: 0; right: 0; top: calc(-1 * var(--strip-bottom, 0px)); height: var(--strip-bottom, 0px); background: var(--scrim);
+  clip-path: polygon(evenodd, 0 0, 100% 0, 100% 100%, 0 100%, 0 0,
+    var(--strip-left, 0px) var(--strip-top, 0px), var(--strip-right, 0px) var(--strip-top, 0px), var(--strip-right, 0px) var(--strip-bottom, 0px), var(--strip-left, 0px) var(--strip-bottom, 0px), var(--strip-left, 0px) var(--strip-top, 0px));
+}
 .ui-overlay__surface {
   position: absolute; display: flex; flex-direction: column; min-height: 0; background: var(--el);
   box-shadow: var(--sh-pop); outline: none;

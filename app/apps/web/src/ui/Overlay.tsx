@@ -221,15 +221,24 @@ export function Overlay({ open, onClose, placement, label, labelledBy, initialFo
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, mounted, placement]);
 
-  // The overlay starts where the strip ends, so neither the scrim nor the sheet is painted over it.
+  // The overlay starts where the strip ends, so neither the scrim nor the sheet is painted over it. The scrim also
+  // covers what is above the strip (the header's inert controls), by `--strip-top` and `--strip-bottom`.
   useLayoutEffect(() => {
     const frame = frameRef.current;
     const strip = keepLiveStrip && open && mounted ? liveStrip() : null;
-    if (!frame || !strip) { frame?.style.removeProperty('top'); return; }
-    const place = () => frame.style.setProperty('top', `${Math.max(0, Math.round(strip.getBoundingClientRect().bottom))}px`);
+    if (!frame || !strip) { frame?.style.removeProperty('top'); frame?.style.removeProperty('--strip-top'); frame?.style.removeProperty('--strip-bottom'); frame?.style.removeProperty('--strip-left'); frame?.style.removeProperty('--strip-right'); return; }
+    const place = () => {
+      const box = strip.getBoundingClientRect();
+      frame.style.setProperty('top', `${Math.max(0, Math.round(box.bottom))}px`);
+      frame.style.setProperty('--strip-bottom', `${Math.max(0, Math.round(box.bottom))}px`);
+      frame.style.setProperty('--strip-top', `${Math.max(0, Math.round(box.top))}px`);
+      frame.style.setProperty('--strip-left', `${Math.round(box.left)}px`);
+      frame.style.setProperty('--strip-right', `${Math.round(box.right)}px`);
+    };
     place();
+    // A move comes from a change above the strip as much as from the strip itself: watch its siblings and the window.
     const observer = new ResizeObserver(place);
-    observer.observe(strip);
+    for (const sibling of strip.parentElement?.children ?? []) observer.observe(sibling);
     window.addEventListener('resize', place);
     return () => { observer.disconnect(); window.removeEventListener('resize', place); };
   }, [keepLiveStrip, open, mounted]);
