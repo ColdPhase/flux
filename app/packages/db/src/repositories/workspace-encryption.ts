@@ -3,7 +3,7 @@ import { sql, type SQL } from 'drizzle-orm';
 import type { DbExecutor } from './push.js';
 
 /**
- * Rows of encrypted workspaces (F-030, #655, migration 0118; docs/product/encrypted-workspaces.md). They satisfy the
+ * Rows of encrypted workspaces (F-030, #655, migration 0119; docs/product/encrypted-workspaces.md). They satisfy the
  * ports of `packages/core/src/encryption` structurally (this package cannot import core). No row here ever holds a DEK,
  * KEK, boot key, password or recovery code: only wraps, sealed values, MACs, ids and times. They make no access
  * decision; the caller authorizes.

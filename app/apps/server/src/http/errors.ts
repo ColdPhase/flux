@@ -17,7 +17,7 @@ export function domainErrorBody(error: DomainError): ApiError {
   return { ...error.details, error: error.message, code: error.code };
 }
 
-/** The F-030 database backstops (SQLSTATE FX409, the domain code as HINT; migration 0118) answer 409 with that code. */
+/** The F-030 database backstops (SQLSTATE FX409, the domain code as HINT; migration 0119) answer 409 with that code. */
 const DATABASE_CONFLICTS = new Set(['WORKSPACE_ENCRYPTED_AI_OFF', 'LAST_UNLOCK_PASSWORD', 'WORKSPACE_ENCRYPTION_IMMUTABLE']);
 export function databaseConflict(error: unknown): unknown {
   for (let candidate = error as { code?: unknown; hint?: unknown; cause?: unknown } | undefined, depth = 0; candidate && depth < 3;

@@ -1,4 +1,4 @@
--- F-030 encrypted workspaces (#655, S1). docs/product/encrypted-workspaces.md
+-- F-030 encrypted workspaces (#655, S1; 0119 because 0118 is #664's). docs/product/encrypted-workspaces.md
 --  * `workspaces.encrypted`, chosen at creation and immutable; `creation_id` for create retries.
 --  * The key tables: key versions, holders (X25519 key pairs, private key wrapped under a password- or code-derived
 --    KEK, authenticated by a MAC under the DEK), DEK wraps per holder and version, and unlock rows (DEKs sealed under
@@ -214,7 +214,8 @@ BEGIN
         AND (k.column_name IN ('workspace_id', 'project_id', 'agent_id') OR (c.table_name LIKE 'agent%' AND k.column_name = 'connection_id')))
     ORDER BY c.table_name
   LOOP
-    EXECUTE format('CREATE TRIGGER sealed_workspace_no_ai BEFORE INSERT ON %I FOR EACH ROW EXECUTE FUNCTION sealed_workspace_no_ai()', t);
+    -- `a_` sorts it before every other BEFORE INSERT trigger of the table, so it refuses first.
+    EXECUTE format('CREATE TRIGGER a_sealed_workspace_no_ai BEFORE INSERT ON %I FOR EACH ROW EXECUTE FUNCTION sealed_workspace_no_ai()', t);
   END LOOP;
 END $$;
 

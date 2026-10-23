@@ -1,8 +1,8 @@
--- Reverses 0118 (F-030). Refuses while an encrypted workspace exists: its data cannot be read without these tables.
+-- Reverses 0119 (F-030). Refuses while an encrypted workspace exists: its data cannot be read without these tables.
 DO $$
 BEGIN
   IF EXISTS (SELECT 1 FROM workspaces WHERE encrypted) THEN
-    RAISE EXCEPTION 'An encrypted workspace exists; 0118 cannot be reversed' USING ERRCODE = 'FX409', HINT = 'WORKSPACE_ENCRYPTION_IMMUTABLE';
+    RAISE EXCEPTION 'An encrypted workspace exists; 0119 cannot be reversed' USING ERRCODE = 'FX409', HINT = 'WORKSPACE_ENCRYPTION_IMMUTABLE';
   END IF;
 END $$;
 ALTER TABLE notifications DROP CONSTRAINT IF EXISTS notifications_reason_check;
@@ -12,9 +12,9 @@ ALTER TABLE notifications ADD CONSTRAINT notifications_reason_check
 DO $$
 DECLARE t text;
 BEGIN
-  FOR t IN SELECT DISTINCT event_object_table FROM information_schema.triggers WHERE trigger_schema = 'public' AND trigger_name = 'sealed_workspace_no_ai'
+  FOR t IN SELECT DISTINCT event_object_table FROM information_schema.triggers WHERE trigger_schema = 'public' AND trigger_name = 'a_sealed_workspace_no_ai'
   LOOP
-    EXECUTE format('DROP TRIGGER sealed_workspace_no_ai ON %I', t);
+    EXECUTE format('DROP TRIGGER a_sealed_workspace_no_ai ON %I', t);
   END LOOP;
 END $$;
 DROP FUNCTION sealed_workspace_no_ai();

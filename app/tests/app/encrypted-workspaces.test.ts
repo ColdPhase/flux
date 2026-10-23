@@ -315,7 +315,7 @@ describe('F-030 AI forced off', () => {
     const tables = (await pool.query(`SELECT c.table_name AS name,
         bool_or(k.column_name = 'workspace_id') AS ws, bool_or(k.column_name = 'project_id') AS project, bool_or(k.column_name = 'agent_id') AS agent,
         bool_or(k.column_name = 'connection_id') AS connection,
-        EXISTS (SELECT 1 FROM pg_trigger t WHERE t.tgrelid = ('public.' || c.table_name)::regclass AND t.tgname = 'sealed_workspace_no_ai') AS guarded
+        EXISTS (SELECT 1 FROM pg_trigger t WHERE t.tgrelid = ('public.' || c.table_name)::regclass AND t.tgname = 'a_sealed_workspace_no_ai') AS guarded
       FROM information_schema.tables c JOIN information_schema.columns k ON k.table_schema = 'public' AND k.table_name = c.table_name
       WHERE c.table_schema = 'public' AND c.table_type = 'BASE TABLE' AND (c.table_name LIKE 'agent%' OR c.table_name LIKE 'assistant%'
         OR c.table_name LIKE 'cowork%' OR c.table_name LIKE 'personal_run%' OR c.table_name LIKE 'proactive_comparison%' OR c.table_name = 'background_compute_connections')
@@ -337,7 +337,7 @@ describe('F-030 AI forced off', () => {
         } catch (error) { return error as { hint?: string; code?: string }; } finally { await client.query('ROLLBACK'); client.release(); }
       };
       const sealed = await attempt('A');
-      assert.ok(sealed && ['WORKSPACE_ENCRYPTED_AI_OFF', 'WORKSPACE_AI_BLOCKED'].includes(sealed.hint ?? ''), `${table.name}: refused for A (${JSON.stringify(sealed)})`);
+      assert.equal(sealed?.hint, 'WORKSPACE_ENCRYPTED_AI_OFF', `${table.name}: refused for A first, by the backstop (${JSON.stringify(sealed)})`);
       const plain = await attempt('B');
       assert.ok(!plain || plain.hint !== 'WORKSPACE_ENCRYPTED_AI_OFF', `${table.name}: the trigger lets B through`);
     }

@@ -59,7 +59,7 @@ workspace content and is unchanged. Live audio and video are not stored ([live m
 
 ## Data model
 
-Migration `0118_encrypted_workspaces.sql` (the next free number when S1 lands; later slices take
+Migration `0119_encrypted_workspaces.sql` (0118 was taken by #664 when S1 landed; later slices take
 the next ones):
 
 ```sql
@@ -803,8 +803,8 @@ disk, and PostgreSQL must never see it.
   - Nothing else. Bodies are never logged.
 - **Single instance.** Exactly one keyring per deployment. Two would have two boot keys. API
   replicas scale freely.
-- **Hardening.** `read_only: true`, `cap_drop: [ALL]`, `ulimits: { core: 0 }`, `mem_limit: 64m` and
-  `memswap_limit: 64m`. With `--memory-swap` equal to `--memory` the container
+- **Hardening.** `read_only: true`, `cap_drop: [ALL]`, `ulimits: { core: 0 }`, `mem_limit: 128m` and
+  `memswap_limit: 128m` (S1 measured a 40 MB peak, healthcheck included; 64m was the starting value). With `--memory-swap` equal to `--memory` the container
   "doesn't have access to swap" ([Docker resource constraints](https://docs.docker.com/engine/containers/resource_constraints/),
   read 2026-10-23). This needs kernel swap-limit support, and `docker info` warns when it is missing,
   so the keyring also [checks its own cgroup](#memory-what-is-enforced-and-what-is-not) at boot.
@@ -1197,7 +1197,7 @@ alone. **Nothing lets a sealed workspace be created in production until S3.** In
 route exists only with `FLUX_FIXTURE_TOKEN` set, like the other fixture routes, so a real deployment
 never holds a half-sealed workspace.
 
-- **S1: keys, the keyring and the lock lifecycle.** Migration 0118. `packages/core/src/encryption`
+- **S1: keys, the keyring and the lock lifecycle.** Migration 0119. `packages/core/src/encryption`
   (context encoding, envelope, per-row keys, HKDF, Argon2id wraps, recovery code, digest,
   `swapSafety`, `redactedError`). `apps/keyring` with its service, network, token, constant-time check
   and hardening in **every** Compose file with `api`, the token in `./flux` setup and `./flux upgrade`,

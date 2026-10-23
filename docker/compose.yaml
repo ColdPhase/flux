@@ -148,8 +148,8 @@ services:
     init: true
     ulimits:
       core: 0
-    mem_limit: ${FLUX_KEYRING_MEMORY:-64m}
-    memswap_limit: ${FLUX_KEYRING_MEMORY:-64m}
+    mem_limit: ${FLUX_KEYRING_MEMORY:-128m}
+    memswap_limit: ${FLUX_KEYRING_MEMORY:-128m}
     pids_limit: 32
     environment:
       FLUX_KEYRING_TOKEN: ${FLUX_KEYRING_TOKEN:-}

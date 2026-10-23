@@ -75,7 +75,7 @@ class ComposeKeyringTest(unittest.TestCase):
             keyring = services(text)["keyring"]
             for setting in ("read_only: true", "cap_drop: [ALL]", "core: 0", "networks: [keyring]", "apps/keyring/dist/main.js"):
                 self.assertIn(setting, keyring, f"{name}: keyring lacks {setting}")
-            self.assertRegex(keyring, r"mem_limit: \$\{FLUX_KEYRING_MEMORY:-64m\}\n    memswap_limit: \$\{FLUX_KEYRING_MEMORY:-64m\}")
+            self.assertRegex(keyring, r"mem_limit: \$\{FLUX_KEYRING_MEMORY:-128m\}\n    memswap_limit: \$\{FLUX_KEYRING_MEMORY:-128m\}")
             self.assertNotIn("volumes:", keyring, f"{name}: the keyring has no volume")
             self.assertNotIn("ports:", keyring)
             self.assertRegex(text, r"(?m)^  keyring:\n    internal: true", f"{name}: the keyring network is internal")
