@@ -10,7 +10,8 @@ in, check and sign out, but not run.
 **It is off by default.** With `FLUX_AGENT_RUNTIME` empty, no runtime service runs, the API reports the
 feature as not enabled, and nothing below applies. The published release `compose.yaml` does not
 contain it and never asks; the runtime is available from a source checkout with `./flux`, which asks
-once ([Switch it on](#switch-it-on)).
+once ([Switch it on](#switch-it-on)), or from a release install with the release's optional
+`compose.runtime.yaml` and `runtime.sh` ([Installing from a release](#installing-from-a-release)).
 
 ## Before you switch it on
 
@@ -306,6 +307,37 @@ Recorded from the T3 review (#331); none of them is hidden by the checks.
   so its address identifies it; one busy slot cannot take every connection.
 - **Docker Desktop is unsupported** (see *What each slot gets*).
 
+## Installing from a release
+
+A GitHub Release ([#77](https://github.com/ColdPhase/flux/issues/77),
+[#358](https://github.com/ColdPhase/flux/issues/358)) carries the runtime as two more assets next to
+`compose.yaml`: `compose.runtime.yaml` and `runtime.sh` (sources: `docker/compose.runtime.yaml`,
+`docker/runtime.sh`). Its release installation guide (`INSTALL.md`, source
+[`release-guide.md`](release-guide.md)) has the commands. What differs from the source checkout:
+
+- **Two images, both pinned by digest, no build.** `runtime-manager` and `runtime-egress` run the
+  application image of the release; `runtime-install` and the slots run
+  `ghcr.io/coldphase/flux-agent-runtime`, built for `linux/amd64` and `linux/arm64` from the accepted
+  candidate by `final-release.yml` (target `agent-runtime-release` of `docker/Dockerfile`). It holds the
+  supervisor with its process hardening, node-pty and the pinned official Codex (checked by SHA-256),
+  and gpg so that the same digest also runs `runtime-install`. **The one difference from the source
+  slot image** is that gpg: the source Compose keeps building the separate `agent-runtime` slot image
+  without it. Claude Code is never in an image; the workflow fails when `claude` or anything in
+  `/opt/flux-tools` is found in it.
+- **Same settings.** The overlay is the source Compose's runtime block with only the images changed;
+  `scripts/release/compare_runtime_overlay.py` compares every runtime service, network and volume of
+  the two (`docker compose config`) and fails on a difference. The runtime stays off
+  (`FLUX_AGENT_RUNTIME` empty) and no service mounts a Docker socket or builds from source.
+- **`runtime.sh` replaces the launcher** for the operator steps: `on`, `off`, `up`, `status`,
+  `release runtime-<n>` and `purge [-y]` run the same operations as `./flux ai on`, `./flux runtime ...`
+  and the purge fence, through `docker compose`. More than the four slots are not covered by the
+  release assets.
+- **Linux Yama ptrace_scope of 1 or higher** is required on the host kernel, as everywhere
+  ([What each slot gets](#what-each-slot-gets)). The release check
+  (`scripts/release/smoke_runtime.sh`) uses the real image and no vendor account, so it covers
+  switch-on, isolation, off and purge; a bound slot's sign-out and reuse need a vendor login and are
+  checked with fake CLIs against the source stack (`scripts/check_agent_runtime.sh`).
+
 ## Backups, snapshots and restore
 
 - **`./flux backup` never contains a slot volume.** It covers the database, the files volume and
@@ -348,9 +380,10 @@ Each Flux release pins the CLI versions its flag contract check passed: Claude C
 `./flux upgrade` reinstalls Claude Code at the new pin on its next start; nothing updates itself
 (`DISABLE_UPDATES=1`).
 
-The separate published runtime image and release-matched operator assets remain tracked by
-[#358](https://github.com/ColdPhase/flux/issues/358), alongside the application packaging in
-[#77](https://github.com/ColdPhase/flux/issues/77). A source-built slot is not a published runtime release.
+The separate published runtime image and release-matched operator assets are built by the final release
+workflow ([#358](https://github.com/ColdPhase/flux/issues/358), [#77](https://github.com/ColdPhase/flux/issues/77);
+[Installing from a release](#installing-from-a-release)); until a release is published, a source-built slot is
+not a published runtime release.
 
 `./scripts/check_runtime_cli_contract.sh` is the opt-in flag contract check against these real CLIs
 (no account needed; internet access to github.com and downloads.claude.ai). It is not part of CI; the

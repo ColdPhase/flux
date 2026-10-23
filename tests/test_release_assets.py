@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+import shutil
 import sys
 import tempfile
 import unittest
@@ -12,11 +13,26 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts" / "release"))
-from prepare_assets import ASSET_NAME, IMAGE, MARKER, prepare, render_compose  # noqa: E402
+from prepare_assets import (  # noqa: E402
+    ASSET_NAME, IMAGE, MARKER, RUNTIME_IMAGE, RUNTIME_MARKER, codex_pin, prepare, render_compose,
+    render_runtime_compose,
+)
+from verify_assets import EXPECTED, verify as verify_assets  # noqa: E402
 
 REAL_COMPOSE = ROOT / "docker" / "compose.yaml"
 REAL_ENV = ROOT / "docker" / ".env.example"
 GUIDE = ROOT / "docs" / "operations" / "release-guide.md"
+REAL_OVERLAY = ROOT / "docker" / "compose.runtime.yaml"
+REAL_SCRIPT = ROOT / "docker" / "runtime.sh"
+DOCKERFILE = ROOT / "docker" / "Dockerfile"
+RUNTIME_DIGEST = "sha256:" + "c" * 64
+APP_DIGEST = "sha256:" + "b" * 64
+OVERLAY = (
+    "x-runtime-slot: &runtime-slot\n  image: " + RUNTIME_MARKER + "\n"
+    "services:\n  runtime-install:\n    image: " + RUNTIME_MARKER + "\n"
+    "  runtime-manager:\n    image: " + MARKER + "\n"
+    "  runtime-egress:\n    image: " + MARKER + "\n  runtime-1:\n    <<: *runtime-slot\n"
+)
 
 
 class ReleaseAssetsTest(unittest.TestCase):
@@ -33,19 +49,30 @@ class ReleaseAssetsTest(unittest.TestCase):
             ".env.example": "POSTGRES_PASSWORD=change-me\n",
             "INSTALL.md": "Install instructions\n",
             "LICENSE": "AGPL-3.0\n",
+            "compose.runtime.yaml": OVERLAY,
+            "runtime.sh": "#!/bin/sh\necho runtime\n",
+            "Dockerfile": "ADD https://github.com/openai/codex/releases/download/rust-v0.9.1/codex-x86_64.tar.gz /c.tgz\n",
+            "sbom-agent-runtime.spdx.json": '{"packages":[{"name":"node","versionInfo":"24","licenseDeclared":"MIT"}]}\n',
             "sbom.spdx.json": '{"packages":[{"name":"postgres","versionInfo":"18.1","licenseDeclared":"PostgreSQL"}]}\n',
         }.items():
             path = self.root / name
             path.write_text(content, encoding="utf-8")
             self.sources[name] = path
 
+    def runtime_args(self) -> dict:
+        return dict(
+            runtime_digest=RUNTIME_DIGEST, runtime_compose=self.sources["compose.runtime.yaml"],
+            runtime_script=self.sources["runtime.sh"], runtime_sbom=self.sources["sbom-agent-runtime.spdx.json"],
+            dockerfile=self.sources["Dockerfile"],
+        )
+
     def build(self) -> Path:
         output = self.root / "release"
         prepare(
-            version="v1.2.3", source_sha="a" * 40, digest="sha256:" + "b" * 64,
+            version="v1.2.3", source_sha="a" * 40, digest=APP_DIGEST,
             compose=self.sources["compose.yaml"], env=self.sources[".env.example"],
             instructions=self.sources["INSTALL.md"], license_file=self.sources["LICENSE"],
-            sbom=self.sources["sbom.spdx.json"], destination=output,
+            sbom=self.sources["sbom.spdx.json"], destination=output, **self.runtime_args(),
         )
         return output
 
@@ -86,7 +113,23 @@ class ReleaseAssetsTest(unittest.TestCase):
                 version="v1.2.3", source_sha="a" * 40, digest="sha256:nope",
                 compose=self.sources["compose.yaml"], env=self.sources[".env.example"],
                 instructions=self.sources["INSTALL.md"], license_file=self.sources["LICENSE"],
+                sbom=self.sources["sbom.spdx.json"], destination=self.root / "other", **self.runtime_args(),
+            )
+        with self.assertRaisesRegex(ValueError, "runtime image digest"):
+            prepare(
+                version="v1.2.3", source_sha="a" * 40, digest=APP_DIGEST,
+                compose=self.sources["compose.yaml"], env=self.sources[".env.example"],
+                instructions=self.sources["INSTALL.md"], license_file=self.sources["LICENSE"],
                 sbom=self.sources["sbom.spdx.json"], destination=self.root / "other",
+                **{**self.runtime_args(), "runtime_digest": "latest"},
+            )
+        with self.assertRaisesRegex(ValueError, "different digests"):
+            prepare(
+                version="v1.2.3", source_sha="a" * 40, digest=APP_DIGEST,
+                compose=self.sources["compose.yaml"], env=self.sources[".env.example"],
+                instructions=self.sources["INSTALL.md"], license_file=self.sources["LICENSE"],
+                sbom=self.sources["sbom.spdx.json"], destination=self.root / "other",
+                **{**self.runtime_args(), "runtime_digest": APP_DIGEST},
             )
 
     def test_asset_names_must_survive_github(self) -> None:
@@ -113,6 +156,87 @@ class ReleaseAssetsTest(unittest.TestCase):
         self.assertIn("name: ${FLUX_PROJECT:-flux}\n# keep this comment\nservices:\n", rendered)
         self.assertEqual(rendered.count(f"image: {pinned}\n"), 3)
 
+    def test_runtime_assets_pin_both_images_and_record_codex(self) -> None:
+        output = self.build()
+        overlay = (output / "compose.runtime.yaml").read_text(encoding="utf-8")
+        self.assertEqual(overlay.count(f"image: {RUNTIME_IMAGE}@{RUNTIME_DIGEST}\n"), 2)
+        self.assertEqual(overlay.count(f"image: {IMAGE}@{APP_DIGEST}\n"), 2)
+        self.assertNotIn("_DIGEST", overlay)
+        release = json.loads((output / "release.json").read_text())
+        self.assertEqual(release["runtime_image"], f"{RUNTIME_IMAGE}@{RUNTIME_DIGEST}")
+        self.assertEqual(release["runtime_codex"], "rust-v0.9.1")
+        self.assertTrue(release["runtime_claude_code"].startswith("not included"))
+        notices = json.loads((output / "THIRD_PARTY_NOTICES.agent-runtime.json").read_text())
+        self.assertIn(("codex-cli", "0.9.1", "Apache-2.0"), {(n["name"], n["version"], n["license_declared"]) for n in notices})
+        self.assertEqual({path.name for path in output.iterdir()}, EXPECTED)
+
+    def test_rejects_runtime_overlay_with_a_build_or_a_stray_image(self) -> None:
+        overlay = self.sources["compose.runtime.yaml"]
+        original = overlay.read_text()
+        overlay.write_text(original + "  extra:\n    image: busybox:latest\n")
+        with self.assertRaisesRegex(ValueError, "and nothing else"):
+            self.build()
+        overlay.write_text(original.replace("  runtime-egress:\n    image: " + MARKER, "  runtime-egress:\n    image: " + RUNTIME_MARKER))
+        with self.assertRaisesRegex(ValueError, "and nothing else"):
+            self.build()
+        overlay.write_text(original + "  runtime-9:\n    build: .\n")
+        with self.assertRaisesRegex(ValueError, "pull-only"):
+            self.build()
+
+    def test_rejects_a_socket_in_the_runtime_script_and_an_unpinned_codex(self) -> None:
+        self.sources["runtime.sh"].write_text("docker -H unix:///var/run/docker.sock ps\n")
+        with self.assertRaisesRegex(ValueError, "socket"):
+            self.build()
+        self.sources["runtime.sh"].write_text("echo ok\n")
+        self.sources["Dockerfile"].write_text(
+            "ADD https://github.com/openai/codex/releases/download/rust-v0.9.1/a.tgz /a\n"
+            "ADD https://github.com/openai/codex/releases/download/rust-v0.9.2/b.tgz /b\n")
+        with self.assertRaisesRegex(ValueError, "exactly one"):
+            self.build()
+
+    def test_verify_assets_accepts_the_prepared_set_and_refuses_each_tampering(self) -> None:
+        output = self.build()
+        self.assertEqual(verify_assets(output, "v1.2.3", "a" * 40, APP_DIGEST)["runtime"], f"{RUNTIME_IMAGE}@{RUNTIME_DIGEST}")
+        with self.assertRaisesRegex(ValueError, "release.json version"):
+            verify_assets(output, "v9.9.9", None, None)
+        with self.assertRaisesRegex(ValueError, "accepted digest"):
+            verify_assets(output, None, None, "sha256:" + "d" * 64)
+
+        def retouch(name: str, mutate) -> Path:
+            copy = self.root / f"tampered-{len(list(self.root.glob('tampered-*')))}"
+            shutil.copytree(output, copy)
+            target = copy / name
+            target.write_text(mutate(target.read_text()), encoding="utf-8")
+            sums = [
+                f"{hashlib.sha256((copy / f.name).read_bytes()).hexdigest()}  {f.name}\n"
+                for f in sorted(copy.iterdir()) if f.name != "SHA256SUMS"
+            ]
+            (copy / "SHA256SUMS").write_text("".join(sums), encoding="utf-8")  # a consistent checksum list
+            return copy
+
+        cases = {
+            "runtime image swapped for the application image":
+                ("compose.runtime.yaml", lambda t: t.replace(f"{RUNTIME_IMAGE}@{RUNTIME_DIGEST}", f"{IMAGE}@{APP_DIGEST}", 1), "expected the two release images"),
+            "floating tag": ("compose.runtime.yaml", lambda t: t + "  x:\n    image: foo:latest\n", "floating tag"),
+            "source build": ("compose.yaml", lambda t: t + "  build: .\n", "source build"),
+            "engine socket": ("runtime.sh", lambda t: t + "\n# /var/run/docker.sock\n", "socket"),
+            "claude code claimed": ("release.json", lambda t: t.replace("not included", "bundled"), "Claude Code"),
+        }
+        for label, (name, mutate, message) in cases.items():
+            with self.subTest(label):
+                with self.assertRaisesRegex(ValueError, message):
+                    verify_assets(retouch(name, mutate), None, None, None)
+        stale = self.root / "stale"
+        shutil.copytree(output, stale)
+        (stale / "compose.yaml").write_text("changed\n")
+        with self.assertRaisesRegex(ValueError, "does not match SHA256SUMS"):
+            verify_assets(stale, None, None, None)
+        extra = self.root / "extra"
+        shutil.copytree(output, extra)
+        (extra / "notes.txt").write_text("stray\n")
+        with self.assertRaisesRegex(ValueError, "differ"):
+            verify_assets(extra, None, None, None)
+
 
 class RealOperatorAssetsTest(unittest.TestCase):
     """The repository's own operator files (#76) must package without any adjustment."""
@@ -129,14 +253,14 @@ class RealOperatorAssetsTest(unittest.TestCase):
             version="v1.2.3-rc.1", source_sha="a" * 40, digest=self.digest,
             compose=REAL_COMPOSE, env=REAL_ENV, instructions=GUIDE,
             license_file=ROOT / "LICENSE", sbom=sbom, destination=self.output,
+            runtime_digest=RUNTIME_DIGEST, runtime_compose=REAL_OVERLAY, runtime_script=REAL_SCRIPT,
+            runtime_sbom=sbom, dockerfile=DOCKERFILE,
         )
 
     def test_asset_set_and_checksums(self) -> None:
         names = {path.name for path in self.output.iterdir()}
-        self.assertEqual(names, {
-            "compose.yaml", "env.example", "INSTALL.md", "LICENSE", "release.json",
-            "sbom.spdx.json", "SHA256SUMS", "THIRD_PARTY_NOTICES.json",
-        })
+        self.assertEqual(names, EXPECTED)
+        verify_assets(self.output, "v1.2.3-rc.1", "a" * 40, self.digest)
         for name in names:
             self.assertRegex(name, ASSET_NAME, "GitHub would rename this asset")
         listed = {line.split("  ")[1] for line in (self.output / "SHA256SUMS").read_text().splitlines()}
@@ -152,6 +276,28 @@ class RealOperatorAssetsTest(unittest.TestCase):
         self.assertNotIn("RELEASE_DIGEST", packaged)
         self.assertEqual(packaged.count(f"image: {IMAGE}@{self.digest}\n"), 3)
 
+    def test_runtime_overlay_and_script_ship_unchanged_but_for_digests_and_header(self) -> None:
+        def code(text: str) -> list[str]:
+            return [line for line in text.splitlines() if not line.lstrip().startswith("#")]
+
+        packaged = (self.output / "compose.runtime.yaml").read_text(encoding="utf-8")
+        expected = [
+            line.replace(MARKER, f"{IMAGE}@{self.digest}").replace(RUNTIME_MARKER, f"{RUNTIME_IMAGE}@{RUNTIME_DIGEST}")
+            for line in code(REAL_OVERLAY.read_text())
+        ]
+        self.assertEqual(code(packaged), expected)
+        self.assertEqual((self.output / "runtime.sh").read_bytes(), REAL_SCRIPT.read_bytes())
+        header = packaged.split("\nx-runtime-network-opts", 1)[0]
+        self.assertIn("Flux v1.2.3-rc.1 agent runtime Compose overlay", header)
+        for stale in ("docs/operations", "./flux", "docker/", "placeholder", "repository"):
+            self.assertNotIn(stale, header)
+
+    def test_codex_pin_is_read_from_the_real_dockerfile(self) -> None:
+        self.assertRegex(codex_pin(DOCKERFILE.read_text()), r"^rust-v\d+\.\d+\.\d+$")
+
+    def test_the_base_compose_never_mentions_the_runtime(self) -> None:
+        self.assertNotIn("runtime", (self.output / "compose.yaml").read_text().split("\nname:", 1)[1])
+
     def test_compose_header_describes_the_release_not_the_repository(self) -> None:
         header = (self.output / "compose.yaml").read_text(encoding="utf-8").split("\nname:", 1)[0]
         self.assertIn("Flux v1.2.3-rc.1 operator Compose, built from source commit " + "a" * 40, header)
@@ -166,7 +312,7 @@ class RealOperatorAssetsTest(unittest.TestCase):
         guide = (self.output / "INSTALL.md").read_text(encoding="utf-8")
         self.assertEqual(guide, GUIDE.read_text(encoding="utf-8"))
         for link in re.findall(r"\]\(([^)\s]+)\)", guide):
-            self.assertRegex(link, r"^https://", "INSTALL.md is read without the repository")
+            self.assertRegex(link, r"^(https://|#)", "INSTALL.md is read without the repository")
         for name in sorted(path.name for path in self.output.iterdir()):
             self.assertIn(name, guide, f"INSTALL.md does not mention the {name} asset")
         for source in re.findall(r"\bcp (\S+) \.env\b", guide):

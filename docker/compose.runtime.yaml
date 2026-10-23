@@ -1,0 +1,201 @@
+# Flux agent runtime for an operator install of a PUBLISHED release (#358, F-022 AIM-3): the optional
+# second Compose file next to compose.yaml. It is OFF by default: with FLUX_AGENT_RUNTIME empty no
+# service below starts, and an installation that never loads this file never pulls the runtime image.
+#
+# The repository copy is the example for a future release. It does not start as is: its placeholder
+# digests RELEASE_DIGEST (ghcr.io/coldphase/flux) and RUNTIME_DIGEST (ghcr.io/coldphase/flux-agent-runtime)
+# are replaced by the release workflow with the accepted manifest digests. Download compose.yaml,
+# compose.runtime.yaml, runtime.sh and env.example from ONE GitHub Release. Operate it with runtime.sh
+# (on, off, up, status, release, purge) or pass BOTH files to every `docker compose` command:
+#   docker compose --env-file .env -f compose.yaml -f compose.runtime.yaml --profile runtime ...
+# The settings and limits are those of docker/compose.source.yaml (docs/operations/agent-runtime.md);
+# scripts/release/compare_runtime_overlay.py fails when the two drift apart.
+#
+# No service here, or anywhere in Flux, mounts a Docker or Podman socket: the slots are a fixed pool and
+# every container setting is static. Claude Code is never in an image: `runtime-install` installs the
+# pinned, signature-checked official release into the tools volume when FLUX_AGENT_RUNTIME includes it.
+x-runtime-network-opts: &runtime-network-opts
+  com.docker.network.bridge.inhibit_ipv4: "true"
+x-runtime-logging: &runtime-logging
+  driver: json-file
+  options:
+    max-size: 10m
+    max-file: "3"
+x-runtime-hardening: &runtime-hardening
+  profiles: ["runtime"]
+  user: "1000:1000"
+  read_only: true
+  cap_drop: [ALL]
+  security_opt: ["no-new-privileges:true"]
+  init: true
+  logging: *runtime-logging
+x-runtime-slot: &runtime-slot
+  <<: *runtime-hardening
+  image: ghcr.io/coldphase/flux-agent-runtime@sha256:RUNTIME_DIGEST
+  mem_limit: 2g
+  memswap_limit: 2g
+  cpus: 1
+  pids_limit: 256
+  tmpfs:
+    - /tmp:rw,nosuid,nodev,size=128m,mode=1777
+  restart: always
+  depends_on:
+    runtime-install:
+      condition: service_completed_successfully
+    runtime-egress:
+      condition: service_started
+
+services:
+  api:
+    environment:
+      FLUX_AGENT_RUNTIME: ${FLUX_AGENT_RUNTIME:-}
+      FLUX_AGENT_RUNTIME_COMMERCIAL_TERMS: ${FLUX_AGENT_RUNTIME_COMMERCIAL_TERMS:-}
+      FLUX_AGENT_RUNTIME_IDLE_DAYS: ${FLUX_AGENT_RUNTIME_IDLE_DAYS:-}
+      FLUX_RUNTIME_MANAGER_SECRET: ${FLUX_RUNTIME_MANAGER_SECRET:-}
+    # runtime-control reaches runtime-manager; runtime-api is where runtime-egress forwards /mcp.
+    # Neither network holds the database.
+    networks: [default, runtime-control, runtime-api]
+  worker:
+    environment:
+      FLUX_AGENT_RUNTIME: ${FLUX_AGENT_RUNTIME:-}
+      FLUX_AGENT_RUNTIME_COMMERCIAL_TERMS: ${FLUX_AGENT_RUNTIME_COMMERCIAL_TERMS:-}
+      FLUX_AGENT_RUNTIME_IDLE_DAYS: ${FLUX_AGENT_RUNTIME_IDLE_DAYS:-}
+      FLUX_RUNTIME_MANAGER_SECRET: ${FLUX_RUNTIME_MANAGER_SECRET:-}
+    networks: [default, runtime-control]
+  runtime-install:
+    # One-shot: installs the pinned, signature-checked Claude Code into the tools volume when
+    # FLUX_AGENT_RUNTIME includes claude_code; otherwise a no-op.
+    <<: *runtime-hardening
+    image: ghcr.io/coldphase/flux-agent-runtime@sha256:RUNTIME_DIGEST
+    command: ["node", "apps/runtime/dist/install/main.js"]
+    tmpfs:
+      - /tmp:rw,nosuid,nodev,size=64m,mode=1777
+    environment:
+      FLUX_AGENT_RUNTIME: ${FLUX_AGENT_RUNTIME:-}
+      # Only downloads.claude.ai, through runtime-egress's installer proxy on this service's network.
+      HTTPS_PROXY: http://runtime-egress-install:3129
+      NODE_USE_ENV_PROXY: "1"
+    volumes:
+      - runtime-tools:/opt/flux-tools:z
+    networks: [runtime-install]
+    depends_on:
+      runtime-egress:
+        condition: service_started
+    restart: "no"
+  runtime-manager:
+    # No database and no Docker access. Listens only on runtime-control (its alias there); on the slot
+    # networks it only connects out to each supervisor with that slot's secret.
+    <<: *runtime-hardening
+    image: ghcr.io/coldphase/flux@sha256:RELEASE_DIGEST
+    command: ["node", "apps/runtime/dist/manager/main.js"]
+    mem_limit: 256m
+    pids_limit: 64
+    restart: unless-stopped
+    environment:
+      FLUX_RUNTIME_MANAGER_SECRET: ${FLUX_RUNTIME_MANAGER_SECRET:-}
+      FLUX_RUNTIME_SLOT_1: ${FLUX_RUNTIME_SECRET_1:-}
+      FLUX_RUNTIME_SLOT_2: ${FLUX_RUNTIME_SECRET_2:-}
+      FLUX_RUNTIME_SLOT_3: ${FLUX_RUNTIME_SECRET_3:-}
+      FLUX_RUNTIME_SLOT_4: ${FLUX_RUNTIME_SECRET_4:-}
+    networks:
+      runtime-control:
+        aliases: [runtime-manager-control]
+      runtime-1: {}
+      runtime-2: {}
+      runtime-3: {}
+      runtime-4: {}
+  runtime-egress:
+    # The slots' only way out: CONNECT to the enabled CLIs' documented hosts, and the API's /mcp only.
+    <<: *runtime-hardening
+    image: ghcr.io/coldphase/flux@sha256:RELEASE_DIGEST
+    command: ["node", "apps/runtime/dist/egress/main.js"]
+    mem_limit: 256m
+    pids_limit: 128
+    restart: unless-stopped
+    environment:
+      FLUX_AGENT_RUNTIME: ${FLUX_AGENT_RUNTIME:-}
+      FLUX_RUNTIME_EGRESS_API: api:8080
+    networks:
+      runtime-api: {}
+      runtime-egress-out: {}
+      runtime-install:
+        aliases: [runtime-egress-install]
+      runtime-1: {}
+      runtime-2: {}
+      runtime-3: {}
+      runtime-4: {}
+  runtime-1:
+    <<: *runtime-slot
+    environment:
+      FLUX_AGENT_RUNTIME: ${FLUX_AGENT_RUNTIME:-}
+      FLUX_RUNTIME_SLOT: runtime-1
+      FLUX_RUNTIME_SLOT_SECRET: ${FLUX_RUNTIME_SECRET_1:-}
+    volumes:
+      - runtime-1-data:/data
+      - runtime-tools:/opt/flux-tools:ro,z
+    networks: [runtime-1]
+  runtime-2:
+    <<: *runtime-slot
+    environment:
+      FLUX_AGENT_RUNTIME: ${FLUX_AGENT_RUNTIME:-}
+      FLUX_RUNTIME_SLOT: runtime-2
+      FLUX_RUNTIME_SLOT_SECRET: ${FLUX_RUNTIME_SECRET_2:-}
+    volumes:
+      - runtime-2-data:/data
+      - runtime-tools:/opt/flux-tools:ro,z
+    networks: [runtime-2]
+  runtime-3:
+    <<: *runtime-slot
+    environment:
+      FLUX_AGENT_RUNTIME: ${FLUX_AGENT_RUNTIME:-}
+      FLUX_RUNTIME_SLOT: runtime-3
+      FLUX_RUNTIME_SLOT_SECRET: ${FLUX_RUNTIME_SECRET_3:-}
+    volumes:
+      - runtime-3-data:/data
+      - runtime-tools:/opt/flux-tools:ro,z
+    networks: [runtime-3]
+  runtime-4:
+    <<: *runtime-slot
+    environment:
+      FLUX_AGENT_RUNTIME: ${FLUX_AGENT_RUNTIME:-}
+      FLUX_RUNTIME_SLOT: runtime-4
+      FLUX_RUNTIME_SLOT_SECRET: ${FLUX_RUNTIME_SECRET_4:-}
+    volumes:
+      - runtime-4-data:/data
+      - runtime-tools:/opt/flux-tools:ro,z
+    networks: [runtime-4]
+volumes:
+  # One volume per slot (owners' CLI logins; never in a backup) and the tools volume.
+  runtime-tools:
+  runtime-1-data:
+  runtime-2-data:
+  runtime-3-data:
+  runtime-4-data:
+networks:
+  # API, worker and runtime-manager only; no database.
+  runtime-control:
+    internal: true
+    driver_opts: *runtime-network-opts
+  # API and runtime-egress only, for /mcp.
+  runtime-api:
+    internal: true
+    driver_opts: *runtime-network-opts
+  # runtime-egress's way to the internet (vendor hosts it allows, checked to be public addresses).
+  runtime-egress-out: {}
+  # runtime-install and runtime-egress's installer proxy.
+  runtime-install:
+    internal: true
+    driver_opts: *runtime-network-opts
+  # One internal network per slot, shared only with runtime-manager and runtime-egress.
+  runtime-1:
+    internal: true
+    driver_opts: *runtime-network-opts
+  runtime-2:
+    internal: true
+    driver_opts: *runtime-network-opts
+  runtime-3:
+    internal: true
+    driver_opts: *runtime-network-opts
+  runtime-4:
+    internal: true
+    driver_opts: *runtime-network-opts

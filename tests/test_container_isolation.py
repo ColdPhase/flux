@@ -180,7 +180,7 @@ def compose_files() -> list[Path]:
 class ContainerIsolationTest(unittest.TestCase):
     def test_compose_files_are_found(self) -> None:
         names = {path.relative_to(ROOT).as_posix() for path in compose_files()}
-        for expected in ("docker/compose.yaml", "docker/compose.source.yaml", "docker/compose.runtime.test.yaml", "docker/runtime-slot.example.yaml"):
+        for expected in ("docker/compose.yaml", "docker/compose.source.yaml", "docker/compose.runtime.test.yaml", "docker/runtime-slot.example.yaml", "docker/compose.runtime.yaml"):
             self.assertIn(expected, names)
 
     def test_no_compose_file_mounts_an_engine_socket(self) -> None:
@@ -320,6 +320,28 @@ class ContainerIsolationTest(unittest.TestCase):
         text = (ROOT / "docker" / "compose.yaml").read_text(encoding="utf-8")
         self.assertNotIn("FLUX_AGENT_RUNTIME", text)
         self.assertNotIn("runtime-manager", text)
+
+    def test_the_release_runtime_overlay_is_off_pull_only_and_isolated_like_the_source_stack(self) -> None:
+        overlay = (ROOT / "docker" / "compose.runtime.yaml").read_text(encoding="utf-8")
+        code = "\n".join(line for line in overlay.splitlines() if not line.lstrip().startswith("#"))
+        self.assertNotRegex(code, r"(?m)^\s*build\s*:")
+        self.assertRegex(code, r"x-runtime-hardening: &runtime-hardening\n  profiles: \[\"runtime\"\]")
+        for service in ("runtime-install", "runtime-manager", "runtime-egress", "runtime-1", "runtime-2", "runtime-3", "runtime-4"):
+            block = re.search(rf"^  {service}:\n((?:    .*\n|\n)+)", code, re.M)
+            self.assertIsNotNone(block, service)
+            self.assertRegex(block.group(1), r"<<: \*runtime-(hardening|slot)", service)
+        networks = "\n" + code.split("\nnetworks:\n", 1)[1] + "\n"
+        for name in ("runtime-control", "runtime-api", "runtime-install", "runtime-1", "runtime-2", "runtime-3", "runtime-4"):
+            self.assertRegex(networks, rf"\n  {name}:\n    internal: true\n    driver_opts: \*runtime-network-opts\n", name)
+        self.assertIn('inhibit_ipv4: "true"', code)
+        # The slot settings are the source stack's (docker compose config is compared by scripts/release/compare_runtime_overlay.py).
+        source = (ROOT / "docker" / "compose.source.yaml").read_text(encoding="utf-8")
+        for setting in ("mem_limit: 2g", "memswap_limit: 2g", "cpus: 1", "pids_limit: 256", "restart: always",
+                        'user: "1000:1000"', "read_only: true", "cap_drop: [ALL]"):
+            self.assertIn(setting, source)
+            self.assertIn(setting, code)
+        # Off by default: the release's runtime switch is empty unless the operator sets it; it is never defaulted on.
+        self.assertNotRegex(code, r"FLUX_AGENT_RUNTIME: \$\{FLUX_AGENT_RUNTIME:-[^}]")
 
     def test_runtime_services_are_only_in_the_runtime_profile(self) -> None:
         text = (ROOT / "docker" / "compose.source.yaml").read_text(encoding="utf-8")
