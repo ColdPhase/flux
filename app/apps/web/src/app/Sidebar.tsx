@@ -7,6 +7,7 @@ import { UserMenu } from './UserMenu';
 import { useShellActions } from './shellContext';
 import { WorkingAgent } from './WorkingAgent';
 import { NewMenu } from './NewMenu';
+import { useLockedWorkspaces } from '../encryption/state';
 
 export interface SidebarProps {
   workspace: WorkspaceSummary | null;
@@ -29,6 +30,11 @@ function ProjectTile({ name, size = 20 }: { name: string; size?: number }) {
   return <span className="side__pj" style={{ width: size, height: size }} aria-hidden="true">{(name.trim()[0] ?? '?').toUpperCase()}</span>;
 }
 
+/** The tile of a space that waits to be unlocked: the lock glyph where a project has its letter (F-030, #655). */
+function LockTile({ size = 20 }: { size?: number }) {
+  return <span className="side__pj side__pj--lock" style={{ width: size, height: size }} aria-hidden="true"><Icon name="lock" size={Math.round(size * 0.6)} /></span>;
+}
+
 /**
  * The sidebar (F-026 §4): the logo and the collapse control; New (C) and Search (⌘K); Home, Inbox
  * and Sketchbook; Projects, then Messages; the working agent with Stop; the account and Settings.
@@ -37,6 +43,8 @@ function ProjectTile({ name, size = 20 }: { name: string; size?: number }) {
  */
 export function Sidebar({ projects, directMessages, user, session, onClose, titleId, inboxUnread = 0, collapsed = false, onToggleCollapsed }: SidebarProps) {
   const { openSearch, openCreate } = useShellActions();
+  // Encrypted spaces that wait to be unlocked (F-030, #655): one row each, in place of their projects.
+  const locked = useLockedWorkspaces();
   const mac = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform);
   const location = useLocation();
   const place = placeOf(location.pathname);
@@ -89,6 +97,11 @@ export function Sidebar({ projects, directMessages, user, session, onClose, titl
           {projects.map((project) => (
             <NavLink key={project.id} to={`/projects/${project.id}`} end={false} className={`side__rail-project${project.id === projectId ? ' is-open' : ''}`} aria-label={project.name} title={project.name}>
               <ProjectTile name={project.name} size={28} />
+            </NavLink>
+          ))}
+          {locked.map((space) => (
+            <NavLink key={space.id} to={`/spaces/${space.id}`} end={false} className="side__rail-project side__rail-locked" aria-label={`${space.name}, waiting to be unlocked`} title={`${space.name} · Waiting to be unlocked`}>
+              <LockTile size={28} />
             </NavLink>
           ))}
         </nav>
@@ -147,7 +160,7 @@ export function Sidebar({ projects, directMessages, user, session, onClose, titl
             {/* On the computer New (C) creates; the narrow-tablet drawer keeps its own "+". */}
             {onClose ? <Link to="/projects/new" className="side__add" aria-label="New project" onClick={navigate}><Icon name="plus" size={14} /></Link> : null}
           </div>
-          {projects.length ? (
+          {projects.length || locked.length ? (
             <ul className="side__list" ref={projectList}>
               <li className="side__glide" ref={glide} aria-hidden="true" role="none" />
               {projects.map((project) => {
@@ -170,6 +183,17 @@ export function Sidebar({ projects, directMessages, user, session, onClose, titl
                   </li>
                 );
               })}
+              {locked.map((space) => (
+                <li key={space.id}>
+                  <NavLink to={`/spaces/${space.id}`} end={false} className="side__item side__locked" onClick={navigate} title={`${space.name} · Waiting to be unlocked`} data-locked-space={space.id}>
+                    <LockTile />
+                    <span className="side__names">
+                      <span className="side__label">{space.name}</span>
+                      <span className="side__sub">Waiting to be unlocked</span>
+                    </span>
+                  </NavLink>
+                </li>
+              ))}
             </ul>
           ) : (
             <p className="side__empty">No projects yet. <Link to="/projects/new" onClick={navigate}>Create a project</Link>, or it appears here when someone adds you to one.</p>

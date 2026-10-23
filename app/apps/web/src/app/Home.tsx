@@ -89,7 +89,7 @@ function ContinueCard({ userId, workspaceIds }: { userId: string; workspaceIds: 
 /** Home (F-026 §7, S1, P1): the date and a greeting, the top three that need you, where to continue, and your projects. */
 export function Home() {
   const moments = useSmallMoments();
-  const { me, workspaces, projects } = useShellData();
+  const { me, workspaces, projects, lockedWorkspaces } = useShellData();
   const { openDetails } = useShellActions();
   const phone = useMediaQuery(MEDIA.navDrawer);
   const queue = useNeedsYou(me.user.id);
@@ -131,7 +131,7 @@ export function Home() {
         {!phone ? <ContinueCard userId={me.user.id} workspaceIds={workspaceIds} /> : null}
         <section className="home__card home__projects" aria-labelledby="home-projects">
           <h3 id="home-projects" className="home__k">Projects</h3>
-          {projects.length ? (
+          {projects.length || lockedWorkspaces.length ? (
             <ul>
               {projects.slice(0, 5).map((project) => (
                 <li key={project.id}>
@@ -139,6 +139,16 @@ export function Home() {
                     <span className="home__tile" aria-hidden="true">{(project.name.trim()[0] ?? '?').toUpperCase()}</span>
                     <span className="home__pn">{project.name}</span>
                     <span className={`home__state${project.hasNew ? ' is-new' : ''}`}>{project.hasNew ? 'new' : 'quiet'}</span>
+                  </Link>
+                </li>
+              ))}
+              {/* An encrypted space that waits to be unlocked is one row in place of its projects (F-030, #655). */}
+              {lockedWorkspaces.map((space) => (
+                <li key={space.id}>
+                  <Link to={`/spaces/${space.id}`} className="home__project home__project--locked" data-locked-space={space.id}>
+                    <span className="home__tile" aria-hidden="true"><Icon name="lock" size={12} /></span>
+                    <span className="home__pn">{space.name}</span>
+                    <span className="home__state">Waiting to be unlocked</span>
                   </Link>
                 </li>
               ))}

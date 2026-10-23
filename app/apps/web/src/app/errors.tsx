@@ -8,6 +8,8 @@ import { routeLabel } from './routeLabel';
 import { ReloadRecovery } from './ReloadRecovery';
 import { getProject } from './conversation-api';
 import { useReturning } from '../place/memory';
+import { isWorkspaceLocked, lockedWorkspaceId } from '../encryption/api';
+import { LockedSpace } from '../encryption/LockedSpace';
 
 /** Code download/evaluation failed; retry needs a fresh document/module cache, not API revalidation. */
 export class RouteCodeLoadError extends Error {
@@ -55,6 +57,8 @@ export function RouteErrorPage() {
     detail = error.message;
   }
   if (returning) return <NearestAccessible pathname={pathname} />;
+  // F-030 (#655): a place whose workspace is an encrypted one that waits to be unlocked shows the locked panel, not an error.
+  if (isWorkspaceLocked(error)) return <LockedSpace workspaceId={lockedWorkspaceId(error)} />;
   return (
     <main className="page-center">
       <ErrorState level={1} title={title} detail={detail}
