@@ -86,7 +86,7 @@ describe('F-030 creation (fixture route)', () => {
 describe('F-030 unlock, Lock now and 423', () => {
   test('Lock now gives 423 on the next content call; B is unaffected; the right password unlocks; a repeat is not checked', async () => {
     expectStatus(await contentCall(ada.browser, A), 200);
-    const locked = await lock(ben, A);
+    const locked = await lock(ben.browser, A);
     assert.equal(locked.status, 200, locked.text);
     assert.equal((locked.json as { encryption: { state: string } }).encryption.state, 'locked');
     assert.deepEqual((await events(A, 'workspace.locked.v1')).at(-1), { reason: 'person' });
@@ -167,7 +167,7 @@ describe('F-030 first passwords, grants and changes', () => {
     assert.equal(codeOf(expired), 'UNLOCK_PASSWORD_GRANT_REQUIRED');
     const byCode = await put(eve, A, { recoveryCode: recovery, newPassword: pw.eve });
     assert.equal(byCode.status, 200, byCode.text);
-    await lock(eve, A);
+    await lock(eve.browser, A);
     expectStatus(await unlock(eve.browser, A, { password: pw.eve }), 200);
     await clearAttempts(A);
   });
@@ -179,7 +179,7 @@ describe('F-030 first passwords, grants and changes', () => {
     assert.equal(wrong.status, 400);
     assert.equal(codeOf(wrong), 'UNLOCK_INCORRECT');
     expectStatus(await put(ben, A, { currentPassword: pw.ben, newPassword: next }), 200);
-    await lock(ben, A);
+    await lock(ben.browser, A);
     assert.equal((await unlock(ben.browser, A, { password: pw.ben })).status, 400);
     expectStatus(await unlock(ben.browser, A, { password: next }), 200);
     pw.ben = next;
@@ -247,7 +247,7 @@ describe('F-030 one password limiter for every checking route', () => {
       assert.equal(response.status, 400, response.text);
       assert.equal(codeOf(response), 'UNLOCK_INCORRECT');
     }
-    await lock(owner, club.id);
+    await lock(owner.browser, club.id);
     for (let i = 0; i < 2; i += 1) assert.equal(codeOf(await unlock(owner.browser, club.id, { password: bad })), 'UNLOCK_INCORRECT');
     const limited = await unlock(owner.browser, club.id, { password: passwords.owner });
     assert.equal(limited.status, 429, 'the sixth check, even with the right password');
@@ -271,7 +271,7 @@ describe('F-030 tampered key rows', () => {
     const password = passphrase();
     const { workspace: club, recoveryCode: code } = await createSealed(owner, 'Tamper club', password);
     await addMember(owner, club.id, member, 'member');
-    await lock(owner, club.id);
+    await lock(owner.browser, club.id);
     const [holder] = (await pool.query(`SELECT * FROM workspace_holders WHERE workspace_id = $1 AND kind = 'password'`, [club.id])).rows;
     const [recoveryHolder] = (await pool.query(`SELECT * FROM workspace_holders WHERE workspace_id = $1 AND kind = 'recovery'`, [club.id])).rows;
     // (a) the owner's public key replaced by another valid key

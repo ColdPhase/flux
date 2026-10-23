@@ -39,7 +39,7 @@ describe('F-030 keyring', () => {
       [call('/v1/boot', {}, `${token}x`), 401, { error: 'unauthorized' }],
       [call('/v1/boot', {}, null), 401, { error: 'unauthorized' }],
       [call(`/v1/seal?q=${canary}`, { method: 'POST', body: `{"workspaceId":"${canary}"` }), 400, { error: 'bad_request' }],
-      [call('/v1/seal', { method: 'POST', body: JSON.stringify({ workspaceId: randomUUID(), keyVersion: 1, dek: canary }) }), 400, { error: 'bad_request' }],
+      [call('/v1/seal', { method: 'POST', body: JSON.stringify({ workspaceId: randomUUID(), keyVersion: 1, dek: `${canary}!` }) }), 400, { error: 'bad_request' }],
       [call('/v1/seal', { method: 'POST', body: JSON.stringify({ pad: canary.repeat(200) }) }), 413, { error: 'too_large' }],
       [call('/v1/open', { method: 'POST', body: JSON.stringify({ workspaceId: randomUUID(), keyVersion: 1, bootId: keyring.bootId, sealed: 'AAAA' }) }), 400, { error: 'bad_request' }],
       [call(`/v1/${canary}`), 404, { error: 'not_found' }],
