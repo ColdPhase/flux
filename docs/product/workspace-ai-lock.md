@@ -139,7 +139,9 @@ export async function requireWorkspaceAi(db: Executor, workspaceId: string, opti
     audience reads the policy row) held the admin's membership exclusively while waiting for the
     policy row, and the flip held the policy row while waiting for that membership: a deadlock,
     reproduced with the real `PATCH` and `PUT`.
-  - The sweep never locks the policy row; each of its steps is its own transaction.
+  - The sweep's steps are each their own transaction, and none holds the policy row across steps. Its runs step
+    takes the policy row `FOR SHARE` through the event audiences it records; that share cannot cycle with the
+    flip, which takes the row only after its own membership share.
 - **Exception: shares inside a person's own write.** The reaction-capture function, the
   `ai_work_admission` backstop, `prepareHumanNegative`/`enqueueHumanNegative` and
   `eventAudience` take the policy share after that person's membership and project shares.
