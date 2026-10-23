@@ -1,6 +1,7 @@
 import { useCallback, useLayoutEffect, useRef, type KeyboardEvent, type ReactNode } from 'react';
 import { Link, NavLink, useNavigation } from 'react-router';
 import { Icon, type IconName } from './Icon';
+import { publishTopEdge } from './edgeInset';
 import { choosesInPlace } from './motion';
 
 export interface TabItem {
@@ -208,32 +209,11 @@ export interface BottomNavItem extends TabItem {
  */
 export function BottomNav({ items, label, className }: { items: BottomNavItem[]; label: string; className?: string }) {
   const ref = useRef<HTMLElement>(null);
+  // The real footer includes its safe-area padding and any wrapping caused by text size.
+  // Publish its top edge for body portals instead of assuming a fixed phone-bar height.
   useLayoutEffect(() => {
     const nav = ref.current;
-    if (!nav) return;
-    const root = document.documentElement;
-    const viewport = window.visualViewport;
-    // The real footer includes its safe-area padding and any wrapping caused by text size.
-    // Publish its top edge for body portals instead of assuming a fixed phone-bar height.
-    const update = () => {
-      const bottom = Math.min(window.innerHeight, (viewport?.offsetTop ?? 0) + (viewport?.height ?? window.innerHeight));
-      const rect = nav.getBoundingClientRect();
-      const edge = rect.width && rect.height && rect.top < bottom && rect.bottom > 0 ? rect.top : bottom;
-      root.style.setProperty('--ui-bottomnav-inset', `${Math.max(0, window.innerHeight - edge)}px`);
-    };
-    const observer = new ResizeObserver(update);
-    observer.observe(nav, { box: 'border-box' });
-    window.addEventListener('resize', update);
-    viewport?.addEventListener('resize', update);
-    viewport?.addEventListener('scroll', update);
-    update();
-    return () => {
-      observer.disconnect();
-      window.removeEventListener('resize', update);
-      viewport?.removeEventListener('resize', update);
-      viewport?.removeEventListener('scroll', update);
-      root.style.removeProperty('--ui-bottomnav-inset');
-    };
+    return nav ? publishTopEdge(nav, '--ui-bottomnav-inset') : undefined;
   }, []);
   const navigation = useNavigation();
   const pendingPath = navigation.state !== 'idle' ? navigation.location?.pathname ?? null : null;

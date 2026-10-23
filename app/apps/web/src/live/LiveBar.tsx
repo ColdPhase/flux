@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router';
-import { Avatar, Button, duration, Icon, IconButton, MEDIA, Sheet, Spinner, useMediaQuery } from '../ui';
+import { Avatar, Button, duration, Icon, IconButton, MEDIA, Sheet, Spinner, useMediaQuery, useStripOnlyModal } from '../ui';
 import { anchorPath, KIND_WORD } from './anchors';
 import { useLive, useLiveHere, type LiveValue } from './LiveProvider';
 import { canPublishScreen } from './capture';
@@ -32,6 +32,12 @@ export function LiveBar() {
   const [moreOpen, setMoreOpen] = useState(false);
   const moreRef = useRef<HTMLButtonElement>(null);
   const [showBusy, setShowBusy] = useState(false);
+  // More is a sheet on a phone. On a tablet or computer it is a popover under the strip, except while a thread or Details
+  // sheet covers the work below the strip: a popover would sit under that sheet's frame, so it opens as a sheet then, and
+  // one already open closes when such a sheet opens.
+  const stripOnly = useStripOnlyModal();
+  const [moreAs, setMoreAs] = useState<'sheet' | 'popover'>('popover');
+  if (stripOnly && moreAs === 'popover' && moreOpen && !phone) setMoreOpen(false);
 
   // An invitation you opened: one card, three calm answers.
   if (live.phase === 'idle' && live.invitation) {
@@ -131,7 +137,7 @@ export function LiveBar() {
               {!phone && canPublishScreen() ? <DeviceButton kind="screen" live={live} /> : null}
             </>
           )}
-          <IconButton ref={moreRef} icon="more" label="Session details and more" aria-expanded={moreOpen} aria-haspopup="dialog" onClick={() => setMoreOpen((open) => !open)} />
+          <IconButton ref={moreRef} icon="more" label="Session details and more" aria-expanded={moreOpen} aria-haspopup="dialog" onClick={() => { if (!moreOpen) setMoreAs(stripOnly ? 'sheet' : 'popover'); setMoreOpen((open) => !open); }} />
           <Button variant="danger" icon={phone ? undefined : 'leave'} className="lv-leave" onClick={() => void live.leave()}>Leave</Button>
         </span>
       </div>
@@ -161,7 +167,7 @@ export function LiveBar() {
         </div>
       ) : null}
 
-      {phone ? (
+      {phone || moreAs === 'sheet' ? (
         <Sheet open={moreOpen} onClose={() => setMoreOpen(false)} label="Live session" className="lv-sheet">{panel}</Sheet>
       ) : (
         <Popover open={moreOpen} onClose={() => setMoreOpen(false)} anchorRef={moreRef} label="Live session" className="lv-pop--panel">{panel}</Popover>
