@@ -47,6 +47,14 @@ export async function projectAiBlocked(projectId: string | undefined): Promise<b
   } catch { return false; }
 }
 
+/** True when AI is off in every workspace of the person (and they have one), by the shell's latest read; false when that is not known. */
+export async function allAiBlocked(): Promise<boolean> {
+  try {
+    const shell = await latestShell;
+    return !!shell && shell.workspaces.length > 0 && shell.workspaces.every((space) => space.ai?.state === 'blocked');
+  } catch { return false; }
+}
+
 /** Auth guard: restores the session from its cookie on every full load, or sends the person to sign in. */
 export function appLoader(args: LoaderFunctionArgs): Promise<ShellData> {
   const loading = readShell(args);

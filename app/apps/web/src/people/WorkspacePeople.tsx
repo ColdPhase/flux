@@ -326,6 +326,7 @@ function AiRow({ workspace, manager, onChanged }: { workspace: Workspace; manage
   const [confirming, setConfirming] = useState(false);
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState('');
+  const [stopped, setStopped] = useState(false);
   const [problem, setProblem] = useState('');
   const keys = useRef(attemptKeys());
   const trigger = useRef<HTMLButtonElement>(null);
@@ -355,11 +356,12 @@ function AiRow({ workspace, manager, onChanged }: { workspace: Workspace; manage
 
   async function change() {
     if (busy) return;
-    setBusy(true); setProblem(''); setStatus('');
+    setBusy(true); setProblem(''); setStatus(''); setStopped(false);
     try {
       const result = await setWorkspaceAi(workspace.id, target, ai!.version, keys.current.for(`${target}:${ai!.version}`));
       keys.current.done();
       setStatus(target === 'blocked' ? `AI is off in ${workspace.name}.${stoppedLine(result.stopped)}` : `AI is on in ${workspace.name}.`);
+      setStopped(target === 'blocked' && stoppedLine(result.stopped) !== '');
       closeConfirm();
       onChanged();
     } catch (error) {
@@ -377,8 +379,8 @@ function AiRow({ workspace, manager, onChanged }: { workspace: Workspace; manage
       <h4 id={`${lineId}-h`}>AI in {workspace.name}</h4>
       <div className="people__ai-row">
         <p className="people__ai-line" id={lineId}>{line}</p>
-        <Button ref={trigger} variant="quiet" className="people__ai-button" aria-describedby={lineId} aria-expanded={confirming} aria-controls={confirming ? confirmId : undefined}
-          onClick={() => { setStatus(''); setProblem(''); setConfirming(!confirming); }}>{blocked ? 'Turn on AI' : 'Turn off AI'}</Button>
+        <Button ref={trigger} variant="secondary" className="people__ai-button" aria-describedby={lineId} aria-expanded={confirming} aria-controls={confirming ? confirmId : undefined}
+          onClick={() => { setStatus(''); setStopped(false); setProblem(''); setConfirming(!confirming); }}>{blocked ? 'Turn on AI' : 'Turn off AI'}</Button>
       </div>
       {confirming ? (
         <div className="details__confirm people__confirm" id={confirmId} role="group" aria-label={blocked ? `Turn on AI in ${workspace.name}` : `Turn off AI in ${workspace.name}`}
@@ -387,12 +389,13 @@ function AiRow({ workspace, manager, onChanged }: { workspace: Workspace; manage
             ? 'People’s assistants and connected agents can work here again, with the access they had. Nothing that was stopped starts again.'
             : `No agent or assistant, including each person’s own, can read or change anything in ${workspace.name}. Work they are doing now stops and is not posted. Nothing is deleted.`}</p>
           <div className="details__actions">
-            <Button ref={confirmFirst} variant={blocked ? 'primary' : 'danger'} busy={busy} onClick={() => void change()}>{blocked ? 'Turn on AI' : 'Turn off AI'}</Button>
-            <Button variant="secondary" onClick={closeConfirm}>{blocked ? 'Keep AI off' : 'Keep AI on'}</Button>
+            <Button ref={confirmFirst} variant="primary" busy={busy} onClick={() => void change()}>{blocked ? 'Turn on AI here' : 'Turn off AI here'}</Button>
+            <Button variant="quiet" onClick={closeConfirm}>{blocked ? 'Keep AI off' : 'Keep AI on'}</Button>
           </div>
         </div>
       ) : null}
-      <p className="people__ai-status" role="status">{status ? <><Icon name="check" size={13} />{status}</> : null}</p>
+      {/* Announced to everyone; shown only when it says something the row's own line does not (what was stopped). */}
+      <p className={stopped ? 'people__ai-status' : 'ui-vh'} role="status">{status}</p>
       {problem ? <p className="people__notice" role="alert"><Icon name="alert" size={13} />{problem}</p> : null}
     </section>
   );

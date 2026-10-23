@@ -557,7 +557,9 @@ function ProjectConversationContent({ data, variant, feed, rootHeader, rootMessa
   async function send() {
     typing.stop();
     if (asking) { await sendToAssistant(); return; }
-    const command = writable ? (aiOff ? /^\/(task|decide)(?:\s+([\s\S]*))?$/ : /^\/(task|decide|handoff)(?:\s+([\s\S]*))?$/).exec(draft.trim()) : null;
+    // F-029 (#614): `/ai` and `/handoff` in a workspace whose AI is off are not messages for the people here: the words stay in the field.
+    if (aiOff && writable && /^\/(ai|handoff)(\s|$)/.test(draft.trim())) { setCommandHint('AI is off in this workspace. Remove the command to send these words as a message.'); return; }
+    const command = writable ? /^\/(task|decide|handoff)(?:\s+([\s\S]*))?$/.exec(draft.trim()) : null;
     if (command) { await runCommand(command[1] as keyof typeof COMMAND_EXAMPLE, (command[2] ?? '').trim()); return; }
     // A private helper prompt is never published as a root (UI116-3); it stays in the private draft.
     if (!writable || assistantInStream) return;

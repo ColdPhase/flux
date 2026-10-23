@@ -97,8 +97,9 @@ export function AiOffState({ workspaceId, backTo, backLabel = 'Back', level = 2 
   const { name, manager } = useWorkspaceAi(workspaceId);
   const { openDetails } = useShellActions();
   return (
+    <div className="pane-scroll"><div className="pane-in">
     <div className="view-empty ai-off" data-ai-off="">
-      <EmptyState icon="spark" level={level} title={`AI is off in ${name}`}
+      <EmptyState icon="lock" level={level} title={`AI is off in ${name}`}
         action={<>
           <Link className="ui-btn ui-btn--secondary" to={backTo}>{backLabel}</Link>
           {manager && workspaceId ? <Button variant="quiet" onClick={() => openDetails({ kind: 'people', workspaceId })}>People</Button> : null}
@@ -106,6 +107,7 @@ export function AiOffState({ workspaceId, backTo, backLabel = 'Back', level = 2 
         <p>Its admins turned off agents and assistants here. Everything else works as usual.</p>
       </EmptyState>
     </div>
+    </div></div>
   );
 }
 
@@ -114,7 +116,7 @@ export function AiOffThere({ className = 'sset-note' }: { className?: string }) 
   const shell = useShell();
   const off = (shell?.workspaces ?? []).filter((space) => space.ai?.state === 'blocked');
   if (!off.length || off.length === (shell?.workspaces.length ?? 0)) return null;
-  return <>{off.map((space) => <p key={space.id} className={className} data-ai-off-there={space.id}>Not in {space.name}: AI is off there.</p>)}</>;
+  return <>{off.map((space) => <p key={space.id} className={`${className} ai-off-there`} data-ai-off-there={space.id}>Not in {space.name}: AI is off there.</p>)}</>;
 }
 
 /** Settings → Agents and AI while AI is off in every workspace: one line each, and where an owner or admin turns it back on. */

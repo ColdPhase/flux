@@ -385,10 +385,12 @@ export function SettingsHome() {
 
 /** Settings → Agents and AI on its own page: the assistant, Connect AI, background suggestions and agent apps. */
 export function SettingsAgents() {
+  // With AI off everywhere the page leads with that, not with an introduction to agents the person has no use for (F-029, #614).
+  const allOff = useAllAiBlocked();
   return (
     <div className="pane-scroll">
       <div className="pane-in sset-in" data-shift>
-        <PageHead title="Agents and AI" lead="Your agents work for you and are always marked as agents. Colours appear only here and in the Agents view." />
+        <PageHead title="Agents and AI" lead={allOff ? undefined : 'Your agents work for you and are always marked as agents. Colours appear only here and in the Agents view.'} />
         <AgentsAndAi />
       </div>
     </div>

@@ -90,9 +90,9 @@ function AccountMenu({ name, email, sessionExpiresAt, compact }: { name: string;
           <div className="me__sec">
             <Link to="/settings" className="me__item" onClick={() => close(false)}><Icon name="gear" />All settings</Link>
             {allAiOff ? null : <Link to="/settings/assistant" className="me__item" data-ai-surface="user-menu-assistant" onClick={() => close(false)}><Icon name="spark" />Your assistant</Link>}
-            <Link className="me__item" style={{ textDecoration: 'none' }} to="/settings/background-compute" onClick={() => close(false)}>
+            {allAiOff ? null : <Link className="me__item" style={{ textDecoration: 'none' }} to="/settings/background-compute" data-ai-surface="user-menu-background" onClick={() => close(false)}>
               <Icon name="spark" />Your background suggestions
-            </Link>
+            </Link>}
           </div>
           <Form method="post" action="/sign-out" className="me__sec me__sec--end">
             <button type="submit" className="me__item" aria-disabled={signingOut || undefined}>

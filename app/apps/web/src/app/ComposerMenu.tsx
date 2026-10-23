@@ -51,7 +51,7 @@ export function composerOptions(trigger: ComposerTrigger, { people, meId, inThre
     return ACTIONS.filter((action) => (action.here === 'any' || inThread) && !(aiOff && AI_ACTIONS.has(action.id)) && action.id.startsWith(query))
       .map((action) => ({ id: `slash-${action.id}`, kind: 'action' as const, label: `/${action.id}`, hint: action.hint, insert: `/${action.id} `, slash: action.id }));
   }
-  const mine: ComposerOption[] = !aiOff && assistant && inThread && 'my assistant'.includes(query) || assistant && inThread && 'assistant'.startsWith(query)
+  const mine: ComposerOption[] = !aiOff && assistant && inThread && ('my assistant'.includes(query) || 'assistant'.startsWith(query))
     ? [{ id: 'mention-my-assistant', kind: 'agent', label: 'My assistant', hint: assistant!.mode === 'ask' ? 'Agent · for you' : 'Set up', insert: '', assistant: assistant!.mode }] : [];
   const others = (people ?? []).filter((person) => !(aiOff && person.kind === 'agent') && person.id !== meId && person.name.toLowerCase().includes(query))
     .sort((a, b) => Number(b.name.toLowerCase().startsWith(query)) - Number(a.name.toLowerCase().startsWith(query)) || a.name.localeCompare(b.name))

@@ -44,11 +44,12 @@ export function AssistantSettings() {
   const [saved, setSaved] = useState('');
   const [pausing, setPausing] = useState(false);
   const fetchAll = useCallback(() => {
+    if (everyWorkspace.length > 0 && !workspaces.length) return; // AI is off everywhere: nothing is asked for (F-029, #614)
     getAssistantStatus().then(setStatus).catch(() => setFailed(true));
     Promise.all(workspaces.map((space) => listAgents(space.id).catch(() => [] as Agent[])))
       .then((lists) => setAgents(lists.flat().filter((agent) => agent.owner.kind === 'human' && agent.owner.id === me.user.id && !agent.revokedAt)))
       .catch(() => setAgents([]));
-  }, [workspaces, me.user.id]);
+  }, [workspaces, everyWorkspace.length, me.user.id]);
   useEffect(fetchAll, [fetchAll]);
   const load = () => { setFailed(false); fetchAll(); };
   const done = (next: PersonalAssistantStatus, message: string) => { setStatus(next); setSaved(message); window.setTimeout(() => setSaved(''), 2500); void refreshAssistantModel(); };

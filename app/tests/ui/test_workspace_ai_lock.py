@@ -437,6 +437,19 @@ class WorkspaceAiLock(unittest.TestCase):
                 thread = page.locator("#thread-composer")
                 expect(thread).to_be_visible()
                 self.assertNotIn("/ai", self.composer_actions(page, "#thread-composer", "/"))
+                # A typed command is not sent as a message to the people here: the words stay, with a hint.
+                before = len(self.api(page, "GET", f"/api/v1/projects/{self.ids['a_project']}/conversations?limit=50")["items"])
+                for command in ("/handoff calibrate the probes", "/ai tidy the tasks"):
+                    field = page.locator("#thread-composer")
+                    field.fill(command)
+                    field.press("Enter")
+                    expect(page.get_by_role("status").filter(has_text="AI is off in this workspace")).to_be_visible()
+                    expect(field).to_have_value(command)
+                after = self.api(page, "GET", f"/api/v1/conversations/{self.ids['a_conversation']}")
+                self.assertNotIn("calibrate the probes", json.dumps(after))
+                self.assertNotIn("tidy the tasks", json.dumps(after))
+                self.assertEqual(len(self.api(page, "GET", f"/api/v1/projects/{self.ids['a_project']}/conversations?limit=50")["items"]), before)
+                field.fill("")
                 thread.fill("/ai tidy the tasks")
                 expect(page.locator("#project-ask")).to_have_count(0)
                 thread.fill("")
@@ -477,6 +490,13 @@ class WorkspaceAiLock(unittest.TestCase):
                     self.assertEqual(self.markers(page), 0)
                     self.assertEqual(page.refused, [], "no AI request was made")
                     expect(blocked.get_by_role("button", name="People")).to_be_visible()
+                    # It sits inside the pane's gutter, never flush with the sidebar or the screen edge.
+                    pane = page.locator("#content").bounding_box()
+                    for part in (blocked.get_by_role("heading"), blocked.get_by_text("Its admins turned off"), blocked.get_by_role("link", name="Back to the conversation")):
+                        self.assertGreaterEqual(part.bounding_box()["x"] - pane["x"], 16, "the blocked state has the pane's gutter")
+                        self.assertLessEqual(part.bounding_box()["x"] + part.bounding_box()["width"], pane["x"] + pane["width"] - 16)
+                    if phone:
+                        expect(page.locator("header .phead__sub")).not_to_contain_text("Agents")
                     shot(page, f"blocked-state-{'phone' if phone else 'desktop'}")
             # Back goes to the conversation; People opens the workspace's People panel.
             page = self.page("ada", phone=phone)
@@ -505,6 +525,11 @@ class WorkspaceAiLock(unittest.TestCase):
                 expect(page.get_by_role("heading", name="Agents and AI").first).to_be_visible()
                 expect(page.get_by_text(f"Not in {A_NAME}: AI is off there.")).to_have_count(2)
                 expect(page.get_by_role("link", name="Set up").or_(page.get_by_role("link", name="Manage")).first).to_be_visible()
+                # The project picker of the rules offers only projects whose workspace has AI on.
+                page.goto("/settings/background-compute")
+                picker = page.get_by_label("Project", exact=True)
+                expect(picker.locator("option", has_text=B_PROJECT)).to_have_count(1)
+                expect(picker.locator("option", has_text=A_PROJECT)).to_have_count(0)
                 page.goto("/connect-agent")
                 expect(page.locator("[data-ai-off]")).to_contain_text(f"AI is off in {A_NAME}.")
                 self.assertEqual(page.refused, [])
@@ -515,11 +540,25 @@ class WorkspaceAiLock(unittest.TestCase):
                 expect(off).to_contain_text(f"AI is off in {A_NAME}. Its owners and admins can turn it back on in People.")
                 expect(lee.get_by_role("heading", name="Agent in Flux")).to_have_count(0)
                 expect(lee.get_by_role("heading", name="Your agent app")).to_have_count(0)
+                expect(lee.get_by_text("Your agents work for you")).to_have_count(0)
                 shot(lee, f"settings-all-off-{'phone' if phone else 'desktop'}")
                 off.get_by_role("button", name="People").click()
                 expect(lee.get_by_role("heading", name="People", exact=True)).to_be_visible()
                 lee.goto("/settings/assistant")
                 expect(lee.locator("[data-ai-off]")).to_contain_text(f"AI is off in {A_NAME}.")
+                # The personal-key pages say the same, and ask for nothing; the account menu has no entry for them.
+                asked: list[str] = []
+                lee.on("request", lambda request: asked.append(request.url) if re.search(r"background-|personal-assistant|assistant-runs|working-agents", request.url) else None)
+                for path in ("/settings/background-compute", "/settings/ai-connections"):
+                    lee.goto(path)
+                    expect(lee.locator("[data-ai-off]")).to_contain_text(f"AI is off in {A_NAME}.")
+                self.assertEqual(asked, [], "nothing AI-shaped was read for a person whose every workspace is off")
+                if not phone:
+                    lee.goto("/")
+                    lee.get_by_role("button", name=re.compile("Lee Moreno")).first.click()
+                    expect(lee.get_by_role("link", name="All settings")).to_be_visible()
+                    expect(lee.get_by_role("link", name="Your background suggestions")).to_have_count(0)
+                    expect(lee.get_by_role("link", name="Your assistant")).to_have_count(0)
                 lee.goto("/")
                 expect(lee.get_by_role("heading", level=1, name="Home")).to_be_visible()
                 expect(lee.get_by_text("Meet your assistant")).to_have_count(0)
@@ -568,6 +607,29 @@ class WorkspaceAiLock(unittest.TestCase):
                 self.assertEqual(self.markers(kai), 0)
                 self.assertEqual(ada.refused + kai.refused, [])
                 shot(kai, f"human-work-{'phone' if phone else 'desktop'}")
+
+    def test_09b_home_and_inbox_show_no_agent_question_from_the_blocked_workspace(self) -> None:
+        """An agent's question in A (stubbed read: asking one needs an MCP bearer) is not shown while AI is off; the same one in B is."""
+        self.set_ai(self.page("ada"), "blocked")
+        for phone in (False, True):
+            with self.subTest(phone=phone):
+                page = self.page("ada", phone=phone, ready=True)
+
+                def item(key: str, project: str, name: str, agent: bool) -> dict:
+                    return {"key": key, "kind": "question", "title": f"{name} asks which bed", "detail": "Per bed, or one value?", "project": {"id": self.ids[project], "name": name},
+                            "from": {"kind": "agent", "id": str(uuid.uuid4()), "name": "Sprout"} if agent else {"kind": "human", "id": self.ids["kai"], "name": "Kai Tanaka"},
+                            "at": NOW, "url": f"/projects/{self.ids[project]}", "decision": None, "blocked": None, "reason": "question", "snoozeTask": None}
+                queue = [item(f"note:{uuid.uuid4()}", "a_project", A_PROJECT, True), item(f"note:{uuid.uuid4()}", "b_project", B_PROJECT, True), item(f"note:{uuid.uuid4()}", "a_project", "Seed order", False)]
+                page.route("**/api/v1/needs-you", lambda route: route.fulfill(status=200, content_type="application/json",
+                           body=json.dumps({"items": queue, "count": len(queue), "later": 0, "doneToday": 0})) if route.request.method == "GET" else route.continue_())
+                for path in ("/", "/inbox"):
+                    page.goto(path)
+                    expect(page.get_by_text(f"{B_PROJECT} asks which bed").first).to_be_visible()
+                    expect(page.get_by_text("Seed order asks which bed").first).to_be_visible()
+                    expect(page.get_by_text(f"{A_PROJECT} asks which bed")).to_have_count(0)
+                    self.assertEqual(page.locator(f"[data-ai-surface='needs-you-ai']").count(), 1, "only the allowed workspace's agent question is drawn")
+                    self.assertEqual(page.refused, [])
+                shot(page, f"inbox-{'phone' if phone else 'desktop'}")
 
     def test_10_an_open_tab_follows_the_change_without_a_reload(self) -> None:
         for phone in (False, True):

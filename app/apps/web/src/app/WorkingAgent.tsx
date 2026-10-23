@@ -12,7 +12,7 @@ import { getOwnWorkingAgents } from '../agents/api';
 import { stopFailure, stopAgentWork } from '../agents/stop';
 import { useShellData } from './data';
 import { RefLink } from '../place/origin';
-import { useProjectAiBlocked } from '../ai/workspaceAi';
+import { useAllAiBlocked, useProjectAiBlocked } from '../ai/workspaceAi';
 
 const POLL_WHILE_WORKING_MS = 3000;
 interface WorkingSnapshot { identity: string; run: AssistantRun | null; stopping: boolean; failed: boolean }
@@ -20,13 +20,15 @@ interface WorkingLifetime { identity: string; live: boolean; revision: number; r
 
 /** Reads and Stop share one owner/lifetime fence; neither may restore an older working answer. */
 function useWorkingRun(identity: string) {
+  // F-029 (#614): with AI off in every workspace there is nothing of the assistant's to read.
+  const allOff = useAllAiBlocked();
   const [snapshot, setSnapshot] = useState<WorkingSnapshot>({ identity, run: null, stopping: false, failed: false });
   const lifetime = useRef<WorkingLifetime | null>(null);
   // Background reads (poll, focus, stream) wait while this page is hidden or being left (see
   // pageLeaving, #471). User-started requests never go through refresh().
   const refresh = useCallback(() => {
     const scope = lifetime.current;
-    if (!scope?.live || scope.identity !== identity || scope.stopping) return;
+    if (allOff || !scope?.live || scope.identity !== identity || scope.stopping) return;
     if (pageLeaving() || document.visibilityState === 'hidden') return;
     scope.read?.abort();
     const controller = new AbortController();
@@ -41,7 +43,7 @@ function useWorkingRun(identity: string) {
     }, () => {
       if (current()) setSnapshot({ identity, run: null, stopping: false, failed: false });
     });
-  }, [identity]);
+  }, [identity, allOff]);
   useEffect(() => {
     const scope: WorkingLifetime = { identity, live: true, revision: 0, read: null, stopping: false };
     lifetime.current = scope;
@@ -132,10 +134,12 @@ const doing = (run: AssistantRun) =>
 
 /** The person's own external agents that work on a task now. Reads on mount, focus, every event and a slow timer. */
 function useOwnWorkingAgents(identity: string) {
+  const allOff = useAllAiBlocked();
   const [state, setState] = useState<{ identity: string; items: OwnWorkingAgent[] }>({ identity, items: [] });
   const reload = useRef<() => void>(() => { /* not mounted */ });
   useEffect(() => {
     let controller: AbortController | null = null;
+    if (allOff) return undefined;
     reload.current = () => {
       controller?.abort();
       const current = new AbortController();
@@ -148,7 +152,7 @@ function useOwnWorkingAgents(identity: string) {
     const timer = window.setInterval(onFocus, 20_000);
     window.addEventListener('focus', onFocus);
     return () => { controller?.abort(); window.clearInterval(timer); window.removeEventListener('focus', onFocus); reload.current = () => { /* unmounted */ }; };
-  }, [identity]);
+  }, [identity, allOff]);
   useStreamEvents(identity, () => reload.current(), () => reload.current());
   return { items: state.identity === identity ? state.items : [], reload: useCallback(() => reload.current(), []) };
 }
