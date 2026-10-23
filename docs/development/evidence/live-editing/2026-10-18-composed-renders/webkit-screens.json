@@ -1,0 +1,326 @@
+{
+  "capture_source": "bb80320ee5e9d32efdd840b7d764679c357a88e0",
+  "application_source": "f30c9910a21911a4287833a1c19faa12bb5d2851",
+  "screens": [
+    {
+      "file": "map-active-peer-movement-light-1440.png",
+      "application_source": "f30c9910a21911a4287833a1c19faa12bb5d2851",
+      "engine": "webkit",
+      "browser_version": "26.5",
+      "requested_palette": "light",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "documentWidth": 1440,
+      "dpr": 1,
+      "visualScale": 1,
+      "cssZoom": "1",
+      "scheme": "light",
+      "original_path": "/home/hubert/flux-evidence/228-composed-bb80320e-webkit-shots/map-active-peer-movement-light-1440.png",
+      "bytes": 130804,
+      "sha256": "54dcbbc2a5476572e62de7047d535ee797214eb0717b970b1107bb14df333527",
+      "representative_retained": true
+    },
+    {
+      "file": "map-active-peer-movement-dark-1440.png",
+      "application_source": "f30c9910a21911a4287833a1c19faa12bb5d2851",
+      "engine": "webkit",
+      "browser_version": "26.5",
+      "requested_palette": "dark",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "documentWidth": 1440,
+      "dpr": 1,
+      "visualScale": 1,
+      "cssZoom": "1",
+      "scheme": "dark",
+      "original_path": "/home/hubert/flux-evidence/228-composed-bb80320e-webkit-shots/map-active-peer-movement-dark-1440.png",
+      "bytes": 123967,
+      "sha256": "da2918b3692ba5039612b0b6d57daf69f95c66df201c8da82ad81ce441c771ae",
+      "representative_retained": false
+    },
+    {
+      "file": "map-active-peer-movement-light-390.png",
+      "application_source": "f30c9910a21911a4287833a1c19faa12bb5d2851",
+      "engine": "webkit",
+      "browser_version": "26.5",
+      "requested_palette": "light",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "documentWidth": 390,
+      "dpr": 1,
+      "visualScale": 1,
+      "cssZoom": "1",
+      "scheme": "light",
+      "original_path": "/home/hubert/flux-evidence/228-composed-bb80320e-webkit-shots/map-active-peer-movement-light-390.png",
+      "bytes": 76564,
+      "sha256": "fdf98e28fd458d2ea3349dd23fe4fbdfd097f14ea613d6ae26395b155d36face",
+      "representative_retained": false
+    },
+    {
+      "file": "map-active-peer-movement-dark-390.png",
+      "application_source": "f30c9910a21911a4287833a1c19faa12bb5d2851",
+      "engine": "webkit",
+      "browser_version": "26.5",
+      "requested_palette": "dark",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "documentWidth": 390,
+      "dpr": 1,
+      "visualScale": 1,
+      "cssZoom": "1",
+      "scheme": "dark",
+      "original_path": "/home/hubert/flux-evidence/228-composed-bb80320e-webkit-shots/map-active-peer-movement-dark-390.png",
+      "bytes": 73600,
+      "sha256": "0d1f8756c023dfe554d9ac671256629444c3b0610417bee51ec7635d12e968fc",
+      "representative_retained": true
+    },
+    {
+      "file": "map-active-peer-movement-light-820.png",
+      "application_source": "f30c9910a21911a4287833a1c19faa12bb5d2851",
+      "engine": "webkit",
+      "browser_version": "26.5",
+      "requested_palette": "light",
+      "viewport": {
+        "width": 820,
+        "height": 1180
+      },
+      "documentWidth": 820,
+      "dpr": 1,
+      "visualScale": 1,
+      "cssZoom": "1",
+      "scheme": "light",
+      "original_path": "/home/hubert/flux-evidence/228-composed-bb80320e-webkit-shots/map-active-peer-movement-light-820.png",
+      "bytes": 100226,
+      "sha256": "c6f09d45496ef9481179c9065de4947b3fb4575a493d5a0a899ff4175688afec",
+      "representative_retained": false
+    },
+    {
+      "file": "map-active-peer-movement-dark-820.png",
+      "application_source": "f30c9910a21911a4287833a1c19faa12bb5d2851",
+      "engine": "webkit",
+      "browser_version": "26.5",
+      "requested_palette": "dark",
+      "viewport": {
+        "width": 820,
+        "height": 1180
+      },
+      "documentWidth": 820,
+      "dpr": 1,
+      "visualScale": 1,
+      "cssZoom": "1",
+      "scheme": "dark",
+      "original_path": "/home/hubert/flux-evidence/228-composed-bb80320e-webkit-shots/map-active-peer-movement-dark-820.png",
+      "bytes": 94866,
+      "sha256": "a2434be5861e302b397d9fe5571a5e928929dd3cc2f0ee70c6d57c55e86ae787",
+      "representative_retained": false
+    },
+    {
+      "file": "map-active-peer-movement-light-2560.png",
+      "application_source": "f30c9910a21911a4287833a1c19faa12bb5d2851",
+      "engine": "webkit",
+      "browser_version": "26.5",
+      "requested_palette": "light",
+      "viewport": {
+        "width": 2560,
+        "height": 1440
+      },
+      "documentWidth": 2560,
+      "dpr": 1,
+      "visualScale": 1,
+      "cssZoom": "1",
+      "scheme": "light",
+      "original_path": "/home/hubert/flux-evidence/228-composed-bb80320e-webkit-shots/map-active-peer-movement-light-2560.png",
+      "bytes": 150464,
+      "sha256": "11ab40a1da1d120212ed632d2f6e0485d30cb8a7910c65e4c7fed8c951a29315",
+      "representative_retained": false
+    },
+    {
+      "file": "map-active-peer-movement-dark-2560.png",
+      "application_source": "f30c9910a21911a4287833a1c19faa12bb5d2851",
+      "engine": "webkit",
+      "browser_version": "26.5",
+      "requested_palette": "dark",
+      "viewport": {
+        "width": 2560,
+        "height": 1440
+      },
+      "documentWidth": 2560,
+      "dpr": 1,
+      "visualScale": 1,
+      "cssZoom": "1",
+      "scheme": "dark",
+      "original_path": "/home/hubert/flux-evidence/228-composed-bb80320e-webkit-shots/map-active-peer-movement-dark-2560.png",
+      "bytes": 143308,
+      "sha256": "edbb65f756f425694b1fafa731af66d26b824a3ac94b9a8489fecbe9dacc373d",
+      "representative_retained": false
+    },
+    {
+      "file": "wiki-shared-writing-before-version-save-light-1440.png",
+      "application_source": "f30c9910a21911a4287833a1c19faa12bb5d2851",
+      "engine": "webkit",
+      "browser_version": "26.5",
+      "requested_palette": "light",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "documentWidth": 1440,
+      "dpr": 1,
+      "visualScale": 1,
+      "cssZoom": "1",
+      "scheme": "light",
+      "original_path": "/home/hubert/flux-evidence/228-composed-bb80320e-webkit-shots/wiki-shared-writing-before-version-save-light-1440.png",
+      "bytes": 125464,
+      "sha256": "f0d2e951a0a3f7206e50dd73e2cf997c1ca5049c2d5ac3f1cb9d60059767dfa3",
+      "representative_retained": false
+    },
+    {
+      "file": "wiki-shared-writing-before-version-save-dark-1440.png",
+      "application_source": "f30c9910a21911a4287833a1c19faa12bb5d2851",
+      "engine": "webkit",
+      "browser_version": "26.5",
+      "requested_palette": "dark",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "documentWidth": 1440,
+      "dpr": 1,
+      "visualScale": 1,
+      "cssZoom": "1",
+      "scheme": "dark",
+      "original_path": "/home/hubert/flux-evidence/228-composed-bb80320e-webkit-shots/wiki-shared-writing-before-version-save-dark-1440.png",
+      "bytes": 122762,
+      "sha256": "e45b2acd1db4126e702b457b0f7bd76df53c4c3b30207f650614c2fcfeac6996",
+      "representative_retained": false
+    },
+    {
+      "file": "wiki-shared-writing-before-version-save-light-390.png",
+      "application_source": "f30c9910a21911a4287833a1c19faa12bb5d2851",
+      "engine": "webkit",
+      "browser_version": "26.5",
+      "requested_palette": "light",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "documentWidth": 390,
+      "dpr": 1,
+      "visualScale": 1,
+      "cssZoom": "1",
+      "scheme": "light",
+      "original_path": "/home/hubert/flux-evidence/228-composed-bb80320e-webkit-shots/wiki-shared-writing-before-version-save-light-390.png",
+      "bytes": 76653,
+      "sha256": "631a5401f350707f9e8c8e1eece258ed4acf1918bfe100006e2fc3262e4f42bb",
+      "representative_retained": false
+    },
+    {
+      "file": "wiki-shared-writing-before-version-save-dark-390.png",
+      "application_source": "f30c9910a21911a4287833a1c19faa12bb5d2851",
+      "engine": "webkit",
+      "browser_version": "26.5",
+      "requested_palette": "dark",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "documentWidth": 390,
+      "dpr": 1,
+      "visualScale": 1,
+      "cssZoom": "1",
+      "scheme": "dark",
+      "original_path": "/home/hubert/flux-evidence/228-composed-bb80320e-webkit-shots/wiki-shared-writing-before-version-save-dark-390.png",
+      "bytes": 73364,
+      "sha256": "7975fa8711a9dfdc2cfee349422e1a35562d2a797f5fcfbf99d6a326e2ae881b",
+      "representative_retained": false
+    },
+    {
+      "file": "wiki-shared-writing-before-version-save-light-820.png",
+      "application_source": "f30c9910a21911a4287833a1c19faa12bb5d2851",
+      "engine": "webkit",
+      "browser_version": "26.5",
+      "requested_palette": "light",
+      "viewport": {
+        "width": 820,
+        "height": 1180
+      },
+      "documentWidth": 820,
+      "dpr": 1,
+      "visualScale": 1,
+      "cssZoom": "1",
+      "scheme": "light",
+      "original_path": "/home/hubert/flux-evidence/228-composed-bb80320e-webkit-shots/wiki-shared-writing-before-version-save-light-820.png",
+      "bytes": 116465,
+      "sha256": "3378a73a928e9916aac9ac439c0f3606713682cf591c0125f3e56f49a0355086",
+      "representative_retained": false
+    },
+    {
+      "file": "wiki-shared-writing-before-version-save-dark-820.png",
+      "application_source": "f30c9910a21911a4287833a1c19faa12bb5d2851",
+      "engine": "webkit",
+      "browser_version": "26.5",
+      "requested_palette": "dark",
+      "viewport": {
+        "width": 820,
+        "height": 1180
+      },
+      "documentWidth": 820,
+      "dpr": 1,
+      "visualScale": 1,
+      "cssZoom": "1",
+      "scheme": "dark",
+      "original_path": "/home/hubert/flux-evidence/228-composed-bb80320e-webkit-shots/wiki-shared-writing-before-version-save-dark-820.png",
+      "bytes": 113460,
+      "sha256": "896a22c6db36eac1082ec8678b1b03e551c96d720eb7e8005d06c2ea78bb110e",
+      "representative_retained": true
+    },
+    {
+      "file": "wiki-shared-writing-before-version-save-light-2560.png",
+      "application_source": "f30c9910a21911a4287833a1c19faa12bb5d2851",
+      "engine": "webkit",
+      "browser_version": "26.5",
+      "requested_palette": "light",
+      "viewport": {
+        "width": 2560,
+        "height": 1440
+      },
+      "documentWidth": 2560,
+      "dpr": 1,
+      "visualScale": 1,
+      "cssZoom": "1",
+      "scheme": "light",
+      "original_path": "/home/hubert/flux-evidence/228-composed-bb80320e-webkit-shots/wiki-shared-writing-before-version-save-light-2560.png",
+      "bytes": 153591,
+      "sha256": "b10bd30586d896919df7a8358cd305db3bb80d82307e6703fe9878fcb4f2f66a",
+      "representative_retained": true
+    },
+    {
+      "file": "wiki-shared-writing-before-version-save-dark-2560.png",
+      "application_source": "f30c9910a21911a4287833a1c19faa12bb5d2851",
+      "engine": "webkit",
+      "browser_version": "26.5",
+      "requested_palette": "dark",
+      "viewport": {
+        "width": 2560,
+        "height": 1440
+      },
+      "documentWidth": 2560,
+      "dpr": 1,
+      "visualScale": 1,
+      "cssZoom": "1",
+      "scheme": "dark",
+      "original_path": "/home/hubert/flux-evidence/228-composed-bb80320e-webkit-shots/wiki-shared-writing-before-version-save-dark-2560.png",
+      "bytes": 149610,
+      "sha256": "99a446a8361126f68b94fb5781ec22cc2d9f1590e3c3d6c2d40748e24f458c1a",
+      "representative_retained": false
+    }
+  ]
+}

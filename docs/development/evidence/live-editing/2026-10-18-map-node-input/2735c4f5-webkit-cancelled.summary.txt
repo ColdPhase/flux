@@ -1,0 +1,19 @@
+Actual runner exit: 143
+#25 19.55 $ tsc --noEmit -p tsconfig.json && tsc --noEmit -p apps/web/tsconfig.json
+#25 40.57 $ eslint .
+#25 65.36 ✖ 9 problems (0 errors, 9 warnings)
+#52 DONE 0.6s
+
+#53 [migrate runtime 28/30] COPY --from=build /app/packages/db/migrations ./packages/db/migrations
+#53 DONE 0.6s
+
+#54 [migrate runtime 29/30] COPY --from=build /app/tooling/dist ./tooling/dist
+#54 DONE 0.6s
+
+#55 [migrate runtime 30/30] RUN mkdir -p /data/files && chown -R node:node /data
+#55 DONE 0.8s
+
+#56 [migrate] exporting to image
+#56 exporting layers
+
+Removed 1 per-run image(s) tagged :flux-live-editing-1792326442-1372839

@@ -1,0 +1,438 @@
+{
+  "compression": "gzip with mtime=0; originals remain outside the repository",
+  "original_directory": "/home/hubert/flux-evidence/228-map-body-8ba5f87a-latency",
+  "original_files": {
+    "actual-queue.jsonl": {
+      "bytes": 4531059,
+      "sha256": "80319ae8c10cf483a8f77def55ea48fdd6294cc690eddd92759658360623aca4"
+    },
+    "api.log": {
+      "bytes": 8064409,
+      "sha256": "4164f7646319424d65390eb6c73a19a5baa96fb4092d386fb00d68dc4e8b385a"
+    },
+    "collector-ready.json": {
+      "bytes": 183,
+      "sha256": "7801004fcbde75f6ba0838c06a6e7a9979f230a63bd3f3b5af3968c2f9ad1e84"
+    },
+    "collector-result.json": {
+      "bytes": 152,
+      "sha256": "9d3951d5fe0c8526a7f0eec23a5a9074da784ee27b94011a141625f58fea0e90"
+    },
+    "collector.log": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "driver.log": {
+      "bytes": 497,
+      "sha256": "cae8977f96e452355e9a4f43d0f787c348726b1545ebd36e6a579a3ace299f7a"
+    },
+    "map-50-drag-1-coverage.json": {
+      "bytes": 203471,
+      "sha256": "df7236f67a5c136a50f3f0e5768663e0ec09335bb0956b248d961df97bdf100f"
+    },
+    "map-50-drag-1-local-control.json": {
+      "bytes": 25087,
+      "sha256": "2a9cdf0b9a1d02a10ed8a1485e87aa131e8f61c9566682c6accd9e2b6af24d76"
+    },
+    "map-50-drag-1-owner-trace.zip": {
+      "bytes": 171595848,
+      "sha256": "16aee5653fe50efefba9d33d9564fb679dfad6327a0b7fb8440513269c7adbd2"
+    },
+    "map-50-drag-1-peer-trace.zip": {
+      "bytes": 203395029,
+      "sha256": "bf05807696c7a8489447048d80e9d0a18d8cbab10a5f8f3f6538c7641762e4ff"
+    },
+    "map-50-drag-1-peer.png": {
+      "bytes": 117746,
+      "sha256": "fb3569171b1ff0ae270be28998397b2cbe3f2a93eecd15cf0a1515cd59cf905e"
+    },
+    "map-50-drag-1-publications.json": {
+      "bytes": 3514208,
+      "sha256": "77ce81edb1d27c0ef9e50d342956f9b188e1c2a0ba1be39e5670b7e5084cb168"
+    },
+    "map-50-drag-1-queue-correlations.json": {
+      "bytes": 79610,
+      "sha256": "2b0e2c0c3f01a5dcad6318c6511494076b62e15e72e551dd71bf86aa591a9964"
+    },
+    "map-50-drag-1-rows.json": {
+      "bytes": 760861,
+      "sha256": "db11df8200574e57a2f67ab7c0eccbe5b1c9e5f2c7aaa24e2a11dbffa6d2b6a7"
+    },
+    "map-50-drag-1-summary.json": {
+      "bytes": 8211,
+      "sha256": "bdf1c3b898a8c5d06180bf6dab716399024288159dee90a7357eebd5c17bce78"
+    },
+    "map-50-drag-50-coverage.json": {
+      "bytes": 203824,
+      "sha256": "06146e7f9dbb1ea691ab6a770a046d82061bd70330cb0cbe4746e8de28da9915"
+    },
+    "map-50-drag-50-local-control.json": {
+      "bytes": 25090,
+      "sha256": "89e11ab4206bef9740c28f5639819b24b579ac058f8fb7985b0aebdd9454da72"
+    },
+    "map-50-drag-50-owner-trace.zip": {
+      "bytes": 193416571,
+      "sha256": "eb3b1a6e0be465def162a78260323bcbea8277ab4de83c7477fcd350a53abad7"
+    },
+    "map-50-drag-50-peer-trace.zip": {
+      "bytes": 261206858,
+      "sha256": "566fcc8128c29579f2e319962703b017a6b01c25383b721901b2dda8d6c3e704"
+    },
+    "map-50-drag-50-peer.png": {
+      "bytes": 117441,
+      "sha256": "68b7851c96a796e969c0dc66c5bfc9d184838c835ae09edc31146143c7f13131"
+    },
+    "map-50-drag-50-publications.json": {
+      "bytes": 5505465,
+      "sha256": "5706cdd199cc9ca66913f46440aa7ee2ac93b2eaadfb0f714a21e1b995ae5be2"
+    },
+    "map-50-drag-50-queue-correlations.json": {
+      "bytes": 97114,
+      "sha256": "03d13bef4a74c9057ee615a653558b237f120a64c5d72a5d4b4ae9e96967ab3e"
+    },
+    "map-50-drag-50-rows.json": {
+      "bytes": 4056566,
+      "sha256": "3ac109359fc7a45ed6aa5759b17dda32a7c71093e8b2946f1c737e2346927024"
+    },
+    "map-50-drag-50-summary.json": {
+      "bytes": 14496,
+      "sha256": "2c7b88dafbf34d6ca0675f768427ae3a9be4346e331bbf3ba5791b308eeeece5"
+    },
+    "map-500-drag-1-coverage.json": {
+      "bytes": 203180,
+      "sha256": "dfd8ea6e759cad726d3b41327c835602ea73e4668ec2c0640c4a9bd2ba2a41c0"
+    },
+    "map-500-drag-1-local-control.json": {
+      "bytes": 25089,
+      "sha256": "ee8bd7dfecd8196614319c4fd352641183087027d5d107ec12ca6179e4a0a90c"
+    },
+    "map-500-drag-1-owner-trace.zip": {
+      "bytes": 195514442,
+      "sha256": "913bf8fdf777ca516de6d2555de1bcda9d203fda7ea548a4cd6feeb4b7d412ef"
+    },
+    "map-500-drag-1-peer-trace.zip": {
+      "bytes": 234894827,
+      "sha256": "751772a147d6be7ff66b7dbaa2a58cdd114e8ee1d3c4fbe88816a1eb52a33586"
+    },
+    "map-500-drag-1-peer.png": {
+      "bytes": 136812,
+      "sha256": "bd1e11cb3a9a174e2920c83077daacfc97bad765ef7fde10bb9a893b81bf9a9e"
+    },
+    "map-500-drag-1-publications.json": {
+      "bytes": 3509000,
+      "sha256": "651e3b2dee70153d856f75e94bc918116e68eb06c5bf695881a5265fd319d252"
+    },
+    "map-500-drag-1-queue-correlations.json": {
+      "bytes": 75765,
+      "sha256": "f91e678e56549acccd67ae8f6a0959eaa8fe124024b0fa7e1a9c9ca7b0f8cbf1"
+    },
+    "map-500-drag-1-rows.json": {
+      "bytes": 760953,
+      "sha256": "1ebf3df2ed1fb0c38f9b2fb61e210e70ed0be3272f33e7878ebf1f1cde2c9991"
+    },
+    "map-500-drag-1-summary.json": {
+      "bytes": 8217,
+      "sha256": "e91a24f61b39cac92bc0896c596c390fd69f8ccd8c1e76ca9a8dc52c017a0b1e"
+    },
+    "map-500-drag-200-coverage.json": {
+      "bytes": 204498,
+      "sha256": "adec672a768c9c840461be883b9b073df9d9e51418f94004b5bc14b33067b8e6"
+    },
+    "map-500-drag-200-local-control.json": {
+      "bytes": 25075,
+      "sha256": "7fba19cb6b0ace72a4792eed6db9fef3cd9fdaaa35fb06f7490660f8cca3bc07"
+    },
+    "map-500-drag-200-owner-trace.zip": {
+      "bytes": 125300447,
+      "sha256": "a2ccaf963212d2c57ab72fdf1bfd73736f456efe168a53741e3079d94e1710c9"
+    },
+    "map-500-drag-200-peer-trace.zip": {
+      "bytes": 127457428,
+      "sha256": "1c0cbbb6c0d7fedbba5ffa52af7ce4b091849983ea18b8adfdd5f54c33a568e4"
+    },
+    "map-500-drag-200-peer.png": {
+      "bytes": 127169,
+      "sha256": "bc07d7bfd8f6cb006fb251de75f8490a1872255561608a6547aa7924ddf12042"
+    },
+    "map-500-drag-200-publications.json": {
+      "bytes": 4332808,
+      "sha256": "d6e69c76572d72258de5d0317f69bcc8d1174cce45a2cf97c708e3603faf7c1e"
+    },
+    "map-500-drag-200-queue-correlations.json": {
+      "bytes": 110822,
+      "sha256": "09b37817ee92f8573eeae69ede65e7b0e608bbee4c1542493e391b28aee56b46"
+    },
+    "map-500-drag-200-rows.json": {
+      "bytes": 14236302,
+      "sha256": "fba216e15dfd426a4d0be6783a37e654923f186d016c5300154a2a7bf6291a8a"
+    },
+    "map-500-drag-200-summary.json": {
+      "bytes": 34741,
+      "sha256": "b9392ec89750eac90e52fc06070f4f2d29869f3e5aea7b3d2cf981af30b11c60"
+    },
+    "map-500-drag-50-coverage.json": {
+      "bytes": 203883,
+      "sha256": "e7c4fde266ba4fa1b1c1741d2b655e3611d761ba3613b42a1d8e56abba67b616"
+    },
+    "map-500-drag-50-local-control.json": {
+      "bytes": 25079,
+      "sha256": "525bf2f22fea2357fe14b7c2eb45232f712518bb536ba54cb2a8e45832af5d13"
+    },
+    "map-500-drag-50-owner-trace.zip": {
+      "bytes": 193589322,
+      "sha256": "3661c72fb1c44279dde3941390a14387e0246a2369c342bbc59a70a0fceb0816"
+    },
+    "map-500-drag-50-peer-trace.zip": {
+      "bytes": 173155253,
+      "sha256": "6858c368e6e6bc1976c4f1c10ff800121f89f563027a5026426bceae7deb0abb"
+    },
+    "map-500-drag-50-peer.png": {
+      "bytes": 135411,
+      "sha256": "09598ace5413b917d15da6f6811ee5cdf5a634c0aced44cfc9c85284cc25dc17"
+    },
+    "map-500-drag-50-publications.json": {
+      "bytes": 5348306,
+      "sha256": "5a043d9a50ced921192f2b76dca29314f7ba69558e76ed1eb7f9df57dfc9ee9c"
+    },
+    "map-500-drag-50-queue-correlations.json": {
+      "bytes": 101101,
+      "sha256": "9d8f711f6f685a3e78a73d2ba9363d046ef8805873bff32c5f992b28abae9752"
+    },
+    "map-500-drag-50-rows.json": {
+      "bytes": 4057251,
+      "sha256": "0a66e236ba3bc0b366ee707d9c2f1f57566bb0e47ab6b8420e256573b807d478"
+    },
+    "map-500-drag-50-summary.json": {
+      "bytes": 14497,
+      "sha256": "1564cb2087ed5cc3e9e0558fdcd1b6f91e88465b12104b770b7ccc3cba52dd2e"
+    },
+    "measurement-finished.json": {
+      "bytes": 534,
+      "sha256": "f4b7aa9180e1e0e3bcbe4700ca7210ce693540951b139414c14e1d235ece41de"
+    },
+    "planned.json": {
+      "bytes": 346,
+      "sha256": "62c42796726aff0bd8edbbd041e2add4483888a75357bbbde2e8e617ec7eab34"
+    },
+    "producer-shutdown.json": {
+      "bytes": 418,
+      "sha256": "c6a1b7b481720c9706914830ffe4b27ee6cd435405a4a043ed03ea230f3466f3"
+    },
+    "queue-inventory.json": {
+      "bytes": 299,
+      "sha256": "8be5a3d968117d2635fa8d7a9939e419925c20fdec135690cc752cbf9194b6a1"
+    },
+    "queue-seal.json": {
+      "bytes": 504,
+      "sha256": "245fafdc209394b3fbf84b33acf1d46447921ad5c9e8cb3abb10d4f706244fd7"
+    },
+    "runtime.json": {
+      "bytes": 2013,
+      "sha256": "97bae125d689647011d98494d84cc966fb82baf52cc0c25e63f6228cca2946f0"
+    },
+    "summary.json": {
+      "bytes": 121437,
+      "sha256": "410d951fe942a02c808f05fae869f9890711dc815a0701b84b5e4f35066bdf9a"
+    },
+    "wiki-10000-editor-coverage.json": {
+      "bytes": 222814,
+      "sha256": "30d59f9e9385d36a8b6a9730c0ff879673e3a7a50c05fb2839a25d6a1a5a2ef3"
+    },
+    "wiki-10000-editor-local-control.json": {
+      "bytes": 27394,
+      "sha256": "b1904b5fddb213be3de807647d8e3a37d84d1b4c45a149a225107e850ad8ee84"
+    },
+    "wiki-10000-editor-owner-trace.zip": {
+      "bytes": 291978495,
+      "sha256": "933da6c9a20be9565567022086fe385849570a57d984285068da5ab1970d7fb8"
+    },
+    "wiki-10000-editor-peer-trace.zip": {
+      "bytes": 167316330,
+      "sha256": "092e11d117cef0085eb6abc33b89efddd728a7e12005e7f30abee77633108d2b"
+    },
+    "wiki-10000-editor-peer.png": {
+      "bytes": 69636,
+      "sha256": "02815b33fb39eb79efa534d898b996c3422ced56e299af1abf459d60a52e0b4f"
+    },
+    "wiki-10000-editor-publications.json": {
+      "bytes": 6273801,
+      "sha256": "b8fc503c2cb3059fe56cdb190cbe53349a3403f4b12cdccfba4c66fff5b686f0"
+    },
+    "wiki-10000-editor-queue-correlations.json": {
+      "bytes": 121629,
+      "sha256": "2cb2e1cdb52956af173f8bd09069842ab01ec742d4391e45b29d06870307a68d"
+    },
+    "wiki-10000-editor-rows.json": {
+      "bytes": 826528,
+      "sha256": "7724c512d4233516c0bf92eef4d906082e266d5d235edd65656927ffa9b958ce"
+    },
+    "wiki-10000-editor-summary.json": {
+      "bytes": 8016,
+      "sha256": "c9c1c278d83b4df04bdbcf730a378d803749f1cbc6a607bc6e81cf4fd2cc4b30"
+    },
+    "wiki-10000-reader-coverage.json": {
+      "bytes": 222561,
+      "sha256": "dcd2e24224fed13f570bb5bd47c7963006812f29b6ebd74d27542a79a50cbcee"
+    },
+    "wiki-10000-reader-local-control.json": {
+      "bytes": 27401,
+      "sha256": "9c444693b7cbcbf84276418cdee72239ad33b9e4b631e579b2615353b28bcbf0"
+    },
+    "wiki-10000-reader-owner-trace.zip": {
+      "bytes": 293834536,
+      "sha256": "fd52828ee1c7d7d27f762344ccaf9799b31652469fbc2c55a2a0ce4be6f6e013"
+    },
+    "wiki-10000-reader-peer-trace.zip": {
+      "bytes": 163472408,
+      "sha256": "8cbe351e2207643d393d123a99cead3ae172eb322de34af43a2a7181ef024776"
+    },
+    "wiki-10000-reader-peer.png": {
+      "bytes": 61516,
+      "sha256": "422ef08f481cfe2a888e0cc90c9185d67f89c38f2d9e1030eb272abf755f146b"
+    },
+    "wiki-10000-reader-publications.json": {
+      "bytes": 6270537,
+      "sha256": "5a2e115444972524ce98224e9ee0bbdb8583391cc293becbb851fca25bfe309b"
+    },
+    "wiki-10000-reader-queue-correlations.json": {
+      "bytes": 88307,
+      "sha256": "62c00f9098c71ab3bac121ec5b41614bb3fc67f36d39b13b3cc3001bc95e9f90"
+    },
+    "wiki-10000-reader-rows.json": {
+      "bytes": 835968,
+      "sha256": "6dea2365aa7422770ab48a3baa2f0c374c0e3e611e8798ae2cea005e99984369"
+    },
+    "wiki-10000-reader-summary.json": {
+      "bytes": 8029,
+      "sha256": "6ffb406af94e2fcc87825677d1fc1197af489fdf013dc196d72950c8f1abee4a"
+    },
+    "wiki-100000-editor-coverage.json": {
+      "bytes": 222714,
+      "sha256": "e21c8c2a445e48c0bbcf1491781a357eb4f35b3bc808cd4a706ac3abd1c9c0ab"
+    },
+    "wiki-100000-editor-local-control.json": {
+      "bytes": 27281,
+      "sha256": "ace7cc6403a2ac1fbf9b065977fae7ec8dd0d5d1c4c0b3afac9c6eb575716bf4"
+    },
+    "wiki-100000-editor-owner-trace.zip": {
+      "bytes": 282659890,
+      "sha256": "896f1851032c53b33e5d2eb99b5c19d00c7a0a04aeb1c1305ed435b57e740f99"
+    },
+    "wiki-100000-editor-peer-trace.zip": {
+      "bytes": 140989618,
+      "sha256": "c9f34966f95776961e505653193c7587a13abc9f72ecadbbf2774b64881730c6"
+    },
+    "wiki-100000-editor-peer.png": {
+      "bytes": 72666,
+      "sha256": "a6d48b79664c58cb4426912c1e3238c4991f4eb077a02ab25d3ae165b2ae29d3"
+    },
+    "wiki-100000-editor-publications.json": {
+      "bytes": 6999621,
+      "sha256": "96f3d9a5bf8c2d99d674092f180fa8b5889cd8171c13957f1012818403de2535"
+    },
+    "wiki-100000-editor-queue-correlations.json": {
+      "bytes": 123604,
+      "sha256": "3912a83574d64dc125a16cde07755a8beae2a48d0e2ce306e4ecee6ea7068081"
+    },
+    "wiki-100000-editor-rows.json": {
+      "bytes": 825687,
+      "sha256": "251d66797603f38750d86d6275360327c23d4134a8dd6ad6d329abbfd8695d17"
+    },
+    "wiki-100000-editor-summary.json": {
+      "bytes": 8025,
+      "sha256": "90eca8b397837386f2cb5164b321bef3350959a163e4f937d0058f89b4d7deef"
+    },
+    "wiki-100000-reader-coverage.json": {
+      "bytes": 221872,
+      "sha256": "5c1162e81e513b2009cc7f467e25140ec76c4eb4933491146570231838bbbe3d"
+    },
+    "wiki-100000-reader-local-control.json": {
+      "bytes": 27273,
+      "sha256": "b8c1c8478b2f25a0020e5f397f7a10cabd5d821cf39e2fd79a31470a26ef40ad"
+    },
+    "wiki-100000-reader-owner-trace.zip": {
+      "bytes": 274464098,
+      "sha256": "ec19cad32bc01b6a5403c08786777c0cf37cf2cf4acd25d43a678814973e6629"
+    },
+    "wiki-100000-reader-peer-trace.zip": {
+      "bytes": 131750031,
+      "sha256": "df9495738346012ce7d2958768d70c4d303044ba931b4e6b01270d59d79cbeb9"
+    },
+    "wiki-100000-reader-peer.png": {
+      "bytes": 64765,
+      "sha256": "c8225e648da22cd2d199f9df2d1cd61ccf565e4f1ba9c015d3c74d0fee44e8a5"
+    },
+    "wiki-100000-reader-publications.json": {
+      "bytes": 6465849,
+      "sha256": "0a0c149346a1fac7935b3872d20f82926da7eabddc15a51d510f938b30008822"
+    },
+    "wiki-100000-reader-queue-correlations.json": {
+      "bytes": 107908,
+      "sha256": "1a02159717e2f792313674f73d9397fb26fd8c71fc0954b9600cfd19e3c9dd00"
+    },
+    "wiki-100000-reader-rows.json": {
+      "bytes": 835228,
+      "sha256": "43b3695c325d853f5c78fa11167da75e4440a825a5c1715c228db555b573cf96"
+    },
+    "wiki-100000-reader-summary.json": {
+      "bytes": 8033,
+      "sha256": "44e8ef78fe7d9cb3e388258e4ad722a1a832cf153e8cd48fc63120761ae898c7"
+    }
+  },
+  "recorded_at": "2026-10-18T09:17:36.828668+00:00",
+  "retained_files": {
+    "case-results.json": {
+      "bytes": 35328,
+      "sha256": "8a92e3eb6e1ffaa32eb699a325ceed030238f64ccffab702234ce2b7e2fa92ed"
+    },
+    "cleanup.json": {
+      "bytes": 298,
+      "sha256": "8b9b2ef599ea38b786ded9f36cbf72949b47782637593d7187ffb6e8c970bc77"
+    },
+    "collector-result.json": {
+      "bytes": 152,
+      "sha256": "9d3951d5fe0c8526a7f0eec23a5a9074da784ee27b94011a141625f58fea0e90"
+    },
+    "map-500-drag-200-summary.json.gz": {
+      "bytes": 9038,
+      "sha256": "95068b2c59ca15699e5c4f248a935a6c7e42dd23c07b4f87a35bff965b83c6df"
+    },
+    "measurement-finished.json": {
+      "bytes": 534,
+      "sha256": "f4b7aa9180e1e0e3bcbe4700ca7210ce693540951b139414c14e1d235ece41de"
+    },
+    "midrun-host.json": {
+      "bytes": 1062,
+      "sha256": "d9f56255417fc1cc77817446f0be11ad500ac42496323c415f96d170476e7d34"
+    },
+    "preflight.json": {
+      "bytes": 3929,
+      "sha256": "30fe87478f7dfdbde934388c6480fa3115fe25350839d87fef29a4f5f18c5244"
+    },
+    "producer-shutdown.json": {
+      "bytes": 418,
+      "sha256": "c6a1b7b481720c9706914830ffe4b27ee6cd435405a4a043ed03ea230f3466f3"
+    },
+    "queue-seal.json": {
+      "bytes": 504,
+      "sha256": "245fafdc209394b3fbf84b33acf1d46447921ad5c9e8cb3abb10d4f706244fd7"
+    },
+    "runner.log.gz": {
+      "bytes": 2292,
+      "sha256": "83b020bbf8f10e94c17153c3eb57672f175d488ffdfcdf0b368f28bf49e9b379"
+    },
+    "runtime.json": {
+      "bytes": 2013,
+      "sha256": "97bae125d689647011d98494d84cc966fb82baf52cc0c25e63f6228cca2946f0"
+    },
+    "summary.json.gz": {
+      "bytes": 19305,
+      "sha256": "49cab32e5e75afc70b06597afaa78e0bf6bdd874dbdab55f72c07b9f357fcc9c"
+    }
+  },
+  "runner_original": {
+    "path": "/home/hubert/flux-evidence/228-map-body-8ba5f87a-latency-run.log",
+    "sha256": "03b3d35852551877c6a7c0b09a4adaf41cc35a54a0cca8c258ab9c3142fb7b35"
+  },
+  "source_sha": "8ba5f87ae065d52b4b69158648f8e863b3d3f9cb"
+}

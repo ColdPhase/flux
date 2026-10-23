@@ -1,0 +1,100 @@
+{
+  "schema": 1,
+  "artifacts": [
+    {
+      "path": "/home/hubert/flux-evidence/228-outline-map200-e568243c-latency/actual-queue.jsonl",
+      "bytes": 510610,
+      "sha256": "efad4c94f54e0f2f3feaf43f04785253197b3cb7b7da600fe1a5d52a839bd06d"
+    },
+    {
+      "path": "/home/hubert/flux-evidence/228-outline-map200-e568243c-latency/api.log",
+      "bytes": 1991701,
+      "sha256": "996af7f8efcfef589e2faa169f40f72785364969de605bcdfd90c4a4f73bfe1a"
+    },
+    {
+      "path": "/home/hubert/flux-evidence/228-outline-map200-e568243c-latency/collector-ready.json",
+      "bytes": 183,
+      "sha256": "b90ac6ce8ef4ec3f2f7773a6702a438f78959c388be33d1453e34bd3204f949b"
+    },
+    {
+      "path": "/home/hubert/flux-evidence/228-outline-map200-e568243c-latency/collector-result.json",
+      "bytes": 179,
+      "sha256": "c1668c39469c0f5189d342d60a3ffaf7e709020fa5524739b98f744f8b6668c0"
+    },
+    {
+      "path": "/home/hubert/flux-evidence/228-outline-map200-e568243c-latency/collector.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "/home/hubert/flux-evidence/228-outline-map200-e568243c-latency/driver.log",
+      "bytes": 501,
+      "sha256": "5b6b7c4bd5ead78079f0ebaf73bbbb93b5dcc4a0b899faec8b31c9b45d204332"
+    },
+    {
+      "path": "/home/hubert/flux-evidence/228-outline-map200-e568243c-latency/map-500-drag-200-coverage.json",
+      "bytes": 204748,
+      "sha256": "80fd36b3508e21af3eb7f9071b9f5a9c2832db92529d9a6de6cdb9f339c77f9d"
+    },
+    {
+      "path": "/home/hubert/flux-evidence/228-outline-map200-e568243c-latency/map-500-drag-200-local-control.json",
+      "bytes": 25078,
+      "sha256": "c9490e4bf66cda5adf306c3fa7fd8d47934543926d5d046cb9b66e647e4875be"
+    },
+    {
+      "path": "/home/hubert/flux-evidence/228-outline-map200-e568243c-latency/map-500-drag-200-owner-trace.zip",
+      "bytes": 142376703,
+      "sha256": "64e3463ff6744f8627c713a2978c030ed38031120ec52fb2f0b948b2991a9a30"
+    },
+    {
+      "path": "/home/hubert/flux-evidence/228-outline-map200-e568243c-latency/map-500-drag-200-peer-trace.zip",
+      "bytes": 126961381,
+      "sha256": "b51d99a47f301effbb94c5d690a99763a411b6a4cc5e6894f5da542ec59ab6d2"
+    },
+    {
+      "path": "/home/hubert/flux-evidence/228-outline-map200-e568243c-latency/map-500-drag-200-peer.png",
+      "bytes": 126117,
+      "sha256": "7dc6b82aed1503c8654aa2e12d625b5abbe92d2ed9739b1484eb278877850517"
+    },
+    {
+      "path": "/home/hubert/flux-evidence/228-outline-map200-e568243c-latency/map-500-drag-200-publications.json",
+      "bytes": 5220993,
+      "sha256": "350c6921da243553b4bd5b7b5472b98d1dd68d8b1df0b1ac17c8063c0725a91f"
+    },
+    {
+      "path": "/home/hubert/flux-evidence/228-outline-map200-e568243c-latency/map-500-drag-200-rows.json",
+      "bytes": 14237055,
+      "sha256": "0aaaad0a4fa757971900f7ad20ae61a40fbb111b016c9047d212c4c41b877168"
+    },
+    {
+      "path": "/home/hubert/flux-evidence/228-outline-map200-e568243c-latency/map-500-drag-200-summary.json",
+      "bytes": 34735,
+      "sha256": "a5b963002dcfdceb888a6d97a79766631a8802ed1ac1d443f091648d8ec424c1"
+    },
+    {
+      "path": "/home/hubert/flux-evidence/228-outline-map200-e568243c-latency/measurement-finished.json",
+      "bytes": 382,
+      "sha256": "7f0bb3ec335bf0bb82f0c9cb728cad79d357874999fde8250aca7685a6a4f275"
+    },
+    {
+      "path": "/home/hubert/flux-evidence/228-outline-map200-e568243c-latency/planned.json",
+      "bytes": 156,
+      "sha256": "e414fa6e670b465de295051894ea24aba1a727f21095629c5ee8a4849f133c64"
+    },
+    {
+      "path": "/home/hubert/flux-evidence/228-outline-map200-e568243c-latency/queue-inventory.json",
+      "bytes": 299,
+      "sha256": "eaa44fb85eaeb318c1f8ebc3a046019c588c4c53911c3657265d142182e9b2cd"
+    },
+    {
+      "path": "/home/hubert/flux-evidence/228-outline-map200-e568243c-latency/runtime.json",
+      "bytes": 2014,
+      "sha256": "857c3817c1cff51bc5275b4a53a0e68a62760120ab3fa043a5dceeb12a71c5df"
+    },
+    {
+      "path": "/home/hubert/flux-evidence/228-outline-map200-e568243c-latency/summary.json",
+      "bytes": 27436,
+      "sha256": "33623e046fbc9fbbc8f245d5b9b02ef511835ed9647f5a8c23565569cf7571b4"
+    }
+  ]
+}

@@ -1,0 +1,13 @@
+{
+  "baseline_source": "50e0520aa8e94bc5b1bb765975bb35cbb5c1d9a1",
+  "application_base": "6ac818c6082ca7b035f07373bafb749f993ca19e",
+  "current_source": "6ef4c37bd86d09a020864a48c63ea3142213c141",
+  "diff_paths": [
+    "app/tests/ui/test_live_map_cursors.py"
+  ],
+  "app_diff_empty": true,
+  "overlay_path": "app/tests/ui/test_live_map_cursors.py",
+  "overlay_sha256": "7c40b0fc9f756d11a3200fb812b0c4dba8ca540a88c98a66bca4be9dc292066f",
+  "overlay_identical_current": true,
+  "expected_failure": "Cursor-only receipts do not render the sketch editor; preceding trusted pointer/wire/cursor assertions must pass"
+}

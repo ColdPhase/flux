@@ -1,0 +1,47 @@
+{
+  "diagnostic_only": true,
+  "acceptance": false,
+  "prepared_at": "2026-10-18T09:11:55.358265+00:00",
+  "worktree": "/home/hubert/Develop/flux/.worktrees/228-map-body-profile-diagnostic",
+  "application_source_sha": "8ba5f87ae065d52b4b69158648f8e863b3d3f9cb",
+  "instrumentation_sha": "28ad6b43e91cea907b1bf22c0de343265c91387f",
+  "changed_files": [
+    "app/tests/ui/live_editing_latency.py",
+    "app/tests/ui/profile_diagnostic_support.py"
+  ],
+  "source_equivalence": "Clean HEAD; only the two private UI diagnostic files differ from application source SHA. All tracked application/package/tooling/dependency/Docker/runner bytes match.",
+  "instrumentation_files_sha256": {
+    "app/tests/ui/live_editing_latency.py": "a920cacddb53e10e8217772cb7a752d900f2de739474d392b6c4ad50d7b10224",
+    "app/tests/ui/profile_diagnostic_support.py": "2b0eb99267f107da893bbcd97268dd384251c12e4675b9bc80f80fb585e14a8f"
+  },
+  "command": "FLUX_UI_BROWSER=chromium FLUX_LIVE_EDITING_PORT=18685 FLUX_LIVE_EDITING_MAILPIT_PORT=18686 ./scripts/check_live_editing.sh --latency /home/hubert/flux-evidence/228-map-body-profile-28ad6b43",
+  "bounds": {
+    "cohorts": 1,
+    "local_controls": 30,
+    "warmups": 30,
+    "scheduled_rows": 240,
+    "scheduled_interval_ms": 250,
+    "scheduled_duration_seconds": 60,
+    "row_deadline_ms": 1000,
+    "cpu_sampling_interval_us": 5000,
+    "frames_per_page": 10000,
+    "long_tasks_per_page": 2048,
+    "long_animation_frames_per_page": 2048,
+    "scripts_per_long_frame": 32,
+    "public_asset_bytes": 16777216,
+    "cpu_profile_bytes_per_page": 41943040,
+    "seal_wait_seconds": 15
+  },
+  "trace": {
+    "screenshots": true,
+    "snapshots": false,
+    "sources": false
+  },
+  "expected_terminal": "Nonzero: unchanged collector rejects one-case marker against full nine-case plan. Profiles and all scheduled rows retained; diagnostic p95 is not acceptance.",
+  "full_application_source_inventory": {
+    "path": "/home/hubert/flux-evidence/228-map-body-profile-28ad6b43.plan.json",
+    "sha256": "9ede7f52c41702872b42fdfa32cc0148e12780051b3d63b36021c62cf3b899da",
+    "file_count": 1263
+  },
+  "instrumentation_patch_sha256": "1863f68f66dd0fe5e611e6569ccdf915f6f5aa450f1b2d997da4c5876574a569"
+}

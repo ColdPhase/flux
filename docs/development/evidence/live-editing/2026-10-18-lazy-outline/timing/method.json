@@ -1,0 +1,19 @@
+{
+  "schema": 1,
+  "status": "finished-FAIL-selected-p95-214.850179-collector-INCOMPLETE",
+  "application_source": "c3a2514646c0558ef03d43955e208820d2a70372",
+  "application_tested_author": "759ecb40696f88cccb231dd33c49b739563d4e76",
+  "private_source": "e568243c3de2f40f7c8280edb9b8aa37295352eb",
+  "driver_sha256": "854ebf24f86d91108e73255a3a6544cf930641f06aaf0febee95b5285166f2b4",
+  "canonical_driver_sha256": "f331c1af49c8df43df6b257bc7c16795fedb5c3b102cfc11249282ef858df3ee",
+  "selection_only": true,
+  "non_main_ast_identical": true,
+  "cohort": "map-500-drag-200",
+  "samples": 240,
+  "warmups": 30,
+  "duration_s": 60,
+  "interval_ms": 250,
+  "continuous_input_sleep_ms": 16,
+  "threshold_ms": 200,
+  "note": "One bounded author measurement after supported lazy outline work and confirmed live Undo correction. Original capture/geometry/coverage/all200 positions/twoRAF/recheck/errors remain unchanged. Selected collector is expected INCOMPLETE and cannot accept Gate4. No new profile, no local-control subtraction or unchanged retry. Canonical full-nine still required after any selected timing pass."
+}

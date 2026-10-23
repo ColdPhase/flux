@@ -42,6 +42,7 @@ install: a newer `main` can need other migrations or variables than your image.
    | `FLUX_TRUSTED_PROXIES` | with a proxy | The proxy's IP/CIDR, so client addresses are taken from `X-Forwarded-For`. |
    | `FLUX_SMTP_URL`, `FLUX_MAIL_FROM` | optional | Password reset and notification mail. |
    | `FLUX_VAPID_*` | optional | Web Push, all three or none (step 3). |
+   | `FLUX_LIVE_EDITING` | optional | Map/wiki collaboration: missing, empty or `on` enables it; `off` keeps ordinary saved views/editors. Other values stop startup. |
    | `FLUX_FIXTURE_TOKEN` | no | Smoke checks only; leave empty. |
 
    The meaning of every variable is in [identity services](../development/containers.md#identity-services-and-variables)
@@ -92,6 +93,16 @@ All Flux containers run as the image's non-root user; the image owns `/data/file
 (`docker/compose.live.yaml`) is not part of this operator file yet.
 
 ## Upgrade, backup and restore
+
+Map/wiki collaboration uses the same API, PostgreSQL and whole-origin WebSocket proxy; it needs no
+live-media service or AI connection. For a planned opt-out, save each shared working copy first,
+set `FLUX_LIVE_EDITING=off` in `.env` and recreate the API with the normal `up -d --wait` command.
+The capability then reports unavailable and the ordinary saved views/editors are used. If a shared
+copy was unsaved when disabled, its acknowledged text remains stored and ordinary writes to that
+page are refused. Re-enable collaboration, recover and save that text, then disable again. Do not
+delete live tables or restore an older schema to turn collaboration off; immutable saved versions
+and citations remain unchanged. An already open browser page should be reloaded after changing the
+operator setting, since its capability is cached for that page visit.
 
 Back up PostgreSQL and the `files` volume as a pair while API and worker are stopped, and keep
 `.env` with the backup: it holds the database password and `FLUX_AUTH_SECRET`. For an upgrade,

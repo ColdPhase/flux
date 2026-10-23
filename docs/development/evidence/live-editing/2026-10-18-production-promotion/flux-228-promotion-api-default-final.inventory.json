@@ -1,0 +1,93 @@
+{
+  "source_sha": "03590a3afdd3ac08d92a4959a09fe356d3979181",
+  "project": "flux-test-1792319459-1026726",
+  "containers": [
+    {
+      "id": "96d9f79aeccee37d2d186e4a51b5772a162d93c3fc3b4d779a002adf78832079",
+      "image_id": "sha256:12c78d0dc9c42b67b8749fdca6102673d0a8df58195ec768f74b5a77eec354fc",
+      "name": "/flux-test-1792319459-1026726-test-run-82eae2c8acd1",
+      "image": "flux-test-tools:flux-test-1792319459-1026726",
+      "running": true
+    },
+    {
+      "id": "af23e65a808fa8c36fbef04b310313325fbcc6282f757c006e22d0b3355e6150",
+      "image_id": "sha256:acbfa775f0ee0985da89956f015a078cdd1f9c8f9edce9fcfde7368e35530407",
+      "name": "/flux-test-1792319459-1026726-worker-1",
+      "image": "flux-foundation:flux-test-1792319459-1026726",
+      "running": true
+    },
+    {
+      "id": "d4dd4ab3af7e78999ce20687519b1a154deec8e72e7dd6d5f35c7d3347da2e38",
+      "image_id": "sha256:0a94362145f58e5cffb58605023c671774e4143037a952221ee6485b6cd999af",
+      "name": "/flux-test-1792319459-1026726-mailpit-smtps-1",
+      "image": "axllent/mailpit:v1.31.2@sha256:74d609a42ec279aa63c6b4622a6fa9b5408d1ad5b1d76a1c4be40a265ce0863d",
+      "running": true
+    },
+    {
+      "id": "9c75b906ee97c41dce05f0b40941f3e1ab0a43ee713e337d7781962694ea099d",
+      "image_id": "sha256:0a94362145f58e5cffb58605023c671774e4143037a952221ee6485b6cd999af",
+      "name": "/flux-test-1792319459-1026726-mailpit-starttls-1",
+      "image": "axllent/mailpit:v1.31.2@sha256:74d609a42ec279aa63c6b4622a6fa9b5408d1ad5b1d76a1c4be40a265ce0863d",
+      "running": true
+    },
+    {
+      "id": "743e24230dea1b4fa57b6d1b06cabd67d9930e798ad928fdad1cb2f71dd0a699",
+      "image_id": "sha256:acbfa775f0ee0985da89956f015a078cdd1f9c8f9edce9fcfde7368e35530407",
+      "name": "/flux-test-1792319459-1026726-api2-1",
+      "image": "flux-foundation:flux-test-1792319459-1026726",
+      "running": true
+    },
+    {
+      "id": "a2b6ca6f684b03041148c639d3f8f62c6fb25b92a2b58fd2e9b702b18fc4db31",
+      "image_id": "sha256:acbfa775f0ee0985da89956f015a078cdd1f9c8f9edce9fcfde7368e35530407",
+      "name": "/flux-test-1792319459-1026726-api-1",
+      "image": "flux-foundation:flux-test-1792319459-1026726",
+      "running": true
+    },
+    {
+      "id": "637c1382e8e9c167c3d92a493ed8f68868617036cc8634aff8b9b9ccdcba3daf",
+      "image_id": "sha256:06be4ef1718db51e2ae88feac8e0104fe1e24ee8fabe11c2300ab04526407808",
+      "name": "/flux-test-1792319459-1026726-pushmock-1",
+      "image": "flux-e2e:flux-test-1792319459-1026726",
+      "running": true
+    },
+    {
+      "id": "9e0f15104d60a23b937dbf76a8c2129720465a9a80678978d0a9cd83ee7f9642",
+      "image_id": "sha256:12c78d0dc9c42b67b8749fdca6102673d0a8df58195ec768f74b5a77eec354fc",
+      "name": "/flux-test-1792319459-1026726-providermock-1",
+      "image": "flux-test-tools:flux-test-1792319459-1026726",
+      "running": true
+    },
+    {
+      "id": "45dfb8c91571394d2eec7047401f3e45e406a850cadaaa82dd4f6feea508806e",
+      "image_id": "sha256:0a94362145f58e5cffb58605023c671774e4143037a952221ee6485b6cd999af",
+      "name": "/flux-test-1792319459-1026726-mailpit-1",
+      "image": "axllent/mailpit:v1.31.2@sha256:74d609a42ec279aa63c6b4622a6fa9b5408d1ad5b1d76a1c4be40a265ce0863d",
+      "running": true
+    },
+    {
+      "id": "c304418ca07936a7aba383ad656648e2162f405ff2d2356a367cc490a0afcf41",
+      "image_id": "sha256:c293117fcecda7344b5480222e813b9f673d7abd69b1dd95eff239b768b04f59",
+      "name": "/flux-test-1792319459-1026726-db-1",
+      "image": "postgres@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873",
+      "running": true
+    }
+  ],
+  "tools": {
+    "node": "v24.21.0",
+    "packageManager": "pnpm@12.6.0",
+    "typescript": "5.9.2",
+    "tsx": "4.20.5",
+    "playwright": "1.63.0",
+    "yjs": "13.6.33",
+    "fastify": "5.6.1",
+    "ws": "8.22.0"
+  },
+  "api": {
+    "node": "v24.21.0",
+    "mode": "on",
+    "diagnostic": null,
+    "nodeEnv": "production"
+  },
+  "postgres": "postgres (PostgreSQL) 18.6"
+}

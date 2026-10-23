@@ -1,0 +1,34 @@
+Map outline actual browser: chromium
+test_04_tab_and_shift_tab_move_the_connection_alt_arrows_reorder_and_undo_restores (test_map_outline.MapOutlineJourney.test_04_tab_and_shift_tab_move_the_connection_alt_arrows_reorder_and_undo_restores) ... ERROR
+test_05_enter_space_rename_delete_graph_undo_and_search_reveal_preserve_exact_ids (test_map_outline.MapOutlineJourney.test_05_enter_space_rename_delete_graph_undo_and_search_reveal_preserve_exact_ids) ... ERROR
+
+======================================================================
+ERROR: test_04_tab_and_shift_tab_move_the_connection_alt_arrows_reorder_and_undo_restores (test_map_outline.MapOutlineJourney.test_04_tab_and_shift_tab_move_the_connection_alt_arrows_reorder_and_undo_restores)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/work/tests/ui/test_map_outline.py", line 319, in test_04_tab_and_shift_tab_move_the_connection_alt_arrows_reorder_and_undo_restores
+    self.pick(page, 7)
+  File "/work/tests/ui/test_map_outline.py", line 138, in pick
+    self.row(page, index).locator(".sk-outline-title").click()
+    ^^^^^^^^^^^^^^^^^^^^^
+  File "/work/tests/ui/test_map_outline.py", line 135, in row
+    return page.locator(f'.sk-li-t[data-id="{self.thoughts[index]}"]')
+                                             ~~~~~~~~~~~~~^^^^^^^
+KeyError: 7
+
+======================================================================
+ERROR: test_05_enter_space_rename_delete_graph_undo_and_search_reveal_preserve_exact_ids (test_map_outline.MapOutlineJourney.test_05_enter_space_rename_delete_graph_undo_and_search_reveal_preserve_exact_ids)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/work/tests/ui/test_map_outline.py", line 392, in test_05_enter_space_rename_delete_graph_undo_and_search_reveal_preserve_exact_ids
+    self.row(page, 5).focus()
+    ^^^^^^^^^^^^^^^^^
+  File "/work/tests/ui/test_map_outline.py", line 135, in row
+    return page.locator(f'.sk-li-t[data-id="{self.thoughts[index]}"]')
+                                             ~~~~~~~~~~~~~^^^^^^^
+KeyError: 5
+
+----------------------------------------------------------------------
+Ran 2 tests in 1.792s
+
+FAILED (errors=2)

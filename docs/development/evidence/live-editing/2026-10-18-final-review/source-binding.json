@@ -1,0 +1,8 @@
+{
+  "candidate": "c66eefc73e004aca2f10c0e0445ec7a7d0b84163",
+  "capture": "0eaed8d0d75f36ab5e8cff84cda0d2f458ea8220",
+  "only_changed_paths": [
+    "app/tests/ui/test_live_review_capture.py"
+  ],
+  "helper_sha256": "99b45ad2e7701cdb2c8a615a6c198740c50758c7cb7828eb69a97618846d6db3"
+}

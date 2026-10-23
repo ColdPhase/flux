@@ -1,0 +1,38 @@
+{
+  "README.md": {
+    "sha256": "1133b403e34144c8d92036954759ad6b56e2a217093aad26449238a9cab40383",
+    "bytes": 7471
+  },
+  "cleanup.json": {
+    "sha256": "cb90c6cd8a4a4479b4c2a62bb1220d90e9128c58d7ebef103bc04b14d83d300d",
+    "bytes": 825
+  },
+  "default-final.summary.txt": {
+    "sha256": "36a06d55d61d4f830431a94793593dab86b012411979c77bf95f9b34a8ac11a1",
+    "bytes": 3212
+  },
+  "default.summary.txt": {
+    "sha256": "3add3b7c39c8937325740d89456c47d9579c9f2d157386652db87684de4d0227",
+    "bytes": 7188
+  },
+  "flux-228-promotion-api-default-final.inventory.json": {
+    "sha256": "a1914eb65c71adc5f92ffcfff641e649d675d39f8124e9bb9934acdccf16d9d5",
+    "bytes": 3986
+  },
+  "flux-228-promotion-api-off-final.inventory.json": {
+    "sha256": "432606822c95d2753e7942cc3171182226c665fd722302ca2239de7404511ec3",
+    "bytes": 3987
+  },
+  "off-final.summary.txt": {
+    "sha256": "d89a77b76fadeabdddb9b61cbabbf12bf37e0d48e864b3e362409bca9f948cb1",
+    "bytes": 1318
+  },
+  "raw-log-manifest.json": {
+    "sha256": "40839d5ed84eb1083a0f800ebd5520382d3bcec94d44c5598bdf9b8257188933",
+    "bytes": 627
+  },
+  "source.json": {
+    "sha256": "df4dd31baddd302cb143789d5352434723b5a8e1b26c1d4a6bdc4160097c8de8",
+    "bytes": 416
+  }
+}

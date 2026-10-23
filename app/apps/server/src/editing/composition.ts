@@ -16,7 +16,8 @@ import { observeEditingResources } from './resource-observation.js';
 
 interface Options {
   database: ReturnType<typeof createDatabase>; sessions: SessionResolver; publicOrigin: string; connectionString: string;
-  /** Disabled by default; development selection does not certify any of the four required gates. */
+  /** Production availability and isolated diagnostics are independent. */
+  enabled: boolean;
   developmentEnabled: boolean;
   env?:NodeJS.ProcessEnv;
   confirmation?:EditingConfirmationPolicy|null;
@@ -24,9 +25,9 @@ interface Options {
 export async function registerEditing(app: FastifyInstance, options: Options) {
   const outputBudget = apiEditingOutputBudget;
   let telemetry:EditingQueueTelemetry|null=null;
-  const authority = options.developmentEnabled ? wikiAuthority(options.database,undefined,{outputBudget,confirmation:options.confirmation}) : null;
+  const authority = options.enabled ? wikiAuthority(options.database,undefined,{outputBudget,confirmation:options.confirmation}) : null;
   const controller = authority ? wikiController(authority, outputBudget,()=>telemetry) : null;
-  const mapsBackend=options.developmentEnabled?mapBackend(options.database,{confirmation:options.confirmation}):null;
+  const mapsBackend=options.enabled?mapBackend(options.database,{confirmation:options.confirmation}):null;
   const mapsAuthority=mapsBackend?mapAuthority(mapsBackend,outputBudget):null;
   const mapsController=mapsAuthority?mapController(mapsAuthority,outputBudget,()=>telemetry):null;
   await app.register(editingRoutes, { sessions: options.sessions, authority, outputBudget,maps:mapsAuthority });
@@ -49,7 +50,7 @@ export async function registerEditing(app: FastifyInstance, options: Options) {
       mapQueued:mapsAuthority.queued,mapActive:mapsAuthority.inFlight,mapSqlActive:mapsBackend.sqlActive,...mapsController.resources,
       externalInputBytes:authority.runtime.externalInputBytes,externalOutputBytes:outputBudget.bytes};
   };
-  telemetry=developmentQueueTelemetry(options.env??process.env,options.developmentEnabled,resources);
+  telemetry=developmentQueueTelemetry(options.env??process.env,options.enabled&&options.developmentEnabled,resources);
   const unobserve=telemetry?observeEditingResources(telemetry.observe):()=>{};
   telemetry?.start();
   let closed:Promise<void>|null=null;

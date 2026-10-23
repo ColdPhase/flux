@@ -1,0 +1,17 @@
+{
+  "working_directory": "/home/hubert/Develop/flux/.worktrees/228-live-map-performance",
+  "runner": "./scripts/check_live_editing.sh",
+  "selectors": [
+    "test_live_editing.LiveEditingJourney.test_20_map_input_identity_matches_locator_and_refuses_invalid_canvas",
+    "test_live_map_lease_expiry",
+    "test_live_map_selection"
+  ],
+  "environment": {
+    "FLUX_UI_BROWSER": [
+      "chromium",
+      "webkit"
+    ],
+    "FLUX_LIVE_EDITING_PORT": "18685",
+    "FLUX_LIVE_EDITING_MAILPIT_PORT": "18686"
+  }
+}

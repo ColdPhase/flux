@@ -193,7 +193,9 @@ function SketchEditor({ sketchId, projectId, dmId, back = '/map', doc }: ViewPro
     return () => window.removeEventListener('focus', refresh);
   }, [taskProjectId]);
 
-  const say = (text: string, change = false, selection = false) => setStatus({ text, change, selection });
+  // Every status line gets a number, so a message that arrives late can tell whether it is still the newest.
+  const statusSeq = useRef(0);
+  const say = (text: string, change = false, selection = false) => { statusSeq.current++; setStatus({ text, change, selection }); };
   const find = (id: string) => sketch?.thoughts.find((t) => t.id === id);
   // Focus moves after the next commit (a list row replaces its editor only then), and only if
   // focus is not already somewhere the person put it meanwhile.
@@ -504,15 +506,21 @@ function SketchEditor({ sketchId, projectId, dmId, back = '/map', doc }: ViewPro
     const desiredText = new Map((draft.lines ?? [draft]).map((row) => [row.id, row.text.trim()]));
     const editKeys = new Map((draft.lines ?? [draft]).map((row) => [row.id, row.editKey ?? row.key]));
     const retry = new Set((draft.lines ?? [draft]).filter((row) => !!row.attempt).map((row) => row.id));
-    const saved = await doc.saveThoughts(items, { existingOnly, expectedText, desiredText, editKeys, retry, onAttempt: (item) => {
-      const current = capture.peek();
-      if (!current) throw new DraftSaveNotSentError();
-      const row = current.lines?.find((line) => line.id === item.thought.id) ?? current;
-      const attempt = { key: item.key, parentId: item.parent?.id ?? null, linkId: item.parent?.linkId ?? row.linkId, thought: item.thought };
-      if (!capture.prepareAttempt(attempt)) throw new DraftSaveNotSentError();
-    } });
-    setSavingDraft(false);
-    draftSaveInFlight.current = false;
+    // Whatever happens, even a save that throws, the draft stops saving and its text stays for a retry.
+    let saved: string[] = [];
+    try {
+      saved = await doc.saveThoughts(items, { existingOnly, expectedText, desiredText, editKeys, retry, onAttempt: (item) => {
+        const current = capture.peek();
+        if (!current) throw new DraftSaveNotSentError();
+        const row = current.lines?.find((line) => line.id === item.thought.id) ?? current;
+        const attempt = { key: item.key, parentId: item.parent?.id ?? null, linkId: item.parent?.linkId ?? row.linkId, thought: item.thought };
+        if (!capture.prepareAttempt(attempt)) throw new DraftSaveNotSentError();
+      } });
+    } catch { saved = []; }
+    finally {
+      setSavingDraft(false);
+      draftSaveInFlight.current = false;
+    }
     if (saved.length < items.length) {
       // Confirmed thoughts are shared now; only the rest stay in the draft, with their IDs and request keys.
       const retained = capture.peek() ?? draft;
@@ -630,10 +638,13 @@ function SketchEditor({ sketchId, projectId, dmId, back = '/map', doc }: ViewPro
     if (editingState) { say('Finish or cancel your current edit first'); return; }
     setEditing(null);
     setConnectFrom(null);
-    const label = doc.undo();
+    // The live undo confirms later, after its receipt and ordered delivery. By then the person may have started
+    // something else; its status stays, since the thought's return on the map already shows the undo landed.
+    let requested = -1;
+    const label = doc.undo((confirmedLabel) => { if (statusSeq.current === requested) say(`Undid: ${confirmedLabel}`); });
     // Only the live map's undo waits for a server receipt; the ordinary one is applied at once.
     if (doc.liveStatus === 'unavailable') say(label ? `Undid: ${label}` : 'Nothing to undo');
-    else say(label ? `Undo requested: ${label}. Waiting for confirmation.` : 'No undo started');
+    else { say(label ? `Undo requested: ${label}. Waiting for confirmation.` : 'No undo started'); requested = statusSeq.current; }
   };
 
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
@@ -822,7 +833,7 @@ function SketchEditor({ sketchId, projectId, dmId, back = '/map', doc }: ViewPro
               ? { x: shownDraft.x, y: shownDraft.y, parentId: shownDraft.parentId, label: shownDraft.attempt ? 'Save not confirmed' : shownDraft.unknown ? 'Saved state unknown' : 'Draft · not saved' }
               : null} onMove={move} onResize={resize} onClear={() => { if (connectFrom) return; setSelection([]); say(''); }}
             onGestureStart={doc.beginGesture} onGesturePreview={doc.previewGesture} onGestureCancel={doc.cancelGesture} ownGesture={doc.ownGesture} liveEnabled={doc.liveStatus !== 'unavailable'}
-            peers={doc.peers} onPointer={doc.pointer}
+            presenceStore={doc.presenceStore} onPointer={doc.pointer}
             movers={new Map([...doc.previews?.values() ?? []].flatMap((preview) => preview.positions.map((position) => [position.id, preview.actor.name] as [string, string])))}
             livePreviews={new Map([...doc.previews?.values() ?? []].flatMap((preview) => preview.positions.map((position) => [position.id, preview] as [string, typeof preview])))} />
           {!sketch.thoughts.length ? <p className="sk-first">{phone

@@ -1,0 +1,30 @@
+{
+  "captured_at_utc": "2026-10-18T15:00:53.391323+00:00",
+  "source_sha": "e568243c3de2f40f7c8280edb9b8aa37295352eb",
+  "driver_sha256": "854ebf24f86d91108e73255a3a6544cf930641f06aaf0febee95b5285166f2b4",
+  "host_load_average": [
+    2.859375,
+    3.33984375,
+    3.54736328125
+  ],
+  "docker_info": {
+    "cpus": 24,
+    "memory_bytes": 66457145344,
+    "server_version": "29.4.2",
+    "operating_system": "Fedora Linux 42 (KDE Plasma Desktop Edition)"
+  },
+  "qwen_stats": "{\"BlockIO\":\"2.72GB / 2.97MB\",\"CPUPerc\":\"194.49%\",\"Container\":\"qwen38-llama-router\",\"ID\":\"f5bd4b315dc8\",\"MemPerc\":\"18.96%\",\"MemUsage\":\"11.74GiB / 61.89GiB\",\"Name\":\"qwen38-llama-router\",\"NetIO\":\"23.6MB / 67.3MB\",\"PIDs\":\"64\"}",
+  "running_container_names": [
+    "qwen38-llama-router",
+    "flux-201d1a6e-api-1",
+    "flux-201d1a6e-worker-1",
+    "flux-201d1a6e-runtime-egress-1",
+    "flux-201d1a6e-runtime-manager-1",
+    "flux-201d1a6e-runtime-3-1",
+    "flux-201d1a6e-runtime-2-1",
+    "flux-201d1a6e-runtime-1-1",
+    "flux-201d1a6e-runtime-4-1",
+    "flux-201d1a6e-db-1"
+  ],
+  "note": "Sole agent heavy slot handed to root. Observational host snapshot only. Existing user services preserved. One selected cohort is not complete Gate 4."
+}

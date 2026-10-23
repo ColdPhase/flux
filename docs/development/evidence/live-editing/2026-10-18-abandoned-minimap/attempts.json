@@ -1,0 +1,62 @@
+{
+  "attempts": [
+    {
+      "source_sha": "ab0af2ef9875563985ba40d9aa8c5ec1a44a5f65",
+      "outcome": "FAIL",
+      "runner_exit": 1,
+      "methods": 4,
+      "seconds": 32.136,
+      "log_path": "/home/hubert/flux-evidence/228-minimap-svg-ab0af2ef-webkit.log",
+      "log_sha256": "f77c9b76e960e3b1bc615b5c849ec16e60c1005185e1ecc967f66f15d5df3cad",
+      "runtime_path": "/home/hubert/flux-evidence/228-minimap-svg-ab0af2ef-webkit-runtime.json",
+      "runtime_sha256": "c3bd8bad2cc3885475fa2bed9ca010c4267848f36e7ca46dd875beee42ab7a77"
+    },
+    {
+      "source_sha": "32cf45b7035dcf7b8e43e5d78f584909b607d700",
+      "outcome": "FAIL",
+      "runner_exit": 1,
+      "methods": 2,
+      "seconds": 32.308,
+      "log_path": "/home/hubert/flux-evidence/228-minimap-svg-c06-webkit.log",
+      "log_sha256": "327944ffc44f9a9791cee3f5e73cdf60e157178a04ca73046b547f2242ac0388",
+      "runtime_path": "/home/hubert/flux-evidence/228-minimap-svg-32cf45b7-webkit-runtime.json",
+      "runtime_sha256": "bb5668e78fc1f1cf05472c74c75c6bfa89839e071792473607a78a863b2271c5"
+    },
+    {
+      "source_sha": "de9528338889b068ecc4160101bc11606a03aaca",
+      "outcome": "FAIL",
+      "runner_exit": 1,
+      "methods": 1,
+      "seconds": 27.65,
+      "log_path": "/home/hubert/flux-evidence/228-minimap-svg-pixel-retention-webkit.log",
+      "log_sha256": "a21728a11a986c11c166c6096fe963e1d1359c52a8e3c8dec2dde1d69aa7927a",
+      "runtime_path": "/home/hubert/flux-evidence/228-minimap-svg-de952833-webkit-runtime.json",
+      "runtime_sha256": "ccd13f916347afeb80c5592ea3ac4e553af86ea74df9801984e5ad1986905996"
+    },
+    {
+      "source_sha": "c500230f3c12947657b8826e65d326919abb916b",
+      "outcome": "FAIL",
+      "runner_exit": 1,
+      "methods": 4,
+      "seconds": 46.645,
+      "log_path": "/home/hubert/flux-evidence/228-minimap-png-c500230f-webkit.log",
+      "log_sha256": "25a1ab4beb0327d8d82bf96bb5a614f760aac8c3cd2d91aea7a383e57ada4b1a",
+      "runtime_path": "/home/hubert/flux-evidence/228-minimap-png-c500230f-webkit-runtime.json",
+      "runtime_sha256": "297133970aa51d6af559f6b256d72e109212b1062ed0f3d321b6013fff1db631"
+    }
+  ],
+  "cleanup": {
+    "verified_projects": [
+      "flux-live-editing-1792321760-1117008",
+      "flux-live-editing-1792321968-1127499",
+      "flux-live-editing-1792322303-1141222",
+      "flux-live-editing-1792323166-1172194"
+    ],
+    "remaining_owned_containers": 0,
+    "remaining_owned_volumes": 0,
+    "remaining_owned_networks": 0,
+    "per_run_images_removed": 2,
+    "user_demo_and_qwen": "unchanged"
+  },
+  "raw_png_manifest_sha256": "53fd6243d79cf6455b3760bbb81ce11d91f5669d9219523e7a9b587afdf6c2d3"
+}

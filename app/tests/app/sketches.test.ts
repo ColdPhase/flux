@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { before, describe, test } from 'node:test';
 import type { CreatedThought, MovedThoughts, PositionsConflict, Project, Sketch, SketchDetail, SketchPage, Thought, ThoughtLink, VersionConflict, Workspace } from '@flux/contracts';
-import { authorize, createAgent, grantProject, type Principal } from '@flux/core';
+import { authorize, createAgent, grantProject, policySketchAccess, revokeAgent, ForbiddenError, NotFoundError, type Principal } from '@flux/core';
 import { db, pool } from './support/db.js';
 import { addMember, draft, expectStatus, grant, person, project, workspace, type Person } from './support/people.js';
 import { StreamClient } from './support/stream.js';
@@ -185,6 +185,52 @@ describe('sketch access', () => {
     expectStatus(await frank.browser.request('GET', `/api/v1/sketches/${franks.id}`), 404, 'former member');
   });
 
+  test('sketch reads retain the current agent grant and owner ceiling with and without policy locks', async () => {
+    const personOwner = await person('sketch-policy-agent-owner');
+    await addMember(alice, ws.id, personOwner, 'member');
+    const owner: Principal = { kind: 'human', id: alice.id };
+    const agentOwner: Principal = { kind: 'human', id: personOwner.id };
+    const shared = await createSketch(alice, ws.id, { title: 'Agent policy boundary', scope: 'project', projectId: lamp.id });
+    const privateMap = await createSketch(personOwner, ws.id, { title: 'Only the person', scope: 'private' });
+    const helper = await createAgent(agentOwner, ws.id, { name: 'Scoped reader', owner: 'self' }, db);
+    const agent: Principal = { kind: 'agent', id: helper.id };
+    const setAgentGrant = (role: 'viewer' | 'contributor' | 'denied') =>
+      grantProject(owner, lamp.id, { principal: { kind: 'agent', id: agent.id }, role }, db);
+    async function check(principal: Principal, sketchId: string, expected: 'read' | 'write' | 'hidden') {
+      for (const lock of [false, true]) await db.transaction(async tx => {
+        const access = policySketchAccess(tx);
+        if (expected === 'hidden') {
+          await assert.rejects(access.requireSketch(principal, 'sketch.read', sketchId, { lock }), NotFoundError);
+          await assert.rejects(access.requireSketch(principal, 'sketch.write', sketchId, { lock }), NotFoundError);
+        } else {
+          assert.equal(await access.requireSketch(principal, 'sketch.read', sketchId, { lock }), expected);
+          if (expected === 'write') assert.equal(await access.requireSketch(principal, 'sketch.write', sketchId, { lock }), 'write');
+          else await assert.rejects(access.requireSketch(principal, 'sketch.write', sketchId, { lock }), ForbiddenError);
+        }
+      });
+    }
+    await setAgentGrant('contributor');
+    await grant(alice, lamp.id, personOwner, 'viewer');
+    await check(agent, shared.id, 'read'); // Agent contributor cannot exceed its viewer owner.
+    await check(agent, privateMap.id, 'hidden'); // Even its own person's private sketch stays opaque.
+    await grant(alice, lamp.id, personOwner, 'contributor');
+    await check(agent, shared.id, 'write');
+    await setAgentGrant('viewer');
+    await check(agent, shared.id, 'read');
+    await setAgentGrant('denied');
+    await check(agent, shared.id, 'hidden');
+    await setAgentGrant('contributor');
+    await check(agent, shared.id, 'write');
+    await revokeAgent(agentOwner, helper.id, db);
+    await check(agent, shared.id, 'hidden');
+    const active = await createAgent(agentOwner, ws.id, { name: 'Owner leaves', owner: 'self' }, db);
+    const activePrincipal: Principal = { kind: 'agent', id: active.id };
+    await grantProject(owner, lamp.id, { principal: { kind: 'agent', id: activePrincipal.id }, role: 'contributor' }, db);
+    await check(activePrincipal, shared.id, 'write');
+    expectStatus(await alice.browser.request('DELETE', `/api/v1/workspaces/${ws.id}/members/${personOwner.id}`), 204);
+    await check(activePrincipal, shared.id, 'hidden');
+  });
+
   test('cross-workspace references are rejected', async () => {
     const bobOnly = await createSketch(bob, ws.id, { title: 'Bob’s map', scope: 'private' });
     expectStatus(await dave.browser.request('POST', `/api/v1/workspaces/${ws.id}/sketches`, { body: { title: 'x', scope: 'private' } }), 404, 'create in a workspace you are not in');
@@ -267,6 +313,10 @@ describe('sketch access', () => {
     const stale = expectStatus(await bob.browser.request('PATCH', `/api/v1/sketches/${sketch.id}/thoughts/${one.id}`, { body: { text: 'lost' }, headers: ifMatch(1) }), 409) as VersionConflict<Thought>;
     assert.equal(stale.currentVersion, 2);
     assert.equal(stale.current.text, 'One, edited');
+    const liveState = (await pool.query(`SELECT
+      (SELECT count(*)::int FROM map_live_heads WHERE sketch_id=$1) AS rooms,
+      (SELECT count(*)::int FROM map_live_journal WHERE sketch_id=$1) AS journal`, [sketch.id])).rows[0];
+    assert.deepEqual(liveState, { rooms: 0, journal: 0 }, 'ordinary conflict details never enroll the sketch in live editing');
 
     // The same thought moved by both at once: exactly one wins, the other gets 409 and nothing of it lands.
     const [first, second] = await Promise.all([alice, bob].map((who, index) => who.browser.request('PATCH', `/api/v1/sketches/${sketch.id}/positions`, {

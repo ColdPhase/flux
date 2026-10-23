@@ -411,6 +411,82 @@ class MapPasteJourney(unittest.TestCase):
         self.assertEqual(retried[0], failed[1], "the retry keeps the failed row's thought ID, text and request key")
         self.assertEqual(len(retried), 2)
 
+    def test_08b_pasted_rows_with_every_committed_response_lost_are_saved_once_each(self):
+        page = self.page()
+        self.open(page)
+        path = f"**/api/v1/sketches/{self.sketch}/thoughts"
+        keys = []
+
+        def lose_response(route):
+            keys.append(route.request.headers["idempotency-key"])
+            actual = route.fetch()
+            self.assertIn(actual.status, (200, 201), actual.text())
+            route.fulfill(status=503, json={"message": "test: committed response lost"})
+
+        page.route(path, lose_response)
+        self.paste(page, "Dim at dusk\nHold to switch off\nDouble tap to read")
+        draft = page.get_by_role("form", name="Pasted thoughts draft")
+        draft.get_by_label("Pasted thought 1 of 3", exact=True).press("Enter")
+        # Either the ordinary uncertainty (the draft is kept) or, with live editing, the receipt that proves the commit.
+        expect(page.locator(".sk-status")).to_contain_text(re.compile("kept|Saved"))
+        page.unroute(path, lose_response)
+        for _ in range(4):
+            if draft.count() == 0:
+                break
+            draft.get_by_role("button", name=re.compile("^Save")).click()
+            page.wait_for_timeout(2000)
+        expect(draft).to_have_count(0)
+        saved = self.wait_stored(self.owner, lambda current: len(current["thoughts"]) >= 4)
+        page.wait_for_timeout(500)
+        saved = self.stored(self.owner)
+        self.assertEqual(sorted(t["text"] for t in saved["thoughts"] if t["id"] != self.parent), ["Dim at dusk", "Double tap to read", "Hold to switch off"], "every row is saved once, none lost or duplicated")
+        self.assertLessEqual(len(set(keys)), 3, "a row never gets a second request key")
+
+    def test_08c_a_writer_is_never_told_the_map_is_read_only_while_it_opens(self):
+        status = lambda page: page.locator(".sk-status").inner_text() if page.locator(".sk-status").count() else ""
+        # The live room takes longer to join than the first snapshot takes to arrive.
+        page = self.page()
+        held = []
+
+        def hold(ws):
+            sent = []
+            ws.on_message(lambda message: sent.append(message))
+            held.append((ws, sent))
+
+        page.route_web_socket(re.compile(r".*/api/v1/editing\?kind=map.*"), hold)
+        page.goto(f"/projects/{self.project}/map/{self.sketch}")
+        page.wait_for_timeout(1000)
+        early = ""
+        if page.locator(".sk-page .sk").is_visible():
+            page.locator(".sk-li-t, .sk-node").first.focus()
+            self.paste(page, "Pasted before the room joined")
+            page.wait_for_timeout(500)
+            early = status(page)
+        self.assertNotIn("not add to it", early, "a writer is not told the map is read-only while it is still opening")
+        for ws, sent in held:
+            server = ws.connect_to_server()
+            server.on_message(lambda message, ws=ws: ws.send(message))
+            ws.on_message(lambda message, server=server: server.send(message))
+            for message in sent:
+                server.send(message)
+        expect(page.locator(".sk-page .sk")).to_be_visible()
+        page.locator(".sk-li-t, .sk-node").first.focus()
+        self.paste(page, "Pasted once the map appeared")
+        expect(page.get_by_role("form", name=re.compile("thoughts? draft", re.I)).first).to_be_visible()
+        # And, without any delay, the first moment the map is visible is the first moment a writer can act on it.
+        page = self.page()
+        refused = []
+        for attempt in range(8):
+            page.goto(f"/projects/{self.project}/map/{self.sketch}")
+            expect(page.locator(".sk-page .sk")).to_be_visible()
+            page.locator(".sk-li-t, .sk-node").first.focus()
+            self.paste(page, "Pasted the moment the map appeared")
+            try:
+                expect(page.get_by_role("form", name=re.compile("thoughts? draft", re.I)).first).to_be_visible(timeout=5000)
+            except AssertionError:
+                refused.append((attempt, status(page)))
+        self.assertEqual(refused, [], "no paste right after opening is refused")
+
     def test_06_phone_paste_fills_the_empty_draft_through_the_clipboard_prompt(self):
         page = self.page(clipboard=True, viewport=PHONE, device_scale_factor=3, is_mobile=True, has_touch=True)
         self.open(page)

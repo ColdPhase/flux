@@ -1,0 +1,10 @@
+{
+  "source_sha": "450f2430c17e1b57bfe54df7be607dc723ba5d89",
+  "command": [
+    "./scripts/check_live_editing.sh",
+    "--two-api"
+  ],
+  "started_at": "2026-10-18T11:52:24.974747+00:00",
+  "finished_at": "2026-10-18T11:52:51.527002+00:00",
+  "exit_code": 0
+}

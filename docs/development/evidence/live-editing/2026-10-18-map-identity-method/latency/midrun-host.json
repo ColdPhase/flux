@@ -1,0 +1,28 @@
+{
+  "at": "2026-10-18T09:48:39.778648+00:00",
+  "loadavg": [
+    5.60009765625,
+    4.40869140625,
+    3.8349609375
+  ],
+  "docker_stats": "flux-live-editing-1792316125-881598-ui-test-run-b59678d6d743\t252.19%\t1.479GiB / 61.89GiB\t183\nflux-live-editing-1792316125-881598-api-1\t62.50%\t607.6MiB / 61.89GiB\t12\nflux-live-editing-1792316125-881598-db-1\t41.06%\t107.5MiB / 61.89GiB\t20\nqwen38-llama-router\t193.24%\t9.355GiB / 61.89GiB\t64\nflux-201d1a6e-api-1\t0.03%\t113.4MiB / 61.89GiB\t11\nflux-201d1a6e-worker-1\t0.11%\t59.11MiB / 61.89GiB\t11\nflux-201d1a6e-runtime-egress-1\t0.00%\t18.52MiB / 256MiB\t12\nflux-201d1a6e-runtime-manager-1\t0.01%\t28.48MiB / 256MiB\t12\nflux-201d1a6e-runtime-3-1\t0.00%\t22.43MiB / 2GiB\t11\nflux-201d1a6e-runtime-2-1\t0.00%\t22.2MiB / 2GiB\t11\nflux-201d1a6e-runtime-1-1\t0.00%\t22.29MiB / 2GiB\t11\nflux-201d1a6e-runtime-4-1\t0.00%\t22.39MiB / 2GiB\t11\nflux-201d1a6e-db-1\t2.56%\t63.88MiB / 61.89GiB\t18",
+  "docker_stats_exit": 0,
+  "observation": "one snapshot after five map cohorts and three wiki cohorts; not a continuous series",
+  "completed_map_cohorts": [
+    "map-50-drag-1",
+    "map-50-drag-50",
+    "map-500-drag-1",
+    "map-500-drag-200",
+    "map-500-drag-50"
+  ],
+  "completed_cohorts_at_snapshot": [
+    "map-50-drag-1",
+    "map-50-drag-50",
+    "map-500-drag-1",
+    "map-500-drag-50",
+    "map-500-drag-200",
+    "wiki-10000-editor",
+    "wiki-10000-reader",
+    "wiki-100000-editor"
+  ]
+}

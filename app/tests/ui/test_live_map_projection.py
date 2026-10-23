@@ -197,6 +197,7 @@ class LiveMapProjectionJourney(LiveFixture):
             await ada.get_by_role('button', name='Undo', exact=True).click()
         self.assertEqual((await receipt.value).status, 200)
         await expect(peer).to_have_attribute('data-thought-x', str(first['x']))
+        await expect(ada.locator('.sk-status')).to_contain_text('Undid: moved with the keyboard')
         after = await self.api(kai, 'GET', f'/api/v1/sketches/{self.map_id}')
         thought_by_id = {thought['id']: thought for thought in after['thoughts']}
         self.assertEqual(thought_by_id[first['id']]['version'], first['version'] + 2)

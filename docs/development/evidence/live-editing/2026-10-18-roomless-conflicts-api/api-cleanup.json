@@ -1,0 +1,27 @@
+{
+  "time": "2026-10-18T14:06:14.560604+00:00",
+  "source": "aade67efde45b8156fe933c2124ab5a2a96d580a",
+  "exit_code": 0,
+  "project": "flux-test-1792332177-1634721",
+  "inventory_captured": true,
+  "containers": [],
+  "networks": [],
+  "volumes": [],
+  "images": [],
+  "running": [
+    "qwen38-llama-router",
+    "flux-201d1a6e-api-1",
+    "flux-201d1a6e-worker-1",
+    "flux-201d1a6e-runtime-egress-1",
+    "flux-201d1a6e-runtime-manager-1",
+    "flux-201d1a6e-runtime-3-1",
+    "flux-201d1a6e-runtime-2-1",
+    "flux-201d1a6e-runtime-1-1",
+    "flux-201d1a6e-runtime-4-1",
+    "flux-201d1a6e-db-1"
+  ],
+  "ports": {
+    "18685": "free",
+    "18686": "free"
+  }
+}

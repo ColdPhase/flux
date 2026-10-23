@@ -1,0 +1,65 @@
+{
+  "move": {
+    "policyOverlapMs": {
+      "n": 1410,
+      "p50": 15.04536899998493,
+      "p95": 17.77760600000329,
+      "mean": 14.77860508652493
+    },
+    "fraction": {
+      "n": 1410,
+      "p50": 0.7336441203945355,
+      "p95": 0.779156987468521,
+      "mean": 0.724418457063345
+    },
+    "nonzero": 1400,
+    "witness": {
+      "id": 1604,
+      "sequence": 347,
+      "policyMs": 20.155501000001095,
+      "knownOtherHeldOverlapMs": 14.981228999997256,
+      "overlapIntervalsRelativeEntryMs": [
+        [
+          2.8442070000019157,
+          10.058546000000206
+        ],
+        [
+          11.92036999999982,
+          19.687259999998787
+        ]
+      ]
+    }
+  },
+  "deliver-peer": {
+    "policyOverlapMs": {
+      "n": 2162,
+      "p50": 13.435773999997764,
+      "p95": 16.852913000002445,
+      "mean": 12.05366804394092
+    },
+    "fraction": {
+      "n": 2162,
+      "p50": 0.6946810892316362,
+      "p95": 0.7472631456691439,
+      "mean": 0.6224037637133472
+    },
+    "nonzero": 2154,
+    "witness": {
+      "id": 1605,
+      "sequence": 347,
+      "policyMs": 20.67383300000074,
+      "knownOtherHeldOverlapMs": 14.72654799999873,
+      "overlapIntervalsRelativeEntryMs": [
+        [
+          1.7401739999986603,
+          9.507063999997627
+        ],
+        [
+          10.687726999996812,
+          17.647384999996575
+        ]
+      ]
+    }
+  },
+  "meaning": "Interval overlap, not direct database wait attribution. Other instrumented transactions have completed policy and not yet reached finalFence on the same sketch, which retains NO KEY UPDATE until commit. Presence/uninstrumented operations absent. No subtraction from latency."
+}

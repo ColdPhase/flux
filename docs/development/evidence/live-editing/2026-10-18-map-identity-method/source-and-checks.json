@@ -1,0 +1,23 @@
+{
+  "tested_source": "dfe3d7f78514466a86ce164e98a15f293b7b0c1c",
+  "candidate_method_record": "3bf87cdfdfd78077c6935b0d9bfcacf25faffa05",
+  "files": {
+    "app/tests/ui/live_editing_identity.py": "ff725c4062a5664b346c909edc2a8e67fd3f2f56442537172144710d21ac30b1",
+    "app/tests/ui/live_editing_latency.py": "f331c1af49c8df43df6b257bc7c16795fedb5c3b102cfc11249282ef858df3ee",
+    "app/tests/ui/test_live_editing.py": "c2d45d9695ca63e5cb512ebd47362ebca408d4ec29503d4d1fde23c930f7bc6a",
+    "scripts/check_live_editing.sh": "6e0ea122459547e40b303ac5044067f83af167d09afe215d56b79f1d27f8944c",
+    "scripts/collect_live_editing_queue.py": "ef66cdaf42e81b142ed1a700e873f38f7a94d58e3f5d8799e7504b1cf0d0c001",
+    "scripts/prepare_live_editing_latency.py": "4a4b6797eaba0f704b37fb3108bc1ef460260a1c8858fd273b0105c6f3d225d5",
+    "app/pnpm-lock.yaml": "d34264e9ac2a877f045b3c190d6be025dfc2a8b84cc67b42eeb5dd7200cb6e22",
+    "docker/Dockerfile": "49e13f6d00cb54b2a0fd46854cdfa135cf6186c51950cafb94ad9eb0570a1e20"
+  },
+  "stdlib_checks": {
+    "command": "python3 -m unittest discover -s tests -p 'test_live_editing*.py'",
+    "tests": 7,
+    "failures": 0,
+    "errors": 0,
+    "skips": 0,
+    "seconds": 0.033
+  },
+  "driver_ast_check": "Only map_drag producer identity assignment differs after excluding import; restored expression gives identical AST. All other driver functions unchanged."
+}

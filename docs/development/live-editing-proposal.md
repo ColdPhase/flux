@@ -92,8 +92,8 @@ a fallback if the separate-server integration fails calibration, not an implied
 ability to send large updates through the unchanged Fastify stream server.
 
 Each subscription is bound to a server-issued connection/room identity, current
-session, resource ID and generation. Actor ID, display name, cursor label and colour
-come from server identity; a client cannot set another participant's identity.
+session, resource ID and generation. Actor ID, display name and cursor label come
+from server identity; a client cannot set another participant's identity.
 Client update UUIDs are receipts, never capabilities. Resolve the existing policy at
 subscribe, every write and immediately before delivery; preserve native access-row
 locking/order for writes and serialize revocation with pending delivery. Drop queued
@@ -133,7 +133,37 @@ Expire after five seconds, sweep at least once per second, and send leave on
 blur/navigation/close when possible. Movement/cursor updates also renew activity.
 Do not replay expired presence after reconnect/restart. Protocol generations and
 terminal sequence watermarks prevent late packets from resurrecting ended activity.
-Participant names supplement colour; motion is restrained and respects reduced motion.
+Participant names identify people; collaboration indicators follow the final
+design's monochrome tokens. Motion is restrained and respects reduced motion.
+
+The independent visual assessment of2026-10-18 found that floating name pills
+obscured map thoughts and Wiki prose. Keep full names in the existing People
+strips (with the current Wiki line), the actual cursor/caret and their accessible
+identity. A map cursor always keeps its name (independent visual review of PR
+#613, 2026-10-23: unnamed docked cursors and stacked labels left people
+unidentified). The label is placed clear of every thought, of the other labels
+and of the other cursors (beside the cursor, flipped, or just outside the
+thought the cursor is over) and clamped inside the plane, so a phone's edge
+keeps the whole name. One shape per person, kept while they stay, tops the map
+cursor, leads its label and leads their People-chip entry, as in the Wiki; the
+chip wraps beside Map options on a phone and shows three names and the count
+beyond four people. A Wiki caret's name never floats over editor text, and it is not left
+to the strip alone either (independent review of PR #613, 2026-10-22: with the
+name hidden, two people in one paragraph were indistinguishable and the strip's
+line number is the same for both). On a wide editor (768 px and up) the editor
+reserves a lane to the right of the lines, and each caret's name tag sits in it
+level with the caret's row, stacked below a tag that would touch it; two carets
+on one row keep their tags on that row side by side, with first names. A remote
+selection adds a line style that goes with its owner's shape. On a narrow
+editor there is no lane, so the text keeps its full width and the strip names
+the person. Colour never identifies anyone; a small shape (circle, square,
+diamond, triangle), kept for as long as the person stays, tops their caret,
+leads their tag and leads their entry in the strip, so the three match even
+when two carets share a row. A selection is identified by the tag at its head.
+The tag is a layer marker of the existing caret layer: no extra colour system,
+geometry polling, inline editor widget or new interaction is introduced. Verify
+the actual renders and existing selection/cursor journeys at the composed
+candidate.
 
 Proposed bounded budgets for calibration: 64 KiB inbound update/frame, chunked initial
 sync, 2 KiB presence, at most 200 native IDs in a selection/move (existing map limit),
@@ -209,6 +239,15 @@ native map commits and saved wiki versions retain their existing durable event b
    link since, refuse that inverse with a recoverable explanation. Never delete a
    peer edit by retrying an undo against the newest version. A removal inverse must
    also preserve intervening link changes. Camera/outline changes remain local undo.
+6. An explicit draft save (#149) keeps its ordinary recovery on a live map, with the
+   same wording and guarantees. A save that fails or whose response is lost says the
+   draft or text is kept, whatever a live delta may already have shown; a retry of an
+   earlier attempt replays the same body and request key (one thought, no duplicate),
+   then confirms the thought from current state and refines its text with the draft's
+   own edit key; an unknown or phone-confirmed row is only confirmed from current
+   state, never recreated; and a saved thought appears on the map in the commit that
+   settles its draft. Keyboard moves are immediate native commits, one per key, and
+   the saved position is what shows they landed.
 
 ## Wiki contract — durable shared work, explicit immutable versions
 
@@ -385,6 +424,13 @@ by deduplicated receipt lookup. Save never reports success while local text is p
 
 ## Independent verification and latency gate
 
+**Later founder direction, 2026-10-18:** the 200 ms target is retained, while
+the measured 213.167416 ms map500/drag200 result is explicitly accepted as a
+small departure for this delivery. See the [acceptance record and limits](live-editing-verification.md#founder-acceptance-of-measured-latency-2026-10-18).
+The historical strict gate below and its raw failures are not rewritten. This
+exception does not weaken live interaction, privacy, authority, recovery,
+resource integrity or independent protected approval.
+
 The proposed healthy local threshold is **p95 input → peer rendered state ≤200 ms**
 for map movement, committed map changes, wiki editor text and wiki current-page preview.
 It is an unmeasured acceptance proposal, not a vendor promise or a claim about the WAN.
@@ -511,6 +557,54 @@ implementation, visual, performance or release acceptance.
    negative controls. Exercise phone/tablet/desktop, keyboard/reduced motion and
    continuous movement-before-drop / writing-before-Save. The actual path includes
    database validation and safe Markdown preview; bypassing them is not calibration.
+
+## Whole-issue production promotion contract (2026-10-18)
+
+**Integrated technical acceptance, 2026-10-18:** the [independent final review](evidence/live-editing/2026-10-18-final-review/README.md) accepts the whole #228 candidate at `c66eefc7`, with the recorded founder latency exception. All three P2 findings are resolved in actual Chromium/WebKit runtime and fresh renders. Production still waits for eligible independent approval and protected merge; the historical observations below retain their original verdicts and sources.
+
+The founder's current-session clarification requires existing PR #613 to complete
+all of #228, including the original gates, integrated criteria and independent
+functional/visual acceptance. The earlier partial deliveries and measurements
+retain their exact source pins. The earlier 220.806 ms observation remains a
+failure against the strict 200 ms gate. The later founder direction above accepts
+the complete 213.167416 ms observation as a specific delivery exception; it does
+not by itself accept or enable the whole candidate.
+
+The completed normal installation provides live map/wiki editing without a
+development-only setup step. Its production control is `FLUX_LIVE_EDITING`:
+missing, empty or `on` enables it, `off` disables it, and any other nonempty
+value is a startup configuration error. Both supported Compose templates and
+environment examples expose this same control. The production default is enabled
+only through the final protected merge after the acceptance conditions, including
+that explicit founder latency exception, are satisfied; implementation and checks
+before that merge remain isolated candidates.
+
+`FLUX_DEVELOPMENT_LIVE_EDITING=true` remains an explicit diagnostic marker, not
+the production availability switch. Local stdout telemetry requires production
+editing plus that marker and the existing separate telemetry opt-in. A normal
+installation emits no calibration telemetry. Explicit production `off` wins over
+diagnostic variables and retains the unavailable capability/socket/route behavior.
+
+Preserve ordinary native HTTP/MCP capacities, retries, persistence and authority
+fences in the normal enabled installation. Do not charge unjoined native maps as
+if they had active live participants, fabricate journal activity, or admit a
+new room without the existing lifetime/authorization fence. Explicit-off tests
+also retain their ordinary no-live behavior; moving all capacity coverage into
+that lane cannot establish production compatibility.
+
+Disabling shared editing never erases acknowledged working text. Its existing
+dirty-working-copy fence still refuses native body/no-op/metadata/section writes.
+For planned disable, save shared working copies first. If disabled while dirty,
+re-enable, recover and save them before disabling again. Verify that complete
+on/dirty/off/refusal/on/recover/Save/off/ordinary-edit journey; do not advertise a
+writable ordinary fallback while shared text remains unsaved.
+
+Final acceptance covers the ordinary enabled installation, explicit-off fallback,
+new/restore private composition, live Save/history/provenance and immutable
+citations, all original map/wiki interactions and native writers, and every
+required device/network/authority/recovery case. The final candidate retains the
+fixed latency denominator and separate independent functional/visual assessment.
+No new child issue, intermediate partial merge or extra review loop is required.
 
 ## Bounded PR sequence and exact bases
 
@@ -948,3 +1042,39 @@ publication to receipt fell from p50 34 to 21 ms. Two runs of the case on each v
 shared host gave p95 206 and 209 ms before, 193 and 188 ms after. A p95 of 170 ms at 200
 moved thoughts needs less measurement work per changed thought, which is the driver's
 decision, not the application's.
+
+## Transaction-local map producer checks: bounded cost hypothesis (2026-10-18)
+
+For existing #228 / Draft PR #613, test whether repeated producer session/write
+checks in one `mapBackend.deliver` transaction contribute avoidable SQL work.
+This is an implementation hypothesis, not independent acceptance or a measured
+latency improvement. The latest single map500/drag200 observation supplied by
+the coordinator remains p95 215.768 ms, above the unchanged 200 ms gate; the
+latency driver, sample denominator, publication frequency and all original gates
+remain unchanged.
+
+A positive producer check may be reused only inside that single delivery
+callback, for the exact `(actorId, sessionId)` pair and the same already-locked
+project/private sketch. The first occurrence must still acquire the existing
+session `FOR SHARE` and full `requireSketch(write, {lock:true})` policy locks.
+Do not seed results from the recipient's `c.access`, cache refusals, or retain
+results across transactions, connections, backend instances or deliveries.
+Both bounded row lists together admit at most 64 pairs; retained keys reference
+existing identity strings, with no copied names or payloads. Existing finite
+preparation/queue/output bounds remain in force.
+
+DM delivery keeps its existing repeated checks: pair closure also depends on the
+other participant, whose row is not locked by the producer's write evaluation.
+No new lock or DM contract is introduced by this optimization. The final
+`currentTransientFence`, provider confirmation, recipient validation, generation
+and SQL-clock TTL checks stay unchanged immediately before the synchronous
+handoff. An earlier positive decision never substitutes for those observations.
+
+Verify actual PostgreSQL delivery with two independent sessions of one producer,
+each contributing gesture and presence: both first session/policy checks remain,
+duplicates reuse only their own pair, and a later delivery after a committed
+grant downgrade discloses no producer transients. Also withhold a populated
+handoff after its positive checks and prove that session expiry, transient expiry
+and provider-confirmation lapse still remove the old producer output. Runtime
+and performance evidence must be recorded against the tested candidate; final
+whole-issue acceptance remains independent and pending.

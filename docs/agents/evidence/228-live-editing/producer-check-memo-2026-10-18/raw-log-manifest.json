@@ -1,0 +1,17 @@
+[
+  {
+    "external_path": "/home/hubert/flux-evidence/228-map-producer-memo-450f2430/api.log",
+    "sha256": "3d2da8f0be71d67409fc5212df7776f6ec42c4b42f7fe78494dd7408e6073699",
+    "bytes": 48451
+  },
+  {
+    "external_path": "/home/hubert/flux-evidence/228-map-producer-memo-450f2430/two-api.log",
+    "sha256": "206c20c8f6c405c13e545cb535ba0e42dd7b5270e2f1aa0b144c51e2ba7e6fb2",
+    "bytes": 11240
+  },
+  {
+    "external_path": "/home/hubert/flux-evidence/228-map-producer-memo-cfa03a83/api.log",
+    "sha256": "a169da7e391d478715f344df6957699beef650c6dbbb9372517ce9311b57b5d1",
+    "bytes": 20518
+  }
+]

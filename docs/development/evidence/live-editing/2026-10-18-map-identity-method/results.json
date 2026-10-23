@@ -1,0 +1,24 @@
+{
+  "tested_source": "dfe3d7f78514466a86ce164e98a15f293b7b0c1c",
+  "candidate_record": "3bf87cdfdfd78077c6935b0d9bfcacf25faffa05",
+  "browsers": {
+    "chromium": {
+      "tests": 4,
+      "seconds": 49.432,
+      "exit_code": 0,
+      "failures": 0,
+      "errors": 0,
+      "skips": 0
+    },
+    "webkit": {
+      "tests": 4,
+      "seconds": 62.817,
+      "exit_code": 0,
+      "failures": 0,
+      "errors": 0,
+      "skips": 0
+    }
+  },
+  "build_typecheck_lint": "Passed in maintained Docker image build",
+  "new_method_full_latency": "Not run; no acceptance claim; original8ba canonical FAIL retained"
+}
