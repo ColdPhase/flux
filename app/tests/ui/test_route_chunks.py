@@ -108,10 +108,10 @@ class RouteChunksJourney(unittest.TestCase):
             browser.close()
         cls.pw.stop()
 
-    def page(self, engine: str, *, phone=False) -> Page:
+    def page(self, engine: str, *, phone=False, tablet=False) -> Page:
         context: BrowserContext = self.browsers[engine].new_context(
             base_url=ORIGIN, storage_state=self.state, service_workers="block", reduced_motion="reduce",
-            viewport=PHONE if phone else DESKTOP, is_mobile=phone, has_touch=phone,
+            viewport=PHONE if phone else {"width": 820, "height": 1180} if tablet else DESKTOP, is_mobile=phone or tablet, has_touch=phone or tablet,
         )
         self.addCleanup(context.close)
         page = context.new_page()
@@ -121,6 +121,24 @@ class RouteChunksJourney(unittest.TestCase):
         page.on("pageerror", lambda error: None if re.search(r"/api/v1/assistant-runs\?limit=10 due to access control checks", str(error)) else errors.append(str(error)))
         self.addCleanup(lambda: self.assertEqual(errors, [], "No uncaught application errors"))
         return page
+
+    def layout(self, page: Page) -> dict:
+        """The boxes a pending navigation must not move: the header, the live strip when there is one, and the work."""
+        return page.evaluate("""() => Object.fromEntries(['header', '.lv-bar', '.app__body', '#content'].map((selector) => {
+          const el = document.querySelector(selector);
+          const b = el?.getBoundingClientRect();
+          return [selector, b ? [b.x, b.y, b.width, b.height].map(Math.round) : null];
+        }))""")
+
+    def assert_pending_is_still(self, page: Page, before: dict, pending) -> None:
+        """While a navigation waits, the row floats over the work: nothing else changes place, and Cancel is a 44 px target."""
+        expect(pending).to_be_visible()
+        self.assertEqual(self.layout(page), before, "a pending navigation moves neither the header, the strip nor the work")
+        cancel = pending.get_by_role("button", name="Cancel", exact=True).bounding_box()
+        assert cancel
+        self.assertGreaterEqual(cancel["height"], 43.5, "Cancel is a 44 px target")
+        row = pending.bounding_box()
+        assert row and row["y"] >= before["header"][1] + before["header"][3] - 1, "the row is below the header"
 
     def home(self, page: Page):
         page.goto("/")
@@ -433,8 +451,9 @@ class RouteChunksJourney(unittest.TestCase):
                 field = page.get_by_placeholder("Write a note…")
                 field.fill("Private work while the destination downloads")
                 page.evaluate("window.__routeDraftElement = document.querySelector('#composer')")
+                before = self.layout(page)
                 self.settings(page, phone=phone)
-                expect(page.locator('[data-route-pending="/settings"]')).to_be_visible()
+                self.assert_pending_is_still(page, before, page.locator('[data-route-pending="/settings"]'))
                 expect(page.locator('[data-route-pending="/settings"] [role="status"]')).to_have_text("Opening settings…")
                 self.request_is_held(page, held)
                 expect(page.get_by_role("heading", name="Your notes", exact=True)).to_be_visible()
@@ -465,9 +484,10 @@ class RouteChunksJourney(unittest.TestCase):
         start = page.url
         field.fill("Private work while the destination downloads")
         field.evaluate("el => { window.__routeDraftElement = el; }")
+        before = self.layout(page)
         view_tab(page, "Tasks")
         pending = page.locator(f'[data-route-pending="/projects/{self.project_id}/tasks"]')
-        expect(pending).to_be_visible()
+        self.assert_pending_is_still(page, before, pending)
         expect(pending.get_by_role("status")).to_have_text("Opening tasks…")
         self.request_is_held(page, held)
         expect(field).to_have_value("Private work while the destination downloads")
@@ -485,6 +505,25 @@ class RouteChunksJourney(unittest.TestCase):
         expect(page.locator(".ws-task")).to_have_count(0)
         expect(field).to_have_value("Private work remains editable")
         self.assertTrue(field.evaluate("el => window.__routeDraftElement === el"))
+
+    def test_02c_tablet_held_route_moves_nothing(self):
+        """The same on a tablet, where the header is the title menu and the sidebar is a rail."""
+        page = self.page("webkit", tablet=True)
+        held = self.hold(page, "ProjectTasks")
+        page.goto(f"/projects/{self.project_id}")
+        expect(page.get_by_label("Write a message", exact=True)).to_be_visible()
+        before = self.layout(page)
+        view_tab(page, "Tasks")
+        pending = page.locator(f'[data-route-pending="/projects/{self.project_id}/tasks"]')
+        self.assert_pending_is_still(page, before, pending)
+        shot(page, "route-chunks-pending-webkit-tablet")
+        pending.get_by_role("button", name="Cancel", exact=True).click()
+        expect(page.locator("[data-route-pending]")).to_have_count(0)
+        self.assertEqual(self.layout(page), before)
+        route = held.pop()
+        with page.expect_response(lambda response: response.url == route.request.url) as late:
+            route.continue_()
+        late.value.finished()
 
     def test_03_failed_route_download_keeps_authenticated_shell_and_private_recovery(self):
         for engine in self.browsers:

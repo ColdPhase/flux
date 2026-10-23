@@ -295,6 +295,9 @@ a.me__btn[aria-current="page"] { background: var(--sub); }
   display: flex; align-items: center; gap: 10px; width: 100%; min-height: 32px; padding: 0 10px; border-radius: var(--r-sm);
   color: var(--t1); font: inherit; font-size: var(--fs-sm); line-height: 1.25; text-align: left; text-decoration: none; cursor: pointer; transition: background-color var(--dur-1) var(--ease-out);
 }
+/* The rows a narrow header moves into More (Spokój rule 3) stay hidden here: the menu rule above would otherwise
+   show them at every width. The narrow container rule below still shows them (higher specificity). */
+.top__more-menu .top__more-narrow { display: none; }
 .top__more-menu .newmenu__item:hover { background: var(--hov); }
 .top__more-menu .newmenu__item:focus-visible { outline: 2px solid var(--t1); outline-offset: -2px; }
 .top__more-menu .newmenu__item kbd, .top__focus kbd {

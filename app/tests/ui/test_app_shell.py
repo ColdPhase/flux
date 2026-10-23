@@ -711,7 +711,8 @@ class AppShellJourney(unittest.TestCase):
                   const header = document.querySelector('header.top').getBoundingClientRect();
                   const button = document.querySelector('header.top [aria-label="More"]').getBoundingClientRect();
                   const menu = document.querySelector('.top__more-menu').getBoundingClientRect();
-                  const rows = [...document.querySelectorAll('.top__more-menu [role^=menuitem]')].map(el => el.getBoundingClientRect());
+                  // Rows a wide or tablet header keeps in its own row are in the menu but hidden (Spokój rule 3): measure the shown ones.
+                  const rows = [...document.querySelectorAll('.top__more-menu [role^=menuitem]')].filter(el => el.getClientRects().length > 0).map(el => el.getBoundingClientRect());
                   return {header: {top: header.top, bottom: header.bottom, height: header.height},
                     button: {left: button.left, right: button.right, top: button.top, bottom: button.bottom},
                     menu: {left: menu.left, right: menu.right, top: menu.top, bottom: menu.bottom},
@@ -723,6 +724,7 @@ class AppShellJourney(unittest.TestCase):
                 self.assertLessEqual(geometry["menu"]["right"], geometry["viewport"], geometry)
                 self.assertAlmostEqual(geometry["menu"]["right"], anchor["x"] + anchor["width"], delta=1, msg=f"menu is right aligned to More: {geometry}")
                 self.assertGreaterEqual(geometry["menu"]["top"], geometry["button"]["bottom"] - 1, geometry)
+                self.assertGreaterEqual(len(geometry["rowHeights"]), 4, f"Focus, sidebar and Project details are shown: {geometry}")
                 if device == "tablet":
                     self.assertTrue(all(height >= 44 for height in geometry["rowHeights"]), geometry)
                 if device == "desktop":
@@ -731,7 +733,7 @@ class AppShellJourney(unittest.TestCase):
                 scheme = "dark" if dark else "light"
                 shot(page, f"app-shell-project-header-more-{mode}-{scheme}-z100-chromium")
                 if device == "desktop":
-                    items = menu.locator("[role^=menuitem]")
+                    items = menu.locator("[role^=menuitem]:visible")
                     items.nth(1).hover()
                     expect(items.nth(0)).to_have_css("background-color", "rgba(0, 0, 0, 0)")
                     expect(items.nth(1)).not_to_have_css("background-color", "rgba(0, 0, 0, 0)")

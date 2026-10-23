@@ -759,10 +759,10 @@ function AppLayoutContent() {
           </div>
         </header>
         )}
-        <RouteProgress />
         <LiveBar />
         {/* The conversation and its one panel share a row under the one header (Spokój, F-026 layout per screen). */}
         <div className="app__body">
+          <RouteProgress />
           <div className="app__pane" id="content" ref={paneRef} tabIndex={-1}>
             <Outlet />
             <DeferredLiveStage />
