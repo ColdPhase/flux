@@ -1,17 +1,6 @@
 import { AGENT_MCP_SOURCE_CAPABILITIES, type AgentMcpPolicy, type AgentScope } from '@flux/contracts';
-import {
-  agentProjectReads,
-  DomainError,
-  enforce,
-  evaluateProject,
-  requireAgentMcpEntry,
-  requireAgentSelection,
-  requireWorkspaceAi,
-  type AgentConnectionContext,
-  type AgentProjectObjectKind,
-  type Database,
-  type Transaction,
-} from '@flux/core';
+import { agentProjectReads, DomainError, enforce, evaluateProject, requireAgentMcpEntry, requireAgentSelection, requireWorkspaceAi, type AgentConnectionContext,
+  type AgentProjectObjectKind, type Database, type Transaction } from '@flux/core';
 import { agentProjectObjectRows, lockAgentMcpPolicy, loadActor, accessReader } from '@flux/db';
 import { createAgentConnectionStore } from './store.js';
 import type { McpDispatch } from './mcp-dispatch.js';
