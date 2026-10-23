@@ -103,3 +103,73 @@ test('0115 up: explicit allowed rows, epoch columns without default, backstop an
     client.release();
   }
 });
+
+// Migration 0117 (#642): `notifications.ai_origin` is backfilled conservatively from the actor and the source, people's rows stay false, a
+// workspace that 0115 missed gets its `allowed` row, and the reverse drops the column.
+test('0117 up: ai_origin backfill by actor and source, the policy row of a missed workspace; reverse and reapply', async () => {
+  const client = await pool.connect();
+  const namespace = `workspace_ai_${randomUUID().replaceAll('-', '')}`;
+  const manifest = await readMigrationManifest(directory, FLUX_SCHEMA_VERSION);
+  const sql = (version: number) => readFile(join(directory, manifest.find((file) => file.version === version)!.name), 'utf8');
+  try {
+    await client.query('BEGIN');
+    await client.query(`CREATE SCHEMA ${namespace}`);
+    await client.query(`SET LOCAL search_path TO ${namespace}, public, pg_catalog`);
+    for (const file of manifest.filter((file) => file.version < 117)) await client.query(await readFile(join(directory, file.name), 'utf8'));
+    const [owner, ws, missed, project, agent, conversation, message] = [randomUUID(), randomUUID(), randomUUID(), randomUUID(), randomUUID(), randomUUID(), randomUUID()];
+    await client.query(`INSERT INTO auth_users(id,name,email) VALUES($1,'Ada',$2)`, [owner, `${owner}@example.test`]);
+    await client.query(`INSERT INTO workspaces(id,name,created_by) VALUES($1,'Studio',$2),($3,'Missed',$2)`, [ws, owner, missed]);
+    await client.query('DELETE FROM workspace_ai_policies WHERE workspace_id = $1', [missed]);
+    await client.query(`INSERT INTO projects(id,workspace_id,name,visibility,created_by) VALUES($1,$2,'Lamp','workspace',$3)`, [project, ws, owner]);
+    await client.query(`INSERT INTO agents(id,workspace_id,name,owner_user_id,created_by) VALUES($1,$2,'Assistant',$3,$3)`, [agent, ws, owner]);
+    await client.query(`INSERT INTO project_conversations(id,workspace_id,project_id,created_by) VALUES($1,$2,$3,$4)`, [conversation, ws, project, owner]);
+    await client.query(`INSERT INTO project_messages(id,workspace_id,project_id,conversation_id,author_agent_id,client_message_id,request_fingerprint,sequence,body)
+      VALUES($1,$2,$3,$4,$5,$6,'f',1,'Ada, a question')`, [message, ws, project, conversation, agent, randomUUID()]);
+    const decision = randomUUID(); const result = randomUUID();
+    await client.query(`INSERT INTO project_decisions(id,workspace_id,project_id,title,proposed_by_kind,proposed_by_id) VALUES($1,$2,$3,'Use 3V','agent',$4)`, [decision, ws, project, agent]);
+    await client.query(`INSERT INTO project_results(id,workspace_id,project_id,title,finding,created_by_kind,created_by_id) VALUES($1,$2,$3,'Bench','negative','agent',$4)`, [result, ws, project, agent]);
+    const event = async (kind: string, actor: string, data: object) => {
+      const id = randomUUID();
+      await client.query(`INSERT INTO events(id,workspace_id,kind,object_id,actor_id,data) VALUES($1,$2,$3,$4,$5,$6)`, [id, ws, kind, project, actor, JSON.stringify(data)]);
+      return id;
+    };
+    const rows: Record<string, { id: string; expected: boolean }> = {};
+    const note = async (name: string, expected: boolean, columns: { title?: string; body?: string; reason?: string; event?: string } = {}) => {
+      const id = randomUUID();
+      rows[name] = { id, expected };
+      await client.query(`INSERT INTO notifications(id,user_id,workspace_id,source_type,source_id,title,body,reason,event_id) VALUES($1,$2,$3,'project',$4,$5,$6,$7,$8)`,
+        [id, owner, ws, project, columns.title ?? 'Something', columns.body ?? '', columns.reason ?? null, columns.event ?? null]);
+    };
+    await note('person', false, { event: await event('project.message_sent.v1', `human:${owner}`, { messageId: randomUUID() }), reason: 'mention' });
+    await note('no event', false);
+    await note('agent actor', true, { event: await event('project.work_updated.v1', `agent:${agent}`, {}) });
+    await note('agent message', true, { event: await event('project.message_sent.v1', `human:${owner}`, { messageId: message }), reason: 'question' });
+    await note('agent decision', true, { event: await event('project.decision_proposed.v1', `human:${owner}`, { decisionId: decision }), reason: 'review' });
+    await note('agent result', true, { event: await event('project.result_recorded.v1', `human:${owner}`, { resultId: result }), reason: 'review' });
+    await note('your agent', true, { reason: 'review', body: 'Your agent produced it · Ada proposed it in Lamp' });
+    await note('reaction note', true, { title: 'Your assistant has a note for your task' });
+    await note('suggestion', true, { title: "Jonas's assistant suggests: add task X" });
+    await note('join', true, { title: "Jonas's assistant asks to join" });
+    await note('operator', true, { title: 'Jonas would like to use their Claude plan here' });
+    await note('schedule notice', true, { title: 'Paused Daily: it failed', body: 'Your assistant paused this schedule. Turn it on again when it is fixed.' });
+    await note('person titled like a suggestion', false, { title: 'Jonas asked you to review #8' });
+
+    await client.query(await sql(117));
+    const stored = new Map((await client.query('SELECT id, ai_origin FROM notifications')).rows.map((row) => [row.id as string, row.ai_origin as boolean]));
+    for (const [name, { id, expected }] of Object.entries(rows)) assert.equal(stored.get(id), expected, `${name}: ai_origin`);
+    assert.equal((await client.query('SELECT state FROM workspace_ai_policies WHERE workspace_id = $1', [missed])).rows[0]?.state, 'allowed', 'the missed workspace gets its allowed row');
+    assert.equal((await client.query('SELECT count(*)::int AS n FROM workspace_ai_policies')).rows[0].n, 2);
+    // Fail closed for future writers: the default existed only for the backfill, so an insert that forgets the column is refused.
+    assert.equal((await client.query(`SELECT column_default FROM information_schema.columns WHERE table_schema=$1 AND table_name='notifications' AND column_name='ai_origin'`, [namespace])).rows[0].column_default, null, 'ai_origin has no default');
+    await client.query('SAVEPOINT forgot_ai_origin');
+    await assert.rejects(client.query(`INSERT INTO notifications(id,user_id,workspace_id,source_type,source_id,title) VALUES($1,$2,$3,'project',$4,'Forgot')`, [randomUUID(), owner, ws, project]), /ai_origin/);
+    await client.query('ROLLBACK TO SAVEPOINT forgot_ai_origin');
+    await client.query(await readFile(join(directory, 'reverse/0117_notification_ai_origin.down.sql'), 'utf8'));
+    assert.equal((await client.query(`SELECT count(*)::int AS n FROM information_schema.columns WHERE table_schema=$1 AND table_name='notifications' AND column_name='ai_origin'`, [namespace])).rows[0].n, 0);
+    await client.query(await sql(117));
+    assert.equal((await client.query('SELECT ai_origin FROM notifications WHERE id = $1', [rows['agent actor']!.id])).rows[0].ai_origin, true, 'reapply backfills again');
+  } finally {
+    await client.query('ROLLBACK');
+    client.release();
+  }
+});

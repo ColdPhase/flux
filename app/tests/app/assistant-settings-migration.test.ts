@@ -78,8 +78,8 @@ test('0077 fresh/upgrade/reverse preserves legacy identity, grants and consent w
       (join_request_id,opening_version,assistant_id,assistant_name,owner_id,owner_name)
       VALUES($1,1,$2,'Request-time assistant',$3,'Request-time owner')`, [requestId, agent, owner]);
     await client.query(`INSERT INTO notifications
-      (id,user_id,workspace_id,source_type,source_id,title,assistant_join_request_id,assistant_join_opening_version)
-      VALUES($1,$2,$3,'workspace',$3,'Manager question',$4,1)`, [notificationId, owner, ws, requestId]);
+      (id,user_id,workspace_id,source_type,source_id,title,assistant_join_request_id,assistant_join_opening_version,ai_origin)
+      VALUES($1,$2,$3,'workspace',$3,'Manager question',$4,1,true)`, [notificationId, owner, ws, requestId]);
     await client.query('UPDATE assistant_join_question_identity_snapshots SET notification_linked_at=now() WHERE join_request_id=$1 AND opening_version=1', [requestId]);
     await client.query('SAVEPOINT reverse_join_identity');
     await assert.rejects(client.query(await readFile(join(directory, 'reverse/0094_assistant_join_question_identity.down.sql'), 'utf8')),

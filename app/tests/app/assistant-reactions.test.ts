@@ -120,8 +120,8 @@ describe('owner-only When sentences (F-027 A9, #409)', () => {
   test('AST-7.8: a durable mention reply is private and never posts',async()=>{
     await make('mentioned','draft_reply');
     const id=randomUUID();
-    await pool.query(`INSERT INTO notifications(id,user_id,workspace_id,source_type,source_id,title,body,url,reason,created_at) VALUES($1,$2,$3,'project',$4,'Jonas mentioned you','@when-ada please check', $5,'mention',$6)`,[id,owner.id,ws.id,place.id,`/projects/${place.id}/conversations/${thread.id}#message-${randomUUID()}`,future]);
-    await pool.query(`INSERT INTO notifications(id,user_id,workspace_id,source_type,source_id,title,body,url,reason,created_at) VALUES($1,$2,$3,'project',$4,'Mention for Jonas','@when-jonas please check',$5,'mention',$6)`,[randomUUID(),peer.id,ws.id,place.id,`/projects/${place.id}/conversations/${thread.id}#message-${randomUUID()}`,future]);
+    await pool.query(`INSERT INTO notifications(id,user_id,workspace_id,source_type,source_id,title,body,url,reason,created_at,ai_origin) VALUES($1,$2,$3,'project',$4,'Jonas mentioned you','@when-ada please check', $5,'mention',$6,false)`,[id,owner.id,ws.id,place.id,`/projects/${place.id}/conversations/${thread.id}#message-${randomUUID()}`,future]);
+    await pool.query(`INSERT INTO notifications(id,user_id,workspace_id,source_type,source_id,title,body,url,reason,created_at,ai_origin) VALUES($1,$2,$3,'project',$4,'Mention for Jonas','@when-jonas please check',$5,'mention',$6,false)`,[randomUUID(),peer.id,ws.id,place.id,`/projects/${place.id}/conversations/${thread.id}#message-${randomUUID()}`,future]);
     assert.equal((await events()).length,1,'another person’s mention does not start the owner’s sentence');
     // Real mention source (the notification text alone never supplies instructions/authority).
     const message=(await pool.query(`SELECT id FROM project_messages WHERE conversation_id=$1 ORDER BY sequence LIMIT 1`,[thread.id])).rows[0];

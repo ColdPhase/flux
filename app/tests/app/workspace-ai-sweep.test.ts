@@ -154,6 +154,55 @@ describe('workspace AI lock: sweep, lock order and remaining AC-3 rows', () => {
     assert.equal((await workspaceAiRow(ws.id))!.state, 'allowed');
   });
 
+  test('the workspace row lock is in the picture: a flip is not delayed by a holder of the workspace row, and an addMember against the flip, in both orders', async () => {
+    const { owner, admin, ws } = scene;
+    const restore = () => pool.query(`UPDATE workspace_members SET role = 'admin' WHERE workspace_id = $1 AND user_id = $2`, [ws.id, admin.id]);
+    const parked = async (pattern: string, what: string) => {
+      try {
+        await waitFor(async () => (await pool.query(`SELECT count(*)::int AS n FROM pg_stat_activity WHERE wait_event_type = 'Lock' AND query ILIKE $1`, [pattern])).rows[0].n > 0, what);
+      } catch (error) {
+        const waiting = (await pool.query(`SELECT wait_event, left(query, 160) AS query FROM pg_stat_activity WHERE wait_event_type = 'Lock' AND datname = current_database()`)).rows;
+        throw new Error(`${(error as Error).message}; waiting now: ${JSON.stringify(waiting)}`);
+      }
+    };
+    // 1. `changeRole` and `removeMember` take the AI policy share first and the workspace row (`lockWorkspace`) second, then the membership
+    //    rows (F-029 lock order: policy row, workspace row, memberships). The flip takes the policy row but not the workspace row, so a holder
+    //    of the workspace row does not delay it; the demotion started after it takes its policy share, waits at the workspace row and commits
+    //    once that is released. (The demotion arriving while the flip holds the policy row waits at the policy share, before it reaches the
+    //    workspace row; that order is the test above.) `addMember` is the exception: workspace row first, policy share last (case 2).
+    let late!: Promise<{ status: number; text: string }>;
+    const client = await pool.connect();
+    let flipped: { status: number; text: string };
+    try {
+      await client.query('BEGIN');
+      await client.query('SELECT id FROM workspaces WHERE id = $1 FOR NO KEY UPDATE', [ws.id]);
+      flipped = await Promise.race([put(admin, 'blocked'), new Promise<never>((_resolve, reject) => setTimeout(() => reject(new Error('the flip waited for the workspace row')), 15_000))]);
+      late = owner.browser.request('PATCH', `/api/v1/workspaces/${ws.id}/members/${admin.id}`, { body: { role: 'member' } });
+      await parked('%workspaces%', 'role change waiting for the workspace row');
+      await client.query('COMMIT');
+    } catch (error) { await client.query('ROLLBACK').catch(() => undefined); throw error; } finally { client.release(); }
+    assert.equal(flipped.status, 200, `the flip does not wait for the workspace row: ${flipped.text}`);
+    assert.equal((await late).status, 200, 'the demotion commits afterwards');
+    await restore();
+    await setWorkspaceAi(ws.id, 'allowed');
+    // 2. addMember takes the workspace row first and the policy share last (its event audience); against the flip, in both orders, no deadlock.
+    for (const flipFirst of [false, true]) {
+      const added = await person(`ai-sweep-added-${flipFirst}`);
+      let first!: Promise<{ status: number; text: string }>;
+      const second = await behind((query) => query('LOCK TABLE agents IN ACCESS EXCLUSIVE MODE'), async () => {
+        const add = () => owner.browser.request('POST', `/api/v1/workspaces/${ws.id}/members`, { body: { email: added.email, role: 'member' } });
+        first = flipFirst ? put(admin, 'blocked') : add();
+        await parked('%agents%', 'the first request parked at the agents lock');
+        return flipFirst ? add() : put(admin, 'blocked');
+      }, 2);
+      const firstDone = await first;
+      assert.ok([firstDone.status, second.status].every((status) => status < 500), `no deadlock (flip first: ${flipFirst}): ${firstDone.text} ${second.text}`);
+      const flips = flipFirst ? firstDone : second;
+      assert.equal(flips.status, 200, `the flip commits: ${flips.text}`);
+      await setWorkspaceAi(ws.id, 'allowed');
+    }
+  });
+
   test('the backstop refuses a stale or missing epoch on every AI work table; the current epoch passes it', async () => {
     const { ws, place, owner } = scene;
     const rule = randomUUID();

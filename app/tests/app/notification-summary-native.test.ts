@@ -66,8 +66,8 @@ async function fixture(t: TestContext) {
   // Ordinary unread notifications are valid existing producer output; no queue job is emitted
   // for these seeds. Explicit dates make A the anchor without relying on insertion timing.
   for (const [source, createdAt] of [[sourceA, '2034-06-11T23:58:00Z'], [sourceB, '2034-06-11T23:57:00Z']] as const) {
-    await pool.query(`INSERT INTO notifications (id, user_id, workspace_id, source_type, source_id, title, body, url, reason, created_at)
-      VALUES ($1, $2, $3, 'project', $4, 'Work awaits your review', 'Unread work', $5, 'assigned', $6)`,
+    await pool.query(`INSERT INTO notifications (id, user_id, workspace_id, source_type, source_id, title, body, url, reason, created_at, ai_origin)
+      VALUES ($1, $2, $3, 'project', $4, 'Work awaits your review', 'Unread work', $5, 'assigned', $6, false)`,
     [randomUUID(), reader.id, space.id, source.id, `/projects/${source.id}`, createdAt]);
   }
   const real = summaryUnitOfWork(db, queue);
@@ -235,8 +235,8 @@ describe('morning summary native admission and delivery rechecks (#350)', () => 
     const f = await fixture(t);
     await preferences(f.reader, { level: 'nothing', morningSummary: { enabled: false } });
     const id = randomUUID();
-    await pool.query(`INSERT INTO notifications (id, user_id, workspace_id, source_type, source_id, title, body, url)
-      VALUES ($1, $2, $3, 'project', $4, 'Ordinary legacy notice', 'Existing delivery contract', $5)`,
+    await pool.query(`INSERT INTO notifications (id, user_id, workspace_id, source_type, source_id, title, body, url, ai_origin)
+      VALUES ($1, $2, $3, 'project', $4, 'Ordinary legacy notice', 'Existing delivery contract', $5, false)`,
     [id, f.reader.id, f.sourceA.workspaceId, f.a.id, `/projects/${f.a.id}`]);
     const stored = (await pool.query('SELECT reason, delivery_kind, summary_sources FROM notifications WHERE id = $1', [id])).rows[0];
     assert.deepEqual(stored, { reason: null, delivery_kind: 'ordinary', summary_sources: null });

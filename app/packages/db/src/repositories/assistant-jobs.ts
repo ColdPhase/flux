@@ -150,7 +150,7 @@ export function assistantJobRows(db: DbExecutor) {
       const [project] = await db.select({ workspaceId: schema.projects.workspaceId }).from(schema.projects).where(eq(schema.projects.id, projectId));
       if (!project) throw new Error('Project not found');
       const id = randomUUID();
-      await notificationRows(db).insert({ id, userId: ownerUserId, source: { workspaceId: project.workspaceId, type: 'project', id: projectId }, title, body, url });
+      await notificationRows(db).insert({ id, userId: ownerUserId, source: { workspaceId: project.workspaceId, type: 'project', id: projectId }, title, body, url, aiOrigin: true });
       return id;
     },
 

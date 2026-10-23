@@ -17,7 +17,9 @@ after(() => boss.stop());
 
 const sender = loadPushSenderConfig();
 const vapid = createVapidAuthorizer();
-const notify = createNotifier(db, boss);
+const notifier = createNotifier(db, boss);
+/** A person's notification unless a test says otherwise (F-029 `aiOrigin`). */
+const notify = (input: Omit<Parameters<typeof notifier>[0], 'aiOrigin'> & { aiOrigin?: boolean }) => notifier({ aiOrigin: false, ...input });
 
 describe('in-app inbox', () => {
   test('lists my notifications newest first and marks them read; others cannot', async () => {

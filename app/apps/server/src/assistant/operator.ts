@@ -28,7 +28,7 @@ export function assistantOperatorUseCases(db: Database, boss: Pick<PgBoss, 'send
             eq(schema.notifications.userId, owner.userId), eq(schema.notifications.title, title), eq(schema.notifications.sourceId, workspaceId),
             gt(schema.notifications.createdAt, sql`now() - interval '7 days'`))).limit(1);
           if (already) continue;
-          const made = await createNotification(notificationUnitOfWork(tx, pgBossQueue(boss)), { userId: owner.userId, source: { type: 'workspace', id: workspaceId }, title, body });
+          const made = await createNotification(notificationUnitOfWork(tx, pgBossQueue(boss)), { userId: owner.userId, source: { type: 'workspace', id: workspaceId }, title, body, aiOrigin: true });
           await tx.update(schema.notifications).set({ reason: 'question' }).where(eq(schema.notifications.id, made.id));
           sent += 1;
         }

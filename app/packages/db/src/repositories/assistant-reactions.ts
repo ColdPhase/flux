@@ -86,8 +86,8 @@ export function assistantReactionRows(db: DbExecutor) {
         notification = (await one<{ id: string }>(sql`SELECT id FROM notifications WHERE user_id=${rule.ownerUserId} AND source_type='project' AND source_id=${rule.projectId} AND url=${url} AND read_at IS NULL ORDER BY created_at DESC LIMIT 1`))?.id ?? null;
         if (!notification) {
           notification = randomUUID();
-          await db.execute(sql`INSERT INTO notifications(id,user_id,workspace_id,source_type,source_id,title,body,url,reason) VALUES
-            (${notification},${rule.ownerUserId},${rule.workspaceId},'project',${rule.projectId},'Your assistant has a note for your task',${answer.slice(0, 1000)},${url},'question')`);
+          await db.execute(sql`INSERT INTO notifications(id,user_id,workspace_id,source_type,source_id,title,body,url,reason,ai_origin) VALUES
+            (${notification},${rule.ownerUserId},${rule.workspaceId},'project',${rule.projectId},'Your assistant has a note for your task',${answer.slice(0, 1000)},${url},'question',true)`);
         }
       }
       // No enqueue/send here. A note folds into the existing item and creates no second push.
