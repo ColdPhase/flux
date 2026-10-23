@@ -8,6 +8,7 @@ import {
   notificationPreferenceRows,
   pushSubscriptionRepository,
   sql,
+  accessReader,
 } from '@flux/db';
 import {
   NOTIFICATION_EMAIL_JOB,
@@ -41,7 +42,7 @@ function generatorPorts(tx: Transaction, boss: PgBoss): GeneratorPorts {
     eventsAfter: (seq, limit) => rows.eventsAfter(seq, limit),
     facts: notificationFactRows(tx),
     preferences: preferenceRepository(notificationPreferenceRows(tx)),
-    authorizer: policySourceReader(tx),
+    authorizer: policySourceReader(accessReader(tx)),
     insertNotification: (notification) => rows.insertNotification(notification),
     deliverableSubscriptions: (userId) => pushSubscriptionRepository(tx).deliverableIdsForUser(userId),
     emailedRecently: (userId, source, since) => rows.emailedRecently(userId, source, since),
@@ -67,7 +68,7 @@ export function emailUnitOfWork(db: Database, boss: PgBoss): EmailDeliveryUnitOf
       return work({
         lockEmail: (id) => rows.lockEmail(id),
         mailboxClaimed: (notificationId, exceptId, address) => rows.mailboxClaimed(notificationId, exceptId, address),
-        authorizer: policySourceReader(tx),
+        authorizer: policySourceReader(accessReader(tx)),
         preferences: preferenceRepository(notificationPreferenceRows(tx)),
         accountAddress: (userId) => rows.accountAddress(userId),
         verifiedExtraAddress: (userId) => rows.verifiedExtraAddress(userId),

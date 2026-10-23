@@ -1,4 +1,4 @@
-import { assistantJoinRows, assistantJoinView, lockAssistantOwner } from '@flux/db';
+import { assistantJoinRows, assistantJoinView, lockAssistantOwner, accessReader } from '@flux/db';
 import { ConflictError, NotFoundError, assertAuthorized, createNotification, evaluateProject, getProject,
   grantProject, isUuid, type Database, type Principal } from '@flux/core';
 import type { PgBoss } from 'pg-boss';
@@ -17,11 +17,11 @@ export function assistantJoinUseCases(db: Database, boss: Pick<PgBoss, 'send'>) 
       return db.transaction(async (tx) => {
         await lockAssistantOwner(tx, principal.id);
         const project = await getProject(principal, projectId, tx);
-        await assertAuthorized(principal, 'project.read', { type: 'project', id: projectId }, tx, { lock: true });
+        await assertAuthorized(principal, 'project.read', { type: 'project', id: projectId }, accessReader(tx), { lock: true });
         const rows = assistantJoinRows(tx);
         const identity = await rows.forOwner(principal.id, project.workspaceId);
         if (!identity) throw unavailable();
-        if ((await evaluateProject({ kind: 'agent', id: identity.agentId }, 'project.read', projectId, tx, { lock: true })).allowed)
+        if ((await evaluateProject({ kind: 'agent', id: identity.agentId }, 'project.read', projectId, accessReader(tx), { lock: true })).allowed)
           throw new ConflictError('Your assistant is already a member here', 'ASSISTANT_ALREADY_JOINED');
         const request = await rows.open(principal.id, project.workspaceId, identity.connectionId, projectId);
         if (request.created) {
@@ -29,7 +29,7 @@ export function assistantJoinUseCases(db: Database, boss: Pick<PgBoss, 'send'>) 
             assistantId: identity.agentId, assistantName: identity.agentName, ownerId: principal.id, ownerName: identity.ownerName });
           const title = `${identity.ownerName}'s assistant asks to join`.slice(0, 200);
           for (const candidate of await rows.candidates(project.workspaceId)) {
-            if (!(await evaluateProject({ kind: 'human', id: candidate.userId }, 'project.manage', projectId, tx, { lock: true })).allowed) continue;
+            if (!(await evaluateProject({ kind: 'human', id: candidate.userId }, 'project.manage', projectId, accessReader(tx), { lock: true })).allowed) continue;
             const notification = await createNotification(notificationUnitOfWork(tx, pgBossQueue(boss)), {
               userId: candidate.userId, source: { type: 'project', id: projectId }, title,
               body: `${project.name} · Requested contributor access.`,
@@ -46,12 +46,12 @@ export function assistantJoinUseCases(db: Database, boss: Pick<PgBoss, 'send'>) 
       human(principal, projectId);
       if (!isUuid(requestId)) throw unavailable();
       return db.transaction(async (tx) => {
-        await assertAuthorized(principal, 'project.manage', { type: 'project', id: projectId }, tx);
+        await assertAuthorized(principal, 'project.manage', { type: 'project', id: projectId }, accessReader(tx));
         const rows = assistantJoinRows(tx);
         const candidate = await rows.peek(projectId, requestId);
         if (!candidate) throw unavailable();
         await lockAssistantOwner(tx, candidate.ownerUserId);
-        await assertAuthorized(principal, 'project.manage', { type: 'project', id: projectId }, tx, { lock: true });
+        await assertAuthorized(principal, 'project.manage', { type: 'project', id: projectId }, accessReader(tx), { lock: true });
         const request = await rows.find(projectId, requestId);
         if (!request) throw unavailable();
         const identity = await rows.forOwner(request.ownerUserId, request.workspaceId);
@@ -59,7 +59,7 @@ export function assistantJoinUseCases(db: Database, boss: Pick<PgBoss, 'send'>) 
         if (openingVersion !== undefined && request.version !== openingVersion)
           throw new ConflictError('This request has changed. Review the current Inbox question.', 'ASSISTANT_JOIN_REQUEST_STALE');
         if (request.state !== 'pending') return assistantJoinView(request, identity.agentId);
-        if (!(await evaluateProject({ kind: 'human', id: request.ownerUserId }, 'project.read', projectId, tx, { lock: true })).allowed)
+        if (!(await evaluateProject({ kind: 'human', id: request.ownerUserId }, 'project.read', projectId, accessReader(tx), { lock: true })).allowed)
           throw new ConflictError('The owner no longer has access here', 'ASSISTANT_JOIN_REQUEST_STALE');
         const events = transactionEventSession(tx);
         await events.run(async () => {

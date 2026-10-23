@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { and, asc, desc, eq, inArray, isNull, sql, type SQL } from 'drizzle-orm';
-import { schema, eventRepository, projectGoalRows, workspaceAiSweepRows } from '@flux/db';
+import { schema, eventRepository, projectGoalRows, projectLevelSql, visibleDraftsSql, visibleProjectsSql, workspaceAi, workspaceAiSweepRows, accessReader } from '@flux/db';
 import { ASSISTANT_RUN_CHANGED_EVENT, ASSISTANT_WORKING_EVENT, WORKSPACE_AI_POLICY_CHANGED_EVENT } from '@flux/contracts';
 import type {
   SetWorkspaceAiPolicyCommand,
@@ -49,11 +49,7 @@ import {
   evaluateWorkspace,
   isUuid,
   LEVEL,
-  projectLevelSql,
   requireWorkspaceAi,
-  workspaceAi,
-  visibleDraftsSql,
-  visibleProjectsSql,
   type Actor,
 } from './policy.js';
 
@@ -63,7 +59,7 @@ export interface DomainEventSink {
 }
 
 // Events of these use cases: the access policy decides the audience; `@flux/db` stores (#89).
-const events = (tx: Executor) => policyEventPorts(tx, eventRepository(tx));
+const events = (tx: Executor) => policyEventPorts(accessReader(tx), eventRepository(tx));
 
 // Domain commands for workspaces, projects, grants, agents and drafts. Every method
 // authorizes through ./policy.ts before touching data; mutations decide and write in the
@@ -247,7 +243,7 @@ export async function listWorkspaces(principal: Principal, db: Database): Promis
   if (principal.kind === 'agent' && isUuid(principal.id)) {
     const [agent] = await db.select({ workspaceId: schema.agents.workspaceId }).from(schema.agents).where(eq(schema.agents.id, principal.id));
     if (!agent) return [];
-    const { visible } = await evaluateWorkspace(principal, 'workspace.read', agent.workspaceId, db);
+    const { visible } = await evaluateWorkspace(principal, 'workspace.read', agent.workspaceId, accessReader(db));
     if (!visible) return [];
     const [row] = await db.select().from(schema.workspaces).where(eq(schema.workspaces.id, agent.workspaceId));
     return row ? [toWorkspace(row, null, (await workspaceAiViews(db, [{ workspaceId: row.id, role: null }])).get(row.id)!)] : [];
@@ -256,14 +252,14 @@ export async function listWorkspaces(principal: Principal, db: Database): Promis
 }
 
 export async function getWorkspace(principal: Principal, workspaceId: string, db: Database): Promise<Workspace> {
-  const { actor } = enforce(await evaluateWorkspace(principal, 'workspace.read', workspaceId, db), 'workspace');
+  const { actor } = enforce(await evaluateWorkspace(principal, 'workspace.read', workspaceId, accessReader(db)), 'workspace');
   const [row] = await db.select().from(schema.workspaces).where(eq(schema.workspaces.id, workspaceId));
   if (!row) throw new NotFoundError('Workspace', 'WORKSPACE_NOT_FOUND');
   return toWorkspace(row, actor.role, (await workspaceAiViews(db, [{ workspaceId: row.id, role: actor.role }])).get(row.id)!);
 }
 
 export async function listMembers(principal: Principal, workspaceId: string, db: Database): Promise<WorkspaceMember[]> {
-  enforce(await evaluateWorkspace(principal, 'workspace.read_members', workspaceId, db), 'workspace');
+  enforce(await evaluateWorkspace(principal, 'workspace.read_members', workspaceId, accessReader(db)), 'workspace');
   const rows = await db.select({ member: schema.workspaceMembers, email: schema.authUsers.email, name: schema.authUsers.name })
     .from(schema.workspaceMembers)
     .innerJoin(schema.authUsers, eq(schema.authUsers.id, schema.workspaceMembers.userId))
@@ -289,7 +285,7 @@ export async function addMember(principal: Principal, workspaceId: string, comma
   const role = oneOf(command?.role, ROLES, 'role');
   return db.transaction(async (tx) => {
     await lockWorkspace(tx, workspaceId);
-    const { actor } = enforce(await evaluateWorkspace(principal, 'workspace.manage_members', workspaceId, tx, { lock: true }), 'workspace');
+    const { actor } = enforce(await evaluateWorkspace(principal, 'workspace.manage_members', workspaceId, accessReader(tx), { lock: true }), 'workspace');
     requireRoleAuthority(actor, role);
     const lookup = typeof command.userId === 'string' ? eq(schema.authUsers.id, command.userId)
       : typeof command.email === 'string' ? eq(schema.authUsers.email, command.email.trim().toLowerCase()) : null;
@@ -326,7 +322,7 @@ export async function setWorkspaceAiPolicy(principal: Principal, workspaceId: st
   return db.transaction(async (tx) => {
     const p = schema.workspaceAiPolicies;
     const [current] = isUuid(workspaceId) ? await tx.select().from(p).where(eq(p.workspaceId, workspaceId)).for('update') : [];
-    const decision = await evaluateWorkspace(principal, 'workspace.manage_ai', workspaceId, tx, { lock: true });
+    const decision = await evaluateWorkspace(principal, 'workspace.manage_ai', workspaceId, accessReader(tx), { lock: true });
     if (!decision.visible || !current) throw new NotFoundError('Workspace', 'WORKSPACE_NOT_FOUND');
     if (!decision.allowed) throw new ForbiddenError('Only workspace owners and admins can turn AI on or off', 'WORKSPACE_AI_ADMIN_REQUIRED');
     const expected = command.expectedVersion;
@@ -397,7 +393,7 @@ export async function changeRole(principal: Principal, workspaceId: string, user
     // F-029 lock order: the AI policy row before any membership row (the event below reads it again for agent audiences).
     await workspaceAi(tx, workspaceId, { lock: true });
     await lockWorkspace(tx, workspaceId);
-    const { actor } = enforce(await evaluateWorkspace(principal, 'workspace.manage_members', workspaceId, tx, { lock: true }), 'workspace');
+    const { actor } = enforce(await evaluateWorkspace(principal, 'workspace.manage_members', workspaceId, accessReader(tx), { lock: true }), 'workspace');
     const [target] = await tx.select().from(schema.workspaceMembers)
       .where(and(eq(schema.workspaceMembers.workspaceId, workspaceId), eq(schema.workspaceMembers.userId, userId))).for('update');
     if (!target) throw new NotFoundError('Member', 'MEMBER_NOT_FOUND');
@@ -421,7 +417,7 @@ export async function removeMember(principal: Principal, workspaceId: string, us
     await workspaceAi(tx, workspaceId, { lock: true });
     await lockWorkspace(tx, workspaceId);
     const self = principal.kind === 'human' && principal.id === userId;
-    const { actor } = enforce(await evaluateWorkspace(principal, self ? 'workspace.read' : 'workspace.manage_members', workspaceId, tx, { lock: true }), 'workspace');
+    const { actor } = enforce(await evaluateWorkspace(principal, self ? 'workspace.read' : 'workspace.manage_members', workspaceId, accessReader(tx), { lock: true }), 'workspace');
     const [target] = await tx.select().from(schema.workspaceMembers)
       .where(and(eq(schema.workspaceMembers.workspaceId, workspaceId), eq(schema.workspaceMembers.userId, userId))).for('update');
     if (!target) throw new NotFoundError('Member', 'MEMBER_NOT_FOUND');
@@ -441,7 +437,7 @@ export async function createProject(principal: Principal, workspaceId: string, c
   // Without a template (the API, agents, a promoted sketch) a project shows every view, as every project did before (#351).
   const template = command.template === undefined ? null : oneOf(command.template, PROJECT_TEMPLATES, 'template');
   return db.transaction(async (tx) => {
-    enforce(await evaluateWorkspace(principal, 'project.create', workspaceId, tx, { lock: true }), 'workspace');
+    enforce(await evaluateWorkspace(principal, 'project.create', workspaceId, accessReader(tx), { lock: true }), 'workspace');
     const id = randomUUID();
     const [row] = await tx.insert(schema.projects).values({ id, workspaceId, name: projectName, visibility, views: [...(template ? TEMPLATE_VIEWS[template] : PROJECT_VIEWS)], createdBy: principal.id }).returning();
     if (eventSink) await eventSink.record(principal, workspaceId, 'project.created.v1', id, { visibility });
@@ -457,7 +453,7 @@ export async function addProjectView(principal: Principal, projectId: string, co
     // The same exclusive project lock a grant change takes, before the read: two additions then queue and
     // the second reads the first's array, instead of both holding FOR SHARE and deadlocking on the update.
     await lockProjectForGrantChange(tx, projectId);
-    const { project, level } = enforce(await evaluateProject(principal, 'project.write', projectId, tx, { lock: true }), 'project');
+    const { project, level } = enforce(await evaluateProject(principal, 'project.write', projectId, accessReader(tx), { lock: true }), 'project');
     const goal = (await shownGoals(tx, [projectId])).get(projectId) ?? null;
     if (project!.views.includes(view)) return toProject(project!, level, goal);
     const [row] = await tx.update(schema.projects).set({ views: [...project!.views, view], version: sql`${schema.projects.version} + 1`, updatedAt: new Date() })
@@ -470,7 +466,7 @@ export async function addProjectView(principal: Principal, projectId: string, co
 /** Projects the principal can see, filtered before count and pagination. */
 export async function listProjects(principal: Principal, workspaceId: string, query: PageQuery, db: Database): Promise<Page<Project>> {
   const page = parsePage(query);
-  const { actor } = enforce(await evaluateWorkspace(principal, 'workspace.read', workspaceId, db), 'workspace');
+  const { actor } = enforce(await evaluateWorkspace(principal, 'workspace.read', workspaceId, accessReader(db)), 'workspace');
   const filter = visibleProjectsSql(actor);
   const [counted] = await db.select({ count: sql<number>`count(*)::int` }).from(schema.projects).where(filter);
   const rows = await db.select({ project: schema.projects, level: projectLevelSql(actor, schema.projects.id, schema.projects.visibility).mapWith(Number) })
@@ -482,12 +478,12 @@ export async function listProjects(principal: Principal, workspaceId: string, qu
 }
 
 export async function getProject(principal: Principal, projectId: string, db: Database): Promise<Project> {
-  const { project, level } = enforce(await evaluateProject(principal, 'project.read', projectId, db), 'project');
+  const { project, level } = enforce(await evaluateProject(principal, 'project.read', projectId, accessReader(db)), 'project');
   return toProject(project!, level, (await shownGoals(db, [projectId])).get(projectId) ?? null);
 }
 
 export async function listProjectGrants(principal: Principal, projectId: string, db: Database): Promise<ProjectGrant[]> {
-  enforce(await evaluateProject(principal, 'project.manage', projectId, db), 'project');
+  enforce(await evaluateProject(principal, 'project.manage', projectId, accessReader(db)), 'project');
   const rows = await db.select().from(schema.projectGrants).where(and(eq(schema.projectGrants.projectId, projectId), sql`(${schema.projectGrants.agentId} is null or ${visibleAgentIdentity(principal, projectId, sql`${schema.projectGrants.agentId}`)})`))
     .orderBy(asc(schema.projectGrants.createdAt), asc(schema.projectGrants.id));
   return rows.map(toGrant);
@@ -511,7 +507,7 @@ function visibleAgentIdentity(principal: Principal, projectId?: string, agentId:
 }
 
 export async function listProjectPeople(principal: Principal, projectId: string, db: Database): Promise<ProjectPerson[]> {
-  const { project } = enforce(await evaluateProject(principal, 'project.read', projectId, db), 'project');
+  const { project } = enforce(await evaluateProject(principal, 'project.read', projectId, accessReader(db)), 'project');
   const workspaceId = project!.workspaceId;
   const humans = await db.select({ id: schema.workspaceMembers.userId, name: schema.authUsers.name })
     .from(schema.workspaceMembers)
@@ -525,7 +521,7 @@ export async function listProjectPeople(principal: Principal, projectId: string,
   ];
   const people: ProjectPerson[] = [];
   for (const candidate of candidates) {
-    const decision = await evaluateProject({ kind: candidate.kind, id: candidate.id }, 'project.read', projectId, db);
+    const decision = await evaluateProject({ kind: candidate.kind, id: candidate.id }, 'project.read', projectId, accessReader(db));
     const access = decision.allowed ? accessName(decision.level) : null;
     if (access) people.push({ ...candidate, access });
   }
@@ -554,7 +550,7 @@ export async function grantProject(principal: Principal, projectId: string, comm
   if (!target || (target.kind !== 'human' && target.kind !== 'agent') || typeof target.id !== 'string' || !target.id) throw new InvalidInputError('principal must be { kind: "human" | "agent", id }');
   return db.transaction(async (tx) => {
     await lockProjectForGrantChange(tx, projectId);
-    const { actor, project } = enforce(await evaluateProject(principal, 'project.manage', projectId, tx, { lock: true }), 'project');
+    const { actor, project } = enforce(await evaluateProject(principal, 'project.manage', projectId, accessReader(tx), { lock: true }), 'project');
     const workspaceId = project!.workspaceId;
     if (target.kind === 'human') {
       const [member] = await tx.select().from(schema.workspaceMembers)
@@ -597,7 +593,7 @@ export async function grantProject(principal: Principal, projectId: string, comm
 export async function revokeProjectGrant(principal: Principal, projectId: string, grantId: string, db: Database): Promise<void> {
   await db.transaction(async (tx) => {
     await lockProjectForGrantChange(tx, projectId);
-    const { actor, project } = enforce(await evaluateProject(principal, 'project.manage', projectId, tx, { lock: true }), 'project');
+    const { actor, project } = enforce(await evaluateProject(principal, 'project.manage', projectId, accessReader(tx), { lock: true }), 'project');
     const [grant] = isUuid(grantId) ? await tx.select().from(schema.projectGrants)
       .where(and(eq(schema.projectGrants.id, grantId), eq(schema.projectGrants.projectId, projectId))).for('update') : [];
     if (!grant) throw new NotFoundError('Grant', 'GRANT_NOT_FOUND');
@@ -618,9 +614,9 @@ export async function createAgent(principal: Principal, workspaceId: string, com
   const agentName = name(command?.name);
   const owner = oneOf(command.owner, ['self', 'workspace'] as const, 'owner');
   return db.transaction(async (tx) => {
-    enforce(await evaluateWorkspace(principal, owner === 'self' ? 'agent.create' : 'workspace.manage_agents', workspaceId, tx, { lock: true }), 'workspace');
+    enforce(await evaluateWorkspace(principal, owner === 'self' ? 'agent.create' : 'workspace.manage_agents', workspaceId, accessReader(tx), { lock: true }), 'workspace');
     // F-029: no new agent identity while AI is off in the workspace (revoking and listing stay).
-    await requireWorkspaceAi(tx, workspaceId, { lock: true });
+    await requireWorkspaceAi(accessReader(tx), workspaceId, { lock: true });
     const id = randomUUID();
     const [row] = await tx.insert(schema.agents).values({ id, workspaceId, name: agentName, ownerUserId: owner === 'self' ? principal.id : null, createdBy: principal.id }).returning();
     await recordEvent(events(tx), principal, workspaceId, 'agent.created.v1', id, { owner });
@@ -629,7 +625,7 @@ export async function createAgent(principal: Principal, workspaceId: string, com
 }
 
 export async function listAgents(principal: Principal, workspaceId: string, db: Database): Promise<Agent[]> {
-  enforce(await evaluateWorkspace(principal, 'workspace.read_members', workspaceId, db), 'workspace');
+  enforce(await evaluateWorkspace(principal, 'workspace.read_members', workspaceId, accessReader(db)), 'workspace');
   const rows = await db.select().from(schema.agents).where(and(eq(schema.agents.workspaceId, workspaceId), visibleAgentIdentity(principal)))
     .orderBy(asc(schema.agents.createdAt), asc(schema.agents.id));
   return rows.map(toAgent);
@@ -638,7 +634,7 @@ export async function listAgents(principal: Principal, workspaceId: string, db: 
 /** Revokes an agent identity; its grants stop applying on the next call. The owner or a workspace owner/admin may revoke. */
 export async function revokeAgent(principal: Principal, agentId: string, db: Database): Promise<Agent> {
   return db.transaction(async (tx) => {
-    const { agent } = enforce(await evaluateAgent(principal, 'agent.revoke', agentId, tx, { lock: true }), 'agent');
+    const { agent } = enforce(await evaluateAgent(principal, 'agent.revoke', agentId, accessReader(tx), { lock: true }), 'agent');
     const [row] = await tx.update(schema.agents).set({ revokedAt: agent!.revokedAt ?? new Date(), updatedAt: new Date() })
       .where(eq(schema.agents.id, agentId)).returning();
     await recordEvent(events(tx), principal, agent!.workspaceId, 'agent.revoked.v1', agentId, {});
@@ -656,7 +652,7 @@ export async function revokeAgent(principal: Principal, agentId: string, db: Dat
  */
 async function requireTargetProject(principal: Principal, workspaceId: string, projectId: unknown, tx: Tx) {
   if (!isUuid(projectId)) throw new NotFoundError('Project', 'PROJECT_NOT_FOUND');
-  const evaluation = await evaluateProject(principal, 'project.write', projectId, tx, { lock: true });
+  const evaluation = await evaluateProject(principal, 'project.write', projectId, accessReader(tx), { lock: true });
   if (!evaluation.visible) throw new NotFoundError('Project', 'PROJECT_NOT_FOUND');
   if (evaluation.project!.workspaceId !== workspaceId) throw new RuleViolationError('A draft can only link to a project in its own workspace', 'CROSS_WORKSPACE');
   if (!evaluation.allowed) throw new ForbiddenError('Contributor access to the target project is required', 'PROJECT_WRITE_REQUIRED');
@@ -690,7 +686,7 @@ export async function createDraft(principal: Principal, workspaceId: string, com
   const title = name(command?.title, 'Title');
   const text = body(command.body);
   return db.transaction(async (tx) => {
-    enforce(await evaluateWorkspace(principal, 'draft.create', workspaceId, tx, { lock: true }), 'workspace');
+    enforce(await evaluateWorkspace(principal, 'draft.create', workspaceId, accessReader(tx), { lock: true }), 'workspace');
     if (principal.kind === 'agent' && (command.projectId === undefined || command.projectId === null)) {
       throw new RuleViolationError('An agent can only create drafts inside a project it contributes to', 'PROJECT_REQUIRED');
     }
@@ -708,14 +704,14 @@ export async function createDraft(principal: Principal, workspaceId: string, com
 }
 
 export async function getDraft(principal: Principal, draftId: string, db: Database): Promise<Draft> {
-  const { draft } = enforce(await evaluateDraft(principal, 'draft.read', draftId, db), 'draft');
+  const { draft } = enforce(await evaluateDraft(principal, 'draft.read', draftId, accessReader(db)), 'draft');
   return toDraft(draft!);
 }
 
 /** Drafts the principal can read, filtered before count and pagination. */
 export async function listDrafts(principal: Principal, workspaceId: string, query: DraftListQuery, db: Database): Promise<Page<Draft>> {
   const page = parsePage(query);
-  const { actor } = enforce(await evaluateWorkspace(principal, 'workspace.read', workspaceId, db), 'workspace');
+  const { actor } = enforce(await evaluateWorkspace(principal, 'workspace.read', workspaceId, accessReader(db)), 'workspace');
   const conditions: SQL[] = [visibleDraftsSql(actor)];
   if (query.projectId !== undefined) {
     if (!isUuid(query.projectId)) throw new InvalidInputError('projectId must be a UUID');
@@ -735,7 +731,7 @@ export async function updateDraft(principal: Principal, draftId: string, command
   if (command?.body !== undefined) changes.body = body(command.body);
   if (!Object.keys(changes).length) throw new InvalidInputError('Nothing to update');
   return db.transaction(async (tx) => {
-    const { draft } = enforce(await evaluateDraft(principal, 'draft.write', draftId, tx, { lock: true }), 'draft');
+    const { draft } = enforce(await evaluateDraft(principal, 'draft.write', draftId, accessReader(tx), { lock: true }), 'draft');
     requireVersion(draft!, command.expectedVersion);
     const [row] = await tx.update(schema.drafts).set({ ...changes, version: sql`${schema.drafts.version} + 1`, updatedAt: new Date() })
       .where(eq(schema.drafts.id, draftId)).returning();
@@ -751,7 +747,7 @@ export async function updateDraft(principal: Principal, draftId: string, command
 export async function shareDraft(principal: Principal, draftId: string, command: ShareDraftCommand, db: Database): Promise<Draft> {
   const scope = oneOf(command?.scope, DRAFT_VISIBILITIES, 'scope');
   return db.transaction(async (tx) => {
-    const { actor, draft } = enforce(await evaluateDraft(principal, 'draft.share', draftId, tx, { lock: true }), 'draft');
+    const { actor, draft } = enforce(await evaluateDraft(principal, 'draft.share', draftId, accessReader(tx), { lock: true }), 'draft');
     requireVersion(draft!, command.expectedVersion);
     let projectId = draft!.projectId;
     if (command.projectId !== undefined && command.projectId !== draft!.projectId) {
@@ -777,7 +773,7 @@ export async function moveDraft(principal: Principal, draftId: string, command: 
   const visibility = oneOf(command?.visibility, DRAFT_VISIBILITIES, 'visibility');
   if (command.projectId !== null && typeof command.projectId !== 'string') throw new InvalidInputError('projectId must be a project id or null');
   return db.transaction(async (tx) => {
-    const { actor, draft } = enforce(await evaluateDraft(principal, 'draft.move', draftId, tx, { lock: true }), 'draft');
+    const { actor, draft } = enforce(await evaluateDraft(principal, 'draft.move', draftId, accessReader(tx), { lock: true }), 'draft');
     requireVersion(draft!, command.expectedVersion);
     if (principal.kind === 'agent' && command.projectId === null) {
       throw new RuleViolationError('An agent cannot move a draft outside every project', 'PROJECT_REQUIRED');

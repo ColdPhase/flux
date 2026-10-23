@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { before, describe, test } from 'node:test';
 import type { ConversationMessage, Dm, DmSummary, Page, Workspace } from '@flux/contracts';
 import { authorize, createAgent, type Principal } from '@flux/core';
+import { accessReader } from '@flux/db';
 import { db, pool } from './support/db.js';
 import { addMember, expectStatus, person, removeMember, workspace, type Person } from './support/people.js';
 import { StreamClient } from './support/stream.js';
@@ -120,10 +121,10 @@ describe('direct messages', () => {
     const joPrincipal: Principal = { id: jo.id, kind: 'human' };
     const helper = await createAgent(joPrincipal, ws.id, { name: 'Jo’s helper', owner: 'self' }, db);
     const agent: Principal = { id: helper.id, kind: 'agent' };
-    assert.deepEqual(await authorize(agent, 'dm.read', { type: 'dm', id: dm.id }, db), { allowed: false, visible: false });
-    assert.equal((await authorize(agent, 'dm.create', { type: 'workspace', id: ws.id }, db)).allowed, false);
-    assert.deepEqual(await authorize(joPrincipal, 'dm.write', { type: 'dm', id: dm.id }, db), { allowed: true, visible: true });
-    assert.deepEqual(await authorize({ id: ada.id, kind: 'human' }, 'dm.read', { type: 'dm', id: dm.id }, db), { allowed: false, visible: false });
+    assert.deepEqual(await authorize(agent, 'dm.read', { type: 'dm', id: dm.id }, accessReader(db)), { allowed: false, visible: false });
+    assert.equal((await authorize(agent, 'dm.create', { type: 'workspace', id: ws.id }, accessReader(db))).allowed, false);
+    assert.deepEqual(await authorize(joPrincipal, 'dm.write', { type: 'dm', id: dm.id }, accessReader(db)), { allowed: true, visible: true });
+    assert.deepEqual(await authorize({ id: ada.id, kind: 'human' }, 'dm.read', { type: 'dm', id: dm.id }, accessReader(db)), { allowed: false, visible: false });
   });
 
   test('messages keep #36 ordering, clientMessageId retries, Idempotency-Key replays and paging', async () => {
