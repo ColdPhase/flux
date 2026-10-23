@@ -1246,6 +1246,9 @@ cowork_helper() {
 cmd_cowork() (
   action=${1:-}; [ $# -eq 0 ] || shift
   case "$action" in start|resume) ;; *) die "Use ./flux cowork start|resume --client codex --origin URL --connection ID --project ID" ;; esac
+  # The native run is stopped after this many seconds (default 300, a positive whole number).
+  watchdog=${FLUX_COWORK_WATCHDOG_SECONDS:-300}
+  case "$watchdog" in ''|*[!0-9]*|0*) die "FLUX_COWORK_WATCHDOG_SECONDS must be a positive whole number of seconds, such as 300." ;; esac
   client='' connection='' project='' origin=''
   while [ $# -gt 0 ]; do
     [ $# -ge 2 ] || die "Missing host-action option value."
@@ -1305,7 +1308,7 @@ cmd_cowork() (
   (
     sleeper=''
     trap '[ -z "$sleeper" ] || kill -TERM "$sleeper" 2>/dev/null || true; [ -z "$sleeper" ] || wait "$sleeper" 2>/dev/null || true; exit 0' TERM INT
-    sleep 300 & sleeper=$!
+    sleep "$watchdog" & sleeper=$!
     wait "$sleeper" || exit 0
     kill -TERM "$native_pid" 2>/dev/null || true
   ) >/dev/null 2>&1 &
@@ -1358,7 +1361,9 @@ Flux launcher. Flux runs in Docker; the external cowork action also needs the na
                          interactive ./flux up asks the same once. Needs a terminal.
   ./flux cowork start|resume --client codex --origin URL --connection ID --project ID
                          Supplied native host action from Connect/Agents. Requires this built checkout,
-                         Docker and Codex 0.160.1 signed in with ChatGPT. Resume uses its exact saved thread.
+                         Docker and Codex 0.160.1 signed in with ChatGPT. Resume uses its exact saved thread
+                         (unverified with a real account). A native run is stopped after
+                         FLUX_COWORK_WATCHDOG_SECONDS (default 300).
   ./flux help            This text.
 
 Commands that start, stop, back up, restore or delete refuse a Compose project that belongs to another
