@@ -1,7 +1,10 @@
 # F-030 — encrypted workspaces
 
-**Status: proposed.** The contract waits for one independent peer assessment and is then
-implemented in the [slices](#delivery-slices) below. Owner @PelikanFix16 (`claude-hubert`);
+**Status: proposed.** A security assessment of `d8b6e073` asked for changes
+([PR #657 comment](https://github.com/ColdPhase/flux/pull/657#issuecomment-6369609716)); this revision
+addresses them. That assessment was posted from the shared author account, so it is not the
+independent acceptance. The contract is implemented in the [slices](#delivery-slices) below after
+the independent check. Owner @PelikanFix16 (`claude-hubert`);
 independent evaluator @Zamojski5. Issue [#655](https://github.com/ColdPhase/flux/issues/655)
 (founder direction, Hubert, 2026-10-23, required in v0.1.0). Decision row: [F-030](decisions.md).
 It replaces the set-aside full E2EE research ([#615](https://github.com/ColdPhase/flux/issues/615)), which
@@ -24,9 +27,11 @@ or path that carries workspace content adds it to the [inventory](#inventory) in
 
 | | Covered | Not covered |
 | --- | --- | --- |
-| **The adversary has** | A copy of the database (dump, volume, WAL, a backup archive), the files volume, the container logs, or the whole server taken away powered off. | A running, unlocked server: root on the host, a debugger in a process, or a memory snapshot of a live VM. Such an attacker can read RAM, where the unlocked key and plaintext live. This is accepted by founder answer 1. |
+| **The adversary has** | A copy of the database (dump, volume, WAL, a backup archive), the files volume, the container logs and writable layers, or the whole server taken away powered off, including its swap device ([swap is enforced](#memory-what-is-enforced-and-what-is-not)). | A running, unlocked server: root on the host, a debugger in a process, a memory snapshot of a live VM, or a **hibernated** host or **suspended VM whose memory image was written to disk** while unlocked. Such an attacker can read RAM, where the unlocked key and plaintext live. This is accepted by founder answer 1. |
 | **Guarantee** | Without an unlock password or the recovery code, no workspace content can be read from what is on disk. Ciphertext moved between rows, columns, tables or workspaces fails to decrypt. | Tampering by someone who can write to the database: a field rolled back to an older ciphertext of the **same** row and column is not detected. Theft only reads data; tampering is outside the founder's threat. |
-| **Visible** | The [metadata](#what-stays-visible-metadata) listed below: ids, structure, people, times, task status, owner and due date, and value lengths. | — |
+| **Visible** | The [metadata](#what-stays-visible-metadata) listed below: ids, structure, people, times, task status, owner and due date, value lengths, and which values within one workspace are equal (keyed digests). | — |
+| **Former holders** | — | **Anyone who once held an unlock password or the recovery code and kept any copy of the data from that time keeps the key.** The DEK does not change in this version, so opening an old copy (a backup, a dump, the old volume) reveals the DEK, and that DEK also opens every **later** copy they obtain. Removal stops their access to the running app, not to disk copies. [Rotation](#rotation) (S4) closes this. |
+| **Weak passwords** | The [password rule](#password-strength) | The weakest unlock password protects the whole workspace: each owner's and admin's wrap is an independent target for an offline guess. |
 
 Account data (names, e-mail addresses, sessions, passwords managed by Better Auth) is not
 workspace content and is unchanged. Live audio and video are not stored ([live media](../development/live-media.md)).
@@ -89,6 +94,15 @@ CREATE TABLE workspace_unlock_attempts (   -- failed attempts only; rows older t
   user_id text NOT NULL REFERENCES auth_users(id) ON DELETE CASCADE,
   at timestamptz NOT NULL DEFAULT now()
 );
+CREATE TABLE workspace_wrap_grants (       -- a holder's permission for one person to add a password; no key material
+  workspace_id uuid NOT NULL REFERENCES workspace_keys(workspace_id) ON DELETE CASCADE,
+  user_id text NOT NULL REFERENCES auth_users(id) ON DELETE CASCADE,
+  granted_by text NOT NULL REFERENCES auth_users(id) ON DELETE CASCADE,
+  expires_at timestamptz NOT NULL,
+  PRIMARY KEY (workspace_id, user_id)
+);
+ALTER TABLE workspaces ADD COLUMN creation_id uuid;   -- the client's id for POST /encrypted-workspaces retries
+CREATE UNIQUE INDEX workspaces_creation ON workspaces (created_by, creation_id) WHERE creation_id IS NOT NULL;
 CREATE TABLE sealed_job_waits (            -- work that needs the DEK and arrived while locked; ids only
   id uuid PRIMARY KEY, workspace_id uuid NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
   queue text NOT NULL, payload jsonb NOT NULL, created_at timestamptz NOT NULL DEFAULT now()
@@ -98,8 +112,14 @@ CREATE TABLE sealed_job_waits (            -- work that needs the DEK and arrive
 - The F-029 trigger that writes the new workspace's `workspace_ai_policies` row writes `'blocked'`
   when `NEW.encrypted`, and a `BEFORE UPDATE` trigger on `workspace_ai_policies` refuses `'allowed'`
   for a sealed workspace (`WORKSPACE_ENCRYPTED_AI_OFF`). See [AI forced off](#ai-forced-off).
-- S2 adds `search_documents.sealed`, `search_changes`, `idempotency_keys.workspace_id`, the
-  [plaintext backstop](#enforcement) triggers and the relaxed checks.
+- `idempotency_keys.workspace_id` already exists (nullable, migration 0004). The command runner
+  (`apps/server/src/http/commands.ts`, `runCommand`) fills it only when the route declares a `scope`.
+  S2a makes it complete ([idempotency](#idempotency-store)).
+- The attempt limit is per person and workspace only. A workspace-wide limit would let one admin
+  session lock the others out of unlocking.
+- S2a adds `search_documents.sealed`, `search_changes`, the search placeholder triggers, the
+  [plaintext backstops](#enforcement) and the relaxed checks, so no sealed column is ever copied into
+  `search_documents`.
 - The reverse migration drops the new tables and columns. It refuses to run while a sealed
   workspace exists, because the data cannot be read without the new tables.
 
@@ -124,31 +144,45 @@ cursor.
 
 `fx1.<key version>.<base64url(nonce 12 ‖ ciphertext ‖ tag 16)>`, AES-256-GCM with `K_seal`.
 
-- **Nonce.** 96 random bits for each seal. NIST SP 800-38D §8.3 limits random 96-bit IVs to 2^32
-  encryptions per key. The heaviest writer is the live Wiki: about three seals for each admitted
-  update (update bytes, ledger and head body). At five updates a second without pause, one
-  workspace needs about 6.8 years of continuous typing to reach the limit. `key_version` exists for
-  a later [rotation](#rotation).
-- **AAD** binds the value to its place: the UTF-8 of
-  `flux:seal:v1|<workspace id>|<field>|<row identity>|<key version>`. `field` is the registry name
-  (`project_messages.body`). `row identity` is the row's primary-key values joined by `/`
-  (`<material id>/<version>` for a material version). A ciphertext copied to another row, column,
-  table or workspace fails authentication. That stops row and column swapping.
+- **Context encoding.** Every AAD and HKDF `info` in this contract is a length-prefixed list:
+  each component is its UTF-8 bytes preceded by a 4-byte big-endian length, starting with a
+  purpose label (`flux seal v1`, `flux wrap v1`, `flux unlock v1`, `flux file v1`). Identities can
+  contain client-chosen text (an idempotency key), so no separator character can make two contexts
+  equal.
+- **AAD** binds the value to its place: `[flux seal v1, workspace id, field, row identity…, key version]`.
+  `field` is the registry name (`project_messages.body`). The row identity is the row's primary-key
+  values as separate components (material id and version for a material version). A ciphertext
+  copied to another row, column, table or workspace fails authentication. That stops row and column
+  swapping.
+- **A key per row.** Each seal uses `K_row = HKDF-SHA256(K_seal, info = the same context as the AAD)`
+  with a random 96-bit nonce. NIST SP 800-38D §8.3 limits random 96-bit IVs to 2^32 encryptions per
+  key. With a key per row, that limit applies to re-seals of **one** field of **one** row. A live
+  Wiki head body is re-sealed once per admitted update, so a single document needs 2^32 updates
+  (about 27 years at five a second for that one document, whatever the number of editors). With one
+  key per workspace, N concurrent editors at five updates a second and three seals each would reach
+  2^32 in 6.8/N years, and nothing would observe it. The cost is one HKDF (two HMAC-SHA256) per seal
+  or open, a few microseconds. No seal counter is needed.
 - **Values copied in SQL** keep their identity. Where SQL copies a sealed value between tables, both
-  columns share one registry field and identity. Today that is the live Wiki head and its archive:
-  `doc_live.body` and `doc_live.codec_state`, identity `<doc id>/<generation>`. The registry test
-  fails if any other SQL copy of a sealed column appears. Such a copy must be moved to the
-  application, which opens and re-seals the value.
+  columns share one registry field and identity. Only one copy is allowed: the live Wiki head and its
+  archive, `doc_live.body` and `doc_live.codec_state`, identity `[doc id, generation]`. The other SQL
+  copy in the schema, `preserve_draft_version` (migration 0006, `drafts` → `draft_versions`), is
+  replaced in S2a. For a sealed workspace the trigger writes nothing, and the drafts repository inserts
+  the `draft_versions` row itself, sealed with that row's identity. The registry test reads
+  `pg_trigger` and `pg_proc` and fails on any other function that copies a sealed column. Such a copy
+  must be moved to the application, which opens and re-seals the value.
 - **jsonb columns** store `{"$sealed":"fx1…"}`, so `jsonb_typeof = 'object'` checks still hold. Text
   columns store the envelope string.
 - **Lengths are not hidden.** There is no padding. Ciphertext length is plaintext length plus 28
   bytes, then base64.
+- **Equality within a workspace is visible.** Keyed digests are deterministic, so two rows with the
+  same `request_fingerprint` or two files with the same `sha256` show that their content is equal.
+  This holds within one workspace only; digests differ between workspaces.
 
 ### Files
 
 Files are limited to 5 MiB (`FILE_LIMITS.fileBytes`), so one GCM pass per file is enough. The
-object is `FXF1 ‖ key version (uint32) ‖ nonce 12 ‖ ciphertext ‖ tag 16`, with `K_file` and AAD
-`flux:file:v1|<workspace id>|<file id>|<key version>`. The file id is the reservation id
+object is `FXF1 ‖ key version (uint32) ‖ nonce 12 ‖ ciphertext ‖ tag 16`, with a per-file key
+`HKDF(K_file, info = [flux file v1, workspace id, file id, key version])` and the same list as AAD. The file id is the reservation id
 (`files/service.ts` reserves before `storage.receive`), so it is known before the first byte.
 `FileStorage.receive` takes an optional `FileCipher`. It encrypts each chunk as it streams into
 the scratch file, so plaintext never reaches `attachments/tmp`. `read` returns bytes only after the
@@ -181,38 +215,75 @@ computes it from the decrypted body in RAM and never stores it.
   The parameters are stored per wrap (`kdf`). A successful unlock with older parameters re-wraps
   under the current ones.
 - `wrapped` = AES-256-GCM(KEK, random nonce, DEK), with AAD
-  `flux:wrap:v1|<workspace id>|<wrap id>|<kind>|<user id or ->|<key version>`. A wrong password fails
+  `[flux wrap v1, workspace id, wrap id, kind, user id or "", key version]`. A wrong password fails
   the tag, so there is no separate verifier.
 - **Recovery code.** 160 random bits as 32 Crockford base32 characters, shown in 8 groups of four
   (`K7QD-2M9X-…`). Input is normalised: upper case, spaces and hyphens removed, `O→0`, `I/L→1`.
   It is wrapped the same way, with Argon2id, so there is one code path. The code is never stored.
 - **Concurrency.** At most two derivations run at once per API process (64 MiB each). Others queue,
   and the ninth waiting request answers `503 UNLOCK_BUSY`.
-- **Passwords** need at least 12 characters, with no composition rules. The UI suggests a password
-  not used to sign in.
+- **Passwords**: see [Password strength](#password-strength).
+
+### Password strength
+
+The unlock password is the only barrier between a stolen disk and the content, and the weakest
+holder's password protects the whole workspace.
+
+- **Cost per guess.** One Argon2id derivation at these parameters takes 55 ms on four lanes of the CPU
+  above (measured 2026-10-23) and needs 64 MiB of memory. That memory limits how many guesses a GPU
+  can run in parallel. The S1 review estimated (an inference, not a measurement) that a rented GPU
+  fleet reaches about 2^40 to 2^45 guesses a year against these parameters. Human-chosen
+  12-character passwords do not resist that.
+- **Default: a generated passphrase.** The form fills in **six words** from the EFF large word list
+  (7,776 words, 12.9 bits each, so 77 bits). It is generated in the browser with
+  `crypto.getRandomValues`. The word list is licensed CC BY 3.0 US and credited in `NOTICE`. At
+  2^45 guesses a year, half the space takes about 2^31 years.
+- **Own password.** The person may type their own instead. The server enforces **at least 20
+  characters** after NFC normalisation, with at least 8 distinct characters. A passphrase of five
+  ordinary words is about that long. The form shows "Every owner's and admin's password protects
+  the whole space. The weakest one counts." The rule is checked in the API (`400 PASSWORD_TOO_WEAK`)
+  and repeated in the form.
+- **Upgradable.** `kdf` is stored per wrap, so stronger parameters can be applied on the next unlock
+  without a migration.
 
 ### Password lifecycle
 
 | Event | Effect |
 | --- | --- |
 | Creation | The creator (owner) gets a `password` wrap and the workspace a `recovery` wrap. The code is returned once. |
-| A person becomes owner or admin | No wrap yet. While the workspace is unlocked, they set their own password (`PUT …/unlock-password` without `currentPassword`). The server wraps the DEK it holds in RAM. |
+| A person becomes owner or admin | No wrap yet, and a session alone can never add one. A **current holder** (an owner or admin with a password) allows it by entering their own unlock password: `POST …/unlock-password-grants { userId, password }`. This creates `workspace_wrap_grants (workspace_id, user_id, granted_by, expires_at = now() + 24 h)`, which holds no key material. While the grant is valid and the workspace is unlocked, the person sets their password (`PUT …/unlock-password` without `currentPassword`). Alternatively they enter the recovery code instead of a grant. Setting the password consumes the grant, wraps the DEK the server holds in RAM, records `workspace.unlock_password_set.v1`, and sends every other holder an Inbox notification (reason `security`): "Ben now has an unlock password for Garden club." |
 | Change own password | Needs `currentPassword` (or the recovery code). Re-wraps under a new salt. |
 | Demoted to member or guest, removed, or account deleted | The `password` wrap is deleted in the same transaction as the role change. |
 | The last person with a password would lose it | Refused with `409 LAST_UNLOCK_PASSWORD`: "Garden club needs at least one unlock password. Ask another owner or admin to set theirs first." The recovery code alone is not counted. |
 | New recovery code | Owner only, while unlocked, with their own unlock password. It replaces the `recovery` wrap. The old code stops working. |
 
 Stated limits. Someone who holds an owner's or admin's **session** while the workspace is unlocked
-can already read everything. If that account has no password yet, they can also set one. A person
-who was removed can still open **backups taken before the removal** with their old password, as can
-an old recovery code. Only rotation can close that gap.
+can read everything and export it, but cannot add an unlock password without a holder's password or
+the recovery code. A person who was removed and kept **any** copy of the data from while they were a
+holder learns the DEK from it, and that DEK opens every later copy too (see the
+[threat model](#threat-model)). The removal confirmation says so: "Ben can no longer open Garden club
+here. If Ben kept a copy of its data, for example a backup, his old unlock password still opens it,
+and this space's key would open later copies too. Rotate the key afterwards to stop that." The last
+sentence and its button appear once [S4](#delivery-slices) has shipped.
 
 ### Rotation
 
-Rotation is not required in this version. `key_version` on the keys, wraps, unlock rows and every
-envelope leaves room for it. A later rotation would create DEK v2, re-seal every value in batches by
-a worker job while unlocked, re-wrap for each holder and then drop v1. Reconsider when a workspace
-needs to exclude a former admin from old data, or approaches 2^31 seals.
+**Chosen: rotation is a required follow-up slice, S4, not part of S1 to S3.** The alternative,
+rotation on every removal inside S2, was rejected for the first delivery. It means re-sealing every
+value, every file object and the search placeholders. The founder's four answers do not ask for it,
+and the exposure it closes is limited to people who were once trusted with a password **and** kept a
+disk copy. That exposure is stated in the threat model and in the removal confirmation, so nobody
+relies on removal for more than it does.
+
+S4 design. **Rotate key** (owner, while unlocked, with their password, offered after every removal
+of a holder) creates DEK v2 and `workspace_keys.key_version = 2`. It re-wraps v2 for each **current**
+holder (their passwords re-derived on their next unlock: until then their v1 wrap stays and unlocks
+v1, which the server uses to read v1 values and to re-wrap) and makes a new recovery code. A worker
+job re-seals values in batches of 500 rows per transaction, while unlocked and parked while locked:
+fields, file objects (written as new objects, then the old ones deleted) and live heads. Reads accept
+v1 and v2 by the envelope's key version. When no v1 value remains, the v1 wraps are deleted. Old
+backups still open with old passwords. That cannot be changed, and the copy says so. The founder may
+make S4 part of this version; it is designed so that S1 to S3 do not need to change.
 
 ## Inventory
 
@@ -220,8 +291,21 @@ Each workspace-content table is listed with its columns. **S** means sealed (env
 keyed digest, and **V** means visible metadata. A column not named is an id, foreign key, number,
 enum, boolean or timestamp (V). One registry, `SEALED_COLUMNS` in `packages/db/src/sealed-columns.ts`,
 holds every S and D entry with its field name and identity columns. `VISIBLE_COLUMNS` holds every
-text or jsonb V column of these tables with a one-line reason. The [registry test](#tests-and-acceptance-criteria)
-fails on any text or jsonb column in neither list.
+text or jsonb V column of these tables with a one-line reason.
+
+**The registry is checked against the live database, not `schema.ts`.** Sixteen tables exist only in
+migrations: `draft_versions`, `search_documents`, `flux_schema_version`, `live_webhook_events`,
+`cowork_review_verdicts`, `agent_thread_artifact_boundaries`, `agent_thread_artifact_mutations`,
+`agent_thread_artifact_resets`, `agent_thread_guard_events` and seven `agent_runtime_*` tables
+(found by comparing `CREATE TABLE` in `packages/db/migrations` with `schema.ts`, 2026-10-23). The
+[registry test](#tests-and-acceptance-criteria) reads `information_schema.tables` and `columns` for
+the `public` schema after all migrations. It requires every table to be in `TABLE_CLASSES` as
+**content** (columns classified as above), **account** (user, session, OAuth, push and preference
+data), **system** (schema version, queue, cursor, idempotency, rate limits) or **AI** (empty for a
+sealed workspace, [backstopped](#enforcement)). It fails on any table or text/jsonb column of a
+content table that is in no list. It also reads `pg_trigger` and `pg_proc` and fails on a function
+that copies a sealed column outside the allowed pair. The pg-boss schema is classed as system, with
+its own [error-path rule](#error-paths).
 
 | Table | S (sealed) | D (keyed digest) | V (visible text/jsonb, reason) |
 | --- | --- | --- | --- |
@@ -245,6 +329,7 @@ fails on any text or jsonb column in neither list.
 | `project_results` | `title`, `evidence` | — | `finding` (positive or negative) |
 | `project_object_links` | — | — | `role`, types |
 | `drafts` | `title`, `body` | — | `visibility` |
+| `draft_versions` (migration 0006, filled by `preserve_draft_version`) | `title`, `body` (written by the application for a sealed workspace) | — | `visibility` |
 | `sketches` (maps) | `title` | — | `scope` |
 | `sketch_thoughts` | `text` | — | `shape`, `x`, `y`, `width`, `height`, `source_author_name` (a person's name, account data) |
 | `sketch_links` | `label` | — | endpoints |
@@ -255,18 +340,31 @@ fails on any text or jsonb column in neither list.
 | `doc_live_presence`, `map_live_presence`, `map_live_gestures` | — | — | `cursor`, `selected`, `positions`: Yjs relative positions or coordinates in leases of 5–30 s, with no text |
 | `live_editing_intents` | `receipt` | `fingerprint` | `operation` |
 | `map_live_journal` | `change` | `fingerprint` | actor |
-| `notifications` | — | — | `title`, `body`: **content-free by construction** ([Notifications](#notifications-push-and-e-mail)); `url` (ids); `summary_sources` (refs) |
-| `events` | — | — | `data`: ids, versions and enums only. A test enforces this ([Enforcement](#enforcement)). |
-| `idempotency_keys` (rows of a sealed workspace) | `response_body` | `request_hash` | `operation`, key |
+| `notifications` | — | — | `title`, `body`: **content-free**, backstopped ([Notifications](#notifications-push-and-e-mail)); `url` (ids); `summary_sources` (refs) |
+| `notification_generation_failures`, `notification_emails` | — | — | `last_error`, `skip_reason`: an error class and code only for a sealed workspace ([error paths](#error-paths)) |
+| `events` | — | — | `data`: ids, versions and enums only, backstopped ([Enforcement](#enforcement)) |
+| `idempotency_keys` (every row of a command on a sealed workspace's objects) | `response_body` | `request_hash` | `operation`; `key` is client-chosen ([below](#idempotency-store)) |
 | `search_documents` (rows of a sealed workspace) | — (placeholder rows hold no content, [Search](#search)) | — | `kind`, `audience_key`, `status`, author, time |
-| pg-boss `job.data` | — | — | ids only (checked for the queues that touch sealed workspaces) |
+| pg-boss `job.data`, `output` | — | — | `data` ids only; `output` and the stored error an error class and code only for a sealed workspace's jobs ([error paths](#error-paths)) |
 | `live_sessions`, `live_presentations`, `live_invitations`, `live_admissions` | — | — | room ids, states, references |
 
-**Tables that stay empty for a sealed workspace.** The F-029 lock is forced on, and its
-`ai_work_admission` backstop and entry checks refuse every insert. So no rows exist in
-`personal_runs`, `assistant_*`, `cowork_*`, `agents`, `agent_*`,
-`agent_proposals`, `agent_questions`, `proactive_comparison_*` or `agent_runtime_sessions`. The
-dump-scan test proves this per table.
+**Tables that stay empty for a sealed workspace.** The F-029 lock is forced on, so its entry checks
+refuse AI work. Its `ai_work_admission` trigger (0115) guards only six tables (`personal_runs`,
+`proactive_comparison_outbox`, `assistant_reaction_events`, `cowork_requests`, `cowork_units`,
+`agent_runtime_sessions`). S1 therefore adds `sealed_workspace_no_ai`, a `BEFORE INSERT` trigger on
+**every table of class AI** that can carry content or name a workspace: `agents`, `agent_*`,
+`agent_thread_*`, `agent_runtime_*` (those with a workspace), `assistant_*`, `cowork_*`,
+`personal_run*`, `proactive_comparison_*`, `agent_proposals`, `agent_questions`,
+`assistant_join_question_identity_snapshots` and `background_compute_connections` where it names a
+workspace. It raises `WORKSPACE_ENCRYPTED_AI_OFF` when the row's workspace (direct or through its
+project, agent or connection) is sealed. The registry test checks that each AI-class table with a
+workspace path has it. The dump-scan test proves the tables empty for A.
+
+**Client-chosen visible text.** Some visible columns hold keys chosen by the client: the idempotency
+`key`, `project_task_plan_intents.intent_key` and `clientMessageId`-style ids. The server cannot police
+what a client puts there. The Flux web client sends random UUIDs (`apps/web/src/api/intent-keys.ts`),
+and the API constrains them to their formats (`[a-zA-Z0-9_:.-]{1,200}` for intent keys). A third-party
+client that puts content into a key leaves it visible.
 
 **GitHub is not offered in sealed workspaces in this version.** A webhook can arrive while the
 workspace is locked, and `github_deliveries.payload` would then hold repository and PR text in
@@ -289,7 +387,9 @@ This is stated plainly for the review and for the operations guide. Someone with
   positive or negative finding; doc states (draft or published) and contributors;
 - maps: thought positions, sizes, shapes and link endpoints (not their text or labels);
 - that an activity of a kind happened ("title changed", "due changed"), but not the values;
-- notifications: who did what, of which kind, for whom, in which workspace.
+- notifications: who did what, of which kind, for whom, in which workspace;
+- which values within the workspace are equal, through keyed digests;
+- the client-chosen keys described above.
 
 Nothing listed is text that a person wrote, a name of a thing, or file bytes.
 
@@ -322,18 +422,69 @@ Nothing listed is text that a person wrote, a name of a thing, or file bytes.
   and PostgreSQL does not log bind parameters on error by default (`log_parameter_max_length_on_error = 0`).
   The application never relies on the backstop. It makes a forgotten seal fail loudly instead of
   leaking.
-- **Event data.** `recordEvent` in a sealed workspace rejects (in development and tests) any string
-  value in `data` that is not a UUID, a registered enum or a principal key. A write that needs
-  content in an event seals it in a nested `{"$sealed": …}` field. None does at `3bbae96a`: the
-  record sites pass ids, for example `{ conversationId, messageId }` in `conversation/store.ts`.
+- **Event data.** `recordEvent` in a sealed workspace rejects any string value in `data` that is not
+  a UUID, a registered enum or a principal key. A write that needs content in an event seals it in a
+  nested `{"$sealed": …}` field. None does at `3bbae96a`: the record sites pass ids, for example
+  `{ conversationId, messageId }` in `conversation/store.ts`. **Database backstop:** a `BEFORE INSERT`
+  trigger on `events` raises `EVENT_CONTENT_REFUSED` for a sealed workspace when any string scalar
+  (`jsonb_path_query(data, 'strict $.**') ? (@.type() == "string")`) matches none of: a UUID; a
+  principal key (`human:` or `agent:` followed by an id); a Better Auth id (`^[A-Za-z0-9]{16,64}$`);
+  an ISO timestamp; a lowercase token `^[a-z][a-z0-9_.]{0,47}$` (enums and kinds); a sealed envelope.
+  A single lowercase word could still pass the SQL pattern. The application check against the
+  registered enums is exact, and the trigger bounds what a bug could leak to one word.
+- **Notification backstop.** A `BEFORE INSERT OR UPDATE` trigger on `notifications` raises
+  `NOTIFICATION_CONTENT_REFUSED` for a sealed workspace unless `body = ''` and `title` matches one of
+  the [fixed templates](#notifications-push-and-e-mail): the actor's account name, one of the seven
+  fixed phrases, then ` in ` and the workspace's current name.
 - **Cross-workspace reads** skip locked workspaces instead of failing. They are the shell loader's
   project list, Home tasks, Inbox and Needs you, search and ⌘K, and the morning summary. Each answers
   with the unlocked items and `lockedWorkspaces: [{ id, name }]`, so the interface draws one "Waiting
   to be unlocked" row per locked workspace.
+- **Idempotency.** See [idempotency store](#idempotency-store).
+- **Error text.** See [error paths](#error-paths).
 - **Logs.** The Fastify logger (`logger: true` in `apps/server/src/app.ts`) logs `req.url`. A request
   serializer drops the query string, so `GET /api/v1/search?q=…` cannot write a query to the Docker
   log on disk. Request bodies are never logged, and the unlock routes mark `password`,
   `newPassword`, `currentPassword` and `recoveryCode` as redacted paths.
+
+### Idempotency store
+
+At `3bbae96a` the runner fills `idempotency_keys.workspace_id` only for routes that declare a `scope`.
+Content commands such as `PATCH` doc (`docs/routes.ts:88`), add a doc section (`:94`), `PATCH` work
+item (`work/routes.ts:154`) and accept a decision (`:173`) declare `scope: null`. The web client sends
+an Idempotency-Key on doc changes (`apps/web/src/docs/api.ts`). Without a change, a doc edit in a
+sealed workspace would store the doc body in `response_body`, with an unkeyed SHA-256
+`request_hash`, and no workspace on the row. S2a therefore:
+
+- Makes `scope` **mandatory** in `CommandSpec`: an object scope (`project`, `conversation`, `doc`,
+  `work`, `decision`, `sketch`, `draft`, `dm`, `file` …) that the runner resolves to its workspace, or
+  the literal `'account'`. `'account'` is allowed only for operations in
+  `IDEMPOTENCY_ACCOUNT_OPERATIONS` (`packages/contracts`), such as notification preferences, push
+  subscriptions and account-level AI connections, each with a reason. A test reads every registered
+  command and fails on an `'account'` operation that is not in the list, or on any command whose
+  scope cannot be resolved.
+- For a sealed workspace, stores `response_body` as `{"$sealed": …}` (field
+  `idempotency_keys.response_body`, identity `[principal, operation, key]`) and `request_hash` as the
+  keyed digest. A replay opens the body, so a replay while locked answers `423`.
+- Adds a database backstop on `idempotency_keys`. A row whose `workspace_id` is sealed must have a
+  sealed `response_body`. A row with no `workspace_id` must name an operation in
+  `idempotency_account_operations`, a table that the migration seeds from the contract list and the
+  test compares. Otherwise the insert raises `IDEMPOTENCY_SCOPE_REQUIRED`.
+- Never stores secrets. The unlock, password, grant, recovery-code and create-encrypted-workspace
+  routes do not use the store at all.
+
+### Error paths
+
+Error text can quote content. `notification_generation_failures.last_error` keeps 500 characters of
+the exception message (`packages/db/src/repositories/notifications.ts`, `recordFailure`), and
+`notification_emails.last_error` and `skip_reason` keep 300 and 200. pg-boss stores a failed job's
+error and `output`. The same messages go to the Docker log. Whenever work concerns a sealed workspace
+(a request or job for which `sealFor` returned a real seal, or any job whose payload names one), one
+helper, `redactedError(error)` in `packages/core/src/encryption`, replaces the message everywhere it
+is stored or logged. It keeps the error class, the domain code, the PostgreSQL SQLSTATE and constraint
+name, and the ids, and never the message, `detail` or stack text that quotes values. Worker handlers
+wrap such errors in `SealedJobError(code)` before pg-boss sees them. API 500 responses for these
+requests carry only the code. AC-7 has an [error-path part](#tests-and-acceptance-criteria).
 
 ## Unlock lifecycle across processes
 
@@ -344,7 +495,7 @@ disk, and PostgreSQL must never see it.
 
 | Option | For | Against | Verdict |
 | --- | --- | --- | --- |
-| **A. Keyring process holding one boot key; DEKs sealed under it in PostgreSQL** | The only RAM-only secret is one key in one tiny process. Lock state is a row, so every process sees it transactionally, ordered by row locks like the F-029 policy. A keyring restart makes every unlock row unopenable, which locks all at once. Works across hosts. | One new small service and network. | **Chosen** |
+| **A. Keyring process holding one boot key; DEKs sealed under it in PostgreSQL** | The only RAM-only secret is one key in one tiny process. Lock state is a row, so every process sees it transactionally, ordered by row locks like the F-029 policy. A keyring restart makes every unlock row unopenable, which locks all at once. | One new small service and network. | **Chosen** |
 | B. Keyring holding the DEKs themselves | Same RAM property. | Two sources of truth: a keyring restart leaves "unlocked" rows in PostgreSQL that point at nothing, and every lock-state read becomes a network call. | Rejected |
 | C. Redis with persistence disabled | Off-the-shelf. | Flux has no Redis (O-002 is PostgreSQL only). Redis turns RDB snapshots on by default, and one wrong setting puts the keys on disk with no error. It is a heavier service than A for the same job. | Rejected |
 | D. A shared `tmpfs` volume holding the boot key | No new process. | Single host only. A Docker volume left without its tmpfs options silently becomes a disk volume. Whether it survives `compose restart` depends on reference counting. | Rejected |
@@ -355,14 +506,25 @@ disk, and PostgreSQL must never see it.
 - **Process.** A new app, `@flux/keyring`: Node built-ins only, about 100 lines, in the same image
   with its own command. At start it creates `bootKey = randomBytes(32)` and `bootId = randomUUID()`.
   It writes nothing, has no volume and keeps no state beyond these two.
-- **Requests.** Plain HTTP on `keyring:8090` on a dedicated Compose network `keyring`
-  (`internal: true`), joined only by `api`, `worker` and `keyring`. Runtime slots, LiveKit, mocks and
-  the database are not on it. Every request carries `Authorization: Bearer <FLUX_KEYRING_TOKEN>`,
-  which `./flux` generates into `docker/.env` like the other secrets. A stolen token is useless
-  without the running keyring.
+- **Single host only.** Requests are plain HTTP on `keyring:8090`, on a dedicated Compose bridge
+  network `keyring` (`internal: true`) on **one Docker host**, joined only by `api`, `worker` and
+  `keyring`. Runtime slots, LiveKit, mocks and the database are not on it. DEKs cross that network,
+  which never leaves the host's kernel. **Sealed workspaces are supported only when `api`, `worker`
+  and `keyring` run on one host.** A deployment that spreads them over hosts (the `docker/k3s`
+  values today hold only live media) must add TLS with mutual authentication first. Until then such
+  a deployment has no keyring, and every sealed workspace stays locked; creation answers
+  `503 KEYRING_UNAVAILABLE`.
+- **Authentication.** Every request carries `Authorization: Bearer <FLUX_KEYRING_TOKEN>` (32 random
+  bytes, base64url). The keyring compares `timingSafeEqual(sha256(given), sha256(expected))`, so the
+  time taken does not depend on the token. `./flux` generates the token into `docker/.env` like the
+  other secrets, and `./flux upgrade` adds it to an existing install that lacks one. A stolen token is
+  useless without the running keyring.
+- **Parsing.** The keyring reads at most 4 KiB per body and answers a malformed one with a fixed
+  `400` and no echo. It logs only method, path, status and duration, never a body or a parse-error
+  snippet.
   - `GET /v1/boot` → `{ bootId }` (no secret; the heartbeat).
   - `POST /v1/seal { workspaceId, keyVersion, dek }` → `{ bootId, sealed }`: AES-256-GCM under the
-    boot key, AAD `flux:unlock:v1|<workspace id>|<boot id>|<key version>`.
+    boot key, AAD `[flux unlock v1, workspace id, boot id, key version]`.
   - `POST /v1/open { workspaceId, keyVersion, bootId, sealed }` → `{ dek }`, or `409 STALE_BOOT` when
     `bootId` is not its own.
   - Nothing else. Bodies are never logged.
@@ -371,14 +533,21 @@ disk, and PostgreSQL must never see it.
 - **Hardening.** `read_only: true`, `cap_drop: [ALL]`, `ulimits: { core: 0 }`, `mem_limit: 64m` and
   `memswap_limit: 64m`. With `--memory-swap` equal to `--memory` the container
   "doesn't have access to swap" ([Docker resource constraints](https://docs.docker.com/engine/containers/resource_constraints/),
-  read 2026-10-23; this needs kernel swap-limit support, and `docker info` warns when it is missing).
+  read 2026-10-23). This needs kernel swap-limit support, and `docker info` warns when it is missing,
+  so the keyring also [checks its own cgroup](#memory-what-is-enforced-and-what-is-not) at boot.
+- **Every Compose file that runs `api`** (`compose.yaml`, `compose.source.yaml`, `compose.dev.yaml`,
+  `compose.test.yaml`, the `compose.live*.yaml` and `compose.mcp*.yaml` test stacks) gets the keyring
+  service and network in S1. A stack without them, or with the keyring disabled, is valid: there every
+  sealed workspace is locked and creation answers `503 KEYRING_UNAVAILABLE`. A test lists the Compose
+  files and fails on one with `api` but neither the keyring nor an explicit `FLUX_KEYRING: off`.
 
 ### Unlock
 
 1. An owner or admin sends `POST /api/v1/workspaces/:id/unlock { password }` (or `{ recoveryCode }`).
-2. The API checks `workspace.manage_encryption` (owner or admin, humans only) and the attempt limit:
-   five failures per person and workspace in 15 minutes, and twenty per workspace, give
-   `429 UNLOCK_RATE_LIMITED` with `Retry-After`.
+2. The API checks `swapSafety()`, then `workspace.manage_encryption` (owner or admin, humans only),
+   then the attempt limit: five failures per person and workspace in 15 minutes give
+   `429 UNLOCK_RATE_LIMITED` with `Retry-After`. The limit is per person only, so one admin cannot
+   lock the others out.
 3. It derives the KEK (Argon2id) and opens that person's wrap, or the recovery wrap. A tag failure
    records an attempt row and answers `400 UNLOCK_INCORRECT`.
 4. It calls the keyring's `seal`. In one transaction it upserts `workspace_unlocks` (replacing a
@@ -419,17 +588,40 @@ means the row is stale, so the workspace is treated as locked and the stale row 
 - **On lock** (either reason) each API process closes that workspace's live rooms with close code
   `workspace_locked`, drops its in-RAM search index and zeroes its DEK and subkey buffers.
 
-### Memory: what is done and what is not
+### Memory: what is enforced and what is not
 
-- Core dumps are off (`ulimits: core: 0`) for `api`, `worker` and `keyring`.
-- Swap is disabled for the keyring through `memswap_limit`. API and worker processes hold DEKs and
-  plaintext while unlocked. The [operations guide](../operations/install-release.md) will tell
-  operators to run without swap or with encrypted swap and never to hibernate the host. `./flux up`
-  prints a warning when swap is active on the host (`/proc/swaps`) and a sealed workspace exists. Flux does not set
-  memory limits on the API or worker, because a wrong default would kill them.
-- Node has no `mlock`. Key buffers are zeroed with `fill(0)` when dropped. JavaScript strings holding
-  plaintext cannot be zeroed and stay in the heap until garbage collection. That is accepted, because
-  RAM is outside the threat model.
+API and worker processes hold DEKs, subkeys and plaintext in heap while unlocked. If Linux pages that
+heap out to a disk swap device, a stolen powered-off server holds the key. So swap is **enforced**,
+not only warned about.
+
+- **Swap check.** One function, `swapSafety()` in `packages/core/src/encryption`, passes when any of
+  these holds:
+  1. the process's own cgroup forbids swap: on cgroup v2 `/sys/fs/cgroup/memory.swap.max` is `0`; on
+     v1 `memory.memsw.limit_in_bytes` equals `memory.limit_in_bytes`;
+  2. `/proc/swaps`, which shows the host's swap devices inside a container, lists none, or only
+     `zram` devices (compressed RAM; an operator who sets up zram writeback to disk must not use
+     this case);
+  3. the operator has set `FLUX_SWAP_ACKNOWLEDGED=encrypted-swap`, declaring that every swap device is
+     encrypted with a key that is not stored on the disk. This cannot be detected from a container.
+- **Enforced where keys appear.** The keyring refuses to start unless `swapSafety()` passes. API and
+  worker processes that fail it never open a DEK: for them every sealed workspace is locked, unlock
+  and creation answer `503 SWAP_UNSAFE` ("This server can write memory to disk. Its operator needs to
+  turn off swap or confirm it is encrypted."), and `/api/v1/health` reports `encryption: 'swap_unsafe'`.
+- **Defaults that pass.** The shipped Compose files give `api` and `worker` `mem_limit` with
+  `memswap_limit` equal (`FLUX_API_MEMORY`, default `2g`; `FLUX_WORKER_MEMORY`, default `1g`;
+  configurable, never unset), so case 1 holds wherever the kernel accounts swap. Elsewhere, case 2 or 3
+  must hold.
+- **Core dumps** are off (`ulimits: core: 0`) for `api`, `worker` and `keyring`.
+- **Secure heap.** The DEK and subkeys are held as `KeyObject`s, never as JavaScript strings, and the
+  three processes start with `--secure-heap=65536`. Node documents that this secure heap is used "for
+  selected types of allocations within OpenSSL"; it does not say whether secret `KeyObject` bytes go
+  there. So it is defence in depth only. Plaintext content in the JS heap is outside it either way.
+  Raw key `Buffer`s that must exist briefly (Argon2 output, keyring answers) are zeroed with
+  `fill(0)` after use.
+- **Not covered:** hibernation and suspend-to-disk of the host, VM memory snapshots, and a hypervisor
+  that swaps guest memory. The [threat model](#threat-model) says so, and so does the creation form's
+  help link. JavaScript strings holding plaintext cannot be zeroed and stay in the heap until garbage
+  collection; RAM is outside the threat model.
 - PostgreSQL never receives a DEK, KEK, boot key, password or recovery code, in a statement, a
   parameter or a row. The unlock and password routes do not use the Idempotency-Key store,
   because its `request_hash` would be a fast hash of a password.
@@ -584,18 +776,24 @@ Details sheet on a phone):
 - **Name** (as today).
 - A checkbox row, **Encrypt this space**, with the line: "Everything inside is encrypted on the
   server. Only people work here: no agents, no assistant, no AI. This can't be changed later."
-- When checked, these appear in place below it: **Unlock password** (hint: "At least 12 characters.
-  Each owner and admin has their own. It's needed after every server restart. Use one you don't use
-  to sign in.") and **Repeat password**. Then one line: "If every unlock password and the recovery
-  code are lost, everything in this space is gone for good. Nobody can recover it, not even whoever
-  runs this server."
+- When checked, **Unlock password** appears in place below it, already filled with a generated
+  six-word passphrase that is shown in full, with a quiet **Other words** that draws new ones and
+  **Use my own**, which empties the field and adds **Repeat password**. The hint reads: "Each owner and
+  admin has their own. It's needed after every server restart. Every owner's and admin's password
+  protects the whole space, and the weakest one counts. Your own needs at least 20 characters." Then
+  one line: "If every unlock password and the recovery code are lost, everything in this space is gone
+  for good. Nobody can recover it, not even whoever runs this server." Then a quiet link, **What
+  encryption protects**, which opens the [threat model](#threat-model) in plain words. It explains
+  that it protects a copy of the data or a server taken away switched off, and not a running server,
+  a hibernated host or a VM memory snapshot.
 - The button reads **Create space**, or **Create encrypted space** when the box is checked.
 
 The next step, in the same panel, is **Your recovery code**. The code is shown in monospace groups
 with the text "This code unlocks Garden club if every password is lost. It's shown only now. Print
-it or write it down and keep it somewhere safe." Buttons **Print** and **Copy** sit above a checkbox
-"I've kept the recovery code", and **Done** is enabled only after it is checked. Nothing about the
-code is stored in the browser. If the answer to the create call was lost, a retry with the same
+it or write it down and keep it somewhere safe." A **Print** button sits above a checkbox "I've kept
+the recovery code", and **Done** is enabled only after it is checked. There is **no Copy button**: a
+copied code can stay in clipboard history and sync between devices. A person who selects the text
+and copies it themselves takes that choice. Nothing about the code is stored in the browser. If the answer to the create call was lost, a retry with the same
 `creationId` returns the space without the code. The panel then says "The recovery code was shown
 once and can't be shown again. Make a new one in People." and offers **New recovery code**.
 
@@ -623,9 +821,16 @@ project picker and in Create like any other space.
 - **The People panel** gets an **Encryption** section, its own `details__sec` placed before the AI
   section and kept in place in every state:
   - "Encrypted · only people, no AI. Unlocked by Ada at 09:12."
-  - For owners and admins: **Change your unlock password** (or **Set your unlock password** when they
-    have none) and a quiet **Lock now**. Lock now uses the panel's inline confirm: "Everyone in Garden
-    club loses access until an owner or admin unlocks it again." with **Lock Garden club** and
+  - For holders (owners and admins with a password): **Change your unlock password**. An owner or admin
+    without a password sees "You don't have an unlock password yet. Another owner or admin can let you
+    set one, or use the recovery code." with **Use the recovery code**. Once a holder has allowed it,
+    they see **Set your unlock password** for 24 hours.
+  - For holders: each owner or admin without a password is listed with **Let Ben set an unlock
+    password**, which asks for the holder's own unlock password in the inline confirm group.
+  - Removing or demoting a holder shows, in the existing confirm, the line from
+    [password lifecycle](#password-lifecycle) about kept copies.
+  - For owners and admins: a quiet **Lock now**, which uses the panel's inline confirm: "Everyone in
+    Garden club loses access until an owner or admin unlocks it again." with **Lock Garden club** and
     **Keep it unlocked**. Owners also get **New recovery code**, behind the same inline confirm and
     their password: "The old code stops working."
   - Members and guests see only the first line.
@@ -639,16 +844,19 @@ answers `Cache-Control: no-store`, and does not use the Idempotency-Key store.
 
 | Route | Body | Answers |
 | --- | --- | --- |
-| `POST /api/v1/encrypted-workspaces` | `{ name, creationId, password }` | `201 { workspace, recoveryCode }`. The same person and `creationId` again gives `200 { workspace, recoveryCode: null }`. `400 PASSWORD_TOO_SHORT`, `503 KEYRING_UNAVAILABLE`. In S1 and S2 the route exists only with `FLUX_FIXTURE_TOKEN` set. |
-| `POST /api/v1/workspaces/:id/unlock` | `{ password }` or `{ recoveryCode }` | `200 { encryption }`, `400 UNLOCK_INCORRECT`, `403 WORKSPACE_ENCRYPTION_ADMIN_REQUIRED`, `409 NO_UNLOCK_PASSWORD`, `429 UNLOCK_RATE_LIMITED`, `503 KEYRING_UNAVAILABLE` or `UNLOCK_BUSY`. |
+| `POST /api/v1/encrypted-workspaces` | `{ name, creationId, password }` | `201 { workspace, recoveryCode }`. The same person and `creationId` again (`workspaces.creation_id`) gives `200 { workspace, recoveryCode: null }`; a different name with the same id gives `409 IDEMPOTENCY_CONFLICT`. `400 PASSWORD_TOO_WEAK`, `503 KEYRING_UNAVAILABLE` or `SWAP_UNSAFE`. In S1 and S2 the route exists only with `FLUX_FIXTURE_TOKEN` set. |
+| `POST /api/v1/workspaces/:id/unlock` | `{ password }` or `{ recoveryCode }` | `200 { encryption }`, `400 UNLOCK_INCORRECT`, `403 WORKSPACE_ENCRYPTION_ADMIN_REQUIRED`, `409 NO_UNLOCK_PASSWORD`, `429 UNLOCK_RATE_LIMITED`, `503 KEYRING_UNAVAILABLE`, `SWAP_UNSAFE` or `UNLOCK_BUSY`. |
 | `POST /api/v1/workspaces/:id/lock` | — | `200 { encryption }`, `403`. |
-| `PUT /api/v1/workspaces/:id/unlock-password` | `{ currentPassword?, newPassword }` | `200`, `400 UNLOCK_INCORRECT`, `400 PASSWORD_TOO_SHORT`, `423`. |
+| `POST /api/v1/workspaces/:id/unlock-password-grants` | `{ userId, password }` (the holder's own) | `201 { expiresAt }`, `400 UNLOCK_INCORRECT`, `403` (not a holder, or the target is not an owner or admin), `409 ALREADY_HAS_PASSWORD`, `423`. |
+| `PUT /api/v1/workspaces/:id/unlock-password` | `{ currentPassword?, recoveryCode?, newPassword }` | Changing needs `currentPassword` or `recoveryCode`. A first password needs a valid grant or `recoveryCode`, otherwise `403 UNLOCK_PASSWORD_GRANT_REQUIRED`. `200`, `400 UNLOCK_INCORRECT`, `400 PASSWORD_TOO_WEAK`, `423`. |
 | `POST /api/v1/workspaces/:id/recovery-code` | `{ password }` | `200 { recoveryCode }` (owner only), `423`. |
 | `GET /api/v1/workspaces[/:id]` | — | `Workspace.encryption`: `null`, or `{ state: 'locked' \| 'unlocked', unlockedAt, unlockedBy: { id, name } \| null, myPassword: boolean, canUnlock: boolean }`. `myPassword` and `canUnlock` are filled for owners and admins; others get `false`. |
 
 The new action `workspace.manage_encryption` in `WORKSPACE_ACTIONS` is allowed for a human owner or
 admin (`isManager`). `New recovery code` additionally needs the owner role. Events
-`workspace.unlocked.v1`, `workspace.locked.v1` and `workspace.unlock_password_set.v1` carry ids only.
+`workspace.unlocked.v1`, `workspace.locked.v1`, `workspace.unlock_password_granted.v1` and
+`workspace.unlock_password_set.v1` carry ids only. A new password also creates an Inbox notification
+for every other holder, with the new reason `security`.
 Their audience is the workspace's people, and agents are excluded explicitly as for F-029.
 
 ## Tests and acceptance criteria
@@ -661,16 +869,17 @@ route.
 | AC | Slice | Test | Where |
 | --- | --- | --- | --- |
 | AC-1 | S1 | Crypto: envelope round trip. A ciphertext moved to another row, column, table or workspace fails, as do a tampered tag, a wrong key version and a wrong DEK. Wraps use the stored KDF parameters, and a wrong password fails the tag. Recovery code normalisation. Keyed digest differs from SHA-256 and between workspaces. File object round trip, truncation and tampering refused before any byte is returned. | `tests/app/encryption-crypto.test.ts` |
-| AC-2 | S1 | Lifecycle: create, unlock with the right password (`200`), the wrong one (`400`), the sixth failure (`429`), the recovery code. A non-holder admin gets `409`. A member, a guest and an agent get `403`. Set and change password, new recovery code (the old one stops working), demotion deletes the wrap, `409 LAST_UNLOCK_PASSWORD`, Lock now gives `423` on the next content call. The idempotent create retry has no code. | `tests/app/encrypted-workspaces.test.ts` |
-| AC-2 | S1 | AI forced off: the policy is `blocked` at creation; `PUT ai-policy` gives `409`; a direct SQL update to `allowed` is refused by the trigger. The F-029 gated-route list gives `403 WORKSPACE_AI_BLOCKED` in A and works in B. | same, with `workspace-ai-routes.test.ts` cases |
+| AC-2 | S1 | Lifecycle: create, unlock with the right password (`200`), the wrong one (`400`), the sixth failure by one person (`429`) while another admin can still unlock, the recovery code. A non-holder admin gets `409`. A member, a guest and an agent get `403`. A promoted admin with only a session gets `403 UNLOCK_PASSWORD_GRANT_REQUIRED`; after a holder's grant (wrong holder password `400`) or with the recovery code they can set one, the grant is consumed, an expired grant is refused, and the other holders get the `security` notification. Change password (needs the current one), new recovery code (the old one stops working), demotion deletes the wrap, `409 LAST_UNLOCK_PASSWORD`, `PASSWORD_TOO_WEAK` under 20 characters, Lock now gives `423` on the next content call. The create retry with the same `creationId` has no code; a different name gives `409`. | `tests/app/encrypted-workspaces.test.ts` |
+| AC-2 | S1 | AI forced off: the policy is `blocked` at creation; `PUT ai-policy` gives `409`; a direct SQL update to `allowed` is refused by the trigger. A direct SQL insert into every AI-class table for A is refused by `sealed_workspace_no_ai`, while the same insert for B passes. The F-029 gated-route list gives `403 WORKSPACE_AI_BLOCKED` in A and works in B. | same, with `workspace-ai-routes.test.ts` cases |
+| AC-2 | S1 | Keyring and swap: a wrong token, a malformed or oversized body all get a fixed answer with nothing echoed or logged; token comparison is `timingSafeEqual`. The keyring refuses to start with swap possible (a test stack with `memswap_limit` unset and a fake `/proc/swaps` mounted). An API that fails `swapSafety()` answers `503 SWAP_UNSAFE` for unlock and creation; `FLUX_SWAP_ACKNOWLEDGED=encrypted-swap` lets it pass. Every Compose file with `api` has the keyring or `FLUX_KEYRING: off`; `./flux upgrade` adds a missing token. | `tests/app/encryption-keyring.test.ts`, `tests/test_compose_keyring.py` |
 | AC-3 | S1 | **Restart is locked.** Unlock A and write. `docker compose restart` of the whole stack makes A's content routes answer `423` and `encryption.state = 'locked'`, and unlock works again. Restarting only `api` keeps A unlocked. Restarting only `keyring` locks A within 5 s, with one `workspace.locked.v1 { reason: 'restart' }`. | `app/tests/app/encryption-restart.check.ts`, called by `check_application.sh` |
-| AC-4 | S1 | **Multiple processes.** Two API containers, the worker and the keyring (pattern of the [two-API fixture](../development/live-editing-two-api.md)). Unlock on API-1, then read on API-2 at once. Lock on API-2, then API-1's next write gives `423`. No process ever sends the DEK to PostgreSQL (`pg_stat_activity` and the statement log sampled during unlock). | `tests/app/live/encryption-two-api.test.ts`, `docker/compose.encryption.test.yaml` |
-| AC-5 | S2 | Registry: every text or jsonb column of the content tables is in `SEALED_COLUMNS` or `VISIBLE_COLUMNS`. Each sealed table has its backstop trigger. An insert of plaintext into each sealed column of A is refused, while B is unchanged. The SQL source scan finds no unhandled computation over a sealed column. Event data in A carries only ids and enums. | `tests/app/encryption-registry.test.ts` |
-| AC-6 | S2 | Locked routes: every registered route gives `423` for A's objects or is in `LOCKED_ALLOWED_ROUTES`, with no `500` and no content. Cross-workspace lists return B's items plus `lockedWorkspaces: [A]`. | `tests/app/encryption-locked-routes.test.ts` |
-| AC-7 | S2 | **A stolen dump contains no plaintext.** The test puts random canaries in every content type of A through the real API and live sockets: project name, message, task discussion reply, DM and group title, task title, outcome, blocker and criteria, a task title change, decision, result, goal, draft, map title, thought text and link label (live map), Wiki text typed live and saved, material URL, file name and file bytes, a mention notification, a search for a canary, the unlock passwords and the recovery code. It then **stops the whole stack** and scans `pg_dump` output (the pg-boss schema included), the raw PostgreSQL volume including `pg_wal`, the files volume and every container's log. Each canary is searched raw, in JSON-escaped form, in hex and in base64 (standard and URL alphabets, at all three offsets; Yjs update bytes are stored as base64 text). **Positive control:** the same canaries in B must be found. A must give zero hits, and every AI table must have zero rows for A. | `app/tests/app/encryption-dump-scan.check.ts`, `scripts/check_encryption_scan.sh` |
-| AC-8 | S2 | Features in A match B: messages, DMs, tasks and filters, decisions, results, docs and versions, drafts, maps, live Wiki and maps across two APIs, files (upload, download, tampered object refused), export bundle content and digests, and notifications content-free on push (mock) and e-mail (Mailpit). Search covers every kind, labels, typo tolerance, prefix, web syntax, access before ranking (no candidates from hidden audiences; a work counter that does not grow with hidden matches), an edit searchable at once on the other API, merged paging with B, and rebuild after lock and unlock. | `tests/app/encryption-features.test.ts`, `encryption-search.test.ts` |
-| AC-9 | S2 | Locked jobs wait: a message posted, then Lock before the generator runs, gives no notification; after unlock, exactly one. A draft summary is deferred and resumed. Push and e-mail of earlier rows still go out with no content. | `tests/app/encryption-worker.test.ts` |
-| AC-10 | S2 | Backup and restore: the backup holds no canary (the AC-7 scanner on the archive). After restore A is locked and opens with the password valid at backup time; a password set after the backup does not open it. `./flux export` of A exits non-zero with the message. | `scripts/check_backup.sh` case |
+| AC-4 | S1 | **Multiple processes.** Two API containers, the worker and the keyring (pattern of the [two-API fixture](../development/live-editing-two-api.md)). Unlock on API-1, then read on API-2 at once. Lock on API-2, then API-1's next write gives `423`. The test stack runs PostgreSQL with `log_statement = all` and `log_parameter_max_length = -1`, and the **whole PostgreSQL log** of the run is scanned for the DEK, the subkeys, the KEK, the boot key, the passwords and the recovery code (raw, hex, base64, base64url), revealed by the fixture hook below. There must be zero hits. | `tests/app/live/encryption-two-api.test.ts`, `docker/compose.encryption.test.yaml` |
+| AC-5 | S2a | Registry, read from the **live catalog** after all migrations: every table is in `TABLE_CLASSES`, and every text or jsonb column of a content table is in `SEALED_COLUMNS` or `VISIBLE_COLUMNS` (default-deny; `draft_versions` and `search_documents` included). Each sealed table has its backstop trigger. `pg_trigger` and `pg_proc` show no SQL copy of a sealed column except the allowed pair, and `preserve_draft_version` writes nothing for A. An insert of plaintext into each sealed column of A is refused, while B is unchanged. The notification backstop refuses a body or a title outside the templates; the events backstop refuses a free-text string. Every command declares a resolvable scope or an `'account'` operation in the list; the `idempotency_keys` backstop refuses an unscoped row and an unsealed row of A. The SQL source scan finds no unhandled computation over a sealed column. | `tests/app/encryption-registry.test.ts` |
+| AC-6 | S2a | Locked routes: every registered route gives `423` for A's objects or is in `LOCKED_ALLOWED_ROUTES`, with no `500` and no content. Cross-workspace lists return B's items plus `lockedWorkspaces: [A]`. | `tests/app/encryption-locked-routes.test.ts` |
+| AC-7 | S2a, S2b | **A stolen dump contains no plaintext and no key.** The test runs against a stack with PostgreSQL's `log_statement = all`. **Writes:** random canaries go into every content type of A through the real API and live sockets, and **every mutating request carries an Idempotency-Key**: project name, message, task discussion reply, DM and group title, task title, outcome, blocker and criteria, a task title change, a doc `PATCH` and an added section, a decision accepted, result, goal, draft and a draft edit (so `draft_versions` gets a row), map title, thought text and link label (live map), Wiki text typed live and saved, material URL, file name and file bytes, a mention notification, a search for a canary, the unlock passwords and the recovery code. **Large canaries:** for each text kind, one value over 8 KiB of repetitive text, so PostgreSQL TOASTs and pglz-compresses it. **Error paths:** a canary in a request that fails validation, one that hits a constraint violation, one that causes an injected 500 (`FLUX_TEST_FAILURE_INJECTION`), a notification generation that fails, an e-mail send that fails (Mailpit refusing), a failing pg-boss job, and a write raced by Lock now mid-request. **Keys:** a fixture-only hook (`FLUX_FIXTURE_TOKEN` and `FLUX_TEST_FAILURE_INJECTION` both set) returns the DEK, `K_seal`, `K_file`, `K_digest`, one KEK and the boot key, which become canaries too. **Scan:** the test then **stops the whole stack** and scans `pg_dump` output (the pg-boss schema included; it decompresses TOAST), the raw PostgreSQL volume including `pg_wal`, the files volume, the writable layer of every container (`docker diff` lists the changed paths and `docker export` provides them), every container's log, and the whole PostgreSQL log. Each canary is searched raw, in JSON-escaped form, in hex and in base64 (standard and URL alphabets, at all three offsets; Yjs update bytes are stored as base64 text). **Positive control:** the same canaries in B, including a large compressed one, must be found in the dump. In the raw volume only the uncompressed ones are expected; that is why the dump is scanned too. A must give zero hits, and every AI-class table must have zero rows for A. **Per slice:** S2a covers every canary except live Wiki and map typing and search; S2b adds those. Each PR states the canaries it covers, and the S3 PR names the S2 head SHA on which the full AC-7 passed. | `app/tests/app/encryption-dump-scan.check.ts`, `scripts/check_encryption_scan.sh` |
+| AC-8 | S2b | Features in A match B: messages, DMs, tasks and filters, decisions, results, docs and versions, drafts, maps, live Wiki and maps across two APIs, files (upload, download, tampered object refused), export bundle content and digests, and notifications content-free on push (mock) and e-mail (Mailpit). Search covers every kind, labels, typo tolerance, prefix, web syntax, access before ranking (no candidates from hidden audiences; a work counter that does not grow with hidden matches), an edit searchable at once on the other API, merged paging with B, and rebuild after lock and unlock. | `tests/app/encryption-features.test.ts`, `encryption-search.test.ts` |
+| AC-9 | S2a | Locked jobs wait: a message posted, then Lock before the generator runs, gives no notification; after unlock, exactly one. A draft summary is deferred and resumed. Push and e-mail of earlier rows still go out with no content. | `tests/app/encryption-worker.test.ts` |
+| AC-10 | S2a | Backup and restore: the backup holds no canary (the AC-7 scanner on the archive). After restore A is locked and opens with the password valid at backup time; a password set after the backup does not open it. `./flux export` of A exits non-zero with the message. | `scripts/check_backup.sh` case |
 | AC-11 | S3 | Chromium and WebKit, on desktop and phone viewports: create an encrypted space (the copy is present; the button label changes; the repeat mismatch shows an error in place), the recovery code step (Done is disabled until the box is checked; nothing in `localStorage` or `sessionStorage`), the People panel encryption and AI rows in fixed places, the project's Details line, zero `[data-ai-surface]` in A. Restart the stack: Cy sees "Waiting to be unlocked" in the sidebar and at a deep link; Ada gets the wrong-password message, then unlocks, and Cy's open tab updates without a reload. Ben sets his password. Lock now with the inline confirm, and focus returns. Keyboard only. Then a visual review under a neutral brief. | `tests/ui/test_encrypted_workspaces.py` (`./scripts/check_ui.sh`) |
 | AC-12 | each | Final candidate evaluated independently under the [bounded review policy](../agents/evaluation.md). | PR review |
 
@@ -682,22 +891,32 @@ route exists only with `FLUX_FIXTURE_TOKEN` set, like the other fixture routes, 
 never holds a half-sealed workspace.
 
 - **S1: keys, the keyring and the lock lifecycle.** Migration 0118. `packages/core/src/encryption`
-  (envelope, AAD, HKDF, Argon2id wraps, recovery code, digest), `apps/keyring` with its Compose
-  service, network, token and hardening, and the [architecture](../development/architecture.md) table
-  row for `@flux/keyring`. Also the unlock, lock, password and recovery routes; `sealFor` with the
-  heartbeat and cache; AI forced off; the `encryption` wire field; and AC-1 to AC-4. No content is
-  sealed yet, and that is safe because production cannot create a sealed workspace.
-- **S2: sealed content.** `SEALED_COLUMNS` and `VISIBLE_COLUMNS`, the backstop triggers and relaxed
-  checks, sealing in every listed repository, digests, file encryption, idempotency rows, content-free
-  notifications, `sealed_job_waits` and the resume job, search placeholders with `search_changes` and
-  the in-RAM index, live Wiki and maps, log redaction, `./flux export` refusal and restore truncation,
-  and AC-5 to AC-10. It may land as two PRs (S2a database and files; S2b live editing and search),
-  each still fixture-only. **S3 may not merge until AC-7 passes on S2's final head.**
+  (context encoding, envelope, per-row keys, HKDF, Argon2id wraps, recovery code, digest,
+  `swapSafety`, `redactedError`). `apps/keyring` with its service, network, token, constant-time check
+  and hardening in **every** Compose file with `api`, the token in `./flux` setup and `./flux upgrade`,
+  default memory and swap limits for `api` and `worker`, and the [architecture](../development/architecture.md)
+  table row for `@flux/keyring`. Also the unlock, lock, grant, password and recovery routes;
+  `sealFor` with the heartbeat and cache; AI forced off with `sealed_workspace_no_ai`; the
+  `encryption` wire field; and AC-1 to AC-4. No content is sealed yet, and that is safe because
+  production cannot create a sealed workspace.
+- **S2a: sealed database content and files.** `TABLE_CLASSES`, `SEALED_COLUMNS` and `VISIBLE_COLUMNS`
+  with the live-catalog test, the backstops (plaintext, notifications, events, idempotency) and relaxed
+  checks, **the search placeholder triggers and `search_changes`** (so no sealed column is ever
+  copied into `search_documents`; search in A answers empty until S2b), `draft_versions` written by
+  the application, sealing in every listed repository, mandatory command scopes and the sealed
+  idempotency store, digests, file encryption, content-free notifications, error-path redaction,
+  `sealed_job_waits` and the resume job, log redaction, `./flux export` refusal and restore
+  truncation. AC-5, AC-6, AC-9, AC-10 and AC-7 for its canaries. Fixture-only.
+- **S2b: live editing and search.** Sealed live Wiki and map persistence, the in-RAM search index and
+  merge, AC-8 and the rest of AC-7. Fixture-only. **S3 may not merge until the full AC-7 passes on
+  S2b's final head**, named by SHA in the S3 PR.
 - **S3: creation and interface.** The production route; New space with encryption and the recovery
   code step; the locked panel and sidebar row; the People panel sections; the project Details line;
   `lockedWorkspaces` drawn on Home, Inbox and ⌘K; and the operations guides (install, backup and
-  restore, upgrade: "upgrading locks encrypted spaces; have an unlock password ready"). Then AC-11
-  and the visual review.
+  restore, upgrade: "upgrading locks encrypted spaces; have an unlock password ready"; swap and
+  hibernation). Then AC-11 and the visual review.
+- **S4: key rotation** ([design](#rotation)), a required follow-up after S3. It does not block
+  v0.1.0 unless a founder says so. Until it ships, the removal confirmation states the limit.
 
 ## Founder answers (2026-10-23)
 
@@ -725,6 +944,7 @@ encrypted workspace is always without AI.
 - E2EE or client-side keys ([#615](https://github.com/ColdPhase/flux/issues/615), set aside).
 - Encrypting an existing workspace, or turning encryption off. Encryption is chosen only at creation.
   Moving content into a new encrypted space is a later import feature.
-- Key rotation ([Rotation](#rotation)), hardware security modules, and a highly available keyring.
+- Key rotation in S1 to S3 (it is S4, [Rotation](#rotation)), hardware security modules, a highly
+  available keyring, and a keyring across hosts (single host only until TLS is added).
 - GitHub bindings and `./flux export` for encrypted spaces.
 - Protecting a running server's memory beyond the measures listed.
