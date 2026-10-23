@@ -17,7 +17,7 @@ export function useSpareHeight(feed: RefObject<HTMLElement | null>, column: RefO
     if (!box || !content || !spacer) return undefined;
     let height = 0;
     const spare = () => (count ? Math.max(0, Math.round(box.clientHeight - content.offsetHeight)) : 0);
-    const set = (value: number) => { if (value !== height) { height = value; spacer.style.height = `${value}px`; } };
+    const set = (value: number) => { if (value !== height) { height = value; spacer.style.setProperty('height', `${value}px`); } };
     set(spare());
     let boxHeight = box.clientHeight;
     let boxWidth = box.clientWidth;
