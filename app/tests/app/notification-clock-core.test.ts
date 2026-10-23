@@ -53,6 +53,11 @@ describe('parseClock', () => {
       '24:00 is out of range',
     );
     throwsCode(
+      () => parseClock('7:00', 'quietHours.start'),
+      'INVALID_QUIET_HOURS',
+      'single digits need padding',
+    );
+    throwsCode(
       () => parseClock('7:30', 'quietHours.start'),
       'INVALID_QUIET_HOURS',
       'single digits need padding',
@@ -109,6 +114,7 @@ describe('formatClock', () => {
 describe('isTimeZone', () => {
   test('accepts real IANA zone names', () => {
     assert.equal(isTimeZone('America/Los_Angeles'), true);
+    assert.equal(isTimeZone('Europe/Warsaw'), true);
     assert.equal(isTimeZone('UTC'), true);
     assert.equal(isTimeZone('Asia/Karachi'), true);
   });
@@ -119,6 +125,7 @@ describe('isTimeZone', () => {
     assert.equal(isTimeZone(undefined), false);
     assert.equal(isTimeZone(123), false);
     assert.equal(isTimeZone('Not/AZone'), false);
+    assert.equal(isTimeZone('Mars/Olympus'), false);
     assert.equal(isTimeZone('x'.repeat(65)), false);
   });
 });
