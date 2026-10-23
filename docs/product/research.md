@@ -3,7 +3,7 @@
 Proposed, 2026-10-23: [end-to-end encryption evidence](research/2026-10-23-e2ee.md)
 (MLS and library maturity, Matrix/Signal/Keybase/Bitwarden/Proton/1Password models,
 encrypted Yjs editing, Web Crypto/WebAuthn PRF/Safari storage support) for the
-[proposed F-030 contract](e2ee.md), #615; founder questions and independent review pending.
+[proposed F-030 contract](e2ee.md), #615; founder answers recorded 2026-10-23, final review check pending.
 
 Bounded research choice: [pinned Codex MCP protocol compatibility, 2026-10-10](research/2026-10-10-codex-mcp-protocol-compatibility.md)
 records actual default/flagged client experiments and a bounded stateless
