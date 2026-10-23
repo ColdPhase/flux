@@ -535,7 +535,8 @@ class WorkspaceAiLock(unittest.TestCase):
         def background_rule_projects(page: Page, key: str) -> int:
             page.goto("/settings/background-compute")
             picker = page.get_by_label("Project", exact=True)
-            expect(picker.locator("option", has_text="Choose a project")).to_have_count(1)
+            # Wait for the list (the other workspace's project is always in it), then look for the one asked about.
+            expect(picker.locator("option", has_text=B_PROJECT)).to_have_count(1)
             return picker.locator("option", has_text=A_PROJECT if key == "a" else B_PROJECT).count()
 
         return [("the Agents view tab", agents_tab), ("project policy and review rule", policy_and_review_rule), ("/handoff and /ai commands", handoff_command),
