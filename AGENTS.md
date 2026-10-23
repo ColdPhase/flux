@@ -111,8 +111,12 @@ Keep procedures in one place and use the guides below when relevant.
   interaction or accessibility; verify those in the running application.
 - Keep reviews and evidence tied to the tested commit and current contract.
   New code or changed criteria require the relevant checks and review again.
-- Keep `main` protected: PRs, eligible independent approval, resolved review
-  threads, and required checks. Never use a bypass to complete an agent run.
+- Merge to `main` through PRs with required checks green. Fast mode (founder
+  direction, Maurycy, 2026-10-23): the author may merge their own PR with the
+  admin bypass once its own impact-based checks pass at the head, no P1/P2 from
+  any review is open, and the PR records commands and result lines. Peer review
+  is optional and may happen after merge; a post-merge P1/P2 becomes an issue
+  for the author. See `docs/agents/workflow.md` §5.
 - Completed tasks contribute to a release; release completion requires the
   integrated acceptance pass described in `docs/agents/evaluation.md`.
 - A limit, unavailable peer, failed check, or unresolved blocker is a waiting or

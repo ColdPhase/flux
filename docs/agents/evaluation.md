@@ -150,8 +150,9 @@ reviewer or new commit, or add preferences/P3 findings on already reviewed code.
 If a P1/P2 remains or is newly demonstrated in the second round, record the concrete
 blocker and return ownership to the author. Stop the review loop and continue other
 ready work; do not start a third round automatically or approve a known failure to
-meet the round limit. Required independent approval, checks and resolved threads
-still govern merge. A reviewer's code change makes them an implementer; it does not
+meet the round limit. Merge follows the fast mode in
+[workflow §5](workflow.md#5-review-fix-and-merge): required checks, the author's
+own recorded checks and no open P1/P2. A reviewer's code change makes them an implementer; it does not
 reset this budget.
 
 A PR may deliver part of an issue. It then declares its scope against the issue's
