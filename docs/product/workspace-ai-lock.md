@@ -1,6 +1,6 @@
 # F-029 — workspace AI lock
 
-**Status: proposed** — implementation S1 and S2 merged, S3 (interface) open; eligible independent
+**Status: proposed** — implementation S1, S2 and S3 merged; eligible independent
 acceptance by @Zamojski5 pending. Reviews posted from the shared author account (PelikanFix16) are not
 independent acceptance and are not cited. The independent review of #629 asked for changes; the answer is
 [#642](https://github.com/ColdPhase/flux/issues/642).
@@ -197,7 +197,7 @@ export async function requireWorkspaceAi(db: Executor, workspaceId: string, opti
   | Morning summary with an assistant-written line | true |
   | Plain morning summary (counts only) | false |
 
-  Migration 0116 backfills existing rows conservatively (agent actor, agent-authored message,
+  Migration 0117 backfills existing rows conservatively (agent actor, agent-authored message,
   decision or result, join request, reaction note, suggestion, operator request and schedule
   notice): a row that cannot be classified is more likely hidden while AI is off than delivered.
   One predicate, `hiddenWhileAiOff` (`packages/db/src/repositories/workspace-ai.ts`), says

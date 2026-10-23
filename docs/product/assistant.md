@@ -8,7 +8,7 @@ peer review covers whether this text states them correctly and testably, not whe
 to make them. Implementation slices start from this text; a review finding that
 changes it is recorded here with its date.
 
-**Workspace AI lock ([F-029](workspace-ai-lock.md), proposed — implementation S1 and S2 merged; eligible independent acceptance by @Zamojski5 pending).** While a workspace's AI is off, no member's assistant reads, runs, schedules, reacts or suggests in it; the workspace block takes precedence over everything here.
+**Workspace AI lock ([F-029](workspace-ai-lock.md), proposed — implementation S1, S2 and S3 merged; eligible independent acceptance by @Zamojski5 pending).** While a workspace's AI is off, no member's assistant reads, runs, schedules, reacts or suggests in it; the workspace block takes precedence over everything here.
 
 <a id="contract-text-acceptance-2026-10-10"></a>
 **Independent contract-text acceptance, 2026-10-10.** The independent delegated
