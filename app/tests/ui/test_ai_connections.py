@@ -221,10 +221,10 @@ class AiConnectionSettings(unittest.TestCase):
         expect(guide).to_contain_text("codex mcp login flux")
         # #160 AC-2 / #460: Codex starts from Flux's playbook; the guide says how, and which Codex versions are tested.
         expect(guide).not_to_contain_text("Start and Resume are pending")
-        expect(guide.get_by_text("In Codex, ask it to start work on Flux. It reads Flux's playbook.")).to_be_visible()
+        expect(guide).to_contain_text("use its supplied Start/Resume command")
         expect(guide).to_contain_text("Codex 0.160.1")
         expect(guide).to_contain_text("Unsupported protocol version")
-        expect(guide).to_contain_text("use Flux's Start work prompt in Claude Code")
+        expect(guide).to_contain_text("Claude’s supplied Start/Resume workflow remains pending verification")
         # #320: the quick start's loopback http:// address is the one to use; HTTPS is needed only
         # for a client on another computer, so the guide must not ask for it here.
         self.assertRegex(ORIGIN, r"^http://(127\.\d+\.\d+\.\d+|localhost)(:\d+)?$", "this suite runs on a loopback http origin")

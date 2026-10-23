@@ -8,6 +8,7 @@ import { join } from 'node:path';
 import type { Pool } from 'pg';
 import type { Browser as Chromium } from 'playwright';
 import { password } from './people.js';
+import { oauthBrowserFailure, oauthCallbackPattern, oauthCallbackTarget, oauthHttpObservation, type OAuthBrowserObservation, type OAuthCallbackObservation, type OAuthHttpObservation } from './oauth-diagnostics.js';
 
 /**
  * Shared harness for the opt-in checks that drive the REAL pinned `codex` and `claude` clients against the Compose Flux
@@ -22,9 +23,10 @@ const upstream = new URL(process.env.FLUX_API_URL ?? 'http://api:8080');
 const root = mkdtempSync(join(tmpdir(), 'mcp-clients-'));
 
 /** The clients reach Flux at its public origin (127.0.0.1), which inside this container is this proxy. */
-export function startFluxProxy() {
+export function startFluxProxy(observe?: (observation: OAuthHttpObservation) => void) {
   const proxy = http.createServer((request, response) => {
     const forward = http.request({ host: upstream.hostname, port: upstream.port || 80, method: request.method, path: request.url, headers: request.headers }, (answer) => {
+      if (observe) { const observation = oauthHttpObservation(request.url ?? '/', answer.statusCode ?? 502); if (observation) observe(observation); }
       response.writeHead(answer.statusCode ?? 502, answer.headers); answer.pipe(response);
     });
     forward.on('error', () => response.destroy()); request.pipe(forward);
@@ -78,12 +80,12 @@ export async function seedOauthClient(pool: Pool, spec: ClientSpec) {
   return clientId;
 }
 
-export function cleanClientHome(spec: ClientSpec): ClientHome {
+export function cleanClientHome(spec: ClientSpec, options: { oauthFileStore?: boolean } = {}): ClientHome {
   const home = join(root, spec.key); const cwd = join(home, 'work');
   mkdirSync(cwd, { recursive: true }); mkdirSync(join(home, 'codex'), { recursive: true }); mkdirSync(join(home, 'claude'), { recursive: true });
   // The headless test container has no OS keyring/DBus session. Use Codex's supported file store consistently
   // for native login and subsequent fresh processes; OAuth still supplies every credential (never seeded tokens).
-  if (spec.client === 'codex') writeFileSync(join(home, 'codex', 'config.toml'), 'mcp_oauth_credentials_store = "file"\n', { mode: 0o600 });
+  if (spec.client === 'codex' && options.oauthFileStore !== false) writeFileSync(join(home, 'codex', 'config.toml'), 'mcp_oauth_credentials_store = "file"\n', { mode: 0o600 });
   const base = { HOME: home, DISABLE_AUTOUPDATER: '1', DISABLE_TELEMETRY: '1', CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: '1' };
   return spec.client === 'codex'
     ? { spec, cwd, env: { ...base, CODEX_HOME: join(home, 'codex'), MOCK_MODEL_KEY: 'not-a-vendor-key', RUST_LOG: 'warn,codex_mcp=debug,codex_rmcp_client=debug,rmcp=debug' } }
@@ -91,24 +93,50 @@ export function cleanClientHome(spec: ClientSpec): ClientHome {
 }
 
 /** The real person signs in and consents in Chromium for exactly the connection the client is for. */
-export async function authorizeInBrowser(browser: Chromium, email: string, spec: ClientSpec, url: string) {
+export async function authorizeInBrowser(browser: Chromium, email: string, spec: ClientSpec, url: string, observe?: (observation: OAuthBrowserObservation) => void, observeCallback?: (observation: OAuthCallbackObservation) => void, privateCallback?: URL) {
   const context = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+  let callbackWindow = false;
   try {
     const page = await context.newPage();
+    if (observeCallback) page.on('request', request => {
+      if (!callbackWindow || !request.isNavigationRequest() || request.frame() !== page.mainFrame()) return;
+      const target = oauthCallbackTarget(request.url(), spec.port);
+      if (target) observeCallback({ phase: 'request', target });
+    });
+    if (observe || observeCallback) page.on('response', response => {
+      if (!callbackWindow || !response.request().isNavigationRequest() || response.request().frame() !== page.mainFrame()) return;
+      const target = oauthCallbackTarget(response.url(), spec.port);
+      if (!target) return;
+      observeCallback?.({ phase: 'response', target, status: response.status() });
+      if (target.loopback && target.expectedPort && target.path !== 'other') observe?.({ stage: 'callback_response', status: response.status() });
+    });
+    if (observeCallback) page.on('requestfailed', request => {
+      if (!callbackWindow || !request.isNavigationRequest() || request.frame() !== page.mainFrame()) return;
+      const target = oauthCallbackTarget(request.url(), spec.port);
+      if (target) observeCallback({ phase: 'failure', target, failure: oauthBrowserFailure(request.failure()?.errorText ?? '') });
+    });
     await page.goto(url); await page.waitForURL(`${origin}/login?**`);
+    observe?.({ stage: 'sign_in_ready' });
     await page.getByLabel('Email', { exact: true }).fill(email);
     await page.getByLabel('Password', { exact: true }).fill(password);
     await page.getByRole('button', { name: 'Sign in', exact: true }).click();
     await page.waitForURL(`${origin}/connect-agent?**`);
     await page.locator('.connection__saved').filter({ hasText: spec.label }).getByRole('radio').check();
+    observe?.({ stage: 'connection_selected' });
     await page.getByRole('button', { name: 'Continue to consent' }).click(); await page.waitForURL(`${origin}/consent?**`);
+    observe?.({ stage: 'consent_ready' });
     await page.locator('.connection__summary').filter({ hasText: spec.label }).waitFor({ state: 'visible' });
-    const callback = page.waitForURL(new RegExp(`^http://(127\\.0\\.0\\.1|localhost):${spec.port}/callback`), { waitUntil: 'commit' }).catch(() => undefined);
+    const callback = page.waitForURL(privateCallback
+      ? candidate => candidate.origin === privateCallback.origin && candidate.pathname === privateCallback.pathname
+      : oauthCallbackPattern(spec.port), { waitUntil: 'commit' }).then(() => { observe?.({ stage: 'callback_navigation' }); }).catch(() => { observe?.({ stage: 'callback_wait_failed' }); });
+    callbackWindow = true;
     await page.getByRole('button', { name: 'Allow access' }).click();
+    observe?.({ stage: 'consent_submitted' });
     await callback;
   } catch (error) {
+    if (observe) throw new Error('Flux browser authorization did not complete; inspect the safe phase report.');
     throw new Error(`${(error as Error).message}\nauthorization URL: ${url}`);
-  } finally { await context.close(); }
+  } finally { callbackWindow = false; await context.close(); }
 }
 
 const authorizeUrl = /(https?:\/\/[^\s"']*\/api\/auth\/oauth2\/authorize\?[^\s"']+)/;

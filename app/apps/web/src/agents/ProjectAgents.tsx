@@ -32,6 +32,7 @@ import { agentAuthorOwner, useAgentOwners } from './owners';
 import { ProjectPolicy } from './ProjectPolicy';
 import { WORK_ROLE, agentEntries, connectionState, currentWorkLine, firstName, isAgentWorking, mayDo, shortOwner, tasksHeldBy, teammateOf, type AgentEntry } from './roster';
 import { useSessionClock } from './useSessionClock';
+import { CoworkHostActions } from '../agent-connection/CoworkHostActions';
 import { useTyping } from '../typing/useTyping';
 import { TypingNotice } from '../typing/TypingNotice';
 import './agents.css';
@@ -639,6 +640,7 @@ function AgentDetail({ entry, held, meId, projectId, now, asking, canHandOff, st
         </div>
       </header>
       {entry.connection?.scopes ? <p className="agents-detail__note" aria-label="Permissions" data-testid="agent-permissions">{permissionsLine(entry.connection.scopes)}</p> : null}
+      {entry.connection?.own ? <CoworkHostActions connectionId={entry.connection.id} projectId={projectId} client={entry.connection.clientDesignation} /> : null}
       <section className="agents-detail__now" aria-label="Now">
         <h3>Now</h3>
         {shown ? (

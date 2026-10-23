@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import type { Pool } from 'pg';
-import type { AgentOperation } from '@flux/contracts';
+import type { AgentOperation, ExternalClientDesignation } from '@flux/contracts';
 import { publicOrigin, register, uniqueEmail, type Browser } from './http.js';
 import { beginOauth, expect, mcp, oauthToken, toolValue } from './mcp.js';
 
@@ -22,10 +22,10 @@ export function toolFailure(message: Record<string, unknown> | null) {
  * One named connection of `owner` for an existing agent, authorized through the real OAuth consent of a fresh
  * client, with its own standing-grant helper, MCP tool caller and bootstrap runtime.
  */
-export async function agentConnection(pool: Pool, owner: Browser, agentId: string, projectIds: string[], scopes: string[] = actionScopes) {
+export async function agentConnection(pool: Pool, owner: Browser, agentId: string, projectIds: string[], scopes: string[] = actionScopes, clientDesignation: ExternalClientDesignation = 'other') {
   const projectId = projectIds[0]!;
   const connection = expect(await owner.request('POST', '/api/v1/agent-connections', { body: { agentId,
-    selectedProjectIds: projectIds, scopes } }), 201);
+    selectedProjectIds: projectIds, scopes, clientDesignation } }), 201);
   const connectionId = String(connection.id);
   const clientId = `flux-test-${randomUUID()}`;
   const redirectUri = 'http://127.0.0.1:19737/callback';

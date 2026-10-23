@@ -51,6 +51,7 @@ import {
   LEVEL,
   projectLevelSql,
   requireWorkspaceAi,
+  workspaceAi,
   visibleDraftsSql,
   visibleProjectsSql,
   type Actor,
@@ -350,27 +351,51 @@ export async function setWorkspaceAiPolicy(principal: Principal, workspaceId: st
  */
 export async function sweepWorkspaceAi(job: WorkspaceAiSweepJob, db: Database): Promise<WorkspaceAiSwept> {
   if (!isUuid(job.workspaceId) || !Number.isSafeInteger(job.epoch) || job.epoch < 1) throw new InvalidInputError('A workspace and an epoch are required');
-  return db.transaction(async (tx) => {
-    const rows = workspaceAiSweepRows(tx);
-    const ended = await rows.endQueuedRuns(job.workspaceId, job.epoch);
-    const stopping = await rows.stopInFlightRuns(job.workspaceId, job.epoch);
-    const swept: WorkspaceAiSwept = { runs: ended.length + stopping.length, tokens: await rows.closeRunTokens(job.workspaceId, job.epoch),
-      comparisons: await rows.endComparisons(job.workspaceId, job.epoch), reactions: await rows.skipReactionEvents(job.workspaceId, job.epoch),
-      requests: await rows.cancelRequests(job.workspaceId, job.epoch), units: await rows.stopUnits(job.workspaceId, job.epoch),
-      sessions: await rows.revokeSessions(job.workspaceId, job.epoch) };
-    // The owner's progress events, as for any other end or stop request of a run (events are written last).
-    for (const run of [...ended, ...stopping]) {
-      await recordEvent(events(tx), { kind: 'human', id: run.ownerUserId }, run.workspaceId, ASSISTANT_RUN_CHANGED_EVENT, run.id, { status: run.status });
-      if (run.status === 'stopped') await recordEvent(events(tx), { kind: 'agent', id: run.agentId }, run.workspaceId, ASSISTANT_WORKING_EVENT, run.projectId,
-        { conversationId: run.conversationId });
-    }
-    return swept;
-  });
+  const { workspaceId, epoch } = job;
+  type Rows = ReturnType<typeof workspaceAiSweepRows>;
+  // One transaction per step: a step that fails (a constraint, a lock timeout) cannot roll the others back or stall the cutover.
+  const steps: [Exclude<keyof WorkspaceAiSwept, 'failed'>, (rows: Rows, tx: Executor) => Promise<number>][] = [
+    ['runs', async (rows, tx) => {
+      const ended = await rows.endQueuedRuns(workspaceId, epoch);
+      const stopping = await rows.stopInFlightRuns(workspaceId, epoch);
+      // The owner's progress events, as for any other end or stop request of a run (events are written last).
+      for (const run of [...ended, ...stopping]) {
+        await recordEvent(events(tx), { kind: 'human', id: run.ownerUserId }, run.workspaceId, ASSISTANT_RUN_CHANGED_EVENT, run.id, { status: run.status });
+        if (run.status === 'stopped') await recordEvent(events(tx), { kind: 'agent', id: run.agentId }, run.workspaceId, ASSISTANT_WORKING_EVENT, run.projectId,
+          { conversationId: run.conversationId });
+      }
+      return ended.length + stopping.length;
+    }],
+    ['tokens', (rows) => rows.closeRunTokens(workspaceId, epoch)],
+    ['comparisons', (rows) => rows.endComparisons(workspaceId, epoch)],
+    ['reactions', (rows) => rows.skipReactionEvents(workspaceId, epoch)],
+    ['requests', (rows) => rows.cancelRequests(workspaceId, epoch)],
+    ['units', (rows) => rows.stopUnits(workspaceId, epoch)],
+    ['sessions', (rows) => rows.revokeSessions(workspaceId, epoch)],
+  ];
+  const swept: WorkspaceAiSwept = { runs: 0, tokens: 0, comparisons: 0, reactions: 0, requests: 0, units: 0, sessions: 0, failed: [] };
+  const errors: unknown[] = [];
+  for (const [name, step] of steps) {
+    try { swept[name] = await db.transaction((tx) => step(workspaceAiSweepRows(tx), tx)); }
+    catch (error) { swept.failed.push(name); errors.push(error); }
+  }
+  if (errors.length) throw new WorkspaceAiSweepIncomplete(swept, errors);
+  return swept;
+}
+
+/** Some sweep steps failed; the others committed. The worker's job retries the whole (idempotent) sweep. */
+export class WorkspaceAiSweepIncomplete extends AggregateError {
+  constructor(readonly swept: WorkspaceAiSwept, errors: unknown[]) {
+    super(errors, `The AI sweep did not finish: ${swept.failed.join(', ')}`);
+    this.name = 'WorkspaceAiSweepIncomplete';
+  }
 }
 
 export async function changeRole(principal: Principal, workspaceId: string, userId: string, command: ChangeRoleCommand, db: Database): Promise<WorkspaceMember> {
   const role = oneOf(command?.role, ROLES, 'role');
   return db.transaction(async (tx) => {
+    // F-029 lock order: the AI policy row before any membership row (the event below reads it again for agent audiences).
+    await workspaceAi(tx, workspaceId, { lock: true });
     await lockWorkspace(tx, workspaceId);
     const { actor } = enforce(await evaluateWorkspace(principal, 'workspace.manage_members', workspaceId, tx, { lock: true }), 'workspace');
     const [target] = await tx.select().from(schema.workspaceMembers)
@@ -392,6 +417,8 @@ export async function changeRole(principal: Principal, workspaceId: string, user
  */
 export async function removeMember(principal: Principal, workspaceId: string, userId: string, db: Database): Promise<void> {
   await db.transaction(async (tx) => {
+    // F-029 lock order: the AI policy row before any membership row.
+    await workspaceAi(tx, workspaceId, { lock: true });
     await lockWorkspace(tx, workspaceId);
     const self = principal.kind === 'human' && principal.id === userId;
     const { actor } = enforce(await evaluateWorkspace(principal, self ? 'workspace.read' : 'workspace.manage_members', workspaceId, tx, { lock: true }), 'workspace');

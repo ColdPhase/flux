@@ -18,7 +18,7 @@ import { ensureWorkspaceAiAllowed, setWorkspaceAi, workspaceAiRow } from './supp
 
 // F-029 workspace AI lock, S2 (#614): the switch, the flip and the sweep. Owners and admins turn AI off or on, under If-Match
 // and Idempotency-Key; the flip is ordered against every check on two real database connections (a check in progress makes
-// the flip wait, a check after the flip sees it, a person's own write never fails, a role change cannot deadlock it); a
+// the flip wait, a check after the flip sees it, a person's own write never fails, a held membership row makes the flip wait); a
 // provider request in flight is aborted within the watcher's bound and its late answer is not posted; the sweep touches only
 // work admitted before its flip, so turning AI on before it runs never replays anything; and a second API process (this test
 // process) sees the change made through the first, with no cache.
@@ -126,7 +126,7 @@ describe('workspace AI lock: switch and cutover', () => {
     assert.deepEqual([listed.status, errorCode(listed.message)], [200, 'WORKSPACE_AI_BLOCKED']);
   });
 
-  test('a person\'s own write during the flip commits and captures no AI work; a role change of the flipping admin cannot deadlock it', async () => {
+  test('a person\'s own write during the flip commits and captures no AI work; a held membership row makes the flip wait and see the demotion (real routes: workspace-ai-sweep)', async () => {
     await pool.query(`INSERT INTO assistant_reactions (id, workspace_id, project_id, owner_user_id, event, action, enabled) VALUES ($1, $2, $3, $4, 'blocked', 'tell', true)`,
       [randomUUID(), scene.ws.id, scene.place.id, scene.owner.id]);
     const task = await scene.task(scene.owner, 'Wire the lamp');
@@ -189,7 +189,7 @@ describe('workspace AI lock: switch and cutover', () => {
     const status = async (id: string) => (await pool.query('SELECT status, end_reason FROM personal_runs WHERE id = $1', [id])).rows[0];
     assert.deepEqual(await status(old.run.id), { status: 'stopped', end_reason: 'ai_off' }, 'the late sweep ends what was admitted before the flip');
     assert.deepEqual(await status(fresh.run.id), { status: 'queued', end_reason: null }, 'and never touches work admitted after AI was turned on again');
-    assert.deepEqual(Object.values(await sweepWorkspaceAi({ workspaceId: scene.ws.id, epoch: blockedEpoch }, db)), [0, 0, 0, 0, 0, 0, 0], 'a second sweep changes nothing');
+    assert.deepEqual(Object.values(await sweepWorkspaceAi({ workspaceId: scene.ws.id, epoch: blockedEpoch }, db)), [0, 0, 0, 0, 0, 0, 0, []], 'a second sweep changes nothing');
     const dispatched = scene.compute.dispatched.length;
     await scene.processor.process(fresh.run.id);
     assert.ok(scene.compute.dispatched.length > dispatched, 'control: the new run reaches the provider');

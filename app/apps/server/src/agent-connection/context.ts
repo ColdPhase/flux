@@ -16,6 +16,8 @@ export interface FluxMcpClaims {
   scopes: readonly string[];
   /** Supplied only by the verified HTTP composition; native internal adapters keep their existing envelope. */
   dispatch?: McpDispatch;
+  /** Optional immutable URL restriction admitted by the HTTP bearer composition; grants nothing. */
+  boundProjectId?: string;
   /**
    * A personal run's token (F-027 A2): only from the verified bearer's signed `flux_run_id`/`flux_place`.
    * The run must stay in flight and every tool reaches only its place.
@@ -81,7 +83,7 @@ export async function agentConnectionInTransaction(tx: Transaction, claims: Flux
       connectionId: row.id, ownerUserId: row.ownerUserId, agentId: row.agentId,
       // A run reaches only its place (F-022): the selection narrows to the run's project.
       selectedProjectIds: (mcpPolicy ? mcpPolicy.selectedProjectIds.filter((id) => row.selectedProjectIds.includes(id)) : row.selectedProjectIds)
-        .filter((id) => !claims.run || id === claims.run.projectId),
+        .filter((id) => (!claims.run || id === claims.run.projectId) && (!claims.boundProjectId || id === claims.boundProjectId)),
       scopes: row.scopes.filter((selected) => claims.scopes.includes(selected)), computeSource: row.computeSource,
     };
     const requireProject = async (id: string, action: 'project.read' | 'project.write' = 'project.read') => {

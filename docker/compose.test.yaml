@@ -115,6 +115,7 @@ services:
       FLUX_TEST_PERSONAL_RUNS: ${FLUX_TEST_PERSONAL_RUNS:-}
       NODE_EXTRA_CA_CERTS: /tls/cert.pem
     volumes:
+      - ../flux:/flux-launcher:ro
       - pushtls:/tls:ro
       - files:/data/files:z
     depends_on:

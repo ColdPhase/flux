@@ -4,7 +4,7 @@ import { sql } from 'drizzle-orm';
 import { WORKSPACE_AI_SWEEP_JOB, WORKSPACES_PATH, type AddMemberCommand, type ChangeRoleCommand, type CreateWorkspaceCommand,
   type SetWorkspaceAiPolicyCommand, type SetWorkspaceAiPolicyResult } from '@flux/contracts';
 import { addMember, assertAuthorized, changeRole, createWorkspace, getWorkspace, listMembers, listWorkspaces, removeMember, setWorkspaceAiPolicy,
-  sweepWorkspaceAi, type WorkspaceAiSweepQueue } from '@flux/core';
+  sweepWorkspaceAi, WorkspaceAiSweepIncomplete, type WorkspaceAiSweepQueue } from '@flux/core';
 import { bodyId, expectedVersion, requires } from '../http/commands.js';
 import { nameSchema, versionSchema } from '../http/schemas.js';
 import type { AccessContext } from './context.js';
@@ -38,7 +38,11 @@ export function workspaceRoutes(app: FastifyInstance, { db, principal, command, 
     let stopped = body.stopped ?? null;
     if (sweep && !response.replayed) {
       try { stopped = await sweepWorkspaceAi(sweep, db); }
-      catch (error) { request.log.error({ error }, 'The inline AI sweep failed; the worker job repeats it'); }
+      catch (error) {
+        // Each step is its own transaction: what committed is reported, the rest is repeated by the worker's job.
+        if (error instanceof WorkspaceAiSweepIncomplete) stopped = error.swept;
+        request.log.error({ error }, 'The inline AI sweep did not finish; the worker job repeats it');
+      }
     }
     return sendCommand(reply, { ...response, body: { ...body, stopped } });
   });

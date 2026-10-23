@@ -404,7 +404,7 @@ function AppLayoutContent() {
     let leader = 0;
     const onKey = (event: KeyboardEvent) => {
       if (event.metaKey || event.ctrlKey || event.altKey || event.defaultPrevented || isTyping(event.target)) return;
-      if (document.getElementById('root')?.inert) return;
+      if (document.getElementById('root')?.hasAttribute('data-modal')) return;
       // On a tablet the sidebar is always the rail (Spokój); "[" opens it as the drawer instead.
       if (event.key === '[') { event.preventDefault(); if (tablet) setNavOpen((open) => !open); else toggleSidebar(); return; }
       const key = event.key.toLowerCase();
