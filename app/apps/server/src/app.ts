@@ -104,7 +104,7 @@ export async function buildApp(config: ServerConfig, migrationsDir = 'packages/d
   // F-030 (#655): this process's keys of encrypted workspaces, refreshed by the keyring heartbeat; and the lock gate,
   // registered before any route so every later route gets it.
   const testDeployment = config.fixture.token !== null && config.fixture.failureInjection;
-  const encryptionKeys = processKeysFromEnv(env, testDeployment);
+  const encryptionKeys = processKeysFromEnv(env);
   useJsonCompression(app);
   // Every response refuses framing, the OAuth consent page included (#287).
   useFramingProtection(app);
@@ -123,11 +123,15 @@ export async function buildApp(config: ServerConfig, migrationsDir = 'packages/d
   const encryption = composeEncryption(db, boss, encryptionKeys);
   // The keyring heartbeat (5 s): swap again, then the boot id; a new boot deletes the stale unlock rows and records the locks.
   const heartbeat = encryptionKeys.startHeartbeat(async (change) => {
-    if (change.current) await dropStaleUnlocks(encryptionUnitOfWork(db, boss), change.current);
+    if (change.current) await dropStaleUnlocks(encryptionUnitOfWork(db, boss), change.current, change.observedAt);
   }, 5_000, (error) => app.log.warn({ code: (error as { code?: unknown }).code ?? null }, 'Keyring heartbeat failed'));
   app.addHook('onClose', async () => heartbeat.stop());
   await heartbeat.first;
-  await app.register(async (scope) => encryptionRoutes(scope, { sessions: identity, encryption, fixtureCreation: config.fixture.token !== null }));
+  // Operators learn it from the log, not from the unauthenticated health endpoint (F-030 S1 review).
+  if (encryptionKeys.availability === 'swap_unsafe') app.log.warn('Encrypted workspaces stay locked here: this server can write memory to disk (swap is on and not limited). Turn swap off or set FLUX_SWAP_ACKNOWLEDGED=encrypted-swap if every swap device is encrypted.');
+  await app.register(async (scope) => encryptionRoutes(scope, { sessions: identity, encryption,
+    // S1/S2: creation exists only in a test deployment and with the fixture bearer (never on a ./flux up install).
+    fixtureCreation: testDeployment ? config.fixture.token : null }));
   const liveMedia = createLiveMediaFromEnv(env, identityConfig.publicOrigin);
   const lifecycle = liveMedia ? liveLifecycle(db, pool, liveMedia.media) : null;
   const liveRevocation = liveMedia ? liveRevocationCoordinator(db, pool, liveMedia.media, lifecycle!) : null;
@@ -261,7 +265,7 @@ export async function buildApp(config: ServerConfig, migrationsDir = 'packages/d
   // The `runtime` transport (F-022 AIM-3): off unless the operator set FLUX_AGENT_RUNTIME.
   await app.register(aiRoutes(agentRuntimeRoutes), { db, sessions: identity, config: config.agentRuntime, secret: identityConfig.secret, publicOrigin: identityConfig.publicOrigin });
 
-  registerHealth(app, { pool, boss, manifest: migrationManifest, filesDir, encryption: () => encryptionKeys.availability });
+  registerHealth(app, { pool, boss, manifest: migrationManifest, filesDir });
   registerFixtureRoutes(app, { config: config.fixture, db, boss, publicOrigin: identityConfig.publicOrigin });
 
   // The build writes .br/.gz copies of the app's text files (#266 item 9); a client that accepts

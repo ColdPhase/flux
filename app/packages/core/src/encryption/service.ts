@@ -9,7 +9,7 @@ import { ConflictError, ForbiddenError, InvalidInputError, RateLimitedError } fr
 import type { Principal } from '../principal.js';
 import { WorkspaceLockedError, UnlockIncorrectError } from './errors.js';
 import {
-  generateHolderKeyPair, holderMac, holderMacValid, HolderKeyMismatchError, keyCommitmentValid, openDekForHolder, sealDekToHolder,
+  generateHolderKeyPair, holderMac, holderMacValid, HolderKeyMismatchError, holderSecretCheck, holderSecretCheckValid, keyCommitmentValid, openDekForHolder, sealDekToHolder,
   unwrapPrivateKey, wrapConfirmation, wrapConfirmationValid, wrapPrivateKey, type HolderKeyPair,
 } from './holders.js';
 import { deriveKek, kdfIsCurrent, newKdfParams, parseKdfParams, type KdfParams } from './kdf.js';
@@ -127,17 +127,18 @@ export function createEncryptionUseCases({ unit, keys, semaphore, estimator, rea
       await unit.run((ports) => ports.rows.releaseAttempt(reservation.id)); // a busy server is not a wrong guess
       throw error;
     }
+    // A wrong secret fails the check (400, the attempt counts). A right one whose row no longer opens was changed outside
+    // Flux (a replaced public key or wrapped private key): tampering, and the attempt is released.
+    if (!holderSecretCheckValid(kek, place(holder), holder.secretCheck)) {
+      kek.fill(0);
+      throw new UnlockIncorrectError(m.keys.name);
+    }
+    await unit.run((ports) => ports.rows.releaseAttempt(reservation.id));
     try {
-      const privateKey = unwrapPrivateKey(kek, holder.wrappedPrivate, place(holder), holder.publicKey);
-      await unit.run((ports) => ports.rows.releaseAttempt(reservation.id));
-      return { privateKey, kek, kdf };
+      return { privateKey: unwrapPrivateKey(kek, holder.wrappedPrivate, place(holder), holder.publicKey), kek, kdf };
     } catch (error) {
       kek.fill(0);
-      if (error instanceof HolderKeyMismatchError) {
-        await unit.run((ports) => ports.rows.releaseAttempt(reservation.id));
-        return tampered(workspaceId, m.keys.name, m.holders);
-      }
-      if (error instanceof DecryptionFailedError) throw new UnlockIncorrectError(m.keys.name);
+      if (error instanceof HolderKeyMismatchError || error instanceof DecryptionFailedError) return tampered(workspaceId, m.keys.name, m.holders);
       throw error;
     }
   }
@@ -188,6 +189,7 @@ export function createEncryptionUseCases({ unit, keys, semaphore, estimator, rea
     const holder: HolderRecord = {
       id: holderId, workspaceId, kind, userId, kdf, publicKey: pair.publicKey, wrappedPrivate: wrapPrivateKey(kek, pair, who),
       holderMac: holderMac(deks.get(currentVersion)!, currentVersion, { ...who, publicKey: pair.publicKey }), holderMacVersion: currentVersion,
+      secretCheck: holderSecretCheck(kek, who),
     };
     const wraps = [...deks].map(([keyVersion, dek]) => {
       const dekPlace = { workspaceId, holderId, keyVersion };
@@ -347,6 +349,8 @@ export function createEncryptionUseCases({ unit, keys, semaphore, estimator, rea
     /** `POST …/lock`: deletes the unlock rows (`FOR UPDATE`), then holds the person's membership `FOR SHARE`. */
     async lock(principal: Principal, workspaceId: string): Promise<EncryptionStateResult> {
       person(principal);
+      // Authorised read-only first, so nobody else can contend for the rows; then the rows FOR UPDATE, then the membership.
+      await unit.run(async (ports) => { await ports.access.manager(principal, workspaceId); });
       await unit.run(async (ports) => {
         await ports.rows.unlocks(workspaceId, { lock: 'update' });
         await ports.access.manager(principal, workspaceId, { lock: true });
@@ -501,7 +505,7 @@ export function createEncryptionUseCases({ unit, keys, semaphore, estimator, rea
       return { recoveryCode: code };
     },
 
-    dropStaleUnlocks: (currentBoot: string) => dropStaleUnlocks(unit, currentBoot),
+    dropStaleUnlocks: (currentBoot: string, observedAt: Date) => dropStaleUnlocks(unit, currentBoot, observedAt),
   };
 }
 export type EncryptionUseCases = ReturnType<typeof createEncryptionUseCases>;
@@ -510,9 +514,10 @@ export type EncryptionUseCases = ReturnType<typeof createEncryptionUseCases>;
  * The heartbeat's boot change, in every API and worker process: deletes every stale unlock row and records one
  * `workspace.locked.v1 { reason: 'restart' }` per workspace. Concurrent deleters do no harm (each row is deleted once).
  */
-export async function dropStaleUnlocks(unit: EncryptionUnitOfWork, currentBoot: string): Promise<string[]> {
+export async function dropStaleUnlocks(unit: EncryptionUnitOfWork, currentBoot: string, observedAt: Date): Promise<string[]> {
   return unit.run(async (ports) => {
-    const dropped = await ports.rows.dropStaleUnlocks(currentBoot);
+    // Only rows written before this process saw the boot: a late heartbeat never deletes rows of a newer boot.
+    const dropped = await ports.rows.dropStaleUnlocks(currentBoot, observedAt);
     for (const row of dropped) {
       await ports.event(row.unlockedBy ? { kind: 'human', id: row.unlockedBy } : SYSTEM, row.workspaceId, WORKSPACE_LOCKED_EVENT, { reason: 'restart' });
     }

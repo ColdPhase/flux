@@ -6,7 +6,7 @@ import * as zxcvbnEnglish from '@zxcvbn-ts/language-en';
 import { WORKSPACE_ENCRYPTION_RESUME_JOB, type WorkspaceEncryptionResumeJob } from '@flux/contracts';
 import {
   authorize, createEncryptionUseCases, DerivationSemaphore, ForbiddenError, getWorkspace, keyringFromEnv, loadActor, NotFoundError, ProcessKeys,
-  recordEvent, swapFiles, swapSafety, type Database, type EncryptionPorts, type EncryptionUnitOfWork, type PasswordEstimator,
+  recordEvent, swapFiles, swapSafety, testSwapRoot, type Database, type EncryptionPorts, type EncryptionUnitOfWork, type PasswordEstimator,
 } from '@flux/core';
 import { workspaceEncryptionRows, type DbExecutor } from '@flux/db';
 import { eventPorts } from '../events.js';
@@ -54,8 +54,8 @@ export function zxcvbnEstimator(): PasswordEstimator {
  * The process's keys from its environment: the keyring (`FLUX_KEYRING_TOKEN`, `FLUX_KEYRING_URL`, `FLUX_KEYRING=off`)
  * and the swap check. `FLUX_TEST_SWAP_ROOT` (fake cgroup and `/proc/swaps` files) is honoured only by a test deployment.
  */
-export function processKeysFromEnv(env: NodeJS.ProcessEnv, testDeployment: boolean): ProcessKeys {
-  const files = swapFiles(testDeployment ? env.FLUX_TEST_SWAP_ROOT ?? '' : '');
+export function processKeysFromEnv(env: NodeJS.ProcessEnv): ProcessKeys {
+  const files = swapFiles(testSwapRoot(env));
   return new ProcessKeys(keyringFromEnv(env), () => swapSafety(env, files));
 }
 

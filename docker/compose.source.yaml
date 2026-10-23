@@ -186,6 +186,8 @@ services:
       # TEST ONLY (#68): with FLUX_TEST_PERSONAL_RUNS=anthropic-mock the worker sends personal runs
       # through the real Anthropic adapter to this mock provider. Empty in production.
       FLUX_TEST_FAILURE_INJECTION: ${FLUX_TEST_FAILURE_INJECTION:-false}
+      # With the line above, marks a test deployment (F-030 test-only swap files); empty in production.
+      FLUX_FIXTURE_TOKEN: ${FLUX_FIXTURE_TOKEN:-}
       FLUX_TEST_PERSONAL_RUNS: ${FLUX_TEST_PERSONAL_RUNS:-}
       FLUX_TEST_ANTHROPIC_URL: ${FLUX_TEST_ANTHROPIC_URL:-}
       # The same operator allowlist as the API: the worker checks it again at every request.
@@ -232,6 +234,10 @@ services:
       FLUX_KEYRING_TOKEN: ${FLUX_KEYRING_TOKEN:-}
       FLUX_SWAP_ACKNOWLEDGED: ${FLUX_SWAP_ACKNOWLEDGED:-}
       NODE_OPTIONS: --secure-heap=65536
+      # TEST ONLY switches; both needed (with FLUX_KEYRING_REVEAL_BOOT_KEY for the boot-key reveal) or ignored.
+      FLUX_FIXTURE_TOKEN: ${FLUX_FIXTURE_TOKEN:-}
+      FLUX_TEST_FAILURE_INJECTION: ${FLUX_TEST_FAILURE_INJECTION:-false}
+      FLUX_KEYRING_REVEAL_BOOT_KEY: ${FLUX_KEYRING_REVEAL_BOOT_KEY:-}
     networks: [keyring]
     depends_on:
       migrate:

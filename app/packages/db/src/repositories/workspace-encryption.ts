@@ -28,6 +28,7 @@ export interface HolderRow {
   wrappedPrivate: string;
   holderMac: string;
   holderMacVersion: number;
+  secretCheck: string;
 }
 export interface DekWrapRow { holderId: string; workspaceId: string; keyVersion: number; ephemeralPublic: string; sealedDek: string; confirm: string | null }
 export interface KeyVersionRow { keyVersion: number; commitment: string | null; checkValue: string }
@@ -50,7 +51,7 @@ const unlockRows = (rows: UnlockRowData[]) => rows.map((row) => ({ ...row, unloc
 const lockClause = (lock: 'update' | 'share' | undefined) => (lock === 'update' ? sql` FOR UPDATE` : lock === 'share' ? sql` FOR SHARE` : sql``);
 
 const HOLDER = sql`id, workspace_id AS "workspaceId", kind, user_id AS "userId", kdf, public_key AS "publicKey", wrapped_private AS "wrappedPrivate",
-  holder_mac AS "holderMac", holder_mac_version AS "holderMacVersion"`;
+  holder_mac AS "holderMac", holder_mac_version AS "holderMacVersion", secret_check AS "secretCheck"`;
 const UNLOCK = sql`key_version AS "keyVersion", boot_id AS "bootId", sealed_dek AS "sealedDek", unlocked_at AS "unlockedAt", unlocked_by AS "unlockedBy"`;
 
 export function workspaceEncryptionRows(db: DbExecutor) {
@@ -102,14 +103,14 @@ export function workspaceEncryptionRows(db: DbExecutor) {
         VALUES (${row.workspaceId}, ${row.keyVersion}, ${row.commitment}, ${row.checkValue})`);
     },
     async insertHolder(row: HolderRow) {
-      await db.execute(sql`INSERT INTO workspace_holders (id, workspace_id, kind, user_id, kdf, public_key, wrapped_private, holder_mac, holder_mac_version)
+      await db.execute(sql`INSERT INTO workspace_holders (id, workspace_id, kind, user_id, kdf, public_key, wrapped_private, holder_mac, holder_mac_version, secret_check)
         VALUES (${row.id}, ${row.workspaceId}, ${row.kind}, ${row.userId}, ${JSON.stringify(row.kdf)}::jsonb, ${row.publicKey}, ${row.wrappedPrivate},
-          ${row.holderMac}, ${row.holderMacVersion})`);
+          ${row.holderMac}, ${row.holderMacVersion}, ${row.secretCheck})`);
     },
     /** A new key pair or password for an existing holder, in place (deleting a password holder would leave a rotation pending). */
-    async updateHolder(id: string, row: Pick<HolderRow, 'kdf' | 'publicKey' | 'wrappedPrivate' | 'holderMac' | 'holderMacVersion'>) {
+    async updateHolder(id: string, row: Pick<HolderRow, 'kdf' | 'publicKey' | 'wrappedPrivate' | 'holderMac' | 'holderMacVersion' | 'secretCheck'>) {
       await db.execute(sql`UPDATE workspace_holders SET kdf = ${JSON.stringify(row.kdf)}::jsonb, public_key = ${row.publicKey}, wrapped_private = ${row.wrappedPrivate},
-        holder_mac = ${row.holderMac}, holder_mac_version = ${row.holderMacVersion}, updated_at = now() WHERE id = ${id}`);
+        holder_mac = ${row.holderMac}, holder_mac_version = ${row.holderMacVersion}, secret_check = ${row.secretCheck}, updated_at = now() WHERE id = ${id}`);
     },
     /** Replaces every DEK wrap of one holder. */
     async replaceDekWraps(holderId: string, rows: Omit<DekWrapRow, 'holderId'>[]) {
@@ -133,12 +134,14 @@ export function workspaceEncryptionRows(db: DbExecutor) {
      * After a keyring restart: deletes every unlock row of another boot, and the remaining rows of any workspace with a
      * live version that has no current row. Returns each affected workspace once, with who had unlocked it.
      */
-    async dropStaleUnlocks(currentBoot: string): Promise<{ workspaceId: string; unlockedBy: string | null }[]> {
+    async dropStaleUnlocks(currentBoot: string, observedAt: Date): Promise<{ workspaceId: string; unlockedBy: string | null }[]> {
+      // Rows written after `observedAt` belong to a boot newer than the one the caller saw; they are never touched.
       return rowsOf(db, sql`WITH stale AS (
           SELECT u.workspace_id FROM workspace_unlocks u JOIN workspace_keys k ON k.workspace_id = u.workspace_id
-          WHERE u.boot_id <> ${currentBoot}::uuid
+          WHERE u.unlocked_at <= ${observedAt.toISOString()}::timestamptz AND NOT EXISTS (SELECT 1 FROM workspace_unlocks n
+            WHERE n.workspace_id = u.workspace_id AND n.unlocked_at > ${observedAt.toISOString()}::timestamptz) AND (u.boot_id <> ${currentBoot}::uuid
              OR EXISTS (SELECT 1 FROM unnest(k.live_versions) v WHERE NOT EXISTS (
-               SELECT 1 FROM workspace_unlocks c WHERE c.workspace_id = u.workspace_id AND c.key_version = v AND c.boot_id = ${currentBoot}::uuid))
+               SELECT 1 FROM workspace_unlocks c WHERE c.workspace_id = u.workspace_id AND c.key_version = v AND c.boot_id = ${currentBoot}::uuid)))
         ), deleted AS (
           DELETE FROM workspace_unlocks u USING (SELECT DISTINCT workspace_id FROM stale) s WHERE u.workspace_id = s.workspace_id
           RETURNING u.workspace_id, u.unlocked_by, u.key_version

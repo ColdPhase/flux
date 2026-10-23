@@ -9,10 +9,8 @@ import { assertExactMigrationLedger, FLUX_SCHEMA_VERSION, PG_BOSS_SCHEMA_VERSION
  * `GET /api/v1/health`: ready only when the database has exactly this release's migrations, the
  * queue schema matches, and the files volume takes a write.
  */
-export function registerHealth(app: FastifyInstance, { pool, boss, manifest, filesDir, encryption }: {
+export function registerHealth(app: FastifyInstance, { pool, boss, manifest, filesDir }: {
   pool: Parameters<typeof readAppliedMigrationVersions>[0]; boss: Pick<PgBoss, 'schemaVersion'>; manifest: readonly MigrationFile[]; filesDir: string;
-  /** F-030: whether this process can hold workspace keys (`ok`, `keyring_off`, `keyring_unavailable`, `swap_unsafe`); never makes it unhealthy. */
-  encryption?: () => string;
 }) {
   app.get('/api/v1/health', async (_request, reply) => {
     try {
@@ -21,7 +19,7 @@ export function registerHealth(app: FastifyInstance, { pool, boss, manifest, fil
       const probe = join(filesDir, `.flux-health-${randomUUID()}`);
       const file = await open(probe, 'wx');
       try { await file.writeFile('ok'); } finally { await file.close(); await unlink(probe); }
-      return { status: 'ok', schemaVersion: FLUX_SCHEMA_VERSION, ...(encryption ? { encryption: encryption() } : {}) };
+      return { status: 'ok', schemaVersion: FLUX_SCHEMA_VERSION };
     } catch (error) {
       app.log.warn(error);
       return reply.code(503).send({ status: 'unavailable' });

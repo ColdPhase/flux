@@ -4,7 +4,7 @@ import { before, describe, test } from 'node:test';
 import { ENCRYPTED_WORKSPACES_PATH, workspaceRecoveryCodePath, workspaceUnlockGrantsPath, workspaceUnlockPasswordPath } from '@flux/contracts';
 import { createEncryptionUseCases, type EncryptionUseCaseDeps } from '@flux/core';
 import { pool } from './support/db.js';
-import { codeOf, contentCall, createSealed, lock, passphrase, readWorkspace, unlock } from './support/encryption.js';
+import { codeOf, contentCall, createSealed, fixtureBearer, lock, passphrase, readWorkspace, unlock } from './support/encryption.js';
 import { addMember, expectStatus, person, workspace, type Person } from './support/people.js';
 
 // AC-2 of F-030 (#655, S1; docs/product/encrypted-workspaces.md#tests-and-acceptance-criteria): the lock lifecycle of an
@@ -53,19 +53,27 @@ describe('F-030 creation (fixture route)', () => {
 
     const creationId = randomUUID();
     const first = await createSealed(eve, 'Retry club', pw.eve, creationId);
-    const again = await eve.browser.request('POST', ENCRYPTED_WORKSPACES_PATH, { body: { name: 'Retry club', creationId, password: pw.eve } });
+    const again = await eve.browser.request('POST', ENCRYPTED_WORKSPACES_PATH, { body: { name: 'Retry club', creationId, password: pw.eve }, headers: fixtureBearer() });
     assert.equal(again.status, 200, again.text);
     assert.deepEqual({ id: (again.json as { workspace: { id: string } }).workspace.id, code: (again.json as { recoveryCode: unknown }).recoveryCode },
       { id: first.workspace.id, code: null });
-    const renamed = await eve.browser.request('POST', ENCRYPTED_WORKSPACES_PATH, { body: { name: 'Other club', creationId, password: pw.eve } });
+    const renamed = await eve.browser.request('POST', ENCRYPTED_WORKSPACES_PATH, { body: { name: 'Other club', creationId, password: pw.eve }, headers: fixtureBearer() });
     assert.equal(renamed.status, 409);
     assert.equal(codeOf(renamed), 'IDEMPOTENCY_CONFLICT');
     assert.equal(again.headers.get('cache-control'), 'no-store');
   });
 
+  test('creation needs the fixture bearer as well as a session', async () => {
+    const response = await eve.browser.request('POST', ENCRYPTED_WORKSPACES_PATH, { body: { name: 'No bearer club', creationId: randomUUID(), password: pw.eve } });
+    assert.equal(response.status, 401);
+    const wrong = await eve.browser.request('POST', ENCRYPTED_WORKSPACES_PATH, { body: { name: 'No bearer club', creationId: randomUUID(), password: pw.eve },
+      headers: { authorization: 'Bearer not-the-fixture-token' } });
+    assert.equal(wrong.status, 401);
+  });
+
   test('own passwords: under 20 characters and "abcdefghabcdefghabcd" are too weak', async () => {
     for (const password of ['short but sweet', 'abcdefghabcdefghabcd']) {
-      const response = await eve.browser.request('POST', ENCRYPTED_WORKSPACES_PATH, { body: { name: 'Weak club', creationId: randomUUID(), password } });
+      const response = await eve.browser.request('POST', ENCRYPTED_WORKSPACES_PATH, { body: { name: 'Weak club', creationId: randomUUID(), password }, headers: fixtureBearer() });
       assert.equal(response.status, 400, password);
       assert.equal(codeOf(response), 'PASSWORD_TOO_WEAK');
     }
@@ -98,6 +106,11 @@ describe('F-030 unlock, Lock now and 423', () => {
     assert.equal((await readWorkspace(cy.browser, A)).encryption?.state, 'locked', 'metadata still reads while locked');
     const outsider = await person('Outsider');
     assert.equal((await contentCall(outsider.browser, A)).status, 404, 'a non-member learns nothing');
+    // S1 stopgap for cross-workspace reads (S2a filters them): refused for a member of the locked space, not for others.
+    const inbox = await cy.browser.request('GET', '/api/v1/inbox');
+    assert.equal(inbox.status, 423, inbox.text);
+    assert.equal((await cy.browser.request('GET', '/api/v1/search?q=garden')).status, 423);
+    assert.equal((await outsider.browser.request('GET', '/api/v1/inbox')).status, 200);
 
     const wrong = await unlock(ada.browser, A, { password: `${pw.ada} nope` });
     assert.equal(wrong.status, 400);
@@ -107,6 +120,7 @@ describe('F-030 unlock, Lock now and 423', () => {
     assert.equal((right.json as { encryption: { state: string } }).encryption.state, 'unlocked');
     assert.deepEqual((await events(A, 'workspace.unlocked.v1')).at(-1), { by: ada.id });
     expectStatus(await contentCall(cy.browser, A), 200);
+    expectStatus(await cy.browser.request('GET', '/api/v1/inbox'), 200);
     const repeat = await unlock(ada.browser, A, { password: 'not checked while unlocked' });
     assert.equal(repeat.status, 200, 'already unlocked: no check, so no oracle');
     await clearAttempts(A);
@@ -277,14 +291,17 @@ describe('F-030 tampered key rows', () => {
     // (a) the owner's public key replaced by another valid key
     await pool.query(`UPDATE workspace_holders SET public_key = $2 WHERE id = $1`, [holder.id, recoveryHolder.public_key]);
     const replaced = await unlock(owner.browser, club.id, { password });
-    assert.equal(replaced.status, 400, `the public key is in the AAD of the private key: ${replaced.text}`);
+    assert.equal(replaced.status, 409, `the right password, a row that no longer opens: tampering, not a wrong password (${replaced.text})`);
+    assert.equal(codeOf(replaced), 'ENCRYPTION_TAMPERED');
+    assert.equal((await unlock(owner.browser, club.id, { password: `${password} typo` })).status, 400, 'a wrong password is still just wrong');
     const seen = await unlock(owner.browser, club.id, { recoveryCode: code });
     assert.equal(seen.status, 409, `the recovery holder's unlock verifies every holder's MAC: ${seen.text}`);
     assert.equal(codeOf(seen), 'ENCRYPTION_TAMPERED');
     await pool.query(`UPDATE workspace_holders SET public_key = $2 WHERE id = $1`, [holder.id, holder.public_key]);
     // (b) a rogue password holder for a member's account, copying a real row's material
-    await pool.query(`INSERT INTO workspace_holders (id, workspace_id, kind, user_id, kdf, public_key, wrapped_private, holder_mac, holder_mac_version)
-      VALUES ($1, $2, 'password', $3, $4, $5, $6, $7, 1)`, [randomUUID(), club.id, member.id, holder.kdf, holder.public_key, holder.wrapped_private, holder.holder_mac]);
+    await pool.query(`INSERT INTO workspace_holders (id, workspace_id, kind, user_id, kdf, public_key, wrapped_private, holder_mac, holder_mac_version, secret_check)
+      VALUES ($1, $2, 'password', $3, $4, $5, $6, $7, 1, $8)`, [randomUUID(), club.id, member.id, holder.kdf, holder.public_key, holder.wrapped_private, holder.holder_mac,
+      holder.secret_check]);
     const rogue = await unlock(owner.browser, club.id, { password });
     assert.equal(rogue.status, 409, rogue.text);
     assert.equal(codeOf(rogue), 'ENCRYPTION_TAMPERED');

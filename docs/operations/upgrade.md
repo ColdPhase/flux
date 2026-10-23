@@ -44,7 +44,7 @@ check `scripts/check_encryption.sh` and the affected API suites of `check_applic
 least twice these peaks; the full suite was not measured.
 
 When swap is on and not limited for a container (an older kernel without swap accounting), the keyring
-refuses to start and the API reports `encryption: 'swap_unsafe'` in `/api/v1/health`. Turn swap off,
+refuses to start and the API logs a warning at start; encrypted spaces stay locked there. Turn swap off,
 or set `FLUX_SWAP_ACKNOWLEDGED=encrypted-swap` only if every swap device is encrypted with a key that
 is not stored on the disk.
 

@@ -281,8 +281,11 @@ stored value and compares it in RAM. That happens only on a replay or a Save, so
   The parameters are stored per holder (`kdf`). A successful unlock with older parameters re-wraps
   the private key under the current ones.
 - `wrapped_private` = AES-256-GCM(KEK, random nonce, X25519 private key), with AAD
-  `[flux wrap v1, workspace id, holder id, kind, user id or "", public key]`. A wrong password fails
-  the tag, so there is no separate verifier. After opening, the API derives the public key from the
+  `[flux wrap v1, workspace id, holder id, kind, user id or "", public key]`. S1 adds
+  `workspace_holders.secret_check` = `HMAC(HKDF(KEK, [flux secret-check v1, workspace id, holder id]), [holder id,
+  kind, user id or ""])`: a wrong password fails it (`400 UNLOCK_INCORRECT`), and a right password whose row no longer
+  opens (a replaced public key or wrapped private key) is tampering (`409`). It is no easier to guess against than
+  the tag (both need the Argon2id derivation). After opening, the API derives the public key from the
   private key and compares it with the stored one. A mismatch is [tampering](#authenticating-holders-and-wraps).
 - **Sealing a DEK to a holder** (`workspace_dek_wraps`), in the style of HPKE base mode (RFC 9180)
   built from Node primitives: make an ephemeral X25519 key pair; `shared = X25519(ephemeral private,
@@ -880,7 +883,8 @@ not only warned about.
 - **Swap check.** One function, `swapSafety()` in `packages/core/src/encryption`, passes when any of
   these holds:
   1. the process's own cgroup forbids swap: on cgroup v2 `/sys/fs/cgroup/memory.swap.max` is `0`; on
-     v1 `memory.memsw.limit_in_bytes` equals `memory.limit_in_bytes`;
+     v1 `memory.memsw.limit_in_bytes` equals `memory.limit_in_bytes` **and that limit is real** (below
+     2^62; "no limit" is a page-rounded 2^63 - 1 in both files, which are then equal without forbidding swap);
   2. `/proc/swaps`, which shows the host's swap devices inside a container, lists none, or only
      `zram` devices (compressed RAM; an operator who sets up zram writeback to disk must not use
      this case);
@@ -889,7 +893,9 @@ not only warned about.
 - **Enforced where keys appear.** The keyring refuses to start unless `swapSafety()` passes. API and
   worker processes that fail it never open a DEK: for them every sealed workspace is locked, unlock
   and creation answer `503 SWAP_UNSAFE` ("This server can write memory to disk. Its operator needs to
-  turn off swap or confirm it is encrypted."), and `/api/v1/health` reports `encryption: 'swap_unsafe'`.
+  turn off swap or confirm it is encrypted."), and the API logs a warning at start. (S1 review: the
+  unauthenticated `/api/v1/health` does not report it.) The heartbeat runs the check again every 5 s and
+  drops every key when it fails.
 - **Defaults that pass.** The shipped Compose files give `api` and `worker` `mem_limit` with
   `memswap_limit` equal (`FLUX_API_MEMORY`, default `2g`; `FLUX_WORKER_MEMORY`, default `1g`;
   configurable, never unset), so case 1 holds wherever the kernel accounts swap. Elsewhere, case 2 or 3
@@ -1149,7 +1155,7 @@ answers `Cache-Control: no-store`, and does not use the Idempotency-Key store.
 
 | Route | Body | Answers |
 | --- | --- | --- |
-| `POST /api/v1/encrypted-workspaces` | `{ name, creationId, password }` | `201 { workspace, recoveryCode }`. The same person and `creationId` again (`workspaces.creation_id`) gives `200 { workspace, recoveryCode: null }`; a different name with the same id gives `409 IDEMPOTENCY_CONFLICT`. `400 PASSWORD_TOO_WEAK`, `503 KEYRING_UNAVAILABLE` or `SWAP_UNSAFE`. In S1 and S2 the route exists only with `FLUX_FIXTURE_TOKEN` set. |
+| `POST /api/v1/encrypted-workspaces` | `{ name, creationId, password }` | `201 { workspace, recoveryCode }`. The same person and `creationId` again (`workspaces.creation_id`) gives `200 { workspace, recoveryCode: null }`; a different name with the same id gives `409 IDEMPOTENCY_CONFLICT`. `400 PASSWORD_TOO_WEAK`, `503 KEYRING_UNAVAILABLE` or `SWAP_UNSAFE`. In S1 and S2 the route exists only in a test deployment (`FLUX_FIXTURE_TOKEN` set **and** `FLUX_TEST_FAILURE_INJECTION=true`) and needs the fixture bearer besides the session; a `./flux up` install, which always has a fixture token, never gets it. |
 | `POST /api/v1/workspaces/:id/unlock` | `{ password }` or `{ recoveryCode }` | `200 { encryption }`, `400 UNLOCK_INCORRECT`, `403 WORKSPACE_ENCRYPTION_ADMIN_REQUIRED`, `409 NO_UNLOCK_PASSWORD`, `429 UNLOCK_RATE_LIMITED`, `503 KEYRING_UNAVAILABLE`, `SWAP_UNSAFE` or `UNLOCK_BUSY`. |
 | `POST /api/v1/workspaces/:id/lock` | — | `200 { encryption }`, `403`. |
 | `POST /api/v1/workspaces/:id/unlock-password-grants` | `{ userId, password }` (the holder's own) | `201 { expiresAt }`, `400 UNLOCK_INCORRECT`, `403` (not a holder, or the target is not an owner or admin), `409 ALREADY_HAS_PASSWORD`, `423`. |
@@ -1194,8 +1200,9 @@ route.
 
 One issue, #655, and one owner. Each slice is its own PR with its own review, and each can be merged
 alone. **Nothing lets a sealed workspace be created in production until S3.** In S1 and S2 the create
-route exists only with `FLUX_FIXTURE_TOKEN` set, like the other fixture routes, so a real deployment
-never holds a half-sealed workspace.
+route exists only in a test deployment (`FLUX_FIXTURE_TOKEN` set and `FLUX_TEST_FAILURE_INJECTION=true`)
+and needs the fixture bearer as well as a session. `./flux up` always generates a fixture token, so the
+token alone is not enough (S1 review): a real deployment never holds a half-sealed workspace.
 
 - **S1: keys, the keyring and the lock lifecycle.** Migration 0119. `packages/core/src/encryption`
   (context encoding, envelope, per-row keys, HKDF, Argon2id wraps, recovery code, digest,
@@ -1210,6 +1217,13 @@ never holds a half-sealed workspace.
   sets the default limits to at least twice the observed peaks (2g, 1g and 64m are starting values),
   and records the numbers in the upgrade notes. No content is sealed yet, and that is safe because
   production cannot create a sealed workspace.
+- **Carried from the S1 review into S2a and S2c.** (1) After a rotation finishes only the current version is live, so a
+  holder who did not unlock during it has neither a confirmation for that version nor the previous DEK: accept such
+  a version by `check_value` plus an existing envelope of that version (S2a adds them), not by the chain, and test
+  the confirmation precedence and the chain with two live versions. (2) `hkdfSync` limits `info` to 1024 bytes and the
+  per-row key uses the whole AAD as `info`: S2a adds a guard test so no identity (idempotency key, principal,
+  operation) can make sealing throw. (3) The S1 lock gate names objects by route parameters and refuses the
+  cross-workspace reads (`CROSS_WORKSPACE_READ_ROUTES`); AC-6 must enumerate every route, including upgrade handlers.
 - **S2a: sealed database content and files.** `TABLE_CLASSES`, `SEALED_COLUMNS` and `VISIBLE_COLUMNS`
   with the live-catalog test, the backstops (plaintext, notifications, events, idempotency) and relaxed
   checks, **the search placeholder triggers and `search_changes`** (so no sealed column is ever

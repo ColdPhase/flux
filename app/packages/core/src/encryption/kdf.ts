@@ -20,11 +20,14 @@ export function kdfIsCurrent(params: KdfParams): boolean {
   return params.m === KDF_COST.m && params.t === KDF_COST.t && params.p === KDF_COST.p;
 }
 
-/** Stored parameters, bounded so a tampered row cannot make the server allocate without limit. */
+/**
+ * Stored parameters, bounded by the current cost, so a tampered row cannot make two concurrent derivations exhaust the
+ * API's memory (a later version that raises the cost raises these bounds with it).
+ */
 export function parseKdfParams(value: unknown): KdfParams {
   const v = value as Partial<KdfParams> | null;
   const int = (n: unknown, min: number, max: number) => typeof n === 'number' && Number.isInteger(n) && n >= min && n <= max;
-  if (!v || v.alg !== 'argon2id' || v.v !== 19 || !int(v.m, 8_192, 1_048_576) || !int(v.t, 1, 16) || !int(v.p, 1, 16)
+  if (!v || v.alg !== 'argon2id' || v.v !== 19 || !int(v.m, 8_192, KDF_COST.m) || !int(v.t, 1, KDF_COST.t) || !int(v.p, 1, KDF_COST.p)
     || typeof v.salt !== 'string' || fromB64url(v.salt).length !== 16) throw new Error('Unsupported key derivation parameters');
   return { alg: 'argon2id', v: 19, m: v.m!, t: v.t!, p: v.p!, salt: v.salt };
 }

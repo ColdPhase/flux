@@ -17,6 +17,7 @@ export interface HolderRecord {
   wrappedPrivate: string;
   holderMac: string;
   holderMacVersion: number;
+  secretCheck: string;
 }
 export interface DekWrapRecord { holderId: string; workspaceId: string; keyVersion: number; ephemeralPublic: string; sealedDek: string; confirm: string | null }
 export interface KeyVersionRecord { keyVersion: number; commitment: string | null; checkValue: string }
@@ -41,12 +42,12 @@ export interface EncryptionRepository extends SealStateReader {
   insertSealedWorkspace(row: { id: string; name: string; createdBy: string; creationId: string }): Promise<void>;
   insertKeyVersion(row: { workspaceId: string; keyVersion: number; commitment: string | null; checkValue: string }): Promise<void>;
   insertHolder(row: HolderRecord): Promise<void>;
-  updateHolder(id: string, row: Pick<HolderRecord, 'kdf' | 'publicKey' | 'wrappedPrivate' | 'holderMac' | 'holderMacVersion'>): Promise<void>;
+  updateHolder(id: string, row: Pick<HolderRecord, 'kdf' | 'publicKey' | 'wrappedPrivate' | 'holderMac' | 'holderMacVersion' | 'secretCheck'>): Promise<void>;
   replaceDekWraps(holderId: string, rows: Omit<DekWrapRecord, 'holderId'>[]): Promise<void>;
   setConfirm(holderId: string, keyVersion: number, confirm: string): Promise<void>;
   upsertUnlock(workspaceId: string, row: Omit<UnlockRow, 'unlockedAt'>): Promise<void>;
   deleteUnlocks(workspaceId: string): Promise<number>;
-  dropStaleUnlocks(currentBoot: string): Promise<{ workspaceId: string; unlockedBy: string | null }[]>;
+  dropStaleUnlocks(currentBoot: string, observedAt: Date): Promise<{ workspaceId: string; unlockedBy: string | null }[]>;
   markTampered(workspaceId: string): Promise<boolean>;
   clearTampered(workspaceId: string): Promise<void>;
   reserveAttempt(workspaceId: string, userId: string, limit: number, windowSeconds: number): Promise<{ id: string } | { retryAfterSeconds: number }>;

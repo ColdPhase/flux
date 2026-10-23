@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { randomUUID } from 'node:crypto';
 import { writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { test } from 'node:test';
@@ -61,8 +62,23 @@ test('two APIs share the lock state through the keyring; no secret reaches Postg
       secrets.push(dek, key.sealKey.export(), key.fileKey.export());
     }
   }
-  assert.ok(secrets.length >= 9);
+  // The keyring's boot key, through its test-only reveal (scripts/check_encryption.sh turns it on).
+  const reveal = await fetch('http://keyring:8090/v1/test/boot-key', { headers: { authorization: `Bearer ${process.env.FLUX_KEYRING_TOKEN ?? ''}` } });
+  assert.equal(reveal.status, 200, 'the check stack reveals the boot key to the scan');
+  secrets.push(Buffer.from((await reveal.json() as { bootKey: string }).bootKey, 'base64url'));
+  assert.ok(secrets.length >= 10);
   const encodings = new Set<string>(texts);
-  for (const secret of secrets) for (const encoding of ['hex', 'base64', 'base64url'] as const) encodings.add(secret.toString(encoding).replace(/=+$/, ''));
-  await writeFile(join(process.env.FLUX_TEST_STATE_DIR ?? '/state', 'encryption-secrets.txt'), [...encodings].join('\n') + '\n');
+  for (const secret of secrets) {
+    for (const encoding of ['hex', 'base64', 'base64url'] as const) encodings.add(secret.toString(encoding).replace(/=+$/, ''));
+    encodings.add(secret.toString('hex').toUpperCase());
+    // The accidental renderings: util.inspect of a Buffer, and the byte array of JSON.stringify(buffer).
+    encodings.add(`<Buffer ${[...secret].map((byte) => byte.toString(16).padStart(2, '0')).join(' ')}>`);
+    encodings.add([...secret].join(','));
+  }
+  const state = process.env.FLUX_TEST_STATE_DIR ?? '/state';
+  await writeFile(join(state, 'encryption-secrets.txt'), [...encodings].join('\n') + '\n');
+  // Positive control: a value this test sends as a bind parameter must be found in the PostgreSQL log.
+  const control = `CONTROL-${randomUUID()}`;
+  await pool.query('SELECT $1::text AS control', [control]);
+  await writeFile(join(state, 'encryption-control.txt'), `${control}\n`);
 });

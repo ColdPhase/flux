@@ -1,6 +1,6 @@
 import type { PgBoss } from 'pg-boss';
 import { WORKSPACE_ENCRYPTION_RESUME_JOB, type WorkspaceEncryptionResumeJob } from '@flux/contracts';
-import { dropStaleUnlocks, keyringFromEnv, policyEventPorts, ProcessKeys, recordEvent, swapFiles, swapSafety, type Database, type EncryptionPorts, type EncryptionUnitOfWork } from '@flux/core';
+import { dropStaleUnlocks, keyringFromEnv, policyEventPorts, ProcessKeys, recordEvent, swapFiles, swapSafety, testSwapRoot, type Database, type EncryptionPorts, type EncryptionUnitOfWork } from '@flux/core';
 import { eventRepository, workspaceEncryptionRows, type DbExecutor } from '@flux/db';
 
 /**
@@ -22,10 +22,10 @@ function unitOfWork(db: Database): EncryptionUnitOfWork {
 }
 
 export async function startWorkspaceEncryption(boss: PgBoss, db: Database, env: NodeJS.ProcessEnv) {
-  const files = swapFiles(env.FLUX_TEST_FAILURE_INJECTION === 'true' ? env.FLUX_TEST_SWAP_ROOT ?? '' : '');
+  const files = swapFiles(testSwapRoot(env));
   const keys = new ProcessKeys(keyringFromEnv(env), () => swapSafety(env, files));
   const heartbeat = keys.startHeartbeat(async (change) => {
-    if (change.current) await dropStaleUnlocks(unitOfWork(db), change.current);
+    if (change.current) await dropStaleUnlocks(unitOfWork(db), change.current, change.observedAt);
   }, 5_000, (error) => console.error(JSON.stringify({ warning: 'Keyring heartbeat failed', code: (error as { code?: unknown }).code ?? null })));
   await heartbeat.first;
   await boss.work<WorkspaceEncryptionResumeJob>(WORKSPACE_ENCRYPTION_RESUME_JOB, async (jobs) => {

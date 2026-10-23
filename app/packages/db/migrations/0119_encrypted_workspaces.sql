@@ -69,6 +69,8 @@ CREATE TABLE workspace_holders (
   wrapped_private text NOT NULL,
   holder_mac text NOT NULL,
   holder_mac_version integer NOT NULL CHECK (holder_mac_version >= 1),
+  -- HMAC under a key from the KEK: tells a wrong password from a row changed outside Flux (see holders.ts).
+  secret_check text NOT NULL,
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now(),
   CHECK ((kind = 'recovery') = (user_id IS NULL))
@@ -219,6 +221,8 @@ BEGIN
   END LOOP;
 END $$;
 
+-- NOT VALID, then VALIDATE: the full-table check runs without the exclusive lock of ADD CONSTRAINT.
 ALTER TABLE notifications DROP CONSTRAINT IF EXISTS notifications_reason_check;
 ALTER TABLE notifications ADD CONSTRAINT notifications_reason_check
-  CHECK (reason IN ('mention', 'question', 'reply', 'dm', 'assigned', 'review', 'invitation', 'security'));
+  CHECK (reason IN ('mention', 'question', 'reply', 'dm', 'assigned', 'review', 'invitation', 'security')) NOT VALID;
+ALTER TABLE notifications VALIDATE CONSTRAINT notifications_reason_check;

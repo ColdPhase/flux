@@ -10,13 +10,16 @@ import type { Browser, ClientResponse } from './http.js';
 const WORDS = ['quartz', 'lantern', 'hollow', 'meadow', 'ripple', 'kestrel', 'saffron', 'glacier', 'violin', 'tundra', 'orchid', 'pebble',
   'cobalt', 'harbor', 'nimbus', 'thistle', 'walrus', 'ember', 'falcon', 'mosaic', 'juniper', 'canyon', 'velvet', 'basil', 'comet', 'ivory'];
 
+/** Creation is fixture-only until S3: a test deployment and the fixture bearer, besides the session. */
+export const fixtureBearer = (): Record<string, string> => ({ authorization: `Bearer ${process.env.FLUX_FIXTURE_TOKEN ?? ''}` });
+
 /** A six-word passphrase, as the creation form generates (S3 uses the EFF large list). */
 export function passphrase(): string {
   return Array.from({ length: 6 }, () => WORDS[randomInt(WORDS.length)]).join(' ') + ` ${randomInt(1000, 9999)}`;
 }
 
 export async function createSealed(owner: Person, name: string, password: string, creationId = randomUUID()) {
-  const body = expectStatus(await owner.browser.request('POST', ENCRYPTED_WORKSPACES_PATH, { body: { name, creationId, password } }), 201) as CreateEncryptedWorkspaceResult;
+  const body = expectStatus(await owner.browser.request('POST', ENCRYPTED_WORKSPACES_PATH, { body: { name, creationId, password }, headers: fixtureBearer() }), 201) as CreateEncryptedWorkspaceResult;
   assert.ok(body.recoveryCode);
   return { workspace: body.workspace, recoveryCode: body.recoveryCode, creationId };
 }

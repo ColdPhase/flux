@@ -8,7 +8,8 @@ import {
   generateRecoveryCode, holderMac, holderMacValid, HolderKeyMismatchError, identitySeal, isEnvelope, isSealedJson, keyCheckValid, keyCheckValue,
   keyCommitment, keyCommitmentValid, newDek, newKdfParams, normalizeRecoveryCode, openDekForHolder, openField, openFileObject, parseKdfParams,
   realSeal, redactedError, sealDekToHolder, sealedDigest, sealedJson, sealField, sealFileObject, unlockPassword, unwrapPrivateKey,
-  wrapConfirmation, wrapConfirmationValid, wrapPrivateKey, WorkspaceKey, type FieldPlace, type KdfParams,
+  wrapConfirmation, wrapConfirmationValid, wrapPrivateKey, WorkspaceKey, ProcessKeys, sealFor, type FieldPlace, type KdfParams, type KeyringPort,
+  type SealStateReader, holderSecretCheck, holderSecretCheckValid,
 } from '@flux/core';
 
 // AC-1 of F-030 (#655, S1; docs/product/encrypted-workspaces.md#tests-and-acceptance-criteria): the crypto library.
@@ -171,6 +172,11 @@ describe('F-030 crypto: holders, wraps and their authentication', () => {
     assert.equal(keyCommitmentValid(dek, other, 2, dek2, commitment), false);
     assert.throws(() => keyCommitment(dek, ws, 1, dek2), 'version 1 has no commitment');
 
+    const secretCheck = holderSecretCheck(kek, holder);
+    assert.ok(holderSecretCheckValid(kek, holder, secretCheck));
+    assert.equal(holderSecretCheckValid(Buffer.alloc(32, 2), holder, secretCheck), false, 'a wrong password');
+    assert.equal(holderSecretCheckValid(kek, { ...holder, userId: 'user-mallory' }, secretCheck), false, 'another holder');
+
     const check = keyCheckValue(key);
     assert.ok(keyCheckValid(key, check));
     assert.equal(keyCheckValid(WorkspaceKey.fromDek(ws, 1, newDek()), check), false);
@@ -224,5 +230,55 @@ describe('F-030 crypto: passwords, semaphore and redaction', () => {
     assert.deepEqual({ ...redacted, message: undefined }, { name: 'Error', code: null, sqlState: '23505', constraint: 'project_messages_body_check', ids: [id], message: undefined });
     assert.equal(JSON.stringify(redacted).includes('CANARY'), false);
     assert.equal(redactedError(Object.assign(new Error('x CANARY'), { code: 'WORKSPACE_LOCKED' })).code, 'WORKSPACE_LOCKED');
+  });
+});
+
+describe('F-030 process keys: the heartbeat re-checks swap', () => {
+  test('swap that becomes possible drops every key, refuses new ones and locks the workspace here; safe again, keys are reopened', async () => {
+    const workspaceId = randomUUID();
+    const bootId = randomUUID();
+    let opens = 0;
+    const keyring: KeyringPort = {
+      boot: async () => bootId,
+      seal: async () => ({ bootId, sealed: 'x' }),
+      open: async () => { opens += 1; return Buffer.from(dek); },
+    };
+    let safe = true;
+    const keys = new ProcessKeys(keyring, () => (safe ? { safe: true, via: 'cgroup' } : { safe: false, reason: 'swap on' }));
+    const forgotten: (string | null)[] = [];
+    keys.onForget((id) => forgotten.push(id));
+    await keys.refresh();
+    assert.equal(keys.availability, 'ok');
+    const row = { keyVersion: 1, bootId, sealedDek: 'sealed', unlockedAt: new Date(), unlockedBy: null };
+    const reader: SealStateReader = { sealState: async () => ({ name: 'Garden club', encrypted: true, tampered: false, currentVersion: 1, liveVersions: [1], unlocks: [row] }) };
+    assert.equal((await sealFor(reader, keys, workspaceId, { write: true })).sealed, true);
+    await keys.key(workspaceId, row);
+    assert.equal(opens, 1, 'cached');
+
+    safe = false;
+    forgotten.length = 0;
+    await keys.refresh();
+    assert.equal(keys.availability, 'swap_unsafe');
+    assert.deepEqual(forgotten, [null], 'every key dropped, listeners told');
+    await assert.rejects(keys.key(workspaceId, row));
+    await assert.rejects(sealFor(reader, keys, workspaceId, { write: false }), { status: 423, code: 'WORKSPACE_LOCKED' });
+    assert.throws(() => keys.requireAvailable(), { code: 'SWAP_UNSAFE' });
+    assert.equal(opens, 1, 'nothing opened while unsafe');
+
+    safe = true;
+    await keys.refresh();
+    await keys.key(workspaceId, row);
+    assert.equal(opens, 2, 'the cache was emptied, so the key is opened again');
+  });
+
+  test('a keyring that does not answer is not asked again within two seconds (no timeout per request)', async () => {
+    let calls = 0;
+    const keys = new ProcessKeys({ boot: async () => { calls += 1; throw new Error('down'); }, seal: async () => { throw new Error('down'); },
+      open: async () => { throw new Error('down'); } }, () => ({ safe: true, via: 'cgroup' }));
+    await keys.refresh(); await keys.refresh(); await keys.refresh();
+    assert.equal(calls, 1);
+    await keys.refresh({ force: true });
+    assert.equal(calls, 2, 'the heartbeat always asks');
+    assert.equal(keys.availability, 'keyring_unavailable');
   });
 });

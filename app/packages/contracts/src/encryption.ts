@@ -102,6 +102,15 @@ export const WORKSPACE_ENCRYPTION_RESUME_JOB = 'workspace-encryption.resume.v1';
 export interface WorkspaceEncryptionResumeJob { workspaceId: string }
 
 /**
+ * Cross-workspace reads that can carry a sealed workspace's content. S1 (no content sealed yet, creation fixture-only)
+ * refuses them with 423 for a member of a locked sealed workspace; S2a makes them skip it and answer `lockedWorkspaces`.
+ * The event stream stays open (its events carry ids only).
+ */
+export const CROSS_WORKSPACE_READ_ROUTES: readonly string[] = [
+  'GET /api/v1/search', 'GET /api/v1/inbox', 'GET /api/v1/needs-you', 'GET /api/v1/return',
+];
+
+/**
  * Routes that keep working while a sealed workspace is locked: workspace metadata only, each with its reason.
  * Keyed by `METHOD path` exactly as registered. S1's lock gate refuses every other route that names an object
  * of a locked sealed workspace by a known parameter; S2a's route test enumerates every route.

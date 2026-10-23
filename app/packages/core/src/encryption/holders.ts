@@ -106,7 +106,7 @@ export function holderPublicKey(privateKey: KeyObject) { return publicKeyText(cr
 
 // --- Authenticating holders and wraps (F-030): none of these needs anything a database writer has.
 
-const AUTH = { holder: 'flux holder-auth v1', confirm: 'flux confirm v1', commit: 'flux commit v1' } as const;
+const AUTH = { holder: 'flux holder-auth v1', confirm: 'flux confirm v1', commit: 'flux commit v1', secret: 'flux secret-check v1' } as const;
 
 function hmac(key: KeyObject, parts: readonly (string | number)[]): string {
   return createHmac('sha256', key).update(encodeContext(parts)).digest('base64url');
@@ -117,6 +117,17 @@ function sameMac(given: unknown, expected: string): boolean {
   return a.length === b.length && timingSafeEqual(a, b);
 }
 const dekDigest = (dek: Buffer) => createHash('sha256').update(dek).digest('base64url');
+
+/**
+ * `secret_check`: HMAC under HKDF(KEK, [flux secret-check v1, workspace, holder]) over [holder id, kind, user or ""]. It
+ * tells a wrong password (400) from a right password whose row was changed outside Flux (a replaced public key or
+ * wrapped private key: tampering). It is no easier to guess against than the wrap's own tag (both need Argon2id).
+ */
+export function holderSecretCheck(kek: Buffer, place: HolderPlace): string {
+  const key = hkdfKey(kek, Buffer.alloc(0), encodeContext([AUTH.secret, place.workspaceId, place.holderId]));
+  return hmac(key, [place.holderId, place.kind, place.userId ?? '']);
+}
+export const holderSecretCheckValid = (kek: Buffer, place: HolderPlace, check: unknown) => sameMac(check, holderSecretCheck(kek, place));
 
 /** A holder row's authenticated fields. */
 export interface HolderIdentity { workspaceId: string; holderId: string; kind: 'password' | 'recovery'; userId: string | null; publicKey: string }

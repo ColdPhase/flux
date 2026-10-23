@@ -30,7 +30,7 @@ export async function unlockedRows(state: SealState, keys: ProcessKeys): Promise
   if (!keys.swapSafe || !state.liveVersions.length) return null;
   const rows = new Map(state.unlocks.map((row) => [row.keyVersion, row]));
   if (state.liveVersions.some((version) => !rows.has(version))) return null;
-  if (state.liveVersions.some((version) => rows.get(version)!.bootId !== keys.bootId)) await keys.refresh();
+  if (state.liveVersions.some((version) => rows.get(version)!.bootId !== keys.bootId)) await keys.refresh(); // negative-cached while the keyring is down
   if (!keys.bootId || state.liveVersions.some((version) => rows.get(version)!.bootId !== keys.bootId)) return null;
   return rows;
 }

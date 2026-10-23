@@ -15,6 +15,11 @@ import { createServer, type IncomingMessage, type Server, type ServerResponse } 
 export interface KeyringOptions {
   token: string;
   log?: (line: string) => void;
+  /**
+   * TEST ONLY (`scripts/check_encryption.sh`): `GET /v1/test/boot-key` answers the boot key, so the log scan can search for
+   * it. Only in a test deployment with `FLUX_KEYRING_REVEAL_BOOT_KEY=true`; otherwise the route does not exist.
+   */
+  revealBootKey?: boolean;
 }
 
 const MAX_BODY = 4096;
@@ -45,7 +50,7 @@ export function tokenMatches(header: string | undefined, token: string): boolean
   return timingSafeEqual(digest(header ?? ''), digest(`Bearer ${token}`));
 }
 
-export function createKeyring({ token, log = (line) => process.stdout.write(`${line}\n`) }: KeyringOptions) {
+export function createKeyring({ token, log = (line) => process.stdout.write(`${line}\n`), revealBootKey = false }: KeyringOptions) {
   if (token.length < 32) throw new Error('FLUX_KEYRING_TOKEN must be at least 32 characters');
   const bootKey = randomBytes(32);
   const bootId = randomUUID();
@@ -92,6 +97,7 @@ export function createKeyring({ token, log = (line) => process.stdout.write(`${l
     if (!tokenMatches(request.headers.authorization, token)) return FIXED.unauthorized;
     const path = (request.url ?? '').split('?')[0];
     if (request.method === 'GET' && path === '/v1/boot') return [200, { bootId }];
+    if (revealBootKey && request.method === 'GET' && path === '/v1/test/boot-key') return [200, { bootKey: bootKey.toString('base64url') }];
     if (request.method !== 'POST' || (path !== '/v1/seal' && path !== '/v1/open')) return FIXED.notFound;
     const raw = await readBody(request);
     if (raw === 'too_large') return FIXED.tooLarge;

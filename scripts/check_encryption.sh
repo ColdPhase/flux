@@ -63,10 +63,12 @@ $compose run --rm test node_modules/.bin/tsx --test --test-concurrency=1 $files
 # AC-4: no password, recovery code, KEK, holder private key, DEK or subkey in any log, in any encoding.
 $compose run --rm --no-deps -T test cat /state/encryption-secrets.txt > "$scan_dir/secrets"
 count=$(grep -c . "$scan_dir/secrets")
-[ "$count" -ge 20 ] || { echo "too few secrets to scan for ($count)" >&2; exit 1; }
+[ "$count" -ge 40 ] || { echo "too few secrets to scan for ($count)" >&2; exit 1; }
 $compose logs --no-color db > "$scan_dir/postgres.log"
 grep -q 'LOG:  statement: ' "$scan_dir/postgres.log" || { echo 'PostgreSQL did not log statements (log_statement=all)' >&2; exit 1; }
 grep -q 'workspace_unlocks' "$scan_dir/postgres.log" || { echo 'the PostgreSQL log does not cover the unlock writes' >&2; exit 1; }
+$compose run --rm --no-deps -T test cat /state/encryption-control.txt > "$scan_dir/control"
+grep -F -f "$scan_dir/control" "$scan_dir/postgres.log" > /dev/null || { echo 'positive control: a bind parameter the test sent is not in the PostgreSQL log' >&2; exit 1; }
 $compose logs --no-color api api2 worker keyring > "$scan_dir/services.log"
 hits=0
 for log in postgres services; do

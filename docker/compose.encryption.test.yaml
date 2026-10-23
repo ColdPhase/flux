@@ -6,3 +6,7 @@ services:
   db:
     command: ["postgres", "-c", "log_statement=all", "-c", "log_parameter_max_length=-1", "-c", "log_parameter_max_length_on_error=-1",
       "-c", "log_min_error_statement=error"]
+  keyring:
+    environment:
+      # The boot key becomes a canary of the log scan (TEST ONLY; needs the test deployment switches too).
+      FLUX_KEYRING_REVEAL_BOOT_KEY: "true"

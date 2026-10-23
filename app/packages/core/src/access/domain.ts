@@ -147,7 +147,7 @@ function toWorkspace(row: typeof schema.workspaces.$inferSelect, role: Workspace
   return { id: row.id, name: row.name, role, version: row.version, createdAt: row.createdAt.toISOString(), ai: { ...ai, fixed: row.encrypted ? 'encrypted' : null }, encryption };
 }
 
-/** F-030 (#655): how a workspace is read; `bootId` is the reading API's keyring boot (null: unreachable, so locked). */
+/** F-030 (#655): how a workspace is read; `bootId` is the boot under which the reading API can open keys (missing or null: locked). */
 export interface WorkspaceReadOptions { bootId?: string | null }
 
 /** The `encryption` field of each sealed workspace for one reader (plain workspaces get null). */
@@ -156,7 +156,7 @@ async function encryptionViews(db: Executor, principal: Principal, readers: { ro
   const sealed = readers.filter((reader) => reader.row.encrypted);
   if (!sealed.length) return new Map();
   const rows = await workspaceEncryptionRows(db).views(sealed.map((reader) => reader.row.id), principal.kind === 'human' ? principal.id : null);
-  return new Map(sealed.map(({ row, role }) => [row.id, presentEncryption(rows.get(row.id) ?? MISSING_ENCRYPTION_VIEW, role, options.bootId)]));
+  return new Map(sealed.map(({ row, role }) => [row.id, presentEncryption(rows.get(row.id) ?? MISSING_ENCRYPTION_VIEW, role, options.bootId ?? null)]));
 }
 
 const MISSING_AI_POLICY: WorkspaceAiPolicy = { state: 'blocked', version: 0, changedAt: new Date(0).toISOString(), changedBy: null, fixed: null };

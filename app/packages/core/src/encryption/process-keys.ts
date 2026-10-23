@@ -12,6 +12,8 @@ export interface UnlockRow {
   unlockedBy: string | null;
 }
 
+const NEGATIVE_CACHE_MS = 2_000;
+
 export type EncryptionAvailability = 'ok' | 'keyring_off' | 'keyring_unavailable' | 'swap_unsafe';
 
 /**
@@ -25,6 +27,8 @@ export class ProcessKeys {
   private known: string | null = null;
   private verdict: SwapVerdict;
   private reached = false;
+  /** When the keyring last failed to answer: a short negative cache, so a down keyring does not cost every request a timeout. */
+  private failedAt = 0;
   private readonly cache = new Map<string, WorkspaceKey>();
   private readonly forgetListeners: ((workspaceId: string | null) => void)[] = [];
 
@@ -57,29 +61,32 @@ export class ProcessKeys {
    * One heartbeat: swap again, then the boot id. An unreachable keyring keeps cached keys in use (availability, not
    * secrecy, is at stake); a different boot drops every cached key. Returns the boot change, if any.
    */
-  async refresh(): Promise<{ previous: string | null; current: string | null } | null> {
+  async refresh(options: { force?: boolean } = {}): Promise<{ previous: string | null; current: string | null; observedAt: Date } | null> {
     const wasSafe = this.verdict.safe;
     this.verdict = this.swap();
     if (wasSafe && !this.verdict.safe) this.forget(null);
     if (!this.keyring) return null;
+    if (!options.force && Date.now() - this.failedAt < NEGATIVE_CACHE_MS) return null;
     let current: string;
-    try { current = await this.keyring.boot(); } catch { return null; }
+    try { current = await this.keyring.boot(); } catch { this.failedAt = Date.now(); return null; }
+    this.failedAt = 0;
     this.reached = true;
     const previous = this.known;
     if (previous === current) return null;
     this.known = current;
     this.forget(null);
-    return { previous, current };
+    return { previous, current, observedAt: new Date() };
   }
 
   /** Starts the 5 s heartbeat; `onBootChange` deletes the stale rows and records the locks. Returns the stop function. */
-  startHeartbeat(onBootChange: (change: { previous: string | null; current: string | null }) => Promise<void>, intervalMs = 5_000, onError?: (error: unknown) => void) {
+  startHeartbeat(onBootChange: (change: { previous: string | null; current: string | null; observedAt: Date }) => Promise<void>, intervalMs = 5_000,
+    onError?: (error: unknown) => void) {
     let running = false;
     const beat = async () => {
       if (running) return;
       running = true;
       try {
-        const change = await this.refresh();
+        const change = await this.refresh({ force: true });
         if (change) await onBootChange(change);
       } catch (error) { onError?.(error); } finally { running = false; }
     };

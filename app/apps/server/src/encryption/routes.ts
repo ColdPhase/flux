@@ -2,6 +2,7 @@ import type { FastifyInstance, FastifyReply } from 'fastify';
 import { ENCRYPTED_WORKSPACES_PATH, WORKSPACES_PATH, type CreateEncryptedWorkspaceCommand, type GrantUnlockPasswordCommand,
   type NewRecoveryCodeCommand, type SetUnlockPasswordCommand, type UnlockWorkspaceCommand } from '@flux/contracts';
 import { RateLimitedError } from '@flux/core';
+import { bearerMatches } from '../fixture/index.js';
 import type { SessionResolver } from '../identity/index.js';
 import type { EncryptionComposition } from './adapters.js';
 
@@ -18,8 +19,12 @@ const body = (properties: Record<string, unknown>, required: string[] = []) =>
 export function encryptionRoutes(app: FastifyInstance, { sessions, encryption, fixtureCreation }: {
   sessions: SessionResolver;
   encryption: EncryptionComposition;
-  /** S1 and S2: creation exists only in a test deployment (`FLUX_FIXTURE_TOKEN` set). S3 makes it the production route. */
-  fixtureCreation: boolean;
+  /**
+   * S1 and S2: the fixture token when this is a test deployment (`FLUX_FIXTURE_TOKEN` and `FLUX_TEST_FAILURE_INJECTION=true`),
+   * else null. Creation exists only then, and only with that bearer as well as a session: a `./flux up` install, which
+   * always has a fixture token, never gets it. S3 makes it the production route.
+   */
+  fixtureCreation: string | null;
 }) {
   const { useCases } = encryption;
   const principal = async (request: Parameters<SessionResolver['requirePrincipal']>[0]) => (await sessions.requirePrincipal(request)).principal;
@@ -31,8 +36,12 @@ export function encryptionRoutes(app: FastifyInstance, { sessions, encryption, f
     throw error;
   });
 
-  if (fixtureCreation) {
+  if (fixtureCreation !== null) {
+    const token = fixtureCreation;
     app.post<{ Body: CreateEncryptedWorkspaceCommand }>(ENCRYPTED_WORKSPACES_PATH, {
+      onRequest: async (request, reply) => {
+        if (!bearerMatches(request.headers.authorization, token)) return reply.code(401).send({ error: 'Unauthorized' });
+      },
       schema: { body: body({ name: { type: 'string', minLength: 1, maxLength: 400 }, creationId: { type: 'string', maxLength: 64 }, password: secret },
         ['name', 'creationId', 'password']) },
     }, async (request, reply) => {

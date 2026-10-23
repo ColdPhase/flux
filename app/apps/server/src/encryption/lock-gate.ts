@@ -1,5 +1,5 @@
 import type { FastifyInstance, FastifyRequest, RouteOptions } from 'fastify';
-import { LOCKED_ALLOWED_ROUTES } from '@flux/contracts';
+import { CROSS_WORKSPACE_READ_ROUTES, LOCKED_ALLOWED_ROUTES } from '@flux/contracts';
 import { loadActor, sealFor, type Database, type ProcessKeys } from '@flux/core';
 import { sql, workspaceEncryptionRows, type DbExecutor, type SQL } from '@flux/db';
 import type { SessionResolver } from '../identity/index.js';
@@ -27,11 +27,19 @@ const PARAMS: [string, (id: string) => SQL][] = [
   ['materialId', (id) => sql`SELECT workspace_id AS id FROM project_materials WHERE id = ${id}`],
   ['docId', (id) => sql`SELECT workspace_id AS id FROM project_materials WHERE id = ${id}`],
   ['fileId', (id) => sql`SELECT workspace_id AS id FROM project_files WHERE id = ${id}`],
+  ['resultId', (id) => sql`SELECT workspace_id AS id FROM project_results WHERE id = ${id}`],
 ];
+/** Routes whose generic `:id` names one kind of object. */
+const ID_ROUTES: Record<string, (id: string) => SQL> = {
+  '/api/v1/inbox/:id': (id) => sql`SELECT workspace_id AS id FROM notifications WHERE id = ${id}`,
+  '/api/v1/inbox/:id/read': (id) => sql`SELECT workspace_id AS id FROM notifications WHERE id = ${id}`,
+};
 const BODY = ['workspaceId', 'projectId'];
 
-function scopeOf(request: FastifyRequest): SQL | null {
+function scopeOf(request: FastifyRequest, url: string): SQL | null {
   const params = (request.params ?? {}) as Record<string, unknown>;
+  const byId = ID_ROUTES[url];
+  if (byId && typeof params.id === 'string' && UUID.test(params.id)) return byId(params.id);
   for (const [name, query] of PARAMS) {
     const value = params[name];
     if (typeof value === 'string' && UUID.test(value)) return query(value);
@@ -50,8 +58,16 @@ export function lockedRouteKey(method: string, url: string) {
 }
 
 export function registerLockGate(app: FastifyInstance, { db, sessions, keys }: { db: Database; sessions: SessionResolver; keys: ProcessKeys }) {
-  async function refuseWhileLocked(request: FastifyRequest) {
-    const scope = scopeOf(request);
+  /** A cross-workspace read: refused while any sealed workspace of the caller is locked here (S1; S2a filters instead). */
+  async function refuseCrossWorkspace(request: FastifyRequest) {
+    const session = await sessions.resolveSession(request.headers);
+    if (!session || session.principal.kind !== 'human') return;
+    const sealed = await db.execute(sql`SELECT w.id FROM workspaces w JOIN workspace_members m ON m.workspace_id = w.id
+      WHERE w.encrypted AND m.user_id = ${session.principal.id} ORDER BY w.id`);
+    for (const row of sealed.rows as { id: string }[]) await sealFor(workspaceEncryptionRows(db as unknown as DbExecutor), keys, row.id, { write: false });
+  }
+  async function refuseWhileLocked(request: FastifyRequest, url: string) {
+    const scope = scopeOf(request, url);
     if (!scope) return;
     const result = await db.execute(sql`SELECT w.id, w.encrypted FROM workspaces w WHERE w.id = (${scope} LIMIT 1)`);
     const row = result.rows[0] as { id: string; encrypted: boolean } | undefined;
@@ -66,8 +82,10 @@ export function registerLockGate(app: FastifyInstance, { db, sessions, keys }: {
     if (methods.every((method) => LOCKED_ALLOWED_ROUTES[lockedRouteKey(method, route.url)] !== undefined)) return;
     const existing = route.preValidation ? [route.preValidation].flat() : [];
     route.preValidation = [async (request: FastifyRequest) => {
-      if (LOCKED_ALLOWED_ROUTES[lockedRouteKey(request.method, route.url)] !== undefined) return;
-      await refuseWhileLocked(request);
+      const key = lockedRouteKey(request.method, route.url);
+      if (LOCKED_ALLOWED_ROUTES[key] !== undefined) return;
+      if (CROSS_WORKSPACE_READ_ROUTES.includes(key)) await refuseCrossWorkspace(request);
+      else await refuseWhileLocked(request, route.url);
     }, ...existing];
   });
 }
