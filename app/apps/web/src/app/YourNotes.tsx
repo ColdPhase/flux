@@ -1,4 +1,5 @@
 import { useEffect, useId, useLayoutEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
+import { useAllAiBlocked } from '../ai/workspaceAi';
 import { useLocation, useRevalidator } from 'react-router';
 import type { Draft } from '@flux/contracts';
 import { Button, EmptyState, Icon, IconButton, MEDIA, duration, sendsOnEnter, useMediaQuery, type IconName } from '../ui';
@@ -92,11 +93,14 @@ function NotesSection() {
   const [saving, setSaving] = useState(false);
   // Without an assistant of your own, its button leads to "Connect your AI" (#189); it stays owner-only.
   const [noAssistant, setNoAssistant] = useState(false);
+  // F-029 (#614): with AI off in every workspace the person has, the sketchbook has no assistant button.
+  const allAiOff = useAllAiBlocked();
   useEffect(() => {
+    if (allAiOff) return undefined;
     const controller = new AbortController();
     getAssistantStatus(controller.signal).then((status) => setNoAssistant(status.state === 'not_enabled'), () => undefined);
     return () => controller.abort();
-  }, [me.user.id]);
+  }, [me.user.id, allAiOff]);
   const intents = useIntentKeys();
   useEffect(() => {
     if (!selectedWorkspace) return;
@@ -131,7 +135,7 @@ function NotesSection() {
   // so it only explains how to connect one and never pretends to answer.
   const [askOn, setAsking] = useState(false);
   // A tap before the status loaded never leaves ask mode on for someone without an assistant.
-  const asking = askOn && !noAssistant;
+  const asking = askOn && !noAssistant && !allAiOff;
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const endRef = useRef<HTMLDivElement>(null);
   const firstName = me.user.name.trim().split(/\s+/)[0] || me.user.name;
@@ -318,11 +322,11 @@ function NotesSection() {
           ) : (
             <p className="composer__audience" id={audienceId}><Icon name="lock" size={13} />Only you<span aria-hidden="true"> · </span><span className="composer__where">private draft in {selectedWorkspace ? `${workspaces.find((space) => space.id === selectedWorkspace)?.name ?? 'your space'}, which only you can open` : workspaces.length ? 'a space you choose' : 'your personal space'}</span></p>
           )}
-            <button type="button" className="composer__ask" aria-pressed={noAssistant ? undefined : asking} aria-label={noAssistant ? 'Connect your AI' : 'Ask my assistant'}
+            {allAiOff ? null : <button type="button" className="composer__ask" data-ai-surface="notes-ask" aria-pressed={noAssistant ? undefined : asking} aria-label={noAssistant ? 'Connect your AI' : 'Ask my assistant'}
               data-tip={noAssistant ? 'Connect your AI' : 'Ask my assistant'} data-tip-align="start"
               onClick={() => { if (noAssistant) { openDetails('connect-ai'); return; } setAsking(!asking); textareaRef.current?.focus(); }}>
               <Icon name="spark" />
-            </button>
+            </button>}
 
           </div>
           {workspaces.length > 1 ? <label className="composer__space">Save in <select value={selectedWorkspace} onChange={(event) => { setSelectedWorkspace(event.target.value); setServerDrafts([]); setSaveState(''); }}><option value="">Choose a space</option>{workspaces.map((space) => <option key={space.id} value={space.id}>{space.name}</option>)}</select></label> : null}

@@ -24,7 +24,7 @@ function result(gestures: number, positions: number, presence: number, actorName
   }
   for (let index = 0; index < presence; index++) {
     nameBytes += bytes(actorName);
-    transient.push({ type: 'map-presence', generation, connectionId: randomUUID(), actor: { kind: 'human', id: randomUUID(), name: actorName },
+    transient.push({ type: 'map-presence', generation, connectionId: randomUUID(), actor: { kind: 'human', id: randomUUID(), name: actorName }, slot: 0,
       selected: Array.from({ length: 16 }, () => randomUUID()), cursor: { x: -100_000, y: -100_000 }, expiresAt: iso });
   }
   return { nameBytes, value: { generation, sequence: Number.MAX_SAFE_INTEGER, hash: 'f'.repeat(64), workspaceId: randomUUID(), resourceId: randomUUID(),

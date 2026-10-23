@@ -158,7 +158,7 @@ export function NeedsYouCard({ item, variant = 'card', selected = false, handler
   );
 
   return (
-    <li className={`nyc nyc--${variant} nyc--${item.kind}${selected ? ' is-selected' : ''}`} data-key={item.key} aria-current={selected ? 'true' : undefined} aria-label={label}>
+    <li className={`nyc nyc--${variant} nyc--${item.kind}${selected ? ' is-selected' : ''}`} data-key={item.key} data-ai-surface={item.from?.kind === 'agent' || item.key.startsWith('assistant:') ? 'needs-you-ai' : undefined} aria-current={selected ? 'true' : undefined} aria-label={label}>
       <div className="nyc__scroll">
         <div className="nyc__card">
           <Face item={item} />

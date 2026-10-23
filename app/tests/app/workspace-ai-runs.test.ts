@@ -67,6 +67,23 @@ describe('workspace AI lock: tokens, connections and runs', () => {
     refreshToken = ((await again.json()) as { refresh_token: string }).refresh_token ?? refreshToken;
   });
 
+  test('flux_get_agent_thread reads the task inside the checked transaction: a task of a selected project is read, an unknown id is not found, a blocked workspace refuses first', async () => {
+    const task = await scene.task(scene.owner, 'Agents thread task');
+    const text = (message: Record<string, unknown> | null) => ((message?.result as { content?: { text?: string }[] } | undefined)?.content?.[0]?.text) ?? '';
+    const known = await mcp(accessToken, 10, 'tools/call', { name: 'flux_get_agent_thread', arguments: { taskId: task.id } });
+    assert.equal((known.message?.result as { isError?: boolean } | undefined)?.isError ?? false, false, `control: a task of a selected project is read: ${text(known.message)}`);
+    const unknown = await mcp(accessToken, 11, 'tools/call', { name: 'flux_get_agent_thread', arguments: { taskId: randomUUID() } });
+    assert.equal((unknown.message?.result as { isError?: boolean } | undefined)?.isError, true, 'an unknown task is an error result');
+    assert.match(text(unknown.message), /PROJECT_NOT_FOUND/);
+    await setWorkspaceAi(scene.ws.id, 'blocked');
+    try {
+      for (const taskId of [task.id, randomUUID()]) {
+        const refused = await mcp(accessToken, 12, 'tools/call', { name: 'flux_get_agent_thread', arguments: { taskId } });
+        assert.equal(errorCode(refused.message), 'WORKSPACE_AI_BLOCKED', 'existing and unknown ids are refused alike');
+      }
+    } finally { await setWorkspaceAi(scene.ws.id, 'allowed'); }
+  });
+
   test('a run token minted before AI was turned off is refused, a new one is not minted, and neither works after re-enable', async () => {
     await scene.reset();
     const live = await scene.liveRun();

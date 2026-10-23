@@ -22,6 +22,7 @@ import { useReferenceWork } from '../work/useReferenceWork';
 import { MessageWorkPages } from '../work/MessageWorkPages';
 import { audienceLine, createProjectSketch, useProjectShell } from '../project/data';
 import { useShellActions } from './shellContext';
+import { useWorkspaceAi } from '../ai/workspaceAi';
 import { assistantUses, AssistantSuggestions, meetAssistantDismissed, noteAssistantUse } from '../assistant/MeetAssistant';
 import { useConversationAssistant } from '../assistant/useConversationAssistant';
 import { useAssistantChanges, WaitingChanges } from '../assistant/WaitingChanges';
@@ -110,7 +111,8 @@ export function ProjectConversation() {
   const data = useLoaderData() as ProjectData;
   const { me } = useShellData();
   // Agents' questions with ready answers (S14): one read of the project's questions for every card below.
-  useProjectQuestions(data.project.id, me.user.id);
+  const aiOn = !useWorkspaceAi(data.project.workspaceId).blocked;
+  useProjectQuestions(data.project.id, me.user.id, aiOn);
   return <div className="project-page">
     <OneConversation key={`${me.user.id}:${data.project.id}`} data={data} Pane={ProjectConversationContent} />
   </div>;
@@ -161,15 +163,18 @@ function ProjectConversationContent({ data, variant, feed, rootHeader, rootMessa
   const [menuIndex, setMenuIndex] = useState(0);
   const [menuClosedAt, setMenuClosedAt] = useState<string | null>(null);
   const [commandHint, setCommandHint] = useState('');
+  // F-029 (#614): while the workspace's AI is off this conversation is human-only: no assistant, no AI commands, no suggestions.
+  const aiOff = useWorkspaceAi(project.workspaceId).blocked;
+  if (aiOff && asking) setAsking(false);
   // The signed-in person's own assistant (#68): ask mode, their working line, shared answers.
-  const assistant = useConversationAssistant({ meId: me.user.id, meName: me.user.name, projectId: project.id, conversationId: conversation?.id ?? null,
+  const assistant = useConversationAssistant({ meId: me.user.id, meName: me.user.name, projectId: project.id, conversationId: conversation?.id ?? null, enabled: !aiOff,
     onPosted: (message) => setMessages((current) => mergeMessages(current, [message])) });
   const canWrite = project.access !== 'viewer';
   const trigger = canWrite && !asking ? composerTrigger(draft, caret) : null;
   // "My assistant" in the @ list: first once it is ready; while it is not set up, first until the Home card is dismissed, then last.
-  const assistantEntry = assistant.status ? (assistant.status.state === 'ready' ? { mode: 'ask' as const, last: false }
+  const assistantEntry = aiOff ? null : assistant.status ? (assistant.status.state === 'ready' ? { mode: 'ask' as const, last: false }
     : assistant.status.state === 'not_enabled' ? { mode: 'setup' as const, last: meetAssistantDismissed(me.user.id) } : null) : null;
-  const options = trigger ? composerOptions(trigger, { people, meId: me.user.id, inThread: !!conversation, assistant: assistantEntry }) : [];
+  const options = trigger ? composerOptions(trigger, { people, meId: me.user.id, inThread: !!conversation, assistant: assistantEntry, aiOff }) : [];
   const menuOpen = !!trigger && options.length > 0 && menuClosedAt !== draft;
   const activeIndex = Math.min(menuIndex, Math.max(0, options.length - 1));
   const captureScope = useComposerScope(publicComposer.key);
@@ -225,7 +230,7 @@ function ProjectConversationContent({ data, variant, feed, rootHeader, rootMessa
     requestAnimationFrame(() => document.getElementById(composerId)?.focus());
   }, [conversation, location.search, location.pathname, location.hash, location.state, navigate, me.user.id, project.id, writable, addDraftFiles, composerId]);
   // ⌘K "Ask my assistant…" and the assistant panel's Message arrive as ?ask=1 in a thread: ask mode opens once.
-  const askParam = !!conversation && writable && new URLSearchParams(location.search).get('ask') === '1';
+  const askParam = !aiOff && !!conversation && writable && new URLSearchParams(location.search).get('ask') === '1';
   const [askHandled, setAskHandled] = useState(false);
   if (askParam !== askHandled) { setAskHandled(askParam); if (askParam) setAsking(true); }
   useEffect(() => {
@@ -244,7 +249,7 @@ function ProjectConversationContent({ data, variant, feed, rootHeader, rootMessa
   const messageAuthor = (item: ConversationMessage) => item.authorId !== null ? author(item.authorId) : agentAuthorLabel(item.author);
   const owners = useAgentOwners(project);
   // The owner's waiting changes (F-027 A3): refreshed when their run moves or an answer arrives.
-  const assistantChanges = useAssistantChanges(conversation?.id ?? null, `${assistant.run?.id ?? ''}:${assistant.run?.status ?? ''}:${assistant.answers.length}:${assistant.tick}`);
+  const assistantChanges = useAssistantChanges(conversation?.id ?? null, `${assistant.run?.id ?? ''}:${assistant.run?.status ?? ''}:${assistant.answers.length}:${assistant.tick}`, !aiOff);
   // Bounded native reads (#155): the visible replies' chips, and the tasks that answers, proposals and the
   // discussed task refer to. Neither is the project's work collection.
   const discussedTask = conversation?.task?.workId ?? null;
@@ -396,7 +401,7 @@ function ProjectConversationContent({ data, variant, feed, rootHeader, rootMessa
   useArrivals(scrollRef, threadIds, (id) => document.getElementById(id));
 
   // The stream has no assistant: `/ai …` there would post the prompt for the whole project.
-  const assistantInStream = !conversation && /^\/ai(\s|$)/.test(draft.trimStart());
+  const assistantInStream = !aiOff && !conversation && /^\/ai(\s|$)/.test(draft.trimStart());
   // The field grows with what is written, up to its CSS cap, then scrolls (#266 PF-3).
   useLayoutEffect(() => {
     const field = document.getElementById(composerId);
@@ -409,7 +414,7 @@ function ProjectConversationContent({ data, variant, feed, rootHeader, rootMessa
     setCaret(position); setMenuIndex(0); setMenuClosedAt(null); setCommandHint('');
     typing.input(Boolean(input.trim()) && !asking && !/^\/(ai|task|decide|handoff)(\s|$)/.test(input));
     // Private prompts keep their own draft; invoking /ai never overwrites a public task draft.
-    if (!asking && conversation && writable && /^\/ai(\s|$)/.test(input)) {
+    if (!aiOff && !asking && conversation && writable && /^\/ai(\s|$)/.test(input)) {
       helperComposer.setBody(input.replace(/^\/ai\s?/, '')); setAsking(true); setAskFailure(''); return;
     }
     setAskFailure(''); composer.setBody(input);
@@ -552,6 +557,8 @@ function ProjectConversationContent({ data, variant, feed, rootHeader, rootMessa
   async function send() {
     typing.stop();
     if (asking) { await sendToAssistant(); return; }
+    // F-029 (#614): `/ai` and `/handoff` in a workspace whose AI is off are not messages for the people here: the words stay in the field.
+    if (aiOff && writable && /^\/(ai|handoff)(\s|$)/.test(draft.trim())) { setCommandHint('AI is off in this workspace. Remove the command to send these words as a message.'); return; }
     const command = writable ? /^\/(task|decide|handoff)(?:\s+([\s\S]*))?$/.exec(draft.trim()) : null;
     if (command) { await runCommand(command[1] as keyof typeof COMMAND_EXAMPLE, (command[2] ?? '').trim()); return; }
     // A private helper prompt is never published as a root (UI116-3); it stays in the private draft.
@@ -714,7 +721,7 @@ function ProjectConversationContent({ data, variant, feed, rootHeader, rootMessa
                     }} /> : null}
                   onRetry={() => assistant.retry(answer.runId)}
                   onContinue={async () => { await assistant.ask('Continue', { continuesRunId: answer.runId }); }}
-                  onAskAbout={writable ? () => { setAsking(true); document.getElementById(composerId)?.focus(); } : null} />;
+                  onAskAbout={writable && !aiOff ? () => { setAsking(true); document.getElementById(composerId)?.focus(); } : null} />;
                 };
                 if (!group.length) return [divider, answerItem(entry)];
                 const applied = group.reduce((total, item) => total + (assistantChanges.byRun.get(item.answer.runId)?.filter((change) => change.state === 'applied' || change.state === 'applied_after_wait').length ?? 0), 0);
@@ -790,7 +797,7 @@ function ProjectConversationContent({ data, variant, feed, rootHeader, rootMessa
       {writable && !asking ? <ComposerFiles state={publicComposer} attach="none" /> : null}
       {/* A tap on the card's empty space goes to the field, as in a messenger (#266 PF-3). */}
       {writable && assistantDraftLabel ? <p className="assistant-answer__asked">Drafted by your assistant</p> : null}
-      {writable && preparedReply && preparedReply.ownerId === me.user.id && preparedReply.conversationId === conversation?.id && !assistantDraftLabel ? <details className="project-convo__hint"><summary>Review the reply drafted by your assistant</summary><p style={{ whiteSpace: 'pre-wrap' }}>{preparedReply.body}</p><Button variant="secondary" onClick={() => publicComposer.setBody(preparedReply.body)}>Use this draft</Button></details> : null}
+      {writable && !aiOff && preparedReply && preparedReply.ownerId === me.user.id && preparedReply.conversationId === conversation?.id && !assistantDraftLabel ? <details className="project-convo__hint"><summary>Review the reply drafted by your assistant</summary><p style={{ whiteSpace: 'pre-wrap' }}>{preparedReply.body}</p><Button variant="secondary" onClick={() => publicComposer.setBody(preparedReply.body)}>Use this draft</Button></details> : null}
       {writable ? <ComposerBox id={composerId} label={asking ? 'Ask your assistant' : conversation ? 'Reply' : 'Write a message'} value={draft}
         placeholder={asking ? 'Ask your assistant…' : conversation ? 'Reply in thread…' : 'Message · @ mention · / actions'}
         onChange={(value, position) => changeDraft(value, position)} onSelect={setCaret} onBlur={typing.stop} onKeyDown={onComposerKey} disabled={busy || askBusy}
@@ -799,7 +806,7 @@ function ProjectConversationContent({ data, variant, feed, rootHeader, rootMessa
         attach={asking ? null : publicComposer}
         sendLabel={asking ? 'Send to your assistant' : conversation ? 'Send reply' : 'Send message'}
         sendDisabled={!composer.canSend || busy || askBusy || assistantInStream || (asking && ask.kind !== 'ready')} onSend={() => void send()}
-        menu={<ComposerMenu open={menuOpen} id={`${composerId}-menu`} options={options} active={activeIndex} trigger={trigger?.char ?? '@'} onPick={pick} onHover={setMenuIndex} />} />
+        menu={<ComposerMenu open={menuOpen} id={`${composerId}-menu`} options={options} active={activeIndex} trigger={trigger?.char ?? '@'} aiOff={aiOff} onPick={pick} onHover={setMenuIndex} />} />
         : <div className="composer__box"><button type="button" className="composer__ask project-convo__sources-btn" aria-expanded={trayOpen} aria-controls={trayOpen ? `${conversation ? 'thread' : 'project'}-sources` : undefined} aria-label={`Sources${materialTotal ? `, ${materialTotal} saved` : ''}`} data-tip="Saved sources to read" data-tip-align="start" onClick={() => { if (trayOpen) setSourcesOpen(false); else setSourcesOpen(true); }}><Icon name="doc" /><span className="project-convo__sources-t" aria-hidden="true">Sources</span>{materialTotal ? <span className="project-convo__sources-n" aria-hidden="true">{materialTotal > 99 ? '99+' : materialTotal}</span> : null}</button><p className="project-convo__read-only">Read-only · <span>You have read access to this project.</span></p></div>}
       {conversation && !accessLost ? <TypingNotice {...typing} /> : null}
       {writable ? <SendAnnouncer pending={publicComposer.pending} /> : null}

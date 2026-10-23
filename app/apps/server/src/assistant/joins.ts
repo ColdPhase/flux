@@ -33,6 +33,7 @@ export function assistantJoinUseCases(db: Database, boss: Pick<PgBoss, 'send'>) 
             const notification = await createNotification(notificationUnitOfWork(tx, pgBossQueue(boss)), {
               userId: candidate.userId, source: { type: 'project', id: projectId }, title,
               body: `${project.name} · Requested contributor access.`,
+              aiOrigin: true,
             });
             await rows.markQuestion(notification.id);
             await rows.linkQuestion(notification.id, request.row.id, request.row.version);

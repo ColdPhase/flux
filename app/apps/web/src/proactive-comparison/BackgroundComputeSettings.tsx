@@ -4,6 +4,8 @@ import { AI_PROVIDERS, aiConnectionLabel, isAiProviderKind, type AiProviderKind,
   type ConnectBackgroundComputeCommand } from '@flux/contracts';
 import { ApiError } from '../api/client';
 import { Button } from '../ui';
+import { allAiBlocked } from '../app/data';
+import { AiOffEverywhere, useAllAiBlocked } from '../ai/workspaceAi';
 import { BACKGROUND_OFF_LINE, backgroundComparisonRuntime, connectBackgroundCompute, currentBackgroundUsage, listBackgroundConnections, markBackgroundConnection, revokeBackgroundConnection } from './api';
 import { BackgroundUsage } from './BackgroundUsage';
 import { comparisonReserveText, ConnectionFields, priceSourceText, priceText } from './ConnectionFields';
@@ -12,6 +14,8 @@ import './background.css';
 
 /** Settings → Agents and AI → Background suggestions: the status line, local usage and project rules. */
 export async function backgroundComputeLoader({ request }: LoaderFunctionArgs) {
+  // F-029 (#614): with AI off in every workspace the page is the calm "AI is off" message, and nothing is asked for.
+  if (await allAiBlocked()) return null;
   const [connections, usage, runtime] = await Promise.all([
     listBackgroundConnections(request.signal), currentBackgroundUsage(request.signal),
     backgroundComparisonRuntime(request.signal).then((answer) => answer.status, () => 'unavailable' as const),
@@ -21,7 +25,15 @@ export async function backgroundComputeLoader({ request }: LoaderFunctionArgs) {
 
 /** Settings → Agents and AI → AI connections: the owner's own connections and the form to add one. */
 export async function aiConnectionsLoader({ request }: LoaderFunctionArgs) {
+  if (await allAiBlocked()) return null;
   return { connections: await listBackgroundConnections(request.signal) };
+}
+/** The page for a person whose every workspace has AI off: only where, and who can turn it back on (F-029, #614). */
+function AiOffSettingsPage() {
+  return <div className="pane-scroll"><div className="pane-in sset-in">
+    <AiOffEverywhere />
+    <p className="sset-note"><Link className="ui-link" to="/settings/agents">Back to Agents and AI</Link></p>
+  </div></div>;
 }
 const money = (cents: number) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(cents / 100);
 const checks = ['workspaceScoped', 'payerAuthority', 'providerBilling', 'projectDisclosure'] as const;
@@ -53,7 +65,13 @@ function failure(error: unknown) {
  * the one the owner marks; removing it stops them, with no fallback. Saving a connection turns nothing on.
  */
 export function AiConnectionsSettings() {
-  const initial = useLoaderData() as { connections: BackgroundComputeConnection[] };
+  const initial = useLoaderData() as { connections: BackgroundComputeConnection[] } | null;
+  const allOff = useAllAiBlocked();
+  if (!initial || allOff) return <AiOffSettingsPage />;
+  return <AiConnectionsPage initial={initial} />;
+}
+
+function AiConnectionsPage({ initial }: { initial: { connections: BackgroundComputeConnection[] } }) {
   const [connections, setConnections] = useState(initial.connections);
   const connection = connections.find((item) => item.usedForBackground) ?? null;
   const [editing, setEditing] = useState(false);
@@ -257,7 +275,13 @@ function BackgroundStatus({ runtime, connection }: { runtime: 'available' | 'una
  * paused or revoked; enabling is dimmed. The connections themselves live on AI connections.
  */
 export function BackgroundComputeSettings() {
-  const initial = useLoaderData() as { connections: BackgroundComputeConnection[]; usage: BackgroundComputeUsage; runtime: 'available' | 'unavailable' };
+  const initial = useLoaderData() as { connections: BackgroundComputeConnection[]; usage: BackgroundComputeUsage; runtime: 'available' | 'unavailable' } | null;
+  const allOff = useAllAiBlocked();
+  if (!initial || allOff) return <AiOffSettingsPage />;
+  return <BackgroundPage initial={initial} />;
+}
+
+function BackgroundPage({ initial }: { initial: { connections: BackgroundComputeConnection[]; usage: BackgroundComputeUsage; runtime: 'available' | 'unavailable' } }) {
   const connection = initial.connections.find((item) => item.usedForBackground) ?? null;
   const [usage, setUsage] = useState(initial.usage);
   const [usageBusy, setUsageBusy] = useState(false);

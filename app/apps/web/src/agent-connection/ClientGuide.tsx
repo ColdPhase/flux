@@ -43,7 +43,7 @@ export function ClientGuide({ origin }: { origin: string }) {
       <code>codex mcp login flux</code>
       <p>Codex starts signing in when it adds the server; run the login command if it asks you to.</p>
       <h4>Start work</h4>
-      <p>After selecting your connection and project, use its supplied Start/Resume command. It loads the current Flux playbook and resumes only its own saved native thread.</p>
+      <p>After selecting your connection and project, use its supplied Start/Resume command. It is pending native verification: no real-account Start or exact-thread Resume through this action is recorded yet.</p>
       <p>Flux is tested with Codex 0.160.1. A Codex that speaks MCP 2025-06-18 or 2026-07-28 connects; one that offers another version is refused with “Unsupported protocol version”. Update Codex to a tested version.</p>
     </section>
     <section className="connection__client" aria-labelledby="guide-other">

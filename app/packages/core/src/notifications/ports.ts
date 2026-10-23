@@ -132,6 +132,8 @@ export interface GeneratedNotification {
   body: string;
   url: string;
   inInbox: boolean;
+  /** F-029: from AI work, by the event's actor or the source's author. */
+  aiOrigin: boolean;
 }
 
 export interface EmailJob { emailId: string }

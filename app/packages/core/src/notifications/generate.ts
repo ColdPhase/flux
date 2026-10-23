@@ -46,6 +46,13 @@ export interface Candidate {
   title: string;
   body: string;
   url: string;
+  /** F-029: set from the event's actor or the source item's author, not from its text. */
+  aiOrigin?: boolean;
+}
+
+/** True for an event whose actor is an AI principal: an agent, which includes every member's own assistant. */
+export function isAgentActor(actorId: string) {
+  return actorId.startsWith('agent:');
 }
 
 function humanId(actorId: string) {
@@ -95,7 +102,8 @@ export async function candidatesFor(event: GeneratorEvent, facts: NotificationFa
           : reason === 'mention' ? `${author} mentioned you in ${message.projectName}`
             : `${author} replied in ${quote(excerpt(message.opening, 60))}`;
         result.push({ userId, reason, source: { type: 'project', id: message.projectId }, title,
-          body: askedThis ? excerpt(message.asked!.question) : excerpt(messagePreview(message.body, message.attachmentCount)), url });
+          body: askedThis ? excerpt(message.asked!.question) : excerpt(messagePreview(message.body, message.attachmentCount)), url,
+          aiOrigin: message.author.kind === 'agent' });
       }
       return result;
     }
@@ -151,6 +159,8 @@ export async function candidatesFor(event: GeneratorEvent, facts: NotificationFa
         title: `${decision ? 'Decision' : 'Result'} to review: ${excerpt(item.title, 90)}`,
         body: `${why} · ${by} ${decision ? 'proposed it' : 'recorded it'} in ${item.projectName}`,
         url: `/projects/${item.projectId}/tasks?open=${kind}:${item.id}`,
+        // An agent produced the item, whoever the event's actor is on its behalf.
+        aiOrigin: item.by.kind === 'agent',
       }));
     }
     case 'project.live_invited.v1': {
@@ -198,6 +208,8 @@ async function deliver(ports: GeneratorPorts, event: GeneratorEvent, candidate: 
   const inserted = await ports.insertNotification({
     id: notificationId, userId: candidate.userId, source, reason: candidate.reason, eventId: event.id,
     title: candidate.title, body: candidate.body, url: candidate.url, inInbox: channels.inApp,
+    // AI origin is persisted at write time (F-029): an agent actor or an agent-authored source.
+    aiOrigin: candidate.aiOrigin === true || isAgentActor(event.actorId),
   });
   if (!inserted) return false;
 

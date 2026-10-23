@@ -1,5 +1,5 @@
 import { redirect, useRouteLoaderData, type LoaderFunctionArgs } from 'react-router';
-import type { WorkspaceRole } from '@flux/contracts';
+import type { WorkspaceAiPolicy, WorkspaceRole } from '@flux/contracts';
 import { getMe, type MeResponse } from '../api/auth';
 import { signInPath } from '../auth/logic';
 import { listAllDms } from '../api/direct-messages';
@@ -15,6 +15,8 @@ export interface WorkspaceSummary {
   id: string; name: string;
   /** The person's role there (#188): owners and admins manage its people. */
   role?: WorkspaceRole | null;
+  /** F-029 (#614): whether agents and assistants may work here; the whole interface there is human-only while blocked. */
+  ai?: WorkspaceAiPolicy;
 }
 /** A small, audience-specific project. Only projects the person belongs to are ever listed. */
 export interface ProjectSummary { id: string; name: string; workspaceId?: string; workspaceName?: string; hasNew?: boolean }
@@ -33,8 +35,34 @@ export interface ShellData {
   directMessages: DirectMessageSummary[];
 }
 
+/** The latest shell read, so a route loader can ask whether a project's workspace has AI off before it asks the server (#614). */
+let latestShell: Promise<ShellData> | null = null;
+
+/** True when the project's workspace has AI off, by the shell's latest read; false when that is not known. */
+export async function projectAiBlocked(projectId: string | undefined): Promise<boolean> {
+  try {
+    const shell = await latestShell;
+    const workspaceId = shell?.projects.find((project) => project.id === projectId)?.workspaceId;
+    return shell?.workspaces.find((space) => space.id === workspaceId)?.ai?.state === 'blocked';
+  } catch { return false; }
+}
+
+/** True when AI is off in every workspace of the person (and they have one), by the shell's latest read; false when that is not known. */
+export async function allAiBlocked(): Promise<boolean> {
+  try {
+    const shell = await latestShell;
+    return !!shell && shell.workspaces.length > 0 && shell.workspaces.every((space) => space.ai?.state === 'blocked');
+  } catch { return false; }
+}
+
 /** Auth guard: restores the session from its cookie on every full load, or sends the person to sign in. */
-export async function appLoader({ request }: LoaderFunctionArgs): Promise<ShellData> {
+export function appLoader(args: LoaderFunctionArgs): Promise<ShellData> {
+  const loading = readShell(args);
+  latestShell = loading;
+  return loading;
+}
+
+async function readShell({ request }: LoaderFunctionArgs): Promise<ShellData> {
   const me = await getMe(request.signal);
   if (!me) {
     const url = new URL(request.url);

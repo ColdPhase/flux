@@ -1,14 +1,51 @@
 import type { FastifyInstance } from 'fastify';
-import { WORKSPACES_PATH, type AddMemberCommand, type ChangeRoleCommand, type CreateWorkspaceCommand } from '@flux/contracts';
-import { addMember, assertAuthorized, changeRole, createWorkspace, getWorkspace, listMembers, listWorkspaces, removeMember } from '@flux/core';
-import { bodyId, requires } from '../http/commands.js';
-import { nameSchema } from '../http/schemas.js';
+import { fromDrizzle, type PgBoss } from 'pg-boss';
+import { sql } from 'drizzle-orm';
+import { WORKSPACE_AI_SWEEP_JOB, WORKSPACES_PATH, type AddMemberCommand, type ChangeRoleCommand, type CreateWorkspaceCommand,
+  type SetWorkspaceAiPolicyCommand, type SetWorkspaceAiPolicyResult } from '@flux/contracts';
+import { addMember, assertAuthorized, changeRole, createWorkspace, getWorkspace, listMembers, listWorkspaces, removeMember, setWorkspaceAiPolicy,
+  sweepWorkspaceAi, WorkspaceAiSweepIncomplete, type WorkspaceAiSweepQueue } from '@flux/core';
+import { bodyId, expectedVersion, requires } from '../http/commands.js';
+import { nameSchema, versionSchema } from '../http/schemas.js';
 import type { AccessContext } from './context.js';
 
 const roleSchema = { type: 'string', enum: ['owner', 'admin', 'member', 'guest'] } as const;
 
 /** Workspaces and their membership (#85): list, create, read, members, roles and leaving. */
-export function workspaceRoutes(app: FastifyInstance, { db, principal, command, runCommand, sendCommand, workspaceScope, workspaceChange, verifiedEmailMembers }: AccessContext) {
+export function workspaceRoutes(app: FastifyInstance, { db, principal, command, runCommand, sendCommand, workspaceScope, workspaceChange, verifiedEmailMembers }: AccessContext,
+  boss: Pick<PgBoss, 'send'>) {
+  /** F-029 (S2): the sweep job commits with the flip, in its transaction. */
+  const sweepQueue: WorkspaceAiSweepQueue = async (tx, job) => {
+    await boss.send(WORKSPACE_AI_SWEEP_JOB, job, { db: fromDrizzle(tx as Parameters<typeof fromDrizzle>[0], sql), retryLimit: 5, retryDelay: 5 });
+  };
+  // F-029 (S2): an owner or admin turns AI off or on for the whole workspace. The flip commits first; the sweep then runs here at
+  // once (and again from the worker's job), so it never shares a transaction with the flip.
+  app.put<{ Params: { workspaceId: string }; Body: SetWorkspaceAiPolicyCommand }>(`${WORKSPACES_PATH}/:workspaceId/ai-policy`, {
+    schema: { body: { type: 'object', required: ['state'], additionalProperties: false,
+      properties: { state: { type: 'string', enum: ['allowed', 'blocked'] }, expectedVersion: versionSchema } } },
+  }, async (request, reply) => {
+    const response = await runCommand(request, {
+      operation: `PUT ${WORKSPACES_PATH}/:workspaceId/ai-policy`, scope: workspaceScope(request.params.workspaceId),
+      run: async (actor, conn) => {
+        const { sweep, ...result } = await setWorkspaceAiPolicy(actor, request.params.workspaceId,
+          { ...request.body, expectedVersion: expectedVersion(request) }, conn, sweepQueue);
+        return { ...result, sweep };
+      },
+      etag: (body) => { const version = (body as SetWorkspaceAiPolicyResult | null)?.ai.version; return typeof version === 'number' ? `"${version}"` : null; },
+      replay: requires('workspace', 'workspace.manage_ai', () => request.params.workspaceId),
+    });
+    const { sweep, ...body } = (response.body ?? {}) as SetWorkspaceAiPolicyResult & { sweep?: { workspaceId: string; epoch: number } | null };
+    let stopped = body.stopped ?? null;
+    if (sweep && !response.replayed) {
+      try { stopped = await sweepWorkspaceAi(sweep, db); }
+      catch (error) {
+        // Each step is its own transaction: what committed is reported, the rest is repeated by the worker's job.
+        if (error instanceof WorkspaceAiSweepIncomplete) stopped = error.swept;
+        request.log.error({ error }, 'The inline AI sweep did not finish; the worker job repeats it');
+      }
+    }
+    return sendCommand(reply, { ...response, body: { ...body, stopped } });
+  });
   app.get(WORKSPACES_PATH, async (request) => listWorkspaces(await principal(request), db));
   app.post<{ Body: CreateWorkspaceCommand }>(WORKSPACES_PATH, {
     schema: { body: { type: 'object', required: ['name'], additionalProperties: false, properties: { name: nameSchema } } },

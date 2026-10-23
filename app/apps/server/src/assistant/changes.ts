@@ -399,6 +399,7 @@ export function assistantChangeUseCases(db: Database, boss?: Pick<PgBoss, 'send'
         userId: recipient, source: { type: 'project', id: row.projectId },
         title: `${ownerName}'s assistant suggests: ${view.phrase}${row.objectTitle ? ` ${row.objectTitle}` : ''}`.slice(0, 200),
         body: `Drafted by ${ownerName}'s assistant · sent by ${ownerName}`,
+        aiOrigin: true,
       });
       // The typed suggestion itself is the one Needs-you item; this notification supplies its push only.
       void notification;

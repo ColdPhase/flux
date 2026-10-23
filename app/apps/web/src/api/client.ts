@@ -55,6 +55,8 @@ export async function request<T>(path: string, init: ApiRequestInit = {}): Promi
     const record = (data && typeof data === 'object' ? data : {}) as { code?: unknown; message?: unknown; error?: unknown };
     const code = typeof record.code === 'string' ? record.code : null;
     const message = typeof record.message === 'string' ? record.message : typeof record.error === 'string' ? record.error : response.statusText;
+    // F-029 (#614): the workspace's AI was turned off since the shell last read it; the shell reads it again.
+    if (response.status === 403 && code === 'WORKSPACE_AI_BLOCKED' && typeof window !== 'undefined') window.dispatchEvent(new Event('flux:workspace-ai-blocked'));
     throw new ApiError(response.status, code, message, data);
   }
   return data as T;

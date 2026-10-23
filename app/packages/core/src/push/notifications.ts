@@ -21,6 +21,8 @@ export interface NotificationInput {
   title: string;
   body?: string;
   url?: string | null;
+  /** Whether the notification came from AI work (F-029): an agent or assistant is its actor or source. Hidden and unsent while the workspace's AI is off. */
+  aiOrigin: boolean;
 }
 
 /** True only when the policy lets the recipient read this exact source in its stored workspace. */
@@ -56,7 +58,7 @@ export async function createNotification(uow: NotificationUnitOfWork, input: Not
     const decision = await authorizer.canRead(input.userId, input.source);
     if (!decision.visible || !decision.allowed || !decision.workspaceId) throw new NotFoundError('Notification source', 'SOURCE_NOT_FOUND');
     const source: NotificationSourceRef = { workspaceId: decision.workspaceId, type: input.source.type, id: input.source.id };
-    await notifications.insert({ id, userId: input.userId, source, title, body, url });
+    await notifications.insert({ id, userId: input.userId, source, title, body, url, aiOrigin: input.aiOrigin });
     const jobIds: string[] = [];
     for (const subscriptionId of await subscriptions.deliverableIdsForUser(input.userId)) {
       const jobId = await queue.enqueuePushSend({ notificationId: id, subscriptionId, userId: input.userId });

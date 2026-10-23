@@ -7,5 +7,5 @@ import { db } from './db.js';
 export function capturingNotifier() {
   const jobs: PushSendJob[] = [];
   const uow = notificationUnitOfWork(db, () => ({ enqueuePushSend: async (job) => { jobs.push(job); return randomUUID(); } }));
-  return { jobs, notify: (input: Parameters<typeof createNotification>[1]) => createNotification(uow, input) };
+  return { jobs, notify: (input: Omit<Parameters<typeof createNotification>[1], 'aiOrigin'> & { aiOrigin?: boolean }) => createNotification(uow, { aiOrigin: false, ...input }) };
 }

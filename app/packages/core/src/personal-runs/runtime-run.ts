@@ -210,7 +210,11 @@ export function createRuntimeRunProcessor({ uow, runtime, tokens, stopPollMs, ho
         const current = await ports.runs.findRun(run.id, { lock: true });
         if (!current || current.status !== 'reading') return { done: true as const, outcome: (current?.status ?? 'skipped') as RuntimeRunOutcome };
         const end = async (changes: RunChanges) => ({ done: true as const, outcome: (await updateAndAnnounce(ports, run.id, changes)).status as RuntimeRunOutcome });
-        if (current.stopRequestedAt) return end(ended('stopped', 'before_dispatch', free));
+        if (current.stopRequestedAt) {
+          // F-029: a stop request the turn-off sweep made says so.
+          const ai = await ports.access.workspaceAi(current.workspaceId);
+          return end(ended(ai.state !== 'allowed' || ai.epoch !== current.aiEpoch ? 'ai_off' : 'stopped', 'before_dispatch', free));
+        }
         const refusal = await checked(ports, current, 'before_dispatch', true);
         if (refusal) return end(ended(refusal, 'before_dispatch', free));
         await updateAndAnnounce(ports, run.id, { status: 'dispatching', dispatchedAt: new Date() });
@@ -271,6 +275,8 @@ export function createRuntimeRunProcessor({ uow, runtime, tokens, stopPollMs, ho
         const current = await ports.runs.findRun(run.id, { lock: true });
         if (!current || current.status !== 'dispatching') return 'skipped';
         const save = async (changes: RunChanges) => (await updateAndAnnounce(ports, run.id, changes)).status;
+        // F-029: a run stopped because AI was turned off says so; nothing it produced is posted.
+        if (refusal === 'ai_off') return save(ended('ai_off', 'before_commit', used));
         if (current.stopRequestedAt) return save(ended('stopped', 'before_commit', used));
         if (stopWhy === 'local_tool' || (end.kind === 'ended' && end.reason === 'local_tool')) return save(ended('unavailable', null, { ...used, endReason: 'local_tool' }));
         if (current.mcpLimit) return save(ended('cap_reached', 'before_commit', { ...used, endReason: 'mcp_results_too_large' }));

@@ -29,7 +29,7 @@ export interface WikiReplica {
 export interface WikiUpdate {
   sequence: number; bytes: Uint8Array; commandId: string; actor: NamedPrincipal; hash: string;
 }
-export interface WikiPresence { connectionId: string; actor: NamedPrincipal; cursor: LiveCursor; expiresAt: string }
+export interface WikiPresence { connectionId: string; actor: NamedPrincipal; cursor: LiveCursor; /** The person's slot in this room: the same on every viewer's screen. */ slot: number; expiresAt: string }
 /** The locked head without its codec state: a confirmed read needs only whether it is initialized. */
 export type WikiHeadSummary = Omit<WikiHead<WikiCodecState>, 'codecState'> & { initialized: boolean };
 export interface WikiRows<State extends WikiCodecState> {

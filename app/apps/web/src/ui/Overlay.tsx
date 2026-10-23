@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode, type RefObject } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type KeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode, type RefObject } from 'react';
 import { createPortal } from 'react-dom';
 import { duration, settle, token, type Easing, type Pose } from './motion';
 
@@ -15,7 +15,14 @@ let inertSeq = 0;
 // the root is not inert as a whole: everything beside the strip's path to the root is, so the strip is not.
 let stripKeepers = 0;
 const inertSiblings = new Set<HTMLElement>();
-const liveStrip = () => document.querySelector<HTMLElement>('#root .lv-bar');
+// Only the joined session's strip: the invitation card and the ended notice share `.lv-bar` but are ordinary content.
+const liveStrip = () => document.querySelector<HTMLElement>('#root .lv-bar:not(.lv-bar--invite, .lv-bar--ended)');
+let stripOnly = false;
+const stripOnlyListeners = new Set<() => void>();
+/** True while every open modal surface leaves the live strip usable, so the strip's own popover would sit under it. */
+export function useStripOnlyModal(): boolean {
+  return useSyncExternalStore((listener) => { stripOnlyListeners.add(listener); return () => { stripOnlyListeners.delete(listener); }; }, () => stripOnly, () => false);
+}
 
 function applyInert() {
   const root = document.getElementById('root');
@@ -35,7 +42,8 @@ function applyInert() {
     root.inert = inertCount > 0;
   }
   // Shortcuts and the pane's interactivity rule ask this, not `root.inert`: the root stays live around the strip.
-  root.toggleAttribute('data-modal', inertCount > 0);
+  if (inertCount > 0) root.setAttribute('data-modal', strip ? 'strip' : ''); else root.removeAttribute('data-modal');
+  if (stripOnly !== !!strip) { stripOnly = !!strip; stripOnlyListeners.forEach((listener) => listener()); }
   // Chromium can keep an animated element's inert style after the root leaves inert: on a phone the work pane
   // stayed untappable after Details closed, from its next view slide on (#151). A changed inherited custom
   // property makes every element below the root compute its style again.
@@ -232,17 +240,40 @@ export function Overlay({ open, onClose, placement, label, labelledBy, initialFo
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, mounted, placement]);
 
-  // The overlay starts where the strip ends, so neither the scrim nor the sheet is painted over it.
+  // The overlay starts where the strip ends, so neither the scrim nor the sheet is painted over it. The scrim also
+  // covers what is above the strip (the header's inert controls), by `--strip-top` and `--strip-bottom`.
   useLayoutEffect(() => {
     const frame = frameRef.current;
-    const strip = keepLiveStrip && open && mounted ? liveStrip() : null;
-    if (!frame || !strip) { frame?.style.removeProperty('top'); return; }
-    const place = () => frame.style.setProperty('top', `${Math.max(0, Math.round(strip.getBoundingClientRect().bottom))}px`);
+    const first = keepLiveStrip && open && mounted ? liveStrip() : null;
+    const clear = () => { for (const name of ['top', '--strip-top', '--strip-bottom', '--strip-left', '--strip-right']) frame?.style.removeProperty(name); };
+    if (!frame || !first) { clear(); return; }
+    const parent = first.parentElement;
+    const observer = new ResizeObserver(() => place());
+    function place() {
+      const strip = liveStrip();
+      if (!frame) return;
+      if (!strip) {
+        // Leave took the strip (and the focused button) away: the sheet takes the whole screen and the focus.
+        clear();
+        if (!document.activeElement || document.activeElement === document.body) surfaceRef.current?.focus({ preventScroll: true });
+        return;
+      }
+      const box = strip.getBoundingClientRect();
+      frame.style.setProperty('top', `${Math.max(0, Math.round(box.bottom))}px`);
+      frame.style.setProperty('--strip-bottom', `${Math.max(0, Math.round(box.bottom))}px`);
+      frame.style.setProperty('--strip-top', `${Math.max(0, Math.round(box.top))}px`);
+      frame.style.setProperty('--strip-left', `${Math.round(box.left)}px`);
+      frame.style.setProperty('--strip-right', `${Math.round(box.right)}px`);
+      observer.observe(strip);
+    }
     place();
-    const observer = new ResizeObserver(place);
-    observer.observe(strip);
+    // A move comes from a change above the strip as much as from the strip itself: watch its siblings, the strip
+    // going or coming, and the window.
+    for (const sibling of parent?.children ?? []) observer.observe(sibling);
+    const changes = new MutationObserver(place);
+    if (parent) changes.observe(parent, { childList: true });
     window.addEventListener('resize', place);
-    return () => { observer.disconnect(); window.removeEventListener('resize', place); };
+    return () => { observer.disconnect(); changes.disconnect(); window.removeEventListener('resize', place); };
   }, [keepLiveStrip, open, mounted]);
 
   // Tab leaves the surface into the strip and comes back; the surface's own wrap-around moves to the far ends.
@@ -254,9 +285,9 @@ export function Overlay({ open, onClose, placement, label, labelledBy, initialFo
       const surface = surfaceRef.current;
       const target = event.target as HTMLElement | null;
       if (!surface || !target) return;
-      // Esc closes the sheet from the strip, and from nowhere in particular (Leave took the focused button with it).
+      // Esc closes the sheet from the strip too (a menu or dialog inside it uses its own Esc).
       if (event.key === 'Escape') {
-        if ((target === document.body || strip?.contains(target)) && !target.closest('.lv-pop, [role="dialog"]') && !document.querySelector('.lv-pop')) onCloseRef.current();
+        if (strip?.contains(target) && !target.closest('.lv-pop, [role="dialog"]') && !document.querySelector('.lv-pop')) onCloseRef.current();
         return;
       }
       if (!strip || !strip.contains(target) || target.closest('.lv-pop, [role="dialog"]')) return;

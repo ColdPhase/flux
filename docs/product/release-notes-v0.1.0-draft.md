@@ -123,8 +123,8 @@ Flux has exactly two AI modes ([F-022](decisions.md), [AI modes](ai-modes.md)).
   from you it can act on tasks, results, decisions, the shared map, project docs and the project
   conversation, named as the author ([#174](https://github.com/ColdPhase/flux/pull/174),
   [#176](https://github.com/ColdPhase/flux/pull/176), [#193](https://github.com/ColdPhase/flux/pull/193)).
-  A versioned co-work playbook arrives through Start/Resume prompts
-  ([#175](https://github.com/ColdPhase/flux/pull/175)); co-work units can be completed and
+  A versioned co-work playbook is delivered through Start/Resume prompts
+  ([#175](https://github.com/ColdPhase/flux/pull/175)); native Codex Resume and Claude's supplied action are pending verification ([#635](https://github.com/ColdPhase/flux/issues/635), [#636](https://github.com/ColdPhase/flux/issues/636)); co-work units can be completed and
   transferred, with co-work MCP tools ([#261](https://github.com/ColdPhase/flux/pull/261)); a
   project's agent policy is edited in Flux with conflict-safe publishing
   ([#292](https://github.com/ColdPhase/flux/pull/292)).

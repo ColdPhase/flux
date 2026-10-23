@@ -654,6 +654,8 @@ export function eventResource(event: EventRef): ResourceRef | null {
  * kinds and events without a workspace are never delivered.
  */
 export async function authorizeEvent(principal: Principal, event: EventRef, db: Executor): Promise<boolean> {
+  // F-029: the AI policy change is for the workspace's people; no agent ever receives it.
+  if (event.kind === 'workspace.ai_policy_changed.v1' && principal.kind !== 'human') return false;
   const resource = eventResource(event);
   if (!resource) return false;
   const decision = await evaluate(principal, READ_ACTION[resource.type], resource, db);

@@ -28,7 +28,7 @@ test('0072 preserves ordinary notification data on upgrade/reverse and records o
     await client.query("INSERT INTO auth_users(id,name,email) VALUES ($1,'Summary owner',$2)", [userId, `${userId}@example.test`]);
     await client.query("INSERT INTO workspaces(id,name,created_by) VALUES ($1,'Summary workspace',$2)", [workspaceId, userId]);
     await client.query('INSERT INTO notification_preferences(user_id) VALUES ($1)', [userId]);
-    await client.query("INSERT INTO notifications(id,user_id,workspace_id,source_type,source_id,title) VALUES($1,$2,$3,'workspace',$3,'Ordinary legacy notification')", [ordinaryId,userId,workspaceId]);
+    await client.query("INSERT INTO notifications(id,user_id,workspace_id,source_type,source_id,title,ai_origin) VALUES($1,$2,$3,'workspace',$3,'Ordinary legacy notification',false)", [ordinaryId,userId,workspaceId]);
     const ordinaryBefore = (await client.query('SELECT * FROM notifications WHERE id=$1', [ordinaryId])).rows[0];
     const preferencesBefore = (await client.query('SELECT * FROM notification_preferences WHERE user_id=$1', [userId])).rows[0];
     await assertMorningSummaryMigrationCompatibility(client, await readAppliedMigrationVersions(client));
@@ -44,7 +44,7 @@ test('0072 preserves ordinary notification data on upgrade/reverse and records o
     await assert.rejects(client.query("UPDATE notifications SET delivery_kind='morning_summary', summary_sources='[]'::jsonb WHERE id=$1", [ordinaryId]), /notifications_summary_sources_check/);
     await client.query('ROLLBACK TO SAVEPOINT malformed_summary');
     const summaryId = randomUUID();
-    await client.query("INSERT INTO notifications(id,user_id,workspace_id,source_type,source_id,title,in_inbox,delivery_kind,summary_sources) VALUES($1,$2,$3,'workspace',$3,'1 thing waits in your inbox',false,'morning_summary',$4)",
+    await client.query("INSERT INTO notifications(id,user_id,workspace_id,source_type,source_id,title,in_inbox,delivery_kind,summary_sources,ai_origin) VALUES($1,$2,$3,'workspace',$3,'1 thing waits in your inbox',false,'morning_summary',$4,false)",
       [summaryId,userId,workspaceId,JSON.stringify([{ type:'workspace', id:workspaceId, workspaceId }])]);
     await client.query(await readFile(join(directory, 'reverse/0072_morning_summary.down.sql'), 'utf8'));
     await client.query('DELETE FROM flux_schema_version WHERE version=72');

@@ -9,10 +9,8 @@ export function RouteProgress() {
   const location = useLocation();
   const navigate = useNavigate();
   if (navigation.state !== 'loading' || !navigation.location || navigation.location.pathname === location.pathname) return null;
-  // The line takes no room: it lies over the top of the work while the next view loads, so neither the work nor the
-  // detail panel beside it is pushed down and back (#593 AC-2, Spokój rule 7).
-  return <div className="route-progress"><div className="route-progress__bar" data-route-pending={navigation.location.pathname}>
+  return <div className="route-progress" data-route-pending={navigation.location.pathname}>
     <span role="status" aria-live="polite"><Spinner />Opening {routeLabel(navigation.location.pathname)}…</span>
     <Button variant="quiet" onClick={() => void navigate(`${location.pathname}${location.search}${location.hash}`, { replace: true, defaultShouldRevalidate: false, state: location.state })}>Cancel</Button>
-  </div></div>;
+  </div>;
 }

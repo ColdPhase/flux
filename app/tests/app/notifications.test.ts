@@ -1015,8 +1015,8 @@ describe('review fixes: exact unsubscribe, bounded verification, quiet hours at 
     // A notification and its email queued while quiet hours were off (no job runs them yet).
     const notificationId = randomUUID();
     const emailId = randomUUID();
-    await pool.query(`INSERT INTO notifications (id, user_id, workspace_id, source_type, source_id, title, body, url, reason)
-      VALUES ($1, $2, $3, 'project', $4, 'Xia Holt mentioned you in Night shift', 'hello', $5, 'mention')`, [notificationId, reader.id, space, room, `/projects/${room}`]);
+    await pool.query(`INSERT INTO notifications (id, user_id, workspace_id, source_type, source_id, title, body, url, reason, ai_origin)
+      VALUES ($1, $2, $3, 'project', $4, 'Xia Holt mentioned you in Night shift', 'hello', $5, 'mention', false)`, [notificationId, reader.id, space, room, `/projects/${room}`]);
     await pool.query(`INSERT INTO notification_emails (id, notification_id, user_id, address_kind) VALUES ($1, $2, $3, 'account')`, [emailId, notificationId, reader.id]);
 
     // Then the person turns quiet hours on, covering now, in their own (DST-observing) zone.

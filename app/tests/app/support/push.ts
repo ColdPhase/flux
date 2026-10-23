@@ -87,7 +87,7 @@ export async function pushRecipient(label: string): Promise<PushRecipient> {
 
 /** A notification about the recipient's own workspace, which they can always read. */
 export function own(recipient: PushRecipient, fields: { title: string; body?: string; url?: string | null }) {
-  return { userId: recipient.userId, source: { type: 'workspace' as const, id: recipient.workspaceId }, ...fields };
+  return { userId: recipient.userId, source: { type: 'workspace' as const, id: recipient.workspaceId }, aiOrigin: false, ...fields };
 }
 
 /** Subscribes this browser's session to push through the API, as the service worker would. */

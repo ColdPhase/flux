@@ -17,7 +17,13 @@ release workflows of [#77](https://github.com/ColdPhase/flux/issues/77)
 and attach to the GitHub Release: `compose.yaml`, `env.example` (the template; GitHub drops a
 leading period from asset names, so `.env.example` is published as `env.example`), `INSTALL.md`
 (the [release installation guide](release-guide.md)), `release.json`, `sbom.spdx.json`,
-`THIRD_PARTY_NOTICES.json`, `LICENSE` and `SHA256SUMS`. Always use the files from the release you
+`THIRD_PARTY_NOTICES.json`, `LICENSE` and `SHA256SUMS`. The optional agent runtime
+([#358](https://github.com/ColdPhase/flux/issues/358)) adds `compose.runtime.yaml` (the overlay
+[`docker/compose.runtime.yaml`](../../docker/compose.runtime.yaml), with `RELEASE_DIGEST` and
+`RUNTIME_DIGEST` markers), `runtime.sh` ([`docker/runtime.sh`](../../docker/runtime.sh)),
+`sbom-agent-runtime.spdx.json` and `THIRD_PARTY_NOTICES.agent-runtime.json`; the runtime image is
+`ghcr.io/coldphase/flux-agent-runtime`. `compose.yaml` itself never mentions the runtime and the
+runtime stays off unless the operator opts in. Always use the files from the release you
 install: a newer `main` can need other migrations or variables than your image.
 
 ## Clean installation
@@ -88,6 +94,11 @@ digest replaces the marker.
 | `api` | release digest | HTTP API and web app on `127.0.0.1:${FLUX_PORT}`, volume `files`; its health check verifies the exact migration ledger, the queue schema and a write to the files volume. |
 | `worker` | release digest | Background jobs (notification mail, Web Push, runs), volume `files`. |
 
+With the optional `compose.runtime.yaml` (profile `runtime`, off by default) `runtime-manager` and
+`runtime-egress` run the release digest of the application image, and `runtime-install` and
+`runtime-1` to `runtime-4` the digest of the agent-runtime image; see
+[agent runtime](agent-runtime.md#installing-from-a-release).
+
 All Flux containers run as the image's non-root user; the image owns `/data/files`, so a new
 `files` volume is writable without a setup step. The optional self-hosted live-media overlay
 (`docker/compose.live.yaml`) is not part of this operator file yet.
@@ -132,4 +143,7 @@ marker on the three Flux services, digest pins, variables and placeholders), and
 both platforms and the downloaded release assets are verified by #77: its `final-release.yml`
 installs the packaged, digest-pinned release, creates an account and workspace, takes a paired
 backup and restores it into a second project (`scripts/release/smoke_artifacts.sh`), and an
-independent reviewer repeats that on both platforms before publication.
+independent reviewer repeats that on both platforms before publication. The same workflow then
+installs the packaged agent runtime (`scripts/release/smoke_runtime.sh`: off by default, switch-on,
+`docker inspect` limits, no Claude Code in the image, off and purge) and
+`scripts/release/compare_runtime_overlay.py` checks the overlay against `docker/compose.source.yaml`.

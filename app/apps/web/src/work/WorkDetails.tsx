@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react';
+import { useWorkspaceAi } from '../ai/workspaceAi';
 import { useRevalidator } from 'react-router';
 import type { Agent, ObjectLink, Project, WorkspaceMember, WorkStatus, WorkDetailObject, WorkDetailProjection } from '@flux/contracts';
 import { ApiError } from '../api/client';
@@ -347,8 +348,10 @@ function WorkPanel({ item, context, detail, relations, reload, commands }: { ite
   if (item.owner && !people.some((person) => person.value === ownerValue) && item.owner.kind === 'human') people.push({ value: ownerValue, label: item.owner.name });
   const waitingPeople = people.map((person) => ({ ...person, id: person.value.slice('human:'.length) }));
   if (item.waitingFor && !waitingPeople.some((person) => person.id === item.waitingFor!.id)) waitingPeople.push({ value: `human:${item.waitingFor.id}`, id: item.waitingFor.id, label: item.waitingFor.name });
-  const agents = context.agents.map((agent) => ({ value: `agent:${agent.id}`, label: `${agent.name} (agent)` }));
-  if (item.owner?.kind === 'agent' && !agents.some((agent) => agent.value === ownerValue)) agents.push({ value: ownerValue, label: `${item.owner.name} (agent)` });
+  // F-029 (#614): a workspace whose AI is off offers no agent as an owner; a task an agent already owns keeps showing its name.
+  const aiOff = useWorkspaceAi(context.project.workspaceId).blocked;
+  const agents = aiOff ? [] : context.agents.map((agent) => ({ value: `agent:${agent.id}`, label: `${agent.name} (agent)` }));
+  if (!aiOff && item.owner?.kind === 'agent' && !agents.some((agent) => agent.value === ownerValue)) agents.push({ value: ownerValue, label: `${item.owner.name} (agent)` });
   const ownerOptions = [
     { value: '', label: 'Nobody yet', icon: <Icon name="person" size={16} /> },
     ...people.map((person) => ({ ...person, group: 'People', icon: <Avatar name={person.label} size="sm" /> })),
@@ -447,12 +450,12 @@ function WorkPanel({ item, context, detail, relations, reload, commands }: { ite
         {writable ? (
           <div className="wd-acts" role="group" aria-label="Task actions">
             {/* Finished work cannot be handed off: the action is dimmed, not removed, so nothing else moves (Spokój rule 7). */}
-            <Button variant="secondary" size="sm" icon="chevron-right" aria-label="Hand off to an agent" disabled={finished} onClick={() => setHandingOff(true)}>Hand off</Button>
+            {aiOff ? null : <Button variant="secondary" size="sm" icon="chevron-right" aria-label="Hand off to an agent" data-ai-surface="task-hand-off" disabled={finished} onClick={() => setHandingOff(true)}>Hand off</Button>}
             <Button variant="secondary" size="sm" icon="plus" aria-label="Attach a result" onClick={() => openDetails({ kind: 'attach-result', projectId: item.projectId, workId: item.id }, { back: 'push' })}>Result</Button>
             <LinkThoughtButton links={thoughts} toggle={thoughtToggle} />
           </div>
         ) : null}
-        {writable ? <HandOffDialog open={handingOff} onClose={() => setHandingOff(false)} project={context.project} task={{ id: item.id, version: item.version, number: item.number, title: item.title }} onDone={reload} /> : null}
+        {writable && !aiOff ? <HandOffDialog open={handingOff} onClose={() => setHandingOff(false)} project={context.project} task={{ id: item.id, version: item.version, number: item.number, title: item.title }} onDone={reload} /> : null}
         <ReadyToClose item={item} writable={writable} busy={busy} done={() => void setState('done')} />
         {!reverted && !finished ? <LiveEntry variant="inline" anchor={liveAnchor} /> : null}
         <LinkedThoughts links={thoughts} />

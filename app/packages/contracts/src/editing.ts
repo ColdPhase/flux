@@ -145,8 +145,8 @@ export type EditingServerMessage =
   | ({ type: 'head'; kind: 'wiki' | 'map'; canWrite: boolean; actor: NamedPrincipal; savedVersion?: number } & LiveHead)
   | ({ type: 'ack' } & LiveReceipt)
   | { type: 'preview'; generation: string; sequence: number; hash: string; html: string; mentions: DocMention[] }
-  | { type: 'presence'; generation: string; connectionId: string; actor: NamedPrincipal; cursor: LiveCursor | null; expiresAt: string }
-  | { type: 'map-presence'; generation: string; connectionId: string; actor: NamedPrincipal; selected: string[]; cursor: { x: number; y: number } | null; expiresAt: string }
+  | { type: 'presence'; generation: string; connectionId: string; actor: NamedPrincipal; cursor: LiveCursor | null; slot: number; expiresAt: string }
+  | { type: 'map-presence'; generation: string; connectionId: string; actor: NamedPrincipal; selected: string[]; cursor: { x: number; y: number } | null; slot: number; expiresAt: string }
   | { type: 'map-move'; generation: string; connectionId: string; actor: NamedPrincipal; gestureId: string; leaseId: string; sequence: number; positions: LiveMapPosition[]; expiresAt: string }
   | { type: 'map-clear'; generation: string; leaseId: string }
   | ({ type: 'map-delta' } & LiveMapDelta)

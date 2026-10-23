@@ -49,8 +49,10 @@ export function useQuestionList(projectId: string): AgentQuestion[] {
 }
 
 /** Reads the project's questions now, on a question event, on focus and on a resync; a failed read keeps what is shown. */
-export function useProjectQuestions(projectId: string, meId: string) {
+export function useProjectQuestions(projectId: string, meId: string, enabled = true) {
   useEffect(() => {
+    // F-029 (#614): a workspace whose AI is off shows no agent questions, and asks the server for none.
+    if (!enabled) { publish(projectId, new Map()); return undefined; }
     const controller = new AbortController();
     const load = () => getAgentQuestions(projectId, controller.signal).then((read) => {
       if (!controller.signal.aborted) publish(projectId, new Map(read.questions.map((question) => [question.messageId, question])));
@@ -59,8 +61,8 @@ export function useProjectQuestions(projectId: string, meId: string) {
     window.addEventListener('focus', load);
     reload.set(projectId, load);
     return () => { controller.abort(); window.removeEventListener('focus', load); reload.delete(projectId); };
-  }, [projectId]);
+  }, [projectId, enabled]);
   useStreamEvents(meId, (event) => {
-    if (event.objectId === projectId && (event.kind === 'project.question_asked.v1' || event.kind === 'project.question_answered.v1')) void reload.get(projectId)?.();
+    if (enabled && event.objectId === projectId && (event.kind === 'project.question_asked.v1' || event.kind === 'project.question_answered.v1')) void reload.get(projectId)?.();
   }, () => { void reload.get(projectId)?.(); });
 }

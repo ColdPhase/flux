@@ -117,6 +117,8 @@ export function flip(elements: (Element | null)[], ms = duration('--dur-in')) {
 /** Whether a modal or an inert ancestor covers this element, so it can be neither seen nor reached. */
 export function isObscured(el: Element): boolean {
   if (el.closest('[inert]')) return true;
+  // Sheets that leave the live strip usable do not cover it.
+  if (el.closest('.lv-bar') && document.getElementById('root')?.getAttribute('data-modal') === 'strip') return false;
   for (const modal of document.querySelectorAll('[aria-modal="true"], dialog[open]')) if (!modal.contains(el)) return true;
   return false;
 }

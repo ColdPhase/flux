@@ -2,12 +2,14 @@ import * as Y from 'yjs';
 import { DOC_LIMITS, EDITING_LIMITS, type DocMention, type DocState, type EditingServerMessage, type LiveCursor, type LiveDocBootstrap, type NamedPrincipal, type SaveSharedDoc, type WikiTextEnvelope } from '@flux/contracts';
 import { ApiError } from '../api/client.js';
 import { enrollLiveDoc, getLiveDoc, saveLiveDoc } from '../docs/api.js';
+import { setReloadRetention } from '../app/reload-retention.js';
+import { keepLiveCopy, liveCopyLifetime, readLiveCopy } from '../docs/drafts.js';
 import { decode64, EditingConnection, encode64, type ReceivedEditing } from './wire.js';
 
 const REMOTE = Symbol('authorized shared update');
 interface Pending { envelope: WikiTextEnvelope; bytes: string }
 interface Recovery { generation: string; body: string; pending: Pending[]; save?: SaveSharedDoc | null }
-export interface WikiPeer { connectionId: string; actor: NamedPrincipal; cursor: LiveCursor | null; expiresAt: string }
+export interface WikiPeer { connectionId: string; actor: NamedPrincipal; cursor: LiveCursor | null; /** The person's slot in this room, from the server: it fixes their shape for every viewer. */ slot: number; expiresAt: string }
 export interface WriterRange { actor: NamedPrincipal; anchor: string; head: string }
 
 /** The Y.Doc is an editor instance. A socket reconnect renews it; a reload creates another. */
@@ -60,6 +62,8 @@ export class SharedWiki {
   private initialized = false;
   private archivedRecovery: Recovery | null = null;
   private storageKey: string;
+  /** Sign-out retires every visit copy; this editor's late writes after that change nothing (#326). */
+  private lifetime = liveCopyLifetime();
   private leaving = () => { if (this.writer) this.persist(); };
   constructor(readonly id: string, readonly userId: string, readonly writer = true) {
     this.storageKey = `flux:wiki-live:${userId}:${id}`;
@@ -90,6 +94,9 @@ export class SharedWiki {
   refuseInput(message: string) { this.problem = message; this.changed(); }
   private changed() { for (const listener of this.listeners) listener(); }
   private recovery(key = this.storageKey): Recovery | null {
+    // The newest copy of this visit (#326) wins over browser storage, which a refused write may not have updated.
+    const copy = readLiveCopy<Recovery>(key);
+    if (copy !== undefined) return copy;
     try {
       const raw = sessionStorage.getItem(key);
       if (!raw || raw.length > 2_200_000) return null;
@@ -106,14 +113,16 @@ export class SharedWiki {
     } catch { return null; }
   }
   private persist() {
-    if (!this.writer || !this.initialized || !this.head || !this.text) return;
+    if (!this.writer || !this.initialized || !this.head || !this.text || this.lifetime !== liveCopyLifetime()) return;
     // Sealing keeps its new command in the recovery copy itself: one copy of a 100,000-character
     // text per receipt, not two, before the next command leaves (#228 Gate 4).
     if (this.unsealed.length) { this.seal(); return; }
-    try {
-      if (!this.pending.size && !this.saveAttempt && this.status !== 'private') sessionStorage.removeItem(this.storageKey);
-      else sessionStorage.setItem(this.storageKey, JSON.stringify({ generation: this.head.generation, body: this.text.toString(), pending: [...this.pending.values()], save: this.saveAttempt } satisfies Recovery));
-    } catch { this.problem = 'This browser could not keep a recovery copy. Keep this tab open until sharing is confirmed.'; }
+    const value = !this.pending.size && !this.saveAttempt && this.status !== 'private' ? null
+      : { generation: this.head.generation, body: this.text.toString(), pending: [...this.pending.values()], save: this.saveAttempt } satisfies Recovery;
+    // A refused write (or clear) keeps the visit's copy and makes Reload unavailable (#326).
+    const refused = keepLiveCopy(this.storageKey, value, this.lifetime);
+    setReloadRetention('wiki', this.storageKey, this.userId, refused, true);
+    if (refused) this.problem = 'This browser could not keep a recovery copy. Keep this tab open until sharing is confirmed.';
   }
   private async start() {
     try {
@@ -132,6 +141,7 @@ export class SharedWiki {
         if (this.archivedRecovery && JSON.stringify(this.archivedRecovery) !== JSON.stringify(recovered)) throw new Error('Two earlier sessions have private changes. Their original recovery copies are kept; resolve them before starting another shared session.');
         sessionStorage.setItem(`${this.storageKey}:previous`, JSON.stringify(recovered));
         this.archivedRecovery = recovered;
+        keepLiveCopy(this.storageKey, null, this.lifetime);
         sessionStorage.removeItem(this.storageKey);
       }
       this.privateBody = this.archivedRecovery?.body ?? recovered?.body ?? null;

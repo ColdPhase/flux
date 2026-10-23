@@ -5,7 +5,7 @@ milestone-2 work. This is a production contract and handoff, **not implemented
 capability**. The [final design](../design/final/README.md) (F-026) draws its Agents view,
 hand-off and live agent states; this contract and the issue table below govern behaviour.
 
-**Workspace AI lock ([F-029](workspace-ai-lock.md), accepted 2026-10-22).** While a workspace's AI is off, no external connection, token, standing grant, co-work request or Agents view works in it; the workspace block takes precedence over everything here.
+**Workspace AI lock ([F-029](workspace-ai-lock.md), proposed — implementation S1, S2 and S3 merged; eligible independent acceptance by @Zamojski5 pending).** While a workspace's AI is off, no external connection, token, standing grant, co-work request or Agents view works in it; the workspace block takes precedence over everything here.
 
 ## One workspace experience, one task
 
@@ -38,7 +38,8 @@ Technical inbox/outbox/webhook workers remain ordinary non-LLM infrastructure.
 
 [CW-1–CW-5](cowork-workflow.md) and the [starter playbook](cowork-playbook.md)
 make the instruction/communication loop explicit: Flux ships the workflow,
-clients load it through a tested Start/Resume path, and addressed durable requests
+clients load it through a Start/Resume path whose native verification is pending
+([evidence](../development/evidence/160-workflow/README.md)), and addressed durable requests
 survive busy/offline/context-reset states. Agents act at safe checkpoints without
 periodically scanning all GitHub issues/PRs/comments. Coordination stays in Flux;
 formal GitHub approval/check gates stay real. #160 packages content/onboarding;

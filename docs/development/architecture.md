@@ -126,6 +126,11 @@ recorded in the allowlist and tracked by [#46](https://github.com/ColdPhase/flux
 | `app/packages/core/src/types.ts` | `@flux/db` | Replace the Drizzle-derived `Database`/`Executor` types with a core-owned transaction port. |
 | `app/packages/core/package.json` | `@flux/db`, `drizzle-orm`, `pg-boss` | Remove each dependency when no core file uses it. |
 
+The workspace AI lock ([F-029](../product/workspace-ai-lock.md)) adds to the same debt, in files that are already allowlisted
+and with no new entry: `workspaceAi` in `policy.ts` reads `workspace_ai_policies` with Drizzle (`FOR SHARE`, one row), and
+`setWorkspaceAiPolicy` in `domain.ts` updates it. They move to the `@flux/db` adapter together with the grant lookup, behind the
+same core port, because the lock's `FOR SHARE` must stay in the checking transaction and a separate port would only hide it.
+
 Until the access policy is split, new core modules that call `authorize` import it
 from `access/policy.ts` and therefore depend on Drizzle transitively. That is
 accepted for now; they must not import `drizzle-orm` or `@flux/db` themselves. The

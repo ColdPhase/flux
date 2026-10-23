@@ -469,8 +469,17 @@ span.sk-li-img { width: 160px; height: 96px; }
 /* Live co-editing (#228): a named cursor for each other person, and who is here. */
 .sk-peer { position: absolute; left: 0; top: 0; pointer-events: none; z-index: 6; transform-origin: 0 0; }
 .sk-peer > svg { display: block; }
-.sk-peer > span { position: absolute; left: 12px; top: 12px; box-sizing: border-box; max-width: 160px; overflow: hidden; text-overflow: ellipsis; color: var(--oninv); background: var(--inv); font-size: var(--fs-xs, 11px); line-height: 1.3; padding: 1px 6px; border-radius: 8px; white-space: nowrap; }
-.sk-peer[data-name-docked] > span { width: 1px; height: 1px; padding: 0; clip-path: inset(50%); }
-.sk-here { position: absolute; top: 8px; right: 12px; z-index: 6; margin: 0; display: flex; gap: 10px; font-size: var(--fs-sm); color: var(--t2); pointer-events: none; }
-.sk-here > span { display: inline-flex; align-items: center; gap: 5px; }
-.sk-here i { width: 8px; height: 8px; border-radius: 50%; }
+/* The person's shape rides on the cursor tip, then leads the name label and the People chip entry. */
+.sk-peer__mark { position: absolute; left: 10px; top: -5px; margin: 0; }
+/* The name is always shown; the layout puts it clear of thoughts, other names and other cursors. */
+.sk-peer__label { position: absolute; display: flex; align-items: center; box-sizing: border-box; height: 20px; padding: 0 8px 0 7px; border-radius: 10px; color: var(--oninv); background: var(--inv); font-size: var(--fs-xs, 11px); line-height: 20px; white-space: nowrap; }
+.sk-peer__label > b { min-width: 0; overflow: hidden; text-overflow: ellipsis; font-weight: 400; }
+.sk-here { position: absolute; top: 8px; right: 12px; z-index: 6; margin: 0; display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 2px 10px; max-width: calc(100% - 24px); font-size: var(--fs-sm); color: var(--t2); pointer-events: none; }
+.sk-here > span { display: inline-flex; align-items: center; min-width: 0; }
+.sk-here > span > b { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 400; max-width: 140px; }
+.sk-here .editing-shape { margin-right: 5px; }
+@media (max-width: 767px) {
+  /* The phone's Map options button sits at the top right: the chip uses the room left of it and wraps. */
+  .sk-here { right: auto; left: 12px; max-width: calc(100% - 144px); justify-content: flex-start; }
+  .sk-here > span > b { max-width: 96px; }
+}

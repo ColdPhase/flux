@@ -153,7 +153,12 @@ export function liveMapRows<Change extends Record<string,unknown>>(db:DbExecutor
     },
     async setPresence(sketchId:string,generation:string,who:Who,connectionId:string,selected:string[],cursor:{x:number;y:number}|null) {
       const [existing]=await db.select().from(p).where(eq(p.connectionId,connectionId));
-      await db.insert(p).values({connectionId,sketchId,generation,actorId:who.actorId,sessionId:who.sessionId,selected,cursor,
+      // A person's slot (and so their shape) is the same in every connection and kept while they stay: their live row's
+      // own, else the smallest slot no other live person holds. The room lock makes two arrivals take different slots.
+      if(!existing)await db.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${'flux.map.presence.slot:'+sketchId},0))`);
+      const slot=sql`COALESCE((SELECT slot FROM map_live_presence WHERE sketch_id=${sketchId} AND generation=${generation} AND actor_id=${who.actorId} AND expires_at>clock_timestamp() LIMIT 1),
+        (SELECT min(s)::smallint FROM generate_series(0,127) s WHERE s NOT IN (SELECT slot FROM map_live_presence WHERE sketch_id=${sketchId} AND generation=${generation} AND expires_at>clock_timestamp())))`;
+      await db.insert(p).values({connectionId,sketchId,generation,actorId:who.actorId,sessionId:who.sessionId,selected,cursor,slot,
         expiresAt:sql`LEAST(clock_timestamp()+interval '5 seconds',(SELECT expires_at FROM auth_sessions WHERE id=${who.sessionId}))`})
         .onConflictDoUpdate({target:p.connectionId,set:{selected,cursor,expiresAt:sql`LEAST(clock_timestamp()+interval '5 seconds',(SELECT expires_at FROM auth_sessions WHERE id=${who.sessionId}))`},
           setWhere:and(eq(p.sketchId,sketchId),eq(p.generation,generation),eq(p.actorId,who.actorId),eq(p.sessionId,who.sessionId))});

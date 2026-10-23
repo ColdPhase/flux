@@ -100,6 +100,19 @@ native CLI program. #320's clean-clone timed walkthrough is also unverified.
 One consolidated independent review plus at most one final delta/open-findings
 check applies; no independent review has been requested for this incomplete draft.
 
+## Narrowed scope: Codex Resume unverified, 2026-10-23 (#636)
+
+No account-backed Codex Resume was run, and none is claimed. The Codex
+`./flux cowork resume` leg (`codex exec resume <threadId>` with the explicit saved
+thread) is **unverified** with the real binary: it is covered only by the stub-CLI
+shell test in `app/tests/app/cowork-host-shell.test.ts`, which is not model or account
+evidence. The supplied Codex Start/Resume host action is therefore labelled
+"pending native verification" in Connect and the project Agents view (#635). The
+native run is stopped by a watchdog after `FLUX_COWORK_WATCHDOG_SECONDS` (default
+300); see the [coordination contract](../../cowork-coordination.md#host-action-verification-status-and-watchdog-635636-2026-10-23).
+Unblock condition: one real-account Codex Start, then one Resume on that exact
+thread, recorded here with tool-call counts and the model and version used.
+
 ## Supplied host action verification, 2026-10-18
 
 The supplied `./flux cowork start|resume` action now binds the origin, connection,

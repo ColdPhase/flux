@@ -18,7 +18,7 @@ import { RouteOriginBack, useGoToOrigin, useRouteOrigin } from '../place/origin'
 import { restoreTop, usePaneMemory } from '../place/scroll';
 import { Sidebar } from './Sidebar';
 import { startCapture, viewIndex } from './views';
-import { PROJECT_VIEWS, type ProjectViewId } from '@flux/contracts';
+import { PROJECT_VIEWS, WORKSPACE_AI_POLICY_CHANGED_EVENT, type ProjectViewId } from '@flux/contracts';
 import { addProjectView } from './conversation-api';
 import { addableViews, audienceLine, shownViews, useProjectShell } from '../project/data';
 import { useDmSketchCount } from '../dm/useDmSketchCount';
@@ -33,6 +33,7 @@ import { WorkReadProvider, useProjectWorkSummary } from '../work/WorkReadContext
 import { OverviewContext } from '../project/OverviewContext';
 import { remember, remembered } from './remembered';
 import { ProjectAgentStop } from './WorkingAgent';
+import { useWorkspaceAi } from '../ai/workspaceAi';
 import { useFocus } from './focus';
 import { FocusPill, HeaderFaces, MoreMenu, NeedsYouChip, type MoreItem } from './HeaderParts';
 import { PhoneAvatar, PhoneBack, PhoneCreate, PhoneDock, PhoneHomeLead, PhoneTitleMenu, phoneHidesDock, phoneOffersCreate, phonePlaces, type PhoneMenuItem } from './PhoneChrome';
@@ -232,7 +233,24 @@ function AppLayoutContent() {
       if (stillHere()) toast({ message: `${VIEW_LABEL[view]} couldn’t be added. Try again in a moment.`, tone: 'danger' });
     }
   };
+  // F-029 (#614): a workspace's AI was turned off or on (the stream), or a refusal says so: the shell reads the policy again.
+  // Coming back to the tab does too, at most once a minute, so a missed event never leaves AI showing for long.
+  const revalidate = revalidator.revalidate;
+  useEffect(() => {
+    let last = Date.now();
+    const refresh = () => { last = Date.now(); void revalidate(); };
+    const back = () => { if (document.visibilityState === 'visible' && Date.now() - last > 60_000) refresh(); };
+    window.addEventListener('flux:workspace-ai-blocked', refresh);
+    window.addEventListener('focus', back);
+    document.addEventListener('visibilitychange', back);
+    return () => {
+      window.removeEventListener('flux:workspace-ai-blocked', refresh);
+      window.removeEventListener('focus', back);
+      document.removeEventListener('visibilitychange', back);
+    };
+  }, [revalidate]);
   useStreamEvents(me.user.id, (event) => {
+    if (event.kind === WORKSPACE_AI_POLICY_CHANGED_EVENT) { revalidator.revalidate(); return; }
     // A project goal changed (#520): the open project's Details, view menu and conversation read it again.
     if (event.objectType === 'project' && event.kind.startsWith('project.goal_') && location.pathname.startsWith(`/projects/${event.objectId}`)) { revalidator.revalidate(); return; }
     // Someone saw a message (#534): only the open conversation shows it, and it asks for itself.
@@ -473,6 +491,8 @@ function AppLayoutContent() {
   // Home's computer layout has no header row; keep its name available to assistive technology.
   const homeRoot = where === 'home' && location.pathname === '/';
   const activeProject = projects.find((project) => project.id === projectId);
+  // F-029 (#614): a project of a workspace whose AI is off has no Agents view and offers none to add (Spokój rule 7: nothing else moves).
+  const aiOff = useWorkspaceAi(activeProject?.workspaceId).blocked;
   // The Conversation tab returns to the conversation that was open before Tasks, Map, Docs or project
   // settings (GitHub), and the
   // Map tab to the sketch (or list) that was open there.
@@ -498,7 +518,7 @@ function AppLayoutContent() {
     { id: 'tasks', label: 'Tasks', to: `/projects/${projectId}/tasks${lastTasksSearch(me.user.id, projectId)}`, ...(openWork ? { countLabel: `, ${openWork} open` } : {}) },
     { id: 'docs', label: 'Wiki', to: `/projects/${projectId}/docs`, end: false },
     { id: 'agents', label: 'Agents', to: `/projects/${projectId}/agents` },
-  ].filter((view) => !(PROJECT_VIEWS as readonly string[]).includes(view.id) || !shownProjectViews || shownProjectViews.has(view.id as ProjectViewId)) : null;
+  ].filter((view) => !(aiOff && view.id === 'agents')).filter((view) => !(PROJECT_VIEWS as readonly string[]).includes(view.id) || !shownProjectViews || shownProjectViews.has(view.id as ProjectViewId)) : null;
   const places = phonePlaces(location.pathname, inboxUnread);
   const audienceOpen = project?.project.visibility === 'workspace';
   const audience = project ? audienceLine(project.people, me.user.id, audienceOpen) : 'People with project access';
@@ -603,7 +623,7 @@ function AppLayoutContent() {
         : null;
   const viewName = activeProject ? PROJECT_VIEW_NAMES[Math.max(0, viewOrder(location.pathname))] : null;
   const addViewItems: { label: string; run: () => void }[] = project && shownProjectViews && projectId && project.project.access !== 'viewer'
-    ? addableViews(shownProjectViews).map((view) => ({ label: `Add ${VIEW_LABEL[view]}`, run: () => void addView(projectId, view) })) : [];
+    ? addableViews(shownProjectViews).filter((view) => !(aiOff && view === 'agents')).map((view) => ({ label: `Add ${VIEW_LABEL[view]}`, run: () => void addView(projectId, view) })) : [];
   const moreItems: MoreItem[] = [
     // A header with no room for them (Spokój rule 3) moves the people and Together here; the views stay in the row.
     ...(project?.people ? [{ label: 'Who can see this', run: openAudience, narrow: true }] : []),
@@ -653,7 +673,7 @@ function AppLayoutContent() {
             goal={project?.project.goal && !project.project.goal.reachedAt ? project.project.goal.title : undefined}
             metadataSlot={onWiki || onAgents ? setMetadataSlot : undefined}
             adds={addViewItems.map((item) => ({ label: item.label, run: item.run }))}
-            subtitle={onWiki ? peopleLine(project?.people ?? null) : <>{PROJECT_VIEW_NAMES[Math.max(0, viewOrder(location.pathname))]}{project?.people ? <span className="phead__people"> · {peopleLine(project.people, !onAgents)}</span> : null}</>} /></>
+            subtitle={onWiki ? peopleLine(project?.people ?? null) : <>{onAgents && aiOff ? 'AI is off' : PROJECT_VIEW_NAMES[Math.max(0, viewOrder(location.pathname))]}{project?.people ? <span className="phead__people"> · {peopleLine(project.people, !onAgents)}</span> : null}</>} /></>
       ) : activeDm && dmViews ? (
         <>{phoneBack('/projects')}
           <PhoneTitleMenu title={activeDm.title} items={dmViews.map((view) => ({ id: view.id, label: view.label, to: view.to, icon: view.id === 'messages' ? 'chat' as const : 'edit' as const, current: view.id === (/\/sketches/.test(location.pathname) ? 'sketches' : 'messages') }))}
@@ -732,10 +752,10 @@ function AppLayoutContent() {
           </div>
         </header>
         )}
-        <RouteProgress />
         <LiveBar />
         {/* The conversation and its one panel share a row under the one header (Spokój, F-026 layout per screen). */}
         <div className="app__body">
+          <RouteProgress />
           <div className="app__pane" id="content" ref={paneRef} tabIndex={-1}>
             <Dissolve id={routeView(location.pathname)} direction={viewWay} host={paneRef} dress=".app" shift="--shift-view" time="--dur-view" layer={19} skip=".deferred-surface--stage">
               <Outlet />

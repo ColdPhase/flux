@@ -1,7 +1,9 @@
 # F-029 — workspace AI lock
 
-**Status: accepted, 2026-10-22,** by independent peer assessment on #629
-([comment review 5620212813](https://github.com/ColdPhase/flux/pull/629#pullrequestreview-5620212813), approve-equivalent at `ce97a7c2`). Implementation pending (slices S1–S3).
+**Status: proposed** — implementation S1, S2 and S3 merged; eligible independent
+acceptance by @Zamojski5 pending. Reviews posted from the shared author account (PelikanFix16) are not
+independent acceptance and are not cited. The independent review of #629 asked for changes; the answer is
+[#642](https://github.com/ColdPhase/flux/issues/642).
 Owner @PelikanFix16 (`claude-hubert`); independent evaluator @Zamojski5. Issue
 [#614](https://github.com/ColdPhase/flux/issues/614) (founder direction, Hubert,
 2026-10-18). Decision row: [F-029](decisions.md). The switch placement, re-enable
@@ -61,7 +63,10 @@ INSERT INTO workspace_ai_policies (workspace_id, state) SELECT id, 'allowed' FRO
   and the 0114 capture function.
 - **New workspaces: AI allowed** ([founder direction 2026-10-22](#founder-answers-2026-10-22)).
   A trigger writes the row in the creating
-  transaction, so every workspace always has one.
+  transaction, so every workspace always has one. The S2 review noted that a workspace committed
+  between 0115's backfill `INSERT` and its trigger could be left without a row (and so read as
+  blocked). 0115 is applied and not edited; migration 0117 re-runs the backfill idempotently
+  (`ON CONFLICT DO NOTHING`), and the race is limited to that window.
 - **A missing row means blocked.** The check fails closed, so a fixture or a bug that
   skips the row cannot open AI access.
 - A separate table, not a `workspaces` column: AI checks take `FOR SHARE` on this row
@@ -99,8 +104,9 @@ confirmation line). Errors: `403 WORKSPACE_AI_ADMIN_REQUIRED`, `409 VERSION_CONF
 with the current `ai`, `404 WORKSPACE_NOT_FOUND`. Setting the current state again is a
 no-op `200` that changes neither epoch nor version. The command records
 `workspace.ai_policy_changed.v1` (object: the workspace) in the same transaction. Its
-audience is the workspace's people; `authorizeEvent` never delivers this kind to an
-agent.
+audience is the workspace's people: `authorizeEvent` excludes this kind for every non-human
+principal explicitly, before any workspace read check, because `workspace.read` is granted to
+any active agent (test: `workspace-ai-policy.test.ts`).
 
 ## Who may change it
 
@@ -129,19 +135,34 @@ export async function requireWorkspaceAi(db: Executor, workspaceId: string, opti
 - `lock: true` reads the row `FOR SHARE`; the change command takes `FOR UPDATE`. Like the
   grant locks under [Concurrency](../development/access-policy.md#concurrency), a check
   inside a commit transaction is ordered strictly before or after a state change.
-- **Lock order.** Inside `loadActor` and every explicit check, the policy row is locked
-  before the agent, membership, project and grant rows. The flip locks the policy row
-  first and afterwards takes only the changing person's membership `FOR SHARE` and the
-  event `seq` lock; the sweep never locks the policy row. No transaction therefore waits
-  for the policy row while holding a lock the flip needs.
-- **Exception: checks inside a human's write.** The reaction-capture function, the
+- **Lock order (one rule for every transaction, corrected after the S2 review, 2026-10-23).**
+  The policy row comes before any membership row that is locked **exclusively**, and before
+  agent, project and grant rows inside `loadActor` and every explicit check.
+  - The flip takes the policy row `FOR UPDATE` first, then only the changing admin's membership
+    `FOR SHARE` and, last, the event `seq` lock.
+  - A membership change (`changeRole`, `removeMember`) takes the policy row `FOR SHARE` before its
+    membership row `FOR UPDATE`. Without that, a role change that records its event (whose agent
+    audience reads the policy row) held the admin's membership exclusively while waiting for the
+    policy row, and the flip held the policy row while waiting for that membership: a deadlock,
+    reproduced with the real `PATCH` and `PUT`.
+  - The sweep's steps are each their own transaction, and none holds the policy row across steps. Its runs step
+    takes the policy row `FOR SHARE` through the event audiences it records; that share cannot cycle with the
+    flip, which takes the row only after its own membership share.
+  - The workspace row (`lockWorkspace`, `NO KEY UPDATE`) follows the policy row in `changeRole` and
+    `removeMember`, and comes first only in `addMember`, which takes just the policy share, in its event
+    audience, last. The flip does not take the workspace row. Whole order: policy row, workspace row,
+    memberships, project and grant rows, event `seq` lock.
+  - **Re-verified 2026-10-23 (#642)** with the S2 review's two-connection probe, both orders, with an
+    agent in the workspace (so the event audience reads the policy row), for the flipping admin as the
+    demoted target and as the removed member, and with `lockWorkspace` held by a third connection and
+    parked at the event audience: no order deadlocks (`workspace-ai-sweep.test.ts`).
+- **Exception: shares inside a person's own write.** The reaction-capture function, the
   `ai_work_admission` backstop, `prepareHumanNegative`/`enqueueHumanNegative` and
-  `eventAudience` run inside a person's own write and take the policy share after that
-  person's membership and project shares. This is still deadlock-free: the flip needs only
-  the flipping admin's membership share (which a share does not block) and the event `seq`
-  lock, and these sites run before the write's event insert takes that lock. The test "a
-  human task write with a reaction rule during the flip still commits" covers it. A two-connection test covers the
-  flip against a role change of the flipping admin, in both orders.
+  `eventAudience` take the policy share after that person's membership and project shares.
+  These are shares only: the flip's membership share is compatible with them, and they run
+  before the write's event insert takes the `seq` lock, so no cycle exists. Tests: a person's
+  task write during the flip commits; a real role change and removal of the flipping admin
+  against the real flip, in both orders, end in 200 and 403 without a deadlock.
 - **Principal layer.** `loadActor` calls `workspaceAi` for every `agent` principal (with
   the caller's `lock`) and returns an inactive actor with `blockedBy: 'workspace_ai'` when
   the workspace is blocked. Every evaluator built on it (`evaluateWorkspace`,
@@ -158,11 +179,32 @@ export async function requireWorkspaceAi(db: Executor, workspaceId: string, opti
 - **Context layer.** Anything that assembles content under a *human's* authority for a
   model must drop items of blocked workspaces (today only the morning summary; see the
   table).
-- **AI origin.** One predicate, `isAiOrigin(notification)` in
-  `packages/core/src/notifications`, says whether an Inbox item came from AI work (agent
-  questions, assistant waiting changes and join requests, co-work requests and reviews
-  from agents, assistant answers and proposals, comparison proposals). Inbox lists and
-  counts, Needs you, push and e-mail all use it.
+- **AI origin.** Whether a notification came from AI work is decided by its **actor or source at
+  write time** and persisted on the row as `notifications.ai_origin` (migration 0117), never by
+  matching its text. Whoever writes a notification states it; `createNotification` requires it, and
+  the generator, the reaction note and the schedule notice set it explicitly. The writers:
+
+  | Writer | `ai_origin` |
+  | --- | --- |
+  | Generated from an event (`generate.ts`): the event's actor is an agent (`agent:…`, which includes every member's own assistant) | true |
+  | Generated: a message whose author is an agent (mention, reply or question card), whoever the event's actor is | true |
+  | Generated: a decision proposed or a result recorded by an agent ("Your agent produced it") | true |
+  | Generated: a person's message, a direct message, an invitation, a task assigned by a person | false |
+  | Assistant reaction note (`assistant-reactions.ts`, `deliver`) | true |
+  | Assistant suggestion sent to another person (`apps/server/src/assistant/changes.ts`, `send`) | true |
+  | Assistant join request to the managers (`joins.ts`) and the operator request (`operator.ts`) | true |
+  | Assistant schedule notice ("Paused …", `assistant-jobs` `notify`) | true |
+  | Morning summary with an assistant-written line | true |
+  | Plain morning summary (counts only) | false |
+
+  Migration 0117 backfills existing rows conservatively (agent actor, agent-authored message,
+  decision or result, join request, reaction note, suggestion, operator request and schedule
+  notice): a row that cannot be classified is more likely hidden while AI is off than delivered.
+  One predicate, `hiddenWhileAiOff` (`packages/db/src/repositories/workspace-ai.ts`), says
+  `ai_origin` and the row's workspace has AI off. It applies to Inbox lists, unread counts and
+  direct reads (`404`), Needs you, push (`deliverPush`), e-mail (`deliverNotificationEmail`, also for
+  rows queued before the flip) and the plain morning-summary counts. The decisions, results and
+  messages themselves are project content and stay; only the notification about them is hidden.
 
 ## Enforcement points
 
@@ -182,9 +224,9 @@ named transaction, plus epoch comparison where an item has `ai_epoch`.
 | Consent and Connect | `apps/server/src/agent-connection/routes.ts`: `POST /api/v1/agent-connections`, `POST …/:connectionId/select-for-oauth`, `POST/PATCH …/action-grants` | `403 WORKSPACE_AI_BLOCKED` for a blocked workspace. `GET` lists, `DELETE` connection and `DELETE` grant stay available (they only reduce or show). |
 | Consent context | `apps/server/src/identity/oauth-context.ts`: `GET /api/v1/agent-oauth/consent-context`, `GET …/held-connection` | Gated: consent-context omits connections and workspaces that are blocked; held-connection answers `403 WORKSPACE_AI_BLOCKED` for a blocked held connection. |
 | Better Auth authorize and consent leg | `apps/server/src/identity/auth.ts`, `postLogin.consentReferenceId` (`connectionForGrant`) and `shouldRedirect` | Gated: no consent reference is issued for a connection of a blocked workspace, so no authorization code is minted; the code exchange is refused again below. |
-| Agent identities | `apps/server/src/access/agents.ts`, `createAgent`, `listAgents`, `revokeAgent` | `createAgent` gated. `listAgents` and `revokeAgent` exempt: human management of identities, no AI action; the UI does not list them while blocked. |
+| Agent identities | `apps/server/src/access/agents.ts`, `createAgent`, `listAgents`, `revokeAgent` | `createAgent` gated. `listAgents` and `revokeAgent` exempt: human management of identities, no AI action. **Decision (2026-10-23, #642):** members of a blocked workspace still see the roster (agent names and owners) as metadata, like the Agent tag on history; AC-2 covers reads and actions by AI, not the names of identities. The interface hides the Agents view and the lists (see [UI](#ui-contract)), and `revokeAgent` stays so an owner can remove an identity. |
 | Project audience and grants | `apps/server/src/access/projects.ts` (`GET /projects/:id/people` → `listProjectPeople`; grant list) | Server-side: agents are omitted from `listProjectPeople` by the principal layer (each candidate is evaluated). The grant list is exempt (managers see and can remove agent grants). |
-| Run token mint | `apps/server/src/personal-runs/run-tokens.ts`, internal `POST /api/internal/v1/personal-runs/:id/run-token` | Check with the run's `ai_epoch` **first**, before `githubFacts(…)` and any other content assembly or outbound call, and again before signing; refusal is the existing uniform `404`. |
+| Run token mint | `apps/server/src/personal-runs/run-tokens.ts`, internal `POST /api/internal/v1/personal-runs/:id/run-token` | Check with the run's `ai_epoch` **first**, before `githubFacts(…)` and any other content assembly or outbound call, and again before signing; refusal is the existing uniform `404`. The worker's nonce `arm` (`apps/worker/src/personal-runs/run-tokens.ts`, `issue`) comes before the mint and is **exempt**: it stores only a hash on the run row the worker already holds, reads no content and sends nothing out; the mint it precedes is the gate, and the sweep closes the token. |
 | Run token use | `apps/server/src/agent-connection/run-token.ts`, `requireLiveRun` | Check with the run's `ai_epoch` in the same locked transaction; covered also by bearer, fence and context rows; the sweep closes the tokens. |
 | External agent proposals | `apps/server/src/agent-connection/routes.ts`, `GET /api/v1/projects/:projectId/agent-proposals` | Gated: pending AI suggestions are hidden while blocked and return afterwards. |
 | MCP switches and project policy | `mcp-policy-routes.ts`, `project-policy.ts`, `project-agents.ts`, `agent-stops.ts`, `agent-questions.ts` routes | Human reads and changes of AI controls: `403 WORKSPACE_AI_BLOCKED`, except Stop (harmless, already fenced). |
@@ -194,7 +236,7 @@ named transaction, plus epoch comparison where an item has `ai_epoch`.
 | Point | File / function | Rule |
 | --- | --- | --- |
 | Ask, retry | `packages/core/src/personal-runs/service.ts`, `invoke`, `retry` (routes in `apps/server/src/personal-runs/routes.ts`) | Check in the insert transaction; the new run stores the current `ai_epoch`. |
-| Assistant status and history reads | `apps/server/src/personal-runs/routes.ts`: `GET` assistant status (`:92`), own runs list and run, conversation answers (`:146–150`) | Exempt: the owner's own history and account-wide status; no AI action. Status marks each blocked workspace so the UI can say "AI is off there". Committed answers are conversation history. |
+| Assistant status and history reads | `apps/server/src/personal-runs/routes.ts`: `GET` assistant status (`:92`), own runs list and run, conversation answers (`:146–150`) | Exempt: the owner's own history and account-wide status; no AI action. Also exempt, named so the inventory is complete: `POST /api/v1/personal-assistant/resume` (account-level enablement; the runs it allows are gated per workspace) and `PUT /api/v1/assistant/morning-summary` (a time-of-day setting; the summary's workspace context is filtered where it is assembled, see the Morning summary row). Status marks each blocked workspace so the UI can say "AI is off there". Committed answers are conversation history. |
 | Background start (schedules, reactions, morning summary) | same file, `startBackground` | Check; skipped with no run when blocked. |
 | Enablement per workspace | same file, `enable`, `selectAgent`, `chooseModel` | `selectAgent` and enabling for a blocked workspace refused; pause and remove stay. |
 | Schedules | `packages/core/src/assistant/jobs.ts` (`createAssistantJobs`: create, update to enabled, restore, run now, preview), routes `apps/server/src/assistant/jobs.ts` | Refused while blocked; delete and turn off stay. |
@@ -207,8 +249,9 @@ named transaction, plus epoch comparison where an item has `ai_epoch`.
 | Co-work cards and coordination | `apps/server/src/co-work/routes.ts` (coordination view, packet, review policy) | Refused while blocked; cancel stays. |
 | Agent threads | `apps/server/src/conversation/agent-thread-routes.ts` | Posting refused while blocked; existing messages stay readable as history. |
 | Background comparisons | `apps/server/src/proactive-comparison/routes.ts`: create rule, `PATCH` to `enabled`, proposal edit/use, outcome list | Refused while blocked; pause, revoke and dismiss stay. Account-level key connections (`/background-compute-connections`) are not workspace content and stay. |
-| Needs you and Inbox | `apps/server/src/needs-you/routes.ts` (`GET` and `POST /:key` resolve), inbox list and count in `apps/server/src/notifications/routes.ts` | `isAiOrigin` items of a blocked workspace are omitted from lists, counts and direct reads; resolving one answers `404` like any item not in the queue, so nothing about it is shown (S1 implementation, 2026-10-22); human items are unchanged. |
-| Push and e-mail delivery | `packages/core/src/push/delivery.ts` (`deliverPush`, run by `apps/worker/src/push`), `packages/core/src/notifications/email.ts` | Gated at send: an `isAiOrigin` notification of a blocked workspace is skipped ("AI is off"), including ones created before the flip and still queued. |
+| Needs you and Inbox | `apps/server/src/needs-you/routes.ts` (`GET` and `POST /:key` resolve), Inbox list, count and reads in `apps/server/src/push/index.ts` (`INBOX_PATH`) | Notifications with `ai_origin` of a blocked workspace are omitted from lists, counts and direct reads; resolving one answers `404` like any item not in the queue, so nothing about it is shown (S1 implementation, 2026-10-22); human items are unchanged. The queue's waiting assistant changes and reaction notes are filtered in the route. |
+| Push and e-mail delivery | `packages/core/src/push/delivery.ts` (`deliverPush`, run by `apps/worker/src/push`), `packages/core/src/notifications/email.ts` | Gated at send: a notification with `ai_origin` of a blocked workspace is skipped ("AI is off"), including ones created before the flip and still queued. |
+| Plain morning-summary counts | `packages/db/src/repositories/notifications.ts`, `morningSummaryRows.unread`; `packages/core/src/notifications/summary.ts` | The unread rows it counts exclude `ai_origin` rows of a blocked workspace. An assistant-written line is itself `ai_origin`. |
 | Comparison enqueue in a human's write | `apps/server/src/work/adapters.ts`, `prepareHumanNegative` and `enqueueHumanNegative` (`proactiveOutboxRows`) | `prepareHumanNegative` reads the policy `FOR SHARE` first and selects no rule when blocked; `enqueueHumanNegative` stamps the epoch read there. The human's result is recorded either way. |
 | Runtime slot and sign-in | `apps/server/src/agent-runtime/routes.ts` | Exempt: account-level, carries no workspace content. Runs that would use it are gated above and in the worker. |
 
@@ -232,6 +275,11 @@ named transaction, plus epoch comparison where an item has `ai_epoch`.
 
 ### Contract tests that keep the list complete
 
+- `AI_ADJACENT_ROUTES` in `app/packages/contracts` classifies the routes of the other modules named in
+  the tables above (`identity/oauth-context.ts`, `identity/auth.ts` (Better Auth hooks, no route
+  literals), `access/agents.ts`, `access/projects.ts`, `needs-you/routes.ts`,
+  `notifications/routes.ts` and the Inbox in `push/index.ts`, listed in `AI_NAMED_ROUTE_MODULES`).
+  `workspace-ai-queues.test.ts` scans those files and fails on a route that is unclassified or gone.
 - `AI_HTTP_ROUTES` in `app/packages/contracts` lists every route registered by the AI
   modules (`agent-connection`, `assistant`, `personal-runs`, `co-work`,
   `proactive-comparison`, `agent-runtime`, `conversation/agent-thread-routes`) as
@@ -249,7 +297,17 @@ named transaction, plus epoch comparison where an item has `ai_epoch`.
   `workspace-ai.sweep.v1`, push and e-mail sends), every trigger that inserts AI work
   (the 0114 reaction taps) and every AI work table with its `ai_epoch`. A test compares it
   with the worker's actual `boss.work`/`boss.schedule` registrations, `pg_trigger` and the
-  schema, and fails on anything unlisted; each listed item has an AI-off case.
+  schema, and fails on anything unlisted; each listed item has an AI-off case. The jobs that are
+  **not** AI work are named with the reason: `draft.summarize.v1` (a deterministic word count,
+  rechecked as its requester), `idempotency.cleanup.v1` (deletes keys), `notification.email.v1` and
+  `push.send` (skip `ai_origin` notifications of a blocked workspace) and `sample.process` (the
+  platform example); a job in neither list fails the test.
+- **Notification writers fail closed.** `notifications.ai_origin` has no default (migration 0117 drops it after
+  the backfill) and `aiOrigin` is a required field of the repository port, so a writer that omits it fails to
+  compile and fails at the database. `workspace-ai-queues.test.ts` also scans the production source of every
+  app and package for each insert into `notifications` (Drizzle `.insert(...).values({...})`, the port's
+  `insert({...})`, raw `INSERT INTO notifications`) and every database function that does, and fails unless
+  it sets `ai_origin`/`aiOrigin` explicitly.
 
 ## Cutover (AC-3)
 
@@ -271,15 +329,22 @@ named transaction, plus epoch comparison where an item has `ai_epoch`.
      `reading`/`dispatching` → `stop_requested_at = now()`, which the existing 250 ms
      watchers turn into an aborted provider request or `runtime.stop`;
      `run_token_closed_at = now()` for every open run token;
-   - comparison candidates `queued`/`reserved` → `not_run` (reservation released);
+   - comparison candidates `queued`, or `reserved` before their provider request started → `not_run`
+     (`AI_OFF`, reservation released);
      in-flight ones are aborted by their watcher;
    - reaction events `queued`/`proof` → `skipped` ("Skipped: AI was turned off");
    - co-work requests `queued`/`deferred`/`claimed` addressed to agents → `cancelled`;
      units `pending`/`claimed`/`paused` → `stopped`, leases cleared, the task unchanged;
    - `agent_runtime_sessions` → `revoked_at = now()`; open run tokens are closed with
      their runs;
-   - morning summaries `writing` whose run is in this workspace → `plain`.
-   Each end records its usual owner-only event. Nothing is deleted.
+   - morning summaries `writing` whose run is in this workspace are left to
+     `settleAssistantSummaries`, which writes no assistant line while AI is off and sends
+     the plain summary (S2, 2026-10-22: setting `plain` in the sweep would skip that delivery).
+   Each ended or stopped run records its owner's progress event; co-work requests end
+   `cancelled` with reason `ai_off`. Nothing is deleted. Implementation:
+   `setWorkspaceAiPolicy` and `sweepWorkspaceAi` (`packages/core/src/access/domain.ts`),
+   `workspaceAiSweepRows` (`packages/db`), the API route and the worker job
+   `workspace-ai.sweep.v1` (`apps/worker/src/workspace-ai`).
 
 **The boundary.** Every check that decides a step holds `FOR SHARE` on the policy row in
 the step's transaction, so each step is ordered strictly before or after the flip. Two
@@ -302,9 +367,10 @@ transactions, and a runtime CLI reaches Flux data only through `/mcp`.
 flip commits, and nothing else can:
 
 1. A provider request whose dispatch decision committed before the flip. Between that
-   commit and the request's write to the socket the code does no database or other awaited
-   work besides opening the connection, so the request may be transmitted shortly after the
-   flip. It carries only content read before the flip. The sweep sets
+   commit and the request's write to the socket the code still awaits the personal API key
+   read (`resolveKey`, one database read), the DNS lookup of the guarded fetch and the SDK's
+   request setup, so the request may be transmitted shortly after the flip. An aborted signal
+   rejects before the write; a later abort cuts the request. It carries only content read before the flip. The sweep sets
    `stop_requested_at`, and the 250 ms watcher (`stopPollMs`) aborts it; a comparison's
    watcher polls `authorizedComparison` at the same interval. Bound: aborted within
    `stopPollMs` plus one poll query after the sweep commits.
@@ -388,6 +454,13 @@ allowed; the browser tests count these markers.
   questions and assistant join reviews in Inbox (`notifications/NeedsYouCard.tsx`,
   `AssistantJoinReview.tsx`), request cards and agent-thread composers;
 - AI onboarding (`ProjectSetup.tsx` mentions of Agents, Connect agent prompts).
+- project policy and review rule (`agents/ProjectPolicy.tsx`, `agents/ReviewRule.tsx`), the
+  background-suggestion rules (`proactive-comparison/ProjectRuleSettings.tsx`, which offers
+  only projects whose workspace has AI on) and what a comparison checked
+  (`project/ComparisonEvidence.tsx`). The browser test keeps an enumerated list of these
+  surfaces (`ai_surfaces` in `tests/ui/test_workspace_ai_lock.py`): each is shown in the
+  workspace whose AI is on and absent in the blocked one, and a new AI surface is added to
+  that list in the same change.
 
 **The switch: the workspace's People panel** ([founder direction
 2026-10-22](#founder-answers-2026-10-22)). It is the panel Home → Details → People → a
@@ -398,20 +471,22 @@ only to owners and admins of that workspace; members and guests see no row. It i
 place never changes with the state (Spokój rule 7): turning AI off or on changes only the
 row's line and its button label.
 
-- On: "On · agents and assistants can work here." Quiet button **Turn off AI**.
+- On: "On · agents and assistants can work here." Raised button **Turn off AI**.
 - Off: "Off · turned off by Ada on 18 Oct. No agent or assistant can read or change
-  anything here." Quiet button **Turn on AI**.
+  anything here." Raised button **Turn on AI**.
 
 The confirmation uses the panel's existing inline confirm group (`details__confirm`,
 as for Remove and Leave), in place under the row, so nothing else moves:
 
 - Turning off: "No agent or assistant, including each person's own, can read or change
   anything in Garden club. Work they are doing now stops and is not posted. Nothing is
-  deleted." Buttons **Turn off AI** (danger) and **Keep AI on**. Afterwards the panel's
-  status line says "AI is off in Garden club. 2 runs stopped."
+  deleted." Buttons **Turn off AI here** (the emphasised, inverted action) and **Keep AI on** (quiet);
+  the label differs from the row's button so it is not repeated within a few pixels. Afterwards
+  the status line is announced to everyone and drawn only when it says something the row's own
+  line does not: "AI is off in Garden club. 2 runs stopped."
 - Turning on: "People's assistants and connected agents can work here again, with the
-  access they had. Nothing that was stopped starts again." Buttons **Turn on AI** and
-  **Keep AI off**. Afterwards: "AI is on in Garden club."
+  access they had. Nothing that was stopped starts again." Buttons **Turn on AI here** (emphasised)
+  and **Keep AI off** (quiet). Afterwards "AI is on in Garden club." is announced.
 - A version conflict closes the confirm, shows the current state in the row and says
   "Someone changed this just now." A `403` says "Only owners and admins can change this."
 
@@ -464,12 +539,13 @@ policy row to `blocked` and bumps its epoch.
 | AC-2 | S1 | Personal runs (`server` and `runtime`), schedules, reactions, morning summary and comparisons in A start nothing, with zero provider requests and zero CLI starts; in B they run (positive control). | `tests/app/workspace-ai-worker.test.ts` |
 | AC-2 | S1 | Cross-workspace: Ada's morning summary in B contains no title from A; A's agents are absent from `listProjectPeople`, ⌘K data, event audience rows and `flux_list_contexts`; search for humans in A unchanged. | same file and `workspace-ai-mcp.test.ts` |
 | AC-3 | S2 | Two real connections: flip vs. MCP fence, run commit, comparison publish and reaction capture in both orders, detecting the wait with `pg_blocking_pids` (as `access-policy.test.ts` does); the chunk held by the relay's `testGate` is not delivered after the flip. | `tests/app/workspace-ai-cutover.test.ts` |
+| AC-2 | #642 | AI-origin notifications, one test per writer (agent message, agent question, agent decision and result, work assigned by an agent, reaction note, assistant suggestion, join request, operator request, schedule notice, assistant-written summary): a push and an e-mail queued before the flip are skipped, the Inbox list, unread count, direct read, Needs you and plain-summary count exclude the item, and the same notification delivers when AI is on; a person's notification is unaffected. | `tests/app/workspace-ai-notifications.test.ts` |
 | AC-3 | S2 | Late in-flight result: a mock provider that holds its response; disable; assert the provider connection is aborted within 1 s, the run ends `stopped`/`ai_off`, no answer, proposal or event is committed, and releasing the response later changes nothing. Same for a fake CLI run (`runtime.stop` observed) and a comparison. | same |
 | AC-3 | S2 | Multi-process: two API containers and the worker (pattern of [two-API fixture](../development/live-editing-two-api.md)); disable on API-1 while an MCP stream is served by API-2 and a run is in the worker; nothing crosses. | `tests/app/live/workspace-ai-two-api.test.ts`, `docker/compose.ai-lock.test.yaml` |
 | AC-3 | S2 | Disable, then enable before the sweep runs (sweep job held): old-epoch runs, requests, units, sessions and reaction events never run; the late sweep ends them; items admitted after the re-enable are untouched and run. | `workspace-ai-cutover.test.ts` |
 | AC-3 | S2 | Lock order and backstop: flip against a role change of the flipping admin in both orders (no deadlock); an insert of each AI work table with a stale or missing epoch is rejected by `ai_work_admission`; a human task write with a reaction rule during the flip still commits. | same |
 | AC-3 | S2 | In-flight window: a pre-flip dispatch is aborted within `stopPollMs` plus one poll after the sweep; no provider request arrives whose decision committed after the flip; a fake CLI is stopped within its bound. | same |
-| AC-2 | S1 | Every route and queue in `AI_HTTP_ROUTES` and `AI_WORK_QUEUES`, push and e-mail skips of `isAiOrigin` notifications created before the flip, Needs-you resolve refusal, consent-context and held-connection, run-token mint refused before `githubFacts` is called, idempotent replay of a gated command refused, guests see `changedBy: null`, the owner's Undo of an applied change still works while blocked. | `workspace-ai-routes.test.ts`, `workspace-ai-worker.test.ts` |
+| AC-2 | S1 | Every route and queue in `AI_HTTP_ROUTES` and `AI_WORK_QUEUES`, push and e-mail skips of `ai_origin` notifications created before the flip, Needs-you resolve refusal, consent-context and held-connection, run-token mint refused before `githubFacts` is called, idempotent replay of a gated command refused, guests see `changedBy: null`, the owner's Undo of an applied change still works while blocked. | `workspace-ai-routes.test.ts`, `workspace-ai-worker.test.ts` |
 | AC-3 | S2 | Re-enable: queued items from before and from the flip race do not run; missed schedule times do not fire; agents get no blocked-period events; a demoted admin cannot re-enable; standing configuration works again. | `workspace-ai-cutover.test.ts` |
 | AC-3 | S2 | Real client: pinned Claude Code in the `mcp-clients` image gets the refusal on its next call after disable and works again after re-enable and reconnect. | `tests/app/e2e/mcp-clients.e2e.ts` case |
 | AC-4 | S3 | Chromium and WebKit, desktop and phone viewports: owner and admin turn AI off and on in the workspace's People panel (Details panel on a computer, Details sheet on a phone), the row keeps its position across states, and the inline confirm works by keyboard; member and guest see no AI row; zero `[data-ai-surface]` in A's project, Home, Inbox, ⌘K, composer and message menus while blocked, and more than zero in B (control); every listed deep link shows the blocked state and makes no AI request (network log); reload keeps the state; an open second tab updates from the stream; conversation, task, map, Wiki, file and search still work for two people. | `tests/ui/test_workspace_ai_lock.py` (`./scripts/check_ui.sh`, run with `FLUX_UI_BROWSER=chromium` and `webkit`) |
@@ -493,6 +569,13 @@ safe to merge alone.
 - **S3 — human-only interface.** `useWorkspaceAi`, `<AiSurface>`, the People-panel row
   and its inline confirm, every listed surface, deep-link blocked states, and the AC-4
   browser tests, with a visual review under a neutral brief. It may merge only after S2.
+  Implementation notes (2026-10-23): the web app reads `workspace.ai` from the shell loader
+  and needs no new server field (the assistant status stays account-level; Settings and the
+  assistant screens merge it with the loader's `ai`). The shell reads the policy again on
+  `workspace.ai_policy_changed.v1`, when the tab regains focus (at most once a minute) and on
+  any `403 WORKSPACE_AI_BLOCKED`. Surfaces are hidden by the hooks in
+  `apps/web/src/ai/workspaceAi.tsx`; those drawn from a list (composer and ⌘K options, message
+  menu, Create's owners) carry `data-ai-surface` while shown, which the browser tests count.
 
 ## Founder answers (2026-10-22)
 

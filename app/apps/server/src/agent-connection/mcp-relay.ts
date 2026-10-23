@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { toWebRequest } from '@modelcontextprotocol/node';
 import { sql } from 'drizzle-orm';
-import type { Database, Transaction } from '@flux/core';
+import { WorkspaceAiBlockedError, type Database, type Transaction } from '@flux/core';
 
 /**
  * Request-owned delivery fence (#316 AC-3). `check` runs inside a short database transaction that holds the
@@ -23,6 +23,11 @@ export function fenceResponse(response: Response, fence: McpDeliveryFence): Resp
 }
 
 const unavailable = JSON.stringify({ error: 'Agent connection is unavailable' });
+/** The JSON-RPC id of a single request body, so a refusal answers the request it refuses. */
+const requestId = (body: unknown) => {
+  const id = (body as { id?: unknown } | null)?.id;
+  return typeof id === 'string' || typeof id === 'number' ? id : null;
+};
 
 /**
  * Converts the Node request, calls the handler and writes the answer. Responses without a fence (the OAuth
@@ -47,6 +52,7 @@ export function createMcpRelay(db: Database, options: { onerror(error: Error): v
     if (token) fences.delete(token);
     const gate = options.testGate && fence ? String(req.headers['x-flux-test-delivery-gate'] ?? '') : '';
     let handedOver = false;
+    let aiOff = false;
     /** Run `action` (a synchronous write) only if the fence still passes inside one transaction. */
     const deliver = async (action: () => void): Promise<boolean> => {
       if (!fence) { action(); handedOver = true; return true; }
@@ -54,12 +60,18 @@ export function createMcpRelay(db: Database, options: { onerror(error: Error): v
       try {
         await db.transaction(async (tx) => { await fence.check(tx); action(); handedOver = true; });
         return true;
-      } catch { return false; }
+      } catch (error) { aiOff = error instanceof WorkspaceAiBlockedError; return false; }
     };
     const headers: Record<string, string> = {};
     for (const [name, value] of response.headers) headers[name] = value;
     const refuse = () => {
-      if (!handedOver && !res.headersSent) { res.writeHead(403, { 'content-type': 'application/json' }); res.end(unavailable); }
+      // F-029: AI turned off while this request ran: the same JSON-RPC refusal as before it started (HTTP 200, not 403, so a real
+      // client keeps its sign-in for when AI is on again).
+      if (!handedOver && !res.headersSent && aiOff) {
+        res.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store' });
+        res.end(JSON.stringify({ jsonrpc: '2.0', error: { code: -32000, message: 'AI is turned off in this workspace', data: { code: 'WORKSPACE_AI_BLOCKED' } },
+          id: requestId(parsedBody) }));
+      } else if (!handedOver && !res.headersSent) { res.writeHead(403, { 'content-type': 'application/json' }); res.end(unavailable); }
       else res.destroy();
       finished = true;
     };

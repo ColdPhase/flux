@@ -40,6 +40,22 @@ not poll a model, advertise automatic idle wake or kill an unrelated native
 program. Pause/Stop and quiet active-client wake remain subject to the unchanged
 whole-issue acceptance criteria; adding this activation path does not accept them.
 
+### Host action verification status and watchdog (#635/#636, 2026-10-23)
+
+- **Resume is unverified.** No account-backed Codex Start followed by an exact-thread
+  `codex exec resume <SESSION_ID>` has been recorded with the real binary. The declared
+  exact-thread Resume leg of the supplied action is therefore unverified; it is not a
+  supported, accepted or recorded behaviour. The Start leg is also pending native
+  verification in the UI (Connect and the project Agents view), and Claude's supplied
+  action stays pending. The evidence is in
+  [`evidence/160-workflow/README.md`](evidence/160-workflow/README.md). Tests of the
+  launcher use stub `codex` and `docker` commands only and are not real-model evidence.
+- **Watchdog.** `./flux cowork start|resume` stops a native run that is still going after
+  `FLUX_COWORK_WATCHDOG_SECONDS` seconds (default `300`, a positive whole number without a
+  leading zero; any other value is refused before the native CLI starts). The launcher then
+  records the run as its outcome and removes its temporary native output. Set a longer value
+  only for a deliberately long native run.
+
 Bootstrap may request `includeWorkRecovery: true`, with `workLimit` (1–50,
 default 20) and `workOffset` (0–10000). This is an additive MCP contract-1
 extension: omitted recovery keeps the existing envelope. Recovery additionally

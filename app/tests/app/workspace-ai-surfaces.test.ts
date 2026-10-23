@@ -63,8 +63,8 @@ describe('workspace AI lock: the remaining S1 surfaces', () => {
     const eventId = randomUUID(); const ai = randomUUID(); const person = randomUUID();
     await pool.query(`INSERT INTO events (id, workspace_id, kind, object_id, actor_id, data) VALUES ($1, $2, 'project.agent_question_asked.v1', $3, $4, '{}')`,
       [eventId, ws.id, place.id, `agent:${agentId}`]);
-    await pool.query(`INSERT INTO notifications (id, user_id, workspace_id, source_type, source_id, title, event_id) VALUES
-      ($1, $2, $3, 'project', $4, 'From the agent', $5), ($6, $2, $3, 'project', $4, 'From Jonas', NULL)`, [ai, owner.id, ws.id, place.id, eventId, person]);
+    await pool.query(`INSERT INTO notifications (id, user_id, workspace_id, source_type, source_id, title, event_id, ai_origin) VALUES
+      ($1, $2, $3, 'project', $4, 'From the agent', $5, true), ($6, $2, $3, 'project', $4, 'From Jonas', NULL, false)`, [ai, owner.id, ws.id, place.id, eventId, person]);
     const session = (await pool.query('SELECT id FROM auth_sessions WHERE user_id = $1 ORDER BY created_at DESC LIMIT 1', [owner.id])).rows[0].id as string;
     const subscriptionId = randomUUID();
     await pool.query(`INSERT INTO push_subscriptions (id, user_id, session_id, endpoint, p256dh, auth) VALUES ($1, $2, $3, $4, 'p256dh', 'auth')`,

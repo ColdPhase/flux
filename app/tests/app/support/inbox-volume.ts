@@ -45,8 +45,8 @@ export async function inboxVolume(sizes = { projects: 300, drafts: 20_000, dms: 
   // `count` notifications spread over the first `distinct` rows of the table, oldest id first.
   const notify = (type: 'project' | 'draft' | 'dm', table: 'projects' | 'drafts' | 'dms', count: number, distinct: number) => pool.query(`
     WITH chosen AS (SELECT id, row_number() OVER (ORDER BY id) - 1 AS n FROM ${table} WHERE workspace_id = $2 ORDER BY id LIMIT $4)
-    INSERT INTO notifications (id, user_id, workspace_id, source_type, source_id, title, reason)
-    SELECT gen_random_uuid(), $1, $2, $3, chosen.id, 'About a ' || $3, 'reply'
+    INSERT INTO notifications (id, user_id, workspace_id, source_type, source_id, title, reason, ai_origin)
+    SELECT gen_random_uuid(), $1, $2, $3, chosen.id, 'About a ' || $3, 'reply', false
     FROM generate_series(0, $5::int - 1) AS i JOIN chosen ON chosen.n = i % $4`, [member.id, space.id, type, distinct, count]);
   await notify('project', 'projects', notifications.project, sizes.projects);
   await notify('draft', 'drafts', notifications.draft, notifications.draft);
