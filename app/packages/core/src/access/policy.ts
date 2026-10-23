@@ -59,7 +59,7 @@ import { ForbiddenError, NotFoundError, WorkspaceAiBlockedError } from './errors
  *   does not leak; visible objects with a forbidden action get {@link ForbiddenError} (403).
  */
 
-export const WORKSPACE_ACTIONS = ['workspace.read', 'workspace.read_members', 'workspace.manage_members', 'workspace.manage_agents', 'workspace.manage_ai', 'project.create', 'draft.create', 'agent.create', 'sketch.create', 'dm.create'] as const;
+export const WORKSPACE_ACTIONS = ['workspace.read', 'workspace.read_members', 'workspace.manage_members', 'workspace.manage_agents', 'workspace.manage_ai', 'workspace.manage_encryption', 'project.create', 'draft.create', 'agent.create', 'sketch.create', 'dm.create'] as const;
 export const PROJECT_ACTIONS = ['project.read', 'project.write', 'project.manage'] as const;
 export const DRAFT_ACTIONS = ['draft.read', 'draft.write', 'draft.share', 'draft.move'] as const;
 export const AGENT_ACTIONS = ['agent.read', 'agent.revoke', 'agent.invoke'] as const;
@@ -407,6 +407,7 @@ export async function evaluateWorkspace(principal: Principal, action: ActionsByR
     case 'workspace.manage_members':
     case 'workspace.manage_agents':
     case 'workspace.manage_ai':
+    case 'workspace.manage_encryption':
     case 'project.create':
       allowed = human && isManager(actor.role);
       break;

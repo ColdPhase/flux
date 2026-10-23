@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { and, asc, desc, eq, inArray, isNull, sql, type SQL } from 'drizzle-orm';
-import { schema, eventRepository, projectGoalRows, workspaceAiSweepRows } from '@flux/db';
+import { schema, eventRepository, projectGoalRows, workspaceAiSweepRows, workspaceEncryptionRows } from '@flux/db';
 import { ASSISTANT_RUN_CHANGED_EVENT, ASSISTANT_WORKING_EVENT, WORKSPACE_AI_POLICY_CHANGED_EVENT } from '@flux/contracts';
 import type {
   SetWorkspaceAiPolicyCommand,
@@ -32,6 +32,7 @@ import type {
   UpdateDraftCommand,
   Workspace,
   WorkspaceAiPolicy,
+  WorkspaceEncryption,
   WorkspaceMember,
   WorkspaceRole,
 } from '@flux/contracts';
@@ -40,6 +41,7 @@ import type { Database, Executor, Principal } from '../types.js';
 import { ConflictError, ForbiddenError, InvalidInputError, NotFoundError, PreconditionRequiredError, RuleViolationError, VersionConflictError } from './errors.js';
 import { policyEventPorts, recordEvent } from '../events.js';
 import { presentProjectGoal } from '../project-goals/service.js';
+import { MISSING_ENCRYPTION_VIEW, presentEncryption } from '../encryption/view.js';
 import {
   accessName,
   enforce,
@@ -47,6 +49,7 @@ import {
   evaluateDraft,
   evaluateProject,
   evaluateWorkspace,
+  isManager,
   isUuid,
   LEVEL,
   projectLevelSql,
@@ -139,11 +142,24 @@ async function lockProjectForGrantChange(tx: Tx, projectId: string) {
   await tx.select({ id: schema.projects.id }).from(schema.projects).where(eq(schema.projects.id, projectId)).for('no key update');
 }
 
-function toWorkspace(row: typeof schema.workspaces.$inferSelect, role: WorkspaceRole | null, ai: WorkspaceAiPolicy): Workspace {
-  return { id: row.id, name: row.name, role, version: row.version, createdAt: row.createdAt.toISOString(), ai };
+function toWorkspace(row: typeof schema.workspaces.$inferSelect, role: WorkspaceRole | null, ai: WorkspaceAiPolicy,
+  encryption: WorkspaceEncryption | null = null): Workspace {
+  return { id: row.id, name: row.name, role, version: row.version, createdAt: row.createdAt.toISOString(), ai: { ...ai, fixed: row.encrypted ? 'encrypted' : null }, encryption };
 }
 
-const MISSING_AI_POLICY: WorkspaceAiPolicy = { state: 'blocked', version: 0, changedAt: new Date(0).toISOString(), changedBy: null };
+/** F-030 (#655): how a workspace is read; `bootId` is the reading API's keyring boot (null: unreachable, so locked). */
+export interface WorkspaceReadOptions { bootId?: string | null }
+
+/** The `encryption` field of each sealed workspace for one reader (plain workspaces get null). */
+async function encryptionViews(db: Executor, principal: Principal, readers: { row: typeof schema.workspaces.$inferSelect; role: WorkspaceRole | null }[],
+  options: WorkspaceReadOptions): Promise<Map<string, WorkspaceEncryption>> {
+  const sealed = readers.filter((reader) => reader.row.encrypted);
+  if (!sealed.length) return new Map();
+  const rows = await workspaceEncryptionRows(db).views(sealed.map((reader) => reader.row.id), principal.kind === 'human' ? principal.id : null);
+  return new Map(sealed.map(({ row, role }) => [row.id, presentEncryption(rows.get(row.id) ?? MISSING_ENCRYPTION_VIEW, role, options.bootId)]));
+}
+
+const MISSING_AI_POLICY: WorkspaceAiPolicy = { state: 'blocked', version: 0, changedAt: new Date(0).toISOString(), changedBy: null, fixed: null };
 
 /**
  * The AI policy of each workspace as its reader sees it (F-029): the state for every member, and who
@@ -163,7 +179,7 @@ async function workspaceAiViews(db: Executor, readers: { workspaceId: string; ro
     if (!row) { views.set(workspaceId, MISSING_AI_POLICY); continue; }
     const named = role !== null && role !== 'guest' && row.changedBy !== null && row.changedByName !== null;
     views.set(workspaceId, { state: row.state, version: row.version, changedAt: row.changedAt.toISOString(),
-      changedBy: named ? { id: row.changedBy!, name: row.changedByName! } : null });
+      changedBy: named ? { id: row.changedBy!, name: row.changedByName! } : null, fixed: null });
   }
   return views;
 }
@@ -234,7 +250,7 @@ export async function createWorkspace(principal: Principal, command: CreateWorks
 }
 
 /** Workspaces where the principal is currently active. */
-export async function listWorkspaces(principal: Principal, db: Database): Promise<Workspace[]> {
+export async function listWorkspaces(principal: Principal, db: Database, options: WorkspaceReadOptions = {}): Promise<Workspace[]> {
   if (principal.kind === 'human') {
     const rows = await db.select({ workspace: schema.workspaces, role: schema.workspaceMembers.role })
       .from(schema.workspaceMembers)
@@ -242,7 +258,8 @@ export async function listWorkspaces(principal: Principal, db: Database): Promis
       .where(eq(schema.workspaceMembers.userId, principal.id))
       .orderBy(asc(schema.workspaces.createdAt), asc(schema.workspaces.id));
     const ai = await workspaceAiViews(db, rows.map((row) => ({ workspaceId: row.workspace.id, role: row.role })));
-    return rows.map((row) => toWorkspace(row.workspace, row.role, ai.get(row.workspace.id)!));
+    const encryption = await encryptionViews(db, principal, rows.map((row) => ({ row: row.workspace, role: row.role })), options);
+    return rows.map((row) => toWorkspace(row.workspace, row.role, ai.get(row.workspace.id)!, encryption.get(row.workspace.id) ?? null));
   }
   if (principal.kind === 'agent' && isUuid(principal.id)) {
     const [agent] = await db.select({ workspaceId: schema.agents.workspaceId }).from(schema.agents).where(eq(schema.agents.id, principal.id));
@@ -250,16 +267,18 @@ export async function listWorkspaces(principal: Principal, db: Database): Promis
     const { visible } = await evaluateWorkspace(principal, 'workspace.read', agent.workspaceId, db);
     if (!visible) return [];
     const [row] = await db.select().from(schema.workspaces).where(eq(schema.workspaces.id, agent.workspaceId));
-    return row ? [toWorkspace(row, null, (await workspaceAiViews(db, [{ workspaceId: row.id, role: null }])).get(row.id)!)] : [];
+    return row ? [toWorkspace(row, null, (await workspaceAiViews(db, [{ workspaceId: row.id, role: null }])).get(row.id)!,
+      (await encryptionViews(db, principal, [{ row, role: null }], options)).get(row.id) ?? null)] : [];
   }
   return [];
 }
 
-export async function getWorkspace(principal: Principal, workspaceId: string, db: Database): Promise<Workspace> {
+export async function getWorkspace(principal: Principal, workspaceId: string, db: Database, options: WorkspaceReadOptions = {}): Promise<Workspace> {
   const { actor } = enforce(await evaluateWorkspace(principal, 'workspace.read', workspaceId, db), 'workspace');
   const [row] = await db.select().from(schema.workspaces).where(eq(schema.workspaces.id, workspaceId));
   if (!row) throw new NotFoundError('Workspace', 'WORKSPACE_NOT_FOUND');
-  return toWorkspace(row, actor.role, (await workspaceAiViews(db, [{ workspaceId: row.id, role: actor.role }])).get(row.id)!);
+  return toWorkspace(row, actor.role, (await workspaceAiViews(db, [{ workspaceId: row.id, role: actor.role }])).get(row.id)!,
+    (await encryptionViews(db, principal, [{ row, role: actor.role }], options)).get(row.id) ?? null);
 }
 
 export async function listMembers(principal: Principal, workspaceId: string, db: Database): Promise<WorkspaceMember[]> {
@@ -328,6 +347,8 @@ export async function setWorkspaceAiPolicy(principal: Principal, workspaceId: st
     const [current] = isUuid(workspaceId) ? await tx.select().from(p).where(eq(p.workspaceId, workspaceId)).for('update') : [];
     const decision = await evaluateWorkspace(principal, 'workspace.manage_ai', workspaceId, tx, { lock: true });
     if (!decision.visible || !current) throw new NotFoundError('Workspace', 'WORKSPACE_NOT_FOUND');
+    // F-030: AI is always off in an encrypted workspace, before any other check that could pass.
+    if (await workspaceEncryptionRows(tx).sealed(workspaceId)) throw new ConflictError('AI is always off in an encrypted workspace', 'WORKSPACE_ENCRYPTED_AI_OFF');
     if (!decision.allowed) throw new ForbiddenError('Only workspace owners and admins can turn AI on or off', 'WORKSPACE_AI_ADMIN_REQUIRED');
     const expected = command.expectedVersion;
     if (expected === undefined || expected === null) throw new PreconditionRequiredError();
@@ -391,9 +412,37 @@ export class WorkspaceAiSweepIncomplete extends AggregateError {
   }
 }
 
+/**
+ * F-030 (#655): an owner or admin of a sealed workspace losing the role (demoted, removed or leaving) takes
+ * `workspace_keys` `FOR UPDATE` first, before the F-029 order. The target's role is read without a lock to decide.
+ */
+async function lockKeysForManagerChange(tx: Tx, workspaceId: string, userId: string, role: WorkspaceRole | null): Promise<boolean> {
+  if (!isUuid(workspaceId)) return false;
+  const rows = workspaceEncryptionRows(tx);
+  if (!await rows.sealed(workspaceId)) return false;
+  const current = await rows.memberRole(workspaceId, userId);
+  if (!isManager(current) || (role !== null && isManager(role))) return false;
+  await rows.keys(workspaceId, { lock: 'update' });
+  return true;
+}
+
+/** Deletes the person's unlock password (its holder; the trigger leaves a rotation pending); the last one is refused. */
+async function dropUnlockPassword(tx: Tx, workspaceId: string, userId: string, keysLocked: boolean): Promise<void> {
+  const rows = workspaceEncryptionRows(tx);
+  if (!keysLocked) {
+    if (!await rows.sealed(workspaceId)) return;
+    await rows.keys(workspaceId, { lock: 'update' }); // the role changed since the unlocked read
+  }
+  if (await rows.dropUnlockPassword(workspaceId, userId) === 'last') {
+    throw new ConflictError('This space needs at least one unlock password. Ask another owner or admin to set theirs first.', 'LAST_UNLOCK_PASSWORD');
+  }
+}
+
 export async function changeRole(principal: Principal, workspaceId: string, userId: string, command: ChangeRoleCommand, db: Database): Promise<WorkspaceMember> {
   const role = oneOf(command?.role, ROLES, 'role');
   return db.transaction(async (tx) => {
+    // F-030 lock order: workspace_keys before the F-029 order when an owner or admin of a sealed workspace loses the role.
+    const sealedChange = await lockKeysForManagerChange(tx, workspaceId, userId, role);
     // F-029 lock order: the AI policy row before any membership row (the event below reads it again for agent audiences).
     await workspaceAi(tx, workspaceId, { lock: true });
     await lockWorkspace(tx, workspaceId);
@@ -403,6 +452,7 @@ export async function changeRole(principal: Principal, workspaceId: string, user
     if (!target) throw new NotFoundError('Member', 'MEMBER_NOT_FOUND');
     requireRoleAuthority(actor, target.role, role);
     if (target.role === 'owner' && role !== 'owner' && await ownerCount(tx, workspaceId) <= 1) throw new ConflictError('A workspace needs at least one owner', 'LAST_OWNER');
+    if (isManager(target.role) && !isManager(role)) await dropUnlockPassword(tx, workspaceId, userId, sealedChange);
     const [updated] = await tx.update(schema.workspaceMembers).set({ role, updatedAt: new Date() })
       .where(and(eq(schema.workspaceMembers.workspaceId, workspaceId), eq(schema.workspaceMembers.userId, userId))).returning();
     await recordEvent(events(tx), principal, workspaceId, 'workspace.member_role_changed.v1', workspaceId, { userId, from: target.role, role });
@@ -417,6 +467,7 @@ export async function changeRole(principal: Principal, workspaceId: string, user
  */
 export async function removeMember(principal: Principal, workspaceId: string, userId: string, db: Database): Promise<void> {
   await db.transaction(async (tx) => {
+    const sealedChange = await lockKeysForManagerChange(tx, workspaceId, userId, null);
     // F-029 lock order: the AI policy row before any membership row.
     await workspaceAi(tx, workspaceId, { lock: true });
     await lockWorkspace(tx, workspaceId);
@@ -427,6 +478,7 @@ export async function removeMember(principal: Principal, workspaceId: string, us
     if (!target) throw new NotFoundError('Member', 'MEMBER_NOT_FOUND');
     if (!self) requireRoleAuthority(actor, target.role);
     if (target.role === 'owner' && await ownerCount(tx, workspaceId) <= 1) throw new ConflictError('A workspace needs at least one owner', 'LAST_OWNER');
+    if (isManager(target.role)) await dropUnlockPassword(tx, workspaceId, userId, sealedChange);
     await tx.delete(schema.workspaceMembers).where(and(eq(schema.workspaceMembers.workspaceId, workspaceId), eq(schema.workspaceMembers.userId, userId)));
     await recordEvent(events(tx), principal, workspaceId, 'workspace.member_removed.v1', workspaceId, { userId });
   });

@@ -1,0 +1,121 @@
+import type { Workspace } from './access.js';
+
+/**
+ * Encrypted workspaces (F-030, #655; docs/product/encrypted-workspaces.md). Wire types of the keys,
+ * the unlock lifecycle and the encryption state of a workspace. Every command here needs a live
+ * session, passes the origin check, answers `Cache-Control: no-store` and never uses the
+ * Idempotency-Key store (its request hash would be a fast hash of a password).
+ */
+
+/** `POST`: creates an encrypted workspace. Until S3 it exists only with `FLUX_FIXTURE_TOKEN` set. */
+export const ENCRYPTED_WORKSPACES_PATH = '/api/v1/encrypted-workspaces';
+export const workspaceUnlockPath = (workspaceId: string) => `/api/v1/workspaces/${workspaceId}/unlock`;
+export const workspaceLockPath = (workspaceId: string) => `/api/v1/workspaces/${workspaceId}/lock`;
+export const workspaceUnlockGrantsPath = (workspaceId: string) => `/api/v1/workspaces/${workspaceId}/unlock-password-grants`;
+export const workspaceUnlockPasswordPath = (workspaceId: string) => `/api/v1/workspaces/${workspaceId}/unlock-password`;
+export const workspaceRecoveryCodePath = (workspaceId: string) => `/api/v1/workspaces/${workspaceId}/recovery-code`;
+
+/**
+ * `Workspace.encryption`: null for a plain workspace. `myPassword` and `canUnlock` are filled for owners and
+ * admins; members and guests get `false`. `rotation` stays null until key rotation (S2c) ships.
+ */
+export interface WorkspaceEncryption {
+  state: 'locked' | 'unlocked';
+  unlockedAt: string | null;
+  unlockedBy: { id: string; name: string } | null;
+  /** The caller has an unlock password here. */
+  myPassword: boolean;
+  /** The caller may unlock now: an owner or admin with a password, or with the recovery code while one exists. */
+  canUnlock: boolean;
+  /** The workspace has a recovery code. */
+  recoveryCode: boolean;
+  rotation: null | { percent: number; paused: boolean; startedAt: string };
+  /** When the key last changed by a rotation; null while the creation key is current. */
+  keyChangedAt: string | null;
+}
+
+export interface CreateEncryptedWorkspaceCommand {
+  name: string;
+  /** The client's id for retries: the same person and id again answers the same workspace without the code. */
+  creationId: string;
+  /** The creator's unlock password. */
+  password: string;
+}
+
+/** `recoveryCode` is returned exactly once, on the first answer; a retry gets null. */
+export interface CreateEncryptedWorkspaceResult {
+  workspace: Workspace;
+  recoveryCode: string | null;
+}
+
+/** Exactly one of the two. */
+export interface UnlockWorkspaceCommand { password?: string; recoveryCode?: string }
+export interface EncryptionStateResult { encryption: WorkspaceEncryption }
+
+/** A holder lets an owner or admin without a password set one, with the holder's own password. Valid one hour. */
+export interface GrantUnlockPasswordCommand { userId: string; password: string }
+export interface GrantUnlockPasswordResult { expiresAt: string }
+
+/**
+ * Sets or changes the caller's unlock password. Changing needs `currentPassword` or `recoveryCode`; a first
+ * password needs a valid grant or `recoveryCode`.
+ */
+export interface SetUnlockPasswordCommand { currentPassword?: string; recoveryCode?: string; newPassword: string }
+
+/** Owner only: replaces the recovery code; the old one stops working. */
+export interface NewRecoveryCodeCommand { password: string }
+export interface NewRecoveryCodeResult { recoveryCode: string }
+
+/** The refusal of every content read or write of a sealed workspace while it is locked. */
+export const WORKSPACE_LOCKED = 'WORKSPACE_LOCKED';
+export const ENCRYPTION_ERROR_CODES = [
+  'WORKSPACE_LOCKED', 'UNLOCK_INCORRECT', 'UNLOCK_RATE_LIMITED', 'UNLOCK_BUSY', 'NO_UNLOCK_PASSWORD', 'KEYRING_UNAVAILABLE',
+  'SWAP_UNSAFE', 'PASSWORD_TOO_WEAK', 'LAST_UNLOCK_PASSWORD', 'ALREADY_HAS_PASSWORD', 'UNLOCK_PASSWORD_GRANT_REQUIRED',
+  'WORKSPACE_ENCRYPTION_ADMIN_REQUIRED', 'WORKSPACE_ENCRYPTED_AI_OFF', 'ENCRYPTION_TAMPERED', 'WORKSPACE_NOT_ENCRYPTED', 'WORKSPACE_ENCRYPTED_UNSUPPORTED',
+] as const;
+export type EncryptionErrorCode = typeof ENCRYPTION_ERROR_CODES[number];
+
+/** Own unlock passwords: at least this many characters after NFC normalisation... */
+export const UNLOCK_PASSWORD_MIN_LENGTH = 20;
+/** ...and a strength estimate of at least 10^17 guesses (zxcvbn-ts `guessesLog10`). */
+export const UNLOCK_PASSWORD_MIN_GUESSES_LOG10 = 17;
+/** Failed password or code checks per person and workspace, across every checking route, in the window. */
+export const UNLOCK_ATTEMPT_LIMIT = 5;
+export const UNLOCK_ATTEMPT_WINDOW_SECONDS = 15 * 60;
+/** How long a holder's grant lets an owner or admin set a first password. */
+export const UNLOCK_GRANT_SECONDS = 60 * 60;
+
+/** Events: ids only, for the workspace's people (never delivered to an agent). */
+export const WORKSPACE_UNLOCKED_EVENT = 'workspace.unlocked.v1';
+export const WORKSPACE_LOCKED_EVENT = 'workspace.locked.v1';
+export const WORKSPACE_UNLOCK_PASSWORD_GRANTED_EVENT = 'workspace.unlock_password_granted.v1';
+export const WORKSPACE_UNLOCK_PASSWORD_SET_EVENT = 'workspace.unlock_password_set.v1';
+/** A holder, wrap or key version failed verification: the workspace stays locked (F-030, Authenticating holders and wraps). */
+export const WORKSPACE_ENCRYPTION_TAMPERED_EVENT = 'workspace.encryption_tampered.v1';
+export const WORKSPACE_ENCRYPTION_EVENTS = [WORKSPACE_UNLOCKED_EVENT, WORKSPACE_LOCKED_EVENT, WORKSPACE_UNLOCK_PASSWORD_GRANTED_EVENT,
+  WORKSPACE_UNLOCK_PASSWORD_SET_EVENT, WORKSPACE_ENCRYPTION_TAMPERED_EVENT] as const;
+/** `{ reason }` of `workspace.locked.v1`. */
+export type WorkspaceLockReason = 'person' | 'restart';
+
+/** Sent with every unlock; replays the work that waited while the workspace was locked (S2a). */
+export const WORKSPACE_ENCRYPTION_RESUME_JOB = 'workspace-encryption.resume.v1';
+export interface WorkspaceEncryptionResumeJob { workspaceId: string }
+
+/**
+ * Routes that keep working while a sealed workspace is locked: workspace metadata only, each with its reason.
+ * Keyed by `METHOD path` exactly as registered. S1's lock gate refuses every other route that names an object
+ * of a locked sealed workspace by a known parameter; S2a's route test enumerates every route.
+ */
+export const LOCKED_ALLOWED_ROUTES: Readonly<Record<string, string>> = {
+  'GET /api/v1/workspaces/:workspaceId': 'The workspace\'s name, role and encryption state, so the locked panel can be drawn',
+  'GET /api/v1/workspaces/:workspaceId/members': 'Members and roles are metadata',
+  'POST /api/v1/workspaces/:workspaceId/members': 'Membership is metadata',
+  'PATCH /api/v1/workspaces/:workspaceId/members/:userId': 'Roles are metadata; a demotion removes the person\'s unlock password',
+  'DELETE /api/v1/workspaces/:workspaceId/members/:userId': 'Leaving and removal are metadata',
+  'PUT /api/v1/workspaces/:workspaceId/ai-policy': 'Answers 409 WORKSPACE_ENCRYPTED_AI_OFF for a sealed workspace',
+  'POST /api/v1/workspaces/:workspaceId/unlock': 'Unlocking',
+  'POST /api/v1/workspaces/:workspaceId/lock': 'Locking',
+  'POST /api/v1/workspaces/:workspaceId/unlock-password-grants': 'Answers 423 itself: a grant is useful only while unlocked',
+  'PUT /api/v1/workspaces/:workspaceId/unlock-password': 'Answers 423 itself unless the recovery code unlocks the key',
+  'POST /api/v1/workspaces/:workspaceId/recovery-code': 'Answers 423 itself',
+};

@@ -10,6 +10,7 @@ export * from './repositories/runtime-auth-operations.js';
 export * from './repositories/agent-proposals.js';
 export * from './repositories/agent-connections.js';
 export * from './repositories/workspace-ai.js';
+export * from './repositories/workspace-encryption.js';
 export * from './repositories/agent-mcp-policy.js';
 export * from './repositories/project-agents.js';
 export * from './repositories/project-goals.js';
