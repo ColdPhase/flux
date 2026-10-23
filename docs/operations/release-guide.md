@@ -8,7 +8,9 @@ can need other migrations or variables than your release.
 The release pins one OCI image, `ghcr.io/coldphase/flux`, by its manifest digest for `api`,
 `worker` and the one-shot `migrate` service, plus a separately digest-pinned PostgreSQL. The image
 is built for `linux/amd64` and `linux/arm64`. Docker Engine with the Compose plugin is required;
-the source code and the Node toolchain are not.
+the source code and the Node toolchain are not. The optional [agent runtime](#agent-runtime-optional)
+adds a second image, `ghcr.io/coldphase/flux-agent-runtime`, also pinned by digest and built for both
+platforms; an installation that never switches the runtime on never pulls it.
 
 ## Files
 
@@ -17,10 +19,13 @@ Download **every** asset of the release into an empty directory:
 | Asset | Purpose |
 | --- | --- |
 | `compose.yaml` | The pull-only Compose file for this release. |
+| `compose.runtime.yaml` | Optional second Compose file for the [agent runtime](#agent-runtime-optional): off unless you switch it on. Pins the runtime image and the application image by digest. |
+| `runtime.sh` | Operator script for the runtime: `on`, `off`, `up`, `status`, `release`, `purge`. Run it with `sh`. |
 | `env.example` | Settings template; you copy it to `.env`. GitHub does not keep a leading period in an asset name, so the repository's `.env.example` is published under this name. |
 | `INSTALL.md` | This guide. |
-| `release.json` | Version, source commit and the image (`ghcr.io/coldphase/flux@sha256:…`) with its platforms. |
-| `sbom.spdx.json`, `THIRD_PARTY_NOTICES.json` | SPDX software bill of materials of the image and the dependency notices derived from it. |
+| `release.json` | Version, source commit and both images (`ghcr.io/coldphase/flux@sha256:…`, `ghcr.io/coldphase/flux-agent-runtime@sha256:…`) with their platforms, and the pinned Codex release. |
+| `sbom.spdx.json`, `THIRD_PARTY_NOTICES.json` | SPDX software bill of materials of the application image and the dependency notices derived from it. |
+| `sbom-agent-runtime.spdx.json`, `THIRD_PARTY_NOTICES.agent-runtime.json` | The same for the agent-runtime image; the notices also record the pinned official Codex (Apache-2.0). |
 | `LICENSE` | The Flux license. |
 | `SHA256SUMS` | SHA-256 of every other asset. |
 
@@ -36,6 +41,7 @@ attested for the exact image named by the `image` field of `release.json`:
 
 ```sh
 gh attestation verify oci://ghcr.io/coldphase/flux@sha256:<digest from release.json> --repo ColdPhase/flux
+gh attestation verify oci://ghcr.io/coldphase/flux-agent-runtime@sha256:<runtime digest from release.json> --repo ColdPhase/flux
 ```
 
 ## Clean installation
@@ -90,6 +96,56 @@ gh attestation verify oci://ghcr.io/coldphase/flux@sha256:<digest from release.j
    to put TLS in front of `127.0.0.1:<FLUX_PORT>` for `FLUX_PUBLIC_ORIGIN`, open that
    URL and create the first account. If startup fails, read
    `docker compose --env-file .env -f compose.yaml logs migrate api worker` before changing data.
+
+## Agent runtime (optional)
+
+Off by default and not needed for Flux itself. It lets people on this Flux sign in with their own
+ChatGPT (Codex) and Claude (Claude Code) subscriptions; Flux runs each person's official CLI in an
+isolated slot. Read the [operator guide](https://github.com/ColdPhase/flux/blob/main/docs/operations/agent-runtime.md)
+first (its commands for a source checkout are `./flux ...`; here the same steps are `sh runtime.sh ...`).
+
+- **Linux host requirement.** Every slot needs the Linux kernel setting `kernel.yama.ptrace_scope` of 1 or
+  higher (check: `cat /proc/sys/kernel/yama/ptrace_scope`); a missing policy or `0` stops the slot
+  before it listens. Docker Desktop is unsupported (its kernel has no Yama). The engine must support
+  `internal` networks, a read-only root filesystem, dropped capabilities and process, memory and CPU limits.
+- **Your duty for Claude Code.** Flux never ships Claude Code in an image. Enabling it installs
+  Anthropic's signed official release into a volume and needs your own agreement to Anthropic's
+  Commercial Terms with Anthropic. Pass the date you agreed: Flux records the statement, it does not check it.
+  Codex needs no statement; its pinned release is part of the runtime image.
+- **You can read every owner's login.** The CLIs keep each owner's login in that owner's slot volume, readable by
+  host root and by anyone who can read your disks or snapshots. Offer the runtime only where owners trust you.
+
+Switch it on (the script writes `FLUX_AGENT_RUNTIME`, generates the missing secrets in `.env`, pulls the
+runtime image by its digest and starts the runtime services next to Flux):
+
+```sh
+sh runtime.sh on codex                                       # or claude_code, or claude_code,codex
+sh runtime.sh on claude_code,codex --commercial-terms 2026-10-05   # the date you agreed with Anthropic
+sh runtime.sh status        # the four slots and what each reports
+```
+
+Once it is on, **always use `sh runtime.sh up` or pass both files**. A plain `docker compose --env-file .env -f compose.yaml up`
+recreates `api` and `worker` without the runtime settings, which switches it off for them:
+
+```sh
+docker compose --env-file .env -f compose.yaml -f compose.runtime.yaml --profile runtime ps
+```
+
+What runs: `runtime-manager` (no database, no Docker access), `runtime-egress` (the slots' only way out:
+HTTPS to the hosts of the enabled CLIs and Flux's `/mcp`), the one-shot `runtime-install` (a no-op unless
+`claude_code` is enabled) and four slots `runtime-1` to `runtime-4`. Each slot has a non-root user, a read-only root
+filesystem, no capabilities, no new privileges, 2 GiB of memory without swap, one CPU, 256 processes, its own volume and
+its own internal network. No service mounts a Docker or Podman socket. A pool of four fills for good unless
+you release bindings: `sh runtime.sh release runtime-<n>` signs that owner's CLIs out, deletes their login files and frees
+the slot. More than four slots are not covered by the release assets.
+
+- **Switch off:** `sh runtime.sh off` stops the runtime services; slot volumes and logins stay.
+- **Remove the logins for good:** `sh runtime.sh purge` signs every CLI out (best effort), deletes the slot volumes and
+  the tools volume. Then keep the runtime off. Run it before `down -v` if you uninstall.
+- **Backups never contain a slot volume** (the logins must not travel in backups and cannot be moved between
+  machines). A restore reconciles the restored bindings with the slots when the worker starts. A disk or
+  host snapshot does capture the slot volumes. Add `-f compose.runtime.yaml` to the backup, upgrade and restore
+  commands below while the runtime is on, or use `sh runtime.sh up` instead of their last `up`.
 
 ## Consistent backup
 
