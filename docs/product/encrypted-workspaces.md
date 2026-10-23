@@ -106,13 +106,21 @@ CREATE TABLE workspace_dek_wraps (           -- each live DEK sealed to each hol
 CREATE TABLE workspace_key_versions (        -- one row per version ever made while it is live
   workspace_id uuid NOT NULL REFERENCES workspace_keys(workspace_id) ON DELETE CASCADE,
   key_version integer NOT NULL,
-  commitment text,             -- HMAC(HKDF(DEK v-1), [v, SHA-256(DEK v)]); null for v1
+  commitment text,             -- HMAC(HKDF(DEK v-1), [v, SHA-256(DEK v)])
   check_value text NOT NULL,   -- a fixed text sealed under DEK v at creation of the version
   created_at timestamptz NOT NULL DEFAULT now(),
-  PRIMARY KEY (workspace_id, key_version)
+  PRIMARY KEY (workspace_id, key_version),
+  CHECK ((key_version = 1) = (commitment IS NULL))   -- required for every version after the first
 );
--- workspace_holders: AFTER DELETE of a 'password' holder sets workspace_keys.rotation = 'pending' when it is 'none',
--- so an account deletion (ON DELETE CASCADE) still leads to a rotation; BEFORE DELETE refuses removing the last
+CREATE TABLE workspace_removed_holders (     -- tombstones: holders removed since the last finished rotation
+  workspace_id uuid NOT NULL REFERENCES workspace_keys(workspace_id) ON DELETE CASCADE,
+  holder_id uuid NOT NULL, user_id text, public_key text NOT NULL,
+  removed_at timestamptz NOT NULL DEFAULT now(),
+  PRIMARY KEY (workspace_id, holder_id)
+);
+-- workspace_holders: AFTER DELETE of a 'password' holder writes its tombstone and sets workspace_keys.rotation =
+-- 'pending' when it is 'none' or 'reencrypting' (a holder of n+1 removed mid-rotation needs n+2), so an account
+-- deletion (ON DELETE CASCADE) still leads to a rotation; BEFORE DELETE refuses removing the last
 -- 'password' holder while its workspace still exists (LAST_UNLOCK_PASSWORD).
 CREATE TABLE workspace_unlocks (
   workspace_id uuid NOT NULL REFERENCES workspace_keys(workspace_id) ON DELETE CASCADE,
@@ -300,18 +308,24 @@ move all content under it. Four checks close this. None needs anything the attac
    [holder id, kind, user id or "", public key])`, with `v = holder_mac_version`, the current version
    when the MAC was written. A holder is created only while the workspace is unlocked, so the server
    holds the DEK then. At a rotation's start every remaining holder's MAC is rewritten under the new
-   version. **The holder set** is the rows whose MAC verifies **and** (for kind `password`) whose
-   user is currently an owner or admin. Only that set receives a new DEK, and an unlock verifies every
-   holder row.
+   version. Two rules use it, and they are deliberately different. **Receiving a new DEK:** only the
+   **holder set** does, meaning rows whose MAC verifies, whose user (for kind `password`) is currently
+   an owner or admin, and that have no tombstone. **Unlocking:** every holder row must verify. A row
+   that fails, whether rogue, replayed with a stale MAC version or altered, makes the unlock refuse as
+   tampering. So a planted row can never receive a key, and its presence locks the workspace instead
+   of being skipped silently.
 2. **Public key bound to the password.** It is in the AAD of `wrapped_private` and checked against
    the private key after opening (above). A replaced public key makes the real holder's unlock fail
    loudly instead of silently sealing to someone else.
-3. **Key confirmation.** A DEK opened from a wrap is accepted only if one of these holds:
-   - **the holder's own confirmation** (`workspace_dek_wraps.confirm`) verifies:
+3. **Key confirmation.** A DEK opened from a wrap is accepted by exactly one of these rules, chosen
+   by whether the holder has a confirmation for that version:
+   - **if a confirmation exists, it decides.** The holder's own confirmation (`workspace_dek_wraps.confirm`) must verify:
      `HMAC(HKDF(KEK, [flux confirm v1, workspace id, holder id]), [version, SHA-256(DEK)])`. Only
      someone with the password or code can write it. It is written when the holder is created (for
      every live version) and at each later unlock for any version it lacks;
-   - or the **commitment chain** verifies from a DEK already accepted:
+     A mismatch is tampering **even if the commitment chain would verify**. The chain is a MAC under
+     DEK v-1, which an earlier holder may know, so it must never override the holder's own proof.
+   - **only if there is no confirmation**, the **commitment chain** must verify from a DEK already accepted:
      `commitment(v) = HMAC(HKDF(DEK v-1, [flux commit v1, workspace id, v-1]), [v, SHA-256(DEK v)])`,
      written when version v is made. It reveals nothing about DEK v to a holder of v-1.
 
@@ -323,14 +337,28 @@ move all content under it. Four checks close this. None needs anything the attac
    live version; accept each DEK by rule 3, oldest first; verify every holder MAC with the current
    DEK; write any missing confirmations for this holder. Only then are unlock rows written.
 
-**Tampering** (any check fails) sets `workspace_keys.tampered_at`. The unlock answers
-`409 ENCRYPTION_TAMPERED` and writes no unlock row, and no rotation step runs. The event
-`workspace.encryption_tampered.v1` (ids only) and a `security` Inbox notification ("Garden club's
-encryption keys were changed outside Flux. It stays locked.") reach every holder. Nothing is deleted
-or repaired automatically. The [operations guide](../operations/backup-restore.md) says to restore
-the last good backup. A replayed old holder row with a valid old MAC is still not in the holder set,
-because its user is no longer an owner or admin, or because its MAC version is not current after a
-rotation.
+**Tampering** (any check fails). The unlock answers `409 ENCRYPTION_TAMPERED`, writes no unlock row,
+and runs no rotation step. It sets `workspace_keys.tampered_at`, records
+`workspace.encryption_tampered.v1` (ids only), and sends every holder a `security` Inbox notification:
+"Garden club's encryption keys were changed outside Flux. It stays locked." **The flag is not
+sticky.** Every unlock attempt verifies everything from scratch, whatever the flag says. The flag is
+only for display and alerting, and it is cleared when a full verification passes. So a fixed bug or
+a repaired restore unlocks normally. Nothing is deleted or repaired automatically. The
+[operations guide](../operations/backup-restore.md) says that restoring **only** `workspace_keys`,
+`workspace_holders`, `workspace_dek_wraps`, `workspace_key_versions` and `workspace_removed_holders`
+from the last good backup is enough, as long as no rotation finished after that backup. Otherwise the
+whole instance is restored.
+
+**Removal tombstones and the one remaining path.** A holder's deletion writes a tombstone (id, user,
+public key). The start never seals to a holder id or public key that has a tombstone, and the
+tombstones are cleared at the finish. A person removed and later added again creates a **new**
+holder with a new key pair through the [grant flow](#password-lifecycle). This is defence in depth.
+One tampering path cannot be closed with cryptography, and it is stated here: during `pending`
+(a removal while locked), no key is available to authenticate the removal itself. An ex-holder who
+kept their own holder row, and who can write to the database, could restore that row and their role
+and delete the tombstone. The next unlock would then seal DEK *n*+1 to them. To make that visible,
+the start records the holder set in `workspace.key_rotation_started.v1` (ids), and the Encryption
+section shows "The new key opens for Ada and Cy." Every holder can see who received it.
 
 ### Password checks
 
@@ -418,7 +446,7 @@ stateDiagram-v2
 ```
 
 1. **Removal.** In the role change's transaction, locked or unlocked: lock `workspace_keys` `FOR
-   UPDATE`, delete the person's holder (and so its DEK wraps) and the **recovery holder** (see
+   UPDATE` (before the membership lock, see the lock order below), delete the person's holder (writing its tombstone) (and so its DEK wraps) and the **recovery holder** (see
    [recovery code](#the-recovery-code-after-a-rotation)), and set `rotation = 'pending'` with
    `rotation_reason`. The removed person's password stops working at once: their holder is gone, and
    the role check refuses them anyway. **No new DEK is made while locked.** Re-encryption needs the
@@ -447,9 +475,17 @@ stateDiagram-v2
 2. **Seal and read during the rotation.** Every new seal, from any process, uses `current_version`.
    Every open chooses the DEK by the envelope's version, which must be in `live_versions`. Reading
    both versions at once is just this: an envelope names its own version. **Writer invariant:** a
-   writer takes the unlock rows `FOR SHARE` first and reads `current_version` after that, in the same
-   transaction. The finish deletes old unlock rows `FOR UPDATE`, so it waits for every writer still
-   holding one. A value written under an old version before that moment is found by the next pass.
+   writer takes `workspace_keys` `FOR SHARE` first, then the unlock rows `FOR SHARE`, and seals with
+   the `current_version` it read under that lock. The start and the finish both take `workspace_keys`
+   `FOR UPDATE`, so each is ordered strictly before or after every write. No write sealed under
+   version *n* can commit after the start, or after a finish that deletes *n*'s wraps. A
+   long transaction that began before the start either commits first, so the next pass finds its
+   value, or waits and then sees the new version.
+   **Lock order** for a sealed workspace: `workspace_keys`, unlock rows, then the F-029 order (policy
+   row, workspace row, memberships, project and grant rows, event `seq` lock). A role change of an owner or
+   admin therefore takes `workspace_keys` `FOR UPDATE` **before** its membership lock. It reads the
+   target's role without a lock first to decide whether it must. Lock now takes only the unlock rows
+   and a membership share, so it cannot cycle with either.
 3. **Re-encrypt** (worker, `apps/worker/src/workspace-encryption/rotate.ts`), only while unlocked.
    - It walks `SEALED_COLUMNS` table by table in a fixed order, by primary key in pages of 500. Each
      page is one transaction that takes the unlock rows `FOR SHARE`. It selects the workspace's rows
@@ -669,7 +705,7 @@ Nothing listed is text that a person wrote, a name of a thing, or file bytes.
   string equal to a real user id or a registered enum value carries no content.
 - **Notification backstop.** A `BEFORE INSERT OR UPDATE` trigger on `notifications` raises
   `NOTIFICATION_CONTENT_REFUSED` for a sealed workspace unless `body = ''` and `title` is one of the
-  eight [fixed templates](#notifications-push-and-e-mail), with an account name and the workspace's
+  nine [fixed templates](#notifications-push-and-e-mail), with an account name and the workspace's
   current name as the only variable parts.
 - **Cross-workspace reads** skip locked workspaces instead of failing. They are the shell loader's
   project list, Home tasks, Inbox and Needs you, search and ⌘K, and the morning summary. Each answers
@@ -806,7 +842,7 @@ process asks `GET /v1/boot`. A different boot means the row is stale, so the wor
 locked and its unlock rows are deleted. A version missing a row (a Lock raced a rotation's start)
 also counts as locked, and the remaining rows are deleted.
 
-- **Writes** read the unlock rows `FOR SHARE` first, before the F-029 policy row and every other lock, so a
+- **Writes** take `workspace_keys` and then the unlock rows `FOR SHARE` first, before the F-029 policy row and every other lock, so a
   Lock is ordered strictly before or after each write.
 - Reads take no lock. A read that started before a Lock may finish, but nothing is written afterwards.
 
@@ -975,6 +1011,7 @@ carry content.
 | `review` | "Ada asked for your review in Garden club" |
 | `invitation` | "Ada invited you to work together in Garden club" |
 | `security` | "Ben now has an unlock password for Garden club" |
+| `security` | "Garden club's encryption keys were changed outside Flux. It stays locked." |
 
 The workspace name is visible metadata, and the project name is not used. Opening the item rechecks
 access and, while locked, shows the locked state.
@@ -1078,7 +1115,8 @@ project picker and in Create like any other space.
     password**, which asks for the holder's own unlock password in the inline confirm group.
   - While a rotation runs, one line below the first: "Changing the key · 62%. It continues while
     Garden club is unlocked." While locked: "Changing the key · paused until Garden club is
-    unlocked." After the finish, quietly: "New key since 23 Oct, after Ben left."
+    unlocked." After the finish, quietly: "New key since 23 Oct, after Ben left." Below it, from the start
+    onwards: "The new key opens for Ada and Cy." That is the holder set the start sealed to.
   - For owners and admins: a quiet **Lock now**, which uses the panel's inline confirm: "Everyone in
     Garden club loses access until an owner or admin unlocks it again." with **Lock Garden club** and
     **Keep it unlocked**. Owners also get **New recovery code**, behind the same inline confirm and
@@ -1144,7 +1182,7 @@ route.
 | AC-9 | S2a | Locked jobs wait: a message posted, then Lock before the generator runs, gives no notification; after unlock, exactly one. A draft summary is deferred and resumed. Push and e-mail of earlier rows still go out with no content. | `tests/app/encryption-worker.test.ts` |
 | AC-10 | S2a | Backup and restore: the backup holds no canary (the AC-7 scanner on the archive). After restore A is locked and opens with the password valid at backup time; a password set after the backup does not open it. `./flux export` of A exits non-zero with the message. | `scripts/check_backup.sh` case |
 | AC-11 | S3 | Chromium and WebKit, on desktop and phone viewports: create an encrypted space (the copy is present; the button label changes; the repeat mismatch shows an error in place), the recovery code step (Done is disabled until the box is checked; nothing in `localStorage` or `sessionStorage`), the People panel encryption and AI rows in fixed places, the project's Details line, zero `[data-ai-surface]` in A. Restart the stack: Cy sees "Waiting to be unlocked" in the sidebar and at a deep link; Ada gets the wrong-password message, then unlocks, and Cy's open tab updates without a reload. Ben sets his password. Lock now with the inline confirm, and focus returns. Keyboard only. Then a visual review under a neutral brief. | `tests/ui/test_encrypted_workspaces.py` (`./scripts/check_ui.sh`) |
-| AC-13 | S2c | **Rotation.** Before Ben (admin, holder) is removed, the test keeps what Ben could have copied: his holder row, his password, DEK v1 (through the key hook) and a dump. It removes him while A is unlocked and waits for the finish. In a **post-rotation** `pg_dump` and files volume, the offline checker (`app/tests/app/support/encryption-offline.ts`, built on the S1 crypto library) finds that Ben's password opens no holder, DEK v1 opens no envelope and no file object, and the old recovery code opens nothing. No envelope or object has a version below 2. There are no v1 DEK wraps or unlock rows. Ada unlocks and reads every canary. Then: **crash mid-rotation** (a test hook pauses after page 3; `docker kill` of the worker; restart) resumes from the cursor and finishes, with every row exactly once at v2 and none lost. A crash between a file's rename and its row update finishes correctly. **Lock mid-rotation** (Lock now, and separately a keyring restart) shows `paused`; unlock resumes and finishes. **Removal while locked** sets `pending` with no v2 until the first unlock, which starts the rotation; re-encryption follows. **Two removals** in a row end at v3, and neither person's keys open the post-rotation dump. During the rotation, live Wiki typing, messages and file uploads on both APIs keep their newest content (compare-and-set), and reads of v1 and v2 values both work. A demotion, leaving, and the removal of an owner without a password each start a rotation; a member's removal does not. A new admin's password set during a rotation opens both versions. **Tampering, with direct SQL writes and no key:** (a) a holder's `public_key` replaced; (b) a rogue `password` holder inserted for a member's account; (c) every holder's wrap of a version replaced by a box to the real public key carrying an attacker DEK; (d) a commitment or `check_value` changed. Each makes the next unlock answer `409 ENCRYPTION_TAMPERED` with no unlock row, or makes the start refuse. No DEK is ever sealed to an attacker key (the wraps table holds none for it), and the offline checker run with the attacker's private key finds nothing it can open. A removal while locked makes no new version until the first unlock, and an account deletion cascading to a holder leads to `pending` and then a rotation. Deleting the last password holder is refused by the trigger. | `tests/app/encryption-rotation.test.ts`, `app/tests/app/encryption-rotation.check.ts` |
+| AC-13 | S2c | **Rotation.** Before Ben (admin, holder) is removed, the test keeps what Ben could have copied: his holder row, his password, DEK v1 (through the key hook) and a dump. It removes him while A is unlocked and waits for the finish. In a **post-rotation** `pg_dump` and files volume, the offline checker (`app/tests/app/support/encryption-offline.ts`, built on the S1 crypto library) finds that Ben's password opens no holder, DEK v1 opens no envelope and no file object, and the old recovery code opens nothing. No envelope or object has a version below 2. There are no v1 DEK wraps or unlock rows. Ada unlocks and reads every canary. Then: **crash mid-rotation** (a test hook pauses after page 3; `docker kill` of the worker; restart) resumes from the cursor and finishes, with every row exactly once at v2 and none lost. A crash between a file's rename and its row update finishes correctly. **Lock mid-rotation** (Lock now, and separately a keyring restart) shows `paused`; unlock resumes and finishes. **Removal while locked** sets `pending` with no v2 until the first unlock, which starts the rotation; re-encryption follows. **Two removals** in a row end at v3, and neither person's keys open the post-rotation dump. During the rotation, live Wiki typing, messages and file uploads on both APIs keep their newest content (compare-and-set), and reads of v1 and v2 values both work. A demotion, leaving, and the removal of an owner without a password each start a rotation; a member's removal does not. A new admin's password set during a rotation opens both versions. **Tampering, with direct SQL writes and no key:** (a) a holder's `public_key` replaced; (b) a rogue `password` holder inserted for a member's account; (c) every holder's wrap of a version replaced by a box to the real public key carrying an attacker DEK; (d) a commitment or `check_value` changed. Each makes the next unlock answer `409 ENCRYPTION_TAMPERED` with no unlock row, or makes the start refuse. No DEK is ever sealed to an attacker key (the wraps table holds none for it), and the offline checker run with the attacker's private key finds nothing it can open. A removal while locked makes no new version until the first unlock, and an account deletion cascading to a holder leads to `pending` and then a rotation. Deleting the last password holder is refused by the trigger. A holder with a confirmation whose wrap is replaced by a DEK with a valid forged commitment (made with DEK v-1) is refused. A restored old holder row with its tombstone present is not sealed to, and the started event lists the holder set. An unlock after a repaired restore of the key tables succeeds and clears `tampered_at`. A cascade deletion during `reencrypting` leads to a rotation to *n*+2. Inserting version 2 with no commitment is refused. A writer that read `current_version` before a start, held open across it, cannot commit a v*n* value after the finish. | `tests/app/encryption-rotation.test.ts`, `app/tests/app/encryption-rotation.check.ts` |
 | AC-12 | each | Final candidate evaluated independently under the [bounded review policy](../agents/evaluation.md). | PR review |
 
 ## Delivery slices
