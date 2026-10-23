@@ -98,8 +98,9 @@ class ReachabilityRows(LiveBase):
         self.browser = self.engines[engine]
 
     def context(self, who: str | None, *, viewport: dict | None = None, phone: bool = False, reduced: bool = False,
-                dark: bool = False, device: str | None = None, block_workers: bool = False):
-        options: dict = {"base_url": ORIGIN, "color_scheme": "dark" if dark else "light", "locale": "en-GB", "timezone_id": "Europe/Warsaw"}
+                dark: bool = False, device: str | None = None):
+        # Every context blocks service workers (#271): a held request is only seen by page.route when no worker answers it.
+        options: dict = {"base_url": ORIGIN, "color_scheme": "dark" if dark else "light", "locale": "en-GB", "timezone_id": "Europe/Warsaw", "service_workers": "block"}
         if device:
             descriptor = {k: v for k, v in self.pw.devices[device].items() if k != "default_browser_type"}
             options.update(descriptor)
@@ -109,9 +110,6 @@ class ReachabilityRows(LiveBase):
             options.update(viewport=viewport or DESKTOP, device_scale_factor=1)
         if reduced:
             options["reduced_motion"] = "reduce"
-        if block_workers:
-            # A held request is only seen by page.route when no service worker answers it.
-            options["service_workers"] = "block"
         if who and who in self.states:
             options["storage_state"] = self.states[who]
         context = self.browser.new_context(**options)
@@ -143,9 +141,9 @@ class ReachabilityRows(LiveBase):
         self.addCleanup(self.leave_quietly, host)
         return host
 
-    def guest_join(self, engine: str, *, phone: bool = False, device: str | None = None, block_workers: bool = False) -> Page:
+    def guest_join(self, engine: str, *, phone: bool = False, device: str | None = None) -> Page:
         self.use(engine)
-        page = self.page("kai", phone=phone, device=device, block_workers=block_workers)
+        page = self.page("kai", phone=phone, device=device)
         self.open_conversation(page, self.conversation_url())
         page.locator("header.top, header.phead").get_by_role("button", name="Join").click()
         expect(self.bar(page).get_by_role("status").first).to_contain_text("Live")
@@ -391,7 +389,7 @@ class ReachabilityRows(LiveBase):
         # A navigation waiting for its code shows "Opening ..." over the work, not above the strip: the header,
         # the strip and the work keep their places (Spokoj: a control never changes place).
         self.start_host()
-        guest = self.guest_join("chromium", phone=True, block_workers=True)
+        guest = self.guest_join("chromium", phone=True)
         held: list = []
         guest.route(re.compile(r"/assets/ProjectTasks-[^/]+\.js(?:\?.*)?$"), lambda route: held.append(route))
         self.addCleanup(lambda: [route.abort("aborted") for route in held])
@@ -419,7 +417,7 @@ class ReachabilityRows(LiveBase):
         # pane (not a row in the flow that pushes the work), with its own way back.
         host = self.start_host()
         self.share_host_screen(host)
-        guest = self.guest_join("chromium", phone=True, block_workers=True)
+        guest = self.guest_join("chromium", phone=True)
         held: list = []
         guest.route(re.compile(r"/assets/LiveStage-[^/]+\.js(?:\?.*)?$"), lambda route: held.append(route))
         self.addCleanup(lambda: [route.abort("aborted") for route in held])
