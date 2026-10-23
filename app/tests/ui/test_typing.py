@@ -1,7 +1,7 @@
 """Real two-account typing journeys, not a simulated presence implementation.
 
-Public API fixtures, actual cookie-authenticated sockets, Chromium DOM and native
-messages. A receiver transport test drops only real server frames. It never
+Public API fixtures, actual cookie-authenticated sockets, Chromium or WebKit DOM
+(FLUX_UI_BROWSER, default chromium) and native messages. A receiver transport test drops only real server frames. It never
 fabricates identity, availability or people. Timing observations are individual
 regressions, not the contract's outstanding 128-socket performance acceptance.
 """

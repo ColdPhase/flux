@@ -1,7 +1,7 @@
 """Subtle navigation feedback and arrival motion (#155 AC-1, AC-4, AC-5; Studio 11.6 UI116-5).
 
-Real accounts, projects and messages through the public API; Chromium with and without reduced
-motion. Navigation is held at the actual network boundary to observe an interrupted choice; nothing
+Real accounts, projects and messages through the public API; Chromium or WebKit (FLUX_UI_BROWSER,
+default chromium), with and without reduced motion. Navigation is held at the actual network boundary to observe an interrupted choice; nothing
 is fabricated in the page. Video of the interruption journeys goes to FLUX_UI_SCREENSHOTS when set.
 Screenshots and video are evidence of placement only; timings are measured by motion_performance.py.
 """
