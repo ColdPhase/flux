@@ -16,7 +16,13 @@ import unittest
 import uuid
 
 from playwright.sync_api import expect, sync_playwright
-from test_app_shell import ORIGIN, UPSTREAM, shot, start_forwarder
+from test_app_shell import ORIGIN, UPSTREAM, UI_BROWSER, shot as save_shot, start_forwarder
+
+
+def shot(page, name):
+    """Screenshots of the other engine are named apart (FLUX_UI_BROWSER, #461)."""
+    save_shot(page, name if UI_BROWSER == "chromium" else f"{name}-{UI_BROWSER}")
+
 
 PASSWORD = "quiet activity in a real conversation"
 STAMP = uuid.uuid4().hex[:12]
@@ -33,7 +39,7 @@ class TypingJourney(unittest.TestCase):
         if UPSTREAM:
             start_forwarder(ORIGIN, UPSTREAM)
         cls.pw = sync_playwright().start()
-        cls.browser = cls.pw.chromium.launch()
+        cls.browser = getattr(cls.pw, UI_BROWSER).launch()
         expect.set_options(timeout=10000)
         for key, name in PEOPLE.items():
             context = cls.browser.new_context(base_url=ORIGIN)
@@ -454,6 +460,123 @@ class TypingJourney(unittest.TestCase):
         shot(bob, "typing-project-390-virtual-keyboard")
         self.composer(alice).blur()
         expect(bob.locator(".typing-notice")).not_to_contain_text("Alice Rivera", timeout=750)
+
+    def open_at(self, who, index=0, *, conversation_path=None, **options):
+        """A thread opened by URL, with no earlier page load: its sockets only ever belong to this scope."""
+        page = self.page(who, **options)
+        page.goto(conversation_path or self.path(index))
+        expect(page.locator("#thread .typing-notice")).to_have_attribute("data-availability", "ready")
+        return page
+
+    def work_with_root(self, title):
+        """A task with its accepted discussion root (the task's one thread), through the public API."""
+        owner = self.page("alice")
+        work = owner.request.post(f"/api/v1/projects/{self.project}/work", data={"title": title, "clientCommandId": str(uuid.uuid4())}, headers={"origin": ORIGIN})
+        self.assertEqual(work.status, 201, work.text())
+        work = work.json()
+        root = owner.request.post(f"/api/v1/work/{work['id']}/discussion", data={"body": "Start with the reading corner at dusk.", "clientMessageId": str(uuid.uuid4()), "kind": "text"}, headers={"origin": ORIGIN})
+        self.assertEqual(root.status, 201, root.text())
+        conversation = root.json()["conversationId"]
+        owner.context.close()
+        return work, conversation
+
+    def panel(self, who, task, *, viewport=None):
+        """The task in the one detail panel (F-026 P10), beside the Tasks view."""
+        page = self.page(who, viewport=viewport)
+        page.goto(f"/projects/{self.project}/tasks?open=work:{task}")
+        return page
+
+    def test_12_the_task_panel_shares_the_task_threads_presence_and_nothing_else(self):
+        """AC-2: the composer in the task panel (Details) is the third view of the task's one thread. Writing there
+        shows one person typing in the panel and in the task's thread in Conversation, never to the writer, never in
+        another conversation, and it ends on blur and on send. Nothing is stored for it."""
+        work, conversation = self.work_with_root("Place the manual switch")
+        bare = self.page("alice")
+        created = bare.request.post(f"/api/v1/projects/{self.project}/work", data={"title": "Sand the lamp base", "clientCommandId": str(uuid.uuid4())}, headers={"origin": ORIGIN})
+        self.assertEqual(created.status, 201, created.text())
+        bare_id = created.json()["id"]
+        alice = self.panel("alice", work["id"])
+        bob = self.panel("bob", work["id"])
+        for page in (alice, bob):
+            expect(page.locator("#details .typing-notice")).to_have_attribute("data-availability", "ready")
+        thread = self.open_at("bob", conversation_path=f"/projects/{self.project}/conversations/{conversation}")
+        elsewhere = self.open_at("viewer", 1)  # another conversation's thread: the same project, a different scope
+        before = alice.request.get(f"/api/v1/work/{work['id']}/discussion").json()
+        field = alice.locator("#details").get_by_label("Write to this task")
+        notice = bob.locator("#details .typing-notice")
+        bob_field = bob.locator("#details").get_by_label("Write to this task")
+        bob_field.fill("PRIVATE-DRAFT receiver in the panel")
+        bob_field.focus()
+        box_before = bob_field.bounding_box()
+        self.measure("task-panel-input-visible", lambda: field.fill("PRIVATE-DRAFT author in the task panel"), lambda: expect(notice).to_have_text("Alice Rivera is typing…", timeout=2000), 2000)
+        expect(thread.locator("#thread .typing-notice")).to_have_text("Alice Rivera is typing…", timeout=2000)
+        # Her own panel never shows her; the receiver's draft, focus and box stay where they were.
+        expect(alice.locator("#details .typing-notice")).not_to_contain_text("Alice Rivera")
+        expect(bob_field).to_be_focused()
+        expect(bob_field).to_have_value("PRIVATE-DRAFT receiver in the panel")
+        self.assertEqual(box_before, bob_field.bounding_box(), "the typing line takes no room from the box")
+        expect(elsewhere.locator("#thread .typing-notice")).not_to_contain_text("Alice Rivera")
+        # The same person writing in the panel and in the task's thread in Conversation is one person typing.
+        alice_thread = self.open_at("alice", conversation_path=f"/projects/{self.project}/conversations/{conversation}")
+        self.composer(alice_thread).fill("PRIVATE-DRAFT from the Conversation thread")
+        alice_thread.wait_for_timeout(600)
+        expect(notice).to_have_text("Alice Rivera is typing…")
+        expect(thread.locator("#thread .typing-notice")).to_have_text("Alice Rivera is typing…")
+        self.composer(alice_thread).blur()
+        self.measure("task-panel-blur-stop", lambda: field.blur(), lambda: expect(notice).not_to_contain_text("Alice Rivera", timeout=750), 750)
+        expect(thread.locator("#thread .typing-notice")).not_to_contain_text("Alice Rivera", timeout=750)
+        # Sending ends it at once and stores exactly the one message that was sent.
+        field.fill("Start with the reading corner at dusk, then the manual switch.")
+        expect(notice).to_have_text("Alice Rivera is typing…", timeout=2000)
+        self.measure("task-panel-send-stop", lambda: field.press("Enter"), lambda: expect(notice).not_to_contain_text("Alice Rivera", timeout=750), 750)
+        expect(alice.locator("#details .wd-act__bubble", has_text="then the manual switch")).to_have_count(1, timeout=10000)
+        after = alice.request.get(f"/api/v1/work/{work['id']}/discussion").json()
+        self.assertEqual(len(after["messages"]), len(before["messages"]) + 1, "only the sent message is stored")
+        # Frames carry names and a boolean, never draft text; the other conversation's reader only ever heard its own scope.
+        for page, who in ((alice, "alice"), (bob, "bob"), (thread, "bob")):
+            self.assert_wire(page, who)
+        self.assertEqual({frame["context"]["id"] for frame in elsewhere.typing_received if frame["type"] == "snapshot"}, {self.conversations[1]})
+        # On a phone the task is a sheet: the same line, the same scope, and the box does not move.
+        phone = self.panel("bob", work["id"], viewport={"width": 390, "height": 844})
+        phone_field = phone.locator("#details").get_by_label("Write to this task")
+        expect(phone.locator("#details .typing-notice")).to_have_attribute("data-availability", "ready")
+        phone_box = phone_field.bounding_box()
+        field.fill("PRIVATE-DRAFT author, watched from a phone")
+        expect(phone.locator("#details .typing-notice")).to_have_text("Alice Rivera is typing…", timeout=2000)
+        self.assertEqual(phone_box, phone_field.bounding_box(), "the typing line takes no room from the phone sheet's box")
+        field.blur()
+        expect(phone.locator("#details .typing-notice")).not_to_contain_text("Alice Rivera", timeout=750)
+        # A task with no first message has no thread: the line is an empty, aria-hidden spacer and no socket is opened.
+        quiet = self.panel("alice", bare_id)
+        label = quiet.locator("#details").get_by_label("First message about this task")
+        expect(label).to_be_visible()
+        label.fill("PRIVATE-DRAFT before any thread exists")
+        quiet.wait_for_timeout(1800)
+        self.assertEqual((quiet.typing_sent, quiet.typing_received), ([], []), "no root and no socket just to show presence")
+        spacer = quiet.locator("#details .wd__foot .typing-notice")
+        self.assertEqual(spacer.get_attribute("aria-hidden"), "true")
+        self.assertEqual(spacer.bounding_box()["height"], notice.bounding_box()["height"], "the same line height with and without a thread")
+
+    def test_13_typing_is_scoped_to_the_thread_the_stream_has_no_scope(self):
+        """AC-2: a person writing in one thread is invisible in another thread and in the stream, which has no
+        conversation of its own: the stream shows no typing line and opens no typing socket."""
+        alice = self.open_at("alice", 0)
+        same = self.open_at("bob", 0)
+        other = self.open_at("viewer", 1)
+        stream = self.page("bob")
+        stream.goto(f"/projects/{self.project}")
+        expect(stream.get_by_label("Write a message", exact=True)).to_be_visible()
+        self.composer(alice).fill("PRIVATE-DRAFT in the first thread only")
+        expect(same.locator("#thread .typing-notice")).to_have_text("Alice Rivera is typing…", timeout=2000)
+        other.wait_for_timeout(1500)
+        expect(other.locator("#thread .typing-notice")).not_to_contain_text("Alice Rivera")
+        self.assertEqual(stream.locator(".typing-notice").count(), 0, "the stream shows no typing line")
+        self.assertEqual((stream.typing_sent, stream.typing_received), ([], []), "the stream opens no typing socket")
+        self.assertEqual({frame["context"]["id"] for frame in other.typing_received if frame["type"] == "snapshot"}, {self.conversations[1]})
+        self.assertEqual({frame["context"]["id"] for frame in same.typing_received if frame["type"] == "snapshot"}, {self.conversations[0]})
+        # Opening the second thread moves the writer's scope: the first thread's reader hears the stop.
+        self.measure("thread-switch-stop", lambda: self.open_thread(alice, 1), lambda: expect(same.locator("#thread .typing-notice")).not_to_contain_text("Alice Rivera", timeout=750), 750)
+        self.assert_wire(alice, "alice")
 
 
 if __name__ == "__main__":

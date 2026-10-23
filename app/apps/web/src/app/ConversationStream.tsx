@@ -610,7 +610,7 @@ export function ConversationStream({ project, meId, meName, roots: stream, notic
     <div className="convo-stream">
     {revealed ? null : <Opening name={project.name} />}
     <SinceLine projectId={project.id} roots={roots} onJump={jump} />
-    <div className={`project-convo__feed is-stream${revealed ? '' : ' is-opening'}`} ref={attachFeed} aria-busy={revealed ? undefined : true}
+    <div className={`project-convo__feed is-stream${revealed ? '' : ' is-opening'}${entries.length || outbox.pending.length ? ' is-filled' : ''}`} ref={attachFeed} aria-busy={revealed ? undefined : true}
       data-associations-observed-at={messageWork.page?.observedAt} data-associations-phase={messageWork.state.phase}
       data-references-observed-at={referenceWork.observation?.observedAt} data-references-phase={referenceWork.state.phase}>
       <div className="project-convo__in" data-shift ref={columnRef}>

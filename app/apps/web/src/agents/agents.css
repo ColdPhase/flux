@@ -143,7 +143,8 @@
   .agents__head { display: contents; }
   .agents__title { order: -2; }
   .agents__count { order: -1; flex: none; margin-top: calc(var(--s-4) * -1); }
-  .agents__handoff { order: 99; position: sticky; bottom: var(--s-3); width: 100%; min-height: var(--ctl-lg); margin-top: auto; }
+  /* z-index: the rows (positioned, later in the document) must not paint or take taps over the sticky button in WebKit. */
+  .agents__handoff { order: 99; position: sticky; z-index: 2; bottom: var(--s-3); width: 100%; min-height: var(--ctl-lg); margin-top: auto; }
   .agents-composer__hint { display: none; }
 }
 
