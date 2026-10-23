@@ -415,6 +415,9 @@ button.wd-link:active:not(:disabled) { background: var(--sub); transform: scale(
 .wd-activity .details__sec { margin-top: 10px; }
 .wd-activity > section.details__sec { margin-top: 12px; }
 .wd-composer { display: flex; flex-direction: column; gap: 8px; }
+/* The typing line (#155) sits snug under the box; it is always there, so the box never moves when a thread starts. */
+.wd-composer > .typing-notice { margin: -4px 6px 0; }
+.wd__foot > .typing-notice { margin: 4px 6px 0; }
 .wd-foot__note { margin: 8px 6px 0; }
 .wd-activity > .details__sec { margin-top: 14px; }
 .wd-activity > .details__sec .wd-link { font-size: var(--fs-sm); color: var(--t2); }

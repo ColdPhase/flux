@@ -341,6 +341,32 @@ export function ConversationStream({ project, meId, meName, roots: stream, notic
     ids: display.flatMap((entry) => entry.kind === 'root' && entry.root.message.authorId !== meId ? [entry.root.message.id] : []), depend: entries.length });
   if (!revealed && (openingSettled || openingTimedOut)) setRevealed(true);
   const columnRef = useRef<HTMLDivElement>(null);
+  // A short stream sits against its composer, as in a messenger, instead of at the top with the screen's spare height
+  // between it and the field (adaptive-workspaces ADAPT-2, tall screens). The spare height goes above the stream when
+  // the entries or the feed's size change. A row that grows or shrinks in place (a queued message becoming the stored
+  // one, an image arriving) only gives height back and never moves what is already there. A stream that fills the feed
+  // has no spare height, so the reading position owners below see the same scroll geometry as before.
+  const liftRef = useRef<HTMLDivElement>(null);
+  const liftCount = display.length + outbox.pending.length;
+  useLayoutEffect(() => {
+    const feed = feedRef.current;
+    const column = columnRef.current;
+    const lift = liftRef.current;
+    if (!feed || !column || !lift) return undefined;
+    let height = 0;
+    const spare = () => (liftCount ? Math.max(0, Math.round(feed.clientHeight - column.offsetHeight)) : 0);
+    const set = (value: number) => { if (value !== height) { height = value; lift.style.height = `${value}px`; } };
+    set(spare());
+    let feedHeight = feed.clientHeight;
+    let feedWidth = feed.clientWidth;
+    const observer = new ResizeObserver(() => {
+      // The feed's own size (a keyboard, a rotation, the panel docking so the text wraps again) takes the spare height afresh.
+      if (feed.clientHeight !== feedHeight || feed.clientWidth !== feedWidth) { feedHeight = feed.clientHeight; feedWidth = feed.clientWidth; set(spare()); } else set(Math.min(height, spare()));
+    });
+    observer.observe(feed);
+    observer.observe(column);
+    return () => observer.disconnect();
+  }, [liftCount, feedNode]);
   const pinRef = useRef<{ id: string; offset: number } | null>(null);
   /** The first entry in view and its offset from the top, as the reader last left it. */
   const anchorRef = useRef<{ id: string; offset: number } | null>(null);
@@ -613,6 +639,7 @@ export function ConversationStream({ project, meId, meName, roots: stream, notic
     <div className={`project-convo__feed is-stream${revealed ? '' : ' is-opening'}`} ref={attachFeed} aria-busy={revealed ? undefined : true}
       data-associations-observed-at={messageWork.page?.observedAt} data-associations-phase={messageWork.state.phase}
       data-references-observed-at={referenceWork.observation?.observedAt} data-references-phase={referenceWork.state.phase}>
+      <div className="project-convo__lift" aria-hidden="true" ref={liftRef} />
       <div className="project-convo__in" data-shift ref={columnRef}>
         <section aria-label="Messages" className="project-convo__messages">
           {stream.hasOlder ? <Button variant="quiet" busy={stream.olderBusy} onClick={() => void loadOlder()}>Load earlier messages</Button> : null}

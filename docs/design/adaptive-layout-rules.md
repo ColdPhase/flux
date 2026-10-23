@@ -1,19 +1,20 @@
 # Adaptive layout rules: panes, breakpoints, input and surfaces (#151 AC-1)
 
-**Appearance target since 2026-10-07: the [final design](final/README.md) (F-026); the measured
-rules below describe the application before it.**
+**Appearance target since 2026-10-07: the [final design](final/README.md) (F-026), refined by
+[Spokój](spokoj/README.md) (2026-10-15).** This page records the layout rules of the application as shipped
+and measured, not a new design.
 
-**Proposed amendment to [F-015 adaptive workspaces](adaptive-workspaces.md), 2026-10-05,
-Zamojski5 (claude-maurycy). Independent peer review is pending; it is not accepted yet.**
-It records the current rules of the application as implemented and measured at
-branch `claude-maurycy/151-adaptive-matrix`, the three rules this slice adds (readable
-measure, coarse-pointer targets, map camera), and the gaps that remain. Pixel values are CSS
-pixels at 100% browser zoom. A rule chosen by the space a pane actually has is marked
-*container*. A rule chosen by the whole window is marked *viewport*.
+**Proposed amendment to [F-015 adaptive workspaces](adaptive-workspaces.md), first written 2026-10-05 by
+Zamojski5 (claude-maurycy) and re-recorded 2026-10-23 at `main` `e4b4fab7` for the Prostota and Spokój
+shell by PelikanFix16 (claude-hubert). Independent peer review is pending; it is not accepted yet.**
+It records the rules of the application as implemented and measured, the three rules that #265 added
+(readable measure, coarse-pointer targets, map camera), and the gaps that remain. Pixel values are CSS
+pixels at 100% browser zoom. A rule chosen by the space a pane actually has is marked *container*. A rule
+chosen by the whole window is marked *viewport*.
 
-All measurements here come from emulated viewports in headless Chromium 151 in Docker. They
-are not evidence for a physical 4K or ultrawide display, OS scaling, a real phone keyboard, or
-an Android, iPhone or iPad. Those sessions remain open under #151 AC-5 and #20 (needs Maurycy).
+All measurements here come from emulated viewports in headless Chromium and WebKit in Docker. They are
+not evidence for a physical 4K or ultrawide display, OS scaling, a real phone keyboard, or an Android,
+iPhone or iPad. Real hardware is optional (founder direction #266 item 10).
 
 ## Fixture
 
@@ -32,21 +33,23 @@ Content:
 - six tasks: open, in progress, blocked with its blocker, and done, each linked to thoughts;
 - a published wiki page with long prose, a list and code.
 
-Agents lists the three connections as three entries under the
+Agents is one list with a row for each of Hubert's two agents' connections and Marek's one, under the
 [CO-1 connection model](../product/mcp-cowork.md#connections-and-owner-authorized-autonomy--co-1).
 
 ## Pane and breakpoint rules
 
 | Space | Rule | Kind | Source |
 | --- | --- | --- | --- |
-| ≤ 640 px | Phone composition: 56 px header; the state line and "What matters" in one row under it; Details is a full-screen sheet; the map shows two card columns | viewport | `ui/motion.ts` `MEDIA.phone`, `app/app.css`, `ui/SidePanel.tsx` |
-| ≤ 680 px | The sidebar becomes a 260 px drawer; the work sheet fills the screen | viewport | `MEDIA.navDrawer`, `app/app.css` |
-| 641–1000 px | Details overlays the work from the right (≤ 420 px) | viewport | `MEDIA.panelOverlay` |
-| > 1000 px | Details docks beside the work: 375 px (≤ 1200), 408 px, 430 px (≥ 1600) | viewport | `ui/tokens.css` `--panel-w` |
-| Conversation split ≥ 760 px | A thread docks beside the stream at `clamp(320px, 40%, --panel-w)`; narrower, it is a sheet over the stream | container | `app/OneConversation.tsx` |
-| Board ≤ 699 px | Tasks shows a status overview with counts, blocked included, and one column at a time; wider, three columns, with cards in auto-fill 260 px tracks inside each column | container | `work/board.css` `@container tasks` |
-| Wiki 1300 / 1000 / 860 / 720 / 519 / 379 px | Document column 890 / 820 px; the index narrows; history stacks; ≤ 519 one column with a page strip; ≤ 379 icon-only actions | container | `docs/docs.css` `@container wiki`, `wikimain` |
-| Agents | One 854 px column; connections wrap in one row when they fit | per surface | `agents/agents.css` |
+| ≤ 640 px | Phone composition ([#341](https://github.com/ColdPhase/flux/issues/341)): a 56 px header (Back, the title that opens the view menu, Together, Search), the same in every view; Home, Projects and Inbox in a capsule outside a conversation and none inside one; Details and threads are sheets; the map shows two card columns | viewport | `ui/motion.ts` `MEDIA.phone`, `app/app.css`, `app/PhoneChrome.tsx`, `ui/DetentSheet.tsx` |
+| 641–680 px | The work area runs edge to edge; Open navigation opens the 260 px drawer | viewport | `MEDIA.navDrawer`, `app/app.css` |
+| ≤ 900 px | The sidebar is the 64 px rail and its expand control opens the drawer. The project title is the view menu, so the views leave the header | viewport | `MEDIA.tablet`, `app/app.css`, `docs/design/spokoj` "Layout per screen" |
+| ≤ 1000 px | The one panel (Details, a thread) overlays the work from the right: 380 px at 820 | viewport | `MEDIA.panelOverlay`, `ui/ui.css` |
+| > 1000 px | The panel docks beside the work and replaces its content for the next object, never a third column: 380 px up to 1200, 420 px, 480 px from 1920. The conversation is at most 760 px from 1920 | viewport | `ui/tokens.css` `--panel-w`, `app/project-conversation.css` `.project-convo__in` |
+| Board < 700 px | Tasks shows a status overview with counts, blocked included, and one column at a time; wider, three columns, with cards in auto-fill tracks inside each column | container | `work/board.css` `@container tasks` |
+| Wiki 1000 / 860 / 720 / 499 px | The index narrows to 196 then 180 px; the outline goes below 860; history stacks below 720; below 499 one column with a page strip | container | `docs/docs.css` `@container wiki`, `wikimain` |
+| Thread feed < 400 px | A docked panel on a small laptop has no room beside a bubble: the three message actions sit in the bubble's corner | container | `work/message-actions.css` `@container thread-feed` |
+| Map pane ≤ 680 px, canvas ≤ 1080 px wide or ≤ 560 px tall | "Select several" is its icon alone; the zoom controls rise above the tools; the minimap goes | container | `sketch/sketch.css` `@container` |
+| Agents | One list in an 854 px column; the three connections are three rows | per surface | `agents/agents.css` |
 
 No rule caps the whole application. Reading measures are set per surface.
 
@@ -58,13 +61,14 @@ canvas actually has. A narrowed desktop canvas, for example with Details docked,
 - **`pointer: coarse`**: every primary action offers a 44 × 44 px target of its own. A target
   is measured from its centre until another element or nothing is hit, so a stretched card link
   counts and an adjacent control does not. The primary actions per surface:
-  - shell: view tabs, Open navigation, Details, Close details;
+  - shell: the views (tabs, or the title's menu up to 900 px), Open navigation, Details, Close details;
   - Conversation: the message field, Send message, Reply, the reply field, Send reply and Close
     replies;
   - Map: the Sketch tools, Map / List and the zoom controls, plus the list rows;
-  - Tasks: New Task, Kanban / List, the phone status buttons and task cards;
+  - Tasks: New Task, Board / List, the status overview buttons and task cards; on the phone Create, Mine / All,
+    a task's state glyph and its row;
   - Wiki: Edit and the page index;
-  - Agents: the task selector, the task message field and Send to task.
+  - Agents: Hand off a task.
 
   The message and reply fields keep their 36 px line, and their own hit area reaches 44 px into
   the card padding. Inline links in cards and messages are not primary targets. Neither are
@@ -72,7 +76,7 @@ canvas actually has. A narrowed desktop canvas, for example with Details docked,
   extension. Those links are listed with their measured sizes in the
   [slice evidence](https://github.com/ColdPhase/flux/blob/b17ae9e357441e9a383eb275d1034e69ec50c98a/docs/agents/evidence/151-adaptive-matrix/README.md) and left for
   #136 design review.
-- **`hover: none`** (or ≤ 680 px): Enter adds a line and the send button sends (#189).
+- **`hover: none`**: Enter adds a line and the send button sends (#189).
 - **`hover: hover`**: the Reply action under a message appears on hover or focus.
   Without hover it is always visible.
 - Viewport width alone never implies touch. The matrix uses a coarse pointer for 320–1024 px and
@@ -82,24 +86,24 @@ canvas actually has. A narrowed desktop canvas, for example with Details docked,
 
 On any rendered line of running prose, at most **90 characters**, spaces included, counted
 from rendered line boxes. WCAG 1.4.8 (AAA) names 80. 90 is the ceiling chosen here for the
-compact 14 px type. Measured longest lines, 320–5120 px:
+compact 14 px type. Measured longest lines, 320–5120 px (re-measured 2026-10-23 in Chromium and WebKit):
 
 | Surface | Longest line | Rule |
 | --- | --- | --- |
-| Conversation messages | 39–87 | bubbles `min(600px, 87%)` |
-| Replies | 44–77 | thread width |
-| Wiki prose | 45–83 | `66ch` for paragraphs, lists and quotes inside the unchanged 820/890 px column. Tables, code and images keep the column width. Before: 118–130 from 1440 px |
-| Map hint | 68–87 | `66ch`. Before: 111–224 |
+| Conversation messages | 37–89 | the stream's column, at most 760 px |
+| Replies | 37–82 | the panel's width |
+| Wiki prose | 37–89 | `62ch` for paragraphs, lists and quotes inside the 820 px page (850 in focus mode). Tables, code and images keep the page width |
+| Map hint | 33–72 | `min(640px, 100%)` |
 
 ## Surface mapping
 
 | Surface | Phone ≤ 640 | Tablet / split 641–1000 | Laptop 1001–1599 | Wide ≥ 1600 |
 | --- | --- | --- | --- | --- |
-| Conversation | One stream, avatars hidden; the thread is a full sheet with Close replies | Stream beside the sidebar; the thread is a sheet over the stream while the split is < 760 px | Thread docked beside the stream (from 1024 px without Details) | Stream (≥ 600 px), docked thread and docked Details side by side from 1920 px |
-| Map / list | Two card columns at full size; tools in a grid; its own camera and zoom | Plane with Fit; Details overlays | Plane; Details docks without moving the camera | Plane, capped at the 1080 px sketch page (gap below) |
-| Tasks | Status overview with blocked count and one column | Overview while the board is < 700 px wide | Three columns; Details docks beside the board, which shows the overview while it is under 700 px | Three columns beside docked Details; more cards per row (the Open column's three cards on one row at 3840 px) |
-| Wiki | One column, page strip above the document | Index beside the document | Index, 820 px document, 66ch prose | Index, 890 px document, 66ch prose |
-| Agents | One column; composer below the thread | Same column | 854 px column, the three connections in one row, Details docks | Same; no wide-screen context column yet (gap below) |
+| Conversation | One stream; no tab bar; the thread is a sheet (Replies) with Close replies | The stream beside the rail; the thread overlays as the 380 px panel | The thread docks beside the stream as the one panel; Details takes the same panel and a Thread button returns to it | The stream (≥ 600 px, at most 760 px from 1920) and one docked 480 px panel; extra width is margin, never a third column |
+| Map / list | Two card columns at full size; the tools in a grid; its own camera and zoom | The plane fills the pane with Fit; Details overlays | The plane; Details docks and narrows the pane | The plane fills its pane and grows with the screen: 1664, 2304 and 3584 px at 1920, 2560 and 3840 |
+| Tasks | The drawn Mine \| All list with state glyphs; no board | A board that shows the status overview (blocked count, one column) while it is under 700 px wide | Three columns; Details docks beside the board | Three columns beside docked Details; more cards per row (the Open column's three cards on one row at 3840 px, three rows at 1440) |
+| Wiki | One column, a page strip above the document | The index beside the document from 768 px | The index (180–196 px) and the 820 px page, 62ch prose | The same: extra width is margin |
+| Agents | One list; the composer below the thread | The same list | One 854 px column, the three connections as three rows, Details docks | The same column (WIDE_CAPS in the matrix; see Remaining) |
 
 The same five tabs keep their names and order at every width. The same primary actions
 remain reachable. Own messages stay on the right and other people's on the left.
@@ -116,6 +120,11 @@ remain reachable. Own messages stay on the right and other people's on the left.
   - On a first visit to a projection, the selected thought, or else the first one in view, stays
     where the person saw it.
   - Nothing auto-fits on a resize.
+- **Short stream** (ADAPT-2, tall screens): when the stream does not fill its feed, the spare height goes above it
+  (`ConversationStream`, `.project-convo__lift`), so the newest message sits 23–27 px above the field from 390×844 to
+  3840×2160 instead of up to 1800 px away. The spare height is taken when the entries or the feed's size change. A row
+  that changes height in place (a queued message becoming the stored one) only gives height back, so it never moves.
+  A stream that fills the feed has no spare height and scrolls as before.
 - Drafts, selection, the reading anchor, an open thread and the object in Details survive resize,
   rotation and a keyboard emulated as a shorter viewport. No transition saves or sends anything.
   The tests check this against the API.
@@ -124,8 +133,10 @@ remain reachable. Own messages stay on the right and other people's on the left.
 ## Verification
 
 [`app/tests/ui/test_adaptive_matrix.py`](../../app/tests/ui/test_adaptive_matrix.py) runs in
-`./scripts/check_ui.sh` on the shared fixture. Its record for the current head is
-[`docs/agents/evidence/151-adaptive-rest`](https://github.com/ColdPhase/flux/blob/b17ae9e357441e9a383eb275d1034e69ec50c98a/docs/agents/evidence/151-adaptive-rest/README.md). It covers:
+`./scripts/check_ui.sh` on the shared fixture, in Chromium by default and in WebKit with
+`FLUX_UI_BROWSER=webkit ./scripts/check_ui.sh test_adaptive_matrix`. The record of the first slice is
+[`docs/agents/evidence/151-adaptive-rest`](https://github.com/ColdPhase/flux/blob/b17ae9e357441e9a383eb275d1034e69ec50c98a/docs/agents/evidence/151-adaptive-rest/README.md); the counts of the current head are in
+its pull request. The test covers:
 
 - the same journey (Conversation, its thread, Map, List, Tasks, a task in Details, Wiki, Agents,
   back) at all 23 starting fixtures of
@@ -136,8 +147,17 @@ remain reachable. Own messages stay on the right and other people's on the left.
   CSS boxes as ratio 1 for the pane, feed, map canvas, task board and Details, in four views;
 - the dark theme for the same journey at 390×844 and 3440×1440;
 - wide caps, measured at 1920, 2560 and 3840 px (below);
-- transitions: the map camera, drafts, reading place, wiki text and Details survive resize, rotation
-  and a shorter viewport, with nothing saved or sent.
+- a short stream on a tall screen: with two messages, the newest message and the message field are at most
+  `MAX_STREAM_GAP` apart from 390×844 to 3840×2160, because a stream that does not fill its feed sits against its
+  composer instead of leaving the screen's spare height between them;
+- browser zoom and text enlargement (ADAPT-5): all five views at 1280×1024 at 400% (a 320×256 CSS viewport) and
+  1280×720 at 200% (640×360), emulated as the window divided by the zoom with the pixel ratio multiplied by it, and
+  at 390×844, 820×1180 and 1440×900 with the root text size at 200%, where the test first measures that a message's
+  text really doubled. Each view has no sideways page scroll and its primary actions are reachable by scrolling;
+- transitions: the map camera, drafts, reading place, wiki text (the shared working copy when live editing is on) and
+  Details survive resize, rotation and a shorter viewport, with nothing saved or sent; a saved task opens for the same
+  account on another device, for a colleague with access, and for nobody else, while an unsent draft stays on the
+  device it was written on.
 
 **Known gaps.** `KNOWN_GAPS` in the test names what the current head does not meet. Each gap is still
 measured and reported as open, never as passing, and the matrix fails when one stops showing, so a
@@ -145,19 +165,20 @@ closed gap must be removed from the list.
 
 No gaps are open: `KNOWN_GAPS` is empty.
 
-**Wide caps.** `WIDE_CAPS` in the test names two ADAPT-2 caps. Both are measured by `test_07`, which
-fails once a cap disappears. Measured in CSS px at 1920, 2560 and 3840: the map plane is 1032, 1032
-and 1032; the Agents column is 854, 854 and 854. The plane's cap is in `sketch/sketch.css`, owned by
-the map work in PR [#380](https://github.com/ColdPhase/flux/pull/380). The column's cap is in
-`agents/agents.css`, owned by the Agents work in PR [#376](https://github.com/ColdPhase/flux/pull/376)
-and PR [#417](https://github.com/ColdPhase/flux/pull/417).
+**Wide caps.** `WIDE_CAPS` in the test names one ADAPT-2 cap, measured by `test_07`, which fails once the cap
+disappears. Measured in CSS px at 1920, 2560 and 3840: the map plane is 1664, 2304 and 3584 (it fills its pane); the
+Agents column is 854, 854 and 854 (`agents/agents.css`). [Spokój](spokoj/README.md) draws large screens as
+"conversation at most 760 px, panel 480 px; extra width is margin, never a third column". Whether the Agents list
+should use more of a wide screen is therefore a design decision for the founders, not something this record changes.
 
 **Remaining for #151** (open; this record does not deliver them):
 
-- the two wide caps (ADAPT-2), waiting for PRs #380, #376 and #417;
-- the short-landscape gaps, waiting for PRs #414 and #375;
+- the Agents column's cap (ADAPT-2), pending that design decision;
 - the map projection still follows the viewport, not the canvas;
-- performance budgets, agreed at kickoff before any optimisation (T151-A/G);
-- browser zoom at 200% and 400%, and a measured 200% text enlargement (not run here);
+- performance budgets for the adaptive layouts, agreed at kickoff before any optimisation (T151-A/G); the bounded
+  native-work budgets and the opt-in `motion_performance` harness exist, but no independent agreement covers the
+  adaptive matrix;
+- safe areas on real devices, real browser zoom and an operating system's own text-size setting (the emulations above
+  stand in for them);
 - the independent visual review and running functional review of the combined head (AC-5);
 - real 4K, ultrawide, Android, iPhone and iPad sessions (optional under #266 item 10).
