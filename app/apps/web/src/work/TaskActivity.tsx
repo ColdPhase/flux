@@ -253,8 +253,11 @@ export function TaskComposer({ state, composer, item, meId, writable, readOnly, 
   // no thread yet, so it has no scope (nothing is created to show it); neither does one whose creation was undone.
   const conversationId = readOnly ? null : discussion?.conversationId ?? null;
   const typing = useTyping(meId, conversationId ? { kind: 'conversation', id: conversationId } : null, writable);
-  // The line is always there, empty without a scope, so the box and the audience under it never change place.
+  // The typing status shares the audience line's row, at its right, so it takes no height from the panel or the phone's
+  // half sheet (the task's fields keep their room above the composer). It is always there, empty without a scope, so
+  // nothing changes place when a thread starts.
   const typingLine = conversationId ? <TypingNotice {...typing} /> : <p className="typing-notice" aria-hidden="true">{'\u00a0'}</p>;
+  const audienceLine = <div className="wd-foot__line"><ComposerAudience>{audience}</ComposerAudience>{typingLine}</div>;
 
   async function send(event?: FormEvent) {
     event?.preventDefault();
@@ -272,7 +275,7 @@ export function TaskComposer({ state, composer, item, meId, writable, readOnly, 
     if (sendsOnEnter(event, touch) || (event.key === 'Enter' && (event.metaKey || event.ctrlKey) && !event.nativeEvent.isComposing)) { event.preventDefault(); void send(); }
   };
   if (!writable) {
-    return <><p className="wd-muted wd-foot__note">{readOnly ? 'Creation was undone. This history is read-only; your unsent draft is kept.' : 'You can read this task but not write to it.'}</p>{typingLine}<ComposerAudience>{audience}</ComposerAudience></>;
+    return <><p className="wd-muted wd-foot__note">{readOnly ? 'Creation was undone. This history is read-only; your unsent draft is kept.' : 'You can read this task but not write to it.'}</p>{audienceLine}</>;
   }
   return (
     <form className="wd-composer" onSubmit={(event) => void send(event)}>
@@ -281,8 +284,7 @@ export function TaskComposer({ state, composer, item, meId, writable, readOnly, 
       <ComposerBox id={id} label={hasRoot ? 'Write to this task' : 'First message about this task'} value={composer.draft.body} maxLength={20000}
         placeholder={`Write about #${item.number} · @ · /`} onChange={(value) => { composer.setBody(value); typing.input(Boolean(value.trim())); }} onBlur={typing.stop} onKeyDown={onKeyDown}
         attach={composer} sendLabel={hasRoot ? 'Send to task' : 'Start the discussion'} sendDisabled={!composer.canSend || !discussion} onSend={() => void send()} />
-      {typingLine}
-      <ComposerAudience>{audience}</ComposerAudience>
+      {audienceLine}
       <SendAnnouncer pending={composer.pending} />
     </form>
   );

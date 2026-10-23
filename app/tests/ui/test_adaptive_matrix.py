@@ -47,7 +47,10 @@ MATRIX = [
     (3840, 2160), (900, 1600),
 ]
 COARSE_UP_TO = 1024
-SHOTS_AT = {320, 390, 768, 1440, 1920, 3440, 3840}
+# Where the phone's half sheet shows every field of a task on opening, above the composer (390×844 as on main).
+COMMON_PHONES = {(390, 844), (412, 915), (430, 932)}
+# Whole-view captures for visual review: phones, the tablet (820), laptop, the 2560 workspace, 1920, ultrawide and 4K.
+SHOTS_AT = {320, 390, 768, 820, 1440, 1920, 2560, 3440, 3840}
 TABS = ["Conversation", "Map", "Tasks", "Wiki", "Agents"]
 # The phone menu lists Tasks before Map (#341).
 PHONE_TABS = ["Conversation", "Tasks", "Map", "Wiki", "Agents"]
@@ -209,6 +212,20 @@ HORIZONTAL = r"""(el) => {
   const hit = document.elementFromPoint(b.left + b.width / 2, b.top + b.height / 2);
   return {visible: b.width > 0 && b.height > 0, left: b.left >= -0.5, right: b.right <= innerWidth + 0.5, hit: !!hit && (hit === el || el.contains(hit)), covered: hit && !(hit === el || el.contains(hit)) ? name(hit) : null,
           box: [Math.round(b.left), Math.round(b.top), Math.round(b.width), Math.round(b.height)], window: innerWidth};
+}"""
+
+# Every field row of the task in Details (Status, Owner, Came from, Due, ...), brought into view in the panel's own
+# scroller: whether it lies fully above the composer, and is the element hit at its centre (nothing covers it).
+# With scroll=false nothing is scrolled: it is where the rows are when the panel opens.
+TASK_FIELDS = r"""([root, scroll]) => {
+  const foot = root.querySelector('.wd__foot').getBoundingClientRect().top;
+  return [...root.querySelectorAll('.wd-row')].map((row) => {
+    if (scroll) row.scrollIntoView({block: 'nearest'});
+    const b = row.getBoundingClientRect();
+    const hit = document.elementFromPoint(b.left + b.width / 2, b.top + Math.min(b.height / 2, 12));
+    return {label: (row.querySelector('dt')?.textContent || '').trim(), above: b.height > 0 && b.bottom <= foot + 0.5, hit: !!hit && row.contains(hit),
+            box: [Math.round(b.top), Math.round(b.bottom)], composer: Math.round(foot)};
+  });
 }"""
 
 # The computed size of the first message's text: it must really grow with the person's text size (WCAG 1.4.4).
@@ -373,6 +390,17 @@ class AdaptiveBase(unittest.TestCase):
 
     def card(self, page: Page, title: str) -> Locator:
         return page.locator(".tb-card").filter(has_text=title).get_by_role("button", name=title, exact=True)
+
+    def task_fields_clear_composer(self, page: Page, details: Locator, size: str, *, opens_clear: bool = False) -> None:
+        """Every field of the task in Details can be read above its composer: scrolled into the panel's own scroller each row
+        lies wholly above the composer and nothing covers it. With opens_clear the rows are also where they are on opening
+        (the common phones' half sheet shows them all without scrolling, as main did)."""
+        self.settle(page)
+        for scroll in ([False, True] if opens_clear else [True]):
+            rows = details.evaluate(TASK_FIELDS, scroll)
+            self.assertGreaterEqual(len(rows), 4, f"the task's field rows are found at {size}: {rows}")
+            for row in rows:
+                self.check(row["above"] and row["hit"], f"the task field “{row['label']}” at {size}{'' if scroll else ' (before scrolling)'} lies above the composer and is not covered: {row}")
 
     def shot(self, page: Page, name: str) -> None:
         if page.viewport_size["width"] in SHOTS_AT:
@@ -545,6 +573,7 @@ class AdaptiveMatrix(AdaptiveBase):
 
         details = page.locator("#details")
         expect(details.get_by_role("heading", name=fx.OPEN_TASK)).to_be_visible()
+        self.task_fields_clear_composer(page, details, size, opens_clear=(width, height) in COMMON_PHONES)
         self.primary(page, details.get_by_role("button", name="Close details"), "Close details")
         if wide:
             # ADAPT-2: the task's details dock beside the board, which keeps its actions.
