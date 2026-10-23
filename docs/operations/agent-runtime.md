@@ -317,6 +317,13 @@ Recorded from the T3 review (#331); none of them is hidden by the checks.
 - **Connection limits are per source address, not per slot identity (m6).** The proxy and the `/mcp`
   forwarder hold at most 256 connections in all and 32 from one address. Each slot has its own network,
   so its address identifies it; one busy slot cannot take every connection.
+- **Reconciliation decides from sightings that can be a moment old (m8, low, accepted).** The worker saves a
+  slot only while the row still has the state and wipe boot id it read (compare-and-set), so a bind or release
+  that committed in between is never overwritten, and a binding missing from the sightings is looked for once
+  more before the owner is told to sign in again. What is not serialized is the gap between those two reads. A
+  slot is offered again only after a boot id other than the one that performed the last release reports an
+  empty `/data`; that wait is covered with a scripted manager in the tests and with real supervisors only by
+  `scripts/check_agent_runtime.sh` step 7 on a supported host.
 - **Docker Desktop is unsupported** (see *What each slot gets*).
 
 ## Installing from a release
