@@ -1,0 +1,1 @@
+- A release or purge of the agent runtime no longer reads a missing Claude Code or Codex as "nothing to sign out" when Flux's own record shows a login may exist for it: the database keeps a durable per-binding history of started logins, cleared only by a confirmed CLI logout ([#480](https://github.com/ColdPhase/flux/issues/480)).

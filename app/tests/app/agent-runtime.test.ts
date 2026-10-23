@@ -64,6 +64,8 @@ describe('runtime tables hold display facts only', () => {
     agent_runtime_console_nonces: ['nonce_digest:text', 'owner_user_id:text', 'actor_digest:text', 'operation_id:uuid',
       'expires_at:timestamp with time zone', 'consumed_at:timestamp with time zone'],
     agent_runtime_auth_admission: ['singleton:boolean', 'blocked:boolean', 'purge_id:uuid', 'changed_at:timestamp with time zone'],
+    // 0118 (#480): per binding and client, whether a vendor login may exist; timestamps and one boolean.
+    agent_runtime_client_history: ['binding_id:uuid', 'client:text', 'first_login_at:timestamp with time zone', 'login_possible:boolean', 'changed_at:timestamp with time zone'],
   };
   // agent_runtime_sessions (0034) is unrelated: mode (b) MCP client sessions, outside the runtime transport.
   const RUNTIME_TABLES = Object.keys(REVIEWED);
@@ -102,6 +104,10 @@ describe('runtime tables hold display facts only', () => {
       await assert.rejects(connection('ada@example.org'), /check/i, 'an unmasked account label is refused');
       await assert.rejects(connection(`sk-ant-${'a'.repeat(90)}`), /check/i);
       await connection('a***@example.org');
+      // 0118: the label has exactly the shape the slot's reducer can send, not merely "bounded and contains a star".
+      for (const label of ['a*b', '***', 'a***@', 'ab***@example.org', 'a***@exa mple.org', 'a***@example.org\n', `a***@${'x'.repeat(71)}`]) {
+        await assert.rejects(connection(label), /agent_runtime_connections_account_label_check/, JSON.stringify(label));
+      }
     } finally {
       await pool.query('DELETE FROM agent_runtime_bindings WHERE slot = $1', [slot]);
       await pool.query('DELETE FROM agent_runtime_slots WHERE slot = $1', [slot]);
@@ -118,7 +124,7 @@ describe('the PostgreSQL store under the owner use cases', () => {
   const manager: RuntimeManagerPort = {
     async slots() { return { ok: true, value: slots.map((slot) => ({ slot, reachable: true as const, bootId: boots.get(slot)!, bindings: [...dirs.get(slot)!], other: 0 })) }; },
     async bind(slot, id) { if (dirs.get(slot)!.length) return { ok: false, code: 'data_not_empty' }; dirs.get(slot)!.push(id); return { ok: true, value: undefined }; },
-    async release(slot, id) { dirs.set(slot, dirs.get(slot)!.filter((dir) => dir !== id)); boots.set(slot, randomUUID()); return { ok: true, value: { dataEmpty: true, logoutFailed: true } }; },
+    async release(slot, id) { dirs.set(slot, dirs.get(slot)!.filter((dir) => dir !== id)); boots.set(slot, randomUUID()); return { ok: true, value: { dataEmpty: true, logoutFailed: true, notInstalled: [] } }; },
     async status(slot) { return { ok: true, value: { signedIn: false, facts: null, bootId: boots.get(slot)! } }; },
     async logout(slot) { return { ok: true, value: { logout: 'ok', bootId: boots.get(slot)! } }; },
   };
@@ -221,6 +227,7 @@ describe('migration 0056 reverses only before use', () => {
       await client.query('DELETE FROM agent_runtime_bindings');
       await client.query('DELETE FROM agent_runtime_connections');
       // Reverse new dependent schema first, preserving each migration's own refusal guards.
+      await client.query(await readFile('packages/db/migrations/reverse/0118_agent_runtime_client_history.down.sql','utf8'));
       await client.query(await readFile('packages/db/migrations/reverse/0097_agent_runtime_auth_operations.down.sql','utf8'));
       await client.query(await readFile('packages/db/migrations/reverse/0096_agent_runtime_sign_in.down.sql','utf8'));
       await client.query(down);

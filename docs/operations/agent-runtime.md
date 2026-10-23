@@ -189,13 +189,25 @@ A pool of four fills for good unless bindings are released:
 
 Flux has no in-app instance administrator role yet, so these operator steps are launcher commands.
 
-A release reports the sign-out as confirmed when every client either signed out (`ok`) or has no trace in
-the binding: the CLI is absent, nothing of that client is in the binding directory and no earlier sign-out
-of it failed (a Codex-only deployment has no Claude Code). The supervisor takes that as having no session
-to sign out. It is an inference from the binding directory, not a vendor confirmation. A failed or
-timed-out sign-out leaves an `unconfirmed-<client>` marker in the binding directory, which survives the
-client's files being deleted, so later releases stay *not confirmed*. So do a missing CLI with its files
-still present, a directory that cannot be read, and a skipped step.
+A release reports the sign-out as confirmed when every client either signed out (`ok`) or never had a
+login in that binding. Two independent records decide the second case:
+
+- **The slot's files.** The supervisor reports `not_installed` when the CLI is absent, nothing of that
+  client is in the binding directory and no earlier sign-out of it failed (a Codex-only deployment has no
+  Claude Code). On its own that is an inference from the binding directory, not a vendor confirmation: a
+  lost directory or tools volume looks the same.
+- **The database's client history** (`agent_runtime_client_history`, migration 0118). It records, per
+  binding and client, that a login may exist: the row is written when a sign-in console is claimed, before
+  the slot is asked to start it, and when the CLI's own status reports a login. Only the CLI's own logout
+  returning `ok` clears it; a failed, timed-out, skipped or not-installed logout never does. At release
+  (the worker, and `./flux runtime purge`) a `not_installed` client counts as confirmed only while this
+  history says no login was started for it. If it does, the release reads *not confirmed* although the
+  slot found nothing to sign out.
+
+A failed or timed-out sign-out also leaves an `unconfirmed-<client>` marker in the binding directory,
+which survives the client's files being deleted, so later releases stay *not confirmed*. So do a missing
+CLI with its files still present, a directory that cannot be read, and a skipped step. Bindings that
+existed before migration 0118 are backfilled conservatively from their connections and sign-in consoles.
 
 A slot whose supervisor cannot confirm an empty `/data` (for example a stray file) leaves the pool and
 `./flux runtime status` shows it `out_of_pool`. Remove the entry (`docker compose … exec runtime-<n> rm

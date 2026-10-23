@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { randomBytes, randomUUID } from 'node:crypto';
 import { describe, test } from 'node:test';
 import {
-  encodeFrame, FrameStreamError, NdjsonReader, parseRuntimeSwitch, parseSupervisorFrame, parseSupervisorRequest, redactSecrets,
+  createRuntimeManagerClient, MAX_MANAGER_BODY, encodeFrame, FrameStreamError, NdjsonReader, parseRuntimeSwitch, parseSupervisorFrame, parseSupervisorRequest, redactSecrets,
   REQUEST_LIMITS, RUNTIME_CLIENTS, SUPERVISOR_REQUESTS, type SupervisorFrame,
 } from '@flux/runtime-protocol';
 import { AGENT_RUNTIME_CLIENTS } from '@flux/contracts';
@@ -172,6 +172,39 @@ describe('the bounded reader of supervisor streams', () => {
         assert.ok(error instanceof FrameStreamError, `unexpected ${(error as Error)?.name}: ${(error as Error)?.message}`);
       }
     }
+  });
+});
+
+describe('the API\'s client of the manager reads at most 4 MiB of an answer (#331 nit)', () => {
+  const client = (fetchImpl: typeof fetch) => createRuntimeManagerClient({ url: 'http://manager.invalid', secret: 'x'.repeat(40), fetch: fetchImpl });
+  /** An answer that streams `chunks` chunks of 64 KiB and records how many were pulled. */
+  const streaming = (chunks: number, headers: Record<string, string> = {}) => {
+    const pulled = { chunks: 0, cancelled: false };
+    const piece = new TextEncoder().encode(' '.repeat(64 * 1024));
+    const body = new ReadableStream<Uint8Array>({
+      pull(controller) { if (pulled.chunks >= chunks) { controller.close(); return; } pulled.chunks += 1; controller.enqueue(piece); },
+      cancel() { pulled.cancelled = true; },
+    }, { highWaterMark: 0 });   // pull only when the client reads, so the count is what the client actually read
+    return { pulled, fetchImpl: (async () => new Response(body, { status: 200, headers })) as unknown as typeof fetch };
+  };
+
+  test('an answer longer than the limit is a protocol error and reading stops at the limit instead of buffering it all', async () => {
+    const { pulled, fetchImpl } = streaming(4096);   // 256 MiB offered
+    const answer = await client(fetchImpl).slots();
+    assert.deepEqual(answer, { ok: false, code: 'protocol' });
+    assert.ok(pulled.cancelled, 'the stream was cancelled');
+    assert.ok(pulled.chunks * 64 * 1024 <= MAX_MANAGER_BODY + 2 * 64 * 1024, `read ${pulled.chunks} chunks`);
+  });
+
+  test('a declared length over the limit is refused before any byte is read', async () => {
+    const { pulled, fetchImpl } = streaming(4096, { 'content-length': String(MAX_MANAGER_BODY + 1) });
+    assert.deepEqual(await client(fetchImpl).slots(), { ok: false, code: 'protocol' });
+    assert.equal(pulled.chunks, 0);
+  });
+
+  test('a normal answer still parses (control)', async () => {
+    const fetchImpl = (async () => new Response(JSON.stringify({ slots: [] }), { status: 200, headers: { 'content-type': 'application/json' } })) as unknown as typeof fetch;
+    assert.deepEqual(await client(fetchImpl).slots(), { ok: true, slots: [] });
   });
 });
 

@@ -18,7 +18,7 @@ import {
 //   node tooling/dist/operations.js revoke-agent-access    revokes every agent connection and OAuth token
 //   node tooling/dist/operations.js runtime-status         agent runtime slots and their bindings (F-022 T3)
 //   node tooling/dist/operations.js runtime-release <slot> asks the worker to release that slot's binding
-//   node tooling/dist/operations.js runtime-forget <purge-id> [confirmed|unconfirmed]
+//   node tooling/dist/operations.js runtime-forget <purge-id> [confirmed|unconfirmed [<binding-id>:<client> ...]]
 //                                                        after purge: release bindings with the cleanup outcome
 // The migration commands use the #118 ledger parser of @flux/db, the one the migrator trusts.
 
@@ -96,9 +96,14 @@ if (command === 'migration-files') {
     } else if (command === 'runtime-forget') {
       const purgeId = args[0] ?? '';
       const outcome = args[1] ?? 'unconfirmed';
-      if (!/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(purgeId)
-        || args.length > 2 || !['confirmed', 'unconfirmed'].includes(outcome)) throw new Error('usage: runtime-forget <purge-id> [confirmed|unconfirmed]');
-      await agentRuntimeOperations(db).forgetAll(purgeId, outcome === 'confirmed');
+      const uuid = '[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}';
+      // <binding>:<client> pairs the slots answered `not_installed`: confirmed only against the client history (#480).
+      const pairs = args.slice(2).map((pair) => new RegExp(`^(${uuid}):(claude_code|codex)$`).exec(pair));
+      if (!new RegExp(`^${uuid}$`).test(purgeId) || !['confirmed', 'unconfirmed'].includes(outcome) || pairs.some((pair) => pair === null)) {
+        throw new Error('usage: runtime-forget <purge-id> [confirmed|unconfirmed [<binding-id>:<claude_code|codex> ...]]');
+      }
+      await agentRuntimeOperations(db).forgetAll(purgeId, outcome === 'confirmed',
+        pairs.map((pair) => ({ bindingId: pair![1]!, client: pair![2] as 'claude_code' | 'codex' })));
       console.log(`Every agent runtime binding is released in the database; vendor sign-out ${outcome}.`);
     } else {
       throw new Error(`unknown operation ${command ?? ''} (use migration-files, migration-ledger, migration-gate, agent-access, revoke-agent-access, revoke-github-access, runtime-status, runtime-release or runtime-forget)`);

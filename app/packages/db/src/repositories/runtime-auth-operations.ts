@@ -71,6 +71,20 @@ async function recoverBinding(tx: Exec, ownerUserId: string, bindingId: string) 
     revoked_at = coalesce(revoked_at, clock_timestamp()) WHERE binding_id = ${bindingId} AND revoked_at IS NULL`);
 }
 
+/**
+ * The durable client history (migration 0118): a login may exist for this client in the binding from now on, until
+ * the CLI's own logout is confirmed. Idempotent; a second sign-in after a confirmed sign-out turns it on again.
+ */
+export async function markLoginPossible(tx: Exec, bindingId: string, client: AgentRuntimeClient) {
+  await tx.execute(sql`INSERT INTO agent_runtime_client_history(binding_id, client) VALUES (${bindingId}, ${client})
+    ON CONFLICT (binding_id, client) DO UPDATE SET login_possible = true, changed_at = clock_timestamp()`);
+}
+/** Only the CLI's own logout returning `ok` clears it; a failed, timed-out or skipped sign-out leaves it set. */
+export async function markLoginConfirmedGone(tx: Exec, bindingId: string, client: AgentRuntimeClient) {
+  await tx.execute(sql`UPDATE agent_runtime_client_history SET login_possible = false, changed_at = clock_timestamp()
+    WHERE binding_id = ${bindingId} AND client = ${client}`);
+}
+
 /** Called inside the connection update's transaction; settlement and display facts commit together. */
 export async function currentRuntimeAuthOperation(tx: Exec, operation: RuntimeAuthOperation) {
   if (!await runtimeAuthAdmissionLock(tx)) return false;
@@ -160,6 +174,9 @@ export function runtimeAuthOperations(db: Handle) {
             throw new Error('Runtime console nonce expired or already consumed');
           }
         }
+        // Write-ahead (#480): a console can create a vendor login, so the history says so before the slot is asked
+        // to start one, whatever happens to the command afterwards. Only a confirmed sign-out clears it.
+        if (input.kind === 'console') await markLoginPossible(tx, input.bindingId, input.client);
         if (input.kind === 'logout') {
           await tx.execute(sql`UPDATE agent_runtime_connections SET state = 'signed_out', signed_in_at = NULL
             WHERE binding_id = ${input.bindingId} AND owner_user_id = ${input.ownerUserId} AND client = ${input.client} AND revoked_at IS NULL`);

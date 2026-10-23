@@ -37,7 +37,7 @@ async function setup() {
   await pool.query(`INSERT INTO agent_runtime_bindings(id,owner_user_id,slot,state) VALUES ($1,$2,$3,'active')`, [bindingId,owner.id,slot]);
   const manager: RuntimeManagerPort = {
     async slots() { return { ok: true, value: [] }; }, async bind() { return { ok:true,value:undefined }; },
-    async release() { return { ok: true,value:{ dataEmpty:true,logoutFailed:false } }; },
+    async release() { return { ok: true,value:{ dataEmpty:true,logoutFailed:false,notInstalled:[] } }; },
     async status() { return { ok:true,value:{ ...signed,bootId } }; },
     async logout() { return { ok:true,value:{ logout:'ok',bootId } }; },
   };
