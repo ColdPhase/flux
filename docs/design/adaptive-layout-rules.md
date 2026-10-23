@@ -86,7 +86,7 @@ canvas actually has. A narrowed desktop canvas, for example with Details docked,
 
 On any rendered line of running prose, at most **90 characters**, spaces included, counted
 from rendered line boxes. WCAG 1.4.8 (AAA) names 80. 90 is the ceiling chosen here for the
-compact 14 px type. Measured longest lines, 320–5120 px (re-measured 2026-10-23 in Chromium):
+compact 14 px type. Measured longest lines, 320–5120 px (re-measured 2026-10-23 in Chromium and WebKit):
 
 | Surface | Longest line | Rule |
 | --- | --- | --- |
@@ -121,7 +121,7 @@ remain reachable. Own messages stay on the right and other people's on the left.
     where the person saw it.
   - Nothing auto-fits on a resize.
 - **Short stream** (ADAPT-2, tall screens): when the stream does not fill its feed, the spare height goes above it
-  (`ConversationStream`, `.project-convo__lift`), so the newest message sits 22–27 px above the field from 390×844 to
+  (`ConversationStream`, `.project-convo__lift`), so the newest message sits 23–27 px above the field from 390×844 to
   3840×2160 instead of up to 1800 px away. The spare height is taken when the entries or the feed's size change. A row
   that changes height in place (a queued message becoming the stored one) only gives height back, so it never moves.
   A stream that fills the feed has no spare height and scrolls as before.
