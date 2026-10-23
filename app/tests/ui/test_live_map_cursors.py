@@ -187,24 +187,24 @@ class LiveCursors(LiveFixture):
         await expect(self.pages['ada'].locator('.editing-people')).to_contain_text('Kai South')
         await self.shoot(self.pages['ada'], 'wiki-peer-cursor')
 
-    async def third_writer(self):
-        """A third account in the same project: it watches two people write in one paragraph."""
+    async def third_writer(self, name='Lia West', key='lia'):
+        """Another account in the same project (a third person watching, or a fourth)."""
         stamp = uuid.uuid4().hex
         context = await self.browser.new_context(base_url=ORIGIN, viewport={'width': 1440, 'height': 900}, reduced_motion='reduce', service_workers='block')
         self.contexts.append(context)
         page = await context.new_page()
         page.on('pageerror', lambda error: self.errors.append(str(error)))
-        self.record_socket(page, 'lia')
+        self.record_socket(page, key)
         await page.goto('/sign-up')
-        await page.get_by_label('Name', exact=True).fill('Lia West')
-        await page.get_by_label('Email', exact=True).fill(f'lia.live.{stamp}@example.test')
+        await page.get_by_label('Name', exact=True).fill(name)
+        await page.get_by_label('Email', exact=True).fill(f'{key}.live.{stamp}@example.test')
         await page.get_by_label('Password', exact=True).fill('live copies retain exact history')
         await page.get_by_role('button', name='Create account', exact=True).click()
         await expect(page.get_by_role('heading', name='Home', exact=True)).to_be_visible()
         me = await self.api(page, 'GET', '/api/v1/me')
-        await self.api(self.pages['ada'], 'POST', f'/api/v1/workspaces/{self.workspace}/members', {'email': f'lia.live.{stamp}@example.test', 'role': 'member'}, 201)
+        await self.api(self.pages['ada'], 'POST', f'/api/v1/workspaces/{self.workspace}/members', {'email': f'{key}.live.{stamp}@example.test', 'role': 'member'}, 201)
         await self.api(self.pages['ada'], 'POST', f'/api/v1/projects/{self.project}/grants', {'principal': {'kind': 'human', 'id': me['user']['id']}, 'role': 'contributor'}, 201)
-        self.pages['lia'] = page
+        self.pages[key] = page
         return page
 
     async def caret_at(self, page, field, offset):
@@ -212,6 +212,109 @@ class LiveCursors(LiveFixture):
         await page.keyboard.press('Control+Home')
         for _ in range(offset):
             await page.keyboard.press('ArrowRight')
+
+    async def test_map_names_clustered_people_and_tells_them_apart_without_colour(self):
+        # #613 visual review: every cursor keeps a visible name that covers no thought, no other name and no other cursor,
+        # and the cursor, its name and the People chip entry show one shape per person.
+        for key in ('lia', 'mo'):
+            self.frames[key] = []
+            self.acks[key] = {}
+        await self.create_map(3)
+        ada, kai = self.pages['ada'], self.pages['kai']
+        lia = await self.third_writer('Lia West', 'lia')
+        mo = await self.third_writer('Mo Nakamura', 'mo')
+        for page in (lia, mo):
+            await page.goto(f'/map/{self.map_id}')
+            await expect(page.locator('[data-live-map-status="live"]')).to_be_visible()
+        first = await kai.locator(f'.sk-node[data-id="{self.thoughts[0]["id"]}"]').bounding_box()
+        base = (first['x'] + first['width'] + 90, first['y'] + 260)
+        # Three people within about 40 px of each other, in empty space.
+        for page, (dx, dy) in ((ada, (0, 0)), (lia, (18, 14)), (mo, (36, 28))):
+            await page.mouse.move(base[0] + dx, base[1] + dy, steps=4)
+        names = ('Ada North', 'Lia West', 'Mo Nakamura')
+        for name in names:
+            await expect(kai.locator(f'.sk-peer[data-live-peer="{name}"]')).to_have_count(1)
+            await expect(kai.locator(f'.sk-peer[data-live-peer="{name}"] .sk-peer__label')).to_be_visible()
+
+        async def layout():
+            return await kai.evaluate("""(names) => {
+              const box = (el) => { const r = el.getBoundingClientRect(); return {x: r.x, y: r.y, w: r.width, h: r.height}; };
+              return {
+                labels: Object.fromEntries(names.map((n) => [n, box(document.querySelector(`.sk-peer[data-live-peer="${n}"] .sk-peer__label`))])),
+                arrows: Object.fromEntries(names.map((n) => [n, box(document.querySelector(`.sk-peer[data-live-peer="${n}"] svg`))])),
+                nodes: [...document.querySelectorAll('.sk-node')].map(box),
+              };
+            }""", list(names))
+
+        def touches(a, b):
+            return a['x'] < b['x'] + b['w'] and b['x'] < a['x'] + a['w'] and a['y'] < b['y'] + b['h'] and b['y'] < a['y'] + a['h']
+
+        async def assert_clear(where):
+            found = await layout()
+            for name, label in found['labels'].items():
+                self.assertGreater(label['w'], 0, f'{where}: {name} has a visible name')
+                for node in found['nodes']:
+                    self.assertFalse(touches(label, node), f'{where}: the name {name} covers a thought')
+                for other, arrow in found['arrows'].items():
+                    self.assertFalse(touches(label, arrow), f'{where}: the name {name} covers the cursor of {other}')
+                for other, label2 in found['labels'].items():
+                    if other != name:
+                        self.assertFalse(touches(label, label2), f'{where}: the names {name} and {other} overlap')
+        await assert_clear('clustered')
+        cut = await kai.evaluate("() => [...document.querySelectorAll('.sk-peer__label > b')].filter((el) => el.scrollWidth > el.clientWidth + 1).map((el) => el.textContent)")
+        self.assertEqual(cut, [], 'every name is shown in full')
+        shapes = {}
+        for name in names:
+            peer = kai.locator(f'.sk-peer[data-live-peer="{name}"]')
+            shape = await peer.get_attribute('data-shape')
+            self.assertEqual(await peer.locator('.sk-peer__mark').get_attribute('data-shape'), shape)
+            self.assertEqual(await peer.locator('.sk-peer__label .editing-shape').get_attribute('data-shape'), shape)
+            self.assertEqual(await kai.locator('.sk-here > span', has_text=name).locator('.editing-shape').get_attribute('data-shape'), shape, f'{name}: the chip shows the same shape')
+            shapes[name] = shape
+        self.assertEqual(len(set(shapes.values())), 3, shapes)
+        await self.shoot(kai, 'map-three-clustered-peers')
+
+        # A cursor over a thought keeps its name, placed outside the thought so the text stays readable.
+        over = await kai.locator(f'.sk-node[data-id="{self.thoughts[1]["id"]}"]').bounding_box()
+        await ada.mouse.move(over['x'] + over['width'] / 2, over['y'] + over['height'] / 2, steps=4)
+        await expect(kai.locator('.sk-peer[data-live-peer="Ada North"] .sk-peer__label')).to_be_visible()
+        await kai.wait_for_timeout(300)
+        await assert_clear('over a thought')
+
+        # Phone width: the People chip stays inside the screen and clear of Map options; names stay inside it too.
+        await kai.set_viewport_size({'width': 390, 'height': 844})
+        await expect(kai.locator('.sk-here')).to_be_visible()
+        chip = await kai.locator('.sk-here').bounding_box()
+        self.assertGreaterEqual(chip['x'], 0)
+        self.assertLessEqual(chip['x'] + chip['width'], 390, 'the chip fits the phone width')
+        options = kai.get_by_role('button', name='Map options')
+        if await options.count():
+            self.assertTrue(await options.is_visible())
+            box = await options.bounding_box()
+            self.assertLessEqual(chip['x'] + chip['width'], box['x'] + 1, 'the chip does not run under Map options')
+        clipped = await kai.evaluate("""() => [...document.querySelectorAll('.sk-here > span > b')].filter((el) => el.scrollWidth > el.clientWidth + 1).map((el) => el.textContent)""")
+        self.assertEqual(clipped, [], 'no name in the chip is cut off at the phone width')
+        for name in names:
+            label = await kai.locator(f'.sk-peer[data-live-peer="{name}"] .sk-peer__label').bounding_box()
+            self.assertGreaterEqual(label['x'], 0, name)
+            self.assertLessEqual(label['x'] + label['width'], 390, f'{name}: the name stays inside the screen')
+        await self.shoot(kai, 'map-three-peers-phone')
+        self.assertEqual(self.errors, [])
+
+    async def test_map_moving_line_stays_visible_over_another_thought(self):
+        await self.create_map(3)
+        ada, kai = self.pages['ada'], self.pages['kai']
+        a = await ada.locator(f'.sk-node[data-id="{self.thoughts[0]["id"]}"]').bounding_box()
+        b = await ada.locator(f'.sk-node[data-id="{self.thoughts[1]["id"]}"]').bounding_box()
+        await ada.mouse.move(a['x'] + 20, a['y'] + 20)
+        await ada.mouse.down()
+        # Drag the first thought half over the second and hold it there.
+        await ada.mouse.move(b['x'] + 40, b['y'] + 40, steps=12)
+        mover = kai.locator(f'.sk-node[data-id="{self.thoughts[0]["id"]}"][data-live-mover="Ada North"] .sk-live-mover')
+        await expect(mover).to_have_text('Ada North is moving')
+        visible = await mover.evaluate("""(el) => { const r = el.getBoundingClientRect(); const top = document.elementFromPoint(r.x + Math.min(r.width / 2, 20), r.y + r.height / 2); return !!top && el.closest('.sk-node').contains(top); }""")
+        self.assertTrue(visible, 'the moving line is not hidden under the thought it overlaps')
+        await ada.mouse.up()
 
     async def test_wiki_names_two_people_writing_in_one_paragraph(self):
         # #613 review, AC-2: carets and selections are identified on screen, and two people in one paragraph tell apart.
@@ -232,13 +335,13 @@ class LiveCursors(LiveFixture):
         await expect(kai_caret).to_have_count(1)
         tags = lia.locator('.editing-caret__tag')
         await expect(tags).to_have_count(2)
-        await expect(tags.filter(has_text='Ada North')).to_be_visible()
-        await expect(tags.filter(has_text='Kai South')).to_be_visible()
+        await expect(lia.locator('.editing-caret__tag[title="Ada North"]')).to_be_visible()
+        await expect(lia.locator('.editing-caret__tag[title="Kai South"]')).to_be_visible()
 
         async def boxes():
             return {
                 'ada': await ada_caret.bounding_box(), 'kai': await kai_caret.bounding_box(),
-                'ada_tag': await tags.filter(has_text='Ada North').bounding_box(), 'kai_tag': await tags.filter(has_text='Kai South').bounding_box(),
+                'ada_tag': await lia.locator('.editing-caret__tag[title="Ada North"]').bounding_box(), 'kai_tag': await lia.locator('.editing-caret__tag[title="Kai South"]').bounding_box(),
                 'text': await lia.locator('.cm-line').first.bounding_box(),
             }
 
@@ -247,16 +350,16 @@ class LiveCursors(LiveFixture):
         # The names sit in the lane beside the line, never over the writing, and never over each other.
         for tag in ('ada_tag', 'kai_tag'):
             self.assertGreaterEqual(box[tag]['x'], box['text']['x'] + box['text']['width'], f'{tag} is clear of the text')
-        self.assertGreaterEqual(box['kai_tag']['y'], box['ada_tag']['y'] + box['ada_tag']['height'], 'stacked tags do not touch')
+        self.assertGreaterEqual(box['kai_tag']['x'], box['ada_tag']['x'] + box['ada_tag']['width'], 'two tags on one row sit side by side without touching')
         self.assertLess(box['ada']['x'], box['kai']['x'], 'Ada is left of Kai in the same row, so her tag is first')
-        self.assertLess(box['ada_tag']['y'], box['kai_tag']['y'])
-        # One level with the caret's row.
-        self.assertLessEqual(abs((box['ada_tag']['y'] + box['ada_tag']['height'] / 2) - (box['ada']['y'] + box['ada']['height'] / 2)), 4)
+        # Both tags stay level with their carets' row; the second does not drop to the next wrapped row.
+        for who in ('ada', 'kai'):
+            self.assertLessEqual(abs((box[f'{who}_tag']['y'] + box[f'{who}_tag']['height'] / 2) - (box[who]['y'] + box[who]['height'] / 2)), 4, who)
         # Caret, tag and strip share one shape per person and the shapes differ.
         shapes = {}
         for name, caret in (('Ada North', ada_caret), ('Kai South', kai_caret)):
             shape = await caret.get_attribute('data-shape')
-            self.assertEqual(await tags.filter(has_text=name).locator('.editing-shape').get_attribute('data-shape'), shape)
+            self.assertEqual(await lia.locator(f'.editing-caret__tag[title="{name}"]').locator('.editing-shape').get_attribute('data-shape'), shape)
             self.assertEqual(await lia.locator('.editing-people > span', has_text=name).locator('.editing-shape').get_attribute('data-shape'), shape)
             shapes[name] = shape
         self.assertEqual(len(set(shapes.values())), 2, shapes)
@@ -269,6 +372,15 @@ class LiveCursors(LiveFixture):
                 if value.startswith('rgb') and len(numbers) == 3:
                     self.assertLess(max(numbers) - min(numbers), 12, f'monochrome: {value}')
         await self.shoot(lia, 'wiki-two-peers-one-paragraph')
+
+        # A selection is attributed without colour too: it carries a line style that goes with its owner's shape.
+        for _ in range(8):
+            await ada.keyboard.press('Shift+ArrowRight')
+        selection = lia.locator('.editing-selection').first
+        await expect(selection).to_have_count(1)
+        await expect(selection).to_have_attribute('data-shape', shapes['Ada North'])
+        await expect(selection).to_have_attribute('title', 'Selected by Ada North')
+        self.assertNotEqual(await selection.evaluate('(el) => getComputedStyle(el).borderBottomStyle'), 'none')
 
         # A caret and its name move together: Kai now sits on a later wrapped row, so his tag leaves Ada's row.
         await self.caret_at(kai, kai_field, 160)
