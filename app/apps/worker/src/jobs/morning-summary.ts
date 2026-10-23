@@ -1,5 +1,5 @@
 import { fromDrizzle, type PgBoss } from 'pg-boss';
-import { morningSummaryRows, notificationPreferenceRows, pushSubscriptionRepository, sql } from '@flux/db';
+import { morningSummaryRows, notificationPreferenceRows, pushSubscriptionRepository, sql, accessReader } from '@flux/db';
 import { MORNING_SUMMARY_JOB, PUSH_SEND_JOB, policySourceReader, sendMorningSummaries, type Database, type SummaryPorts, type SummaryUnitOfWork, type Transaction } from '@flux/core';
 
 /**
@@ -14,7 +14,7 @@ export function summaryPorts(tx: Transaction, boss: Pick<PgBoss, 'send'>, start?
   // Push jobs are sent in the same transaction, so they commit with the claimed day.
   const queueDb = fromDrizzle(tx as Parameters<typeof fromDrizzle>[0], sql);
   const ports: SummaryPorts = {
-    authorizer: policySourceReader(tx),
+    authorizer: policySourceReader(accessReader(tx)),
     lockCandidate: (userId) => rows.lockCandidate(userId),
     isMuted: (userId, source) => notificationPreferenceRows(tx).isMuted(userId, source),
     claimDay: (userId, day) => rows.claimDay(userId, day),

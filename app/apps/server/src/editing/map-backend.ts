@@ -1,5 +1,5 @@
 import { eq,sql } from 'drizzle-orm';
-import { editingSessionRows,editingTransactions,liveMapRows,schema,type createDatabase,type EditingCommit,type EditingConfirmationPolicy } from '@flux/db';
+import { editingSessionRows, editingTransactions, liveMapRows, schema, type createDatabase, type EditingCommit, type EditingConfirmationPolicy, accessReader } from '@flux/db';
 import { ConflictError,ForbiddenError,InvalidInputError,NotFoundError,ServiceUnavailableError,createSketchUseCases,policySketchAccess,
   presentSketch,presentThoughts,presentThoughtLink,type LiveMapBackend,type MapIdentity,type MapNativeChange,type MapTransient } from '@flux/core';
 import type { LiveMapDelta,LiveMapPosition,NamedPrincipal } from '@flux/contracts';
@@ -34,7 +34,7 @@ export function mapBackend(database:{pool:Pick<ReturnType<typeof createDatabase>
     if(closing)throw new ServiceUnavailableError('Live maps are closing','EDITING_MAP_CAPACITY');
     const work=transactions.run(async db=>{
       const sessions=editingSessionRows(db,boundary.confirmation);const actor=await sessions.lock(who);if(!actor)throw new UnauthenticatedError();
-      const principal={kind:'human' as const,id:actor.id};const access=await policySketchAccess(db).requireSketch(principal,write?'sketch.write':'sketch.read',id(sketchId),{lock:true});
+      const principal={kind:'human' as const,id:actor.id};const access=await policySketchAccess(accessReader(db)).requireSketch(principal,write?'sketch.write':'sketch.read',id(sketchId),{lock:true});
       const sketch=await sketchRepository(db).findSketch(sketchId);if(!sketch)throw new NotFoundError('Sketch');
       const room=await liveMapRows(db,decodeMapChange,boundary.confirmation).ensureHead(sketchId,sketch.workspaceId);
       const finalFence=async()=>{if(!await sessions.current(who))throw new UnauthenticatedError();};
@@ -42,7 +42,7 @@ export function mapBackend(database:{pool:Pick<ReturnType<typeof createDatabase>
     },commit);active.add(work);editingResourcesChanged();try{return await work;}finally{active.delete(work);editingResourcesChanged();}
   }
   async function delta(db:Db,principal:{kind:'human';id:string},room:{generation:string;workspaceId:string},sketch:Parameters<typeof presentThoughts>[2],record:NonNullable<Awaited<ReturnType<ReturnType<typeof liveMapRows<MapNativeChange>>['after']>>>,access:'read'|'write'):Promise<LiveMapDelta> {
-    const change=record.change;const accessPort=policySketchAccess(db);
+    const change=record.change;const accessPort=policySketchAccess(accessReader(db));
     const thoughts=await presentThoughts({access:accessPort,files:sketchFiles(db)},principal,{...sketch,workspaceId:room.workspaceId},change.thoughts.filter(t=>t.after&&changed(t.before,t.after)).map(t=>t.after!));
     const [author]=record.actorKind==='human'?await db.select({name:schema.authUsers.name}).from(schema.authUsers).where(eq(schema.authUsers.id,record.actorId))
       :await db.select({name:schema.agents.name}).from(schema.agents).where(eq(schema.agents.id,record.actorId));
@@ -77,7 +77,7 @@ export function mapBackend(database:{pool:Pick<ReturnType<typeof createDatabase>
         const result:Record<string,unknown>={};
         for(const [key,child] of Object.entries(value)) {
           if(key==='placement'&&child&&typeof child==='object'&&'type' in child&&child.type==='draft'&&'id' in child&&typeof child.id==='string') {
-            const current=await policySketchAccess(c.db).placement(c.principal,{type:'draft',id:child.id});
+            const current=await policySketchAccess(accessReader(c.db)).placement(c.principal,{type:'draft',id:child.id});
             result[key]={type:'draft',id:child.id,title:current.readable&&current.workspaceId===c.room.workspaceId?current.title:null};
           } else result[key]=await project(child,depth+1);
         }
@@ -135,7 +135,7 @@ export function mapBackend(database:{pool:Pick<ReturnType<typeof createDatabase>
         options.prepare({...need,delta:options.includeDelta!==false&&after<c.room.sequence,nameBytes:need.nameBytes+Buffer.byteLength(c.actor.name)});}
       const record=options.includeDelta===false?null:await rows.after(sketchId,generation,after);
       if(options.includeDelta!==false&&after<c.room.sequence&&record?.sequence!==after+1)throw new ConflictError('The confirmed map sequence has a gap','EDITING_SEQUENCE_GAP');
-      const transient:MapTransient[]=[];const access=policySketchAccess(c.db);
+      const transient:MapTransient[]=[];const access=policySketchAccess(accessReader(c.db));
       const sessions=editingSessionRows(c.db,boundary.confirmation);
       // Only this transaction owns these positive decisions and their first policy/session locks.
       // A read recipient's c.access is not a seeded write check. DM pair closure has another

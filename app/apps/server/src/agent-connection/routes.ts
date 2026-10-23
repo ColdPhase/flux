@@ -1,6 +1,6 @@
 import type { FastifyError, FastifyInstance } from 'fastify';
 import { AGENT_OPERATIONS, AGENT_PEER_REQUEST_CLASSES, type CreateAgentConnectionCommand, type CreateAgentStandingGrantCommand, type NarrowAgentStandingGrantCommand, type PageQuery } from '@flux/contracts';
-import { agentProposalRepository } from '@flux/db';
+import { agentProposalRepository, accessReader } from '@flux/db';
 import { agentConnectionUseCases, agentOauthUseCases, agentProposalUseCases, DomainError, enforce, evaluateProject, recordEvent, type Database } from '@flux/core';
 import type { SessionResolver } from '../identity/index.js';
 import { createAgentConnectionStore } from './store.js';
@@ -19,11 +19,11 @@ export async function agentProposalRoutes(app: FastifyInstance, { db, sessions, 
   const oauth = agentOauthUseCases(connectionStore);
   const store = agentProposalUseCases(agentProposalRepository(db, {
     async authorizeWrite(principal, projectId, tx) {
-      const checked = enforce(await evaluateProject(principal, 'project.write', projectId, tx, { lock: true }), 'project');
+      const checked = enforce(await evaluateProject(principal, 'project.write', projectId, accessReader(tx), { lock: true }), 'project');
       return { workspaceId: checked.project!.workspaceId };
     },
     async authorizeRead(principal, projectId, tx) {
-      enforce(await evaluateProject(principal, 'project.read', projectId, tx, { lock: true }), 'project');
+      enforce(await evaluateProject(principal, 'project.read', projectId, accessReader(tx), { lock: true }), 'project');
     },
     async recordCreated(principal, workspaceId, projectId, tx) {
       await recordEvent(eventPorts(tx), principal, workspaceId, 'project.proposal_created.v1', projectId, {});

@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { ResourceTemplate, type McpServer } from '@modelcontextprotocol/server';
 import { AGENT_POLICY_LIMITS, agentProjectPolicyPath, type PublishAgentProjectPolicyCommand } from '@flux/contracts';
-import { agentPolicyRows } from '@flux/db';
+import { agentPolicyRows, accessReader } from '@flux/db';
 import { agentPolicyUseCases, enforce, evaluateProject, recordEvent, renderAgentPolicy, type AgentPolicyUnitOfWork,
   type Database, type Executor } from '@flux/core';
 import type { SessionResolver } from '../identity/index.js';
@@ -20,7 +20,7 @@ export function agentPolicyUnitOfWork(db: Database): AgentPolicyUnitOfWork {
 function policyPorts(tx: Executor) {
   return {
     async requireProject(principal: Parameters<typeof evaluateProject>[0], projectId: string, action: 'project.read' | 'project.manage') {
-      const checked = enforce(await evaluateProject(principal, action, projectId, tx, { lock: action === 'project.manage' }), 'project');
+      const checked = enforce(await evaluateProject(principal, action, projectId, accessReader(tx), { lock: action === 'project.manage' }), 'project');
       return { workspaceId: checked.project!.workspaceId };
     },
     rows: agentPolicyRows(tx),

@@ -1,7 +1,18 @@
 import { AGENT_MCP_SOURCE_CAPABILITIES, type AgentMcpPolicy, type AgentScope } from '@flux/contracts';
-import { agentProjectReads, DomainError, enforce, evaluateProject, loadActor, requireAgentMcpEntry, requireAgentSelection, requireWorkspaceAi, type AgentConnectionContext,
-  type AgentProjectObjectKind, type Database, type Transaction } from '@flux/core';
-import { agentProjectObjectRows, lockAgentMcpPolicy } from '@flux/db';
+import {
+  agentProjectReads,
+  DomainError,
+  enforce,
+  evaluateProject,
+  requireAgentMcpEntry,
+  requireAgentSelection,
+  requireWorkspaceAi,
+  type AgentConnectionContext,
+  type AgentProjectObjectKind,
+  type Database,
+  type Transaction,
+} from '@flux/core';
+import { agentProjectObjectRows, lockAgentMcpPolicy, loadActor, accessReader } from '@flux/db';
 import { createAgentConnectionStore } from './store.js';
 import type { McpDispatch } from './mcp-dispatch.js';
 import { requireLiveRun, type RunTokenClaims } from './run-token.js';
@@ -59,7 +70,7 @@ export async function agentConnectionInTransaction(tx: Transaction, claims: Flux
       throw new DomainError(404, 'CONNECTION_NOT_FOUND', 'Connection not found');
     const row = grant.connection;
     // F-029: every tool, resource and prompt, with or without a project, refuses while AI is off here.
-    const { epoch: aiEpoch } = await requireWorkspaceAi(tx, row.workspaceId, { lock: true });
+    const { epoch: aiEpoch } = await requireWorkspaceAi(accessReader(tx), row.workspaceId, { lock: true });
     // A run token works only while its run is in flight, under its own id, for the owner's assistant.
     if (claims.run) await requireLiveRun(tx, { ownerUserId: claims.ownerUserId, connectionId: claims.connectionId, run: claims.run }, { newCall: true, lock: true });
     if (!claims.scopes.includes(scope) || !row.scopes.includes(scope))
@@ -88,7 +99,7 @@ export async function agentConnectionInTransaction(tx: Transaction, claims: Flux
     };
     const requireProject = async (id: string, action: 'project.read' | 'project.write' = 'project.read') => {
       requireAgentSelection(connection, id, action === 'project.write' ? scope : 'flux.context.read');
-      const checked = enforce(await evaluateProject({ kind: 'agent', id: row.agentId }, action, id, tx, { lock: true }), 'project');
+      const checked = enforce(await evaluateProject({ kind: 'agent', id: row.agentId }, action, id, accessReader(tx), { lock: true }), 'project');
       if (checked.project!.workspaceId !== row.workspaceId) throw new DomainError(404, 'PROJECT_NOT_FOUND', 'Project not found');
       claims.dispatch?.project(id, action);
     };
