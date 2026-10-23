@@ -109,6 +109,8 @@ fi
 for protocol in 2026-07-28 2025-06-18; do
   $compose run --rm -e FLUX_TEST_MCP_PROTOCOL="$protocol" test sh -c 'exec node_modules/.bin/tsx --test --test-concurrency=1 tests/app/mcp*.test.ts tests/app/oauth-mcp.test.ts tests/app/agent-execution.test.ts tests/app/extension-contracts.test.ts'
 done
+# F-029 (#614): the real Claude Code is refused after an owner turns AI off and works again after it is turned on.
+$compose run --rm mcp-clients sh -c 'node apps/runtime/dist/install/main.js && exec node_modules/.bin/tsx --test tests/app/e2e/workspace-ai-claude.e2e.ts'
 # Both native modes use fresh homes. Delivery evidence alone is not full Start/Resume/recovery acceptance.
 $compose run --rm mcp-clients
 $compose run --rm -e FLUX_TEST_CODEX_MODERN=1 mcp-clients

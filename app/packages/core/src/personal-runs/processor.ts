@@ -127,6 +127,12 @@ const ended = (status: RunEndStatus, stage: Stage | null, extra: RunChanges = {}
   : { status, stoppedAtStage: stage, completedAt: new Date(), ...extra };
 const free: RunChanges = { costState: 'released', chargedMicros: 0 };
 
+/** F-029: a stop request the turn-off sweep made ends the run `ai_off`; the owner's own Stop stays `stopped`. */
+async function stopped(ports: PersonalRunPorts, run: RunRecord): Promise<RunEndStatus> {
+  const ai = await ports.access.workspaceAi(run.workspaceId);
+  return ai.state !== 'allowed' || ai.epoch !== run.aiEpoch ? 'ai_off' : 'stopped';
+}
+
 /** Reads the project-audience sources of the run as its agent. Private places are never read. */
 async function readSources(ports: PersonalRunPorts, run: RunRecord): Promise<{ sources: SuppliedSource[]; earlier: string | null } | null> {
   const agent: Principal = { kind: 'agent', id: run.agentId };
@@ -269,6 +275,8 @@ export function createPersonalRunProcessor({ uow, connections, compute, stopPoll
       const run = await ports.runs.findRun(runId, { lock: true });
       if (!run || run.status !== 'dispatching') return 'skipped';
       const { charge, withhold } = settle(run);
+      // F-029: a run stopped because AI was turned off (the sweep's stop request, or the check itself) says so; nothing is posted.
+      if ('refusal' in initial && initial.refusal === 'ai_off') return (await updateAndAnnounce(ports, run.id, ended('ai_off', 'before_commit', charge))).status;
       if (run.stopRequestedAt) return (await updateAndAnnounce(ports, run.id, ended('stopped', 'before_commit', charge))).status;
       // A tool result passed the MCP route's bound (F-022 "Caps"): the run ends in its own state, nothing is posted.
       if (run.mcpLimit) return (await updateAndAnnounce(ports, run.id, ended('cap_reached', 'before_commit', { ...charge, endReason: 'mcp_results_too_large' }))).status;
@@ -356,7 +364,7 @@ export function createPersonalRunProcessor({ uow, connections, compute, stopPoll
       const current = await ports.runs.findRun(run.id, { lock: true });
       const end = async (status: RunEndStatus) => ({ done: true as const, outcome: (await updateAndAnnounce(ports, run.id, ended(status, 'before_dispatch', free))).status as PersonalRunOutcome });
       if (!current || current.status !== 'reading') return { done: true as const, outcome: 'skipped' as PersonalRunOutcome };
-      if (current.stopRequestedAt) return end('stopped');
+      if (current.stopRequestedAt) return end(await stopped(ports, current));
       const checked = await recheck(ports, connections, compute, current, 'before_dispatch', true).catch((error: unknown) => {
         if (isAccessDenial(error)) return { refusal: 'denied' as const };
         throw error;
@@ -378,7 +386,7 @@ export function createPersonalRunProcessor({ uow, connections, compute, stopPoll
       const gate = (): Promise<{ status: RunEndStatus | 'gone' } | null> => uow.run(async (ports) => {
         const current = await ports.runs.findRun(run.id, { lock: true });
         if (!current || current.status !== 'dispatching') return { status: 'gone' as const };
-        if (current.stopRequestedAt) return { status: 'stopped' as const };
+        if (current.stopRequestedAt) return { status: await stopped(ports, current) };
         if (current.mcpLimit) return { status: 'cap_reached' as const };
         const checked = await recheck(ports, connections, compute, current, 'before_dispatch', true).catch((error: unknown) => {
           if (isAccessDenial(error)) return { refusal: 'denied' as const };
@@ -465,7 +473,7 @@ export function createPersonalRunProcessor({ uow, connections, compute, stopPoll
         const current = await ports.runs.findRun(run.id, { lock: true });
         if (!current || current.status !== 'reading') return current?.status ?? 'skipped';
         const end = async (status: RunEndStatus) => (await updateAndAnnounce(ports, run.id, ended(status, 'before_dispatch', free))).status;
-        if (current.stopRequestedAt) return end('stopped');
+        if (current.stopRequestedAt) return end(await stopped(ports, current));
         const checked = await recheck(ports, connections, compute, current, 'before_dispatch', true).catch((error: unknown) => {
           if (isAccessDenial(error)) return { refusal: 'denied' as const };
           throw error;

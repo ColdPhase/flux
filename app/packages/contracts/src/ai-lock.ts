@@ -153,7 +153,7 @@ export const AI_HTTP_ROUTES: Readonly<Record<string, AiRouteRule>> = {
  */
 export const AI_WORK_QUEUES = {
   /** Identifiers of the job-name constants the worker registers. */
-  ai: ['PERSONAL_RUN_JOB', 'ASSISTANT_TICK_JOB', 'MORNING_SUMMARY_JOB', 'COMPARISON_TICK_JOB', 'COMPARISON_RECOVERY_JOB'],
+  ai: ['PERSONAL_RUN_JOB', 'ASSISTANT_TICK_JOB', 'MORNING_SUMMARY_JOB', 'COMPARISON_TICK_JOB', 'COMPARISON_RECOVERY_JOB', 'WORKSPACE_AI_SWEEP_JOB'],
   notAi: ['DRAFT_SUMMARY_JOB', 'IDEMPOTENCY_CLEANUP_JOB', 'NOTIFICATION_EMAIL_JOB', 'PUSH_SEND_JOB', 'SAMPLE_JOB'],
   /** Tables whose rows wait for AI work: each has `ai_epoch` (no default) and the `ai_work_admission` trigger. */
   tables: ['personal_runs', 'proactive_comparison_outbox', 'assistant_reaction_events', 'cowork_requests', 'cowork_units', 'agent_runtime_sessions'],
