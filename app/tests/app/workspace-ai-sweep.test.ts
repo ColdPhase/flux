@@ -83,8 +83,8 @@ describe('workspace AI lock: sweep, lock order and remaining AC-3 rows', () => {
       await client.query(`INSERT INTO agent_runtime_sessions (id, binding_id, binding_generation, client_session_id, workspace_id, connection_id, owner_user_id, agent_id,
         scopes, expires_at, ai_epoch) VALUES ($1, $2, 1, $3, $4, $5, $6, $7, ARRAY['flux.context.read'], now() + interval '1 hour', $8)`,
       [ids.session, randomUUID(), randomUUID(), ws.id, connectionId, owner.id, agentId, old]);
-      await client.query(`INSERT INTO assistant_reactions (id, workspace_id, project_id, owner_user_id, event, action, enabled) VALUES ($1, $2, $3, $4, 'blocked', 'tell', true)`,
-        [ids.rule, ws.id, place.id, owner.id]);
+      ids.rule = (await client.query(`INSERT INTO assistant_reactions (id, workspace_id, project_id, owner_user_id, event, action, enabled) VALUES ($1, $2, $3, $4, 'blocked', 'tell', true)
+        ON CONFLICT (owner_user_id, project_id, event) DO UPDATE SET action = 'tell', enabled = true RETURNING id`, [ids.rule, ws.id, place.id, owner.id])).rows[0].id;
       for (const [id, state] of [[ids.eq, 'queued'], [ids.ep, 'proof']] as const) await client.query(`INSERT INTO assistant_reaction_events (id, reaction_id, owner_user_id,
         object_id, source_id, action, event, reaction_version, state, ai_epoch) VALUES ($1, $2, $3, $4, $5, 'tell', 'blocked', 1, $6, $7)`,
       [id, ids.rule, owner.id, randomUUID(), randomUUID(), state, old]);
@@ -94,7 +94,10 @@ describe('workspace AI lock: sweep, lock order and remaining AC-3 rows', () => {
 
     const epoch = await setWorkspaceAi(ws.id, 'blocked');
     await setWorkspaceAi(ws.id, 'allowed');
-    const fresh = await scene.runs.invoke(human(owner), thread.id, { clientRunId: randomUUID(), kind: 'ask', prompt: 'After re-enable' });
+    // Work admitted after re-enable carries the new epoch (inserted through the backstop; the owner's swept rows still count as in flight for the service).
+    await pool.query(`INSERT INTO personal_runs (id, workspace_id, project_id, conversation_id, owner_user_id, agent_id, client_run_id, request_fingerprint, kind, prompt,
+      status, cost_state, reserved_micros, provider, model, engine, ai_epoch) SELECT $1, workspace_id, project_id, conversation_id, owner_user_id, agent_id, gen_random_uuid(),
+      request_fingerprint, kind, prompt, 'queued', 'reserved', reserved_micros, provider, model, engine, $3 FROM personal_runs WHERE id = $2`, [ids.fresh, template.run.id, await epochOf(ws.id)]);
     const swept = await sweepWorkspaceAi({ workspaceId: ws.id, epoch }, db);
     assert.deepEqual(swept, { runs: 3, tokens: 2, comparisons: 0, reactions: 2, requests: 3, units: 3, sessions: 1, failed: [] });
     const one = async (sql: string, id: string) => (await pool.query(sql, [id])).rows[0];
@@ -108,7 +111,7 @@ describe('workspace AI lock: sweep, lock order and remaining AC-3 rows', () => {
       assert.deepEqual(await one('SELECT state, generation, lease_id FROM cowork_units WHERE id = $1', id), { state: 'stopped', generation, lease_id: null });
     assert.ok((await one('SELECT revoked_at FROM agent_runtime_sessions WHERE id = $1', ids.session)).revoked_at);
     for (const id of [ids.eq, ids.ep]) assert.deepEqual(await one('SELECT state, line FROM assistant_reaction_events WHERE id = $1', id), { state: 'skipped', line: 'Skipped: AI was turned off' });
-    assert.equal((await one('SELECT status FROM personal_runs WHERE id = $1', fresh.run.id)).status, 'queued', 'work admitted after re-enable is untouched');
+    assert.equal((await one('SELECT status FROM personal_runs WHERE id = $1', ids.fresh)).status, 'queued', 'work admitted after re-enable is untouched');
     assert.deepEqual(await sweepWorkspaceAi({ workspaceId: ws.id, epoch }, db), { runs: 0, tokens: 0, comparisons: 0, reactions: 0, requests: 0, units: 0, sessions: 0, failed: [] });
   });
 
@@ -211,8 +214,8 @@ describe('workspace AI lock: sweep, lock order and remaining AC-3 rows', () => {
 
   test('flip against a reaction capture, both orders: captured before the flip is skipped, a write after the flip captures nothing', async () => {
     const { owner, ws, place } = scene;
-    await pool.query(`INSERT INTO assistant_reactions (id, workspace_id, project_id, owner_user_id, event, action, enabled) VALUES ($1, $2, $3, $4, 'blocked', 'tell', true)`,
-      [randomUUID(), ws.id, place.id, owner.id]);
+    await pool.query(`INSERT INTO assistant_reactions (id, workspace_id, project_id, owner_user_id, event, action, enabled) VALUES ($1, $2, $3, $4, 'blocked', 'tell', true)
+      ON CONFLICT (owner_user_id, project_id, event) DO UPDATE SET action = 'tell', enabled = true`, [randomUUID(), ws.id, place.id, owner.id]);
     const blockTask = async (title: string) => {
       const task = await scene.task(owner, title);
       await pool.query('UPDATE project_work_items SET owner_user_id = $2 WHERE id = $1', [task.id, owner.id]);
