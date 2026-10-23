@@ -12,8 +12,10 @@ independent peer. Issue [#615](https://github.com/ColdPhase/flux/issues/615)
   [Founder answers](#founder-answers-2026-10-23) and govern this page.
 - **Independent security review** of the first revision `356b60f5`
   ([PR #652 comment](https://github.com/ColdPhase/flux/pull/652#issuecomment-6356018693),
-  changes requested: P1 1–3, P2 4–12, P3) is addressed in this revision; each finding
-  is mapped in [Review findings addressed](#review-findings-addressed).
+  changes requested: P1 1–3, P2 4–12, P3) and its re-review of `0b2762f1`
+  ([comment](https://github.com/ColdPhase/flux/pull/652#issuecomment-6368579005), N1–N4)
+  are addressed in this revision; each finding is mapped in
+  [Review findings addressed](#review-findings-addressed).
 
 This page covers #615 AC1–AC4 at design level and the AC5 delivery plan. The AC5
 proof of concept is slice [E0](#e0--feasibility-proof-of-concept-615-ac5), not done.
@@ -53,7 +55,8 @@ labels, map content, presence text, the person's AI provider key and browser exp
 | Malicious server forking, rolling back or withholding | Shows different valid logs to different clients, serves old logs, holds back entries | Envelopes and pairing payloads carry signed log heads, so a fork or rollback is detected as soon as any envelope or device crosses it ([Heads](#log-heads-and-detection)). **Withholding cannot be prevented**: a removal takes effect for a writer only once its device receives it. |
 | Active operator or attacker who changes the served web code | Ships JavaScript that exfiltrates keys or plaintext | **Not protected** ([research §6](research/2026-10-23-e2ee.md#6-delivery-of-the-client-code)). |
 | XSS in Flux | Runs script in the origin | **Full compromise while it runs**: it can hook Web Crypto before unlock, read the user root seed when it is unwrapped and read every key and plaintext in memory. Non-extractable storage only stops a later copy of device keys through the API. CSP, Trusted Types and the [sandboxed file viewer](#product-integration-ac4) are the defense. |
-| Stolen device, signed in and unlocked | A running app | Reads what that person can read until suspended. Cannot remove the owner's other devices, replace the kit or reset without a delay that other devices and the kit can cancel ([Sensitive actions](#sensitive-actions-on-a-trusted-device)). Can pair one more device, which every other device is told about. |
+| Stolen device, signed in and unlocked | A running app, and the QR to pair more devices | Reads what that person can read until suspended. It can suspend the owner's other devices at once and start removals, kit replacement or a reset, but those wait (48 hours, 7 days for the kit and reset) and any **established** device of the owner, **including a suspended one**, or the kit cancels them. Devices it pairs are on **probation for 7 days**: they cannot confirm, shorten, cancel or reinstate anything, nor suspend older devices ([Sensitive actions](#sensitive-actions-on-a-trusted-device)). If the owner notices nothing until the windows close, the thief wins; the notices on every device and by email are the defense. |
+| Powered-off laptop with a persisted session cookie, no disk encryption | Boots it and opens the browser | Under the default no-prompt mode, the valid session unlocks the device: **everything that person can read**. Mitigations: passkey unlock, OS disk encryption, operator session lifetimes, and suspension from another device. Stated at setup. |
 | Revoked device plus later database or backup theft | Holds old root seeds | Reads every epoch that was wrapped to those generations, including old content, until it is re-encrypted. |
 | Removed member | Holds old keys and anything downloaded | Keeps what they had (the UI says so). Content written after their removal reached the writer's device is unreadable to them. |
 | Deleted content | Backups and members' keys | Deletion removes ciphertext from the live server only; backups still hold it and members still hold the keys. There is no crypto-erasure. |
@@ -92,6 +95,13 @@ labels, map content, presence text, the person's AI provider key and browser exp
 9. The on-device AI and the [AI lock](workspace-ai-lock.md) are enforced by the
    served client for provider calls; a member can always paste text they can read
    elsewhere.
+10. When AI is turned on, the AI provider (and for the bridge, the agent app's model
+    provider) receives the prompts and the decrypted content they include, including
+    other members' content the person can read.
+11. The AI provider key is a long-lived bearer credential that suspension, removal and
+    rotation do not revoke; only the provider can.
+12. A powered-off laptop with a persisted session and no disk encryption opens under
+    the default no-prompt mode.
 
 ## Options considered (AC2)
 
@@ -225,8 +235,10 @@ key far below 2³² AES-GCM encryptions with random 96-bit nonces (NIST SP 800-3
 
 Fixed overhead is 255 bytes, within a 288-byte budget. `seq` is allocated under a
 Web Lock per device and object (Web Locks: Chrome 69, Firefox 96, Safari 15.4; BCD),
-with the counter in IndexedDB; without Web Locks each tab enrolls as its own
-sub-device id.
+with the counter in IndexedDB. Without Web Locks each tab picks a random 32-bit
+`lane`, added to the header (4 bytes, 259 in total); the envelope is still signed by
+the device's own Ed25519 key, lanes need no enrollment, and clients check contiguity
+per device, lane and object.
 
 The server verifies `sig` against the device list, the device's account against the
 access policy, `epoch` against the scope's minimum epoch and `seq` monotonicity, then
@@ -344,19 +356,35 @@ asks for persistent storage and recommends the Home Screen app on phones.
 
 ### Sensitive actions on a trusted device
 
+An **established** device has been in the device list for at least 7 days. A device
+paired more recently is on **probation**: pairing starts its clock and is announced on
+every device and by email. A probation device can read and write like any device, but
+it cannot confirm, shorten, cancel or reinstate a sensitive action, nor suspend an
+established device. This stops a thief who holds one unlocked device from pairing a
+second one to confirm their own actions (review N1).
+
 | Action | Immediate effect | Takes cryptographic effect |
 | --- | --- | --- |
-| Suspend a device (lost phone) | The server stops releasing its lockbox and ciphertext and ends its sessions; all devices are notified | — (no keys change) |
-| Remove a device | Suspension | After **48 hours**, or at once when confirmed on a second trusted device or with the kit; any other trusted device or the kit can cancel |
-| Replace the kit | — | After 48 hours, or at once with a second device; cancelable likewise |
+| Suspend a device (lost phone) | The server stops releasing its lockbox and ciphertext and ends its sessions; all devices are notified. Only an established device or the kit may suspend an established device | — (no keys change) |
+| Remove a device | Suspension | After **48 hours**, or at once when confirmed on a second established device or with the kit |
+| Replace the kit | — | After **7 days**, or at once with a second established device |
 | Turn passkey unlock off on a device | — | After 48 hours, or at once with the passkey |
-| Pair a new device | Immediate (needs the physical QR or code), announced everywhere | — |
-| Reinstate a suspended device | — | With the kit, or a second trusted device |
+| Start over with new keys (reset) | — | After **7 days** ([Reset](#reset-and-restore-of-shared-access)) |
+| Pair a new device | Immediate (needs the physical QR or code); the device starts on probation | — |
+| Reinstate a suspended device | — | With the kit, or a second established device that is not suspended |
 
-Each action asks for confirmation, and for the passkey on devices that use one.
-The server enforces the delay (the threat is a thief with a device, not the server);
-pending actions show on every device with Cancel. The kit can cancel or revert any
-of them: reinstate suspended devices and remove devices added since a chosen point.
+- Each action asks for confirmation, and for the passkey on devices that use one.
+- **Cancel** is open to any established device of the person **including a suspended
+  one**: a suspended device cannot unlock, but it can still sign in and sign a
+  cancellation with its device key, which the server checks against the device list.
+  The kit cancels too. A confirmation by the kit is final and cannot be canceled by a
+  device.
+- The server enforces the delays and the probation rule (the threat here is a thief
+  with a device, not the server). Pending actions show on every device with Cancel.
+- The kit can also revert: reinstate suspended devices and remove devices added since
+  a chosen point.
+- If every established device of the owner has been suspended by a thief, those
+  devices can still cancel pending actions; restoring their access needs the kit.
 
 ### Verification of other people
 
@@ -374,11 +402,15 @@ three ways. Key-holder devices share automatically only to that fingerprint.
 
 1. **Invite link** (default in the add dialog). The adder's device creates a one-time
    Ed25519 invite key, puts its public half in the signed entry, and shows a link whose
-   fragment holds the private half. The adder sends it through their own channel; Flux
-   never emails it, because the server must not see it. The invitee, signed in as the
-   named account, signs (account id, their root fingerprint, roster head) with the
-   invite key; key-holders verify against the signed entry. The link expires after
-   seven days and works once.
+   fragment holds the private half, the workspace's roster genesis hash and the adder's
+   root fingerprint. The adder sends it through their own channel; Flux never emails
+   it, because the server must not see it. The invitee's device checks that the roster
+   it is shown has that genesis and that the invite entry is signed by that root, so a
+   server cannot present a fake workspace. Signed in as the named account, it signs
+   (account id, its root fingerprint, roster head) with the invite key; key-holders
+   verify against the signed entry. The link expires after seven days and works once.
+   **The link is a bearer secret**: whoever obtains it and can sign in as the named
+   account binds their key. Its assurance is only that of the channel it travelled.
 2. **Safety code.** The adder compares the person's safety code in person, by QR or
    over a call, and signs the verified fingerprint.
 3. **Share without verifying.** The adder confirms "The server supplied this key; if it
@@ -390,19 +422,27 @@ Guarantee G2 follows. A person with no encryption identity yet first sets up a d
 the add stays pending ("Waiting for <Name> to set up encryption") and nothing is
 shared before the binding.
 
+**Inheritance.** Adding a workspace member to a project, grant or DM reuses the
+fingerprint bound in the workspace roster. A member shown "Not verified" stays "Not
+verified" in every place they are added to, and the add dialog says so. Verifying them
+once writes a new signed roster binding that applies everywhere.
+
 ## Reset and restore of shared access
 
 "Start over with new encryption keys" is available when a person has lost every device
 and the kit, or chooses to.
 
 - If the person's current identity has any trusted device or kit, the request waits
-  **seven days**. Every trusted device shows it at once with "This wasn't me", which
-  cancels it with an ASK signature; the kit cancels it too. The person's email address
+  **seven days**. Every established device, including a suspended one, shows it at once
+  with "This wasn't me", which cancels it with a device-key signature; the kit cancels
+  it too. The person's email address
   gets a notice as well (an IdP that controls the email can suppress it; the devices
   are the real defense).
 - After the wait, the new root is published as a reset. Personal-scope content is gone.
-- **Restore access** to shared places requires binding 1 or 2 above; option 3 is not
-  offered for a reset identity. The person restoring access sees "Check <Name>'s new
+- **Restore access** to shared places requires the **safety code** (binding 2). An
+  invite link is not enough for a reset identity: with SSO, the chat or mail channel
+  that would carry it is often controlled by the same IdP that could issue the
+  impersonation. Option 3 is not offered. The person restoring access sees "Check <Name>'s new
   safety code with them directly, not through Flux".
 - Therefore an IdP impersonator alone never obtains keys: they would also have to
   outlast the veto window unseen and deceive a colleague over an out-of-band channel.
@@ -429,11 +469,25 @@ headless agent device, no server-side AI and no key ever reaches an agent.
 
 - **The assistant in Flux** runs in the app. Its provider key is stored in the
   person's personal scope (the server never sees it) and the app calls the provider
-  directly from the browser, for providers that accept browser requests (Anthropic
-  documents a browser-access header; each provider is checked in E6; a self-hosted
-  OpenAI-compatible endpoint needs CORS from its operator). The `runtime` transport
-  (official CLI in a server slot) is unavailable; subscription users use their agent
-  app over the local bridge.
+  directly from the browser, for providers that accept browser requests. For
+  Anthropic a secondary source reports a browser-access header (Simon Willison,
+  2024-08-23; Anthropic's own documentation not confirmed); each provider is checked
+  in E6. The `runtime` transport (official CLI in a server slot) is unavailable;
+  subscription users use their agent app over the local bridge.
+- **Turning it on is explicit**, per person and workspace. The dialog says that
+  prompts and the decrypted content the assistant reads, **including other members'
+  content the person can read**, go to the AI provider. Nothing, including the
+  summary on open, starts before that.
+- **Network allowlist.** The page's CSP `connect-src` lists only Flux's origin, the
+  configured LiveKit origin and the provider origins the operator configures
+  (`FLUX_AI_BROWSER_ORIGINS`, defaulting to the supported providers' API origins). A
+  custom or self-hosted OpenAI-compatible endpoint is an operator setting, never a
+  field a user types, because each added origin is a place XSS could send data to.
+  E3 and E6 assert the header.
+- **The provider key is a long-lived bearer credential.** It is readable by XSS in
+  memory, available on every device of the person, and not revoked by suspension,
+  device removal or key rotation. The removal dialog says "Rotate your AI key at the
+  provider"; Flux recommends a spend-limited key.
 - The assistant uses the same EXT-1 tool schemas and F-027 approval rules, executed by
   the app's own tool layer over decrypted data; its writes are encrypted and signed by
   the person's device and attributed to the `owner_assistant` connection (visible
@@ -447,15 +501,43 @@ headless agent device, no server-side AI and no key ever reaches an agent.
   deterministic view stays. Closing the app stops the run. Schedules and reactions do
   not run while the app is closed; missed runs are skipped (F-027).
 - **The local MCP bridge (mode (b)).** A small stdio MCP server that the person's agent
-  app starts on their computer. It creates an ephemeral X25519 key and pairs with an
-  open, unlocked Flux tab of the same person by the commit-then-reveal short code
-  above. Each tool call goes bridge → server (the agent connection's OAuth token, grants
-  ∩ owner rights ∩ place, S6 switches, F-029) → that tab, sealed with HPKE to the tab's
-  session key; the tab executes it over decrypted data and returns the result sealed to
-  the bridge. The bridge holds no scope key and signs nothing; with no open tab it
-  answers `E2EE_APP_NOT_OPEN`. The remote `/mcp` content tools answer
-  `E2EE_LOCAL_BRIDGE_REQUIRED`. Plaintext of tool results exists in the bridge and the
-  agent app, by design.
+  app starts on their computer, holding no scope key (review N2):
+  - **Pairing.** The person runs `flux bridge pair` in a terminal. It creates an
+    ephemeral X25519 key, asks the server to reach an open, unlocked Flux tab of the
+    same person, and both run the commit-then-reveal short code above, with the tab's
+    ephemeral X25519 key in the transcript. The terminal prints the four words; the tab
+    shows them in a dialog that **names the agent connection** and lists the grant to
+    approve: projects, read or read-write, and expiry. After a match, both sides derive
+    a request key and a reply key with HKDF from the X25519 shared secret and the
+    transcript; the server never learns them. The paired session is stored in a file
+    readable only by the OS user (mode 0600), which the stdio server started by the
+    agent app reads.
+  - **Every request and reply is authenticated.** Requests are AES-256-GCM under the
+    request key with a strictly increasing counter as nonce and the session id and
+    counter in the AAD; replies use the reply key the same way. The tab drops any
+    message that fails, repeats or goes backwards, so a server cannot inject, replay or
+    reorder tool calls.
+  - **The tab enforces the grant itself** from the local record the person approved at
+    pairing, intersected with the server's checks (the connection's OAuth token, grants
+    ∩ owner rights ∩ place, S6 switches, F-029); a server claim never widens it. Writes
+    follow F-027's approval rules in the app and are signed by the person's device,
+    attributed to the agent connection. Key-log, roster, device and share operations
+    are never tools.
+  - **Session lifetime.** The session ends when the tab locks, signs out or closes,
+    after 30 minutes without a call, and after at most 8 hours; reconnecting needs a new
+    pairing. While it lasts the app shows "Agent connected: <connection>" with
+    Disconnect.
+  - With no paired open tab the bridge answers `E2EE_APP_NOT_OPEN`; the remote `/mcp`
+    content tools answer `E2EE_LOCAL_BRIDGE_REQUIRED`.
+  - **Limits.** The short code authenticates the channel, not the process: any local
+    process of that OS user with the connection's OAuth token can request pairing, and
+    any such process can read the session file, the same exposure as an ordinary MCP
+    client today. The person's confirmation in the tab is the gate. Tool results are
+    plaintext in the bridge, the agent app and **the agent app's model provider**.
+- **Output rendering.** Assistant and agent output is rendered without loading remote
+  resources: no remote images (CSP `img-src` limited to `'self'`, `blob:` and `data:`),
+  links shown with their destination and opened only on a click, so instructions
+  injected into content cannot exfiltrate it through a URL.
 - **AI lock (F-029).** Before each assistant run or bridge session the app obtains a
   short-lived admission from the server, which checks the workspace AI policy, its
   epoch, the owner and the caps; the server refuses relay to bridges while the lock is
@@ -478,7 +560,7 @@ headless agent device, no server-side AI and no key ever reaches an agent.
 | Files: content, name, type, thumbnail | Encrypted; padded size and chunk count visible |
 | Search index | Only on devices, under the cache key |
 | Notifications (inbox, push, email) | No content; reason, actor, place id, time visible |
-| Assistant prompts, summaries, bridge tool results | Only in the app and the bridge on the person's computer |
+| Assistant prompts, summaries, bridge tool results | Not on the Flux server. Prompts and the decrypted content they include go to **the person's AI provider**; bridge results go to **the agent app and its model provider** |
 | GitHub-written notices (PR number, check name) | Visible, marked as written by the server |
 | Workspace name, people (IdP name, email, avatar), roles, grants, memberships | **Visible** |
 | Object existence, kind, padded size, live update sizes, timestamps, typing timing, authors, versions, read observations, presence, live participants | **Visible** |
@@ -574,7 +656,10 @@ reset with veto, safety codes, `workspace_encryption` and `FLUX_E2EE`.
 recovers with the kit after that removal, and resets, in Chromium and WebKit; an IdP
 impersonation session obtains no key, and its reset is vetoed by a trusted device; a
 stolen unlocked device cannot remove the owner's other devices before the delay, and
-the kit reverts its actions; SAS and QR man-in-the-middle attempts fail.
+the kit reverts its actions; a device the thief pairs is on probation and cannot
+confirm, shorten, cancel or reinstate, nor suspend an established device; a suspended
+established device cancels a pending removal; SAS and QR man-in-the-middle attempts
+fail; a reset identity cannot be restored with an invite link alone.
 
 ### E2 — Scopes, conversations and DMs
 
@@ -623,7 +708,11 @@ person's own connection and nothing AI runs with the app closed; an owner's Clau
 Code or Codex works on a granted project through the bridge only while the app is
 open, never sees a non-granted project, and stops when the AI lock turns on; every
 F-029 enforcement point refuses server AI in encrypted workspaces; the server never
-receives a provider key, prompt or summary (scanner).
+receives a provider key, prompt or summary (scanner); forged, replayed, reordered and
+out-of-grant relay requests are dropped by the tab, and a local process cannot pair
+without the person's confirmation; prompt-injected content cannot exfiltrate through
+remote images or links; the CSP `connect-src` and `img-src` headers match the
+allowlist; nothing AI starts before the person turns it on.
 
 ### E7 — Live media
 
@@ -635,7 +724,7 @@ LiveKit media E2EE with client-derived keys in Chromium and WebKit.
 | --- | --- | --- |
 | Crypto core | RFC 9180 vectors; Wycheproof vectors for AES-GCM, Ed25519, X25519 in Chromium and WebKit; every-byte tamper of envelopes, log entries, lockboxes and pairing messages; canonical-encoding ambiguity tests; nonce uniqueness | `app/tests/app/e2ee-*.test.ts` and a browser lane |
 | Logs | Property tests: forks, reorders, replays, unauthorized and demoted signers, stale epochs, key-id mismatch, recipient-set mismatch, rival successors | core tests |
-| **Malicious-server harness** (review P2-12) | A Compose proxy between browsers and the API that substitutes an invitee's key, shows split views to two members, withholds a removal, serves a stale log to a fresh device, forges a reset and restore, attacks QR and short-code pairing, keeps a stale kit lockbox after a generation change, and replays or reorders envelopes; plus a stolen-unlocked-device scenario | E0, then a lane of `check_application.sh` |
+| **Malicious-server harness** (review P2-12) | A Compose proxy between browsers and the API that substitutes an invitee's key, shows split views to two members, withholds a removal, serves a stale log to a fresh device, forges a reset and restore, attacks QR and short-code pairing, keeps a stale kit lockbox after a generation change, and replays or reorders envelopes; forges, replays, reorders and widens bridge relay requests; plus a stolen-unlocked-device scenario in which the thief pairs a second device and tries to confirm its own actions, and a local process that requests bridge pairing without the person's confirmation | E0, then a lane of `check_application.sh` |
 | API and persistence | Refusal of foreign signatures, wrong devices, stale epochs, oversized frames, non-head entries, early sensitive actions; plaintext columns empty; migrations up and down | Compose PostgreSQL tests |
 | Browser journeys | Setup, kit, pairing both ways, short code, recovery after removal, reset with veto, suspension of an open tab, storage clearing, logout, invite link, unverified mark, removal and rotation, offline merge, generic push, device search, summary on open, bridge with app open and closed | `app/tests/ui/` Chromium and WebKit lanes |
 | Plaintext scanner | Canary strings across database dump, files volume, backup, logs, pg-boss payloads; provider keys and prompts included; negative control | E0 script, then the check script |
@@ -664,7 +753,7 @@ Founder direction by Hubert (@PelikanFix16), [#615 comment](https://github.com/C
 
 ## Review findings addressed
 
-Review of `356b60f5`, [PR #652 comment](https://github.com/ColdPhase/flux/pull/652#issuecomment-6356018693).
+Review of `356b60f5`, [PR #652 comment](https://github.com/ColdPhase/flux/pull/652#issuecomment-6356018693), and re-review of `0b2762f1`, [PR #652 comment](https://github.com/ColdPhase/flux/pull/652#issuecomment-6368579005) (N1–N4).
 
 | Finding | Change |
 | --- | --- |
@@ -676,10 +765,14 @@ Review of `356b60f5`, [PR #652 comment](https://github.com/ColdPhase/flux/pull/6
 | P2-6 stolen unlocked device | [Sensitive actions](#sensitive-actions-on-a-trusted-device) |
 | P2-7 pairing gaps | [Pairing](#pairing): both directions bound, commit-then-reveal, 44 bits, one attempt, key separation, transcript |
 | P2-8 identity continuity, cross-log authority | Successor entries, root safety code, cross-log heads, recipient sets |
-| P2-9 honest limits | [Honest limits](#honest-limits) 1–9; 30-day rotation |
+| P2-9 honest limits | [Honest limits](#honest-limits) 1–12; 30-day rotation |
 | P2-10 agent devices | No agent devices; the bridge holds no keys and signs nothing |
 | P2-11 rendering files | Sandboxed viewer, CSP, Trusted Types in E3 |
 | P2-12 adversarial tests | Malicious-server harness |
+| Re-review N1 (P1): second device confirms the thief's actions | Probation for devices paired in the last 7 days; suspended established devices can cancel; kit confirmation final; kit replacement 7 days; threat row rewritten; E1 and harness cases |
+| Re-review N2 (P1): unauthenticated bridge relay | Pairing-derived request and reply keys with counters; tab-enforced local grant; session lifetime and indicator; dialog names the connection; terminal `flux bridge pair` shows the words; local-process limit stated; harness cases |
+| Re-review N3 (P2): on-device AI honesty | CSP `connect-src` allowlist set by the operator; provider key as a bearer credential (limit 11, removal dialog); provider and agent model provider as plaintext recipients (inventory, limit 10, enable dialog); explicit turn-on |
+| Re-review N4 | Invite link carries the genesis hash and the adder's root and is a bearer secret; inheritance of "Not verified"; restore after reset needs the safety code; powered-off laptop row and limit 12; lane rule for tabs; Anthropic header cited to the secondary source; output rendering and prompt-injection tests in E6 |
 | P3 | HPKE labeling corrected; size/timing metadata and padding; length-prefixed encoding and key id; Web Locks `seq`; 255-byte header count; conversion residue not applicable (no conversion); history for new members stated in the add dialog |
 
 ## Reconsider when
