@@ -406,9 +406,16 @@ runtime_prepare_cleanup() {
   runtime_purge_id=
   if docker volume inspect "${PROJECT}_pgdata" >/dev/null 2>&1; then
     runtime_purge_reply=$(image_op runtime-begin-purge) || die "Runtime cleanup admission could not be fenced. API and worker remain stopped; repair the database and retry."
-    runtime_purge_id=$(printf '%s\n' "$runtime_purge_reply" | sed -n 's/^FLUX_RUNTIME_PURGE //p')
-    printf '%s\n' "$runtime_purge_id" | grep -Eq '^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$' \
-      || die "Runtime cleanup fence was not confirmed. API and worker remain stopped."
+    # A database that never ran the migration has no admission table to fence:
+    # the operation answers FLUX_RUNTIME_PURGE none and cleanup proceeds unfenced.
+    case "$runtime_purge_reply" in
+      'FLUX_RUNTIME_PURGE none') runtime_purge_id= ;;
+      *)
+        runtime_purge_id=$(printf '%s\n' "$runtime_purge_reply" | sed -n 's/^FLUX_RUNTIME_PURGE //p')
+        printf '%s\n' "$runtime_purge_id" | grep -Eq '^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$' \
+          || die "Runtime cleanup fence was not confirmed. API and worker remain stopped."
+        ;;
+    esac
   fi
 }
 # Best effort before slot volumes are deleted: each CLI signs out (the vendor ends the session where it
