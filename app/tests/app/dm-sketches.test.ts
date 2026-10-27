@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { before, describe, test } from 'node:test';
 import type { ConversationMessage, Dm, ProjectPerson, PromotedSketch, SearchResponse, Sketch, SketchDetail, SketchPage, SketchPromotionPreview, Workspace } from '@flux/contracts';
 import { authorize, createAgent, createSketchUseCases, type Principal, type SketchUnitOfWork } from '@flux/core';
-import { accessReader } from '@flux/db';
+import { accessPorts, accessReader } from '@flux/db';
 import { sketchPorts } from '../../apps/server/src/sketches/adapters.js';
 import { db, pool } from './support/db.js';
 import { addMember, expectStatus, grant, person, project, removeMember, workspace, type Person } from './support/people.js';
@@ -167,7 +167,7 @@ describe('DM sketches', () => {
     }
     assert.ok((await listIds(kai, ws.id, `&dmId=${pair.id}`)).ids.has(sketch.id));
     // Agents take no part in DMs: not even the participant's own agent sees the sketch.
-    const helper = await createAgent({ kind: 'human', id: jo.id }, ws.id, { name: 'Jo’s helper', owner: 'self' }, db);
+    const helper = await createAgent({ kind: 'human', id: jo.id }, ws.id, { name: 'Jo’s helper', owner: 'self' }, db, accessPorts);
     const decision = await authorize({ kind: 'agent', id: helper.id } as Principal, 'sketch.read', { type: 'sketch', id: sketch.id }, accessReader(db));
     assert.equal(decision.visible, false);
 

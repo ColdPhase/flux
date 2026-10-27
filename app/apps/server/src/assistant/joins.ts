@@ -1,4 +1,4 @@
-import { assistantJoinRows, assistantJoinView, lockAssistantOwner, accessReader } from '@flux/db';
+import { accessPorts, assistantJoinRows, assistantJoinView, lockAssistantOwner, accessReader } from '@flux/db';
 import { ConflictError, NotFoundError, assertAuthorized, createNotification, evaluateProject, getProject,
   grantProject, isUuid, type Database, type Principal } from '@flux/core';
 import type { PgBoss } from 'pg-boss';
@@ -16,7 +16,7 @@ export function assistantJoinUseCases(db: Database, boss: Pick<PgBoss, 'send'>) 
       human(principal, projectId);
       return db.transaction(async (tx) => {
         await lockAssistantOwner(tx, principal.id);
-        const project = await getProject(principal, projectId, tx);
+        const project = await getProject(principal, projectId, tx, accessPorts);
         await assertAuthorized(principal, 'project.read', { type: 'project', id: projectId }, accessReader(tx), { lock: true });
         const rows = assistantJoinRows(tx);
         const identity = await rows.forOwner(principal.id, project.workspaceId);
@@ -64,7 +64,7 @@ export function assistantJoinUseCases(db: Database, boss: Pick<PgBoss, 'send'>) 
         const events = transactionEventSession(tx);
         await events.run(async () => {
           if (allow) {
-            await grantProject(principal, projectId, { principal: { kind: 'agent', id: identity.agentId }, role: 'contributor' }, tx, events);
+            await grantProject(principal, projectId, { principal: { kind: 'agent', id: identity.agentId }, role: 'contributor' }, tx, accessPorts, events);
             await assistantRows(tx, events).addGrantedProject(identity.agentId, request.workspaceId, projectId);
           }
         });

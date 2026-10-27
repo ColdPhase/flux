@@ -5,6 +5,7 @@ import { after, before, beforeEach, describe, test } from 'node:test';
 import { assistantJobsPath, workspaceAiPolicyPath, type AssistantJob, type SetWorkspaceAiPolicyResult, type Workspace } from '@flux/contracts';
 import type { PgBoss } from 'pg-boss';
 import { assistantTick, sweepWorkspaceAi } from '@flux/core';
+import { accessPorts } from '@flux/db';
 import { assistantUnitOfWork, startBackgroundOf } from '../../apps/worker/src/assistant/index.js';
 import { buildApp } from '../../apps/server/src/app.js';
 import { loadServerConfig } from '../../apps/server/src/config.js';
@@ -184,12 +185,12 @@ describe('workspace AI lock: switch and cutover', () => {
     const blockedEpoch = await setWorkspaceAi(scene.ws.id, 'blocked'); // a flip whose sweep has not run yet
     await setWorkspaceAi(scene.ws.id, 'allowed');
     const fresh = await scene.runs.invoke(human(scene.owner), scene.thread.id, { clientRunId: randomUUID(), kind: 'ask', prompt: 'New' });
-    const swept = await sweepWorkspaceAi({ workspaceId: scene.ws.id, epoch: blockedEpoch }, db);
+    const swept = await sweepWorkspaceAi({ workspaceId: scene.ws.id, epoch: blockedEpoch }, db, accessPorts);
     assert.ok(swept.runs >= 1);
     const status = async (id: string) => (await pool.query('SELECT status, end_reason FROM personal_runs WHERE id = $1', [id])).rows[0];
     assert.deepEqual(await status(old.run.id), { status: 'stopped', end_reason: 'ai_off' }, 'the late sweep ends what was admitted before the flip');
     assert.deepEqual(await status(fresh.run.id), { status: 'queued', end_reason: null }, 'and never touches work admitted after AI was turned on again');
-    assert.deepEqual(Object.values(await sweepWorkspaceAi({ workspaceId: scene.ws.id, epoch: blockedEpoch }, db)), [0, 0, 0, 0, 0, 0, 0, []], 'a second sweep changes nothing');
+    assert.deepEqual(Object.values(await sweepWorkspaceAi({ workspaceId: scene.ws.id, epoch: blockedEpoch }, db, accessPorts)), [0, 0, 0, 0, 0, 0, 0, []], 'a second sweep changes nothing');
     const dispatched = scene.compute.dispatched.length;
     await scene.processor.process(fresh.run.id);
     assert.ok(scene.compute.dispatched.length > dispatched, 'control: the new run reaches the provider');
