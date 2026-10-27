@@ -257,6 +257,8 @@ test('actual retained native87 history upgrades to88 without pulses, seeds old b
     for(const migration of beforeManifest){await fixture.pool.query(await readFile(`packages/db/migrations/${migration.name}`,'utf8'));await fixture.pool.query('INSERT INTO flux_schema_version(version) VALUES($1) ON CONFLICT DO NOTHING',[migration.version]);}
     // The app code under test reads columns that migrations after 88 add (0102 waiting_for_user_id, 0112 due_on); this earlier fixture gets those two columns.
     await fixture.pool.query('ALTER TABLE project_work_items ADD COLUMN waiting_for_user_id text, ADD COLUMN due_on date');
+    // 0115 added ai_epoch to agent_runtime_sessions. The retained row is copied whole, so this earlier fixture gets the column too, as 0115 leaves it: NOT NULL, no default.
+    await fixture.pool.query('ALTER TABLE agent_runtime_sessions ADD COLUMN ai_epoch bigint NOT NULL');
     const client=await fixture.pool.connect();try{
       await client.query('BEGIN');await client.query('SET CONSTRAINTS ALL DEFERRED');
       // Restore only this isolated fixture's two guarded tables, preserving the ACTUAL
@@ -276,6 +278,13 @@ test('actual retained native87 history upgrades to88 without pulses, seeds old b
       await client.query('SELECT setval(project_task_sequence($1::uuid),$2,$3)',[f.projectId,taskSequence.last_value,taskSequence.is_called]);
       await client.query("SELECT setval('agent_thread_guard_sequence',$1,$2)",[guardSequence.last_value,guardSequence.is_called]);await client.query('COMMIT');
     }finally{client.release();}
+    // The access check of the code under test reads the workspace's AI policy (0115) for every actor, and a missing row reads as blocked.
+    // Take that table and its backfill from the migration itself: its other statements alter AI work tables that this earlier schema does not have.
+    const policyMigration=await readFile('packages/db/migrations/0115_workspace_ai_policy.sql','utf8');
+    const policyStart=policyMigration.indexOf('CREATE TABLE workspace_ai_policies'),policyEnd=policyMigration.indexOf('CREATE FUNCTION workspace_ai_policy_create');
+    assert.ok(policyStart>=0&&policyEnd>policyStart,'0115 still defines workspace_ai_policies and its backfill before the creation trigger');
+    await fixture.pool.query(policyMigration.slice(policyStart,policyEnd));
+    assert.equal((await fixture.pool.query("SELECT count(*)::int n FROM workspace_ai_policies WHERE state='allowed'")).rows[0].n,1,'the restored workspace is allowed, as 0115 leaves an existing one');
     const snapshots=async()=>{const rows:Record<string,unknown[]>={};for(const[table]of specs)rows[table]=(await fixture.pool.query(`SELECT row_to_json(r)::text AS value FROM ${table} r ORDER BY row_to_json(r)::text`)).rows;return rows;};
     const original=await snapshots();assert.deepEqual(original,sourceSnapshot);
     assertExactMigrationLedger(beforeManifest,await readAppliedMigrationVersions(fixture.pool));

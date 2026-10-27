@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router';
 import { AI_PROVIDERS, assistantCanSentence, assistantSettingsPath, type AiProviderKind, type AssistantRun, type AssistantSettings } from '@flux/contracts';
 import { request } from '../api/client';
-import { AgentTag, Button, Icon, Kreska, MEDIA, Overlay, agentHue, useMediaQuery } from '../ui';
+import { AgentTag, Button, Icon, Kreska, MEDIA, Overlay, agentHue, useMediaQuery, usePop } from '../ui';
 import { getAssistantStatus, listOwnRuns, pauseAssistant, resumeAssistant, stopRun } from './api';
 import { AssistantModelControl } from './ModelPicker';
 
@@ -38,6 +38,7 @@ function Body({ onClose, name, mine, ownerName, provider, userId, onMessage }: {
   const [can, setCan] = useState('');
   const [paused, setPaused] = useState<boolean | null>(null);
   const [menu, setMenu] = useState(false);
+  const pop = usePop(menu);
   const [error, setError] = useState('');
   const first = useRef<HTMLButtonElement>(null);
   useEffect(() => {
@@ -68,7 +69,7 @@ function Body({ onClose, name, mine, ownerName, provider, userId, onMessage }: {
         <div><strong>{name}</strong> <AgentTag /><span className="aset-panel__sub">for {mine ? 'you' : ownerName} · in Flux · {companyName(provider)}</span></div>
         {mine ? <div className="aset-panel__menu">
           <Button variant="quiet" aria-label="More" aria-haspopup="menu" aria-expanded={menu} disabled={paused === null} onClick={() => setMenu(!menu)}><Icon name="more" size={16} /></Button>
-          {menu ? <div className="aset-panel__pop" role="menu">
+          {pop.mounted ? <div {...pop.props} className="aset-panel__pop" role="menu">
             <Button variant="quiet" role="menuitem" onClick={() => { setMenu(false); void toggle(); }}>{paused ? 'Resume my assistant' : 'Pause my assistant'}</Button>
             <Link className="ui-link" role="menuitem" to="/settings/assistant" onClick={onClose}>Manage <Icon name="chevron-right" size={12} /></Link>
           </div> : null}

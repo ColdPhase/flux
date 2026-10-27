@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type KeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode, type RefObject } from 'react';
 import { createPortal } from 'react-dom';
-import { duration, play } from './motion';
+import { duration, settle, token, type Easing, type Pose } from './motion';
 
 const FOCUSABLE = 'a[href], button:not([disabled]), input:not([disabled]):not([type="hidden"]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
@@ -104,12 +104,22 @@ export interface OverlayProps {
   children: ReactNode;
 }
 
-const offstage: Record<OverlayPlacement, string> = {
-  left: 'translateX(calc(-100% - 24px))',
-  right: 'translateX(100%)',
-  bottom: 'translateY(100%)',
-  center: 'translateY(-8px) scale(.98)',
-};
+// Where each placement comes from and goes back to. The floating dialog and the detail panel's overlay form
+// fade and move a few pixels (#593 AC-1); the drawer and the phone sheet travel from their edge.
+const offstage = (placement: OverlayPlacement): Pose => ({
+  left: { transform: 'translateX(calc(-100% - 24px))' },
+  right: { opacity: 0, transform: `translateX(${token('--shift-panel') || '14px'})` },
+  bottom: { transform: 'translateY(100%)' },
+  center: { opacity: 0, transform: 'translateY(-8px) scale(.98)' },
+})[placement];
+/**
+ * Enter and exit: every surface takes --dur-in (180 ms) and --dur-out (120 ms), the drawer and the phone sheet included
+ * (#593 AC-1); they travel from their edge on --ease-sheet, the dialog and the panel on --ease-out.
+ */
+const timing = (placement: OverlayPlacement) => ({
+  enter: duration('--dur-in'), exit: duration('--dur-out'),
+  easeIn: (placement === 'center' || placement === 'right' ? '--ease-out' : '--ease-sheet') as Easing,
+});
 
 /**
  * Touch dismissal (#266 PF-4): the drawer follows a finger dragging it back to the left and the
@@ -129,13 +139,14 @@ function useDismissDrag(placement: OverlayPlacement, surfaceRef: RefObject<HTMLD
     surface.style.transform = axis === 'x' ? `translateX(${offset}px)` : `translateY(${offset}px)`;
     if (scrimRef.current) scrimRef.current.style.opacity = String(Math.max(0, 1 - Math.abs(offset) / size()));
   };
-  const settle = () => {
+  const springBack = () => {
     const surface = surfaceRef.current;
     const scrim = scrimRef.current;
-    const from = surface?.style.transform || 'none';
-    void play(surface, [{ transform: from }, { transform: 'none' }], duration('--dur-2'), '--ease-out').then(() => { if (surface) surface.style.transform = ''; });
-    if (scrim) { void play(scrim, [{ opacity: scrim.style.opacity || '1' }, { opacity: 1 }], duration('--dur-2'), '--ease-out').then(() => { scrim.style.opacity = ''; }); }
-    if (!duration('--dur-2')) { if (surface) surface.style.transform = ''; if (scrim) scrim.style.opacity = ''; }
+    const ms = duration('--dur-2');
+    // From where the finger let go back to rest; the inline drag offset goes once the animation owns the pose.
+    void settle(surface, { transform: 'none' }, ms, '--ease-out', { from: { transform: surface?.style.transform || 'none' } }).then(() => { if (surface) surface.style.transform = ''; });
+    void settle(scrim, { opacity: 1 }, ms, '--ease-out', { from: { opacity: scrim?.style.opacity || '1' } }).then(() => { if (scrim) scrim.style.opacity = ''; });
+    if (!ms) { if (surface) surface.style.transform = ''; if (scrim) scrim.style.opacity = ''; }
   };
   return {
     onPointerDown(event: ReactPointerEvent<HTMLDivElement>) {
@@ -170,12 +181,12 @@ function useDismissDrag(placement: OverlayPlacement, surfaceRef: RefObject<HTMLD
       // A flick is judged by the finger's speed as it lets go, not averaged from the start.
       const velocity = (along - drag.prev) / Math.max(1, event.timeStamp - drag.prevT);
       if (Math.sign(along) === sign && (Math.abs(along) > size() / 3 || velocity * sign > 0.5)) close();
-      else settle();
+      else springBack();
     },
     onPointerCancel() {
       const drag = state.current;
       state.current = null;
-      if (drag?.moving) settle();
+      if (drag?.moving) springBack();
     },
   };
 }
@@ -201,25 +212,25 @@ export function Overlay({ open, onClose, placement, label, labelledBy, initialFo
     returnRef.current = document.activeElement as HTMLElement | null;
     const surface = surfaceRef.current;
     const scrim = scrimRef.current;
-    // A reopen during the exit animation starts from a clean slate.
-    for (const el of [surface, scrim]) el?.getAnimations().forEach((animation) => animation.cancel());
     setAppInert(true, !!keepLiveStrip);
-    // Full-screen phone sheets travel further, so they take the longer token (#266 PF-4).
-    const ms = duration(placement === 'bottom' ? '--dur-4' : '--dur-3');
-    void play(scrim, [{ opacity: 0 }, { opacity: 1 }], ms, '--ease-out', { fill: 'backwards' });
-    void play(surface, [{ transform: offstage[placement] }, { transform: 'none' }], ms, '--ease-sheet', { fill: 'backwards' });
+    // A reopen during the exit continues from where the exit had got to (settle), never from a start pose.
+    const { enter, easeIn } = timing(placement);
+    void settle(scrim, { opacity: 1 }, enter, '--ease-out', { from: { opacity: 0 } });
+    void settle(surface, { opacity: 1, transform: 'none' }, enter, easeIn, { from: offstage(placement) });
     (initialFocus?.current ?? surface)?.focus({ preventScroll: true });
     return () => {
       setAppInert(false, !!keepLiveStrip);
+      // Focus returns first and at once: the exit below never delays it, the next action or the next open.
       const target = returnRef.current;
       returnRef.current = null;
       if (target?.isConnected) target.focus({ preventScroll: true });
-      const ms2 = placement === 'bottom' ? duration('--dur-3') * 0.85 : duration('--dur-2');
-      // A drag that closed the surface continues from where the finger let go (#266 PF-4).
-      const from = surface?.style.transform || 'none';
-      const scrimFrom = scrim?.style.opacity || '1';
-      void play(scrim, [{ opacity: scrimFrom }, { opacity: 0 }], ms2, '--ease-in', { fill: 'forwards' });
-      void play(surface, [{ transform: from }, { transform: offstage[placement] }], ms2, from === 'none' ? '--ease-in' : '--ease-out', { fill: 'forwards' }).then(() => {
+      const { exit } = timing(placement);
+      // A drag that closed the surface continues from where the finger let go (#266 PF-4); a close during the
+      // enter continues from where the enter had got to.
+      const dragged = !!surface?.style.transform;
+      const goal = offstage(placement);
+      void settle(scrim, { opacity: 0 }, exit, '--ease-in', { from: { opacity: scrim?.style.opacity || 1 }, fill: 'forwards' });
+      void settle(surface, goal, exit, dragged ? '--ease-out' : '--ease-in', { from: { transform: surface?.style.transform || 'none', ...(goal.opacity === undefined ? {} : { opacity: 1 }) }, fill: 'forwards' }).then(() => {
         if (surface) surface.style.transform = '';
         if (scrim) scrim.style.opacity = '';
         if (!openRef.current) unmount();

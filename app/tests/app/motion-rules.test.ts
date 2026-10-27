@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { arrivalShouldAnimate, arrivals, cssTimeToMs, loopShouldRun, newBelowText } from '../../apps/web/src/ui/motion-rules.js';
+import { arrivalShouldAnimate, arrivals, cssTimeToMs, loopShouldRun, newBelowText, routeView, viewDirection } from '../../apps/web/src/ui/motion-rules.js';
 
 test('only entries after the newest one already shown are arrivals (#155 UI116-5)', () => {
   // The first render is restored history: nothing arrives.
@@ -51,4 +51,41 @@ test('CSS times read in milliseconds whatever unit the minifier chose (#264)', (
   assert.equal(cssTimeToMs(' 130ms '), 130);
   assert.equal(cssTimeToMs('1S'), 1000);
   for (const off of ['0ms', '0s', '', 'none', 'auto', '12', '-5ms', 'calc(1s)']) assert.equal(cssTimeToMs(off), 0, off);
+});
+
+test('a view switch is a different view; a thread, a page or a sketch opened inside one is not (#593 AC-3)', () => {
+  // Project views are told apart, and so are two projects.
+  assert.notEqual(routeView('/projects/p1'), routeView('/projects/p1/tasks'));
+  assert.notEqual(routeView('/projects/p1/tasks'), routeView('/projects/p1/map'));
+  assert.notEqual(routeView('/projects/p1/tasks'), routeView('/projects/p2/tasks'));
+  // A thread opening beside the conversation stays in the Conversation view.
+  assert.equal(routeView('/projects/p1'), routeView('/projects/p1/conversations/c9'));
+  // A page inside the Wiki and a sketch inside the Map stay in their view; the Wiki and the Map are views.
+  assert.equal(routeView('/projects/p1/docs'), routeView('/projects/p1/docs/d3/edit'));
+  assert.equal(routeView('/projects/p1/map'), routeView('/projects/p1/map/s2'));
+  // Top-level places and Settings sections.
+  assert.equal(routeView('/inbox'), routeView('/inbox/n1'));
+  assert.notEqual(routeView('/inbox'), routeView('/search'));
+  assert.notEqual(routeView('/settings'), routeView('/settings/appearance'));
+  assert.notEqual(routeView('/settings/appearance'), routeView('/settings/account'));
+  assert.equal(routeView('/dm/d1'), routeView('/dm/d1/'));
+  assert.notEqual(routeView('/dm/d1'), routeView('/dm/d1/sketches'));
+  assert.equal(routeView('/dm/d1/sketches'), routeView('/dm/d1/sketches/s1'));
+  assert.notEqual(routeView('/dm'), routeView('/dm/new'));
+  assert.notEqual(routeView('/projects'), routeView('/projects/new'));
+  assert.equal(routeView('/materials/m1'), routeView('/materials/m1/versions/2'));
+});
+
+test('the way a view switch travels follows the project row, and Back reverses it (#593 AC-3)', () => {
+  // Conversation, Map, Tasks, Wiki, Agents in the tabs' order: further along is forward, before is back.
+  assert.equal(viewDirection('/projects/p1', '/projects/p1/tasks', false), 'forward');
+  assert.equal(viewDirection('/projects/p1/tasks', '/projects/p1', false), 'back');
+  assert.equal(viewDirection('/projects/p1/map', '/projects/p1/docs', false), 'forward');
+  assert.equal(viewDirection('/projects/p1/agents', '/projects/p1/map', false), 'back');
+  // Places and Settings sections have no row: the history decides.
+  assert.equal(viewDirection('/inbox', '/search', false), 'forward');
+  assert.equal(viewDirection('/search', '/inbox', true), 'back');
+  assert.equal(viewDirection('/settings', '/settings/appearance', false), 'forward');
+  // The row beats the history: going to a view further along is forward even by the browser's Forward.
+  assert.equal(viewDirection('/projects/p1', '/projects/p1/tasks', true), 'forward');
 });

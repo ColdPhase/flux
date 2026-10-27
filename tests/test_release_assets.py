@@ -45,6 +45,7 @@ class ReleaseAssetsTest(unittest.TestCase):
             "compose.yaml": "services:\n  migrate:\n    image: " + MARKER + "\n"
             "  api:\n    image: " + MARKER + "\n"
             "  worker:\n    image: " + MARKER + "\n"
+            "  keyring:\n    image: " + MARKER + "\n"
             "  db:\n    image: postgres@sha256:" + "f" * 64 + "\n",
             ".env.example": "POSTGRES_PASSWORD=change-me\n",
             "INSTALL.md": "Install instructions\n",
@@ -80,7 +81,7 @@ class ReleaseAssetsTest(unittest.TestCase):
         output = self.build()
         compose = (output / "compose.yaml").read_text(encoding="utf-8")
         self.assertNotIn("RELEASE_DIGEST", compose)
-        self.assertEqual(compose.count("ghcr.io/coldphase/flux@sha256:" + "b" * 64), 3)
+        self.assertEqual(compose.count("ghcr.io/coldphase/flux@sha256:" + "b" * 64), 4)
         self.assertEqual(json.loads((output / "release.json").read_text())["source_sha"], "a" * 40)
         self.assertEqual(json.loads((output / "THIRD_PARTY_NOTICES.json").read_text())[0]["name"], "postgres")
         for line in (output / "SHA256SUMS").read_text().splitlines():
@@ -101,7 +102,7 @@ class ReleaseAssetsTest(unittest.TestCase):
         text = compose.read_text().replace("  api:\n    image: " + MARKER, "  api:\n    image: flux:v1")
         text += "  unrelated:\n    image: " + MARKER + "\n"
         compose.write_text(text)
-        with self.assertRaisesRegex(ValueError, "api, worker and migrate"):
+        with self.assertRaisesRegex(ValueError, "api, worker, keyring and migrate"):
             self.build()
 
     def test_rejects_invalid_identity_and_stale_destination(self) -> None:
@@ -147,6 +148,7 @@ class ReleaseAssetsTest(unittest.TestCase):
             "name: ${FLUX_PROJECT:-flux}\n# keep this comment\nservices:\n"
             "  migrate:\n    image: " + MARKER + "\n  api:\n    image: " + MARKER + "\n"
             "  worker:\n    image: " + MARKER + "\n"
+            "  keyring:\n    image: " + MARKER + "\n"
         )
         pinned = f"{IMAGE}@sha256:" + "c" * 64
         rendered = render_compose(template, version="v2.0.0", source_sha="d" * 40, digest=pinned.split("@")[1])
@@ -154,7 +156,7 @@ class ReleaseAssetsTest(unittest.TestCase):
         self.assertNotIn("repository header", rendered)
         self.assertNotIn("RELEASE_DIGEST", rendered)
         self.assertIn("name: ${FLUX_PROJECT:-flux}\n# keep this comment\nservices:\n", rendered)
-        self.assertEqual(rendered.count(f"image: {pinned}\n"), 3)
+        self.assertEqual(rendered.count(f"image: {pinned}\n"), 4)
 
     def test_runtime_assets_pin_both_images_and_record_codex(self) -> None:
         output = self.build()
@@ -274,7 +276,7 @@ class RealOperatorAssetsTest(unittest.TestCase):
         expected = [line.replace(MARKER, f"{IMAGE}@{self.digest}") for line in code(REAL_COMPOSE.read_text())]
         self.assertEqual(code(packaged), expected)
         self.assertNotIn("RELEASE_DIGEST", packaged)
-        self.assertEqual(packaged.count(f"image: {IMAGE}@{self.digest}\n"), 3)
+        self.assertEqual(packaged.count(f"image: {IMAGE}@{self.digest}\n"), 4)
 
     def test_runtime_overlay_and_script_ship_unchanged_but_for_digests_and_header(self) -> None:
         def code(text: str) -> list[str]:

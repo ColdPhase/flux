@@ -68,6 +68,7 @@ export interface SessionSummary {
 
 export * from './access.js';
 export * from './ai-lock.js';
+export * from './encryption.js';
 export * from './project-goals.js';
 export * from './push.js';
 export * from './conversation.js';

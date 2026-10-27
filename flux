@@ -161,6 +161,16 @@ public_origin() { v=$(env_value FLUX_PUBLIC_ORIGIN); printf '%s' "${v:-http://12
 # 64 hex characters from the kernel CSPRNG: URL-safe for DATABASE_URL, no openssl needed.
 random_hex() { od -An -N"${1:-32}" -tx1 /dev/urandom | tr -d ' \n'; }
 
+# 32 random bytes as base64url (43 characters): the keyring token of encrypted workspaces (F-030).
+random_b64url() { head -c 32 /dev/urandom | base64 | tr '+/' '-_' | tr -d '=\n'; }
+# Adds FLUX_KEYRING_TOKEN to an env file that lacks one (an install from before F-030); never changes an existing token.
+ensure_keyring_token() {
+  file=${1:-$ENV_FILE}
+  [ -n "$(sed -n 's/^FLUX_KEYRING_TOKEN=//p' "$file" | tail -n 1)" ] && return 0
+  set_env_line "$file" FLUX_KEYRING_TOKEN "$(random_b64url)"
+  say "Added FLUX_KEYRING_TOKEN (encrypted spaces' keyring) to ${file#"$FLUX_ROOT"/}."
+}
+
 # Writes KEY=value into an env file (replacing the line or appending it), via a temp file.
 set_env_line() {
   file=$1 key=$2 value=$3
@@ -198,6 +208,7 @@ ensure_env() {
   set_env_line "$draft" POSTGRES_PASSWORD "$(random_hex 32)"
   set_env_line "$draft" FLUX_FIXTURE_TOKEN "$(random_hex 32)"
   set_env_line "$draft" FLUX_AUTH_SECRET "$(random_hex 32)"
+  set_env_line "$draft" FLUX_KEYRING_TOKEN "$(random_b64url)"
   set_env_line "$draft" FLUX_DEMO_OWNER_PASSWORD "demo-$(random_hex 8)"
   set_env_line "$draft" FLUX_DEMO_PARTNER_PASSWORD "demo-$(random_hex 8)"
   # Agent runtime secrets (F-022 T3): the service secret and one secret per slot. Generated now so
@@ -1143,6 +1154,8 @@ cmd_upgrade() {
   need_docker
   [ -f "$ENV_FILE" ] || die "No ${ENV_FILE#"$FLUX_ROOT"/}; for a first installation use ./flux up."
   check_owner "$PROJECT"
+  # F-030: an install from before encrypted workspaces gets its keyring token here (the upgrade restarts the keyring).
+  ensure_keyring_token "$ENV_FILE"
   docker volume inspect "${PROJECT}_pgdata" >/dev/null 2>&1 || die "Compose project $PROJECT has no data yet; use ./flux up."
   if [ "$pull" = 1 ] && [ "$(git_commit)" = unknown ]; then die "upgrade --pull needs a git checkout; update the files yourself and run ./flux upgrade."; fi
   compose_main up -d --wait --wait-timeout "$WAIT_TIMEOUT" db >/dev/null || die "The database of $PROJECT did not start."
