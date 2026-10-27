@@ -373,6 +373,64 @@ class MapCanvasJourney(unittest.TestCase):
                 show_map_as(page, 'Map')
                 self.assertAlmostEqual(controls['Undo'].bounding_box()['x'], on_map['Undo']['x'], delta=1)
 
+    CORNER = """() => {
+        const rect = (el) => { const b = el.getBoundingClientRect(); return {x: b.x, y: b.y, width: b.width, height: b.height}; };
+        return {zoom: rect(document.querySelector('.sk-corner .sk-zoom')), minimap: rect(document.querySelector('.sk-minimap')), hint: rect(document.querySelector('.sk-hint'))};
+    }"""
+    # Every frame in which the zoom group is on screen: where it and the minimap are (changes only), from before the first paint.
+    FRAMES = """
+      window.__corner = [];
+      const tick = () => {
+        const zoom = document.querySelector('.sk-corner .sk-zoom'), minimap = document.querySelector('.sk-minimap');
+        if (zoom && minimap) {
+          const z = zoom.getBoundingClientRect(), m = minimap.getBoundingClientRect(), row = [z.x, z.y, m.x, m.y].map((n) => Math.round(n * 10) / 10);
+          const last = window.__corner[window.__corner.length - 1];
+          if (!last || last.join() !== row.join()) window.__corner.push(row);
+        }
+        requestAnimationFrame(tick);
+      };
+      requestAnimationFrame(tick);
+    """
+
+    def corner(self, page):
+        """The zoom group, the minimap and the hint once they have stopped changing."""
+        expect(page.locator('.sk-hint')).to_be_visible()
+        before = page.evaluate(self.CORNER)
+        for _ in range(20):
+            page.wait_for_timeout(250)
+            now = page.evaluate(self.CORNER)
+            if now == before:
+                return now
+            before = now
+        return before
+
+    def test_12_the_zoom_group_and_minimap_stay_in_one_place_across_mounts_and_map_list_map(self):
+        # #510 gap 2 (#500 audit, Spokoj rule 7): at 820 x 1180 the zoom group sat 10 px lower after Map, List, Map. The height
+        # that lifts it above the dock starts at 64 px with every mount and was only measured after the first paint, so a map
+        # that had just been mounted showed the group 10 px too low for a frame (the audit read it then); and what the map had
+        # seen did not outlive it. Now it is measured before the first paint and kept by the view that owns Map and List.
+        for width, height, touch in ((820, 1180, False), (820, 1180, True), (1440, 900, False), (2560, 1440, False)):
+            with self.subTest(width=width, touch=touch):
+                page = self.page(width, height, has_touch=touch)
+                page.add_init_script(self.FRAMES)
+                self.scene(page)
+                first = self.corner(page)
+                for trip in (1, 2):
+                    show_map_as(page, 'List', touch=touch)
+                    expect(page.get_by_role('tree', name='Thoughts in Plane directions')).to_be_visible()
+                    show_map_as(page, 'Map', touch=touch)
+                    again = self.corner(page)
+                    for name in ('zoom', 'minimap', 'hint'):
+                        for key in ('x', 'y', 'width', 'height'):
+                            self.assertAlmostEqual(again[name][key], first[name][key], delta=0.5, msg=f'{width}: the {name} {key} is where it was before the List (trip {trip})')
+                    zoom, hint = again['zoom'], again['hint']
+                    if zoom['x'] < hint['x'] + hint['width'] and hint['x'] < zoom['x'] + zoom['width']:
+                        self.assertLessEqual(zoom['y'] + zoom['height'], hint['y'], f'{width}: the zoom group stays clear of the hint line')
+                frames = page.evaluate('window.__corner')
+                self.assertEqual(len({tuple(row) for row in frames}), 1,
+                    f'{width}: the zoom group and the minimap were in one place in every frame, at the first load and after two trips to the List: {frames}')
+                page.close()
+
 
 if __name__ == '__main__':
     unittest.main()
