@@ -1199,14 +1199,14 @@ class ScenarioJourney:
 
         # Ada exports the whole project from the wiki.
         page.goto(f"/projects/{lamp}/docs/{s['doc']}")
-        # On a phone the page's context and its one "More" menu sit in the header (F-026 §4: no bar
-        # under it); on a computer the bar above the page has Download as its own button.
+        # On a phone the page's context sits in the header (F-026 §4: no bar under it) and its one "More" menu ends the
+        # row of page chips (#507: the header is the same in every view); on a computer the bar above the page has Download as its own button.
         expect(page.get_by_role("heading", level=2, name=DOC_TITLE)).to_be_visible()
         if self.phone:
             header = page.locator("header.phead")
             expect(page.locator(".wiki-bar")).to_have_count(0)
             expect(header.locator(".wiki-header-meta")).to_have_text(re.compile(r"^Wiki · \d+ pages?$"))
-            actions = header.locator(".wiki-header-actions")
+            actions = page.locator(".wiki-top__menu")
             expect(actions).to_be_visible()
             self.tap(actions.get_by_role("button", name="More", exact=True))
             download = page.get_by_role("dialog", name="Page actions")

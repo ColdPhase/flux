@@ -215,8 +215,9 @@ class WikiFinal(unittest.TestCase):
                 expect(chips.locator(".wiki-page")).to_have_count(5)
                 expect(chips.get_by_role("link", name="Hardware")).to_have_attribute("aria-current", "page")
                 header = page.locator("header.phead")
-                more = header.get_by_role("button", name="More", exact=True)
+                more = page.locator(".wiki-top__menu").get_by_role("button", name="More", exact=True)
                 expect(more).to_have_count(1)
+                expect(header.get_by_role("button", name="More", exact=True)).to_have_count(0)  # the header is the same in every view (#507)
                 expect(header.locator(".wiki-bar__title")).to_have_text("Wiki · 5 pages")
                 strip = chips.locator(".wiki-pages").bounding_box()
                 title = page.get_by_role("heading", level=2, name="Hardware").bounding_box()
@@ -301,7 +302,7 @@ class WikiFinal(unittest.TestCase):
         expect(dialog).to_have_count(0)
         expect(menu_button).to_be_focused()
         # New page and Import .md from the page's menu.
-        more = header.get_by_role("button", name="More", exact=True)
+        more = page.locator(".wiki-top__menu").get_by_role("button", name="More", exact=True)
         more.tap()
         actions = page.get_by_role("dialog", name="Page actions")
         with page.expect_file_chooser() as chooser:
@@ -359,7 +360,8 @@ class WikiFinal(unittest.TestCase):
         page.get_by_role("link", name="Edit", exact=True).click()
         expect(page.get_by_label("Text (Markdown)")).to_be_visible()
         expect(header.locator(".wiki-bar__title")).to_have_count(0)
-        expect(header.get_by_role("button", name="More", exact=True)).to_have_count(0)
+        expect(page.locator(".wiki-top__menu").get_by_role("button", name="More", exact=True)).to_have_count(0)
+        expect(header.get_by_role("button", name="More", exact=True)).to_have_count(0)  # never in the header either (#507)
         expect(header.locator(".phead__sub")).to_contain_text(re.compile(r"\d+ (?:people|person)"))
         private = BODY + "\nA private phone note, not published."
         page.get_by_label("Text (Markdown)").fill(private)
@@ -374,13 +376,14 @@ class WikiFinal(unittest.TestCase):
         expect(header.locator(".wiki-bar__title")).to_have_text("Wiki · 5 pages")
         project_view(page, "Conversation")
         expect(header.locator(".wiki-bar__title")).to_have_count(0)
-        expect(header.get_by_role("button", name="More", exact=True)).to_have_count(0)
+        expect(page.locator(".wiki-top__menu").get_by_role("button", name="More", exact=True)).to_have_count(0)
+        expect(header.get_by_role("button", name="More", exact=True)).to_have_count(0)  # never in the header either (#507)
         expect(header.locator(".phead__sub")).to_contain_text(re.compile(r"\d+ (?:people|person)"))
 
     def test_phone_share_refusal_keeps_the_exact_link_and_audience_reachable(self) -> None:
         page = self.open(PHONE, "light", touch=True)
         page.evaluate("Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: () => Promise.reject(new DOMException('Test browser refusal', 'NotAllowedError')) } })")
-        page.locator("header.phead").get_by_role("button", name="More", exact=True).click()
+        page.locator(".wiki-top__menu").get_by_role("button", name="More", exact=True).click()
         dialog = page.get_by_role("dialog", name="Page actions")
         dialog.get_by_role("button", name="Copy link", exact=True).click()
         field = dialog.get_by_label("Link to this page")
@@ -392,12 +395,12 @@ class WikiFinal(unittest.TestCase):
         expect(dialog).to_have_count(0)
         expect(page.locator("#details").get_by_role("heading", name="People", exact=True)).to_be_visible()
         page.get_by_role("button", name="Close details", exact=True).click()
-        expect(page.locator("header.phead").get_by_role("button", name="More", exact=True)).to_be_focused()
+        expect(page.locator(".wiki-top__menu").get_by_role("button", name="More", exact=True)).to_be_focused()
 
     def test_phone_overflow_keeps_project_controls_available(self) -> None:
         page = self.open(PHONE, "light", touch=True)
         header = page.locator("header.phead")
-        more = header.get_by_role("button", name="More", exact=True)
+        more = page.locator(".wiki-top__menu").get_by_role("button", name="More", exact=True)
         more.click()
         dialog = page.get_by_role("dialog", name="Page actions")
         dialog.get_by_role("button", name="Together", exact=True).click()

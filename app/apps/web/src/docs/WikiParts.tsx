@@ -49,9 +49,10 @@ export function WikiBar({ meta, back, primary, phoneMeta, children, compactInHea
   const { compact } = useWiki();
   const { metadataSlot, actionSlot } = useShellActions();
   if (compact && compactInHeader && metadataSlot && actionSlot) {
+    // No children: the page keeps its actions itself (the phone header takes none, see usePhoneHeader).
     return <>
       {createPortal(<span className="wiki-header-meta">{phoneMeta ?? meta}</span>, metadataSlot)}
-      {createPortal(<div className="wiki-header-actions">{children}</div>, actionSlot)}
+      {children ? createPortal(<div className="wiki-header-actions">{children}</div>, actionSlot) : null}
     </>;
   }
   const bar = (
@@ -61,6 +62,15 @@ export function WikiBar({ meta, back, primary, phoneMeta, children, compactInHea
     </div>
   );
   return bar;
+}
+
+/**
+ * True while the project header is the phone's. That header is the same in every view (Spokój #507, board C02: Back, the
+ * title, Together, Search), so a Wiki page does not add its menu to it; the menu ends the row of page chips (Wiki.tsx), which stays at the top.
+ */
+export function usePhoneHeader(): boolean {
+  const { actionSlot } = useShellActions();
+  return !!actionSlot?.closest('.phead');
 }
 
 /** On a phone the page's actions are one menu: history, then the share and download cards. */

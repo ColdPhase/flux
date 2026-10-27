@@ -309,7 +309,7 @@ class ProjectSurfaceJourney(unittest.TestCase):
         view_tab(page, "Wiki")
         expect(page).to_have_url(re.compile(rf"/docs/{self.ids['doc']}$"))
         expect(page.locator("header .wiki-header-meta")).to_contain_text("Wiki · 1 page")
-        expect(page.locator("header .wiki-header-actions").get_by_role("button", name="More")).to_be_visible()
+        expect(page.locator(".wiki-top__menu").get_by_role("button", name="More", exact=True)).to_be_visible()
         # At 320px the views are in the title's menu (#341): the current one is marked there.
         page.get_by_role("heading", level=1).get_by_role("button").click()
         current = page.get_by_role("dialog").get_by_role("link", name=re.compile("^Wiki"))

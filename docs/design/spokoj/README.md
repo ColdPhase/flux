@@ -66,6 +66,26 @@ destination. Going back restores the page, thread or panel, reading position and
 panel's own "‹ back" (rule 2) stays the only step back. The [contract](../../development/return-to-origin.md) records
 where it sits and how the place is kept.
 
+### Phone Wiki: the header and the page menu
+
+Agent decision of 2026-10-27 under the [delegated authority](../../product/autonomy.md), recorded for
+[#507](https://github.com/ColdPhase/flux/issues/507) ([#500](https://github.com/ColdPhase/flux/issues/500) audit gap 3, PR
+[#682](https://github.com/ColdPhase/flux/pull/682)). It reconciles the Prostota phone Wiki drawing with board C02.
+
+- **Header.** On the phone the Wiki's header is the one board C02 draws for every project view: Back, the title as the
+  view menu, Together, Search. A Wiki page adds nothing to it and Together never gives its place to another control
+  (rule 7). The title keeps its width, as in every other view.
+- **Page menu.** The "More" menu of a Wiki page (History, Share, Download, New page, Import .md, Together, Details) is the
+  round "…" that [`phone-wiki.webp`](../final/screens/phone-wiki.webp) draws in the header, which C02 now gives to
+  Together and Search. It sits at the end of the Wiki's page-chip row, outside the `Wiki pages` navigation (that list
+  holds pages only), level with the chips, with a 44 px target on a coarse pointer. It does not scroll away: the chip row
+  is the sticky top of the Wiki, so the menu stays in reach while the page is read, where the header menu was.
+- **Chip row.** The Wiki's row of page chips is the drawn exception to [Prostota §4 and §8](../final/README.md) ("no
+  chip rows" inside a project on the phone): `phone-wiki.webp` draws it under the header, and the menu above joins it.
+  Every other project view stays without one.
+- **Computer and tablet.** Unchanged: a Wiki narrower than 500 px beside a docked panel keeps its menu in the project
+  header, where Together moves into it by rule 3.
+
 ### Token
 
 | Token | Light | Dark | Use |
