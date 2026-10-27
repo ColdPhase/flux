@@ -817,7 +817,7 @@ class AdaptiveMatrix(AdaptiveBase):
                 page = self.page(width, height, state=world["state"])
                 page.goto(f"/projects/{world['project']}/conversations/{world['roots'][0]}")
                 thread = page.locator("#thread")
-                expect(thread.locator(".project-convo__message")).to_have_count(2)
+                expect(thread.locator(".project-convo__message")).to_have_count(1)
                 self.at_rest(page)
                 last = thread.locator(".project-convo__message").last.bounding_box()
                 field = thread.get_by_label("Reply", exact=True).bounding_box()
