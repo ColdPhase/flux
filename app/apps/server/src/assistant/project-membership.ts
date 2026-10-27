@@ -1,4 +1,4 @@
-import { lockAssistantOwner, schema } from '@flux/db';
+import { accessPorts, lockAssistantOwner, schema } from '@flux/db';
 import { eq } from 'drizzle-orm';
 import { createProject, getProject, grantProject, isUuid, type Database, type Principal } from '@flux/core';
 import type { CreateProjectCommand, GrantProjectCommand } from '@flux/contracts';
@@ -11,7 +11,7 @@ export function createProjectWithAssistant(principal: Principal, workspaceId: st
     await lockAssistantOwner(tx, principal.id);
     const events = transactionEventSession(tx);
     const result = await events.run(async () => {
-      const project = await createProject(principal, workspaceId, command, tx, events);
+      const project = await createProject(principal, workspaceId, command, tx, accessPorts, events);
       await assistantRows(tx, events).joinCreatedProject(principal.id, workspaceId, project.id);
       return project;
     });
@@ -29,8 +29,8 @@ export function grantProjectWithAssistant(principal: Principal, projectId: strin
     }
     const events = transactionEventSession(tx);
     const result = await events.run(async () => {
-      const workspaceId = (await getProject(principal, projectId, tx)).workspaceId;
-      const grant = await grantProject(principal, projectId, command, tx, events);
+      const workspaceId = (await getProject(principal, projectId, tx, accessPorts)).workspaceId;
+      const grant = await grantProject(principal, projectId, command, tx, accessPorts, events);
       if (command.principal.kind === 'agent' && command.role !== 'denied')
         await assistantRows(tx, events).addGrantedProject(command.principal.id, workspaceId, projectId);
       return grant;

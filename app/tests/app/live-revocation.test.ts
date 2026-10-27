@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { test } from 'node:test';
 import Fastify from 'fastify';
 import { eq } from 'drizzle-orm';
-import { schema } from '@flux/db';
+import { accessPorts, schema } from '@flux/db';
 import { DomainError, ServiceUnavailableError, grantProject, liveUseCases, removeMember as removeWorkspaceMember, type LiveMedia } from '@flux/core';
 import type { Conversation } from '@flux/contracts';
 import { liveAccess } from '../../apps/server/src/live/access.js';
@@ -146,7 +146,7 @@ test('lost-room join rechecks policy after repair before issuing a replacement t
     await f.coordinator.recoverMissingRoom(sessionId);
     await f.coordinator.withProjectChange(f.place.id, () => grantProject(
       { kind: 'human', id: f.owner.id }, f.place.id,
-      { principal: f.principal, role: 'denied' }, db));
+      { principal: f.principal, role: 'denied' }, db, accessPorts));
   } });
   try {
     const response = await app.inject({ method: 'POST', url: `/api/v1/live-sessions/${f.session.id}/join` });
@@ -163,7 +163,7 @@ test('grant revocation retires the old room before commit and leaves only a new-
   await f.coordinator.withProjectChange(f.place.id, async () => {
     assert.equal(f.transport.rooms.has(f.session.roomId), false);
     await grantProject({ kind: 'human', id: f.owner.id }, f.place.id,
-      { principal: f.principal, role: 'denied' }, db);
+      { principal: f.principal, role: 'denied' }, db, accessPorts);
   });
   const next = await f.store.find(f.session.id);
   assert.equal(next?.generation, 2);
@@ -194,7 +194,7 @@ test('an in-flight join finishes before the revocation fence and old-room deleti
   });
   await started;
   const revocation = f.coordinator.withProjectChange(f.place.id, () => grantProject(
-    { kind: 'human', id: f.owner.id }, f.place.id, { principal: f.principal, role: 'denied' }, db));
+    { kind: 'human', id: f.owner.id }, f.place.id, { principal: f.principal, role: 'denied' }, db, accessPorts));
   await new Promise((resolve) => setTimeout(resolve, 50));
   assert.equal(f.transport.retired.length, 0);
   release();
@@ -208,13 +208,13 @@ test('workspace membership removal retires all old media while a remaining membe
   const remaining = await person('live-member-remaining');
   await addMember(f.owner, f.ws.id, remaining, 'member');
   await grantProject({ kind: 'human', id: f.owner.id }, f.place.id,
-    { principal: { kind: 'human', id: remaining.id }, role: 'viewer' }, db);
+    { principal: { kind: 'human', id: remaining.id }, role: 'viewer' }, db, accessPorts);
   const remainingPrincipal = { kind: 'human' as const, id: remaining.id };
   const original = await f.store.withAdmission(remainingPrincipal, f.session.id, async (session) => session.roomId);
   assert.equal(original, f.session.roomId);
   await f.coordinator.withWorkspaceChange(f.ws.id, async () => {
     assert.equal(f.transport.rooms.has(original), false);
-    await removeWorkspaceMember({ kind: 'human', id: f.owner.id }, f.ws.id, f.member.id, db);
+    await removeWorkspaceMember({ kind: 'human', id: f.owner.id }, f.ws.id, f.member.id, db, accessPorts);
   });
   await assert.rejects(f.store.withAdmission(f.principal, f.session.id, async () => 'unexpected'),
     (error) => error instanceof DomainError && error.code === 'PROJECT_NOT_FOUND');
@@ -240,7 +240,7 @@ test('failed ending-room deletion blocks a policy change before its mutation com
   await assert.rejects(coordinator.withProjectChange(f.place.id, async () => {
     mutationRan = true;
     await grantProject({ kind: 'human', id: f.owner.id }, f.place.id,
-      { principal: f.principal, role: 'denied' }, db);
+      { principal: f.principal, role: 'denied' }, db, accessPorts);
   }), /SFU unavailable/);
   assert.equal(mutationRan, false);
   assert.equal((await f.store.find(f.session.id))?.state, 'ending');
@@ -249,7 +249,7 @@ test('failed ending-room deletion blocks a policy change before its mutation com
 
   await coordinator.withProjectChange(f.place.id, async () => {
     await grantProject({ kind: 'human', id: f.owner.id }, f.place.id,
-      { principal: f.principal, role: 'denied' }, db);
+      { principal: f.principal, role: 'denied' }, db, accessPorts);
   });
   assert.equal((await f.store.find(f.session.id))?.state, 'ended');
   assert.equal(f.transport.rooms.has(f.session.roomId), false);
@@ -306,7 +306,7 @@ test('no-media access mutation holds the project guard until commit against conc
     inside();
     await held;
     await grantProject({ kind: 'human', id: f.owner.id }, second.id,
-      { principal: f.principal, role: 'denied' }, conn);
+      { principal: f.principal, role: 'denied' }, conn, accessPorts);
   });
   await started;
   let admitted = false;
@@ -329,7 +329,7 @@ test('no-media guard rolls back a failed access mutation under the same lock', a
   await grant(f.owner, second.id, f.member, 'viewer');
   await assert.rejects(withNoMediaAccessChange(db, { workspaceId: f.ws.id, projectId: second.id }, async (conn) => {
     await grantProject({ kind: 'human', id: f.owner.id }, second.id,
-      { principal: f.principal, role: 'denied' }, conn);
+      { principal: f.principal, role: 'denied' }, conn, accessPorts);
     throw new Error('forced rollback');
   }), /forced rollback/);
   const allowed = await f.member.browser.request('GET', `/api/v1/projects/${second.id}`);

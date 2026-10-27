@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { test } from 'node:test';
 import { grantProject, liveInvitationUseCases } from '@flux/core';
+import { accessPorts } from '@flux/db';
 import type { Conversation, InboxItem, InboxResponse } from '@flux/contracts';
 import { liveInvitationStore } from '../../apps/server/src/live/invitations.js';
 import { liveSessionStore } from '../../apps/server/src/live/store.js';
@@ -104,7 +105,7 @@ test('an invitation that no longer applies when the worker reaches it notifies n
     await invitations.invite(human(f.owner), f.session.id, quiet!.id);
     await invitations.invite(human(f.owner), f.session.id, control!.id);
 
-    await grantProject(human(f.owner), f.place.id, { principal: human(lost!), role: 'denied' }, db);
+    await grantProject(human(f.owner), f.place.id, { principal: human(lost!), role: 'denied' }, db, accessPorts);
     await invitations.reply(human(answered!), toAnswer.id, 'later');
     await pool.query(`UPDATE live_sessions SET state = 'ended', ended_at = now() WHERE id = $1`, [endedSession.id]);
   } finally {

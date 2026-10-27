@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { test } from 'node:test';
 import { DomainError, grantProject } from '@flux/core';
+import { accessPorts } from '@flux/db';
 import type { Conversation } from '@flux/contracts';
 import { liveSessionStore } from '../../apps/server/src/live/store.js';
 import { db, pool } from './support/db.js';
@@ -52,7 +53,7 @@ test('durable live sessions bind to one project and store only idempotent refere
   const columns = await pool.query("SELECT column_name FROM information_schema.columns WHERE table_name IN ('live_sessions', 'live_presentations')");
   assert.equal(columns.rows.some((row) => /title|body|transcript|content/.test(row.column_name)), false);
 
-  await grantProject(ownerPrincipal, place.id, { principal: viewerPrincipal, role: 'denied' }, db);
+  await grantProject(ownerPrincipal, place.id, { principal: viewerPrincipal, role: 'denied' }, db, accessPorts);
   await assert.rejects(store.present(first.id, viewerPrincipal, ref, randomUUID()), failure('PROJECT_NOT_FOUND'));
   await assert.rejects(store.createOrGet(viewerPrincipal, place.id, anchor, randomUUID(), async () => {}), failure('PROJECT_NOT_FOUND'));
   // A committed trace survives a participant's grant revocation for authorized project users.

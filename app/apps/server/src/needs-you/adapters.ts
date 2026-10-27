@@ -1,4 +1,4 @@
-import { needsYouRows, returnRows, visibleFilter, accessReader } from '@flux/db';
+import { accessPorts, needsYouRows, returnRows, visibleFilter, accessReader } from '@flux/db';
 import {
   createNeedsYou,
   evaluateProject,
@@ -19,7 +19,7 @@ export function policyNeedsYouAccess(db: Database): NeedsYouAccess {
   const returns = returnRows(db);
   return {
     async workspaceIds(principal) {
-      return (await listWorkspaces(principal, db)).map((workspace) => workspace.id);
+      return (await listWorkspaces(principal, db, accessPorts)).map((workspace) => workspace.id);
     },
     async visibleProjects(principal, workspaceId) {
       return returns.projectIdsWhere(workspaceId, await visibleFilter(principal, workspaceId, 'project', db));

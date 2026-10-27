@@ -1,7 +1,7 @@
 import { createCipheriv, createDecipheriv, hkdfSync, randomBytes } from 'node:crypto';
 import type { CoWorkInboxRecord } from '@flux/contracts';
 import { getProject, InvalidInputError, isUuid, type Database } from '@flux/core';
-import { coworkRecoveryRows, type CoWorkRecoveryPosition } from '@flux/db';
+import { accessPorts, coworkRecoveryRows, type CoWorkRecoveryPosition } from '@flux/db';
 import { withAgentConnection, type FluxMcpClaims } from '../agent-connection/context.js';
 
 interface RecoveryScope { workspaceId: string; projectId: string; connectionId: string; ownerUserId: string;
@@ -64,7 +64,7 @@ export function coWorkRecovery(db: Database, secret: string) {
     // Reauthorize the actual bearer/binding, selected-project ceiling and central
     // policy BEFORE decoding any cursor or accessing the durable pending queue.
     return withAgentConnection(db, claims, 'flux.context.read', projectId, async ({ tx, connection, workspaceId, principal }) => {
-      await getProject(principal, projectId, tx);
+      await getProject(principal, projectId, tx, accessPorts);
       const scope: RecoveryScope = { workspaceId, projectId, connectionId: connection.connectionId,
         ownerUserId: connection.ownerUserId, clientId: claims.clientId, grantReferenceId: claims.grantReferenceId };
       const rows = coworkRecoveryRows(tx), now = Date.now();

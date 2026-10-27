@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs';
 import { after, before, beforeEach, describe, test } from 'node:test';
 import { AI_WORK_QUEUES, workspaceAiPolicyPath, type Conversation, type Material, type WorkResult } from '@flux/contracts';
 import { sweepWorkspaceAi, type ComparisonProvider } from '@flux/core';
+import { accessPorts } from '@flux/db';
 import { dispatchProactiveComparison } from '../../apps/worker/src/proactive-comparison/dispatch.js';
 import { proactiveReservation } from '../../apps/worker/src/proactive-comparison/reservation-adapter.js';
 import { assistantScene, human, lockWaiters, type AssistantScene } from './support/assistant-scene.js';
@@ -98,7 +99,7 @@ describe('workspace AI lock: sweep, lock order and remaining AC-3 rows', () => {
     await pool.query(`INSERT INTO personal_runs (id, workspace_id, project_id, conversation_id, owner_user_id, agent_id, client_run_id, request_fingerprint, kind, prompt,
       status, cost_state, reserved_micros, provider, model, engine, ai_epoch) SELECT $1, workspace_id, project_id, conversation_id, owner_user_id, agent_id, gen_random_uuid(),
       request_fingerprint, kind, prompt, 'queued', 'reserved', reserved_micros, provider, model, engine, $3 FROM personal_runs WHERE id = $2`, [ids.fresh, template.run.id, await epochOf(ws.id)]);
-    const swept = await sweepWorkspaceAi({ workspaceId: ws.id, epoch }, db);
+    const swept = await sweepWorkspaceAi({ workspaceId: ws.id, epoch }, db, accessPorts);
     assert.deepEqual(swept, { runs: 3, tokens: 2, comparisons: 0, reactions: 2, requests: 3, units: 3, sessions: 1, failed: [] });
     const one = async (sql: string, id: string) => (await pool.query(sql, [id])).rows[0];
     assert.deepEqual(await one('SELECT status, end_reason, stopped_at_stage FROM personal_runs WHERE id = $1', ids.queued), { status: 'stopped', end_reason: 'ai_off', stopped_at_stage: 'before_read' });
@@ -112,7 +113,7 @@ describe('workspace AI lock: sweep, lock order and remaining AC-3 rows', () => {
     assert.ok((await one('SELECT revoked_at FROM agent_runtime_sessions WHERE id = $1', ids.session)).revoked_at);
     for (const id of [ids.eq, ids.ep]) assert.deepEqual(await one('SELECT state, line FROM assistant_reaction_events WHERE id = $1', id), { state: 'skipped', line: 'Skipped: AI was turned off' });
     assert.equal((await one('SELECT status FROM personal_runs WHERE id = $1', ids.fresh)).status, 'queued', 'work admitted after re-enable is untouched');
-    assert.deepEqual(await sweepWorkspaceAi({ workspaceId: ws.id, epoch }, db), { runs: 0, tokens: 0, comparisons: 0, reactions: 0, requests: 0, units: 0, sessions: 0, failed: [] });
+    assert.deepEqual(await sweepWorkspaceAi({ workspaceId: ws.id, epoch }, db, accessPorts), { runs: 0, tokens: 0, comparisons: 0, reactions: 0, requests: 0, units: 0, sessions: 0, failed: [] });
   });
 
   test('a real role change and removal of the flipping admin against the real flip, in both orders: 200 and 403, never a deadlock', async () => {

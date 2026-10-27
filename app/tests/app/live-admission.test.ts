@@ -5,7 +5,7 @@ import type { AddressInfo } from 'node:net';
 import { after, before, describe, test } from 'node:test';
 import Fastify, { type FastifyInstance } from 'fastify';
 import WebSocket, { WebSocketServer } from 'ws';
-import { createDatabase } from '@flux/db';
+import { accessPorts, createDatabase } from '@flux/db';
 import { grantProject } from '@flux/core';
 import type { Conversation, LiveJoinGrant } from '@flux/contracts';
 import { loadIdentityConfig, registerIdentity } from '../../apps/server/src/identity/index.js';
@@ -327,7 +327,7 @@ describe('live media admission (#128)', () => {
     // Straight through the policy (the API container has no live media to rotate the room),
     // so the unchanged room isolates the gate's own project check.
     await grantProject({ kind: 'human', id: s.owner.id }, s.place.id,
-      { principal: { kind: 'human', id: s.member.id }, role: 'denied' }, db);
+      { principal: { kind: 'human', id: s.member.id }, role: 'denied' }, db, accessPorts);
     const before = sfu.signals.length;
     await refused(signal(refreshed, laptop.browser));
     assert.equal(sfu.signals.length, before);
