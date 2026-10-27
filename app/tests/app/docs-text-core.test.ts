@@ -203,6 +203,60 @@ describe('upsertSection', () => {
     assert.equal(replaced.body, lines('## Result A', '', sourceLine(RESULT, 'Result A'), '', 'New.', '', '## Other', '', 'Keep me.', ''));
   });
 
+  // A fence closes only on the same character and a run at least as long as the opener's (CommonMark, #677).
+  const rewritten = (...rest: string[]) => lines('## Result A', '', sourceLine(RESULT, 'Result A'), '', 'New.', '', ...rest);
+
+  test('a four-backtick block holding a three-backtick block is one block: a # line in it is not a section boundary', () => {
+    const text = lines('# Plan', '', '## Result A', '', sourceLine(RESULT, 'Result A'), '', '````md', '```sh', '# inside the inner block', '```',
+      '# still inside the outer block', '````', '', 'Tail of A.', '', '## Other', '', 'Keep me.', '');
+    const replaced = upsertSection(text, RESULT, section(RESULT, 'Result A', 'New.'));
+    assert.equal(replaced.replaced, true);
+    assert.equal(replaced.body, `# Plan\n\n${rewritten('## Other', '', 'Keep me.', '')}`);
+  });
+
+  test('a # line in such a block before the Source line is not the start of the section', () => {
+    const text = lines('# Plan', '', '## Result A', '', '````md', '```sh', '# fake heading', '```', '````', '', sourceLine(RESULT, 'Result A'), '', 'Old.', '',
+      '## Other', '', 'Keep me.', '');
+    const replaced = upsertSection(text, RESULT, section(RESULT, 'Result A', 'New.'));
+    assert.equal(replaced.replaced, true);
+    assert.equal(replaced.body, `# Plan\n\n${rewritten('## Other', '', 'Keep me.', '')}`);
+  });
+
+  test('an outer block is closed by a fence longer than its opener, and the heading after it is a boundary again', () => {
+    const text = lines('## Result A', '', sourceLine(RESULT, 'Result A'), '', '```', '# inside', '``````', '', 'Tail of A.', '', '## Other', '', 'Keep me.', '');
+    assert.equal(upsertSection(text, RESULT, section(RESULT, 'Result A', 'New.')).body, rewritten('## Other', '', 'Keep me.', ''));
+
+    const exact = lines('## Result A', '', sourceLine(RESULT, 'Result A'), '', '````', '# inside', '````', '', 'Tail of A.', '', '## Other', '', 'Keep me.', '');
+    assert.equal(upsertSection(exact, RESULT, section(RESULT, 'Result A', 'New.')).body, rewritten('## Other', '', 'Keep me.', ''));
+  });
+
+  test('a shorter fence of the same character does not close a block', () => {
+    const text = lines('## Result A', '', sourceLine(RESULT, 'Result A'), '', '`````', '```', '# inside', '````', '# also inside', '`````', '', 'Tail of A.', '', '## Other', '',
+      'Keep me.', '');
+    assert.equal(upsertSection(text, RESULT, section(RESULT, 'Result A', 'New.')).body, rewritten('## Other', '', 'Keep me.', ''));
+  });
+
+  test('a longer tilde block holding a shorter one is one block, and a backtick fence does not close a tilde block', () => {
+    const text = lines('## Result A', '', sourceLine(RESULT, 'Result A'), '', '~~~~', '~~~', '# inside the inner block', '~~~', '# still inside', '````', '# and here', '~~~~', '',
+      'Tail of A.', '', '## Other', '', 'Keep me.', '');
+    assert.equal(upsertSection(text, RESULT, section(RESULT, 'Result A', 'New.')).body, rewritten('## Other', '', 'Keep me.', ''));
+  });
+
+  test('a tilde block is closed by a longer tilde fence', () => {
+    const text = lines('## Result A', '', sourceLine(RESULT, 'Result A'), '', '~~~', '# inside', '~~~~~~', '', 'Tail of A.', '', '## Other', '', 'Keep me.', '');
+    assert.equal(upsertSection(text, RESULT, section(RESULT, 'Result A', 'New.')).body, rewritten('## Other', '', 'Keep me.', ''));
+  });
+
+  test('an unclosed block runs to the end of the text', () => {
+    const text = lines('## Result A', '', sourceLine(RESULT, 'Result A'), '', '````', '```', '# inside', '```', '## inside too', '');
+    assert.equal(upsertSection(text, RESULT, section(RESULT, 'Result A', 'New.')).body, section(RESULT, 'Result A', 'New.'));
+  });
+
+  test('a fence may be indented by up to three spaces', () => {
+    const text = lines('## Result A', '', sourceLine(RESULT, 'Result A'), '', '   ````', '  ```', '# inside', '  ```', '   ````', '', 'Tail of A.', '', '## Other', '', 'Keep me.', '');
+    assert.equal(upsertSection(text, RESULT, section(RESULT, 'Result A', 'New.')).body, rewritten('## Other', '', 'Keep me.', ''));
+  });
+
   test('lines that are not headings do not end a section', () => {
     const text = lines('## Result A', '', sourceLine(RESULT, 'Result A'), '', '#hashtag', '#', '####### seven', '', '## Other', '', 'Keep me.', '');
     const replaced = upsertSection(text, RESULT, section(RESULT, 'Result A', 'New.'));

@@ -64,15 +64,19 @@ export function sourceLine(source: DocSectionSource, label: string) {
 const HEADING = /^(#{1,6})[ \t]+\S/;
 const FENCE = /^ {0,3}(`{3,}|~{3,})/;
 
-/** Heading lines outside fenced code, with their level. */
+/**
+ * Heading lines outside fenced code, with their level. As in CommonMark, a fence closes only on a fence of the
+ * same character that is at least as long as the one that opened it, so a four-backtick block can hold a
+ * three-backtick block.
+ */
 function headings(lines: string[]) {
   const found: { index: number; level: number }[] = [];
   let fence: string | null = null;
   lines.forEach((line, index) => {
-    const opener = FENCE.exec(line)?.[1];
-    if (opener) {
-      if (!fence) fence = opener[0]!;
-      else if (opener[0] === fence) fence = null;
+    const run = FENCE.exec(line)?.[1];
+    if (run) {
+      if (!fence) fence = run;
+      else if (run[0] === fence[0] && run.length >= fence.length) fence = null;
       return;
     }
     const heading = fence ? null : HEADING.exec(line);
