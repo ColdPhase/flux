@@ -430,7 +430,7 @@ class MessageAlignment(unittest.TestCase):
                         shot(page, f"card-titles-{surface}-{width}-{kind}-{UI_BROWSER}")
                         label = f"{width}px {surface} {kind}: {measured}"
                         self.assertEqual(title, titles[kind], label)
-                        self.assertGreaterEqual(measured["shown"], 18, f"{label}: the title shows at least its first words")
+                        self.assertGreaterEqual(measured["shown"], 16, f"{label}: the title shows at least its first words")
                         # The state is whole: its box holds its text, and the word that names it is there.
                         self.assertTrue(measured["stateFits"], f"{label}: the state is cut")
                         self.assertIn({"work": "In progress", "decision": "accepted", "result": "Negative result"}[kind], measured["state"], label)

@@ -337,7 +337,7 @@ button.wd-link:active:not(:disabled) { background: var(--sub); }
 /* References to Flux objects under a message are cards (#348, F-026 §6): the object icon, the kind,
    the title and its state. */
 .message-bubble .ws-attach { flex-direction: column; flex-wrap: nowrap; width: min(100%, 460px); }
-.message-bubble .ws-attach > .ws-chip { display: grid; grid-template-columns: 32px auto minmax(min(17ch, 100%), 1fr) auto; grid-template-rows: auto auto; align-items: center; gap: 1px 6px; width: 100%; min-height: 52px; padding: 8px 12px 8px 8px; border-radius: var(--r); background: var(--sub); box-shadow: none; }
+.message-bubble .ws-attach > .ws-chip { display: grid; grid-template-columns: 32px auto minmax(min(15ch, 100%), 1fr) auto; grid-template-rows: auto auto; align-items: center; gap: 1px 6px; width: 100%; min-height: 52px; padding: 8px 12px 8px 8px; border-radius: var(--r); background: var(--sub); box-shadow: none; }
 .message-bubble .ws-attach > .ws-chip:hover { background: var(--hov); }
 .message-bubble .ws-attach > .ws-chip > svg { grid-column: 1; grid-row: 1 / span 2; align-self: center; justify-self: center; box-sizing: content-box; padding: 8px; margin: 0 2px 0 -2px; border-radius: 10px; background: var(--el); color: var(--t1); }
 .message-bubble .ws-attach > .ws-chip::before { grid-column: 2 / 4; grid-row: 1; font-size: 10px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--t3); }
@@ -359,7 +359,7 @@ button.wd-link:active:not(:disabled) { background: var(--sub); }
 /* Where the conversation is narrow (a thread panel or sheet, a phone), a card is the one row the Spokój boards draw (A08
    thread panel, A09 phone, #665): icon, number, the title with an ellipsis, and the state whole at the right edge. The kind
    label goes (the icon says it), and so do the parts of a state that only add a name (the owner, the author). The title
-   keeps a readable line (17ch); only when that and the state do not fit side by side the state drops under the title, still
+   keeps a readable line (15ch, about 18 characters); only when that and the state do not fit side by side the state drops under the title, still
    at the right edge, never cut. Where there is room (the conversation column on a computer) the card keeps the anatomy of
    the Prostota attachments board: kind over title on the left, state at the right edge. */
 @container (max-width: 640px) {
@@ -367,7 +367,7 @@ button.wd-link:active:not(:disabled) { background: var(--sub); }
   .message-bubble .ws-attach > .ws-chip::before { display: none; }
   .message-bubble .ws-attach > .ws-chip > svg { flex: none; margin: 0; padding: 6px; }
   .message-bubble .ws-attach > .ws-chip > .ws-chip__num { flex: none; color: var(--t3); font-weight: 500; }
-  .message-bubble .ws-attach > .ws-chip > .ws-chip__t { flex: 1 1 17ch; }
+  .message-bubble .ws-attach > .ws-chip > .ws-chip__t { flex: 1 1 15ch; }
   .message-bubble .ws-attach > .ws-chip > .ws-chip__k { flex: none; max-width: 100%; margin-left: auto; }
   .message-bubble .ws-attach > .ws-chip .ws-chip__x { display: none; }
 }
