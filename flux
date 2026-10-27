@@ -644,6 +644,16 @@ parse_yes() {
   done
 }
 
+# One-off `run` containers left by an interrupted command (for example a first up stopped while
+# files-init was starting) are never started, and `compose down` does not remove them. Their
+# volume then stays in use, so clean and reset remove them first, within this project only.
+remove_leftover_runs() {
+  leftover_ids=$(docker ps -aq --filter "label=com.docker.compose.project=$1" --filter "label=com.docker.compose.oneoff=True")
+  [ -n "$leftover_ids" ] || return 0
+  # shellcheck disable=SC2086
+  docker rm -f $leftover_ids >/dev/null 2>&1 || warn "Could not remove leftover one-off containers of $1; its volumes may stay."
+}
+
 cmd_reset() {
   parse_yes "$@"
   need_docker
@@ -654,6 +664,8 @@ cmd_reset() {
     || { say "Cancelled; nothing was deleted."; return 1; }
   runtime_prepare_cleanup
   runtime_sign_out
+  remove_leftover_runs "$PROJECT"
+  remove_leftover_runs "$DEV_PROJECT"
   compose_main --profile dev --profile test --profile ui --profile runtime down -v --remove-orphans
   compose_dev down -v --remove-orphans
   release_project "$PROJECT"
@@ -686,6 +698,8 @@ cmd_clean() {
     || { say "Cancelled; nothing was removed."; return 1; }
   runtime_prepare_cleanup
   runtime_sign_out
+  remove_leftover_runs "$PROJECT"
+  remove_leftover_runs "$DEV_PROJECT"
   compose_main --profile dev --profile test --profile ui --profile runtime down -v --remove-orphans
   compose_dev down -v --remove-orphans
   remove_own_images
