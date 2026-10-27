@@ -464,6 +464,15 @@ time for expiry; an expired heartbeat cannot revive its operation.
   `timeout`, `not_installed` and `skipped` retain the vendor-session warning.
   Unknown transport, protocol or cleanup retains disabled authority and recovery
   pending; do not claim deletion, vendor revocation or that nothing changed.
+- **Durable client history (#480, migration 0118).** "This client was never
+  installed for the binding" is never inferred from an empty binding directory or a
+  missing CLI alone. `agent_runtime_client_history` holds, per binding and client,
+  whether a login may exist. A sign-in console claim writes it in the claim's own
+  transaction (before the slot is asked to start anything) and a status that reports a
+  login writes it too. Only a CLI logout that returned `ok` clears it. At release, the
+  slot's `not_installed` is confirmed only while the history shows no login was started
+  for that client in that binding; the worker and the operator purge both apply this.
+  Rows follow their binding (`ON DELETE CASCADE`) and hold no vendor data.
 - **Shared lifecycle fence.** Remove, owner deletion, revocation, operator
   release/purge/reset and recovery invalidate auth admission/completion before
   cleanup. Guard obsolete INSERT as well as UPDATE paths. Purge blocks new

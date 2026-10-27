@@ -137,10 +137,20 @@ services:
       FLUX_AGENT_RUNTIME_COMMERCIAL_TERMS: ${FLUX_AGENT_RUNTIME_COMMERCIAL_TERMS:-}
       FLUX_AGENT_RUNTIME_IDLE_DAYS: ${FLUX_AGENT_RUNTIME_IDLE_DAYS:-}
       FLUX_RUNTIME_MANAGER_SECRET: ${FLUX_RUNTIME_MANAGER_SECRET:-}
+      # Encrypted workspaces (F-030): the keyring on the internal `keyring` network; FLUX_KEYRING=off disables it
+      # (every encrypted workspace then stays locked). See docs/product/encrypted-workspaces.md.
+      FLUX_KEYRING: ${FLUX_KEYRING:-on}
+      FLUX_KEYRING_TOKEN: ${FLUX_KEYRING_TOKEN:-}
+      FLUX_SWAP_ACKNOWLEDGED: ${FLUX_SWAP_ACKNOWLEDGED:-}
       PORT: 8080
+    # Memory equal to memory+swap: this container cannot page keys or content to a swap device (F-030).
+    mem_limit: ${FLUX_API_MEMORY:-2g}
+    memswap_limit: ${FLUX_API_MEMORY:-2g}
+    ulimits:
+      core: 0
     # runtime-control reaches runtime-manager; runtime-api is where runtime-egress forwards /mcp.
-    # Neither network holds the database.
-    networks: [default, runtime-control, runtime-api]
+    # Neither network holds the database. `keyring` holds only api, worker and keyring.
+    networks: [default, runtime-control, runtime-api, keyring]
     volumes:
       - files:/data/files:z
       # Optional 32-byte operator secret; empty tracked placeholder means unavailable.
@@ -152,6 +162,8 @@ services:
     depends_on:
       migrate:
         condition: service_completed_successfully
+      keyring:
+        condition: service_started
     healthcheck:
       test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8080/api/v1/health',{signal:AbortSignal.timeout(3000)}).then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
       interval: 3s
@@ -174,6 +186,8 @@ services:
       # TEST ONLY (#68): with FLUX_TEST_PERSONAL_RUNS=anthropic-mock the worker sends personal runs
       # through the real Anthropic adapter to this mock provider. Empty in production.
       FLUX_TEST_FAILURE_INJECTION: ${FLUX_TEST_FAILURE_INJECTION:-false}
+      # With the line above, marks a test deployment (F-030 test-only swap files); empty in production.
+      FLUX_FIXTURE_TOKEN: ${FLUX_FIXTURE_TOKEN:-}
       FLUX_TEST_PERSONAL_RUNS: ${FLUX_TEST_PERSONAL_RUNS:-}
       FLUX_TEST_ANTHROPIC_URL: ${FLUX_TEST_ANTHROPIC_URL:-}
       # The same operator allowlist as the API: the worker checks it again at every request.
@@ -185,13 +199,54 @@ services:
       FLUX_AGENT_RUNTIME_COMMERCIAL_TERMS: ${FLUX_AGENT_RUNTIME_COMMERCIAL_TERMS:-}
       FLUX_AGENT_RUNTIME_IDLE_DAYS: ${FLUX_AGENT_RUNTIME_IDLE_DAYS:-}
       FLUX_RUNTIME_MANAGER_SECRET: ${FLUX_RUNTIME_MANAGER_SECRET:-}
-    networks: [default, runtime-control]
+      FLUX_KEYRING: ${FLUX_KEYRING:-on}
+      FLUX_KEYRING_TOKEN: ${FLUX_KEYRING_TOKEN:-}
+      FLUX_SWAP_ACKNOWLEDGED: ${FLUX_SWAP_ACKNOWLEDGED:-}
+    mem_limit: ${FLUX_WORKER_MEMORY:-1g}
+    memswap_limit: ${FLUX_WORKER_MEMORY:-1g}
+    ulimits:
+      core: 0
+    networks: [default, runtime-control, keyring]
     volumes:
       - files:/data/files:z
       - ${FLUX_BACKGROUND_KEY_HOST_FILE:-./background-key-unavailable}:/run/secrets/flux_background_key:ro,z
     depends_on:
       migrate:
         condition: service_completed_successfully
+  # Encrypted workspaces (F-030, #655): one boot key in RAM, nothing on disk. Plain HTTP on the internal `keyring`
+  # network of this one Docker host, behind FLUX_KEYRING_TOKEN; exactly one per deployment. It refuses to start where
+  # its memory could be paged to disk. Without a token it stays idle and every encrypted workspace is locked.
+  keyring:
+    image: flux-foundation:${FLUX_IMAGE_TAG:-${COMPOSE_PROJECT_NAME:-local}}
+    command: ["node", "apps/keyring/dist/main.js"]
+    restart: unless-stopped
+    user: "1000:1000"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    init: true
+    ulimits:
+      core: 0
+    mem_limit: ${FLUX_KEYRING_MEMORY:-128m}
+    memswap_limit: ${FLUX_KEYRING_MEMORY:-128m}
+    pids_limit: 32
+    environment:
+      FLUX_KEYRING_TOKEN: ${FLUX_KEYRING_TOKEN:-}
+      FLUX_SWAP_ACKNOWLEDGED: ${FLUX_SWAP_ACKNOWLEDGED:-}
+      NODE_OPTIONS: --secure-heap=65536
+      # TEST ONLY switches; both needed (with FLUX_KEYRING_REVEAL_BOOT_KEY for the boot-key reveal) or ignored.
+      FLUX_FIXTURE_TOKEN: ${FLUX_FIXTURE_TOKEN:-}
+      FLUX_TEST_FAILURE_INJECTION: ${FLUX_TEST_FAILURE_INJECTION:-false}
+      FLUX_KEYRING_REVEAL_BOOT_KEY: ${FLUX_KEYRING_REVEAL_BOOT_KEY:-}
+    networks: [keyring]
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "node", "-e", "const t=process.env.FLUX_KEYRING_TOKEN;if(!t)process.exit(0);fetch('http://127.0.0.1:8090/v1/boot',{headers:{authorization:'Bearer '+t},signal:AbortSignal.timeout(2000)}).then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
   # --- Agent runtime services (profile `runtime`; see the x-runtime-* blocks at the top).
   runtime-install:
     # One-shot: installs the pinned, signature-checked Claude Code into the tools volume when
@@ -426,6 +481,10 @@ volumes:
   runtime-4-data:
 networks:
   default: {}
+  # api, worker and keyring only (F-030): DEKs cross it, and it never leaves this host's kernel.
+  keyring:
+    internal: true
+    driver_opts: *runtime-network-opts
   # API, worker and runtime-manager only; no database.
   runtime-control:
     internal: true

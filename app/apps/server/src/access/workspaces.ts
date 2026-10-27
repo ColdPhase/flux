@@ -13,7 +13,7 @@ import type { AccessContext } from './context.js';
 const roleSchema = { type: 'string', enum: ['owner', 'admin', 'member', 'guest'] } as const;
 
 /** Workspaces and their membership (#85): list, create, read, members, roles and leaving. */
-export function workspaceRoutes(app: FastifyInstance, { db, principal, command, runCommand, sendCommand, workspaceScope, workspaceChange, verifiedEmailMembers }: AccessContext,
+export function workspaceRoutes(app: FastifyInstance, { db, principal, command, runCommand, sendCommand, workspaceScope, workspaceChange, verifiedEmailMembers, readOptions }: AccessContext,
   boss: Pick<PgBoss, 'send'>) {
   /** F-029 (S2): the sweep job commits with the flip, in its transaction. */
   const sweepQueue: WorkspaceAiSweepQueue = async (tx, job) => {
@@ -47,7 +47,7 @@ export function workspaceRoutes(app: FastifyInstance, { db, principal, command, 
     }
     return sendCommand(reply, { ...response, body: { ...body, stopped } });
   });
-  app.get(WORKSPACES_PATH, async (request) => listWorkspaces(await principal(request), db));
+  app.get(WORKSPACES_PATH, async (request) => listWorkspaces(await principal(request), db, readOptions()));
   app.post<{ Body: CreateWorkspaceCommand }>(WORKSPACES_PATH, {
     schema: { body: { type: 'object', required: ['name'], additionalProperties: false, properties: { name: nameSchema } } },
   }, async (request, reply) => command(request, reply, {
@@ -56,7 +56,7 @@ export function workspaceRoutes(app: FastifyInstance, { db, principal, command, 
     replay: requires('workspace', 'workspace.read', bodyId),
   }));
   app.get<{ Params: { workspaceId: string } }>(`${WORKSPACES_PATH}/:workspaceId`, async (request) =>
-    getWorkspace(await principal(request), request.params.workspaceId, db));
+    getWorkspace(await principal(request), request.params.workspaceId, db, readOptions()));
 
   app.get<{ Params: { workspaceId: string } }>(`${WORKSPACES_PATH}/:workspaceId/members`, async (request) =>
     listMembers(await principal(request), request.params.workspaceId, db));

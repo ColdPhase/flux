@@ -106,3 +106,4 @@ export * from './files/service.js';
 export * from './agent-runtime/index.js';
 
 export * from './assistant/index.js';
+export * from './encryption/index.js';

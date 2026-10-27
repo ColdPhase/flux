@@ -142,6 +142,9 @@ COPY --from=build /app/packages/db/package.json ./packages/db/package.json
 COPY --from=build /app/packages/agent-runtime/package.json ./packages/agent-runtime/package.json
 COPY --from=build /app/packages/runtime-protocol/package.json ./packages/runtime-protocol/package.json
 COPY --from=build /app/apps/runtime/package.json ./apps/runtime/package.json
+# The keyring of encrypted workspaces (F-030): Node built-ins only, its own command on this image.
+COPY --from=build /app/apps/keyring/package.json ./apps/keyring/package.json
+COPY --from=build /app/apps/keyring/dist ./apps/keyring/dist
 COPY --from=build /app/apps/server/dist ./apps/server/dist
 COPY --from=build /app/apps/worker/dist ./apps/worker/dist
 COPY --from=build /app/apps/web/dist ./apps/web/dist

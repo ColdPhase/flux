@@ -1,25 +1,30 @@
 # README screenshots
 
-The images at the top of the [README](../../../README.md) are unedited captures of the
-running application, not of the prototype or a mockup.
+The two images at the top of the [README](../../../README.md) are unedited captures of the running
+application on the `./flux demo` data, not of the prototype or a mockup.
 
-| File | Source capture | Viewport |
+| File | What it shows | Viewport |
 | --- | --- | --- |
-| `conversation-desktop.png` | `project-conversation-desktop-1440.png` from `test_02` in `app/tests/ui/test_project_surface.py` | 1440 × 900 CSS px, light theme |
-| `conversation-phone.png` | `project-conversation-phone-390.png` from `test_07` in the same file | 390 × 844 CSS px at device scale 3 |
+| `conversation-desktop.png` | The project conversation with the task made from a message, and beside it the accepted decision "Measure soil moisture first; frost warnings later" with its reason | 1440 × 900 CSS px, light theme |
+| `home-phone.png` | Home on a phone: under "Needs you", Jonas's question with a Reply button, the project below it, and the Home, Projects and Inbox bar | 390 × 844 CSS px at device scale 3 |
 
-The content is the browser suite's fictional *Gesture lamp* project (Ada, Jonas and Nia),
-created through the public API by the test itself.
+The content is the fictional *Riverside Makers* workspace (Ada Kowalska and Jonas Berg), seeded
+through the public API by `scripts/flux-demo.mjs`. Ada then walks the core journey, so the task and
+the decision exist; Jonas's question is still waiting for her on Home.
 
-**Captured at:** `main` `085214c6` (the merged #184 Studio shell; this branch changes no file under `app/`), 2026-10-03, by `test_project_surface` (10 tests OK). The same captures come from a full run:
+**Captured at:** `main` `e4b4fab7` (the final design "Prostota" on the computer and the phone; the
+only change in this branch is the recorder), 2026-10-23, with the demo GIF, by:
 
 ```sh
-shots="$(mktemp -d)"
-FLUX_UI_SCREENSHOT_DIR="$shots" ./scripts/check_ui.sh
-cp "$shots/project-conversation-desktop-1440.png" docs/assets/readme/conversation-desktop.png
-cp "$shots/project-conversation-phone-390.png" docs/assets/readme/conversation-phone.png
+./scripts/record_demo.sh docs/assets/demo/flux-demo.gif docs/assets/readme
 ```
 
-`FLUX_UI_SCREENSHOT_DIR` must be an absolute path; without it the captures stay in the
-run's disposable volume. Replace both images, and the commit above, together when the
+The second argument is the directory that also receives the two stills, which
+`app/tests/ui/record_demo.py` takes after the journey. See the [demo recording](../demo/README.md)
+for what the script needs. Replace both images, the GIF and the commit above together when the
 interface changes noticeably.
+
+**Known blemish, 2026-10-23.** In the thread panel (and on the phone's thread sheet) a task, result or
+decision card shows only the first characters of its title, because its status text takes the room.
+The two stills avoid that view; the GIF's last frames show it. Tracked in
+[#665](https://github.com/ColdPhase/flux/issues/665).

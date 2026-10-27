@@ -7,6 +7,7 @@ import { after, before, describe, test } from 'node:test';
 import {
   callSupervisor, createRuntimeManagerClient, encodeFrame, runtimeManagerPort, type SupervisorRequest, type SupervisorTarget,
 } from '@flux/runtime-protocol';
+import { notInstalledMarkers } from '../../apps/runtime/src/manager/report.js';
 import { createManagerServer, slotsFromEnv } from '../../apps/runtime/src/manager/server.js';
 import { portOf, slotSecret, startTestSlot, type TestSlot } from './support/runtime-slot.js';
 
@@ -58,7 +59,7 @@ describe('runtime-manager with two slots', () => {
     assert.ok(view.ok);
     assert.deepEqual(view.value.map((entry) => entry.reachable && entry.bindings), [[], [bindingId]]);
     const released = await port.release('runtime-2', bindingId);
-    assert.deepEqual(released, { ok: true, value: { dataEmpty: true, logoutFailed: false } });
+    assert.deepEqual(released, { ok: true, value: { dataEmpty: true, logoutFailed: false, notInstalled: [] } });
   });
 
   test('checks every request against the closed set before forwarding it', async () => {
@@ -88,8 +89,11 @@ describe('runtime-manager with two slots', () => {
         if (scenario !== 'missing_binding') assert.ok((await port.bind('runtime-1', binding)).ok);
         if (scenario === 'missing_cli') await writeFile(`${slot.config.dataDir}/${binding}/claude/credentials.json`, '{}');
         if (scenario === 'unsafe_binding') await chmod(`${slot.config.dataDir}/${binding}`, 0o755);
-        // Missing CLI without files gives not_installed (confirmed); with files failed; missing/unsafe bindings give skipped.
-        assert.deepEqual(await port.release('runtime-1', binding), { ok: true, value: { dataEmpty: true, logoutFailed: scenario !== 'never_installed' } });
+        // Missing CLI without files gives not_installed (reported, not failed: the API confirms it only against the
+        // durable client history, #480); with files failed; missing/unsafe bindings give skipped.
+        const expected = { never_installed: { logoutFailed: false, notInstalled: ['claude_code', 'codex'] }, missing_cli: { logoutFailed: true, notInstalled: ['codex'] },
+          missing_binding: { logoutFailed: true, notInstalled: [] }, unsafe_binding: { logoutFailed: true, notInstalled: [] } }[scenario];
+        assert.deepEqual(await port.release('runtime-1', binding), { ok: true, value: { dataEmpty: true, ...expected } });
       } finally { manager.close(); await slot.close(); }
     }
   });
@@ -112,7 +116,7 @@ describe('runtime-manager with two slots', () => {
       assert.ok(logout.ok && logout.result.kind === 'logout');
       assert.equal(logout.result.logout, 'failed');
       assert.deepEqual(await readdir(home), [], 'the failed sign-out still deletes the files');
-      assert.deepEqual(await port.release('runtime-1', binding), { ok: true, value: { dataEmpty: true, logoutFailed: true } });
+      assert.deepEqual(await port.release('runtime-1', binding), { ok: true, value: { dataEmpty: true, logoutFailed: true, notInstalled: ['codex'] } });
     } finally { manager.close(); await slot.close(); }
   });
 
@@ -135,6 +139,15 @@ describe('runtime-manager with two slots', () => {
       await chmod(home, 0o700).catch(() => undefined);
       manager.close(); await slot.close();
     }
+  });
+
+  test('the operator sign-out prints one marker per client found not installed, for the database to confirm against its history', () => {
+    const id = randomUUID();
+    assert.deepEqual(notInstalledMarkers(id, { claude_code: 'ok', codex: 'ok' }), []);
+    assert.deepEqual(notInstalledMarkers(id, { claude_code: 'failed', codex: 'not_installed' }), [`FLUX_RUNTIME_NOT_INSTALLED ${id} codex`]);
+    assert.deepEqual(notInstalledMarkers(id, { claude_code: 'not_installed', codex: 'not_installed' }),
+      [`FLUX_RUNTIME_NOT_INSTALLED ${id} claude_code`, `FLUX_RUNTIME_NOT_INSTALLED ${id} codex`]);
+    assert.deepEqual(notInstalledMarkers(id, { claude_code: 'skipped', codex: 'timeout' }), [], 'only not_installed is passed on; failures are already unconfirmed');
   });
 
   test('slot targets come only from FLUX_RUNTIME_SLOT_<n>', () => {

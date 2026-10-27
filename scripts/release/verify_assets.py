@@ -62,8 +62,8 @@ def verify(directory: Path, version: str | None, source_sha: str | None, digest:
     for name, text in (("compose.yaml", compose), ("compose.runtime.yaml", overlay)):
         if re.search(r"RELEASE_DIGEST|RUNTIME_DIGEST|^\s*build\s*:|:latest|docker\.sock", text, re.MULTILINE):
             raise ValueError(f"{name} holds a digest marker, a source build, a floating tag or a socket")
-    if images(compose).count(app) != 3:
-        raise ValueError("compose.yaml must pin the application image on api, worker and migrate")
+    if images(compose).count(app) != 4:
+        raise ValueError("compose.yaml must pin the application image on api, worker, keyring and migrate")
     # Slot anchor and runtime-install carry the runtime image; runtime-manager and runtime-egress the application image.
     found = images(overlay)
     if sorted(found) != sorted([app, app, runtime, runtime]):

@@ -42,7 +42,7 @@ describe('operator configuration', () => {
 /** The database as the use cases see it, in memory. */
 function memoryStore() {
   const slots = new Map<string, RuntimeSlotRow>();
-  const bindings: (RuntimeBindingRow & { releasedAt: Date | null })[] = [];
+  const bindings: (RuntimeBindingRow & { releasedAt: Date | null; logoutFailed?: boolean })[] = [];
   const live = () => bindings.filter((b) => b.state !== ('released' as string));
   type Connection = RuntimeConnectionRow & { ownerUserId: string; fingerprint: string | null; revoked: boolean };
   const connections: Connection[] = [];
@@ -52,6 +52,8 @@ function memoryStore() {
     previousAccountLabel: c.previousAccountLabel, signedOutAt: c.signedOutAt, signOutFailed: c.signOutFailed });
   // A deterministic port fixture; cross-process clock/CAS behavior is tested with real PostgreSQL.
   const operations = new Map<string, RuntimeAuthOperation>();
+  // The durable client history (migration 0118): "bindingId client" while a login may exist for that client.
+  const history = new Set<string>();
   const valid = (op: RuntimeAuthOperation) => operations.get(op.bindingId + op.client)?.operationId === op.operationId
     && bindings.some(b => b.id === op.bindingId && b.ownerUserId === op.ownerUserId && b.state === 'active')
     && slots.get(bindings.find(b => b.id === op.bindingId)?.slot ?? '')?.bootId === op.bootId;
@@ -67,6 +69,7 @@ function memoryStore() {
       const operation: RuntimeAuthOperation = { ...input, operationId: randomUUID(), revision: 1,
         bootId: slots.get(b.slot)!.bootId!, leaseEndsAt: new Date(Date.now()+input.leaseMs), hardEndsAt: new Date(Date.now()+input.lifetimeMs) };
       operations.set(key, operation);
+      if (input.kind === 'console') history.add(key);
       if (input.kind === 'logout') for (const c of connections) if (c.bindingId === b.id && c.client === input.client) Object.assign(c, { state: 'signed_out', signedInAt: null });
       return { kind: 'claimed', operation };
     },
@@ -84,7 +87,7 @@ function memoryStore() {
       return {
         binding,
         auth: [...operations.values()].filter(op => valid(op)).map(op => ({ client: op.client, kind: op.kind })),
-        lastRelease: last ? { reason: last.releaseReason!, at: last.releasedAt!, signOutFailed: false } : null,
+        lastRelease: last ? { reason: last.releaseReason!, at: last.releasedAt!, signOutFailed: last.logoutFailed === true } : null,
         slots: { ready: all.filter((s) => s.state === 'ready' && !live().some((b) => b.slot === s.slot)).length, held: live().length,
           total: all.filter((s) => s.state !== 'out_of_pool').length },
         commercialTerms: null,
@@ -126,6 +129,7 @@ function memoryStore() {
         connections.push(row);
       }
       row.signInMethod = record.method ?? row.signInMethod;
+      if (record.signedIn && record.facts) history.add(record.bindingId + record.client);
       if (!record.signedIn || !record.facts) {
         Object.assign(row, { state: row.state === 'signed_out' ? 'signed_out' : 'sign_in_again', signedInAt: null });
         return true;
@@ -148,8 +152,10 @@ function memoryStore() {
         connections.push(row);
       }
       Object.assign(row, { state: 'signed_out', signedInAt: null, signedOutAt: new Date(), signOutFailed: failed });
+      if (!failed) history.delete(bindingId + client);
       return true;
     },
+    async loginPossible(bindingId) { return (['claude_code', 'codex'] as const).filter((client) => history.has(bindingId + client)); },
     async dismissAccountNotice(owner, client) {
       for (const c of connections) if (c.ownerUserId === owner && c.client === client && !c.revoked) Object.assign(c, { accountChangedAt: null, previousAccountLabel: null });
     },
@@ -161,9 +167,9 @@ function memoryStore() {
       slots.set(slot.slot, { ...slot });
     },
     async markSignInAgain(id) { const b = bindings.find((x) => x.id === id && x.state === 'active'); if (b) b.state = 'sign_in_again'; },
-    async completeRelease(id, slot) {
+    async completeRelease(id, slot, logoutFailed) {
       const b = bindings.find((x) => x.id === id && x.state === 'releasing');
-      if (b) { (b as { state: string }).state = 'released'; b.releasedAt = new Date(); }
+      if (b) { (b as { state: string }).state = 'released'; b.releasedAt = new Date(); b.logoutFailed = logoutFailed; }
       slots.set(slot.slot, { ...slot });
     },
     async dropStaleReservation(id, olderThan) {
@@ -175,7 +181,7 @@ function memoryStore() {
     },
     async idleBindings(before) { return live().filter((b) => b.state === 'active' && (b.lastUsedAt ?? b.createdAt) < before); },
   };
-  return { store, slots, bindings, connections };
+  return { store, slots, bindings, connections, history };
 }
 
 /** A scripted runtime-manager: each slot holds directories and a boot id; release empties it and "restarts" it. */
@@ -200,7 +206,7 @@ function fakeManager(names: string[]) {
       s.dirs = s.dirs.filter((dir) => dir !== id);
       const dataEmpty = !s.dirs.length && !s.other;
       if (dataEmpty) s.bootId = randomUUID(); // the supervisor exited and restarted
-      return { ok: true, value: { dataEmpty, logoutFailed: false } };
+      return { ok: true, value: { dataEmpty, logoutFailed: false, notInstalled: [] } };
     },
     async status(slot, id, client) {
       calls.push(`status ${slot} ${client}`);
@@ -408,12 +414,12 @@ describe('sign-in to Claude Code (T4 #279)', () => {
   const facts = (account: string, authMethod = 'claude.ai', plan: string | null = 'max') =>
     ({ signedIn: true, facts: { authMethod, plan, accountLabel: `${account[0]}***@${account.split('@')[1]}`, accountDigest: createHash('sha256').update(account).digest('hex') } });
   async function owned(fingerprint = true) {
-    const { store, slots, connections } = memoryStore();
+    const { store, slots, connections, bindings } = memoryStore();
     const { manager, reported, calls } = fakeManager(['runtime-1', 'runtime-2']);
     await reconcileAgentRuntime({ config: on, store, manager });
     const runtime = agentRuntimeUseCases(on, store, manager, fingerprint ? { accountFingerprint: (digest) => `k${digest}`.slice(0, 64) } : {});
     const target = await runtime.consoleTarget('ada', 'claude_code');
-    return { runtime, store, slots, connections, manager, reported, calls, target };
+    return { runtime, store, slots, connections, bindings, manager, reported, calls, target };
   }
 
   const actor = { ownerUserId: 'ada', sessionId: 'ada-session' };
@@ -529,6 +535,77 @@ describe('sign-in to Claude Code (T4 #279)', () => {
       assert.equal(after.connections.claude_code?.signOut?.failed, outcome !== 'ok');
     });
   }
+
+  describe('a missing CLI is confirmed only by the durable client history (#480)', () => {
+    /** The owner's runtime is removed and the worker releases it while the slot answers `not_installed` for these clients. */
+    async function releaseAfter(setup: (c: Awaited<ReturnType<typeof owned>>) => Promise<void>, notInstalled: ('claude_code' | 'codex')[]) {
+      const c = await owned();
+      await setup(c);
+      c.manager.release = ((release) => async (slot: string, id: string) => {
+        const out = await release(slot, id);
+        return out.ok ? { ok: true as const, value: { ...out.value, notInstalled } } : out;
+      })(c.manager.release.bind(c.manager));
+      await c.runtime.remove('ada');
+      const report = await reconcileAgentRuntime({ config: on, store: c.store, manager: c.manager });
+      return { ...c, report, lastRelease: (await c.runtime.status('ada')).lastRelease };
+    }
+
+    test('no login was ever started: the slot\'s not_installed stands and the release is confirmed (positive control)', async () => {
+      const { report, lastRelease } = await releaseAfter(async () => undefined, ['claude_code', 'codex']);
+      assert.equal(report.released.length, 1);
+      assert.deepEqual(report.logoutFailed, []);
+      assert.equal(lastRelease?.signOutFailed, false);
+    });
+
+    test('a console was claimed but never completed: the history keeps it unconfirmed although the slot finds nothing', async () => {
+      const { report, lastRelease, store, bindings } = await releaseAfter(async ({ runtime }) => { await consoleOperation(runtime); }, ['claude_code']);
+      assert.deepEqual(report.logoutFailed, [bindings[0]!.id]);
+      assert.equal(lastRelease?.signOutFailed, true);
+      assert.deepEqual(await store.loginPossible(bindings[0]!.id), ['claude_code'], 'the history survives the release it could not confirm');
+    });
+
+    test('a recorded sign-in with no later confirmed sign-out stays unconfirmed; a failed sign-out does not clear it', async () => {
+      const signedIn = await releaseAfter(async ({ runtime }) => { await record(runtime, 'claude_account', facts('ada@example.org')); }, ['claude_code']);
+      assert.equal(signedIn.lastRelease?.signOutFailed, true);
+      const failed = await releaseAfter(async ({ runtime, reported }) => {
+        await record(runtime, 'claude_account', facts('ada@example.org'));
+        reported.logout = 'failed';
+        await runtime.signOut('ada', 'claude_code', 'ada-session');
+      }, ['claude_code']);
+      assert.equal(failed.lastRelease?.signOutFailed, true);
+      // not_installed is not a confirmation either: the owner-facing sign-out records it as failed, so the history stays.
+      const gone = await releaseAfter(async ({ runtime, reported }) => {
+        await record(runtime, 'claude_account', facts('ada@example.org'));
+        reported.logout = 'not_installed';
+        await runtime.signOut('ada', 'claude_code', 'ada-session');
+      }, ['claude_code']);
+      assert.equal(gone.lastRelease?.signOutFailed, true);
+    });
+
+    test('after the CLI\'s own logout returned ok the history is clear and a missing CLI is confirmed (negative control for the rows above)', async () => {
+      const { lastRelease, report } = await releaseAfter(async ({ runtime }) => {
+        await record(runtime, 'claude_account', facts('ada@example.org'));
+        await runtime.signOut('ada', 'claude_code', 'ada-session');
+      }, ['claude_code']);
+      assert.deepEqual(report.logoutFailed, []);
+      assert.equal(lastRelease?.signOutFailed, false);
+    });
+
+    test('only the client with history is held back: Codex never started is confirmed, Claude Code with a login is not', async () => {
+      const { lastRelease } = await releaseAfter(async ({ runtime }) => { await record(runtime, 'claude_account', facts('ada@example.org')); }, ['codex']);
+      assert.equal(lastRelease?.signOutFailed, false, 'the history is about claude_code, the slot only found codex missing');
+      const both = await releaseAfter(async ({ runtime }) => { await record(runtime, 'claude_account', facts('ada@example.org')); }, ['claude_code', 'codex']);
+      assert.equal(both.lastRelease?.signOutFailed, true);
+    });
+
+    test('a failed or skipped sign-out reported by the slot is unconfirmed whatever the history says', async () => {
+      const c = await owned();
+      c.manager.release = async () => ({ ok: true, value: { dataEmpty: true, logoutFailed: true, notInstalled: [] } });
+      await c.runtime.remove('ada');
+      const report = await reconcileAgentRuntime({ config: on, store: c.store, manager: c.manager });
+      assert.equal(report.logoutFailed.length, 1);
+    });
+  });
 
   test('check reads the CLI\'s status again', async () => {
     const { runtime, reported } = await owned();

@@ -161,12 +161,26 @@ public_origin() { v=$(env_value FLUX_PUBLIC_ORIGIN); printf '%s' "${v:-http://12
 # 64 hex characters from the kernel CSPRNG: URL-safe for DATABASE_URL, no openssl needed.
 random_hex() { od -An -N"${1:-32}" -tx1 /dev/urandom | tr -d ' \n'; }
 
+# 32 random bytes as base64url (43 characters): the keyring token of encrypted workspaces (F-030).
+random_b64url() { head -c 32 /dev/urandom | base64 | tr '+/' '-_' | tr -d '=\n'; }
+# Adds FLUX_KEYRING_TOKEN to an env file that lacks one (an install from before F-030); never changes an existing token.
+ensure_keyring_token() {
+  file=${1:-$ENV_FILE}
+  [ -n "$(sed -n 's/^FLUX_KEYRING_TOKEN=//p' "$file" | tail -n 1)" ] && return 0
+  set_env_line "$file" FLUX_KEYRING_TOKEN "$(random_b64url)"
+  say "Added FLUX_KEYRING_TOKEN (encrypted spaces' keyring) to ${file#"$FLUX_ROOT"/}."
+}
+
 # Writes KEY=value into an env file (replacing the line or appending it), via a temp file.
 set_env_line() {
   file=$1 key=$2 value=$3
-  awk -v k="$key" -v v="$value" 'BEGIN { done = 0 }
-    index($0, k "=") == 1 { if (!done) print k "=" v; done = 1; next }
-    { print } END { if (!done) print k "=" v }' "$file" > "$file.flux-tmp"
+  # The temporary copy holds every secret of the file: create it private (0600), whatever the umask (#331 nit).
+  (
+    umask 077
+    awk -v k="$key" -v v="$value" 'BEGIN { done = 0 }
+      index($0, k "=") == 1 { if (!done) print k "=" v; done = 1; next }
+      { print } END { if (!done) print k "=" v }' "$file" > "$file.flux-tmp"
+  )
   cat "$file.flux-tmp" > "$file" && rm -f "$file.flux-tmp"
 }
 
@@ -194,6 +208,7 @@ ensure_env() {
   set_env_line "$draft" POSTGRES_PASSWORD "$(random_hex 32)"
   set_env_line "$draft" FLUX_FIXTURE_TOKEN "$(random_hex 32)"
   set_env_line "$draft" FLUX_AUTH_SECRET "$(random_hex 32)"
+  set_env_line "$draft" FLUX_KEYRING_TOKEN "$(random_b64url)"
   set_env_line "$draft" FLUX_DEMO_OWNER_PASSWORD "demo-$(random_hex 8)"
   set_env_line "$draft" FLUX_DEMO_PARTNER_PASSWORD "demo-$(random_hex 8)"
   # Agent runtime secrets (F-022 T3): the service secret and one secret per slot. Generated now so
@@ -400,6 +415,7 @@ runtime_prepare_cleanup() {
 # can), each binding directory is deleted and each supervisor confirms an empty /data.
 runtime_sign_out() {
   runtime_sign_out_result=unconfirmed
+  runtime_not_installed=
   [ -n "$(runtime_volumes | grep -- '-data$' || true)" ] || return 0
   say "Signing out the agent runtime logins first (best effort)..."
   if ! docker image inspect "flux-agent-runtime:$PROJECT" >/dev/null 2>&1 || ! docker image inspect "flux-foundation:$PROJECT" >/dev/null 2>&1; then
@@ -413,7 +429,8 @@ runtime_sign_out() {
     return 0
   fi
   tries=0
-  until compose_main exec -T runtime-manager node apps/runtime/dist/manager/cli.js sign-out-all; do
+  until runtime_sign_out_report=$(compose_main exec -T runtime-manager node apps/runtime/dist/manager/cli.js sign-out-all); do
+    printf '%s\n' "$runtime_sign_out_report"
     tries=$((tries + 1))
     if [ "$tries" -ge 10 ]; then
       warn "Not every agent runtime login could be signed out; the files are deleted anyway. Owners should end those sessions in their Claude or ChatGPT account settings."
@@ -421,9 +438,15 @@ runtime_sign_out() {
     fi
     sleep 2
   done
+  printf '%s\n' "$runtime_sign_out_report"
   # A failed attempt may already have deleted a binding directory. A later empty retry
   # cannot prove that its vendor session ended, so keep that failure in owner history.
-  if [ "$tries" -eq 0 ]; then runtime_sign_out_result=confirmed; fi
+  if [ "$tries" -eq 0 ]; then
+    runtime_sign_out_result=confirmed
+    # A slot that found no CLI and no files for a client confirms nothing by itself: the database accepts such a
+    # client only while its durable history shows no login was started for it (#480).
+    runtime_not_installed=$(printf '%s\n' "$runtime_sign_out_report" | sed -n 's/^FLUX_RUNTIME_NOT_INSTALLED \([0-9a-f-][0-9a-f-]*\) \([a-z_][a-z_]*\)$/\1:\2/p' | tr '\n' ' ')
+  fi
 }
 
 start_main() {
@@ -1131,6 +1154,8 @@ cmd_upgrade() {
   need_docker
   [ -f "$ENV_FILE" ] || die "No ${ENV_FILE#"$FLUX_ROOT"/}; for a first installation use ./flux up."
   check_owner "$PROJECT"
+  # F-030: an install from before encrypted workspaces gets its keyring token here (the upgrade restarts the keyring).
+  ensure_keyring_token "$ENV_FILE"
   docker volume inspect "${PROJECT}_pgdata" >/dev/null 2>&1 || die "Compose project $PROJECT has no data yet; use ./flux up."
   if [ "$pull" = 1 ] && [ "$(git_commit)" = unknown ]; then die "upgrade --pull needs a git checkout; update the files yourself and run ./flux upgrade."; fi
   compose_main up -d --wait --wait-timeout "$WAIT_TIMEOUT" db >/dev/null || die "The database of $PROJECT did not start."
@@ -1197,7 +1222,8 @@ cmd_runtime() {
       # shellcheck disable=SC2046
       compose_main --profile runtime rm -sf $(runtime_services) >/dev/null 2>&1 || die "Runtime containers could not all be removed; admission remains blocked. Repair and retry purge."
       for volume in $(runtime_volumes); do docker volume rm "$volume" >/dev/null || die "Could not remove $volume; is a runtime container still using it?"; done
-      if [ -n "$runtime_purge_id" ]; then image_op runtime-forget "$runtime_purge_id" "$runtime_sign_out_result"; fi
+      # shellcheck disable=SC2086
+      if [ -n "$runtime_purge_id" ]; then image_op runtime-forget "$runtime_purge_id" "$runtime_sign_out_result" $runtime_not_installed; fi
       say "The agent runtime of $PROJECT is purged. Set FLUX_AGENT_RUNTIME= (empty) in ${ENV_FILE#"$FLUX_ROOT"/} so ./flux up keeps it off." ;;
     *) die "usage: ./flux runtime status | release runtime-<n> | purge [-y]" ;;
   esac

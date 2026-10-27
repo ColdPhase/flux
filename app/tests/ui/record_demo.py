@@ -6,6 +6,10 @@ real browser: the return view with Jonas's new reply, the project conversation, 
 a decision made from messages. Every frame is a Playwright screenshot of the real app; only a pointer is drawn
 on top so the viewer can follow the clicks. The frames become one looping GIF with Pillow.
 
+After the journey it also takes the two stills at the top of the README (conversation-desktop.png and
+home-phone.png): the decision the journey made beside the conversation on a computer, and Home on a
+phone, with Jonas's question waiting for Ada.
+
 Input (environment): FLUX_UI_ORIGIN, FLUX_UI_UPSTREAM, FLUX_DEMO_OWNER_PASSWORD,
 FLUX_DEMO_PARTNER_PASSWORD and FLUX_UI_SCREENSHOTS (the output directory, mounted from the host).
 """
@@ -25,15 +29,15 @@ from playwright.sync_api import APIRequestContext, Locator, Page, expect, sync_p
 from test_app_shell import ORIGIN, UPSTREAM, start_forwarder
 
 VIEWPORT = {"width": 1280, "height": 800}
-OUT = Path(os.environ.get("FLUX_UI_SCREENSHOTS", "/screenshots")) / "flux-demo.gif"
+SHOTS = Path(os.environ.get("FLUX_UI_SCREENSHOTS", "/screenshots"))
+OUT = SHOTS / "flux-demo.gif"
 EMAIL = "ada@demo.flux.test"
 PASSWORD = os.environ.get("FLUX_DEMO_OWNER_PASSWORD", "")
 PARTNER = ("jonas@demo.flux.test", os.environ.get("FLUX_DEMO_PARTNER_PASSWORD", ""))
 WORKSPACE = "Riverside Makers (demo)"
 PROJECT = "Community garden sensors"
 NEWS = "Ada, the school can lend us two ESP32 kits. Shall I pick them up on Thursday?"
-CREATE_TASK = re.compile("^Task$")
-PROPOSE_DECISION = re.compile("^(Propose decision|Decision)$")
+CREATE_TASK = re.compile("^Create task$")
 
 # A classic arrow, drawn above the page and ignored by hit testing and assistive technology.
 POINTER = """
@@ -108,11 +112,14 @@ def api(request: APIRequestContext, method: str, path: str, body: dict | None = 
     return response.json()
 
 
+def project_id(request: APIRequestContext) -> str:
+    workspace = next(ws for ws in api(request, "GET", "/api/v1/workspaces") if ws["name"] == WORKSPACE)
+    return next(item for item in api(request, "GET", f"/api/v1/workspaces/{workspace['id']}/projects")["items"] if item["name"] == PROJECT)["id"]
+
+
 def jonas_replies(request: APIRequestContext) -> None:
     """Jonas answers in the project conversation while Ada is away, through the public API."""
-    workspace = next(ws for ws in api(request, "GET", "/api/v1/workspaces") if ws["name"] == WORKSPACE)
-    project = next(item for item in api(request, "GET", f"/api/v1/workspaces/{workspace['id']}/projects")["items"] if item["name"] == PROJECT)
-    conversation = api(request, "GET", f"/api/v1/projects/{project['id']}/conversations")["items"][0]
+    conversation = api(request, "GET", f"/api/v1/projects/{project_id(request)}/conversations")["items"][0]
     api(request, "POST", f"/api/v1/conversations/{conversation['id']}/messages", {"body": NEWS, "clientMessageId": str(uuid.uuid4())})
 
 
@@ -134,13 +141,19 @@ def journey(page: Page, rec: Recorder) -> None:
     tabs = page.get_by_role("navigation", name="Project views")
     rec.click(tabs.get_by_role("link", name=re.compile("^Map")))
     rec.hold(900)
-    rec.click(page.get_by_role("link", name=re.compile("^Where the sensors go")).first)
+    # With one map in the project the Map tab opens it directly; with several it lists them first.
+    listed = page.get_by_role("link", name=re.compile("^Where the sensors go"))
+    if listed.count():
+        rec.click(listed.first)
     expect(page.get_by_text("Six sensors for twelve beds").first).to_be_visible()
     rec.hold(2600)
 
     # 4. A task, made from Jonas's message in one action.
     rec.click(tabs.get_by_role("link", name=re.compile("^Conversation")))
     order = messages.filter(has_text="Then let us order six")
+    # The replies live in the thread panel; open it again if the tab came back without it.
+    if not order.count():
+        rec.click(page.get_by_role("button", name=re.compile(r"^\d+ replies")).first)
     expect(order).to_be_visible()
     order.hover()
     rec.click(order.get_by_role("button", name=CREATE_TASK))
@@ -152,12 +165,15 @@ def journey(page: Page, rec: Recorder) -> None:
     panel = page.locator("#details")
     expect(panel.get_by_role("button", name="Status", exact=True)).to_contain_text("Open")
     rec.hold(2400)
-    page.keyboard.press("Escape")
+    # "Thread" in the panel's head goes back to the messages.
+    rec.click(panel.get_by_role("button", name="Thread"))
 
     # 5. A decision with its reason, proposed from a message and accepted.
     moisture = messages.filter(has_text="Moisture first")
+    expect(moisture).to_be_visible()
     moisture.hover()
-    rec.click(moisture.get_by_role("button", name=PROPOSE_DECISION))
+    rec.click(moisture.get_by_role("button", name="More actions"))
+    rec.click(page.get_by_role("menuitem", name="Propose a decision"))
     expect(panel.get_by_role("heading", name="Propose a decision")).to_be_visible()
     rec.type(panel.get_by_label("Decision"), "Measure soil moisture first; frost warnings later")
     rec.type(panel.get_by_label("Why"), "Volunteers overwater the raised beds; frost is a spring problem")
@@ -166,9 +182,37 @@ def journey(page: Page, rec: Recorder) -> None:
     rec.hold(900)
     rec.click(panel.get_by_role("button", name="Accept decision"))
     expect(panel.locator(".wd-eyebrow")).to_contain_text("Current rule")
+    rec.hold(1400)
     # End on the rule where it was decided: under Jonas's message, linked to it.
-    rec.point(moisture.get_by_role("button", name=re.compile("^Decision: Measure soil moisture first")))
+    rec.click(panel.get_by_role("button", name="Thread"))
+    rec.point(moisture.get_by_role("button", name=re.compile("^Decision: Measure soil moisture first")).first)
     rec.hold(3400)
+
+
+def readme_stills(browser, request: APIRequestContext) -> None:
+    """The two stills at the top of the README, after the journey: the accepted decision beside the
+    conversation on a 1440 px computer, and Home on a 390 px phone, with the question waiting for Ada."""
+    path = f"/projects/{project_id(request)}"
+    for name, options in (
+        ("conversation-desktop", {"viewport": {"width": 1440, "height": 900}, "device_scale_factor": 1}),
+        ("home-phone", {"viewport": {"width": 390, "height": 844}, "device_scale_factor": 3, "is_mobile": True, "has_touch": True}),
+    ):
+        context = browser.new_context(base_url=ORIGIN, color_scheme="light", locale="en-GB", timezone_id="Europe/Warsaw", service_workers="block", **options)
+        sign_in(context.request, EMAIL, PASSWORD)
+        page = context.new_page()
+        if name == "conversation-desktop":
+            page.goto(path)
+            # The thread opens beside the conversation; its decision opens in the same panel.
+            page.get_by_role("button", name=re.compile(r"^\d+ replies")).first.click()
+            page.get_by_role("button", name=re.compile("^Decision: Measure soil moisture first")).first.click()
+            expect(page.locator("#details .wd-eyebrow")).to_contain_text("Current rule")
+        else:
+            page.goto("/")
+            expect(page.get_by_text("asked you in Community garden sensors")).to_be_visible()
+        page.evaluate("document.fonts.ready.then(() => true)")
+        page.wait_for_timeout(800)
+        page.screenshot(path=str(SHOTS / f"{name}.png"))
+        context.close()
 
 
 def write_gif(frames: list[tuple[bytes, int]], path: Path) -> None:
@@ -179,7 +223,9 @@ def write_gif(frames: list[tuple[bytes, int]], path: Path) -> None:
     sheet = Image.new("RGB", (width, height * len(sample)))
     for index, image in enumerate(sample):
         sheet.paste(image, (0, height * index))
-    palette = sheet.quantize(colors=128, method=Image.Quantize.MEDIANCUT, dither=Image.Dither.NONE)
+    # The interface is greys and one accent, so 48 colours read the same as 128 and keep the file under the
+    # evidence size limit (scripts/docs-size-allowlist.txt).
+    palette = sheet.quantize(colors=48, method=Image.Quantize.MEDIANCUT, dither=Image.Dither.NONE)
     indexed = [image.quantize(palette=palette, dither=Image.Dither.NONE) for image in images]
     path.parent.mkdir(parents=True, exist_ok=True)
     indexed[0].save(path, save_all=True, append_images=indexed[1:], duration=[ms for _, ms in frames], loop=0, optimize=True, disposal=1)
@@ -207,6 +253,7 @@ def main() -> None:
         partner.close()
         rec = Recorder(page)
         journey(page, rec)
+        readme_stills(browser, page.request)
         browser.close()
     write_gif(rec.frames, OUT)
     seconds = sum(ms for _, ms in rec.frames) / 1000
