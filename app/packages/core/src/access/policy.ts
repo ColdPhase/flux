@@ -1,8 +1,11 @@
-import { and, eq, or, sql, type SQL, type SQLWrapper } from 'drizzle-orm';
-import { schema } from '@flux/db';
 import type { ProjectAccess, WorkspaceRole } from '@flux/contracts';
-import type { Executor, Principal } from '../types.js';
+import type { Principal } from '../principal.js';
 import { ForbiddenError, NotFoundError, WorkspaceAiBlockedError } from './errors.js';
+import type {
+  AccessReader, ActorReads, Actor, AgentFacts, AssistantRunFacts, DmFacts, DraftFacts, LoadOptions, ProjectFacts, SketchFacts, WorkspaceAi,
+} from './ports.js';
+
+export type { Actor, LoadOptions, WorkspaceAi } from './ports.js';
 
 /**
  * # Flux access policy
@@ -11,8 +14,13 @@ import { ForbiddenError, NotFoundError, WorkspaceAiBlockedError } from './errors
  * changes workspace data — the HTTP API, WebSocket subscriptions and replay, worker jobs,
  * and the future file, search, MCP and extension surfaces — MUST decide access through
  * {@link authorize} / {@link assertAuthorized} for one object and through
- * {@link visibleFilter} for lists. Nothing may query collaborative tables for a caller
+ * `visibleFilter` (`@flux/db`) for lists. Nothing may query collaborative tables for a caller
  * without one of them. See `docs/development/access-policy.md`.
+ *
+ * The decisions are pure: they run over facts an {@link AccessReader} returns (`./ports.ts`) and
+ * never build a query. `@flux/db` (`repositories/access.ts`) is its one implementation; it reads
+ * the facts with SQL, takes the locks in the order the evaluators below call it, and owns the list
+ * conditions behind `visibleFilter` (#90).
  *
  * Rules, evaluated from current rows on every call (there is no cache, so removing a
  * membership, grant or agent applies to the very next call):
@@ -91,43 +99,14 @@ export interface Decision {
   visible: boolean;
 }
 
-/** Current facts about one principal in one workspace, read fresh for every decision. */
-export interface Actor {
-  principal: Principal;
-  workspaceId: string;
-  /** Membership role of a person; null for agents and non-members. */
-  role: WorkspaceRole | null;
-  agent: { ownerUserId: string | null; ownerRole: WorkspaceRole | null } | null;
-  /** False for non-members, revoked agents, agents whose owner left, agents of a workspace whose AI is off, and fixtures. */
-  active: boolean;
-  /** Set when an agent is inactive only because AI is turned off in its workspace (F-029). */
-  blockedBy?: 'workspace_ai';
-}
-
-/** The workspace AI policy as one check reads it (F-029, #614). */
-export interface WorkspaceAi { state: 'allowed' | 'blocked'; epoch: number; version: number }
-const NO_AI_POLICY: WorkspaceAi = { state: 'blocked', epoch: 0, version: 0 };
-
-/**
- * The workspace's AI policy, read fresh (never cached). With `lock` the row is taken `FOR SHARE`, so the
- * decision is ordered strictly before or after a change, which takes `FOR UPDATE`. A missing row reads as
- * blocked (fail closed). Lock order: the policy row before agent, membership, project and grant rows.
- */
-export async function workspaceAi(db: Executor, workspaceId: string, options: { lock?: boolean } = {}): Promise<WorkspaceAi> {
-  if (!isUuid(workspaceId)) return NO_AI_POLICY;
-  const p = schema.workspaceAiPolicies;
-  const query = db.select({ state: p.state, epoch: p.epoch, version: p.version }).from(p).where(eq(p.workspaceId, workspaceId));
-  const [row] = options.lock ? await query.for('share') : await query;
-  return row ?? NO_AI_POLICY;
-}
-
 /**
  * The single AI check of every entry point (F-029): throws {@link WorkspaceAiBlockedError} unless AI is
  * allowed in the workspace and, when `epoch` is given (a queued item's admission epoch), still at it.
- * Returns the policy, whose `epoch` a new AI work item records.
+ * Returns the policy, whose `epoch` a new AI work item records. The policy row is read fresh; with `lock`
+ * it is held `FOR SHARE`, ordered before the agent, membership, project and grant rows.
  */
-export async function requireWorkspaceAi(db: Executor, workspaceId: string, options: { lock?: boolean; epoch?: number } = {}): Promise<WorkspaceAi> {
-  const ai = await workspaceAi(db, workspaceId, options);
+export async function requireWorkspaceAi(reader: Pick<ActorReads, 'workspaceAi'>, workspaceId: string, options: { lock?: boolean; epoch?: number } = {}): Promise<WorkspaceAi> {
+  const ai = await reader.workspaceAi(workspaceId, options);
   if (ai.state !== 'allowed' || (options.epoch !== undefined && options.epoch !== ai.epoch)) throw new WorkspaceAiBlockedError();
   return ai;
 }
@@ -151,142 +130,6 @@ export function accessName(level: number): ProjectAccess | null {
   return null;
 }
 
-export interface LoadOptions {
-  /**
-   * Inside a mutation transaction: lock the membership/agent rows, the draft, and the
-   * project and grant rows the decision reads, so a concurrent revocation waits or is seen.
-   */
-  lock?: boolean;
-}
-
-/**
- * Locks the project row and every grant row that can contribute to the actor's level on
- * it (`FOR SHARE`). Grant and revoke take `FOR NO KEY UPDATE` on the project row first
- * and `FOR UPDATE` (or DELETE) on the grant row, so they conflict with these locks:
- * whichever transaction locks first finishes before the other decides.
- */
-export async function lockProjectAccess(db: Executor, actor: Actor, projectId: string): Promise<void> {
-  if (!isUuid(projectId)) return;
-  await db.execute(sql`SELECT 1 FROM projects WHERE id = ${projectId} FOR SHARE`);
-  const holders: SQL[] = [];
-  if (actor.principal.kind === 'human' && isUuid(actor.principal.id)) holders.push(sql`g.user_id = ${actor.principal.id}`);
-  if (actor.principal.kind === 'agent' && isUuid(actor.principal.id)) {
-    holders.push(sql`g.agent_id = ${actor.principal.id}`);
-    if (actor.agent?.ownerUserId) holders.push(sql`g.user_id = ${actor.agent.ownerUserId}`);
-  }
-  if (!holders.length) return;
-  await db.execute(sql`SELECT g.id FROM project_grants g WHERE g.project_id = ${projectId} AND (${sql.join(holders, sql` OR `)}) ORDER BY g.id FOR SHARE`);
-}
-
-async function memberRole(db: Executor, workspaceId: string, userId: string, lock: boolean): Promise<WorkspaceRole | null> {
-  const query = db.select({ role: schema.workspaceMembers.role }).from(schema.workspaceMembers)
-    .where(and(eq(schema.workspaceMembers.workspaceId, workspaceId), eq(schema.workspaceMembers.userId, userId)));
-  const rows = lock ? await query.for('share') : await query;
-  return rows[0]?.role ?? null;
-}
-
-/** Reads the principal's current standing in a workspace. Never cached. */
-export async function loadActor(principal: Principal, workspaceId: string, db: Executor, options: LoadOptions = {}): Promise<Actor> {
-  const lock = options.lock ?? false;
-  const inactive: Actor = { principal, workspaceId, role: null, agent: null, active: false };
-  if (!isUuid(workspaceId) || !principal.id) return inactive;
-  if (principal.kind === 'human') {
-    const role = await memberRole(db, workspaceId, principal.id, lock);
-    return { ...inactive, role, active: role !== null };
-  }
-  if (principal.kind === 'agent') {
-    if (!isUuid(principal.id)) return inactive;
-    // F-029: no agent acts in a workspace whose AI is off, whatever its grants (policy row first).
-    if ((await workspaceAi(db, workspaceId, { lock })).state !== 'allowed') return { ...inactive, blockedBy: 'workspace_ai' };
-    const query = db.select({ ownerUserId: schema.agents.ownerUserId, revokedAt: schema.agents.revokedAt }).from(schema.agents)
-      .where(and(eq(schema.agents.id, principal.id), eq(schema.agents.workspaceId, workspaceId)));
-    const [agent] = lock ? await query.for('share') : await query;
-    if (!agent || agent.revokedAt) return inactive;
-    const ownerRole = agent.ownerUserId ? await memberRole(db, workspaceId, agent.ownerUserId, lock) : null;
-    const active = agent.ownerUserId === null || ownerRole !== null;
-    return { ...inactive, agent: { ownerUserId: agent.ownerUserId, ownerRole }, active };
-  }
-  return inactive;
-}
-
-function grantExists(column: 'user_id' | 'agent_id', principalId: string, projectId: SQLWrapper, role: 'contributor' | 'viewer' | 'denied'): SQL {
-  return sql`EXISTS (SELECT 1 FROM project_grants g WHERE g.project_id = ${projectId} AND g.${sql.raw(column)} = ${principalId} AND g.role = ${role})`;
-}
-
-function humanLevel(userId: string, role: WorkspaceRole | null, projectId: SQLWrapper, visibility: SQLWrapper): SQL {
-  if (!role) return sql`0`;
-  const denied = grantExists('user_id', userId, projectId, 'denied');
-  if (isManager(role)) return sql`(CASE WHEN ${denied} THEN 0 ELSE 3 END)`;
-  const implicit = role === 'member' ? sql` WHEN ${visibility} = 'workspace' THEN 2` : sql``;
-  return sql`(CASE WHEN ${denied} THEN 0 WHEN ${grantExists('user_id', userId, projectId, 'contributor')} THEN 2 WHEN ${grantExists('user_id', userId, projectId, 'viewer')} THEN 1${implicit} ELSE 0 END)`;
-}
-
-/**
- * SQL expression for the actor's access level (0–3) to the project identified by
- * `projectId` whose visibility column/expression is `visibility`. Composable into lists.
- */
-export function projectLevelSql(actor: Actor, projectId: SQLWrapper, visibility: SQLWrapper): SQL {
-  if (!actor.active) return sql`0`;
-  if (actor.principal.kind === 'human') return humanLevel(actor.principal.id, actor.role, projectId, visibility);
-  const id = actor.principal.id;
-  const own = sql`(CASE WHEN ${grantExists('agent_id', id, projectId, 'denied')} THEN 0 WHEN ${grantExists('agent_id', id, projectId, 'contributor')} THEN 2 WHEN ${grantExists('agent_id', id, projectId, 'viewer')} THEN 1 ELSE 0 END)`;
-  const owner = actor.agent?.ownerUserId;
-  return owner ? sql`LEAST(${own}, ${humanLevel(owner, actor.agent?.ownerRole ?? null, projectId, visibility)})` : own;
-}
-
-const draftProjectVisibility = sql`(SELECT p.visibility FROM projects p WHERE p.id = ${schema.drafts.projectId})`;
-
-function draftProjectLevel(actor: Actor): SQL {
-  return sql`(CASE WHEN ${schema.drafts.projectId} IS NULL THEN 0 ELSE ${projectLevelSql(actor, schema.drafts.projectId, draftProjectVisibility)} END)`;
-}
-
-function isDraftOwner(actor: Actor): SQL {
-  return actor.principal.kind === 'agent' ? eq(schema.drafts.ownerAgentId, actor.principal.id) : eq(schema.drafts.ownerUserId, actor.principal.id);
-}
-
-/** Condition over `projects` rows: the project is in the actor's workspace and at least viewable. */
-export function visibleProjectsSql(actor: Actor): SQL {
-  if (!actor.active) return sql`false`;
-  return and(eq(schema.projects.workspaceId, actor.workspaceId), sql`${projectLevelSql(actor, schema.projects.id, schema.projects.visibility)} >= 1`)!;
-}
-
-/** Condition over `drafts` rows: the actor may read the draft. Apply before count/limit. */
-export function visibleDraftsSql(actor: Actor): SQL {
-  if (!actor.active) return sql`false`;
-  const d = schema.drafts;
-  if (actor.principal.kind === 'agent') {
-    // An agent reads only inside its current project access, including its own drafts.
-    // A deny grant or a lost grant yields level 0, so no separate deny clause is needed.
-    return and(eq(d.workspaceId, actor.workspaceId), sql`${draftProjectLevel(actor)} >= 1`,
-      or(isDraftOwner(actor), sql`${d.visibility} = 'project'`))!;
-  }
-  const denied = sql`(${d.projectId} IS NOT NULL AND ${grantExists('user_id', actor.principal.id, d.projectId, 'denied')})`;
-  const audiences: SQL[] = [isDraftOwner(actor), sql`(${d.visibility} = 'project' AND ${draftProjectLevel(actor)} >= 1)`];
-  if (actor.principal.kind === 'human' && actor.role !== 'guest') audiences.push(sql`${d.visibility} = 'workspace'`);
-  return and(eq(d.workspaceId, actor.workspaceId), sql`NOT ${denied}`, or(...audiences))!;
-}
-
-const sketchProjectVisibility = sql`(SELECT p.visibility FROM projects p WHERE p.id = ${schema.sketches.projectId})`;
-
-function sketchProjectLevel(actor: Actor): SQL {
-  return sql`(CASE WHEN ${schema.sketches.projectId} IS NULL THEN 0 ELSE ${projectLevelSql(actor, schema.sketches.projectId, sketchProjectVisibility)} END)`;
-}
-
-/** Condition over `sketches` rows: the actor may read the sketch. Apply before count/limit. */
-export function visibleSketchesSql(actor: Actor): SQL {
-  if (!actor.active) return sql`false`;
-  const s = schema.sketches;
-  const project = sql`(${s.scope} = 'project' AND ${sketchProjectLevel(actor)} >= 1)`;
-  // Agents never see private sketches, not even their owner's.
-  if (actor.principal.kind !== 'human') return and(eq(s.workspaceId, actor.workspaceId), project)!;
-  const own = sql`(${s.scope} = 'private' AND ${s.createdByUserId} = ${actor.principal.id})`;
-  // A DM sketch is visible to the DM's current participants only (#96). Qualified by hand:
-  // Drizzle leaves columns of a single-table select unqualified, and an unqualified `dm_id`
-  // inside this subquery would name dm_participants.dm_id.
-  const dm = sql`(${s.scope} = 'dm' AND EXISTS (SELECT 1 FROM dm_participants dp WHERE dp.dm_id = "sketches"."dm_id" AND dp.user_id = ${actor.principal.id}))`;
-  return and(eq(s.workspaceId, actor.workspaceId), or(project, own, dm))!;
-}
-
 /**
  * Promotion of a DM sketch (#96) must commit exactly the audience it previewed. Before the
  * sketch is evaluated, this takes the rows every audience change locks first, FOR SHARE: the
@@ -294,12 +137,12 @@ export function visibleSketchesSql(actor: Actor): SQL {
  * an existing target, the project row (grants and visibility: `lockProjectForGrantChange`). The
  * global order stays workspace, project, membership, sketch, DM, participants.
  */
-export async function lockPromotionScope(db: Executor, sketchId: string, projectId: string | null): Promise<void> {
+export async function lockPromotionScope(reader: Pick<AccessReader, 'sketchWorkspace' | 'lockWorkspaceForShare' | 'lockProjectForShare'>, sketchId: string, projectId: string | null): Promise<void> {
   if (!isUuid(sketchId)) return;
-  const [sketch] = await db.select({ workspaceId: schema.sketches.workspaceId }).from(schema.sketches).where(eq(schema.sketches.id, sketchId));
-  if (!sketch) return;
-  await db.select({ id: schema.workspaces.id }).from(schema.workspaces).where(eq(schema.workspaces.id, sketch.workspaceId)).for('share');
-  if (projectId && isUuid(projectId)) await db.select({ id: schema.projects.id }).from(schema.projects).where(eq(schema.projects.id, projectId)).for('share');
+  const workspaceId = await reader.sketchWorkspace(sketchId);
+  if (workspaceId === null) return;
+  await reader.lockWorkspaceForShare(workspaceId);
+  if (projectId && isUuid(projectId)) await reader.lockProjectForShare(projectId);
 }
 
 /**
@@ -307,11 +150,9 @@ export async function lockPromotionScope(db: Executor, sketchId: string, project
  * the participants. A leave (DM row, then its own row) or a membership removal (which deletes
  * participant rows by cascade) then waits until the caller's change commits.
  */
-export async function lockDmParticipants(db: Executor, dmId: string): Promise<string[]> {
-  await db.select({ id: schema.dms.id }).from(schema.dms).where(eq(schema.dms.id, dmId)).for('share');
-  const rows = await db.select({ userId: schema.dmParticipants.userId }).from(schema.dmParticipants)
-    .where(eq(schema.dmParticipants.dmId, dmId)).orderBy(schema.dmParticipants.userId).for('share');
-  return rows.map((row) => row.userId);
+export async function lockDmParticipants(reader: Pick<AccessReader, 'lockDmForShare' | 'lockParticipantsForShare'>, dmId: string): Promise<string[]> {
+  await reader.lockDmForShare(dmId);
+  return reader.lockParticipantsForShare(dmId);
 }
 
 /** Why a DM cannot take changes now: the other person of a 1:1 left it or the workspace (#107, #96). */
@@ -325,63 +166,34 @@ export interface DmClosed {
  * for everyone else: nothing is sent, sketched or promoted on that person's behalf, and only they
  * can reopen it (the #107 DM_RECIPIENT_LEFT rule). Groups stay open to whoever remains.
  */
-export async function dmClosedFor(db: Executor, dmId: string, selfId: string): Promise<DmClosed | null> {
-  const [dm] = await db.select({ kind: schema.dms.kind, pairKey: schema.dms.pairKey, workspaceId: schema.dms.workspaceId }).from(schema.dms).where(eq(schema.dms.id, dmId));
+export async function dmClosedFor(reader: Pick<AccessReader, 'dmPair' | 'isParticipant' | 'userName' | 'loadActor'>, dmId: string, selfId: string): Promise<DmClosed | null> {
+  const dm = await reader.dmPair(dmId);
   if (!dm || dm.kind !== 'pair' || !dm.pairKey) return null;
   const otherId = dm.pairKey.split(':').find((id) => id !== selfId);
   if (!otherId) return null;
-  const [present] = await db.select({ userId: schema.dmParticipants.userId }).from(schema.dmParticipants)
-    .where(and(eq(schema.dmParticipants.dmId, dmId), eq(schema.dmParticipants.userId, otherId)));
-  if (present) return null;
-  const [user] = await db.select({ name: schema.authUsers.name }).from(schema.authUsers).where(eq(schema.authUsers.id, otherId));
-  const active = (await loadActor({ kind: 'human', id: otherId }, dm.workspaceId, db)).active;
-  return { reason: active ? 'left' : 'unavailable', recipient: { id: otherId, name: user?.name ?? '' } };
-}
-
-/**
- * Condition over `dms` rows: the actor is a current participant. Workspace roles add nothing:
- * owners and admins see only the DMs they are in. Agents see none (no participant grants yet).
- */
-export function visibleDmsSql(actor: Actor): SQL {
-  if (!actor.active || actor.principal.kind !== 'human') return sql`false`;
-  const d = schema.dms;
-  return and(eq(d.workspaceId, actor.workspaceId),
-    sql`EXISTS (SELECT 1 FROM dm_participants dp WHERE dp.dm_id = "dms"."id" AND dp.user_id = ${actor.principal.id})`)!;
-}
-
-/**
- * The list filter for a principal in a workspace. Put it in the WHERE clause of the list
- * query and of its count so invisible rows never reach counts, pages or payloads.
- */
-export async function visibleFilter(principal: Principal, workspaceId: string, kind: 'project' | 'draft' | 'sketch' | 'dm', db: Executor): Promise<SQL> {
-  const actor = await loadActor(principal, workspaceId, db);
-  if (kind === 'sketch') return visibleSketchesSql(actor);
-  if (kind === 'dm') return visibleDmsSql(actor);
-  return kind === 'project' ? visibleProjectsSql(actor) : visibleDraftsSql(actor);
+  if (await reader.isParticipant(dmId, otherId)) return null;
+  const name = await reader.userName(otherId);
+  const active = (await reader.loadActor({ kind: 'human', id: otherId }, dm.workspaceId)).active;
+  return { reason: active ? 'left' : 'unavailable', recipient: { id: otherId, name: name ?? '' } };
 }
 
 // ---------------------------------------------------------------------------------------
 // Single-object evaluation. Internal evaluators also return the loaded row so domain
-// methods decide and act on the same data inside one transaction.
-
-type DraftRow = typeof schema.drafts.$inferSelect;
-type ProjectRow = typeof schema.projects.$inferSelect;
-type AgentRow = typeof schema.agents.$inferSelect;
-type SketchRow = typeof schema.sketches.$inferSelect;
-type DmRow = typeof schema.dms.$inferSelect;
+// methods decide and act on the same data inside one transaction. The row type is the one
+// the reader returns (generic), so an adapter's whole table rows reach the caller.
 
 export interface WorkspaceEvaluation extends Decision { actor: Actor }
-export interface ProjectEvaluation extends Decision { actor: Actor | null; project: ProjectRow | null; level: number }
-export interface DraftEvaluation extends Decision { actor: Actor | null; draft: DraftRow | null; level: number; isOwner: boolean }
-export interface AgentEvaluation extends Decision { actor: Actor | null; agent: AgentRow | null }
-export interface SketchEvaluation extends Decision { actor: Actor | null; sketch: SketchRow | null }
-export interface DmEvaluation extends Decision { actor: Actor | null; dm: DmRow | null }
-export interface AssistantRunEvaluation extends Decision { actor: Actor | null; run: { id: string; workspaceId: string; ownerUserId: string } | null }
+export interface ProjectEvaluation<P extends ProjectFacts = ProjectFacts> extends Decision { actor: Actor | null; project: P | null; level: number }
+export interface DraftEvaluation<D extends DraftFacts = DraftFacts> extends Decision { actor: Actor | null; draft: D | null; level: number; isOwner: boolean }
+export interface AgentEvaluation<A extends AgentFacts = AgentFacts> extends Decision { actor: Actor | null; agent: A | null }
+export interface SketchEvaluation<S extends SketchFacts = SketchFacts> extends Decision { actor: Actor | null; sketch: S | null }
+export interface DmEvaluation<M extends DmFacts = DmFacts> extends Decision { actor: Actor | null; dm: M | null }
+export interface AssistantRunEvaluation extends Decision { actor: Actor | null; run: AssistantRunFacts | null }
 
 const DENIED: Decision = { allowed: false, visible: false };
 
-export async function evaluateWorkspace(principal: Principal, action: ActionsByResource['workspace'], workspaceId: string, db: Executor, options?: LoadOptions): Promise<WorkspaceEvaluation> {
-  const actor = await loadActor(principal, workspaceId, db, options);
+export async function evaluateWorkspace(principal: Principal, action: ActionsByResource['workspace'], workspaceId: string, reader: AccessReader, options?: LoadOptions): Promise<WorkspaceEvaluation> {
+  const actor = await reader.loadActor(principal, workspaceId, options);
   if (!actor.active) return { ...DENIED, actor };
   const human = principal.kind === 'human';
   let allowed: boolean;
@@ -392,7 +204,7 @@ export async function evaluateWorkspace(principal: Principal, action: ActionsByR
     case 'draft.create':
       // People may keep unscoped private drafts; an agent needs a project it can write in
       // (createDraft additionally requires that project to be the draft's project).
-      allowed = human || await hasWritableProject(actor, db);
+      allowed = human || await reader.hasWritableProject(actor);
       break;
     case 'sketch.create':
       allowed = human;
@@ -415,47 +227,33 @@ export async function evaluateWorkspace(principal: Principal, action: ActionsByR
   return { allowed, visible: true, actor };
 }
 
-async function hasWritableProject(actor: Actor, db: Executor): Promise<boolean> {
-  const rows = await db.select({ id: schema.projects.id }).from(schema.projects)
-    .where(and(eq(schema.projects.workspaceId, actor.workspaceId), sql`${projectLevelSql(actor, schema.projects.id, schema.projects.visibility)} >= ${LEVEL.contributor}`))
-    .limit(1);
-  return rows.length > 0;
-}
-
-export async function evaluateProject(principal: Principal, action: ActionsByResource['project'], projectId: string, db: Executor, options?: LoadOptions): Promise<ProjectEvaluation> {
+export async function evaluateProject<P extends ProjectFacts = ProjectFacts>(principal: Principal, action: ActionsByResource['project'], projectId: string, reader: AccessReader<P>, options?: LoadOptions): Promise<ProjectEvaluation<P>> {
   const none = { ...DENIED, actor: null, project: null, level: 0 };
   if (!isUuid(projectId)) return none;
-  const [located] = await db.select({ workspaceId: schema.projects.workspaceId }).from(schema.projects).where(eq(schema.projects.id, projectId));
+  const located = await reader.locateProject(projectId);
   if (!located) return none;
-  const actor = await loadActor(principal, located.workspaceId, db, options);
+  const actor = await reader.loadActor(principal, located.workspaceId, options);
   if (!actor.active) return { ...none, actor };
-  if (options?.lock) await lockProjectAccess(db, actor, projectId);
-  const [row] = await db.select({ project: schema.projects, level: projectLevelSql(actor, schema.projects.id, schema.projects.visibility).mapWith(Number) })
-    .from(schema.projects).where(eq(schema.projects.id, projectId));
+  if (options?.lock) await reader.lockProjectAccess(actor, projectId);
+  const row = await reader.readProject(actor, projectId);
   if (!row || row.level < LEVEL.viewer) return { ...none, actor };
   const needed = action === 'project.manage' ? LEVEL.manager : action === 'project.write' ? LEVEL.contributor : LEVEL.viewer;
   return { allowed: row.level >= needed, visible: true, actor, project: row.project, level: row.level };
 }
 
-export async function evaluateDraft(principal: Principal, action: ActionsByResource['draft'], draftId: string, db: Executor, options: LoadOptions = {}): Promise<DraftEvaluation> {
+export async function evaluateDraft<D extends DraftFacts = DraftFacts>(principal: Principal, action: ActionsByResource['draft'], draftId: string, reader: AccessReader<ProjectFacts, D>, options: LoadOptions = {}): Promise<DraftEvaluation<D>> {
   const none = { ...DENIED, actor: null, draft: null, level: 0, isOwner: false };
   if (!isUuid(draftId)) return none;
-  const [located] = await db.select({ workspaceId: schema.drafts.workspaceId }).from(schema.drafts).where(eq(schema.drafts.id, draftId));
+  const located = await reader.locateDraft(draftId);
   if (!located) return none;
-  const actor = await loadActor(principal, located.workspaceId, db, options);
+  const actor = await reader.loadActor(principal, located.workspaceId, options);
   if (!actor.active) return { ...none, actor };
   if (options.lock) {
     // Lock the draft first so its project cannot change, then that project's access rows.
-    const [locked] = await db.select({ projectId: schema.drafts.projectId }).from(schema.drafts).where(eq(schema.drafts.id, draftId)).for('update');
-    if (locked?.projectId) await lockProjectAccess(db, actor, locked.projectId);
+    const locked = await reader.lockDraftForUpdate(draftId);
+    if (locked?.projectId) await reader.lockProjectAccess(actor, locked.projectId);
   }
-  const query = db.select({
-    draft: schema.drafts,
-    readable: visibleDraftsSql(actor).mapWith(Boolean),
-    level: draftProjectLevel(actor).mapWith(Number),
-    isOwner: isDraftOwner(actor).mapWith(Boolean),
-  }).from(schema.drafts).where(eq(schema.drafts.id, draftId));
-  const [row] = options.lock ? await query.for('update') : await query;
+  const row = await reader.readDraft(actor, draftId, { lock: !!options.lock });
   if (!row || !row.readable) return { ...none, actor };
   const { draft, level, isOwner } = row;
   const manager = isManager(actor.role);
@@ -481,12 +279,12 @@ export async function evaluateDraft(principal: Principal, action: ActionsByResou
   return { allowed, visible: true, actor, draft, level, isOwner };
 }
 
-export async function evaluateAgent(principal: Principal, action: ActionsByResource['agent'], agentId: string, db: Executor, options?: LoadOptions): Promise<AgentEvaluation> {
+export async function evaluateAgent<A extends AgentFacts = AgentFacts>(principal: Principal, action: ActionsByResource['agent'], agentId: string, reader: AccessReader<ProjectFacts, DraftFacts, A>, options?: LoadOptions): Promise<AgentEvaluation<A>> {
   const none = { ...DENIED, actor: null, agent: null };
   if (!isUuid(agentId)) return none;
-  const [agent] = await db.select().from(schema.agents).where(eq(schema.agents.id, agentId));
+  const agent = await reader.readAgent(agentId);
   if (!agent) return none;
-  const actor = await loadActor(principal, agent.workspaceId, db, options);
+  const actor = await reader.loadActor(principal, agent.workspaceId, options);
   const self = principal.kind === 'agent' && principal.id === agent.id;
   const ownedByCaller = principal.kind === 'human' && agent.ownerUserId === principal.id;
   const visible = actor.active && (self || (principal.kind === 'human' && actor.role !== 'guest'));
@@ -494,7 +292,7 @@ export async function evaluateAgent(principal: Principal, action: ActionsByResou
   // `agent.invoke` (#68, O-008): only the owning person, while the agent is not revoked. A
   // workspace role never lets anyone else use a person's assistant or its payer.
   // F-029: nobody invokes an agent of a workspace whose AI is off.
-  if (action === 'agent.invoke' && ownedByCaller && (await workspaceAi(db, agent.workspaceId, options)).state !== 'allowed') return { allowed: false, visible, actor, agent };
+  if (action === 'agent.invoke' && ownedByCaller && (await reader.workspaceAi(agent.workspaceId, options)).state !== 'allowed') return { allowed: false, visible, actor, agent };
   const allowed = action === 'agent.invoke' ? ownedByCaller && !agent.revokedAt
     : action === 'agent.read' || ownedByCaller || isManager(actor.role);
   return { allowed, visible, actor, agent };
@@ -505,34 +303,31 @@ export async function evaluateAgent(principal: Principal, action: ActionsByResou
  * time, so version checks and link rules see each other), then the project access rows
  * `FOR SHARE`, so a concurrent revocation is seen or waits.
  */
-export async function evaluateSketch(principal: Principal, action: ActionsByResource['sketch'], sketchId: string, db: Executor, options: LoadOptions = {}): Promise<SketchEvaluation> {
+export async function evaluateSketch<S extends SketchFacts = SketchFacts>(principal: Principal, action: ActionsByResource['sketch'], sketchId: string, reader: AccessReader<ProjectFacts, DraftFacts, AgentFacts, S>, options: LoadOptions = {}): Promise<SketchEvaluation<S>> {
   const none = { ...DENIED, actor: null, sketch: null };
   if (!isUuid(sketchId)) return none;
-  const s = schema.sketches;
-  const [located] = await db.select({ workspaceId: s.workspaceId, projectId: s.projectId, dmId: s.dmId }).from(s).where(eq(s.id, sketchId));
+  const located = await reader.locateSketch(sketchId);
   if (!located) return none;
-  const actor = await loadActor(principal, located.workspaceId, db, options);
+  const actor = await reader.loadActor(principal, located.workspaceId, options);
   if (!actor.active) return { ...none, actor };
   if (options.lock) {
-    await db.select({ id: s.id }).from(s).where(eq(s.id, sketchId)).for('no key update');
+    await reader.lockSketchForNoKeyUpdate(sketchId);
     // A private sketch depends only on its owner's membership, which loadActor locked.
-    if (located.projectId) await lockProjectAccess(db, actor, located.projectId);
+    if (located.projectId) await reader.lockProjectAccess(actor, located.projectId);
     // A DM sketch depends on the caller's participant row: a concurrent leave (which deletes it)
     // or membership removal (which cascades to it) is either seen or waits for this change (#96).
     // The DM row comes first (FOR SHARE), as leave() takes it first (FOR NO KEY UPDATE), so a
     // leave either commits before this change or waits for it, and the two never deadlock.
     if (located.dmId && principal.kind === 'human') {
-      await db.select({ id: schema.dms.id }).from(schema.dms).where(eq(schema.dms.id, located.dmId)).for('share');
-      await db.select({ userId: schema.dmParticipants.userId }).from(schema.dmParticipants)
-        .where(and(eq(schema.dmParticipants.dmId, located.dmId), eq(schema.dmParticipants.userId, principal.id))).for('share');
+      await reader.lockDmForShare(located.dmId);
+      await reader.lockParticipantForShare(located.dmId, principal.id);
     }
   }
-  const [row] = await db.select({ sketch: s, readable: visibleSketchesSql(actor).mapWith(Boolean), level: sketchProjectLevel(actor).mapWith(Number) })
-    .from(s).where(eq(s.id, sketchId));
+  const row = await reader.readSketch(actor, sketchId);
   if (!row || !row.readable) return { ...none, actor };
   let allowed: boolean;
   if (action === 'sketch.read' || row.sketch.scope === 'private') allowed = true;
-  else if (row.sketch.scope === 'dm') allowed = !(await dmClosedFor(db, row.sketch.dmId!, principal.id));
+  else if (row.sketch.scope === 'dm') allowed = !(await dmClosedFor(reader, row.sketch.dmId!, principal.id));
   else allowed = row.level >= LEVEL.contributor;
   return { allowed, visible: true, actor, sketch: row.sketch };
 }
@@ -544,20 +339,18 @@ export async function evaluateSketch(principal: Principal, action: ActionsByReso
  * membership removal (which cascades to the participant row) either commits first and is seen,
  * or waits until this change commits.
  */
-export async function evaluateDm(principal: Principal, _action: ActionsByResource['dm'], dmId: string, db: Executor, options: LoadOptions = {}): Promise<DmEvaluation> {
+export async function evaluateDm<M extends DmFacts = DmFacts>(principal: Principal, _action: ActionsByResource['dm'], dmId: string, reader: AccessReader<ProjectFacts, DraftFacts, AgentFacts, SketchFacts, M>, options: LoadOptions = {}): Promise<DmEvaluation<M>> {
   const none = { ...DENIED, actor: null, dm: null };
   if (!isUuid(dmId)) return none;
-  const d = schema.dms;
-  const [located] = await db.select({ workspaceId: d.workspaceId }).from(d).where(eq(d.id, dmId));
+  const located = await reader.locateDm(dmId);
   if (!located) return none;
-  const actor = await loadActor(principal, located.workspaceId, db, options);
+  const actor = await reader.loadActor(principal, located.workspaceId, options);
   if (!actor.active || principal.kind !== 'human') return { ...none, actor };
   if (options.lock) {
-    await db.select({ id: d.id }).from(d).where(eq(d.id, dmId)).for('no key update');
-    await db.select({ userId: schema.dmParticipants.userId }).from(schema.dmParticipants)
-      .where(and(eq(schema.dmParticipants.dmId, dmId), eq(schema.dmParticipants.userId, principal.id))).for('share');
+    await reader.lockDmForNoKeyUpdate(dmId);
+    await reader.lockParticipantForShare(dmId, principal.id);
   }
-  const [row] = await db.select({ dm: d, readable: visibleDmsSql(actor).mapWith(Boolean) }).from(d).where(eq(d.id, dmId));
+  const row = await reader.readDm(actor, dmId);
   if (!row || !row.readable) return { ...none, actor };
   // Reading and writing need the same thing: being a participant now.
   return { allowed: true, visible: true, actor, dm: row.dm };
@@ -569,13 +362,12 @@ export async function evaluateDm(principal: Principal, _action: ActionsByResourc
  * run's progress events therefore reach the owner alone. A committed answer is a separate
  * project object (`project.assistant_answer_committed.v1`) for the conversation's audience.
  */
-export async function evaluateAssistantRun(principal: Principal, _action: ActionsByResource['assistant_run'], runId: string, db: Executor, options: LoadOptions = {}): Promise<AssistantRunEvaluation> {
+export async function evaluateAssistantRun(principal: Principal, _action: ActionsByResource['assistant_run'], runId: string, reader: AccessReader, options: LoadOptions = {}): Promise<AssistantRunEvaluation> {
   const none = { ...DENIED, actor: null, run: null };
   if (!isUuid(runId) || principal.kind !== 'human') return none;
-  const r = schema.personalRuns;
-  const [run] = await db.select({ id: r.id, workspaceId: r.workspaceId, ownerUserId: r.ownerUserId }).from(r).where(eq(r.id, runId));
+  const run = await reader.readAssistantRun(runId);
   if (!run || run.ownerUserId !== principal.id) return none;
-  const actor = await loadActor(principal, run.workspaceId, db, options);
+  const actor = await reader.loadActor(principal, run.workspaceId, options);
   if (!actor.active) return { ...none, actor };
   return { allowed: true, visible: true, actor, run };
 }
@@ -585,8 +377,8 @@ export async function evaluateAssistantRun(principal: Principal, _action: Action
  * membership, grants and object visibility. Use {@link assertAuthorized} to throw the
  * matching 404/403 error instead.
  */
-export async function authorize<T extends ResourceType>(principal: Principal, action: ActionsByResource[T], resource: ResourceRef<T>, db: Executor, options?: LoadOptions): Promise<Decision> {
-  const { allowed, visible } = await evaluate(principal, action, resource, db, options);
+export async function authorize<T extends ResourceType>(principal: Principal, action: ActionsByResource[T], resource: ResourceRef<T>, reader: AccessReader, options?: LoadOptions): Promise<Decision> {
+  const { allowed, visible } = await evaluate(principal, action, resource, reader, options);
   return { allowed, visible };
 }
 
@@ -596,19 +388,19 @@ export async function authorize<T extends ResourceType>(principal: Principal, ac
  * principal's membership/agent rows are locked FOR SHARE and a draft FOR UPDATE, so a
  * revocation committed earlier is seen and a concurrent one waits for this transaction.
  */
-export async function assertAuthorized<T extends ResourceType>(principal: Principal, action: ActionsByResource[T], resource: ResourceRef<T>, db: Executor, options?: LoadOptions): Promise<void> {
-  enforce(await evaluate(principal, action, resource, db, options), resource.type);
+export async function assertAuthorized<T extends ResourceType>(principal: Principal, action: ActionsByResource[T], resource: ResourceRef<T>, reader: AccessReader, options?: LoadOptions): Promise<void> {
+  enforce(await evaluate(principal, action, resource, reader, options), resource.type);
 }
 
-async function evaluate(principal: Principal, action: Action, resource: ResourceRef, db: Executor, options?: LoadOptions) {
+async function evaluate(principal: Principal, action: Action, resource: ResourceRef, reader: AccessReader, options?: LoadOptions) {
   switch (resource.type) {
-    case 'workspace': return evaluateWorkspace(principal, action as ActionsByResource['workspace'], resource.id, db, options);
-    case 'project': return evaluateProject(principal, action as ActionsByResource['project'], resource.id, db, options);
-    case 'draft': return evaluateDraft(principal, action as ActionsByResource['draft'], resource.id, db, options);
-    case 'agent': return evaluateAgent(principal, action as ActionsByResource['agent'], resource.id, db, options);
-    case 'sketch': return evaluateSketch(principal, action as ActionsByResource['sketch'], resource.id, db, options);
-    case 'dm': return evaluateDm(principal, action as ActionsByResource['dm'], resource.id, db, options);
-    case 'assistant_run': return evaluateAssistantRun(principal, action as ActionsByResource['assistant_run'], resource.id, db, options);
+    case 'workspace': return evaluateWorkspace(principal, action as ActionsByResource['workspace'], resource.id, reader, options);
+    case 'project': return evaluateProject(principal, action as ActionsByResource['project'], resource.id, reader, options);
+    case 'draft': return evaluateDraft(principal, action as ActionsByResource['draft'], resource.id, reader, options);
+    case 'agent': return evaluateAgent(principal, action as ActionsByResource['agent'], resource.id, reader, options);
+    case 'sketch': return evaluateSketch(principal, action as ActionsByResource['sketch'], resource.id, reader, options);
+    case 'dm': return evaluateDm(principal, action as ActionsByResource['dm'], resource.id, reader, options);
+    case 'assistant_run': return evaluateAssistantRun(principal, action as ActionsByResource['assistant_run'], resource.id, reader, options);
   }
 }
 
@@ -618,8 +410,8 @@ const READ_ACTION = { workspace: 'workspace.read', project: 'project.read', draf
  * The workspace of an object the principal can currently see, or null. Entry points use
  * it to scope records such as idempotency keys without revealing invisible objects.
  */
-export async function visibleWorkspaceOf(principal: Principal, resource: ResourceRef, db: Executor): Promise<string | null> {
-  const evaluation = await evaluate(principal, READ_ACTION[resource.type], resource, db);
+export async function visibleWorkspaceOf(principal: Principal, resource: ResourceRef, reader: AccessReader): Promise<string | null> {
+  const evaluation = await evaluate(principal, READ_ACTION[resource.type], resource, reader);
   if (!evaluation.visible) return null;
   if ('project' in evaluation) return evaluation.project?.workspaceId ?? null;
   if ('draft' in evaluation) return evaluation.draft?.workspaceId ?? null;
@@ -654,12 +446,12 @@ export function eventResource(event: EventRef): ResourceRef | null {
  * event's workspace and currently able to read the object the event is about. Unknown
  * kinds and events without a workspace are never delivered.
  */
-export async function authorizeEvent(principal: Principal, event: EventRef, db: Executor): Promise<boolean> {
+export async function authorizeEvent(principal: Principal, event: EventRef, reader: AccessReader): Promise<boolean> {
   // F-029: the AI policy change is for the workspace's people; no agent ever receives it.
   if (event.kind === 'workspace.ai_policy_changed.v1' && principal.kind !== 'human') return false;
   const resource = eventResource(event);
   if (!resource) return false;
-  const decision = await evaluate(principal, READ_ACTION[resource.type], resource, db);
+  const decision = await evaluate(principal, READ_ACTION[resource.type], resource, reader);
   if (!decision.allowed || !decision.visible) return false;
   // The object must still belong to the event's workspace (defense in depth).
   if ('actor' in decision && decision.actor && decision.actor.workspaceId !== event.workspaceId) return false;

@@ -10,9 +10,7 @@ export {
   evaluateProject,
   evaluateDraft,
   dmClosedFor,
-  visibleFilter,
   visibleWorkspaceOf,
-  loadActor,
   isUuid,
   AGENT_ACTIONS,
   DRAFT_ACTIONS,
@@ -21,7 +19,6 @@ export {
   PROJECT_ACTIONS,
   WORKSPACE_ACTIONS,
   requireWorkspaceAi,
-  workspaceAi,
   type WorkspaceAi,
   type Action,
   type ActionsByResource,
@@ -31,6 +28,10 @@ export {
   type ResourceRef,
   type ResourceType,
 } from './access/policy.js';
+export type {
+  AccessReader, ActorReads, AgentFacts, AgentReads, AssistantRunFacts, AssistantRunReads, DmFacts, DmReads, DraftFacts, DraftReads,
+  LoadOptions, ProjectFacts, ProjectReads, SketchFacts, SketchReads, WorkspaceReads,
+} from './access/ports.js';
 export * from './access/domain.js';
 export * from './idempotency.js';
 export * from './jobs/draft-summary.js';

@@ -1,5 +1,5 @@
 import type { IncomingHttpHeaders } from 'node:http';
-import { githubRows, nativeWorkReadKeys, nativeWorkObjectRows, nativeWorkReferenceRows, nativeWorkThoughtRows, nativeWorkVisibilityRows, nativeWorkSummaryRows, nativeWorkAssociationRows, workRows, type DbExecutor, type NativeReadKeyPage, type NativeWorkDetailObject } from '@flux/db';
+import { githubRows, nativeWorkReadKeys, nativeWorkObjectRows, nativeWorkReferenceRows, nativeWorkThoughtRows, nativeWorkVisibilityRows, nativeWorkSummaryRows, nativeWorkAssociationRows, workRows, type DbExecutor, type NativeReadKeyPage, type NativeWorkDetailObject, accessReader } from '@flux/db';
 import {
   accessName, createBoundedWorkReads, DomainError, enforce, evaluateProject, NotFoundError, presentGithubRule,
   type Database, type Principal, type WorkReadAccess, type WorkReadFinalFence,
@@ -11,7 +11,7 @@ import { projectAuthorOwners } from '../conversation/author-owners.js';
 
 export function nativeWorkReadAccess(db: DbExecutor): WorkReadAccess {
   return { requireProject: async (principal, projectId) => {
-    const checked = enforce(await evaluateProject(principal, 'project.read', projectId, db), 'project');
+    const checked = enforce(await evaluateProject(principal, 'project.read', projectId, accessReader(db)), 'project');
     const access = accessName(checked.level);
     if (!access || !checked.project) throw new NotFoundError('Project', 'PROJECT_NOT_FOUND');
     return { workspaceId: checked.project.workspaceId, access };

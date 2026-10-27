@@ -761,3 +761,11 @@ runtime evaluation, eligible approval and the normal protected merge gates are
 required. Documentation PR #466 is merged (`ea2f13d2`, eligible approval 2026-10-11);
 this candidate's merge still requires its own independent exact-head evaluation
 and eligible approval; no self-approval or bypass.
+
+## Where a suggestion appears (#661)
+
+A suggestion made with `flux_create_proposal` is a "Needs you" item (`proposal:<id>`, a question from the
+agent) for the person who connected the agent, while they can read the project and AI is allowed in its
+workspace. The card shows the fact, the interpretation, the suggested action and the source with its
+version. **Got it** and **Decline** only change that person's Inbox; the stored proposal stays attributable
+in the project's `agent-proposals` list. A suggestion changes no project object by itself.

@@ -1,6 +1,6 @@
 import { McpServer } from '@modelcontextprotocol/server';
 import { z } from 'zod';
-import { agentProposalRepository } from '@flux/db';
+import { agentProposalRepository, accessReader } from '@flux/db';
 import { agentProposalUseCases, coworkServerInstructions, enforce, evaluateProject, recordEvent, type Database } from '@flux/core';
 import { registerAgentPlaybook } from './playbook.js';
 import { registerAgentPolicyResource } from './project-policy.js';
@@ -71,11 +71,11 @@ export function createFluxMcpServer(db: Database, claims: FluxMcpClaims & { disp
       const proposal = await withAgentConnection(db, claims, 'flux.proposal.write', projectId, async ({ tx, connection }) => {
         const proposals = agentProposalUseCases(agentProposalRepository(tx, {
           async authorizeWrite(principal, id, transaction) {
-            const checked = enforce(await evaluateProject(principal, 'project.write', id, transaction, { lock: true }), 'project');
+            const checked = enforce(await evaluateProject(principal, 'project.write', id, accessReader(transaction), { lock: true }), 'project');
             return { workspaceId: checked.project!.workspaceId };
           },
           async authorizeRead(principal, id, transaction) {
-            enforce(await evaluateProject(principal, 'project.read', id, transaction, { lock: true }), 'project');
+            enforce(await evaluateProject(principal, 'project.read', id, accessReader(transaction), { lock: true }), 'project');
           },
           async recordCreated(principal, workspaceId, id, transaction) {
             await recordEvent(eventPorts(transaction), principal, workspaceId, 'project.proposal_created.v1', id, {});

@@ -1,6 +1,6 @@
 import { and, asc, eq, inArray, sql } from 'drizzle-orm';
 import { RECEIPT_LIMITS, type MessageReceiptsResult, type ObserveMessagesResult } from '@flux/contracts';
-import { schema } from '@flux/db';
+import { schema, accessReader } from '@flux/db';
 import { enforce, evaluateProject, InvalidInputError, listProjectPeople, NotFoundError, RuleViolationError, uuid, type Database, type Principal } from '@flux/core';
 
 // Viewing receipts of the project's conversation (#534). A person observes messages of a project they can read
@@ -37,7 +37,7 @@ export function projectReceipts(db: Database) {
       uuid(projectId, 'projectId');
       return db.transaction(async (tx) => {
         // Locked like any change: a grant revoked meanwhile either commits first and is seen, or waits.
-        const { project } = enforce(await evaluateProject(principal, 'project.read', projectId, tx, { lock: true }), 'project');
+        const { project } = enforce(await evaluateProject(principal, 'project.read', projectId, accessReader(tx), { lock: true }), 'project');
         const found = await facts(tx, projectId, list);
         if (found.length !== list.length) throw missing();
         const others = found.filter((row) => row.authorId !== principal.id).map((row) => row.id);
@@ -56,7 +56,7 @@ export function projectReceipts(db: Database) {
       if (runs.reduce((sum, run) => sum + run.length, 0) > RECEIPT_LIMITS.messagesPerQuery) throw new InvalidInputError('Too many messages in one request');
       uuid(projectId, 'projectId');
       return db.transaction(async (tx) => {
-        enforce(await evaluateProject(principal, 'project.read', projectId, tx), 'project');
+        enforce(await evaluateProject(principal, 'project.read', projectId, accessReader(tx)), 'project');
         const known = new Map((await facts(tx, projectId, [...new Set(runs.flat())])).map((row) => [row.id, row]));
         // The people who can read the project now, never anyone from a historical roster.
         const readers = new Map((await listProjectPeople(principal, projectId, tx as unknown as Database)).filter((p) => p.kind === 'human').map((p) => [p.id, p.name]));

@@ -10,6 +10,7 @@ import {
   listProjects,
   revokeProjectGrant,
 } from '@flux/core';
+import { accessReader } from '@flux/db';
 import { bodyId, requires } from '../http/commands.js';
 import { nameSchema, pageQuery } from '../http/schemas.js';
 import type { AccessContext } from './context.js';
@@ -49,7 +50,7 @@ export function projectRoutes(app: FastifyInstance, { db, principal, command, ru
       },
     },
   }, async (request, reply) => {
-    await assertAuthorized(await principal(request), 'project.manage', projectScope(request.params.projectId), db);
+    await assertAuthorized(await principal(request), 'project.manage', projectScope(request.params.projectId), accessReader(db));
     const result = await projectChange(request.params.projectId, (conn) => runCommand(request, {
       operation: `POST ${PROJECTS_PATH}/:projectId/grants`, scope: projectScope(request.params.projectId), status: 201,
       run: (actor, conn) => grantProjectWithAssistant(actor, request.params.projectId, request.body, conn),
@@ -59,7 +60,7 @@ export function projectRoutes(app: FastifyInstance, { db, principal, command, ru
   });
   app.delete<{ Params: { projectId: string; grantId: string } }>(`${PROJECTS_PATH}/:projectId/grants/:grantId`, async (request, reply) => {
     const actor = await principal(request);
-    await assertAuthorized(actor, 'project.manage', projectScope(request.params.projectId), db);
+    await assertAuthorized(actor, 'project.manage', projectScope(request.params.projectId), accessReader(db));
     await projectChange(request.params.projectId, (conn) => revokeProjectGrant(actor, request.params.projectId, request.params.grantId, conn));
     return reply.code(204).send();
   });

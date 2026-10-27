@@ -1,12 +1,11 @@
 import { and, eq, or, sql, type SQL } from 'drizzle-orm';
 import { fromDrizzle, type PgBoss } from 'pg-boss';
-import { markAllNotificationsRead, notificationRows, pushSubscriptionRepository, schema, type DbExecutor } from '@flux/db';
+import { markAllNotificationsRead, notificationRows, pushSubscriptionRepository, schema, type DbExecutor, visibleFilter, accessReader } from '@flux/db';
 import {
   DRAFT_SUMMARY_JOB,
   PUSH_SEND_JOB,
   createNotification,
   policySourceReader,
-  visibleFilter,
   type Database,
   type JobQueue,
   type NotificationInput,
@@ -29,7 +28,7 @@ const n = schema.notifications;
 async function inboxAudience(db: DbExecutor, userId: string): Promise<SQL> {
   const principal = { id: userId, kind: 'human' as const };
   const rows = notificationRows(db);
-  const reader = policySourceReader(db);
+  const reader = policySourceReader(accessReader(db));
   const conditions: SQL[] = [];
   for (const workspaceId of await rows.workspaceIdsForRecipient(userId)) {
     const workspace = await reader.canRead(userId, { type: 'workspace', id: workspaceId });
@@ -95,7 +94,7 @@ export function pgBossQueue(boss: Pick<PgBoss, 'send'>): QueueFactory {
 export function notificationUnitOfWork(db: Database, queue: (tx: DbExecutor) => Pick<JobQueue, 'enqueuePushSend'>): NotificationUnitOfWork {
   return {
     run: (work) => db.transaction((tx) => work({
-      authorizer: policySourceReader(tx),
+      authorizer: policySourceReader(accessReader(tx)),
       notifications: notificationRepository(tx),
       subscriptions: pushSubscriptionRepository(tx),
       queue: queue(tx),

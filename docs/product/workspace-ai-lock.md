@@ -122,14 +122,16 @@ inside the replay transaction, so a stored `2xx` is never returned while AI is o
 
 ## The single check
 
-One function in `app/packages/core/src/access/policy.ts`, used by every enforcement
-point. No second policy module and no cache:
+One check in `app/packages/core/src/access/policy.ts`, used by every enforcement point, over the policy's
+`AccessReader` port (#90: the row is read by `workspaceAi` of `@flux/db`'s `repositories/access.ts`, with the same
+statement and `FOR SHARE`). No second policy module and no cache:
 
 ```ts
 export interface WorkspaceAi { state: 'allowed' | 'blocked'; epoch: number; version: number }
-export async function workspaceAi(db: Executor, workspaceId: string, options?: { lock?: boolean }): Promise<WorkspaceAi>;
+// @flux/db: the fresh read; a missing row reads as blocked.
+export async function workspaceAi(db: DbExecutor, workspaceId: string, options?: { lock?: boolean }): Promise<WorkspaceAi>;
 /** Throws WorkspaceAiBlockedError (403 WORKSPACE_AI_BLOCKED) unless allowed and, when given, at `epoch`. */
-export async function requireWorkspaceAi(db: Executor, workspaceId: string, options?: { lock?: boolean; epoch?: number }): Promise<WorkspaceAi>;
+export async function requireWorkspaceAi(reader: { workspaceAi(...): Promise<WorkspaceAi> }, workspaceId: string, options?: { lock?: boolean; epoch?: number }): Promise<WorkspaceAi>;
 ```
 
 - `lock: true` reads the row `FOR SHARE`; the change command takes `FOR UPDATE`. Like the

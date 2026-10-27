@@ -1,4 +1,4 @@
-import { returnRows, type DbExecutor } from '@flux/db';
+import { returnRows, type DbExecutor, visibleFilter, accessReader } from '@flux/db';
 import {
   authorize,
   authorizeEvent,
@@ -6,7 +6,6 @@ import {
   enforce,
   evaluateProject,
   NotFoundError,
-  visibleFilter,
   type Database,
   type ReturnAccess,
   type ReturnRepository,
@@ -21,21 +20,21 @@ export function policyReturnAccess(db: DbExecutor): ReturnAccess {
   return {
     async requirePlace(principal, place) {
       if (place.type === 'project') {
-        enforce(await evaluateProject(principal, 'project.read', place.id, db), 'project');
+        enforce(await evaluateProject(principal, 'project.read', place.id, accessReader(db)), 'project');
         return { projectId: place.id, conversationId: null };
       }
       // The conversation's project, whoever may read it; an invisible one is reported like a missing one.
       const projectId = await rows.conversationProject(place.id);
-      if (!projectId || !(await authorize(principal, 'project.read', { type: 'project', id: projectId }, db)).allowed)
+      if (!projectId || !(await authorize(principal, 'project.read', { type: 'project', id: projectId }, accessReader(db))).allowed)
         throw new NotFoundError('Conversation', 'CONVERSATION_NOT_FOUND');
       return { projectId, conversationId: place.id };
     },
-    canReceive: (principal, event) => authorizeEvent(principal, event, db),
+    canReceive: (principal, event) => authorizeEvent(principal, event, accessReader(db)),
     async visibleProjects(principal, workspaceId) {
       return rows.projectIdsWhere(workspaceId, await visibleFilter(principal, workspaceId, 'project', db));
     },
     async canWrite(principal, projectId) {
-      return (await authorize(principal, 'project.write', { type: 'project', id: projectId }, db)).allowed;
+      return (await authorize(principal, 'project.write', { type: 'project', id: projectId }, accessReader(db))).allowed;
     },
   };
 }
