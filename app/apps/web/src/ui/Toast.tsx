@@ -2,7 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useLayoutEffect, use
 import { createPortal } from 'react-dom';
 import { Icon } from './Icon';
 import { Kreska, type KreskaExpression } from './Kreska';
-import { duration, play } from './motion';
+import { duration, settle } from './motion';
 import { useSmallMoments } from './smallMoments';
 import './moments.css';
 
@@ -86,14 +86,15 @@ function ToastItem({ toast, onDone, registerAction }: { toast: ToastEntry; onDon
   }, []);
 
   useEffect(() => {
-    void play(ref.current, [{ opacity: 0, transform: 'translateY(8px) scale(.98)' }, { opacity: 1, transform: 'none' }], duration('--dur-3'), '--ease-sheet', { fill: 'backwards' });
+    void settle(ref.current, { opacity: 1, transform: 'none' }, duration('--dur-in'), '--ease-out', { from: { opacity: 0, transform: 'translateY(8px) scale(.98)' } });
     arm();
     return disarm;
   }, [arm]);
 
   useEffect(() => {
     if (!leaving && !toast.leaving) return;
-    void play(ref.current, [{ opacity: 1, transform: 'none' }, { opacity: 0, transform: 'translateY(4px)' }], duration('--dur-2'), '--ease-in', { fill: 'forwards' })
+    // A toast dismissed while it arrives leaves from where it is; it is gone in --dur-out and never held.
+    void settle(ref.current, { opacity: 0, transform: 'translateY(4px)' }, duration('--dur-out'), '--ease-in', { from: { opacity: 1, transform: 'none' }, fill: 'forwards' })
       .then(() => onDone(toast.id));
   }, [leaving, toast.leaving, toast.id, onDone]);
 

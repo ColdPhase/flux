@@ -80,7 +80,7 @@ LOW_LIGHT = "Low light: below 10 lux the camera has to guess"
 VARIANT_B = "Variant B: a VL53L1X sensor behind the shade"
 GONE_THOUGHT = "Variant A: a photodiode, dropped before the review"
 # A button's background and transform, as the press check reads them (HIG-16: Prostota presses to .97).
-PRESS_STYLE = "el => { const s = getComputedStyle(el); return { background: s.backgroundColor, transform: s.transform }; }"
+PRESS_STYLE = "el => { const s = getComputedStyle(el); return { background: s.backgroundColor, scale: s.scale }; }"
 JONAS_ROOT = "Copied our lamp sketch here. Tonight I test the camera in a dark bedroom."
 ADA_REPLY = "Good, note the lux level so we can compare later."
 D1, WHY1 = "Use the camera for gesture detection", "It recognises the richest set of gestures"
@@ -267,22 +267,19 @@ class ScenarioJourney:
         return page.get_by_role("dialog", name="Details") if self.phone else page.locator("#details")
 
     def press_changes(self, page: Page, button) -> tuple[dict, dict]:
-        """The button at rest and with :active forced through CDP, as the HIG checklist's check does (test_project_policy)."""
+        """The button at rest and held down by a real press (the one press, ui/press.ts: it scales the control, the fill is CSS :active)."""
+        button.scroll_into_view_if_needed()
         rest = button.evaluate(PRESS_STYLE)
-        button.evaluate("el => el.setAttribute('data-press-probe', '')")
-        cdp = page.context.new_cdp_session(page)
+        box = button.bounding_box()
+        page.mouse.move(box["x"] + box["width"] / 2, box["y"] + box["height"] / 2)
+        page.mouse.down()
         try:
-            cdp.send("DOM.enable")
-            cdp.send("CSS.enable")
-            root = cdp.send("DOM.getDocument", {"depth": 0})["root"]["nodeId"]
-            node = cdp.send("DOM.querySelector", {"nodeId": root, "selector": "[data-press-probe]"})["nodeId"]
-            cdp.send("CSS.forcePseudoState", {"nodeId": node, "forcedPseudoClasses": ["active"]})
-            page.wait_for_timeout(300)  # past the transform transition
+            page.wait_for_timeout(300)  # past the press-in
             pressed = button.evaluate(PRESS_STYLE)
-            cdp.send("CSS.forcePseudoState", {"nodeId": node, "forcedPseudoClasses": []})
         finally:
-            cdp.detach()
-            button.evaluate("el => el.removeAttribute('data-press-probe')")
+            page.mouse.move(2, 2)  # let go elsewhere: nothing is chosen
+            page.mouse.up()
+        page.wait_for_timeout(450)  # and the spring back
         return rest, pressed
 
     def close_details(self, page: Page) -> None:
@@ -886,11 +883,10 @@ class ScenarioJourney:
         expect(dropped).to_be_visible()
         self.api("jonas", "DELETE", f"/api/v1/sketches/{s['map']}/thoughts/{gone_thought['id']}", status=204,
                  headers={"if-match": f'"{gone_thought["version"]}"'})
-        if UI_BROWSER == "chromium":  # the press probe forces :active through CDP, which only Chromium offers
-            rest, pressed = self.press_changes(jonas, choice)
-            self.assertEqual(rest["transform"], "none", "a thought choice rests unscaled")
-            self.assertEqual(pressed["transform"], "matrix(0.97, 0, 0, 0.97, 0, 0)", "a pressed thought choice scales to --press (.97)")
-            self.assertNotEqual(pressed["background"], rest["background"], "and takes the pressed fill")
+        rest, pressed = self.press_changes(jonas, choice)
+        self.assertEqual(rest["scale"], "none", "a thought choice rests unscaled")
+        self.assertEqual(pressed["scale"], "0.97", "a pressed thought choice scales to --press (.97)")
+        self.assertNotEqual(pressed["background"], rest["background"], "and takes the pressed fill")
         if self.phone:
             self.tap(dropped)
         else:
