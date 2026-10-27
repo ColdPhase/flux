@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { test } from 'node:test';
-import { agentProposalRepository } from '@flux/db';
+import { accessReader, agentProposalRepository } from '@flux/db';
 import { agentProposalUseCases, enforce, evaluateProject, recordEvent } from '@flux/core';
 import type { Material, NeedsYouResponse, Project, Workspace } from '@flux/contracts';
 import { eventPorts } from '../../apps/server/src/events.js';
@@ -12,9 +12,9 @@ import { ensureWorkspaceAiAllowed, setWorkspaceAi } from './support/workspace-ai
 // #661: a suggestion an agent makes through MCP is a "Needs you" item for the person who connected the agent.
 const store = agentProposalUseCases(agentProposalRepository(db, {
   async authorizeWrite(principal, projectId, tx) {
-    return { workspaceId: enforce(await evaluateProject(principal, 'project.write', projectId, tx, { lock: true }), 'project').project!.workspaceId };
+    return { workspaceId: enforce(await evaluateProject(principal, 'project.write', projectId, accessReader(tx), { lock: true }), 'project').project!.workspaceId };
   },
-  async authorizeRead(principal, projectId, tx) { enforce(await evaluateProject(principal, 'project.read', projectId, tx, { lock: true }), 'project'); },
+  async authorizeRead(principal, projectId, tx) { enforce(await evaluateProject(principal, 'project.read', projectId, accessReader(tx), { lock: true }), 'project'); },
   async recordCreated(principal, workspaceId, projectId, tx) { await recordEvent(eventPorts(tx), principal, workspaceId, 'project.proposal_created.v1', projectId, {}); },
 }));
 
