@@ -221,7 +221,9 @@ svg { flex: none; }
 .ui-overlay__surface--bare { inset: 0; background: transparent; box-shadow: none; pointer-events: none; }
 .ui-detent-sheet {
   position: absolute; inset: auto 0 0 0; z-index: var(--z-panel); display: flex; flex-direction: column; min-height: 0; overflow: hidden; pointer-events: auto; outline: none;
-  height: 56%; border-radius: var(--r-sheet) var(--r-sheet) 0 0; background: var(--el); box-shadow: var(--sh-pop);
+  /* Half is 56% of the screen, but never so short that a footer (the composer) leaves the content under a row's height: a
+     short landscape phone gets 300 px, so the fields above the composer can be scrolled clear of it (adaptive ADAPT-2). */
+  height: min(calc(100% - 12px), max(56%, 300px)); border-radius: var(--r-sheet) var(--r-sheet) 0 0; background: var(--el); box-shadow: var(--sh-pop);
   transition: height var(--dur-3) var(--ease-sheet), border-radius var(--dur-3) var(--ease-sheet);
 }
 .ui-detent-sheet[data-height="full"] { height: calc(100% - 12px); }

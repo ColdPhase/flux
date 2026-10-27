@@ -415,6 +415,11 @@ button.wd-link:active:not(:disabled) { background: var(--sub); }
 .wd-activity .details__sec { margin-top: 10px; }
 .wd-activity > section.details__sec { margin-top: 12px; }
 .wd-composer { display: flex; flex-direction: column; gap: 8px; }
+/* The typing status (#155) shares the audience line's row, at its right: it takes no height, so the task's fields keep
+   their room above the composer on the phone's half sheet, and it is always there so nothing moves when a thread starts. */
+.wd-foot__line { display: flex; align-items: flex-start; gap: 8px; min-width: 0; }
+.wd-foot__line > .composer__audience { flex: 1 1 auto; min-width: 0; }
+.wd-foot__line > .typing-notice { flex: 0 1 auto; max-width: 60%; margin: 6px 4px 0 0; block-size: auto; min-block-size: 0; font-size: var(--fs-xs); line-height: inherit; text-align: right; }
 .wd-foot__note { margin: 8px 6px 0; }
 .wd-activity > .details__sec { margin-top: 14px; }
 .wd-activity > .details__sec .wd-link { font-size: var(--fs-sm); color: var(--t2); }

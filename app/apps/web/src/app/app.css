@@ -164,8 +164,15 @@ body:has(.app) { background: var(--side); }
 .side__ib:hover { background: var(--hov); color: var(--t1); }
 .side__ib[aria-current="page"] { background: var(--el); color: var(--t1); box-shadow: var(--sh-1); }
 .side__count--rail { position: absolute; top: 0; right: -2px; margin: 0; min-width: 18px; height: 18px; padding: 0 5px; }
-.side__rail-project { display: grid; place-items: center; width: 36px; height: 36px; border-radius: 10px; text-decoration: none; }
+.side__rail-project { position: relative; display: grid; place-items: center; width: 36px; height: 36px; border-radius: 10px; text-decoration: none; }
 .side__rail-project.is-open { background: var(--el); box-shadow: var(--sh-1); }
+/* The same traveling highlight as the expanded list's (#155): one tile-sized mark that moves to the chosen project while it loads. */
+.side__rail-projects { position: relative; }
+.side__rail-glide { position: absolute; top: 0; left: 4px; width: 36px; height: 36px; border-radius: 10px; background: var(--el); box-shadow: var(--sh-1);
+  opacity: 0; pointer-events: none; transition: transform var(--dur-2) var(--ease-out), opacity var(--dur-1) ease; }
+.side__rail-projects.has-glide .side__rail-project.is-open { background: transparent; box-shadow: none; }
+/* A touch screen's tiles fill the 44 px column (44 px targets), and so does the mark. */
+@media (pointer: coarse) { .side__rail-glide { left: 0; width: 44px; } }
 .side__rail-project .side__pj { font-size: .75rem; }
 .side__rail-dm { position: relative; display: grid; place-items: center; width: 40px; height: 40px; border-radius: var(--r-pill); }
 .side__rail-dm:hover { background: var(--hov); }
