@@ -158,7 +158,10 @@ export function createAuth({ db, config, mailer, onMailError, oauthRequests, sig
       throw error;
     });
     const connection = grant?.connection;
-    if (!connection || scopes.some((scope) => scope !== 'offline_access' && !connection.scopes.includes(scope as 'flux.context.read' | 'flux.proposal.write' | 'flux.action.execute'))) {
+    // A client without prompt=consent is checked here before the consent page (#660): it may ask for more than the connection
+    // holds, and the consent page then lists what is not granted. Consent and the token still never exceed the connection.
+    const narrowing = !request.continuing;
+    if (!connection || narrowing && scopes.some((scope) => scope !== 'offline_access' && !connection.scopes.includes(scope as 'flux.context.read' | 'flux.proposal.write' | 'flux.action.execute'))) {
       throw new APIError('BAD_REQUEST', { error: 'invalid_grant', error_description: 'Agent connection is unavailable' });
     }
     // F-029: no consent reference, so no authorization code, for a connection of a workspace whose AI is off.

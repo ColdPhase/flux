@@ -144,6 +144,11 @@ export function NeedsYouCard({ item, variant = 'card', selected = false, handler
           <Button variant="secondary" onClick={() => handlers.open(item)}>Open task</Button>
           {item.blocked?.waitedBy ? null : <Button variant="quiet" onClick={() => handlers.unblock(item)}>Unblock</Button>}
         </>
+      ) : item.proposal ? (
+        <>
+          <Button variant="primary" onClick={() => handlers.done(item)}>Got it</Button>
+          <Button variant="quiet" onClick={() => handlers.snooze(item, 'decline')}>Decline</Button>
+        </>
       ) : item.assistantChanges ? (
         <>
           <Button variant="primary" onClick={() => handlers.applyChanges(item)}>{item.assistantChanges.verb}</Button>
@@ -153,7 +158,7 @@ export function NeedsYouCard({ item, variant = 'card', selected = false, handler
       ) : (
         <Button variant="secondary" onClick={() => handlers.open(item)}>{item.assistantRequestIdentity ? 'Review' : item.reason === 'invitation' ? 'Open' : 'Reply'}</Button>
       )}
-      {!decision && !touch && variant === 'card' ? <span className="nyc__quiet"><NotNowButton buttonRef={notNow} open={menuOpen} onToggle={() => onMenuOpen(!menuOpen)} className=" nyc__nn--quiet" /><Button variant="quiet" aria-keyshortcuts="E" onClick={() => handlers.done(item)}>Done</Button></span> : null}
+      {!decision && !item.proposal && !touch && variant === 'card' ? <span className="nyc__quiet"><NotNowButton buttonRef={notNow} open={menuOpen} onToggle={() => onMenuOpen(!menuOpen)} className=" nyc__nn--quiet" /><Button variant="quiet" aria-keyshortcuts="E" onClick={() => handlers.done(item)}>Done</Button></span> : null}
     </div>
   );
 
@@ -185,7 +190,15 @@ export function NeedsYouCard({ item, variant = 'card', selected = false, handler
             {review && item.assistantChanges?.suggestion ? <div className="nyc__reason" style={{ whiteSpace: 'pre-wrap' }}>{item.assistantChanges.changes.map((change) => <p key={change.id}>{change.phrase} {change.objectTitle}{'\n'}{change.preview}</p>)}</div> : null}
             {item.assistantNote ? <p className="nyc__reason">Your assistant: {item.assistantNote}</p> : null}
             {item.assistantDraft ? <p className="nyc__reason">Drafted by your assistant · ready to review in Reply</p> : null}
-            {variant === 'card' && item.detail && item.kind !== 'blocked' ? <p className="nyc__reason">{item.detail}</p> : null}
+            {variant === 'card' && item.detail && item.kind !== 'blocked' && !item.proposal ? <p className="nyc__reason">{item.detail}</p> : null}
+            {variant === 'card' && item.proposal ? (
+              <dl className="nyc__reason nyc__proposal" data-testid="agent-suggestion">
+                <dt>Seen</dt><dd>{item.proposal.fact}</dd>
+                <dt>Meaning</dt><dd>{item.proposal.interpretation}</dd>
+                <dt>Suggested</dt><dd>{item.proposal.suggestedAction}</dd>
+                <dt>Based on</dt><dd>{item.proposal.source.title} (version {item.proposal.source.version})</dd>
+              </dl>
+            ) : null}
             {variant === 'card' && item.blocked?.waitingFor ? <p className="nyc__reason">Waiting for #{item.blocked.waitingFor.number} {item.blocked.waitingFor.title}</p> : null}
             {variant === 'card' && decision && item.decision?.basedOn.length ? <p className="nyc__based"><span>Based on</span> {item.decision.basedOn.join(' · ')}</p> : null}
             {variant === 'card' && decision && item.decision?.supersedes ? <p className="nyc__based"><span>Would replace</span> {item.decision.supersedes}</p> : null}
@@ -195,7 +208,7 @@ export function NeedsYouCard({ item, variant = 'card', selected = false, handler
           </div>
           {variant === 'row' ? <div className="nyc__rowactions">{decision ? <>
             <Button variant="primary" onClick={() => handlers.accept(item)}>Accept</Button>
-            <NotNowButton buttonRef={notNow} open={menuOpen} onToggle={() => onMenuOpen(!menuOpen)} /></> : item.assistantChanges
+            <NotNowButton buttonRef={notNow} open={menuOpen} onToggle={() => onMenuOpen(!menuOpen)} /></> : item.proposal ? <Button variant="secondary" onClick={() => handlers.open(item)}>Review</Button> : item.assistantChanges
               ? <Button variant="primary" onClick={() => handlers.applyChanges(item)}>{item.assistantChanges.verb}</Button>
               : <Button variant="secondary" onClick={() => handlers.open(item)}>{item.assistantRequestIdentity ? 'Review' : item.kind === 'blocked' ? 'Open task' : item.reason === 'invitation' ? 'Open' : 'Reply'}</Button>}</div> : null}
           {children}
