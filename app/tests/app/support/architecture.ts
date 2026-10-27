@@ -20,7 +20,7 @@ export interface Layer {
 const UI = ['react', 'react-dom'];
 const PERSISTENCE = ['@flux/db', 'drizzle-orm', 'pg', 'pg-boss'];
 const HTTP = ['fastify', '@fastify/*'];
-const APPS = ['@flux/server', '@flux/worker', '@flux/web', '@flux/runtime'];
+const APPS = ['@flux/server', '@flux/worker', '@flux/web', '@flux/runtime', '@flux/keyring'];
 
 export const LAYERS: Layer[] = [
   // Public wire types, Apache-2.0: portable, no runtime dependencies at all.
@@ -39,6 +39,8 @@ export const LAYERS: Layer[] = [
   // Supervisor, manager, egress and installer of the runtime slots: no database, queue, HTTP framework,
   // domain package or app; only the protocol, Node built-ins and node-pty, the sign-in console's PTY
   // (F-022 T4: Node has no PTY of its own).
+  // The keyring of encrypted workspaces (F-030): one boot key in RAM; Node built-ins only, so nothing else runs in it.
+  { name: 'keyring', paths: ['apps/keyring/'], allow: ['node:*'] },
   { name: 'runtime', paths: ['apps/runtime/'], allow: ['@flux/runtime-protocol', 'node-pty', 'node:*'] },
   // Browser application: talks to the server only through HTTP/WebSocket contracts. UI
   // libraries are its own choice; server-side packages and Node built-ins are not.

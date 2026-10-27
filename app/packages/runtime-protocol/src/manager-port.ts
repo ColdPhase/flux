@@ -1,6 +1,6 @@
 import type { ClientStatus, StepOutcome } from './frames.js';
 import type { RuntimeManagerClient } from './manager-api.js';
-import type { RuntimeClient } from './names.js';
+import { RUNTIME_CLIENTS, type RuntimeClient } from './names.js';
 
 // The API's and worker's view of runtime-manager as the use cases need it: structurally the core port
 // `RuntimeManagerPort` (@flux/core), kept here so this package stays free of application packages.
@@ -37,12 +37,18 @@ export function runtimeManagerPort(client: RuntimeManagerClient) {
       if (answer.result.kind !== 'logout' || answer.result.client !== cli) return { ok: false, code: 'protocol' };
       return { ok: true, value: { logout: answer.result.logout, bootId: answer.bootId } };
     },
-    async release(slot: string, bindingId: string): Promise<PortCall<{ dataEmpty: boolean; logoutFailed: boolean }>> {
+    async release(slot: string, bindingId: string): Promise<PortCall<{ dataEmpty: boolean; logoutFailed: boolean; notInstalled: RuntimeClient[] }>> {
       const answer = await client.request(slot, { kind: 'release', bindingId });
       if (!answer.ok) return answer;
       if (answer.result.kind !== 'release') return { ok: false, code: 'protocol' };
       const { dataEmpty, logout } = answer.result;
-      return { ok: true, value: { dataEmpty, logoutFailed: Object.values(logout).some((step) => step !== 'ok' && step !== 'not_installed') } };
+      // `not_installed` is the slot's own inference from missing files; the caller confirms it only against the
+      // durable client history (#480), so it is reported separately and is not a failure by itself.
+      return { ok: true, value: {
+        dataEmpty,
+        logoutFailed: Object.values(logout).some((step) => step !== 'ok' && step !== 'not_installed'),
+        notInstalled: RUNTIME_CLIENTS.filter((name) => logout[name] === 'not_installed'),
+      } };
     },
   };
 }

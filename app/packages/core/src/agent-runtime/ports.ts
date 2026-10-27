@@ -23,8 +23,12 @@ export interface RuntimeManagerPort {
   status(slot: string, bindingId: string, client: AgentRuntimeClient, bootId: string): Promise<RuntimeCall<RuntimeClientStatus & { bootId: string }>>;
   /** The CLI's own logout; the supervisor deletes that CLI's files whatever its outcome. */
   logout(slot: string, bindingId: string, client: AgentRuntimeClient, bootId: string): Promise<RuntimeCall<{ logout: string; bootId: string }>>;
-  /** Signs out each CLI, deletes the directory, confirms /data is empty; the supervisor then exits. */
-  release(slot: string, bindingId: string): Promise<RuntimeCall<{ dataEmpty: boolean; logoutFailed: boolean }>>;
+  /**
+   * Signs out each CLI, deletes the directory, confirms /data is empty; the supervisor then exits.
+   * `logoutFailed`: a sign-out failed, timed out or was skipped. `notInstalled`: the slot found no CLI and nothing of
+   * it in the directory; that alone confirms nothing (the durable client history decides, see the reconciliation).
+   */
+  release(slot: string, bindingId: string): Promise<RuntimeCall<{ dataEmpty: boolean; logoutFailed: boolean; notInstalled: AgentRuntimeClient[] }>>;
 }
 
 export type RuntimeSlotState = 'unknown' | 'ready' | 'held' | 'wiping' | 'out_of_pool';
@@ -115,8 +119,13 @@ export interface AgentRuntimeStore {
    * longer the owner's live, active binding (nothing is recorded).
    */
   recordSignIn(record: RuntimeSignInRecord): Promise<boolean>;
-  /** Signed out in Flux after the CLI's logout ran; `failed`: the logout itself failed. */
+  /** Signed out in Flux after the CLI's logout ran; `failed`: the logout itself did not return `ok`. Only `ok` clears the client history. */
   recordSignOut(operation: RuntimeAuthOperation, failed: boolean): Promise<boolean>;
+  /**
+   * The durable client history (#480, migration 0118): the clients for which a login may still exist in this binding,
+   * because a sign-in was started or seen and no CLI logout has returned `ok` since. Independent of the slot's files.
+   */
+  loginPossible(bindingId: string): Promise<AgentRuntimeClient[]>;
   dismissAccountNotice(ownerUserId: string, client: AgentRuntimeClient): Promise<void>;
   // The worker's reconciliation.
   slotsWithBindings(): Promise<{ slot: RuntimeSlotRow; binding: RuntimeBindingRow | null }[]>;

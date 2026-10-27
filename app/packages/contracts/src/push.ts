@@ -72,8 +72,11 @@ export interface AssistantRequestIdentity {
 export interface InboxItem {
   id: string;
   source: NotificationSourceRef;
-  /** Why it reached you (#116); null for notifications created directly (#41). */
-  reason: NotificationReason | null;
+  /**
+   * Why it reached you (#116); null for notifications created directly (#41). `security` (F-030, #655) is an Inbox-only
+   * notice about an encrypted space's keys (a new unlock password, keys changed outside Flux); never pushed or e-mailed.
+   */
+  reason: NotificationReason | 'security' | null;
   title: string;
   body: string;
   url: string | null;

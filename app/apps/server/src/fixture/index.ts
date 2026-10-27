@@ -26,7 +26,7 @@ export function fixtureFlags(config: FixtureConfig) {
 }
 
 /** The fixture bearer, compared in constant time. */
-function bearerMatches(header: string | undefined, token: string) {
+export function bearerMatches(header: string | undefined, token: string) {
   const digest = (value: string) => createHash('sha256').update(value).digest();
   return timingSafeEqual(digest(header ?? ''), digest(`Bearer ${token}`));
 }

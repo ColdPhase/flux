@@ -127,8 +127,8 @@ def render_compose(template: str, *, version: str, source_sha: str, digest: str)
     rendered = (release_header(version, source_sha) + "".join(lines[body:])).replace(MARKER, pinned)
     if "RELEASE_DIGEST" in rendered:
         raise ValueError("release digest marker is left in the rendered Compose file")
-    if re.findall(r"^\s*image:\s*(\S+)\s*$", rendered, re.MULTILINE).count(pinned) != 3:
-        raise ValueError("rendered Compose must pin the release digest on exactly three services")
+    if re.findall(r"^\s*image:\s*(\S+)\s*$", rendered, re.MULTILINE).count(pinned) != 4:
+        raise ValueError("rendered Compose must pin the release digest on exactly four services")
     return rendered
 
 
@@ -163,10 +163,10 @@ def prepare(
         image = re.fullmatch(r"    image:\s*(\S+)\s*", line)
         if image:
             service_images[service] = image.group(1)
-    if images.count(MARKER) != 3 or any(
-        service_images.get(name) != MARKER for name in ("api", "worker", "migrate")
+    if images.count(MARKER) != 4 or any(
+        service_images.get(name) != MARKER for name in ("api", "worker", "keyring", "migrate")
     ):
-        raise ValueError("operator Compose must use the image marker for api, worker and migrate")
+        raise ValueError("operator Compose must use the image marker for api, worker, keyring and migrate")
     if re.search(r"^\s*build\s*:", template, re.MULTILINE):
         raise ValueError("operator Compose must be pull-only")
     if any("latest" in image.lower() for image in images):
