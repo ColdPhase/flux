@@ -14,7 +14,7 @@ import uuid
 from playwright.sync_api import expect, sync_playwright
 
 from author_columns import assert_author_column
-from message_layout import assert_no_sideways_scroll, covered_parts, covered_text, rect, showing, start_counting, stop_counting, toolbars
+from message_layout import assert_no_sideways_scroll, covered_parts, covered_text, intersects, rect, showing, start_counting, stop_counting, toolbars
 from test_app_shell import DESKTOP, ORIGIN, PHONE, UI_BROWSER, UPSTREAM, shot, start_forwarder
 
 PASSWORD = "messages belong to their authors"
@@ -131,6 +131,30 @@ class MessageAlignment(unittest.TestCase):
                 "title": "Raised beds by the fence: the volunteers need a readable blocked task card",
                 "sources": [{"type": "message", "id": reply["id"]}], "clientCommandId": str(uuid.uuid4()),
             })
+        # #665: a thread whose messages carry a task, a decision and a result with realistic titles (40 to 60
+        # characters) and long state lines, so the narrow thread panel and sheet are judged on what they show of each.
+        # It has a project of its own, so the other tests' streams are unchanged.
+        cls.cards_project = cls.post(owner, f"/api/v1/workspaces/{workspace['id']}/projects", {"name": "Gesture lamp", "visibility": "workspace"})["id"]
+        cls.cards = cls.post(contexts["jonas"], f"/api/v1/projects/{cls.cards_project}/conversations", {
+            "body": "Far east bed: -112 dBm through the hedge.", "clientMessageId": str(uuid.uuid4()),
+        })
+        card_sources = [cls.cards["messages"][0]] + [cls.post(contexts[key], f"/api/v1/conversations/{cls.cards['id']}/messages", {
+            "body": body, "clientMessageId": str(uuid.uuid4()),
+        }) for key, body in (("ada", "Then let us measure soil moisture first."), ("jonas", "The hedge blocks the far beds, so I walked the range again."))]
+        cls.card_titles = {"work": "Put two boards on the far beds to test the LoRa range",
+                           "decision": "Measure soil moisture first; frost warnings later",
+                           "result": "The far beds do not reach the gateway through the hedge"}
+        cls.post(owner, f"/api/v1/projects/{cls.cards_project}/work", {
+            "title": cls.card_titles["work"], "status": "in_progress", "owner": {"kind": "human", "id": cls.ids["jonas"]},
+            "sources": [{"type": "message", "id": card_sources[0]["id"]}], "clientCommandId": str(uuid.uuid4()),
+        })
+        decision = cls.post(owner, f"/api/v1/projects/{cls.cards_project}/decisions", {
+            "title": cls.card_titles["decision"], "sources": [{"type": "message", "id": card_sources[1]["id"]}],
+        })
+        cls.post(owner, f"/api/v1/decisions/{decision['id']}/accept", {"expectedVersion": 1})
+        cls.post(owner, f"/api/v1/projects/{cls.cards_project}/results", {
+            "title": cls.card_titles["result"], "finding": "negative", "sources": [{"type": "message", "id": card_sources[2]["id"]}],
+        })
         cls.dm_root = cls.dm_messages[0]["id"]
         for key, body in (("jonas", LONG), ("jonas", "A second one straight after."), ("ada", LONG), ("ada", "Short from me."), ("jonas", "Thanks!")):
             cls.post(contexts[key], f"/api/v1/dms/{cls.dm['id']}/threads/{cls.dm_root}/replies", {"body": body, "clientMessageId": str(uuid.uuid4())})
@@ -350,6 +374,49 @@ class MessageAlignment(unittest.TestCase):
                     self.assert_reference_width(page, thread.locator(f"#message-{self.short_reply['id']}"))
                     shot(page, f"spokoj-one-word-{width}-{'dark' if dark else 'light'}-{UI_BROWSER}")
                     page.context.close()
+
+    def test_03b_task_decision_and_result_cards_in_a_thread_keep_the_start_of_their_title(self):
+        # #665: in the thread panel (1440 px) and the phone's thread sheet (390 px) the title is the part of a card that
+        # stays readable. Its state line may be cut, never the title, and the two never share a place.
+        for width, height, phone in ((1440, 900, False), (390, 844, True)):
+            with self.subTest(width=width):
+                page = self.page(phone=phone)
+                page.set_viewport_size({"width": width, "height": height})
+                page.goto(f"/projects/{self.cards_project}/conversations/{self.cards['id']}")
+                cards = page.locator("#thread .message-bubble .ws-chip")
+                expect(cards).to_have_count(3)
+                seen = set()
+                for index in range(3):
+                    card = cards.nth(index)
+                    card.scroll_into_view_if_needed()
+                    measured = card.evaluate("""card => {
+                      const box = (el) => { const r = el.getBoundingClientRect(); return {left: r.left, right: r.right, top: r.top, bottom: r.bottom}; };
+                      const title = card.querySelector('.ws-chip__t'), state = card.querySelector('.ws-chip__k');
+                      // The characters of the title whose own boxes end inside the title's box: what is read before the ellipsis.
+                      const text = title.firstChild, range = document.createRange(), edge = title.getBoundingClientRect().right;
+                      let shown = 0;
+                      for (let at = 0; at < text.length; at++) {
+                        range.setStart(text, at); range.setEnd(text, at + 1);
+                        if (range.getBoundingClientRect().right > edge + 0.5) break;
+                        shown = at + 1;
+                      }
+                      return {kind: card.dataset.workKind, title: title.textContent, shown, state: state.textContent, titleBox: box(title), stateBox: box(state), cardBox: box(card)};
+                    }""")
+                    kind, title = measured["kind"], measured["title"]
+                    seen.add(kind)
+                    shot(page, f"card-titles-thread-{width}-{kind}-{UI_BROWSER}")
+                    label = f"{width}px {kind}: {measured}"
+                    self.assertEqual(title, self.card_titles[kind], label)
+                    self.assertGreaterEqual(measured["shown"], 18, f"{label}: the title shows at least its first words")
+                    self.assertTrue(measured["state"].strip(), label)
+                    for part in ("titleBox", "stateBox"):
+                        self.assertGreaterEqual(measured[part]["left"], measured["cardBox"]["left"] - 0.5, f"{label}: {part} inside the card")
+                        self.assertLessEqual(measured[part]["right"], measured["cardBox"]["right"] + 0.5, f"{label}: {part} inside the card")
+                    self.assertGreater(measured["stateBox"]["right"] - measured["stateBox"]["left"], 12, f"{label}: the state is still there")
+                    self.assertFalse(intersects(measured["titleBox"], measured["stateBox"]), f"{label}: the state never covers the title")
+                self.assertEqual(seen, {"work", "decision", "result"})
+                assert_no_sideways_scroll(self, page, ".thread__feed", f"{width}px thread")
+                page.context.close()
 
     def test_04_shared_bubble_and_grouping_matrix(self):
         for width, height in ((390, 844), (820, 1180), (1440, 900), (2560, 1440)):

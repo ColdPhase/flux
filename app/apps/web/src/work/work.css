@@ -334,28 +334,26 @@ button.wd-link:active:not(:disabled) { background: var(--sub); transform: scale(
 .wd-pending__item { padding: 8px 10px; border-radius: var(--r-sm); background: var(--hov); }
 .wd-pending__body { display: block; white-space: pre-wrap; overflow-wrap: anywhere; color: var(--t1); font-size: var(--fs-md); line-height: 1.5; }
 
-/* References to Flux objects under a message are cards (#348, F-026 §6): the object icon, the kind,
-   the title and its state. */
+/* References to Flux objects under a message are cards (#348, F-026 §6): the object icon, the kind, the title and
+   its state. The kind and the state share the first line; the title has the second line to itself, so a state
+   line (or a narrow thread panel or sheet) never takes the room of the title (#665). The title is one line that
+   ends in an ellipsis, never wrapped letter by letter (#501); the state is the one that is cut when the line
+   is short. */
 .message-bubble .ws-attach { flex-direction: column; flex-wrap: nowrap; width: min(100%, 460px); }
-.message-bubble .ws-attach > .ws-chip { display: grid; grid-template-columns: 32px auto minmax(0, 1fr) auto; grid-template-rows: auto auto; align-items: center; gap: 1px 6px; width: 100%; min-height: 52px; padding: 8px 12px 8px 8px; border-radius: var(--r); background: var(--sub); box-shadow: none; }
+.message-bubble .ws-attach > .ws-chip { display: grid; grid-template-columns: 32px auto minmax(0, 1fr); grid-template-rows: auto auto; align-items: center; gap: 1px 6px; width: 100%; min-height: 52px; padding: 8px 12px 8px 8px; border-radius: var(--r); background: var(--sub); box-shadow: none; }
 .message-bubble .ws-attach > .ws-chip:hover { background: var(--hov); }
 .message-bubble .ws-attach > .ws-chip > svg { grid-column: 1; grid-row: 1 / span 2; align-self: center; justify-self: center; box-sizing: content-box; padding: 8px; margin: 0 2px 0 -2px; border-radius: 10px; background: var(--el); color: var(--t1); }
-.message-bubble .ws-attach > .ws-chip::before { grid-column: 2 / 4; grid-row: 1; font-size: 10px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--t3); }
+.message-bubble .ws-attach > .ws-chip::before { grid-column: 2; grid-row: 1; font-size: 10px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--t3); }
 .message-bubble .ws-attach > .ws-chip[data-work-kind="work"]::before { content: "Task"; }
 .message-bubble .ws-attach > .ws-chip[data-work-kind="decision"]::before { content: "Decision"; }
 .message-bubble .ws-attach > .ws-chip[data-work-kind="result"]::before { content: "Result"; }
 .message-bubble .ws-attach > .ws-chip > .ws-chip__num { grid-column: 2; grid-row: 2; color: var(--t1); font-weight: 600; }
-.message-bubble .ws-attach > .ws-chip > .ws-chip__t { grid-column: 2 / 4; grid-row: 2; white-space: nowrap; font-weight: 600; }
+.message-bubble .ws-attach > .ws-chip > .ws-chip__t { grid-column: 2 / 4; grid-row: 2; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-weight: 600; }
 .message-bubble .ws-attach > .ws-chip > .ws-chip__num + .ws-chip__t { grid-column: 3; }
-.message-bubble .ws-attach > .ws-chip > .ws-chip__k { grid-column: 4; grid-row: 1 / span 2; max-width: 16ch; text-align: right; white-space: normal; }
+.message-bubble .ws-attach > .ws-chip > .ws-chip__k { grid-column: 3; grid-row: 1; justify-self: end; min-width: 0; max-width: 100%; line-height: 1.2; text-align: right; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 @media (max-width: 760px) {
   .message-bubble .ws-attach { width: 100%; }
-  .message-bubble .ws-attach > .ws-chip > .ws-chip__t { white-space: normal; overflow-wrap: anywhere; }
 }
-
-/* A reference never wraps letter by letter on a phone (#501). */
-.message-bubble .ws-attach > .ws-chip > .ws-chip__t { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.message-bubble .ws-attach > .ws-chip > .ws-chip__k { white-space: nowrap; max-width: none; }
 
 /* ---------- The task panel as drawn (P10, Spokój A05): rows, a blocker card, small actions, Activity, the composer at the bottom ---------- */
 .ui-panel__body:has(> .wd--task) { display: flex; padding: 0; overflow: hidden; }

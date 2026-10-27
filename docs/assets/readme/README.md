@@ -24,7 +24,8 @@ The second argument is the directory that also receives the two stills, which
 for what the script needs. Replace both images, the GIF and the commit above together when the
 interface changes noticeably.
 
-**Known blemish, 2026-10-23.** In the thread panel (and on the phone's thread sheet) a task, result or
-decision card shows only the first characters of its title, because its status text takes the room.
-The two stills avoid that view; the GIF's last frames show it. Tracked in
-[#665](https://github.com/ColdPhase/flux/issues/665).
+**Known blemish, 2026-10-23; the card is fixed since
+[#665](https://github.com/ColdPhase/flux/issues/665).** In the thread panel (and on the phone's thread
+sheet) a task, result or decision card showed only the first characters of its title, because its status
+text took the room. The two stills avoided that view; the GIF's last frames show the old card. Retake the
+GIF with the stills when the images are next replaced.
