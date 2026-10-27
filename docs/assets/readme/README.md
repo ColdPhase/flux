@@ -12,8 +12,8 @@ The content is the fictional *Riverside Makers* workspace (Ada Kowalska and Jona
 through the public API by `scripts/flux-demo.mjs`. Ada then walks the core journey, so the task and
 the decision exist; Jonas's question is still waiting for her on Home.
 
-**Captured at:** `main` `e4b4fab7` (the final design "Prostota" on the computer and the phone; the
-only change in this branch is the recorder), 2026-10-23, with the demo GIF, by:
+**Captured at:** `main` `624d02560` with the cards fix of [#665](https://github.com/ColdPhase/flux/issues/665)
+([PR #680](https://github.com/ColdPhase/flux/pull/680), code at `07ffe13ae`), 2026-10-27, with the demo GIF, by:
 
 ```sh
 ./scripts/record_demo.sh docs/assets/demo/flux-demo.gif docs/assets/readme
@@ -23,9 +23,3 @@ The second argument is the directory that also receives the two stills, which
 `app/tests/ui/record_demo.py` takes after the journey. See the [demo recording](../demo/README.md)
 for what the script needs. Replace both images, the GIF and the commit above together when the
 interface changes noticeably.
-
-**Known blemish, 2026-10-23; the card is fixed since
-[#665](https://github.com/ColdPhase/flux/issues/665).** In the thread panel (and on the phone's thread
-sheet) a task, result or decision card showed only the first characters of its title, because its status
-text took the room. The two stills avoided that view; the GIF's last frames show the old card. Retake the
-GIF with the stills when the images are next replaced.

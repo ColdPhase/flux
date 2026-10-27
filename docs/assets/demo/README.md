@@ -19,8 +19,9 @@ Every frame is a Playwright screenshot at 1280 × 800 CSS px, light theme. The o
 a drawn pointer that shows where the clicks go. Pillow joins the frames into a looping GIF with
 one shared 48-colour palette, which keeps the file under the evidence size limit.
 
-**Recorded at:** the application at `main` `e4b4fab7` (the final design "Prostota"; the only change in
-this branch is the recorder), 2026-10-23, by:
+**Recorded at:** the application at `main` `624d02560` with the cards fix of
+[#665](https://github.com/ColdPhase/flux/issues/665) ([PR #680](https://github.com/ColdPhase/flux/pull/680)),
+2026-10-27, so the last frames show the thread panel's decision card with its title and its state whole, by:
 
 ```sh
 ./scripts/record_demo.sh                                        # writes docs/assets/demo/flux-demo.gif

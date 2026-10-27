@@ -3,4 +3,4 @@
 # Compress, crop or link a CI artifact instead of adding entries (docs/agents/evaluation.md,
 # "Evidence size"); a new entry needs the evaluator's explicit agreement in the PR.
 # Remove entries whose files are deleted.
-476206 docs/assets/demo/flux-demo.gif
+484285 docs/assets/demo/flux-demo.gif
