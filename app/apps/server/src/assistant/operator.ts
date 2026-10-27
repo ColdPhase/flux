@@ -1,6 +1,6 @@
 import { and, eq, gt, sql } from 'drizzle-orm';
 import type { PgBoss } from 'pg-boss';
-import { schema } from '@flux/db';
+import { schema, accessReader } from '@flux/db';
 import { assertAuthorized, createNotification, isUuid, NotFoundError, type Database, type Principal } from '@flux/core';
 import { notificationUnitOfWork, pgBossQueue } from '../push/adapters.js';
 
@@ -14,7 +14,7 @@ export function assistantOperatorUseCases(db: Database, boss: Pick<PgBoss, 'send
     request(principal: Principal, workspaceId: string, plan: 'Claude' | 'ChatGPT') {
       if (principal.kind !== 'human' || !isUuid(workspaceId)) throw new NotFoundError('Workspace', 'WORKSPACE_NOT_FOUND');
       return db.transaction(async (tx) => {
-        await assertAuthorized(principal, 'workspace.read', { type: 'workspace', id: workspaceId }, tx);
+        await assertAuthorized(principal, 'workspace.read', { type: 'workspace', id: workspaceId }, accessReader(tx));
         const [asker] = await tx.select({ name: schema.authUsers.name }).from(schema.authUsers).where(eq(schema.authUsers.id, principal.id));
         const first = (asker?.name ?? 'Someone').trim().split(/\s+/)[0] || 'Someone';
         const title = `${first} would like to use their ${plan} plan here`.slice(0, 200);

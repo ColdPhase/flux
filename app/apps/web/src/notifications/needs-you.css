@@ -39,6 +39,9 @@
 .nyc__reason { margin: 0; font-size: var(--fs-base); line-height: 1.45; color: var(--t2); overflow-wrap: anywhere; }
 .nyc__based { margin: 0; font-size: var(--fs-sm); color: var(--t2); overflow-wrap: anywhere; }
 .nyc__based span { color: var(--t3); margin-right: 4px; }
+.nyc__proposal { display: grid; grid-template-columns: max-content 1fr; gap: 2px 12px; }
+.nyc__proposal dt { color: var(--t3); font-size: var(--fs-sm); }
+.nyc__proposal dd { margin: 0; }
 .nyc__foot { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px 16px; padding-top: 12px; border-top: 1px solid var(--line); }
 .nyc__actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .nyc__quiet { display: inline-flex; gap: 2px; }

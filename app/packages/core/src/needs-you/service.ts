@@ -17,7 +17,7 @@ import type { WorkRecord } from '../work/ports.js';
 import type { NeedsYouPorts, StoredNeedsYou } from './ports.js';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const KEY = /^(decision|blocked|note|assistant):[0-9a-f-]{36}$/i;
+const KEY = /^(decision|blocked|note|assistant|proposal):[0-9a-f-]{36}$/i;
 /** Mentions older than this no longer ask for an answer; they stay in the notification history. */
 const MENTION_DAYS = 14;
 /** Most items of the queue; a project with more proposals than this still has them in Details. */
@@ -151,6 +151,18 @@ export function createNeedsYou(ports: NeedsYouPorts, now: () => Date = () => new
         from: assistantRequestIdentity ? { kind: 'agent', id: assistantRequestIdentity.assistantId, name: assistantRequestIdentity.assistantName } : null,
         at: iso(note.createdAt), url: note.url ?? `/inbox/${note.id}`, decision: null, blocked: null, reason: note.reason, snoozeTask: null,
         ...(assistantRequestIdentity ? { assistantRequestIdentity } : {}),
+      });
+    }
+    // Suggestions agents you connected made through MCP (#661), one question each.
+    for (const proposal of await ports.repository.agentProposals(userId, [...projects], 50)) {
+      if (ports.aiAllowed && !await ports.aiAllowed(proposal.projectId)) continue;
+      const names = await ports.access.projectNames([proposal.projectId]);
+      items.push({
+        key: `proposal:${proposal.id}`, kind: 'question', title: `${proposal.agentName} suggests: ${excerpt(proposal.suggestedAction, 100)}`,
+        detail: excerpt(proposal.fact), project: { id: proposal.projectId, name: names.get(proposal.projectId) ?? 'Project' },
+        from: { kind: 'agent', id: proposal.agentId, name: proposal.agentName }, at: iso(proposal.createdAt),
+        url: `/projects/${proposal.projectId}/agents`, decision: null, blocked: null, reason: 'question', snoozeTask: null,
+        proposal: { id: proposal.id, fact: proposal.fact, interpretation: proposal.interpretation, suggestedAction: proposal.suggestedAction, source: proposal.source },
       });
     }
     // Your assistant's undecided waiting changes, one question per request (F-027 AST-5.6).

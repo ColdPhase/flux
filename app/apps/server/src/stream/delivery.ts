@@ -1,5 +1,6 @@
 import type { IncomingHttpHeaders } from 'node:http';
 import { audienceKey, authorizeEvent, eventResource, isUuid, type Executor, type Principal, type StreamAudienceRepository } from '@flux/core';
+import { accessReader } from '@flux/db';
 import type { ApiError, StreamEvent, StreamMessage } from '@flux/contracts';
 import type { CursorCodec } from './cursor.js';
 
@@ -67,7 +68,7 @@ export async function resolveCursor(sources: DeliverySources, cursors: CursorCod
     const event = await sources.audience.eventById(value);
     work.queries += 1;
     work.authorizations += 1;
-    if (event && await authorizeEvent(principal, event, sources.db)) return { position: event.seq, visible: event.seq, work: { ...work, rows: 1 } };
+    if (event && await authorizeEvent(principal, event, accessReader(sources.db))) return { position: event.seq, visible: event.seq, work: { ...work, rows: 1 } };
   }
   return { status: 400, code: 'CURSOR_INVALID', error: 'Cursor must be a cursor issued to you or an event id you can see' };
 }
@@ -90,7 +91,7 @@ export async function drain(sources: DeliverySources, subscription: Subscription
       if (count) work.authorizations += 1;
       // Final check: the row says the recipient could read the event when it was fanned
       // out; membership, grants and visibility are read again now.
-      if (resource && await authorizeEvent(subscription.principal, row, sources.db)) {
+      if (resource && await authorizeEvent(subscription.principal, row, accessReader(sources.db))) {
         // Revalidate right before each delivery: a revoked session gets nothing more.
         if (!(await target.revalidate())) return;
         subscription.visible = row.seq;

@@ -1,8 +1,7 @@
-import { searchRows, type SearchExecutor, type SQL } from '@flux/db';
+import { searchRows, type SearchExecutor, type SQL, visibleFilter, accessReader } from '@flux/db';
 import {
   authorize,
   createSearchUseCases,
-  visibleFilter,
   type Database,
   type Principal,
   type SearchAccess,
@@ -27,7 +26,7 @@ const POLICY_AUDIENCES: Record<SearchAudienceType, (principal: Principal, worksp
   draft: (principal, workspaceId, db) => visibleFilter(principal, workspaceId, 'draft', db),
   // People are found by whoever may read the workspace's members.
   members: async (principal, workspaceId, db) =>
-    (await authorize(principal, 'workspace.read_members', { type: 'workspace', id: workspaceId }, db)).allowed ? null : false,
+    (await authorize(principal, 'workspace.read_members', { type: 'workspace', id: workspaceId }, accessReader(db))).allowed ? null : false,
 };
 
 /** Audiences through `visibleFilter` and `authorize`, read fresh for every search. */

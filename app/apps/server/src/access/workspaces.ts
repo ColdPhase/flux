@@ -5,6 +5,7 @@ import { WORKSPACE_AI_SWEEP_JOB, WORKSPACES_PATH, type AddMemberCommand, type Ch
   type SetWorkspaceAiPolicyCommand, type SetWorkspaceAiPolicyResult } from '@flux/contracts';
 import { addMember, assertAuthorized, changeRole, createWorkspace, getWorkspace, listMembers, listWorkspaces, removeMember, setWorkspaceAiPolicy,
   sweepWorkspaceAi, WorkspaceAiSweepIncomplete, type WorkspaceAiSweepQueue } from '@flux/core';
+import { accessReader } from '@flux/db';
 import { bodyId, expectedVersion, requires } from '../http/commands.js';
 import { nameSchema, versionSchema } from '../http/schemas.js';
 import type { AccessContext } from './context.js';
@@ -69,7 +70,7 @@ export function workspaceRoutes(app: FastifyInstance, { db, principal, command, 
   app.patch<{ Params: { workspaceId: string; userId: string }; Body: ChangeRoleCommand }>(`${WORKSPACES_PATH}/:workspaceId/members/:userId`, {
     schema: { body: { type: 'object', required: ['role'], additionalProperties: false, properties: { role: roleSchema } } },
   }, async (request, reply) => {
-    await assertAuthorized(await principal(request), 'workspace.manage_members', workspaceScope(request.params.workspaceId), db);
+    await assertAuthorized(await principal(request), 'workspace.manage_members', workspaceScope(request.params.workspaceId), accessReader(db));
     const result = await workspaceChange(request.params.workspaceId, (conn) => runCommand(request, {
       operation: `PATCH ${WORKSPACES_PATH}/:workspaceId/members/:userId`, scope: workspaceScope(request.params.workspaceId),
       run: (actor, conn) => changeRole(actor, request.params.workspaceId, request.params.userId, request.body, conn),
@@ -80,7 +81,7 @@ export function workspaceRoutes(app: FastifyInstance, { db, principal, command, 
   app.delete<{ Params: { workspaceId: string; userId: string } }>(`${WORKSPACES_PATH}/:workspaceId/members/:userId`, async (request, reply) => {
     const actor = await principal(request);
     await assertAuthorized(actor, actor.kind === 'human' && actor.id === request.params.userId
-      ? 'workspace.read' : 'workspace.manage_members', workspaceScope(request.params.workspaceId), db);
+      ? 'workspace.read' : 'workspace.manage_members', workspaceScope(request.params.workspaceId), accessReader(db));
     await workspaceChange(request.params.workspaceId, (conn) => removeMember(actor, request.params.workspaceId, request.params.userId, conn));
     return reply.code(204).send();
   });

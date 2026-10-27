@@ -67,7 +67,6 @@ svg { flex: none; }
   transition: var(--tr);
 }
 .ui-btn:hover { background: var(--hov); color: var(--t1); }
-.ui-btn:active:not(:disabled, [aria-disabled="true"]) { transform: scale(var(--press)); transition-duration: var(--dur-1); }
 .ui-btn:disabled, .ui-btn[aria-disabled="true"] { cursor: default; }
 .ui-btn:disabled { color: var(--t3); background: transparent; }
 .ui-btn--primary { background-color: var(--inv); background-image: var(--grad-inv); color: var(--oninv); box-shadow: var(--sh-pri); }
@@ -92,7 +91,6 @@ svg { flex: none; }
   border-radius: var(--r-pill); color: var(--t2); transition: var(--tr);
 }
 .ui-icon-btn:hover { background: var(--hov); color: var(--t1); }
-.ui-icon-btn:active { transform: scale(var(--press)); transition-duration: var(--dur-1); }
 .ui-icon-btn[aria-expanded="true"] { background: var(--sub); color: var(--t1); }
 
 /* Text links inside prose */
@@ -187,7 +185,6 @@ svg { flex: none; }
 .ui-bottomnav__item:is([aria-current="page"], [data-pending]) { color: var(--t1); font-weight: 650; }
 .ui-bottomnav__item:is([aria-current="page"], [data-pending]) .ui-bottomnav__pill::before { opacity: 1; transform: none; }
 .ui-bottomnav__dot { position: absolute; top: 3px; right: 14px; width: 8px; height: 8px; border-radius: 50%; background: var(--inv); box-shadow: 0 0 0 2px var(--bg); }
-.ui-bottomnav__item:active .ui-bottomnav__pill svg { transform: scale(.9); transition-duration: var(--dur-1); }
 @media (hover: hover) { .ui-bottomnav__item:hover:not([aria-current="page"]) { color: var(--t1); } }
 
 /* ---------- Overlays: scrim, drawer, sheet, overlay panel ---------- */
@@ -224,7 +221,9 @@ svg { flex: none; }
 .ui-overlay__surface--bare { inset: 0; background: transparent; box-shadow: none; pointer-events: none; }
 .ui-detent-sheet {
   position: absolute; inset: auto 0 0 0; z-index: var(--z-panel); display: flex; flex-direction: column; min-height: 0; overflow: hidden; pointer-events: auto; outline: none;
-  height: 56%; border-radius: var(--r-sheet) var(--r-sheet) 0 0; background: var(--el); box-shadow: var(--sh-pop);
+  /* Half is 56% of the screen, but never so short that a footer (the composer) leaves the content under a row's height: a
+     short landscape phone gets 300 px, so the fields above the composer can be scrolled clear of it (adaptive ADAPT-2). */
+  height: min(calc(100% - 12px), max(56%, 300px)); border-radius: var(--r-sheet) var(--r-sheet) 0 0; background: var(--el); box-shadow: var(--sh-pop);
   transition: height var(--dur-3) var(--ease-sheet), border-radius var(--dur-3) var(--ease-sheet);
 }
 .ui-detent-sheet[data-height="full"] { height: calc(100% - 12px); }
@@ -383,6 +382,38 @@ svg { flex: none; }
 .ui-avatar--md { width: 26px; height: 26px; font-size: .6875rem; }
 .ui-avatar--lg { width: 32px; height: 32px; font-size: .75rem; }
 .ui-avatar--me { background: var(--el); color: var(--t1); }
+
+/* ---------- Press, hover and selection (#593 AC-5) ----------
+   Every pressable control answers with the same short fill transition (--tr-fill, the fill half of --tr): hover and
+   selection fills ease in and out instead of jumping. The focus ring is not part of it. This is the zero-specificity
+   floor: a control that declares its own transition (most use --tr) keeps it. The press itself (scale to --press, spring back over --dur-press) is script (press.ts), because it has to cover
+   every pressable control without restyling each one. */
+:where(button, a[href], [role="button"], [role="tab"], [role="menuitem"], [role="menuitemradio"], [role="menuitemcheckbox"], [role="option"], summary):where(:not(.sk-plane *, [data-no-press])) { transition: var(--tr-fill); }
+
+/* A control that appears on hover or focus (the message toolbar, #591) fades and slides a few pixels in from its side.
+   `.ui-reveal` is its hidden pose, `.is-shown` its shown one; `data-side="start"` (or `--reveal-x`) comes from the left. The
+   owner decides when it is shown: with the `.is-shown` class, or, as the message toolbar does, with its own state selectors
+   that set `transform: none`. */
+.ui-reveal { opacity: 0; transform: translateX(var(--reveal-x, var(--shift-toolbar))); pointer-events: none; transition: opacity var(--dur-1) var(--ease-out), transform var(--dur-1) var(--ease-out); }
+.ui-reveal[data-side="start"] { --reveal-x: calc(-1 * var(--shift-toolbar)); }
+.ui-reveal.is-shown { opacity: 1; transform: none; pointer-events: auto; }
+
+/* ---------- Menus and popovers (#593 AC-1) ----------
+   A menu or popover comes in with a short fade and a few pixels of travel from the side it opens from, and leaves the
+   same way (usePop keeps it mounted for the exit). It travels but never scales, so its size, and the size of every
+   target in it, is the same from its first frame. Only opacity and transform animate; reduced motion zeroes the
+   durations, so a closed surface is gone at once. `data-pop-fade` is for surfaces a script positions with its own
+   transform: they only fade. */
+@keyframes ui-pop-in { from { opacity: 0; transform: translateY(var(--pop-y)); } }
+@keyframes ui-pop-out { to { opacity: 0; transform: translateY(var(--pop-y)); } }
+@keyframes ui-pop-fade-in { from { opacity: 0; } }
+@keyframes ui-pop-fade-out { to { opacity: 0; } }
+[data-pop] { --pop-y: calc(-1 * var(--shift-pop)); }
+[data-pop][data-pop-from="above"] { --pop-y: var(--shift-pop); }
+[data-pop="open"] { animation: ui-pop-in var(--dur-in) var(--ease-out) backwards; }
+[data-pop="closing"] { animation: ui-pop-out var(--dur-out) var(--ease-in) forwards; pointer-events: none; }
+[data-pop-fade][data-pop="open"] { animation-name: ui-pop-fade-in; }
+[data-pop-fade][data-pop="closing"] { animation-name: ui-pop-fade-out; }
 
 /* A looping mark pauses while hidden, off screen or under a modal (#155, motion.ts useLoopPause). */
 [data-motion-paused], [data-motion-paused] *, [data-motion-paused]::before, [data-motion-paused]::after,

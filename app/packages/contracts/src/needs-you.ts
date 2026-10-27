@@ -62,8 +62,18 @@ export interface NeedsYouBlocked {
   waitingForUserId?: string | null;
 }
 
+/** An agent's suggestion from `flux_create_proposal` (#661): what it saw, what it makes of it, what it suggests. */
+export interface NeedsYouProposal {
+  id: string;
+  fact: string;
+  interpretation: string;
+  suggestedAction: string;
+  /** The project material and version the suggestion rests on. */
+  source: { materialId: string; title: string; version: number };
+}
+
 export interface NeedsYouItem {
-  /** `decision:<id>`, `blocked:<id>`, `note:<notification id>` or `assistant:<run id>`. Stable while the need lasts. */
+  /** `decision:<id>`, `blocked:<id>`, `proposal:<id>`, `note:<notification id>` or `assistant:<run id>`. Stable while the need lasts. */
   key: string;
   kind: NeedsYouKind;
   title: string;
@@ -77,6 +87,8 @@ export interface NeedsYouItem {
   url: string;
   decision: NeedsYouDecision | null;
   blocked: NeedsYouBlocked | null;
+  /** Set for `proposal:<id>`: an agent you connected made a suggestion (#661). */
+  proposal?: NeedsYouProposal | null;
   /** Why a notification-based item reached you (`mention`, `question` or `invitation`); null for the others. */
   reason: 'mention' | 'question' | 'invitation' | null;
   /** Immutable request-cycle identity, only when the notification links a saved assistant join-question snapshot. */

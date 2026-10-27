@@ -1,4 +1,6 @@
 import type { WorkStatus } from '@flux/contracts';
+import { Morph } from './Morph';
+import { useMorph } from './motion';
 
 /**
  * A task's state as a shape, from the final design (F-026, guide §2 "Status glyphs"): Open is an
@@ -6,8 +8,10 @@ import type { WorkStatus } from '@flux/contracts';
  * circle with a check, Not pursued a slashed circle. Colour never carries the meaning, so the glyph is
  * always shown with its word: next to it (`TaskState`), or in the row or column it sits in.
  */
-export function StatusGlyph({ status, size = 16, className }: { status: WorkStatus; size?: number; className?: string }) {
-  const common = { width: size, height: size, viewBox: '0 0 16 16', 'aria-hidden': true as const, className: `ui-glyph ui-glyph--${status}${className ? ` ${className}` : ''}` };
+export function StatusGlyph({ status, size = 16, className, changeKey }: { status: WorkStatus; size?: number; className?: string; changeKey?: string }) {
+  // A changed state morphs in place (#593 AC-4): the new shape settles in from a soft fade and a slightly smaller size.
+  const ref = useMorph<SVGSVGElement>(status, { opacity: 0.35, transform: 'scale(.78)' }, changeKey);
+  const common = { ref, width: size, height: size, viewBox: '0 0 16 16', 'aria-hidden': true as const, className: `ui-glyph ui-glyph--${status}${className ? ` ${className}` : ''}` };
   switch (status) {
     case 'in_progress':
       return <svg {...common}><circle cx="8" cy="8" r="6" fill="none" stroke="currentColor" strokeWidth="1.5" /><path d="M8 4a4 4 0 0 1 0 8z" fill="currentColor" /></svg>;
@@ -31,7 +35,7 @@ export function TaskState({ status, className }: { status: WorkStatus; className
   return (
     <span className={`ui-state${className ? ` ${className}` : ''}`} data-status={status}>
       <StatusGlyph status={status} size={14} />
-      <span>{TASK_STATE_WORD[status]}</span>
+      <Morph value={status}>{TASK_STATE_WORD[status]}</Morph>
     </span>
   );
 }

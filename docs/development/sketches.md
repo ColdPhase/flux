@@ -40,7 +40,7 @@ every unapplied file in order and checks that the highest version equals `FLUX_S
 
 This uses the #29 policy in `app/packages/core/src/access/policy.ts`. It adds the
 `evaluateSketch` action (`sketch.read`, `sketch.write`), the `visibleSketchesSql` list
-condition returned by `visibleFilter(…, 'sketch')`, and `sketch.create` on the
+condition (`@flux/db`) returned by `visibleFilter(…, 'sketch')`, and `sketch.create` on the
 workspace. The rules are in [access-policy.md](access-policy.md#rules). Invisible
 sketches answer `404`, and visible sketches the caller may not change answer `403`.
 Changes lock the sketch row (`FOR NO KEY UPDATE`), so changes to one sketch run one at a
@@ -54,9 +54,9 @@ concurrent revocation is either seen or waits.
   It imports only `@flux/contracts`, the domain errors and `principal.ts`. It never
   imports Drizzle, `@flux/db` or pg-boss (`app/tests/app/architecture.test.ts` also follows its relative imports).
 - `app/packages/core/src/access/sketch-access.ts` is the policy adapter for `SketchAccess`.
-  It imports no persistence library itself; its SQL reaches it only through the existing
-  `policy.ts` import chain, which the [architecture rules](architecture.md#known-debt)
-  already record. No allowlist entry was added.
+  It imports no persistence library and reaches none through `policy.ts` either: it takes an
+  `AccessReader` (`policySketchAccess(accessReader(tx))`), whose SQL is in `@flux/db`
+  ([architecture rules](architecture.md#known-debt), #90).
 - `app/packages/db/src/repositories/sketches.ts` holds the rows. It makes no access decisions;
   lists take the policy's condition from the caller.
 - `app/apps/server/src/sketches/` holds the adapters: the unit of work, the `visibleFilter`
@@ -157,7 +157,7 @@ Issue [#96](https://github.com/ColdPhase/flux/issues/96), the "DMs and growing a
   and `copied_at`. The wire type exposes only `origin: { kind: 'dm_copy', copiedBy, copiedAt }`.
   The copy never names the DM.
 
-**Access** (`evaluateSketch` and `visibleSketchesSql` in `policy.ts`):
+**Access** (`evaluateSketch` in `policy.ts`, `visibleSketchesSql` in `@flux/db`):
 
 - `sketch.read` needs a current participant row for the caller. Owners, admins, agents,
   members outside the DM and other workspaces get `404`. The row is excluded before the list
