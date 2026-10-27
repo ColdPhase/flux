@@ -8,6 +8,7 @@ import {
   type NeedsYouAssistant,
 } from '@flux/core';
 import { notificationRepository } from '../push/adapters.js';
+import { aiAllowedInProject } from '../access/ai-gate.js';
 import { workRepository } from '../work/adapters.js';
 
 // Adapters that connect the core "Needs you" queue (#342) to the access policy and the Drizzle rows.
@@ -41,6 +42,7 @@ export function policyNeedsYouAccess(db: Database): NeedsYouAccess {
 /** The "Needs you" use cases bound to a connection. */
 export const needsYouUseCases = (db: Database, assistant?: NeedsYouAssistant) => createNeedsYou({
   access: policyNeedsYouAccess(db),
+  aiAllowed: (projectId) => aiAllowedInProject(db, projectId),
   ...(assistant ? { assistant } : {}),
   repository: needsYouRows(db),
   inbox: notificationRepository(db),
