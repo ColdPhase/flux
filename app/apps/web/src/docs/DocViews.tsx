@@ -1,4 +1,5 @@
 import { lazy, Suspense, useEffect, useMemo, useState, type MouseEvent, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import { useRegisterLiveHere } from '../live/LiveProvider';
 import { Link, redirect, useLoaderData, useNavigate, useRevalidator, useSearchParams, type LoaderFunctionArgs } from 'react-router';
 import type { Doc, DocSummary, DocVersion, DocVersionSummary, ObjectLink, Project } from '@flux/contracts';
@@ -10,7 +11,7 @@ import { diffDocs, diffStats, readableRefs, type DiffRow } from './diff';
 import { draftKey, readKept } from './drafts';
 import { STATE_LABEL, authorLabel, docLinks, kindLabel, longDate, pathOfLink, shortDate } from './format';
 import { DocProse } from './DocProse';
-import { DimIcon, DownloadButton, PageMenu, ShareButton, WikiBar, WikiIcon } from './WikiParts';
+import { DimIcon, DownloadButton, PageMenu, ShareButton, WikiBar, WikiIcon, usePhoneHeader } from './WikiParts';
 import { EditedBy, Outline, OutlineChip, useProse } from './WikiRead';
 import { blockDiff } from './block-diff';
 import { useAgentOwners } from '../agents/owners';
@@ -214,7 +215,7 @@ export function DocReader() {
 
 function DocReading({ live }: { live: LiveReadingState | null }) {
   const { doc, shown, historical } = useLoaderData() as ReaderData;
-  const { project, docs, writable, compact } = useWiki();
+  const { project, docs, writable, compact, menuSlot } = useWiki();
   const { me } = useShellData();
   const navigate = useNavigate();
   const revalidator = useRefresh();
@@ -259,17 +260,22 @@ function DocReading({ live }: { live: LiveReadingState | null }) {
   const editButton = !writable ? null : current
     ? <Link className={`ui-btn ui-btn--primary ${compact ? 'wiki-edit' : 'wiki-bar__primary'}`} data-slot="primary" to={edit} aria-label="Edit" aria-keyshortcuts="e"><Icon name="edit" size={16} /><span className="wiki-bar__label">Edit</span></Link>
     : compact ? null : <button type="button" className="ui-btn ui-btn--primary wiki-bar__primary" data-slot="primary" aria-label="Edit" disabled><Icon name="edit" size={16} /><span className="wiki-bar__label">Edit</span></button>;
+  // The page's one menu: in the header of a narrow work area beside the computer's views, but never in the phone's header,
+  // which is the same in every view (#507): there it ends the row of page chips, which stays at the top while the page is read.
+  const phoneHeader = usePhoneHeader();
+  const inStrip = compact && phoneHeader;
+  const pageMenu = compact ? (
+    <PageMenu sharePath={current ? base : `${base}/versions/${shown.version}`} shareVersion={current ? null : shown.version}
+      shown={{ title: shown.title, body: text, version: shown.version, current }}
+      history={<Link className="wiki-pop__item" to={historyTo} aria-label={historyLabel}><WikiIcon name="history" /><span><b>History</b><small>{doc.version} {doc.version === 1 ? 'version' : 'versions'}, {STATE_LABEL[shown.state].toLowerCase()}</small></span></Link>} />
+  ) : null;
   return (
     <>
       <WikiBar compactInHeader phoneMeta={<span className="wiki-bar__title"><b>Wiki</b> · {docs.length} {docs.length === 1 ? 'page' : 'pages'}</span>}
         primary={compact ? undefined : editButton} meta={compact
           ? <span className="wiki-bar__title"><b>Wiki</b> · {docs.length} {docs.length === 1 ? 'page' : 'pages'}</span>
           : <><span className="doc-head__k">{STATE_LABEL[shown.state]} · version {shown.version}{current ? '' : ` of ${doc.version}`}</span>{keptLink}</>}>
-        {compact ? (
-          <PageMenu sharePath={current ? base : `${base}/versions/${shown.version}`} shareVersion={current ? null : shown.version}
-            shown={{ title: shown.title, body: text, version: shown.version, current }}
-            history={<Link className="wiki-pop__item" to={historyTo} aria-label={historyLabel}><WikiIcon name="history" /><span><b>History</b><small>{doc.version} {doc.version === 1 ? 'version' : 'versions'}, {STATE_LABEL[shown.state].toLowerCase()}</small></span></Link>} />
-        ) : (
+        {compact ? (inStrip ? null : pageMenu) : (
           <>
             <OutlineChip headings={headings} scroller={prose?.closest<HTMLElement>('.wiki-main') ?? null} />
             <Link className="ui-icon-btn" data-slot="history" to={historyTo} aria-label={historyLabel} data-tip={`History · ${doc.version} ${doc.version === 1 ? 'version' : 'versions'}`}>
@@ -280,6 +286,7 @@ function DocReading({ live }: { live: LiveReadingState | null }) {
           </>
         )}
       </WikiBar>
+      {inStrip && menuSlot ? createPortal(pageMenu, menuSlot) : null}
       <div className="wiki-read" key={doc.id}>
         <article className="wiki-doc wiki-doc--read doc" data-shift aria-labelledby="doc-title">
           {compact && keptLink ? <p className="doc-notice">{keptLink}</p> : null}

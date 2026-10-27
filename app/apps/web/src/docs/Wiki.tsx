@@ -55,6 +55,7 @@ export function WikiLayout() {
   const [focus, setFocusState] = useState(() => readKey(FOCUS_KEY) === '1');
   const frame = useRef<HTMLDivElement>(null);
   const [compact, setCompact] = useState(false);
+  const [menuSlot, setMenuSlot] = useState<HTMLElement | null>(null);
   useLayoutEffect(() => {
     const node = frame.current;
     if (!node) return;
@@ -104,8 +105,8 @@ export function WikiLayout() {
   const value = useMemo<WikiState>(() => ({
     project, docs, focus, compact, writable: project.access !== 'viewer',
     setFocus(next: boolean) { writeKey(FOCUS_KEY, next ? '1' : null); setFocusState(next); },
-    importing, importError, importErrorId, startImport,
-  }), [project, docs, focus, compact, importing, importError, importErrorId, startImport]);
+    importing, importError, importErrorId, startImport, menuSlot, setMenuSlot,
+  }), [project, docs, focus, compact, importing, importError, importErrorId, startImport, menuSlot]);
   return (
     <WikiContext.Provider value={value}>
       <div className="wiki-frame" ref={frame}>
@@ -124,7 +125,7 @@ const collator = new Intl.Collator(undefined, { sensitivity: 'base', numeric: tr
 const fold = (text: string) => text.normalize('NFD').replace(/\p{M}/gu, '').toLocaleLowerCase();
 
 function WikiIndex({ activeId, hidden }: { activeId: string | null; hidden: boolean }) {
-  const { project, docs, writable, compact, importing, importError: error, importErrorId: errorId, startImport } = useWiki();
+  const { project, docs, writable, compact, importing, importError: error, importErrorId: errorId, startImport, setMenuSlot } = useWiki();
   const creating = !!useMatch('/projects/:projectId/docs/new');
   const [query, setQuery] = useState('');
   const listRef = useRef<HTMLUListElement>(null);
@@ -168,7 +169,23 @@ function WikiIndex({ activeId, hidden }: { activeId: string | null; hidden: bool
     </button>
   ) : null;
 
+  const pageList = shown.length ? (
+    <ul ref={listRef} className="wiki-pages">
+      {shown.map((doc) => (
+        <li key={doc.id}>
+          <Link className="wiki-page" to={docUrl(project.id, doc.id)} title={doc.title} aria-current={doc.id === activeId ? 'page' : undefined}>
+            <span className="wiki-page__t">{doc.title}</span>
+            {doc.state === 'draft' ? <span className="wiki-page__state">Draft</span> : null}
+          </Link>
+        </li>
+      ))}
+    </ul>
+  ) : null;
+
   return (
+    // On a phone the page's menu ends the row of page chips (#507): the header is the same in every view and has no room for it.
+    // It stays outside the list of pages, which holds only pages (F-026 §4 Phone).
+    <div className="wiki-top">
     <nav className="wiki-index" aria-label="Wiki pages" hidden={hidden}>
       {compact ? null : (
         <div className="wiki-index__head">
@@ -187,20 +204,11 @@ function WikiIndex({ activeId, hidden }: { activeId: string | null; hidden: bool
       ) : null}
       {/* Mounted while the index is shown, so a changed count is announced. */}
       <p className="wiki-index__count" role="status">{needle ? (shown.length ? `${shown.length} ${shown.length === 1 ? 'page' : 'pages'}` : `No pages match “${query.trim()}”.`) : ''}</p>
-      {shown.length ? (
-        <ul ref={listRef} className="wiki-pages">
-          {shown.map((doc) => (
-            <li key={doc.id}>
-              <Link className="wiki-page" to={docUrl(project.id, doc.id)} title={doc.title} aria-current={doc.id === activeId ? 'page' : undefined}>
-                <span className="wiki-page__t">{doc.title}</span>
-                {doc.state === 'draft' ? <span className="wiki-page__state">Draft</span> : null}
-              </Link>
-            </li>
-          ))}
-        </ul>
-      ) : null}
+      {pageList}
       {!compact && writable ? <div className="wiki-index__acts">{importer}</div> : null}
       {error ? <p className="wiki-index__error" id={errorId} role="alert"><Icon name="alert" size={13} /><span>{error}</span></p> : null}
     </nav>
+    {compact ? <div className="wiki-top__menu" ref={setMenuSlot} /> : null}
+    </div>
   );
 }

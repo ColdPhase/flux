@@ -18,6 +18,9 @@ export interface WikiState {
   /** The id of the refused import's message, for the controls it describes. */
   importErrorId: string;
   startImport(): void;
+  /** Where the page's menu goes on a phone: the end of the row of page chips, which stays at the top while the page is read (#507). */
+  menuSlot: HTMLElement | null;
+  setMenuSlot(element: HTMLElement | null): void;
 }
 
 export const WikiContext = createContext<WikiState | null>(null);

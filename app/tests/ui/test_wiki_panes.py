@@ -669,7 +669,7 @@ class WikiPanesJourney(unittest.TestCase):
         expect(heading).to_be_visible()
         header = page.locator("header.phead")
         expect(header.locator(".wiki-header-meta")).to_have_text(re.compile(r"^Wiki · \d+ pages?$"))
-        more = header.get_by_role("button", name="More", exact=True)
+        more = page.locator(".wiki-top__menu").get_by_role("button", name="More", exact=True)
         expect(more).to_be_visible()
         self.assertLessEqual(index.bounding_box()["y"] + index.bounding_box()["height"], heading.bounding_box()["y"],
                              "the page selector sits before the document")
