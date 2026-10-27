@@ -344,7 +344,7 @@ named transaction, plus epoch comparison where an item has `ai_epoch`.
      the plain summary (S2, 2026-10-22: setting `plain` in the sweep would skip that delivery).
    Each ended or stopped run records its owner's progress event; co-work requests end
    `cancelled` with reason `ai_off`. Nothing is deleted. Implementation:
-   `setWorkspaceAiPolicy` and `sweepWorkspaceAi` (`packages/core/src/access/domain.ts`),
+   `setWorkspaceAiPolicy` and `sweepWorkspaceAi` (`packages/core/src/access/workspace-ai.ts`),
    `workspaceAiSweepRows` (`packages/db`), the API route and the worker job
    `workspace-ai.sweep.v1` (`apps/worker/src/workspace-ai`).
 

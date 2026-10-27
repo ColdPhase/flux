@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { readdirSync, statSync } from 'node:fs';
+import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { describe, test } from 'node:test';
 import { checkManifests, checkSources, compare, layerOf, loadExceptions, reachableImports, scanRepository } from './support/architecture.js';
@@ -70,6 +70,21 @@ describe('architecture boundaries', () => {
     // `policy.ts` and `ports.ts` are the pure decisions and the `AccessReader` port; `@flux/db` implements it.
     const entries = ['access/policy.ts', 'access/ports.ts', 'events.ts'].map((file) => join(root, 'packages/core/src', file));
     assert.deepEqual(reachableImports(root, entries, ['@flux/db', 'drizzle-orm', 'pg', 'pg-boss', 'fastify', 'web-push']), []);
+  });
+
+  test('the access use cases keep to ports and stay small, never reaching persistence through helpers (#91)', () => {
+    // The workspace, member, AI switch, project, grant, agent and draft use cases run over the repository ports in
+    // `access/repositories.ts`; `@flux/db` implements them. `types.ts` is the one recorded exception: its type-only
+    // import of the Drizzle-derived `Database`/`Executor` is on the allowlist until #92 gives core its own port.
+    const entries = files(join(root, 'packages/core/src/access'));
+    assert.ok(entries.length >= 18, 'the access policy, ports and use case modules exist');
+    const found = reachableImports(root, entries, ['@flux/db', 'drizzle-orm', 'pg', 'pg-boss', 'fastify', 'web-push'])
+      .filter((violation) => !violation.startsWith('packages/core/src/types.ts: '));
+    assert.deepEqual(found, []);
+    for (const module of ['workspaces', 'members', 'workspace-ai', 'projects', 'grants', 'agents', 'drafts', 'validation', 'common', 'records', 'repositories']) {
+      const lines = readFileSync(join(root, 'packages/core/src/access', `${module}.ts`), 'utf8').split('\n').length;
+      assert.ok(lines <= 200, `access/${module}.ts has ${lines} lines; split it before it passes 200`);
+    }
   });
 
   test('the rules reject each kind of boundary violation (self-test)', () => {
