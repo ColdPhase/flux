@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import type { DraftSummary } from '@flux/contracts';
 import { ForbiddenError, NotFoundError } from '../access/errors.js';
 import { assertAuthorized, enforce, evaluateDraft, isUuid } from '../access/policy.js';
+import type { AccessReader } from '../access/ports.js';
 import { policyEventPorts, recordEvent, type EventRepository } from '../events.js';
 import type { JobQueue } from '../push/ports.js';
 import type { Database, Executor, Principal } from '../types.js';
@@ -45,10 +46,11 @@ export interface DraftResultRepository {
 
 export type DraftResultStores = (db: Executor) => DraftResultRepository;
 
-/** Result rows and event storage, each bound to the transaction a step runs in (#87, #89). */
+/** Result rows, event storage and the access policy's reader, each bound to the transaction or connection a step runs in (#87, #89, #90). */
 export interface DraftSummaryPorts {
   results: DraftResultStores;
   events: (tx: Executor) => EventRepository;
+  access: (db: Executor) => AccessReader;
 }
 
 export interface DraftSummaryRequestPorts extends DraftSummaryPorts {
@@ -84,27 +86,27 @@ export async function requestDraftSummary(principal: Principal, draftId: string,
   if (principal.kind !== 'human' && principal.kind !== 'agent') throw new ForbiddenError('Only people and agents can request summaries');
   const kind = principal.kind;
   return db.transaction(async (tx) => {
-    const { draft } = enforce(await evaluateDraft(principal, 'draft.read', draftId, tx, { lock: true }), 'draft');
+    const { draft } = enforce(await evaluateDraft(principal, 'draft.read', draftId, ports.access(tx), { lock: true }), 'draft');
     const results = ports.results(tx);
     const id = randomUUID();
     await results.insert({ id, workspaceId: draft!.workspaceId, draftId, principalKind: kind, principalId: principal.id });
     const jobId = await ports.queue(tx).enqueueDraftSummary({ resultId: id });
     if (!jobId) throw new Error('Job enqueue failed');
     const row = await results.setJobId(id, jobId);
-    await recordEvent(policyEventPorts(tx, ports.events(tx)), principal, draft!.workspaceId, 'draft.summary_requested.v1', draftId, { resultId: id });
+    await recordEvent(policyEventPorts(ports.access(tx), ports.events(tx)), principal, draft!.workspaceId, 'draft.summary_requested.v1', draftId, { resultId: id });
     return toSummary(row);
   });
 }
 
-export async function listDraftSummaries(principal: Principal, draftId: string, db: Database, results: DraftResultStores): Promise<DraftSummary[]> {
-  enforce(await evaluateDraft(principal, 'draft.read', draftId, db), 'draft');
-  return (await results(db).list(draftId, 20)).map(toSummary);
+export async function listDraftSummaries(principal: Principal, draftId: string, db: Database, ports: Pick<DraftSummaryPorts, 'results' | 'access'>): Promise<DraftSummary[]> {
+  enforce(await evaluateDraft(principal, 'draft.read', draftId, ports.access(db)), 'draft');
+  return (await ports.results(db).list(draftId, 20)).map(toSummary);
 }
 
 /** A result is readable by whoever can currently read its draft. */
-export async function getDraftSummary(principal: Principal, draftId: string, resultId: string, db: Database, results: DraftResultStores): Promise<DraftSummary> {
-  enforce(await evaluateDraft(principal, 'draft.read', draftId, db), 'draft');
-  const row = isUuid(resultId) ? await results(db).get(draftId, resultId) : null;
+export async function getDraftSummary(principal: Principal, draftId: string, resultId: string, db: Database, ports: Pick<DraftSummaryPorts, 'results' | 'access'>): Promise<DraftSummary> {
+  enforce(await evaluateDraft(principal, 'draft.read', draftId, ports.access(db)), 'draft');
+  const row = isUuid(resultId) ? await ports.results(db).get(draftId, resultId) : null;
   if (!row) throw new NotFoundError('Summary', 'SUMMARY_NOT_FOUND');
   return toSummary(row);
 }
@@ -127,7 +129,7 @@ function isAccessDenial(error: unknown) {
 
 async function deny(tx: Executor, ports: DraftSummaryPorts, row: DraftResultRecord, principal: Principal, stage: 'before_read' | 'before_commit') {
   await ports.results(tx).markDenied(row.id, stage);
-  await recordEvent(policyEventPorts(tx, ports.events(tx)), principal, row.workspaceId, 'draft.summary_denied.v1', row.draftId, { resultId: row.id, stage });
+  await recordEvent(policyEventPorts(ports.access(tx), ports.events(tx)), principal, row.workspaceId, 'draft.summary_denied.v1', row.draftId, { resultId: row.id, stage });
 }
 
 /**
@@ -148,7 +150,7 @@ export async function processDraftSummary(resultId: string, db: Database, ports:
   const draftRef = { type: 'draft', id: row.draftId } as const;
 
   try {
-    await assertAuthorized(principal, 'draft.read', draftRef, db);
+    await assertAuthorized(principal, 'draft.read', draftRef, ports.access(db));
   } catch (error) {
     if (!isAccessDenial(error)) throw error;
     await db.transaction((tx) => deny(tx, ports, row, principal, 'before_read'));
@@ -161,7 +163,7 @@ export async function processDraftSummary(resultId: string, db: Database, ports:
 
   return db.transaction(async (tx) => {
     try {
-      await assertAuthorized(principal, 'draft.read', draftRef, tx, { lock: true });
+      await assertAuthorized(principal, 'draft.read', draftRef, ports.access(tx), { lock: true });
     } catch (error) {
       if (!isAccessDenial(error)) throw error;
       await deny(tx, ports, row, principal, 'before_commit');
@@ -169,7 +171,7 @@ export async function processDraftSummary(resultId: string, db: Database, ports:
     }
     if (!(await results(tx).complete(row.id, wordCount, draft.version))) return 'skipped' as const;
     await hooks.beforeCommit?.(tx);
-    await recordEvent(policyEventPorts(tx, ports.events(tx)), principal, row.workspaceId, 'draft.summary_completed.v1', row.draftId, { resultId: row.id });
+    await recordEvent(policyEventPorts(ports.access(tx), ports.events(tx)), principal, row.workspaceId, 'draft.summary_completed.v1', row.draftId, { resultId: row.id });
     return 'completed' as const;
   });
 }

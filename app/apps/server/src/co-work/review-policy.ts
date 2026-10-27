@@ -1,5 +1,5 @@
 import type { CoWorkReviewPolicy, SetCoWorkReviewPolicyCommand } from '@flux/contracts';
-import { coworkReviewPolicyRows } from '@flux/db';
+import { coworkReviewPolicyRows, accessReader } from '@flux/db';
 import { enforce, evaluateProject, ForbiddenError, isUuid, normalizeCoWorkReviewRule, NotFoundError, recordEvent,
   type Database, type Principal } from '@flux/core';
 import { eventPorts } from '../events.js';
@@ -15,7 +15,7 @@ const projectOf = (value: string) => {
 
 export async function readReviewPolicy(db: Database, principal: Principal, requested: string): Promise<CoWorkReviewPolicy> {
   const projectId = projectOf(requested);
-  enforce(await evaluateProject(principal, 'project.read', projectId, db), 'project');
+  enforce(await evaluateProject(principal, 'project.read', projectId, accessReader(db)), 'project');
   const stored = await coworkReviewPolicyRows(db).get(projectId);
   return { projectId, reviewSeparation: stored?.reviewSeparation ?? 'distinct_connection', updatedAt: stored?.updatedAt ?? null, updatedBy: stored?.updatedBy ?? null };
 }
@@ -26,7 +26,7 @@ export async function setReviewPolicy(db: Database, principal: Principal, reques
   if (principal.kind !== 'human') throw new ForbiddenError('Only a person sets the review rule', 'COWORK_POLICY_NEEDS_PERSON');
   await db.transaction(async (tx) => {
     // 404 for someone who cannot read the project, 403 unless a manager; the access rows are locked against a concurrent removal.
-    const checked = enforce(await evaluateProject(principal, 'project.manage', projectId, tx, { lock: true }), 'project');
+    const checked = enforce(await evaluateProject(principal, 'project.manage', projectId, accessReader(tx), { lock: true }), 'project');
     const rows = coworkReviewPolicyRows(tx);
     if ((await rows.current(projectId)) === reviewSeparation && await rows.get(projectId)) return;
     await rows.set(projectId, reviewSeparation, principal.id);

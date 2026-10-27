@@ -2,7 +2,7 @@ import { useCallback, useRef } from 'react';
 import type { WorkItem, WorkRowProjection, WorkStatus } from '@flux/contracts';
 import { ApiError, NetworkError, request } from '../api/client';
 import { useShellData } from '../app/data';
-import { useToast, useToastScope } from '../ui';
+import { noteChange, useToast, useToastScope } from '../ui';
 import type { MeResponse } from '../api/auth';
 import { updateWork } from './api';
 import { STATUS_LABEL, taskNumber } from './format';
@@ -62,6 +62,7 @@ export function useStateChange(saved: (item: WorkItem) => void, done: () => void
     try {
       const stored = await updateWork(item, { status }, crypto.randomUUID());
       if (!(await sameSession())) return null;
+      noteChange(stored.id);
       saved(stored);
       toast({
         message: `${taskNumber(item)} ${lower(status)}`, tone: 'neutral', mascot: status === 'done' ? 'wink' as const : undefined,
@@ -78,6 +79,7 @@ export function useStateChange(saved: (item: WorkItem) => void, done: () => void
               try {
                 const restored = await updateWork(stored, back, crypto.randomUUID());
                 if (!(await sameSession())) return;
+                noteChange(restored.id);
                 saved(restored);
                 toast({ message: `${taskNumber(item)} back to ${lower(item.status)}` });
               } catch (cause) {

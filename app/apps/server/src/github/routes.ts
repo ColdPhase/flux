@@ -1,5 +1,5 @@
 import type { FastifyInstance } from 'fastify';
-import { githubRows } from '@flux/db';
+import { githubRows, accessReader } from '@flux/db';
 import { GITHUB_CALLBACK_PATH, type GithubCapabilities } from '@flux/contracts';
 import { assertAuthorized, DomainError, githubId, InvalidInputError, ServiceUnavailableError, type Database, type GithubProvider } from '@flux/core';
 import type { SessionResolver } from '../identity/index.js';
@@ -28,7 +28,7 @@ export async function githubRoutes(app: FastifyInstance, options: Options) {
   const unavailable = () => { if (!config) throw new ServiceUnavailableError('GitHub App integration is unavailable', 'GITHUB_UNAVAILABLE'); };
   const principal = async (request: Parameters<SessionResolver['requirePrincipal']>[0]) => (await sessions.requirePrincipal(request)).principal;
   async function project(request: Parameters<SessionResolver['requirePrincipal']>[0], id: string, manage = false) {
-    const actor = await principal(request); await assertAuthorized(actor, manage ? 'project.manage' : 'project.read', { type: 'project', id }, db); return actor;
+    const actor = await principal(request); await assertAuthorized(actor, manage ? 'project.manage' : 'project.read', { type: 'project', id }, accessReader(db)); return actor;
   }
   app.get<{ Params: { projectId: string } }>('/api/v1/projects/:projectId/github/capabilities', async (request): Promise<GithubCapabilities> => {
     const actor = await project(request, request.params.projectId);

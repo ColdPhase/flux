@@ -1,4 +1,4 @@
-import { artifactResetRows, githubRows, prepareCanonicalArtifactTasks, TaskUseRefusal, type TaskUseFence } from '@flux/db';
+import { artifactResetRows, githubRows, prepareCanonicalArtifactTasks, TaskUseRefusal, type TaskUseFence, accessReader } from '@flux/db';
 import {
   directPrerequisiteIds, enforce, evaluateProject, GITHUB_RULE_AUTOMATION, githubRuleUseCases, githubUseCases, ServiceUnavailableError, sortedIds,
   unmetPrerequisites, type Database, type GithubProvider, type GithubTasks, type GithubTaskState, type GithubUnitOfWork, type Transaction, type WorkRecord,
@@ -76,7 +76,7 @@ export function githubUnitOfWork(db: Database, provider: Provider): GithubUnitOf
     };
     const result = await session.run(() => work({ provider: provider.inTransaction?.(tx) ?? provider, rows: canonicalRows, tasks: githubTasks(tx, session,retained), access: {
       async requireProject(principal, action, projectId) {
-        const checked = enforce(await evaluateProject(principal, action === 'manage' ? 'project.manage' : action === 'write' ? 'project.write' : 'project.read', projectId, tx, { lock: true }), 'project');
+        const checked = enforce(await evaluateProject(principal, action === 'manage' ? 'project.manage' : action === 'write' ? 'project.write' : 'project.read', projectId, accessReader(tx), { lock: true }), 'project');
         return { workspaceId: checked.project!.workspaceId };
       },
     } }));
