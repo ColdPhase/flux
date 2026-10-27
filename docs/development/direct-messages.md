@@ -48,7 +48,7 @@ Migration `0010_direct_messages.sql` adds three tables.
 | `dm.create` (workspace) | An active owner, admin or member. Guests can take part when someone adds them, but cannot start a DM (`403`). |
 | `dm.read`, `dm.write` | An active person in the DM's workspace who is a current participant. Roles add nothing. |
 
-- `visibleDmsSql` / `visibleFilter(..., 'dm')` puts `EXISTS (participant row for the caller)` into
+- `visibleDmsSql` / `visibleFilter(..., 'dm')` (both in `@flux/db`, `repositories/access.ts`) puts `EXISTS (participant row for the caller)` into
   both the list and its count. Invisible DMs therefore never reach counts or pages.
 - `evaluateDm` with `{ lock: true }` locks the caller's membership (`loadActor`), then the DM
   row `FOR NO KEY UPDATE`, then the caller's participant row `FOR SHARE`. A concurrent leave,

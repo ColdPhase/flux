@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { AGENT_MCP_ENTRIES, agentMcpPolicyPath, type SaveAgentMcpPolicy } from '@flux/contracts';
-import { agentConnectionSetupRepository } from '@flux/db';
+import { agentConnectionSetupRepository, accessReader } from '@flux/db';
 import { agentMcpPolicyUseCases, DomainError, evaluateProject, type AgentConnectionSetupPort, type Database } from '@flux/core';
 import type { SessionResolver } from '../identity/index.js';
 import { useDomainErrors } from '../http/commands.js';
@@ -17,8 +17,8 @@ export async function agentMcpPolicyRoutes(app: FastifyInstance, { db, sessions 
       const projects: { id: string; selected: boolean; readable: boolean; writable: boolean }[] = [];
       for (const projectId of [...current.connection.selectedProjectIds].sort()) {
         const actor = { kind: 'agent' as const, id: current.connection.agentId };
-        const read = await evaluateProject(actor, 'project.read', projectId, tx, { lock: true });
-        const write = await evaluateProject(actor, 'project.write', projectId, tx, { lock: true });
+        const read = await evaluateProject(actor, 'project.read', projectId, accessReader(tx), { lock: true });
+        const write = await evaluateProject(actor, 'project.write', projectId, accessReader(tx), { lock: true });
         projects.push({ id: projectId, selected: current.policy.selectedProjectIds.includes(projectId),
           readable: read.allowed, writable: write.allowed });
       }

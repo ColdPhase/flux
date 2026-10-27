@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { eq, sql } from 'drizzle-orm';
-import { schema } from '@flux/db';
+import { schema, accessReader } from '@flux/db';
 import {
   enforce, evaluateProject, NotFoundError, recordEvent, RuleViolationError,
   type Database, type Principal, type LiveInvitation, type LiveInvitationPorts, type LiveInvitationTarget,
@@ -62,7 +62,7 @@ export function liveInvitationStore(db: Database): LiveInvitationPorts {
               context: context(row), state: row.state } : null;
           },
           async requireProjectAndAnchor(principal: Principal, target: LiveInvitationTarget): Promise<void> {
-            enforce(await evaluateProject(principal, 'project.read', target.projectId, tx, { lock: true }), 'project');
+            enforce(await evaluateProject(principal, 'project.read', target.projectId, accessReader(tx), { lock: true }), 'project');
             await requireLiveContext(principal, target.context, target.projectId, tx, true);
             const [locked] = await tx.select().from(schema.liveSessions)
               .where(eq(schema.liveSessions.id, target.id)).for('share');

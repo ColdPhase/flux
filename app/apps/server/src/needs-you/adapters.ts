@@ -1,14 +1,14 @@
-import { needsYouRows, returnRows } from '@flux/db';
+import { needsYouRows, returnRows, visibleFilter, accessReader } from '@flux/db';
 import {
   createNeedsYou,
   evaluateProject,
   listWorkspaces,
-  visibleFilter,
   type Database,
   type NeedsYouAccess,
   type NeedsYouAssistant,
 } from '@flux/core';
 import { notificationRepository } from '../push/adapters.js';
+import { aiAllowedInProject } from '../access/ai-gate.js';
 import { workRepository } from '../work/adapters.js';
 
 // Adapters that connect the core "Needs you" queue (#342) to the access policy and the Drizzle rows.
@@ -25,13 +25,13 @@ export function policyNeedsYouAccess(db: Database): NeedsYouAccess {
       return returns.projectIdsWhere(workspaceId, await visibleFilter(principal, workspaceId, 'project', db));
     },
     async canAccept(principal, projectId) {
-      return principal.kind === 'human' && (await evaluateProject(principal, 'project.write', projectId, db)).allowed;
+      return principal.kind === 'human' && (await evaluateProject(principal, 'project.write', projectId, accessReader(db))).allowed;
     },
     async accepters(projectId, limit) {
       const people: { id: string; name: string }[] = [];
       for (const member of await rows.workspaceMembersOfProject(projectId, 50)) {
         if (people.length >= limit) break;
-        if ((await evaluateProject({ kind: 'human', id: member.id }, 'project.write', projectId, db)).allowed) people.push(member);
+        if ((await evaluateProject({ kind: 'human', id: member.id }, 'project.write', projectId, accessReader(db))).allowed) people.push(member);
       }
       return people;
     },
@@ -42,6 +42,7 @@ export function policyNeedsYouAccess(db: Database): NeedsYouAccess {
 /** The "Needs you" use cases bound to a connection. */
 export const needsYouUseCases = (db: Database, assistant?: NeedsYouAssistant) => createNeedsYou({
   access: policyNeedsYouAccess(db),
+  aiAllowed: (projectId) => aiAllowedInProject(db, projectId),
   ...(assistant ? { assistant } : {}),
   repository: needsYouRows(db),
   inbox: notificationRepository(db),

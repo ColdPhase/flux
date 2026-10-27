@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { and,eq,sql } from 'drizzle-orm';
-import { editingSessionRows, liveMapRows, schema, type DbExecutor, type EditingConfirmationPolicy } from '@flux/db';
+import { editingSessionRows, liveMapRows, schema, type DbExecutor, type EditingConfirmationPolicy, accessReader } from '@flux/db';
 import { ConflictError, InvalidInputError, derivedUuid,policySketchAccess, type MapNativeChange, type Principal, type SketchLiveJournal } from '@flux/core';
 import type { SketchRepository } from '@flux/core';
 import { decodeMapChange } from './map-state.js';
@@ -110,7 +110,7 @@ export function nativeMapJournal(db:DbExecutor,repository:SketchRepository,optio
       if(options.principal?.kind==='human'&&options.sessionId&&!await editingSessionRows(db,options.confirmation).lock({actorId:options.principal.id,sessionId:options.sessionId}))throw new ConflictError('The current session ended','UNAUTHENTICATED');
       if(!options.commandId||!options.resourceId||options.principal?.kind!=='human')return {found:false as const};
       const principal=options.principal;
-      await policySketchAccess(db).requireSketch(principal,'sketch.read',options.resourceId,{lock:true});
+      await policySketchAccess(accessReader(db)).requireSketch(principal,'sketch.read',options.resourceId,{lock:true});
       await db.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${'flux.editing.intent:'+principal.id+':'+options.commandId},0))`);
       const [old]=await db.select().from(schema.liveEditingIntents).where(and(eq(schema.liveEditingIntents.actorId,principal.id),eq(schema.liveEditingIntents.commandId,options.commandId)));
       if(!old)return {found:false as const};

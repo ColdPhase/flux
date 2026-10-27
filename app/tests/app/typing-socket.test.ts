@@ -74,6 +74,37 @@ describe('actual same-origin ephemeral human typing WebSocket', () => {
     await Promise.all([sender.close(), receiver.close()]);
   });
 
+  test('two threads of one project are two scopes: each hears only its own writers, and neither stores anything', async () => {
+    // Same project, same people, same roles: the thread, not the project, is the audience's scope (#155 AC-2).
+    const room = await project(alice, ws.id, 'Typing two threads', 'restricted');
+    await grant(alice, room.id, bob, 'contributor'); await grant(alice, room.id, viewer, 'viewer');
+    const thread = async (body: string) => ({ kind: 'conversation' as const, id: (expectStatus(await alice.browser.request('POST', `/api/v1/projects/${room.id}/conversations`,
+      { body: { body, clientMessageId: randomUUID() } }), 201) as Conversation).id });
+    const one = await thread('First thread: where does the switch go?'); const two = await thread('Second thread: what colour is the base?');
+    const [writer, readerOne, bobTwo, aliceTwo] = await Promise.all([connect(alice.browser), connect(viewer.browser), connect(bob.browser), connect(alice.browser)]);
+    await Promise.all([writer.watch(one), readerOne.watch(one), bobTwo.watch(two), aliceTwo.watch(two)]);
+    const counts = () => pool.query('SELECT (SELECT count(*) FROM project_messages WHERE workspace_id=$1) AS messages, (SELECT count(*) FROM events WHERE workspace_id=$1) AS events, (SELECT count(*) FROM notifications WHERE workspace_id=$1) AS notifications', [ws.id]);
+    const baseline = (await counts()).rows;
+    writer.send({ type: 'active', active: true });
+    await readerOne.until(() => visible(readerOne, alice.id), 'the first thread hears its writer');
+    // Past two checked heartbeats: Bob, reading the second thread, has had every chance to hear her.
+    await new Promise((resolve) => setTimeout(resolve, 2300));
+    assert.ok(visible(readerOne, alice.id), 'the first thread still hears her');
+    assert.ok(bobTwo.messages.every((frame) => frame.context.id === two.id && frame.people.every((human) => human.id !== alice.id)), 'the second thread never hears her or any other scope');
+    // The reverse: Bob writing in the second thread is heard there, and not in the first.
+    bobTwo.send({ type: 'active', active: true });
+    await aliceTwo.until(() => visible(aliceTwo, bob.id), 'the second thread hears its writer');
+    await new Promise((resolve) => setTimeout(resolve, 1200));
+    assert.ok(readerOne.messages.every((frame) => frame.context.id === one.id && frame.people.every((human) => human.id !== bob.id)), 'the first thread never hears Bob');
+    assert.ok(writer.messages.every((frame) => frame.context.id === one.id && frame.people.every((human) => human.id !== bob.id)), 'the writer, in the first thread, never hears Bob');
+    // Stopping in one thread ends only its own activity.
+    writer.send({ type: 'active', active: false });
+    await readerOne.until(() => absent(readerOne, alice.id), 'stop in the first thread', 750);
+    assert.ok(visible(aliceTwo, bob.id), 'the second thread is untouched by a stop elsewhere');
+    assert.deepEqual((await counts()).rows, baseline, 'typing in two threads stores no message, event or notification');
+    await Promise.all([writer.close(), readerOne.close(), bobTwo.close(), aliceTwo.close()]);
+  });
+
   test('unchanged checked snapshots renew application freshness without a new durable event', async () => {
     const { context } = await conversation(); const { sender, receiver } = await pair(context);
     sender.send({ type: 'active', active: true });

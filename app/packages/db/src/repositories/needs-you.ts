@@ -38,6 +38,24 @@ export function needsYouRows(db: DbExecutor) {
       return rows.map(toDecisionRecord);
     },
 
+    /** Open suggestions made by agents this person connected, in these (already readable) projects, newest first (#661). */
+    async agentProposals(userId: string, projectIds: string[], limit: number) {
+      if (!projectIds.length) return [];
+      const p = schema.agentProposals;
+      const v = schema.projectMaterialVersions;
+      const rows = await db.select({ proposal: p, agentName: schema.agents.name, title: v.title }).from(p)
+        .innerJoin(schema.agents, eq(schema.agents.id, p.agentId))
+        .innerJoin(v, and(eq(v.materialId, p.sourceMaterialId), eq(v.version, p.sourceMaterialVersion)))
+        .where(and(eq(p.ownerUserId, userId), eq(p.status, 'proposed'), inArray(p.projectId, projectIds)))
+        .orderBy(desc(p.createdAt)).limit(limit);
+      return rows.map((row) => ({
+        id: row.proposal.id, projectId: row.proposal.projectId, agentId: row.proposal.agentId, agentName: row.agentName,
+        fact: row.proposal.fact, interpretation: row.proposal.interpretation, suggestedAction: row.proposal.suggestedAction,
+        source: { materialId: row.proposal.sourceMaterialId, title: row.title, version: row.proposal.sourceMaterialVersion },
+        createdAt: row.proposal.createdAt,
+      }));
+    },
+
     /** Whether the person's own notification exists; read or unread is set on it. */
     async setNotificationRead(userId: string, id: string, read: boolean) {
       const rows = await db.update(n).set({ readAt: read ? sql`coalesce(${n.readAt}, now())` : null })

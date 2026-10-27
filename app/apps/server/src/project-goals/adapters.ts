@@ -1,4 +1,4 @@
-import { projectGoalRows, type DbExecutor } from '@flux/db';
+import { projectGoalRows, type DbExecutor, accessReader } from '@flux/db';
 import {
   createProjectGoalUseCases,
   enforce,
@@ -17,10 +17,10 @@ function projectGoalPorts(tx: Database): ProjectGoalPorts {
   return {
     access: {
       async read(principal, projectId) {
-        enforce(await evaluateProject(principal, 'project.read', projectId, tx), 'project');
+        enforce(await evaluateProject(principal, 'project.read', projectId, accessReader(tx)), 'project');
       },
       async write(principal, projectId) {
-        const { project } = enforce(await evaluateProject(principal, 'project.write', projectId, tx, { lock: true }), 'project');
+        const { project } = enforce(await evaluateProject(principal, 'project.write', projectId, accessReader(tx), { lock: true }), 'project');
         return { workspaceId: project!.workspaceId };
       },
     },

@@ -66,6 +66,12 @@ describe('architecture boundaries', () => {
     assert.deepEqual(reachableImports(root, entries, ['@flux/db', 'drizzle-orm', 'pg', 'pg-boss', 'fastify', 'web-push']), []);
   });
 
+  test('the access policy decides over a port, never through persistence, including through helpers (#90)', () => {
+    // `policy.ts` and `ports.ts` are the pure decisions and the `AccessReader` port; `@flux/db` implements it.
+    const entries = ['access/policy.ts', 'access/ports.ts', 'events.ts'].map((file) => join(root, 'packages/core/src', file));
+    assert.deepEqual(reachableImports(root, entries, ['@flux/db', 'drizzle-orm', 'pg', 'pg-boss', 'fastify', 'web-push']), []);
+  });
+
   test('the rules reject each kind of boundary violation (self-test)', () => {
     const source = (path: string, text: string) => ({ path, text });
     const found = checkSources([

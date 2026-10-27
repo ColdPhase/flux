@@ -406,9 +406,16 @@ runtime_prepare_cleanup() {
   runtime_purge_id=
   if docker volume inspect "${PROJECT}_pgdata" >/dev/null 2>&1; then
     runtime_purge_reply=$(image_op runtime-begin-purge) || die "Runtime cleanup admission could not be fenced. API and worker remain stopped; repair the database and retry."
-    runtime_purge_id=$(printf '%s\n' "$runtime_purge_reply" | sed -n 's/^FLUX_RUNTIME_PURGE //p')
-    printf '%s\n' "$runtime_purge_id" | grep -Eq '^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$' \
-      || die "Runtime cleanup fence was not confirmed. API and worker remain stopped."
+    # A database that never ran the migration has no admission table to fence:
+    # the operation answers FLUX_RUNTIME_PURGE none and cleanup proceeds unfenced.
+    case "$runtime_purge_reply" in
+      'FLUX_RUNTIME_PURGE none') runtime_purge_id= ;;
+      *)
+        runtime_purge_id=$(printf '%s\n' "$runtime_purge_reply" | sed -n 's/^FLUX_RUNTIME_PURGE //p')
+        printf '%s\n' "$runtime_purge_id" | grep -Eq '^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$' \
+          || die "Runtime cleanup fence was not confirmed. API and worker remain stopped."
+        ;;
+    esac
   fi
 }
 # Best effort before slot volumes are deleted: each CLI signs out (the vendor ends the session where it
@@ -637,6 +644,16 @@ parse_yes() {
   done
 }
 
+# One-off `run` containers left by an interrupted command (for example a first up stopped while
+# files-init was starting) are never started, and `compose down` does not remove them. Their
+# volume then stays in use, so clean and reset remove them first, within this project only.
+remove_leftover_runs() {
+  leftover_ids=$(docker ps -aq --filter "label=com.docker.compose.project=$1" --filter "label=com.docker.compose.oneoff=True")
+  [ -n "$leftover_ids" ] || return 0
+  # shellcheck disable=SC2086
+  docker rm -f $leftover_ids >/dev/null 2>&1 || warn "Could not remove leftover one-off containers of $1; its volumes may stay."
+}
+
 cmd_reset() {
   parse_yes "$@"
   need_docker
@@ -647,6 +664,8 @@ cmd_reset() {
     || { say "Cancelled; nothing was deleted."; return 1; }
   runtime_prepare_cleanup
   runtime_sign_out
+  remove_leftover_runs "$PROJECT"
+  remove_leftover_runs "$DEV_PROJECT"
   compose_main --profile dev --profile test --profile ui --profile runtime down -v --remove-orphans
   compose_dev down -v --remove-orphans
   release_project "$PROJECT"
@@ -679,6 +698,8 @@ cmd_clean() {
     || { say "Cancelled; nothing was removed."; return 1; }
   runtime_prepare_cleanup
   runtime_sign_out
+  remove_leftover_runs "$PROJECT"
+  remove_leftover_runs "$DEV_PROJECT"
   compose_main --profile dev --profile test --profile ui --profile runtime down -v --remove-orphans
   compose_dev down -v --remove-orphans
   remove_own_images
