@@ -160,9 +160,10 @@
 
 .doc-prose { font-size: .9375rem; line-height: 1.667; color: var(--t2); overflow-wrap: anywhere; }
 .doc-prose :is(h1, h2, h3, h4, h5, h6, strong, li) { color: var(--t1); }
-/* A compact 64ch reading column inside the 820px page; tables, code and images
-   keep the full available width, with tables scrolling in their own region. */
-.doc-prose > :is(p, ul, ol, blockquote, dl) { max-width: 64ch; }
+/* A compact 62ch reading column inside the 820px page (at most 90 characters on a line in Chromium and WebKit, whose
+   proportional fonts fit different numbers of narrow letters into the same width: 64ch reached 91 in WebKit);
+   tables, code and images keep the full available width, with tables scrolling in their own region. */
+.doc-prose > :is(p, ul, ol, blockquote, dl) { max-width: 62ch; }
 .doc-prose > * { margin-top: 0; margin-bottom: 0; }
 .doc-prose > * + * { margin-top: 18px; }
 .doc-prose h1, .doc-prose h2, .doc-prose h3, .doc-prose h4, .doc-prose h5, .doc-prose h6 { line-height: 1.5; font-weight: 600; letter-spacing: -0.025em; }

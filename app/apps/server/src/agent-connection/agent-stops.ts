@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { ownWorkingAgentsPath, projectAgentStopsPath, type StopAgentCommand } from '@flux/contracts';
-import { agentStopRows } from '@flux/db';
+import { agentStopRows, accessReader } from '@flux/db';
 import { agentStopUseCases, enforce, evaluateProject, recordEvent, type AgentStopPorts, type AgentStopUnitOfWork, type Database, type Transaction } from '@flux/core';
 import type { SessionResolver } from '../identity/index.js';
 import { commandRunner, requires, useDomainErrors } from '../http/commands.js';
@@ -10,14 +10,14 @@ import { nativeWorkInTransaction } from '../work/adapters.js';
 function stopPorts(tx: Transaction): AgentStopPorts {
   return {
     async requireProject(principal, projectId, action) {
-      const checked = enforce(await evaluateProject(principal, action, projectId, tx, { lock: action === 'project.write' }), 'project');
+      const checked = enforce(await evaluateProject(principal, action, projectId, accessReader(tx), { lock: action === 'project.write' }), 'project');
       return { workspaceId: checked.project!.workspaceId };
     },
     async canRead(principal, projectId) {
-      return (await evaluateProject(principal, 'project.read', projectId, tx)).allowed;
+      return (await evaluateProject(principal, 'project.read', projectId, accessReader(tx))).allowed;
     },
     async isManager(principal, projectId) {
-      return (await evaluateProject(principal, 'project.manage', projectId, tx)).allowed;
+      return (await evaluateProject(principal, 'project.manage', projectId, accessReader(tx))).allowed;
     },
     // The canonical task update, so the version, history and events are the ordinary ones. The task goes back to
     // nobody; a task that is merely open or blocked keeps its status.

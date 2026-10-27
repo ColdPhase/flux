@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
 import { Navigate, useLoaderData, useLocation, useRevalidator, useSearchParams, type LoaderFunctionArgs } from 'react-router';
 import type { Project, ProactiveComparisonOutcome, ProjectWorkViewQuery, WorkCounts, WorkItem, WorkObjectType, WorkRowProjection } from '@flux/contracts';
-import { Button, EmptyState, ErrorState, Icon, MEDIA, useMediaQuery } from '../ui';
+import { Button, EmptyState, ErrorState, Icon, MEDIA, useMediaQuery, useRowMotion } from '../ui';
 import { getProject } from '../app/conversation-api';
 import { useShellActions } from '../app/shellContext';
 import { projectAiBlocked, useShellData } from '../app/data';
@@ -396,6 +396,8 @@ export function ProjectTasks() {
     </div>
   );
 
+  // A task that changes state moves to another group, a new one grows in, a finished list collapses its rows (#593 AC-4).
+  useRowMotion(scroller, '.ws-task[data-work-id]', (el) => el.dataset.workId, [mode, status ?? 'all', mine, cursor ?? '', phone, read.phase === 'ready' || read.phase === 'refreshing' ? 'ready' : 'loading'].join('|'));
   // The Decisions view is gone (F-026 S1): its old links open the Inbox's Decisions filter.
   if (retired) return <Navigate to="/inbox?show=decisions" replace state={location.state} />;
   return (

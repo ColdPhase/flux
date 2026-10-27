@@ -8,16 +8,20 @@ contract" in the [architecture proposal](../product/application-architecture.md#
 
 ## One choke point
 
-`app/packages/core/src/access/policy.ts` is the only place that decides access. It
-exports:
+`app/packages/core/src/access/policy.ts` is the only place that decides access. Its decisions
+are pure: they run over the facts of the `AccessReader` port (`access/ports.ts`), which has one
+implementation, `app/packages/db/src/repositories/access.ts` (`accessReader(db)`, bound to the
+transaction that decides). That adapter reads the facts and takes the locks, in the order
+[Concurrency](#concurrency) lists, and builds the list condition. Callers pass `accessReader(tx)`
+where the table below says `reader`. Core exports:
 
 | Function | Use |
 | --- | --- |
-| `authorize(principal, action, resource, db)` | Returns `{ allowed, visible }` for one object. |
-| `assertAuthorized(principal, action, resource, db)` | Throws `NotFoundError` (404) when `visible` is false, and `ForbiddenError` (403) when the object is visible but the action is not allowed. |
-| `visibleFilter(principal, workspaceId, 'project' \| 'draft' \| 'sketch' \| 'dm', db)` | Returns a SQL condition. Put it in the `WHERE` clause of both the list query and its count, so invisible rows never reach counts, pages or payloads. |
-| `authorizeEvent(principal, event, db)` | Whether a recipient may receive one event now: the principal is active in the event's workspace and can read the object the event is about. `recordEvent` calls it per member/agent to write the stream audience, and the stream calls it again for every event at delivery time. |
-| `visibleWorkspaceOf(principal, resource, db)` | The workspace of an object the principal can see, or `null`. Used to scope records such as idempotency keys without revealing invisible objects. |
+| `authorize(principal, action, resource, reader)` | Returns `{ allowed, visible }` for one object. |
+| `assertAuthorized(principal, action, resource, reader)` | Throws `NotFoundError` (404) when `visible` is false, and `ForbiddenError` (403) when the object is visible but the action is not allowed. |
+| `visibleFilter(principal, workspaceId, 'project' \| 'draft' \| 'sketch' \| 'dm', db)` (`@flux/db`) | Returns a SQL condition. Put it in the `WHERE` clause of both the list query and its count, so invisible rows never reach counts, pages or payloads. It is the adapter's own list condition for the same rules (a SQL fragment cannot live in core), over the same actor standing `authorize` reads. |
+| `authorizeEvent(principal, event, reader)` | Whether a recipient may receive one event now: the principal is active in the event's workspace and can read the object the event is about. `recordEvent` calls it per member/agent to write the stream audience, and the stream calls it again for every event at delivery time. |
+| `visibleWorkspaceOf(principal, resource, reader)` | The workspace of an object the principal can see, or `null`. Used to scope records such as idempotency keys without revealing invisible objects. |
 
 `authorize` and `assertAuthorized` take an optional `{ lock: true }`. Inside a commit
 transaction it takes the locks described under [Concurrency](#concurrency): the
@@ -34,7 +38,8 @@ replay, worker jobs (before reading inputs and before committing results), file
 upload and download, search, MCP tools and extensions MUST get access decisions
 from these functions or from the domain methods. They must not query collaborative
 tables for a caller directly. A new object type extends `policy.ts` with its own
-actions and filter. It does not get a second policy module. Notifications and
+actions and decision, the port with the facts they need, and the `@flux/db` adapter with the
+statements and the list condition. It does not get a second policy module or a second reader. Notifications and
 Web Push (#41) follow this rule: a notification inherits the audience of its source
 (`<type>.read`), checked at creation, in the inbox list (`visibleFilter`), on direct
 reads (`authorize`) and by the worker before each send. The event stream and the

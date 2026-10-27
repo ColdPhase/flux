@@ -3,7 +3,7 @@ import { after, before, describe, test } from 'node:test';
 import { eq } from 'drizzle-orm';
 import { PgBoss } from 'pg-boss';
 import type { DraftSummary } from '@flux/contracts';
-import { draftResultRepository, eventRepository, schema } from '@flux/db';
+import { accessReader, draftResultRepository, eventRepository, schema } from '@flux/db';
 import {
   addMember,
   createDraft,
@@ -33,7 +33,7 @@ after(() => boss.stop());
  * Enqueues through the real transactional path but delays the job for an hour, so the
  * Compose worker does not claim it and the test can run the handler with a barrier.
  */
-const summaryPorts = { results: draftResultRepository, events: eventRepository };
+const summaryPorts = { results: draftResultRepository, events: eventRepository, access: accessReader };
 const delayed = { ...summaryPorts, queue: pgBossQueue({ send: (name: string, data: object, options: object) =>
   boss.send(name, data, { ...options, startAfter: 3600 }) } as unknown as Pick<PgBoss, 'send'>) };
 

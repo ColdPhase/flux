@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { describe, test } from 'node:test';
 import { count, eq } from 'drizzle-orm';
-import { schema } from '@flux/db';
+import { schema, visibleFilter, accessReader } from '@flux/db';
 import {
   addMember,
   authorize,
@@ -27,7 +27,6 @@ import {
   RuleViolationError,
   shareDraft,
   updateDraft,
-  visibleFilter,
   type Database,
   type Principal,
 } from '@flux/core';
@@ -127,7 +126,7 @@ describe('agents stay inside current project grants', () => {
     const agent = await createAgent(owner, ws.id, { name: 'No grants', owner: 'workspace' }, db);
     const bot = agentPrincipal(agent.id);
 
-    assert.deepEqual(await authorize(bot, 'draft.create', { type: 'workspace', id: ws.id }, db), { allowed: false, visible: true });
+    assert.deepEqual(await authorize(bot, 'draft.create', { type: 'workspace', id: ws.id }, accessReader(db)), { allowed: false, visible: true });
     await assert.rejects(createDraft(bot, ws.id, { title: 'zero grant draft' }, db), ForbiddenError, 'no project, no grant');
     await assert.rejects(createDraft(bot, ws.id, { title: 'ungranted', projectId: project.id }, db), ForbiddenError);
 
@@ -161,13 +160,13 @@ describe('agents stay inside current project grants', () => {
     assert.equal((await getDraft(bot, mine.id, db)).id, mine.id, 'viewer still reads its own draft');
     await assert.rejects(updateDraft(bot, mine.id, { body: 'v3', expectedVersion: 2 }, db), ForbiddenError, 'viewer cannot write its own draft');
     await assert.rejects(shareDraft(bot, mine.id, { scope: 'project', expectedVersion: 2 }, db), ForbiddenError);
-    assert.deepEqual(await authorize(bot, 'draft.write', { type: 'draft', id: shared.id }, db), { allowed: false, visible: true });
+    assert.deepEqual(await authorize(bot, 'draft.write', { type: 'draft', id: shared.id }, accessReader(db)), { allowed: false, visible: true });
 
     await revokeProjectGrant(owner, room.id, grant.id, db);
     for (const id of [mine.id, shared.id]) {
       await assert.rejects(getDraft(bot, id, db), NotFoundError, 'revoked grant hides the agent draft');
       await assert.rejects(updateDraft(bot, id, { body: 'after revoke', expectedVersion: 2 }, db), NotFoundError);
-      assert.deepEqual(await authorize(bot, 'draft.read', { type: 'draft', id }, db), { allowed: false, visible: false });
+      assert.deepEqual(await authorize(bot, 'draft.read', { type: 'draft', id }, accessReader(db)), { allowed: false, visible: false });
     }
     const page = await listDrafts(bot, ws.id, {}, db);
     assert.equal(page.total, 0);
@@ -327,15 +326,15 @@ describe('policy contract', () => {
     const item = await sharedDraft(owner, ws.id, 'Contract draft', 'project', room.id);
     await createDraft(owner, ws.id, { title: 'owner private' }, db);
 
-    assert.deepEqual(await authorize(stranger, 'draft.read', { type: 'draft', id: item.id }, db), { allowed: false, visible: false });
-    assert.deepEqual(await authorize(viewer, 'draft.read', { type: 'draft', id: item.id }, db), { allowed: true, visible: true });
-    assert.deepEqual(await authorize(viewer, 'draft.write', { type: 'draft', id: item.id }, db), { allowed: false, visible: true });
-    assert.deepEqual(await authorize(viewer, 'project.manage', { type: 'project', id: room.id }, db), { allowed: false, visible: true });
-    assert.deepEqual(await authorize(owner, 'project.manage', { type: 'project', id: room.id }, db), { allowed: true, visible: true });
-    assert.deepEqual(await authorize(viewer, 'workspace.manage_members', { type: 'workspace', id: ws.id }, db), { allowed: false, visible: true });
-    assert.deepEqual(await authorize(stranger, 'workspace.read', { type: 'workspace', id: ws.id }, db), { allowed: false, visible: false });
-    await assert.rejects(assertAuthorized(stranger, 'draft.read', { type: 'draft', id: item.id }, db), NotFoundError);
-    await assert.rejects(assertAuthorized(viewer, 'draft.write', { type: 'draft', id: item.id }, db), ForbiddenError);
+    assert.deepEqual(await authorize(stranger, 'draft.read', { type: 'draft', id: item.id }, accessReader(db)), { allowed: false, visible: false });
+    assert.deepEqual(await authorize(viewer, 'draft.read', { type: 'draft', id: item.id }, accessReader(db)), { allowed: true, visible: true });
+    assert.deepEqual(await authorize(viewer, 'draft.write', { type: 'draft', id: item.id }, accessReader(db)), { allowed: false, visible: true });
+    assert.deepEqual(await authorize(viewer, 'project.manage', { type: 'project', id: room.id }, accessReader(db)), { allowed: false, visible: true });
+    assert.deepEqual(await authorize(owner, 'project.manage', { type: 'project', id: room.id }, accessReader(db)), { allowed: true, visible: true });
+    assert.deepEqual(await authorize(viewer, 'workspace.manage_members', { type: 'workspace', id: ws.id }, accessReader(db)), { allowed: false, visible: true });
+    assert.deepEqual(await authorize(stranger, 'workspace.read', { type: 'workspace', id: ws.id }, accessReader(db)), { allowed: false, visible: false });
+    await assert.rejects(assertAuthorized(stranger, 'draft.read', { type: 'draft', id: item.id }, accessReader(db)), NotFoundError);
+    await assert.rejects(assertAuthorized(viewer, 'draft.write', { type: 'draft', id: item.id }, accessReader(db)), ForbiddenError);
 
     const filter = await visibleFilter(viewer, ws.id, 'draft', db);
     const rows = await db.select({ id: schema.drafts.id }).from(schema.drafts).where(filter);

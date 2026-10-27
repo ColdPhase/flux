@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 import { before, describe, test } from 'node:test';
 import type { Project, ProjectPerson, Workspace } from '@flux/contracts';
-import { authorize, authorizeEvent, loadActor, requireWorkspaceAi, workspaceAi } from '@flux/core';
+import { authorize, authorizeEvent, requireWorkspaceAi } from '@flux/core';
+import { loadActor, workspaceAi, accessReader } from '@flux/db';
 import { db, pool } from './support/db.js';
 import { addMember, expectStatus, person, project, workspace, type Person } from './support/people.js';
 import { setWorkspaceAi } from './support/workspace-ai.js';
@@ -46,7 +47,7 @@ describe('workspace AI policy', () => {
   });
 
   test('only owners and admins hold workspace.manage_ai; members, guests and agents do not', async () => {
-    const may = async (principal: { kind: 'human' | 'agent'; id: string }) => (await authorize(principal, 'workspace.manage_ai', { type: 'workspace', id: ws.id }, db)).allowed;
+    const may = async (principal: { kind: 'human' | 'agent'; id: string }) => (await authorize(principal, 'workspace.manage_ai', { type: 'workspace', id: ws.id }, accessReader(db))).allowed;
     assert.equal(await may({ kind: 'human', id: owner.id }), true);
     assert.equal(await may({ kind: 'human', id: admin.id }), true);
     assert.equal(await may({ kind: 'human', id: member.id }), false);
@@ -55,12 +56,12 @@ describe('workspace AI policy', () => {
   });
 
   test('one check: allowed, blocked, another epoch and a missing row (fail closed)', async () => {
-    const allowed = await requireWorkspaceAi(db, ws.id);
+    const allowed = await requireWorkspaceAi(accessReader(db), ws.id);
     assert.equal(allowed.state, 'allowed');
-    await assert.rejects(requireWorkspaceAi(db, ws.id, { epoch: allowed.epoch + 1 }), (error: { code?: string }) => error.code === 'WORKSPACE_AI_BLOCKED', 'another epoch is refused');
+    await assert.rejects(requireWorkspaceAi(accessReader(db), ws.id, { epoch: allowed.epoch + 1 }), (error: { code?: string }) => error.code === 'WORKSPACE_AI_BLOCKED', 'another epoch is refused');
     await setWorkspaceAi(ws.id, 'blocked');
     try {
-      await assert.rejects(requireWorkspaceAi(db, ws.id), (error: { status?: number; code?: string }) => error.status === 403 && error.code === 'WORKSPACE_AI_BLOCKED');
+      await assert.rejects(requireWorkspaceAi(accessReader(db), ws.id), (error: { status?: number; code?: string }) => error.status === 403 && error.code === 'WORKSPACE_AI_BLOCKED');
     } finally { await setWorkspaceAi(ws.id, 'allowed'); }
     const row = (await pool.query('DELETE FROM workspace_ai_policies WHERE workspace_id = $1 RETURNING *', [ws.id])).rows[0];
     try {
@@ -74,7 +75,7 @@ describe('workspace AI policy', () => {
 
   test('an agent of a workspace whose AI is off is inactive: no project read, no audience, no event; people are unchanged', async () => {
     const audience = async () => (expectStatus(await member.browser.request('GET', `/api/v1/projects/${place.id}/people`), 200) as ProjectPerson[]).map((who) => who.id);
-    const agentReads = async () => (await authorizeEvent({ kind: 'agent', id: agentId }, { kind: 'project.updated.v1', workspaceId: ws.id, objectId: place.id }, db));
+    const agentReads = async () => (await authorizeEvent({ kind: 'agent', id: agentId }, { kind: 'project.updated.v1', workspaceId: ws.id, objectId: place.id }, accessReader(db)));
     const recipientsOfNewEvent = async () => {
       const seq = Number((await pool.query('SELECT coalesce(max(seq), 0) AS seq FROM events')).rows[0].seq);
       expectStatus(await owner.browser.request('POST', `/api/v1/projects/${place.id}/work`, { body: { title: `Check ${Date.now()}` } }), 201);
@@ -87,9 +88,9 @@ describe('workspace AI policy', () => {
     assert.equal(await agentReads(), true);
     // The change of the policy is for people only: an agent in an allowed workspace, who may read the workspace, still never receives it.
     const policyChanged = { kind: 'workspace.ai_policy_changed.v1', workspaceId: ws.id, objectId: ws.id };
-    assert.equal(await authorizeEvent({ kind: 'agent', id: agentId }, policyChanged, db), false, 'no agent receives workspace.ai_policy_changed.v1');
-    assert.equal(await authorizeEvent({ kind: 'human', id: member.id }, policyChanged, db), true, 'control: a member does');
-    assert.equal(await authorizeEvent({ kind: 'agent', id: agentId }, { ...policyChanged, kind: 'workspace.member_added.v1' }, db), true, 'control: other workspace events still reach the agent');
+    assert.equal(await authorizeEvent({ kind: 'agent', id: agentId }, policyChanged, accessReader(db)), false, 'no agent receives workspace.ai_policy_changed.v1');
+    assert.equal(await authorizeEvent({ kind: 'human', id: member.id }, policyChanged, accessReader(db)), true, 'control: a member does');
+    assert.equal(await authorizeEvent({ kind: 'agent', id: agentId }, { ...policyChanged, kind: 'workspace.member_added.v1' }, accessReader(db)), true, 'control: other workspace events still reach the agent');
     const allowedRecipients = await recipientsOfNewEvent();
     assert.ok(allowedRecipients.includes(`agent:${agentId}`), `control: an agent audience row is written (${allowedRecipients.join(', ')})`);
     await setWorkspaceAi(ws.id, 'blocked');

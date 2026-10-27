@@ -5,25 +5,26 @@ import * as zxcvbnCommon from '@zxcvbn-ts/language-common';
 import * as zxcvbnEnglish from '@zxcvbn-ts/language-en';
 import { WORKSPACE_ENCRYPTION_RESUME_JOB, type WorkspaceEncryptionResumeJob } from '@flux/contracts';
 import {
-  authorize, createEncryptionUseCases, DerivationSemaphore, ForbiddenError, getWorkspace, keyringFromEnv, loadActor, NotFoundError, ProcessKeys,
+  authorize, createEncryptionUseCases, DerivationSemaphore, ForbiddenError, getWorkspace, keyringFromEnv, NotFoundError, ProcessKeys,
   recordEvent, swapFiles, swapSafety, testSwapRoot, type Database, type EncryptionPorts, type EncryptionUnitOfWork, type PasswordEstimator,
 } from '@flux/core';
-import { workspaceEncryptionRows, type DbExecutor } from '@flux/db';
+import { accessReader, loadActor, workspaceEncryptionRows, type DbExecutor } from '@flux/db';
 import { eventPorts } from '../events.js';
 
 // Adapters of the encrypted-workspace use cases (F-030, #655): the access policy (`workspace.manage_encryption`), the
 // `@flux/db` key rows, the event log and the queue, each bound to the unit of work's transaction.
 
 function encryptionPorts(tx: Database, boss: Pick<PgBoss, 'send'>): EncryptionPorts {
+  const executor = tx as unknown as DbExecutor;
   return {
-    rows: workspaceEncryptionRows(tx as unknown as DbExecutor),
+    rows: workspaceEncryptionRows(executor),
     access: {
       async manager(principal, workspaceId, options = {}) {
-        const decision = await authorize(principal, 'workspace.manage_encryption', { type: 'workspace', id: workspaceId }, tx, { lock: options.lock ?? false });
+        const decision = await authorize(principal, 'workspace.manage_encryption', { type: 'workspace', id: workspaceId }, accessReader(executor), { lock: options.lock ?? false });
         if (!decision.visible) throw new NotFoundError('Workspace', 'WORKSPACE_NOT_FOUND');
         if (!decision.allowed) throw new ForbiddenError('Only workspace owners and admins can unlock or manage encryption', 'WORKSPACE_ENCRYPTION_ADMIN_REQUIRED');
         // The membership row is already held FOR SHARE under `lock`; this reads the role it allowed.
-        return { role: (await loadActor(principal, workspaceId, tx)).role as 'owner' | 'admin' };
+        return { role: (await loadActor(principal, workspaceId, executor)).role as 'owner' | 'admin' };
       },
     },
     async event(principal, workspaceId, kind, data) {

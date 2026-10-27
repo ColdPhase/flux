@@ -1,5 +1,5 @@
 import type { AgentPeerRequestClass, AuthenticatedAgentRuntime } from '@flux/contracts';
-import { coworkUnitCreationRows } from '@flux/db';
+import { coworkUnitCreationRows, accessReader } from '@flux/db';
 import { assistantHandoffRunId, ConflictError, evaluateProject, normalizeCoWorkUnitCreate, requireOwnerAssistantHandoff, validateCoWorkUnitPolicy,
   type CoWorkContext, type CoWorkUnitPolicy, type Principal, type Transaction } from '@flux/core';
 import { coWorkTaskGraphLocks } from './graph.js';
@@ -61,7 +61,7 @@ export async function cancelOwnerAssistantUnitInTransaction(tx: Transaction, by:
   assistantConnectionId: string; taskId: string; unitId: string; creationVersion: number }): Promise<HandoffUndo> {
   // Whoever undoes it, the owner included, needs write access to the project now: a person removed or downgraded since cannot cancel a unit
   // there. The rights come first (locked, as everywhere), then the connection slots, the graph, the tasks and the unit row.
-  if (!(await evaluateProject(by, 'project.write', scope.projectId, tx, { lock: true })).allowed) return { result: 'changed' };
+  if (!(await evaluateProject(by, 'project.write', scope.projectId, accessReader(tx), { lock: true })).allowed) return { result: 'changed' };
   const rows = coworkUnitCreationRows(tx);
   const locked = await rows.lockUnit({ workspaceId: scope.workspaceId, projectId: scope.projectId, creatorConnectionId: scope.assistantConnectionId,
     taskId: scope.taskId, unitId: scope.unitId }, (units) => coWorkTaskGraphLocks(tx, scope.workspaceId, units));

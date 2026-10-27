@@ -1,7 +1,7 @@
 """Subtle navigation feedback and arrival motion (#155 AC-1, AC-4, AC-5; Studio 11.6 UI116-5).
 
-Real accounts, projects and messages through the public API; Chromium with and without reduced
-motion. Navigation is held at the actual network boundary to observe an interrupted choice; nothing
+Real accounts, projects and messages through the public API; Chromium or WebKit (FLUX_UI_BROWSER,
+default chromium), with and without reduced motion. Navigation is held at the actual network boundary to observe an interrupted choice; nothing
 is fabricated in the page. Video of the interruption journeys goes to FLUX_UI_SCREENSHOTS when set.
 Screenshots and video are evidence of placement only; timings are measured by motion_performance.py.
 """
@@ -14,7 +14,13 @@ import unittest
 import uuid
 
 from playwright.sync_api import Page, expect, sync_playwright
-from test_app_shell import ORIGIN, UPSTREAM, shot, start_forwarder
+from test_app_shell import ORIGIN, UPSTREAM, UI_BROWSER, shot as save_shot, start_forwarder
+
+
+def shot(page, name):
+    """Screenshots of the other engine are named apart (FLUX_UI_BROWSER, #461)."""
+    save_shot(page, name if UI_BROWSER == "chromium" else f"{name}-{UI_BROWSER}")
+
 
 PASSWORD = "calm motion for a shared lamp"
 STAMP = uuid.uuid4().hex[:12]
@@ -44,7 +50,7 @@ class MotionJourney(unittest.TestCase):
         if UPSTREAM:
             start_forwarder(ORIGIN, UPSTREAM)
         cls.pw = sync_playwright().start()
-        cls.browser = cls.pw.chromium.launch()
+        cls.browser = getattr(cls.pw, UI_BROWSER).launch()
         expect.set_options(timeout=10000)
         for key, name in PEOPLE.items():
             context = cls.browser.new_context(service_workers="block", base_url=ORIGIN)
@@ -298,6 +304,7 @@ class MotionJourney(unittest.TestCase):
           const r = document.querySelector(`#nav-drawer .side__project[data-glide-id="${id}"]`).getBoundingClientRect(); return [g.top - r.top, g.height - r.height]; }""", project)
         self.assertTrue(all(abs(value) <= 1.01 for value in geo), geo)
 
+    @unittest.skipIf(UI_BROWSER != "chromium", "the slowed animation clock is a CDP command; WebKit's drawer slide is unverified")
     def test_06b_script_driven_motion_lasts_its_token_in_the_production_build(self):
         # #264: the minifier turns `--dur-3: 200ms` into `.2s`; read as a bare number that made the drawer's
         # slide 0.2 ms long, a jump in one frame. Slowed tenfold so the running animation can be read.
@@ -397,6 +404,62 @@ class MotionJourney(unittest.TestCase):
         expect(arrived).to_be_in_viewport()
         expect(arrived).to_have_attribute("data-arrival", "animated")
         self.assertEqual(thread.locator("[data-arrival='animated']").count(), 1)
+
+    # ------------------------------------------------------------------ the 64 px rail: the same highlight over its project tiles
+
+    def rail_link(self, page, index):
+        return page.locator(f'.side__rail-project[data-glide-id="{self.projects[index]}"]')
+
+    def assert_rail_glide_on(self, page, index):
+        glide = page.locator(".side__rail-glide")
+        expect(glide).to_have_attribute("data-target", self.projects[index])
+        page.wait_for_function("() => { const g = document.querySelector('.side__rail-glide'); return !!g && !g.getAnimations().length; }")
+        mark, tile = glide.bounding_box(), self.rail_link(page, index).bounding_box()
+        for key in ("x", "y", "width", "height"):
+            self.assertLess(abs(mark[key] - tile[key]), 1.01, f"the highlight sits exactly on the tile ({key}): {mark} on {tile}")
+
+    def test_10_the_rail_moves_the_same_highlight_to_the_chosen_project_and_settles_on_the_latest(self):
+        """AC-1: a tablet's sidebar is the 64 px rail (Spokój); a project chosen there gets the same traveling highlight
+        as the expanded list, at once, retargeted by a newer choice, with the draft, focus and scroll untouched."""
+        page = self.page(video=True, viewport={"width": 820, "height": 1180})
+        page.goto(f"/projects/{self.projects[0]}")
+        self.stream_ready(page)
+        expect(page.locator(".side--rail")).to_have_count(1)
+        glide = page.locator(".side__rail-glide")
+        expect(glide).to_have_attribute("data-target", self.projects[0])
+        self.assert_rail_glide_on(page, 0)
+        page.locator("#project-composer").fill("PRIVATE draft kept while choosing from the rail")
+        held, release = self.hold(page, f"**/api/v1/projects/{self.projects[1]}**")
+        self.rail_link(page, 1).click()
+        expect(glide).to_have_attribute("data-target", self.projects[1])
+        expect(self.rail_link(page, 1)).to_have_attribute("data-pending", "")
+        expect(page.locator(".side__rail-project.is-open")).to_have_attribute("data-glide-id", self.projects[0])
+        expect(page).to_have_url(re.compile(f"/projects/{self.projects[0]}$"))
+        self.wait_held(page, held)
+        # C before B arrives: the highlight retargets and settles on C.
+        self.rail_link(page, 2).click()
+        release()
+        expect(page).to_have_url(re.compile(f"/projects/{self.projects[2]}$"))
+        expect(page.locator(".side__rail-project.is-open")).to_have_attribute("data-glide-id", self.projects[2])
+        self.assert_rail_glide_on(page, 2)
+        expect(self.rail_link(page, 2)).to_be_focused()
+        shot(page, "motion-rail-settled-on-latest")
+        self.rail_link(page, 0).click()
+        expect(page).to_have_url(re.compile(f"/projects/{self.projects[0]}$"))
+        expect(page.locator("#project-composer")).to_have_value("PRIVATE draft kept while choosing from the rail")
+        self.assert_rail_glide_on(page, 0)
+        # The highlight is the open tile's own background while it stands over it: the tile never shows two marks.
+        self.assertEqual(self.rail_link(page, 0).evaluate("el => getComputedStyle(el).boxShadow"), "none")
+
+    def test_10b_the_rail_highlight_is_static_with_reduced_motion(self):
+        page = self.page(reduced=True, viewport={"width": 820, "height": 1180})
+        page.goto(f"/projects/{self.projects[0]}")
+        self.stream_ready(page)
+        self.assertTrue(page.evaluate("() => getComputedStyle(document.querySelector('.side__rail-glide')).transitionDuration.split(',').every((value) => parseFloat(value) === 0)"))
+        self.rail_link(page, 1).click()
+        expect(page).to_have_url(re.compile(f"/projects/{self.projects[1]}$"))
+        self.assertEqual(page.evaluate("() => document.getAnimations().filter(a => a.playState === 'running').length"), 0)
+        self.assert_rail_glide_on(page, 1)
 
 
 if __name__ == "__main__":

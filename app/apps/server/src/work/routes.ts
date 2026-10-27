@@ -29,6 +29,7 @@ import {
   type TaskContributionCommand,
 } from '@flux/contracts';
 import { assertAuthorized, ConflictError, InvalidInputError, type Database, type ResourceRef, type FileStorage } from '@flux/core';
+import { accessReader } from '@flux/db';
 import type { SessionResolver } from '../identity/index.js';
 import { commandRunner, expectedVersion, useDomainErrors, versionEtag, type ReplayCheck } from '../http/commands.js';
 import { workRepository, workUseCases } from './adapters.js';
@@ -82,7 +83,7 @@ const createLink = { type: 'object', required: ['from', 'to'], additionalPropert
 
 /** A replay needs current read access to the project named in the stored response. */
 const projectReader: ReplayCheck = (principal, body, db) =>
-  assertAuthorized(principal, 'project.read', { type: 'project', id: String((body as { projectId?: unknown } | null)?.projectId ?? '') }, db);
+  assertAuthorized(principal, 'project.read', { type: 'project', id: String((body as { projectId?: unknown } | null)?.projectId ?? '') }, accessReader(db));
 
 /**
  * `/api/v1` work, decision and result routes (#101). Each handler resolves the current session

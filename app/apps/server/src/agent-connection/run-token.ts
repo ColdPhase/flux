@@ -1,6 +1,6 @@
 import { RUN_TOKEN_LIMITS } from '@flux/contracts';
 import { DomainError, requireWorkspaceAi, type Database, type Transaction } from '@flux/core';
-import { personalRunTokenRows } from '@flux/db';
+import { personalRunTokenRows, accessReader } from '@flux/db';
 import { toolError } from './tool-results.js';
 
 // A personal run's MCP token at the MCP route (F-022 "Agent connection and permissions", F-027 A2/AST-8,
@@ -49,7 +49,7 @@ export async function requireLiveRun(tx: Transaction, claims: { ownerUserId: str
     || (options.newCall && row.mcpLimit !== null)) throw runEnded();
   if (await rows.assistantConnectionId(row.ownerUserId, row.workspaceId) !== claims.connectionId) throw runEnded();
   // F-029: the run works only while AI is on in its workspace, at the epoch it was admitted under.
-  await requireWorkspaceAi(tx, row.workspaceId, { lock: options.lock ?? false, epoch: row.aiEpoch });
+  await requireWorkspaceAi(accessReader(tx), row.workspaceId, { lock: options.lock ?? false, epoch: row.aiEpoch });
   return row;
 }
 

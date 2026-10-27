@@ -12,22 +12,96 @@ export function token(name: string): string {
   return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
 }
 
-export function duration(name: '--dur-1' | '--dur-2' | '--dur-3' | '--dur-4'): number {
+export type DurationToken = '--dur-1' | '--dur-2' | '--dur-3' | '--dur-4' | '--dur-in' | '--dur-out' | '--dur-view' | '--dur-press';
+
+export function duration(name: DurationToken): number {
   if (prefersReducedMotion()) return 0;
   return cssTimeToMs(token(name));
 }
 
-export type Easing = '--ease-out' | '--ease-in' | '--ease-sheet';
+export type Easing = '--ease-out' | '--ease-in' | '--ease-sheet' | '--ease-spring';
+
+// Nothing moves on its own while the first screen is put up (#593 AC-6): the shell marks motion ready once it has
+// committed and painted. Motion that answers the person's own input is never held back: a press or a panel opened by a
+// click in the first moments still moves. A page that is hidden does not move either; what it was showing is its end state.
+let ready = false;
+let lastInput = -Infinity;
+const ANSWERS_INPUT = 1000;
+export function markMotionReady() { ready = true; }
+/** Whether script-driven motion may run now: after first paint or answering input, with the page visible. */
+export function motionAllowed(): boolean {
+  if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return false;
+  return ready || performance.now() - lastInput < ANSWERS_INPUT;
+}
+
+/** Every animation the helpers below start carries this id, so they can be told from the page's own CSS. */
+export const MOTION_ID = 'flux-motion';
+/** The press's own (press.ts). */
+export const PRESS_ID = 'flux-press';
+const ours = (animation: Animation) => animation.id === MOTION_ID;
+/** Ends the helpers' own animations on an element and its descendants (an exit never lingers into a new state). */
+export function cancelMotion(el: Element | null, subtree = false) {
+  el?.getAnimations({ subtree }).filter(ours).forEach((animation) => animation.cancel());
+}
+
+// Transient animations of ours that `document.getAnimations()` may not list: those on elements inside a shadow root (the pictures
+// of what was replaced, Dissolve.tsx) are not in every engine's list, and the hidden-page guard must still land them.
+const tracked = new Set<Animation>();
+export function track(animation: Animation) {
+  tracked.add(animation);
+  const done = () => { tracked.delete(animation); };
+  animation.finished.then(done, done);
+}
 
 /** Runs a Web Animation and resolves when it ends (or at once when motion is off). */
 export function play(el: Element | null, frames: Keyframe[], ms: number, easing: Easing, options: KeyframeAnimationOptions = {}): Promise<Animation | null> {
-  if (!el || !ms || typeof el.animate !== 'function') return Promise.resolve(null);
+  if (!el || !ms || !motionAllowed() || typeof el.animate !== 'function') return Promise.resolve(null);
   const animation = el.animate(frames, { duration: ms, easing: token(easing) || 'ease-out', ...options });
+  animation.id = MOTION_ID;
   return animation.finished.then(() => animation, () => null);
 }
 
+/** The opacity and transform an element shows now (a running animation included). */
+export interface Pose { opacity?: number | string; transform?: string }
+
+function poseNow(el: Element, keys: (keyof Pose)[]): Pose {
+  const style = getComputedStyle(el);
+  const pose: Pose = {};
+  if (keys.includes('opacity')) pose.opacity = style.opacity;
+  if (keys.includes('transform')) pose.transform = style.transform === 'none' ? 'none' : style.transform;
+  return pose;
+}
+
+/**
+ * Moves an element to `to` from where it is now (#593 AC-1): an animation of ours that is still running (a
+ * panel closed while it opened, reopened while it left) continues from its current opacity and transform
+ * instead of snapping to a start or end pose, so the surface always settles on the latest state. Without a
+ * running one it starts from `from`. With motion off it cancels ours and leaves the end state at once.
+ */
+export function settle(el: Element | null, to: Pose, ms: number, easing: Easing, options: { from?: Pose; fill?: FillMode } = {}): Promise<Animation | null> {
+  if (!el) return Promise.resolve(null);
+  const keys = (['opacity', 'transform'] as const).filter((key) => to[key] !== undefined || options.from?.[key] !== undefined);
+  const running = el.getAnimations().some(ours);
+  const now = poseNow(el, [...keys]);
+  cancelMotion(el);
+  if (!ms || !motionAllowed() || typeof el.animate !== 'function') return Promise.resolve(null);
+  const from = running ? now : { ...now, ...options.from };
+  const animation = el.animate([from as Keyframe, to as Keyframe], { duration: ms, easing: token(easing) || 'ease-out', fill: options.fill ?? 'none' });
+  animation.id = MOTION_ID;
+  return animation.finished.then(() => animation, () => null);
+}
+
+/**
+ * Which way the person is travelling (#593 AC-2, AC-3): `back` after Back or the browser's history, otherwise
+ * `forward`. Surfaces that slide in the direction of travel read it; the router and the panel set it.
+ */
+export type TravelDirection = 'forward' | 'back';
+let travel: TravelDirection = 'forward';
+export const travelDirection = (): TravelDirection => travel;
+export function setTravelDirection(direction: TravelDirection) { travel = direction; }
+
 /** Remembers element positions, lets layout change, then animates them from where they were (FLIP). */
-export function flip(elements: (Element | null)[], ms = duration('--dur-3')) {
+export function flip(elements: (Element | null)[], ms = duration('--dur-in')) {
   const items = elements.filter((el): el is Element => !!el).map((el) => ({ el, rect: el.getBoundingClientRect() }));
   return () => {
     if (!ms) return;
@@ -178,6 +252,63 @@ function placeHighlight(box: HTMLElement | null, mark: HTMLElement | null, order
   box.classList.add('has-glide');
   if (fresh) { void mark.offsetWidth; mark.style.transition = ''; }
   placed.value = true;
+}
+
+/**
+ * Motion pauses while the page is hidden (#593 AC-6). A looping animation is paused and resumed when the page is shown again;
+ * a transient one of ours and a menu's or popover's CSS entry or exit (`ui-pop-*`) land on their end state at once, so nothing
+ * is half-finished on return; a press in flight is let go. Installed once, before the first render.
+ */
+let guarded = false;
+/** The page's own transient CSS motion: a menu's entry or exit (`ui-pop-*`, ui.css). */
+const endsWhenHidden = (animation: Animation) => typeof CSSAnimation !== 'undefined' && animation instanceof CSSAnimation && /^ui-pop/.test(animation.animationName);
+export function installMotionGuards() {
+  if (guarded || typeof document === 'undefined') return;
+  guarded = true;
+  for (const type of ['pointerdown', 'keydown', 'touchstart']) window.addEventListener(type, (event) => { if (event.isTrusted) lastInput = performance.now(); }, { capture: true, passive: true });
+  const paused = new Set<Animation>();
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden') {
+      for (const animation of new Set([...document.getAnimations(), ...tracked])) {
+        // However far along, and whether running or held at a frame.
+        if (animation.playState === 'finished' || animation.playState === 'idle') continue;
+        if (animation.id === PRESS_ID) { animation.cancel(); continue; }
+        if (ours(animation) || endsWhenHidden(animation)) { animation.finish(); continue; }
+        if (animation.playState !== 'running') continue;
+        if (animation.effect?.getComputedTiming().iterations === Infinity) { animation.pause(); paused.add(animation); }
+      }
+    } else {
+      for (const animation of paused) if (animation.playState === 'paused') animation.play();
+      paused.clear();
+    }
+  });
+}
+
+// What a person just changed (a task's state, by id), so the new drawing of it can morph even when its element is new:
+// a row that moves to another group is built again there, and a new element has no earlier value of its own to compare.
+const changed = new Map<string, number>();
+const JUST = 1500;
+/** Says that the thing `key` names was just changed by the person; what shows it next morphs (see `useMorph`). */
+export function noteChange(key: string) { changed.set(key, performance.now()); }
+const justChanged = (key?: string) => !!key && performance.now() - (changed.get(key) ?? -Infinity) < JUST;
+
+/**
+ * A value that changes in place morphs (#593 AC-4): the element it is drawn in settles in from `from` (a soft
+ * fade, optionally a little smaller) instead of jumping. Nothing runs for the first value or with motion off. With
+ * `key` (see `noteChange`), an element built for a value the person has just changed morphs on its first drawing too.
+ */
+export function useMorph<T extends Element>(value: unknown, from: Pose = { opacity: 0.35 }, key?: string): RefObject<T | null> {
+  const ref = useRef<T>(null);
+  const previous = useRef<{ value: unknown } | null>(null);
+  useLayoutEffect(() => {
+    const before = previous.current;
+    previous.current = { value };
+    if (before ? Object.is(before.value, value) : !justChanged(key)) return;
+    void settle(ref.current, { opacity: 1, ...(from.transform ? { transform: 'none' } : {}) }, duration('--dur-in'), '--ease-out', { from });
+    // `from` and `key` are constants of the call site.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [value]);
+  return ref;
 }
 
 export function useMediaQuery(query: string): boolean {
