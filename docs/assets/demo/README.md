@@ -17,7 +17,8 @@ API. Jonas's reply in step 1 is posted through the same API while Ada is away.
 
 Every frame is a Playwright screenshot at 1280 × 800 CSS px, light theme. The only addition is
 a drawn pointer that shows where the clicks go. Pillow joins the frames into a looping GIF with
-one shared 48-colour palette, which keeps the file under the evidence size limit.
+one shared 48-colour palette, which keeps the file within its allowlisted size
+(`scripts/docs-size-allowlist.txt`, 476206 bytes).
 
 **Recorded at:** the application at `main` `624d02560` with the cards fix of
 [#665](https://github.com/ColdPhase/flux/issues/665) ([PR #680](https://github.com/ColdPhase/flux/pull/680)),

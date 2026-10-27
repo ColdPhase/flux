@@ -66,6 +66,30 @@ destination. Going back restores the page, thread or panel, reading position and
 panel's own "‹ back" (rule 2) stays the only step back. The [contract](../../development/return-to-origin.md) records
 where it sits and how the place is kept.
 
+### Reference cards under a message
+
+Agent decision, 2026-10-28 ([#665](https://github.com/ColdPhase/flux/issues/665), [PR #680](https://github.com/ColdPhase/flux/pull/680)),
+within "implement as drawn": it reads boards A08 and A09 together with the Prostota
+[attachments board](../final/README.md#6-files-references-and-photos) and the earlier #501 rule that a title is one line with an
+ellipsis and the state stays visible.
+
+- **Wide conversation, the drawn card.** A computer with no panel open shows the attachments board's card: the kind
+  over the title on the left (number first for a task), the state at the right edge, centred across both lines, in full
+  ("In progress · Jonas Berg", "Current rule · accepted 27 Oct", "Negative result · Ada Kowalska").
+- **One row where the conversation is not at its full width.** A08 (the conversation beside an open panel, and the thread
+  in it) and A09 (phone) draw icon, number, title with an ellipsis and the state at the right edge, no kind line. That form
+  applies to every thread panel and sheet, to the conversation while a panel is docked or over it (at any screen width: the
+  reading column is 760 px at most, so a panel can only be told by being there), and to a conversation narrower than
+  760 px. Measured feed widths: 390 phone, 628 at 700, 748 tablet 820, 754 at 1440 with the panel, against 768 at 1024,
+  1184 at 1440 and more with no panel.
+- **The state is status only in the one-row card.** The boards draw "In progress", "Blocked", "accepted Oct 2" and never a
+  person. So the one-row state keeps the word that names the state and drops what only adds a name: a task's owner, a result's
+  author, the "Current rule · " or "Earlier rule · " lead and "would replace the current rule" (shown in the panel). The
+  decision's own title takes A08's title position. The wide card keeps its full line, as the attachments board and the
+  application drew it before. The text of the dropped parts stays in the page.
+- **The title keeps a line.** At least 15ch (about 18 characters) of title stay beside the state; when they do not fit, the
+  state drops under the title at the right edge. It is never cut, and the title never wraps letter by letter (#501).
+
 ### Token
 
 | Token | Light | Dark | Use |

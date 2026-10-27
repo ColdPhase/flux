@@ -392,63 +392,106 @@ class MessageAlignment(unittest.TestCase):
                     shot(page, f"spokoj-one-word-{width}-{'dark' if dark else 'light'}-{UI_BROWSER}")
                     page.context.close()
 
+    # What a reference card shows of itself, read from the layout: the characters of the title that lie inside its box (what is
+    # read before the ellipsis), the visible state, whether the state's box holds its text, and the boxes of card, title and state.
+    CARD_PROBE = """card => {
+      const box = (el) => { const r = el.getBoundingClientRect(); return {left: r.left, right: r.right, top: r.top, bottom: r.bottom}; };
+      const title = card.querySelector('.ws-chip__t'), state = card.querySelector('.ws-chip__k');
+      const text = title.firstChild, range = document.createRange(), edge = title.getBoundingClientRect().right;
+      let shown = 0;
+      for (let at = 0; at < text.length; at++) {
+        range.setStart(text, at); range.setEnd(text, at + 1);
+        if (range.getBoundingClientRect().right > edge + 0.5) break;
+        shown = at + 1;
+      }
+      return {kind: card.dataset.workKind, title: title.textContent, shown, state: state.innerText, stateFits: state.scrollWidth <= state.clientWidth + 1,
+        label: getComputedStyle(card, '::before').display, titleBox: box(title), stateBox: box(state), cardBox: box(card)};
+    }"""
+    STATE_WORD = {"work": "In progress", "decision": "accepted", "result": "Negative result"}
+
+    def assert_cards(self, page, scope, titles, narrow, where, name):
+        """Three cards (a task, a decision, a result) in `scope`: the title keeps its start, the state is whole and at the right
+        edge, and the form is the one-row card of the narrow places (A08, A09) or the drawn card of the wide column."""
+        cards = page.locator(f"{scope} .message-bubble .ws-chip")
+        expect(cards).to_have_count(3)
+        seen = set()
+        for index in range(3):
+            card = cards.nth(index)
+            card.scroll_into_view_if_needed()
+            measured = card.evaluate(self.CARD_PROBE)
+            kind = measured["kind"]
+            seen.add(kind)
+            shot(page, f"card-{name}-{kind}-{UI_BROWSER}")
+            label = f"{where} {kind}: {measured}"
+            self.assertEqual(measured["title"], titles[kind], label)
+            self.assertGreaterEqual(measured["shown"], 16, f"{label}: the title shows at least its first words")
+            # The state is whole: its box holds its text, and the word that names it is there.
+            self.assertTrue(measured["stateFits"], f"{label}: the state is cut")
+            self.assertIn(self.STATE_WORD[kind], measured["state"], label)
+            for part in ("titleBox", "stateBox"):
+                self.assertGreaterEqual(measured[part]["left"], measured["cardBox"]["left"] - 0.5, f"{label}: {part} inside the card")
+                self.assertLessEqual(measured[part]["right"], measured["cardBox"]["right"] + 0.5, f"{label}: {part} inside the card")
+            self.assertFalse(intersects(measured["titleBox"], measured["stateBox"]), f"{label}: the state never covers the title")
+            # The state is at the right edge of the card (its padding is 10 to 12 px).
+            self.assertLessEqual(measured["cardBox"]["right"] - measured["stateBox"]["right"], 14, f"{label}: the state is at the right edge")
+            if narrow:
+                self.assertEqual(measured["label"], "none", f"{label}: the one-row card has no kind line above the title")
+                self.assertNotIn("·", measured["state"].replace(" · parked", ""), f"{label}: the one-row state keeps the status, not the names")
+            else:
+                self.assertNotEqual(measured["label"], "none", f"{label}: the wide column keeps the kind over the title")
+                above, below = measured["stateBox"]["top"] - measured["cardBox"]["top"], measured["cardBox"]["bottom"] - measured["stateBox"]["bottom"]
+                self.assertAlmostEqual(above, below, delta=3, msg=f"{label}: the state is centred across the two lines")
+        self.assertEqual(seen, {"work", "decision", "result"})
+
     def test_03b_task_decision_and_result_cards_keep_their_title_and_their_whole_state(self):
         # #665: a card's title shows more than its first characters and its state stays whole (#501), in the thread panel
-        # (1440 px) and sheet (390 px) as in the conversation column. A narrow place draws one row (Spokój A08, A09), the
-        # computer's column the card of the attachments board: kind over title, state at the right edge.
+        # (1440 px) and sheet (390 px) as in the conversation column.
         for width, height, phone in ((1440, 900, False), (390, 844, True)):
-            for surface, path, scope, titles in (
-                ("thread", f"/projects/{self.cards_project}/conversations/{self.cards['id']}", "#thread", self.card_titles),
-                ("stream", f"/projects/{self.cards_project}", ".project-convo__feed", self.stream_titles),
+            for surface, path, scope, titles, narrow in (
+                ("thread", f"/projects/{self.cards_project}/conversations/{self.cards['id']}", "#thread", self.card_titles, True),
+                ("stream", f"/projects/{self.cards_project}", ".project-convo__feed", self.stream_titles, width == 390),
             ):
                 with self.subTest(width=width, surface=surface):
                     page = self.page(phone=phone)
                     page.set_viewport_size({"width": width, "height": height})
                     page.goto(path)
-                    cards = page.locator(f"{scope} .message-bubble .ws-chip")
-                    expect(cards).to_have_count(3)
-                    seen = set()
-                    for index in range(3):
-                        card = cards.nth(index)
-                        card.scroll_into_view_if_needed()
-                        measured = card.evaluate("""card => {
-                          const box = (el) => { const r = el.getBoundingClientRect(); return {left: r.left, right: r.right, top: r.top, bottom: r.bottom}; };
-                          const title = card.querySelector('.ws-chip__t'), state = card.querySelector('.ws-chip__k');
-                          // The characters of the title whose own boxes end inside the title's box: what is read before the ellipsis.
-                          const text = title.firstChild, range = document.createRange(), edge = title.getBoundingClientRect().right;
-                          let shown = 0;
-                          for (let at = 0; at < text.length; at++) {
-                            range.setStart(text, at); range.setEnd(text, at + 1);
-                            if (range.getBoundingClientRect().right > edge + 0.5) break;
-                            shown = at + 1;
-                          }
-                          return {kind: card.dataset.workKind, title: title.textContent, shown, state: state.innerText, stateFits: state.scrollWidth <= state.clientWidth + 1,
-                            label: getComputedStyle(card, '::before').display, titleBox: box(title), stateBox: box(state), cardBox: box(card)};
-                        }""")
-                        kind, title = measured["kind"], measured["title"]
-                        seen.add(kind)
-                        shot(page, f"card-titles-{surface}-{width}-{kind}-{UI_BROWSER}")
-                        label = f"{width}px {surface} {kind}: {measured}"
-                        self.assertEqual(title, titles[kind], label)
-                        self.assertGreaterEqual(measured["shown"], 16, f"{label}: the title shows at least its first words")
-                        # The state is whole: its box holds its text, and the word that names it is there.
-                        self.assertTrue(measured["stateFits"], f"{label}: the state is cut")
-                        self.assertIn({"work": "In progress", "decision": "accepted", "result": "Negative result"}[kind], measured["state"], label)
-                        for part in ("titleBox", "stateBox"):
-                            self.assertGreaterEqual(measured[part]["left"], measured["cardBox"]["left"] - 0.5, f"{label}: {part} inside the card")
-                            self.assertLessEqual(measured[part]["right"], measured["cardBox"]["right"] + 0.5, f"{label}: {part} inside the card")
-                        self.assertFalse(intersects(measured["titleBox"], measured["stateBox"]), f"{label}: the state never covers the title")
-                        # The state is at the right edge of the card (its padding is 10 to 12 px), on the kind line never.
-                        self.assertLessEqual(measured["cardBox"]["right"] - measured["stateBox"]["right"], 14, f"{label}: the state is at the right edge")
-                        if width == 390 or surface == "thread":
-                            self.assertEqual(measured["label"], "none", f"{label}: the narrow card has no kind line above the title")
-                        else:
-                            self.assertNotEqual(measured["label"], "none", f"{label}: the column keeps the kind over the title")
-                            above, below = measured["stateBox"]["top"] - measured["cardBox"]["top"], measured["cardBox"]["bottom"] - measured["stateBox"]["bottom"]
-                            self.assertAlmostEqual(above, below, delta=3, msg=f"{label}: the state is centred across the two lines")
-                    self.assertEqual(seen, {"work", "decision", "result"})
+                    self.assert_cards(page, scope, titles, narrow, f"{width}px {surface}", f"{surface}-{width}")
                     assert_no_sideways_scroll(self, page, ".thread__feed" if surface == "thread" else ".project-convo__feed", f"{width}px {surface}")
                     page.context.close()
+
+    def test_03c_the_card_is_one_row_wherever_the_conversation_is_not_at_its_full_width(self):
+        # Spokoj A08 draws the one-row card in the conversation beside an open panel, A09 on a phone; the attachments board draws
+        # the two-row card for the conversation at its full width. Measured feed widths (the container the card asks): 1440 closed
+        # 1184, 1440 with the panel 754, 1920 with the panel 1174 (the column is the 760 px cap in both), tablet 820 748, 1024 768.
+        # The panel decides the first three, so no width can; the width is the rest, with the threshold at 760, the column's cap.
+        stream = f"/projects/{self.cards_project}"
+        beside = f"/projects/{self.cards_project}/conversations/{self.cards['id']}"
+        for name, width, height, path, narrow in (
+            ("closed-1440", 1440, 900, stream, False),
+            ("panel-1440", 1440, 900, beside, True),
+            ("panel-1920", 1920, 1080, beside, True),
+            ("closed-1920", 1920, 1080, stream, False),
+            ("closed-1024-above", 1024, 768, stream, False),
+            ("closed-820-below", 820, 1180, stream, True),
+        ):
+            with self.subTest(case=name):
+                page = self.page()
+                page.set_viewport_size({"width": width, "height": height})
+                page.goto(path)
+                self.assert_cards(page, ".project-convo__feed", self.stream_titles, narrow, name, name)
+                page.context.close()
+        # The threshold itself, on the one container: 759 px is below it, 760 is not.
+        for feed_width, narrow in ((759, True), (760, False)):
+            with self.subTest(feed=feed_width):
+                page = self.page()
+                page.set_viewport_size({"width": 1440, "height": 900})
+                page.goto(stream)
+                # The container is the feed's content box: a classic scroll bar, if there is one, is not part of it.
+                bar = page.locator(".project-convo__feed").evaluate("el => el.offsetWidth - el.clientWidth")
+                page.add_style_tag(content=f".project-convo__feed {{ max-width: {feed_width + bar}px; }}")
+                self.assertEqual(page.locator(".project-convo__feed").evaluate("el => el.clientWidth"), feed_width)
+                self.assert_cards(page, ".project-convo__feed", self.stream_titles, narrow, f"feed {feed_width}px", f"feed-{feed_width}")
+                page.context.close()
 
     def test_04_shared_bubble_and_grouping_matrix(self):
         for width, height in ((390, 844), (820, 1180), (1440, 900), (2560, 1440)):
