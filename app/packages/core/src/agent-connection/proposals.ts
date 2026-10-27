@@ -3,7 +3,7 @@ import type { AgentScope, CreateAgentProposalCommand } from '@flux/contracts';
 import { ConflictError, ForbiddenError, InvalidInputError, NotFoundError } from '../access/errors.js';
 import { isUuid } from '../access/policy.js';
 import type { AgentProposal, Page, PageQuery } from '@flux/contracts';
-import { parsePage } from '../access/domain.js';
+import { parsePage } from '../access/validation.js';
 import type { Principal } from '../types.js';
 
 export type { AgentScope } from '@flux/contracts';
