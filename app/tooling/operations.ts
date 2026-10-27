@@ -31,6 +31,21 @@ function parseList(value: string | undefined): number[] {
   return value ? value.split(',').map(Number) : [];
 }
 
+/**
+ * PostgreSQL undefined_table (42P01) for the admission relation itself,
+ * possibly wrapped by Drizzle. The code and the relation name must sit on the
+ * same level of the cause chain: a 42P01 for another table (or a message that
+ * merely mentions the admission query) must still abort the purge.
+ */
+function isMissingAdmissionTable(error: unknown): boolean {
+  let current: unknown = error;
+  for (let depth = 0; depth < 5 && current instanceof Error; depth++) {
+    if ((current as { code?: unknown }).code === '42P01' && current.message.includes('agent_runtime_auth_admission')) return true;
+    current = (current as { cause?: unknown }).cause;
+  }
+  return false;
+}
+
 async function imageFiles() {
   return readMigrationManifest(migrationsDir, FLUX_SCHEMA_VERSION);
 }
@@ -92,7 +107,16 @@ if (command === 'migration-files') {
         : `${slot} has no binding to release.`);
     } else if (command === 'runtime-begin-purge') {
       if (args.length) throw new Error('runtime-begin-purge takes no arguments');
-      console.log(`FLUX_RUNTIME_PURGE ${await agentRuntimeOperations(db).beginPurge()}`);
+      try {
+        console.log(`FLUX_RUNTIME_PURGE ${await agentRuntimeOperations(db).beginPurge()}`);
+      } catch (error) {
+        // A database that never ran the migration has no admission table to
+        // fence: there is nothing to block, so cleanup proceeds without a
+        // purge id. Any other failure (an unreachable or locked database)
+        // still aborts, and the launcher keeps API and worker stopped.
+        if (!isMissingAdmissionTable(error)) throw error;
+        console.log('FLUX_RUNTIME_PURGE none');
+      }
     } else if (command === 'runtime-forget') {
       const purgeId = args[0] ?? '';
       const outcome = args[1] ?? 'unconfirmed';

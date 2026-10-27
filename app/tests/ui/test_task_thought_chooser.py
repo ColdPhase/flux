@@ -35,7 +35,7 @@ THOUGHTS = (
     "Variant C: a long, descriptive thought about the shade and the sensor so that its title wraps across several lines on a phone",
 )
 # A button's background and transform, as the press check reads them (HIG-16: Prostota presses to .97).
-PRESS_STYLE = "el => { const s = getComputedStyle(el); return { background: s.backgroundColor, transform: s.transform }; }"
+PRESS_STYLE = "el => { const s = getComputedStyle(el); return { background: s.backgroundColor, scale: s.scale }; }"
 # The rows' type sizes beside the body and control tokens as they resolve now, each row's height, whether its title overflows,
 # its line count, and where the trailing glyph sits.
 TITLE_METRICS = """els => {
@@ -129,22 +129,19 @@ class TaskThoughtChooser(unittest.TestCase):
         return picker
 
     def press_changes(self, page: Page, button) -> tuple[dict, dict]:
-        """The button at rest and with :active forced through CDP, as the HIG checklist's check does (Chromium only)."""
+        """The button at rest and held down by a real press (the one press, ui/press.ts: it scales the control, the fill is CSS :active)."""
+        button.scroll_into_view_if_needed()
         rest = button.evaluate(PRESS_STYLE)
-        button.evaluate("el => el.setAttribute('data-press-probe', '')")
-        cdp = page.context.new_cdp_session(page)
+        box = button.bounding_box()
+        page.mouse.move(box["x"] + box["width"] / 2, box["y"] + box["height"] / 2)
+        page.mouse.down()
         try:
-            cdp.send("DOM.enable")
-            cdp.send("CSS.enable")
-            root = cdp.send("DOM.getDocument", {"depth": 0})["root"]["nodeId"]
-            node = cdp.send("DOM.querySelector", {"nodeId": root, "selector": "[data-press-probe]"})["nodeId"]
-            cdp.send("CSS.forcePseudoState", {"nodeId": node, "forcedPseudoClasses": ["active"]})
-            page.wait_for_timeout(300)  # past the transform transition
+            page.wait_for_timeout(300)  # past the press-in
             pressed = button.evaluate(PRESS_STYLE)
-            cdp.send("CSS.forcePseudoState", {"nodeId": node, "forcedPseudoClasses": []})
         finally:
-            cdp.detach()
-            button.evaluate("el => el.removeAttribute('data-press-probe')")
+            page.mouse.move(2, 2)  # let go elsewhere: nothing is chosen
+            page.mouse.up()
+        page.wait_for_timeout(450)  # and the spring back
         return rest, pressed
 
     def rows(self, picker) -> dict:
@@ -181,18 +178,17 @@ class TaskThoughtChooser(unittest.TestCase):
         page.get_by_role("button", name=THOUGHTS[2]).scroll_into_view_if_needed()
         shot(page, f"chooser-desktop-1440-light-{UI_BROWSER}")
 
-    @unittest.skipUnless(UI_BROWSER == "chromium", "the press probe forces :active through CDP, which only Chromium offers")
     def test_03_a_pressed_thought_choice_scales_and_reduced_motion_keeps_only_the_fill(self) -> None:
         page = self.page(phone=True)
         choice = self.chooser(page, phone=True).get_by_role("button", name=THOUGHTS[0])
         rest, pressed = self.press_changes(page, choice)
-        self.assertEqual(rest["transform"], "none", "a thought choice rests unscaled")
-        self.assertEqual(pressed["transform"], "matrix(0.97, 0, 0, 0.97, 0, 0)", "a pressed thought choice scales to --press (.97)")
+        self.assertEqual(rest["scale"], "none", "a thought choice rests unscaled")
+        self.assertEqual(pressed["scale"], "0.97", "a pressed thought choice scales to --press (.97)")
         self.assertNotEqual(pressed["background"], rest["background"], "and takes the pressed fill")
         page = self.page(phone=True, reduced_motion=True)
         choice = self.chooser(page, phone=True).get_by_role("button", name=THOUGHTS[0])
         rest, pressed = self.press_changes(page, choice)
-        self.assertIn(pressed["transform"], ("none", "matrix(1, 0, 0, 1, 0, 0)"), "under reduced motion a pressed thought choice does not scale")
+        self.assertEqual(pressed["scale"], "none", "under reduced motion a pressed thought choice does not scale")
         self.assertNotEqual(pressed["background"], rest["background"], "and still takes the pressed fill")
 
 

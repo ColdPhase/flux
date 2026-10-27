@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { before, describe, test } from 'node:test';
-import { agentProposalRepository } from '@flux/db';
+import { agentProposalRepository, accessReader } from '@flux/db';
 import { agentProposalUseCases, enforce, evaluateProject, recordEvent, validateProposalCommand } from '@flux/core';
 import type { AgentProposal, Material, Project, Workspace } from '@flux/contracts';
 import { eventPorts } from '../../apps/server/src/events.js';
@@ -10,11 +10,11 @@ import { expectStatus, person } from './support/people.js';
 
 const store = agentProposalUseCases(agentProposalRepository(db, {
   async authorizeWrite(principal, projectId, tx) {
-    const checked = enforce(await evaluateProject(principal, 'project.write', projectId, tx, { lock: true }), 'project');
+    const checked = enforce(await evaluateProject(principal, 'project.write', projectId, accessReader(tx), { lock: true }), 'project');
     return { workspaceId: checked.project!.workspaceId };
   },
   async authorizeRead(principal, projectId, tx) {
-    enforce(await evaluateProject(principal, 'project.read', projectId, tx, { lock: true }), 'project');
+    enforce(await evaluateProject(principal, 'project.read', projectId, accessReader(tx), { lock: true }), 'project');
   },
   async recordCreated(principal, workspaceId, projectId, tx) {
     await recordEvent(eventPorts(tx), principal, workspaceId, 'project.proposal_created.v1', projectId, {});

@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { before, describe, test } from 'node:test';
 import type { CreatedThought, MovedThoughts, PositionsConflict, Project, Sketch, SketchDetail, SketchPage, Thought, ThoughtLink, VersionConflict, Workspace } from '@flux/contracts';
 import { authorize, createAgent, grantProject, policySketchAccess, revokeAgent, ForbiddenError, NotFoundError, type Principal } from '@flux/core';
+import { accessReader } from '@flux/db';
 import { db, pool } from './support/db.js';
 import { addMember, draft, expectStatus, grant, person, project, workspace, type Person } from './support/people.js';
 import { StreamClient } from './support/stream.js';
@@ -170,9 +171,9 @@ describe('sketch access', () => {
     const agent: Principal = { id: helper.id, kind: 'agent' };
     await grantProject(owner, lamp.id, { principal: { kind: 'agent', id: helper.id }, role: 'contributor' }, db);
     const shared = await createSketch(alice, ws.id, { title: 'Shared', scope: 'project', projectId: lamp.id });
-    assert.deepEqual(await authorize(agent, 'sketch.read', { type: 'sketch', id: mine.id }, db), { allowed: false, visible: false });
-    assert.deepEqual(await authorize(agent, 'sketch.write', { type: 'sketch', id: shared.id }, db), { allowed: true, visible: true });
-    const agentCreate = await authorize(agent, 'sketch.create', { type: 'workspace', id: ws.id }, db);
+    assert.deepEqual(await authorize(agent, 'sketch.read', { type: 'sketch', id: mine.id }, accessReader(db)), { allowed: false, visible: false });
+    assert.deepEqual(await authorize(agent, 'sketch.write', { type: 'sketch', id: shared.id }, accessReader(db)), { allowed: true, visible: true });
+    const agentCreate = await authorize(agent, 'sketch.create', { type: 'workspace', id: ws.id }, accessReader(db));
     assert.equal(agentCreate.allowed, false, 'agents cannot own private sketches');
 
     // Leaving the workspace ends access to one's own private sketch.
@@ -198,7 +199,7 @@ describe('sketch access', () => {
       grantProject(owner, lamp.id, { principal: { kind: 'agent', id: agent.id }, role }, db);
     async function check(principal: Principal, sketchId: string, expected: 'read' | 'write' | 'hidden') {
       for (const lock of [false, true]) await db.transaction(async tx => {
-        const access = policySketchAccess(tx);
+        const access = policySketchAccess(accessReader(tx));
         if (expected === 'hidden') {
           await assert.rejects(access.requireSketch(principal, 'sketch.read', sketchId, { lock }), NotFoundError);
           await assert.rejects(access.requireSketch(principal, 'sketch.write', sketchId, { lock }), NotFoundError);

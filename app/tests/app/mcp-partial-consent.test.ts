@@ -8,7 +8,7 @@ import { beginOauth, expect, mcp, oauthToken } from './support/mcp.js';
 // Partial consent (#548): the person may grant fewer permissions than a client asks for.
 const ASKED = 'flux.context.read flux.proposal.write flux.action.execute offline_access';
 
-async function scene(scopes: string[]) {
+async function scene(scopes: string[], request: { scope: string; prompt?: string } = { scope: ASKED, prompt: 'consent' }) {
   const { browser } = await register(uniqueEmail('partial-consent'), 'correct horse battery staple');
   const workspace = expect(await browser.request('POST', '/api/v1/workspaces', { body: { name: 'Partial consent' } }), 201);
   const project = expect(await browser.request('POST', `/api/v1/workspaces/${workspace.id}/projects`,
@@ -25,7 +25,7 @@ async function scene(scopes: string[]) {
   [randomUUID(), clientId, [redirectUri], ['authorization_code', 'refresh_token'], ['code'], ASKED.split(' ')]);
   await pool.query('INSERT INTO oauth_client_resource (id, client_id, resource_id, created_at) VALUES ($1, $2, $3, now())',
     [randomUUID(), clientId, `${publicOrigin}/mcp`]);
-  const tokens = await oauthToken(browser, String(connection.id), clientId, redirectUri, await beginOauth(browser, clientId, redirectUri, { scope: ASKED, prompt: 'consent' }));
+  const tokens = await oauthToken(browser, String(connection.id), clientId, redirectUri, await beginOauth(browser, clientId, redirectUri, request));
   const claims = JSON.parse(Buffer.from(tokens.access_token.split('.')[1]!, 'base64url').toString()) as { scope: string };
   const names = async () => (((await mcp(tokens.access_token, 1, 'tools/list')).message?.result as { tools: { name: string }[] }).tools).map((tool) => tool.name);
   const tasks = async () => Number((await pool.query('SELECT count(*) FROM project_work_items WHERE project_id=$1', [project.id])).rows[0].count);
@@ -59,4 +59,17 @@ test('a full grant is unchanged: all three permissions and every tool are availa
   assert.deepEqual(f.scope, ['flux.action.execute', 'flux.context.read', 'flux.proposal.write', 'offline_access']);
   const names = await f.names();
   for (const name of ['flux_list_contexts', 'flux_create_proposal', 'flux_create_task', 'flux_create_doc']) assert.ok(names.includes(name), name);
+});
+
+// #660: Codex sends no prompt=consent, so the provider checks the scopes at /oauth2/continue, before the consent page.
+test('a client that sends no prompt=consent and asks for all three still reaches consent and gets only what the connection holds', async () => {
+  const f = await scene(['flux.context.read', 'flux.proposal.write'], { scope: ASKED });
+  assert.deepEqual(f.scope, ['flux.context.read', 'flux.proposal.write', 'offline_access']);
+  const names = await f.names();
+  assert.ok(names.includes('flux_create_proposal') && !names.includes('flux_create_task'));
+});
+
+test('a client that asks for fewer permissions than the connection holds gets only those it asked for', async () => {
+  const f = await scene(['flux.context.read', 'flux.proposal.write', 'flux.action.execute'], { scope: 'flux.context.read offline_access' });
+  assert.deepEqual(f.scope, ['flux.context.read', 'offline_access']);
 });

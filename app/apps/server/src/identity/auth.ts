@@ -6,8 +6,8 @@ import { genericOAuth, jwt } from 'better-auth/plugins';
 import { cimd } from '@better-auth/cimd';
 import { fetchClientMetadataResource } from '@better-auth/cimd/node';
 import { mcp } from '@better-auth/mcp';
-import { schema, workspaceIdOfGrantReference, workspaceIdOfOauthFlow } from '@flux/db';
-import { agentOauthUseCases, DomainError, workspaceAi, type Database } from '@flux/core';
+import { schema, workspaceIdOfGrantReference, workspaceIdOfOauthFlow, workspaceAi } from '@flux/db';
+import { agentOauthUseCases, DomainError, type Database } from '@flux/core';
 import { and, eq, isNotNull, sql } from 'drizzle-orm';
 import { createAgentConnectionStore } from '../agent-connection/store.js';
 import type { IdentityConfig, OidcConfig } from './config.js';
@@ -158,7 +158,10 @@ export function createAuth({ db, config, mailer, onMailError, oauthRequests, sig
       throw error;
     });
     const connection = grant?.connection;
-    if (!connection || scopes.some((scope) => scope !== 'offline_access' && !connection.scopes.includes(scope as 'flux.context.read' | 'flux.proposal.write' | 'flux.action.execute'))) {
+    // A client without prompt=consent is checked here before the consent page (#660): it may ask for more than the connection
+    // holds, and the consent page then lists what is not granted. Consent and the token still never exceed the connection.
+    const narrowing = !request.continuing;
+    if (!connection || narrowing && scopes.some((scope) => scope !== 'offline_access' && !connection.scopes.includes(scope as 'flux.context.read' | 'flux.proposal.write' | 'flux.action.execute'))) {
       throw new APIError('BAD_REQUEST', { error: 'invalid_grant', error_description: 'Agent connection is unavailable' });
     }
     // F-029: no consent reference, so no authorization code, for a connection of a workspace whose AI is off.

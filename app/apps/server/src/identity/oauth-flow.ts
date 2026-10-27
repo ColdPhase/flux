@@ -2,7 +2,9 @@ import { AsyncLocalStorage } from 'node:async_hooks';
 import type { AgentOauthFlow } from '@flux/core';
 import { oauthFingerprint, oauthFlow, verifiedOauthQuery } from './oauth-query.js';
 
-export interface OauthRequestContext { fingerprint: string; flow: AgentOauthFlow | null; clearedSessionId: string | null }
+export interface OauthRequestContext { fingerprint: string; flow: AgentOauthFlow | null; clearedSessionId: string | null;
+  /** The post-login step: the client's full request is not yet what the person grants (#660); consent narrows it. */
+  continuing?: boolean }
 /** Composed per auth instance, never populated from an incoming header or shared mutable value. */
 export const createOauthRequests = () => new AsyncLocalStorage<Readonly<OauthRequestContext>>();
 export type OauthRequests = ReturnType<typeof createOauthRequests>;
@@ -17,7 +19,7 @@ export async function oauthRequestContext(url: URL, body: unknown, secret: strin
     const params = await verifiedOauthQuery(query, secret);
     const flow = params ? oauthFlow(params, resource) : null;
     if (!params || !flow) throw new Error('Invalid OAuth query');
-    return { fingerprint: flow.fingerprint, flow, clearedSessionId: params.get('ba_pl') };
+    return { fingerprint: flow.fingerprint, flow, clearedSessionId: params.get('ba_pl'), continuing: url.pathname.endsWith('/oauth2/continue') };
   }
   if (url.pathname.endsWith('/oauth2/authorize'))
     return { fingerprint: oauthFingerprint(url.searchParams), flow: null, clearedSessionId: null };

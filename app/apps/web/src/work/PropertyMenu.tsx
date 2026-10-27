@@ -1,5 +1,5 @@
 import { useEffect, useId, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
-import { Icon } from '../ui';
+import { Icon, usePop } from '../ui';
 
 /** One choice of a property: what it shows, the value it sets and, for the state, its key. */
 export interface PropertyOption {
@@ -33,6 +33,7 @@ export function PropertyMenu({ label, value, options, disabled, onChoose, onOpen
 }) {
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState(0);
+  const pop = usePop(open);
   const root = useRef<HTMLDivElement>(null);
   const button = useRef<HTMLButtonElement>(null);
   const items = useRef<(HTMLButtonElement | null)[]>([]);
@@ -74,8 +75,8 @@ export function PropertyMenu({ label, value, options, disabled, onChoose, onOpen
         onKeyDown={(event) => { if (event.key === 'ArrowDown') { event.preventDefault(); openMenu(); } }}>
         {children}<Icon name="chevron-down" size={14} className="wd-state__go" />
       </button>
-      {open ? (
-        <div className="wd-menu__list" role="menu" id={menuId} aria-label={label} onKeyDown={onMenuKey}>
+      {pop.mounted ? (
+        <div {...pop.props} className="wd-menu__list" role="menu" id={menuId} aria-label={label} onKeyDown={onMenuKey}>
           {options.map((option, index) => (
             <div key={option.value} role="none">
               {option.group && option.group !== options[index - 1]?.group ? <p className="wd-menu__group" role="presentation">{option.group}</p> : null}

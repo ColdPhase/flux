@@ -1,7 +1,6 @@
-import { artifactResetRows, githubRows, proactiveOutboxRows, referencedTaskIds, workRows, type DbExecutor } from '@flux/db';
+import { artifactResetRows, githubRows, proactiveOutboxRows, referencedTaskIds, workRows, type DbExecutor, visibleFilter, accessReader } from '@flux/db';
 import {
   evaluateProject,
-  visibleFilter,
   createWorkContributions,
   createWorkUseCases,
   COMPARISON_QUIET_WINDOW_MS,
@@ -69,8 +68,8 @@ function workPorts(tx: Transaction, events: TransactionEventSession): WorkPorts 
       const rules = await rows.enabledRules(projectId);
       const authorized: typeof rules = [];
       for (const rule of rules) {
-        const owner = await evaluateProject({ kind: 'human', id: rule.ownerUserId }, 'project.write', projectId, tx, { lock: true });
-        const agent = await evaluateProject({ kind: 'agent', id: rule.agentId }, 'project.write', projectId, tx, { lock: true });
+        const owner = await evaluateProject({ kind: 'human', id: rule.ownerUserId }, 'project.write', projectId, accessReader(tx), { lock: true });
+        const agent = await evaluateProject({ kind: 'agent', id: rule.agentId }, 'project.write', projectId, accessReader(tx), { lock: true });
         if (owner.allowed && agent.allowed && agent.actor?.agent?.ownerUserId === rule.ownerUserId) authorized.push(rule);
       }
       for (const rule of [...authorized].sort((a, b) => a.id.localeCompare(b.id))) {

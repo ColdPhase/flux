@@ -1,5 +1,5 @@
-import { idpStandingRepository, proactiveOutboxRows, TaskUseRefusal } from '@flux/db';
-import { evaluateProject, workspaceAi, type Database, type Executor } from '@flux/core';
+import { idpStandingRepository, proactiveOutboxRows, TaskUseRefusal, workspaceAi, accessReader } from '@flux/db';
+import { evaluateProject, type Database, type Executor } from '@flux/core';
 
 export type ObservedUsage = { inputTokens: number; outputTokens: number; estimatedCents: number };
 
@@ -27,8 +27,8 @@ export async function authorizedComparison(db: Executor, candidateId: string, co
   const ai = await workspaceAi(db, rule.workspaceId, { lock });
   if (ai.state !== 'allowed' || ai.epoch !== candidate.aiEpoch) throw new ComparisonStopped('AI_OFF');
   if (await idpStandingRepository(db).refuses(candidate.ownerUserId, { lock })) throw new ComparisonStopped('ACCESS_CHANGED');
-  const owner = await evaluateProject({ kind: 'human', id: candidate.ownerUserId }, 'project.write', candidate.projectId, db, { lock });
-  const agent = await evaluateProject({ kind: 'agent', id: rule.agentId }, 'project.write', candidate.projectId, db, { lock });
+  const owner = await evaluateProject({ kind: 'human', id: candidate.ownerUserId }, 'project.write', candidate.projectId, accessReader(db), { lock });
+  const agent = await evaluateProject({ kind: 'agent', id: rule.agentId }, 'project.write', candidate.projectId, accessReader(db), { lock });
   if (!owner.allowed || !agent.allowed || agent.actor?.agent?.ownerUserId !== candidate.ownerUserId)
     throw new ComparisonStopped('ACCESS_CHANGED');
   const result = await rows.resultState(candidate.resultId);

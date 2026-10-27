@@ -13,7 +13,7 @@ import {
   type ResourceRef,
   type ResourceType,
 } from '@flux/core';
-import { idempotencyRepository } from '@flux/db';
+import { idempotencyRepository, accessReader } from '@flux/db';
 import type { SessionContext, SessionResolver } from '../identity/index.js';
 import { single, versionEtag } from './headers.js';
 
@@ -33,7 +33,7 @@ export function bodyId(body: unknown): string {
 
 /** A replay needs `action` on the object named by `id` (from the stored body or the route). */
 export function requires<T extends ResourceType>(type: T, action: ActionsByResource[T], id: (body: unknown) => string): ReplayCheck {
-  return (principal, body, db) => assertAuthorized(principal, action, { type, id: id(body) } as ResourceRef<T>, db);
+  return (principal, body, db) => assertAuthorized(principal, action, { type, id: id(body) } as ResourceRef<T>, accessReader(db));
 }
 
 export interface CommandSpec {
@@ -67,7 +67,7 @@ export function commandRunner(db: Database, sessions: SessionResolver) {
     if (key === null) {
       response = await execute(connection);
     } else {
-      const workspaceId = spec.scope ? await visibleWorkspaceOf(actor, spec.scope, connection) : null;
+      const workspaceId = spec.scope ? await visibleWorkspaceOf(actor, spec.scope, accessReader(connection)) : null;
       const hash = requestHash({ params: request.params, query: request.query, body: request.body ?? null, ifMatch: request.headers[IF_MATCH_HEADER] ?? null });
       response = await runIdempotent(connection, idempotencyRepository, { principal: actor, workspaceId, operation: spec.operation, key, requestHash: hash }, execute,
         (stored, conn) => spec.replay(actor, stored.body, conn));

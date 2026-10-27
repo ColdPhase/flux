@@ -169,9 +169,9 @@ button.ws-task__glyph:active { background: var(--hov); }
 .wd-link small { flex: none; font-size: var(--fs-xs); color: var(--t3); }
 .wd-link svg { flex: none; color: var(--t3); }
 .wd-link:hover { background: var(--hov); }
-/* A pressed button (thought choices, prerequisites, decisions) takes the same press as .ui-btn: scale to --press
-   and spring back through --tr. The fill also shows under reduced motion, where --press is 1 (HIG-16, Prostota). */
-button.wd-link:active:not(:disabled) { background: var(--sub); transform: scale(var(--press)); transition-duration: var(--dur-1); }
+/* A pressed button (thought choices, prerequisites, decisions) takes the one press (ui/press.ts); the fill also shows
+   under reduced motion, where --press is 1 (HIG-16, Prostota). */
+button.wd-link:active:not(:disabled) { background: var(--sub); }
 .wd-inline { display: inline; padding: 0; color: var(--t1); font-weight: 500; text-decoration: underline; text-decoration-color: var(--line2); text-underline-offset: 3px; }
 .wd-muted { font-size: var(--fs-sm) !important; color: var(--t3) !important; }
 /* Criteria and prerequisites of a planned task (#152): plain list, state in words, no checkbox that implies a check. */
@@ -430,6 +430,11 @@ button.wd-link:active:not(:disabled) { background: var(--sub); transform: scale(
 .wd-activity .details__sec { margin-top: 10px; }
 .wd-activity > section.details__sec { margin-top: 12px; }
 .wd-composer { display: flex; flex-direction: column; gap: 8px; }
+/* The typing status (#155) shares the audience line's row, at its right: it takes no height, so the task's fields keep
+   their room above the composer on the phone's half sheet, and it is always there so nothing moves when a thread starts. */
+.wd-foot__line { display: flex; align-items: flex-start; gap: 8px; min-width: 0; }
+.wd-foot__line > .composer__audience { flex: 1 1 auto; min-width: 0; }
+.wd-foot__line > .typing-notice { flex: 0 1 auto; max-width: 60%; margin: 6px 4px 0 0; block-size: auto; min-block-size: 0; font-size: var(--fs-xs); line-height: inherit; text-align: right; }
 .wd-foot__note { margin: 8px 6px 0; }
 .wd-activity > .details__sec { margin-top: 14px; }
 .wd-activity > .details__sec .wd-link { font-size: var(--fs-sm); color: var(--t2); }

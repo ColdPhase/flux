@@ -16,6 +16,7 @@ import {
   type UpdateDocCommand,
 } from '@flux/contracts';
 import { assertAuthorized, type Database, type ResourceRef } from '@flux/core';
+import { accessReader } from '@flux/db';
 import type { SessionResolver } from '../identity/index.js';
 import { commandRunner, expectedVersion, useDomainErrors, versionEtag, type ReplayCheck } from '../http/commands.js';
 import { docUseCases } from './adapters.js';
@@ -39,7 +40,7 @@ const preview = { type: 'object', required: ['body'], additionalProperties: fals
 
 /** A replay needs current read access to the project named in the stored response. */
 const projectReader: ReplayCheck = (principal, stored, db) =>
-  assertAuthorized(principal, 'project.read', { type: 'project', id: String((stored as { projectId?: unknown } | null)?.projectId ?? '') }, db);
+  assertAuthorized(principal, 'project.read', { type: 'project', id: String((stored as { projectId?: unknown } | null)?.projectId ?? '') }, accessReader(db));
 
 /**
  * The last change of each doc in one project: an agent author keeps its scoped owner while that person is in the
