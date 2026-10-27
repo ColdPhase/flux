@@ -83,6 +83,7 @@ class SpokojLayout(unittest.TestCase):
                                       headers={"origin": ORIGIN, "content-type": "application/json", "idempotency-key": str(uuid.uuid4())},
                                       data=json.dumps({"title": "Hardware", "body": "Six capacitive probes and two ESP32 boards.", "state": "published"}))
         assert response.status == 201, response.text()
+        cls.doc_id = response.json()["id"]
         page.goto(f"/dm/new?workspace={workspace['id']}&with={cls.kai_id}")
         expect(page).to_have_url(re.compile(r"/dm/[0-9a-f-]{36}$"))
         cls.dm_path = page.url.removeprefix(ORIGIN)
@@ -435,7 +436,9 @@ class SpokojLayout(unittest.TestCase):
             with self.subTest(width=size["width"]):
                 page = self.page(size, dark=size is PHONES[1], touch=True)
                 reference = None
-                for path in (*(f"/projects/{self.project_id}{view}" for view in VIEWS), self.dm_path):
+                # The Wiki's page, and its edit and history states (#507: the header is the same in all of them).
+                wiki_states = (f"/projects/{self.project_id}/docs/{self.doc_id}/edit", f"/projects/{self.project_id}/docs/{self.doc_id}/history")
+                for path in (*(f"/projects/{self.project_id}{view}" for view in VIEWS), *wiki_states, self.dm_path):
                     page.goto(path)
                     header = page.locator("header.phead")
                     expect(header.get_by_role("button", name="Search", exact=True)).to_be_visible()

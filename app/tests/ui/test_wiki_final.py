@@ -217,6 +217,7 @@ class WikiFinal(unittest.TestCase):
                 header = page.locator("header.phead")
                 more = page.locator(".wiki-top__menu").get_by_role("button", name="More", exact=True)
                 expect(more).to_have_count(1)
+                expect(header.get_by_role("button", name="More", exact=True)).to_have_count(0)  # the header is the same in every view (#507)
                 expect(header.locator(".wiki-bar__title")).to_have_text("Wiki · 5 pages")
                 strip = chips.locator(".wiki-pages").bounding_box()
                 title = page.get_by_role("heading", level=2, name="Hardware").bounding_box()
@@ -360,6 +361,7 @@ class WikiFinal(unittest.TestCase):
         expect(page.get_by_label("Text (Markdown)")).to_be_visible()
         expect(header.locator(".wiki-bar__title")).to_have_count(0)
         expect(page.locator(".wiki-top__menu").get_by_role("button", name="More", exact=True)).to_have_count(0)
+        expect(header.get_by_role("button", name="More", exact=True)).to_have_count(0)  # never in the header either (#507)
         expect(header.locator(".phead__sub")).to_contain_text(re.compile(r"\d+ (?:people|person)"))
         private = BODY + "\nA private phone note, not published."
         page.get_by_label("Text (Markdown)").fill(private)
@@ -375,6 +377,7 @@ class WikiFinal(unittest.TestCase):
         project_view(page, "Conversation")
         expect(header.locator(".wiki-bar__title")).to_have_count(0)
         expect(page.locator(".wiki-top__menu").get_by_role("button", name="More", exact=True)).to_have_count(0)
+        expect(header.get_by_role("button", name="More", exact=True)).to_have_count(0)  # never in the header either (#507)
         expect(header.locator(".phead__sub")).to_contain_text(re.compile(r"\d+ (?:people|person)"))
 
     def test_phone_share_refusal_keeps_the_exact_link_and_audience_reachable(self) -> None:
