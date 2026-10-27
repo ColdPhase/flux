@@ -164,6 +164,8 @@ function SketchEditor({ sketchId, projectId, dmId, back = '/map', doc }: ViewPro
   const { hash } = location;
   const [renaming, setRenaming] = useState<boolean>(!!(location.state as { fresh?: boolean } | null)?.fresh);
   const [heights] = useState(() => new Map<string, number>());
+  // The tallest the map's bottom toolbar has been; it outlives the map, which is mounted again by each trip to the List (#510).
+  const [dockHeight, setDockHeight] = useState(64);
   const rootRef = useRef<HTMLDivElement>(null);
   const helpId = useId();
   const projectName = useProjectName(sketch?.projectId);
@@ -825,7 +827,7 @@ function SketchEditor({ sketchId, projectId, dmId, back = '/map', doc }: ViewPro
             {readonlyNote}
             {notices}
           </div>
-          <SketchMap {...shared} coarse={coarse} compact={phone} helpId={helpId} heights={heights} dock={dock} hint={hint} viewModes={viewModes} hand={hand}
+          <SketchMap {...shared} coarse={coarse} compact={phone} helpId={helpId} heights={heights} dockHeight={dockHeight} onDockHeight={setDockHeight} dock={dock} hint={hint} viewModes={viewModes} hand={hand}
             onLabel={(linkId) => setConnectionTarget({ linkId })} onConnections={(thoughtId) => setConnectionTarget({ thoughtId })}
             bar={{ project: sketch.scope === 'project', canUndo: doc.canUndo, helpOpen, onShape: cycleShape, onTask: () => makeWork(), onUndo: undo, onHelp: () => setHelpOpen(!helpOpen) }}
             onConnect={connectTo} onAddAt={(parentId, x, y) => add(parentId, '', false, { x, y })} onConnectFrom={connectFromDot} onAddThought={() => add(selection[selection.length - 1] ?? null)}
