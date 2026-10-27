@@ -15,22 +15,24 @@ The transition tests resize, rotate (swap width and height) and emulate a virtua
 reducing the viewport height during real work, and check that drafts, selection, the reading
 anchor and the map camera survive with nothing saved or sent.
 
-These are emulated CSS viewports at 100% browser zoom in headless Chromium. They are not evidence
+These are emulated CSS viewports at 100% browser zoom in headless Chromium or WebKit (FLUX_UI_BROWSER). They are not evidence
 for a physical 4K or ultrawide display, a real phone keyboard or OS scaling (docs/design/adaptive-
 workspaces.md); those sessions remain separate acceptance evidence.
 """
 
 from __future__ import annotations
 
+import os
 import re
 import unittest
+import uuid
 from unittest import mock
 
 from playwright.sync_api import Locator, Page, expect, sync_playwright
 
 import adaptive_fixture as fx
 from author_columns import assert_author_column
-from test_app_shell import show_map_as, open_map_options, ORIGIN, UPSTREAM, open_details, shot, start_forwarder
+from test_app_shell import show_map_as, open_map_options, ORIGIN, UPSTREAM, UI_BROWSER, open_details, shot, start_forwarder
 
 # Width × height fixtures (CSS px). Phones and tablets use a coarse (touch) pointer.
 # Every starting fixture of docs/design/adaptive-workspaces.md, by context: phones, short landscape
@@ -45,7 +47,10 @@ MATRIX = [
     (3840, 2160), (900, 1600),
 ]
 COARSE_UP_TO = 1024
-SHOTS_AT = {320, 390, 768, 1440, 1920, 3440, 3840}
+# Where the phone's half sheet shows every field of a task on opening, above the composer (390×844 as on main).
+COMMON_PHONES = {(390, 844), (412, 915), (430, 932)}
+# Whole-view captures for visual review: phones, the tablet (820), laptop, the 2560 workspace, 1920, ultrawide and 4K.
+SHOTS_AT = {320, 390, 768, 820, 1440, 1920, 2560, 3440, 3840}
 TABS = ["Conversation", "Map", "Tasks", "Wiki", "Agents"]
 # The phone menu lists Tasks before Map (#341).
 PHONE_TABS = ["Conversation", "Tasks", "Map", "Wiki", "Agents"]
@@ -57,6 +62,10 @@ WIDE_CAPS = {
 # The readable measure (proposed 2026-10-05, docs/design/adaptive-layout-rules.md): at most 90
 # characters, spaces included, on any rendered line of prose.
 MEASURE = 90
+# The most empty space between the newest message of a short stream and its message field (ADAPT-2, tall screens).
+MAX_STREAM_GAP = 64
+# Live editing is the wiki editor whenever it is configured (check_ui.sh sets FLUX_LIVE_EDITING=on by default).
+LIVE = os.environ.get("FLUX_LIVE_EDITING", "on") != "off"
 TARGET = 44
 # Known gaps: criteria the current head does not meet at one fixture, each with the issue that closes it.
 # The journey still measures them, and the matrix fails when one stops showing, so a closed gap must be
@@ -81,7 +90,8 @@ def setUpModule() -> None:  # noqa: N802 (unittest hook)
     if UPSTREAM:
         start_forwarder(ORIGIN, UPSTREAM)
     PW = sync_playwright().start()
-    BROWSER = PW.chromium.launch()
+    # FLUX_UI_BROWSER selects the engine, as in the other journeys: chromium (default) or webkit (#461, #151 AC-5).
+    BROWSER = getattr(PW, UI_BROWSER).launch()
     expect.set_options(timeout=10000)
     FIXTURE.update(fx.seed(BROWSER))
 
@@ -183,15 +193,44 @@ FIRST_IN_VIEW = r"""() => {
   return null;
 }"""
 
-# Every finite animation (a view sliding in, a sheet arriving) has finished: layout is measured at
-# rest, not mid-transition. Endless indicators are ignored.
-SETTLED = """() => document.getAnimations().every((a) => a.playState !== 'running' || a.effect?.getComputedTiming().endTime === Infinity)"""
+# Every finite animation (a view sliding in, a sheet arriving) has finished and a panel that was closing has left the
+# page (it stays, invisible and shifted 16 px, until its fade-out resolves): layout is measured at rest, not
+# mid-transition. Endless indicators are ignored.
+SETTLED = """() => document.getAnimations().every((a) => a.playState !== 'running' || a.effect?.getComputedTiming().endTime === Infinity) && !document.querySelector('.ui-panel.is-leaving')"""
 
 # The CSS boxes that define a view's layout, rounded to whole CSS pixels (absent regions are null).
 GEOMETRY = r"""() => {
   const box = (sel) => { const e = document.querySelector(sel); if (!e) return null; const b = e.getBoundingClientRect(); return [b.left, b.top, b.width, b.height].map((v) => Math.round(v)); };
   return {pane: box('.app__pane'), main: box('.app__main'), feed: box('.project-convo__feed'), canvas: box('.sk-canvas'), board: box('.tb-board'), details: box('#details')};
 }"""
+
+# Whether a control, scrolled into view, lies within the window sideways and is the element hit at its centre.
+HORIZONTAL = r"""(el) => {
+  """ + NAME + r"""
+  el.scrollIntoView({block: 'nearest', inline: 'nearest'});
+  const b = el.getBoundingClientRect();
+  const hit = document.elementFromPoint(b.left + b.width / 2, b.top + b.height / 2);
+  return {visible: b.width > 0 && b.height > 0, left: b.left >= -0.5, right: b.right <= innerWidth + 0.5, hit: !!hit && (hit === el || el.contains(hit)), covered: hit && !(hit === el || el.contains(hit)) ? name(hit) : null,
+          box: [Math.round(b.left), Math.round(b.top), Math.round(b.width), Math.round(b.height)], window: innerWidth};
+}"""
+
+# Every field row of the task in Details (Status, Owner, Came from, Due, ...), brought into view in the panel's own
+# scroller: whether it lies fully above the composer, and is the element hit at its centre (nothing covers it).
+# With scroll=false nothing is scrolled: it is where the rows are when the panel opens, and "opens" says the row's own line
+# (its first 24 px) is above the composer.
+TASK_FIELDS = r"""(root, scroll) => {
+  const foot = root.querySelector('.wd__foot').getBoundingClientRect().top;
+  return [...root.querySelectorAll('.wd-row')].map((row) => {
+    if (scroll) row.scrollIntoView({block: 'nearest'});
+    const b = row.getBoundingClientRect();
+    const hit = document.elementFromPoint(b.left + b.width / 2, b.top + Math.min(b.height / 2, 12));
+    return {label: (row.querySelector('dt')?.textContent || '').trim(), above: b.height > 0 && b.bottom <= foot + 0.5, opens: b.height > 0 && b.top + 24 <= foot, hit: !!hit && row.contains(hit),
+            box: [Math.round(b.top), Math.round(b.bottom)], composer: Math.round(foot)};
+  });
+}"""
+
+# The computed size of the first message's text: it must really grow with the person's text size (WCAG 1.4.4).
+TEXT_PX = "() => parseFloat(getComputedStyle(document.querySelector('.project-convo__message .message-body')).fontSize)"
 
 CAMERA = "() => { const c = document.querySelector('.sk-canvas'); return {left: Math.round(c.scrollLeft), top: Math.round(c.scrollTop)}; }"
 
@@ -219,9 +258,9 @@ def explained_by_recorded_overlap(size: str, what: str, predicate: str, observed
 
 
 class AdaptiveBase(unittest.TestCase):
-    def page(self, width: int, height: int, *, who: str = "hubert", coarse: bool | None = None, theme: str = "light", dpr: float = 1) -> Page:
+    def page(self, width: int, height: int, *, who: str = "hubert", coarse: bool | None = None, theme: str = "light", dpr: float = 1, state: dict | None = None) -> Page:
         coarse = width <= COARSE_UP_TO if coarse is None else coarse
-        context = BROWSER.new_context(base_url=ORIGIN, storage_state=FIXTURE["states"][who], viewport={"width": width, "height": height},
+        context = BROWSER.new_context(base_url=ORIGIN, storage_state=state or FIXTURE["states"][who], viewport={"width": width, "height": height},
                                       color_scheme=theme, locale="en-GB", timezone_id="Europe/Warsaw", device_scale_factor=dpr,
                                       has_touch=coarse, is_mobile=coarse and width <= 640)
         self.addCleanup(context.close)
@@ -353,9 +392,21 @@ class AdaptiveBase(unittest.TestCase):
     def card(self, page: Page, title: str) -> Locator:
         return page.locator(".tb-card").filter(has_text=title).get_by_role("button", name=title, exact=True)
 
+    def task_fields_clear_composer(self, page: Page, details: Locator, size: str, *, opens_clear: bool = False) -> None:
+        """Every field of the task in Details can be read above its composer: scrolled into the panel's own scroller each row
+        lies wholly above the composer and nothing covers it. With opens_clear the rows are also where they are on opening
+        (the common phones' half sheet shows them all without scrolling, as main did)."""
+        self.settle(page)
+        for scroll in ([False, True] if opens_clear else [True]):
+            rows = details.evaluate(TASK_FIELDS, scroll)
+            self.assertGreaterEqual(len(rows), 4, f"the task's field rows are found at {size}: {rows}")
+            for row in rows:
+                # On opening a row must at least show its own line above the composer; scrolled into view it lies wholly above it.
+                self.check((row["above"] if scroll else row["opens"]) and row["hit"], f"the task field “{row['label']}” at {size}{'' if scroll else ' (before scrolling)'} lies above the composer and is not covered: {row}")
+
     def shot(self, page: Page, name: str) -> None:
         if page.viewport_size["width"] in SHOTS_AT:
-            shot(page, name)
+            shot(page, name if UI_BROWSER == "chromium" else f"{name}-{UI_BROWSER}")
 
 
 class AdaptiveMatrix(AdaptiveBase):
@@ -524,6 +575,7 @@ class AdaptiveMatrix(AdaptiveBase):
 
         details = page.locator("#details")
         expect(details.get_by_role("heading", name=fx.OPEN_TASK)).to_be_visible()
+        self.task_fields_clear_composer(page, details, size, opens_clear=(width, height) in COMMON_PHONES)
         self.primary(page, details.get_by_role("button", name="Close details"), "Close details")
         if wide:
             # ADAPT-2: the task's details dock beside the board, which keeps its actions.
@@ -707,6 +759,82 @@ class AdaptiveMatrix(AdaptiveBase):
             capped = measured[3840][name] - measured[1920][name] <= 1
             self.assertTrue(capped, f"{name} now grows with the screen; remove it from WIDE_CAPS: {measured}")
 
+    def short_world(self) -> dict:
+        """Its own person, workspace, project and colleague: the shared fixture's sidebar and project list stay as the other
+        tests found them. The project holds two short roots, the first with one reply; a direct message holds two."""
+        if getattr(AdaptiveMatrix, "_short", None):
+            return AdaptiveMatrix._short
+        def sign_up(name: str, email: str):
+            context = BROWSER.new_context(base_url=ORIGIN)
+            signed_up = context.request.post("/api/auth/sign-up/email", data={"name": name, "email": email, "password": fx.PASSWORD}, headers={"origin": ORIGIN})
+            assert signed_up.status == 200, signed_up.text()
+            return context
+        email = f"ines.short+{fx.STAMP}@example.test"
+        other = f"jonas.short+{fx.STAMP}@example.test"
+        person, colleague = sign_up("Ines Short", email), sign_up("Jonas Short", other)
+        colleague_id = fx.api(colleague, "GET", "/api/v1/me")["user"]["id"]
+        workspace = fx.api(person, "POST", "/api/v1/workspaces", {"name": "Short streams"})["id"]
+        fx.api(person, "POST", f"/api/v1/workspaces/{workspace}/members", {"email": other, "role": "member"})
+        project = fx.api(person, "POST", f"/api/v1/workspaces/{workspace}/projects", {"name": "Short stream, tall screen", "visibility": "restricted"})["id"]
+        roots = [fx.api(person, "POST", f"/api/v1/projects/{project}/conversations", {"body": body, "clientMessageId": str(uuid.uuid4())})["id"]
+                 for body in ("Two sensors on the first board, please.", "Agreed. I will route the second I2C bus.")]
+        fx.api(person, "POST", f"/api/v1/conversations/{roots[0]}/messages", {"body": "Both on the first board, then.", "clientMessageId": str(uuid.uuid4())})
+        dm = fx.api(person, "POST", f"/api/v1/workspaces/{workspace}/dms", {"participantIds": [colleague_id]})["id"]
+        for body in ("Can we test the lamp tonight?", "Yes, after seven."):
+            fx.api(person, "POST", f"/api/v1/dms/{dm}/messages", {"body": body, "clientMessageId": str(uuid.uuid4())})
+        state = person.storage_state()
+        person.close()
+        colleague.close()
+        AdaptiveMatrix._short = {"state": state, "project": project, "roots": roots, "dm": dm}
+        return AdaptiveMatrix._short
+
+    def test_08_a_short_stream_stays_connected_to_its_composer_on_tall_screens(self) -> None:
+        """ADAPT-2: on a tall screen a short work stream and its composer stay visually connected; the extra height
+        must not open a giant empty separation between the newest message and the field."""
+        world = self.short_world()
+        gaps = {}
+        for width, height in [(390, 844), (820, 1180), (900, 1600), (1440, 900), (2560, 1440), (3840, 2160)]:
+            with self.subTest(width=width, height=height):
+                page = self.page(width, height, state=world["state"])
+                page.goto(f"/projects/{world['project']}")
+                expect(page.locator(".project-convo__message")).to_have_count(2)
+                self.at_rest(page)
+                last = page.locator(".project-convo__message").last.bounding_box()
+                field = page.get_by_label("Write a message", exact=True).bounding_box()
+                gaps[f"{width}×{height}"] = round(field["y"] - (last["y"] + last["height"]))
+                self.assertLessEqual(gaps[f"{width}×{height}"], MAX_STREAM_GAP, f"the newest message and the field stay together at {width}×{height}: {gaps}")
+        print("\n  space between the newest message and the message field (CSS px): " + ", ".join(f"{size} {gap}" for size, gap in gaps.items()), end="")
+
+    def test_09_a_short_thread_and_a_short_direct_message_stay_connected_to_their_fields(self) -> None:
+        """ADAPT-2: the same holds for a thread (its root and one reply) and a direct message (two messages): the newest
+        message sits against the reply field or the message field. Agents' task thread is a page scroll with its own
+        sticky composer and is not covered here."""
+        world = self.short_world()
+        gaps = {"thread": {}, "direct message": {}}
+        for width, height in [(390, 844), (820, 1180), (1440, 900), (2560, 1440)]:
+            with self.subTest(width=width, height=height):
+                size = f"{width}×{height}"
+                page = self.page(width, height, state=world["state"])
+                page.goto(f"/projects/{world['project']}/conversations/{world['roots'][0]}")
+                thread = page.locator("#thread")
+                expect(thread.locator(".project-convo__message")).to_have_count(1)
+                self.at_rest(page)
+                last = thread.locator(".project-convo__message").last.bounding_box()
+                field = thread.get_by_label("Reply", exact=True).bounding_box()
+                gaps["thread"][size] = round(field["y"] - (last["y"] + last["height"]))
+                self.assertLessEqual(gaps["thread"][size], MAX_STREAM_GAP, f"the newest reply and the reply field stay together at {size}: {gaps}")
+                dm = self.page(width, height, state=world["state"])
+                dm.goto(f"/dm/{world['dm']}")
+                expect(dm.locator(".dm__list > li")).to_have_count(2)
+                self.at_rest(dm)
+                last = dm.locator(".dm__list > li").last.bounding_box()
+                field = dm.locator("#dm-composer").bounding_box()
+                gaps["direct message"][size] = round(field["y"] - (last["y"] + last["height"]))
+                self.assertLessEqual(gaps["direct message"][size], MAX_STREAM_GAP, f"the newest message and the message field stay together at {size}: {gaps}")
+        for what, values in gaps.items():
+            print(f"\n  space between the newest message and the field, {what} (CSS px): " + ", ".join(f"{size} {gap}" for size, gap in values.items()), end="")
+
+
 class AdaptiveTransitions(AdaptiveBase):
     """ADAPT-4: in-place resize, rotation and keyboard changes keep the work (T151-C/E)."""
 
@@ -861,13 +989,26 @@ class AdaptiveTransitions(AdaptiveBase):
         doc = self.ids["doc"]
         version = self.api(page, "GET", f"/api/v1/docs/{doc}")["version"]
         page.goto(f"/projects/{self.ids['project']}/docs/{doc}/edit")
-        text = page.get_by_label("Text (Markdown)")
-        expect(text).to_be_visible()
-        edited = fx.WIKI_BODY + "\n## Unsaved\n\nThe hold gesture needs a second, slower variant.\n"
-        text.fill(edited)
+        note = "The hold gesture needs a second, slower variant."
+        if LIVE:
+            # The shared working copy: typing is shared as it happens but only Save keeps a version.
+            text = page.locator('.cm-content[aria-label="Shared Markdown"]')
+            expect(page.locator('[data-live-status="live"]')).to_be_visible()
+            text.click()
+            page.keyboard.press("Control+End")
+            page.keyboard.insert_text(f"\n## Unsaved\n\n{note}\n")
+            expect(page.get_by_role("status").filter(has_text="All changes shared")).to_be_visible()
+        else:
+            text = page.get_by_label("Text (Markdown)")
+            expect(text).to_be_visible()
+            edited = fx.WIKI_BODY + f"\n## Unsaved\n\n{note}\n"
+            text.fill(edited)
         for width, height in ((820, 1180), (390, 844), (844, 390), (390, 844), (1440, 900)):
             self.resize(page, width, height)
-            expect(text, f"the unsaved page text stays at {width}×{height}").to_have_value(edited)
+            if LIVE:
+                expect(text, f"the shared page text stays at {width}×{height}").to_contain_text(note)
+            else:
+                expect(text, f"the unsaved page text stays at {width}×{height}").to_have_value(edited)
         self.assertEqual(self.api(page, "GET", f"/api/v1/docs/{doc}")["version"], version, "resizing saves nothing")
         # A task open in Details stays the selected object as Details docks, overlays and becomes a sheet.
         page.goto(f"/projects/{self.ids['project']}/tasks")
@@ -959,6 +1100,46 @@ class AdaptiveTransitions(AdaptiveBase):
         self.assertEqual(after, stored, "nothing was moved on the shared map")
         self.no_problems()
 
+    def test_17_a_saved_task_opens_on_another_device_but_an_unsent_draft_stays_on_its_own(self) -> None:
+        """AC-3 (ADAPT-4): the saved object is the cross-device anchor. The same account on a phone, a colleague on a tablet
+        and nobody else: an unsent draft belongs to the device it was written on, and nothing is saved or sent meanwhile.
+        The object is opened by the link the app itself hands out (Home, Agents), which the app consumes when it opens."""
+        pid, task = self.ids["project"], self.ids["tasks"][fx.OPEN_TASK]
+        url = f"/projects/{pid}/tasks?open=work:{task}"
+        composer = re.compile("^(Write to this task|First message about this task)$")
+        draft = "PRIVATE-DRAFT only on the laptop"
+        laptop = self.page(1440, 900, coarse=False)
+        before = self.api(laptop, "GET", f"/api/v1/work/{task}/discussion")["messages"]
+        laptop.goto(url)
+        expect(laptop.locator("#details").get_by_role("heading", name=fx.OPEN_TASK)).to_be_visible()
+        laptop.locator("#details").get_by_label(composer).fill(draft)
+        laptop.wait_for_timeout(600)
+        # Leaving and opening the task again on this device (its link opens it once and is then consumed) finds the draft.
+        laptop.goto(f"/projects/{pid}/tasks")
+        expect(laptop.locator(".tb-board")).to_be_visible()
+        laptop.goto(url)
+        expect(laptop.locator("#details").get_by_role("heading", name=fx.OPEN_TASK)).to_be_visible()
+        expect(laptop.locator("#details").get_by_label(composer), "the draft is kept on the device it was written on").to_have_value(draft)
+        # The same account on another device: a fresh browser context has its own storage.
+        phone = self.page(390, 844)
+        phone.goto(url)
+        expect(phone.locator("#details").get_by_role("heading", name=fx.OPEN_TASK)).to_be_visible()
+        expect(phone.locator("#details").get_by_label(composer), "the draft is not synchronised").to_have_value("")
+        # A colleague with access opens the same object; a signed-in person without access is told it is not available.
+        tablet = self.page(820, 1180, who="marek")
+        tablet.goto(url)
+        expect(tablet.locator("#details").get_by_role("heading", name=fx.OPEN_TASK)).to_be_visible()
+        outsider = BROWSER.new_context(base_url=ORIGIN, viewport={"width": 1440, "height": 900}, locale="en-GB", timezone_id="Europe/Warsaw")
+        self.addCleanup(outsider.close)
+        signed_up = outsider.request.post("/api/auth/sign-up/email", data={"name": "Lee Park", "email": f"lee.adapt+{fx.STAMP}@example.test", "password": fx.PASSWORD}, headers={"origin": ORIGIN})
+        self.assertEqual(signed_up.status, 200, signed_up.text())
+        stranger = outsider.new_page()
+        stranger.goto(url)
+        expect(stranger.get_by_text("This place isn’t available")).to_be_visible()
+        expect(stranger.get_by_text(fx.OPEN_TASK), "no access shows nothing of the task").to_have_count(0)
+        self.assertEqual(self.api(laptop, "GET", f"/api/v1/work/{task}/discussion")["messages"], before, "nothing was saved or sent")
+
+
 
 def reach_result(covered: dict[str, str | None], inside: bool = True) -> dict:
     """REACH's result shape: covered maps each point the control fails on to the overlay covering it, or None."""
@@ -970,6 +1151,86 @@ def target_result(size: tuple[int, int], across: float, down: float, stops: dict
     """TARGET_JS's result shape: stops maps each side to the overlay that stops the hit area there, or None."""
     return {"size": list(size), "across": across, "down": down, "stops": {side: "div.synthetic" for side in stops},
             "overlay": dict(stops)}
+
+
+class AdaptiveReflow(AdaptiveBase):
+    """ADAPT-5 (#151 AC-4): browser zoom and text enlargement keep every project view usable.
+
+    Playwright has no browser-zoom setting, so zoom is emulated the way the browser reports it: the window divided by the
+    zoom, with the device pixel ratio multiplied by it. 1280×1024 at 400% is the 320×256 CSS viewport of WCAG 1.4.10 and
+    1280×720 at 200% is 640×360. Text enlargement sets the root size to 200%, which every type token follows (rem), and the
+    test measures that the text really grew. The map's plane is two-dimensional content: it scrolls inside its own region,
+    never the page. These are emulations, not a browser's zoom or an operating system's text-size setting."""
+
+    def controls(self, page: Page, view: str) -> list[tuple[str, Locator]]:
+        phone = self.phone(page)
+        if view == "Conversation":
+            return [("the message field", page.get_by_label("Write a message", exact=True)), ("Send message", page.get_by_role("button", name="Send message"))]
+        if view == "Tasks":
+            return [("Create", page.get_by_role("button", name="Create", exact=True))] if phone else [("New Task", page.get_by_role("button", name="New Task", exact=True))]
+        if view == "Wiki":
+            return [("Edit", page.get_by_role("link", name="Edit", exact=True))]
+        if view == "Agents":
+            return [("Hand off a task", page.get_by_role("button", name="Hand off a task"))]
+        return []
+
+    def within_window(self, locator: Locator, what: str, where: str) -> None:
+        expect(locator, f"{what} at {where}").to_be_visible()
+        self.settle(locator.page)
+        result = locator.evaluate(HORIZONTAL)
+        self.check(result["left"] and result["right"], f"{what} at {where} lies within the window sideways: {result}")
+        self.check(result["hit"], f"{what} at {where} is not covered: {result}")
+
+    def walk(self, page: Page, where: str, *, start: bool = True) -> None:
+        """Every view of the project: no sideways page scroll, and its primary actions stay reachable by scrolling."""
+        if start:
+            page.goto(f"/projects/{self.ids['project']}")
+        for view in TABS:
+            if view != "Conversation":
+                self.tab(page, view)
+            if view == "Map":
+                expect(page.locator(".sk-node")).to_have_count(len(fx.THOUGHTS))
+            elif view == "Wiki":
+                expect(page.get_by_role("heading", level=2, name=fx.WIKI_PAGE)).to_be_visible()
+            elif view == "Agents":
+                expect(page.get_by_role("heading", level=1, name="Agents")).to_be_visible()
+            elif view == "Tasks":
+                expect(page.locator(".tb-board, .ws-task").first).to_be_visible()
+            self.at_rest(page)
+            for what, locator in self.controls(page, view):
+                self.within_window(locator, what, f"{view} {where}")
+            self.no_sideways_scroll(page, f"{view} {where}")
+
+    def test_20_browser_zoom_reflows_every_view(self) -> None:
+        for window, zoom in (((1280, 1024), 4), ((1280, 720), 2)):
+            width, height = window[0] // zoom, window[1] // zoom
+            with self.subTest(window=window, zoom=zoom):
+                self.problems = []
+                page = self.page(width, height, coarse=False, dpr=zoom)
+                self.assertEqual(page.evaluate("devicePixelRatio"), zoom)
+                try:
+                    self.walk(page, f"{width}×{height} CSS px, {window[0]}×{window[1]} at {zoom * 100}%")
+                finally:
+                    self.no_problems()
+
+    def test_21_text_enlarged_to_200_percent_keeps_every_view_usable(self) -> None:
+        for width, height in ((390, 844), (820, 1180), (1440, 900)):
+            with self.subTest(width=width, height=height):
+                self.problems = []
+                page = self.page(width, height)
+                try:
+                    page.goto(f"/projects/{self.ids['project']}")
+                    expect(page.get_by_label("Write a message", exact=True)).to_be_visible()
+                    self.at_rest(page)
+                    before = page.evaluate(TEXT_PX)
+                    page.evaluate("document.documentElement.style.fontSize = '200%'")
+                    self.at_rest(page)
+                    after = page.evaluate(TEXT_PX)
+                    # A changed root size that leaves fixed-pixel text unchanged is not evidence: the message text itself doubles.
+                    self.assertGreaterEqual(after, before * 1.9, f"message text grew from {before}px to {after}px at {width}×{height}")
+                    self.walk(page, f"{width}×{height} with 200% text", start=False)
+                finally:
+                    self.no_problems()
 
 
 class KnownGapRules(AdaptiveBase):

@@ -1,7 +1,7 @@
 import { sql } from 'drizzle-orm';
 import type { CoWorkHandoffPacket, CoWorkOriginalMessage, CoWorkPacketReference, CoWorkSourceRef, TaskCoordination,
   TaskCoordinationRequest, CancelCoWorkRequestCommand } from '@flux/contracts';
-import { coworkCardRows, coworkReviewRows, referenceKey, type CoWorkCardRow, type CoWorkReferenceFact } from '@flux/db';
+import { coworkCardRows, coworkReviewRows, referenceKey, type CoWorkCardRow, type CoWorkReferenceFact, accessReader } from '@flux/db';
 import { canCancelCoWorkRequest, enforce, evaluateProject, ForbiddenError, isUuid, NotFoundError, recordEvent, requireCoWorkCancel,
   type CoWorkCancelActor, type Database, type Executor, type Principal } from '@flux/core';
 import { ConflictError } from '@flux/core';
@@ -20,8 +20,8 @@ const requestId = (value: string) => {
 /** The reader's standing now: a person who may write, and whether that includes managing the project. */
 async function cancelActor(tx: Executor, principal: Principal, projectId: string): Promise<CoWorkCancelActor> {
   if (principal.kind !== 'human') return { userId: principal.id, writer: false, manager: false };
-  const writer = (await evaluateProject(principal, 'project.write', projectId, tx)).allowed;
-  const manager = writer && (await evaluateProject(principal, 'project.manage', projectId, tx)).allowed;
+  const writer = (await evaluateProject(principal, 'project.write', projectId, accessReader(tx))).allowed;
+  const manager = writer && (await evaluateProject(principal, 'project.manage', projectId, accessReader(tx))).allowed;
   return { userId: principal.id, writer, manager };
 }
 
@@ -124,7 +124,7 @@ export async function cancelCoWorkRequest(db: Database, principal: Principal, wo
     const projectId = located.project_id, workspaceId = located.workspace_id;
     // The same 404 for an unknown task and for one the person cannot read; 403 for a viewer. Access rows are locked against
     // a concurrent removal.
-    const access = await evaluateProject(principal, 'project.write', projectId, tx, { lock: true });
+    const access = await evaluateProject(principal, 'project.write', projectId, accessReader(tx), { lock: true });
     if (!access.visible) throw new NotFoundError('Work item', 'WORK_NOT_FOUND');
     enforce(access, 'project');
     const actor = await cancelActor(tx, principal, projectId);

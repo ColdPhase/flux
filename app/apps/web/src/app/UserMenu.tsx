@@ -1,7 +1,7 @@
 import { useEffect, useId, useRef, useState, type KeyboardEvent } from 'react';
 import { useAllAiBlocked } from '../ai/workspaceAi';
 import { Form, Link, useLocation, useNavigation } from 'react-router';
-import { Avatar, Icon, Spinner, duration, play, trapTab } from '../ui';
+import { Avatar, Icon, Spinner, trapTab, usePop } from '../ui';
 import { NotificationsButton } from '../pwa';
 import { AppearanceControls } from './AppearanceControls';
 
@@ -44,6 +44,7 @@ function AccountMenu({ name, email, sessionExpiresAt, compact }: { name: string;
   const buttonRef = useRef<HTMLButtonElement>(null);
   const popRef = useRef<HTMLDivElement>(null);
   const popId = useId();
+  const pop = usePop(open, { from: 'above' });
   // Signing out is a navigation of its own, not a fetcher: it replaces whatever this tab is still
   // loading. A fetcher's redirect would leave that load running, and when it finished it took the
   // tab back to the previous account's page after the sign-in page. A failure is
@@ -53,11 +54,10 @@ function AccountMenu({ name, email, sessionExpiresAt, compact }: { name: string;
 
   useEffect(() => {
     if (!open) return;
-    const pop = popRef.current;
-    void play(pop, [{ opacity: 0, transform: 'translateY(4px) scale(.98)' }, { opacity: 1, transform: 'none' }], duration('--dur-2'), '--ease-out', { fill: 'backwards' });
-    pop?.querySelector<HTMLElement>('[aria-checked="true"]')?.focus();
+    const surface = popRef.current;
+    surface?.querySelector<HTMLElement>('[aria-checked="true"]')?.focus();
     const onPointer = (event: PointerEvent) => {
-      if (!pop?.contains(event.target as Node) && !buttonRef.current?.contains(event.target as Node)) setOpen(false);
+      if (!surface?.contains(event.target as Node) && !buttonRef.current?.contains(event.target as Node)) setOpen(false);
     };
     document.addEventListener('pointerdown', onPointer);
     return () => document.removeEventListener('pointerdown', onPointer);
@@ -75,8 +75,8 @@ function AccountMenu({ name, email, sessionExpiresAt, compact }: { name: string;
 
   return (
     <div className={`me${compact ? ' me--compact' : ''}`}>
-      {open ? (
-        <div ref={popRef} id={popId} className="me__pop" role="dialog" aria-label="Account" onKeyDown={onKeyDown}>
+      {pop.mounted ? (
+        <div {...pop.props} ref={popRef} id={popId} className="me__pop" role="dialog" aria-label="Account" onKeyDown={onKeyDown}>
           <div className="me__who">
             <b>{name}</b>
             <span>{email}</span>

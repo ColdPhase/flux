@@ -4,7 +4,7 @@ import { useRevalidator } from 'react-router';
 import type { Agent, ObjectLink, Project, WorkspaceMember, WorkStatus, WorkDetailObject, WorkDetailProjection } from '@flux/contracts';
 import { ApiError } from '../api/client';
 import { useStreamEvents } from '../api/stream';
-import { AgentIdentity, Avatar, Button, Icon, Input, Kreska, PanelActions, PanelGlyph, PanelMeta, StatusGlyph, useToast } from '../ui';
+import { AgentIdentity, Avatar, Button, Icon, Input, Kreska, Morph, PanelActions, PanelGlyph, PanelMeta, StatusGlyph, useToast } from '../ui';
 import { getProject, listWorkspaceMembers } from '../app/conversation-api';
 import { useShellData } from '../app/data';
 import { useRegisterLiveHere } from '../live/LiveProvider';
@@ -503,7 +503,7 @@ function WorkPanel({ item, context, detail, relations, reload, commands }: { ite
           empty={nothingLinked && relations.read.phase === 'ready' && relations.complete ? <p className="wd-muted wd-act__none">No results, decisions or Wiki pages yet.</p> : null} />
       </div>
       <div className="wd__foot" data-version={item.version}>
-        <TaskComposer state={activity} composer={composer} item={item} writable={writable} readOnly={!!reverted} id={composerId}
+        <TaskComposer state={activity} composer={composer} item={item} meId={me.user.id} writable={writable} readOnly={!!reverted} id={composerId}
           audience={`Everyone in ${context.project.name} · added by ${item.createdBy.kind === 'human' ? item.createdBy.name.split(/\s+/)[0] : item.createdBy.name} · ${shortDate(item.createdAt)}`} />
       </div>
     </div>
@@ -627,7 +627,7 @@ function DecisionPanel({ decision, context, detail, relations, reload, choices, 
   return (
     <div className="details wd" data-detail-kind="decision" data-detail-id={decision.id}>
       <div className="wd-decision-identity">
-        <p className={`details__eyebrow wd-eyebrow${decision.status === 'proposed' ? ' wd-need' : ''}`}><Icon name="rule" size={13} />{decisionLine(decision)}</p>
+        <p className={`details__eyebrow wd-eyebrow${decision.status === 'proposed' ? ' wd-need' : ''}`}><Icon name="rule" size={13} /><Morph value={decision.status}>{decisionLine(decision)}</Morph></p>
         <h3 className={`details__title${decision.status === 'superseded' ? ' wd-was' : ''}`}>{decision.title}</h3>
       </div>
       {decision.rationale ? <p className="details__lead">{decision.rationale}</p> : null}

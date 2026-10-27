@@ -680,6 +680,12 @@ class ProjectSurfaceJourney(unittest.TestCase):
                 source.click()
                 expect(page).to_have_url(re.compile(rf"/conversations/{self.ids['conversation']}"))
                 page.go_back()
+                if phone:
+                    # Back returns to the page as it was left (#592, #603): the task is open again, as a sheet over the list, so
+                    # the phone's Create button is behind it until the sheet is closed.
+                    expect(self.details(page).get_by_role("heading", name="Test the camera in low light")).to_be_visible()
+                    self.details(page).get_by_role("button", name=re.compile("^Close")).first.click()
+                    expect(self.details(page)).to_be_hidden()
                 field = open_from_tasks(page)
                 expect(field).to_have_value(draft)
                 self.close_create(page)

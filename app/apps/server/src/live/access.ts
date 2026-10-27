@@ -1,12 +1,12 @@
 import { and, eq, inArray, isNull } from 'drizzle-orm';
-import { schema } from '@flux/db';
+import { schema, accessReader } from '@flux/db';
 import type { LiveContextRef, LivePresentationRef } from '@flux/contracts';
 import { assertAuthorized, enforce, evaluateProject, NotFoundError, type Executor, type LiveAccess, type Principal } from '@flux/core';
 
 /** Recheck and lock the context when a session is created, after resolving its project. */
 export async function requireLiveContext(principal: Principal, ref: LiveContextRef,
   projectId: string, db: Executor, lock = false): Promise<void> {
-  enforce(await evaluateProject(principal, 'project.read', projectId, db, { lock }), 'project');
+  enforce(await evaluateProject(principal, 'project.read', projectId, accessReader(db), { lock }), 'project');
   const missing = () => { throw new NotFoundError('Context', 'LIVE_CONTEXT_NOT_FOUND'); };
   if (ref.type === 'conversation') {
     const query = db.select({ projectId: schema.projectConversations.projectId })
@@ -46,7 +46,7 @@ export async function requireLiveContext(principal: Principal, ref: LiveContextR
  */
 export async function requireLivePresentationSource(principal: Principal, projectId: string,
   ref: LivePresentationRef, db: Executor, lock = false): Promise<void> {
-  enforce(await evaluateProject(principal, 'project.read', projectId, db, { lock }), 'project');
+  enforce(await evaluateProject(principal, 'project.read', projectId, accessReader(db), { lock }), 'project');
   const s = schema;
   const missing = () => { throw new NotFoundError('Presentation source', 'LIVE_SOURCE_NOT_FOUND'); };
   if (ref.type === 'message') {
@@ -96,7 +96,7 @@ export async function requireLivePresentationSource(principal: Principal, projec
 /** Resolves identifiers without returning private text; every caller is authorized afterwards. */
 export function liveAccess(db: Executor): LiveAccess {
   const project = (principal: Principal, id: string) =>
-    assertAuthorized(principal, 'project.read', { type: 'project', id }, db);
+    assertAuthorized(principal, 'project.read', { type: 'project', id }, accessReader(db));
 
   const projectOf = async (type: LiveContextRef['type'] | LivePresentationRef['type'], id: string): Promise<string | null> => {
     if (type === 'conversation') {

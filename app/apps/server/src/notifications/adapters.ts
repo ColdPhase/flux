@@ -3,6 +3,7 @@ import {
   notificationEmailRows,
   notificationPlaceRows,
   notificationPreferenceRows,
+  accessReader,
 } from '@flux/db';
 import {
   createNotificationSettings,
@@ -51,7 +52,7 @@ function preferenceStore(db: Database) {
 }
 
 export function settingsPorts(db: Database, mailer: VerificationMailer, origin: string): SettingsPorts {
-  const authorizer = policySourceReader(db);
+  const authorizer = policySourceReader(accessReader(db));
   const places = notificationPlaceRows(db);
   return {
     preferences: preferenceRepository(preferenceStore(db)),

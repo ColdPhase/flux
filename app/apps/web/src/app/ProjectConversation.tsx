@@ -44,6 +44,7 @@ import { ComposerMenu, composerOptions, composerTrigger, type ComposerOption } f
 import { cite as citeMessage, onCite, quoteOf } from './citeBus';
 import { QuestionCard, WhenNoQuestion } from '../agents/QuestionCard';
 import { useProjectQuestions } from '../agents/questions';
+import { useSpareHeight } from '../ui/spareHeight';
 import { useTyping } from '../typing/useTyping';
 import { TypingNotice } from '../typing/TypingNotice';
 import { listProjectGoals } from '../project/goal';
@@ -209,6 +210,10 @@ function ProjectConversationContent({ data, variant, feed, rootHeader, rootMessa
   const scrollRef = useRef<HTMLDivElement>(null);
   const [feedNode, setFeedNode] = useState<HTMLDivElement | null>(null);
   const attachFeed = useCallback((node: HTMLDivElement | null) => { scrollRef.current = node; setFeedNode(node); }, []);
+  // A short thread sits against its reply field instead of at the top of a tall panel (ui/spareHeight.ts).
+  const columnRef = useRef<HTMLDivElement>(null);
+  const liftRef = useRef<HTMLDivElement>(null);
+  useSpareHeight(scrollRef, columnRef, liftRef, conversation ? messages.length + outbox.pending.length : 0, feedNode);
   // The thread shows its root whole at the top (with what was made from it), then the replies: one bounded
   // association read covers the root and the replies around the viewport (#155).
   const sourceIds = useMemo(() => [...(rootMessageId ? [rootMessageId] : []), ...messages.filter((message) => message.sequence > 1 && message.id !== rootMessageId).map((message) => message.id)], [messages, rootMessageId]);
@@ -691,7 +696,8 @@ function ProjectConversationContent({ data, variant, feed, rootHeader, rootMessa
     data-associations-observed-at={conversation ? messageWork.page?.observedAt : undefined} data-associations-phase={conversation ? messageWork.state.phase : undefined}
     data-references-observed-at={conversation ? referenceWork.observation?.observedAt : undefined} data-references-phase={conversation ? referenceWork.state.phase : undefined}>
     {!conversation ? feed : <div className={`thread__feed${revealed ? '' : ' is-opening'}`} ref={attachFeed} aria-busy={revealed ? undefined : true}>
-      <div className="thread__in">
+      <div className="thread__lift" aria-hidden="true" ref={liftRef} />
+      <div className="thread__in" ref={columnRef}>
         {rootHeader?.({ preview: rootMessageId ? messageWork.previews?.get(rootMessageId) ?? null : null, taskRow: discussedRow })}
         <section aria-label="Replies to this message" className="project-convo__messages">
           {conversation ? <>
@@ -806,7 +812,7 @@ function ProjectConversationContent({ data, variant, feed, rootHeader, rootMessa
         attach={asking ? null : publicComposer}
         sendLabel={asking ? 'Send to your assistant' : conversation ? 'Send reply' : 'Send message'}
         sendDisabled={!composer.canSend || busy || askBusy || assistantInStream || (asking && ask.kind !== 'ready')} onSend={() => void send()}
-        menu={menuOpen ? <ComposerMenu id={`${composerId}-menu`} options={options} active={activeIndex} trigger={trigger!.char} aiOff={aiOff} onPick={pick} onHover={setMenuIndex} /> : null} />
+        menu={<ComposerMenu open={menuOpen} id={`${composerId}-menu`} options={options} active={activeIndex} trigger={trigger?.char ?? '@'} aiOff={aiOff} onPick={pick} onHover={setMenuIndex} />} />
         : <div className="composer__box"><button type="button" className="composer__ask project-convo__sources-btn" aria-expanded={trayOpen} aria-controls={trayOpen ? `${conversation ? 'thread' : 'project'}-sources` : undefined} aria-label={`Sources${materialTotal ? `, ${materialTotal} saved` : ''}`} data-tip="Saved sources to read" data-tip-align="start" onClick={() => { if (trayOpen) setSourcesOpen(false); else setSourcesOpen(true); }}><Icon name="doc" /><span className="project-convo__sources-t" aria-hidden="true">Sources</span>{materialTotal ? <span className="project-convo__sources-n" aria-hidden="true">{materialTotal > 99 ? '99+' : materialTotal}</span> : null}</button><p className="project-convo__read-only">Read-only · <span>You have read access to this project.</span></p></div>}
       {conversation && !accessLost ? <TypingNotice {...typing} /> : null}
       {writable ? <SendAnnouncer pending={publicComposer.pending} /> : null}

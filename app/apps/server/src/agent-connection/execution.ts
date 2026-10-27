@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import type { AgentCommandReceipt, AgentExecutionCommand, AgentOperation, AgentPostcondition, AuthenticatedAgentRuntime } from '@flux/contracts';
-import { agentExecutionRows, agentProjectObjectRows, agentThreadGuardRows } from '@flux/db';
+import { agentExecutionRows, agentProjectObjectRows, agentThreadGuardRows, accessReader } from '@flux/db';
 import { agentOutcomeFingerprint, DomainError, enforce, evaluateProject, normalizeAgentExecution, validateAgentPostconditions,
   type AgentExecutionOutcome, type AgentExecutionPort, type AgentExecutionScope,
   type NormalizedAgentExecutionCommand, type Transaction } from '@flux/core';
@@ -47,7 +47,7 @@ export function agentExecutionInTransaction(tx: Transaction, claims: FluxMcpClai
   const recheck = async (prepared: Prepared, requireUnused: boolean) => {
     const { command, runtime, grant, context } = prepared;
     await agentConnectionInTransaction(tx, claims, 'flux.action.execute', command.projectId);
-    enforce(await evaluateProject({ kind: 'agent', id: context.agentId }, 'project.write', command.projectId, tx, { lock: true }), 'project');
+    enforce(await evaluateProject({ kind: 'agent', id: context.agentId }, 'project.write', command.projectId, accessReader(tx), { lock: true }), 'project');
     for (const source of command.sources) if (await rows.sourceVersion(context.workspaceId, command.projectId, source.materialId) !== source.version)
       throw new DomainError(409, 'SOURCE_VERSION_CONFLICT', 'A referenced source changed; recover before continuing');
     const binding = await rows.lockBinding(runtime.bindingId);

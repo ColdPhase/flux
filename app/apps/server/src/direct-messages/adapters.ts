@@ -1,10 +1,9 @@
-import { dmRows, schema, type DbExecutor } from '@flux/db';
+import { dmRows, schema, type DbExecutor, visibleFilter, accessReader } from '@flux/db';
 import { eq, and } from 'drizzle-orm';
 import {
   createDmUseCases,
   policyDmAccess,
   recordEvent,
-  visibleFilter,
   type Database,
   type DmPorts,
   type DmRepository,
@@ -59,7 +58,7 @@ function dmTaskCopy(tx: Transaction): DmTaskCopy {
 
 function dmPorts(tx: Transaction): DmPorts {
   return {
-    access: policyDmAccess(tx),
+    access: policyDmAccess(accessReader(tx)),
     taskCopy: dmTaskCopy(tx),
     dms: dmRepository(tx),
     events: { record: async (principal, workspaceId, kind, dmId, data) => { await recordEvent(eventPorts(tx), principal, workspaceId, kind, dmId, data); } },

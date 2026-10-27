@@ -1,6 +1,6 @@
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { and, eq, gt, isNull } from 'drizzle-orm';
-import { schema } from '@flux/db';
+import { schema, accessReader } from '@flux/db';
 import { GITHUB_CALLBACK_PATH } from '@flux/contracts';
 import { evaluateProject, enforce, InvalidInputError, ServiceUnavailableError, type Database } from '@flux/core';
 import type { SessionContext } from '../identity/index.js';
@@ -17,7 +17,7 @@ export function githubOauth(db: Database, config: GithubConfig, credentials: Git
     const [active] = await tx.select({ id: schema.authSessions.id }).from(schema.authSessions).where(and(eq(schema.authSessions.id, session.sessionId),
       eq(schema.authSessions.userId, session.principal.id), gt(schema.authSessions.expiresAt, new Date()))).for('share');
     if (!active) throw new InvalidInputError('Authorization session expired', 'GITHUB_FLOW_INVALID');
-    return enforce(await evaluateProject(session.principal, purpose === 'install' ? 'project.manage' : 'project.read', projectId, tx, { lock: true }), 'project').project!;
+    return enforce(await evaluateProject(session.principal, purpose === 'install' ? 'project.manage' : 'project.read', projectId, accessReader(tx), { lock: true }), 'project').project!;
   }
   return {
     async start(session: SessionContext, projectId: string, purpose: 'authorize' | 'install') {

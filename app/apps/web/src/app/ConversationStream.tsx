@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router';
 import type { Conversation, ConversationMessage, ConversationRoot, ConversationRootWindow, NativeWorkRow, Page, Project, ProjectGoal, ReturnSummary, TaskCreationNotice } from '@flux/contracts';
 import { AgentIdentity, Avatar, Button, EmptyState, Icon, IconButton, Kreska, Opening, StatusGlyph, useArrivals, useToast } from '../ui';
 import { newBelowText } from '../ui/motion-rules';
+import { useSpareHeight } from '../ui/spareHeight';
 import { MessageObjects, useCreateWorkFromMessage } from '../work/inline';
 import { MessageActions, useTouchActions } from '../work/messageActions';
 import { useMessageWorkRead, type MessageWorkRead } from '../work/useMessageWork';
@@ -341,6 +342,9 @@ export function ConversationStream({ project, meId, meName, roots: stream, notic
     ids: display.flatMap((entry) => entry.kind === 'root' && entry.root.message.authorId !== meId ? [entry.root.message.id] : []), depend: entries.length });
   if (!revealed && (openingSettled || openingTimedOut)) setRevealed(true);
   const columnRef = useRef<HTMLDivElement>(null);
+  // A short stream sits against its composer instead of at the top of a tall screen (ui/spareHeight.ts).
+  const liftRef = useRef<HTMLDivElement>(null);
+  useSpareHeight(feedRef, columnRef, liftRef, display.length + outbox.pending.length, feedNode);
   const pinRef = useRef<{ id: string; offset: number } | null>(null);
   /** The first entry in view and its offset from the top, as the reader last left it. */
   const anchorRef = useRef<{ id: string; offset: number } | null>(null);
@@ -613,6 +617,7 @@ export function ConversationStream({ project, meId, meName, roots: stream, notic
     <div className={`project-convo__feed is-stream${revealed ? '' : ' is-opening'}`} ref={attachFeed} aria-busy={revealed ? undefined : true}
       data-associations-observed-at={messageWork.page?.observedAt} data-associations-phase={messageWork.state.phase}
       data-references-observed-at={referenceWork.observation?.observedAt} data-references-phase={referenceWork.state.phase}>
+      <div className="project-convo__lift" aria-hidden="true" ref={liftRef} />
       <div className="project-convo__in" data-shift ref={columnRef}>
         <section aria-label="Messages" className="project-convo__messages">
           {stream.hasOlder ? <Button variant="quiet" busy={stream.olderBusy} onClick={() => void loadOlder()}>Load earlier messages</Button> : null}
