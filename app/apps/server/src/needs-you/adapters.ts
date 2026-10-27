@@ -1,9 +1,8 @@
-import { needsYouRows, returnRows } from '@flux/db';
+import { needsYouRows, returnRows, visibleFilter, accessReader } from '@flux/db';
 import {
   createNeedsYou,
   evaluateProject,
   listWorkspaces,
-  visibleFilter,
   type Database,
   type NeedsYouAccess,
   type NeedsYouAssistant,
@@ -25,13 +24,13 @@ export function policyNeedsYouAccess(db: Database): NeedsYouAccess {
       return returns.projectIdsWhere(workspaceId, await visibleFilter(principal, workspaceId, 'project', db));
     },
     async canAccept(principal, projectId) {
-      return principal.kind === 'human' && (await evaluateProject(principal, 'project.write', projectId, db)).allowed;
+      return principal.kind === 'human' && (await evaluateProject(principal, 'project.write', projectId, accessReader(db))).allowed;
     },
     async accepters(projectId, limit) {
       const people: { id: string; name: string }[] = [];
       for (const member of await rows.workspaceMembersOfProject(projectId, 50)) {
         if (people.length >= limit) break;
-        if ((await evaluateProject({ kind: 'human', id: member.id }, 'project.write', projectId, db)).allowed) people.push(member);
+        if ((await evaluateProject({ kind: 'human', id: member.id }, 'project.write', projectId, accessReader(db))).allowed) people.push(member);
       }
       return people;
     },

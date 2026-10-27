@@ -1,8 +1,8 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { AGENT_MCP_ENTRIES, ASSISTANT_CHANGE_LIMITS, assistantChangeWords, assistantWorkChangeArgs, type AgentJsonValue, type AgentOperation, type AgentPostcondition,
   type AgentScope, type AssistantObjectType, type AuthenticatedAgentRuntime } from '@flux/contracts';
-import { assistantChangeRows, lockAgentMcpPolicy, needsYouRows, sketchRows, type AssistantChangeRow, type DbExecutor } from '@flux/db';
-import { changedParagraphs, classifyAssistantChange, DomainError, fieldWords, type UndoRecord, evaluateProject, loadActor, redactSecrets, type Database,
+import { assistantChangeRows, lockAgentMcpPolicy, needsYouRows, sketchRows, type AssistantChangeRow, type DbExecutor, loadActor, accessReader } from '@flux/db';
+import { changedParagraphs, classifyAssistantChange, DomainError, fieldWords, type UndoRecord, evaluateProject, redactSecrets, type Database,
   type Transaction } from '@flux/core';
 import { nativeConversationsInEventSession } from '../conversation/store.js';
 import { nativeDocsInEventSession } from '../docs/adapters.js';
@@ -239,13 +239,13 @@ async function currentAuthority(tx: Transaction, claims: FluxMcpClaims, projectI
   const rows = assistantChangeRows(tx as DbExecutor);
   let agentId: string; let workspaceId: string;
   // The owner's own rights now: a change outside them can only be prepared as a suggestion (AST-5).
-  const ownerCanWrite = (await evaluateProject({ kind: 'human', id: claims.ownerUserId }, 'project.write', projectId, tx, { lock: true })).allowed;
+  const ownerCanWrite = (await evaluateProject({ kind: 'human', id: claims.ownerUserId }, 'project.write', projectId, accessReader(tx), { lock: true })).allowed;
   if (!approval) {
     // The run's own token: in flight, its place, the S6 entry admitted by the route's dispatch. The assistant's grant
     // must allow the write itself; a suggestion (owner without write, so the assistant is capped too) needs only read.
     const context = await agentConnectionInTransaction(tx, claims, 'flux.action.execute', null);
     if (!context.connection.selectedProjectIds.includes(projectId)) throw new DomainError(403, 'OUTSIDE_RUN_PLACE', 'An assistant run changes only the project it was asked in');
-    if (!ownerCanWrite) enforceRead((await evaluateProject({ kind: 'human', id: claims.ownerUserId }, 'project.read', projectId, tx, { lock: true })).allowed);
+    if (!ownerCanWrite) enforceRead((await evaluateProject({ kind: 'human', id: claims.ownerUserId }, 'project.read', projectId, accessReader(tx), { lock: true })).allowed);
     await context.requireProject(projectId, ownerCanWrite ? 'project.write' : 'project.read');
     agentId = context.principal.id; workspaceId = context.workspaceId;
   } else {
@@ -259,7 +259,7 @@ async function currentAuthority(tx: Transaction, claims: FluxMcpClaims, projectI
     const acting = approval.suggestion && approval.decidedBy ? { kind: 'human' as const, id: approval.decidedBy } : { kind: 'agent' as const, id: agentId };
     if (approval.suggestion && (!prepared?.sentAt || prepared.waitReason !== 'outside_rights' || prepared.suggestToUserId !== approval.decidedBy))
       throw invalidated('This suggestion is not addressed to you');
-    const checked = await evaluateProject(acting, 'project.write', projectId, tx, { lock: true });
+    const checked = await evaluateProject(acting, 'project.write', projectId, accessReader(tx), { lock: true });
     if (!checked.allowed || checked.project?.workspaceId !== workspaceId) throw invalidated('Your assistant can no longer change this project');
   }
   const policy = await lockAgentMcpPolicy(tx, claims.connectionId);
@@ -349,7 +349,7 @@ export function assistantChangeExecutor(db: Database, claims: FluxMcpClaims) {
             let decider = outcome.reason === 'outside_rights' ? target.maker : null;
             if (outcome.reason === 'outside_rights' && !decider)
               for (const member of await needsYouRows(tx).workspaceMembersOfProject(input.projectId, 50))
-                if (member.id !== claims.ownerUserId && (await evaluateProject({ kind: 'human', id: member.id }, 'project.write', input.projectId, tx)).allowed) { decider = member.id; break; }
+                if (member.id !== claims.ownerUserId && (await evaluateProject({ kind: 'human', id: member.id }, 'project.write', input.projectId, accessReader(tx))).allowed) { decider = member.id; break; }
             // Measured exactly as the column's CHECK measures it (jsonb text), before anything is written.
             if (await rows.preparedBytes(call) > ASSISTANT_CHANGE_LIMITS.preparedBytes)
               throw new DomainError(413, 'ASSISTANT_CHANGE_TOO_LARGE', 'This change is too large to keep for your OK');

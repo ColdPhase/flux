@@ -1,4 +1,4 @@
-import { artifactResetRows, canonicalArtifactTaskIds, fileRows, liveMapRows, prepareCanonicalArtifactTasks, sketchRows, type DbExecutor } from '@flux/db';
+import { artifactResetRows, canonicalArtifactTaskIds, fileRows, liveMapRows, prepareCanonicalArtifactTasks, sketchRows, type DbExecutor, visibleFilter, accessReader } from '@flux/db';
 import type { PromotionPerson } from '@flux/contracts';
 import {
   authorize,
@@ -17,7 +17,6 @@ import {
   recordEvent,
   RuleViolationError,
   ServiceUnavailableError,
-  visibleFilter,
   type Database,
   type FileStorage,
   type Principal,
@@ -73,7 +72,7 @@ const isManager = (role: string) => role === 'owner' || role === 'admin';
 export function sketchPromotion(tx: Database): SketchPromotion {
   return {
     async targets(principal, workspaceId) {
-      const create = await authorize(principal, 'project.create', { type: 'workspace', id: workspaceId }, tx);
+      const create = await authorize(principal, 'project.create', { type: 'workspace', id: workspaceId }, accessReader(tx));
       const projects: { id: string; name: string }[] = [];
       for (let offset = 0; ; offset += 100) {
         const page = await listProjects(principal, workspaceId, { limit: 100, offset }, tx);
@@ -136,7 +135,7 @@ export function sketchFiles(tx: Database, storage?: FileStorage): SketchFiles {
 export function sketchPorts(tx: Database, storage?: FileStorage): SketchPorts {
   const sketches=sketchRepository(tx as DbExecutor);
   return {
-    access: policySketchAccess(tx),
+    access: policySketchAccess(accessReader(tx)),
     files: sketchFiles(tx, storage),
     sketches,
     live:nativeMapJournal(tx as DbExecutor,sketches).journal,

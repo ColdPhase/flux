@@ -14,18 +14,6 @@
       "reason": "Workspace/project/grant/agent/draft use cases still build Drizzle queries against @flux/db tables; move queries and row mapping to @flux/db repositories behind core ports."
     },
     {
-      "file": "packages/core/src/access/policy.ts",
-      "import": "drizzle-orm",
-      "issue": "https://github.com/ColdPhase/flux/issues/46",
-      "reason": "authorize/visibleFilter decide access and build SQL in one module; split pure policy decisions from the SQL-backed grant lookup and visibility filter adapter."
-    },
-    {
-      "file": "packages/core/src/access/policy.ts",
-      "import": "@flux/db",
-      "issue": "https://github.com/ColdPhase/flux/issues/46",
-      "reason": "authorize/visibleFilter decide access and build SQL in one module; split pure policy decisions from the SQL-backed grant lookup and visibility filter adapter."
-    },
-    {
       "file": "packages/core/src/types.ts",
       "import": "@flux/db",
       "issue": "https://github.com/ColdPhase/flux/issues/46",
