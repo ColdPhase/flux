@@ -259,6 +259,10 @@ test('actual retained native87 history upgrades to88 without pulses, seeds old b
     await fixture.pool.query('ALTER TABLE project_work_items ADD COLUMN waiting_for_user_id text, ADD COLUMN due_on date');
     // 0115 added ai_epoch to agent_runtime_sessions. The retained row is copied whole, so this earlier fixture gets the column too, as 0115 leaves it: NOT NULL, no default.
     await fixture.pool.query('ALTER TABLE agent_runtime_sessions ADD COLUMN ai_epoch bigint NOT NULL');
+    // 0119 (F-030) added workspaces.encrypted and creation_id, and project_files.key_version. The retained rows are copied whole and the
+    // code under test reads them, so this earlier fixture gets the three columns as 0119 leaves them; the key tables and triggers are not needed.
+    await fixture.pool.query('ALTER TABLE workspaces ADD COLUMN encrypted boolean NOT NULL DEFAULT false, ADD COLUMN creation_id uuid');
+    await fixture.pool.query('ALTER TABLE project_files ADD COLUMN key_version integer CHECK (key_version IS NULL OR key_version >= 1)');
     const client=await fixture.pool.connect();try{
       await client.query('BEGIN');await client.query('SET CONSTRAINTS ALL DEFERRED');
       // Restore only this isolated fixture's two guarded tables, preserving the ACTUAL

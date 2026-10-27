@@ -15,7 +15,13 @@ test('0077 fresh/upgrade/reverse preserves legacy identity, grants and consent w
     await client.query('BEGIN'); await client.query(`CREATE SCHEMA ${namespace}`);
     await client.query(`SET LOCAL search_path TO ${namespace}, public, pg_catalog`);
     const manifest = await readMigrationManifest(directory, FLUX_SCHEMA_VERSION);
-    for (const file of manifest.filter((file) => file.version !== 77)) {
+    // 0119 (F-030) lists the AI tables of schema `public` (the test stack's own, fully migrated) and creates its trigger on the table
+    // of that name that search_path finds first. Before 0077 this namespace has no assistant_settings or agent_connection_mcp_policies,
+    // so it would find the stack's tables, which have the trigger already. A real upgrade applies 0077 first, so 0119 and what
+    // builds on it go in right after it.
+    const afterwards = manifest.filter((file) => file.version >= 119);
+    assert.equal(afterwards[0]?.name, '0119_encrypted_workspaces.sql');
+    for (const file of manifest.filter((file) => file.version !== 77 && file.version < 119)) {
       await client.query(await readFile(join(directory, file.name), 'utf8'));
       await client.query('INSERT INTO flux_schema_version(version) VALUES($1) ON CONFLICT DO NOTHING', [file.version]);
     }
@@ -38,7 +44,7 @@ test('0077 fresh/upgrade/reverse preserves legacy identity, grants and consent w
       agents: (await client.query('SELECT * FROM personal_run_agents')).rows,
       grants: (await client.query('SELECT * FROM project_grants')).rows,
     };
-    const applied = manifest.filter((file) => file.version !== 77).map((file) => file.version);
+    const applied = manifest.filter((file) => file.version !== 77 && file.version < 119).map((file) => file.version);
     // Older migrations need public pg_trgm extension functions. The assistant guard/apply
     // sees only this schema so a public test-stack 0077 cannot satisfy its footprint.
     await client.query(`SET LOCAL search_path TO ${namespace}, pg_catalog`);
@@ -46,7 +52,11 @@ test('0077 fresh/upgrade/reverse preserves legacy identity, grants and consent w
     await client.query(await readFile(join(directory, '0077_assistant_settings.sql'), 'utf8'));
     await assert.rejects(assertAssistantMigrationCompatibility(client, applied), /assistant tables exist without reserved ledger version 77/);
     await client.query('INSERT INTO flux_schema_version(version) VALUES(77)');
-    await assertAssistantMigrationCompatibility(client, [...applied,77]);
+    for (const file of afterwards) {
+      await client.query(await readFile(join(directory, file.name), 'utf8'));
+      await client.query('INSERT INTO flux_schema_version(version) VALUES($1)', [file.version]);
+    }
+    await assertAssistantMigrationCompatibility(client, [...applied,77,...afterwards.map((file) => file.version)]);
     const identity = (await client.query('SELECT * FROM assistant_settings WHERE owner_user_id=$1', [owner])).rows[0];
     assert.equal(identity.agent_id, agent); assert.equal(identity.approval_mode, 'act');
     assert.equal(identity.changes_per_run, 20); assert.equal(identity.background_runs_per_day, 24);
@@ -67,7 +77,7 @@ test('0077 fresh/upgrade/reverse preserves legacy identity, grants and consent w
     assert.deepEqual((await client.query('SELECT * FROM agent_connections WHERE id=$1', [external])).rows[0], ordinary);
     assert.deepEqual((await client.query('SELECT * FROM personal_run_enablements')).rows, before.enablement);
     assert.deepEqual((await client.query('SELECT * FROM project_grants')).rows, before.grants);
-    await assertAssistantMigrationCompatibility(client, applied);
+    await assertAssistantMigrationCompatibility(client, [...applied,...afterwards.map((file) => file.version)]);
     // A fresh schema with no enablement gets no manufactured assistant on re-apply.
     await client.query('DELETE FROM personal_run_agents'); await client.query('DELETE FROM personal_run_enablements');
     await client.query(await readFile(join(directory, '0077_assistant_settings.sql'), 'utf8'));
