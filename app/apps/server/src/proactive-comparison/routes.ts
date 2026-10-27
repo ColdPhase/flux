@@ -1,4 +1,4 @@
-import { workRows } from '@flux/db';
+import { workRows, accessReader } from '@flux/db';
 import type { FastifyError, FastifyInstance } from 'fastify';
 import { AI_BASE_URL_MAX_LENGTH, AI_MODEL_LISTS_PATH, AI_PRICE_MAX_MICROS_PER_MTOK, AI_PROVIDER_KINDS, backgroundComparisonRuntimePath, backgroundComputeUsagePath,
   proactiveComparisonOutcomePath, proactiveComparisonOutcomesPath, proactiveComparisonProposalsPath, WORK_LIMITS, type AiModelListQuery,
@@ -22,7 +22,7 @@ interface Options {
 export function comparisonRuleUseCases(db: Database, runtimeAvailable: boolean) {
   return proactiveRuleUseCases({ run: (action) => db.transaction(async (tx) => action({
     access: { async requireProject(principal, projectId, mode) {
-      const result = enforce(await evaluateProject(principal, mode === 'write' ? 'project.write' : 'project.read', projectId, tx,
+      const result = enforce(await evaluateProject(principal, mode === 'write' ? 'project.write' : 'project.read', projectId, accessReader(tx),
         { lock: mode === 'write' }), 'project');
       return { workspaceId: result.project!.workspaceId };
     } },
@@ -114,7 +114,7 @@ export async function proactiveComparisonRoutes(app: FastifyInstance, { db, sess
   app.get<{ Params: { projectId: string } }>(proactiveComparisonProposalsPath(':projectId'),
     async (request) => db.transaction(async (tx) => {
       const principal = (await sessions.requirePrincipal(request)).principal;
-      enforce(await evaluateProject(principal, 'project.read', request.params.projectId, tx, { lock: true }), 'project');
+      enforce(await evaluateProject(principal, 'project.read', request.params.projectId, accessReader(tx), { lock: true }), 'project');
       const access = comparisonOutcomeAccess(tx);
       const proposals = await proactiveOutboxRows(tx).listProposals(request.params.projectId);
       return Promise.all(proposals.map((proposal) => visibleProposal(access, principal, proposal)));
@@ -152,10 +152,10 @@ export async function proactiveComparisonRoutes(app: FastifyInstance, { db, sess
       const rows = proactiveOutboxRows(tx);
       const located = await rows.proposal(request.params.proposalId);
       if (!located) throw new NotFoundError('Proposal');
-      enforce(await evaluateProject(principal, 'project.write', located.projectId, tx, { lock: true }), 'project');
+      enforce(await evaluateProject(principal, 'project.write', located.projectId, accessReader(tx), { lock: true }), 'project');
       const current = await rows.lockProposal(request.params.proposalId);
       if (!current) throw new NotFoundError('Proposal');
-      enforce(await evaluateProject(principal, 'project.write', current.projectId, tx, { lock: true }), 'project');
+      enforce(await evaluateProject(principal, 'project.write', current.projectId, accessReader(tx), { lock: true }), 'project');
       if (current.version !== body.expectedVersion) throw new VersionConflictError(current.version, { version: current.version });
       if (current.status !== 'proposed') throw new ConflictError('The proposal has already been reviewed', 'PROPOSAL_REVIEWED');
       const revised = await rows.reviseProposal(current.id, { fact: body.fact?.trim(), interpretation: body.interpretation?.trim(),
@@ -176,10 +176,10 @@ export async function proactiveComparisonRoutes(app: FastifyInstance, { db, sess
       const rows = proactiveOutboxRows(tx);
       const located = await rows.proposal(request.params.proposalId);
       if (!located) throw new NotFoundError('Proposal');
-      enforce(await evaluateProject(principal, 'project.write', located.projectId, tx, { lock: true }), 'project');
+      enforce(await evaluateProject(principal, 'project.write', located.projectId, accessReader(tx), { lock: true }), 'project');
       const current = await rows.lockProposal(request.params.proposalId);
       if (!current) throw new NotFoundError('Proposal');
-      enforce(await evaluateProject(principal, 'project.write', current.projectId, tx, { lock: true }), 'project');
+      enforce(await evaluateProject(principal, 'project.write', current.projectId, accessReader(tx), { lock: true }), 'project');
       if (current.version !== body.expectedVersion) throw new VersionConflictError(current.version, { version: current.version });
       if (current.status !== 'proposed') throw new ConflictError('The proposal has already been reviewed', 'PROPOSAL_REVIEWED');
       const access = comparisonOutcomeAccess(tx);

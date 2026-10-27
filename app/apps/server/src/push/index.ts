@@ -12,6 +12,7 @@ import {
   type PushServerConfig,
   type PushSubscriptionRecord,
 } from '@flux/core';
+import { accessReader } from '@flux/db';
 import {
   INBOX_PATH,
   INBOX_READ_ALL_PATH,
@@ -90,7 +91,7 @@ function inboxItem(row: NotificationRecord): InboxItem {
  */
 export async function pushRoutes(app: FastifyInstance, { db, sessions, config }: PushRoutesOptions) {
   const subscriptions = subscriptionRepository(db);
-  const inbox = { notifications: notificationRepository(db), authorizer: policySourceReader(db) };
+  const inbox = { notifications: notificationRepository(db), authorizer: policySourceReader(accessReader(db)) };
 
   app.get(PUSH_PUBLIC_KEY_PATH, async (request, reply) => {
     await sessions.requirePrincipal(request);

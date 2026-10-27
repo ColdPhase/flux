@@ -1,6 +1,6 @@
 import { withTaskUseErrors } from '../work/task-use-errors.js';
 import { fromDrizzle, type PgBoss } from 'pg-boss';
-import { personalRunRows, withIdpStanding, sql, workRows, type DbExecutor } from '@flux/db';
+import { personalRunRows, withIdpStanding, sql, workRows, type DbExecutor, accessReader } from '@flux/db';
 import {
   createAssistantProposalUseCases,
   createPersonalRunUseCases,
@@ -41,7 +41,7 @@ export function personalRunPorts(tx: DbExecutor, queue: PersonalRunQueueFactory,
   events?: PersonalRunPorts['events'], session?: ReturnType<typeof transactionEventSession>): PersonalRunPorts {
   return {
     ...(session ? { assistants: assistantRows(tx, session) } : {}),
-    access: withIdpStanding(policyPersonalRunAccess(tx), tx),
+    access: withIdpStanding(policyPersonalRunAccess(accessReader(tx)), tx),
     runs: personalRunRows(tx),
     queue: queue(tx),
     events: events ?? { record: async (principal, workspaceId, kind, projectId, data) => { await recordEvent(eventPorts(tx), principal, workspaceId, kind, projectId, data); } },

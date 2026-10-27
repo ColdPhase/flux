@@ -1,5 +1,5 @@
 import type { FastifyError, FastifyInstance } from 'fastify';
-import { projectAgentRepository } from '@flux/db';
+import { projectAgentRepository, accessReader } from '@flux/db';
 import { DomainError, enforce, evaluateProject, projectAgentUseCases, type Database } from '@flux/core';
 import type { SessionResolver } from '../identity/index.js';
 
@@ -9,10 +9,10 @@ interface Options { db: Database; sessions: SessionResolver }
 export async function projectAgentRoutes(app: FastifyInstance, { db, sessions }: Options) {
   const agents = projectAgentUseCases(projectAgentRepository(db, {
     async authorizeRead(reader, projectId, tx) {
-      enforce(await evaluateProject(reader, 'project.read', projectId, tx), 'project');
+      enforce(await evaluateProject(reader, 'project.read', projectId, accessReader(tx)), 'project');
     },
     async allows(principal, action, projectId, tx) {
-      return (await evaluateProject(principal, action, projectId, tx)).allowed;
+      return (await evaluateProject(principal, action, projectId, accessReader(tx))).allowed;
     },
   }));
   app.setErrorHandler((error: FastifyError | DomainError, _request, reply) => {

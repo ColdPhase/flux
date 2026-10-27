@@ -1,7 +1,7 @@
 import { messagePreview } from '@flux/contracts';
 import { randomUUID } from 'node:crypto';
 import { and, asc, desc, eq, lt, sql, type SQL } from 'drizzle-orm';
-import { agentThreadGuardRows, artifactResetRows, fileRows, prepareCanonicalArtifactTaskUse, schema, taskDiscussionRows, taskUseRows, workRows } from '@flux/db';
+import { agentThreadGuardRows, artifactResetRows, fileRows, prepareCanonicalArtifactTaskUse, schema, taskDiscussionRows, taskUseRows, workRows, accessReader } from '@flux/db';
 import type {
   Conversation, ConversationMessage, ConversationRootWindow, ConversationSummary, Material, MaterialOrDoc,
   AgentProjectOwner, AuthenticatedAgentRuntime, MaterialVersion, Page, PageQuery, TaskAgentThread,
@@ -97,7 +97,7 @@ const versionAuthors = (db: Executor, rows: VersionRow[]) => workRows(db).names(
 
 async function requireProject(principal: Principal, projectId: string, db: Executor, write = false, lock = false) {
   uuid(projectId, 'projectId');
-  const checked = enforce(await evaluateProject(principal, write ? 'project.write' : 'project.read', projectId, db, { lock }), 'project');
+  const checked = enforce(await evaluateProject(principal, write ? 'project.write' : 'project.read', projectId, accessReader(db), { lock }), 'project');
   return checked.project!;
 }
 
@@ -230,7 +230,7 @@ export function conversationStore(db: Database, options: ConversationStoreOption
       // The existing v1 conversation entry keeps its behavior; only this new GET supplies a snapshot.
       return db.transaction(async (tx) => {
         const task = await locateThreadTask(principal, taskId, tx);
-        const write = await evaluateProject(principal, 'project.write', task.projectId, tx);
+        const write = await evaluateProject(principal, 'project.write', task.projectId, accessReader(tx));
         const [thread] = await tx.select({ id: schema.projectConversations.id }).from(schema.projectConversations)
           .where(and(eq(schema.projectConversations.workId, task.id), eq(schema.projectConversations.space, 'agents')));
         const [count] = thread ? await tx.select({ total: sql<number>`count(*)::int` }).from(schema.projectMessages)
@@ -497,7 +497,7 @@ export function conversationStore(db: Database, options: ConversationStoreOption
           return material(existing, await currentVersion(existing, tx), principal);
         }
         if (input.sourceDraftId && input.sourceDraftVersion) {
-          const source = enforce(await evaluateDraft(principal, 'draft.read', input.sourceDraftId, tx, { lock: true }), 'draft').draft!;
+          const source = enforce(await evaluateDraft(principal, 'draft.read', input.sourceDraftId, accessReader(tx), { lock: true }), 'draft').draft!;
           if (source.ownerUserId !== authorId || source.workspaceId !== project.workspaceId)
             throw new NotFoundError('Draft', 'DRAFT_NOT_FOUND');
           const snapshot = await tx.execute(sql`SELECT 1 FROM draft_versions WHERE draft_id = ${input.sourceDraftId}

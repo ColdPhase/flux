@@ -57,13 +57,16 @@ are the only places that choose concrete adapters and wire them together.
   Apache-2.0 and never import AGPL application packages ([licensing](../product/licensing.md)).
 - **Ports belong to core.** When a use case needs persistence, a queue or a
   delivery channel, core declares a small interface and the app passes an adapter
-  (see `app/packages/core/src/push/ports.ts` and `app/apps/server/src/push/adapters.ts`).
-  Introduce a port only when a real use case needs it.
-- **One authorization path.** Access decisions come only from `authorize`,
-  `assertAuthorized` and `visibleFilter` in `app/packages/core/src/access/policy.ts`,
-  or from core use cases that call them. Routes, jobs, adapters and the UI never
-  query collaborative tables for a caller directly and never add a second policy
-  module. See [access policy](access-policy.md#one-choke-point).
+  (see `app/packages/core/src/push/ports.ts`, `app/packages/core/src/access/ports.ts` and
+  `app/apps/server/src/push/adapters.ts`). Introduce a port only when a real use case needs it.
+- **One authorization path.** Access decisions come only from `authorize`, `assertAuthorized`
+  and `authorizeEvent` in `app/packages/core/src/access/policy.ts`: pure decisions over the facts
+  the `AccessReader` port (`access/ports.ts`) returns. The port has one implementation,
+  `app/packages/db/src/repositories/access.ts`, which reads those facts, takes the locks, and
+  builds the list condition `visibleFilter` for the same rules. Core use cases call the decisions
+  through a reader the app passes in (`accessReader(tx)`). Routes, jobs, adapters and the UI never
+  query collaborative tables for a caller directly and never add a second policy module or a
+  second reader. See [access policy](access-policy.md#one-choke-point).
 - **Typed errors.** Core signals expected failures with the `DomainError`
   subclasses in `app/packages/core/src/access/errors.ts` (stable `code`, HTTP-neutral
   `status`). Entry points map them to their transport; they do not parse messages.
@@ -93,8 +96,9 @@ are the only places that choose concrete adapters and wire them together.
 | Repository and agent tooling | `tests/test_*.py` | `python3 -m unittest discover -s tests -p 'test_*.py'` |
 
 Pure core use cases can be tested with in-memory port implementations
-(`app/tests/app/push-core.test.ts`); behavior that depends on SQL, locks or the queue is
-tested against the Compose PostgreSQL.
+(`app/tests/app/push-core.test.ts`; the access decisions and their lock order over an in-memory
+`AccessReader` in `app/tests/app/access-decisions.test.ts`); behavior that depends on SQL, locks
+or the queue is tested against the Compose PostgreSQL.
 
 ## Automated check
 
@@ -110,7 +114,9 @@ fails when:
 - a violation is found that is not listed in
   [`app/tests/app/architecture-allowlist.json`](../../app/tests/app/architecture-allowlist.json),
   or an allowlist entry no longer matches a violation (remove it when fixed);
-- `app/packages/core/src/push/**` reaches an adapter library through any relative import.
+- `app/packages/core/src/push/**` reaches an adapter library through any relative import;
+- `app/packages/core/src/access/policy.ts`, `access/ports.ts` or `events.ts` does (the access
+  decisions stay pure, including through helpers, #90).
 
 The allowlist can only shrink. Do not add entries for new code; change the code or,
 if a layer rule itself is wrong, update this page and the rule in the same reviewed PR.
@@ -122,22 +128,20 @@ recorded in the allowlist and tracked by [#46](https://github.com/ColdPhase/flux
 
 | File | Imports | Planned change |
 | --- | --- | --- |
-| `app/packages/core/src/access/policy.ts` | `drizzle-orm`, `@flux/db` | Split pure policy decisions from the SQL grant lookup and visibility filter, which move to a `@flux/db` adapter behind a core port. |
 | `app/packages/core/src/access/domain.ts` | `drizzle-orm`, `@flux/db` | Split the workspace, project/grant, agent and draft use cases; move queries and row mapping to `@flux/db` repositories. Keep the current locks and transactions. |
 | `app/packages/core/src/types.ts` | `@flux/db` | Replace the Drizzle-derived `Database`/`Executor` types with a core-owned transaction port. |
 | `app/packages/core/package.json` | `@flux/db`, `drizzle-orm`, `pg-boss` | Remove each dependency when no core file uses it. |
 
-The workspace AI lock ([F-029](../product/workspace-ai-lock.md)) adds to the same debt, in files that are already allowlisted
-and with no new entry: `workspaceAi` in `policy.ts` reads `workspace_ai_policies` with Drizzle (`FOR SHARE`, one row), and
-`setWorkspaceAiPolicy` in `domain.ts` updates it. They move to the `@flux/db` adapter together with the grant lookup, behind the
-same core port, because the lock's `FOR SHARE` must stay in the checking transaction and a separate port would only hide it.
+The workspace AI lock ([F-029](../product/workspace-ai-lock.md)) adds to the same debt in a file that is already allowlisted
+and with no new entry: `setWorkspaceAiPolicy` in `domain.ts` updates `workspace_ai_policies` with Drizzle and moves with the
+other use cases (#91). The policy's read side, `workspaceAi`, moved with the grant lookup into the `@flux/db` access adapter
+(#90) and stays on the same port (`AccessReader.workspaceAi`), because the lock's `FOR SHARE` must stay in the checking
+transaction and a separate port would only hide it.
 
-Until the access policy is split, new core modules that call `authorize` import it
-from `access/policy.ts` and therefore depend on Drizzle transitively. That is
-accepted for now; they must not import `drizzle-orm` or `@flux/db` themselves. The
-refactor happens in small PRs after the active feature branches that touch these
-files have merged, with the existing access, revocation and transaction tests
-locking the behavior. The growing `app/packages/db/src/schema.ts` follows the same plan.
+New core modules that call `authorize` import it from `access/policy.ts`, which no longer depends on Drizzle, and take an
+`AccessReader` (or an `access: (tx) => AccessReader` factory in their ports) instead of an `Executor`. They must not import
+`drizzle-orm` or `@flux/db` themselves. The refactor of the remaining files happens in small PRs, with the existing access,
+revocation and transaction tests locking the behavior. The growing `app/packages/db/src/schema.ts` follows the same plan.
 
 Resolved outside the allowlist: identity no longer queries session rows itself. The
 session list/revoke queries live in `app/packages/db/src/repositories/sessions.ts` behind
@@ -190,3 +194,17 @@ first insert takes the sequence lock). Storage is the `EventRepository` port (`c
 `insert`), implemented by `app/packages/db/src/repositories/events.ts`. Callers pass
 `policyEventPorts(tx, eventRepository(tx))`; the server and worker build it with their
 `events.ts` helper ([#89](https://github.com/ColdPhase/flux/issues/89)).
+
+Resolved from the allowlist: `app/packages/core/src/access/policy.ts` keeps the actions, `LEVEL`, `isManager`, `accessName`,
+`eventResource`, `enforce` and the decisions (`evaluateWorkspace`, `evaluateProject`, `evaluateDraft`, `evaluateAgent`,
+`evaluateSketch`, `evaluateDm`, `evaluateAssistantRun`, `authorize`, `assertAuthorized`, `authorizeEvent`,
+`visibleWorkspaceOf`, `requireWorkspaceAi`, `dmClosedFor`) over the `AccessReader` port in `access/ports.ts`. Each port method is
+one statement of the former policy, so the evaluators still call them in the documented lock order (the membership/agent rows
+`FOR SHARE` with the AI policy row first for an agent, the draft `FOR UPDATE`, the project and the principal's grants
+`FOR SHARE` ordered by id, the sketch `FOR NO KEY UPDATE`, the DM row before its participants). The implementation is
+`app/packages/db/src/repositories/access.ts`: `accessReader(db)`, the actor's standing (`loadActor`, `workspaceAi`), the
+`*Sql` builders with the `LEAST` cap for person-owned agents, and `visibleFilter`, which the server adapters now import from
+`@flux/db`. Evaluations are generic in the row type, so a caller holding that adapter still gets whole table rows
+(`domain.ts`, unchanged except for the reader argument). `policySketchAccess`, `policyDmAccess`, `policySourceReader`,
+`policyPersonalRunAccess` and `policyEventPorts` take a reader, as do the draft summary use cases through their ports
+([#90](https://github.com/ColdPhase/flux/issues/90)).

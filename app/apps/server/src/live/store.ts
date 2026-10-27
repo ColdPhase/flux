@@ -1,6 +1,6 @@
 import { randomBytes, randomUUID } from 'node:crypto';
 import { and, asc, eq, inArray, ne, sql } from 'drizzle-orm';
-import { schema, prepareReferencedTaskUse } from '@flux/db';
+import { schema, prepareReferencedTaskUse, accessReader } from '@flux/db';
 import {
   ConflictError,
   DomainError,
@@ -102,7 +102,7 @@ export function liveSessionStore(db: Database): LiveRepository {
     async createOrGet(principal, projectId, context, clientSessionId, ensureRoom) {
       return db.transaction(async (tx) => {
         const workspaceId = await lockAdmissionScope(tx, projectId);
-        const { project } = enforce(await evaluateProject(principal, 'project.read', projectId, tx, { lock: true }), 'project');
+        const { project } = enforce(await evaluateProject(principal, 'project.read', projectId, accessReader(tx), { lock: true }), 'project');
         await requireClearFence(tx, workspaceId, projectId);
         await requireLiveContext(principal, context, projectId, tx, context.type === 'doc' || context.type === 'sketch');
         const taskFence = await prepareReferencedTaskUse(tx, projectId, [context]);
@@ -158,7 +158,7 @@ export function liveSessionStore(db: Database): LiveRepository {
         const [located] = await tx.select().from(sessions).where(eq(sessions.id, sessionId));
         if (!located) throw new NotFoundError('Live session', 'LIVE_SESSION_NOT_FOUND');
         await lockAdmissionScope(tx, located.projectId);
-        enforce(await evaluateProject(principal, 'project.read', located.projectId, tx, { lock: true }), 'project');
+        enforce(await evaluateProject(principal, 'project.read', located.projectId, accessReader(tx), { lock: true }), 'project');
         const context = record(located).context;
         // Protect the accepted anchor throughout delivery, before taking any session row.
         // This read owns no graph writer, task-use latch or persisted effect.
@@ -177,7 +177,7 @@ export function liveSessionStore(db: Database): LiveRepository {
           .where(eq(sessions.id, sessionId));
         if (!located) throw new NotFoundError('Live session', 'LIVE_SESSION_NOT_FOUND');
         const workspaceId = await lockAdmissionScope(tx, located.projectId);
-        enforce(await evaluateProject(principal, 'project.read', located.projectId, tx, { lock: true }), 'project');
+        enforce(await evaluateProject(principal, 'project.read', located.projectId, accessReader(tx), { lock: true }), 'project');
         await requireClearFence(tx, workspaceId, located.projectId);
         const context = record(located).context;
         await requireLiveContext(principal, context, located.projectId, tx, context.type === 'doc' || context.type === 'sketch');
@@ -214,7 +214,7 @@ export function liveSessionStore(db: Database): LiveRepository {
         if (!located) throw new NotFoundError('Live session', 'LIVE_SESSION_NOT_FOUND');
         // Lock the exact membership, project and grant rows used by the policy decision.
         // Revocation either commits first and denies this write or waits for this commit.
-        enforce(await evaluateProject(principal, 'project.read', located.projectId, tx, { lock: true }), 'project');
+        enforce(await evaluateProject(principal, 'project.read', located.projectId, accessReader(tx), { lock: true }), 'project');
         const context = record(located).context;
         await requireLiveContext(principal, context, located.projectId, tx, context.type === 'doc' || context.type === 'sketch');
         const ids = selected(ref);
@@ -265,7 +265,7 @@ export function liveSessionStore(db: Database): LiveRepository {
           .where(eq(sessions.id, sessionId));
         if (!located) throw new NotFoundError('Live session', 'LIVE_SESSION_NOT_FOUND');
         const workspaceId = await lockAdmissionScope(tx, located.projectId);
-        enforce(await evaluateProject(principal, 'project.read', located.projectId, tx, { lock: true }), 'project');
+        enforce(await evaluateProject(principal, 'project.read', located.projectId, accessReader(tx), { lock: true }), 'project');
         await requireClearFence(tx, workspaceId, located.projectId);
         const [session] = await tx.select().from(sessions).where(eq(sessions.id, sessionId)).for('share');
         if (!session || session.projectId !== located.projectId)

@@ -25,6 +25,11 @@ export interface NeedsYouRepository {
   deleteStates(userId: string, keys: string[]): Promise<void>;
   /** Proposed decisions of exactly these (already readable) projects, newest first. */
   proposedDecisions(projectIds: string[], limit: number): Promise<DecisionRecord[]>;
+  /** Open agent suggestions of agents the person connected, in exactly these readable projects (#661). */
+  agentProposals(userId: string, projectIds: string[], limit: number): Promise<{
+    id: string; projectId: string; agentId: string; agentName: string; fact: string; interpretation: string; suggestedAction: string;
+    source: { materialId: string; title: string; version: number }; createdAt: Date;
+  }[]>;
   /** Sets or clears the read time of the person's own notification; false when it is not theirs. */
   setNotificationRead(userId: string, id: string, read: boolean): Promise<boolean>;
   /** The status of each task that exists, by id. */
@@ -58,6 +63,8 @@ export interface NeedsYouAssistant {
 export interface NeedsYouPorts {
   access: NeedsYouAccess;
   assistant?: NeedsYouAssistant;
+  /** F-029: whether AI may be shown in this project; agent suggestions of a blocked workspace are left out. */
+  aiAllowed?(projectId: string): Promise<boolean>;
   repository: NeedsYouRepository;
   inbox: NeedsYouInbox;
   work: Pick<WorkRepository, 'listAssignedVisible' | 'listBlockedFor' | 'links' | 'titles' | 'names' | 'findWork' | 'findDecision' | 'taskPlans'>;

@@ -1,6 +1,6 @@
 import type { AgentProjectOwner } from '@flux/contracts';
 import { and, eq, inArray } from 'drizzle-orm';
-import { schema } from '@flux/db';
+import { schema, accessReader } from '@flux/db';
 import { evaluateProject, type Executor } from '@flux/core';
 
 /** The principal with its current scoped owner; humans and agents without a visible owner are returned unchanged. */
@@ -27,7 +27,7 @@ export async function projectAuthorOwners(db: Executor, projectId: string, works
       // Exactly the human candidate boundary of listProjectPeople, followed by the same policy.
       if (agent.memberId === null) continue;
       if (!visible.has(agent.ownerUserId)) visible.set(agent.ownerUserId,
-        (await evaluateProject({ kind: 'human', id: agent.ownerUserId }, 'project.read', projectId, db)).allowed);
+        (await evaluateProject({ kind: 'human', id: agent.ownerUserId }, 'project.read', projectId, accessReader(db))).allowed);
       if (visible.get(agent.ownerUserId)) owners.set(agent.id, { kind: 'human', id: agent.ownerUserId });
     }
   }

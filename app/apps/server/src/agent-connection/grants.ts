@@ -1,4 +1,4 @@
-import { agentExecutionRows, agentProjectObjectRows } from '@flux/db';
+import { agentExecutionRows, agentProjectObjectRows, accessReader } from '@flux/db';
 import { agentStandingGrantUseCases, DomainError, enforce, evaluateProject, type AgentStandingGrantPort, type Database, type Transaction } from '@flux/core';
 import type { AgentOperation, CreateAgentStandingGrantCommand } from '@flux/contracts';
 import { createAgentConnectionStore } from './store.js';
@@ -15,7 +15,7 @@ export function agentStandingGrants(db: Database, domain: AgentGrantDomainChecks
         const connection = await createAgentConnectionStore(tx).resolve(ownerUserId, connectionId);
         if (!connection || !connection.scopes.includes('flux.action.execute') || !connection.selectedProjectIds.includes(command.projectId))
           throw new DomainError(404, 'CONNECTION_NOT_FOUND', 'Connection not found');
-        enforce(await evaluateProject({ kind: 'human', id: ownerUserId }, 'project.manage', command.projectId, tx, { lock: true }), 'project');
+        enforce(await evaluateProject({ kind: 'human', id: ownerUserId }, 'project.manage', command.projectId, accessReader(tx), { lock: true }), 'project');
         if (command.objectId) {
           const within = { workspaceId: connection.workspaceId, projectId: command.projectId, connectionId };
           const kind = agentOperationTarget(command.operation);

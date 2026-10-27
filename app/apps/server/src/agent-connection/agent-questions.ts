@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import type { FastifyInstance } from 'fastify';
 import { AGENT_OPERATION_CLASSES, AGENT_QUESTION_LIMITS, agentQuestionAnswerPath, projectAgentQuestionsPath, type AgentJsonValue, type AnswerAgentQuestionCommand } from '@flux/contracts';
-import { agentQuestionRows, schema } from '@flux/db';
+import { agentQuestionRows, schema, accessReader } from '@flux/db';
 import { agentQuestionUseCases, conversationUseCases, derivedUuid, enforce, evaluateProject, type AgentQuestionPorts, type AgentQuestionUnitOfWork, type Database, type Principal, type Transaction } from '@flux/core';
 import { eq } from 'drizzle-orm';
 import type { SessionResolver } from '../identity/index.js';
@@ -19,10 +19,10 @@ type Record_ = AgentQuestionPorts['events']['record'];
 function questionPorts(tx: Transaction, post: Post, record: Record_): AgentQuestionPorts {
   return {
     async requireProject(principal, projectId, action) {
-      const checked = enforce(await evaluateProject(principal, action, projectId, tx, { lock: action === 'project.write' }), 'project');
+      const checked = enforce(await evaluateProject(principal, action, projectId, accessReader(tx), { lock: action === 'project.write' }), 'project');
       return { workspaceId: checked.project!.workspaceId };
     },
-    async canRead(userId, projectId) { return (await evaluateProject({ kind: 'human', id: userId }, 'project.read', projectId, tx)).allowed; },
+    async canRead(userId, projectId) { return (await evaluateProject({ kind: 'human', id: userId }, 'project.read', projectId, accessReader(tx))).allowed; },
     async conversation(conversationId) {
       const [row] = await tx.select({ id: schema.projectConversations.id, projectId: schema.projectConversations.projectId,
         workspaceId: schema.projectConversations.workspaceId }).from(schema.projectConversations).where(eq(schema.projectConversations.id, conversationId));

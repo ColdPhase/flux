@@ -1,4 +1,4 @@
-import { assistantReactionRows } from '@flux/db';
+import { assistantReactionRows, accessReader } from '@flux/db';
 import { evaluateProject } from '@flux/core';
 import type { FastifyInstance } from 'fastify';
 import { NEEDS_YOU_PATH, type ResolveNeedsYouCommand } from '@flux/contracts';
@@ -33,7 +33,7 @@ export async function needsYouRoutes(app: FastifyInstance, { db, sessions }: Opt
     return visible;
   }, notes: async (userId) => {
     const visible = [];
-    for (const note of await assistantReactionRows(db).notes(userId)) if ((await evaluateProject({ kind: 'human', id: userId }, 'project.read', note.projectId, db)).allowed
+    for (const note of await assistantReactionRows(db).notes(userId)) if ((await evaluateProject({ kind: 'human', id: userId }, 'project.read', note.projectId, accessReader(db))).allowed
       && await aiAllowedInProject(db, note.projectId)) visible.push(note);
     return visible;
   } });

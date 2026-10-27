@@ -4,7 +4,7 @@ import {
   ASSISTANT_CHANGE_LIMITS, ASSISTANT_LIMITS, ASSISTANT_UNIT_CREATE_VIEW, assistantChangeActionPath, assistantChangeWords, assistantWorkChangeArgs, assistantRunChangesActionPath, assistantRunChangesPath,
   ASSISTANT_CHANGES_PATH, conversationAssistantActivityPath, conversationAssistantChangesPath, type AssistantActivity, type AssistantChange, type AssistantChangeDecision, type AssistantRunUndone,
 } from '@flux/contracts';
-import { assistantChangeRows, type AssistantChangeRow, type DbExecutor } from '@flux/db';
+import { assistantChangeRows, type AssistantChangeRow, type DbExecutor, accessReader } from '@flux/db';
 import { assistantChangeLine, ConflictError, ForbiddenError, undoSentence, type UndoRecord, createNotification, DomainError, evaluateProject, isUuid, NotFoundError, type Database,
   type Principal } from '@flux/core';
 import { CHANGED_SINCE, undoChange } from './undo.js';
@@ -127,7 +127,7 @@ export function assistantChangeUseCases(db: Database, boss?: Pick<PgBoss, 'send'
     for (const row of list) {
       if (projects.has(row.projectId)) continue;
       projects.set(row.projectId, principal?.kind === 'human' && (principal.id === row.ownerUserId
-        || (await evaluateProject(principal, 'project.write', row.projectId, db)).allowed));
+        || (await evaluateProject(principal, 'project.write', row.projectId, accessReader(db))).allowed));
     }
     // Taking back a task's creation is the creating assistant's owner's alone (#238, the work domain's own rule), so it is no one else's Undo.
     return (row) => principal?.kind === 'human' && (row.operation !== 'work.create' || creationOwner(row) === principal.id) && (principal.id === row.ownerUserId || projects.get(row.projectId) === true);
@@ -186,8 +186,8 @@ export function assistantChangeUseCases(db: Database, boss?: Pick<PgBoss, 'send'
     return row;
   }
   async function mayEdit(principal: Principal, row: AssistantChangeRow) {
-    if (!isDone(row) || !(await evaluateProject(principal, 'project.read', row.projectId, db)).allowed) throw missing();
-    if (!(await evaluateProject(principal, 'project.write', row.projectId, db)).allowed)
+    if (!isDone(row) || !(await evaluateProject(principal, 'project.read', row.projectId, accessReader(db))).allowed) throw missing();
+    if (!(await evaluateProject(principal, 'project.write', row.projectId, accessReader(db))).allowed)
       throw new ForbiddenError('You can read this, but only people who can edit it can undo it', 'ASSISTANT_CHANGE_NOT_EDITABLE');
   }
   async function editableRun(principal: Principal, runId: string) {
@@ -259,7 +259,7 @@ export function assistantChangeUseCases(db: Database, boss?: Pick<PgBoss, 'send'
       const userId = owner(principal);
       if (!isUuid(conversationId)) return { items: [] };
       const place = await rows().conversationPlace(conversationId);
-      if (!place || !(await evaluateProject(principal, 'project.read', place.projectId, db)).allowed) throw missing();
+      if (!place || !(await evaluateProject(principal, 'project.read', place.projectId, accessReader(db))).allowed) throw missing();
       await rows().expire(clock(), userId);
       const list = (await rows().forConversationAll(conversationId)).filter((row) => row.ownerUserId === userId || isDone(row));
       return { items: await view(list, new Map(list.map((row) => [row.runId, row.conversationId])), await undoers(principal, list)) };
@@ -364,7 +364,7 @@ export function assistantChangeUseCases(db: Database, boss?: Pick<PgBoss, 'send'
         const r = assistantChangeRows(tx);
         const located = isUuid(changeId) ? await r.find(changeId) : null;
         if (!located || located.suggestToUserId !== userId || !located.sentAt) throw missing();
-        if (!(await evaluateProject(principal, 'project.write', located.projectId, tx, { lock: true })).allowed) throw new ForbiddenError('Only someone who can decide this can dismiss it', 'ASSISTANT_SUGGESTION_AUTHORITY');
+        if (!(await evaluateProject(principal, 'project.write', located.projectId, accessReader(tx), { lock: true })).allowed) throw new ForbiddenError('Only someone who can decide this can dismiss it', 'ASSISTANT_SUGGESTION_AUTHORITY');
         const row = await r.lock(changeId);
         if (!row || !row.sentAt || row.suggestToUserId !== userId || row.state !== 'waiting' || row.waitReason !== 'outside_rights') throw missing();
         if (row.version !== expected) throw new ConflictError('This change was decided meanwhile', 'ASSISTANT_CHANGE_VERSION_CONFLICT');
@@ -387,7 +387,7 @@ export function assistantChangeUseCases(db: Database, boss?: Pick<PgBoss, 'send'
       let recipient: string | null = null;
       for (const candidate of [row.suggestToUserId, ...(await needsYouRows(tx).workspaceMembersOfProject(row.projectId, 50)).map((member) => member.id)]) {
         if (!candidate || candidate === userId) continue;
-        if ((await evaluateProject({ kind: 'human', id: candidate }, 'project.write', row.projectId, tx, { lock: true })).allowed) { recipient = candidate; break; }
+        if ((await evaluateProject({ kind: 'human', id: candidate }, 'project.write', row.projectId, accessReader(tx), { lock: true })).allowed) { recipient = candidate; break; }
       }
       if (!recipient) throw new ConflictError('Nobody in this project can decide this change', 'ASSISTANT_SUGGESTION_NO_RECIPIENT');
       if (!['work.create', 'work.update', 'doc.create', 'doc.update', 'map.thought.create', 'map.thought.update', 'map.thought.delete', 'map.link.create', 'map.link.delete'].includes(row.operation))
@@ -412,7 +412,7 @@ export function assistantChangeUseCases(db: Database, boss?: Pick<PgBoss, 'send'
       owner(principal);
       if (!isUuid(conversationId)) return { working: [] };
       const place = await rows().conversationPlace(conversationId);
-      if (!place || !(await evaluateProject(principal, 'project.read', place.projectId, db)).allowed) throw missing();
+      if (!place || !(await evaluateProject(principal, 'project.read', place.projectId, accessReader(db))).allowed) throw missing();
       return { working: await rows().workingOwners(conversationId) };
     },
     /** The owner's undecided waiting changes that belong in Inbox now, grouped by run. */
@@ -421,7 +421,7 @@ export function assistantChangeUseCases(db: Database, boss?: Pick<PgBoss, 'send'
       await rows().expire(now, userId);
       const list = [...await rows().inbox(userId, now, ASSISTANT_CHANGE_LIMITS.inboxAfterMinutes), ...await rows().suggestions(userId, now)];
       const readable = [];
-      for (const row of list) if ((await evaluateProject({ kind: 'human', id: userId }, 'project.read', row.projectId, db)).allowed) readable.push(row);
+      for (const row of list) if ((await evaluateProject({ kind: 'human', id: userId }, 'project.read', row.projectId, accessReader(db))).allowed) readable.push(row);
       return view(readable, new Map(list.map((row) => [row.runId, row.conversationId])));
     },
     /** Rechecks live-Wiki deferrals whose typist finished; expires what is past seven days. */

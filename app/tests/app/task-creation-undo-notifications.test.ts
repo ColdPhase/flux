@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { after, before, test } from 'node:test';
 import { PgBoss } from 'pg-boss';
-import { assignmentDeliveryAdmission, pushDeliveryRepository } from '@flux/db';
+import { assignmentDeliveryAdmission, pushDeliveryRepository, accessReader } from '@flux/db';
 import { deliverNotificationEmail, deliverPushJob, loadNotificationMailConfig, loadPushSenderConfig, policySourceReader, type DeliveryPorts } from '@flux/core';
 import type { WorkItem } from '@flux/contracts';
 import { nativeWorkInTransaction } from '../../apps/server/src/work/adapters.js';
@@ -63,7 +63,7 @@ async function queuedAssignment() {
   assert.equal(config.status, 'available');
   if (config.status !== 'available') throw new Error('Push test configuration required');
   const agent = createPushAgent(config);
-  const ports: DeliveryPorts = { available: true, targets: pushDeliveryRepository(db), authorizer: policySourceReader(db),
+  const ports: DeliveryPorts = { available: true, targets: pushDeliveryRepository(db), authorizer: policySourceReader(accessReader(db)),
     sender: webPushSender(config, agent), admitSend: (id, send) => assignmentDeliveryAdmission(db, id, send),
     stillWanted: pushPreferenceCheck(db), quietUntil: pushQuietCheck(db) };
   const undo = () => f.owner.request('POST', `/api/v1/work/${item.id}/creation-undo`,
