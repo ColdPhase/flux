@@ -5,7 +5,7 @@ import type { AgentRuntimeBindingState, AgentRuntimeClient, AgentRuntimeConnecti
 import type { Pool } from 'pg';
 import type * as schema from '../schema.js';
 import {
-  currentRuntimeAuthOperation, runtimeAuthAdmissionLock, runtimeAuthOperations, settleRuntimeAuthOperation, RuntimeAuthSupersededError,
+  currentRuntimeAuthOperation, markLoginConfirmedGone, markLoginPossible, runtimeAuthAdmissionLock, runtimeAuthOperations, settleRuntimeAuthOperation, RuntimeAuthSupersededError,
   type RuntimeAuthClaim, type RuntimeAuthAdmission, type RuntimeAuthOperation,
 } from './runtime-auth-operations.js';
 
@@ -53,6 +53,7 @@ export interface AgentRuntimeRows {
   connections(ownerUserId: string): Promise<RuntimeConnectionRow[]>;
   recordSignIn(record: RuntimeSignInRecord): Promise<boolean>;
   recordSignOut(operation: RuntimeAuthOperation, failed: boolean): Promise<boolean>;
+  loginPossible(bindingId: string): Promise<AgentRuntimeClient[]>;
   dismissAccountNotice(ownerUserId: string, client: AgentRuntimeClient): Promise<void>;
   slotsWithBindings(): Promise<{ slot: RuntimeSlotRow; binding: RuntimeBindingRow | null }[]>;
   saveSlot(slot: RuntimeSlotRow, expected?: Pick<RuntimeSlotRow, 'state' | 'wipeBootId'>): Promise<void>;
@@ -255,6 +256,8 @@ export function agentRuntimeStore(db: Handle): AgentRuntimeRows {
           previous_account_label = CASE WHEN ${changed}::boolean THEN ${before?.account_label ?? null}::text ELSE previous_account_label END,
           signed_out_at = NULL, sign_out_failed = NULL
           WHERE id = ${id}`);
+        // The CLI's own status says a login exists; the history says so even if no console was claimed for it.
+        await markLoginPossible(tx, record.bindingId, record.client);
         await settleRuntimeAuthOperation(tx, operation);
         return true;
       }); } catch (error) { if (error instanceof RuntimeAuthSupersededError) return false; throw error; }
@@ -272,9 +275,17 @@ export function agentRuntimeStore(db: Handle): AgentRuntimeRows {
             SELECT ${randomUUID()}::uuid, ${ownerUserId}::text, ${bindingId}::uuid, ${client}::text, 'signed_out', now(), ${failed}::boolean
             WHERE NOT EXISTS (SELECT 1 FROM agent_runtime_connections WHERE owner_user_id = ${ownerUserId} AND client = ${client} AND revoked_at IS NULL)`);
         }
+        // Only the CLI's own logout returning ok ends the history's "a login may exist"; failed/timeout/not_installed/skipped keep it.
+        if (!failed) await markLoginConfirmedGone(tx, bindingId, client);
         await settleRuntimeAuthOperation(tx, operation);
         return true;
       }); } catch (error) { if (error instanceof RuntimeAuthSupersededError) return false; throw error; }
+    },
+
+    async loginPossible(bindingId) {
+      const rows = await db.execute<{ client: AgentRuntimeClient }>(sql`SELECT client FROM agent_runtime_client_history
+        WHERE binding_id = ${bindingId} AND login_possible ORDER BY client`);
+      return rows.rows.map((row) => row.client);
     },
 
     async dismissAccountNotice(ownerUserId, client) {
@@ -358,16 +369,25 @@ export function agentRuntimeOperations(db: Handle) {
     },
     release: (slot: string) => store.requestRelease({ slot }, 'operator'),
     beginPurge: () => runtimeAuthOperations(db).beginPurge(),
-    async forgetAll(purgeId: string, signOutConfirmed = false) {
+    /**
+     * `notInstalled`: the (binding, client) pairs the slots answered `not_installed` for during the purge's sign-out.
+     * Such a client is confirmed only while the durable history shows no login was ever started for it in that
+     * binding (migration 0118); an empty directory or a missing CLI alone never confirms anything (#480).
+     */
+    async forgetAll(purgeId: string, signOutConfirmed = false, notInstalled: readonly { bindingId: string; client: AgentRuntimeClient }[] = []) {
       await db.transaction(async (tx) => {
         await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext('agent-runtime-auth-admission'))`);
         const gate = await tx.execute(sql`SELECT 1 FROM agent_runtime_auth_admission
           WHERE singleton AND blocked AND purge_id = ${purgeId} FOR UPDATE`);
         if (!gate.rows.length) throw new Error('Runtime purge is not the current fenced cleanup');
         await tx.execute(sql`UPDATE agent_runtime_connections SET state = 'signed_out', signed_in_at = NULL, revoked_at = coalesce(revoked_at, now()) WHERE revoked_at IS NULL`);
-        await tx.execute(sql`UPDATE agent_runtime_bindings SET state = 'released', release_reason = 'purge',
+        const pairs = JSON.stringify(notInstalled.map((pair) => `${pair.bindingId}:${pair.client}`));
+        await tx.execute(sql`UPDATE agent_runtime_bindings b SET state = 'released', release_reason = 'purge',
           release_requested_at = coalesce(release_requested_at, now()), released_at = now(),
-          release_logout_failed = ${!signOutConfirmed} WHERE state <> 'released'`);
+          release_logout_failed = ${!signOutConfirmed} OR EXISTS (SELECT 1 FROM agent_runtime_client_history h
+            WHERE h.binding_id = b.id AND h.login_possible
+              AND (h.binding_id::text || ':' || h.client) IN (SELECT jsonb_array_elements_text(${pairs}::jsonb)))
+          WHERE b.state <> 'released'`);
         await tx.execute(sql`UPDATE agent_runtime_slots SET state = 'unknown', boot_id = NULL, wipe_boot_id = NULL, out_of_pool_reason = NULL, updated_at = now()`);
         await tx.execute(sql`UPDATE agent_runtime_auth_operations SET phase = 'settled', settled_at = clock_timestamp() WHERE phase <> 'settled'`);
         // The launcher invokes this only after every runtime container and volume is removed.

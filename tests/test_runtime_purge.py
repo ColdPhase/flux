@@ -27,7 +27,14 @@ case "$*" in
     [ "$FLUX_PURGE_TEST_SCENARIO" != failed ] || exit 1
     if [ "$FLUX_PURGE_TEST_SCENARIO" = retry ] && [ ! -f "$FLUX_PURGE_TEST_ATTEMPT" ]; then
       touch "$FLUX_PURGE_TEST_ATTEMPT"
+      printf 'FLUX_RUNTIME_NOT_INSTALLED 22222222-2222-4222-8222-222222222222 codex\\n'
       exit 1
+    fi
+    if [ "$FLUX_PURGE_TEST_SCENARIO" = not-installed ]; then
+      printf 'runtime-1: signed out (claude_code ok, codex not_installed); cleanup attempted; /data empty\\n'
+      printf 'FLUX_RUNTIME_NOT_INSTALLED 22222222-2222-4222-8222-222222222222 codex\\n'
+      printf 'FLUX_RUNTIME_NOT_INSTALLED 33333333-3333-4333-8333-333333333333 claude_code\\n'
+      printf 'not a marker FLUX_RUNTIME_NOT_INSTALLED 44444444-4444-4444-8444-444444444444 codex\\n'
     fi
     ;;
 esac
@@ -91,6 +98,32 @@ class RuntimePurgeTest(unittest.TestCase):
                 self.assertTrue(all(fenced < i for i, call in enumerate(calls) if 'cli.js sign-out-all' in call or 'volume rm ' in call))
                 if scenario == "retry":
                     self.assertEqual(sum("cli.js sign-out-all" in call for call in calls), 2)
+
+    def test_clients_found_not_installed_are_passed_on_for_the_database_to_confirm_against_its_history(self) -> None:
+        # #480: a slot that finds no CLI and no files confirms nothing by itself; the purge hands each such
+        # (binding, client) to runtime-forget, where the durable client history decides.
+        with tempfile.TemporaryDirectory(prefix="flux-purge-test-") as directory:
+            base = Path(directory).resolve()
+            checkout = base / "checkout"
+            make_checkout(checkout)
+            result, log = run_purge(base, checkout, str(checkout), "not-installed")
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            persisted = [call for call in log.read_text().splitlines() if "runtime-forget" in call]
+            self.assertEqual(len(persisted), 1)
+            self.assertTrue(persisted[0].endswith(
+                "runtime-forget 11111111-1111-4111-8111-111111111111 confirmed "
+                "22222222-2222-4222-8222-222222222222:codex 33333333-3333-4333-8333-333333333333:claude_code"), persisted)
+
+    def test_a_retried_sign_out_passes_no_pairs_because_it_is_unconfirmed_anyway(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="flux-purge-test-") as directory:
+            base = Path(directory).resolve()
+            checkout = base / "checkout"
+            make_checkout(checkout)
+            result, log = run_purge(base, checkout, str(checkout), "retry")
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            persisted = [call for call in log.read_text().splitlines() if "runtime-forget" in call]
+            self.assertEqual(len(persisted), 1)
+            self.assertTrue(persisted[0].endswith("runtime-forget 11111111-1111-4111-8111-111111111111 unconfirmed"), persisted)
 
     def test_owner_recorded_through_symlink_is_the_same_checkout(self) -> None:
         with tempfile.TemporaryDirectory(prefix="flux-purge-test-") as directory:

@@ -81,6 +81,9 @@ services:
       - ../app/packages/runtime-protocol/src:/app/packages/runtime-protocol/src:ro,z
       - ../app/tooling/migrate.ts:/app/tooling/migrate.ts:ro,z
       - ../app/tooling/tsconfig.dev.json:/app/tooling/tsconfig.dev.json:ro,z
+  # The keyring (F-030) runs its built code from the dev image; `./flux dev --build` picks up a change to it.
+  keyring:
+    image: *dev-image
   web:
     image: *dev-image
     working_dir: /app/apps/web

@@ -136,3 +136,35 @@ Primary sources checked 2026-09-30:
 [comment API permissions](https://docs.github.com/en/rest/issues/comments?apiVersion=2026-03-10).
 The [accepted design](2026-09-30-design.md) and
 [independent conditions](2026-09-30-independent-design-review.md) govern this slice.
+
+## What remains for #74 / #479 (reconciled 2026-10-23)
+
+The merged slices are #168 (bindings, verified links, signed durable deliveries), #270 (G-1a rules), #379 (manual
+override, rule revision, 0068) and #388 (dormant export). Everything below is still required and is not started or is
+blocked on something outside the repository. The issue text and the design document number G-1b and G-1c the other
+way round; this table uses the design document's labels ([G-1 §2](2026-10-05-app-and-task-rules.md#2-what-changes)).
+
+| Remaining outcome | Issue criterion | State |
+| --- | --- | --- |
+| Real least-privilege App on public HTTPS: bind, PR/CI/review/merge, duplicate and out-of-order delivery, access loss and recovery | AC-1, AC-5 | Needs a registered test App and a reachable public HTTPS origin (external). No fixture counts as this. |
+| G-1c polling for instances without public HTTPS (2-minute poll of linked open PRs, conditional requests, mode shown in Settings) | AC-3, AC-5 | Not started. Needs conditional-request support in the provider (ETag per endpoint) and a poll entry in the existing API sweep, under the same credential-pin and binding-lock order as `process`. |
+| G-1b one-click App setup through the manifest flow | AC-1 | Not started. Needs encrypted storage of the returned App credentials and the six variables winning when set. |
+| G-1d suggested links found in PR titles, branches and bodies | AC-2 | Not started. Needs a suggestion record, a one-tap confirm and the rule that an ID alone never links across bindings. |
+| #153 current-recipient bridge, causal echo suppression, eligible once-only external review | AC-3, AC-5 | Not started. `bridge()` stores internal metadata only; `github_pr` references are refused as outcomes and responses until this adapter exists. Publishing a review needs a separately scoped write grant (the App is read-only by design). |
+| Portable source history import | AC-3 | Proposal only; export lists rules dormant. |
+
+### Primary sources re-read 2026-10-23
+
+Observed on the pages named, today; "not stated" means the page did not say it. These confirm the profile this guide
+already documents and change none of it.
+
+| Fact the integration relies on | Source page | Observed |
+| --- | --- | --- |
+| User tokens from a GitHub App expire (8 hours) with a 6-month refresh token; PKCE is optional but strongly recommended and only `S256` is accepted; the token is the intersection of App and user permissions | [Generating a user access token](https://docs.github.com/en/apps/creating-github-apps/authenticating-with-a-github-app/generating-a-user-access-token-for-a-github-app) | Matches. The page calls expiring tokens "currently an optional feature and ... subject to change". |
+| Signature header `X-Hub-Signature-256`, `sha256=` HMAC of the raw body, constant-time comparison; the header is absent when no secret is set | [Validating webhook deliveries](https://docs.github.com/en/webhooks/using-webhooks/validating-webhook-deliveries) | Matches. |
+| GitHub does not redeliver failed deliveries on its own; a delivery fails after 10 seconds | [Handling failed deliveries](https://docs.github.com/en/webhooks/using-webhooks/handling-failed-webhook-deliveries) | Matches the reconciliation design. Retention of deliveries: not stated. |
+| Event permissions: `pull_request`, `pull_request_review`, `pull_request_review_comment` need Pull requests read; `status` needs Commit statuses read; `check_run` and `check_suite` need Checks read (re-request types need write); `issue_comment` needs Issues read; `installation`, `installation_repositories` and `github_app_authorization` are always delivered; payloads over 25 MB are not delivered | [Webhook events and payloads](https://docs.github.com/en/webhooks/webhook-events-and-payloads) | Matches. `ping`: no permission stated. |
+| Endpoint permissions: pull request and its reviews need Pull requests read, check runs need Checks read, combined status needs Commit statuses read, a user's installation repositories need Metadata read | [Permissions required for GitHub Apps](https://docs.github.com/en/rest/authentication/permissions-required-for-github-apps) | Matches. `GET /user/installations`: permission not visible in the page text read. |
+| API version header `X-GitHub-Api-Version: 2026-03-10` is supported, end of support not scheduled; `2022-11-28` is the default without a header | [API versions](https://docs.github.com/en/rest/about-the-rest-api/api-versions) | Matches the version the provider sends. |
+| A conditional request (`If-None-Match` with the stored `etag`) answers 304; an authorized 304 does not count against the primary rate limit; GitHub prefers webhooks over polling and asks pollers to honour `x-poll-interval` | [Best practices for the REST API](https://docs.github.com/en/rest/using-the-rest-api/best-practices-for-using-the-rest-api) | Input for G-1c; no code uses it yet. |
+| Manifest flow: POST the manifest (optional `state`), exchange the temporary code at `POST /app-manifests/{code}/conversions` within one hour; the page lists `id`, `pem` and `webhook_secret` in the result | [Registering an App from a manifest](https://docs.github.com/en/apps/sharing-github-apps/registering-a-github-app-from-a-manifest) | Input for G-1b. Whether the result carries `slug`, `client_id` and `client_secret`: not stated on that page; read the REST reference before implementing. |

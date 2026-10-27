@@ -44,6 +44,29 @@ export interface ManagerClientOptions {
   fetch?: typeof fetch;
 }
 
+/** The most the API accepts from the manager: it stops reading there instead of buffering a larger answer (#331 nit). */
+export const MAX_MANAGER_BODY = 4 * 1024 * 1024;
+
+/** The body as text, or null when it is longer than `limit` bytes or cannot be read. Reads in chunks and cancels at the limit. */
+async function readBounded(response: Response, limit: number): Promise<string | null> {
+  const declared = Number(response.headers.get('content-length'));
+  if (Number.isFinite(declared) && declared > limit) { await response.body?.cancel().catch(() => undefined); return null; }
+  const reader = response.body?.getReader();
+  if (!reader) return '';
+  const chunks: Uint8Array[] = [];
+  let size = 0;
+  try {
+    for (;;) {
+      const chunk = await reader.read();
+      if (chunk.done) break;
+      size += chunk.value.byteLength;
+      if (size > limit) { await reader.cancel().catch(() => undefined); return null; }
+      chunks.push(chunk.value);
+    }
+  } catch { return null; }
+  return Buffer.concat(chunks).toString('utf8');
+}
+
 export const DEFAULT_MANAGER_URL = `http://runtime-manager-control:${RUNTIME_PORTS.manager}`;
 
 /** The API's and worker's client of the manager. Answers that are not exactly the API's shapes are `protocol`. */
@@ -56,8 +79,8 @@ export function createRuntimeManagerClient({ url, secret, fetch: fetchImpl = fet
     } catch (error) {
       return { ok: false, code: (error as Error)?.name === 'TimeoutError' ? 'timeout' : 'unreachable' };
     }
-    const raw = await response.text().catch(() => '');
-    if (raw.length > 4 * 1024 * 1024) return { ok: false, code: 'protocol' };
+    const raw = await readBounded(response, MAX_MANAGER_BODY);
+    if (raw === null) return { ok: false, code: 'protocol' };
     let body: unknown;
     try { body = JSON.parse(raw); } catch { return { ok: false, code: 'protocol' }; }
     if (isManagerError(body)) return { ok: false, code: body.error };

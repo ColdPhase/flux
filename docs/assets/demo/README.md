@@ -5,11 +5,11 @@ running application, not from the prototype or a mockup:
 
 1. **Return view.** Ada opens Home and sees what changed since she left: Jonas's question,
    offered as her next step.
-2. **Conversation.** That step opens the project conversation at Jonas's message.
+2. **Conversation.** That step opens the project conversation and its thread at Jonas's message.
 3. **Sketch.** The Map tab opens the shared sketch "Where the sensors go".
-4. **Task.** Back in the conversation, one action turns Jonas's message into a task.
-5. **Decision.** Ada proposes a decision from another message, with its reason, and accepts it.
-   The rule then sits under the message it came from.
+4. **Task.** Back in the conversation, one action (**Create task**) turns Jonas's message into a task.
+5. **Decision.** Ada proposes a decision from another message (its **More actions** menu), with its
+   reason, and accepts it. The rule then sits under the message it came from.
 
 The content is the `./flux demo` sample data (`scripts/flux-demo.mjs`): the fictional
 *Riverside Makers* workspace with Ada Kowalska and Jonas Berg. It is seeded through the public
@@ -17,14 +17,18 @@ API. Jonas's reply in step 1 is posted through the same API while Ada is away.
 
 Every frame is a Playwright screenshot at 1280 × 800 CSS px, light theme. The only addition is
 a drawn pointer that shows where the clicks go. Pillow joins the frames into a looping GIF with
-one shared palette.
+one shared 48-colour palette, which keeps the file under the evidence size limit.
 
-**Recorded at:** the application at `main` `085214c6` (this branch changes no application code), 2026-10-03, by:
+**Recorded at:** the application at `main` `e4b4fab7` (the final design "Prostota"; the only change in
+this branch is the recorder), 2026-10-23, by:
 
 ```sh
-./scripts/record_demo.sh            # writes docs/assets/demo/flux-demo.gif
-./scripts/record_demo.sh /tmp/x.gif # or any other path
+./scripts/record_demo.sh                                        # writes docs/assets/demo/flux-demo.gif
+./scripts/record_demo.sh /tmp/x.gif                             # or any other path
+./scripts/record_demo.sh docs/assets/demo/flux-demo.gif docs/assets/readme  # also the README stills
 ```
+
+The same run takes the two stills at the top of the README: see the [README screenshots](../readme/README.md).
 
 The script needs only Docker. It builds the app and the pinned Playwright image, starts its
 own Compose project on loopback ports 18595/18596, and seeds the demo with fresh random
