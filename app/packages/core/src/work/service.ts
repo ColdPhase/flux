@@ -18,6 +18,7 @@ import {
   type WorkResult,
   type TaskActivityPage,
   type TaskActivityQuery,
+  type ObjectNotice,
   type TaskCreationNotice,
   type TaskCreationUndoEligibility,
   type UndoTaskCreationCommand,
@@ -288,6 +289,14 @@ export function createWorkUseCases(uow: WorkUnitOfWork) {
               : { state: 'active' as const },
             createdBy: { ...item.createdBy, name: names.get(key(item.createdBy)) ?? (item.createdBy.kind === 'agent' ? 'Agent' : 'Former member') } };
         });
+      }),
+
+    /** What the conversation says about decisions and results (#694): the project's audience reads it, no one else. */
+    listObjectNotices: (principal: Principal, projectId: string, query?: PageQuery): Promise<Page<ObjectNotice>> =>
+      list(principal, projectId, query, (ports, project, window) => ports.work.listObjectNotices(project, window), async (ports, items) => {
+        const names = await ports.work.names(items.map((item) => item.by));
+        return items.map((item) => ({ ...item, createdAt: iso(item.createdAt),
+          by: { ...item.by, name: names.get(key(item.by)) ?? (item.by.kind === 'agent' ? 'Agent' : 'Former member') } }));
       }),
 
     /** The caller's unfinished work across the projects of a workspace they can currently read. */

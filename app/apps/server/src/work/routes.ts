@@ -9,6 +9,7 @@ import {
   projectLinksPath,
   projectResultsPath,
   projectWorkPath,
+  projectObjectNoticesPath,
   projectTaskNoticesPath,
   taskActivityPath,
   taskDiscussionPath,
@@ -120,6 +121,10 @@ export async function workRoutes(app: FastifyInstance, { db, sessions, storage }
 
   app.get<{ Params: { projectId: string }; Querystring: PageQuery }>(projectTaskNoticesPath(':projectId'), { schema: { querystring: page } },
     async (request) => work.listTaskNotices(await principal(request), request.params.projectId, request.query));
+
+  // The decisions and results the conversation announces (#694); the project's audience, like the task notices.
+  app.get<{ Params: { projectId: string }; Querystring: PageQuery }>(projectObjectNoticesPath(':projectId'), { schema: { querystring: page } },
+    async (request) => work.listObjectNotices(await principal(request), request.params.projectId, request.query));
 
   app.get<{ Params: { projectId: string }; Querystring: PageQuery }>(projectWorkPath(':projectId'), { schema: { querystring: page } },
     async (request) => work.listWork(await principal(request), request.params.projectId, request.query));

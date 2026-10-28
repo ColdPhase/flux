@@ -269,7 +269,7 @@ The canvas labels S1–S22 and P1–P12 refer to these rules.
 | P1 | Home has a "Continue where you left off" card. The whole card is clickable and has a round arrow. |
 | P3 | Kreska is the agent icon everywhere (section 3). |
 | P4 | A decision is one card on both devices: "Proposed decision", "Needs you", the reason, what it is based on, then Accept / Not now / Discuss. |
-| P5 | **Creating a task is separate from its notice.** The conversation only announces it, in one line with its source: "made a task from Jonas's message", "added a task in Tasks", "added 3 tasks on the Map". |
+| P5 | **Creating a task is separate from its notice.** The conversation only announces it, in one line with its source: "made a task from Jonas's message", "added a task in Tasks", "added 3 tasks on the Map". Founder report 2026-10-28 ([#694](https://github.com/ColdPhase/flux/issues/694)): a decision and a result are announced the same way, because a decision proposed in a thread left no trace anywhere. One line, "Ada proposed a decision from Jonas's message" (or "in a thread", "accepted a decision", "recorded a negative result"), then the object as one card with its state now (Proposed, Accepted, Replaced; Positive, Negative) that opens it in the one panel. The line is in the project's stream by time and in the thread it came from; it updates for every member who can read the project, and it is information, not a message. |
 | P6 | Attachments sit inside their message (section 6). |
 | P7 | Monochrome with light, dark and system; no accent colour. |
 | P8 | The action is called "Create task", never "Create work". |

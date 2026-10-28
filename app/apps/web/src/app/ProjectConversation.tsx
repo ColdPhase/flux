@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent } from 'react';
 import { useLoaderData, useLocation, useNavigate, useRevalidator, type LoaderFunctionArgs, type ShouldRevalidateFunctionArgs } from 'react-router';
-import type { AssistantAnswer, ConversationMessage, Conversation, ConversationRootWindow, Draft, Material, Page, Project, ProjectGoal, ProjectPerson, TaskCreationNotice, WorkspaceMember } from '@flux/contracts';
+import type { AssistantAnswer, ConversationMessage, Conversation, ConversationRootWindow, Draft, Material, ObjectNotice, Page, Project, ProjectGoal, ProjectPerson, TaskCreationNotice, WorkspaceMember } from '@flux/contracts';
 import { ApiError, NetworkError } from '../api/client';
 import { outboxView, useComposerDraft, useComposerScope, type PendingSend } from '../composer/draft';
 import { takeHandedFiles } from '../composer/handoff';
@@ -9,7 +9,7 @@ import { LinkPreviews, MessageText } from './MessageText';
 import { ConnectionLine, SendAnnouncer } from '../composer/Outbox';
 import { fluxAnswers, onFluxAnswered } from '../composer/connection';
 import { Button, Icon, Input, MEDIA, sendsOnEnter, useArrivals, useMediaQuery, useToast } from '../ui';
-import { getConversation, getMaterialVersion, getProject, listConversationRoots, listDrafts, listMaterials, listTaskNotices, listWorkspaceMembers, observeProjectMessages, olderMessages, projectReceipts, publishMaterial } from './conversation-api';
+import { getConversation, getMaterialVersion, getProject, listConversationRoots, listDrafts, listMaterials, listObjectNotices, listTaskNotices, listWorkspaceMembers, observeProjectMessages, olderMessages, projectReceipts, publishMaterial } from './conversation-api';
 import { pageBackTo } from './seekMessage';
 import { useShellData } from './data';
 import { MessageObjects, useCreateWorkFromMessage } from '../work/inline';
@@ -50,10 +50,12 @@ import { TypingNotice } from '../typing/TypingNotice';
 import { listProjectGoals } from '../project/goal';
 import './project-conversation.css';
 import { RefLink } from '../place/origin';
+import { ObjectNoticeItem } from './ObjectNotices';
+import { threadObjects } from './objectNotices';
 
 /** The project's one conversation (UI116-1): the newest roots and task announcements (UI116-3), and the thread a URL opens. */
 export interface ProjectData {
-  project: Project; roots: ConversationRootWindow; notices: Page<TaskCreationNotice>; materials: Material[]; materialTotal: number; members: WorkspaceMember[]; conversation: Conversation | null;
+  project: Project; roots: ConversationRootWindow; notices: Page<TaskCreationNotice>; objectNotices: Page<ObjectNotice>; materials: Material[]; materialTotal: number; members: WorkspaceMember[]; conversation: Conversation | null;
   /** The project's reached goals (#520), each one entry in the stream at the moment it was reached. */
   goals: ProjectGoal[];
 }
@@ -61,10 +63,15 @@ export async function projectConversationLoader({ params, request }: LoaderFunct
   const projectId = params.projectId!;
   const project = await getProject(projectId, request.signal);
   // Work, decisions and results come with the project (#117 parent route).
-  const [roots, notices, materials, members, goals] = await Promise.all([
+  const [roots, notices, objectNotices, materials, members, goals] = await Promise.all([
     listConversationRoots(projectId, {}, request.signal),
     // Announcements add to the stream; a failure that is not about access leaves the stream readable without them.
     listTaskNotices(projectId, {}, request.signal).catch((error: unknown) => {
+      if (error instanceof ApiError && [401, 403, 404].includes(error.status)) throw error;
+      return { items: [], total: 0, limit: 100, offset: 0 };
+    }),
+    // The same for the decisions and results the stream announces (#694).
+    listObjectNotices(projectId, {}, request.signal).catch((error: unknown) => {
       if (error instanceof ApiError && [401, 403, 404].includes(error.status)) throw error;
       return { items: [], total: 0, limit: 100, offset: 0 };
     }),
@@ -81,7 +88,7 @@ export async function projectConversationLoader({ params, request }: LoaderFunct
   ]);
   const conversation = params.conversationId ? await getConversation(params.conversationId, request.signal) : null;
   if (conversation && conversation.projectId !== projectId) throw new Response('Not found', { status: 404 });
-  return { project, roots, notices, materials: materials.items, materialTotal: materials.total, members, conversation, goals };
+  return { project, roots, notices, objectNotices, materials: materials.items, materialTotal: materials.total, members, conversation, goals };
 }
 /** The stream stays mounted while a thread opens or closes; its loader refreshes the open thread then. */
 export function shouldRevalidateProjectConversation({ currentParams, nextParams, defaultShouldRevalidate }: ShouldRevalidateFunctionArgs) {
@@ -123,7 +130,7 @@ export function ProjectConversation() {
  * One conversation's pane: in the stream it is the composer that starts a root (UI116-1); in the thread
  * beside it, the replies with their own composer, assistant and sources.
  */
-function ProjectConversationContent({ data, variant, feed, rootHeader, rootMessageId = null, onPosted, onSending, newestRootAt, onThreadSize, focusComposer = false }: PaneProps) {
+function ProjectConversationContent({ data, variant, feed, rootHeader, rootMessageId = null, objects = [], onPosted, onSending, newestRootAt, onThreadSize, focusComposer = false }: PaneProps) {
   // Touch devices add a line with Enter and send with the button (#189).
   const touch = useMediaQuery(MEDIA.touch);
   const { project, materials, members } = data;
@@ -402,7 +409,7 @@ function ProjectConversationContent({ data, variant, feed, rootHeader, rootMessa
   // A confirmed reply keeps its queued message's place and id here, so it is not a second arrival (#264).
   const messageDomKey = (id: string) => { const key = outbox.keyOf(id); return key === id ? `message-${id}` : key; };
   const threadIds = conversation ? [...feedEntries(messages.filter((message) => message.sequence > 1), assistant.answers, !!olderCursor)
-    .map((entry) => entry.type === 'message' ? messageDomKey(entry.message.id) : `answer-${entry.answer.runId}`), ...outbox.pending.map((item) => `pending-${item.id}`)] : [];
+    .map((entry) => entry.type === 'message' ? messageDomKey(entry.message.id) : entry.type === 'answer' ? `answer-${entry.answer.runId}` : entry.key), ...outbox.pending.map((item) => `pending-${item.id}`)] : [];
   useArrivals(scrollRef, threadIds, (id) => document.getElementById(id));
 
   // The stream has no assistant: `/ai …` there would post the prompt for the whole project.
@@ -554,10 +561,13 @@ function ProjectConversationContent({ data, variant, feed, rootHeader, rootMessa
     // successful command ready to send again; words typed later or in another conversation stay.
     const submitted = publicComposer.draft;
     const consume = () => publicComposer.consumeBody(submitted);
-    if (name === 'decide') { openDetails({ kind: 'propose-decision', projectId: project.id, title: text }); consume(); return; }
+    // Typed in a thread, the words are about that thread (#694): its opening message is the source, so the thread shows what came of it.
+    const fromThread = conversation && rootMessageId ? { messageId: rootMessageId, text: conversation.firstMessageBody } : null;
+    if (name === 'decide') { openDetails({ kind: 'propose-decision', projectId: project.id, title: text, ...(fromThread ? { source: fromThread } : {}) }); consume(); return; }
     // A task, or a hand-off (a task for an agent whose owner the window asks for), opens the one Create window with the words as its title.
     // The composer keeps its words until the task exists: closing the window loses nothing (and a newer draft is never consumed).
-    openCreate({ kind: 'task', projectId: project.id, title: firstLine(text), onCreated: consume });
+    openCreate({ kind: 'task', projectId: project.id, title: firstLine(text), onCreated: consume,
+      ...(fromThread ? { sources: [{ ref: { type: 'message' as const, id: fromThread.messageId }, label: firstLine(fromThread.text) }] } : {}) });
   }
   async function send() {
     typing.stop();
@@ -653,7 +663,9 @@ function ProjectConversationContent({ data, variant, feed, rootHeader, rootMessa
   if (accessLost) return <div className="pane-scroll"><div className="pane-in project-setup" role="alert"><h2>Project unavailable</h2><p>Your access to this project may have changed. Reload to check current access.</p></div></div>;
   const ask = askState(assistant.status, audienceShort);
   // The root sits at the thread's top (and in the stream); the list holds its replies and answers.
-  const entries = feedEntries(messages.filter((message) => message.sequence > 1), assistant.answers, !!olderCursor);
+  // What came of this thread (#694): the decisions and results made from it stand among its replies, in time order.
+  const made = conversation ? threadObjects(conversation.id, new Set(messages.map((message) => message.id)), objects) : [];
+  const entries = feedEntries(messages.filter((message) => message.sequence > 1), assistant.answers, !!olderCursor, made);
   const lookups = { projectId: project.id, messages, work: referenceWork.rows, author };
   // A manager can let their own assistant read this project in one step; anyone else asks a manager.
   const ownAgent = assistant.status?.enablement?.agents.find((item) => item.workspaceId === project.workspaceId)?.agentId ?? null;
@@ -706,6 +718,8 @@ function ProjectConversationContent({ data, variant, feed, rootHeader, rootMessa
               const label = day(entry.at);
               const divider = label !== lastDay ? <MessageDay key={`day-${entry.type === 'message' ? outbox.keyOf(entry.message.id) : entry.key}`} label={label} /> : null;
               lastDay = label;
+              if (entry.type === 'object') return [divider, <ObjectNoticeItem key={entry.key} notice={entry.notice} meId={me.user.id} owners={owners} authorOf={() => null} inThread
+                hasMessage={() => false} onOpen={(target) => openDetails(target)} />];
               if (entry.type === 'answer') {
                 // Runs of one schedule in a row, with no person's message between them, fold into one line (AST-7, S8).
                 const scheduleOf = (candidate: FeedEntry | undefined) => candidate?.type === 'answer' ? candidate.answer.schedule?.id ?? null : null;
@@ -885,18 +899,22 @@ function ThreadReply(props: ThreadReplyProps | QueuedReplyProps) {
 
 type FeedEntry =
   | { type: 'message'; key: string; at: string; message: Conversation['messages'][number] }
-  | { type: 'answer'; key: string; at: string; answer: AssistantAnswer };
+  | { type: 'answer'; key: string; at: string; answer: AssistantAnswer }
+  | { type: 'object'; key: string; at: string; notice: ObjectNotice };
 
 /**
  * Messages and committed assistant answers in one chronological feed. While earlier messages
  * are not loaded, answers from before the first loaded message wait with them.
  */
-function feedEntries(messages: Conversation['messages'], answers: AssistantAnswer[], hasOlder: boolean): FeedEntry[] {
+function feedEntries(messages: Conversation['messages'], answers: AssistantAnswer[], hasOlder: boolean, objects: ObjectNotice[] = []): FeedEntry[] {
   const first = messages[0]?.createdAt ?? null;
   const entries: FeedEntry[] = [
     ...messages.map((message) => ({ type: 'message' as const, key: message.id, at: message.createdAt, message })),
     ...answers.filter((answer) => !hasOlder || !first || answer.committedAt >= first)
       .map((answer) => ({ type: 'answer' as const, key: `answer-${answer.runId}`, at: answer.committedAt, answer })),
+    ...objects.filter((notice) => !hasOlder || !first || notice.createdAt >= first)
+      .map((notice) => ({ type: 'object' as const, key: `object-${notice.id}`, at: notice.createdAt, notice })),
   ];
-  return entries.sort((a, b) => a.at.localeCompare(b.at) || (a.type === b.type ? 0 : a.type === 'message' ? -1 : 1));
+  const rank = { message: 0, object: 1, answer: 2 } as const;
+  return entries.sort((a, b) => a.at.localeCompare(b.at) || rank[a.type] - rank[b.type]);
 }
