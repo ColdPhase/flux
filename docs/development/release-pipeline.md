@@ -58,7 +58,11 @@ the publication workflow on the draft and again on the public downloads.
 3. Independently review that draft and its exact digest. Test downloaded assets
    on both supported platforms, a real forward upgrade from the previous
    supported version, backup/restore, the `gh attestation verify` command of
-   `INSTALL.md` and user-facing behavior.
+   `INSTALL.md` and user-facing behavior. The packaged install, upgrade and both backup/restore
+   paths are one command per platform: download the previous release's assets and the draft's assets
+   into two directories and run
+   `FLUX_SMOKE_PREVIOUS_ASSETS=<previous assets> bash scripts/release/smoke_artifacts.sh <draft assets> <state dir> <project> <restore project>`
+   from a checkout of the candidate commit (see [the upgrade leg](#the-upgrade-leg)).
    Record run, commands, versions, digest, results, downtime and limits in #77.
    A new build digest requires a new artifact review. The independent reviewer
    posts this exact line in the review issue:
@@ -82,13 +86,53 @@ the publication workflow on the draft and again on the public downloads.
 
 The workflow's packaged smoke is a gate, not the whole release evaluation. It runs on
 one platform (amd64), does not cover a bound slot's sign-out and reuse (they need a vendor login; the fake-CLI
-`scripts/check_agent_runtime.sh` covers them against the source stack), and does not cover an upgrade, a TLS reverse proxy, browsers,
-Web Push or SMTP. In particular, the first release has no previous version from which to
-exercise a real forward upgrade: publish a candidate `-rc.N` first and upgrade from it.
-Arm64 QEMU build and manifest inspection are not a native arm64 install test. Those
+`scripts/check_agent_runtime.sh` covers them against the source stack), and does not run the upgrade leg
+(next section), a TLS reverse proxy, browsers, Web Push or SMTP. In particular, the first release has no
+previous version from which to exercise a real forward upgrade: publish a candidate `-rc.N` first and
+upgrade from it. Arm64 QEMU build and manifest inspection are not a native arm64 install test. Those
 results remain open until the independent artifact review records them. The source
 workspace and test stack continue using their own Compose path; the attached
 `compose.yaml` is the pull-only operator path.
+
+## The upgrade leg
+
+`scripts/release/smoke_artifacts.sh` runs the clean-install leg always. With
+`FLUX_SMOKE_PREVIOUS_ASSETS=<directory>` (the downloaded assets of the previous release: `compose.yaml`,
+`env.example`, `release.json` and `SHA256SUMS` are required; the previous release must pin another image
+and the same PostgreSQL digest, or the script stops before pulling anything) it adds `INSTALL.md`'s upgrade,
+followed literally, with throwaway credentials and the same ports as the first leg:
+
+1. Install the previous release from its own assets and create content through its public API
+   (`scripts/release/smoke_data.py`): an account, a workspace, a project, a conversation with a reply and a
+   binary attachment, a document with two versions, a work item and a private note, plus a file in the
+   files volume.
+2. Take the paired backup with the previous release's files, then stop its writers.
+3. Pull and start the candidate's `compose.yaml` with the **same** environment file and project (same volumes).
+4. Check that data and migrations survived: the `migrate` service exited 0; `/api/v1/health` reports a
+   `schemaVersion` that did not go down; `flux_schema_version` equals the candidate's migration files
+   (`app/packages/db/migrations`) and keeps every earlier row; thirteen content tables (the `content_tables`
+   list in the script; a table the previous release lacks is skipped) have identical counts and row checksums over
+   the previous columns; the `pgdata` and `files` volumes were not recreated; the account signs in, every created
+   item reads back (explicit fields and the exact attachment bytes) and the instance accepts a new message.
+   The downtime from stopping the writers to a healthy candidate is printed.
+5. Back up the upgraded installation and restore it into fresh volumes with the candidate's files.
+6. Recovery path of `INSTALL.md`: restore the **pre-upgrade** backup into fresh volumes with the **previous**
+   release's files, check it, then upgrade that restored installation to the candidate and check it again.
+
+`scripts/release/dry_run.sh` runs it against locally built images. `FLUX_DRYRUN_PREVIOUS=<git revision>`
+(at or after `a6e9851d1`, the asset set of #654) builds that revision's application image, renders its
+assets from its own templates as release `v0.1.0-rc.1` (the candidate becomes `v0.1.0-rc.2`) and passes
+them as the previous release:
+
+```sh
+FLUX_DRYRUN_PORT=25800 FLUX_DRYRUN_PROJECT=fluxdry FLUX_DRYRUN_PREVIOUS=a6e9851d1 bash scripts/release/dry_run.sh
+```
+
+The leg is not wired into `final-release.yml`: the first release has no predecessor, and which published
+release is "previous" is a decision for the reviewer, who runs the command above on each platform. The
+leg proves the documented upgrade for one pair of releases; it does not cover a PostgreSQL major
+change (`INSTALL.md`: restore into a fresh installation instead), the optional agent runtime, a TLS
+proxy, or content created through the browser.
 
 ## Gates that remain open
 
@@ -125,7 +169,9 @@ this repository, and no release workflow has been dispatched.
   vendor CLIs and the Claude Code installation (`runtime-install` reaching `downloads.claude.ai`) are
   independent-review items on the downloaded draft (#358 AC-3).
 - **Packaged installation on amd64 and arm64, and a forward upgrade**, by the independent
-  evaluator from the downloaded draft assets, following `INSTALL.md` literally.
+  evaluator from the downloaded draft assets, following `INSTALL.md` literally; the upgrade leg of
+  `smoke_artifacts.sh` is the checked command ([above](#the-upgrade-leg)). A local run of it on arm64
+  and amd64 with locally built images is not this evidence: it is not the published digest.
 - **Public downloads and the documented installation path** after publication, recorded in #77.
 
 GitHub immutable Releases were enabled in the repository on 2026-09-27 and
