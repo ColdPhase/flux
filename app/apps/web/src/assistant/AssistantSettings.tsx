@@ -26,6 +26,8 @@ import { AssistantSchedules } from './AssistantSchedules';
 // server decides; this page says truthfully what it decided and why an assistant cannot run.
 
 const PER_RUN = [6, 8, 10, 20, 30, 50].filter((value) => value >= PERSONAL_RUN_LIMITS.perRunCents.min && value <= PERSONAL_RUN_LIMITS.perRunCents.max);
+/** The daily cap cannot be under the per-request limit: raising the limit moves a lower cap up to the nearest option that fits. */
+const capAtLeast = (cap: number, perRun: number, values: readonly number[]) => (cap >= perRun ? cap : values.find((value) => value >= perRun) ?? perRun);
 const DAILY = [10, 50, 100, 200, 500, 1000].filter((value) => value >= PERSONAL_RUN_LIMITS.dailyCapCents.min && value <= PERSONAL_RUN_LIMITS.dailyCapCents.max);
 
 export function browserTimeZone() {
@@ -374,7 +376,7 @@ function Setup({ status, agents, workspaces, name, onEnabled, onAgent }: {
           </div> : null}
           {selected && modelOption && model !== selected.model ? <p className="nset__note">{modelOption.note}. The cost shown above is for {selected.model}.</p> : null}
           <label className="aset__field">Up to per request
-            <Select aria-label="Up to per request" value={perRun} onChange={(next) => setPerRun(Number(next))}>{PER_RUN.map((value) => <Option key={value} value={value}>{dollars(value)}</Option>)}</Select>
+            <Select aria-label="Up to per request" value={perRun} onChange={(next) => { setPerRun(Number(next)); setDaily((cap) => capAtLeast(cap, Number(next), DAILY)); }}>{PER_RUN.map((value) => <Option key={value} value={value}>{dollars(value)}</Option>)}</Select>
           </label>
           <label className="aset__field">Daily cap
             <Select aria-label="Daily cap" value={daily} onChange={(next) => setDaily(Number(next))}>{DAILY.filter((value) => value >= perRun).map((value) => <Option key={value} value={value}>{dollars(value)}</Option>)}</Select>
@@ -498,7 +500,7 @@ function CapsForm({ status, busy, onSave }: { status: PersonalAssistantStatus; b
   return (
     <form className="aset__caps" onSubmit={(event) => { event.preventDefault(); if (changed) void onSave(perRun, daily); }}>
       <label className="aset__field">Up to per request
-        <Select aria-label="Up to per request" value={perRun} onChange={(next) => setPerRun(Number(next))}>{options(PER_RUN, enablement.perRunCents).map((value) => <Option key={value} value={value}>{dollars(value)}</Option>)}</Select>
+        <Select aria-label="Up to per request" value={perRun} onChange={(next) => { setPerRun(Number(next)); setDaily((cap) => capAtLeast(cap, Number(next), options(DAILY, enablement.dailyCapCents))); }}>{options(PER_RUN, enablement.perRunCents).map((value) => <Option key={value} value={value}>{dollars(value)}</Option>)}</Select>
       </label>
       <label className="aset__field">Daily cap
         <Select aria-label="Daily cap" value={daily} onChange={(next) => setDaily(Number(next))}>{options(DAILY, enablement.dailyCapCents).filter((value) => value >= perRun).map((value) => <Option key={value} value={value}>{dollars(value)}</Option>)}</Select>

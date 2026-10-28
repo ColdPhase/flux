@@ -236,6 +236,12 @@ class PersonalAssistantJourney(unittest.TestCase):
         expect_value(page.get_by_label("In Lamp studio"), re.compile(r"[0-9a-f-]{36}"))
         choose(page.get_by_label("Up to per request", exact=True), label="$0.08")
         choose(page.get_by_label("Daily cap", exact=True), label="$1.00")
+        # Raising the per-request limit past the daily cap moves the cap up to the nearest option that fits: never an empty control.
+        choose(page.get_by_label("Daily cap", exact=True), label="$0.10")
+        choose(page.get_by_label("Up to per request", exact=True), label="$0.20")
+        expect(page.get_by_label("Daily cap", exact=True)).to_have_text("$0.50")
+        choose(page.get_by_label("Up to per request", exact=True), label="$0.08")
+        choose(page.get_by_label("Daily cap", exact=True), label="$1.00")
         shot(page, "assistant-1440-settings-consent")
         expect(turn_on).to_be_disabled()
         page.get_by_role("checkbox", name=re.compile("excerpts from the project conversations I ask in are sent to Anthropic")).check()

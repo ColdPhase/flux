@@ -12,7 +12,8 @@
 .ui-select__chev { flex: none; color: var(--t3); transition: transform var(--dur-1) var(--ease-out); }
 .ui-select[aria-expanded="true"] .ui-select__chev { transform: rotate(180deg); }
 .ui-select:disabled { cursor: default; opacity: .55; }
-.ui-select:focus-visible { outline: 2px solid var(--t1); outline-offset: 1px; }
+/* The soft field focus of the other inputs (--t1 hairline inside, --sub halo), not the heavy outline. */
+button.ui-select:focus-visible { outline: none; box-shadow: inset 0 0 0 1px var(--t1), 0 0 0 3px var(--sub); }
 @media (hover: hover) { .ui-select:hover:not(:disabled) { border-color: var(--t3); } }
 @media (pointer: coarse) { .ui-select { min-height: 44px; font-size: 16px; } }
 /* The hidden field that carries a name or the browser's required check: it takes no room and no pointer. */

@@ -25,7 +25,7 @@
 .create__place:focus-within, .create__chip:focus-within { outline: 2px solid var(--t1); outline-offset: 1px; }
 .create__tile { display: inline-grid; place-items: center; flex: none; width: 20px; height: 20px; border-radius: 6px; background: var(--el); box-shadow: inset 0 0 0 1px var(--line); font-size: 10px; font-weight: 600; }
 .create__place-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.create__place .ui-select, .create__chip .ui-select { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; font-size: 16px; }
+.create__place .ui-select, .create__chip .ui-select { position: absolute; inset: 0; width: 100%; height: 100%; min-height: 0; opacity: 0; cursor: pointer; font-size: 16px; }
 
 /* The carried text's field: a task's title, a decision, a project's name (one line); a thought or a message (several). */
 .create__title, .create__name { width: 100%; border: 0; background: none; padding: 4px 0; font: inherit; font-size: 22px; font-weight: 600; letter-spacing: -.02em; line-height: 1.25; color: var(--t1); outline: none; }

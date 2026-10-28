@@ -84,7 +84,7 @@
 .dm-new__space { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; font-size: var(--fs-sm); color: var(--t2); }
 .dm-new__space .ui-select, .dm-new__search, .dm-new__title input { min-height: 36px; border: 1px solid var(--line2); border-radius: var(--r); padding: 0 10px; background: var(--el); color: var(--t1); font: inherit; font-size: var(--fs-md); }
 .dm-new__search { width: 100%; }
-.dm-new__search:focus-visible, .dm-new__title input:focus-visible, .dm-new__space .ui-select:focus-visible { outline: 2px solid var(--t1); outline-offset: 1px; }
+.dm-new__search:focus-visible, .dm-new__title input:focus-visible { outline: 2px solid var(--t1); outline-offset: 1px; }
 .dm-new__note, .dm-new__opening { margin: 12px 2px; font-size: var(--fs-sm); color: var(--t3); }
 .dm-new__people { list-style: none; margin: 8px 0 0; padding: 0; max-height: min(52vh, 440px); overflow-y: auto; }
 .dm-new__person { display: flex; align-items: center; gap: 10px; min-height: 48px; padding: 6px 10px; margin: 0 -10px; border-radius: var(--r); cursor: pointer; transition: var(--tr); }

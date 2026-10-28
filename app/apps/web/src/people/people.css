@@ -16,7 +16,6 @@
 .people__field { display: grid; gap: 6px; }
 .people__field label, .access__seg legend { font-size: var(--fs-sm); font-weight: 500; color: var(--t2); }
 .people__field .ui-select { width: 100%; min-height: var(--ctl-lg); padding: 0 10px; border: 0; border-radius: var(--r); background: var(--el); color: var(--t1); font-size: var(--fs-base); box-shadow: inset 0 0 0 1px var(--line2); }
-.people__field .ui-select:focus-visible { outline: 2px solid var(--t1); outline-offset: 1px; }
 .people__hint { margin: 0; font-size: var(--fs-sm) !important; color: var(--t3) !important; line-height: 1.45; }
 .people__add { display: grid; gap: 14px; }
 .people__notice { display: flex; align-items: flex-start; gap: 6px; margin: 0; padding: 8px 10px; border-radius: var(--r); background: var(--sub); font-size: var(--fs-sm) !important; color: var(--t2) !important; line-height: 1.45; overflow-wrap: anywhere; }

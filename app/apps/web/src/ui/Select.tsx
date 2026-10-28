@@ -42,6 +42,9 @@ export function OptionGroup(props: OptionGroupProps): null { void props; return 
 interface Group { label: string; ai?: string }
 interface Choice { value: string; label: string; content: ReactNode; disabled: boolean; group: Group | null }
 
+/** What typing is compared on: no case, and a space and an underscore are the same ("America/New York" is typed "america/new_york"). */
+const fold = (text: string) => text.toLowerCase().replace(/[\s_]+/g, ' ').trimStart();
+
 const textOf = (node: ReactNode): string => {
   if (node === null || node === undefined || typeof node === 'boolean') return '';
   if (typeof node === 'string' || typeof node === 'number') return String(node);
@@ -98,14 +101,13 @@ export function Select({ value, onChange, children, placeholder, name, required,
   const choices = collect(children, null, []);
   const current = String(value);
   const selected = choices.findIndex((choice) => choice.value === current);
-  // Which kind of list is open; a list that cannot follow its trigger (the phone turned, the window narrowed) is closed.
-  const [mode, setMode] = useState<'popup' | 'sheet' | null>(null);
+  const [open, setOpen] = useState(false);
   const [active, setActive] = useState(-1);
   const [title, setTitle] = useState('');
   const [place, setPlace] = useState<{ top: number; left: number; minWidth: number; maxHeight: number; side: 'below' | 'above' } | null>(null);
+  // An open list follows the window: it becomes the phone's sheet when the window narrows to phone width, and the popover
+  // again when it widens, with the same option under the arrows.
   const sheet = useMediaQuery(MEDIA.phone);
-  const open = mode === (sheet ? 'sheet' : 'popup');
-  const setOpen = (on: boolean) => setMode(on ? (sheet ? 'sheet' : 'popup') : null);
   const pop = usePop(open, { from: place?.side ?? 'below' });
   const button = useRef<HTMLButtonElement | null>(null);
   const list = useRef<HTMLDivElement>(null);
@@ -162,12 +164,13 @@ export function Select({ value, onChange, children, placeholder, name, required,
     const same = [...text].every((letter) => letter === text[0]);
     const start = open ? Math.max(active, 0) : Math.max(selected, 0);
     // One key (or the same key again) goes on to the next option that starts with it; several different keys narrow down.
-    const needle = same ? text[0]! : text;
+    const needle = fold(same ? text[0]! : text);
+    if (!needle) return -1;
     const from = same ? start + 1 : start;
     for (let n = 0; n < choices.length; n += 1) {
       const index = (from + n) % choices.length;
       const choice = choices[index]!;
-      if (!choice.disabled && choice.label.toLowerCase().startsWith(needle)) return index;
+      if (!choice.disabled && fold(choice.label).startsWith(needle)) return index;
     }
     return -1;
   };
@@ -231,7 +234,7 @@ export function Select({ value, onChange, children, placeholder, name, required,
       const target = event.target as Node;
       if (button.current?.contains(target) || list.current?.contains(target)) return;
       if (sheet) return;
-      setMode(null);
+      setOpen(false);
     };
     document.addEventListener('pointerdown', away, true);
     return () => document.removeEventListener('pointerdown', away, true);

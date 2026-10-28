@@ -316,6 +316,31 @@ class AppSelect(unittest.TestCase):
         shot(page, f"app-select-long-{UI_BROWSER}")
         page.keyboard.press("Escape")
 
+    def test_09_typing_treats_a_space_and_an_underscore_alike(self) -> None:
+        page = self.page()
+        page.goto("/settings/notifications")
+        quiet = page.get_by_role("switch", name="Quiet hours")
+        expect(quiet).to_be_visible()
+        if quiet.get_attribute("aria-checked") != "true":
+            quiet.click()
+        zone = page.get_by_role("combobox", name="Time zone", exact=True)
+        expect(zone).to_be_visible()
+        # The list shows "America/New York"; the value (and what a person may type) is "America/New_York".
+        for typed in ("america/new_york", "america/new york", "America/New York"):
+            with self.subTest(typed=typed):
+                zone.focus()
+                page.keyboard.press("Home")
+                page.keyboard.type(typed)
+                expect(page.locator('[role="listbox"] [data-active]')).to_have_text("America/New York")
+                page.keyboard.press("Escape")
+                expect(zone).to_have_attribute("aria-expanded", "false")
+                page.wait_for_timeout(700)  # the typed letters are forgotten after a moment
+        zone.focus()
+        page.keyboard.press("Home")
+        page.keyboard.type("america/new_york")
+        page.keyboard.press("Enter")
+        expect_value(zone, "America/New_York")
+
     # ---------------------------------------------------------------- tokens, light and dark
 
     def test_10_the_list_wears_the_tokens_in_both_themes(self) -> None:
@@ -433,6 +458,44 @@ class AppSelect(unittest.TestCase):
         expect(chooser).to_have_count(0)
         expect(create).to_be_visible()
         expect(project).to_contain_text("Studio notes")
+
+    def test_13b_an_open_list_follows_the_window_between_popover_and_sheet(self) -> None:
+        page, place = self.search()
+        place.click()
+        expect(page.locator(".ui-select__pop")).to_be_visible()
+        page.keyboard.press("ArrowDown")
+        page.keyboard.press("ArrowDown")
+        # Narrowing to phone width turns the open popover into the phone's sheet, with the same option under the arrows.
+        page.set_viewport_size(PHONE)
+        sheet = page.get_by_role("dialog", name="Place")
+        expect(sheet).to_be_visible()
+        expect(page.locator(".ui-select__pop")).to_have_count(0)
+        expect(place).to_have_attribute("aria-expanded", "true")
+        expect(sheet.locator("[data-active]")).to_have_text("# Studio notes")
+        # Widening brings the popover back, still open, and the keys keep working.
+        page.set_viewport_size(DESKTOP)
+        expect(sheet).to_have_count(0)
+        expect(page.locator(".ui-select__pop")).to_be_visible()
+        expect(place).to_have_attribute("aria-expanded", "true")
+        expect(place).to_be_focused()
+        page.keyboard.press("Enter")
+        expect(place).to_have_text("# Studio notes")
+        # A closed select that meets a narrow window opens as the sheet.
+        page.set_viewport_size(PHONE)
+        place.click()
+        expect(page.get_by_role("dialog", name="Place")).to_be_visible()
+        page.keyboard.press("Escape")
+        expect(place).to_have_attribute("aria-expanded", "false")
+
+    def test_13c_the_focus_ring_is_the_soft_field_ring(self) -> None:
+        page, place = self.search()
+        place.focus()
+        page.keyboard.press("Tab")
+        page.keyboard.press("Shift+Tab")
+        expect(place).to_be_focused()
+        look = place.evaluate("el => { const s = getComputedStyle(el); return { outline: s.outlineStyle, shadow: s.boxShadow }; }")
+        self.assertEqual(look["outline"], "none", "no heavy outline")
+        self.assertIn("inset", look["shadow"], "a hairline inside and a soft halo outside, like the other fields")
 
     # ---------------------------------------------------------------- axe
 

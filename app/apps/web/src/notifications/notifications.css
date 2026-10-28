@@ -93,7 +93,7 @@
 }
 .nset__row input { flex: 1; min-width: 220px; }
 .nset__row .ui-select { flex: 1; min-width: 0; }
-.nset__row input:focus-visible, .nset__row .ui-select:focus-visible, .nset__times input:focus-visible, .nset__times .ui-select:focus-visible { outline: 2px solid var(--t1); outline-offset: 1px; }
+.nset__row input:focus-visible, .nset__times input:focus-visible { outline: 2px solid var(--t1); outline-offset: 1px; }
 .nset__row input[aria-invalid="true"] { border-color: var(--t1); }
 .nset__error { display: flex; align-items: center; gap: 6px; margin: 8px 0 0; font-size: var(--fs-sm); color: var(--t1); }
 

@@ -34,7 +34,7 @@
 }
 .asched__text { min-height: 84px; resize: vertical; line-height: 1.45; }
 .asched__inline input, .asched__inline .ui-select { width: auto; min-width: 120px; }
-.asched__text:focus-visible, .asched__select:focus-visible, .asched__cron:focus-visible, .asched__inline input:focus-visible, .asched__inline .ui-select:focus-visible { outline: 2px solid var(--t1); outline-offset: 1px; }
+.asched__text:focus-visible, .asched__cron:focus-visible, .asched__inline input:focus-visible { outline: 2px solid var(--t1); outline-offset: 1px; }
 .asched__seg { flex-wrap: wrap; width: 100%; }
 .asched__seg .seg__b { min-height: 44px; flex: 1 1 auto; padding: 0 12px; }
 .asched__line { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 10px 14px; }
