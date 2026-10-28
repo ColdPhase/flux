@@ -21,8 +21,9 @@ one shared 48-colour palette, which keeps the file within its allowlisted size
 (`scripts/docs-size-allowlist.txt`, 476206 bytes).
 
 **Recorded at:** the application at `main` `624d02560` with the cards fix of
-[#665](https://github.com/ColdPhase/flux/issues/665) ([PR #680](https://github.com/ColdPhase/flux/pull/680)),
-2026-10-27, so the last frames show the thread panel's decision card with its title and its state whole, by:
+[#665](https://github.com/ColdPhase/flux/issues/665) ([PR #680](https://github.com/ColdPhase/flux/pull/680), code at
+`c6cd75b43`), 2026-10-28. The last frames show the thread panel's decision card in its one-row form: the state
+("accepted 28 Oct") whole, the title cut by an ellipsis because that reply's bubble is narrow, by:
 
 ```sh
 ./scripts/record_demo.sh                                        # writes docs/assets/demo/flux-demo.gif

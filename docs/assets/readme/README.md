@@ -13,7 +13,7 @@ through the public API by `scripts/flux-demo.mjs`. Ada then walks the core journ
 the decision exist; Jonas's question is still waiting for her on Home.
 
 **Captured at:** `main` `624d02560` with the cards fix of [#665](https://github.com/ColdPhase/flux/issues/665)
-([PR #680](https://github.com/ColdPhase/flux/pull/680), code at `07ffe13ae`), 2026-10-27, with the demo GIF, by:
+([PR #680](https://github.com/ColdPhase/flux/pull/680), code at `c6cd75b43`), 2026-10-28, with the demo GIF, by:
 
 ```sh
 ./scripts/record_demo.sh docs/assets/demo/flux-demo.gif docs/assets/readme
