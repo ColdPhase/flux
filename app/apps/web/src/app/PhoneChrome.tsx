@@ -1,6 +1,6 @@
 import { useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { Link } from 'react-router';
-import { Avatar, BottomNav, FluxLogo, Icon, IconButton, Overlay, publishTopEdge, type BottomNavItem, type IconName } from '../ui';
+import { Avatar, BottomNav, FluxLogo, Icon, IconButton, Overlay, publishTopEdge, type BottomNavItem, type IconName, Select, Option } from '../ui';
 import { handFilesToComposer } from '../composer/handoff';
 import { useDraft } from './drafts';
 import { useShellActions } from './shellContext';
@@ -193,11 +193,9 @@ export function PhoneCreate({ open, onClose, projects, projectId, go, onThought 
         {projects.length ? (
           <label className="phone-create__project">
             <span className="phone-create__tile" aria-hidden="true">{(chosen?.name.trim()[0] ?? '?').toUpperCase()}</span>
-            <span className="ui-vh">Project</span>
-            <select value={chosen?.id ?? ''} onChange={(event) => selectedProject.setText(event.target.value)}>
-              {projects.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}
-            </select>
-            <Icon name="chevron-down" size={12} />
+            <Select aria-label="Project" value={chosen?.id ?? ''} onChange={(next) => selectedProject.setText(next)}>
+              {projects.map((project) => <Option key={project.id} value={project.id}>{project.name}</Option>)}
+            </Select>
           </label>
         ) : null}
       </div>

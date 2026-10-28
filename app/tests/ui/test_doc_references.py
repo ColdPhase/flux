@@ -6,6 +6,8 @@ import uuid
 from urllib.parse import parse_qs, urlsplit
 
 from playwright.sync_api import expect, sync_playwright
+
+from app_select import choose
 from test_app_shell import ORIGIN, UPSTREAM, shot, start_forwarder
 from test_work_pagination import api
 
@@ -99,7 +101,7 @@ class DocReferenceJourney(unittest.TestCase):
                 picker = self.picker(page, text)
                 query = picker.get_by_role("combobox", name="Find a doc, decision, result, work, sketch or message", exact=True)
                 for kind in ("work", "decision", "result"):
-                    picker.get_by_label("Reference type").select_option(kind)
+                    choose(picker.get_by_label("Reference type"), kind)
                     query.fill("")
                     seen = set()
                     for count in (50, 50, 5):
@@ -121,7 +123,7 @@ class DocReferenceJourney(unittest.TestCase):
                     expect(picker.get_by_role("listbox", name="Matches").get_by_role("option")).to_have_count(0)
                     expect(picker).to_contain_text("Nothing matches")
                 query.fill("")
-                picker.get_by_label("Reference type").select_option("work")
+                choose(picker.get_by_label("Reference type"), "work")
                 expect(picker.get_by_role("listbox", name="Matches").get_by_role("option")).to_have_count(50)
                 query.focus()
                 for _ in range(45):
@@ -141,7 +143,7 @@ class DocReferenceJourney(unittest.TestCase):
             expected = [("doc", self.doc), ("decision", self.native["decision"][0]), ("result", self.native["result"][0]), ("work", self.native["work"][0]), ("sketch", self.sketch), ("message", {"id": self.message["id"], "title": self.message["body"]})]
             for kind, item in expected:
                 picker = self.picker(page, text)
-                picker.get_by_label("Reference type").select_option(kind)
+                choose(picker.get_by_label("Reference type"), kind)
                 query = picker.get_by_role("combobox", name="Find a doc, decision, result, work, sketch or message", exact=True)
                 query.fill(item["title"])
                 expect(picker.get_by_role("listbox", name="Matches").get_by_role("option")).to_have_count(1)
@@ -158,7 +160,7 @@ class DocReferenceJourney(unittest.TestCase):
             self.assertTrue({(kind, item["id"]) for kind, item in expected}.issubset(mentions))
         page, text = self.scene(self_doc=True)
         picker = self.picker(page, text)
-        picker.get_by_label("Reference type").select_option("doc")
+        choose(picker.get_by_label("Reference type"), "doc")
         picker.get_by_role("combobox", name="Find a doc, decision, result, work, sketch or message", exact=True).fill(self.self_doc["title"])
         expect(picker.get_by_role("listbox", name="Matches").get_by_role("option")).to_have_count(0)
 
@@ -236,7 +238,7 @@ class DocReferenceJourney(unittest.TestCase):
             with self.subTest(phone=phone):
                 page, text = self.scene(phone)
                 picker = self.picker(page, text)
-                picker.get_by_label("Reference type").select_option("work")
+                choose(picker.get_by_label("Reference type"), "work")
                 expect(picker.get_by_role("listbox", name="Matches").get_by_role("option")).to_have_count(50)
                 held = []
                 def hold_old_account(route):
@@ -258,7 +260,7 @@ class DocReferenceJourney(unittest.TestCase):
                 self.assertIsNone(page.evaluate("key => sessionStorage.getItem(key)", other_key))
                 text.fill("PRIVATE-DRAFT belonging only to Jonas")
                 picker = self.picker(page, text)
-                picker.get_by_label("Reference type").select_option("work")
+                choose(picker.get_by_label("Reference type"), "work")
                 query = picker.get_by_role("combobox", name="Find a doc, decision, result, work, sketch or message", exact=True)
                 query.fill(self.native["work"][0]["title"])
                 expect(picker.get_by_role("listbox", name="Matches").get_by_role("option")).to_have_count(1)
@@ -280,7 +282,7 @@ class DocReferenceJourney(unittest.TestCase):
                 item = api(self.ctx, "POST", f"/api/v1/projects/{self.project}/work", {"title": "Only the original shield measurement"}, 201)
                 page, text = self.scene(phone)
                 picker = self.picker(page, text)
-                picker.get_by_label("Reference type").select_option("work")
+                choose(picker.get_by_label("Reference type"), "work")
                 query = picker.get_by_role("combobox", name="Find a doc, decision, result, work, sketch or message", exact=True)
                 held = []
                 def hold(route):

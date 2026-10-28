@@ -31,7 +31,7 @@
 .background-settings__actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
 .background-settings__back { display: inline-flex; align-items: center; min-height: 36px; margin-top: 12px; font-size: var(--fs-md); color: var(--t1); text-underline-offset: 3px; }
 .background-settings__select { display: grid; gap: 4px; margin: 10px 0; font-size: var(--fs-sm); font-weight: 500; color: var(--t2); }
-.background-settings__select input, .background-settings__select select, .background-settings__fields select { min-width: 0; width: 100%; min-height: 36px; padding: 6px 10px; border: 1px solid var(--line2); border-radius: var(--r); color: var(--t1); background: var(--el); font-size: var(--fs-md); font-weight: 400; }
+.background-settings__select input, .background-settings__select .ui-select, .background-settings__fields .ui-select { min-width: 0; width: 100%; min-height: 36px; padding: 6px 10px; border: 1px solid var(--line2); border-radius: var(--r); color: var(--t1); background: var(--el); font-size: var(--fs-md); font-weight: 400; }
 .background-settings__agent-create { display: flex; align-items: flex-end; flex-wrap: wrap; gap: 8px; margin: 8px 0; }
 .background-settings__agent-create .background-settings__select { flex: 1 1 240px; margin: 0; }
 .background-settings__agent-option { margin: 10px 0; }
@@ -56,7 +56,7 @@
 @media (max-width: 640px) { .sset-in.background-settings .background-settings__head h2 { display: none; } }
 @media (pointer: coarse) {
   .background-settings__fields input:not([type=checkbox]), .background-settings__price input { font-size: 16px; min-height: 44px; }
-  .background-settings__select input, .background-settings__select select, .background-settings__fields select { font-size: 16px; min-height: 44px; }
+  .background-settings__select input, .background-settings__select .ui-select, .background-settings__fields .ui-select { font-size: 16px; min-height: 44px; }
   .background-settings__fields .background-settings__check, .background-settings__back { min-height: 44px; }
   .background-settings__agent-option summary { min-height: 44px; }
   .background-usage__history summary { min-height: 44px; }

@@ -9,6 +9,8 @@ import uuid
 
 from playwright.sync_api import expect, sync_playwright
 
+from app_select import choose
+
 from create_window import dialog, open_from_tasks, submit_button
 from test_app_shell import ORIGIN, UPSTREAM, shot, start_forwarder
 from test_work_pagination import api
@@ -93,9 +95,9 @@ class WaitingFor(unittest.TestCase):
                 title = f"Book the lift {'phone' if phone else 'computer'}"
                 open_from_tasks(page).fill(title)
                 expect(dialog(page).get_by_role("combobox", name="Waiting for")).to_have_count(0)
-                dialog(page).get_by_role("combobox", name="Status").select_option("blocked")
+                choose(dialog(page).get_by_role("combobox", name="Status"), "blocked")
                 dialog(page).get_by_label("What is it waiting for?").fill("Venue confirmation")
-                dialog(page).get_by_role("combobox", name="Waiting for").select_option(label="Kai Nowak")
+                choose(dialog(page).get_by_role("combobox", name="Waiting for"), label="Kai Nowak")
                 shot(page, f"waiting-for-create-{'phone' if phone else 'computer'}")
                 submit_button(page).click(); expect(dialog(page)).to_have_count(0)
                 stored = next(item for item in api(self.ada_ctx, "GET", self.root + "/work?limit=100")["items"] if item["title"] == title)

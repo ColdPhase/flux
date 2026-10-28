@@ -6,7 +6,7 @@ import { listProjectSketches } from '../project/data';
 import { useWorkChoices } from '../work/useDetailReads';
 import { useWorkRead } from '../work/useWorkRead';
 import { WorkPagination } from '../work/WorkPagination';
-import { Icon } from '../ui';
+import { Icon, Select, Option } from '../ui';
 import { getConversation, listConversations } from '../app/conversation-api';
 import { listProjectDocs } from './api';
 import { kindLabel } from './format';
@@ -106,9 +106,9 @@ export function LinkPicker({ projectId, workspaceId, selfId, onPick, onClose }: 
           maxLength={200} aria-label="Find a doc, decision, result, work, sketch or message" placeholder={type === 'all' ? 'Find project objects…' : `Find ${kindLabel(type).toLowerCase()}…`} value={query}
           onChange={(event) => { setQuery(event.target.value); setActive(0); }} onKeyDown={onKey} />
       </div>
-      <div className="doc-picker__type"><label htmlFor={`${listId}-type`}>Type</label><select id={`${listId}-type`} aria-label="Reference type" value={type} onChange={(event) => setType(event.target.value as ReferenceType)}>
-        {TYPES.map((kind) => <option key={kind} value={kind}>{kind === 'all' ? 'All types' : kindLabel(kind)}</option>)}
-      </select></div>
+      <div className="doc-picker__type"><label htmlFor={`${listId}-type`}>Type</label><Select id={`${listId}-type`} aria-label="Reference type" value={type} onChange={(next) => setType(next as ReferenceType)}>
+        {TYPES.map((kind) => <Option key={kind} value={kind}>{kind === 'all' ? 'All types' : kindLabel(kind)}</Option>)}
+      </Select></div>
       <p className="doc-picker__keys doc-picker__touch">Tap a match to insert its link.</p>
       {failed ? <p className="doc-muted doc-picker__empty" role="alert">Could not load this project’s objects. <button type="button" className="ui-link" onClick={retry}>Retry objects</button></p> : null}
       {busy && !failed ? <p className="doc-muted doc-picker__empty" aria-busy="true">Finding project objects…</p> : null}

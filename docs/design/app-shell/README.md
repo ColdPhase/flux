@@ -13,7 +13,7 @@ creative-collaboration founder direction in #44. Date: 2026-09-27.
 | What | Path |
 | --- | --- |
 | Tokens: colour (light, dark), type, spacing, radii, sizes, motion, layers | `app/apps/web/src/ui/tokens.css` |
-| Base styles and core components | `app/apps/web/src/ui/` (`Button`/`IconButton`, `Input`, `Tabs`, `SidePanel`, `Overlay` → `Drawer`/`Sheet`, `Toast`, `EmptyState`, `ErrorState`, `Avatar`, `Icon`, `motion.ts`) |
+| Base styles and core components | `app/apps/web/src/ui/` (`Button`/`IconButton`, `Input`, `Select`/`Option`/`OptionGroup`, `Tabs`, `SidePanel`, `Overlay` → `Drawer`/`Sheet`, `Toast`, `EmptyState`, `ErrorState`, `Avatar`, `Icon`, `motion.ts`) |
 | Screens | `app/apps/web/src/auth/` (sign-up, sign-in, sign-out, reset request and form), `app/apps/web/src/app/` (shell, sidebar, views, Details) |
 | Routes (React Router 8 Data Mode) | `app/apps/web/src/router.tsx` |
 | Contrast check for every token pair, both themes | `python3 scripts/check_contrast.py` |
@@ -122,6 +122,18 @@ conversation APIs exist (#29 slice 2, #36); production code contains no sample d
   A pending navigation's "Opening …" row floats over the top of the work area and never moves
   the header, the strip or the work. The docked panel
   is non-modal; Esc inside it closes it and returns focus to Details.
+- Selects: there is no native `<select>` in the product (#695; `app/tests/app/architecture.test.ts` fails on one). The
+  shared `Select` (`ui/Select.tsx`, with `Option` and `OptionGroup`) is the select-only combobox pattern: a
+  `<button role="combobox" aria-haspopup="listbox">`, so a `<label for>` or a wrapping label still names it, opening a
+  listbox of options (`aria-selected` on the chosen one, `aria-activedescendant` on the one the arrows are on, groups
+  with their name). Keys: Down, Up, Home, End and Page keys move; Enter and Space choose; Esc closes without choosing
+  and returns focus (while it is closed Esc is the panel's); typing jumps to the option that begins with it; Tab
+  chooses what the arrows are on and moves on; a closed select opens on Down, Up, Home, End or a letter. On a
+  computer the list is a layer in a portal under the control (over it when there is no room), the control never
+  moves, and it wears `--el`, `--sub`, `--sh-pop` and `--r`. At phone width (`MEDIA.phone`) it is the same bottom
+  sheet as the other phone menus (a modal `Overlay` with the 26 px top corners and 48 px options), whose listbox takes
+  focus. Single-key shortcuts and the panel's own keys ignore a focused combobox or listbox, as they did a select.
+  Tests drive it with `tests/ui/app_select.py` (`choose`, `values`, `expect_value`).
 - Forms: labels above fields, `aria-invalid` + described-by errors, first invalid field focused,
   form-level errors in a focused `role="alert"`; server codes are never shown.
 - Contrast: all listed pairs pass WCAG 2.2 AA in both themes (`scripts/check_contrast.py`).

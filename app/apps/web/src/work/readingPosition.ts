@@ -146,7 +146,7 @@ export function useMessageReadingPosition(ref: RefObject<HTMLElement | null>, no
     // The reader's own input (wheel, touch, scroll keys, a press on the scroll bar, focus moving to something in the feed) makes
     // the position theirs again at once.
     const thaw = () => { frozenUntil.current = 0; };
-    const thawKey = (event: KeyboardEvent) => { if (THAW_KEYS.has(event.key) && !(event.target instanceof HTMLElement && event.target.closest('input,textarea,select,[contenteditable="true"]'))) thaw(); };
+    const thawKey = (event: KeyboardEvent) => { if (THAW_KEYS.has(event.key) && !(event.target instanceof HTMLElement && event.target.closest('input,textarea,select,[role="combobox"],[role="listbox"],[contenteditable="true"]'))) thaw(); };
     const thawPress = (event: PointerEvent) => { if (event.target === pane) thaw(); };
     const thawFocus = (event: FocusEvent) => { if (event.target !== pane) thaw(); };
     pane.addEventListener('wheel', thaw, { passive: true });

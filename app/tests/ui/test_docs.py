@@ -19,6 +19,8 @@ import uuid
 
 from playwright.sync_api import Browser, BrowserContext, Page, expect, sync_playwright
 
+from app_select import choose, expect_value
+
 from test_app_shell import DESKTOP, ORIGIN, PHONE, UI_BROWSER, UPSTREAM, shot, start_forwarder
 
 PASSWORD = "docs keep their history"
@@ -291,7 +293,7 @@ class DocsJourney(unittest.TestCase):
             # The rendered comparison reads as the page: added words are marked where they stand, headings are headings.
             expect(diff.locator("li", has_text="Two quick waves")).to_contain_text("at 5% brightness")
             expect(diff.locator("li ins")).to_contain_text(["at 5% brightness"])
-            page.get_by_label("Compare with").select_option("1")
+            choose(page.get_by_label("Compare with"), "1")
             expect(page.get_by_role("heading", name=re.compile("^v1 → v3"))).to_be_visible()
             expect(diff.locator(".wiki-chg--added", has_text="Open questions")).to_have_count(1)
             shot(page, f"docs-history-desktop-{name}")
@@ -312,7 +314,7 @@ class DocsJourney(unittest.TestCase):
         panel = page.locator("#details")
         expect(panel).to_contain_text("Not in a doc yet.")
         panel.get_by_role("button", name="Add to docs").click()
-        expect(panel.get_by_label("Doc", exact=True)).to_have_value(self.doc_id)
+        expect_value(panel.get_by_label("Doc", exact=True), self.doc_id)
         shot(page, "docs-add-from-result-desktop-1440")
         panel.get_by_role("button", name="Add or update section").click()
         expect(page.get_by_role("heading", level=2, name=TITLE)).to_be_visible()

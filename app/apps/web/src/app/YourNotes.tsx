@@ -2,7 +2,7 @@ import { useEffect, useId, useLayoutEffect, useRef, useState, type KeyboardEvent
 import { useAllAiBlocked } from '../ai/workspaceAi';
 import { useLocation, useRevalidator } from 'react-router';
 import type { Draft } from '@flux/contracts';
-import { Button, EmptyState, Icon, IconButton, MEDIA, duration, sendsOnEnter, useMediaQuery, type IconName } from '../ui';
+import { Button, EmptyState, Icon, IconButton, MEDIA, duration, sendsOnEnter, useMediaQuery, type IconName, Select, Option } from '../ui';
 import { createPrivateDraft, listDrafts } from './conversation-api';
 import { captureExists, clearMoveTarget, moveKey, moveTarget, noteTitle, removeCapture, useCaptures } from './captures';
 import { AccountChangedError, assertSignedInAs, ensurePersonalSpace } from './personalSpace';
@@ -329,7 +329,7 @@ function NotesSection() {
             </button>}
 
           </div>
-          {workspaces.length > 1 ? <label className="composer__space">Save in <select value={selectedWorkspace} onChange={(event) => { setSelectedWorkspace(event.target.value); setServerDrafts([]); setSaveState(''); }}><option value="">Choose a space</option>{workspaces.map((space) => <option key={space.id} value={space.id}>{space.name}</option>)}</select></label> : null}
+          {workspaces.length > 1 ? <label className="composer__space">Save in <Select value={selectedWorkspace} onChange={(next) => { setSelectedWorkspace(next); setServerDrafts([]); setSaveState(''); }}><Option value="">Choose a space</Option>{workspaces.map((space) => <Option key={space.id} value={space.id}>{space.name}</Option>)}</Select></label> : null}
           <p className="composer__hint" id={hintId}>
             <span className="composer__keys">Enter saves · Shift+Enter for a new line · </span>
             <span className={`composer__state${hasDraft ? '' : ' composer__state--idle'}`} aria-live="polite">

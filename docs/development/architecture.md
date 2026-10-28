@@ -78,6 +78,9 @@ are the only places that choose concrete adapters and wire them together.
   Put a new capability in its own folder (`core/src/<capability>/`,
   `server/src/<capability>/`, `db/src/repositories/<capability>.ts`) instead of
   growing an existing index or a multi-capability file.
+- **One select.** Product UI under `app/apps/web/src` uses the design system's `Select` (`ui/Select.tsx`, with
+  `Option` and `OptionGroup`), never a native `<select>`: the system's list ignores the tokens, the dark theme
+  and the phone sheet ([#695](https://github.com/ColdPhase/flux/issues/695), [app shell](../design/app-shell/README.md)).
 - **Transactions stay in one place.** Writes that must be atomic (domain row,
   event, outbox, job) run in one transaction owned by the use case or by an
   adapter method designed for it, not split across callers.
@@ -120,7 +123,8 @@ fails when:
 - `app/packages/core/src/push/**` reaches an adapter library through any relative import;
 - anything under `app/packages/core/src/access/` or `events.ts` does (the access decisions and use
   cases stay behind ports, including through helpers; the type-only import in `types.ts` is the one
-  recorded exception, #90, #91), or one of the use case modules there passes 200 lines.
+  recorded exception, #90, #91), or one of the use case modules there passes 200 lines;
+- a `.ts` or `.tsx` file under `app/apps/web/src` contains a native `<select>` (comments ignored, #695).
 
 The allowlist can only shrink. Do not add entries for new code; change the code or,
 if a layer rule itself is wrong, update this page and the rule in the same reviewed PR.

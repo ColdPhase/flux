@@ -17,6 +17,8 @@ import uuid
 
 from playwright.sync_api import Browser, BrowserContext, Page, expect, sync_playwright
 
+from app_select import choose
+
 from author_columns import assert_author_column
 from create_window import add_task, submit_button, title_field
 from message_gestures import open_message_menu
@@ -211,7 +213,7 @@ class WorkDecisionsJourney(unittest.TestCase):
         panel.get_by_label("Finding").fill("The camera cannot track gestures below 10 lux")
         panel.get_by_text("Negative", exact=True).click()
         panel.get_by_label("Evidence").fill("38% of 20 gestures at 5 lux")
-        panel.get_by_label("For work").select_option(label=IDEA)
+        choose(panel.get_by_label("For work"), label=IDEA)
         panel.get_by_label(f"This finishes “{IDEA}”").check()
         panel.get_by_role("button", name="Attach result").click()
         expect(panel.locator(".wd-eyebrow")).to_contain_text("Negative result")
@@ -255,7 +257,7 @@ class WorkDecisionsJourney(unittest.TestCase):
         message = page.locator(f"#message-{self.messages['pivot']}")
         open_message_menu(message, phone=False).get_by_role("menuitem", name="Propose a decision").click()
         panel.get_by_label("Why").fill("The camera failed in low light; a ToF sensor works in the dark and stores no images")
-        panel.get_by_label("Replaces").select_option(label="Use a camera for gesture control")
+        choose(panel.get_by_label("Replaces"), label="Use a camera for gesture control")
         panel.get_by_role("button", name="Propose decision").click()
         expect(panel.get_by_role("heading", name="Accept as a pivot")).to_be_visible()
         panel.get_by_role("radiogroup", name="Mount the camera in the lamp head").get_by_label("Park").check()

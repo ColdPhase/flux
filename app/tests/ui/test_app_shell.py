@@ -22,6 +22,8 @@ from pathlib import Path
 
 from playwright.sync_api import Browser, BrowserContext, Page, TimeoutError as PlaywrightTimeoutError, expect, sync_playwright
 
+from app_select import choose, expect_value
+
 from create_window import create_other
 
 ORIGIN = os.environ.get("FLUX_UI_ORIGIN", "http://127.0.0.1:18591").rstrip("/")
@@ -1269,7 +1271,7 @@ class AppShellJourney(unittest.TestCase):
         expect(owner).to_have_url(re.compile(rf"/conversations/{conversation_id}$"))
         open_sources(owner, thread_of(owner))
         owner.get_by_role("button", name="Add material").click()
-        owner.get_by_label("Start from a private draft").select_option(draft_id)
+        choose(owner.get_by_label("Start from a private draft"), draft_id)
         expect(owner.get_by_label("Text")).to_have_value("home address 123; PIR avoids storing images")
         owner.get_by_label("Title").fill("Privacy options")
         owner.get_by_label("Text").fill("PIR avoids storing images")
@@ -1277,7 +1279,7 @@ class AppShellJourney(unittest.TestCase):
         owner.go_back()
         expect(owner.get_by_label("Title")).to_have_value("Privacy options")
         expect(owner.get_by_label("Text")).to_have_value("PIR avoids storing images")
-        expect(owner.get_by_label("Start from a private draft")).to_have_value(draft_id)
+        expect_value(owner.get_by_label("Start from a private draft"), draft_id)
         owner.get_by_role("button", name="Save for this project").press("Enter")
         expect(owner.get_by_text("Privacy options")).to_be_visible()
         owner.get_by_role("button", name="Discuss this version").click()
@@ -1602,7 +1604,7 @@ class AppShellJourney(unittest.TestCase):
         page.set_viewport_size(DESKTOP)
         page.get_by_label("Agent name").fill("My research agent")
         page.get_by_role("button", name="Create personal agent").click()
-        expect(page.get_by_label("Your agent")).to_have_value(re.compile(r".+"))
+        expect_value(page.get_by_label("Your agent"), re.compile(r".+"))
         expect(page.get_by_role("heading", name="New connection")).to_be_visible()
         project = page.locator(".connection__project").filter(has_text="Sensor study")
         expect(project.get_by_text("No agent grant yet")).to_be_visible()
@@ -1611,7 +1613,7 @@ class AppShellJourney(unittest.TestCase):
         expect(project.get_by_text("Agent grant: read and propose")).to_be_visible()
         project.get_by_role("checkbox").check()
         page.get_by_label("Connection name").fill("Research laptop")
-        page.get_by_label("Client label").select_option("codex")
+        choose(page.get_by_label("Client label"), "codex")
         page.get_by_role("button", name="Save connection").click()
         saved = page.get_by_role("group", name="Saved selections")
         expect(saved.get_by_text("My research agent", exact=True)).to_be_visible()

@@ -1,7 +1,7 @@
 import { useEffect, useId, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import { useLocation, useSearchParams } from 'react-router';
 import { SEARCH_FILTER_TYPES, type SearchFilterType, type SearchKind, type SearchResponse, type SearchResult } from '@flux/contracts';
-import { Button, EmptyState, Icon, Spinner } from '../ui';
+import { Button, EmptyState, Icon, Spinner, Select, Option } from '../ui';
 import { useShellData } from '../app/data';
 import { targetHref } from './api';
 import { useRecentSearches } from './recent';
@@ -151,12 +151,12 @@ export function SearchPage() {
           </div>
           {/* The place filter is the last chip of the kind row (#514); outside the group, which names kinds only. */}
           <div className="search__place">
-            <select aria-label="Place" value={place ?? ''} onChange={(event) => set('place', event.target.value || null)}>
-              <option value="">All places</option>
-              {projects.map((project) => <option key={project.id} value={`project:${project.id}`}># {project.name}</option>)}
-              {directMessages.map((dm) => <option key={dm.id} value={`dm:${dm.id}`}>{dm.title}</option>)}
-              <option value="private">Only you</option>
-            </select>
+            <Select aria-label="Place" value={place ?? ''} onChange={(next) => set('place', next || null)}>
+              <Option value="">All places</Option>
+              {projects.map((project) => <Option key={project.id} value={`project:${project.id}`}># {project.name}</Option>)}
+              {directMessages.map((dm) => <Option key={dm.id} value={`dm:${dm.id}`}>{dm.title}</Option>)}
+              <Option value="private">Only you</Option>
+            </Select>
           </div>
         </div>
 
