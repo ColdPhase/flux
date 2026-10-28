@@ -7,7 +7,7 @@ import { useShellData } from '../app/data';
 import { AiOffEverywhere, AiOffThere, useBlockedWorkspaceIds } from '../ai/workspaceAi';
 import { createPersonalAgent } from '../agent-connection/api';
 import { listAgents } from '../work/api';
-import { Button, ErrorState, Icon, Kreska, Spinner } from '../ui';
+import { Button, ErrorState, Icon, Kreska, Spinner, Select, Option } from '../ui';
 import { whenPageLive } from '../api/pageLeaving';
 import { listBackgroundConnections } from '../proactive-comparison/api';
 import { enableAssistant, getAssistantStatus, pauseAssistant, removeAssistant, resumeAssistant, selectAssistantAgent, tellOperator, updateAssistant } from './api';
@@ -143,10 +143,10 @@ function AgentPicker({ workspace, agents, value, onChange, onAgent, name, disabl
   return (
     <div className="aset__agent">
       <label htmlFor={id}>In {workspace.name}</label>
-      {own.length ? <select id={id} value={value} disabled={disabled} onChange={(event) => onChange(event.target.value)}>
-        <option value="">Not in this workspace</option>
-        {own.map((agent) => <option key={agent.id} value={agent.id}>{agent.name}</option>)}
-      </select> : <Button variant="secondary" icon="plus" busy={busy} disabled={disabled} onClick={() => void create()}>Create your assistant here</Button>}
+      {own.length ? <Select id={id} value={value} disabled={disabled} onChange={(next) => onChange(next)}>
+        <Option value="">Not in this workspace</Option>
+        {own.map((agent) => <Option key={agent.id} value={agent.id}>{agent.name}</Option>)}
+      </Select> : <Button variant="secondary" icon="plus" busy={busy} disabled={disabled} onClick={() => void create()}>Create your assistant here</Button>}
       {error ? <p className="nset__error" role="alert"><Icon name="alert" size={14} />{error}</p> : null}
     </div>
   );
@@ -364,9 +364,9 @@ function Setup({ status, agents, workspaces, name, onEnabled, onAgent }: {
         <fieldset className="aset__fields" disabled={!usable || busy}>
           <legend className="ui-vh">Limits and assistant</legend>
           {owned.length > 1 ? <label className="aset__field aset__field--connection">AI connection
-            <select aria-label="AI connection" value={connectionId} onChange={(event) => choose(event.target.value)}>
-              {owned.map((item) => <option key={item.id} value={item.id}>{item.name} · {aiConnectionLabel(item.provider, item.model)}</option>)}
-            </select>
+            <Select aria-label="AI connection" value={connectionId} onChange={(next) => choose(next)}>
+              {owned.map((item) => <Option key={item.id} value={item.id}>{item.name} · {aiConnectionLabel(item.provider, item.model)}</Option>)}
+            </Select>
           </label> : null}
           {modelList?.options.length && model ? <div className="aset__field aset__field--model">
             <span>Model</span>
@@ -374,10 +374,10 @@ function Setup({ status, agents, workspaces, name, onEnabled, onAgent }: {
           </div> : null}
           {selected && modelOption && model !== selected.model ? <p className="nset__note">{modelOption.note}. The cost shown above is for {selected.model}.</p> : null}
           <label className="aset__field">Up to per request
-            <select aria-label="Up to per request" value={perRun} onChange={(event) => setPerRun(Number(event.target.value))}>{PER_RUN.map((value) => <option key={value} value={value}>{dollars(value)}</option>)}</select>
+            <Select aria-label="Up to per request" value={perRun} onChange={(next) => setPerRun(Number(next))}>{PER_RUN.map((value) => <Option key={value} value={value}>{dollars(value)}</Option>)}</Select>
           </label>
           <label className="aset__field">Daily cap
-            <select aria-label="Daily cap" value={daily} onChange={(event) => setDaily(Number(event.target.value))}>{DAILY.filter((value) => value >= perRun).map((value) => <option key={value} value={value}>{dollars(value)}</option>)}</select>
+            <Select aria-label="Daily cap" value={daily} onChange={(next) => setDaily(Number(next))}>{DAILY.filter((value) => value >= perRun).map((value) => <Option key={value} value={value}>{dollars(value)}</Option>)}</Select>
           </label>
           <div className="aset__agents">
             <p className="nset__label">Your assistant</p>
@@ -498,10 +498,10 @@ function CapsForm({ status, busy, onSave }: { status: PersonalAssistantStatus; b
   return (
     <form className="aset__caps" onSubmit={(event) => { event.preventDefault(); if (changed) void onSave(perRun, daily); }}>
       <label className="aset__field">Up to per request
-        <select aria-label="Up to per request" value={perRun} onChange={(event) => setPerRun(Number(event.target.value))}>{options(PER_RUN, enablement.perRunCents).map((value) => <option key={value} value={value}>{dollars(value)}</option>)}</select>
+        <Select aria-label="Up to per request" value={perRun} onChange={(next) => setPerRun(Number(next))}>{options(PER_RUN, enablement.perRunCents).map((value) => <Option key={value} value={value}>{dollars(value)}</Option>)}</Select>
       </label>
       <label className="aset__field">Daily cap
-        <select aria-label="Daily cap" value={daily} onChange={(event) => setDaily(Number(event.target.value))}>{options(DAILY, enablement.dailyCapCents).filter((value) => value >= perRun).map((value) => <option key={value} value={value}>{dollars(value)}</option>)}</select>
+        <Select aria-label="Daily cap" value={daily} onChange={(next) => setDaily(Number(next))}>{options(DAILY, enablement.dailyCapCents).filter((value) => value >= perRun).map((value) => <Option key={value} value={value}>{dollars(value)}</Option>)}</Select>
       </label>
       <Button type="submit" variant="secondary" busy={busy} disabled={!changed}>Save limits</Button>
     </form>

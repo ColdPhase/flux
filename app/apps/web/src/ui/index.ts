@@ -23,3 +23,4 @@ export { BottomNav, Tabs, type BottomNavItem, type TabItem } from './Tabs';
 export { publishTopEdge } from './edgeInset';
 export { ToastProvider, useToast, useToastScope, useToastTop, type ToastAction, type ToastOptions } from './Toast';
 export { GoalReached, Mascot, Opening, PullToRefresh, goalMomentSeen, markGoalMomentSeen } from './Moments';
+export { Option, OptionGroup, Select, type OptionGroupProps, type OptionProps, type SelectProps } from './Select';

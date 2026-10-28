@@ -3,7 +3,7 @@ import type { ObjectLink, Project, Sketch, Thought } from '@flux/contracts';
 import { ApiError } from '../api/client';
 import { getSketch } from '../api/sketches';
 import { listProjectSketches } from '../project/data';
-import { Button, Icon } from '../ui';
+import { Button, Icon, Select, Option } from '../ui';
 import { linkObjects } from './api';
 import { RefLink } from '../place/origin';
 
@@ -140,11 +140,10 @@ export function LinkedThoughts({ links }: { links: ThoughtLinks }) {
                     <div className="wd-pick__map">
                       <label htmlFor={mapFieldId}>Map</label>
                       <div className="wd-pick__field">
-                        <select id={mapFieldId} value={mapId} disabled={busy} onChange={(event) => setMapId(event.target.value)}>
-                          <option value="">Choose a map</option>
-                          {maps.items.map((sketch) => <option key={sketch.id} value={sketch.id}>{sketch.title}</option>)}
-                        </select>
-                        <Icon name="chevron-down" />
+                        <Select id={mapFieldId} value={mapId} disabled={busy} onChange={(next) => setMapId(next)}>
+                          <Option value="">Choose a map</Option>
+                          {maps.items.map((sketch) => <Option key={sketch.id} value={sketch.id}>{sketch.title}</Option>)}
+                        </Select>
                       </div>
                     </div>
                     {!mapId ? null : !current ? <p className="wd-muted" role="status">Loading thoughts…</p>

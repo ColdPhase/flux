@@ -21,6 +21,8 @@ from zoneinfo import ZoneInfo
 
 from playwright.sync_api import Browser, BrowserContext, Locator, Page, Route, expect, sync_playwright
 
+from app_select import choose, expect_value
+
 from test_app_shell import DESKTOP, ORIGIN, PHONE, UPSTREAM, shot, start_forwarder
 
 MOCK = os.environ.get("FLUX_ANTHROPIC_MOCK_URL", "http://127.0.0.1:8090")
@@ -253,15 +255,15 @@ class AssistantSchedules(unittest.TestCase):
                 expect(group.get_by_role("radio", name="Every day")).to_have_attribute("aria-checked", "true")
                 # The third choice follows the chosen weekday.
                 group.get_by_role("radio", name="Every Monday").click()
-                dialog.get_by_label("Day of the week").select_option(label="Friday")
+                choose(dialog.get_by_label("Day of the week"), label="Friday")
                 expect(group.get_by_role("radio", name="Every Friday")).to_have_attribute("aria-checked", "true")
-                dialog.get_by_label("At", exact=True).select_option("16:00")
-                expect(dialog.get_by_label("Where")).to_have_value(self.ids["project"])
+                choose(dialog.get_by_label("At", exact=True), "16:00")
+                expect_value(dialog.get_by_label("Where"), self.ids["project"])
                 expect(dialog.locator(".asched__next")).to_have_text(re.compile(rf"^Next: Fri 16:00, {LABEL.replace('(Mon|Tue|Wed|Thu|Fri|Sat|Sun)', 'Fri')}, {LABEL.replace('(Mon|Tue|Wed|Thu|Fri|Sat|Sun)', 'Fri')}$"))
                 # The weekdays window "while I work" is 9:00 to 17:00 and editable.
                 group.get_by_role("radio", name="Every hour while I work").click()
-                expect(dialog.get_by_label("From")).to_have_value("09:00")
-                expect(dialog.get_by_label("Until")).to_have_value("17:00")
+                expect_value(dialog.get_by_label("From"), "09:00")
+                expect_value(dialog.get_by_label("Until"), "17:00")
                 group.get_by_role("radio", name="Weekdays").click()
                 dialog.get_by_label("What should it do?").fill("List what is blocked")
                 self.assertGreaterEqual(dialog.get_by_role("button", name="Turn on").bounding_box()["height"], 44)

@@ -29,6 +29,7 @@ import uuid
 
 from playwright.sync_api import Browser, BrowserContext, Page, Route, expect, sync_playwright
 
+from app_select import labels, open_select
 from create_window import dialog, open_from_tasks
 from project_views import project_views
 from test_app_shell import DESKTOP, ORIGIN, PHONE, UPSTREAM, open_details, shot as save_shot, start_forwarder
@@ -57,6 +58,16 @@ NOW = "2026-10-22T10:00:00.000Z"
 def shot(page: Page, name: str) -> None:
     save_shot(page, f"workspace-ai-{name}-{UI_BROWSER}")
 
+
+
+def offered(page: Page, select, waiting_for: str) -> list[str]:
+    """The labels a select offers, read once the list has the one named by `waiting_for` (it loads after the page)."""
+    for _ in range(40):
+        names = [name.strip() for name in labels(select)]
+        if any(waiting_for in name for name in names):
+            return names
+        page.wait_for_timeout(250)
+    raise AssertionError(f"{waiting_for!r} never appeared in the list: {names}")
 
 class WorkspaceAiLock(unittest.TestCase):
     """Tests run in name order and share the accounts, the workspaces and A's AI state (see each test's first line)."""
@@ -528,16 +539,21 @@ class WorkspaceAiLock(unittest.TestCase):
             page.goto(f"/projects/{self.ids[f'{key}_project']}/tasks")
             open_from_tasks(page)
             window = dialog(page)
-            expect(window.locator("optgroup[label='People']")).to_have_count(1)
+            owner = window.get_by_role("combobox", name="Owner")
+            box = open_select(owner)
+            expect(box.get_by_role("group", name="People")).to_have_count(1)
             page.wait_for_timeout(800)
-            return window.locator("optgroup[label='Agents']").count()
+            agents = box.get_by_role("group", name="Agents").count()
+            owner.press("Escape")
+            expect(owner).to_have_attribute("aria-expanded", "false")
+            return agents
 
         def background_rule_projects(page: Page, key: str) -> int:
             page.goto("/settings/background-compute")
             picker = page.get_by_label("Project", exact=True)
             # Wait for the list (the other workspace's project is always in it), then look for the one asked about.
-            expect(picker.locator("option", has_text=B_PROJECT)).to_have_count(1)
-            return picker.locator("option", has_text=A_PROJECT if key == "a" else B_PROJECT).count()
+            names = offered(page, picker, B_PROJECT)
+            return len([name for name in names if (A_PROJECT if key == "a" else B_PROJECT) in name])
 
         return [("the Agents view tab", agents_tab), ("project policy and review rule", policy_and_review_rule), ("/handoff and /ai commands", handoff_command),
                 ("agent mentions", agent_mention), ("hand off in the message menu", message_hand_off), ("Cmd-K ask and agents", jump_ask_and_agents),
@@ -608,8 +624,9 @@ class WorkspaceAiLock(unittest.TestCase):
                 # The project picker of the rules offers only projects whose workspace has AI on.
                 page.goto("/settings/background-compute")
                 picker = page.get_by_label("Project", exact=True)
-                expect(picker.locator("option", has_text=B_PROJECT)).to_have_count(1)
-                expect(picker.locator("option", has_text=A_PROJECT)).to_have_count(0)
+                names = offered(page, picker, B_PROJECT)
+                self.assertEqual(len([name for name in names if B_PROJECT in name]), 1)
+                self.assertEqual(len([name for name in names if A_PROJECT in name]), 0)
                 page.goto("/connect-agent")
                 expect(page.locator("[data-ai-off]")).to_contain_text(f"AI is off in {A_NAME}.")
                 self.assertEqual(page.refused, [])

@@ -31,7 +31,7 @@
 .connection__create { display: flex; flex-direction: column; align-items: stretch; gap: 12px; padding: 16px; border: 1px solid var(--line); border-radius: var(--r-lg); background: var(--sub); }
 .connection__create h2 { font-size: var(--fs-lg); }
 .connection__create > p, .connection__group > p, .connection__help { color: var(--t3); font-size: var(--fs-sm); line-height: 1.55; }
-.connection__create select, .connection__create > input { width: 100%; min-height: var(--ctl-lg); padding: 7px 10px; border: 1px solid var(--line2); border-radius: var(--r); background: var(--el); color: var(--t1); }
+.connection__create .ui-select, .connection__create > input { width: 100%; min-height: var(--ctl-lg); padding: 7px 10px; border: 1px solid var(--line2); border-radius: var(--r); background: var(--el); color: var(--t1); }
 .connection__create .connection__group { margin-top: 7px; }
 .connection__checks > label, .connection__project > label { display: flex; align-items: flex-start; gap: 10px; padding: 5px 0; cursor: pointer; font-size: var(--fs-md); }
 .connection__checks input { flex: none; margin: 5px 0 0; accent-color: var(--t1); }
@@ -40,7 +40,7 @@
 .connection__project:last-child { border-bottom: 0; }
 .connection__project small { display: block; color: var(--t3); font-size: var(--fs-xs); }
 .connection__grant { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; padding: 8px 0 4px 25px; font-size: var(--fs-sm); }
-.connection__create .connection__grant select { width: auto; min-width: 155px; }
+.connection__create .connection__grant .ui-select { width: auto; min-width: 155px; }
 .connection__guide { display: flex; flex-direction: column; gap: 9px; padding: 16px; border: 1px solid var(--line); border-radius: var(--r-lg); background: var(--sub); }
 .connection__guide h2 { font-size: var(--fs-lg); }
 .connection__guide p { color: var(--t3); font-size: var(--fs-sm); line-height: 1.5; }
@@ -95,7 +95,7 @@
 .grants__confirm, .grants__narrow { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding-top: 6px; font-size: var(--fs-sm); }
 .grants__confirm > span:first-child { flex-basis: 100%; color: var(--t2); }
 .grants__narrow label, .grants__field label { color: var(--t2); font-size: var(--fs-sm); font-weight: 500; }
-.grants__narrow input, .grants__narrow select, .grants__field input, .grants__field select { min-height: var(--ctl); padding: 4px 8px; border: 1px solid var(--line2); border-radius: var(--r); background: var(--el); color: var(--t1); font-size: var(--fs-md); }
+.grants__narrow input, .grants__narrow .ui-select, .grants__field input, .grants__field .ui-select { min-height: var(--ctl); padding: 4px 8px; border: 1px solid var(--line2); border-radius: var(--r); background: var(--el); color: var(--t1); font-size: var(--fs-md); }
 .grants__narrow input { width: 84px; }
 .grants__narrow small { color: var(--t3); font-size: var(--fs-xs); }
 .grants__form-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
@@ -105,7 +105,7 @@
 .grants__add h3 { font-size: var(--fs-md); font-weight: 600; }
 .grants__fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
 .grants__field { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
-.grants__field input, .grants__field select { width: 100%; }
+.grants__field input, .grants__field .ui-select { width: 100%; }
 .grants__changes { min-width: 0; margin: 0; padding: 0; border: 0; }
 .grants__changes legend { margin-bottom: 6px; padding: 0; color: var(--t2); font-size: var(--fs-sm); font-weight: 600; }
 .grants__area { display: grid; grid-template-columns: 160px minmax(0, 1fr); gap: 4px 12px; padding: 7px 0; border-top: 1px solid var(--line); }
@@ -133,7 +133,7 @@
   .grants__actions .ui-btn, .grants__confirm .ui-btn, .grants__form-actions .ui-btn, .grants .grants__add-toggle, .grants__ended > .ui-btn { min-height: 44px; }
   .grants__actions .ui-btn { padding: 0 8px; }
   .grants__fields { grid-template-columns: minmax(0, 1fr); }
-  .grants__field input, .grants__field select, .grants__narrow input, .grants__narrow select { min-height: 44px; }
+  .grants__field input, .grants__field .ui-select, .grants__narrow input, .grants__narrow .ui-select { min-height: 44px; }
   .grants__area { grid-template-columns: minmax(0, 1fr); }
   .grants__area-options label { min-height: 44px; }
   .grants__narrow .grants__form-actions { margin-left: 0; }

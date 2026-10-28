@@ -18,6 +18,8 @@ from datetime import datetime, timedelta, timezone
 
 from playwright.sync_api import Browser, Page, expect, sync_playwright
 
+from app_select import choose, labels
+
 from test_app_shell import DESKTOP, ORIGIN, PHONE, UI_BROWSER, UPSTREAM, shot as save_shot, start_forwarder
 
 PASSWORD = "grants that end on time"
@@ -146,18 +148,18 @@ class GrantControlsJourney(unittest.TestCase):
         form = desk.get_by_role("form", name="Add a grant to Desk laptop")
         project = form.get_by_label("Project", exact=True)
         # Only the connection's selected projects: "Archive" is never offered.
-        self.assertEqual(sorted(project.locator("option").all_inner_texts()), ["Field notes", "Sensor study"])
+        self.assertEqual(sorted(labels(project)), ["Field notes", "Sensor study"])
         acts = form.get_by_label("Acts as", exact=True)
-        self.assertEqual(acts.locator("option").all_inner_texts(), ["Doing the work", "Planning"], "no review grant for native changes")
-        acts.select_option(label="Planning")
+        self.assertEqual(labels(acts), ["Doing the work", "Planning"], "no review grant for native changes")
+        choose(acts, label="Planning")
         expect(form.get_by_role("checkbox", name="Record results")).to_have_count(0)
         expect(form.get_by_role("checkbox", name="Propose decisions")).to_have_count(1)
-        acts.select_option(label="Doing the work")
-        project.select_option(label="Sensor study")
+        choose(acts, label="Doing the work")
+        choose(project, label="Sensor study")
         for change in ("Create tasks", "Change tasks", "Record results"):
             form.get_by_role("checkbox", name=change).check()
         form.get_by_label("Uses for each change").fill("20")
-        form.get_by_label("Ends", exact=True).select_option(label="In 7 days")
+        choose(form.get_by_label("Ends", exact=True), label="In 7 days")
         shot(page, "grant-add-desktop")
         form.get_by_role("button", name="Grant 3 changes").click()
 
@@ -177,7 +179,7 @@ class GrantControlsJourney(unittest.TestCase):
         create.get_by_role("button", name="Narrow Create tasks, Doing the work").click()
         narrow = create.get_by_role("form", name="Narrow Create tasks")
         narrow.get_by_label("Uses left").fill("5")
-        narrow.get_by_label("Ends", exact=True).select_option(label="In 1 day")
+        choose(narrow.get_by_label("Ends", exact=True), label="In 1 day")
         narrow.get_by_role("button", name="Save").click()
         expect(create).to_contain_text("5 of 5 uses left")
         narrowed = next(g for g in self.live(page, "Desk laptop") if g["operation"] == "work.create")
@@ -224,12 +226,12 @@ class GrantControlsJourney(unittest.TestCase):
         desk = self.panel(page, "Desk laptop")
         desk.get_by_role("button", name="Add a grant").click()
         form = desk.get_by_role("form", name="Add a grant to Desk laptop")
-        form.get_by_label("Project", exact=True).select_option(label="Field notes")
-        form.get_by_label("Acts as", exact=True).select_option(label="Planning")
+        choose(form.get_by_label("Project", exact=True), label="Field notes")
+        choose(form.get_by_label("Acts as", exact=True), label="Planning")
         form.get_by_role("checkbox", name="Edit docs").check()
         form.get_by_role("checkbox", name="Reply in conversations").check()
         form.get_by_label("Uses for each change").fill("8")
-        form.get_by_label("Ends", exact=True).select_option(label="In 30 days (the longest)")
+        choose(form.get_by_label("Ends", exact=True), label="In 30 days (the longest)")
         submit = form.get_by_role("button", name="Grant 2 changes")
         submit.scroll_into_view_if_needed()
         self.assertGreaterEqual(submit.bounding_box()["height"], 44, "a phone-sized target")

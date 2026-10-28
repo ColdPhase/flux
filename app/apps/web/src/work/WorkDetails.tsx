@@ -4,7 +4,7 @@ import { useRevalidator } from 'react-router';
 import type { Agent, ObjectLink, Project, WorkspaceMember, WorkStatus, WorkDetailObject, WorkDetailProjection } from '@flux/contracts';
 import { ApiError } from '../api/client';
 import { useStreamEvents } from '../api/stream';
-import { AgentIdentity, Avatar, Button, Icon, Input, Kreska, Morph, PanelActions, PanelGlyph, PanelMeta, StatusGlyph, useToast } from '../ui';
+import { AgentIdentity, Avatar, Button, Icon, Input, Kreska, Morph, PanelActions, PanelGlyph, PanelMeta, StatusGlyph, useToast, Select, Option } from '../ui';
 import { getProject, listWorkspaceMembers } from '../app/conversation-api';
 import { useShellData } from '../app/data';
 import { useRegisterLiveHere } from '../live/LiveProvider';
@@ -810,11 +810,11 @@ function ProposeDecision({ view, context, contextStatus, revision, isCurrent }: 
         <textarea id={rationaleId} value={rationale} onChange={(event) => edit(setRationale)(event.target.value)} maxLength={20000} rows={4} placeholder="What makes this the right call" />
         <>
           <label htmlFor={replacesId}>Replaces</label>
-          <select id={replacesId} value={supersedes} disabled={!candidates.page} onChange={(event) => edit(setSupersedes)(event.target.value)}>
-            <option value="">Nothing, this is a new rule</option>
-            {supersedes && !current.some((item) => item.id === supersedes) ? <option value={supersedes}>{chosen?.title ?? 'Selected rule (not loaded)'}</option> : null}
-            {current.map((item) => <option key={item.id} value={item.id}>{item.title}</option>)}
-          </select>
+          <Select id={replacesId} value={supersedes} disabled={!candidates.page} onChange={(next) => edit(setSupersedes)(next)}>
+            <Option value="">Nothing, this is a new rule</Option>
+            {supersedes && !current.some((item) => item.id === supersedes) ? <Option value={supersedes}>{chosen?.title ?? 'Selected rule (not loaded)'}</Option> : null}
+            {current.map((item) => <Option key={item.id} value={item.id}>{item.title}</Option>)}
+          </Select>
         </>
       </fieldset>
       <ChoicePages choices={candidates} label="Current rule choices" />
@@ -889,11 +889,11 @@ function AttachResult({ view, context, contextStatus, reload, revision, isCurren
         <textarea id={evidenceId} value={evidence} onChange={(event) => edit(setEvidence)(event.target.value)} maxLength={20000} rows={3} placeholder="Numbers, observations or where to find them" />
         <>
           <label htmlFor={workSelectId}>For work</label>
-          <select id={workSelectId} value={workId} disabled={!candidates.page} onChange={(event) => { edit(setWorkId)(event.target.value); setFinishes(false); setFinishVersion(null); }}>
-            <option value="">Not linked to work</option>
-            {workId && !open.some((item) => item.id === workId) ? <option value={workId}>{chosen?.title ?? 'Selected work (not loaded)'}</option> : null}
-            {open.map((item) => <option key={item.id} value={item.id}>{item.title}</option>)}
-          </select>
+          <Select id={workSelectId} value={workId} disabled={!candidates.page} onChange={(next) => { edit(setWorkId)(next); setFinishes(false); setFinishVersion(null); }}>
+            <Option value="">Not linked to work</Option>
+            {workId && !open.some((item) => item.id === workId) ? <Option value={workId}>{chosen?.title ?? 'Selected work (not loaded)'}</Option> : null}
+            {open.map((item) => <Option key={item.id} value={item.id}>{item.title}</Option>)}
+          </Select>
           {chosen && finishable && finishes && finishVersion === null ? <Button variant="quiet" onClick={() => { setFinishVersion(chosen.version); setAttempt(crypto.randomUUID()); setError(''); }}>Finish current version</Button> : null}
           {chosen && !finishable && finishes ? <Button variant="quiet" onClick={() => edit(setFinishes)(false)}>Attach without finishing</Button> : null}
           {chosen && !finishable ? <p className="wd-muted">“{chosen.title}” cannot be finished by this result in its current state. Parked work must first return to the plan.</p> : null}

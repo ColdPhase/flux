@@ -3,7 +3,7 @@ import { Link, useNavigation, useRevalidator } from 'react-router';
 import { githubRuleDefaultPath, type GithubBinding, type GithubCapabilities, type GithubRepository, type GithubRuleDefault, type GithubTaskLink } from '@flux/contracts';
 import { ApiError, request } from '../api/client';
 import { useProjectShell, type ProjectShell } from '../project/data';
-import { Button, Spinner } from '../ui';
+import { Button, Spinner, Select, Option } from '../ui';
 import { useShellData } from '../app/data';
 import { useWorkChoices } from '../work/useDetailReads';
 import { WorkPagination } from '../work/WorkPagination';
@@ -82,9 +82,9 @@ function RuleDefault({ projectId, current, onSaved }: { projectId: string; curre
     <p>When someone links a required PR to a task that has no rule yet, Flux turns on “Let linked PRs move this task” for it, on that person’s behalf. Everyone who can see the task then sees its status changes, with PR numbers, check names and commits.</p>
     <label className="github-settings__check"><input type="checkbox" checked={!!value} disabled={busy} onChange={(event) => void save(event.target.checked, value?.mode ?? null)} /> Turn it on for new required links</label>
     {value ? <div className="github-settings__form"><label htmlFor={`${id}-mode`}>When every PR is merged</label>
-      <select id={`${id}-mode`} value={value.mode ?? ''} disabled={busy} onChange={(event) => void save(true, (event.target.value || null) as GithubRuleDefault['mode'])}>
-        <option value="">Ready to close if the task has written criteria, otherwise done</option><option value="ready">Always Ready to close</option><option value="complete">Done unless the task has written criteria</option>
-      </select></div> : null}
+      <Select id={`${id}-mode`} value={value.mode ?? ''} disabled={busy} onChange={(next) => void save(true, (next || null) as GithubRuleDefault['mode'])}>
+        <Option value="">Ready to close if the task has written criteria, otherwise done</Option><Option value="ready">Always Ready to close</Option><Option value="complete">Done unless the task has written criteria</Option>
+      </Select></div> : null}
     {error ? <p role="alert" className="github-settings__error">{error}</p> : null}
   </section>;
 }
@@ -105,8 +105,8 @@ function RepositoryPicker({ prefix, onBound }: { prefix: string; onBound: () => 
   return <section><h3>Add a repository</h3><p>Select an installed App and a repository you can currently access. New repositories are added here only when you choose them.</p>
     <Button variant="secondary" busy={busy} onClick={() => void listInstallations()}>Choose installation</Button>
     {installations.length ? <form onSubmit={(event) => void bind(event)} className="github-settings__form">
-      <label htmlFor={`${id}-installation`}>Installation</label><select id={`${id}-installation`} value={installation} disabled={busy} onChange={(event) => void listRepos(event.target.value)}><option value="">Choose account…</option>{installations.map((row) => <option key={row.id} value={row.id}>{row.account} · installation {row.id}</option>)}</select>
-      <label htmlFor={`${id}-repository`}>Repository</label><select id={`${id}-repository`} value={repository} disabled={busy || !installation} onChange={(event) => setRepository(event.target.value)}><option value="">Choose repository…</option>{repositories.map((row) => <option key={row.repositoryId} value={row.repositoryId}>{row.owner}/{row.name}{row.private ? ' · private' : ''}</option>)}</select>
+      <label htmlFor={`${id}-installation`}>Installation</label><Select id={`${id}-installation`} value={installation} disabled={busy} onChange={(next) => void listRepos(next)}><Option value="">Choose account…</Option>{installations.map((row) => <Option key={row.id} value={row.id}>{row.account} · installation {row.id}</Option>)}</Select>
+      <label htmlFor={`${id}-repository`}>Repository</label><Select id={`${id}-repository`} value={repository} disabled={busy || !installation} onChange={(next) => setRepository(next)}><Option value="">Choose repository…</Option>{repositories.map((row) => <Option key={row.repositoryId} value={row.repositoryId}>{row.owner}/{row.name}{row.private ? ' · private' : ''}</Option>)}</Select>
       <div className="github-settings__actions">{page > 1 ? <Button variant="secondary" disabled={busy} onClick={() => void listRepos(installation, page - 1)}>Previous repositories</Button> : null}{more ? <Button variant="secondary" disabled={busy} onClick={() => void listRepos(installation, page + 1)}>More repositories</Button> : null}<Button type="submit" busy={busy} disabled={!repository}>Connect repository</Button></div>
     </form> : null}{error ? <p role="alert" className="github-settings__error">{error}</p> : null}
   </section>;
@@ -130,16 +130,16 @@ function PullReferences({ projectId, bindings, canLink, ruleDefault }: { project
     await request(`/api/v1/work/${task}/github-links`, { method: 'POST', body: { bindingId: binding, number: Number(number), role } }); setLinks(await request(`/api/v1/work/${task}/github-links`));
   } catch (cause) { setError(failure(cause)); } finally { setBusy(false); } }
   const taskPicker = <><label htmlFor={`${id}-search`}>Find task</label><input id={`${id}-search`} type="search" value={search} onChange={(event) => setSearch(event.target.value)} />
-    <label htmlFor={`${id}-task`}>Task</label><select id={`${id}-task`} value={task} disabled={busy || choices.busy || !choices.page} onChange={(event) => void openTask(event.target.value)}><option value="">Choose task…</option>{chosen && !tasks.some((row) => row.id === chosen.id) ? <option value={chosen.id}>{chosen.title}</option> : null}{tasks.map((row) => <option key={row.id} value={row.id}>{row.title}</option>)}</select>
+    <label htmlFor={`${id}-task`}>Task</label><Select id={`${id}-task`} value={task} disabled={busy || choices.busy || !choices.page} onChange={(next) => void openTask(next)}><Option value="">Choose task…</Option>{chosen && !tasks.some((row) => row.id === chosen.id) ? <Option value={chosen.id}>{chosen.title}</Option> : null}{tasks.map((row) => <Option key={row.id} value={row.id}>{row.title}</Option>)}</Select>
     <WorkPagination {...choices} label="GitHub task choices" noun="tasks" />
     {choices.read.phase === 'unavailable' ? <p role="alert">Tasks could not be loaded. Your selection is kept. <button type="button" className="ui-link" onClick={choices.onRefresh}>Refresh task choices</button></p> : null}</>;
   return <section><h3>{canLink ? 'Link an existing pull request' : 'Linked pull requests'}</h3><p>{canLink ? 'Select the task, repository and exact PR number. Flux verifies the original PR; your existing tasks remain authoritative.' : 'Choose an existing task to read its verified pull requests under your own current repository access.'}</p>
     {canLink ?
     <form onSubmit={(event) => void link(event)} className="github-settings__form">
       {taskPicker}
-      <label htmlFor={`${id}-binding`}>Repository</label><select id={`${id}-binding`} value={binding} disabled={busy} onChange={(event) => setBinding(event.target.value)}><option value="">Choose repository…</option>{bindings.map((row) => <option key={row.id} value={row.id}>{row.owner}/{row.name}</option>)}</select>
+      <label htmlFor={`${id}-binding`}>Repository</label><Select id={`${id}-binding`} value={binding} disabled={busy} onChange={(next) => setBinding(next)}><Option value="">Choose repository…</Option>{bindings.map((row) => <Option key={row.id} value={row.id}>{row.owner}/{row.name}</Option>)}</Select>
       <label htmlFor={`${id}-number`}>Pull request number</label><input id={`${id}-number`} type="number" min="1" required disabled={busy} value={number} onChange={(event) => setNumber(event.target.value)} />
-      <label htmlFor={`${id}-role`}>Relationship</label><select id={`${id}-role`} value={role} disabled={busy} onChange={(event) => setRole(event.target.value as typeof role)}><option value="required_output">Required output</option><option value="related">Related context</option></select>
+      <label htmlFor={`${id}-role`}>Relationship</label><Select id={`${id}-role`} value={role} disabled={busy} onChange={(next) => setRole(next as typeof role)}><Option value="required_output">Required output</Option><Option value="related">Related context</Option></Select>
       {ruleDefault && role === 'required_output' ? <p className="github-settings__disclose" role="note">This project’s default turns on “Let linked PRs move this task” for a task without a rule, on your behalf. Everyone who can see the task then sees its status changes, with PR numbers, check names and commits.</p> : null}
       <Button type="submit" busy={busy} disabled={!task || !binding || !number || !canCommit}>Verify and link PR</Button>
     </form> : <div className="github-settings__form">{taskPicker}</div>}{error ? <p role="alert" className="github-settings__error">{error}</p> : null}

@@ -5,7 +5,7 @@ import { ApiError } from '../api/client';
 import { previewPromotion, promoteSketch } from '../api/sketches';
 import { useShellData } from '../app/data';
 import type { PromoteSketchView } from '../app/shellContext';
-import { Avatar, Button, Icon, Input, Spinner, useToast } from '../ui';
+import { Avatar, Button, Icon, Input, Spinner, useToast, Select, Option } from '../ui';
 import { firstName } from './format';
 import '../people/people.css';
 
@@ -147,9 +147,9 @@ export function PromoteSketch({ view, dmTitle, onBack }: { view: PromoteSketchVi
           {preview.target?.kind === 'existing' ? (
             <label className="promote__field">
               <span>Project</span>
-              <select value={preview.target.projectId} onChange={(event) => choose({ kind: 'existing', projectId: event.target.value })}>
-                {preview.projects.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}
-              </select>
+              <Select value={preview.target.projectId} onChange={(next) => choose({ kind: 'existing', projectId: next })}>
+                {preview.projects.map((project) => <Option key={project.id} value={project.id}>{project.name}</Option>)}
+              </Select>
             </label>
           ) : null}
           {!preview.canCreateProject && preview.target ? <p className="promote__hint">Only workspace owners and admins create projects, so the copy goes into a project you can change.</p> : null}

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { ProjectAgents } from '@flux/contracts';
 import { useShellData } from '../app/data';
-import { Button } from '../ui';
+import { Button, Select, Option } from '../ui';
 import { getProjectAgents } from '../agents/api';
 import { AssistantJoinRequests } from '../agents/AssistantJoinRequests';
 
@@ -35,9 +35,9 @@ export function AssistantProjectAccess() {
     <p className="nset__lead">Only you use your assistant. A project manager gives it access; it never has more access than you.</p>
     {projects.length ? <>
       <div className="aset__agent"><label htmlFor="assistant-access-project">Project</label>
-      <select id="assistant-access-project" value={projectId} onChange={(event) => { setFailed(false); activeProject.current = event.target.value; setProjectId(event.target.value); }}>
-        {projects.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}
-      </select></div>
+      <Select id="assistant-access-project" value={projectId} onChange={(next) => { setFailed(false); activeProject.current = next; setProjectId(next); }}>
+        {projects.map((project) => <Option key={project.id} value={project.id}>{project.name}</Option>)}
+      </Select></div>
       {failed ? <p role="alert">Project access could not be checked. <Button variant="link" onClick={() => { setFailed(false); void load(); }}>Try again</Button></p>
         : !currentView ? <p role="status">Checking project access…</p>
         : !currentView.assistantJoin ? <p>Choose your assistant for this project’s workspace above.</p>

@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import { useRegisterLiveHere } from '../live/LiveProvider';
 import { Link, redirect, useLoaderData, useNavigate, useRevalidator, useSearchParams, type LoaderFunctionArgs } from 'react-router';
 import type { Doc, DocSummary, DocVersion, DocVersionSummary, ObjectLink, Project } from '@flux/contracts';
-import { EmptyState, Icon, Spinner } from '../ui';
+import { EmptyState, Icon, Spinner, Select, Option } from '../ui';
 import { useShellData } from '../app/data';
 import { useShellActions } from '../app/shellContext';
 import { docUrl, getDoc, getVersion, listVersions, listWorkspaceDocs } from './api';
@@ -53,7 +53,7 @@ function inProject(doc: Doc, projectId: string | undefined) {
 
 function isTyping(target: EventTarget | null) {
   const el = target as HTMLElement | null;
-  return !!el && (el.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(el.tagName));
+  return !!el && (el.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(el.tagName) || !!el.closest?.('[role="combobox"], [role="listbox"]'));
 }
 
 function DocRow({ doc, showProject }: { doc: DocSummary; showProject?: boolean }) {
@@ -448,9 +448,9 @@ export function DocHistory() {
           <div className="doc-history__diff">
             {to.version > 1 ? (
               <label className="doc-compare">Compare with
-                <select value={from?.version ?? ''} onChange={(event) => compare({ from: Number(event.target.value) })}>
-                  {versions.filter((item) => item.version < to.version).map((item) => <option key={item.version} value={item.version}>version {item.version} · {shortDate(item.createdAt)}</option>)}
-                </select>
+                <Select value={from?.version ?? ''} onChange={(next) => compare({ from: Number(next) })}>
+                  {versions.filter((item) => item.version < to.version).map((item) => <Option key={item.version} value={item.version}>version {item.version} · {shortDate(item.createdAt)}</Option>)}
+                </Select>
               </label>
             ) : null}
             <Changes from={from} to={to} />

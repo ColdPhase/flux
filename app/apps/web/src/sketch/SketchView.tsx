@@ -478,7 +478,7 @@ function SketchEditor({ sketchId, projectId, dmId, back = '/map', doc }: ViewPro
       if (!root || event.defaultPrevented) return;
       const target = event.target instanceof Element ? event.target : null;
       if (target && !root.contains(target) && !target.contains(root)) return;
-      if (target?.closest('input, textarea, select, [contenteditable]:not([contenteditable="false"])')) return;
+      if (target?.closest('input, textarea, select, [role="combobox"], [role="listbox"], [contenteditable]:not([contenteditable="false"])')) return;
       event.preventDefault();
       pasteHandler.current({ text: event.clipboardData?.getData('text/plain') ?? '', file: clipboardFile(event.clipboardData) });
     };

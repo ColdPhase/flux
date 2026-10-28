@@ -19,6 +19,8 @@ import uuid
 
 from playwright.sync_api import Browser, Page, expect, sync_playwright
 
+from app_select import choose
+
 from test_app_shell import DESKTOP, ORIGIN, PHONE, UPSTREAM, shot, start_forwarder
 
 UI_BROWSER = os.environ.get("FLUX_UI_BROWSER", "chromium")
@@ -124,7 +126,7 @@ class TaskThoughtChooser(unittest.TestCase):
         control.tap() if phone else control.click()
         picker = card.get_by_role("group", name=re.compile("^Thoughts to link to "))
         expect(picker).to_be_visible()
-        picker.get_by_label("Map", exact=True).select_option(self.ids["sketch"])
+        choose(picker.get_by_label("Map", exact=True), self.ids["sketch"])
         expect(picker.get_by_role("button", name=THOUGHTS[2])).to_be_visible()
         return picker
 

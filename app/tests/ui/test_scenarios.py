@@ -53,6 +53,8 @@ from pathlib import Path
 
 from playwright.sync_api import Browser, BrowserContext, Page, expect, sync_playwright
 
+from app_select import choose, expect_value
+
 from create_window import create_other, linked_labels, open_from_tasks, submit_button
 from message_gestures import open_message_menu
 from message_gestures import open_message_menu
@@ -386,7 +388,7 @@ class ScenarioJourney:
         region = page.get_by_role("region", name="People", exact=True)
         self.tap(region.get_by_role("button", name="Invite"))
         give = region.get_by_role("group", name="Give someone access")
-        give.get_by_label("Person").select_option(value=self.ids[key])
+        choose(give.get_by_label("Person"), value=self.ids[key])
         if read_only:
             give.get_by_role("group", name="Access").get_by_text("Can read", exact=True).click()
         first = NAMES[key].split()[0]
@@ -409,7 +411,7 @@ class ScenarioJourney:
         else:
             text.press("Control+k")
         picker = page.get_by_role("dialog", name="Link to something in this project")
-        picker.get_by_label("Reference type").select_option(kind)
+        choose(picker.get_by_label("Reference type"), kind)
         query = picker.get_by_role("combobox", name="Find a doc, decision, result, work, sketch or message", exact=True)
         query.fill(title[:40])
         option = picker.get_by_role("listbox", name="Matches").get_by_role("option").first
@@ -699,7 +701,7 @@ class ScenarioJourney:
         expect(nav).to_have_attribute("aria-busy", "false")
         form.get_by_label("Finding", exact=True).fill(RESULT)
         form.get_by_label("Evidence", exact=True).fill(EVIDENCE)
-        expect(form.get_by_label("For work", exact=True)).to_have_value(experiment["id"])
+        expect_value(form.get_by_label("For work", exact=True), experiment["id"])
         form.get_by_role("radio", name="Negative", exact=True).check()
         form.get_by_role("checkbox", name=re.compile("This finishes")).check()
         self.tap(form.get_by_role("button", name="Attach result", exact=True))
@@ -851,12 +853,12 @@ class ScenarioJourney:
             jonas.keyboard.press("Enter")
         expect(picker).to_be_visible()
         map_field = picker.get_by_label("Map", exact=True)
-        map_field.select_option(s["map"])
-        # The map field is the accepted field surface in both engines: no native chrome, the field corners, and a chevron inside it.
-        look = map_field.evaluate("el => { const s = getComputedStyle(el); return { appearance: s.appearance, webkit: s.webkitAppearance, radius: s.borderRadius }; }")
-        self.assertTrue("none" in (look["appearance"], look["webkit"]), "the map select drops the native chrome (WebKit draws a grey box otherwise)")
+        choose(map_field, s["map"])
+        # The map field is the accepted field surface in both engines: the app's own select (no native chrome), the field corners, and its chevron inside it.
+        self.assertEqual(map_field.evaluate("el => el.tagName"), "BUTTON", "the map field is the app's select, not the system's")
+        look = map_field.evaluate("el => { const s = getComputedStyle(el); return { radius: s.borderRadius }; }")
         self.assertEqual(look["radius"], "14px", "and takes the field corners (--r)")
-        chevron = picker.locator(".wd-pick__field > svg")
+        chevron = map_field.locator(".ui-select__chev")
         expect(chevron).to_be_visible()
         field_box, chevron_box = map_field.bounding_box(), chevron.bounding_box()
         self.assertTrue(field_box["x"] <= chevron_box["x"] and chevron_box["x"] + chevron_box["width"] <= field_box["x"] + field_box["width"],
@@ -947,7 +949,7 @@ class ScenarioJourney:
         grants = page.get_by_role("region", name="Standing grants for Desk laptop")
         self.tap(grants.get_by_role("button", name="Add a grant"))
         form = grants.get_by_role("form", name="Add a grant to Desk laptop")
-        form.get_by_label("Acts as", exact=True).select_option(label="Planning")
+        choose(form.get_by_label("Acts as", exact=True), label="Planning")
         form.get_by_role("checkbox", name="Propose decisions").check()
         form.get_by_label("Uses for each change").fill("2")
         self.shot(page, "3-grant")

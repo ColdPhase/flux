@@ -21,6 +21,8 @@ import uuid
 
 from playwright.sync_api import Browser, BrowserContext, Page, expect, sync_playwright
 
+from app_select import choose, expect_value
+
 from test_app_shell import DESKTOP, MAILPIT, ORIGIN, PHONE, UPSTREAM, start_forwarder
 from test_settings import UI_BROWSER, assert_touch_target, shot
 
@@ -273,9 +275,9 @@ class NotificationJourney(unittest.TestCase):
         expect(quiet).to_have_attribute("aria-checked", "true")
         page.get_by_label("From", exact=True).fill("21:30")
         page.get_by_label("Until", exact=True).fill("07:15")
-        expect(page.get_by_label("Time zone")).to_have_value("Europe/Warsaw")
+        expect_value(page.get_by_label("Time zone"), "Europe/Warsaw")
 
-        page.get_by_label("Place to mute").select_option(label="# Tool library")
+        choose(page.get_by_label("Place to mute"), label="# Tool library")
         page.get_by_role("button", name="Mute", exact=True).click()
         muted = page.locator(".nset__muted")
         expect(muted).to_contain_text("Tool library")

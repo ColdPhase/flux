@@ -243,8 +243,8 @@
 .promote__seg { margin: 18px 0 14px; }
 .promote__seg .seg__b { flex: 1; }
 .promote__field { display: grid; gap: 6px; margin-top: 14px; font-size: var(--fs-sm); font-weight: 500; color: var(--t2); }
-.promote__field select { min-height: var(--ctl); padding: 0 8px; border: 1px solid var(--line2); border-radius: var(--r); background: var(--el); color: var(--t1); font: inherit; font-size: var(--fs-md); font-weight: 400; }
-.promote__field select:focus-visible { outline: 2px solid var(--t1); outline-offset: 1px; }
+.promote__field .ui-select { min-height: var(--ctl); padding: 0 8px; border: 1px solid var(--line2); border-radius: var(--r); background: var(--el); color: var(--t1); font: inherit; font-size: var(--fs-md); font-weight: 400; }
+.promote__field .ui-select:focus-visible { outline: 2px solid var(--t1); outline-offset: 1px; }
 .promote__hint { margin-top: 10px; font-size: var(--fs-sm); color: var(--t3); line-height: 1.5; }
 .promote__aud { display: flex; align-items: center; gap: 12px; padding: 12px 14px; border-radius: var(--r-lg); box-shadow: inset 0 0 0 1px var(--line2); animation: sk-note-in var(--dur-2) var(--ease-out) backwards; }
 .promote__aud > span:last-child { min-width: 0; }
@@ -267,7 +267,7 @@
 .promote__acts { margin-top: 24px; }
 
 @media (pointer: coarse) {
-  .promote__field select { min-height: 44px; }
+  .promote__field .ui-select { min-height: 44px; }
   .sk-bar .ui-btn { min-height: 44px; }
   .sk-plus { width: 44px; height: 44px; }
   .sk-plus--labelled { width: auto; }

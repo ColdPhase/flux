@@ -1,0 +1,49 @@
+/* The one select (#695, ui/Select.tsx). Prostota tokens only, so light and dark follow the theme. The trigger looks like
+   the field it replaces; places that restyled `select` restyle `.ui-select` (a context rule has more weight than this one). */
+.ui-select {
+  display: inline-flex; align-items: center; justify-content: space-between; gap: 8px; min-width: 0; min-height: var(--ctl); padding: 0 10px;
+  border: 1px solid var(--line2); border-radius: var(--r); background: var(--el); color: var(--t1);
+  font: inherit; font-size: var(--fs-md); line-height: 1.3; text-align: left; cursor: pointer;
+}
+.ui-select__value { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ui-select[data-placeholder] .ui-select__value { color: var(--t3); }
+/* Room for the widest option, unseen and unspoken (the empty alternative keeps the text out of the accessibility tree). */
+.ui-select__value[data-widest]::after { content: attr(data-widest) / ""; display: block; height: 0; overflow: hidden; visibility: hidden; }
+.ui-select__chev { flex: none; color: var(--t3); transition: transform var(--dur-1) var(--ease-out); }
+.ui-select[aria-expanded="true"] .ui-select__chev { transform: rotate(180deg); }
+.ui-select:disabled { cursor: default; opacity: .55; }
+.ui-select:focus-visible { outline: 2px solid var(--t1); outline-offset: 1px; }
+@media (hover: hover) { .ui-select:hover:not(:disabled) { border-color: var(--t3); } }
+@media (pointer: coarse) { .ui-select { min-height: 44px; font-size: 16px; } }
+/* The hidden field that carries a name or the browser's required check: it takes no room and no pointer. */
+.ui-select__field { position: absolute; width: 1px; height: 1px; margin: 0; padding: 0; border: 0; opacity: 0; pointer-events: none; }
+
+/* The list on a computer: a layer over the page (a portal), so opening it never moves the control. */
+.ui-select__pop {
+  position: fixed; z-index: var(--z-menu); display: flex; flex-direction: column; max-width: min(420px, calc(100vw - 16px));
+  border: 1px solid var(--line); border-radius: var(--r); background: var(--el); box-shadow: var(--sh-pop); overflow: hidden;
+}
+.ui-select__list { min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 4px; outline: none; }
+.ui-select__group { padding: 8px 10px 4px; color: var(--t3); font-size: var(--fs-sm); font-weight: 500; }
+.ui-select__opt {
+  display: flex; align-items: center; gap: 8px; min-height: 36px; padding: 6px 10px 6px 8px; border-radius: var(--r-sm); color: var(--t1);
+  font-size: var(--fs-md); line-height: 1.3; cursor: pointer; transition: background-color var(--dur-1) ease;
+}
+.ui-select__opt[data-active] { background: var(--sub); }
+.ui-select__opt[aria-selected="true"] { font-weight: 500; }
+.ui-select__opt[aria-disabled="true"] { color: var(--t3); cursor: default; }
+.ui-select__tick { flex: none; display: grid; place-items: center; width: 14px; color: var(--t1); }
+.ui-select__text { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+@media (pointer: coarse) { .ui-select__opt { min-height: 44px; } }
+
+/* The list on a phone: the same bottom sheet as the other phone menus (Create), with a grabber and the select's name. */
+.ui-overlay--bottom .ui-overlay__surface.ui-select-sheet {
+  inset: auto 0 0 0; max-height: min(72dvh, calc(100dvh - env(safe-area-inset-top) - 12px)); overflow: hidden;
+  border-radius: var(--r-sheet) var(--r-sheet) 0 0; padding: 8px 8px max(16px, env(safe-area-inset-bottom));
+}
+.ui-select-sheet__body { display: flex; flex: 1; flex-direction: column; min-height: 0; }
+.ui-select-sheet__grab { display: block; flex: none; width: 36px; height: 5px; margin: 4px auto 10px; border-radius: 3px; background: var(--line2); }
+.ui-select-sheet__title { flex: none; margin: 0 0 6px; padding: 0 12px; color: var(--t2); font-size: var(--fs-md); font-weight: 500; }
+.ui-select__list--sheet { flex: 1; }
+.ui-select-sheet .ui-select__opt { min-height: 48px; padding: 8px 12px 8px 8px; font-size: 16px; border-radius: var(--r); }
+.ui-select-sheet .ui-select__group { padding: 12px 12px 4px; font-size: var(--fs-md); }

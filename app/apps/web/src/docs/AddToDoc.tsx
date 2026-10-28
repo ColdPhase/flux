@@ -2,7 +2,7 @@ import { useEffect, useId, useState, type FormEvent } from 'react';
 import { Link, useNavigate, useRevalidator } from 'react-router';
 import type { DocSummary, ObjectLink } from '@flux/contracts';
 import { ApiError } from '../api/client';
-import { Button, Icon, Input } from '../ui';
+import { Button, Icon, Input, Select, Option } from '../ui';
 import type { AddToDocView } from '../app/shellContext';
 import { addDocSection, createDoc, docUrl, listProjectDocs } from './api';
 
@@ -61,11 +61,11 @@ export function AddToDoc({ view }: { view: AddToDocView }) {
       <p className="details__lead">The {kind} becomes a section of a doc, with a link back here. {kind === 'decision' ? 'Adding it again later rewrites its section with the current state; ' : ''}Earlier text stays in the doc’s earlier versions.</p>
       <fieldset className="wd-form" disabled={busy || docs === null}>
         <label htmlFor={selectId}>Doc</label>
-        <select id={selectId} value={target ?? ''} onChange={(event) => { setTarget(event.target.value); setAttempt(crypto.randomUUID()); setError(''); }}>
-          {target === null ? <option value="">Loading docs…</option> : null}
-          {(docs ?? []).map((doc) => <option key={doc.id} value={doc.id}>{doc.title}{view.inDocs.includes(doc.id) ? ' (linked source)' : ''}{doc.state === 'draft' ? ' · draft' : ''}</option>)}
-          <option value="new">A new doc…</option>
-        </select>
+        <Select id={selectId} value={target ?? ''} onChange={(next) => { setTarget(next); setAttempt(crypto.randomUUID()); setError(''); }}>
+          {target === null ? <Option value="">Loading docs…</Option> : null}
+          {(docs ?? []).map((doc) => <Option key={doc.id} value={doc.id}>{doc.title}{view.inDocs.includes(doc.id) ? ' (linked source)' : ''}{doc.state === 'draft' ? ' · draft' : ''}</Option>)}
+          <Option value="new">A new doc…</Option>
+        </Select>
         {target === 'new' ? <Input label="Title of the new doc" value={title} onChange={(event) => { setTitle(event.target.value); setAttempt(crypto.randomUUID()); }} maxLength={200} required /> : null}
       </fieldset>
       {target === null ? null : chosen ? <p className="wd-muted">An existing section in “{chosen.title}” is updated, or a new section is added. Changes are saved in a new version; unchanged content keeps its current version.</p> : <p className="wd-muted">The new doc starts as a draft.</p>}

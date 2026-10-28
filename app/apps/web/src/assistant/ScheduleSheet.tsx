@@ -2,7 +2,7 @@ import { useEffect, useId, useMemo, useRef, useState, type FormEvent, type Keybo
 import type { AssistantBackgroundNote, AssistantJob, AssistantJobPreview, ConversationSummary, CreateAssistantJob, UpdateAssistantJob } from '@flux/contracts';
 import { ApiError } from '../api/client';
 import type { ProjectSummary } from '../app/data';
-import { Button, Icon, IconButton, MEDIA, Overlay, Sheet, useMediaQuery } from '../ui';
+import { Button, Icon, IconButton, MEDIA, Overlay, Sheet, useMediaQuery, Select, Option } from '../ui';
 import { getBackgroundNote, previewSchedule, recentConversations, createSchedule, updateSchedule, setMorningSummary, type ScheduleScope } from './scheduleApi';
 import { WEEKDAYS, browserZone, scheduleOf, shortTime, type Draft, type Frequency } from './scheduleForm';
 import './schedules.css';
@@ -23,7 +23,7 @@ const TIMES = Array.from({ length: 96 }, (_, index) => `${String(Math.floor(inde
 /** A time of day in quarters of an hour, always written the 24-hour way the drawing shows it ("16:00"). */
 function TimeSelect({ value, label, disabled, onChange }: { value: string; label: string; disabled?: boolean; onChange: (value: string) => void }) {
   const options = TIMES.includes(value) ? TIMES : [...TIMES, value].sort();
-  return <select aria-label={label} value={value} disabled={disabled} onChange={(event) => onChange(event.target.value)}>{options.map((time) => <option key={time} value={time}>{time}</option>)}</select>;
+  return <Select aria-label={label} value={value} disabled={disabled} onChange={(next) => onChange(next)}>{options.map((time) => <Option key={time} value={time}>{time}</Option>)}</Select>;
 }
 
 const FREQUENCIES: Frequency[] = ['daily', 'weekdays', 'weekly', 'hourly'];
@@ -190,9 +190,9 @@ function Body({ onClose, scope, projects, initial, job, turnOn, onSaved }: {
                 <label className="asched__inline"><span className="asched__label">At</span>
                   <TimeSelect label="At" value={draft.at} disabled={cronOn} onChange={(at) => set({ at })} /></label>
                 <label className="asched__inline"><span className="asched__label">on</span>
-                  <select aria-label="Day of the week" value={draft.weekday} disabled={cronOn || draft.frequency !== 'weekly'} onChange={(event) => set({ weekday: Number(event.target.value), frequency: 'weekly' })}>
-                    {WEEKDAYS.map((name, index) => <option key={name} value={index + 1}>{name}</option>)}
-                  </select></label>
+                  <Select aria-label="Day of the week" value={draft.weekday} disabled={cronOn || draft.frequency !== 'weekly'} onChange={(next) => set({ weekday: Number(next), frequency: 'weekly' })}>
+                    {WEEKDAYS.map((name, index) => <Option key={name} value={index + 1}>{name}</Option>)}
+                  </Select></label>
               </>
             )}
           </div>
@@ -200,9 +200,9 @@ function Body({ onClose, scope, projects, initial, job, turnOn, onSaved }: {
 
         <label className="asched__field">
           <span className="asched__label">Where</span>
-          <select className="asched__select" aria-label="Where" value={draft.projectId} disabled={!projects.length} onChange={(event) => set({ projectId: event.target.value, conversationId: '' })}>
-            {projects.length ? projects.map((project) => <option key={project.id} value={project.id}>{project.name}</option>) : <option value="">No project yet</option>}
-          </select>
+          <Select className="asched__select" aria-label="Where" value={draft.projectId} disabled={!projects.length} onChange={(next) => set({ projectId: next, conversationId: '' })}>
+            {projects.length ? projects.map((project) => <Option key={project.id} value={project.id}>{project.name}</Option>) : <Option value="">No project yet</Option>}
+          </Select>
         </label>
 
         <p className="asched__next" aria-live="polite">{draft.once ? '' : preview && !previewError ? `Next: ${preview.next.map((item) => item.label).join(', ')}` : previewError ? '' : 'Next: …'}</p>
@@ -220,12 +220,12 @@ function Body({ onClose, scope, projects, initial, job, turnOn, onSaved }: {
             </p>
             <label className="asched__field">
               <span className="asched__label">Post the result in</span>
-              <select className="asched__select" aria-label="Post the result in" value={draft.conversationId} onChange={(event) => set({ conversationId: event.target.value })}>
-                <option value="">Nowhere, keep it in Recent</option>
+              <Select className="asched__select" aria-label="Post the result in" value={draft.conversationId} onChange={(next) => set({ conversationId: next })}>
+                <Option value="">Nowhere, keep it in Recent</Option>
                 {conversations.map((conversation) => (
-                  <option key={conversation.id} value={conversation.id}>{conversation.firstMessageBody.length > 60 ? `${conversation.firstMessageBody.slice(0, 59)}…` : conversation.firstMessageBody || 'Conversation'}</option>
+                  <Option key={conversation.id} value={conversation.id}>{conversation.firstMessageBody.length > 60 ? `${conversation.firstMessageBody.slice(0, 59)}…` : conversation.firstMessageBody || 'Conversation'}</Option>
                 ))}
-              </select>
+              </Select>
             </label>
           </div>
         </details>

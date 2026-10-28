@@ -6,6 +6,7 @@ import { chromium, type BrowserContext, type Page } from 'playwright';
 import type { PushSubscriptionSummary } from '@flux/contracts';
 import { expectStatus, person, addMember, workspace, password, type Person } from '../support/people.js';
 import { recordedPushes, testSubscription, waitFor, type TestSubscription } from '../support/push.js';
+import { chooseOption } from '../support/app-select.js';
 
 /**
  * Browser Web Push flows in Chromium (issue #20, MOB-4): turning notifications on for this device
@@ -136,7 +137,7 @@ test('turn on, mute and turn off notifications on this device; the server stores
 
     // Mute the direct message in Settings: the next message creates no push and no delivery attempt.
     await page.goto(`${origin}/settings/notifications`);
-    await page.getByLabel('Place to mute').selectOption(`dm:${dm.id}`);
+    await chooseOption(page.getByLabel('Place to mute'), `dm:${dm.id}`);
     await page.getByRole('button', { name: 'Mute', exact: true }).click();
     await page.getByRole('button', { name: 'Unmute' }).waitFor({ timeout: 20_000 });
     await sendDirectMessage(owner, dm.id, 'Second message, while muted');

@@ -121,7 +121,7 @@ button.ws-task__glyph:active { background: var(--hov); }
 .wd-was { color: var(--t3); text-decoration: line-through; text-decoration-color: var(--line2); }
 .wd-controls { display: grid; grid-template-columns: max-content minmax(0, 1fr); align-items: center; gap: 8px 12px; margin: 18px 0 0; padding: 0; border: 0; min-width: 0; }
 .wd-controls label { font-size: var(--fs-sm); color: var(--t3); }
-.wd-controls select, .wd-form select { width: 100%; min-height: var(--ctl); padding: 0 8px; border: 0; border-radius: var(--r); background: var(--el); color: var(--t1); font-size: var(--fs-md); box-shadow: inset 0 0 0 1px var(--line2); }
+.wd-controls .ui-select, .wd-form .ui-select { width: 100%; min-height: var(--ctl); padding: 0 8px; border: 0; border-radius: var(--r); background: var(--el); color: var(--t1); font-size: var(--fs-md); box-shadow: inset 0 0 0 1px var(--line2); }
 .wd-blocker-form { grid-column: 1 / -1; display: flex; align-items: flex-end; gap: 8px; }
 
 /* ---------- The task panel (F-026 S4, S9, S10, P10): rows, a blocker card, Results, Activity ---------- */
@@ -195,13 +195,11 @@ button.wd-link:active:not(:disabled) { background: var(--sub); }
 /* "Linked thoughts" picker in task Details (#289): a map select, then the map's thoughts as buttons. */
 .wd-pick { display: grid; gap: 10px; margin-top: 10px; padding: 12px; min-width: 0; border-radius: var(--r); background: var(--el); box-shadow: inset 0 0 0 1px var(--line); }
 .wd-pick label { font-size: var(--fs-sm); font-weight: 500; color: var(--t2); }
-/* The map field takes the accepted field surface (--el, --sh-field, --r, as .ui-input) in both engines: appearance none
-   removes WebKit's square native grey box, and the chevron is the shared icon in --t3 (no colour literal). The native
-   select keeps its selection and keyboard behaviour. */
+/* The map field takes the accepted field surface (--el, --sh-field, --r, as .ui-input) in both engines; the app's select
+   draws its own chevron in --t3 (no colour literal). */
 .wd-pick__field { position: relative; min-width: 0; }
-.wd-pick select { width: 100%; min-height: var(--ctl-lg); padding: 0 34px 0 14px; border: 0; border-radius: var(--r); background: var(--el); color: var(--t1); font-size: var(--fs-base); text-overflow: ellipsis; box-shadow: var(--sh-field); appearance: none; -webkit-appearance: none; }
-.wd-pick__field > svg { position: absolute; top: 50%; right: 12px; transform: translateY(-50%); color: var(--t3); pointer-events: none; }
-.wd-pick select:focus { outline: none; box-shadow: inset 0 0 0 1px var(--t1), 0 0 0 3px var(--sub); }
+.wd-pick .ui-select { width: 100%; min-height: var(--ctl-lg); padding: 0 14px; border: 0; border-radius: var(--r); background: var(--el); color: var(--t1); font-size: var(--fs-base); box-shadow: var(--sh-field); }
+.wd-pick .ui-select:focus { outline: none; box-shadow: inset 0 0 0 1px var(--t1), 0 0 0 3px var(--sub); }
 .wd-pick .wd-pick__cancel { margin-top: 0; justify-content: flex-end; }
 .wd-pick .wd-links { max-height: 320px; overflow-y: auto; overscroll-behavior: contain; }
 /* On the phone the thought being chosen is the primary content of the chooser, so its title takes the phone body size
@@ -217,7 +215,7 @@ button.wd-link:active:not(:disabled) { background: var(--sub); }
 .wd-form { display: grid; gap: 8px; min-width: 0; margin: 0; padding: 0; border: 0; }
 .wd-form > label { margin-top: 6px; font-size: var(--fs-sm); font-weight: 500; color: var(--t2); }
 .wd-form textarea { width: 100%; padding: 9px 12px; border: 0; border-radius: var(--r); background: var(--el); color: var(--t1); font-size: var(--fs-base); line-height: 1.5; resize: vertical; box-shadow: inset 0 0 0 1px var(--line2); }
-.wd-form textarea:focus, .wd-form select:focus, .wd-controls select:focus { outline: none; box-shadow: inset 0 0 0 1px var(--t1), 0 0 0 3px var(--sub); }
+.wd-form textarea:focus, .wd-form .ui-select:focus, .wd-controls .ui-select:focus { outline: none; box-shadow: inset 0 0 0 1px var(--t1), 0 0 0 3px var(--sub); }
 .wd-seg { display: flex; padding: 2px; margin-top: 6px; border-radius: var(--r); background: var(--hov); }
 .wd-seg__b { position: relative; flex: 1; display: flex; align-items: center; justify-content: center; min-height: 32px; border-radius: 6px; font-size: var(--fs-sm); font-weight: 500; color: var(--t3); cursor: pointer; transition: var(--tr); }
 .wd-seg__b input { position: absolute; opacity: 0; inset: 0; margin: 0; cursor: pointer; }
@@ -235,7 +233,7 @@ button.wd-link:active:not(:disabled) { background: var(--sub); }
   .ws-seg, .wd-pivot__c { min-height: 44px; }
   .wd-link { min-height: 44px; }
   .wd-seg__b { min-height: 44px; }
-  .wd-controls select, .wd-form select, .wd-pick select { min-height: 44px; font-size: 16px; }
+  .wd-controls .ui-select, .wd-form .ui-select, .wd-pick .ui-select { min-height: 44px; font-size: 16px; }
   .wd-form textarea { font-size: 16px; }
 }
 @media (max-width: 640px) {

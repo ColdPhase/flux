@@ -17,6 +17,8 @@ import unittest
 
 from playwright.sync_api import Browser, BrowserContext, Page, expect, sync_playwright
 
+from app_select import choose, labels
+
 from test_app_shell import DESKTOP, ORIGIN, PHONE, UPSTREAM, shot, start_forwarder
 
 PASSWORD = "notes that reach my account"
@@ -322,7 +324,7 @@ class HomeNotesJourney(unittest.TestCase):
         context = self.context()
         page, _ = self.sign_up(context, "Nia Later")
         expect(page.locator(".composer__where")).to_have_text("private draft in your personal space")
-        expect(page.locator(".composer__space select")).to_have_count(0)
+        expect(page.locator(".composer__space .ui-select")).to_have_count(0)
         for name in ("Lamp studio", "Bike club"):
             created = page.evaluate("""name => fetch('/api/v1/workspaces', {method: 'POST', headers: {'content-type': 'application/json'},
                                        body: JSON.stringify({name})}).then(r => r.status)""", name)
@@ -331,12 +333,11 @@ class HomeNotesJourney(unittest.TestCase):
         composer.fill("Paper shade, second try")
         composer.press("Enter")
         expect(page.get_by_role("status").filter(has_text="Choose a space for this private draft.")).to_be_visible()
-        choice = page.locator(".composer__space select")
+        choice = page.locator(".composer__space .ui-select")
         expect(choice).to_be_visible()
-        expect(choice.locator("option")).to_have_count(3)
-        self.assertEqual(sorted(choice.locator("option").all_inner_texts()), ["Bike club", "Choose a space", "Lamp studio"])
+        self.assertEqual(sorted(labels(choice)), ["Bike club", "Choose a space", "Lamp studio"])
         expect(composer).to_have_value("Paper shade, second try")
-        choice.select_option(label="Bike club")
+        choose(choice, label="Bike club")
         expect(page.locator(".composer__where")).to_have_text("private draft in Bike club, which only you can open")
         composer.press("Enter")
         expect(page.get_by_role("region", name="Private drafts").get_by_text("Paper shade, second try")).to_be_visible()

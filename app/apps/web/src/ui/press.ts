@@ -63,7 +63,7 @@ export function installPress() {
     if (event.repeat || (event.key !== ' ' && event.key !== 'Enter')) return;
     const el = pressTarget(event.target);
     // Space presses a button, Enter a link or a button; a text field's keys are not a press.
-    if (el && !(event.target as Element).matches('input, textarea, select, [contenteditable]')) press(el);
+    if (el && !(event.target as Element).matches('input, textarea, select, [role="combobox"], [contenteditable]')) press(el);
   }, { capture: true, passive: true });
   document.addEventListener('keyup', (event) => { if (event.key === ' ' || event.key === 'Enter') release(); }, { capture: true, passive: true });
 }
