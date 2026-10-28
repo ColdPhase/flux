@@ -25,6 +25,7 @@ from playwright.sync_api import Browser, BrowserContext, Page, expect, sync_play
 
 from test_app_shell import DESKTOP, ORIGIN, PHONE, UPSTREAM, shot, start_forwarder
 from contrast import MEASURE
+from wiki_editor import LIVE, editor_ready, page_text, replace_text
 
 PASSWORD = "wiki pages keep their place"
 STAMP = int(time.time() * 1000)
@@ -512,17 +513,32 @@ class WikiPanesJourney(unittest.TestCase):
         page.locator(".wiki-doc").click(position={"x": 5, "y": 5})
         page.keyboard.press("e")
         expect(page).to_have_url(re.compile(re.escape(self.url("parts", "/edit")) + "$"))
-        text = page.get_by_label("Text (Markdown)")
-        text.fill(PARTS_BODY + "| USB-C cable | 1 | for the bench |\n")
+        replace_text(page, PARTS_BODY + "| USB-C cable | 1 | for the bench |\n")
         self.index(page).get_by_role("link", name=LAMP).click()
         expect(page.get_by_role("heading", level=2, name=LAMP)).to_be_visible()
         self.index(page).get_by_role("link", name=PARTS).click()
+        if LIVE:
+            # An existing page's text is shared as it is typed: there is no private "unsaved" copy in this tab to
+            # return to (Wiki contract, live-editing-proposal.md). The shared working copy comes back instead, and
+            # nothing is saved as a version without the person.
+            expect(page.locator(".wiki-bar").get_by_role("link", name="Unsaved changes in this tab")).to_have_count(0)
+            expect(page.get_by_text(re.compile(r"^Shared working copy · last saved version 1\."))).to_be_visible()
+            expect(page.locator(".doc-prose")).to_contain_text("USB-C cable")
+            shot(page, "wiki-unsaved-desktop-1440")
+            page.get_by_role("link", name="Edit", exact=True).click()
+            expect(editor_ready(page)).to_contain_text("USB-C cable")
+            self.assertNotIn("USB-C cable", self.doc(page, self.ids["parts"])["body"], "nothing was saved without the person")
+            # Put the shared copy back, so the later journeys read and download the page as it was saved.
+            replace_text(page, PARTS_BODY)
+            page.get_by_role("link", name="Back to doc").click()
+            expect(page.locator(".doc-prose")).not_to_contain_text("USB-C cable")
+            return
         kept = page.locator(".wiki-bar").get_by_role("link", name="Unsaved changes in this tab")
         expect(kept).to_be_visible()
         shot(page, "wiki-unsaved-desktop-1440")
         kept.click()
         expect(page.get_by_text("Your unsaved text from earlier is back.")).to_be_visible()
-        expect(page.get_by_label("Text (Markdown)")).to_have_value(re.compile("USB-C cable"))
+        expect(page_text(page)).to_have_value(re.compile("USB-C cable"))
         self.assertNotIn("USB-C cable", self.doc(page, self.ids["parts"])["body"], "nothing was saved without the person")
         page.get_by_role("link", name="Cancel").click()
         expect(page.locator(".wiki-bar").get_by_role("link", name="Unsaved changes in this tab")).to_have_count(0)
@@ -747,15 +763,15 @@ class WikiPanesJourney(unittest.TestCase):
         # Phone editing keeps its Save within reach, and the text field itself stays uncovered (it is
         # what the caret is in): the page strip steps aside and only Cancel / Save stay sticky.
         page.get_by_role("link", name="Edit").tap()
-        text = page.get_by_label("Text (Markdown)")
-        expect(text).to_be_visible()
+        text = editor_ready(page)
         self.no_horizontal_overflow(page, SMALL_PHONE["width"])
         expect(page.get_by_role("button", name="Save version")).to_be_in_viewport()
         expect(page.get_by_role("navigation", name="Wiki pages")).to_be_hidden()
         uncovered = text.evaluate("""el => {
           const r = el.getBoundingClientRect();
           const y = Math.min(r.top + 40, window.innerHeight - 120);
-          return document.elementFromPoint(r.left + r.width / 2, y) === el;
+          const hit = document.elementFromPoint(r.left + r.width / 2, y);
+          return hit === el || el.contains(hit);  // a line of the shared editor is inside its text box
         }""")
         self.assertTrue(uncovered, "the writing area is not covered by the bar or the save block")
         save = page.get_by_role("button", name="Save version").bounding_box()
@@ -837,7 +853,8 @@ class WikiPanesJourney(unittest.TestCase):
             self.assertEqual(read["outline"][0] < read["history"][0] < read["share"][0] < read["download"][0] < read["focus"][0] < read["primary"][0], True, read)
             shot(page, f"wiki-toolbar-{name}-read")
             page.get_by_role("link", name="Edit", exact=True).click()
-            expect(bar).to_contain_text("Editing version 2 · saves as 3")
+            # As drawn (board C02) for the private editor; the shared editor says what it is (spokoj/README.md, #683).
+            expect(bar).to_contain_text("Shared working copy · last saved version 2" if LIVE else "Editing version 2 · saves as 3")
             expect(bar.get_by_role("button", name="Save version")).to_be_visible()
             edit = self.toolbar_places(page)
             self.assertEqual(page.locator(".wiki-bar__back").count(), 1, "Back is on the left in edit")

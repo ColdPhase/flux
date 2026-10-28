@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useMemo, useState, type MouseEvent, type ReactNode } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useMemo, useState, type ComponentType, type MouseEvent, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { useRegisterLiveHere } from '../live/LiveProvider';
 import { Link, redirect, useLoaderData, useNavigate, useRevalidator, useSearchParams, type LoaderFunctionArgs } from 'react-router';
@@ -23,9 +23,9 @@ import { RefLink } from '../place/origin';
 
 // The current page's shared working copy (#228) loads only with a configured live capability (#239
 // review), so an ordinary wiki never evaluates its CRDT bundle. If that bundle cannot load, the page
-// is read as saved.
-const LiveReading = lazy(() => import('../editing/LiveReading').then((module) => ({ default: module.LiveReading }), () => ({ default: SavedReading })));
-function SavedReading({ render }: LiveReadingProps) { return <>{render(null)}</>; }
+// is read as saved. It publishes the working copy to the one reader below and renders nothing itself.
+const SavedReading: ComponentType<LiveReadingProps> = () => null;
+const LiveReading = lazy<ComponentType<LiveReadingProps>>(() => import('../editing/LiveReading').then((module) => ({ default: module.LiveReading }), () => ({ default: SavedReading })));
 
 // The project wiki (#112, two panes since #136): the reader with links and backlinks, and the
 // version history with a diff, beside the page index (Wiki.tsx). Everything here is visible to the
@@ -207,10 +207,19 @@ export function DocReader() {
   const { me } = useShellData();
   // Load the CRDT-backed reader only when configured, and never for an explicit version URL.
   const capability = useEditingCapability();
-  if (capability !== 'configured' || historical) return <DocReading live={null} />;
-  return <Suspense fallback={<DocReading live={null} />}>
-    <LiveReading docId={doc.id} userId={me.user.id} render={(live) => <DocReading live={live} />} />
-  </Suspense>;
+  const [published, publish] = useState<{ docId: string; state: LiveReadingState | null } | null>(null);
+  const configured = capability === 'configured' && !historical;
+  const docId = doc.id;
+  const onState = useCallback((state: LiveReadingState | null) => publish({ docId, state }), [docId]);
+  // One reader at one place in the tree whatever the live copy is doing (#683): the saved text first, the
+  // shared working copy when its bundle and first state arrive. The reader is never swapped for another
+  // tree, so an open Share or Download card, the focus and the reading place survive that moment.
+  return <>
+    <DocReading live={configured && published?.docId === docId ? published.state : null} />
+    {configured ? <Suspense fallback={null}>
+      <LiveReading key={docId} docId={docId} userId={me.user.id} onState={onState} />
+    </Suspense> : null}
+  </>;
 }
 
 function DocReading({ live }: { live: LiveReadingState | null }) {
