@@ -31,7 +31,7 @@ import {
   type Principal,
 } from '@flux/core';
 import { db, insertedHuman, pool } from './support/db.js';
-import { backendPid, settled, waitUntilBlockedBy } from './support/locks.js';
+import { interleave as interleaveOn } from './support/locks.js';
 
 // Policy contract and agent principals exercised directly against PostgreSQL (issue #29).
 // Agent authentication is a later task, so agents are driven through core methods here.
@@ -190,35 +190,8 @@ describe('agents stay inside current project grants', () => {
   });
 });
 
-/**
- * Runs `first` inside a transaction on one pooled connection and keeps that transaction
- * open after `first` finished; then runs `second` on another connection, asserts that it
- * is blocked by the first transaction's locks, and finally commits the first. Returns
- * the outcomes of both. Two real PostgreSQL sessions, no timing assumptions.
- */
-async function interleave<A, B>(first: (tx: Database) => Promise<A>, second: () => Promise<B>) {
-  let release!: () => void;
-  const gate = new Promise<void>((resolve) => { release = resolve; });
-  let ready!: (pid: number) => void;
-  const holding = new Promise<number>((resolve) => { ready = resolve; });
-  const outer = db.transaction(async (tx) => {
-    const result = await first(tx as unknown as Database);
-    ready(await backendPid(tx));
-    await gate;
-    return result;
-  });
-  outer.catch(() => ready(-1));
-  const holder = await holding;
-  if (holder < 0) await outer; // surfaces the error of `first`
-  const later = second();
-  const laterDone = settled(later);
-  await waitUntilBlockedBy(pool, holder);
-  assert.equal(laterDone(), false, 'the second session waits for the first transaction');
-  release();
-  const firstResult = await outer;
-  const secondResult = await later.then((value) => ({ value, error: null as unknown }), (error: unknown) => ({ value: null, error }));
-  return { firstResult, secondResult };
-}
+/** Two real sessions (`support/locks.ts`): `first` stays uncommitted while `second` runs on another connection and waits for it. */
+const interleave = <A, B>(first: (tx: Database) => Promise<A>, second: () => Promise<B>) => interleaveOn(db, pool, first, second);
 
 interface RaceCase {
   writer: Principal;

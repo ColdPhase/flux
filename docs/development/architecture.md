@@ -99,9 +99,10 @@ are the only places that choose concrete adapters and wire them together.
 Pure core use cases can be tested with in-memory port implementations
 (`app/tests/app/push-core.test.ts`; the access decisions and their lock order over an in-memory
 `AccessReader` in `app/tests/app/access-decisions.test.ts`, and the workspace, member, grant, agent and draft
-use cases, with their statement order and transactions, over in-memory repositories in
-`app/tests/app/access-use-cases.test.ts`); behavior that depends on SQL, locks or the queue is tested against
-the Compose PostgreSQL.
+use cases, with their statement order, transactions and the handle each port is bound to, over in-memory
+repositories in `app/tests/app/access-use-cases.test.ts`); behavior that depends on SQL, locks or the queue is
+tested against the Compose PostgreSQL (the draft audience and grant rules and the 23505/23503 results of a grant
+write, through the real repositories, in `app/tests/app/access-sharing-rules.test.ts`).
 
 ## Automated check
 
@@ -119,8 +120,8 @@ fails when:
   or an allowlist entry no longer matches a violation (remove it when fixed);
 - `app/packages/core/src/push/**` reaches an adapter library through any relative import;
 - anything under `app/packages/core/src/access/` or `events.ts` does (the access decisions and use
-  cases stay behind ports, including through helpers; the type-only import in `types.ts` is the one
-  recorded exception, #90, #91), or one of the use case modules there passes 200 lines.
+  cases stay behind ports, including through helpers; only the type-only `@flux/db` import in `types.ts`
+  is reachable, #90, #91), or any file there other than `policy.ts` passes 200 lines.
 
 The allowlist can only shrink. Do not add entries for new code; change the code or,
 if a layer rule itself is wrong, update this page and the rule in the same reviewed PR.
