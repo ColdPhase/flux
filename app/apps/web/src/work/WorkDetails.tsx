@@ -142,6 +142,16 @@ function ChoicePages({ choices, label }: { choices: DetailChoices; label: string
   </div>;
 }
 
+/** A form's primary action and its one line of help: a section like the others, so the button never crowds what is around it. */
+function SubmitSection({ help, children }: { help: ReactNode; children: ReactNode }) {
+  return (
+    <section className="details__sec wd-submit">
+      <div className="wd-actions">{children}</div>
+      <p className="wd-muted">{help}</p>
+    </section>
+  );
+}
+
 function Audience({ project }: { project: Project }) {
   return (
     <section className="details__sec" aria-labelledby="wd-audience">
@@ -631,9 +641,9 @@ function DecisionPanel({ decision, context, detail, relations, reload, choices, 
         <h3 className={`details__title${decision.status === 'superseded' ? ' wd-was' : ''}`}>{decision.title}</h3>
       </div>
       {decision.rationale ? <p className="details__lead">{decision.rationale}</p> : null}
-      <dl className="details__dl wd-dl">
-        <dt>Proposed</dt><dd>{decision.proposedBy.kind === 'agent' ? <AgentIdentity name={decision.proposedBy.name} owner={owners.get(decision.proposedBy.id)} /> : decision.proposedBy.name} · {shortDate(decision.createdAt)}</dd>
-        {decision.decidedBy ? <><dt>Decided</dt><dd>{decision.decidedBy.name} · {shortDate(decision.decidedAt!)}</dd></> : null}
+      <dl className="wd-rows wd-decision-rows">
+        <div className="wd-row"><dt>Proposed</dt><dd><span>{decision.proposedBy.kind === 'agent' ? <AgentIdentity name={decision.proposedBy.name} owner={owners.get(decision.proposedBy.id)} /> : decision.proposedBy.name} · {shortDate(decision.createdAt)}</span></dd></div>
+        {decision.decidedBy ? <div className="wd-row"><dt>Decided</dt><dd><span>{decision.decidedBy.name} · {shortDate(decision.decidedAt!)}</span></dd></div> : null}
       </dl>
 
       {earlier ? (
@@ -809,8 +819,7 @@ function ProposeDecision({ view, context, contextStatus, revision, isCurrent }: 
       <ChoicePages choices={candidates} label="Current rule choices" />
       {supersedes && (!chosen || chosen.status !== 'accepted') ? <p className="wd-muted">The selected rule must be currently available and accepted before this proposal can replace it.</p> : null}
       {error ? <p className="wd-error" role="alert">{error} <button type="button" className="wd-inline" onClick={(event) => void submit(event)}>Retry</button></p> : null}
-      <div className="wd-actions"><Button type="submit" variant="primary" busy={busy} disabled={!canSubmit}>Propose decision</Button></div>
-      <p className="wd-muted">A person with write access accepts it. The message stays where it is and links here.</p>
+      <SubmitSection help="A person with write access accepts it. The message stays where it is and links here."><Button type="submit" variant="primary" busy={busy} disabled={!canSubmit}>Propose decision</Button></SubmitSection>
       {context ? <Audience project={context.project} /> : null}
     </form>
   );
@@ -893,8 +902,7 @@ function AttachResult({ view, context, contextStatus, reload, revision, isCurren
       <ChoicePages choices={candidates} label="Result work choices" />
       {selected.read.phase === 'unavailable' ? <p className="wd-error" role="alert">Selected work could not be loaded. Your selection is kept. <button type="button" className="wd-inline" onClick={reload}>Refresh selected work</button></p> : null}
       {error ? <p className="wd-error" role="alert">{error}</p> : null}
-      <div className="wd-actions"><Button type="submit" variant="primary" busy={busy} disabled={!canSubmit}>Attach result</Button></div>
-      <p className="wd-muted">A negative result is a real outcome: it can finish an experiment.</p>
+      <SubmitSection help="A negative result is a real outcome: it can finish an experiment."><Button type="submit" variant="primary" busy={busy} disabled={!canSubmit}>Attach result</Button></SubmitSection>
       {context ? <Audience project={context.project} /> : null}
     </form>
   );
