@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type ComponentType, type ReactNode } from 'react';
 import { useLocation, useNavigate, useRevalidator } from 'react-router';
-import type { Conversation, ConversationMessage, ConversationRoot, NativeWorkRow } from '@flux/contracts';
+import type { Conversation, ConversationMessage, ConversationRoot, NativeWorkRow, ObjectNotice } from '@flux/contracts';
 import type { MessageWorkPreview } from '../work/message-associations';
 import { ApiError } from '../api/client';
 import { PanelMeta } from '../ui';
@@ -10,7 +10,8 @@ import { excerpt } from '../live/anchors';
 import { audienceLine, useProjectShell } from '../project/data';
 import { useShellData } from './data';
 import { agentAuthorLabel } from '../docs/format';
-import { ConversationStream, streamPlace, useConversationRoots, useTaskNotices } from './ConversationStream';
+import { ConversationStream, streamPlace, useConversationRoots, useObjectNotices, useTaskNotices } from './ConversationStream';
+import { useStreamEvents } from '../api/stream';
 import { ThreadRoot } from './ThreadRoot';
 import { SourceOfContext } from './messageParts';
 import { OwnedPanelContent, useOwnedPanel } from './ownedPanel';
@@ -34,6 +35,8 @@ export interface PaneProps {
   rootHeader?: (objects: { preview: MessageWorkPreview | null; taskRow: NativeWorkRow | null }) => ReactNode;
   /** thread: the root's message id, which the stream shows and arrives at. */
   rootMessageId?: string | null;
+  /** thread: the decisions and results the project's conversation announces (#694); the thread shows the ones made from it. */
+  objects?: ObjectNotice[];
   /** stream: a root the person just started. */
   onPosted?: (conversation: Conversation) => void;
   /** stream: the person sent a root; it shows at once at the end of the stream (#264). */
@@ -85,6 +88,12 @@ export function OneConversation({ data, Pane }: { data: ProjectData; Pane: Compo
   const reveal = conversation && !state?.fromStream && !restore ? { conversationId: conversation.id, key: `${conversation.id}:${location.key}` } : null;
   const roots = useConversationRoots(project.id, data.roots, reveal?.conversationId ?? restore?.conv ?? null, onDenied);
   const notices = useTaskNotices(project.id, data.notices, roots.roots, roots.hasOlder, onDenied);
+  const objects = useObjectNotices(project.id, data.objectNotices, roots.roots, roots.hasOlder, onDenied);
+  // Another member proposes or accepts a decision, records a result or makes a task (#694): the stream and an open thread
+  // read it now instead of at the next poll. The events carry ids only; what is shown is read through the API.
+  useStreamEvents(me.user.id, (event) => {
+    if (event.objectType === 'project' && event.objectId === project.id && /^project\.(decision_(proposed|accepted)|result_recorded|work_created)\.v1$/.test(event.kind)) revalidator.revalidate();
+  });
   const root = thread ? roots.roots.find((item) => item.conversationId === thread.id) ?? null : null;
   const [endToken, setEndToken] = useState(0);
   // The control on a page opened from here names this place: a task's thread is "#12 Order sensors" (#592).
@@ -133,7 +142,7 @@ export function OneConversation({ data, Pane }: { data: ProjectData; Pane: Compo
 
   const audience = audienceLine(people, me.user.id, project.visibility === 'workspace');
   const stream = (
-    <ConversationStream project={project} meId={me.user.id} meName={me.user.name} roots={roots} notices={notices} goals={data.goals} author={author}
+    <ConversationStream project={project} meId={me.user.id} meName={me.user.name} roots={roots} notices={notices} goals={data.goals} objects={objects} author={author}
       audience={audience} openId={thread?.id ?? null} reveal={reveal} arrived={arrived} endToken={endToken} restore={restore} onOpen={open} onDenied={onDenied} />
   );
   // Until the stream has the root (a link to an old one), the thread's newest sequence gives its size.
@@ -161,7 +170,7 @@ export function OneConversation({ data, Pane }: { data: ProjectData; Pane: Compo
       {thread && slot ? (
         <OwnedPanelContent slot={slot} className="thread" id="thread">
           <PanelMeta>{replies} {replies === 1 ? 'reply' : 'replies'}</PanelMeta>
-          <Pane key={thread.id} data={data} variant="thread" rootMessageId={rootMessage?.id ?? null}
+          <Pane key={thread.id} data={data} variant="thread" rootMessageId={rootMessage?.id ?? null} objects={objects}
             focusComposer={!!state?.focusComposer} onThreadSize={roots.threadSize}
             rootHeader={({ preview, taskRow }) => <ThreadRoot message={rootMessage} projectId={project.id} body={rootMessage?.body ?? thread.firstMessageBody} author={rootMessage ? author(rootMessage) : null}
               agentOwner={rootMessage?.authorId === null ? agentAuthorOwner(rootMessage.author, owners) ?? null : null} meId={me.user.id} writable={writable} replies={replies} task={root?.task ?? null} taskRow={taskRow} preview={preview} onDenied={onDenied}

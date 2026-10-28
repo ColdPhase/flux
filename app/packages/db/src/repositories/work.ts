@@ -285,6 +285,45 @@ export function workRows(db: DbExecutor) {
         ...(row.kind === 'task.blocked' ? { waitingFor: row.waiting_for_user_id ? { kind: 'human' as const, id: row.waiting_for_user_id } : null, reason: row.reason } : {}),
         createdAt: new Date(row.created_at) })) };
     },
+    /**
+     * The moments the conversation announces (#694): a decision proposed, a decision accepted, a result recorded, newest first.
+     * Derived from the objects themselves, so every decision and result has its lines and a state change shows at once;
+     * `sources` and the conversation of the first message source come from the object's own `source` links.
+     */
+    async listObjectNotices(projectId: string, window: Window) {
+      const [count] = await db.select({ total: sql<number>`(SELECT count(*) FROM ${d} WHERE ${d.projectId} = ${projectId})
+        + (SELECT count(*) FROM ${d} WHERE ${d.projectId} = ${projectId} AND ${d.decidedAt} IS NOT NULL AND ${d.decidedBy} IS NOT NULL)
+        + (SELECT count(*) FROM ${schema.projectResults} WHERE ${schema.projectResults.projectId} = ${projectId})` }).from(sql`(SELECT 1) AS one`);
+      const sourcesOf = (type: 'decision' | 'result', id: string) => sql.raw(`COALESCE((SELECT jsonb_agg(CASE WHEN l.to_type = 'material'
+          THEN jsonb_build_object('type', l.to_type, 'id', l.to_id, 'version', l.to_version) ELSE jsonb_build_object('type', l.to_type, 'id', l.to_id) END
+          ORDER BY l.created_at, l.id) FROM project_object_links l WHERE l.from_type = '${type}' AND l.from_id = ${id} AND l.role = 'source'), '[]'::jsonb)`);
+      const conversationOf = (type: 'decision' | 'result', id: string) => sql.raw(`(SELECT m.conversation_id FROM project_object_links l
+          JOIN project_messages m ON m.id = l.to_id WHERE l.from_type = '${type}' AND l.from_id = ${id} AND l.role = 'source' AND l.to_type = 'message'
+          ORDER BY l.created_at, l.id LIMIT 1)`);
+      const result = await db.execute(sql`
+        SELECT e.* FROM (
+          SELECT d.id::text || ':proposed' AS id, d.workspace_id, d.project_id, 'decision.proposed' AS kind, d.id AS object_id, d.title, d.status, NULL::text AS finding,
+            d.proposed_by_kind AS by_kind, d.proposed_by_id AS by_id, ${sourcesOf('decision', 'd.id')} AS sources, ${conversationOf('decision', 'd.id')} AS conversation_id, d.created_at AS at
+            FROM project_decisions d WHERE d.project_id = ${projectId}
+          UNION ALL
+          SELECT d.id::text || ':accepted', d.workspace_id, d.project_id, 'decision.accepted', d.id, d.title, d.status, NULL::text,
+            'human', d.decided_by, ${sourcesOf('decision', 'd.id')}, ${conversationOf('decision', 'd.id')}, d.decided_at
+            FROM project_decisions d WHERE d.project_id = ${projectId} AND d.decided_at IS NOT NULL AND d.decided_by IS NOT NULL
+          UNION ALL
+          SELECT r.id::text || ':recorded', r.workspace_id, r.project_id, 'result.recorded', r.id, r.title, NULL::text, r.finding,
+            r.created_by_kind, r.created_by_id, ${sourcesOf('result', 'r.id')}, ${conversationOf('result', 'r.id')}, r.created_at
+            FROM project_results r WHERE r.project_id = ${projectId}
+        ) e ORDER BY e.at DESC, e.id DESC LIMIT ${window.limit} OFFSET ${window.offset}`);
+      const rows = result.rows as { id: string; workspace_id: string; project_id: string; kind: 'decision.proposed' | 'decision.accepted' | 'result.recorded'; object_id: string;
+        title: string; status: 'proposed' | 'accepted' | 'superseded' | null; finding: 'positive' | 'negative' | null; by_kind: 'human' | 'agent'; by_id: string;
+        sources: import('@flux/contracts').ObjectRef[]; conversation_id: string | null; at: Date | string }[];
+      return { total: Number(count?.total ?? 0), items: rows.map((row) => {
+        const base = { id: row.id, workspaceId: row.workspace_id, projectId: row.project_id, title: row.title, by: { kind: row.by_kind, id: row.by_id },
+          sources: row.sources, conversationId: row.conversation_id, createdAt: new Date(row.at) };
+        return row.kind === 'result.recorded' ? { ...base, kind: row.kind, resultId: row.object_id, finding: row.finding! }
+          : { ...base, kind: row.kind, decisionId: row.object_id, status: row.status! };
+      }) };
+    },
     async updateWork(id: string, changes: { title?: string; outcome?: string; status?: WorkRow['status']; blocker?: string | null; waitingFor?: Actor | null; dueOn?: string | null; owner?: Actor | null; parked?: { decisionId: string; at: Date } | null; criteria?: string[] },
       by: Actor, via?: 'github_rule') {
       // Every path that changes a task ends here, so this is the one place its activity (#488) is kept: the row as it was,
