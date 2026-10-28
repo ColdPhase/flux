@@ -101,10 +101,19 @@ button.ws-task__glyph:active { background: var(--hov); }
 
 /* ---------- Details panel ---------- */
 .wd .details__title { overflow-wrap: anywhere; }
-.wd-decision-identity { position: sticky; top: -20px; z-index: 2; padding: 8px 0 4px; background: var(--bg); border-bottom: 1px solid var(--line); }
+/* The pinned title paints the panel's own surface, so it is not a box of its own (#693). */
+.wd-decision-identity { position: sticky; top: -20px; z-index: 2; padding: var(--s-2) 0 var(--s-1); background: var(--panel-bg, var(--el)); border-bottom: 1px solid var(--line); }
 .ui-sheet .wd-decision-identity { top: -18px; }
-.wd-accept-finish { padding: 10px 0 14px; background: var(--bg); border-top: 1px solid var(--line); }
-.wd-accept-finish .wd-muted { margin: 0 0 8px; }
+/* The Accept block is a section like the others: no surface of its own, the panel's rhythm inside it (#693). */
+.wd-accept-finish { margin-top: var(--s-3); padding-top: var(--s-3); border-top: 1px solid var(--line); }
+.wd-accept-finish .wd-actions { margin-top: 0; }
+.wd-accept-finish .wd-muted { margin: 0 0 var(--s-2); }
+.wd-accept > .wd-muted { margin-top: var(--s-2); }
+/* A form's primary action and its one line of help are a section: --s-2 between them, the section gap around (#692). */
+.wd-submit .wd-actions { margin-top: 0; }
+.wd-submit > .wd-muted { margin-top: var(--s-2); }
+/* "Proposed" and "Decided" are the task panel's rows (.wd-rows), a step under the lead. */
+.wd-rows.wd-decision-rows { margin-top: var(--s-3); }
 .wd-eyebrow { display: flex; align-items: center; gap: 6px; }
 .wd-eyebrow.wd-need { color: var(--t1); }
 .wd-finding--negative svg { color: var(--t2); }
@@ -160,7 +169,6 @@ button.ws-task__glyph:active { background: var(--hov); }
 .wd-sechead { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .wd-sechead h4 { margin: 0; }
 .wd-blocker-form .ui-field { flex: 1; }
-.wd-dl { margin-top: 16px; }
 .wd-links { list-style: none; margin: 0; padding: 0; }
 .wd-links li + li { border-top: 1px solid var(--line); }
 .wd-link { display: flex; align-items: center; gap: 8px; width: calc(100% + 12px); min-height: 38px; margin: 0 -6px; padding: 6px; border-radius: var(--r-sm); font-size: var(--fs-md); color: var(--t1); text-align: left; text-decoration: none; transition: var(--tr); }
