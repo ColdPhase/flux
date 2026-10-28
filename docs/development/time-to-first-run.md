@@ -139,8 +139,8 @@ so neither the author's accounts nor their settings were involved.
 | 2. Create the personal agent | The form was already open; name, *Create personal agent* | Works as written; the *New connection* form appeared 0.45 s later |
 | 3. Grant the project, save the connection | *Grant* with *Read and propose*, tick the project, keep the two ticked actions, *Save connection* | Works for Claude Code: saved 0.7 s after the page was open, by script. The page then says "This connection can read and suggest only" |
 | 4. Add Flux to the client | `claude mcp add --transport http flux http://127.0.0.1:27900/mcp`, then `claude mcp login flux` under a pseudo-terminal; `codex mcp add flux --url …`, which started the sign-in itself | Both print an authorize URL for the browser. Outside a terminal `claude mcp login flux` stops with "stdin isn't a terminal", as the README says. `claude mcp add` adds the server only for the folder it ran in (`--scope user` for all folders): added to the README |
-| 5. Consent | The authorize URL in the browser: *Choose the saved connection*, *Continue to consent*, *Allow access* | **Claude Code:** the consent page said the client asked for three actions and listed "Asked for, not granted: Run approved project actions". After *Allow access* Claude Code printed `Authenticated with "flux"`, and `claude mcp list` showed `✔ Connected`. The token scope was `flux.context.read flux.proposal.write offline_access`. **Codex with the two-action connection:** refused, "This authorization request is no longer valid" ([#660](https://github.com/ColdPhase/flux/issues/660)). **Codex with all three actions ticked:** `Successfully logged in to MCP server 'flux'`, and `codex mcp list` showed `OAuth`. The server read both clients' metadata documents (`claude.ai`, `chatgpt.com`) over HTTPS without a fixture |
-| 6. Ask it something | **Not run: needs a model account.** A scripted MCP client (no model) sent the access token that Claude Code's own login had stored, read from its credential file and never printed, over MCP protocol `2025-06-18` | `initialize` and `tools/list` (23 tools, only the read tools and `flux_create_proposal`), `flux_list_contexts`, `flux_list_conversations`, `flux_list_work`, `flux_list_docs` and `flux_list_materials` answered with the demo project's data. `flux_create_task` answered "This agent can't use flux_create_task: permission 'flux.action.execute' (run approved actions) wasn't granted". `flux_create_proposal` stored a proposal with status `proposed`, but no screen shows it ([#661](https://github.com/ColdPhase/flux/issues/661)); the README's earlier promise of a review was reworded. Codex's token is in the system keyring, so no Codex tool call was made |
+| 5. Consent | The authorize URL in the browser: *Choose the saved connection*, *Continue to consent*, *Allow access* | **Claude Code:** the consent page said the client asked for three actions and listed "Asked for, not granted: Run approved project actions". After *Allow access* Claude Code printed `Authenticated with "flux"`, and `claude mcp list` showed `✔ Connected`. The token scope was `flux.context.read flux.proposal.write offline_access`. **Codex with the two-action connection:** refused, "This authorization request is no longer valid" ([#660](https://github.com/ColdPhase/flux/issues/660); fixed since in [#673](https://github.com/ColdPhase/flux/pull/673), not re-run with real Codex). **Codex with all three actions ticked:** `Successfully logged in to MCP server 'flux'`, and `codex mcp list` showed `OAuth`. The server read both clients' metadata documents (`claude.ai`, `chatgpt.com`) over HTTPS without a fixture |
+| 6. Ask it something | **Not run: needs a model account.** A scripted MCP client (no model) sent the access token that Claude Code's own login had stored, read from its credential file and never printed, over MCP protocol `2025-06-18` | `initialize` and `tools/list` (23 tools, only the read tools and `flux_create_proposal`), `flux_list_contexts`, `flux_list_conversations`, `flux_list_work`, `flux_list_docs` and `flux_list_materials` answered with the demo project's data. `flux_create_task` answered "This agent can't use flux_create_task: permission 'flux.action.execute' (run approved actions) wasn't granted". `flux_create_proposal` stored a proposal with status `proposed`, but no screen showed it then ([#661](https://github.com/ColdPhase/flux/issues/661); the Inbox shows it since [#673](https://github.com/ColdPhase/flux/pull/673)); the README's earlier promise of a review was reworded. Codex's token is in the system keyring, so no Codex tool call was made |
 
 The walkthrough did not test: a model account's reply with either client, Codex tool calls, the
 Start/Resume prompts, a standing grant and an action (covered by `check_mcp_clients.sh`), and a
@@ -157,11 +157,23 @@ recorded as not run in Docker).
 2. **Codex's sign-in fails with a partial grant.** Claude Code's authorize request carries
    `prompt=consent`, so the provider shows the consent page before it checks the scopes; Codex's does
    not, so the check sees all three requested scopes. [#660](https://github.com/ColdPhase/flux/issues/660).
-   The README says to tick all three for Codex until it is fixed.
+   Until it was fixed the README said to tick all three for Codex. **Fixed in
+   [#673](https://github.com/ColdPhase/flux/pull/673), merged 2026-10-27:** the scope check is now skipped only
+   at the post-login step, so a client without `prompt=consent` reaches the consent page; consent and the
+   token still never exceed the connection. The README note is removed and says Codex, like Claude Code,
+   gets only the actions you ticked. Checked by Codex-shaped API tests (a Codex-style request with two actions
+   granted gets `flux.context.read flux.proposal.write offline_access`); the walkthrough above was not
+   repeated with real Codex.
 3. **`claude mcp add` is per folder.** A person who adds Flux in one folder and starts `claude` in another
    finds no server. Fixed in the README.
-4. **The README promised that a suggestion waits for a person's review.** It is stored, and no screen shows
-   it. [#661](https://github.com/ColdPhase/flux/issues/661); the README was reworded.
+4. **The README promised that a suggestion waits for a person's review.** It is stored, and no screen showed
+   it. [#661](https://github.com/ColdPhase/flux/issues/661); the README was reworded. **Fixed in
+   [#673](https://github.com/ColdPhase/flux/pull/673), merged 2026-10-27:** a suggestion from
+   `flux_create_proposal` is a **Needs you** item in the Inbox of the person who connected the agent, with
+   what it saw, what it makes of it, what it suggests and its source with the version; **Got it** and
+   **Decline** record the person's choice. It is hidden while the workspace AI lock is off, and other members
+   are not asked. The README step 6 says so. Checked by an API test and a Chromium and WebKit browser test
+   that serves the item by route; it has not been run with a real model account.
 5. **A first `./flux up` that stops before the migration leaves a project that `./flux clean` and
    `./flux reset` refuse to remove** ("Runtime cleanup admission could not be fenced"). It happened here
    when the first `./flux up` of the third pass failed (below), and Ctrl-C right after the database starts

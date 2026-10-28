@@ -103,8 +103,11 @@ Wersja `<VERSION>`."
 ## Not in this video
 
 Anything the README does not tell a stranger to do and the candidate has not verified: Codex on the
-screen (its sign-in needs all three actions ticked until
-[#660](https://github.com/ColdPhase/flux/issues/660) is fixed), the phone and PWA install, live
-co-editing, the workspace AI lock, and a suggestion from the agent (no screen shows it yet,
-[#661](https://github.com/ColdPhase/flux/issues/661)). Live co-editing and the phone are good
+screen (a connection that grants fewer than the three actions it asks for now signs in,
+[#660](https://github.com/ColdPhase/flux/issues/660) fixed in [#673](https://github.com/ColdPhase/flux/pull/673),
+but that change was checked with Codex-shaped tests and the real Codex lane was not run), the phone and
+PWA install, live co-editing, the workspace AI lock, and a suggestion from the agent (it now waits in the
+Inbox under **Needs you** with **Got it** and **Decline**,
+[#661](https://github.com/ColdPhase/flux/issues/661) fixed in #673, but nobody has run it with a real
+model account on the demo data). Live co-editing and the phone are good
 follow-up clips once their acceptance evidence is on [#249](https://github.com/ColdPhase/flux/issues/249).
