@@ -8,7 +8,7 @@ import {
   authorize, createEncryptionUseCases, DerivationSemaphore, ForbiddenError, getWorkspace, keyringFromEnv, NotFoundError, ProcessKeys,
   recordEvent, swapFiles, swapSafety, testSwapRoot, type Database, type EncryptionPorts, type EncryptionUnitOfWork, type PasswordEstimator,
 } from '@flux/core';
-import { accessReader, loadActor, workspaceEncryptionRows, type DbExecutor } from '@flux/db';
+import { accessPorts, accessReader, loadActor, workspaceEncryptionRows, type DbExecutor } from '@flux/db';
 import { eventPorts } from '../events.js';
 
 // Adapters of the encrypted-workspace use cases (F-030, #655): the access policy (`workspace.manage_encryption`), the
@@ -69,7 +69,7 @@ export interface EncryptionComposition {
 export function composeEncryption(db: Database, boss: Pick<PgBoss, 'send'>, keys: ProcessKeys): EncryptionComposition {
   const useCases = createEncryptionUseCases({
     unit: encryptionUnitOfWork(db, boss), keys, semaphore: new DerivationSemaphore(2, 8), estimator: zxcvbnEstimator(),
-    read: (principal, workspaceId) => getWorkspace(principal, workspaceId, db, { bootId: keys.openableBoot }),
+    read: (principal, workspaceId) => getWorkspace(principal, workspaceId, db, accessPorts, { bootId: keys.openableBoot }),
   });
   return { keys, useCases };
 }

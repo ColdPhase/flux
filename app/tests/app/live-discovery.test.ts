@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { test } from 'node:test';
 import type { Conversation } from '@flux/contracts';
 import { DomainError, grantProject, type LiveMedia } from '@flux/core';
+import { accessPorts } from '@flux/db';
 import { discoverLiveSessions } from '../../apps/server/src/live/discovery.js';
 import { liveRevocationCoordinator } from '../../apps/server/src/live/revocation.js';
 import { liveSessionStore } from '../../apps/server/src/live/store.js';
@@ -73,7 +74,7 @@ test('live discovery pages only currently authorized project anchors and reports
   // Access mutation uses the same room-retirement fence as production. The test API
   // intentionally has no SFU and rejects a live revocation with 503.
   await liveRevocationCoordinator(db, pool, media).withProjectChange(place.id, () =>
-    grantProject(principal, place.id, { principal: reader, role: 'denied' }, db));
+    grantProject(principal, place.id, { principal: reader, role: 'denied' }, db, accessPorts));
   await assert.rejects(discoverLiveSessions(db, media, reader, place.id), missing('PROJECT_NOT_FOUND'));
 
   await pool.query('UPDATE live_sessions SET state = $1 WHERE id = $2', ['ended', a.id]);

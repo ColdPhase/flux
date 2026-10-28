@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { test } from 'node:test';
 import { grantProject, liveInvitationUseCases, type LiveInvitationCursor } from '@flux/core';
+import { accessPorts } from '@flux/db';
 import type { Conversation } from '@flux/contracts';
 import { liveInvitationStore } from '../../apps/server/src/live/invitations.js';
 import { liveSessionStore } from '../../apps/server/src/live/store.js';
@@ -58,7 +59,7 @@ test('database invitation is idempotent, constrained to IDs and choice, and reje
   assert.ok(answered.rows[0].responded_at);
   assert.deepEqual((await f.invitations.listPending(recipient)).items, []);
 
-  await grantProject(caller, f.place.id, { principal: recipient, role: 'denied' }, db);
+  await grantProject(caller, f.place.id, { principal: recipient, role: 'denied' }, db, accessPorts);
   await assert.rejects(f.invitations.reply(recipient, same[0]!.id, 'text'), errorCode('LIVE_INVITATION_NOT_FOUND'));
 });
 
@@ -83,7 +84,7 @@ test('invitation transaction blocks revocation until its authorized write commit
   await started;
   let revoked = false;
   const revoke = grantProject(caller, f.place.id,
-    { principal: recipient, role: 'denied' }, db).then(() => { revoked = true; });
+    { principal: recipient, role: 'denied' }, db, accessPorts).then(() => { revoked = true; });
   await new Promise((resolve) => setTimeout(resolve, 50));
   assert.equal(revoked, false, 'the grant mutation waits for the invitation transaction');
   release();

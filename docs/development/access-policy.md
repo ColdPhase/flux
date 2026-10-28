@@ -29,9 +29,12 @@ principal's membership or agent rows `FOR SHARE`, a draft `FOR UPDATE`, and the
 project row and the principal's grants on it `FOR SHARE`. A revocation that committed
 earlier is then seen, and a concurrent one waits until this transaction ends.
 
-The domain methods in `app/packages/core/src/access/domain.ts` call these functions
-before they touch data. Mutations decide and write in one transaction, holding the
-locks described under [Concurrency](#concurrency).
+The use cases for workspaces, membership, projects, grants, agents and drafts
+(`app/packages/core/src/access/{workspaces,members,workspace-ai,projects,grants,agents,drafts}.ts`)
+call these functions before they touch data. Mutations decide and write in one transaction,
+holding the locks described under [Concurrency](#concurrency). Their rows come from the
+repositories of `app/packages/db/src/repositories/{workspaces,projects,agents,drafts}.ts`
+behind the ports in `access/repositories.ts`; a repository makes no decision.
 
 **Obligation for every entry point.** The HTTP API, WebSocket subscriptions and
 replay, worker jobs (before reading inputs and before committing results), file

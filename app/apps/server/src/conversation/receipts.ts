@@ -1,6 +1,6 @@
 import { and, asc, eq, inArray, sql } from 'drizzle-orm';
 import { RECEIPT_LIMITS, type MessageReceiptsResult, type ObserveMessagesResult } from '@flux/contracts';
-import { schema, accessReader } from '@flux/db';
+import { schema, accessPorts, accessReader } from '@flux/db';
 import { enforce, evaluateProject, InvalidInputError, listProjectPeople, NotFoundError, RuleViolationError, uuid, type Database, type Principal } from '@flux/core';
 
 // Viewing receipts of the project's conversation (#534). A person observes messages of a project they can read
@@ -59,7 +59,7 @@ export function projectReceipts(db: Database) {
         enforce(await evaluateProject(principal, 'project.read', projectId, accessReader(tx)), 'project');
         const known = new Map((await facts(tx, projectId, [...new Set(runs.flat())])).map((row) => [row.id, row]));
         // The people who can read the project now, never anyone from a historical roster.
-        const readers = new Map((await listProjectPeople(principal, projectId, tx as unknown as Database)).filter((p) => p.kind === 'human').map((p) => [p.id, p.name]));
+        const readers = new Map((await listProjectPeople(principal, projectId, tx as unknown as Database, accessPorts)).filter((p) => p.kind === 'human').map((p) => [p.id, p.name]));
         const m = schema.projectMessages;
         const c = schema.projectConversations;
         const result: MessageReceiptsResult['runs'] = [];

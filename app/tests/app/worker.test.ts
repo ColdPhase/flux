@@ -3,7 +3,7 @@ import { after, before, describe, test } from 'node:test';
 import { eq } from 'drizzle-orm';
 import { PgBoss } from 'pg-boss';
 import type { DraftSummary } from '@flux/contracts';
-import { accessReader, draftResultRepository, eventRepository, schema } from '@flux/db';
+import { accessPorts, accessReader, draftResultRepository, eventRepository, schema } from '@flux/db';
 import {
   addMember,
   createDraft,
@@ -76,17 +76,17 @@ describe('draft.summarize.v1 worker', () => {
   async function scenario(label: string) {
     const owner = await insertedHuman(`${label}-owner`);
     const member = await insertedHuman(`${label}-member`);
-    const ws = await createWorkspace(owner, { name: label }, db);
-    await addMember(owner, ws.id, { userId: member.id, role: 'member' }, db);
-    const created = await createDraft(owner, ws.id, { title: 'Shared', body: 'alpha beta gamma' }, db);
-    const item = await shareDraft(owner, created.id, { scope: 'workspace', expectedVersion: created.version }, db);
+    const ws = await createWorkspace(owner, { name: label }, db, accessPorts);
+    await addMember(owner, ws.id, { userId: member.id, role: 'member' }, db, accessPorts);
+    const created = await createDraft(owner, ws.id, { title: 'Shared', body: 'alpha beta gamma' }, db, accessPorts);
+    const item = await shareDraft(owner, created.id, { scope: 'workspace', expectedVersion: created.version }, db, accessPorts);
     const summary = await requestDraftSummary(member, item.id, db, delayed);
     return { owner, member, ws, item, summary };
   }
 
   test('a requester who lost access before the job ran gets no read and no result', async () => {
     const { owner, member, ws, item, summary } = await scenario('before-read');
-    await removeMember(owner, ws.id, member.id, db);
+    await removeMember(owner, ws.id, member.id, db, accessPorts);
     let read = false;
     const outcome = await processDraftSummary(summary.id, db, summaryPorts, { afterRead: async () => { read = true; } });
     assert.equal(outcome, 'denied');
@@ -104,7 +104,7 @@ describe('draft.summarize.v1 worker', () => {
     const outcome = await processDraftSummary(summary.id, db, summaryPorts, {
       afterRead: async () => {
         read = true;
-        await removeMember(owner, ws.id, member.id, db);
+        await removeMember(owner, ws.id, member.id, db, accessPorts);
       },
     });
     assert.equal(read, true, 'the input was read while access was valid');
@@ -119,7 +119,7 @@ describe('draft.summarize.v1 worker', () => {
   test('a draft made private between read and commit also prevents the commit', async () => {
     const { owner, item, summary } = await scenario('reshare');
     const outcome = await processDraftSummary(summary.id, db, summaryPorts, {
-      afterRead: async () => { await shareDraft(owner, item.id, { scope: 'private', expectedVersion: item.version }, db); },
+      afterRead: async () => { await shareDraft(owner, item.id, { scope: 'private', expectedVersion: item.version }, db, accessPorts); },
     });
     assert.equal(outcome, 'denied');
     assert.equal((await row(summary.id)).deniedAtStage, 'before_commit');
@@ -140,12 +140,12 @@ describe('draft.summarize.v1 worker', () => {
   async function grantScenario(label: string) {
     const owner = await insertedHuman(`${label}-owner`);
     const member = await insertedHuman(`${label}-member`);
-    const ws = await createWorkspace(owner, { name: label }, db);
-    await addMember(owner, ws.id, { userId: member.id, role: 'member' }, db);
-    const room = await createProject(owner, ws.id, { name: 'Room', visibility: 'restricted' }, db);
-    const access = await grantProject(owner, room.id, { principal: { kind: 'human', id: member.id }, role: 'viewer' }, db);
-    const created = await createDraft(owner, ws.id, { title: 'Room notes', body: 'one two three four five', projectId: room.id }, db);
-    const item = await shareDraft(owner, created.id, { scope: 'project', expectedVersion: created.version }, db);
+    const ws = await createWorkspace(owner, { name: label }, db, accessPorts);
+    await addMember(owner, ws.id, { userId: member.id, role: 'member' }, db, accessPorts);
+    const room = await createProject(owner, ws.id, { name: 'Room', visibility: 'restricted' }, db, accessPorts);
+    const access = await grantProject(owner, room.id, { principal: { kind: 'human', id: member.id }, role: 'viewer' }, db, accessPorts);
+    const created = await createDraft(owner, ws.id, { title: 'Room notes', body: 'one two three four five', projectId: room.id }, db, accessPorts);
+    const item = await shareDraft(owner, created.id, { scope: 'project', expectedVersion: created.version }, db, accessPorts);
     const summary = await requestDraftSummary(member, item.id, db, delayed);
     return { owner, room, access, item, summary };
   }
@@ -158,7 +158,7 @@ describe('draft.summarize.v1 worker', () => {
       beforeCommit: async (tx) => { holding.resolve(await backendPid(tx)); await gate.promise; },
     });
     const worker = await holding.promise;
-    const revoke = revokeProjectGrant(owner, room.id, access.id, db);
+    const revoke = revokeProjectGrant(owner, room.id, access.id, db, accessPorts);
     const revokeDone = settled(revoke);
     await waitUntilBlockedBy(pool, worker);
     assert.equal(revokeDone(), false, 'the revoke waits for the worker commit');
@@ -178,7 +178,7 @@ describe('draft.summarize.v1 worker', () => {
       afterRead: async () => {
         // The revoke runs on another connection and stays uncommitted while the worker commits.
         revocation = db.transaction(async (tx) => {
-          await revokeProjectGrant(owner, room.id, access.id, tx as unknown as Database);
+          await revokeProjectGrant(owner, room.id, access.id, tx as unknown as Database, accessPorts);
           revoked.resolve(await backendPid(tx));
           await gate.promise;
         });
