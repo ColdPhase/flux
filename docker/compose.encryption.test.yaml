@@ -10,14 +10,8 @@ services:
     environment:
       # The boot key becomes a canary of the log scan (TEST ONLY; needs the test deployment switches too).
       FLUX_KEYRING_REVEAL_BOOT_KEY: "true"
-  # A sealed chooser search opens at most this many objects here, so its truncation marker (`searchLimited`) is tested
-  # without thousands of tasks (TEST ONLY; honoured only by a test deployment). The test runner reads it too.
-  api:
-    environment:
-      FLUX_TEST_SEALED_CHOOSER_SCAN_LIMIT: "8"
+  # The second API holds at most 4 KiB of decrypted text per encrypted workspace in its search index, so the "too large to search
+  # in memory" answer (`sealedUnavailable`) is tested with a few messages (TEST ONLY: an operator sets the real bound).
   api2:
     environment:
-      FLUX_TEST_SEALED_CHOOSER_SCAN_LIMIT: "8"
-  test:
-    environment:
-      FLUX_TEST_SEALED_CHOOSER_SCAN_LIMIT: "8"
+      FLUX_SEALED_SEARCH_MAX_BYTES: "4096"

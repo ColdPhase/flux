@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { and,eq,sql } from 'drizzle-orm';
-import { editingSessionRows, liveMapRows, schema, type DbExecutor, type EditingConfirmationPolicy, accessReader } from '@flux/db';
+import { sql } from 'drizzle-orm';
+import { editingSessionRows, liveEditingIntents, liveMapRows, type DbExecutor, type EditingConfirmationPolicy, accessReader } from '@flux/db';
 import { ConflictError, InvalidInputError, derivedUuid,policySketchAccess, type MapNativeChange, type Principal, type SketchLiveJournal } from '@flux/core';
 import type { SketchRepository } from '@flux/core';
 import { decodeMapChange } from './map-state.js';
@@ -52,7 +52,7 @@ export function nativeMapJournal(db:DbExecutor,repository:SketchRepository,optio
       const commandId=options.commandId?(subcommand++===0?options.commandId:derivedUuid('flux.map.native-subcommand.v1',options.commandId,String(subcommand))):randomUUID();
       if(principal.kind==='human') {
         await db.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${'flux.editing.intent:'+principal.id+':'+commandId},0))`);
-        const [old]=await db.select().from(schema.liveEditingIntents).where(and(eq(schema.liveEditingIntents.actorId,principal.id),eq(schema.liveEditingIntents.commandId,commandId)));
+        const old=await liveEditingIntents(db).find(principal.id,commandId);
         if(old)throw conflict(); // The ordinary HTTP idempotency layer returns its original response before entering here.
       }
       if(affected.leaseId) {
@@ -112,7 +112,7 @@ export function nativeMapJournal(db:DbExecutor,repository:SketchRepository,optio
       const principal=options.principal;
       await policySketchAccess(accessReader(db)).requireSketch(principal,'sketch.read',options.resourceId,{lock:true});
       await db.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${'flux.editing.intent:'+principal.id+':'+options.commandId},0))`);
-      const [old]=await db.select().from(schema.liveEditingIntents).where(and(eq(schema.liveEditingIntents.actorId,principal.id),eq(schema.liveEditingIntents.commandId,options.commandId)));
+      const old=await liveEditingIntents(db).find(principal.id,options.commandId);
       if(!old)return {found:false as const};
       const room=await rows.head(options.resourceId);const receipt=old.receipt;
       if(!room||old.kind!=='map'||old.resourceId!==room.sketchId||old.workspaceId!==room.workspaceId||old.generation!==room.generation
@@ -137,7 +137,7 @@ export function nativeMapJournal(db:DbExecutor,repository:SketchRepository,optio
         const fingerprint=createHash('sha256').update(JSON.stringify({workspace:room.workspaceId,kind:'map',room:room.sketchId,generation:room.generation,
           actorKind:principal.kind,actor:principal.id,operation,commandId,requestFingerprint})).digest('hex');
         const sequence=await rows.append(room,{kind:principal.kind,id:principal.id},commandId,fingerprint,change);
-        if(principal.kind==='human')await db.insert(schema.liveEditingIntents).values({actorId:principal.id,commandId,workspaceId:room.workspaceId,kind:'map',
+        if(principal.kind==='human')await liveEditingIntents(db).insert({actorId:principal.id,commandId,workspaceId:room.workspaceId,kind:'map',
           resourceId:room.sketchId,generation:room.generation,operation,fingerprint,byteLength:0,
           receipt:{commandId,generation:room.generation,sequence,operation,requestFingerprint,nativeResult:result??null}});
         if(options.sessionId&&principal.kind==='human'&&!await editingSessionRows(db,options.confirmation).current({actorId:principal.id,sessionId:options.sessionId}))

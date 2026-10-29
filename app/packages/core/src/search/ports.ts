@@ -92,6 +92,22 @@ export interface SearchRepository<C> {
   explain(audiences: SearchAudience<C>[], plan: SearchPlan, cap: number): Promise<SearchWork>;
 }
 
+/** What the in-memory index of the unlocked encrypted workspaces answers (F-030 S2b): rows already past the cursor, best first. */
+export interface SealedSearchAnswer {
+  rows: SearchRow[];
+  counts: Map<SearchKind, number>;
+  capped: boolean;
+  /** Encrypted workspaces too large to hold in memory. */
+  unavailable: string[];
+  /** Test support: postings read and documents examined. */
+  work: { postings: number; terms: number; documents: number };
+}
+
+/** Search in the encrypted workspaces among the audiences. Access is decided already: only these audiences' partitions are read. */
+export interface SealedSearchRepository<C> {
+  search(audiences: SearchAudience<C>[], plan: SearchPlan, cap: number): Promise<SealedSearchAnswer>;
+}
+
 /** Seals a position to one principal and one query; anything else opens to null. */
 export interface SearchCursors {
   seal(principal: Principal, scope: string, position: SearchPosition): string;
@@ -101,5 +117,7 @@ export interface SearchCursors {
 export interface SearchPorts<C> {
   access: SearchAccess<C>;
   rows: SearchRepository<C>;
+  /** Absent when the deployment cannot open encrypted workspaces (nothing then to merge). */
+  sealed?: SealedSearchRepository<C>;
   cursors: SearchCursors;
 }

@@ -45,6 +45,18 @@ test('two APIs share the lock state through the keyring; no secret reaches Postg
   assert.equal((await unlock(second, ws, { recoveryCode })).status, 200, 'the recovery code on API-2');
   assert.equal((await ada.browser.request('POST', `/api/v1/workspaces/${ws}/projects`, { body: { name: 'Unlocked again' } })).status, 201);
 
+  // S2b: a workspace too large for one API's search index (api2 holds 4 KiB, FLUX_SEALED_SEARCH_MAX_BYTES) says so; API-1 answers.
+  const bulky = await ada.browser.request('POST', `/api/v1/workspaces/${ws}/projects`, { body: { name: 'Bulky notes' } });
+  assert.equal(bulky.status, 201);
+  const opened = await ada.browser.request('POST', `/api/v1/projects/${(bulky.json as { id: string }).id}/conversations`,
+    { body: { body: `bulky ${'filler '.repeat(900)}`, clientMessageId: randomUUID() }, headers: { 'idempotency-key': randomUUID() } });
+  assert.equal(opened.status, 201, opened.text);
+  const first = (await ada.browser.request('GET', '/api/v1/search?q=bulky')).json as { items: unknown[]; sealedUnavailable?: string[] };
+  assert.ok(first.items.length >= 1 && !first.sealedUnavailable, 'API-1 finds it');
+  const other = (await second.request('GET', '/api/v1/search?q=bulky')).json as { items: unknown[]; sealedUnavailable?: string[] };
+  assert.deepEqual(other.sealedUnavailable, [ws], 'API-2 is told the workspace is too large to search in memory');
+  assert.equal(other.items.length, 0);
+
   // Every secret of the run, derived from the passwords and code and the stored rows.
   const secrets: Buffer[] = [];
   const texts: string[] = [password, benPassword, recoveryCode, normalizeRecoveryCode(recoveryCode)!];
