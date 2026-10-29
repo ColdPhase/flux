@@ -106,11 +106,15 @@ describe('F-030 unlock, Lock now and 423', () => {
     assert.equal((await readWorkspace(cy.browser, A)).encryption?.state, 'locked', 'metadata still reads while locked');
     const outsider = await person('Outsider');
     assert.equal((await contentCall(outsider.browser, A)).status, 404, 'a non-member learns nothing');
-    // S1 stopgap for cross-workspace reads (S2a filters them): refused for a member of the locked space, not for others.
-    const inbox = await cy.browser.request('GET', '/api/v1/inbox');
-    assert.equal(inbox.status, 423, inbox.text);
-    assert.equal((await cy.browser.request('GET', '/api/v1/search?q=garden')).status, 423);
-    assert.equal((await outsider.browser.request('GET', '/api/v1/inbox')).status, 200);
+    // Cross-workspace reads skip the locked space and name it (S2a-2c `lockedWorkspaces`); others see no such list entry.
+    for (const path of ['/api/v1/inbox', '/api/v1/search?q=garden', '/api/v1/needs-you', '/api/v1/return?place=home&from=24h']) {
+      const answer = await cy.browser.request('GET', path);
+      assert.equal(answer.status, 200, `${path}: ${answer.text}`);
+      assert.deepEqual((answer.json as { lockedWorkspaces?: unknown }).lockedWorkspaces, [{ id: A, name: 'Garden club' }], path);
+    }
+    const outsiderInbox = await outsider.browser.request('GET', '/api/v1/inbox');
+    assert.equal(outsiderInbox.status, 200);
+    assert.deepEqual((outsiderInbox.json as { lockedWorkspaces?: unknown }).lockedWorkspaces, []);
 
     const wrong = await unlock(ada.browser, A, { password: `${pw.ada} nope` });
     assert.equal(wrong.status, 400);
@@ -120,7 +124,7 @@ describe('F-030 unlock, Lock now and 423', () => {
     assert.equal((right.json as { encryption: { state: string } }).encryption.state, 'unlocked');
     assert.deepEqual((await events(A, 'workspace.unlocked.v1')).at(-1), { by: ada.id });
     expectStatus(await contentCall(cy.browser, A), 200);
-    expectStatus(await cy.browser.request('GET', '/api/v1/inbox'), 200);
+    assert.deepEqual((expectStatus(await cy.browser.request('GET', '/api/v1/inbox'), 200) as { lockedWorkspaces?: unknown }).lockedWorkspaces, [], 'unlocked: none');
     const repeat = await unlock(ada.browser, A, { password: 'not checked while unlocked' });
     assert.equal(repeat.status, 200, 'already unlocked: no check, so no oracle');
     await clearAttempts(A);

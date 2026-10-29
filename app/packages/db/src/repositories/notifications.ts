@@ -87,6 +87,16 @@ export function notificationGeneratorRows(db: DbExecutor) {
         .returning({ attempts: f.attempts });
       return row!.attempts;
     },
+    /** F-030: an event of a locked sealed workspace waits (ids only) for `workspace-encryption.resume.v1`. */
+    async recordWait(event: { id: string; workspaceId: string }) {
+      await db.execute(sql`INSERT INTO sealed_job_waits (id, workspace_id, queue, payload)
+        VALUES (gen_random_uuid(), ${event.workspaceId}::uuid, 'notifications.generate', ${JSON.stringify({ eventId: event.id })}::jsonb)`);
+    },
+    async eventById(id: string) {
+      const [row] = await db.select({ id: e.id, seq: e.seq, kind: e.kind, workspaceId: e.workspaceId, objectId: e.objectId, actorId: e.actorId, data: e.data })
+        .from(e).where(eq(e.id, id));
+      return row && row.workspaceId ? { ...row, workspaceId: row.workspaceId, data: (row.data ?? {}) as Record<string, unknown> } : null;
+    },
     async deadLetter(eventId: string) {
       const f = schema.notificationGenerationFailures;
       await db.update(f).set({ deadAt: sql`now()` }).where(eq(f.eventId, eventId));

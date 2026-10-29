@@ -50,7 +50,7 @@ await registerComparisonWorker(boss, db, { enabled: comparisonsOn, masterKey: co
 await registerIdempotencyCleanup(boss, db);
 await registerWorkspaceAiSweep(boss, db);
 // Encrypted workspaces (F-030): the keyring heartbeat and the resume job sent with every unlock.
-const encryption = await startWorkspaceEncryption(boss, db, process.env);
+const encryption = await startWorkspaceEncryption(boss, db, process.env, email.available);
 // The `runtime` transport (F-022 T3): reconciles slot bindings at start and periodically; off by default.
 const agentRuntime = startAgentRuntimeReconciler({ config: agentRuntimeConfig, db, pool, env: process.env });
 console.log('Flux worker ready');

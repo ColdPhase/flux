@@ -1,3 +1,4 @@
+import { AsyncLocalStorage } from 'node:async_hooks';
 import { sql } from 'drizzle-orm';
 import type { DbExecutor } from './repositories/push.js';
 import { SEALED_COLUMNS, type SealedTable } from './sealed-columns.js';
@@ -67,6 +68,17 @@ const passThrough = (workspaceId: string): FieldSeal => ({
 
 /** The seal of a workspace in this transaction: pass-through for a plain one; `sealFor` for an encrypted one. */
 export async function sealOf(executor: DbExecutor, workspaceId: string, options: { write: boolean }): Promise<FieldSeal> {
+  const scope = options.write ? undefined : lockedReadScope.getStore();
+  if (!scope) return resolveSeal(executor, workspaceId, options);
+  try { return await resolveSeal(executor, workspaceId, options); }
+  catch (error) {
+    if (!isLocked(error)) throw error;
+    scope.skipped.add(workspaceId);
+    return skippedSeal(workspaceId);
+  }
+}
+
+async function resolveSeal(executor: DbExecutor, workspaceId: string, options: { write: boolean }): Promise<FieldSeal> {
   if (plain.has(workspaceId)) return passThrough(workspaceId);
   const result = await executor.execute(sql`SELECT encrypted FROM workspaces WHERE id = ${workspaceId}::uuid`);
   const row = result.rows[0] as { encrypted: boolean } | undefined;
@@ -83,6 +95,23 @@ export async function sealOf(executor: DbExecutor, workspaceId: string, options:
 }
 
 /** The seals of several workspaces (a list that spans them), one lookup each. */
+/**
+ * F-030 `lockedWorkspaces`: a cross-workspace read (search, Inbox, Needs you, Since you left) runs in this scope. A
+ * sealed workspace that is locked here is then skipped instead of failing the whole read: its rows open to empty text
+ * (no reader can crash on a missing row), the workspace is recorded, and the route leaves its items out and names it
+ * (`lockedWorkspaces`). Outside the scope a locked workspace still answers 423.
+ */
+export const lockedReadScope = new AsyncLocalStorage<{ skipped: Set<string> }>();
+const isLocked = (error: unknown) => (error as { code?: unknown }).code === 'WORKSPACE_LOCKED';
+const SKIPPED = Symbol('skipped');
+const skippedSeal = (workspaceId: string): FieldSeal & { [SKIPPED]: true } => ({
+  sealed: true, workspaceId, [SKIPPED]: true,
+  seal: () => { throw Object.assign(new Error('A locked workspace is skipped here'), { code: 'WORKSPACE_LOCKED' }); },
+  open: () => '',
+  digest: () => { throw Object.assign(new Error('A locked workspace is skipped here'), { code: 'WORKSPACE_LOCKED' }); },
+  digestMatches: () => false,
+});
+
 export async function sealsOf(executor: DbExecutor, workspaceIds: Iterable<string>, options: { write: boolean }) {
   const seals = new Map<string, FieldSeal>();
   for (const id of new Set(workspaceIds)) seals.set(id, await sealOf(executor, id, options));
@@ -145,6 +174,7 @@ export function openRow<T extends object>(table: string, row: T, seal: FieldSeal
     const [key, value] = found;
     if (value === null || value === undefined || value === '') continue;
     if (spec.kind === 'json') {
+      if ((seal as { [SKIPPED]?: true })[SKIPPED]) { out[key] = null; continue; } // a locked workspace skipped in a cross-workspace read
       const envelope = typeof value === 'object' && value !== null ? (value as { $sealed?: unknown }).$sealed : value;
       out[key] = JSON.parse(seal.open(spec.field, identity, String(envelope)));
     } else {

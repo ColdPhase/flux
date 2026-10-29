@@ -7,6 +7,8 @@
  * cannot currently see. It carries no streaks, rankings or unread pressure: one short list and
  * at most one next step with its reason.
  */
+import type { LockedWorkspaceRef } from './encryption.js';
+
 export const RETURN_SUMMARY_PATH = '/api/v1/return';
 export const RETURN_POINTS_PATH = '/api/v1/return-points';
 export const RETURN_POINTS_RESTORE_PATH = '/api/v1/return-points/restore';
@@ -122,6 +124,11 @@ export interface ReturnDigest {
 }
 
 export interface ReturnSummary {
+  /**
+   * F-030: the caller's encrypted workspaces that are locked on this server; their items are left out, and the page
+   * draws one "Waiting to be unlocked" row for each. Absent outside an API that knows encryption.
+   */
+  lockedWorkspaces?: LockedWorkspaceRef[];
   place: ReturnPlace;
   point: ReturnPoint;
   scope: ReturnScope;

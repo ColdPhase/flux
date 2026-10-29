@@ -8,6 +8,8 @@
  */
 import type { WorkStatus } from './work.js';
 
+import type { LockedWorkspaceRef } from './encryption.js';
+
 export const SEARCH_PATH = '/api/v1/search';
 
 /** What a result is. `dm_message` results belong to the `message` filter and `thought` results to `sketch`. */
@@ -87,6 +89,11 @@ export interface SearchResult {
 }
 
 export interface SearchResponse {
+  /**
+   * F-030: the caller's encrypted workspaces that are locked on this server; their items are left out, and the page
+   * draws one "Waiting to be unlocked" row for each. Absent outside an API that knows encryption.
+   */
+  lockedWorkspaces?: LockedWorkspaceRef[];
   items: SearchResult[];
   /** Cursor of the next page; `null` when no more visible results exist. */
   next: string | null;

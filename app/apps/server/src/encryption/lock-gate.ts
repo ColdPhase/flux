@@ -1,7 +1,7 @@
 import type { FastifyInstance, FastifyRequest, RouteOptions } from 'fastify';
 import { CROSS_WORKSPACE_READ_ROUTES, LOCKED_ALLOWED_ROUTES } from '@flux/contracts';
 import { sealFor, type Database, type ProcessKeys } from '@flux/core';
-import { loadActor, sql, workspaceEncryptionRows, type DbExecutor, type SQL } from '@flux/db';
+import { loadActor, lockedReadScope, sql, workspaceEncryptionRows, type DbExecutor, type SQL } from '@flux/db';
 import type { SessionResolver } from '../identity/index.js';
 
 /**
@@ -58,13 +58,50 @@ export function lockedRouteKey(method: string, url: string) {
 }
 
 export function registerLockGate(app: FastifyInstance, { db, sessions, keys }: { db: Database; sessions: SessionResolver; keys: ProcessKeys }) {
-  /** A cross-workspace read: refused while any sealed workspace of the caller is locked here (S1; S2a filters instead). */
-  async function refuseCrossWorkspace(request: FastifyRequest) {
+  /**
+   * F-030 `lockedWorkspaces` (S2a-2c): a cross-workspace read runs in `lockedReadScope`, so a sealed workspace that is
+   * locked here is skipped instead of failing the read, and the answer names every such workspace of the caller.
+   */
+  async function lockedOf(request: FastifyRequest, skipped: ReadonlySet<string>) {
     const session = await sessions.resolveSession(request.headers);
-    if (!session || session.principal.kind !== 'human') return;
-    const sealed = await db.execute(sql`SELECT w.id FROM workspaces w JOIN workspace_members m ON m.workspace_id = w.id
-      WHERE w.encrypted AND m.user_id = ${session.principal.id} ORDER BY w.id`);
-    for (const row of sealed.rows as { id: string }[]) await sealFor(workspaceEncryptionRows(db as unknown as DbExecutor), keys, row.id, { write: false });
+    if (!session || session.principal.kind !== 'human') return [];
+    const sealed = (await db.execute(sql`SELECT w.id, w.name FROM workspaces w JOIN workspace_members m ON m.workspace_id = w.id
+      WHERE w.encrypted AND m.user_id = ${session.principal.id} ORDER BY w.name, w.id`)).rows as { id: string; name: string }[];
+    const locked: { id: string; name: string }[] = [];
+    for (const row of sealed) {
+      if (skipped.has(row.id)) { locked.push(row); continue; }
+      try { await sealFor(workspaceEncryptionRows(db as unknown as DbExecutor), keys, row.id, { write: false }); }
+      catch (error) { if ((error as { code?: unknown }).code === 'WORKSPACE_LOCKED') locked.push(row); else throw error; }
+    }
+    return locked;
+  }
+  function crossWorkspace(route: RouteOptions) {
+    const scopes = new WeakMap<FastifyRequest, { skipped: Set<string> }>();
+    const onRequest = route.onRequest ? [route.onRequest].flat() : [];
+    route.onRequest = [(request: FastifyRequest, _reply: unknown, done: () => void) => {
+      const store = { skipped: new Set<string>() };
+      scopes.set(request, store);
+      lockedReadScope.run(store, done);
+    }, ...onRequest] as RouteOptions['onRequest'];
+    const preSerialization = route.preSerialization ? [route.preSerialization].flat() : [];
+    route.preSerialization = [async (request: FastifyRequest, _reply: unknown, payload: unknown) => {
+      if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return payload;
+      const locked = await lockedOf(request, scopes.get(request)?.skipped ?? new Set());
+      if (!locked.length) return { ...(payload as object), lockedWorkspaces: [] };
+      // Every item of a locked workspace is left out (Inbox rows too, though they are content-free), whichever way the
+      // item names its place: its workspace, its source's workspace, its project or its project id.
+      const lockedIds = new Set(locked.map((workspace) => workspace.id));
+      const projects = new Set(((await db.execute(sql`SELECT id FROM projects WHERE workspace_id = ANY(${`{${[...lockedIds].join(',')}}`}::uuid[])`)).rows as { id: string }[])
+        .map((row) => row.id));
+      const ofLocked = (item: unknown) => {
+        const value = (item ?? {}) as { workspaceId?: unknown; projectId?: unknown; source?: { workspaceId?: unknown; projectId?: unknown }; project?: { id?: unknown } | null };
+        return lockedIds.has(String(value.workspaceId ?? value.source?.workspaceId ?? ''))
+          || projects.has(String(value.projectId ?? value.source?.projectId ?? value.project?.id ?? ''));
+      };
+      const answer = { ...(payload as Record<string, unknown>) };
+      for (const key of ['items', 'results'] as const) if (Array.isArray(answer[key])) answer[key] = (answer[key] as unknown[]).filter((item) => !ofLocked(item));
+      return { ...answer, lockedWorkspaces: locked };
+    }, ...preSerialization] as RouteOptions['preSerialization'];
   }
   async function refuseWhileLocked(request: FastifyRequest, url: string) {
     const scope = scopeOf(request, url);
@@ -80,12 +117,12 @@ export function registerLockGate(app: FastifyInstance, { db, sessions, keys }: {
     if (!route.url.startsWith('/api/v1/')) return;
     const methods = [route.method].flat();
     if (methods.every((method) => LOCKED_ALLOWED_ROUTES[lockedRouteKey(method, route.url)] !== undefined)) return;
+    if (methods.some((method) => CROSS_WORKSPACE_READ_ROUTES.includes(lockedRouteKey(method, route.url)))) crossWorkspace(route);
     const existing = route.preValidation ? [route.preValidation].flat() : [];
     route.preValidation = [async (request: FastifyRequest) => {
       const key = lockedRouteKey(request.method, route.url);
       if (LOCKED_ALLOWED_ROUTES[key] !== undefined) return;
-      if (CROSS_WORKSPACE_READ_ROUTES.includes(key)) await refuseCrossWorkspace(request);
-      else await refuseWhileLocked(request, route.url);
+      if (!CROSS_WORKSPACE_READ_ROUTES.includes(key)) await refuseWhileLocked(request, route.url);
     }, ...existing];
   });
 }

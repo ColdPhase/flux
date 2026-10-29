@@ -160,6 +160,13 @@ export interface GeneratorPorts {
   recordFailure(eventId: string, error: string): Promise<number>;
   /** Marks the event as given up on, for operators to inspect. */
   deadLetter(eventId: string): Promise<void>;
+  /**
+   * F-030: an event of a sealed workspace that is locked here waits (`sealed_job_waits`, ids only) so the cursor moves
+   * on and other workspaces never wait; `workspace-encryption.resume.v1` replays it after unlock.
+   */
+  recordWait?(event: GeneratorEvent): Promise<void>;
+  /** The event of a wait, to replay it. */
+  eventById?(id: string): Promise<GeneratorEvent | null>;
   /** Runs `work` in a savepoint so one event that fails does not undo the batch. */
   isolate<T>(work: () => Promise<T>): Promise<T>;
 }
