@@ -127,7 +127,11 @@ async function sealedMatches(db: DbExecutor, projectId: string, selection: Nativ
 /** Caller supplies its read-only REPEATABLE READ executor AFTER central access/selector validation. */
 export function nativeWorkReadKeys(db: DbExecutor) {
   return {
-    view: async (projectId: string, actor: PrincipalRef, selection: NativeWorkViewSelector, limit: number, cursor?: WorkReadCursor): Promise<NativeWorkKeyPage> =>
-      nativeReadKeyWindow<WorkObjectType>(db, nativeWorkViewKeySource(projectId, actor, selection, await sealedMatches(db, projectId, selection)), limit, cursor),
+    view: async (projectId: string, actor: PrincipalRef, selection: NativeWorkViewSelector, limit: number, cursor?: WorkReadCursor): Promise<NativeWorkKeyPage> => {
+      // Snapshot every input before the first await, as nativeReadKeyWindow does: a caller may mutate them meanwhile.
+      const owned = { actor: { ...actor }, selection: { ...selection }, cursor: cursor ? { ...cursor, boundary: { ...cursor.boundary } } : undefined };
+      const matching = await sealedMatches(db, projectId, owned.selection);
+      return nativeReadKeyWindow<WorkObjectType>(db, nativeWorkViewKeySource(projectId, owned.actor, owned.selection, matching), limit, owned.cursor);
+    },
   };
 }
