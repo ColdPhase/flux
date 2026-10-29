@@ -1290,10 +1290,14 @@ token alone is not enough (S1 review): a real deployment never holds a half-seal
     and moves its cursor on; `workspace-encryption.resume.v1` replays the waits after unlock in creation order (AC-9).
     `./flux export` refuses an encrypted space ("Garden club is encrypted. Export it from the app.") and writes
     nothing; `./flux restore` truncates `workspace_unlocks`, so a restored encrypted space is locked.
-  - **S2a-2c-3**: the event
-    backstop (with its token table), the remaining error-path redaction (pg-boss output, logs), `sealed_job_waits` and
-    the resume job, the SQL source scan, cross-workspace `lockedWorkspaces`, the replacement of the
-    route-level gate, `./flux export` refusal and restore truncation, and AC-6, AC-9, AC-10 and AC-7.
+  - **S2a-2c-3**: the event backstop (migration 0125: `a_sealed_event_data` and `event_data_tokens`, seeded from
+    `EVENT_DATA_TOKENS` in `packages/contracts`; a refused event answers `409 EVENT_CONTENT_REFUSED`); error-path
+    redaction: every API request and worker job runs in `sealedWorkScope`, and one that touched an encrypted
+    workspace's seal (or a job whose payload names one) answers, logs and stores in pg-boss only `redactedError`
+    (`SealedJobError(code)` for jobs); the AC-5 SQL source scan (`tests/app/support/sealed-sql-scan.ts`, each handled
+    site listed with its reason); and the API export of a sealed project, opened for the manager who asks.
+  - **S2a-2c-4**: the replacement of the route-level gate by per-repository sealing with the AC-6 route walk, AC-10
+    (`scripts/check_backup.sh`) and the rest of AC-7 (`pg_dump`, WAL, files volume, container layers).
 - **S2a: sealed database content and files.** `TABLE_CLASSES`, `SEALED_COLUMNS` and `VISIBLE_COLUMNS`
   with the live-catalog test, the backstops (plaintext, notifications, events, idempotency) and relaxed
   checks, **the search placeholder triggers and `search_changes`** (so no sealed column is ever

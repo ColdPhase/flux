@@ -88,6 +88,8 @@ async function resolveSeal(executor: DbExecutor, workspaceId: string, options: {
     return passThrough(workspaceId);
   }
   if (!row) return passThrough(workspaceId); // no such workspace: nothing to seal or open, and the write fails on its own
+  const work = sealedWorkScope.getStore();
+  if (work) work.sealed = true;
   if (!resolver) throw new SealsUnavailableError(workspaceId);
   const seal = await resolver(executor, workspaceId, options);
   if (!seal.sealed) throw new SealsUnavailableError(workspaceId); // never the identity seal for an encrypted workspace
@@ -101,6 +103,14 @@ async function resolveSeal(executor: DbExecutor, workspaceId: string, options: {
  * (no reader can crash on a missing row), the workspace is recorded, and the route leaves its items out and names it
  * (`lockedWorkspaces`, absent when none is locked). Outside the scope a locked workspace still answers 423.
  */
+/**
+ * F-030 Error paths: a request or job runs in this scope, and it records whether the work asked for an encrypted
+ * workspace's seal. Its errors are then stored and logged only through `redactedError` (code, SQLSTATE, constraint, ids).
+ */
+export const sealedWorkScope = new AsyncLocalStorage<{ sealed: boolean }>();
+/** True inside a request or job that touched an encrypted workspace's seal. */
+export const touchedSealedWorkspace = () => sealedWorkScope.getStore()?.sealed === true;
+
 export const lockedReadScope = new AsyncLocalStorage<{ skipped: Set<string> }>();
 const isLocked = (error: unknown) => (error as { code?: unknown }).code === 'WORKSPACE_LOCKED';
 const SKIPPED = Symbol('skipped');

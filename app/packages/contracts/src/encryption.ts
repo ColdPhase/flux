@@ -154,3 +154,19 @@ export const IDEMPOTENCY_ACCOUNT_OPERATIONS: Readonly<Record<string, string>> = 
 
 /** An encrypted workspace that is locked here, as cross-workspace reads name it (F-030 `lockedWorkspaces`). */
 export interface LockedWorkspaceRef { id: string; name: string }
+
+/**
+ * F-030 event data (S2a-2c-3, migration 0125): in an encrypted workspace every string in an event's `data` is a UUID,
+ * an ISO timestamp, a sealed envelope, an existing account id or principal key, or one of these registered values
+ * (kinds, states, roles, reasons and operations the record sites write). Migration 0125 seeds `event_data_tokens` with
+ * exactly this list, and `tests/app/encryption-registry.test.ts` compares the two. No free word passes.
+ */
+export const EVENT_DATA_TOKENS = [
+  'about', 'accepted', 'admin', 'affects', 'agent', 'assigned', 'blocked', 'contributor', 'conversation', 'copied_from_dm',
+  'copied_to_project', 'creation_reverted', 'decision', 'denied', 'dm', 'doc', 'done', 'group', 'guest', 'human', 'in_progress',
+  'invitation', 'left', 'link_added', 'link_removed', 'link_updated', 'map', 'material', 'member', 'mention', 'mentions', 'message',
+  'not_pursued', 'open', 'owner', 'pair', 'password', 'person', 'private', 'project', 'proposed', 'question', 'recovery', 'rejoined',
+  'related', 'renamed', 'reply', 'restart', 'restricted', 'result', 'review', 'self', 'sketch', 'source', 'still_applies',
+  'superseded', 'thought', 'thought_added', 'thought_removed', 'thought_updated', 'thoughts_moved', 'viewer', 'wiki', 'work',
+  'workspace',
+] as const;

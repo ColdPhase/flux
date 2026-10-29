@@ -1,12 +1,13 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { before, describe, test } from 'node:test';
-import { IDEMPOTENCY_ACCOUNT_OPERATIONS } from '@flux/contracts';
+import { EVENT_DATA_TOKENS, IDEMPOTENCY_ACCOUNT_OPERATIONS } from '@flux/contracts';
 import { SEALED_COLUMNS, TABLE_CLASSES, VISIBLE_COLUMNS, workspaceEncryptionRows, type DbExecutor } from '@flux/db';
 import { readdir, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { db, pool } from './support/db.js';
 import { createSealed, passphrase } from './support/encryption.js';
+import { sealedSqlFindings } from './support/sealed-sql-scan.js';
 import { person, workspace, type Person } from './support/people.js';
 
 // AC-5 of F-030, S2a-1 part (#655; docs/product/encrypted-workspaces.md#inventory): the registry against the LIVE catalog
@@ -262,5 +263,61 @@ describe('F-030 late heartbeat SQL (S1 review P3)', () => {
     const left = (await pool.query<{ workspace_id: string }>(`SELECT workspace_id FROM workspace_unlocks WHERE workspace_id = ANY($1) ORDER BY workspace_id`,
       [[stale, fresh, partial, late]])).rows.map((row) => row.workspace_id);
     assert.deepEqual(left.sort(), [fresh, late].sort());
+  });
+});
+
+describe('F-030 events backstop (S2a-2c-3, migration 0125)', () => {
+  test('event_data_tokens holds exactly EVENT_DATA_TOKENS of packages/contracts', async () => {
+    const rows = (await pool.query<{ token: string }>('SELECT token FROM event_data_tokens ORDER BY token COLLATE "C"')).rows.map((row) => row.token);
+    assert.deepEqual(rows, [...EVENT_DATA_TOKENS].sort());
+  });
+
+  test('an event of A carries only ids, timestamps, envelopes, accounts, principals and registered tokens; B is unchanged', async () => {
+    const insert = (ws: string, data: unknown) => pool.query(`INSERT INTO events (id, kind, object_id, actor_id, data, workspace_id)
+      VALUES (gen_random_uuid(), 'test.event.v1', gen_random_uuid(), $1, $2, $3)`, [`human:${ada.id}`, JSON.stringify(data), ws]);
+    await insert(A, { messageId: randomUUID(), at: new Date().toISOString(), by: ada.id, actor: `human:${ada.id}`, op: 'thought_added',
+      nested: { list: ['restart', randomUUID()], title: { $sealed: `fx1.1.${'C'.repeat(40)}` } }, count: 3, done: true, none: null });
+    for (const [label, data] of [['a free word', { op: 'secret' }], ['a nested free word', { nested: { list: ['restart', 'plan b'] } }],
+      ['an unknown account', { by: 'not-a-user' }], ['an unknown agent', { actor: `agent:${randomUUID()}` }],
+      ['a principal of an unknown account', { actor: 'human:nobody' }], ['an envelope-like word', { title: 'fx1.1.short' }],
+      ['a free key value under $sealed', { title: { $sealed: 'plain words' } }], ['a date that is not a timestamp', { at: '2026-10-29 secret' }]] as const) {
+      await assert.rejects(insert(A, data), { hint: 'EVENT_CONTENT_REFUSED' }, label);
+    }
+    await insert(B, { op: 'secret', title: 'Plain title' });
+  });
+});
+
+/**
+ * AC-5 SQL source scan (S2a-2c-3): each place where SQL computes over a sealed column, with how a sealed workspace is
+ * handled there. A finding not listed fails, and so does a listed one the scan no longer finds.
+ */
+const HANDLED_SQL: Readonly<Record<string, string>> = {
+  'packages/db/src/repositories/agent-orientation.ts: SELECT m.id, left(v.title, 300)': 'agent orientation: an encrypted workspace has no agents (AI always off)',
+  'packages/db/src/repositories/agent-orientation.ts: SELECT c.id, coalesce(left(m.body, 300)': 'agent orientation: an encrypted workspace has no agents (AI always off)',
+  'packages/db/src/repositories/live-editing.ts: const rows = await db.select({ sequence: u.sequence, bytes: sql<Buffer>`decode(${u.bytes}, \'base64\')`, ledger': 'live Wiki: refused for A until S2b (WORKSPACE_ENCRYPTED_UNSUPPORTED)',
+  'packages/db/src/repositories/live-editing.ts: const sizes = await db.select({ sequence: u.sequence, size: sql<number>`octet_length(${u.bytes})': 'live Wiki: refused for A until S2b',
+  'packages/db/src/repositories/live-editing.ts: const rows = await db.select({ sequence: u.sequence, bytes: sql<Buffer>`decode(${u.bytes}, \'base64\')`, commandId': 'live Wiki: refused for A until S2b',
+  'packages/db/src/repositories/live-map.ts: const [size]=await db.select({bytes:sql<number>`COALESCE(sum(octet_length(${j.change}': 'live map: refused for A until S2b',
+  'packages/db/src/repositories/project-export.ts: .where(byId ? or(byId, eq(schema.projects.name, value))': 'export by name: an envelope never equals a typed name; ./flux export refuses A and the API passes the id',
+  'packages/db/src/repositories/search.ts: CASE WHEN d.id IS NULL THEN NULL WHEN d.title IS NOT NULL THEN d.title': 'a null test only; the title is opened by the application',
+  'packages/db/src/repositories/sketches.ts: const withContent = sql`(EXISTS (SELECT 1 FROM ${t} WHERE ${t.sketchId} = ${s.id}) OR btrim(${s.title})': 'known gap until S2b: an empty sealed map is listed (an envelope is never the default title)',
+  'packages/db/src/repositories/work-read-associations.ts: WHEN \'message\' THEN (SELECT left(split_part(btrim(o.body)': 'edges(): for a sealed workspace the titles are replaced by opened ones (workRows.titles)',
+  'packages/db/src/repositories/work-read-associations.ts: WHEN \'thought\' THEN (SELECT left(split_part(btrim(t.text)': 'edges(): for a sealed workspace the titles are replaced by opened ones (workRows.titles)',
+  'packages/db/src/repositories/work-read-keys.ts: parts.push(sql`SELECT \'decision\'::text AS kind': 'task text filter: for a sealed workspace the opened rows are filtered in the application',
+  'packages/db/src/repositories/work-read-keys.ts: parts.push(sql`SELECT \'result\'::text AS kind': 'task text filter: for a sealed workspace the opened rows are filtered in the application',
+  'packages/db/src/repositories/work-read-keys.ts: parts.push(sql`SELECT \'work\'::text AS kind': 'task text filter: for a sealed workspace the opened rows are filtered in the application',
+  'packages/db/src/repositories/work.ts: const [row] = await db.select({ matches: sql<boolean>`${w.creationBaseline} = jsonb_build_object(': 'creationBaselineMatches: a sealed row is compared after openRow (baselineMatches)',
+  'packages/db/src/repositories/work.ts: baselineMatches: sql<boolean>`COALESCE(${w.creationBaseline} = jsonb_build_object(': 'creationUndoFacts: a sealed row is recomputed after openRow (baselineMatches)',
+};
+
+describe('F-030 AC-5 SQL source scan (S2a-2c-3)', () => {
+  test('no SQL computes over a sealed column except the handled sites', async () => {
+    const findings = await sealedSqlFindings();
+    const handled = Object.keys(HANDLED_SQL);
+    const unhandled = findings.filter((finding) => !handled.some((prefix) => finding.startsWith(prefix)));
+    assert.deepEqual(unhandled, [], 'every computation over a sealed column needs a sealed-workspace path');
+    const stale = handled.filter((prefix) => !findings.some((finding) => finding.startsWith(prefix)));
+    assert.deepEqual(stale, [], 'a handled site the scan no longer finds is removed from the list');
+    assert.ok(findings.length >= 10, `the scan finds the known sites (${findings.length})`);
   });
 });

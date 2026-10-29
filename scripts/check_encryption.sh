@@ -79,6 +79,16 @@ for log in postgres services; do
   fi
 done
 [ "$hits" -eq 0 ] || exit 1
+# AC-7 error paths (S2a-2c-3): A's failed request and job texts are in no service log, the request in no PostgreSQL log;
+# B's failed request text is in the API log (the control: an unredacted failure is logged).
+for pair in services:services postgres:postgres; do
+  file=${pair%%:*}; log=${pair##*:}
+  $compose run --rm --no-deps -T test cat "/state/encryption-error-$file.txt" > "$scan_dir/error-$file"
+  [ "$(grep -c . "$scan_dir/error-$file")" -ge 1 ] || { echo "no error-path texts for the $log log" >&2; exit 1; }
+  if grep -F -f "$scan_dir/error-$file" "$scan_dir/$log.log" > /dev/null; then echo "ERROR-PATH TEXT OF A FOUND in the $log log" >&2; exit 1; fi
+done
+$compose run --rm --no-deps -T test cat /state/encryption-error-control.txt > "$scan_dir/error-control"
+grep -F -f "$scan_dir/error-control" "$scan_dir/services.log" > /dev/null || { echo 'error-path control: the failed request of B is not in the API log' >&2; exit 1; }
 echo "AC-4 log scan: $count secret encodings, $(wc -l < "$scan_dir/postgres.log") PostgreSQL log lines, $(wc -l < "$scan_dir/services.log") service log lines, 0 hits"
 
 report_memory
