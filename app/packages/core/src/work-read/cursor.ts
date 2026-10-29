@@ -6,8 +6,8 @@ import { workReadId, workReadInvalid } from './query.js';
 export type WorkReadBoundary = WorkReadCursor['boundary'];
 export interface KeyedWorkRead<T> { value: T; key: WorkReadBoundary }
 export interface WorkReadSlice<T> { items: KeyedWorkRead<T>[]; total: number; before: number; hasBefore: boolean; hasAfter: boolean;
-  /** F-030: a sealed chooser search opened only the newest objects (`SEALED_CHOOSER_SCAN_LIMIT`). */
-  searchLimited?: true }
+  /** F-030: a sealed chooser search could not use the in-memory index (the workspace is too large for it). */
+  searchUnavailable?: true }
 
 /** Canonical normalized scalar/array/object data only; source sets are digested, never encoded. */
 function canonical(value: unknown): string {

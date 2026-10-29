@@ -3,7 +3,7 @@ import { alias } from 'drizzle-orm/pg-core';
 import { UNTITLED_SKETCH } from '@flux/contracts';
 import * as schema from '../schema.js';
 import type { DbExecutor } from './push.js';
-import { openAliased, openRows, sealFor } from '../sealing.js';
+import { openAliased, openRows, sealFor, sealOf } from '../sealing.js';
 
 /**
  * Drizzle persistence for sketches, thoughts and links (issues #69, #46). The rows satisfy the
@@ -113,9 +113,22 @@ export function sketchRows(db: DbExecutor) {
     /** Rows of `workspaceId` matching `audience` (the policy's list condition), newest change first. */
     async list(workspaceId: string, audience: SQL, filter: { projectId?: string; dmId?: string; scope?: 'private'; hideEmpty?: boolean }, page: { limit: number; offset: number }) {
       // An empty sketch (no thought, still the default title) is left out before the limit and in the total (#508).
-      const withContent = sql`(EXISTS (SELECT 1 FROM ${t} WHERE ${t.sketchId} = ${s.id}) OR btrim(${s.title}) NOT IN ('', ${UNTITLED_SKETCH}))`;
-      const where = and(eq(s.workspaceId, workspaceId), audience, filter.projectId ? eq(s.projectId, filter.projectId) : undefined,
-        filter.dmId ? eq(s.dmId, filter.dmId) : undefined, filter.scope ? eq(s.scope, filter.scope) : undefined, filter.hideEmpty ? withContent : undefined);
+      const base = and(eq(s.workspaceId, workspaceId), audience, filter.projectId ? eq(s.projectId, filter.projectId) : undefined,
+        filter.dmId ? eq(s.dmId, filter.dmId) : undefined, filter.scope ? eq(s.scope, filter.scope) : undefined);
+      let withContent: SQL | undefined;
+      if (filter.hideEmpty) {
+        if ((await sealOf(db, workspaceId, { write: false })).sealed) {
+          // F-030: the stored title is an envelope, so the default title cannot be compared in SQL. The maps without a thought
+          // are opened here (a few) and the ones still titled by default are left out, before the limit and in the total.
+          const bare = await db.select({ id: s.id, workspaceId: s.workspaceId, title: s.title }).from(s)
+            .where(and(base, sql`NOT EXISTS (SELECT 1 FROM ${t} WHERE ${t.sketchId} = ${s.id})`));
+          const empty = (await openRows(db, 'sketches', bare)).filter((row) => ['', UNTITLED_SKETCH].includes(row.title.replace(/^ +| +$/g, ''))).map((row) => row.id);
+          withContent = empty.length ? sql`${s.id} <> ALL (${sql.param(empty)}::uuid[])` : undefined;
+        } else {
+          withContent = sql`(EXISTS (SELECT 1 FROM ${t} WHERE ${t.sketchId} = ${s.id}) OR btrim(${s.title}) NOT IN ('', ${UNTITLED_SKETCH}))`;
+        }
+      }
+      const where = and(base, withContent);
       const rows = await within('sketches', await selectSketches().where(where).orderBy(desc(s.updatedAt), asc(s.id)).limit(page.limit).offset(page.offset));
       const counted = rows.length ? await db.select({ sketchId: t.sketchId, n: count() }).from(t)
         .where(inArray(t.sketchId, rows.map(({ row }) => row.id))).groupBy(t.sketchId) : [];

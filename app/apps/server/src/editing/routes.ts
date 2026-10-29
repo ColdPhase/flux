@@ -1,7 +1,7 @@
 import type { FastifyInstance, FastifyReply } from 'fastify';
 import { liveDocPath, liveDocEnrollPath, liveDocSavePath, liveDocReceiptPath, liveMapPath, liveMapGesturePath, liveMapUndoPath,
   type EnrollLiveDoc, type SaveSharedDoc,type LiveMapGesture,type UndoLiveMap } from '@flux/contracts';
-import { DomainError, InvalidInputError, ServiceUnavailableError, type Principal } from '@flux/core';
+import { DomainError, InvalidInputError, ServiceUnavailableError } from '@flux/core';
 import { EditingTransactionError } from '@flux/db';
 import type { SessionResolver } from '../identity/session.js';
 import { expectedVersion } from '../http/commands.js';
@@ -13,9 +13,7 @@ import { editingContextCharge } from './context-charge.js';
 import { EditingOutputBudget, EditingOutputError } from './output.js';
 import { editingHTTPLifetime, type EditingHTTPLifetime } from './http-lifetime.js';
 
-interface Options { sessions: SessionResolver; authority: WikiAuthority | null; outputBudget: EditingOutputBudget;maps?:MapAuthority|null;
-  /** F-030: refuses a live route for an encrypted workspace's doc or map (until S2b). */
-  sealedLive?: (principal: Principal | null, target: { docId?: unknown; sketchId?: unknown }) => Promise<void> }
+interface Options { sessions: SessionResolver; authority: WikiAuthority | null; outputBudget: EditingOutputBudget;maps?:MapAuthority|null }
 const UUID = '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$';
 const uuid = { type: 'string', pattern: UUID } as const;
 const enrollment = { type: 'object', additionalProperties: false, required: ['generation','replicaId'], properties: {
@@ -40,7 +38,7 @@ function send(reply: FastifyReply, body: unknown, lifetime: EditingHTTPLifetime)
   reply.raw.end(owned);
 }
 /** Live routes share the operator's production capability and current domain authority. */
-export async function editingRoutes(app: FastifyInstance, { sessions, authority, outputBudget,maps=null,sealedLive }: Options) {
+export async function editingRoutes(app: FastifyInstance, { sessions, authority, outputBudget,maps=null }: Options) {
   app.setErrorHandler((error, _request, reply) => {
     if (error instanceof EditingTransactionError) return reply.code(503).send({ code: 'EDITING_OUTCOME_UNKNOWN', error: error.message, outcome: 'unknown', retryable: true });
     if (error instanceof DomainError) return reply.code(error.status).send({ code: error.code, error: error.message, outcome: 'refused' });
@@ -49,8 +47,6 @@ export async function editingRoutes(app: FastifyInstance, { sessions, authority,
     throw error;
   });
   app.addHook('preValidation', async () => { if (!authority&&!maps) throw new ServiceUnavailableError('Live editing is disabled on this installation', 'LIVE_EDITING_DISABLED'); });
-  if (sealedLive) app.addHook('preValidation', async (request) =>
-    sealedLive((await sessions.resolveSession(request.headers))?.principal ?? null, (request.params ?? {}) as { docId?: unknown; sketchId?: unknown }));
   const wiki=()=>{if(!authority)throw new ServiceUnavailableError('Live wiki is disabled','LIVE_EDITING_DISABLED');return authority;};
   const admission = new EditingHTTPAdmission(outputBudget);
   app.addHook('onClose', async () => admission.close());

@@ -94,4 +94,9 @@ export interface SearchResponse {
   counts: Partial<Record<SearchFilterType, number>>;
   /** True when counting stopped at {@link SEARCH_LIMITS.countCap} visible matches. */
   countsCapped: boolean;
+  /**
+   * F-030: encrypted workspaces the reader belongs to that are too large to search in memory
+   * (`FLUX_SEALED_SEARCH_MAX_BYTES`); their content is not in this answer. Absent when there are none.
+   */
+  sealedUnavailable?: string[];
 }
