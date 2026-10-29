@@ -79,16 +79,50 @@ export function useFileBytes(fileId: string | null, as: 'image' | 'audio', enabl
   return result.key === key ? result.bytes : { status: 'loading' };
 }
 
-/** A local File (a draft or a message not stored yet) as an object URL for its thumbnail. */
-export function useObjectUrl(blob: Blob | null | undefined) {
+/**
+ * A photo kept as a small data: URL, made from the bytes the person chose while they could still be read. A message that waits
+ * for the connection shows this copy: it needs no read of the file or of its object URL when the tile is drawn (a browser that
+ * is offline may refuse those), so the waiting photo is always the real photo (#469, #348 AC-3). Keyed by the File, so it goes
+ * with the file; the longest side is 1280 px, about what the largest tile shows at 3x.
+ */
+const previews = new WeakMap<Blob, string>();
+const making = new WeakMap<Blob, Promise<void>>();
+const PREVIEW_EDGE = 1280;
+export function warmPreview(blob: Blob | null | undefined): Promise<void> {
+  if (!blob || previews.has(blob) || !blob.type.startsWith('image/') || typeof createImageBitmap !== 'function') return Promise.resolve();
+  const started = making.get(blob);
+  if (started) return started;
+  const work = (async () => {
+    try {
+      const bitmap = await createImageBitmap(blob);
+      const scale = Math.min(1, PREVIEW_EDGE / Math.max(bitmap.width, bitmap.height));
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.max(1, Math.round(bitmap.width * scale));
+      canvas.height = Math.max(1, Math.round(bitmap.height * scale));
+      canvas.getContext('2d')?.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+      bitmap.close?.();
+      const url = canvas.toDataURL(blob.type === 'image/png' ? 'image/png' : 'image/jpeg', 0.86);
+      if (url.startsWith('data:image/')) previews.set(blob, url);
+    } catch { /* the object URL below remains the thumbnail */ }
+  })();
+  making.set(blob, work);
+  return work;
+}
+
+/**
+ * A local File (a draft or a message not stored yet) as an object URL for its thumbnail. With `preferPreview` (a message that is
+ * waiting to send) it shows the kept copy made by {@link warmPreview} when there is one.
+ */
+export function useObjectUrl(blob: Blob | null | undefined, preferPreview = false) {
   const [state, setState] = useState<{ blob: Blob; url: string } | null>(null);
+  const kept = blob && preferPreview ? previews.get(blob) : undefined;
   useEffect(() => {
-    if (!blob) return;
+    if (!blob || kept) return;
     const url = URL.createObjectURL(blob);
     queueMicrotask(() => setState({ blob, url }));
     return () => URL.revokeObjectURL(url);
-  }, [blob]);
-  return blob && state?.blob === blob ? state.url : '';
+  }, [blob, kept]);
+  return kept ?? (blob && state?.blob === blob ? state.url : '');
 }
 
 /** Decorative waveform bars, steady for one file. */
@@ -114,9 +148,12 @@ export function VoiceNote({ file }: { file: MessageFile }) {
   const audio = useRef<HTMLAudioElement>(null);
   const bytes = useFileBytes(wanted ? file.id : null, 'audio', wanted, file.name);
   useEffect(() => { if (bytes.status === 'ready' && wanted) void audio.current?.play().catch(() => setPlaying(false)); }, [bytes, wanted]);
+  // The bytes are read after the press, so the player is started inside the press itself: a browser that allows playback only
+  // from a user gesture (Safari) then plays them once they arrive, instead of needing a second press (#469).
+  useEffect(() => { if (bytes.status === 'denied') audio.current?.pause(); }, [bytes.status]);
   const toggle = () => {
-    if (!wanted) { setWanted(true); return; }
-    if (audio.current?.paused) void audio.current.play(); else audio.current?.pause();
+    if (!wanted) { setWanted(true); void audio.current?.play().catch(() => setPlaying(false)); return; }
+    if (audio.current?.paused) void audio.current.play().catch(() => setPlaying(false)); else audio.current?.pause();
   };
   return (
     <div className="file-row voice-note" data-file-kind="audio">
@@ -125,8 +162,8 @@ export function VoiceNote({ file }: { file: MessageFile }) {
         <small className="voice-note__line"><Waveform seed={file.id} />{bytes.status === 'denied' ? 'Unavailable' : duration || fileSize(file.size)}</small></span>
       <button type="button" className="voice-note__play" onClick={toggle} aria-pressed={playing} aria-label={`${playing ? 'Pause' : 'Play'} ${file.name}`} disabled={bytes.status === 'denied'}>
         <Icon name={playing ? 'pause' : 'play'} size={14} /></button>
-      {bytes.status === 'ready' ? <audio ref={audio} src={bytes.url} preload="metadata" onPlay={() => setPlaying(true)} onPause={() => setPlaying(false)} onEnded={() => setPlaying(false)}
-        onLoadedMetadata={(event) => setDuration((shown) => clockOf(event.currentTarget.duration) || shown)} /> : null}
+      <audio ref={audio} src={bytes.status === 'ready' ? bytes.url : undefined} preload="metadata" onPlay={() => setPlaying(true)} onPlaying={() => setPlaying(true)} onPause={() => setPlaying(false)} onEnded={() => setPlaying(false)}
+        onLoadedMetadata={(event) => { const known = clockOf(event.currentTarget.duration); if (known) setDuration(known); }} />
     </div>
   );
 }

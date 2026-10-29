@@ -79,7 +79,7 @@ function Meter({ percent }: { percent: number }) {
 }
 
 function PendingPhoto({ file, send, more }: { file: DraftFile; send?: { state: PendingSend['state']; onRetry?: () => void }; more: number }) {
-  const url = useObjectUrl(selectedFile(file.uploadId));
+  const url = useObjectUrl(selectedFile(file.uploadId), true);
   const state = send?.state ?? 'sending';
   // Its own bytes: a percentage while they go out, then "Sending" once all are out until the message is confirmed (#348).
   const uploading = file.state === 'uploading' && state !== 'failed' && state !== 'waiting';

@@ -1,6 +1,6 @@
-import { useRef, useState, type DragEvent } from 'react';
+import { useEffect, useRef, useState, type DragEvent } from 'react';
 import { Icon, useMediaQuery } from '../ui';
-import { FileIcon, typeLine, useObjectUrl } from './Attachments';
+import { FileIcon, typeLine, useObjectUrl, warmPreview } from './Attachments';
 import { selectedFile, uploadLabel, type ComposerState, type DraftFile } from './draft';
 import { detailLine, looksLikePhoto } from './fileKind';
 import { CiteTile } from './References';
@@ -86,6 +86,8 @@ export function ComposerFiles({ state, disabled = false, attach = 'row' }: { sta
 function DraftThumb({ file, order, status, blocked, onRetry, onRemove }: { file: DraftFile; order: number; status: string; blocked: boolean; onRetry: () => void; onRemove: () => void }) {
   const local = looksLikePhoto(file.name) ? selectedFile(file.uploadId) : undefined;
   const url = useObjectUrl(local);
+  // While the person can still read the file, a small copy of the photo is kept for its place in the queue if the message has to wait (#469).
+  useEffect(() => { void warmPreview(local); }, [local]);
   const [broken, setBroken] = useState(false);
   const photo = !!url && !broken;
   return <li className={`composer-thumb${photo ? ' is-photo' : ''}`} data-file-state={file.state}>

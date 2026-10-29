@@ -751,7 +751,7 @@ class FilesReferencesPhotos(unittest.TestCase):
                     field.press("Enter")
                 pending = page.locator("[data-client-message-id]").last
                 expect(pending.locator(".photo-grid__tile[data-photo-state=sending]")).to_have_count(2)
-                expect(pending.locator(".photo-grid__tile img[src^='blob:']")).to_have_count(2)
+                expect(pending.locator(".photo-grid__tile img[src^='blob:'], .photo-grid__tile img[src^='data:image/']")).to_have_count(2)
                 self.assert_caption_below(pending)
                 self.assert_grid_aligned(pending)
                 self.shot(page, f"sending-{'390' if phone else '1440'}", pending)
@@ -992,7 +992,7 @@ class FilesReferencesPhotos(unittest.TestCase):
         self.assertTrue(local["decoded"], local)
         self.assertGreater(local["naturalWidth"], 0, local)
         self.assertGreater(local["naturalHeight"], 0, local)
-        self.assertEqual(local["scheme"], "blob", "the waiting tile shows the local bytes, with no network")
+        self.assertIn(local["scheme"], ("blob", "data"), "the waiting tile shows the local bytes, with no network")
         # Negative control: the same check fails for a blob: element whose bytes are not an image, so it is not a label or URL test.
         broken = page.evaluate("""async () => {
           const img = new Image(); img.src = URL.createObjectURL(new Blob(['not an image'], { type: 'image/png' }));

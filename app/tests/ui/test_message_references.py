@@ -149,7 +149,7 @@ class MessageReferences(unittest.TestCase):
         # The card opens its target: the thought on its map, the message in its own project.
         thought.click()
         expect(page).to_have_url(re.compile(rf"/map/{self.ids['sketch']}#thought-{self.ids['thought']}$"))
-        page.go_back()
+        page.goto(f"/projects/{self.ids['project']}")
         self.card(page, "both", "message").click()
         expect(page).to_have_url(re.compile(rf"/projects/{self.ids['board']}/conversations/{self.ids['note_conversation']}#message-{self.ids['note']}$"))
         # A message of a direct message opens that conversation.
@@ -278,6 +278,31 @@ class MessageReferences(unittest.TestCase):
                 expect(rows.nth(3).locator("small")).to_have_text(re.compile(r"^Document · \d+ B$"))
                 # A name alone says nothing: a ".pdf" that is not one has no pages.
                 expect(rows.nth(4).locator("small")).to_have_text(re.compile(r"^PDF · \d+ B$"))
+
+    def test_g_a_voice_note_plays_and_pauses_for_its_reader(self) -> None:
+        """#469: actual playback of a stored voice note (the server read its 3 s from the bytes; the player must agree)."""
+        for phone in (False, True):
+            with self.subTest(phone=phone):
+                page = self.page("jonas", phone=phone)
+                heard: list[str] = []
+                page.on("pageerror", lambda error: heard.append(f"pageerror {error}"))
+                page.on("console", lambda message: heard.append(f"{message.type}: {message.text}") if message.type in ("error", "warning") else None)
+                page.wait_for_load_state("networkidle")
+                selector = f"#message-{self.ids['files']} .voice-note"
+                note = page.locator(selector)
+                expect(note.locator(".voice-note__line")).to_contain_text("0:03")
+                note.get_by_role("button", name=re.compile("^Play voice-note.wav")).click()
+                # The element is looked up on every poll: what matters is the one on the page, not one held from before.
+                state = "(() => { const a = document.querySelector(%r + ' audio'); return a ? { paused: a.paused, t: a.currentTime, ready: a.readyState, net: a.networkState, error: a.error ? a.error.code : null, src: (a.currentSrc || a.src || '').slice(0, 10), duration: a.duration } : null; })()" % selector
+                try:
+                    page.wait_for_function("() => { const s = %s; return !!s && s.t > 0.2 && !s.paused; }" % state, timeout=15000)
+                except Exception:
+                    self.fail(f"the voice note did not start playing after one press: {page.evaluate('() => ' + state)} at {page.url}, {page.locator('.voice-note').count()} voice notes, {page.locator('audio').count()} audio elements; heard {heard}; page says {page.locator('body').inner_text()[:300]!r}")
+                seen = page.evaluate("() => " + state)
+                self.assertIsNone(seen["error"], seen)
+                self.assertAlmostEqual(seen["duration"], 3.0, delta=0.2, msg="the player agrees with the duration the server read")
+                note.get_by_role("button", name=re.compile("^Pause voice-note.wav")).click()
+                self.assertTrue(page.evaluate("() => " + state)["paused"])
 
 
 if __name__ == "__main__":

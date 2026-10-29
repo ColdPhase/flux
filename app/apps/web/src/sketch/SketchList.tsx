@@ -246,7 +246,6 @@ export function SketchList({ sketch, meId, selection, connectFrom, editing, canW
               <button type="button" aria-label="Add a child thought" onClick={() => on.onAdd(thought.id)}><Icon name="plus" size={12} />Child</button>
               {on.onTask ? <button type="button" aria-label="Create task from selected thoughts" onClick={on.onTask}><Icon name="tasks" size={12} />Create task</button> : null}
             </> : null}
-            {on.onCite ? <button type="button" aria-label="Cite the selected thought in the conversation" onClick={on.onCite}><Icon name="cite" size={12} />Cite</button> : null}
             <button type="button" className="sk-outline-more" aria-label="More actions" aria-expanded={more} onClick={() => setMoreId(more ? null : thought.id)}><Icon name="more" size={14} /></button>
           </span> : null}
           {linked?.count && projectId ? <span className="sk-outline-chip" onClick={quiet}><ThoughtTasks thought={thought} tasks={linked} projectId={projectId} variant="list" onOpenTask={on.onOpenTask} /></span> : null}
@@ -261,6 +260,7 @@ export function SketchList({ sketch, meId, selection, connectFrom, editing, canW
           <button type="button" onClick={() => { setMoreId(null); reorder(row, 1); }}>Move down<kbd>⌥↓</kbd></button>
           {arrange && canWrite ? <button type="button" aria-pressed={connectFrom === thought.id} onClick={() => { setMoreId(null); on.onConnectFrom(thought.id); }}>Connect…</button> : null}
           <button type="button" onClick={() => { setMoreId(null); on.onConnections(thought.id); }}>Connections</button>
+          {on.onCite ? <button type="button" onClick={() => { setMoreId(null); on.onCite?.(); }}>Cite in conversation</button> : null}
           {canWrite ? <button type="button" onClick={() => { setMoreId(null); on.onRemove(selection.includes(thought.id) ? selection : [thought.id]); }}>Remove</button> : null}
         </div> : null}
         {thought.file || link ? <div className="sk-outline-body">
