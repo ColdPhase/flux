@@ -1,29 +1,40 @@
-"""Opt-in #155 motion/navigation-feedback measurement against the #151 interaction budgets.
+"""Opt-in #155/#151 measurement of navigation feedback, motion, typing and layout switches against the agreed budgets.
 
-Not part of normal test_*.py discovery (it takes several minutes). Run it explicitly through the
+Not part of normal test_*.py discovery (it takes about twenty minutes). Run it explicitly through the
 pinned UI stack: `./scripts/check_ui.sh motion_performance` with FLUX_UI_SCREENSHOT_DIR set; the report
 is written to motion-performance.json there.
 
 Method (same as the accepted #151/#155 native-work kickoff, docs/development/performance/
 2026-10-01-native-work.md): public commands create a realistic project fixture; Chromium (Python
-Playwright) issues trusted clicks/keys; the page's own monotonic clock times each action from the
+Playwright) issues trusted clicks/taps/keys; the page's own monotonic clock times each action from the
 trusted event's timeStamp to a double-requestAnimationFrame following-frame proxy (not a raster
-completion claim). Every distribution has 30 warm-ups and at least 200 measured actions over at least
-60 s, per profile: 1280x800 DPR1, and 390x844 DPR1 with CDP 4x CPU throttling (viewport/CPU
-emulation, not a physical phone). API, database and worker are uncapped.
+completion claim). The work-tab, project and key distributions have 30 warm-ups and at least 200 measured
+actions over at least 60 s, per profile: 1280x800 DPR1 with tabs, and 390x844 DPR1 with touch, a mobile
+viewport and CDP 4x CPU throttling (viewport/CPU emulation, not a physical phone) with the phone's title
+menu (#341: the title opens the view menu, choosing a view closes it). API, database and worker are uncapped.
 
-Budgets (p95, desktop / CPU4x), inherited from #151 for a view click to selected-state paint and a
-keydown to input paint: 150/300 ms and 100/200 ms. The traveling highlight is decorative; its motion
-must finish within the selection budget plus its token duration (UI116-5: 160-220 ms) and keep frames
-continuous. Observed failures are reported, never hidden; the run fails when a budget fails.
+Phone navigation has no traveling highlight, so its three marks are the menu's: feedback is the menu leaving
+(`data-state="closing"`), motion end is the menu gone, committed is the header naming the chosen view.
+
+A layout switch (a window resize or rotation, `Page.set_viewport_size`) runs from the resize event to the
+last frame in which the shell's landmarks (`LANDMARKS`) changed place or size, plus the following frame; they must
+stay unchanged for 150 ms to count as settled (the worst frame gap is read to that point). Layout distributions have 15 warm-ups and
+`FLUX_MOTION_LAYOUT_SAMPLES` (default 100) measured switches per destination.
+
+Budgets are the ones agreed in docs/design/adaptive-workspaces.md ("Agreed performance budgets"); the
+constants below must equal that table (tests/test_adaptive_budgets.py checks it). Observed failures are
+reported, never hidden; the run fails when a budget fails.
 """
 from __future__ import annotations
 
 import json
 import math
+from collections import Counter
 import os
 from pathlib import Path
+import re
 import time
+from urllib.parse import urlparse
 import unittest
 import uuid
 
@@ -36,36 +47,74 @@ SAMPLES = int(os.environ.get("FLUX_MOTION_SAMPLES", "200"))
 SECONDS = float(os.environ.get("FLUX_MOTION_SECONDS", "60"))
 PASSWORD = "measured calm motion in a shared studio"
 STAMP = uuid.uuid4().hex[:10]
+# The agreed p95 budgets in milliseconds (docs/design/adaptive-workspaces.md, "Agreed performance budgets").
+# selectionFeedback: trusted click or tap to the chosen item's first marked frame. motionEnd: to the motion finishing.
+# selectionCommitted: to the route showing the choice. keyInput: keydown to the controlled input's paint.
+# frameGap: the worst gap between two frames from the action to its committed paint. layoutSwitch: a resize to settled.
+# layoutGap: the worst frame gap during it. layoutRequests: API reads a resize causes (a shell that swaps for another reads its two small agent lists on mount; a bigger window of
+# the same shell reads nothing).
+# heapGrowthMB: the JavaScript heap after a forced collection, at the end of the profile against its start (a single ceiling, not a p95).
 BUDGETS = {
-    "desktop": {"selectionFeedback": 150, "selectionCommitted": 2000, "motionEnd": 150 + 220, "keyInput": 100, "frameGap": 50},
-    "phone-cpu4": {"selectionFeedback": 300, "selectionCommitted": 4000, "motionEnd": 300 + 220, "keyInput": 200, "frameGap": 100},
+    "desktop": {"selectionFeedback": 150, "motionEnd": 370, "selectionCommitted": 300, "keyInput": 100, "frameGap": 100,
+                "layoutSwitch": 100, "layoutGap": 100, "layoutRequests": 3, "heapGrowthMB": 50},
+    "phone-cpu4": {"selectionFeedback": 300, "motionEnd": 420, "selectionCommitted": 700, "keyInput": 200, "frameGap": 300,
+                   "layoutSwitch": 400, "layoutGap": 400, "layoutRequests": 3, "heapGrowthMB": 50},
 }
 # The same desktop journeys with reduced motion (tokens 0 ms): what the motion itself costs.
 BUDGETS["desktop-reduced"] = dict(BUDGETS["desktop"])
+# Window sizes: the profile's own, and what a person can reach from it (a tablet, a wide screen; a rotation, an unfolded phone).
+DESKTOP = {"width": 1280, "height": 800}
+LAYOUT_PAIRS = {
+    "desktop": {"phone": {"width": 390, "height": 844}, "tablet": {"width": 820, "height": 1180}, "wide": {"width": 3840, "height": 2160}},
+    "phone-cpu4": {"landscape": {"width": 844, "height": 390}, "unfolded": {"width": 820, "height": 1180}},
+}
+LAYOUT_SAMPLES = int(os.environ.get("FLUX_MOTION_LAYOUT_SAMPLES", "100"))
+LAYOUT_WARMUPS = int(os.environ.get("FLUX_MOTION_LAYOUT_WARMUPS", "15"))
+# The shell's landmarks whose place and size settle when the layout switches (the sidebar or its rail, the header or the
+# phone's title, the dock, the work surface).
+LANDMARKS = ["#content", "#content > *", ".side", ".top", ".phead", ".phone-dock"]
 PROBE = r"""(() => {
   const probe = window.__motionProbe = { result: null };
-  // One trusted click on a project row or a work tab: feedback (the highlight/mark on the chosen item,
-  // then two following frames), the motion's end, the route committing that choice, and frame gaps.
+  // One trusted click or tap on a project row, a work tab or (the phone) a view in the title menu: feedback (the
+  // highlight/mark on the chosen item, or the menu leaving, then two following frames), the motion's end, the route
+  // committing that choice, and frame gaps.
+  const watchers = {
+    tab: (id) => ({
+      mark: () => { const m = document.querySelector('.views .ui-tabs__indicator, .top__views .ui-tabs__indicator'); return m && m.dataset.target === id ? m : null; },
+      ended: (m) => !m.getAnimations().some((a) => a.playState === 'running'),
+      current: () => document.querySelector(`:is(.views, .top__views) [data-tab="${id}"][aria-current="page"]`),
+    }),
+    project: (id) => ({
+      mark: () => { const m = document.querySelector('.side .side__glide'); return m && m.dataset.target === id ? m : null; },
+      ended: (m) => !m.getAnimations().some((a) => a.playState === 'running'),
+      current: () => document.querySelector(`.side .side__project.is-open[data-glide-id="${id}"]`),
+    }),
+    // The title menu has no traveling mark: the menu leaving is the answer, and the header naming the view is the commit.
+    phone: (id) => ({
+      mark: () => document.querySelector('.ui-overlay[data-state="closing"] .phone-menu') || (document.querySelector('.phone-menu') ? null : document.body),
+      ended: () => !document.querySelector('.phone-menu'),
+      current: () => { const sub = document.querySelector('.phead__sub'); return sub && sub.textContent.trim().startsWith(id) ? sub : null; },
+    }),
+  };
   document.addEventListener('click', (event) => {
-    const el = event.target instanceof Element ? event.target.closest('.views [data-tab], .top__views [data-tab], .side .side__project') : null;
+    const el = event.target instanceof Element ? event.target.closest('.views [data-tab], .top__views [data-tab], .side .side__project, .phone-menu__list a.phone-menu__item') : null;
     if (!el || !event.isTrusted) return;
-    const kind = el.matches('.side__project') ? 'project' : 'tab';
-    const id = kind === 'tab' ? el.dataset.tab : el.dataset.glideId;
+    const kind = el.matches('.side__project') ? 'project' : el.matches('.phone-menu__item') ? 'phone' : 'tab';
+    const id = kind === 'tab' ? el.dataset.tab : kind === 'phone' ? el.querySelector('.phone-menu__l').textContent.trim() : el.dataset.glideId;
+    const watch = watchers[kind](id);
     const start = event.timeStamp;
     const run = { kind, id, feedback: null, motionEnd: null, committed: null, maxGap: 0 };
     probe.result = null;
     let last = performance.now(), seen = false, committing = false;
-    const mark = () => document.querySelector(kind === 'tab' ? '.views .ui-tabs__indicator, .top__views .ui-tabs__indicator' : '.side .side__glide');
     const step = (now) => {
       run.maxGap = Math.max(run.maxGap, now - last); last = now;
-      const m = mark();
-      if (!seen && m && m.dataset.target === id) {
+      const m = watch.mark();
+      if (!seen && m) {
         seen = true;
         requestAnimationFrame(() => requestAnimationFrame(() => { run.feedback = performance.now() - start; }));
       }
-      if (run.feedback !== null && run.motionEnd === null && m && !m.getAnimations().some((a) => a.playState === 'running')) run.motionEnd = performance.now() - start;
-      const current = kind === 'tab' ? document.querySelector(`:is(.views, .top__views) [data-tab="${id}"][aria-current="page"]`) : document.querySelector(`.side .side__project.is-open[data-glide-id="${id}"]`);
-      if (current && !committing) { committing = true; requestAnimationFrame(() => requestAnimationFrame(() => { run.committed = performance.now() - start; })); }
+      if (run.feedback !== null && run.motionEnd === null && m && watch.ended(m)) run.motionEnd = performance.now() - start;
+      if (watch.current() && !committing) { committing = true; requestAnimationFrame(() => requestAnimationFrame(() => { run.committed = performance.now() - start; })); }
       if (run.feedback !== null && run.motionEnd !== null && run.committed !== null) { probe.result = run; return; }
       if (now - start > 20000) { probe.result = { ...run, timeout: true }; return; }
       requestAnimationFrame(step);
@@ -85,7 +134,34 @@ PROBE = r"""(() => {
     };
     requestAnimationFrame(step);
   }, true);
-})();"""
+  // A resize the harness armed: from the resize event to the frame after the last one in which a landmark of the shell
+  // changed place or size, once nothing has changed for SETTLE ms (the layout has settled); the worst frame gap meanwhile.
+  const SETTLE = 150;
+  const layout = window.__layoutProbe = { armed: false, result: null };
+  const LANDMARKS = __LANDMARKS__;
+  const signature = () => LANDMARKS.map((selector) => {
+    const el = document.querySelector(selector);
+    if (!el) return '-';
+    const r = el.getBoundingClientRect();
+    return `${Math.round(r.x)},${Math.round(r.y)},${Math.round(r.width)},${Math.round(r.height)}`;
+  }).join('|') + `|${innerWidth}x${innerHeight}`;
+  window.addEventListener('resize', (event) => {
+    if (!layout.armed) return;
+    layout.armed = false;
+    const start = event.timeStamp;
+    let previous = null, followed = null, last = performance.now(), maxGap = 0, frames = 0;
+    const step = (now) => {
+      frames += 1; maxGap = Math.max(maxGap, now - last); last = now;
+      const current = signature();
+      if (current !== previous) { previous = current; followed = null; }
+      else if (followed === null) followed = now;
+      if (followed !== null && now - followed >= SETTLE) { layout.result = { switchMs: followed - start, maxGap: maxGap, frames }; return; }
+      if (now - start > 5000) { layout.result = { timeout: true, maxGap, frames }; return; }
+      requestAnimationFrame(step);
+    };
+    requestAnimationFrame(step);
+  });
+})();""".replace("__LANDMARKS__", json.dumps(LANDMARKS))
 
 
 def percentile(values, q):
@@ -104,6 +180,46 @@ def summary(values, budget=None):
     return data
 
 
+def build_fixture(browser):
+    """Two accounts, a workspace and three restricted projects with 60 conversation roots and 40 tasks each, and a 40-reply
+    thread in the first (public commands only). Shared with the opt-in trace recorder (motion_trace.py)."""
+    states, ids = {}, {}
+    started = time.monotonic()
+    for key, name in (("ada", "Ada Kowalska"), ("bob", "Bob Nowak")):
+        context = browser.new_context(base_url=ORIGIN)
+        response = context.request.post("/api/auth/sign-up/email", data={"email": f"perf-{key}-{STAMP}@example.test", "name": name, "password": PASSWORD}, headers={"origin": ORIGIN})
+        assert response.status == 200, response.text()
+        ids[key] = context.request.get("/api/v1/me").json()["user"]["id"]
+        states[key] = context.storage_state()
+        context.close()
+    owner = browser.new_context(base_url=ORIGIN, storage_state=states["ada"])
+
+    def post(path, body):
+        response = owner.request.post(path, data=body, headers={"origin": ORIGIN})
+        assert response.status in (200, 201), response.text()
+        return response.json()
+    workspace = post("/api/v1/workspaces", {"name": "Measured studio"})["id"]
+    post(f"/api/v1/workspaces/{workspace}/members", {"email": f"perf-bob-{STAMP}@example.test", "role": "member"})
+    projects = []
+    for name in ("Reading lamp", "Garden sensor", "Library shelf"):
+        project = post(f"/api/v1/workspaces/{workspace}/projects", {"name": name, "visibility": "restricted"})["id"]
+        post(f"/api/v1/projects/{project}/grants", {"principal": {"kind": "human", "id": ids["bob"]}, "role": "contributor"})
+        projects.append(project)
+        for index in range(60):
+            post(f"/api/v1/projects/{project}/conversations", {"body": f"{name} note {index + 1}: compare the reading at dusk before choosing a threshold.", "clientMessageId": str(uuid.uuid4())})
+        for index in range(40):
+            post(f"/api/v1/projects/{project}/work", {"title": f"{name} check {index + 1}", "clientCommandId": str(uuid.uuid4())})
+    thread = post(f"/api/v1/projects/{projects[0]}/conversations", {"body": "Where should the manual switch go?", "clientMessageId": str(uuid.uuid4())})
+    for index in range(40):
+        post(f"/api/v1/conversations/{thread['id']}/messages", {"body": f"Reply {index + 1}: the switch should stay reachable in the dark.", "clientMessageId": str(uuid.uuid4())})
+    owner.close()
+    return {"states": states, "ids": ids, "projects": projects, "thread": thread, "seconds": round(time.monotonic() - started, 3)}
+
+
+# The profiles: label, window, CPU throttling, reduced motion. The phone is a touch device with a mobile viewport.
+PROFILES = (("desktop", DESKTOP, 1, False), ("desktop-reduced", DESKTOP, 1, True), ("phone-cpu4", {"width": 390, "height": 844}, 4, False))
+
+
 class MotionPerformance(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -111,40 +227,13 @@ class MotionPerformance(unittest.TestCase):
             start_forwarder(ORIGIN, UPSTREAM)
         cls.pw = sync_playwright().start()
         cls.browser = cls.pw.chromium.launch()
-        cls.states, cls.ids = {}, {}
-        started = time.monotonic()
-        for key, name in (("ada", "Ada Kowalska"), ("bob", "Bob Nowak")):
-            context = cls.browser.new_context(base_url=ORIGIN)
-            response = context.request.post("/api/auth/sign-up/email", data={"email": f"perf-{key}-{STAMP}@example.test", "name": name, "password": PASSWORD}, headers={"origin": ORIGIN})
-            assert response.status == 200, response.text()
-            cls.ids[key] = context.request.get("/api/v1/me").json()["user"]["id"]
-            cls.states[key] = context.storage_state()
-            context.close()
-        owner = cls.browser.new_context(base_url=ORIGIN, storage_state=cls.states["ada"])
-
-        def post(path, body):
-            response = owner.request.post(path, data=body, headers={"origin": ORIGIN})
-            assert response.status in (200, 201), response.text()
-            return response.json()
-        workspace = post("/api/v1/workspaces", {"name": "Measured studio"})["id"]
-        post(f"/api/v1/workspaces/{workspace}/members", {"email": f"perf-bob-{STAMP}@example.test", "role": "member"})
-        cls.projects = []
-        for name in ("Reading lamp", "Garden sensor", "Library shelf"):
-            project = post(f"/api/v1/workspaces/{workspace}/projects", {"name": name, "visibility": "restricted"})["id"]
-            post(f"/api/v1/projects/{project}/grants", {"principal": {"kind": "human", "id": cls.ids["bob"]}, "role": "contributor"})
-            cls.projects.append(project)
-            for index in range(60):
-                post(f"/api/v1/projects/{project}/conversations", {"body": f"{name} note {index + 1}: compare the reading at dusk before choosing a threshold.", "clientMessageId": str(uuid.uuid4())})
-            for index in range(40):
-                post(f"/api/v1/projects/{project}/work", {"title": f"{name} check {index + 1}", "clientCommandId": str(uuid.uuid4())})
-        cls.thread = post(f"/api/v1/projects/{cls.projects[0]}/conversations", {"body": "Where should the manual switch go?", "clientMessageId": str(uuid.uuid4())})
-        for index in range(40):
-            post(f"/api/v1/conversations/{cls.thread['id']}/messages", {"body": f"Reply {index + 1}: the switch should stay reachable in the dark.", "clientMessageId": str(uuid.uuid4())})
-        owner.close()
-        cls.report = {"schema": 1, "sourceCommit": os.environ.get("FLUX_GIT_COMMIT", "unavailable"), "browser": cls.browser.version,
-                      "startedUTC": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), "fixtureSeconds": round(time.monotonic() - started, 3),
+        fixture = build_fixture(cls.browser)
+        cls.states, cls.ids, cls.projects, cls.thread = fixture["states"], fixture["ids"], fixture["projects"], fixture["thread"]
+        cls.report = {"schema": 2, "sourceCommit": os.environ.get("FLUX_GIT_COMMIT", "unavailable"), "browser": cls.browser.version,
+                      "startedUTC": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), "fixtureSeconds": fixture["seconds"],
                       "fixture": {"projects": 3, "rootsPerProject": 60, "tasksPerProject": 40, "threadReplies": 40, "people": 2},
-                      "method": {"warmups": WARMUPS, "samples": SAMPLES, "minSeconds": SECONDS}, "profiles": []}
+                      "method": {"warmups": WARMUPS, "samples": SAMPLES, "minSeconds": SECONDS, "layoutWarmups": LAYOUT_WARMUPS, "layoutSamples": LAYOUT_SAMPLES},
+                      "budgets": BUDGETS, "profiles": []}
 
     @classmethod
     def tearDownClass(cls):
@@ -153,15 +242,16 @@ class MotionPerformance(unittest.TestCase):
         cls.browser.close()
         cls.pw.stop()
 
-    def open(self, who, viewport, cpu, path, reduced=False):
+    def open(self, who, viewport, cpu, path, reduced=False, phone=False):
         context = self.browser.new_context(base_url=ORIGIN, storage_state=self.states[who], viewport=viewport, device_scale_factor=1, locale="en-GB",
-                                           reduced_motion="reduce" if reduced else "no-preference")
+                                           reduced_motion="reduce" if reduced else "no-preference", has_touch=phone, is_mobile=phone)
         context.add_init_script(PROBE)
         page = context.new_page()
         if cpu > 1:
             context.new_cdp_session(page).send("Emulation.setCPUThrottlingRate", {"rate": cpu})
         page.goto(path)
-        page.wait_for_selector(":is(.views, .top__views) .ui-tabs__indicator[data-target]")
+        # A tab bar's mark (computer), the phone's title menu, or a thread opened by its address.
+        page.wait_for_selector(".top__views .ui-tabs__indicator[data-target], .views .ui-tabs__indicator[data-target], .phead__menu, #thread-composer")
         page.wait_for_timeout(1000)
         return context, page
 
@@ -182,41 +272,106 @@ class MotionPerformance(unittest.TestCase):
             index += 1
         return results, round(time.monotonic() - begun, 3)
 
-    def test_motion_and_navigation_feedback_budgets(self):
-        failures = []
-        for label, viewport, cpu in (("desktop", {"width": 1280, "height": 800}, 1), ("desktop-reduced", {"width": 1280, "height": 800}, 1), ("phone-cpu4", {"width": 390, "height": 844}, 4)):
-            budget = BUDGETS[label]
-            reduced = label.endswith("-reduced")
-            profile = {"label": label, "viewport": viewport, "cpuThrottle": cpu, "reducedMotion": reduced, "distributions": {},
-                       "note": "maxFrameGap spans click to committed paint, so it includes the chosen view's own render"}
-            context, page = self.open("ada", viewport, cpu, f"/projects/{self.projects[0]}", reduced)
-            tabs = page.locator(".views, .top__views").first
-            go = lambda name: (lambda: tabs.locator(f'[data-tab="{name}"]').click())
-            results, seconds = self.series(page, [go("tasks"), go("conversation")], "tab")
-            profile["distributions"]["workTab"] = {"seconds": seconds,
+    def heap_mb(self, page):
+        """The JavaScript heap in use after a forced collection (Chromium's own accounting, not a quantised estimate)."""
+        cdp = page.context.new_cdp_session(page)
+        cdp.send("HeapProfiler.collectGarbage")
+        return round(cdp.send("Runtime.getHeapUsage")["usedSize"] / 1048576, 1)
+
+    def phone_view(self, page, name):
+        """The phone's way to a view (#341): the title opens the menu, the view is a row in it; only the row's tap is timed."""
+        def act():
+            page.locator(".phead__menu").first.tap()
+            menu = page.locator(".phone-menu__list")
+            menu.wait_for()
+            page.wait_for_timeout(300)  # the menu has finished entering
+            menu.get_by_role("link", name=re.compile(f"^{name}")).tap()
+        return act
+
+    def switch(self, page, size, requests):
+        """One window resize or rotation, timed in the page from the resize event to the settled layout; `requests` is the
+        list the page's API requests are appended to, so the switch also reports how many it caused."""
+        page.evaluate("() => { window.__layoutProbe.result = null; window.__layoutProbe.armed = true; }")
+        before = len(requests)
+        page.set_viewport_size(size)
+        page.wait_for_function("() => window.__layoutProbe.result !== null", timeout=30000)
+        result = page.evaluate("() => window.__layoutProbe.result")
+        self.assertFalse(result.get("timeout"), f"layout settled after {size}: {result}")
+        result["apiRequests"] = len(requests) - before
+        result["apiPaths"] = [re.sub(r"[0-9a-f]{8}-[0-9a-f-]{27}", "{id}", urlparse(url).path) for url in requests[before:]]
+        page.wait_for_timeout(100)
+        return result
+
+    def layout_distributions(self, page, base, others, budget):
+        """Every switch from `base` to each of `others` and back: warm-ups first, then LAYOUT_SAMPLES of each direction."""
+        distributions = {}
+        requests = []
+        page.on("request", lambda request: requests.append(request.url) if "/api/" in request.url else None)
+        for name, size in others.items():
+            there, back = [], []
+            for index in range(LAYOUT_WARMUPS + LAYOUT_SAMPLES):
+                for results, target in ((there, size), (back, base)):
+                    result = self.switch(page, target, requests)
+                    if index >= LAYOUT_WARMUPS:
+                        results.append(result)
+            for direction, results in ((f"switch-to-{name}", there), (f"switch-from-{name}", back)):
+                distributions[direction] = {"viewport": others[name] if direction.startswith("switch-to") else base,
+                    "layoutSwitch": summary([r["switchMs"] for r in results], budget["layoutSwitch"]),
+                    "maxFrameGap": summary([r["maxGap"] for r in results], budget["layoutGap"]),
+                    "apiRequests": summary([r["apiRequests"] for r in results], budget["layoutRequests"]),
+                    "apiPaths": dict(Counter(path for r in results for path in r["apiPaths"]).most_common(8))}
+        return distributions
+
+    def selection_distribution(self, results, seconds, budget):
+        return {"seconds": seconds,
                 "selectionFeedback": summary([r["feedback"] for r in results], budget["selectionFeedback"]),
                 "motionEnd": summary([r["motionEnd"] for r in results], budget["motionEnd"]),
                 "selectionCommitted": summary([r["committed"] for r in results], budget["selectionCommitted"]),
                 "maxFrameGap": summary([r["maxGap"] for r in results], budget["frameGap"])}
-            if label.startswith("desktop"):
+
+    def test_motion_and_navigation_feedback_budgets(self):
+        failures = []
+        for label, viewport, cpu, reduced in PROFILES:
+            phone = label.startswith("phone")
+            budget = BUDGETS[label]
+            profile = {"label": label, "viewport": viewport, "cpuThrottle": cpu, "reducedMotion": reduced, "touch": phone, "distributions": {},
+                       "note": "maxFrameGap spans click to committed paint, so it includes the chosen view's own render"}
+            context, page = self.open("ada", viewport, cpu, f"/projects/{self.projects[0]}", reduced, phone)
+            if phone:
+                actions = [self.phone_view(page, "Tasks"), self.phone_view(page, "Conversation")]
+            else:
+                tabs = page.locator(".views, .top__views").first
+                actions = [(lambda name: (lambda: tabs.locator(f'[data-tab="{name}"]').click()))(name) for name in ("tasks", "conversation")]
+            heap = {}
+
+            def grown(name, start):
+                """One segment of the profile in one document: heap at its start and end, growth against the ceiling."""
+                end = self.heap_mb(page)
+                heap[name] = {"startMB": start, "endMB": end, "growthMB": round(end - start, 1), "budgetGrowthMB": budget["heapGrowthMB"], "passed": end - start <= budget["heapGrowthMB"]}
+            heap_start = None if reduced else self.heap_mb(page)
+            results, seconds = self.series(page, actions, "tab")
+            profile["distributions"]["workTab"] = self.selection_distribution(results, seconds, budget)
+            if not phone:
                 pick = lambda index: (lambda: page.locator(f'.side .side__project[data-glide-id="{self.projects[index]}"]').click())
                 results, seconds = self.series(page, [pick(1), pick(2), pick(0)], "project")
-                profile["distributions"]["project"] = {"seconds": seconds,
-                    "selectionFeedback": summary([r["feedback"] for r in results], budget["selectionFeedback"]),
-                    "motionEnd": summary([r["motionEnd"] for r in results], budget["motionEnd"]),
-                    "selectionCommitted": summary([r["committed"] for r in results], budget["selectionCommitted"]),
-                    "maxFrameGap": summary([r["maxGap"] for r in results], budget["frameGap"])}
+                profile["distributions"]["project"] = self.selection_distribution(results, seconds, budget)
+            if not reduced:
+                grown("navigation", heap_start)
+                # Layout switches run on the project's conversation, the page a person has open most.
+                page.goto(f"/projects/{self.projects[0]}")
+                page.wait_for_selector(".top__views .ui-tabs__indicator[data-target], .views .ui-tabs__indicator[data-target], .phead__menu")
+                page.wait_for_timeout(1000)
+                heap_start = self.heap_mb(page)
+                profile["distributions"].update(self.layout_distributions(page, viewport, LAYOUT_PAIRS[label], budget))
+                grown("layout", heap_start)
+                profile["heapMB"] = heap
             context.close()
             if reduced:
-                self.report["profiles"].append(profile)
-                for name, distribution in profile["distributions"].items():
-                    for metric, data in distribution.items():
-                        if isinstance(data, dict) and data.get("passed") is False:
-                            failures.append(f"{label}:{name}:{metric}")
+                self.finish(profile, label, failures)
                 continue
             # Keys with typing presence live: Bob watches the same thread, so Ada's input publishes activity.
-            watcher, _ = self.open("bob", {"width": 1280, "height": 800}, 1, f"/projects/{self.projects[0]}/conversations/{self.thread['id']}")
-            context, page = self.open("ada", viewport, cpu, f"/projects/{self.projects[0]}/conversations/{self.thread['id']}")
+            watcher, _ = self.open("bob", DESKTOP, 1, f"/projects/{self.projects[0]}/conversations/{self.thread['id']}")
+            context, page = self.open("ada", viewport, cpu, f"/projects/{self.projects[0]}/conversations/{self.thread['id']}", phone=phone)
             box = page.locator("#thread-composer")
             box.click()
             box.fill("Measured reply text")
@@ -225,14 +380,20 @@ class MotionPerformance(unittest.TestCase):
             profile["distributions"]["composerKeyWithTyping"] = {"seconds": seconds, "keyInput": summary([r["key"] for r in results], budget["keyInput"])}
             self.assertTrue(box.input_value().startswith("Measured reply text"), "the measurement only typed and erased one character")
             context.close(); watcher.close()
-            for name, distribution in profile["distributions"].items():
-                for metric, data in distribution.items():
-                    if isinstance(data, dict) and data.get("passed") is False:
-                        failures.append(f"{label}:{name}:{metric}")
-            self.report["profiles"].append(profile)
+            self.finish(profile, label, failures)
         self.report["observedFailures"] = failures
         self.report["outcome"] = "within-budgets" if not failures else "observed-budget-failures"
         self.assertEqual(failures, [], "every p95 is within its budget")
+
+    def finish(self, profile, label, failures):
+        for segment, data in profile.get("heapMB", {}).items():
+            if data["passed"] is False:
+                failures.append(f"{label}:heap:{segment}")
+        for name, distribution in profile["distributions"].items():
+            for metric, data in distribution.items():
+                if isinstance(data, dict) and data.get("passed") is False:
+                    failures.append(f"{label}:{name}:{metric}")
+        self.report["profiles"].append(profile)
 
 
 if __name__ == "__main__":
