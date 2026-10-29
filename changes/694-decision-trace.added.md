@@ -1,0 +1,1 @@
+- A decision proposed or accepted in a thread, and a result recorded, now show as a line in that thread and in the project conversation, with the decision or result as a card that opens it and shows where it stands; other members see it and its state change at once ([#694](https://github.com/ColdPhase/flux/issues/694)).

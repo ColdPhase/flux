@@ -5,7 +5,7 @@ import { ApiError } from '../api/client';
 import { openDm } from '../api/direct-messages';
 import { listWorkspaceMembers } from '../app/conversation-api';
 import { useShellData } from '../app/data';
-import { Avatar, Button, EmptyState, Icon } from '../ui';
+import { Avatar, Button, EmptyState, Icon, Select, Option } from '../ui';
 import { audienceOf } from './names';
 import './dm.css';
 
@@ -149,9 +149,9 @@ export function NewDm() {
       <h2>New message</h2>
       <p className="dm-new__lead">Pick one person for a one-to-one conversation, or a few for a small group. It stays outside every project.</p>
       {workspaces.length > 1 ? (
-        <label className="dm-new__space">People in <select value={workspaceId} onChange={(event) => { setWorkspaceId(event.target.value); setSelected([]); }}>
-          <option value="">Choose a space</option>{workspaces.map((space) => <option key={space.id} value={space.id}>{space.name}</option>)}
-        </select></label>
+        <label className="dm-new__space">People in <Select value={workspaceId} onChange={(next) => { setWorkspaceId(next); setSelected([]); }}>
+          <Option value="">Choose a space</Option>{workspaces.map((space) => <Option key={space.id} value={space.id}>{space.name}</Option>)}
+        </Select></label>
       ) : null}
       {!workspaces.length ? <p className="dm-new__note">Join or create a space first; direct messages are with people in the same space.</p> : null}
       {workspaceId ? (

@@ -17,7 +17,7 @@ import { SwitchRow } from '../app/SettingsHome';
 import { SummaryByAssistant } from '../assistant/SummaryByAssistant';
 import { NotificationsButton } from '../pwa';
 import { getPushState } from '../pwa/push';
-import { Button, ErrorState, Icon, Spinner, useToast } from '../ui';
+import { Button, ErrorState, Icon, Spinner, useToast, Select, Option, OptionGroup } from '../ui';
 import { PAUSE_CHANGED, addAddress, announcePauseChange, announcePauseUncertainty, getPreferences, removeAddress, resendVerification, setMute, unsubscribe, updatePreferences, verifyAddress, type PauseChange } from './api';
 import { captureNotificationSession, confirmedNotificationPauseSince, isCurrentNotificationSession, notificationPauseRevision, notificationPauseUncertain } from './session';
 import './notifications.css';
@@ -603,9 +603,9 @@ function QuietHoursRow({ prefs, onChange, feedback }: { prefs: NotificationPrefe
           <label>From<input type="time" value={quiet.start} onChange={(event) => event.target.value && set({ start: event.target.value })} /></label>
           <label>Until<input type="time" value={quiet.end} onChange={(event) => event.target.value && set({ end: event.target.value })} /></label>
           <label className="nset__zone">Time zone
-            <select value={quiet.timeZone} onChange={(event) => set({ timeZone: event.target.value })}>
-              {zones.map((zone) => <option key={zone} value={zone}>{zoneLabel(zone)}</option>)}
-            </select>
+            <Select value={quiet.timeZone} onChange={(next) => set({ timeZone: next })}>
+              {zones.map((zone) => <Option key={zone} value={zone}>{zoneLabel(zone)}</Option>)}
+            </Select>
           </label>
         </div>
       ) : null}
@@ -653,11 +653,11 @@ function MutePicker({ places, onMute, result, pending, hidden }: { places: Notif
     <div className="nset__row nset__mute" hidden={hidden}>
       {result ?? <>
       <label className="ui-vh" htmlFor={selectId}>Place to mute</label>
-      <select id={selectId} value={choice} disabled={!!pending} onChange={(event) => { choiceVersion.current += 1; setChoice(event.target.value); }}>
-        <option value="">Choose a project or conversation…</option>
-        {places.some((item) => item.type === 'project') ? <optgroup label="Projects">{places.filter((item) => item.type === 'project').map((item) => <option key={item.id} value={`project:${item.id}`}># {item.name}</option>)}</optgroup> : null}
-        {places.some((item) => item.type === 'dm') ? <optgroup label="Direct messages">{places.filter((item) => item.type === 'dm').map((item) => <option key={item.id} value={`dm:${item.id}`}>{item.name}</option>)}</optgroup> : null}
-      </select>
+      <Select id={selectId} value={choice} disabled={!!pending} onChange={(next) => { choiceVersion.current += 1; setChoice(next); }}>
+        <Option value="">Choose a project or conversation…</Option>
+        {places.some((item) => item.type === 'project') ? <OptionGroup label="Projects">{places.filter((item) => item.type === 'project').map((item) => <Option key={item.id} value={`project:${item.id}`}># {item.name}</Option>)}</OptionGroup> : null}
+        {places.some((item) => item.type === 'dm') ? <OptionGroup label="Direct messages">{places.filter((item) => item.type === 'dm').map((item) => <Option key={item.id} value={`dm:${item.id}`}>{item.name}</Option>)}</OptionGroup> : null}
+      </Select>
       <Button disabled={!place && !pending} busy={!!pending} onClick={() => {
         if (!place) return;
         const selected = choice, version = ++choiceVersion.current;

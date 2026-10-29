@@ -28,8 +28,19 @@ export const FILE_LIMITS = {
   unpublishedDays: 7,
 } as const;
 
+/**
+ * What the server read from the bytes at upload (#469, F-026 §6): the pages of a PDF, the data rows of a
+ * CSV or TSV (the header line is not one), the playing time of a voice note or recording. Each is absent when
+ * the file is another kind or its bytes did not say; a name alone never sets one.
+ */
+export interface FileDetail {
+  pages?: number;
+  rows?: number;
+  durationMs?: number;
+}
+
 /** A file staged by the signed-in person, ready to attach. */
-export interface StagedFile {
+export interface StagedFile extends FileDetail {
   id: string;
   projectId: string;
   /** The client's upload UUID; the same upload again returns this file. */
@@ -44,7 +55,7 @@ export interface StagedFile {
 }
 
 /** A file attached to a message: readable name and size. The bytes download from `filePath(id)`. */
-export interface MessageFile {
+export interface MessageFile extends FileDetail {
   id: string;
   name: string;
   size: number;

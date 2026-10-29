@@ -14,7 +14,7 @@ import { NEW_PROJECT_AUDIENCE, TEMPLATES, useNewProject } from '../app/newProjec
 import { AccountChangedError, assertSignedInAs, ensurePersonalSpace } from '../app/personalSpace';
 import { useShellActions, type CreateRequest } from '../app/shellContext';
 import { searchFlux } from '../search/api';
-import { Button, Icon, MEDIA, Overlay, Spinner, StatusGlyph, Tabs, useMediaQuery, useToast } from '../ui';
+import { Button, Icon, MEDIA, Overlay, Spinner, StatusGlyph, Tabs, useMediaQuery, useToast, Select, Option, OptionGroup } from '../ui';
 import { createWork, listAgents, proposeDecision } from '../work/api';
 import { STATUS_LABEL, taskNumber } from '../work/format';
 import './create.css';
@@ -151,10 +151,10 @@ function PlacePicker({ projectId, onChange, compact = false, plain = false }: { 
       <span className="create__tile" aria-hidden="true">{(current?.name.trim()[0] ?? '?').toUpperCase()}</span>
       <span className="create__place-name">{label}</span>
       {compact ? <Icon name="chevron-down" size={12} /> : null}
-      <select aria-label="Project" value={projectId} onChange={(event) => onChange(event.target.value)}>
-        {current ? null : <option value="">Choose a project</option>}
-        {projects.map((project) => <option key={project.id} value={project.id}>{project.name}{project.workspaceName ? ` · ${project.workspaceName}` : ''}</option>)}
-      </select>
+      <Select aria-label="Project" value={projectId} onChange={(next) => onChange(next)}>
+        {current ? null : <Option value="">Choose a project</Option>}
+        {projects.map((project) => <Option key={project.id} value={project.id}>{project.name}{project.workspaceName ? ` · ${project.workspaceName}` : ''}</Option>)}
+      </Select>
     </label>
   );
 }
@@ -172,7 +172,7 @@ function PickChip({ label, icon, shown, value, onChange, children }: { label: st
     <div className="create__prop">
       <span className="create__lab" aria-hidden="true">{label}</span>
       <label className="create__chip">{icon}<span>{shown}</span>
-        <select aria-label={label} value={value} onChange={(event) => onChange(event.target.value)}>{children}</select>
+        <Select aria-label={label} value={value} onChange={(next) => onChange(next)}>{children}</Select>
       </label>
     </div>
   );
@@ -361,16 +361,16 @@ function TaskForm({ ids, request, prefilled, phone, carried, projectId, onProjec
         placeholder="Add details or what “done” means…" onChange={(event) => setOutcome(event.target.value)} />
       <div className="create__props">
         <PickChip label="Status" icon={<StatusGlyph status={status} size={14} />} shown={STATUS_LABEL[status]} value={status} onChange={(value) => setStatus(value as WorkStatus)}>
-          {WORK_STATUSES.filter((s) => s !== 'not_pursued').map((s) => <option key={s} value={s}>{STATUS_LABEL[s]}</option>)}
+          {WORK_STATUSES.filter((s) => s !== 'not_pursued').map((s) => <Option key={s} value={s}>{STATUS_LABEL[s]}</Option>)}
         </PickChip>
         <PickChip label="Owner" icon={<Icon name="person" size={14} />} shown={ownerLabel} value={owner} onChange={setOwner}>
-          <option value="">No owner</option>
-          <optgroup label="People">{people.map((p) => <option key={p.value} value={p.value}>{p.label}</option>)}</optgroup>
-          {agents.length ? <optgroup label="Agents" data-ai-surface="create-agent-owners">{agents.map((a) => <option key={a.value} value={a.value}>{a.label}</option>)}</optgroup> : null}
+          <Option value="">No owner</Option>
+          <OptionGroup label="People">{people.map((p) => <Option key={p.value} value={p.value}>{p.label}</Option>)}</OptionGroup>
+          {agents.length ? <OptionGroup label="Agents" data-ai-surface="create-agent-owners">{agents.map((a) => <Option key={a.value} value={a.value}>{a.label}</Option>)}</OptionGroup> : null}
         </PickChip>
         {status === 'blocked' ? <PickChip label="Waiting for" icon={<Icon name="person" size={14} />} shown={waitingLabel} value={waiting} onChange={setWaiting}>
-          <option value="">No one in particular</option>
-          {people.map((p) => <option key={p.value} value={p.value}>{p.label}</option>)}
+          <Option value="">No one in particular</Option>
+          {people.map((p) => <Option key={p.value} value={p.value}>{p.label}</Option>)}
         </PickChip> : null}
         <div className="create__prop">
           <span className="create__lab" aria-hidden="true">Link</span>
@@ -440,9 +440,9 @@ function ThoughtForm({ ids, phone, carried, projectId, onClose }: PanelProps) {
   const spaceName = workspaces.find((item) => item.id === space)?.name ?? 'your space';
   const where = workspaces.length > 1 && ids.active ? (
     <label className="create__chip create__chip--quiet"><Icon name="lock" size={13} /><span>Only you · {spaceName}</span>
-      <select aria-label="Space" value={space} onChange={(event) => setSpace(event.target.value)}>
-        {workspaces.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
-      </select>
+      <Select aria-label="Space" value={space} onChange={(next) => setSpace(next)}>
+        {workspaces.map((item) => <Option key={item.id} value={item.id}>{item.name}</Option>)}
+      </Select>
     </label>
   ) : <span className="create__private"><Icon name="lock" size={13} />Only you</span>;
   return (
@@ -518,13 +518,13 @@ function MessageForm({ ids, phone, carried, onClose }: PanelProps) {
   const spaceName = (id: string) => workspaces.find((space) => space.id === id)?.name ?? 'Space';
   const where = people === null ? <span>{ids.active ? 'Loading people…' : null}</span> : !people.length ? <span>{guest ? 'Guests can reply in conversations they are added to, but cannot start one.' : 'Nobody else is in your spaces yet'}</span> : (
     <label className="create__chip create__chip--quiet"><Icon name="person" size={13} /><span>{person ? `To ${person.name}` : 'Choose a person'}</span><Icon name="chevron-down" size={12} />
-      <select aria-label="To" value={to} onChange={(event) => { setTo(event.target.value); setError(''); }}>
-        <option value="">Choose a person</option>
+      <Select aria-label="To" value={to} onChange={(next) => { setTo(next); setError(''); }}>
+        <Option value="">Choose a person</Option>
         {people.map((list) => {
-          const options = list.members.map((member) => <option key={member.userId} value={`${list.workspaceId}:${member.userId}`}>{member.name}</option>);
-          return people.length > 1 ? <optgroup key={list.workspaceId} label={spaceName(list.workspaceId)}>{options}</optgroup> : options;
+          const options = list.members.map((member) => <Option key={member.userId} value={`${list.workspaceId}:${member.userId}`}>{member.name}</Option>);
+          return people.length > 1 ? <OptionGroup key={list.workspaceId} label={spaceName(list.workspaceId)}>{options}</OptionGroup> : options;
         })}
-      </select>
+      </Select>
     </label>
   );
   return (
@@ -611,7 +611,7 @@ function ProjectForm({ ids, phone, carried, onClose }: PanelProps) {
         onChange={(event) => carried.set(event.target.value)} />
       <div className="create__props">
         <PickChip label="Start from" icon={<Icon name="board" size={14} />} shown={chosen.name} value={template} onChange={(value) => setTemplate(value as typeof template)}>
-          {TEMPLATES.map((item) => <option key={item.id} value={item.id}>{item.name} · {item.has}</option>)}
+          {TEMPLATES.map((item) => <Option key={item.id} value={item.id}>{item.name} · {item.has}</Option>)}
         </PickChip>
       </div>
       <p className="create__note">{NEW_PROJECT_AUDIENCE}</p>

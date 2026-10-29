@@ -1,7 +1,7 @@
 import { useId, useRef, useState, type FormEvent } from 'react';
 import { AGENT_OPERATION_CLASSES, type AgentConnection, type AgentOperation, type AgentPeerRequestClass, type AgentStandingGrant, type Project } from '@flux/contracts';
 import { ApiError, NetworkError } from '../api/client';
-import { Button } from '../ui';
+import { Button, Select, Option } from '../ui';
 import { createActionGrant, listActionGrants, narrowActionGrant, revokeActionGrant } from './api';
 
 /**
@@ -198,10 +198,10 @@ function GrantRow({ grant, now, busy, onNarrow, onRevoke }: {
         onChange={(event) => setUsesLeft(event.target.value)} aria-describedby={`${id}-uses-help`} disabled={busy} />
       <small id={`${id}-uses-help`}>{minimumLeft} to {left}</small>
       <label htmlFor={`${id}-end`}>Ends</label>
-      <select id={`${id}-end`} value={end} onChange={(event) => setEnd(event.target.value)} disabled={busy}>
-        <option value="keep">Keep: {when(grant.expiresAt)}</option>
-        {earlier.map((choice) => <option key={choice.id} value={choice.id}>{choice.label}</option>)}
-      </select>
+      <Select id={`${id}-end`} value={end} onChange={(next) => setEnd(next)} disabled={busy}>
+        <Option value="keep">Keep: {when(grant.expiresAt)}</Option>
+        {earlier.map((choice) => <Option key={choice.id} value={choice.id}>{choice.label}</Option>)}
+      </Select>
       <span className="grants__form-actions">
         <Button type="submit" variant="primary" busy={busy} disabled={!validUses}>Save</Button>
         <Button variant="quiet" disabled={busy} onClick={() => setMode('idle')}>Cancel</Button>
@@ -268,15 +268,15 @@ function AddGrant({ connection, projects, name, busy, existing, onCancel, onCrea
     <div className="grants__fields">
       <span className="grants__field">
         <label htmlFor={`${id}-project`}>Project</label>
-        <select id={`${id}-project`} value={projectId} onChange={(event) => setProjectId(event.target.value)} disabled={busy}>
-          {manageable.map((item) => <option key={item} value={item}>{name(item)}</option>)}
-        </select>
+        <Select id={`${id}-project`} value={projectId} onChange={(next) => setProjectId(next)} disabled={busy}>
+          {manageable.map((item) => <Option key={item} value={item}>{name(item)}</Option>)}
+        </Select>
       </span>
       <span className="grants__field">
         <label htmlFor={`${id}-class`}>Acts as</label>
-        <select id={`${id}-class`} value={peerRequestClass} onChange={(event) => setClass(event.target.value as AgentPeerRequestClass)} disabled={busy}>
-          {CLASSES.map((item) => <option key={item} value={item}>{CLASS_LABEL[item]}</option>)}
-        </select>
+        <Select id={`${id}-class`} value={peerRequestClass} onChange={(next) => setClass(next as AgentPeerRequestClass)} disabled={busy}>
+          {CLASSES.map((item) => <Option key={item} value={item}>{CLASS_LABEL[item]}</Option>)}
+        </Select>
       </span>
     </div>
     <fieldset className="grants__changes" disabled={busy}>
@@ -304,9 +304,9 @@ function AddGrant({ connection, projects, name, busy, existing, onCancel, onCrea
       </span>
       <span className="grants__field">
         <label htmlFor={`${id}-ends`}>Ends</label>
-        <select id={`${id}-ends`} value={ends} onChange={(event) => setEnds(event.target.value)} disabled={busy}>
-          {ENDS.map((choice) => <option key={choice.id} value={choice.id}>{choice.label}</option>)}
-        </select>
+        <Select id={`${id}-ends`} value={ends} onChange={(next) => setEnds(next)} disabled={busy}>
+          {ENDS.map((choice) => <Option key={choice.id} value={choice.id}>{choice.label}</Option>)}
+        </Select>
       </span>
     </div>
     <p className="grants__note">Grants stay inside this connection: its selected projects and the actions it was approved for.</p>

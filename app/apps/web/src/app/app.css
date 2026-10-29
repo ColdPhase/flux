@@ -579,8 +579,6 @@ kbd { display: inline-grid; place-items: center; min-width: 18px; height: 18px; 
    view line instead of crossing it. */
 .phead__title h1:has(> .phead__menu) { position: relative; z-index: 1; margin-block: -1px -20px; }
 .phead__title h1 > .phead__menu { display: flex; width: 100%; padding-bottom: 19px; }
-/* A Wiki page's own menu holds Together (and the page actions), so the header keeps one control in that place. */
-.phead:has(.wiki-header-actions) .phead__right > .lv-entry { display: none; }
 /* The narrowest phones keep the view's name whole; the people are in Details. */
 @media (max-width: 340px) { .phead__people { display: none; } }
 .phead__name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -671,7 +669,7 @@ kbd { display: inline-grid; place-items: center; min-width: 18px; height: 18px; 
   position: relative; display: inline-flex; align-items: center; gap: 8px; min-height: 44px; max-width: 60%; padding: 0 12px 0 6px;
   border-radius: 22px; background: var(--sub); color: var(--t1); font-size: .9375rem;
 }
-.phone-create__project select { min-width: 0; max-width: 100%; appearance: none; border: 0; background: transparent; color: inherit; font: inherit; padding: 0 4px 0 0; text-overflow: ellipsis; }
+.phone-create__project .ui-select { min-width: 0; max-width: 100%; min-height: 44px; border: 0; background: transparent; color: inherit; font: inherit; padding: 0; }
 .phone-create__tile { display: grid; place-items: center; width: 28px; height: 28px; border-radius: 10px; background: var(--el); font-size: .8125rem; font-weight: 600; flex: none; }
 .phone-create__grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin: 0; padding: 0; list-style: none; }
 .phone-create__item {

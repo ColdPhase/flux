@@ -67,7 +67,7 @@ import { loadGithubConfig } from './github/config.js';
 import type { ServerConfig } from './config.js';
 import { fixtureFlags, registerFixtureRoutes } from './fixture/index.js';
 import { registerHealth } from './health/routes.js';
-import { composeEncryption, encryptionUnitOfWork, processKeysFromEnv } from './encryption/adapters.js';
+import { composeEncryption, encryptionUnitOfWork, installSeals, processKeysFromEnv } from './encryption/adapters.js';
 import { encryptionRoutes } from './encryption/routes.js';
 import { registerLockGate } from './encryption/lock-gate.js';
 import { requestLogSerializer, SECRET_LOG_PATHS } from './http/log-serializers.js';
@@ -105,6 +105,7 @@ export async function buildApp(config: ServerConfig, migrationsDir = 'packages/d
   // registered before any route so every later route gets it.
   const testDeployment = config.fixture.token !== null && config.fixture.failureInjection;
   const encryptionKeys = processKeysFromEnv(env);
+  installSeals(encryptionKeys);
   useJsonCompression(app);
   // Every response refuses framing, the OAuth consent page included (#287).
   useFramingProtection(app);

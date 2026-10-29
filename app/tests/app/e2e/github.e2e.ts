@@ -15,6 +15,7 @@ import type { GithubTransport } from '../../../apps/server/src/github/http.js';
 import { loadIdentityConfig, registerIdentity } from '../../../apps/server/src/identity/index.js';
 import { addMember, expectStatus, grant, person, project, workspace, type Person } from '../support/people.js';
 import { apiUrl, publicOrigin } from '../support/http.js';
+import { chooseOption, optionValues } from '../support/app-select.js';
 
 /** The browser uses real Flux sessions, routes and SQL. Only the external GitHub transport is
  * injected in the test process. No production fake provider endpoint or real-installation claim. */
@@ -129,14 +130,14 @@ test('real settings UI binds, verifies PR links and removes private projections 
   await page.getByRole('heading', { name: 'Connected repositories', exact: true }).waitFor();
   await Promise.all([page.waitForEvent('domcontentloaded'), page.getByRole('button', { name: 'Install App on repositories', exact: true }).click()]);
   await page.getByRole('button', { name: 'Choose installation', exact: true }).click();
-  await page.getByLabel('Installation', { exact: true }).selectOption('555');
+  await chooseOption(page.getByLabel('Installation', { exact: true }), '555');
   const picker = page.locator('section').filter({ has: page.getByRole('heading', { name: 'Add a repository', exact: true }) });
-  await picker.getByLabel('Repository', { exact: true }).selectOption('777');
+  await chooseOption(picker.getByLabel('Repository', { exact: true }), '777');
   await page.getByRole('button', { name: 'Connect repository', exact: true }).click();
   await page.getByRole('heading', { name: 'Link an existing pull request', exact: true }).waitFor();
   const choices=page.getByRole('navigation',{name:'GitHub task choices',exact:true});
   await expect(choices).toContainText('1–50 of 105 tasks');
-  await expect(page.getByLabel('Task',{exact:true}).locator('option')).toHaveCount(51);
+  assert.equal((await optionValues(page.getByLabel('Task',{exact:true}))).length, 51);
   await choices.getByRole('button',{name:'Next',exact:true}).click();await expect(choices).toContainText('51–100 of 105 tasks');
   await choices.getByRole('button',{name:'Next',exact:true}).click();await expect(choices).toContainText('101–105 of 105 tasks');
   await choices.getByRole('button',{name:'Previous',exact:true}).click();await expect(choices).toContainText('51–100 of 105 tasks');
@@ -147,11 +148,11 @@ test('real settings UI binds, verifies PR links and removes private projections 
   await page.getByLabel('Find task',{exact:true}).fill('Native repository task');await expect(choices).toContainText('51–100 of 104 tasks');
   await page.getByLabel('Find task',{exact:true}).fill(task.title);
   await expect(page.getByLabel('Task',{exact:true}).locator('option')).toHaveCount(2);
-  await page.getByLabel('Task', { exact: true }).selectOption(task.id);
+  await chooseOption(page.getByLabel('Task', { exact: true }), task.id);
   const noPulls = page.getByText('No pull requests are linked to this task yet.', { exact: true });
   await noPulls.waitFor(); // #218: a chosen task without links says so instead of staying blank.
   const linker = page.locator('section').filter({ has: page.getByRole('heading', { name: 'Link an existing pull request', exact: true }) });
-  await linker.getByLabel('Repository', { exact: true }).selectOption({ label: 'lamp-team/gesture-lamp-firmware' });
+  await chooseOption(linker.getByLabel('Repository', { exact: true }), { label: 'lamp-team/gesture-lamp-firmware' });
   await page.getByLabel('Pull request number', { exact: true }).fill('42');
   await page.getByRole('button', { name: 'Verify and link PR', exact: true }).click();
   const privatePull = page.getByRole('link', { name: '#42 · Keep a manual off switch when gesture sensing loses calibration', exact: true }); await privatePull.waitFor();
@@ -160,14 +161,14 @@ test('real settings UI binds, verifies PR links and removes private projections 
   // Clearing the search returns to the page the person left in the unfiltered list (each search keeps its own page).
   await page.getByLabel('Find task',{exact:true}).fill('');await expect(choices).toContainText('51–100 of 105 tasks');
   await choices.getByRole('button',{name:'Previous',exact:true}).click();await expect(choices).toContainText('1–50 of 105 tasks');
-  await expect(page.getByLabel('Task',{exact:true})).toHaveValue(task.id);
+  await expect(page.getByLabel('Task',{exact:true})).toHaveAttribute('data-value', task.id);
   await expect(page.getByLabel('Pull request number',{exact:true})).toHaveValue('42');
-  await expect(page.getByLabel('Relationship',{exact:true})).toHaveValue('required_output');
+  await expect(page.getByLabel('Relationship',{exact:true})).toHaveAttribute('data-value', 'required_output');
   for (const [label, width, height] of [['desktop', 1440, 900], ['tablet', 820, 1180], ['phone', 390, 844]] as const) {
     const target = label === 'desktop' ? page : await (await context(owner, { viewport: { width, height }, hasTouch: true, isMobile: label === 'phone' })).newPage();
     await target.setViewportSize({ width, height });
     if (target !== page) {
-      await target.goto(`/projects/${place.id}/github`); await target.getByLabel('Find task',{exact:true}).fill(task.title);await target.getByLabel('Task', { exact: true }).selectOption(task.id);
+      await target.goto(`/projects/${place.id}/github`); await target.getByLabel('Find task',{exact:true}).fill(task.title);await chooseOption(target.getByLabel('Task', { exact: true }), task.id);
       await target.getByRole('link', { name: /#42 · Keep a manual off switch/ }).waitFor();
     }
     assert.ok(await target.locator('body').evaluate((el) => el.scrollWidth) <= width, `${label} has no horizontal overflow`);
@@ -190,14 +191,14 @@ test('real settings UI binds, verifies PR links and removes private projections 
   assert.equal(await memberPage.getByRole('link', { name: /Keep a manual off switch/ }).count(), 0);
   await memberPage.getByRole('button', { name: 'Continue to GitHub', exact: true }).click();
   await memberPage.getByRole('heading', { name: 'Linked pull requests', exact: true }).waitFor();
-  await memberPage.getByLabel('Find task',{exact:true}).fill(task.title);await memberPage.getByLabel('Task', { exact: true }).selectOption(task.id);
+  await memberPage.getByLabel('Find task',{exact:true}).fill(task.title);await chooseOption(memberPage.getByLabel('Task', { exact: true }), task.id);
   await memberPage.getByRole('link', { name: /#42 · Keep a manual off switch/ }).waitFor();
   assert.equal(await memberPage.getByRole('button', { name: 'Verify and link PR', exact: true }).count(), 0);
   assert.equal(await memberPage.getByRole('button', { name: 'Choose installation', exact: true }).count(), 0);
   for (const [label, width, height] of [['desktop', 1440, 900], ['tablet', 820, 1180], ['phone', 390, 844]] as const) {
     const target = label === 'desktop' ? memberPage : await (await context(viewer, { viewport: { width, height }, hasTouch: true, isMobile: label === 'phone' })).newPage();
     await target.setViewportSize({ width, height });
-    if (target !== memberPage) { await target.goto(`/projects/${place.id}/github`); await target.getByRole('heading', { name: 'Linked pull requests', exact: true }).waitFor(); await target.getByLabel('Find task',{exact:true}).fill(task.title);await target.getByLabel('Task', { exact: true }).selectOption(task.id); }
+    if (target !== memberPage) { await target.goto(`/projects/${place.id}/github`); await target.getByRole('heading', { name: 'Linked pull requests', exact: true }).waitFor(); await target.getByLabel('Find task',{exact:true}).fill(task.title);await chooseOption(target.getByLabel('Task', { exact: true }), task.id); }
     await target.getByRole('link', { name: /#42 · Keep a manual off switch/ }).waitFor();
     assert.equal(await target.getByRole('button', { name: 'Verify and link PR', exact: true }).count(), 0);
     assert.ok(await target.locator('body').evaluate((el) => el.scrollWidth) <= width, `${label} read-only projection fits`);

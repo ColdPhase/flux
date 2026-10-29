@@ -24,6 +24,8 @@ import uuid
 
 from playwright.sync_api import Browser, BrowserContext, Page, Route, expect, sync_playwright
 
+from app_select import choose, expect_value
+
 from test_app_shell import DESKTOP, ORIGIN, PHONE, UPSTREAM, shot, start_forwarder
 
 MOCK = os.environ.get("FLUX_ANTHROPIC_MOCK_URL", "http://127.0.0.1:8090")
@@ -231,9 +233,15 @@ class PersonalAssistantJourney(unittest.TestCase):
         turn_on = page.get_by_role("button", name="Turn on my assistant")
         expect(turn_on).to_be_disabled()
         page.get_by_role("button", name="Create your assistant here").click()
-        expect(page.get_by_label("In Lamp studio")).to_have_value(re.compile(r"[0-9a-f-]{36}"))
-        page.get_by_label("Up to per request", exact=True).select_option(label="$0.08")
-        page.get_by_label("Daily cap", exact=True).select_option(label="$1.00")
+        expect_value(page.get_by_label("In Lamp studio"), re.compile(r"[0-9a-f-]{36}"))
+        choose(page.get_by_label("Up to per request", exact=True), label="$0.08")
+        choose(page.get_by_label("Daily cap", exact=True), label="$1.00")
+        # Raising the per-request limit past the daily cap moves the cap up to the nearest option that fits: never an empty control.
+        choose(page.get_by_label("Daily cap", exact=True), label="$0.10")
+        choose(page.get_by_label("Up to per request", exact=True), label="$0.20")
+        expect(page.get_by_label("Daily cap", exact=True)).to_have_text("$0.50")
+        choose(page.get_by_label("Up to per request", exact=True), label="$0.08")
+        choose(page.get_by_label("Daily cap", exact=True), label="$1.00")
         shot(page, "assistant-1440-settings-consent")
         expect(turn_on).to_be_disabled()
         page.get_by_role("checkbox", name=re.compile("excerpts from the project conversations I ask in are sent to Anthropic")).check()
@@ -585,7 +593,7 @@ class PersonalAssistantJourney(unittest.TestCase):
         self.assertEqual((runs["stopped"], runs["provider_failed"]), ("unknown", "unknown"))
         settings.reload()
         settings.locator("details.aset__more > summary").click()
-        settings.get_by_label("Daily cap", exact=True).select_option(label="$0.10")
+        choose(settings.get_by_label("Daily cap", exact=True), label="$0.10")
         settings.get_by_role("button", name="Save limits").click()
         expect(settings.get_by_text("of your $0.10 daily cap", exact=False)).to_be_visible()
         expect(settings.get_by_role("heading", name="Stopped at today’s cap")).to_be_visible()

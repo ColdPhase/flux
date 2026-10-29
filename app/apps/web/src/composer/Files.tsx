@@ -1,8 +1,9 @@
-import { useRef, useState, type DragEvent } from 'react';
+import { useEffect, useRef, useState, type DragEvent } from 'react';
 import { Icon, useMediaQuery } from '../ui';
-import { FileIcon, typeLine, useObjectUrl } from './Attachments';
+import { FileIcon, typeLine, useObjectUrl, warmPreview } from './Attachments';
 import { selectedFile, uploadLabel, type ComposerState, type DraftFile } from './draft';
-import { looksLikePhoto } from './fileKind';
+import { detailLine, looksLikePhoto } from './fileKind';
+import { CiteTile } from './References';
 import { PhotoPicker } from './PhotoPicker';
 import './composer.css';
 
@@ -52,7 +53,7 @@ export function ComposerFiles({ state, disabled = false, attach = 'row' }: { sta
   const blocked = disabled || state.sending;
   const touch = useMediaQuery('(pointer: coarse)');
   const picked = usePickedFiles(state);
-  const empty = attach === 'none' && !state.draft.files.length && !state.draft.references.length && state.storage !== 'visit'
+  const empty = attach === 'none' && !state.draft.files.length && !state.draft.references.length && !state.draft.cites.length && state.storage !== 'visit'
     && !(state.draft.unconfirmed && !state.sending && !state.error) && !state.error;
   return <div className="composer-files" hidden={empty || undefined}>
     <input ref={input} className="ui-vh" type="file" multiple tabIndex={-1} aria-hidden="true" disabled={blocked}
@@ -70,6 +71,7 @@ export function ComposerFiles({ state, disabled = false, attach = 'row' }: { sta
     {state.draft.references.map((ref) => <div key={`${ref.materialId}:${ref.version}`} className="composer-files__ref">
       <span>Source: {ref.title} · v{ref.version}</span><button type="button" disabled={blocked} aria-label="Remove material citation" onClick={() => state.setReference(null)}><Icon name="x" size={14} /></button>
     </div>)}
+    {state.draft.cites.map((cite) => <CiteTile key={`${cite.kind}:${cite.id}`} cite={cite} disabled={blocked} onRemove={() => state.removeCite(cite.kind, cite.id)} />)}
     {state.storage === 'visit' ? <p className="composer-files__privacy">This browser refused draft storage. Your text, files and sources stay during this visit; keep this tab open to recover them.</p> : null}
     {state.draft.unconfirmed && !state.sending && !state.error ? <p className="composer-files__privacy">This send is unconfirmed. Retry sends the same command once.</p> : null}
     {state.error ? <p className="composer-files__error" role="alert">{state.error}</p> : null}
@@ -84,12 +86,14 @@ export function ComposerFiles({ state, disabled = false, attach = 'row' }: { sta
 function DraftThumb({ file, order, status, blocked, onRetry, onRemove }: { file: DraftFile; order: number; status: string; blocked: boolean; onRetry: () => void; onRemove: () => void }) {
   const local = looksLikePhoto(file.name) ? selectedFile(file.uploadId) : undefined;
   const url = useObjectUrl(local);
+  // While the person can still read the file, a small copy of the photo is kept for its place in the queue if the message has to wait (#469).
+  useEffect(() => { void warmPreview(local); }, [local]);
   const [broken, setBroken] = useState(false);
   const photo = !!url && !broken;
   return <li className={`composer-thumb${photo ? ' is-photo' : ''}`} data-file-state={file.state}>
     <span className="composer-thumb__face">{photo ? <img src={url} alt="" onError={() => setBroken(true)} /> : <FileIcon name={file.name} size={30} />}
       {order ? <span className="composer-thumb__order"><span className="ui-vh">Sends </span>{order}<span className="ui-vh">.</span></span> : null}</span>
-    <span className="composer-files__name">{file.name}<small>{typeLine(file)} · {status}</small></span>
+    <span className="composer-files__name">{file.name}<small>{typeLine(file, detailLine(file.staged))} · {status}</small></span>
     {file.state === 'failed' ? <button type="button" className="composer-thumb__retry" disabled={blocked} onClick={onRetry}>Retry upload</button> : null}
     <button type="button" className="composer-thumb__x" disabled={blocked} onClick={onRemove} aria-label={`Remove ${file.name}`}><span className="composer-thumb__xface"><Icon name="x" size={12} /></span></button>
     {file.error ? <p className="composer-files__error" role="alert">{file.error}</p> : null}

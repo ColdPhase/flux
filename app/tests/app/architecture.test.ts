@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict';
-import { readdirSync, statSync } from 'node:fs';
-import { join, resolve } from 'node:path';
+import { readdirSync, readFileSync, statSync } from 'node:fs';
+import { join, relative, resolve } from 'node:path';
 import { describe, test } from 'node:test';
-import { checkManifests, checkSources, compare, layerOf, loadExceptions, reachableImports, scanRepository } from './support/architecture.js';
+import { checkManifests, checkSources, compare, layerOf, loadExceptions, nativeSelects, reachableImports, scanRepository } from './support/architecture.js';
 
 // Repository-wide Clean Architecture rules (issue #46). The layers and their allowed
 // dependencies are defined in support/architecture.ts and explained in
@@ -16,6 +16,13 @@ function files(dir: string): string[] {
   return readdirSync(dir).flatMap((name) => {
     const path = join(dir, name);
     return statSync(path).isDirectory() ? files(path) : path.endsWith('.ts') ? [path] : [];
+  });
+}
+
+function uiSources(dir: string): string[] {
+  return readdirSync(dir).flatMap((name) => {
+    const path = join(dir, name);
+    return statSync(path).isDirectory() ? uiSources(path) : /\.tsx?$/.test(path) ? [path] : [];
   });
 }
 
@@ -70,6 +77,37 @@ describe('architecture boundaries', () => {
     // `policy.ts` and `ports.ts` are the pure decisions and the `AccessReader` port; `@flux/db` implements it.
     const entries = ['access/policy.ts', 'access/ports.ts', 'events.ts'].map((file) => join(root, 'packages/core/src', file));
     assert.deepEqual(reachableImports(root, entries, ['@flux/db', 'drizzle-orm', 'pg', 'pg-boss', 'fastify', 'web-push']), []);
+  });
+
+  test('the access use cases keep to ports and stay small, never reaching persistence through helpers (#91)', () => {
+    // The workspace, member, AI switch, project, grant, agent and draft use cases run over the repository ports in
+    // `access/repositories.ts`; `@flux/db` implements them. `types.ts` is the one recorded exception: its type-only
+    // import of the Drizzle-derived `Database`/`Executor` is on the allowlist until #92 gives core its own port.
+    const entries = files(join(root, 'packages/core/src/access'));
+    assert.ok(entries.length >= 18, 'the access policy, ports and use case modules exist');
+    const found = reachableImports(root, entries, ['@flux/db', 'drizzle-orm', 'pg', 'pg-boss', 'fastify', 'web-push'])
+      .filter((violation) => !violation.startsWith('packages/core/src/types.ts: '));
+    assert.deepEqual(found, []);
+    for (const module of ['workspaces', 'members', 'workspace-ai', 'projects', 'grants', 'agents', 'drafts', 'validation', 'common', 'records', 'repositories']) {
+      const lines = readFileSync(join(root, 'packages/core/src/access', `${module}.ts`), 'utf8').split('\n').length;
+      assert.ok(lines <= 200, `access/${module}.ts has ${lines} lines; split it before it passes 200`);
+    }
+  });
+
+  test('product UI has no native <select>: the shared Select replaces it (#695)', () => {
+    const sources = uiSources(join(root, 'apps/web/src'));
+    assert.ok(sources.length >= 100, `the scan covers the web sources (found ${sources.length})`);
+    assert.ok(sources.some((path) => path.endsWith('ui/Select.tsx')), 'the shared Select exists in the design system');
+    const found = sources.flatMap((path) => nativeSelects(readFileSync(path, 'utf8')).map((line) => `${relative(root, path)}:${line}`));
+    assert.deepEqual(found, [], 'use Select and Option from ../ui (apps/web/src/ui/Select.tsx), not a native <select>');
+  });
+
+  test('the native select rule finds elements and ignores comments (self-test)', () => {
+    assert.deepEqual(nativeSelects('const a = <select value={x}>\n<option />\n</select>;'), [1]);
+    assert.deepEqual(nativeSelects('x\n  <select\n    id="a">'), [2]);
+    assert.deepEqual(nativeSelects("h('div'); createElement('select', {})"), [1]);
+    assert.deepEqual(nativeSelects('// a native <select> is not used\n/* nor <select> here\n<select> */\nconst ok = <Select />;'), []);
+    assert.deepEqual(nativeSelects("const url = 'https://x.test'; <select>"), [1]);
   });
 
   test('the rules reject each kind of boundary violation (self-test)', () => {

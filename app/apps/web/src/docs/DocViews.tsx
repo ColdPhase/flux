@@ -1,8 +1,9 @@
 import { lazy, Suspense, useEffect, useMemo, useState, type MouseEvent, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import { useRegisterLiveHere } from '../live/LiveProvider';
 import { Link, redirect, useLoaderData, useNavigate, useRevalidator, useSearchParams, type LoaderFunctionArgs } from 'react-router';
 import type { Doc, DocSummary, DocVersion, DocVersionSummary, ObjectLink, Project } from '@flux/contracts';
-import { EmptyState, Icon, Spinner } from '../ui';
+import { EmptyState, Icon, Spinner, Select, Option } from '../ui';
 import { useShellData } from '../app/data';
 import { useShellActions } from '../app/shellContext';
 import { docUrl, getDoc, getVersion, listVersions, listWorkspaceDocs } from './api';
@@ -10,7 +11,7 @@ import { diffDocs, diffStats, readableRefs, type DiffRow } from './diff';
 import { draftKey, readKept } from './drafts';
 import { STATE_LABEL, authorLabel, docLinks, kindLabel, longDate, pathOfLink, shortDate } from './format';
 import { DocProse } from './DocProse';
-import { DimIcon, DownloadButton, PageMenu, ShareButton, WikiBar, WikiIcon } from './WikiParts';
+import { DimIcon, DownloadButton, PageMenu, ShareButton, WikiBar, WikiIcon, usePhoneHeader } from './WikiParts';
 import { EditedBy, Outline, OutlineChip, useProse } from './WikiRead';
 import { blockDiff } from './block-diff';
 import { useAgentOwners } from '../agents/owners';
@@ -23,8 +24,16 @@ import { RefLink } from '../place/origin';
 // The current page's shared working copy (#228) loads only with a configured live capability (#239
 // review), so an ordinary wiki never evaluates its CRDT bundle. If that bundle cannot load, the page
 // is read as saved.
-const LiveReading = lazy(() => import('../editing/LiveReading').then((module) => ({ default: module.LiveReading }), () => ({ default: SavedReading })));
+//
+// The reader must not change kind after it is on screen: a Suspense fallback holding the same page is a different place in the
+// tree from the page inside the lazy component, so the swap would rebuild the whole page (its toolbar, an open menu, the focus)
+// a moment after it appeared. The loader therefore has the bundle in hand before the first render (`loadLiveReading`), and the
+// reader then renders it directly; the lazy path below is only for a reader reached some other way.
+type LiveReadingComponent = (props: LiveReadingProps) => ReactNode;
 function SavedReading({ render }: LiveReadingProps) { return <>{render(null)}</>; }
+let loadedLiveReading: LiveReadingComponent | null = null;
+const loadLiveReading = () => import('../editing/LiveReading').then((module) => { loadedLiveReading = module.LiveReading; }, () => { loadedLiveReading = SavedReading; });
+const LiveReading = lazy(() => loadLiveReading().then(() => ({ default: loadedLiveReading! })));
 
 // The project wiki (#112, two panes since #136): the reader with links and backlinks, and the
 // version history with a diff, beside the page index (Wiki.tsx). Everything here is visible to the
@@ -52,7 +61,7 @@ function inProject(doc: Doc, projectId: string | undefined) {
 
 function isTyping(target: EventTarget | null) {
   const el = target as HTMLElement | null;
-  return !!el && (el.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(el.tagName));
+  return !!el && (el.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(el.tagName) || !!el.closest?.('[role="combobox"], [role="listbox"]'));
 }
 
 function DocRow({ doc, showProject }: { doc: DocSummary; showProject?: boolean }) {
@@ -137,7 +146,11 @@ interface ReaderData { doc: Doc; shown: DocVersion; historical: boolean }
 
 export async function docLoader({ params, request }: LoaderFunctionArgs): Promise<ReaderData> {
   // The capability is known before the first render, so the reader never switches kinds after it.
-  const [doc] = await Promise.all([getDoc(params.docId!, request.signal), editingCapability()]);
+  const [doc] = await Promise.all([
+    getDoc(params.docId!, request.signal),
+    // The shared reader's bundle comes with the page (not for an explicit version, which is read as saved).
+    editingCapability().then((capability) => capability === 'configured' && params.version === undefined ? loadLiveReading() : undefined),
+  ]);
   inProject(doc, params.projectId);
   const version = params.version ? Number(params.version) : null;
   const shown = version && version !== doc.version ? await getVersion(doc.id, version, request.signal) : doc;
@@ -207,6 +220,10 @@ export function DocReader() {
   // Load the CRDT-backed reader only when configured, and never for an explicit version URL.
   const capability = useEditingCapability();
   if (capability !== 'configured' || historical) return <DocReading live={null} />;
+  if (loadedLiveReading) {
+    const Shared = loadedLiveReading;
+    return <Shared docId={doc.id} userId={me.user.id} render={(live) => <DocReading live={live} />} />;
+  }
   return <Suspense fallback={<DocReading live={null} />}>
     <LiveReading docId={doc.id} userId={me.user.id} render={(live) => <DocReading live={live} />} />
   </Suspense>;
@@ -214,7 +231,7 @@ export function DocReader() {
 
 function DocReading({ live }: { live: LiveReadingState | null }) {
   const { doc, shown, historical } = useLoaderData() as ReaderData;
-  const { project, docs, writable, compact } = useWiki();
+  const { project, docs, writable, compact, menuSlot } = useWiki();
   const { me } = useShellData();
   const navigate = useNavigate();
   const revalidator = useRefresh();
@@ -259,17 +276,22 @@ function DocReading({ live }: { live: LiveReadingState | null }) {
   const editButton = !writable ? null : current
     ? <Link className={`ui-btn ui-btn--primary ${compact ? 'wiki-edit' : 'wiki-bar__primary'}`} data-slot="primary" to={edit} aria-label="Edit" aria-keyshortcuts="e"><Icon name="edit" size={16} /><span className="wiki-bar__label">Edit</span></Link>
     : compact ? null : <button type="button" className="ui-btn ui-btn--primary wiki-bar__primary" data-slot="primary" aria-label="Edit" disabled><Icon name="edit" size={16} /><span className="wiki-bar__label">Edit</span></button>;
+  // The page's one menu: in the header of a narrow work area beside the computer's views, but never in the phone's header,
+  // which is the same in every view (#507): there it ends the row of page chips, which stays at the top while the page is read.
+  const phoneHeader = usePhoneHeader();
+  const inStrip = compact && phoneHeader;
+  const pageMenu = compact ? (
+    <PageMenu sharePath={current ? base : `${base}/versions/${shown.version}`} shareVersion={current ? null : shown.version}
+      shown={{ title: shown.title, body: text, version: shown.version, current }}
+      history={<Link className="wiki-pop__item" to={historyTo} aria-label={historyLabel}><WikiIcon name="history" /><span><b>History</b><small>{doc.version} {doc.version === 1 ? 'version' : 'versions'}, {STATE_LABEL[shown.state].toLowerCase()}</small></span></Link>} />
+  ) : null;
   return (
     <>
       <WikiBar compactInHeader phoneMeta={<span className="wiki-bar__title"><b>Wiki</b> · {docs.length} {docs.length === 1 ? 'page' : 'pages'}</span>}
         primary={compact ? undefined : editButton} meta={compact
           ? <span className="wiki-bar__title"><b>Wiki</b> · {docs.length} {docs.length === 1 ? 'page' : 'pages'}</span>
           : <><span className="doc-head__k">{STATE_LABEL[shown.state]} · version {shown.version}{current ? '' : ` of ${doc.version}`}</span>{keptLink}</>}>
-        {compact ? (
-          <PageMenu sharePath={current ? base : `${base}/versions/${shown.version}`} shareVersion={current ? null : shown.version}
-            shown={{ title: shown.title, body: text, version: shown.version, current }}
-            history={<Link className="wiki-pop__item" to={historyTo} aria-label={historyLabel}><WikiIcon name="history" /><span><b>History</b><small>{doc.version} {doc.version === 1 ? 'version' : 'versions'}, {STATE_LABEL[shown.state].toLowerCase()}</small></span></Link>} />
-        ) : (
+        {compact ? (inStrip ? null : pageMenu) : (
           <>
             <OutlineChip headings={headings} scroller={prose?.closest<HTMLElement>('.wiki-main') ?? null} />
             <Link className="ui-icon-btn" data-slot="history" to={historyTo} aria-label={historyLabel} data-tip={`History · ${doc.version} ${doc.version === 1 ? 'version' : 'versions'}`}>
@@ -280,6 +302,7 @@ function DocReading({ live }: { live: LiveReadingState | null }) {
           </>
         )}
       </WikiBar>
+      {inStrip && menuSlot ? createPortal(pageMenu, menuSlot) : null}
       <div className="wiki-read" key={doc.id}>
         <article className="wiki-doc wiki-doc--read doc" data-shift aria-labelledby="doc-title">
           {compact && keptLink ? <p className="doc-notice">{keptLink}</p> : null}
@@ -441,9 +464,9 @@ export function DocHistory() {
           <div className="doc-history__diff">
             {to.version > 1 ? (
               <label className="doc-compare">Compare with
-                <select value={from?.version ?? ''} onChange={(event) => compare({ from: Number(event.target.value) })}>
-                  {versions.filter((item) => item.version < to.version).map((item) => <option key={item.version} value={item.version}>version {item.version} · {shortDate(item.createdAt)}</option>)}
-                </select>
+                <Select value={from?.version ?? ''} onChange={(next) => compare({ from: Number(next) })}>
+                  {versions.filter((item) => item.version < to.version).map((item) => <Option key={item.version} value={item.version}>version {item.version} · {shortDate(item.createdAt)}</Option>)}
+                </Select>
               </label>
             ) : null}
             <Changes from={from} to={to} />

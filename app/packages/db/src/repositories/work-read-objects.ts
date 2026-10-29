@@ -3,6 +3,7 @@ import type { DecisionRowProjection, NamedPrincipal, NativeWorkRow, PrincipalRef
 import * as schema from '../schema.js';
 import type { DbExecutor } from './push.js';
 import { workRows } from './work.js';
+import { openRows } from '../sealing.js';
 import { taskGraphRows } from './task-graph.js';
 import { nativePrerequisiteCounts } from './work-read-task-plans.js';
 import { nativeWorkVisibilityRows, type NativeWorkReadObject } from './work-read-visibility.js';
@@ -32,9 +33,9 @@ export function nativeWorkObjectRows(db: DbExecutor) {
     const requested = objects.map((object) => ({ ...object }));
     const ids = (kind: NativeWorkReadObject['kind']) => requested.filter((ref) => ref.kind === kind).map((ref) => ref.id);
     const workIds = ids('work'), decisionIds = ids('decision'), resultIds = ids('result');
-    const works = workIds.length ? await db.select(workFields).from(w).where(and(eq(w.projectId, projectId), inArray(w.id, workIds))) : [];
-    const decisions = decisionIds.length ? await db.select(decisionFields).from(d).where(and(eq(d.projectId, projectId), inArray(d.id, decisionIds))) : [];
-    const results = resultIds.length ? await db.select(resultFields).from(r).where(and(eq(r.projectId, projectId), inArray(r.id, resultIds))) : [];
+    const works = workIds.length ? await openRows(db, 'project_work_items', await db.select(workFields).from(w).where(and(eq(w.projectId, projectId), inArray(w.id, workIds)))) : [];
+    const decisions = decisionIds.length ? await openRows(db, 'project_decisions', await db.select(decisionFields).from(d).where(and(eq(d.projectId, projectId), inArray(d.id, decisionIds)))) : [];
+    const results = resultIds.length ? await openRows(db, 'project_results', await db.select(resultFields).from(r).where(and(eq(r.projectId, projectId), inArray(r.id, resultIds)))) : [];
     const prerequisites = await nativePrerequisiteCounts(db, projectId, workIds);
     const actors: PrincipalRef[] = [];
     for (const work of works) {
@@ -51,7 +52,7 @@ export function nativeWorkObjectRows(db: DbExecutor) {
     const named = await names(actors);
     const facts = new Map((await nativeWorkVisibilityRows(db).relations(projectId, requested)).map((fact) => [`${fact.kind}:${fact.id}`, fact]));
     const parkedIds = [...new Set(works.filter((work) => work.parkedAt && work.parkedByDecisionId).map((work) => work.parkedByDecisionId!))];
-    const parked = parkedIds.length ? await db.select({ id: d.id, title: d.title }).from(d).where(and(eq(d.projectId, projectId), inArray(d.id, parkedIds))) : [];
+    const parked = parkedIds.length ? (await openRows(db, 'project_decisions', await db.select({ id: d.id, workspaceId: d.workspaceId, title: d.title }).from(d).where(and(eq(d.projectId, projectId), inArray(d.id, parkedIds))))).map(({ id, title }) => ({ id, title })) : [];
     const byId = new Map<string, NativeWorkRow>();
     const counts = (kind: NativeWorkReadObject['kind'], id: string) => {
       const fact = facts.get(`${kind}:${id}`);
@@ -101,7 +102,7 @@ export function nativeWorkObjectRows(db: DbExecutor) {
       if (ids.length > 3) throw new Error('Native detail context exceeds its bound');
       if (!ids.length) return [];
       const ordered = [...new Set(ids)];
-      const refs = await db.select({ id: d.id, title: d.title }).from(d).where(and(eq(d.projectId, projectId), inArray(d.id, ordered)));
+      const refs = (await openRows(db, 'project_decisions', await db.select({ id: d.id, workspaceId: d.workspaceId, title: d.title }).from(d).where(and(eq(d.projectId, projectId), inArray(d.id, ordered))))).map(({ id, title }) => ({ id, title }));
       return ordered.flatMap((id) => { const ref = refs.find((ref) => ref.id === id); return ref ? [{ kind: 'decision' as const, ...ref }] : []; });
     },
     /** Full own fields for exactly one native object. No links are implicitly loaded. */
@@ -112,7 +113,7 @@ export function nativeWorkObjectRows(db: DbExecutor) {
       if (!exists.length) return null;
       const row = (await rows(projectId, [requested]))[0]!;
       if (row.kind === 'work') {
-        const [own] = await db.select({ outcome: w.outcome, criteria: w.criteria, createdByKind: w.createdByKind, createdById: w.createdById }).from(w).where(and(eq(w.projectId, projectId), eq(w.id, row.id)));
+        const [own] = await openRows(db, 'project_work_items', await db.select({ id: w.id, workspaceId: w.workspaceId, outcome: w.outcome, criteria: w.criteria, createdByKind: w.createdByKind, createdById: w.createdById }).from(w).where(and(eq(w.projectId, projectId), eq(w.id, row.id))));
         if (!own) throw new Error('Missing native work detail');
         const named = await names([{ kind: own.createdByKind, id: own.createdById }]);
         const plan = (await taskGraphRows(db).taskPlans([row.id])).get(row.id) ?? { prerequisites: [], planIntent: null };
@@ -126,13 +127,13 @@ export function nativeWorkObjectRows(db: DbExecutor) {
           createdBy: named({ kind: own.createdByKind, id: own.createdById }) };
       }
       if (row.kind === 'decision') {
-        const [own] = await db.select({ rationale: d.rationale }).from(d).where(and(eq(d.projectId, projectId), eq(d.id, row.id)));
+        const [own] = await openRows(db, 'project_decisions', await db.select({ id: d.id, workspaceId: d.workspaceId, rationale: d.rationale }).from(d).where(and(eq(d.projectId, projectId), eq(d.id, row.id))));
         if (!own) throw new Error('Missing native decision detail');
         const { relations: _relations, ...decision } = row;
         void _relations;
         return { ...decision, kind: 'decision', rationale: own.rationale };
       }
-      const [own] = await db.select({ evidence: r.evidence }).from(r).where(and(eq(r.projectId, projectId), eq(r.id, row.id)));
+      const [own] = await openRows(db, 'project_results', await db.select({ id: r.id, workspaceId: r.workspaceId, evidence: r.evidence }).from(r).where(and(eq(r.projectId, projectId), eq(r.id, row.id))));
       if (!own) throw new Error('Missing native result detail');
       const { relations: _relations, ...result } = row;
       void _relations;

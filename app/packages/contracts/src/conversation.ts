@@ -1,3 +1,5 @@
+import type { SearchTarget } from './search.js';
+
 /** Project conversations and materials are visible only through current project access. */
 export const projectConversationsPath = (projectId: string) => `/api/v1/projects/${projectId}/conversations`;
 export const conversationPath = (conversationId: string) => `/api/v1/conversations/${conversationId}`;
@@ -37,7 +39,35 @@ export interface ConversationMessageFields {
    * files may have an empty body; it never has neither.
    */
   files?: import('./files.js').MessageFile[];
+  /**
+   * Present only when the message cites a map thought or another message (#469): one card per reference, in the
+   * order they were attached, resolved for the reader who asks. A target the reader cannot open now is an
+   * `unavailable` card with no id, title or place, so a reference never reveals what the reader may not read.
+   */
+  references?: MessageReferenceCard[];
 }
+
+/** What a message may cite besides a Wiki version (#469, F-026 §6): a map thought or another message. */
+export type MessageReferenceKind = 'thought' | 'message';
+export interface MessageReference { kind: MessageReferenceKind; id: string }
+/** At most this many references on one message. */
+export const MESSAGE_REFERENCE_LIMIT = 4;
+/** Where a card opens; the same targets search results open (`targetHref` in the web app). */
+export type MessageReferenceTarget = Extract<SearchTarget, { type: 'thought' | 'message' | 'dm_message' }>;
+export type MessageReferenceCard =
+  | {
+    kind: MessageReferenceKind; state: 'available';
+    /** The thought's text, or the message's first line, on one line. */
+    title: string;
+    /** Who wrote it; null when the writer is not known (an agent that was removed). */
+    author: string | null;
+    /** When it was written or last changed. */
+    at: string;
+    /** The place it lives in: the project, the sketch or "Direct message". */
+    place: string;
+    target: MessageReferenceTarget;
+  }
+  | { kind: MessageReferenceKind; state: 'unavailable' };
 
 /** Optional current-project display metadata; never changes a stored author or grants access. */
 export type AgentProjectOwner = { kind: 'workspace' } | { kind: 'human'; id: string };
@@ -153,6 +183,11 @@ export interface SendMessageCommand {
    * together, distinct, in the order they appear. A retry of the same send repeats the same list.
    */
   attachmentIds?: string[];
+  /**
+   * Map thoughts and messages this message cites (#469): at most {@link MESSAGE_REFERENCE_LIMIT}, distinct, each
+   * readable by the sender now and in the sender's workspace; any other is 404 REFERENCE_UNAVAILABLE.
+   */
+  references?: MessageReference[];
 }
 
 export interface MaterialVersionFields {

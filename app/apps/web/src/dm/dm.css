@@ -19,7 +19,8 @@
 .dm-msg--cont .dm-msg__row { padding-top: 1px; }
 .dm-msg__meta { display: flex; align-items: baseline; gap: 8px; font-size: var(--fs-xs); color: var(--t3); line-height: 1.4; }
 .dm-msg__meta b { font-size: var(--fs-sm); font-weight: 600; color: var(--t1); }
-.dm-msg__body { margin-top: 1px; font-size: var(--fs-base); line-height: 1.55; color: var(--t1); white-space: pre-wrap; overflow-wrap: anywhere; }
+.dm-msg { --dm-lead: 1px; --dm-lh: 1.55; }
+.dm-msg__body { margin-top: var(--dm-lead); font-size: var(--fs-base); line-height: var(--dm-lh); color: var(--t1); white-space: pre-wrap; overflow-wrap: anywhere; }
 .dm__composer { border-top: 1px solid var(--line); background: var(--bg); padding-top: 10px; }
 .dm__notice { display: flex; align-items: center; gap: 6px; margin: 0 2px 8px; padding: 8px 10px; border-radius: var(--r); background: var(--sub); font-size: var(--fs-sm); color: var(--t2); }
 .dm__notice svg { flex: none; color: var(--t3); }
@@ -32,7 +33,8 @@
 
 /* Selecting messages to start a sketch in this DM (#96, #594). Nothing moves: every message keeps its place, the other
    people's on the left and mine on the right edge of the same column. The check sits in the column the face has (an own
-   message has none, so it gets the same column), vertically centred on the bubble's first line. A picked row takes the one
+   message has none, so it gets the same column), vertically centred on the bubble's first line (the line box of --dm-lh with
+   the body's --dm-lead above it: the same two values the body uses, so the check cannot drift off the line). A picked row takes the one
    soft fill (--pick, apart from every bubble, own ones too): its box grown by --dm-pick on every side, painted behind the text so that a neighbour's fill never covers a
    bubble. Only transform, opacity and colours animate. */
 .dm { --dm-w: 1000px; --dm-pick: 8px; --dm-check: 32px; --dm-pad: 9px; --dm-meta: calc(var(--fs-sm) * 1.4 + 7px); }
@@ -46,7 +48,7 @@
 .dm--selecting .dm-msg.is-picked .dm-msg__row::before { background: var(--pick); }
 .dm--selecting .dm-msg__face { visibility: hidden; }
 .dm-msg:not(.is-mine):not(.dm-msg--cont) { --dm-top: var(--dm-meta); }
-.dm-msel { position: absolute; left: 0; top: calc(var(--dm-top, 0px) + var(--dm-pad) + .5 * var(--lh) * var(--fs-base) - var(--dm-check) / 2); display: grid; place-items: center start;
+.dm-msel { position: absolute; left: 0; top: calc(var(--dm-top, 0px) + var(--dm-pad) + var(--dm-lead) + .5 * var(--dm-lh) * var(--fs-base) - var(--dm-check) / 2); display: grid; place-items: center start;
   width: var(--dm-check); height: var(--dm-check); border-radius: var(--r); color: var(--t3); animation: dm-in var(--dur-2) var(--ease-out) backwards; }
 .dm-msel i { display: grid; place-items: center; width: 18px; height: 18px; border-radius: 5px; box-shadow: inset 0 0 0 1.5px var(--t3); transition: var(--tr); }
 .dm-msel svg { opacity: 0; transform: scale(.6); color: var(--oninv); transition: opacity var(--dur-1) var(--ease-out), transform var(--dur-1) var(--ease-out); }
@@ -80,9 +82,9 @@
 .dm-new h2 { padding-top: 16px; font-size: var(--fs-xl); letter-spacing: -0.015em; }
 .dm-new__lead { margin: 4px 0 18px; font-size: var(--fs-md); color: var(--t3); }
 .dm-new__space { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; font-size: var(--fs-sm); color: var(--t2); }
-.dm-new__space select, .dm-new__search, .dm-new__title input { min-height: 36px; border: 1px solid var(--line2); border-radius: var(--r); padding: 0 10px; background: var(--el); color: var(--t1); font: inherit; font-size: var(--fs-md); }
+.dm-new__space .ui-select, .dm-new__search, .dm-new__title input { min-height: 36px; border: 1px solid var(--line2); border-radius: var(--r); padding: 0 10px; background: var(--el); color: var(--t1); font: inherit; font-size: var(--fs-md); }
 .dm-new__search { width: 100%; }
-.dm-new__search:focus-visible, .dm-new__title input:focus-visible, .dm-new__space select:focus-visible { outline: 2px solid var(--t1); outline-offset: 1px; }
+.dm-new__search:focus-visible, .dm-new__title input:focus-visible { outline: 2px solid var(--t1); outline-offset: 1px; }
 .dm-new__note, .dm-new__opening { margin: 12px 2px; font-size: var(--fs-sm); color: var(--t3); }
 .dm-new__people { list-style: none; margin: 8px 0 0; padding: 0; max-height: min(52vh, 440px); overflow-y: auto; }
 .dm-new__person { display: flex; align-items: center; gap: 10px; min-height: 48px; padding: 6px 10px; margin: 0 -10px; border-radius: var(--r); cursor: pointer; transition: var(--tr); }
@@ -103,7 +105,7 @@
   .dm__error button { min-height: 44px; }
   .dm { --dm-check: 44px; }
   .dm-new__person { min-height: 56px; }
-  .dm-new__space select, .dm-new__search, .dm-new__title input { min-height: 44px; }
+  .dm-new__space .ui-select, .dm-new__search, .dm-new__title input { min-height: 44px; }
 }
 @media (max-width: 640px) {
   /* The caption under the phone composer shares its line with "Choose messages": it never wraps; "direct message" is
@@ -205,7 +207,7 @@
   font-size: var(--fs-base); line-height: 1.55; white-space: pre-wrap; overflow-wrap: anywhere; }
 .dm-copy__row { display: grid; grid-template-columns: 112px minmax(0, 1fr); gap: 4px 12px; align-items: baseline; font-size: var(--fs-md); }
 .dm-copy__label { display: inline-flex; align-items: center; gap: 5px; color: var(--t3); font-size: var(--fs-sm); }
-.dm-copy__row select { min-height: 36px; border: 1px solid var(--line2); border-radius: var(--r); padding: 0 10px; background: var(--el); color: var(--t1); font: inherit; }
+.dm-copy__row .ui-select { min-height: 36px; border: 1px solid var(--line2); border-radius: var(--r); padding: 0 10px; background: var(--el); color: var(--t1); font: inherit; }
 .dm-copy__people { overflow-wrap: anywhere; }
 .dm-copy__muted, .dm-copy__warn, .dm-copy__notice { font-size: var(--fs-sm); line-height: 1.5; color: var(--t3); }
 .dm-copy__warn { color: var(--t1); }

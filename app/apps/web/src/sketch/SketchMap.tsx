@@ -19,6 +19,8 @@ export interface SelectionTools {
   helpOpen: boolean;
   onShape(): void;
   onTask(): void;
+  /** Cite the selected thought in its place's conversation (#469); absent where a sketch has none. */
+  onCite: (() => void) | null;
   onUndo(): void;
   onHelp(): void;
 }
@@ -43,6 +45,9 @@ export interface SketchMapProps {
   helpId: string;
   /** Measured heights of the rendered thoughts, shared with the view for placing new ones. */
   heights: Map<string, number>;
+  /** The tallest the bottom toolbar and its line have been, kept by the view across Map and List (#510), and how the map raises it. */
+  dockHeight: number;
+  onDockHeight(update: (before: number) => number): void;
   canWrite: boolean;
   /** The project's tasks linked to each thought (UI116-4); none outside a project. */
   tasks: Map<string, ThoughtTasksEntry>;
@@ -135,16 +140,21 @@ export function SketchMap(props: SketchMapProps) {
   const phoneToolsRef = useRef<HTMLDivElement>(null);
   // The zoom and minimap rise above the bottom toolbar and its line where the pane is too narrow for
   // them beside it. The tallest height seen keeps them clear however the toolbar or the hint wraps,
-  // and they only ever move up once, not with every status line (Spokój rule 7).
+  // and they only ever move up once, not with every status line (Spokój rule 7). The view keeps that
+  // height (a Map, List, Map round trip mounts the map again) and it is read before the first paint,
+  // so a map that has just been mounted never shows them at a place they leave a frame later (#510).
   const dockRef = useRef<HTMLDivElement>(null);
-  const [dockHeight, setDockHeight] = useState(64);
+  const { dockHeight, onDockHeight } = props;
   useLayoutEffect(() => {
     const el = dockRef.current;
-    if (compact || !el || typeof ResizeObserver === 'undefined') return;
-    const ro = new ResizeObserver(() => { const h = Math.ceil(el.getBoundingClientRect().height); setDockHeight((before) => Math.max(before, h)); });
+    if (compact || !el) return;
+    const measure = () => { const h = Math.ceil(el.getBoundingClientRect().height); onDockHeight((before) => Math.max(before, h)); };
+    measure();
+    if (typeof ResizeObserver === 'undefined') return;
+    const ro = new ResizeObserver(measure);
     ro.observe(el);
     return () => ro.disconnect();
-  }, [compact]);
+  }, [compact, onDockHeight]);
   const [phoneToolsHeight, setPhoneToolsHeight] = useState(150);
   // Larger reading text and optional Undo/status rows must never cover a thought's task count.
   // Reserve the actual dock height; widths and graph positions remain display-only geometry.
@@ -1051,6 +1061,7 @@ export function SketchMap(props: SketchMapProps) {
             {selection.length === 1 ? <button type="button" className="sk-options__action" onClick={() => phoneAction(() => props.onEdit(lastThought.id))}><Icon name="edit" size={18} />Edit thought</button> : null}
             {openLink ? <a className="sk-options__action" href={openLink.href} target="_blank" rel="noopener noreferrer"><Icon name="link" size={18} />Open link {openLink.host}</a> : null}
             {props.bar.project ? <button type="button" className="sk-options__action" aria-label="Create task from selected thoughts" aria-disabled={false} onClick={() => phoneAction(props.bar.onTask)}><Icon name="tasks" size={18} />Create task</button> : null}
+            {props.bar.onCite ? <button type="button" className="sk-options__action" aria-label="Cite the selected thought in the conversation" onClick={() => phoneAction(props.bar.onCite!)}><Icon name="cite" size={18} />Cite in conversation</button> : null}
             <button type="button" className="sk-options__action" aria-label="Remove from sketch" onClick={() => phoneAction(() => props.onRemove(selection))}><Icon name="trash" size={18} />Remove thought</button>
           </> : <>
             <p className="sk-options__thought">{sketch.title}</p>

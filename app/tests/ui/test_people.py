@@ -23,6 +23,9 @@ import uuid
 
 from playwright.sync_api import Browser, BrowserContext, Page, expect, sync_playwright
 
+from app_select import choose, expect_value
+from app_select import labels as app_labels
+
 from create_window import create_other
 from test_app_shell import DESKTOP, ORIGIN, PHONE, UPSTREAM, box, open_details, shot, start_forwarder
 
@@ -126,7 +129,7 @@ class PeopleJourney(unittest.TestCase):
         form = page.get_by_role("region", name="Add someone")
         form.get_by_label("Email").fill(email)
         if role:
-            form.get_by_label("Role").select_option(label=role)
+            choose(form.get_by_label("Role"), label=role)
         form.get_by_role("button", name=re.compile("^Add to ")).click()
 
     def access_region(self, page: Page):
@@ -163,7 +166,7 @@ class PeopleJourney(unittest.TestCase):
         page.keyboard.type(PEOPLE["kai"][1])
         page.keyboard.press("Tab")
         expect(form.get_by_label("Role")).to_be_focused()
-        expect(form.get_by_label("Role")).to_have_value("member")
+        expect_value(form.get_by_label("Role"), "member")
         page.keyboard.press("Tab")
         expect(form.get_by_role("button", name="Add to Riverside Makers")).to_be_focused()
         page.keyboard.press("Enter")
@@ -173,7 +176,7 @@ class PeopleJourney(unittest.TestCase):
 
         # Enter in the address field submits too.
         email.fill(PEOPLE["lee"][1])
-        form.get_by_label("Role").select_option(label="Admin")
+        choose(form.get_by_label("Role"), label="Admin")
         expect(form.get_by_text("Adds and removes people and manages every project.")).to_be_visible()
         email.press("Enter")
         expect(page.locator(".people__done")).to_have_text("Lee Moreno joined Riverside Makers as admin.")
@@ -190,7 +193,7 @@ class PeopleJourney(unittest.TestCase):
         page = self.page("lee")
         self.open_people(page, "Riverside Makers")
         form = page.get_by_role("region", name="Add someone")
-        labels = form.get_by_label("Role").locator("option").all_inner_texts()
+        labels = app_labels(form.get_by_label("Role"))
         self.assertNotIn("Owner", labels, labels)
         self.assertIn("Admin", labels, labels)
         roster = page.get_by_role("list", name="People in Riverside Makers")
@@ -228,13 +231,13 @@ class PeopleJourney(unittest.TestCase):
         change.click()
         editor = page.get_by_role("group", name="Change Lee Moreno")
         expect(editor.get_by_label("Role")).to_be_focused()
-        expect(editor.get_by_label("Role")).to_have_value("admin")
+        expect_value(editor.get_by_label("Role"), "admin")
         # Esc closes the editor and returns focus to its button.
         page.keyboard.press("Escape")
         expect(editor).to_have_count(0)
         expect(change).to_be_focused()
         change.click()
-        editor.get_by_label("Role").select_option(label="Member")
+        choose(editor.get_by_label("Role"), label="Member")
         expect(editor).to_contain_text("Sees projects open to the workspace and the ones given to them.")
         shot(page, "people-desktop-1440-dark-change-role")
         editor.get_by_role("button", name="Save role").click()
@@ -255,7 +258,7 @@ class PeopleJourney(unittest.TestCase):
         # Stepping down as the last owner is refused with what to do instead.
         lee.get_by_role("button", name="Change your role").click()
         mine = lee.get_by_role("group", name="Change your role")
-        mine.get_by_label("Role").select_option(label="Admin")
+        choose(mine.get_by_label("Role"), label="Admin")
         mine.get_by_role("button", name="Save role").click()
         expect(mine.get_by_role("alert")).to_have_text("Harbour Studio needs at least one owner. Make someone else an owner first.")
         self.assertEqual(self.roles(lee, self.harbour)[self.ids["lee"]], "owner")
@@ -309,9 +312,9 @@ class PeopleJourney(unittest.TestCase):
         give = region.get_by_role("group", name="Give someone access")
         expect(give.get_by_label("Person")).to_be_focused()
         # Only people who can't see it yet are offered: not Ada herself.
-        options = give.get_by_label("Person").locator("option").all_inner_texts()
+        options = app_labels(give.get_by_label("Person"))
         self.assertEqual(sorted(o.split(" · ")[0] for o in options[1:]), ["Kai Tanaka", "Lee Moreno", "Mia Novak (guest)"])
-        give.get_by_label("Person").select_option(value=self.ids["kai"])
+        choose(give.get_by_label("Person"), value=self.ids["kai"])
         expect(give).to_contain_text("Only Kai Tanaka gains access. Kai will be able to read and write in Kiln controller")
         expect(give).to_contain_text("Nobody else is added.")
         # The two access choices share the form's width, each on one line, and say which is chosen.
@@ -364,14 +367,14 @@ class PeopleJourney(unittest.TestCase):
         region.get_by_role("button", name="Change access for Kai Tanaka").click()
         editor = region.get_by_role("group", name="Change access for Kai Tanaka")
         expect(editor.get_by_label("Access")).to_be_focused()
-        editor.get_by_label("Access").select_option(label="Can read")
+        choose(editor.get_by_label("Access"), label="Can read")
         expect(editor).to_contain_text("Kai Tanaka will be able to read Kiln controller but not write in it.")
         editor.get_by_role("button", name="Change access").click()
         expect(region.locator(".people__done")).to_have_text("Kai can now read Kiln controller.")
         self.assertEqual(self.api(self.page("kai"), f"/api/v1/projects/{self.kiln}")[1]["access"], "viewer")
 
         region.get_by_role("button", name="Change access for Kai Tanaka").click()
-        editor.get_by_label("Access").select_option(label="Remove access")
+        choose(editor.get_by_label("Access"), label="Remove access")
         expect(editor).to_contain_text("Kai Tanaka loses access to Kiln controller at once. They won’t see it at all, not even its name.")
         editor.get_by_role("button", name="Remove access").click()
         expect(region.locator(".people__done")).to_have_text("Kai’s access was removed.")
@@ -399,7 +402,7 @@ class PeopleJourney(unittest.TestCase):
         self.manage_access(region)
         region.get_by_role("button", name="Change access for Lee Moreno").click()
         editor = region.get_by_role("group", name="Change access for Lee Moreno")
-        editor.get_by_label("Access").select_option(label="Keep out of this project")
+        choose(editor.get_by_label("Access"), label="Keep out of this project")
         expect(editor).to_contain_text("Lee Moreno is kept out of Garden sensors at once, whatever their role in Riverside Makers.")
         shot(page, "people-desktop-1440-keep-out")
         editor.get_by_role("button", name="Keep Lee out").click()
@@ -415,7 +418,7 @@ class PeopleJourney(unittest.TestCase):
         expect(lee.get_by_text(OPEN)).to_have_count(0)
 
         region.get_by_role("button", name="Change access for Lee Moreno").click()
-        editor.get_by_label("Access").select_option(label="Let back in")
+        choose(editor.get_by_label("Access"), label="Let back in")
         expect(editor).to_contain_text("Lee Moreno can write in Garden sensors again as a member of Riverside Makers.")
         editor.get_by_role("button", name="Let Lee back in").click()
         expect(region.locator(".people__done")).to_have_text("Lee is no longer kept out.")
@@ -636,7 +639,7 @@ class PeopleFocus(unittest.TestCase):
         page = self.people_page()
         page.get_by_role("button", name="Change Noa Berg").click()
         editor = page.get_by_role("group", name="Change Noa Berg")
-        editor.get_by_label("Role").select_option(label="Guest")
+        choose(editor.get_by_label("Role"), label="Guest")
         editor.get_by_role("button", name="Save role").click()
         expect(page.locator(".people__done")).to_have_text("Noa Berg is now a guest.")
         self.after_next_frames(page)

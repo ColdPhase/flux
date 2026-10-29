@@ -34,6 +34,7 @@
 .wiki-frame { flex: 1; min-height: 0; display: flex; container: wiki / inline-size; }
 .wiki { flex: 1; min-width: 0; min-height: 0; display: flex; }
 
+.wiki-top { display: contents; }
 .wiki-index {
   flex: none; width: 220px; min-width: 180px; min-height: 0; overflow-y: auto; overscroll-behavior: contain; display: flex; flex-direction: column;
   padding: 20px 12px; border-right: 1px solid var(--line); background: var(--bg);
@@ -258,7 +259,7 @@
 .doc-version__open { display: grid; place-items: center; flex: none; padding: 0 8px; border-radius: var(--r-sm); font-size: var(--fs-xs); font-weight: 500; color: var(--t3); text-decoration: none; }
 .doc-version__open:hover { background: var(--hov); color: var(--t1); }
 .doc-compare { display: flex; align-items: center; gap: 8px; margin-bottom: 14px; font-size: var(--fs-sm); color: var(--t3); }
-.doc-compare select { min-height: var(--ctl); padding: 0 8px; border: 0; border-radius: var(--r); background: var(--el); color: var(--t1); font-size: var(--fs-md); box-shadow: inset 0 0 0 1px var(--line2); }
+.doc-compare .ui-select { min-height: var(--ctl); padding: 0 8px; border: 0; border-radius: var(--r); background: var(--el); color: var(--t1); font-size: var(--fs-md); box-shadow: inset 0 0 0 1px var(--line2); }
 .doc-changes__top h2 { margin: 0; font-size: var(--fs-lg); font-weight: 600; letter-spacing: -0.01em; }
 .doc-changes__why { margin: 4px 0 8px; font-size: var(--fs-sm); color: var(--t2); }
 .doc-changes__facts { margin: 0 0 8px; padding-left: 1.2em; font-size: var(--fs-sm); color: var(--t2); }
@@ -335,7 +336,7 @@
   .wiki-search input { height: 44px; font-size: 16px; }
   .wiki-index__head .ui-icon-btn { width: 44px; height: 44px; }
   .doc-edit__text { font-size: 16px; }
-  .doc-compare select { min-height: 44px; font-size: 16px; }
+  .doc-compare .ui-select { min-height: 44px; font-size: 16px; }
   .doc-picker__opt { min-height: 44px; align-items: center; }
   .doc-edit__hint, .doc-picker__keys { display: none; }
   .doc-picker__touch { display: block; }
@@ -377,7 +378,15 @@
   .wiki:has(.wiki-main > .wiki-read) { overflow-y: hidden; }
   .wiki .wiki-main:has(> .wiki-read) { flex: 1; min-height: 0; overflow: hidden; display: grid; grid-template-rows: minmax(0, 1fr) auto; }
   .wiki-main > .wiki-read { min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
-  .wiki-index { width: auto; min-width: 0; overflow: visible; padding: 4px 16px 0; border-right: 0; flex: none; position: sticky; top: 0; z-index: 20; }
+  /* The page's menu ends the row of page chips and stays with it at the top while the page is read (#507). The chips scroll in the
+     room left of it; the wrapper is the sticky part, and is invisible to the layout wherever the wiki is not narrow. */
+  .wiki-top { display: flex; align-items: flex-end; flex: none; position: sticky; top: 0; z-index: 20; background: var(--bg); }
+  .wiki-top__menu { position: relative; flex: none; margin: 0 6px 10px 0; }
+  .wiki-top__menu:empty { display: none; }
+  .wiki-top__menu .ui-icon-btn { width: max(34px, var(--ctl)); height: max(34px, var(--ctl)); color: var(--t2); }
+  .wiki-top__menu .wiki-pop { top: calc(100% + 2px); right: 0; left: auto; width: min(300px, calc(100vw - 24px)); max-width: none; max-height: calc(100dvh - 144px); overflow-y: auto; }
+  .wiki--editing .wiki-top { display: none; }
+  .wiki-index { flex: 1 1 auto; width: auto; min-width: 0; overflow: visible; padding: 4px 16px 0; border-right: 0; position: static; }
   .wiki-search { margin: 0 0 6px; }
   .wiki-index__count { margin: 2px 4px 4px; }
   .wiki-pages { flex-direction: row; align-items: center; gap: 6px; margin: 0 -16px; padding: 4px 16px 10px; overflow-x: auto; scrollbar-width: none; overscroll-behavior-x: contain; }
@@ -424,7 +433,7 @@
 }
 
 .doc-picker__type { display: flex; align-items: center; gap: 8px; padding: 6px 12px; font-size: var(--fs-sm); }
-.doc-picker__type select { flex: 1; min-width: 0; min-height: 44px; font: inherit; color: var(--t1); background: var(--el); border: 1px solid var(--line); border-radius: var(--r-sm); }
+.doc-picker__type .ui-select { flex: 1; min-width: 0; min-height: 44px; font: inherit; color: var(--t1); background: var(--el); border: 1px solid var(--line); border-radius: var(--r-sm); }
 .doc-picker__browse { margin: 0; padding: 4px 12px; font-size: var(--fs-xs); }
 .doc-picker .ws-pages { padding: 4px 12px; }
 

@@ -4,7 +4,7 @@ import {
   type GithubTaskRuleView, type Project, type WorkItem,
 } from '@flux/contracts';
 import { ApiError, request } from '../api/client';
-import { Button, Icon } from '../ui';
+import { Button, Icon, Select, Option } from '../ui';
 import { STATUS_LABEL, shortDate } from '../work/format';
 import './task-pull-requests.css';
 
@@ -115,10 +115,10 @@ export function TaskPullRequests({ item, project, writable, reload }: { item: Ru
           {on ? (
             <div className="wd-gh-mode">
               <label htmlFor={modeId}>When every required PR is merged</label>
-              <select id={modeId} value={mode} disabled={busy} onChange={(event) => void send(githubTaskRulePath(item.id), 'PUT', { enabled: true, mode: event.target.value })}>
-                <option value="ready">Show Ready to close</option>
-                <option value="complete">Mark it done</option>
-              </select>
+              <Select id={modeId} value={mode} disabled={busy} onChange={(next) => void send(githubTaskRulePath(item.id), 'PUT', { enabled: true, mode: next })}>
+                <Option value="ready">Show Ready to close</Option>
+                <Option value="complete">Mark it done</Option>
+              </Select>
             </div>
           ) : null}
           {on && rule?.setUpBy ? <p className="wd-muted">Set up by {rule.setUpBy.name}. Written criteria are never checked off by a merge.</p> : null}

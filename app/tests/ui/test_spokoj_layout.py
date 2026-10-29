@@ -83,6 +83,7 @@ class SpokojLayout(unittest.TestCase):
                                       headers={"origin": ORIGIN, "content-type": "application/json", "idempotency-key": str(uuid.uuid4())},
                                       data=json.dumps({"title": "Hardware", "body": "Six capacitive probes and two ESP32 boards.", "state": "published"}))
         assert response.status == 201, response.text()
+        cls.doc_id = response.json()["id"]
         page.goto(f"/dm/new?workspace={workspace['id']}&with={cls.kai_id}")
         expect(page).to_have_url(re.compile(r"/dm/[0-9a-f-]{36}$"))
         cls.dm_path = page.url.removeprefix(ORIGIN)
@@ -435,7 +436,9 @@ class SpokojLayout(unittest.TestCase):
             with self.subTest(width=size["width"]):
                 page = self.page(size, dark=size is PHONES[1], touch=True)
                 reference = None
-                for path in (*(f"/projects/{self.project_id}{view}" for view in VIEWS), self.dm_path):
+                # The Wiki's page, and its edit and history states (#507: the header is the same in all of them).
+                wiki_states = (f"/projects/{self.project_id}/docs/{self.doc_id}/edit", f"/projects/{self.project_id}/docs/{self.doc_id}/history")
+                for path in (*(f"/projects/{self.project_id}{view}" for view in VIEWS), *wiki_states, self.dm_path):
                     page.goto(path)
                     header = page.locator("header.phead")
                     expect(header.get_by_role("button", name="Search", exact=True)).to_be_visible()
@@ -448,13 +451,20 @@ class SpokojLayout(unittest.TestCase):
                         "title": self.box(header.get_by_role("heading", level=1).get_by_role("button")),
                         "Search": self.box(header.get_by_role("button", name="Search", exact=True)),
                     }
-                    if path.endswith("/docs"):
-                        # A Wiki page's one menu holds Together and the page's actions; it takes Together's place.
-                        controls["Together"] = self.box(header.get_by_role("button", name="More", exact=True))
-                        expect(header.get_by_role("button", name="Together", exact=True)).to_be_hidden()
-                    else:
-                        controls["Together"] = self.box(header.get_by_role("button", name="Together", exact=True))
+                    # Together keeps its place in the Wiki too (#507 gap 3 of the #500 audit): a Wiki page's own "More" is in
+                    # the page's strip below the header, not in it.
+                    controls["Together"] = self.box(header.get_by_role("button", name="Together", exact=True))
                     self.assertEqual(header.locator("button:visible").count(), 4, f"{path}: {header.locator('button:visible').all_inner_texts()}")
+                    if path.endswith("/docs"):
+                        expect(header.get_by_role("button", name="More", exact=True)).to_have_count(0)
+                        menu = page.locator(".wiki-top__menu").get_by_role("button", name="More", exact=True)
+                        expect(menu).to_be_visible()
+                        menu_box, strip = self.box(menu), self.box(page.locator(".wiki-top"))
+                        self.assertGreaterEqual(min(menu_box["width"], menu_box["height"]), 44, "the page's menu keeps a touch target")
+                        self.assertGreaterEqual(menu_box["y"], head["y"] + head["height"] - 0.5, "the page's menu is below the header")
+                        self.assertLessEqual(menu_box["y"] + menu_box["height"], strip["y"] + strip["height"] + 0.5, "in the row of page chips")
+                        expect(page.get_by_role("navigation", name="Wiki pages").get_by_role("button", name="More", exact=True)).to_have_count(0)
+                        self.assertLessEqual(menu_box["x"] + menu_box["width"], size["width"], "inside the screen")
                     for name, box in controls.items():
                         self.assertGreaterEqual(min(box["width"], box["height"]), 44, f"{name} at {path}")
                         self.assertGreaterEqual(box["y"], head["y"] - 0.5, f"{name} stays inside the header at {path}")

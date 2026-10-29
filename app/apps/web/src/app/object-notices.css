@@ -1,0 +1,17 @@
+/* A decision or a result announced in the conversation (#694, F-026 P5). It shares the task announcement's parts
+   (.convo-notice__meta, __src, __task, __title): one author column, a meta line, then the object as one card. */
+.convo-object { position: relative; max-width: min(600px, 100%); padding-left: 44px; margin: 24px 0; list-style: none; }
+.convo-object > :is(.ui-avatar, .author-face) { position: absolute; left: 0; top: 0; }
+.convo-object time { font-size: var(--fs-xs); color: var(--t3); font-variant-numeric: tabular-nums; }
+.convo-object + :is(.convo-object, .convo-notice) , .convo-notice + .convo-object { margin-top: 14px; }
+/* The state is a word, never a colour alone: the proposed one is the quiet "needs a person" mark, the rest recede. */
+.convo-object__state { flex: none; font-size: var(--fs-xs); color: var(--t3); letter-spacing: .01em; }
+.convo-object__state[data-state="proposed"] { color: var(--t1); font-weight: 600; }
+.convo-object__card > svg { flex: none; color: var(--t2); }
+@media (max-width: 680px) {
+  .convo-object { padding-left: 42px; margin: 18px 0; }
+  .convo-object + :is(.convo-object, .convo-notice), .convo-notice + .convo-object { margin-top: 12px; }
+  .convo-object .convo-notice__meta, .convo-object .convo-notice__task { font-size: 15px; }
+}
+/* In a thread the line sits among the replies at the replies' own column. */
+.thread__list > .convo-object { margin: 14px 0; }

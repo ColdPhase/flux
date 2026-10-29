@@ -214,3 +214,15 @@ export function reachableImports(root: string, entries: string[], forbidden: str
   for (const entry of entries) visit(entry, []);
   return violations;
 }
+
+/**
+ * Native `<select>` elements in a UI source (#695): the line number of each one, comments ignored. Product UI uses
+ * the shared `Select` of the design system (apps/web/src/ui/Select.tsx), whose list wears the tokens, follows the
+ * theme and is a sheet on a phone; the system's list does none of that.
+ */
+export function nativeSelects(source: string): number[] {
+  const code = source
+    .replace(/\/\*[\s\S]*?\*\//g, (comment) => comment.replace(/[^\n]/g, ' '))
+    .replace(/(^|\s)\/\/.*$/gm, '$1');
+  return code.split('\n').flatMap((line, index) => (/<select(?![\w-])|createElement\(\s*['"`]select['"`]/.test(line) ? [index + 1] : []));
+}

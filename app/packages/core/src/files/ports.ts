@@ -1,4 +1,4 @@
-import type { MessageFile } from '@flux/contracts';
+import type { FileDetail, MessageFile } from '@flux/contracts';
 import type { ActorRef, WorkAccess } from '../work/ports.js';
 
 /** One stored file row (#154). Bytes are in the FileStorage under `id`. */
@@ -22,6 +22,10 @@ export interface StoredFileRow {
   /** #252: the map thought this file is the image of. A file is published to a message or a thought, never both. */
   thoughtId: string | null;
   publishedAt: Date | null;
+  /** #469: what the bytes said at upload; null (or absent) when the kind is not read or they did not say. */
+  pageCount?: number | null;
+  rowCount?: number | null;
+  durationMs?: number | null;
 }
 
 /** Rows only; the use cases decide. Every method runs in the caller's transaction. */
@@ -36,7 +40,7 @@ export interface FileRepository {
     reservedBytes: number; expiresAt: Date; replayOf?: string }): Promise<StoredFileRow>;
   findFile(id: string): Promise<StoredFileRow | null>;
   /** Marks a still-receiving reservation ready; false when it is gone or no longer receiving. */
-  markReady(id: string, input: { size: number; sha256: string; readyAt: Date; expiresAt: Date }): Promise<boolean>;
+  markReady(id: string, input: { size: number; sha256: string; readyAt: Date; expiresAt: Date; detail?: FileDetail }): Promise<boolean>;
   /** Removes an unpublished row (a failed or abandoned upload). Published rows are never removed. */
   removeUnpublished(id: string): Promise<boolean>;
   /** Locks these rows FOR UPDATE in ascending id order and returns the ones that exist. */

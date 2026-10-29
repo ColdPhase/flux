@@ -6,8 +6,11 @@ import uuid
 from urllib.parse import parse_qs, urlsplit
 
 from playwright.sync_api import expect, sync_playwright
+
+from app_select import choose
 from test_app_shell import ORIGIN, UPSTREAM, shot, start_forwarder
 from test_work_pagination import api
+from wiki_text import LIVE, existing_text, wait_until_shared
 
 
 class DocReferenceJourney(unittest.TestCase):
@@ -80,6 +83,10 @@ class DocReferenceJourney(unittest.TestCase):
         self.addCleanup(lambda: self.assertEqual(errors, [], "no uncaught browser errors"))
         path = f"{self.self_doc['id']}/edit" if self_doc else "new"
         page.goto(f"/projects/{self.project}/docs/{path}")
+        if self_doc and LIVE:
+            # An existing page opens its shared working copy; nothing is typed into it here (it would change the page other steps read).
+            wait_until_shared(page)
+            return page, existing_text(page)
         text = page.get_by_label("Text (Markdown)")
         text.fill("PRIVATE-DRAFT of native reference notes\n")
         return page, text
@@ -99,7 +106,7 @@ class DocReferenceJourney(unittest.TestCase):
                 picker = self.picker(page, text)
                 query = picker.get_by_role("combobox", name="Find a doc, decision, result, work, sketch or message", exact=True)
                 for kind in ("work", "decision", "result"):
-                    picker.get_by_label("Reference type").select_option(kind)
+                    choose(picker.get_by_label("Reference type"), kind)
                     query.fill("")
                     seen = set()
                     for count in (50, 50, 5):
@@ -121,7 +128,7 @@ class DocReferenceJourney(unittest.TestCase):
                     expect(picker.get_by_role("listbox", name="Matches").get_by_role("option")).to_have_count(0)
                     expect(picker).to_contain_text("Nothing matches")
                 query.fill("")
-                picker.get_by_label("Reference type").select_option("work")
+                choose(picker.get_by_label("Reference type"), "work")
                 expect(picker.get_by_role("listbox", name="Matches").get_by_role("option")).to_have_count(50)
                 query.focus()
                 for _ in range(45):
@@ -141,7 +148,7 @@ class DocReferenceJourney(unittest.TestCase):
             expected = [("doc", self.doc), ("decision", self.native["decision"][0]), ("result", self.native["result"][0]), ("work", self.native["work"][0]), ("sketch", self.sketch), ("message", {"id": self.message["id"], "title": self.message["body"]})]
             for kind, item in expected:
                 picker = self.picker(page, text)
-                picker.get_by_label("Reference type").select_option(kind)
+                choose(picker.get_by_label("Reference type"), kind)
                 query = picker.get_by_role("combobox", name="Find a doc, decision, result, work, sketch or message", exact=True)
                 query.fill(item["title"])
                 expect(picker.get_by_role("listbox", name="Matches").get_by_role("option")).to_have_count(1)
@@ -158,7 +165,7 @@ class DocReferenceJourney(unittest.TestCase):
             self.assertTrue({(kind, item["id"]) for kind, item in expected}.issubset(mentions))
         page, text = self.scene(self_doc=True)
         picker = self.picker(page, text)
-        picker.get_by_label("Reference type").select_option("doc")
+        choose(picker.get_by_label("Reference type"), "doc")
         picker.get_by_role("combobox", name="Find a doc, decision, result, work, sketch or message", exact=True).fill(self.self_doc["title"])
         expect(picker.get_by_role("listbox", name="Matches").get_by_role("option")).to_have_count(0)
 
@@ -207,7 +214,7 @@ class DocReferenceJourney(unittest.TestCase):
         # Actual browser history navigation observed by React Router, preserving the
         # document and component position rather than reloading away the regression.
         page.evaluate("path => { history.pushState({...history.state, key: crypto.randomUUID(), idx: (history.state?.idx ?? 0)+1}, '', path); dispatchEvent(new PopStateEvent('popstate')); }", f"/projects/{project}/docs/{suffix}")
-        expect(page.get_by_label("Text (Markdown)")).to_be_visible()
+        expect(existing_text(page) if LIVE and suffix != "new" else page.get_by_label("Text (Markdown)")).to_be_visible()
 
     def test_04_private_draft_follows_project_and_document_scope_without_document_reload(self):
         for phone in (False, True):
@@ -224,8 +231,15 @@ class DocReferenceJourney(unittest.TestCase):
                 expect(text).to_have_value("PRIVATE-DRAFT of native reference notes\n")
                 self.navigate_editor(page, self.project, f"{self.self_doc['id']}/edit")
                 expect(page.get_by_label("Title", exact=True)).to_have_value(self.self_doc["title"])
-                expect(text).to_have_value("A native document")
-                text.fill("PRIVATE-DRAFT of an existing document")
+                if LIVE:
+                    # The page's own text is its shared working copy, not the new page's draft (which stays out of it); typing into
+                    # the shared copy is covered by test_live_editing and would change the page for the steps after this one.
+                    wait_until_shared(page)
+                    expect(existing_text(page)).to_have_text("A native document")
+                    expect(existing_text(page)).not_to_contain_text("PRIVATE-DRAFT")
+                else:
+                    expect(text).to_have_value("A native document")
+                    text.fill("PRIVATE-DRAFT of an existing document")
                 self.navigate_editor(page, self.project)
                 self.expect_new_editor(page, "Library lighting")
                 expect(text).to_have_value("PRIVATE-DRAFT of native reference notes\n")
@@ -236,7 +250,7 @@ class DocReferenceJourney(unittest.TestCase):
             with self.subTest(phone=phone):
                 page, text = self.scene(phone)
                 picker = self.picker(page, text)
-                picker.get_by_label("Reference type").select_option("work")
+                choose(picker.get_by_label("Reference type"), "work")
                 expect(picker.get_by_role("listbox", name="Matches").get_by_role("option")).to_have_count(50)
                 held = []
                 def hold_old_account(route):
@@ -258,7 +272,7 @@ class DocReferenceJourney(unittest.TestCase):
                 self.assertIsNone(page.evaluate("key => sessionStorage.getItem(key)", other_key))
                 text.fill("PRIVATE-DRAFT belonging only to Jonas")
                 picker = self.picker(page, text)
-                picker.get_by_label("Reference type").select_option("work")
+                choose(picker.get_by_label("Reference type"), "work")
                 query = picker.get_by_role("combobox", name="Find a doc, decision, result, work, sketch or message", exact=True)
                 query.fill(self.native["work"][0]["title"])
                 expect(picker.get_by_role("listbox", name="Matches").get_by_role("option")).to_have_count(1)
@@ -280,7 +294,7 @@ class DocReferenceJourney(unittest.TestCase):
                 item = api(self.ctx, "POST", f"/api/v1/projects/{self.project}/work", {"title": "Only the original shield measurement"}, 201)
                 page, text = self.scene(phone)
                 picker = self.picker(page, text)
-                picker.get_by_label("Reference type").select_option("work")
+                choose(picker.get_by_label("Reference type"), "work")
                 query = picker.get_by_role("combobox", name="Find a doc, decision, result, work, sketch or message", exact=True)
                 held = []
                 def hold(route):

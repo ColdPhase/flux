@@ -309,7 +309,7 @@ class ProjectSurfaceJourney(unittest.TestCase):
         view_tab(page, "Wiki")
         expect(page).to_have_url(re.compile(rf"/docs/{self.ids['doc']}$"))
         expect(page.locator("header .wiki-header-meta")).to_contain_text("Wiki · 1 page")
-        expect(page.locator("header .wiki-header-actions").get_by_role("button", name="More")).to_be_visible()
+        expect(page.locator(".wiki-top__menu").get_by_role("button", name="More", exact=True)).to_be_visible()
         # At 320px the views are in the title's menu (#341): the current one is marked there.
         page.get_by_role("heading", level=1).get_by_role("button").click()
         current = page.get_by_role("dialog").get_by_role("link", name=re.compile("^Wiki"))
@@ -680,6 +680,12 @@ class ProjectSurfaceJourney(unittest.TestCase):
                 source.click()
                 expect(page).to_have_url(re.compile(rf"/conversations/{self.ids['conversation']}"))
                 page.go_back()
+                if phone:
+                    # Back returns to the page as it was left (#592, #603): the task is open again, as a sheet over the list, so
+                    # the phone's Create button is behind it until the sheet is closed.
+                    expect(self.details(page).get_by_role("heading", name="Test the camera in low light")).to_be_visible()
+                    self.details(page).get_by_role("button", name=re.compile("^Close")).first.click()
+                    expect(self.details(page)).to_be_hidden()
                 field = open_from_tasks(page)
                 expect(field).to_have_value(draft)
                 self.close_create(page)

@@ -216,10 +216,12 @@ export function createDmUseCases(uow: DmUnitOfWork) {
       }
       // A 1:1 whose other person left has no audience besides the sender: refuse, do not store.
       await requireCounterpart(ports, dm, authorId);
+      await ports.references.assertReadable(principal, dm.workspaceId, input.references);
       const message = await ports.dms.appendMessage({
         id: randomUUID(), workspaceId: dm.workspaceId, dmId: dm.id, authorId,
         clientMessageId: input.clientMessageId, requestFingerprint: fingerprint, body: input.body, threadRootId: rootId,
       });
+      await ports.references.save(message.id, dm.workspaceId, input.references);
       // The message id (an identifier, never content) lets notifications (#116) name the message.
       await ports.events.record(principal, dm.workspaceId, 'dm.message_sent.v1', dm.id, { messageId: message.id, ...(rootId ? { rootId } : {}) });
       return toMessage(message);

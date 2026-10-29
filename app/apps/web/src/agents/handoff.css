@@ -29,7 +29,7 @@
 .handoff__error { margin: 0; font-size: var(--fs-sm); color: var(--t1); font-weight: 600; }
 .handoff__task { display: flex; align-items: center; gap: var(--s-2); }
 .handoff__task label { font-size: var(--fs-sm); color: var(--t3); }
-.handoff__task select { flex: 1; min-width: 0; min-height: var(--ctl); font: inherit; font-size: var(--fs-base); color: var(--t1); background: transparent; border: 1px solid var(--line2); border-radius: var(--r); padding: 0 var(--s-3); }
+.handoff__task .ui-select { flex: 1; min-width: 0; min-height: var(--ctl); font: inherit; font-size: var(--fs-base); color: var(--t1); background: transparent; border: 1px solid var(--line2); border-radius: var(--r); padding: 0 var(--s-3); }
 .handoff__foot { display: flex; align-items: center; justify-content: flex-end; gap: var(--s-2); }
 .handoff__tip { flex: 1; min-width: 0; font-size: var(--fs-xs); color: var(--t3); }
 .handoff__kbd { margin-left: var(--s-2); }

@@ -108,6 +108,20 @@ export interface TaskCreationNoticeRecord {
   reason?: string | null;
   createdAt: Date;
 }
+/** One moment of a decision or result the conversation announces (#694); the title and state are current. */
+export type ObjectNoticeRecord = {
+  id: string;
+  workspaceId: string;
+  projectId: string;
+  title: string;
+  by: ActorRef;
+  sources: ObjectRef[];
+  conversationId: string | null;
+  createdAt: Date;
+} & (
+  | { kind: 'decision.proposed' | 'decision.accepted'; decisionId: string; status: DecisionStatus }
+  | { kind: 'result.recorded'; resultId: string; finding: ResultFinding }
+);
 /** The two native commands that keep a durable retry receipt (#154); creation keeps its own identity on the task row. */
 export type NativeOperation = 'work.update' | 'result.create';
 export interface NativeCommandReceipt {
@@ -197,6 +211,8 @@ export interface WorkRepository extends TaskGraphReader {
   /** Called in the same transaction as the work row, links and stream event. */
   insertCreationNotice(work: WorkRecord, sources: ObjectRef[]): Promise<void>;
   listTaskNotices(projectId: string, page: PageWindow): Promise<Paged<TaskCreationNoticeRecord>>;
+  /** Proposed and accepted decisions and recorded results of the project as one stream, newest first (#694). */
+  listObjectNotices(projectId: string, page: PageWindow): Promise<Paged<ObjectNoticeRecord>>;
   /** One "blocked" or "unblocked" line of the conversation (#550), in the transaction of the change. */
   insertTaskUpdate(work: WorkRecord, update: { kind: 'task.blocked' | 'task.unblocked'; by: ActorRef; waitingFor: ActorRef | null; reason: string | null }): Promise<void>;
   /**

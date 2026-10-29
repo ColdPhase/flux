@@ -22,7 +22,7 @@ export function restoreTop(find: () => HTMLElement | null, top: number, ms = 300
   const watch = (element: HTMLElement) => {
     release();
     watched = element;
-    const key = (event: KeyboardEvent) => { if (SCROLL_KEYS.has(event.key) && !(event.target instanceof HTMLElement && event.target.closest('input,textarea,select,[contenteditable="true"]'))) stop(); };
+    const key = (event: KeyboardEvent) => { if (SCROLL_KEYS.has(event.key) && !(event.target instanceof HTMLElement && event.target.closest('input,textarea,select,[role="combobox"],[role="listbox"],[contenteditable="true"]'))) stop(); };
     const wheel = (event: WheelEvent) => { if ((event.deltaY || event.deltaX) && !event.ctrlKey) stop(); };
     element.addEventListener('wheel', wheel, { passive: true });
     element.addEventListener('touchmove', stop, { passive: true });

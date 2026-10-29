@@ -33,7 +33,7 @@ function useQueueKeys(items: NeedsYouItem[], selected: string | null, select: (k
     const onKey = (event: KeyboardEvent) => {
       if (event.metaKey || event.ctrlKey || event.altKey || event.defaultPrevented) return;
       const target = event.target as HTMLElement | null;
-      if (target?.closest('input, textarea, select, [contenteditable="true"], [role="dialog"], [role="menu"], #details')) return;
+      if (target?.closest('input, textarea, select, [role="combobox"], [role="listbox"], [contenteditable="true"], [role="dialog"], [role="menu"], #details')) return;
       const key = event.key.toLowerCase();
       const at = items.findIndex((item) => item.key === selected);
       const current = items[at] ?? null;

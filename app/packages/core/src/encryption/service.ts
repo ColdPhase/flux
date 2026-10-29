@@ -54,7 +54,8 @@ type Deks = Map<number, Buffer>;
 const zero = (deks: Deks | null | undefined) => { for (const dek of deks?.values() ?? []) dek.fill(0); };
 const place = (holder: Pick<HolderRecord, 'workspaceId' | 'id' | 'kind' | 'userId'>) =>
   ({ workspaceId: holder.workspaceId, holderId: holder.id, kind: holder.kind, userId: holder.userId });
-const identity = (holder: HolderRecord) => ({ ...place(holder), holderId: holder.id, publicKey: holder.publicKey });
+const identity = (holder: HolderRecord) => ({ ...place(holder), holderId: holder.id, publicKey: holder.publicKey, kdf: holder.kdf,
+  wrappedPrivate: holder.wrappedPrivate, secretCheck: holder.secretCheck });
 const sameVersions = (a: number[], b: number[]) => a.length === b.length && [...a].sort().every((v, i) => v === [...b].sort()[i]);
 
 class TamperedError extends ConflictError {
@@ -186,10 +187,12 @@ export function createEncryptionUseCases({ unit, keys, semaphore, estimator, rea
   function holderMaterial(workspaceId: string, holderId: string, kind: 'password' | 'recovery', userId: string | null, kek: Buffer, kdf: KdfParams,
     pair: HolderKeyPair, deks: Deks, currentVersion: number, existing?: DekWrapRecord[]) {
     const who = { workspaceId, holderId, kind, userId };
+    const wrappedPrivate = wrapPrivateKey(kek, pair, who);
+    const secretCheck = holderSecretCheck(kek, who);
     const holder: HolderRecord = {
-      id: holderId, workspaceId, kind, userId, kdf, publicKey: pair.publicKey, wrappedPrivate: wrapPrivateKey(kek, pair, who),
-      holderMac: holderMac(deks.get(currentVersion)!, currentVersion, { ...who, publicKey: pair.publicKey }), holderMacVersion: currentVersion,
-      secretCheck: holderSecretCheck(kek, who),
+      id: holderId, workspaceId, kind, userId, kdf, publicKey: pair.publicKey, wrappedPrivate,
+      holderMac: holderMac(deks.get(currentVersion)!, currentVersion, { ...who, publicKey: pair.publicKey, kdf, wrappedPrivate, secretCheck }),
+      holderMacVersion: currentVersion, secretCheck,
     };
     const wraps = [...deks].map(([keyVersion, dek]) => {
       const dekPlace = { workspaceId, holderId, keyVersion };

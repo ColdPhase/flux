@@ -9,6 +9,8 @@ export {
   accessName,
   evaluateProject,
   evaluateDraft,
+  evaluateSketch,
+  evaluateDm,
   dmClosedFor,
   visibleWorkspaceOf,
   isUuid,
@@ -32,7 +34,21 @@ export type {
   AccessReader, ActorReads, AgentFacts, AgentReads, AssistantRunFacts, AssistantRunReads, DmFacts, DmReads, DraftFacts, DraftReads,
   LoadOptions, ProjectFacts, ProjectReads, SketchFacts, SketchReads, WorkspaceReads,
 } from './access/ports.js';
-export * from './access/domain.js';
+export { parsePage } from './access/validation.js';
+export type { DomainEventSink } from './access/common.js';
+export { createWorkspace, listWorkspaces, getWorkspace, type WorkspaceReadOptions } from './access/workspaces.js';
+export { listMembers, addMember, changeRole, removeMember } from './access/members.js';
+export { setWorkspaceAiPolicy, sweepWorkspaceAi, WorkspaceAiSweepIncomplete, type WorkspaceAiSweepQueue } from './access/workspace-ai.js';
+export { createProject, addProjectView, listProjects, getProject, listProjectPeople } from './access/projects.js';
+export { listProjectGrants, grantProject, revokeProjectGrant } from './access/grants.js';
+export { createAgent, listAgents, revokeAgent } from './access/agents.js';
+export { createDraft, getDraft, listDrafts, updateDraft, shareDraft, moveDraft, toDraft } from './access/drafts.js';
+export type {
+  AccessPorts, AgentRepository, DraftRepository, ProjectRepository, RecordReader, WorkspaceAiSweepRows, WorkspaceEncryptionRows, WorkspaceRepository,
+} from './access/repositories.js';
+export type {
+  AccountLookup, AccountRecord, AgentRecord, AiPolicyRecord, AiPolicyRow, DraftRecord, GrantRecord, GrantWrite, MemberRecord, ProjectRecord, SweptRun, WorkspaceRecord,
+} from './access/records.js';
 export * from './idempotency.js';
 export * from './jobs/draft-summary.js';
 export * from './stream-audience.js';
@@ -101,6 +117,7 @@ export * from './agent-connection/agent-stops.js';
 export * from './agent-connection/agent-questions.js';
 export * from './agent-connection/project-agents.js';
 
+export * from './files/detail.js';
 export * from './files/ports.js';
 export * from './files/service.js';
 export * from './agent-runtime/index.js';

@@ -19,7 +19,7 @@ export function useStateKeys(enabled: boolean, choose: (status: WorkStatus) => v
       const status = WORK_STATUSES[Number(event.key) - 1];
       if (!status || event.key.length !== 1) return;
       const target = event.target as HTMLElement | null;
-      if (target?.closest('input, textarea, select, [contenteditable="true"], [role="dialog"]:not(#details)')) return;
+      if (target?.closest('input, textarea, select, [role="combobox"], [role="listbox"], [contenteditable="true"], [role="dialog"]:not(#details)')) return;
       // Only while the focus is in the panel or nowhere in particular.
       if (target && target !== document.body && !target.closest('#details')) return;
       event.preventDefault();

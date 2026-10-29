@@ -2,7 +2,7 @@
 // independent of projects. The audience is exactly the current participants. Workspace
 // owners and admins who are not participants cannot see a DM, its existence or its count.
 // Messages reuse the #36 message shape, ordering and `clientMessageId` retry rule.
-import type { HumanConversationMessage } from './conversation.js';
+import type { HumanConversationMessage, MessageReference } from './conversation.js';
 import type { PromotionPerson } from './sketch.js';
 import type { WorkItem } from './work.js';
 
@@ -94,6 +94,8 @@ export interface UpdateDmCommand {
 export interface SendDmMessageCommand {
   body: string;
   clientMessageId: string;
+  /** Map thoughts and messages this message cites (#469); the same rules as a project message's references. */
+  references?: MessageReference[];
 }
 
 /** `GET /api/v1/dms/:dmId/threads/:rootId`: one root and the newest window of its private replies, ascending. */

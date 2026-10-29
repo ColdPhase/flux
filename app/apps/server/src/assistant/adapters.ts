@@ -1,4 +1,4 @@
-import { assistantSettingsRows, type AssistantAuthority, type DbExecutor, accessReader } from '@flux/db';
+import { assistantSettingsRows, type AssistantAuthority, type DbExecutor, accessPorts, accessReader } from '@flux/db';
 import { ConflictError, assertAuthorized, evaluateProject, policyPersonalRunAccess, grantProject,
   initialAgentMcpPolicy, mcpPolicyAdmissionActions, mcpPolicyWithinConsent, type Transaction } from '@flux/core';
 import type { TransactionEventSession } from '../work/transaction-events.js';
@@ -16,7 +16,7 @@ export function assistantRows(tx: DbExecutor, events: TransactionEventSession) {
       return (await evaluateProject(principal, action, projectId, accessReader(connection), { lock: true })).allowed;
     },
     async grantProject(ownerUserId, projectId, agentId, connection) {
-      await grantProject({ kind: 'human', id: ownerUserId }, projectId, { principal: { kind: 'agent', id: agentId }, role: 'contributor' }, connection, events);
+      await grantProject({ kind: 'human', id: ownerUserId }, projectId, { principal: { kind: 'agent', id: agentId }, role: 'contributor' }, connection, accessPorts, events);
     },
     identityChanged() { throw new ConflictError('This workspace already has its assistant identity; reuse that agent', 'ASSISTANT_IDENTITY_CHANGED'); },
     initialPolicy: initialAgentMcpPolicy,

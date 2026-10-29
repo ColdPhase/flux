@@ -3,7 +3,7 @@ import { randomBytes, randomUUID } from 'node:crypto';
 import { request, createServer, type ServerResponse } from 'node:http';
 import { test } from 'node:test';
 import Fastify from 'fastify';
-import { createDatabase, EditingTransactionError } from '@flux/db';
+import { accessPorts, createDatabase, EditingTransactionError } from '@flux/db';
 import { addMember, createProject, createWorkspace, grantProject, revokeProjectGrant, VersionConflictError } from '@flux/core';
 import type { Doc, LiveMapBootstrap, Sketch, Thought } from '@flux/contracts';
 import { registerIdentity, loadIdentityConfig } from '../../apps/server/src/identity/index.js';
@@ -142,8 +142,8 @@ async function fixture(developmentEditing = true) {
     // Setup uses the actual authorized core/domain transaction; the tested map creation,
     // subsequent commands and all sessions/origin checks use real public HTTP routes.
     const principal = { kind: 'human' as const, id: me.user.id };
-    const workspace = await createWorkspace(principal, { name: 'HTTP lifetime workspace' }, database.db);
-    const project = await createProject(principal, workspace.id, { name: 'Current lifetime policy', visibility: 'restricted' }, database.db);
+    const workspace = await createWorkspace(principal, { name: 'HTTP lifetime workspace' }, database.db, accessPorts);
+    const project = await createProject(principal, workspace.id, { name: 'Current lifetime policy', visibility: 'restricted' }, database.db, accessPorts);
     const sketch = expectStatus(await browser.request('POST', `/api/v1/workspaces/${workspace.id}/sketches`, { body: { title: 'Actual retained source', scope: 'project', projectId: project.id } }), 201) as Sketch;
     const thought = (expectStatus(await browser.request('POST', `/api/v1/sketches/${sketch.id}/thoughts`, { body: { text: 'Original thought', x: 0, y: 0 } }), 201) as { thought: Thought }).thought;
     const head = expectStatus(await browser.request('GET', `/api/v1/sketches/${sketch.id}/live`), 200) as LiveMapBootstrap;
@@ -173,8 +173,8 @@ test('live label conflict holds current write authority through the protected er
   const person = expectStatus(await grantee.request('GET', '/api/v1/me'), 200) as { user: { id: string } };
   try {
     const owner = { kind: 'human' as const, id: f.actorId };
-    await addMember(owner, f.workspace.id, { email, role: 'member' }, f.database.db);
-    const grant = await grantProject(owner, f.project.id, { principal: { kind: 'human', id: person.user.id }, role: 'contributor' }, f.database.db);
+    await addMember(owner, f.workspace.id, { email, role: 'member' }, f.database.db, accessPorts);
+    const grant = await grantProject(owner, f.project.id, { principal: { kind: 'human', id: person.user.id }, role: 'contributor' }, f.database.db, accessPorts);
     const second = expectStatus(await grantor.request('POST', `/api/v1/sketches/${f.sketch.id}/thoughts`, {
       body: { text: 'Second thought', x: 200, y: 0 },
     }), 201) as { thought: Thought };
@@ -192,7 +192,7 @@ test('live label conflict holds current write authority through the protected er
       body: { label: 'stale private draft', expectedLabel: null }, headers: { 'idempotency-key': randomUUID() },
     }).finally(() => { conflictSettled = true; });
     await finite(boundary.reached, 'The conflict must reach its current-write-authority handoff');
-    const revoke = revokeProjectGrant(owner, f.project.id, grant.id, f.database.db)
+    const revoke = revokeProjectGrant(owner, f.project.id, grant.id, f.database.db, accessPorts)
       .finally(() => { revokeSettled = true; });
     try {
       await observed(async () => (await pool.query<{ blocked: boolean }>(`SELECT EXISTS (
@@ -213,14 +213,14 @@ test('live label conflict holds current write authority through the protected er
 
     // Reverse ordering: revocation commits after the command rollback but before the
     // protected delivery transaction begins. The fence must refuse the stale details.
-    const replacement = await grantProject(owner, f.project.id, { principal: { kind: 'human', id: person.user.id }, role: 'contributor' }, f.database.db);
+    const replacement = await grantProject(owner, f.project.id, { principal: { kind: 'human', id: person.user.id }, role: 'contributor' }, f.database.db, accessPorts);
     const beforeFence = f.pauseNativeDelivery();
     const lateConflict = grantee.request('PATCH', `/api/v1/sketches/${f.sketch.id}/links/${link.id}`, {
       body: { label: 'another stale draft', expectedLabel: null }, headers: { 'idempotency-key': randomUUID() },
     });
     await finite(beforeFence.reached, 'The command rollback must reach the injected gap before current-authority reacquisition');
     try {
-      await revokeProjectGrant(owner, f.project.id, replacement.id, f.database.db);
+      await revokeProjectGrant(owner, f.project.id, replacement.id, f.database.db, accessPorts);
     } finally { beforeFence.release(); }
     const refused = await lateConflict;
     assert.equal(refused.status, 404, refused.text);

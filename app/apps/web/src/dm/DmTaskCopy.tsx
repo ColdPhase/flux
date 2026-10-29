@@ -2,7 +2,7 @@ import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import type { DmMessage, DmPerson, DmTaskCopyPreview, DmTaskCopyResult } from '@flux/contracts';
 import { ApiError } from '../api/client';
 import { copyDmToTask, previewDmTaskCopy } from '../api/direct-messages';
-import { Button, Icon, Overlay, useMediaQuery, MEDIA } from '../ui';
+import { Button, Icon, Overlay, useMediaQuery, MEDIA, Select, Option } from '../ui';
 
 /**
  * Create a task from a private message (#537). Nothing is written until "Create task": first the person sees the
@@ -76,9 +76,9 @@ export function DmTaskCopy({ dmId, message, excerpt, participants, onClose, onCr
                 <div className="dm-copy__row">
                   <span className="dm-copy__label">Project</span>
                   {preview.projects.length > 1 ? (
-                    <select aria-label="Project" value={preview.project.id} disabled={busy} onChange={(event) => { setNotice(''); setError(''); setLoading(true); setProjectId(event.target.value); }}>
-                      {preview.projects.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}
-                    </select>
+                    <Select aria-label="Project" value={preview.project.id} disabled={busy} onChange={(next) => { setNotice(''); setError(''); setLoading(true); setProjectId(next); }}>
+                      {preview.projects.map((project) => <Option key={project.id} value={project.id}>{project.name}</Option>)}
+                    </Select>
                   ) : <b>{preview.project.name}</b>}
                 </div>
                 <div className="dm-copy__row dm-copy__audience" data-audience={preview.audience.length}>

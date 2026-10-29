@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { AGENT_SOURCE_KINDS, type AgentBootstrap, type AgentSourceCheckpoint } from '@flux/contracts';
 import { agentOrientationUseCases, agentPolicyReference, agentSourcePage, coworkPlaybookReference, DomainError, getProject, type Database } from '@flux/core';
-import { agentExecutionRows, agentOrientationRows, agentPlaybookRows, agentPolicyRows, coworkUnitRows } from '@flux/db';
+import { accessPorts, agentExecutionRows, agentOrientationRows, agentPlaybookRows, agentPolicyRows, coworkUnitRows } from '@flux/db';
 import { requireMcpSourceKinds, withAgentConnection, type FluxMcpClaims } from './context.js';
 import { agentRuntimeInTransaction } from './runtime.js';
 import type { AgentToolRegistry } from './tool-registry.js';
@@ -29,7 +29,7 @@ export function registerAgentBootstrap(tools: AgentToolRegistry, db: Database, c
     try {
       const value = await withAgentConnection(db, claims, 'flux.context.read', projectId, async ({ tx, principal, mcpPolicy }) => {
         if (!mcpPolicy) throw new DomainError(403, 'MCP_ENTRY_UNAVAILABLE', 'This capability is unavailable');
-        const project = await getProject(principal, projectId, tx);
+        const project = await getProject(principal, projectId, tx, accessPorts);
         const { runtime } = await agentRuntimeInTransaction(tx, claims, clientSessionId);
         const rows = agentExecutionRows(tx);
         const observedAt = await rows.now();
@@ -68,7 +68,7 @@ export function registerAgentBootstrap(tools: AgentToolRegistry, db: Database, c
   async ({ projectId, kind, ...query }) => {
     requireMcpSourceKinds(claims, [kind]);
     try { return toolResult(await withAgentConnection(db, claims, 'flux.context.read', projectId, async ({ tx, principal, connection, workspaceId }) => {
-      await getProject(principal, projectId, tx);
+      await getProject(principal, projectId, tx, accessPorts);
       return agentOrientationUseCases(agentOrientationRows(tx)).list(connection, { workspaceId, projectId }, kind, query);
     })); } catch (error) { return toolError(error); }
   });
@@ -78,7 +78,7 @@ export function registerAgentBootstrap(tools: AgentToolRegistry, db: Database, c
   async ({ projectId, known }) => {
     requireMcpSourceKinds(claims, known.map((item) => item.kind));
     try { return toolResult(await withAgentConnection(db, claims, 'flux.context.read', projectId, async ({ tx, principal, connection, workspaceId }) => {
-      await getProject(principal, projectId, tx);
+      await getProject(principal, projectId, tx, accessPorts);
       return agentOrientationUseCases(agentOrientationRows(tx)).changes(connection, { workspaceId, projectId }, known as AgentSourceCheckpoint[]);
     })); } catch (error) { return toolError(error); }
   });

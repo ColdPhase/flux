@@ -5,7 +5,7 @@ import { ApiError } from '../api/client';
 import { whenPageLive } from '../api/pageLeaving';
 import { useStreamEvents } from '../api/stream';
 import { useShellData } from '../app/data';
-import { Avatar, Button, Icon, Input, Spinner, useRowMotion, useToast } from '../ui';
+import { Avatar, Button, Icon, Input, Spinner, useRowMotion, useToast, Select, Option } from '../ui';
 import { ROLE_HINT, ROLE_LABEL, addMember, attemptKeys, changeRole, firstName, getWorkspace, isManagerRole, listMembers, problemText, removeMember, setWorkspaceAi } from './api';
 import './people.css';
 
@@ -167,9 +167,9 @@ function AddPerson({ workspace, members, myRole, onAdded }: { workspace: Workspa
           hint="They need an account at this Flux address first. Flux doesn’t send invitations." />
         <div className="people__field">
           <label htmlFor={roleId}>Role</label>
-          <select id={roleId} value={role} onChange={(event) => setRole(event.target.value as WorkspaceRole)} aria-describedby={`${roleId}-hint`}>
-            {assignable(myRole).map((option) => <option key={option} value={option}>{ROLE_LABEL[option]}</option>)}
-          </select>
+          <Select id={roleId} value={role} onChange={(next) => setRole(next as WorkspaceRole)} aria-describedby={`${roleId}-hint`}>
+            {assignable(myRole).map((option) => <Option key={option} value={option}>{ROLE_LABEL[option]}</Option>)}
+          </Select>
           <p className="people__hint" id={`${roleId}-hint`}>{ROLE_HINT[role]}</p>
         </div>
         {problem ? <p className="people__notice" id="people-add-problem" role="alert"><Icon name="alert" size={13} />{problem}</p> : null}
@@ -213,7 +213,7 @@ function MemberEditor({ id, member, self, workspace, myRole, onClose, onChanged 
   const [busy, setBusy] = useState<'role' | 'remove' | null>(null);
   const [problem, setProblem] = useState('');
   const keys = useRef(attemptKeys());
-  const selectRef = useRef<HTMLSelectElement>(null);
+  const selectRef = useRef<HTMLButtonElement>(null);
   useEffect(() => { selectRef.current?.focus(); }, []);
   const article = (value: WorkspaceRole) => (value === 'admin' || value === 'owner' ? 'an' : 'a');
 
@@ -247,9 +247,9 @@ function MemberEditor({ id, member, self, workspace, myRole, onClose, onChanged 
       onKeyDown={(event) => { if (event.key === 'Escape') { event.stopPropagation(); onClose(); } }}>
       <div className="people__field">
         <label htmlFor={`${id}-role`}>Role</label>
-        <select ref={selectRef} id={`${id}-role`} value={role} onChange={(event) => setRole(event.target.value as WorkspaceRole)} aria-describedby={`${id}-hint`}>
-          {assignable(myRole).map((option) => <option key={option} value={option}>{ROLE_LABEL[option]}</option>)}
-        </select>
+        <Select ref={selectRef} id={`${id}-role`} value={role} onChange={(next) => setRole(next as WorkspaceRole)} aria-describedby={`${id}-hint`}>
+          {assignable(myRole).map((option) => <Option key={option} value={option}>{ROLE_LABEL[option]}</Option>)}
+        </Select>
         <p className="people__hint" id={`${id}-hint`}>{ROLE_HINT[role]}</p>
       </div>
       <div className="details__actions">

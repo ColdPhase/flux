@@ -188,7 +188,7 @@ export function MessageActions(options: MessageActionOptions | DmActionOptions) 
     if (!row) return;
     const onKey = (event: globalThis.KeyboardEvent) => {
       if (event.metaKey || event.ctrlKey || event.altKey || event.shiftKey || event.repeat || event.defaultPrevented) return;
-      if ((event.target as Element | null)?.closest?.('input, textarea, select, [contenteditable], [role="menu"]')) return;
+      if ((event.target as Element | null)?.closest?.('input, textarea, select, [role="combobox"], [role="listbox"], [contenteditable], [role="menu"]')) return;
       const key = event.key.toLowerCase();
       if (key === 'r' && writable && onReply) { event.preventDefault(); onReply(); }
       else if (key === 't' && writable) { event.preventDefault(); onCreateWork(); }

@@ -3,6 +3,7 @@ import {
   DMS_PATH,
   type ConversationWindowQuery,
   type CreateDmCommand,
+  type DmMessage,
   type DmTaskCopyCommand,
   type DmTaskCopyPreviewCommand,
   type MessageReceiptsQuery,
@@ -11,9 +12,10 @@ import {
   type SendDmMessageCommand,
   type UpdateDmCommand,
 } from '@flux/contracts';
-import type { Database, ResourceRef } from '@flux/core';
+import type { Database, Principal, ResourceRef } from '@flux/core';
 import type { SessionResolver } from '../identity/index.js';
 import { bodyId, commandRunner, expectedVersion, requires, useDomainErrors, versionEtag } from '../http/commands.js';
+import { messageReferences } from '../conversation/references.js';
 import { dmUseCases } from './adapters.js';
 
 export interface DmRouteOptions {
@@ -24,6 +26,8 @@ export interface DmRouteOptions {
 const WORKSPACE_DMS = '/api/v1/workspaces/:workspaceId/dms';
 const DM = `${DMS_PATH}/:dmId`;
 const id = { type: 'string', minLength: 1, maxLength: 64 } as const;
+/** The items are checked by the one normalizer (kind, UUID, distinct), which names what is wrong. */
+const references = { type: 'array', maxItems: 4, items: { type: 'object' } } as const;
 
 /**
  * `/api/v1` direct-message routes (issue #107). Handlers resolve the session on every request
@@ -37,6 +41,11 @@ export async function dmRoutes(app: FastifyInstance, { db, sessions }: DmRouteOp
   const dms = dmUseCases(db);
   const dmScope = (dmId: string): ResourceRef => ({ type: 'dm', id: dmId });
   const readDm = (dmId: string) => requires('dm', 'dm.read', () => dmId);
+  /** What each message cites (#469), made for the person reading now: a target they cannot open is an "unavailable" card. */
+  const cited = async <T extends DmMessage>(reader: Database, who: Principal, dmId: string, messages: T[]): Promise<T[]> => {
+    const cards = await messageReferences(reader).dmCards(who, dmId, messages.map((message) => message.id));
+    return messages.map((message) => cards.has(message.id) ? { ...message, references: cards.get(message.id) } : message);
+  };
 
   app.get<{ Params: { workspaceId: string }; Querystring: PageQuery }>(WORKSPACE_DMS, {
     schema: { querystring: { type: 'object', additionalProperties: false, properties: { limit: { type: 'integer' }, offset: { type: 'integer' } } } },
@@ -67,8 +76,9 @@ export async function dmRoutes(app: FastifyInstance, { db, sessions }: DmRouteOp
   app.get<{ Params: { dmId: string }; Querystring: ConversationWindowQuery }>(DM, {
     schema: { querystring: { type: 'object', additionalProperties: false, properties: { limit: { type: 'integer' }, beforeSequence: { type: 'integer' } } } },
   }, async (request, reply) => {
-    const dm = await dms.get(await principal(request), request.params.dmId, request.query);
-    return reply.header('etag', versionEtag(dm)).send(dm);
+    const who = await principal(request);
+    const dm = await dms.get(who, request.params.dmId, request.query);
+    return reply.header('etag', versionEtag(dm)).send({ ...dm, messages: await cited(db, who, dm.id, dm.messages) });
   });
 
   app.patch<{ Params: { dmId: string }; Body: UpdateDmCommand }>(DM, {
@@ -85,12 +95,12 @@ export async function dmRoutes(app: FastifyInstance, { db, sessions }: DmRouteOp
         type: 'object', required: ['body', 'clientMessageId'], additionalProperties: false,
         // Unsupported source/files must reach the core refusal instead of being silently stripped.
         properties: { body: { type: 'string', minLength: 1, maxLength: 100_000 }, clientMessageId: { type: 'string' },
-          source: { type: 'object' }, attachmentIds: {} },
+          source: { type: 'object' }, attachmentIds: {}, references },
       },
     },
   }, async (request, reply) => command(request, reply, {
     operation: `POST ${DM}/messages`, scope: dmScope(request.params.dmId), status: 201,
-    run: (actor, conn) => dmUseCases(conn).send(actor, request.params.dmId, request.body),
+    run: async (actor, conn) => (await cited(conn, actor, request.params.dmId, [await dmUseCases(conn).send(actor, request.params.dmId, request.body)]))[0]!,
     replay: readDm(request.params.dmId),
   }));
 
@@ -98,18 +108,23 @@ export async function dmRoutes(app: FastifyInstance, { db, sessions }: DmRouteOp
   const THREAD = `${DM}/threads/:rootId`;
   app.get<{ Params: { dmId: string; rootId: string }; Querystring: ConversationWindowQuery }>(THREAD, {
     schema: { querystring: { type: 'object', additionalProperties: false, properties: { limit: { type: 'integer' }, beforeSequence: { type: 'integer' } } } },
-  }, async (request) => dms.thread(await principal(request), request.params.dmId, request.params.rootId, request.query));
+  }, async (request) => {
+    const who = await principal(request);
+    const thread = await dms.thread(who, request.params.dmId, request.params.rootId, request.query);
+    const [root, ...replies] = await cited(db, who, request.params.dmId, [thread.root, ...thread.replies]);
+    return { ...thread, root: root!, replies };
+  });
 
   app.post<{ Params: { dmId: string; rootId: string }; Body: SendDmMessageCommand }>(`${THREAD}/replies`, {
     schema: {
       body: {
         type: 'object', required: ['body', 'clientMessageId'], additionalProperties: false,
-        properties: { body: { type: 'string', minLength: 1, maxLength: 100_000 }, clientMessageId: { type: 'string' }, source: { type: 'object' }, attachmentIds: {} },
+        properties: { body: { type: 'string', minLength: 1, maxLength: 100_000 }, clientMessageId: { type: 'string' }, source: { type: 'object' }, attachmentIds: {}, references },
       },
     },
   }, async (request, reply) => command(request, reply, {
     operation: `POST ${THREAD}/replies`, scope: dmScope(request.params.dmId), status: 201,
-    run: (actor, conn) => dmUseCases(conn).reply(actor, request.params.dmId, request.params.rootId, request.body),
+    run: async (actor, conn) => (await cited(conn, actor, request.params.dmId, [await dmUseCases(conn).reply(actor, request.params.dmId, request.params.rootId, request.body)]))[0]!,
     replay: readDm(request.params.dmId),
   }));
 

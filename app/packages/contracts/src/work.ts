@@ -10,6 +10,8 @@ import type { GithubTaskRule } from './github.js';
  */
 export const projectWorkPath = (projectId: string) => `/api/v1/projects/${projectId}/work`;
 export const projectTaskNoticesPath = (projectId: string) => `/api/v1/projects/${projectId}/task-notices`;
+/** The decisions and results a project's conversation announces (#694), newest first. */
+export const projectObjectNoticesPath = (projectId: string) => `/api/v1/projects/${projectId}/object-notices`;
 export const taskDiscussionPath = (workId: string) => `/api/v1/work/${workId}/discussion`;
 /** The history of a task's status, owner, due date and title (#488), newest first. */
 export const taskActivityPath = (workId: string) => `/api/v1/work/${workId}/activity`;
@@ -255,6 +257,31 @@ export interface TaskCreationNotice {
   sources: ObjectRef[];
   createdAt: string;
 }
+
+/**
+ * What the conversation says about a decision or a result (#694, F-026 P5): one line with who and where it came
+ * from, and the object as a card that opens in Details. Like a task notice it is information, never a message.
+ * A decision has up to two: when it was proposed and when a person accepted it. `title` and the state are the
+ * object's current ones; `by` and `createdAt` are who did it and when. The audience is the project's: only
+ * people who can read the project read these.
+ */
+interface ObjectNoticeBase {
+  /** Stable per object and moment, `<id>:proposed`, `<id>:accepted` or `<id>:recorded`. */
+  id: string;
+  workspaceId: string;
+  projectId: string;
+  title: string;
+  by: NamedPrincipal;
+  /** What it was made from, in the order it was linked: messages, thoughts, material versions, docs, sketches. */
+  sources: ObjectRef[];
+  /** The conversation (root or thread) of the first message source, so a thread shows what came of it; null for none. */
+  conversationId: string | null;
+  createdAt: string;
+}
+export type ObjectNotice = ObjectNoticeBase & (
+  | { kind: 'decision.proposed' | 'decision.accepted'; decisionId: string; status: DecisionStatus }
+  | { kind: 'result.recorded'; resultId: string; finding: ResultFinding }
+);
 
 export interface UpdateWorkCommand extends VersionPrecondition {
   /**
