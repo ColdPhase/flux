@@ -89,7 +89,8 @@ async function seed(c: Club, count: number) {
     texts.messages.push(...batch);
     await Promise.all(batch.map((body) => post(`/api/v1/conversations/${conversation.id}/messages`, { body, clientMessageId: randomUUID() })));
   }
-  const dm = await post(`/api/v1/workspaces/${c.ws}/dms`, { participantIds: Object.values(c.people).map((p) => p.who.id).slice(0, 1), title: texts.dm });
+  const dm = await post(`/api/v1/workspaces/${c.ws}/dms`, { participantIds: Object.values(c.people).map((p) => p.who.id).slice(0, 1) });
+  await post(`/api/v1/dms/${dm.id}/messages`, { body: texts.dm, clientMessageId: randomUUID() });
   const decision = await post(`/api/v1/projects/${project.id}/decisions`, { title: texts.decision, rationale: canary('rationale') });
   const draft = await post(`/api/v1/workspaces/${c.ws}/drafts`, { title: texts.draft, body: canary('draft-body') });
   return { texts, ids: { project: project.id as string, conversation: conversation.id as string, dm: dm.id as string, decision: decision.id as string, draft: draft.id as string } };
@@ -170,7 +171,7 @@ describe('F-030 S2c key rotation (AC-13)', () => {
     assert.deepEqual(new Set(await bodiesAt(c, 2)), new Set(texts.messages), 'every message exactly once, none lost');
     assert.equal((expectStatus(await c.owner.browser.request('GET', `/api/v1/decisions/${ids.decision}`), 200) as { title: string }).title, texts.decision);
     assert.equal((expectStatus(await c.owner.browser.request('GET', `/api/v1/drafts/${ids.draft}`), 200) as { title: string }).title, texts.draft);
-    assert.equal((expectStatus(await c.owner.browser.request('GET', `/api/v1/dms/${ids.dm}`), 200) as { title: string }).title, texts.dm);
+    assert.deepEqual((expectStatus(await c.owner.browser.request('GET', `/api/v1/dms/${ids.dm}`), 200) as { messages: { body: string }[] }).messages.map((m) => m.body), [texts.dm]);
     const after = await readWorkspace(c.owner.browser, c.ws);
     assert.equal(after.encryption?.rotation, null);
     assert.ok(after.encryption?.keyChangedAt);

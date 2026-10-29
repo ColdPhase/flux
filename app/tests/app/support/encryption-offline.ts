@@ -101,8 +101,8 @@ export function opened(workspaceId: string, dek: Buffer, envelopes: StoredEnvelo
   return count;
 }
 
-/** The workspace's file objects in the files volume (mounted read-only in the test container), by file id. */
-export async function fileObjects(workspaceId: string, filesDir = process.env.FLUX_FILES_DIR ?? '/data/files'): Promise<Map<string, Buffer>> {
+/** The workspace's file objects in the stack's files volume (read-only at FLUX_TEST_STACK_FILES in the test container), by file id. */
+export async function fileObjects(workspaceId: string, filesDir = process.env.FLUX_TEST_STACK_FILES ?? '/data/stack-files'): Promise<Map<string, Buffer>> {
   const ids = (await pool.query<{ id: string }>('SELECT id FROM project_files WHERE workspace_id = $1', [workspaceId])).rows.map((row) => row.id);
   const objects = new Map<string, Buffer>();
   const root = join(filesDir, 'attachments', 'objects');
