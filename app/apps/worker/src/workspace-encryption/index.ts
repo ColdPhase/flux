@@ -1,7 +1,7 @@
 import type { PgBoss } from 'pg-boss';
 import { WORKSPACE_ENCRYPTION_RESUME_JOB, type WorkspaceEncryptionResumeJob } from '@flux/contracts';
-import { dropStaleUnlocks, keyringFromEnv, ProcessKeys, recordEvent, replayWaitedEvent, sealFor, swapFiles, swapSafety, testSwapRoot, type Database, type EncryptionPorts, type EncryptionUnitOfWork } from '@flux/core';
-import { configureSeals, workspaceEncryptionRows, type DbExecutor } from '@flux/db';
+import { dropStaleUnlocks, keyringFromEnv, ProcessKeys, recordEvent, redactedError, replayWaitedEvent, sealFor, swapFiles, swapSafety, testSwapRoot, type Database, type EncryptionPorts, type EncryptionUnitOfWork } from '@flux/core';
+import { configureSeals, sql, workspaceEncryptionRows, type DbExecutor } from '@flux/db';
 import { eventPorts } from '../events.js';
 import { generatorUnitOfWork } from '../notifications/adapters.js';
 
@@ -9,8 +9,7 @@ import { generatorUnitOfWork } from '../notifications/adapters.js';
  * The worker's side of encrypted workspaces (F-030, #655). It holds its own `ProcessKeys` (S2a opens DEKs here for
  * notification generation and the resume job) and runs the same 5 s keyring heartbeat as every API process: swap
  * again, then the boot id; a new boot deletes the stale unlock rows and records `workspace.locked.v1 { reason: 'restart' }`.
- * The resume job is sent with every unlock; until S2a nothing waits (`sealed_job_waits` stays empty), so it only
- * acknowledges.
+ * The resume job is sent with every unlock and by a 30 s sweep for waits of a workspace that is unlocked here.
  */
 function unitOfWork(db: Database): EncryptionUnitOfWork {
   return {
@@ -39,15 +38,37 @@ export async function startWorkspaceEncryption(boss: PgBoss, db: Database, env: 
     for (const job of jobs) {
       const waits = workspaceEncryptionRows(db as unknown as DbExecutor);
       let replayed = 0;
+      let failed = 0;
       for (const wait of await waits.waits(job.data.workspaceId)) {
-        if (wait.queue === 'notifications.generate' && typeof wait.payload.eventId === 'string') {
-          await replayWaitedEvent(generator, wait.payload.eventId, { emailAvailable });
+        try {
+          if (wait.queue === 'notifications.generate' && typeof wait.payload.eventId === 'string') {
+            await replayWaitedEvent(generator, wait.payload.eventId, { emailAvailable });
+          }
+        } catch (error) {
+          // Locked again: stop, and pg-boss retries. Any other failure keeps that wait for the sweep and replays the rest (#717 review P3-4).
+          if ((error as { code?: unknown }).code === 'WORKSPACE_LOCKED') throw error;
+          failed++;
+          console.error(JSON.stringify({ job: WORKSPACE_ENCRYPTION_RESUME_JOB, id: job.id, waitId: wait.id, error: redactedError(error, [wait.id]).message }));
+          continue;
         }
         await waits.deleteWait(wait.id);
         replayed++;
       }
-      console.log(JSON.stringify({ job: WORKSPACE_ENCRYPTION_RESUME_JOB, id: job.id, workspaceId: job.data.workspaceId, replayed }));
+      console.log(JSON.stringify({ job: WORKSPACE_ENCRYPTION_RESUME_JOB, id: job.id, workspaceId: job.data.workspaceId, replayed, failed }));
     }
   });
-  return { keys, stop: () => heartbeat.stop() };
+  // A wait committed after the unlock's resume job ran (the generator's batch was still open) would sit until the next
+  // unlock; every 30 s, a wait of a workspace this process can open sends the resume job again (#717 review P3-3).
+  const sweep = setInterval(() => {
+    void (async () => {
+      const rows = (await db.execute(sql`SELECT DISTINCT workspace_id AS id FROM sealed_job_waits WHERE created_at < now() - interval '5 seconds'`)).rows as { id: string }[];
+      for (const { id } of rows) {
+        try { await sealFor(workspaceEncryptionRows(db as unknown as DbExecutor), keys, id, { write: false }); }
+        catch { continue; } // still locked here
+        await boss.send(WORKSPACE_ENCRYPTION_RESUME_JOB, { workspaceId: id }, { singletonKey: `sweep:${id}`, singletonSeconds: 60 });
+      }
+    })().catch((error) => console.error(JSON.stringify({ warning: 'Sealed wait sweep failed', error: redactedError(error).message })));
+  }, 30_000);
+  sweep.unref();
+  return { keys, stop: () => { clearInterval(sweep); heartbeat.stop(); } };
 }

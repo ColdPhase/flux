@@ -408,6 +408,7 @@ describe('F-030 S2a-1: sealed content in the repositories', () => {
   });
 
   test('while A is locked, cross-workspace reads skip it and name it (lockedWorkspaces); B\'s items stay; A\'s own routes answer 423 (S2a-2c)', async () => {
+    assert.ok((await ben.browser.request('GET', '/api/v1/needs-you')).text.includes(ids.A.project), 'unlocked, Needs you holds A\'s mention');
     expectStatus(await lock(ada.browser, A), 200);
     try {
       for (const path of ['/api/v1/inbox', '/api/v1/needs-you', '/api/v1/return?place=home&from=7d&scope=all', `/api/v1/search?q=${encodeURIComponent(canaries.B.project.slice(0, 20))}`]) {
@@ -418,8 +419,22 @@ describe('F-030 S2a-1: sealed content in the repositories', () => {
         assert.equal(/fx1\.[1-9]/.test(answer.text), false, `${path}: no envelope`);
         for (const item of json.items ?? []) assert.notEqual(item.source?.workspaceId, A, `${path}: no item of A`);
       }
-      const inbox = (await ben.browser.request('GET', '/api/v1/inbox')).json as { items: { body: string }[] };
+      const inbox = (await ben.browser.request('GET', '/api/v1/inbox')).json as { items: { body: string; readAt: string | null }[]; unread: number };
       assert.ok(inbox.items.some((item) => item.body.includes(canaries.B.mention)), 'B\'s items stay');
+      assert.equal(inbox.unread, inbox.items.filter((item) => item.readAt === null).length, 'the unread count leaves A out (#717 review P3-1)');
+      const needs = (await ben.browser.request('GET', '/api/v1/needs-you')).json as { items: unknown[]; count: number };
+      assert.equal(needs.count, needs.items.length, 'the Needs you count leaves A out');
+      // #717 review P2-1/P2-2: no trace of A's places anywhere in an answer (a mention's url, Return's digest, next step).
+      const traces = [A, ids.A.project, ids.A.conversation, ids.A.dm, ids.A.decision, ids.A.result, ids.A.task];
+      for (const path of ['/api/v1/needs-you', '/api/v1/inbox', '/api/v1/return?place=home&from=7d&scope=all', '/api/v1/return?place=home&from=7d&scope=all&digest=1',
+        '/api/v1/return?place=home&from=7d&scope=mine&digest=1']) {
+        const text = (await ben.browser.request('GET', path)).text;
+        const found = traces.filter((id) => text.replace(`"id":"${A}"`, '').includes(id));
+        assert.deepEqual(found, [], `${path}: no id of A beyond lockedWorkspaces`);
+      }
+      for (const place of [`place=project&id=${ids.A.project}`, `place=conversation&id=${ids.A.conversation}`]) {
+        assert.equal((await ben.browser.request('GET', `/api/v1/return?${place}&from=7d&scope=all&digest=1`)).status, 423, `Return ${place} stays 423`);
+      }
       assert.equal((await ben.browser.request('GET', `/api/v1/projects/${ids.A.project}`)).status, 423, 'A\'s own routes answer 423');
     } finally {
       expectStatus(await unlock(ada.browser, A, { password: pw }), 200);
