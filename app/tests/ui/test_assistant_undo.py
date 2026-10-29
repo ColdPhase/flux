@@ -15,7 +15,7 @@ import time
 import unittest
 import uuid
 
-from playwright.sync_api import Browser, BrowserContext, Page, Route, expect, sync_playwright
+from playwright.sync_api import Browser, BrowserContext, Error as PlaywrightError, Page, Route, expect, sync_playwright
 
 from test_app_shell import DESKTOP, ORIGIN, PHONE, UPSTREAM, shot, start_forwarder
 
@@ -348,14 +348,17 @@ class AssistantUndo(unittest.TestCase):
             if route.request.method != "GET":
                 route.fallback()
                 return
-            response = route.fetch()
             try:
-                payload = response.json()
-            except Exception:
-                route.fulfill(response=response)
-                return
-            mark(payload)
-            route.fulfill(response=response, json=payload)
+                response = route.fetch()
+                try:
+                    payload = response.json()
+                except Exception:
+                    route.fulfill(response=response)
+                    return
+                mark(payload)
+                route.fulfill(response=response, json=payload)
+            except PlaywrightError:
+                pass  # the page or the context closed while a read was in flight: nothing is left to answer
         page.route(re.compile(r".*/api/v1/(conversations|projects)/.*"), tombstone)
         self.open_conversation(page)
         removed = page.locator(".message-body--removed").first
@@ -363,7 +366,7 @@ class AssistantUndo(unittest.TestCase):
         self.assertEqual(removed.evaluate("(node) => getComputedStyle(node).fontStyle"), "italic")
         self.no_horizontal_scroll(page)
         # No handler may still be reading when the context closes: that would fail the next test's page, not this one.
-        page.unroute_all(behavior="wait")
+        page.unroute_all(behavior="ignoreErrors")
 
     def test_06_a_stopped_run_says_stopped_after_n_changes(self) -> None:
         page = self.page(phone=True)
