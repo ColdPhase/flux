@@ -30,7 +30,7 @@ import {
   type TaskContributionCommand,
 } from '@flux/contracts';
 import { assertAuthorized, ConflictError, InvalidInputError, type Database, type ResourceRef, type FileStorage } from '@flux/core';
-import { accessReader } from '@flux/db';
+import { accessReader, workRows, type DbExecutor } from '@flux/db';
 import type { SessionResolver } from '../identity/index.js';
 import { commandRunner, expectedVersion, useDomainErrors, versionEtag, type ReplayCheck } from '../http/commands.js';
 import { workRepository, workUseCases } from './adapters.js';
@@ -96,6 +96,11 @@ export async function workRoutes(app: FastifyInstance, { db, sessions, storage }
   const { principal, command } = commandRunner(db, sessions);
   const work = workUseCases(db);
   const projectScope = (id: string): ResourceRef => ({ type: 'project', id });
+  /** The project of a decision as an idempotency scope; null for an unknown id (the command answers 404 itself). */
+  const decisionScope = async (id: string): Promise<ResourceRef | null> => {
+    const located = /^[0-9a-f-]{36}$/i.test(id) ? await workRows(db as unknown as DbExecutor).locate('decision', id) : null;
+    return located ? projectScope(located.projectId) : null;
+  };
 
   const discussion = taskDiscussionUseCases(db, storage);
   app.get<{ Params: { workId: string }; Querystring: ConversationWindowQuery }>(taskDiscussionPath(':workId'),
@@ -176,7 +181,8 @@ export async function workRoutes(app: FastifyInstance, { db, sessions, storage }
   });
   app.post<{ Params: { decisionId: string }; Body: AcceptDecisionCommand }>(decisionAcceptPath(':decisionId'), { schema: { body: acceptDecision } },
     async (request, reply) => command(request, reply, {
-      operation: `POST ${decisionAcceptPath(':decisionId')}`, scope: null, etag: true,
+      // F-030: scoped to the decision's project, so an encrypted workspace's stored response is sealed (the body carries the title).
+      operation: `POST ${decisionAcceptPath(':decisionId')}`, scope: await decisionScope(request.params.decisionId), etag: true,
       run: (actor, conn) => workUseCases(conn).acceptDecision(actor, request.params.decisionId, request.body ?? {}, expectedVersion(request)),
       replay: projectReader,
     }));

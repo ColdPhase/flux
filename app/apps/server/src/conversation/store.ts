@@ -1,7 +1,7 @@
 import { messagePreview } from '@flux/contracts';
 import { randomUUID } from 'node:crypto';
 import { and, asc, desc, eq, lt, sql, type SQL } from 'drizzle-orm';
-import { agentThreadGuardRows, artifactResetRows, fileRows, prepareCanonicalArtifactTaskUse, schema, taskDiscussionRows, taskUseRows, workRows, accessReader } from '@flux/db';
+import { agentThreadGuardRows, artifactResetRows, fileRows, openAliased, openRows, prepareCanonicalArtifactTaskUse, schema, sealsOf, openField, taskDiscussionRows, taskUseRows, workRows, accessReader, type DbExecutor } from '@flux/db';
 import type {
   Conversation, ConversationMessage, ConversationRootWindow, ConversationSummary, Material, MaterialOrDoc,
   AgentProjectOwner, AuthenticatedAgentRuntime, MaterialVersion, Page, PageQuery, TaskAgentThread,
@@ -149,12 +149,18 @@ async function conversationEnds(ids: string[], db: Executor) {
   const ends = new Map<string, { firstBody: string; firstAttachments: number; lastBody: string; lastAttachments: number; lastAt: Date }>();
   if (!ids.length) return ends;
   const wanted = sql.join(ids.map((id) => sql`(${id}::uuid)`), sql`, `);
-  const result = await db.execute<{ id: string; first_body: string; first_attachments: number; last_body: string; last_attachments: number; last_at: Date | string }>(sql`
-    SELECT c.id, f.body AS first_body, f.attachment_count AS first_attachments, l.body AS last_body, l.attachment_count AS last_attachments, l.created_at AS last_at
+  const result = await db.execute<{ id: string; workspace_id: string; first_id: string; first_body: string; first_attachments: number; last_id: string; last_body: string; last_attachments: number; last_at: Date | string }>(sql`
+    SELECT c.id, f.workspace_id, f.id AS first_id, f.body AS first_body, f.attachment_count AS first_attachments, l.id AS last_id, l.body AS last_body,
+      l.attachment_count AS last_attachments, l.created_at AS last_at
     FROM (VALUES ${wanted}) AS c(id)
-    JOIN LATERAL (SELECT m.body, m.attachment_count FROM project_messages m WHERE m.conversation_id = c.id ORDER BY m.sequence ASC LIMIT 1) f ON true
-    JOIN LATERAL (SELECT m.body, m.attachment_count, m.created_at FROM project_messages m WHERE m.conversation_id = c.id ORDER BY m.sequence DESC LIMIT 1) l ON true`);
+    JOIN LATERAL (SELECT m.id, m.workspace_id, m.body, m.attachment_count FROM project_messages m WHERE m.conversation_id = c.id ORDER BY m.sequence ASC LIMIT 1) f ON true
+    JOIN LATERAL (SELECT m.id, m.body, m.attachment_count, m.created_at FROM project_messages m WHERE m.conversation_id = c.id ORDER BY m.sequence DESC LIMIT 1) l ON true`);
+  // F-030: both bodies are sealed in an encrypted workspace; opened here, never in SQL.
+  const seals = await sealsOf(db as unknown as DbExecutor, result.rows.map((row) => row.workspace_id), { write: false });
   for (const row of result.rows) {
+    const seal = seals.get(row.workspace_id)!;
+    row.first_body = openField('project_messages', 'body', [row.first_id], row.first_body, seal)!;
+    row.last_body = openField('project_messages', 'body', [row.last_id], row.last_body, seal)!;
     ends.set(row.id, { firstBody: row.first_body, firstAttachments: Number(row.first_attachments), lastBody: row.last_body,
       lastAttachments: Number(row.last_attachments), lastAt: new Date(row.last_at) });
   }
@@ -184,10 +190,12 @@ async function sourceExists(projectId: string, source: { materialId: string; ver
 }
 
 async function existingMessage(projectId: string, author: Actor, clientMessageId: string, db: Executor) {
-  const [row] = await db.select().from(schema.projectMessages).where(and(
+  const rows = await db.select().from(schema.projectMessages).where(and(
     eq(schema.projectMessages.projectId, projectId),
     author.kind === 'human' ? eq(schema.projectMessages.authorId, author.id) : eq(schema.projectMessages.authorAgentId, author.id),
     eq(schema.projectMessages.clientMessageId, clientMessageId)));
+  // Opened, so the replay compares the request fingerprint in RAM (F-030 sealed digests).
+  const [row] = await openRows(db as unknown as DbExecutor, 'project_messages', rows);
   return row;
 }
 
@@ -337,7 +345,10 @@ export function conversationStore(db: Database, options: ConversationStoreOption
           .orderBy(desc(conversations.createdAt), desc(conversations.id))
           .limit(window.limit + 1);
         const hasMoreBefore = rows.length > window.limit;
-        const page = rows.slice(0, window.limit).reverse();
+        const cut = rows.slice(0, window.limit).reverse();
+        const openedRoots = await openRows(tx as unknown as DbExecutor, 'project_messages', cut.map((row) => row.root));
+        const page = await openAliased(tx as unknown as DbExecutor, cut.map((row, index) => ({ ...row, root: openedRoots[index]! })), { table: 'project_work_items', column: 'title',
+          key: 'taskTitle', workspace: (row) => row.root.workspaceId, identity: (row) => (row.taskId ? [row.taskId] : null) });
         const names = await workRows(tx).names(page.filter((row) => row.root.authorAgentId !== null)
           .map((row) => ({ kind: 'agent' as const, id: row.root.authorAgentId! })));
         const files = await fileRows(tx).messageFiles(page.map((row) => row.root.id));
@@ -351,10 +362,10 @@ export function conversationStore(db: Database, options: ConversationStoreOption
 
     async getConversation(principal: Principal, conversationId: string, window: Parameters<ConversationPort['getConversation']>[2]): Promise<Conversation> {
       const row = await locateConversation(principal, conversationId, db);
-      const rows = await db.select().from(schema.projectMessages)
+      const rows = await openRows(db as unknown as DbExecutor, 'project_messages', await db.select().from(schema.projectMessages)
         .where(and(eq(schema.projectMessages.conversationId, row.id),
           window.beforeSequence === null ? undefined : lt(schema.projectMessages.sequence, window.beforeSequence)))
-        .orderBy(desc(schema.projectMessages.sequence)).limit(window.limit + 1);
+        .orderBy(desc(schema.projectMessages.sequence)).limit(window.limit + 1));
       const hasMoreBefore = rows.length > window.limit;
       const names = await workRows(db).names([row.createdByAgentId, ...rows.map((item) => item.authorAgentId)]
         .filter((actorId): actorId is string => actorId !== null).map((actorId) => ({ kind: 'agent' as const, id: actorId })));
@@ -363,16 +374,18 @@ export function conversationStore(db: Database, options: ConversationStoreOption
       const owners = await projectAuthorOwners(db, row.projectId, row.workspaceId, selected.flatMap((item) => item.authorAgentId ? [item.authorAgentId] : []));
       const messages = selected.map((item) => message({ ...item, files: files.get(item.id) }, names, owners));
       const openingInWindow = messages.find((item) => item.sequence === 1);
-      const [opening] = openingInWindow ? [] : await db.select({ body: schema.projectMessages.body, attachmentCount: schema.projectMessages.attachmentCount }).from(schema.projectMessages)
-        .where(eq(schema.projectMessages.conversationId, row.id)).orderBy(asc(schema.projectMessages.sequence)).limit(1);
-      const [task] = await db.select({ workId: schema.projectTaskDiscussions.workId, title: schema.projectWorkItems.title }).from(schema.projectTaskDiscussions)
+      const [opening] = openingInWindow ? [] : await openRows(db as unknown as DbExecutor, 'project_messages', await db.select({ id: schema.projectMessages.id,
+        workspaceId: schema.projectMessages.workspaceId, body: schema.projectMessages.body, attachmentCount: schema.projectMessages.attachmentCount }).from(schema.projectMessages)
+        .where(eq(schema.projectMessages.conversationId, row.id)).orderBy(asc(schema.projectMessages.sequence)).limit(1));
+      const [task] = await openAliased(db as unknown as DbExecutor, await db.select({ workId: schema.projectTaskDiscussions.workId, title: schema.projectWorkItems.title }).from(schema.projectTaskDiscussions)
         .innerJoin(schema.projectWorkItems, and(eq(schema.projectWorkItems.id, schema.projectTaskDiscussions.workId),
           eq(schema.projectWorkItems.projectId, row.projectId), eq(schema.projectWorkItems.workspaceId, row.workspaceId)))
         .innerJoin(schema.projectMessages, and(eq(schema.projectMessages.id, schema.projectTaskDiscussions.rootMessageId),
           eq(schema.projectMessages.conversationId, row.id), eq(schema.projectMessages.projectId, row.projectId),
           eq(schema.projectMessages.workspaceId, row.workspaceId), eq(schema.projectMessages.sequence, 1)))
         .where(and(eq(schema.projectTaskDiscussions.conversationId, row.id), eq(schema.projectTaskDiscussions.projectId, row.projectId),
-          eq(schema.projectTaskDiscussions.workspaceId, row.workspaceId)));
+          eq(schema.projectTaskDiscussions.workspaceId, row.workspaceId))), { table: 'project_work_items', column: 'title', key: 'title',
+        workspace: () => row.workspaceId, identity: (found) => [found.workId] });
       return { id: row.id, projectId: row.projectId, workspaceId: row.workspaceId,
         audience: { kind: 'project', projectId: row.projectId }, ...creator(row, names),
         ...(task ? { task } : {}),

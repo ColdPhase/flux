@@ -87,7 +87,7 @@ CREATE TABLE workspace_holders (
   kdf jsonb NOT NULL,          -- {"alg":"argon2id","v":19,"m":65536,"t":3,"p":4,"salt":"<b64url 16 bytes>"}
   public_key text NOT NULL,    -- X25519, raw 32 bytes, base64url
   wrapped_private text NOT NULL, -- AES-256-GCM of the X25519 private key under the KEK; the public key is in its AAD
-  holder_mac text NOT NULL,      -- HMAC under a key from DEK v(holder_mac_version) over [id, kind, user id, public key]
+  holder_mac text NOT NULL,      -- HMAC under a key from DEK v(holder_mac_version) over [id, kind, user id, public key, kdf, wrapped_private, secret_check]
   holder_mac_version integer NOT NULL,
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now(),
@@ -307,9 +307,13 @@ or replace a DEK wrap with a box carrying a DEK of their own choice. Sealing to 
 secret. The next rotation would then seal the new DEK to the attacker, and the re-encryption would
 move all content under it. Four checks close this. None needs anything the attacker has.
 
-1. **Holder MAC.** `holder_mac = HMAC-SHA256(HKDF(DEK v, [flux holder-auth v1, workspace id, v]),
-   [holder id, kind, user id or "", public key])`, with `v = holder_mac_version`, the current version
-   when the MAC was written. A holder is created only while the workspace is unlocked, so the server
+1. **Holder MAC.** `holder_mac = HMAC-SHA256(HKDF(DEK v, [flux holder-auth v2, workspace id, v]),
+   [holder id, kind, user id or "", public key, kdf, wrapped private key, secret check])`, with
+   `v = holder_mac_version`, the current version when the MAC was written. `kdf` is compared in the fixed
+   key order `[alg, v, m, t, p, salt]`, so jsonb's reordering does not matter. (S2a-1, from the S1 review:
+   v1 covered only the identity and the public key, so a changed `kdf`, `wrapped_private` or
+   `secret_check` showed up only as a failed derivation, not as tampering.) `confirm` is not covered: it
+   is itself a MAC under the holder's KEK, written later than this one, and unlock refuses a changed one. A holder is created only while the workspace is unlocked, so the server
    holds the DEK then. At a rotation's start every remaining holder's MAC is rewritten under the new
    version. Two rules use it, and they are deliberately different. **Receiving a new DEK:** only the
    **holder set** does, meaning rows whose MAC verifies, whose user (for kind `password`) is currently
@@ -575,8 +579,10 @@ migrations: `draft_versions`, `search_documents`, `flux_schema_version`, `live_w
 [registry test](#tests-and-acceptance-criteria) reads `information_schema.tables` and `columns` for
 the `public` schema after all migrations. It requires every table to be in `TABLE_CLASSES` as
 **content** (columns classified as above), **account** (user, session, OAuth, push and preference
-data), **system** (schema version, queue, cursor, idempotency, rate limits) or **AI** (empty for a
-sealed workspace, [backstopped](#enforcement)). It fails on any table or text/jsonb column of a
+data), **system** (schema version, queue, cursor, rate limits and the key tables), **AI** (empty for a
+sealed workspace, [backstopped](#enforcement)) or **refused** (a feature not offered in a sealed
+workspace, GitHub: `a_sealed_workspace_refused` refuses a row of one with
+`409 WORKSPACE_ENCRYPTED_UNSUPPORTED`). `idempotency_keys` is a content table: its stored responses are sealed. It fails on any table or text/jsonb column of a
 content table that is in no list. It also reads `pg_trigger` and `pg_proc` and fails on a function
 that copies a sealed column outside the allowed pair. The pg-boss schema is classed as system, with
 its own [error-path rule](#error-paths).
@@ -1224,6 +1230,26 @@ token alone is not enough (S1 review): a real deployment never holds a half-seal
   per-row key uses the whole AAD as `info`: S2a adds a guard test so no identity (idempotency key, principal,
   operation) can make sealing throw. (3) The S1 lock gate names objects by route parameters and refuses the
   cross-workspace reads (`CROSS_WORKSPACE_READ_ROUTES`); AC-6 must enumerate every route, including upgrade handlers.
+- **S2a is delivered in two PRs, each safe alone** (2026-10-29). Every sealed table gets its plaintext
+  backstop in S2a-1, so a table whose repository does not seal yet refuses a sealed workspace's writes
+  (`409 WORKSPACE_PLAINTEXT_REFUSED`) instead of storing text, and S1's route-level lock gate stays until
+  S2a-2 has every repository sealing.
+  - **S2a-1** (migration 0120): the registry (`packages/db/src/sealed-columns.ts`, with a fifth class
+    `refused` for GitHub, backstopped by `a_sealed_workspace_refused`), the live-catalog test, the
+    plaintext backstops and relaxed checks, `flux_is_sealed`, the search placeholders and
+    `search_changes`, `preserve_draft_version` writing nothing for A, the repository seal resolver
+    (`configureSeals`/`sealOf`/`sealRow`/`openRow` in `packages/db/src/sealing.ts`, installed with core's
+    `sealFor` in the API and the worker), and sealing in the repositories of projects, goals, project
+    messages and task discussion replies, DMs and DM messages, decisions, results, drafts with their
+    versions, and scoped idempotency rows. It also fixes the agent-thread witness triggers, which made a
+    decision, result, doc version, thought or published file in A fail with `WORKSPACE_ENCRYPTED_AI_OFF`
+    (they now skip a sealed workspace), and hashes an AAD over 1024 bytes into the HKDF `info`
+    (`[flux seal long v1, SHA-256(AAD)]`; the AAD itself is unchanged), so no identity can make sealing throw.
+  - **S2a-2**: tasks (and their activity, updates, plan intents and receipts), docs and materials, maps,
+    files, mandatory command scopes with the account-operation list and its backstop, the notification
+    and event backstops with content-free notifications, error-path redaction, `sealed_job_waits` and
+    the resume job, the SQL source scan, cross-workspace `lockedWorkspaces`, the replacement of the
+    route-level gate, `./flux export` refusal and restore truncation, and AC-6, AC-9, AC-10 and AC-7.
 - **S2a: sealed database content and files.** `TABLE_CLASSES`, `SEALED_COLUMNS` and `VISIBLE_COLUMNS`
   with the live-catalog test, the backstops (plaintext, notifications, events, idempotency) and relaxed
   checks, **the search placeholder triggers and `search_changes`** (so no sealed column is ever

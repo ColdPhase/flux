@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { and, desc, eq, lt, sql } from 'drizzle-orm';
 import * as schema from '../schema.js';
+import { openRows, sealFor } from '../sealing.js';
 import type { MessageFile } from '@flux/contracts';
 import { taskUseRows, type TaskUseFence } from './task-use.js';
 import { artifactResetRows } from './artifact-resets.js';
@@ -39,7 +40,7 @@ export function taskDiscussionRows(db: DbExecutor) {
       await db.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${`${projectId.toLowerCase()}:${author.kind}:${author.id}:${commandId.toLowerCase()}`}))`);
     },
     async existingMessage(projectId: string, author: Actor, commandId: string) {
-      const [row] = await db.select().from(m).where(and(eq(m.projectId, projectId), author.kind === 'human' ? eq(m.authorId, author.id) : eq(m.authorAgentId, author.id), eq(m.clientMessageId, commandId)));
+      const [row] = await openRows(db, 'project_messages', await db.select().from(m).where(and(eq(m.projectId, projectId), author.kind === 'human' ? eq(m.authorId, author.id) : eq(m.authorAgentId, author.id), eq(m.clientMessageId, commandId))));
       return row ? message(row, (await fileRows(db).messageFiles([row.id])).get(row.id)) : null;
     },
     async findBinding(workId: string) {
@@ -51,13 +52,13 @@ export function taskDiscussionRows(db: DbExecutor) {
       return row ? conversation(row) : null;
     },
     async findMessage(messageId: string) {
-      const [row] = await db.select().from(m).where(eq(m.id, messageId));
+      const [row] = await openRows(db, 'project_messages', await db.select().from(m).where(eq(m.id, messageId)));
       return row ? message(row, (await fileRows(db).messageFiles([row.id])).get(row.id)) : null;
     },
     async messages(conversationId: string, window: { limit: number; beforeSequence: number | null }) {
-      const rows = await db.select().from(m).where(and(eq(m.conversationId, conversationId),
+      const rows = await openRows(db, 'project_messages', await db.select().from(m).where(and(eq(m.conversationId, conversationId),
         window.beforeSequence === null ? undefined : lt(m.sequence, window.beforeSequence)))
-        .orderBy(desc(m.sequence)).limit(window.limit + 1);
+        .orderBy(desc(m.sequence)).limit(window.limit + 1));
       const files = await fileRows(db).messageFiles(rows.map((row) => row.id));
       return rows.map((row) => message(row, files.get(row.id)));
     },
@@ -80,12 +81,14 @@ export function taskDiscussionRows(db: DbExecutor) {
       const [updated] = await db.update(c).set({ nextSequence: sql`${c.nextSequence} + 1` })
         .where(eq(c.id, conversation.id)).returning({ nextSequence: c.nextSequence });
       if (!updated) throw new Error('Conversation disappeared under contribution lock');
-      const [row] = await db.insert(m).values({ id: preparedMessageId ?? randomUUID(), workspaceId: conversation.workspaceId,
+      const [stored] = await db.insert(m).values(await sealFor(db, 'project_messages', conversation.workspaceId, { id: preparedMessageId ?? randomUUID(), workspaceId: conversation.workspaceId,
         projectId: conversation.projectId, conversationId: conversation.id, authorId: author.kind === 'human' ? author.id : null,
         authorAgentId: author.kind === 'agent' ? author.id : null, clientMessageId: input.clientMessageId,
         requestFingerprint: input.fingerprint, sequence: updated.nextSequence - 1, body: input.body,
         sourceMaterialId: input.source?.materialId ?? null, sourceMaterialVersion: input.source?.version ?? null,
-        attachmentCount: input.files?.length ?? 0, contributionKind: input.kind ?? 'text', resultId: input.resultId ?? null }).returning();
+        attachmentCount: input.files?.length ?? 0, contributionKind: input.kind ?? 'text', resultId: input.resultId ?? null })).returning();
+      // F-030: the stored row may be sealed; the caller gets what it wrote.
+      const row = stored && { ...stored, body: input.body, requestFingerprint: input.fingerprint };
       for (const [position, file] of (input.files ?? []).entries()) {
         const updated = await db.update(schema.projectFiles).set({ messageId: row!.id, position, publishedAt: row!.createdAt, expiresAt: null })
           .where(and(eq(schema.projectFiles.id, file.id), eq(schema.projectFiles.projectId, conversation.projectId), sql`${schema.projectFiles.publishedAt} IS NULL`))
