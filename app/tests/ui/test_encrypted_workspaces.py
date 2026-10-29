@@ -41,6 +41,7 @@ from urllib.parse import urlparse
 from playwright.sync_api import Browser, BrowserContext, Page, Route, expect, sync_playwright
 
 from app_select import choose
+from light_motion_fixture import settled
 from test_app_shell import DESKTOP, ORIGIN, PHONE, UPSTREAM, open_details, shot as save_shot, start_forwarder
 
 UI_BROWSER = os.environ.get("FLUX_UI_BROWSER", "chromium")
@@ -182,6 +183,8 @@ class Base(unittest.TestCase):
         page.get_by_role("region", name="People").get_by_role("button", name=re.compile(f"^{space}")).click()
         expect(page.get_by_role("heading", name="People", exact=True)).to_be_visible()
         expect(page.locator(".details__eyebrow", has_text=space)).to_be_visible()
+        # The panel slides in (#593): positions are measured only once it has stopped.
+        settled(page)
 
     def section(self, page: Page):
         return page.get_by_role("region", name="Encryption")
@@ -220,6 +223,7 @@ class Base(unittest.TestCase):
         expect(rows.last).to_have_text(re.compile(r"^New space"))
         rows.last.click()
         expect(page.get_by_role("heading", name="New space")).to_be_visible()
+        settled(page)
 
     def fill_new_space(self, page: Page, name: str, *, encrypt: bool = True) -> None:
         page.get_by_role("textbox", name="Name", exact=True).fill(name)
