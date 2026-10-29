@@ -48,10 +48,7 @@ than was checked:
    Then run `claude mcp remove flux` and delete the connection on the Connect page for the take.
 5. For tier B only: on the connection tick **Run approved project actions**, and add a standing grant
    for the task action on the same page.
-6. Until [#665](https://github.com/ColdPhase/flux/issues/665) is fixed, a task or decision card in the
-   thread panel shows only the first characters of its title. In shots 3 and 4 keep the panel on the
-   task or decision detail, or close it, rather than lingering on those cards.
-7. Read the screen at 100% zoom on a 1080p display. Record at 1920 × 1080; crop to the app, no
+6. Read the screen at 100% zoom on a 1080p display. Record at 1920 × 1080; crop to the app, no
    desktop. Keep the pointer visible and move it slowly; the GIF in the README does the same.
 
 ## Shot list
