@@ -74,6 +74,8 @@ services:
       FLUX_VAPID_PUBLIC_KEY: ${FLUX_VAPID_PUBLIC_KEY:-}
       FLUX_STREAM_HEARTBEAT_MS: ${FLUX_STREAM_HEARTBEAT_MS:-25000}
       FLUX_LIVE_EDITING: ${FLUX_LIVE_EDITING:-on}
+      # Link cards (#469): off unless `on`; see docker/.env.example.
+      FLUX_LINK_PREVIEWS: ${FLUX_LINK_PREVIEWS:-off}
       # GitHub App integration (#74). All empty reports unavailable.
       FLUX_GITHUB_CLIENT_ID: ${FLUX_GITHUB_CLIENT_ID:-}
       FLUX_GITHUB_CLIENT_SECRET: ${FLUX_GITHUB_CLIENT_SECRET:-}
