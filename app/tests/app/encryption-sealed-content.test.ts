@@ -334,12 +334,16 @@ describe('F-030 S2a-1: sealed content in the repositories', () => {
         headers: { 'content-type': 'application/octet-stream', cookie: ada.browser.cookieHeader(), origin: ada.browser.defaultOrigin },
       } as RequestInit & { duplex: 'half' });
     };
+    // Every file the upload created in tmp (the scratch file and anything beside it), once the first chunk is written.
     const waitForScratch = async (before: Set<string>) => {
       for (let attempt = 0; attempt < 80; attempt += 1) {
         const fresh = (await scratch()).filter((name) => !before.has(name));
-        if (fresh.length) {
-          const bytes = await readFile(join(tmp, fresh[0]!)).catch(() => Buffer.alloc(0));
-          if (bytes.length > 64 * 1024) return { name: fresh[0]!, bytes };
+        const files = await Promise.all(fresh.map(async (name) => ({ name, bytes: await readFile(join(tmp, name)).catch(() => Buffer.alloc(0)) })));
+        if (files.some((file) => file.bytes.length > 64 * 1024)) {
+          await new Promise((resolve) => setTimeout(resolve, 200)); // anything written beside it lands too
+          const settled = await Promise.all((await scratch()).filter((name) => !before.has(name))
+            .map(async (name) => ({ name, bytes: await readFile(join(tmp, name)).catch(() => Buffer.alloc(0)) })));
+          return { names: settled.map((file) => file.name), files: settled };
         }
         await new Promise((resolve) => setTimeout(resolve, 100));
       }
@@ -353,10 +357,10 @@ describe('F-030 S2a-1: sealed content in the repositories', () => {
       const response = start(ids[side].project, first, gate, Buffer.from(' the end'));
       const during = await waitForScratch(before);
       if (side === 'A') {
-        assert.equal(during.bytes.subarray(0, 4).toString('ascii'), 'FXF1', 'A: the scratch file starts as a sealed object');
-        assert.equal(during.bytes.includes(needle), false, 'A: no plaintext in tmp while the upload is open');
+        assert.ok(during.files.some((file) => file.bytes.subarray(0, 4).toString('ascii') === 'FXF1'), 'A: the scratch file starts as a sealed object');
+        for (const file of during.files) assert.equal(file.bytes.includes(needle), false, `A: no plaintext anywhere in tmp while the upload is open (${file.name})`);
       } else {
-        assert.ok(during.bytes.includes(needle), 'B: the plain control writes plaintext');
+        assert.ok(during.files.some((file) => file.bytes.includes(needle)), 'B: the plain control writes plaintext');
       }
       open();
       assert.equal((await response).status, 201, `${side}: the gated upload finishes`);
@@ -370,7 +374,8 @@ describe('F-030 S2a-1: sealed content in the repositories', () => {
       await aborted;
       let left = true;
       for (let attempt = 0; attempt < 100 && left; attempt += 1) {
-        left = (await scratch()).includes(pending.name);
+        const now = await scratch();
+        left = pending.names.some((name) => now.includes(name));
         if (left) await new Promise((resolve) => setTimeout(resolve, 100));
       }
       assert.equal(left, false, `${side}: an aborted upload leaves no scratch file`);
