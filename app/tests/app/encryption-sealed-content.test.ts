@@ -423,7 +423,7 @@ describe('F-030 S2a-1: sealed content in the repositories', () => {
     } finally {
       expectStatus(await unlock(ada.browser, A, { password: pw }), 200);
     }
-    assert.deepEqual(((await ben.browser.request('GET', '/api/v1/inbox')).json as { lockedWorkspaces?: unknown }).lockedWorkspaces, []);
+    assert.equal(((await ben.browser.request('GET', '/api/v1/inbox')).json as { lockedWorkspaces?: unknown }).lockedWorkspaces, undefined);
   });
 
   test('an event of A that arrives while A is locked waits: no notification; after unlock exactly one (AC-9)', async () => {

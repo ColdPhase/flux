@@ -114,7 +114,7 @@ describe('F-030 unlock, Lock now and 423', () => {
     }
     const outsiderInbox = await outsider.browser.request('GET', '/api/v1/inbox');
     assert.equal(outsiderInbox.status, 200);
-    assert.deepEqual((outsiderInbox.json as { lockedWorkspaces?: unknown }).lockedWorkspaces, []);
+    assert.equal((outsiderInbox.json as { lockedWorkspaces?: unknown }).lockedWorkspaces, undefined, 'absent when none is locked');
 
     const wrong = await unlock(ada.browser, A, { password: `${pw.ada} nope` });
     assert.equal(wrong.status, 400);
@@ -124,7 +124,7 @@ describe('F-030 unlock, Lock now and 423', () => {
     assert.equal((right.json as { encryption: { state: string } }).encryption.state, 'unlocked');
     assert.deepEqual((await events(A, 'workspace.unlocked.v1')).at(-1), { by: ada.id });
     expectStatus(await contentCall(cy.browser, A), 200);
-    assert.deepEqual((expectStatus(await cy.browser.request('GET', '/api/v1/inbox'), 200) as { lockedWorkspaces?: unknown }).lockedWorkspaces, [], 'unlocked: none');
+    assert.deepEqual((expectStatus(await cy.browser.request('GET', '/api/v1/inbox'), 200) as { lockedWorkspaces?: unknown }).lockedWorkspaces, undefined, 'unlocked: none');
     const repeat = await unlock(ada.browser, A, { password: 'not checked while unlocked' });
     assert.equal(repeat.status, 200, 'already unlocked: no check, so no oracle');
     await clearAttempts(A);

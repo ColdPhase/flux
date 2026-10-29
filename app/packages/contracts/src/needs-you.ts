@@ -117,7 +117,7 @@ export interface NeedsYouAssistantChanges {
 export interface NeedsYouResponse {
   /**
    * F-030: the caller's encrypted workspaces that are locked on this server; their items are left out, and the page
-   * draws one "Waiting to be unlocked" row for each. Absent outside an API that knows encryption.
+   * draws one "Waiting to be unlocked" row for each. Absent when none is locked.
    */
   lockedWorkspaces?: LockedWorkspaceRef[];
   /** Most urgent first: decisions, questions, blocked tasks, then mentions; newest first within a kind. */

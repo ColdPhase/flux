@@ -99,7 +99,7 @@ async function resolveSeal(executor: DbExecutor, workspaceId: string, options: {
  * F-030 `lockedWorkspaces`: a cross-workspace read (search, Inbox, Needs you, Since you left) runs in this scope. A
  * sealed workspace that is locked here is then skipped instead of failing the whole read: its rows open to empty text
  * (no reader can crash on a missing row), the workspace is recorded, and the route leaves its items out and names it
- * (`lockedWorkspaces`). Outside the scope a locked workspace still answers 423.
+ * (`lockedWorkspaces`, absent when none is locked). Outside the scope a locked workspace still answers 423.
  */
 export const lockedReadScope = new AsyncLocalStorage<{ skipped: Set<string> }>();
 const isLocked = (error: unknown) => (error as { code?: unknown }).code === 'WORKSPACE_LOCKED';

@@ -87,7 +87,7 @@ export function registerLockGate(app: FastifyInstance, { db, sessions, keys }: {
     route.preSerialization = [async (request: FastifyRequest, _reply: unknown, payload: unknown) => {
       if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return payload;
       const locked = await lockedOf(request, scopes.get(request)?.skipped ?? new Set());
-      if (!locked.length) return { ...(payload as object), lockedWorkspaces: [] };
+      if (!locked.length) return payload; // absent when none is locked, so ordinary answers are unchanged
       // Every item of a locked workspace is left out (Inbox rows too, though they are content-free), whichever way the
       // item names its place: its workspace, its source's workspace, its project or its project id.
       const lockedIds = new Set(locked.map((workspace) => workspace.id));

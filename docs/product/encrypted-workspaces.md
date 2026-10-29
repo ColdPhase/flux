@@ -1282,7 +1282,15 @@ token alone is not enough (S1 review): a real deployment never holds a half-seal
     a body for a sealed workspace (`NOTIFICATION_CONTENT_REFUSED`; the "who" must be an existing account name,
     `Someone` or `An agent`). Needs-you's proposed decisions and the muted list's project and DM names are opened, and
     a generation failure about a sealed workspace's event stores only `redactedError` (class, code, ids).
-  - **S2a-2c-2**: the event
+  - **S2a-2c-2** (no migration): `lockedWorkspaces`. Search, Inbox, Needs you and Since you left run in
+    `lockedReadScope` (`packages/db/src/sealing.ts`): a sealed workspace that is locked here is skipped there instead of
+    answering 423 for the whole read; its rows open to empty text, the S1 gate leaves its items out of the answer
+    (by workspace, source, project or project id) and names every such workspace of the caller in `lockedWorkspaces`.
+    Jobs that wait: notification generation records an event of a locked sealed workspace in `sealed_job_waits`
+    and moves its cursor on; `workspace-encryption.resume.v1` replays the waits after unlock in creation order (AC-9).
+    `./flux export` refuses an encrypted space ("Garden club is encrypted. Export it from the app.") and writes
+    nothing; `./flux restore` truncates `workspace_unlocks`, so a restored encrypted space is locked.
+  - **S2a-2c-3**: the event
     backstop (with its token table), the remaining error-path redaction (pg-boss output, logs), `sealed_job_waits` and
     the resume job, the SQL source scan, cross-workspace `lockedWorkspaces`, the replacement of the
     route-level gate, `./flux export` refusal and restore truncation, and AC-6, AC-9, AC-10 and AC-7.
