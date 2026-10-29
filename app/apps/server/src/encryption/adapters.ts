@@ -6,9 +6,9 @@ import * as zxcvbnEnglish from '@zxcvbn-ts/language-en';
 import { WORKSPACE_ENCRYPTION_RESUME_JOB, type WorkspaceEncryptionResumeJob } from '@flux/contracts';
 import {
   authorize, createEncryptionUseCases, DerivationSemaphore, ForbiddenError, getWorkspace, keyringFromEnv, NotFoundError, ProcessKeys,
-  recordEvent, swapFiles, swapSafety, testSwapRoot, type Database, type EncryptionPorts, type EncryptionUnitOfWork, type PasswordEstimator,
+  recordEvent, sealFor, swapFiles, swapSafety, testSwapRoot, type Database, type EncryptionPorts, type EncryptionUnitOfWork, type PasswordEstimator,
 } from '@flux/core';
-import { accessPorts, accessReader, loadActor, workspaceEncryptionRows, type DbExecutor } from '@flux/db';
+import { accessPorts, accessReader, configureSeals, loadActor, workspaceEncryptionRows, type DbExecutor } from '@flux/db';
 import { eventPorts } from '../events.js';
 
 // Adapters of the encrypted-workspace use cases (F-030, #655): the access policy (`workspace.manage_encryption`), the
@@ -58,6 +58,14 @@ export function zxcvbnEstimator(): PasswordEstimator {
 export function processKeysFromEnv(env: NodeJS.ProcessEnv): ProcessKeys {
   const files = swapFiles(testSwapRoot(env));
   return new ProcessKeys(keyringFromEnv(env), () => swapSafety(env, files));
+}
+
+/**
+ * Installs core's `sealFor` over this process's keys as the repositories' seal resolver (F-030 S2a): every repository
+ * of `@flux/db` seals and opens through it in its own transaction, so a lock fails reads and writes closed.
+ */
+export function installSeals(keys: ProcessKeys) {
+  configureSeals((executor, workspaceId, options) => sealFor(workspaceEncryptionRows(executor), keys, workspaceId, options));
 }
 
 export interface EncryptionComposition {

@@ -6,7 +6,7 @@ import { getMe } from '../api/auth';
 import { ApiError, NetworkError, request as apiRequest } from '../api/client';
 import { listAccessibleProjects } from '../app/conversation-api';
 import { signInPath } from '../auth/logic';
-import { Button, Icon } from '../ui';
+import { Button, Icon, Select, Option } from '../ui';
 import {
   SCOPE_LABELS, continueAgentOAuth, getHeldConnection, createAgentConnection, createPersonalAgent, decideAgentConsent,
   followOAuthRedirect, getConsentContext, grantAgentProject, listActionGrants, listAgentConnections, listProjectGrants,
@@ -275,9 +275,9 @@ export function AgentConnectionPage() {
       <h2>Create your personal agent</h2><p>This identity belongs only to you. A project manager must explicitly grant it project access.</p>
       {!workspaces.length ? <p className="connection__help" role="note">Your agent belongs to a workspace, and you are not in one yet. <Link to="/projects/new">Create a project</Link> to start one, or ask someone to add you to theirs.</p> : <>
       <label className="connection__label" htmlFor="agent-workspace">Workspace</label>
-      <select id="agent-workspace" value={workspaceId} onChange={(event) => setWorkspaceId(event.target.value)} disabled={busy} required>
-        {workspaces.map((workspace) => <option key={workspace.id} value={workspace.id}>{workspace.name}</option>)}
-      </select>
+      <Select id="agent-workspace" value={workspaceId} onChange={(next) => setWorkspaceId(next)} disabled={busy} required>
+        {workspaces.map((workspace) => <Option key={workspace.id} value={workspace.id}>{workspace.name}</Option>)}
+      </Select>
       <label className="connection__label" htmlFor="agent-name">Agent name</label>
       <input id="agent-name" value={agentName} onChange={(event) => setAgentName(event.target.value)} maxLength={160} disabled={busy} required placeholder="My research agent" />
       <div className="connection__actions"><Button type="submit" variant="secondary" busy={busy} disabled={!workspaceId || !agentName.trim()}>Create personal agent</Button>
@@ -290,15 +290,15 @@ export function AgentConnectionPage() {
       <label className="connection__label" htmlFor="connection-name">Connection name</label>
       <input id="connection-name" value={connectionName} onChange={(event) => setConnectionName(event.target.value)} maxLength={120} disabled={busy} required placeholder="Research laptop" />
       <label className="connection__label" htmlFor="connection-client">Client label</label>
-      <select id="connection-client" value={clientDesignation} onChange={(event) => setClientDesignation(event.target.value as ExternalClientDesignation)} disabled={busy}>
-        <option value="other">External client</option><option value="claude_code">Claude Code</option><option value="codex">Codex</option>
-      </select>
+      <Select id="connection-client" value={clientDesignation} onChange={(next) => setClientDesignation(next as ExternalClientDesignation)} disabled={busy}>
+        <Option value="other">External client</Option><Option value="claude_code">Claude Code</Option><Option value="codex">Codex</Option>
+      </Select>
       <p>This label helps you recognize the connection. It does not verify which application uses it.</p>
       <p>Flux accepts only projects already granted to your agent. Saving this selection does not change project access.</p>
       <label className="connection__label" htmlFor="connection-agent">Your agent</label>
-      <select id="connection-agent" value={agentId} onChange={(event) => { setAgentId(event.target.value); setProjectIds([]); }} disabled={busy} required>
-        {personalAgents.length ? personalAgents.map((agent) => <option key={agent.id} value={agent.id}>{agent.name}</option>) : <option value="">Create a personal agent first</option>}
-      </select>
+      <Select id="connection-agent" value={agentId} onChange={(next) => { setAgentId(next); setProjectIds([]); }} disabled={busy} required>
+        {personalAgents.length ? personalAgents.map((agent) => <Option key={agent.id} value={agent.id}>{agent.name}</Option>) : <Option value="">Create a personal agent first</Option>}
+      </Select>
       <fieldset className="connection__group" disabled={busy || !agentId}>
         <legend>Projects</legend>
         <div className="connection__checks">{eligibleProjects.map((project) => {
@@ -312,9 +312,9 @@ export function AgentConnectionPage() {
           </label>
           {project.access === 'manager' && !selectable ? <div className="connection__grant">
             <label htmlFor={`grant-${project.id}`}>Grant agent access</label>
-            <select id={`grant-${project.id}`} value={grantRoles[project.id] ?? (scopes.some((scope) => scope === 'flux.proposal.write' || scope === 'flux.action.execute') ? 'contributor' : 'viewer')} onChange={(event) => setGrantRoles((current) => ({ ...current, [project.id]: event.target.value as 'viewer' | 'contributor' }))} disabled={busy}>
-              <option value="viewer">Read only</option><option value="contributor">Read and propose</option>
-            </select>
+            <Select id={`grant-${project.id}`} value={grantRoles[project.id] ?? (scopes.some((scope) => scope === 'flux.proposal.write' || scope === 'flux.action.execute') ? 'contributor' : 'viewer')} onChange={(next) => setGrantRoles((current) => ({ ...current, [project.id]: next as 'viewer' | 'contributor' }))} disabled={busy}>
+              <Option value="viewer">Read only</Option><Option value="contributor">Read and propose</Option>
+            </Select>
             <Button variant="secondary" onClick={() => { void grantProject(project); }}>Grant</Button>
           </div> : null}</div>;
         })}</div>

@@ -14,6 +14,8 @@ import uuid
 
 from playwright.sync_api import expect, sync_playwright
 
+from app_select import choose, expect_value
+
 from test_app_shell import ORIGIN, UPSTREAM, shot, start_forwarder
 
 SIZES = ({"width": 390, "height": 844}, {"width": 320, "height": 568})
@@ -234,7 +236,7 @@ class PhoneFinal(unittest.TestCase):
         page.goto("/inbox")
         page.get_by_role("button", name="Create", exact=True).click()
         sheet = page.get_by_role("dialog", name="Create")
-        sheet.get_by_label("Project").select_option(self.project["id"])
+        choose(sheet.get_by_label("Project"), self.project["id"])
         sheet.get_by_role("button", name=re.compile("^Decision")).click()
         expect(page).to_have_url(f"{ORIGIN}/projects/{self.project['id']}")
         expect(page.get_by_role("heading", name="Propose a decision")).to_be_visible()
@@ -249,7 +251,7 @@ class PhoneFinal(unittest.TestCase):
         page.goto("/projects")
         page.get_by_role("button", name="Create", exact=True).click()
         sheet = page.get_by_role("dialog", name="Create")
-        sheet.get_by_label("Project").select_option(self.project["id"])
+        choose(sheet.get_by_label("Project"), self.project["id"])
         name = f"bed-map-{uuid.uuid4().hex[:6]}.txt"
         with page.expect_file_chooser() as chooser:
             sheet.get_by_role("button", name=re.compile("^File or link")).click()
@@ -426,7 +428,7 @@ class PhoneFinal(unittest.TestCase):
         title = f"Print bed labels {uuid.uuid4().hex[:8]}"
         page.get_by_role("button", name="Create", exact=True).click()
         project_picker = page.get_by_role("dialog", name="Create").get_by_role("combobox")
-        project_picker.select_option(self.second_project["id"])
+        choose(project_picker, self.second_project["id"])
         page.get_by_role("dialog", name="Create").get_by_role("button", name="Task", exact=True).click()
         field = page.get_by_role("dialog", name="New task").get_by_label("Title", exact=True)
         expect(field).to_be_visible()
@@ -437,7 +439,7 @@ class PhoneFinal(unittest.TestCase):
         page.get_by_role("button", name="Create", exact=True).click()
         page.get_by_role("dialog", name="Create").get_by_role("button", name="Task", exact=True).click()
         project_picker = page.get_by_role("dialog", name="New task").get_by_role("combobox", name="Project")
-        expect(project_picker).to_have_value(self.second_project["id"])
+        expect_value(project_picker, self.second_project["id"])
         field = page.get_by_role("dialog", name="New task").get_by_label("Title", exact=True)
         expect(field).to_have_value(title)
         page.get_by_role("dialog", name="New task").get_by_role("button", name=re.compile("^Create task")).click()

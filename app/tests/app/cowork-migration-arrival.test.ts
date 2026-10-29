@@ -4,7 +4,11 @@ import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { after, test } from 'node:test';
 import { assertExactMigrationLedger, assertMigrationSqlLedgerChange, assertMigrationStepLedger,
+
   createDatabase, FLUX_SCHEMA_VERSION, readAppliedMigrationVersions, readMigrationManifest, type MigrationFile } from '@flux/db';
+
+// F-030 S2a (0120) adds search_documents.sealed; a row's history is the same with or without it.
+const withoutSealed = (row: Record<string, unknown>) => Object.fromEntries(Object.entries(row).filter(([key]) => key !== 'sealed'));
 
 // Actual additive migration/history checks. These fixtures grant no agent action
 // authority and do not establish current dependency eligibility or client activation.
@@ -63,7 +67,7 @@ for (const order of arrivals) test(`co-work, runtime and genuine-actor migration
       // migrations are left out (0043's nullable author_agent_id).
       source: (await client.query(`SELECT workspace_id,project_id,material_id,version,title,body,url,author_id,client_mutation_id,
         request_fingerprint,source_draft_id,source_draft_version,created_at,state,reason FROM project_material_versions WHERE material_id=$1`, [material])).rows,
-      search: (await client.query('SELECT * FROM search_documents WHERE doc_key=$1', [`message:${message}`])).rows,
+      search: (await client.query('SELECT * FROM search_documents WHERE doc_key=$1', [`message:${message}`])).rows.map(withoutSealed),
     });
     const before = await history();
     assert.equal(before.search.length, 1);

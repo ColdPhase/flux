@@ -76,6 +76,8 @@ describe('conversation and material pages (#298)', () => {
     await reply(first.id, 'The capacitive one, if the housing is sealed.');
     await reply(first.id, 'Then we order six.');
     await material('Probe datasheet');
+    // F-030 (S2a): the first read in a process looks the workspace up once to learn it is not encrypted; then never again.
+    await pages();
     const one = await pages();
     for (let index = 0; index < 5; index += 1) {
       await reply((await start(`Thread ${index}`)).id, `Reply ${index}`);

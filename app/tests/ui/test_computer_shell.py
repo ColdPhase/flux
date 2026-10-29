@@ -13,6 +13,8 @@ import unittest
 
 from playwright.sync_api import Browser, Page, expect, sync_playwright
 
+from app_select import expect_value
+
 from test_app_shell import DESKTOP, ORIGIN, UPSTREAM, shot, start_forwarder
 
 PASSWORD = "one calm sidebar"
@@ -156,7 +158,7 @@ class ComputerShell(unittest.TestCase):
         expect(page.get_by_role("heading", level=1, name="Community garden sensors")).to_be_visible()
         page.locator("body").press("c")
         expect(window).to_be_visible()
-        expect(window.get_by_role("combobox", name="Project")).to_have_value(self.ids["projects"][0])
+        expect_value(window.get_by_role("combobox", name="Project"), self.ids["projects"][0])
 
     def test_04_g_then_i_goes_to_the_inbox(self) -> None:
         self.ensure_account()

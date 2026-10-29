@@ -147,6 +147,9 @@ use cases), `app/tests/app/decision-authority.test.ts` (#250: the O-009 role mat
 and the database invariant), the "#250 AC-3" case in `app/tests/app/personal-runs.test.ts` (the assistant
 path), `app/tests/ui/test_decision_authority.py` (#250: a viewer sees who decides, a contributor accepts)
 and `app/tests/ui/test_work_decisions.py` (Playwright: create from a message, keyboard
-propose/accept, negative result by the second person, pivot with parking, phone). Screenshots:
+propose/accept, negative result by the second person, pivot with parking, phone) and
+`app/tests/ui/test_decision_surfaces.py` (#692, #693: the proposal form keeps the panel's rhythm of
+28 px between sections and 8 px inside one; the proposal's title and Accept block paint no surface of
+their own and start on one left edge, at 390 and 1440, light and dark). Screenshots:
 `docs/design/work-decisions/` (the viewer's **Who decides** note: `decision-desktop-1440-viewer.png`,
 `decision-phone-390-viewer.png`).

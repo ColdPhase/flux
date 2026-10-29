@@ -9,6 +9,7 @@ import {
   projectLinksPath,
   projectResultsPath,
   projectWorkPath,
+  projectObjectNoticesPath,
   projectTaskNoticesPath,
   taskActivityPath,
   taskDiscussionPath,
@@ -29,7 +30,7 @@ import {
   type TaskContributionCommand,
 } from '@flux/contracts';
 import { assertAuthorized, ConflictError, InvalidInputError, type Database, type ResourceRef, type FileStorage } from '@flux/core';
-import { accessReader } from '@flux/db';
+import { accessReader, workRows, type DbExecutor } from '@flux/db';
 import type { SessionResolver } from '../identity/index.js';
 import { commandRunner, expectedVersion, useDomainErrors, versionEtag, type ReplayCheck } from '../http/commands.js';
 import { workRepository, workUseCases } from './adapters.js';
@@ -95,6 +96,11 @@ export async function workRoutes(app: FastifyInstance, { db, sessions, storage }
   const { principal, command } = commandRunner(db, sessions);
   const work = workUseCases(db);
   const projectScope = (id: string): ResourceRef => ({ type: 'project', id });
+  /** The project of a task or decision as an idempotency scope, resolved after the session check; null for an unknown id. */
+  const locatedScope = (type: 'work' | 'decision', id: string) => async (conn: Database): Promise<ResourceRef | null> => {
+    const located = /^[0-9a-f-]{36}$/i.test(id) ? await workRows(conn as unknown as DbExecutor).locate(type, id) : null;
+    return located ? projectScope(located.projectId) : null;
+  };
 
   const discussion = taskDiscussionUseCases(db, storage);
   app.get<{ Params: { workId: string }; Querystring: ConversationWindowQuery }>(taskDiscussionPath(':workId'),
@@ -109,6 +115,7 @@ export async function workRoutes(app: FastifyInstance, { db, sessions, storage }
     }, schema: { body: { type: 'object', required: ['body', 'clientMessageId'], additionalProperties: false,
       properties: { body: { type: 'string', minLength: 0, maxLength: 100_000 }, attachmentIds: { type: 'array', maxItems: 10, items: { type: 'string' } }, clientMessageId: { type: 'string' },
         kind: { type: 'string', enum: ['text', 'handoff'] },
+        references: { type: 'array', maxItems: 4, items: { type: 'object' } },
         source: { type: 'object', required: ['materialId', 'version'], additionalProperties: false,
           properties: { materialId: { type: 'string' }, version: { type: 'integer' } } } } } } },
     async (request, reply) => reply.code(201).send(await discussion.contribute(await principal(request), request.params.workId, request.body)));
@@ -120,6 +127,10 @@ export async function workRoutes(app: FastifyInstance, { db, sessions, storage }
 
   app.get<{ Params: { projectId: string }; Querystring: PageQuery }>(projectTaskNoticesPath(':projectId'), { schema: { querystring: page } },
     async (request) => work.listTaskNotices(await principal(request), request.params.projectId, request.query));
+
+  // The decisions and results the conversation announces (#694); the project's audience, like the task notices.
+  app.get<{ Params: { projectId: string }; Querystring: PageQuery }>(projectObjectNoticesPath(':projectId'), { schema: { querystring: page } },
+    async (request) => work.listObjectNotices(await principal(request), request.params.projectId, request.query));
 
   app.get<{ Params: { projectId: string }; Querystring: PageQuery }>(projectWorkPath(':projectId'), { schema: { querystring: page } },
     async (request) => work.listWork(await principal(request), request.params.projectId, request.query));
@@ -152,7 +163,7 @@ export async function workRoutes(app: FastifyInstance, { db, sessions, storage }
         throw new InvalidInputError('A task keeps the plan intent it was created with', 'PLAN_INTENT_IMMUTABLE');
     } },
     async (request, reply) => command(request, reply, {
-      operation: `PATCH ${workItemPath(':workId')}`, scope: null, etag: true,
+      operation: `PATCH ${workItemPath(':workId')}`, scope: locatedScope('work', request.params.workId), etag: true,
       run: (actor, conn) => workUseCases(conn).updateWork(actor, request.params.workId, request.body, expectedVersion(request)),
       replay: projectReader,
     }));
@@ -171,7 +182,8 @@ export async function workRoutes(app: FastifyInstance, { db, sessions, storage }
   });
   app.post<{ Params: { decisionId: string }; Body: AcceptDecisionCommand }>(decisionAcceptPath(':decisionId'), { schema: { body: acceptDecision } },
     async (request, reply) => command(request, reply, {
-      operation: `POST ${decisionAcceptPath(':decisionId')}`, scope: null, etag: true,
+      // F-030: scoped to the decision's project, so an encrypted workspace's stored response is sealed (the body carries the title).
+      operation: `POST ${decisionAcceptPath(':decisionId')}`, scope: locatedScope('decision', request.params.decisionId), etag: true,
       run: (actor, conn) => workUseCases(conn).acceptDecision(actor, request.params.decisionId, request.body ?? {}, expectedVersion(request)),
       replay: projectReader,
     }));

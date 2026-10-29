@@ -10,6 +10,7 @@ import { Button, Icon, useMediaQuery } from '../ui';
 import { LinkPicker, type PickedRef } from '../docs/LinkPicker';
 import { docUrl, getDoc } from '../docs/api';
 import { STATE_LABEL } from '../docs/format';
+import { DocProse } from '../docs/DocProse';
 import { EditBar } from '../docs/PageBars';
 import { useWiki } from '../docs/wiki-context';
 import { SharedWiki } from './wiki';
@@ -340,7 +341,7 @@ export function LiveDocEditor({ doc, project, userId, fallback }: { doc: Doc; pr
       {picker ? <LinkPicker projectId={project.id} workspaceId={project.workspaceId} selfId={doc.id} onPick={insert} onClose={() => setPicker(false)} /> : null}
       <div className="doc-edit__panes">
         {client?.text ? <div className="doc-edit__write" hidden={displayedMode === 'preview'}><CollaborativeText client={client} handleRef={handleRef} /></div> : <p aria-busy="true">Opening text…</p>}
-        {displayedMode !== 'write' ? <div className="doc-edit__preview" aria-label="Shared preview" data-live-sequence={client?.head?.sequence}><div className="doc-prose" dangerouslySetInnerHTML={{ __html: client?.html ?? doc.html }} /></div> : null}
+        {displayedMode !== 'write' ? <div className="doc-edit__preview" aria-label="Shared preview" data-live-sequence={client?.head?.sequence}><DocProse html={client?.html ?? doc.html} /></div> : null}
       </div>
       <div className="doc-edit__save">
         <div className="doc-edit__reason">

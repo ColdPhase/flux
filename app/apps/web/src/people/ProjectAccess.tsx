@@ -5,7 +5,7 @@ import { useRevalidator } from 'react-router';
 import type { Project, ProjectAccess as Access, ProjectGrant, ProjectGrantRole, ProjectPerson, WorkspaceMember } from '@flux/contracts';
 import { useShellData } from '../app/data';
 import { useShellActions } from '../app/shellContext';
-import { AgentTag, Avatar, Button, Icon, Kreska, prefersReducedMotion, useRowMotion } from '../ui';
+import { AgentTag, Avatar, Button, Icon, Kreska, prefersReducedMotion, useRowMotion, Select, Option } from '../ui';
 import { ROLE_LABEL, attemptKeys, firstName, grantPerson, isManagerRole, levelFor, listGrants, listMembers, problemText, revokeGrant } from './api';
 import './people.css';
 
@@ -241,7 +241,7 @@ function AccessEditor({ id, name, options, onApply, onClose, workspaceName }: {
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState('');
   const keys = useRef(attemptKeys());
-  const selectRef = useRef<HTMLSelectElement>(null);
+  const selectRef = useRef<HTMLButtonElement>(null);
   useEffect(() => { selectRef.current?.focus(); }, []);
   const option = options.find((item) => item.id === choice) ?? options[0]!;
 
@@ -262,9 +262,9 @@ function AccessEditor({ id, name, options, onApply, onClose, workspaceName }: {
       onKeyDown={(event) => { if (event.key === 'Escape') { event.stopPropagation(); onClose(); } }}>
       <div className="people__field">
         <label htmlFor={`${id}-to`}>Access</label>
-        <select ref={selectRef} id={`${id}-to`} value={option.id} onChange={(event) => setChoice(event.target.value)} aria-describedby={`${id}-preview`}>
-          {options.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}
-        </select>
+        <Select ref={selectRef} id={`${id}-to`} value={option.id} onChange={(next) => setChoice(next)} aria-describedby={`${id}-preview`}>
+          {options.map((item) => <Option key={item.id} value={item.id}>{item.label}</Option>)}
+        </Select>
       </div>
       <p className="access__preview" id={`${id}-preview`}>{option.preview}</p>
       <div className="details__actions">
@@ -287,7 +287,7 @@ function GiveAccess({ project, candidates, workspaceName, open, onClose, onGrant
   const [problem, setProblem] = useState('');
   const keys = useRef(attemptKeys());
   const formId = useId();
-  const selectRef = useRef<HTMLSelectElement>(null);
+  const selectRef = useRef<HTMLButtonElement>(null);
   const person = candidates.find((member) => member.userId === personId) ?? null;
 
   useEffect(() => { if (open) selectRef.current?.focus(); }, [open]);
@@ -313,10 +313,10 @@ function GiveAccess({ project, candidates, workspaceName, open, onClose, onGrant
       <h4 id={`${formId}-h`} className="access__sub">Give someone access</h4>
       <div className="people__field">
         <label htmlFor={`${formId}-who`}>Person</label>
-        <select ref={selectRef} id={`${formId}-who`} value={personId} onChange={(event) => { setPersonId(event.target.value); setProblem(''); }}>
-          <option value="">Choose someone in {workspaceName}</option>
-          {candidates.map((member) => <option key={member.userId} value={member.userId}>{member.name}{member.role === 'guest' ? ' (guest)' : ''} · {member.email}</option>)}
-        </select>
+        <Select ref={selectRef} id={`${formId}-who`} value={personId} onChange={(next) => { setPersonId(next); setProblem(''); }}>
+          <Option value="">Choose someone in {workspaceName}</Option>
+          {candidates.map((member) => <Option key={member.userId} value={member.userId}>{member.name}{member.role === 'guest' ? ' (guest)' : ''} · {member.email}</Option>)}
+        </Select>
       </div>
       <fieldset className="access__seg">
         <legend>Access</legend>

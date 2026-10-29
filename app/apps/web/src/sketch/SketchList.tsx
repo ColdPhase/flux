@@ -41,6 +41,8 @@ export interface SketchListProps {
   onConnections(id: string): void;
   /** Create task from the selected thoughts; absent outside a project. */
   onTask: (() => void) | null;
+  /** Cite the selected thought in its place's conversation (#469); absent where a sketch has none. */
+  onCite: (() => void) | null;
   onSay(text: string): void;
 }
 interface ReturnPoint { sourceId: string; collapsed: string[]; selection: string[]; scrollTop: number }
@@ -258,6 +260,7 @@ export function SketchList({ sketch, meId, selection, connectFrom, editing, canW
           <button type="button" onClick={() => { setMoreId(null); reorder(row, 1); }}>Move down<kbd>⌥↓</kbd></button>
           {arrange && canWrite ? <button type="button" aria-pressed={connectFrom === thought.id} onClick={() => { setMoreId(null); on.onConnectFrom(thought.id); }}>Connect…</button> : null}
           <button type="button" onClick={() => { setMoreId(null); on.onConnections(thought.id); }}>Connections</button>
+          {on.onCite ? <button type="button" onClick={() => { setMoreId(null); on.onCite?.(); }}>Cite in conversation</button> : null}
           {canWrite ? <button type="button" onClick={() => { setMoreId(null); on.onRemove(selection.includes(thought.id) ? selection : [thought.id]); }}>Remove</button> : null}
         </div> : null}
         {thought.file || link ? <div className="sk-outline-body">

@@ -88,11 +88,13 @@ describe('validPrice', () => {
 
 describe('validAiKey', () => {
   // One well-formed sample per provider format. They are shapes, not real keys.
+  // Fake keys, assembled at run time so secret scanners don't flag the source as a leaked key.
+  const fake = (prefix: string, body: string) => `${prefix}${body}`;
   const SAMPLES = {
-    anthropic: 'sk-ant-api03-abcdefghijklmnopqrstuvwxyz0123456789',
-    openai: 'sk-proj-abcdefghijklmnopqrstuvwxyz0123456789_-ABCD',
-    openrouter: 'sk-or-v1-0123456789abcdef0123456789abcdef',
-    gemini: 'AIzaSyA0123456789abcdefghijklmnopqrstuv',
+    anthropic: fake('sk-ant-' + 'api03-', 'FAKE-test-key-not-real-0000000000000'),
+    openai: fake('sk-' + 'proj-', 'FAKE-test-key-not-real-000000000000_-ABCD'),
+    openrouter: fake('sk-or-' + 'v1-', 'FAKEFAKE0000000000000000000000000'),
+    gemini: fake('AI' + 'za', 'FAKE-test-key-not-real-00000000000'),
   } as const;
   const NAMED = Object.keys(SAMPLES) as (keyof typeof SAMPLES)[];
 

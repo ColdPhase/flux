@@ -17,6 +17,7 @@ from playwright.sync_api import Browser, expect, sync_playwright
 
 from project_views import project_view
 from test_app_shell import DESKTOP, ORIGIN, PHONE, UPSTREAM, shot, start_forwarder
+from wiki_text import LIVE, existing_text
 
 STAMP = int(time.time() * 1000)
 PERSON = {"name": "Ada Kowalska", "email": f"ada.wikifinal+{STAMP}@example.test"}
@@ -351,28 +352,39 @@ class WikiFinal(unittest.TestCase):
                     self.assertLessEqual(page.evaluate("document.documentElement.scrollWidth"), size["width"])
                     shot(page, f"wiki-lower-phone-{size['width']}-{theme}")
                     edit.click()
-                    expect(page.get_by_label("Text (Markdown)")).to_be_visible()
+                    expect(existing_text(page)).to_be_visible()
 
     def test_phone_context_retires_when_the_reader_is_left(self) -> None:
         page = self.open(PHONE, "light", touch=True)
         header = page.locator("header.phead")
         expect(header.locator(".wiki-bar__title")).to_have_text("Wiki · 5 pages")
         page.get_by_role("link", name="Edit", exact=True).click()
-        expect(page.get_by_label("Text (Markdown)")).to_be_visible()
+        expect(existing_text(page)).to_be_visible()
         expect(header.locator(".wiki-bar__title")).to_have_count(0)
         expect(page.locator(".wiki-top__menu").get_by_role("button", name="More", exact=True)).to_have_count(0)
         expect(header.get_by_role("button", name="More", exact=True)).to_have_count(0)  # never in the header either (#507)
         expect(header.locator(".phead__sub")).to_contain_text(re.compile(r"\d+ (?:people|person)"))
-        private = BODY + "\nA private phone note, not published."
-        page.get_by_label("Text (Markdown)").fill(private)
-        project_view(page, "Conversation")
-        expect(header.locator(".wiki-bar__title")).to_have_count(0)
-        page.goto(f"/projects/{self.project_id}/docs/{self.doc_id}")
-        kept = page.get_by_role("link", name="Unsaved changes in this tab", exact=True)
-        expect(kept).to_be_visible()
-        kept.click()
-        expect(page.get_by_label("Text (Markdown)")).to_have_value(private)
-        page.get_by_role("link", name="Cancel", exact=True).click()
+        if LIVE:
+            # The text is the page's shared working copy: there is no private draft to keep, mark or cancel, and typing into it would
+            # change the page the other tests read. The way back to the page is the editor's own link.
+            project_view(page, "Conversation")
+            expect(header.locator(".wiki-bar__title")).to_have_count(0)
+            page.goto(f"/projects/{self.project_id}/docs/{self.doc_id}")
+            expect(page.get_by_role("link", name="Unsaved changes in this tab", exact=True)).to_have_count(0)
+            page.get_by_role("link", name="Edit", exact=True).click()
+            expect(existing_text(page)).to_be_visible()
+            page.get_by_role("link", name="Back to the page", exact=True).click()
+        else:
+            private = BODY + "\nA private phone note, not published."
+            page.get_by_label("Text (Markdown)").fill(private)
+            project_view(page, "Conversation")
+            expect(header.locator(".wiki-bar__title")).to_have_count(0)
+            page.goto(f"/projects/{self.project_id}/docs/{self.doc_id}")
+            kept = page.get_by_role("link", name="Unsaved changes in this tab", exact=True)
+            expect(kept).to_be_visible()
+            kept.click()
+            expect(page.get_by_label("Text (Markdown)")).to_have_value(private)
+            page.get_by_role("link", name="Cancel", exact=True).click()
         expect(header.locator(".wiki-bar__title")).to_have_text("Wiki · 5 pages")
         project_view(page, "Conversation")
         expect(header.locator(".wiki-bar__title")).to_have_count(0)
@@ -444,8 +456,27 @@ class WikiFinal(unittest.TestCase):
             expect(prose.locator('[onmouseover]')).to_have_count(0)
             self.assertFalse(page.evaluate('Boolean(window.__tableAttributeExecuted)'))
 
+        def shared_preview(frame: bytes) -> bytes:
+            """The shared editor's preview arrives as one binary frame: a length, the header, then {html, mentions}."""
+            size = int.from_bytes(frame[:4], 'big')
+            header = json.loads(frame[4:4 + size])
+            if header.get('type') != 'preview' or header.get('count') != 1:
+                return frame
+            body = json.loads(frame[4 + size:])
+            body['html'] = rendered
+            return frame[:4 + size] + json.dumps(body).encode()
+
+        def editing_socket(socket):
+            server = socket.connect_to_server()
+            server.on_message(lambda message: socket.send(shared_preview(message) if isinstance(message, bytes) else message))
+
         page.route(re.compile(r'.*/api/v1/docs/' + re.escape(self.doc_id) + '$'), reader)
-        page.route(f'**/api/v1/projects/{self.project_id}/docs/preview', preview)
+        if LIVE:
+            # The shared editor's preview is the working copy's render: its first state and the frames that follow come from the server.
+            page.route(f'**/api/v1/docs/{self.doc_id}/live', preview)
+            page.route_web_socket(re.compile(r'.*/api/v1/editing'), editing_socket)
+        else:
+            page.route(f'**/api/v1/projects/{self.project_id}/docs/preview', preview)
         page.reload()
         check(page.locator('.doc-prose'))
         page.get_by_role('link', name='Edit', exact=True).click()

@@ -6,6 +6,8 @@ import unittest
 import uuid
 from urllib.parse import parse_qs, urlsplit
 from playwright.sync_api import expect, sync_playwright
+
+from app_select import choose, expect_value, values
 from message_gestures import open_message_menu
 from test_app_shell import ORIGIN, UPSTREAM, SHOTS, shot, start_forwarder
 from test_work_pagination import api
@@ -128,26 +130,26 @@ class NativeDetailsJourney(unittest.TestCase):
                 panel=page.locator("#details .wd");self.choices_ready(panel,"Result work choices")
                 title=panel.get_by_label("Finding",exact=True);title.fill("A measured result for the earlier completed calibration")
                 field=panel.get_by_label("Evidence",exact=True);field.fill("Keep the exact measurements and this unfinished explanation")
-                select=panel.get_by_label("For work",exact=True);expect(select).to_have_value(self.done["id"])
+                select=panel.get_by_label("For work",exact=True);expect_value(select, self.done["id"])
                 nav=panel.get_by_role("navigation",name="Result work choices");seen=set()
                 while True:
                     self.choices_ready(panel,"Result work choices")
-                    seen.update(select.locator("option").evaluate_all("els=>els.map(el=>el.value).filter(Boolean)"))
-                    self.assertLessEqual(select.locator("option").count(),52)
+                    options=values(select);seen.update(value for value in options if value)
+                    self.assertLessEqual(len(options),52)
                     if nav.get_by_role("button",name="Next",exact=True).is_disabled():break
                     nav.get_by_role("button",name="Next",exact=True).click()
                 self.assertEqual(seen,{item["id"] for item in self.works}|{self.done["id"]})
-                expect(select).to_have_value(self.done["id"]);expect(field).to_have_value("Keep the exact measurements and this unfinished explanation")
+                expect_value(select, self.done["id"]);expect(field).to_have_value("Keep the exact measurements and this unfinished explanation")
                 self.assertEqual(title.evaluate("el=>el.tagName"),"TEXTAREA")
                 self.assertLessEqual(title.evaluate("el=>el.scrollHeight"),title.evaluate("el=>el.clientHeight"),"complete measured finding fits its multiline field")
                 shot(page,f"bounded-details-result-{'phone' if phone else 'desktop'}")
                 page.route("**/work-view?**choice=result_work**",lambda route:route.fulfill(status=503,json={"code":"WORK_READ_UNAVAILABLE","error":"Fixture unavailable"}))
                 nav.get_by_role("button",name="Refresh",exact=True).click();expect(panel.get_by_role("alert")).to_contain_text("Choices could not be loaded")
-                expect(select).to_have_value(self.done["id"]);expect(title).to_have_value("A measured result for the earlier completed calibration")
+                expect_value(select, self.done["id"]);expect(title).to_have_value("A measured result for the earlier completed calibration")
                 expect(field).to_have_value("Keep the exact measurements and this unfinished explanation")
                 expect(panel.get_by_role("button",name="Attach result",exact=True)).to_be_disabled()
                 page.unroute("**/work-view?**choice=result_work**");panel.get_by_role("button",name="Refresh choices",exact=True).click();self.choices_ready(panel,"Result work choices")
-                expect(select).to_have_value(self.done["id"])
+                expect_value(select, self.done["id"])
 
     def test_04_all_current_rules_reachable_and_selected_rule_persists_on_another_page(self):
         page=self.page();page.goto(f"/projects/{self.project}/conversations/{self.conversation}")
@@ -155,12 +157,12 @@ class NativeDetailsJourney(unittest.TestCase):
         panel=page.locator("#details .wd");self.choices_ready(panel,"Current rule choices")
         panel.get_by_label("Decision",exact=True).fill("Keep a manual off switch after measuring both shields")
         why=panel.get_by_label("Why",exact=True);why.fill("Retain the complete earlier measurements before changing the cable")
-        nav=panel.get_by_role("navigation",name="Current rule choices");select=panel.get_by_label("Replaces",exact=True);seen=set(select.locator("option").evaluate_all("els=>els.map(el=>el.value).filter(Boolean)"))
+        nav=panel.get_by_role("navigation",name="Current rule choices");select=panel.get_by_label("Replaces",exact=True);seen={value for value in values(select) if value}
         nav.get_by_role("button",name="Next",exact=True).click();self.choices_ready(panel,"Current rule choices")
-        seen.update(select.locator("option").evaluate_all("els=>els.map(el=>el.value).filter(Boolean)"));self.assertEqual(seen,{item["id"] for item in self.rules})
-        chosen=self.rules[0];select.select_option(chosen["id"]);expect(panel.get_by_role("button",name="Propose decision",exact=True)).to_be_enabled()
+        seen.update(value for value in values(select) if value);self.assertEqual(seen,{item["id"] for item in self.rules})
+        chosen=self.rules[0];choose(select, chosen["id"]);expect(panel.get_by_role("button",name="Propose decision",exact=True)).to_be_enabled()
         nav.get_by_role("button",name="Previous",exact=True).click();self.choices_ready(panel,"Current rule choices")
-        expect(select).to_have_value(chosen["id"]);expect(why).to_have_value("Retain the complete earlier measurements before changing the cable")
+        expect_value(select, chosen["id"]);expect(why).to_have_value("Retain the complete earlier measurements before changing the cable")
         panel.get_by_role("button",name="Propose decision",exact=True).click()
         expect(page.locator('.wd[data-detail-kind="decision"]')).to_contain_text("Keep a manual off switch")
         saved=api(self.ctx,"GET",self.root+"/decisions?limit=100")["items"]
@@ -213,7 +215,7 @@ class NativeDetailsJourney(unittest.TestCase):
         expect(panel.get_by_role("alert")).to_contain_text("Someone changed this")
         expect(panel).to_contain_text("cannot be finished by this result")
         expect(title).to_have_value("The earlier version changed while writing this result");expect(field).to_have_value("The measured numbers and unfinished conclusion must survive the conflict")
-        expect(panel.get_by_label("For work",exact=True)).to_have_value(work["id"]);expect(panel.get_by_role("button",name="Attach result",exact=True)).to_be_disabled()
+        expect_value(panel.get_by_label("For work",exact=True), work["id"]);expect(panel.get_by_role("button",name="Attach result",exact=True)).to_be_disabled()
         panel.get_by_role("button",name="Attach without finishing",exact=True).click();expect(panel.get_by_role("button",name="Attach result",exact=True)).to_be_enabled()
         panel.get_by_role("button",name="Attach result",exact=True).click();expect(page.locator('.wd[data-detail-kind="result"]')).to_contain_text("earlier version changed")
         self.assertEqual(self.native("work",work["id"])["status"],"not_pursued")
@@ -268,7 +270,7 @@ class NativeDetailsJourney(unittest.TestCase):
         for unchanged in (False,True):
             page=self.page();panel=self.open(page,"result",result["id"]);panel.get_by_role("button",name="Add to docs",exact=True).click()
             panel=page.locator("#details .wd")
-            panel.get_by_label("Doc",exact=True).select_option(doc["id"])
+            choose(panel.get_by_label("Doc",exact=True), doc["id"])
             expect(panel).to_contain_text("unchanged content keeps its current version")
             expect(panel).not_to_contain_text("rewritten as version")
             panel.get_by_role("button",name="Add or update section",exact=True).click()

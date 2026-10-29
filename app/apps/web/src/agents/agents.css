@@ -85,13 +85,12 @@
   padding-bottom: var(--s-4); border-bottom: 1px solid var(--line);
 }
 .agents__task-label { font-size: var(--fs-xs); color: var(--t3); }
-.agents__task select {
+.agents__task .ui-select {
   flex: 1 1 260px; min-width: 0; min-height: var(--ctl); max-width: 100%;
   font: inherit; font-size: var(--fs-md); font-weight: 500; color: var(--t1);
   background: transparent; border: 1px solid var(--line2); border-radius: var(--r);
   padding: 0 var(--s-3);
 }
-.agents__task select:focus-visible { outline: 2px solid var(--t1); outline-offset: 1px; }
 .agents__open { display: inline-flex; align-items: center; gap: 2px; font-size: var(--fs-sm); }
 .agents__no-tasks { color: var(--t3); font-size: var(--fs-sm); margin: 0; }
 

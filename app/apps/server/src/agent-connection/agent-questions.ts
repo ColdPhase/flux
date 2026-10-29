@@ -62,7 +62,7 @@ export async function agentQuestionRoutes(app: FastifyInstance, { db, sessions }
       properties: { optionIndex: { type: 'integer', minimum: 0, maximum: AGENT_QUESTION_LIMITS.options.max - 1 },
         text: { type: 'string', maxLength: AGENT_QUESTION_LIMITS.answer * 2 } } } },
   }, async (request, reply) => command(request, reply, {
-    operation: `POST ${agentQuestionAnswerPath(':questionId')}`, scope: null, status: 200,
+    operation: `POST ${agentQuestionAnswerPath(':questionId')}`, scope: 'account', status: 200,
     run: (actor, conn) => agentQuestionUseCases(agentQuestionUnitOfWork(conn)).answer(actor, request.params.questionId, request.body),
     replay: (actor, body, conn) => requires('project', 'project.read', (stored) => String((stored as { projectId?: unknown } | null)?.projectId ?? ''))(actor, body, conn),
   }));

@@ -61,6 +61,19 @@ describe('F-030 crypto: field envelope', () => {
     assert.throws(() => openField(keyFor(key), place, 'not an envelope'), DecryptionFailedError);
   });
 
+  test('no identity can make sealing throw: an AAD past the 1024-byte HKDF info limit still seals, opens and stays bound (S1 review)', () => {
+    // The longest identity a client can choose: a 255-character Idempotency-Key, with a long principal and operation.
+    const longKey = 'k'.repeat(255);
+    const identity = [`human:${'u'.repeat(400)}`, 'o'.repeat(300), longKey];
+    const at = { workspaceId: ws, field: 'idempotency_keys.response_body', identity };
+    const envelope = sealField(key, at, 'canary body');
+    assert.equal(openField(keyFor(key), at, envelope), 'canary body');
+    assert.throws(() => openField(keyFor(key), { ...at, identity: [identity[0]!, identity[1]!, `${longKey.slice(1)}x`] }, envelope), DecryptionFailedError,
+      'a long identity is bound in full, not only through its hash');
+    const seal = realSeal(ws, 1, new Map([[1, key]]));
+    assert.ok(seal.digestMatches('idempotency_keys.request_hash', identity, seal.digest('idempotency_keys.request_hash', identity, 'body'), 'body'));
+  });
+
   test('context encoding: no separator can make two identities equal', () => {
     assert.notDeepEqual(encodeContext(['a', 'bc']), encodeContext(['ab', 'c']));
     assert.notDeepEqual(encodeContext(['a\u0000b']), encodeContext(['a', 'b']));
@@ -112,6 +125,13 @@ describe('F-030 crypto: holders, wraps and their authentication', () => {
     assert.equal(Buffer.from(defaults.salt, 'base64url').length, 16);
     assert.deepEqual(parseKdfParams(JSON.parse(JSON.stringify(defaults))), defaults);
     assert.throws(() => parseKdfParams({ ...defaults, m: 1 << 30 }), 'unbounded memory is refused');
+    // The bounds (S1 review P3): each parameter at its limit passes, one step past it is refused, and so is any other shape.
+    for (const edge of [{ m: 8_192 }, { m: 65_536 }, { t: 1 }, { t: 3 }, { p: 1 }, { p: 4 }]) assert.doesNotThrow(() => parseKdfParams({ ...defaults, ...edge }), JSON.stringify(edge));
+    for (const past of [{ m: 8_191 }, { m: 65_537 }, { t: 0 }, { t: 4 }, { p: 0 }, { p: 5 }, { m: 16_384.5 }, { t: '3' }, { alg: 'argon2i' }, { v: 16 },
+      { salt: Buffer.alloc(15).toString('base64url') }, { salt: Buffer.alloc(17).toString('base64url') }, { salt: 'not base64url!' }]) {
+      assert.throws(() => parseKdfParams({ ...defaults, ...past }), JSON.stringify(past));
+    }
+    for (const shape of [null, undefined, 'argon2id', [], {}]) assert.throws(() => parseKdfParams(shape), String(shape));
     const params = fastKdf();
     const kek = await deriveKek('river planet mango violin stone cloud', params);
     assert.deepEqual(await deriveKek('river planet mango violin stone cloud', params), kek, 'deterministic for the stored parameters');
@@ -146,11 +166,13 @@ describe('F-030 crypto: holders, wraps and their authentication', () => {
 
   test('holder MAC, confirmation, commitment chain and check value each reject a changed value', async () => {
     const pair = generateHolderKeyPair();
-    const identity = { ...holder, publicKey: pair.publicKey };
+    const identity = { ...holder, publicKey: pair.publicKey, kdf: fastKdf(), wrappedPrivate: 'wrapped-private', secretCheck: 'secret-check' };
     const mac = holderMac(dek, 1, identity);
     assert.ok(holderMacValid(dek, 1, identity, mac));
+    assert.ok(holderMacValid(dek, 1, { ...identity, kdf: Object.fromEntries(Object.entries(identity.kdf).reverse()) }, mac), 'jsonb key order does not matter');
     for (const changed of [{ ...identity, publicKey: generateHolderKeyPair().publicKey }, { ...identity, userId: 'user-mallory' },
-      { ...identity, kind: 'recovery' as const }, { ...identity, holderId: randomUUID() }]) {
+      { ...identity, kind: 'recovery' as const }, { ...identity, holderId: randomUUID() }, { ...identity, kdf: { ...identity.kdf, m: 16_384 } },
+      { ...identity, kdf: { ...identity.kdf, salt: fastKdf().salt } }, { ...identity, wrappedPrivate: 'wrapped-other' }, { ...identity, secretCheck: 'check-other' }]) {
       assert.equal(holderMacValid(dek, 1, changed, mac), false, JSON.stringify(changed));
     }
     assert.equal(holderMacValid(dek, 2, identity, mac), false, 'another MAC version');

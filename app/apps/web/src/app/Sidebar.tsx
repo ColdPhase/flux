@@ -66,7 +66,7 @@ export function Sidebar({ projects, directMessages, user, session, onClose, titl
     const onKey = (event: KeyboardEvent) => {
       if (event.key.toLowerCase() !== 'c' || event.metaKey || event.ctrlKey || event.altKey || event.defaultPrevented) return;
       const target = event.target as HTMLElement | null;
-      if (target?.closest('input, textarea, select, [contenteditable="true"], [role="dialog"]')) return;
+      if (target?.closest('input, textarea, select, [role="combobox"], [role="listbox"], [contenteditable="true"], [role="dialog"]')) return;
       event.preventDefault();
       openCreate(projectId ? { projectId } : {});
     };

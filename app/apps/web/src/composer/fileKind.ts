@@ -40,3 +40,19 @@ export function fileLabel(name: string): string {
 }
 /** Named like a photo (a hint only; the bytes decide). */
 export const looksLikePhoto = (name: string) => PHOTO.has(extensionOf(name));
+
+/** A playing time as the voice note shows it: 0:42, or 1:05:09 from an hour on. */
+export function playTime(milliseconds: number): string {
+  const seconds = Math.max(0, Math.round(milliseconds / 1000));
+  const rest = String(seconds % 60).padStart(2, '0');
+  return seconds >= 3600 ? `${Math.floor(seconds / 3600)}:${String(Math.floor(seconds / 60) % 60).padStart(2, '0')}:${rest}` : `${Math.floor(seconds / 60)}:${rest}`;
+}
+
+/** The "detail" of "type · detail · size" (#469): pages, data rows or playing time, as the server read them from the bytes; empty when it did not. */
+export function detailLine(detail: { pages?: number; rows?: number; durationMs?: number } | undefined): string {
+  if (!detail) return '';
+  if (detail.pages !== undefined) return `${detail.pages} ${detail.pages === 1 ? 'page' : 'pages'}`;
+  if (detail.rows !== undefined) return `${detail.rows} ${detail.rows === 1 ? 'row' : 'rows'}`;
+  if (detail.durationMs !== undefined) return playTime(detail.durationMs);
+  return '';
+}

@@ -11,6 +11,8 @@ import unittest
 import uuid
 
 from playwright.sync_api import expect
+
+from app_select import choose, expect_value, labels, values
 import test_assistant_schedules as schedules
 from test_app_shell import shot
 
@@ -60,11 +62,11 @@ class AssistantReactions(unittest.TestCase):
                     card = self.screen(page)
                     card.get_by_role('button', name='Tell me when a task is blocked').click()
                     dialog = page.get_by_role('dialog', name='When something happens')
-                    expect(dialog.get_by_label('When', exact=True)).to_have_value('blocked')
-                    expect(dialog.get_by_label('Then', exact=True)).to_have_value('tell')
-                    dialog.get_by_label('Project', exact=True).select_option(project['id'])
+                    expect_value(dialog.get_by_label('When', exact=True), 'blocked')
+                    expect_value(dialog.get_by_label('Then', exact=True), 'tell')
+                    choose(dialog.get_by_label('Project', exact=True), project['id'])
                     # PR cannot appear on an unlinked project.
-                    expect(dialog.get_by_label('When',exact=True).locator('option')).to_have_count(4)
+                    self.assertEqual(len(values(dialog.get_by_label('When',exact=True))), 4)
                     dialog.get_by_role('button',name='Turn on',exact=True).click()
                     expect(dialog).not_to_be_visible()
                     saved=self.api(page,'GET',self.path,status=200)['items']
@@ -82,7 +84,7 @@ class AssistantReactions(unittest.TestCase):
                     expect(card.get_by_role('switch')).not_to_be_checked()
                     card.get_by_role('button',name=re.compile('When one of my tasks is blocked')).click()
                     dialog=page.get_by_role('dialog',name='When something happens')
-                    dialog.get_by_label('Then',exact=True).select_option('next_steps')
+                    choose(dialog.get_by_label('Then',exact=True), 'next_steps')
                     shot(page,f"assistant-when-{self.tag(phone,dark)}")
                     visible=dialog.inner_text()
                     self.assertIsNone(schedules.FORBIDDEN.search(visible),visible)
@@ -90,7 +92,7 @@ class AssistantReactions(unittest.TestCase):
                     page.route(f"**{self.path}/{rule['id']}",lambda route:self.json(route,{'code':'UNAVAILABLE','error':'Could not save. Try again.'},503))
                     dialog.get_by_role('button',name='Turn on',exact=True).click()
                     expect(dialog.get_by_role('alert')).to_be_visible()
-                    expect(dialog.get_by_label('Then',exact=True)).to_have_value('next_steps')
+                    expect_value(dialog.get_by_label('Then',exact=True), 'next_steps')
                     dialog.get_by_role('button',name='Cancel',exact=True).click()
                     page.close()
 
@@ -100,10 +102,10 @@ class AssistantReactions(unittest.TestCase):
         card=self.screen(page)
         card.get_by_role('button',name='Add',exact=True).click()
         dialog=page.get_by_role('dialog',name='When something happens')
-        dialog.get_by_label('Project',exact=True).select_option(self.ids['project'])
-        expect(dialog.get_by_label('When',exact=True).locator('option')).to_have_count(5)
-        dialog.get_by_label('When',exact=True).select_option('pr_ready')
-        expect(dialog.get_by_label('Then',exact=True).locator('option')).to_have_text(['tell me','check it against the task'])
+        choose(dialog.get_by_label('Project',exact=True), self.ids['project'])
+        self.assertEqual(len(values(dialog.get_by_label('When',exact=True))), 5)
+        choose(dialog.get_by_label('When',exact=True), 'pr_ready')
+        self.assertEqual([text.strip() for text in labels(dialog.get_by_label('Then',exact=True))], ['tell me','check it against the task'])
         dialog.get_by_role('button',name='Cancel',exact=True).click()
 
     def test_04_reply_is_prefilled_private_and_only_send_posts(self):

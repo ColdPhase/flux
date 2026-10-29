@@ -150,6 +150,12 @@ describe('F-030 swap rule', () => {
       const acknowledged = await run({ FLUX_SWAP_ACKNOWLEDGED: 'encrypted-swap' });
       assert.match(acknowledged.out, /Flux keyring ready/);
       assert.equal(acknowledged.out.includes(token), false);
+      assert.equal(acknowledged.out.includes('FLUX_KEYRING_REVEAL_BOOT_KEY'), false, 'no warning without the reveal');
+      // S1 review P3: the test-only boot-key reveal is announced loudly at start, and only in a test deployment exists at all.
+      const revealing = await run({ FLUX_SWAP_ACKNOWLEDGED: 'encrypted-swap', FLUX_KEYRING_REVEAL_BOOT_KEY: 'true' });
+      assert.match(revealing.out, /WARNING: TEST ONLY\. Flux keyring started with FLUX_KEYRING_REVEAL_BOOT_KEY=true/);
+      const installReveal = await run({ FLUX_SWAP_ACKNOWLEDGED: 'encrypted-swap', FLUX_KEYRING_REVEAL_BOOT_KEY: 'true', FLUX_TEST_FAILURE_INJECTION: 'false' });
+      assert.equal(installReveal.out.includes('WARNING: TEST ONLY'), false, 'outside a test deployment the reveal is off, so nothing to announce');
     } finally { await rm(root, { recursive: true, force: true }); }
   });
 });

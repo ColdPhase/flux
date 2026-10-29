@@ -18,6 +18,8 @@ import uuid
 
 from playwright.sync_api import Browser, BrowserContext, Page, expect, sync_playwright
 
+from app_select import choose
+
 from test_app_shell import DESKTOP, ORIGIN, PHONE, UPSTREAM, shot, start_forwarder
 from touch_targets import has_minimum_touch_size
 
@@ -240,13 +242,13 @@ class SearchJourney(unittest.TestCase):
         tasks.click()
         expect(tasks).to_have_attribute("aria-pressed", "false")
         expect(page).not_to_have_url(re.compile(r"type=work"))
-        page.get_by_role("combobox", name="Place").select_option(label="Only you")
+        choose(page.get_by_role("combobox", name="Place"), label="Only you")
         expect(results.get_by_role("link")).to_have_count(1)
         expect(results).to_contain_text("Sensor questions for Ari")
         expect(results).to_contain_text("Only you")
         # The announced status counts in the singular for one result (#217).
         expect(page.locator('p.ui-vh[role="status"]')).to_have_text("1 result")
-        page.get_by_role("combobox", name="Place").select_option(label="All places")
+        choose(page.get_by_role("combobox", name="Place"), label="All places")
         # Wait for the results of every place: a row that is on screen while they load is gone once they are grouped.
         expect(results).to_have_attribute("aria-busy", "false")
         expect(results.get_by_role("link").nth(1)).to_be_visible()

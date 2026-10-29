@@ -212,8 +212,8 @@ class UnifiedPanel(unittest.TestCase):
                 for gone in ("Results", "Decisions", "In docs", "Linked thoughts"):
                     expect(panel.get_by_role("heading", name=gone)).to_have_count(0)
                 expect(panel.locator(".ws-pages")).to_have_count(0)
-                expect(panel.locator("select")).to_have_count(0)
-                self.assertEqual(page.evaluate("[...document.querySelectorAll('#details select')].length"), 0)
+                expect(panel.locator("select, .ui-select")).to_have_count(0)
+                self.assertEqual(page.evaluate("[...document.querySelectorAll('#details select, #details .ui-select')].length"), 0)
                 # Activity above the composer, which sits at the bottom of the panel with its audience line.
                 composer = panel.get_by_placeholder(f"Write about #{task['number']} · @ · /")
                 expect(composer).to_be_visible()

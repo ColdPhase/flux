@@ -15,8 +15,7 @@
 .people__edit .details__actions { flex-wrap: wrap; }
 .people__field { display: grid; gap: 6px; }
 .people__field label, .access__seg legend { font-size: var(--fs-sm); font-weight: 500; color: var(--t2); }
-.people__field select { width: 100%; min-height: var(--ctl-lg); padding: 0 10px; border: 0; border-radius: var(--r); background: var(--el); color: var(--t1); font-size: var(--fs-base); box-shadow: inset 0 0 0 1px var(--line2); }
-.people__field select:focus-visible { outline: 2px solid var(--t1); outline-offset: 1px; }
+.people__field .ui-select { width: 100%; min-height: var(--ctl-lg); padding: 0 10px; border: 0; border-radius: var(--r); background: var(--el); color: var(--t1); font-size: var(--fs-base); box-shadow: inset 0 0 0 1px var(--line2); }
 .people__hint { margin: 0; font-size: var(--fs-sm) !important; color: var(--t3) !important; line-height: 1.45; }
 .people__add { display: grid; gap: 14px; }
 .people__notice { display: flex; align-items: flex-start; gap: 6px; margin: 0; padding: 8px 10px; border-radius: var(--r); background: var(--sub); font-size: var(--fs-sm) !important; color: var(--t2) !important; line-height: 1.45; overflow-wrap: anywhere; }
@@ -64,7 +63,7 @@
 @media (pointer: coarse) {
   .people__change.ui-btn, .access__invite.ui-btn { min-height: 44px; }
   .access__change.ui-btn { min-height: 44px; display: inline-flex; align-items: center; }
-  .people__field select { min-height: 44px; font-size: 16px; }
+  .people__field .ui-select { min-height: 44px; font-size: 16px; }
   .access__seg-b { min-height: 44px; }
   .promote__grant { min-height: 44px; }
 }
