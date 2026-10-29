@@ -2,6 +2,7 @@ import { and, desc, eq, inArray, isNotNull, isNull, sql } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 import * as schema from '../schema.js';
 import type { DbExecutor } from './push.js';
+import { openRows, sealFor } from '../sealing.js';
 
 /**
  * Drizzle rows for a project's goals (#520, migration 0099). They satisfy the `ProjectGoalRepository`
@@ -33,7 +34,9 @@ const columns = {
 
 export function projectGoalRows(db: DbExecutor) {
   const named = () => db.select(columns).from(g).leftJoin(setter, eq(setter.id, g.setBy)).leftJoin(reacher, eq(reacher.id, g.reachedBy));
-  const one = async (id: string): Promise<ProjectGoalRow> => (await named().where(eq(g.id, id)))[0]!;
+  // F-030: titles are sealed in an encrypted workspace; every read opens them.
+  const open = (rows: ProjectGoalRow[]) => openRows(db, 'project_goals', rows);
+  const one = async (id: string): Promise<ProjectGoalRow> => (await open(await named().where(eq(g.id, id))))[0]!;
   return {
     /** Serializes goal changes of one project and bumps nothing; taken before the access decision. */
     async lockProject(projectId: string): Promise<void> {
@@ -53,18 +56,18 @@ export function projectGoalRows(db: DbExecutor) {
     },
 
     async current(projectId: string): Promise<ProjectGoalRow | null> {
-      return (await named().where(and(eq(g.projectId, projectId), isNull(g.reachedAt))))[0] ?? null;
+      return (await open(await named().where(and(eq(g.projectId, projectId), isNull(g.reachedAt)))))[0] ?? null;
     },
 
     async latestReached(projectId: string): Promise<ProjectGoalRow | null> {
-      return (await named().where(and(eq(g.projectId, projectId), isNotNull(g.reachedAt))).orderBy(desc(g.reachedAt), desc(g.id)).limit(1))[0] ?? null;
+      return (await open(await named().where(and(eq(g.projectId, projectId), isNotNull(g.reachedAt))).orderBy(desc(g.reachedAt), desc(g.id)).limit(1)))[0] ?? null;
     },
 
     /** The goal each project shows: its current goal, or else its most recently reached one. */
     async shown(projectIds: readonly string[]): Promise<Map<string, ProjectGoalRow>> {
       if (!projectIds.length) return new Map();
-      const rows = await named().where(inArray(g.projectId, [...projectIds]))
-        .orderBy(g.projectId, sql`${g.reachedAt} IS NOT NULL`, desc(g.reachedAt), desc(g.id));
+      const rows = await open(await named().where(inArray(g.projectId, [...projectIds]))
+        .orderBy(g.projectId, sql`${g.reachedAt} IS NOT NULL`, desc(g.reachedAt), desc(g.id)));
       const shown = new Map<string, ProjectGoalRow>();
       for (const row of rows) if (!shown.has(row.projectId)) shown.set(row.projectId, row);
       return shown;
@@ -72,17 +75,18 @@ export function projectGoalRows(db: DbExecutor) {
 
     /** Newest first: the current goal, then reached goals by when they were reached. */
     async list(projectId: string, limit: number): Promise<ProjectGoalRow[]> {
-      return named().where(eq(g.projectId, projectId))
-        .orderBy(sql`${g.reachedAt} IS NOT NULL`, desc(g.reachedAt), desc(g.setAt), desc(g.id)).limit(limit);
+      return open(await named().where(eq(g.projectId, projectId))
+        .orderBy(sql`${g.reachedAt} IS NOT NULL`, desc(g.reachedAt), desc(g.setAt), desc(g.id)).limit(limit));
     },
 
     async insert(goal: { id: string; workspaceId: string; projectId: string; title: string; setBy: string }): Promise<ProjectGoalRow> {
-      await db.insert(g).values(goal);
+      await db.insert(g).values(await sealFor(db, 'project_goals', goal.workspaceId, goal));
       return one(goal.id);
     },
 
     async updateTitle(id: string, title: string): Promise<ProjectGoalRow> {
-      await db.update(g).set({ title }).where(eq(g.id, id));
+      const [row] = await db.select({ workspaceId: g.workspaceId }).from(g).where(eq(g.id, id));
+      await db.update(g).set(await sealFor(db, 'project_goals', row!.workspaceId, { title }, { id })).where(eq(g.id, id));
       return one(id);
     },
 

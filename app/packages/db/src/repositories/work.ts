@@ -6,6 +6,7 @@ import type { DbExecutor } from './push.js';
 import { referencedTaskIds } from './task-targets.js';
 import { taskUseRows } from './task-use.js';
 import { taskGraphRows } from './task-graph.js';
+import { openField, openRows, openRow, sealFor, sealOf, sealsOf, type FieldSeal } from '../sealing.js';
 
 /**
  * Drizzle rows for work items, decisions, results and their links (issues #101, #46). They
@@ -113,11 +114,21 @@ function toActivityRecord(row: ActivityRow, position: string) {
   }
 }
 
+const TABLE_NAMES = new Map<unknown, string>([[w, 'project_work_items'], [d, 'project_decisions'], [r, 'project_results']]);
+
 async function paged<Row, T>(db: DbExecutor, table: typeof w | typeof d | typeof r, where: SQL, window: Window, map: (row: Row) => T) {
   const [counted] = await db.select({ total: sql<number>`count(*)::int` }).from(table).where(where);
-  const rows = await db.select().from(table).where(where).orderBy(desc(table.createdAt), desc(table.id)).limit(window.limit).offset(window.offset);
+  const rows = await openRows(db, TABLE_NAMES.get(table)!, await db.select().from(table).where(where).orderBy(desc(table.createdAt), desc(table.id)).limit(window.limit).offset(window.offset));
   return { items: (rows as Row[]).map(map), total: counted?.total ?? 0 };
 }
+
+/** One opened row of a sealed table (F-030): the row as stored in a plain workspace. */
+const opened = async <T extends { workspaceId: string }>(db: DbExecutor, table: string, row: T | undefined) =>
+  (row ? openRow(table, row, await sealOf(db, row.workspaceId, { write: false })) : row);
+const projectSeal = async (db: DbExecutor, projectId: string): Promise<FieldSeal | null> => {
+  const [row] = await db.select({ workspaceId: schema.projects.workspaceId }).from(schema.projects).where(eq(schema.projects.id, projectId));
+  return row ? sealOf(db, row.workspaceId, { write: false }) : null;
+};
 
 export function workRows(db: DbExecutor) {
   return {
@@ -317,6 +328,11 @@ export function workRows(db: DbExecutor) {
       const rows = result.rows as { id: string; workspace_id: string; project_id: string; kind: 'decision.proposed' | 'decision.accepted' | 'result.recorded'; object_id: string;
         title: string; status: 'proposed' | 'accepted' | 'superseded' | null; finding: 'positive' | 'negative' | null; by_kind: 'human' | 'agent'; by_id: string;
         sources: import('@flux/contracts').ObjectRef[]; conversation_id: string | null; at: Date | string }[];
+      // F-030: the titles come through raw SQL; they are opened here, not in SQL (#696).
+      const seals = await sealsOf(db, rows.map((row) => row.workspace_id), { write: false });
+      for (const row of rows) {
+        row.title = openField(row.kind === 'result.recorded' ? 'project_results' : 'project_decisions', 'title', [row.object_id], row.title, seals.get(row.workspace_id)!)!;
+      }
       return { total: Number(count?.total ?? 0), items: rows.map((row) => {
         const base = { id: row.id, workspaceId: row.workspace_id, projectId: row.project_id, title: row.title, by: { kind: row.by_kind, id: row.by_id },
           sources: row.sources, conversationId: row.conversation_id, createdAt: new Date(row.at) };
@@ -359,31 +375,31 @@ export function workRows(db: DbExecutor) {
 
     async findDecision(id: string, options: { lock?: boolean } = {}) {
       const query = db.select().from(d).where(eq(d.id, id));
-      const [row] = options.lock ? await query.for('update') : await query;
+      const row = await opened(db, 'project_decisions', (options.lock ? await query.for('update') : await query)[0]);
       return row ? toDecisionRecord(row) : null;
     },
     async insertDecision(decision: { id: string; workspaceId: string; projectId: string; title: string; rationale: string; proposedBy: Actor; supersedesId: string | null }) {
-      const [row] = await db.insert(d).values({
+      const [row] = await db.insert(d).values(await sealFor(db, 'project_decisions', decision.workspaceId, {
         id: decision.id, workspaceId: decision.workspaceId, projectId: decision.projectId, title: decision.title, rationale: decision.rationale,
         proposedByKind: decision.proposedBy.kind, proposedById: decision.proposedBy.id, supersedesId: decision.supersedesId,
-      }).returning();
-      return toDecisionRecord(row!);
+      })).returning();
+      return toDecisionRecord({ ...row!, title: decision.title, rationale: decision.rationale });
     },
     async updateDecision(id: string, changes: { status?: DecisionRow['status']; decidedBy?: string | null; decidedAt?: Date | null; supersededById?: string | null; supersededAt?: Date | null }) {
       const [row] = await db.update(d).set({ ...changes, version: sql`${d.version} + 1`, updatedAt: new Date() }).where(eq(d.id, id)).returning();
-      return toDecisionRecord(row!);
+      return toDecisionRecord((await opened(db, 'project_decisions', row))!);
     },
 
     async findResult(id: string) {
-      const [row] = await db.select().from(r).where(eq(r.id, id));
+      const row = await opened(db, 'project_results', (await db.select().from(r).where(eq(r.id, id)))[0]);
       return row ? toResultRecord(row) : null;
     },
     async insertResult(result: { id: string; workspaceId: string; projectId: string; title: string; finding: ResultRow['finding']; evidence: string; createdBy: Actor }) {
-      const [row] = await db.insert(r).values({
+      const [row] = await db.insert(r).values(await sealFor(db, 'project_results', result.workspaceId, {
         id: result.id, workspaceId: result.workspaceId, projectId: result.projectId, title: result.title, finding: result.finding,
         evidence: result.evidence, createdByKind: result.createdBy.kind, createdById: result.createdBy.id,
-      }).returning();
-      return toResultRecord(row!);
+      })).returning();
+      return toResultRecord({ ...row!, title: result.title, evidence: result.evidence });
     },
 
     async links(ids: string[]) {
@@ -436,49 +452,54 @@ export function workRows(db: DbExecutor) {
     async titles(projectId: string, refs: Ref[]) {
       const titles = new Map<string, { title: string; conversationId?: string; sketchId?: string }>();
       const of = (type: Ref['type']) => [...new Set(refs.filter((ref) => ref.type === type).map((ref) => ref.id))];
+      if (!refs.length) return titles;
+      // F-030: one project, so one workspace and one seal; every title below is opened before it is used.
+      const seal = await projectSeal(db, projectId);
+      if (!seal) return titles;
+      const open = (table: string, column: string, identity: string[], value: string) => openField(table, column, identity, value, seal)!;
       const messages = of('message');
       if (messages.length) {
         const m = schema.projectMessages;
         for (const row of await db.select({ id: m.id, body: m.body, conversationId: m.conversationId }).from(m).where(and(eq(m.projectId, projectId), inArray(m.id, messages))))
-          titles.set(`message:${row.id}`, { title: excerpt(row.body), conversationId: row.conversationId });
+          titles.set(`message:${row.id}`, { title: excerpt(open('project_messages', 'body', [row.id], row.body)), conversationId: row.conversationId });
       }
       const thoughts = of('thought');
       if (thoughts.length) {
         const t = schema.sketchThoughts;
         const rows = await db.select({ id: t.id, text: t.text, sketchId: t.sketchId }).from(t).innerJoin(schema.sketches, eq(schema.sketches.id, t.sketchId))
           .where(and(projectSketch(projectId), inArray(t.id, thoughts)));
-        for (const row of rows) titles.set(`thought:${row.id}`, { title: excerpt(row.text), sketchId: row.sketchId });
+        for (const row of rows) titles.set(`thought:${row.id}`, { title: excerpt(open('sketch_thoughts', 'text', [row.id], row.text)), sketchId: row.sketchId });
       }
       const materials = refs.filter((ref): ref is Extract<Ref, { type: 'material' }> => ref.type === 'material');
       if (materials.length) {
         const v = schema.projectMaterialVersions;
         const rows = await db.select({ id: v.materialId, version: v.version, title: v.title }).from(v)
           .where(and(eq(v.projectId, projectId), inArray(v.materialId, [...new Set(materials.map((ref) => ref.id))])));
-        for (const row of rows) titles.set(`material:${row.id}:${row.version}`, { title: row.title });
+        for (const row of rows) titles.set(`material:${row.id}:${row.version}`, { title: open('project_material_versions', 'title', [row.id, String(row.version)], row.title) });
       }
       const docs = of('doc');
       if (docs.length) {
         const m = schema.projectMaterials;
         const v = schema.projectMaterialVersions;
-        const rows = await db.select({ id: m.id, title: v.title }).from(m)
+        const rows = await db.select({ id: m.id, version: v.version, title: v.title }).from(m)
           .innerJoin(v, and(eq(v.materialId, m.id), eq(v.version, m.currentVersion)))
           .where(and(eq(m.projectId, projectId), eq(m.kind, 'doc'), inArray(m.id, docs)));
-        for (const row of rows) titles.set(`doc:${row.id}`, { title: row.title });
+        for (const row of rows) titles.set(`doc:${row.id}`, { title: open('project_material_versions', 'title', [row.id, String(row.version)], row.title) });
       }
       const sketchIds = of('sketch');
       if (sketchIds.length) {
         for (const row of await db.select({ id: schema.sketches.id, title: schema.sketches.title }).from(schema.sketches).where(and(projectSketch(projectId), inArray(schema.sketches.id, sketchIds))))
-          titles.set(`sketch:${row.id}`, { title: row.title, sketchId: row.id });
+          titles.set(`sketch:${row.id}`, { title: open('sketches', 'title', [row.id], row.title), sketchId: row.id });
       }
       for (const [type, table] of [['work', w], ['decision', d], ['result', r]] as const) {
         const wanted = of(type);
         if (!wanted.length) continue;
         if (type === 'work') {
           for (const row of await db.select({ id: w.id, title: w.title, reverted: w.creationRevertedAt }).from(w).where(and(eq(w.projectId, projectId), inArray(w.id, wanted))))
-            titles.set(`work:${row.id}`, { title: row.reverted ? `${row.title} · creation undone` : row.title });
+            titles.set(`work:${row.id}`, { title: row.reverted ? `${open('project_work_items', 'title', [row.id], row.title)} · creation undone` : open('project_work_items', 'title', [row.id], row.title) });
         } else {
           for (const row of await db.select({ id: table.id, title: table.title }).from(table).where(and(eq(table.projectId, projectId), inArray(table.id, wanted))))
-            titles.set(`${type}:${row.id}`, { title: row.title });
+            titles.set(`${type}:${row.id}`, { title: open(type === 'decision' ? 'project_decisions' : 'project_results', 'title', [row.id], row.title) });
         }
       }
       return titles;

@@ -1,0 +1,195 @@
+import assert from 'node:assert/strict';
+import { randomUUID } from 'node:crypto';
+import { before, describe, test } from 'node:test';
+import { SEALED_COLUMNS, TABLE_CLASSES, VISIBLE_COLUMNS, workspaceEncryptionRows, type DbExecutor } from '@flux/db';
+import { db, pool } from './support/db.js';
+import { createSealed, passphrase } from './support/encryption.js';
+import { person, workspace, type Person } from './support/people.js';
+
+// AC-5 of F-030, S2a-1 part (#655; docs/product/encrypted-workspaces.md#inventory): the registry against the LIVE catalog
+// after all migrations (default-deny), each sealed table's plaintext backstop with exactly the registry's columns, the
+// refusal of plaintext in every sealed column of A while B passes, the SQL copies of sealed columns (only the allowed
+// ones, each with its reason), `preserve_draft_version` writing nothing for A, and the late heartbeat's SQL (S1 review).
+// S2a-2 adds the notification, event and account-idempotency backstops and the SQL source scan.
+
+const FIELD_TYPES = new Set(['text', 'jsonb', 'json', 'ARRAY', 'character varying', 'bytea']);
+let ada: Person;
+let A: string; let B: string;
+
+before(async () => {
+  ada = await person('Ada');
+  A = (await createSealed(ada, 'Garden club', passphrase())).workspace.id;
+  B = (await workspace(ada, 'Book club')).id;
+});
+
+async function liveColumns() {
+  const rows = (await pool.query<{ table_name: string; column_name: string; data_type: string }>(`SELECT table_name, column_name, data_type
+    FROM information_schema.columns c JOIN information_schema.tables t USING (table_schema, table_name)
+    WHERE table_schema = 'public' AND t.table_type = 'BASE TABLE' ORDER BY table_name, ordinal_position`)).rows;
+  const byTable = new Map<string, { column: string; type: string }[]>();
+  for (const row of rows) byTable.set(row.table_name, [...(byTable.get(row.table_name) ?? []), { column: row.column_name, type: row.data_type }]);
+  return byTable;
+}
+
+describe('F-030 registry against the live catalog', () => {
+  test('every table has a class; every class names a live table', async () => {
+    const live = await liveColumns();
+    assert.deepEqual([...live.keys()].filter((name) => !TABLE_CLASSES[name]), [], 'unclassified tables');
+    assert.deepEqual(Object.keys(TABLE_CLASSES).filter((name) => !live.has(name)), [], 'classified tables that do not exist');
+  });
+
+  test('every text, jsonb or array column of a content table is sealed or visible with a reason (default-deny)', async () => {
+    const live = await liveColumns();
+    const missing: string[] = []; const stale: string[] = [];
+    for (const [table, columns] of live) {
+      if (TABLE_CLASSES[table] !== 'content') continue;
+      const sealed = SEALED_COLUMNS[table]?.columns ?? {};
+      const visible = VISIBLE_COLUMNS[table] ?? {};
+      for (const { column, type } of columns) {
+        if (column in sealed && column in visible) missing.push(`${table}.${column} is both sealed and visible`);
+        if (FIELD_TYPES.has(type) && !(column in sealed) && !(column in visible) && !/^(id|.*_id|.*_ids)$/.test(column)) missing.push(`${table}.${column} (${type})`);
+      }
+      const names = new Set(columns.map((c) => c.column));
+      for (const column of [...Object.keys(sealed), ...Object.keys(visible)]) if (!names.has(column)) stale.push(`${table}.${column}`);
+      for (const reason of Object.values(visible)) assert.ok(reason.length > 3, `${table}: a reason`);
+    }
+    assert.deepEqual(missing, [], 'unclassified content columns');
+    assert.deepEqual(stale, [], 'registered columns that do not exist');
+    for (const table of Object.keys(SEALED_COLUMNS)) assert.equal(TABLE_CLASSES[table], 'content', `${table} is a content table`);
+  });
+
+  test('each sealed table has its plaintext backstop with exactly the registry\'s workspace path and columns', async () => {
+    const rows = (await pool.query<{ table: string; args: string }>(`SELECT c.relname AS table, encode(t.tgargs, 'escape') AS args FROM pg_trigger t
+      JOIN pg_class c ON c.oid = t.tgrelid WHERE t.tgname = 'z_sealed_backstop' AND NOT t.tgisinternal`)).rows;
+    const live = new Map(rows.map((row) => [row.table, row.args.split('\\000').filter(Boolean)]));
+    for (const [table, entry] of Object.entries(SEALED_COLUMNS)) {
+      const path = entry.workspace === 'workspace_id' ? 'workspace_id' : `via:${entry.workspace.column}:${entry.workspace.table}:${entry.workspace.key}`;
+      assert.deepEqual(live.get(table), [path, ...Object.keys(entry.columns)], table);
+    }
+    assert.deepEqual([...live.keys()].filter((table) => !SEALED_COLUMNS[table]), [], 'a backstop outside the registry');
+  });
+
+  test('a GitHub table with a workspace path refuses a row of A (a_sealed_workspace_refused)', async () => {
+    const guarded = (await pool.query<{ table: string }>(`SELECT DISTINCT c.relname AS table FROM pg_trigger t JOIN pg_class c ON c.oid = t.tgrelid
+      WHERE t.tgname = 'a_sealed_workspace_refused'`)).rows.map((row) => row.table).sort();
+    const refused = Object.entries(TABLE_CLASSES).filter(([, cls]) => cls === 'refused').map(([table]) => table);
+    const withPath = (await pool.query<{ table: string }>(`SELECT DISTINCT table_name AS table FROM information_schema.columns
+      WHERE table_schema = 'public' AND table_name = ANY($1) AND column_name IN ('workspace_id', 'project_id')`, [refused])).rows.map((row) => row.table).sort();
+    assert.deepEqual(guarded, withPath);
+    await assert.rejects(pool.query(`INSERT INTO github_rule_defaults (workspace_id) VALUES ($1)`, [A]), { hint: 'WORKSPACE_ENCRYPTED_UNSUPPORTED' });
+  });
+
+  test('plaintext in every sealed column of A is refused, naming the column and never the value; an envelope passes; B passes', async () => {
+    const envelope = `fx1.1.${'A'.repeat(40)}`;
+    const types = await liveColumns();
+    for (const [table, entry] of Object.entries(SEALED_COLUMNS)) {
+      for (const column of Object.keys(entry.columns)) {
+        // A copy of the table's shape with the real trigger function and arguments, so each column is tried alone.
+        const client = await pool.connect();
+        try {
+          await client.query('BEGIN');
+          const type = types.get(table)!.find((c) => c.column === column)!.type;
+          const sqlType = type === 'ARRAY' ? 'text[]' : type;
+          const via = entry.workspace === 'workspace_id' ? null : entry.workspace;
+          let path = 'workspace_id';
+          if (via) {
+            await client.query(`CREATE TEMP TABLE parent_row (id uuid PRIMARY KEY, workspace_id uuid)`);
+            path = `via:${via.column}:parent_row:id`;
+          }
+          const owner = via ? via.column : 'workspace_id';
+          await client.query(`CREATE TEMP TABLE probe (${owner} uuid, ${column} ${sqlType})`);
+          const args = [path, column].map((arg) => `'${arg}'`).join(', ');
+          await client.query(`CREATE TRIGGER z_sealed_backstop BEFORE INSERT OR UPDATE ON probe FOR EACH ROW EXECUTE FUNCTION flux_sealed_backstop(${args})`);
+          const plain = sqlType === 'jsonb' ? JSON.stringify({ secret: 'plain words' }) : 'plain words';
+          const sealed = sqlType === 'jsonb' ? JSON.stringify({ $sealed: envelope }) : envelope;
+          for (const ws of [A, B]) {
+            const ref = via ? randomUUID() : ws;
+            if (via) await client.query(`INSERT INTO parent_row VALUES ($1, $2)`, [ref, ws]);
+            await client.query('SAVEPOINT s');
+            try {
+              await client.query(`INSERT INTO probe VALUES ($1, $2)`, [ref, plain]);
+              assert.equal(ws, B, `${table}.${column}: plaintext was stored for A`);
+            } catch (error) {
+              const e = error as { hint?: string; message: string };
+              assert.equal(ws, A, `${table}.${column}: B refused (${e.message})`);
+              assert.equal(e.hint, 'WORKSPACE_PLAINTEXT_REFUSED');
+              assert.match(e.message, new RegExp(`probe\\.${column}$`));
+              assert.equal(e.message.includes('plain words'), false);
+              await client.query('ROLLBACK TO SAVEPOINT s');
+            }
+            await client.query(`INSERT INTO probe VALUES ($1, $2), ($1, NULL)`, [ref, sealed]);
+            if (sqlType === 'text') await client.query(`INSERT INTO probe VALUES ($1, '')`, [ref]);
+          }
+        } finally { await client.query('ROLLBACK'); client.release(); }
+      }
+    }
+  });
+
+  test('flux_is_sealed accepts only an envelope or {"$sealed": envelope}', async () => {
+    const cases: [string, boolean][] = [[`'fx1.1.${'A'.repeat(38)}'::text`, true], [`'fx1.0.${'A'.repeat(38)}'::text`, false], [`'fx1.1.${'A'.repeat(37)}'::text`, false],
+      [`'fx1.1.${'A'.repeat(38)}!'::text`, false], [`'plain'::text`, false], [`'{"$sealed":"fx1.2.${'B'.repeat(40)}"}'::jsonb`, true],
+      [`'{"$sealed":"fx1.2.${'B'.repeat(40)}","x":1}'::jsonb`, false], [`'{"$sealed":"plain"}'::jsonb`, false], [`'["fx1.1.${'A'.repeat(40)}"]'::jsonb`, false], [`'"fx1.1.${'A'.repeat(40)}"'::jsonb`, true]];
+    for (const [literal, expected] of cases) assert.equal((await pool.query(`SELECT flux_is_sealed(${literal}) AS ok`)).rows[0].ok, expected, literal);
+  });
+
+  test('SQL reads a sealed column only in the allowed trigger functions, and copies none for a sealed workspace', async () => {
+    const allowed: Record<string, string> = {
+      preserve_draft_version: 'returns before the copy for a sealed workspace (0120); the drafts repository writes the sealed version',
+      flux_capture_artifact_mutation: 'compares only (IS DISTINCT FROM); its triggers skip a sealed workspace (WHEN, 0120)',
+      flux_guard_task_creation_history: 'compares only (IS DISTINCT FROM): no value leaves the row',
+      assistant_task_reaction_tap: 'AI: compares only, and no reaction exists for a sealed workspace (F-029 forced off)',
+      search_index_decision: 'search_put stores a placeholder without title or body for a sealed workspace (0120)',
+      search_index_dm_message: 'as search_index_decision', search_index_draft: 'as search_index_decision', search_index_material_version: 'as search_index_decision',
+      search_index_message: 'as search_index_decision', search_index_project: 'as search_index_decision', search_index_result: 'as search_index_decision',
+      search_index_sketch: 'as search_index_decision', search_index_thought: 'as search_index_decision', search_index_work: 'as search_index_decision',
+    };
+    const found = new Set<string>();
+    for (const [table, entry] of Object.entries(SEALED_COLUMNS)) {
+      for (const column of Object.keys(entry.columns)) {
+        const rows = (await pool.query<{ name: string }>(`SELECT DISTINCT p.proname AS name FROM pg_trigger t JOIN pg_class c ON c.oid = t.tgrelid JOIN pg_proc p ON p.oid = t.tgfoid
+          WHERE c.relname = $1 AND NOT t.tgisinternal AND p.proname <> 'flux_sealed_backstop' AND p.prosrc ~* ('(NEW|OLD)\\.' || $2 || '\\M')`, [table, column])).rows;
+        for (const row of rows) found.add(row.name);
+      }
+    }
+    assert.deepEqual([...found].filter((name) => !allowed[name]).sort(), [], 'a trigger function that reads a sealed column must be moved to the application or allowed here');
+    // preserve_draft_version: nothing for A; a row for B.
+    for (const [ws, expected] of [[A, 0], [B, 1]] as const) {
+      const id = randomUUID();
+      await pool.query(`INSERT INTO drafts (id, workspace_id, owner_user_id, title, body, created_by) VALUES ($1, $2, $3, $4, $4, $3)`,
+        [id, ws, ada.id, ws === A ? `fx1.1.${'C'.repeat(40)}` : 'Plain title']);
+      assert.equal((await pool.query(`SELECT count(*)::int AS n FROM draft_versions WHERE draft_id = $1`, [id])).rows[0].n, expected);
+    }
+  });
+});
+
+describe('F-030 late heartbeat SQL (S1 review P3)', () => {
+  test('a stale boot\'s rows go, rows written after the observation stay, and a workspace missing a live version\'s row is dropped whole', async () => {
+    const rows = workspaceEncryptionRows(db as unknown as DbExecutor);
+    const [current, old] = [randomUUID(), randomUUID()];
+    const [stale, fresh, partial, late] = await Promise.all(['Stale', 'Fresh', 'Partial', 'Late'].map(async (label) =>
+      (await createSealed(await person(label), `${label} club`, passphrase())).workspace.id));
+    const observedAt = new Date(Date.now() - 60_000);
+    const before = new Date(observedAt.getTime() - 60_000).toISOString();
+    const after = new Date(observedAt.getTime() + 30_000).toISOString();
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      await client.query(`DELETE FROM workspace_unlocks WHERE workspace_id = ANY($1)`, [[stale, fresh, partial, late]]);
+      // Version 2 is live but has no unlock row (a Lock raced a rotation's start): the workspace counts as locked.
+      await client.query(`UPDATE workspace_keys SET live_versions = '{1,2}', current_version = 2 WHERE workspace_id = $1`, [partial]);
+      const add = (ws: string, version: number, boot: string, at: string) =>
+        client.query(`INSERT INTO workspace_unlocks (workspace_id, key_version, boot_id, sealed_dek, unlocked_at) VALUES ($1, $2, $3, 'x', $4)`, [ws, version, boot, at]);
+      await add(stale, 1, old, before);
+      await add(fresh, 1, current, before);
+      await add(late, 1, old, after); // written by a newer boot than the caller saw: never touched
+      await add(partial, 1, current, before);
+      await client.query('COMMIT');
+    } catch (error) { await client.query('ROLLBACK'); throw error; } finally { client.release(); }
+    const dropped = await rows.dropStaleUnlocks(current, observedAt);
+    const droppedIds = dropped.map((row) => row.workspaceId).filter((id) => [stale, fresh, partial, late].includes(id)).sort();
+    assert.deepEqual(droppedIds, [stale, partial].sort());
+    const left = (await pool.query<{ workspace_id: string }>(`SELECT workspace_id FROM workspace_unlocks WHERE workspace_id = ANY($1) ORDER BY workspace_id`,
+      [[stale, fresh, partial, late]])).rows.map((row) => row.workspace_id);
+    assert.deepEqual(left.sort(), [fresh, late].sort());
+  });
+});

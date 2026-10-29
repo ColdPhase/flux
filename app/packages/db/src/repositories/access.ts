@@ -278,7 +278,9 @@ export function accessReader(db: DbExecutor) {
         isOwner: isDraftOwner(actor).mapWith(Boolean),
       }).from(schema.drafts).where(eq(schema.drafts.id, draftId));
       const [row] = options.lock ? await query.for('update') : await query;
-      return row ?? null;
+      // Opened only for a reader of the draft (an active member who may read it), so only they learn a lock.
+      if (!row || !row.readable) return row ?? null;
+      return { ...row, draft: openRow('drafts', row.draft, await sealOf(db, row.draft.workspaceId, { write: options.lock })) };
     },
 
     async readAgent(agentId: string) {

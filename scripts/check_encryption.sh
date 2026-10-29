@@ -1,6 +1,7 @@
 #!/bin/sh
-# F-030 encrypted workspaces (#655), S1 acceptance in Docker (docs/product/encrypted-workspaces.md#tests-and-acceptance-criteria):
-#   AC-1 crypto, AC-2 lifecycle / AI forced off / keyring and swap, AC-4 two APIs with PostgreSQL logging every
+# F-030 encrypted workspaces (#655), S1 and S2a-1 acceptance in Docker (docs/product/encrypted-workspaces.md#tests-and-acceptance-criteria):
+#   AC-1 crypto, AC-2 lifecycle / AI forced off / keyring and swap, AC-5 (S2a-1 part) the registry against the live catalog and
+#   the backstops, the S2a-1 sealed repositories with their in-database canary scan, AC-4 two APIs with PostgreSQL logging every
 #   statement and its parameters (docker/compose.encryption.test.yaml), the whole PostgreSQL, API, worker and keyring
 #   logs scanned for every secret of the run, and AC-3 restarts. Its own Compose project; ports FLUX_TEST_PORT and
 #   FLUX_TEST_MAILPIT_PORT as for check_application.sh.
@@ -56,7 +57,7 @@ $compose build
 $compose up -d db migrate
 $compose --profile setup run --rm files-init
 
-files="tests/app/encryption-crypto.test.ts tests/app/encryption-keyring.test.ts tests/app/encrypted-workspaces.test.ts tests/app/live/encryption-two-api.test.ts"
+files="tests/app/encryption-crypto.test.ts tests/app/encryption-keyring.test.ts tests/app/encrypted-workspaces.test.ts tests/app/encryption-registry.test.ts tests/app/encryption-sealed-content.test.ts tests/app/live/encryption-two-api.test.ts"
 # shellcheck disable=SC2086
 $compose run --rm test node_modules/.bin/tsx --test --test-concurrency=1 $files
 

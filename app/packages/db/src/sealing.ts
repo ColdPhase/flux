@@ -104,13 +104,13 @@ export function rowIdentity(table: string, row: Record<string, unknown>): string
  * The values to write, with every registered sealed column present in `values` sealed. `identityRow` supplies the
  * primary key when `values` is a partial update. NULL and '' carry no content and are kept as they are.
  */
-export function sealRow<T extends Record<string, unknown>>(table: string, values: T, seal: FieldSeal, identityRow: Record<string, unknown> = values): T {
+export function sealRow<T extends object>(table: string, values: T, seal: FieldSeal, identityRow: object = values): T {
   if (!seal.sealed) return values;
   const entry = registry(table);
-  const identity = rowIdentity(table, { ...identityRow, ...values });
-  const out: Record<string, unknown> = { ...values };
+  const identity = rowIdentity(table, { ...identityRow, ...values } as Record<string, unknown>);
+  const out = { ...values } as Record<string, unknown>;
   for (const [column, spec] of Object.entries(entry.columns)) {
-    const found = read(values, column);
+    const found = read(values as Record<string, unknown>, column);
     if (!found) continue;
     const [key, value] = found;
     if (value === null || value === undefined || value === '') continue;
@@ -122,13 +122,13 @@ export function sealRow<T extends Record<string, unknown>>(table: string, values
 }
 
 /** The row with every registered sealed column it has opened. A value that does not open throws (tampering or a bug). */
-export function openRow<T extends Record<string, unknown>>(table: string, row: T, seal: FieldSeal): T {
+export function openRow<T extends object>(table: string, row: T, seal: FieldSeal): T {
   if (!seal.sealed) return row;
   const entry = registry(table);
-  const identity = rowIdentity(table, row);
-  const out: Record<string, unknown> = { ...row };
+  const identity = rowIdentity(table, row as Record<string, unknown>);
+  const out = { ...row } as Record<string, unknown>;
   for (const [column, spec] of Object.entries(entry.columns)) {
-    const found = read(row, column);
+    const found = read(row as Record<string, unknown>, column);
     if (!found) continue;
     const [key, value] = found;
     if (value === null || value === undefined || value === '') continue;
@@ -151,15 +151,15 @@ export function openField(table: string, column: string, identity: readonly stri
 }
 
 /** Opens every row of a list, one seal per workspace (`workspaceId` or `workspace_id` on each row). */
-export async function openRows<T extends Record<string, unknown>>(executor: DbExecutor, table: string, rows: T[], workspaceOf?: (row: T) => string): Promise<T[]> {
+export async function openRows<T extends object>(executor: DbExecutor, table: string, rows: T[], workspaceOf?: (row: T) => string): Promise<T[]> {
   if (!rows.length) return rows;
-  const of = workspaceOf ?? ((row: T) => String(row.workspaceId ?? row.workspace_id));
+  const of = workspaceOf ?? ((row: T) => { const r = row as Record<string, unknown>; return String(r.workspaceId ?? r.workspace_id); });
   const seals = await sealsOf(executor, rows.map(of), { write: false });
   return rows.map((row) => openRow(table, row, seals.get(of(row))!));
 }
 
 /** Seals the values of an insert or update in this transaction (`write`: the unlock rows are read FOR SHARE). */
-export async function sealFor<T extends Record<string, unknown>>(executor: DbExecutor, table: string, workspaceId: string, values: T, identityRow?: Record<string, unknown>): Promise<T> {
+export async function sealFor<T extends object>(executor: DbExecutor, table: string, workspaceId: string, values: T, identityRow?: object): Promise<T> {
   return sealRow(table, values, await sealOf(executor, workspaceId, { write: true }), identityRow);
 }
 
@@ -182,7 +182,7 @@ export const storedDigest = {
  * Opens one aliased sealed column of rows read by a join or raw SQL (`opening` of a conversation is `project_messages.body`
  * of its first message): each row names its workspace and the source row's identity (null when the join found none).
  */
-export async function openAliased<T extends Record<string, unknown>, K extends keyof T>(executor: DbExecutor, rows: T[], spec: {
+export async function openAliased<T extends object, K extends keyof T>(executor: DbExecutor, rows: T[], spec: {
   table: string; column: string; key: K; workspace: (row: T) => string; identity: (row: T) => readonly string[] | null;
 }): Promise<T[]> {
   if (!rows.length) return rows;

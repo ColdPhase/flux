@@ -171,7 +171,8 @@ export function returnRows(db: DbExecutor) {
       const m = schema.projectMessages;
       const rows = await openRows(db, 'project_messages', await db.select({ id: m.id, workspaceId: m.workspaceId, projectId: m.projectId, conversationId: m.conversationId, authorId: m.authorId, authorAgentId: m.authorAgentId, body: m.body, attachmentCount: m.attachmentCount, sequence: m.sequence, createdAt: m.createdAt })
         .from(m).where(inArray(m.id, ids)));
-      return byId(rows.map(({ authorId, authorAgentId, workspaceId: _workspaceId, ...row }) => ({ ...row, author: actor(authorId, authorAgentId) })));
+      return byId(rows.map(({ authorId, authorAgentId, id, projectId, conversationId, body, attachmentCount, sequence, createdAt }) =>
+        ({ id, projectId, conversationId, body, attachmentCount, sequence, createdAt, author: actor(authorId, authorAgentId) })));
     },
 
     async conversations(ids: string[]) {
@@ -182,7 +183,8 @@ export function returnRows(db: DbExecutor) {
         .leftJoin(m, and(eq(m.conversationId, c.id), eq(m.sequence, 1))).where(inArray(c.id, ids));
       const rows = await openAliased(db, read, { table: 'project_messages', column: 'body', key: 'opening', workspace: (row) => row.workspaceId,
         identity: (row) => (row.openingId ? [row.openingId] : null) });
-      return byId(rows.map(({ createdBy, createdByAgentId, workspaceId: _workspaceId, openingId: _openingId, ...row }) => ({ ...row, createdBy: actor(createdBy, createdByAgentId), opening: excerpt(messagePreview(row.opening ?? '', row.attachmentCount ?? 0)) })));
+      return byId(rows.map(({ createdBy, createdByAgentId, id, projectId, opening, attachmentCount }) => ({ id, projectId, attachmentCount,
+        createdBy: actor(createdBy, createdByAgentId), opening: excerpt(messagePreview(opening ?? '', attachmentCount ?? 0)) })));
     },
 
     async lastPosts(userId: string, conversationIds: string[]) {
