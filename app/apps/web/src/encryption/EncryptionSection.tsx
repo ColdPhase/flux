@@ -67,7 +67,8 @@ export function EncryptionSection({ workspace, members, meId, myRole, offerCode,
   const candidates = manager && enc.myPassword && members
     ? members.filter((member) => member.userId !== meId && (member.role === 'owner' || member.role === 'admin') && member.unlockPassword === false) : [];
   // A first password: with a holder's permission, or with the recovery code. Neither: the button waits, dimmed, in its place.
-  const grantUntil = !enc.myPassword && enc.passwordGrantUntil && Date.parse(enc.passwordGrantUntil) > Date.now() ? enc.passwordGrantUntil : null;
+  // The server names only a grant that is valid when it answers; one that ran out since is answered in place (403) when it is used.
+  const grantUntil = !enc.myPassword && enc.passwordGrantUntil && !Number.isNaN(Date.parse(enc.passwordGrantUntil)) ? enc.passwordGrantUntil : null;
   const firstPassword: Panel = enc.myPassword ? { kind: 'password', via: 'current' } : { kind: 'password', via: grantUntil ? 'grant' : 'recovery' };
   const canFirst = enc.myPassword || !!grantUntil || !noCode;
   const passwordLabel = enc.myPassword ? 'Change your unlock password' : grantUntil || noCode ? 'Set your unlock password' : 'Use the recovery code';
