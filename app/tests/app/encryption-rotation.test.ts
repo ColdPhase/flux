@@ -451,6 +451,22 @@ describe('F-030 S2c key rotation (AC-13)', () => {
   });
 });
 
+describe('F-030 S2c confirmed set covered by every holder MAC', () => {
+  test('another holder\'s deleted confirmation makes the unlock refuse; restored, it unlocks', async () => {
+    const c = await club('Confirm club', ['Ben']);
+    expectStatus(await lock(c.owner.browser, c.ws), 200);
+    const ben = await holderOf(c.ws, c.people.Ben!.who.id);
+    const [wrap] = (await pool.query('SELECT confirm FROM workspace_dek_wraps WHERE holder_id = $1 AND key_version = 1', [ben.id])).rows;
+    assert.ok(wrap.confirm);
+    await pool.query('UPDATE workspace_dek_wraps SET confirm = NULL WHERE holder_id = $1 AND key_version = 1', [ben.id]);
+    const answer = await unlock(c.owner.browser, c.ws, { password: c.ownerPw });
+    assert.equal(answer.status, 409, `Ada's own wraps are intact; Ben's MAC lists a confirmation that is gone: ${answer.text}`);
+    assert.equal(codeOf(answer), 'ENCRYPTION_TAMPERED');
+    await pool.query('UPDATE workspace_dek_wraps SET confirm = $2 WHERE holder_id = $1 AND key_version = 1', [ben.id, wrap.confirm]);
+    expectStatus(await unlock(c.owner.browser, c.ws, { password: c.ownerPw }), 200);
+  });
+});
+
 describe('F-030 S2c files step', () => {
   test('a file object is re-encrypted by a new object and a rename; a crash between the rename and the row update only updates the row', async () => {
     const ws = randomUUID();
