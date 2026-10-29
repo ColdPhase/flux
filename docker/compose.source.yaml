@@ -425,6 +425,12 @@ services:
       FLUX_UI_UPSTREAM: api:8080
       FLUX_MAILPIT_URL: http://mailpit:8025
       FLUX_UI_SCREENSHOTS: /screenshots
+      # The opt-in motion_performance harness's sample sizes (app/tests/ui/motion_performance.py); its defaults are the agreed method.
+      FLUX_MOTION_WARMUPS: ${FLUX_MOTION_WARMUPS:-30}
+      FLUX_MOTION_SAMPLES: ${FLUX_MOTION_SAMPLES:-200}
+      FLUX_MOTION_SECONDS: ${FLUX_MOTION_SECONDS:-60}
+      FLUX_MOTION_LAYOUT_WARMUPS: ${FLUX_MOTION_LAYOUT_WARMUPS:-15}
+      FLUX_MOTION_LAYOUT_SAMPLES: ${FLUX_MOTION_LAYOUT_SAMPLES:-100}
       FLUX_LIVE_EDITING: ${FLUX_LIVE_EDITING:-on}
       FLUX_LIVE_EDITING_TEST: ${FLUX_LIVE_EDITING_TEST:-0}
       # TEST ONLY (#68): the browser tests script the mock provider's next answers.

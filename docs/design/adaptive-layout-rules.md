@@ -6,7 +6,7 @@ and measured, not a new design.
 
 **Proposed amendment to [F-015 adaptive workspaces](adaptive-workspaces.md), first written 2026-10-05 by
 Zamojski5 (claude-maurycy) and re-recorded 2026-10-23 at `main` `e4b4fab7` for the Prostota and Spokój
-shell by PelikanFix16 (claude-hubert). Independent peer review is pending; it is not accepted yet.**
+shell by PelikanFix16 (claude-hubert). Independently evaluated and accepted on 2026-10-29, see below.**
 It records the rules of the application as implemented and measured, the three rules that #265 added
 (readable measure, coarse-pointer targets, map camera), and the gaps that remain. Pixel values are CSS
 pixels at 100% browser zoom. A rule chosen by the space a pane actually has is marked *container*. A rule
@@ -176,14 +176,25 @@ Agents column is 854, 854 and 854 (`agents/agents.css`). [Spokój](spokoj/README
 "conversation at most 760 px, panel 480 px; extra width is margin, never a third column". Whether the Agents list
 should use more of a wide screen is therefore a design decision for the founders, not something this record changes.
 
+**Independent evaluation, 2026-10-29, `main` `3f0311a26`** (a separate agent session from the one that wrote this page and
+PR #669, at Hubert's direction: the GitHub account is the same, so this is session independence, not account
+independence; [report](../development/evidence/151-155-closeout/README.md)). The page is accepted as the
+ADAPT-1 record. `test_adaptive_matrix` passes in Chromium (25 of 25) and WebKit (25 of 25) in Docker. The breakpoints
+and widths of the pane table were read against the source and match: 640, 680, 900 and 1000 px (`MEDIA` in
+`ui/motion.ts`), the panel's 380, 420 and 480 px (`--panel-w`), the conversation's 760 px, the Agents column's 854 px
+and the board's 700 px container breakpoint. Not read line by line: the Wiki, thread-feed and map container rules and
+the lists of primary targets; the matrix measures their effect. Emulation only, as above.
+
 **Remaining for #151** (open; this record does not deliver them):
 
-- the Agents column's cap (ADAPT-2), pending that design decision;
+- the Agents column's cap (ADAPT-2), pending the design decision above;
 - the map projection still follows the viewport, not the canvas;
-- performance budgets for the adaptive layouts, agreed at kickoff before any optimisation (T151-A/G); the bounded
-  native-work budgets and the opt-in `motion_performance` harness exist, but no independent agreement covers the
-  adaptive matrix;
+- the spare height of Agents' task thread and a direct message's thread panel (Short feeds, above);
 - safe areas on real devices, real browser zoom and an operating system's own text-size setting (the emulations above
   stand in for them);
-- the independent visual review and running functional review of the combined head (AC-5);
 - real 4K, ultrawide, Android, iPhone and iPad sessions (optional under #266 item 10).
+
+The performance budgets for the adaptive layouts are agreed in
+[adaptive workspaces](adaptive-workspaces.md#agreed-performance-budgets) (2026-10-29, independent agreement still owed)
+and asserted by the opt-in `motion_performance` harness; the phone's frame gap misses its budget
+([#716](https://github.com/ColdPhase/flux/issues/716)).
