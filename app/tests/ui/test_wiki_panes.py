@@ -168,6 +168,9 @@ class WikiPanesJourney(unittest.TestCase):
         measured = page.wait_for_function("""spec => {
           const el = document.querySelector(spec.selector); if (!el) return false;
           for (let n = el; n; n = n.parentElement) if (Number(getComputedStyle(n).opacity) !== 1) return false;
+          // A focus ring fades in (outline-color is in --tr): WebKit still reports it transparent more than 250 ms after the
+          // focus, so the ring is measured once it has painted, not before.
+          if (spec.property === 'outlineColor' && Number((getComputedStyle(el).outlineColor.match(/[\\d.]+/g) || [])[3] ?? 1) === 0) return false;
           return (""" + MEASURE + ")(spec); }", arg={"selector": selector, **spec}, timeout=5000)
         value = measured.json_value()
         measured.dispose()
