@@ -7,6 +7,24 @@ import { hiddenWhileAiOff, notificationHiddenWhileAiOff } from './workspace-ai.j
 import type { DbExecutor } from './push.js';
 
 /**
+ * F-030 (#712 review P2-3): the muted list opens its names per workspace. A place in a locked encrypted workspace is
+ * named by its workspace (visible metadata) instead of failing the whole settings page with 423.
+ */
+async function openNamedOrLocked<T extends { workspaceId: string }>(db: DbExecutor, table: 'projects' | 'dms', rows: T[], name: (row: T, label: string) => T) {
+  const out: T[] = [];
+  for (const workspaceId of new Set(rows.map((row) => row.workspaceId))) {
+    const group = rows.filter((row) => row.workspaceId === workspaceId);
+    try { out.push(...await openRows(db, table, group)); }
+    catch (error) {
+      if ((error as { code?: unknown }).code !== 'WORKSPACE_LOCKED') throw error;
+      const [ws] = await db.select({ name: schema.workspaces.name }).from(schema.workspaces).where(eq(schema.workspaces.id, workspaceId));
+      out.push(...group.map((row) => name(row, ws?.name ?? 'Encrypted space')));
+    }
+  }
+  return out;
+}
+
+/**
  * Drizzle rows for notification generation, preferences, delivery addresses and the email
  * outbox (issue #116). They satisfy the ports in `packages/core/src/notifications/ports.ts`
  * structurally (this package does not depend on core) and make no access decisions: the core
@@ -290,14 +308,15 @@ export function notificationPlaceRows(db: DbExecutor) {
   return {
     async projectNames(ids: string[]) {
       if (!ids.length) return new Map<string, string>();
-      const rows = await openRows(db, 'projects', await db.select({ id: schema.projects.id, workspaceId: schema.projects.workspaceId, name: schema.projects.name })
-        .from(schema.projects).where(inArray(schema.projects.id, ids)));
+      const rows = await openNamedOrLocked(db, 'projects', await db.select({ id: schema.projects.id, workspaceId: schema.projects.workspaceId, name: schema.projects.name })
+        .from(schema.projects).where(inArray(schema.projects.id, ids)), (row, label) => ({ ...row, name: label }));
       return new Map(rows.map((row) => [row.id, row.name]));
     },
     /** A group's title, or the other participants' names. */
     async dmNames(ids: string[], userId: string) {
       if (!ids.length) return new Map<string, string>();
-      const dms = await openRows(db, 'dms', await db.select({ id: schema.dms.id, workspaceId: schema.dms.workspaceId, title: schema.dms.title }).from(schema.dms).where(inArray(schema.dms.id, ids)));
+      const dms = await openNamedOrLocked(db, 'dms', await db.select({ id: schema.dms.id, workspaceId: schema.dms.workspaceId, title: schema.dms.title }).from(schema.dms)
+        .where(inArray(schema.dms.id, ids)), (row, label) => ({ ...row, title: label }));
       const people = await db.select({ dmId: schema.dmParticipants.dmId, name: schema.authUsers.name }).from(schema.dmParticipants)
         .innerJoin(schema.authUsers, eq(schema.authUsers.id, schema.dmParticipants.userId))
         .where(and(inArray(schema.dmParticipants.dmId, ids), ne(schema.dmParticipants.userId, userId))).orderBy(asc(schema.authUsers.name));
@@ -448,6 +467,11 @@ export async function markAllNotificationsRead(db: DbExecutor, userId: string) {
 /** The morning summary (#350): who has it on, the per-day claim, unread inbox rows and the summary row. */
 export function morningSummaryRows(db: DbExecutor) {
   return {
+    /** F-030: whether a source's workspace is encrypted (its summary row is anchored elsewhere, or content-free). */
+    async sealedWorkspace(workspaceId: string) {
+      const [row] = await db.select({ encrypted: schema.workspaces.encrypted }).from(schema.workspaces).where(eq(schema.workspaces.id, workspaceId));
+      return row?.encrypted === true;
+    },
     async candidates() {
       const rows = await db.select({ userId: p.userId, summaryEnabled: p.summaryEnabled, summaryAt: p.summaryAt, summaryByAssistant: p.summaryByAssistant, timeZone: p.timeZone, channels: p.channels, lastOn: p.summaryLastOn })
         .from(p).where(eq(p.summaryEnabled, true));

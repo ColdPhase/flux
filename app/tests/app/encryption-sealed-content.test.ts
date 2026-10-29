@@ -6,8 +6,9 @@ import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { before, describe, test } from 'node:test';
 import WebSocket from 'ws';
+import { PgBoss } from 'pg-boss';
 import { projectObjectNoticesPath, type Project } from '@flux/contracts';
-import { pool } from './support/db.js';
+import { connectionString, pool } from './support/db.js';
 import { apiUrl, Browser, publicOrigin } from './support/http.js';
 import { createSealed, lock, passphrase, unlock } from './support/encryption.js';
 import { addMember, expectStatus, person, workspace, type Person } from './support/people.js';
@@ -550,5 +551,76 @@ describe('F-030 S2a-1: sealed content in the repositories', () => {
       if (ws === A) await assert.rejects(attempt, (error: { hint?: string; message: string }) => error.hint === 'WORKSPACE_PLAINTEXT_REFUSED' && !error.message.includes('plain words'));
       else assert.ok((await attempt).rowCount! > 0);
     }
+  });
+});
+
+// #712 review: a stale template title stays markable as read; the morning summary of a sealed unread is content-free;
+// the settings page and Needs you open (or, locked, name by workspace) a sealed place instead of failing.
+describe('F-030 content-free notifications in use (#712 review)', () => {
+  const inbox = async () => (expectStatus(await ben.browser.request('GET', '/api/v1/inbox'), 200) as { items: { id: string; title: string; readAt: string | null; source: { workspaceId?: string } }[] }).items;
+
+  test('after an account rename, a sealed notification is still marked read, one by one and all at once', async () => {
+    const sealed = (await inbox()).filter((item) => item.title.endsWith(' in Garden club'));
+    assert.ok(sealed.length >= 1, 'a sealed notification to mark');
+    await pool.query(`UPDATE auth_users SET name = 'Ada Renamed' WHERE id = $1`, [ada.id]);
+    try {
+      expectStatus(await ben.browser.request('POST', `/api/v1/inbox/${sealed[0]!.id}/read`, { body: {} }), 200, 'mark read');
+      expectStatus(await ben.browser.request('POST', '/api/v1/inbox/read-all', { body: {} }), 200, 'mark all read');
+      // A changed title is still checked against the current names.
+      await assert.rejects(pool.query(`UPDATE notifications SET title = 'Ada mentioned you in Garden club, secret' WHERE id = $1`, [sealed[0]!.id]),
+        { hint: 'NOTIFICATION_CONTENT_REFUSED' });
+      await assert.rejects(pool.query(`UPDATE notifications SET url = '/projects/x?q=secret' WHERE id = $1`, [sealed[0]!.id]), { hint: 'NOTIFICATION_CONTENT_REFUSED' }, 'url: ids only');
+    } finally { await pool.query(`UPDATE auth_users SET name = 'Ada' WHERE id = $1`, [ada.id]); }
+  });
+
+  test('a proposed decision of A in Needs you, and a muted place of A in the settings, open for Ben; locked, the settings name the workspace', async () => {
+    const title = `NEEDS-${randomUUID()}`;
+    await post(ada, `/api/v1/projects/${ids.A.project}/decisions`, { title, rationale: 'why' }, 201);
+    const needs = expectStatus(await ben.browser.request('GET', '/api/v1/needs-you'), 200) as unknown;
+    assert.ok(JSON.stringify(needs).includes(title), 'the proposed decision of A is opened');
+    assert.equal(/fx1\.[1-9]/.test(JSON.stringify(needs)), false);
+    const mute = expectStatus(await ben.browser.request('PUT', '/api/v1/notification-preferences/mutes', { body: { type: 'project', id: ids.A.project, muted: true } }), 200) as { muted: { id: string; name: string }[] };
+    assert.equal(mute.muted.find((place) => place.id === ids.A.project)?.name, canaries.A.project, 'the muted project of A is opened');
+    expectStatus(await lock(ada.browser, A), 200);
+    try {
+      for (const method of ['GET', 'PATCH'] as const) {
+        const settings = expectStatus(await ben.browser.request(method, '/api/v1/notification-preferences', method === 'PATCH' ? { body: {} } : {}), 200, method) as { muted: { id: string; name: string }[] };
+        assert.equal(settings.muted.find((place) => place.id === ids.A.project)?.name, 'Garden club', `${method}: locked, the place is named by its workspace`);
+      }
+    } finally {
+      expectStatus(await unlock(ada.browser, A, { password: pw }), 200);
+      expectStatus(await ben.browser.request('PUT', '/api/v1/notification-preferences/mutes', { body: { type: 'project', id: ids.A.project, muted: false } }), 200);
+    }
+  });
+
+  test('the morning summary of a person whose newest unread is in A is written content-free and the day is claimed', async () => {
+    await post(ada, `/api/v1/conversations/${ids.A.conversation}/messages`, { body: `@Ben ${randomUUID()}`, clientMessageId: randomUUID() }, 201);
+    let newest: { title: string; source: { workspaceId?: string } } | undefined;
+    for (let attempt = 0; attempt < 60; attempt += 1) {
+      newest = (await inbox()).find((item) => item.readAt === null);
+      if (newest?.source.workspaceId === A) break;
+      await new Promise((resolve) => setTimeout(resolve, 500));
+    }
+    assert.equal(newest?.source.workspaceId, A, 'the newest unread is in A');
+    const now = new Date();
+    await pool.query(`INSERT INTO notification_preferences (user_id) VALUES ($1) ON CONFLICT DO NOTHING`, [ben.id]);
+    await pool.query(`UPDATE notification_preferences SET summary_enabled = true, summary_at = $2, time_zone = 'UTC', summary_last_on = NULL WHERE user_id = $1`,
+      [ben.id, now.getUTCHours() * 60 + now.getUTCMinutes()]);
+    const boss = new PgBoss({ connectionString, migrate: false, supervise: false, schedule: false });
+    await boss.start();
+    try { await boss.send('notification.morning-summary.v1', {}); } finally { await boss.stop({ graceful: false }); }
+    let row: { title: string; body: string; workspace_id: string } | undefined;
+    for (let attempt = 0; attempt < 120 && !row; attempt += 1) {
+      row = (await pool.query<{ title: string; body: string; workspace_id: string }>(`SELECT title, body, workspace_id FROM notifications
+        WHERE user_id = $1 AND delivery_kind = 'morning_summary' ORDER BY created_at DESC LIMIT 1`, [ben.id])).rows[0];
+      if (!row) await new Promise((resolve) => setTimeout(resolve, 500));
+    }
+    assert.ok(row, 'the summary was written');
+    assert.match(row.title, /^(\d+\+? things wait|1 thing waits) in your inbox$/);
+    assert.equal(row.body, 'Your morning summary from Flux');
+    assert.equal(row.workspace_id, A, 'every unread is in A (the rest were marked read): the plain count, in A');
+    const claimed = (await pool.query<{ on: string | null }>(`SELECT summary_last_on::text AS on FROM notification_preferences WHERE user_id = $1`, [ben.id])).rows[0];
+    assert.ok(claimed?.on, 'the day is claimed');
+    await pool.query(`UPDATE notification_preferences SET summary_enabled = false WHERE user_id = $1`, [ben.id]);
   });
 });

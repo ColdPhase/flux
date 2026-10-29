@@ -11,6 +11,19 @@ DECLARE
   who text;
 BEGIN
   IF NEW.workspace_id IS NULL OR NOT workspace_sealed(NEW.workspace_id) THEN RETURN NEW; END IF;
+  -- A read-state or delivery update keeps the stored text, which was checked when written: a later rename of the
+  -- account or the workspace must not make the row impossible to mark read (#712 review P2-1).
+  IF TG_OP = 'UPDATE' AND NEW.title IS NOT DISTINCT FROM OLD.title AND NEW.body IS NOT DISTINCT FROM OLD.body
+    AND NEW.url IS NOT DISTINCT FROM OLD.url AND NEW.workspace_id = OLD.workspace_id THEN RETURN NEW; END IF;
+  -- The link carries ids only: one of the generator's forms with every id replaced (#712 review P3).
+  IF NEW.url IS NOT NULL AND regexp_replace(NEW.url, '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}', 'ID', 'g')
+    NOT IN ('/inbox', '/projects/ID/conversations/ID#message-ID', '/dm/ID#message-ID', '/projects/ID/tasks?open=work:ID',
+      '/projects/ID/tasks?open=decision:ID', '/projects/ID/tasks?open=result:ID', '/projects/ID/live/ID?invitation=ID') THEN
+    RAISE EXCEPTION 'An encrypted workspace''s notification must be content-free' USING ERRCODE = 'FX409', HINT = 'NOTIFICATION_CONTENT_REFUSED';
+  END IF;
+  -- The plain morning summary: a count and a fixed body (#712 review P2-2).
+  IF NEW.delivery_kind = 'morning_summary' AND NEW.body = 'Your morning summary from Flux'
+    AND NEW.title ~ '^([0-9]{1,4}\+ things wait|1 thing waits|[0-9]{1,4} things wait) in your inbox$' THEN RETURN NEW; END IF;
   SELECT name INTO ws FROM workspaces WHERE id = NEW.workspace_id;
   IF NEW.body = '' THEN
     IF NEW.title = ws || '''s encryption keys were changed outside Flux. It stays locked.' THEN RETURN NEW; END IF;

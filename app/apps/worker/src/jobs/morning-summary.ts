@@ -20,6 +20,7 @@ export function summaryPorts(tx: Transaction, boss: Pick<PgBoss, 'send'>, start?
     claimDay: (userId, day) => rows.claimDay(userId, day),
     unread: (userId, limit) => rows.unread(userId, limit),
     insertSummary: (row) => rows.insertSummary(row),
+    sealedWorkspace: (workspaceId) => rows.sealedWorkspace(workspaceId),
     deliverableSubscriptions: (userId) => pushSubscriptionRepository(tx).deliverableIdsForUser(userId),
     enqueuePush: (job) => boss.send(PUSH_SEND_JOB, job, { db: queueDb, singletonKey: `${job.notificationId}:${job.subscriptionId}` }),
   };

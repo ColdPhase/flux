@@ -80,7 +80,7 @@ Under `prefers-reduced-motion: reduce` and Settings → Appearance → Reduce mo
 
 `app/tests/ui/test_light_motion.py` reads what the page asked the browser to run (durations, easing, animated properties) and
 samples boxes frame by frame; `motion_evidence.py` films the journeys and `motion_light_performance.py` measures frame
-times (opt-in, like #155's `motion_performance.py`).
+times (opt-in, like #155's `motion_performance.py`, which asserts the [agreed budgets](adaptive-workspaces.md#agreed-performance-budgets) for navigation feedback, motion end, frame gaps and layout switches, computer and phone).
 
 Review recordings (Chromium and WebKit, light and dark, one short animated WebP per motion), animation logs and Chromium frame times
 for PR #608 are kept in the immutable commit
