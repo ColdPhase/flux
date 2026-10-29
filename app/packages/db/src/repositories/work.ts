@@ -6,7 +6,7 @@ import type { DbExecutor } from './push.js';
 import { referencedTaskIds } from './task-targets.js';
 import { taskUseRows } from './task-use.js';
 import { taskGraphRows } from './task-graph.js';
-import { openField, openRows, openRow, sealFor, sealOf, sealsOf, type FieldSeal } from '../sealing.js';
+import { openField, openRows, openRow, sealFor, sealOf, sealRow, sealsOf, type FieldSeal } from '../sealing.js';
 
 /**
  * Drizzle rows for work items, decisions, results and their links (issues #101, #46). They
@@ -95,11 +95,14 @@ async function recordTaskActivity(db: DbExecutor, before: ReturnType<typeof toWo
   if (!sameActor(before.owner, after.owner)) entries.push({ kind: 'owner', detail: { from: before.owner, to: after.owner } });
   if (before.dueOn !== after.dueOn) entries.push({ kind: 'due', detail: { from: before.dueOn, to: after.dueOn } });
   if (before.title !== after.title) entries.push({ kind: 'title', detail: { from: before.title, to: after.title } });
+  const seal = entries.length ? await sealOf(db, after.workspaceId, { write: true }) : null;
   for (const entry of entries) {
+    const id = randomUUID();
+    const detail = sealRow('project_task_activity', { id, detail: via ? { ...entry.detail, automation: via } : entry.detail }, seal!).detail;
     // clock_timestamp() (not the transaction's now()) keeps entries of one change in order and entries of changes that wait
     // for the same task row in the order they committed.
-    await db.insert(schema.projectTaskActivity).values({ id: randomUUID(), workspaceId: after.workspaceId, projectId: after.projectId, workId: after.id,
-      kind: entry.kind, actorKind: by.kind, actorId: by.id, detail: via ? { ...entry.detail, automation: via } : entry.detail, createdAt: sql`clock_timestamp()` });
+    await db.insert(schema.projectTaskActivity).values({ id, workspaceId: after.workspaceId, projectId: after.projectId, workId: after.id,
+      kind: entry.kind, actorKind: by.kind, actorId: by.id, detail, createdAt: sql`clock_timestamp()` });
   }
 }
 
@@ -112,6 +115,30 @@ function toActivityRecord(row: ActivityRow, position: string) {
     case 'due': return { ...common, kind: 'due' as const, from: detail.from as string | null, to: detail.to as string | null };
     case 'title': return { ...common, kind: 'title' as const, from: detail.from as string, to: detail.to as string };
   }
+}
+
+/** A task row opened (F-030); the same object for a plain workspace. */
+async function openedWork(db: DbExecutor, row: WorkRow): Promise<WorkRow> {
+  const seal = await sealOf(db, row.workspaceId, { write: false });
+  return seal.sealed ? openRow('project_work_items', row, seal) : row;
+}
+/** The opened row of a task in a sealed workspace, or null for a plain one (whose baseline stays in SQL as before). */
+async function sealedWork(db: DbExecutor, id: string): Promise<WorkRow | null> {
+  const [row] = await db.select().from(w).where(eq(w.id, id));
+  if (!row) return null;
+  const seal = await sealOf(db, row.workspaceId, { write: false });
+  return seal.sealed ? openRow('project_work_items', row, seal) : null;
+}
+/** The creation baseline as `jsonb_build_object` builds it (keys and values; timestamps as PostgreSQL's ISO text). */
+function baselineOf(row: WorkRow) {
+  return { title: row.title, outcome: row.outcome, status: row.status, blocker: row.blocker, criteria: row.criteria, ownerUserId: row.ownerUserId,
+    ownerAgentId: row.ownerAgentId, parkedByDecisionId: row.parkedByDecisionId, parkedAt: row.parkedAt ? row.parkedAt.toISOString() : null };
+}
+const canonical = (value: unknown): string => JSON.stringify(value, (_key, v: unknown) => (v && typeof v === 'object' && !Array.isArray(v)
+  ? Object.fromEntries(Object.entries(v as Record<string, unknown>).sort(([a], [b]) => (a < b ? -1 : 1))) : v));
+/** Whether an opened sealed task still equals its opened baseline (the application's form of the SQL comparison). */
+function baselineMatches(row: WorkRow): boolean {
+  return row.creationBaseline !== null && canonical(row.creationBaseline) === canonical(baselineOf(row));
 }
 
 const TABLE_NAMES = new Map<unknown, string>([[w, 'project_work_items'], [d, 'project_decisions'], [r, 'project_results']]);
@@ -142,6 +169,8 @@ export function workRows(db: DbExecutor) {
       return row?.ownerId ?? null;
     },
     async creationBaselineMatches(workId: string) {
+      const sealedRow = await sealedWork(db, workId);
+      if (sealedRow) return baselineMatches(sealedRow);
       const [row] = await db.select({ matches: sql<boolean>`${w.creationBaseline} = jsonb_build_object(
         'title', ${w.title}, 'outcome', ${w.outcome}, 'status', ${w.status}, 'blocker', ${w.blocker},
         'criteria', ${w.criteria}, 'ownerUserId', ${w.ownerUserId}, 'ownerAgentId', ${w.ownerAgentId},
@@ -154,7 +183,17 @@ export function workRows(db: DbExecutor) {
         const [bound] = await db.select({ id: p.id }).from(p).where(and(eq(p.id, proposalId), eq(p.projectId, work.projectId), eq(p.status, 'used'), eq(p.usedWorkId, work.id)));
         if (!bound || work.createdBy.kind !== 'human') throw new Error('Trusted proposal-use origin must be committed in this transaction');
       }
-      await db.update(w).set({ creationOrigin: proposalId ? 'ai_proposal' : work.createdBy.kind === 'agent' ? 'native_agent' : 'human',
+      const origin = proposalId ? 'ai_proposal' as const : work.createdBy.kind === 'agent' ? 'native_agent' as const : 'human' as const;
+      const sealedRow = await sealedWork(db, work.id);
+      if (sealedRow) {
+        // F-030: the baseline of a sealed task is built from the opened row in the application and sealed, never in SQL.
+        const seal = await sealOf(db, work.workspaceId, { write: true });
+        await db.update(w).set({ creationOrigin: origin, creationBaselineVersion: work.version, creationProposalId: proposalId ?? null,
+          creationBaseline: sealRow('project_work_items', { id: work.id, creationBaseline: baselineOf(sealedRow) }, seal).creationBaseline })
+          .where(and(eq(w.id, work.id), isNull(w.creationBaselineVersion)));
+        return;
+      }
+      await db.update(w).set({ creationOrigin: origin,
         creationBaselineVersion: work.version, creationBaseline: sql`jsonb_build_object(
           'title', ${w.title}, 'outcome', ${w.outcome}, 'status', ${w.status}, 'blocker', ${w.blocker},
           'criteria', ${w.criteria}, 'ownerUserId', ${w.ownerUserId}, 'ownerAgentId', ${w.ownerAgentId},
@@ -172,7 +211,9 @@ export function workRows(db: DbExecutor) {
         creatorAgentOwnerUserId: sql<string | null>`(SELECT ${schema.agents.ownerUserId} FROM ${schema.agents}
           WHERE ${w.createdByKind} = 'agent' AND ${schema.agents.id}::text = ${w.createdById})` }).from(w).where(eq(w.id, workId));
       if (!row) return null;
-      const record = toWorkRecord(row.work);
+      const opened = await openedWork(db, row.work);
+      if (opened !== row.work) row.baselineMatches = baselineMatches(opened);
+      const record = toWorkRecord(opened);
       return { reverted: !!record.creationRevertedAt, origin: record.creationOrigin, baselineVersion: record.creationBaselineVersion,
         version: record.version, used: !!record.firstPersistedUseAt, baselineMatches: row.baselineMatches, prerequisites: Number(row.prerequisites),
         createdBy: record.createdBy, owner: record.owner, creatorAgentOwnerUserId: record.creationOrigin === 'native_agent' ? row.creatorAgentOwnerUserId : null };
@@ -181,7 +222,9 @@ export function workRows(db: DbExecutor) {
       await db.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${`task-creation-undo:${projectId}:${by.kind}:${by.id}:${commandId}`}))`);
       const n = schema.taskCreationUndoReceipts;
       const [row] = await db.select().from(n).where(and(eq(n.projectId, projectId), eq(n.actorKind, by.kind), eq(n.actorId, by.id), eq(n.clientCommandId, commandId)));
-      return row ? { workId: row.workId, fingerprint: row.requestFingerprint, noticeId: row.noticeId } : null;
+      if (!row) return null;
+      const opened = openRow('task_creation_undo_receipts', row, await sealOf(db, row.workspaceId, { write: false }));
+      return { workId: opened.workId, fingerprint: opened.requestFingerprint, noticeId: opened.noticeId };
     },
     async revertCreation(work: ReturnType<typeof toWorkRecord>, by: Actor, commandId: string, fingerprint: string) {
       const noticeId = randomUUID();
@@ -190,9 +233,9 @@ export function workRows(db: DbExecutor) {
         creationReversionNoticeId: noticeId, version: sql`${w.version} + 1`, updatedAt: now }).where(eq(w.id, work.id)).returning();
       await db.insert(schema.projectTaskNotices).values({ id: noticeId, workspaceId: work.workspaceId, projectId: work.projectId,
         workId: work.id, kind: 'task.creation_reverted', createdByKind: by.kind, createdById: by.id, sources: [], createdAt: now });
-      await db.insert(schema.taskCreationUndoReceipts).values({ workspaceId: work.workspaceId, projectId: work.projectId, actorKind: by.kind,
-        actorId: by.id, clientCommandId: commandId, requestFingerprint: fingerprint, workId: work.id, noticeId });
-      return { work: toWorkRecord(updated!), noticeId };
+      await db.insert(schema.taskCreationUndoReceipts).values(await sealFor(db, 'task_creation_undo_receipts', work.workspaceId, { workspaceId: work.workspaceId,
+        projectId: work.projectId, actorKind: by.kind, actorId: by.id, clientCommandId: commandId, requestFingerprint: fingerprint, workId: work.id, noticeId }));
+      return { work: toWorkRecord((await openedWork(db, updated!))), noticeId };
     },
     async locate(type: 'work' | 'decision' | 'result', id: string) {
       const table = type === 'work' ? w : type === 'decision' ? d : r;
@@ -229,15 +272,15 @@ export function workRows(db: DbExecutor) {
     async findWork(id: string, options: { lock?: boolean } = {}) {
       const query = db.select().from(w).where(eq(w.id, id));
       const [row] = options.lock ? await query.for('update') : await query;
-      return row ? toWorkRecord(row) : null;
+      return row ? toWorkRecord(await openedWork(db, row)) : null;
     },
     async insertWork(work: { id: string; workspaceId: string; projectId: string; title: string; outcome: string; status: WorkRow['status']; blocker: string | null; waitingFor?: Actor | null; dueOn?: string | null; owner: Actor | null; createdBy: Actor; criteria?: string[]; clientCommandId?: string; requestFingerprint?: string }) {
-      const [row] = await db.insert(w).values({
+      const [row] = await db.insert(w).values(await sealFor(db, 'project_work_items', work.workspaceId, {
         id: work.id, workspaceId: work.workspaceId, projectId: work.projectId, title: work.title, outcome: work.outcome,
         status: work.status, blocker: work.blocker, waitingForUserId: work.waitingFor?.id ?? null, dueOn: work.dueOn ?? null, ...ownerColumns(work.owner), createdByKind: work.createdBy.kind, createdById: work.createdBy.id,
         criteria: work.criteria ?? [], clientCommandId: work.clientCommandId ?? null, requestFingerprint: work.requestFingerprint ?? null,
-      }).returning();
-      return toWorkRecord(row!);
+      })).returning();
+      return toWorkRecord(await openedWork(db, row!));
     },
     /** The durable native-command lock, then the earlier receipt of this exact actor, project, operation and command. */
     async nativeCommand(projectId: string, by: Actor, operation: 'work.update' | 'result.create', commandId: string) {
@@ -246,6 +289,7 @@ export function workRows(db: DbExecutor) {
       const [row] = await db.select().from(n).where(and(eq(n.projectId, projectId), eq(n.actorKind, by.kind), eq(n.actorId, by.id),
         eq(n.operation, operation), eq(n.clientCommandId, commandId)));
       if (!row) return null;
+      row.requestFingerprint = openRow('native_command_receipts', row, await sealOf(db, row.workspaceId, { write: false })).requestFingerprint;
       const object = row.operation === 'work.update' ? { type: 'work' as const, id: row.workId!, version: row.workVersion! } : { type: 'result' as const, id: row.resultId! };
       return { operation: row.operation, commandId: row.clientCommandId, fingerprint: row.requestFingerprint, object, messageIds: row.messageIds };
     },
@@ -253,7 +297,8 @@ export function workRows(db: DbExecutor) {
       receipt: { operation: 'work.update' | 'result.create'; commandId: string; fingerprint: string;
         object: { type: 'work'; id: string; version: number } | { type: 'result'; id: string }; messageIds: string[] }) {
       await db.insert(schema.nativeCommandReceipts).values({ ...scope, actorKind: by.kind, actorId: by.id, operation: receipt.operation,
-        clientCommandId: receipt.commandId, requestFingerprint: receipt.fingerprint,
+        clientCommandId: receipt.commandId, requestFingerprint: (await sealFor(db, 'native_command_receipts', scope.workspaceId,
+          { projectId: scope.projectId, actorKind: by.kind, actorId: by.id, operation: receipt.operation, clientCommandId: receipt.commandId, requestFingerprint: receipt.fingerprint })).requestFingerprint,
         workId: receipt.object.type === 'work' ? receipt.object.id : null, workVersion: receipt.object.type === 'work' ? receipt.object.version : null,
         resultId: receipt.object.type === 'result' ? receipt.object.id : null, messageIds: receipt.messageIds });
     },
@@ -261,7 +306,9 @@ export function workRows(db: DbExecutor) {
       await db.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${`work-create:${projectId}:${by.kind}:${by.id}:${commandId}`}))`);
       const [row] = await db.select().from(w).where(and(eq(w.projectId, projectId), eq(w.createdByKind, by.kind),
         eq(w.createdById, by.id), eq(w.clientCommandId, commandId)));
-      return row ? { work: toWorkRecord(row), fingerprint: row.requestFingerprint! } : null;
+      if (!row) return null;
+      const opened = await openedWork(db, row);
+      return { work: toWorkRecord(opened), fingerprint: opened.requestFingerprint! };
     },
     async insertCreationNotice(work: ReturnType<typeof toWorkRecord>, sources: ObjectRef[]) {
       await db.insert(schema.projectTaskNotices).values({ id: randomUUID(), workspaceId: work.workspaceId,
@@ -269,9 +316,10 @@ export function workRows(db: DbExecutor) {
         createdById: work.createdBy.id, sources, createdAt: work.createdAt });
     },
     async insertTaskUpdate(work: ReturnType<typeof toWorkRecord>, update: { kind: 'task.blocked' | 'task.unblocked'; by: Actor; waitingFor: Actor | null; reason: string | null }) {
-      await db.insert(schema.projectTaskUpdates).values({ id: randomUUID(), workspaceId: work.workspaceId, projectId: work.projectId,
+      const id = randomUUID();
+      await db.insert(schema.projectTaskUpdates).values({ id, workspaceId: work.workspaceId, projectId: work.projectId,
         workId: work.id, kind: update.kind, createdByKind: update.by.kind, createdById: update.by.id,
-        waitingForUserId: update.waitingFor?.id ?? null, reason: update.reason });
+        waitingForUserId: update.waitingFor?.id ?? null, reason: (await sealFor(db, 'project_task_updates', work.workspaceId, { id, reason: update.reason })).reason });
     },
     /** Creation notices and blocked/unblocked lines (#550) as one stream, newest first. */
     async listTaskNotices(projectId: string, window: Window) {
@@ -280,16 +328,22 @@ export function workRows(db: DbExecutor) {
       const [count] = await db.select({ total: sql<number>`(SELECT count(*) FROM ${n} WHERE ${n.projectId} = ${projectId}) + (SELECT count(*) FROM ${u} WHERE ${u.projectId} = ${projectId})` }).from(sql`(SELECT 1) AS one`);
       const result = await db.execute(sql`
         SELECT e.*, w.title AS work_title, w.number AS work_number FROM (
-          SELECT n.id, n.workspace_id, n.project_id, n.work_id, n.kind, n.created_by_kind, n.created_by_id, n.sources, NULL::text AS waiting_for_user_id, NULL::text AS reason, n.created_at
+          SELECT n.id, n.workspace_id, n.project_id, n.work_id, n.kind, n.created_by_kind, n.created_by_id, n.sources, NULL::text AS waiting_for_user_id, NULL::text AS reason, n.created_at, false AS is_update
             FROM project_task_notices n WHERE n.project_id = ${projectId}
           UNION ALL
-          SELECT u.id, u.workspace_id, u.project_id, u.work_id, u.kind, u.created_by_kind, u.created_by_id, '[]'::jsonb AS sources, u.waiting_for_user_id, u.reason, u.created_at
+          SELECT u.id, u.workspace_id, u.project_id, u.work_id, u.kind, u.created_by_kind, u.created_by_id, '[]'::jsonb AS sources, u.waiting_for_user_id, u.reason, u.created_at, true
             FROM project_task_updates u WHERE u.project_id = ${projectId}
         ) e JOIN project_work_items w ON w.id = e.work_id AND w.project_id = e.project_id AND w.workspace_id = e.workspace_id
         ORDER BY e.created_at DESC, e.id DESC LIMIT ${window.limit} OFFSET ${window.offset}`);
       const rows = result.rows as { id: string; workspace_id: string; project_id: string; work_id: string; kind: 'task.created' | 'task.creation_reverted' | 'task.blocked' | 'task.unblocked';
         created_by_kind: 'human' | 'agent'; created_by_id: string; sources: import('@flux/contracts').ObjectRef[]; waiting_for_user_id: string | null; reason: string | null;
-        created_at: Date | string; work_title: string; work_number: number }[];
+        created_at: Date | string; work_title: string; work_number: number; is_update: boolean }[];
+      const seals = await sealsOf(db, rows.map((row) => row.workspace_id), { write: false });
+      for (const row of rows) {
+        const seal = seals.get(row.workspace_id)!;
+        row.work_title = openField('project_work_items', 'title', [row.work_id], row.work_title, seal)!;
+        if (row.is_update) row.reason = openField('project_task_updates', 'reason', [row.id], row.reason, seal) ?? null;
+      }
       return { total: Number(count?.total ?? 0), items: rows.map((row) => ({ id: row.id,
         workspaceId: row.workspace_id, projectId: row.project_id, workId: row.work_id, workTitle: row.work_title, workNumber: row.work_number, kind: row.kind,
         createdBy: { kind: row.created_by_kind, id: row.created_by_id }, sources: row.sources,
@@ -344,13 +398,18 @@ export function workRows(db: DbExecutor) {
       by: Actor, via?: 'github_rule') {
       // Every path that changes a task ends here, so this is the one place its activity (#488) is kept: the row as it was,
       // then the change, then one entry per field that really differs, all in the caller's transaction. The caller holds the row.
-      const [previous] = await db.select().from(w).where(eq(w.id, id)).for('update');
-      const [row] = await db.update(w).set({
+      const [stored] = await db.select().from(w).where(eq(w.id, id)).for('update');
+      const previous = stored && await openedWork(db, stored);
+      const seal = await sealOf(db, stored!.workspaceId, { write: true });
+      const text = sealRow('project_work_items', {
         ...(changes.title !== undefined ? { title: changes.title } : {}),
         ...(changes.outcome !== undefined ? { outcome: changes.outcome } : {}),
         ...(changes.criteria !== undefined ? { criteria: changes.criteria } : {}),
-        ...(changes.status !== undefined ? { status: changes.status } : {}),
         ...(changes.blocker !== undefined ? { blocker: changes.blocker } : {}),
+      }, seal, { id });
+      const [row] = await db.update(w).set({
+        ...text,
+        ...(changes.status !== undefined ? { status: changes.status } : {}),
         // Whoever moves a task out of Blocked, a person or a GitHub rule, also ends the wait.
         ...(changes.waitingFor !== undefined ? { waitingForUserId: changes.waitingFor?.id ?? null }
           : changes.status !== undefined && changes.status !== 'blocked' ? { waitingForUserId: null } : {}),
@@ -359,7 +418,7 @@ export function workRows(db: DbExecutor) {
         ...(changes.parked !== undefined ? { parkedByDecisionId: changes.parked?.decisionId ?? null, parkedAt: changes.parked?.at ?? null } : {}),
         version: sql`${w.version} + 1`, updatedAt: new Date(),
       }).where(eq(w.id, id)).returning();
-      const next = toWorkRecord(row!);
+      const next = toWorkRecord(openRow('project_work_items', row!, seal));
       await recordTaskActivity(db, previous ? toWorkRecord(previous) : null, next, by, via);
       return next;
     },
@@ -370,7 +429,9 @@ export function workRows(db: DbExecutor) {
       const rows = await db.select({ row: a, position }).from(a)
         .where(and(eq(a.workId, workId), window.before ? sql`(${a.createdAt}, ${a.id}) < (${window.before.position}::timestamptz, ${window.before.id}::uuid)` : undefined))
         .orderBy(desc(a.createdAt), desc(a.id)).limit(window.limit + 1);
-      return { hasMore: rows.length > window.limit, items: rows.slice(0, window.limit).map(({ row, position }) => toActivityRecord(row, position)) };
+      const page = rows.slice(0, window.limit);
+      const opened = await openRows(db, 'project_task_activity', page.map(({ row }) => row));
+      return { hasMore: rows.length > window.limit, items: page.map(({ position }, index) => toActivityRecord(opened[index]!, position)) };
     },
 
     async findDecision(id: string, options: { lock?: boolean } = {}) {

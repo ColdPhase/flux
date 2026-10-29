@@ -15,7 +15,7 @@ import { addMember, expectStatus, person, workspace, type Person } from './suppo
 let ada: Person; let ben: Person; let cy: Person;
 let A: string; let B: string;
 const pw = passphrase();
-const kinds = ['project', 'goal', 'message', 'reply', 'large', 'dmTitle', 'dmMessage', 'decision', 'rationale', 'result', 'evidence', 'draft', 'draftBody', 'draftEdit'] as const;
+const kinds = ['project', 'goal', 'message', 'reply', 'large', 'dmTitle', 'dmMessage', 'decision', 'rationale', 'result', 'evidence', 'draft', 'draftBody', 'draftEdit', 'task', 'outcome', 'criterion', 'blocker', 'taskRename'] as const;
 type Kind = typeof kinds[number];
 const canaries: Record<'A' | 'B', Record<Kind, string>> = { A: {} as Record<Kind, string>, B: {} as Record<Kind, string> };
 for (const side of ['A', 'B'] as const) {
@@ -23,7 +23,7 @@ for (const side of ['A', 'B'] as const) {
   // Over 8 KiB of repetitive text, so PostgreSQL TOASTs and compresses it (the dump decompresses; the scan reads values).
   canaries[side].large = `${canaries[side].large} ${'garden '.repeat(1500).trim()}`;
 }
-const ids: Record<'A' | 'B', { project: string; conversation: string; dm: string; decision: string; result: string; draft: string }> = {} as never;
+const ids: Record<'A' | 'B', { project: string; conversation: string; dm: string; decision: string; result: string; draft: string; task: string }> = {} as never;
 const key = () => ({ 'idempotency-key': randomUUID() });
 
 async function post(who: Person, path: string, body: unknown, status: number, headers: Record<string, string> = {}) {
@@ -46,7 +46,14 @@ async function writeEverything(side: 'A' | 'B', ws: string) {
   const result = await post(ada, `/api/v1/projects/${project.id}/results`, { title: c.result, finding: 'positive', evidence: c.evidence }, 201);
   const draft = await post(ada, `/api/v1/workspaces/${ws}/drafts`, { title: c.draft, body: c.draftBody }, 201);
   expectStatus(await ada.browser.request('PATCH', `/api/v1/drafts/${draft.id}`, { body: { body: c.draftEdit }, headers: { ...key(), 'if-match': `"${draft.version}"` } }), 200, 'draft edit');
-  ids[side] = { project: project.id, conversation: String(conversation.id), dm: String(dm.id), decision: String(decision.id), result: String(result.id), draft: String(draft.id) };
+  // S2a-2: a task with every text field, a rename (activity), a move into Blocked with its reason (an update), all by PATCH with a key.
+  const task = await post(ada, `/api/v1/projects/${project.id}/work`, { title: c.task, outcome: c.outcome, criteria: [c.criterion] }, 201);
+  const renamed = expectStatus(await ada.browser.request('PATCH', `/api/v1/work/${task.id}`, { body: { title: c.taskRename },
+    headers: { ...key(), 'if-match': `"${task.version}"` } }), 200, 'task rename') as { version: number };
+  expectStatus(await ada.browser.request('PATCH', `/api/v1/work/${task.id}`, { body: { status: 'blocked', blocker: c.blocker },
+    headers: { ...key(), 'if-match': `"${renamed.version}"` } }), 200, 'task blocked');
+  ids[side] = { project: project.id, conversation: String(conversation.id), dm: String(dm.id), decision: String(decision.id), result: String(result.id), draft: String(draft.id),
+    task: String(task.id) };
 }
 
 /** Every row of every table of the public schema, as text. */
@@ -87,7 +94,8 @@ describe('F-030 S2a-1: sealed content in the repositories', () => {
       assert.deepEqual(conversation.messages.map((m) => m.body), [c.message, c.reply, c.large], side);
       assert.equal(conversation.firstMessageBody, c.message);
       const roots = expectStatus(await ben.browser.request('GET', `/api/v1/projects/${id.project}/conversation-roots`), 200) as { roots: { message: { body: string } }[] };
-      assert.deepEqual(roots.roots.map((root) => root.message.body), [c.message]);
+      // The move into Blocked posts its reason into the task's discussion, which is a root of its own.
+      assert.deepEqual(roots.roots.map((root) => root.message.body), [c.message, c.blocker]);
       const dm = expectStatus(await ben.browser.request('GET', `/api/v1/dms/${id.dm}`), 200) as { title: string | null; messages: { body: string }[] };
       assert.deepEqual({ title: dm.title, bodies: dm.messages.map((m) => m.body) }, { title: c.dmTitle, bodies: [c.dmMessage] }, side);
       const dms = expectStatus(await ben.browser.request('GET', `/api/v1/workspaces/${side === 'A' ? A : B}/dms`), 200) as { items: { title: string | null; lastMessageBody?: string | null }[] };
@@ -96,6 +104,11 @@ describe('F-030 S2a-1: sealed content in the repositories', () => {
       assert.deepEqual({ ...decision, status: decision.status }, { ...decision, title: c.decision, rationale: c.rationale, status: 'accepted' }, side);
       const notices = expectStatus(await ben.browser.request('GET', projectObjectNoticesPath(id.project)), 200) as { items: { title: string }[] };
       assert.deepEqual(new Set(notices.items.map((item) => item.title)), new Set([c.decision, c.result]), `${side}: object notices (#696) open their titles`);
+      const task = expectStatus(await ben.browser.request('GET', `/api/v1/work/${id.task}`), 200) as { title: string; outcome: string; criteria: string[]; blocker: string | null; status: string };
+      assert.deepEqual({ title: task.title, outcome: task.outcome, criteria: task.criteria, blocker: task.blocker, status: task.status },
+        { title: c.taskRename, outcome: c.outcome, criteria: [c.criterion], blocker: c.blocker, status: 'blocked' }, `${side}: task`);
+      const activity = JSON.stringify((await ben.browser.request('GET', `/api/v1/work/${id.task}/activity`)).json);
+      assert.ok(activity.includes(c.task) && activity.includes(c.taskRename), `${side}: the title change is in the activity`);
       const draft = expectStatus(await ada.browser.request('GET', `/api/v1/drafts/${id.draft}`), 200) as { title: string; body: string };
       assert.deepEqual({ title: draft.title, body: draft.body }, { title: c.draft, body: c.draftEdit });
     }
@@ -147,6 +160,30 @@ describe('F-030 S2a-1: sealed content in the repositories', () => {
     }
   });
 
+  test('the reads computed in the application open sealed titles: chooser search, Since-you-left and task notices (S2a-2a review)', async () => {
+    for (const [side, ws] of [['A', A], ['B', B]] as const) {
+      const c = canaries[side]; const id = ids[side];
+      // A twin with the same title in another project of the workspace must not be a candidate here.
+      const other = await post(ada, `/api/v1/workspaces/${ws}/projects`, { name: `Other ${side}`, visibility: 'workspace' }, 201);
+      const twin = await post(ada, `/api/v1/projects/${String(other.id)}/work`, { title: c.taskRename }, 201);
+      const needle = c.taskRename.slice(8, 30).toUpperCase(); // a case-folded substring from the middle
+      const chooser = await ben.browser.request('GET', `/api/v1/projects/${id.project}/work-view?purpose=choices&choice=pivot_work&q=${encodeURIComponent(needle)}`);
+      expectStatus(chooser, 200, `${side}: chooser`);
+      const items = (chooser.json as { items: { id: string; title: string }[] }).items;
+      assert.deepEqual(items.map((item) => [item.id, item.title]), [[id.task, c.taskRename]], `${side}: the chooser finds the task by a substring of its sealed title, not the other project's twin`);
+      assert.notEqual(String(twin.id), id.task);
+      const none = await ben.browser.request('GET', `/api/v1/projects/${id.project}/work-view?purpose=choices&choice=pivot_work&q=${encodeURIComponent('no such words %_')}`);
+      assert.deepEqual((none.json as { items: unknown[] }).items, [], `${side}: % and _ stay literal`);
+      const since = await ben.browser.request('GET', `/api/v1/return?place=project&id=${id.project}&from=24h&scope=all`);
+      expectStatus(since, 200, `${side}: Since-you-left`);
+      assert.ok(since.text.includes(c.taskRename), `${side}: Since-you-left shows the task title`);
+      const notices = await ben.browser.request('GET', `/api/v1/projects/${id.project}/task-notices`);
+      expectStatus(notices, 200, `${side}: task notices`);
+      assert.ok(notices.text.includes(c.taskRename) && notices.text.includes(c.blocker), `${side}: task notices show the title and the blocked reason`);
+      for (const response of [chooser, since, notices]) assert.equal(/fx1\.[1-9]/.test(response.text), false, `${side}: no envelope reaches a reader`);
+    }
+  });
+
   test('A\'s rows hold envelopes, B\'s plain text; the draft versions of A are written by the application, sealed', async () => {
     const one = async (query: string, values: unknown[]) => (await pool.query(query, values)).rows[0] as Record<string, unknown>;
     for (const [side, ws] of [['A', A], ['B', B]] as const) {
@@ -165,6 +202,12 @@ describe('F-030 S2a-1: sealed content in the repositories', () => {
       const versions = (await pool.query(`SELECT v.version, flux_is_sealed(v.title) AS title, flux_is_sealed(v.body) AS body FROM draft_versions v
         JOIN drafts d ON d.id = v.draft_id WHERE d.workspace_id = $1 ORDER BY v.version`, [ws])).rows;
       assert.deepEqual(versions, [{ version: 1, title: sealed, body: sealed }, { version: 2, title: sealed, body: sealed }], `${side}: one row per version`);
+      const work = await one(`SELECT flux_is_sealed(title) AS title, flux_is_sealed(outcome) AS outcome, flux_is_sealed(blocker) AS blocker, flux_is_sealed(criteria) AS criteria
+        FROM project_work_items WHERE id = $1`, [ids[side].task]);
+      assert.deepEqual(work, { title: sealed, outcome: sealed, blocker: sealed, criteria: sealed }, `${side}: task`);
+      const activity = (await pool.query(`SELECT bool_and(flux_is_sealed(detail)) AS detail, count(*)::int AS n FROM project_task_activity WHERE workspace_id = $1`, [ws])).rows[0];
+      assert.ok(activity.n >= 2);
+      assert.equal(activity.detail, sealed, `${side}: activity`);
       const keys = (await pool.query(`SELECT bool_and(flux_is_sealed(response_body)) AS body, bool_and(flux_is_sealed(request_hash)) AS hash, count(*)::int AS n
         FROM idempotency_keys WHERE workspace_id = $1 AND response_body IS NOT NULL`, [ws])).rows[0];
       assert.ok(keys.n >= 5, `${side}: scoped idempotency rows (${keys.n})`);

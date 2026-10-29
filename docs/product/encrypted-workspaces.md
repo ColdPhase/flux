@@ -1249,8 +1249,19 @@ token alone is not enough (S1 review): a real deployment never holds a half-seal
     decision, result, doc version, thought or published file in A fail with `WORKSPACE_ENCRYPTED_AI_OFF`
     (they now skip a sealed workspace), and hashes an AAD over 1024 bytes into the HKDF `info`
     (`[flux seal long v1, SHA-256(AAD)]`; the AAD itself is unchanged), so no identity can make sealing throw.
-  - **S2a-2**: tasks (and their activity, updates, plan intents and receipts), docs and materials, maps,
-    files, mandatory command scopes with the account-operation list and its backstop, the notification
+  - **S2a-2a** (migration 0121): tasks with their activity, blocked/unblocked reasons, plan intents and the
+    Undo and native-command receipts, opened in every Work read; the chooser's title filter and the creation
+    baseline computed in the application for a sealed workspace; mandatory command scopes (an object, a
+    resolver run after the session check, or `'account'` from `IDEMPOTENCY_ACCOUNT_OPERATIONS`, which 0121
+    seeds into `idempotency_account_operations` and enforces with `IDEMPOTENCY_SCOPE_REQUIRED`); and the
+    S2a-1 review's hardening: the sealing functions run with a pinned `search_path`, and the backstops whose
+    row names its workspace run only for a sealed one (`WHEN workspace_sealed(...)`). 0120's relaxed checks
+    were validated in place; checks relaxed later use `NOT VALID` unless the catalog compatibility check
+    requires a validated one (the Undo receipt check does).
+  - **Before S2c** (S2a-1 review): `holder_mac` must also cover the set of key versions that have a
+    confirmation, so a deleted `confirm` is tampering rather than a fall-back to the commitment chain.
+  - **S2a-2b and later**: docs and materials, maps,
+    files, the notification
     and event backstops with content-free notifications, error-path redaction, `sealed_job_waits` and
     the resume job, the SQL source scan, cross-workspace `lockedWorkspaces`, the replacement of the
     route-level gate, `./flux export` refusal and restore truncation, and AC-6, AC-9, AC-10 and AC-7.

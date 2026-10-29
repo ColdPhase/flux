@@ -2,6 +2,7 @@ import { sql, type SQL } from 'drizzle-orm';
 import type { PrincipalRef, WorkGroup, WorkObjectType, WorkReadCursor } from '@flux/contracts';
 import * as schema from '../schema.js';
 import type { DbExecutor } from './push.js';
+import { openRows, sealOf } from '../sealing.js';
 
 /** Structural counterpart of core's normalized selector; DB never imports the core layer. */
 export type NativeWorkViewSelector =
@@ -21,10 +22,16 @@ const active = sql`${w.creationRevertedAt} IS NULL`;
 const workRank = sql`CASE WHEN ${unfinished} AND ${parked} THEN 4 WHEN ${w.status} = 'in_progress' THEN 1 WHEN ${w.status} = 'blocked' THEN 2 WHEN ${w.status} = 'open' THEN 3 ELSE 5 END`;
 const decisionRank = sql`CASE ${d.status} WHEN 'proposed' THEN 0 WHEN 'accepted' THEN 6 ELSE 7 END`;
 
-function literalTitle(column: SQL, q: string) {
+/**
+ * The chooser's title filter. In a sealed workspace (F-030) titles are envelopes, so SQL never filters them: the caller
+ * opens the project's titles in the application and passes the matching ids (`matching`), which replace the ILIKE.
+ */
+function literalTitle(column: SQL, q: string, idColumn: SQL, matching?: readonly string[]) {
+  // One array parameter, however many ids (a bind parameter per id would meet PostgreSQL's 65,535 limit).
+  if (matching) return matching.length ? sql`${idColumn} = ANY(${`{${matching.join(',')}}`}::uuid[])` : sql`false`;
   return q ? sql`${column} ILIKE ${'%'+q.replace(/[\\%_]/g, '\\$&')+'%'} ESCAPE ${'\\'}` : sql`true`;
 }
-export function nativeWorkViewKeySource(projectId: string, actor: PrincipalRef, selection: NativeWorkViewSelector): SQL {
+export function nativeWorkViewKeySource(projectId: string, actor: PrincipalRef, selection: NativeWorkViewSelector, matching?: readonly string[]): SQL {
   const parts: SQL[] = [];
   if (selection.purpose === 'tasks') {
     const group = selection.group;
@@ -45,12 +52,12 @@ export function nativeWorkViewKeySource(projectId: string, actor: PrincipalRef, 
     }
   } else if (selection.choice === 'accepted_decisions' || (selection.choice === 'doc_refs' && selection.kind === 'decision')) {
     const predicate = selection.choice === 'accepted_decisions' ? sql`${d.status} = 'accepted'` : sql`true`;
-    parts.push(sql`SELECT 'decision'::text AS kind, ${d.id} AS id, ${d.createdAt} AS created_at, 0 AS rank FROM ${d} WHERE ${d.projectId} = ${projectId}::uuid AND (${predicate}) AND (${literalTitle(sql`${d.title}`, selection.q)})`);
+    parts.push(sql`SELECT 'decision'::text AS kind, ${d.id} AS id, ${d.createdAt} AS created_at, 0 AS rank FROM ${d} WHERE ${d.projectId} = ${projectId}::uuid AND (${predicate}) AND (${literalTitle(sql`${d.title}`, selection.q, sql`${d.id}`, matching)})`);
   } else if (selection.choice === 'doc_refs' && selection.kind === 'result') {
-    parts.push(sql`SELECT 'result'::text AS kind, ${r.id} AS id, ${r.createdAt} AS created_at, 0 AS rank FROM ${r} WHERE ${r.projectId} = ${projectId}::uuid AND (${literalTitle(sql`${r.title}`, selection.q)})`);
+    parts.push(sql`SELECT 'result'::text AS kind, ${r.id} AS id, ${r.createdAt} AS created_at, 0 AS rank FROM ${r} WHERE ${r.projectId} = ${projectId}::uuid AND (${literalTitle(sql`${r.title}`, selection.q, sql`${r.id}`, matching)})`);
   } else {
     const predicate = selection.choice === 'doc_refs' ? sql`true` : selection.choice === 'pivot_work' ? sql`${unfinished} AND NOT ${parked}` : selection.choice === 'parked_work' ? sql`${unfinished} AND ${parked} AND ${w.parkedByDecisionId} = ${selection.decisionId}::uuid` : unfinished;
-    parts.push(sql`SELECT 'work'::text AS kind, ${w.id} AS id, ${w.createdAt} AS created_at, 0 AS rank FROM ${w} WHERE ${w.projectId} = ${projectId}::uuid AND ${active} AND (${predicate}) AND (${literalTitle(sql`${w.title}`, selection.q)})`);
+    parts.push(sql`SELECT 'work'::text AS kind, ${w.id} AS id, ${w.createdAt} AS created_at, 0 AS rank FROM ${w} WHERE ${w.projectId} = ${projectId}::uuid AND ${active} AND (${predicate}) AND (${literalTitle(sql`${w.title}`, selection.q, sql`${w.id}`, matching)})`);
   }
   return sql.join(parts, sql` UNION ALL `);
 }
@@ -104,10 +111,36 @@ export async function nativeReadKeyWindow<Kind extends string>(db: DbExecutor, s
     hasAfter: items.length ? before + items.length < total : ownedCursor?.direction === 'previous' && laterCount > 0 };
 }
 
+/** For a chooser with text in a sealed workspace: the ids whose opened title contains it (case-insensitive), else undefined. */
+/**
+ * How many of a project's newest tasks, decisions or results a chooser search in a sealed workspace opens. Each costs
+ * about 20 µs of decryption on the event loop (S2a-2a review, measured), so the scan is bounded; older objects are found
+ * by browsing, not by typing. S2b's in-RAM index replaces this scan.
+ */
+export const SEALED_CHOOSER_SCAN_LIMIT = 2000;
+
+async function sealedMatches(db: DbExecutor, projectId: string, selection: NativeWorkViewSelector): Promise<string[] | undefined> {
+  if (selection.purpose !== 'choices' || !selection.q) return undefined;
+  const [project] = (await db.execute<{ workspace_id: string }>(sql`SELECT workspace_id FROM projects WHERE id = ${projectId}::uuid`)).rows;
+  if (!project || !(await sealOf(db, project.workspace_id, { write: false })).sealed) return undefined;
+  const kind = selection.choice === 'accepted_decisions' || (selection.choice === 'doc_refs' && selection.kind === 'decision') ? 'decision'
+    : selection.choice === 'doc_refs' && selection.kind === 'result' ? 'result' : 'work';
+  const table = kind === 'decision' ? d : kind === 'result' ? r : w;
+  const name = kind === 'decision' ? 'project_decisions' : kind === 'result' ? 'project_results' : 'project_work_items';
+  const rows = await openRows(db, name, await db.select({ id: table.id, workspaceId: table.workspaceId, title: table.title }).from(table)
+    .where(sql`${table.projectId} = ${projectId}::uuid`).orderBy(sql`${table.createdAt} DESC, ${table.id} DESC`).limit(SEALED_CHOOSER_SCAN_LIMIT));
+  const q = selection.q.toLowerCase();
+  return rows.filter((row) => row.title.toLowerCase().includes(q)).map((row) => row.id);
+}
+
 /** Caller supplies its read-only REPEATABLE READ executor AFTER central access/selector validation. */
 export function nativeWorkReadKeys(db: DbExecutor) {
   return {
-    view: (projectId: string, actor: PrincipalRef, selection: NativeWorkViewSelector, limit: number, cursor?: WorkReadCursor): Promise<NativeWorkKeyPage> =>
-      nativeReadKeyWindow<WorkObjectType>(db, nativeWorkViewKeySource(projectId, actor, selection), limit, cursor),
+    view: async (projectId: string, actor: PrincipalRef, selection: NativeWorkViewSelector, limit: number, cursor?: WorkReadCursor): Promise<NativeWorkKeyPage> => {
+      // Snapshot every input before the first await, as nativeReadKeyWindow does: a caller may mutate them meanwhile.
+      const owned = { actor: { ...actor }, selection: { ...selection }, cursor: cursor ? { ...cursor, boundary: { ...cursor.boundary } } : undefined };
+      const matching = await sealedMatches(db, projectId, owned.selection);
+      return nativeReadKeyWindow<WorkObjectType>(db, nativeWorkViewKeySource(projectId, owned.actor, owned.selection, matching), limit, owned.cursor);
+    },
   };
 }

@@ -1,7 +1,10 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { before, describe, test } from 'node:test';
+import { IDEMPOTENCY_ACCOUNT_OPERATIONS } from '@flux/contracts';
 import { SEALED_COLUMNS, TABLE_CLASSES, VISIBLE_COLUMNS, workspaceEncryptionRows, type DbExecutor } from '@flux/db';
+import { readdir, readFile } from 'node:fs/promises';
+import { join } from 'node:path';
 import { db, pool } from './support/db.js';
 import { createSealed, passphrase } from './support/encryption.js';
 import { person, workspace, type Person } from './support/people.js';
@@ -160,6 +163,71 @@ describe('F-030 registry against the live catalog', () => {
         [id, ws, ada.id, ws === A ? `fx1.1.${'C'.repeat(40)}` : 'Plain title']);
       assert.equal((await pool.query(`SELECT count(*)::int AS n FROM draft_versions WHERE draft_id = $1`, [id])).rows[0].n, expected);
     }
+  });
+});
+
+describe('F-030 pinned search_path (S2a-2a review P2-1)', () => {
+  test('every function that decides on a seal runs with an explicit search_path: pg_catalog first, no "$user", pg_temp last', async () => {
+    const rows = (await pool.query<{ fn: string; config: string[] | null }>(`SELECT p.oid::regprocedure::text AS fn, p.proconfig AS config FROM pg_proc p
+      WHERE p.pronamespace = 'public'::regnamespace AND (p.prosrc ~ '(workspace_sealed|flux_is_sealed)' OR p.proname IN ('workspace_sealed', 'flux_is_sealed'))
+      ORDER BY 1`)).rows;
+    assert.ok(rows.length >= 9, `sealing functions found: ${rows.length}`);
+    for (const name of ['search_put', 'workspace_ai_policy_encrypted', 'flux_sealed_backstop', 'sealed_workspace_no_ai', 'preserve_draft_version'])
+      assert.ok(rows.some((row) => row.fn.startsWith(`${name}(`)), `${name} is among them`);
+    const unpinned = rows.filter((row) => {
+      const path = (row.config ?? []).find((entry) => entry.startsWith('search_path='));
+      return path !== 'search_path=pg_catalog, public, pg_temp';
+    }).map((row) => `${row.fn}: ${JSON.stringify(row.config)}`);
+    assert.deepEqual(unpinned, []);
+  });
+
+  test('a shadowing workspace_sealed in a schema named after the role, or first in the session\'s path, changes nothing', async () => {
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      const role = (await client.query<{ name: string }>('SELECT current_user AS name')).rows[0]!.name;
+      for (const schema of [role, 'evil']) {
+        await client.query(`CREATE SCHEMA IF NOT EXISTS "${schema}"`);
+        await client.query(`CREATE FUNCTION "${schema}".workspace_sealed(uuid) RETURNS boolean LANGUAGE sql AS 'SELECT false'`);
+      }
+      await client.query(`SET LOCAL search_path = evil, "$user", public`);
+      await client.query(`SELECT search_put('probe:y', 'work', $1, 'aud', NULL, 'o', NULL, 1, 'open', 'plain-title', 'plain-body', 'human', 'x', now())`, [A]);
+      assert.deepEqual((await client.query(`SELECT sealed, title FROM search_documents WHERE doc_key = 'probe:y'`)).rows[0], { sealed: true, title: '' });
+      await client.query('SAVEPOINT t');
+      await assert.rejects(client.query(`UPDATE workspace_ai_policies SET state = 'allowed' WHERE workspace_id = $1`, [A]), { hint: 'WORKSPACE_ENCRYPTED_AI_OFF' });
+      await client.query('ROLLBACK TO SAVEPOINT t');
+      await assert.rejects(client.query(`INSERT INTO projects (id, workspace_id, name, created_by) VALUES (gen_random_uuid(), $1, 'plain', $2)`, [A, ada.id]),
+        { hint: 'WORKSPACE_PLAINTEXT_REFUSED' });
+    } finally { await client.query('ROLLBACK'); client.release(); }
+  });
+});
+
+describe('F-030 idempotency scopes (S2a-2)', () => {
+  test('the database list of account operations is the contract\'s; an unscoped row of any other operation is refused', async () => {
+    const live = (await pool.query<{ operation: string }>('SELECT operation FROM idempotency_account_operations ORDER BY operation')).rows.map((row) => row.operation);
+    assert.deepEqual(live, Object.keys(IDEMPOTENCY_ACCOUNT_OPERATIONS).sort());
+    for (const reason of Object.values(IDEMPOTENCY_ACCOUNT_OPERATIONS)) assert.ok(reason.length > 10);
+    const insert = (operation: string, workspaceId: string | null) => pool.query(`INSERT INTO idempotency_keys (id, principal, workspace_id, operation, key, request_hash,
+      response_status, response_body, expires_at) VALUES ($1, 'human:x', $2, $3, $4, 'h', 200, 'null', now() + interval '1 hour')`, [randomUUID(), workspaceId, operation, randomUUID()]);
+    await assert.rejects(insert('PATCH /api/v1/docs/:docId', null), { hint: 'IDEMPOTENCY_SCOPE_REQUIRED' });
+    await insert('POST /api/v1/workspaces', null);
+    await insert('PATCH /api/v1/docs/:docId', B);
+    await assert.rejects(insert('PATCH /api/v1/docs/:docId', A), { hint: 'WORKSPACE_PLAINTEXT_REFUSED' }, 'a row of A needs a sealed body');
+  });
+
+  test('every command declares a scope: no route passes scope null; account scopes stay in the list\'s modules', async () => {
+    const files: string[] = [];
+    const walk = async (dir: string) => { for (const entry of await readdir(dir, { withFileTypes: true })) {
+      const path = join(dir, entry.name); if (entry.isDirectory()) await walk(path); else if (path.endsWith('.ts')) files.push(path); } };
+    await walk('apps/server/src');
+    const unscoped: string[] = []; const account: string[] = [];
+    for (const file of files) {
+      const text = await readFile(file, 'utf8');
+      if (/operation:[^\n]*scope: null/.test(text)) unscoped.push(file);
+      if (/scope: 'account'/.test(text)) account.push(file);
+    }
+    assert.deepEqual(unscoped, []);
+    assert.deepEqual(account.sort(), ['apps/server/src/access/workspaces.ts', 'apps/server/src/agent-connection/agent-questions.ts', 'apps/server/src/personal-runs/routes.ts']);
   });
 });
 

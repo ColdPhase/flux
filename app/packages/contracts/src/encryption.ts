@@ -128,3 +128,26 @@ export const LOCKED_ALLOWED_ROUTES: Readonly<Record<string, string>> = {
   'PUT /api/v1/workspaces/:workspaceId/unlock-password': 'Answers 423 itself unless the recovery code unlocks the key',
   'POST /api/v1/workspaces/:workspaceId/recovery-code': 'Answers 423 itself',
 };
+
+const AI_ONLY = 'AI work: F-029 forces it off in an encrypted workspace before any write, so no stored response can concern one';
+/**
+ * The Idempotency-Key operations that store a response with no workspace (F-030 Idempotency store, S2a-2). Every other
+ * command declares an object scope that the runner resolves to its workspace, so an encrypted workspace's stored responses
+ * are sealed. Migration 0121 seeds `idempotency_account_operations` from this list (the registry test compares the two),
+ * and a database guard refuses an unscoped row whose operation is not here.
+ */
+export const IDEMPOTENCY_ACCOUNT_OPERATIONS: Readonly<Record<string, string>> = {
+  'POST /api/v1/workspaces': 'Creates the workspace: there is none yet, and its name is visible metadata',
+  'POST /api/v1/personal-assistant': `The person's own assistant settings. ${AI_ONLY}`,
+  'PATCH /api/v1/personal-assistant': `The person's own assistant settings. ${AI_ONLY}`,
+  'PUT /api/v1/personal-assistant/model': `The person's own assistant model. ${AI_ONLY}`,
+  'PUT /api/v1/personal-assistant/agents': `The person's own assistant agents. ${AI_ONLY}`,
+  'POST /api/v1/personal-assistant/pause': `The person's own assistant. ${AI_ONLY}`,
+  'POST /api/v1/personal-assistant/resume': `The person's own assistant. ${AI_ONLY}`,
+  'POST /api/v1/conversations/:conversationId/assistant-runs': AI_ONLY,
+  'POST /api/v1/assistant-runs/:runId/stop': AI_ONLY,
+  'POST /api/v1/assistant-runs/:runId/retry': AI_ONLY,
+  'POST /api/v1/agent-questions/:questionId/answer': AI_ONLY,
+  'POST /api/v1/assistant-proposals/:proposalId/accept': AI_ONLY,
+  'POST /api/v1/assistant-proposals/:proposalId/dismiss': AI_ONLY,
+};

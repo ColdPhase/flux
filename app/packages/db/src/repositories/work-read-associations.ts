@@ -1,6 +1,8 @@
 import { sql } from 'drizzle-orm';
 import type { LinkRole, ObjectLink, ObjectRef, SourceAssociationCounts, WorkObjectType, WorkReadCursor } from '@flux/contracts';
 import type { DbExecutor } from './push.js';
+import { sealOf } from '../sealing.js';
+import { workRows } from './work.js';
 import { nativeReadKeyWindow } from './work-read-keys.js';
 import { nativeVisibleWorkEdges, nativeWorkEndpointVisible, type NativeWorkReadObject, type NativeWorkSourceScope } from './work-read-visibility.js';
 
@@ -94,6 +96,17 @@ export function nativeWorkAssociationRows(db: DbExecutor) {
         CASE WHEN e.to_type = 'sketch' THEN e.to_id WHEN e.to_type = 'thought' THEN (SELECT t.sketch_id FROM sketch_thoughts t JOIN sketches s ON s.id = t.sketch_id WHERE s.project_id = ${projectId}::uuid AND s.scope = 'project' AND t.id = e.to_id) ELSE NULL END AS "sketchId"
         FROM visible e WHERE e.id IN (${sql.join(ordered.map((id) => sql`${id}::uuid`), sql`, `)})`);
       const rows = new Map(found.rows.map((row) => [row.id, row]));
+      // F-030: in a sealed workspace the endpoint titles SQL returned are envelopes (or excerpts of one); the application opens them.
+      const [project] = (await db.execute<{ workspace_id: string }>(sql`SELECT workspace_id FROM projects WHERE id = ${projectId}::uuid`)).rows;
+      if (project && (await sealOf(db, project.workspace_id, { write: false })).sealed) {
+        const ref = (type: string, id: string, version: number | null) => (type === 'material' ? { type: 'material' as const, id, version: version! } : { type: type as Exclude<ObjectRef['type'], 'material'>, id });
+        const key = (type: string, id: string, version: number | null) => (type === 'material' ? `material:${id}:${version}` : `${type}:${id}`);
+        const titles = await workRows(db).titles(projectId, found.rows.flatMap((row) => [ref(row.fromType, row.fromId, null), ref(row.toType, row.toId, row.toVersion)]));
+        for (const row of found.rows) {
+          if (row.fromTitle !== null) row.fromTitle = titles.get(key(row.fromType, row.fromId, null))?.title ?? null;
+          if (row.toTitle !== null) row.toTitle = titles.get(key(row.toType, row.toId, row.toVersion))?.title ?? null;
+        }
+      }
       return ordered.map((id) => {
         const row = rows.get(id); if (!row || row.fromTitle === null || row.toTitle === null) throw new Error('Missing required native edge endpoint metadata');
         const to: ObjectRef = row.toType === 'material' ? { type: 'material', id: row.toId, version: row.toVersion! } : { type: row.toType, id: row.toId };
