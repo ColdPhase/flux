@@ -3,12 +3,13 @@ import { createHash, randomUUID } from 'node:crypto';
 import { writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { before, describe, test } from 'node:test';
+import { sealFor, pruneSearchChanges } from '@flux/db';
 import WebSocket from 'ws';
 import * as Y from 'yjs';
 import { UNTITLED_SKETCH, type Doc, type SearchResponse, type SearchResult, type Sketch } from '@flux/contracts';
 import { wikiAuthority } from '../../apps/server/src/editing/authority.js';
 import type { SessionContext } from '../../apps/server/src/identity/session.js';
-import { pool } from './support/db.js';
+import { db, pool } from './support/db.js';
 import { apiUrl, publicOrigin } from './support/http.js';
 import { codeOf, createSealed, installTestSeals, lock, passphrase, unlock } from './support/encryption.js';
 import { addMember, expectStatus, grant, person, project, workspace, type Person } from './support/people.js';
@@ -170,6 +171,70 @@ describe('F-030 S2b: search in an encrypted workspace', () => {
     assert.deepEqual(after, before, 'the postings read do not depend on matches the reader cannot see');
     assert.deepEqual((await search(outsider, { q: 'sensor lamp' })).items.map((item) => item.id).sort(), answer.items.map((item) => item.id).sort());
     assert.equal((await search(ada, { q: 'sensor lamp hidden', limit: 50 })).items.length >= 24, true, 'the owner sees them');
+  });
+
+  test('a change committed after a later one has been read still reaches the index (the transaction-id watermark)', async () => {
+    // A transaction that holds a LOWER transaction id commits AFTER a higher one has been read: a watermark by sequence number, or one that
+    // reads up to xmax, would move past it and never see it. The index reads the transactions below xmin, which have all finished.
+    const sketch = await post(ada, `/api/v1/workspaces/${A}/sketches`, { title: 'Before the rename', scope: 'project', projectId: ids.A.project }, 201);
+    const renamed = canary('renamed').replace(/-/g, ' '); const later = canary('later').replace(/-/g, ' ');
+    await search(ben, { q: 'before' }); // the index exists and has caught up
+    const sealed = await sealFor(db as never, 'sketches', A, { title: `${renamed} title` }, { id: String(sketch.id) }) as { title: string };
+    const open = await pool.connect();
+    try {
+      await open.query('BEGIN');
+      await open.query('UPDATE sketches SET title = $1 WHERE id = $2', [sealed.title, sketch.id]);
+      assert.ok((await open.query('SELECT count(*)::int AS n FROM search_changes WHERE xid = pg_current_xact_id()')).rows[0].n >= 1, 'the open transaction logged its change');
+      await post(ada, `/api/v1/projects/${ids.A.project}/conversations`, { body: `${later} message`, clientMessageId: randomUUID() }, 201);
+      await search(ben, { q: later }); // reads while the lower transaction is still open
+      await open.query('COMMIT');
+    } finally { open.release(); }
+    for (let round = 0; round < 3; round += 1) {
+      assert.equal((await search(ben, { q: renamed })).items.length, 1, `the renamed map is found (search ${round + 1})`);
+      assert.equal((await search(ben, { q: later })).items.length, 1, `the later message is found, once (search ${round + 1})`);
+    }
+  });
+
+  test('a row that does not decrypt fails the search and is remembered briefly: the next searches do not build again', async () => {
+    const owner = await person('Tamperer'); const observer = await person('Build observer');
+    const secret = passphrase();
+    const bad = (await createSealed(owner, 'Tampered', secret)).workspace.id;
+    const place = await post(owner, `/api/v1/workspaces/${bad}/projects`, { name: 'Tampered notes', visibility: 'workspace' }, 201);
+    const word = canary('tamper').replace(/-/g, ' ');
+    const conversation = await post(owner, `/api/v1/projects/${place.id}/conversations`, { body: `first ${word}`, clientMessageId: randomUUID() }, 201);
+    await post(owner, `/api/v1/conversations/${conversation.id}/messages`, { body: `second ${word}`, clientMessageId: randomUUID() }, 201);
+    const builds = async () => (expectStatus(await observer.browser.request('GET', '/api/v1/search/explain?q=anything'), 200) as { sealedBuilds: number }).sealedBuilds;
+    // Two sealed bodies swapped: each fails to open in the other's place.
+    const rows = (await pool.query(`SELECT id, body FROM project_messages WHERE project_id = $1 ORDER BY sequence`, [place.id])).rows as { id: string; body: string }[];
+    assert.equal(rows.length, 2);
+    const set = async (first: string, second: string) => {
+      await pool.query('UPDATE project_messages SET body = $2 WHERE id = $1', [rows[0]!.id, first]);
+      await pool.query('UPDATE project_messages SET body = $2 WHERE id = $1', [rows[1]!.id, second]);
+    };
+    await set(rows[1]!.body, rows[0]!.body);
+    const before = await builds();
+    const first = await owner.browser.request('GET', `/api/v1/search?q=${encodeURIComponent(word)}`);
+    assert.equal(first.status, 500, 'the search fails; it does not answer from a partial index');
+    assert.equal(first.text.includes(word.split(' ')[2]!), false, 'and says nothing of the content');
+    assert.equal(await builds(), before + 1, 'one build was attempted');
+    for (let again = 0; again < 3; again += 1) assert.equal((await owner.browser.request('GET', `/api/v1/search?q=${encodeURIComponent(word)}`)).status, 500);
+    assert.equal(await builds(), before + 1, 'the failure is remembered: no build per search');
+    // Restored, and after the lock and unlock (which drop the index and the memory of the failure), the search works again.
+    await set(rows[0]!.body, rows[1]!.body);
+    assert.equal((await lock(owner.browser, bad)).status, 200);
+    assert.equal((await unlock(owner.browser, bad, { password: secret })).status, 200);
+    const healed = await owner.browser.request('GET', `/api/v1/search?q=${encodeURIComponent(word)}`);
+    assert.equal(healed.status, 200, healed.text);
+    assert.equal((healed.json as SearchResponse).items.length, 2);
+    assert.equal(await builds(), before + 2, 'one build for the working index');
+  });
+
+  test('the hourly job prunes the change log older than 24 hours and keeps the newer', async () => {
+    await pool.query(`INSERT INTO search_changes (workspace_id, doc_key, at) VALUES ($1, 'prune-old', now() - interval '25 hours'), ($1, 'prune-new', now() - interval '1 hour')`, [A]);
+    const deleted = await pruneSearchChanges(db as never);
+    assert.ok(deleted >= 1, 'it deleted the old row');
+    const left = (await pool.query(`SELECT doc_key FROM search_changes WHERE doc_key IN ('prune-old', 'prune-new')`)).rows.map((row) => row.doc_key as string);
+    assert.deepEqual(left, ['prune-new']);
   });
 
   test('the index is dropped when the workspace locks, nothing of A is answered while locked, and it is rebuilt after an unlock', async () => {

@@ -10,8 +10,10 @@ services:
     environment:
       # The boot key becomes a canary of the log scan (TEST ONLY; needs the test deployment switches too).
       FLUX_KEYRING_REVEAL_BOOT_KEY: "true"
-  # The second API holds at most 4 KiB of decrypted text per encrypted workspace in its search index, so the "too large to search
-  # in memory" answer (`sealedUnavailable`) is tested with a few messages (TEST ONLY: an operator sets the real bound).
+  # The second API bounds the search indexes of encrypted workspaces tightly (estimated heap, FLUX_SEALED_SEARCH_MAX_BYTES per workspace and
+  # FLUX_SEALED_SEARCH_PROCESS_MAX_BYTES across them), so "too large" and "no room in the process" (`sealedUnavailable`) are tested with a few
+  # hundred messages (TEST ONLY: an operator sets the real bounds; the defaults are 256 MiB and 512 MiB).
   api2:
     environment:
-      FLUX_SEALED_SEARCH_MAX_BYTES: "4096"
+      FLUX_SEALED_SEARCH_MAX_BYTES: "300000"
+      FLUX_SEALED_SEARCH_PROCESS_MAX_BYTES: "400000"

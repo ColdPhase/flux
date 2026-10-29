@@ -16,12 +16,34 @@ import { openRows, sealOf } from './sealing.js';
  * is approximate. Access is decided before this runs: only the partitions of the audience keys the reader may see are read.
  */
 
+/**
+ * Bounds on the memory the indexes may take, as ESTIMATED HEAP bytes (not text bytes: each distinct term of a document costs a map entry,
+ * a string and an array, so the heap is 1.7 to 8 times the text). `tests/app/sealed-search-heap.test.ts` measures the heap after a full
+ * GC against the estimate and fails when the estimate falls below it. Per workspace, and across every workspace of the process: an
+ * out-of-memory kill of the API drops every key it holds and locks all its encrypted workspaces, so the process total stays well
+ * inside the 2 GiB container limit (`FLUX_API_MEMORY`).
+ */
 export const SEALED_SEARCH_DEFAULT_MAX_BYTES = 256 * 1024 * 1024;
+export const SEALED_SEARCH_DEFAULT_PROCESS_MAX_BYTES = 512 * 1024 * 1024;
+/** An index nobody searched for this long may be evicted to make room for another workspace's. */
+const IDLE_EVICT_MS = 5 * 60_000;
+/** How long a workspace that did not fit stays unavailable before the next attempt (too large for its own bound / no room in the process). */
+const TOO_LARGE_RETRY_MS = 10 * 60_000;
+const NO_ROOM_RETRY_MS = 60_000;
+/** A row that does not decrypt makes every build fail; the failure is remembered this long instead of repeating the whole pass. */
+const FAILURE_CACHE_MS = 15_000;
+/**
+ * Estimated heap, from measurements after a full GC (tests/app/sealed-search-heap.test.ts keeps them honest), rounded up:
+ * a document's object, ids and map entries; a posting (an array element); a new term (map entry, string header, array).
+ */
+const DOC_OVERHEAD = 1000;
+const POSTING_COST = 12;
+const TERM_COST = 230;
 /** `pg_trgm.word_similarity_threshold` (the `%>` operator the SQL path uses on titles). */
 const SIMILARITY = 0.6;
 const BODY_CHARS = 100_000;
 const WHOLE = 240;
-const CHUNK = 2000;
+const CHUNK = 500;
 /** `search_changes` older than this are pruned (hourly job); an index idle for longer is rebuilt rather than caught up. */
 export const SEALED_SEARCH_CHANGE_RETENTION_MS = 24 * 3_600_000;
 const REBUILD_AFTER_MS = 23 * 3_600_000;
@@ -116,7 +138,7 @@ function compile(plan: SearchPlanRows): Compiled {
 /** What a search read: postings entries and documents examined (the saturation test compares it with and without hidden matches). */
 export interface SealedSearchWork { postings: number; terms: number; documents: number }
 
-interface IndexDoc {
+export interface IndexDoc {
   id: string;
   key: string;
   kind: SearchKindRow;
@@ -138,13 +160,24 @@ interface IndexDoc {
   number: number | null;
   /** A reverted task creation: not found by search, still offered to the chooser (as the SQL path does). */
   hidden: boolean;
-  bytes: number;
+  /** Estimated heap of the document itself (object and strings), and of the postings it added. */
+  cost: number;
+  indexCost: number;
 }
 
-class Partition {
+/** The estimated heap of a document's own object and strings (a string with a character above U+00FF takes two bytes a character). */
+export const docHeapCost = (title: string, body: string) =>
+  DOC_OVERHEAD + title.length * (WIDE.test(title) ? 2 : 1) + body.length * (WIDE.test(body) ? 2 : 1);
+const WIDE = /[\u{100}-\u{10ffff}]/u;
+
+export class Partition {
   docs: (IndexDoc | null)[] = [];
   live = 0;
   stale = 0;
+  /** Estimated heap of the partition: live documents, and every posting including the ones of dropped documents until it is rebuilt. */
+  cost = 0;
+  /** The part of `cost` that belongs to dropped documents' postings. */
+  wasted = 0;
   readonly title = new Map<string, number[]>();
   readonly body = new Map<string, number[]>();
   readonly grams = new Map<string, number[]>();
@@ -152,20 +185,30 @@ class Partition {
   add(doc: IndexDoc): number {
     const index = this.docs.push(doc) - 1;
     this.live++;
+    let postings = 0;
     const post = (map: Map<string, number[]>, items: Iterable<string>) => {
-      for (const item of new Set(items)) { const list = map.get(item); if (list) list.push(index); else map.set(item, [index]); }
+      for (const item of new Set(items)) {
+        const list = map.get(item);
+        if (list) { list.push(index); postings += POSTING_COST; } else { map.set(item, [index]); postings += POSTING_COST + TERM_COST + 2 * item.length; }
+      }
     };
     post(this.title, wordsOf(doc.title));
     post(this.body, wordsOf(doc.body.slice(0, BODY_CHARS)));
     post(this.grams, trigramsOf(doc.title));
+    doc.indexCost = postings;
+    this.cost += doc.cost + postings;
     return index;
   }
 
   drop(index: number) {
-    if (!this.docs[index]) return;
+    const doc = this.docs[index];
+    if (!doc) return;
     this.docs[index] = null;
     this.live--;
     this.stale++;
+    // The strings go at once; the postings stay (stale entries) until the partition is rebuilt.
+    this.cost -= doc.cost;
+    this.wasted += doc.indexCost;
   }
 }
 
@@ -316,7 +359,8 @@ function headlines(doc: IndexDoc, compiled: Compiled): { title: SearchTextRow; s
 export class SealedSearchIndex {
   private readonly partitions = new Map<string, Partition>();
   private readonly byKey = new Map<string, { audience: string; index: number }>();
-  bytes = 0;
+  /** Estimated heap of the whole index (see {@link docHeapCost}). */
+  heap = 0;
   /** The first transaction id whose changes this index has not applied (`search_changes.xid`), and when it last caught up. */
   nextXid = '0';
   syncedAt = Date.now();
@@ -329,24 +373,28 @@ export class SealedSearchIndex {
     this.remove(doc.key);
     let part = this.partitions.get(doc.audience);
     if (!part) this.partitions.set(doc.audience, part = new Partition());
+    const before = part.cost;
     this.byKey.set(doc.key, { audience: doc.audience, index: part.add(doc) });
-    this.bytes += doc.bytes;
+    this.heap += part.cost - before;
   }
 
   remove(key: string) {
     const old = this.byKey.get(key);
     if (!old) return;
     const part = this.partitions.get(old.audience)!;
-    this.bytes -= part.docs[old.index]?.bytes ?? 0;
+    const before = part.cost;
     part.drop(old.index);
+    this.heap += part.cost - before;
     this.byKey.delete(key);
-    if (part.stale > 1024 && part.stale > part.live) this.compact(old.audience, part);
+    // Rebuild a partition once the postings of its dropped documents (over 64 KiB) outweigh the live ones (an edited long document leaves a lot).
+    if (part.wasted > 64 * 1024 && part.wasted * 2 > part.cost) this.compact(old.audience, part);
   }
 
   private compact(audience: string, part: Partition) {
     const next = new Partition();
     for (const doc of part.docs) if (doc) this.byKey.set(doc.key, { audience, index: next.add(doc) });
     this.partitions.set(audience, next);
+    this.heap += next.cost - part.cost;
   }
 
   doc(key: string) {
@@ -471,7 +519,7 @@ async function docsOf(db: DbExecutor, workspaceId: string, placeholders: Placeho
         parentId: row.parent_id, dmId: row.dm_id, version: row.version, status: row.status,
         author: row.author_kind && row.author_id ? { kind: row.author_kind, id: row.author_id } : null,
         at: row.at instanceof Date ? row.at : new Date(row.at), atKey: row.at_key, atMicros: pgMicros(row.at_key), title: found.title, body: found.body,
-        number: found.number ?? null, hidden: found.hidden === true, bytes: Buffer.byteLength(found.title) + Buffer.byteLength(found.body) });
+        number: found.number ?? null, hidden: found.hidden === true, cost: docHeapCost(found.title, found.body), indexCost: 0 });
     }
   }
   return docs;
@@ -480,40 +528,93 @@ async function docsOf(db: DbExecutor, workspaceId: string, placeholders: Placeho
 const PLACEHOLDERS = sql`id::text AS id, doc_key, kind, audience_key, project_id::text AS project_id, object_id, parent_id::text AS parent_id, dm_id::text AS dm_id,
   version, status, author_kind, author_id, at, at::text AS at_key`;
 
-class TooLargeError extends Error {}
+/** The index does not fit: `retryAfterMs` says when to try again (its own bound is a longer wait than a busy process). */
+class TooLargeError extends Error { constructor(readonly retryAfterMs: number) { super('The workspace is too large to search in memory'); } }
 
-const maxBytes = (env: NodeJS.ProcessEnv = process.env) => {
-  const value = Number(env.FLUX_SEALED_SEARCH_MAX_BYTES);
-  return Number.isFinite(value) && value > 0 ? value : SEALED_SEARCH_DEFAULT_MAX_BYTES;
-};
+const positive = (value: string | undefined, fallback: number) => { const n = Number(value); return Number.isFinite(n) && n > 0 ? n : fallback; };
+/** The bounds in effect, read at every build so an operator's change applies at the next unlock. */
+export function sealedSearchLimits(env: NodeJS.ProcessEnv = process.env) {
+  return { workspace: positive(env.FLUX_SEALED_SEARCH_MAX_BYTES, SEALED_SEARCH_DEFAULT_MAX_BYTES),
+    process: positive(env.FLUX_SEALED_SEARCH_PROCESS_MAX_BYTES, SEALED_SEARCH_DEFAULT_PROCESS_MAX_BYTES) };
+}
 
 async function currentXmin(db: DbExecutor): Promise<string> {
   return String(((await db.execute(sql`SELECT pg_snapshot_xmin(pg_current_snapshot())::text AS xmin`)).rows[0] as { xmin: string }).xmin);
 }
 
-async function build(db: DbExecutor, workspaceId: string): Promise<SealedSearchIndex> {
-  const index = new SealedSearchIndex(workspaceId);
-  const limit = maxBytes();
-  // Every transaction below this id has finished before the rows are read; later ones are applied again by the next catch-up.
-  index.nextXid = await currentXmin(db);
-  let after = 0n;
-  for (;;) {
-    const rows = (await db.execute(sql`SELECT ${PLACEHOLDERS} FROM search_documents WHERE workspace_id = ${workspaceId}::uuid AND sealed AND id > ${after.toString()}::bigint
-      ORDER BY id LIMIT ${CHUNK}`)).rows as unknown as Placeholder[];
-    if (!rows.length) break;
-    for (const doc of await docsOf(db, workspaceId, rows)) {
-      index.put(doc);
-      if (index.bytes > limit) throw new TooLargeError();
+/** Lets the event loop serve other requests between chunks of a build. */
+const yieldToLoop = () => new Promise<void>((resolve) => setImmediate(resolve));
+
+interface Entry {
+  index: SealedSearchIndex | null;
+  /** The index being built, counted in the process total while it grows. */
+  partial: SealedSearchIndex | null;
+  building: Promise<void> | null;
+  /** Until then the workspace answers `unavailable` without a build (it did not fit). */
+  unavailableUntil: number;
+  /** Until then a build that failed on a row that does not decrypt is not repeated. */
+  failure: { error: unknown; until: number } | null;
+  lastUsed: number;
+}
+const entries = new Map<string, Entry>();
+
+const heapOf = (entry: Entry) => (entry.index ?? entry.partial)?.heap ?? 0;
+/** The estimated heap of every other workspace's index in this process. */
+const othersHeap = (workspaceId: string) => [...entries].reduce((total, [id, entry]) => (id === workspaceId ? total : total + heapOf(entry)), 0);
+
+/**
+ * The heap this workspace's index may take now: its own bound, and what is left of the process bound after the other
+ * workspaces. Indexes nobody searched for {@link IDLE_EVICT_MS} are evicted (oldest first) to make room.
+ */
+function budgetFor(workspaceId: string): { budget: number; busy: boolean } {
+  const limits = sealedSearchLimits();
+  if (othersHeap(workspaceId) + limits.workspace > limits.process) {
+    const idle = [...entries].filter(([id, entry]) => id !== workspaceId && entry.index && !entry.building && Date.now() - entry.lastUsed > IDLE_EVICT_MS)
+      .sort((a, b) => a[1].lastUsed - b[1].lastUsed);
+    for (const [, entry] of idle) {
+      entry.index = null;
+      if (othersHeap(workspaceId) + limits.workspace <= limits.process) break;
     }
-    after = BigInt(rows[rows.length - 1]!.id);
   }
-  index.syncedAt = Date.now();
-  return index;
+  const room = limits.process - othersHeap(workspaceId);
+  return { budget: Math.min(limits.workspace, room), busy: room < limits.workspace };
+}
+
+/** Fails a build or catch-up that grew past its workspace bound or past what the process has left. */
+function checkBudget(index: SealedSearchIndex, process = true) {
+  const limits = sealedSearchLimits();
+  if (index.heap > limits.workspace) throw new TooLargeError(TOO_LARGE_RETRY_MS);
+  if (process && index.heap + othersHeap(index.workspaceId) > limits.process) throw new TooLargeError(NO_ROOM_RETRY_MS);
+}
+
+let builds = 0;
+/** Full builds this process has started (tests: a row that does not decrypt must not make every search build again). */
+export const sealedSearchBuilds = () => builds;
+
+async function build(db: DbExecutor, entry: Entry, workspaceId: string): Promise<SealedSearchIndex> {
+  builds += 1;
+  const index = new SealedSearchIndex(workspaceId);
+  entry.partial = index;
+  try {
+    // Every transaction below this id has finished before the rows are read; later ones are applied again by the next catch-up.
+    index.nextXid = await currentXmin(db);
+    let after = 0n;
+    for (;;) {
+      const rows = (await db.execute(sql`SELECT ${PLACEHOLDERS} FROM search_documents WHERE workspace_id = ${workspaceId}::uuid AND sealed AND id > ${after.toString()}::bigint
+        ORDER BY id LIMIT ${CHUNK}`)).rows as unknown as Placeholder[];
+      if (!rows.length) break;
+      for (const doc of await docsOf(db, workspaceId, rows)) { index.put(doc); checkBudget(index, false); }
+      checkBudget(index);
+      after = BigInt(rows[rows.length - 1]!.id);
+      await yieldToLoop();
+    }
+    index.syncedAt = Date.now();
+    return index;
+  } finally { entry.partial = null; }
 }
 
 /** Applies the committed changes since the last catch-up: reloads each changed document, or removes it. */
 async function catchUp(db: DbExecutor, index: SealedSearchIndex) {
-  const limit = maxBytes();
   const result = (await db.execute(sql`WITH s AS (SELECT pg_snapshot_xmin(pg_current_snapshot()) AS xmin)
     SELECT s.xmin::text AS xmin, c.doc_key FROM s LEFT JOIN search_changes c
       ON c.workspace_id = ${index.workspaceId}::uuid AND c.xid >= ${index.nextXid}::xid8 AND c.xid < s.xmin`)).rows as { xmin: string; doc_key: string | null }[];
@@ -525,39 +626,46 @@ async function catchUp(db: DbExecutor, index: SealedSearchIndex) {
     const docs = await docsOf(db, index.workspaceId, rows);
     const present = new Set(docs.map((doc) => doc.key));
     for (const key of slice) if (!present.has(key)) index.remove(key);
-    for (const doc of docs) { index.put(doc); if (index.bytes > limit) throw new TooLargeError(); }
+    for (const doc of docs) { index.put(doc); checkBudget(index, false); }
+    checkBudget(index);
   }
   if (result[0] && BigInt(result[0].xmin) > BigInt(index.nextXid)) index.nextXid = result[0].xmin;
   index.syncedAt = Date.now();
 }
-
-interface Entry { index: SealedSearchIndex | null; tooLarge: boolean; building: Promise<void> | null }
-const entries = new Map<string, Entry>();
 
 /** Drops the in-memory index of one workspace, or of all (null): on lock, and when the process drops its keys. */
 export function dropSealedSearchIndex(workspaceId: string | null) {
   if (workspaceId === null) entries.clear(); else entries.delete(workspaceId);
 }
 
-/** Workspaces with an index in this process (tests, diagnostics). */
+/** Workspaces with an index in this process and the estimated heap of each (tests, diagnostics). */
 export const sealedSearchIndexedWorkspaces = () => [...entries].filter(([, entry]) => entry.index).map(([id]) => id);
+export const sealedSearchIndexHeap = () => Object.fromEntries([...entries].filter(([, entry]) => entry.index).map(([id, entry]) => [id, entry.index!.heap]));
 
-/** The index of an unlocked encrypted workspace, built or caught up now; null when it is too large to hold in memory. */
+/** The index of an unlocked encrypted workspace, built or caught up now; null when it does not fit in memory (its bound, or the process's). */
 async function ensure(db: DbExecutor, workspaceId: string): Promise<SealedSearchIndex | null> {
   let entry = entries.get(workspaceId);
-  if (!entry) entries.set(workspaceId, entry = { index: null, tooLarge: false, building: null });
+  if (!entry) entries.set(workspaceId, entry = { index: null, partial: null, building: null, unavailableUntil: 0, failure: null, lastUsed: 0 });
   const current = entry;
-  if (current.tooLarge) return null;
-  if (current.building) await current.building;
-  if (current.tooLarge) return null;
+  current.lastUsed = Date.now();
+  if (current.unavailableUntil > Date.now()) return null;
+  if (current.failure && current.failure.until > Date.now()) throw current.failure.error;
   if (current.index && Date.now() - current.index.syncedAt > REBUILD_AFTER_MS) current.index = null;
   const work = async () => {
     try {
-      if (!current.index) current.index = await build(db, workspaceId);
-      else await catchUp(db, current.index);
+      if (!current.index) {
+        const { budget, busy } = budgetFor(workspaceId);
+        if (budget <= 0) throw new TooLargeError(busy ? NO_ROOM_RETRY_MS : TOO_LARGE_RETRY_MS);
+        current.index = await build(db, current, workspaceId);
+      } else {
+        await catchUp(db, current.index);
+      }
+      current.failure = null;
     } catch (error) {
       current.index = null;
-      if (error instanceof TooLargeError) current.tooLarge = true; else { if (entries.get(workspaceId) === current) entries.delete(workspaceId); throw error; }
+      if (error instanceof TooLargeError) current.unavailableUntil = Date.now() + error.retryAfterMs;
+      else if ((error as { name?: unknown }).name === 'DecryptionFailedError') current.failure = { error, until: Date.now() + FAILURE_CACHE_MS };
+      else { if (entries.get(workspaceId) === current) entries.delete(workspaceId); throw error; }
     }
   };
   // Concurrent searches of one workspace share one catch-up.
@@ -566,6 +674,7 @@ async function ensure(db: DbExecutor, workspaceId: string): Promise<SealedSearch
     current.building = run;
   }
   await current.building;
+  if (current.failure && current.failure.until > Date.now()) throw current.failure.error;
   return current.index;
 }
 

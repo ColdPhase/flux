@@ -1006,13 +1006,30 @@ an **encrypted index at rest, decrypted into RAM**:
   approximates `ts_rank` (title weight 1.0, body 0.4) plus half the title similarity, so ordering between the
   two sources is approximate (the sets of results are the same). Counts add up, and each source counts at most 500.
   Highlighting marks the title whole and a long body as a window around the first match (`ts_headline`'s shape).
-- **Bound.** `FLUX_SEALED_SEARCH_MAX_BYTES`, by default 256 MiB of decrypted text per workspace per
-  process. A larger workspace answers with `sealedUnavailable: [workspaceId]` (S3 draws "Search isn't available in Garden club: it is
-  too large to search in memory"), and a chooser search there finds nothing and says `searchUnavailable: true`.
+- **Bound.** The index is bounded by its **estimated heap**, not by the text: each distinct term of a document costs a map entry, a
+  string and an array, so the heap measured 12 to 110 times the text on the test corpora (identifier-like text is the worst case).
+  `docHeapCost` and the per-posting and per-term costs in `sealed-search.ts` come from measurements after a full GC, rounded up, and
+  `tests/app/sealed-search-heap.test.ts` fails when the estimate falls below the measured heap or exceeds 2.5 times it. Two bounds:
+  `FLUX_SEALED_SEARCH_MAX_BYTES` per workspace (default 256 MiB estimated heap) and `FLUX_SEALED_SEARCH_PROCESS_MAX_BYTES` across every
+  workspace of the API process (default 512 MiB, well inside the 2 GiB container limit: an out-of-memory kill drops every key the process
+  holds and locks all its encrypted workspaces). A build or catch-up that grows past either stops at once and the workspace answers with
+  `sealedUnavailable: [workspaceId]` (S3 draws "Search isn't available in Garden club: it is too large to search in memory"); a chooser
+  search there finds nothing and says `searchUnavailable: true`. A workspace over its own bound is retried after 10 minutes; one that
+  only lacked room in the process after 1 minute. Before a build, indexes nobody searched for 5 minutes are evicted (oldest first) to
+  make room; an evicted workspace rebuilds at its next search. Stale postings of replaced documents count until their partition is
+  rebuilt (once they pass 64 KiB and outweigh the live ones). A build yields to the event loop between chunks of 500 documents. A row
+  that does not decrypt (tampering, a restored backup of another key) fails the search with a generic error, and that failure is
+  remembered for 15 seconds so a single bad row does not cost a decryption pass of the workspace per request; a Lock or an unlock clears it.
+- **Freshness and replicas.** A change is searchable once every transaction that started before it has finished: the catch-up reads the
+  transactions below the snapshot's `xmin`, so one long open write transaction in the database delays what newer commits changed (nothing
+  is lost; it is found at the next search after that transaction ends). Another API replica learns of a Lock the first time it handles a
+  request or frame for that workspace (every operation checks the unlock rows, and `sealFor` drops the keys, the index and the rooms
+  there); until then it keeps the plaintext index in its memory, as it keeps the cached keys (S1).
 - **The chooser.** A chooser search with text (a task, decision or result of one project) uses the same index for its case-insensitive
   title filter. It replaces the S2a-2a scan of the newest 2000 objects and its `searchLimited` marker, and its test switch.
-- **Test support.** The explain route of a test deployment adds `sealed: { postings, terms, documents }` (what the index read) and the
-  workspaces with an index in the process, so the tests prove that matches a reader cannot see change neither the answer nor the postings read.
+- **Test support.** The explain route of a test deployment adds `sealed: { postings, terms, documents }` (what the index read), the
+  workspaces with an index in the process with the estimated heap of each, and the number of full builds, so the tests prove that matches
+  a reader cannot see change neither the answer nor the postings read, that the bounds hold, and that a bad row does not rebuild per search.
 
 ### Live Wiki and maps
 

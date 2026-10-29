@@ -45,17 +45,48 @@ test('two APIs share the lock state through the keyring; no secret reaches Postg
   assert.equal((await unlock(second, ws, { recoveryCode })).status, 200, 'the recovery code on API-2');
   assert.equal((await ada.browser.request('POST', `/api/v1/workspaces/${ws}/projects`, { body: { name: 'Unlocked again' } })).status, 201);
 
-  // S2b: a workspace too large for one API's search index (api2 holds 4 KiB, FLUX_SEALED_SEARCH_MAX_BYTES) says so; API-1 answers.
-  const bulky = await ada.browser.request('POST', `/api/v1/workspaces/${ws}/projects`, { body: { name: 'Bulky notes' } });
+  // S2b: the search index is bounded by its estimated heap, per workspace and across the workspaces of a process (api2 holds 300 000 B per
+  // workspace and 400 000 B in all, docker/compose.encryption.test.yaml). A workspace that does not fit says so; API-1 answers for all.
+  const heapOf = async (workspaceId: string) => ((await ada.browser.request('GET', '/api/v1/search/explain?q=fillerzero')).json as { sealedIndexHeap: Record<string, number> }).sealedIndexHeap[workspaceId] ?? 0;
+  let serial = 0;
+  const word = () => `fill${serial++}x${randomUUID().slice(0, 6)}`;
+  async function filled(workspaceId: string, heap: number, marker: string) {
+    const made = await ada.browser.request('POST', `/api/v1/workspaces/${workspaceId}/projects`, { body: { name: `Bulky ${marker}` } });
+    assert.equal(made.status, 201);
+    const projectId = (made.json as { id: string }).id;
+    while (await heapOf(workspaceId) < heap) {
+      for (let n = 0; n < 2; n += 1) {
+        const posted = await ada.browser.request('POST', `/api/v1/projects/${projectId}/conversations`,
+          { body: { body: `${marker} ${Array.from({ length: 40 }, word).join(' ')}`, clientMessageId: randomUUID() }, headers: { 'idempotency-key': randomUUID() } });
+        assert.equal(posted.status, 201, posted.text);
+      }
+    }
+  }
+  const second2 = await createSealed(ada, 'Second sealed', passphrase());
+  const third = await createSealed(ada, 'Third sealed', passphrase());
+  await filled(ws, 210_000, 'alphamarker');
+  await filled(second2.workspace.id, 210_000, 'alphamarker');
+  assert.ok(await heapOf(ws) < 300_000 && await heapOf(second2.workspace.id) < 300_000, 'each fits its own bound on API-1 and on API-2');
+  const search = async (browser: Browser, q: string) => (await browser.request('GET', `/api/v1/search?q=${q}&limit=50`)).json as { items: { place: { id: string } }[]; sealedUnavailable?: string[] };
+  const one = await search(ada.browser, 'alphamarker');
+  assert.equal(one.sealedUnavailable, undefined, 'API-1 holds both');
+  assert.ok(one.items.length >= 32);
+  const other = await search(second, 'alphamarker');
+  assert.equal(other.sealedUnavailable?.length, 1, 'API-2 has room for one of the two, not both (process bound)');
+  assert.ok(other.items.length >= 16, 'and answers for the one it holds');
+  assert.ok([ws, second2.workspace.id].includes(other.sealedUnavailable![0]!), 'it names one of the two');
+  // A workspace over its own bound is unavailable on API-2 whatever else it holds, and fine on API-1.
+  const bulky = await ada.browser.request('POST', `/api/v1/workspaces/${third.workspace.id}/projects`, { body: { name: 'Over the bound' } });
   assert.equal(bulky.status, 201);
-  const opened = await ada.browser.request('POST', `/api/v1/projects/${(bulky.json as { id: string }).id}/conversations`,
-    { body: { body: `bulky ${'filler '.repeat(900)}`, clientMessageId: randomUUID() }, headers: { 'idempotency-key': randomUUID() } });
-  assert.equal(opened.status, 201, opened.text);
-  const first = (await ada.browser.request('GET', '/api/v1/search?q=bulky')).json as { items: unknown[]; sealedUnavailable?: string[] };
-  assert.ok(first.items.length >= 1 && !first.sealedUnavailable, 'API-1 finds it');
-  const other = (await second.request('GET', '/api/v1/search?q=bulky')).json as { items: unknown[]; sealedUnavailable?: string[] };
-  assert.deepEqual(other.sealedUnavailable, [ws], 'API-2 is told the workspace is too large to search in memory');
-  assert.equal(other.items.length, 0);
+  const huge = await ada.browser.request('POST', `/api/v1/projects/${(bulky.json as { id: string }).id}/conversations`,
+    { body: { body: `betamarker ${Array.from({ length: 5000 }, word).join(' ')}`, clientMessageId: randomUUID() }, headers: { 'idempotency-key': randomUUID() } });
+  assert.equal(huge.status, 201, huge.text);
+  const bigOne = await search(ada.browser, 'betamarker');
+  assert.equal(bigOne.items.length, 1);
+  assert.equal(bigOne.sealedUnavailable?.includes(third.workspace.id) ?? false, false, 'API-1 holds it');
+  const bigOther = await search(second, 'betamarker');
+  assert.ok(bigOther.sealedUnavailable?.includes(third.workspace.id), 'API-2 is told the workspace is too large to search in memory');
+  assert.equal(bigOther.items.length, 0);
 
   // Every secret of the run, derived from the passwords and code and the stored rows.
   const secrets: Buffer[] = [];
