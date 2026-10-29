@@ -1260,8 +1260,14 @@ token alone is not enough (S1 review): a real deployment never holds a half-seal
     requires a validated one (the Undo receipt check does).
   - **Before S2c** (S2a-1 review): `holder_mac` must also cover the set of key versions that have a
     confirmation, so a deleted `confirm` is tampering rather than a fall-back to the commitment chain.
-  - **S2a-2b and later**: docs and materials, maps,
-    files, the notification
+  - **S2a-2b-1** (migration 0123): docs and materials (every version, sections, the material fingerprint), maps (titles,
+    thoughts, link labels), opened in every reader including Since-you-left; live Wiki and live maps answer
+    `409 WORKSPACE_ENCRYPTED_UNSUPPORTED` for a sealed workspace's objects on every live route and room upgrade until
+    S2b; `search_change_log` pinned like the other sealing functions; and a sealed chooser search that reached
+    `SEALED_CHOOSER_SCAN_LIMIT` says so (`searchLimited: true` on the work view). Known gap until S2b: the map list's
+    "hide empty maps" test compares the stored title with the default in SQL, so an empty sealed map is listed.
+  - **S2a-2b-2**: file names, sealed digests and file bytes (the streaming `FileCipher`, `has`/`read` on plaintext).
+  - **S2a-2c**: the notification
     and event backstops with content-free notifications, error-path redaction, `sealed_job_waits` and
     the resume job, the SQL source scan, cross-workspace `lockedWorkspaces`, the replacement of the
     route-level gate, `./flux export` refusal and restore truncation, and AC-6, AC-9, AC-10 and AC-7.

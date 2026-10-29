@@ -182,7 +182,15 @@ export interface ProjectWorkView extends WorkPage<NativeWorkRow> {
   summary: ProjectWorkSummary;
   /** result_work only: explicit deep selection, outside eligible total/page, at most 1 additional row. */
   selected: NativeWorkRow | null;
+  /**
+   * F-030: a chooser search in an encrypted workspace opens only the newest `SEALED_CHOOSER_SCAN_LIMIT` objects;
+   * present (true) when the project has more, so `total` counts matches among those only.
+   */
+  searchLimited?: true;
 }
+
+/** How many of a project's newest objects a chooser search in an encrypted workspace opens (F-030, until S2b's index). */
+export const SEALED_CHOOSER_SCAN_LIMIT = 2000;
 
 export interface SourceAssociationCounts {
   messageId: string;

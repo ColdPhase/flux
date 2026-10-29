@@ -6,6 +6,7 @@ import { prepareReferencedTaskUse, referencedTaskIds } from './task-targets.js';
 import { prepareCanonicalArtifactTaskUse } from './artifact-task-associations.js';
 import { artifactResetRows } from './artifact-resets.js';
 import type { DbExecutor } from './push.js';
+import { openAliased, openRows, sealOf, sealRow } from '../sealing.js';
 
 /**
  * Drizzle rows for project docs (issue #112): #36 materials of kind `doc` and their immutable
@@ -59,19 +60,28 @@ export function docRows(db: DbExecutor) {
   const savedSnapshot = and(eq(s.docId, v.materialId), eq(s.version, v.version));
   const joined = () => db.select({ doc: m, current: v, snapshot: s, projectName: p.name }).from(m).innerJoin(v, current)
     .innerJoin(p, eq(p.id, m.projectId)).leftJoin(s, savedSnapshot);
-  const map = (rows: { doc: MaterialRow; current: VersionRow; snapshot: SnapshotRow | null; projectName: string }[]) =>
-    rows.map((row) => ({ doc: toDoc(row.doc), current: toVersion(row.current, row.snapshot), projectName: row.projectName }));
+  // F-030: a sealed workspace's version text and project name are opened here, one seal per workspace.
+  async function map(read: { doc: MaterialRow; current: VersionRow; snapshot: SnapshotRow | null; projectName: string }[]) {
+    const versions = await openRows(db, 'project_material_versions', read.map((row) => row.current));
+    const rows = await openAliased(db, read.map((row, index) => ({ ...row, current: versions[index]! })), { table: 'projects', column: 'name', key: 'projectName',
+      workspace: (row) => row.doc.workspaceId, identity: (row) => [row.doc.projectId] });
+    return rows.map((row) => ({ doc: toDoc(row.doc), current: toVersion(row.current, row.snapshot), projectName: row.projectName }));
+  }
+  /** A new version's values, sealed with the version row's identity `[material id, version]` in a sealed workspace. */
+  async function versionRow(workspaceId: string, values: Record<string, unknown> & { materialId: string; version: number }) {
+    return sealRow('project_material_versions', values, await sealOf(db, workspaceId, { write: true }));
+  }
 
   async function paged(where: SQL, window: Window) {
     const [counted] = await db.select({ total: sql<number>`count(*)::int` }).from(m).where(where);
     const rows = await joined().where(where).orderBy(desc(m.updatedAt), desc(m.id)).limit(window.limit).offset(window.offset);
-    return { items: map(rows), total: counted?.total ?? 0 };
+    return { items: await map(rows), total: counted?.total ?? 0 };
   }
 
   async function find(id: string, options: { lock?: boolean } = {}) {
     if (options.lock) await db.select({ id: m.id }).from(m).where(and(eq(m.id, id), eq(m.kind, 'doc'))).for('update');
     const [row] = await joined().where(and(eq(m.id, id), eq(m.kind, 'doc')));
-    return row ? map([row])[0]! : null;
+    return row ? (await map([row]))[0]! : null;
   }
 
 
@@ -103,26 +113,30 @@ export function docRows(db: DbExecutor) {
     async version(id: string, version: number) {
       const [row] = await db.select({ version: v, snapshot: s }).from(v).innerJoin(m, eq(m.id, v.materialId)).leftJoin(s, savedSnapshot)
         .where(and(eq(v.materialId, id), eq(v.version, version), eq(m.kind, 'doc')));
-      return row ? toVersion(row.version, row.snapshot) : null;
+      if (!row) return null;
+      const [opened] = await openRows(db, 'project_material_versions', [row.version]);
+      return toVersion(opened!, row.snapshot);
     },
 
     async versions(id: string, window: Window) {
       const [counted] = await db.select({ total: sql<number>`count(*)::int` }).from(v).where(eq(v.materialId, id));
       const rows = await db.select({ version: v, snapshot: s }).from(v).leftJoin(s, savedSnapshot)
         .where(eq(v.materialId, id)).orderBy(desc(v.version)).limit(window.limit).offset(window.offset);
-      return { items: rows.map((row) => toVersion(row.version, row.snapshot)), total: counted?.total ?? 0 };
+      const opened = await openRows(db, 'project_material_versions', rows.map((row) => row.version));
+      return { items: rows.map((row, index) => toVersion(opened[index]!, row.snapshot)), total: counted?.total ?? 0 };
     },
 
     async insert(doc: { id: string; workspaceId: string; projectId: string; createdBy: Actor }, first: NewVersion) {
       const by = columns(doc.createdBy);
       await db.insert(m).values({ id: doc.id, workspaceId: doc.workspaceId, projectId: doc.projectId, createdBy: by.human, createdByAgentId: by.agent, kind: 'doc' });
-      await db.insert(v).values({ workspaceId: doc.workspaceId, projectId: doc.projectId, materialId: doc.id, version: 1, ...versionValues(first) });
+      await db.insert(v).values(await versionRow(doc.workspaceId, { workspaceId: doc.workspaceId, projectId: doc.projectId, materialId: doc.id, version: 1, ...versionValues(first) }) as typeof v.$inferInsert);
       return (await find(doc.id))!;
     },
 
     async append(id: string, next: NewVersion) {
       const [updated] = await db.update(m).set({ currentVersion: sql`${m.currentVersion} + 1`, updatedAt: new Date() }).where(and(eq(m.id, id), eq(m.kind, 'doc'))).returning();
-      await db.insert(v).values({ workspaceId: updated!.workspaceId, projectId: updated!.projectId, materialId: id, version: updated!.currentVersion, ...versionValues(next) });
+      await db.insert(v).values(await versionRow(updated!.workspaceId, { workspaceId: updated!.workspaceId, projectId: updated!.projectId, materialId: id,
+        version: updated!.currentVersion, ...versionValues(next) }) as typeof v.$inferInsert);
       return (await find(id))!;
     },
 
@@ -147,8 +161,8 @@ export function docRows(db: DbExecutor) {
       await fence.mark();
       const [current]=await db.select({version:v}).from(v).innerJoin(m,eq(m.id,v.materialId))
         .where(and(eq(v.materialId,docId),eq(v.version,m.currentVersion)));
-      if(current){const version=current.version;
-        const [previous]=await db.select().from(v).where(and(eq(v.materialId,docId),eq(v.version,version.version-1)));
+      if(current){const version=(await openRows(db,'project_material_versions',[current.version]))[0]!;
+        const [previous]=await openRows(db,'project_material_versions',await db.select().from(v).where(and(eq(v.materialId,docId),eq(v.version,version.version-1))));
         if(!previous||previous.body!==version.body||(previous.state??'published')!==(version.state??'published'))
           await artifactResetRows(db).canonical(scope,{kind:'doc',id:docId,version:version.version},
             {kind:'doc',id:docId,revision:String(version.version)},fence);

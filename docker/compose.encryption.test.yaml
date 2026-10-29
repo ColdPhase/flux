@@ -10,3 +10,14 @@ services:
     environment:
       # The boot key becomes a canary of the log scan (TEST ONLY; needs the test deployment switches too).
       FLUX_KEYRING_REVEAL_BOOT_KEY: "true"
+  # A sealed chooser search opens at most this many objects here, so its truncation marker (`searchLimited`) is tested
+  # without thousands of tasks (TEST ONLY; honoured only by a test deployment). The test runner reads it too.
+  api:
+    environment:
+      FLUX_TEST_SEALED_CHOOSER_SCAN_LIMIT: "8"
+  api2:
+    environment:
+      FLUX_TEST_SEALED_CHOOSER_SCAN_LIMIT: "8"
+  test:
+    environment:
+      FLUX_TEST_SEALED_CHOOSER_SCAN_LIMIT: "8"
