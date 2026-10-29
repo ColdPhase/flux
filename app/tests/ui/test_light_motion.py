@@ -935,7 +935,8 @@ class LightMotionJourney(unittest.TestCase):
           for (let i = 0; i < 400 && !layers().length; i++) await new Promise((resolve) => setTimeout(resolve, 5));
           // The pictures are in a shadow root, which not every engine lists in document.getAnimations(): the recorder kept every animation.
           // The fade starts on the first frame drawn after the swap.
-          const running = () => (window.__animations || []).filter((a) => a.id === 'flux-motion' && a.playState === 'running');
+          // Only animations on elements still in the page: earlier tests can leave unfinished glyph morphs on detached nodes.
+          const running = () => (window.__animations || []).filter((a) => a.id === 'flux-motion' && a.playState === 'running' && a.effect?.target?.isConnected);
           for (let i = 0; i < 200 && !running().length; i++) await new Promise((resolve) => setTimeout(resolve, 5));
           const all = running();
           for (const animation of all) { animation.pause(); animation.currentTime = 10; }
