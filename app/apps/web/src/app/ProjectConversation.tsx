@@ -428,6 +428,8 @@ function ProjectConversationContent({ data, variant, feed, rootHeader, rootMessa
     typing.input(Boolean(input.trim()) && !asking && !/^\/(ai|task|decide|handoff)(\s|$)/.test(input));
     // Private prompts keep their own draft; invoking /ai never overwrites a public task draft.
     if (!aiOff && !asking && conversation && writable && /^\/ai(\s|$)/.test(input)) {
+      // Typed key by key, "/" and "/a" were the reply's draft a moment ago; they were the command, not words to keep.
+      if (/^\/[a-z]{0,1}$/i.test(publicComposer.draft.body)) publicComposer.setBody('');
       helperComposer.setBody(input.replace(/^\/ai\s?/, '')); setAsking(true); setAskFailure(''); return;
     }
     setAskFailure(''); composer.setBody(input);
@@ -491,6 +493,12 @@ function ProjectConversationContent({ data, variant, feed, rootHeader, rootMessa
     const command = helperComposer.begin();
     if (!command) return;
     const active = captureHelperScope();
+    // The box is disabled while the request goes out, which takes a keyboard user's focus with it (AC-8): back in the box after.
+    const inBox = document.activeElement?.id === composerId;
+    const backToBox = () => {
+      if (!inBox) return;
+      requestAnimationFrame(() => { const now = document.activeElement; if (active() && (!now || now === document.body)) document.getElementById(composerId)?.focus({ preventScroll: true }); });
+    };
     setAskFailure('');
     try {
       noteAssistantUse(me.user.id);
@@ -500,15 +508,18 @@ function ProjectConversationContent({ data, variant, feed, rootHeader, rootMessa
       // The run's working line joins the end of the thread; follow it as a sent message does, or it starts off screen.
       if (active()) { scrollToEnd(); requestAnimationFrame(() => { if (active()) scrollToEnd(); }); }
       if (active()) setAsking(false);
+      backToBox();
     } catch (cause) {
       // Offline: the request waits as "Sends when you're back" and goes out once, under the same id, on reconnect (AST-10.15).
       if (cause instanceof NetworkError && conversation) {
         helperComposer.finish(command.clientMessageId);
         holdAsk({ conversationId: conversation.id, prompt: command.body, clientRunId: command.clientMessageId });
         if (active()) setAsking(false);
+        backToBox();
         return;
       }
       helperComposer.finish(command.clientMessageId, cause);
+      backToBox();
       if (!active()) return;
       setAskFailure(askErrorText(cause));
       setAskFailureCode(cause instanceof ApiError ? cause.code : null);
@@ -777,7 +788,7 @@ function ProjectConversationContent({ data, variant, feed, rootHeader, rootMessa
             {[...assistantChanges.byRun].filter(([runId]) => !assistant.answers.some((answer) => answer.runId === runId)).map(([runId, runChanges]) => (
               <li key={`changes-${runId}`} className="project-convo__message assistant-waiting-item"><WaitingChanges changes={runChanges} onChanged={assistantChanges.refresh} meId={me.user.id} standalone /></li>
             ))}
-            {assistant.run ? <WorkingLine key={assistant.run.id} run={assistant.run} onStop={assistant.stop} onRetry={() => assistant.retry(assistant.run!.id)} onDismiss={assistant.dismissRun}
+            {assistant.run ? <WorkingLine key="assistant-working" run={assistant.run} onStop={assistant.stop} onRetry={() => assistant.retry(assistant.run!.id)} onDismiss={assistant.dismissRun} composerId={composerId}
               changed={(assistantChanges.byRun.get(assistant.run.id) ?? []).filter((change) => change.state === 'applied' || change.state === 'applied_after_wait' || change.state === 'undone').length} /> : null}
             {assistant.others.map((other) => <OthersWorkingLine key={`working-${other.ownerId}`} name={other.ownerName} />)}
             {waitingHere.map((item) => <li key={item.clientRunId} className="assistant-queued" aria-live="polite">Sends when you&apos;re back</li>)}

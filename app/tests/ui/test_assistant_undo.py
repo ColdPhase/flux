@@ -9,6 +9,7 @@ the partial-Undo sentence, "Stopped after N changes" and "Next: …" with Cancel
 from __future__ import annotations
 
 import json
+import os
 import re
 import time
 import unittest
@@ -18,6 +19,7 @@ from playwright.sync_api import Browser, BrowserContext, Page, Route, expect, sy
 
 from test_app_shell import DESKTOP, ORIGIN, PHONE, UPSTREAM, shot, start_forwarder
 
+UI_BROWSER = os.environ.get("FLUX_UI_BROWSER", "chromium")  # chromium (default) or webkit, as in the other journeys (#68 AC-8)
 PASSWORD = "waiting for my ok"
 STAMP = int(time.time() * 1000)
 ADA = {"name": "Ada Brandt", "email": f"ada.undo+{STAMP}@example.test"}
@@ -41,7 +43,7 @@ class AssistantUndo(unittest.TestCase):
         if UPSTREAM:
             start_forwarder(ORIGIN, UPSTREAM)
         cls.pw = sync_playwright().start()
-        cls.browser = cls.pw.chromium.launch()
+        cls.browser = getattr(cls.pw, UI_BROWSER).launch()
         expect.set_options(timeout=10000)
 
     @classmethod
@@ -268,6 +270,21 @@ class AssistantUndo(unittest.TestCase):
         message.locator(".assistant-message__head").get_by_role("button", name="Undo").click()
         expect(message.locator(".assistant-message__head")).to_contain_text("Undone by Ada Brandt")
         expect(message.get_by_role("button", name="Undo")).to_have_count(0)
+
+    def test_05b_undo_by_keyboard_keeps_focus_in_the_message_once_the_button_is_gone(self) -> None:
+        page = self.page()
+        changes = self.message_set()[:2]
+        self.stub_undo(page, changes, [])
+        self.open_conversation(page)
+        message = page.locator(".assistant-message")
+        undo = message.locator(".assistant-message__head").get_by_role("button", name="Undo")
+        undo.focus()
+        expect(undo).to_be_focused()
+        page.keyboard.press("Enter")
+        expect(message.locator(".assistant-message__head")).to_contain_text("Undone by Ada Brandt")
+        expect(message.get_by_role("button", name="Undo")).to_have_count(0)
+        # The button that was pressed is gone; focus is on the message, not on the page (AC-8, keyboard).
+        expect(message).to_be_focused()
 
     def test_06_a_stopped_run_says_stopped_after_n_changes(self) -> None:
         page = self.page(phone=True)

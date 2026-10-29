@@ -29,6 +29,7 @@ from app_select import choose, expect_value
 from test_app_shell import DESKTOP, ORIGIN, PHONE, UPSTREAM, shot, start_forwarder
 
 MOCK = os.environ.get("FLUX_ANTHROPIC_MOCK_URL", "http://127.0.0.1:8090")
+UI_BROWSER = os.environ.get("FLUX_UI_BROWSER", "chromium")  # chromium (default) or webkit, as in the other journeys (#68 AC-8)
 PASSWORD = "an assistant that stays mine"
 STAMP = int(time.time() * 1000)
 JO = {"name": "Jo Weber", "email": f"jo.weber+{STAMP}@example.test"}
@@ -64,7 +65,7 @@ class PersonalAssistantJourney(unittest.TestCase):
         if UPSTREAM:
             start_forwarder(ORIGIN, UPSTREAM)
         cls.pw = sync_playwright().start()
-        cls.browser = cls.pw.chromium.launch()
+        cls.browser = getattr(cls.pw, UI_BROWSER).launch()
         expect.set_options(timeout=10000)
         mock("/__script", {"reset": True})
 
@@ -124,6 +125,31 @@ class PersonalAssistantJourney(unittest.TestCase):
 
     def own_runs(self, page: Page) -> list[dict]:
         return self.api(page, "GET", "/api/v1/assistant-runs?limit=20", status=200)["items"]
+
+    def focus_state(self, page: Page) -> dict:
+        """Where focus is now: `page` is true when it fell to the document (nothing to operate), `in` names the part of the conversation."""
+        return page.evaluate("""() => {
+            const el = document.activeElement;
+            const page = !el || el === document.body || el === document.documentElement;
+            const within = (selector) => !!el && !!el.closest(selector);
+            return { page, label: page ? '' : (el.getAttribute('aria-label') || el.textContent || el.id || el.tagName).trim().slice(0, 40),
+                     in: page ? 'page' : within('[role="dialog"]') ? 'dialog' : within('.assistant-working') ? 'working' : within('.assistant-proposal') ? 'proposal'
+                       : within('.assistant-answer') ? 'answer' : within('#thread-composer') ? 'composer' : 'other' };
+        }""")
+
+    def reach(self, page: Page, target, *, back: bool = False, presses: int = 60) -> None:
+        """Move focus to `target` with Tab (Shift+Tab when `back`) alone, as a keyboard user does."""
+        for _ in range(presses):
+            if target.evaluate("(node) => node === document.activeElement"):
+                return
+            page.keyboard.press("Shift+Tab" if back else "Tab")
+        self.fail(f"{target} was not reached by keyboard in {presses} presses; focus is on {self.focus_state(page)}")
+
+    def trapped(self, page: Page, dialog) -> None:
+        """Tab and Shift+Tab never leave the open dialog (it is modal: AC-8 modal focus)."""
+        for key in ("Tab",) * 8 + ("Shift+Tab",) * 8:
+            page.keyboard.press(key)
+            self.assertTrue(dialog.evaluate("(node) => node.contains(document.activeElement)"), f"{key} left the dialog: {self.focus_state(page)}")
 
     def no_horizontal_scroll(self, page: Page) -> None:
         self.assertLessEqual(page.evaluate("document.documentElement.scrollWidth"), page.evaluate("window.innerWidth"))
@@ -570,6 +596,87 @@ class PersonalAssistantJourney(unittest.TestCase):
         kai_card.get_by_role("button", name="Open result").click()
         expect(kai.get_by_role("complementary", name="Details")).to_contain_text("Camera fails in low light")
 
+    # ---------------------------------------------------------------- AC-8: keyboard and focus
+
+    def test_08b_ask_stop_retry_and_dismiss_work_by_keyboard_and_focus_never_falls_to_the_page(self) -> None:
+        mock("/__script", {"reset": True, "delay": 10})
+        jo = self.conversation("jo")
+        box = self.composer(jo)
+        box.focus()
+        jo.keyboard.type("/ai Compare the sensors")
+        expect(jo.locator("#project-ask")).to_be_visible()
+        jo.keyboard.press("Enter")
+        working = jo.locator(".assistant-working")
+        expect(working).to_contain_text("Only you see this")
+        expect(box).to_be_focused()  # sending keeps the person in the box: they can write on
+        expect(box).to_have_value("")  # typing "/ai" key by key left no "/a" behind as the reply's draft
+        # Stop is reachable by Tab alone and works with Enter; the button goes away, focus does not fall to the page.
+        self.reach(jo, working.get_by_role("button", name="Stop"), back=True)
+        jo.keyboard.press("Enter")
+        self.assertEqual(self.focus_state(jo)["page"], False, "focus after Stop")
+        expect(working).to_contain_text("Stopped. Nothing was posted.", timeout=15000)
+        self.assertEqual(self.focus_state(jo)["in"], "working", "focus stays where the answer will appear")
+        # Retry starts a new run and its own Stop takes the place of the button that was pressed.
+        self.reach(jo, working.get_by_role("button", name="Retry"))
+        jo.keyboard.press("Enter")
+        expect(working.get_by_role("button", name="Stop")).to_be_visible(timeout=15000)
+        self.assertEqual(self.focus_state(jo)["in"], "working", "focus after Retry")
+        self.reach(jo, working.get_by_role("button", name="Stop"))
+        jo.keyboard.press("Enter")
+        expect(working).to_contain_text("Stopped. Nothing was posted.", timeout=15000)
+        # Dismiss removes the line; focus goes back to the box, where the next thing is written.
+        self.reach(jo, working.get_by_role("button", name="Dismiss"))
+        jo.keyboard.press("Enter")
+        expect(working).to_have_count(0)
+        expect(box).to_be_focused()
+
+    def test_08c_accepting_a_proposal_by_keyboard_keeps_focus_on_it_and_opens_its_result(self) -> None:
+        kai = self.page("kai")
+        work = self.api(kai, "POST", f"/api/v1/projects/{self.ids['project']}/work",
+                        {"title": "Battery life of the lamp", "owner": {"kind": "human", "id": KAI["id"]}}, status=201)
+        type(self).ids["work2"] = work["id"]
+        mock("/__script", {"reset": True, "text": PROPOSAL_TEXT, "output_tokens": 90})
+        jo = self.conversation("jo")
+        self.ask(jo, "Record the battery result")
+        expect(jo.locator(".assistant-proposal").last).to_contain_text("Proposal · not saved yet", timeout=20000)
+        kai = self.conversation("kai")
+        answer = kai.locator(".assistant-answer").filter(has=kai.locator(".assistant-proposal")).last
+        card = answer.locator(".assistant-proposal")
+        expect(card).to_contain_text("finishes Battery life of the lamp")
+        answer.focus()  # where a link from a notification lands
+        self.reach(kai, card.get_by_role("button", name="Accept"))
+        kai.keyboard.press("Enter")
+        expect(card).to_contain_text(f"Recorded by you · drafted by {JO['name']}'s assistant")
+        self.assertIn(self.focus_state(kai)["in"], ("proposal", "answer"), "focus stays on the proposal after Accept")
+        self.assertEqual(self.api(kai, "GET", f"/api/v1/work/{work['id']}", status=200)["status"], "done")
+        # The result opens from the keyboard in the one Details panel, with focus inside it.
+        self.reach(kai, card.get_by_role("button", name="Open result"))
+        kai.keyboard.press("Enter")
+        panel = kai.get_by_role("complementary", name="Details")
+        expect(panel).to_contain_text("Camera fails in low light")
+        self.assertTrue(panel.evaluate("(node) => node.contains(document.activeElement)"), f"focus moved into Details: {self.focus_state(kai)}")
+
+    def test_08d_the_assistant_panel_is_a_modal_dialog_on_desktop_and_phone(self) -> None:
+        for phone in (False, True):
+            with self.subTest(phone=phone):
+                page = self.conversation("jo", phone=phone)
+                who = page.locator(".assistant-answer__who").last
+                who.scroll_into_view_if_needed()
+                who.focus()
+                page.keyboard.press("Enter")
+                dialog = page.get_by_role("dialog", name=f"{JO['name']}'s assistant")
+                expect(dialog).to_be_visible()
+                self.assertTrue(dialog.evaluate("(node) => node.contains(document.activeElement)"), f"focus moved into the dialog: {self.focus_state(page)}")
+                expect(dialog).to_have_attribute("aria-modal", "true")
+                self.trapped(page, dialog)
+                page.keyboard.press("Escape")
+                expect(dialog).to_have_count(0)
+                try:
+                    expect(who).to_be_focused(timeout=3000)  # the person is back where they were
+                except AssertionError:
+                    self.fail(f"focus did not return to the assistant's name: {self.focus_state(page)}")
+                self.no_horizontal_scroll(page)
+
     # ---------------------------------------------------------------- paused and capped: explicit and calm
 
     def test_09_paused_and_capped_are_explicit(self) -> None:
@@ -625,6 +732,21 @@ class PersonalAssistantJourney(unittest.TestCase):
         expect(jo.locator("#project-ask")).to_be_visible()
         self.no_horizontal_scroll(jo)
         shot(jo, "assistant-390-ask-capped")
+
+
+    def test_10b_the_details_sheet_on_the_phone_takes_focus_and_traps_it_until_esc(self) -> None:
+        page = self.conversation("kai", phone=True)
+        opener = page.locator(".assistant-proposal").get_by_role("button", name="Open result").last
+        opener.scroll_into_view_if_needed()
+        opener.focus()
+        page.keyboard.press("Enter")
+        sheet = page.get_by_role("dialog", name="Details")
+        expect(sheet).to_be_visible()
+        expect(sheet).to_contain_text("Camera fails in low light")
+        self.assertTrue(sheet.evaluate("(node) => node.contains(document.activeElement)"), f"focus moved into the sheet: {self.focus_state(page)}")
+        self.trapped(page, sheet)
+        page.keyboard.press("Escape")
+        expect(sheet).to_have_count(0)  # Esc closes the whole panel; the page was opened by address, so there is no opener to return to
 
 
 if __name__ == "__main__":

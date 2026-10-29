@@ -89,6 +89,15 @@ export function useSidePanelMode(): SidePanelMode {
 }
 
 function PanelContent({ title, titleId, closeLabel, back, chip, context, onClose, bodyRef, contentKey, depth, children }: { title: string; titleId: string; closeLabel?: string; back?: SidePanelProps['back']; chip?: string; context?: ReactNode; onClose: () => void; bodyRef: RefObject<HTMLDivElement | null>; contentKey: string; depth: number; children: ReactNode }) {
+  // Content that takes the place of another in an open panel (a result opened from a thread's button): the control that was
+  // pressed is gone with the old content, and focus must not fall to the page. A panel that has just opened is placed by its surface.
+  const shown = useRef(contentKey);
+  useLayoutEffect(() => {
+    if (shown.current === contentKey) return;
+    shown.current = contentKey;
+    const active = document.activeElement;
+    if (!active || active === document.body) bodyRef.current?.focus({ preventScroll: true });
+  }, [contentKey, bodyRef]);
   return (
     <>
       <div className="ui-panel__head">

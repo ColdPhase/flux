@@ -249,10 +249,9 @@ Done in #179 (F-020 PROV-1), 2026-10-03:
    resolveKey, policy })`. Empty or `off`, the default, keeps the real lookup and a disabled
    provider, so every run is `provider_off` at zero cost. Any other value stops both apps.
 
-Still required before an instance should switch it on:
-
-4. a fresh price and model check, and an independently verified real-key provider pass
-   (PROV-6).
+Before an instance switches it on, its operator repeats the price and model check of
+[Price and model](#ports). There is no independently verified real-key provider pass (PROV-6) as a gate
+for O-008: the gates are the mock verification gates of 2026-10-08 (founder direction 2026-10-16).
 
 ## Test-only switch
 
@@ -535,26 +534,51 @@ the manager grant, the working line only for the owner, the attributed answer an
 citations for peers and a viewer, Stop, a provider failure, a proposal accepted only by
 the work's owner, paused, capped, and phone width. The production fail-closed states
 (provider off, no key) are rendered there from a stubbed status response only.
+The keyboard and modal-focus checks of AC-8 (08b to 08d, 10b) use Tab and Enter only: ask with `/ai`, reach Stop, Retry
+and Dismiss, reach Accept and *Open result*, and open the assistant's panel and the Details sheet, whose focus
+must stay inside until Esc returns it to the opener. They found, and the code now fixes, a Stop, Retry, Accept, Apply or Undo
+that dropped focus to the page when its button went away, a `/a` left in the reply box by typing `/ai` key by key, and a
+result opened from a thread button that did not take focus. `FLUX_UI_BROWSER=webkit` runs the same files in WebKit.
+
 Screenshots of that run (light theme, 1440×900 and 390×844) are in
 [`docs/design/personal-ai/app/`](../design/personal-ai/app/); they show appearance, not
 behaviour or accessibility.
 
+## Acceptance of #68 (closeout)
+
+Each criterion of [#68](https://github.com/ColdPhase/flux/issues/68) against `main`. Two-user Docker tests; no stub is
+counted as a provider pass (model billing, provider compatibility and real-device evidence are reported separately).
+
+| AC | Evidence |
+| --- | --- |
+| 1 Two-user denial | `personal-runs.test.ts` "AC-1": every route (invoke, claimed `ownerId`/`agentId`/`connectionId`, read, stop, retry, continue, a mention or reply, WebSocket frames, an unknown queued job) is refused with 403/404; no model call and no run or quota row for the other person. |
+| 2 No charge | "AC-2": denied, stopped-before-read, paused, capped and revoked runs record zero; a retry key never charges twice. |
+| 3 Own connection only | "AC-3" and "PROV-1": a second person's runs use only their connection and cap. |
+| 4 No fallback | "AC-4" (production composition fails closed, explicit state) and `test_personal_assistant.py` test_02, test_03, test_09 (provider off, no key, paused, capped; human work continues). |
+| 5 Context boundary | "AC-5": seeded DM and private-capture tokens never reach the provider request or the output; every cited source opens for the audience. |
+| 6 Revocation mid-run | Two "AC-6" tests: grant revoked or member removed between read and commit commits nothing and withholds the partial output. |
+| 7 Proposal authority | "AC-7" and "#250 AC-3": only someone with authority accepts; the result records "drafted by X's assistant". Typed suggestions: `assistant-changes.test.ts` "A5 all typed kinds". |
+| 8 Browser check | `test_personal_assistant.py` (ask by `/ai`, working line and Stop, attributed answer, citations, proposal, paused, capped; computer and phone), `test_assistant_undo.py` and `test_assistant_changes.py` (the run's message, Undo, waiting changes), and the keyboard and modal-focus tests 08b to 08d and 10b. Each runs in Chromium and WebKit (`FLUX_UI_BROWSER`). |
+
+The workspace AI lock ([F-029](../product/workspace-ai-lock.md)) and encrypted workspaces ([F-030](../product/encrypted-workspaces.md))
+come first: `workspace-ai-runs.test.ts` (invoke, Retry and Continue refused while AI is off, a queued run ends `ai_off`),
+`encrypted-workspaces.test.ts` (a run in a sealed workspace is refused and leaves no row) and `test_workspace_ai_lock.py`
+(no `/ai`, no entry in a blocked workspace).
+
 ## Not yet done
 
-- The rest of #406/#484: AST-3.2's handoff, catalog and owner-Apply parity (they need A3/A4), the
+- The rest of #406/#484: AST-3.2's handoff, catalog and owner-Apply parity, the
   persisted owner mark and the account row's note for a model without tool calling, a "Limit reached"
   status and copy, the Responses API for the OpenAI models that need it, and the Gemini
   thought-signature field name (unverified against Google's pages).
-- A8 and A9 start background runs; the lane, its ordering and its lines are in place and tested with seeded rows.
-- #124's key custody, the real connection lookup and key resolver, the foreign key
-  from `connection_id`, and the operator switch (see [Switching production on](#switching-production-on)).
-- A provider pass against the real API (with a real key, by its owner), including billing on
-  cancellation and lost responses.
-- The "someone else's assistant" panel of the design. (Dropped from the plan, founder direction
-  2026-10-16 on #68: the WebSocket commands, the map-thought *Ask* entry and the header status
-  button.)
-- Real-device (phone/tablet) and screen-reader checks of the UI.
-- A sweep of runs a crashed worker left behind. Today the owner's next invoke
-  ends their own in-flight runs untouched for 15 minutes: a queued or reading run
-  at zero cost, a dispatching one as `provider_failed` with its reservation kept
-  as `unknown`. The job itself expires after 5 minutes.
+- A provider pass against the real API (a real key, by its owner), including billing on cancellation and
+  lost responses. Not a gate for O-008 (founder direction 2026-10-16, no PROV-6 real-key gate); the operator
+  who sets `FLUX_PERSONAL_RUNS=on` first does the price and model check of [Switching production on](#switching-production-on).
+- Undo for a created map, a recorded result, a proposed decision and a posted message: no domain can remove
+  them today, for a person either, so the run's message lists them without Undo. Removal commands are a product
+  decision of their own.
+- Real-device (phone/tablet) and screen-reader checks of the UI; optional evidence (founder direction
+  [#266](https://github.com/ColdPhase/flux/issues/266), 2026-10-05).
+
+Dropped from the plan (founder direction 2026-10-16 on #68): the WebSocket commands, the map-thought *Ask*
+entry, the header status button and `draftedBy` on the result object itself.
