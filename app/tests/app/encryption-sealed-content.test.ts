@@ -20,7 +20,7 @@ let ada: Person; let ben: Person; let cy: Person;
 let A: string; let B: string;
 const pw = passphrase();
 const kinds = ['project', 'goal', 'message', 'reply', 'large', 'dmTitle', 'dmMessage', 'decision', 'rationale', 'result', 'evidence', 'draft', 'draftBody', 'draftEdit', 'task', 'outcome', 'criterion', 'blocker', 'taskRename',
-  'docTitle', 'docBody', 'docEdit', 'materialTitle', 'materialBody', 'materialUrl', 'mapTitle', 'thought', 'linkLabel', 'fileName'] as const;
+  'docTitle', 'docBody', 'docEdit', 'materialTitle', 'materialBody', 'materialUrl', 'mapTitle', 'thought', 'linkLabel', 'fileName', 'mention'] as const;
 type Kind = typeof kinds[number];
 const canaries: Record<'A' | 'B', Record<Kind, string>> = { A: {} as Record<Kind, string>, B: {} as Record<Kind, string> };
 for (const side of ['A', 'B'] as const) {
@@ -321,6 +321,29 @@ describe('F-030 S2a-1: sealed content in the repositories', () => {
         assert.deepEqual(row, { name: false, sha: false, key_version: null });
       }
     }
+  });
+
+  test('a mention in A reaches the inbox content-free ("Ada mentioned you in Garden club"); B keeps its text; the database refuses content (S2a-2c)', async () => {
+    const inbox = async () => (expectStatus(await ben.browser.request('GET', '/api/v1/inbox'), 200) as { items: { title: string; body: string; source: { workspaceId?: string; id: string } }[] }).items;
+    for (const side of ['A', 'B'] as const) {
+      await post(ada, `/api/v1/conversations/${ids[side].conversation}/messages`, { body: `@Ben ${canaries[side].mention}`, clientMessageId: randomUUID() }, 201);
+    }
+    let items: Awaited<ReturnType<typeof inbox>> = [];
+    for (let attempt = 0; attempt < 60; attempt += 1) {
+      items = await inbox();
+      if (items.some((item) => item.title === 'Ada mentioned you in Garden club') && items.some((item) => item.body.includes(canaries.B.mention))) break;
+      await new Promise((resolve) => setTimeout(resolve, 500));
+    }
+    const sealed = items.find((item) => item.title === 'Ada mentioned you in Garden club');
+    assert.ok(sealed, `A's mention arrived content-free: ${JSON.stringify(items.map((item) => item.title))}`);
+    assert.equal(sealed.body, '');
+    assert.ok(items.some((item) => item.body.includes(canaries.B.mention)), 'B keeps its preview');
+    for (const item of items) assert.equal(/fx1\.[1-9]/.test(item.title + item.body), false, 'no envelope in the inbox');
+    const insert = (title: string, body: string) => pool.query(`INSERT INTO notifications (id, user_id, workspace_id, source_type, source_id, reason, title, body, url)
+      VALUES (gen_random_uuid(), $1, $2, 'project', $3, 'mention', $4, $5, '/x')`, [ben.id, A, ids.A.project, title, body]);
+    await assert.rejects(insert('Ada mentioned you in Garden club', 'a preview'), { hint: 'NOTIFICATION_CONTENT_REFUSED' }, 'a body');
+    await assert.rejects(insert('Ada mentioned you in a secret project', ''), { hint: 'NOTIFICATION_CONTENT_REFUSED' }, 'another place');
+    await assert.rejects(insert('secret words mentioned you in Garden club', ''), { hint: 'NOTIFICATION_CONTENT_REFUSED' }, 'a free who');
   });
 
   test('A\'s rows hold envelopes, B\'s plain text; the draft versions of A are written by the application, sealed', async () => {
