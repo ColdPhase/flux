@@ -1,9 +1,10 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { FILE_LIMITS, imageTypeOf, type MessageFile, type StagedFile, type ThoughtFile } from '@flux/contracts';
+import { FILE_LIMITS, imageTypeOf, type FileDetail, type MessageFile, type StagedFile, type ThoughtFile } from '@flux/contracts';
 import { ConflictError, ForbiddenError, InvalidInputError, NotFoundError, PayloadTooLargeError } from '../access/errors.js';
 import type { Principal } from '../principal.js';
 import type { ActorRef } from '../work/ports.js';
 import { id } from '../work/validation.js';
+import { fileDetailOf, readsDetail } from './detail.js';
 import { FileReceiveTimeoutError, FileTooLargeError, type FileRepository, type FileStorage, type FileUnitOfWork, type StoredFileRow } from './ports.js';
 
 const MINUTE = 60_000;
@@ -64,7 +65,22 @@ function staged(row: StoredFileRow): StagedFile {
   if (row.state !== 'ready' || row.size === null || row.sha256 === null || row.readyAt === null || row.expiresAt === null)
     throw new Error('A staged file must be ready and unpublished');
   return { id: row.id, projectId: row.projectId, uploadId: row.uploadId, name: row.name, size: row.size, sha256: row.sha256,
-    readyAt: row.readyAt.toISOString(), expiresAt: row.expiresAt.toISOString() };
+    readyAt: row.readyAt.toISOString(), expiresAt: row.expiresAt.toISOString(), ...storedDetail(row) };
+}
+
+/** What a stored row says about its file (#469), as the keys of `FileDetail`; a key only where there is a value. */
+export function storedDetail(row: Pick<StoredFileRow, 'pageCount' | 'rowCount' | 'durationMs'>): FileDetail {
+  return { ...(row.pageCount != null ? { pages: row.pageCount } : {}), ...(row.rowCount != null ? { rows: row.rowCount } : {}),
+    ...(row.durationMs != null ? { durationMs: row.durationMs } : {}) };
+}
+
+/** Passes the bytes on unchanged and keeps them (at most the file limit, which the receiver enforces) for the one reader of their detail. */
+async function* observed(bytes: AsyncIterable<Uint8Array>, keep: Uint8Array[]): AsyncGenerator<Uint8Array> {
+  let kept = 0;
+  for await (const chunk of bytes) {
+    if (kept <= FILE_LIMITS.fileBytes) { keep.push(chunk); kept += chunk.byteLength; }
+    yield chunk;
+  }
 }
 
 /**
@@ -189,9 +205,11 @@ export function createFileUseCases(unit: FileUnitOfWork, storage: FileStorage, c
       });
 
       let received;
+      // What the bytes say (#469) is read from the plaintext as it arrives, so it needs nothing of the stored object.
+      const plaintext: Uint8Array[] = [];
       try {
         const limits = { maxBytes: FILE_LIMITS.fileBytes, deadline: Date.now() + FILE_LIMITS.receiveSeconds * 1000 };
-        received = admitted.replay ? await digestOnly(bytes, limits) : await storage.receive(bytes, limits);
+        received = admitted.replay ? await digestOnly(bytes, limits) : await storage.receive(readsDetail(name) ? observed(bytes, plaintext) : bytes, limits);
       } catch (error) {
         if (admitted.reserved ?? admitted.verification) await release(projectId, uploader, (admitted.reserved ?? admitted.verification)!.id);
         if (error instanceof FileTooLargeError) throw new PayloadTooLargeError('A file is at most 5 MiB', 'FILE_TOO_LARGE');
@@ -222,6 +240,8 @@ export function createFileUseCases(unit: FileUnitOfWork, storage: FileStorage, c
       }
 
       const reservation = admitted.reserved!;
+      const detail = plaintext.length ? fileDetailOf(name, Buffer.concat(plaintext)) : {};
+      plaintext.length = 0;
       try {
         return await unit.run(async (ports) => {
           await ports.access.requireProject(principal, 'write', projectId, { lock: true });
@@ -234,7 +254,7 @@ export function createFileUseCases(unit: FileUnitOfWork, storage: FileStorage, c
           await received.commit(reservation.id);
           const now = clock();
           const ready = await ports.files.markReady(reservation.id, { size: received.size, sha256: received.sha256, readyAt: now,
-            expiresAt: new Date(now.getTime() + FILE_LIMITS.unpublishedDays * DAY) });
+            expiresAt: new Date(now.getTime() + FILE_LIMITS.unpublishedDays * DAY), detail });
           if (!ready) throw new ConflictError('The upload took too long; send the file again', 'UPLOAD_EXPIRED');
           return staged((await ports.files.findFile(reservation.id))!);
         });

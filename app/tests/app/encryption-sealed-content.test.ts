@@ -36,7 +36,9 @@ async function writeEverything(side: 'A' | 'B', ws: string) {
   const project = await post(ada, `/api/v1/workspaces/${ws}/projects`, { name: c.project, visibility: 'workspace' }, 201) as unknown as Project;
   expectStatus(await ada.browser.request('PUT', `/api/v1/projects/${project.id}/goal`, { body: { title: c.goal }, headers: { ...key(), 'if-match': `"${project.version}"` } }), 200, 'goal');
   const conversation = await post(ada, `/api/v1/projects/${project.id}/conversations`, { body: c.message, clientMessageId: randomUUID() }, 201);
-  await post(ben, `/api/v1/conversations/${conversation.id}/messages`, { body: c.reply, clientMessageId: randomUUID() }, 201);
+  // #469: the reply cites the opening message, so the cards of a sealed workspace are covered by the same canary scan.
+  const opening = (conversation.messages as { id: string }[])[0]!.id;
+  await post(ben, `/api/v1/conversations/${conversation.id}/messages`, { body: c.reply, clientMessageId: randomUUID(), references: [{ kind: 'message', id: opening }] }, 201);
   await post(ben, `/api/v1/conversations/${conversation.id}/messages`, { body: c.large, clientMessageId: randomUUID() }, 201);
   const dm = await post(ada, `/api/v1/workspaces/${ws}/dms`, { participantIds: [ben.id, cy.id], title: c.dmTitle }, 201);
   await post(ada, `/api/v1/dms/${dm.id}/messages`, { body: c.dmMessage, clientMessageId: randomUUID() }, 201);
@@ -121,6 +123,52 @@ describe('F-030 S2a-1: sealed content in the repositories', () => {
       assert.ok(activity.includes(c.task) && activity.includes(c.taskRename), `${side}: the title change is in the activity`);
       const draft = expectStatus(await ada.browser.request('GET', `/api/v1/drafts/${id.draft}`), 200) as { title: string; body: string };
       assert.deepEqual({ title: draft.title, body: draft.body }, { title: c.draft, body: c.draftEdit });
+    }
+  });
+
+  test('a reference opens the sealed text it cites for a reader and stores only ids; locked, the card answers like its conversation (#469)', async () => {
+    for (const side of ['A', 'B'] as const) {
+      const c = canaries[side]; const id = ids[side];
+      const read = async () => expectStatus(await ben.browser.request('GET', `/api/v1/conversations/${id.conversation}`), 200) as { messages: { id: string; references?: { kind: string; state: string; title?: string; place?: string; author?: string }[] }[] };
+      const reply = (await read()).messages[1]!;
+      assert.deepEqual(reply.references?.map(({ kind, state, title, place, author }) => ({ kind, state, title, place, author })),
+        [{ kind: 'message', state: 'available', title: c.message, place: c.project, author: 'Ada' }], `${side}: the card opens the sealed message and project name`);
+      const stored = (await pool.query(`SELECT kind, target_id FROM message_references WHERE project_message_id = $1`, [reply.id])).rows;
+      assert.equal(stored.length, 1, side);
+      assert.deepEqual(Object.keys(stored[0]).sort(), ['kind', 'target_id'], `${side}: a reference row is a kind and an id`);
+    }
+    expectStatus(await lock(ada.browser, A), 200);
+    assert.equal((await ben.browser.request('GET', `/api/v1/conversations/${ids.A.conversation}`)).status, 423, 'locked: nothing of A is read, cards included');
+    expectStatus(await unlock(ada.browser, A, { password: pw }), 200);
+    assert.equal((await ben.browser.request('GET', `/api/v1/conversations/${ids.A.conversation}`)).status, 200);
+  });
+
+  test('citing an id of a locked sealed workspace answers exactly like citing an id that does not exist (#469)', async () => {
+    // Ben is a member of both workspaces. Nothing of A may be learned from B by citing A's ids, locked or not.
+    const opening = (expectStatus(await ben.browser.request('GET', `/api/v1/conversations/${ids.A.conversation}`), 200) as { messages: { id: string }[] }).messages[0]!.id;
+    const dmMessage = (expectStatus(await ben.browser.request('GET', `/api/v1/dms/${ids.A.dm}`), 200) as { messages: { id: string }[] }).messages[0]!.id;
+    const attempt = async (path: string, reference: { kind: string; id: string }) => {
+      const response = await ben.browser.request('POST', path, { body: { body: 'Citing from B', clientMessageId: randomUUID(), references: [reference] } });
+      return { status: response.status, body: response.text };
+    };
+    const places = [`/api/v1/projects/${ids.B.project}/conversations`, `/api/v1/dms/${ids.B.dm}/messages`];
+    const check = async (label: string) => {
+      for (const path of places) {
+        const absent = await attempt(path, { kind: 'message', id: randomUUID() });
+        assert.equal(absent.status, 404, `${label}: an absent id`);
+        assert.match(absent.body, /REFERENCE_UNAVAILABLE/);
+        for (const reference of [{ kind: 'message', id: opening }, { kind: 'message', id: dmMessage }, { kind: 'thought', id: opening }]) {
+          assert.deepEqual(await attempt(path, reference), absent, `${label}: ${path} ${reference.kind} of A answers like an absent id`);
+        }
+      }
+    };
+    await check('unlocked');
+    expectStatus(await lock(ada.browser, A), 200);
+    try {
+      await check('locked');
+      assert.equal(JSON.stringify(await attempt(places[0]!, { kind: 'message', id: opening })).includes('Garden club'), false, 'the answer never names the locked workspace');
+    } finally {
+      expectStatus(await unlock(ada.browser, A, { password: pw }), 200);
     }
   });
 

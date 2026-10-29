@@ -48,7 +48,7 @@ const refused = [
 ] as const;
 const content = [
   'workspaces', 'workspace_members', 'workspace_ai_policies', 'projects', 'project_grants', 'project_goals', 'project_conversations',
-  'project_messages', 'project_message_observations', 'dm_message_observations', 'return_points', 'dms', 'dm_participants', 'dm_messages',
+  'project_messages', 'message_references', 'project_message_observations', 'dm_message_observations', 'return_points', 'dms', 'dm_participants', 'dm_messages',
   'project_materials', 'project_material_versions', 'project_work_items', 'project_task_activity', 'project_task_updates', 'project_task_notices',
   'project_task_plan_intents', 'project_task_dependencies', 'project_task_discussions', 'task_creation_undo_receipts', 'native_command_receipts',
   'project_decisions', 'project_results', 'project_object_links', 'drafts', 'draft_versions', 'draft_results', 'sketches', 'sketch_thoughts',
@@ -143,6 +143,7 @@ export const VISIBLE_COLUMNS: Readonly<Record<string, Readonly<Record<string, st
   project_goals: { set_by: 'a user id', reached_by: 'a user id' },
   project_conversations: { created_by: 'a user id', space: 'an enum' },
   project_messages: { author_id: 'a user id', contribution_kind: 'an enum' },
+  message_references: { kind: 'an enum (thought or message)' },
   project_message_observations: { viewer_id: 'a user id' },
   dm_message_observations: { viewer_id: 'a user id' },
   return_points: { user_id: 'a user id', place_key: 'object ids and positions', place_type: 'an enum' },

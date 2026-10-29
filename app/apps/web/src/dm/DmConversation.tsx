@@ -10,6 +10,8 @@ import { dmReceipts, getDm, observeDmMessages, olderDmMessages } from '../api/di
 import { ComposerBox } from '../composer/ComposerBox';
 import { outboxView, useComposerDraft, useComposerScope } from '../composer/draft';
 import { ConnectionLine, SendAnnouncer } from '../composer/Outbox';
+import { CiteTile } from '../composer/References';
+import { takeHeldCite } from '../app/citeBus';
 import { createDmSketch } from '../api/sketches';
 import { sketchHref } from '../sketch/format';
 import { useStreamEvents } from '../api/stream';
@@ -87,6 +89,8 @@ function DmContent({ initial }: { initial: Dm }) {
   // The shared composer record, kept in this tab: the draft and the messages being sent (#264).
   const composer = useComposerDraft(me.user.id, 'dm', `dm:${initial.id}`);
   const captureScope = useComposerScope(composer.key);
+  // A thought cited on the map of this conversation's sketch waits here for its composer (#469).
+  useEffect(() => { const held = takeHeldCite(`dm:${initial.id}`); if (held) composer.addCite(held); }, [initial.id, composer]);
   const draft = composer.draft.body;
   const [gone, setGone] = useState(false);
   const [leftNotice, setLeftNotice] = useState('');
@@ -459,6 +463,7 @@ function DmContent({ initial }: { initial: Dm }) {
         <div className="composer__in">
           {goneNotice ? <p className="dm__notice" role="status"><Icon name="lock" size={13} />{goneNotice}</p> : null}
           <ConnectionLine />
+          {composer.draft.cites.map((cite) => <CiteTile key={`${cite.kind}:${cite.id}`} cite={cite} disabled={composer.sending} onRemove={() => composer.removeCite(cite.kind, cite.id)} />)}
           <ComposerBox id="dm-composer" label={`Message ${title}`} fieldRef={textareaRef} value={draft} onChange={(value) => change(value)} onBlur={typing.stop} onKeyDown={onKey}
             disabled={recipientGone} boxDisabled={recipientGone} placeholder={recipientGone ? 'Nobody else is in this conversation' : `Message ${others.length === 1 ? others[0]!.name.split(/\s+/)[0] : title}…`}
             fieldProps={{ 'aria-describedby': audienceId }} sendLabel="Send message" sendDisabled={!canSend} onSend={() => void send()} />

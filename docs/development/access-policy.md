@@ -571,3 +571,30 @@ project doc in `GET /api/v1/projects/:id/docs` (`updatedBy`) and to the creator 
 a project sketch in `GET /api/v1/workspaces/:id/sketches?projectId=` (`createdBy`);
 both use one bounded `projectAuthorOwners` read per page and project, and sketches
 outside a project never carry it.
+
+### Message references and file details (#469, F-026 §6)
+
+A message cites a map thought or another message through `references: [{ kind: 'thought' | 'message', id }]` on
+`POST /api/v1/projects/:id/conversations`, `POST /api/v1/conversations/:id/messages`,
+`POST /api/v1/work/:id/agent-thread` and the direct-message sends (`POST /api/v1/dms/:id/messages` and its thread
+replies). At most four, distinct, each a UUID; the `message` kind names a project message or a direct message, which the
+server tells apart. Migration 0122 stores only the kind and the id (`message_references`, owned by the citing message and
+removed with it); nothing of the target is copied, so a title, an author or a place never outlives the target's own
+audience.
+
+- **At send** the sender must be able to read every target now (`sketch.read`, `project.read` or `dm.read` through the one
+  policy), and the target must be in the message's own workspace. Anything else (absent, unreadable, another workspace's,
+  a private sketch of someone else's) answers the same `404 REFERENCE_UNAVAILABLE`, so the answer tells nothing about the
+  target. A retry with the same `clientMessageId` and the same references replays; other references under it are `409`.
+- **At every read** each card is made for the reader who asks, after that reader's access to the target is decided
+  again. A target the reader cannot open now, one that no longer exists and one removed from its map are the same
+  `{ kind, state: 'unavailable' }` card, with no id, title, author or place. An available card carries the title (the
+  first line of the thought or message), the author, the time, the place (project, sketch or "Direct message") and a
+  `target` that is exactly what a search result of the same object opens. Agents never read a direct message, so
+  such a card is unavailable to them. Locked or sealed workspaces keep their own gates: a reference adds no route.
+- A message that cites nothing has no `references` key, so every earlier message's JSON is unchanged.
+
+Files carry `pages` (a PDF's page tree), `rows` (the data rows of a CSV or TSV, the header line excluded) or `durationMs`
+(WAV, MP3, MP4/M4A/MOV, Ogg/Opus/Vorbis and WebM with a stored duration) when the bytes say so. They are read from the
+plaintext as the upload arrives and stored with the file (`project_files.page_count`, `row_count`, `duration_ms`), on
+`StagedFile` and on every `MessageFile`; a name alone never sets one, and a file whose bytes do not say shows none.

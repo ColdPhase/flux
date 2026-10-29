@@ -19,6 +19,8 @@ export interface SelectionTools {
   helpOpen: boolean;
   onShape(): void;
   onTask(): void;
+  /** Cite the selected thought in its place's conversation (#469); absent where a sketch has none. */
+  onCite: (() => void) | null;
   onUndo(): void;
   onHelp(): void;
 }
@@ -1059,6 +1061,7 @@ export function SketchMap(props: SketchMapProps) {
             {selection.length === 1 ? <button type="button" className="sk-options__action" onClick={() => phoneAction(() => props.onEdit(lastThought.id))}><Icon name="edit" size={18} />Edit thought</button> : null}
             {openLink ? <a className="sk-options__action" href={openLink.href} target="_blank" rel="noopener noreferrer"><Icon name="link" size={18} />Open link {openLink.host}</a> : null}
             {props.bar.project ? <button type="button" className="sk-options__action" aria-label="Create task from selected thoughts" aria-disabled={false} onClick={() => phoneAction(props.bar.onTask)}><Icon name="tasks" size={18} />Create task</button> : null}
+            {props.bar.onCite ? <button type="button" className="sk-options__action" aria-label="Cite the selected thought in the conversation" onClick={() => phoneAction(props.bar.onCite!)}><Icon name="cite" size={18} />Cite in conversation</button> : null}
             <button type="button" className="sk-options__action" aria-label="Remove from sketch" onClick={() => phoneAction(() => props.onRemove(selection))}><Icon name="trash" size={18} />Remove thought</button>
           </> : <>
             <p className="sk-options__thought">{sketch.title}</p>

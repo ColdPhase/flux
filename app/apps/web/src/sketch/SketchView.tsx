@@ -9,6 +9,7 @@ import { useStreamEvents } from '../api/stream';
 import { useShellData } from '../app/data';
 import { useShellActions } from '../app/shellContext';
 import { setReloadRetention } from '../app/reload-retention';
+import { holdCite, thoughtCite } from '../app/citeBus';
 import { firstLine } from '../work/format';
 import { DraftSaveNotSentError, useSketchDoc, type Op } from './doc';
 import { useLiveSketchDoc, type LiveSketchDoc } from './live-doc';
@@ -636,6 +637,17 @@ function SketchEditor({ sketchId, projectId, dmId, back = '/map', doc }: ViewPro
     });
   };
 
+  // #469: the one selected thought is cited in the conversation of this sketch's place: its project's, or the direct message it belongs to.
+  // Nothing is sent from here: the citation waits in that conversation's composer, where the person adds their words.
+  const citePlace = sketch?.scope === 'project' && sketch.projectId ? sketch.projectId : sketch?.scope === 'dm' && sketch.dmId ? `dm:${sketch.dmId}` : null;
+  const citeSelected = () => {
+    const thoughts = selection.flatMap((id) => { const t = find(id); return t ? [t] : []; });
+    if (!citePlace || !sketch) return;
+    if (thoughts.length !== 1) { say('Select one thought to cite'); return; }
+    holdCite(citePlace, thoughtCite(thoughts[0]!, sketch.title));
+    navigate(citePlace.startsWith('dm:') ? `/dm/${citePlace.slice(3)}` : `/projects/${citePlace}`);
+  };
+
   const undo = () => {
     if (editingState) { say('Finish or cancel your current edit first'); return; }
     setEditing(null);
@@ -803,6 +815,7 @@ function SketchEditor({ sketchId, projectId, dmId, back = '/map', doc }: ViewPro
       <button type="button" className="ui-btn ui-btn--quiet sk-add" onClick={() => add(selection[selection.length - 1] ?? null)}><Icon name="plus" size={14} />Thought</button>
       {coarse ? <button type="button" className="ui-btn ui-btn--quiet sk-select-several" aria-label="Select several" title="Select several" aria-pressed={selectSeveral} onClick={() => { setSelectSeveral(!selectSeveral); say(selectSeveral ? 'Tapping selects one thought' : 'Tap thoughts to add them to the selection'); }}><Icon name="check" size={14} /><span className="sk-bl">Select several</span></button> : null}
       {sketch.scope === 'project' ? <button type="button" className="ui-btn ui-btn--quiet sk-task-btn" aria-disabled={!selection.length} onClick={() => makeWork()} aria-label="Create task from selected thoughts"><Icon name="tasks" size={14} />Create task</button> : null}
+      {citePlace ? <button type="button" className="ui-btn ui-btn--quiet sk-cite-btn" aria-disabled={selection.length !== 1} onClick={citeSelected} aria-label="Cite the selected thought in the conversation"><Icon name="cite" size={14} />Cite</button> : null}
       <span className="sk-div" aria-hidden="true" />
       <button type="button" className="sk-tool" aria-label="Undo" data-tip="Undo" aria-disabled={!doc.canUndo} onClick={undo}><Icon name="undo" size={16} /></button>
     </div>
@@ -829,7 +842,7 @@ function SketchEditor({ sketchId, projectId, dmId, back = '/map', doc }: ViewPro
           </div>
           <SketchMap {...shared} coarse={coarse} compact={phone} helpId={helpId} heights={heights} dockHeight={dockHeight} onDockHeight={setDockHeight} dock={dock} hint={hint} viewModes={viewModes} hand={hand}
             onLabel={(linkId) => setConnectionTarget({ linkId })} onConnections={(thoughtId) => setConnectionTarget({ thoughtId })}
-            bar={{ project: sketch.scope === 'project', canUndo: doc.canUndo, helpOpen, onShape: cycleShape, onTask: () => makeWork(), onUndo: undo, onHelp: () => setHelpOpen(!helpOpen) }}
+            bar={{ project: sketch.scope === 'project', canUndo: doc.canUndo, helpOpen, onShape: cycleShape, onTask: () => makeWork(), onCite: citePlace ? citeSelected : null, onUndo: undo, onHelp: () => setHelpOpen(!helpOpen) }}
             onConnect={connectTo} onAddAt={(parentId, x, y) => add(parentId, '', false, { x, y })} onConnectFrom={connectFromDot} onAddThought={() => add(selection[selection.length - 1] ?? null)}
             draftEditor={shownDraft ? draftForm : null} draft={shownDraft && !shownDraft.lines && !sketch.thoughts.some((thought) => thought.id === shownDraft.id)
               ? { x: shownDraft.x, y: shownDraft.y, parentId: shownDraft.parentId, label: shownDraft.attempt ? 'Save not confirmed' : shownDraft.unknown ? 'Saved state unknown' : 'Draft · not saved' }
@@ -854,7 +867,7 @@ function SketchEditor({ sketchId, projectId, dmId, back = '/map', doc }: ViewPro
     : 'Arrows move between thoughts; Left and Right fold and unfold a branch. Alt with Up or Down moves a thought among its neighbours in your list only.';
   const list = <SketchList {...shared} arrange={!phone} helpId={helpId} personalOutline={personalOutline} onNavigate={navigateThought}
     onReparent={reparent} onConnectFrom={connectFromDot} onConnections={(thoughtId) => setConnectionTarget({ thoughtId })}
-    onTask={sketch.scope === 'project' ? () => makeWork() : null} onSay={(text) => say(text)} />;
+    onTask={sketch.scope === 'project' ? () => makeWork() : null} onCite={citePlace ? citeSelected : null} onSay={(text) => say(text)} />;
   const connections = connectionTarget ? <ConnectionLabels sketch={sketch} target={connectionTarget} editable={canWrite && !phone}
     onSave={doc.saveLinkLabel} onDraftChange={setConnectionDraft} onClose={closeConnections} /> : null;
 
