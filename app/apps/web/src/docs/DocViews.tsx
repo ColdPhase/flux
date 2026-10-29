@@ -24,8 +24,16 @@ import { RefLink } from '../place/origin';
 // The current page's shared working copy (#228) loads only with a configured live capability (#239
 // review), so an ordinary wiki never evaluates its CRDT bundle. If that bundle cannot load, the page
 // is read as saved.
-const LiveReading = lazy(() => import('../editing/LiveReading').then((module) => ({ default: module.LiveReading }), () => ({ default: SavedReading })));
+//
+// The reader must not change kind after it is on screen: a Suspense fallback holding the same page is a different place in the
+// tree from the page inside the lazy component, so the swap would rebuild the whole page (its toolbar, an open menu, the focus)
+// a moment after it appeared. The loader therefore has the bundle in hand before the first render (`loadLiveReading`), and the
+// reader then renders it directly; the lazy path below is only for a reader reached some other way.
+type LiveReadingComponent = (props: LiveReadingProps) => ReactNode;
 function SavedReading({ render }: LiveReadingProps) { return <>{render(null)}</>; }
+let loadedLiveReading: LiveReadingComponent | null = null;
+const loadLiveReading = () => import('../editing/LiveReading').then((module) => { loadedLiveReading = module.LiveReading; }, () => { loadedLiveReading = SavedReading; });
+const LiveReading = lazy(() => loadLiveReading().then(() => ({ default: loadedLiveReading! })));
 
 // The project wiki (#112, two panes since #136): the reader with links and backlinks, and the
 // version history with a diff, beside the page index (Wiki.tsx). Everything here is visible to the
@@ -138,7 +146,11 @@ interface ReaderData { doc: Doc; shown: DocVersion; historical: boolean }
 
 export async function docLoader({ params, request }: LoaderFunctionArgs): Promise<ReaderData> {
   // The capability is known before the first render, so the reader never switches kinds after it.
-  const [doc] = await Promise.all([getDoc(params.docId!, request.signal), editingCapability()]);
+  const [doc] = await Promise.all([
+    getDoc(params.docId!, request.signal),
+    // The shared reader's bundle comes with the page (not for an explicit version, which is read as saved).
+    editingCapability().then((capability) => capability === 'configured' && params.version === undefined ? loadLiveReading() : undefined),
+  ]);
   inProject(doc, params.projectId);
   const version = params.version ? Number(params.version) : null;
   const shown = version && version !== doc.version ? await getVersion(doc.id, version, request.signal) : doc;
@@ -208,6 +220,10 @@ export function DocReader() {
   // Load the CRDT-backed reader only when configured, and never for an explicit version URL.
   const capability = useEditingCapability();
   if (capability !== 'configured' || historical) return <DocReading live={null} />;
+  if (loadedLiveReading) {
+    const Shared = loadedLiveReading;
+    return <Shared docId={doc.id} userId={me.user.id} render={(live) => <DocReading live={live} />} />;
+  }
   return <Suspense fallback={<DocReading live={null} />}>
     <LiveReading docId={doc.id} userId={me.user.id} render={(live) => <DocReading live={live} />} />
   </Suspense>;

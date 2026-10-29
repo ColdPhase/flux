@@ -59,6 +59,7 @@ from create_window import create_other, linked_labels, open_from_tasks, submit_b
 from message_gestures import open_message_menu
 from message_gestures import open_message_menu
 from test_app_shell import show_map_as, DESKTOP, ORIGIN, PHONE, UPSTREAM, open_details, open_what_matters, shot, start_forwarder
+from wiki_text import LIVE, existing_text, has_text, reason_field, type_at_end, wait_until_shared
 
 UI_BROWSER = os.environ.get("FLUX_UI_BROWSER", "chromium")
 if UI_BROWSER not in ("chromium", "webkit"):
@@ -420,7 +421,7 @@ class ScenarioJourney:
             option.tap()
         else:
             query.press("Enter")
-        expect(text).to_have_value(re.compile(re.escape(f"flux:{kind}/{item_id}")))
+        has_text(text, f"flux:{kind}/{item_id}")
         # The editor puts the caret after the inserted link on the next frames; type after that.
         page.evaluate("new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))")
 
@@ -1129,12 +1130,16 @@ class ScenarioJourney:
         page.goto(f"/projects/{lamp}/docs/{s['doc']}")
         expect(page.get_by_role("heading", level=2, name=DOC_TITLE)).to_be_visible()
         self.tap(page.get_by_role("link", name="Edit"))
-        text = page.get_by_label("Text (Markdown)")
-        text.press("Control+End")
-        text.press_sequentially("\n\nAfter the pivot: ", delay=20)
+        text = existing_text(page)
+        wait_until_shared(page)
+        type_at_end(page, text, "\n\nAfter the pivot: ")
         self.link_in_doc(page, text, "decision", s["d2"], D2)
-        page.get_by_label("What changed").fill("The rule changed to the ToF sensor")
+        reason_field(page).fill("The rule changed to the ToF sensor")
         self.tap(page.get_by_role("button", name="Save version"))
+        if LIVE:
+            # The shared working copy keeps its version and stays on the editor; the page is one step back.
+            expect(page.get_by_role("status").filter(has_text="Version 2 saved")).to_be_visible()
+            self.tap(page.get_by_role("link", name="Back to doc", exact=True))
         expect(page.get_by_role("heading", level=2, name=DOC_TITLE)).to_be_visible()
         doc = self.wait_for("version 2 of the page", lambda: (lambda d: d if d["version"] == 2 else None)(self.api("ada", "GET", f"/api/v1/docs/{s['doc']}", status=200)))
         self.assertTrue(any(link["role"] == "mentions" and link["to"]["id"] == s["d2"] for link in doc["links"]))

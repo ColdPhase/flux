@@ -198,6 +198,9 @@ class WorkspaceAiLock(unittest.TestCase):
         row = self.ai_row(page)
         button = row.get_by_role("button", name=re.compile(r"^Turn o(n|ff) AI$")).first
         heading = row.get_by_role("heading")
+        # The light motion (#593) lets a view arrive and a confirmation open over ~200 ms; place is measured once that motion
+        # is over, so the state change is the only thing compared, not an entrance in flight.
+        page.wait_for_function("() => document.getAnimations().filter((a) => a.effect && a.effect.getComputedTiming().iterations !== Infinity && a.playState === 'running').length === 0")
         # In the panel's own coordinates, so the panel being scrolled by a click or by focus does not count as the control moving.
         measure = """el => {
           const body = el.closest('.ui-panel__body') || document.documentElement;
