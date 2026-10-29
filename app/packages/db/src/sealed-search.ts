@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { sql } from 'drizzle-orm';
 import { AUDIENCE_KEYS, type SearchAudienceRows, type SearchKindRow, type SearchPlanRows, type SearchRowRecord, type SearchTextRow } from './repositories/search.js';
 import type { DbExecutor } from './repositories/push.js';
@@ -18,14 +19,16 @@ import { openRows, sealOf } from './sealing.js';
 
 /**
  * Bounds on the memory the indexes may take, as ESTIMATED HEAP bytes (not text bytes: each distinct term of a document costs a map entry,
- * a string and an array, so the heap is 1.7 to 8 times the text). `tests/app/sealed-search-heap.test.ts` measures the heap after a full
- * GC against the estimate and fails when the estimate falls below it. Per workspace, and across every workspace of the process: an
- * out-of-memory kill of the API drops every key it holds and locks all its encrypted workspaces, so the process total stays well
- * inside the 2 GiB container limit (`FLUX_API_MEMORY`).
+ * a string and an array, so the heap measured 16 to 112 times the text on the test corpora). `tests/app/sealed-search-heap.test.ts`
+ * measures the heap after a full GC against the estimate and fails when the estimate falls below it. Per workspace, and across every
+ * workspace of the process: an out-of-memory kill of the API drops every key it holds and locks all its encrypted workspaces, so the
+ * process total stays well inside the container's memory (`FLUX_API_MEMORY`, 2 GiB by default): at most a quarter of it, between
+ * 64 MiB and 512 MiB, unless `FLUX_SEALED_SEARCH_PROCESS_MAX_BYTES` says otherwise.
  */
 export const SEALED_SEARCH_DEFAULT_MAX_BYTES = 256 * 1024 * 1024;
 export const SEALED_SEARCH_DEFAULT_PROCESS_MAX_BYTES = 512 * 1024 * 1024;
-/** An index nobody searched for this long may be evicted to make room for another workspace's. */
+const MIN_PROCESS_MAX_BYTES = 64 * 1024 * 1024;
+/** An index nobody searched for this long (`FLUX_SEALED_SEARCH_IDLE_MS`) may be evicted to make room for another workspace's. */
 const IDLE_EVICT_MS = 5 * 60_000;
 /** How long a workspace that did not fit stays unavailable before the next attempt (too large for its own bound / no room in the process). */
 const TOO_LARGE_RETRY_MS = 10 * 60_000;
@@ -532,10 +535,29 @@ const PLACEHOLDERS = sql`id::text AS id, doc_key, kind, audience_key, project_id
 class TooLargeError extends Error { constructor(readonly retryAfterMs: number) { super('The workspace is too large to search in memory'); } }
 
 const positive = (value: string | undefined, fallback: number) => { const n = Number(value); return Number.isFinite(n) && n > 0 ? n : fallback; };
-/** The bounds in effect, read at every build so an operator's change applies at the next unlock. */
-export function sealedSearchLimits(env: NodeJS.ProcessEnv = process.env) {
-  return { workspace: positive(env.FLUX_SEALED_SEARCH_MAX_BYTES, SEALED_SEARCH_DEFAULT_MAX_BYTES),
-    process: positive(env.FLUX_SEALED_SEARCH_PROCESS_MAX_BYTES, SEALED_SEARCH_DEFAULT_PROCESS_MAX_BYTES) };
+
+/** The container's memory limit in bytes (cgroup v2, then v1), or null when there is none or it cannot be read. */
+export function containerMemoryLimit(): number | null {
+  for (const file of ['/sys/fs/cgroup/memory.max', '/sys/fs/cgroup/memory/memory.limit_in_bytes']) {
+    try {
+      const n = Number(readFileSync(file, 'utf8').trim());
+      if (Number.isFinite(n) && n > 0 && n < 2 ** 50) return n; // 'max' and the v1 "no limit" value are not limits
+    } catch { /* not this cgroup version */ }
+  }
+  return null;
+}
+
+/**
+ * The bounds in effect, read at every build so an operator's change applies at the next unlock. The default process bound is a quarter
+ * of the container's memory limit between 64 and 512 MiB (512 MiB for the 2 GiB default and when the limit is unknown); the workspace
+ * bound never exceeds it.
+ */
+export function sealedSearchLimits(env: NodeJS.ProcessEnv = process.env, memory: number | null = containerMemoryLimit()) {
+  const derived = memory === null ? SEALED_SEARCH_DEFAULT_PROCESS_MAX_BYTES
+    : Math.min(SEALED_SEARCH_DEFAULT_PROCESS_MAX_BYTES, Math.max(MIN_PROCESS_MAX_BYTES, Math.floor(memory / 4)));
+  const processBound = positive(env.FLUX_SEALED_SEARCH_PROCESS_MAX_BYTES, derived);
+  return { workspace: positive(env.FLUX_SEALED_SEARCH_MAX_BYTES, Math.min(SEALED_SEARCH_DEFAULT_MAX_BYTES, processBound)), process: processBound,
+    idleMs: positive(env.FLUX_SEALED_SEARCH_IDLE_MS, IDLE_EVICT_MS) };
 }
 
 async function currentXmin(db: DbExecutor): Promise<string> {
@@ -569,7 +591,7 @@ const othersHeap = (workspaceId: string) => [...entries].reduce((total, [id, ent
 function budgetFor(workspaceId: string): { budget: number; busy: boolean } {
   const limits = sealedSearchLimits();
   if (othersHeap(workspaceId) + limits.workspace > limits.process) {
-    const idle = [...entries].filter(([id, entry]) => id !== workspaceId && entry.index && !entry.building && Date.now() - entry.lastUsed > IDLE_EVICT_MS)
+    const idle = [...entries].filter(([id, entry]) => id !== workspaceId && entry.index && !entry.building && Date.now() - entry.lastUsed > limits.idleMs)
       .sort((a, b) => a[1].lastUsed - b[1].lastUsed);
     for (const [, entry] of idle) {
       entry.index = null;

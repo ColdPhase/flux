@@ -47,16 +47,16 @@ test('two APIs share the lock state through the keyring; no secret reaches Postg
 
   // S2b: the search index is bounded by its estimated heap, per workspace and across the workspaces of a process (api2 holds 300 000 B per
   // workspace and 400 000 B in all, docker/compose.encryption.test.yaml). A workspace that does not fit says so; API-1 answers for all.
-  const heapOf = async (workspaceId: string) => ((await ada.browser.request('GET', '/api/v1/search/explain?q=fillerzero')).json as { sealedIndexHeap: Record<string, number> }).sealedIndexHeap[workspaceId] ?? 0;
+  const heapOf = async (workspaceId: string, owner = ada) => ((await owner.browser.request('GET', '/api/v1/search/explain?q=fillerzero')).json as { sealedIndexHeap: Record<string, number> }).sealedIndexHeap[workspaceId] ?? 0;
   let serial = 0;
   const word = () => `fill${serial++}x${randomUUID().slice(0, 6)}`;
-  async function filled(workspaceId: string, heap: number, marker: string) {
-    const made = await ada.browser.request('POST', `/api/v1/workspaces/${workspaceId}/projects`, { body: { name: `Bulky ${marker}` } });
+  async function filled(workspaceId: string, heap: number, marker: string, owner = ada) {
+    const made = await owner.browser.request('POST', `/api/v1/workspaces/${workspaceId}/projects`, { body: { name: `Bulky ${marker}` } });
     assert.equal(made.status, 201);
     const projectId = (made.json as { id: string }).id;
-    while (await heapOf(workspaceId) < heap) {
+    while (await heapOf(workspaceId, owner) < heap) {
       for (let n = 0; n < 2; n += 1) {
-        const posted = await ada.browser.request('POST', `/api/v1/projects/${projectId}/conversations`,
+        const posted = await owner.browser.request('POST', `/api/v1/projects/${projectId}/conversations`,
           { body: { body: `${marker} ${Array.from({ length: 40 }, word).join(' ')}`, clientMessageId: randomUUID() }, headers: { 'idempotency-key': randomUUID() } });
         assert.equal(posted.status, 201, posted.text);
       }
@@ -87,6 +87,27 @@ test('two APIs share the lock state through the keyring; no secret reaches Postg
   const bigOther = await search(second, 'betamarker');
   assert.ok(bigOther.sealedUnavailable?.includes(third.workspace.id), 'API-2 is told the workspace is too large to search in memory');
   assert.equal(bigOther.items.length, 0);
+
+  // Idle eviction (api2 evicts an index nobody searched for 3 s, FLUX_SEALED_SEARCH_IDLE_MS): two people with one workspace each, of the size
+  // that fits the process bound only one at a time. Y fits once X is idle; right after, X has no room while Y is in use.
+  const xavier = await person('Xavier'); const yara = await person('Yara');
+  const [x, y] = [await createSealed(xavier, 'Xavier space', passphrase()), await createSealed(yara, 'Yara space', passphrase())];
+  await filled(x.workspace.id, 210_000, 'gammamarker', xavier);
+  await filled(y.workspace.id, 210_000, 'gammamarker', yara);
+  const onApi2 = (who: typeof ada) => { const browser = new Browser(api2!); for (const [name, value] of who.browser.cookies) browser.cookies.set(name, value); return browser; };
+  const [xSecond, ySecond] = [onApi2(xavier), onApi2(yara)];
+  const idle = () => new Promise((resolve) => setTimeout(resolve, 3500));
+  // Earlier searches left indexes on api2 too; once they are idle X builds in their place.
+  await idle();
+  const xFirst = await search(xSecond, 'gammamarker');
+  assert.equal(xFirst.sealedUnavailable, undefined, 'X fits once the idle indexes of earlier searches are evicted');
+  assert.ok(xFirst.items.length >= 16);
+  await idle();
+  const yFirst = await search(ySecond, 'gammamarker');
+  assert.equal(yFirst.sealedUnavailable, undefined, 'Y fits because X was idle and was evicted');
+  assert.ok(yFirst.items.length >= 16);
+  const xAgain = await search(xSecond, 'gammamarker');
+  assert.deepEqual(xAgain.sealedUnavailable, [x.workspace.id], 'X has no room while Y is in use: the process bound still holds');
 
   // Every secret of the run, derived from the passwords and code and the stored rows.
   const secrets: Buffer[] = [];

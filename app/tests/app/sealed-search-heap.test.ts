@@ -3,7 +3,7 @@ import { randomBytes } from 'node:crypto';
 import v8 from 'node:v8';
 import vm from 'node:vm';
 import { test } from 'node:test';
-import { docHeapCost, SealedSearchIndex, sealedSearchLimits, SEALED_SEARCH_DEFAULT_MAX_BYTES, SEALED_SEARCH_DEFAULT_PROCESS_MAX_BYTES, type IndexDoc } from '@flux/db';
+import { containerMemoryLimit, docHeapCost, SealedSearchIndex, sealedSearchLimits, SEALED_SEARCH_DEFAULT_MAX_BYTES, SEALED_SEARCH_DEFAULT_PROCESS_MAX_BYTES, type IndexDoc } from '@flux/db';
 
 // F-030 S2b (#655): FLUX_SEALED_SEARCH_MAX_BYTES and the process-wide bound count ESTIMATED HEAP, so they bound memory. This test builds
 // indexes of very different shapes, forces a full GC, and compares the heap that grew with the index's own estimate: the estimate must
@@ -48,18 +48,23 @@ function measure(make: (n: number) => IndexDoc, count: number) {
 
 test('the estimated heap of an index is never below the measured heap, and stays within a small multiple', () => {
   const rows: string[] = [];
-  const results: [string, number, number][] = [];
+  const results: [string, number, number, number][] = [];
   for (const [name, make] of Object.entries(corpora)) {
     const count = name === 'titles' ? 6000 : 2000;
-    const { text, measured, estimated, size } = measure(make, count);
-    rows.push(`${name}: text ${text} B, measured ${measured} B, estimated ${estimated} B (x${(estimated / measured).toFixed(2)}), heap/text ${(measured / text).toFixed(1)}`);
+    // One warm-up build settles the heap; then three builds. A measurement can only be disturbed by garbage the collector had not freed
+    // yet, so the estimate must cover the largest of the three and may not exceed 2.5 times the median.
+    measure(make, count);
+    const runs = [measure(make, count), measure(make, count), measure(make, count)];
+    const measured = runs.map((run) => run.measured).sort((a, b) => a - b);
+    const { text, estimated, size } = runs[0]!;
+    rows.push(`${name}: text ${text} B, measured ${measured.join('/')} B, estimated ${estimated} B (x${(estimated / measured[1]!).toFixed(2)} the median), heap/text ${(measured[1]! / text).toFixed(1)}`);
     assert.equal(size, count);
-    results.push([name, measured, estimated]);
+    results.push([name, measured[2]!, measured[1]!, estimated]);
   }
   console.log(rows.join('\n'));
-  for (const [name, measured, estimate] of results) {
-    assert.ok(estimate >= measured, `${name}: the estimate ${estimate} is below the measured heap ${measured}`);
-    assert.ok(estimate <= measured * 2.5, `${name}: the estimate ${estimate} is more than 2.5 times the measured heap ${measured}`);
+  for (const [name, largest, median, estimate] of results) {
+    assert.ok(estimate >= largest, `${name}: the estimate ${estimate} is below the measured heap ${largest}`);
+    assert.ok(estimate <= median * 2.5, `${name}: the estimate ${estimate} is more than 2.5 times the measured heap ${median}`);
   }
 });
 
@@ -79,9 +84,23 @@ test('removing documents lowers the estimate by their strings, keeps their stale
   assert.ok(steady.heap < 40 * 40 * 100 * 40, `a rewritten set of 40 documents keeps a bounded estimate (${steady.heap})`);
 });
 
-test('the bounds come from the environment, with defaults a 2 GiB API container can hold', () => {
-  assert.deepEqual(sealedSearchLimits({}), { workspace: SEALED_SEARCH_DEFAULT_MAX_BYTES, process: SEALED_SEARCH_DEFAULT_PROCESS_MAX_BYTES });
-  assert.ok(SEALED_SEARCH_DEFAULT_PROCESS_MAX_BYTES <= 512 * 1024 * 1024 && SEALED_SEARCH_DEFAULT_MAX_BYTES <= SEALED_SEARCH_DEFAULT_PROCESS_MAX_BYTES);
-  assert.deepEqual(sealedSearchLimits({ FLUX_SEALED_SEARCH_MAX_BYTES: '1000', FLUX_SEALED_SEARCH_PROCESS_MAX_BYTES: '5000' }), { workspace: 1000, process: 5000 });
-  assert.deepEqual(sealedSearchLimits({ FLUX_SEALED_SEARCH_MAX_BYTES: 'x', FLUX_SEALED_SEARCH_PROCESS_MAX_BYTES: '-1' }), sealedSearchLimits({}));
+test('the bounds come from the environment, and by default from the container memory: at most a quarter of it, 64 to 512 MiB', () => {
+  const MiB = 1024 * 1024;
+  assert.deepEqual(sealedSearchLimits({}, null), { workspace: SEALED_SEARCH_DEFAULT_MAX_BYTES, process: SEALED_SEARCH_DEFAULT_PROCESS_MAX_BYTES, idleMs: 5 * 60_000 });
+  assert.ok(SEALED_SEARCH_DEFAULT_PROCESS_MAX_BYTES <= 512 * MiB && SEALED_SEARCH_DEFAULT_MAX_BYTES <= SEALED_SEARCH_DEFAULT_PROCESS_MAX_BYTES);
+  // The default 2 GiB API container (FLUX_API_MEMORY) gets the 512 MiB cap; a smaller one a quarter of its memory; a tiny one the 64 MiB floor.
+  assert.equal(sealedSearchLimits({}, 2048 * MiB).process, 512 * MiB);
+  assert.equal(sealedSearchLimits({}, 8192 * MiB).process, 512 * MiB);
+  assert.equal(sealedSearchLimits({}, 1024 * MiB).process, 256 * MiB);
+  assert.equal(sealedSearchLimits({}, 1024 * MiB).workspace, 256 * MiB);
+  assert.equal(sealedSearchLimits({}, 512 * MiB).process, 128 * MiB);
+  assert.equal(sealedSearchLimits({}, 512 * MiB).workspace, 128 * MiB, 'a workspace never gets more than the process');
+  assert.equal(sealedSearchLimits({}, 128 * MiB).process, 64 * MiB);
+  // The operator's values win.
+  assert.deepEqual(sealedSearchLimits({ FLUX_SEALED_SEARCH_MAX_BYTES: '1000', FLUX_SEALED_SEARCH_PROCESS_MAX_BYTES: '5000', FLUX_SEALED_SEARCH_IDLE_MS: '3000' }, 2048 * MiB),
+    { workspace: 1000, process: 5000, idleMs: 3000 });
+  assert.deepEqual(sealedSearchLimits({ FLUX_SEALED_SEARCH_MAX_BYTES: 'x', FLUX_SEALED_SEARCH_PROCESS_MAX_BYTES: '-1' }, null), sealedSearchLimits({}, null));
+  // This container's own limit (or none) is read.
+  const own = containerMemoryLimit();
+  assert.ok(own === null || own > 0);
 });

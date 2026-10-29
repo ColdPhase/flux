@@ -24,6 +24,8 @@ export interface WorkspaceSeal {
 export interface FileCipher {
   /** Streams plaintext into the stored object. */
   encryptor(): Transform;
+  /** The same, chunk by chunk, for a receive loop that writes each output itself. */
+  sealer(): { update(chunk: Uint8Array): Buffer; final(): Buffer };
   /** The plaintext of a stored object, only after its tag verifies. */
   open(object: Buffer): Buffer;
 }

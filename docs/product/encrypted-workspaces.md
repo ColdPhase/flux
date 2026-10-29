@@ -234,8 +234,9 @@ Files are limited to 5 MiB (`FILE_LIMITS.fileBytes`), so one GCM pass per file i
 object is `FXF1 ‖ key version (uint32) ‖ nonce 12 ‖ ciphertext ‖ tag 16`, with a per-file key
 `HKDF(K_file, info = [flux file v1, workspace id, file id, key version])` and the same list as AAD.
 The file id is the reservation id (`files/service.ts` reserves before `storage.receive`), so it is
-known before the first byte. `FileStorage.receive` takes an optional `FileCipher`. It encrypts each
-chunk as it streams into the scratch file, so plaintext never reaches `attachments/tmp`. `read`
+known before the first byte. `FileStorage.receive` takes the object id (the reservation); the adapter resolves that
+object's `FileCipher` from its row and encrypts each chunk as it streams into the scratch file, so plaintext never
+reaches `attachments/tmp`. An object id without a row is refused, never written as plaintext. `read`
 returns bytes only after the tag verifies, choosing the DEK by the header's key version.
 `project_files.key_version` repeats it so a rotation can find old objects. `size` stays the
 plaintext size. `sha256` is a [sealed digest](#digests), and `has` compares it with the SHA-256 of
@@ -1007,15 +1008,17 @@ an **encrypted index at rest, decrypted into RAM**:
   two sources is approximate (the sets of results are the same). Counts add up, and each source counts at most 500.
   Highlighting marks the title whole and a long body as a window around the first match (`ts_headline`'s shape).
 - **Bound.** The index is bounded by its **estimated heap**, not by the text: each distinct term of a document costs a map entry, a
-  string and an array, so the heap measured 12 to 110 times the text on the test corpora (identifier-like text is the worst case).
+  string and an array, so the heap measured 16 to 112 times the text on the test corpora (many short titles are the worst case).
   `docHeapCost` and the per-posting and per-term costs in `sealed-search.ts` come from measurements after a full GC, rounded up, and
   `tests/app/sealed-search-heap.test.ts` fails when the estimate falls below the measured heap or exceeds 2.5 times it. Two bounds:
   `FLUX_SEALED_SEARCH_MAX_BYTES` per workspace (default 256 MiB estimated heap) and `FLUX_SEALED_SEARCH_PROCESS_MAX_BYTES` across every
-  workspace of the API process (default 512 MiB, well inside the 2 GiB container limit: an out-of-memory kill drops every key the process
-  holds and locks all its encrypted workspaces). A build or catch-up that grows past either stops at once and the workspace answers with
+  workspace of the API process. The process default is a quarter of the container's memory limit (cgroup `memory.max`, which is
+  `FLUX_API_MEMORY`, 2g by default), at most 512 MiB and at least 64 MiB, and 512 MiB when there is no limit; the workspace default is
+  256 MiB or the process bound if that is smaller. An out-of-memory kill drops every key the process holds and locks all its encrypted
+  workspaces, which is why the total is bounded and not only each workspace. A build or catch-up that grows past either stops at once and the workspace answers with
   `sealedUnavailable: [workspaceId]` (S3 draws "Search isn't available in Garden club: it is too large to search in memory"); a chooser
   search there finds nothing and says `searchUnavailable: true`. A workspace over its own bound is retried after 10 minutes; one that
-  only lacked room in the process after 1 minute. Before a build, indexes nobody searched for 5 minutes are evicted (oldest first) to
+  only lacked room in the process after 1 minute. Before a build, indexes nobody searched for 5 minutes (`FLUX_SEALED_SEARCH_IDLE_MS`) are evicted (oldest first) to
   make room; an evicted workspace rebuilds at its next search. Stale postings of replaced documents count until their partition is
   rebuilt (once they pass 64 KiB and outweigh the live ones). A build yields to the event loop between chunks of 500 documents. A row
   that does not decrypt (tampering, a restored backup of another key) fails the search with a generic error, and that failure is
@@ -1311,7 +1314,15 @@ token alone is not enough (S1 review): a real deployment never holds a half-seal
     S2b; `search_change_log` pinned like the other sealing functions; and a sealed chooser search that reached
     `SEALED_CHOOSER_SCAN_LIMIT` says so (`searchLimited: true` on the work view; S2b replaced both with the index).
     The map list's "hide empty maps" test compared the stored title with the default in SQL until S2b.
-  - **S2a-2b-2**: file names, sealed digests and file bytes (the streaming `FileCipher`, `has`/`read` on plaintext).
+  - **S2a-2b-2**: file names and SHA-256 (a sealed digest) sealed in `project_files`, with `key_version` set at the
+    reservation (S2c: the rotation can start between the reservation and the header written at receive, so S2c sets
+    `key_version` at commit from the object's header instead); file
+    bytes sealed as they stream in. `FileStorage.receive` takes the reservation id, and the disk adapter resolves the
+    object's cipher from its row (`fileCipherOf`, 423 while locked) and writes each chunk through the chunked
+    `FileCipher.sealer()` into the scratch file, so plaintext never reaches `attachments/tmp`; size and digest are
+    measured on the plaintext. `read` and `has` return or compare plaintext only after the tag verifies; a tampered or
+    truncated object is unavailable, never served. Thumbnails are made in the browser, so nothing else is stored. The
+    file detail of #704 (`page_count`, `row_count`, `duration_ms`) stays visible metadata, like `size`.
   - **S2a-2c**: the notification
     and event backstops with content-free notifications, error-path redaction, `sealed_job_waits` and
     the resume job, the SQL source scan, cross-workspace `lockedWorkspaces`, the replacement of the

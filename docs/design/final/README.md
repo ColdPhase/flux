@@ -332,9 +332,12 @@ tokens or S/P rules above:
   aligned to the text baseline: `@person`, `#4`, a Wiki page.
 - **A link** shows a preview: the site icon, the domain, the title, the description and an
   optional image. Founder direction 2026-10-16 ([#469](https://github.com/ColdPhase/flux/issues/469)):
-  the Flux server may fetch link previews (title, description, image, site name). Fetching blocks
-  private, loopback and link-local addresses (SSRF), allows only http and https, sets a timeout and
-  a size limit, caches the result, and respects the privacy of the place where the link appears.
+  the Flux server may fetch link previews. Decision [F-031](../../product/decisions.md): the card
+  shows the domain, the page's own title and its description in three lines (the address stays as the
+  third line when a page has none); no image. The fetch is off unless the operator sets
+  `FLUX_LINK_PREVIEWS=on`, blocks private, loopback, link-local and metadata addresses (SSRF), allows
+  only http and https on the default ports, sets a timeout and a size limit, caches the result, and
+  never happens for an encrypted workspace or for a reader who may not read the message.
 - **A photo** has no file frame. It has radius 16 and its caption below. 2–4 photos form a grid,
   with "+N" on the last one.
   - Sending, offline and failure show on the photo itself: progress in %, "sends when you're

@@ -328,11 +328,13 @@ button.wd-link:active:not(:disabled) { background: var(--sub); }
   .ws-mine input { width: 20px; height: 20px; }
 }
 
-/* Keep distinguishing task titles visible on narrow conversation surfaces. */
+/* Keep distinguishing task titles visible on narrow conversation surfaces. These rules reach a chip outside a message
+   bubble (the thread's opening line while its message is not loaded, ThreadRoot): its title is one line with an ellipsis
+   (#501, #665), its state is whole. Cards in a bubble have their own rules below. */
 @media (max-width: 760px) {
   .project-convo__feed .ws-chip, .thread__feed .ws-chip { display: grid; grid-template-columns: 16px minmax(0, 1fr); gap: 3px 6px; width: 100%; padding: 8px 10px; }
   .project-convo__feed .ws-chip svg, .thread__feed .ws-chip svg { grid-column: 1; grid-row: 1 / span 2; align-self: start; margin-top: 2px; }
-  .project-convo__feed .ws-chip__t, .thread__feed .ws-chip__t { grid-column: 2; white-space: normal; overflow-wrap: anywhere; }
+  .project-convo__feed .ws-chip__t, .thread__feed .ws-chip__t { grid-column: 2; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .project-convo__feed .ws-chip__k, .thread__feed .ws-chip__k { grid-column: 2; max-width: 100%; white-space: normal; overflow-wrap: anywhere; }
 }
 /* Messages sent from Details wait here until stored (#264). */
@@ -343,7 +345,7 @@ button.wd-link:active:not(:disabled) { background: var(--sub); }
 /* References to Flux objects under a message are cards (#348, F-026 §6): the object icon, the kind,
    the title and its state. */
 .message-bubble .ws-attach { flex-direction: column; flex-wrap: nowrap; width: min(100%, 460px); }
-.message-bubble .ws-attach > .ws-chip { display: grid; grid-template-columns: 32px auto minmax(0, 1fr) auto; grid-template-rows: auto auto; align-items: center; gap: 1px 6px; width: 100%; min-height: 52px; padding: 8px 12px 8px 8px; border-radius: var(--r); background: var(--sub); box-shadow: none; }
+.message-bubble .ws-attach > .ws-chip { display: grid; grid-template-columns: 32px auto minmax(min(15ch, 100%), 1fr) auto; grid-template-rows: auto auto; align-items: center; gap: 1px 6px; width: 100%; min-height: 52px; padding: 8px 12px 8px 8px; border-radius: var(--r); background: var(--sub); box-shadow: none; }
 .message-bubble .ws-attach > .ws-chip:hover { background: var(--hov); }
 .message-bubble .ws-attach > .ws-chip > svg { grid-column: 1; grid-row: 1 / span 2; align-self: center; justify-self: center; box-sizing: content-box; padding: 8px; margin: 0 2px 0 -2px; border-radius: 10px; background: var(--el); color: var(--t1); }
 .message-bubble .ws-attach > .ws-chip::before { grid-column: 2 / 4; grid-row: 1; font-size: 10px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--t3); }
@@ -356,12 +358,38 @@ button.wd-link:active:not(:disabled) { background: var(--sub); }
 .message-bubble .ws-attach > .ws-chip > .ws-chip__k { grid-column: 4; grid-row: 1 / span 2; max-width: 16ch; text-align: right; white-space: normal; }
 @media (max-width: 760px) {
   .message-bubble .ws-attach { width: 100%; }
-  .message-bubble .ws-attach > .ws-chip > .ws-chip__t { white-space: normal; overflow-wrap: anywhere; }
 }
 
-/* A reference never wraps letter by letter on a phone (#501). */
+/* A reference never wraps letter by letter on a phone (#501): the title is one line with an ellipsis and the state stays whole. */
 .message-bubble .ws-attach > .ws-chip > .ws-chip__t { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .message-bubble .ws-attach > .ws-chip > .ws-chip__k { white-space: nowrap; max-width: none; }
+
+/* A card is the one row the Spokój boards draw (A08 thread panel, A09 phone, #665) wherever the conversation is not at its
+   full width: icon, number, the title with an ellipsis, and the state whole at the right edge. The kind label goes (the icon
+   says it), and so do the parts of a state that only add a name (the owner, the author, "Current rule ·"); the text stays
+   in the DOM. The title keeps a readable line (15ch, about 18 characters); only when that and the state do not fit side by
+   side the state drops under the title, still at the right edge, never cut. Where the conversation has its full width (a
+   computer with no panel) the card keeps the anatomy of the Prostota attachments board: kind over title on the left,
+   state at the right edge. Three places are narrow, in two blocks that must stay equal: a thread (always, 380 to
+   480 px), a conversation with a panel beside or over it (its column is the full 760 px or a little less, so only the
+   panel tells), and a conversation narrower than 760 px, the reading column's own width (measured feed widths: 390 phone,
+   628 at 700, 748 tablet 820, against 768 at 1024 and more with no panel). */
+:is(.thread__feed, :root:has(.ui-panel--docked:not(.is-leaving), .ui-panel--overlay) .project-convo__feed) .message-bubble .ws-attach > .ws-chip { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 8px; min-height: 40px; padding: 6px 10px 6px 6px; }
+:is(.thread__feed, :root:has(.ui-panel--docked:not(.is-leaving), .ui-panel--overlay) .project-convo__feed) .message-bubble .ws-attach > .ws-chip::before { display: none; }
+:is(.thread__feed, :root:has(.ui-panel--docked:not(.is-leaving), .ui-panel--overlay) .project-convo__feed) .message-bubble .ws-attach > .ws-chip > svg { flex: none; margin: 0; padding: 6px; }
+:is(.thread__feed, :root:has(.ui-panel--docked:not(.is-leaving), .ui-panel--overlay) .project-convo__feed) .message-bubble .ws-attach > .ws-chip > .ws-chip__num { flex: none; color: var(--t3); font-weight: 500; }
+:is(.thread__feed, :root:has(.ui-panel--docked:not(.is-leaving), .ui-panel--overlay) .project-convo__feed) .message-bubble .ws-attach > .ws-chip > .ws-chip__t { flex: 1 1 15ch; }
+:is(.thread__feed, :root:has(.ui-panel--docked:not(.is-leaving), .ui-panel--overlay) .project-convo__feed) .message-bubble .ws-attach > .ws-chip > .ws-chip__k { flex: none; max-width: 100%; margin-left: auto; }
+:is(.thread__feed, :root:has(.ui-panel--docked:not(.is-leaving), .ui-panel--overlay) .project-convo__feed) .message-bubble .ws-attach > .ws-chip .ws-chip__x { display: none; }
+@container conversation-feed (width < 760px) {
+  .message-bubble .ws-attach > .ws-chip { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 8px; min-height: 40px; padding: 6px 10px 6px 6px; }
+  .message-bubble .ws-attach > .ws-chip::before { display: none; }
+  .message-bubble .ws-attach > .ws-chip > svg { flex: none; margin: 0; padding: 6px; }
+  .message-bubble .ws-attach > .ws-chip > .ws-chip__num { flex: none; color: var(--t3); font-weight: 500; }
+  .message-bubble .ws-attach > .ws-chip > .ws-chip__t { flex: 1 1 15ch; }
+  .message-bubble .ws-attach > .ws-chip > .ws-chip__k { flex: none; max-width: 100%; margin-left: auto; }
+  .message-bubble .ws-attach > .ws-chip .ws-chip__x { display: none; }
+}
 
 /* ---------- The task panel as drawn (P10, Spokój A05): rows, a blocker card, small actions, Activity, the composer at the bottom ---------- */
 .ui-panel__body:has(> .wd--task) { display: flex; padding: 0; overflow: hidden; }
