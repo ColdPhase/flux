@@ -1281,7 +1281,11 @@ token alone is not enough (S1 review): a real deployment never holds a half-seal
     in Garden club", one per reason) with an empty body; `flux_notification_content_free` refuses any other title or
     a body for a sealed workspace (`NOTIFICATION_CONTENT_REFUSED`; the "who" must be an existing account name,
     `Someone` or `An agent`). Needs-you's proposed decisions and the muted list's project and DM names are opened, and
-    a generation failure about a sealed workspace's event stores only `redactedError` (class, code, ids).
+    a generation failure about a sealed workspace's event stores only `redactedError` (class, code, ids). An update
+    that keeps title, body and link (read state, delivery) is not re-checked, so a later rename never blocks marking
+    read; the link is one of the generator's id-only forms; the plain morning summary ("N things wait in your inbox",
+    fixed body) is allowed and is anchored on a plain workspace's source when the person has one (an assistant-written
+    line only there). A muted place of a locked workspace is listed under the workspace's name.
   - **S2a-2c-2**: the event
     backstop (with its token table), the remaining error-path redaction (pg-boss output, logs), `sealed_job_waits` and
     the resume job, the SQL source scan, cross-workspace `lockedWorkspaces`, the replacement of the
