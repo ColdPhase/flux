@@ -7,7 +7,7 @@ import {
 import { assistantChangeRows, type AssistantChangeRow, type DbExecutor, accessReader } from '@flux/db';
 import { assistantChangeLine, ConflictError, ForbiddenError, undoSentence, type UndoRecord, createNotification, DomainError, evaluateProject, isUuid, NotFoundError, type Database,
   type Principal } from '@flux/core';
-import { CHANGED_SINCE, undoChange } from './undo.js';
+import { CHANGED_SINCE, REMOVAL_OPERATIONS, requireAiOn, undoChange } from './undo.js';
 import type { SessionResolver } from '../identity/index.js';
 import { expectedVersion } from '../http/commands.js';
 import { notificationUnitOfWork, pgBossQueue } from '../push/adapters.js';
@@ -233,6 +233,7 @@ export function assistantChangeUseCases(db: Database, boss?: Pick<PgBoss, 'send'
     const names = await rows().names([row.ownerUserId, creationOwner(row), owner(principal)]);
     if (row.operation === 'work.create' && creationOwner(row) !== owner(principal))
       return row.receipt?.acceptedBy ? `Only ${names.get(creationOwner(row)) ?? 'its creator'} can undo this task's creation` : `Only ${names.get(row.ownerUserId) ?? 'their owner'} can undo a task their assistant added`;
+    if (REMOVAL_OPERATIONS.has(row.operation)) await requireAiOn(db, row.workspaceId);
     const result = await undoChange(db, row, { kind: 'human', id: owner(principal) }, names.get(owner(principal)) ?? 'Someone', names.get(row.ownerUserId) ?? 'Someone');
     return result.done ? result.message : result.message ?? CHANGED_SINCE;
   }
@@ -325,6 +326,8 @@ export function assistantChangeUseCases(db: Database, boss?: Pick<PgBoss, 'send'
       const list = (await editableRun(principal, runId)).filter((row) => (row.state === 'applied' || row.state === 'applied_after_wait') && !!undoOf(row)
         && (row.operation !== 'work.create' || creationOwner(row) === who)).reverse();
       const changes: AssistantChangeDecision[] = []; const changedSince: string[] = []; let undone = 0;
+      // One refusal for the whole message, before anything is undone, rather than half of it.
+      for (const row of list) if (REMOVAL_OPERATIONS.has(row.operation)) { await requireAiOn(db, row.workspaceId); break; }
       for (const row of list) {
         const message = await undoOne(principal, row);
         if (message === null || message === 'Moved to your drafts') undone++; else changedSince.push(row.objectType === 'work' ? row.objectTitle.split(' ')[0]! : row.objectTitle || row.operation);

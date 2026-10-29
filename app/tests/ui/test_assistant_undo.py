@@ -286,6 +286,85 @@ class AssistantUndo(unittest.TestCase):
         # The button that was pressed is gone; focus is on the message, not on the page (AC-8, keyboard).
         expect(message).to_be_focused()
 
+    def test_05c_a_map_a_result_a_decision_and_a_message_have_their_own_undo_and_say_why_when_used(self) -> None:
+        # #68 closeout: what no person can remove, the assistant's own Undo takes back while nobody used it (tests/app/assistant-changes.test.ts).
+        for phone in (False, True):
+            with self.subTest(phone=phone):
+                page = self.page(phone=phone)
+                calls: list[tuple[str, str]] = []
+                changes = [
+                    self.applied(operation="map.create", objectType="map", objectId=str(uuid.uuid4()), objectTitle="Probe layout", phrase="add map", verb="Add", after="Probe layout"),
+                    self.applied(operation="result.record", objectType="result", objectTitle="Camera fails below 5 lux", phrase="record result", verb="Record", after="Camera fails below 5 lux"),
+                    self.applied(operation="decision.propose", objectType="decision", objectTitle="Use the ToF sensor", phrase="propose decision", verb="Propose", after="Use the ToF sensor"),
+                    self.applied(operation="conversation.reply", objectType="message", objectId=str(uuid.uuid4()), objectTitle="Here is the summary", phrase="post message", verb="Post", after="Here is the summary"),
+                ]
+                self.stub_undo(page, changes, calls)
+                message_id = changes[3]["id"]
+
+                def answered_since(route: Route) -> None:
+                    if route.request.url.rsplit("/", 2)[1] == message_id:
+                        route.fulfill(status=200, content_type="application/json", body=json.dumps({"change": changes[3], "message": "Replies since. Open it"}))
+                    else:
+                        route.fallback()
+                page.route(re.compile(r".*/api/v1/assistant-changes/[0-9a-f-]{36}/undo$"), answered_since)
+                self.open_conversation(page)
+                message = page.locator(".assistant-message")
+                head = message.locator(".assistant-message__head")
+                for word in ("map", "result", "decision", "message"):
+                    expect(head).to_contain_text(word)
+                expect(head.get_by_role("button", name="Undo")).to_have_count(1)
+                message.get_by_role("button", name=re.compile(r"\+1 more|Show details")).click()
+                rows = message.locator(".assistant-message__rows li")
+                expect(rows).to_have_count(4)
+                for index in range(4):
+                    expect(rows.nth(index).get_by_role("button", name="Undo")).to_be_visible()
+                # The message was answered since: its Undo says so, in its own row, and stays.
+                rows.nth(3).get_by_role("button", name="Undo").click()
+                expect(rows.nth(3)).to_contain_text("Replies since. Open it")
+                expect(rows.nth(3).get_by_role("button", name="Undo")).to_be_visible()
+                # An untouched map goes at once.
+                rows.nth(0).get_by_role("button", name="Undo").click()
+                expect(head).not_to_contain_text("map")
+                self.no_horizontal_scroll(page)
+                shot(page, f"assistant-undo-{'390' if phone else '1440'}-light-removals")
+
+    def test_05d_a_message_the_assistant_took_back_keeps_its_place_and_reads_as_removed(self) -> None:
+        page = self.page()
+
+        conversation_id = self.ids["conversation"]
+
+        def mark(node) -> None:
+            """Every copy of the conversation's first message in a response reads as taken back, wherever the response nests it."""
+            if isinstance(node, dict):
+                if node.get("conversationId") == conversation_id and node.get("sequence") == 1 and "body" in node:
+                    node.update(body="[Removed with Undo]", removedAt=NOW)
+                for child in node.values():
+                    mark(child)
+            elif isinstance(node, list):
+                for child in node:
+                    mark(child)
+
+        def tombstone(route: Route) -> None:
+            if route.request.method != "GET":
+                route.fallback()
+                return
+            response = route.fetch()
+            try:
+                payload = response.json()
+            except Exception:
+                route.fulfill(response=response)
+                return
+            mark(payload)
+            route.fulfill(response=response, json=payload)
+        page.route(re.compile(r".*/api/v1/(conversations|projects)/.*"), tombstone)
+        self.open_conversation(page)
+        removed = page.locator(".message-body--removed").first
+        expect(removed).to_have_text("[Removed with Undo]")
+        self.assertEqual(removed.evaluate("(node) => getComputedStyle(node).fontStyle"), "italic")
+        self.no_horizontal_scroll(page)
+        # No handler may still be reading when the context closes: that would fail the next test's page, not this one.
+        page.unroute_all(behavior="wait")
+
     def test_06_a_stopped_run_says_stopped_after_n_changes(self) -> None:
         page = self.page(phone=True)
         changes = self.message_set("stopped")[:2]

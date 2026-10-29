@@ -23,6 +23,7 @@ import { MessageWorkPages } from '../work/MessageWorkPages';
 import { audienceLine, createProjectSketch, useProjectShell } from '../project/data';
 import { useShellActions } from './shellContext';
 import { useWorkspaceAi } from '../ai/workspaceAi';
+import { useStreamEvents } from '../api/stream';
 import { assistantUses, AssistantSuggestions, meetAssistantDismissed, noteAssistantUse } from '../assistant/MeetAssistant';
 import { useConversationAssistant } from '../assistant/useConversationAssistant';
 import { useAssistantChanges, WaitingChanges } from '../assistant/WaitingChanges';
@@ -357,6 +358,10 @@ function ProjectConversationContent({ data, variant, feed, rootHeader, rootMessa
 
   // Flux answers again (not merely a Retry or the browser's `online` event): read what arrived meanwhile.
   useEffect(() => onFluxAnswered(() => { void refresh(); }), [refresh]);
+  // The assistant's Undo took something back (#68): a message it posted reads as removed now, not at the next poll. Ids only; the read is the API's.
+  useStreamEvents(me.user.id, (event) => {
+    if (event.objectType === 'project' && event.objectId === project.id && event.kind === 'project.assistant_change_undone.v1') void refresh();
+  });
   useEffect(() => {
     const onFocus = () => { void refresh(); };
     const onVisible = () => { if (document.visibilityState === 'visible') void refresh(); };
@@ -901,7 +906,7 @@ function ThreadReply(props: ThreadReplyProps | QueuedReplyProps) {
       <SourceTag messageId={message.id} />
       {!mine && !stored.continued ? <AuthorFace kind={message.authorId === null ? 'agent' : 'human'} name={name} mine={mine} /> : null}
       {!mine && !stored.continued ? <div className="project-convo__message-meta"><strong>{mine ? `${name} · you` : message.authorId === null ? <AgentAuthor message={message} owner={agentAuthorOwner(message.author, owners)} /> : <RefLink className="project-convo__person" to={`/dm/new?workspace=${project.workspaceId}&with=${message.authorId}`} title={`Message ${name} directly`}>{name}</RefLink>}</strong></div> : null}
-      <MessageContent body={message.body ? <WhenNoQuestion projectId={project.id} messageId={message.id}><div className="message-body"><MessageText body={message.body} people={people} /></div></WhenNoQuestion> : null} files={message.files} references={message.references} context={{ author: name, at: message.createdAt, caption: message.body, place: project.name, onReply: writable ? actions.onReply : undefined, onCreateTask: writable ? actions.onCreateWork : undefined }}>
+      <MessageContent body={message.body ? <WhenNoQuestion projectId={project.id} messageId={message.id}><div className={`message-body${message.removedAt ? ' message-body--removed' : ''}`}><MessageText body={message.body} people={people} /></div></WhenNoQuestion> : null} files={message.files} references={message.references} context={{ author: name, at: message.createdAt, caption: message.body, place: project.name, onReply: writable ? actions.onReply : undefined, onCreateTask: writable ? actions.onCreateWork : undefined }}>
         <LinkPreviews body={message.body} projectId={project.id} messageId={message.id} />
         <MessageObjects message={message} projectId={project.id} preview={preview} />
         {message.source ? <SourceCitation materialId={message.source.materialId} version={message.source.version} onDenied={onDenied} /> : null}

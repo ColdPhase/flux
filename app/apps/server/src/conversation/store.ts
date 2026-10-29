@@ -61,7 +61,7 @@ function message(row: MessageRow & { files?: import('@flux/contracts').MessageFi
     author: { kind: 'agent' as const, id: row.authorAgentId!, name: names.get(`agent:${row.authorAgentId}`) ?? 'Agent',
       ...(owners.has(row.authorAgentId!) ? { projectOwner: owners.get(row.authorAgentId!)! } : {}) } }), body: row.body,
     source: row.sourceMaterialId && row.sourceMaterialVersion ? { materialId: row.sourceMaterialId, version: row.sourceMaterialVersion } : null,
-    sequence: row.sequence, createdAt: row.createdAt.toISOString(), ...(contribution ? { contribution } : {}), ...(row.files?.length ? { files: row.files } : {}),
+    sequence: row.sequence, createdAt: row.createdAt.toISOString(), ...(row.removedAt ? { removedAt: row.removedAt.toISOString() } : {}), ...(contribution ? { contribution } : {}), ...(row.files?.length ? { files: row.files } : {}),
     ...(row.references?.length ? { references: row.references } : {}) };
 }
 
