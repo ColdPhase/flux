@@ -218,8 +218,11 @@ describe('F-030 first passwords, grants and changes', () => {
   test('a demotion deletes the person\'s unlock password; the last one cannot be removed (role change and account deletion)', async () => {
     expectStatus(await ada.browser.request('PATCH', `/api/v1/workspaces/${A}/members/${eve.id}`, { body: { role: 'member' } }), 200);
     assert.equal((await pool.query(`SELECT count(*)::int AS n FROM workspace_holders WHERE workspace_id = $1 AND user_id = $2`, [A, eve.id])).rows[0].n, 0);
-    assert.equal((await pool.query(`SELECT rotation FROM workspace_keys WHERE workspace_id = $1`, [A])).rows[0].rotation, 'pending', 'S2c starts the rotation');
-    assert.equal((await pool.query(`SELECT count(*)::int AS n FROM workspace_removed_holders WHERE workspace_id = $1 AND user_id = $2`, [A, eve.id])).rows[0].n, 1);
+    const keys = (await pool.query(`SELECT rotation, current_version FROM workspace_keys WHERE workspace_id = $1`, [A])).rows[0];
+    assert.ok(keys.rotation !== 'none' || keys.current_version > 1, `a rotation is pending, running or done (S2c): ${JSON.stringify(keys)}`);
+    // The tombstone stays until the rotation finishes (S2c clears it then).
+    const tombstones = (await pool.query(`SELECT count(*)::int AS n FROM workspace_removed_holders WHERE workspace_id = $1 AND user_id = $2`, [A, eve.id])).rows[0].n;
+    assert.ok(tombstones === 1 || (await events(A, 'workspace.key_rotated.v1')).length > 0, 'a tombstone until the finish');
     assert.equal((await unlock(eve.browser, A, { password: pw.eve })).status, 403);
 
     // Solo club: Fay creates it, Lou (owner) gets a password, Fay is demoted, so Lou holds the only one.

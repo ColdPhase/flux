@@ -8,6 +8,8 @@ export interface EncryptionViewInput {
   myPassword: boolean;
   recoveryCode: boolean;
   keyChangedAt: Date | null;
+  rotation?: 'none' | 'pending' | 'reencrypting';
+  rotationProgress?: { rowsDone: number; rowsEstimate: number; startedAt: Date } | null;
 }
 
 /** A sealed workspace whose key rows are missing reads as locked (fail closed). */
@@ -33,7 +35,18 @@ export function presentEncryption(input: EncryptionViewInput, role: WorkspaceRol
     myPassword: manager && input.myPassword,
     canUnlock: manager && (input.myPassword || input.recoveryCode),
     recoveryCode: input.recoveryCode,
-    rotation: null,
+    rotation: rotationView(input, unlocked),
     keyChangedAt: input.keyChangedAt ? input.keyChangedAt.toISOString() : null,
   };
+}
+
+/**
+ * The `rotation` wire field (S2c): null when none is pending or running. Paused while locked or pending (a removal while
+ * locked waits for the next unlock); the percent is of the values the pass found below the new version at its start.
+ */
+function rotationView(input: EncryptionViewInput, unlocked: boolean): WorkspaceEncryption['rotation'] {
+  if (!input.rotation || input.rotation === 'none') return null;
+  const progress = input.rotation === 'reencrypting' ? input.rotationProgress ?? null : null;
+  const percent = progress ? (progress.rowsEstimate > 0 ? Math.min(99, Math.floor((progress.rowsDone / progress.rowsEstimate) * 100)) : 99) : 0;
+  return { percent, paused: !unlocked || input.rotation === 'pending', startedAt: progress ? progress.startedAt.toISOString() : null };
 }

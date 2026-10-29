@@ -17,6 +17,7 @@ export { agentRepository } from './repositories/agents.js';
 export { draftRepository } from './repositories/drafts.js';
 export { accessPorts } from './repositories/access-ports.js';
 export * from './repositories/workspace-encryption.js';
+export * from './repositories/key-rotation.js';
 export * from './sealed-columns.js';
 export * from './sealing.js';
 export * from './repositories/agent-mcp-policy.js';

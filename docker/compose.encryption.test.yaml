@@ -21,3 +21,14 @@ services:
   test:
     environment:
       FLUX_TEST_SEALED_CHOOSER_SCAN_LIMIT: "8"
+      # AC-13 (S2c): the offline checker reads the file objects of a post-rotation copy.
+      FLUX_FILES_DIR: /data/files
+    volumes:
+      - files:/data/files:ro,z
+  # S2c (TEST ONLY; honoured only by a test deployment): small pages and a fast sweep so rotations of small fixtures
+  # take several pages, and a hold after N pages so check_encryption.sh can kill the worker mid-rotation.
+  worker:
+    environment:
+      FLUX_TEST_ROTATION_PAGE_SIZE: "2"
+      FLUX_TEST_ROTATION_SWEEP_MS: "300"
+      FLUX_TEST_ROTATION_HOLD_AFTER_PAGES: ${FLUX_TEST_ROTATION_HOLD_AFTER_PAGES:-}

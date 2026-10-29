@@ -1,6 +1,6 @@
 import { randomUUID, type KeyObject } from 'node:crypto';
 import {
-  UNLOCK_ATTEMPT_LIMIT, UNLOCK_ATTEMPT_WINDOW_SECONDS, UNLOCK_GRANT_SECONDS, WORKSPACE_ENCRYPTION_TAMPERED_EVENT, WORKSPACE_LOCKED_EVENT,
+  UNLOCK_ATTEMPT_LIMIT, UNLOCK_ATTEMPT_WINDOW_SECONDS, UNLOCK_GRANT_SECONDS, WORKSPACE_LOCKED_EVENT,
   WORKSPACE_UNLOCK_PASSWORD_GRANTED_EVENT, WORKSPACE_UNLOCK_PASSWORD_SET_EVENT, WORKSPACE_UNLOCKED_EVENT,
   type CreateEncryptedWorkspaceCommand, type CreateEncryptedWorkspaceResult, type EncryptionStateResult, type GrantUnlockPasswordCommand,
   type GrantUnlockPasswordResult, type NewRecoveryCodeCommand, type NewRecoveryCodeResult, type SetUnlockPasswordCommand, type UnlockWorkspaceCommand,
@@ -9,11 +9,13 @@ import { ConflictError, ForbiddenError, InvalidInputError, RateLimitedError } fr
 import type { Principal } from '../principal.js';
 import { WorkspaceLockedError, UnlockIncorrectError } from './errors.js';
 import {
-  generateHolderKeyPair, holderMac, holderMacValid, HolderKeyMismatchError, holderSecretCheck, holderSecretCheckValid, keyCommitmentValid, openDekForHolder, sealDekToHolder,
+  canonicalVersions, generateHolderKeyPair, holderMac, HolderKeyMismatchError, holderSecretCheck, holderSecretCheckValid, keyCommitmentValid, openDekForHolder, sealDekToHolder,
   unwrapPrivateKey, wrapConfirmation, wrapConfirmationValid, wrapPrivateKey, type HolderKeyPair,
 } from './holders.js';
 import { deriveKek, kdfIsCurrent, newKdfParams, parseKdfParams, type KdfParams } from './kdf.js';
 import { keyCheckValid, keyCheckValue, newDek, WorkspaceKey } from './keys.js';
+import { openField } from './envelope.js';
+import { holderIdentity, holderPlace as place, holdersValid, recordTampering, SYSTEM, TamperSignal, zero, type Deks } from './holder-set.js';
 import { DecryptionFailedError } from './primitives.js';
 import { generateRecoveryCode, normalizeRecoveryCode } from './recovery.js';
 import { typedSecret, unlockPassword } from './passwords.js';
@@ -46,23 +48,15 @@ export interface EncryptionUseCaseDeps {
 }
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const SYSTEM: Principal = { kind: 'fixture', id: 'keyring' };
 
-interface Material { keys: KeysRecord; holders: HolderRecord[]; wraps: DekWrapRecord[]; versions: KeyVersionRecord[]; managers: string[] }
-type Deks = Map<number, Buffer>;
-
-const zero = (deks: Deks | null | undefined) => { for (const dek of deks?.values() ?? []) dek.fill(0); };
-const place = (holder: Pick<HolderRecord, 'workspaceId' | 'id' | 'kind' | 'userId'>) =>
-  ({ workspaceId: holder.workspaceId, holderId: holder.id, kind: holder.kind, userId: holder.userId });
-const identity = (holder: HolderRecord) => ({ ...place(holder), holderId: holder.id, publicKey: holder.publicKey, kdf: holder.kdf,
-  wrappedPrivate: holder.wrappedPrivate, secretCheck: holder.secretCheck });
-const sameVersions = (a: number[], b: number[]) => a.length === b.length && [...a].sort().every((v, i) => v === [...b].sort()[i]);
-
-class TamperedError extends ConflictError {
-  constructor(name: string) { super(`${name}'s encryption keys were changed outside Flux. It stays locked.`, 'ENCRYPTION_TAMPERED'); }
+type Sample = { field: string; identity: string[]; envelope: string } | null;
+interface Material {
+  keys: KeysRecord; holders: HolderRecord[]; wraps: DekWrapRecord[]; versions: KeyVersionRecord[]; managers: string[];
+  /** One stored envelope of each live version whose previous version is no longer live (the post-rotation case). */
+  samples: Map<number, Sample>;
 }
-/** Raised inside a unit of work; turned into the tampering record after its rollback. */
-class TamperSignal extends Error {}
+
+const sameVersions = (a: number[], b: number[]) => a.length === b.length && [...a].sort().every((v, i) => v === [...b].sort()[i]);
 
 export function createEncryptionUseCases({ unit, keys, semaphore, estimator, read }: EncryptionUseCaseDeps) {
   const person = (principal: Principal) => {
@@ -75,8 +69,12 @@ export function createEncryptionUseCases({ unit, keys, semaphore, estimator, rea
   async function material(ports: EncryptionPorts, workspaceId: string): Promise<Material> {
     const k = await ports.rows.keys(workspaceId);
     if (!k) throw new ConflictError('This workspace is not encrypted', 'WORKSPACE_NOT_ENCRYPTED');
+    const samples = new Map<number, Sample>();
+    for (const version of k.liveVersions) {
+      if (version > 1 && !k.liveVersions.includes(version - 1)) samples.set(version, await ports.rows.envelopeSample(workspaceId, version));
+    }
     return { keys: k, holders: await ports.rows.holders(workspaceId), wraps: await ports.rows.dekWraps(workspaceId),
-      versions: await ports.rows.keyVersions(workspaceId), managers: await ports.rows.managers(workspaceId) };
+      versions: await ports.rows.keyVersions(workspaceId), managers: await ports.rows.managers(workspaceId), samples };
   }
 
   /** Authorizes, then reads what a command needs. */
@@ -90,17 +88,7 @@ export function createEncryptionUseCases({ unit, keys, semaphore, estimator, rea
     });
   }
 
-  /** Records tampering once (event and a `security` notice to every holder), then refuses. */
-  async function tampered(workspaceId: string, name: string, holders: HolderRecord[]): Promise<never> {
-    await unit.run(async (ports) => {
-      if (!await ports.rows.markTampered(workspaceId)) return;
-      const eventId = await ports.event(SYSTEM, workspaceId, WORKSPACE_ENCRYPTION_TAMPERED_EVENT, {});
-      const managers = new Set(await ports.rows.managers(workspaceId));
-      for (const userId of new Set(holders.map((holder) => holder.userId).filter((id): id is string => !!id && managers.has(id))))
-        await ports.rows.insertSecurityNotice({ userId, workspaceId, eventId, title: `${name}'s encryption keys were changed outside Flux. It stays locked.` });
-    });
-    throw new TamperedError(name);
-  }
+  const tampered = (workspaceId: string, name: string, holders: HolderRecord[]) => recordTampering(unit, workspaceId, name, holders);
 
   /** A check that cannot succeed (no such holder): it still counts against the limiter. */
   async function refuseCheck(principal: Principal, workspaceId: string, name: string): Promise<never> {
@@ -163,24 +151,29 @@ export function createEncryptionUseCases({ unit, keys, semaphore, estimator, rea
       try { dek = openDekForHolder(privateKey, wrap, dekPlace); } catch { return fail(); }
       // A confirmation, when the holder has one for this version, decides alone: the commitment chain is a MAC under
       // DEK v-1, which an earlier holder may know, so it never overrides the holder's own proof.
+      // A version the holder's (MAC-covered) confirmed set lists must still have its confirmation: a deleted one is
+      // tampering, never a fall-back to the chain (S2a-1 review).
+      if (wrap.confirm === null && holder.confirmedVersions.includes(version)) { dek.fill(0); return fail(); }
       const previous = deks.get(version - 1);
+      const key = WorkspaceKey.fromDek(workspaceId, version, dek);
       const accepted = wrap.confirm !== null
         ? wrapConfirmationValid(kek, dekPlace, dek, wrap.confirm)
-        : !!previous && keyCommitmentValid(previous, workspaceId, version, dek, kv.commitment);
-      if (!accepted || !keyCheckValid(WorkspaceKey.fromDek(workspaceId, version, dek), kv.checkValue)) { dek.fill(0); return fail(); }
+        : previous ? keyCommitmentValid(previous, workspaceId, version, dek, kv.commitment)
+          // After a finished rotation the previous DEK is gone, and a holder who did not unlock during it has no
+          // confirmation of the new version: its check value and one stored envelope of it decide (S1 review carry-over).
+          : version > 1 && !m.keys.liveVersions.includes(version - 1) && m.samples.has(version) && sampleOpens(key, m.samples.get(version)!);
+      if (!accepted || !keyCheckValid(key, kv.checkValue)) { dek.fill(0); return fail(); }
       if (wrap.confirm === null) confirmations.push({ keyVersion: version, confirm: wrapConfirmation(kek, dekPlace, dek) });
       deks.set(version, dek);
     }
     return holdersValid(m, deks) ? { deks, confirmations } : fail();
   }
 
-  /** Every holder's MAC verifies under the current DEK, and every password holder is an owner or admin now. */
-  function holdersValid(m: Pick<Material, 'keys' | 'holders' | 'managers'>, deks: Deks): boolean {
-    const current = deks.get(m.keys.currentVersion);
-    if (!current) return false;
-    return m.holders.every((holder) => holder.holderMacVersion === m.keys.currentVersion
-      && holderMacValid(current, m.keys.currentVersion, identity(holder), holder.holderMac)
-      && (holder.kind === 'recovery' || (holder.userId !== null && m.managers.includes(holder.userId))));
+  /** No sample (nothing of that version stored yet): the check value alone. A sample must open. */
+  function sampleOpens(key: WorkspaceKey, sample: Sample): boolean {
+    if (!sample) return true;
+    try { openField((v) => (v === key.version ? key : undefined), { workspaceId: key.workspaceId, field: sample.field, identity: sample.identity }, sample.envelope); return true; }
+    catch { return false; }
   }
 
   /** A holder's row and DEK wraps (with confirmations) for every live version, under a new KEK. */
@@ -189,10 +182,11 @@ export function createEncryptionUseCases({ unit, keys, semaphore, estimator, rea
     const who = { workspaceId, holderId, kind, userId };
     const wrappedPrivate = wrapPrivateKey(kek, pair, who);
     const secretCheck = holderSecretCheck(kek, who);
+    const confirmedVersions = canonicalVersions([...deks.keys()]);
     const holder: HolderRecord = {
       id: holderId, workspaceId, kind, userId, kdf, publicKey: pair.publicKey, wrappedPrivate,
-      holderMac: holderMac(deks.get(currentVersion)!, currentVersion, { ...who, publicKey: pair.publicKey, kdf, wrappedPrivate, secretCheck }),
-      holderMacVersion: currentVersion, secretCheck,
+      holderMac: holderMac(deks.get(currentVersion)!, currentVersion, { ...who, publicKey: pair.publicKey, kdf, wrappedPrivate, secretCheck, confirmedVersions }),
+      holderMacVersion: currentVersion, secretCheck, confirmedVersions,
     };
     const wraps = [...deks].map(([keyVersion, dek]) => {
       const dekPlace = { workspaceId, holderId, keyVersion };
@@ -210,7 +204,8 @@ export function createEncryptionUseCases({ unit, keys, semaphore, estimator, rea
       throw new ConflictError('The workspace keys changed meanwhile; try again', 'ENCRYPTION_CHANGED');
     }
     const holders = await ports.rows.holders(m.keys.workspaceId);
-    if (!holdersValid({ keys: k, holders, managers: await ports.rows.managers(m.keys.workspaceId) }, deks)) throw new TamperSignal();
+    const wraps = await ports.rows.dekWraps(m.keys.workspaceId);
+    if (!holdersValid({ keys: k, holders, wraps, managers: await ports.rows.managers(m.keys.workspaceId) }, deks)) throw new TamperSignal();
   }
 
   /** Runs a final unit of work; a holder that no longer verifies inside it is recorded as tampering after the rollback. */
@@ -334,8 +329,13 @@ export function createEncryptionUseCases({ unit, keys, semaphore, estimator, rea
               m.wraps.filter((row) => row.holderId === target.id));
             await ports.rows.updateHolder(target.id, fresh.holder);
             await ports.rows.replaceDekWraps(target.id, fresh.wraps);
-          } else {
+          } else if (confirmations.length) {
             for (const { keyVersion, confirm } of confirmations) await ports.rows.setConfirm(target.id, keyVersion, confirm);
+            // The MAC covers the confirmed set, so it is rewritten with the new confirmations (under the current DEK).
+            const confirmedVersions = canonicalVersions([...target.confirmedVersions.filter((v) => m.keys.liveVersions.includes(v)),
+              ...confirmations.map((row) => row.keyVersion)]);
+            await ports.rows.updateHolderMac(target.id, { confirmedVersions, holderMacVersion: m.keys.currentVersion,
+              holderMac: holderMac(deks.get(m.keys.currentVersion)!, m.keys.currentVersion, holderIdentity(target, confirmedVersions)) });
           }
           // Every check passed from scratch: the tampering flag (display and alerting only) is cleared.
           await ports.rows.clearTampered(workspaceId);

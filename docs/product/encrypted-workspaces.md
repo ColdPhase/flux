@@ -140,6 +140,9 @@ CREATE TABLE workspace_rotation_progress (  -- one row while a rotation runs; id
   passes integer NOT NULL DEFAULT 0, updated_at timestamptz NOT NULL DEFAULT now()
 );
 ALTER TABLE project_files ADD COLUMN key_version integer;  -- of the stored object; null for a plain workspace
+-- 0128 (S2c): workspace_holders.confirmed_versions integer[] (covered by holder_mac), workspace_rotation_progress
+-- .pass_changes and .started_at, the tombstone of every deleted holder (the recovery holder too), and the
+-- workspace_members trigger workspace_manager_lost that leaves a rotation pending when an owner or admin loses the role.
 CREATE TABLE password_attempts (            -- failed password or code checks on any route; pruned after 15 minutes
   workspace_id uuid NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
   user_id text NOT NULL REFERENCES auth_users(id) ON DELETE CASCADE,
@@ -310,7 +313,11 @@ move all content under it. Four checks close this. None needs anything the attac
 1. **Holder MAC.** `holder_mac = HMAC-SHA256(HKDF(DEK v, [flux holder-auth v2, workspace id, v]),
    [holder id, kind, user id or "", public key, kdf, wrapped private key, secret check])`, with
    `v = holder_mac_version`, the current version when the MAC was written. `kdf` is compared in the fixed
-   key order `[alg, v, m, t, p, salt]`, so jsonb's reordering does not matter. (S2a-1, from the S1 review:
+   key order `[alg, v, m, t, p, salt]`, so jsonb's reordering does not matter. **S2c (0128, label `flux holder-auth
+   v3`):** the MAC also covers `confirmed_versions`, the versions the holder has a confirmation for, and a holder
+   verifies only when that list restricted to the live versions equals the confirmations present. A deleted
+   `confirm` of a listed version is tampering, and acceptance refuses it before it can fall back to the chain
+   (S2a-1 review). (S2a-1, from the S1 review:
    v1 covered only the identity and the public key, so a changed `kdf`, `wrapped_private` or
    `secret_check` showed up only as a failed derivation, not as tampering.) `confirm` is not covered: it
    is itself a MAC under the holder's KEK, written later than this one, and unlock refuses a changed one. A holder is created only while the workspace is unlocked, so the server
@@ -336,8 +343,12 @@ move all content under it. Four checks close this. None needs anything the attac
      `commitment(v) = HMAC(HKDF(DEK v-1, [flux commit v1, workspace id, v-1]), [v, SHA-256(DEK v)])`,
      written when version v is made. It reveals nothing about DEK v to a holder of v-1.
 
-   In both cases the accepted DEK must also open that version's `check_value`, and one existing
-   envelope of that version if there is one (cheap, by the key-free version prefix). Version 1 has no
+   - **only if there is no confirmation and the previous version is no longer live** (a holder who did not
+     unlock during a rotation that has since finished): the DEK must open that version's `check_value` and one
+     stored envelope of that version, found by the key-free version prefix in the registry tables (S1 review
+     carry-over). With no envelope of it yet, the check value alone decides.
+
+   In every case the accepted DEK must also open that version's `check_value`. Version 1 has no
    commitment. The creator's and recovery holder's confirmations, written at creation, are its
    root, so a forged v1 wrap fails even in an empty workspace.
 4. **Order at unlock.** Open the private key; check the derived public key; open the wraps for every
@@ -366,6 +377,14 @@ kept their own holder row, and who can write to the database, could restore that
 and delete the tombstone. The next unlock would then seal DEK *n*+1 to them. To make that visible,
 the start records the holder set in `workspace.key_rotation_started.v1` (ids), and the Encryption
 section shows "The new key opens for Ada and Cy." Every holder can see who received it.
+
+A second path, stated in S2c (2026-10-29): a holder without a confirmation of a version accepts it through the
+chain (keyed by DEK *v*-1) or, after the finish, by its check value and a stored envelope. The person removed knows
+DEK *v*-1 and, writing to the database, could replace such a holder's wrap of *v* by a DEK of their own with a valid
+commitment, check value and holder MACs under it. Covering `confirmed_versions` closes this for every holder that
+has confirmed *v* (one unlock during or after the rotation does it), and it never applies to the holder whose
+unlock wrote the confirmation. The rest is integrity, not confidentiality: a copy of the data taken after the
+finish still opens nothing with the removed person's keys.
 
 ### Password checks
 
@@ -459,10 +478,15 @@ stateDiagram-v2
    the role check refuses them anyway. **No new DEK is made while locked.** Re-encryption needs the
    old DEK, so a new one made earlier would protect nothing and would have to trust unverified
    holder rows.
-   **Start** (pending to reencrypting) happens in the same transaction when the workspace is unlocked.
-   Otherwise it happens in the first unlock's transaction after its [checks](#authenticating-holders-and-wraps),
-   or in the worker's rotate job when the workspace is unlocked and `pending` (after a cascade). The
-   process holds DEK *n* in RAM then:
+   **Start** (pending to reencrypting) happens in the worker (S2c, 2026-10-29): its sweep (every 5 s) and the
+   resume job sent with every unlock start each `pending` rotation of an unlocked workspace. So a removal while
+   unlocked, the first unlock after a removal while locked, a cascade and a worker restart take one code path. The
+   removal's transaction already deleted the holders, so the seconds until the start change nothing for the removed
+   person; values written meanwhile are sealed under *n* and re-encrypted like the rest. (The first revision started
+   in the role change's transaction; that would put a keyring call inside it and a second start path in the API.)
+   The removal itself is the 0128 trigger `workspace_manager_lost` on `workspace_members` (an owner or admin losing
+   the role by an update or a delete, the account-deletion cascade included): it deletes their password holder and
+   the recovery holder (each leaving a tombstone) and sets `pending`. The worker holds DEK *n* in RAM at the start:
    - verify every holder MAC under DEK *n* (a failure marks tampering and stops the start);
    - make DEK v*n*+1 in RAM; write `workspace_key_versions` for *n*+1 with its commitment from DEK *n*
      and its `check_value`; seal DEK *n*+1 to every member of the **holder set** (never under DEK *n*);
@@ -470,10 +494,10 @@ stateDiagram-v2
    - set `current_version = n+1`, add *n*+1 to `live_versions`, set `rotation = 'reencrypting'`, and upsert `workspace_rotation_progress` (`target_version = n+1`, first
      step, empty cursor, `passes = 0`, `rows_estimate` from `pg_class.reltuples` of the registry
      tables);
-   - ask the keyring to seal DEK *n*+1 and insert its unlock row. If the keyring cannot be reached,
-     roll the start back and leave `pending`, so the workspace is never half unlocked;
-   - record `workspace.key_rotation_started.v1` (ids only), send `workspace-encryption.rotate.v1`,
-     then zero DEK *n*+1 in the API's memory.
+   - ask the keyring to seal DEK *n*+1 (before the transaction) and insert its unlock row. If the keyring cannot
+     be reached, nothing is written and the rotation stays `pending`, so the workspace is never half unlocked;
+   - record `workspace.key_rotation_started.v1` (`{ version, holders }`, ids only), then zero DEK *n*+1. The
+     `rows_estimate` is the number of the workspace's values below *n*+1, counted once at the start.
 
    The role change reads the unlock rows without a lock and takes no row lock on them, so it cannot
    deadlock with Lock now. A concurrent Lock can leave a stray unlock row for *n*+1, but `sealFor`
@@ -502,7 +526,11 @@ stateDiagram-v2
      … WHERE` the column still equals the ciphertext it read. A value that changed meanwhile was
      written by a live process under the current version and is skipped. The page ends by storing
      the step, the cursor and `rows_done` in `workspace_rotation_progress`, so the page's writes and
-     its progress commit together.
+     its progress commit together. Re-encryption changes no content, so the page's compare-and-set runs with
+     `session_replication_role = replica`: the rows' triggers (search, artifact deltas, the immutability guards of
+     append-only tables, the plaintext backstops) do not fire for a value that only changed its key. It writes
+     envelopes only. Because the tables come from `SEALED_COLUMNS`, a table a later slice registers is
+     re-encrypted, sampled and checked by the finish with no change to the rotation.
    - **Files** come next. For each file of the workspace with `key_version < current_version`, the
      worker reads and verifies the object, encrypts it under the current version into
      `attachments/tmp`, `fsync`s it, renames it over the object (atomic on the same filesystem) and
@@ -525,8 +553,11 @@ stateDiagram-v2
    *n*+1 stay for the remaining holders, and the pass restarts from the first table, because rows
    already re-encrypted to *n*+1 must move to *n*+2.
 7. **Finish.** **Verify invariant:** passes repeat until one complete pass over every table and file
-   changes nothing (`step = 'verify'`, counted in `passes`). Only such a pass can lead to the finish. In one transaction the worker then deletes the DEK
-   wraps and unlock rows of every version below `current_version`, sets `live_versions =
+   changes nothing (counted in `passes`, its changes in `pass_changes`). Only such a pass can lead to the finish,
+   and the finish checks once more under `workspace_keys` `FOR UPDATE` that no value or file is below the current
+   version. In one transaction the worker then deletes the DEK
+   wraps, unlock rows and `workspace_key_versions` rows (their check values are envelopes under the old DEKs) of
+   every version below `current_version`, and the tombstones, sets `live_versions =
    {current_version}` and `rotation = 'none'`, deletes the progress row, and records
    `workspace.key_rotated.v1`. Afterwards it runs `VACUUM` on the tables it touched, then
    `CHECKPOINT` (the Compose database role may). That makes the dead row versions holding old
@@ -1285,7 +1316,13 @@ token alone is not enough (S1 review): a real deployment never holds a half-seal
 - **S2c: key rotation** ([design](#rotation)). The start inside every owner/admin removal, demotion,
   leaving and account deletion; the rotate job with progress, compare-and-set, the files step, crash
   and lock resume, and the finish with `VACUUM`; the recovery code invalidation; the `rotation` wire
-  field; AC-13. Fixture-only. **S3 may not merge until the full AC-7 and AC-13 pass on S2c's final
+  field; AC-13. Fixture-only. Delivered with migration 0128 (`packages/core/src/encryption/rotation.ts`, `@flux/db`
+  `keyRotationRows`, the worker's sweep). The files step works on `project_files.key_version` and the object header
+  through `RotationFileObjects` (`apps/worker/src/workspace-encryption/file-objects.ts`); until S2a-2b-2 seals file
+  bytes a sealed workspace stores no file, so AC-13's file cases run against the step itself
+  (`tests/app/encryption-rotation.test.ts`) and the post-rotation scan of the files volume finds no object yet.
+  S2a-2b-2's commit transaction must set `key_version` under the `workspace_keys` share lock of every writer, so an
+  upload that started under *n* and commits after a start is found by the files step. **S3 may not merge until the full AC-7 and AC-13 pass on S2c's final
   head**, named by SHA in the S3 PR.
 - **S3: creation and interface.** The production route; New space with encryption and the recovery
   code step; the removal, demotion and leave confirmations and the rotation progress line; the locked panel and sidebar row; the People panel sections; the project Details line;

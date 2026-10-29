@@ -17,7 +17,7 @@ export const workspaceRecoveryCodePath = (workspaceId: string) => `/api/v1/works
 
 /**
  * `Workspace.encryption`: null for a plain workspace. `myPassword` and `canUnlock` are filled for owners and
- * admins; members and guests get `false`. `rotation` stays null until key rotation (S2c) ships.
+ * admins; members and guests get `false`. `rotation` is null unless a key rotation is pending or running (S2c).
  */
 export interface WorkspaceEncryption {
   state: 'locked' | 'unlocked';
@@ -29,7 +29,11 @@ export interface WorkspaceEncryption {
   canUnlock: boolean;
   /** The workspace has a recovery code. */
   recoveryCode: boolean;
-  rotation: null | { percent: number; paused: boolean; startedAt: string };
+  /**
+   * A pending or running rotation (S2c): `percent` of the estimated sealed values done in this pass, `paused` while the
+   * space is locked (or pending until its next unlock), `startedAt` when the current pass target was made (null while pending).
+   */
+  rotation: null | { percent: number; paused: boolean; startedAt: string | null };
   /** When the key last changed by a rotation; null while the creation key is current. */
   keyChangedAt: string | null;
 }
@@ -92,8 +96,11 @@ export const WORKSPACE_UNLOCK_PASSWORD_GRANTED_EVENT = 'workspace.unlock_passwor
 export const WORKSPACE_UNLOCK_PASSWORD_SET_EVENT = 'workspace.unlock_password_set.v1';
 /** A holder, wrap or key version failed verification: the workspace stays locked (F-030, Authenticating holders and wraps). */
 export const WORKSPACE_ENCRYPTION_TAMPERED_EVENT = 'workspace.encryption_tampered.v1';
+/** S2c: a rotation started (`{ version, holders }`, ids only: who received the new key) and finished (`{ version }`). */
+export const WORKSPACE_KEY_ROTATION_STARTED_EVENT = 'workspace.key_rotation_started.v1';
+export const WORKSPACE_KEY_ROTATED_EVENT = 'workspace.key_rotated.v1';
 export const WORKSPACE_ENCRYPTION_EVENTS = [WORKSPACE_UNLOCKED_EVENT, WORKSPACE_LOCKED_EVENT, WORKSPACE_UNLOCK_PASSWORD_GRANTED_EVENT,
-  WORKSPACE_UNLOCK_PASSWORD_SET_EVENT, WORKSPACE_ENCRYPTION_TAMPERED_EVENT] as const;
+  WORKSPACE_UNLOCK_PASSWORD_SET_EVENT, WORKSPACE_ENCRYPTION_TAMPERED_EVENT, WORKSPACE_KEY_ROTATION_STARTED_EVENT, WORKSPACE_KEY_ROTATED_EVENT] as const;
 /** `{ reason }` of `workspace.locked.v1`. */
 export type WorkspaceLockReason = 'person' | 'restart';
 

@@ -166,16 +166,20 @@ describe('F-030 crypto: holders, wraps and their authentication', () => {
 
   test('holder MAC, confirmation, commitment chain and check value each reject a changed value', async () => {
     const pair = generateHolderKeyPair();
-    const identity = { ...holder, publicKey: pair.publicKey, kdf: fastKdf(), wrappedPrivate: 'wrapped-private', secretCheck: 'secret-check' };
+    const identity = { ...holder, publicKey: pair.publicKey, kdf: fastKdf(), wrappedPrivate: 'wrapped-private', secretCheck: 'secret-check',
+      confirmedVersions: [1] };
     const mac = holderMac(dek, 1, identity);
     assert.ok(holderMacValid(dek, 1, identity, mac));
     assert.ok(holderMacValid(dek, 1, { ...identity, kdf: Object.fromEntries(Object.entries(identity.kdf).reverse()) }, mac), 'jsonb key order does not matter');
     for (const changed of [{ ...identity, publicKey: generateHolderKeyPair().publicKey }, { ...identity, userId: 'user-mallory' },
       { ...identity, kind: 'recovery' as const }, { ...identity, holderId: randomUUID() }, { ...identity, kdf: { ...identity.kdf, m: 16_384 } },
-      { ...identity, kdf: { ...identity.kdf, salt: fastKdf().salt } }, { ...identity, wrappedPrivate: 'wrapped-other' }, { ...identity, secretCheck: 'check-other' }]) {
+      { ...identity, kdf: { ...identity.kdf, salt: fastKdf().salt } }, { ...identity, wrappedPrivate: 'wrapped-other' }, { ...identity, secretCheck: 'check-other' },
+      // S2c (S2a-1 review): the confirmed set is covered, so a deleted confirmation cannot be hidden.
+      { ...identity, confirmedVersions: [] }, { ...identity, confirmedVersions: [1, 2] }]) {
       assert.equal(holderMacValid(dek, 1, changed, mac), false, JSON.stringify(changed));
     }
     assert.equal(holderMacValid(dek, 2, identity, mac), false, 'another MAC version');
+    assert.ok(holderMacValid(dek, 1, { ...identity, confirmedVersions: [1, 1] }, mac), 'the confirmed set is canonical');
     assert.equal(holderMacValid(newDek(), 1, identity, mac), false, 'another DEK');
 
     const kek = await deriveKek('seven brisk otters juggle neon lanterns', fastKdf());

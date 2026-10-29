@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { sql, type SQL } from 'drizzle-orm';
 import type { DbExecutor } from './push.js';
+import { envelopeSample } from './key-rotation.js';
 
 /**
  * Rows of encrypted workspaces (F-030, #655, migration 0119; docs/product/encrypted-workspaces.md). They satisfy the
@@ -29,6 +30,7 @@ export interface HolderRow {
   holderMac: string;
   holderMacVersion: number;
   secretCheck: string;
+  confirmedVersions: number[];
 }
 export interface DekWrapRow { holderId: string; workspaceId: string; keyVersion: number; ephemeralPublic: string; sealedDek: string; confirm: string | null }
 export interface KeyVersionRow { keyVersion: number; commitment: string | null; checkValue: string }
@@ -41,8 +43,13 @@ export interface EncryptionViewRow {
   myPassword: boolean;
   recoveryCode: boolean;
   keyChangedAt: Date | null;
+  /** S2c: the rotation state and, while one runs, its progress. */
+  rotation: 'none' | 'pending' | 'reencrypting';
+  rotationProgress: { rowsDone: number; rowsEstimate: number; startedAt: Date } | null;
 }
 
+/** A version list as a PostgreSQL integer[] literal (ints only). */
+const versionsArray = (versions: readonly number[]) => `{${versions.filter((v) => Number.isSafeInteger(v)).join(',')}}`;
 const rowsOf = async <T>(db: DbExecutor, query: SQL) => (await db.execute(query)).rows as unknown as T[];
 /** Raw `execute` rows carry timestamps as text; every timestamp leaves this module as a Date. */
 const at = (value: unknown): Date => (value instanceof Date ? value : new Date(String(value)));
@@ -51,7 +58,8 @@ const unlockRows = (rows: UnlockRowData[]) => rows.map((row) => ({ ...row, unloc
 const lockClause = (lock: 'update' | 'share' | undefined) => (lock === 'update' ? sql` FOR UPDATE` : lock === 'share' ? sql` FOR SHARE` : sql``);
 
 const HOLDER = sql`id, workspace_id AS "workspaceId", kind, user_id AS "userId", kdf, public_key AS "publicKey", wrapped_private AS "wrappedPrivate",
-  holder_mac AS "holderMac", holder_mac_version AS "holderMacVersion", secret_check AS "secretCheck"`;
+  holder_mac AS "holderMac", holder_mac_version AS "holderMacVersion", secret_check AS "secretCheck",
+  confirmed_versions AS "confirmedVersions"`;
 const UNLOCK = sql`key_version AS "keyVersion", boot_id AS "bootId", sealed_dek AS "sealedDek", unlocked_at AS "unlockedAt", unlocked_by AS "unlockedBy"`;
 
 export function workspaceEncryptionRows(db: DbExecutor) {
@@ -103,15 +111,28 @@ export function workspaceEncryptionRows(db: DbExecutor) {
         VALUES (${row.workspaceId}, ${row.keyVersion}, ${row.commitment}, ${row.checkValue})`);
     },
     async insertHolder(row: HolderRow) {
-      await db.execute(sql`INSERT INTO workspace_holders (id, workspace_id, kind, user_id, kdf, public_key, wrapped_private, holder_mac, holder_mac_version, secret_check)
+      await db.execute(sql`INSERT INTO workspace_holders (id, workspace_id, kind, user_id, kdf, public_key, wrapped_private, holder_mac, holder_mac_version,
+          secret_check, confirmed_versions)
         VALUES (${row.id}, ${row.workspaceId}, ${row.kind}, ${row.userId}, ${JSON.stringify(row.kdf)}::jsonb, ${row.publicKey}, ${row.wrappedPrivate},
-          ${row.holderMac}, ${row.holderMacVersion}, ${row.secretCheck})`);
+          ${row.holderMac}, ${row.holderMacVersion}, ${row.secretCheck}, ${versionsArray(row.confirmedVersions)}::integer[])`);
     },
     /** A new key pair or password for an existing holder, in place (deleting a password holder would leave a rotation pending). */
-    async updateHolder(id: string, row: Pick<HolderRow, 'kdf' | 'publicKey' | 'wrappedPrivate' | 'holderMac' | 'holderMacVersion' | 'secretCheck'>) {
+    async updateHolder(id: string, row: Pick<HolderRow, 'kdf' | 'publicKey' | 'wrappedPrivate' | 'holderMac' | 'holderMacVersion' | 'secretCheck' | 'confirmedVersions'>) {
       await db.execute(sql`UPDATE workspace_holders SET kdf = ${JSON.stringify(row.kdf)}::jsonb, public_key = ${row.publicKey}, wrapped_private = ${row.wrappedPrivate},
-        holder_mac = ${row.holderMac}, holder_mac_version = ${row.holderMacVersion}, secret_check = ${row.secretCheck}, updated_at = now() WHERE id = ${id}`);
+        holder_mac = ${row.holderMac}, holder_mac_version = ${row.holderMacVersion}, secret_check = ${row.secretCheck},
+        confirmed_versions = ${versionsArray(row.confirmedVersions)}::integer[], updated_at = now() WHERE id = ${id}`);
     },
+    async updateHolderMac(id: string, row: Pick<HolderRow, 'holderMac' | 'holderMacVersion' | 'confirmedVersions'>) {
+      await db.execute(sql`UPDATE workspace_holders SET holder_mac = ${row.holderMac}, holder_mac_version = ${row.holderMacVersion},
+        confirmed_versions = ${versionsArray(row.confirmedVersions)}::integer[], updated_at = now() WHERE id = ${id}`);
+    },
+    async insertDekWrap(row: DekWrapRow) {
+      await db.execute(sql`INSERT INTO workspace_dek_wraps (holder_id, workspace_id, key_version, ephemeral_public, sealed_dek, confirm)
+        VALUES (${row.holderId}, ${row.workspaceId}, ${row.keyVersion}, ${row.ephemeralPublic}, ${row.sealedDek}, ${row.confirm})`);
+    },
+    tombstones: (workspaceId: string) => rowsOf<{ holderId: string; publicKey: string }>(db, sql`SELECT holder_id AS "holderId", public_key AS "publicKey"
+      FROM workspace_removed_holders WHERE workspace_id = ${workspaceId}`),
+    envelopeSample: (workspaceId: string, version: number) => envelopeSample(db, workspaceId, version),
     /** Replaces every DEK wrap of one holder. */
     async replaceDekWraps(holderId: string, rows: Omit<DekWrapRow, 'holderId'>[]) {
       await db.execute(sql`DELETE FROM workspace_dek_wraps WHERE holder_id = ${holderId}`);
@@ -230,9 +251,13 @@ export function workspaceEncryptionRows(db: DbExecutor) {
              WHERE u.workspace_id = k.workspace_id) AS unlocks,
           EXISTS (SELECT 1 FROM workspace_holders h WHERE h.workspace_id = k.workspace_id AND h.kind = 'password' AND h.user_id = ${userId}) AS "myPassword",
           EXISTS (SELECT 1 FROM workspace_holders h WHERE h.workspace_id = k.workspace_id AND h.kind = 'recovery') AS "recoveryCode",
-          (SELECT max(v.created_at) FROM workspace_key_versions v WHERE v.workspace_id = k.workspace_id AND v.key_version > 1) AS "keyChangedAt"
+          (SELECT max(v.created_at) FROM workspace_key_versions v WHERE v.workspace_id = k.workspace_id AND v.key_version > 1) AS "keyChangedAt",
+          k.rotation, (SELECT json_build_object('rowsDone', p.rows_done, 'rowsEstimate', p.rows_estimate, 'startedAt', p.started_at)
+            FROM workspace_rotation_progress p WHERE p.workspace_id = k.workspace_id AND p.target_version = k.current_version) AS "rotationProgress"
         FROM workspace_keys k JOIN workspaces w ON w.id = k.workspace_id WHERE w.encrypted AND k.workspace_id IN (${ids})`);
       return new Map(rows.map((row) => [row.workspaceId, { ...row, keyChangedAt: atOrNull(row.keyChangedAt),
+        rotationProgress: row.rotationProgress ? { rowsDone: Number(row.rotationProgress.rowsDone), rowsEstimate: Number(row.rotationProgress.rowsEstimate),
+          startedAt: at(row.rotationProgress.startedAt) } : null,
         unlocks: (row.unlocks ?? []).map((unlock) => ({ ...unlock, unlockedAt: new Date(unlock.unlockedAt) })) }]));
     },
   };
