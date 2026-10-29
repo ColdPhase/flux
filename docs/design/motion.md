@@ -33,7 +33,9 @@ Under `prefers-reduced-motion: reduce` and Settings → Appearance → Reduce mo
   is kept as an inert picture of itself over it for `--dur-out` (a panel) or `--dur-view` (a view), fades out and travels a few
   pixels in the direction of travel (a view to the right of the last is forward, so Back out of it reverses; a panel's history
   depth says the same for "‹ back"). The header, sidebar and tab bar (and a panel's shell, head and controls) are not in it and
-  never move; the route-progress line lies over the work (it takes no room), so nothing is pushed down while the next view loads.
+  never move; the route-progress line ("Opening …", `app/RouteProgress.tsx`) lies over the work (it takes no room), so nothing is pushed down while the next view loads.
+  It comes up only when the wait has lasted 200 ms and, once up, stays 300 ms, so a switch that is over within a few frames shows no
+  row at all (#719: it used to flash in for one to three frames over the old view just before the dissolve); its Cancel keeps a 44 px target.
   The picture is a deep copy without ids, `inert` and `aria-hidden`, taking no pointer input, so the new content works from the
   first frame. It is not part of the page's own tree: it is a layer of its own at the end of `body`, inside a closed shadow root
   that wears the page's style sheets, dressed in empty, box-less copies of the host's ancestors so the same selectors style it.
@@ -42,7 +44,9 @@ Under `prefers-reduced-motion: reduce` and Settings → Appearance → Reduce mo
   a see-through picture showed both views at once). It starts to fade only once the new content has painted (the second frame after
   the swap) and is not waiting on its own first reads (`aria-busy="true"` or `.is-opening`, as the conversation holds its feed back
   until its first chips have settled), bounded to 500 ms (`HOLD_MS`); until then it stands as the old content did, at full
-  strength, so no frame is the ground alone or a view that has not painted. The picture's `data-phase` says `held` or `fading`.
+  strength, so no frame is the ground alone or a view that has not painted. The picture's `data-phase` says `held` or `fading`. A second
+  switch while the picture is up keeps that picture (no picture is taken of the view in between, which has not settled): a picture
+  that is fading is brought back to full strength from where it is and holds for the newest view.
   No query of the page (a class, a text, a role, `#details .wd-eyebrow`) can find a second copy of what is on show. Its one
   difference from the original: the page's `:root[...]` rules do not reach into it (a few shadows and fills for the length of a
   fade). Scroll positions in it are copied, so the old content does not jump. This is the CSS path the issue allows
@@ -70,8 +74,9 @@ Under `prefers-reduced-motion: reduce` and Settings → Appearance → Reduce mo
   aside clips it, so what is in it never reflows or moves: the toggle keeps its row, its size and, once swapped, its place, and
   focus stays on it (the control that was replaced is replaced by its counterpart, with or without motion). The work area follows the
   width (its left edge only: top, height and far edge stay), laid out afresh on every frame: in Chromium no frame of a Conversation,
-  Tasks or Wiki takes longer than 20 ms; in WebKit (headless, in a container) the first two frames take about 130 and 110 ms (the
-  single layout of a reduced-motion switch takes 45 to 90 ms there) and the rest 16 ms. A turn of the viewport to a tablet's width is a change of layout, not of the content: it is never animated,
+  Tasks or Wiki takes longer than 20 ms; in WebKit (headless, in a container, software rendering) a fold has between none and six slow
+  frames (30 to 130 ms) at its start across runs and views, against none or one (about 40 ms) for a reduced-motion switch, and 16 ms
+  frames after them. A turn of the viewport to a tablet's width is a change of layout, not of the content: it is never animated,
   so no frame has the wide sidebar on a narrow screen. A tablet's drawer is the same drawer as below; a phone has no sidebar (its
   places are in the dock).
 - The drawer and the phone sheet take the same 180 ms in and 120 ms out as the dialog; they travel from their edge on `--ease-sheet`.

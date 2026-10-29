@@ -47,7 +47,9 @@ interface Props {
 }
 
 interface Piece { copy: HTMLElement; top: number; left: number; width: number; height: number; scrolls: [number, number, number][] }
-interface Snapshot { pieces: Piece[]; direction: TravelDirection; from: string; scrollTop: number; scrollLeft: number }
+interface Snapshot { pieces: Piece[]; direction: TravelDirection; from: string; scrollTop: number; scrollLeft: number; keep?: boolean }
+/** The picture that is on show for this host, and what it takes to make it wait for the content that is there now. */
+interface Picture { frame: HTMLElement; rearm: () => void }
 
 const MARK = 'data-dissolve';
 /** Content that has not painted what it will show: a stream held back until its first reads have settled, a list that is loading. */
@@ -123,10 +125,16 @@ export function styles(): CSSStyleSheet[] | null {
 }
 
 export class Dissolve extends Component<Props, Record<string, never>, Snapshot | null> {
+  private picture: Picture | null = null;
+
   getSnapshotBeforeUpdate(previous: Props): Snapshot | null {
     const { id, depth = 0, direction, host, time, skip } = this.props;
     const body = host.current;
     if (previous.id === id || !body || !motionAllowed() || !duration(time) || !styles()) return null;
+    // Replaced again while the picture of an earlier replacement is still on show (held or fading): the picture stays what it is, the
+    // picture of the first old content, and waits for this newest content; the view in between, or one that has not settled, is never
+    // taken as a picture of its own.
+    if (this.picture?.frame.isConnected) return { pieces: [], direction: 'forward', from: previous.id, scrollTop: 0, scrollLeft: 0, keep: true };
     const way: TravelDirection = this.props.depth !== undefined ? (depth > (previous.depth ?? 0) ? 'forward' : depth < (previous.depth ?? 0) ? 'back' : travelDirection()) : direction ?? travelDirection();
     const pieces = [...body.children].filter((child): child is HTMLElement => child instanceof HTMLElement && !(skip && child.matches(skip)) && child.offsetWidth > 0 && child.offsetHeight > 0)
       .map((source) => ({ copy: copyOf(source), top: source.offsetTop, left: source.offsetLeft, width: source.offsetWidth, height: source.offsetHeight, scrolls: scrolls(source) }));
@@ -139,6 +147,7 @@ export class Dissolve extends Component<Props, Record<string, never>, Snapshot |
     const ms = duration(time);
     const sheets = styles();
     if (!snapshot || !body || !ms || !sheets) return;
+    if (snapshot.keep) { if (this.picture?.frame.isConnected) this.picture.rearm(); return; }
     const shift = parseFloat(token(shiftToken)) || 16;
     // The copy leaves the way the person came from: forward, it goes towards where they were; back, the other way.
     const travel = (snapshot.direction === 'back' ? 1 : -1) * shift;
@@ -179,30 +188,54 @@ export class Dissolve extends Component<Props, Record<string, never>, Snapshot |
     // a list that is loading). Until then the picture stands as the old content did, at full strength, and the new content is live
     // beneath it. The wait is bounded (HOLD_MS), and a page that draws no frames lets the picture go all the same.
     let started = false;
+    let leave: Animation | null = null;
     const fade = () => {
-      if (started) return;
-      started = true;
-      if (!frame.isConnected) return;
+      if (started || !frame.isConnected) return;
       if (!motionAllowed()) { frame.remove(); return; }
+      started = true;
       frame.dataset.phase = 'fading';
       // One fade of the whole picture (its ground with the old content on it): the new content is revealed as the old goes, a true
       // crossfade, so no frame holds the two together or only the ground.
-      const leave = frame.animate([{ opacity: 1, transform: 'none' }, { opacity: 0, transform: `translateX(${travel}px)` }], { duration: ms, easing: token('--ease-in') || 'ease-in', fill: 'forwards' });
-      leave.id = MOTION_ID;
-      track(leave);
-      void leave.finished.then(() => frame.remove(), () => frame.remove());
+      const mine = frame.animate([{ opacity: 1, transform: 'none' }, { opacity: 0, transform: `translateX(${travel}px)` }], { duration: ms, easing: token('--ease-in') || 'ease-in', fill: 'forwards' });
+      mine.id = MOTION_ID;
+      track(mine);
+      const earlier = leave;
+      leave = mine;
+      earlier?.cancel();
+      // It goes when its own fade has run to its end; one that was brought back (below) or replaced does not take it with it.
+      void mine.finished.then(() => { if (leave === mine && started) frame.remove(); }, () => { if (leave === mine) frame.remove(); });
     };
     const unsettled = () => [...body.children].some((child) => !(skip && child.matches(skip)) && (child.matches(UNSETTLED) || child.querySelector(UNSETTLED) !== null));
-    const since = performance.now();
+    let since = performance.now();
     let frames = 0;
+    let looping = false;
+    let failsafe = 0;
     const watch = () => {
-      if (started || !frame.isConnected) return;
+      if (started || !frame.isConnected) { looping = false; return; }
       frames += 1;
       if (frames < 2 || (unsettled() && performance.now() - since < HOLD_MS)) requestAnimationFrame(watch);
-      else fade();
+      else { looping = false; fade(); }
     };
-    requestAnimationFrame(watch);
-    window.setTimeout(fade, HOLD_MS + 250);
+    // Waits for the content that is in the host now. Asked again when it is replaced before the picture has gone: a picture that is
+    // fading into content that is still waiting on its reads is brought back to full strength from where it is (no jump), and holds
+    // until the newest content has painted and settled.
+    const arm = () => {
+      if (started && leave && leave.playState !== 'finished') {
+        // Fading into content that has already settled, it goes on (a fade that went back and forth would be a blink of its own).
+        if (!unsettled()) return;
+        leave.reverse();
+        started = false;
+        frame.dataset.phase = 'held';
+      }
+      since = performance.now();
+      frames = 0;
+      if (!looping) { looping = true; requestAnimationFrame(watch); }
+      window.clearTimeout(failsafe);
+      // A page that draws no frames still lets the picture go.
+      failsafe = window.setTimeout(fade, HOLD_MS + 250);
+    };
+    this.picture = { frame, rearm: arm };
+    arm();
   }
 
   render() { return this.props.children; }

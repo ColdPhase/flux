@@ -71,7 +71,7 @@ export class SizeSwap extends Component<Props, Record<string, never>, Snapshot |
     frame.setAttribute(MARK, '');
     frame.setAttribute('inert', '');
     frame.setAttribute('aria-hidden', 'true');
-    Object.assign(frame.style, { position: 'absolute', left: '0', top: '0', bottom: '0', width: `${snapshot.contentWidth}px`, overflow: 'hidden', pointerEvents: 'none', zIndex: '2', backgroundColor: groundOf(host) });
+    Object.assign(frame.style, { position: 'absolute', left: getComputedStyle(host).paddingLeft, top: '0', bottom: '0', width: `${snapshot.contentWidth}px`, overflow: 'hidden', pointerEvents: 'none', zIndex: '2', backgroundColor: groundOf(host) });
     host.appendChild(frame);
     const root = frame.attachShadow({ mode: 'closed' });
     root.adoptedStyleSheets = sheets;

@@ -19,7 +19,7 @@ from __future__ import annotations
 import re
 import unittest
 
-from playwright.sync_api import Page, expect, sync_playwright
+from playwright.sync_api import Page, Route, expect, sync_playwright
 
 from light_motion_fixture import LightMotion, clear, ready, recorded
 from project_views import project_view
@@ -29,6 +29,9 @@ VIEWS = ["Conversation", "Map", "Tasks", "Wiki"]
 PATH = {"Conversation": r"/projects/[^/]+/?$", "Map": r"/map$", "Tasks": r"/tasks$", "Wiki": r"/docs$"}
 # How long the old view may be held for the new one to settle (ui/Dissolve.tsx HOLD_MS), and what a frame is allowed after that.
 HOLD_MS = 500
+# The wait after which a navigation shows its "Opening …" row, and how long the row stays once shown (app/RouteProgress.tsx).
+ROUTE_PROGRESS_AFTER_MS = 200
+ROUTE_PROGRESS_AT_LEAST_MS = 300
 # The root of the view in the content area.
 ROOT = "() => { const first = document.querySelector('#content').firstElementChild; return first ? String(first.className).split(' ')[0] : ''; }"
 
@@ -39,6 +42,7 @@ RECORD = r"""
   const BUSY = '[aria-busy="true"]:not(button, a, [role="button"], [role="menuitem"]), .is-opening';
   const ground = (el) => { for (; el; el = el.parentElement) { const c = getComputedStyle(el).backgroundColor; if (c && c !== 'transparent' && !/^rgba\(.*,\s*0\)$/.test(c)) return c; } return 'transparent'; };
   window.__frames = null;
+  document.addEventListener('click', () => { window.__lastClick = performance.now(); }, true);
   const step = () => {
     if (window.__frames) {
       const pane = document.querySelector('#content');
@@ -46,10 +50,11 @@ RECORD = r"""
       const top = pictures[pictures.length - 1] || null;
       const style = top ? getComputedStyle(top) : null;
       window.__frames.push({
-        t: performance.now(), pictures: pictures.length, phase: top ? top.dataset.phase : null, opacity: style ? Number(style.opacity) : 0,
+        t: performance.now(), pictures: pictures.length, phase: top ? top.dataset.phase : null, of: top ? top.getAttribute('data-dissolve') : null, opacity: style ? Number(style.opacity) : 0,
         pictureGround: style ? style.backgroundColor : null, ground: ground(pane), busy: !!pane.querySelector(BUSY),
         ink: (pane.innerText || '').trim().length > 0 || !!pane.querySelector('canvas, svg'),
         view: pane.firstElementChild ? String(pane.firstElementChild.className).split(' ')[0] : '', path: location.pathname,
+        progress: !!document.querySelector('.route-progress'), click: window.__lastClick || 0,
       });
     }
     requestAnimationFrame(step);
@@ -129,6 +134,8 @@ class ViewSwitch(unittest.TestCase):
         for frame in frames:
             where = f"{label} at {frame['t'] - frames[0]['t']:.0f} ms: {frame}"
             self.assertLessEqual(frame["pictures"], 1, f"one picture at a time: {where}")
+            # The "Opening …" row is for a wait that lasts: a switch that is over within a few frames never shows it (it would flash over the view).
+            self.assertFalse(frame["progress"] and frame["t"] - frame["click"] < ROUTE_PROGRESS_AFTER_MS - 10, f"no route progress row on a quick switch: {where}")
             self.assertTrue(frame["pictures"] or frame["ink"], f"no blank frame: {where}")
             if frame["pictures"]:
                 self.assertEqual(frame["pictureGround"], frame["ground"], f"the picture stands on the ground of the page, in the theme that is on, so it is a whole picture and not ink over ink: {where}")
@@ -206,6 +213,129 @@ class ViewSwitch(unittest.TestCase):
         waited = fades[0]["at"] - page.evaluate("window.__pictureAt")
         self.assertGreaterEqual(waited, HOLD_MS - 50, "held for the length of the bound")
         self.assertLess(waited, HOLD_MS + 700, "and then it goes")
+
+
+    # ------------------------------------------------------------------ the "Opening …" row
+    def hold_chunk(self, page: Page, module: str) -> list[Route]:
+        """Holds the code of a lazy view (first visit) until the test lets it go."""
+        held: list[Route] = []
+        pattern = re.compile(rf"/assets/{module}-[^/]+\.js(?:\?.*)?$")
+
+        def pause(route: Route) -> None:
+            held.append(route)
+        page.route(pattern, pause)
+
+        def release() -> None:
+            page.unroute(pattern, pause)
+            for route in held:
+                try:
+                    route.abort("aborted")
+                except Exception:  # already continued
+                    pass
+            held.clear()
+        self.addCleanup(release)
+        return held
+
+    ROW_FRAMES = """(ms) => { const rows = window.__rows = []; const t0 = performance.now();
+      const step = () => { const t = performance.now() - t0; rows.push([Math.round(t), !!document.querySelector('.route-progress')]); if (t < ms) requestAnimationFrame(step); }; requestAnimationFrame(step); }"""
+
+    def test_07_a_wait_shorter_than_the_delay_never_shows_the_opening_row(self):
+        page = self.page()
+        held = self.hold_chunk(page, "ProjectTasks")
+        page.evaluate(self.ROW_FRAMES, 900)
+        project_view(page, "Tasks")
+        page.wait_for_timeout(100)
+        self.assertEqual(len(held), 1, "the code of Tasks is held")
+        held.pop().continue_()
+        expect(page.locator("nav[aria-label='Project views'] a[href*='/tasks']")).to_have_attribute("aria-current", "page")
+        page.wait_for_function("() => window.__rows[window.__rows.length - 1][0] >= 850")
+        rows = page.evaluate("window.__rows")
+        self.assertTrue(rows and not any(shown for _, shown in rows), f"a switch that is over in 100 ms never shows the row: {rows}")
+
+    def test_08_a_longer_wait_shows_it_after_the_delay_and_it_stays_its_minimum_once_shown(self):
+        page = self.page()
+        held = self.hold_chunk(page, "ProjectViews")
+        page.evaluate(self.ROW_FRAMES, 1400)
+        project_view(page, "Map")
+        page.wait_for_timeout(260)
+        self.assertEqual(len(held), 1, "the code of the Map is held")
+        # The pending row is the same 44 px Cancel row over the work (test_route_chunks holds that it moves nothing).
+        expect(page.locator(".route-progress").get_by_role("button", name="Cancel", exact=True)).to_be_enabled()
+        held.pop().continue_()
+        expect(page.locator("nav[aria-label='Project views'] a[href*='/map']")).to_have_attribute("aria-current", "page")
+        page.wait_for_function("() => window.__rows[window.__rows.length - 1][0] >= 1350")
+        rows = page.evaluate("window.__rows")
+        shown = [t for t, on in rows if on]
+        self.assertTrue(shown, f"a wait of 260 ms shows the row: {rows}")
+        self.assertGreaterEqual(shown[0], ROUTE_PROGRESS_AFTER_MS - 20, f"not before the delay: {rows}")
+        self.assertGreaterEqual(shown[-1] - shown[0], ROUTE_PROGRESS_AT_LEAST_MS - 60, f"and once shown it stays its minimum although the code has arrived: {rows}")
+        self.assertFalse(rows[-1][1], "and then it goes")
+
+
+    def test_09_a_second_switch_while_the_picture_is_up_keeps_that_picture_and_waits_for_the_newest_view(self):
+        """Tasks is switched to and, as its picture of the Conversation goes up, the Map is chosen: the picture of the Conversation stays
+        (no picture of the view in between, which has not settled), holds for the Map and dissolves into it, with no blank frame."""
+        page = self.page()
+        project_view(page, "Map")  # warm: the Map's code is here, so it switches at once
+        page.wait_for_function("() => !document.querySelector('body > [data-dissolve]')")
+        project_view(page, "Conversation")
+        page.wait_for_function("() => !document.querySelector('body > [data-dissolve]') && document.querySelector('#content .project-convo, #content .project-page')")
+        page.wait_for_timeout(300)
+        page.evaluate("() => { window.__frames = []; }")
+        project_view(page, "Tasks")
+        page.wait_for_function("() => document.querySelector('body > [data-dissolve]')", timeout=8000)
+        project_view(page, "Map")
+        page.wait_for_url(re.compile(PATH["Map"]))
+        page.wait_for_function("() => !document.querySelector('body > [data-dissolve]')", timeout=8000)
+        page.wait_for_timeout(250)
+        frames = page.evaluate("() => { const frames = window.__frames; window.__frames = null; return frames; }")
+        seen = {frame["of"] for frame in frames if frame["pictures"]}
+        self.assertEqual(len(seen), 1, f"one picture, of the Conversation, for the whole of it: {seen}")
+        self.assertTrue(next(iter(seen)).endswith("/conversation"), seen)
+        for frame in frames:
+            self.assertLessEqual(frame["pictures"], 1)
+            self.assertTrue(frame["pictures"] or frame["ink"], f"no blank frame: {frame}")
+        # A picture that was fading when the Map was chosen is brought back from where it was: held, its opacity only rises, to full strength.
+        held = [frame["opacity"] for frame in frames if frame["pictures"] and frame["phase"] == "held"]
+        self.assertTrue(held and held[-1] == 1 and all(later >= earlier - 1e-6 for earlier, later in zip(held, held[1:])), f"held: {held}")
+        self.assertFalse(any(frame["pictures"] for frame in frames[-3:]), "and it is gone at the end")
+        self.assertEqual(page.evaluate(ROOT), "sk-page")
+        expect(page.locator("nav[aria-label='Project views'] a[href*='/map']")).to_have_attribute("aria-current", "page")
+
+
+    def test_10_a_picture_that_is_fading_goes_back_to_full_strength_when_the_view_it_fades_into_has_not_settled(self):
+        """The Wiki is chosen (its picture of the Conversation starts to fade, here stopped part of the way) and then the Conversation again,
+        whose feed is held back until its reads have settled: the picture comes back from where it is, holds, and dissolves into it."""
+        page = self.page()
+        project_view(page, "Wiki")  # warm
+        page.wait_for_function("() => !document.querySelector('body > [data-dissolve]')")
+        project_view(page, "Conversation")
+        page.wait_for_function("() => !document.querySelector('body > [data-dissolve]') && document.querySelector('#content .project-page')")
+        page.wait_for_timeout(300)
+        page.evaluate("() => { window.__frames = []; }")
+        project_view(page, "Wiki")
+        page.wait_for_function("() => document.querySelector('body > [data-dissolve][data-phase=fading]')", timeout=8000)
+        page.evaluate("() => { const fade = (window.__animations || []).filter((a) => a.id === 'flux-motion' && a.playState === 'running' && a.effect?.target?.hasAttribute?.('data-dissolve')).pop(); fade.pause(); fade.currentTime = 60; }")
+        project_view(page, "Conversation")
+        page.wait_for_url(re.compile(PATH["Conversation"]))
+        page.wait_for_function("() => !document.querySelector('body > [data-dissolve]')", timeout=8000)
+        page.wait_for_timeout(250)
+        frames = page.evaluate("() => { const frames = window.__frames; window.__frames = null; return frames; }")
+        self.assertEqual(len({frame["of"] for frame in frames if frame["pictures"]}), 1, "one picture for the whole of it")
+        pictures = [frame for frame in frames if frame["pictures"]]
+        phases = [frame["phase"] for i, frame in enumerate(pictures) if i == 0 or pictures[i - 1]["phase"] != frame["phase"]]
+        self.assertIn("fading", phases, phases)
+        self.assertIn("held", phases[phases.index("fading") + 1:], f"it was fading and went back to holding: {phases}")
+        for frame in frames:
+            self.assertTrue(frame["pictures"] or frame["ink"], f"no blank frame: {frame}")
+        # Where it went back: from the opacity it had, rising, never a jump to full strength.
+        back = [frame["opacity"] for frame in pictures[pictures.index(next(f for f in pictures if f["phase"] == "fading")):] if frame["phase"] == "held"]
+        self.assertTrue(back and all(later >= earlier - 1e-6 for earlier, later in zip(back, back[1:])), f"back: {back}")
+        # (A slow frame rate may sample it only once it is back at full strength: what is held is that it never dips below where it was.)
+        fading = [frame["opacity"] for frame in pictures if frame["phase"] == "fading"]
+        self.assertGreaterEqual(min(back), min(fading) - 1e-6, f"it comes back from where it was, never from lower: {fading} then {back}")
+        self.assertEqual(back[-1], 1, "to full strength")
+        self.assertEqual(page.evaluate(ROOT), "project-page")
 
 
 if __name__ == "__main__":
