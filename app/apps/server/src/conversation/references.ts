@@ -80,9 +80,15 @@ export function messageReferences(db: DbExecutor) {
      * is absent, another workspace's or unreadable all answer 404 REFERENCE_UNAVAILABLE, so the answer tells nothing about it.
      */
     async assertReadable(principal: Principal, workspaceId: string, references: readonly MessageReference[]) {
+      const cited: string[] = [];
       for (const reference of references) {
-        if (!(await open(principal, reference, workspaceId))) throw new NotFoundError('Reference', 'REFERENCE_UNAVAILABLE');
+        const opened = await open(principal, reference, workspaceId);
+        if (!opened) throw new NotFoundError('Reference', 'REFERENCE_UNAVAILABLE');
+        if (opened.card.kind === 'message' && opened.card.state === 'available' && opened.card.target.type === 'message') cited.push(reference.id);
       }
+      // A project message cited now cannot be taken back by the assistant's Undo while this commits; one already taken back is unavailable.
+      const wanted = [...new Set(cited)];
+      if (wanted.length && (await rows.lockCitable(wanted)).size !== wanted.length) throw new NotFoundError('Reference', 'REFERENCE_UNAVAILABLE');
     },
 
     cards,

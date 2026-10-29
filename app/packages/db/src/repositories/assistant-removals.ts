@@ -7,8 +7,11 @@ import type { DbExecutor } from './push.js';
  * the Undo's transaction, locks the object, and removes it only if the assistant made it and nobody has used it since. No person
  * has a delete for any of them: this is reachable only through the Undo of a change-log row.
  *
- * "Used" means a trace of anyone else: an edit, a decision, a reply or later activity in the thread (a message the assistant itself took back is none), a citation of it (an object
- * link, a message reference, a thought started from it) or a copy. The reason comes back in plain words for the run's message.
+ * "Used" means a trace of anyone else: an edit, a decision, a reply or later activity in the thread (a message the assistant itself
+ * took back is none), or a citation (an object link, a message reference, a thought started from it). The reason comes back in
+ * plain words for the run's message. Maps are never copied (only a direct message's map is copied into a project), so copies are not checked.
+ * The caller holds the project's task-graph lock first, and every write that cites one of these takes the cited row `FOR SHARE`
+ * (`targetExists` with `share`, `lockCitable`), so a citation is either committed before the checks below or waits for the removal.
  * A message keeps its row as a tombstone (its place in the conversation, its sequence and the ids events carry stay); a map, a
  * result and a decision leave with the objects that only they owned (their links and the notices about them).
  */
@@ -32,7 +35,6 @@ export const REMOVAL_REASONS = {
   decided: 'Decided since. Open it',
   renamed: 'Renamed since. Open it',
   filled: 'It has thoughts now. Open it',
-  copied: 'Copied since. Open it',
   open: 'Someone has it open. Open it',
   taskChanged: 'The task changed since. Open it',
 } as const;
@@ -90,7 +92,7 @@ export function assistantRemovalRows(db: DbExecutor) {
       return tombstone(input.messageId, input.agentId);
     },
 
-    /** A map the assistant created: empty, not renamed, not copied, not cited, and not open in a live session (the server checks that). */
+    /** A map the assistant created: empty, not renamed, not cited, and not open in a live session (the server checks that). */
     async removeMap(input: { mapId: string; agentId: string; title: string }): Promise<Removal> {
       const map = await first<{ id: string; scope: string; title: string; agentId: string | null; projectId: string | null }>(db, sql`
         SELECT id, scope, title, created_by_agent_id AS "agentId", project_id AS "projectId" FROM sketches WHERE id = ${input.mapId} FOR UPDATE`);
@@ -99,7 +101,6 @@ export function assistantRemovalRows(db: DbExecutor) {
       if (map.title !== input.title) return used(REMOVAL_REASONS.renamed);
       if (await yes(db, sql`SELECT (EXISTS (SELECT 1 FROM sketch_thoughts WHERE sketch_id = ${map.id}) OR EXISTS (SELECT 1 FROM sketch_links WHERE sketch_id = ${map.id})) AS found`))
         return used(REMOVAL_REASONS.filled);
-      if (await yes(db, sql`SELECT EXISTS (SELECT 1 FROM sketches WHERE copied_from_sketch_id = ${map.id}) AS found`)) return used(REMOVAL_REASONS.copied);
       if (await cited(map.id, 'other')) return used(REMOVAL_REASONS.cited);
       try {
         await db.execute(sql`DELETE FROM sketches WHERE id = ${map.id}`);

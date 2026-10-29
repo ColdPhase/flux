@@ -130,7 +130,9 @@ export function assistantChangeUseCases(db: Database, boss?: Pick<PgBoss, 'send'
         || (await evaluateProject(principal, 'project.write', row.projectId, accessReader(db))).allowed));
     }
     // Taking back a task's creation is the creating assistant's owner's alone (#238, the work domain's own rule), so it is no one else's Undo.
-    return (row) => principal?.kind === 'human' && (row.operation !== 'work.create' || creationOwner(row) === principal.id) && (principal.id === row.ownerUserId || projects.get(row.projectId) === true);
+    // Likewise the map, result, decision and message no person can remove (#68): only the person whose assistant made them takes them back.
+    return (row) => principal?.kind === 'human' && (row.operation !== 'work.create' || creationOwner(row) === principal.id)
+      && (!REMOVAL_OPERATIONS.has(row.operation) || principal.id === row.ownerUserId) && (principal.id === row.ownerUserId || projects.get(row.projectId) === true);
   }
   async function view(list: AssistantChangeRow[], conversations: Map<string, string>, mayUndo: (row: AssistantChangeRow) => boolean = () => true): Promise<AssistantChange[]> {
     const names = await rows().names(list.flatMap((row) => [row.ownerUserId, row.otherUserId, row.suggestToUserId, row.decidedBy].filter((id): id is string => !!id)));
@@ -233,6 +235,8 @@ export function assistantChangeUseCases(db: Database, boss?: Pick<PgBoss, 'send'
     const names = await rows().names([row.ownerUserId, creationOwner(row), owner(principal)]);
     if (row.operation === 'work.create' && creationOwner(row) !== owner(principal))
       return row.receipt?.acceptedBy ? `Only ${names.get(creationOwner(row)) ?? 'its creator'} can undo this task's creation` : `Only ${names.get(row.ownerUserId) ?? 'their owner'} can undo a task their assistant added`;
+    // Only the assistant's owner takes these back, not every editor of the project: nothing else lets a person remove them.
+    if (REMOVAL_OPERATIONS.has(row.operation) && owner(principal) !== row.ownerUserId) return `Only ${names.get(row.ownerUserId) ?? 'their owner'} can take back what their assistant made`;
     if (REMOVAL_OPERATIONS.has(row.operation)) await requireAiOn(db, row.workspaceId);
     const result = await undoChange(db, row, { kind: 'human', id: owner(principal) }, names.get(owner(principal)) ?? 'Someone', names.get(row.ownerUserId) ?? 'Someone');
     return result.done ? result.message : result.message ?? CHANGED_SINCE;
@@ -324,7 +328,7 @@ export function assistantChangeUseCases(db: Database, boss?: Pick<PgBoss, 'send'
       // remove (a result, a decision, a message) is not "changed since"; it is simply not part of an Undo.
       const who = owner(principal);
       const list = (await editableRun(principal, runId)).filter((row) => (row.state === 'applied' || row.state === 'applied_after_wait') && !!undoOf(row)
-        && (row.operation !== 'work.create' || creationOwner(row) === who)).reverse();
+        && (row.operation !== 'work.create' || creationOwner(row) === who) && (!REMOVAL_OPERATIONS.has(row.operation) || row.ownerUserId === who)).reverse();
       const changes: AssistantChangeDecision[] = []; const changedSince: string[] = []; let undone = 0;
       // One refusal for the whole message, before anything is undone, rather than half of it.
       for (const row of list) if (REMOVAL_OPERATIONS.has(row.operation)) { await requireAiOn(db, row.workspaceId); break; }

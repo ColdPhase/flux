@@ -478,13 +478,16 @@ export function workRows(db: DbExecutor) {
       return inserted.map((row) => row.id);
     },
 
-    async targetExists(projectId: string, ref: Ref) {
+    async targetExists(projectId: string, ref: Ref, options: { share?: boolean } = {}) {
       let found: unknown[];
       switch (ref.type) {
-        case 'message':
-          found = await db.select({ id: schema.projectMessages.id }).from(schema.projectMessages)
-            .where(and(eq(schema.projectMessages.projectId, projectId), eq(schema.projectMessages.id, ref.id)));
+        case 'message': {
+          // A message the assistant's Undo took back (#68) cannot be cited. With `share`, one that is live stays so until this commits.
+          const query = db.select({ id: schema.projectMessages.id }).from(schema.projectMessages)
+            .where(and(eq(schema.projectMessages.projectId, projectId), eq(schema.projectMessages.id, ref.id), isNull(schema.projectMessages.removedAt)));
+          found = options.share ? await query.for('share') : await query;
           break;
+        }
         case 'thought':
           found = await db.select({ id: schema.sketchThoughts.id }).from(schema.sketchThoughts)
             .innerJoin(schema.sketches, eq(schema.sketches.id, schema.sketchThoughts.sketchId))
@@ -494,16 +497,20 @@ export function workRows(db: DbExecutor) {
           found = await db.select({ id: schema.projectMaterials.id }).from(schema.projectMaterials)
             .where(and(eq(schema.projectMaterials.projectId, projectId), eq(schema.projectMaterials.id, ref.id), eq(schema.projectMaterials.kind, 'doc')));
           break;
-        case 'sketch':
-          found = await db.select({ id: schema.sketches.id }).from(schema.sketches).where(and(projectSketch(projectId), eq(schema.sketches.id, ref.id)));
+        case 'sketch': {
+          const query = db.select({ id: schema.sketches.id }).from(schema.sketches).where(and(projectSketch(projectId), eq(schema.sketches.id, ref.id)));
+          found = options.share ? await query.for('share') : await query;
           break;
+        }
         case 'material':
           found = await db.select({ id: schema.projectMaterialVersions.materialId }).from(schema.projectMaterialVersions)
             .where(and(eq(schema.projectMaterialVersions.projectId, projectId), eq(schema.projectMaterialVersions.materialId, ref.id), eq(schema.projectMaterialVersions.version, ref.version)));
           break;
         default: {
           const table = ref.type === 'work' ? w : ref.type === 'decision' ? d : r;
-          found = await db.select({ id: table.id }).from(table).where(and(eq(table.projectId, projectId), eq(table.id, ref.id)));
+          const query = db.select({ id: table.id }).from(table).where(and(eq(table.projectId, projectId), eq(table.id, ref.id)));
+          // Decisions and results are what the assistant's Undo can remove; tasks are held by the task-use fence instead.
+          found = options.share && ref.type !== 'work' ? await query.for('share') : await query;
         }
       }
       return found.length > 0;

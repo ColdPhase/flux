@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { accessReader, assistantChangeRows, assistantRemovalRows, REMOVAL_REASONS, type AssistantChangeRow, type DbExecutor, type Removal } from '@flux/db';
+import { accessReader, assistantChangeRows, assistantRemovalRows, REMOVAL_REASONS, taskGraphRows, type AssistantChangeRow, type DbExecutor, type Removal } from '@flux/db';
 import type { UpdateWorkCommand } from '@flux/contracts';
 import { DomainError, requireWorkspaceAi, restorableFields, WorkspaceAiBlockedError, type Database, type Principal, type UndoRecord } from '@flux/core';
 import { cancelOwnerAssistantUnitInTransaction } from '../co-work/assistant-units.js';
@@ -151,6 +151,10 @@ export async function undoChange(db: Database, row: AssistantChangeRow, by: Prin
           if (plan.kind !== 'removal' || !id) throw new Since(NOT_UNDOABLE);
           // F-029 and F-030: with AI off in the workspace (every encrypted one) nothing of the assistant's is touched; the policy row is held while it happens.
           await requireWorkspaceAi(accessReader(tx as DbExecutor), row.workspaceId, { lock: true });
+          // The project's task graph first, as every work path takes it (a reply in a task's discussion, a task or result being written, a
+          // decision being accepted): then the object, its thread and the task are locked in their order, never the reverse, and what a
+          // person cites at the same moment is either already committed when "used since" is read or waits for this Undo.
+          await taskGraphRows(tx as DbExecutor).lockTaskGraphs([row.projectId]);
           const removals = assistantRemovalRows(tx as DbExecutor);
           const taken: Removal = row.operation === 'map.create' ? await removals.removeMap({ mapId: id, agentId: row.agentId, title: plan.title ?? '' })
             : row.operation === 'decision.propose' ? await removals.removeDecision({ decisionId: id, agentId: row.agentId, version: plan.version ?? null })

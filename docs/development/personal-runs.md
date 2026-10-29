@@ -333,8 +333,10 @@ refused, and recorded in `assistant_changes` in the same transaction (migration 
   name; a page's text; a thought's text and position; created thoughts, links and tasks are removed, a created page
   moves to drafts. **A created map, a recorded result, a proposed decision and a posted message** (founder direction
   2026-10-29, #68 closeout) are taken back by `assistantRemovalRows` (`packages/db/src/repositories/assistant-removals.ts`), reachable only
-  from this Undo, only for what this agent made and only while nobody used it (edited, decided, replied to, cited, copied; the
-  reason comes back in words). A message stays as a tombstone (`project_messages.removed_at`, migration 0129, text "[Removed with
+  from this Undo, only for the assistant's owner, only for what this agent made and only while nobody used it (edited, decided,
+  replied to, cited; the reason comes back in words). It takes the project's task-graph lock first, and a write that cites one of
+  them (`targetExists` with `share`, `lockCitable` for message references) holds the cited row `FOR SHARE`, so a citation and the
+  Undo serialize and the loser is refused (race tests in `assistant-changes.test.ts`). A message stays as a tombstone (`project_messages.removed_at`, migration 0129, text "[Removed with
   Undo]"); a result also tombstones its contribution messages and puts the task it finished back; a map, a decision and a result
   are deleted with the links and notices only they owned. The change row keeps who and when, a hash and length for a message, and
   the event `project.assistant_change_undone.v1` carries ids only. Refused while the workspace's AI is off (F-029, F-030).
