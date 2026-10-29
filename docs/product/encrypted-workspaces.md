@@ -234,8 +234,9 @@ Files are limited to 5 MiB (`FILE_LIMITS.fileBytes`), so one GCM pass per file i
 object is `FXF1 ‖ key version (uint32) ‖ nonce 12 ‖ ciphertext ‖ tag 16`, with a per-file key
 `HKDF(K_file, info = [flux file v1, workspace id, file id, key version])` and the same list as AAD.
 The file id is the reservation id (`files/service.ts` reserves before `storage.receive`), so it is
-known before the first byte. `FileStorage.receive` takes an optional `FileCipher`. It encrypts each
-chunk as it streams into the scratch file, so plaintext never reaches `attachments/tmp`. `read`
+known before the first byte. `FileStorage.receive` takes the object id (the reservation); the adapter resolves that
+object's `FileCipher` from its row and encrypts each chunk as it streams into the scratch file, so plaintext never
+reaches `attachments/tmp`. An object id without a row is refused, never written as plaintext. `read`
 returns bytes only after the tag verifies, choosing the DEK by the header's key version.
 `project_files.key_version` repeats it so a rotation can find old objects. `size` stays the
 plaintext size. `sha256` is a [sealed digest](#digests), and `has` compares it with the SHA-256 of
@@ -1266,7 +1267,9 @@ token alone is not enough (S1 review): a real deployment never holds a half-seal
     S2b; `search_change_log` pinned like the other sealing functions; and a sealed chooser search that reached
     `SEALED_CHOOSER_SCAN_LIMIT` says so (`searchLimited: true` on the work view). Known gap until S2b: the map list's
     "hide empty maps" test compares the stored title with the default in SQL, so an empty sealed map is listed.
-  - **S2a-2b-2**: file names and SHA-256 (a sealed digest) sealed in `project_files`, with `key_version` set; file
+  - **S2a-2b-2**: file names and SHA-256 (a sealed digest) sealed in `project_files`, with `key_version` set at the
+    reservation (S2c: the rotation can start between the reservation and the header written at receive, so S2c sets
+    `key_version` at commit from the object's header instead); file
     bytes sealed as they stream in. `FileStorage.receive` takes the reservation id, and the disk adapter resolves the
     object's cipher from its row (`fileCipherOf`, 423 while locked) and writes each chunk through the chunked
     `FileCipher.sealer()` into the scratch file, so plaintext never reaches `attachments/tmp`; size and digest are

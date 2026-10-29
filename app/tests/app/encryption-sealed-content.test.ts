@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { createHash, randomUUID } from 'node:crypto';
 import { readFile, readdir, writeFile } from 'node:fs/promises';
+import { Readable } from 'node:stream';
 import { join } from 'node:path';
 import { before, describe, test } from 'node:test';
 import WebSocket from 'ws';
@@ -320,6 +321,59 @@ describe('F-030 S2a-1: sealed content in the repositories', () => {
         assert.ok(stored.equals(bytes), 'B: stored as it was sent');
         assert.deepEqual(row, { name: false, sha: false, key_version: null });
       }
+    }
+  });
+
+  test('mid-upload, the scratch file of A holds ciphertext only (B plaintext); an aborted upload leaves nothing in tmp (#707 review)', async () => {
+    const tmp = '/data/files/attachments/tmp';
+    const scratch = async () => { try { return await readdir(tmp); } catch { return []; } };
+    const start = (projectId: string, first: Buffer, gate: Promise<void>, rest: Buffer, signal?: AbortSignal) => {
+      const body = Readable.toWeb(Readable.from((async function* () { yield first; await gate; yield rest; })())) as unknown as ReadableStream;
+      return fetch(new URL(`/api/v1/projects/${projectId}/files?uploadId=${randomUUID()}&name=gated.txt`, ada.browser.base), {
+        method: 'POST', body, signal, duplex: 'half',
+        headers: { 'content-type': 'application/octet-stream', cookie: ada.browser.cookieHeader(), origin: ada.browser.defaultOrigin },
+      } as RequestInit & { duplex: 'half' });
+    };
+    const waitForScratch = async (before: Set<string>) => {
+      for (let attempt = 0; attempt < 80; attempt += 1) {
+        const fresh = (await scratch()).filter((name) => !before.has(name));
+        if (fresh.length) {
+          const bytes = await readFile(join(tmp, fresh[0]!)).catch(() => Buffer.alloc(0));
+          if (bytes.length > 64 * 1024) return { name: fresh[0]!, bytes };
+        }
+        await new Promise((resolve) => setTimeout(resolve, 100));
+      }
+      throw new Error('the upload never reached its scratch file');
+    };
+    for (const side of ['A', 'B'] as const) {
+      const needle = `scratch-${side}-${randomUUID()}`;
+      const first = Buffer.from(`${needle} ${'y'.repeat(200_000)}`);
+      let open!: () => void; const gate = new Promise<void>((resolve) => { open = resolve; });
+      const before = new Set(await scratch());
+      const response = start(ids[side].project, first, gate, Buffer.from(' the end'));
+      const during = await waitForScratch(before);
+      if (side === 'A') {
+        assert.equal(during.bytes.subarray(0, 4).toString('ascii'), 'FXF1', 'A: the scratch file starts as a sealed object');
+        assert.equal(during.bytes.includes(needle), false, 'A: no plaintext in tmp while the upload is open');
+      } else {
+        assert.ok(during.bytes.includes(needle), 'B: the plain control writes plaintext');
+      }
+      open();
+      assert.equal((await response).status, 201, `${side}: the gated upload finishes`);
+      // Abort mid-stream: the scratch file goes away.
+      const controller = new AbortController();
+      let neverOpen!: () => void; const stuck = new Promise<void>((resolve) => { neverOpen = resolve; });
+      const beforeAbort = new Set(await scratch());
+      const aborted = start(ids[side].project, first, stuck, Buffer.from('never'), controller.signal).catch(() => null);
+      const pending = await waitForScratch(beforeAbort);
+      controller.abort(); neverOpen();
+      await aborted;
+      let left = true;
+      for (let attempt = 0; attempt < 100 && left; attempt += 1) {
+        left = (await scratch()).includes(pending.name);
+        if (left) await new Promise((resolve) => setTimeout(resolve, 100));
+      }
+      assert.equal(left, false, `${side}: an aborted upload leaves no scratch file`);
     }
   });
 
