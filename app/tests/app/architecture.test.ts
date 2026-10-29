@@ -81,16 +81,22 @@ describe('architecture boundaries', () => {
 
   test('the access use cases keep to ports and stay small, never reaching persistence through helpers (#91)', () => {
     // The workspace, member, AI switch, project, grant, agent and draft use cases run over the repository ports in
-    // `access/repositories.ts`; `@flux/db` implements them. `types.ts` is the one recorded exception: its type-only
-    // import of the Drizzle-derived `Database`/`Executor` is on the allowlist until #92 gives core its own port.
+    // `access/repositories.ts`; `@flux/db` implements them. The one recorded exception is `types.ts`: its type-only
+    // import of the Drizzle-derived `Database`/`Executor` stays on the allowlist until #92 gives core its own port.
     const entries = files(join(root, 'packages/core/src/access'));
-    assert.ok(entries.length >= 18, 'the access policy, ports and use case modules exist');
-    const found = reachableImports(root, entries, ['@flux/db', 'drizzle-orm', 'pg', 'pg-boss', 'fastify', 'web-push'])
-      .filter((violation) => !violation.startsWith('packages/core/src/types.ts: '));
-    assert.deepEqual(found, []);
-    for (const module of ['workspaces', 'members', 'workspace-ai', 'projects', 'grants', 'agents', 'drafts', 'validation', 'common', 'records', 'repositories']) {
-      const lines = readFileSync(join(root, 'packages/core/src/access', `${module}.ts`), 'utf8').split('\n').length;
-      assert.ok(lines <= 200, `access/${module}.ts has ${lines} lines; split it before it passes 200`);
+    for (const module of ['policy', 'ports', 'repositories', 'records', 'validation']) {
+      assert.ok(entries.some((entry) => entry.endsWith(`/access/${module}.ts`)), `access/${module}.ts exists`);
+    }
+    const found = reachableImports(root, entries, ['@flux/db', 'drizzle-orm', 'pg', 'pg-boss', 'fastify', 'web-push']);
+    const recorded = /^packages\/core\/src\/types\.ts: @flux\/db(?: |$)/;
+    assert.deepEqual(found.filter((violation) => !recorded.test(violation)), [], 'only the recorded types.ts import of @flux/db is reachable');
+    const types = readFileSync(join(root, 'packages/core/src/types.ts'), 'utf8');
+    const dbImports = types.split('\n').filter((line) => line.includes("'@flux/db'"));
+    assert.ok(dbImports.length > 0 && dbImports.every((line) => line.startsWith('import type ')), 'types.ts imports @flux/db for types only');
+    // Every module of the use cases, whatever its name; `policy.ts` is the decision module of #90 and is not part of the split.
+    for (const entry of entries.filter((entry) => !entry.endsWith('/access/policy.ts'))) {
+      const lines = readFileSync(entry, 'utf8').split('\n').length;
+      assert.ok(lines <= 200, `${entry.slice(root.length + 1)} has ${lines} lines; split it before it passes 200`);
     }
   });
 

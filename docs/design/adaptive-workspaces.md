@@ -143,6 +143,7 @@ Separately test:
   At task kickoff, before optimization, record numeric budgets, dataset and
   hardware/browser baseline with independent agreement; a bigger viewport is not permission for unbounded
   rendering, fetching or reflow. Missing performance evidence stays open.
+  The agreed budgets are in [Agreed performance budgets](#agreed-performance-budgets).
 
 Run substantial matrix/interaction checks in Docker with bounded reusable
 fixtures; keep PR Actions light. Supported-browser emulation and the documented
@@ -151,11 +152,105 @@ ultrawide fixtures above, including scaling/readability and a window resize.
 Founder direction #266 item 10, 2026-10-05: real phone, tablet, 4K or ultrawide
 hardware is optional extra evidence, never a gate.
 
+## Agreed performance budgets
+
+**Agreed 2026-10-29** for #151 AC-4 and #155 AC-4 by claude-hubert under the founders'
+[delegation](../product/autonomy.md), written down before any optimisation for them; the "measured" columns are the
+unoptimised baseline of `main` `3f0311a26`. **Independent agreement is still owed**: the review of PR #714 found the
+first version of this table loosened two frame-gap budgets to pass; this version restores them. A budget changes only
+with new measurements and a review. The opt-in harness
+[`motion_performance.py`](../../app/tests/ui/motion_performance.py) fails when a p95 exceeds its budget (a miss it lists
+in `KNOWN_MISSES`, with its issue and a ceiling for its p95, is reported as open, fails the run above that ceiling and
+fails it once it stops missing), and
+`tests/test_adaptive_budgets.py` fails when the harness constants and this table differ.
+
+- **Dataset.** Two accounts in a workspace; three restricted projects, each with 60 conversation roots and 40
+  tasks; a 40-reply thread in the first. All created through the public API. The 1000-task, 100-fetched-items
+  budgets of the [native-work kickoff](../development/performance/2026-10-01-native-work.md) stay as they were.
+- **Hardware and browser.** This host: AMD Ryzen 9 7900X (24 threads), Fedora 42, Linux 6.19; Chromium
+  151.0.7922.34 (headless, Playwright 1.62.0 in Docker); API, database and worker uncapped on the same host, which
+  other agents' Docker suites shared (load average 5 to 32 over the three runs). Device pixel ratio 1, loopback network.
+- **Profiles.** *Desktop*: 1280×800, mouse. *Phone*: 390×844, touch, a mobile viewport and Chromium's 4× CPU
+  throttling (`Emulation.setCPUThrottlingRate`), an emulation proxy for a slow phone, not a device. The phone changes view through
+  its title menu (#341). Reduced motion (desktop) uses the desktop budgets.
+- **Method.** The page's own clock times each trusted click, tap or key from the event's `timeStamp` to a
+  double-`requestAnimationFrame` following-frame proxy (not a raster claim). 30 warm-ups, then at least 200
+  actions over at least 60 s. A layout switch (`set_viewport_size`) runs from the resize event to the frame after
+  the last change of the shell's landmarks, once they have stayed put for 150 ms: 15 warm-ups, then 100 in each
+  direction. Desktop switches go between 1280×800 and 390×844, 820×1180 and 3840×2160; phone switches between
+  390×844 and 844×390 (rotation) and 820×1180 (unfolded). A frame time is a `requestAnimationFrame` timestamp,
+  quantised to the 16.7 ms frame (three frames read 50.0 to 50.1 ms), so a p95 within 0.5 ms of its budget passes.
+
+| Key | What it measures (p95) | Desktop | Phone | Desktop measured | Phone measured |
+| --- | --- | --- | --- | --- | --- |
+| `selectionFeedback` | click or tap on a work tab, project or phone view to its first marked frame, ms | 150 | 300 | 82 | 113 |
+| `motionEnd` | the same to the motion finishing (the highlight, or the phone menu leaving), ms | 370 | 420 | 283 | 330 |
+| `selectionCommitted` | the same to the route showing the choice, ms | 200 | 420 | 168 | 335 |
+| `keyInput` | a key in the reply field, typing presence live, to its paint, ms | 100 | 200 | 29 | 43 |
+| `frameGap` | worst gap between two frames from the action to its committed paint, ms | 50 | 100 | 50 | **133** |
+| `layoutSwitch` | a resize or rotation to the settled layout, ms | 100 | 250 | 62 | 196 |
+| `layoutGap` | worst gap between two frames during a layout switch, ms | 100 | 250 | 67 | 200 |
+| `layoutRequests` | API reads one layout switch causes, count | 3 | 3 | 2 | 3 |
+| `heapGrowthMB` | JavaScript heap growth after a forced collection over one segment of a profile (a ceiling, not a p95), MB | 20 | 20 | 4.9 | 5.8 |
+
+"Measured" is the worst p95 of the full runs of the harness on 2026-10-29: three for the first seven rows (the
+third, 1011 s, ran with these budgets and met every one but the miss below), two for the request count and heap, which
+were added after the first. The summary is in [the closeout report](../development/evidence/151-155-closeout/README.md).
+
+**Known miss, not a budget change.** The phone's `frameGap` is 133 ms at p95 in the first two runs and 117 in the
+third (a lighter host), against 100: [#716](https://github.com/ColdPhase/flux/issues/716). A long-animation-frame
+profile of 80 view changes shows where it goes: 79 of 80 phone view changes contain a long frame (median 79 ms,
+p95 147 ms); the time is the React scheduler's task running script, 38% of it forced synchronous style and layout, and
+the response handler (25.7 ms each); style and layout outside script are about 2 ms. The harness reports the miss as
+open and lists it in `KNOWN_MISSES` with a ceiling of **150 ms** (nine frames, just above the worst of the three runs):
+a p95 above that fails the run, so the exemption cannot hide a further regression.
+
+**Basis, row by row.** Rule: a budget that existed in the harness or the kickoff before this PR is not loosened. A
+new one, or one tightened from a looser inherited ceiling, is the platform bound where one exists and else the worst
+measured p95 plus about a quarter (a quarter is as tight as the two-fold swing of some p95s between runs on a shared host
+allows). Sources, read 2026-10-29: [RAIL](https://web.dev/articles/rail) (page updated 2020-06-10: "complete a
+transition initiated by user input within 100 ms"; process input events within 50 ms),
+[MDN long tasks](https://developer.mozilla.org/en-US/docs/Web/API/PerformanceLongTaskTiming) ("any uninterrupted period
+where the main UI thread is busy for 50ms or longer") and [INP](https://web.dev/articles/inp) (updated 2025-09-02:
+"good" is 200 ms or less at the 75th percentile of field loads). These are vendor guidance; applying them to a
+view change or a resize is this page's inference.
+
+- `selectionFeedback`, `keyInput`: inherited unchanged from the #151 kickoff (click to selected-state paint, keydown to
+  input paint; 150/300 and 100/200 ms). Measured at 55% or less of them, so not tightened here.
+- `motionEnd`: feedback plus the longest motion on the surface: unchanged on the computer (150 + the 220 ms highlight);
+  the phone's harness value was 300 + 220, now 300 + the 120 ms menu exit, so tighter.
+- `selectionCommitted`: was 2000/4000 (the native-work kickoff's fresh-navigation budgets, which stay with their own
+  harness), so this is a tightening to this dataset. Computer: INP "good", 200 ms, and measured 168 is within 1.2× of
+  it. Phone: 1.25× the measured 335. INP's 200 ms is not met by this emulated phone (335 ms, its "needs improvement"
+  band): an improvement target, also in #716.
+- `frameGap`: **unchanged from the harness before this PR**, 50 and 100 ms (MDN's long-task and RAIL's 100 ms). The
+  computer's measured 50 ms is three frames, at its bound. The phone misses it, above.
+- `layoutSwitch`, `layoutGap` (new): computer 100 ms, RAIL's transition goal; measured 62 and 67 ms in the second run
+  and 31 and 33 ms in the first, so a tighter bound would flake. Phone 250 ms, 1.25× the measured 196 and 200 ms.
+- `layoutRequests` (new): the p95 of a discrete count was 2 on the computer and up to 3 on the phone; the budget is 3.
+  It counts the two small agent lists that a swapped shell reads when it mounts.
+- `heapGrowthMB` (new): a leak ceiling, not a bound a user feels: about 3.5× the measured 5 to 6 MB over roughly 900 actions,
+  which allows route chunks to load once and flags a heap that grows by about 20 KB per action.
+
+**Observed, not budgeted.**
+
+- A layout switch across a shell swap (computer, tablet, phone) reads the working agents and assistant runs again,
+  one or two requests; growing the window within the same shell reads nothing at the median. At most 5 in 100
+  switches (the p95 is 2) coincide with about 20 reads (project, people, materials); they also happen when the window only
+  grows, so they do not scale with its size. The cause is not investigated.
+- The computer's project switch has a long frame in about 30% to 45% of switches (54 to 66 ms), the Tasks tab in 7%.
+- WebKit has no CPU throttling command, so these budgets are Chromium only.
+
+**Not covered.** Physical phones, tablets and 4K or ultrawide displays (optional, founder direction #266 item
+10); network throttling; map pan, zoom and long-list scroll latency (list scroll is in the native-work kickoff);
+memory other than the JavaScript heap; other hosts. Unknown stays unverified.
+
 ## Delivery and evidence status
 
-**Proposed amendment, 2026-10-05 (#151 AC-1, pending peer review):** the current pane and
+**Proposed amendment, 2026-10-05 (#151 AC-1):** the current pane and
 breakpoint rules, input modes, readable measure, map camera rule and surface mapping are
-recorded in [adaptive layout rules](adaptive-layout-rules.md). It uses emulated viewports only.
+recorded in [adaptive layout rules](adaptive-layout-rules.md). It uses emulated viewports only. It was
+independently evaluated on 2026-10-29 (see that page); the performance budgets were agreed the same day.
 
 Implement through [#151](https://github.com/ColdPhase/flux/issues/151), with the
 the final design's shell issues (#340, #341, #344). The final design (#336) is the integrated

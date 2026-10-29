@@ -77,7 +77,7 @@ class Recorder:
         box = target.bounding_box()
         assert box, "the target is on screen"
         tx, ty = box["x"] + min(box["width"] / 2, 60), box["y"] + box["height"] / 2
-        steps = 5
+        steps = 4
         for step in range(1, steps + 1):
             t = step / steps
             ease = t * t * (3 - 2 * t)
@@ -223,8 +223,8 @@ def write_gif(frames: list[tuple[bytes, int]], path: Path) -> None:
     sheet = Image.new("RGB", (width, height * len(sample)))
     for index, image in enumerate(sample):
         sheet.paste(image, (0, height * index))
-    # The interface is greys and one accent, so 48 colours read the same as 128 and keep the file under the
-    # evidence size limit (scripts/docs-size-allowlist.txt).
+    # The interface is greys and one accent, so 48 colours read the same as 128 and keep the file within its
+    # allowlisted size (scripts/docs-size-allowlist.txt).
     palette = sheet.quantize(colors=48, method=Image.Quantize.MEDIANCUT, dither=Image.Dither.NONE)
     indexed = [image.quantize(palette=palette, dither=Image.Dither.NONE) for image in images]
     path.parent.mkdir(parents=True, exist_ok=True)
