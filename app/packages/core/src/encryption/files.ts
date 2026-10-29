@@ -40,6 +40,25 @@ export function fileEncryptor(key: WorkspaceKey, fileId: string): Transform {
   });
 }
 
+/**
+ * The same object built chunk by chunk without a stream (the upload's receive loop writes each output to its scratch
+ * file, so plaintext never reaches the disk): the first `update` output starts with the header, `final` is the tag.
+ */
+export function fileSealer(key: WorkspaceKey, fileId: string): { update(chunk: Uint8Array): Buffer; final(): Buffer } {
+  const aad = fileContext(key.workspaceId, fileId, key.version);
+  const nonce = randomBytes(12);
+  const cipher = createCipheriv('aes-256-gcm', hkdfKey(key.fileKey, Buffer.alloc(0), aad), nonce, { authTagLength: TAG });
+  cipher.setAAD(aad);
+  const version = Buffer.alloc(4);
+  version.writeUInt32BE(key.version);
+  let header: Buffer | null = Buffer.concat([FILE_MAGIC, version, nonce]);
+  const lead = () => { const out = header ?? Buffer.alloc(0); header = null; return out; };
+  return {
+    update: (chunk) => Buffer.concat([lead(), cipher.update(chunk)]),
+    final: () => Buffer.concat([lead(), cipher.final(), cipher.getAuthTag()]),
+  };
+}
+
 /** The whole object at once (tests, the rotation's rewrite). */
 export function sealFileObject(key: WorkspaceKey, fileId: string, plaintext: Buffer): Buffer {
   const aad = fileContext(key.workspaceId, fileId, key.version);

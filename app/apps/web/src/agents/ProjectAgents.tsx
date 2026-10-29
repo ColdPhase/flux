@@ -366,7 +366,7 @@ function TaskThread({ kind, task, projectId, meId, names, canWrite, changingScop
                 {message.contribution ? <span className="agents-msg__kind"> · {message.contribution.kind}</span> : null}
               </span>
               <MessageContent body={message.body ? <WhenNoQuestion projectId={projectId} messageId={message.id}><div className="message-body agents-msg__body"><MessageText body={message.body} /></div></WhenNoQuestion> : null} files={message.files} references={message.references} context={{ author: name, at: message.createdAt, caption: message.body, onReply: blocked ? undefined : () => box.current?.focus(), onCreateTask: kind === 'task' && canWrite && !accessLost ? () => void makeWork.create(message) : undefined }}>
-                <LinkPreviews body={message.body} />
+                <LinkPreviews body={message.body} projectId={projectId} messageId={message.id} />
               </MessageContent>
               <QuestionCard projectId={projectId} messageId={message.id} meId={meId} writable={canWrite} />
             </li>

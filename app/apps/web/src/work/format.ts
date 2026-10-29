@@ -21,15 +21,32 @@ export function workLine(item: Pick<WorkItem, 'status' | 'owner' | 'parked' | 'l
   return ['Work', STATUS_LABEL[item.status], item.owner?.name, item.parked ? 'parked' : null].filter(Boolean).join(' · ');
 }
 
-export function decisionLine(decision: Pick<Decision, 'status' | 'supersedes' | 'decidedAt' | 'supersededAt'>) {
-  if (decision.status === 'proposed') return decision.supersedes ? 'Proposed decision · would replace the current rule' : 'Proposed decision';
-  if (decision.status === 'accepted') return `Current rule · accepted ${shortDate(decision.decidedAt!)}`;
-  return `Earlier rule · replaced ${shortDate(decision.supersededAt!)}`;
+/**
+ * A reference card's state as parts that read as the one line (`decisionLine`, `resultLine`, `workLine` without its
+ * "Work" lead). A part marked `extra` only adds a name or a clause; the narrow one-row card hides it (#665) and keeps
+ * the state itself: "In progress", "accepted Oct 23", "Negative result".
+ */
+export type StatePiece = { text: string; extra?: boolean };
+export const stateText = (pieces: StatePiece[]) => pieces.map((piece) => piece.text).join('');
+
+export function workPieces(item: Pick<WorkItem, 'status' | 'owner' | 'parked' | 'lifecycle'>): StatePiece[] {
+  if (item.lifecycle?.state === 'creation_reverted') return [{ text: 'creation undone' }];
+  return [{ text: STATUS_LABEL[item.status] }, ...(item.owner?.name ? [{ text: ` · ${item.owner.name}`, extra: true }] : []), ...(item.parked ? [{ text: ' · parked' }] : [])];
 }
 
-export function resultLine(result: Pick<WorkResult, 'finding' | 'createdBy'>) {
-  return `${result.finding === 'negative' ? 'Negative' : 'Positive'} result · ${result.createdBy.name}`;
+export function decisionPieces(decision: Pick<Decision, 'status' | 'supersedes' | 'decidedAt' | 'supersededAt'>): StatePiece[] {
+  if (decision.status === 'proposed') return decision.supersedes ? [{ text: 'Proposed decision' }, { text: ' · would replace the current rule', extra: true }] : [{ text: 'Proposed decision' }];
+  if (decision.status === 'accepted') return [{ text: 'Current rule · ', extra: true }, { text: `accepted ${shortDate(decision.decidedAt!)}` }];
+  return [{ text: 'Earlier rule · ', extra: true }, { text: `replaced ${shortDate(decision.supersededAt!)}` }];
 }
+
+export function resultPieces(result: Pick<WorkResult, 'finding' | 'createdBy'>): StatePiece[] {
+  return [{ text: `${result.finding === 'negative' ? 'Negative' : 'Positive'} result` }, { text: ` · ${result.createdBy.name}`, extra: true }];
+}
+
+export const decisionLine = (decision: Pick<Decision, 'status' | 'supersedes' | 'decidedAt' | 'supersededAt'>) => stateText(decisionPieces(decision));
+
+export const resultLine = (result: Pick<WorkResult, 'finding' | 'createdBy'>) => stateText(resultPieces(result));
 
 /** The first line of a message, for prefilled titles. */
 export function firstLine(text: string, max = 200) {

@@ -10,17 +10,16 @@ services:
     environment:
       # The boot key becomes a canary of the log scan (TEST ONLY; needs the test deployment switches too).
       FLUX_KEYRING_REVEAL_BOOT_KEY: "true"
-  # A sealed chooser search opens at most this many objects here, so its truncation marker (`searchLimited`) is tested
-  # without thousands of tasks (TEST ONLY; honoured only by a test deployment). The test runner reads it too.
-  api:
-    environment:
-      FLUX_TEST_SEALED_CHOOSER_SCAN_LIMIT: "8"
+  # The second API bounds the search indexes of encrypted workspaces tightly (estimated heap, FLUX_SEALED_SEARCH_MAX_BYTES per workspace and
+  # FLUX_SEALED_SEARCH_PROCESS_MAX_BYTES across them), so "too large" and "no room in the process" (`sealedUnavailable`) are tested with a few
+  # hundred messages (TEST ONLY: an operator sets the real bounds; the defaults are 256 MiB and 512 MiB).
   api2:
     environment:
-      FLUX_TEST_SEALED_CHOOSER_SCAN_LIMIT: "8"
+      FLUX_SEALED_SEARCH_MAX_BYTES: "300000"
+      FLUX_SEALED_SEARCH_PROCESS_MAX_BYTES: "400000"
+      FLUX_SEALED_SEARCH_IDLE_MS: "3000"
   test:
     environment:
-      FLUX_TEST_SEALED_CHOOSER_SCAN_LIMIT: "8"
       # AC-13 (S2c): the offline checker reads the file objects of a post-rotation copy.
       FLUX_TEST_STACK_FILES: /data/stack-files
     volumes:

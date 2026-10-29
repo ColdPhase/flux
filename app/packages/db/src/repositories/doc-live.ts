@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { and, eq, gt, lte, sql } from 'drizzle-orm';
 import * as schema from '../schema.js';
 import { docRows } from './docs.js';
+import { openRows, sealFor } from '../sealing.js';
 import type { DbExecutor } from './push.js';
 
 // Rows only, on the caller's open transaction. Core has already locked current
@@ -17,7 +18,8 @@ export function docLiveVersions(db: DbExecutor) {
   const docs = docRows(db);
   async function locked(docId: string) {
     const [head] = await db.select().from(heads).where(eq(heads.docId, docId)).for('update');
-    return head ?? null;
+    // F-030 (S2b): the body, codec state and hash are sealed in an encrypted workspace; callers see them opened.
+    return head ? (await openRows(db, 'doc_live_heads', [head]))[0]! : null;
   }
   return {
     async lock(docId: string) {
@@ -33,12 +35,12 @@ export function docLiveVersions(db: DbExecutor) {
         throw new Error('Dirty shared head cannot be rebound by a native writer');
       }
       // The retired generation's state is its snapshot plus its still retained update log.
-      await db.insert(schema.docLiveArchives).values({ docId: old.docId, generation: old.generation, sequence: old.sequence,
+      await db.insert(schema.docLiveArchives).values(await sealFor(db, 'doc_live_archives', row.doc.workspaceId, { docId: old.docId, generation: old.generation, sequence: old.sequence,
         body: old.body, hash: old.hash, savedVersion: old.savedVersion, savedSequence: old.savedSequence, codecState: old.codecState,
-        snapshotSequence: old.codecState ? old.snapshotSequence : null });
-      await db.update(heads).set({ generation, sequence: 0, body: row.current.body, hash: hash(row.current.body),
+        snapshotSequence: old.codecState ? old.snapshotSequence : null }));
+      await db.update(heads).set(await sealFor(db, 'doc_live_heads', row.doc.workspaceId, { generation, sequence: 0, body: row.current.body, hash: hash(row.current.body),
         savedVersion: row.current.version, savedSequence: 0, codecState: null, snapshotSequence: 0, revision: sql`${heads.revision} + 1`,
-        updatedAt: new Date() }).where(eq(heads.docId, row.doc.id));
+        updatedAt: new Date() }, { docId: row.doc.id })).where(eq(heads.docId, row.doc.id));
     },
     async bindSnapshot(row: SavedDoc, acknowledged: Pick<Head, 'generation' | 'sequence' | 'body' | 'hash' | 'savedVersion' | 'savedSequence'>) {
       const current = await locked(row.doc.id);
@@ -52,10 +54,10 @@ export function docLiveVersions(db: DbExecutor) {
         eq(updates.docId, row.doc.id), eq(updates.generation, current.generation),
         gt(updates.sequence, current.savedSequence), lte(updates.sequence, current.sequence),
       )).orderBy(updates.actorId);
-      await db.insert(snapshots).values({ docId: row.doc.id, version: row.current.version,
+      await db.insert(snapshots).values(await sealFor(db, 'doc_live_snapshots', row.doc.workspaceId, { docId: row.doc.id, version: row.current.version,
         workspaceId: row.doc.workspaceId, projectId: row.doc.projectId, generation: current.generation,
         fromSequence: current.savedSequence, toSequence: current.sequence, hash: current.hash,
-        contributors: contributors.map(({ id }) => ({ kind: 'human' as const, id })) });
+        contributors: contributors.map(({ id }) => ({ kind: 'human' as const, id })) }));
       // Retain the complete CRDT/ownership/undo generation; only its saved binding changes.
       await db.update(heads).set({ savedVersion: row.current.version, savedSequence: current.sequence, updatedAt: new Date() })
         .where(eq(heads.docId, row.doc.id));

@@ -2,7 +2,7 @@ import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { assertAssistantMigrationCompatibility, assertExactMigrationLedger, assertKnownMigrationVersions, assertMigrationSqlLedgerChange, assertMigrationStepLedger, assertMorningSummaryMigrationCompatibility, assertTaskCreationUndoMigrationCompatibility, createDatabase, FLUX_SCHEMA_VERSION, readAppliedMigrationVersions, readMigrationManifest } from '@flux/db';
 import { PgBoss } from 'pg-boss';
-import { WORKSPACE_AI_SWEEP_JOB, WORKSPACE_ENCRYPTION_RESUME_JOB } from '@flux/contracts';
+import { SEARCH_CHANGES_CLEANUP_JOB, WORKSPACE_AI_SWEEP_JOB, WORKSPACE_ENCRYPTION_RESUME_JOB } from '@flux/contracts';
 import { ASSISTANT_TICK_JOB, ASSISTANT_TICK_QUEUE, ASSISTANT_TICK_RETRY, COMPARISON_JOB_QUEUE, COMPARISON_JOB_RETRY, COMPARISON_RECOVERY_JOB, COMPARISON_TICK_JOB, NOTIFICATION_EMAIL_JOB, NOTIFICATION_EMAIL_QUEUE, PERSONAL_RUN_JOB, PERSONAL_RUN_QUEUE, PUSH_SEND_JOB, PUSH_SEND_QUEUE } from '@flux/core';
 
 const connectionString = process.env.DATABASE_URL;
@@ -71,6 +71,8 @@ try {
   // F-030: sent with every unlock of an encrypted workspace; replays the work that waited while it was locked.
   await boss.createQueue(WORKSPACE_ENCRYPTION_RESUME_JOB, { retryLimit: 5, retryDelay: 5 });
   await boss.updateQueue(WORKSPACE_ENCRYPTION_RESUME_JOB, { retryLimit: 5, retryDelay: 5 });
+  // F-030 S2b: prunes the search change log of encrypted workspaces.
+  await boss.createQueue(SEARCH_CHANGES_CLEANUP_JOB);
   await boss.stop();
   console.log(`Flux schema ${FLUX_SCHEMA_VERSION} and pg-boss ready`);
 } finally {
