@@ -263,6 +263,8 @@ test('actual retained native87 history upgrades to88 without pulses, seeds old b
     // code under test reads them, so this earlier fixture gets the three columns as 0119 leaves them; the key tables and triggers are not needed.
     await fixture.pool.query('ALTER TABLE workspaces ADD COLUMN encrypted boolean NOT NULL DEFAULT false, ADD COLUMN creation_id uuid');
     await fixture.pool.query('ALTER TABLE project_files ADD COLUMN key_version integer CHECK (key_version IS NULL OR key_version >= 1)');
+    // 0120 (#469) added what the bytes said at upload to project_files, which the retained rows carry too.
+    await fixture.pool.query('ALTER TABLE project_files ADD COLUMN page_count integer, ADD COLUMN row_count integer, ADD COLUMN duration_ms integer');
     const client=await fixture.pool.connect();try{
       await client.query('BEGIN');await client.query('SET CONSTRAINTS ALL DEFERRED');
       // Restore only this isolated fixture's two guarded tables, preserving the ACTUAL

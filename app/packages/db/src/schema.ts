@@ -758,6 +758,10 @@ export const projectFiles = pgTable('project_files', {
   thoughtId: uuid('thought_id'),
   /** F-030 (0119): the key version of the stored object; null for a plain workspace. */
   keyVersion: integer('key_version'),
+  /** #469 (0120): what the bytes said at upload; null when the kind is not read or the bytes did not say. */
+  pageCount: integer('page_count'),
+  rowCount: integer('row_count'),
+  durationMs: integer('duration_ms'),
 }, (table) => [
   unique().on(table.messageId, table.position),
   uniqueIndex('project_files_thought_idx').on(table.thoughtId).where(sql`${table.thoughtId} IS NOT NULL`),
@@ -1571,6 +1575,28 @@ export const dmMessages = pgTable('dm_messages', {
   unique().on(table.dmId, table.sequence),
   unique().on(table.dmId, table.authorId, table.clientMessageId),
   foreignKey({ columns: [table.workspaceId, table.dmId], foreignColumns: [dms.workspaceId, dms.id] }).onDelete('cascade'),
+]);
+
+/**
+ * What a message cites (#469, migration 0120): a map thought or another message, by id only. The cards are resolved per
+ * reader when the message is read; the owner is a project message or a DM message, and its rows go with it.
+ */
+export const messageReferences = pgTable('message_references', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  workspaceId: uuid('workspace_id').notNull().references(() => workspaces.id, { onDelete: 'cascade' }),
+  projectMessageId: uuid('project_message_id').references(() => projectMessages.id, { onDelete: 'cascade' }),
+  dmMessageId: uuid('dm_message_id').references(() => dmMessages.id, { onDelete: 'cascade' }),
+  position: smallint('position').notNull(),
+  kind: text('kind', { enum: ['thought', 'message'] }).notNull(),
+  targetId: uuid('target_id').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (table) => [
+  uniqueIndex('message_references_project_position_idx').on(table.projectMessageId, table.position).where(sql`${table.projectMessageId} IS NOT NULL`),
+  uniqueIndex('message_references_dm_position_idx').on(table.dmMessageId, table.position).where(sql`${table.dmMessageId} IS NOT NULL`),
+  index('message_references_target_idx').on(table.targetId),
+  check('message_references_one_owner', sql`num_nonnulls(${table.projectMessageId}, ${table.dmMessageId}) = 1`),
+  check('message_references_kind', sql`${table.kind} IN ('thought', 'message')`),
+  check('message_references_position', sql`${table.position} BETWEEN 0 AND 3`),
 ]);
 
 /** Who observed which DM message (migration 0103, #534). Reads always join the current participants. */

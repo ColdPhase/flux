@@ -195,6 +195,7 @@ export * from './repositories/live-map.js';
 export * from './repositories/agent-policies.js';
 
 export * from './repositories/files.js';
+export * from './repositories/message-references.js';
 export * from './repositories/task-use.js';
 export * from './repositories/agent-thread-guard.js';
 export * from './repositories/artifact-task-associations.js';

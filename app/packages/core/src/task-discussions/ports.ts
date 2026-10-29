@@ -1,4 +1,4 @@
-import type { AgentProjectOwner, MaterialSource, MessageFile } from '@flux/contracts';
+import type { AgentProjectOwner, MaterialSource, MessageFile, MessageReference, MessageReferenceCard } from '@flux/contracts';
 import type { Principal } from '../principal.js';
 import type { ActorRef, WorkAccess, WorkRepository } from '../work/ports.js';
 
@@ -75,6 +75,12 @@ export interface TaskDiscussionPorts {
   authorOwners?: { read(projectId: string, workspaceId: string, agentIds: readonly string[]): Promise<ReadonlyMap<string, AgentProjectOwner>> };
   /** Human file composition. An entry point without storage must refuse attachments. */
   attachments?: { lock(projectId: string, author: ActorRef, ids: readonly string[]): Promise<MessageFile[]> };
+  /** What a contribution cites (#469): the same rules and the same policy as a conversation message's references. An entry point without it must refuse them. */
+  references?: {
+    assertReadable(principal: Principal, workspaceId: string, references: readonly MessageReference[]): Promise<void>;
+    save(messageId: string, workspaceId: string, references: readonly MessageReference[]): Promise<void>;
+    cards(principal: Principal, workspaceId: string, messageIds: readonly string[]): Promise<Map<string, MessageReferenceCard[]>>;
+  };
   access: WorkAccess;
   work: Pick<WorkRepository, 'locate' | 'findWork' | 'names' | 'prepareTaskUse'>;
   discussion: TaskDiscussionRepository;

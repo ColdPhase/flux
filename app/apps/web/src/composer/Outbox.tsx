@@ -5,7 +5,8 @@ import { useConnection } from './connection';
 import type { DraftFile, PendingSend } from './draft';
 import { MessageBubble, FileIcon, typeLine, useObjectUrl } from './Attachments';
 import { selectedFile, uploadLabel } from './draft';
-import { looksLikePhoto } from './fileKind';
+import { detailLine, looksLikePhoto } from './fileKind';
+import { CiteTile } from './References';
 import './composer.css';
 
 /**
@@ -63,7 +64,7 @@ export function PendingFiles({ files, send, body }: { files: readonly DraftFile[
     </div> : null}
     <MessageBubble>{body}
       {others.length ? <ol className="message-files is-pending" aria-label={others.length === 1 ? '1 attached file' : `${others.length} attached files`}>{others.map((file) => <li key={file.uploadId}>
-        <span className="file-row"><FileIcon name={file.name} /><span className="file-row__text"><span className="file-row__name">{file.name}</span><small>{typeLine(file)}{file.state === 'uploading' ? ` · ${uploadLabel(file)}` : null}</small></span></span>
+        <span className="file-row"><FileIcon name={file.name} /><span className="file-row__text"><span className="file-row__name">{file.name}</span><small>{typeLine(file, detailLine(file.staged))}{file.state === 'uploading' ? ` · ${uploadLabel(file)}` : null}</small></span></span>
       </li>)}</ol> : null}
     </MessageBubble>
   </>;
@@ -96,10 +97,13 @@ function PendingPhoto({ file, send, more }: { file: DraftFile; send?: { state: P
   </li>;
 }
 
-/** The cited material of a message not stored yet. */
+/** The cited material, thoughts and messages of a message not stored yet. */
 export function PendingSource({ item, className = 'outbox-source' }: { item: PendingSend; className?: string }) {
   const ref = item.references[0];
-  return ref ? <span className={className}>Source: {ref.title} · v{ref.version}</span> : null;
+  return <>
+    {ref ? <span className={className}>Source: {ref.title} · v{ref.version}</span> : null}
+    {item.cites.map((cite) => <CiteTile key={`${cite.kind}:${cite.id}`} cite={cite} />)}
+  </>;
 }
 
 /**

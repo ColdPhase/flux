@@ -41,7 +41,8 @@ import { currentEntry, isBooted, recall, useArrival } from '../place/memory';
 import { threadPlace } from '../work/useMessageWork';
 import { ComposerBox } from '../composer/ComposerBox';
 import { ComposerMenu, composerOptions, composerTrigger, type ComposerOption } from './ComposerMenu';
-import { cite as citeMessage, onCite, quoteOf } from './citeBus';
+import { cite as citeMessage, messageCite, onCite, takeHeldCite } from './citeBus';
+import type { DraftCite } from '../composer/draft';
 import { QuestionCard, WhenNoQuestion } from '../agents/QuestionCard';
 import { useProjectQuestions } from '../agents/questions';
 import { useSpareHeight } from '../ui/spareHeight';
@@ -514,16 +515,22 @@ function ProjectConversationContent({ data, variant, feed, rootHeader, rootMessa
       assistant.refreshStatus();
     }
   }
-  // A quoted message lands at the start of this pane's composer (Cite in the message menu).
-  const quoteRef = useRef((quote: string) => { void quote; });
-  useEffect(() => { quoteRef.current = (quote: string) => {
+  // A cited message or map thought joins this pane's composer as a tile (Cite in the message menu, Cite on the map, #469).
+  const citeRef = useRef((citation: DraftCite) => { void citation; });
+  useEffect(() => { citeRef.current = (citation: DraftCite) => {
     if (!canWrite) return;
     const field = document.getElementById(composerId);
-    publicComposer.setBody(`${quote}${publicComposer.draft.body}`);
+    publicComposer.addCite(citation);
     setAsking(false);
-    requestAnimationFrame(() => { if (field instanceof HTMLTextAreaElement) { field.focus(); field.setSelectionRange(field.value.length, field.value.length); } });
+    requestAnimationFrame(() => { if (field instanceof HTMLTextAreaElement) field.focus(); });
   }; });
-  useEffect(() => onCite(conversation ? 'thread' : 'stream', (quote) => quoteRef.current(quote)), [conversation]);
+  useEffect(() => onCite(conversation ? 'thread' : 'stream', (citation) => citeRef.current(citation)), [conversation]);
+  // A thought cited on the map waits for this project's own composer to open.
+  useEffect(() => {
+    if (conversation || !canWrite) return;
+    const held = takeHeldCite(project.id);
+    if (held) citeRef.current(held);
+  }, [conversation, canWrite, project.id]);
 
   // The caret goes after what was inserted, unless the person has already typed on (fast typing).
   const placeCaret = (position: number, value: string) => requestAnimationFrame(() => {
@@ -862,7 +869,7 @@ function ThreadReply(props: ThreadReplyProps | QueuedReplyProps) {
   const actions = stored && message ? {
     projectId: stored.project.id, message, writable: stored.writable, onCreateWork: () => void stored.makeWork.create(message),
     onReply: () => document.getElementById('thread-composer')?.focus(),
-    onCite: () => citeMessage('thread', quoteOf(message.body, stored.name)),
+    onCite: () => citeMessage('thread', messageCite(message, stored.name)),
     onAddToMap: () => {
       const source = { messageId: message.id, projectId: stored.project.id, body: message.body };
       const sketch = projectShell?.sketches?.items[0];
@@ -883,7 +890,7 @@ function ThreadReply(props: ThreadReplyProps | QueuedReplyProps) {
       <SourceTag messageId={message.id} />
       {!mine && !stored.continued ? <AuthorFace kind={message.authorId === null ? 'agent' : 'human'} name={name} mine={mine} /> : null}
       {!mine && !stored.continued ? <div className="project-convo__message-meta"><strong>{mine ? `${name} · you` : message.authorId === null ? <AgentAuthor message={message} owner={agentAuthorOwner(message.author, owners)} /> : <RefLink className="project-convo__person" to={`/dm/new?workspace=${project.workspaceId}&with=${message.authorId}`} title={`Message ${name} directly`}>{name}</RefLink>}</strong></div> : null}
-      <MessageContent body={message.body ? <WhenNoQuestion projectId={project.id} messageId={message.id}><div className="message-body"><MessageText body={message.body} people={people} /></div></WhenNoQuestion> : null} files={message.files} context={{ author: name, at: message.createdAt, caption: message.body, place: project.name, onReply: writable ? actions.onReply : undefined, onCreateTask: writable ? actions.onCreateWork : undefined }}>
+      <MessageContent body={message.body ? <WhenNoQuestion projectId={project.id} messageId={message.id}><div className="message-body"><MessageText body={message.body} people={people} /></div></WhenNoQuestion> : null} files={message.files} references={message.references} context={{ author: name, at: message.createdAt, caption: message.body, place: project.name, onReply: writable ? actions.onReply : undefined, onCreateTask: writable ? actions.onCreateWork : undefined }}>
         <LinkPreviews body={message.body} />
         <MessageObjects message={message} projectId={project.id} preview={preview} />
         {message.source ? <SourceCitation materialId={message.source.materialId} version={message.source.version} onDenied={onDenied} /> : null}

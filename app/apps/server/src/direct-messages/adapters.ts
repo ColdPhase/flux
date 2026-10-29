@@ -14,6 +14,7 @@ import {
 import { eventPorts } from '../events.js';
 import { sketchPromotion } from '../sketches/adapters.js';
 import { nativeWorkInTransaction } from '../work/adapters.js';
+import { messageReferences } from '../conversation/references.js';
 
 // Adapters that connect the core direct-message use cases to Drizzle, the access policy and the
 // event log (issue #107; #46: core defines the ports, the server assembles them).
@@ -59,6 +60,8 @@ function dmTaskCopy(tx: Transaction): DmTaskCopy {
 function dmPorts(tx: Transaction): DmPorts {
   return {
     access: policyDmAccess(accessReader(tx)),
+    references: { assertReadable: (principal, workspaceId, references) => messageReferences(tx).assertReadable(principal, workspaceId, references),
+      save: (messageId, workspaceId, references) => messageReferences(tx).save({ kind: 'dm', id: messageId }, workspaceId, references) },
     taskCopy: dmTaskCopy(tx),
     dms: dmRepository(tx),
     events: { record: async (principal, workspaceId, kind, dmId, data) => { await recordEvent(eventPorts(tx), principal, workspaceId, kind, dmId, data); } },

@@ -41,6 +41,8 @@ export interface SketchListProps {
   onConnections(id: string): void;
   /** Create task from the selected thoughts; absent outside a project. */
   onTask: (() => void) | null;
+  /** Cite the selected thought in its place's conversation (#469); absent where a sketch has none. */
+  onCite: (() => void) | null;
   onSay(text: string): void;
 }
 interface ReturnPoint { sourceId: string; collapsed: string[]; selection: string[]; scrollTop: number }
@@ -244,6 +246,7 @@ export function SketchList({ sketch, meId, selection, connectFrom, editing, canW
               <button type="button" aria-label="Add a child thought" onClick={() => on.onAdd(thought.id)}><Icon name="plus" size={12} />Child</button>
               {on.onTask ? <button type="button" aria-label="Create task from selected thoughts" onClick={on.onTask}><Icon name="tasks" size={12} />Create task</button> : null}
             </> : null}
+            {on.onCite ? <button type="button" aria-label="Cite the selected thought in the conversation" onClick={on.onCite}><Icon name="cite" size={12} />Cite</button> : null}
             <button type="button" className="sk-outline-more" aria-label="More actions" aria-expanded={more} onClick={() => setMoreId(more ? null : thought.id)}><Icon name="more" size={14} /></button>
           </span> : null}
           {linked?.count && projectId ? <span className="sk-outline-chip" onClick={quiet}><ThoughtTasks thought={thought} tasks={linked} projectId={projectId} variant="list" onOpenTask={on.onOpenTask} /></span> : null}

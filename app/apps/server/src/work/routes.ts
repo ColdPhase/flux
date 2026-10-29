@@ -115,6 +115,7 @@ export async function workRoutes(app: FastifyInstance, { db, sessions, storage }
     }, schema: { body: { type: 'object', required: ['body', 'clientMessageId'], additionalProperties: false,
       properties: { body: { type: 'string', minLength: 0, maxLength: 100_000 }, attachmentIds: { type: 'array', maxItems: 10, items: { type: 'string' } }, clientMessageId: { type: 'string' },
         kind: { type: 'string', enum: ['text', 'handoff'] },
+        references: { type: 'array', maxItems: 4, items: { type: 'object' } },
         source: { type: 'object', required: ['materialId', 'version'], additionalProperties: false,
           properties: { materialId: { type: 'string' }, version: { type: 'integer' } } } } } } },
     async (request, reply) => reply.code(201).send(await discussion.contribute(await principal(request), request.params.workId, request.body)));

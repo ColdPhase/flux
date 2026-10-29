@@ -257,7 +257,7 @@ class MapOutlineJourney(unittest.TestCase):
         expect(self.row(page, 2).locator(".sk-li-s")).to_be_hidden()
         self.assertEqual(tops(), before_tops, "selecting a row moves nothing")
         names = self.row(page, 2).locator(".sk-outline-actions button").evaluate_all("buttons => buttons.map(b => b.getAttribute('aria-label') || b.textContent.trim())")
-        self.assertEqual(names, ["Edit", "Add a child thought", "Create task from selected thoughts", "More actions"])
+        self.assertEqual(names, ["Edit", "Add a child thought", "Create task from selected thoughts", "Cite the selected thought in the conversation", "More actions"])
         menu = self.more(page, 2)
         expect(menu.get_by_role("button")).to_have_text(["IndentTab", "Outdent⇧Tab", "Move up⌥↑", "Move down⌥↓", "Connect…", "Connections", "Remove"])
         page.keyboard.press("Escape")

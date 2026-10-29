@@ -25,6 +25,7 @@ export async function agentThreadRoutes(app: FastifyInstance, { db, sessions, st
         materialId: { type: 'string', format: 'uuid' }, version: { type: 'integer', minimum: 1 },
       } },
       attachmentIds: { type: 'array', maxItems: 10, items: { type: 'string', format: 'uuid' } },
+      references: { type: 'array', maxItems: 4, items: { type: 'object' } },
     } } },
   }, async (request, reply) => reply.code(201).send(await withTaskUseErrors(async () =>
     threads.post(await principal(request), request.params.workId, request.body))));

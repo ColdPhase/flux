@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useId, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
-import { filePath, imageTypeOf, type MessageFile } from '@flux/contracts';
+import { filePath, imageTypeOf, type MessageFile, type MessageReferenceCard } from '@flux/contracts';
 import { Icon, trapTab, type IconName } from '../ui';
-import { extensionOf, fileKind, fileLabel, fileWord, looksLikePhoto, type FileKind } from './fileKind';
+import { detailLine, extensionOf, fileKind, fileLabel, fileWord, looksLikePhoto, playTime, type FileKind } from './fileKind';
+import { MessageReferences } from './References';
 import './attachments.css';
 
 // Files, references and photos inside the message (#348, F-026 §6). Every byte is read through the
@@ -47,7 +48,7 @@ export function FileRow({ file }: { file: MessageFile }) {
   return (
     <a className="file-row" href={filePath(file.id)} download={file.name} data-file-kind={fileKind(file.name)}>
       <FileIcon name={file.name} />
-      <span className="file-row__text"><span className="file-row__name">{file.name}</span><small>{typeLine(file)}</small></span>
+      <span className="file-row__text"><span className="file-row__name">{file.name}</span><small>{typeLine(file, detailLine(file))}</small></span>
       <span className="file-row__act" data-tip="Download"><Icon name="download" size={16} /><span className="ui-vh">Download</span></span>
     </a>
   );
@@ -108,7 +109,8 @@ const clockOf = (seconds: number) => Number.isFinite(seconds) ? `${Math.floor(se
 export function VoiceNote({ file }: { file: MessageFile }) {
   const [wanted, setWanted] = useState(false);
   const [playing, setPlaying] = useState(false);
-  const [duration, setDuration] = useState('');
+  // The server read the playing time at upload (#469); the player's own metadata replaces it once the bytes are loaded.
+  const [duration, setDuration] = useState(file.durationMs === undefined ? '' : playTime(file.durationMs));
   const audio = useRef<HTMLAudioElement>(null);
   const bytes = useFileBytes(wanted ? file.id : null, 'audio', wanted, file.name);
   useEffect(() => { if (bytes.status === 'ready' && wanted) void audio.current?.play().catch(() => setPlaying(false)); }, [bytes, wanted]);
@@ -124,7 +126,7 @@ export function VoiceNote({ file }: { file: MessageFile }) {
       <button type="button" className="voice-note__play" onClick={toggle} aria-pressed={playing} aria-label={`${playing ? 'Pause' : 'Play'} ${file.name}`} disabled={bytes.status === 'denied'}>
         <Icon name={playing ? 'pause' : 'play'} size={14} /></button>
       {bytes.status === 'ready' ? <audio ref={audio} src={bytes.url} preload="metadata" onPlay={() => setPlaying(true)} onPause={() => setPlaying(false)} onEnded={() => setPlaying(false)}
-        onLoadedMetadata={(event) => setDuration(clockOf(event.currentTarget.duration))} /> : null}
+        onLoadedMetadata={(event) => setDuration((shown) => clockOf(event.currentTarget.duration) || shown)} /> : null}
     </div>
   );
 }
@@ -269,12 +271,12 @@ export function MessageBubble({ children }: { children: ReactNode }) {
   return <div className="message-bubble">{children}</div>;
 }
 
-export function MessageContent({ files, context, body, children }: { files?: MessageFile[]; context?: PhotoContext; body?: ReactNode; children?: ReactNode }) {
+export function MessageContent({ files, context, body, references, children }: { files?: MessageFile[]; context?: PhotoContext; body?: ReactNode; references?: readonly MessageReferenceCard[]; children?: ReactNode }) {
   const photos = files?.filter((file) => looksLikePhoto(file.name)) ?? [];
   const others = files?.filter((file) => !looksLikePhoto(file.name));
   return <>
     {photos.length ? <PhotoGrid photos={photos} context={context} /> : null}
-    <MessageBubble>{body}<MessageFiles files={others} />{children}</MessageBubble>
+    <MessageBubble>{body}<MessageFiles files={others} />{children}<MessageReferences references={references} /></MessageBubble>
     <PhotoMeta photos={photos} />
   </>;
 }

@@ -160,6 +160,8 @@ export function createTaskDiscussionUseCases(unit: TaskDiscussionUnitOfWork) {
         const author = actorOf(principal);
         await ports.discussion.lockCommand(project.projectId, author, input.clientMessageId);
         const existing = await ports.discussion.existingMessage(project.projectId, author, input.clientMessageId);
+        if (input.references.length && !ports.references) throw new InvalidInputError('References are unavailable from this entry point', 'REFERENCES_UNAVAILABLE');
+        if (!existing && input.references.length) await ports.references!.assertReadable(principal, project.workspaceId, input.references);
         let files;
         if (!existing && input.attachmentIds.length) {
           if (!ports.attachments) throw new InvalidInputError('Files are unavailable from this entry point', 'AGENT_FILES_UNAVAILABLE');
@@ -169,7 +171,9 @@ export function createTaskDiscussionUseCases(unit: TaskDiscussionUnitOfWork) {
         if (!await ports.work.findWork(workId)) throw missing();
         const { message, replayed } = await appendToTask(ports, project, author, workId, { ...input, kind, files },fence);
         if (!replayed) await fence.mark();
-        return wire(message, await ports.work.names([message.author]));
+        if (!replayed && input.references.length) await ports.references!.save(message.id, project.workspaceId, input.references);
+        const cited = (await ports.references?.cards(principal, project.workspaceId, [message.id]))?.get(message.id);
+        return { ...wire(message, await ports.work.names([message.author])), ...(cited?.length ? { references: cited } : {}) };
       });
     },
   };
