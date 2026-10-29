@@ -123,6 +123,10 @@ services:
       # Owner AI connections (#179, F-020): private targets an OpenAI-compatible endpoint may reach.
       # Empty allows public HTTPS endpoints only. See docs/development/containers.md.
       FLUX_AI_PRIVATE_TARGETS: ${FLUX_AI_PRIVATE_TARGETS:-}
+      # Link cards (#469): `on` lets the server fetch the title and description of a link in a message. Empty or `off` fetches nothing.
+      FLUX_LINK_PREVIEWS: ${FLUX_LINK_PREVIEWS:-off}
+      # TEST ONLY (#469): public-looking names that connect to a mock; refused unless FLUX_TEST_FAILURE_INJECTION=true.
+      FLUX_TEST_LINK_PREVIEW_HOSTS: ${FLUX_TEST_LINK_PREVIEW_HOSTS:-}
       FLUX_PERSONAL_RUNS: ${FLUX_PERSONAL_RUNS:-}
       FLUX_BACKGROUND_COMPARISONS: ${FLUX_BACKGROUND_COMPARISONS:-}
       # GitHub App read-only integration (#74). Empty reports unavailable; configure all together.
@@ -427,6 +431,8 @@ services:
       FLUX_ANTHROPIC_MOCK_URL: http://anthropic-mock:8090
       # TEST ONLY (#179): an OpenAI-compatible endpoint for the connection settings form.
       FLUX_OPENAI_MOCK_URL: http://openai-mock:8091
+      # TEST ONLY (#469): the page a link card is fetched from (public.test in the API's FLUX_TEST_LINK_PREVIEW_HOSTS).
+      FLUX_LINK_MOCK_URL: http://link-mock:8098
       # TEST ONLY (#287): browser sessions cannot register OAuth clients, so the browser tests
       # register theirs through the integration fixture with this token.
       FLUX_FIXTURE_TOKEN: ${FLUX_FIXTURE_TOKEN:?Set FLUX_FIXTURE_TOKEN}
@@ -445,6 +451,8 @@ services:
       anthropic-mock:
         condition: service_healthy
       openai-mock:
+        condition: service_healthy
+      link-mock:
         condition: service_healthy
   anthropic-mock:
     # TEST ONLY (#68): a local stand-in for the Anthropic Messages and token-counting endpoints,
@@ -465,6 +473,16 @@ services:
     command: ["python3", "tests/ui/openai_mock.py"]
     healthcheck:
       test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8091/__health', timeout=2)"]
+      interval: 2s
+      timeout: 3s
+      retries: 20
+  link-mock:
+    # TEST ONLY (#469): pages for the link card tests, reached by the API as public.test. No real site is ever fetched.
+    profiles: ["ui"]
+    image: flux-ui-tests:${FLUX_IMAGE_TAG:-${COMPOSE_PROJECT_NAME:-local}}
+    command: ["python3", "tests/ui/link_mock.py"]
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8098/__health', timeout=2)"]
       interval: 2s
       timeout: 3s
       retries: 20

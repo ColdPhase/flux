@@ -1,6 +1,7 @@
 import { Fragment, type ReactNode } from 'react';
-import type { ProjectPerson } from '@flux/contracts';
+import { LINK_URL_SOURCE, type ProjectPerson } from '@flux/contracts';
 import { Icon, Kreska } from '../ui';
+import { useLinkPreviews } from './linkPreviews';
 import '../composer/attachments.css';
 
 // Inline references in a message's text (#348, F-026 §6): `@person`, `#4` and a Wiki page `[[Title]]`
@@ -9,7 +10,7 @@ import '../composer/attachments.css';
 // people, a known name (also one with a space, such as "Jonas Berg") is one chip, and an agent's chip
 // carries the Kreska mark.
 
-const URL_TOKEN = String.raw`https?:\/\/[^\s<>"']+[^\s<>"'.,;:!?)\]]`;
+const URL_TOKEN = LINK_URL_SOURCE;
 const escapeRe = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 /** The inline references in a body, longest known names first; a web address is always group `url`. */
@@ -72,24 +73,31 @@ export function MessageText({ body, linked = true, people = null }: { body: stri
   return <>{blocks}</>;
 }
 
-/** A readable title from a web address alone: no page is fetched for it, so nothing leaves the reader's browser. */
+/** A readable title from a web address alone: the reader's browser fetches no page. */
 function addressTitle(url: URL) {
   const segment = url.pathname.split('/').filter(Boolean).pop();
   if (!segment) return url.hostname.replace(/^www\./, '');
   try { return decodeURIComponent(segment).replace(/\.[a-z0-9]{1,5}$/i, '').replace(/[-_+]+/g, ' ').trim() || url.hostname; } catch { return segment; }
 }
 
-/** A preview card for each web address in the text (at most three): the site, its domain and a title read from the address. */
-export function LinkPreviews({ body }: { body: string }) {
+/**
+ * A preview card for each web address in the text (at most three): the site, its domain, a title and three lines under it. With the
+ * page's own title and description (fetched by the server when the operator allows it, #469) those are shown; until then, and for
+ * a page that says nothing, the title is read from the address and the third line is the address.
+ */
+export function LinkPreviews({ body, projectId, messageId }: { body: string; projectId: string; messageId: string | null }) {
+  const fetched = useLinkPreviews(projectId, messageId, body);
   const urls = [...new Set([...body.matchAll(tokens([]))].map((match) => match.groups?.url).filter((url): url is string => !!url))].slice(0, 3);
   const cards = urls.flatMap((raw) => { try { return [{ raw, url: new URL(raw) }]; } catch { return []; } });
   if (!cards.length) return null;
-  return <ul className="link-previews" aria-label={cards.length === 1 ? 'Link preview' : 'Link previews'}>{cards.map(({ raw, url }) => <li key={raw}>
-    <a className="link-preview" href={raw} target="_blank" rel="noopener noreferrer nofollow">
-      <span className="link-preview__site"><Icon name="link" size={12} />{url.hostname.replace(/^www\./, '')}</span>
-      <strong>{addressTitle(url)}</strong>
-      {/* The address fallback: no page is fetched, so this is the URL, not the page's own description (still open, #469). */}
-      <small>{url.pathname.length > 1 ? `${url.hostname}${url.pathname}` : 'Opens in a new tab'}</small>
-    </a>
-  </li>)}</ul>;
+  return <ul className="link-previews" aria-label={cards.length === 1 ? 'Link preview' : 'Link previews'}>{cards.map(({ raw, url }) => {
+    const page = fetched.get(raw);
+    return <li key={raw}>
+      <a className="link-preview" href={raw} target="_blank" rel="noopener noreferrer nofollow" data-page={page?.description ? 'described' : page?.title ? 'titled' : 'address'}>
+        <span className="link-preview__site"><Icon name="link" size={12} />{url.hostname.replace(/^www\./, '')}</span>
+        <strong>{page?.title ?? addressTitle(url)}</strong>
+        <small>{page?.description ?? (url.pathname.length > 1 ? `${url.hostname}${url.pathname}` : 'Opens in a new tab')}</small>
+      </a>
+    </li>;
+  })}</ul>;
 }
