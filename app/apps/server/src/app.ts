@@ -143,7 +143,9 @@ export async function buildApp(config: ServerConfig, migrationsDir = 'packages/d
   const fileStorage = await diskFileStorage(filesDir, { cipherFor: async (objectId) => {
     const executor = db as unknown as DbExecutor;
     const [row] = (await executor.execute<{ workspace_id: string }>(dbSql`SELECT workspace_id FROM project_files WHERE id = ${objectId}::uuid`)).rows;
-    return row ? fileCipherOf(executor, row.workspace_id, objectId, { write: false }) : null;
+    // An object without its row is refused, never written or served as plaintext (#707 review).
+    if (!row) throw new Error('A stored file needs its row before its bytes');
+    return fileCipherOf(executor, row.workspace_id, objectId, { write: false });
   } });
   const editingConfirmation = identityConfig.oidc ? { providerId: identityConfig.oidc.providerId, confirmationMaxAgeMs: identityConfig.oidc.confirmationMaxAgeMs } : null;
   await app.register(sketchRoutes, { db, sessions: identity, confirmation: editingConfirmation, storage: fileStorage, developmentEditing: config.liveEditing, liveBackend: () => editing?.mapsBackend ?? null });
