@@ -115,7 +115,7 @@ export function returnRows(db: DbExecutor) {
     async work(ids: string[]) {
       if (!ids.length) return new Map();
       const w = schema.projectWorkItems;
-      const rows = await db.select().from(w).where(inArray(w.id, ids));
+      const rows = await openRows(db, 'project_work_items', await db.select().from(w).where(inArray(w.id, ids)));
       return byId(rows.map((row) => ({
         id: row.id, projectId: row.projectId, title: row.creationRevertedAt ? `${row.title} · creation undone` : row.title, status: row.status, blocker: row.blocker,
         ownerKey: row.ownerUserId ? actorKey('human', row.ownerUserId) : row.ownerAgentId ? actorKey('agent', row.ownerAgentId) : null,

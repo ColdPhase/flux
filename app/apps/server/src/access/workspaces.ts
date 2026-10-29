@@ -51,7 +51,7 @@ export function workspaceRoutes(app: FastifyInstance, { db, principal, command, 
   app.post<{ Body: CreateWorkspaceCommand }>(WORKSPACES_PATH, {
     schema: { body: { type: 'object', required: ['name'], additionalProperties: false, properties: { name: nameSchema } } },
   }, async (request, reply) => command(request, reply, {
-    operation: `POST ${WORKSPACES_PATH}`, scope: null, status: 201,
+    operation: `POST ${WORKSPACES_PATH}`, scope: 'account', status: 201,
     run: (actor, conn) => createWorkspace(actor, request.body, conn, accessPorts),
     replay: requires('workspace', 'workspace.read', bodyId),
   }));

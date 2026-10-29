@@ -92,12 +92,12 @@ export async function personalRunRoutes(app: FastifyInstance, { db, sessions, bo
   app.get(PERSONAL_ASSISTANT_PATH, async (request) => runs.status(await principal(request)));
   app.post<{ Body: EnablePersonalRunsCommand }>(PERSONAL_ASSISTANT_PATH, { schema: { body: enable } },
     async (request, reply) => command(request, reply, {
-      operation: `POST ${PERSONAL_ASSISTANT_PATH}`, scope: null, status: 201,
+      operation: `POST ${PERSONAL_ASSISTANT_PATH}`, scope: 'account', status: 201,
       run: (actor, conn) => personalRunUseCases(conn, composition).enable(actor, request.body), replay: ownState,
     }));
   app.patch<{ Body: UpdatePersonalRunsCommand }>(PERSONAL_ASSISTANT_PATH, { schema: { body: update } },
     async (request, reply) => command(request, reply, {
-      operation: `PATCH ${PERSONAL_ASSISTANT_PATH}`, scope: null,
+      operation: `PATCH ${PERSONAL_ASSISTANT_PATH}`, scope: 'account',
       run: (actor, conn) => personalRunUseCases(conn, composition).update(actor, request.body ?? {}, expectedVersion(request)), replay: ownState,
     }));
   // The assistant's model (F-027 AST-11): the caller's own choice and list, never another person's.
@@ -108,20 +108,20 @@ export async function personalRunRoutes(app: FastifyInstance, { db, sessions, bo
     });
   app.put<{ Body: ChangeAssistantModelCommand }>(ASSISTANT_MODEL_PATH, { schema: { body: chooseModel } },
     async (request, reply) => command(request, reply, {
-      operation: `PUT ${ASSISTANT_MODEL_PATH}`, scope: null,
+      operation: `PUT ${ASSISTANT_MODEL_PATH}`, scope: 'account',
       run: (actor, conn) => personalRunUseCases(conn, composition).chooseModel(actor, request.body), replay: ownState,
     }));
   app.put<{ Body: SelectPersonalAgentCommand }>(PERSONAL_ASSISTANT_AGENTS_PATH, { schema: { body: selectAgent } },
     async (request, reply) => command(request, reply, {
-      operation: `PUT ${PERSONAL_ASSISTANT_AGENTS_PATH}`, scope: null,
+      operation: `PUT ${PERSONAL_ASSISTANT_AGENTS_PATH}`, scope: 'account',
       run: (actor, conn) => personalRunUseCases(conn, composition).selectAgent(actor, request.body), replay: ownState,
     }));
   app.post(PERSONAL_ASSISTANT_PAUSE_PATH, async (request, reply) => command(request, reply, {
-    operation: `POST ${PERSONAL_ASSISTANT_PAUSE_PATH}`, scope: null,
+    operation: `POST ${PERSONAL_ASSISTANT_PAUSE_PATH}`, scope: 'account',
     run: (actor, conn) => personalRunUseCases(conn, composition).pause(actor), replay: ownState,
   }));
   app.post(PERSONAL_ASSISTANT_RESUME_PATH, async (request, reply) => command(request, reply, {
-    operation: `POST ${PERSONAL_ASSISTANT_RESUME_PATH}`, scope: null,
+    operation: `POST ${PERSONAL_ASSISTANT_RESUME_PATH}`, scope: 'account',
     run: (actor, conn) => personalRunUseCases(conn, composition).resume(actor), replay: ownState,
   }));
   app.delete(PERSONAL_ASSISTANT_PATH, async (request, reply) => {
@@ -134,7 +134,7 @@ export async function personalRunRoutes(app: FastifyInstance, { db, sessions, bo
       // 202 for a new run; 200 when the same clientRunId returns the existing one.
       let created = false;
       return command(request, reply, {
-        operation: `POST ${conversationAssistantRunsPath(':conversationId')}`, scope: null, status: () => (created ? 202 : 200),
+        operation: `POST ${conversationAssistantRunsPath(':conversationId')}`, scope: 'account', status: () => (created ? 202 : 200),
         run: async (actor, conn) => {
           const started = await personalRunUseCases(conn, composition).invoke(actor, request.params.conversationId, request.body);
           created = started.created;
@@ -149,14 +149,14 @@ export async function personalRunRoutes(app: FastifyInstance, { db, sessions, bo
     async (request) => runs.listOwn(await principal(request), request.query));
   app.get<{ Params: { runId: string } }>(assistantRunPath(':runId'), async (request) => runs.get(await principal(request), request.params.runId));
   app.post<{ Params: { runId: string } }>(assistantRunStopPath(':runId'), async (request, reply) => command(request, reply, {
-    operation: `POST ${assistantRunStopPath(':runId')}`, scope: null,
+    operation: `POST ${assistantRunStopPath(':runId')}`, scope: 'account',
     run: (actor, conn) => personalRunUseCases(conn, composition).stop(actor, request.params.runId), replay: ownState,
   }));
   app.post<{ Params: { runId: string }; Body: RetryAssistantRunCommand }>(assistantRunRetryPath(':runId'), { schema: { body: retry } },
     async (request, reply) => {
       let created = false;
       return command(request, reply, {
-        operation: `POST ${assistantRunRetryPath(':runId')}`, scope: null, status: () => (created ? 202 : 200),
+        operation: `POST ${assistantRunRetryPath(':runId')}`, scope: 'account', status: () => (created ? 202 : 200),
         run: async (actor, conn) => {
           const started = await personalRunUseCases(conn, composition).retry(actor, request.params.runId, request.body);
           created = started.created;
@@ -175,7 +175,7 @@ export async function personalRunRoutes(app: FastifyInstance, { db, sessions, bo
   for (const [path, verb] of [[assistantProposalAcceptPath(':proposalId'), 'accept'], [assistantProposalDismissPath(':proposalId'), 'dismiss']] as const) {
     app.post<{ Params: { proposalId: string }; Body: DecideAssistantProposalCommand }>(path, { schema: { body: decide } },
       async (request, reply) => command(request, reply, {
-        operation: `POST ${path}`, scope: null, etag: true,
+        operation: `POST ${path}`, scope: 'account', etag: true,
         run: (actor, conn) => assistantProposalUseCases(conn, queue)[verb](actor, request.params.proposalId, request.body ?? {}, expectedVersion(request)),
         // A replay needs current read access to the proposal's project.
         replay: async (actor, body, conn) => { await assistantProposalUseCases(conn, queue).get(actor, String((body as { id?: unknown } | null)?.id ?? '')); },

@@ -1,6 +1,7 @@
 import { sql, type SQL } from 'drizzle-orm';
 import type { WorkObjectType, WorkReadRef } from '@flux/contracts';
 import type { DbExecutor } from './push.js';
+import { openField, sealOf } from '../sealing.js';
 
 /** Native structural scope, matching workRows.targetExists. Central project.read is
  * required by the caller first; private/DM sketches are never project-work endpoints.
@@ -74,6 +75,13 @@ export function nativeWorkVisibilityRows(db: DbExecutor) {
         FROM refs g LEFT JOIN visible e ON (e.from_type = g.kind AND e.from_id = g.id) OR (e.to_type = g.kind AND e.to_id = g.id)
         GROUP BY g.kind, g.id`);
       if (result.rows.length !== expectedCount) throw new Error('Incomplete native relation count observation');
+      // F-030: the rule's title comes through SQL sealed; it is opened here.
+      const withRule = result.rows.filter((row) => row.rule);
+      if (withRule.length) {
+        const [project] = (await db.execute<{ workspace_id: string }>(sql`SELECT workspace_id FROM projects WHERE id = ${projectId}::uuid`)).rows;
+        const seal = await sealOf(db, project!.workspace_id, { write: false });
+        for (const row of withRule) row.rule = { ...row.rule!, title: openField('project_decisions', 'title', [row.rule!.id], row.rule!.title, seal)! };
+      }
       return result.rows;
     },
   };
