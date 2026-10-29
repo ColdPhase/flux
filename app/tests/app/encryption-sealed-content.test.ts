@@ -1,8 +1,10 @@
 import assert from 'node:assert/strict';
 import { createHash, randomUUID } from 'node:crypto';
 import { before, describe, test } from 'node:test';
+import WebSocket from 'ws';
 import { projectObjectNoticesPath, type Project } from '@flux/contracts';
 import { pool } from './support/db.js';
+import { apiUrl, Browser, publicOrigin } from './support/http.js';
 import { createSealed, lock, passphrase, unlock } from './support/encryption.js';
 import { addMember, expectStatus, person, workspace, type Person } from './support/people.js';
 
@@ -218,6 +220,60 @@ describe('F-030 S2a-1: sealed content in the repositories', () => {
     const live = (await pool.query(`SELECT (SELECT count(*) FROM doc_live_heads h JOIN project_materials m ON m.id = h.doc_id WHERE m.workspace_id = $1)
       + (SELECT count(*) FROM map_live_heads WHERE workspace_id = $1) AS n`, [A])).rows[0];
     assert.equal(Number(live.n), 0, 'nothing was written to the live tables for A');
+  });
+
+  test('a live room for A\'s doc or map is refused with 409 for a reader and 404 for an outsider; B\'s opens (S2a-2b review)', async () => {
+    const outsider = await person('Room outsider');
+    const join = (who: Person, kind: 'wiki' | 'map', id: string) => new Promise<string>((resolve) => {
+      const url = new URL(`/api/v1/editing?kind=${kind}&id=${id}`, apiUrl); url.protocol = 'ws:';
+      const socket = new WebSocket(url, { headers: { origin: publicOrigin, host: new URL(publicOrigin).host, cookie: who.browser.cookieHeader() }, perMessageDeflate: false });
+      const timer = setTimeout(() => { socket.terminate(); resolve('timeout'); }, 8000);
+      socket.once('open', () => { clearTimeout(timer); socket.terminate(); resolve('open'); });
+      socket.once('unexpected-response', (_request, response) => { clearTimeout(timer); resolve(`refused ${response.statusCode}`); socket.terminate(); });
+      socket.once('error', (error) => { clearTimeout(timer); resolve(`error ${error.message}`); });
+    });
+    for (const [kind, key] of [['wiki', 'doc'], ['map', 'sketch']] as const) {
+      assert.equal(await join(ben, kind, ids.A[key]), 'refused 409', `A ${kind}: a reader learns it is not offered yet`);
+      assert.equal(await join(outsider, kind, ids.A[key]), 'refused 404', `A ${kind}: an outsider learns nothing`);
+      assert.equal(await join(ben, kind, ids.B[key]), 'open', `B ${kind} opens`);
+    }
+    // Over HTTP too, the refusal follows the session and access checks.
+    assert.equal((await new Browser().request('GET', `/api/v1/docs/${ids.A.doc}/live`)).status, 401, 'no session: 401 first');
+    assert.equal((await outsider.browser.request('GET', `/api/v1/docs/${ids.A.doc}/live`)).status, 404, 'an outsider: 404');
+  });
+
+  test('a sealed chooser search that reaches its scan limit says so (searchLimited); below the limit and in B it does not', async () => {
+    const limit = Number(process.env.FLUX_TEST_SEALED_CHOOSER_SCAN_LIMIT ?? 0);
+    for (const [side, ws] of [['A', A], ['B', B]] as const) {
+      const project = await post(ada, `/api/v1/workspaces/${ws}/projects`, { name: `Many ${side}`, visibility: 'workspace' }, 201);
+      const search = async () => (await ada.browser.request('GET', `/api/v1/projects/${String(project.id)}/work-view?purpose=choices&choice=pivot_work&q=needle`)).json as
+        { searchLimited?: boolean; total: number };
+      await post(ada, `/api/v1/projects/${String(project.id)}/work`, { title: 'needle 0' }, 201);
+      assert.equal((await search()).searchLimited, undefined, `${side}: below the limit`);
+      for (let index = 1; index <= 9; index += 1) await post(ada, `/api/v1/projects/${String(project.id)}/work`, { title: `needle ${index}` }, 201);
+      const many = await search();
+      if (side === 'A' && limit > 0 && limit < 10) {
+        assert.equal(many.searchLimited, true, 'A: more objects than the scan opens');
+        assert.equal(many.total, limit, 'A: total counts matches among the opened ones');
+      } else {
+        assert.equal(many.searchLimited, undefined, `${side}: no marker`);
+        assert.equal(many.total, 10);
+      }
+    }
+  });
+
+  test('a promoted DM map lists its copy with the opened project name', async () => {
+    for (const [side, ws] of [['A', A], ['B', B]] as const) {
+      const c = canaries[side];
+      const dm = await post(ada, `/api/v1/workspaces/${ws}/dms`, { participantIds: [ben.id, cy.id], title: `Copy ${side}` }, 201);
+      const sketch = await post(ada, `/api/v1/workspaces/${ws}/sketches`, { title: `${c.mapTitle} dm`, scope: 'dm', dmId: dm.id }, 201);
+      await post(ada, `/api/v1/sketches/${String(sketch.id)}/thoughts`, { text: `${c.thought} dm`, x: 0, y: 0 }, 201);
+      const preview = expectStatus(await ada.browser.request('GET', `/api/v1/sketches/${String(sketch.id)}/promotion?target=new&participants=none`), 200, `${side}: preview`) as { token: string };
+      const name = `${c.project} copy`;
+      await post(ada, `/api/v1/sketches/${String(sketch.id)}/promotion`, { target: { kind: 'new', name }, token: preview.token, participants: 'none' }, 201);
+      const source = expectStatus(await ada.browser.request('GET', `/api/v1/sketches/${String(sketch.id)}`), 200, `${side}: source`) as { copies?: { projectName: string }[] };
+      assert.deepEqual(source.copies?.map((copy) => copy.projectName), [name], `${side}: the copy shows the opened project name`);
+    }
   });
 
   test('A\'s rows hold envelopes, B\'s plain text; the draft versions of A are written by the application, sealed', async () => {
