@@ -192,7 +192,8 @@
 .sk-zoom button:hover:not(:disabled) { background: var(--hov); color: var(--t1); }
 .sk-zoom button:disabled { opacity: .45; cursor: default; }
 .sk-zoom .sk-zoom__level { min-width: 44px; }
-.sk-zoom .sk-zoom__fit { min-width: 36px; padding: 0 8px; font-size: var(--fs-sm); color: var(--t2); font-weight: 500; }
+/* 38px holds "Fit" in the loaded face too (37.6px in WebKit), so the web font arriving never widens the group and moves it (Spokój rule 7, #510). */
+.sk-zoom .sk-zoom__fit { min-width: 38px; padding: 0 8px; font-size: var(--fs-sm); color: var(--t2); font-weight: 500; }
 /* Every map keeps controls outside its scroll viewport: thoughts remain clear while scrolling,
    including at the Fit floor and in the phone's unchanged full-size two-column projection.
    Flex measures the real control height (including larger touch targets) within the same footprint. */
