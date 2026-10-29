@@ -99,6 +99,7 @@ export async function sendMorningSummaries(uow: SummaryUnitOfWork, now: Date = n
     if (outcome === 'writing') writing++;
   }
   // Failures are thrown after every person had their turn, so the job still reports them (and retries the rest).
+  if (failed.length === 1) throw failed[0];
   if (failed.length) throw new AggregateError(failed, `${failed.length} morning summaries failed`);
   // `writing` appears only when the assistant has runs on the way (F-027 A8); the plain tick keeps its shape.
   return writing ? { sent, empty, writing } : { sent, empty };
