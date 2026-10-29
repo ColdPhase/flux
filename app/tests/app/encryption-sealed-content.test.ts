@@ -61,9 +61,9 @@ async function writeEverything(side: 'A' | 'B', ws: string) {
   const sketch = await post(ada, `/api/v1/workspaces/${ws}/sketches`, { title: c.mapTitle, scope: 'project', projectId: project.id }, 201);
   const one = await post(ada, `/api/v1/sketches/${sketch.id}/thoughts`, { text: c.thought, x: 0, y: 0 }, 201);
   const two = await post(ada, `/api/v1/sketches/${sketch.id}/thoughts`, { text: `${c.thought} two`, x: 200, y: 0 }, 201);
-  await post(ada, `/api/v1/sketches/${sketch.id}/links`, { fromId: one.id, toId: two.id, label: c.linkLabel.slice(0, 60) }, 201);
+  await post(ada, `/api/v1/sketches/${sketch.id}/links`, { fromId: (one.thought as { id: string }).id, toId: (two.thought as { id: string }).id, label: c.linkLabel.slice(0, 60) }, 201);
   ids[side] = { project: project.id, conversation: String(conversation.id), dm: String(dm.id), decision: String(decision.id), result: String(result.id), draft: String(draft.id),
-    task: String(task.id), doc: String(doc.id), material: String(material.id), sketch: String(sketch.id) };
+    task: String(task.id), doc: String(doc.id), material: String(material.materialId ?? material.id), sketch: String(sketch.id) };
 }
 
 /** Every row of every table of the public schema, as text. */

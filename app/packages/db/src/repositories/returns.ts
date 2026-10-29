@@ -29,7 +29,15 @@ function excerpt(body: string) {
   return line.length > 160 ? `${line.slice(0, 159)}…` : line;
 }
 
+/** A current version's title and reason, read under the material's id and version (F-030), opened. */
+async function openVersionTextWith<T extends { id: string; workspaceId: string; version: number; title: string; reason?: string | null }>(db: DbExecutor, rows: T[]): Promise<T[]> {
+  const opened = await openRows(db, 'project_material_versions', rows.map((row) => ({ materialId: row.id, workspaceId: row.workspaceId, version: row.version, title: row.title,
+    ...(row.reason !== undefined ? { reason: row.reason } : {}) })));
+  return rows.map((row, index) => ({ ...row, title: opened[index]!.title, ...(row.reason !== undefined ? { reason: opened[index]!.reason } : {}) }));
+}
+
 export function returnRows(db: DbExecutor) {
+  const openVersionText = <T extends { id: string; workspaceId: string; version: number; title: string; reason?: string | null }>(rows: T[]) => openVersionTextWith(db, rows);
   return {
     async points(userId: string, keys: string[]) {
       if (!keys.length) return new Map();
@@ -199,9 +207,10 @@ export function returnRows(db: DbExecutor) {
       if (!ids.length) return new Map();
       const pm = schema.projectMaterials;
       const v = schema.projectMaterialVersions;
-      const rows = await db.select({ id: pm.id, projectId: pm.projectId, title: v.title, version: pm.currentVersion }).from(pm)
+      const read = await db.select({ id: pm.id, workspaceId: pm.workspaceId, projectId: pm.projectId, title: v.title, version: pm.currentVersion }).from(pm)
         .innerJoin(v, and(eq(v.materialId, pm.id), eq(v.version, pm.currentVersion))).where(inArray(pm.id, ids));
-      return byId(rows);
+      const rows = await openVersionText(read);
+      return byId(rows.map(({ id, projectId, title, version }) => ({ id, projectId, title, version })));
     },
 
     /** Project docs (#112): materials of kind 'doc' with their current version's title and reason. */
@@ -209,15 +218,16 @@ export function returnRows(db: DbExecutor) {
       if (!ids.length) return new Map();
       const pm = schema.projectMaterials;
       const v = schema.projectMaterialVersions;
-      const rows = await db.select({ id: pm.id, projectId: pm.projectId, title: v.title, version: pm.currentVersion, reason: v.reason }).from(pm)
+      const read = await db.select({ id: pm.id, workspaceId: pm.workspaceId, projectId: pm.projectId, title: v.title, version: pm.currentVersion, reason: v.reason }).from(pm)
         .innerJoin(v, and(eq(v.materialId, pm.id), eq(v.version, pm.currentVersion))).where(and(inArray(pm.id, ids), eq(pm.kind, 'doc')));
-      return byId(rows);
+      const rows = await openVersionText(read);
+      return byId(rows.map(({ id, projectId, title, version, reason }) => ({ id, projectId, title, version, reason })));
     },
 
     async sketches(ids: string[]) {
       if (!ids.length) return new Map();
       const s = schema.sketches;
-      return byId(await db.select({ id: s.id, workspaceId: s.workspaceId, projectId: s.projectId, title: s.title }).from(s).where(inArray(s.id, ids)));
+      return byId(await openRows(db, 'sketches', await db.select({ id: s.id, workspaceId: s.workspaceId, projectId: s.projectId, title: s.title }).from(s).where(inArray(s.id, ids))));
     },
 
     async names(keys: string[]) {
