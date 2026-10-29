@@ -51,7 +51,7 @@ describe('F-030 registry against the live catalog', () => {
       }
       const names = new Set(columns.map((c) => c.column));
       for (const column of [...Object.keys(sealed), ...Object.keys(visible)]) if (!names.has(column)) stale.push(`${table}.${column}`);
-      for (const reason of Object.values(visible)) assert.ok(reason.length > 3, `${table}: a reason`);
+      for (const [column, reason] of Object.entries(visible)) assert.ok(reason.length >= 3, `${table}.${column}: a reason`);
     }
     assert.deepEqual(missing, [], 'unclassified content columns');
     assert.deepEqual(stale, [], 'registered columns that do not exist');
@@ -106,13 +106,13 @@ describe('F-030 registry against the live catalog', () => {
             const ref = via ? randomUUID() : ws;
             if (via) await client.query(`INSERT INTO parent_row VALUES ($1, $2)`, [ref, ws]);
             await client.query('SAVEPOINT s');
-            try {
-              await client.query(`INSERT INTO probe VALUES ($1, $2)`, [ref, plain]);
+            const refused = await client.query(`INSERT INTO probe VALUES ($1, $2)`, [ref, plain]).then(() => null, (error: { hint?: string; message: string }) => error);
+            if (!refused) {
               assert.equal(ws, B, `${table}.${column}: plaintext was stored for A`);
-            } catch (error) {
-              const e = error as { hint?: string; message: string };
+            } else {
+              const e = refused;
               assert.equal(ws, A, `${table}.${column}: B refused (${e.message})`);
-              assert.equal(e.hint, 'WORKSPACE_PLAINTEXT_REFUSED');
+              assert.equal(e.hint, 'WORKSPACE_PLAINTEXT_REFUSED', `${table}.${column}: ${e.message}`);
               assert.match(e.message, new RegExp(`probe\\.${column}$`));
               assert.equal(e.message.includes('plain words'), false);
               await client.query('ROLLBACK TO SAVEPOINT s');
@@ -128,8 +128,9 @@ describe('F-030 registry against the live catalog', () => {
   test('flux_is_sealed accepts only an envelope or {"$sealed": envelope}', async () => {
     const cases: [string, boolean][] = [[`'fx1.1.${'A'.repeat(38)}'::text`, true], [`'fx1.0.${'A'.repeat(38)}'::text`, false], [`'fx1.1.${'A'.repeat(37)}'::text`, false],
       [`'fx1.1.${'A'.repeat(38)}!'::text`, false], [`'plain'::text`, false], [`'{"$sealed":"fx1.2.${'B'.repeat(40)}"}'::jsonb`, true],
-      [`'{"$sealed":"fx1.2.${'B'.repeat(40)}","x":1}'::jsonb`, false], [`'{"$sealed":"plain"}'::jsonb`, false], [`'["fx1.1.${'A'.repeat(40)}"]'::jsonb`, false], [`'"fx1.1.${'A'.repeat(40)}"'::jsonb`, true]];
-    for (const [literal, expected] of cases) assert.equal((await pool.query(`SELECT flux_is_sealed(${literal}) AS ok`)).rows[0].ok, expected, literal);
+      [`'{"$sealed":"fx1.2.${'B'.repeat(40)}","x":1}'::jsonb`, false], [`'{"$sealed":"plain"}'::jsonb`, false], [`'["fx1.1.${'A'.repeat(40)}"]'::jsonb`, false], [`'"fx1.1.${'A'.repeat(40)}"'::jsonb`, true],
+      [`'{"secret":"plain words"}'::jsonb`, false], [`'{}'::jsonb`, false], [`'[]'::jsonb`, false], [`'"plain"'::jsonb`, false], [`'7'::jsonb`, false]];
+    for (const [literal, expected] of cases) assert.strictEqual((await pool.query(`SELECT flux_is_sealed(${literal}) AS ok`)).rows[0].ok, expected, `${literal}: never NULL`);
   });
 
   test('SQL reads a sealed column only in the allowed trigger functions, and copies none for a sealed workspace', async () => {

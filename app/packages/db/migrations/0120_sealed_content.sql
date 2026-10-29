@@ -37,12 +37,13 @@ CREATE TRIGGER artifact_pr_delta AFTER INSERT OR UPDATE ON github_task_links FOR
 -- 2. Envelopes: `fx1.<version>.<base64url>` as text, `{"$sealed": envelope}` (or the bare envelope string) as jsonb.
 CREATE FUNCTION flux_is_sealed(value text) RETURNS boolean IMMUTABLE STRICT LANGUAGE sql AS
   $$ SELECT value ~ '^fx1\.[1-9][0-9]{0,8}\.[A-Za-z0-9_-]{38,}$' $$;
+-- Never NULL for a value: an object without `$sealed` is false, not unknown.
 CREATE FUNCTION flux_is_sealed(value jsonb) RETURNS boolean IMMUTABLE STRICT LANGUAGE sql AS $$
-  SELECT CASE jsonb_typeof(value)
+  SELECT coalesce(CASE jsonb_typeof(value)
     WHEN 'string' THEN flux_is_sealed(value #>> '{}')
     WHEN 'object' THEN (SELECT count(*) FROM jsonb_object_keys(value)) = 1 AND jsonb_typeof(value -> '$sealed') = 'string'
       AND flux_is_sealed(value ->> '$sealed')
-    ELSE false END $$;
+    ELSE false END, false) $$;
 
 -- TG_ARGV[0] is the workspace path ('workspace_id', or 'via:<column>:<parent table>:<parent key>'), the rest the sealed
 -- columns. NULL and '' carry no content and pass.
@@ -62,7 +63,7 @@ BEGIN
   FOR i IN 1 .. TG_NARGS - 1 LOOP
     v := r -> TG_ARGV[i];
     CONTINUE WHEN v IS NULL OR v = 'null'::jsonb OR v = '""'::jsonb;
-    IF NOT flux_is_sealed(v) THEN
+    IF flux_is_sealed(v) IS NOT TRUE THEN
       RAISE EXCEPTION 'An encrypted workspace refuses plaintext in %.%', TG_TABLE_NAME, TG_ARGV[i]
         USING ERRCODE = 'FX409', HINT = 'WORKSPACE_PLAINTEXT_REFUSED';
     END IF;
@@ -124,7 +125,6 @@ SELECT pg_temp.relax(t::regclass, c, col) FROM (VALUES
   ('project_work_items', 'project_work_items_outcome_check', 'outcome'),
   ('project_work_items', 'project_work_criteria_bounded', 'criteria'),
   ('project_task_plan_intents', 'project_task_plan_intents_creation_fingerprint_check', 'creation_fingerprint'),
-  ('task_creation_undo_receipts', 'task_creation_undo_receipts_request_fingerprint_check', 'request_fingerprint'),
   ('project_material_versions', 'project_material_versions_title_check', 'title'),
   ('project_material_versions', 'project_material_versions_body_check', 'body'),
   ('project_material_versions', 'project_material_versions_reason_check', 'reason'),

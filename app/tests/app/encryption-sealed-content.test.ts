@@ -12,7 +12,7 @@ import { addMember, expectStatus, person, workspace, type Person } from './suppo
 // is then scanned for each canary of A, raw, JSON-escaped and as its SHA-256 hex: zero hits. B's canaries are found
 // (positive control).
 
-let ada: Person; let ben: Person;
+let ada: Person; let ben: Person; let cy: Person;
 let A: string; let B: string;
 const pw = passphrase();
 const kinds = ['project', 'goal', 'message', 'reply', 'large', 'dmTitle', 'dmMessage', 'decision', 'rationale', 'result', 'evidence', 'draft', 'draftBody', 'draftEdit'] as const;
@@ -21,7 +21,7 @@ const canaries: Record<'A' | 'B', Record<Kind, string>> = { A: {} as Record<Kind
 for (const side of ['A', 'B'] as const) {
   for (const kind of kinds) canaries[side][kind] = `canary-${side}-${kind}-${randomUUID()}`;
   // Over 8 KiB of repetitive text, so PostgreSQL TOASTs and compresses it (the dump decompresses; the scan reads values).
-  canaries[side].large = `${canaries[side].large} ${'garden '.repeat(1500)}`;
+  canaries[side].large = `${canaries[side].large} ${'garden '.repeat(1500).trim()}`;
 }
 const ids: Record<'A' | 'B', { project: string; conversation: string; dm: string; decision: string; result: string; draft: string }> = {} as never;
 const key = () => ({ 'idempotency-key': randomUUID() });
@@ -37,7 +37,7 @@ async function writeEverything(side: 'A' | 'B', ws: string) {
   const conversation = await post(ada, `/api/v1/projects/${project.id}/conversations`, { body: c.message, clientMessageId: randomUUID() }, 201);
   await post(ben, `/api/v1/conversations/${conversation.id}/messages`, { body: c.reply, clientMessageId: randomUUID() }, 201);
   await post(ben, `/api/v1/conversations/${conversation.id}/messages`, { body: c.large, clientMessageId: randomUUID() }, 201);
-  const dm = await post(ada, `/api/v1/workspaces/${ws}/dms`, { participantIds: [ben.id], title: c.dmTitle }, 201);
+  const dm = await post(ada, `/api/v1/workspaces/${ws}/dms`, { participantIds: [ben.id, cy.id], title: c.dmTitle }, 201);
   await post(ada, `/api/v1/dms/${dm.id}/messages`, { body: c.dmMessage, clientMessageId: randomUUID() }, 201);
   const decision = await post(ada, `/api/v1/projects/${project.id}/decisions`, { title: c.decision, rationale: c.rationale }, 201);
   await post(ada, `/api/v1/decisions/${decision.id}/accept`, {}, 200, { 'if-match': `"${decision.version}"` });
@@ -61,10 +61,13 @@ const encodings = (value: string) => [value, JSON.stringify(value).slice(1, -1),
   Buffer.from(value).toString('base64'), Buffer.from(value).toString('hex')];
 
 before(async () => {
-  [ada, ben] = [await person('Ada'), await person('Ben')];
+  [ada, ben, cy] = [await person('Ada'), await person('Ben'), await person('Cy')];
   A = (await createSealed(ada, 'Garden club', pw)).workspace.id;
   B = (await workspace(ada, 'Book club')).id;
-  for (const ws of [A, B]) await addMember(ada, ws, ben, 'admin');
+  for (const ws of [A, B]) {
+    await addMember(ada, ws, ben, 'admin');
+    await addMember(ada, ws, cy, 'member');
+  }
   await writeEverything('A', A);
   await writeEverything('B', B);
 });
