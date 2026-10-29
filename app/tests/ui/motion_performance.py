@@ -23,8 +23,8 @@ stay unchanged for 150 ms to count as settled (the worst frame gap is read to th
 
 Budgets are the ones agreed in docs/design/adaptive-workspaces.md ("Agreed performance budgets"); the
 constants below must equal that table (tests/test_adaptive_budgets.py checks it). Observed failures are
-reported, never hidden; the run fails when a budget fails, except a miss listed in KNOWN_MISSES, which names its issue, is
-reported as open and fails the run once it stops missing. Each distribution also reports its long animation frames (over 50 ms):
+reported, never hidden; the run fails when a budget fails, except a miss listed in KNOWN_MISSES, which names its issue and a
+ceiling for its p95, is reported as open, fails the run above that ceiling and fails it once it stops missing. Each distribution also reports its long animation frames (over 50 ms):
 how many, how long, and which scripts and how much forced layout they held. Observed, not budgeted.
 """
 from __future__ import annotations
@@ -65,9 +65,22 @@ BUDGETS = {
 # A frame time is a requestAnimationFrame timestamp, quantised to the 16.7 ms frame: three frames read 50.0 to 50.1 ms. A p95 within
 # half a millisecond of its budget passes; nothing else is allowed over.
 JITTER_MS = 0.5
-# Budgets the harness measures as missed today. Each is reported as open (never as passing) and names its issue; the run does not
-# fail for it, and does fail when it stops missing, so a closed miss must be deleted from this list.
-KNOWN_MISSES = {"phone-cpu4:workTab:maxFrameGap": "#716"}
+# Budgets the harness measures as missed today. Each is reported as open (never as passing), names its issue and carries a ceiling
+# for its p95 (just above the worst of the runs that found it): the run does not fail for the miss, fails above the ceiling, and
+# fails when the miss stops, so a closed one must be deleted from this list.
+KNOWN_MISSES = {"phone-cpu4:workTab:maxFrameGap": {"issue": "#716", "maxP95": 150}}
+
+
+def classify_misses(failures, p95s):
+    """Splits budget failures into the known misses still within their ceiling, the failures that are not allowed (an unknown one,
+    or a known one above its ceiling) and the known misses that no longer miss."""
+    known = {failure: {"issue": KNOWN_MISSES[failure]["issue"], "maxP95": KNOWN_MISSES[failure]["maxP95"], "p95": p95s[failure]}
+             for failure in failures if failure in KNOWN_MISSES and failure in p95s and p95s[failure] <= KNOWN_MISSES[failure]["maxP95"] + JITTER_MS}
+    unexpected = sorted(failure for failure in failures if failure not in known)
+    closed = sorted(miss for miss in KNOWN_MISSES if miss not in failures)
+    return known, unexpected, closed
+
+
 # The same desktop journeys with reduced motion (tokens 0 ms): what the motion itself costs.
 BUDGETS["desktop-reduced"] = dict(BUDGETS["desktop"])
 # Window sizes: the profile's own, and what a person can reach from it (a tablet, a wide screen; a rotation, an unfolded phone).
@@ -246,6 +259,7 @@ class MotionPerformance(unittest.TestCase):
         cls.pw = sync_playwright().start()
         cls.browser = cls.pw.chromium.launch()
         fixture = build_fixture(cls.browser)
+        cls.p95s = {}
         cls.states, cls.ids, cls.projects, cls.thread = fixture["states"], fixture["ids"], fixture["projects"], fixture["thread"]
         cls.report = {"schema": 2, "sourceCommit": os.environ.get("FLUX_GIT_COMMIT", "unavailable"), "browser": cls.browser.version,
                       "startedUTC": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), "fixtureSeconds": fixture["seconds"],
@@ -419,13 +433,11 @@ class MotionPerformance(unittest.TestCase):
             self.assertTrue(box.input_value().startswith("Measured reply text"), "the measurement only typed and erased one character")
             context.close(); watcher.close()
             self.finish(profile, label, failures)
-        misses = sorted(failure for failure in failures if failure in KNOWN_MISSES)
-        unexpected = sorted(failure for failure in failures if failure not in KNOWN_MISSES)
-        closed = sorted(known for known in KNOWN_MISSES if known not in failures)
-        self.report["knownMisses"] = {miss: KNOWN_MISSES[miss] for miss in misses}
+        misses, unexpected, closed = classify_misses(failures, self.p95s)
+        self.report["knownMisses"] = misses
         self.report["observedFailures"] = unexpected
         self.report["outcome"] = "observed-budget-failures" if unexpected else "within-budgets-except-known-misses" if misses else "within-budgets"
-        self.assertEqual(unexpected, [], "every p95 is within its budget")
+        self.assertEqual(unexpected, [], "every p95 is within its budget, or its known miss's ceiling")
         self.assertEqual(closed, [], "a known miss that no longer misses is deleted from KNOWN_MISSES")
 
     def finish(self, profile, label, failures):
@@ -436,6 +448,7 @@ class MotionPerformance(unittest.TestCase):
             for metric, data in distribution.items():
                 if isinstance(data, dict) and data.get("passed") is False:
                     failures.append(f"{label}:{name}:{metric}")
+                    self.p95s[f"{label}:{name}:{metric}"] = data["p95"]
         self.report["profiles"].append(profile)
 
 

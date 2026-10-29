@@ -160,7 +160,8 @@ unoptimised baseline of `main` `3f0311a26`. **Independent agreement is still owe
 first version of this table loosened two frame-gap budgets to pass; this version restores them. A budget changes only
 with new measurements and a review. The opt-in harness
 [`motion_performance.py`](../../app/tests/ui/motion_performance.py) fails when a p95 exceeds its budget (a miss it lists
-in `KNOWN_MISSES`, with its issue, is reported as open and fails the run once it stops missing), and
+in `KNOWN_MISSES`, with its issue and a ceiling for its p95, is reported as open, fails the run above that ceiling and
+fails it once it stops missing), and
 `tests/test_adaptive_budgets.py` fails when the harness constants and this table differ.
 
 - **Dataset.** Two accounts in a workspace; three restricted projects, each with 60 conversation roots and 40
@@ -201,7 +202,8 @@ third (a lighter host), against 100: [#716](https://github.com/ColdPhase/flux/is
 profile of 80 view changes shows where it goes: 79 of 80 phone view changes contain a long frame (median 79 ms,
 p95 147 ms); the time is the React scheduler's task running script, 38% of it forced synchronous style and layout, and
 the response handler (25.7 ms each); style and layout outside script are about 2 ms. The harness reports the miss as
-open and lists it in `KNOWN_MISSES`.
+open and lists it in `KNOWN_MISSES` with a ceiling of **150 ms** (nine frames, just above the worst of the three runs):
+a p95 above that fails the run, so the exemption cannot hide a further regression.
 
 **Basis, row by row.** Rule: a budget that existed in the harness or the kickoff before this PR is not loosened. A
 new one, or one tightened from a looser inherited ceiling, is the platform bound where one exists and else the worst

@@ -31,12 +31,25 @@ def agreed() -> dict[str, dict[str, int]]:
     return table
 
 
-def harness() -> dict[str, dict[str, int]]:
+def constant(name: str):
     tree = ast.parse(HARNESS.read_text(encoding="utf-8"))
     for node in tree.body:
-        if isinstance(node, ast.Assign) and any(getattr(target, "id", "") == "BUDGETS" for target in node.targets):
-            return {profile: values for profile, values in ast.literal_eval(node.value).items()}
-    raise AssertionError("BUDGETS not found in motion_performance.py")
+        if isinstance(node, ast.Assign) and any(getattr(target, "id", "") == name for target in node.targets):
+            return ast.literal_eval(node.value)
+    raise AssertionError(f"{name} not found in motion_performance.py")
+
+
+def harness() -> dict[str, dict[str, int]]:
+    return constant("BUDGETS")
+
+
+def classify_misses():
+    """The harness's own `classify_misses`, executed without importing it (it needs a browser library) against its constants."""
+    tree = ast.parse(HARNESS.read_text(encoding="utf-8"))
+    node = next(n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == "classify_misses")
+    namespace = {"KNOWN_MISSES": constant("KNOWN_MISSES"), "JITTER_MS": constant("JITTER_MS")}
+    exec(compile(ast.Module([node], []), str(HARNESS), "exec"), namespace)
+    return namespace["classify_misses"]
 
 
 class AdaptiveBudgets(unittest.TestCase):
@@ -51,6 +64,24 @@ class AdaptiveBudgets(unittest.TestCase):
         for key, desktop in table["desktop"].items():
             self.assertGreater(desktop, 0, key)
             self.assertGreaterEqual(table["phone-cpu4"][key], desktop, f"{key}: a throttled phone cannot be held to less than the desktop")
+
+    def test_a_known_miss_has_its_issue_and_a_ceiling_in_the_document_and_the_harness_enforces_it(self):
+        section = DOC.read_text(encoding="utf-8").split("## Agreed performance budgets", 1)[1].split("\n## ", 1)[0]
+        known = constant("KNOWN_MISSES")
+        self.assertTrue(known, "no known misses: delete this test and the section's paragraph with them")
+        classify = classify_misses()
+        for miss, entry in known.items():
+            self.assertIn(entry["issue"], section, f"{miss}: its issue is named in the budgets section")
+            self.assertIn(f"{entry['maxP95']} ms", section, f"{miss}: its ceiling is named in the budgets section")
+            ceiling = entry["maxP95"]
+            within, unexpected, closed = classify([miss], {miss: ceiling})
+            self.assertEqual((list(within), unexpected, closed), ([miss], [], []), "at its ceiling it stays a known miss")
+            within, unexpected, closed = classify([miss], {miss: ceiling + 16.7})
+            self.assertEqual((within, unexpected, closed), ({}, [miss], []), "one frame above its ceiling it fails the run")
+            within, unexpected, closed = classify([], {})
+            self.assertEqual((within, unexpected, closed), ({}, [], sorted(known)), "no longer missing it must be deleted")
+        within, unexpected, closed = classify(["desktop:workTab:maxFrameGap"], {"desktop:workTab:maxFrameGap": 51.0})
+        self.assertEqual(unexpected, ["desktop:workTab:maxFrameGap"], "a budget that is not a known miss fails the run")
 
 
 if __name__ == "__main__":
