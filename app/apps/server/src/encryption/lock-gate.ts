@@ -57,6 +57,8 @@ export function lockedRouteKey(method: string, url: string) {
   return `${method === 'HEAD' ? 'GET' : method} ${url}`;
 }
 
+const UUIDS = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi;
+
 export function registerLockGate(app: FastifyInstance, { db, sessions, keys }: { db: Database; sessions: SessionResolver; keys: ProcessKeys }) {
   /**
    * F-030 `lockedWorkspaces` (S2a-2c): a cross-workspace read runs in `lockedReadScope`, so a sealed workspace that is
@@ -79,7 +81,7 @@ export function registerLockGate(app: FastifyInstance, { db, sessions, keys }: {
     const scopes = new WeakMap<FastifyRequest, { skipped: Set<string> }>();
     const onRequest = route.onRequest ? [route.onRequest].flat() : [];
     route.onRequest = [(request: FastifyRequest, _reply: unknown, done: () => void) => {
-      const store = { skipped: new Set<string>() };
+      const store: { skipped: Set<string>; locked?: Map<string, string> } = { skipped: new Set<string>() };
       scopes.set(request, store);
       lockedReadScope.run(store, done);
     }, ...onRequest] as RouteOptions['onRequest'];
@@ -90,16 +92,31 @@ export function registerLockGate(app: FastifyInstance, { db, sessions, keys }: {
       if (!locked.length) return payload; // absent when none is locked, so ordinary answers are unchanged
       // Every item of a locked workspace is left out (Inbox rows too, though they are content-free), whichever way the
       // item names its place: its workspace, its source's workspace, its project or its project id.
-      const lockedIds = new Set(locked.map((workspace) => workspace.id));
-      const projects = new Set(((await db.execute(sql`SELECT id FROM projects WHERE workspace_id = ANY(${`{${[...lockedIds].join(',')}}`}::uuid[])`)).rows as { id: string }[])
-        .map((row) => row.id));
+      // An item belongs to a locked workspace when it names, anywhere (a field, a source, a link), that workspace or
+      // one of its projects or DMs (#717 review P2-1: a mention's url is its only trace of the project).
+      const lockedIds = [...new Set(locked.map((workspace) => workspace.id))];
+      const list = `{${lockedIds.join(',')}}`;
+      const places = new Set([...lockedIds, ...((await db.execute(sql`SELECT id FROM projects WHERE workspace_id = ANY(${list}::uuid[])
+        UNION ALL SELECT id FROM dms WHERE workspace_id = ANY(${list}::uuid[])`)).rows as { id: string }[]).map((row) => row.id)]);
       const ofLocked = (item: unknown) => {
-        const value = (item ?? {}) as { workspaceId?: unknown; projectId?: unknown; source?: { workspaceId?: unknown; projectId?: unknown }; project?: { id?: unknown } | null };
-        return lockedIds.has(String(value.workspaceId ?? value.source?.workspaceId ?? ''))
-          || projects.has(String(value.projectId ?? value.source?.projectId ?? value.project?.id ?? ''));
+        const text = JSON.stringify(item ?? null);
+        for (const match of text.matchAll(UUIDS)) if (places.has(match[0].toLowerCase())) return true;
+        return false;
       };
       const answer = { ...(payload as Record<string, unknown>) };
-      for (const key of ['items', 'results'] as const) if (Array.isArray(answer[key])) answer[key] = (answer[key] as unknown[]).filter((item) => !ofLocked(item));
+      for (const key of ['items', 'results'] as const) {
+        if (!Array.isArray(answer[key])) continue;
+        const kept = (answer[key] as unknown[]).filter((item) => !ofLocked(item));
+        // The counts leave the locked workspaces' items out too (#717 review P3-1).
+        if (key === 'items' && typeof answer.count === 'number') answer.count = Math.max(0, answer.count - ((answer[key] as unknown[]).length - kept.length));
+        answer[key] = kept;
+      }
+      if (typeof answer.unread === 'number') {
+        const session = await sessions.resolveSession(request.headers);
+        const [row] = (await db.execute(sql`SELECT count(*)::int AS n FROM notifications WHERE user_id = ${session?.principal.id ?? ''}
+          AND workspace_id = ANY(${list}::uuid[]) AND in_inbox AND read_at IS NULL`)).rows as { n: number }[];
+        answer.unread = Math.max(0, answer.unread - (row?.n ?? 0));
+      }
       return { ...answer, lockedWorkspaces: locked };
     }, ...preSerialization] as RouteOptions['preSerialization'];
   }
@@ -122,7 +139,9 @@ export function registerLockGate(app: FastifyInstance, { db, sessions, keys }: {
     route.preValidation = [async (request: FastifyRequest) => {
       const key = lockedRouteKey(request.method, route.url);
       if (LOCKED_ALLOWED_ROUTES[key] !== undefined) return;
-      if (!CROSS_WORKSPACE_READ_ROUTES.includes(key)) await refuseWhileLocked(request, route.url);
+      if (!CROSS_WORKSPACE_READ_ROUTES.includes(key)) return refuseWhileLocked(request, route.url);
+      const store = lockedReadScope.getStore();
+      if (store) store.locked = new Map((await lockedOf(request, new Set())).map((workspace) => [workspace.id, workspace.name]));
     }, ...existing];
   });
 }

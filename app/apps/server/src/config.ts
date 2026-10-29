@@ -1,6 +1,7 @@
 import { backgroundComparisonsEnabled, loadAgentRuntimeConfig, loadPushServerConfig, type AgentRuntimeConfig, type PushServerConfig } from '@flux/core';
 import { loadBackgroundMasterKey } from '@flux/db';
 import { loadIdentityConfig, type IdentityConfig } from './identity/index.js';
+import { loadLinkPreviewsConfig, type LinkPreviewsConfig } from './link-previews/config.js';
 
 /** Test-deployment switches (#88); both are off in a production install. */
 export interface FixtureConfig {
@@ -34,6 +35,8 @@ export interface ServerConfig {
   developmentLiveEditing: boolean;
   /** `FLUX_AGENT_RUNTIME` and its settings (F-022 AIM-3); empty, the default, is off. */
   agentRuntime: AgentRuntimeConfig;
+  /** `FLUX_LINK_PREVIEWS=on` (#469): the server may fetch the pages of links in messages for their cards. Off by default. */
+  linkPreviews: LinkPreviewsConfig;
 }
 
 export function loadServerConfig(env: NodeJS.ProcessEnv = process.env, backgroundKeyPath?: string): ServerConfig {
@@ -57,5 +60,6 @@ export function loadServerConfig(env: NodeJS.ProcessEnv = process.env, backgroun
     liveEditing: liveEditing === 'on',
     developmentLiveEditing: env.FLUX_DEVELOPMENT_LIVE_EDITING === 'true',
     agentRuntime: loadAgentRuntimeConfig(env),
+    linkPreviews: loadLinkPreviewsConfig(env),
   };
 }

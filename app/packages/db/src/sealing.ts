@@ -111,7 +111,12 @@ export const sealedWorkScope = new AsyncLocalStorage<{ sealed: boolean }>();
 /** True inside a request or job that touched an encrypted workspace's seal. */
 export const touchedSealedWorkspace = () => sealedWorkScope.getStore()?.sealed === true;
 
-export const lockedReadScope = new AsyncLocalStorage<{ skipped: Set<string> }>();
+export const lockedReadScope = new AsyncLocalStorage<{ skipped: Set<string>; locked?: Map<string, string> }>();
+/**
+ * The caller's locked encrypted workspaces (id to name) of the cross-workspace read in progress, filled before its
+ * handler runs; readers that aggregate events (Return) leave these workspaces out entirely (#717 review P2-2).
+ */
+export const lockedWorkspacesOfRead = (): ReadonlyMap<string, string> => lockedReadScope.getStore()?.locked ?? new Map();
 const isLocked = (error: unknown) => (error as { code?: unknown }).code === 'WORKSPACE_LOCKED';
 const SKIPPED = Symbol('skipped');
 const skippedSeal = (workspaceId: string): FieldSeal & { [SKIPPED]: true } => ({

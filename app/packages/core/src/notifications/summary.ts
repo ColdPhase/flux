@@ -54,6 +54,8 @@ export interface SummaryPorts {
   /** Stores the summary as a notification outside the inbox with its explicit kind and complete source list. */
   insertSummary(row: { id: string; userId: string; source: NotificationSourceRef; sources: NotificationSourceRef[]; title: string; body: string; url: string; aiOrigin: boolean }): Promise<void>;
   deliverableSubscriptions(userId: string): Promise<string[]>;
+  /** F-030: whether the workspace is encrypted. Its row stays content-free: anchored on a plain source, or the plain count. */
+  sealedWorkspace?(workspaceId: string): Promise<boolean>;
   enqueuePush(job: { notificationId: string; subscriptionId: string; userId: string }): Promise<unknown>;
   /**
    * F-027 A8: when the person asked their assistant to write the summary, starts that run in this same transaction (the claimed
@@ -78,9 +80,11 @@ export async function sendMorningSummaries(uow: SummaryUnitOfWork, now: Date = n
   let sent = 0;
   let empty = 0;
   let writing = 0;
+  const failed: unknown[] = [];
   for (const candidate of await uow.candidates()) {
     const day = summaryDueOn(candidate.preferences, candidate.lastOn, now);
     if (!day) continue;
+    // One person's failure never stops the tick for the others; their day stays unclaimed and the next tick retries.
     const outcome = await uow.run(async (ports) => {
       const current = await ports.lockCandidate(candidate.userId);
       const currentDay = current && summaryDueOn(current.preferences, current.lastOn, now);
@@ -89,11 +93,14 @@ export async function sendMorningSummaries(uow: SummaryUnitOfWork, now: Date = n
       // The assistant writes the text and its one push when it finishes; if it cannot start, this plain summary goes out.
       if (current.preferences.summaryByAssistant && ports.assistantSummary && await ports.assistantSummary.start(candidate.userId, currentDay, now)) return 'writing' as const;
       return deliverPlainSummary(ports, candidate.userId);
-    });
+    }).catch((error: unknown) => { failed.push(error); return 'failed' as const; });
     if (outcome === 'sent') sent++;
     if (outcome === 'empty') empty++;
     if (outcome === 'writing') writing++;
   }
+  // Failures are thrown after every person had their turn, so the job still reports them (and retries the rest).
+  if (failed.length === 1) throw failed[0];
+  if (failed.length) throw new AggregateError(failed, `${failed.length} morning summaries failed`);
   // `writing` appears only when the assistant has runs on the way (F-027 A8); the plain tick keeps its shape.
   return writing ? { sent, empty, writing } : { sent, empty };
 }
@@ -106,8 +113,17 @@ export async function deliverPlainSummary(ports: SummaryPorts, userId: string, l
   if (!readable.length) return 'empty';
   const more = readable.length > MORNING_SUMMARY_LOOKBACK;
   const id = randomUUID();
+  // F-030: the row belongs to the newest source of a plain workspace. When every source is in an encrypted one, the row
+  // is the plain count (the database allows only that there), never an assistant-written line.
+  let anchor = readable[0]!;
+  if (ports.sealedWorkspace) {
+    const plain = [];
+    for (const source of readable) if (!await ports.sealedWorkspace(source.workspaceId)) { plain.push(source); break; }
+    if (plain[0]) anchor = plain[0];
+    else line = undefined;
+  }
   await ports.insertSummary({
-    id, userId, source: readable[0]!, sources: readable, url: '/inbox',
+    id, userId, source: anchor, sources: readable, url: '/inbox',
     title: line ?? summaryTitle(Math.min(readable.length, MORNING_SUMMARY_LOOKBACK), more), body: 'Your morning summary from Flux',
     // The assistant-written line is AI content (F-029); the plain count is not.
     aiOrigin: line !== undefined,
