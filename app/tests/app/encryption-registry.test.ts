@@ -169,10 +169,12 @@ describe('F-030 registry against the live catalog', () => {
 describe('F-030 pinned search_path (S2a-2a review P2-1)', () => {
   test('every function that decides on a seal runs with an explicit search_path: pg_catalog first, no "$user", pg_temp last', async () => {
     const rows = (await pool.query<{ fn: string; config: string[] | null }>(`SELECT p.oid::regprocedure::text AS fn, p.proconfig AS config FROM pg_proc p
-      WHERE p.pronamespace = 'public'::regnamespace AND (p.prosrc ~ '(workspace_sealed|flux_is_sealed)' OR p.proname IN ('workspace_sealed', 'flux_is_sealed'))
+      WHERE p.pronamespace = 'public'::regnamespace AND (p.prosrc ~ '(workspace_sealed|flux_is_sealed)'
+        OR p.proname IN ('workspace_sealed', 'flux_is_sealed', 'search_change_log', 'idempotency_scope_required'))
       ORDER BY 1`)).rows;
     assert.ok(rows.length >= 9, `sealing functions found: ${rows.length}`);
-    for (const name of ['search_put', 'workspace_ai_policy_encrypted', 'flux_sealed_backstop', 'sealed_workspace_no_ai', 'preserve_draft_version'])
+    for (const name of ['search_put', 'workspace_ai_policy_encrypted', 'flux_sealed_backstop', 'sealed_workspace_no_ai', 'preserve_draft_version',
+      'search_change_log', 'idempotency_scope_required'])
       assert.ok(rows.some((row) => row.fn.startsWith(`${name}(`)), `${name} is among them`);
     const unpinned = rows.filter((row) => {
       const path = (row.config ?? []).find((entry) => entry.startsWith('search_path='));

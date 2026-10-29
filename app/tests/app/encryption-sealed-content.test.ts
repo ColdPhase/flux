@@ -15,7 +15,8 @@ import { addMember, expectStatus, person, workspace, type Person } from './suppo
 let ada: Person; let ben: Person; let cy: Person;
 let A: string; let B: string;
 const pw = passphrase();
-const kinds = ['project', 'goal', 'message', 'reply', 'large', 'dmTitle', 'dmMessage', 'decision', 'rationale', 'result', 'evidence', 'draft', 'draftBody', 'draftEdit', 'task', 'outcome', 'criterion', 'blocker', 'taskRename'] as const;
+const kinds = ['project', 'goal', 'message', 'reply', 'large', 'dmTitle', 'dmMessage', 'decision', 'rationale', 'result', 'evidence', 'draft', 'draftBody', 'draftEdit', 'task', 'outcome', 'criterion', 'blocker', 'taskRename',
+  'docTitle', 'docBody', 'docEdit', 'materialTitle', 'materialBody', 'materialUrl', 'mapTitle', 'thought', 'linkLabel'] as const;
 type Kind = typeof kinds[number];
 const canaries: Record<'A' | 'B', Record<Kind, string>> = { A: {} as Record<Kind, string>, B: {} as Record<Kind, string> };
 for (const side of ['A', 'B'] as const) {
@@ -23,7 +24,7 @@ for (const side of ['A', 'B'] as const) {
   // Over 8 KiB of repetitive text, so PostgreSQL TOASTs and compresses it (the dump decompresses; the scan reads values).
   canaries[side].large = `${canaries[side].large} ${'garden '.repeat(1500).trim()}`;
 }
-const ids: Record<'A' | 'B', { project: string; conversation: string; dm: string; decision: string; result: string; draft: string; task: string }> = {} as never;
+const ids: Record<'A' | 'B', { project: string; conversation: string; dm: string; decision: string; result: string; draft: string; task: string; doc: string; material: string; sketch: string }> = {} as never;
 const key = () => ({ 'idempotency-key': randomUUID() });
 
 async function post(who: Person, path: string, body: unknown, status: number, headers: Record<string, string> = {}) {
@@ -50,8 +51,19 @@ async function writeEverything(side: 'A' | 'B', ws: string) {
     headers: { ...key(), 'if-match': `"${task.version}"` } }), 200, 'task rename') as { version: number };
   expectStatus(await ada.browser.request('PATCH', `/api/v1/work/${task.id}`, { body: { status: 'blocked', blocker: c.blocker },
     headers: { ...key(), 'if-match': `"${renamed.version}"` } }), 200, 'task blocked');
+  // S2a-2b: a doc with a PATCH and an added section, a material with an edit-free link, and a map with a thought and a labelled link.
+  const doc = await post(ada, `/api/v1/projects/${project.id}/docs`, { title: c.docTitle, body: c.docBody }, 201);
+  const patched = expectStatus(await ada.browser.request('PATCH', `/api/v1/docs/${doc.id}`, { body: { body: `${c.docBody}\n\n${c.docEdit}` },
+    headers: { ...key(), 'if-match': `"${doc.currentVersion ?? doc.version}"` } }), 200, 'doc PATCH') as { currentVersion?: number; version?: number };
+  await post(ada, `/api/v1/docs/${doc.id}/sections`, { from: { type: 'decision', id: decision.id } }, 200, { 'if-match': `"${patched.currentVersion ?? patched.version}"` });
+  const material = await post(ada, `/api/v1/projects/${project.id}/materials`, { clientMutationId: randomUUID(), title: c.materialTitle, body: c.materialBody,
+    url: `https://example.test/${c.materialUrl}` }, 201);
+  const sketch = await post(ada, `/api/v1/workspaces/${ws}/sketches`, { title: c.mapTitle, scope: 'project', projectId: project.id }, 201);
+  const one = await post(ada, `/api/v1/sketches/${sketch.id}/thoughts`, { text: c.thought, x: 0, y: 0 }, 201);
+  const two = await post(ada, `/api/v1/sketches/${sketch.id}/thoughts`, { text: `${c.thought} two`, x: 200, y: 0 }, 201);
+  await post(ada, `/api/v1/sketches/${sketch.id}/links`, { fromId: one.id, toId: two.id, label: c.linkLabel.slice(0, 60) }, 201);
   ids[side] = { project: project.id, conversation: String(conversation.id), dm: String(dm.id), decision: String(decision.id), result: String(result.id), draft: String(draft.id),
-    task: String(task.id) };
+    task: String(task.id), doc: String(doc.id), material: String(material.id), sketch: String(sketch.id) };
 }
 
 /** Every row of every table of the public schema, as text. */
@@ -136,6 +148,30 @@ describe('F-030 S2a-1: sealed content in the repositories', () => {
     }
   });
 
+  test('docs, materials and maps read back opened; live Wiki and live maps answer 409 for A until S2b (S2a-2b)', async () => {
+    for (const side of ['A', 'B'] as const) {
+      const c = canaries[side]; const id = ids[side];
+      const doc = expectStatus(await ben.browser.request('GET', `/api/v1/docs/${id.doc}`), 200, `${side}: doc`) as { title: string; body: string };
+      assert.equal(doc.title, c.docTitle);
+      assert.ok(doc.body.includes(c.docEdit) && doc.body.includes(c.decision), `${side}: the PATCH and the added section are in the doc`);
+      const versions = JSON.stringify(expectStatus(await ben.browser.request('GET', `/api/v1/docs/${id.doc}/versions`), 200));
+      assert.ok(versions.includes(c.docTitle), `${side}: versions list opened titles`);
+      const material = expectStatus(await ben.browser.request('GET', `/api/v1/materials/${id.material}`), 200, `${side}: material`) as { title: string; body: string; url: string };
+      assert.deepEqual([material.title, material.body, material.url], [c.materialTitle, c.materialBody, `https://example.test/${c.materialUrl}`]);
+      const map = JSON.stringify(expectStatus(await ben.browser.request('GET', `/api/v1/sketches/${id.sketch}`), 200, `${side}: map`));
+      for (const text of [c.mapTitle, c.thought, c.linkLabel.slice(0, 60)]) assert.ok(map.includes(text), `${side}: the map shows ${text.slice(0, 20)}`);
+      for (const text of [doc.title, map]) assert.equal(/fx1\.[1-9]/.test(text), false, `${side}: no envelope reaches a reader`);
+      const live = [await ben.browser.request('GET', `/api/v1/docs/${id.doc}/live`), await ben.browser.request('GET', `/api/v1/sketches/${id.sketch}/live`)];
+      for (const response of live) {
+        if (side === 'A') { assert.equal(response.status, 409, response.text); assert.equal((response.json as { code?: string }).code, 'WORKSPACE_ENCRYPTED_UNSUPPORTED'); }
+        else assert.notEqual((response.json as { code?: string } | null)?.code, 'WORKSPACE_ENCRYPTED_UNSUPPORTED');
+      }
+    }
+    const live = (await pool.query(`SELECT (SELECT count(*) FROM doc_live_heads h JOIN project_materials m ON m.id = h.doc_id WHERE m.workspace_id = $1)
+      + (SELECT count(*) FROM map_live_heads WHERE workspace_id = $1) AS n`, [A])).rows[0];
+    assert.equal(Number(live.n), 0, 'nothing was written to the live tables for A');
+  });
+
   test('A\'s rows hold envelopes, B\'s plain text; the draft versions of A are written by the application, sealed', async () => {
     const one = async (query: string, values: unknown[]) => (await pool.query(query, values)).rows[0] as Record<string, unknown>;
     for (const [side, ws] of [['A', A], ['B', B]] as const) {
@@ -160,6 +196,13 @@ describe('F-030 S2a-1: sealed content in the repositories', () => {
       const activity = (await pool.query(`SELECT bool_and(flux_is_sealed(detail)) AS detail, count(*)::int AS n FROM project_task_activity WHERE workspace_id = $1`, [ws])).rows[0];
       assert.ok(activity.n >= 2);
       assert.equal(activity.detail, sealed, `${side}: activity`);
+      const docRows = (await pool.query(`SELECT bool_and(flux_is_sealed(v.title)) AS title, bool_and(flux_is_sealed(v.body)) AS body, count(*)::int AS n
+        FROM project_material_versions v WHERE v.workspace_id = $1`, [ws])).rows[0];
+      assert.ok(docRows.n >= 4, `${side}: doc and material versions`);
+      assert.deepEqual({ title: docRows.title, body: docRows.body }, { title: sealed, body: sealed }, `${side}: doc and material versions`);
+      const map = await one(`SELECT flux_is_sealed(s.title) AS title, bool_and(flux_is_sealed(t.text)) AS text, bool_and(flux_is_sealed(l.label)) AS label
+        FROM sketches s JOIN sketch_thoughts t ON t.sketch_id = s.id JOIN sketch_links l ON l.sketch_id = s.id WHERE s.id = $1 GROUP BY s.title`, [ids[side].sketch]);
+      assert.deepEqual(map, { title: sealed, text: sealed, label: sealed }, `${side}: map`);
       const keys = (await pool.query(`SELECT bool_and(flux_is_sealed(response_body)) AS body, bool_and(flux_is_sealed(request_hash)) AS hash, count(*)::int AS n
         FROM idempotency_keys WHERE workspace_id = $1 AND response_body IS NOT NULL`, [ws])).rows[0];
       assert.ok(keys.n >= 5, `${side}: scoped idempotency rows (${keys.n})`);

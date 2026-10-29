@@ -1,5 +1,5 @@
 import { sql, type SQL } from 'drizzle-orm';
-import type { PrincipalRef, WorkGroup, WorkObjectType, WorkReadCursor } from '@flux/contracts';
+import { SEALED_CHOOSER_SCAN_LIMIT, type PrincipalRef, type WorkGroup, type WorkObjectType, type WorkReadCursor } from '@flux/contracts';
 import * as schema from '../schema.js';
 import type { DbExecutor } from './push.js';
 import { openRows, sealOf } from '../sealing.js';
@@ -12,7 +12,7 @@ export type NativeWorkViewSelector =
   | { purpose: 'choices'; choice: 'parked_work'; q: string; decisionId: string }
   | { purpose: 'choices'; choice: 'doc_refs'; q: string; kind: WorkObjectType };
 export type NativeWorkReadKey = { kind: WorkObjectType; id: string; rank: number; createdAt: string };
-export interface NativeWorkKeyPage { items: NativeWorkReadKey[]; total: number; before: number; hasBefore: boolean; hasAfter: boolean }
+export interface NativeWorkKeyPage { items: NativeWorkReadKey[]; total: number; before: number; hasBefore: boolean; hasAfter: boolean; searchLimited?: true }
 
 const w = schema.projectWorkItems, d = schema.projectDecisions, r = schema.projectResults;
 const unfinished = sql`${w.status} IN ('open', 'in_progress', 'blocked')`;
@@ -112,14 +112,13 @@ export async function nativeReadKeyWindow<Kind extends string>(db: DbExecutor, s
 }
 
 /** For a chooser with text in a sealed workspace: the ids whose opened title contains it (case-insensitive), else undefined. */
-/**
- * How many of a project's newest tasks, decisions or results a chooser search in a sealed workspace opens. Each costs
- * about 20 µs of decryption on the event loop (S2a-2a review, measured), so the scan is bounded; older objects are found
- * by browsing, not by typing. S2b's in-RAM index replaces this scan.
- */
-export const SEALED_CHOOSER_SCAN_LIMIT = 2000;
 
-async function sealedMatches(db: DbExecutor, projectId: string, selection: NativeWorkViewSelector): Promise<string[] | undefined> {
+/**
+ * For a chooser with text in a sealed workspace: the ids whose opened title contains it (case-insensitive), else
+ * undefined. It opens at most the project's newest `SEALED_CHOOSER_SCAN_LIMIT` objects (about 20 µs each on the event
+ * loop, S2a-2a review) and says when there were more (`limited`), so the page can say so; S2b's index replaces it.
+ */
+async function sealedMatches(db: DbExecutor, projectId: string, selection: NativeWorkViewSelector): Promise<{ ids: string[]; limited: boolean } | undefined> {
   if (selection.purpose !== 'choices' || !selection.q) return undefined;
   const [project] = (await db.execute<{ workspace_id: string }>(sql`SELECT workspace_id FROM projects WHERE id = ${projectId}::uuid`)).rows;
   if (!project || !(await sealOf(db, project.workspace_id, { write: false })).sealed) return undefined;
@@ -128,9 +127,10 @@ async function sealedMatches(db: DbExecutor, projectId: string, selection: Nativ
   const table = kind === 'decision' ? d : kind === 'result' ? r : w;
   const name = kind === 'decision' ? 'project_decisions' : kind === 'result' ? 'project_results' : 'project_work_items';
   const rows = await openRows(db, name, await db.select({ id: table.id, workspaceId: table.workspaceId, title: table.title }).from(table)
-    .where(sql`${table.projectId} = ${projectId}::uuid`).orderBy(sql`${table.createdAt} DESC, ${table.id} DESC`).limit(SEALED_CHOOSER_SCAN_LIMIT));
+    .where(sql`${table.projectId} = ${projectId}::uuid`).orderBy(sql`${table.createdAt} DESC, ${table.id} DESC`).limit(SEALED_CHOOSER_SCAN_LIMIT + 1));
   const q = selection.q.toLowerCase();
-  return rows.filter((row) => row.title.toLowerCase().includes(q)).map((row) => row.id);
+  return { ids: rows.slice(0, SEALED_CHOOSER_SCAN_LIMIT).filter((row) => row.title.toLowerCase().includes(q)).map((row) => row.id),
+    limited: rows.length > SEALED_CHOOSER_SCAN_LIMIT };
 }
 
 /** Caller supplies its read-only REPEATABLE READ executor AFTER central access/selector validation. */
@@ -140,7 +140,8 @@ export function nativeWorkReadKeys(db: DbExecutor) {
       // Snapshot every input before the first await, as nativeReadKeyWindow does: a caller may mutate them meanwhile.
       const owned = { actor: { ...actor }, selection: { ...selection }, cursor: cursor ? { ...cursor, boundary: { ...cursor.boundary } } : undefined };
       const matching = await sealedMatches(db, projectId, owned.selection);
-      return nativeReadKeyWindow<WorkObjectType>(db, nativeWorkViewKeySource(projectId, owned.actor, owned.selection, matching), limit, owned.cursor);
+      const page = await nativeReadKeyWindow<WorkObjectType>(db, nativeWorkViewKeySource(projectId, owned.actor, owned.selection, matching?.ids), limit, owned.cursor);
+      return matching?.limited ? { ...page, searchLimited: true as const } : page;
     },
   };
 }

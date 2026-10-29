@@ -1,6 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import type { SessionResolver } from '../identity/session.js';
-import { EDITING_CHANNEL, listen, type createDatabase, type EditingConfirmationPolicy } from '@flux/db';
+import { EDITING_CHANNEL, listen, sql, type createDatabase, type DbExecutor, type EditingConfirmationPolicy } from '@flux/db';
+import { ConflictError } from '@flux/core';
 import { editingGate } from './gate.js';
 import { wikiAuthority } from './authority.js';
 import { wikiController } from './wiki-controller.js';
@@ -22,6 +23,23 @@ interface Options {
   env?:NodeJS.ProcessEnv;
   confirmation?:EditingConfirmationPolicy|null;
 }
+/**
+ * F-030: live Wiki and live maps are not offered for an encrypted workspace until S2b seals their persistence. Every
+ * live route and room upgrade answers 409 WORKSPACE_ENCRYPTED_UNSUPPORTED for its objects and writes nothing.
+ */
+export function refuseSealedLive(db: DbExecutor) {
+  return async (target: { docId?: unknown; sketchId?: unknown }) => {
+    const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    const query = typeof target.docId === 'string' && UUID.test(target.docId)
+      ? sql`SELECT w.encrypted FROM project_materials o JOIN workspaces w ON w.id = o.workspace_id WHERE o.id = ${target.docId}::uuid`
+      : typeof target.sketchId === 'string' && UUID.test(target.sketchId)
+        ? sql`SELECT w.encrypted FROM sketches o JOIN workspaces w ON w.id = o.workspace_id WHERE o.id = ${target.sketchId}::uuid` : null;
+    if (!query) return;
+    const [row] = (await db.execute<{ encrypted: boolean }>(query)).rows;
+    if (row?.encrypted) throw new ConflictError('Live editing is not available in an encrypted space yet', 'WORKSPACE_ENCRYPTED_UNSUPPORTED');
+  };
+}
+
 export async function registerEditing(app: FastifyInstance, options: Options) {
   const outputBudget = apiEditingOutputBudget;
   let telemetry:EditingQueueTelemetry|null=null;
@@ -30,10 +48,12 @@ export async function registerEditing(app: FastifyInstance, options: Options) {
   const mapsBackend=options.enabled?mapBackend(options.database,{confirmation:options.confirmation}):null;
   const mapsAuthority=mapsBackend?mapAuthority(mapsBackend,outputBudget):null;
   const mapsController=mapsAuthority?mapController(mapsAuthority,outputBudget,()=>telemetry):null;
-  await app.register(editingRoutes, { sessions: options.sessions, authority, outputBudget,maps:mapsAuthority });
+  const sealedLive = refuseSealedLive(options.database.db as unknown as DbExecutor);
+  await app.register(editingRoutes, { sessions: options.sessions, authority, outputBudget,maps:mapsAuthority, sealedLive });
   if (!authority || !controller||!mapsBackend||!mapsAuthority||!mapsController) return null;
   const gate = editingGate({ sessions: options.sessions, publicOrigin: options.publicOrigin,
     async authorize(context) {
+      await sealedLive(context.target.kind === 'wiki' ? { docId: context.target.id } : { sketchId: context.target.id });
       if(context.target.kind==='wiki')await authority.handoff(context.session,context.target.id,()=>{});
       else await mapsAuthority.authorize(context.session,context.target.id,()=>{});
     }, accept(socket,context){if(context.target.kind==='wiki')controller.accept(socket,context);else mapsController.accept(socket,context);} });

@@ -1,7 +1,7 @@
 import { messagePreview } from '@flux/contracts';
 import { randomUUID } from 'node:crypto';
 import { and, asc, desc, eq, lt, sql, type SQL } from 'drizzle-orm';
-import { agentThreadGuardRows, artifactResetRows, fileRows, openAliased, openRows, prepareCanonicalArtifactTaskUse, schema, sealsOf, openField, taskDiscussionRows, taskUseRows, workRows, accessReader, type DbExecutor } from '@flux/db';
+import { agentThreadGuardRows, artifactResetRows, fileRows, openAliased, openRows, prepareCanonicalArtifactTaskUse, schema, sealFor, sealsOf, openField, taskDiscussionRows, taskUseRows, workRows, accessReader, type DbExecutor } from '@flux/db';
 import type {
   Conversation, ConversationMessage, ConversationRootWindow, ConversationSummary, Material, MaterialOrDoc,
   AgentProjectOwner, AuthenticatedAgentRuntime, MaterialVersion, Page, PageQuery, TaskAgentThread,
@@ -133,9 +133,13 @@ async function locateMaterial(principal: Principal, materialId: string, db: Exec
   return row;
 }
 
+/** F-030: material versions and the material's request fingerprint are sealed in an encrypted workspace; opened here. */
+const openVersions = <T extends VersionRow>(db: Executor, rows: T[]) => openRows(db as unknown as DbExecutor, 'project_material_versions', rows);
+const openMaterial = async (db: Executor, row: MaterialRow | undefined) => (row ? (await openRows(db as unknown as DbExecutor, 'project_materials', [row]))[0]! : row);
+
 async function currentVersion(row: MaterialRow, db: Executor): Promise<VersionRow> {
-  const [current] = await db.select().from(schema.projectMaterialVersions).where(and(
-    eq(schema.projectMaterialVersions.materialId, row.id), eq(schema.projectMaterialVersions.version, row.currentVersion)));
+  const [current] = await openVersions(db, await db.select().from(schema.projectMaterialVersions).where(and(
+    eq(schema.projectMaterialVersions.materialId, row.id), eq(schema.projectMaterialVersions.version, row.currentVersion))));
   if (!current) throw new Error('Material current version missing');
   return current;
 }
@@ -172,7 +176,7 @@ async function currentVersions(rows: MaterialRow[], db: Executor): Promise<Versi
   if (!rows.length) return [];
   const v = schema.projectMaterialVersions;
   const wanted = sql.join(rows.map((row) => sql`(${row.id}::uuid, ${row.currentVersion}::int)`), sql`, `);
-  const found = await db.select().from(v).where(sql`(${v.materialId}, ${v.version}) IN (${wanted})`);
+  const found = await openVersions(db, await db.select().from(v).where(sql`(${v.materialId}, ${v.version}) IN (${wanted})`));
   const byMaterial = new Map(found.map((version) => [version.materialId, version]));
   return rows.map((row) => {
     const current = byMaterial.get(row.id);
@@ -466,8 +470,9 @@ export function conversationStore(db: Database, options: ConversationStoreOption
         await requireProject(principal, projectId, tx, false, true);
         const where = eq(schema.projectMaterials.projectId, projectId);
         const [count] = await tx.select({ total: sql<number>`count(*)::int` }).from(schema.projectMaterials).where(where);
-        const rows = await tx.select({
+        const read = await tx.select({
           materialId: schema.projectMaterials.id,
+          workspaceId: schema.projectMaterials.workspaceId,
           kind: schema.projectMaterials.kind,
           version: schema.projectMaterials.currentVersion,
           title: schema.projectMaterialVersions.title,
@@ -477,7 +482,9 @@ export function conversationStore(db: Database, options: ConversationStoreOption
           eq(schema.projectMaterialVersions.version, schema.projectMaterials.currentVersion),
         )).where(where).orderBy(desc(schema.projectMaterials.updatedAt), desc(schema.projectMaterials.id))
           .limit(page.limit).offset(page.offset);
-        return { items: rows.map((row) => ({ ...row, updatedAt: row.updatedAt.toISOString() })),
+        const rows = await openAliased(tx as unknown as DbExecutor, read, { table: 'project_material_versions', column: 'title', key: 'title',
+          workspace: (row) => row.workspaceId, identity: (row) => [row.materialId, String(row.version)] });
+        return { items: rows.map(({ workspaceId: _workspace, ...row }) => { void _workspace; return { ...row, updatedAt: row.updatedAt.toISOString() }; }),
           total: count?.total ?? 0, ...page };
       });
     },
@@ -491,8 +498,8 @@ export function conversationStore(db: Database, options: ConversationStoreOption
     async getMaterialVersion(principal: Principal, materialId: string, versionNumber: number): Promise<MaterialVersion> {
       const row = await locateMaterial(principal, materialId, db);
       const requested = positiveVersion(versionNumber, 'version');
-      const [snapshot] = await db.select().from(schema.projectMaterialVersions).where(and(
-        eq(schema.projectMaterialVersions.materialId, row.id), eq(schema.projectMaterialVersions.version, requested)));
+      const [snapshot] = await openVersions(db, await db.select().from(schema.projectMaterialVersions).where(and(
+        eq(schema.projectMaterialVersions.materialId, row.id), eq(schema.projectMaterialVersions.version, requested))));
       if (!snapshot) throw new NotFoundError('Material version', 'MATERIAL_VERSION_NOT_FOUND');
       return version(snapshot, principal, await versionAuthors(db, [snapshot]));
     },
@@ -502,9 +509,9 @@ export function conversationStore(db: Database, options: ConversationStoreOption
       return db.transaction(async (tx) => {
         const project = await requireProject(principal, projectId, tx, true, true);
         await lockIdempotency(tx, projectId, { kind: 'human', id: authorId }, input.clientMutationId);
-        const [existing] = await tx.select().from(schema.projectMaterials).where(and(
+        const existing = await openMaterial(tx, (await tx.select().from(schema.projectMaterials).where(and(
           eq(schema.projectMaterials.projectId, projectId), eq(schema.projectMaterials.createdBy, authorId),
-          eq(schema.projectMaterials.clientMutationId, input.clientMutationId)));
+          eq(schema.projectMaterials.clientMutationId, input.clientMutationId))))[0]);
         if (existing) {
           if (existing.requestFingerprint !== input.fingerprint) throw new ConflictError('This clientMutationId was used for another material', 'IDEMPOTENCY_CONFLICT');
           return material(existing, await currentVersion(existing, tx), principal);
@@ -518,22 +525,22 @@ export function conversationStore(db: Database, options: ConversationStoreOption
           if (!snapshot.rows.length) throw new NotFoundError('Draft version', 'DRAFT_VERSION_NOT_FOUND');
         }
         const id = randomUUID();
-        const [created] = await tx.insert(schema.projectMaterials).values({
+        const [created] = await tx.insert(schema.projectMaterials).values(await sealFor(tx as unknown as DbExecutor, 'project_materials', project.workspaceId, {
           id, workspaceId: project.workspaceId, projectId, createdBy: authorId,
           clientMutationId: input.clientMutationId, requestFingerprint: input.fingerprint,
-        }).onConflictDoNothing().returning();
+        })).onConflictDoNothing().returning();
         if (!created) {
-          const [raced] = await tx.select().from(schema.projectMaterials).where(and(
+          const raced = await openMaterial(tx, (await tx.select().from(schema.projectMaterials).where(and(
             eq(schema.projectMaterials.projectId, projectId), eq(schema.projectMaterials.createdBy, authorId),
-            eq(schema.projectMaterials.clientMutationId, input.clientMutationId)));
+            eq(schema.projectMaterials.clientMutationId, input.clientMutationId))))[0]);
           if (!raced || raced.requestFingerprint !== input.fingerprint) throw new ConflictError('This clientMutationId was used for another material', 'IDEMPOTENCY_CONFLICT');
           return material(raced, await currentVersion(raced, tx), principal);
         }
-        const [first] = await tx.insert(schema.projectMaterialVersions).values({
+        const [first] = await openVersions(tx, await tx.insert(schema.projectMaterialVersions).values(await sealFor(tx as unknown as DbExecutor, 'project_material_versions', project.workspaceId, {
           workspaceId: project.workspaceId, projectId, materialId: id, version: 1,
           title: input.title, body: input.body, url: input.url, authorId,
           sourceDraftId: input.sourceDraftId, sourceDraftVersion: input.sourceDraftVersion,
-        }).returning();
+        })).returning());
         await recordEvent(eventPorts(tx), principal, project.workspaceId, 'project.material_created.v1', projectId, { materialId: id, version: 1 });
         return material(created, first!, principal);
       });
@@ -545,9 +552,9 @@ export function conversationStore(db: Database, options: ConversationStoreOption
         const row = await locateMaterial(principal, materialId, tx, true, true);
         if (row.kind === 'doc') throw new ConflictError('Docs are edited through the doc API with If-Match', 'USE_DOC_API');
         const [locked] = await tx.select().from(schema.projectMaterials).where(eq(schema.projectMaterials.id, row.id)).for('update');
-        const [priorEdit] = await tx.select().from(schema.projectMaterialVersions).where(and(
+        const [priorEdit] = await openVersions(tx, await tx.select().from(schema.projectMaterialVersions).where(and(
           eq(schema.projectMaterialVersions.materialId, row.id), eq(schema.projectMaterialVersions.authorId, authorId),
-          eq(schema.projectMaterialVersions.clientMutationId, input.clientMutationId)));
+          eq(schema.projectMaterialVersions.clientMutationId, input.clientMutationId))));
         if (priorEdit) {
           if (priorEdit.requestFingerprint !== input.fingerprint)
             throw new ConflictError('This clientMutationId was used for another edit', 'IDEMPOTENCY_CONFLICT');
@@ -564,11 +571,11 @@ export function conversationStore(db: Database, options: ConversationStoreOption
         const fence=await prepareCanonicalArtifactTaskUse(tx,scope,progress?{kind:'material',id:row.id,version:locked.currentVersion+1}:null,[]);
         const [updated] = await tx.update(schema.projectMaterials).set({ currentVersion: locked.currentVersion + 1, updatedAt: new Date() })
           .where(eq(schema.projectMaterials.id, row.id)).returning();
-        const [snapshot] = await tx.insert(schema.projectMaterialVersions).values({
+        const [snapshot] = await openVersions(tx, await tx.insert(schema.projectMaterialVersions).values(await sealFor(tx as unknown as DbExecutor, 'project_material_versions', row.workspaceId, {
           workspaceId: row.workspaceId, projectId: row.projectId, materialId: row.id,
           version: updated!.currentVersion, ...next, authorId,
           clientMutationId: input.clientMutationId, requestFingerprint: input.fingerprint,
-        }).returning();
+        })).returning());
         if(progress)await artifactResetRows(tx).canonical(scope,{kind:'material',id:row.id,version:snapshot!.version},
           {kind:'material',id:row.id,revision:String(snapshot!.version)},fence);
         await recordEvent(eventPorts(tx), principal, row.workspaceId, 'project.material_updated.v1', row.projectId, { materialId: row.id, version: updated!.currentVersion });
