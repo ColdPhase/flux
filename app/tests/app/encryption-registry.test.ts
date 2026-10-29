@@ -1,7 +1,10 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { before, describe, test } from 'node:test';
+import { IDEMPOTENCY_ACCOUNT_OPERATIONS } from '@flux/contracts';
 import { SEALED_COLUMNS, TABLE_CLASSES, VISIBLE_COLUMNS, workspaceEncryptionRows, type DbExecutor } from '@flux/db';
+import { readdir, readFile } from 'node:fs/promises';
+import { join } from 'node:path';
 import { db, pool } from './support/db.js';
 import { createSealed, passphrase } from './support/encryption.js';
 import { person, workspace, type Person } from './support/people.js';
@@ -160,6 +163,35 @@ describe('F-030 registry against the live catalog', () => {
         [id, ws, ada.id, ws === A ? `fx1.1.${'C'.repeat(40)}` : 'Plain title']);
       assert.equal((await pool.query(`SELECT count(*)::int AS n FROM draft_versions WHERE draft_id = $1`, [id])).rows[0].n, expected);
     }
+  });
+});
+
+describe('F-030 idempotency scopes (S2a-2)', () => {
+  test('the database list of account operations is the contract\'s; an unscoped row of any other operation is refused', async () => {
+    const live = (await pool.query<{ operation: string }>('SELECT operation FROM idempotency_account_operations ORDER BY operation')).rows.map((row) => row.operation);
+    assert.deepEqual(live, Object.keys(IDEMPOTENCY_ACCOUNT_OPERATIONS).sort());
+    for (const reason of Object.values(IDEMPOTENCY_ACCOUNT_OPERATIONS)) assert.ok(reason.length > 10);
+    const insert = (operation: string, workspaceId: string | null) => pool.query(`INSERT INTO idempotency_keys (id, principal, workspace_id, operation, key, request_hash,
+      response_status, response_body, expires_at) VALUES ($1, 'human:x', $2, $3, $4, 'h', 200, 'null', now() + interval '1 hour')`, [randomUUID(), workspaceId, operation, randomUUID()]);
+    await assert.rejects(insert('PATCH /api/v1/docs/:docId', null), { hint: 'IDEMPOTENCY_SCOPE_REQUIRED' });
+    await insert('POST /api/v1/workspaces', null);
+    await insert('PATCH /api/v1/docs/:docId', B);
+    await assert.rejects(insert('PATCH /api/v1/docs/:docId', A), { hint: 'WORKSPACE_PLAINTEXT_REFUSED' }, 'a row of A needs a sealed body');
+  });
+
+  test('every command declares a scope: no route passes scope null; account scopes stay in the list\'s modules', async () => {
+    const files: string[] = [];
+    const walk = async (dir: string) => { for (const entry of await readdir(dir, { withFileTypes: true })) {
+      const path = join(dir, entry.name); if (entry.isDirectory()) await walk(path); else if (path.endsWith('.ts')) files.push(path); } };
+    await walk('apps/server/src');
+    const unscoped: string[] = []; const account: string[] = [];
+    for (const file of files) {
+      const text = await readFile(file, 'utf8');
+      if (/operation:[^\n]*scope: null/.test(text)) unscoped.push(file);
+      if (/scope: 'account'/.test(text)) account.push(file);
+    }
+    assert.deepEqual(unscoped, []);
+    assert.deepEqual(account.sort(), ['apps/server/src/access/workspaces.ts', 'apps/server/src/agent-connection/agent-questions.ts', 'apps/server/src/personal-runs/routes.ts']);
   });
 });
 

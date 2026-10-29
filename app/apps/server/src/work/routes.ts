@@ -96,9 +96,9 @@ export async function workRoutes(app: FastifyInstance, { db, sessions, storage }
   const { principal, command } = commandRunner(db, sessions);
   const work = workUseCases(db);
   const projectScope = (id: string): ResourceRef => ({ type: 'project', id });
-  /** The project of a decision as an idempotency scope; null for an unknown id (the command answers 404 itself). */
-  const decisionScope = async (id: string): Promise<ResourceRef | null> => {
-    const located = /^[0-9a-f-]{36}$/i.test(id) ? await workRows(db as unknown as DbExecutor).locate('decision', id) : null;
+  /** The project of a task or decision as an idempotency scope, resolved after the session check; null for an unknown id. */
+  const locatedScope = (type: 'work' | 'decision', id: string) => async (conn: Database): Promise<ResourceRef | null> => {
+    const located = /^[0-9a-f-]{36}$/i.test(id) ? await workRows(conn as unknown as DbExecutor).locate(type, id) : null;
     return located ? projectScope(located.projectId) : null;
   };
 
@@ -162,7 +162,7 @@ export async function workRoutes(app: FastifyInstance, { db, sessions, storage }
         throw new InvalidInputError('A task keeps the plan intent it was created with', 'PLAN_INTENT_IMMUTABLE');
     } },
     async (request, reply) => command(request, reply, {
-      operation: `PATCH ${workItemPath(':workId')}`, scope: null, etag: true,
+      operation: `PATCH ${workItemPath(':workId')}`, scope: locatedScope('work', request.params.workId), etag: true,
       run: (actor, conn) => workUseCases(conn).updateWork(actor, request.params.workId, request.body, expectedVersion(request)),
       replay: projectReader,
     }));
@@ -182,7 +182,7 @@ export async function workRoutes(app: FastifyInstance, { db, sessions, storage }
   app.post<{ Params: { decisionId: string }; Body: AcceptDecisionCommand }>(decisionAcceptPath(':decisionId'), { schema: { body: acceptDecision } },
     async (request, reply) => command(request, reply, {
       // F-030: scoped to the decision's project, so an encrypted workspace's stored response is sealed (the body carries the title).
-      operation: `POST ${decisionAcceptPath(':decisionId')}`, scope: await decisionScope(request.params.decisionId), etag: true,
+      operation: `POST ${decisionAcceptPath(':decisionId')}`, scope: locatedScope('decision', request.params.decisionId), etag: true,
       run: (actor, conn) => workUseCases(conn).acceptDecision(actor, request.params.decisionId, request.body ?? {}, expectedVersion(request)),
       replay: projectReader,
     }));

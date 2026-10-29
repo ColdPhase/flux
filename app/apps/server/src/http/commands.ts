@@ -1,5 +1,5 @@
 import type { FastifyReply, FastifyRequest } from 'fastify';
-import { IDEMPOTENCY_KEY_HEADER, IDEMPOTENT_REPLAYED_HEADER, IF_MATCH_HEADER } from '@flux/contracts';
+import { IDEMPOTENCY_ACCOUNT_OPERATIONS, IDEMPOTENCY_KEY_HEADER, IDEMPOTENT_REPLAYED_HEADER, IF_MATCH_HEADER } from '@flux/contracts';
 import {
   assertAuthorized,
   parseIdempotencyKey,
@@ -39,8 +39,12 @@ export function requires<T extends ResourceType>(type: T, action: ActionsByResou
 export interface CommandSpec {
   /** Stable operation name used to scope idempotency keys. */
   operation: string;
-  /** The object whose workspace scopes the idempotency key; null outside a workspace. */
-  scope: ResourceRef | null;
+  /**
+   * The object whose workspace scopes the idempotency key (F-030 S2a-2: mandatory). A function is resolved after the
+   * session is checked (an object found through another, e.g. a decision's project; null for an unknown id, which the
+   * command then answers itself). `'account'` only for an operation in `IDEMPOTENCY_ACCOUNT_OPERATIONS`.
+   */
+  scope: ResourceRef | 'account' | ((connection: Database) => Promise<ResourceRef | null>);
   /** Success status; a function decides from the result (e.g. 201 created, 200 existing). */
   status?: number | ((body: unknown) => number);
   /** Where the response ETag comes from; `true` means the body's own version. */
@@ -48,6 +52,20 @@ export interface CommandSpec {
   run: (principal: Principal, db: Database, session: SessionContext) => Promise<unknown>;
   /** Current authorization a stored response must pass before it is replayed. */
   replay: ReplayCheck;
+}
+
+/** An `'account'` scope outside the list is a programming error: fail before anything runs (the database guard agrees). */
+export function assertAccountOperation(spec: Pick<CommandSpec, 'operation' | 'scope'>) {
+  if (spec.scope === 'account' && IDEMPOTENCY_ACCOUNT_OPERATIONS[spec.operation] === undefined) {
+    throw new Error(`${spec.operation} is not an account operation (IDEMPOTENCY_ACCOUNT_OPERATIONS)`);
+  }
+}
+
+async function scopeWorkspace(actor: Principal, spec: CommandSpec, connection: Database): Promise<string | null> {
+  assertAccountOperation(spec);
+  if (spec.scope === 'account') return null;
+  const scope = typeof spec.scope === 'function' ? await spec.scope(connection) : spec.scope;
+  return scope ? visibleWorkspaceOf(actor, scope, accessReader(connection)) : null;
 }
 
 export function commandRunner(db: Database, sessions: SessionResolver) {
@@ -67,7 +85,7 @@ export function commandRunner(db: Database, sessions: SessionResolver) {
     if (key === null) {
       response = await execute(connection);
     } else {
-      const workspaceId = spec.scope ? await visibleWorkspaceOf(actor, spec.scope, accessReader(connection)) : null;
+      const workspaceId = await scopeWorkspace(actor, spec, connection);
       const hash = requestHash({ params: request.params, query: request.query, body: request.body ?? null, ifMatch: request.headers[IF_MATCH_HEADER] ?? null });
       response = await runIdempotent(connection, idempotencyRepository, { principal: actor, workspaceId, operation: spec.operation, key, requestHash: hash }, execute,
         (stored, conn) => spec.replay(actor, stored.body, conn));

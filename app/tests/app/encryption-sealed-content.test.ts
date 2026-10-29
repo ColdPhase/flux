@@ -15,7 +15,7 @@ import { addMember, expectStatus, person, workspace, type Person } from './suppo
 let ada: Person; let ben: Person; let cy: Person;
 let A: string; let B: string;
 const pw = passphrase();
-const kinds = ['project', 'goal', 'message', 'reply', 'large', 'dmTitle', 'dmMessage', 'decision', 'rationale', 'result', 'evidence', 'draft', 'draftBody', 'draftEdit'] as const;
+const kinds = ['project', 'goal', 'message', 'reply', 'large', 'dmTitle', 'dmMessage', 'decision', 'rationale', 'result', 'evidence', 'draft', 'draftBody', 'draftEdit', 'task', 'outcome', 'criterion', 'blocker', 'taskRename'] as const;
 type Kind = typeof kinds[number];
 const canaries: Record<'A' | 'B', Record<Kind, string>> = { A: {} as Record<Kind, string>, B: {} as Record<Kind, string> };
 for (const side of ['A', 'B'] as const) {
@@ -23,7 +23,7 @@ for (const side of ['A', 'B'] as const) {
   // Over 8 KiB of repetitive text, so PostgreSQL TOASTs and compresses it (the dump decompresses; the scan reads values).
   canaries[side].large = `${canaries[side].large} ${'garden '.repeat(1500).trim()}`;
 }
-const ids: Record<'A' | 'B', { project: string; conversation: string; dm: string; decision: string; result: string; draft: string }> = {} as never;
+const ids: Record<'A' | 'B', { project: string; conversation: string; dm: string; decision: string; result: string; draft: string; task: string }> = {} as never;
 const key = () => ({ 'idempotency-key': randomUUID() });
 
 async function post(who: Person, path: string, body: unknown, status: number, headers: Record<string, string> = {}) {
@@ -44,7 +44,14 @@ async function writeEverything(side: 'A' | 'B', ws: string) {
   const result = await post(ada, `/api/v1/projects/${project.id}/results`, { title: c.result, finding: 'positive', evidence: c.evidence }, 201);
   const draft = await post(ada, `/api/v1/workspaces/${ws}/drafts`, { title: c.draft, body: c.draftBody }, 201);
   expectStatus(await ada.browser.request('PATCH', `/api/v1/drafts/${draft.id}`, { body: { body: c.draftEdit }, headers: { ...key(), 'if-match': `"${draft.version}"` } }), 200, 'draft edit');
-  ids[side] = { project: project.id, conversation: String(conversation.id), dm: String(dm.id), decision: String(decision.id), result: String(result.id), draft: String(draft.id) };
+  // S2a-2: a task with every text field, a rename (activity), a move into Blocked with its reason (an update), all by PATCH with a key.
+  const task = await post(ada, `/api/v1/projects/${project.id}/work`, { title: c.task, outcome: c.outcome, criteria: [c.criterion] }, 201);
+  const renamed = expectStatus(await ada.browser.request('PATCH', `/api/v1/work/${task.id}`, { body: { title: c.taskRename },
+    headers: { ...key(), 'if-match': `"${task.version}"` } }), 200, 'task rename') as { version: number };
+  expectStatus(await ada.browser.request('PATCH', `/api/v1/work/${task.id}`, { body: { status: 'blocked', blocker: c.blocker },
+    headers: { ...key(), 'if-match': `"${renamed.version}"` } }), 200, 'task blocked');
+  ids[side] = { project: project.id, conversation: String(conversation.id), dm: String(dm.id), decision: String(decision.id), result: String(result.id), draft: String(draft.id),
+    task: String(task.id) };
 }
 
 /** Every row of every table of the public schema, as text. */
@@ -94,6 +101,11 @@ describe('F-030 S2a-1: sealed content in the repositories', () => {
       assert.deepEqual({ ...decision, status: decision.status }, { ...decision, title: c.decision, rationale: c.rationale, status: 'accepted' }, side);
       const notices = expectStatus(await ben.browser.request('GET', projectObjectNoticesPath(id.project)), 200) as { items: { title: string }[] };
       assert.deepEqual(new Set(notices.items.map((item) => item.title)), new Set([c.decision, c.result]), `${side}: object notices (#696) open their titles`);
+      const task = expectStatus(await ben.browser.request('GET', `/api/v1/work/${id.task}`), 200) as { title: string; outcome: string; criteria: string[]; blocker: string | null; status: string };
+      assert.deepEqual({ title: task.title, outcome: task.outcome, criteria: task.criteria, blocker: task.blocker, status: task.status },
+        { title: c.taskRename, outcome: c.outcome, criteria: [c.criterion], blocker: c.blocker, status: 'blocked' }, `${side}: task`);
+      const activity = JSON.stringify((await ben.browser.request('GET', `/api/v1/work/${id.task}/activity`)).json);
+      assert.ok(activity.includes(c.task) && activity.includes(c.taskRename), `${side}: the title change is in the activity`);
       const draft = expectStatus(await ada.browser.request('GET', `/api/v1/drafts/${id.draft}`), 200) as { title: string; body: string };
       assert.deepEqual({ title: draft.title, body: draft.body }, { title: c.draft, body: c.draftEdit });
     }
@@ -117,6 +129,12 @@ describe('F-030 S2a-1: sealed content in the repositories', () => {
       const versions = (await pool.query(`SELECT v.version, flux_is_sealed(v.title) AS title, flux_is_sealed(v.body) AS body FROM draft_versions v
         JOIN drafts d ON d.id = v.draft_id WHERE d.workspace_id = $1 ORDER BY v.version`, [ws])).rows;
       assert.deepEqual(versions, [{ version: 1, title: sealed, body: sealed }, { version: 2, title: sealed, body: sealed }], `${side}: one row per version`);
+      const work = await one(`SELECT flux_is_sealed(title) AS title, flux_is_sealed(outcome) AS outcome, flux_is_sealed(blocker) AS blocker, flux_is_sealed(criteria) AS criteria
+        FROM project_work_items WHERE workspace_id = $1`, [ws]);
+      assert.deepEqual(work, { title: sealed, outcome: sealed, blocker: sealed, criteria: sealed }, `${side}: task`);
+      const activity = (await pool.query(`SELECT bool_and(flux_is_sealed(detail)) AS detail, count(*)::int AS n FROM project_task_activity WHERE workspace_id = $1`, [ws])).rows[0];
+      assert.ok(activity.n >= 2);
+      assert.equal(activity.detail, sealed, `${side}: activity`);
       const keys = (await pool.query(`SELECT bool_and(flux_is_sealed(response_body)) AS body, bool_and(flux_is_sealed(request_hash)) AS hash, count(*)::int AS n
         FROM idempotency_keys WHERE workspace_id = $1 AND response_body IS NOT NULL`, [ws])).rows[0];
       assert.ok(keys.n >= 5, `${side}: scoped idempotency rows (${keys.n})`);
