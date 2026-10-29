@@ -92,7 +92,8 @@ describe('F-030 S2a-1: sealed content in the repositories', () => {
       assert.deepEqual(conversation.messages.map((m) => m.body), [c.message, c.reply, c.large], side);
       assert.equal(conversation.firstMessageBody, c.message);
       const roots = expectStatus(await ben.browser.request('GET', `/api/v1/projects/${id.project}/conversation-roots`), 200) as { roots: { message: { body: string } }[] };
-      assert.deepEqual(roots.roots.map((root) => root.message.body), [c.message]);
+      // The move into Blocked posts its reason into the task's discussion, which is a root of its own.
+      assert.deepEqual(roots.roots.map((root) => root.message.body), [c.message, c.blocker]);
       const dm = expectStatus(await ben.browser.request('GET', `/api/v1/dms/${id.dm}`), 200) as { title: string | null; messages: { body: string }[] };
       assert.deepEqual({ title: dm.title, bodies: dm.messages.map((m) => m.body) }, { title: c.dmTitle, bodies: [c.dmMessage] }, side);
       const dms = expectStatus(await ben.browser.request('GET', `/api/v1/workspaces/${side === 'A' ? A : B}/dms`), 200) as { items: { title: string | null; lastMessageBody?: string | null }[] };

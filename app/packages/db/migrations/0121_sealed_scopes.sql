@@ -8,7 +8,7 @@
 --     function of the same name earlier in a session's search_path cannot stand in for `workspace_sealed`; and the
 --     backstops whose row names its workspace directly run only for a sealed workspace (WHEN), so a plain
 --     workspace's insert pays one indexed lookup instead of the trigger body.
-CREATE FUNCTION pg_temp.here(tbl text) RETURNS regclass LANGUAGE sql STABLE AS
+CREATE OR REPLACE FUNCTION pg_temp.here(tbl text) RETURNS regclass LANGUAGE sql STABLE AS
   $$ SELECT to_regclass(format('%I.%I', current_schema(), tbl)) $$;
 
 -- 1.
