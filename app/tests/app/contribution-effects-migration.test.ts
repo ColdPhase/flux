@@ -9,6 +9,7 @@ import { guardFixturePool } from './support/fixture-database.js';
 // F-030 S2a (0120) adds search_documents.sealed; a row's history is the same with or without it.
 const withoutSealed = (row: Record<string, unknown>) => Object.fromEntries(Object.entries(row).filter(([key]) => key !== 'sealed'));
 
+
 const dir = 'packages/db/migrations';
 
 test('0040 keeps every historical row byte-identical as plain text, adds only empty receipts, and reverses only before use', async () => {

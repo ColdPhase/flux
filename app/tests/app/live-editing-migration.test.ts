@@ -10,6 +10,7 @@ import { pool } from './support/db.js';
 // F-030 S2a (0120) adds search_documents.sealed; a row's history is the same with or without it.
 const withoutSealed = (row: Record<string, unknown>) => Object.fromEntries(Object.entries(row).filter(([key]) => key !== 'sealed'));
 
+
 test('0046 preserves saved material/history/search and makes live receipts, provenance and replica ownership immutable', async () => {
   const client = await pool.connect(); const namespace = `live_upgrade_${randomUUID().replaceAll('-', '')}`;
   const owner = randomUUID(); const workspace = randomUUID(); const project = randomUUID(); const doc = randomUUID();

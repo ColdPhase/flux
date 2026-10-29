@@ -9,6 +9,7 @@ import { guardFixturePool } from './support/fixture-database.js';
 // F-030 S2a (0120) adds search_documents.sealed; a row's history is the same with or without it.
 const withoutSealed = (row: Record<string, unknown>) => Object.fromEntries(Object.entries(row).filter(([key]) => key !== 'sealed'));
 
+
 test('0045 preserves historical text and search, reverses before use and refuses real staged files', async () => {
   const dir = 'packages/db/migrations';
   const manifest = await readMigrationManifest(dir, FLUX_SCHEMA_VERSION);

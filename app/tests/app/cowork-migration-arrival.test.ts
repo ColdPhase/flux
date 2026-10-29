@@ -5,9 +5,10 @@ import { join } from 'node:path';
 import { after, test } from 'node:test';
 import { assertExactMigrationLedger, assertMigrationSqlLedgerChange, assertMigrationStepLedger,
 
+  createDatabase, FLUX_SCHEMA_VERSION, readAppliedMigrationVersions, readMigrationManifest, type MigrationFile } from '@flux/db';
+
 // F-030 S2a (0120) adds search_documents.sealed; a row's history is the same with or without it.
 const withoutSealed = (row: Record<string, unknown>) => Object.fromEntries(Object.entries(row).filter(([key]) => key !== 'sealed'));
-  createDatabase, FLUX_SCHEMA_VERSION, readAppliedMigrationVersions, readMigrationManifest, type MigrationFile } from '@flux/db';
 
 // Actual additive migration/history checks. These fixtures grant no agent action
 // authority and do not establish current dependency eligibility or client activation.

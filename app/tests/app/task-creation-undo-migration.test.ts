@@ -12,6 +12,7 @@ import { guardFixturePool } from './support/fixture-database.js';
 // F-030 S2a (0120) adds search_documents.sealed; a row's history is the same with or without it.
 const withoutSealed = (row: Record<string, unknown>) => Object.fromEntries(Object.entries(row).filter(([key]) => key !== 'sealed'));
 
+
 // #238 AC-U5: 0048 (lifecycle, baseline, use and reversion facts) and 0060 (the `work.creation.revert` grant) on an
 // existing database whose sparse ledger already has 0049-0054, on a fresh database in file order, and the guarded
 // pre-use reversal of both back to the exact prior ledger and schema.

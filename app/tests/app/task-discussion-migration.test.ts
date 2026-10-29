@@ -9,6 +9,7 @@ import { guardFixturePool } from './support/fixture-database.js';
 // F-030 S2a (0120) adds search_documents.sealed; a row's history is the same with or without it.
 const withoutSealed = (row: Record<string, unknown>) => Object.fromEntries(Object.entries(row).filter(([key]) => key !== 'sealed'));
 
+
 test('actual pre-notice human rows and search provenance survive notice and agent migrations without backfill', async () => {
   const name = `flux_actor_history_${randomUUID().replaceAll('-', '')}`;
   const admin = createDatabase(process.env.DATABASE_URL!).pool;
