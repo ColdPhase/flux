@@ -9,8 +9,8 @@ surface takes the same motion from the same places. Founder direction and accept
 
 | Token | Value | Meaning |
 | --- | --- | --- |
-| `--dur-in` | 180 ms | Something enters: dialogs, ⌘K, the drawer, the phone sheet, the detail panel, menus, popovers, toasts, a panel's new content, a row growing in. |
-| `--dur-out` | 120 ms | Something leaves. It is never held: focus has already returned and the next action is possible. |
+| `--dur-in` | 180 ms | Something enters: dialogs, ⌘K, the drawer, the phone sheet, the detail panel, menus, popovers, toasts, a panel's new content, a row growing in; the sidebar's width when it folds to the rail or unfolds. |
+| `--dur-out` | 120 ms | Something leaves. It is never held: focus has already returned and the next action is possible. The sidebar's old rendering fades over it. |
 | `--dur-view` | 150 ms | The old content of a view or place dissolves over the new. |
 | `--dur-press` | 250 ms | A pressed control springs back (`--ease-spring`); the press itself takes `--dur-1`. |
 | `--press` | .97 | The one press scale. |
@@ -22,7 +22,8 @@ Under `prefers-reduced-motion: reduce` and Settings → Appearance → Reduce mo
 
 ## Rules
 
-- Only `opacity` and `transform` animate. A row's height animates only to grow it in or collapse it (`rowMotion.ts`).
+- Only `opacity` and `transform` animate. A row's height animates only to grow it in or collapse it (`rowMotion.ts`), and the sidebar's
+  width when it folds or unfolds (below): the one layout size that is the person's own request, which the work area follows.
 - Motion is short and calm. A row that moved a few rows slides there (260 ms); a row that moved more than `--row-travel-max` (a state
   change that sends it to another group far down or up the list, a card to another column) is not carried across the list: it
   fades in at its new place with a `--shift-row` slide from the side it came from (180 ms). The rows it moved past slide by their
@@ -36,6 +37,12 @@ Under `prefers-reduced-motion: reduce` and Settings → Appearance → Reduce mo
   The picture is a deep copy without ids, `inert` and `aria-hidden`, taking no pointer input, so the new content works from the
   first frame. It is not part of the page's own tree: it is a layer of its own at the end of `body`, inside a closed shadow root
   that wears the page's style sheets, dressed in empty, box-less copies of the host's ancestors so the same selectors style it.
+  It is a whole picture: it stands on the ground the content lay on (the first painted background above it, in the theme that is
+  on) and fades as one, so the new content is revealed through it as old-to-new and old ink is never laid over new ink (#719, where
+  a see-through picture showed both views at once). It starts to fade only once the new content has painted (the second frame after
+  the swap) and is not waiting on its own first reads (`aria-busy="true"` or `.is-opening`, as the conversation holds its feed back
+  until its first chips have settled), bounded to 500 ms (`HOLD_MS`); until then it stands as the old content did, at full
+  strength, so no frame is the ground alone or a view that has not painted. The picture's `data-phase` says `held` or `fading`.
   No query of the page (a class, a text, a role, `#details .wd-eyebrow`) can find a second copy of what is on show. Its one
   difference from the original: the page's `:root[...]` rules do not reach into it (a few shadows and fills for the length of a
   fade). Scroll positions in it are copied, so the old content does not jump. This is the CSS path the issue allows
@@ -56,6 +63,17 @@ Under `prefers-reduced-motion: reduce` and Settings → Appearance → Reduce mo
   ([#606](https://github.com/ColdPhase/flux/issues/606)), so the controls beside it never move while it fades. Disclosure rows that are part of the
   page's flow (the sketch outline's "More actions" row, the "Together" note) are not menus: they take room, so they open and
   close without a fade rather than move what is beside them.
+- The computer's sidebar folds to its 64 px rail and unfolds (`[` or its toggle, Focus) with a short size change
+  ([#720](https://github.com/ColdPhase/flux/issues/720), `ui/SizeSwap.tsx`): the aside's width goes from where it was to where it
+  settles over `--dur-in` on `--ease-out`, and the old rendering stays as an inert picture of itself (as above, on the sidebar's own
+  ground) and fades over `--dur-out`. The new rendering is live and in place from the first frame at the width of its own and the
+  aside clips it, so what is in it never reflows or moves: the toggle keeps its row, its size and, once swapped, its place, and
+  focus stays on it (the control that was replaced is replaced by its counterpart, with or without motion). The work area follows the
+  width (its left edge only: top, height and far edge stay), laid out afresh on every frame: in Chromium no frame of a Conversation,
+  Tasks or Wiki takes longer than 20 ms; in WebKit (headless, in a container) the first two frames take about 130 and 110 ms (the
+  single layout of a reduced-motion switch takes 45 to 90 ms there) and the rest 16 ms. A turn of the viewport to a tablet's width is a change of layout, not of the content: it is never animated,
+  so no frame has the wide sidebar on a narrow screen. A tablet's drawer is the same drawer as below; a phone has no sidebar (its
+  places are in the dock).
 - The drawer and the phone sheet take the same 180 ms in and 120 ms out as the dialog; they travel from their edge on `--ease-sheet`.
   The two-height sheet's half and full heights (`ui.css`, `.ui-detent-sheet`, from #344) and the grabber's width on hover are the
   application's existing layout transitions; they are not part of this work and are not opacity or transform.
@@ -71,12 +89,19 @@ Under `prefers-reduced-motion: reduce` and Settings → Appearance → Reduce mo
 | Menus and popovers | `ui/pop.ts` (`usePop`) and `[data-pop]` in `ui/ui.css`; the composer's menu (`app/ComposerMenu.tsx`) and a message's (`work/messageActions.tsx`) keep their last content while they leave |
 | Toasts | `ui/Toast.tsx` |
 | View and place switches | `Dissolve` around the routes in `app/AppLayout.tsx`; `routeView`, `viewRank` and `viewDirection` in `ui/motion-rules.ts` |
+| The sidebar's fold and unfold | `ui/SizeSwap.tsx` around the sidebar in the `aside` of `app/AppLayout.tsx`; the widths are in `app/app.css` (`.app__side > .side`) |
 | State changes | `ui/StatusGlyph.tsx`, `ui/Morph.tsx` (`useMorph`) |
 | Rows that come, go and move | `ui/rowMotion.ts` (`useRowMotion`) |
 | The press | `ui/press.ts` (`installPress`) |
 | A control that appears on hover (the message toolbar) | `.ui-reveal` and `.is-shown` in `ui/ui.css` |
 
 ## Verifying
+
+`app/tests/ui/test_view_switch.py` records the content area on every animation frame of every ordered pair of Conversation, Map, Tasks
+and Wiki (light and dark, computer and phone, Chromium and WebKit) and holds the rules above frame by frame: a picture on the page's
+ground, fading only after the new view painted, never a blank frame, one change of view, reduced motion in one frame.
+`test_sidebar_motion.py` does the same for the sidebar (the width over the tokens, the work area's edges, the toggle's box, focus, reduced
+motion, the viewport turn) and for the tablet and narrow-window drawers.
 
 `app/tests/ui/test_light_motion.py` reads what the page asked the browser to run (durations, easing, animated properties) and
 samples boxes frame by frame; `motion_evidence.py` films the journeys and `motion_light_performance.py` measures frame
