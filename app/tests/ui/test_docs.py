@@ -387,7 +387,8 @@ class DocsJourney(unittest.TestCase):
         self.assertEqual(prose.locator("img, script, iframe").count(), 0)
         self.assertEqual(prose.locator("a").count(), 0, "no hostile link became clickable")
         expect(prose.locator(".doc-ref--missing")).to_have_text("missing")
-        expect(page.locator(".doc-notice")).to_contain_text("not in this project or no longer exists")
+        # The shared reader adds its own notice ("Shared working copy · last saved version N"); the one about the link is the other.
+        expect(page.locator(".doc-notice", has_text="not in this project or no longer exists")).to_be_visible()
 
     # ---------------------------------------------------------------- history reads like the page (#511)
 
