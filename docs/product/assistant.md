@@ -844,8 +844,9 @@ settle atomically; held Stop/revoke/version/live-session races prove this bounda
     the project). *Used* means an edit, a decision, a reply or other later message in the thread, or a citation (an object
     link, a message reference, a thought started from it), and the item then says why: "Replies since", "Used since",
     "Decided since", "Renamed since", "It has thoughts now", "The task changed since". The check is atomic with the citing
-    write: the Undo takes the project's task-graph lock first, as every work path does, and a write that cites one of these
-    holds the cited row `FOR SHARE` until it commits, so a citation either commits before the check or waits for the removal.
+    write: the Undo takes the project's task-graph lock (a map's own row first, as the writers of its thoughts do), and every work
+    path that cites one of these re-checks its targets after taking the same lock, so a citation either commits before the check or
+    finds the object gone; a message reference, written without the graph lock, holds the cited message `FOR SHARE`.
     A message keeps its row as a tombstone (its place, its sequence and the ids events carry) with the fixed text "[Removed with
     Undo]" and the moment; a map, a result and a decision leave with the links and notices only they owned. A result also
     tombstones what it told each task's discussion and puts the task it finished back as it was, if it is still done. The Undo is

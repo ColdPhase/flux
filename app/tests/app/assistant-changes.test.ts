@@ -1063,8 +1063,16 @@ describe('the assistant\'s change log, run authority and "Ask me first" (F-027 A
   };
   const undoRequest = (changeId: string) => () => owner.browser.request('POST', assistantChangeActionPath(changeId, 'undo'), { body: {} });
   const noServerError = (label: string, ...statuses: number[]) => assert.ok(statuses.every((status) => status < 500), `${label}: ${statuses.join(', ')}`);
+  /** The database's own deadlock counter must not move while `body` runs (the victim of a deadlock is also a 500, but not every victim is seen by the caller). */
+  const withoutDeadlock = async (label: string, body: () => Promise<void>) => {
+    const count = async () => Number((await pool.query(`SELECT deadlocks FROM pg_stat_database WHERE datname = current_database()`)).rows[0].deadlocks);
+    const before = await count();
+    await body();
+    await new Promise((resolve) => setTimeout(resolve, 1500)); // the statistics are flushed about once a second
+    assert.equal(await count(), before, `${label}: the database detected a deadlock`);
+  };
 
-  test('#68 races: Undo of a result against a reply in the task\'s discussion never deadlocks (staggered, both orders)', async () => {
+  test('#68 races: Undo of a result against a reply in the task\'s discussion never deadlocks (staggered, both orders)', async () => withoutDeadlock('result and reply', async () => {
     const seen: string[] = [];
     for (const offset of [0, 2, 5, 10]) for (const swap of [false, true]) {
       const target = await task(owner, `Race task ${offset}${swap}`);
@@ -1082,9 +1090,9 @@ describe('the assistant\'s change log, run authority and "Ask me first" (F-027 A
       assert.equal(status, removed ? 'open' : 'done', `offset ${offset}: result removed ${removed}, task ${status}`);
     }
     assert.ok(seen.length === 8);
-  });
+  }));
 
-  test('#68 races: a person citing the object while its Undo runs is refused or the Undo is; never both commit', async () => {
+  test('#68 races: a person citing the object while its Undo runs is refused or the Undo is; never both commit', async () => withoutDeadlock('citation and Undo', async () => {
     const trials: [string, (offset: number, swap: boolean) => Promise<void>][] = [
       ['decision', async (offset, swap) => {
         const run = await liveRun();
@@ -1140,7 +1148,67 @@ describe('the assistant\'s change log, run authority and "Ask me first" (F-027 A
     for (const [name, trial] of trials) for (const offset of [0, 3, 8]) for (const swap of [false, true]) {
       try { await trial(offset, swap); } catch (error) { throw new Error(`${name} offset ${offset} swap ${swap}: ${(error as Error).message}`); }
     }
-  });
+  }));
+
+  test('#68 races: citing a map while another person writes a thought on it never deadlocks (the Undo\'s lock order must not widen this)', async () => withoutDeadlock('cite map and thought', async () => {
+    const seen: string[] = [];
+    for (let i = 0; i < 16; i++) {
+      const mine = await map(owner);
+      const offset = [0, 2, 5, 10][i % 4]!; const swap = i % 8 >= 4;
+      const [written, cited] = await race(
+        () => peer.browser.request('POST', `/api/v1/sketches/${mine.id}/thoughts`, { body: { text: `Thought ${i}`, x: 0, y: 0 } }),
+        () => owner.browser.request('POST', `/api/v1/projects/${place.id}/work`, { body: { title: `Cites map ${i}`, related: [{ type: 'sketch', id: mine.id }] } }),
+        offset, swap);
+      noServerError(`${offset}${swap ? 'S' : ''}`, written.status, cited.status);
+      seen.push(`${written.status}/${cited.status}`);
+    }
+    assert.equal(seen.length, 16);
+  }));
+
+  test('#68 races: a thought written in the assistant\'s map while its Undo runs: no 5xx, and a map is never removed with a person\'s thought in it', async () => withoutDeadlock('Undo and thought', async () => {
+    for (let i = 0; i < 12; i++) {
+      const run = await liveRun();
+      const made = value(await run.call('flux_create_map', { title: `Thought race map ${i}` }));
+      await complete(run.runId);
+      const [change] = await changesOf(run.runId);
+      const offset = [0, 5, 10, 20][i % 4]!; const swap = i % 8 >= 4;
+      const [undone, written] = await race(undoRequest(change!.id),
+        () => peer.browser.request('POST', `/api/v1/sketches/${made.mapId}/thoughts`, { body: { text: `Late thought ${i}`, x: 0, y: 0 } }), offset, swap);
+      noServerError(`${offset}${swap ? 'S' : ''}`, undone.status, written.status);
+      const kept = await count('sketches', made.mapId);
+      const thoughts = Number((await pool.query(`SELECT count(*) FROM sketch_thoughts WHERE sketch_id = $1`, [made.mapId])).rows[0].count);
+      // Either the Undo won (no map, so the late thought was refused) or the thought did (the map stays, with it): never a thought lost with the map.
+      if (written.status === 201) assert.deepEqual([kept, thoughts], [1, 1], `trial ${i}: a person's thought must keep its map (${undone.status} ${JSON.stringify(undone.json)})`);
+      if (kept === 0) assert.ok(written.status >= 400, `trial ${i}: the thought was accepted into a map that is gone`);
+    }
+  }));
+
+  test('#68 races: a page started from the assistant\'s decision or result, or mentioning it, while its Undo runs leaves no link to a removed object', async () => withoutDeadlock('docs and Undo', async () => {
+    for (let i = 0; i < 12; i++) {
+      const kind = (['from-decision', 'mention-decision', 'from-result', 'mention-map'] as const)[i % 4]!;
+      const run = await liveRun();
+      const target = await task(owner, `Doc race task ${i}`);
+      let objectId = ''; let table = '';
+      if (kind === 'from-decision' || kind === 'mention-decision') {
+        objectId = value(await run.call('flux_propose_decision', { decision: { title: `Doc race decision ${i}`, rationale: 'x' } })).decisionId; table = 'project_decisions';
+      } else if (kind === 'from-result') {
+        objectId = value(await run.call('flux_record_result', { result: { title: `Doc race result ${i}`, finding: 'positive', workIds: [target.id] } })).resultId; table = 'project_results';
+      } else {
+        objectId = value(await run.call('flux_create_map', { title: `Doc race map ${i}` })).mapId; table = 'sketches';
+      }
+      await complete(run.runId);
+      const [change] = await changesOf(run.runId);
+      const body = kind === 'from-decision' ? { title: `Doc ${i}`, body: 'First', from: { type: 'decision', id: objectId } }
+        : kind === 'from-result' ? { title: `Doc ${i}`, body: 'First', from: { type: 'result', id: objectId } }
+        : { title: `Doc ${i}`, body: `See [it](flux:${kind === 'mention-map' ? 'sketch' : 'decision'}/${objectId})` };
+      const offset = [0, 3, 8][i % 3]!; const swap = i % 2 === 1;
+      const [undone, page] = await race(undoRequest(change!.id), () => peer.browser.request('POST', `/api/v1/projects/${place.id}/docs`, { body }), offset, swap);
+      noServerError(`${kind} ${offset}${swap ? 'S' : ''}`, undone.status, page.status);
+      const gone = (await count(table, objectId)) === 0;
+      const links = Number((await pool.query(`SELECT count(*) FROM project_object_links WHERE to_id = $1`, [objectId])).rows[0].count);
+      assert.ok(!(gone && links > 0), `${kind} ${offset}${swap ? 'S' : ''}: removed but linked (undo ${undone.status} ${JSON.stringify(undone.json)}, page ${page.status})`);
+    }
+  }));
 
   test('#68 races: accepting a decision while its Undo runs is a 404 or a refusal, never a 500, and never both', async () => {
     for (const offset of [0, 3, 8]) for (const swap of [false, true]) {

@@ -87,7 +87,7 @@ export function messageReferences(db: DbExecutor) {
         if (opened.card.kind === 'message' && opened.card.state === 'available' && opened.card.target.type === 'message') cited.push(reference.id);
       }
       // A project message cited now cannot be taken back by the assistant's Undo while this commits; one already taken back is unavailable.
-      const wanted = [...new Set(cited)];
+      const wanted = [...new Set(cited)].sort();
       if (wanted.length && (await rows.lockCitable(wanted)).size !== wanted.length) throw new NotFoundError('Reference', 'REFERENCE_UNAVAILABLE');
     },
 

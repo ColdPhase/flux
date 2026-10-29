@@ -285,8 +285,7 @@ export interface WorkRepository extends TaskGraphReader {
   /** IDs of newly inserted links only; an exact existing link is an observation. */
   insertLinks(links: NewObjectLink[]): Promise<string[]>;
   /** Whether the referenced message, material version or object exists in the project. */
-  /** `share`: on a write that cites it, the target row is held `FOR SHARE` until the citing change commits, so the assistant's Undo of it (`FOR UPDATE`) waits and then sees the citation (#68). */
-  targetExists(projectId: string, ref: ObjectRef, options?: { share?: boolean }): Promise<boolean>;
+  targetExists(projectId: string, ref: ObjectRef): Promise<boolean>;
   /**
    * Titles of linked objects keyed by `<type>:<id>` (a message's opening words and its
    * conversation, a material version's title, a doc's current title, a project sketch's title).

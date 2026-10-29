@@ -182,13 +182,14 @@ async function authorized(ports: WorkPorts, principal: Principal, type: WorkObje
 }
 
 /**
- * Whether the cited objects exist in this project. With `share` (always after the project graph lock, the order every work path
- * takes and the assistant's Undo takes too) a decision, result, map or message is held `FOR SHARE` until the citing change commits:
- * the Undo of an object the assistant made then waits for the citation and refuses, or has committed first and the citation is a 404 (#68).
+ * Whether the cited objects exist in this project. Every write that cites one calls it again right after taking the project graph
+ * lock: the assistant's Undo of a decision, result, map or message it made holds that lock while it looks for use and removes the
+ * object, so a citation is either committed before that look or finds the object gone (#68). No row is locked for this, so it cannot
+ * cross a writer that locks the object's own row first (a map's thoughts, for instance).
  */
-async function requireTargets(ports: WorkPorts, projectId: string, targets: ObjectRef[], share = false) {
+async function requireTargets(ports: WorkPorts, projectId: string, targets: ObjectRef[]) {
   for (const target of targets) {
-    if (!(await ports.work.targetExists(projectId, target, share ? { share } : undefined)))
+    if (!(await ports.work.targetExists(projectId, target)))
       throw new RuleViolationError(`The linked ${target.type} is not part of this project`, 'LINK_TARGET_NOT_FOUND');
   }
 }
@@ -420,7 +421,7 @@ export function createWorkUseCases(uow: WorkUnitOfWork) {
         await requireWaitingFor(ports, project, waitingFor);
         await requireTargets(ports, project, [...sources, ...related]);
         await lockProjectGraphs(ports.work, [project]);
-        await requireTargets(ports, project, [...sources, ...related], true);
+        await requireTargets(ports, project, [...sources, ...related]);
         if (planIntent) {
           const existing = await ports.work.findPlanIntent(project, planIntent);
           const produced = existing ? await ports.work.findWork(existing.taskId, { lock: true }) : null;
@@ -583,7 +584,7 @@ export function createWorkUseCases(uow: WorkUnitOfWork) {
         }
         await requireTargets(ports, project, [...sources, ...affects]);
         await lockProjectGraphs(ports.work, [project]);
-        await requireTargets(ports, project, [...sources, ...affects], true);
+        await requireTargets(ports, project, [...sources, ...affects]);
         const useFence = await ports.work.lockPreparedTaskUse(sortedIds([...affects.map((ref) => ref.id), ...await ports.work.taskUseTargets(sources)], 'taskIds'));
         const scope = { workspaceId, projectId: project };
         const record = await ports.work.insertDecision({ id: randomUUID(), ...scope, title, rationale, proposedBy: by, supersedesId: supersedes });
@@ -708,7 +709,7 @@ export function createWorkUseCases(uow: WorkUnitOfWork) {
         // Finishing is also a start/finish transition: graph lock, then ONE ascending pass over the linked tasks
         // together with the finishing task's prerequisites, so no other pass can lock them in another order.
         await lockProjectGraphs(ports.work, [project]);
-        await requireTargets(ports, project, [...sources, ...workRefs(workIds), ...decisions], true);
+        await requireTargets(ports, project, [...sources, ...workRefs(workIds), ...decisions]);
         const backgroundTasks = finding === 'negative' && by.kind === 'human' ? await ports.backgroundComparison.taskTargets(resultId) : [];
         const directTasks = [...workIds, ...await ports.work.taskUseTargets([...sources, ...decisions])];
         const wanted = sortedIds([...directTasks, ...backgroundTasks, ...(finishes ? await directPrerequisiteIds(ports.work, workspaceId, [finishes.id]) : [])], 'taskIds');
@@ -755,7 +756,7 @@ export function createWorkUseCases(uow: WorkUnitOfWork) {
         const { workspaceId } = await ports.access.requireProject(principal, 'write', project, { lock: true });
         await requireTargets(ports, project, [from, to]);
         await lockProjectGraphs(ports.work, [project]);
-        await requireTargets(ports, project, [from, to], true);
+        await requireTargets(ports, project, [from, to]);
         const useFence = await ports.work.lockPreparedTaskUse(await ports.work.taskUseTargets([from, to]));
         const inserted = await ports.work.insertLinks(linkRows({ workspaceId, projectId: project }, from, 'related', [to], by));
         const link = (await ports.work.links([from.id])).find((item) => item.fromId === from.id && item.role === 'related' && item.toId === to.id
