@@ -47,6 +47,8 @@ export interface WorkspaceEncryptionRows {
   keys(workspaceId: string, options: { lock: 'update' }): Promise<unknown>;
   /** The person's unlock password: `last` when it is the workspace's only one (nothing is deleted). */
   dropUnlockPassword(workspaceId: string, userId: string): Promise<'none' | 'deleted' | 'last'>;
+  /** Who has an unlock password here; empty for a plain workspace. */
+  passwordHolders(workspaceId: string): Promise<string[]>;
   /** The `encryption` input of each sealed workspace for one reader (a null user for an agent). */
   views(workspaceIds: string[], userId: string | null): Promise<Map<string, EncryptionViewInput>>;
 }

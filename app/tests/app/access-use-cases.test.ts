@@ -107,6 +107,7 @@ function scene(options: Scene = {}) {
     memberRole: async () => { log('encryption.memberRole'); return options.targetRole ?? 'member'; },
     keys: async () => { log('encryption.keys(update)'); return {}; },
     dropUnlockPassword: async () => { log('encryption.dropUnlockPassword'); return options.drop ?? 'deleted'; },
+    passwordHolders: async () => { log('encryption.passwordHolders'); return []; },
   };
   const projects = {
     lockForGrantChange: async () => { log('projects.lockForGrantChange'); },
