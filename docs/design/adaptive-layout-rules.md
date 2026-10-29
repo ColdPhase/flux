@@ -195,5 +195,6 @@ the lists of primary targets; the matrix measures their effect. Emulation only, 
 - real 4K, ultrawide, Android, iPhone and iPad sessions (optional under #266 item 10).
 
 The performance budgets for the adaptive layouts are agreed in
-[adaptive workspaces](adaptive-workspaces.md#agreed-performance-budgets) (2026-10-29) and asserted by the opt-in
-`motion_performance` harness.
+[adaptive workspaces](adaptive-workspaces.md#agreed-performance-budgets) (2026-10-29, independent agreement still owed)
+and asserted by the opt-in `motion_performance` harness; the phone's frame gap misses its budget
+([#716](https://github.com/ColdPhase/flux/issues/716)).

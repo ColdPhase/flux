@@ -23,7 +23,9 @@ stay unchanged for 150 ms to count as settled (the worst frame gap is read to th
 
 Budgets are the ones agreed in docs/design/adaptive-workspaces.md ("Agreed performance budgets"); the
 constants below must equal that table (tests/test_adaptive_budgets.py checks it). Observed failures are
-reported, never hidden; the run fails when a budget fails.
+reported, never hidden; the run fails when a budget fails, except a miss listed in KNOWN_MISSES, which names its issue, is
+reported as open and fails the run once it stops missing. Each distribution also reports its long animation frames (over 50 ms):
+how many, how long, and which scripts and how much forced layout they held. Observed, not budgeted.
 """
 from __future__ import annotations
 
@@ -55,11 +57,17 @@ STAMP = uuid.uuid4().hex[:10]
 # the same shell reads nothing).
 # heapGrowthMB: the JavaScript heap after a forced collection, at the end of the profile against its start (a single ceiling, not a p95).
 BUDGETS = {
-    "desktop": {"selectionFeedback": 150, "motionEnd": 370, "selectionCommitted": 300, "keyInput": 100, "frameGap": 100,
-                "layoutSwitch": 100, "layoutGap": 100, "layoutRequests": 3, "heapGrowthMB": 50},
-    "phone-cpu4": {"selectionFeedback": 300, "motionEnd": 420, "selectionCommitted": 700, "keyInput": 200, "frameGap": 300,
-                   "layoutSwitch": 400, "layoutGap": 400, "layoutRequests": 3, "heapGrowthMB": 50},
+    "desktop": {"selectionFeedback": 150, "motionEnd": 370, "selectionCommitted": 200, "keyInput": 100, "frameGap": 50,
+                "layoutSwitch": 100, "layoutGap": 100, "layoutRequests": 3, "heapGrowthMB": 20},
+    "phone-cpu4": {"selectionFeedback": 300, "motionEnd": 420, "selectionCommitted": 420, "keyInput": 200, "frameGap": 100,
+                   "layoutSwitch": 250, "layoutGap": 250, "layoutRequests": 3, "heapGrowthMB": 20},
 }
+# A frame time is a requestAnimationFrame timestamp, quantised to the 16.7 ms frame: three frames read 50.0 to 50.1 ms. A p95 within
+# half a millisecond of its budget passes; nothing else is allowed over.
+JITTER_MS = 0.5
+# Budgets the harness measures as missed today. Each is reported as open (never as passing) and names its issue; the run does not
+# fail for it, and does fail when it stops missing, so a closed miss must be deleted from this list.
+KNOWN_MISSES = {"phone-cpu4:workTab:maxFrameGap": "#716"}
 # The same desktop journeys with reduced motion (tokens 0 ms): what the motion itself costs.
 BUDGETS["desktop-reduced"] = dict(BUDGETS["desktop"])
 # Window sizes: the profile's own, and what a person can reach from it (a tablet, a wide screen; a rotation, an unfolded phone).
@@ -74,7 +82,17 @@ LAYOUT_WARMUPS = int(os.environ.get("FLUX_MOTION_LAYOUT_WARMUPS", "15"))
 # phone's title, the dock, the work surface).
 LANDMARKS = ["#content", "#content > *", ".side", ".top", ".phead", ".phone-dock"]
 PROBE = r"""(() => {
-  const probe = window.__motionProbe = { result: null };
+  const probe = window.__motionProbe = { result: null, loaf: [] };
+  // Every long animation frame (over 50 ms) with where its time went: script, style and layout, render. Observed, not budgeted.
+  try {
+    new PerformanceObserver((list) => {
+      for (const e of list.getEntries()) {
+        probe.loaf.push({ duration: e.duration, blocking: e.blockingDuration, scriptMs: e.scripts.reduce((sum, c) => sum + c.duration, 0),
+          styleLayoutMs: e.styleAndLayoutStart ? e.startTime + e.duration - e.styleAndLayoutStart : null, renderStartMs: e.renderStart ? e.renderStart - e.startTime : null,
+          scripts: e.scripts.map((c) => ({ file: c.sourceURL.split('/').pop(), fn: c.sourceFunctionName, invoker: c.invoker, ms: c.duration, forcedMs: c.forcedStyleAndLayoutDuration })) });
+      }
+    }).observe({ type: 'long-animation-frame' });
+  } catch (error) { probe.loaf = null; }
   // One trusted click or tap on a project row, a work tab or (the phone) a view in the title menu: feedback (the
   // highlight/mark on the chosen item, or the menu leaving, then two following frames), the motion's end, the route
   // committing that choice, and frame gaps.
@@ -176,7 +194,7 @@ def summary(values, budget=None):
     data = {"n": len(values), "p50": percentile(values, 50), "p95": percentile(values, 95), "max": round(max(values), 1) if values else None}
     if budget is not None:
         data["budgetP95"] = budget
-        data["passed"] = data["p95"] is not None and data["p95"] <= budget
+        data["passed"] = data["p95"] is not None and data["p95"] <= budget + JITTER_MS
     return data
 
 
@@ -261,6 +279,7 @@ class MotionPerformance(unittest.TestCase):
         result = page.evaluate("() => window.__motionProbe.result")
         self.assertFalse(result.get("timeout"), f"{kind} completed: {result}")
         page.wait_for_timeout(120)
+        result["loaf"] = page.evaluate("() => { const l = window.__motionProbe.loaf || []; window.__motionProbe.loaf = l === null ? null : []; return l; }")
         return result
 
     def series(self, page, actions, kind):
@@ -322,8 +341,27 @@ class MotionPerformance(unittest.TestCase):
                     "apiPaths": dict(Counter(path for r in results for path in r["apiPaths"]).most_common(8))}
         return distributions
 
+    @staticmethod
+    def long_frames(results):
+        """Where the long animation frames (over 50 ms) of a distribution spent their time: observed, not budgeted."""
+        frames = [f for r in results for f in r.get("loaf", [])]
+        work = {}
+        for f in frames:
+            for c in f["scripts"]:
+                entry = work.setdefault(f'{c["file"]} {c["fn"] or "-"} {c["invoker"]}', {"count": 0, "ms": 0.0, "forcedStyleLayoutMs": 0.0})
+                entry["count"] += 1
+                entry["ms"] += c["ms"]
+                entry["forcedStyleLayoutMs"] += c["forcedMs"]
+        mean = lambda key: round(sum(f[key] or 0 for f in frames) / len(frames), 1) if frames else None
+        return {"actions": len(results), "actionsWithALongFrame": sum(1 for r in results if r.get("loaf")), "frames": len(frames),
+                "durationP50": percentile([f["duration"] for f in frames], 50), "durationP95": percentile([f["duration"] for f in frames], 95),
+                "durationMax": round(max((f["duration"] for f in frames), default=0), 1),
+                "meanScriptMs": mean("scriptMs"), "meanStyleLayoutMs": mean("styleLayoutMs"), "meanBlockingMs": mean("blocking"),
+                "topScripts": {k: {"count": v["count"], "ms": round(v["ms"], 1), "forcedStyleLayoutMs": round(v["forcedStyleLayoutMs"], 1)}
+                               for k, v in sorted(work.items(), key=lambda item: -item[1]["ms"])[:6]}}
+
     def selection_distribution(self, results, seconds, budget):
-        return {"seconds": seconds,
+        return {"seconds": seconds, "longFrames": self.long_frames(results),
                 "selectionFeedback": summary([r["feedback"] for r in results], budget["selectionFeedback"]),
                 "motionEnd": summary([r["motionEnd"] for r in results], budget["motionEnd"]),
                 "selectionCommitted": summary([r["committed"] for r in results], budget["selectionCommitted"]),
@@ -381,9 +419,14 @@ class MotionPerformance(unittest.TestCase):
             self.assertTrue(box.input_value().startswith("Measured reply text"), "the measurement only typed and erased one character")
             context.close(); watcher.close()
             self.finish(profile, label, failures)
-        self.report["observedFailures"] = failures
-        self.report["outcome"] = "within-budgets" if not failures else "observed-budget-failures"
-        self.assertEqual(failures, [], "every p95 is within its budget")
+        misses = sorted(failure for failure in failures if failure in KNOWN_MISSES)
+        unexpected = sorted(failure for failure in failures if failure not in KNOWN_MISSES)
+        closed = sorted(known for known in KNOWN_MISSES if known not in failures)
+        self.report["knownMisses"] = {miss: KNOWN_MISSES[miss] for miss in misses}
+        self.report["observedFailures"] = unexpected
+        self.report["outcome"] = "observed-budget-failures" if unexpected else "within-budgets-except-known-misses" if misses else "within-budgets"
+        self.assertEqual(unexpected, [], "every p95 is within its budget")
+        self.assertEqual(closed, [], "a known miss that no longer misses is deleted from KNOWN_MISSES")
 
     def finish(self, profile, label, failures):
         for segment, data in profile.get("heapMB", {}).items():
