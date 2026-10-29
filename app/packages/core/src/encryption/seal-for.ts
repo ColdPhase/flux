@@ -1,6 +1,6 @@
 import { DecryptionFailedError } from './primitives.js';
 import { openField, sealField, type FieldPlace } from './envelope.js';
-import { fileEncryptor, openFileObject } from './files.js';
+import { fileEncryptor, fileSealer, openFileObject } from './files.js';
 import { WorkspaceLockedError } from './errors.js';
 import { identitySeal, sha256Hex, type WorkspaceSeal } from './ports.js';
 import type { WorkspaceKey } from './keys.js';
@@ -77,6 +77,7 @@ export function realSeal(workspaceId: string, currentVersion: number, keys: Read
     },
     fileCipher: (fileId) => ({
       encryptor: () => fileEncryptor(current, fileId),
+      sealer: () => fileSealer(current, fileId),
       open: (object) => openFileObject(keyFor, workspaceId, fileId, object),
     }),
   };

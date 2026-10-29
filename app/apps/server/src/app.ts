@@ -6,7 +6,7 @@ import Fastify, { type FastifyInstance } from 'fastify';
 import fastifyStatic from '@fastify/static';
 import websocket from '@fastify/websocket';
 import { PgBoss } from 'pg-boss';
-import { assertExactMigrationLedger, FLUX_SCHEMA_VERSION, readAppliedMigrationVersions, readMigrationManifest } from '@flux/db';
+import { assertExactMigrationLedger, fileCipherOf, FLUX_SCHEMA_VERSION, readAppliedMigrationVersions, readMigrationManifest, sql as dbSql, type DbExecutor } from '@flux/db';
 import { EDITING_CAPABILITIES_PATH, type EditingCapability } from '@flux/contracts';
 import { registerDatabase } from './plugins/database.js';
 import { aiRoutes } from './access/ai-gate.js';
@@ -139,7 +139,12 @@ export async function buildApp(config: ServerConfig, migrationsDir = 'packages/d
   await app.register(accessRoutes, { db, sessions: identity, boss, liveRevocation, verifiedEmailMembers: identityConfig.oidc !== null, encryptionKeys });
   // Live map/wiki editing (#228) is composed below, after media; native map routes reach its backend lazily.
   let editing: Awaited<ReturnType<typeof registerEditing>> = null;
-  const fileStorage = await diskFileStorage(filesDir);
+  // F-030: an encrypted workspace's file objects are sealed as they arrive and opened only after their tag verifies.
+  const fileStorage = await diskFileStorage(filesDir, { cipherFor: async (objectId) => {
+    const executor = db as unknown as DbExecutor;
+    const [row] = (await executor.execute<{ workspace_id: string }>(dbSql`SELECT workspace_id FROM project_files WHERE id = ${objectId}::uuid`)).rows;
+    return row ? fileCipherOf(executor, row.workspace_id, objectId, { write: false }) : null;
+  } });
   const editingConfirmation = identityConfig.oidc ? { providerId: identityConfig.oidc.providerId, confirmationMaxAgeMs: identityConfig.oidc.confirmationMaxAgeMs } : null;
   await app.register(sketchRoutes, { db, sessions: identity, confirmation: editingConfirmation, storage: fileStorage, developmentEditing: config.liveEditing, liveBackend: () => editing?.mapsBackend ?? null });
   await app.register(dmRoutes, { db, sessions: identity });

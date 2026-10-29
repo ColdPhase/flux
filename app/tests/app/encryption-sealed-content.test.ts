@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict';
 import { createHash, randomUUID } from 'node:crypto';
+import { readFile, readdir, writeFile } from 'node:fs/promises';
+import { join } from 'node:path';
 import { before, describe, test } from 'node:test';
 import WebSocket from 'ws';
 import { projectObjectNoticesPath, type Project } from '@flux/contracts';
@@ -18,7 +20,7 @@ let ada: Person; let ben: Person; let cy: Person;
 let A: string; let B: string;
 const pw = passphrase();
 const kinds = ['project', 'goal', 'message', 'reply', 'large', 'dmTitle', 'dmMessage', 'decision', 'rationale', 'result', 'evidence', 'draft', 'draftBody', 'draftEdit', 'task', 'outcome', 'criterion', 'blocker', 'taskRename',
-  'docTitle', 'docBody', 'docEdit', 'materialTitle', 'materialBody', 'materialUrl', 'mapTitle', 'thought', 'linkLabel'] as const;
+  'docTitle', 'docBody', 'docEdit', 'materialTitle', 'materialBody', 'materialUrl', 'mapTitle', 'thought', 'linkLabel', 'fileName'] as const;
 type Kind = typeof kinds[number];
 const canaries: Record<'A' | 'B', Record<Kind, string>> = { A: {} as Record<Kind, string>, B: {} as Record<Kind, string> };
 for (const side of ['A', 'B'] as const) {
@@ -273,6 +275,51 @@ describe('F-030 S2a-1: sealed content in the repositories', () => {
       await post(ada, `/api/v1/sketches/${String(sketch.id)}/promotion`, { target: { kind: 'new', name }, token: preview.token, participants: 'none' }, 201);
       const source = expectStatus(await ada.browser.request('GET', `/api/v1/sketches/${String(sketch.id)}`), 200, `${side}: source`) as { copies?: { projectName: string }[] };
       assert.deepEqual(source.copies?.map((copy) => copy.projectName), [name], `${side}: the copy shows the opened project name`);
+    }
+  });
+
+  test('a file of A is sealed on disk as it arrives and served opened; its name and digest are sealed; a tampered object is never served (S2a-2b-2)', async () => {
+    const objectFile = async (id: string) => {
+      const find = async (dir: string): Promise<string | null> => {
+        for (const entry of await readdir(dir, { withFileTypes: true })) {
+          const path = join(dir, entry.name);
+          if (entry.isDirectory()) { const found = await find(path); if (found) return found; } else if (entry.name === id) return path;
+        }
+        return null;
+      };
+      return find('/data/files');
+    };
+    for (const [side, ws] of [['A', A], ['B', B]] as const) {
+      void ws;
+      const c = canaries[side];
+      const bytes = Buffer.from(`file bytes ${c.fileName} ${'x'.repeat(5000)}`);
+      const name = `${c.fileName}.txt`;
+      const response = await fetch(new URL(`/api/v1/projects/${ids[side].project}/files?uploadId=${randomUUID()}&name=${encodeURIComponent(name)}`, ada.browser.base), {
+        method: 'POST', headers: { 'content-type': 'application/octet-stream', cookie: ada.browser.cookieHeader(), origin: ada.browser.defaultOrigin }, body: bytes });
+      assert.equal(response.status, 201, await response.clone().text());
+      const staged = await response.json() as { id: string; name: string; size: number };
+      assert.deepEqual({ name: staged.name, size: staged.size }, { name, size: bytes.length }, `${side}: the plaintext size and name`);
+      const served = await fetch(new URL(`/api/v1/files/${staged.id}`, ada.browser.base), { headers: { cookie: ada.browser.cookieHeader() } });
+      assert.equal(served.status, 200);
+      assert.deepEqual(Buffer.from(await served.arrayBuffer()), bytes, `${side}: the download is the uploaded bytes`);
+      const path = await objectFile(staged.id);
+      assert.ok(path, `${side}: the object exists`);
+      const stored = await readFile(path!);
+      const row = (await pool.query(`SELECT flux_is_sealed(name) AS name, flux_is_sealed(sha256) AS sha, key_version FROM project_files WHERE id = $1`, [staged.id])).rows[0];
+      if (side === 'A') {
+        assert.equal(stored.subarray(0, 4).toString('ascii'), 'FXF1', 'A: a sealed object');
+        assert.equal(stored.length, bytes.length + 36, 'A: header and tag around the plaintext length');
+        for (const needle of [c.fileName, createHash('sha256').update(bytes).digest('hex')]) assert.equal(stored.includes(needle), false, 'A: no plaintext on disk');
+        assert.deepEqual(row, { name: true, sha: true, key_version: 1 });
+        // A changed byte makes the object unavailable, never served.
+        const tampered = Buffer.from(stored); tampered[tampered.length - 1] ^= 1;
+        await writeFile(path!, tampered);
+        assert.notEqual((await fetch(new URL(`/api/v1/files/${staged.id}`, ada.browser.base), { headers: { cookie: ada.browser.cookieHeader() } })).status, 200, 'A: a tampered object is refused');
+        await writeFile(path!, stored);
+      } else {
+        assert.ok(stored.equals(bytes), 'B: stored as it was sent');
+        assert.deepEqual(row, { name: false, sha: false, key_version: null });
+      }
     }
   });
 
