@@ -19,7 +19,7 @@ function attach(element: HTMLElement): Tracker {
   const input = () => { tracker.last = performance.now(); for (const listener of [...tracker.listeners]) listener(); };
   const wheel = (event: WheelEvent) => { if ((event.deltaY || event.deltaX) && !event.ctrlKey) input(); };
   const key = (event: KeyboardEvent) => {
-    if (event.target instanceof HTMLElement && event.target.closest('input,textarea,select,[contenteditable="true"]')) return;
+    if (event.target instanceof HTMLElement && event.target.closest('input,textarea,select,[role="combobox"],[role="listbox"],[contenteditable="true"]')) return;
     if (SCROLL_KEYS.has(event.key)) input();
   };
   // Focus moved to something inside (keyboard, assistive technology, a reader's script) brings

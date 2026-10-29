@@ -23,10 +23,12 @@ work=$(cd "$work" && pwd -P)   # the launcher records physical paths
 copy="$work/a/flux"
 copy2="$work/b/flux"
 copy3="$work/c/flux"
+copy4="$work/d/flux"
 run=''
 sentinel="${tag}-sentinel_keep"
 # The second checkout gets its own ports; its project name comes from its own path.
 flux2() { FLUX_PORT=$((FLUX_PORT + 3)) FLUX_DEV_PORT=$((FLUX_DEV_PORT + 3)) FLUX_MAILPIT_PORT=$((FLUX_MAILPIT_PORT + 3)) "$copy2/flux" "$@"; }
+flux4() { FLUX_PORT=$((FLUX_PORT + 6)) FLUX_DEV_PORT=$((FLUX_DEV_PORT + 6)) FLUX_MAILPIT_PORT=$((FLUX_MAILPIT_PORT + 6)) "$copy4/flux" "$@"; }
 
 step() { printf '\n== %s\n' "$*"; }
 fail() { printf 'FAIL: %s\n' "$*" >&2; exit 1; }
@@ -39,9 +41,10 @@ cleanup() {
   fi
   if [ -x "$copy/flux" ] && [ -f "$copy/docker/.env" ]; then "$copy/flux" clean -y >/dev/null 2>&1 || true; fi
   if [ -x "$copy2/flux" ] && [ -f "$copy2/docker/.env" ]; then flux2 clean -y >/dev/null 2>&1 || true; fi
+  if [ -x "$copy4/flux" ] && [ -f "$copy4/docker/.env" ]; then flux4 clean -y >/dev/null 2>&1 || true; fi
   docker volume rm "$sentinel" >/dev/null 2>&1 || true
   # Ownership markers left by a run that failed before its .env existed.
-  for checkout in "$copy" "$copy2"; do
+  for checkout in "$copy" "$copy2" "$copy4"; do
     docker volume ls -q --filter "label=com.flux.checkout=$checkout" | xargs docker volume rm >/dev/null 2>&1 || true
   done
   rm -rf "$work"
@@ -55,7 +58,7 @@ docker volume create --label com.docker.compose.project="${tag}other" "$sentinel
 step "Copy the working tree (tracked and new files, no .env) to $copy and $copy2"
 for target in "$copy" "$copy2"; do
   mkdir -p "$target"
-  (cd "$here" && git ls-files -z --cached --others --exclude-standard | xargs -0 tar -cf - 2>/dev/null) | (cd "$target" && tar -xf -)
+  (cd "$here" && git ls-files -z --cached --others --exclude-standard | tar --null -T - -cf - 2>/dev/null) | (cd "$target" && tar -xf -)
   [ ! -e "$target/docker/.env" ] || fail ".env was copied"
 done
 cd "$work"   # run the launcher from outside the checkout: paths resolve relative to ./flux
@@ -249,5 +252,39 @@ code=$(curl -sS -o /dev/null -w '%{http_code}' -H "Origin: $base2" -H 'Content-T
 [ "$code" = 200 ] || fail "second checkout's demo login answered $code after the first clean"
 flux2 clean -y >/dev/null
 [ -z "$(docker ps -aq --filter "label=com.docker.compose.project=$run2")" ] || fail "second clean left containers"
+
+step "An interrupted first up that never migrated the database is removed by clean"
+mkdir -p "$copy4"
+(cd "$here" && git ls-files -z --cached --others --exclude-standard | tar --null -T - -cf - 2>/dev/null) | (cd "$copy4" && tar -xf -)
+[ ! -e "$copy4/docker/.env" ] || fail ".env was copied"
+# Its own session, so the interrupt reaches every Compose client it starts.
+FLUX_PORT=$((FLUX_PORT + 6)) FLUX_DEV_PORT=$((FLUX_DEV_PORT + 6)) FLUX_MAILPIT_PORT=$((FLUX_MAILPIT_PORT + 6)) \
+  setsid "$copy4/flux" up </dev/null > "$work/up-interrupted.out" 2>&1 &
+up4=$!
+# Stop the first up as soon as its database volume exists: migrate starts only after db is healthy.
+run4=''
+i=0
+until run4=$(sed -n 's/^FLUX_PROJECT=//p' "$copy4/docker/.env" 2>/dev/null) && [ -n "$run4" ] \
+  && docker volume inspect "${run4}_pgdata" >/dev/null 2>&1; do
+  i=$((i + 1)); [ "$i" -lt 900 ] || fail "the interrupted up never created the database volume"
+  sleep 0.1
+done
+kill -INT -- "-$up4" 2>/dev/null || true
+wait "$up4" 2>/dev/null || true
+(cd "$copy4" && docker compose --project-directory docker --env-file docker/.env -p "$run4" -f docker/compose.source.yaml \
+  --profile dev --profile test --profile ui --profile runtime up -d --wait db >/dev/null 2>&1) || fail "could not start only the database"
+db4=$(docker ps -q --filter "label=com.docker.compose.project=$run4" --filter "label=com.docker.compose.service=db")
+[ -n "$db4" ] || fail "database container of $run4 is not running"
+migrated=$(printf "select count(*) from information_schema.tables where table_schema = 'public';\n" \
+  | docker exec -i "$db4" sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -At')
+[ "$migrated" = 0 ] || fail "the database was migrated; this case needs a never-migrated database"
+if ! flux4 clean -y > "$work/clean-interrupted.out" 2>&1; then
+  cat "$work/clean-interrupted.out"
+  fail "clean refused a never-migrated database"
+fi
+for volume in "${run4}_pgdata" "${run4}_files"; do
+  if docker volume inspect "$volume" >/dev/null 2>&1; then fail "clean left $volume"; fi
+done
+[ -z "$(docker ps -aq --filter "label=com.docker.compose.project=$run4")" ] || fail "clean left containers of $run4"
 
 step "PASS: ./flux origin guard, up, demo, dev, down, reset, clean and checkout isolation"

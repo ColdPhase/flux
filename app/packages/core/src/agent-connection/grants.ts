@@ -2,7 +2,7 @@ import { AGENT_OPERATIONS, AGENT_OPERATION_CLASSES, AGENT_PEER_REQUEST_CLASSES,
   type AgentStandingGrant, type CreateAgentStandingGrantCommand, type NarrowAgentStandingGrantCommand, type Page, type PageQuery } from '@flux/contracts';
 import { InvalidInputError, NotFoundError } from '../access/errors.js';
 import { isUuid } from '../access/policy.js';
-import { parsePage } from '../access/domain.js';
+import { parsePage } from '../access/validation.js';
 import type { Principal } from '../principal.js';
 
 export interface AgentStandingGrantPort {

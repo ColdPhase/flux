@@ -1,4 +1,4 @@
-import { assistantJobRows, personalRunRows, TaskUseRefusal, withIdpStanding } from '@flux/db';
+import { assistantJobRows, personalRunRows, TaskUseRefusal, withIdpStanding, accessReader } from '@flux/db';
 import {
   ConflictError, DomainError, RuleViolationError, policyPersonalRunAccess, prepareSchedule, recordEvent, scheduleWords, type Database, type PersonalRunPorts, type PersonalRunQueue,
   type PersonalRunUnitOfWork, type Transaction,
@@ -15,7 +15,7 @@ import { eventPorts } from '../events.js';
  */
 export function personalRunPorts(tx: Transaction, queue?: PersonalRunQueue): PersonalRunPorts {
   const ports: PersonalRunPorts = {
-    access: withIdpStanding(policyPersonalRunAccess(tx), tx),
+    access: withIdpStanding(policyPersonalRunAccess(accessReader(tx)), tx),
     runs: personalRunRows(tx),
     queue: queue ?? { enqueue: async () => { throw new Error('The worker does not queue personal runs'); } },
     events: { record: async (principal, workspaceId, kind, projectId, data) => { await recordEvent(eventPorts(tx), principal, workspaceId, kind, projectId, data); } },

@@ -1,7 +1,7 @@
 import { useEffect, useId, useRef, useState, type FormEvent, type KeyboardEvent } from 'react';
 import type { WorkspaceMember } from '@flux/contracts';
 import { ApiError } from '../api/client';
-import { Button, Icon, Input } from '../ui';
+import { Button, Icon, Input, Option, Select } from '../ui';
 import { encryptionProblem, grantUnlockPassword, isWrongPassword, lockWorkspace, newRecoveryCode, setUnlockPassword, type EncryptedWorkspace } from './api';
 import { checkPassword, generatePassphrase, loadWords } from './passphrase';
 import { PasswordLength, passwordRefusal } from './PasswordLength';
@@ -34,10 +34,11 @@ const first = (person: string) => person.trim().split(/\s+/)[0] || person;
  * (a button that cannot act now is dimmed, not removed). Each button opens one inline group below the row, one at a time.
  * Passwords and the recovery code are typed or shown here and kept nowhere.
  *
- * The wire shape (`WorkspaceEncryption`) says whether the caller has a password and whether a recovery code exists, but not
- * who else has a password or whether a holder has allowed the caller to set one: so "Set your unlock password" is offered to
- * an owner or admin without one and answers for itself (`403 UNLOCK_PASSWORD_GRANT_REQUIRED`), and a holder who lets someone
- * set a first password chooses among the other owners and admins (`409 ALREADY_HAS_PASSWORD` says who has one).
+ * The wire says whether the caller has a password, when a holder's permission to set a first one ends
+ * (`passwordGrantUntil`), whether a recovery code exists, and, on the member rows a holder reads, who lacks a password
+ * (`unlockPassword`). So an owner or admin without a password sees **Set your unlock password** while a holder's permission
+ * lasts, **Use the recovery code** otherwise, and a dimmed **Set your unlock password** when neither is possible; a holder
+ * who lets someone set a first password is offered only the owners and admins without one.
  */
 export function EncryptionSection({ workspace, members, meId, myRole, offerCode, onChanged }: {
   workspace: EncryptedWorkspace; members: WorkspaceMember[] | null; meId: string; myRole: string;
@@ -63,7 +64,13 @@ export function EncryptionSection({ workspace, members, meId, myRole, offerCode,
   const rotation = enc.rotation;
   const changedOn = enc.keyChangedAt && !Number.isNaN(Date.parse(enc.keyChangedAt)) ? dayOnly.format(new Date(enc.keyChangedAt)) : '';
   // The other owners and admins, whom a holder can let set a first password.
-  const candidates = manager && enc.myPassword && members ? members.filter((member) => member.userId !== meId && (member.role === 'owner' || member.role === 'admin')) : [];
+  const candidates = manager && enc.myPassword && members
+    ? members.filter((member) => member.userId !== meId && (member.role === 'owner' || member.role === 'admin') && member.unlockPassword === false) : [];
+  // A first password: with a holder's permission, or with the recovery code. Neither: the button waits, dimmed, in its place.
+  const grantUntil = !enc.myPassword && enc.passwordGrantUntil && Date.parse(enc.passwordGrantUntil) > Date.now() ? enc.passwordGrantUntil : null;
+  const firstPassword: Panel = enc.myPassword ? { kind: 'password', via: 'current' } : { kind: 'password', via: grantUntil ? 'grant' : 'recovery' };
+  const canFirst = enc.myPassword || !!grantUntil || !noCode;
+  const passwordLabel = enc.myPassword ? 'Change your unlock password' : grantUntil || noCode ? 'Set your unlock password' : 'Use the recovery code';
 
   const unlockedLine = `Unlocked${enc.unlockedBy ? ` by ${enc.unlockedBy.name}` : ''}${enc.unlockedAt ? ` ${when(enc.unlockedAt)}` : ''}.`;
   const closeTo = (key: string) => { setPanel(null); requestAnimationFrame(() => triggers.current[key]?.focus({ preventScroll: true })); };
@@ -72,8 +79,8 @@ export function EncryptionSection({ workspace, members, meId, myRole, offerCode,
     setPanel((open) => (open && JSON.stringify(open) === JSON.stringify(next) ? null : next));
   };
   // A button that cannot act while the space is locked is dimmed and still reachable, so nothing around it moves.
-  const dim = () => ({ ...(locked ? { 'aria-disabled': true as const } : {}), className: `people__enc-button${locked ? ' is-dim' : ''}` });
-  const guard = (run: () => void) => () => { if (locked) return; run(); };
+  const dim = (also = false) => ({ ...(locked || also ? { 'aria-disabled': true as const } : {}), className: `people__enc-button${locked || also ? ' is-dim' : ''}` });
+  const guard = (run: () => void, also = false) => () => { if (locked || also) return; run(); };
   const saved = (message: string, key: string) => { setStatus(message); closeTo(key); onChanged(); };
 
   return (
@@ -83,8 +90,8 @@ export function EncryptionSection({ workspace, members, meId, myRole, offerCode,
       {manager ? (
         <>
           <div className="people__enc-actions">
-            <Button ref={(element) => { triggers.current.password = element; }} variant="quiet" {...dim()} aria-expanded={panel?.kind === 'password'}
-              onClick={guard(() => toggle({ kind: 'password', via: enc.myPassword ? 'current' : 'grant' }))}>{enc.myPassword ? 'Change your unlock password' : 'Set your unlock password'}</Button>
+            <Button ref={(element) => { triggers.current.password = element; }} variant="quiet" {...dim(!canFirst)} aria-expanded={panel?.kind === 'password'}
+              onClick={guard(() => toggle(firstPassword), !canFirst)}>{passwordLabel}</Button>
             <Button ref={(element) => { triggers.current.lock = element; }} variant="quiet" {...dim()} aria-expanded={panel?.kind === 'lock'} onClick={guard(() => toggle({ kind: 'lock' }))}>Lock now</Button>
             {owner ? <Button ref={(element) => { triggers.current.code = element; }} variant="quiet" {...dim()} aria-expanded={panel?.kind === 'code' || panel?.kind === 'shown'} onClick={guard(() => toggle({ kind: 'code' }))}>{noCode ? 'Make a new recovery code' : 'New recovery code'}</Button> : null}
             {candidates.length ? (
@@ -94,7 +101,8 @@ export function EncryptionSection({ workspace, members, meId, myRole, offerCode,
             ) : null}
           </div>
           {locked ? <p className="people__hint">These need {name} to be unlocked first.</p> : null}
-          {!enc.myPassword ? <p className="people__hint">You don’t have an unlock password yet. Another owner or admin can let you set one{noCode ? '.' : ', or use the recovery code.'}</p> : null}
+          {grantUntil ? <p className="people__hint" data-password-grant="">You can set an unlock password until {timeOnly.format(new Date(grantUntil))}.</p>
+            : !enc.myPassword ? <p className="people__hint">You don’t have an unlock password yet. Another owner or admin can let you set one{noCode ? '.' : ', or use the recovery code.'}</p> : null}
           {rotation ? <p className="people__hint" data-key-rotation={rotation.paused ? 'paused' : 'running'}>{rotation.paused || locked
             ? `Changing the key · paused until ${name} is unlocked.`
             : `Changing the key · ${Math.max(0, Math.min(100, Math.round(rotation.percent)))}%. It continues while ${name} is unlocked.`}</p>
@@ -225,9 +233,9 @@ function AllowConfirm({ workspace, candidates, onClose, onAllowed }: {
       {candidates.length > 1 ? (
         <div className="people__field">
           <label htmlFor={selectId}>Who</label>
-          <select id={selectId} value={who} onChange={(event) => { setWho(event.target.value); setProblem(''); }}>
-            {candidates.map((candidate) => <option key={candidate.userId} value={candidate.userId}>{candidate.name}</option>)}
-          </select>
+          <Select id={selectId} value={who} onChange={(next) => { setWho(next); setProblem(''); }}>
+            {candidates.map((candidate) => <Option key={candidate.userId} value={candidate.userId}>{candidate.name}</Option>)}
+          </Select>
         </div>
       ) : null}
       <Input ref={ref} label="Your unlock password" type="password" autoComplete="current-password" autoCapitalize="none" spellCheck={false} value={password} aria-invalid={problem ? true : undefined}
@@ -302,7 +310,7 @@ function PasswordEditor({ workspace, start, recoveryCode, onClose, onSaved }: { 
         onChange={(event) => { setRepeat(event.target.value); if (repeatError) setRepeatError(''); }} />
       <div className="people__enc-quiet">
         <Button variant="quiet" onClick={() => void suggest()}>Suggest six random words</Button>
-        {recoveryCode ? <Button variant="quiet" onClick={() => { setVia(via === 'recovery' ? start : 'recovery'); setSecret(''); setProblem(''); }}>{via === 'recovery' ? (start === 'current' ? 'Use my current password' : 'Use a holder’s permission instead') : 'Use the recovery code instead'}</Button> : null}
+        {recoveryCode && start !== 'recovery' ? <Button variant="quiet" onClick={() => { setVia(via === 'recovery' ? start : 'recovery'); setSecret(''); setProblem(''); }}>{via === 'recovery' ? (start === 'current' ? 'Use my current password' : 'Use a holder’s permission instead') : 'Use the recovery code instead'}</Button> : null}
       </div>
       <div className="details__actions">
         <Button type="submit" variant="primary" busy={busy}>{start === 'current' ? 'Save password' : 'Set password'}</Button>

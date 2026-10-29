@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { test } from 'node:test';
 import Fastify from 'fastify';
 import { DomainError, grantProject, liveInvitationUseCases, type LiveMedia } from '@flux/core';
+import { accessPorts } from '@flux/db';
 import type { Doc, LiveSession, Material } from '@flux/contracts';
 import { liveRoutes } from '../../apps/server/src/live/routes.js';
 import { liveAccess } from '../../apps/server/src/live/access.js';
@@ -105,7 +106,7 @@ test('wiki doc is a project-bound live anchor; non-doc, foreign and hidden ancho
     [randomUUID(), ws.id, place.id, foreignDoc.id, owner.id, randomUUID(), `live_${randomUUID()}`]),
     /foreign key/);
     await liveRevocationCoordinator(db, pool, media).withProjectChange(place.id, () => grantProject(
-      ownerPrincipal, place.id, { principal: { kind: 'human', id: viewer.id }, role: 'denied' }, db));
+      ownerPrincipal, place.id, { principal: { kind: 'human', id: viewer.id }, role: 'denied' }, db, accessPorts));
     assert.equal((await app.inject({ method: 'GET', url: `/api/v1/live-sessions/${session.id}`,
       headers: { 'x-test-user': viewer.id } })).statusCode, 404);
     assert.equal((await app.inject({ method: 'POST', url: `/api/v1/live-sessions/${session.id}/join`,

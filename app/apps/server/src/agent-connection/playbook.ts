@@ -1,6 +1,6 @@
 import type { McpServer } from '@modelcontextprotocol/server';
 import { z } from 'zod';
-import { agentPlaybookRows } from '@flux/db';
+import { accessPorts, agentPlaybookRows } from '@flux/db';
 import { COWORK_PLAYBOOK, coworkPlaybookReference, coworkPlaybookUri, DomainError, getProject, isUuid,
   renderCoworkPlaybook, type Database } from '@flux/core';
 import { withAgentConnection, type VerifiedFluxMcpClaims } from './context.js';
@@ -55,7 +55,7 @@ export function registerAgentPlaybook(server: McpServer, tools: AgentToolRegistr
       const ids = projectId ? [projectId.toLowerCase()] : connection.selectedProjectIds;
       const readable = [];
       for (const id of [...ids].sort()) {
-        try { await requireProject(id); readable.push(await getProject(principal, id, tx)); }
+        try { await requireProject(id); readable.push(await getProject(principal, id, tx, accessPorts)); }
         catch (error) { if (projectId || !(error instanceof DomainError)) throw error; }
       }
       return { connectionId: connection.connectionId, projects: readable.map(({ id, name }) => ({ id, name })) };

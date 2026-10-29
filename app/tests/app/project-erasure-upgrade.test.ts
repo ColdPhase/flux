@@ -47,8 +47,8 @@ test('a project that exists before 0101 keeps every row through the upgrade and 
           WHERE table_schema='public' AND table_name=$1 AND data_type IN ('json','jsonb')`, [table])).rows.map((r) => r.column_name));
         const generated = new Set((await client.query<{ column_name: string }>(`SELECT column_name FROM information_schema.columns
           WHERE table_schema='public' AND table_name=$1 AND is_generated='ALWAYS'`, [table])).rows.map((r) => r.column_name));
-        // Only these columns were added after 0101 (0102 waiting_for_user_id, 0112 due_on); any other missing column must fail.
-        const later = new Set(['waiting_for_user_id', 'due_on']);
+        // Only these columns were added after 0101 (0102 waiting_for_user_id, 0112 due_on, 0115 ai_epoch, 0119 key_version, 0122 page_count, row_count, duration_ms); any other missing column must fail.
+        const later = new Set(['waiting_for_user_id', 'due_on', 'ai_epoch', 'key_version', 'page_count', 'row_count', 'duration_ms']);
         for (const row of found) {
           const columns = Object.keys(row).filter((c) => !generated.has(c) && !later.has(c));
           await client.query(`INSERT INTO "${table}"(${columns.map((c) => `"${c}"`).join(',')}) OVERRIDING SYSTEM VALUE VALUES(${columns.map((_, i) => `$${i + 1}`).join(",")})`,

@@ -150,7 +150,9 @@ the behavior in a browser and describe your checks:
 - Reproduce the issue before the fix and check the same steps afterward.
 - Check the browser console for new errors.
 - For UI changes, check keyboard use and both a wide and a narrow window, in light and
-  dark. Attach screenshots next to the matching [final design render](design/final/README.md#7-screens).
+  dark. Compare each screen with the matching [final design render](design/final/README.md#7-screens).
+  Put the screenshots in the PR, or in a CI workflow artifact linked from it, instead of
+  committing them ([evidence size](agents/evaluation.md#evidence-size)).
 - For changes to saved data, use disposable sample data and check export/import
   and reload behavior. Describe any compatibility impact in the PR.
 - For documentation changes, check that links, file names, and commands match the

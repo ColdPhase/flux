@@ -1,19 +1,20 @@
 import { messagePreview } from '@flux/contracts';
 import { randomUUID } from 'node:crypto';
 import { and, asc, desc, eq, lt, sql, type SQL } from 'drizzle-orm';
-import { agentThreadGuardRows, artifactResetRows, fileRows, prepareCanonicalArtifactTaskUse, schema, taskDiscussionRows, taskUseRows, workRows } from '@flux/db';
+import { agentThreadGuardRows, artifactResetRows, fileRows, openAliased, openRows, prepareCanonicalArtifactTaskUse, schema, sealFor, sealsOf, openField, taskDiscussionRows, taskUseRows, workRows, accessReader, type DbExecutor } from '@flux/db';
 import type {
   Conversation, ConversationMessage, ConversationRootWindow, ConversationSummary, Material, MaterialOrDoc,
-  AgentProjectOwner, AuthenticatedAgentRuntime, MaterialVersion, Page, PageQuery, TaskAgentThread,
+  AgentProjectOwner, AuthenticatedAgentRuntime, MaterialVersion, MessageReferenceCard, Page, PageQuery, TaskAgentThread,
 } from '@flux/contracts';
 import {
   ConflictError, conversationUseCases, enforce, evaluateDraft, evaluateProject, InvalidInputError, NotFoundError,
-  lockAttachments, messageContribution, positiveVersion, uuid, type FileStorage,
+  lockAttachments, messageContribution, storedDetail, positiveVersion, uuid, type FileStorage,
   parsePage, recordEvent, ServiceUnavailableError, type Database, type Principal, type Transaction,
 } from '@flux/core';
 import type { AgentThreadWindow, AgentThreadPost, ConversationPort } from '@flux/core';
 import { eventPorts } from '../events.js';
 import { projectAuthorOwners } from './author-owners.js';
+import { messageReferences } from './references.js';
 import type { TransactionEventSession } from '../work/transaction-events.js';
 
 type Tx = Parameters<Parameters<Database['transaction']>[0]>[0];
@@ -54,13 +55,14 @@ function creator(row: ConversationRow, names: Map<string, string>) {
   return row.createdBy !== null ? { createdBy: row.createdBy } : { createdBy: null,
     createdByActor: { kind: 'agent' as const, id: row.createdByAgentId!, name: names.get(`agent:${row.createdByAgentId}`) ?? 'Agent' } };
 }
-function message(row: MessageRow & { files?: import('@flux/contracts').MessageFile[] }, names: Map<string, string> = new Map(), owners: ReadonlyMap<string, AgentProjectOwner> = new Map()): ConversationMessage {
+function message(row: MessageRow & { files?: import('@flux/contracts').MessageFile[]; references?: MessageReferenceCard[] }, names: Map<string, string> = new Map(), owners: ReadonlyMap<string, AgentProjectOwner> = new Map()): ConversationMessage {
   const contribution = messageContribution(row.contributionKind, row.resultId);
   return { id: row.id, conversationId: row.conversationId, ...(row.authorId !== null ? { authorId: row.authorId } : { authorId: null,
     author: { kind: 'agent' as const, id: row.authorAgentId!, name: names.get(`agent:${row.authorAgentId}`) ?? 'Agent',
       ...(owners.has(row.authorAgentId!) ? { projectOwner: owners.get(row.authorAgentId!)! } : {}) } }), body: row.body,
     source: row.sourceMaterialId && row.sourceMaterialVersion ? { materialId: row.sourceMaterialId, version: row.sourceMaterialVersion } : null,
-    sequence: row.sequence, createdAt: row.createdAt.toISOString(), ...(contribution ? { contribution } : {}), ...(row.files?.length ? { files: row.files } : {}) };
+    sequence: row.sequence, createdAt: row.createdAt.toISOString(), ...(contribution ? { contribution } : {}), ...(row.files?.length ? { files: row.files } : {}),
+    ...(row.references?.length ? { references: row.references } : {}) };
 }
 
 
@@ -97,7 +99,7 @@ const versionAuthors = (db: Executor, rows: VersionRow[]) => workRows(db).names(
 
 async function requireProject(principal: Principal, projectId: string, db: Executor, write = false, lock = false) {
   uuid(projectId, 'projectId');
-  const checked = enforce(await evaluateProject(principal, write ? 'project.write' : 'project.read', projectId, db, { lock }), 'project');
+  const checked = enforce(await evaluateProject(principal, write ? 'project.write' : 'project.read', projectId, accessReader(db), { lock }), 'project');
   return checked.project!;
 }
 
@@ -133,9 +135,13 @@ async function locateMaterial(principal: Principal, materialId: string, db: Exec
   return row;
 }
 
+/** F-030: material versions and the material's request fingerprint are sealed in an encrypted workspace; opened here. */
+const openVersions = <T extends VersionRow>(db: Executor, rows: T[]) => openRows(db as unknown as DbExecutor, 'project_material_versions', rows);
+const openMaterial = async (db: Executor, row: MaterialRow | undefined) => (row ? (await openRows(db as unknown as DbExecutor, 'project_materials', [row]))[0]! : row);
+
 async function currentVersion(row: MaterialRow, db: Executor): Promise<VersionRow> {
-  const [current] = await db.select().from(schema.projectMaterialVersions).where(and(
-    eq(schema.projectMaterialVersions.materialId, row.id), eq(schema.projectMaterialVersions.version, row.currentVersion)));
+  const [current] = await openVersions(db, await db.select().from(schema.projectMaterialVersions).where(and(
+    eq(schema.projectMaterialVersions.materialId, row.id), eq(schema.projectMaterialVersions.version, row.currentVersion))));
   if (!current) throw new Error('Material current version missing');
   return current;
 }
@@ -149,12 +155,18 @@ async function conversationEnds(ids: string[], db: Executor) {
   const ends = new Map<string, { firstBody: string; firstAttachments: number; lastBody: string; lastAttachments: number; lastAt: Date }>();
   if (!ids.length) return ends;
   const wanted = sql.join(ids.map((id) => sql`(${id}::uuid)`), sql`, `);
-  const result = await db.execute<{ id: string; first_body: string; first_attachments: number; last_body: string; last_attachments: number; last_at: Date | string }>(sql`
-    SELECT c.id, f.body AS first_body, f.attachment_count AS first_attachments, l.body AS last_body, l.attachment_count AS last_attachments, l.created_at AS last_at
+  const result = await db.execute<{ id: string; workspace_id: string; first_id: string; first_body: string; first_attachments: number; last_id: string; last_body: string; last_attachments: number; last_at: Date | string }>(sql`
+    SELECT c.id, f.workspace_id, f.id AS first_id, f.body AS first_body, f.attachment_count AS first_attachments, l.id AS last_id, l.body AS last_body,
+      l.attachment_count AS last_attachments, l.created_at AS last_at
     FROM (VALUES ${wanted}) AS c(id)
-    JOIN LATERAL (SELECT m.body, m.attachment_count FROM project_messages m WHERE m.conversation_id = c.id ORDER BY m.sequence ASC LIMIT 1) f ON true
-    JOIN LATERAL (SELECT m.body, m.attachment_count, m.created_at FROM project_messages m WHERE m.conversation_id = c.id ORDER BY m.sequence DESC LIMIT 1) l ON true`);
+    JOIN LATERAL (SELECT m.id, m.workspace_id, m.body, m.attachment_count FROM project_messages m WHERE m.conversation_id = c.id ORDER BY m.sequence ASC LIMIT 1) f ON true
+    JOIN LATERAL (SELECT m.id, m.body, m.attachment_count, m.created_at FROM project_messages m WHERE m.conversation_id = c.id ORDER BY m.sequence DESC LIMIT 1) l ON true`);
+  // F-030: both bodies are sealed in an encrypted workspace; opened here, never in SQL.
+  const seals = await sealsOf(db as unknown as DbExecutor, result.rows.map((row) => row.workspace_id), { write: false });
   for (const row of result.rows) {
+    const seal = seals.get(row.workspace_id)!;
+    row.first_body = openField('project_messages', 'body', [row.first_id], row.first_body, seal)!;
+    row.last_body = openField('project_messages', 'body', [row.last_id], row.last_body, seal)!;
     ends.set(row.id, { firstBody: row.first_body, firstAttachments: Number(row.first_attachments), lastBody: row.last_body,
       lastAttachments: Number(row.last_attachments), lastAt: new Date(row.last_at) });
   }
@@ -166,7 +178,7 @@ async function currentVersions(rows: MaterialRow[], db: Executor): Promise<Versi
   if (!rows.length) return [];
   const v = schema.projectMaterialVersions;
   const wanted = sql.join(rows.map((row) => sql`(${row.id}::uuid, ${row.currentVersion}::int)`), sql`, `);
-  const found = await db.select().from(v).where(sql`(${v.materialId}, ${v.version}) IN (${wanted})`);
+  const found = await openVersions(db, await db.select().from(v).where(sql`(${v.materialId}, ${v.version}) IN (${wanted})`));
   const byMaterial = new Map(found.map((version) => [version.materialId, version]));
   return rows.map((row) => {
     const current = byMaterial.get(row.id);
@@ -184,10 +196,12 @@ async function sourceExists(projectId: string, source: { materialId: string; ver
 }
 
 async function existingMessage(projectId: string, author: Actor, clientMessageId: string, db: Executor) {
-  const [row] = await db.select().from(schema.projectMessages).where(and(
+  const rows = await db.select().from(schema.projectMessages).where(and(
     eq(schema.projectMessages.projectId, projectId),
     author.kind === 'human' ? eq(schema.projectMessages.authorId, author.id) : eq(schema.projectMessages.authorAgentId, author.id),
     eq(schema.projectMessages.clientMessageId, clientMessageId)));
+  // Opened, so the replay compares the request fingerprint in RAM (F-030 sealed digests).
+  const [row] = await openRows(db as unknown as DbExecutor, 'project_messages', rows);
   return row;
 }
 
@@ -198,19 +212,25 @@ async function lockIdempotency(tx: Tx, projectId: string, author: Actor, clientI
   await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${`${projectId.toLowerCase()}:${author.kind}:${author.id}:${clientId.toLowerCase()}`}))`);
 }
 
-async function sendInTransaction(tx: Tx, conversation: ConversationRow, author: Actor, input: Parameters<ConversationPort['sendMessage']>[2], files?: import('@flux/contracts').MessageFile[],
+async function sendInTransaction(tx: Tx, principal: Principal, conversation: ConversationRow, author: Actor, input: Parameters<ConversationPort['sendMessage']>[2], files?: import('@flux/contracts').MessageFile[],
   retained?:{readonly ids:readonly string[];mark(ids?:readonly string[]):Promise<void>}): Promise<{ message: ConversationMessage; inserted: boolean }> {
   const names = author.kind === 'agent' ? await workRows(tx).names([author]) : new Map<string, string>();
   const existing = await existingMessage(conversation.projectId, author, input.clientMessageId, tx);
   if (existing) {
     if (existing.requestFingerprint !== input.fingerprint || existing.conversationId !== conversation.id)
       throw new ConflictError('This clientMessageId was used for another message', 'IDEMPOTENCY_CONFLICT');
-    return { message: message({ ...existing, files: (await fileRows(tx).messageFiles([existing.id])).get(existing.id) }, names), inserted: false };
+    const cards = await messageReferences(tx).cards(principal, { kind: 'project', workspaceId: conversation.workspaceId }, [existing.id]);
+    return { message: message({ ...existing, files: (await fileRows(tx).messageFiles([existing.id])).get(existing.id), references: cards.get(existing.id) }, names), inserted: false };
   }
   await sourceExists(conversation.projectId, input.source, tx);
+  // The sender must be able to read what the message cites, now, in this workspace (#469).
+  const references = messageReferences(tx);
+  await references.assertReadable(principal, conversation.workspaceId, input.references);
   const inserted = await taskDiscussionRows(tx).append(conversation, author, { ...input, files });
+  await references.save({ kind: 'project', id: inserted.id }, conversation.workspaceId, input.references);
   if(files?.length)await taskDiscussionRows(tx).publishFiles(conversation,inserted.id,retained??await taskUseRows(tx).lockPrepared([]));
-  return { message: message(inserted, names), inserted: true };
+  const cards = await references.cards(principal, { kind: 'project', workspaceId: conversation.workspaceId }, [inserted.id]);
+  return { message: message({ ...inserted, references: cards.get(inserted.id) }, names), inserted: true };
 }
 
 export function conversationStore(db: Database, options: ConversationStoreOptions = {}) {
@@ -219,7 +239,7 @@ export function conversationStore(db: Database, options: ConversationStoreOption
     if (!ids.length) return [];
     if (!options.storage) throw new InvalidInputError('Files are unavailable from this entry point', 'AGENT_FILES_UNAVAILABLE');
     return (await lockAttachments(fileRows(tx), options.storage, projectId.toLowerCase(), author, ids, () => new Date()))
-      .map((row) => ({ id: row.id, name: row.name, size: row.size! }));
+      .map((row) => ({ id: row.id, name: row.name, size: row.size!, ...storedDetail(row) }));
   };
   const eventLog = (tx: Tx): ConversationEventLog => options.events ?? { record: async (principal, workspaceId, kind, projectId, data) => {
     await recordEvent(eventPorts(tx), principal, workspaceId, kind, projectId, data);
@@ -230,7 +250,7 @@ export function conversationStore(db: Database, options: ConversationStoreOption
       // The existing v1 conversation entry keeps its behavior; only this new GET supplies a snapshot.
       return db.transaction(async (tx) => {
         const task = await locateThreadTask(principal, taskId, tx);
-        const write = await evaluateProject(principal, 'project.write', task.projectId, tx);
+        const write = await evaluateProject(principal, 'project.write', task.projectId, accessReader(tx));
         const [thread] = await tx.select({ id: schema.projectConversations.id }).from(schema.projectConversations)
           .where(and(eq(schema.projectConversations.workId, task.id), eq(schema.projectConversations.space, 'agents')));
         const [count] = thread ? await tx.select({ total: sql<number>`count(*)::int` }).from(schema.projectMessages)
@@ -270,7 +290,7 @@ export function conversationStore(db: Database, options: ConversationStoreOption
             workspaceId: task.workspaceId, projectId: task.projectId, space: 'agents', workId: task.id,
             createdBy: author.id, createdByAgentId: null }).returning();
         }
-        const sent = await sendInTransaction(tx, thread!, author, input, files,fence);
+        const sent = await sendInTransaction(tx, principal, thread!, author, input, files,fence);
         if (sent.inserted) {
           await fence.mark();
           await eventLog(tx).record(principal, task.workspaceId, 'project.agent_thread_message_sent.v1', task.projectId,
@@ -337,12 +357,16 @@ export function conversationStore(db: Database, options: ConversationStoreOption
           .orderBy(desc(conversations.createdAt), desc(conversations.id))
           .limit(window.limit + 1);
         const hasMoreBefore = rows.length > window.limit;
-        const page = rows.slice(0, window.limit).reverse();
+        const cut = rows.slice(0, window.limit).reverse();
+        const openedRoots = await openRows(tx as unknown as DbExecutor, 'project_messages', cut.map((row) => row.root));
+        const page = await openAliased(tx as unknown as DbExecutor, cut.map((row, index) => ({ ...row, root: openedRoots[index]! })), { table: 'project_work_items', column: 'title',
+          key: 'taskTitle', workspace: (row) => row.root.workspaceId, identity: (row) => (row.taskId ? [row.taskId] : null) });
         const names = await workRows(tx).names(page.filter((row) => row.root.authorAgentId !== null)
           .map((row) => ({ kind: 'agent' as const, id: row.root.authorAgentId! })));
         const files = await fileRows(tx).messageFiles(page.map((row) => row.root.id));
+        const cited = await messageReferences(tx).cards(principal, { kind: 'project', workspaceId: authorizedProject.workspaceId }, page.map((row) => row.root.id));
         const owners = await projectAuthorOwners(tx, projectId, authorizedProject.workspaceId, page.flatMap((row) => row.root.authorAgentId ? [row.root.authorAgentId] : []));
-        const roots = page.map((row) => ({ conversationId: row.root.conversationId, message: message({ ...row.root, files: files.get(row.root.id) }, names, owners), replyCount: Number(row.replyCount),
+        const roots = page.map((row) => ({ conversationId: row.root.conversationId, message: message({ ...row.root, files: files.get(row.root.id), references: cited.get(row.root.id) }, names, owners), replyCount: Number(row.replyCount),
           lastReplyAt: row.lastReplyAt === null ? null : new Date(row.lastReplyAt).toISOString(),
           ...(row.taskId !== null && row.taskTitle !== null && row.taskNumber !== null ? { task: { workId: row.taskId, title: row.taskTitle, number: row.taskNumber } } : {}) }));
         return { projectId, roots, rootPage: { hasMoreBefore, nextBefore: hasMoreBefore ? roots[0]!.conversationId : null, limit: window.limit } };
@@ -351,28 +375,31 @@ export function conversationStore(db: Database, options: ConversationStoreOption
 
     async getConversation(principal: Principal, conversationId: string, window: Parameters<ConversationPort['getConversation']>[2]): Promise<Conversation> {
       const row = await locateConversation(principal, conversationId, db);
-      const rows = await db.select().from(schema.projectMessages)
+      const rows = await openRows(db as unknown as DbExecutor, 'project_messages', await db.select().from(schema.projectMessages)
         .where(and(eq(schema.projectMessages.conversationId, row.id),
           window.beforeSequence === null ? undefined : lt(schema.projectMessages.sequence, window.beforeSequence)))
-        .orderBy(desc(schema.projectMessages.sequence)).limit(window.limit + 1);
+        .orderBy(desc(schema.projectMessages.sequence)).limit(window.limit + 1));
       const hasMoreBefore = rows.length > window.limit;
       const names = await workRows(db).names([row.createdByAgentId, ...rows.map((item) => item.authorAgentId)]
         .filter((actorId): actorId is string => actorId !== null).map((actorId) => ({ kind: 'agent' as const, id: actorId })));
       const files = await fileRows(db).messageFiles(rows.map((item) => item.id));
+      const cited = await messageReferences(db).cards(principal, { kind: 'project', workspaceId: row.workspaceId }, rows.map((item) => item.id));
       const selected = rows.slice(0, window.limit).reverse();
       const owners = await projectAuthorOwners(db, row.projectId, row.workspaceId, selected.flatMap((item) => item.authorAgentId ? [item.authorAgentId] : []));
-      const messages = selected.map((item) => message({ ...item, files: files.get(item.id) }, names, owners));
+      const messages = selected.map((item) => message({ ...item, files: files.get(item.id), references: cited.get(item.id) }, names, owners));
       const openingInWindow = messages.find((item) => item.sequence === 1);
-      const [opening] = openingInWindow ? [] : await db.select({ body: schema.projectMessages.body, attachmentCount: schema.projectMessages.attachmentCount }).from(schema.projectMessages)
-        .where(eq(schema.projectMessages.conversationId, row.id)).orderBy(asc(schema.projectMessages.sequence)).limit(1);
-      const [task] = await db.select({ workId: schema.projectTaskDiscussions.workId, title: schema.projectWorkItems.title }).from(schema.projectTaskDiscussions)
+      const [opening] = openingInWindow ? [] : await openRows(db as unknown as DbExecutor, 'project_messages', await db.select({ id: schema.projectMessages.id,
+        workspaceId: schema.projectMessages.workspaceId, body: schema.projectMessages.body, attachmentCount: schema.projectMessages.attachmentCount }).from(schema.projectMessages)
+        .where(eq(schema.projectMessages.conversationId, row.id)).orderBy(asc(schema.projectMessages.sequence)).limit(1));
+      const [task] = await openAliased(db as unknown as DbExecutor, await db.select({ workId: schema.projectTaskDiscussions.workId, title: schema.projectWorkItems.title }).from(schema.projectTaskDiscussions)
         .innerJoin(schema.projectWorkItems, and(eq(schema.projectWorkItems.id, schema.projectTaskDiscussions.workId),
           eq(schema.projectWorkItems.projectId, row.projectId), eq(schema.projectWorkItems.workspaceId, row.workspaceId)))
         .innerJoin(schema.projectMessages, and(eq(schema.projectMessages.id, schema.projectTaskDiscussions.rootMessageId),
           eq(schema.projectMessages.conversationId, row.id), eq(schema.projectMessages.projectId, row.projectId),
           eq(schema.projectMessages.workspaceId, row.workspaceId), eq(schema.projectMessages.sequence, 1)))
         .where(and(eq(schema.projectTaskDiscussions.conversationId, row.id), eq(schema.projectTaskDiscussions.projectId, row.projectId),
-          eq(schema.projectTaskDiscussions.workspaceId, row.workspaceId)));
+          eq(schema.projectTaskDiscussions.workspaceId, row.workspaceId))), { table: 'project_work_items', column: 'title', key: 'title',
+        workspace: () => row.workspaceId, identity: (found) => [found.workId] });
       return { id: row.id, projectId: row.projectId, workspaceId: row.workspaceId,
         audience: { kind: 'project', projectId: row.projectId }, ...creator(row, names),
         ...(task ? { task } : {}),
@@ -393,7 +420,8 @@ export function conversationStore(db: Database, options: ConversationStoreOption
           const row = await locateConversation(principal, existing.conversationId, tx);
           return { id: row.id, projectId: row.projectId, workspaceId: row.workspaceId,
             audience: { kind: 'project' as const, projectId: row.projectId }, ...creator(row, names),
-            createdAt: row.createdAt.toISOString(), firstMessageBody: messagePreview(existing.body, existing.attachmentCount), messages: [message({ ...existing, files: (await fileRows(tx).messageFiles([existing.id])).get(existing.id) }, names)],
+            createdAt: row.createdAt.toISOString(), firstMessageBody: messagePreview(existing.body, existing.attachmentCount), messages: [message({ ...existing, files: (await fileRows(tx).messageFiles([existing.id])).get(existing.id),
+              references: (await messageReferences(tx).cards(principal, { kind: 'project', workspaceId: row.workspaceId }, [existing.id])).get(existing.id) }, names)],
             messagePage: { hasMoreBefore: false, nextBeforeSequence: null, limit: 50 } };
         }
         await sourceExists(projectId, input.source, tx);
@@ -402,7 +430,7 @@ export function conversationStore(db: Database, options: ConversationStoreOption
           id: randomUUID(), workspaceId: project.workspaceId, projectId,
           createdBy: author.kind === 'human' ? author.id : null, createdByAgentId: author.kind === 'agent' ? author.id : null,
         }).returning();
-        const first = await sendInTransaction(tx, row!, author, input, files);
+        const first = await sendInTransaction(tx, principal, row!, author, input, files);
         if (first.inserted) await eventLog(tx).record(principal, project.workspaceId, 'project.conversation_created.v1', projectId, { conversationId: row!.id, messageId: first.message.id });
         return { id: row!.id, projectId, workspaceId: project.workspaceId,
           audience: { kind: 'project' as const, projectId }, ...creator(row!, names),
@@ -421,7 +449,7 @@ export function conversationStore(db: Database, options: ConversationStoreOption
         // A reply to a task's bound conversation enters the task order (access, command identity, task row,
         // conversation sequence), exactly like a contribution; it never takes the conversation first.
         const fence=await taskDiscussionRows(tx).prepareBoundTask(row.id);
-        const sent = await sendInTransaction(tx, row, author, input, files,fence);
+        const sent = await sendInTransaction(tx, principal, row, author, input, files,fence);
         if (sent.message.sequence === 1)
           throw new ConflictError('This clientMessageId was used to start the conversation', 'IDEMPOTENCY_CONFLICT');
         if (sent.inserted) await eventLog(tx).record(principal, row.workspaceId,
@@ -453,8 +481,9 @@ export function conversationStore(db: Database, options: ConversationStoreOption
         await requireProject(principal, projectId, tx, false, true);
         const where = eq(schema.projectMaterials.projectId, projectId);
         const [count] = await tx.select({ total: sql<number>`count(*)::int` }).from(schema.projectMaterials).where(where);
-        const rows = await tx.select({
+        const read = await tx.select({
           materialId: schema.projectMaterials.id,
+          workspaceId: schema.projectMaterials.workspaceId,
           kind: schema.projectMaterials.kind,
           version: schema.projectMaterials.currentVersion,
           title: schema.projectMaterialVersions.title,
@@ -464,7 +493,9 @@ export function conversationStore(db: Database, options: ConversationStoreOption
           eq(schema.projectMaterialVersions.version, schema.projectMaterials.currentVersion),
         )).where(where).orderBy(desc(schema.projectMaterials.updatedAt), desc(schema.projectMaterials.id))
           .limit(page.limit).offset(page.offset);
-        return { items: rows.map((row) => ({ ...row, updatedAt: row.updatedAt.toISOString() })),
+        const rows = await openAliased(tx as unknown as DbExecutor, read, { table: 'project_material_versions', column: 'title', key: 'title',
+          workspace: (row) => row.workspaceId, identity: (row) => [row.materialId, String(row.version)] });
+        return { items: rows.map(({ workspaceId: _workspace, ...row }) => { void _workspace; return { ...row, updatedAt: row.updatedAt.toISOString() }; }),
           total: count?.total ?? 0, ...page };
       });
     },
@@ -478,8 +509,8 @@ export function conversationStore(db: Database, options: ConversationStoreOption
     async getMaterialVersion(principal: Principal, materialId: string, versionNumber: number): Promise<MaterialVersion> {
       const row = await locateMaterial(principal, materialId, db);
       const requested = positiveVersion(versionNumber, 'version');
-      const [snapshot] = await db.select().from(schema.projectMaterialVersions).where(and(
-        eq(schema.projectMaterialVersions.materialId, row.id), eq(schema.projectMaterialVersions.version, requested)));
+      const [snapshot] = await openVersions(db, await db.select().from(schema.projectMaterialVersions).where(and(
+        eq(schema.projectMaterialVersions.materialId, row.id), eq(schema.projectMaterialVersions.version, requested))));
       if (!snapshot) throw new NotFoundError('Material version', 'MATERIAL_VERSION_NOT_FOUND');
       return version(snapshot, principal, await versionAuthors(db, [snapshot]));
     },
@@ -489,15 +520,15 @@ export function conversationStore(db: Database, options: ConversationStoreOption
       return db.transaction(async (tx) => {
         const project = await requireProject(principal, projectId, tx, true, true);
         await lockIdempotency(tx, projectId, { kind: 'human', id: authorId }, input.clientMutationId);
-        const [existing] = await tx.select().from(schema.projectMaterials).where(and(
+        const existing = await openMaterial(tx, (await tx.select().from(schema.projectMaterials).where(and(
           eq(schema.projectMaterials.projectId, projectId), eq(schema.projectMaterials.createdBy, authorId),
-          eq(schema.projectMaterials.clientMutationId, input.clientMutationId)));
+          eq(schema.projectMaterials.clientMutationId, input.clientMutationId))))[0]);
         if (existing) {
           if (existing.requestFingerprint !== input.fingerprint) throw new ConflictError('This clientMutationId was used for another material', 'IDEMPOTENCY_CONFLICT');
           return material(existing, await currentVersion(existing, tx), principal);
         }
         if (input.sourceDraftId && input.sourceDraftVersion) {
-          const source = enforce(await evaluateDraft(principal, 'draft.read', input.sourceDraftId, tx, { lock: true }), 'draft').draft!;
+          const source = enforce(await evaluateDraft(principal, 'draft.read', input.sourceDraftId, accessReader(tx), { lock: true }), 'draft').draft!;
           if (source.ownerUserId !== authorId || source.workspaceId !== project.workspaceId)
             throw new NotFoundError('Draft', 'DRAFT_NOT_FOUND');
           const snapshot = await tx.execute(sql`SELECT 1 FROM draft_versions WHERE draft_id = ${input.sourceDraftId}
@@ -505,22 +536,22 @@ export function conversationStore(db: Database, options: ConversationStoreOption
           if (!snapshot.rows.length) throw new NotFoundError('Draft version', 'DRAFT_VERSION_NOT_FOUND');
         }
         const id = randomUUID();
-        const [created] = await tx.insert(schema.projectMaterials).values({
+        const [created] = await tx.insert(schema.projectMaterials).values(await sealFor(tx as unknown as DbExecutor, 'project_materials', project.workspaceId, {
           id, workspaceId: project.workspaceId, projectId, createdBy: authorId,
           clientMutationId: input.clientMutationId, requestFingerprint: input.fingerprint,
-        }).onConflictDoNothing().returning();
+        })).onConflictDoNothing().returning();
         if (!created) {
-          const [raced] = await tx.select().from(schema.projectMaterials).where(and(
+          const raced = await openMaterial(tx, (await tx.select().from(schema.projectMaterials).where(and(
             eq(schema.projectMaterials.projectId, projectId), eq(schema.projectMaterials.createdBy, authorId),
-            eq(schema.projectMaterials.clientMutationId, input.clientMutationId)));
+            eq(schema.projectMaterials.clientMutationId, input.clientMutationId))))[0]);
           if (!raced || raced.requestFingerprint !== input.fingerprint) throw new ConflictError('This clientMutationId was used for another material', 'IDEMPOTENCY_CONFLICT');
           return material(raced, await currentVersion(raced, tx), principal);
         }
-        const [first] = await tx.insert(schema.projectMaterialVersions).values({
+        const [first] = await openVersions(tx, await tx.insert(schema.projectMaterialVersions).values(await sealFor(tx as unknown as DbExecutor, 'project_material_versions', project.workspaceId, {
           workspaceId: project.workspaceId, projectId, materialId: id, version: 1,
           title: input.title, body: input.body, url: input.url, authorId,
           sourceDraftId: input.sourceDraftId, sourceDraftVersion: input.sourceDraftVersion,
-        }).returning();
+        })).returning());
         await recordEvent(eventPorts(tx), principal, project.workspaceId, 'project.material_created.v1', projectId, { materialId: id, version: 1 });
         return material(created, first!, principal);
       });
@@ -532,9 +563,9 @@ export function conversationStore(db: Database, options: ConversationStoreOption
         const row = await locateMaterial(principal, materialId, tx, true, true);
         if (row.kind === 'doc') throw new ConflictError('Docs are edited through the doc API with If-Match', 'USE_DOC_API');
         const [locked] = await tx.select().from(schema.projectMaterials).where(eq(schema.projectMaterials.id, row.id)).for('update');
-        const [priorEdit] = await tx.select().from(schema.projectMaterialVersions).where(and(
+        const [priorEdit] = await openVersions(tx, await tx.select().from(schema.projectMaterialVersions).where(and(
           eq(schema.projectMaterialVersions.materialId, row.id), eq(schema.projectMaterialVersions.authorId, authorId),
-          eq(schema.projectMaterialVersions.clientMutationId, input.clientMutationId)));
+          eq(schema.projectMaterialVersions.clientMutationId, input.clientMutationId))));
         if (priorEdit) {
           if (priorEdit.requestFingerprint !== input.fingerprint)
             throw new ConflictError('This clientMutationId was used for another edit', 'IDEMPOTENCY_CONFLICT');
@@ -551,11 +582,11 @@ export function conversationStore(db: Database, options: ConversationStoreOption
         const fence=await prepareCanonicalArtifactTaskUse(tx,scope,progress?{kind:'material',id:row.id,version:locked.currentVersion+1}:null,[]);
         const [updated] = await tx.update(schema.projectMaterials).set({ currentVersion: locked.currentVersion + 1, updatedAt: new Date() })
           .where(eq(schema.projectMaterials.id, row.id)).returning();
-        const [snapshot] = await tx.insert(schema.projectMaterialVersions).values({
+        const [snapshot] = await openVersions(tx, await tx.insert(schema.projectMaterialVersions).values(await sealFor(tx as unknown as DbExecutor, 'project_material_versions', row.workspaceId, {
           workspaceId: row.workspaceId, projectId: row.projectId, materialId: row.id,
           version: updated!.currentVersion, ...next, authorId,
           clientMutationId: input.clientMutationId, requestFingerprint: input.fingerprint,
-        }).returning();
+        })).returning());
         if(progress)await artifactResetRows(tx).canonical(scope,{kind:'material',id:row.id,version:snapshot!.version},
           {kind:'material',id:row.id,revision:String(snapshot!.version)},fence);
         await recordEvent(eventPorts(tx), principal, row.workspaceId, 'project.material_updated.v1', row.projectId, { materialId: row.id, version: updated!.currentVersion });

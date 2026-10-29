@@ -2,6 +2,7 @@ import { and, asc, eq, inArray, sql } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 import * as schema from '../schema.js';
 import type { DbExecutor } from './push.js';
+import { openRows, sealFor } from '../sealing.js';
 
 /**
  * Native task graph rows and locks (#152, migration 0039): direct prerequisite edges, the immutable plan
@@ -71,9 +72,9 @@ export function taskGraphRows(db: DbExecutor) {
         return plan;
       };
       const p = alias(w, 'prerequisite');
-      const edges = await db.select({ taskId: e.taskId, id: p.id, title: p.title, status: p.status, parkedAt: p.parkedAt }).from(e)
+      const edges = await openRows(db, 'project_work_items', await db.select({ taskId: e.taskId, id: p.id, workspaceId: p.workspaceId, title: p.title, status: p.status, parkedAt: p.parkedAt }).from(e)
         .innerJoin(p, and(eq(p.workspaceId, e.workspaceId), eq(p.projectId, e.projectId), eq(p.id, e.prerequisiteId)))
-        .where(inArray(e.taskId, [...taskIds])).orderBy(asc(e.taskId), asc(e.prerequisiteId));
+        .where(inArray(e.taskId, [...taskIds])).orderBy(asc(e.taskId), asc(e.prerequisiteId)));
       for (const edge of edges) entry(edge.taskId).prerequisites.push({ id: edge.id, title: edge.title, status: edge.status, parked: edge.parkedAt !== null });
       const intents = await db.select().from(i).where(inArray(i.taskId, [...taskIds]));
       for (const intent of intents) entry(intent.taskId).planIntent = { materialId: intent.materialId, version: intent.materialVersion, intentKey: intent.intentKey };
@@ -91,14 +92,16 @@ export function taskGraphRows(db: DbExecutor) {
     async findPlanIntent(projectId: string, intent: { materialId: string; version: number; intentKey: string }) {
       const [row] = await db.select().from(i).where(and(eq(i.projectId, projectId), eq(i.materialId, intent.materialId),
         eq(i.materialVersion, intent.version), eq(i.intentKey, intent.intentKey)));
-      return row ? { taskId: row.taskId, fingerprint: row.creationFingerprint, taskVersion: row.taskVersion } : null;
+      if (!row) return null;
+      const [opened] = await openRows(db, 'project_task_plan_intents', [row]);
+      return { taskId: opened!.taskId, fingerprint: opened!.creationFingerprint, taskVersion: opened!.taskVersion };
     },
 
     async insertPlanIntent(scope: Window, intent: { materialId: string; version: number; intentKey: string },
       record: { taskId: string; fingerprint: string; taskVersion: number }) {
-      await db.insert(i).values({ workspaceId: scope.workspaceId, projectId: scope.projectId, materialId: intent.materialId,
+      await db.insert(i).values(await sealFor(db, 'project_task_plan_intents', scope.workspaceId, { workspaceId: scope.workspaceId, projectId: scope.projectId, materialId: intent.materialId,
         materialVersion: intent.version, intentKey: intent.intentKey, taskId: record.taskId,
-        creationFingerprint: record.fingerprint, taskVersion: record.taskVersion });
+        creationFingerprint: record.fingerprint, taskVersion: record.taskVersion }));
     },
   };
 }

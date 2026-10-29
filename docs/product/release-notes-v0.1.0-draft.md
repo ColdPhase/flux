@@ -315,9 +315,9 @@ Remove this section before publishing.
   are closed and listed under "What works". Restate them from the #249 report at the candidate; an
   unresolved gate blocks the release and does not become an exclusion here.
 - **Open at the 2026-10-23 refresh.** Each is either fixed before the candidate or listed above with
-  what a person sees: Codex's sign-in fails when a connection grants fewer than the three actions
-  it asks for ([#660](https://github.com/ColdPhase/flux/issues/660)); an agent's MCP suggestion has no
-  screen ([#661](https://github.com/ColdPhase/flux/issues/661)); `./flux clean` refuses after a first
+  what a person sees: Codex's sign-in failing when a connection grants fewer than the three actions
+  it asks for ([#660](https://github.com/ColdPhase/flux/issues/660)) and an agent's MCP suggestion having no
+  screen ([#661](https://github.com/ColdPhase/flux/issues/661)) are fixed in the same change; `./flux clean` refuses after a first
   `./flux up` that stopped before the migration ([#662](https://github.com/ColdPhase/flux/issues/662));
   the workspace AI lock ([#614](https://github.com/ColdPhase/flux/issues/614)); installation and
   notifications on emulated phones and tablets ([#20](https://github.com/ColdPhase/flux/issues/20)).

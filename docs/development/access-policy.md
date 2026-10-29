@@ -8,16 +8,20 @@ contract" in the [architecture proposal](../product/application-architecture.md#
 
 ## One choke point
 
-`app/packages/core/src/access/policy.ts` is the only place that decides access. It
-exports:
+`app/packages/core/src/access/policy.ts` is the only place that decides access. Its decisions
+are pure: they run over the facts of the `AccessReader` port (`access/ports.ts`), which has one
+implementation, `app/packages/db/src/repositories/access.ts` (`accessReader(db)`, bound to the
+transaction that decides). That adapter reads the facts and takes the locks, in the order
+[Concurrency](#concurrency) lists, and builds the list condition. Callers pass `accessReader(tx)`
+where the table below says `reader`. Core exports:
 
 | Function | Use |
 | --- | --- |
-| `authorize(principal, action, resource, db)` | Returns `{ allowed, visible }` for one object. |
-| `assertAuthorized(principal, action, resource, db)` | Throws `NotFoundError` (404) when `visible` is false, and `ForbiddenError` (403) when the object is visible but the action is not allowed. |
-| `visibleFilter(principal, workspaceId, 'project' \| 'draft' \| 'sketch' \| 'dm', db)` | Returns a SQL condition. Put it in the `WHERE` clause of both the list query and its count, so invisible rows never reach counts, pages or payloads. |
-| `authorizeEvent(principal, event, db)` | Whether a recipient may receive one event now: the principal is active in the event's workspace and can read the object the event is about. `recordEvent` calls it per member/agent to write the stream audience, and the stream calls it again for every event at delivery time. |
-| `visibleWorkspaceOf(principal, resource, db)` | The workspace of an object the principal can see, or `null`. Used to scope records such as idempotency keys without revealing invisible objects. |
+| `authorize(principal, action, resource, reader)` | Returns `{ allowed, visible }` for one object. |
+| `assertAuthorized(principal, action, resource, reader)` | Throws `NotFoundError` (404) when `visible` is false, and `ForbiddenError` (403) when the object is visible but the action is not allowed. |
+| `visibleFilter(principal, workspaceId, 'project' \| 'draft' \| 'sketch' \| 'dm', db)` (`@flux/db`) | Returns a SQL condition. Put it in the `WHERE` clause of both the list query and its count, so invisible rows never reach counts, pages or payloads. It is the adapter's own list condition for the same rules (a SQL fragment cannot live in core), over the same actor standing `authorize` reads. |
+| `authorizeEvent(principal, event, reader)` | Whether a recipient may receive one event now: the principal is active in the event's workspace and can read the object the event is about. `recordEvent` calls it per member/agent to write the stream audience, and the stream calls it again for every event at delivery time. |
+| `visibleWorkspaceOf(principal, resource, reader)` | The workspace of an object the principal can see, or `null`. Used to scope records such as idempotency keys without revealing invisible objects. |
 
 `authorize` and `assertAuthorized` take an optional `{ lock: true }`. Inside a commit
 transaction it takes the locks described under [Concurrency](#concurrency): the
@@ -25,16 +29,20 @@ principal's membership or agent rows `FOR SHARE`, a draft `FOR UPDATE`, and the
 project row and the principal's grants on it `FOR SHARE`. A revocation that committed
 earlier is then seen, and a concurrent one waits until this transaction ends.
 
-The domain methods in `app/packages/core/src/access/domain.ts` call these functions
-before they touch data. Mutations decide and write in one transaction, holding the
-locks described under [Concurrency](#concurrency).
+The use cases for workspaces, membership, projects, grants, agents and drafts
+(`app/packages/core/src/access/{workspaces,members,workspace-ai,projects,grants,agents,drafts}.ts`)
+call these functions before they touch data. Mutations decide and write in one transaction,
+holding the locks described under [Concurrency](#concurrency). Their rows come from the
+repositories of `app/packages/db/src/repositories/{workspaces,projects,agents,drafts}.ts`
+behind the ports in `access/repositories.ts`; a repository makes no decision.
 
 **Obligation for every entry point.** The HTTP API, WebSocket subscriptions and
 replay, worker jobs (before reading inputs and before committing results), file
 upload and download, search, MCP tools and extensions MUST get access decisions
 from these functions or from the domain methods. They must not query collaborative
 tables for a caller directly. A new object type extends `policy.ts` with its own
-actions and filter. It does not get a second policy module. Notifications and
+actions and decision, the port with the facts they need, and the `@flux/db` adapter with the
+statements and the list condition. It does not get a second policy module or a second reader. Notifications and
 Web Push (#41) follow this rule: a notification inherits the audience of its source
 (`<type>.read`), checked at creation, in the inbox list (`visibleFilter`), on direct
 reads (`authorize`) and by the worker before each send. The event stream and the
@@ -563,3 +571,30 @@ project doc in `GET /api/v1/projects/:id/docs` (`updatedBy`) and to the creator 
 a project sketch in `GET /api/v1/workspaces/:id/sketches?projectId=` (`createdBy`);
 both use one bounded `projectAuthorOwners` read per page and project, and sketches
 outside a project never carry it.
+
+### Message references and file details (#469, F-026 §6)
+
+A message cites a map thought or another message through `references: [{ kind: 'thought' | 'message', id }]` on
+`POST /api/v1/projects/:id/conversations`, `POST /api/v1/conversations/:id/messages`,
+`POST /api/v1/work/:id/agent-thread` and the direct-message sends (`POST /api/v1/dms/:id/messages` and its thread
+replies). At most four, distinct, each a UUID; the `message` kind names a project message or a direct message, which the
+server tells apart. Migration 0122 stores only the kind and the id (`message_references`, owned by the citing message and
+removed with it); nothing of the target is copied, so a title, an author or a place never outlives the target's own
+audience.
+
+- **At send** the sender must be able to read every target now (`sketch.read`, `project.read` or `dm.read` through the one
+  policy), and the target must be in the message's own workspace. Anything else (absent, unreadable, another workspace's,
+  a private sketch of someone else's) answers the same `404 REFERENCE_UNAVAILABLE`, so the answer tells nothing about the
+  target. A retry with the same `clientMessageId` and the same references replays; other references under it are `409`.
+- **At every read** each card is made for the reader who asks, after that reader's access to the target is decided
+  again. A target the reader cannot open now, one that no longer exists and one removed from its map are the same
+  `{ kind, state: 'unavailable' }` card, with no id, title, author or place. An available card carries the title (the
+  first line of the thought or message), the author, the time, the place (project, sketch or "Direct message") and a
+  `target` that is exactly what a search result of the same object opens. Agents never read a direct message, so
+  such a card is unavailable to them. Locked or sealed workspaces keep their own gates: a reference adds no route.
+- A message that cites nothing has no `references` key, so every earlier message's JSON is unchanged.
+
+Files carry `pages` (a PDF's page tree), `rows` (the data rows of a CSV or TSV, the header line excluded) or `durationMs`
+(WAV, MP3, MP4/M4A/MOV, Ogg/Opus/Vorbis and WebM with a stored duration) when the bytes say so. They are read from the
+plaintext as the upload arrives and stored with the file (`project_files.page_count`, `row_count`, `duration_ms`), on
+`StagedFile` and on every `MessageFile`; a name alone never sets one, and a file whose bytes do not say shows none.

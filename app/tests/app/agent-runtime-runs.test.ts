@@ -9,6 +9,7 @@ import {
   type Workspace,
 } from '@flux/contracts';
 import { createPersonalRunProcessor, noPersonalConnections, REDACTED_SECRET, sweepWorkspaceAi, type AgentRuntimeConfig, type Principal } from '@flux/core';
+import { accessPorts } from '@flux/db';
 import { setWorkspaceAi } from './support/workspace-ai.js';
 import { callSupervisor, type SupervisorRequest } from '@flux/runtime-protocol';
 import { createManagerServer } from '../../apps/runtime/src/manager/server.js';
@@ -514,7 +515,7 @@ describe('a run on the owner\'s own Claude Code in the agent runtime (F-022 T5, 
     await waitFor(async () => (await calls()).some((entry) => entry.event === 'tools_list'), 'the CLI started');
     const epoch = await setWorkspaceAi(ws.id, 'blocked');
     try {
-      await sweepWorkspaceAi({ workspaceId: ws.id, epoch }, db);
+      await sweepWorkspaceAi({ workspaceId: ws.id, epoch }, db, accessPorts);
       await processing;
       const stored = await row(started.run.id);
       assert.deepEqual([stored.status, stored.end_reason, stored.answer_body], ['stopped', 'ai_off', null], 'the late answer is not posted and the reason says AI was turned off');

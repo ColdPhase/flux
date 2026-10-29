@@ -1,7 +1,8 @@
 import type { PgBoss } from 'pg-boss';
 import { WORKSPACE_ENCRYPTION_RESUME_JOB, type WorkspaceEncryptionResumeJob } from '@flux/contracts';
-import { dropStaleUnlocks, keyringFromEnv, policyEventPorts, ProcessKeys, recordEvent, swapFiles, swapSafety, testSwapRoot, type Database, type EncryptionPorts, type EncryptionUnitOfWork } from '@flux/core';
-import { eventRepository, workspaceEncryptionRows, type DbExecutor } from '@flux/db';
+import { dropStaleUnlocks, keyringFromEnv, ProcessKeys, recordEvent, sealFor, swapFiles, swapSafety, testSwapRoot, type Database, type EncryptionPorts, type EncryptionUnitOfWork } from '@flux/core';
+import { configureSeals, workspaceEncryptionRows, type DbExecutor } from '@flux/db';
+import { eventPorts } from '../events.js';
 
 /**
  * The worker's side of encrypted workspaces (F-030, #655). It holds its own `ProcessKeys` (S2a opens DEKs here for
@@ -15,7 +16,7 @@ function unitOfWork(db: Database): EncryptionUnitOfWork {
     run: (work) => db.transaction((tx) => work({
       rows: workspaceEncryptionRows(tx as unknown as DbExecutor),
       access: { manager: async () => { throw new Error('The worker makes no access decision for encryption'); } },
-      event: (principal, workspaceId, kind, data) => recordEvent(policyEventPorts(tx, eventRepository(tx)), principal, workspaceId, kind, workspaceId, data),
+      event: (principal, workspaceId, kind, data) => recordEvent(eventPorts(tx), principal, workspaceId, kind, workspaceId, data),
       resume: async () => undefined,
     } as EncryptionPorts)),
   };
@@ -24,6 +25,8 @@ function unitOfWork(db: Database): EncryptionUnitOfWork {
 export async function startWorkspaceEncryption(boss: PgBoss, db: Database, env: NodeJS.ProcessEnv) {
   const files = swapFiles(testSwapRoot(env));
   const keys = new ProcessKeys(keyringFromEnv(env), () => swapSafety(env, files));
+  // The worker's repositories seal and open through these keys too (S2a).
+  configureSeals((executor, workspaceId, options) => sealFor(workspaceEncryptionRows(executor), keys, workspaceId, options));
   const heartbeat = keys.startHeartbeat(async (change) => {
     if (change.current) await dropStaleUnlocks(unitOfWork(db), change.current, change.observedAt);
   }, 5_000, (error) => console.error(JSON.stringify({ warning: 'Keyring heartbeat failed', code: (error as { code?: unknown }).code ?? null })));

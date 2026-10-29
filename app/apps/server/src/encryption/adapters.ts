@@ -5,25 +5,26 @@ import * as zxcvbnCommon from '@zxcvbn-ts/language-common';
 import * as zxcvbnEnglish from '@zxcvbn-ts/language-en';
 import { WORKSPACE_ENCRYPTION_RESUME_JOB, type WorkspaceEncryptionResumeJob } from '@flux/contracts';
 import {
-  authorize, createEncryptionUseCases, DerivationSemaphore, ForbiddenError, getWorkspace, keyringFromEnv, loadActor, NotFoundError, ProcessKeys,
-  recordEvent, swapFiles, swapSafety, testSwapRoot, type Database, type EncryptionPorts, type EncryptionUnitOfWork, type PasswordEstimator,
+  authorize, createEncryptionUseCases, DerivationSemaphore, ForbiddenError, getWorkspace, keyringFromEnv, NotFoundError, ProcessKeys,
+  recordEvent, sealFor, swapFiles, swapSafety, testSwapRoot, type Database, type EncryptionPorts, type EncryptionUnitOfWork, type PasswordEstimator,
 } from '@flux/core';
-import { workspaceEncryptionRows, type DbExecutor } from '@flux/db';
+import { accessPorts, accessReader, configureSeals, loadActor, workspaceEncryptionRows, type DbExecutor } from '@flux/db';
 import { eventPorts } from '../events.js';
 
 // Adapters of the encrypted-workspace use cases (F-030, #655): the access policy (`workspace.manage_encryption`), the
 // `@flux/db` key rows, the event log and the queue, each bound to the unit of work's transaction.
 
 function encryptionPorts(tx: Database, boss: Pick<PgBoss, 'send'>): EncryptionPorts {
+  const executor = tx as unknown as DbExecutor;
   return {
-    rows: workspaceEncryptionRows(tx as unknown as DbExecutor),
+    rows: workspaceEncryptionRows(executor),
     access: {
       async manager(principal, workspaceId, options = {}) {
-        const decision = await authorize(principal, 'workspace.manage_encryption', { type: 'workspace', id: workspaceId }, tx, { lock: options.lock ?? false });
+        const decision = await authorize(principal, 'workspace.manage_encryption', { type: 'workspace', id: workspaceId }, accessReader(executor), { lock: options.lock ?? false });
         if (!decision.visible) throw new NotFoundError('Workspace', 'WORKSPACE_NOT_FOUND');
         if (!decision.allowed) throw new ForbiddenError('Only workspace owners and admins can unlock or manage encryption', 'WORKSPACE_ENCRYPTION_ADMIN_REQUIRED');
         // The membership row is already held FOR SHARE under `lock`; this reads the role it allowed.
-        return { role: (await loadActor(principal, workspaceId, tx)).role as 'owner' | 'admin' };
+        return { role: (await loadActor(principal, workspaceId, executor)).role as 'owner' | 'admin' };
       },
     },
     async event(principal, workspaceId, kind, data) {
@@ -59,6 +60,14 @@ export function processKeysFromEnv(env: NodeJS.ProcessEnv): ProcessKeys {
   return new ProcessKeys(keyringFromEnv(env), () => swapSafety(env, files));
 }
 
+/**
+ * Installs core's `sealFor` over this process's keys as the repositories' seal resolver (F-030 S2a): every repository
+ * of `@flux/db` seals and opens through it in its own transaction, so a lock fails reads and writes closed.
+ */
+export function installSeals(keys: ProcessKeys) {
+  configureSeals((executor, workspaceId, options) => sealFor(workspaceEncryptionRows(executor), keys, workspaceId, options));
+}
+
 export interface EncryptionComposition {
   keys: ProcessKeys;
   useCases: ReturnType<typeof createEncryptionUseCases>;
@@ -68,7 +77,7 @@ export interface EncryptionComposition {
 export function composeEncryption(db: Database, boss: Pick<PgBoss, 'send'>, keys: ProcessKeys): EncryptionComposition {
   const useCases = createEncryptionUseCases({
     unit: encryptionUnitOfWork(db, boss), keys, semaphore: new DerivationSemaphore(2, 8), estimator: zxcvbnEstimator(),
-    read: (principal, workspaceId) => getWorkspace(principal, workspaceId, db, { bootId: keys.openableBoot }),
+    read: (principal, workspaceId) => getWorkspace(principal, workspaceId, db, accessPorts, { bootId: keys.openableBoot }),
   });
   return { keys, useCases };
 }

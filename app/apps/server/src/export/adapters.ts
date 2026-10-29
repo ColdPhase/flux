@@ -1,4 +1,4 @@
-import { FLUX_SCHEMA_VERSION, projectExportRows } from '@flux/db';
+import { FLUX_SCHEMA_VERSION, accessPorts, projectExportRows, accessReader } from '@flux/db';
 import {
   createProjectExportUseCases,
   enforce,
@@ -18,9 +18,9 @@ function exportPorts(tx: Transaction, storage?: FileStorage): ProjectExportPorts
   return {
     access: {
       async requireManage(principal, projectId) {
-        enforce(await evaluateProject(principal, 'project.manage', projectId, tx), 'project');
+        enforce(await evaluateProject(principal, 'project.manage', projectId, accessReader(tx)), 'project');
       },
-      audience: (principal, projectId) => listProjectPeople(principal, projectId, tx),
+      audience: (principal, projectId) => listProjectPeople(principal, projectId, tx, accessPorts),
     },
     rows: projectExportRows(tx),
     ...(storage ? { files: storage } : {}),

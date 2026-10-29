@@ -87,7 +87,7 @@ CREATE TABLE workspace_holders (
   kdf jsonb NOT NULL,          -- {"alg":"argon2id","v":19,"m":65536,"t":3,"p":4,"salt":"<b64url 16 bytes>"}
   public_key text NOT NULL,    -- X25519, raw 32 bytes, base64url
   wrapped_private text NOT NULL, -- AES-256-GCM of the X25519 private key under the KEK; the public key is in its AAD
-  holder_mac text NOT NULL,      -- HMAC under a key from DEK v(holder_mac_version) over [id, kind, user id, public key]
+  holder_mac text NOT NULL,      -- HMAC under a key from DEK v(holder_mac_version) over [id, kind, user id, public key, kdf, wrapped_private, secret_check]
   holder_mac_version integer NOT NULL,
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now(),
@@ -307,9 +307,13 @@ or replace a DEK wrap with a box carrying a DEK of their own choice. Sealing to 
 secret. The next rotation would then seal the new DEK to the attacker, and the re-encryption would
 move all content under it. Four checks close this. None needs anything the attacker has.
 
-1. **Holder MAC.** `holder_mac = HMAC-SHA256(HKDF(DEK v, [flux holder-auth v1, workspace id, v]),
-   [holder id, kind, user id or "", public key])`, with `v = holder_mac_version`, the current version
-   when the MAC was written. A holder is created only while the workspace is unlocked, so the server
+1. **Holder MAC.** `holder_mac = HMAC-SHA256(HKDF(DEK v, [flux holder-auth v2, workspace id, v]),
+   [holder id, kind, user id or "", public key, kdf, wrapped private key, secret check])`, with
+   `v = holder_mac_version`, the current version when the MAC was written. `kdf` is compared in the fixed
+   key order `[alg, v, m, t, p, salt]`, so jsonb's reordering does not matter. (S2a-1, from the S1 review:
+   v1 covered only the identity and the public key, so a changed `kdf`, `wrapped_private` or
+   `secret_check` showed up only as a failed derivation, not as tampering.) `confirm` is not covered: it
+   is itself a MAC under the holder's KEK, written later than this one, and unlock refuses a changed one. A holder is created only while the workspace is unlocked, so the server
    holds the DEK then. At a rotation's start every remaining holder's MAC is rewritten under the new
    version. Two rules use it, and they are deliberately different. **Receiving a new DEK:** only the
    **holder set** does, meaning rows whose MAC verifies, whose user (for kind `password`) is currently
@@ -575,8 +579,10 @@ migrations: `draft_versions`, `search_documents`, `flux_schema_version`, `live_w
 [registry test](#tests-and-acceptance-criteria) reads `information_schema.tables` and `columns` for
 the `public` schema after all migrations. It requires every table to be in `TABLE_CLASSES` as
 **content** (columns classified as above), **account** (user, session, OAuth, push and preference
-data), **system** (schema version, queue, cursor, idempotency, rate limits) or **AI** (empty for a
-sealed workspace, [backstopped](#enforcement)). It fails on any table or text/jsonb column of a
+data), **system** (schema version, queue, cursor, rate limits and the key tables), **AI** (empty for a
+sealed workspace, [backstopped](#enforcement)) or **refused** (a feature not offered in a sealed
+workspace, GitHub: `a_sealed_workspace_refused` refuses a row of one with
+`409 WORKSPACE_ENCRYPTED_UNSUPPORTED`). `idempotency_keys` is a content table: its stored responses are sealed. It fails on any table or text/jsonb column of a
 content table that is in no list. It also reads `pg_trigger` and `pg_proc` and fails on a function
 that copies a sealed column outside the allowed pair. The pg-boss schema is classed as system, with
 its own [error-path rule](#error-paths).
@@ -588,7 +594,7 @@ its own [error-path rule](#error-paths).
 | `project_goals` | `title` | — | — |
 | `project_conversations` | — | — | `space` (enum) |
 | `project_messages` (includes task discussion replies) | `body` | `request_fingerprint` | `contribution_kind` (enum) |
-| `project_message_observations`, `dm_message_observations`, `return_points` | — | — | ids and positions only |
+| `message_references` (#469), `project_message_observations`, `dm_message_observations`, `return_points` | — | — | ids and positions only |
 | `dms` | `title` | — | `kind`, `pair_key` (user ids) |
 | `dm_messages` | `body` | `request_fingerprint` | — |
 | `project_materials` | — | `request_fingerprint` | `kind` |
@@ -660,6 +666,10 @@ This is stated plainly for the review and for the operations guide. Someone with
 - **tasks: number, status, owner, waiting-for person and due date**; decisions' status; results'
   positive or negative finding; doc states (draft or published) and contributors;
 - maps: thought positions, sizes, shapes and link endpoints (not their text or labels);
+- which thought or message a message cites (`message_references`, #469: a kind and a target id, never the cited title or text,
+  which are opened per reader through the seal); and for a file the numbers read from its bytes at upload, its page count (PDF),
+  data-row count (CSV, TSV) and duration (audio) (`project_files.page_count`, `row_count`, `duration_ms`). They are counts like
+  the file's size, never its content;
 - that an activity of a kind happened ("title changed", "due changed"), but not the values;
 - notifications: who did what, of which kind, for whom, in which workspace;
 - the client-chosen keys described above.
@@ -1121,8 +1131,10 @@ project picker and in Create like any other space.
   - For holders (owners and admins with a password): **Change your unlock password**. An owner or admin
     without a password sees "You don't have an unlock password yet. Another owner or admin can let you
     set one, or use the recovery code." with **Use the recovery code**. Once a holder has allowed it,
-    they see **Set your unlock password** for 24 hours.
-  - For holders: each owner or admin without a password is listed with **Let Ben set an unlock
+    they see **Set your unlock password** for the hour the grant lasts (`passwordGrantUntil`). With
+    neither a grant nor a recovery code the button stays, dimmed, in its place.
+  - For holders: each owner or admin without a password (the members list says which, with `unlockPassword`
+    on owner and admin rows, for a reader who is an owner or admin) is listed with **Let Ben set an unlock
     password**, which asks for the holder's own unlock password in the inline confirm group.
   - While a rotation runs, one line below the first: "Changing the key · 62%. It continues while
     Garden club is unlocked." While locked: "Changing the key · paused until Garden club is
@@ -1161,7 +1173,7 @@ answers `Cache-Control: no-store`, and does not use the Idempotency-Key store.
 | `POST /api/v1/workspaces/:id/unlock-password-grants` | `{ userId, password }` (the holder's own) | `201 { expiresAt }`, `400 UNLOCK_INCORRECT`, `403` (not a holder, or the target is not an owner or admin), `409 ALREADY_HAS_PASSWORD`, `423`. |
 | `PUT /api/v1/workspaces/:id/unlock-password` | `{ currentPassword?, recoveryCode?, newPassword }` | Changing needs `currentPassword` or `recoveryCode`. A first password needs a valid grant or `recoveryCode`, otherwise `403 UNLOCK_PASSWORD_GRANT_REQUIRED`. `200`, `400 UNLOCK_INCORRECT`, `400 PASSWORD_TOO_WEAK`, `423`. |
 | `POST /api/v1/workspaces/:id/recovery-code` | `{ password }` | `200 { recoveryCode }` (owner only), `423`. |
-| `GET /api/v1/workspaces[/:id]` | — | `Workspace.encryption`: `null`, or `{ state: 'locked' \| 'unlocked', unlockedAt, unlockedBy: { id, name } \| null, myPassword: boolean, canUnlock: boolean, recoveryCode: boolean, rotation: null \| { percent, paused: boolean, startedAt }, keyChangedAt }`. `myPassword` and `canUnlock` are filled for owners and admins; others get `false`. |
+| `GET /api/v1/workspaces[/:id]` | — | `Workspace.encryption`: `null`, or `{ state: 'locked' \| 'unlocked', unlockedAt, unlockedBy: { id, name } \| null, myPassword: boolean, canUnlock: boolean, passwordGrantUntil: string \| null, recoveryCode: boolean, rotation: null \| { percent, paused: boolean, startedAt }, keyChangedAt }`. `myPassword` and `canUnlock` are filled for owners and admins; others get `false`. `passwordGrantUntil` is when a holder's grant for the caller to set a first password ends (an owner or admin without a password, a valid grant only); otherwise `null`. `GET …/members` adds `unlockPassword: boolean` to owner and admin rows of an encrypted workspace for a reader who is an owner or admin, and nothing for anyone else. |
 
 The new action `workspace.manage_encryption` in `WORKSPACE_ACTIONS` is allowed for a human owner or
 admin (`isManager`). `New recovery code` additionally needs the owner role. Events
@@ -1224,6 +1236,43 @@ token alone is not enough (S1 review): a real deployment never holds a half-seal
   per-row key uses the whole AAD as `info`: S2a adds a guard test so no identity (idempotency key, principal,
   operation) can make sealing throw. (3) The S1 lock gate names objects by route parameters and refuses the
   cross-workspace reads (`CROSS_WORKSPACE_READ_ROUTES`); AC-6 must enumerate every route, including upgrade handlers.
+- **S2a is delivered in two PRs, each safe alone** (2026-10-29). Every sealed table gets its plaintext
+  backstop in S2a-1, so a table whose repository does not seal yet refuses a sealed workspace's writes
+  (`409 WORKSPACE_PLAINTEXT_REFUSED`) instead of storing text, and S1's route-level lock gate stays until
+  S2a-2 has every repository sealing.
+  - **S2a-1** (migration 0120): the registry (`packages/db/src/sealed-columns.ts`, with a fifth class
+    `refused` for GitHub, backstopped by `a_sealed_workspace_refused`), the live-catalog test, the
+    plaintext backstops and relaxed checks, `flux_is_sealed`, the search placeholders and
+    `search_changes`, `preserve_draft_version` writing nothing for A, the repository seal resolver
+    (`configureSeals`/`sealOf`/`sealRow`/`openRow` in `packages/db/src/sealing.ts`, installed with core's
+    `sealFor` in the API and the worker), and sealing in the repositories of projects, goals, project
+    messages and task discussion replies, DMs and DM messages, decisions, results, drafts with their
+    versions, and scoped idempotency rows. It also fixes the agent-thread witness triggers, which made a
+    decision, result, doc version, thought or published file in A fail with `WORKSPACE_ENCRYPTED_AI_OFF`
+    (they now skip a sealed workspace), and hashes an AAD over 1024 bytes into the HKDF `info`
+    (`[flux seal long v1, SHA-256(AAD)]`; the AAD itself is unchanged), so no identity can make sealing throw.
+  - **S2a-2a** (migration 0121): tasks with their activity, blocked/unblocked reasons, plan intents and the
+    Undo and native-command receipts, opened in every Work read; the chooser's title filter and the creation
+    baseline computed in the application for a sealed workspace; mandatory command scopes (an object, a
+    resolver run after the session check, or `'account'` from `IDEMPOTENCY_ACCOUNT_OPERATIONS`, which 0121
+    seeds into `idempotency_account_operations` and enforces with `IDEMPOTENCY_SCOPE_REQUIRED`); and the
+    S2a-1 review's hardening: the sealing functions run with a pinned `search_path`, and the backstops whose
+    row names its workspace run only for a sealed one (`WHEN workspace_sealed(...)`). 0120's relaxed checks
+    were validated in place; checks relaxed later use `NOT VALID` unless the catalog compatibility check
+    requires a validated one (the Undo receipt check does).
+  - **Before S2c** (S2a-1 review): `holder_mac` must also cover the set of key versions that have a
+    confirmation, so a deleted `confirm` is tampering rather than a fall-back to the commitment chain.
+  - **S2a-2b-1** (migration 0123): docs and materials (every version, sections, the material fingerprint), maps (titles,
+    thoughts, link labels), opened in every reader including Since-you-left; live Wiki and live maps answer
+    `409 WORKSPACE_ENCRYPTED_UNSUPPORTED` for a sealed workspace's objects on every live route and room upgrade until
+    S2b; `search_change_log` pinned like the other sealing functions; and a sealed chooser search that reached
+    `SEALED_CHOOSER_SCAN_LIMIT` says so (`searchLimited: true` on the work view). Known gap until S2b: the map list's
+    "hide empty maps" test compares the stored title with the default in SQL, so an empty sealed map is listed.
+  - **S2a-2b-2**: file names, sealed digests and file bytes (the streaming `FileCipher`, `has`/`read` on plaintext).
+  - **S2a-2c**: the notification
+    and event backstops with content-free notifications, error-path redaction, `sealed_job_waits` and
+    the resume job, the SQL source scan, cross-workspace `lockedWorkspaces`, the replacement of the
+    route-level gate, `./flux export` refusal and restore truncation, and AC-6, AC-9, AC-10 and AC-7.
 - **S2a: sealed database content and files.** `TABLE_CLASSES`, `SEALED_COLUMNS` and `VISIBLE_COLUMNS`
   with the live-catalog test, the backstops (plaintext, notifications, events, idempotency) and relaxed
   checks, **the search placeholder triggers and `search_changes`** (so no sealed column is ever

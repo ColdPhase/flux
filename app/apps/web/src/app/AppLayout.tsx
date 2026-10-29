@@ -5,7 +5,8 @@ import { Outlet, useLocation, useMatches, useNavigate, useNavigationType, usePar
 import { useStreamEvents } from '../api/stream';
 import { WORKSPACE_LOCKED_DOM_EVENT, isEncryptionEvent } from '../encryption/api';
 import { useLockedPlace } from '../encryption/state';
-import { Drawer, IconButton, MEDIA, SidePanel, Tabs, duration, flip, play, useMediaQuery, useToast, useSidePanelMode } from '../ui';
+import { Dissolve, Drawer, IconButton, MEDIA, SidePanel, Tabs, flip, setTravelDirection, useMediaQuery, useToast, useSidePanelMode, viewDirection } from '../ui';
+import { routeView } from '../ui/motion-rules';
 import { useShellData } from './data';
 import { registerServiceWorker, syncPushSubscription } from '../pwa';
 import { DeferredDetails, DeferredJumpTo, DeferredLiveStage } from './DeferredSurfaces';
@@ -103,7 +104,7 @@ function isDetailsPlace(value: unknown): value is DetailsPlace {
 
 function isTyping(target: EventTarget | null) {
   const el = target as HTMLElement | null;
-  return !!el && (el.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(el.tagName));
+  return !!el && (el.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(el.tagName) || !!el.closest?.('[role="combobox"], [role="listbox"]'));
 }
 
 /**
@@ -153,7 +154,6 @@ function AppLayoutContent() {
   const [createOpen, setCreateOpen] = useState(false);
   const [create, setCreate] = useState<CreateRequest | null>(null);
   const paneRef = useRef<HTMLDivElement>(null);
-  const previousView = useRef(viewOrder(location.pathname));
   const drawerTitleId = useId();
 
   // One panel for a task, a decision, an agent and a thread (F-026 S4, Spokój rule 2): opening another object from it
@@ -489,27 +489,20 @@ function AppLayoutContent() {
     return () => { viewport.removeEventListener('resize', update); viewport.removeEventListener('scroll', update); app.style.removeProperty('--app-h'); app.style.removeProperty('--app-top'); };
   }, [touch]);
 
-  // A new view slides in from the side its tab sits on; a Settings page slides in from the right
-  // and back from the left, like a pushed page (#266 PF-4).
-  const previousPath = useRef(location.pathname);
+  // Switching a project view, a place or a Settings section dissolves the old content into the new in the content area only (#593
+  // AC-3, `Dissolve` around the routes below): the old content stays a moment as an inert picture of itself over the new, fades out
+  // and travels a few pixels the way the person came from; the new content, with its composer and toolbar, is live and in place from
+  // the first frame, and the header, the sidebar and the tab bar are not in it at all (Spokój rule 7). Opening a thread beside the
+  // conversation or a page inside the Wiki is not a switch. The reading position is restored by its own owner and never animated.
+  // The history sets the direction of travel the detail panel's content follows when it is not told by its depth.
+  const navigationType = useNavigationType();
+  const [pathway, setPathway] = useState({ from: location.pathname, to: location.pathname });
+  if (pathway.to !== location.pathname) setPathway({ from: pathway.to, to: location.pathname });
+  const viewWay = viewDirection(pathway.from, pathway.to, navigationType === 'POP');
   useLayoutEffect(() => {
-    const index = viewOrder(location.pathname);
-    const settingsDepth = (path: string) => (path === '/settings' ? 1 : /^\/settings\/./.test(path) ? 2 : 0);
-    const from = settingsDepth(previousPath.current);
-    const to = settingsDepth(location.pathname);
-    previousPath.current = location.pathname;
-    const direction = from && to && from !== to ? Math.sign(to - from) : Math.sign(index - previousView.current);
-    const distance = from && to && from !== to ? 28 : 12;
-    previousView.current = index;
-    if (!direction) return;
-    const pane = paneRef.current;
-    const refreshInert = () => {
-      const root = document.getElementById('root');
-      if (root && !root.inert) root.style.setProperty('--app-inert', `0-${Date.now()}`);
-    };
-    pane?.getAnimations().forEach((animation) => animation.cancel());
-    refreshInert();
-    void play(pane, [{ opacity: 0, transform: `translateX(${direction * distance}px)` }, { opacity: 1, transform: 'none' }], duration('--dur-2'), '--ease-out', { fill: 'backwards' }).then((animation) => { animation?.cancel(); refreshInert(); });
+    setTravelDirection(navigationType === 'POP' ? 'back' : 'forward');
+    // The view is the pathname's; the navigation type only says how it was reached.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [location.pathname]);
 
   // In focus the rail shows no counts.
@@ -789,10 +782,13 @@ function AppLayoutContent() {
         <div className="app__body">
           <RouteProgress />
           <div className="app__pane" id="content" ref={paneRef} tabIndex={-1}>
-            <Outlet />
-            <DeferredLiveStage />
+            <Dissolve id={routeView(location.pathname)} direction={viewWay} host={paneRef} dress=".app" shift="--shift-view" time="--dur-view" layer={19} skip=".deferred-surface--stage">
+              <Outlet />
+              <DeferredLiveStage />
+            </Dissolve>
           </div>
           <SidePanel open={detailsOpen} onClose={closePanel} title={recapOpen ? 'What matters' : ownedShown ? ownedShown.label : 'Details'} closeLabel={ownedShown?.closeLabel} chip={objectChip} id="details" back={back} startFull={sheetStart ?? ownedShown?.startFull} onHeight={(full) => keepPlace('sheet', full)}
+            contentKey={ownedShown ? `owned:${ownedShown.key}` : typeof detailsView === 'object' ? JSON.stringify(detailsView) : detailsView} depth={trail.length + (ownedShown?.back ? 1 : 0)}
             context={phone && (detailsView === 'place' || typeof detailsView === 'object' && detailsView.kind === 'overview') ? <OverviewContext message={typeof detailsView === 'object' && detailsView.kind === 'overview' && !!detailsView.messageId} /> : undefined}>
             {isOwned(detailsView) ? <div className="ui-panel__slot" ref={setPanelSlot} /> : <DeferredDetails view={detailsView} workspace={workspace} placeTitle={place.title} dm={activeDm ? { id: activeDm.id, kind: activeDm.kind, title: activeDm.title, me: me.user.name, people: activeDm.people, audience: activeDm.audience } : null} onBack={() => setDetailsView('place')} onClose={() => toggleDetails(false)} />}
           </SidePanel>

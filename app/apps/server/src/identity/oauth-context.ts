@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
-import { agentOauthUseCases, workspaceAi, type Database } from '@flux/core';
-import { agentConnectionWorkspaceId, workspaceIdOfOauthFlow, workspaceIdsOfOauthClient } from '@flux/db';
+import { agentOauthUseCases, type Database } from '@flux/core';
+import { agentConnectionWorkspaceId, workspaceIdOfOauthFlow, workspaceIdsOfOauthClient, workspaceAi } from '@flux/db';
 import { createAgentConnectionStore } from '../agent-connection/store.js';
 import type { FluxAuth } from './auth.js';
 import { oauthFlow, verifiedOauthQuery } from './oauth-query.js';

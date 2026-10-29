@@ -1,7 +1,7 @@
 import type { AgentToolRegistrar } from './tool-registry.js';
 import { z } from 'zod';
 import { conversationUseCases, createSearchUseCases, DomainError, getProject, NotFoundError, type Database } from '@flux/core';
-import { schema } from '@flux/db';
+import { accessPorts, schema } from '@flux/db';
 import { eq } from 'drizzle-orm';
 import { conversationStore } from '../conversation/store.js';
 import { docUseCases } from '../docs/adapters.js';
@@ -64,7 +64,7 @@ export function registerAgentDomainReads(server: AgentToolRegistrar, db: Databas
     const projects = [];
     for (const id of [...connection.selectedProjectIds].sort()) {
       await requireProject(id);
-      const project = await getProject(principal, id, tx);
+      const project = await getProject(principal, id, tx, accessPorts);
       // The project's goal is readable, never writable, through MCP (#520): one sentence, and whether a person marked it reached.
       projects.push({ id: project.id, name: project.name, workspaceId: project.workspaceId,
         goal: project.goal ? { title: project.goal.title, reachedAt: project.goal.reachedAt } : null });

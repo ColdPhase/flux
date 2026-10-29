@@ -268,6 +268,18 @@ and its real discussion under [P5](../design/final/README.md#5-behaviour):
   loaded root stay hidden with them; loading those roots shows them in their place, and older announcement pages
   are read as far back as the loaded roots reach. A refresh that skipped past the loaded announcements reads
   forward until it meets them. Reading never creates an announcement, task or root.
+- **Decisions and results (#694).** A decision proposed or accepted, and a result recorded, are announced like a task
+  ([P5](../design/final/README.md#5-behaviour)). `GET /api/v1/projects/:id/object-notices` (newest first, the same
+  `limit`/`offset` page and the same project audience: 404 for anyone who cannot read the project) is derived from the
+  objects, so each decision has a `decision.proposed` line at its creation and a `decision.accepted` line at its acceptance,
+  and each result a `result.recorded` line. A line carries the object's id, its **current** title and state
+  (`status` of a decision, `finding` of a result), who did it (`by`), the object's `source` links and `conversationId`, the
+  conversation of its first message source. The stream merges them with the roots by time; an open thread shows the lines whose
+  `conversationId` is that thread (or whose source is one of its messages) among its replies. A thread's composer
+  `/decide` and `/task` carry the thread's opening message as the source, so what is typed there is traceable to it.
+  The live stream carries only `project.decision_proposed.v1`, `project.decision_accepted.v1`, `project.result_recorded.v1`
+  and `project.work_created.v1` with the project as the object and the decision, result or task id in the stored data; the
+  open conversation reads again when one arrives, so no title or text travels on the stream.
 - **The task's root.** `GET /api/v1/projects/:id/conversation-roots` adds `task: { workId, title, number }` (the current
   title and the immutable task number, #367) to a root that opened a task's discussion. The stream and the thread header show it as the task's chip;
   replies from the thread in the one panel use the task contribution operation and the shared task draft described below.

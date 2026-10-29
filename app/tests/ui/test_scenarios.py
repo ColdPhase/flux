@@ -53,10 +53,13 @@ from pathlib import Path
 
 from playwright.sync_api import Browser, BrowserContext, Page, expect, sync_playwright
 
+from app_select import choose, expect_value
+
 from create_window import create_other, linked_labels, open_from_tasks, submit_button
 from message_gestures import open_message_menu
 from message_gestures import open_message_menu
 from test_app_shell import show_map_as, DESKTOP, ORIGIN, PHONE, UPSTREAM, open_details, open_what_matters, shot, start_forwarder
+from wiki_text import LIVE, existing_text, has_text, reason_field, type_at_end, wait_until_shared
 
 UI_BROWSER = os.environ.get("FLUX_UI_BROWSER", "chromium")
 if UI_BROWSER not in ("chromium", "webkit"):
@@ -80,7 +83,7 @@ LOW_LIGHT = "Low light: below 10 lux the camera has to guess"
 VARIANT_B = "Variant B: a VL53L1X sensor behind the shade"
 GONE_THOUGHT = "Variant A: a photodiode, dropped before the review"
 # A button's background and transform, as the press check reads them (HIG-16: Prostota presses to .97).
-PRESS_STYLE = "el => { const s = getComputedStyle(el); return { background: s.backgroundColor, transform: s.transform }; }"
+PRESS_STYLE = "el => { const s = getComputedStyle(el); return { background: s.backgroundColor, scale: s.scale }; }"
 JONAS_ROOT = "Copied our lamp sketch here. Tonight I test the camera in a dark bedroom."
 ADA_REPLY = "Good, note the lux level so we can compare later."
 D1, WHY1 = "Use the camera for gesture detection", "It recognises the richest set of gestures"
@@ -267,22 +270,19 @@ class ScenarioJourney:
         return page.get_by_role("dialog", name="Details") if self.phone else page.locator("#details")
 
     def press_changes(self, page: Page, button) -> tuple[dict, dict]:
-        """The button at rest and with :active forced through CDP, as the HIG checklist's check does (test_project_policy)."""
+        """The button at rest and held down by a real press (the one press, ui/press.ts: it scales the control, the fill is CSS :active)."""
+        button.scroll_into_view_if_needed()
         rest = button.evaluate(PRESS_STYLE)
-        button.evaluate("el => el.setAttribute('data-press-probe', '')")
-        cdp = page.context.new_cdp_session(page)
+        box = button.bounding_box()
+        page.mouse.move(box["x"] + box["width"] / 2, box["y"] + box["height"] / 2)
+        page.mouse.down()
         try:
-            cdp.send("DOM.enable")
-            cdp.send("CSS.enable")
-            root = cdp.send("DOM.getDocument", {"depth": 0})["root"]["nodeId"]
-            node = cdp.send("DOM.querySelector", {"nodeId": root, "selector": "[data-press-probe]"})["nodeId"]
-            cdp.send("CSS.forcePseudoState", {"nodeId": node, "forcedPseudoClasses": ["active"]})
-            page.wait_for_timeout(300)  # past the transform transition
+            page.wait_for_timeout(300)  # past the press-in
             pressed = button.evaluate(PRESS_STYLE)
-            cdp.send("CSS.forcePseudoState", {"nodeId": node, "forcedPseudoClasses": []})
         finally:
-            cdp.detach()
-            button.evaluate("el => el.removeAttribute('data-press-probe')")
+            page.mouse.move(2, 2)  # let go elsewhere: nothing is chosen
+            page.mouse.up()
+        page.wait_for_timeout(450)  # and the spring back
         return rest, pressed
 
     def close_details(self, page: Page) -> None:
@@ -389,7 +389,7 @@ class ScenarioJourney:
         region = page.get_by_role("region", name="People", exact=True)
         self.tap(region.get_by_role("button", name="Invite"))
         give = region.get_by_role("group", name="Give someone access")
-        give.get_by_label("Person").select_option(value=self.ids[key])
+        choose(give.get_by_label("Person"), value=self.ids[key])
         if read_only:
             give.get_by_role("group", name="Access").get_by_text("Can read", exact=True).click()
         first = NAMES[key].split()[0]
@@ -412,7 +412,7 @@ class ScenarioJourney:
         else:
             text.press("Control+k")
         picker = page.get_by_role("dialog", name="Link to something in this project")
-        picker.get_by_label("Reference type").select_option(kind)
+        choose(picker.get_by_label("Reference type"), kind)
         query = picker.get_by_role("combobox", name="Find a doc, decision, result, work, sketch or message", exact=True)
         query.fill(title[:40])
         option = picker.get_by_role("listbox", name="Matches").get_by_role("option").first
@@ -421,7 +421,7 @@ class ScenarioJourney:
             option.tap()
         else:
             query.press("Enter")
-        expect(text).to_have_value(re.compile(re.escape(f"flux:{kind}/{item_id}")))
+        has_text(text, f"flux:{kind}/{item_id}")
         # The editor puts the caret after the inserted link on the next frames; type after that.
         page.evaluate("new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))")
 
@@ -702,7 +702,7 @@ class ScenarioJourney:
         expect(nav).to_have_attribute("aria-busy", "false")
         form.get_by_label("Finding", exact=True).fill(RESULT)
         form.get_by_label("Evidence", exact=True).fill(EVIDENCE)
-        expect(form.get_by_label("For work", exact=True)).to_have_value(experiment["id"])
+        expect_value(form.get_by_label("For work", exact=True), experiment["id"])
         form.get_by_role("radio", name="Negative", exact=True).check()
         form.get_by_role("checkbox", name=re.compile("This finishes")).check()
         self.tap(form.get_by_role("button", name="Attach result", exact=True))
@@ -854,12 +854,12 @@ class ScenarioJourney:
             jonas.keyboard.press("Enter")
         expect(picker).to_be_visible()
         map_field = picker.get_by_label("Map", exact=True)
-        map_field.select_option(s["map"])
-        # The map field is the accepted field surface in both engines: no native chrome, the field corners, and a chevron inside it.
-        look = map_field.evaluate("el => { const s = getComputedStyle(el); return { appearance: s.appearance, webkit: s.webkitAppearance, radius: s.borderRadius }; }")
-        self.assertTrue("none" in (look["appearance"], look["webkit"]), "the map select drops the native chrome (WebKit draws a grey box otherwise)")
+        choose(map_field, s["map"])
+        # The map field is the accepted field surface in both engines: the app's own select (no native chrome), the field corners, and its chevron inside it.
+        self.assertEqual(map_field.evaluate("el => el.tagName"), "BUTTON", "the map field is the app's select, not the system's")
+        look = map_field.evaluate("el => { const s = getComputedStyle(el); return { radius: s.borderRadius }; }")
         self.assertEqual(look["radius"], "14px", "and takes the field corners (--r)")
-        chevron = picker.locator(".wd-pick__field > svg")
+        chevron = map_field.locator(".ui-select__chev")
         expect(chevron).to_be_visible()
         field_box, chevron_box = map_field.bounding_box(), chevron.bounding_box()
         self.assertTrue(field_box["x"] <= chevron_box["x"] and chevron_box["x"] + chevron_box["width"] <= field_box["x"] + field_box["width"],
@@ -886,11 +886,10 @@ class ScenarioJourney:
         expect(dropped).to_be_visible()
         self.api("jonas", "DELETE", f"/api/v1/sketches/{s['map']}/thoughts/{gone_thought['id']}", status=204,
                  headers={"if-match": f'"{gone_thought["version"]}"'})
-        if UI_BROWSER == "chromium":  # the press probe forces :active through CDP, which only Chromium offers
-            rest, pressed = self.press_changes(jonas, choice)
-            self.assertEqual(rest["transform"], "none", "a thought choice rests unscaled")
-            self.assertEqual(pressed["transform"], "matrix(0.97, 0, 0, 0.97, 0, 0)", "a pressed thought choice scales to --press (.97)")
-            self.assertNotEqual(pressed["background"], rest["background"], "and takes the pressed fill")
+        rest, pressed = self.press_changes(jonas, choice)
+        self.assertEqual(rest["scale"], "none", "a thought choice rests unscaled")
+        self.assertEqual(pressed["scale"], "0.97", "a pressed thought choice scales to --press (.97)")
+        self.assertNotEqual(pressed["background"], rest["background"], "and takes the pressed fill")
         if self.phone:
             self.tap(dropped)
         else:
@@ -951,7 +950,7 @@ class ScenarioJourney:
         grants = page.get_by_role("region", name="Standing grants for Desk laptop")
         self.tap(grants.get_by_role("button", name="Add a grant"))
         form = grants.get_by_role("form", name="Add a grant to Desk laptop")
-        form.get_by_label("Acts as", exact=True).select_option(label="Planning")
+        choose(form.get_by_label("Acts as", exact=True), label="Planning")
         form.get_by_role("checkbox", name="Propose decisions").check()
         form.get_by_label("Uses for each change").fill("2")
         self.shot(page, "3-grant")
@@ -1131,12 +1130,16 @@ class ScenarioJourney:
         page.goto(f"/projects/{lamp}/docs/{s['doc']}")
         expect(page.get_by_role("heading", level=2, name=DOC_TITLE)).to_be_visible()
         self.tap(page.get_by_role("link", name="Edit"))
-        text = page.get_by_label("Text (Markdown)")
-        text.press("Control+End")
-        text.press_sequentially("\n\nAfter the pivot: ", delay=20)
+        text = existing_text(page)
+        wait_until_shared(page)
+        type_at_end(page, text, "\n\nAfter the pivot: ")
         self.link_in_doc(page, text, "decision", s["d2"], D2)
-        page.get_by_label("What changed").fill("The rule changed to the ToF sensor")
+        reason_field(page).fill("The rule changed to the ToF sensor")
         self.tap(page.get_by_role("button", name="Save version"))
+        if LIVE:
+            # The shared working copy keeps its version and stays on the editor; the page is one step back.
+            expect(page.get_by_role("status").filter(has_text="Version 2 saved")).to_be_visible()
+            self.tap(page.get_by_role("link", name="Back to doc", exact=True))
         expect(page.get_by_role("heading", level=2, name=DOC_TITLE)).to_be_visible()
         doc = self.wait_for("version 2 of the page", lambda: (lambda d: d if d["version"] == 2 else None)(self.api("ada", "GET", f"/api/v1/docs/{s['doc']}", status=200)))
         self.assertTrue(any(link["role"] == "mentions" and link["to"]["id"] == s["d2"] for link in doc["links"]))
@@ -1203,14 +1206,14 @@ class ScenarioJourney:
 
         # Ada exports the whole project from the wiki.
         page.goto(f"/projects/{lamp}/docs/{s['doc']}")
-        # On a phone the page's context and its one "More" menu sit in the header (F-026 §4: no bar
-        # under it); on a computer the bar above the page has Download as its own button.
+        # On a phone the page's context sits in the header (F-026 §4: no bar under it) and its one "More" menu ends the
+        # row of page chips (#507: the header is the same in every view); on a computer the bar above the page has Download as its own button.
         expect(page.get_by_role("heading", level=2, name=DOC_TITLE)).to_be_visible()
         if self.phone:
             header = page.locator("header.phead")
             expect(page.locator(".wiki-bar")).to_have_count(0)
             expect(header.locator(".wiki-header-meta")).to_have_text(re.compile(r"^Wiki · \d+ pages?$"))
-            actions = header.locator(".wiki-header-actions")
+            actions = page.locator(".wiki-top__menu")
             expect(actions).to_be_visible()
             self.tap(actions.get_by_role("button", name="More", exact=True))
             download = page.get_by_role("dialog", name="Page actions")

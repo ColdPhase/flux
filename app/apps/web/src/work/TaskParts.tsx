@@ -1,7 +1,7 @@
 import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 import type { WorkStatus } from '@flux/contracts';
 import { WORK_STATUSES } from '@flux/contracts';
-import { StatusGlyph } from '../ui';
+import { Morph, StatusGlyph } from '../ui';
 import { STATUS_LABEL } from './format';
 import { PropertyMenu } from './PropertyMenu';
 
@@ -19,7 +19,7 @@ export function useStateKeys(enabled: boolean, choose: (status: WorkStatus) => v
       const status = WORK_STATUSES[Number(event.key) - 1];
       if (!status || event.key.length !== 1) return;
       const target = event.target as HTMLElement | null;
-      if (target?.closest('input, textarea, select, [contenteditable="true"], [role="dialog"]:not(#details)')) return;
+      if (target?.closest('input, textarea, select, [role="combobox"], [role="listbox"], [contenteditable="true"], [role="dialog"]:not(#details)')) return;
       // Only while the focus is in the panel or nowhere in particular.
       if (target && target !== document.body && !target.closest('#details')) return;
       event.preventDefault();
@@ -38,7 +38,7 @@ export function StatusControl({ status, disabled, onChoose }: { status: WorkStat
   const options = WORK_STATUSES.map((value, index) => ({ value, label: STATUS_LABEL[value], key: String(index + 1), icon: <StatusGlyph status={value} size={16} /> }));
   return (
     <PropertyMenu label="Status" value={status} options={options} disabled={disabled} onChoose={(value) => onChoose(value as WorkStatus)}>
-      <StatusGlyph status={status} size={16} /><span>{STATUS_LABEL[status]}</span>
+      <StatusGlyph status={status} size={16} /><Morph value={status}>{STATUS_LABEL[status]}</Morph>
     </PropertyMenu>
   );
 }

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ASSISTANT_REACTION_ACTIONS, ASSISTANT_REACTION_EVENTS, assistantReactionPath, assistantReactionsPath, type AssistantReaction, type AssistantReactionAction, type AssistantReactionEvent, type GithubBinding, type PersonalAssistantStatus, type SaveAssistantReaction } from '@flux/contracts';
 import { ApiError, request } from '../api/client';
 import { useShellData, type ProjectSummary } from '../app/data';
-import { Button, Icon, IconButton } from '../ui';
+import { Button, Icon, IconButton, Select, Option } from '../ui';
 import { NoteLines, SheetFrame, useBackgroundNote } from './ScheduleSheet';
 import type { ScheduleScope } from './scheduleApi';
 
@@ -72,9 +72,9 @@ function Body({ scope, projects, linked, item, onClose, onSaved }: { scope: Sche
       .then(onSaved, (cause) => setError(failure(cause))).finally(() => setBusy(false)); }}>
     <header className="asched__head ui-panel__head"><h2 className="asched__title">When something happens</h2><IconButton icon="x" label="Close" onClick={onClose} /></header>
     <div className="asched__body">
-    <label className="asched__field">In<select className="asched__select" aria-label="Project" value={project} onChange={(change) => { setProject(change.target.value); if (event === 'pr_ready' && !linked.includes(change.target.value)) { setEvent('blocked'); setAction('tell'); } }}>{projects.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}</select></label>
-    <label className="asched__field">When<select className="asched__select" aria-label="When" value={event} onChange={(change) => { setEvent(change.target.value as AssistantReactionEvent); setAction('tell'); }}>{ASSISTANT_REACTION_EVENTS.filter((entry) => entry.id !== 'pr_ready' || linked.includes(project)).map((entry) => <option key={entry.id} value={entry.id}>{entry.label}</option>)}</select></label>
-    <label className="asched__field">Then<select className="asched__select" aria-label="Then" value={action} onChange={(change) => setAction(change.target.value as AssistantReactionAction)}>{actions.map((id) => <option key={id} value={id}>{ASSISTANT_REACTION_ACTIONS[id]}</option>)}</select></label>
+    <label className="asched__field">In<Select className="asched__select" aria-label="Project" value={project} onChange={(next) => { setProject(next); if (event === 'pr_ready' && !linked.includes(next)) { setEvent('blocked'); setAction('tell'); } }}>{projects.map((project) => <Option key={project.id} value={project.id}>{project.name}</Option>)}</Select></label>
+    <label className="asched__field">When<Select className="asched__select" aria-label="When" value={event} onChange={(next) => { setEvent(next as AssistantReactionEvent); setAction('tell'); }}>{ASSISTANT_REACTION_EVENTS.filter((entry) => entry.id !== 'pr_ready' || linked.includes(project)).map((entry) => <Option key={entry.id} value={entry.id}>{entry.label}</Option>)}</Select></label>
+    <label className="asched__field">Then<Select className="asched__select" aria-label="Then" value={action} onChange={(next) => setAction(next as AssistantReactionAction)}>{actions.map((id) => <Option key={id} value={id}>{ASSISTANT_REACTION_ACTIONS[id]}</Option>)}</Select></label>
     <p className="asched__meta">Only your items in this project. At most once per item in 30 minutes.</p>
     {action === 'draft_reply' ? <p className="asched__note">Opens Reply with a draft for you to review. Only Send posts it.</p> : null}
     <details className="asched__more"><summary>More</summary><label className="asched__field">Runs a day<input className="asched__select" type="number" min="1" max="24" value={limit} onChange={(change) => setLimit(Number(change.target.value))} /></label></details>

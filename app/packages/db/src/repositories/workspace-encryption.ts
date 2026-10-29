@@ -39,6 +39,7 @@ export interface EncryptionViewRow {
   liveVersions: number[];
   unlocks: { keyVersion: number; bootId: string; unlockedAt: Date; unlockedBy: string | null; unlockedByName: string | null }[];
   myPassword: boolean;
+  grantUntil: Date | null;
   recoveryCode: boolean;
   keyChangedAt: Date | null;
 }
@@ -219,6 +220,11 @@ export function workspaceEncryptionRows(db: DbExecutor) {
       await db.execute(sql`DELETE FROM workspace_holders WHERE workspace_id = ${workspaceId} AND kind = 'password' AND user_id = ${userId}`);
       return 'deleted';
     },
+    /** Who has an unlock password here (empty for a plain workspace, which has no holders). */
+    async passwordHolders(workspaceId: string): Promise<string[]> {
+      return (await rowsOf<{ userId: string }>(db, sql`SELECT user_id AS "userId" FROM workspace_holders WHERE workspace_id = ${workspaceId} AND kind = 'password' AND user_id IS NOT NULL`))
+        .map((row) => row.userId);
+    },
     /** The `encryption` field of each sealed workspace for one reader (null user for an agent). Plain workspaces are absent. */
     async views(workspaceIds: string[], userId: string | null): Promise<Map<string, EncryptionViewRow>> {
       if (!workspaceIds.length) return new Map();
@@ -229,10 +235,11 @@ export function workspaceEncryptionRows(db: DbExecutor) {
              'unlockedByName', a.name) ORDER BY u.key_version) FROM workspace_unlocks u LEFT JOIN auth_users a ON a.id = u.unlocked_by
              WHERE u.workspace_id = k.workspace_id) AS unlocks,
           EXISTS (SELECT 1 FROM workspace_holders h WHERE h.workspace_id = k.workspace_id AND h.kind = 'password' AND h.user_id = ${userId}) AS "myPassword",
+          (SELECT g.expires_at FROM workspace_wrap_grants g WHERE g.workspace_id = k.workspace_id AND g.user_id = ${userId} AND g.expires_at > now()) AS "grantUntil",
           EXISTS (SELECT 1 FROM workspace_holders h WHERE h.workspace_id = k.workspace_id AND h.kind = 'recovery') AS "recoveryCode",
           (SELECT max(v.created_at) FROM workspace_key_versions v WHERE v.workspace_id = k.workspace_id AND v.key_version > 1) AS "keyChangedAt"
         FROM workspace_keys k JOIN workspaces w ON w.id = k.workspace_id WHERE w.encrypted AND k.workspace_id IN (${ids})`);
-      return new Map(rows.map((row) => [row.workspaceId, { ...row, keyChangedAt: atOrNull(row.keyChangedAt),
+      return new Map(rows.map((row) => [row.workspaceId, { ...row, keyChangedAt: atOrNull(row.keyChangedAt), grantUntil: atOrNull(row.grantUntil),
         unlocks: (row.unlocks ?? []).map((unlock) => ({ ...unlock, unlockedAt: new Date(unlock.unlockedAt) })) }]));
     },
   };

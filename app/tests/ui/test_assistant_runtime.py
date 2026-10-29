@@ -17,6 +17,8 @@ import uuid
 
 from playwright.sync_api import Browser, BrowserContext, Page, Route, expect, sync_playwright
 
+from app_select import choose
+
 from test_app_shell import DESKTOP, ORIGIN, PHONE, UPSTREAM, shot, start_forwarder
 
 PASSWORD = "my own claude plan"
@@ -150,7 +152,7 @@ class AssistantRuntime(unittest.TestCase):
                 expect(facts).to_contain_text("To Anthropic, under your Claude account’s settings.")
                 expect(facts).to_contain_text("It never switches to an API key.")
                 expect(facts).to_contain_text("Never your direct messages, private notes, private maps or other projects.")
-                page.get_by_label("In Lamp studio").select_option(self.ids["agent"])
+                choose(page.get_by_label("In Lamp studio"), self.ids["agent"])
                 self.no_horizontal_scroll(page)
                 shot(page, f"runtime-{'390' if phone else '1440'}-{'dark' if dark else 'light'}-settings-consent")
                 turn_on.click()

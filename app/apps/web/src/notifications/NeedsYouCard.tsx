@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode, type RefObject } from 'react';
 import type { NeedsYouItem } from '@flux/contracts';
-import { AgentTag, Avatar, Button, Icon, Kreska, MEDIA, StatusGlyph, useMediaQuery, type IconName } from '../ui';
+import { AgentTag, Avatar, Button, Icon, Kreska, MEDIA, StatusGlyph, useMediaQuery, usePop, type IconName } from '../ui';
 import { ago, when } from './format';
 
 /** How an item can be put off: tomorrow morning, next week, until its task is done, or for good. */
@@ -23,8 +23,10 @@ export const KIND_WORD = { decision: 'Decision', question: 'Question', blocked: 
 const NOTE_ICON: Record<'question' | 'mention', IconName> = { question: 'chat', mention: 'people' };
 
 /** "Not now" asks when it should return (F-026 S11): the menu, `1` `2` `3` and Esc. */
-export function NotNowMenu({ item, onChoose, onClose, anchors }: {
+export function NotNowMenu({ item, onChoose, onClose, anchors, popProps }: {
   item: NeedsYouItem; onChoose: (choice: SnoozeChoice) => void; onClose: () => void; anchors: RefObject<HTMLElement | null>[];
+  /** The menu's enter and exit (usePop), when its owner keeps it mounted for the exit. */
+  popProps?: ReturnType<typeof usePop>['props'];
 }) {
   const menu = useRef<HTMLDivElement>(null);
   const task = item.snoozeTask;
@@ -58,7 +60,7 @@ export function NotNowMenu({ item, onChoose, onClose, anchors }: {
     else if (/^[1-3]$/.test(event.key) && choices[Number(event.key) - 1]) { event.preventDefault(); event.stopPropagation(); onChoose(choices[Number(event.key) - 1]!.id); }
   };
   return (
-    <div ref={menu} className="nym" role="menu" aria-label="Ask me again" onKeyDown={onKeyDown}>
+    <div {...popProps} ref={menu} className="nym" role="menu" aria-label="Ask me again" onKeyDown={onKeyDown}>
       <span className="nym__h">Ask me again</span>
       {choices.map((choice, index) => (
         <button key={choice.id} type="button" role="menuitem" className="nym__item" onClick={() => onChoose(choice.id)}>
@@ -120,6 +122,7 @@ export function NeedsYouCard({ item, variant = 'card', selected = false, handler
   const notNow = useRef<HTMLButtonElement>(null);
   const trayNotNow = useRef<HTMLButtonElement>(null);
   const anchors = useMemo(() => [notNow, trayNotNow], []);
+  const pop = usePop(menuOpen);
   const decision = item.kind === 'decision';
   const project = item.project?.name ?? null;
   const identity = item.assistantRequestIdentity;
@@ -141,6 +144,11 @@ export function NeedsYouCard({ item, variant = 'card', selected = false, handler
           <Button variant="secondary" onClick={() => handlers.open(item)}>Open task</Button>
           {item.blocked?.waitedBy ? null : <Button variant="quiet" onClick={() => handlers.unblock(item)}>Unblock</Button>}
         </>
+      ) : item.proposal ? (
+        <>
+          <Button variant="primary" onClick={() => handlers.done(item)}>Got it</Button>
+          <Button variant="quiet" onClick={() => handlers.snooze(item, 'decline')}>Decline</Button>
+        </>
       ) : item.assistantChanges ? (
         <>
           <Button variant="primary" onClick={() => handlers.applyChanges(item)}>{item.assistantChanges.verb}</Button>
@@ -150,7 +158,7 @@ export function NeedsYouCard({ item, variant = 'card', selected = false, handler
       ) : (
         <Button variant="secondary" onClick={() => handlers.open(item)}>{item.assistantRequestIdentity ? 'Review' : item.reason === 'invitation' ? 'Open' : 'Reply'}</Button>
       )}
-      {!decision && !touch && variant === 'card' ? <span className="nyc__quiet"><NotNowButton buttonRef={notNow} open={menuOpen} onToggle={() => onMenuOpen(!menuOpen)} className=" nyc__nn--quiet" /><Button variant="quiet" aria-keyshortcuts="E" onClick={() => handlers.done(item)}>Done</Button></span> : null}
+      {!decision && !item.proposal && !touch && variant === 'card' ? <span className="nyc__quiet"><NotNowButton buttonRef={notNow} open={menuOpen} onToggle={() => onMenuOpen(!menuOpen)} className=" nyc__nn--quiet" /><Button variant="quiet" aria-keyshortcuts="E" onClick={() => handlers.done(item)}>Done</Button></span> : null}
     </div>
   );
 
@@ -182,7 +190,15 @@ export function NeedsYouCard({ item, variant = 'card', selected = false, handler
             {review && item.assistantChanges?.suggestion ? <div className="nyc__reason" style={{ whiteSpace: 'pre-wrap' }}>{item.assistantChanges.changes.map((change) => <p key={change.id}>{change.phrase} {change.objectTitle}{'\n'}{change.preview}</p>)}</div> : null}
             {item.assistantNote ? <p className="nyc__reason">Your assistant: {item.assistantNote}</p> : null}
             {item.assistantDraft ? <p className="nyc__reason">Drafted by your assistant · ready to review in Reply</p> : null}
-            {variant === 'card' && item.detail && item.kind !== 'blocked' ? <p className="nyc__reason">{item.detail}</p> : null}
+            {variant === 'card' && item.detail && item.kind !== 'blocked' && !item.proposal ? <p className="nyc__reason">{item.detail}</p> : null}
+            {variant === 'card' && item.proposal ? (
+              <dl className="nyc__reason nyc__proposal" data-testid="agent-suggestion">
+                <dt>Seen</dt><dd>{item.proposal.fact}</dd>
+                <dt>Meaning</dt><dd>{item.proposal.interpretation}</dd>
+                <dt>Suggested</dt><dd>{item.proposal.suggestedAction}</dd>
+                <dt>Based on</dt><dd>{item.proposal.source.title} (version {item.proposal.source.version})</dd>
+              </dl>
+            ) : null}
             {variant === 'card' && item.blocked?.waitingFor ? <p className="nyc__reason">Waiting for #{item.blocked.waitingFor.number} {item.blocked.waitingFor.title}</p> : null}
             {variant === 'card' && decision && item.decision?.basedOn.length ? <p className="nyc__based"><span>Based on</span> {item.decision.basedOn.join(' · ')}</p> : null}
             {variant === 'card' && decision && item.decision?.supersedes ? <p className="nyc__based"><span>Would replace</span> {item.decision.supersedes}</p> : null}
@@ -192,7 +208,7 @@ export function NeedsYouCard({ item, variant = 'card', selected = false, handler
           </div>
           {variant === 'row' ? <div className="nyc__rowactions">{decision ? <>
             <Button variant="primary" onClick={() => handlers.accept(item)}>Accept</Button>
-            <NotNowButton buttonRef={notNow} open={menuOpen} onToggle={() => onMenuOpen(!menuOpen)} /></> : item.assistantChanges
+            <NotNowButton buttonRef={notNow} open={menuOpen} onToggle={() => onMenuOpen(!menuOpen)} /></> : item.proposal ? <Button variant="secondary" onClick={() => handlers.open(item)}>Review</Button> : item.assistantChanges
               ? <Button variant="primary" onClick={() => handlers.applyChanges(item)}>{item.assistantChanges.verb}</Button>
               : <Button variant="secondary" onClick={() => handlers.open(item)}>{item.assistantRequestIdentity ? 'Review' : item.kind === 'blocked' ? 'Open task' : item.reason === 'invitation' ? 'Open' : 'Reply'}</Button>}</div> : null}
           {children}
@@ -205,7 +221,7 @@ export function NeedsYouCard({ item, variant = 'card', selected = false, handler
           </div>
         ) : null}
       </div>
-      {menuOpen ? <NotNowMenu item={item} anchors={anchors} onChoose={(choice) => { onMenuOpen(false); handlers.snooze(item, choice); }} onClose={() => onMenuOpen(false)} /> : null}
+      {pop.mounted ? <NotNowMenu item={item} anchors={anchors} popProps={pop.props} onChoose={(choice) => { onMenuOpen(false); handlers.snooze(item, choice); }} onClose={() => onMenuOpen(false)} /> : null}
     </li>
   );
 }

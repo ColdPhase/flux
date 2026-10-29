@@ -303,9 +303,10 @@ class DmSelectionMode(unittest.TestCase):
                 for part in ("bar", "check"):
                     self.assertAlmostEqual(seconds(measured[part][1]), seconds(token), msg=f"{part} animates for the token's time ({measured[part]})")
                 self.assertAlmostEqual(seconds(measured["fill"].split(",")[0]), 0.0 if reduced else 0.12, msg="the fill fades for the short token's time")
-                # Only transform and opacity (and colours) move, never the layout.
+                # Only transform and opacity (and colours) move, never the layout. `scale` is the press (ui/press.ts, #593): it is the
+                # individual transform property and may still be springing back from the click that opened the mode.
                 names = page.evaluate("""() => { const frames = new Set(); for (const a of document.getAnimations()) for (const f of a.effect?.getKeyframes?.() ?? []) for (const k of Object.keys(f)) frames.add(k); return [...frames]; }""")
-                self.assertTrue(set(names) <= {"offset", "computedOffset", "easing", "composite", "opacity", "transform", "backgroundColor", "color", "boxShadow", "outlineColor", "outlineOffset", "borderColor"}, names)
+                self.assertTrue(set(names) <= {"offset", "computedOffset", "easing", "composite", "opacity", "transform", "scale", "backgroundColor", "color", "boxShadow", "outlineColor", "outlineOffset", "borderColor"}, names)
                 page.context.close()
 
 

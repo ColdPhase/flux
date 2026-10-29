@@ -153,6 +153,14 @@ describe('F-030 first passwords, grants and changes', () => {
     const refused = await put(ben, A, { newPassword: pw.ben });
     assert.equal(refused.status, 403, refused.text);
     assert.equal(codeOf(refused), 'UNLOCK_PASSWORD_GRANT_REQUIRED');
+    // The wire the interface reads: who has a password (owners and admins see it for owners and admins), and the caller's grant.
+    const flags = async (who: Person, ws = A) => Object.fromEntries(((expectStatus(await who.browser.request('GET', `/api/v1/workspaces/${ws}/members`), 200)) as { userId: string; unlockPassword?: boolean }[])
+      .map((member) => [member.userId, member.unlockPassword ?? null]));
+    assert.deepEqual(await flags(ada), { [ada.id]: true, [ben.id]: false, [cy.id]: null, [dee.id]: null }, 'a holder sees who lacks a password');
+    assert.deepEqual(await flags(ben), { [ada.id]: true, [ben.id]: false, [cy.id]: null, [dee.id]: null }, 'so does an admin without one');
+    assert.deepEqual(Object.values(await flags(cy)), [null, null, null, null], 'a member sees no flag');
+    assert.deepEqual(Object.values(await flags(ada, B)), [null, null, null, null], 'a plain workspace has none');
+    assert.equal((await readWorkspace(ben.browser, A)).encryption?.passwordGrantUntil, null, 'no grant yet');
     const wrong = await grant(ada, A, ben.id, `${pw.ada}!`);
     assert.equal(wrong.status, 400);
     assert.equal(codeOf(wrong), 'UNLOCK_INCORRECT');
@@ -162,9 +170,14 @@ describe('F-030 first passwords, grants and changes', () => {
     assert.equal(granted.status, 201, granted.text);
     const expiresIn = Date.parse((granted.json as { expiresAt: string }).expiresAt) - Date.now();
     assert.ok(expiresIn > 55 * 60_000 && expiresIn <= 60 * 60_000, `one hour (${expiresIn} ms)`);
+    const until = (await readWorkspace(ben.browser, A)).encryption?.passwordGrantUntil;
+    assert.equal(until, (granted.json as { expiresAt: string }).expiresAt, 'the grantee reads when it ends');
+    assert.equal((await readWorkspace(ada.browser, A)).encryption?.passwordGrantUntil, null, 'the holder who granted has none of their own');
     const set = await put(ben, A, { newPassword: pw.ben });
     assert.equal(set.status, 200, set.text);
     assert.equal((set.json as { encryption: { myPassword: boolean } }).encryption.myPassword, true);
+    assert.equal((set.json as { encryption: { passwordGrantUntil: string | null } }).encryption.passwordGrantUntil, null, 'the grant is gone once used');
+    assert.equal((await flags(ada))[ben.id], true, 'Ben now has a password');
     assert.equal((await pool.query('SELECT count(*)::int AS n FROM workspace_wrap_grants WHERE workspace_id = $1', [A])).rows[0].n, 0, 'the grant is consumed');
     const notices = (await pool.query(`SELECT user_id, title, body FROM notifications WHERE workspace_id = $1 AND reason = 'security'`, [A])).rows;
     assert.deepEqual(notices, [{ user_id: ada.id, title: 'Ben now has an unlock password for Garden club', body: '' }]);

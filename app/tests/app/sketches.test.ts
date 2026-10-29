@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { before, describe, test } from 'node:test';
 import type { CreatedThought, MovedThoughts, PositionsConflict, Project, Sketch, SketchDetail, SketchPage, Thought, ThoughtLink, VersionConflict, Workspace } from '@flux/contracts';
 import { authorize, createAgent, grantProject, policySketchAccess, revokeAgent, ForbiddenError, NotFoundError, type Principal } from '@flux/core';
+import { accessPorts, accessReader } from '@flux/db';
 import { db, pool } from './support/db.js';
 import { addMember, draft, expectStatus, grant, person, project, workspace, type Person } from './support/people.js';
 import { StreamClient } from './support/stream.js';
@@ -166,13 +167,13 @@ describe('sketch access', () => {
 
     // Agents: not even the author's own agent sees a private sketch; a granted agent sees project sketches.
     const owner: Principal = { id: alice.id, kind: 'human' };
-    const helper = await createAgent(owner, ws.id, { name: 'Alice’s helper', owner: 'self' }, db);
+    const helper = await createAgent(owner, ws.id, { name: 'Alice’s helper', owner: 'self' }, db, accessPorts);
     const agent: Principal = { id: helper.id, kind: 'agent' };
-    await grantProject(owner, lamp.id, { principal: { kind: 'agent', id: helper.id }, role: 'contributor' }, db);
+    await grantProject(owner, lamp.id, { principal: { kind: 'agent', id: helper.id }, role: 'contributor' }, db, accessPorts);
     const shared = await createSketch(alice, ws.id, { title: 'Shared', scope: 'project', projectId: lamp.id });
-    assert.deepEqual(await authorize(agent, 'sketch.read', { type: 'sketch', id: mine.id }, db), { allowed: false, visible: false });
-    assert.deepEqual(await authorize(agent, 'sketch.write', { type: 'sketch', id: shared.id }, db), { allowed: true, visible: true });
-    const agentCreate = await authorize(agent, 'sketch.create', { type: 'workspace', id: ws.id }, db);
+    assert.deepEqual(await authorize(agent, 'sketch.read', { type: 'sketch', id: mine.id }, accessReader(db)), { allowed: false, visible: false });
+    assert.deepEqual(await authorize(agent, 'sketch.write', { type: 'sketch', id: shared.id }, accessReader(db)), { allowed: true, visible: true });
+    const agentCreate = await authorize(agent, 'sketch.create', { type: 'workspace', id: ws.id }, accessReader(db));
     assert.equal(agentCreate.allowed, false, 'agents cannot own private sketches');
 
     // Leaving the workspace ends access to one's own private sketch.
@@ -192,13 +193,13 @@ describe('sketch access', () => {
     const agentOwner: Principal = { kind: 'human', id: personOwner.id };
     const shared = await createSketch(alice, ws.id, { title: 'Agent policy boundary', scope: 'project', projectId: lamp.id });
     const privateMap = await createSketch(personOwner, ws.id, { title: 'Only the person', scope: 'private' });
-    const helper = await createAgent(agentOwner, ws.id, { name: 'Scoped reader', owner: 'self' }, db);
+    const helper = await createAgent(agentOwner, ws.id, { name: 'Scoped reader', owner: 'self' }, db, accessPorts);
     const agent: Principal = { kind: 'agent', id: helper.id };
     const setAgentGrant = (role: 'viewer' | 'contributor' | 'denied') =>
-      grantProject(owner, lamp.id, { principal: { kind: 'agent', id: agent.id }, role }, db);
+      grantProject(owner, lamp.id, { principal: { kind: 'agent', id: agent.id }, role }, db, accessPorts);
     async function check(principal: Principal, sketchId: string, expected: 'read' | 'write' | 'hidden') {
       for (const lock of [false, true]) await db.transaction(async tx => {
-        const access = policySketchAccess(tx);
+        const access = policySketchAccess(accessReader(tx));
         if (expected === 'hidden') {
           await assert.rejects(access.requireSketch(principal, 'sketch.read', sketchId, { lock }), NotFoundError);
           await assert.rejects(access.requireSketch(principal, 'sketch.write', sketchId, { lock }), NotFoundError);
@@ -221,11 +222,11 @@ describe('sketch access', () => {
     await check(agent, shared.id, 'hidden');
     await setAgentGrant('contributor');
     await check(agent, shared.id, 'write');
-    await revokeAgent(agentOwner, helper.id, db);
+    await revokeAgent(agentOwner, helper.id, db, accessPorts);
     await check(agent, shared.id, 'hidden');
-    const active = await createAgent(agentOwner, ws.id, { name: 'Owner leaves', owner: 'self' }, db);
+    const active = await createAgent(agentOwner, ws.id, { name: 'Owner leaves', owner: 'self' }, db, accessPorts);
     const activePrincipal: Principal = { kind: 'agent', id: active.id };
-    await grantProject(owner, lamp.id, { principal: { kind: 'agent', id: activePrincipal.id }, role: 'contributor' }, db);
+    await grantProject(owner, lamp.id, { principal: { kind: 'agent', id: activePrincipal.id }, role: 'contributor' }, db, accessPorts);
     await check(activePrincipal, shared.id, 'write');
     expectStatus(await alice.browser.request('DELETE', `/api/v1/workspaces/${ws.id}/members/${personOwner.id}`), 204);
     await check(activePrincipal, shared.id, 'hidden');

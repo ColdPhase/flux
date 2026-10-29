@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { connect } from 'node:net';
 import { test } from 'node:test';
 import { eq } from 'drizzle-orm';
-import { fileRows, schema } from '@flux/db';
+import { accessPorts, fileRows, schema } from '@flux/db';
 import { createAgent, createFileUseCases, grantProject, type Principal } from '@flux/core';
 import { FILE_LIMITS, imageTypeOf, type CreatedThought, type Sketch, type SketchDetail, type StagedFile } from '@flux/contracts';
 import { diskFileStorage } from '../../apps/server/src/files/storage.js';
@@ -166,8 +166,8 @@ test('viewers, other uploaders, other projects, private maps, agents and non-ima
   assert.deepEqual((await detail(f.writer, mine.id)).thoughts, []);
   // Agents cannot place files, even with a contributor grant.
   const owner: Principal = { kind: 'human', id: f.owner.id };
-  const helper = await createAgent(owner, f.ws.id, { name: 'Lamp helper', owner: 'self' }, db);
-  await grantProject(owner, f.place.id, { principal: { kind: 'agent', id: helper.id }, role: 'contributor' }, db);
+  const helper = await createAgent(owner, f.ws.id, { name: 'Lamp helper', owner: 'self' }, db, accessPorts);
+  await grantProject(owner, f.place.id, { principal: { kind: 'agent', id: helper.id }, role: 'contributor' }, db, accessPorts);
   const agent: Principal = { kind: 'agent', id: helper.id };
   await assert.rejects(sketchUseCases(db, await diskFileStorage(filesDir)).addThought(agent, f.map.id, { text: 'Agent image', x: 0, y: 0, fileId: staged.id }),
     (error: unknown) => (error as { code?: string }).code === 'AGENT_FILES_UNAVAILABLE');

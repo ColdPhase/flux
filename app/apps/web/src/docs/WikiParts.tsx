@@ -2,7 +2,7 @@ import { createContext, useContext, useEffect, useId, useRef, useState, type Key
 import { createPortal } from 'react-dom';
 import { Link } from 'react-router';
 import { ApiError } from '../api/client';
-import { Button, Icon, Spinner, duration, play, trapTab, useToast } from '../ui';
+import { Button, Icon, Spinner, trapTab, usePop, useToast } from '../ui';
 import { useShellData } from '../app/data';
 import { useShellActions } from '../app/shellContext';
 import { LiveEntry } from '../live/LiveEntry';
@@ -49,9 +49,10 @@ export function WikiBar({ meta, back, primary, phoneMeta, children, compactInHea
   const { compact } = useWiki();
   const { metadataSlot, actionSlot } = useShellActions();
   if (compact && compactInHeader && metadataSlot && actionSlot) {
+    // No children: the page keeps its actions itself (the phone header takes none, see usePhoneHeader).
     return <>
       {createPortal(<span className="wiki-header-meta">{phoneMeta ?? meta}</span>, metadataSlot)}
-      {createPortal(<div className="wiki-header-actions">{children}</div>, actionSlot)}
+      {children ? createPortal(<div className="wiki-header-actions">{children}</div>, actionSlot) : null}
     </>;
   }
   const bar = (
@@ -61,6 +62,15 @@ export function WikiBar({ meta, back, primary, phoneMeta, children, compactInHea
     </div>
   );
   return bar;
+}
+
+/**
+ * True while the project header is the phone's. That header is the same in every view (Spokój #507, board C02: Back, the
+ * title, Together, Search), so a Wiki page does not add its menu to it; the menu ends the row of page chips (Wiki.tsx), which stays at the top.
+ */
+export function usePhoneHeader(): boolean {
+  const { actionSlot } = useShellActions();
+  return !!actionSlot?.closest('.phead');
 }
 
 /** On a phone the page's actions are one menu: history, then the share and download cards. */
@@ -129,14 +139,14 @@ function Popover({ icon, label, title, slot, children }: { icon: WikiIconName; l
   const buttonRef = useRef<HTMLButtonElement>(null);
   const popRef = useRef<HTMLDivElement>(null);
   const id = useId();
+  const pop = usePop(open);
 
   useEffect(() => {
     if (!open) return;
-    const pop = popRef.current;
-    void play(pop, [{ opacity: 0 }, { opacity: 1 }], duration('--dur-1'), '--ease-out', { fill: 'backwards' });
-    (pop?.querySelector<HTMLElement>('[data-autofocus]') ?? pop)?.focus();
+    const surface = popRef.current;
+    (surface?.querySelector<HTMLElement>('[data-autofocus]') ?? surface)?.focus();
     const onPointer = (event: PointerEvent) => {
-      if (!pop?.contains(event.target as Node) && !buttonRef.current?.contains(event.target as Node)) setOpen(false);
+      if (!surface?.contains(event.target as Node) && !buttonRef.current?.contains(event.target as Node)) setOpen(false);
     };
     document.addEventListener('pointerdown', onPointer);
     return () => document.removeEventListener('pointerdown', onPointer);
@@ -157,7 +167,7 @@ function Popover({ icon, label, title, slot, children }: { icon: WikiIconName; l
         aria-controls={open ? id : undefined} data-tip={open ? undefined : label} onClick={() => setOpen((value) => !value)}>
         <WikiIcon name={icon} />
       </button>
-      {open ? <div ref={popRef} id={id} className="wiki-pop" role="dialog" aria-label={title} tabIndex={-1} onKeyDown={onKeyDown}><ClosePopover.Provider value={close}>{children}</ClosePopover.Provider></div> : null}
+      {pop.mounted ? <div {...pop.props} ref={popRef} id={id} className="wiki-pop" role="dialog" aria-label={title} tabIndex={-1} onKeyDown={onKeyDown}><ClosePopover.Provider value={close}>{children}</ClosePopover.Provider></div> : null}
     </div>
   );
 }

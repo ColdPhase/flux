@@ -1,7 +1,7 @@
 import type { FastifyInstance, FastifyRequest, RouteOptions } from 'fastify';
 import { CROSS_WORKSPACE_READ_ROUTES, LOCKED_ALLOWED_ROUTES } from '@flux/contracts';
-import { loadActor, sealFor, type Database, type ProcessKeys } from '@flux/core';
-import { sql, workspaceEncryptionRows, type DbExecutor, type SQL } from '@flux/db';
+import { sealFor, type Database, type ProcessKeys } from '@flux/core';
+import { loadActor, sql, workspaceEncryptionRows, type DbExecutor, type SQL } from '@flux/db';
 import type { SessionResolver } from '../identity/index.js';
 
 /**

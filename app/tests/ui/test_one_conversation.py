@@ -50,7 +50,9 @@ OVERLAPS = """el => {
   const area = getComputedStyle(el, '::after');
   const box = el.getBoundingClientRect();
   const cx = box.left + box.width / 2, cy = box.top + box.height / 2, w = parseFloat(area.width), h = parseFloat(area.height);
-  const thread = el.closest('[role="complementary"]') || document.body;
+  // The thread is a complementary beside the stream on a computer and a dialog (overlay or sheet) on a tablet and a phone;
+  // the stream behind a sheet is not part of it, wherever its messages happen to sit.
+  const thread = el.closest('[role="complementary"], [role="dialog"]') || document.body;
   const others = [...thread.querySelectorAll('a, button, input, textarea, select, [role="button"], [role="link"]')];
   return others.filter((other) => {
     if (other === el || other.contains(el) || el.contains(other)) return false;

@@ -16,6 +16,8 @@ import {
   type UpdateDocCommand,
 } from '@flux/contracts';
 import { assertAuthorized, type Database, type ResourceRef } from '@flux/core';
+import { accessReader, schema, type DbExecutor } from '@flux/db';
+import { eq } from 'drizzle-orm';
 import type { SessionResolver } from '../identity/index.js';
 import { commandRunner, expectedVersion, useDomainErrors, versionEtag, type ReplayCheck } from '../http/commands.js';
 import { docUseCases } from './adapters.js';
@@ -39,7 +41,7 @@ const preview = { type: 'object', required: ['body'], additionalProperties: fals
 
 /** A replay needs current read access to the project named in the stored response. */
 const projectReader: ReplayCheck = (principal, stored, db) =>
-  assertAuthorized(principal, 'project.read', { type: 'project', id: String((stored as { projectId?: unknown } | null)?.projectId ?? '') }, db);
+  assertAuthorized(principal, 'project.read', { type: 'project', id: String((stored as { projectId?: unknown } | null)?.projectId ?? '') }, accessReader(db));
 
 /**
  * The last change of each doc in one project: an agent author keeps its scoped owner while that person is in the
@@ -59,6 +61,14 @@ async function scopedUpdaters(db: Database, items: DocSummary[]): Promise<DocSum
  * case, which authorizes. POST/PATCH accept `Idempotency-Key`; an edit and "Add to docs" on an
  * existing doc need `If-Match` (or `expectedVersion`). Responses with a version carry `ETag`.
  */
+/** A doc's project as an idempotency scope (F-030 S2a-2), resolved after the session check; null for an unknown id. */
+const docScope = (docId: string) => async (conn: Database): Promise<ResourceRef | null> => {
+  if (!/^[0-9a-f-]{36}$/i.test(docId)) return null;
+  const [row] = await (conn as unknown as DbExecutor).select({ projectId: schema.projectMaterials.projectId }).from(schema.projectMaterials)
+    .where(eq(schema.projectMaterials.id, docId));
+  return row ? { type: 'project', id: row.projectId } : null;
+};
+
 export async function docRoutes(app: FastifyInstance, { db, sessions }: Options) {
   useDomainErrors(app);
   const { principal, command } = commandRunner(db, sessions);
@@ -85,13 +95,13 @@ export async function docRoutes(app: FastifyInstance, { db, sessions }: Options)
   });
   app.patch<{ Params: { docId: string }; Body: UpdateDocCommand }>(docPath(':docId'), { schema: { body: updateDoc } },
     async (request, reply) => command(request, reply, {
-      operation: `PATCH ${docPath(':docId')}`, scope: null, etag: true,
+      operation: `PATCH ${docPath(':docId')}`, scope: docScope(request.params.docId), etag: true,
       run: (actor, conn) => docUseCases(conn).updateDoc(actor, request.params.docId, request.body, expectedVersion(request)),
       replay: projectReader,
     }));
   app.post<{ Params: { docId: string }; Body: AddDocSectionCommand }>(docSectionsPath(':docId'), { schema: { body: addSection } },
     async (request, reply) => command(request, reply, {
-      operation: `POST ${docSectionsPath(':docId')}`, scope: null, etag: true,
+      operation: `POST ${docSectionsPath(':docId')}`, scope: docScope(request.params.docId), etag: true,
       run: (actor, conn) => docUseCases(conn).addSection(actor, request.params.docId, request.body, expectedVersion(request)),
       replay: projectReader,
     }));

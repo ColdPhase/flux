@@ -2,8 +2,8 @@ import type { FastifyInstance } from 'fastify';
 import { requireMcpAuth } from '@better-auth/mcp';
 import type { AgentScope } from '@flux/contracts';
 import { AGENT_MCP_ENTRIES, agentScopeRefusal, assistantRunTools } from '@flux/contracts';
-import { enforce, evaluateProject, isUuid, loadActor, requireAgentMcpEntry, requireWorkspaceAi, workspaceAi, WorkspaceAiBlockedError, type Database, type Transaction } from '@flux/core';
-import { agentConnectionWorkspaceId, lockAgentMcpPolicy } from '@flux/db';
+import { enforce, evaluateProject, isUuid, requireAgentMcpEntry, requireWorkspaceAi, WorkspaceAiBlockedError, type Database, type Transaction } from '@flux/core';
+import { agentConnectionWorkspaceId, lockAgentMcpPolicy, loadActor, workspaceAi, accessReader } from '@flux/db';
 import type { FluxAuth } from '../identity/auth.js';
 import type { Confirmation } from '../identity/confirmation.js';
 import { createFluxMcpServer } from './mcp-tools.js';
@@ -81,13 +81,13 @@ export function registerMcpRoute(app: FastifyInstance, db: Database, auth: FluxA
           typeof referenceId === 'string' ? referenceId : connectionId);
         if (!grant || grant.connection.id !== connectionId || grant.clientId !== null && grant.clientId !== token.client_id)
           throw new Error('Invalid grant');
-        await requireWorkspaceAi(tx, grant.connection.workspaceId, { lock: true });
+        await requireWorkspaceAi(accessReader(tx), grant.connection.workspaceId, { lock: true });
         const policy = await lockAgentMcpPolicy(tx, connectionId);
         if (!policy) throw new Error('Policy unavailable');
         if (boundProjectId && (!grant.connection.selectedProjectIds.includes(boundProjectId) || !policy.selectedProjectIds.includes(boundProjectId)))
           throw new Error('Bound project unavailable');
         if (boundProjectId) {
-          const checked = enforce(await evaluateProject({ kind: 'agent', id: grant.connection.agentId }, 'project.read', boundProjectId, tx, { lock: true }), 'project');
+          const checked = enforce(await evaluateProject({ kind: 'agent', id: grant.connection.agentId }, 'project.read', boundProjectId, accessReader(tx), { lock: true }), 'project');
           if (checked.project!.workspaceId !== grant.connection.workspaceId) throw new Error('Bound project unavailable');
         }
         granted = scopes.filter((scope) => grant.connection.scopes.includes(scope as AgentScope));
@@ -119,7 +119,7 @@ export function registerMcpRoute(app: FastifyInstance, db: Database, auth: FluxA
       // F-029, first and unconditionally: no byte, not even a tool list or a refusal, after AI is turned off.
       const fencedWorkspace = await agentConnectionWorkspaceId(tx, connectionId, ownerUserId);
       if (!fencedWorkspace) throw new Error('Connection unavailable');
-      await requireWorkspaceAi(tx, fencedWorkspace, { lock: true });
+      await requireWorkspaceAi(accessReader(tx), fencedWorkspace, { lock: true });
       // Nothing more reaches a run token once its run ended, was stopped or its token closed.
       if (run) await requireLiveRun(tx, { ownerUserId, connectionId, run }, { newCall: false, lock: true });
       const store = createAgentConnectionStore(tx);
@@ -131,7 +131,7 @@ export function registerMcpRoute(app: FastifyInstance, db: Database, auth: FluxA
       if (boundProjectId && (!grant.connection.selectedProjectIds.includes(boundProjectId) || !policy.selectedProjectIds.includes(boundProjectId)))
         throw new Error('Bound project unavailable');
       if (boundProjectId) {
-        const checked = enforce(await evaluateProject({ kind: 'agent', id: grant.connection.agentId }, 'project.read', boundProjectId, tx, { lock: true }), 'project');
+        const checked = enforce(await evaluateProject({ kind: 'agent', id: grant.connection.agentId }, 'project.read', boundProjectId, accessReader(tx), { lock: true }), 'project');
         if (checked.project!.workspaceId !== grant.connection.workspaceId) throw new Error('Bound project unavailable');
       }
       const d = dispatch.dependencies;
@@ -148,7 +148,7 @@ export function registerMcpRoute(app: FastifyInstance, db: Database, auth: FluxA
       for (const [projectId, action] of [...d.projects].sort(([a], [b]) => a.localeCompare(b))) {
         if (!policy.selectedProjectIds.includes(projectId) || !grant.connection.selectedProjectIds.includes(projectId))
           throw new Error('Project unavailable');
-        const checked = enforce(await evaluateProject({ kind: 'agent', id: grant.connection.agentId }, action, projectId, tx, { lock: true }), 'project');
+        const checked = enforce(await evaluateProject({ kind: 'agent', id: grant.connection.agentId }, action, projectId, accessReader(tx), { lock: true }), 'project');
         if (checked.project!.workspaceId !== grant.connection.workspaceId) throw new Error('Project unavailable');
       }
     } };

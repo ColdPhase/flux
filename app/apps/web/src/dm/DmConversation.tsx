@@ -1,5 +1,6 @@
 import { useTyping } from '../typing/useTyping';
 import { TypingNotice } from '../typing/TypingNotice';
+import { useSpareHeight } from '../ui/spareHeight';
 import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import { createPortal } from 'react-dom';
 import { Link, Navigate, useLoaderData, useLocation, useNavigate, useRevalidator, useSearchParams, type LoaderFunctionArgs } from 'react-router';
@@ -9,6 +10,8 @@ import { dmReceipts, getDm, observeDmMessages, olderDmMessages } from '../api/di
 import { ComposerBox } from '../composer/ComposerBox';
 import { outboxView, useComposerDraft, useComposerScope } from '../composer/draft';
 import { ConnectionLine, SendAnnouncer } from '../composer/Outbox';
+import { CiteTile } from '../composer/References';
+import { takeHeldCite } from '../app/citeBus';
 import { createDmSketch } from '../api/sketches';
 import { sketchHref } from '../sketch/format';
 import { useStreamEvents } from '../api/stream';
@@ -86,6 +89,8 @@ function DmContent({ initial }: { initial: Dm }) {
   // The shared composer record, kept in this tab: the draft and the messages being sent (#264).
   const composer = useComposerDraft(me.user.id, 'dm', `dm:${initial.id}`);
   const captureScope = useComposerScope(composer.key);
+  // A thought cited on the map of this conversation's sketch waits here for its composer (#469).
+  useEffect(() => { const held = takeHeldCite(`dm:${initial.id}`); if (held) composer.addCite(held); }, [initial.id, composer]);
   const draft = composer.draft.body;
   const [gone, setGone] = useState(false);
   const [leftNotice, setLeftNotice] = useState('');
@@ -330,6 +335,10 @@ function DmContent({ initial }: { initial: Dm }) {
   const lines = [...shown.map((message) => ({ message, item: null, authorId: message.authorId, at: message.createdAt })),
     ...outbox.pending.map((item) => ({ message: null, item, authorId: me.user.id, at: item.at }))];
   const rows = groupRows(lines);
+  // A short conversation sits against its composer instead of at the top of a tall screen (ui/spareHeight.ts).
+  const columnRef = useRef<HTMLDivElement>(null);
+  const liftRef = useRef<HTMLDivElement>(null);
+  useSpareHeight(feedRef, columnRef, liftRef, rows.length, feedNode);
   // #534: what this person observed, and who observed every message of their own whole runs.
   const feedBox = feedRef;
   useObservation({ scope: dm.id, observe: (ids) => observeDmMessages(dm.id, ids), enabled: !gone && !selecting && !returned.pending, feed: feedBox,
@@ -402,7 +411,8 @@ function DmContent({ initial }: { initial: Dm }) {
       onKeyDown={(event) => { if (selecting && event.key === 'Escape') { event.preventDefault(); toggleSelecting(false); } }}>
       {selectButton}
       <div className={`dm__feed${returned.pending ? ' is-returning' : ''}`} ref={attachFeed}>
-        <div className="dm__in">
+        <div className="dm__lift" aria-hidden="true" ref={liftRef} />
+        <div className="dm__in" ref={columnRef}>
           {olderCursor ? null : (
             // The start of the conversation: who is in it. The top bar keeps the name and audience in view.
             <header className="dm__head">
@@ -453,6 +463,7 @@ function DmContent({ initial }: { initial: Dm }) {
         <div className="composer__in">
           {goneNotice ? <p className="dm__notice" role="status"><Icon name="lock" size={13} />{goneNotice}</p> : null}
           <ConnectionLine />
+          {composer.draft.cites.map((cite) => <CiteTile key={`${cite.kind}:${cite.id}`} cite={cite} disabled={composer.sending} onRemove={() => composer.removeCite(cite.kind, cite.id)} />)}
           <ComposerBox id="dm-composer" label={`Message ${title}`} fieldRef={textareaRef} value={draft} onChange={(value) => change(value)} onBlur={typing.stop} onKeyDown={onKey}
             disabled={recipientGone} boxDisabled={recipientGone} placeholder={recipientGone ? 'Nobody else is in this conversation' : `Message ${others.length === 1 ? others[0]!.name.split(/\s+/)[0] : title}…`}
             fieldProps={{ 'aria-describedby': audienceId }} sendLabel="Send message" sendDisabled={!canSend} onSend={() => void send()} />

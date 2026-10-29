@@ -62,6 +62,11 @@ export function Sidebar({ projects, directMessages, user, session, onClose, titl
   const projectList = useRef<HTMLUListElement>(null);
   const glide = useRef<HTMLLIElement>(null);
   const glideTo = useTravelingHighlight(projectList, glide, ['.side__project[data-pending]', '.side__project.is-open']);
+  // The collapsed rail (a tablet's sidebar, or `[` on a computer) has the same highlight over its project tiles; only one
+  // of the two lists is rendered at a time, and the other's refs are empty.
+  const railProjects = useRef<HTMLElement>(null);
+  const railGlide = useRef<HTMLSpanElement>(null);
+  const glideRailTo = useTravelingHighlight(railProjects, railGlide, ['.side__rail-project[data-pending]', '.side__rail-project.is-open']);
   const searchKeys = mac ? 'Meta+K' : 'Control+K';
   useEffect(() => {
     // "C" opens New from anywhere outside a field or dialog (F-026 §4 keyboard); the drawer has its own.
@@ -69,7 +74,7 @@ export function Sidebar({ projects, directMessages, user, session, onClose, titl
     const onKey = (event: KeyboardEvent) => {
       if (event.key.toLowerCase() !== 'c' || event.metaKey || event.ctrlKey || event.altKey || event.defaultPrevented) return;
       const target = event.target as HTMLElement | null;
-      if (target?.closest('input, textarea, select, [contenteditable="true"], [role="dialog"]')) return;
+      if (target?.closest('input, textarea, select, [role="combobox"], [role="listbox"], [contenteditable="true"], [role="dialog"]')) return;
       event.preventDefault();
       openCreate(projectId ? { projectId } : {});
     };
@@ -93,9 +98,12 @@ export function Sidebar({ projects, directMessages, user, session, onClose, titl
           <Link to="/map" className="side__ib" aria-label="Sketchbook" title="Only you can see your sketchbook" aria-current={sketchbook ? 'page' : undefined}><Icon name="edit" size={18} /></Link>
         </nav>
         <div className="side__rail-scroll">
-        <nav className="side__rail-projects" aria-label="Projects">
+        <nav className="side__rail-projects" aria-label="Projects" ref={railProjects}>
+          <span className="side__rail-glide" ref={railGlide} aria-hidden="true" />
           {projects.map((project) => (
-            <NavLink key={project.id} to={`/projects/${project.id}`} end={false} className={`side__rail-project${project.id === projectId ? ' is-open' : ''}`} aria-label={project.name} title={project.name}>
+            <NavLink key={project.id} to={`/projects/${project.id}`} end={false} className={`side__rail-project${project.id === projectId ? ' is-open' : ''}`} aria-label={project.name} title={project.name}
+              onClick={(event) => { if (choosesInPlace(event)) glideRailTo(event.currentTarget); }}
+              data-glide-id={project.id} data-pending={pendingProject === project.id && project.id !== projectId ? '' : undefined}>
               <ProjectTile name={project.name} size={28} />
             </NavLink>
           ))}

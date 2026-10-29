@@ -40,6 +40,7 @@ from urllib.parse import urlparse
 
 from playwright.sync_api import Browser, BrowserContext, Page, Route, expect, sync_playwright
 
+from app_select import choose
 from test_app_shell import DESKTOP, ORIGIN, PHONE, UPSTREAM, open_details, shot as save_shot, start_forwarder
 
 UI_BROWSER = os.environ.get("FLUX_UI_BROWSER", "chromium")
@@ -199,6 +200,11 @@ class Base(unittest.TestCase):
 
     def same_place(self, before: dict, after: dict, what: str) -> None:
         for edge in ("x", "y", "width", "height"):
+            self.assertAlmostEqual(before[edge], after[edge], delta=0.6, msg=f"{what}.{edge} stays: {before} → {after}")
+
+    def same_corner(self, before: dict, after: dict, what: str) -> None:
+        """The place stays (a label may change its width)."""
+        for edge in ("x", "y"):
             self.assertAlmostEqual(before[edge], after[edge], delta=0.6, msg=f"{what}.{edge} stays: {before} → {after}")
 
     @staticmethod
@@ -624,7 +630,9 @@ class EncryptedWorkspaces(Base):
                 self.open_people(admin)
                 section = self.section(admin)
                 expect(section.get_by_text("You don’t have an unlock password yet. Another owner or admin can let you set one, or use the recovery code.")).to_be_visible()
-                expect(section.get_by_role("button", name="Set your unlock password")).to_be_visible()
+                # No holder has allowed it yet, so the way open to him is the recovery code (the contract's wording).
+                expect(section.get_by_role("button", name="Use the recovery code")).to_be_visible()
+                expect(section.get_by_role("button", name="Set your unlock password")).to_have_count(0)
                 expect(section.get_by_role("button", name="Lock now")).to_be_visible()
                 expect(section.get_by_role("button", name="New recovery code")).to_have_count(0)
                 expect(section.get_by_role("button", name=re.compile("^Let .* set"))).to_have_count(0)
@@ -687,19 +695,20 @@ class EncryptedWorkspaces(Base):
                 ben = self.page(world, "ben", phone=phone)
                 self.open_people(ben)
                 ben_section = self.section(ben)
-                # Before anyone has allowed it, the server says what is missing, in place.
-                first = ben_section.get_by_role("button", name="Set your unlock password")
+                # Before anyone has allowed it, the way open to him is the recovery code, and the editor says nothing about a holder.
+                first = ben_section.get_by_role("button", name="Use the recovery code")
                 at = self.place(first)
                 first.click()
-                editor = ben_section.get_by_role("group", name="Set your unlock password")
-                self.same_place(at, self.place(first), "the button that opened the editor")
-                editor.get_by_label("New unlock password").fill(NEW_PASSWORD)
-                editor.get_by_label("Repeat new password").fill(NEW_PASSWORD)
-                editor.get_by_role("button", name="Set password").click()
-                expect(editor.get_by_role("alert")).to_have_text("Another owner or admin has to let you set your first unlock password, or you can use the recovery code.")
+                recovery = ben_section.get_by_role("group", name="Set your unlock password")
+                expect(recovery.get_by_label("Recovery code")).to_be_focused()
+                expect(recovery.get_by_role("button", name=re.compile("instead"))).to_have_count(0)
+                self.same_corner(at, self.place(first), "the button that opened the editor")
+                recovery.get_by_role("button", name="Cancel").click()
+                expect(recovery).to_have_count(0)
+                expect(first).to_be_focused()
                 self.assertFalse(self.holders(world, "ben"))
-                # Ada lets him: a wrong password of her own is refused, hers allows it.
-                ada = self.page(world, "ada", phone=phone)
+                # Ada's window has no stream, so it is stale later on. A wrong password of her own is refused, hers allows it.
+                ada = self.page(world, "ada", phone=phone, stream=False)
                 self.open_people(ada)
                 section = self.section(ada)
                 allow = section.get_by_role("button", name="Let Ben set an unlock password")
@@ -714,7 +723,29 @@ class EncryptedWorkspaces(Base):
                 group.get_by_role("button", name="Let Ben set one").click()
                 expect(section.get_by_role("status")).to_have_text(re.compile(r"^Ben can set an unlock password until \d\d:\d\d\.$"))
                 expect(allow).to_be_focused()
-                # Ben's weak choices are refused, then a good one is set; the grant is used up.
+                # Ben's open window follows the grant from the stream: the same place now sets the password, and a line says until when.
+                set_first = ben_section.get_by_role("button", name="Set your unlock password")
+                expect(set_first).to_be_visible()
+                expect(ben_section.locator("[data-password-grant]")).to_have_text(re.compile(r"^You can set an unlock password until \d\d:\d\d\.$"))
+                self.same_corner(at, self.place(set_first), "the first password button")
+                set_first.click()
+                editor = ben_section.get_by_role("group", name="Set your unlock password")
+                expect(editor.get_by_label("New unlock password")).to_be_focused()
+                expect(editor.get_by_label("Recovery code")).to_have_count(0)
+                # A permission that ran out while the editor was open is answered in place (the server's 403, once).
+                lapsed: list[str] = []
+
+                def lapse(route: Route) -> None:
+                    lapsed.append(route.request.method)
+                    route.fulfill(status=403, content_type="application/json", body=json.dumps({"code": "UNLOCK_PASSWORD_GRANT_REQUIRED", "error": "Forbidden", "message": "A holder has to allow it"}))
+                ben.route(re.compile(r".*/unlock-password$"), lapse)
+                editor.get_by_label("New unlock password").fill(NEW_PASSWORD)
+                editor.get_by_label("Repeat new password").fill(NEW_PASSWORD)
+                editor.get_by_role("button", name="Set password").click()
+                expect(editor.get_by_role("alert")).to_have_text("Another owner or admin has to let you set your first unlock password, or you can use the recovery code.")
+                self.assertEqual(lapsed, ["PUT"])
+                ben.unroute(re.compile(r".*/unlock-password$"), lapse)
+                # His weak choices are refused, then a good one is set; the grant is used up.
                 editor.get_by_label("New unlock password").fill("short one")
                 editor.get_by_label("Repeat new password").fill("short one")
                 editor.get_by_role("button", name="Set password").click()
@@ -731,7 +762,7 @@ class EncryptedWorkspaces(Base):
                 expect(ben_section.get_by_role("status")).to_have_text("Your unlock password is set.")
                 expect(ben_section.get_by_role("button", name="Change your unlock password")).to_be_visible()
                 self.assertTrue(self.holders(world, "ben"))
-                # Letting him again says he has one.
+                # Ada's window is stale (no stream), so it still offers him; the server's answer says he has one.
                 allow.click()
                 group.get_by_role("textbox", name="Your unlock password").fill(UNLOCK_PASSWORD)
                 group.get_by_role("button", name="Let Ben set one").click()
@@ -789,7 +820,7 @@ class EncryptedWorkspaces(Base):
                 row.get_by_role("button", name=re.compile("^Change")).click()
                 editor = row.get_by_role("group", name="Change Ben Okafor")
                 # Demotion asks first, with the same text.
-                editor.get_by_label("Role").select_option("member")
+                choose(editor.get_by_label("Role"), value="member")
                 editor.get_by_role("button", name="Save role").click()
                 demote = editor.get_by_role("group", name="Make Ben a member")
                 expect(demote.get_by_text("Make Ben a member?", exact=True)).to_be_visible()
@@ -797,7 +828,7 @@ class EncryptedWorkspaces(Base):
                 expect(demote.get_by_role("button", name="Make Ben a member")).to_be_visible()
                 demote.get_by_role("button", name="Keep Ben an admin").click()
                 expect(demote).to_have_count(0)
-                editor.get_by_label("Role").select_option("admin")
+                choose(editor.get_by_label("Role"), value="admin")
                 editor.get_by_role("button", name=re.compile("^Remove from")).click()
                 confirm = editor.get_by_role("group", name="Remove Ben Okafor")
                 expect(confirm.get_by_text("Remove Ben from Garden club?", exact=True)).to_be_visible()
@@ -828,7 +859,7 @@ class EncryptedWorkspaces(Base):
                 row = page.get_by_role("list", name=f"People in {A_NAME}").get_by_role("listitem").filter(has_text="Ben Okafor")
                 row.get_by_role("button", name=re.compile("^Change")).click()
                 editor = row.get_by_role("group", name="Change Ben Okafor")
-                editor.get_by_label("Role").select_option("member")
+                choose(editor.get_by_label("Role"), value="member")
                 editor.get_by_role("button", name="Save role").click()
                 editor.get_by_role("button", name="Make Ben a member").click()
                 expect(page.get_by_text("Ben Okafor is now a member.")).to_be_visible()
@@ -1001,6 +1032,8 @@ class KeyRotation(Base):
                 expect(ben_section.locator("[data-no-recovery-code]")).to_have_text(f"{A_NAME} has no recovery code. An owner can make a new one.")
                 expect(ben_section.get_by_role("button", name=re.compile("recovery code", re.I))).to_have_count(0)
                 expect(ben_section.get_by_text("You don’t have an unlock password yet. Another owner or admin can let you set one.", exact=True)).to_be_visible()
+                # With no code and no permission the button stays in its place, dimmed.
+                expect(ben_section.get_by_role("button", name="Set your unlock password")).to_have_attribute("aria-disabled", "true")
                 # Locked, the owner can only use her password; the admin has nothing to type.
                 self.lock(world)
                 ada2 = self.overlaid(world, "ada", phone, overlay)

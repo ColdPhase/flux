@@ -18,6 +18,8 @@ import urllib.request
 
 from playwright.sync_api import Browser, Page, expect, sync_playwright
 
+from app_select import choose, expect_value, labels
+
 from test_app_shell import DESKTOP, ORIGIN, PHONE, UPSTREAM, box, shot, start_forwarder
 
 MOCK = os.environ.get("FLUX_OPENAI_MOCK_URL", "http://127.0.0.1:8091")
@@ -107,8 +109,8 @@ class AiConnectionSettings(unittest.TestCase):
         page.goto("/settings/ai-connections")
         expect(page.get_by_role("heading", name="Add an AI connection")).to_be_visible()
         provider = page.get_by_label("Provider", exact=True)
-        expect(provider).to_have_value("")
-        options = [text.strip() for text in provider.locator("option").all_inner_texts()]
+        expect_value(provider, "")
+        options = [text.strip() for text in labels(provider)]
         self.assertEqual(options, ["Choose a provider", *PROVIDERS])
         body = page.locator(".background-settings").inner_text()
         for vendor in ("Claude Platform", "claude-sonnet-5", "pays Anthropic", "sk-ant-"):
@@ -119,7 +121,7 @@ class AiConnectionSettings(unittest.TestCase):
     def test_03_an_openai_compatible_endpoint_lists_its_models_through_the_server_and_takes_an_owner_price(self) -> None:
         page = self.page()
         page.goto("/settings/ai-connections")
-        page.get_by_label("Provider", exact=True).select_option(label="OpenAI-compatible endpoint")
+        choose(page.get_by_label("Provider", exact=True), label="OpenAI-compatible endpoint")
         expect(page.locator("#background-key-help")).to_contain_text("If it needs none, enter any placeholder")
         page.get_by_label("Endpoint base URL").fill(ENDPOINT)
         page.get_by_role("button", name="Show available models").click()
@@ -153,7 +155,7 @@ class AiConnectionSettings(unittest.TestCase):
         page.goto("/settings/ai-connections")
         page.get_by_role("button", name="Add a connection").click()
         page.get_by_label("Connection name").fill("Work Anthropic")
-        page.get_by_label("Provider", exact=True).select_option(label="Anthropic")
+        choose(page.get_by_label("Provider", exact=True), label="Anthropic")
         expect(page.get_by_label("Endpoint base URL")).to_have_count(0)
         expect(page.get_by_role("button", name="Show available models")).to_have_count(0)
         expect(page.get_by_text("Type the model id exactly as the provider names it.")).to_be_visible()
@@ -179,7 +181,7 @@ class AiConnectionSettings(unittest.TestCase):
         page.goto("/settings/ai-connections")
         before = self.current(page)
         page.get_by_role("button", name="Add a connection").click()
-        page.get_by_label("Provider", exact=True).select_option(label="OpenAI-compatible endpoint")
+        choose(page.get_by_label("Provider", exact=True), label="OpenAI-compatible endpoint")
         page.get_by_label("Endpoint base URL").fill("http://10.20.30.40:11434/v1")
         page.get_by_role("button", name="Show available models").click()
         expect(page.get_by_role("status").filter(has_text="This endpoint is not allowed on this server")).to_be_visible()
@@ -199,7 +201,7 @@ class AiConnectionSettings(unittest.TestCase):
         page = self.page(phone=True)
         page.goto("/settings/ai-connections")
         page.get_by_role("button", name="Add a connection").tap()
-        page.get_by_label("Provider", exact=True).select_option(label="OpenRouter")
+        choose(page.get_by_label("Provider", exact=True), label="OpenRouter")
         page.get_by_label("Model", exact=True).fill("vendor/model-without-a-listing")
         expect(page.get_by_role("group", name="Price per 1M tokens (USD)")).to_be_visible()
         for label in ("Provider", "Model", "Input price", "Output price"):
@@ -275,14 +277,14 @@ class AiConnectionSettings(unittest.TestCase):
         facts = page.locator(".aset__facts")
         consent = page.locator(".aset__consent")
         for item in owned:
-            select.select_option(value=item["id"])
+            choose(select, value=item["id"])
             provider = "your own endpoint" if item["provider"] == "openai_compatible" else {"anthropic": "Anthropic"}[item["provider"]]
             expect(consent).to_contain_text(f"are sent to {provider} under")
             expect(facts).to_contain_text(item["model"])
             expect(facts).to_contain_text(f"{item['payerOrganization']} · {item['providerWorkspace']}")
         shot(page, "ai-connections-1440-assistant-consent-chosen")
         chosen = owned[-1]
-        select.select_option(value=chosen["id"])
+        choose(select, value=chosen["id"])
         page.get_by_role("checkbox", name=re.compile("^I agree that excerpts")).check()
         page.get_by_role("button", name="Turn on my assistant").click()
         expect(page.get_by_role("alert")).to_contain_text("Nothing was turned on")

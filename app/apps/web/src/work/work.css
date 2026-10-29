@@ -101,10 +101,19 @@ button.ws-task__glyph:active { background: var(--hov); }
 
 /* ---------- Details panel ---------- */
 .wd .details__title { overflow-wrap: anywhere; }
-.wd-decision-identity { position: sticky; top: -20px; z-index: 2; padding: 8px 0 4px; background: var(--bg); border-bottom: 1px solid var(--line); }
+/* The pinned title paints the panel's own surface, so it is not a box of its own (#693). */
+.wd-decision-identity { position: sticky; top: -20px; z-index: 2; padding: var(--s-2) 0 var(--s-1); background: var(--panel-bg, var(--el)); border-bottom: 1px solid var(--line); }
 .ui-sheet .wd-decision-identity { top: -18px; }
-.wd-accept-finish { padding: 10px 0 14px; background: var(--bg); border-top: 1px solid var(--line); }
-.wd-accept-finish .wd-muted { margin: 0 0 8px; }
+/* The Accept block is a section like the others: no surface of its own, the panel's rhythm inside it (#693). */
+.wd-accept-finish { margin-top: var(--s-3); padding-top: var(--s-3); border-top: 1px solid var(--line); }
+.wd-accept-finish .wd-actions { margin-top: 0; }
+.wd-accept-finish .wd-muted { margin: 0 0 var(--s-2); }
+.wd-accept > .wd-muted { margin-top: var(--s-2); }
+/* A form's primary action and its one line of help are a section: --s-2 between them, the section gap around (#692). */
+.wd-submit .wd-actions { margin-top: 0; }
+.wd-submit > .wd-muted { margin-top: var(--s-2); }
+/* "Proposed" and "Decided" are the task panel's rows (.wd-rows), a step under the lead. */
+.wd-rows.wd-decision-rows { margin-top: var(--s-3); }
 .wd-eyebrow { display: flex; align-items: center; gap: 6px; }
 .wd-eyebrow.wd-need { color: var(--t1); }
 .wd-finding--negative svg { color: var(--t2); }
@@ -112,7 +121,7 @@ button.ws-task__glyph:active { background: var(--hov); }
 .wd-was { color: var(--t3); text-decoration: line-through; text-decoration-color: var(--line2); }
 .wd-controls { display: grid; grid-template-columns: max-content minmax(0, 1fr); align-items: center; gap: 8px 12px; margin: 18px 0 0; padding: 0; border: 0; min-width: 0; }
 .wd-controls label { font-size: var(--fs-sm); color: var(--t3); }
-.wd-controls select, .wd-form select { width: 100%; min-height: var(--ctl); padding: 0 8px; border: 0; border-radius: var(--r); background: var(--el); color: var(--t1); font-size: var(--fs-md); box-shadow: inset 0 0 0 1px var(--line2); }
+.wd-controls .ui-select, .wd-form .ui-select { width: 100%; min-height: var(--ctl); padding: 0 8px; border: 0; border-radius: var(--r); background: var(--el); color: var(--t1); font-size: var(--fs-md); box-shadow: inset 0 0 0 1px var(--line2); }
 .wd-blocker-form { grid-column: 1 / -1; display: flex; align-items: flex-end; gap: 8px; }
 
 /* ---------- The task panel (F-026 S4, S9, S10, P10): rows, a blocker card, Results, Activity ---------- */
@@ -160,7 +169,6 @@ button.ws-task__glyph:active { background: var(--hov); }
 .wd-sechead { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .wd-sechead h4 { margin: 0; }
 .wd-blocker-form .ui-field { flex: 1; }
-.wd-dl { margin-top: 16px; }
 .wd-links { list-style: none; margin: 0; padding: 0; }
 .wd-links li + li { border-top: 1px solid var(--line); }
 .wd-link { display: flex; align-items: center; gap: 8px; width: calc(100% + 12px); min-height: 38px; margin: 0 -6px; padding: 6px; border-radius: var(--r-sm); font-size: var(--fs-md); color: var(--t1); text-align: left; text-decoration: none; transition: var(--tr); }
@@ -169,9 +177,9 @@ button.ws-task__glyph:active { background: var(--hov); }
 .wd-link small { flex: none; font-size: var(--fs-xs); color: var(--t3); }
 .wd-link svg { flex: none; color: var(--t3); }
 .wd-link:hover { background: var(--hov); }
-/* A pressed button (thought choices, prerequisites, decisions) takes the same press as .ui-btn: scale to --press
-   and spring back through --tr. The fill also shows under reduced motion, where --press is 1 (HIG-16, Prostota). */
-button.wd-link:active:not(:disabled) { background: var(--sub); transform: scale(var(--press)); transition-duration: var(--dur-1); }
+/* A pressed button (thought choices, prerequisites, decisions) takes the one press (ui/press.ts); the fill also shows
+   under reduced motion, where --press is 1 (HIG-16, Prostota). */
+button.wd-link:active:not(:disabled) { background: var(--sub); }
 .wd-inline { display: inline; padding: 0; color: var(--t1); font-weight: 500; text-decoration: underline; text-decoration-color: var(--line2); text-underline-offset: 3px; }
 .wd-muted { font-size: var(--fs-sm) !important; color: var(--t3) !important; }
 /* Criteria and prerequisites of a planned task (#152): plain list, state in words, no checkbox that implies a check. */
@@ -187,13 +195,11 @@ button.wd-link:active:not(:disabled) { background: var(--sub); transform: scale(
 /* "Linked thoughts" picker in task Details (#289): a map select, then the map's thoughts as buttons. */
 .wd-pick { display: grid; gap: 10px; margin-top: 10px; padding: 12px; min-width: 0; border-radius: var(--r); background: var(--el); box-shadow: inset 0 0 0 1px var(--line); }
 .wd-pick label { font-size: var(--fs-sm); font-weight: 500; color: var(--t2); }
-/* The map field takes the accepted field surface (--el, --sh-field, --r, as .ui-input) in both engines: appearance none
-   removes WebKit's square native grey box, and the chevron is the shared icon in --t3 (no colour literal). The native
-   select keeps its selection and keyboard behaviour. */
+/* The map field takes the accepted field surface (--el, --sh-field, --r, as .ui-input) in both engines; the app's select
+   draws its own chevron in --t3 (no colour literal). */
 .wd-pick__field { position: relative; min-width: 0; }
-.wd-pick select { width: 100%; min-height: var(--ctl-lg); padding: 0 34px 0 14px; border: 0; border-radius: var(--r); background: var(--el); color: var(--t1); font-size: var(--fs-base); text-overflow: ellipsis; box-shadow: var(--sh-field); appearance: none; -webkit-appearance: none; }
-.wd-pick__field > svg { position: absolute; top: 50%; right: 12px; transform: translateY(-50%); color: var(--t3); pointer-events: none; }
-.wd-pick select:focus { outline: none; box-shadow: inset 0 0 0 1px var(--t1), 0 0 0 3px var(--sub); }
+.wd-pick .ui-select { width: 100%; min-height: var(--ctl-lg); padding: 0 14px; border: 0; border-radius: var(--r); background: var(--el); color: var(--t1); font-size: var(--fs-base); box-shadow: var(--sh-field); }
+.wd-pick .ui-select:focus { outline: none; box-shadow: inset 0 0 0 1px var(--t1), 0 0 0 3px var(--sub); }
 .wd-pick .wd-pick__cancel { margin-top: 0; justify-content: flex-end; }
 .wd-pick .wd-links { max-height: 320px; overflow-y: auto; overscroll-behavior: contain; }
 /* On the phone the thought being chosen is the primary content of the chooser, so its title takes the phone body size
@@ -209,7 +215,7 @@ button.wd-link:active:not(:disabled) { background: var(--sub); transform: scale(
 .wd-form { display: grid; gap: 8px; min-width: 0; margin: 0; padding: 0; border: 0; }
 .wd-form > label { margin-top: 6px; font-size: var(--fs-sm); font-weight: 500; color: var(--t2); }
 .wd-form textarea { width: 100%; padding: 9px 12px; border: 0; border-radius: var(--r); background: var(--el); color: var(--t1); font-size: var(--fs-base); line-height: 1.5; resize: vertical; box-shadow: inset 0 0 0 1px var(--line2); }
-.wd-form textarea:focus, .wd-form select:focus, .wd-controls select:focus { outline: none; box-shadow: inset 0 0 0 1px var(--t1), 0 0 0 3px var(--sub); }
+.wd-form textarea:focus, .wd-form .ui-select:focus, .wd-controls .ui-select:focus { outline: none; box-shadow: inset 0 0 0 1px var(--t1), 0 0 0 3px var(--sub); }
 .wd-seg { display: flex; padding: 2px; margin-top: 6px; border-radius: var(--r); background: var(--hov); }
 .wd-seg__b { position: relative; flex: 1; display: flex; align-items: center; justify-content: center; min-height: 32px; border-radius: 6px; font-size: var(--fs-sm); font-weight: 500; color: var(--t3); cursor: pointer; transition: var(--tr); }
 .wd-seg__b input { position: absolute; opacity: 0; inset: 0; margin: 0; cursor: pointer; }
@@ -227,7 +233,7 @@ button.wd-link:active:not(:disabled) { background: var(--sub); transform: scale(
   .ws-seg, .wd-pivot__c { min-height: 44px; }
   .wd-link { min-height: 44px; }
   .wd-seg__b { min-height: 44px; }
-  .wd-controls select, .wd-form select, .wd-pick select { min-height: 44px; font-size: 16px; }
+  .wd-controls .ui-select, .wd-form .ui-select, .wd-pick .ui-select { min-height: 44px; font-size: 16px; }
   .wd-form textarea { font-size: 16px; }
 }
 @media (max-width: 640px) {
@@ -415,6 +421,11 @@ button.wd-link:active:not(:disabled) { background: var(--sub); transform: scale(
 .wd-activity .details__sec { margin-top: 10px; }
 .wd-activity > section.details__sec { margin-top: 12px; }
 .wd-composer { display: flex; flex-direction: column; gap: 8px; }
+/* The typing status (#155) shares the audience line's row, at its right: it takes no height, so the task's fields keep
+   their room above the composer on the phone's half sheet, and it is always there so nothing moves when a thread starts. */
+.wd-foot__line { display: flex; align-items: flex-start; gap: 8px; min-width: 0; }
+.wd-foot__line > .composer__audience { flex: 1 1 auto; min-width: 0; }
+.wd-foot__line > .typing-notice { flex: 0 1 auto; max-width: 60%; margin: 6px 4px 0 0; block-size: auto; min-block-size: 0; font-size: var(--fs-xs); line-height: inherit; text-align: right; }
 .wd-foot__note { margin: 8px 6px 0; }
 .wd-activity > .details__sec { margin-top: 14px; }
 .wd-activity > .details__sec .wd-link { font-size: var(--fs-sm); color: var(--t2); }

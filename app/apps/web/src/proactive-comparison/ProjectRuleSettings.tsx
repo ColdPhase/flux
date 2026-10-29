@@ -6,7 +6,7 @@ import { listAccessibleProjects } from '../app/conversation-api';
 import { useShellData } from '../app/data';
 import { useAllAiBlocked, useBlockedWorkspaceIds } from '../ai/workspaceAi';
 import { createPersonalAgent, grantAgentProject, listProjectGrants } from '../agent-connection/api';
-import { Button, Spinner } from '../ui';
+import { Button, Spinner, Select, Option } from '../ui';
 import { backgroundComparisonRuntime, changeBackgroundRule, createBackgroundRule, listBackgroundRules } from './api';
 
 interface ProjectSetup { id: string; agents: Agent[]; grants: ProjectGrant[] | null; rules: ProactiveComparisonRule[] }
@@ -107,9 +107,9 @@ export function ProjectRuleSettings({ connection }: { connection: BackgroundComp
   return <section className="background-settings__section" aria-labelledby="background-rules" data-ai-surface="project-rules">
     <h3 id="background-rules">Rules for your projects</h3>
     <p className="background-settings__help">Each rule belongs to you. A contributor's committed negative result can ask your agent for a quiet camera/sensor comparison; people retain decisions and work changes.</p>
-    <div className="background-settings__select"><label htmlFor="background-rule-project">Project</label><select id="background-rule-project" value={projectId} disabled={busy || !projects} onChange={(event) => {
-      setProjectId(event.target.value); setSetup(null); setAgentId(''); setRefresh(0); setError(''); setSaved('');
-    }}><option value="">Choose a project</option>{projects?.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}</select></div>
+    <div className="background-settings__select"><label htmlFor="background-rule-project">Project</label><Select id="background-rule-project" value={projectId} disabled={busy || !projects} onChange={(next) => {
+      setProjectId(next); setSetup(null); setAgentId(''); setRefresh(0); setError(''); setSaved('');
+    }}><Option value="">Choose a project</Option>{projects?.map((project) => <Option key={project.id} value={project.id}>{project.name}</Option>)}</Select></div>
     {selected && !ready && !error ? <Spinner label="Loading your project rules" /> : null}
     {error ? <p ref={errorRef} className="background-settings__error" role="alert" tabIndex={-1}>{error}</p> : null}
     {saved ? <p ref={statusRef} className="background-settings__saved" role="status" tabIndex={-1}>{saved}</p> : null}
@@ -156,9 +156,9 @@ export function ProjectRuleSettings({ connection }: { connection: BackgroundComp
         </details>
         <form onSubmit={create}>
           <fieldset className="background-settings__fields" disabled={busy}>
-            <div className="background-settings__select"><label htmlFor="background-rule-agent">Your personal agent</label><select id="background-rule-agent" value={agentId} required onChange={(event) => setAgentId(event.target.value)}>
-              <option value="">Choose your agent</option>{ready.agents.map((agent) => <option key={agent.id} value={agent.id}>{agent.name}</option>)}
-            </select></div>
+            <div className="background-settings__select"><label htmlFor="background-rule-agent">Your personal agent</label><Select id="background-rule-agent" value={agentId} required onChange={(next) => setAgentId(next)}>
+              <Option value="">Choose your agent</Option>{ready.agents.map((agent) => <Option key={agent.id} value={agent.id}>{agent.name}</Option>)}
+            </Select></div>
             {selected.access === 'manager' && agentId && !ready.grants?.some((grant) => grant.principal.kind === 'agent' && grant.principal.id === agentId && grant.role === 'contributor') ?
               <Button onClick={() => void mutate(async () => {
                 const grant = await grantAgentProject(selected.id, agentId, 'contributor');

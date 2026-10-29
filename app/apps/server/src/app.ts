@@ -67,7 +67,7 @@ import { loadGithubConfig } from './github/config.js';
 import type { ServerConfig } from './config.js';
 import { fixtureFlags, registerFixtureRoutes } from './fixture/index.js';
 import { registerHealth } from './health/routes.js';
-import { composeEncryption, encryptionUnitOfWork, processKeysFromEnv } from './encryption/adapters.js';
+import { composeEncryption, encryptionUnitOfWork, installSeals, processKeysFromEnv } from './encryption/adapters.js';
 import { encryptionRoutes } from './encryption/routes.js';
 import { registerLockGate } from './encryption/lock-gate.js';
 import { requestLogSerializer, SECRET_LOG_PATHS } from './http/log-serializers.js';
@@ -78,6 +78,14 @@ import { registerEditing } from './editing/composition.js';
 import { disabledEditingUpgrade } from './editing/disabled-upgrade.js';
 import { useJsonCompression } from './http/compress.js';
 import { useFramingProtection } from './http/framing.js';
+
+/**
+ * S3 SWITCH, one line (F-030, #655): `false` keeps encrypted-space creation a test-only route (fixture token and bearer).
+ * Flip it to `true` only in the change that merges S3 after S2a-2b-2, S2a-2c, S2b and S2c pass their acceptance criteria and
+ * the full AC-7 and AC-13 pass on S2c's final head (docs/product/encrypted-workspaces.md, delivery slices). Until then a
+ * production install must not be able to make a sealed workspace.
+ */
+const ENCRYPTED_CREATION_IN_PRODUCTION = false;
 
 declare module 'fastify' {
   interface FastifyInstance {
@@ -105,6 +113,7 @@ export async function buildApp(config: ServerConfig, migrationsDir = 'packages/d
   // registered before any route so every later route gets it.
   const testDeployment = config.fixture.token !== null && config.fixture.failureInjection;
   const encryptionKeys = processKeysFromEnv(env);
+  installSeals(encryptionKeys);
   useJsonCompression(app);
   // Every response refuses framing, the OAuth consent page included (#287).
   useFramingProtection(app);
@@ -131,7 +140,8 @@ export async function buildApp(config: ServerConfig, migrationsDir = 'packages/d
   if (encryptionKeys.availability === 'swap_unsafe') app.log.warn('Encrypted workspaces stay locked here: this server can write memory to disk (swap is on and not limited). Turn swap off or set FLUX_SWAP_ACKNOWLEDGED=encrypted-swap if every swap device is encrypted.');
   await app.register(async (scope) => encryptionRoutes(scope, { sessions: identity, encryption,
     // S1/S2: creation exists only in a test deployment and with the fixture bearer (never on a ./flux up install).
-    fixtureCreation: testDeployment ? config.fixture.token : null }));
+    fixtureCreation: testDeployment ? config.fixture.token : null,
+    productionCreation: ENCRYPTED_CREATION_IN_PRODUCTION }));
   const liveMedia = createLiveMediaFromEnv(env, identityConfig.publicOrigin);
   const lifecycle = liveMedia ? liveLifecycle(db, pool, liveMedia.media) : null;
   const liveRevocation = liveMedia ? liveRevocationCoordinator(db, pool, liveMedia.media, lifecycle!) : null;

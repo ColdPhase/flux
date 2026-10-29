@@ -138,6 +138,11 @@ export interface WorkspaceMember {
   name: string;
   role: WorkspaceRole;
   createdAt: string;
+  /**
+   * Only on an owner's or admin's row of an encrypted workspace, and only for a reader who is an owner or admin there:
+   * whether that person has an unlock password (F-030). Absent everywhere else.
+   */
+  unlockPassword?: boolean;
 }
 
 /** The views a project shows only once it needs them (#351, F-026 S21). Conversation and Tasks are always there. */

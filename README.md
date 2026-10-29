@@ -125,10 +125,7 @@ computer with your own model account, which Flux never sees. On the `./flux demo
    - **Claude Code** asks for three permissions when it connects, but you can grant fewer: it gets
      only the ones you ticked, and a tool outside them answers that the permission wasn't granted.
      Keep the two.
-   - **Codex** is refused when you grant fewer than the three it asks for
-     ([#660](https://github.com/ColdPhase/flux/issues/660)), so also tick **Run approved project
-     actions**. That alone lets the agent change nothing: each action still needs its own standing
-     grant from you (step 6).
+   - **Codex** asks for the same three and, like Claude Code, gets only the ones you ticked.
 
    Tick the project and choose **Save connection**.
 4. **Add Flux to your client** with the commands the page shows:
@@ -155,8 +152,8 @@ computer with your own model account, which Flux never sees. On the `./flux demo
    docs with Flux's read tools, and answers in your client; nothing in Flux changes. Replying in
    Flux or creating tasks needs **Run approved project actions** and a standing grant: on the same
    page, under **Standing grants** for your connection, add the grant you want. A suggestion the
-   agent sends is stored, but Flux has no screen for it yet
-   ([#661](https://github.com/ColdPhase/flux/issues/661)).
+   agent sends waits in your **Inbox** under **Needs you**, with what it saw, what it makes of it, what it
+   suggests and the source; choose **Got it** or **Decline**.
 
 The loopback `http://` address works only for a client on the same computer. A client on another
 computer needs an HTTPS address: the operator sets `FLUX_PUBLIC_ORIGIN` behind a TLS reverse proxy

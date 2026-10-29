@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent } from 'react';
 import { useLoaderData, useLocation, useNavigate, useRevalidator, type LoaderFunctionArgs, type ShouldRevalidateFunctionArgs } from 'react-router';
-import type { AssistantAnswer, ConversationMessage, Conversation, ConversationRootWindow, Draft, Material, Page, Project, ProjectGoal, ProjectPerson, TaskCreationNotice, WorkspaceMember } from '@flux/contracts';
+import type { AssistantAnswer, ConversationMessage, Conversation, ConversationRootWindow, Draft, Material, ObjectNotice, Page, Project, ProjectGoal, ProjectPerson, TaskCreationNotice, WorkspaceMember } from '@flux/contracts';
 import { ApiError, NetworkError } from '../api/client';
 import { outboxView, useComposerDraft, useComposerScope, type PendingSend } from '../composer/draft';
 import { takeHandedFiles } from '../composer/handoff';
@@ -8,8 +8,8 @@ import { ComposerFiles, MessageContent, useFileDrop } from '../composer/Files';
 import { LinkPreviews, MessageText } from './MessageText';
 import { ConnectionLine, SendAnnouncer } from '../composer/Outbox';
 import { fluxAnswers, onFluxAnswered } from '../composer/connection';
-import { Button, Icon, Input, MEDIA, sendsOnEnter, useArrivals, useMediaQuery, useToast } from '../ui';
-import { getConversation, getMaterialVersion, getProject, listConversationRoots, listDrafts, listMaterials, listTaskNotices, listWorkspaceMembers, observeProjectMessages, olderMessages, projectReceipts, publishMaterial } from './conversation-api';
+import { Button, Icon, Input, MEDIA, sendsOnEnter, useArrivals, useMediaQuery, useToast, Select, Option } from '../ui';
+import { getConversation, getMaterialVersion, getProject, listConversationRoots, listDrafts, listMaterials, listObjectNotices, listTaskNotices, listWorkspaceMembers, observeProjectMessages, olderMessages, projectReceipts, publishMaterial } from './conversation-api';
 import { pageBackTo } from './seekMessage';
 import { useShellData } from './data';
 import { MessageObjects, useCreateWorkFromMessage } from '../work/inline';
@@ -41,18 +41,22 @@ import { currentEntry, isBooted, recall, useArrival } from '../place/memory';
 import { threadPlace } from '../work/useMessageWork';
 import { ComposerBox } from '../composer/ComposerBox';
 import { ComposerMenu, composerOptions, composerTrigger, type ComposerOption } from './ComposerMenu';
-import { cite as citeMessage, onCite, quoteOf } from './citeBus';
+import { cite as citeMessage, messageCite, onCite, takeHeldCite } from './citeBus';
+import type { DraftCite } from '../composer/draft';
 import { QuestionCard, WhenNoQuestion } from '../agents/QuestionCard';
 import { useProjectQuestions } from '../agents/questions';
+import { useSpareHeight } from '../ui/spareHeight';
 import { useTyping } from '../typing/useTyping';
 import { TypingNotice } from '../typing/TypingNotice';
 import { listProjectGoals } from '../project/goal';
 import './project-conversation.css';
 import { RefLink } from '../place/origin';
+import { ObjectNoticeItem } from './ObjectNotices';
+import { threadObjects } from './objectNotices';
 
 /** The project's one conversation (UI116-1): the newest roots and task announcements (UI116-3), and the thread a URL opens. */
 export interface ProjectData {
-  project: Project; roots: ConversationRootWindow; notices: Page<TaskCreationNotice>; materials: Material[]; materialTotal: number; members: WorkspaceMember[]; conversation: Conversation | null;
+  project: Project; roots: ConversationRootWindow; notices: Page<TaskCreationNotice>; objectNotices: Page<ObjectNotice>; materials: Material[]; materialTotal: number; members: WorkspaceMember[]; conversation: Conversation | null;
   /** The project's reached goals (#520), each one entry in the stream at the moment it was reached. */
   goals: ProjectGoal[];
 }
@@ -60,10 +64,15 @@ export async function projectConversationLoader({ params, request }: LoaderFunct
   const projectId = params.projectId!;
   const project = await getProject(projectId, request.signal);
   // Work, decisions and results come with the project (#117 parent route).
-  const [roots, notices, materials, members, goals] = await Promise.all([
+  const [roots, notices, objectNotices, materials, members, goals] = await Promise.all([
     listConversationRoots(projectId, {}, request.signal),
     // Announcements add to the stream; a failure that is not about access leaves the stream readable without them.
     listTaskNotices(projectId, {}, request.signal).catch((error: unknown) => {
+      if (error instanceof ApiError && [401, 403, 404].includes(error.status)) throw error;
+      return { items: [], total: 0, limit: 100, offset: 0 };
+    }),
+    // The same for the decisions and results the stream announces (#694).
+    listObjectNotices(projectId, {}, request.signal).catch((error: unknown) => {
       if (error instanceof ApiError && [401, 403, 404].includes(error.status)) throw error;
       return { items: [], total: 0, limit: 100, offset: 0 };
     }),
@@ -80,7 +89,7 @@ export async function projectConversationLoader({ params, request }: LoaderFunct
   ]);
   const conversation = params.conversationId ? await getConversation(params.conversationId, request.signal) : null;
   if (conversation && conversation.projectId !== projectId) throw new Response('Not found', { status: 404 });
-  return { project, roots, notices, materials: materials.items, materialTotal: materials.total, members, conversation, goals };
+  return { project, roots, notices, objectNotices, materials: materials.items, materialTotal: materials.total, members, conversation, goals };
 }
 /** The stream stays mounted while a thread opens or closes; its loader refreshes the open thread then. */
 export function shouldRevalidateProjectConversation({ currentParams, nextParams, defaultShouldRevalidate }: ShouldRevalidateFunctionArgs) {
@@ -122,7 +131,7 @@ export function ProjectConversation() {
  * One conversation's pane: in the stream it is the composer that starts a root (UI116-1); in the thread
  * beside it, the replies with their own composer, assistant and sources.
  */
-function ProjectConversationContent({ data, variant, feed, rootHeader, rootMessageId = null, onPosted, onSending, newestRootAt, onThreadSize, focusComposer = false }: PaneProps) {
+function ProjectConversationContent({ data, variant, feed, rootHeader, rootMessageId = null, objects = [], onPosted, onSending, newestRootAt, onThreadSize, focusComposer = false }: PaneProps) {
   // Touch devices add a line with Enter and send with the button (#189).
   const touch = useMediaQuery(MEDIA.touch);
   const { project, materials, members } = data;
@@ -209,6 +218,10 @@ function ProjectConversationContent({ data, variant, feed, rootHeader, rootMessa
   const scrollRef = useRef<HTMLDivElement>(null);
   const [feedNode, setFeedNode] = useState<HTMLDivElement | null>(null);
   const attachFeed = useCallback((node: HTMLDivElement | null) => { scrollRef.current = node; setFeedNode(node); }, []);
+  // A short thread sits against its reply field instead of at the top of a tall panel (ui/spareHeight.ts).
+  const columnRef = useRef<HTMLDivElement>(null);
+  const liftRef = useRef<HTMLDivElement>(null);
+  useSpareHeight(scrollRef, columnRef, liftRef, conversation ? messages.length + outbox.pending.length : 0, feedNode);
   // The thread shows its root whole at the top (with what was made from it), then the replies: one bounded
   // association read covers the root and the replies around the viewport (#155).
   const sourceIds = useMemo(() => [...(rootMessageId ? [rootMessageId] : []), ...messages.filter((message) => message.sequence > 1 && message.id !== rootMessageId).map((message) => message.id)], [messages, rootMessageId]);
@@ -397,7 +410,7 @@ function ProjectConversationContent({ data, variant, feed, rootHeader, rootMessa
   // A confirmed reply keeps its queued message's place and id here, so it is not a second arrival (#264).
   const messageDomKey = (id: string) => { const key = outbox.keyOf(id); return key === id ? `message-${id}` : key; };
   const threadIds = conversation ? [...feedEntries(messages.filter((message) => message.sequence > 1), assistant.answers, !!olderCursor)
-    .map((entry) => entry.type === 'message' ? messageDomKey(entry.message.id) : `answer-${entry.answer.runId}`), ...outbox.pending.map((item) => `pending-${item.id}`)] : [];
+    .map((entry) => entry.type === 'message' ? messageDomKey(entry.message.id) : entry.type === 'answer' ? `answer-${entry.answer.runId}` : entry.key), ...outbox.pending.map((item) => `pending-${item.id}`)] : [];
   useArrivals(scrollRef, threadIds, (id) => document.getElementById(id));
 
   // The stream has no assistant: `/ai …` there would post the prompt for the whole project.
@@ -502,16 +515,22 @@ function ProjectConversationContent({ data, variant, feed, rootHeader, rootMessa
       assistant.refreshStatus();
     }
   }
-  // A quoted message lands at the start of this pane's composer (Cite in the message menu).
-  const quoteRef = useRef((quote: string) => { void quote; });
-  useEffect(() => { quoteRef.current = (quote: string) => {
+  // A cited message or map thought joins this pane's composer as a tile (Cite in the message menu, Cite on the map, #469).
+  const citeRef = useRef((citation: DraftCite) => { void citation; });
+  useEffect(() => { citeRef.current = (citation: DraftCite) => {
     if (!canWrite) return;
     const field = document.getElementById(composerId);
-    publicComposer.setBody(`${quote}${publicComposer.draft.body}`);
+    publicComposer.addCite(citation);
     setAsking(false);
-    requestAnimationFrame(() => { if (field instanceof HTMLTextAreaElement) { field.focus(); field.setSelectionRange(field.value.length, field.value.length); } });
+    requestAnimationFrame(() => { if (field instanceof HTMLTextAreaElement) field.focus(); });
   }; });
-  useEffect(() => onCite(conversation ? 'thread' : 'stream', (quote) => quoteRef.current(quote)), [conversation]);
+  useEffect(() => onCite(conversation ? 'thread' : 'stream', (citation) => citeRef.current(citation)), [conversation]);
+  // A thought cited on the map waits for this project's own composer to open.
+  useEffect(() => {
+    if (conversation || !canWrite) return;
+    const held = takeHeldCite(project.id);
+    if (held) citeRef.current(held);
+  }, [conversation, canWrite, project.id]);
 
   // The caret goes after what was inserted, unless the person has already typed on (fast typing).
   const placeCaret = (position: number, value: string) => requestAnimationFrame(() => {
@@ -549,10 +568,13 @@ function ProjectConversationContent({ data, variant, feed, rootHeader, rootMessa
     // successful command ready to send again; words typed later or in another conversation stay.
     const submitted = publicComposer.draft;
     const consume = () => publicComposer.consumeBody(submitted);
-    if (name === 'decide') { openDetails({ kind: 'propose-decision', projectId: project.id, title: text }); consume(); return; }
+    // Typed in a thread, the words are about that thread (#694): its opening message is the source, so the thread shows what came of it.
+    const fromThread = conversation && rootMessageId ? { messageId: rootMessageId, text: conversation.firstMessageBody } : null;
+    if (name === 'decide') { openDetails({ kind: 'propose-decision', projectId: project.id, title: text, ...(fromThread ? { source: fromThread } : {}) }); consume(); return; }
     // A task, or a hand-off (a task for an agent whose owner the window asks for), opens the one Create window with the words as its title.
     // The composer keeps its words until the task exists: closing the window loses nothing (and a newer draft is never consumed).
-    openCreate({ kind: 'task', projectId: project.id, title: firstLine(text), onCreated: consume });
+    openCreate({ kind: 'task', projectId: project.id, title: firstLine(text), onCreated: consume,
+      ...(fromThread ? { sources: [{ ref: { type: 'message' as const, id: fromThread.messageId }, label: firstLine(fromThread.text) }] } : {}) });
   }
   async function send() {
     typing.stop();
@@ -648,7 +670,9 @@ function ProjectConversationContent({ data, variant, feed, rootHeader, rootMessa
   if (accessLost) return <div className="pane-scroll"><div className="pane-in project-setup" role="alert"><h2>Project unavailable</h2><p>Your access to this project may have changed. Reload to check current access.</p></div></div>;
   const ask = askState(assistant.status, audienceShort);
   // The root sits at the thread's top (and in the stream); the list holds its replies and answers.
-  const entries = feedEntries(messages.filter((message) => message.sequence > 1), assistant.answers, !!olderCursor);
+  // What came of this thread (#694): the decisions and results made from it stand among its replies, in time order.
+  const made = conversation ? threadObjects(conversation.id, new Set(messages.map((message) => message.id)), objects) : [];
+  const entries = feedEntries(messages.filter((message) => message.sequence > 1), assistant.answers, !!olderCursor, made);
   const lookups = { projectId: project.id, messages, work: referenceWork.rows, author };
   // A manager can let their own assistant read this project in one step; anyone else asks a manager.
   const ownAgent = assistant.status?.enablement?.agents.find((item) => item.workspaceId === project.workspaceId)?.agentId ?? null;
@@ -691,7 +715,8 @@ function ProjectConversationContent({ data, variant, feed, rootHeader, rootMessa
     data-associations-observed-at={conversation ? messageWork.page?.observedAt : undefined} data-associations-phase={conversation ? messageWork.state.phase : undefined}
     data-references-observed-at={conversation ? referenceWork.observation?.observedAt : undefined} data-references-phase={conversation ? referenceWork.state.phase : undefined}>
     {!conversation ? feed : <div className={`thread__feed${revealed ? '' : ' is-opening'}`} ref={attachFeed} aria-busy={revealed ? undefined : true}>
-      <div className="thread__in">
+      <div className="thread__lift" aria-hidden="true" ref={liftRef} />
+      <div className="thread__in" ref={columnRef}>
         {rootHeader?.({ preview: rootMessageId ? messageWork.previews?.get(rootMessageId) ?? null : null, taskRow: discussedRow })}
         <section aria-label="Replies to this message" className="project-convo__messages">
           {conversation ? <>
@@ -700,6 +725,8 @@ function ProjectConversationContent({ data, variant, feed, rootHeader, rootMessa
               const label = day(entry.at);
               const divider = label !== lastDay ? <MessageDay key={`day-${entry.type === 'message' ? outbox.keyOf(entry.message.id) : entry.key}`} label={label} /> : null;
               lastDay = label;
+              if (entry.type === 'object') return [divider, <ObjectNoticeItem key={entry.key} notice={entry.notice} meId={me.user.id} owners={owners} authorOf={() => null} inThread
+                hasMessage={() => false} onOpen={(target) => openDetails(target)} />];
               if (entry.type === 'answer') {
                 // Runs of one schedule in a row, with no person's message between them, fold into one line (AST-7, S8).
                 const scheduleOf = (candidate: FeedEntry | undefined) => candidate?.type === 'answer' ? candidate.answer.schedule?.id ?? null : null;
@@ -772,7 +799,7 @@ function ProjectConversationContent({ data, variant, feed, rootHeader, rootMessa
           {!materialItems.length ? <p className="project-convo__muted">{writable ? "Text and links you save here can be cited in any reply." : "No sources have been saved to this project yet."}</p> : null}
           {materialOffset < materialTotal ? <Button variant="quiet" busy={moreMaterialsBusy} onClick={() => void loadMoreMaterials()}>Load more materials</Button> : null}
           {writable && !showMaterialForm ? <Button variant="secondary" icon="plus" disabled={materialBusy} onClick={() => setShowMaterialForm(true)}>Add material</Button> : null}
-          {writable && showMaterialForm ? <form className="project-convo__material-form" onSubmit={(event) => void submitMaterial(event)}><fieldset className="project-convo__material-fields" disabled={materialBusy}>{privateDrafts.length ? <label>Start from a private draft<select value={sourceDraft?.id ?? ''} onChange={(event) => { const chosen = privateDrafts.find((item) => item.id === event.target.value) ?? null; setSourceDraft(chosen); if (chosen) { setMaterialTitle(chosen.title); setMaterialBody(chosen.body); } setMaterialMutationId(crypto.randomUUID()); }}><option value="">No private draft</option>{privateDrafts.map((item) => <option key={item.id} value={item.id}>{item.title} · v{item.version}</option>)}</select></label> : null}<Input label="Title" value={materialTitle} onChange={(event) => { setMaterialTitle(event.target.value); setMaterialMutationId(crypto.randomUUID()); }} required maxLength={200} /><label htmlFor={`${composerId}-material-body`}>Text</label><textarea id={`${composerId}-material-body`} value={materialBody} onChange={(event) => { setMaterialBody(event.target.value); setMaterialMutationId(crypto.randomUUID()); }} maxLength={100000} /><Input label="Link (optional)" type="url" value={materialUrl} onChange={(event) => { setMaterialUrl(event.target.value); setMaterialMutationId(crypto.randomUUID()); }} />{sourceDraft ? <p className="project-convo__publication">Publishing selected content from private draft v{sourceDraft.version}. Review the exact text and link above. Your original draft remains private.</p> : null}{materialError ? <p role="alert">{materialError}</p> : null}<div className="project-convo__form-actions"><Button type="submit" variant="primary" busy={materialBusy}>Save for this project</Button><Button variant="quiet" disabled={materialBusy} onClick={() => setShowMaterialForm(false)}>Cancel</Button></div></fieldset></form> : null}
+          {writable && showMaterialForm ? <form className="project-convo__material-form" onSubmit={(event) => void submitMaterial(event)}><fieldset className="project-convo__material-fields" disabled={materialBusy}>{privateDrafts.length ? <label>Start from a private draft<Select value={sourceDraft?.id ?? ''} onChange={(next) => { const chosen = privateDrafts.find((item) => item.id === next) ?? null; setSourceDraft(chosen); if (chosen) { setMaterialTitle(chosen.title); setMaterialBody(chosen.body); } setMaterialMutationId(crypto.randomUUID()); }}><Option value="">No private draft</Option>{privateDrafts.map((item) => <Option key={item.id} value={item.id}>{item.title} · v{item.version}</Option>)}</Select></label> : null}<Input label="Title" value={materialTitle} onChange={(event) => { setMaterialTitle(event.target.value); setMaterialMutationId(crypto.randomUUID()); }} required maxLength={200} /><label htmlFor={`${composerId}-material-body`}>Text</label><textarea id={`${composerId}-material-body`} value={materialBody} onChange={(event) => { setMaterialBody(event.target.value); setMaterialMutationId(crypto.randomUUID()); }} maxLength={100000} /><Input label="Link (optional)" type="url" value={materialUrl} onChange={(event) => { setMaterialUrl(event.target.value); setMaterialMutationId(crypto.randomUUID()); }} />{sourceDraft ? <p className="project-convo__publication">Publishing selected content from private draft v{sourceDraft.version}. Review the exact text and link above. Your original draft remains private.</p> : null}{materialError ? <p role="alert">{materialError}</p> : null}<div className="project-convo__form-actions"><Button type="submit" variant="primary" busy={materialBusy}>Save for this project</Button><Button variant="quiet" disabled={materialBusy} onClick={() => setShowMaterialForm(false)}>Cancel</Button></div></fieldset></form> : null}
           {materialError && !showMaterialForm ? <p role="alert">{materialError}</p> : null}
         </div>
       </section> : null}
@@ -806,7 +833,7 @@ function ProjectConversationContent({ data, variant, feed, rootHeader, rootMessa
         attach={asking ? null : publicComposer}
         sendLabel={asking ? 'Send to your assistant' : conversation ? 'Send reply' : 'Send message'}
         sendDisabled={!composer.canSend || busy || askBusy || assistantInStream || (asking && ask.kind !== 'ready')} onSend={() => void send()}
-        menu={menuOpen ? <ComposerMenu id={`${composerId}-menu`} options={options} active={activeIndex} trigger={trigger!.char} aiOff={aiOff} onPick={pick} onHover={setMenuIndex} /> : null} />
+        menu={<ComposerMenu open={menuOpen} id={`${composerId}-menu`} options={options} active={activeIndex} trigger={trigger?.char ?? '@'} aiOff={aiOff} onPick={pick} onHover={setMenuIndex} />} />
         : <div className="composer__box"><button type="button" className="composer__ask project-convo__sources-btn" aria-expanded={trayOpen} aria-controls={trayOpen ? `${conversation ? 'thread' : 'project'}-sources` : undefined} aria-label={`Sources${materialTotal ? `, ${materialTotal} saved` : ''}`} data-tip="Saved sources to read" data-tip-align="start" onClick={() => { if (trayOpen) setSourcesOpen(false); else setSourcesOpen(true); }}><Icon name="doc" /><span className="project-convo__sources-t" aria-hidden="true">Sources</span>{materialTotal ? <span className="project-convo__sources-n" aria-hidden="true">{materialTotal > 99 ? '99+' : materialTotal}</span> : null}</button><p className="project-convo__read-only">Read-only · <span>You have read access to this project.</span></p></div>}
       {conversation && !accessLost ? <TypingNotice {...typing} /> : null}
       {writable ? <SendAnnouncer pending={publicComposer.pending} /> : null}
@@ -842,7 +869,7 @@ function ThreadReply(props: ThreadReplyProps | QueuedReplyProps) {
   const actions = stored && message ? {
     projectId: stored.project.id, message, writable: stored.writable, onCreateWork: () => void stored.makeWork.create(message),
     onReply: () => document.getElementById('thread-composer')?.focus(),
-    onCite: () => citeMessage('thread', quoteOf(message.body, stored.name)),
+    onCite: () => citeMessage('thread', messageCite(message, stored.name)),
     onAddToMap: () => {
       const source = { messageId: message.id, projectId: stored.project.id, body: message.body };
       const sketch = projectShell?.sketches?.items[0];
@@ -863,7 +890,7 @@ function ThreadReply(props: ThreadReplyProps | QueuedReplyProps) {
       <SourceTag messageId={message.id} />
       {!mine && !stored.continued ? <AuthorFace kind={message.authorId === null ? 'agent' : 'human'} name={name} mine={mine} /> : null}
       {!mine && !stored.continued ? <div className="project-convo__message-meta"><strong>{mine ? `${name} · you` : message.authorId === null ? <AgentAuthor message={message} owner={agentAuthorOwner(message.author, owners)} /> : <RefLink className="project-convo__person" to={`/dm/new?workspace=${project.workspaceId}&with=${message.authorId}`} title={`Message ${name} directly`}>{name}</RefLink>}</strong></div> : null}
-      <MessageContent body={message.body ? <WhenNoQuestion projectId={project.id} messageId={message.id}><div className="message-body"><MessageText body={message.body} people={people} /></div></WhenNoQuestion> : null} files={message.files} context={{ author: name, at: message.createdAt, caption: message.body, place: project.name, onReply: writable ? actions.onReply : undefined, onCreateTask: writable ? actions.onCreateWork : undefined }}>
+      <MessageContent body={message.body ? <WhenNoQuestion projectId={project.id} messageId={message.id}><div className="message-body"><MessageText body={message.body} people={people} /></div></WhenNoQuestion> : null} files={message.files} references={message.references} context={{ author: name, at: message.createdAt, caption: message.body, place: project.name, onReply: writable ? actions.onReply : undefined, onCreateTask: writable ? actions.onCreateWork : undefined }}>
         <LinkPreviews body={message.body} />
         <MessageObjects message={message} projectId={project.id} preview={preview} />
         {message.source ? <SourceCitation materialId={message.source.materialId} version={message.source.version} onDenied={onDenied} /> : null}
@@ -879,18 +906,22 @@ function ThreadReply(props: ThreadReplyProps | QueuedReplyProps) {
 
 type FeedEntry =
   | { type: 'message'; key: string; at: string; message: Conversation['messages'][number] }
-  | { type: 'answer'; key: string; at: string; answer: AssistantAnswer };
+  | { type: 'answer'; key: string; at: string; answer: AssistantAnswer }
+  | { type: 'object'; key: string; at: string; notice: ObjectNotice };
 
 /**
  * Messages and committed assistant answers in one chronological feed. While earlier messages
  * are not loaded, answers from before the first loaded message wait with them.
  */
-function feedEntries(messages: Conversation['messages'], answers: AssistantAnswer[], hasOlder: boolean): FeedEntry[] {
+function feedEntries(messages: Conversation['messages'], answers: AssistantAnswer[], hasOlder: boolean, objects: ObjectNotice[] = []): FeedEntry[] {
   const first = messages[0]?.createdAt ?? null;
   const entries: FeedEntry[] = [
     ...messages.map((message) => ({ type: 'message' as const, key: message.id, at: message.createdAt, message })),
     ...answers.filter((answer) => !hasOlder || !first || answer.committedAt >= first)
       .map((answer) => ({ type: 'answer' as const, key: `answer-${answer.runId}`, at: answer.committedAt, answer })),
+    ...objects.filter((notice) => !hasOlder || !first || notice.createdAt >= first)
+      .map((notice) => ({ type: 'object' as const, key: `object-${notice.id}`, at: notice.createdAt, notice })),
   ];
-  return entries.sort((a, b) => a.at.localeCompare(b.at) || (a.type === b.type ? 0 : a.type === 'message' ? -1 : 1));
+  const rank = { message: 0, object: 1, answer: 2 } as const;
+  return entries.sort((a, b) => a.at.localeCompare(b.at) || rank[a.type] - rank[b.type]);
 }

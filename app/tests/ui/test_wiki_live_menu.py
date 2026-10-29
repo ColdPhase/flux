@@ -16,7 +16,7 @@ class WikiLiveMenu(LiveBase):
         url = f"/projects/{self.ids['project']}/docs/{self.ids['doc']}"
         before = self.api(reader, "GET", f"/api/v1/docs/{self.ids['doc']}", status=200)
         reader.goto(url)
-        reader.locator("header.top, header.phead").get_by_role("button", name="More", exact=True).click()
+        reader.locator("header.top, .wiki-top__menu").get_by_role("button", name="More", exact=True).click()
         menu = reader.get_by_role("dialog", name="Page actions")
         menu.get_by_role("button", name="Together", exact=True).click()
         expect(menu).to_have_count(0)
@@ -34,7 +34,7 @@ class WikiLiveMenu(LiveBase):
 
         peer = self.page("jonas", phone=True)
         peer.goto(url)
-        peer.locator("header.top, header.phead").get_by_role("button", name="More", exact=True).click()
+        peer.locator("header.top, .wiki-top__menu").get_by_role("button", name="More", exact=True).click()
         peer.get_by_role("dialog", name="Page actions").get_by_role("button", name="Join", exact=True).click()
         expect(self.bar(peer).get_by_role("status").first).to_contain_text("Live")
         self.assertEqual(peer.evaluate("window.__live.gum + window.__live.gdm"), 0)

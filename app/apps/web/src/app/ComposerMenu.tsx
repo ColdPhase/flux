@@ -1,6 +1,6 @@
-import { Fragment } from 'react';
+import { Fragment, useState } from 'react';
 import type { ProjectPerson } from '@flux/contracts';
-import { Avatar, Kreska } from '../ui';
+import { Avatar, Kreska, usePop } from '../ui';
 import './composer-menu.css';
 
 // "@" mentions people and agents and "/" runs actions in the composer (F-026 S5), in place of separate
@@ -62,9 +62,26 @@ export function composerOptions(trigger: ComposerTrigger, { people, meId, inThre
 }
 
 /** The menu above the composer's box. `active` is the option the keys act on. */
-export function ComposerMenu({ id, options, active, onPick, onHover, trigger, aiOff = false }: { aiOff?: boolean; id: string; options: ComposerOption[]; active: number; onPick: (option: ComposerOption) => void; onHover: (index: number) => void; trigger: ComposerTrigger['char'] }) {
+interface ComposerMenuProps { id: string; options: ComposerOption[]; active: number; onPick: (option: ComposerOption) => void; onHover: (index: number) => void; trigger: ComposerTrigger['char']; aiOff?: boolean }
+
+/**
+ * The menu leaves as it came (#593 AC-1): the composer keeps it mounted, `open` false, and it fades for --dur-out from what it
+ * showed last, inert, while the field keeps focus and its keys. A closed menu with nothing shown yet renders nothing.
+ */
+export function ComposerMenu({ open, ...props }: ComposerMenuProps & { open: boolean }) {
+  // What it shows while open is what it fades with: the last open render, kept whenever what is drawn changes.
+  const drawn = `${props.id}|${props.trigger}|${props.active}|${props.aiOff ? 1 : 0}|${props.options.map((option) => option.id).join(',')}`;
+  const [kept, setKept] = useState<{ drawn: string; props: ComposerMenuProps } | null>(open ? { drawn, props } : null);
+  if (open && kept?.drawn !== drawn) setKept({ drawn, props });
+  const pop = usePop(open, { from: 'above' });
+  const data = open ? props : kept?.props;
+  if (!pop.mounted || !data) return null;
+  return <ComposerMenuList {...data} popProps={pop.props} />;
+}
+
+function ComposerMenuList({ id, options, active, onPick, onHover, trigger, aiOff = false, popProps }: ComposerMenuProps & { popProps: ReturnType<typeof usePop>['props'] }) {
   return (
-    <div className="cmenu" id={id} role="listbox" aria-label={trigger === '@' ? 'Mention' : 'Actions'}
+    <div {...popProps} className="cmenu" id={id} role="listbox" aria-label={trigger === '@' ? 'Mention' : 'Actions'}
       // The field keeps focus: choosing never moves it, so the press must not blur the field.
       onMouseDown={(event) => event.preventDefault()}>
       <div className="cmenu__h" aria-hidden="true">{trigger === '@' ? 'Mention' : 'Actions'}</div>

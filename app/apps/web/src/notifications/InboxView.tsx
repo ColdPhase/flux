@@ -4,7 +4,7 @@ import { assistantReactionDraftPath, type AssistantReplyDraft } from '@flux/cont
 import { request } from '../api/client';
 import type { InboxItem, NeedsYouItem, NeedsYouKind } from '@flux/contracts';
 import { createPortal } from 'react-dom';
-import { Button, ErrorState, Icon, Kreska, MEDIA, Spinner, Tabs, useMediaQuery, type TabItem } from '../ui';
+import { Button, ErrorState, Icon, Kreska, MEDIA, Spinner, Tabs, useMediaQuery, useRowMotion, type TabItem } from '../ui';
 import { useShellActions } from '../app/shellContext';
 import { useSmallMoments } from '../app/smallMoments';
 import { useShellData } from '../app/data';
@@ -34,7 +34,7 @@ function useQueueKeys(items: NeedsYouItem[], selected: string | null, select: (k
     const onKey = (event: KeyboardEvent) => {
       if (event.metaKey || event.ctrlKey || event.altKey || event.defaultPrevented) return;
       const target = event.target as HTMLElement | null;
-      if (target?.closest('input, textarea, select, [contenteditable="true"], [role="dialog"], [role="menu"], #details')) return;
+      if (target?.closest('input, textarea, select, [role="combobox"], [role="listbox"], [contenteditable="true"], [role="dialog"], [role="menu"], #details')) return;
       const key = event.key.toLowerCase();
       const at = items.findIndex((item) => item.key === selected);
       const current = items[at] ?? null;
@@ -76,6 +76,9 @@ export function InboxView() {
     (value): value is Filter => FILTERS.some((entry) => entry.id === value));
   const [selected, setSelected] = usePlaceState<string | null>('inbox.selected', () => null, arrival, (value): value is string | null => value === null || typeof value === 'string');
   const [menu, setMenu] = useState<string | null>(null);
+  const listRef = useRef<HTMLDivElement>(null);
+  // A decision accepted, a question answered or a task marked done collapses where it stood; the next one comes up (#593 AC-4).
+  useRowMotion(listRef, '.nyc[data-key]', (el) => el.dataset.key, `${filter}|${queue.items === null ? 'loading' : 'ready'}`);
 
   const all = useMemo(() => queue.items ?? [], [queue.items]);
   const reviewing = all.find((item) => item.assistantRequestIdentity && item.project?.id === asked.get('assistantProject')
@@ -103,7 +106,7 @@ export function InboxView() {
   const summary = queue.items === null ? '' : counts.all ? `${counts.all} need${counts.all === 1 ? 's' : ''} you · all projects` : 'all clear · all projects';
 
   return (
-    <div className="pane-scroll"><div className="pane-in nyq">
+    <div className="pane-scroll"><div className="pane-in nyq" ref={listRef}>
       {/* On the computer the summary and the filters sit in the header row, as drawn; on a phone they head the list. */}
       {(() => {
         // An empty Inbox is only Kreska, one sentence and the settings link (E06): nothing to filter yet. Snoozed items keep the summary, which says how many are for later.

@@ -15,7 +15,12 @@ test('0109 adds schedules, their history, the note, the written summary and the 
     await client.query(`SET LOCAL search_path TO ${namespace}, public, pg_catalog`);
     const manifest = await readMigrationManifest(directory, FLUX_SCHEMA_VERSION);
     assert.equal(manifest.find((file) => file.version === 109)?.name, '0109_assistant_schedules.sql');
-    for (const file of manifest.filter((item) => item.version !== 109)) {
+    // 0119 (F-030) lists the AI tables of schema `public` (the test stack's own, fully migrated) and creates its trigger on the table
+    // of that name that search_path finds first. Before 0109 this namespace has no assistant_jobs, so it would find the stack's
+    // table, which has the trigger already. A real upgrade applies 0109 first, so 0119 and what builds on it go in right after it.
+    const afterwards = manifest.filter((file) => file.version >= 119);
+    assert.equal(afterwards[0]?.name, '0119_encrypted_workspaces.sql');
+    for (const file of manifest.filter((item) => item.version !== 109 && item.version < 119)) {
       await client.query(await readFile(join(directory, file.name), 'utf8'));
       await client.query('INSERT INTO flux_schema_version(version) VALUES($1) ON CONFLICT DO NOTHING', [file.version]);
     }
@@ -32,6 +37,10 @@ test('0109 adds schedules, their history, the note, the written summary and the 
 
     await client.query(await readFile(join(directory, '0109_assistant_schedules.sql'), 'utf8'));
     await client.query('INSERT INTO flux_schema_version(version) VALUES(109)');
+    for (const file of afterwards) {
+      await client.query(await readFile(join(directory, file.name), 'utf8'));
+      await client.query('INSERT INTO flux_schema_version(version) VALUES($1)', [file.version]);
+    }
     assert.deepEqual((await client.query('SELECT silent FROM personal_runs WHERE id=$1', [ask])).rows, [{ silent: false }], 'an ordinary run is not silent');
     assert.deepEqual((await client.query('SELECT summary_by_assistant FROM notification_preferences WHERE user_id=$1', [owner])).rows, [{ summary_by_assistant: false }]);
     const scheduled = randomUUID();

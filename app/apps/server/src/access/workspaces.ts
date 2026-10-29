@@ -5,6 +5,7 @@ import { WORKSPACE_AI_SWEEP_JOB, WORKSPACES_PATH, type AddMemberCommand, type Ch
   type SetWorkspaceAiPolicyCommand, type SetWorkspaceAiPolicyResult } from '@flux/contracts';
 import { addMember, assertAuthorized, changeRole, createWorkspace, getWorkspace, listMembers, listWorkspaces, removeMember, setWorkspaceAiPolicy,
   sweepWorkspaceAi, WorkspaceAiSweepIncomplete, type WorkspaceAiSweepQueue } from '@flux/core';
+import { accessPorts, accessReader } from '@flux/db';
 import { bodyId, expectedVersion, requires } from '../http/commands.js';
 import { nameSchema, versionSchema } from '../http/schemas.js';
 import type { AccessContext } from './context.js';
@@ -28,7 +29,7 @@ export function workspaceRoutes(app: FastifyInstance, { db, principal, command, 
       operation: `PUT ${WORKSPACES_PATH}/:workspaceId/ai-policy`, scope: workspaceScope(request.params.workspaceId),
       run: async (actor, conn) => {
         const { sweep, ...result } = await setWorkspaceAiPolicy(actor, request.params.workspaceId,
-          { ...request.body, expectedVersion: expectedVersion(request) }, conn, sweepQueue);
+          { ...request.body, expectedVersion: expectedVersion(request) }, conn, accessPorts, sweepQueue);
         return { ...result, sweep };
       },
       etag: (body) => { const version = (body as SetWorkspaceAiPolicyResult | null)?.ai.version; return typeof version === 'number' ? `"${version}"` : null; },
@@ -37,7 +38,7 @@ export function workspaceRoutes(app: FastifyInstance, { db, principal, command, 
     const { sweep, ...body } = (response.body ?? {}) as SetWorkspaceAiPolicyResult & { sweep?: { workspaceId: string; epoch: number } | null };
     let stopped = body.stopped ?? null;
     if (sweep && !response.replayed) {
-      try { stopped = await sweepWorkspaceAi(sweep, db); }
+      try { stopped = await sweepWorkspaceAi(sweep, db, accessPorts); }
       catch (error) {
         // Each step is its own transaction: what committed is reported, the rest is repeated by the worker's job.
         if (error instanceof WorkspaceAiSweepIncomplete) stopped = error.swept;
@@ -46,33 +47,33 @@ export function workspaceRoutes(app: FastifyInstance, { db, principal, command, 
     }
     return sendCommand(reply, { ...response, body: { ...body, stopped } });
   });
-  app.get(WORKSPACES_PATH, async (request) => listWorkspaces(await principal(request), db, readOptions()));
+  app.get(WORKSPACES_PATH, async (request) => listWorkspaces(await principal(request), db, accessPorts, readOptions()));
   app.post<{ Body: CreateWorkspaceCommand }>(WORKSPACES_PATH, {
     schema: { body: { type: 'object', required: ['name'], additionalProperties: false, properties: { name: nameSchema } } },
   }, async (request, reply) => command(request, reply, {
-    operation: `POST ${WORKSPACES_PATH}`, scope: null, status: 201,
-    run: (actor, conn) => createWorkspace(actor, request.body, conn),
+    operation: `POST ${WORKSPACES_PATH}`, scope: 'account', status: 201,
+    run: (actor, conn) => createWorkspace(actor, request.body, conn, accessPorts),
     replay: requires('workspace', 'workspace.read', bodyId),
   }));
   app.get<{ Params: { workspaceId: string } }>(`${WORKSPACES_PATH}/:workspaceId`, async (request) =>
-    getWorkspace(await principal(request), request.params.workspaceId, db, readOptions()));
+    getWorkspace(await principal(request), request.params.workspaceId, db, accessPorts, readOptions()));
 
   app.get<{ Params: { workspaceId: string } }>(`${WORKSPACES_PATH}/:workspaceId/members`, async (request) =>
-    listMembers(await principal(request), request.params.workspaceId, db));
+    listMembers(await principal(request), request.params.workspaceId, db, accessPorts));
   app.post<{ Params: { workspaceId: string }; Body: AddMemberCommand }>(`${WORKSPACES_PATH}/:workspaceId/members`, {
     schema: { body: { type: 'object', required: ['role'], additionalProperties: false, properties: { userId: { type: 'string' }, email: { type: 'string' }, role: roleSchema } } },
   }, async (request, reply) => command(request, reply, {
     operation: `POST ${WORKSPACES_PATH}/:workspaceId/members`, scope: workspaceScope(request.params.workspaceId), status: 201,
-    run: (actor, conn) => addMember(actor, request.params.workspaceId, request.body, conn, { verifiedEmailOnly: verifiedEmailMembers }),
+    run: (actor, conn) => addMember(actor, request.params.workspaceId, request.body, conn, accessPorts, { verifiedEmailOnly: verifiedEmailMembers }),
     replay: requires('workspace', 'workspace.read_members', () => request.params.workspaceId),
   }));
   app.patch<{ Params: { workspaceId: string; userId: string }; Body: ChangeRoleCommand }>(`${WORKSPACES_PATH}/:workspaceId/members/:userId`, {
     schema: { body: { type: 'object', required: ['role'], additionalProperties: false, properties: { role: roleSchema } } },
   }, async (request, reply) => {
-    await assertAuthorized(await principal(request), 'workspace.manage_members', workspaceScope(request.params.workspaceId), db);
+    await assertAuthorized(await principal(request), 'workspace.manage_members', workspaceScope(request.params.workspaceId), accessReader(db));
     const result = await workspaceChange(request.params.workspaceId, (conn) => runCommand(request, {
       operation: `PATCH ${WORKSPACES_PATH}/:workspaceId/members/:userId`, scope: workspaceScope(request.params.workspaceId),
-      run: (actor, conn) => changeRole(actor, request.params.workspaceId, request.params.userId, request.body, conn),
+      run: (actor, conn) => changeRole(actor, request.params.workspaceId, request.params.userId, request.body, conn, accessPorts),
       replay: requires('workspace', 'workspace.read_members', () => request.params.workspaceId),
     }, conn));
     return sendCommand(reply, result);
@@ -80,8 +81,8 @@ export function workspaceRoutes(app: FastifyInstance, { db, principal, command, 
   app.delete<{ Params: { workspaceId: string; userId: string } }>(`${WORKSPACES_PATH}/:workspaceId/members/:userId`, async (request, reply) => {
     const actor = await principal(request);
     await assertAuthorized(actor, actor.kind === 'human' && actor.id === request.params.userId
-      ? 'workspace.read' : 'workspace.manage_members', workspaceScope(request.params.workspaceId), db);
-    await workspaceChange(request.params.workspaceId, (conn) => removeMember(actor, request.params.workspaceId, request.params.userId, conn));
+      ? 'workspace.read' : 'workspace.manage_members', workspaceScope(request.params.workspaceId), accessReader(db));
+    await workspaceChange(request.params.workspaceId, (conn) => removeMember(actor, request.params.workspaceId, request.params.userId, conn, accessPorts));
     return reply.code(204).send();
   });
 }
