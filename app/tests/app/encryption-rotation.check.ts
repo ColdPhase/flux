@@ -4,10 +4,9 @@ import { readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { openField, WorkspaceKey } from '@flux/core';
 import { workspaceUnlockGrantsPath, workspaceUnlockPasswordPath } from '@flux/contracts';
-import { pool } from './support/db.js';
 import { Browser, register, uniqueEmail } from './support/http.js';
 import { createSealed, passphrase, unlock } from './support/encryption.js';
-import { deksOf, holderRows, openHolder, wrapRows } from './support/encryption-offline.js';
+import { deksOf, endOffline, holderRows, offlinePool as pool, openHolder, wrapRows } from './support/encryption-offline.js';
 
 // AC-13 of F-030 (#655, S2c): a rotation survives a worker crash and a keyring restart. Phases run by
 // scripts/check_encryption.sh around `docker kill` and restarts; the worker runs with FLUX_TEST_ROTATION_HOLD_AFTER_PAGES=3
@@ -133,5 +132,5 @@ try {
     throw new Error(`unknown phase ${phase}`);
   }
 } finally {
-  await pool.end();
+  await endOffline();
 }

@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { randomBytes, randomUUID } from 'node:crypto';
 import { writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { describe, test } from 'node:test';
+import { after, describe, test } from 'node:test';
 import { workspaceUnlockGrantsPath, workspaceUnlockPasswordPath, workspaceRecoveryCodePath } from '@flux/contracts';
 import {
   generateHolderKeyPair, keyCheckValue, keyCommitment, newDek, realSeal, rotateFileObject, sealDekToHolder, sealField, WorkspaceKey,
@@ -11,7 +11,7 @@ import {
 import { pool } from './support/db.js';
 import { codeOf, createSealed, lock, passphrase, readWorkspace, unlock } from './support/encryption.js';
 import {
-  checkValues, deksOf, fileObjects, filesOpened, holderRows, holdersOpenedBy, openHolder, opened, storedEnvelopes, wrapRows, type HolderRow,
+  checkValues, deksOf, endOffline, fileObjects, filesOpened, holderRows, holdersOpenedBy, openHolder, opened, storedEnvelopes, wrapRows, type HolderRow,
 } from './support/encryption-offline.js';
 import { addMember, expectStatus, person, removeMember, type Person } from './support/people.js';
 
@@ -20,6 +20,8 @@ import { addMember, expectStatus, person, removeMember, type Person } from './su
 // open nothing in a copy taken after the finish. The worker runs the rotation (pages of FLUX_TEST_ROTATION_PAGE_SIZE,
 // sweep every FLUX_TEST_ROTATION_SWEEP_MS in docker/compose.encryption.test.yaml). The crash and keyring-restart cases are
 // `encryption-rotation.check.ts`, run by scripts/check_encryption.sh around `docker kill` and restarts.
+
+after(() => endOffline());
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 const key = () => ({ 'idempotency-key': randomUUID() });

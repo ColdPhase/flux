@@ -5,8 +5,12 @@ import {
   deriveKek, envelopeVersion, fileObjectVersion, holderSecretCheckValid, normalizeRecoveryCode, openDekForHolder, openField, openFileObject,
   parseKdfParams, unwrapPrivateKey, WorkspaceKey,
 } from '@flux/core';
-import { SEALED_COLUMNS } from '@flux/db';
-import { pool } from './db.js';
+import { createDatabase, SEALED_COLUMNS } from '@flux/db';
+
+// Its own pool (no node:test hook), so the phase scripts can use it too; the caller ends it (`endOffline`).
+const { pool } = createDatabase(process.env.DATABASE_URL!);
+export { pool as offlinePool };
+export const endOffline = () => pool.end();
 
 /**
  * The offline checker of F-030 AC-13 (S2c), built on the S1 crypto library: what someone holding a copy of the database
