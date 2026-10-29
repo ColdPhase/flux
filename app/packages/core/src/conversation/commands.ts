@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { FILE_LIMITS, type ConversationRootQuery, type ConversationWindowQuery, type CreateMaterialCommand, type MaterialSource, type SendMessageCommand, type UpdateMaterialCommand } from '@flux/contracts';
+import { FILE_LIMITS, MESSAGE_REFERENCE_LIMIT, type MessageReference, type ConversationRootQuery, type ConversationWindowQuery, type CreateMaterialCommand, type MaterialSource, type SendMessageCommand, type UpdateMaterialCommand } from '@flux/contracts';
 import { InvalidInputError } from '../access/errors.js';
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -63,6 +63,25 @@ export function normalizeAttachmentIds(value: unknown): string[] {
 }
 
 /**
+ * What a message cites besides a Wiki version (#469): at most MESSAGE_REFERENCE_LIMIT distinct map thoughts or messages.
+ * The ids are lowercased so one target is one reference however it was written. Whether the sender may read each is decided
+ * where the message is stored, against current access.
+ */
+export function normalizeReferences(value: unknown): MessageReference[] {
+  if (value === undefined) return [];
+  if (!Array.isArray(value) || value.length > MESSAGE_REFERENCE_LIMIT)
+    throw new InvalidInputError(`references must list at most ${MESSAGE_REFERENCE_LIMIT} thoughts or messages`);
+  const references = value.map((item, index): MessageReference => {
+    if (!item || typeof item !== 'object' || Object.keys(item).some((key) => key !== 'kind' && key !== 'id')) throw new InvalidInputError(`references[${index}] must be a kind and an id`);
+    const { kind, id } = item as { kind?: unknown; id?: unknown };
+    if (kind !== 'thought' && kind !== 'message') throw new InvalidInputError(`references[${index}].kind must be thought or message`);
+    return { kind, id: uuid(id, `references[${index}].id`).toLowerCase() };
+  });
+  if (new Set(references.map((reference) => `${reference.kind}:${reference.id}`)).size !== references.length) throw new InvalidInputError('references must be distinct');
+  return references;
+}
+
+/**
  * A message's text, source and attachments. The text may be empty only when files are attached (#154).
  * Without attachments the fingerprint keeps its original shape, so every stored receipt still replays.
  */
@@ -80,8 +99,9 @@ export function normalizeMessage(command: SendMessageCommand) {
     if (!command.source || typeof command.source !== 'object') throw new InvalidInputError('source must identify a material version');
     source = { materialId: uuid(command.source.materialId, 'source.materialId'), version: positiveVersion(command.source.version, 'source.version') };
   }
-  return { body, clientMessageId, source, attachmentIds,
-    fingerprint: fingerprint(attachmentIds.length ? { body, source, attachmentIds } : { body, source }) };
+  const references = normalizeReferences(command.references);
+  return { body, clientMessageId, source, attachmentIds, references,
+    fingerprint: fingerprint({ body, source, ...(attachmentIds.length ? { attachmentIds } : {}), ...(references.length ? { references } : {}) }) };
 }
 
 export function normalizeMaterial(command: CreateMaterialCommand) {

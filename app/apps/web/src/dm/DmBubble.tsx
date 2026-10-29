@@ -1,7 +1,7 @@
 import type { DmMessage } from '@flux/contracts';
 import { Avatar, Icon } from '../ui';
 import { MessageContent } from '../composer/Files';
-import { OutboxStatus } from '../composer/Outbox';
+import { OutboxStatus, PendingSource } from '../composer/Outbox';
 import type { PendingSend } from '../composer/draft';
 import { MessageDay, MessageTime, clock } from '../app/messageParts';
 import { MessageText } from '../app/MessageText';
@@ -56,7 +56,7 @@ export function DmBubble({ message, pending, mine, name, continued, groupLast, d
         {day ? <MessageDay as="p" label={day} /> : null}
         <div className="dm-msg__row">
           <div className="dm-msg__main is-mine">
-            <MessageContent body={<div className="dm-msg__body"><MessageText body={item.body} /></div>} />
+            <MessageContent body={<div className="dm-msg__body"><MessageText body={item.body} /></div>}><PendingSource item={item} className="project-convo__source" /></MessageContent>
             <OutboxStatus item={item} onRetry={onRetry ?? (() => undefined)} onRemove={onRemove ?? (() => undefined)} />
           </div>
         </div>
@@ -79,7 +79,7 @@ export function DmBubble({ message, pending, mine, name, continued, groupLast, d
         <span className="dm-msg__face">{continued || mine ? null : <Avatar name={name} size="lg" tone="neutral" />}</span>
         <div className={`dm-msg__main${mine ? ' is-mine' : ''}`}>
           {continued || mine ? null : <p className="dm-msg__meta"><b>{name}</b></p>}
-          <MessageContent body={<div className="dm-msg__body"><MessageText body={message.body} /></div>} />
+          <MessageContent body={<div className="dm-msg__body"><MessageText body={message.body} /></div>} references={message.references} />
           {nav === 'stream' && message.replyCount > 0 ? (
             <button type="button" className="dm-replies" data-replies={message.replyCount} aria-label={`${message.replyCount} ${message.replyCount === 1 ? 'reply' : 'replies'}, open thread`}
               onClick={(event) => onOpenThread?.(message, event.currentTarget)}>

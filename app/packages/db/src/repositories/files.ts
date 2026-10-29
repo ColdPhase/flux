@@ -1,6 +1,6 @@
 import { and, asc, eq, inArray, isNotNull, isNull, lte, sql } from 'drizzle-orm';
 type ActorRef = { kind: 'human' | 'agent'; id: string };
-import type { MessageFile } from '@flux/contracts';
+import type { FileDetail, MessageFile } from '@flux/contracts';
 import * as schema from '../schema.js';
 import type { DbExecutor } from './push.js';
 
@@ -40,8 +40,9 @@ export function fileRows(db: DbExecutor) {
       const [row] = await db.select().from(f).where(eq(f.id, id));
       return row ? wire(row) : null;
     },
-    async markReady(id: string, input: { size: number; sha256: string; readyAt: Date; expiresAt: Date }) {
-      const rows = await db.update(f).set({ ...input, state: 'ready' }).where(and(eq(f.id, id), eq(f.state, 'receiving'),
+    async markReady(id: string, input: { size: number; sha256: string; readyAt: Date; expiresAt: Date; detail?: FileDetail }) {
+      const { detail, ...fields } = input;
+      const rows = await db.update(f).set({ ...fields, state: 'ready', pageCount: detail?.pages ?? null, rowCount: detail?.rows ?? null, durationMs: detail?.durationMs ?? null }).where(and(eq(f.id, id), eq(f.state, 'receiving'),
         isNull(f.publishedAt), sql`${f.expiresAt} > ${input.readyAt}`)).returning({ id: f.id });
       return rows.length === 1;
     },
@@ -100,10 +101,16 @@ export function fileRows(db: DbExecutor) {
 
 const MESSAGE_ID_BATCH = 10_000;
 
+/** What the bytes said at upload (#469); a key only where there is a value, so every earlier file's JSON is unchanged. */
+export function fileDetail(row: Pick<typeof f.$inferSelect, 'pageCount' | 'rowCount' | 'durationMs'>): FileDetail {
+  return { ...(row.pageCount !== null ? { pages: row.pageCount } : {}), ...(row.rowCount !== null ? { rows: row.rowCount } : {}),
+    ...(row.durationMs !== null ? { durationMs: row.durationMs } : {}) };
+}
+
 function groupMessageFiles(grouped: Map<string, MessageFile[]>, rows: readonly (typeof f.$inferSelect)[]) {
   for (const row of rows) {
     const list = grouped.get(row.messageId!) ?? [];
-    list.push({ id: row.id, name: row.name, size: row.size! });
+    list.push({ id: row.id, name: row.name, size: row.size!, ...fileDetail(row) });
     grouped.set(row.messageId!, list);
   }
   return grouped;

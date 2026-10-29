@@ -4,16 +4,17 @@ import { and, asc, desc, eq, lt, sql, type SQL } from 'drizzle-orm';
 import { agentThreadGuardRows, artifactResetRows, fileRows, openAliased, openRows, prepareCanonicalArtifactTaskUse, schema, sealsOf, openField, taskDiscussionRows, taskUseRows, workRows, accessReader, type DbExecutor } from '@flux/db';
 import type {
   Conversation, ConversationMessage, ConversationRootWindow, ConversationSummary, Material, MaterialOrDoc,
-  AgentProjectOwner, AuthenticatedAgentRuntime, MaterialVersion, Page, PageQuery, TaskAgentThread,
+  AgentProjectOwner, AuthenticatedAgentRuntime, MaterialVersion, MessageReferenceCard, Page, PageQuery, TaskAgentThread,
 } from '@flux/contracts';
 import {
   ConflictError, conversationUseCases, enforce, evaluateDraft, evaluateProject, InvalidInputError, NotFoundError,
-  lockAttachments, messageContribution, positiveVersion, uuid, type FileStorage,
+  lockAttachments, messageContribution, storedDetail, positiveVersion, uuid, type FileStorage,
   parsePage, recordEvent, ServiceUnavailableError, type Database, type Principal, type Transaction,
 } from '@flux/core';
 import type { AgentThreadWindow, AgentThreadPost, ConversationPort } from '@flux/core';
 import { eventPorts } from '../events.js';
 import { projectAuthorOwners } from './author-owners.js';
+import { messageReferences } from './references.js';
 import type { TransactionEventSession } from '../work/transaction-events.js';
 
 type Tx = Parameters<Parameters<Database['transaction']>[0]>[0];
@@ -54,13 +55,14 @@ function creator(row: ConversationRow, names: Map<string, string>) {
   return row.createdBy !== null ? { createdBy: row.createdBy } : { createdBy: null,
     createdByActor: { kind: 'agent' as const, id: row.createdByAgentId!, name: names.get(`agent:${row.createdByAgentId}`) ?? 'Agent' } };
 }
-function message(row: MessageRow & { files?: import('@flux/contracts').MessageFile[] }, names: Map<string, string> = new Map(), owners: ReadonlyMap<string, AgentProjectOwner> = new Map()): ConversationMessage {
+function message(row: MessageRow & { files?: import('@flux/contracts').MessageFile[]; references?: MessageReferenceCard[] }, names: Map<string, string> = new Map(), owners: ReadonlyMap<string, AgentProjectOwner> = new Map()): ConversationMessage {
   const contribution = messageContribution(row.contributionKind, row.resultId);
   return { id: row.id, conversationId: row.conversationId, ...(row.authorId !== null ? { authorId: row.authorId } : { authorId: null,
     author: { kind: 'agent' as const, id: row.authorAgentId!, name: names.get(`agent:${row.authorAgentId}`) ?? 'Agent',
       ...(owners.has(row.authorAgentId!) ? { projectOwner: owners.get(row.authorAgentId!)! } : {}) } }), body: row.body,
     source: row.sourceMaterialId && row.sourceMaterialVersion ? { materialId: row.sourceMaterialId, version: row.sourceMaterialVersion } : null,
-    sequence: row.sequence, createdAt: row.createdAt.toISOString(), ...(contribution ? { contribution } : {}), ...(row.files?.length ? { files: row.files } : {}) };
+    sequence: row.sequence, createdAt: row.createdAt.toISOString(), ...(contribution ? { contribution } : {}), ...(row.files?.length ? { files: row.files } : {}),
+    ...(row.references?.length ? { references: row.references } : {}) };
 }
 
 
@@ -206,19 +208,25 @@ async function lockIdempotency(tx: Tx, projectId: string, author: Actor, clientI
   await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${`${projectId.toLowerCase()}:${author.kind}:${author.id}:${clientId.toLowerCase()}`}))`);
 }
 
-async function sendInTransaction(tx: Tx, conversation: ConversationRow, author: Actor, input: Parameters<ConversationPort['sendMessage']>[2], files?: import('@flux/contracts').MessageFile[],
+async function sendInTransaction(tx: Tx, principal: Principal, conversation: ConversationRow, author: Actor, input: Parameters<ConversationPort['sendMessage']>[2], files?: import('@flux/contracts').MessageFile[],
   retained?:{readonly ids:readonly string[];mark(ids?:readonly string[]):Promise<void>}): Promise<{ message: ConversationMessage; inserted: boolean }> {
   const names = author.kind === 'agent' ? await workRows(tx).names([author]) : new Map<string, string>();
   const existing = await existingMessage(conversation.projectId, author, input.clientMessageId, tx);
   if (existing) {
     if (existing.requestFingerprint !== input.fingerprint || existing.conversationId !== conversation.id)
       throw new ConflictError('This clientMessageId was used for another message', 'IDEMPOTENCY_CONFLICT');
-    return { message: message({ ...existing, files: (await fileRows(tx).messageFiles([existing.id])).get(existing.id) }, names), inserted: false };
+    const cards = await messageReferences(tx).cards(principal, { kind: 'project', workspaceId: conversation.workspaceId }, [existing.id]);
+    return { message: message({ ...existing, files: (await fileRows(tx).messageFiles([existing.id])).get(existing.id), references: cards.get(existing.id) }, names), inserted: false };
   }
   await sourceExists(conversation.projectId, input.source, tx);
+  // The sender must be able to read what the message cites, now, in this workspace (#469).
+  const references = messageReferences(tx);
+  await references.assertReadable(principal, conversation.workspaceId, input.references);
   const inserted = await taskDiscussionRows(tx).append(conversation, author, { ...input, files });
+  await references.save({ kind: 'project', id: inserted.id }, conversation.workspaceId, input.references);
   if(files?.length)await taskDiscussionRows(tx).publishFiles(conversation,inserted.id,retained??await taskUseRows(tx).lockPrepared([]));
-  return { message: message(inserted, names), inserted: true };
+  const cards = await references.cards(principal, { kind: 'project', workspaceId: conversation.workspaceId }, [inserted.id]);
+  return { message: message({ ...inserted, references: cards.get(inserted.id) }, names), inserted: true };
 }
 
 export function conversationStore(db: Database, options: ConversationStoreOptions = {}) {
@@ -227,7 +235,7 @@ export function conversationStore(db: Database, options: ConversationStoreOption
     if (!ids.length) return [];
     if (!options.storage) throw new InvalidInputError('Files are unavailable from this entry point', 'AGENT_FILES_UNAVAILABLE');
     return (await lockAttachments(fileRows(tx), options.storage, projectId.toLowerCase(), author, ids, () => new Date()))
-      .map((row) => ({ id: row.id, name: row.name, size: row.size! }));
+      .map((row) => ({ id: row.id, name: row.name, size: row.size!, ...storedDetail(row) }));
   };
   const eventLog = (tx: Tx): ConversationEventLog => options.events ?? { record: async (principal, workspaceId, kind, projectId, data) => {
     await recordEvent(eventPorts(tx), principal, workspaceId, kind, projectId, data);
@@ -278,7 +286,7 @@ export function conversationStore(db: Database, options: ConversationStoreOption
             workspaceId: task.workspaceId, projectId: task.projectId, space: 'agents', workId: task.id,
             createdBy: author.id, createdByAgentId: null }).returning();
         }
-        const sent = await sendInTransaction(tx, thread!, author, input, files,fence);
+        const sent = await sendInTransaction(tx, principal, thread!, author, input, files,fence);
         if (sent.inserted) {
           await fence.mark();
           await eventLog(tx).record(principal, task.workspaceId, 'project.agent_thread_message_sent.v1', task.projectId,
@@ -352,8 +360,9 @@ export function conversationStore(db: Database, options: ConversationStoreOption
         const names = await workRows(tx).names(page.filter((row) => row.root.authorAgentId !== null)
           .map((row) => ({ kind: 'agent' as const, id: row.root.authorAgentId! })));
         const files = await fileRows(tx).messageFiles(page.map((row) => row.root.id));
+        const cited = await messageReferences(tx).cards(principal, { kind: 'project', workspaceId: authorizedProject.workspaceId }, page.map((row) => row.root.id));
         const owners = await projectAuthorOwners(tx, projectId, authorizedProject.workspaceId, page.flatMap((row) => row.root.authorAgentId ? [row.root.authorAgentId] : []));
-        const roots = page.map((row) => ({ conversationId: row.root.conversationId, message: message({ ...row.root, files: files.get(row.root.id) }, names, owners), replyCount: Number(row.replyCount),
+        const roots = page.map((row) => ({ conversationId: row.root.conversationId, message: message({ ...row.root, files: files.get(row.root.id), references: cited.get(row.root.id) }, names, owners), replyCount: Number(row.replyCount),
           lastReplyAt: row.lastReplyAt === null ? null : new Date(row.lastReplyAt).toISOString(),
           ...(row.taskId !== null && row.taskTitle !== null && row.taskNumber !== null ? { task: { workId: row.taskId, title: row.taskTitle, number: row.taskNumber } } : {}) }));
         return { projectId, roots, rootPage: { hasMoreBefore, nextBefore: hasMoreBefore ? roots[0]!.conversationId : null, limit: window.limit } };
@@ -370,9 +379,10 @@ export function conversationStore(db: Database, options: ConversationStoreOption
       const names = await workRows(db).names([row.createdByAgentId, ...rows.map((item) => item.authorAgentId)]
         .filter((actorId): actorId is string => actorId !== null).map((actorId) => ({ kind: 'agent' as const, id: actorId })));
       const files = await fileRows(db).messageFiles(rows.map((item) => item.id));
+      const cited = await messageReferences(db).cards(principal, { kind: 'project', workspaceId: row.workspaceId }, rows.map((item) => item.id));
       const selected = rows.slice(0, window.limit).reverse();
       const owners = await projectAuthorOwners(db, row.projectId, row.workspaceId, selected.flatMap((item) => item.authorAgentId ? [item.authorAgentId] : []));
-      const messages = selected.map((item) => message({ ...item, files: files.get(item.id) }, names, owners));
+      const messages = selected.map((item) => message({ ...item, files: files.get(item.id), references: cited.get(item.id) }, names, owners));
       const openingInWindow = messages.find((item) => item.sequence === 1);
       const [opening] = openingInWindow ? [] : await openRows(db as unknown as DbExecutor, 'project_messages', await db.select({ id: schema.projectMessages.id,
         workspaceId: schema.projectMessages.workspaceId, body: schema.projectMessages.body, attachmentCount: schema.projectMessages.attachmentCount }).from(schema.projectMessages)
@@ -406,7 +416,8 @@ export function conversationStore(db: Database, options: ConversationStoreOption
           const row = await locateConversation(principal, existing.conversationId, tx);
           return { id: row.id, projectId: row.projectId, workspaceId: row.workspaceId,
             audience: { kind: 'project' as const, projectId: row.projectId }, ...creator(row, names),
-            createdAt: row.createdAt.toISOString(), firstMessageBody: messagePreview(existing.body, existing.attachmentCount), messages: [message({ ...existing, files: (await fileRows(tx).messageFiles([existing.id])).get(existing.id) }, names)],
+            createdAt: row.createdAt.toISOString(), firstMessageBody: messagePreview(existing.body, existing.attachmentCount), messages: [message({ ...existing, files: (await fileRows(tx).messageFiles([existing.id])).get(existing.id),
+              references: (await messageReferences(tx).cards(principal, { kind: 'project', workspaceId: row.workspaceId }, [existing.id])).get(existing.id) }, names)],
             messagePage: { hasMoreBefore: false, nextBeforeSequence: null, limit: 50 } };
         }
         await sourceExists(projectId, input.source, tx);
@@ -415,7 +426,7 @@ export function conversationStore(db: Database, options: ConversationStoreOption
           id: randomUUID(), workspaceId: project.workspaceId, projectId,
           createdBy: author.kind === 'human' ? author.id : null, createdByAgentId: author.kind === 'agent' ? author.id : null,
         }).returning();
-        const first = await sendInTransaction(tx, row!, author, input, files);
+        const first = await sendInTransaction(tx, principal, row!, author, input, files);
         if (first.inserted) await eventLog(tx).record(principal, project.workspaceId, 'project.conversation_created.v1', projectId, { conversationId: row!.id, messageId: first.message.id });
         return { id: row!.id, projectId, workspaceId: project.workspaceId,
           audience: { kind: 'project' as const, projectId }, ...creator(row!, names),
@@ -434,7 +445,7 @@ export function conversationStore(db: Database, options: ConversationStoreOption
         // A reply to a task's bound conversation enters the task order (access, command identity, task row,
         // conversation sequence), exactly like a contribution; it never takes the conversation first.
         const fence=await taskDiscussionRows(tx).prepareBoundTask(row.id);
-        const sent = await sendInTransaction(tx, row, author, input, files,fence);
+        const sent = await sendInTransaction(tx, principal, row, author, input, files,fence);
         if (sent.message.sequence === 1)
           throw new ConflictError('This clientMessageId was used to start the conversation', 'IDEMPOTENCY_CONFLICT');
         if (sent.inserted) await eventLog(tx).record(principal, row.workspaceId,

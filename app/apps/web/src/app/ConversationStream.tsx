@@ -21,7 +21,7 @@ import { LinkPreviews, MessageText } from './MessageText';
 import { onSent, outboxView, useComposerDraft, type PendingSend } from '../composer/draft';
 import { getReturnSummary } from '../returns/api';
 import { createProjectSketch, useProjectShell } from '../project/data';
-import { cite as citeMessage, quoteOf } from './citeBus';
+import { cite as citeMessage, messageCite } from './citeBus';
 import { foldEntries, foldSummary, firstUnread, noticeSource, rootAuthor, sinceLine, sourcePhrase } from './conversationEvents';
 import { GoalStreamEntry } from '../project/ProjectGoal';
 import { ObjectNoticeItem } from './ObjectNotices';
@@ -836,7 +836,7 @@ function RootItem(props: RootItemProps | QueuedRootProps) {
   } : undefined;
   const actions = stored && message ? {
     projectId: stored.project.id, message, writable, onCreateWork: () => void stored.makeWork.create(message),
-    onReply: () => stored.onOpen(stored.root, true), onCite: () => citeMessage('stream', quoteOf(message.body, name)), onAddToMap: addToMap,
+    onReply: () => stored.onOpen(stored.root, true), onCite: () => citeMessage('stream', messageCite(message, name)), onAddToMap: addToMap,
   } : null;
   // The same hooks run for the queued root and the stored one, so the stored root keeps the queued root's list item.
   const touch = useTouchActions(actions);
@@ -854,7 +854,7 @@ function RootItem(props: RootItemProps | QueuedRootProps) {
       {!mine && !stored.continued ? <div className="project-convo__message-meta">
         <strong>{mine ? `${name} · you` : message.authorId === null ? <AgentAuthor message={message} owner={agentAuthorOwner(message.author, owners)} /> : <RefLink className="project-convo__person" to={`/dm/new?workspace=${project.workspaceId}&with=${message.authorId}`} title={`Message ${name} directly`}>{name}</RefLink>}</strong>
       </div> : null}
-      <MessageContent body={message.body ? <WhenNoQuestion projectId={project.id} messageId={message.id}><div className="message-body"><MessageText body={message.body} people={people} /></div></WhenNoQuestion> : null} files={message.files} context={{ author: name, at: message.createdAt, caption: message.body, place: project.name, onReply: writable ? () => onOpen(root, true) : undefined, onCreateTask: writable ? () => void makeWork.create(message) : undefined }}>
+      <MessageContent body={message.body ? <WhenNoQuestion projectId={project.id} messageId={message.id}><div className="message-body"><MessageText body={message.body} people={people} /></div></WhenNoQuestion> : null} files={message.files} references={message.references} context={{ author: name, at: message.createdAt, caption: message.body, place: project.name, onReply: writable ? () => onOpen(root, true) : undefined, onCreateTask: writable ? () => void makeWork.create(message) : undefined }}>
         <LinkPreviews body={message.body} />
         <MessageObjects message={message} projectId={project.id} preview={messageWork.previews?.get(message.id) ?? null} thread={root.task ?? null} threadRow={taskRow} />
         {message.source ? <SourceCitation materialId={message.source.materialId} version={message.source.version} onDenied={onDenied} /> : null}
