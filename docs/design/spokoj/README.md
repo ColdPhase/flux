@@ -86,6 +86,19 @@ Agent decision of 2026-10-27 under the [delegated authority](../../product/auton
 - **Computer and tablet.** Unchanged: a Wiki narrower than 500 px beside a docked panel keeps its menu in the project
   header, where Together moves into it by rule 3.
 
+### Wiki edit state in the two editors
+
+Decision of 2026-10-27 ([#683](https://github.com/ColdPhase/flux/issues/683), applying the [Wiki contract](../../development/live-editing-proposal.md#wiki-contract--durable-shared-work-explicit-immutable-versions)
+to [#511](https://github.com/ColdPhase/flux/issues/511) AC-4 and AC-5; first written in [PR #689](https://github.com/ColdPhase/flux/pull/689)).
+Board C02 draws the state of the private editor, "Editing version 2 · saves as 3". Where live editing is on (the default since
+[#613](https://github.com/ColdPhase/flux/issues/613)) an existing page opens the shared editor, where typing is visible to
+everyone with access and only Save version keeps a version. It has no per-person version to count from ("a live working body
+is never relabelled as one of those versions"), so the same slot of the same bar says "Shared working copy · last saved
+version 2". Only the words change: the slot, Back, the icons and Save version keep their places in read, edit and history
+(rule 7), as the audit board requires. The drawn text stays for the private editor, which a new page, a restored version and a
+run with live editing off use. A test of the state asserts the text of the lane it runs in
+(`test_wiki_panes`, "Shared working copy · last saved version 2" if live else "Editing version 2 · saves as 3").
+
 ### Token
 
 | Token | Light | Dark | Use |
