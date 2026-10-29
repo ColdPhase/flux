@@ -31,7 +31,7 @@ export function artifactResetRows(tx:DbExecutor){return{
     const recipients=[...new Set(taskIds)].sort();if(recipients.some(id=>!retained.ids.includes(id)))throw new TaskUseRefusal('TASK_TARGET_SET_CHANGED');
     // F-030 (#655): the witness tables are AI-class (`a_sealed_workspace_no_ai`) and no agent thread exists in a sealed
     // workspace, so its decisions, results, docs, thoughts and files record no boundary (0120 does the same for the triggers).
-    if((await tx.execute<{sealed:boolean}>(sql`SELECT workspace_sealed(${scope.workspaceId}::uuid) AS sealed`)).rows[0]?.sealed){
+    if((await tx.execute<{encrypted:boolean}>(sql`SELECT encrypted FROM workspaces WHERE id=${scope.workspaceId}::uuid`)).rows[0]?.encrypted){
       if(recipients.length&&!contentEdit)await retained.mark(recipients);
       return;
     }

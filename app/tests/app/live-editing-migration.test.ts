@@ -7,6 +7,9 @@ import { assertExactMigrationLedger, assertMigrationSqlLedgerChange, assertMigra
   FLUX_SCHEMA_VERSION, readAppliedMigrationVersions, readMigrationManifest } from '@flux/db';
 import { pool } from './support/db.js';
 
+// F-030 S2a (0120) adds search_documents.sealed; a row's history is the same with or without it.
+const withoutSealed = (row: Record<string, unknown>) => Object.fromEntries(Object.entries(row).filter(([key]) => key !== 'sealed'));
+
 test('0046 preserves saved material/history/search and makes live receipts, provenance and replica ownership immutable', async () => {
   const client = await pool.connect(); const namespace = `live_upgrade_${randomUUID().replaceAll('-', '')}`;
   const owner = randomUUID(); const workspace = randomUUID(); const project = randomUUID(); const doc = randomUUID();
@@ -29,7 +32,7 @@ test('0046 preserves saved material/history/search and makes live receipts, prov
       VALUES ($1,$2,$3,1,'Saved text','Immutable original',$4,'published','First')`, [workspace, project, doc, owner]);
     const saved = async () => ({ material: (await client.query('SELECT * FROM project_materials ORDER BY id')).rows,
       versions: (await client.query('SELECT * FROM project_material_versions ORDER BY material_id,version')).rows,
-      search: (await client.query('SELECT * FROM search_documents ORDER BY doc_key')).rows });
+      search: (await client.query('SELECT * FROM search_documents ORDER BY doc_key')).rows.map(withoutSealed) });
     const original = await saved(); const before = await readAppliedMigrationVersions(client);
     const sql = await readFile(join(dir, migration.name), 'utf8'); await client.query(sql);
     assertMigrationSqlLedgerChange(before, await readAppliedMigrationVersions(client), migration);

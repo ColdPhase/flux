@@ -6,6 +6,9 @@ import { test } from 'node:test';
 import { createDatabase, FLUX_SCHEMA_VERSION, readMigrationManifest } from '@flux/db';
 import { guardFixturePool } from './support/fixture-database.js';
 
+// F-030 S2a (0120) adds search_documents.sealed; a row's history is the same with or without it.
+const withoutSealed = (row: Record<string, unknown>) => Object.fromEntries(Object.entries(row).filter(([key]) => key !== 'sealed'));
+
 test('0045 preserves historical text and search, reverses before use and refuses real staged files', async () => {
   const dir = 'packages/db/migrations';
   const manifest = await readMigrationManifest(dir, FLUX_SCHEMA_VERSION);
@@ -33,7 +36,7 @@ test('0045 preserves historical text and search, reverses before use and refuses
       VALUES($1,$2,$3,$4,$5,$6,'historical-message',1,'Original authored text')`, [message, ws, project, conversation, user, command]);
     const snapshot = async () => ({
       messages: (await history!.query('SELECT id,workspace_id,project_id,conversation_id,author_id,client_message_id,request_fingerprint,sequence,body,created_at FROM project_messages')).rows,
-      search: (await history!.query("SELECT * FROM search_documents WHERE kind='message'")).rows,
+      search: (await history!.query("SELECT * FROM search_documents WHERE kind='message'")).rows.map(withoutSealed),
     });
     const before = await snapshot();
     const forward = await readFile(join(dir, migration.name), 'utf8');

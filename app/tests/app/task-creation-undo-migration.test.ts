@@ -9,6 +9,9 @@ import { assertExactMigrationLedger, assertKnownMigrationVersions, assertMigrati
 import { pool } from './support/db.js';
 import { guardFixturePool } from './support/fixture-database.js';
 
+// F-030 S2a (0120) adds search_documents.sealed; a row's history is the same with or without it.
+const withoutSealed = (row: Record<string, unknown>) => Object.fromEntries(Object.entries(row).filter(([key]) => key !== 'sealed'));
+
 // #238 AC-U5: 0048 (lifecycle, baseline, use and reversion facts) and 0060 (the `work.creation.revert` grant) on an
 // existing database whose sparse ledger already has 0049-0054, on a fresh database in file order, and the guarded
 // pre-use reversal of both back to the exact prior ledger and schema.
@@ -59,7 +62,7 @@ test('an existing database applies the lower missing 0048 and then 0060, keeps o
     const old = async () => ({ work: (await db.query('SELECT to_jsonb(w) - $1::text[] AS row FROM project_work_items w ORDER BY id', [newColumns])).rows,
       notices: (await db.query('SELECT * FROM project_task_notices ORDER BY id')).rows,
       grants: (await db.query('SELECT * FROM agent_standing_grants ORDER BY id')).rows,
-      search: (await db.query('SELECT * FROM search_documents ORDER BY doc_key')).rows });
+      search: (await db.query('SELECT * FROM search_documents ORDER BY doc_key')).rows.map(withoutSealed) });
     const shape = async () => ({ ledger: await readAppliedMigrationVersions(db),
       columns: (await db.query(`SELECT table_name,column_name,data_type,column_default,is_nullable FROM information_schema.columns
         WHERE table_schema='public' ORDER BY table_name,ordinal_position`)).rows,

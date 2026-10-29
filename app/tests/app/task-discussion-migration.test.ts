@@ -6,6 +6,9 @@ import { test } from 'node:test';
 import { createDatabase } from '@flux/db';
 import { guardFixturePool } from './support/fixture-database.js';
 
+// F-030 S2a (0120) adds search_documents.sealed; a row's history is the same with or without it.
+const withoutSealed = (row: Record<string, unknown>) => Object.fromEntries(Object.entries(row).filter(([key]) => key !== 'sealed'));
+
 test('actual pre-notice human rows and search provenance survive notice and agent migrations without backfill', async () => {
   const name = `flux_actor_history_${randomUUID().replaceAll('-', '')}`;
   const admin = createDatabase(process.env.DATABASE_URL!).pool;
@@ -45,7 +48,7 @@ test('actual pre-notice human rows and search provenance survive notice and agen
       conversation: (await history!.query('SELECT id,created_by,next_sequence,created_at FROM project_conversations')).rows,
       messages: (await history!.query(`SELECT id,conversation_id,author_id,client_message_id,request_fingerprint,sequence,body,
         source_material_id,source_material_version,created_at FROM project_messages`)).rows,
-      search: (await history!.query("SELECT * FROM search_documents WHERE doc_key=$1", [`message:${message}`])).rows,
+      search: (await history!.query("SELECT * FROM search_documents WHERE doc_key=$1", [`message:${message}`])).rows.map(withoutSealed),
     });
     const before = await snapshot();
     assert.equal(before.search.length, 1);

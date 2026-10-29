@@ -6,6 +6,9 @@ import { test } from 'node:test';
 import { createDatabase, FLUX_SCHEMA_VERSION, readMigrationManifest } from '@flux/db';
 import { guardFixturePool } from './support/fixture-database.js';
 
+// F-030 S2a (0120) adds search_documents.sealed; a row's history is the same with or without it.
+const withoutSealed = (row: Record<string, unknown>) => Object.fromEntries(Object.entries(row).filter(([key]) => key !== 'sealed'));
+
 const dir = 'packages/db/migrations';
 
 test('0040 keeps every historical row byte-identical as plain text, adds only empty receipts, and reverses only before use', async () => {
@@ -41,7 +44,7 @@ test('0040 keeps every historical row byte-identical as plain text, adds only em
     const snapshot = async () => ({
       messages: (await history!.query(`SELECT id,conversation_id,author_id,author_agent_id,client_message_id,request_fingerprint,sequence,body,
         source_material_id,source_material_version,created_at FROM project_messages ORDER BY sequence`)).rows,
-      search: (await history!.query("SELECT * FROM search_documents WHERE doc_key LIKE 'message:%' ORDER BY doc_key")).rows,
+      search: (await history!.query("SELECT * FROM search_documents WHERE doc_key LIKE 'message:%' ORDER BY doc_key")).rows.map(withoutSealed),
       work: (await history!.query('SELECT * FROM project_work_items')).rows,
       results: (await history!.query('SELECT * FROM project_results')).rows,
       discussions: (await history!.query('SELECT count(*)::int AS n FROM project_task_discussions')).rows,

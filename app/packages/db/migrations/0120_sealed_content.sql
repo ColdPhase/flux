@@ -14,25 +14,26 @@
 --     change of such a row is appended to `search_changes` for S2b's in-memory index.
 --  6. GitHub is not offered in a sealed workspace: `a_sealed_workspace_refused` on its tables with a workspace path.
 
+-- Every statement below names its tables in this migration's own schema and skips one that is not there yet: an upgrade
+-- can apply a lower missing migration after this one (the migrator applies missing files in order), and a replay
+-- under another search_path must never reach `public`.
+CREATE FUNCTION pg_temp.here(tbl text) RETURNS regclass LANGUAGE sql STABLE AS
+  $$ SELECT to_regclass(format('%I.%I', current_schema(), tbl)) $$;
+
 -- 1. The agent-thread witnesses skip a sealed workspace.
-DROP TRIGGER artifact_material_delta ON project_material_versions;
-DROP TRIGGER artifact_result_delta ON project_results;
-DROP TRIGGER artifact_decision_delta ON project_decisions;
-DROP TRIGGER artifact_thought_delta ON sketch_thoughts;
-DROP TRIGGER artifact_file_delta ON project_files;
-DROP TRIGGER artifact_pr_delta ON github_task_links;
-CREATE TRIGGER artifact_material_delta AFTER INSERT ON project_material_versions FOR EACH ROW
-  WHEN (NOT workspace_sealed(NEW.workspace_id)) EXECUTE FUNCTION flux_capture_artifact_mutation();
-CREATE TRIGGER artifact_result_delta AFTER INSERT ON project_results FOR EACH ROW
-  WHEN (NOT workspace_sealed(NEW.workspace_id)) EXECUTE FUNCTION flux_capture_artifact_mutation();
-CREATE TRIGGER artifact_decision_delta AFTER INSERT OR UPDATE ON project_decisions FOR EACH ROW
-  WHEN (NOT workspace_sealed(NEW.workspace_id)) EXECUTE FUNCTION flux_capture_artifact_mutation();
-CREATE TRIGGER artifact_thought_delta AFTER INSERT OR UPDATE ON sketch_thoughts FOR EACH ROW
-  WHEN (NOT workspace_sealed(NEW.workspace_id)) EXECUTE FUNCTION flux_capture_artifact_mutation();
-CREATE TRIGGER artifact_file_delta AFTER UPDATE ON project_files FOR EACH ROW
-  WHEN (NOT workspace_sealed(NEW.workspace_id)) EXECUTE FUNCTION flux_capture_artifact_mutation();
-CREATE TRIGGER artifact_pr_delta AFTER INSERT OR UPDATE ON github_task_links FOR EACH ROW
-  WHEN (NOT workspace_sealed(NEW.workspace_id)) EXECUTE FUNCTION flux_capture_artifact_mutation();
+CREATE FUNCTION pg_temp.witness(tbl text, trg text, events text) RETURNS void LANGUAGE plpgsql AS $$
+BEGIN
+  IF pg_temp.here(tbl) IS NULL OR NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgrelid = pg_temp.here(tbl) AND tgname = trg) THEN RETURN; END IF;
+  EXECUTE format('DROP TRIGGER %I ON %s', trg, pg_temp.here(tbl));
+  EXECUTE format('CREATE TRIGGER %I AFTER %s ON %s FOR EACH ROW WHEN (NOT workspace_sealed(NEW.workspace_id)) EXECUTE FUNCTION flux_capture_artifact_mutation()',
+    trg, events, pg_temp.here(tbl));
+END $$;
+SELECT pg_temp.witness('project_material_versions', 'artifact_material_delta', 'INSERT');
+SELECT pg_temp.witness('project_results', 'artifact_result_delta', 'INSERT');
+SELECT pg_temp.witness('project_decisions', 'artifact_decision_delta', 'INSERT OR UPDATE');
+SELECT pg_temp.witness('sketch_thoughts', 'artifact_thought_delta', 'INSERT OR UPDATE');
+SELECT pg_temp.witness('project_files', 'artifact_file_delta', 'UPDATE');
+SELECT pg_temp.witness('github_task_links', 'artifact_pr_delta', 'INSERT OR UPDATE');
 
 -- 2. Envelopes: `fx1.<version>.<base64url>` as text, `{"$sealed": envelope}` (or the bare envelope string) as jsonb.
 CREATE FUNCTION flux_is_sealed(value text) RETURNS boolean IMMUTABLE STRICT LANGUAGE sql AS
@@ -72,44 +73,50 @@ BEGIN
 END $$;
 
 -- The same lists as SEALED_COLUMNS; the registry test compares them with pg_trigger.
-CREATE TRIGGER z_sealed_backstop BEFORE INSERT OR UPDATE ON projects FOR EACH ROW EXECUTE FUNCTION flux_sealed_backstop('workspace_id', 'name');
-CREATE TRIGGER z_sealed_backstop BEFORE INSERT OR UPDATE ON project_goals FOR EACH ROW EXECUTE FUNCTION flux_sealed_backstop('workspace_id', 'title');
-CREATE TRIGGER z_sealed_backstop BEFORE INSERT OR UPDATE ON project_messages FOR EACH ROW EXECUTE FUNCTION flux_sealed_backstop('workspace_id', 'body', 'request_fingerprint');
-CREATE TRIGGER z_sealed_backstop BEFORE INSERT OR UPDATE ON dms FOR EACH ROW EXECUTE FUNCTION flux_sealed_backstop('workspace_id', 'title');
-CREATE TRIGGER z_sealed_backstop BEFORE INSERT OR UPDATE ON dm_messages FOR EACH ROW EXECUTE FUNCTION flux_sealed_backstop('workspace_id', 'body', 'request_fingerprint');
-CREATE TRIGGER z_sealed_backstop BEFORE INSERT OR UPDATE ON project_decisions FOR EACH ROW EXECUTE FUNCTION flux_sealed_backstop('workspace_id', 'title', 'rationale');
-CREATE TRIGGER z_sealed_backstop BEFORE INSERT OR UPDATE ON project_results FOR EACH ROW EXECUTE FUNCTION flux_sealed_backstop('workspace_id', 'title', 'evidence');
-CREATE TRIGGER z_sealed_backstop BEFORE INSERT OR UPDATE ON drafts FOR EACH ROW EXECUTE FUNCTION flux_sealed_backstop('workspace_id', 'title', 'body');
-CREATE TRIGGER z_sealed_backstop BEFORE INSERT OR UPDATE ON draft_versions FOR EACH ROW EXECUTE FUNCTION flux_sealed_backstop('via:draft_id:drafts:id', 'title', 'body');
-CREATE TRIGGER z_sealed_backstop BEFORE INSERT OR UPDATE ON idempotency_keys FOR EACH ROW EXECUTE FUNCTION flux_sealed_backstop('workspace_id', 'response_body', 'request_hash');
-CREATE TRIGGER z_sealed_backstop BEFORE INSERT OR UPDATE ON project_work_items FOR EACH ROW EXECUTE FUNCTION flux_sealed_backstop('workspace_id', 'title', 'outcome', 'blocker', 'criteria', 'creation_baseline', 'request_fingerprint');
-CREATE TRIGGER z_sealed_backstop BEFORE INSERT OR UPDATE ON project_task_activity FOR EACH ROW EXECUTE FUNCTION flux_sealed_backstop('workspace_id', 'detail');
-CREATE TRIGGER z_sealed_backstop BEFORE INSERT OR UPDATE ON project_task_updates FOR EACH ROW EXECUTE FUNCTION flux_sealed_backstop('workspace_id', 'reason');
-CREATE TRIGGER z_sealed_backstop BEFORE INSERT OR UPDATE ON project_task_plan_intents FOR EACH ROW EXECUTE FUNCTION flux_sealed_backstop('workspace_id', 'creation_fingerprint');
-CREATE TRIGGER z_sealed_backstop BEFORE INSERT OR UPDATE ON task_creation_undo_receipts FOR EACH ROW EXECUTE FUNCTION flux_sealed_backstop('workspace_id', 'request_fingerprint');
-CREATE TRIGGER z_sealed_backstop BEFORE INSERT OR UPDATE ON native_command_receipts FOR EACH ROW EXECUTE FUNCTION flux_sealed_backstop('workspace_id', 'request_fingerprint');
-CREATE TRIGGER z_sealed_backstop BEFORE INSERT OR UPDATE ON project_materials FOR EACH ROW EXECUTE FUNCTION flux_sealed_backstop('workspace_id', 'request_fingerprint');
-CREATE TRIGGER z_sealed_backstop BEFORE INSERT OR UPDATE ON project_material_versions FOR EACH ROW EXECUTE FUNCTION flux_sealed_backstop('workspace_id', 'title', 'body', 'url', 'reason', 'request_fingerprint');
-CREATE TRIGGER z_sealed_backstop BEFORE INSERT OR UPDATE ON sketches FOR EACH ROW EXECUTE FUNCTION flux_sealed_backstop('workspace_id', 'title');
-CREATE TRIGGER z_sealed_backstop BEFORE INSERT OR UPDATE ON sketch_thoughts FOR EACH ROW EXECUTE FUNCTION flux_sealed_backstop('workspace_id', 'text');
-CREATE TRIGGER z_sealed_backstop BEFORE INSERT OR UPDATE ON sketch_links FOR EACH ROW EXECUTE FUNCTION flux_sealed_backstop('workspace_id', 'label');
-CREATE TRIGGER z_sealed_backstop BEFORE INSERT OR UPDATE ON project_files FOR EACH ROW EXECUTE FUNCTION flux_sealed_backstop('workspace_id', 'name', 'sha256');
-CREATE TRIGGER z_sealed_backstop BEFORE INSERT OR UPDATE ON doc_live_heads FOR EACH ROW EXECUTE FUNCTION flux_sealed_backstop('workspace_id', 'body', 'codec_state', 'hash');
-CREATE TRIGGER z_sealed_backstop BEFORE INSERT OR UPDATE ON doc_live_archives FOR EACH ROW EXECUTE FUNCTION flux_sealed_backstop('via:doc_id:project_materials:id', 'body', 'codec_state', 'hash');
-CREATE TRIGGER z_sealed_backstop BEFORE INSERT OR UPDATE ON doc_live_updates FOR EACH ROW EXECUTE FUNCTION flux_sealed_backstop('via:doc_id:project_materials:id', 'bytes', 'ledger', 'fingerprint');
-CREATE TRIGGER z_sealed_backstop BEFORE INSERT OR UPDATE ON doc_live_snapshots FOR EACH ROW EXECUTE FUNCTION flux_sealed_backstop('workspace_id', 'hash');
-CREATE TRIGGER z_sealed_backstop BEFORE INSERT OR UPDATE ON live_editing_intents FOR EACH ROW EXECUTE FUNCTION flux_sealed_backstop('workspace_id', 'receipt', 'fingerprint');
-CREATE TRIGGER z_sealed_backstop BEFORE INSERT OR UPDATE ON map_live_journal FOR EACH ROW EXECUTE FUNCTION flux_sealed_backstop('via:sketch_id:sketches:id', 'change', 'fingerprint');
+CREATE FUNCTION pg_temp.backstop(tbl text, args text) RETURNS void LANGUAGE plpgsql AS $$
+BEGIN
+  IF pg_temp.here(tbl) IS NULL THEN RETURN; END IF;
+  EXECUTE format('CREATE TRIGGER z_sealed_backstop BEFORE INSERT OR UPDATE ON %s FOR EACH ROW EXECUTE FUNCTION flux_sealed_backstop(%s)', pg_temp.here(tbl), args);
+END $$;
+SELECT pg_temp.backstop('projects', '''workspace_id'', ''name''');
+SELECT pg_temp.backstop('project_goals', '''workspace_id'', ''title''');
+SELECT pg_temp.backstop('project_messages', '''workspace_id'', ''body'', ''request_fingerprint''');
+SELECT pg_temp.backstop('dms', '''workspace_id'', ''title''');
+SELECT pg_temp.backstop('dm_messages', '''workspace_id'', ''body'', ''request_fingerprint''');
+SELECT pg_temp.backstop('project_decisions', '''workspace_id'', ''title'', ''rationale''');
+SELECT pg_temp.backstop('project_results', '''workspace_id'', ''title'', ''evidence''');
+SELECT pg_temp.backstop('drafts', '''workspace_id'', ''title'', ''body''');
+SELECT pg_temp.backstop('draft_versions', '''via:draft_id:drafts:id'', ''title'', ''body''');
+SELECT pg_temp.backstop('idempotency_keys', '''workspace_id'', ''response_body'', ''request_hash''');
+SELECT pg_temp.backstop('project_work_items', '''workspace_id'', ''title'', ''outcome'', ''blocker'', ''criteria'', ''creation_baseline'', ''request_fingerprint''');
+SELECT pg_temp.backstop('project_task_activity', '''workspace_id'', ''detail''');
+SELECT pg_temp.backstop('project_task_updates', '''workspace_id'', ''reason''');
+SELECT pg_temp.backstop('project_task_plan_intents', '''workspace_id'', ''creation_fingerprint''');
+SELECT pg_temp.backstop('task_creation_undo_receipts', '''workspace_id'', ''request_fingerprint''');
+SELECT pg_temp.backstop('native_command_receipts', '''workspace_id'', ''request_fingerprint''');
+SELECT pg_temp.backstop('project_materials', '''workspace_id'', ''request_fingerprint''');
+SELECT pg_temp.backstop('project_material_versions', '''workspace_id'', ''title'', ''body'', ''url'', ''reason'', ''request_fingerprint''');
+SELECT pg_temp.backstop('sketches', '''workspace_id'', ''title''');
+SELECT pg_temp.backstop('sketch_thoughts', '''workspace_id'', ''text''');
+SELECT pg_temp.backstop('sketch_links', '''workspace_id'', ''label''');
+SELECT pg_temp.backstop('project_files', '''workspace_id'', ''name'', ''sha256''');
+SELECT pg_temp.backstop('doc_live_heads', '''workspace_id'', ''body'', ''codec_state'', ''hash''');
+SELECT pg_temp.backstop('doc_live_archives', '''via:doc_id:project_materials:id'', ''body'', ''codec_state'', ''hash''');
+SELECT pg_temp.backstop('doc_live_updates', '''via:doc_id:project_materials:id'', ''bytes'', ''ledger'', ''fingerprint''');
+SELECT pg_temp.backstop('doc_live_snapshots', '''workspace_id'', ''hash''');
+SELECT pg_temp.backstop('live_editing_intents', '''workspace_id'', ''receipt'', ''fingerprint''');
+SELECT pg_temp.backstop('map_live_journal', '''via:sketch_id:sketches:id'', ''change'', ''fingerprint''');
 
 -- 3. Checks over sealed columns accept an envelope; the old check still holds for every plain value.
-CREATE FUNCTION pg_temp.relax(tbl regclass, con text, col text) RETURNS void LANGUAGE plpgsql AS $$
-DECLARE def text;
+CREATE FUNCTION pg_temp.relax(name text, con text, col text) RETURNS void LANGUAGE plpgsql AS $$
+DECLARE def text; tbl regclass := pg_temp.here(name);
 BEGIN
+  IF tbl IS NULL THEN RETURN; END IF;
   SELECT pg_get_constraintdef(oid) INTO STRICT def FROM pg_constraint WHERE conrelid = tbl AND conname = con AND contype = 'c';
   def := regexp_replace(def, '^CHECK \((.*)\)$', '\1');
   EXECUTE format('ALTER TABLE %s DROP CONSTRAINT %I, ADD CONSTRAINT %I CHECK (flux_is_sealed(%I) OR (%s))', tbl, con, con, col, def);
 END $$;
-SELECT pg_temp.relax(t::regclass, c, col) FROM (VALUES
+SELECT pg_temp.relax(t, c, col) FROM (VALUES
   ('projects', 'projects_name_check', 'name'),
   ('project_goals', 'project_goals_title_check', 'title'),
   ('project_messages', 'project_message_body_or_attachments', 'body'),
