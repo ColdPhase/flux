@@ -2,6 +2,7 @@ import { messagePreview } from '@flux/contracts';
 import { and, asc, desc, eq, gt, inArray, lt, lte, sql, type SQL } from 'drizzle-orm';
 import * as schema from '../schema.js';
 import type { DbExecutor } from './push.js';
+import { openAliased, openRows } from '../sealing.js';
 
 /**
  * Drizzle rows for the return view (issue #106). They satisfy the `ReturnRepository` port of
@@ -106,7 +107,9 @@ export function returnRows(db: DbExecutor) {
 
     async projects(ids: string[]) {
       if (!ids.length) return new Map();
-      return byId(await db.select({ id: schema.projects.id, name: schema.projects.name }).from(schema.projects).where(inArray(schema.projects.id, ids)));
+      const rows = await openRows(db, 'projects', await db.select({ id: schema.projects.id, workspaceId: schema.projects.workspaceId, name: schema.projects.name })
+        .from(schema.projects).where(inArray(schema.projects.id, ids)));
+      return byId(rows.map(({ id, name }) => ({ id, name })));
     },
 
     async work(ids: string[]) {
@@ -132,7 +135,7 @@ export function returnRows(db: DbExecutor) {
     async decisions(ids: string[]) {
       if (!ids.length) return new Map();
       const d = schema.projectDecisions;
-      const rows = await db.select().from(d).where(inArray(d.id, ids));
+      const rows = await openRows(db, 'project_decisions', await db.select().from(d).where(inArray(d.id, ids)));
       return byId(rows.map((row) => ({
         id: row.id, projectId: row.projectId, title: row.title, rationale: row.rationale, status: row.status,
         proposedByKey: actorKey(row.proposedByKind, row.proposedById), supersedesId: row.supersedesId, supersededById: row.supersededById,
@@ -142,7 +145,7 @@ export function returnRows(db: DbExecutor) {
     async results(ids: string[]) {
       if (!ids.length) return new Map();
       const r = schema.projectResults;
-      const rows = await db.select().from(r).where(inArray(r.id, ids));
+      const rows = await openRows(db, 'project_results', await db.select().from(r).where(inArray(r.id, ids)));
       return byId(rows.map((row) => ({
         id: row.id, projectId: row.projectId, title: row.title, finding: row.finding as 'positive' | 'negative', evidence: row.evidence,
         createdByKey: actorKey(row.createdByKind, row.createdById),
@@ -166,18 +169,20 @@ export function returnRows(db: DbExecutor) {
     async messages(ids: string[]) {
       if (!ids.length) return new Map();
       const m = schema.projectMessages;
-      const rows = await db.select({ id: m.id, projectId: m.projectId, conversationId: m.conversationId, authorId: m.authorId, authorAgentId: m.authorAgentId, body: m.body, attachmentCount: m.attachmentCount, sequence: m.sequence, createdAt: m.createdAt })
-        .from(m).where(inArray(m.id, ids));
-      return byId(rows.map(({ authorId, authorAgentId, ...row }) => ({ ...row, author: actor(authorId, authorAgentId) })));
+      const rows = await openRows(db, 'project_messages', await db.select({ id: m.id, workspaceId: m.workspaceId, projectId: m.projectId, conversationId: m.conversationId, authorId: m.authorId, authorAgentId: m.authorAgentId, body: m.body, attachmentCount: m.attachmentCount, sequence: m.sequence, createdAt: m.createdAt })
+        .from(m).where(inArray(m.id, ids)));
+      return byId(rows.map(({ authorId, authorAgentId, workspaceId: _workspaceId, ...row }) => ({ ...row, author: actor(authorId, authorAgentId) })));
     },
 
     async conversations(ids: string[]) {
       if (!ids.length) return new Map();
       const c = schema.projectConversations;
       const m = schema.projectMessages;
-      const rows = await db.select({ id: c.id, projectId: c.projectId, createdBy: c.createdBy, createdByAgentId: c.createdByAgentId, opening: m.body, attachmentCount: m.attachmentCount }).from(c)
+      const read = await db.select({ id: c.id, workspaceId: c.workspaceId, projectId: c.projectId, createdBy: c.createdBy, createdByAgentId: c.createdByAgentId, openingId: m.id, opening: m.body, attachmentCount: m.attachmentCount }).from(c)
         .leftJoin(m, and(eq(m.conversationId, c.id), eq(m.sequence, 1))).where(inArray(c.id, ids));
-      return byId(rows.map(({ createdBy, createdByAgentId, ...row }) => ({ ...row, createdBy: actor(createdBy, createdByAgentId), opening: excerpt(messagePreview(row.opening ?? '', row.attachmentCount ?? 0)) })));
+      const rows = await openAliased(db, read, { table: 'project_messages', column: 'body', key: 'opening', workspace: (row) => row.workspaceId,
+        identity: (row) => (row.openingId ? [row.openingId] : null) });
+      return byId(rows.map(({ createdBy, createdByAgentId, workspaceId: _workspaceId, openingId: _openingId, ...row }) => ({ ...row, createdBy: actor(createdBy, createdByAgentId), opening: excerpt(messagePreview(row.opening ?? '', row.attachmentCount ?? 0)) })));
     },
 
     async lastPosts(userId: string, conversationIds: string[]) {
