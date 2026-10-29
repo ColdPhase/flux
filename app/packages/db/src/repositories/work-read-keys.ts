@@ -27,7 +27,8 @@ const decisionRank = sql`CASE ${d.status} WHEN 'proposed' THEN 0 WHEN 'accepted'
  * opens the project's titles in the application and passes the matching ids (`matching`), which replace the ILIKE.
  */
 function literalTitle(column: SQL, q: string, idColumn: SQL, matching?: readonly string[]) {
-  if (matching) return matching.length ? sql`${idColumn} IN (${sql.join(matching.map((id) => sql`${id}::uuid`), sql`, `)})` : sql`false`;
+  // One array parameter, however many ids (a bind parameter per id would meet PostgreSQL's 65,535 limit).
+  if (matching) return matching.length ? sql`${idColumn} = ANY(${`{${matching.join(',')}}`}::uuid[])` : sql`false`;
   return q ? sql`${column} ILIKE ${'%'+q.replace(/[\\%_]/g, '\\$&')+'%'} ESCAPE ${'\\'}` : sql`true`;
 }
 export function nativeWorkViewKeySource(projectId: string, actor: PrincipalRef, selection: NativeWorkViewSelector, matching?: readonly string[]): SQL {
@@ -111,6 +112,13 @@ export async function nativeReadKeyWindow<Kind extends string>(db: DbExecutor, s
 }
 
 /** For a chooser with text in a sealed workspace: the ids whose opened title contains it (case-insensitive), else undefined. */
+/**
+ * How many of a project's newest tasks, decisions or results a chooser search in a sealed workspace opens. Each costs
+ * about 20 µs of decryption on the event loop (S2a-2a review, measured), so the scan is bounded; older objects are found
+ * by browsing, not by typing. S2b's in-RAM index replaces this scan.
+ */
+export const SEALED_CHOOSER_SCAN_LIMIT = 2000;
+
 async function sealedMatches(db: DbExecutor, projectId: string, selection: NativeWorkViewSelector): Promise<string[] | undefined> {
   if (selection.purpose !== 'choices' || !selection.q) return undefined;
   const [project] = (await db.execute<{ workspace_id: string }>(sql`SELECT workspace_id FROM projects WHERE id = ${projectId}::uuid`)).rows;
@@ -119,7 +127,8 @@ async function sealedMatches(db: DbExecutor, projectId: string, selection: Nativ
     : selection.choice === 'doc_refs' && selection.kind === 'result' ? 'result' : 'work';
   const table = kind === 'decision' ? d : kind === 'result' ? r : w;
   const name = kind === 'decision' ? 'project_decisions' : kind === 'result' ? 'project_results' : 'project_work_items';
-  const rows = await openRows(db, name, await db.select({ id: table.id, workspaceId: table.workspaceId, title: table.title }).from(table).where(sql`${table.projectId} = ${projectId}::uuid`));
+  const rows = await openRows(db, name, await db.select({ id: table.id, workspaceId: table.workspaceId, title: table.title }).from(table)
+    .where(sql`${table.projectId} = ${projectId}::uuid`).orderBy(sql`${table.createdAt} DESC, ${table.id} DESC`).limit(SEALED_CHOOSER_SCAN_LIMIT));
   const q = selection.q.toLowerCase();
   return rows.filter((row) => row.title.toLowerCase().includes(q)).map((row) => row.id);
 }

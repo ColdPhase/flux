@@ -16,14 +16,16 @@ BEGIN
       (SELECT string_agg(quote_literal(a), ', ' ORDER BY n) FROM unnest(string_to_array(t.args, '\000')) WITH ORDINALITY AS u(a, n) WHERE a <> ''));
   END LOOP;
 END $$;
-ALTER FUNCTION flux_is_sealed(text) RESET search_path;
-ALTER FUNCTION flux_is_sealed(jsonb) RESET search_path;
-ALTER FUNCTION workspace_sealed(uuid) RESET search_path;
-ALTER FUNCTION flux_sealed_backstop() RESET search_path;
-ALTER FUNCTION sealed_workspace_no_ai() RESET search_path;
-ALTER FUNCTION sealed_workspace_refused() RESET search_path;
-ALTER FUNCTION search_change_log() RESET search_path;
-ALTER FUNCTION preserve_draft_version() RESET search_path;
+DO $$
+DECLARE f record;
+BEGIN
+  FOR f IN SELECT p.oid::regprocedure AS fn FROM pg_proc p
+    WHERE p.pronamespace = current_schema()::regnamespace AND p.proconfig IS NOT NULL
+      AND (p.prosrc ~ '(workspace_sealed|flux_is_sealed)' OR p.proname IN ('workspace_sealed', 'flux_is_sealed'))
+  LOOP
+    EXECUTE format('ALTER FUNCTION %s RESET search_path', f.fn);
+  END LOOP;
+END $$;
 ALTER TABLE task_creation_undo_receipts DROP CONSTRAINT task_creation_undo_receipts_request_fingerprint_check,
   ADD CONSTRAINT task_creation_undo_receipts_request_fingerprint_check CHECK (request_fingerprint ~ '^[a-f0-9]{64}$');
 DROP TRIGGER a_idempotency_scope_required ON idempotency_keys;

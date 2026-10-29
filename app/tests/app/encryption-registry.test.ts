@@ -166,6 +166,42 @@ describe('F-030 registry against the live catalog', () => {
   });
 });
 
+describe('F-030 pinned search_path (S2a-2a review P2-1)', () => {
+  test('every function that decides on a seal runs with an explicit search_path: pg_catalog first, no "$user", pg_temp last', async () => {
+    const rows = (await pool.query<{ fn: string; config: string[] | null }>(`SELECT p.oid::regprocedure::text AS fn, p.proconfig AS config FROM pg_proc p
+      WHERE p.pronamespace = 'public'::regnamespace AND (p.prosrc ~ '(workspace_sealed|flux_is_sealed)' OR p.proname IN ('workspace_sealed', 'flux_is_sealed'))
+      ORDER BY 1`)).rows;
+    assert.ok(rows.length >= 9, `sealing functions found: ${rows.length}`);
+    for (const name of ['search_put', 'workspace_ai_policy_encrypted', 'flux_sealed_backstop', 'sealed_workspace_no_ai', 'preserve_draft_version'])
+      assert.ok(rows.some((row) => row.fn.startsWith(`${name}(`)), `${name} is among them`);
+    const unpinned = rows.filter((row) => {
+      const path = (row.config ?? []).find((entry) => entry.startsWith('search_path='));
+      return path !== 'search_path=pg_catalog, public, pg_temp';
+    }).map((row) => `${row.fn}: ${JSON.stringify(row.config)}`);
+    assert.deepEqual(unpinned, []);
+  });
+
+  test('a shadowing workspace_sealed in a schema named after the role, or first in the session\'s path, changes nothing', async () => {
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      const role = (await client.query<{ name: string }>('SELECT current_user AS name')).rows[0]!.name;
+      for (const schema of [role, 'evil']) {
+        await client.query(`CREATE SCHEMA IF NOT EXISTS "${schema}"`);
+        await client.query(`CREATE FUNCTION "${schema}".workspace_sealed(uuid) RETURNS boolean LANGUAGE sql AS 'SELECT false'`);
+      }
+      await client.query(`SET LOCAL search_path = evil, "$user", public`);
+      await client.query(`SELECT search_put('probe:y', 'work', $1, 'aud', NULL, 'o', NULL, 1, 'open', 'plain-title', 'plain-body', 'human', 'x', now())`, [A]);
+      assert.deepEqual((await client.query(`SELECT sealed, title FROM search_documents WHERE doc_key = 'probe:y'`)).rows[0], { sealed: true, title: '' });
+      await client.query('SAVEPOINT t');
+      await assert.rejects(client.query(`UPDATE workspace_ai_policies SET state = 'allowed' WHERE workspace_id = $1`, [A]), { hint: 'WORKSPACE_ENCRYPTED_AI_OFF' });
+      await client.query('ROLLBACK TO SAVEPOINT t');
+      await assert.rejects(client.query(`INSERT INTO projects (id, workspace_id, name, created_by) VALUES (gen_random_uuid(), $1, 'plain', $2)`, [A, ada.id]),
+        { hint: 'WORKSPACE_PLAINTEXT_REFUSED' });
+    } finally { await client.query('ROLLBACK'); client.release(); }
+  });
+});
+
 describe('F-030 idempotency scopes (S2a-2)', () => {
   test('the database list of account operations is the contract\'s; an unscoped row of any other operation is refused', async () => {
     const live = (await pool.query<{ operation: string }>('SELECT operation FROM idempotency_account_operations ORDER BY operation')).rows.map((row) => row.operation);

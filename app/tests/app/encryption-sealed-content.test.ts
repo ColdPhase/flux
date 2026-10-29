@@ -112,6 +112,30 @@ describe('F-030 S2a-1: sealed content in the repositories', () => {
     }
   });
 
+  test('the reads computed in the application open sealed titles: chooser search, Since-you-left and task notices (S2a-2a review)', async () => {
+    for (const [side, ws] of [['A', A], ['B', B]] as const) {
+      const c = canaries[side]; const id = ids[side];
+      // A twin with the same title in another project of the workspace must not be a candidate here.
+      const other = await post(ada, `/api/v1/workspaces/${ws}/projects`, { name: `Other ${side}`, visibility: 'workspace' }, 201);
+      const twin = await post(ada, `/api/v1/projects/${String(other.id)}/work`, { title: c.taskRename }, 201);
+      const needle = c.taskRename.slice(8, 30).toUpperCase(); // a case-folded substring from the middle
+      const chooser = await ben.browser.request('GET', `/api/v1/projects/${id.project}/work-view?purpose=choices&choice=pivot_work&q=${encodeURIComponent(needle)}`);
+      expectStatus(chooser, 200, `${side}: chooser`);
+      const items = (chooser.json as { items: { id: string; title: string }[] }).items;
+      assert.deepEqual(items.map((item) => [item.id, item.title]), [[id.task, c.taskRename]], `${side}: the chooser finds the task by a substring of its sealed title, not the other project's twin`);
+      assert.notEqual(String(twin.id), id.task);
+      const none = await ben.browser.request('GET', `/api/v1/projects/${id.project}/work-view?purpose=choices&choice=pivot_work&q=${encodeURIComponent('no such words %_')}`);
+      assert.deepEqual((none.json as { items: unknown[] }).items, [], `${side}: % and _ stay literal`);
+      const since = await ben.browser.request('GET', `/api/v1/return?place=project&id=${id.project}&from=24h&scope=all`);
+      expectStatus(since, 200, `${side}: Since-you-left`);
+      assert.ok(since.text.includes(c.taskRename), `${side}: Since-you-left shows the task title`);
+      const notices = await ben.browser.request('GET', `/api/v1/projects/${id.project}/task-notices`);
+      expectStatus(notices, 200, `${side}: task notices`);
+      assert.ok(notices.text.includes(c.taskRename) && notices.text.includes(c.blocker), `${side}: task notices show the title and the blocked reason`);
+      for (const response of [chooser, since, notices]) assert.equal(/fx1\.[1-9]/.test(response.text), false, `${side}: no envelope reaches a reader`);
+    }
+  });
+
   test('A\'s rows hold envelopes, B\'s plain text; the draft versions of A are written by the application, sealed', async () => {
     const one = async (query: string, values: unknown[]) => (await pool.query(query, values)).rows[0] as Record<string, unknown>;
     for (const [side, ws] of [['A', A], ['B', B]] as const) {
@@ -131,7 +155,7 @@ describe('F-030 S2a-1: sealed content in the repositories', () => {
         JOIN drafts d ON d.id = v.draft_id WHERE d.workspace_id = $1 ORDER BY v.version`, [ws])).rows;
       assert.deepEqual(versions, [{ version: 1, title: sealed, body: sealed }, { version: 2, title: sealed, body: sealed }], `${side}: one row per version`);
       const work = await one(`SELECT flux_is_sealed(title) AS title, flux_is_sealed(outcome) AS outcome, flux_is_sealed(blocker) AS blocker, flux_is_sealed(criteria) AS criteria
-        FROM project_work_items WHERE workspace_id = $1`, [ws]);
+        FROM project_work_items WHERE id = $1`, [ids[side].task]);
       assert.deepEqual(work, { title: sealed, outcome: sealed, blocker: sealed, criteria: sealed }, `${side}: task`);
       const activity = (await pool.query(`SELECT bool_and(flux_is_sealed(detail)) AS detail, count(*)::int AS n FROM project_task_activity WHERE workspace_id = $1`, [ws])).rows[0];
       assert.ok(activity.n >= 2);

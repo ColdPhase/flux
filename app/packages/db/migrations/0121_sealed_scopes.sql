@@ -4,8 +4,8 @@
 --     Every other command declares a scope, so an encrypted workspace's stored responses are sealed (0120's backstop).
 --  2. The task-creation Undo receipt fingerprint becomes a sealed digest in a sealed workspace: its check is relaxed
 --     like 0120's (validated: the catalog compatibility check requires it, and the table holds one row per Undo).
---  3. Hardening from the S2a-1 review: the sealing functions run with the search_path of this migration, so a
---     function of the same name earlier in a session's search_path cannot stand in for `workspace_sealed`; and the
+--  3. Hardening from the S2a-1 review: every function that decides on a seal runs with an explicit pinned
+--     search_path, so nothing earlier in a session's search_path can stand in for `workspace_sealed`; and the
 --     backstops whose row names its workspace directly run only for a sealed workspace (WHEN), so a plain
 --     workspace's insert pays one indexed lookup instead of the trigger body.
 CREATE OR REPLACE FUNCTION pg_temp.here(tbl text) RETURNS regclass LANGUAGE sql STABLE AS
@@ -46,16 +46,21 @@ BEGIN
   END IF;
 END $$;
 
--- 3. Pinned search_path (FROM CURRENT: this migration's own, so a replay in another schema keeps working).
-ALTER FUNCTION flux_is_sealed(text) SET search_path FROM CURRENT;
-ALTER FUNCTION flux_is_sealed(jsonb) SET search_path FROM CURRENT;
-ALTER FUNCTION workspace_sealed(uuid) SET search_path FROM CURRENT;
-ALTER FUNCTION flux_sealed_backstop() SET search_path FROM CURRENT;
-ALTER FUNCTION sealed_workspace_no_ai() SET search_path FROM CURRENT;
-ALTER FUNCTION sealed_workspace_refused() SET search_path FROM CURRENT;
-ALTER FUNCTION search_change_log() SET search_path FROM CURRENT;
-ALTER FUNCTION preserve_draft_version() SET search_path FROM CURRENT;
-ALTER FUNCTION idempotency_scope_required() SET search_path FROM CURRENT;
+-- 3. Pinned search_path: every function of this schema that decides on a seal (its source names workspace_sealed or
+-- flux_is_sealed), the two predicates themselves and the idempotency guard run with `pg_catalog, <this schema>`, an
+-- explicit list: no "$user" entry (a schema named after the role), no caller's path, and pg_temp last (a temporary
+-- table cannot shadow `workspaces`), so nothing can stand in for them. The
+-- registry test asserts it for every such function, so the next one cannot be missed.
+DO $$
+DECLARE f record;
+BEGIN
+  FOR f IN SELECT p.oid::regprocedure AS fn FROM pg_proc p
+    WHERE p.pronamespace = current_schema()::regnamespace
+      AND (p.prosrc ~ '(workspace_sealed|flux_is_sealed)' OR p.proname IN ('workspace_sealed', 'flux_is_sealed', 'idempotency_scope_required'))
+  LOOP
+    EXECUTE format('ALTER FUNCTION %s SET search_path = pg_catalog, %I, pg_temp', f.fn, current_schema());
+  END LOOP;
+END $$;
 
 -- Direct-path backstops: skipped for a plain workspace. `via:` tables keep the body (their row names no workspace).
 DO $$
