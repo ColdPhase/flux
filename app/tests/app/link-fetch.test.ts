@@ -1,9 +1,12 @@
 import assert from 'node:assert/strict';
+import dgram from 'node:dgram';
+import dns from 'node:dns';
 import http from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { after, before, describe, test } from 'node:test';
 import { messageLinkUrls } from '@flux/contracts';
 import { parsePagePreview, plainText } from '../../apps/server/src/link-previews/html.js';
+import { caresResolver } from '../../apps/server/src/link-previews/resolver.js';
 import { fetchPage, FETCH_LIMITS, literalRefusal, PRODUCTION_RULES, USER_AGENT, type FetchRules } from '../../apps/server/src/link-previews/safe-fetch.js';
 import { linkPreviews } from '../../apps/server/src/link-previews/service.js';
 
@@ -123,6 +126,85 @@ describe('the address check', () => {
     const production: FetchRules = { ...rules(), port: PRODUCTION_RULES.port };
     assert.deepEqual(await fetchPage(at('ok.test', '/ok'), production), { ok: false, reason: 'blocked' });
     assert.equal(connections, sockets);
+  });
+});
+
+// A name server of our own on loopback: it answers from a zone, or (hung) never answers.
+function ipv6Bytes(address: string): Buffer {
+  const [head, tail = ''] = address.split('::');
+  const groups = (text: string) => (text ? text.split(':').map((group) => parseInt(group, 16)) : []);
+  const fill = address.includes('::') ? 8 - groups(head!).length - groups(tail).length : 0;
+  return Buffer.from([...groups(head!), ...Array<number>(fill).fill(0), ...groups(tail)].flatMap((group) => [group >> 8, group & 255]));
+}
+async function nameServer(zone: Record<string, { a?: string[]; aaaa?: string[] }> | null) {
+  const socket = dgram.createSocket('udp4');
+  const asked: string[] = [];
+  socket.on('message', (query, remote) => {
+    if (!zone) return;
+    let end = 12;
+    const labels: string[] = [];
+    while (query[end] !== 0) { labels.push(query.subarray(end + 1, end + 1 + query[end]!).toString()); end += query[end]! + 1; }
+    const type = query.readUInt16BE(end + 1);
+    const name = labels.join('.').toLowerCase();
+    asked.push(`${type === 28 ? 'AAAA' : 'A'} ${name}`);
+    const entry = zone[name];
+    const addresses = (type === 28 ? entry?.aaaa : entry?.a) ?? [];
+    const header = Buffer.alloc(12);
+    query.copy(header, 0, 0, 2);
+    header.writeUInt16BE(0x8180 | (entry ? 0 : 3), 2); header.writeUInt16BE(1, 4); header.writeUInt16BE(addresses.length, 6);
+    const answers = addresses.map((address) => {
+      const data = type === 28 ? ipv6Bytes(address) : Buffer.from(address.split('.').map(Number));
+      const record = Buffer.alloc(12);
+      record.writeUInt16BE(0xc00c, 0); record.writeUInt16BE(type, 2); record.writeUInt16BE(1, 4); record.writeUInt32BE(60, 6); record.writeUInt16BE(data.length, 10);
+      return Buffer.concat([record, data]);
+    });
+    socket.send(Buffer.concat([header, query.subarray(12, end + 5), ...answers]), remote.port, remote.address);
+  });
+  await new Promise<void>((resolve) => socket.bind(0, '127.0.0.1', resolve));
+  return { server: `127.0.0.1:${socket.address().port}`, asked, close: () => socket.close() };
+}
+
+describe('the resolver (c-ares, off the shared thread pool)', () => {
+  test('it asks the name server for both families; every answer is classified and the socket connects to the checked one', async () => {
+    const dnsServer = await nameServer({ 'ok.test': { a: ['127.0.0.2'] }, 'loop.test': { a: ['127.0.0.1'] }, 'six.test': { aaaa: ['::1'] }, 'mixed.test': { a: ['127.0.0.2'], aaaa: ['::1'] }, 'meta.test': { a: ['169.254.169.254'] } });
+    after(() => dnsServer.close());
+    const viaDns = rules({}, { resolve: caresResolver({ servers: [dnsServer.server] }) });
+    const sockets = connections;
+    const ok = await fetchPage(at('ok.test', '/ok'), viaDns);
+    assert.equal(ok.ok, true);
+    assert.equal(requests.at(-1)!.local, '127.0.0.2', 'connected to the answer that was checked');
+    assert.deepEqual(dnsServer.asked.filter((question) => question.endsWith('ok.test')).sort(), ['A ok.test', 'AAAA ok.test']);
+    const during = connections;
+    for (const host of ['loop.test', 'six.test', 'mixed.test', 'meta.test'])
+      assert.deepEqual(await fetchPage(at(host, '/ok'), viaDns), { ok: false, reason: 'blocked' }, host);
+    assert.equal(connections, during, 'a loopback, IPv6, metadata or mixed answer opened no socket');
+    assert.deepEqual(await fetchPage(at('gone.test', '/ok'), viaDns), { ok: false, reason: 'unreachable' });
+    assert.ok(connections - sockets >= 1);
+  });
+
+  test('names that never answer take no thread of the shared pool: another lookup is not delayed, and the fetches end', async () => {
+    const hung = await nameServer(null);
+    after(() => hung.close());
+    const viaHung = { ...rules({}, { resolve: caresResolver({ servers: [hung.server], timeoutMs: 500 }) }), port: PRODUCTION_RULES.port };
+    const started = Date.now();
+    const fetches = Array.from({ length: 24 }, (_, i) => fetchPage(`http://burst-${i}.test/`, viaHung));
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    const lookupStarted = Date.now();
+    await new Promise<void>((resolve, reject) => dns.lookup('localhost', (error) => (error ? reject(error) : resolve())));
+    const took = Date.now() - lookupStarted;
+    assert.ok(took < 250, `dns.lookup('localhost') waited ${took} ms behind hung lookups`);
+    const results = await Promise.all(fetches);
+    assert.ok(results.every((result) => !result.ok && result.reason === 'unreachable'), JSON.stringify(results));
+    assert.ok(Date.now() - started < FETCH_LIMITS.totalMs + 500, `took ${Date.now() - started} ms`);
+  });
+
+  test('queries in flight are bounded', async () => {
+    const hung = await nameServer(null);
+    after(() => hung.close());
+    const limited = caresResolver({ servers: [hung.server], timeoutMs: 300, maxPending: 2 });
+    const outcomes = await Promise.allSettled([limited('a.test'), limited('b.test'), limited('c.test')]);
+    assert.deepEqual(outcomes.map((outcome) => outcome.status === 'rejected' && (outcome.reason as { code?: string }).code), ['ENOTFOUND', 'ENOTFOUND', 'EBUSY']);
+    await assert.rejects(limited('d.test'), { code: 'ENOTFOUND' }, 'the slots are free again once the queries settle');
   });
 });
 

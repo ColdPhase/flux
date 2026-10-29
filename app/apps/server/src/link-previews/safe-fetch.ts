@@ -2,13 +2,14 @@ import type { LookupAddress } from 'node:dns';
 import http from 'node:http';
 import https from 'node:https';
 import { isIP, type LookupFunction } from 'node:net';
-import { classifyAddress, systemResolver, type Resolver } from '@flux/agent-runtime';
+import { classifyAddress } from '@flux/agent-runtime';
+import { caresResolver, type HostResolver } from './resolver.js';
 
 // The one way the server fetches a page for a link card (#469). The address in a message is attacker-chosen, so every rule that
 // keeps the request away from the instance's own network lives here, in one place that the tests drive with real sockets:
 //
 // - only http and https, only the scheme's default port, no credentials in the address;
-// - the host is resolved once, by the socket's own lookup: every address it returns must be public (private, loopback,
+// - the host is resolved once, by the socket's own lookup (c-ares, never libuv's shared thread pool, `resolver.ts`): every address it returns must be public (private, loopback,
 //   link-local, multicast, reserved, cloud metadata and IPv4-mapped forms are not), and the socket connects to that very
 //   address, so a name that answers differently a moment later (DNS rebinding) cannot reach a private one;
 // - a redirect (at most 3) is a new request judged by the same rules, and never carries anything from the first;
@@ -23,16 +24,16 @@ export type FetchFailure = 'blocked' | 'unreachable' | 'timeout' | 'status' | 't
 export type FetchResult = { ok: true; url: string; html: string } | { ok: false; reason: FetchFailure };
 
 export interface FetchRules {
-  resolve: Resolver;
+  resolve: HostResolver;
   classify: (address: string) => AddressClass;
   /** The port to connect to for this address, or null to refuse it. */
   port: (url: URL) => number | null;
   limits: { connectMs: number; totalMs: number; maxBytes: number; maxRedirects: number };
 }
 
-/** The production rules: the system resolver, the address classes of `classifyAddress`, and default ports only. */
+/** The production rules: the c-ares resolver (off the shared thread pool), the address classes of `classifyAddress`, and default ports only. */
 export const PRODUCTION_RULES: FetchRules = {
-  resolve: systemResolver,
+  resolve: caresResolver(),
   classify: classifyAddress,
   port: (url) => (url.port === '' ? (url.protocol === 'https:' ? 443 : 80) : null),
   limits: FETCH_LIMITS,
@@ -170,8 +171,9 @@ export async function fetchPage(address: string, rules: FetchRules = PRODUCTION_
  * (so a run does not even send a DNS query for it), a single-label name (a Compose service) is, and whatever it resolves to
  * counts as non-public. Only the hosts named in `testHosts` connect, to their mock.
  */
+const closedWorldResolve = caresResolver();
 export const CLOSED_WORLD_RULES: FetchRules = {
   ...PRODUCTION_RULES,
   classify: () => 'private',
-  resolve: (host) => (/^[a-z0-9-]+$/.test(host) ? systemResolver(host) : Promise.reject(Object.assign(new Error(`ENOTFOUND ${host}`), { code: 'ENOTFOUND' }))),
+  resolve: (host) => (/^[a-z0-9-]+$/.test(host) ? closedWorldResolve(host) : Promise.reject(Object.assign(new Error(`ENOTFOUND ${host}`), { code: 'ENOTFOUND' }))),
 };

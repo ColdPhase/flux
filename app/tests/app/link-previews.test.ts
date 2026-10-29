@@ -118,6 +118,18 @@ describe('access follows the message', () => {
     assert.equal((await hitsOf()).length, 0);
   });
 
+  test('a malformed id answers 400 INVALID_INPUT and echoes no query', async () => {
+    const id = await say(owner, room.id, site('/plain'));
+    for (const bad of ['not-a-uuid', encodeURIComponent("' OR 1=1 --"), encodeURIComponent('../x'), '123', `${id}x`]) {
+      const asMessage = await owner.browser.request('GET', `/api/v1/projects/${room.id}/messages/${bad}/link-previews`);
+      assert.equal(asMessage.status, 400, `${bad}: ${asMessage.text}`);
+      assert.equal((asMessage.json as { code?: string }).code, 'INVALID_INPUT');
+      const asProject = await owner.browser.request('GET', `/api/v1/projects/${bad}/messages/${id}/link-previews`);
+      assert.equal(asProject.status, 400, `${bad}: ${asProject.text}`);
+      for (const text of [asMessage.text, asProject.text]) assert.doesNotMatch(text, /select|from "|Failed query/i);
+    }
+  });
+
   test('without a session the route answers 401', async () => {
     const id = await say(owner, room.id, site('/plain'));
     assert.equal((await new Browser().request('GET', `/api/v1/projects/${room.id}/messages/${id}/link-previews`)).status, 401);

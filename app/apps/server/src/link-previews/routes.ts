@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { messageLinkUrls, type MessageLinkPreviews } from '@flux/contracts';
-import { evaluateProject, NotFoundError, type Database } from '@flux/core';
+import { evaluateProject, InvalidInputError, isUuid, NotFoundError, type Database } from '@flux/core';
 import { accessReader, messageReferenceRows, workspaceEncryptionRows } from '@flux/db';
 import type { SessionResolver } from '../identity/index.js';
 import type { LinkPreviewsConfig } from './config.js';
@@ -20,6 +20,9 @@ export async function linkPreviewRoutes(app: FastifyInstance, { db, sessions, co
   app.get<{ Params: { projectId: string; messageId: string } }>('/api/v1/projects/:projectId/messages/:messageId/link-previews', async (request): Promise<MessageLinkPreviews> => {
     const { principal } = await sessions.requirePrincipal(request);
     const { projectId, messageId } = request.params;
+    // Like every other route that names an object: a malformed id is 400 before any query sees it.
+    if (!isUuid(projectId)) throw new InvalidInputError('projectId must be a UUID');
+    if (!isUuid(messageId)) throw new InvalidInputError('messageId must be a UUID');
     const evaluation = await evaluateProject(principal, 'project.read', projectId, accessReader(db));
     if (!evaluation.allowed || !evaluation.project) throw new NotFoundError('Message');
     const workspaceId = evaluation.project.workspaceId;
