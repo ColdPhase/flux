@@ -285,6 +285,16 @@ describe('F-030 events backstop (S2a-2c-3, migration 0125)', () => {
     }
     await insert(B, { op: 'secret', title: 'Plain title' });
   });
+
+  test('a sealed job wait carries {eventId} only (#717 review P3-5)', async () => {
+    const wait = (payload: unknown) => pool.query(`INSERT INTO sealed_job_waits (id, workspace_id, queue, payload) VALUES (gen_random_uuid(), $1, 'notifications.generate', $2)`,
+      [A, JSON.stringify(payload)]);
+    await wait({ eventId: randomUUID() });
+    for (const payload of [{ text: 'secret' }, { eventId: 'secret' }, { eventId: randomUUID(), note: 'secret' }, ['x']]) {
+      await assert.rejects(wait(payload), { hint: 'EVENT_CONTENT_REFUSED' }, JSON.stringify(payload));
+    }
+    await pool.query(`DELETE FROM sealed_job_waits WHERE workspace_id = $1`, [A]);
+  });
 });
 
 /**
