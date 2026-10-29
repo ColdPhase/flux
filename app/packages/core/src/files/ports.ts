@@ -76,7 +76,12 @@ export class FileReceiveTimeoutError extends Error {}
  */
 export interface FileStorage {
   /** Streams into private scratch, refusing more than `maxBytes` (FileTooLargeError) or past `deadline` (FileReceiveTimeoutError). */
-  receive(bytes: AsyncIterable<Uint8Array>, limits: { maxBytes: number; deadline: number }): Promise<ReceivedFile>;
+  receive(bytes: AsyncIterable<Uint8Array>, limits: { maxBytes: number; deadline: number },
+    /**
+     * F-030: the reservation id the bytes will be committed under. For an encrypted workspace's file the adapter seals
+     * the bytes as they arrive (size and SHA-256 stay those of the plaintext), so plaintext never reaches the scratch.
+     */
+    objectId?: string): Promise<ReceivedFile>;
   /** The object's bytes, or null when it is missing. */
   read(objectId: string): Promise<Uint8Array | null>;
   /** Whether immutable bytes exist with exactly this size and, when supplied, SHA-256. */

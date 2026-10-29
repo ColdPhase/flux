@@ -89,6 +89,9 @@ services:
       # Pool connection wait for this suite (#271, docs/development/containers.md): new connections and
       # short waits while other stacks share the host. Production keeps 1.5 s.
       FLUX_DB_CONNECT_TIMEOUT_MS: ${FLUX_DB_CONNECT_TIMEOUT_MS:-10000}
+      # F-030 (#655): a sealed chooser search opens at most 8 objects here, so encryption-sealed-content tests its
+      # truncation marker in every Docker stack (honoured only by a test deployment; the test runner reads it too).
+      FLUX_TEST_SEALED_CHOOSER_SCAN_LIMIT: "8"
   # TEST ONLY (#316): a second API process on the same database, so a policy change made on one
   # instance is proven to order against delivery held on the other. No host port.
   api2:
@@ -99,6 +102,7 @@ services:
     environment:
       FLUX_AI_PRIVATE_TARGETS: providermock
       FLUX_DB_CONNECT_TIMEOUT_MS: ${FLUX_DB_CONNECT_TIMEOUT_MS:-10000}
+      FLUX_TEST_SEALED_CHOOSER_SCAN_LIMIT: "8"
   worker:
     environment:
       FLUX_AI_PRIVATE_TARGETS: providermock
@@ -113,6 +117,7 @@ services:
   test:
     environment:
       FLUX_TEST_FILES_DIR: /data/files
+      FLUX_TEST_SEALED_CHOOSER_SCAN_LIMIT: "8"
       # The suite's own pools too, including the fresh databases of the migration tests.
       FLUX_DB_CONNECT_TIMEOUT_MS: ${FLUX_DB_CONNECT_TIMEOUT_MS:-10000}
       FLUX_VAPID_PUBLIC_KEY: ${FLUX_VAPID_PUBLIC_KEY:-}

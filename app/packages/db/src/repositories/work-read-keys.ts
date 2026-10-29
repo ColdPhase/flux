@@ -111,12 +111,6 @@ export async function nativeReadKeyWindow<Kind extends string>(db: DbExecutor, s
     hasAfter: items.length ? before + items.length < total : ownedCursor?.direction === 'previous' && laterCount > 0 };
 }
 
-
-/**
- * For a chooser with text in a sealed workspace: the ids whose opened title contains it (case-insensitive), else
- * undefined. It opens at most the project's newest `SEALED_CHOOSER_SCAN_LIMIT` objects (about 20 µs each on the event
- * loop, S2a-2a review) and says when there were more (`limited`), so the page can say so; S2b's index replaces it.
- */
 /**
  * The scan limit in effect. A test deployment (`FLUX_FIXTURE_TOKEN` set and `FLUX_TEST_FAILURE_INJECTION=true`) may lower
  * it with `FLUX_TEST_SEALED_CHOOSER_SCAN_LIMIT`, so the truncation marker is tested without thousands of tasks.
@@ -127,6 +121,11 @@ function scanLimit(env: NodeJS.ProcessEnv = process.env): number {
   return testDeployment && Number.isInteger(test) && test >= 1 && test < SEALED_CHOOSER_SCAN_LIMIT ? test : SEALED_CHOOSER_SCAN_LIMIT;
 }
 
+/**
+ * For a chooser with text in a sealed workspace: the ids whose opened title contains it (case-insensitive), else
+ * undefined. It opens at most the project's newest `SEALED_CHOOSER_SCAN_LIMIT` objects (about 20 µs each on the event
+ * loop, S2a-2a review) and says when there were more (`limited`), so the page can say so; S2b's index replaces it.
+ */
 async function sealedMatches(db: DbExecutor, projectId: string, selection: NativeWorkViewSelector): Promise<{ ids: string[]; limited: boolean } | undefined> {
   if (selection.purpose !== 'choices' || !selection.q) return undefined;
   const [project] = (await db.execute<{ workspace_id: string }>(sql`SELECT workspace_id FROM projects WHERE id = ${projectId}::uuid`)).rows;
