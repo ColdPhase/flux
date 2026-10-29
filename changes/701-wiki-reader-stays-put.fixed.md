@@ -1,0 +1,1 @@
+- A Wiki page no longer rebuilds itself a moment after it opens: a Share or Download card you had just opened, and the focus, stay where they are. The shared editor's preview now keeps wide tables in their own scrollable, keyboard-reachable region, as the page does ([#701](https://github.com/ColdPhase/flux/pull/701)).

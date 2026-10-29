@@ -221,7 +221,7 @@ class TaskAnnouncements(unittest.TestCase):
         page.goto(f"/projects/{self.ids['project']}")
         root = page.locator(f"#message-{self.ids['first']}")
         expect(root.locator(".project-convo__message-meta strong")).to_have_text("Jonas Berg")
-        expect(root.locator("p").first).to_have_text(FIRST_WORD)
+        expect(root.locator(".message-body").first).to_have_text(FIRST_WORD)
         chip = root.get_by_role("button", name=f"Discussion of task: {MEASURE}")
         expect(chip).to_be_visible()
         expect(chip).to_contain_text("Open")

@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { and, eq, lte, sql } from 'drizzle-orm';
 import * as schema from '../schema.js';
 import type { DbExecutor } from './push.js';
+import { openRow, sealOf, sealRow } from '../sealing.js';
 
 const k = schema.idempotencyKeys;
 
@@ -43,7 +44,9 @@ export function idempotencyRepository(db: DbExecutor) {
       await db.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${lockKey}, 0))`);
     },
     async find(scope: IdempotencyKeyScope): Promise<StoredIdempotencyKey | null> {
-      const [row] = await db.select().from(k).where(match(scope));
+      const [stored] = await db.select().from(k).where(match(scope));
+      // F-030: a sealed workspace's stored response and request hash are sealed; a replay opens them (423 while locked).
+      const row = stored && stored.workspaceId ? openRow('idempotency_keys', stored, await sealOf(db, stored.workspaceId, { write: false })) : stored;
       return row ? { id: row.id, requestHash: row.requestHash, expiresAt: row.expiresAt,
         response: { status: row.responseStatus, body: row.responseBody, etag: row.responseEtag } } : null;
     },
@@ -52,9 +55,12 @@ export function idempotencyRepository(db: DbExecutor) {
     },
     /** Stores a response, kept for `retentionHours` from the transaction's time. */
     async save(scope: IdempotencyKeyScope, requestHash: string, response: { status: number; body: unknown; etag: string | null }, retentionHours: number): Promise<void> {
+      const values = { principal: scope.principal, operation: scope.operation, key: scope.key, requestHash, responseBody: response.body };
+      // Identity `[principal, operation, key]` (the workspace is in every AAD); the hash is sealed as a sealed digest.
+      const sealed = scope.workspaceId ? sealRow('idempotency_keys', values, await sealOf(db, scope.workspaceId, { write: true })) : values;
       await db.insert(k).values({
         id: randomUUID(), principal: scope.principal, workspaceId: scope.workspaceId, operation: scope.operation, key: scope.key,
-        requestHash, responseStatus: response.status, responseBody: response.body, responseEtag: response.etag,
+        requestHash: sealed.requestHash, responseStatus: response.status, responseBody: sealed.responseBody, responseEtag: response.etag,
         expiresAt: sql`now() + make_interval(hours => ${retentionHours})`,
       });
     },

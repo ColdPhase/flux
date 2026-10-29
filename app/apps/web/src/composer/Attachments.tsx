@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useId, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
-import { filePath, imageTypeOf, type MessageFile } from '@flux/contracts';
+import { filePath, imageTypeOf, type MessageFile, type MessageReferenceCard } from '@flux/contracts';
 import { Icon, trapTab, type IconName } from '../ui';
-import { extensionOf, fileKind, fileLabel, fileWord, looksLikePhoto, type FileKind } from './fileKind';
+import { detailLine, extensionOf, fileKind, fileLabel, fileWord, looksLikePhoto, playTime, type FileKind } from './fileKind';
+import { MessageReferences } from './References';
 import './attachments.css';
 
 // Files, references and photos inside the message (#348, F-026 §6). Every byte is read through the
@@ -47,7 +48,7 @@ export function FileRow({ file }: { file: MessageFile }) {
   return (
     <a className="file-row" href={filePath(file.id)} download={file.name} data-file-kind={fileKind(file.name)}>
       <FileIcon name={file.name} />
-      <span className="file-row__text"><span className="file-row__name">{file.name}</span><small>{typeLine(file)}</small></span>
+      <span className="file-row__text"><span className="file-row__name">{file.name}</span><small>{typeLine(file, detailLine(file))}</small></span>
       <span className="file-row__act" data-tip="Download"><Icon name="download" size={16} /><span className="ui-vh">Download</span></span>
     </a>
   );
@@ -78,16 +79,50 @@ export function useFileBytes(fileId: string | null, as: 'image' | 'audio', enabl
   return result.key === key ? result.bytes : { status: 'loading' };
 }
 
-/** A local File (a draft or a message not stored yet) as an object URL for its thumbnail. */
-export function useObjectUrl(blob: Blob | null | undefined) {
+/**
+ * A photo kept as a small data: URL, made from the bytes the person chose while they could still be read. A message that waits
+ * for the connection shows this copy: it needs no read of the file or of its object URL when the tile is drawn (a browser that
+ * is offline may refuse those), so the waiting photo is always the real photo (#469, #348 AC-3). Keyed by the File, so it goes
+ * with the file; the longest side is 1280 px, about what the largest tile shows at 3x.
+ */
+const previews = new WeakMap<Blob, string>();
+const making = new WeakMap<Blob, Promise<void>>();
+const PREVIEW_EDGE = 1280;
+export function warmPreview(blob: Blob | null | undefined): Promise<void> {
+  if (!blob || previews.has(blob) || !blob.type.startsWith('image/') || typeof createImageBitmap !== 'function') return Promise.resolve();
+  const started = making.get(blob);
+  if (started) return started;
+  const work = (async () => {
+    try {
+      const bitmap = await createImageBitmap(blob);
+      const scale = Math.min(1, PREVIEW_EDGE / Math.max(bitmap.width, bitmap.height));
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.max(1, Math.round(bitmap.width * scale));
+      canvas.height = Math.max(1, Math.round(bitmap.height * scale));
+      canvas.getContext('2d')?.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+      bitmap.close?.();
+      const url = canvas.toDataURL(blob.type === 'image/png' ? 'image/png' : 'image/jpeg', 0.86);
+      if (url.startsWith('data:image/')) previews.set(blob, url);
+    } catch { /* the object URL below remains the thumbnail */ }
+  })();
+  making.set(blob, work);
+  return work;
+}
+
+/**
+ * A local File (a draft or a message not stored yet) as an object URL for its thumbnail. With `preferPreview` (a message that is
+ * waiting to send) it shows the kept copy made by {@link warmPreview} when there is one.
+ */
+export function useObjectUrl(blob: Blob | null | undefined, preferPreview = false) {
   const [state, setState] = useState<{ blob: Blob; url: string } | null>(null);
+  const kept = blob && preferPreview ? previews.get(blob) : undefined;
   useEffect(() => {
-    if (!blob) return;
+    if (!blob || kept) return;
     const url = URL.createObjectURL(blob);
     queueMicrotask(() => setState({ blob, url }));
     return () => URL.revokeObjectURL(url);
-  }, [blob]);
-  return blob && state?.blob === blob ? state.url : '';
+  }, [blob, kept]);
+  return kept ?? (blob && state?.blob === blob ? state.url : '');
 }
 
 /** Decorative waveform bars, steady for one file. */
@@ -108,13 +143,17 @@ const clockOf = (seconds: number) => Number.isFinite(seconds) ? `${Math.floor(se
 export function VoiceNote({ file }: { file: MessageFile }) {
   const [wanted, setWanted] = useState(false);
   const [playing, setPlaying] = useState(false);
-  const [duration, setDuration] = useState('');
+  // The server read the playing time at upload (#469); the player's own metadata replaces it once the bytes are loaded.
+  const [duration, setDuration] = useState(file.durationMs === undefined ? '' : playTime(file.durationMs));
   const audio = useRef<HTMLAudioElement>(null);
   const bytes = useFileBytes(wanted ? file.id : null, 'audio', wanted, file.name);
   useEffect(() => { if (bytes.status === 'ready' && wanted) void audio.current?.play().catch(() => setPlaying(false)); }, [bytes, wanted]);
+  // The bytes are read after the press, so the player is started inside the press itself: a browser that allows playback only
+  // from a user gesture (Safari) then plays them once they arrive, instead of needing a second press (#469).
+  useEffect(() => { if (bytes.status === 'denied') audio.current?.pause(); }, [bytes.status]);
   const toggle = () => {
-    if (!wanted) { setWanted(true); return; }
-    if (audio.current?.paused) void audio.current.play(); else audio.current?.pause();
+    if (!wanted) { setWanted(true); void audio.current?.play().catch(() => setPlaying(false)); return; }
+    if (audio.current?.paused) void audio.current.play().catch(() => setPlaying(false)); else audio.current?.pause();
   };
   return (
     <div className="file-row voice-note" data-file-kind="audio">
@@ -123,8 +162,8 @@ export function VoiceNote({ file }: { file: MessageFile }) {
         <small className="voice-note__line"><Waveform seed={file.id} />{bytes.status === 'denied' ? 'Unavailable' : duration || fileSize(file.size)}</small></span>
       <button type="button" className="voice-note__play" onClick={toggle} aria-pressed={playing} aria-label={`${playing ? 'Pause' : 'Play'} ${file.name}`} disabled={bytes.status === 'denied'}>
         <Icon name={playing ? 'pause' : 'play'} size={14} /></button>
-      {bytes.status === 'ready' ? <audio ref={audio} src={bytes.url} preload="metadata" onPlay={() => setPlaying(true)} onPause={() => setPlaying(false)} onEnded={() => setPlaying(false)}
-        onLoadedMetadata={(event) => setDuration(clockOf(event.currentTarget.duration))} /> : null}
+      <audio ref={audio} src={bytes.status === 'ready' ? bytes.url : undefined} preload="metadata" onPlay={() => setPlaying(true)} onPlaying={() => setPlaying(true)} onPause={() => setPlaying(false)} onEnded={() => setPlaying(false)}
+        onLoadedMetadata={(event) => { const known = clockOf(event.currentTarget.duration); if (known) setDuration(known); }} />
     </div>
   );
 }
@@ -269,12 +308,12 @@ export function MessageBubble({ children }: { children: ReactNode }) {
   return <div className="message-bubble">{children}</div>;
 }
 
-export function MessageContent({ files, context, body, children }: { files?: MessageFile[]; context?: PhotoContext; body?: ReactNode; children?: ReactNode }) {
+export function MessageContent({ files, context, body, references, children }: { files?: MessageFile[]; context?: PhotoContext; body?: ReactNode; references?: readonly MessageReferenceCard[]; children?: ReactNode }) {
   const photos = files?.filter((file) => looksLikePhoto(file.name)) ?? [];
   const others = files?.filter((file) => !looksLikePhoto(file.name));
   return <>
     {photos.length ? <PhotoGrid photos={photos} context={context} /> : null}
-    <MessageBubble>{body}<MessageFiles files={others} />{children}</MessageBubble>
+    <MessageBubble>{body}<MessageFiles files={others} />{children}<MessageReferences references={references} /></MessageBubble>
     <PhotoMeta photos={photos} />
   </>;
 }

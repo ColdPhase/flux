@@ -3,6 +3,7 @@ import { alias } from 'drizzle-orm/pg-core';
 import { UNTITLED_SKETCH } from '@flux/contracts';
 import * as schema from '../schema.js';
 import type { DbExecutor } from './push.js';
+import { openAliased, openRows, sealFor } from '../sealing.js';
 
 /**
  * Drizzle persistence for sketches, thoughts and links (issues #69, #46). The rows satisfy the
@@ -91,12 +92,19 @@ export function sketchRows(db: DbExecutor) {
     .leftJoin(thoughtCreator, eq(thoughtCreator.id, t.createdByUserId))
     .leftJoin(thoughtAgent, eq(thoughtAgent.id, t.createdByAgentId))
     .leftJoin(thoughtSourceAgent, eq(thoughtSourceAgent.id, t.sourceAuthorAgentId));
+  // F-030: map titles, thought texts, link labels (and the messages a thought quotes) are sealed in an encrypted
+  // workspace; every read opens them here, one seal per workspace.
+  const within = async <R extends { row: object }>(table: string, rows: R[]): Promise<R[]> => {
+    const opened = await openRows(db, table, rows.map((r) => r.row));
+    return rows.map((r, index) => ({ ...r, row: opened[index]! }));
+  };
+  const openLinks = (rows: (typeof l.$inferSelect)[]) => openRows(db, 'sketch_links', rows);
   const findSketch = async (id: string) => {
-    const [row] = await selectSketches().where(eq(s.id, id));
+    const [row] = await within('sketches', await selectSketches().where(eq(s.id, id)));
     return row ? toSketchRecord(row) : null;
   };
   const findThought = async (sketchId: string, id: string) => {
-    const [row] = await selectThoughts().where(and(eq(t.sketchId, sketchId), eq(t.id, id)));
+    const [row] = await within('sketch_thoughts', await selectThoughts().where(and(eq(t.sketchId, sketchId), eq(t.id, id))));
     if (!row) throw new Error('Thought row vanished inside its transaction');
     return toThoughtRecord(row);
   };
@@ -108,7 +116,7 @@ export function sketchRows(db: DbExecutor) {
       const withContent = sql`(EXISTS (SELECT 1 FROM ${t} WHERE ${t.sketchId} = ${s.id}) OR btrim(${s.title}) NOT IN ('', ${UNTITLED_SKETCH}))`;
       const where = and(eq(s.workspaceId, workspaceId), audience, filter.projectId ? eq(s.projectId, filter.projectId) : undefined,
         filter.dmId ? eq(s.dmId, filter.dmId) : undefined, filter.scope ? eq(s.scope, filter.scope) : undefined, filter.hideEmpty ? withContent : undefined);
-      const rows = await selectSketches().where(where).orderBy(desc(s.updatedAt), asc(s.id)).limit(page.limit).offset(page.offset);
+      const rows = await within('sketches', await selectSketches().where(where).orderBy(desc(s.updatedAt), asc(s.id)).limit(page.limit).offset(page.offset));
       const counted = rows.length ? await db.select({ sketchId: t.sketchId, n: count() }).from(t)
         .where(inArray(t.sketchId, rows.map(({ row }) => row.id))).groupBy(t.sketchId) : [];
       const thoughts = new Map(counted.map((entry) => [entry.sketchId, Number(entry.n)]));
@@ -117,14 +125,15 @@ export function sketchRows(db: DbExecutor) {
     },
     findSketch,
     async insertSketch(sketch: NewSketchRow) {
-      await db.insert(s).values({
+      await db.insert(s).values(await sealFor(db, 'sketches', sketch.workspaceId, {
         id: sketch.id, workspaceId: sketch.workspaceId, scope: sketch.scope, projectId: sketch.projectId, dmId: sketch.dmId, title: sketch.title, ...author(sketch.createdBy),
         ...(sketch.copy ? { copiedFromSketchId: sketch.copy.fromSketchId, copiedByUserId: sketch.copy.byUserId, copiedAt: new Date() } : {}),
-      });
+      }));
       return (await findSketch(sketch.id))!;
     },
     async renameSketch(id: string, title: string) {
-      await db.update(s).set({ title, version: sql`${s.version} + 1`,
+      const [located] = await db.select({ workspaceId: s.workspaceId }).from(s).where(eq(s.id, id));
+      await db.update(s).set({ ...(await sealFor(db, 'sketches', located!.workspaceId, { title }, { id })), version: sql`${s.version} + 1`,
         updatedAt: sql`GREATEST(clock_timestamp(), ${s.updatedAt} + interval '1 millisecond')` }).where(eq(s.id, id));
       return (await findSketch(id))!;
     },
@@ -134,7 +143,7 @@ export function sketchRows(db: DbExecutor) {
     async thoughts(sketchId: string, page?: { limit: number; offset: number }) {
       // Thoughts started from messages in one change share created_at: they follow the conversation.
       const query = selectThoughts().where(eq(t.sketchId, sketchId)).orderBy(asc(t.createdAt), sql`${t.sourceSentAt} ASC NULLS LAST`, asc(t.id)).$dynamic();
-      return (await (page ? query.limit(page.limit).offset(page.offset) : query)).map(toThoughtRecord);
+      return (await within('sketch_thoughts', await (page ? query.limit(page.limit).offset(page.offset) : query))).map(toThoughtRecord);
     },
     async mapCounts(sketchId: string) {
       const [thoughts] = await db.select({ count: sql<number>`count(*)::int` }).from(t).where(eq(t.sketchId, sketchId));
@@ -145,12 +154,12 @@ export function sketchRows(db: DbExecutor) {
       if (!ids.length) return [];
       const locked = await db.select({ id: t.id }).from(t).where(and(eq(t.sketchId, sketchId), inArray(t.id, ids))).orderBy(asc(t.id)).for('update');
       if (!locked.length) return [];
-      return (await selectThoughts().where(and(eq(t.sketchId, sketchId), inArray(t.id, locked.map((row) => row.id)))).orderBy(asc(t.id))).map(toThoughtRecord);
+      return (await within('sketch_thoughts', await selectThoughts().where(and(eq(t.sketchId, sketchId), inArray(t.id, locked.map((row) => row.id)))).orderBy(asc(t.id)))).map(toThoughtRecord);
     },
     async dmMessages(dmId: string, ids: string[]) {
       if (!ids.length) return [];
-      const rows = await db.select({ row: m, authorName: users.name }).from(m).innerJoin(users, eq(users.id, m.authorId))
-        .where(and(eq(m.dmId, dmId), inArray(m.id, ids))).orderBy(asc(m.sequence));
+      const rows = await within('dm_messages', await db.select({ row: m, authorName: users.name }).from(m).innerJoin(users, eq(users.id, m.authorId))
+        .where(and(eq(m.dmId, dmId), inArray(m.id, ids))).orderBy(asc(m.sequence)));
       return rows.map(({ row, authorName }) => ({ id: row.id, dmId: row.dmId, sequence: row.sequence, authorId: row.authorId, authorName, body: row.body, createdAt: row.createdAt }));
     },
     async projectMessages(projectId: string, ids: string[]) {
@@ -161,7 +170,7 @@ export function sketchRows(db: DbExecutor) {
       const rows = await db.select({ row: pm, userName: messageUsers.name, agentName: messageAgents.name }).from(pm)
         .leftJoin(messageUsers, eq(messageUsers.id, pm.authorId))
         .leftJoin(messageAgents, eq(messageAgents.id, pm.authorAgentId))
-        .where(and(eq(pm.projectId, projectId), inArray(pm.id, ids))).orderBy(asc(pm.sequence));
+        .where(and(eq(pm.projectId, projectId), inArray(pm.id, ids))).orderBy(asc(pm.sequence)).then((read) => within('project_messages', read));
       return rows.flatMap(({ row, userName, agentName }) => {
         const authorId = row.authorId ?? row.authorAgentId;
         const authorName = row.authorId ? userName : agentName;
@@ -178,16 +187,17 @@ export function sketchRows(db: DbExecutor) {
         .where(eq(dp.dmId, dmId)).orderBy(asc(dp.joinedAt), asc(users.name), asc(dp.userId));
     },
     async copiesOf(sketchId: string) {
-      const rows = await db.select({ sketchId: s.id, projectId: s.projectId, projectName: schema.projects.name, copiedAt: s.copiedAt }).from(s)
+      const read = await db.select({ sketchId: s.id, workspaceId: s.workspaceId, projectId: s.projectId, projectName: schema.projects.name, copiedAt: s.copiedAt }).from(s)
         .innerJoin(schema.projects, eq(schema.projects.id, s.projectId))
         .where(eq(s.copiedFromSketchId, sketchId)).orderBy(asc(s.copiedAt), asc(s.id));
+      const rows = await openAliased(db, read, { table: 'projects', column: 'name', key: 'projectName', workspace: (row) => row.workspaceId, identity: (row) => [row.projectId!] });
       return rows.map((row) => ({ sketchId: row.sketchId, projectId: row.projectId!, projectName: row.projectName, copiedAt: row.copiedAt!.toISOString() }));
     },
     async thoughtExists(id: string) {
       return (await db.select({ id: t.id }).from(t).where(eq(t.id, id))).length > 0;
     },
     async insertThought(thought: NewThoughtRow) {
-      await db.insert(t).values({
+      await db.insert(t).values(await sealFor(db, 'sketch_thoughts', thought.workspaceId, {
         id: thought.id, workspaceId: thought.workspaceId, sketchId: thought.sketchId, text: thought.text, x: thought.x, y: thought.y,
         width: thought.width, height: thought.height, shape: thought.shape, version:thought.version??1,
         placementType: thought.placement?.type ?? null, placementId: thought.placement?.id ?? null, ...author(thought.createdBy),
@@ -197,11 +207,13 @@ export function sketchRows(db: DbExecutor) {
           sourceAuthorName: thought.source.authorName, sourceSentAt: thought.source.sentAt,
           sourceDmId: thought.source.dmId, sourceMessageId: thought.source.messageId, sourceProjectMessageId: thought.source.projectMessageId,
         } : {}),
-      });
+      }));
       return findThought(thought.sketchId, thought.id);
     },
     async updateThought(sketchId: string, id: string, changes: ThoughtChangeRow) {
-      await db.update(t).set({ ...changes, version: sql`${t.version} + 1`, updatedAt: new Date() }).where(and(eq(t.sketchId, sketchId), eq(t.id, id)));
+      const [located] = await db.select({ workspaceId: t.workspaceId }).from(t).where(and(eq(t.sketchId, sketchId), eq(t.id, id)));
+      const sealed = located ? await sealFor(db, 'sketch_thoughts', located.workspaceId, changes, { id }) : changes;
+      await db.update(t).set({ ...sealed, version: sql`${t.version} + 1`, updatedAt: new Date() }).where(and(eq(t.sketchId, sketchId), eq(t.id, id)));
       return findThought(sketchId, id);
     },
     async deleteThought(sketchId: string, id: string) {
@@ -209,7 +221,7 @@ export function sketchRows(db: DbExecutor) {
     },
     async links(sketchId: string, page?: { limit: number; offset: number }) {
       const query = db.select().from(l).where(eq(l.sketchId, sketchId)).orderBy(asc(l.createdAt), asc(l.id)).$dynamic();
-      return (await (page ? query.limit(page.limit).offset(page.offset) : query)).map(toLinkRecord);
+      return (await openLinks(await (page ? query.limit(page.limit).offset(page.offset) : query))).map(toLinkRecord);
     },
     async relatedLinks(sketchId:string,filter:{thoughtId?:string;linkId?:string}) {
       const where=and(eq(l.sketchId,sketchId),filter.thoughtId?or(eq(l.fromId,filter.thoughtId),eq(l.toId,filter.thoughtId)):undefined,filter.linkId?eq(l.id,filter.linkId):undefined);
@@ -217,28 +229,31 @@ export function sketchRows(db: DbExecutor) {
       // The native service retains both raw and normalized link rows before its journal hook.
       // Bound those parsed objects as well as SQL bytes before allocating either representation.
       if(size!.n*32+1024>60_000||Number(size!.bytes)>2*1024*1024)throw Object.assign(new Error('The affected links reached their finite capacity'),{code:'EDITING_MAP_CAPACITY'});
-      return (await db.select().from(l).where(where).orderBy(asc(l.id))).map(toLinkRecord);
+      return (await openLinks(await db.select().from(l).where(where).orderBy(asc(l.id)))).map(toLinkRecord);
     },
     async linkExists(id: string) {
       return (await db.select({ id: l.id }).from(l).where(eq(l.id, id))).length > 0;
     },
     async findLink(sketchId: string, id: string) {
-      const [row] = await db.select().from(l).where(and(eq(l.sketchId, sketchId), eq(l.id, id)));
+      const [row] = await openLinks(await db.select().from(l).where(and(eq(l.sketchId, sketchId), eq(l.id, id))));
       return row ? toLinkRecord(row) : null;
     },
     async linkBetween(sketchId: string, a: string, b: string) {
-      const [row] = await db.select().from(l).where(and(eq(l.sketchId, sketchId), or(and(eq(l.fromId, a), eq(l.toId, b)), and(eq(l.fromId, b), eq(l.toId, a)))));
+      const [row] = await openLinks(await db.select().from(l).where(and(eq(l.sketchId, sketchId), or(and(eq(l.fromId, a), eq(l.toId, b)), and(eq(l.fromId, b), eq(l.toId, a))))));
       return row ? toLinkRecord(row) : null;
     },
     async insertLink(link: NewLinkRow) {
-      const [row] = await db.insert(l).values({ id: link.id, workspaceId: link.workspaceId, sketchId: link.sketchId, fromId: link.fromId, toId: link.toId, label: link.label, ...author(link.createdBy) }).returning();
+      const [row] = await openLinks(await db.insert(l).values(await sealFor(db, 'sketch_links', link.workspaceId, { id: link.id, workspaceId: link.workspaceId, sketchId: link.sketchId,
+        fromId: link.fromId, toId: link.toId, label: link.label, ...author(link.createdBy) })).returning());
       return toLinkRecord(row!);
     },
     async deleteLink(sketchId: string, id: string) {
       return (await db.delete(l).where(and(eq(l.sketchId, sketchId), eq(l.id, id))).returning({ id: l.id })).length > 0;
     },
     async updateLinkLabel(sketchId: string, id: string, label: string | null) {
-      const [row] = await db.update(l).set({ label }).where(and(eq(l.sketchId, sketchId), eq(l.id, id))).returning();
+      const [located] = await db.select({ workspaceId: l.workspaceId }).from(l).where(and(eq(l.sketchId, sketchId), eq(l.id, id)));
+      const values = located ? await sealFor(db, 'sketch_links', located.workspaceId, { label }, { id }) : { label };
+      const [row] = await openLinks(await db.update(l).set(values).where(and(eq(l.sketchId, sketchId), eq(l.id, id))).returning());
       if (!row) throw new Error('Link row vanished inside its transaction');
       return toLinkRecord(row);
     },

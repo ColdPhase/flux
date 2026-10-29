@@ -18,6 +18,8 @@ import uuid
 
 from playwright.sync_api import Browser, BrowserContext, Page, expect, sync_playwright
 
+from app_select import choose, labels, expect_value
+
 from test_app_shell import DESKTOP, ORIGIN, PHONE, UI_BROWSER, UPSTREAM, box, open_details, shot, start_forwarder
 
 PASSWORD = "messages between friends"
@@ -373,11 +375,11 @@ class DirectMessageJourney(unittest.TestCase):
         message = ada.get_by_role("dialog", name="New message").get_by_role("tabpanel")
         expect(message.get_by_role("textbox", name="Message", exact=True)).to_have_value("Can you bring the spare probe cables on Thursday?")
         to = message.get_by_role("combobox", name="To")
-        expect(to).to_have_value("")
+        expect_value(to, "")
         send = message.get_by_role("button", name=re.compile("^Send message"))
         expect(send).to_be_disabled()
-        self.assertEqual(sorted(to.locator("option").all_inner_texts()[1:]), ["Kai Tanaka", "Lee Moreno"])
-        to.select_option(value=f"{self.workspace_id}:{self.ids['kai']}")
+        self.assertEqual(sorted(labels(to)[1:]), ["Kai Tanaka", "Lee Moreno"])
+        choose(to, value=f"{self.workspace_id}:{self.ids['kai']}")
         expect(message.locator(".create__foot")).to_contain_text("Only you and Kai Tanaka can read it")
         send.click()
         expect(ada.get_by_role("dialog", name="New message")).to_have_count(0)

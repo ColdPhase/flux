@@ -280,7 +280,7 @@ class AgentsTabStates(unittest.TestCase):
         expect(card).not_to_contain_text("Thanks, keep going.")
         card.click()
         expect(page.get_by_role("complementary", name=re.compile(r"^#1 · Fix the reconnect loop in the lamp firmware"))).to_be_visible()
-        expect(page.locator("select#agents-task")).to_have_count(0)
+        expect(page.locator("button#agents-task")).to_have_count(0)
         shot(page, "agents-tab-latest-desktop")
         # Negative control: Ada's Claude Code holds #3 and has written nothing there, so its card says so instead of another person's line.
         page.goto(f"/projects/{self.ids['project']}/agents?agent=connection:{self.ids['conn_claude']}")

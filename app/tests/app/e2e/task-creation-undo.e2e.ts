@@ -12,6 +12,7 @@ import { pool } from '../support/db.js';
 import { agentConnection } from '../support/mcp-actions.js';
 import { toolValue } from '../support/mcp.js';
 import { addMember, expectStatus, grant, password, person, project, workspace, type Person } from '../support/people.js';
+import { chooseOption, optionValues, selectedValue } from '../support/app-select.js';
 
 // Real OAuth/native creation, two real human accounts and real HTTP/SQL in either engine.
 // Holds interpose on genuine responses; they do not fabricate objects or events.
@@ -687,10 +688,11 @@ test('Agents, Map and live work never offer a task whose creation was undone, wh
     // The current task picker is in Hand Off; the undone task is absent, while the open task remains selectable.
     await page.getByRole('button', { name: 'Hand off a task', exact: true }).click();
     const taskChoice = page.getByLabel('Task', { exact: true }); await taskChoice.waitFor();
-    await taskChoice.selectOption(kept.id);
-    assert.equal(await taskChoice.inputValue(), kept.id);
-    assert.equal(await taskChoice.locator(`option[value="${item.id}"]`).count(), 0);
-    assert.equal(await taskChoice.locator(`option[value="${kept.id}"]`).count(), 1);
+    await chooseOption(taskChoice, kept.id);
+    assert.equal(await selectedValue(taskChoice), kept.id);
+    const offered = await optionValues(taskChoice);
+    assert.equal(offered.includes(item.id), false);
+    assert.equal(offered.includes(kept.id), true);
     await page.getByRole('button', { name: 'Close', exact: true }).click();
     // Map: the map surface has no live or task action on it; the Details link still opens read-only history.
     await page.goto(`/projects/${f.place.id}/map/${sketch.id}?open=work:${item.id}`); await reverted(page, item);

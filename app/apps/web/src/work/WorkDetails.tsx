@@ -4,7 +4,7 @@ import { useRevalidator } from 'react-router';
 import type { Agent, ObjectLink, Project, WorkspaceMember, WorkStatus, WorkDetailObject, WorkDetailProjection } from '@flux/contracts';
 import { ApiError } from '../api/client';
 import { useStreamEvents } from '../api/stream';
-import { AgentIdentity, Avatar, Button, Icon, Input, Kreska, Morph, PanelActions, PanelGlyph, PanelMeta, StatusGlyph, useToast } from '../ui';
+import { AgentIdentity, Avatar, Button, Icon, Input, Kreska, Morph, PanelActions, PanelGlyph, PanelMeta, StatusGlyph, useToast, Select, Option } from '../ui';
 import { getProject, listWorkspaceMembers } from '../app/conversation-api';
 import { useShellData } from '../app/data';
 import { useRegisterLiveHere } from '../live/LiveProvider';
@@ -140,6 +140,16 @@ function ChoicePages({ choices, label }: { choices: DetailChoices; label: string
   return <div><WorkPagination {...choices} label={label} noun="choices" />
     {choices.read.phase === 'unavailable' ? <p className="wd-error" role="alert">Choices could not be loaded. Your selection is kept. <button type="button" className="wd-inline" onClick={choices.onRefresh}>Refresh choices</button></p> : null}
   </div>;
+}
+
+/** A form's primary action and its one line of help: a section like the others, so the button never crowds what is around it. */
+function SubmitSection({ help, children }: { help: ReactNode; children: ReactNode }) {
+  return (
+    <section className="details__sec wd-submit">
+      <div className="wd-actions">{children}</div>
+      <p className="wd-muted">{help}</p>
+    </section>
+  );
 }
 
 function Audience({ project }: { project: Project }) {
@@ -631,9 +641,9 @@ function DecisionPanel({ decision, context, detail, relations, reload, choices, 
         <h3 className={`details__title${decision.status === 'superseded' ? ' wd-was' : ''}`}>{decision.title}</h3>
       </div>
       {decision.rationale ? <p className="details__lead">{decision.rationale}</p> : null}
-      <dl className="details__dl wd-dl">
-        <dt>Proposed</dt><dd>{decision.proposedBy.kind === 'agent' ? <AgentIdentity name={decision.proposedBy.name} owner={owners.get(decision.proposedBy.id)} /> : decision.proposedBy.name} · {shortDate(decision.createdAt)}</dd>
-        {decision.decidedBy ? <><dt>Decided</dt><dd>{decision.decidedBy.name} · {shortDate(decision.decidedAt!)}</dd></> : null}
+      <dl className="wd-rows wd-decision-rows">
+        <div className="wd-row"><dt>Proposed</dt><dd><span>{decision.proposedBy.kind === 'agent' ? <AgentIdentity name={decision.proposedBy.name} owner={owners.get(decision.proposedBy.id)} /> : decision.proposedBy.name} · {shortDate(decision.createdAt)}</span></dd></div>
+        {decision.decidedBy ? <div className="wd-row"><dt>Decided</dt><dd><span>{decision.decidedBy.name} · {shortDate(decision.decidedAt!)}</span></dd></div> : null}
       </dl>
 
       {earlier ? (
@@ -756,7 +766,8 @@ function ProposeDecision({ view, context, contextStatus, revision, isCurrent }: 
   const { me } = useShellData();
   const candidates = useWorkChoices(me.user.id, view.projectId, { purpose: 'choices', choice: 'accepted_decisions' }, !!context, revision);
   const current = candidates.page?.items.filter((item) => item.kind === 'decision') ?? [];
-  const [title, setTitle] = useState(view.source ? firstLine(view.source.text) : view.title ?? '');
+  // Words typed after /decide win over the source's own: the source then says where they came from.
+  const [title, setTitle] = useState(view.title ?? (view.source ? firstLine(view.source.text) : ''));
   const [rationale, setRationale] = useState('');
   const [supersedes, setSupersedes] = useState('');
   const selected = useNativeOwn(me.user.id, view.projectId, 'decision', supersedes || undefined, !!context, revision);
@@ -799,18 +810,17 @@ function ProposeDecision({ view, context, contextStatus, revision, isCurrent }: 
         <textarea id={rationaleId} value={rationale} onChange={(event) => edit(setRationale)(event.target.value)} maxLength={20000} rows={4} placeholder="What makes this the right call" />
         <>
           <label htmlFor={replacesId}>Replaces</label>
-          <select id={replacesId} value={supersedes} disabled={!candidates.page} onChange={(event) => edit(setSupersedes)(event.target.value)}>
-            <option value="">Nothing, this is a new rule</option>
-            {supersedes && !current.some((item) => item.id === supersedes) ? <option value={supersedes}>{chosen?.title ?? 'Selected rule (not loaded)'}</option> : null}
-            {current.map((item) => <option key={item.id} value={item.id}>{item.title}</option>)}
-          </select>
+          <Select id={replacesId} value={supersedes} disabled={!candidates.page} onChange={(next) => edit(setSupersedes)(next)}>
+            <Option value="">Nothing, this is a new rule</Option>
+            {supersedes && !current.some((item) => item.id === supersedes) ? <Option value={supersedes}>{chosen?.title ?? 'Selected rule (not loaded)'}</Option> : null}
+            {current.map((item) => <Option key={item.id} value={item.id}>{item.title}</Option>)}
+          </Select>
         </>
       </fieldset>
       <ChoicePages choices={candidates} label="Current rule choices" />
       {supersedes && (!chosen || chosen.status !== 'accepted') ? <p className="wd-muted">The selected rule must be currently available and accepted before this proposal can replace it.</p> : null}
       {error ? <p className="wd-error" role="alert">{error} <button type="button" className="wd-inline" onClick={(event) => void submit(event)}>Retry</button></p> : null}
-      <div className="wd-actions"><Button type="submit" variant="primary" busy={busy} disabled={!canSubmit}>Propose decision</Button></div>
-      <p className="wd-muted">A person with write access accepts it. The message stays where it is and links here.</p>
+      <SubmitSection help="A person with write access accepts it. The message stays where it is and links here."><Button type="submit" variant="primary" busy={busy} disabled={!canSubmit}>Propose decision</Button></SubmitSection>
       {context ? <Audience project={context.project} /> : null}
     </form>
   );
@@ -879,11 +889,11 @@ function AttachResult({ view, context, contextStatus, reload, revision, isCurren
         <textarea id={evidenceId} value={evidence} onChange={(event) => edit(setEvidence)(event.target.value)} maxLength={20000} rows={3} placeholder="Numbers, observations or where to find them" />
         <>
           <label htmlFor={workSelectId}>For work</label>
-          <select id={workSelectId} value={workId} disabled={!candidates.page} onChange={(event) => { edit(setWorkId)(event.target.value); setFinishes(false); setFinishVersion(null); }}>
-            <option value="">Not linked to work</option>
-            {workId && !open.some((item) => item.id === workId) ? <option value={workId}>{chosen?.title ?? 'Selected work (not loaded)'}</option> : null}
-            {open.map((item) => <option key={item.id} value={item.id}>{item.title}</option>)}
-          </select>
+          <Select id={workSelectId} value={workId} disabled={!candidates.page} onChange={(next) => { edit(setWorkId)(next); setFinishes(false); setFinishVersion(null); }}>
+            <Option value="">Not linked to work</Option>
+            {workId && !open.some((item) => item.id === workId) ? <Option value={workId}>{chosen?.title ?? 'Selected work (not loaded)'}</Option> : null}
+            {open.map((item) => <Option key={item.id} value={item.id}>{item.title}</Option>)}
+          </Select>
           {chosen && finishable && finishes && finishVersion === null ? <Button variant="quiet" onClick={() => { setFinishVersion(chosen.version); setAttempt(crypto.randomUUID()); setError(''); }}>Finish current version</Button> : null}
           {chosen && !finishable && finishes ? <Button variant="quiet" onClick={() => edit(setFinishes)(false)}>Attach without finishing</Button> : null}
           {chosen && !finishable ? <p className="wd-muted">“{chosen.title}” cannot be finished by this result in its current state. Parked work must first return to the plan.</p> : null}
@@ -893,8 +903,7 @@ function AttachResult({ view, context, contextStatus, reload, revision, isCurren
       <ChoicePages choices={candidates} label="Result work choices" />
       {selected.read.phase === 'unavailable' ? <p className="wd-error" role="alert">Selected work could not be loaded. Your selection is kept. <button type="button" className="wd-inline" onClick={reload}>Refresh selected work</button></p> : null}
       {error ? <p className="wd-error" role="alert">{error}</p> : null}
-      <div className="wd-actions"><Button type="submit" variant="primary" busy={busy} disabled={!canSubmit}>Attach result</Button></div>
-      <p className="wd-muted">A negative result is a real outcome: it can finish an experiment.</p>
+      <SubmitSection help="A negative result is a real outcome: it can finish an experiment."><Button type="submit" variant="primary" busy={busy} disabled={!canSubmit}>Attach result</Button></SubmitSection>
       {context ? <Audience project={context.project} /> : null}
     </form>
   );

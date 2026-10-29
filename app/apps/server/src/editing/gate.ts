@@ -89,7 +89,12 @@ export function editingGate(options: EditingGateOptions): EditingGate {
           if (closing || expired || socket.destroyed) return;
           const context: EditingContext = { target: { kind, id: id.toLowerCase() }, session, connectionId: randomUUID() };
           try { await options.authorize(context); }
-          catch { refuse(socket, 404, 'Not Found'); return; }
+          catch (error) {
+            // F-030: a reader of an encrypted workspace's doc or map learns that live editing is not offered there yet.
+            if ((error as { code?: unknown }).code === 'WORKSPACE_ENCRYPTED_UNSUPPORTED') refuse(socket, 409, 'Not available in an encrypted space');
+            else refuse(socket, 404, 'Not Found');
+            return;
+          }
           if (session.expiresAt.getTime() <= Date.now()) { refuse(socket, 401, 'Authentication required'); return; }
           if (closing || expired || socket.destroyed) return;
           server.handleUpgrade(request, socket, head, (client) => {

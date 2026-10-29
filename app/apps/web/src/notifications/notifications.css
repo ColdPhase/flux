@@ -88,12 +88,12 @@
 .nset__actions { display: flex; gap: 4px; margin-left: auto; }
 .nset__add > label { display: block; margin-bottom: 6px; font-size: var(--fs-sm); color: var(--t2); }
 .nset__row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
-.nset__row input, .nset__row select, .nset__times input, .nset__times select {
+.nset__row input, .nset__row .ui-select, .nset__times input, .nset__times .ui-select {
   min-height: 36px; border: 1px solid var(--line2); border-radius: var(--r); padding: 0 10px; background: var(--el); color: var(--t1); font: inherit; font-size: var(--fs-md);
 }
 .nset__row input { flex: 1; min-width: 220px; }
-.nset__row select { flex: 1; min-width: 0; }
-.nset__row input:focus-visible, .nset__row select:focus-visible, .nset__times input:focus-visible, .nset__times select:focus-visible { outline: 2px solid var(--t1); outline-offset: 1px; }
+.nset__row .ui-select { flex: 1; min-width: 0; }
+.nset__row input:focus-visible, .nset__times input:focus-visible { outline: 2px solid var(--t1); outline-offset: 1px; }
 .nset__row input[aria-invalid="true"] { border-color: var(--t1); }
 .nset__error { display: flex; align-items: center; gap: 6px; margin: 8px 0 0; font-size: var(--fs-sm); color: var(--t1); }
 
@@ -105,7 +105,7 @@
 .nset__times { display: flex; flex-wrap: wrap; gap: 10px 14px; margin: 12px 0 0 26px; }
 .nset__times label { display: grid; gap: 4px; font-size: var(--fs-xs); font-weight: 600; color: var(--t3); }
 .nset__times.is-off { opacity: .55; }
-.nset__zone select { max-width: 260px; }
+.nset__zone .ui-select { max-width: 260px; }
 
 .nset__muted { list-style: none; margin: 0 0 10px; padding: 0; }
 .nset__muted li { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 40px; border-bottom: 1px solid var(--line); }
@@ -120,7 +120,7 @@
 @media (pointer: coarse) {
   .inbox__read { opacity: 1; }
   .nset__check { width: 44px; height: 44px; }
-  .nset__row input, .nset__row select, .nset__times input, .nset__times select { min-height: 44px; }
+  .nset__row input, .nset__row .ui-select, .nset__times input, .nset__times .ui-select { min-height: 44px; }
   .nset__radio { min-height: 44px; }
 }
 @media (max-width: 640px) {

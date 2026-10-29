@@ -1,4 +1,4 @@
-import type { DmKind, DmPerson, PageQuery, PromotionPerson, WorkItem } from '@flux/contracts';
+import type { DmKind, DmPerson, MessageReference, PageQuery, PromotionPerson, WorkItem } from '@flux/contracts';
 import type { Principal } from '../principal.js';
 
 /**
@@ -139,8 +139,20 @@ export interface DmTaskCopy {
   createTask(principal: Principal, projectId: string, command: { title: string; outcome: string; clientCommandId: string }): Promise<WorkItem>;
 }
 
+/**
+ * What a direct message cites (#469): the same rules as a project message's references, decided by the one access policy.
+ * The cards a reader sees are made at read time by the server; this port only admits and stores what is cited.
+ */
+export interface DmReferences {
+  /** The sender can read every cited target now, in this workspace; any other is 404 REFERENCE_UNAVAILABLE. */
+  assertReadable(principal: Principal, workspaceId: string, references: readonly MessageReference[]): Promise<void>;
+  /** Stores the references of the message just appended, in the same transaction. */
+  save(messageId: string, workspaceId: string, references: readonly MessageReference[]): Promise<void>;
+}
+
 export interface DmPorts {
   access: DmAccess;
+  references: DmReferences;
   taskCopy: DmTaskCopy;
   dms: DmRepository;
   events: DmEventLog;

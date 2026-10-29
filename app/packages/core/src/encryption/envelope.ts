@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { CONTEXT, DecryptionFailedError, encodeContext, gcmOpen, gcmSeal, hkdfKey } from './primitives.js';
 import type { WorkspaceKey } from './keys.js';
 
@@ -24,10 +25,23 @@ function context(place: FieldPlace, version: number): Buffer {
   return encodeContext([CONTEXT.seal, place.workspaceId, place.field, ...place.identity, version]);
 }
 
+/** `hkdfSync` refuses an `info` over 1024 bytes (Node, RFC 5869 limits it to the hash's 255 blocks only; Node is stricter). */
+export const HKDF_INFO_LIMIT = 1024;
+const LONG_ROW = 'flux seal long v1';
+
+/**
+ * The HKDF `info` of a row key: the AAD itself, or, when the AAD is longer than `hkdfSync` accepts (a client-chosen
+ * idempotency key, principal or operation in the identity), `[flux seal long v1, SHA-256(AAD)]`. The AAD is still bound
+ * in full by GCM, so the two forms cannot be confused and no identity can make sealing throw (S1 review carry-over).
+ */
+export function rowKeyInfo(aad: Buffer): Buffer {
+  return aad.length <= HKDF_INFO_LIMIT ? aad : encodeContext([LONG_ROW, createHash('sha256').update(aad).digest('hex')]);
+}
+
 export function sealField(key: WorkspaceKey, place: FieldPlace, plaintext: string | Buffer): string {
   if (place.workspaceId !== key.workspaceId) throw new Error('The key belongs to another workspace');
   const aad = context(place, key.version);
-  const sealed = gcmSeal(hkdfKey(key.sealKey, Buffer.alloc(0), aad), Buffer.isBuffer(plaintext) ? plaintext : Buffer.from(plaintext, 'utf8'), aad);
+  const sealed = gcmSeal(hkdfKey(key.sealKey, Buffer.alloc(0), rowKeyInfo(aad)), Buffer.isBuffer(plaintext) ? plaintext : Buffer.from(plaintext, 'utf8'), aad);
   return `fx1.${key.version}.${sealed.toString('base64url')}`;
 }
 
@@ -49,7 +63,7 @@ export function openFieldBytes(keyFor: KeyForVersion, place: FieldPlace, envelop
   const key = keyFor(version);
   if (!key || key.version !== version || key.workspaceId !== place.workspaceId) throw new DecryptionFailedError();
   const aad = context(place, version);
-  return gcmOpen(hkdfKey(key.sealKey, Buffer.alloc(0), aad), Buffer.from(match[2]!, 'base64url'), aad);
+  return gcmOpen(hkdfKey(key.sealKey, Buffer.alloc(0), rowKeyInfo(aad)), Buffer.from(match[2]!, 'base64url'), aad);
 }
 
 export function openField(keyFor: KeyForVersion, place: FieldPlace, envelope: string): string {

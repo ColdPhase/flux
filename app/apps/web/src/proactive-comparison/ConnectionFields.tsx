@@ -1,7 +1,7 @@
 import { useEffect, useId, useState } from 'react';
 import { AI_PROVIDER_KINDS, AI_PROVIDERS, AI_PRICE_TABLE, BACKGROUND_COMPARISON_LIMITS, maxRequestMicros, tablePrice,
   type AiModelList, type AiPrice, type AiProviderKind, type BackgroundComputeConnection } from '@flux/contracts';
-import { Button } from '../ui';
+import { Button, Select, Option } from '../ui';
 import { listAiModels } from './api';
 
 // Provider, model, endpoint and price of an owner's AI connection (F-020, #179). Every provider is
@@ -67,11 +67,11 @@ export function ConnectionFields({ connection, disabled, onProvider }: {
   return <>
     <label>Provider
       {/* Named explicitly: inside its label, the options would otherwise join the field's name. */}
-      <select name="provider" aria-label="Provider" required value={provider} disabled={disabled}
-        onChange={(event) => { setProvider(event.target.value as AiProviderKind | ''); setList(null); setListStatus(''); }}>
-        <option value="">Choose a provider</option>
-        {AI_PROVIDER_KINDS.map((kind) => <option key={kind} value={kind}>{AI_PROVIDERS[kind].label}</option>)}
-      </select>
+      <Select name="provider" aria-label="Provider" required value={provider} disabled={disabled}
+        onChange={(next) => { setProvider(next as AiProviderKind | ''); setList(null); setListStatus(''); }}>
+        <Option value="">Choose a provider</Option>
+        {AI_PROVIDER_KINDS.map((kind) => <Option key={kind} value={kind}>{AI_PROVIDERS[kind].label}</Option>)}
+      </Select>
     </label>
     {provider === 'openai_compatible' ? <>
       <label>Endpoint base URL<input name="baseUrl" type="url" required maxLength={2048} autoComplete="off" spellCheck={false}

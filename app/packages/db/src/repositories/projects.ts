@@ -5,6 +5,7 @@ import { projectGoalRows } from './project-goals.js';
 import { projectLevelSql, visibleProjectsSql, type AccessActor, type AccessPrincipal } from './access.js';
 import type { DbExecutor } from './push.js';
 import { isUuid } from './uuid.js';
+import { openRows, sealFor, sealOf, openRow } from '../sealing.js';
 
 /**
  * Project, grant and audience rows for `packages/core/src/access/{projects,grants}.ts` (issues #46, #91). It satisfies
@@ -48,19 +49,19 @@ export function projectRepository(db: DbExecutor) {
     },
 
     async insert(row: { id: string; workspaceId: string; name: string; visibility: 'workspace' | 'restricted'; views: string[]; createdBy: string }) {
-      const [created] = await db.insert(schema.projects).values(row).returning();
-      return created!;
+      const [created] = await db.insert(schema.projects).values(await sealFor(db, 'projects', row.workspaceId, row)).returning();
+      return { ...created!, name: row.name };
     },
 
     async get(projectId: string) {
       const [row] = await db.select().from(schema.projects).where(eq(schema.projects.id, projectId));
-      return row ?? null;
+      return row ? openRow('projects', row, await sealOf(db, row.workspaceId, { write: false })) : null;
     },
 
     async setViews(projectId: string, views: string[]) {
       const [row] = await db.update(schema.projects).set({ views, version: sql`${schema.projects.version} + 1`, updatedAt: new Date() })
         .where(eq(schema.projects.id, projectId)).returning();
-      return row!;
+      return openRow('projects', row!, await sealOf(db, row!.workspaceId, { write: false }));
     },
 
     /** The goal each project shows (#520): its current goal, or else its most recently reached one. */
@@ -74,7 +75,8 @@ export function projectRepository(db: DbExecutor) {
         .from(schema.projects).where(filter)
         .orderBy(asc(schema.projects.createdAt), asc(schema.projects.id))
         .limit(page.limit).offset(page.offset);
-      return { total: counted?.count ?? 0, rows };
+      const opened = await openRows(db, 'projects', rows.map((row) => row.project));
+      return { total: counted?.count ?? 0, rows: rows.map((row, index) => ({ ...row, project: opened[index]! })) };
     },
 
     /** The project's grants, leaving out the agents the principal may not see. */

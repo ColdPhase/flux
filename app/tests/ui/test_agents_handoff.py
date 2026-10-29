@@ -15,6 +15,8 @@ import uuid
 
 from playwright.sync_api import Browser, BrowserContext, Page, expect, sync_playwright
 
+from app_select import choose, labels
+
 from contrast import MEASURE
 from test_app_shell import DESKTOP, ORIGIN, PHONE, UI_BROWSER, UPSTREAM, shot as save_shot, start_forwarder
 
@@ -216,7 +218,7 @@ class HandOffJourney(unittest.TestCase):
         # The agent's task opens its thread under the list.
         page.get_by_role("region", name="Claude Code agent, details").get_by_role("button", name=re.compile("^Open the thread of #")).click()
         expect(page.get_by_role("region", name="Agents’ thread of Calibrate the probes at two soil depths")).to_be_visible()
-        expect(page.locator("select#agents-task")).to_have_count(0)
+        expect(page.locator("button#agents-task")).to_have_count(0)
 
     def test_05_two_steps_choose_the_agent_then_see_what_it_may_do(self) -> None:
         page = self.open_agents()
@@ -227,7 +229,7 @@ class HandOffJourney(unittest.TestCase):
         expect(dialog.get_by_role("radio")).to_have_count(3)
         # Nothing is chosen yet, so there is no way forward.
         expect(dialog.get_by_role("button", name="Next")).to_be_disabled()
-        dialog.get_by_label("Task", exact=True).select_option(label="#2 · Print a label for each of the six beds")
+        choose(dialog.get_by_label("Task", exact=True), label="#2 · Print a label for each of the six beds")
         # Keyboard: the radio group takes arrows; Enter moves on.
         dialog.get_by_role("radio").first.focus()
         page.keyboard.press("ArrowDown")
@@ -259,7 +261,7 @@ class HandOffJourney(unittest.TestCase):
         grants_before = self.api(page, "GET", f"/api/v1/projects/{self.ids['project']}/grants", status=200)
         page.get_by_role("button", name="Hand off a task").click()
         dialog = page.get_by_role("dialog", name="Hand off a task")
-        dialog.get_by_label("Task", exact=True).select_option(label="#3 · Ask the supplier for the probe drawing")
+        choose(dialog.get_by_label("Task", exact=True), label="#3 · Ask the supplier for the probe drawing")
         for name, note in (("Outside agent", "has no access to Garden sensors"), ("Reader agent", "can only read Garden sensors")):
             dialog.locator("label.handoff__agent", has_text=name).click()
             dialog.get_by_role("button", name="Next").click()
@@ -326,7 +328,7 @@ class HandOffJourney(unittest.TestCase):
             dialog = page.get_by_role("dialog", name="Hand off a task")
             expect(dialog.get_by_text("Step 1 of 2")).to_be_visible()
             assert_phone_sheet(dialog, page)
-            dialog.get_by_label("Task", exact=True).select_option(label="#5 · Order spare batteries")
+            choose(dialog.get_by_label("Task", exact=True), label="#5 · Order spare batteries")
             dialog.locator("label.handoff__agent", has_text="Claude Code agent").tap()
             for name in ("Next",):
                 target = dialog.get_by_role("button", name=name).bounding_box()
@@ -397,7 +399,7 @@ class HandOffJourney(unittest.TestCase):
         expect(dialog.get_by_text("Step 1 of 2")).to_be_visible()
         expect(dialog.get_by_role("radio", name=re.compile("Claude Code agent"))).to_be_checked()
         expect(dialog.get_by_role("button", name="Next")).to_be_disabled()
-        dialog.get_by_label("Task", exact=True).select_option(label="#5 · Order spare batteries")
+        choose(dialog.get_by_label("Task", exact=True), label="#5 · Order spare batteries")
         dialog.get_by_role("button", name="Next").click()
         expect(dialog.get_by_text("Step 2 of 2")).to_be_visible()
         expect(dialog.get_by_role("button", name=re.compile("^Hand off"))).to_be_enabled()
@@ -420,7 +422,7 @@ class HandOffJourney(unittest.TestCase):
         page = self.open_agents()
         page.get_by_role("button", name="Hand off a task").click()
         dialog = page.get_by_role("dialog", name="Hand off a task")
-        dialog.get_by_label("Task", exact=True).select_option(label=f"#{ask['number']} · Print a label for each of the six beds")
+        choose(dialog.get_by_label("Task", exact=True), label=f"#{ask['number']} · Print a label for each of the six beds")
         dialog.locator("label.handoff__agent", has_text="Claude Code").filter(has_text="Jonas Berg").click()
         expect(dialog).to_contain_text("for Jonas Berg · Jonas decides")
         dialog.get_by_role("button", name="Next").click()
@@ -439,7 +441,7 @@ class HandOffJourney(unittest.TestCase):
         page = self.open_agents()
         page.get_by_role("button", name="Hand off a task").click()
         dialog = page.get_by_role("dialog", name="Hand off a task")
-        dialog.get_by_label("Task", exact=True).select_option(label=f"#{fresh['number']} · Measure the greenhouse humidity")
+        choose(dialog.get_by_label("Task", exact=True), label=f"#{fresh['number']} · Measure the greenhouse humidity")
         dialog.locator("label.handoff__agent", has_text="Claude Code agent").click()
         dialog.get_by_role("button", name="Next").click()
         expect(dialog.get_by_role("button", name=re.compile("^Hand off"))).to_be_visible()
@@ -460,7 +462,7 @@ class HandOffJourney(unittest.TestCase):
         page = self.open_agents()
         page.get_by_role("button", name="Hand off a task").click()
         dialog = page.get_by_role("dialog", name="Hand off a task")
-        dialog.get_by_label("Task", exact=True).select_option(label=f"#{ask['number']} · Label the compost bins")
+        choose(dialog.get_by_label("Task", exact=True), label=f"#{ask['number']} · Label the compost bins")
         # Ada's Claude Code has #1 in progress and has never signed in: the load line says so (negative control: "has #1 · offline").
         expect(dialog.locator("label.handoff__agent", has_text="Claude Code agent")).to_contain_text("has #1 · not signed in yet")
         dialog.locator("label.handoff__agent", has_text="Claude Code").filter(has_text="Jonas Berg").first.click()
@@ -505,9 +507,10 @@ class HandOffJourney(unittest.TestCase):
         dialog = view.get_by_role("dialog", name="Hand off a task")
         expect(dialog.get_by_text("No open task without an agent")).to_have_count(0)
         select = dialog.get_by_label("Task", exact=True)
-        expect(select.locator("option", has_text="The one free task")).to_have_count(1)
+        offered = [text for text in labels(select) if "The one free task" in text]
+        self.assertEqual(len(offered), 1)
         self.assertTrue(reads, "the next bounded page was read")
-        select.select_option(label=next(o for o in select.locator("option").all_inner_texts() if "The one free task" in o))
+        choose(select, label=offered[0])
         dialog.locator("label.handoff__agent", has_text="Claude Code agent").click()
         dialog.get_by_role("button", name="Next").click()
         dialog.get_by_role("button", name=re.compile("^Hand off")).click()
@@ -678,7 +681,7 @@ class HandOffJourney(unittest.TestCase):
                 page.get_by_role("button", name="Hand off a task").tap()
                 dialog = page.get_by_role("dialog", name="Hand off a task")
                 expect(dialog.get_by_text("Step 1 of 2", exact=True)).to_be_visible()
-                dialog.get_by_label("Task", exact=True).select_option(label="#1 · Check the probes after rain")
+                choose(dialog.get_by_label("Task", exact=True), label="#1 · Check the probes after rain")
                 dialog.locator("label.handoff__agent", has_text="Field agent").tap()
                 dialog.get_by_role("button", name="Next").tap()
                 expect(dialog.get_by_text("Step 2 of 2", exact=True)).to_be_visible()
@@ -723,7 +726,7 @@ class HandOffJourney(unittest.TestCase):
                         page.evaluate("() => { document.documentElement.style.fontSize = '125%'; }")
                     page.get_by_role("button", name="Hand off a task").tap()
                     dialog = page.get_by_role("dialog", name="Hand off a task")
-                    dialog.get_by_label("Task", exact=True).select_option(label="#1 · Check the permission-step inset")
+                    choose(dialog.get_by_label("Task", exact=True), label="#1 · Check the permission-step inset")
                     dialog.locator("label.handoff__agent", has_text=name).tap()
                     dialog.get_by_role("button", name="Next").tap()
                     expect(dialog.get_by_text("Step 2 of 2", exact=True)).to_be_visible()
@@ -809,7 +812,7 @@ class HandOffJourney(unittest.TestCase):
         radio = dialog.locator("label.handoff__agent", has_text="Shared field agent")
         expect(radio).to_contain_text("Current planning laptop")
         expect(radio).to_contain_text('Working on “Plan the next moisture reading”')
-        dialog.get_by_label("Task", exact=True).select_option(label="#2 · The next task to hand off")
+        choose(dialog.get_by_label("Task", exact=True), label="#2 · The next task to hand off")
         radio.click()
         dialog.get_by_role("button", name="Next").click()
         expect(dialog).to_contain_text('Working on “Plan the next moisture reading”')
@@ -1012,7 +1015,7 @@ class HandOffJourney(unittest.TestCase):
                         expect(agent).to_contain_text("Ada Kowalska")
                         expect(agent).to_contain_text("not signed in yet")
                         if source == "agents":
-                            dialog.get_by_label("Task", exact=True).select_option(task["id"])
+                            choose(dialog.get_by_label("Task", exact=True), task["id"])
                         agent.click()
                         page.evaluate("() => document.fonts.ready")
                         page.wait_for_function("() => document.getAnimations().every(a => a.playState !== 'running' || a.effect.getComputedTiming().endTime === Infinity)")
@@ -1047,7 +1050,7 @@ class HandOffJourney(unittest.TestCase):
                         opener.click()
                         dialog.locator("label.handoff__agent", has_text="Claude Code agent").click()
                         if source == "agents":
-                            dialog.get_by_label("Task", exact=True).select_option(task["id"])
+                            choose(dialog.get_by_label("Task", exact=True), task["id"])
                         dialog.get_by_role("button", name="Next", exact=True).click()
                         dialog.get_by_role("button", name=re.compile("^Hand off")).click()
                         expect(dialog).to_have_count(0)

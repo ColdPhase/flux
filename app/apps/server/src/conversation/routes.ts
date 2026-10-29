@@ -17,7 +17,9 @@ const rootWindow = { type: 'object', additionalProperties: false,
 const source = { type: 'object', required: ['materialId', 'version'], additionalProperties: false,
   properties: { materialId: { type: 'string' }, version: { type: 'integer' } } } as const;
 const send = { type: 'object', required: ['body', 'clientMessageId'], additionalProperties: false,
-  properties: { body: { type: 'string', minLength: 0, maxLength: 100_000 }, attachmentIds: { type: 'array', maxItems: 10, items: { type: 'string' } }, clientMessageId: { type: 'string' }, source } } as const;
+  properties: { body: { type: 'string', minLength: 0, maxLength: 100_000 }, attachmentIds: { type: 'array', maxItems: 10, items: { type: 'string' } }, clientMessageId: { type: 'string' }, source,
+    // The items are checked by the one normalizer (kind, UUID, distinct), which names what is wrong.
+    references: { type: 'array', maxItems: 4, items: { type: 'object' } } } } as const;
 /**
  * A generic message is ordinary text. Reject a contribution kind rather than let the schema silently
  * strip it: blocker, result and handoff contributions come only from their own commands (#154).

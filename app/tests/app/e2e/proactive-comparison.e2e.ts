@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs';
 import http from 'node:http';
 import { after, before, test } from 'node:test';
 import { chromium, type Browser, type BrowserContext, type Locator, type Page } from 'playwright';
+import { chooseOption, selectedValue } from '../support/app-select.js';
 
 interface Fixture { email: string; peerEmail: string; password: string; workspaceId: string; projectId: string; proposalIds: string[];
   conversationId: string; messageId: string; workId: string; sketchId: string; thoughtId: string }
@@ -51,7 +52,7 @@ async function assertBackgroundContrast() {
         checks.push({ theme, part: node.textContent ?? 'button', foreground: style.color,
           background: style.backgroundColor === 'rgba(0, 0, 0, 0)' ? bg : style.backgroundColor, minimum: 4.5 });
       }
-      for (const node of document.querySelectorAll('.background-settings input:not([type=checkbox]), .background-settings select')) {
+      for (const node of document.querySelectorAll('.background-settings input:not([type=checkbox]), .background-settings .ui-select')) {
         const style = getComputedStyle(node);
         checks.push({ theme, part: `${node.tagName} boundary`, foreground: style.borderTopColor, background: style.backgroundColor, minimum: 3 });
       }
@@ -274,8 +275,8 @@ test('owner-only background setup persists consent, clears keys and preserves an
     if (request.method() === 'POST' && new URL(request.url()).pathname === '/api/v1/background-compute-connections') writes++;
   });
   // F-020: no provider is preselected; the owner chooses one and its model.
-  assert.equal(await page.getByLabel('Provider', { exact: true }).inputValue(), '');
-  await page.getByLabel('Provider', { exact: true }).selectOption({ label: 'Anthropic' });
+  assert.equal(await selectedValue(page.getByLabel('Provider', { exact: true })), '');
+  await chooseOption(page.getByLabel('Provider', { exact: true }), { label: 'Anthropic' });
   await page.getByLabel('Model', { exact: true }).fill('claude-sonnet-5');
   await page.getByText('Flux price table, checked 2026-10-02', { exact: false }).waitFor();
   await page.getByLabel('API key', { exact: true }).fill('sk-ant-fixture-background-setup-key-ABCD');
@@ -381,7 +382,7 @@ test('owner-only background setup persists consent, clears keys and preserves an
   await page.getByRole('button', { name: 'Add a connection', exact: true }).click();
   for (const check of await page.locator('.background-settings__check input').all()) assert.equal(await check.isChecked(), false,
     'another connection requires fresh consent, and is not chosen for background use by default');
-  await page.getByLabel('Provider', { exact: true }).selectOption({ label: 'Anthropic' });
+  await chooseOption(page.getByLabel('Provider', { exact: true }), { label: 'Anthropic' });
   await page.getByLabel('Model', { exact: true }).fill('claude-sonnet-5');
   await page.getByLabel('Provider organization', { exact: true }).fill('Fixture Sensor Research');
   await page.getByLabel('Provider workspace', { exact: true }).fill('Fixture Only');
@@ -435,13 +436,12 @@ test('an owner creates a personal project agent and a paused rule, then pauses, 
     'private settings do not offer unrelated place details');
   await page.keyboard.press(']');
   assert.equal(await page.getByRole('heading', { name: 'Details', exact: true }).count(), 0);
-  await page.getByLabel('Project', { exact: true }).selectOption(projectId);
+  await chooseOption(page.getByLabel('Project', { exact: true }), projectId);
   await page.getByText('Create another personal agent', { exact: true }).click();
   await page.getByLabel('New personal agent name').fill('My opt-in comparison helper');
   await page.getByRole('button', { name: 'Create personal agent', exact: true }).click();
-  await page.waitForFunction(() => document.querySelector('select:has(option:checked)') &&
-    [...document.querySelectorAll('select option:checked')].some((option) => option.textContent === 'My opt-in comparison helper'));
-  const agentId = await page.getByLabel('Your personal agent', { exact: true }).inputValue();
+  await page.getByLabel('Your personal agent', { exact: true }).filter({ hasText: 'My opt-in comparison helper' }).waitFor();
+  const agentId = await selectedValue(page.getByLabel('Your personal agent', { exact: true }));
   assert.ok(agentId);
   await page.getByRole('button', { name: 'Grant project contributor access', exact: true }).click();
   await page.getByRole('button', { name: 'Grant project contributor access', exact: true }).waitFor({ state: 'hidden' });
@@ -460,7 +460,7 @@ test('an owner creates a personal project agent and a paused rule, then pauses, 
   assert.equal(rule?.status, 'paused'); assert.equal(rule?.agentId, agentId);
   assert.equal(rule?.maxRunsPerDay, 1); assert.equal(rule?.periodBudgetCents, 15);
   await page.reload();
-  await page.getByLabel('Project', { exact: true }).selectOption(projectId);
+  await chooseOption(page.getByLabel('Project', { exact: true }), projectId);
   await page.getByRole('button', { name: 'Enable unavailable', exact: true }).waitFor();
   await page.locator('.background-settings__metadata').last().click();
   await page.screenshot({ path: '/state/background-rules-1440-paused.png', fullPage: true });
@@ -483,7 +483,7 @@ test('an owner creates a personal project agent and a paused rule, then pauses, 
     } finally { page = desktopPage; await touchContext.close(); }
   }
 
-  await page.getByLabel('Project', { exact: true }).selectOption(fixture.projectId);
+  await chooseOption(page.getByLabel('Project', { exact: true }), fixture.projectId);
   await page.getByRole('button', { name: 'Pause rule', exact: true }).click();
   await page.getByRole('button', { name: 'Enable unavailable', exact: true }).waitFor();
   let earlier = (await api('GET', `/api/v1/projects/${fixture.projectId}/proactive-comparison-rules`)).data as Array<{ id: string; version: number; status: string }>;
@@ -495,7 +495,7 @@ test('an owner creates a personal project agent and a paused rule, then pauses, 
   assert.equal(earlier[0]?.status, 'revoked'); assert.equal(earlier[0]?.version, pausedVersion + 1);
   const revoked = earlier[0]!;
   assert.equal(await page.locator('input[name="ruleConsent"]').isChecked(), false, 'renewal needs fresh scope consent');
-  await page.getByLabel('Your personal agent', { exact: true }).selectOption(agentId);
+  await chooseOption(page.getByLabel('Your personal agent', { exact: true }), agentId);
   await page.getByRole('button', { name: 'Grant project contributor access', exact: true }).click();
   await page.getByRole('button', { name: 'Grant project contributor access', exact: true }).waitFor({ state: 'hidden' });
   await page.locator('input[name="ruleConsent"]').check();
@@ -506,7 +506,7 @@ test('an owner creates a personal project agent and a paused rule, then pauses, 
   const fresh = renewed.find((rule) => rule.id !== revoked.id)!;
   assert.ok(fresh); assert.equal(fresh.status, 'paused'); assert.equal(fresh.version, 1);
   await page.reload();
-  await page.getByLabel('Project', { exact: true }).selectOption(fixture.projectId);
+  await chooseOption(page.getByLabel('Project', { exact: true }), fixture.projectId);
   await page.getByRole('button', { name: 'Enable unavailable', exact: true }).waitFor();
   assert.deepEqual((await api('GET', `/api/v1/projects/${fixture.projectId}/proactive-comparison-rules`)).data, renewed);
   assert.deepEqual(errors, []);

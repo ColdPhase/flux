@@ -22,7 +22,13 @@ if (token.length < 32) {
   process.once('SIGTERM', stopIdle);
   process.once('SIGINT', stopIdle);
 } else {
-  const keyring = createKeyring({ token, revealBootKey: test && env.FLUX_KEYRING_REVEAL_BOOT_KEY === 'true' });
+  const revealBootKey = test && env.FLUX_KEYRING_REVEAL_BOOT_KEY === 'true';
+  // Loud on purpose (S1 review): a keyring that can hand out its boot key protects nothing, so it must never pass unnoticed.
+  if (revealBootKey) {
+    process.stderr.write('WARNING: TEST ONLY. Flux keyring started with FLUX_KEYRING_REVEAL_BOOT_KEY=true: GET /v1/test/boot-key hands out the boot key. '
+      + 'Encrypted spaces on this server are NOT protected. Never use this outside a test deployment.\n');
+  }
+  const keyring = createKeyring({ token, revealBootKey });
   keyring.server.listen(Number(env.FLUX_KEYRING_PORT ?? 8090), '0.0.0.0', () => process.stdout.write('Flux keyring ready\n'));
   const stop = () => { void keyring.close().then(() => process.exit(0)); };
   process.once('SIGTERM', stop);

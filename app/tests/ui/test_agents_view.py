@@ -174,7 +174,7 @@ class AgentsViewJourney(unittest.TestCase):
         page = self.open_agents("hubert")
         # The task's thread is opened by `?task=` in the right column; there is no task picker (#347 P1-2).
         expect(page.get_by_role("region", name=f"Thread of {TASK}")).to_be_visible()
-        expect(page.locator("select#agents-task")).to_have_count(0)
+        expect(page.locator("button#agents-task")).to_have_count(0)
         expect(page.get_by_text("No one has written about this task yet")).to_be_visible()
         box = page.get_by_label("Write to this task")
         box.fill("I'll take the reconnect bug with Codex; Claude Code reviews it.")

@@ -122,7 +122,11 @@ export async function assertTaskCreationUndoMigrationCompatibility(db: Reader, a
     }
     for (const [relation, name, definition] of UNDO_CONSTRAINTS) {
       const actual = constraints.find((constraint) => constraint.relation === relation && constraint.name === name);
-      if (!actual?.validated || compact(actual.definition) !== compact(definition)) problems.push(`mismatched Undo constraint ${relation}.${name}`);
+      // F-030 (0121) relaxes the receipt fingerprint check so a sealed digest passes; the plain form keeps the old check.
+      const relaxed = name === 'task_creation_undo_receipts_request_fingerprint_check' ? `CHECK ((flux_is_sealed(request_fingerprint) OR ${definition.slice('CHECK ('.length, -1)}))` : null;
+      if (!actual?.validated || (compact(actual.definition) !== compact(definition) && (relaxed === null || compact(actual.definition) !== compact(relaxed)))) {
+        problems.push(`mismatched Undo constraint ${relation}.${name}`);
+      }
     }
     for (const [name, body] of Object.entries(UNDO_GUARD_BODIES)) {
       const fn = functions.find((entry) => entry.name === name);

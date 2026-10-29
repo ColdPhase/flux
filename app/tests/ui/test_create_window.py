@@ -15,6 +15,8 @@ import uuid
 
 from playwright.sync_api import Browser, Page, expect, sync_playwright
 
+from app_select import choose, expect_value
+
 from message_gestures import open_message_menu
 from create_window import create_other, dialog, kind_tab, open_from_tasks, submit_button, title_field, window
 from native_work_performance import TASKS_READY, close_create, draft_value, open_create
@@ -128,12 +130,12 @@ class CreateWindow(unittest.TestCase):
         page = self.page()
         page.goto(f"/projects/{self.ids['project']}/tasks")
         field = open_from_tasks(page)
-        expect(dialog(page).get_by_role("combobox", name="Project")).to_have_value(self.ids["project"])
+        expect_value(dialog(page).get_by_role("combobox", name="Project"), self.ids["project"])
         page.keyboard.press("Escape")
         expect(dialog(page)).to_have_count(0)
         page.get_by_role("button", name="New task in In progress").click()
         expect(dialog(page)).to_be_visible()
-        expect(dialog(page).get_by_role("combobox", name="Status")).to_have_value("in_progress")
+        expect_value(dialog(page).get_by_role("combobox", name="Status"), "in_progress")
         field = title_field(page)
         field.fill("Started from a column")
         submit_button(page).click()
@@ -168,7 +170,7 @@ class CreateWindow(unittest.TestCase):
         page.goto(f"/projects/{self.ids['project']}/tasks")
         field = open_from_tasks(page)
         field.fill("Waiting on the supplier")
-        dialog(page).get_by_role("combobox", name="Status").select_option("blocked")
+        choose(dialog(page).get_by_role("combobox", name="Status"), "blocked")
         expect(submit_button(page)).to_be_disabled()
         dialog(page).get_by_label("What is it waiting for?").fill("Probe drawing v2")
         submit_button(page).click()
@@ -280,7 +282,7 @@ class CreateWindow(unittest.TestCase):
             expect(window).to_be_visible()
             # Type first, then pick another project: the typed title moves with the task (F2).
             title_field(page).fill("Print labels for the beds")
-            window.get_by_role("combobox", name="Project").select_option(self.ids["other"])
+            choose(window.get_by_role("combobox", name="Project"), self.ids["other"])
             expect(title_field(page)).to_have_value("Print labels for the beds")
             for control in (window.get_by_label("Details"), window.get_by_role("combobox", name="Status"), window.get_by_role("combobox", name="Owner"),
                             window.get_by_role("button", name="+ Link a message or thought"), window.get_by_role("switch"), submit_button(page)):
@@ -344,7 +346,7 @@ class CreateWindow(unittest.TestCase):
         field = open_from_tasks(page)
         title = f"Picker moves this {uuid.uuid4().hex[:6]}"
         field.fill(title)
-        dialog(page).get_by_role("combobox", name="Project").select_option(self.ids["other"])
+        choose(dialog(page).get_by_role("combobox", name="Project"), self.ids["other"])
         expect(title_field(page)).to_have_value(title)
         submit_button(page).click()
         expect(dialog(page)).to_have_count(0)
@@ -386,7 +388,7 @@ class CreateWindow(unittest.TestCase):
         message.get_by_role("button", name="Create task", exact=True).click()
         window = dialog(page)
         window.get_by_label("Details").fill("Done when both kits are counted")
-        window.get_by_role("combobox", name="Status").select_option("in_progress")
+        choose(window.get_by_role("combobox", name="Status"), "in_progress")
         submit_button(page).click()
         expect(window.get_by_role("alert")).to_have_text("The response was lost")
         page.keyboard.press("Escape")
@@ -395,7 +397,7 @@ class CreateWindow(unittest.TestCase):
         message.get_by_role("button", name="Create task", exact=True).click()
         expect(title_field(page)).to_have_value("Lost response from a message: check the ESP32 kits")
         expect(window.get_by_label("Details")).to_have_value("Done when both kits are counted")
-        expect(window.get_by_role("combobox", name="Status")).to_have_value("in_progress")
+        expect_value(window.get_by_role("combobox", name="Status"), "in_progress")
         expect(window.get_by_role("button", name=re.compile("^Remove link to"))).to_have_count(1)
         submit_button(page).click()
         expect(window).to_have_count(0)
@@ -431,14 +433,14 @@ class CreateWindow(unittest.TestCase):
         field = open_from_tasks(page)
         field.fill("Lost response from a blank form")
         dialog(page).get_by_label("Details").fill("Blank form details")
-        dialog(page).get_by_role("combobox", name="Status").select_option("in_progress")
+        choose(dialog(page).get_by_role("combobox", name="Status"), "in_progress")
         submit_button(page).click()
         expect(dialog(page).get_by_role("alert")).to_have_text("The response was lost")
         page.keyboard.press("Escape")
         field = open_from_tasks(page)
         expect(field).to_have_value("Lost response from a blank form")
         expect(dialog(page).get_by_label("Details")).to_have_value("Blank form details")
-        expect(dialog(page).get_by_role("combobox", name="Status")).to_have_value("in_progress")
+        expect_value(dialog(page).get_by_role("combobox", name="Status"), "in_progress")
         submit_button(page).click()
         expect(dialog(page)).to_have_count(0)
         self.assertEqual(keys[0], keys[1])
@@ -483,7 +485,7 @@ class CreateWindow(unittest.TestCase):
                 page.goto(start)
                 page.get_by_role("button", name="Create", exact=True).tap()
                 sheet = page.get_by_role("dialog", name="Create")
-                sheet.get_by_role("combobox", name="Project").select_option(self.ids["other"])
+                choose(sheet.get_by_role("combobox", name="Project"), self.ids["other"])
                 tile = sheet.get_by_role("button", name="Decision", exact=True)
                 expect(tile).not_to_have_attribute("aria-disabled", "true")
                 tile.tap()
@@ -654,7 +656,7 @@ class CreateWindow(unittest.TestCase):
             self.assertEqual(panel.get_attribute("aria-labelledby"), kind_tab(page, tab).get_attribute("id"))
             expect(panel.get_by_role("textbox", name=label, exact=True)).to_have_value(text)
             if tab == "Decision":
-                expect(panel.get_by_role("combobox", name="Project")).to_have_value(self.ids["project"])
+                expect_value(panel.get_by_role("combobox", name="Project"), self.ids["project"])
             if tab == "Message":
                 expect(panel.get_by_role("combobox", name="Project")).to_have_count(0)  # a direct message, not a project's
         page.keyboard.press("ArrowRight")
@@ -744,7 +746,7 @@ class CreateWindow(unittest.TestCase):
         project = page.get_by_role("dialog", name="New project")
         expect(project.get_by_role("textbox", name="What is it about?", exact=True)).to_have_value(name)
         expect(project.get_by_role("tabpanel").locator(".create__where")).to_have_text("In Garden sensors")
-        project.get_by_role("combobox", name="Start from").select_option("research")
+        choose(project.get_by_role("combobox", name="Start from"), "research")
         expect(project.get_by_role("tabpanel").locator(".create__foot")).to_contain_text("Starts with Conversation + Wiki")
         project.get_by_role("button", name=re.compile("^Create project")).click()
         expect(page.get_by_role("heading", level=1, name=name)).to_be_visible()
@@ -783,7 +785,7 @@ class CreateWindow(unittest.TestCase):
         message.get_by_role("button", name="Create task", exact=True).click()
         links = dialog(page).get_by_role("button", name=re.compile("^Remove link to"))
         expect(links).to_have_count(1)
-        dialog(page).get_by_role("combobox", name="Project").select_option(self.ids["other"])
+        choose(dialog(page).get_by_role("combobox", name="Project"), self.ids["other"])
         expect(links).to_have_count(0)
         submit_button(page).click()
         expect(dialog(page)).to_have_count(0)

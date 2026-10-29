@@ -751,7 +751,7 @@ class FilesReferencesPhotos(unittest.TestCase):
                     field.press("Enter")
                 pending = page.locator("[data-client-message-id]").last
                 expect(pending.locator(".photo-grid__tile[data-photo-state=sending]")).to_have_count(2)
-                expect(pending.locator(".photo-grid__tile img[src^='blob:']")).to_have_count(2)
+                expect(pending.locator(".photo-grid__tile img[src^='blob:'], .photo-grid__tile img[src^='data:image/']")).to_have_count(2)
                 self.assert_caption_below(pending)
                 self.assert_grid_aligned(pending)
                 self.shot(page, f"sending-{'390' if phone else '1440'}", pending)
@@ -924,6 +924,90 @@ class FilesReferencesPhotos(unittest.TestCase):
         self.shot(page, "offline-1440", pending)
         page.context.set_offline(False)
         expect(page.locator("[data-client-message-id]")).to_have_count(0, timeout=20000)
+
+    def test_the_viewer_hands_the_real_photo_to_share_and_save(self) -> None:
+        """#469 (#348 AC-5): Share receives the photo's own bytes as a File; Save downloads them under their name; the fallbacks are honest.
+
+        The operating system's own share sheet is not reachable from an emulated browser, so this verifies what Flux hands to
+        `navigator.share` (a stub that reads the File it is given) and what it does when the browser has no file sharing."""
+        page = self.page()
+        page.evaluate("""() => {
+          window.__shared = null;
+          navigator.canShare = (data) => !!(data && data.files && data.files.length);
+          navigator.share = async (data) => {
+            const files = await Promise.all((data.files || []).map(async (file) => ({ name: file.name, type: file.type, size: file.size,
+              head: Array.from(new Uint8Array(await file.arrayBuffer()).slice(0, 8)) })));
+            window.__shared = { title: data.title, url: data.url || null, files };
+          };
+        }""")
+        two = self.message(page, "two")
+        two.get_by_role("button", name="Open photo IMG_2041.png, 1 of 2").click()
+        viewer = page.get_by_role("dialog")
+        expect(viewer.locator("img[src^='blob:']")).to_be_visible()
+        viewer.get_by_role("button", name="Share", exact=True).click()
+        page.wait_for_function("() => window.__shared !== null")
+        shared = page.evaluate("window.__shared")
+        self.assertEqual(shared["title"], "IMG_2041.png")
+        self.assertIsNone(shared["url"], "the file itself is shared when the browser can share files")
+        self.assertEqual([(f["name"], f["type"], f["size"], f["head"]) for f in shared["files"]], [("IMG_2041.png", "image/png", len(FIELD), list(FIELD[:8]))])
+        # Without file sharing the page address is shared; without any sharing it is copied and the viewer says so.
+        page.evaluate("""() => { navigator.canShare = undefined; window.__shared = null; }""")
+        viewer.get_by_role("button", name="Share", exact=True).click()
+        page.wait_for_function("() => window.__shared !== null")
+        fallback = page.evaluate("window.__shared")
+        self.assertEqual((fallback["files"], fallback["title"]), ([], "IMG_2041.png"))
+        self.assertTrue(fallback["url"].startswith(ORIGIN), fallback)
+        page.evaluate("() => { navigator.share = undefined; }")
+        page.context.grant_permissions(["clipboard-read", "clipboard-write"]) if UI_BROWSER == "chromium" else None
+        viewer.get_by_role("button", name="Share", exact=True).click()
+        expect(viewer.get_by_role("status")).to_have_text(re.compile("^(Link copied|Could not share)$"))
+        # Save downloads the stored bytes under the file's name.
+        with page.expect_download() as download:
+            viewer.get_by_role("link", name="Save").click()
+        self.assertEqual(download.value.suggested_filename, "IMG_2041.png")
+        with open(download.value.path(), "rb") as saved:
+            self.assertEqual(saved.read(), FIELD)
+
+    def test_the_local_unsent_photo_decodes_while_it_waits_offline_and_is_stored_once(self) -> None:
+        """#469 (#348 AC-3): the gate is the pending tile's own image decoding, not a blob: URL or the waiting label alone."""
+        page = self.page()
+        caption = f"Decoded offline {uuid.uuid4().hex[:8]}"
+        with page.expect_file_chooser() as chooser:
+            page.get_by_role("button", name="Attach files").click()
+        chooser.value.set_files([{"name": "IMG_4002.png", "mimeType": "image/png", "buffer": SHED}])
+        expect(page.get_by_role("list", name="Files in your draft").get_by_text("Ready, private", exact=False)).to_have_count(1)
+        page.get_by_label("Write a message", exact=True).fill(caption)
+        page.context.set_offline(True)
+        page.get_by_label("Write a message", exact=True).press("Enter")
+        pending = page.locator("[data-client-message-id]").last
+        waiting = pending.locator(".photo-grid__tile[data-photo-state=waiting]")
+        expect(waiting).to_contain_text("Sends when you're back")
+        image = waiting.locator("img")
+        expect(image).to_have_count(1)
+        decode = """async (img) => {
+          try { await img.decode(); } catch (error) { return { decoded: false, naturalWidth: img.naturalWidth, error: String(error) }; }
+          return { decoded: true, naturalWidth: img.naturalWidth, naturalHeight: img.naturalHeight, complete: img.complete, scheme: img.currentSrc.split(':')[0] };
+        }"""
+        local = image.evaluate(decode)
+        self.assertTrue(local["decoded"], local)
+        self.assertGreater(local["naturalWidth"], 0, local)
+        self.assertGreater(local["naturalHeight"], 0, local)
+        self.assertIn(local["scheme"], ("blob", "data"), "the waiting tile shows the local bytes, with no network")
+        # Negative control: the same check fails for a blob: element whose bytes are not an image, so it is not a label or URL test.
+        broken = page.evaluate("""async () => {
+          const img = new Image(); img.src = URL.createObjectURL(new Blob(['not an image'], { type: 'image/png' }));
+          try { await img.decode(); return { decoded: true, naturalWidth: img.naturalWidth }; } catch (error) { return { decoded: false, naturalWidth: img.naturalWidth }; }
+        }""")
+        self.assertEqual(broken, {"decoded": False, "naturalWidth": 0})
+        # Back online the message is stored exactly once, with its photo.
+        page.context.set_offline(False)
+        expect(page.locator("[data-client-message-id]")).to_have_count(0, timeout=20000)
+        roots = page.request.get(f"/api/v1/projects/{self.ids['project']}/conversation-roots?limit=100").json()["roots"]
+        stored = [root["message"] for root in roots if root["message"]["body"] == caption]
+        self.assertEqual(len(stored), 1, "stored exactly once")
+        self.assertEqual([file["name"] for file in stored[0]["files"]], ["IMG_4002.png"])
+        page.reload()
+        expect(page.locator(".project-convo__message", has_text=caption)).to_have_count(1)
 
     def test_a_reader_who_loses_access_cannot_open_the_file_or_preview(self) -> None:
         page = self.page("jonas")

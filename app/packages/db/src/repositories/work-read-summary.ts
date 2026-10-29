@@ -4,6 +4,12 @@ import * as schema from '../schema.js';
 import type { DbExecutor } from './push.js';
 import { nativeWorkViewKeySource } from './work-read-keys.js';
 import { workRows } from './work.js';
+import { openRows } from '../sealing.js';
+
+/** One row's title opened (F-030), without the workspace id it needed. */
+async function opened<T extends { id: string; workspaceId: string; title: string }>(db: DbExecutor, table: string, rows: T[]): Promise<Omit<T, 'workspaceId'>[]> {
+  return (await openRows(db, table, rows)).map(({ workspaceId: _workspace, ...row }) => { void _workspace; return row; });
+}
 
 const w = schema.projectWorkItems, d = schema.projectDecisions, r = schema.projectResults;
 const groupByRank = ['needs', 'in_progress', 'blocked', 'open', 'parked', 'finished', 'rules', 'rules', 'results'] as const;
@@ -26,7 +32,7 @@ export function nativeWorkSummaryRows(db: DbExecutor) {
     return counts;
   }
   async function firstWork(projectId: string, status: 'in_progress' | 'blocked' | 'open'): Promise<WorkReadRef | null> {
-    const [row] = await db.select({ id: w.id, title: w.title }).from(w).where(and(eq(w.projectId, projectId), eq(w.status, status), isNull(w.parkedAt), isNull(w.creationRevertedAt))).orderBy(desc(w.createdAt), desc(w.id)).limit(1);
+    const [row] = await opened(db, 'project_work_items', await db.select({ id: w.id, workspaceId: w.workspaceId, title: w.title }).from(w).where(and(eq(w.projectId, projectId), eq(w.status, status), isNull(w.parkedAt), isNull(w.creationRevertedAt))).orderBy(desc(w.createdAt), desc(w.id)).limit(1));
     return row ? { kind: 'work', ...row } : null;
   }
   return {
@@ -35,9 +41,9 @@ export function nativeWorkSummaryRows(db: DbExecutor) {
       const actor = { ...caller };
       const at = await observedAt();
       const all = await counts(projectId, actor, false), mine = await counts(projectId, actor, true);
-      const [rule] = await db.select({ id: d.id, title: d.title }).from(d).where(and(eq(d.projectId, projectId), eq(d.status, 'accepted'))).orderBy(desc(d.createdAt), desc(d.id)).limit(1);
-      const [proposal] = await db.select({ id: d.id, title: d.title }).from(d).where(and(eq(d.projectId, projectId), eq(d.status, 'proposed'))).orderBy(desc(d.createdAt), desc(d.id)).limit(1);
-      const [result] = await db.select({ id: r.id, title: r.title, finding: r.finding }).from(r).where(eq(r.projectId, projectId)).orderBy(desc(r.createdAt), desc(r.id)).limit(1);
+      const [rule] = await opened(db, 'project_decisions', await db.select({ id: d.id, workspaceId: d.workspaceId, title: d.title }).from(d).where(and(eq(d.projectId, projectId), eq(d.status, 'accepted'))).orderBy(desc(d.createdAt), desc(d.id)).limit(1));
+      const [proposal] = await opened(db, 'project_decisions', await db.select({ id: d.id, workspaceId: d.workspaceId, title: d.title }).from(d).where(and(eq(d.projectId, projectId), eq(d.status, 'proposed'))).orderBy(desc(d.createdAt), desc(d.id)).limit(1));
+      const [result] = await opened(db, 'project_results', await db.select({ id: r.id, workspaceId: r.workspaceId, title: r.title, finding: r.finding }).from(r).where(eq(r.projectId, projectId)).orderBy(desc(r.createdAt), desc(r.id)).limit(1));
       const activeFirst = await firstWork(projectId, 'in_progress'), blockedFirst = await firstWork(projectId, 'blocked');
       const openFirst = await firstWork(projectId, 'open');
       const historyCounts = await db.execute<{ completed: number; not_pursued: number; parked: number }>(sql`SELECT
@@ -45,8 +51,8 @@ export function nativeWorkSummaryRows(db: DbExecutor) {
         count(*) FILTER (WHERE status = 'not_pursued' AND parked_at IS NULL)::int AS not_pursued,
         count(*) FILTER (WHERE parked_at IS NOT NULL)::int AS parked
         FROM project_work_items WHERE project_id = ${projectId}::uuid AND creation_reverted_at IS NULL`);
-      const [historyWork] = await db.select({ id: w.id, title: w.title }).from(w).where(and(eq(w.projectId, projectId), isNull(w.creationRevertedAt))).orderBy(desc(w.createdAt), desc(w.id)).limit(1);
-      const [historyDecision] = await db.select({ id: d.id, title: d.title }).from(d).where(eq(d.projectId, projectId)).orderBy(desc(d.createdAt), desc(d.id)).limit(1);
+      const [historyWork] = await opened(db, 'project_work_items', await db.select({ id: w.id, workspaceId: w.workspaceId, title: w.title }).from(w).where(and(eq(w.projectId, projectId), isNull(w.creationRevertedAt))).orderBy(desc(w.createdAt), desc(w.id)).limit(1));
+      const [historyDecision] = await opened(db, 'project_decisions', await db.select({ id: d.id, workspaceId: d.workspaceId, title: d.title }).from(d).where(eq(d.projectId, projectId)).orderBy(desc(d.createdAt), desc(d.id)).limit(1));
       const decisionTotal = await db.execute<{ total: number }>(sql`SELECT count(*)::int AS total FROM project_decisions WHERE project_id = ${projectId}::uuid`);
       const history = historyCounts.rows[0];
       if (!history || !decisionTotal.rows[0]) throw new Error('Missing native history counts');

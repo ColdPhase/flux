@@ -259,7 +259,7 @@ class MapOutlineJourney(unittest.TestCase):
         names = self.row(page, 2).locator(".sk-outline-actions button").evaluate_all("buttons => buttons.map(b => b.getAttribute('aria-label') || b.textContent.trim())")
         self.assertEqual(names, ["Edit", "Add a child thought", "Create task from selected thoughts", "More actions"])
         menu = self.more(page, 2)
-        expect(menu.get_by_role("button")).to_have_text(["IndentTab", "Outdent⇧Tab", "Move up⌥↑", "Move down⌥↓", "Connect…", "Connections", "Remove"])
+        expect(menu.get_by_role("button")).to_have_text(["IndentTab", "Outdent⇧Tab", "Move up⌥↑", "Move down⌥↓", "Connect…", "Connections", "Cite in conversation", "Remove"])
         page.keyboard.press("Escape")
         shot(page, "map-outline-tree-1440-light")
         self.api(page, "PATCH", f"/api/v1/sketches/{self.sketch_id}/links/{link['id']}", {"label": None, "expectedLabel": "problem"}, headers={"idempotency-key": f"unlabel-{STAMP}"})
@@ -469,7 +469,7 @@ class MapOutlineJourney(unittest.TestCase):
         self.pick(viewer, 1)
         expect(self.row(viewer, 1).get_by_role("button", name="Edit", exact=True)).to_have_count(0)
         expect(self.row(viewer, 1).get_by_role("button", name="Add a child thought", exact=True)).to_have_count(0)
-        expect(self.more(viewer, 1).get_by_role("button")).to_have_text(["Move up⌥↑", "Move down⌥↓", "Connections"])
+        expect(self.more(viewer, 1).get_by_role("button")).to_have_text(["Move up⌥↑", "Move down⌥↓", "Connections", "Cite in conversation"])
         self.row(viewer, 1).focus()
         for key in ("Enter", "Space", "+", "Delete", "Tab"):
             self.row(viewer, 1).press(key)

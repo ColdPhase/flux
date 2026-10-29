@@ -14,6 +14,8 @@ from datetime import datetime, timezone
 from uuid import uuid4
 from urllib.parse import urlsplit
 from playwright.sync_api import expect
+
+from app_select import choose, expect_value
 import test_focus_refresh as original
 import test_notifications as mail
 from test_app_shell import ORIGIN, shot
@@ -654,7 +656,7 @@ class RefreshEdges(unittest.TestCase):
                         self.addCleanup(lambda p=page:None if p.is_closed() else p.unroute_all(behavior='ignoreErrors'))
                         try:
                             if area=='mute':
-                                page.get_by_label('Place to mute',exact=True).select_option('project:'+actor['project'])
+                                choose(page.get_by_label('Place to mute',exact=True), 'project:'+actor['project'])
                                 control=page.get_by_role('button',name='Mute',exact=True)
                                 done='Muted '+actor['projectName']
                             elif area=='mention':
@@ -803,7 +805,7 @@ class RefreshEdges(unittest.TestCase):
         self.addCleanup(lambda p=page: None if p.is_closed() else p.unroute_all(behavior='ignoreErrors'))
         try:
             if muted:
-                page.get_by_label('Place to mute', exact=True).select_option('project:'+actor['project'])
+                choose(page.get_by_label('Place to mute', exact=True), 'project:'+actor['project'])
                 control = page.get_by_role('button', name='Mute', exact=True)
             else:
                 control = page.locator('.nset__muted li').filter(has_text=actor['projectName']).get_by_role('button', name='Unmute', exact=True)
@@ -815,7 +817,7 @@ class RefreshEdges(unittest.TestCase):
             expect(page.locator('.nset__saved')).to_be_empty()
             expect(page.locator('.nset__mute-read')).to_have_count(0)
             if muted:
-                expect(page.get_by_label('Place to mute', exact=True)).to_have_value('project:'+actor['project'])
+                expect_value(page.get_by_label('Place to mute', exact=True), 'project:'+actor['project'])
                 expect(page.locator('.nset__mute-pending')).to_contain_text('Muting '+actor['projectName'])
             self.api(other, 'PATCH', '/api/v1/notification-preferences', {'pause':{'until':None}})
             page.evaluate("window.dispatchEvent(new Event('focus'))")
@@ -858,7 +860,7 @@ class RefreshEdges(unittest.TestCase):
         page, actor, until = self.focused('Failed mute choice', phone=True)
         self.settings(page)
         select = page.get_by_label('Place to mute', exact=True)
-        select.select_option('project:'+actor['project'])
+        choose(select, 'project:'+actor['project'])
         control = page.get_by_role('button', name='Mute', exact=True)
         held, writes = {}, []
         def handler(route):
@@ -876,7 +878,7 @@ class RefreshEdges(unittest.TestCase):
                 page.wait_for_timeout(50)
             self.assertIn('route', held, 'the actual selected mute command reached the error-response barrier')
             expect(control).to_have_attribute('aria-busy', 'true')
-            expect(select).to_have_value('project:'+actor['project'])
+            expect_value(select, 'project:'+actor['project'])
             expect(page.locator('.nset__mute-pending')).to_contain_text(actor['projectName'])
             expect(page.locator('.nset__saved')).to_be_empty()
             expect(page.locator('.nset__mute-read')).to_have_count(0)
@@ -886,7 +888,7 @@ class RefreshEdges(unittest.TestCase):
             expect(page.get_by_text('Could not save. Try again.', exact=True)).to_be_visible()
             expect(page.locator('.nset__mute-pending')).to_have_count(0)
             expect(control).to_be_enabled()
-            expect(select).to_have_value('project:'+actor['project'])
+            expect_value(select, 'project:'+actor['project'])
             expect(page.locator('.nset__saved')).to_be_empty()
             expect(page.locator('.nset__mute-read')).to_have_count(0)
             self.assertFalse(any(place['id']==actor['project'] for place in self.api(page, 'GET', '/api/v1/notification-preferences')['muted']))

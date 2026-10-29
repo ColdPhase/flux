@@ -9,6 +9,8 @@ export {
   accessName,
   evaluateProject,
   evaluateDraft,
+  evaluateSketch,
+  evaluateDm,
   dmClosedFor,
   visibleWorkspaceOf,
   isUuid,
@@ -115,6 +117,7 @@ export * from './agent-connection/agent-stops.js';
 export * from './agent-connection/agent-questions.js';
 export * from './agent-connection/project-agents.js';
 
+export * from './files/detail.js';
 export * from './files/ports.js';
 export * from './files/service.js';
 export * from './agent-runtime/index.js';

@@ -2,7 +2,7 @@ import { useEffect, useId, useMemo, useRef, useState, type FormEvent, type Keybo
 import { Link } from 'react-router';
 import type { Agent, AgentProjectPolicy, Project, ProjectAgentConnection, ProjectPerson, WorkRowProjection } from '@flux/contracts';
 import { ApiError, NetworkError } from '../api/client';
-import { Button, Icon, Kreska, MEDIA, Overlay, Sheet, agentHue, useMediaQuery, useToast, type KreskaExpression } from '../ui';
+import { Button, Icon, Kreska, MEDIA, Overlay, Sheet, agentHue, useMediaQuery, useToast, type KreskaExpression, Select, Option } from '../ui';
 import { listProjectPeople } from '../project/data';
 import { useShellData } from '../app/data';
 import { updateWork, listAgents } from '../work/api';
@@ -247,10 +247,10 @@ function HandOffBody({ onClose, project, task: given, agentId, onDone }: {
             {given ? null : (
               <div className="handoff__task">
                 <label htmlFor={`${titleId}-task`}>Task</label>
-                <select id={`${titleId}-task`} ref={(node) => { if (!entry) first.current = node; }} value={taskId ?? ''} disabled={!loaded || !free.length} onChange={(event) => setTaskId(event.target.value || null)}>
-                  <option value="">{loaded && !free.length && !cursor ? 'No open task without an agent' : paging || reading ? 'Reading tasks…' : 'Choose a task'}</option>
-                  {free.map((row) => <option key={row.id} value={row.id}>#{row.number} · {row.title}</option>)}
-                </select>
+                <Select id={`${titleId}-task`} ref={(node) => { if (!entry) first.current = node; }} value={taskId ?? ''} disabled={!loaded || !free.length} onChange={(next) => setTaskId(next || null)}>
+                  <Option value="">{loaded && !free.length && !cursor ? 'No open task without an agent' : paging || reading ? 'Reading tasks…' : 'Choose a task'}</Option>
+                  {free.map((row) => <Option key={row.id} value={row.id}>#{row.number} · {row.title}</Option>)}
+                </Select>
                 {cursor && free.length ? <Button variant="quiet" busy={paging} onClick={() => void loadMore()}>More tasks</Button> : null}
               </div>
             )}
