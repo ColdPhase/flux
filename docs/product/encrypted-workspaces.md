@@ -666,6 +666,10 @@ This is stated plainly for the review and for the operations guide. Someone with
 - **tasks: number, status, owner, waiting-for person and due date**; decisions' status; results'
   positive or negative finding; doc states (draft or published) and contributors;
 - maps: thought positions, sizes, shapes and link endpoints (not their text or labels);
+- which thought or message a message cites (`message_references`, #469: a kind and a target id, never the cited title or text,
+  which are opened per reader through the seal); and for a file the numbers read from its bytes at upload, its page count (PDF),
+  data-row count (CSV, TSV) and duration (audio) (`project_files.page_count`, `row_count`, `duration_ms`). They are counts like
+  the file's size, never its content;
 - that an activity of a kind happened ("title changed", "due changed"), but not the values;
 - notifications: who did what, of which kind, for whom, in which workspace;
 - the client-chosen keys described above.

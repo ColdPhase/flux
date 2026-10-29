@@ -184,7 +184,9 @@ span.photo-grid__open { cursor: default; }
 /* References to Flux objects (#469, F-026 §6): a map thought or a cited message is the Wiki card's shape with the object's kind above its
    title and one line of context at the right. A target the reader may not open is the same card, muted, with nothing of it. */
 .ref-card .wiki-card__text { flex: 1 1 auto; }
-.ref-card small, .ref-card strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ref-card small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* The title is what identifies the target: it wraps to two lines before it is cut, on every width. */
+.ref-card strong { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; white-space: normal; overflow-wrap: anywhere; }
 .ref-card__ctx { flex: none; max-width: 42%; margin-left: auto; padding-left: 8px; color: var(--t3); font-size: var(--fs-xs); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ref-card.is-unavailable, .message-bubble > .ref-card.is-unavailable:hover, .is-mine > .message-bubble .ref-card.is-unavailable:hover { background: var(--sub); color: var(--t3); cursor: default; }
 .ref-card.is-unavailable::after { content: none; }

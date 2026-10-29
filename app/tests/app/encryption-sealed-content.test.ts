@@ -118,6 +118,35 @@ describe('F-030 S2a-1: sealed content in the repositories', () => {
     assert.equal((await ben.browser.request('GET', `/api/v1/conversations/${ids.A.conversation}`)).status, 200);
   });
 
+  test('citing an id of a locked sealed workspace answers exactly like citing an id that does not exist (#469)', async () => {
+    // Ben is a member of both workspaces. Nothing of A may be learned from B by citing A's ids, locked or not.
+    const opening = (expectStatus(await ben.browser.request('GET', `/api/v1/conversations/${ids.A.conversation}`), 200) as { messages: { id: string }[] }).messages[0]!.id;
+    const dmMessage = (expectStatus(await ben.browser.request('GET', `/api/v1/dms/${ids.A.dm}`), 200) as { messages: { id: string }[] }).messages[0]!.id;
+    const attempt = async (path: string, reference: { kind: string; id: string }) => {
+      const response = await ben.browser.request('POST', path, { body: { body: 'Citing from B', clientMessageId: randomUUID(), references: [reference] } });
+      return { status: response.status, body: response.text };
+    };
+    const places = [`/api/v1/projects/${ids.B.project}/conversations`, `/api/v1/dms/${ids.B.dm}/messages`];
+    const check = async (label: string) => {
+      for (const path of places) {
+        const absent = await attempt(path, { kind: 'message', id: randomUUID() });
+        assert.equal(absent.status, 404, `${label}: an absent id`);
+        assert.match(absent.body, /REFERENCE_UNAVAILABLE/);
+        for (const reference of [{ kind: 'message', id: opening }, { kind: 'message', id: dmMessage }, { kind: 'thought', id: opening }]) {
+          assert.deepEqual(await attempt(path, reference), absent, `${label}: ${path} ${reference.kind} of A answers like an absent id`);
+        }
+      }
+    };
+    await check('unlocked');
+    expectStatus(await lock(ada.browser, A), 200);
+    try {
+      await check('locked');
+      assert.equal(JSON.stringify(await attempt(places[0]!, { kind: 'message', id: opening })).includes('Garden club'), false, 'the answer never names the locked workspace');
+    } finally {
+      expectStatus(await unlock(ada.browser, A, { password: pw }), 200);
+    }
+  });
+
   test('A\'s rows hold envelopes, B\'s plain text; the draft versions of A are written by the application, sealed', async () => {
     const one = async (query: string, values: unknown[]) => (await pool.query(query, values)).rows[0] as Record<string, unknown>;
     for (const [side, ws] of [['A', A], ['B', B]] as const) {

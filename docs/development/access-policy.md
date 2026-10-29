@@ -578,7 +578,7 @@ A message cites a map thought or another message through `references: [{ kind: '
 `POST /api/v1/projects/:id/conversations`, `POST /api/v1/conversations/:id/messages`,
 `POST /api/v1/work/:id/agent-thread` and the direct-message sends (`POST /api/v1/dms/:id/messages` and its thread
 replies). At most four, distinct, each a UUID; the `message` kind names a project message or a direct message, which the
-server tells apart. Migration 0121 stores only the kind and the id (`message_references`, owned by the citing message and
+server tells apart. Migration 0122 stores only the kind and the id (`message_references`, owned by the citing message and
 removed with it); nothing of the target is copied, so a title, an author or a place never outlives the target's own
 audience.
 

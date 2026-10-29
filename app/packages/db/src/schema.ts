@@ -758,7 +758,7 @@ export const projectFiles = pgTable('project_files', {
   thoughtId: uuid('thought_id'),
   /** F-030 (0119): the key version of the stored object; null for a plain workspace. */
   keyVersion: integer('key_version'),
-  /** #469 (0121): what the bytes said at upload; null when the kind is not read or the bytes did not say. */
+  /** #469 (0122): what the bytes said at upload; null when the kind is not read or the bytes did not say. */
   pageCount: integer('page_count'),
   rowCount: integer('row_count'),
   durationMs: integer('duration_ms'),
@@ -1578,7 +1578,7 @@ export const dmMessages = pgTable('dm_messages', {
 ]);
 
 /**
- * What a message cites (#469, migration 0121): a map thought or another message, by id only. The cards are resolved per
+ * What a message cites (#469, migration 0122): a map thought or another message, by id only. The cards are resolved per
  * reader when the message is read; the owner is a project message or a DM message, and its rows go with it.
  */
 export const messageReferences = pgTable('message_references', {

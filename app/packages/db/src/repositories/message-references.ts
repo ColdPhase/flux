@@ -1,4 +1,4 @@
-import { asc, eq, inArray } from 'drizzle-orm';
+import { and, asc, eq, inArray } from 'drizzle-orm';
 import type { MessageReference } from '@flux/contracts';
 import * as schema from '../schema.js';
 import { openField, openRows, sealOf } from '../sealing.js';
@@ -53,12 +53,16 @@ export function messageReferenceRows(db: DbExecutor) {
       return grouped;
     },
 
-    /** Opened here, never in SQL (F-030): a sealed workspace's thought text, sketch title, message body and project name are read through its seal. */
-    async thought(id: string): Promise<LocatedThought | null> {
+    /**
+     * The lookups are bounded by the citing message's workspace in SQL, before anything is opened or any policy is asked: an id of
+     * another workspace (locked and sealed included) is not found, exactly as an id that does not exist, so no answer names it.
+     * Opened here, never in SQL (F-030): a sealed workspace's thought text, sketch title, message body and project name are read through its seal. */
+    async thought(id: string, workspaceId: string): Promise<LocatedThought | null> {
       const [row] = await db.select({ id: schema.sketchThoughts.id, workspaceId: schema.sketchThoughts.workspaceId, sketchId: schema.sketchThoughts.sketchId,
         text: schema.sketchThoughts.text, updatedAt: schema.sketchThoughts.updatedAt, sketchTitle: schema.sketches.title, scope: schema.sketches.scope,
         projectId: schema.sketches.projectId, dmId: schema.sketches.dmId, userId: schema.sketchThoughts.createdByUserId, agentId: schema.sketchThoughts.createdByAgentId })
-        .from(schema.sketchThoughts).innerJoin(schema.sketches, eq(schema.sketches.id, schema.sketchThoughts.sketchId)).where(eq(schema.sketchThoughts.id, id));
+        .from(schema.sketchThoughts).innerJoin(schema.sketches, eq(schema.sketches.id, schema.sketchThoughts.sketchId))
+        .where(and(eq(schema.sketchThoughts.id, id), eq(schema.sketchThoughts.workspaceId, workspaceId)));
       if (!row) return null;
       const { userId, agentId, ...fields } = row;
       const [opened] = await openRows(db, 'sketch_thoughts', [{ id: fields.id, workspaceId: fields.workspaceId, text: fields.text }]);
@@ -67,11 +71,11 @@ export function messageReferenceRows(db: DbExecutor) {
     },
 
     /** A project message or, failing that, a direct message with this id; null for any other id. */
-    async message(id: string): Promise<LocatedMessage | null> {
+    async message(id: string, workspaceId: string): Promise<LocatedMessage | null> {
       const m = schema.projectMessages;
       const [project] = await db.select({ id: m.id, workspaceId: m.workspaceId, projectId: m.projectId, conversationId: m.conversationId, projectName: schema.projects.name,
         body: m.body, attachmentCount: m.attachmentCount, createdAt: m.createdAt, userId: m.authorId, agentId: m.authorAgentId })
-        .from(m).innerJoin(schema.projects, eq(schema.projects.id, m.projectId)).where(eq(m.id, id));
+        .from(m).innerJoin(schema.projects, eq(schema.projects.id, m.projectId)).where(and(eq(m.id, id), eq(m.workspaceId, workspaceId)));
       if (project) {
         const { userId, agentId, ...fields } = project;
         const [opened] = await openRows(db, 'project_messages', [{ id: fields.id, workspaceId: fields.workspaceId, body: fields.body }]);
@@ -79,7 +83,7 @@ export function messageReferenceRows(db: DbExecutor) {
         return { kind: 'project', ...fields, body: opened!.body, projectName: openField('projects', 'name', [fields.projectId], fields.projectName, seal)!, author: actorOf(userId, agentId)! };
       }
       const d = schema.dmMessages;
-      const [dm] = await db.select({ id: d.id, workspaceId: d.workspaceId, dmId: d.dmId, body: d.body, createdAt: d.createdAt, userId: d.authorId }).from(d).where(eq(d.id, id));
+      const [dm] = await db.select({ id: d.id, workspaceId: d.workspaceId, dmId: d.dmId, body: d.body, createdAt: d.createdAt, userId: d.authorId }).from(d).where(and(eq(d.id, id), eq(d.workspaceId, workspaceId)));
       if (!dm) return null;
       const { userId, ...fields } = dm;
       const [opened] = await openRows(db, 'dm_messages', [{ id: fields.id, workspaceId: fields.workspaceId, body: fields.body }]);

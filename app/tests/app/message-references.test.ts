@@ -101,7 +101,14 @@ describe('message references', () => {
     // Another workspace's thought is not citable either, even by its own reader.
     const elsewhere = await sketch(dave, { title: 'Elsewhere map', scope: 'private' }, other.id);
     const foreign = await thought(dave, elsewhere.id, 'Another workspace');
-    assert.equal((await start(jonas, open.id, 'Cite foreign', [{ kind: 'thought', id: foreign.id }])).status, 404);
+    const foreignProject = await project(dave, other.id, 'Elsewhere project', 'workspace');
+    const foreignMessage = ((await started(dave, foreignProject.id, 'Another workspace speaking')).messages[0]!).id;
+    const absentAnswer = (await start(jonas, open.id, 'Cite absent', [{ kind: 'message', id: randomUUID() }])).text;
+    for (const reference of [{ kind: 'thought', id: foreign.id }, { kind: 'message', id: foreignMessage }]) {
+      const response = await start(jonas, open.id, 'Cite foreign', [reference]);
+      assert.equal(response.status, 404);
+      assert.equal(response.text, absentAnswer, 'another workspace\'s id answers exactly like an absent one');
+    }
     assert.equal((await start(dave, open.id, 'Dave is not in this workspace', [])).status, 404);
     const crossWorkspace = await sketch(ada, { title: 'Mine', scope: 'private' });
     const own = await thought(ada, crossWorkspace.id, 'Mine');

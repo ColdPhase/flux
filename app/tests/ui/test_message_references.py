@@ -20,6 +20,7 @@ import uuid
 from playwright.sync_api import Browser, Page, expect, sync_playwright
 
 from contrast import MEASURE
+from message_gestures import long_press
 from test_app_shell import DESKTOP, ORIGIN, PHONE, UPSTREAM, start_forwarder
 
 UI_BROWSER = os.environ.get("FLUX_UI_BROWSER", "chromium")
@@ -138,12 +139,12 @@ class MessageReferences(unittest.TestCase):
         thought = self.card(page, "both", "thought")
         expect(thought).to_be_visible()
         expect(thought).to_have_attribute("data-ref-state", "available")
-        expect(thought.locator("small")).to_have_text("Map thought · Enclosure ideas")
+        expect(thought.locator("small")).to_have_text("Thought · Enclosure ideas")
         expect(thought.locator("strong")).to_have_text(THOUGHT)
         expect(thought.locator(".ref-card__ctx")).to_have_text("Ada")
         expect(thought.locator("svg")).to_have_count(1)
         message = self.card(page, "both", "message")
-        expect(message.locator("small")).to_have_text("Cited message · Board matters")
+        expect(message.locator("small")).to_have_text("Message · Board matters")
         expect(message.locator("strong")).to_have_text(BOARD_NOTE)
         expect(message.locator(".ref-card__ctx")).to_have_text(re.compile(r"^Ada · \d"))
         # The card opens its target: the thought on its map, the message in its own project.
@@ -154,7 +155,7 @@ class MessageReferences(unittest.TestCase):
         expect(page).to_have_url(re.compile(rf"/projects/{self.ids['board']}/conversations/{self.ids['note_conversation']}#message-{self.ids['note']}$"))
         # A message of a direct message opens that conversation.
         page.goto(f"/projects/{self.ids['project']}")
-        expect(self.card(page, "private", "message").locator("small")).to_have_text("Cited message · Direct message")
+        expect(self.card(page, "private", "message").locator("small")).to_have_text("Message · DM")
         self.card(page, "private", "message").click()
         expect(page).to_have_url(re.compile(rf"/dm/{self.ids['dm']}#message-{self.ids['dm_message']}$"))
 
@@ -166,7 +167,7 @@ class MessageReferences(unittest.TestCase):
                 expect(cited).to_have_attribute("data-ref-state", expected["message"])
                 expect(cited).to_have_attribute("role", "note")
                 expect(cited.locator("strong")).to_have_text("Not available to you")
-                expect(cited.locator("small")).to_have_text("Cited message")
+                expect(cited.locator("small")).to_have_text("Message")
                 self.assertEqual(page.locator(f"#message-{self.ids['both']} a.ref-card[data-ref='message']").count(), 0, "no link to a message the reader cannot open")
                 expect(self.card(page, "private", "message")).to_have_attribute("data-ref-state", expected["private"])
                 # The map thought is in the open project: every member reads it.
@@ -210,6 +211,14 @@ class MessageReferences(unittest.TestCase):
                         }""", arg=selector)
                         value = page.evaluate(MEASURE, {"selector": selector})
                         self.assertGreaterEqual(value["ratio"], 4.5, (who, phone, dark, selector, value))
+                if phone and who == "ada":
+                    # The title identifies the target: on a phone it wraps to two lines and is not cut (visual review of #704).
+                    for message, kind in (("both", "thought"), ("both", "message"), ("private", "message")):
+                        title = self.card(page, message, kind).locator("strong")
+                        title.scroll_into_view_if_needed()
+                        cut = title.evaluate("el => ({ tall: el.scrollHeight > el.clientHeight + 1, wide: el.scrollWidth > el.clientWidth + 1, lines: Math.round(el.clientHeight / parseFloat(getComputedStyle(el).lineHeight)) })")
+                        self.assertFalse(cut["tall"] or cut["wide"], (message, kind, cut))
+                        self.assertLessEqual(cut["lines"], 2, (message, kind, cut))
                 if dark:
                     background = page.evaluate("getComputedStyle(document.body).backgroundColor")
                     channels = [int(v) for v in re.findall(r"\d+", background)[:3]]
@@ -242,10 +251,36 @@ class MessageReferences(unittest.TestCase):
         card = mine.locator(".ref-card[data-ref='message']")
         expect(card).to_have_count(1)
         expect(card.locator("strong")).to_have_text("What about this one?")
-        expect(card.locator("small")).to_have_text("Cited message · Garden sensors")
+        expect(card.locator("small")).to_have_text("Message · Garden sensors")
         # Reloaded, the card is the same: it comes from the server, made for this reader.
         page.reload()
         expect(page.locator(".project-convo__message", has_text="Replying to this, not to the map idea").locator(".ref-card[data-ref='message'] strong")).to_have_text("What about this one?")
+
+    def test_h_a_phone_cites_a_message_from_its_long_press_menu(self) -> None:
+        """A phone has no hover: the message menu opens by long press (or swipe for Reply), and its Cite puts the tile in the composer."""
+        for dark in (False, True):
+            with self.subTest(dark=dark):
+                page = self.page("ada", phone=True, dark=dark)
+                message = page.locator(f"#message-{self.ids['jonas_root']}")
+                bubble = message.locator(".message-bubble")
+                bubble.scroll_into_view_if_needed()
+                long_press(bubble)
+                menu = page.get_by_role("menu", name="Message actions")
+                expect(menu).to_be_visible()
+                menu.get_by_role("menuitem", name="Cite").click()
+                tile = page.locator(".composer-cite")
+                expect(tile).to_have_count(1)
+                expect(tile.locator("small")).to_have_text("Cited message · Jonas Berg")
+                expect(tile.locator("strong")).to_have_text("What about this one?")
+                box = tile.bounding_box()
+                self.assertGreaterEqual(box["height"], 44, box)
+                self.assertGreaterEqual(box["x"], 0)
+                self.assertLessEqual(box["x"] + box["width"], page.viewport_size["width"] + 0.5, "the tile stays inside the screen")
+                remove = tile.get_by_role("button", name=re.compile("^Remove citation"))
+                self.assertGreaterEqual(remove.bounding_box()["height"], 44)
+                self.assertGreaterEqual(remove.bounding_box()["width"], 44)
+                remove.click()
+                expect(tile).to_have_count(0)
 
     def test_e_cite_the_selected_thought_from_the_map(self) -> None:
         page = self.page("ada", path=f"/map/{self.ids['sketch']}")

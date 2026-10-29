@@ -43,11 +43,11 @@ export function messageReferences(db: DbExecutor) {
   /** The target as this reader may open it now, or null; the workspace of the citing message bounds it. */
   async function open(principal: Principal, reference: MessageReference, workspaceId: string): Promise<Opened | null> {
     if (reference.kind === 'thought') {
-      const located = await rows.thought(reference.id);
-      return located && located.workspaceId === workspaceId ? thought(principal, located) : null;
+      const located = await rows.thought(reference.id, workspaceId);
+      return located ? thought(principal, located) : null;
     }
-    const located = await rows.message(reference.id);
-    return located && located.workspaceId === workspaceId ? message(principal, located) : null;
+    const located = await rows.message(reference.id, workspaceId);
+    return located ? message(principal, located) : null;
   }
 
   /** The cards of these messages for `principal`, by message id; a message with no references is absent. */
