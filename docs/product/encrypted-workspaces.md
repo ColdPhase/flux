@@ -1266,7 +1266,13 @@ token alone is not enough (S1 review): a real deployment never holds a half-seal
     S2b; `search_change_log` pinned like the other sealing functions; and a sealed chooser search that reached
     `SEALED_CHOOSER_SCAN_LIMIT` says so (`searchLimited: true` on the work view). Known gap until S2b: the map list's
     "hide empty maps" test compares the stored title with the default in SQL, so an empty sealed map is listed.
-  - **S2a-2b-2**: file names, sealed digests and file bytes (the streaming `FileCipher`, `has`/`read` on plaintext).
+  - **S2a-2b-2**: file names and SHA-256 (a sealed digest) sealed in `project_files`, with `key_version` set; file
+    bytes sealed as they stream in. `FileStorage.receive` takes the reservation id, and the disk adapter resolves the
+    object's cipher from its row (`fileCipherOf`, 423 while locked) and writes each chunk through the chunked
+    `FileCipher.sealer()` into the scratch file, so plaintext never reaches `attachments/tmp`; size and digest are
+    measured on the plaintext. `read` and `has` return or compare plaintext only after the tag verifies; a tampered or
+    truncated object is unavailable, never served. Thumbnails are made in the browser, so nothing else is stored. The
+    file detail of #704 (`page_count`, `row_count`, `duration_ms`) stays visible metadata, like `size`.
   - **S2a-2c**: the notification
     and event backstops with content-free notifications, error-path redaction, `sealed_job_waits` and
     the resume job, the SQL source scan, cross-workspace `lockedWorkspaces`, the replacement of the
