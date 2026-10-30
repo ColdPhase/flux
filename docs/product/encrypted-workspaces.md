@@ -1355,8 +1355,18 @@ token alone is not enough (S1 review): a real deployment never holds a half-seal
     workspace's seal (or a job whose payload names one) answers, logs and stores in pg-boss only `redactedError`
     (`SealedJobError(code)` for jobs); the AC-5 SQL source scan (`tests/app/support/sealed-sql-scan.ts`, each handled
     site listed with its reason); and the API export of a sealed project, opened for the manager who asks.
-  - **S2a-2c-4**: the replacement of the route-level gate by per-repository sealing with the AC-6 route walk, AC-10
-    (`scripts/check_backup.sh`) and the rest of AC-7 (`pg_dump`, WAL, files volume, container layers).
+  - **S2a-2c-4** (no migration): the S1 route-level gate is gone. Every repository fails closed through `sealFor`
+    (lists that may be empty, such as a person's drafts and assigned tasks, resolve the seal first), and the gate keeps
+    only the cross-workspace reads. AC-6 (`tests/app/encryption-locked-routes.test.ts`) walks every route the server
+    registers (a test-deployment listing with each route's body and query schema), fills its parameters, body and
+    query with a locked space's objects, and expects `423`, a metadata route of `LOCKED_ALLOWED_ROUTES` (now also the
+    content-free Inbox rows, Needs you keys and the always-empty agent list), a cross-workspace read naming the space,
+    or a refusal of a feature the space does not offer (`WORKSPACE_AI_BLOCKED`, `GITHUB_UNAVAILABLE`); a request
+    refused as invalid input before any read is counted. The live Wiki and map room upgrades answer `423` too. Never a `500`, a canary or
+    an envelope. AC-10 is case 3 of `scripts/check_backup.sh` (`FLUX_BACKUP_CASES=encryption` runs it alone). The rest
+    of AC-7 for S2a's canaries is `scripts/check_encryption_scan.sh`: `pg_dump` (pg-boss included), the raw
+    PostgreSQL volume with `pg_wal` and the files volume after the stack stops, every container's writable layer and
+    every log, with B's canaries as positive controls in the dump and both volumes.
 - **S2a: sealed database content and files.** `TABLE_CLASSES`, `SEALED_COLUMNS` and `VISIBLE_COLUMNS`
   with the live-catalog test, the backstops (plaintext, notifications, events, idempotency) and relaxed
   checks, **the search placeholder triggers and `search_changes`** (so no sealed column is ever
