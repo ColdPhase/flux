@@ -61,6 +61,20 @@ export async function unlessLocked<T>(read: Promise<T>, fallback: T): Promise<T>
   }
 }
 
+/**
+ * `409 ENCRYPTION_CHANGED`: the keys changed while the command ran (a key change starting in the worker a few seconds after
+ * an owner or admin was removed, which is when People offers a new recovery code). The command changed nothing, so it is
+ * sent again, up to three times a second apart, before the person is told.
+ */
+async function whileKeysSettle<T>(send: () => Promise<T>): Promise<T> {
+  for (let attempt = 1; ; attempt += 1) {
+    try { return await send(); } catch (error) {
+      if (attempt >= 4 || !(error instanceof ApiError) || error.code !== 'ENCRYPTION_CHANGED') throw error;
+      await new Promise((resolve) => { setTimeout(resolve, 1000); });
+    }
+  }
+}
+
 /** `POST /encrypted-workspaces`: one `creationId` per form, so a retry after a lost answer returns the space without a second one or the code. */
 export const createEncryptedWorkspace = (name: string, creationId: string, password: string) =>
   request<CreateEncryptedWorkspaceResult>(ENCRYPTED_WORKSPACES_PATH, { method: 'POST', body: { name, creationId, password } satisfies CreateEncryptedWorkspaceCommand });
@@ -73,16 +87,16 @@ export const unlockWorkspace = (workspaceId: string, secret: { password: string 
 export const lockWorkspace = (workspaceId: string) => request<EncryptionStateResult>(workspaceLockPath(workspaceId), { method: 'POST' });
 
 /** `POST …/unlock-password-grants`: a holder, with their own unlock password, lets another owner or admin set a first one (valid one hour). */
-export const grantUnlockPassword = (workspaceId: string, userId: string, password: string) =>
-  request<GrantUnlockPasswordResult>(workspaceUnlockGrantsPath(workspaceId), { method: 'POST', body: { userId, password } satisfies GrantUnlockPasswordCommand });
+export const grantUnlockPassword = (workspaceId: string, userId: string, password: string) => whileKeysSettle(() =>
+  request<GrantUnlockPasswordResult>(workspaceUnlockGrantsPath(workspaceId), { method: 'POST', body: { userId, password } satisfies GrantUnlockPasswordCommand }));
 
 /** `PUT …/unlock-password`: changing needs `currentPassword` or `recoveryCode`; a first password needs a grant or `recoveryCode`. */
-export const setUnlockPassword = (workspaceId: string, body: SetUnlockPasswordCommand) =>
-  request<unknown>(workspaceUnlockPasswordPath(workspaceId), { method: 'PUT', body });
+export const setUnlockPassword = (workspaceId: string, body: SetUnlockPasswordCommand) => whileKeysSettle(() =>
+  request<unknown>(workspaceUnlockPasswordPath(workspaceId), { method: 'PUT', body }));
 
 /** `POST …/recovery-code`: an owner, with their own unlock password, makes a new code; the old one stops working. */
-export const newRecoveryCode = (workspaceId: string, password: string) =>
-  request<NewRecoveryCodeResult>(workspaceRecoveryCodePath(workspaceId), { method: 'POST', body: { password } satisfies NewRecoveryCodeCommand });
+export const newRecoveryCode = (workspaceId: string, password: string) => whileKeysSettle(() =>
+  request<NewRecoveryCodeResult>(workspaceRecoveryCodePath(workspaceId), { method: 'POST', body: { password } satisfies NewRecoveryCodeCommand }));
 
 /** A calm sentence for a refused encryption call; never the server's own message, and never an echo of what was typed. */
 export function encryptionProblem(error: unknown, context: { workspace: string; who?: string }): string {
