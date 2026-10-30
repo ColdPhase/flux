@@ -298,11 +298,40 @@ runtime from `flux_bootstrap`, a connection can make these native project change
 | --- | --- | --- | --- |
 | `flux_create_task` | `work.create` | execute, plan | One task with an optional outcome, status, blocker, done-when criteria, same-project prerequisites and plan intent |
 | `flux_update_task` | `work.update` | execute, plan | One task at the exact version last read; same fields, but the plan intent never changes; both accept an optional `waitingForUserId` (a project member, blocked tasks only) |
+| `flux_link_pull_request` | `work.update` | execute, plan | Link the pull request the agent produced to the task it holds, by its URL, on a repository a person already connected to the project (#160 AC-3, below). It uses the task-change grant; it adds no GitHub permission |
 | `flux_undo_task_creation` | `work.creation.revert` | execute, plan | Undo the creation of a task this agent created natively, at its exact version, while it is unchanged and unused (#238); the task stays as read-only history and a retry returns the same receipt. A `work.update` grant does not authorize it |
 | `flux_record_result` | `result.record` | execute | One positive or negative finding with evidence, linked to tasks and decisions; it can finish one of those tasks at its read version |
 | `flux_propose_decision` | `decision.propose` | execute, plan | One proposed decision with rationale, affected tasks and an optional accepted decision it would replace. An agent never accepts or rejects; a person decides |
 
 The executor is `nativeActionExecutor` in `app/apps/server/src/agent-connection/action-execution.ts`.
+
+### Linking the pull request an agent produced (#160 AC-3)
+
+`flux_link_pull_request {projectId, runtimeSessionId, grantId, clientCommandId, peerRequestClass, workId, pullRequestUrl, role?}`
+(`app/apps/server/src/agent-connection/github-actions.ts`) makes the link a person would make in the task's Details or with
+`POST /api/v1/work/<taskId>/github-links` ([GitHub integration](github-integration/README.md#agent-pull-request-link-160-ac-3-2026-10-30)),
+with the agent's authority behind it. `role` is `required_output` (default) or `related`.
+
+- **Grant.** It is a change to the task, so it needs a live `work.update` standing grant for that task or the whole project, in the
+  execute or plan class: the grant of `flux_update_task`. No operation, migration or GitHub permission is added. The owner's
+  "Change tasks" switch covers both tools; a connection made before this tool lists it after its owner saves the permissions.
+- **Hold.** The agent must hold the task now: it is the task's owner, the task is open (not done, not pursued, not parked),
+  and no person paused it. Otherwise `TASK_NOT_HELD` (nobody, another agent, or closed) or `COWORK_PAUSED`; nothing is written or debited.
+- **Repository.** The URL names a repository an active binding of this task's project already connects (case-insensitive owner
+  and name); otherwise `GITHUB_REPOSITORY_NOT_BOUND`, and GitHub is not asked. A person connects repositories; an agent cannot.
+- **Verification.** The same code as the person's link: the binding's repository is proven with the **owner's** current GitHub
+  authorization (the runtime's owner, never tool input), the pull request is read through the read-only App and must belong
+  to that repository, then the link is stored once per task, binding, pull request and role. The agent has no GitHub
+  identity; GitHub is asked as the owner only. Without it: `GITHUB_AUTHORIZATION_REQUIRED` or `GITHUB_ACCESS_UNAVAILABLE`.
+  The owner also needs write access to the project (the agent's rule author, below); an owner who lost it makes the agent's call fail.
+- **Task rule.** A `required_output` link reaches the task's GitHub rule (or the project default) exactly as a person's link does,
+  with the owner as the rule's author (their GitHub identity and access are what the rule keeps checking). The task's event names the agent.
+- **Replay.** The call is one transaction in the standing-grant executor. The same command ID returns the stored result
+  (`replayed: true`, no GitHub call, no debit); the same ID for another pull request is `IDEMPOTENCY_CONFLICT`; a new command ID
+  for the same pull request returns the same link (the store is unique per task, binding, pull request and role).
+- **Result.** `{linkId, workId, bindingId, role, number, url, headSha, pullState, execution, linkState, version}`: references and
+  states only, never the title or other provider text. An installation without a GitHub App answers `GITHUB_UNAVAILABLE` first.
+- **Not offered** to an assistant run (`ASSISTANT_RUN_EFFECT_TOOLS` is unchanged).
 
 Every tool also takes the runtime ID, the grant ID and its class, one UUID
 command ID, and the exact current material revisions the action relies on. Those
