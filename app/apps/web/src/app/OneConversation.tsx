@@ -32,7 +32,8 @@ export interface PaneProps {
    * thread: the message the replies answer, at the top of the thread. The pane gives it what was made from
    * the root and the discussed task's row, from its own bounded reads (#155), never a project collection.
    */
-  rootHeader?: (objects: { preview: MessageWorkPreview | null; taskRow: NativeWorkRow | null }) => ReactNode;
+  /** `firstDay`: the day of the first reply, which the root's reply count line names instead of a day line of its own. */
+  rootHeader?: (objects: { preview: MessageWorkPreview | null; taskRow: NativeWorkRow | null; firstDay: string | null }) => ReactNode;
   /** thread: the root's message id, which the stream shows and arrives at. */
   rootMessageId?: string | null;
   /** thread: the decisions and results the project's conversation announces (#694); the thread shows the ones made from it. */
@@ -172,7 +173,7 @@ export function OneConversation({ data, Pane }: { data: ProjectData; Pane: Compo
           <PanelMeta>{replies} {replies === 1 ? 'reply' : 'replies'}</PanelMeta>
           <Pane key={thread.id} data={data} variant="thread" rootMessageId={rootMessage?.id ?? null} objects={objects}
             focusComposer={!!state?.focusComposer} onThreadSize={roots.threadSize}
-            rootHeader={({ preview, taskRow }) => <ThreadRoot message={rootMessage} projectId={project.id} body={rootMessage?.body ?? thread.firstMessageBody} author={rootMessage ? author(rootMessage) : null}
+            rootHeader={({ preview, taskRow, firstDay }) => <ThreadRoot firstDay={firstDay} message={rootMessage} projectId={project.id} body={rootMessage?.body ?? thread.firstMessageBody} author={rootMessage ? author(rootMessage) : null}
               agentOwner={rootMessage?.authorId === null ? agentAuthorOwner(rootMessage.author, owners) ?? null : null} meId={me.user.id} writable={writable} replies={replies} task={root?.task ?? null} taskRow={taskRow} preview={preview} onDenied={onDenied}
               photo={{ place: project.name, onReply: writable ? () => document.getElementById('thread-composer')?.focus() : undefined, onCreateTask: writable && rootMessage ? () => void makeWork.create(rootMessage) : undefined }} />} />
         </OwnedPanelContent>) : null}

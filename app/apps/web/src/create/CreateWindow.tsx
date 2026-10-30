@@ -1,7 +1,7 @@
 import { useEffect, useId, useMemo, useRef, useState, type FormEvent, type MouseEvent, type ReactNode } from 'react';
 import { useWorkspaceAi } from '../ai/workspaceAi';
 import { useLocation, useNavigate, useRevalidator } from 'react-router';
-import { WORK_LIMITS, WORK_STATUSES, type Agent, type CreateWorkCommand, type ObjectRef, type Project, type WorkItem, type WorkspaceMember, type WorkStatus } from '@flux/contracts';
+import { WORK_LIMITS, WORK_STATUSES, type Agent, type CreateWorkCommand, type ObjectRef, type Project, type WorkspaceMember, type WorkStatus } from '@flux/contracts';
 import { ApiError } from '../api/client';
 import { openDm, sendDmMessage } from '../api/direct-messages';
 import { useIntentKeys } from '../api/intent-keys';
@@ -17,7 +17,8 @@ import { useShellActions, type CreateRequest } from '../app/shellContext';
 import { searchFlux } from '../search/api';
 import { Button, Icon, MEDIA, Overlay, Spinner, StatusGlyph, Tabs, useMediaQuery, useToast, Select, Option, OptionGroup } from '../ui';
 import { createWork, listAgents, proposeDecision } from '../work/api';
-import { STATUS_LABEL, taskNumber } from '../work/format';
+import { STATUS_LABEL } from '../work/format';
+import { useCreatedToast } from '../work/taskState';
 import './create.css';
 
 // The one Create window (F-026 S3, #345, #521): the computer's centred window and the phone's bottom sheet hold the
@@ -220,7 +221,7 @@ function TaskForm({ ids, request, prefilled, phone, carried, projectId, onProjec
   const { me, projects } = useShellData();
   const { openDetails } = useShellActions();
   const revalidator = useRevalidator();
-  const toast = useToast();
+  const created = useCreatedToast(() => revalidator.revalidate());
   const noteId = useId();
   const titleRef = useRef<HTMLInputElement>(null);
   // A task made from a message, thoughts or a typed title starts from that; a blank one keeps its private draft.
@@ -261,7 +262,8 @@ function TaskForm({ ids, request, prefilled, phone, carried, projectId, onProjec
   const attempt = useRef<{ payload: string; key: string } | null>(null);
   const mounted = useRef(true);
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
-  useEffect(() => { titleRef.current?.focus(); }, []);
+  // A title made from a message is selected, so typing replaces it at once (#763 B5).
+  useEffect(() => { titleRef.current?.focus(); if (prefilled) titleRef.current?.select(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (!projectId) return undefined;
@@ -325,8 +327,10 @@ function TaskForm({ ids, request, prefilled, phone, carried, projectId, onProjec
       }
       request.onCreated?.();
       revalidator.revalidate();
+      // Every way of creating a task says so and offers Undo (Z), with the panel still opening on it (#763 B1).
+      created(item);
       if (!mounted.current) return;
-      if (another) { done(item); return; }
+      if (another) { done(); return; }
       onClose();
       openDetails({ kind: 'work', id: item.id, projectId });
     } catch (cause) {
@@ -334,8 +338,7 @@ function TaskForm({ ids, request, prefilled, phone, carried, projectId, onProjec
     } finally { inFlight.current = false; if (mounted.current) setBusy(false); }
   }
   /** Create another: the next task starts empty in the same project, with the same status and owner. */
-  function done(item: WorkItem) {
-    toast({ message: `Created ${taskNumber(item)}`, tone: 'success', timeout: 3000 });
+  function done() {
     if (prefilled) carried.set('');
     setOutcome(''); setBlocker(''); setSources([]); setLinking(false);
     // The field is disabled while the command runs: focus it once it is enabled again.

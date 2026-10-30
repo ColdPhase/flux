@@ -207,7 +207,7 @@ class ProjectSurfaceJourney(unittest.TestCase):
             assert box
             self.assertLessEqual(box["width"], 700, "readable measure per message")
         # Calm chips under a message open their object.
-        chip = page.locator(f"#message-{self.ids['m0']}").get_by_role("button", name="Work: Test the camera in low light")
+        chip = page.locator(f"#message-{self.ids['m0']}").get_by_role("button", name=re.compile(r"^Task #\d+: " + re.escape("Test the camera in low light") + "$"))
         expect(chip).to_contain_text("In progress")
         self.assert_whole_messages(page)
         shot(page, "project-conversation-desktop-1440")
@@ -249,21 +249,21 @@ class ProjectSurfaceJourney(unittest.TestCase):
     # ---------------------------------------------------------------- current state
 
     def test_03_needs_you_and_details_open_the_projects_objects(self) -> None:
-        """The computer's header is one row (F-026 §4, #340): "N needs you" is the recap's own count and opens
-        it; the rule, the work, the result and the proposal open from Details."""
+        """The computer's header is one row (F-026 §4, #340): "N needs you" counts this project's items of the Inbox's
+        one queue and opens the Inbox on them (#763 A2); the rule, the work, the result and the proposal open from Details."""
         page = self.open_project("ada")
         header = page.locator("header.top")
         expect(header.get_by_label("Current state")).to_have_count(0)
-        recap = self.api(page, "GET", f"/api/v1/return?place=project&id={self.ids['project']}&scope=all&from=last-visit", status=200)
+        queue = self.api(page, "GET", "/api/v1/needs-you", status=200)
+        mine = [item for item in queue["items"] if (item.get("project") or {}).get("id") == self.ids["project"]]
         chip = header.get_by_role("button", name=re.compile(r"needs you$"))
         panel = self.details(page)
-        if recap["needsYou"]:
-            expect(chip).to_have_text(f"{recap['needsYou']} needs you")
+        if mine:
+            expect(chip).to_have_text(f"{len(mine)} needs you")
             chip.click()
-            expect(chip).to_have_attribute("aria-expanded", "true")
-            expect(panel.get_by_role("heading", name="What matters")).to_be_visible()
-            chip.click()
-            expect(panel).to_be_hidden()
+            expect(page).to_have_url(re.compile(r"/inbox\?project="))
+            expect(page.locator(".nyc[data-key]")).to_have_count(len(mine))
+            page.go_back()
         else:
             expect(chip).to_have_count(0)
         open_details(page)

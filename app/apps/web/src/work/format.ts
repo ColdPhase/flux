@@ -48,10 +48,39 @@ export const decisionLine = (decision: Pick<Decision, 'status' | 'supersedes' | 
 
 export const resultLine = (result: Pick<WorkResult, 'finding' | 'createdBy'>) => stateText(resultPieces(result));
 
+/**
+ * What a blocked task waits for, composed the same way on the board, the list and the panel (#763 C1): "Waiting for
+ * <person> · <reason>", the reason alone when nobody is named, and null when neither was written down.
+ */
+export function blockedParts(item: { blocker: string | null; waitingFor?: { name: string } | null }) {
+  const reason = item.blocker?.trim() || null;
+  return { person: item.waitingFor?.name ?? null, reason };
+}
+
+export function blockedLine(item: { blocker: string | null; waitingFor?: { name: string } | null }) {
+  const { person, reason } = blockedParts(item);
+  if (person) return reason ? `Waiting for ${person} · ${reason}` : `Waiting for ${person}`;
+  return reason;
+}
+
 /** The first line of a message, for prefilled titles. */
 export function firstLine(text: string, max = 200) {
   const line = text.trim().split('\n', 1)[0] ?? '';
   return line.length > max ? `${line.slice(0, max - 1)}…` : line;
+}
+
+/**
+ * A task title made from a message (#763 B5): its first clause, at most `max` characters, cut at a word. The message
+ * itself stays the task's quoted source, so nothing of it is lost.
+ */
+export function titleFrom(text: string, max = 60) {
+  const line = firstLine(text, 1000);
+  const end = line.search(/[.!?;:](\s|$)/u);
+  const sentence = (end > 0 ? line.slice(0, end) : line).trim();
+  const clause = sentence.length <= max ? sentence : sentence.split(/,\s/u, 1)[0]!.trim();
+  if (clause.length <= max) return clause.replace(/[.,;:]$/u, '');
+  const cut = clause.slice(0, max + 1).replace(/\s+\S*$/u, '');
+  return (cut || clause.slice(0, max)).replace(/[.,;:]$/u, '');
 }
 
 /** Links of `id` whose other end is of `type`, with the other end's id and title. */

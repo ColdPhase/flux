@@ -214,17 +214,12 @@ class ReturnViewJourney(unittest.TestCase):
     def test_05_what_matters_shows_the_next_step_changes_and_a_digest(self) -> None:
         page = self.page("nia")
         page.goto(f"/projects/{self.project_id}/conversations/{self.conversation_id}")
-        # On the computer the compact entry is "N needs you" in the header's one row (#340).
-        entry = page.locator("header.top").get_by_role("button", name=re.compile("needs you$"))
-        expect(entry).to_have_text("3 needs you")
-        # A compact entry, not a block competing with the conversation (#133 AC-1).
-        box = entry.bounding_box()
-        assert box
-        self.assertLessEqual(box["height"], 40)
-        self.assertLessEqual(box["width"], 200)
+        # On the computer What matters is a quiet row in the header's More (#763 A2: "N needs you" counts the Inbox's
+        # queue and opens the Inbox, so it never disagrees with it).
         shot(page, "recap-project-desktop-1440-closed")
-        entry.focus()
-        page.keyboard.press("Enter")
+        header = page.locator("header.top")
+        header.get_by_role("button", name="More", exact=True).click()
+        page.get_by_role("menu", name="More").get_by_role("menuitem", name="What matters").click()
         panel = page.locator("#details")
         expect(panel.get_by_role("heading", name="What matters")).to_be_visible()
         expect(panel.get_by_role("radio", name="Whole project")).to_have_attribute("aria-checked", "true")
@@ -505,8 +500,6 @@ class ReturnViewJourney(unittest.TestCase):
         page.get_by_role("link", name=re.compile("^Continue where you left off")).click()
         expect(page).to_have_url(re.compile(f"/projects/{self.project_id}/conversations/{self.conversation_id}#message-"))
         expect(page.locator(".is-arrived")).to_be_in_viewport()
-        # "What matters" counts the same changes (the project point is older than Home's view).
-        expect(page.locator("header.top").get_by_role("button", name=re.compile("needs you$"))).to_contain_text(re.compile(r"\d"))
         # Audience preview before writing: the thread's composer names who will read the reply.
         expect(page.get_by_role("complementary", name="Replies").or_(page.get_by_role("dialog", name="Replies")).locator(".composer__audience")).to_have_text(re.compile("Ari and you · only you two · saved to Gesture lamp"))
         # Following the card was continuing: back on Home it has moved on, now and after a reload.

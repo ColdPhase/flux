@@ -220,7 +220,9 @@ class UnifiedPanel(unittest.TestCase):
                 bounds, composer_box, activity = panel.bounding_box(), composer.bounding_box(), panel.get_by_role("heading", name="Activity").bounding_box()
                 self.assertGreater(composer_box["y"], activity["y"], "the composer is below Activity")
                 self.assertLess(bounds["y"] + bounds["height"] - (composer_box["y"] + composer_box["height"]), 80, "the composer is at the bottom")
-                expect(panel.locator(".wd__foot .composer__audience")).to_contain_text("Everyone in Community garden sensors · added by Ada ·")
+                audience = panel.locator(".wd__foot .composer__audience")
+                expect(audience).to_contain_text("Everyone in Community garden sensors")
+                expect(audience).not_to_contain_text("added by")  # who added it is in the activity; the line is not cut (#763 C8)
                 shot(page, f"unified-panel-task-desktop-{scheme}")
 
     def test_06_status_owner_and_due_are_edited_in_place_and_the_activity_names_who_and_when(self):

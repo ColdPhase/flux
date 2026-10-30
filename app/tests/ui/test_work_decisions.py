@@ -146,7 +146,7 @@ class WorkDecisionsJourney(unittest.TestCase):
         expect(panel.get_by_role("link", name=re.compile("^Message: Test the camera"))).to_be_visible()
         # The source stays in place, and the work shows up under it.
         expect(message.locator(":scope > .message-bubble > .message-body").first).to_have_text(IDEA)
-        expect(message.get_by_role("button", name=f"Work: {IDEA}")).to_be_visible()
+        expect(message.get_by_role("button", name=re.compile(r"^Task #\d+: " + re.escape(IDEA) + "$"))).to_be_visible()
         # The panel's controls change the stored work (If-Match under the hood).
         panel.get_by_role("button", name="Status", exact=True).click()
         page.get_by_role("menuitemradio", name="In progress").click()
@@ -160,7 +160,7 @@ class WorkDecisionsJourney(unittest.TestCase):
         self.assertTrue(message.locator(".ws-chip").evaluate("node => node.querySelector('.ui-task-number').compareDocumentPosition(node.querySelector('.ws-chip__t')) & Node.DOCUMENT_POSITION_FOLLOWING"), "the number leads the title in a task reference")
         panel.get_by_role("button", name="Owner", exact=True).click()
         page.get_by_role("menuitemradio", name=re.compile(PARTNER["name"])).click()
-        expect(message.get_by_role("button", name=f"Work: {IDEA}")).to_contain_text("Kai Berg")
+        expect(message.get_by_role("button", name=re.compile(r"^Task #\d+: " + re.escape(IDEA) + "$"))).to_contain_text("Kai Berg")
         stored = self.work(page)["work"]
         self.assertEqual(len(stored), 1, "one action creates exactly one work item")
         item = stored[0]
@@ -231,7 +231,7 @@ class WorkDecisionsJourney(unittest.TestCase):
         # Finished work is grouped in the List (#136). Decisions wait in the Inbox and have no view here; a
         # result shows in its task's details (#342).
         page.get_by_role("radio", name="List", exact=True).click()
-        finished = page.get_by_role("region", name=re.compile("^Finished"))
+        finished = page.get_by_role("region", name=re.compile("^Done"))
         expect(finished).to_contain_text(IDEA)
         expect(page.get_by_role("region", name=re.compile("^(Decisions|Results)"))).to_have_count(0)
         expect(page.get_by_role("button", name=re.compile("^Decisions & results"))).to_have_count(0)
@@ -305,7 +305,7 @@ class WorkDecisionsJourney(unittest.TestCase):
         shot(page, "work-phone-390-details")
         # The task took the thread's place in the one sheet; the way back leads to the reply it was made from.
         sheet.get_by_role("button", name="Thread", exact=True).tap()
-        expect(message.get_by_role("button", name=f"Work: {FINDING}")).to_be_visible()
+        expect(message.get_by_role("button", name=re.compile(r"^Task #\d+: " + re.escape(FINDING) + "$"))).to_be_visible()
         view_tab(page, "Tasks", tap=True)
         expect(page.get_by_role("region", name=re.compile("^Open"))).to_contain_text(FINDING)
         shot(page, "tasks-phone-390")
@@ -500,7 +500,7 @@ class WorkDecisionsJourney(unittest.TestCase):
                 self.assertTrue(apart, f"{key}: actions clear of the meta line")
         shot(page, "conversation-author-column-1440")
         # Details take the thread's place in the one panel, with the way back to the thread (#488).
-        page.locator(f"#message-{self.messages['finding']}").get_by_role("button", name=re.compile("^Work: ")).first.click()
+        page.locator(f"#message-{self.messages['finding']}").get_by_role("button", name=re.compile(r"^Task #\d+: ")).first.click()
         expect(page.locator("#details").locator(".wd[data-detail-kind='work']")).to_be_visible()
         page.locator("#details").get_by_role("button", name="Thread", exact=True).click()
         expect(page.locator("#details .thread__in")).to_be_visible()

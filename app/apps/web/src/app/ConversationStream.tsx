@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useNavigate } from 'react-router';
 import type { Conversation, ConversationMessage, ConversationRoot, ConversationRootWindow, NativeWorkRow, ObjectNotice, Page, Project, ProjectGoal, ReturnSummary, TaskCreationNotice } from '@flux/contracts';
 import { AgentIdentity, Avatar, Button, EmptyState, Icon, IconButton, Kreska, Opening, StatusGlyph, useArrivals, useToast } from '../ui';
@@ -10,6 +10,7 @@ import { useMessageWorkRead, type MessageWorkRead } from '../work/useMessageWork
 import { useReferenceWork } from '../work/useReferenceWork';
 import { useProjectWorkSummary } from '../work/WorkReadContext';
 import { MessageWorkPages } from '../work/MessageWorkPages';
+import { STATUS_LABEL } from '../work/format';
 import { useShellActions } from './shellContext';
 import { listConversationRoots, listObjectNotices, listTaskNotices, observeProjectMessages, projectReceipts } from '../conversations/api';
 import { QuestionCard, WhenNoQuestion } from '../agents/QuestionCard';
@@ -19,7 +20,7 @@ import { agentAuthorOwner, useAgentOwners, type AgentOwners } from '../agents/ow
 import { MessageContent } from '../composer/Files';
 import { LinkPreviews, MessageText } from './MessageText';
 import { onSent, outboxView, useComposerDraft, type PendingSend } from '../composer/draft';
-import { getReturnSummary } from '../returns/api';
+import { getReturnSummary, saveReturnPoint } from '../returns/api';
 import { createProjectSketch, useProjectShell } from '../project/data';
 import { cite as citeMessage, messageCite } from './citeBus';
 import { foldEntries, foldSummary, firstUnread, noticeSource, rootAuthor, sinceLine, sourcePhrase } from './conversationEvents';
@@ -56,7 +57,7 @@ function mergeNotices<T extends { id: string; createdAt: string }>(current: T[],
 export type StreamEntry =
   | { kind: 'root'; key: string; at: string; root: ConversationRoot }
   | { kind: 'notice'; key: string; at: string; notice: TaskCreationNotice }
-  | { kind: 'object'; key: string; at: string; object: ObjectNotice }
+  | { kind: 'object'; key: string; at: string; object: ObjectNotice; thread?: ConversationRoot }
   | { kind: 'goal'; key: string; at: string; goal: ProjectGoal };
 
 const ORDER: Record<StreamEntry['kind'], number> = { notice: 0, object: 0, root: 1, goal: 2 };
@@ -68,12 +69,21 @@ const ORDER: Record<StreamEntry['kind'], number> = { notice: 0, object: 0, root:
  */
 export function streamEntries(roots: ConversationRoot[], notices: TaskCreationNotice[] = [], hasOlder = false, goals: ProjectGoal[] = [], objects: ObjectNotice[] = []): StreamEntry[] {
   const from = hasOlder ? roots[0]?.message.createdAt ?? null : null;
+  const shownObjects = objects.filter((object) => from === null || object.createdAt >= from);
+  // A result recorded on a task with no discussion yet opens that task's thread with its contribution (#763 A1). The
+  // stream shows it once, as the result's line and card, and the line names the task ("on #9") to open that thread.
+  const recorded = new Set(shownObjects.flatMap((object) => object.kind === 'result.recorded' ? [object.resultId] : []));
+  const resultOf = (root: ConversationRoot) => root.task && root.message.contribution?.kind === 'result' && recorded.has(root.message.contribution.resultId)
+    ? root.message.contribution.resultId : null;
+  const threads = new Map(roots.flatMap((root) => { const id = resultOf(root); return id ? [[id, root] as const] : []; }));
   const entries: StreamEntry[] = [
-    ...roots.map((root) => ({ kind: 'root' as const, key: root.conversationId, at: root.message.createdAt, root })),
+    ...roots.filter((root) => !resultOf(root)).map((root) => ({ kind: 'root' as const, key: root.conversationId, at: root.message.createdAt, root })),
     ...notices.filter((notice) => from === null || notice.createdAt >= from)
       .map((notice) => ({ kind: 'notice' as const, key: `notice-${notice.id}`, at: notice.createdAt, notice })),
-    ...objects.filter((object) => from === null || object.createdAt >= from)
-      .map((object) => ({ kind: 'object' as const, key: `object-${object.id}`, at: object.createdAt, object })),
+    ...shownObjects.map((object) => {
+      const thread = object.kind === 'result.recorded' ? threads.get(object.resultId) : undefined;
+      return { kind: 'object' as const, key: `object-${object.id}`, at: object.createdAt, object, ...(thread ? { thread } : {}) };
+    }),
     ...goals.flatMap((goal) => goal.reachedAt && (from === null || goal.reachedAt >= from)
       ? [{ kind: 'goal' as const, key: `goal-${goal.id}`, at: goal.reachedAt, goal }] : []),
   ];
@@ -312,6 +322,8 @@ export function ConversationStream({ project, meId, meName, roots: stream, notic
   const rootKey = (root: ConversationRoot) => { const key = outbox.keyOf(root.message.id); return key === root.message.id ? root.conversationId : key; };
   const domId = (root: ConversationRoot) => { const key = outbox.keyOf(root.message.id); return key === root.message.id ? `message-${root.message.id}` : key; };
   const entries = streamEntries(roots, notices, stream.hasOlder, goals, objects);
+  const { summary: since, settled: sinceSettled } = useSinceYouLeft(project.id);
+  const unread = since?.point.savedAt && since.items.length ? firstUnread(since, roots) : null;
   const display = foldEntries<Extract<StreamEntry, { kind: 'root' | 'goal' | 'object' }>, Extract<StreamEntry, { kind: 'notice' }>>(entries);
   const authorOf = useMemo(() => rootAuthor(roots, author), [roots, author]);
   const rootMessageIds = useMemo(() => new Set(roots.map((root) => root.message.id)), [roots]);
@@ -340,7 +352,7 @@ export function ConversationStream({ project, meId, meName, roots: stream, notic
   // Opening (#155): the stream is laid out but hidden until the first chips, references and the header's
   // state line have settled (at most OPENING_REVEAL_MS), so nothing shifts under the reader as they arrive.
   const workSummary = useProjectWorkSummary();
-  const openingSettled = messageWork.state.phase !== 'loading' && referenceWork.state.phase !== 'loading' && workSummary.phase !== 'loading';
+  const openingSettled = messageWork.state.phase !== 'loading' && referenceWork.state.phase !== 'loading' && workSummary.phase !== 'loading' && sinceSettled;
   const [openingTimedOut, setOpeningTimedOut] = useState(false);
   useEffect(() => { const timer = window.setTimeout(() => setOpeningTimedOut(true), OPENING_REVEAL_MS); return () => window.clearTimeout(timer); }, []);
   const [revealed, setRevealed] = useState(false);
@@ -354,7 +366,8 @@ export function ConversationStream({ project, meId, meName, roots: stream, notic
   const receiptTick = useReceiptTick(receiptRuns.length > 0);
   const seen = useReceipts({ scope: project.id, fetchReceipts: (list, signal) => projectReceipts(project.id, list, signal), runs: receiptRuns, tick: receiptTick });
   useObservation({ scope: project.id, observe: (ids) => observeProjectMessages(project.id, ids), enabled: revealed, feed: feedRef,
-    ids: display.flatMap((entry) => entry.kind === 'root' && entry.root.message.authorId !== meId ? [entry.root.message.id] : []), depend: entries.length });
+    ids: display.flatMap((entry) => entry.kind === 'root' && entry.root.message.authorId !== meId ? [entry.root.message.id]
+      : entry.kind === 'object' && entry.thread && entry.thread.message.authorId !== meId ? [entry.thread.message.id] : []), depend: entries.length });
   if (!revealed && (openingSettled || openingTimedOut)) setRevealed(true);
   const columnRef = useRef<HTMLDivElement>(null);
   // A short stream sits against its composer instead of at the top of a tall screen (ui/spareHeight.ts).
@@ -632,7 +645,7 @@ export function ConversationStream({ project, meId, meName, roots: stream, notic
   return (<>
     <div className="convo-stream">
     {revealed ? null : <Opening name={project.name} />}
-    <SinceLine projectId={project.id} roots={roots} onJump={jump} />
+    <SinceLine summary={since} roots={roots} onJump={jump} />
     <div className={`project-convo__feed is-stream${revealed ? '' : ' is-opening'}`} ref={attachFeed} aria-busy={revealed ? undefined : true}
       data-associations-observed-at={messageWork.page?.observedAt} data-associations-phase={messageWork.state.phase}
       data-references-observed-at={referenceWork.observation?.observedAt} data-references-phase={referenceWork.state.phase}>
@@ -646,11 +659,18 @@ export function ConversationStream({ project, meId, meName, roots: stream, notic
               {[...display.flatMap((entry, index) => {
                 const label = dayOf[index]!;
                 const key = entry.kind === 'root' ? rootKey(entry.root) : entry.key;
-                const divider = index === 0 || dayOf[index - 1] !== label ? <MessageDay key={`day-${key}`} label={label} /> : null;
+                const dayLine = index === 0 || dayOf[index - 1] !== label ? <MessageDay key={`day-${key}`} label={label} /> : null;
+                // Where the unread part begins: before the root or the task announcement the summary names first.
+                const starts = !!unread && ('workId' in unread
+                  ? (entry.kind === 'notice' && entry.notice.workId === unread.workId) || (entry.kind === 'fold' && entry.notices.some((item) => item.notice.workId === unread.workId))
+                  : !unread.conversationId && entry.kind === 'root' && entry.root.message.id === unread.messageId);
+                const divider = starts ? <Fragment key={`unread-${key}`}>{dayLine}<UnreadDivider /></Fragment> : dayLine;
                 const noticeItem = (notice: TaskCreationNotice) => <NoticeItem key={`notice-${notice.id}`} notice={notice} meId={meId} owners={owners} row={referenceWork.rows.get(`work:${notice.workId}`) ?? null}
                   authorOf={authorOf} hasMessage={(id) => rootMessageIds.has(id)} onOpenTask={(id) => openDetails({ kind: 'work', id })} />;
                 if (entry.kind === 'notice') return [divider, noticeItem(entry.notice)];
                 if (entry.kind === 'object') return [divider, <ObjectNoticeItem key={entry.key} notice={entry.object} meId={meId} owners={owners} authorOf={authorOf} hasMessage={(id) => rootMessageIds.has(id)}
+                  observeId={entry.thread && entry.thread.message.authorId !== meId ? entry.thread.message.id : undefined}
+                  task={entry.thread?.task ? { number: entry.thread.task.number, title: entry.thread.task.title, replies: entry.thread.replyCount, open: entry.thread.conversationId === openId, onOpen: () => openRoot(entry.thread!, false) } : undefined}
                   onOpen={(target) => openDetails(target)} onOpenThread={(conversationId) => { const root = roots.find((item) => item.conversationId === conversationId); if (root) openRoot(root, false); }} />];
                 if (entry.kind === 'goal') return [divider, <GoalStreamEntry key={entry.key} goal={entry.goal} project={project} meId={meId} />];
                 if (entry.kind === 'fold') {
@@ -736,8 +756,9 @@ function NoticeItem({ notice, meId, owners, row, authorOf, hasMessage, onOpenTas
     message.scrollIntoView({ block: 'center' });
     message.focus({ preventScroll: true });
   };
+  const reverted = notice.kind === 'task.creation_reverted' || notice.lifecycle?.state === 'creation_reverted';
   return (
-    <li className={`convo-notice${notice.kind === 'task.creation_reverted' || notice.lifecycle?.state === 'creation_reverted' ? ' convo-notice--undone' : ''}`} id={`notice-${notice.id}`} data-work-id={notice.workId}>
+    <li className={`convo-notice${reverted ? ' convo-notice--undone' : ''}`} id={`notice-${notice.id}`} data-work-id={notice.workId}>
       <AuthorFace kind={creator.kind} name={name} mine={mine} />
       <div className="convo-notice__body">
         <p className="convo-notice__meta">
@@ -754,6 +775,8 @@ function NoticeItem({ notice, meId, owners, row, authorOf, hasMessage, onOpenTas
           <span className="convo-notice__num ui-task-number">#{notice.workNumber}</span>
           <span className="convo-notice__title">{title}</span>
           {owner ? <span className="convo-notice__owner">{owner.kind === 'agent' ? <Kreska size={20} /> : <Avatar name={owner.name} size="sm" />}<span className="convo-notice__owner-name">{owner.name}</span></span> : null}
+          {/* A word always goes with the glyph, at the card's right edge like a decision's or a result's (#763 A8). */}
+          <span className="convo-object__state convo-notice__state">{reverted ? 'Undone' : STATUS_LABEL[current?.status ?? 'open']}</span>
           <Icon name="chevron-right" size={14} />
         </button>
       </div>
@@ -782,14 +805,33 @@ function NoticeFold({ fold, summary, children }: { fold: { key: string; notices:
 }
 
 /** "Since you left: …" with a jump to the first unread item (S7). It floats over the stream and takes no room. */
-function SinceLine({ projectId, roots, onJump }: { projectId: string; roots: ConversationRoot[]; onJump: (target: NonNullable<ReturnType<typeof firstUnread>>) => boolean }) {
-  const [summary, setSummary] = useState<ReturnSummary | null>(null);
-  const [dismissed, setDismissed] = useState(false);
+/**
+ * "Since you left" (S7, #763 A3): what changed in the project after the person last left its conversation. The summary
+ * is read when they arrive; when they leave it for another view or place the project's return point is saved at what
+ * they have seen, so the next arrival starts from there. Saving is forward-only on the server.
+ */
+function useSinceYouLeft(projectId: string) {
+  const [read, setRead] = useState<{ projectId: string; summary: ReturnSummary | null } | null>(null);
   useEffect(() => {
     const controller = new AbortController();
-    getReturnSummary({ type: 'project', id: projectId }, controller.signal).then(setSummary, () => { /* the line is optional */ });
-    return () => controller.abort();
+    let arrived = false;
+    getReturnSummary({ type: 'project', id: projectId }, controller.signal).then((summary) => { arrived = true; setRead({ projectId, summary }); },
+      () => { if (!controller.signal.aborted) setRead({ projectId, summary: null }); /* the line is optional */ });
+    return () => {
+      controller.abort();
+      if (!arrived) return;
+      // Leaving the conversation for another view or place: what the stream showed until now has been seen. A closed tab
+      // saves nothing, so its changes are still "since you left" next time (never fewer than were missed).
+      const place = { type: 'project' as const, id: projectId };
+      void getReturnSummary(place).then((now) => saveReturnPoint(place, now.mark)).catch(() => undefined);
+    };
   }, [projectId]);
+  // Settled once read (or refused), so the opening reveal can wait for the unread divider and nothing shifts.
+  return read?.projectId === projectId ? { summary: read.summary, settled: true } : { summary: null, settled: false };
+}
+
+function SinceLine({ summary, roots, onJump }: { summary: ReturnSummary | null; roots: ConversationRoot[]; onJump: (target: NonNullable<ReturnType<typeof firstUnread>>) => boolean }) {
+  const [dismissed, setDismissed] = useState(false);
   if (!summary || dismissed || !summary.point.savedAt || !summary.items.length) return null;
   const target = firstUnread(summary, roots);
   const line = sinceLine(summary);
@@ -801,6 +843,11 @@ function SinceLine({ projectId, roots, onJump }: { projectId: string; roots: Con
       <IconButton icon="x" size={14} label="Dismiss" className="convo-since__x" onClick={() => setDismissed(true)} />
     </div>
   );
+}
+
+/** A quiet divider where the unread part of the stream begins (#763 A3). */
+function UnreadDivider() {
+  return <li className="convo-unread" role="separator" aria-label="Unread"><span>Unread</span></li>;
 }
 
 type RootItemProps = {

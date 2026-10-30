@@ -126,10 +126,11 @@ test('unrelated project writer and viewer cannot Undo; an exact agent operation 
   assert.equal(toolFailure(await f.tool('flux_undo_task_creation', { ...envelope, grantId: undoGrant.id })).code, 'AGENT_EXECUTION_UNAVAILABLE');
 });
 
-test('old incomplete history stays unknown, human origin stays human, removed task links and document mentions keep monotonic use', async () => {
+test('old incomplete history stays unknown, human origin stays human (own creation only), removed task links and document mentions keep monotonic use', async () => {
   const f = await scene();
   const human = expect(await f.owner.request('POST', `/api/v1/projects/${f.projectId}/work`, { body: { title: 'Human creation' } }), 201) as unknown as WorkItem;
-  assert.equal((await f.read(human.id) as unknown as WorkItem).creationUndo?.reason, 'not_ai_origin');
+  // #763 B1: the person who created it may take it back while it is unchanged and unused; it is not an AI origin.
+  assert.equal((await f.read(human.id) as unknown as WorkItem).creationUndo?.reason, 'own_creation');
   const oldId = randomUUID(); await pool.query(`INSERT INTO project_work_items(id,workspace_id,project_id,title,outcome,status,created_by_kind,created_by_id) VALUES($1,$2,$3,'Historical unknown','','open','agent',$4)`, [oldId, f.workspaceId, f.projectId, f.agentId]);
   assert.equal((await f.read(oldId) as unknown as WorkItem).creationUndo?.reason, 'eligibility_unknown');
   const { item } = await f.create();

@@ -1,6 +1,7 @@
 import { Fragment, type ReactNode } from 'react';
 import { LINK_URL_SOURCE, type ProjectPerson } from '@flux/contracts';
-import { Icon, Kreska } from '../ui';
+// The same initials as every avatar of that person (#763 A6).
+import { Icon, Kreska, initials } from '../ui';
 import { useLinkPreviews } from './linkPreviews';
 import '../composer/attachments.css';
 
@@ -18,8 +19,6 @@ function tokens(names: string[]): RegExp {
   const known = names.length ? String.raw`|(?<klead>^|[\s(])(?<known>@(?:${names.map(escapeRe).join('|')}))(?![\p{L}\p{N}])` : '';
   return new RegExp(String.raw`(?<url>${URL_TOKEN})${known}|(?<mlead>^|[\s(])(?<mention>@[\p{L}][\p{L}\p{M}'-]*(?:(?<=['’]s) assistant\b)?)|(?<tlead>^|[\s(])#(?<task>\d{1,6})\b|\[\[(?<wiki>[^\]\n]{1,120})\]\]`, 'gu');
 }
-
-const initials = (name: string) => name.slice(0, 2).toUpperCase();
 
 /**
  * The body as text with inline chips and links. `linked={false}` keeps a web address as plain text, for a

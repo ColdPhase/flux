@@ -6,7 +6,7 @@ import { ApiError, NetworkError } from '../api/client';
 import { AgentTag, Icon, IconButton, Kreska, StatusGlyph, initials, usePop, useRowMotion, type IconName } from '../ui';
 import { updateWork } from './api';
 import { useShellActions } from '../app/shellContext';
-import { STATUS_LABEL, isFinished, taskNumber } from './format';
+import { STATUS_LABEL, blockedLine, isFinished, taskNumber } from './format';
 import { STATE_KEYS, useStateChange } from './taskState';
 import { getProjectWorkView, getWorkRelations, workRelationReadUrl, workViewReadUrl } from './read-api';
 import type { ReadState } from './read-state';
@@ -98,7 +98,6 @@ interface Drag {
   started: boolean; cancelled: boolean; over: ColumnId | null;
 }
 
-interface Notice { tone: 'ok' | 'error'; text: string }
 
 /** One card's "Move to…" menu: the three columns, the current one checked, then Details. */
 function MoveMenu({ item, column, busy, buttonRef, onMove, onOpen, onClose, popProps }: {
@@ -187,7 +186,7 @@ function Card({ item, agentOwner, from, column, meId, writable, hintId, saving, 
         <button type="button" className="tb-card__open" onClick={onOpen} onKeyDown={onKeyDown} onKeyUp={onKeyUp} onBlur={onBlur}
           aria-describedby={writable ? hintId : undefined}><span className="tb-card__title">{item.title}</span></button>
       </h3>
-      {blocked ? <p className="tb-card__blocker">{item.blocker ? (/^(waiting|blocked)\b/i.test(item.blocker.trim()) ? item.blocker : `Waiting for ${item.blocker}`) : 'Blocked; nobody wrote down what it waits for yet.'}</p> : null}
+      {blocked ? <p className="tb-card__blocker">{blockedLine(item) ?? 'Blocked; nobody wrote down what it waits for yet.'}</p> : null}
       {from ? (
         <RefLink className="tb-card__from" to={from.to} draggable={false} title={`${from.kind}: ${from.title}`}>
           <Icon name={from.icon} size={12} /><span><span className="ui-vh">{from.kind}: </span>{from.title}</span>
@@ -274,7 +273,6 @@ export function TaskBoard({ project, openRead, meId, mine, query, writable, revi
   // until the board's own reads catch up with that version.
   const [pending, setPending] = useState<Record<string, ColumnId>>({});
   const [confirmed, setConfirmed] = useState<Record<string, ConfirmedTask>>({});
-  const [notice, setNotice] = useState<Notice | null>(null);
   const [spoken, setSpoken] = useState('');
   const [arrived, setArrived] = useState<string | null>(null);
   const [menuFor, setMenuFor] = useState<string | null>(null);
@@ -287,7 +285,7 @@ export function TaskBoard({ project, openRead, meId, mine, query, writable, revi
   const spaceLift = useRef(false);
   const focusCard = useRef<{ id: string; until: number } | null>(null);
   const attempts = useRef(new Map<string, string>());
-  const timers = useRef<{ notice?: number; arrived?: number }>({});
+  const timers = useRef<{ arrived?: number }>({});
   const latest = useRef<BoardTask[]>([]);
   // The Open column is the Tasks tab's own read; the other groups are read here, each a bounded
   // first page that re-reads with the tab's refreshes and the router's revalidation.
@@ -322,6 +320,7 @@ export function TaskBoard({ project, openRead, meId, mine, query, writable, revi
     timers.current.arrived = window.setTimeout(() => setArrived(null), 1200);
   }, [rememberSaved]);
   const changeState = useStateChange(shownSaved, refresh);
+  const [refusal, setRefusal] = useState<string | null>(null);
 
   // A server acknowledgment outlives staggered group snapshots, but not its read scope or a
   // newer authoritative observation. Once every group has completed a later read, absence is
@@ -379,7 +378,7 @@ export function TaskBoard({ project, openRead, meId, mine, query, writable, revi
 
   useEffect(() => {
     const pending = timers.current;
-    return () => { window.clearTimeout(pending.notice); window.clearTimeout(pending.arrived); };
+    return () => { window.clearTimeout(pending.arrived); };
   }, []);
 
   // After a keyboard or menu move the card is drawn in another column (and again if the move is
@@ -412,11 +411,6 @@ export function TaskBoard({ project, openRead, meId, mine, query, writable, revi
   const filtered = !!query || mine;
 
   const say = (text: string) => setSpoken(text);
-  const show = (next: Notice | null) => {
-    window.clearTimeout(timers.current.notice);
-    setNotice(next);
-    if (next?.tone === 'ok') timers.current.notice = window.setTimeout(() => setNotice((now) => now === next ? null : now), 6000);
-  };
 
   async function move(item: BoardTask, to: ColumnId, keepFocus: boolean) {
     const from = columnOf(item.status);
@@ -432,7 +426,7 @@ export function TaskBoard({ project, openRead, meId, mine, query, writable, revi
       setPicked(to);
     }
     setPending((now) => ({ ...now, [item.id]: to }));
-    show(null);
+    setRefusal(null);
     try {
       const saved = await updateWork(item, { status }, commandId);
       attempts.current.delete(key);
@@ -440,12 +434,13 @@ export function TaskBoard({ project, openRead, meId, mine, query, writable, revi
       window.clearTimeout(timers.current.arrived);
       setArrived(item.id);
       timers.current.arrived = window.setTimeout(() => setArrived(null), 1200);
-      show({ tone: 'ok', text: `Moved “${item.title}” to ${LABEL[to]}.` });
+      // A drag or "Move to…" is confirmed like a key or a tap: the bottom toast with Undo (Z), so the board never shifts (#763 C3).
+      changeState.offer(item, saved, status);
     } catch (cause) {
       // A refusal is final for this version; a lost response keeps its id so a retry cannot apply twice.
       if (cause instanceof ApiError) attempts.current.delete(key);
-      const text = moveError(cause, item.title);
-      show({ tone: 'error', text });
+      // A refusal says why where it happened, until dismissed (the card is back where it was).
+      setRefusal(moveError(cause, item.title));
       // Refused: the card is back where it was, and so is the narrow board's column.
       if (keepFocus) setPicked(from);
     } finally {
@@ -634,14 +629,10 @@ export function TaskBoard({ project, openRead, meId, mine, query, writable, revi
           </button>
         ))}
       </nav>
-      {/* A confirmed move is confirmed in words; a refused one says why, calmly, until dismissed. */}
-      <div className="tb-notes" role="status">
-        {notice?.tone === 'ok' ? <p className="tb-note tb-note--ok"><Icon name="check" size={14} /><span>{notice.text}</span></p> : null}
-      </div>
-      {notice?.tone === 'error' ? (
+      {refusal ? (
         <div className="tb-note tb-note--error" role="alert">
-          <Icon name="alert" size={14} /><span>{notice.text}</span>
-          <button type="button" className="tb-note__x" onClick={() => show(null)}>Dismiss</button>
+          <Icon name="alert" size={14} /><span>{refusal}</span>
+          <button type="button" className="tb-note__x" onClick={() => setRefusal(null)}>Dismiss</button>
         </div>
       ) : null}
       {unavailable ? (
@@ -690,7 +681,9 @@ export function TaskBoard({ project, openRead, meId, mine, query, writable, revi
                         onMove={(to) => void move(item, to, true)} />
                     ))}
                   </ol>
-                ) : <p className="tb-col__empty">{waitingFor[column.id] ? `Loading ${column.label.toLowerCase()} tasks…` : filtered ? 'Nothing here matches.' : 'Nothing here yet.'}</p>}
+                ) : waitingFor[column.id] || !(filtered && !shown.length)
+                  // One empty message for a search that matches nothing: the line above the board says it, not each column (#763 C7).
+                  ? <p className="tb-col__empty">{waitingFor[column.id] ? `Loading ${column.label.toLowerCase()} tasks…` : filtered ? 'Nothing here matches.' : 'Nothing here yet.'}</p> : null}
                 {more(column.id).filter((entry) => entry.count > 0).map((entry) => (
                   <button key={entry.group} type="button" className="ws-none__b tb-col__more" onClick={() => showInList(entry.group)}>
                     {entry.count} more {entry.label} in the List

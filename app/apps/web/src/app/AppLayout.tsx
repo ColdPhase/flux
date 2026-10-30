@@ -28,7 +28,6 @@ import { LiveBar } from '../live/LiveBar';
 import '../live/live.css';
 import { CreateHost } from '../create/CreateWindow';
 import './project-header.css';
-import { useNeedsYou } from '../returns/useNeedsYou';
 import { WorkReadProvider, useProjectWorkSummary } from '../work/WorkReadContext';
 import { OverviewContext } from '../project/OverviewContext';
 import { remember, remembered } from './remembered';
@@ -262,7 +261,8 @@ function AppLayoutContent() {
     if (!known || event.kind !== 'dm.message_sent.v1' || location.pathname === '/dm') revalidator.revalidate();
   }, () => revalidator.revalidate());
 
-  const inboxUnread = useInboxDot(me.user.id, location.pathname);
+  const inboxCounts = useInboxDot(me.user.id, location.pathname);
+  const inboxUnread = inboxCounts.count;
   // The computer's sidebar collapses to its 64px rail with "[" (F-026 S19), remembered on this device.
   const [railed, setRailed] = useState(() => { try { return localStorage.getItem(SIDEBAR_KEY) === 'rail'; } catch { return false; } });
   const toggleRail = useCallback(() => setRailed((current) => {
@@ -571,12 +571,10 @@ function AppLayoutContent() {
     toggleDetails(false);
   };
   useLayoutEffect(() => { closeRef.current = closePanel; });
-  // "What matters" (#133): a quiet count of what needs you; refreshed when the panel closes.
-  const needsYou = useNeedsYou(activeProject ? projectId ?? null : null, recapOpen);
-  const toggleRecap = () => {
-    if (!projectId) return;
-    if (recapOpen) toggleDetails(false); else shell.openDetails({ kind: 'recap', projectId });
-  };
+  // "N needs you" counts this project's items of the Inbox's one queue (#763 A2), as the sidebar counts them all; it
+  // opens the Inbox on them. "What matters" stays its own quiet entry in More.
+  const needsYou = activeProject && projectId ? inboxCounts.byProject.get(projectId) ?? 0 : 0;
+  const openNeedsYou = () => { if (projectId) navigate(`/inbox?project=${encodeURIComponent(projectId)}`); };
   const dmId = location.pathname.match(/^\/dm\/([^/]+)/)?.[1];
   const activeDm = directMessages.find((dm) => dm.id === dmId);
   // Messages · Sketches: a DM's sketches stay inside it, for exactly its people (#96).
@@ -767,7 +765,7 @@ function AppLayoutContent() {
             <span className="top__actions" ref={setActionSlot} />
             {focusing && focus.until ? <FocusPill until={focus.until} uncertain={focus.uncertain} onEnd={() => void focus.toggle()} /> : (
               <>
-                {activeProject && needsYou ? <NeedsYouChip count={needsYou} open={recapOpen} onToggle={toggleRecap} /> : null}
+                {activeProject && needsYou ? <NeedsYouChip count={needsYou} project={project?.name ?? null} onOpen={openNeedsYou} /> : null}
                 {project?.people ? <HeaderFaces people={project.people} audience={audience} onOpen={openAudience} /> : null}
                 {activeProject ? <LiveEntry /> : null}
                 <MoreMenu items={moreItems} />

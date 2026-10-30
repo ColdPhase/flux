@@ -27,6 +27,7 @@ import { useComposerDraft } from '../composer/draft';
 import { RefLink } from '../place/origin';
 import { ReadyToClose, TaskPullRequests } from '../github/TaskPullRequests';
 import { DueField, StatusControl, TitleField, useStateKeys } from './TaskParts';
+import { stateWords } from './taskState';
 
 // The Details panel for work items, decisions and results, and the two forms that start from a
 // message (#101). Everything shown here is visible to the people with access to the project;
@@ -346,9 +347,9 @@ function WorkPanel({ item, context, detail, relations, reload, commands }: { ite
       const restore = before.status === 'blocked' && (before.blocker || before.waitingFor)
         ? { status: before.status, ...(before.blocker ? { blocker: before.blocker } : {}), ...(before.waitingFor ? { waitingFor: { kind: 'human' as const, id: before.waitingFor.id } } : {}), restore: true as const }
         : { status: before.status };
-      // Closing says it in the words of the wink (#N done); the other states keep their status label.
-      const words = next === 'done' ? `${taskNumber(item)} done` : `${taskNumber(item)} is now ${STATUS_LABEL[next].toLowerCase()}`;
-      toast({ message: words, timeout: 8000, mascot, action: { label: 'Undo', onClick: () => { void change(restore, latest.current); } } });
+      // Closing says it in the words of the wink (#N done); the other states keep their status label, in the board's words.
+      // Z takes it back from the panel too, as on the board (#763 C2).
+      toast({ message: stateWords(item, next), timeout: 8000, mascot, action: { label: 'Undo', key: 'Z', onClick: () => { void change(restore, latest.current); } } });
     }
   }
   useStateKeys(writable, (status) => void setState(status));
@@ -470,7 +471,7 @@ function WorkPanel({ item, context, detail, relations, reload, commands }: { ite
         {!reverted && !finished ? <LiveEntry variant="inline" anchor={liveAnchor} /> : null}
         <LinkedThoughts links={thoughts} />
 
-        {item.creationUndo?.eligible && writable ? <UndoCreation key={`${me.user.id}:${item.id}:${item.version}`} item={item} userId={me.user.id} reload={reload} isCurrent={isCurrent} /> : null}
+        {item.creationUndo?.reason === 'eligible' && writable ? <UndoCreation key={`${me.user.id}:${item.id}:${item.version}`} item={item} userId={me.user.id} reload={reload} isCurrent={isCurrent} /> : null}
 
         {item.parked ? (
           <section className="details__sec" aria-labelledby="wd-parked">
@@ -514,7 +515,7 @@ function WorkPanel({ item, context, detail, relations, reload, commands }: { ite
       </div>
       <div className="wd__foot" data-version={item.version}>
         <TaskComposer state={activity} composer={composer} item={item} meId={me.user.id} writable={writable} readOnly={!!reverted} id={composerId}
-          audience={`Everyone in ${context.project.name} · added by ${item.createdBy.kind === 'human' ? item.createdBy.name.split(/\s+/)[0] : item.createdBy.name} · ${shortDate(item.createdAt)}`} />
+          audience={`Everyone in ${context.project.name}`} />
       </div>
     </div>
   );

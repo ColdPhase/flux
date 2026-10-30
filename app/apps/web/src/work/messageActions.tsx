@@ -81,7 +81,8 @@ function useMenuItems(options: MessageActionOptions | DmActionOptions | null, to
     run: () => openDetails({ kind: 'overview', messageId: message.id, selection: { accountId: me.user.id, projectId, message } }) };
   if (!writable) return [...copyItem, details];
   return [
-    ...(onReply ? [{ id: 'reply', label: 'Reply in thread', icon: 'reply' as const, run: onReply }] : []),
+    // On a computer the toolbar already has Reply and Create task: its menu lists only what the toolbar lacks (#763 B4).
+    ...(onReply && touch ? [{ id: 'reply', label: 'Reply in thread', icon: 'reply' as const, run: onReply }] : []),
     ...(touch ? [{ id: 'task', label: 'Create task', icon: 'plus-circle' as const, run: onCreateWork }] : []),
     ...(onAddToMap ? [{ id: 'map', label: 'Add to map', icon: 'map' as const, run: onAddToMap }] : []),
     // There is no hand-off command yet (#347): a hand-off is a task, so it is made and opened in Details,

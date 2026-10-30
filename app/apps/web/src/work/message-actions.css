@@ -3,7 +3,7 @@
 /* The computer: one small pill beside the message's bubble, at its top corner, for the message under the pointer or
    (for a keyboard) the one holding :focus-visible. The room beside the bubble is reserved by the layout (every bubble
    column is narrower than its pane by --acts-room), so the pill is always inside the pane and never over text (#591).
-   A thread's pane is narrow: below 400px (see .thread__feed) the pill is one ••• button, the rest is in its menu. */
+   A thread's pane is narrow: below 520px (see .thread__feed) the pill sits in the bubble's top corner instead. */
 :root { --acts-w: 108px; --acts-gap: 6px; --acts-room: calc(var(--acts-w) + var(--acts-gap)); }
 .msg-acts { position: absolute; top: 0; right: auto; z-index: 2; display: flex; gap: 2px; padding: 4px; border-radius: 12px; background: var(--el);
   box-shadow: var(--sh-pop), inset 0 0 0 1px var(--line); opacity: 0; pointer-events: none; }
@@ -74,11 +74,12 @@
   .project-convo__message:has(> .msg-acts):has(.message-bubble :is(.ws-chip, .wiki-card, .message-files, .link-preview), > .photo-grid) { min-width: min(344px, calc(100% - var(--acts-room))); }
   .project-convo__message.is-mine:has(> .msg-acts):has(.message-bubble :is(.ws-chip, .wiki-card, .message-files, .link-preview), > .photo-grid) { min-width: min(300px, calc(100% - var(--acts-room))); }
 }
-/* A narrow thread (a docked panel on a small laptop, under 400px) has no room beside a bubble: the same pill, with 24px
+/* A thread pane under 520px (any docked panel, #763 A4: the 114px reserve beside a bubble left replies 28 characters
+   wide) keeps no room beside a bubble: the same pill, with 24px
    buttons, sits in the bubble's top corner instead, in the strip that is free of text: its lower edge is above the
    first line of the bubble (its padding) and its upper edge below the last line of the message above. A message that
    has an author row keeps the pill in that row, whose right end is left free for it. */
-@container thread-feed (max-width: 399px) {
+@container thread-feed (max-width: 519px) {
   .thread__in { --acts-room: 0px; }
   .thread .project-convo__message > .msg-acts, .thread .project-convo__message.is-mine > .msg-acts,
   .thread .dm-msg__main > .msg-acts, .thread .dm-msg.is-mine .dm-msg__main > .msg-acts { top: -14px; left: auto; right: 8px; padding: 0; border-radius: 9px; }

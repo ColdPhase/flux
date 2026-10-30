@@ -164,7 +164,7 @@ class TaskEntries(unittest.TestCase):
         page.goto(f"/projects/{pid}")
         root = page.locator(f"#message-{root_id}")
         expect(root).to_be_visible()
-        expect(root.get_by_role("button", name=f"Discussion of task: {title}")).to_be_visible()
+        expect(root.get_by_role("button", name=re.compile(r"^Discussion of task #\d+: " + re.escape(title) + "$"))).to_be_visible()
         expect(root.locator(".project-convo__message-meta strong")).to_have_text(root_author)
         notices = page.locator(f".convo-notice[data-work-id='{work_id}']")
         expect(notices).to_have_count(1)

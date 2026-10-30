@@ -91,3 +91,7 @@ button.convo-notice__src:focus-visible { outline: 2px solid var(--t1); outline-o
 .convo-goal__line > span { min-width: 0; overflow-wrap: anywhere; }
 .convo-goal__line b { font-weight: 600; color: var(--t1); }
 .convo-goal__line time { flex: none; font-size: var(--fs-xs); color: var(--t3); font-variant-numeric: tabular-nums; }
+
+/* Where the unread part of the stream begins (#763 A3): one quiet rule with a word, like a day line. */
+.convo-unread { display: flex; align-items: center; justify-content: center; gap: 12px; margin: 5px 0 27px; font-size: var(--fs-sm); font-weight: 550; color: var(--t2); list-style: none; }
+.convo-unread::before, .convo-unread::after { content: ""; flex: 0 0 25px; height: 1px; background: var(--line2, var(--line)); }

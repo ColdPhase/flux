@@ -264,6 +264,9 @@ class TasksBoardJourney(unittest.TestCase):
         expect(self.card(page, SOLDER)).to_be_visible()
         search.fill("#99")
         expect(page.locator(".tb-card")).to_have_count(0)
+        # One empty message for the search, not one more in every column (#763 C7).
+        expect(page.locator(".tb-none")).to_contain_text("No task matches “#99”.")
+        expect(page.locator(".tb-col__empty")).to_have_count(0)
         search.press("Escape")
         expect(search).to_have_value("")
         expect(page.locator(".tb-card")).to_have_count(8)
@@ -328,6 +331,7 @@ class TasksBoardJourney(unittest.TestCase):
     def test_04_a_drop_on_the_header_or_an_empty_column_persists(self) -> None:
         page = self.board("ada")
         doing = self.column(page, "In progress")
+        heads_before = [box["y"] for box in page.locator(".tb-col__head").evaluate_all("els => els.map(el => el.getBoundingClientRect().toJSON())")]
         self.lift(page, self.card(self.column(page, "Open"), ORDER))
         self.hover(page, doing.locator(".tb-col__head"), dy=10)
         with page.expect_response(lambda response: response.request.method == "PATCH" and response.url.endswith(f"/api/v1/work/{self.ids['order']}")) as moved:
@@ -339,7 +343,12 @@ class TasksBoardJourney(unittest.TestCase):
         self.assertRegex(command["clientCommandId"], UUID, "the existing command carries a stable command id")
         self.assertEqual(response.request.all_headers().get("if-match"), '"1"', "the move names the version it saw")
         expect(self.card(doing, ORDER)).to_be_visible()
-        expect(page.locator(".tb-note--ok")).to_contain_text(f"Moved “{ORDER}” to In progress.")
+        # A drop is confirmed like a key: the bottom toast with Undo (Z), and nothing above the board moves (#763 C3).
+        toast = page.locator(".ui-toast").filter(has_text=re.compile(r"#\d+ is now in progress"))
+        expect(toast.get_by_role("button", name="Undo")).to_be_visible()
+        expect(page.locator(".tb-note--ok")).to_have_count(0)
+        heads_after = [box["y"] for box in page.locator(".tb-col__head").evaluate_all("els => els.map(el => el.getBoundingClientRect().toJSON())")]
+        self.assertEqual(heads_after, heads_before, "the drop's confirmation shifts no column")
         self.assertEqual(self.task(page, "order")["status"], "in_progress")
         page.reload()
         expect(self.card(self.column(page, "In progress"), ORDER)).to_be_visible()
@@ -358,8 +367,13 @@ class TasksBoardJourney(unittest.TestCase):
         study.mouse.up()
         expect(self.card(self.column(study, "In progress"), SAMPLE)).to_be_visible()
         # The card moves at once; the stored state is read once the move is confirmed.
-        expect(study.locator(".tb-note--ok")).to_contain_text(f"Moved “{SAMPLE}” to In progress.")
+        expect(study.locator(".ui-toast").filter(has_text=re.compile(r"#\d+ is now in progress"))).to_be_visible()
         self.assertEqual(self.task(study, "sample")["status"], "in_progress")
+        # Undo takes the drop back (#763 C3).
+        study.locator(".ui-toast").filter(has_text=re.compile(r"#\d+ is now in progress")).get_by_role("button", name="Undo").click()
+        expect(study.locator(".ui-toast").filter(has_text="back to open")).to_be_visible()
+        expect(self.card(self.column(study, "Open"), SAMPLE)).to_be_visible()
+        self.assertEqual(self.task(study, "sample")["status"], "open")
 
     # ---------------------------------------------------------------- keyboard
 
@@ -400,7 +414,7 @@ class TasksBoardJourney(unittest.TestCase):
         expect(moved).to_be_visible()
         expect(moved.get_by_role("button", name=MOUNT, exact=True)).to_be_focused()
         expect(page.locator("#details").get_by_role("heading", name=MOUNT)).to_have_count(0)
-        expect(page.locator(".tb-note--ok")).to_contain_text(f"Moved “{MOUNT}” to In progress.")
+        expect(page.locator(".ui-toast").filter(has_text=re.compile(r"#\d+ is now in progress"))).to_be_visible()
         self.assertEqual(self.task(page, "mount")["status"], "in_progress")
         # Enter still opens the card.
         page.keyboard.press("Enter")
@@ -435,7 +449,7 @@ class TasksBoardJourney(unittest.TestCase):
         menu.get_by_role("menuitemradio", name="Done").click()
         expect(menu).to_have_count(0)
         expect(self.card(done, CALIBRATE)).to_be_visible()
-        expect(page.locator(".tb-note--ok")).to_contain_text(f"Moved “{CALIBRATE}” to Done.")
+        expect(page.locator(".ui-toast").filter(has_text=re.compile(r"#\d+ done"))).to_be_visible()
         self.assertEqual(self.task(page, "calibrate")["status"], "done")
         page.reload()
         expect(self.card(self.column(page, "Done"), CALIBRATE)).to_be_visible()
@@ -488,7 +502,7 @@ class TasksBoardJourney(unittest.TestCase):
         expect(page.get_by_role("region", name=re.compile("^Blocked"))).to_contain_text(SOLDER)
         expect(page.get_by_role("region", name=re.compile("^Needs you"))).to_have_count(0)
         expect(page.get_by_text(PROPOSAL)).to_have_count(0)
-        expect(page.get_by_role("region", name=re.compile("^Finished"))).to_contain_text(CALIBRATE)
+        expect(page.get_by_role("region", name=re.compile("^Done"))).to_contain_text(CALIBRATE)
         self.assertEqual(page.evaluate(f"localStorage.getItem('flux.tasks.mode.{ADA['id']}')"), "list")
         self.assertNotIn("view=", page.url)
         page.reload()
@@ -596,7 +610,7 @@ class TasksBoardJourney(unittest.TestCase):
         narrow.get_by_role("menu").get_by_role("menuitemradio", name="Done").tap()
         expect(self.card(open_, PETG)).to_have_count(0)
         expect(self.card(self.column(narrow, "Done"), PETG).locator(".tb-card__open")).to_be_focused()
-        expect(narrow.locator(".tb-note--ok")).to_contain_text(f"Moved “{PETG}” to Done.")
+        expect(narrow.locator(".ui-toast").filter(has_text=re.compile(r"#\d+ done"))).to_be_visible()
         self.assertEqual(next(item for item in self.api(narrow, "GET", f"/api/v1/projects/{self.ids['project']}/work?limit=100", status=200)["items"] if item["title"] == PETG)["status"], "done")
         self.no_sideways_scroll(narrow, 660, "narrow board after a move")
         laptop = self.board("ada", viewport={"width": 1024, "height": 768})

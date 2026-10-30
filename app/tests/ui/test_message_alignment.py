@@ -21,6 +21,8 @@ PASSWORD = "messages belong to their authors"
 LONG = ("Averyveryverylongwordwithoutanyspacesthatkeepsgoingandgoingandgoingandgoingandgoing and "
         "https://example.test/a/really/long/path/that/never/ends/and/ends/in/a/query?x=1&y=2&z=3 end.")
 NAMES = {"ada": "Ada Kowalska", "jonas": "Jonas Berg"}
+# Below this pane width a thread puts the message toolbar in the bubble's corner (work/message-actions.css, #763 A4).
+NARROW_THREAD = 520
 
 
 class MessageAlignment(unittest.TestCase):
@@ -629,7 +631,7 @@ class MessageAlignment(unittest.TestCase):
                     page, pane, messages = self.open_surface(who, name, 1100, 800)
                     assert_no_sideways_scroll(self, page, pane, name)
                     width = page.locator(pane).first.evaluate("el => el.clientWidth")
-                    self.assertLess(width, 400, f"{name}: a narrow pane")
+                    self.assertLess(width, NARROW_THREAD, f"{name}: a narrow pane")
                     edge = page.locator(pane).first.evaluate("el => ({left: el.getBoundingClientRect().left, right: el.getBoundingClientRect().left + el.clientWidth})")
                     self.assertGreaterEqual(messages.count(), 4)
                     for index in range(messages.count()):
@@ -708,8 +710,12 @@ class MessageAlignment(unittest.TestCase):
             for name in self.surfaces():
                 with self.subTest(width=width, surface=name):
                     page, pane, messages = self.open_surface("ada", name, width, height)
-                    narrow = page.locator(pane).first.evaluate("el => el.clientWidth") < 400
-                    self.assertEqual(narrow, width == 1100 and name.endswith("thread"), f"{name} at {width}")
+                    narrow = page.locator(pane).first.evaluate("el => el.clientWidth") < NARROW_THREAD
+                    # A docked thread under 520px puts the pill in the corner (#763 A4); the stream and a DM never do.
+                    if not name.endswith("thread"):
+                        self.assertFalse(narrow, f"{name} at {width}")
+                    elif width == 1100:
+                        self.assertTrue(narrow, f"{name} at {width}")
                     for index in range(messages.count()):
                         message = messages.nth(index)
                         message.scroll_into_view_if_needed()

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import { Navigate, useLoaderData, useLocation, useRevalidator, useSearchParams, type LoaderFunctionArgs } from 'react-router';
 import type { Project, ProactiveComparisonOutcome, ProjectWorkViewQuery, WorkCounts, WorkItem, WorkObjectType, WorkRowProjection } from '@flux/contracts';
 import { Button, EmptyState, ErrorState, Icon, MEDIA, useMediaQuery, useRowMotion } from '../ui';
@@ -56,7 +57,8 @@ function Group({ id, title, count, children }: { id: string; title: string; coun
 const GROUPS = ['in_progress', 'blocked', 'open', 'parked', 'finished'] as const;
 type GroupId = typeof GROUPS[number];
 const GROUP_LABEL: Record<GroupId, string> = {
-  in_progress: 'In progress', blocked: 'Blocked', open: 'Open', parked: 'Parked', finished: 'Finished',
+  // "Done", the board's word for the same tasks (#763 C5); the URL keeps `finished`.
+  in_progress: 'In progress', blocked: 'Blocked', open: 'Open', parked: 'Parked', finished: 'Done',
 };
 const isGroup = (value: string | null): value is GroupId => GROUPS.includes(value as GroupId);
 /** Old links to the Decisions view (`?status=needs` or `rules`) lead to the Inbox's Decisions filter. */
@@ -115,10 +117,11 @@ function rememberMode(userId: string, mode: Mode) {
  * primary action, "+ Task". The search filters the board's loaded cards; the List is read in bounded pages from
  * the server, so its search is dimmed rather than removed, which keeps every other control where it is.
  */
-function Toolbar({ mode, onMode, query, onQuery, mine, onMine, writable, onNew }: {
+function Toolbar({ mode, onMode, query, onQuery, mine, onMine, writable, onNew, phone }: {
   mode: Mode; onMode: (mode: Mode) => void; query: string; onQuery: (query: string) => void;
-  mine: boolean; onMine: (mine: boolean) => void; writable: boolean; onNew: () => void;
+  mine: boolean; onMine: (mine: boolean) => void; writable: boolean; onNew: () => void; phone: boolean;
 }) {
+  const { actionSlot } = useShellActions();
   const searchId = useId();
   const radios = useRef<HTMLDivElement>(null);
   // One radio group: arrows choose and focus the other view, as the Map's Map | List does.
@@ -151,7 +154,12 @@ function Toolbar({ mode, onMode, query, onQuery, mine, onMine, writable, onNew }
           onKeyDown={(event) => { if (event.key === 'Escape' && query) { event.preventDefault(); event.stopPropagation(); onQuery(''); } }} />
         {mode === 'list' ? <span className="ui-vh" id={`${searchId}-note`}>Search works on the board</span> : null}
       </div>
-      {writable ? <Button variant="primary" icon="plus" className="tb-add" onClick={onNew}><span className="ui-vh">New </span>Task</Button> : null}
+      {/* The one primary action sits at the right of the header row, as drawn, so it keeps its place when a panel docks and
+          the board narrows (#763 C4, Spokój rule 7). A phone keeps it in its toolbar. */}
+      {writable ? (() => {
+        const add = <Button variant="primary" icon="plus" className="tb-add" onClick={onNew}><span className="ui-vh">New </span>Task</Button>;
+        return !phone && actionSlot ? createPortal(add, actionSlot) : add;
+      })() : null}
     </div>
   );
 }
@@ -402,7 +410,7 @@ export function ProjectTasks() {
   if (retired) return <Navigate to="/inbox?show=decisions" replace state={location.state} />;
   return (
     <div className="tb-root">
-      <Toolbar mode={mode} onMode={chooseMode} query={boardSearch} onQuery={setBoardSearch} mine={mine} onMine={(next) => setView({ mine: next })} writable={writable} onNew={startNew} />
+      <Toolbar mode={mode} onMode={chooseMode} query={boardSearch} onQuery={setBoardSearch} mine={mine} onMine={(next) => setView({ mine: next })} writable={writable} onNew={startNew} phone={phone} />
       <div className="pane-scroll" ref={scroller} data-own-place="">
       {!listing ? (
         <div className="tb" data-work-observed-at={data?.summary.observedAt}>
@@ -437,7 +445,7 @@ export function ProjectTasks() {
         <Group id="blocked" title="Blocked" count={groupCount('blocked', by('blocked').length)}>{by('blocked').map((item) => workRow(item))}</Group>
         <Group id="open" title="Open" count={groupCount('open', by('open').length)}>{by('open').map((item) => workRow(item))}</Group>
         <Group id="parked" title="Parked by a pivot" count={groupCount('parked', parked.length)}>{parked.map((item) => workRow(item, true))}</Group>
-        <Group id="finished" title="Finished" count={groupCount('finished', finished.length)}>{finished.map((item) => workRow(item, true))}</Group>
+        <Group id="finished" title={GROUP_LABEL.finished} count={groupCount('finished', finished.length)}>{finished.map((item) => workRow(item, true))}</Group>
       </div>
       )}
       </div>
