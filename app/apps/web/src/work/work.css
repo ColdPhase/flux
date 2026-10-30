@@ -395,7 +395,7 @@ button.wd-link:active:not(:disabled) { background: var(--sub); }
 .ui-panel__body:has(> .wd--task) { display: flex; padding: 0; overflow: hidden; }
 .wd--task { display: flex; flex: 1; flex-direction: column; min-width: 0; min-height: 0; }
 .wd__scroll { flex: 1; min-height: 0; padding: 18px 22px 20px; overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain; }
-.wd__foot { flex: none; padding: 8px 16px 12px; padding-bottom: max(12px, env(safe-area-inset-bottom)); }
+.wd__foot { flex: none; padding: 6px 16px 10px; padding-bottom: max(10px, env(safe-area-inset-bottom)); }
 .wd__foot .composer__audience > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .wd--task .details__title { margin: 2px 0 6px; font-size: var(--fs-xl); }
 .wd-row dd .ui-avatar { flex: none; }
@@ -449,11 +449,16 @@ button.wd-link:active:not(:disabled) { background: var(--sub); }
 .wd-activity .details__sec { margin-top: 10px; }
 .wd-activity > section.details__sec { margin-top: 12px; }
 .wd-composer { display: flex; flex-direction: column; gap: 8px; }
-/* The typing status (#155) shares the audience line's row, at its right: it takes no height, so the task's fields keep
-   their room above the composer on the phone's half sheet, and it is always there so nothing moves when a thread starts. */
-.wd-foot__line { display: flex; align-items: flex-start; gap: 8px; min-width: 0; }
-.wd-foot__line > .composer__audience { flex: 1 1 auto; min-width: 0; }
-.wd-foot__line > .typing-notice { flex: 0 1 auto; max-width: 60%; margin: 6px 4px 0 0; block-size: auto; min-block-size: 0; font-size: var(--fs-xs); line-height: inherit; text-align: right; }
+/* The typing status (#155) has its own line under the audience note (#731): its sentence ("Cleo Marsh and 2 others are
+   typing…") needs the whole width, and sharing the audience row cut both lines short. The line is always there (empty
+   until someone types, a spacer without a thread), so nothing moves when a thread starts or someone starts or stops
+   typing. It costs the phone's half sheet ~6 px of the room above the composer, not a full line: the audience note
+   gives up its top margin and the footer's padding is 2 px tighter, so the common phones still show every field of the
+   task on opening (test_adaptive_matrix). */
+.wd-foot__line { min-width: 0; }
+.wd-foot__line > .composer__audience { margin-top: 0; }
+.wd-foot__note + .wd-foot__line > .composer__audience { margin-top: 6px; }
+.wd-foot__line > .typing-notice { margin: 0 4px; font-size: var(--fs-xs); line-height: 1.3; block-size: 1.3em; min-block-size: 1.3em; }
 .wd-foot__note { margin: 8px 6px 0; }
 .wd-activity > .details__sec { margin-top: 14px; }
 .wd-activity > .details__sec .wd-link { font-size: var(--fs-sm); color: var(--t2); }

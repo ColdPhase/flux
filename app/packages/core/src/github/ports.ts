@@ -39,7 +39,7 @@ export interface GithubRepositoryPort {
   processingState(deliveryId: string, bindingId: string): Promise<'pending' | 'completed' | null>;
   processing(deliveryId: string, bindingId: string): Promise<'pending' | 'completed' | null>;
   complete(deliveryId: string, bindingId: string, errorCode?: string): Promise<void>;
-  reconciliationCandidates(appId: string, window: string, limit: number): Promise<GithubBindingRecord[]>;
+  reconciliationCandidates(appId: string, window: string, limit: number, prefix?: 'gap' | 'poll'): Promise<GithubBindingRecord[]>;
   pendingReconciliation(bindingId: string): Promise<string | null>;
   /** Internal metadata only; cannot deliver to a client until #153's audience adapter exists. */
   bridge(delivery: GithubDelivery, binding: GithubBindingRecord, link: GithubLinkRecord, facts: GithubPullFacts): Promise<void>;

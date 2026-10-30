@@ -9,6 +9,8 @@ set -eu
 FLUX_ROOT=$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd -P)
 COMPOSE_MAIN="$FLUX_ROOT/docker/compose.source.yaml"
 COMPOSE_DEV="$FLUX_ROOT/docker/compose.dev.yaml"
+# The API and worker's agent-runtime networks (#744); added only while FLUX_AGENT_RUNTIME is set.
+COMPOSE_RUNTIME="$FLUX_ROOT/docker/compose.source.runtime.yaml"
 # The operator's own override (for example extra agent runtime slots); used when it exists.
 COMPOSE_OVERRIDE="$FLUX_ROOT/docker/compose.override.yaml"
 ENV_EXAMPLE="$FLUX_ROOT/docker/.env.example"
@@ -40,14 +42,13 @@ need_docker() {
 
 # Compose for the production-mode stack (`up`, `demo`) or the hot-reload stack (`dev`).
 # The image tag follows the project so parallel checkouts and `clean` stay scoped.
+# With the agent runtime off the API and worker join two networks, not four: each network takes one of Docker's
+# address pools, and a shared host runs out of them (#744).
 compose_main() {
-  if [ -f "$COMPOSE_OVERRIDE" ]; then
-    FLUX_IMAGE_TAG="$PROJECT" docker compose --project-directory "$FLUX_ROOT/docker" \
-      --env-file "$ENV_FILE" -p "$PROJECT" -f "$COMPOSE_MAIN" -f "$COMPOSE_OVERRIDE" "$@"
-  else
-    FLUX_IMAGE_TAG="$PROJECT" docker compose --project-directory "$FLUX_ROOT/docker" \
-      --env-file "$ENV_FILE" -p "$PROJECT" -f "$COMPOSE_MAIN" "$@"
-  fi
+  if [ -f "$COMPOSE_OVERRIDE" ]; then set -- -f "$COMPOSE_OVERRIDE" "$@"; fi
+  if runtime_on; then set -- -f "$COMPOSE_RUNTIME" "$@"; fi
+  FLUX_IMAGE_TAG="$PROJECT" docker compose --project-directory "$FLUX_ROOT/docker" \
+    --env-file "$ENV_FILE" -p "$PROJECT" -f "$COMPOSE_MAIN" "$@"
 }
 compose_dev() {
   FLUX_IMAGE_TAG="$DEV_PROJECT" FLUX_PUBLIC_ORIGIN="$(dev_origin)" \
@@ -401,6 +402,28 @@ ensure_runtime_secrets() {
 runtime_volumes() {
   docker volume ls -q --filter "label=com.docker.compose.project=$PROJECT" | grep -E "^${PROJECT}_runtime-([1-9][0-9]*-data|tools)\$" || true
 }
+# Runtime networks no container uses any more (the runtime was switched off, or the project started before #744
+# attached the API to them) still hold address pools; remove them. A network in use is left alone.
+remove_idle_runtime_networks() {
+  for network in $(docker network ls --filter "label=com.docker.compose.project=$PROJECT" --format '{{.Name}}' | grep -E "^${PROJECT}_runtime-" || true); do
+    docker network rm "$network" >/dev/null 2>&1 || true
+  done
+}
+# Docker reports a full address pool as one line in the middle of the Compose output; say what it means (#744).
+explain_address_pools() {
+  probe="flux-pool-probe-$$"
+  if probe_error=$(docker network create "$probe" 2>&1 >/dev/null); then
+    docker network rm "$probe" >/dev/null 2>&1 || true
+    return 0
+  fi
+  case "$probe_error" in
+    *"address pools have been fully subnetted"*|*"could not find an available, non-overlapping"*)
+      warn "Docker has no free network address pool left: every Compose project takes one per network (a Flux project"
+      warn "takes 2, or 10 with the agent runtime on), and a stock Docker daemon has about 30. Stop projects you do not"
+      warn "need with 'docker compose -p <project> down' (see 'docker network ls'), or give the daemon smaller pools"
+      warn "(default-address-pools in /etc/docker/daemon.json); see docs/operations/README.md#docker-address-pools." ;;
+  esac
+}
 # Stops and removes the runtime containers; slot volumes (and so the owners' logins) stay.
 stop_runtime() {
   [ -n "$(docker ps -aq --filter "label=com.docker.compose.project=$PROJECT" --filter "label=com.docker.compose.service=runtime-manager")" ] || return 0
@@ -481,11 +504,12 @@ start_main() {
     # runtime-install runs first (a no-op unless claude_code is on); the slots then start.
     # shellcheck disable=SC2046
     compose_main --profile runtime up -d --wait --wait-timeout "$WAIT_TIMEOUT" api worker runtime-manager runtime-egress $(runtime_slots) \
-      || { compose_main --profile runtime logs --no-color --tail 60 migrate api worker runtime-install runtime-manager runtime-egress >&2 || true; die "Flux did not become healthy. See the logs above."; }
+      || { compose_main --profile runtime logs --no-color --tail 60 migrate api worker runtime-install runtime-manager runtime-egress >&2 || true; explain_address_pools; die "Flux did not become healthy. See the logs above."; }
   else
     compose_main up -d --wait --wait-timeout "$WAIT_TIMEOUT" api worker \
-      || { compose_main logs --no-color --tail 60 migrate api worker >&2 || true; die "Flux did not become healthy. See the logs above."; }
+      || { compose_main logs --no-color --tail 60 migrate api worker >&2 || true; explain_address_pools; die "Flux did not become healthy. See the logs above."; }
     stop_runtime
+    remove_idle_runtime_networks
   fi
 }
 
@@ -612,7 +636,7 @@ cmd_dev() {
   fi
   say "Starting hot-reload development stack ($DEV_PROJECT)..."
   compose_dev up -d --wait --wait-timeout "$WAIT_TIMEOUT" api worker web mailpit \
-    || { compose_dev logs --no-color --tail 60 migrate api worker web >&2 || true; die "The dev stack did not become healthy. See the logs above."; }
+    || { compose_dev logs --no-color --tail 60 migrate api worker web >&2 || true; explain_address_pools; die "The dev stack did not become healthy. See the logs above."; }
   say ""
   say "Flux dev is running:  $(dev_origin)   (Vite hot reload; /api proxied to tsx watch)"
   say "Mail catcher:         http://127.0.0.1:$(env_value FLUX_MAILPIT_PORT | sed 's/^$/8025/')"
@@ -1368,13 +1392,14 @@ cmd_cowork() (
   rm -f "$COWORK_STATE/login-status"
   url_config=$(cowork_helper url-config)
   instructions=$(cowork_helper instructions "$action")
-  # Inline configuration does not write the person's global config or instruction files.
+  # Inline configuration does not write the person's global config or instruction files. Flux's own tools run without a
+  # second local prompt (exec has no one to answer it): the server's standing grants are the authority, never the client.
   if [ ! -f "$COWORK_STATE/oauth-authorized" ]; then
     codex -c "$url_config" -c 'mcp_servers.flux.required=true' mcp login flux || die "Flux authorization did not complete."
     : >"$COWORK_STATE/oauth-authorized"
   fi
   set -- exec --ignore-user-config --json --skip-git-repo-check --sandbox workspace-write \
-    -c "$url_config" -c 'mcp_servers.flux.required=true' -c "$instructions" \
+    -c "$url_config" -c 'mcp_servers.flux.required=true' -c 'mcp_servers.flux.default_tools_approval_mode="approve"' -c "$instructions" \
     -c 'features.apps=false' -c 'features.plugins=false' -c 'features.remote_plugin=false'
   if [ "$action" = resume ]; then set -- "$@" resume "$(cowork_helper thread)"; fi
   # A finite owned child invocation, with no idle model polling or unrelated process termination.

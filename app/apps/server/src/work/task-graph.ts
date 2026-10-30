@@ -1,5 +1,5 @@
-import { taskGraphRows } from '@flux/db';
-import { assertPrerequisitesMet, directPrerequisiteIds, lockProjectGraphs, type Transaction } from '@flux/core';
+import { taskGraphRows, type Transaction } from '@flux/db';
+import { assertPrerequisitesMet, directPrerequisiteIds, lockProjectGraphs } from '@flux/core';
 
 // The three transaction-bound task-graph primitives of #152 (interface pinned in
 // docs/development/agent-connection/2026-10-01-native-plan-contract.md), for every dependency/intent

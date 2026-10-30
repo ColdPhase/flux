@@ -1,0 +1,11 @@
+# The agent runtime's attachments of the API and worker in the source stack (#744). ./flux adds this file
+# whenever FLUX_AGENT_RUNTIME is set, and the runtime checks layer it next to compose.source.yaml, like the
+# release's compose.runtime.yaml does for compose.yaml. Without it the API and worker join only `default`
+# and `keyring`, so a project with the runtime off takes two of Docker's address pools instead of four.
+services:
+  api:
+    # runtime-control reaches runtime-manager; runtime-api is where runtime-egress forwards /mcp.
+    # Neither network holds the database.
+    networks: [default, runtime-control, runtime-api, keyring]
+  worker:
+    networks: [default, runtime-control, keyring]

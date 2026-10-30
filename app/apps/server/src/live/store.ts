@@ -1,6 +1,6 @@
 import { randomBytes, randomUUID } from 'node:crypto';
 import { and, asc, eq, inArray, ne, sql } from 'drizzle-orm';
-import { schema, prepareReferencedTaskUse, accessReader } from '@flux/db';
+import { schema, prepareReferencedTaskUse, accessReader, type Database, type Executor } from '@flux/db';
 import {
   ConflictError,
   DomainError,
@@ -9,8 +9,6 @@ import {
   ServiceUnavailableError,
   enforce,
   evaluateProject,
-  type Database,
-  type Executor,
   type LiveRepository,
   type LiveSessionRecord,
 } from '@flux/core';

@@ -1,6 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import type { ConversationWindowQuery } from '@flux/contracts';
-import { taskAgentThreadUseCases, type Database, type FileStorage, type TaskAgentThreadCommand } from '@flux/core';
+import { taskAgentThreadUseCases, type FileStorage, type TaskAgentThreadCommand } from '@flux/core';
+import type { Database } from '@flux/db';
 import type { SessionResolver } from '../identity/index.js';
 import { withTaskUseErrors } from '../work/task-use-errors.js';
 import { conversationStore } from './store.js';

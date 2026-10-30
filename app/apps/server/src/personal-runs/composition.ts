@@ -1,6 +1,6 @@
 import { PERSONAL_RUN_LIMITS } from '@flux/contracts';
-import { testFixturePersonalConnections, type Database, type PersonalConnectionLookup } from '@flux/core';
-import { personalConnectionLookup } from '@flux/db';
+import { testFixturePersonalConnections, type PersonalConnectionLookup } from '@flux/core';
+import { personalConnectionLookup, type Database } from '@flux/db';
 
 // What the API composes for personal runs (#68, O-008, F-020). Production: the owner's own AI
 // connections (#124 custody, PROV-1) are looked up, and the operator switch `FLUX_PERSONAL_RUNS=on`

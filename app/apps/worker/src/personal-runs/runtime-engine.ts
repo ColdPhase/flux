@@ -1,8 +1,8 @@
 import { RUN_CAP_BOUNDS, createRuntimeManagerClient, streamManagerRun, type ManagerRunOutcome, type RunFrame } from '@flux/runtime-protocol';
 import {
-  clientAvailability, type AgentRuntimeConfig, type Database, type PersonalRuntime, type PersonalRuntimeEnd, type PersonalRuntimeEvent,
+  clientAvailability, type AgentRuntimeConfig, type PersonalRuntime, type PersonalRuntimeEnd, type PersonalRuntimeEvent,
 } from '@flux/core';
-import { personalRuntimeRow, touchRuntimeBinding } from '@flux/db';
+import { personalRuntimeRow, touchRuntimeBinding, type Database } from '@flux/db';
 
 // The worker's side of a personal run on the owner's own Claude Code or Codex (F-022 AIM-3 "Run", #280, #281): it asks
 // runtime-manager to run the CLI in the owner's own slot and binding directory, read from the database for

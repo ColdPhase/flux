@@ -100,7 +100,37 @@ native CLI program. #320's clean-clone timed walkthrough is also unverified.
 One consolidated independent review plus at most one final delta/open-findings
 check applies; no independent review has been requested for this incomplete draft.
 
-## Narrowed scope: Codex Resume unverified, 2026-10-23 (#636)
+## Genuine Start, changed plan, Resume in both clients, 2026-10-30
+
+`FLUX_TEST_MCP_LIVE_WORKFLOW=1 ./scripts/check_mcp_clients.sh` with the person's own accounts mounted read-only
+(`FLUX_CODEX_AUTH_FILE`, `FLUX_CLAUDE_CREDENTIALS_FILE`), Docker only, ports 33600/33601. The fixture copies each
+credential into the disposable client HOME so the client can refresh a token there; the host files are never
+written. The project holds only fixture content. Clients: official Codex **0.160.1** (pinned image) and Claude Code
+**2.1.285** (signed manifest). Person's input: only the supplied action (Codex `exec` argv of `./flux cowork`, Claude
+`/mcp__flux__start_work <project>` then `/mcp__flux__resume_work <project>`).
+
+| Run | Source | Result |
+| --- | --- | --- |
+| 1 | main `75df7fff` + fixture `b57492bf` | Codex Start stopped after 5 calls; Claude flagged as `rate_limit`. Both diagnoses below. |
+| 2 | + fixture `b952f91e` (account stop read from a failed result only; tool failures and last message logged) | **Claude PASS**: Start 21 tool calls (bootstrap, ack, orientation, plan/wiki reads, inbox, `flux_create_task`, create/claim/release unit with orientation); quiet idle 60 s: **0** Flux requests, no process; owner changed the plan; Resume 21 calls incl. `flux_changes_since`, `flux_record_result`; 1 task, durable orientation, result names the changed plan. 189.7 s. Codex still refused (below). |
+| 3 | + `44fdca04` (supplied Codex action approves Flux's own tools) | **Codex PASS**: Start 32 calls, exactly one criteria-bearing plan-intent task, unit claimed and released with orientation; quiet idle 60 s: **0** requests, no process; Resume on the exact saved thread (`exec resume <threadId>`) 19 calls incl. `flux_changes_since`, `flux_record_result`, no failed call; no duplicate task; result names the changed plan. 172.1 s, exit 0. |
+
+Diagnoses, recorded as observed:
+
+- **Claude "account stop" was a false positive.** Claude Code's `stream-json` prints routine `rate_limit_event` lines in
+  a successful run; the fixture matched `rate_limit` anywhere in the output. It now reads markers only from a failed
+  final result. The 2026-10-18 "authentication/usage" Claude stop used the same matcher; it was probably the same
+  false positive (inference, not re-observed).
+- **Codex refused Flux's write tools.** Codex 0.160.1 answered `flux_acknowledge_playbook` with "MCP tool call requires
+  approval, but approval policy is never": `exec` has nobody to approve. The supplied action now passes
+  `mcp_servers.flux.default_tools_approval_mode="approve"` (accepted by 0.160.1 and 0.163.0, whose variants are
+  `auto|prompt|writes|approve`). Flux's standing grants remain the authority; the flag only stops the client asking.
+- Run 3 Start saw 7 failed `flux_project_orientation` calls with an empty error text and one failed inbox call before
+  it succeeded. The model recovered; the cause is not diagnosed here (follow-up).
+- The Codex legs use the test copy of the launcher argv (`app/tests/app/support/cowork-production-invoke.ts`), not the
+  outer `./flux cowork` shell; the shell is covered by `cowork-host-shell.test.ts` with a stub CLI.
+
+## Narrowed scope: Codex Resume unverified, 2026-10-23 (#636) — superseded 2026-10-30 above
 
 No account-backed Codex Resume was run, and none is claimed. The Codex
 `./flux cowork resume` leg (`codex exec resume <threadId>` with the explicit saved

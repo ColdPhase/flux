@@ -2,11 +2,11 @@ import type { PgBoss } from 'pg-boss';
 import { WORKSPACE_ENCRYPTION_RESUME_JOB, type WorkspaceEncryptionResumeJob } from '@flux/contracts';
 import {
   createKeyRotation, dropStaleUnlocks, keyPinStatus, keyringFromEnv, processDraftSummary, ProcessKeys, recordEvent, redactedError, replayWaitedEvent, sealFor, swapFiles,
-  swapSafety, testSwapRoot, type Database, type EncryptionPorts, type EncryptionUnitOfWork, type KeyRotationOptions,
+  swapSafety, testSwapRoot, type EncryptionPorts, type EncryptionUnitOfWork, type KeyRotationOptions,
 } from '@flux/core';
 import {
   accessReader, configureRemovalPin, configureSeals, createDatabase, draftResultRepository, eventRepository, keyRotationRows, rotationCheckpoint, rotationMaintenance, sql,
-  workspaceEncryptionRows, type DbExecutor,
+  workspaceEncryptionRows, type DbExecutor, type Database,
 } from '@flux/db';
 import { eventPorts } from '../events.js';
 import { generatorUnitOfWork } from '../notifications/adapters.js';

@@ -226,7 +226,8 @@ class AiConnectionSettings(unittest.TestCase):
         expect(guide).to_contain_text("use its supplied Start/Resume command")
         expect(guide).to_contain_text("Codex 0.160.1")
         expect(guide).to_contain_text("Unsupported protocol version")
-        expect(guide).to_contain_text("Claude’s supplied Start/Resume workflow remains pending verification")
+        expect(guide).to_contain_text("/mcp__flux__start_work")
+        expect(guide).to_contain_text("Verified with a real Claude Code 2.1.285 account on 30 October 2026")
         # #320: the quick start's loopback http:// address is the one to use; HTTPS is needed only
         # for a client on another computer, so the guide must not ask for it here.
         self.assertRegex(ORIGIN, r"^http://(127\.\d+\.\d+\.\d+|localhost)(:\d+)?$", "this suite runs on a loopback http origin")
@@ -235,7 +236,8 @@ class AiConnectionSettings(unittest.TestCase):
         expect(guide).not_to_contain_text("Use your self-hosted Flux HTTPS address")
         expect(guide).to_contain_text("run only the actions you grant")
         shot(page, "ai-connection-1440-connect-guide")
-        guide.get_by_role("heading", name="Start work").scroll_into_view_if_needed()
+        # Claude Code and Codex each have their own "Start work" (#160 AC-2); this shot is Codex's.
+        guide.get_by_role("region", name="Codex").get_by_role("heading", name="Start work").scroll_into_view_if_needed()
         shot(page, "ai-connection-1440-connect-guide-codex")
         page.set_viewport_size({"width": 390, "height": 844})
         guide.get_by_role("heading", name="Codex", exact=True).scroll_into_view_if_needed()
@@ -378,9 +380,9 @@ class AiConnectionSettings(unittest.TestCase):
             self.assertEqual(positions[f"unavailable-{device}"], positions[f"available-{device}"],
                              f"{device}: the status line, AI connections, usage, rules and Add a connection keep their places")
 
-    def test_11_a_codex_host_action_is_labelled_pending_native_verification(self) -> None:
-        """#635: the Codex Start/Resume host action says it is pending native verification, as Claude's path does,
-        and the guide does not claim a recorded real-account Resume. The Codex connection is created through the API."""
+    def test_11_a_codex_host_action_names_its_real_account_verification(self) -> None:
+        """#635/#160: the Codex Start/Resume host action names the real-account Start and exact-thread Resume recorded on
+        2026-10-30 (docs/development/evidence/160-workflow/README.md). The Codex connection is created through the API."""
         page = self.page()
         headers = {"origin": ORIGIN, "content-type": "application/json"}
 
@@ -399,11 +401,11 @@ class AiConnectionSettings(unittest.TestCase):
         page.locator("label.connection__choice", has_text="Ada Codex laptop").locator("input").check()
         host = page.locator(".mcp-permissions .cowork-host-actions")
         expect(host).to_have_count(1)
-        expect(host.locator("summary")).to_contain_text("pending native verification")
-        expect(host).to_contain_text("no real-account Start or exact-thread Resume through this action is recorded yet")
-        expect(page.locator(".connection__guide")).to_contain_text("It is pending native verification")
-        expect(page.locator(".connection__guide")).not_to_contain_text("resumes only its own saved native thread")
-        shot(page, "ai-connection-1440-codex-host-pending")
+        expect(host.locator("summary")).to_have_text("Start / Resume on this computer")
+        expect(host).to_contain_text("Verified with a real Codex 0.160.1 account on 30 October 2026")
+        expect(page.locator(".connection__guide")).to_contain_text("Resume continues the same saved native thread")
+        expect(page.locator(".connection__guide")).not_to_contain_text("pending native verification")
+        shot(page, "ai-connection-1440-codex-host-verified")
 
 
 if __name__ == "__main__":

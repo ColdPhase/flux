@@ -7,7 +7,7 @@ import {
   type ReturnSummaryQuery,
   type SaveReturnPointCommand,
 } from '@flux/contracts';
-import type { Database } from '@flux/core';
+import type { Database } from '@flux/db';
 import type { SessionResolver } from '../identity/index.js';
 import { commandRunner, useDomainErrors } from '../http/commands.js';
 import { returnUseCases } from './adapters.js';

@@ -1,5 +1,5 @@
-import { agentExecutionRows, agentProjectObjectRows, accessReader } from '@flux/db';
-import { agentStandingGrantUseCases, DomainError, enforce, evaluateProject, type AgentStandingGrantPort, type Database, type Transaction } from '@flux/core';
+import { agentExecutionRows, agentProjectObjectRows, accessReader, type Database, type Transaction } from '@flux/db';
+import { agentStandingGrantUseCases, DomainError, enforce, evaluateProject, type AgentStandingGrantPort } from '@flux/core';
 import type { AgentOperation, CreateAgentStandingGrantCommand } from '@flux/contracts';
 import { createAgentConnectionStore } from './store.js';
 

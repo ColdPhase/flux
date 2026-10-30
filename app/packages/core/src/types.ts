@@ -1,15 +1,23 @@
-import type { createDatabase } from '@flux/db';
+// Core's transaction port (issues #46, #92). Core never reads or writes through a handle itself: a use
+// case opens a transaction on the handle it is given and passes the handle to the port factories the app
+// supplies (`accessPorts`, `eventRepository`, the idempotency store, ...), which bind their adapters to it.
+// A `@flux/db` pool handle or open transaction satisfies these types; core names no persistence library.
 
-/** The pool-backed Drizzle handle created by `createDatabase`. */
-export type DatabaseHandle = ReturnType<typeof createDatabase>['db'];
+/** A connection or an open transaction. Opaque to core: only ports bound to it run statements. */
+export type Executor = object;
+
 /**
- * What domain methods need: a pool handle or an open transaction. Domain methods open
- * their own (nested, savepoint) transaction on it, so a caller such as the idempotency
- * layer can run a command and record its result atomically.
+ * A handle that opens a transaction: on a pool handle a new one, on an open transaction a nested one
+ * (a savepoint), so a caller such as the idempotency layer can run a use case and record its result in
+ * one commit. `Tx` is the handle the work runs on.
  */
-export type Database = Pick<DatabaseHandle, 'select' | 'selectDistinct' | 'insert' | 'update' | 'delete' | 'execute' | 'transaction'>;
-/** A database handle or an open transaction; policy checks inside a transaction see its writes. */
-export type Executor = Pick<Database, 'select' | 'selectDistinct' | 'insert' | 'update' | 'delete' | 'execute'>;
-export type Transaction = Parameters<Parameters<DatabaseHandle['transaction']>[0]>[0];
+export interface TransactionPort<Tx extends Executor> {
+  transaction<T>(work: (tx: Tx) => Promise<T>): Promise<T>;
+}
+
+/** What use cases take: a pool handle or an open transaction, on which they open their own (nested) transaction. */
+export interface Database extends TransactionPort<Database> {
+  transaction<T>(work: (tx: Database) => Promise<T>): Promise<T>;
+}
 
 export type { Principal } from './principal.js';

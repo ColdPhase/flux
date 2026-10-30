@@ -7,12 +7,11 @@ import {
   policySourceReader,
   registerPushSubscription,
   removePushSubscription,
-  type Database,
   type NotificationRecord,
   type PushServerConfig,
   type PushSubscriptionRecord,
 } from '@flux/core';
-import { accessReader } from '@flux/db';
+import { accessReader, type Database } from '@flux/db';
 import {
   INBOX_PATH,
   INBOX_READ_ALL_PATH,

@@ -26,7 +26,8 @@ import {
   type SelectPersonalAgentCommand,
   type UpdatePersonalRunsCommand,
 } from '@flux/contracts';
-import type { Database, PersonalConnectionLookup, PersonalRuntimeAvailability } from '@flux/core';
+import type { PersonalConnectionLookup, PersonalRuntimeAvailability } from '@flux/core';
+import type { Database } from '@flux/db';
 import type { SessionResolver } from '../identity/index.js';
 import { commandRunner, expectedVersion, useDomainErrors, versionEtag, type ReplayCheck } from '../http/commands.js';
 import { registerAssistantJobRoutes } from '../assistant/jobs.js';

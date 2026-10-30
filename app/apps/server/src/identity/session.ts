@@ -1,8 +1,8 @@
 import type { IncomingHttpHeaders } from 'node:http';
 import { fromNodeHeaders } from 'better-auth/node';
 import { eq } from 'drizzle-orm';
-import { schema } from '@flux/db';
-import type { Database, Principal } from '@flux/core';
+import { schema, type Database } from '@flux/db';
+import type { Principal } from '@flux/core';
 import type { FluxAuth } from './auth.js';
 import type { Confirmation } from './confirmation.js';
 import type { IdpStanding } from './standing.js';

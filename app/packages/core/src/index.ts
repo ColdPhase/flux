@@ -1,4 +1,4 @@
-export type { Database, DatabaseHandle, Executor, Principal, Transaction } from './types.js';
+export type { Database, Executor, Principal, TransactionPort } from './types.js';
 export * from './access/errors.js';
 export {
   authorize,

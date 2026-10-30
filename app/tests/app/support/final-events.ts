@@ -1,6 +1,5 @@
 import assert from 'node:assert/strict';
-import { schema } from '@flux/db';
-import type { Transaction } from '@flux/core';
+import { schema, type Transaction } from '@flux/db';
 
 /** Instruments the real executor, retaining PostgreSQL writes and policy queries. */
 export function guardFinalEventPhase(tx: Transaction) {

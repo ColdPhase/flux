@@ -1,6 +1,6 @@
 import type { PgBoss } from 'pg-boss';
-import { DRAFT_SUMMARY_JOB, processDraftSummary, type Database } from '@flux/core';
-import { accessReader, draftResultRepository, eventRepository } from '@flux/db';
+import { DRAFT_SUMMARY_JOB, processDraftSummary } from '@flux/core';
+import { accessReader, draftResultRepository, eventRepository, type Database } from '@flux/db';
 
 /**
  * Consumes draft.summarize.v1 jobs. The payload is a result id only. processDraftSummary rechecks

@@ -21,7 +21,7 @@ const ai = [
   'agent_oauth_bindings', 'agent_oauth_flows', 'agent_oauth_selections', 'agent_playbook_acknowledgments', 'agent_project_policies',
   'agent_proposals', 'agent_questions', 'agent_runtime_auth_admission', 'agent_runtime_auth_operations', 'agent_runtime_bindings',
   'agent_runtime_client_history', 'agent_runtime_connections', 'agent_runtime_console_nonces', 'agent_runtime_operator_statements',
-  'agent_runtime_sessions', 'agent_runtime_slots', 'agent_standing_grants', 'agent_stops', 'agent_thread_artifact_boundaries',
+  'agent_runtime_sessions', 'agent_runtime_slots', 'agent_standing_grants', 'agent_stops', 'agent_pauses', 'agent_thread_artifact_boundaries',
   'agent_thread_artifact_mutations', 'agent_thread_artifact_resets', 'agent_thread_guard_events', 'agents', 'assistant_background_notes',
   'assistant_changes', 'assistant_job_runs', 'assistant_jobs', 'assistant_join_question_identity_snapshots', 'assistant_join_requests',
   'assistant_morning_summaries', 'assistant_proposals', 'assistant_reaction_events', 'assistant_reaction_notes', 'assistant_reactions',

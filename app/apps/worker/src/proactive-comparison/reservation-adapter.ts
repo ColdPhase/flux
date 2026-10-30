@@ -1,5 +1,5 @@
-import { comparisonSchedulingRows, proactiveOutboxRows, accessReader } from '@flux/db';
-import { evaluateProject, reservationUseCases, type Database, type ReservationPorts } from '@flux/core';
+import { comparisonSchedulingRows, proactiveOutboxRows, accessReader, type Database } from '@flux/db';
+import { evaluateProject, reservationUseCases, type ReservationPorts } from '@flux/core';
 
 /** Internal composition for a future worker; no HTTP endpoint or scheduled provider call. */
 export function proactiveReservation(db: Database) {

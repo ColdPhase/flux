@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify';
-import { githubRows, accessReader } from '@flux/db';
+import { githubRows, accessReader, type Database } from '@flux/db';
 import { GITHUB_CALLBACK_PATH, type GithubCapabilities } from '@flux/contracts';
-import { assertAuthorized, DomainError, githubId, InvalidInputError, ServiceUnavailableError, type Database, type GithubProvider } from '@flux/core';
+import { assertAuthorized, DomainError, githubId, InvalidInputError, ServiceUnavailableError, type GithubProvider } from '@flux/core';
 import type { SessionResolver } from '../identity/index.js';
 import { useDomainErrors } from '../http/commands.js';
 import { githubCredentials } from './credentials.js';
@@ -33,7 +33,8 @@ export async function githubRoutes(app: FastifyInstance, options: Options) {
   app.get<{ Params: { projectId: string } }>('/api/v1/projects/:projectId/github/capabilities', async (request): Promise<GithubCapabilities> => {
     const actor = await project(request, request.params.projectId);
     return { status: config ? 'configured' : 'unavailable', authorization: credentials ? await credentials.state(actor.id) : 'required',
-      taskAutomation: config ? 'available' : 'unavailable', agentDelivery: 'unavailable', ruleDefault: await rules.ruleDefault(actor, request.params.projectId) };
+      taskAutomation: config ? 'available' : 'unavailable', agentDelivery: config ? 'available' : 'unavailable',
+      delivery: config?.delivery ?? 'webhook', ruleDefault: await rules.ruleDefault(actor, request.params.projectId) };
   });
   app.post<{ Params: { projectId: string } }>('/api/v1/projects/:projectId/github/authorize', async (request) => {
     unavailable(); return oauth!.start(await sessions.requirePrincipal(request), request.params.projectId, 'authorize');
@@ -89,6 +90,8 @@ export async function githubRoutes(app: FastifyInstance, options: Options) {
     try {
       await authorizeGithubReactionEvents(db, useCases!);
       await useCases!.schedule(config.appId, String(Math.floor(Date.now() / 1_800_000)));
+      // G-1c (#479): without a reachable webhook, open linked PRs are reconciled in 2-minute windows.
+      if (config.delivery === 'poll') await useCases!.schedule(config.appId, String(Math.floor(Date.now() / 120_000)), 'poll');
       for (const row of await githubRows(db).due(5)) {
         try { await useCases!.process(row.deliveryId, row.bindingId); }
         catch (error) { await githubRows(db).failed(row.deliveryId, row.bindingId, error instanceof DomainError ? error.code : 'GITHUB_UNAVAILABLE'); }

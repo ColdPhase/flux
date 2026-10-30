@@ -1,12 +1,11 @@
 import type { PgBoss } from 'pg-boss';
-import { EVENTS_CHANNEL, listen } from '@flux/db';
+import { EVENTS_CHANNEL, listen, type Database } from '@flux/db';
 import {
   GENERATOR_BATCH,
   NOTIFICATION_EMAIL_JOB,
   deliverNotificationEmail,
   generateNotifications,
   loadNotificationMailConfig,
-  type Database,
   type EmailJob,
   type NotificationMailer,
 } from '@flux/core';

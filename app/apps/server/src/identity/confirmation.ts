@@ -1,6 +1,5 @@
 import { and, eq, sql } from 'drizzle-orm';
-import { schema } from '@flux/db';
-import type { Database } from '@flux/core';
+import { schema, type Database } from '@flux/db';
 import type { OidcConfig } from './config.js';
 
 export interface Confirmation {

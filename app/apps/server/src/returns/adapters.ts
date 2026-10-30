@@ -1,4 +1,4 @@
-import { returnRows, type DbExecutor, visibleFilter, accessReader, lockedWorkspacesOfRead, sql } from '@flux/db';
+import { returnRows, type DbExecutor, visibleFilter, accessReader, lockedWorkspacesOfRead, sql, type Database } from '@flux/db';
 import {
   authorize,
   authorizeEvent,
@@ -7,7 +7,6 @@ import {
   evaluateProject,
   NotFoundError,
   WorkspaceLockedError,
-  type Database,
   type ReturnAccess,
   type ReturnRepository,
 } from '@flux/core';

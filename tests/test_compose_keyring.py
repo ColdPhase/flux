@@ -19,6 +19,7 @@ OVERLAY_BASES = {
     "compose.oidc.test.yaml": "compose.source.yaml",
     "compose.perf.yaml": "compose.source.yaml",
     "compose.runtime.yaml": "compose.yaml",
+    "compose.source.runtime.yaml": "compose.source.yaml",
     "compose.encryption.test.yaml": "compose.source.yaml",
 }
 

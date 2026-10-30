@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { AGENT_OPERATION_CLASSES, WORK_LIMITS, WORK_STATUSES, type AgentJsonValue, type AgentOperation, type CreateResultCommand,
   type CreateWorkCommand, type ProposeDecisionCommand, type UpdateWorkCommand } from '@flux/contracts';
-import type { Database } from '@flux/core';
+import type { Database } from '@flux/db';
 import { actionAnnotations as annotations, actionId as id, actionInput as execution, actionVersion as version, materialSources,
   nativeActionExecutor } from './action-execution.js';
 import type { FluxMcpClaims } from './context.js';

@@ -2,8 +2,8 @@ import { randomUUID } from 'node:crypto';
 import { sql } from 'drizzle-orm';
 import { fromDrizzle, type PgBoss } from 'pg-boss';
 import type { SampleAccepted, SampleCommand } from '@flux/contracts';
-import type { Database, Principal } from '@flux/core';
-import { SAMPLE_JOB, sampleRepository } from '@flux/db';
+import type { Principal } from '@flux/core';
+import { SAMPLE_JOB, sampleRepository, type Database } from '@flux/db';
 
 /** A sample title outside 1–200 characters. */
 export class InvalidSampleError extends Error {}

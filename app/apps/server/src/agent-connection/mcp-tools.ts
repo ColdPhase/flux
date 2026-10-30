@@ -1,7 +1,7 @@
 import { McpServer } from '@modelcontextprotocol/server';
 import { z } from 'zod';
-import { agentProposalRepository, accessReader } from '@flux/db';
-import { agentProposalUseCases, coworkServerInstructions, enforce, evaluateProject, recordEvent, type Database } from '@flux/core';
+import { agentProposalRepository, accessReader, type Database } from '@flux/db';
+import { agentProposalUseCases, coworkServerInstructions, enforce, evaluateProject, recordEvent } from '@flux/core';
 import { registerAgentPlaybook } from './playbook.js';
 import { registerAgentPolicyResource } from './project-policy.js';
 import { agentToolRegistry } from './tool-registry.js';

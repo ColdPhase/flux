@@ -1,7 +1,7 @@
 import { AGENT_MCP_SOURCE_CAPABILITIES, type AgentMcpPolicy, type AgentScope } from '@flux/contracts';
 import { agentProjectReads, DomainError, enforce, evaluateProject, requireAgentMcpEntry, requireAgentSelection, requireWorkspaceAi, type AgentConnectionContext,
-  type AgentProjectObjectKind, type Database, type Transaction } from '@flux/core';
-import { agentProjectObjectRows, lockAgentMcpPolicy, loadActor, accessReader } from '@flux/db';
+  type AgentProjectObjectKind } from '@flux/core';
+import { agentProjectObjectRows, lockAgentMcpPolicy, loadActor, accessReader, type Database, type Transaction } from '@flux/db';
 import { createAgentConnectionStore } from './store.js';
 import type { McpDispatch } from './mcp-dispatch.js';
 import { requireLiveRun, type RunTokenClaims } from './run-token.js';

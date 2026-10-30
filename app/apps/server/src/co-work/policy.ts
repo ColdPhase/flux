@@ -1,6 +1,6 @@
 import type { AgentJsonValue } from '@flux/contracts';
-import { coworkReviewPolicyRows, coworkReviewRows, coworkUnitRows, type CoWorkReviewVerdict } from '@flux/db';
-import { InvalidInputError, normalizeCoWorkSource, NotFoundError, requireCoWorkCheckpointSources, requireCoWorkClaimEligibility, type CoWorkUnitPolicy, type Transaction } from '@flux/core';
+import { agentPauseRows, coworkReviewPolicyRows, coworkReviewRows, coworkUnitRows, type CoWorkReviewVerdict, type Transaction } from '@flux/db';
+import { InvalidInputError, normalizeCoWorkSource, NotFoundError, requireCoWorkCheckpointSources, requireCoWorkClaimEligibility, type CoWorkUnitPolicy } from '@flux/core';
 import { requireTaskPrerequisitesMet } from '../work/task-graph.js';
 import type { CoWorkClaimPolicy } from './claims.js';
 import { coWorkTaskGraphLocks } from './graph.js';
@@ -48,6 +48,7 @@ export const COWORK_CLAIM_POLICY: CoWorkClaimPolicy = Object.freeze({
   requireEligible: (tx, context, unit, action) => requireCoWorkClaimEligibility({
     task: (taskId) => coworkUnitRows(tx).claimTask(context.workspaceId, taskId),
     requirePrerequisitesMet: (taskId) => requireTaskPrerequisitesMet(tx, context.workspaceId, taskId),
+    pausedByPerson: (taskId, connectionId) => agentPauseRows(tx).pausedConnection(taskId, connectionId),
   }, unit, action),
   async requireCheckpointSources(tx, context, checkpoint, command) {
     await requireCoWorkCheckpointSources(checkpoint.progress, command, {

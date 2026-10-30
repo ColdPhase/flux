@@ -1,6 +1,6 @@
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { projectWorkSummaryPath, projectWorkViewPath, projectWorkAssociationsPath, projectWorkRelationsPath, projectWorkReferenceRowsPath, projectWorkThoughtTasksPath } from '@flux/contracts';
-import type { Database } from '@flux/core';
+import type { Database } from '@flux/db';
 import type { SessionResolver } from '../identity/index.js';
 import { useDomainErrors } from '../http/commands.js';
 import { nativeWorkReadUseCases } from './adapters.js';

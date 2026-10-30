@@ -1,6 +1,5 @@
 import { and, eq, gt, inArray, isNull, sql } from 'drizzle-orm';
-import { schema } from '@flux/db';
-import type { Executor } from '@flux/core';
+import { schema, type Executor } from '@flux/db';
 
 /** A media admission as the signaling gate sees it (#128). */
 export interface LiveAdmission {

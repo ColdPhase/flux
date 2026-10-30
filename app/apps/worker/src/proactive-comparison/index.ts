@@ -1,5 +1,6 @@
 import type { PgBoss } from 'pg-boss';
-import { COMPARISON_RECOVERY_JOB, COMPARISON_TICK_JOB, type ComparisonProvider, type Database } from '@flux/core';
+import { COMPARISON_RECOVERY_JOB, COMPARISON_TICK_JOB, type ComparisonProvider } from '@flux/core';
+import type { Database } from '@flux/db';
 import { dispatchProactiveComparison } from './dispatch.js';
 import { comparisonRecoveryTick } from './recovery.js';
 import { comparisonSchedulingTick } from './scheduling.js';

@@ -1,9 +1,8 @@
 import type { FastifyInstance } from 'fastify';
 import { ResourceTemplate, type McpServer } from '@modelcontextprotocol/server';
 import { AGENT_POLICY_LIMITS, agentProjectPolicyPath, type PublishAgentProjectPolicyCommand } from '@flux/contracts';
-import { agentPolicyRows, accessReader } from '@flux/db';
-import { agentPolicyUseCases, enforce, evaluateProject, recordEvent, renderAgentPolicy, type AgentPolicyUnitOfWork,
-  type Database, type Executor } from '@flux/core';
+import { agentPolicyRows, accessReader, type Database, type Executor } from '@flux/db';
+import { agentPolicyUseCases, enforce, evaluateProject, recordEvent, renderAgentPolicy, type AgentPolicyUnitOfWork } from '@flux/core';
 import type { SessionResolver } from '../identity/index.js';
 import { commandRunner, requires, useDomainErrors } from '../http/commands.js';
 import { withAgentConnection, type VerifiedFluxMcpClaims } from './context.js';

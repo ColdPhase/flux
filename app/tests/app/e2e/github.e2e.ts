@@ -19,7 +19,7 @@ import { chooseOption, optionValues } from '../support/app-select.js';
 
 /** The browser uses real Flux sessions, routes and SQL. Only the external GitHub transport is
  * injected in the test process. No production fake provider endpoint or real-installation claim. */
-const config: GithubConfig = { appId: '12345', appSlug: 'flux-browser-fixture', clientId: 'Iv1.browser-fixture',
+const config: GithubConfig = { delivery: 'webhook', appId: '12345', appSlug: 'flux-browser-fixture', clientId: 'Iv1.browser-fixture',
   clientSecret: 'browser-fixture-client-secret', webhookSecret: 'browser-fixture-webhook-secret-thirty-two', encryptionKey: Buffer.alloc(32, 16), publicOrigin };
 class ReadTransportFixture implements GithubTransport {
   denied = false;

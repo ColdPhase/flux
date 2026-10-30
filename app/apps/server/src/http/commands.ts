@@ -8,12 +8,11 @@ import {
   visibleWorkspaceOf,
   type ActionsByResource,
   type CommandResponse,
-  type Database,
   type Principal,
   type ResourceRef,
   type ResourceType,
 } from '@flux/core';
-import { idempotencyRepository, accessReader } from '@flux/db';
+import { idempotencyRepository, accessReader, type Database } from '@flux/db';
 import type { SessionContext, SessionResolver } from '../identity/index.js';
 import { single, versionEtag } from './headers.js';
 

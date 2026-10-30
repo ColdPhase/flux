@@ -1,8 +1,8 @@
 import { createHash, randomUUID, timingSafeEqual } from 'node:crypto';
 import type { FastifyInstance } from 'fastify';
 import { assistantRunScopes, assistantRunTools, personalRunTokenPath, RUN_TOKEN_LIMITS, type PersonalRunTokenGrant } from '@flux/contracts';
-import { redactSecrets, type Database } from '@flux/core';
-import { lockAgentMcpPolicy, personalRunTokenRows, workspaceAi } from '@flux/db';
+import { redactSecrets } from '@flux/core';
+import { lockAgentMcpPolicy, personalRunTokenRows, workspaceAi, type Database } from '@flux/db';
 import type { FluxAuth } from '../identity/auth.js';
 import { createAgentConnectionStore } from '../agent-connection/store.js';
 

@@ -13,8 +13,8 @@ import {
 // Each method is one short transaction; the use cases call runtime-manager only between them, never
 // inside one.
 
-// Structurally core's AgentRuntimeStore port (@flux/core agent-runtime/ports.ts); @flux/db cannot import
-// @flux/core, which depends on it. The API and worker pass this adapter where the port is expected.
+// Structurally core's AgentRuntimeStore port (@flux/core agent-runtime/ports.ts); @flux/db does not import
+// @flux/core (no manifest dependency on it). The API and worker pass this adapter where the port is expected.
 export type RuntimeSlotState = 'unknown' | 'ready' | 'held' | 'wiping' | 'out_of_pool';
 export type RuntimeOutOfPoolReason = 'data_not_empty' | 'release_failed' | 'missing';
 export interface RuntimeSlotRow { slot: string; state: RuntimeSlotState; bootId: string | null; wipeBootId: string | null; outOfPoolReason: RuntimeOutOfPoolReason | null }

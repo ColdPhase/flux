@@ -1,5 +1,5 @@
-import { fileRows, taskDiscussionRows, workRows } from '@flux/db';
-import { lockAttachments, createTaskDiscussionUseCases, type FileStorage, type Database, type Transaction, type TaskDiscussionEventIntent, type TaskDiscussionPorts, type TaskDiscussionUnitOfWork } from '@flux/core';
+import { fileRows, taskDiscussionRows, workRows, type Database, type Transaction } from '@flux/db';
+import { lockAttachments, createTaskDiscussionUseCases, type FileStorage, type TaskDiscussionEventIntent, type TaskDiscussionPorts, type TaskDiscussionUnitOfWork } from '@flux/core';
 import { policyWorkAccess } from './access.js';
 import { transactionEventSession, type TransactionEventSession } from './transaction-events.js';
 import { projectAuthorOwners } from '../conversation/author-owners.js';

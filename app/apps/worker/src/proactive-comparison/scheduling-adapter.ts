@@ -1,5 +1,5 @@
-import { comparisonSchedulingRows, accessReader } from '@flux/db';
-import { evaluateProject, type ComparisonSchedulingUnitOfWork, type Database } from '@flux/core';
+import { comparisonSchedulingRows, accessReader, type Database } from '@flux/db';
+import { evaluateProject, type ComparisonSchedulingUnitOfWork } from '@flux/core';
 
 /** Controlled scheduling composition; not registered or a grant to invoke compute. */
 export function comparisonScheduling(db: Database): ComparisonSchedulingUnitOfWork {
