@@ -1,14 +1,12 @@
-import { FLUX_SCHEMA_VERSION, accessPorts, projectExportRows, accessReader } from '@flux/db';
+import { FLUX_SCHEMA_VERSION, accessPorts, projectExportRows, accessReader, type Database, type Transaction } from '@flux/db';
 import {
   createProjectExportUseCases,
   enforce,
   evaluateProject,
   listProjectPeople,
-  type Database,
   type FileStorage,
   type ProjectExportPorts,
   type ProjectExportUnitOfWork,
-  type Transaction,
 } from '@flux/core';
 
 // Adapters that connect the core project export (#123) to the access policy and the Drizzle rows.

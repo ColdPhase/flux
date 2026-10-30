@@ -40,7 +40,7 @@ fail() { printf 'FAIL: %s\n' "$*" >&2; exit 1; }
 cleanup() {
   status=$?
   if [ "$status" -ne 0 ] && [ -n "$project" ]; then
-    (cd "$copy" && FLUX_IMAGE_TAG="$project" docker compose --project-directory docker --env-file docker/.env -p "$project" -f docker/compose.source.yaml -f docker/compose.override.yaml --profile runtime logs --no-color --tail 60 api worker runtime-manager runtime-egress runtime-install runtime-1 2>/dev/null) || true
+    (cd "$copy" && FLUX_IMAGE_TAG="$project" docker compose --project-directory docker --env-file docker/.env -p "$project" -f docker/compose.source.yaml -f docker/compose.source.runtime.yaml -f docker/compose.override.yaml --profile runtime logs --no-color --tail 60 api worker runtime-manager runtime-egress runtime-install runtime-1 2>/dev/null) || true
   fi
   if [ -x "$copy/flux" ] && [ -f "$copy/docker/.env" ]; then (cd "$copy" && ./flux clean -y >/dev/null 2>&1) || true; fi
   if [ -n "$project" ]; then
@@ -71,7 +71,7 @@ env_set() { # KEY VALUE in the copy's docker/.env, as an operator edits it
   awk -v k="$1" -v v="$2" 'BEGIN { done = 0 } index($0, k "=") == 1 { if (!done) print k "=" v; done = 1; next } { print } END { if (!done) print k "=" v }' docker/.env > docker/.env.tmp
   cat docker/.env.tmp > docker/.env && rm -f docker/.env.tmp
 }
-compose() { FLUX_IMAGE_TAG="$project" docker compose --project-directory docker --env-file docker/.env -p "$project" -f docker/compose.source.yaml -f docker/compose.override.yaml "$@"; }
+compose() { FLUX_IMAGE_TAG="$project" docker compose --project-directory docker --env-file docker/.env -p "$project" -f docker/compose.source.yaml -f docker/compose.source.runtime.yaml -f docker/compose.override.yaml "$@"; }
 cid() { compose --profile runtime ps -q "$1"; }
 # Root inside the throwaway test container: the state volume here was not prepared by files-init.
 live() { compose --profile test run --rm --no-deps -T -u 0 test node_modules/.bin/tsx tests/app/agent-runtime-live.check.ts "$@"; }

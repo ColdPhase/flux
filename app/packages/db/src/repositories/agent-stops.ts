@@ -136,6 +136,27 @@ export function agentStopRows(tx: DbExecutor) {
         working: working.has(`${row.agentId}:${row.projectId}:${row.taskId}`),
         online: live.has(row.agentId), signedIn: signed.has(row.agentId) }));
     },
+    /** Pauses in force (#160 AC-5), newest first. */
+    async pauses(projectId: string, limit = 50) {
+      const p = schema.agentPauses;
+      const rows = await tx.select({ taskId: p.taskId, taskNumber: w.number, agentId: p.agentId, agentName: schema.agents.name,
+        pausedById: p.pausedBy, pausedByName: schema.authUsers.name, pausedAt: p.pausedAt })
+        .from(p).innerJoin(w, eq(w.id, p.taskId)).innerJoin(schema.agents, eq(schema.agents.id, p.agentId))
+        .innerJoin(schema.authUsers, eq(schema.authUsers.id, p.pausedBy))
+        .where(eq(p.projectId, projectId)).orderBy(desc(p.pausedAt), desc(p.taskId)).limit(limit);
+      return rows.map((row) => ({ taskId: row.taskId, taskNumber: row.taskNumber, agent: { id: row.agentId, name: row.agentName },
+        pausedBy: { id: row.pausedById, name: row.pausedByName }, pausedAt: row.pausedAt }));
+    },
+    /** Inserts the pause unless one is in force; true when this call created it. */
+    async pause(row: { workspaceId: string; projectId: string; taskId: string; agentId: string; pausedBy: string }) {
+      return (await tx.insert(schema.agentPauses).values(row).onConflictDoNothing().returning({ taskId: schema.agentPauses.taskId })).length > 0;
+    },
+    /** Removes the pause; true when one was in force. */
+    async resume(projectId: string, taskId: string, agentId: string) {
+      const p = schema.agentPauses;
+      return (await tx.delete(p).where(and(eq(p.projectId, projectId), eq(p.taskId, taskId), eq(p.agentId, agentId)))
+        .returning({ taskId: p.taskId })).length > 0;
+    },
     async get(id: string) { return (await this.list({ id }))[0] ?? null; },
     /** Newest first. */
     async list(scope: { projectId: string } | { id: string }, limit = 20): Promise<StoppedAgentRow[]> {
@@ -148,6 +169,18 @@ export function agentStopRows(tx: DbExecutor) {
       return rows.map((row) => ({ id: row.id, taskId: row.taskId, taskNumber: row.taskNumber, taskTitle: row.taskTitle,
         agent: { id: row.agentId, name: row.agentName }, stoppedBy: { id: row.stoppedById, name: row.stoppedByName },
         stoppedAt: row.stoppedAt, unitsStopped: row.unitsStopped }));
+    },
+  };
+}
+
+/** #160 AC-5: whether a person paused the agent of this connection on the task. A plain read, no lock. */
+export function agentPauseRows(tx: DbExecutor) {
+  return {
+    async pausedConnection(taskId: string, connectionId: string) {
+      const [row] = await tx.select({ taskId: schema.agentPauses.taskId }).from(schema.agentPauses)
+        .innerJoin(connections, eq(connections.agentId, schema.agentPauses.agentId))
+        .where(and(eq(schema.agentPauses.taskId, taskId), eq(connections.id, connectionId))).limit(1);
+      return !!row;
     },
   };
 }

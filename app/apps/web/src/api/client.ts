@@ -29,16 +29,30 @@ export interface ApiRequestInit {
   cache?: RequestCache;
 }
 
+// A read starts in a task of its own, after the work that asked for it (#716). A view opening asks for half a dozen reads from
+// its effects; each `fetch` call costs milliseconds on the main thread of a phone, and made in the commit's own task they
+// were a third of the longest frame of a view change. One port message batches every read asked for in the same task.
+const later = typeof MessageChannel === 'undefined' ? null : new MessageChannel();
+const waiting: (() => void)[] = [];
+if (later) later.port1.onmessage = () => { for (const start of waiting.splice(0)) start(); };
+const nextTask = () => new Promise<void>((resolve) => {
+  if (!later) { setTimeout(resolve, 0); return; }
+  if (!waiting.length) later.port2.postMessage(0);
+  waiting.push(resolve);
+});
+
 /**
  * The one transport to the Flux API (#93): every call of the web app, JSON or not, goes through here.
  * Answers the raw response of any status; only a request that got no answer throws (`NetworkError`, or the
- * caller's `AbortError`). `accept` is sent only when given, so a file read keeps the browser's default.
+ * caller's `AbortError`). `accept` is sent only when given, so a file read keeps the browser's default;
+ * `batchRead` starts a GET in the next task with the other reads of this one (#716), as every JSON read does.
  */
-export async function send(path: string, init: ApiRequestInit & { accept?: string } = {}): Promise<Response> {
+export async function send(path: string, init: ApiRequestInit & { accept?: string; batchRead?: boolean } = {}): Promise<Response> {
   // A page being left starts no request (#471): the browser has stopped its loads, and WebKit reports a
   // fetch that starts now as an uncaught page error. It starts when the page is live again, never sooner
   // than a click or key press proves the person is still here; an unloaded page never starts it.
   if (pageLeaving() && !init.keepalive) await pageIsLive(init.signal);
+  if (init.batchRead && (!init.method || init.method === 'GET')) await nextTask();
   try {
     return await fetch(path, {
       method: init.method ?? 'GET',
@@ -67,7 +81,7 @@ export function responseError(response: Response, data: unknown): ApiError {
 
 /** A JSON request: the parsed body of a 2xx answer, or an `ApiError`. */
 export async function request<T>(path: string, init: ApiRequestInit = {}): Promise<T> {
-  const response = await send(path, { ...init, accept: 'application/json' });
+  const response = await send(path, { ...init, accept: 'application/json', batchRead: true });
   const text = await response.text();
   let data: unknown = null;
   if (text) {

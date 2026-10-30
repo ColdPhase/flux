@@ -37,7 +37,7 @@ cleanup() {
 trap cleanup EXIT
 
 python3 "$root/scripts/release/write_test_env.py" --source "$assets/env.example" --destination "$env_file" --port "$port"
-sed -i -e "s/^FLUX_PROJECT=.*/FLUX_PROJECT=$project/" "$env_file"
+sed -e "s/^FLUX_PROJECT=.*/FLUX_PROJECT=$project/" "$env_file" > "$env_file.new" && mv "$env_file.new" "$env_file" && chmod 600 "$env_file" # GNU and BSD sed
 grep -q "^FLUX_PROJECT=$project\$" "$env_file" || fail "the environment template has no FLUX_PROJECT line"
 app_image=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["image"])' "$assets/release.json")
 runtime_image=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["runtime_image"])' "$assets/release.json")

@@ -1,6 +1,6 @@
 import type { PgBoss } from 'pg-boss';
-import { redactedError, SealedJobError, type Database } from '@flux/core';
-import { sealedWorkScope, sql } from '@flux/db';
+import { redactedError, SealedJobError } from '@flux/core';
+import { sealedWorkScope, sql, type Database } from '@flux/db';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 

@@ -1,8 +1,8 @@
 import { randomUUID } from 'node:crypto';
-import { COMPARISON_CONTEXT_LIMITS, openBackgroundKey, proactiveOutboxRows } from '@flux/db';
+import { COMPARISON_CONTEXT_LIMITS, openBackgroundKey, proactiveOutboxRows, type Database } from '@flux/db';
 import { BACKGROUND_COMPARISON_MAX_INPUT_TOKENS, BACKGROUND_COMPARISON_MAX_OUTPUT_TOKENS, boundedInputTokens,
   comparisonInputEstimate, ComparisonNotSentError, comparisonObservedUsage, insufficientComparisonReason, validateComparisonResponse,
-  type ComparisonProvider, type ComparisonSource, type Database } from '@flux/core';
+  type ComparisonProvider, type ComparisonSource } from '@flux/core';
 import { proactiveReservation } from './reservation-adapter.js';
 import { abortableComparisonCall, authorizedComparison, ComparisonStopped as Stop, watchComparisonAuthorization,
   type ObservedUsage } from './authorization.js';

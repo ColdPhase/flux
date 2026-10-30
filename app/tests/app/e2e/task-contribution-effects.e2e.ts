@@ -84,6 +84,8 @@ test('a saved blocker, a published result and a handoff appear as marked message
     await page.getByRole('menuitemradio', { name: 'Blocked' }).click();
     assert.equal((await blockedStatus).status(), 200);
     assert.equal((await discussion()).root, null, 'blocking alone is not a comment');
+    // Since the unified task panel (#601) the reason is written after Edit in the Blocker section.
+    await page.getByRole('region', { name: 'Blocker' }).getByRole('button', { name: 'Edit', exact: true }).click();
     const waiting = page.getByRole('textbox', { name: 'What is it waiting for?' });
     await waiting.fill('Waiting for the replacement hinge');
     const saved = page.waitForResponse((response) => response.request().method() === 'PATCH' && new URL(response.url()).pathname === `/api/v1/work/${task.id}`);

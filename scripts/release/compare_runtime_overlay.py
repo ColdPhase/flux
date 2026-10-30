@@ -2,7 +2,7 @@
 """Fail when the release runtime overlay differs from the source Compose in anything but its images.
 
 Input: two `docker compose ... config --format json` documents, the source stack
-(docker/compose.source.yaml, profile runtime) and the release stack (compose.yaml + compose.runtime.yaml,
+(docker/compose.source.yaml + compose.source.runtime.yaml, profile runtime) and the release stack (compose.yaml + compose.runtime.yaml,
 profile runtime). Every runtime service, network and volume must carry the same isolation, limits,
 users, networks, volumes and environment keys; only the image (and the source's build) may differ.
 """

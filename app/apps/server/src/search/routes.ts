@@ -1,9 +1,8 @@
 import type { FastifyInstance } from 'fastify';
 import { SEARCH_FILTER_TYPES, SEARCH_LIMITS, SEARCH_PATH, type SearchQuery } from '@flux/contracts';
-import type { Database } from '@flux/core';
 import type { SessionResolver } from '../identity/index.js';
 import { commandRunner, useDomainErrors } from '../http/commands.js';
-import { sealedSearchBuilds, sealedSearchIndexedWorkspaces, sealedSearchIndexHeap } from '@flux/db';
+import { sealedSearchBuilds, sealedSearchIndexedWorkspaces, sealedSearchIndexHeap, type Database } from '@flux/db';
 import { searchUseCases } from './adapters.js';
 import { SearchCursorCodec } from './cursor.js';
 

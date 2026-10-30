@@ -122,16 +122,20 @@ export function githubUseCases(uow: GithubUnitOfWork) {
         return deliveryId;
       });
     },
-    async schedule(appId: string, window: string) {
+    /**
+     * Known-link reconciliation for one time window. `gap` is the 30-minute catch-up; `poll` is G-1c's 2-minute window
+     * for instances GitHub cannot reach (#479), which refreshes only open linked PRs.
+     */
+    async schedule(appId: string, window: string, prefix: 'gap' | 'poll' = 'gap') {
       githubId(appId); githubId(window);
-      const candidates = await uow.run((ports) => ports.rows.reconciliationCandidates(appId, window, 5));
+      const candidates = await uow.run((ports) => ports.rows.reconciliationCandidates(appId, window, 5, prefix));
       let created = 0;
       // One binding per transaction also prevents cross-project lock ordering and partial fanout.
       for (const candidate of candidates) {
         const outcome = await uow.run(async (ports) => {
           const binding = await ports.rows.binding(candidate.id, true);
           if (!binding || binding.state !== 'active' || binding.appId !== appId || await ports.rows.pendingReconciliation(binding.id)) return 'skipped';
-          const deliveryId = `gap-${binding.id}-${window}`;
+          const deliveryId = `${prefix}-${binding.id}-${window}`;
           return ports.rows.admit({ id: deliveryId, appId, targetBindingId: binding.id,
             digest: createHash('sha256').update(deliveryId).digest('hex'), event: 'reconcile', payload: {},
             installationId: binding.installationId, repositoryId: binding.repositoryId, providerObjectId: null, origin: 'reconcile' });
@@ -167,6 +171,8 @@ export function githubUseCases(uow: GithubUnitOfWork) {
         const refreshed = new Set<string>();
         const refreshes:{link:Awaited<ReturnType<typeof ports.rows.linkedPulls>>[number];facts:Awaited<ReturnType<typeof ports.provider.pull>>}[]=[];
         for (const link of await ports.rows.linkedPulls(bindingId)) {
+          // A G-1c poll refreshes open PRs only; closed ones change through webhooks, the catch-up or a person's reconcile.
+          if (delivery.origin === 'reconcile' && delivery.id.startsWith('poll-') && link.facts.state !== 'open') continue;
           // An unrelated external comment cannot generate requests for all linked work.
           const pull = delivery.payload.pull_request as { id?: unknown } | undefined;
           const issue = delivery.payload.issue as { number?: unknown } | undefined;

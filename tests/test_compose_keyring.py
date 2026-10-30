@@ -19,6 +19,7 @@ OVERLAY_BASES = {
     "compose.oidc.test.yaml": "compose.source.yaml",
     "compose.perf.yaml": "compose.source.yaml",
     "compose.runtime.yaml": "compose.yaml",
+    "compose.source.runtime.yaml": "compose.source.yaml",
     "compose.encryption.test.yaml": "compose.source.yaml",
 }
 
@@ -86,10 +87,13 @@ class ComposeKeyringTest(unittest.TestCase):
                 self.assertIn(f"mem_limit: ${{{variable}:-{default}}}\n    memswap_limit: ${{{variable}:-{default}}}", block, f"{name}: {service}")
                 self.assertIn("core: 0", block)
                 self.assertIn("FLUX_KEYRING_TOKEN: ${FLUX_KEYRING_TOKEN:-}", block)
+                # F-030 S2c: the key pin's secret reaches the processes that verify holders, never the keyring.
+                self.assertIn("FLUX_KEY_PIN_SECRET: ${FLUX_KEY_PIN_SECRET:-}", block)
                 # OpenSSL's Argon2 allocates its memory from the secure heap when one is set (observed 2026-10-23), so
                 # the processes that derive KEKs run without it; only the keyring does.
                 self.assertNotIn("--secure-heap", block)
             self.assertIn("NODE_OPTIONS: --secure-heap=65536", services(text)["keyring"])
+            self.assertNotIn("FLUX_KEY_PIN_SECRET", services(text)["keyring"])
 
     def test_flux_generates_and_upgrade_adds_a_missing_token(self) -> None:
         launcher = (ROOT / "flux").read_text(encoding="utf-8")
@@ -97,6 +101,9 @@ class ComposeKeyringTest(unittest.TestCase):
         upgrade = launcher[launcher.index("cmd_upgrade() {"):]
         upgrade = upgrade[: upgrade.index("\n}\n")]
         self.assertIn('ensure_keyring_token "$ENV_FILE"', upgrade)
+        self.assertIn('set_env_line "$draft" FLUX_KEY_PIN_SECRET "$(random_b64url)"', launcher)
+        self.assertIn('ensure_key_pin_secret "$ENV_FILE"', upgrade)
+        self.assertIn("FLUX_KEY_PIN_SECRET=", (ROOT / "docker" / ".env.example").read_text(encoding="utf-8"))
         functions = "\n".join(
             re.search(rf"(?ms)^{name}\(\) \{{.*?^\}}\n" if name in ("set_env_line", "ensure_keyring_token") else rf"(?m)^{name}\(\) .*$", launcher).group(0)
             for name in ("random_b64url", "set_env_line", "ensure_keyring_token")
@@ -115,6 +122,28 @@ class ComposeKeyringTest(unittest.TestCase):
             subprocess.run(["sh", "-c", script], check=True)
             self.assertIn(f"FLUX_KEYRING_TOKEN={first}", env.read_text(encoding="utf-8"), "an existing token is never changed")
 
+
+    def test_restore_takes_the_pin_secret_from_the_backup(self) -> None:
+        launcher = (ROOT / "flux").read_text(encoding="utf-8")
+        restore = launcher[launcher.index("cmd_restore() {"):]
+        self.assertIn('restore_key_pin_secret "$RESTORE_DIR/flux.env"', restore[: restore.index("\n}\n")])
+        functions = "\n".join(
+            re.search(rf"(?ms)^{name}\(\) \{{.*?^\}}\n" if name in ("set_env_line", "restore_key_pin_secret") else rf"(?m)^{name}\(\) .*$", launcher).group(0)
+            for name in ("warn", "archived_env_value", "set_env_line", "restore_key_pin_secret")
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            env = Path(directory) / ".env"
+            archived = Path(directory) / "flux.env"
+            env.write_text("FLUX_AUTH_SECRET=keep\nFLUX_KEY_PIN_SECRET=fresh-install-secret\n", encoding="utf-8")
+            archived.write_text("FLUX_KEY_PIN_SECRET=the-backups-secret\n", encoding="utf-8")
+            script = f'FLUX_ROOT={directory}\nENV_FILE={env}\n{functions}\nrestore_key_pin_secret {archived}\n'
+            result = subprocess.run(["sh", "-c", script], check=True, capture_output=True, text=True)
+            self.assertIn("FLUX_KEY_PIN_SECRET=the-backups-secret", env.read_text(encoding="utf-8"))
+            self.assertIn("FLUX_AUTH_SECRET=keep", env.read_text(encoding="utf-8"))
+            self.assertIn("FLUX_KEY_PIN_SECRET differs from the backup", result.stderr)
+            archived.write_text("FLUX_AUTH_SECRET=x\n", encoding="utf-8")
+            subprocess.run(["sh", "-c", script], check=True)
+            self.assertIn("FLUX_KEY_PIN_SECRET=the-backups-secret", env.read_text(encoding="utf-8"), "a backup without one keeps the current secret")
 
 if __name__ == "__main__":
     unittest.main()

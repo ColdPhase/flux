@@ -273,6 +273,23 @@ Show requested versus acknowledged; Flux cannot kill unrelated local commands or
 erase downloaded context. Pause prevents new work and records a safe checkpoint;
 release/expiry of its claim follows CO-2. No hosted or alternate-payer fallback.
 
+### One-turn clients: safe point, quiet idle and wake (F-032, accepted 2026-10-30)
+
+**Founder decision (Hubert, 2026-10-30, relayed by the coordinator on PR #751).** It amends this section for the
+supported clients that run one bounded turn per supplied action (Codex `exec` through `./flux cowork start|resume`,
+Claude Code's `/mcp__flux__start_work` and `/mcp__flux__resume_work` prompts) or an interactive session the person
+controls. Flux cannot start or wake these clients, and no tested integration keeps one alive between turns.
+
+- **Safe point** = the agent's own claim, renew, release and inbox calls inside its turn. Flux enforces busy
+  deferral, `COWORK_PAUSED` and `COWORK_STOPPED` there.
+- **Quiet idle** = no client process and zero Flux or model calls between turns. Observed 2026-10-30 for both
+  clients: 0 Flux requests in a 60-second window, no process (`docs/development/evidence/160-workflow/README.md`).
+- **Wake** = the next supplied Resume. Until then the waiting request is durable and visible in the Agents view (and
+  the ordinary Inbox); nothing polls a model.
+
+An always-on local adapter that wakes an idle client on an addressed request is tracked separately in
+[#754](https://github.com/ColdPhase/flux/issues/754) and is not a condition of #160.
+
 ## Talk in Flux, retain real review gates — CW-4
 
 **Revised 2026-10-09 by founder direction (see CW-2).** "Live in Flux" below now means the

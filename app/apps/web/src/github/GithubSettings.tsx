@@ -61,6 +61,7 @@ function GithubProjectSettings({ shell }: { shell: ProjectShell }) {
             <Button variant="secondary" disabled={busy} onClick={() => void connect('authorize')}>Reconnect GitHub account</Button>
             {shell.project.access === 'manager' ? <Button variant="secondary" disabled={busy} onClick={() => void connect('install')}>Install App on repositories</Button> : null}
             <Button variant="secondary" disabled={busy} onClick={async () => { setBusy(true); try { await disconnectGithubAccount(); await refresh(); } catch (cause) { setError(failure(cause)); } finally { setBusy(false); } }}>Disconnect your GitHub account</Button></div>
+          <p className="github-settings__note" data-testid="github-delivery">Updates: {capabilities.delivery === 'poll' ? 'Every 2 minutes (no public address)' : 'Live (webhooks)'}</p>
           <section><h3>Connected repositories</h3>{bindings.length ? <ul className="github-settings__repos">{bindings.map((binding) => <li key={binding.id}>
             <a href={binding.url} target="_blank" rel="noreferrer">{binding.owner}/{binding.name}</a><span>{binding.private ? 'Private' : 'Public'}</span>
             {shell.project.access === 'manager' ? <Button variant="secondary" disabled={busy} onClick={() => void disconnect(binding.id)}>Disconnect</Button> : null}</li>)}</ul> : <p>{error ? 'Repository access could not be verified. Refresh access or reconnect your account.' : 'No repositories connected to this project yet.'}</p>}</section>
@@ -68,7 +69,7 @@ function GithubProjectSettings({ shell }: { shell: ProjectShell }) {
           {shell.project.access === 'manager' && bindings.length ? <RuleDefault projectId={projectId} current={ruleDefault} onSaved={(value) => setSavedDefault({ value })} /> : null}
           {bindings.length ? <PullReferences projectId={projectId} bindings={bindings} canLink={shell.project.access !== 'viewer'} ruleDefault={ruleDefault} /> : null}
         </>}
-    <p className="github-settings__note">Linked PRs move a task only when someone who can edit it turns that on in the task’s Details, or links a required PR while this project’s default below is on. A merge never checks off written criteria. Agent event delivery is not available yet.</p>
+    <p className="github-settings__note">Linked PRs move a task only when someone who can edit it turns that on in the task’s Details, or links a required PR while this project’s default below is on. A merge never checks off written criteria. An agent that holds a task hears about its linked PRs at its next safe point.</p>
   </div></div>;
 }
 /** A manager's default (#74 G-1a): whoever links a required PR to a task without a rule turns its rule on. */

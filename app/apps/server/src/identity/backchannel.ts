@@ -1,7 +1,6 @@
 import { createPublicKey, verify, type JsonWebKey as NodeJwk } from 'node:crypto';
 import type { FastifyInstance } from 'fastify';
-import { idpLogoutRepository } from '@flux/db';
-import type { Database } from '@flux/core';
+import { idpLogoutRepository, type Database } from '@flux/db';
 import type { OidcConfig } from './config.js';
 import type { IdpStanding } from './standing.js';
 

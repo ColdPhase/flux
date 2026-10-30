@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify';
-import { ownWorkingAgentsPath, projectAgentStopsPath, type StopAgentCommand } from '@flux/contracts';
-import { agentStopRows, accessReader } from '@flux/db';
-import { agentStopUseCases, enforce, evaluateProject, recordEvent, type AgentStopPorts, type AgentStopUnitOfWork, type Database, type Transaction } from '@flux/core';
+import { ownWorkingAgentsPath, projectAgentPausesPath, projectAgentStopsPath, type PauseAgentCommand, type StopAgentCommand } from '@flux/contracts';
+import { agentStopRows, accessReader, type Database, type Transaction } from '@flux/db';
+import { agentStopUseCases, enforce, evaluateProject, recordEvent, type AgentStopPorts, type AgentStopUnitOfWork } from '@flux/core';
 import type { SessionResolver } from '../identity/index.js';
 import { commandRunner, requires, useDomainErrors } from '../http/commands.js';
 import { eventPorts } from '../events.js';
@@ -54,6 +54,16 @@ export async function agentStopRoutes(app: FastifyInstance, { db, sessions }: { 
   }, async (request, reply) => command(request, reply, {
     operation: `POST ${projectAgentStopsPath(':projectId')}`, scope: { type: 'project', id: request.params.projectId }, status: 201,
     run: (actor, conn) => agentStopUseCases(agentStopUnitOfWork(conn)).stop(actor, request.params.projectId, request.body),
+    replay: requires('project', 'project.read', () => request.params.projectId),
+  }));
+  // #160 AC-5: Pause keeps the hold; claims and renewals on the task answer COWORK_PAUSED until Resume.
+  app.post<{ Params: { projectId: string }; Body: PauseAgentCommand }>(projectAgentPausesPath(':projectId'), {
+    schema: { body: { type: 'object', additionalProperties: false, required: ['taskId', 'agentId', 'paused'],
+      properties: { taskId: { type: 'string' }, agentId: { type: 'string' }, paused: { type: 'boolean' } } } },
+  }, async (request, reply) => command(request, reply, {
+    operation: `POST ${projectAgentPausesPath(':projectId')}`, scope: { type: 'project', id: request.params.projectId },
+    status: request.body.paused ? 201 : 204,
+    run: async (actor, conn) => (await agentStopUseCases(agentStopUnitOfWork(conn)).pause(actor, request.params.projectId, request.body)) ?? undefined,
     replay: requires('project', 'project.read', () => request.params.projectId),
   }));
 }

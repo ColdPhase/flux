@@ -66,3 +66,38 @@ production upgrade path between releases.
   anything shared by other projects.
 - The database volume grows with history (versions are never rewritten). Check it with
   `docker system df -v | grep <project>_pgdata`.
+
+## Docker address pools
+
+Every Compose network takes one subnet from the Docker daemon's address pools, and a stock daemon has
+about 31 (15 `/16` networks in `172.17.0.0/12` and 16 `/20` networks in `192.168.0.0/16`). A Flux project
+uses 2 networks (`default` and the internal `keyring`); with the agent runtime on it uses 10 (the runtime's
+control, API, install and egress networks and one per slot). Since #744 the API and worker join the runtime's
+networks only while `FLUX_AGENT_RUNTIME` is set (`docker/compose.source.runtime.yaml`), as in the release's
+`compose.yaml` and `compose.runtime.yaml`.
+
+When the pools are gone, `./flux up` stops with Compose's line
+`all predefined address pools have been fully subnetted` and then explains it. One instance on its own
+machine does not reach that; a shared host, a CI runner or a server with several instances (staging and
+production, one per team) can. Measured on 2026-10-30 with `scripts/check_address_pools.sh` (a throwaway
+Docker 29.4.1 daemon in Docker, containers created but not started): stock pools held 7 projects before
+#744, 14 after, 2 with the runtime on; the pools below held more than 300.
+
+- Stop projects you no longer need: `docker network ls` shows the networks per project,
+  `docker compose -p <project> down` (or `./flux down` in that checkout) removes them. `./flux up` with the
+  runtime off also removes this project's runtime networks once nothing uses them.
+- Or give the daemon smaller subnets. In `/etc/docker/daemon.json` (Docker Desktop: Settings, Docker Engine):
+
+  ```json
+  {
+    "default-address-pools": [
+      { "base": "172.17.0.0/12", "size": 24 },
+      { "base": "192.168.0.0/16", "size": 24 }
+    ]
+  }
+  ```
+
+  then restart the daemon (`sudo systemctl restart docker`; it restarts running containers). That gives
+  4352 networks of 254 addresses each, plenty for a Flux project. Existing networks keep their subnets until
+  they are recreated. Pick bases that do not overlap your LAN or VPN routes.
+  ([dockerd reference](https://docs.docker.com/reference/cli/dockerd/#daemon-configuration-file), read 2026-10-30.)

@@ -27,6 +27,23 @@ export interface AgentStop {
 export interface AgentStops {
   projectId: string;
   stops: AgentStop[];
+  /** Pauses in force (#160 AC-5): the agent keeps its hold but may not claim or renew on that task until resumed. */
+  pauses: AgentPause[];
+}
+
+/** `POST` pauses (`paused: true`) or resumes (`paused: false`) an agent's work on one task it holds. */
+export const projectAgentPausesPath = (projectId: string) => `/api/v1/projects/${projectId}/agent-pauses`;
+export interface PauseAgentCommand {
+  taskId: string;
+  agentId: string;
+  paused: boolean;
+}
+export interface AgentPause {
+  taskId: string;
+  taskNumber: number;
+  agent: { id: string; name: string };
+  pausedBy: { id: string; name: string };
+  pausedAt: string;
 }
 
 /**

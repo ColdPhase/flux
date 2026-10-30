@@ -1,10 +1,10 @@
 import { randomUUID } from 'node:crypto';
 import type { AgentExecutionCommand, AgentJsonValue, AuthenticatedAgentRuntime } from '@flux/contracts';
-import { agentOrientationRows, coworkUnitRows, lockAgentMcpPolicy, type CoWorkTaskLockInput } from '@flux/db';
+import { agentOrientationRows, coworkUnitRows, lockAgentMcpPolicy, type CoWorkTaskLockInput, type Transaction } from '@flux/db';
 import { agentOutcomeFingerprint, coWorkCheckpointProgress, coWorkClaimPostcondition, coWorkClaimUseCases, ConflictError, DomainError,
   InvalidInputError, normalizeAgentExecution, normalizeCoWorkCheckpointDraft, NotFoundError, parseCoWorkCheckpointProgress, requireAgentMcpEntry,
   type ClaimInput, type ClaimOperation, type ClaimOutcome, type CoWorkCheckpointDraft, type CoWorkContext,
-  type CoWorkUnit, type CoWorkClaimUnitOfWork, type LockedClaimScope, type Transaction } from '@flux/core';
+  type CoWorkUnit, type CoWorkClaimUnitOfWork, type LockedClaimScope } from '@flux/core';
 import { agentExecutionInTransaction } from '../agent-connection/execution.js';
 import { requireMcpSourceKinds, type FluxMcpClaims } from '../agent-connection/context.js';
 

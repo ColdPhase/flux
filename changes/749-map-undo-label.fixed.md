@@ -1,0 +1,1 @@
+- On a shared map, undoing a change no longer reports "The map change is not confirmed" when the undone thoughts were still selected, and a connection label whose sketch has become unavailable opens the not-found page with the unsaved label to recover ([#749](https://github.com/ColdPhase/flux/issues/749)).

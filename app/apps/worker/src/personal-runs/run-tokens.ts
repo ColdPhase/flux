@@ -1,7 +1,7 @@
 import { createHash, randomBytes } from 'node:crypto';
 import { personalRunTokenPath, type PersonalRunTokenGrant } from '@flux/contracts';
-import type { Database, PersonalRunTokenIssuer } from '@flux/core';
-import { personalRunTokenRows } from '@flux/db';
+import type { PersonalRunTokenIssuer } from '@flux/core';
+import { personalRunTokenRows, type Database } from '@flux/db';
 
 // The worker's side of a run's MCP token (F-027 A2, #280/#484). The API is Flux's authorization server and
 // signs it; the worker proves it holds the run with a one-time nonce: it stores the nonce's SHA-256 on the

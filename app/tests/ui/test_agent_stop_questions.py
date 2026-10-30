@@ -134,6 +134,30 @@ class StopAndQuestions(unittest.TestCase):
         page.get_by_role("region", name="Claude Code agent, details").get_by_role("button", name="Message").click()
         expect(page.get_by_role("region", name="Thread of Calibrate the probes at two soil depths")).to_be_visible()
 
+    def test_02b_pause_keeps_the_hold_and_resume_takes_it_back(self) -> None:
+        """#160 AC-5: Pause beside Stop in the agent's panel; the server records it, the task stays the agent's, Resume clears it."""
+        page = self.page("ada")
+        page.goto(f"/projects/{self.ids['project']}/agents")
+        panel = page.get_by_role("region", name="Claude Code agent, details")
+        panel.get_by_role("button", name="Pause", exact=True).click()
+        expect(page.get_by_text("Pausing Claude Code agent on #1")).to_be_visible()
+        # No live claim is held (the agent never signed in), so the pause is already in force.
+        expect(panel.get_by_test_id("agent-pause")).to_have_text("Paused by you · #1")
+        pauses = self.api(page, "GET", f"/api/v1/projects/{self.ids['project']}/agent-stops", status=200)["pauses"]
+        self.assertEqual([(entry["taskId"], entry["pausedBy"]["id"]) for entry in pauses], [(self.ids["first"], ADA["id"])])
+        task = self.task("first")
+        self.assertEqual((task["status"], task["owner"]["id"]), ("in_progress", self.ids["agent"]))
+        shot(page, "pause-agents-desktop")
+        # Jonas reads the project but may not pause: no Pause to press.
+        jonas = self.page("jonas")
+        jonas.goto(f"/projects/{self.ids['project']}/agents")
+        expect(jonas.get_by_role("button", name="Pause", exact=True)).to_have_count(0)
+        panel.get_by_role("button", name="Resume", exact=True).click()
+        expect(page.get_by_text("Resumed Claude Code agent on #1")).to_be_visible()
+        expect(panel.get_by_test_id("agent-pause")).to_have_count(0)
+        expect(panel.get_by_role("button", name="Pause", exact=True)).to_be_visible()
+        self.assertEqual(self.api(page, "GET", f"/api/v1/projects/{self.ids['project']}/agent-stops", status=200)["pauses"], [])
+
     def test_03_the_sidebar_card_shows_the_working_agent_and_stops_it(self) -> None:
         page = self.page("ada")
         def live_but_handed(route: Route) -> None:

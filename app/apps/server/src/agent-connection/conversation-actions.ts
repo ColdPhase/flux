@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { AGENT_OPERATION_CLASSES, type AgentJsonValue, type AgentOperation, type SendMessageCommand } from '@flux/contracts';
-import { derivedUuid, DomainError, normalizeMessage, type Database } from '@flux/core';
+import { derivedUuid, DomainError, normalizeMessage } from '@flux/core';
+import type { Database } from '@flux/db';
 import { guardedAgentThreadInEventSession } from '../conversation/store.js';
 import { actionAnnotations as annotations, actionId as id, actionInput, actionVersion as version, nativeActionExecutor } from './action-execution.js';
 import type { FluxMcpClaims } from './context.js';

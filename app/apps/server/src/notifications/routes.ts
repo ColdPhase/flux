@@ -11,7 +11,8 @@ import {
   type UpdateNotificationPreferencesCommand,
   type VerifyNotificationAddressCommand,
 } from '@flux/contracts';
-import { TooSoonError, unsubscribe, type Database } from '@flux/core';
+import { TooSoonError, unsubscribe } from '@flux/core';
+import type { Database } from '@flux/db';
 import type { SessionResolver } from '../identity/index.js';
 import type { SmtpConfig } from '../identity/config.js';
 import { useDomainErrors } from '../http/commands.js';

@@ -131,8 +131,10 @@ fails when:
   or an allowlist entry no longer matches a violation (remove it when fixed);
 - `app/packages/core/src/push/**` reaches an adapter library through any relative import;
 - anything under `app/packages/core/src/access/` or `events.ts` does (the access decisions and use
-  cases stay behind ports, including through helpers; only the type-only `@flux/db` import in `types.ts`
-  is reachable, #90, #91), or any file there other than `policy.ts` passes 200 lines;
+  cases stay behind ports, including through helpers, #90, #91), or any file there other than `policy.ts`
+  passes 200 lines;
+- any module under `app/packages/core/src/` reaches `@flux/db`, Drizzle, `pg`, pg-boss, Fastify or web-push,
+  core's `package.json` declares a persistence dependency, or the allowlist has a `packages/core/` entry (#92);
 - a `.ts` or `.tsx` file under `app/apps/web/src` contains a native `<select>` (comments ignored, #695);
 - a `.ts` or `.tsx` file under `app/apps/web/src` other than `api/client.ts` calls `fetch` or writes an `/api/` path,
   or the web layer's allow-list names a library that `app/apps/web/package.json` does not declare (#93);
@@ -143,26 +145,23 @@ fails when:
 The allowlist can only shrink. Do not add entries for new code; change the code or,
 if a layer rule itself is wrong, update this page and the rule in the same reviewed PR.
 
-## Known debt
+## Resolved debt
 
-The first application slices put SQL next to domain logic in core. These imports are
-recorded in the allowlist and tracked by [#46](https://github.com/ColdPhase/flux/issues/46):
+The first application slices put SQL next to domain logic in core; [#46](https://github.com/ColdPhase/flux/issues/46)
+tracked each import on the allowlist, which is now empty. The entries below record how each was paid.
 
-| File | Imports | Planned change |
-| --- | --- | --- |
-| `app/packages/core/src/types.ts` | `@flux/db` | Replace the Drizzle-derived `Database`/`Executor` types with a core-owned transaction port. |
-| `app/packages/core/package.json` | `@flux/db`, `drizzle-orm`, `pg-boss` | Remove each dependency when no core file uses it. |
+Resolved from the allowlist: core owns its transaction port in `app/packages/core/src/types.ts` ([#92](https://github.com/ColdPhase/flux/issues/92)).
+`Executor` is an opaque connection or open transaction that core only hands to the port factories the app passes in
+(`accessPorts`, `eventRepository`, the draft summary ports, the idempotency store), and `Database` is a handle that opens a
+transaction on it (`transaction(work)`, nested as a savepoint on an open transaction). Port factories are declared as methods,
+so the `@flux/db` adapters, which take Drizzle handles, implement them unchanged; `runIdempotent` is generic in the handle its
+transaction yields, so the command and replay check the server passes keep their Drizzle type. The Drizzle-derived handle
+types (`DatabaseHandle`, `Database`, `Executor`, `Transaction`) moved to `@flux/db` (`src/handles.ts`), and the apps and tests
+import them from there. `@flux/core`'s `package.json` depends on `@flux/contracts` only; `@flux/db`, `drizzle-orm` and pg-boss
+are gone from it. No statement, lock or transaction boundary changed: core opens the same transactions on the same handles.
+A new core module that needs persistence declares a port and takes these types; it never imports `@flux/db` or Drizzle.
 
-The workspace AI lock ([F-029](../product/workspace-ai-lock.md)) added to the same debt with no new entry, and it is paid
-the same way: the policy's read side, `workspaceAi`, moved with the grant lookup into the `@flux/db` access adapter (#90) and
-stays on the same port (`AccessReader.workspaceAi`), because the lock's `FOR SHARE` must stay in the checking transaction and
-a separate port would only hide it; the flip's statements (`lockAiPolicy`, `updateAiPolicy`) are methods of the workspace
-repository (#91).
-
-New core modules that call `authorize` import it from `access/policy.ts`, which no longer depends on Drizzle, and take an
-`AccessReader` (or an `access: (tx) => AccessReader` factory in their ports) instead of an `Executor`. They must not import
-`drizzle-orm` or `@flux/db` themselves. The refactor of the remaining files happens in small PRs, with the existing access,
-revocation and transaction tests locking the behavior. The growing `app/packages/db/src/schema.ts` follows the same plan.
+The growing `app/packages/db/src/schema.ts` stays one module for now; split it by capability when a change needs it.
 
 Resolved outside the allowlist: identity no longer queries session rows itself. The
 session list/revoke queries live in `app/packages/db/src/repositories/sessions.ts` behind
@@ -244,8 +243,7 @@ the workspace and its first owner, a page and its count), so the lock order of e
 workspace, the key row before it; `addMember` starts at the workspace row), the project row `FOR NO KEY UPDATE` before a grant change, member, grant and draft rows
 `FOR UPDATE`, the actor and project access rows through `evaluate*` with `lock`, the expected-version check after authorization, the
 event last, and one savepoint transaction per mutation. PostgreSQL's 23505 and 23503 on a grant write are returned by the adapter as a typed
-result (`GRANT_CONFLICT`, `GRANTEE_REMOVED`) and `ConflictError` is raised in core. `drizzle-orm` stays in core's `package.json` for the manifest
-entry above and leaves it with #92 ([#91](https://github.com/ColdPhase/flux/issues/91)).
+result (`GRANT_CONFLICT`, `GRANTEE_REMOVED`) and `ConflictError` is raised in core. `drizzle-orm` left core's `package.json` with #92 ([#91](https://github.com/ColdPhase/flux/issues/91)).
 
 Resolved outside the allowlist: the web app has one transport and feature folders. `api/client.ts` is the only module that calls
 `fetch` (push, sign-out, the export bundle, file bytes, the handoff packet and the reachability probe use its `send`); every API

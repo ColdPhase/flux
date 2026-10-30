@@ -1,6 +1,6 @@
-import { accessPorts, lockAssistantOwner, schema } from '@flux/db';
+import { accessPorts, lockAssistantOwner, schema, type Database } from '@flux/db';
 import { eq } from 'drizzle-orm';
-import { createProject, getProject, grantProject, isUuid, type Database, type Principal } from '@flux/core';
+import { createProject, getProject, grantProject, isUuid, type Principal } from '@flux/core';
 import type { CreateProjectCommand, GrantProjectCommand } from '@flux/contracts';
 import { assistantRows } from './adapters.js';
 import { transactionEventSession } from '../work/transaction-events.js';

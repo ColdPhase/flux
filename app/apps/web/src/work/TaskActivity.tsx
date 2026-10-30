@@ -253,9 +253,8 @@ export function TaskComposer({ state, composer, item, meId, writable, readOnly, 
   // no thread yet, so it has no scope (nothing is created to show it); neither does one whose creation was undone.
   const conversationId = readOnly ? null : discussion?.conversationId ?? null;
   const typing = useTyping(meId, conversationId ? { kind: 'conversation', id: conversationId } : null, writable);
-  // The typing status shares the audience line's row, at its right, so it takes no height from the panel or the phone's
-  // half sheet (the task's fields keep their room above the composer). It is always there, empty without a scope, so
-  // nothing changes place when a thread starts.
+  // The typing status is its own line under the audience note, so its whole sentence is readable at any width (#731).
+  // It is always there, empty without a scope, so nothing changes place when a thread starts.
   const typingLine = conversationId ? <TypingNotice {...typing} /> : <p className="typing-notice" aria-hidden="true">{'\u00a0'}</p>;
   const audienceLine = <div className="wd-foot__line"><ComposerAudience>{audience}</ComposerAudience>{typingLine}</div>;
 

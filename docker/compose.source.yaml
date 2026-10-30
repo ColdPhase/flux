@@ -135,6 +135,7 @@ services:
       FLUX_GITHUB_APP_ID: ${FLUX_GITHUB_APP_ID:-}
       FLUX_GITHUB_APP_SLUG: ${FLUX_GITHUB_APP_SLUG:-}
       FLUX_GITHUB_WEBHOOK_SECRET: ${FLUX_GITHUB_WEBHOOK_SECRET:-}
+      FLUX_GITHUB_DELIVERY: ${FLUX_GITHUB_DELIVERY:-webhook}
       FLUX_GITHUB_ENCRYPTION_KEY: ${FLUX_GITHUB_ENCRYPTION_KEY:-}
       # The agent runtime (F-022 AIM-3): empty is off. See docs/operations/agent-runtime.md.
       FLUX_AGENT_RUNTIME: ${FLUX_AGENT_RUNTIME:-}
@@ -145,6 +146,7 @@ services:
       # (every encrypted workspace then stays locked). See docs/product/encrypted-workspaces.md.
       FLUX_KEYRING: ${FLUX_KEYRING:-on}
       FLUX_KEYRING_TOKEN: ${FLUX_KEYRING_TOKEN:-}
+      FLUX_KEY_PIN_SECRET: ${FLUX_KEY_PIN_SECRET:-}
       FLUX_SWAP_ACKNOWLEDGED: ${FLUX_SWAP_ACKNOWLEDGED:-}
       PORT: 8080
     # Memory equal to memory+swap: this container cannot page keys or content to a swap device (F-030).
@@ -152,9 +154,9 @@ services:
     memswap_limit: ${FLUX_API_MEMORY:-2g}
     ulimits:
       core: 0
-    # runtime-control reaches runtime-manager; runtime-api is where runtime-egress forwards /mcp.
-    # Neither network holds the database. `keyring` holds only api, worker and keyring.
-    networks: [default, runtime-control, runtime-api, keyring]
+    # `keyring` holds only api, worker and keyring. With the agent runtime on, compose.source.runtime.yaml adds
+    # runtime-control and runtime-api (#744: a project without the runtime takes two address pools, not four).
+    networks: [default, keyring]
     volumes:
       - files:/data/files:z
       # Optional 32-byte operator secret; empty tracked placeholder means unavailable.
@@ -205,12 +207,14 @@ services:
       FLUX_RUNTIME_MANAGER_SECRET: ${FLUX_RUNTIME_MANAGER_SECRET:-}
       FLUX_KEYRING: ${FLUX_KEYRING:-on}
       FLUX_KEYRING_TOKEN: ${FLUX_KEYRING_TOKEN:-}
+      FLUX_KEY_PIN_SECRET: ${FLUX_KEY_PIN_SECRET:-}
       FLUX_SWAP_ACKNOWLEDGED: ${FLUX_SWAP_ACKNOWLEDGED:-}
     mem_limit: ${FLUX_WORKER_MEMORY:-1g}
     memswap_limit: ${FLUX_WORKER_MEMORY:-1g}
     ulimits:
       core: 0
-    networks: [default, runtime-control, keyring]
+    # runtime-control comes from compose.source.runtime.yaml when the agent runtime is on.
+    networks: [default, keyring]
     volumes:
       - files:/data/files:z
       - ${FLUX_BACKGROUND_KEY_HOST_FILE:-./background-key-unavailable}:/run/secrets/flux_background_key:ro,z

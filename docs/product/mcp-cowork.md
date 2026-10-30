@@ -275,6 +275,44 @@ says "Stopped by <name>", not "the agent has stopped running".
   conversation header for the agent that works in that project (S13, #347). The personal assistant's run keeps its own Stop (a different
   operation, #340). After a stop the panel shows "Stopped by <name> · #12" in Recent.
 
+### Pause and Resume (#160 AC-5, 2026-10-30)
+
+Stop ends the hold. Pause keeps it: the agent finishes its current step, saves a checkpoint and takes no new step
+until a person resumes it. Flux cannot interrupt a local client mid-step, so Pause takes effect at the agent's next
+safe boundary (its next lease renewal or claim), and the Agents view says which side of that boundary it is on.
+
+- **Command.** `POST /api/v1/projects/{projectId}/agent-pauses` with `{ taskId, agentId, paused }`
+  (`Idempotency-Key` honoured). `paused: true` needs the task held by that agent now (as Stop, else `409
+  AGENT_NOT_WORKING`); pausing an agent already paused on that task returns the stored pause. `paused: false`
+  removes it and returns `204`; removing a pause that is not there is also `204`.
+- **Who.** The same people as Stop: write access and one of manager, the agent's owner or the task's creator
+  (`403 PAUSE_NOT_ALLOWED`). An agent never pauses an agent.
+- **Effect.** One `agent_pauses` row per (task, agent) while the pause is in force (migration 0131), and one
+  `project.agent_paused.v1` event (task and agent ids only, for a pause and a resume alike). The task, its owner and its status do not change, and no
+  co-work unit is stopped. While the row exists, `flux_claim_unit` and `flux_renew_unit` on any unit of that task
+  held by one of the agent's connections answer `409 COWORK_PAUSED` ("A person paused this work. Release this unit
+  now with flux_release_unit and a checkpoint, and take no new step until they resume it."). Release, complete,
+  decline and the read tools are unaffected, so the agent can always save its checkpoint. The live lease is not
+  revoked: if the agent does not release, its claim simply expires (CO-2) and the unit is claimable again only
+  after Resume.
+- **Read.** `GET /api/v1/projects/{projectId}/agent-stops` also returns `pauses: [{ taskId, taskNumber, agent:
+  {id, name}, pausedBy: {id, name}, pausedAt }]` for the pauses in force.
+- **UI.** Pause sits beside Stop on the agent's panel in Agents while it holds an in-progress task. While the pause is
+  in force and the agent still holds a live claim the panel says "Pausing · waits for a safe point"; once no live
+  claim remains it says "Paused by <name>", and the button becomes Resume. Resume removes the pause; the agent
+  continues at its next supplied Resume (Connect/Agents host action or the client's `resume_work` prompt). Pause
+  and Resume create no conversation message and no notification.
+
+### Supplied Codex action: tool approval (#160, 2026-10-30)
+
+`./flux cowork start|resume` runs `codex exec`, which has nobody to answer a local approval prompt. It passes
+`mcp_servers.flux.default_tools_approval_mode="approve"` inline, for that one invocation and for the `flux` server
+only: no other MCP server, shell command or file write is pre-approved, the sandbox stays `workspace-write`, and the
+person's saved Codex configuration is not changed (`--ignore-user-config`). What a Flux tool may do is still decided
+by the connection's scopes and standing grants on the server; the flag only stops the client from asking twice.
+Observed need: genuine Codex 0.160.1 refused `flux_acknowledge_playbook` with "requires approval, but approval policy
+is never" without it (`docs/development/evidence/160-workflow/README.md`).
+
 ### Questions with ready answers (S14)
 
 An agent asks a person in a project conversation and offers two to four answers. The question is an ordinary message

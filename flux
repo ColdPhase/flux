@@ -9,6 +9,8 @@ set -eu
 FLUX_ROOT=$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd -P)
 COMPOSE_MAIN="$FLUX_ROOT/docker/compose.source.yaml"
 COMPOSE_DEV="$FLUX_ROOT/docker/compose.dev.yaml"
+# The API and worker's agent-runtime networks (#744); added only while FLUX_AGENT_RUNTIME is set.
+COMPOSE_RUNTIME="$FLUX_ROOT/docker/compose.source.runtime.yaml"
 # The operator's own override (for example extra agent runtime slots); used when it exists.
 COMPOSE_OVERRIDE="$FLUX_ROOT/docker/compose.override.yaml"
 ENV_EXAMPLE="$FLUX_ROOT/docker/.env.example"
@@ -40,14 +42,13 @@ need_docker() {
 
 # Compose for the production-mode stack (`up`, `demo`) or the hot-reload stack (`dev`).
 # The image tag follows the project so parallel checkouts and `clean` stay scoped.
+# With the agent runtime off the API and worker join two networks, not four: each network takes one of Docker's
+# address pools, and a shared host runs out of them (#744).
 compose_main() {
-  if [ -f "$COMPOSE_OVERRIDE" ]; then
-    FLUX_IMAGE_TAG="$PROJECT" docker compose --project-directory "$FLUX_ROOT/docker" \
-      --env-file "$ENV_FILE" -p "$PROJECT" -f "$COMPOSE_MAIN" -f "$COMPOSE_OVERRIDE" "$@"
-  else
-    FLUX_IMAGE_TAG="$PROJECT" docker compose --project-directory "$FLUX_ROOT/docker" \
-      --env-file "$ENV_FILE" -p "$PROJECT" -f "$COMPOSE_MAIN" "$@"
-  fi
+  if [ -f "$COMPOSE_OVERRIDE" ]; then set -- -f "$COMPOSE_OVERRIDE" "$@"; fi
+  if runtime_on; then set -- -f "$COMPOSE_RUNTIME" "$@"; fi
+  FLUX_IMAGE_TAG="$PROJECT" docker compose --project-directory "$FLUX_ROOT/docker" \
+    --env-file "$ENV_FILE" -p "$PROJECT" -f "$COMPOSE_MAIN" "$@"
 }
 compose_dev() {
   FLUX_IMAGE_TAG="$DEV_PROJECT" FLUX_PUBLIC_ORIGIN="$(dev_origin)" \
@@ -170,6 +171,14 @@ ensure_keyring_token() {
   set_env_line "$file" FLUX_KEYRING_TOKEN "$(random_b64url)"
   say "Added FLUX_KEYRING_TOKEN (encrypted spaces' keyring) to ${file#"$FLUX_ROOT"/}."
 }
+# Adds FLUX_KEY_PIN_SECRET (F-030 S2c: the pin over encrypted spaces' holders and key versions, kept out of the
+# database) to an env file that lacks one; never changes an existing secret, because every pin is made with it.
+ensure_key_pin_secret() {
+  file=${1:-$ENV_FILE}
+  [ -n "$(sed -n 's/^FLUX_KEY_PIN_SECRET=//p' "$file" | tail -n 1)" ] && return 0
+  set_env_line "$file" FLUX_KEY_PIN_SECRET "$(random_b64url)"
+  say "Added FLUX_KEY_PIN_SECRET (encrypted spaces' key pin) to ${file#"$FLUX_ROOT"/}."
+}
 
 # Writes KEY=value into an env file (replacing the line or appending it), via a temp file.
 set_env_line() {
@@ -209,6 +218,7 @@ ensure_env() {
   set_env_line "$draft" FLUX_FIXTURE_TOKEN "$(random_hex 32)"
   set_env_line "$draft" FLUX_AUTH_SECRET "$(random_hex 32)"
   set_env_line "$draft" FLUX_KEYRING_TOKEN "$(random_b64url)"
+  set_env_line "$draft" FLUX_KEY_PIN_SECRET "$(random_b64url)"
   set_env_line "$draft" FLUX_DEMO_OWNER_PASSWORD "demo-$(random_hex 8)"
   set_env_line "$draft" FLUX_DEMO_PARTNER_PASSWORD "demo-$(random_hex 8)"
   # Agent runtime secrets (F-022 T3): the service secret and one secret per slot. Generated now so
@@ -392,6 +402,28 @@ ensure_runtime_secrets() {
 runtime_volumes() {
   docker volume ls -q --filter "label=com.docker.compose.project=$PROJECT" | grep -E "^${PROJECT}_runtime-([1-9][0-9]*-data|tools)\$" || true
 }
+# Runtime networks no container uses any more (the runtime was switched off, or the project started before #744
+# attached the API to them) still hold address pools; remove them. A network in use is left alone.
+remove_idle_runtime_networks() {
+  for network in $(docker network ls --filter "label=com.docker.compose.project=$PROJECT" --format '{{.Name}}' | grep -E "^${PROJECT}_runtime-" || true); do
+    docker network rm "$network" >/dev/null 2>&1 || true
+  done
+}
+# Docker reports a full address pool as one line in the middle of the Compose output; say what it means (#744).
+explain_address_pools() {
+  probe="flux-pool-probe-$$"
+  if probe_error=$(docker network create "$probe" 2>&1 >/dev/null); then
+    docker network rm "$probe" >/dev/null 2>&1 || true
+    return 0
+  fi
+  case "$probe_error" in
+    *"address pools have been fully subnetted"*|*"could not find an available, non-overlapping"*)
+      warn "Docker has no free network address pool left: every Compose project takes one per network (a Flux project"
+      warn "takes 2, or 10 with the agent runtime on), and a stock Docker daemon has about 30. Stop projects you do not"
+      warn "need with 'docker compose -p <project> down' (see 'docker network ls'), or give the daemon smaller pools"
+      warn "(default-address-pools in /etc/docker/daemon.json); see docs/operations/README.md#docker-address-pools." ;;
+  esac
+}
 # Stops and removes the runtime containers; slot volumes (and so the owners' logins) stay.
 stop_runtime() {
   [ -n "$(docker ps -aq --filter "label=com.docker.compose.project=$PROJECT" --filter "label=com.docker.compose.service=runtime-manager")" ] || return 0
@@ -472,11 +504,12 @@ start_main() {
     # runtime-install runs first (a no-op unless claude_code is on); the slots then start.
     # shellcheck disable=SC2046
     compose_main --profile runtime up -d --wait --wait-timeout "$WAIT_TIMEOUT" api worker runtime-manager runtime-egress $(runtime_slots) \
-      || { compose_main --profile runtime logs --no-color --tail 60 migrate api worker runtime-install runtime-manager runtime-egress >&2 || true; die "Flux did not become healthy. See the logs above."; }
+      || { compose_main --profile runtime logs --no-color --tail 60 migrate api worker runtime-install runtime-manager runtime-egress >&2 || true; explain_address_pools; die "Flux did not become healthy. See the logs above."; }
   else
     compose_main up -d --wait --wait-timeout "$WAIT_TIMEOUT" api worker \
-      || { compose_main logs --no-color --tail 60 migrate api worker >&2 || true; die "Flux did not become healthy. See the logs above."; }
+      || { compose_main logs --no-color --tail 60 migrate api worker >&2 || true; explain_address_pools; die "Flux did not become healthy. See the logs above."; }
     stop_runtime
+    remove_idle_runtime_networks
   fi
 }
 
@@ -603,7 +636,7 @@ cmd_dev() {
   fi
   say "Starting hot-reload development stack ($DEV_PROJECT)..."
   compose_dev up -d --wait --wait-timeout "$WAIT_TIMEOUT" api worker web mailpit \
-    || { compose_dev logs --no-color --tail 60 migrate api worker web >&2 || true; die "The dev stack did not become healthy. See the logs above."; }
+    || { compose_dev logs --no-color --tail 60 migrate api worker web >&2 || true; explain_address_pools; die "The dev stack did not become healthy. See the logs above."; }
   say ""
   say "Flux dev is running:  $(dev_origin)   (Vite hot reload; /api proxied to tsx watch)"
   say "Mail catcher:         http://127.0.0.1:$(env_value FLUX_MAILPIT_PORT | sed 's/^$/8025/')"
@@ -970,6 +1003,15 @@ env_from_archive() {
 }
 
 archived_env_value() { sed -n "s/^$2=//p" "$1" | tail -n 1; }
+# Takes FLUX_KEY_PIN_SECRET from a backup's flux.env into the current env file when they differ (F-030 S2c). A backup
+# from before S2c has none: the current secret stays, and no restored space is encrypted with pins anyway.
+restore_key_pin_secret() {
+  archived=$(archived_env_value "$1" FLUX_KEY_PIN_SECRET)
+  [ -n "$archived" ] || return 0
+  [ "$archived" = "$(sed -n 's/^FLUX_KEY_PIN_SECRET=//p' "$ENV_FILE" | tail -n 1)" ] && return 0
+  set_env_line "$ENV_FILE" FLUX_KEY_PIN_SECRET "$archived"
+  warn "NOTE: FLUX_KEY_PIN_SECRET differs from the backup; the backup's value now replaces it in ${ENV_FILE#"$FLUX_ROOT"/} (encrypted spaces are pinned with it)."
+}
 
 cmd_restore() {
   archive='' migrate=0 revoke_agents=0 ASSUME_YES=0
@@ -1046,6 +1088,10 @@ cmd_restore() {
   compose_main --profile ops run --rm --no-deps -T files-archive tar -C /data/files -xzf - < "$RESTORE_DIR/files.tar.gz" \
     || die "Restoring the files volume failed; run ./flux restore again."
   compose_main --profile setup run --rm files-init >/dev/null
+  # F-030 S2c: the key pin belongs to the restored data (every encrypted space's holders and key versions are pinned
+  # with it). An existing .env with another secret would make every restored encrypted space refuse to unlock as
+  # "changed outside Flux", so the backup's secret replaces it, before api and worker start.
+  restore_key_pin_secret "$RESTORE_DIR/flux.env"
   if [ "$from_schema" != "$to_schema" ] || [ "$migrate" = 1 ]; then say "Migrating from ledger {$from_ledger}..."; fi
   compose_main run --rm migrate || die "The migration after restore failed. See the output above; the archive is unchanged."
   # F-030: a restored encrypted space is locked. Its unlock rows were sealed to the keyring boot of the backup's server;
@@ -1182,6 +1228,7 @@ cmd_upgrade() {
   check_owner "$PROJECT"
   # F-030: an install from before encrypted workspaces gets its keyring token here (the upgrade restarts the keyring).
   ensure_keyring_token "$ENV_FILE"
+  ensure_key_pin_secret "$ENV_FILE"
   docker volume inspect "${PROJECT}_pgdata" >/dev/null 2>&1 || die "Compose project $PROJECT has no data yet; use ./flux up."
   if [ "$pull" = 1 ] && [ "$(git_commit)" = unknown ]; then die "upgrade --pull needs a git checkout; update the files yourself and run ./flux upgrade."; fi
   compose_main up -d --wait --wait-timeout "$WAIT_TIMEOUT" db >/dev/null || die "The database of $PROJECT did not start."
@@ -1345,13 +1392,14 @@ cmd_cowork() (
   rm -f "$COWORK_STATE/login-status"
   url_config=$(cowork_helper url-config)
   instructions=$(cowork_helper instructions "$action")
-  # Inline configuration does not write the person's global config or instruction files.
+  # Inline configuration does not write the person's global config or instruction files. Flux's own tools run without a
+  # second local prompt (exec has no one to answer it): the server's standing grants are the authority, never the client.
   if [ ! -f "$COWORK_STATE/oauth-authorized" ]; then
     codex -c "$url_config" -c 'mcp_servers.flux.required=true' mcp login flux || die "Flux authorization did not complete."
     : >"$COWORK_STATE/oauth-authorized"
   fi
   set -- exec --ignore-user-config --json --skip-git-repo-check --sandbox workspace-write \
-    -c "$url_config" -c 'mcp_servers.flux.required=true' -c "$instructions" \
+    -c "$url_config" -c 'mcp_servers.flux.required=true' -c 'mcp_servers.flux.default_tools_approval_mode="approve"' -c "$instructions" \
     -c 'features.apps=false' -c 'features.plugins=false' -c 'features.remote_plugin=false'
   if [ "$action" = resume ]; then set -- "$@" resume "$(cowork_helper thread)"; fi
   # A finite owned child invocation, with no idle model polling or unrelated process termination.

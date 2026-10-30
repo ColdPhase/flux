@@ -1,0 +1,12 @@
+# Explicit Claude-only genuine acceptance. No Codex credential or user HOME is mounted.
+services:
+  mcp-clients:
+    user: "0:0"
+    security_opt:
+      - label=disable
+    volumes:
+      - ../app/tests/app/e2e/mcp-live-workflow.e2e.ts:/app/tests/app/e2e/mcp-live-workflow.e2e.ts:ro
+      - ../app/tests/app/support/mcp-client-harness.ts:/app/tests/app/support/mcp-client-harness.ts:ro
+      - ../app/tests/app/support/oauth-diagnostics.ts:/app/tests/app/support/oauth-diagnostics.ts:ro
+      - ../app/tests/app/support/cowork-production-invoke.ts:/app/tests/app/support/cowork-production-invoke.ts:ro
+      - ${FLUX_CLAUDE_CREDENTIALS_FILE:?Set the explicit authorized Claude credentials path}:/run/flux-live/claude-credentials.json:ro

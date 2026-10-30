@@ -351,6 +351,23 @@ class ContainerIsolationTest(unittest.TestCase):
             self.assertIsNotNone(block, service)
             self.assertRegex(block.group(1), r"<<: \*runtime-(hardening|slot)", service)
 
+    def test_without_the_runtime_api_and_worker_take_two_networks_like_the_release(self) -> None:
+        # #744: every network takes one of Docker's address pools; the runtime's two join only with the runtime on.
+        for name in ("compose.source.yaml", "compose.yaml"):
+            text = (ROOT / "docker" / name).read_text(encoding="utf-8")
+            for service in ("api", "worker"):
+                block = re.search(rf"^  {service}:\n((?:    .*\n|\n)+)", text, re.M).group(1)
+                self.assertEqual(re.findall(r"^    networks: (.*)$", block, re.M), ["[default, keyring]"], f"{name} {service}")
+        overlay = (ROOT / "docker" / "compose.source.runtime.yaml").read_text(encoding="utf-8")
+        code = "\n".join(line for line in overlay.splitlines() if not line.lstrip().startswith("#")) + "\n"
+        self.assertEqual(code, "services:\n  api:\n    networks: [default, runtime-control, runtime-api, keyring]\n"
+                               "  worker:\n    networks: [default, runtime-control, keyring]\n")
+        launcher = (ROOT / "flux").read_text(encoding="utf-8")
+        self.assertIn('COMPOSE_RUNTIME="$FLUX_ROOT/docker/compose.source.runtime.yaml"', launcher)
+        self.assertIn('if runtime_on; then set -- -f "$COMPOSE_RUNTIME" "$@"; fi', launcher)
+        self.assertIn("-f docker/compose.source.yaml -f docker/compose.source.runtime.yaml -f docker/compose.override.yaml",
+                      (ROOT / "scripts" / "check_agent_runtime.sh").read_text(encoding="utf-8"))
+
 
 if __name__ == "__main__":
     unittest.main()

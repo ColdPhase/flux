@@ -1,6 +1,7 @@
 import type { FastifyError, FastifyInstance } from 'fastify';
 import type { ConversationRootQuery, ConversationWindowQuery, CreateMaterialCommand, PageQuery, SendMessageCommand, UpdateMaterialCommand } from '@flux/contracts';
-import { conversationUseCases, DomainError, InvalidInputError, type Database, type FileStorage } from '@flux/core';
+import { conversationUseCases, DomainError, InvalidInputError, type FileStorage } from '@flux/core';
+import type { Database } from '@flux/db';
 import type { SessionResolver } from '../identity/index.js';
 import { taskUseDomainError } from '../work/task-use-errors.js';
 import { conversationStore } from './store.js';

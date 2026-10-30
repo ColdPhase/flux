@@ -1,8 +1,8 @@
 import { z } from 'zod';
 import { AGENT_OPERATION_CLASSES, DOC_LIMITS, type AgentJsonValue, type AgentOperation, type CreateDocCommand, type DocState,
   type UpdateDocCommand } from '@flux/contracts';
-import { assistantChangeRows, type DbExecutor } from '@flux/db';
-import { RuleViolationError, type Database, type Transaction } from '@flux/core';
+import { assistantChangeRows, type DbExecutor, type Database, type Transaction } from '@flux/db';
+import { RuleViolationError } from '@flux/core';
 import { actionAnnotations as annotations, actionId as id, actionInput, actionVersion as version, nativeActionExecutor } from './action-execution.js';
 import type { FluxMcpClaims } from './context.js';
 import type { AgentToolRegistry } from './tool-registry.js';

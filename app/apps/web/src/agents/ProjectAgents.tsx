@@ -2,7 +2,7 @@ import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useSta
 import { createPortal, flushSync } from 'react-dom';
 import { Link, useLoaderData, useLocation, useNavigation, useRevalidator, useSearchParams, type LoaderFunctionArgs } from 'react-router';
 import { AGENT_SCOPE_PLAIN } from '@flux/contracts';
-import type { AgentOperation, AgentQuestion, AgentScope, AgentStop, ConversationMessage, ProjectAgentConnection, ProjectAgentRequest, ProjectAgents as ProjectAgentsData, TaskDiscussion, WorkRowProjection, WorkStatus } from '@flux/contracts';
+import type { AgentOperation, AgentQuestion, AgentPause, AgentScope, AgentStop, ConversationMessage, ProjectAgentConnection, ProjectAgentRequest, ProjectAgents as ProjectAgentsData, TaskDiscussion, WorkRowProjection, WorkStatus } from '@flux/contracts';
 import { ApiError, NetworkError } from '../api/client';
 import { useStreamEvents } from '../api/stream';
 import { projectAiBlocked, useShellData } from '../app/data';
@@ -22,7 +22,7 @@ import { useNativeOwn, useWorkChoices } from '../work/useDetailReads';
 import { agentDisplayName } from '../docs/format';
 import { getProjectAgents } from './api';
 import { HandOffDialog, type HandOffTask } from './HandOff';
-import { useAgentStops, useStopAgent } from './stop';
+import { useAgentStops, usePauseAgent, useStopAgent } from './stop';
 import { QuestionCard, WhenNoQuestion } from './QuestionCard';
 import { RequestCards } from './RequestCards';
 import { ReviewRule } from './ReviewRule';
@@ -626,8 +626,10 @@ function taskNote(task: WorkRowProjection, asking: AgentQuestion | null, connect
  * thread), what Flux has recorded and what its grant here lets it do. Stop ends the agent's hold on its task; Flux cannot kill
  * the agent's own program, so the panel says what was stopped, and by whom.
  */
-function AgentDetail({ entry, held, meId, projectId, now, asking, canHandOff, stops, stop, refocus, onRefocused, onHandOff, onThread }: {
+function AgentDetail({ entry, held, meId, projectId, now, asking, canHandOff, stops, stop, pause, refocus, onRefocused, onHandOff, onThread }: {
   entry: AgentEntry; held: WorkRowProjection[]; meId: string; projectId: string; now: number; asking: AgentQuestion | null; canHandOff: boolean; stops: AgentStop[];
+  /** #160 AC-5: the pause in force on the held task, and Pause/Resume when this person may stop the agent. */
+  pause: { paused: AgentPause | null; busy: boolean; run: () => void } | null;
   /** Present when this person may stop the agent's task now. */
   stop: RowStop | null; refocus: boolean; onRefocused: () => void; onHandOff: () => void; onThread: (taskId: string) => void;
 }) {
@@ -673,6 +675,9 @@ function AgentDetail({ entry, held, meId, projectId, now, asking, canHandOff, st
         ) : task ? (
           <p className="agents-detail__note">{taskNote(task, asking, entry.connection, now)}{held.length > 1 ? ` · ${held.length - 1} more handed` : ''} · <RefLink className="ui-link" to={`/projects/${projectId}/tasks?open=work:${task.id}`}>Open task</RefLink></p>
         ) : <p className="agents-detail__note">{entry.connection ? stateLine(entry.connection, now) : 'Nothing is handed to it.'}</p>}
+        {pause?.paused ? <p className="agents-detail__note" data-testid="agent-pause">{currentWork?.state === 'claimed' && isAgentWorking(entry, now)
+          ? 'Pausing · waits for a safe point'
+          : `Paused by ${pause.paused.pausedBy.id === meId ? 'you' : pause.paused.pausedBy.name} · #${pause.paused.taskNumber}`}</p> : null}
         {entry.connection && currentWork ? <p className="agents-detail__note">{availabilityLine(entry.connection, now)}</p> : null}
         {entry.connection?.requests.map((request) => <p key={request.id} className="agents-detail__note">{requestLine(request)}</p>)}
       </section>
@@ -692,6 +697,7 @@ function AgentDetail({ entry, held, meId, projectId, now, asking, canHandOff, st
       </section>
       <div className="agents-detail__actions">
         {stop ? <StopButton label={stop.label} text={stop.text} busy={stop.busy} onClick={stop.run} /> : null}
+        {pause && task ? <Button variant="secondary" onClick={pause.run} disabled={pause.busy}>{pause.paused ? 'Resume' : 'Pause'}</Button> : null}
         {task ? <Button variant="secondary" onClick={() => onThread(task.id)}>Message</Button> : null}
         {canHandOff ? <Button variant="secondary" onClick={onHandOff} disabled={!grant.canTake}>{teammate ? `Ask ${firstName(entry.owner ?? 'them')} to use ${entry.name}` : `Hand off to ${entry.name}`}</Button> : null}
       </div>
@@ -760,6 +766,7 @@ function ProjectAgentsLoaded({ data }: { data: ProjectAgentsData }) {
   const { reload: reloadStops } = agentStops;
   const refreshChoices = choices.onRefresh;
   const stopper = useStopAgent(projectId, useCallback(() => { reloadStops(); refreshChoices(); }, [reloadStops, refreshChoices]));
+  const pauser = usePauseAgent(projectId, reloadStops);
   const questions = useQuestionList(projectId);
   useProjectQuestions(projectId, me.user.id);
   // Questions that wait for this person's answer, newest first.
@@ -809,6 +816,15 @@ function ProjectAgentsLoaded({ data }: { data: ProjectAgentsData }) {
         void stopper.stop(entry.agentId, held, agentLabel(entry, me.user.id), entry.ownerId === null || entry.ownerId === me.user.id);
       },
     };
+  };
+  // Pause sits beside Stop for the same people, only while the agent holds an in-progress task (#160 AC-5).
+  const pauseOf = (entry: AgentEntry) => {
+    const held = heldBy(entry.agentId)[0];
+    if (!held || !canWrite || entry.ownerId !== me.user.id) return null;
+    const paused = agentStops.pauses.find((item) => item.agent.id === entry.agentId && item.taskId === held.id) ?? null;
+    if (!paused && held.status !== 'in_progress') return null;
+    return { paused, busy: pauser.busy === `${entry.agentId}:${held.id}`,
+      run: () => { void pauser.pause(entry.agentId, held, agentLabel(entry, me.user.id), !paused); } };
   };
   const working = [...views.values()].filter((view) => view.working).length;
   const waiting = [...views.values()].filter((view) => view.rank === 1).length;
@@ -915,6 +931,7 @@ function ProjectAgentsLoaded({ data }: { data: ProjectAgentsData }) {
         <OwnedPanelContent slot={slot} className="agents-detail-panel">
           <AgentDetail key={latestDetail.key} entry={latestDetail} held={heldBy(latestDetail.agentId)} meId={me.user.id} projectId={projectId} now={connections.now}
             stops={agentStops.stops.filter((item) => item.agent.id === latestDetail.agentId)} stop={leads.has(latestDetail.key) ? stopOf(latestDetail) : null}
+            pause={leads.has(latestDetail.key) ? pauseOf(latestDetail) : null}
             asking={asked.find((question) => question.agent.id === latestDetail.agentId) ?? null} refocus={refocusKey === latestDetail.key} onRefocused={() => setRefocusKey(null)}
             canHandOff={canWrite && !!shell && latestDetail.ownerId === me.user.id} onHandOff={() => setHandOff({ agentId: latestDetail.agentId, task: null })} onThread={openThread} />
         </OwnedPanelContent>

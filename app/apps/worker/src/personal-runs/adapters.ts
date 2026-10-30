@@ -1,7 +1,7 @@
-import { assistantJobRows, personalRunRows, TaskUseRefusal, withIdpStanding, accessReader } from '@flux/db';
+import { assistantJobRows, personalRunRows, TaskUseRefusal, withIdpStanding, accessReader, type Database, type Transaction } from '@flux/db';
 import {
-  ConflictError, DomainError, RuleViolationError, policyPersonalRunAccess, prepareSchedule, recordEvent, scheduleWords, type Database, type PersonalRunPorts, type PersonalRunQueue,
-  type PersonalRunUnitOfWork, type Transaction,
+  ConflictError, DomainError, RuleViolationError, policyPersonalRunAccess, prepareSchedule, recordEvent, scheduleWords, type PersonalRunPorts, type PersonalRunQueue,
+  type PersonalRunUnitOfWork,
 } from '@flux/core';
 import { eventPorts } from '../events.js';
 

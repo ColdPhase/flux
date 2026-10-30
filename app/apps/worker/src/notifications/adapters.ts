@@ -8,7 +8,7 @@ import {
   notificationPreferenceRows,
   pushSubscriptionRepository,
   sql,
-  accessReader,
+  accessReader, type Database, type Transaction
 } from '@flux/db';
 import {
   NOTIFICATION_EMAIL_JOB,
@@ -18,14 +18,12 @@ import {
   deliverableAt,
   policySourceReader,
   preferenceRepository,
-  type Database,
   type EmailDeliveryUnitOfWork,
   type GeneratorPorts,
   type GeneratorUnitOfWork,
   type NotificationMailConfig,
   type NotificationMailer,
   type NotificationRecord,
-  type Transaction,
 } from '@flux/core';
 
 // Worker adapters for notification generation and email (issue #116; #46: the rules live in

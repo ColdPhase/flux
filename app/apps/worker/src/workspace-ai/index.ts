@@ -1,7 +1,7 @@
 import type { PgBoss } from 'pg-boss';
 import { WORKSPACE_AI_SWEEP_JOB, type WorkspaceAiSweepJob } from '@flux/contracts';
-import { sweepWorkspaceAi, WorkspaceAiSweepIncomplete, type Database } from '@flux/core';
-import { accessPorts } from '@flux/db';
+import { sweepWorkspaceAi, WorkspaceAiSweepIncomplete } from '@flux/core';
+import { accessPorts, type Database } from '@flux/db';
 
 /**
  * F-029 (S2): the worker's copy of the turn-off sweep. The flip sends `{ workspaceId, epoch }` in its own transaction; the API

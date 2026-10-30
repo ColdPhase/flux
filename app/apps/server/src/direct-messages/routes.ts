@@ -12,7 +12,8 @@ import {
   type SendDmMessageCommand,
   type UpdateDmCommand,
 } from '@flux/contracts';
-import type { Database, Principal, ResourceRef } from '@flux/core';
+import type { Principal, ResourceRef } from '@flux/core';
+import type { Database } from '@flux/db';
 import type { SessionResolver } from '../identity/index.js';
 import { bodyId, commandRunner, expectedVersion, requires, useDomainErrors, versionEtag } from '../http/commands.js';
 import { messageReferences } from '../conversation/references.js';

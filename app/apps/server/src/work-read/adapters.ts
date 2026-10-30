@@ -1,8 +1,7 @@
 import type { IncomingHttpHeaders } from 'node:http';
-import { githubRows, nativeWorkReadKeys, nativeWorkObjectRows, nativeWorkReferenceRows, nativeWorkThoughtRows, nativeWorkVisibilityRows, nativeWorkSummaryRows, nativeWorkAssociationRows, workRows, type DbExecutor, type NativeReadKeyPage, type NativeWorkDetailObject, accessReader } from '@flux/db';
+import { githubRows, nativeWorkReadKeys, nativeWorkObjectRows, nativeWorkReferenceRows, nativeWorkThoughtRows, nativeWorkVisibilityRows, nativeWorkSummaryRows, nativeWorkAssociationRows, workRows, type DbExecutor, type NativeReadKeyPage, type NativeWorkDetailObject, accessReader, type Database } from '@flux/db';
 import {
-  accessName, createBoundedWorkReads, DomainError, enforce, evaluateProject, NotFoundError, presentGithubRule,
-  type Database, type Principal, type WorkReadAccess, type WorkReadFinalFence,
+  accessName, createBoundedWorkReads, DomainError, enforce, evaluateProject, NotFoundError, presentGithubRule, type Principal, type WorkReadAccess, type WorkReadFinalFence,
   type WorkReadRepository, type WorkReadUnitOfWork,
 } from '@flux/core';
 import type { NamedPrincipal, NativeWorkRow, WorkDetailObject, WorkObjectType } from '@flux/contracts';

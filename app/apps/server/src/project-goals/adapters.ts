@@ -1,10 +1,9 @@
-import { projectGoalRows, type DbExecutor, accessReader } from '@flux/db';
+import { projectGoalRows, type DbExecutor, accessReader, type Database } from '@flux/db';
 import {
   createProjectGoalUseCases,
   enforce,
   evaluateProject,
   recordEvent,
-  type Database,
   type ProjectGoalPorts,
   type ProjectGoalUnitOfWork,
 } from '@flux/core';

@@ -44,6 +44,7 @@ Set all six optional instance values, then restart the API:
 | `FLUX_GITHUB_APP_ID` | Positive decimal App ID, not installation ID |
 | `FLUX_GITHUB_APP_SLUG` | App URL slug from its settings |
 | `FLUX_GITHUB_WEBHOOK_SECRET` | The configured webhook HMAC secret |
+| `FLUX_GITHUB_DELIVERY` | Optional. `webhook` (default) or `poll` when GitHub cannot reach this server: open linked PRs are reconciled every 2 minutes with conditional requests (G-1c) |
 | `FLUX_GITHUB_ENCRYPTION_KEY` | Random 32-byte key as 64 hex characters |
 
 Development and packaged Compose pass these only to the API. All empty means
@@ -117,8 +118,7 @@ not a fake provider event. Every 30-minute window, the API schedules known linke
 objects in batches of five. Each job targets one binding; pending local work is
 coalesced during an outage. No repository discovery scan or agent wake occurs.
 Completed/irrelevant raw deliveries expire after seven days; pending deliveries
-survive outages. Internal #153 bridge metadata remains undelivered until a
-recipient/subscription adapter checks current repository access. No provider
+survive outages. Linked-PR events reach the task's current holder through the #153 bridge below. No provider
 facts enter ordinary discussions, notifications, events or exports. Native task status, blocker text and rule history
 change only through a task rule a writer turned on (G-1a).
 
@@ -137,6 +137,36 @@ Primary sources checked 2026-09-30:
 The [accepted design](2026-09-30-design.md) and
 [independent conditions](2026-09-30-independent-design-review.md) govern this slice.
 
+## #153 current-recipient bridge (#479 AC-3/AC-4, 2026-10-30)
+
+A linked PR's event reaches the one agent connection that works on the task now, as a reference in its addressed
+inbox. It carries no comment text and no authority; the agent reads current PR state with its own access.
+
+- **When.** In the same processing transaction, after the link's current facts are saved, once per new outbox
+  correlation (a redelivery with the same facts never delivers twice).
+- **Current recipient.** The assignee connection of the task's newest open (`pending`, `claimed` or `paused`) execute
+  unit, when that connection is unrevoked, still has the project selected and its agent holds the task
+  (`owner_agent_id`). Holding the task is the standing subscription: no hold, no delivery, and a webhook never
+  reassigns or widens the audience. The outbox row then records `delivered` and the recipient.
+- **Repository access.** A private repository's facts reach the recipient only when the recipient's owner is the
+  binding's author, whose GitHub access this very processing just verified. Otherwise the row is `no_access`; Flux
+  does not call GitHub on another person's behalf. A public repository needs only the Flux checks above.
+- **Echo suppression.** A `pull_request_review` event is `suppressed_echo` only when its GitHub author is the reviewer
+  Flux already asked: the GitHub account (from that person's App authorization for this App) of the recipient owner
+  of a Flux `review` request on the same link and head (queued, deferred, claimed or resolved). Anyone else's review,
+  for example a third party's "changes requested", reaches the holder.
+- **New head.** Every reconciliation of a link (webhook, G-1c poll, 30-minute catch-up or a person's reconcile) applies
+  the link's current head: queued or deferred Flux review requests of an older head are superseded (`reason =
+  'head_changed'`, version advances). A claimed review keeps its claim; its verdict stays pinned to its own head.
+- **No recipient.** `no_recipient` when nobody holds the task. Nothing is woken or created; the next holder sees
+  current state through ordinary reads.
+- **Read.** The first page of `flux_coordination_inbox` adds `providerEvents` (explained in playbook 1.9.0, not in the tool description): up to 20 rows delivered to this connection in the
+  project within seven days, newest first, `{ id, taskId, linkId, event, headSha, at }`, rechecked now (binding active,
+  link current, private repository still the author's). Reading is not an
+  acknowledgement.
+- **Storage.** Migration 0132 widens `github_bridge_outbox.state` to `pending_audience_adapter` (rows from before
+  0132), `delivered`, `no_recipient`, `no_access` and `suppressed_echo`, and adds `recipient_connection_id`.
+
 ## What remains for #74 / #479 (reconciled 2026-10-23)
 
 The merged slices are #168 (bindings, verified links, signed durable deliveries), #270 (G-1a rules), #379 (manual
@@ -146,12 +176,31 @@ way round; this table uses the design document's labels ([G-1 §2](2026-10-05-ap
 
 | Remaining outcome | Issue criterion | State |
 | --- | --- | --- |
-| Real least-privilege App on public HTTPS: bind, PR/CI/review/merge, duplicate and out-of-order delivery, access loss and recovery | AC-1, AC-5 | Needs a registered test App and a reachable public HTTPS origin (external). No fixture counts as this. |
-| G-1c polling for instances without public HTTPS (2-minute poll of linked open PRs, conditional requests, mode shown in Settings) | AC-3, AC-5 | Not started. Needs conditional-request support in the provider (ETag per endpoint) and a poll entry in the existing API sweep, under the same credential-pin and binding-lock order as `process`. |
-| G-1b one-click App setup through the manifest flow | AC-1 | Not started. Needs encrypted storage of the returned App credentials and the six variables winning when set. |
-| G-1d suggested links found in PR titles, branches and bodies | AC-2 | Not started. Needs a suggestion record, a one-tap confirm and the rule that an ID alone never links across bindings. |
-| #153 current-recipient bridge, causal echo suppression, eligible once-only external review | AC-3, AC-5 | Not started. `bridge()` stores internal metadata only; `github_pr` references are refused as outcomes and responses until this adapter exists. Publishing a review needs a separately scoped write grant (the App is read-only by design). |
-| Portable source history import | AC-3 | Proposal only; export lists rules dormant. |
+| Real least-privilege App: bind, PR/CI/review/merge, duplicate and out-of-order delivery, access loss and recovery | AC-1, AC-5 | Deferred to a later version, [#755](https://github.com/ColdPhase/flux/issues/755). No fixture counts as this. |
+| G-1c polling for instances without public HTTPS (2-minute poll of linked open PRs, conditional requests, mode shown in Settings) | AC-3, AC-5 | Delivered 2026-10-30 (`FLUX_GITHUB_DELIVERY=poll`, G-1c "As implemented"). |
+| G-1b one-click App setup through the manifest flow | AC-1 | Deferred to a later version, [#755](https://github.com/ColdPhase/flux/issues/755). |
+| G-1d suggested links found in PR titles, branches and bodies | AC-2 | Deferred to a later version, [#755](https://github.com/ColdPhase/flux/issues/755). |
+| #153 current-recipient bridge and causal echo suppression | AC-3, AC-4 | Delivered 2026-10-30 (section above). |
+| Eligible once-only external review | AC-5 | Deferred, [#755](https://github.com/ColdPhase/flux/issues/755) (proposed direction B2 above). |
+| Portable source history import | AC-3 | Deferred to a later version, [#755](https://github.com/ColdPhase/flux/issues/755). |
+
+### Deferred to a later version (founder decision, 2026-10-30)
+
+**Founder decision (Hubert, 2026-10-30, relayed by the coordinator on PR #751).** The real GitHub App work is
+deferred to a later version and tracked in [#755](https://github.com/ColdPhase/flux/issues/755): registering a
+least-privilege test App and its real installation run (#479 AC-1's real-App part and AC-5), publishing a review on
+GitHub, G-1b manifest setup, G-1d suggested links and portable history import. #479 closes with its in-repository
+criteria (AC-2, AC-3, AC-4, AC-1 at fixture level). Proposed direction for #755, not yet accepted:
+
+1. **B1.** Run the real installation with `FLUX_GITHUB_DELIVERY=poll` (G-1c), so no public HTTPS origin is needed;
+   keep the webhook-mode delivery checks (signature, redelivery, out-of-order) on fixtures. A person still registers
+   the App on github.com.
+2. **B2.** The App stays read-only. The reviewing agent publishes the GitHub review from its own local client under
+   its owner's identity; Flux verifies the review on the linked PR at that head through the read-only App and links its
+   ID once to the Flux assessment. No App write permission is added.
+3. **Option for self-hosters without an App.** Poll mode with a fine-grained personal access token (selected
+   repositories, read-only). Not accepted; its credential storage, per-person authority and revocation need their
+   own design in #755.
 
 ### Primary sources re-read 2026-10-23
 

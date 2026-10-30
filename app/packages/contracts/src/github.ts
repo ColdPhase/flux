@@ -35,8 +35,12 @@ export interface GithubTaskLink {
 }
 export interface GithubCapabilities {
   status: 'configured' | 'unavailable'; authorization: 'connected' | 'required' | 'uncertain';
-  /** Linked PRs can move their task once a writer turns the task's rule on (#74 G-1a). #153 delivery stays disabled. */
-  taskAutomation: 'available' | 'unavailable'; agentDelivery: 'unavailable';
+  /** Linked PRs can move their task once a writer turns the task's rule on (#74 G-1a). */
+  taskAutomation: 'available' | 'unavailable';
+  /** Linked PR events reach the agent that holds the task through the #153 bridge (#479). */
+  agentDelivery: 'available' | 'unavailable';
+  /** G-1c: `webhook` (GitHub reaches this server) or `poll` (open linked PRs every 2 minutes). */
+  delivery: 'webhook' | 'poll';
   /** The project default for new required PR links; null when new links start without a rule. */
   ruleDefault: GithubRuleDefault | null;
 }

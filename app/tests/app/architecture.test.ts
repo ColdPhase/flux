@@ -81,23 +81,26 @@ describe('architecture boundaries', () => {
 
   test('the access use cases keep to ports and stay small, never reaching persistence through helpers (#91)', () => {
     // The workspace, member, AI switch, project, grant, agent and draft use cases run over the repository ports in
-    // `access/repositories.ts`; `@flux/db` implements them. The one recorded exception is `types.ts`: its type-only
-    // import of the Drizzle-derived `Database`/`Executor` stays on the allowlist until #92 gives core its own port.
+    // `access/repositories.ts` and core's transaction port in `types.ts` (#92); `@flux/db` implements them.
     const entries = files(join(root, 'packages/core/src/access'));
     for (const module of ['policy', 'ports', 'repositories', 'records', 'validation']) {
       assert.ok(entries.some((entry) => entry.endsWith(`/access/${module}.ts`)), `access/${module}.ts exists`);
     }
-    const found = reachableImports(root, entries, ['@flux/db', 'drizzle-orm', 'pg', 'pg-boss', 'fastify', 'web-push']);
-    const recorded = /^packages\/core\/src\/types\.ts: @flux\/db(?: |$)/;
-    assert.deepEqual(found.filter((violation) => !recorded.test(violation)), [], 'only the recorded types.ts import of @flux/db is reachable');
-    const types = readFileSync(join(root, 'packages/core/src/types.ts'), 'utf8');
-    const dbImports = types.split('\n').filter((line) => line.includes("'@flux/db'"));
-    assert.ok(dbImports.length > 0 && dbImports.every((line) => line.startsWith('import type ')), 'types.ts imports @flux/db for types only');
+    assert.deepEqual(reachableImports(root, entries, ['@flux/db', 'drizzle-orm', 'pg', 'pg-boss', 'fastify', 'web-push']), []);
     // Every module of the use cases, whatever its name; `policy.ts` is the decision module of #90 and is not part of the split.
     for (const entry of entries.filter((entry) => !entry.endsWith('/access/policy.ts'))) {
       const lines = readFileSync(entry, 'utf8').split('\n').length;
       assert.ok(lines <= 200, `${entry.slice(root.length + 1)} has ${lines} lines; split it before it passes 200`);
     }
+  });
+
+  test('core owns its transaction port and reaches no persistence library from any module (#92)', () => {
+    const entries = files(join(root, 'packages/core/src'));
+    assert.ok(entries.some((entry) => entry.endsWith('/core/src/types.ts')), 'the transaction port exists');
+    assert.deepEqual(reachableImports(root, entries, ['@flux/db', 'drizzle-orm', 'pg', 'pg-boss', 'fastify', 'web-push']), []);
+    const manifest = JSON.parse(readFileSync(join(root, 'packages/core/package.json'), 'utf8')) as { dependencies?: Record<string, string> };
+    assert.deepEqual(Object.keys(manifest.dependencies ?? {}).filter((name) => ['@flux/db', 'drizzle-orm', 'pg', 'pg-boss'].includes(name)), []);
+    assert.deepEqual(loadExceptions(allowlist).filter((entry) => entry.file.startsWith('packages/core/')), [], 'no core debt is left on the allowlist');
   });
 
   test('product UI has no native <select>: the shared Select replaces it (#695)', () => {

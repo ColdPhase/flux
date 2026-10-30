@@ -1,8 +1,7 @@
 import type { AgentExecutionCommand, AgentJsonValue, AgentPostcondition, CoWorkRequestLimits, CoWorkRequestState } from '@flux/contracts';
-import { coworkAdmissionRows, coworkRequestRows, coworkResponseRows } from '@flux/db';
+import { coworkAdmissionRows, coworkRequestRows, coworkResponseRows, type Transaction } from '@flux/db';
 import { coWorkRequestFingerprint, ConflictError, InvalidInputError, normalizeAgentExecution, normalizeCoWorkAdmission,
-  NotFoundError, requireCoWorkAdmission, validateCoWorkRequestLimits, type CoWorkContext, type CoWorkReviewSeparation,
-  type Transaction } from '@flux/core';
+  NotFoundError, requireCoWorkAdmission, validateCoWorkRequestLimits, type CoWorkContext, type CoWorkReviewSeparation } from '@flux/core';
 import { agentExecutionInTransaction } from '../agent-connection/execution.js';
 import type { FluxMcpClaims } from '../agent-connection/context.js';
 import { coWorkNamedTaskGraphLocks } from './graph.js';

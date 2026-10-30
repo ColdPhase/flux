@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { AgentStop } from '@flux/contracts';
+import type { AgentPause, AgentStop } from '@flux/contracts';
 import { ApiError, NetworkError } from '../api/client';
 import { useStreamEvents } from '../api/stream';
 import { useToast } from '../ui';
-import { getAgentStops, stopAgent } from './api';
+import { getAgentStops, pauseAgent, stopAgent } from './api';
 import { getWork, updateWork } from '../work/api';
 import { handOffFailure } from './HandOff';
 
@@ -72,6 +72,7 @@ export function useStopAgent(projectId: string, onSettled: () => void) {
  */
 export function useAgentStops(projectId: string, meId: string) {
   const [stops, setStops] = useState<AgentStop[]>([]);
+  const [pauses, setPauses] = useState<AgentPause[]>([]);
   const reload = useRef<() => void>(() => { /* not mounted */ });
   useEffect(() => {
     let controller: AbortController | null = null;
@@ -79,7 +80,7 @@ export function useAgentStops(projectId: string, meId: string) {
       controller?.abort();
       const current = new AbortController();
       controller = current;
-      getAgentStops(projectId, current.signal).then((read) => { if (!current.signal.aborted) setStops(read.stops); }, () => { /* keep the last list */ });
+      getAgentStops(projectId, current.signal).then((read) => { if (!current.signal.aborted) { setStops(read.stops); setPauses(read.pauses ?? []); } }, () => { /* keep the last list */ });
     };
     reload.current();
     const onFocus = () => reload.current();
@@ -87,11 +88,41 @@ export function useAgentStops(projectId: string, meId: string) {
     return () => { controller?.abort(); window.removeEventListener('focus', onFocus); reload.current = () => { /* unmounted */ }; };
   }, [projectId]);
   useStreamEvents(meId, (event) => {
-    if (event.kind === 'project.agent_stopped.v1' && event.objectId === projectId) reload.current();
+    if ((event.kind === 'project.agent_stopped.v1' || event.kind === 'project.agent_paused.v1') && event.objectId === projectId) reload.current();
   }, () => reload.current());
-  return { stops, reload: useCallback(() => reload.current(), []) };
+  return { stops, pauses, reload: useCallback(() => reload.current(), []) };
 }
 
 /** One Stop request with its own key per call; the sidebar card has no retry state of its own. */
 export const stopAgentWork = (projectId: string, agentId: string, task: { id: string }) =>
   stopAgent(projectId, { agentId, taskId: task.id }, crypto.randomUUID());
+
+/**
+ * Pause and Resume for an external agent's work on one task (#160 AC-5). The agent keeps its hold; it stops at its next
+ * safe point and continues only after Resume. One request at a time; a retry after a lost answer repeats its key.
+ */
+export function usePauseAgent(projectId: string, onSettled: () => void) {
+  const toast = useToast();
+  const [busy, setBusy] = useState<string | null>(null);
+  const attempts = useRef(new Map<string, string>());
+  const pause = useCallback(async (agentId: string, task: { id: string; number: number }, agentName: string, paused: boolean) => {
+    const key = `${agentId}:${task.id}:${paused}`;
+    if (busy) return;
+    if (!attempts.current.has(key)) attempts.current.set(key, crypto.randomUUID());
+    setBusy(`${agentId}:${task.id}`);
+    try {
+      await pauseAgent(projectId, { agentId, taskId: task.id, paused }, attempts.current.get(key)!);
+      attempts.current.delete(key);
+      toast({ message: paused ? `Pausing ${agentName} on #${task.number}` : `Resumed ${agentName} on #${task.number}`, tone: 'success' });
+    } catch (cause) {
+      if (cause instanceof ApiError) attempts.current.delete(key);
+      let message = stopFailure(cause);
+      if (cause instanceof ApiError && cause.code === 'PAUSE_NOT_ALLOWED') message = 'Only a project manager, the agent’s owner or the task’s creator can pause it.';
+      toast({ message, tone: 'danger' });
+    } finally {
+      setBusy(null);
+      onSettled();
+    }
+  }, [busy, projectId, toast, onSettled]);
+  return { pause, busy };
+}
