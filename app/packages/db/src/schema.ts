@@ -2216,7 +2216,10 @@ export const githubBridgeOutbox = pgTable('github_bridge_outbox', {
   linkId: uuid('link_id').notNull().references(() => githubTaskLinks.id, { onDelete: 'cascade' }),
   taskId: uuid('task_id').notNull(), workspaceId: uuid('workspace_id').notNull(), projectId: uuid('project_id').notNull(),
   headSha: text('head_sha').notNull(), event: text('event').notNull(), providerObjectId: text('provider_object_id'), correlationKey: text('correlation_key').notNull(),
-  state: text('state').notNull().default('pending_audience_adapter'), createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  state: text('state', { enum: ['pending_audience_adapter', 'delivered', 'no_recipient', 'no_access', 'suppressed_echo'] }).notNull().default('pending_audience_adapter'),
+  /** 0132 (#479): the connection the #153 bridge delivered this event to; set exactly when `delivered`. */
+  recipientConnectionId: uuid('recipient_connection_id'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [unique().on(t.deliveryId, t.bindingId, t.linkId), unique().on(t.bindingId, t.linkId, t.correlationKey)]);
 // "Let linked PRs move this task" (#74 G-1a, migration 0052): one rule per task, its automatic changes and the project default.
 const WORK_STATUS = ['open', 'in_progress', 'blocked', 'done', 'not_pursued'] as const;

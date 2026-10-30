@@ -1,7 +1,7 @@
 import { createCipheriv, createDecipheriv, hkdfSync, randomBytes } from 'node:crypto';
 import type { CoWorkInboxRecord } from '@flux/contracts';
 import { getProject, InvalidInputError, isUuid, type Database } from '@flux/core';
-import { accessPorts, coworkRecoveryRows, type CoWorkRecoveryPosition } from '@flux/db';
+import { accessPorts, coworkRecoveryRows, githubBridgeDeliveries, type CoWorkRecoveryPosition } from '@flux/db';
 import { withAgentConnection, type FluxMcpClaims } from '../agent-connection/context.js';
 
 interface RecoveryScope { workspaceId: string; projectId: string; connectionId: string; ownerUserId: string;
@@ -44,8 +44,12 @@ class RecoveryCursor {
 export type CoWorkRecoveryRequest = Pick<CoWorkInboxRecord, 'id' | 'unitId' | 'taskId' | 'senderConnectionId' | 'kind' | 'target'
   | 'sourceRefs' | 'criteriaRefs' | 'state' | 'status' | 'effectiveState' | 'readinessReason' | 'version' | 'reason' | 'nextBoundary'
   | 'dependencyRef' | 'responseRef' | 'expiresAt' | 'createdAt'>;
+/** A linked-PR event the #153 bridge delivered to this connection (#479): a reference only, read current PR state yourself. */
+export interface CoWorkProviderEvent { id: string; taskId: string; linkId: string; event: string; headSha: string; at: string }
 export interface CoWorkRecoveryPage { requests: CoWorkRecoveryRequest[]; continuation: string | null;
-  recovery: 'snapshot' | 'continuation' | 'resync_required'; coverage: 'current_authorized_native_pending_references' }
+  recovery: 'snapshot' | 'continuation' | 'resync_required'; coverage: 'current_authorized_native_pending_references';
+  /** Only on a first page (no continuation passed). */
+  providerEvents?: CoWorkProviderEvent[] }
 function projectRequest(r: CoWorkInboxRecord): CoWorkRecoveryRequest {
   const { id, unitId, taskId, senderConnectionId, kind, target, sourceRefs, criteriaRefs, state, status, effectiveState, readinessReason,
     version, reason, nextBoundary, dependencyRef, responseRef, expiresAt, createdAt } = r;
@@ -75,7 +79,8 @@ export function coWorkRecovery(db: Database, secret: string) {
       const page = await rows.page(scope, limit, position);
       return { requests: page.records.map(projectRequest), continuation: page.continuation
         ? cursors.seal(scope, { ...page.continuation, expiresAt: position?.expiresAt ?? now + TTL }) : null,
-        recovery: position ? 'continuation' : 'snapshot', coverage };
+        recovery: position ? 'continuation' : 'snapshot', coverage,
+        ...(position ? {} : { providerEvents: await githubBridgeDeliveries(tx, scope) }) };
     });
   };
 }

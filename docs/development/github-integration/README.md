@@ -117,8 +117,7 @@ not a fake provider event. Every 30-minute window, the API schedules known linke
 objects in batches of five. Each job targets one binding; pending local work is
 coalesced during an outage. No repository discovery scan or agent wake occurs.
 Completed/irrelevant raw deliveries expire after seven days; pending deliveries
-survive outages. Internal #153 bridge metadata remains undelivered until a
-recipient/subscription adapter checks current repository access. No provider
+survive outages. Linked-PR events reach the task's current holder through the #153 bridge below. No provider
 facts enter ordinary discussions, notifications, events or exports. Native task status, blocker text and rule history
 change only through a task rule a writer turned on (G-1a).
 
@@ -137,6 +136,35 @@ Primary sources checked 2026-09-30:
 The [accepted design](2026-09-30-design.md) and
 [independent conditions](2026-09-30-independent-design-review.md) govern this slice.
 
+## #153 current-recipient bridge (#479 AC-3/AC-4, 2026-10-30)
+
+A linked PR's event reaches the one agent connection that works on the task now, as a reference in its addressed
+inbox. It carries no comment text and no authority; the agent reads current PR state with its own access.
+
+- **When.** In the same processing transaction, after the link's current facts are saved, once per new outbox
+  correlation (a redelivery with the same facts never delivers twice).
+- **Current recipient.** The assignee connection of the task's newest open (`pending`, `claimed` or `paused`) execute
+  unit, when that connection is unrevoked, still has the project selected and its agent holds the task
+  (`owner_agent_id`). Holding the task is the standing subscription: no hold, no delivery, and a webhook never
+  reassigns or widens the audience. The outbox row then records `delivered` and the recipient.
+- **Repository access.** A private repository's facts reach the recipient only when the recipient's owner is the
+  binding's author, whose GitHub access this very processing just verified. Otherwise the row is `no_access`; Flux
+  does not call GitHub on another person's behalf. A public repository needs only the Flux checks above.
+- **Echo suppression.** A `pull_request_review` event for a head that a Flux `review` request on the same link already
+  targets (queued, deferred, claimed or resolved) is `suppressed_echo`: the review was coordinated in Flux and is not
+  requested twice.
+- **New head.** A `pull_request` event whose current head differs from the head targeted by queued or deferred Flux
+  review requests on that link supersedes those requests (`reason = 'head_changed'`, version advances). A claimed
+  review keeps its claim; its verdict stays pinned to its own head.
+- **No recipient.** `no_recipient` when nobody holds the task. Nothing is woken or created; the next holder sees
+  current state through ordinary reads.
+- **Read.** The first page of `flux_coordination_inbox` adds `providerEvents`: up to 20 rows delivered to this connection in the
+  project within seven days, newest first, `{ id, taskId, linkId, event, headSha, at }`, rechecked now (binding active,
+  link current, private repository still the author's). Reading is not an
+  acknowledgement.
+- **Storage.** Migration 0132 widens `github_bridge_outbox.state` to `pending_audience_adapter` (rows from before
+  0132), `delivered`, `no_recipient`, `no_access` and `suppressed_echo`, and adds `recipient_connection_id`.
+
 ## What remains for #74 / #479 (reconciled 2026-10-23)
 
 The merged slices are #168 (bindings, verified links, signed durable deliveries), #270 (G-1a rules), #379 (manual
@@ -150,7 +178,8 @@ way round; this table uses the design document's labels ([G-1 §2](2026-10-05-ap
 | G-1c polling for instances without public HTTPS (2-minute poll of linked open PRs, conditional requests, mode shown in Settings) | AC-3, AC-5 | Not started. Needs conditional-request support in the provider (ETag per endpoint) and a poll entry in the existing API sweep, under the same credential-pin and binding-lock order as `process`. |
 | G-1b one-click App setup through the manifest flow | AC-1 | Not started. Needs encrypted storage of the returned App credentials and the six variables winning when set. |
 | G-1d suggested links found in PR titles, branches and bodies | AC-2 | Not started. Needs a suggestion record, a one-tap confirm and the rule that an ID alone never links across bindings. |
-| #153 current-recipient bridge, causal echo suppression, eligible once-only external review | AC-3, AC-5 | Not started. `bridge()` stores internal metadata only; `github_pr` references are refused as outcomes and responses until this adapter exists. Publishing a review needs a separately scoped write grant (the App is read-only by design). |
+| #153 current-recipient bridge and causal echo suppression | AC-3, AC-4 | Delivered 2026-10-30 (section above). |
+| Eligible once-only external review | AC-5 | Not started. Publishing a review needs a separately scoped write grant (the App is read-only by design); see the proposal on PR for #479. |
 | Portable source history import | AC-3 | Proposal only; export lists rules dormant. |
 
 ### Primary sources re-read 2026-10-23

@@ -136,7 +136,7 @@ describe('GitHub App binding, provenance and durable per-binding inbox (#74)', (
     assert.equal((await github.links(actor(owner), work.id)).find((r) => r.bindingId === binding.id && r.facts.number === 42)!.facts.headSha, SHA2, 'old payload cannot restore old head');
     rows = await pool.query('SELECT * FROM github_bridge_outbox WHERE binding_id=$1 AND head_sha=$2', [binding.id, SHA2]);
     assert.equal(rows.rowCount, 1, 'redelivery with a new GUID and same provider object/current facts updates one correlation');
-    assert.equal(rows.rows[0].state, 'pending_audience_adapter');
+    assert.equal(rows.rows[0].state, 'no_recipient', 'no agent holds the task, so the #153 bridge delivers to nobody (#479)');
     const unrelated = JSON.stringify({ action: 'created', installation: { id: Number(INSTALL) }, repository: { id: Number(REPO) }, issue: { number: 1234, pull_request: {} }, comment: { id: 2222 } });
     const unrelatedId = randomUUID(); assert.equal((await webhook(app, unrelated, unrelatedId, 'issue_comment')).statusCode, 202); await github.process(unrelatedId, binding.id);
     assert.equal((await pool.query('SELECT * FROM github_bridge_outbox WHERE delivery_id=$1', [unrelatedId])).rowCount, 0, 'unlinked external comment creates no work request');
