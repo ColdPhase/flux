@@ -5,6 +5,17 @@ How long it takes from `git clone` to a working Flux when you follow the
 plan, tracked in [#305](https://github.com/ColdPhase/flux/issues/305). Add each new
 measurement as a section, newest first, and keep the summary current.
 
+## Founder direction 2026-10-30: an agent may run the person's step
+
+**Founder direction (Hubert, PelikanFix16), 2026-10-30.** The criterion of [#305](https://github.com/ColdPhase/flux/issues/305)
+and [#320](https://github.com/ColdPhase/flux/issues/320) that "a person with Claude Code or Codex and their own model
+account completes the steps on a clean clone", timed to the first agent reply, may be met by an agent that runs the
+README literally with the real client: the host's installed Claude Code with the owner's own credentials, mounted
+read-only into a disposable client home as in the [#160 evidence](evidence/160-workflow/README.md). The agent's own
+reading and typing are not a person's; the run records that difference instead of hiding it. The rest of the
+criteria are unchanged: a fresh clone, the README with nothing added, the deviations listed, its own Compose project
+and ports.
+
 ## Summary
 
 | Step | Linux x86_64, this host, cold, 2026-10-30 | Linux x86_64, this host, "warm" (the cache was not reused), 2026-10-30 | macOS arm64, cold, 2026-10-11 | macOS arm64, warm, 2026-10-11 | Linux amd64 CI, cold, 2026-10-10 | Linux amd64 CI, warm, 2026-10-10 |
@@ -15,6 +26,12 @@ measurement as a section, newest first, and keep the summary current.
 | 4. Sign in and post the first message in the demo conversation | 1.19 s (second run: 0.71 s) | not run on this stack | not re-measured; 0.8 s on 2026-10-06 | not re-measured; 0.8 s on 2026-10-06 | not measured (the workflow has no browser step) | not measured |
 | 5. First agent reply through your own MCP client | blocked: it needs a person with a model account ([#320](https://github.com/ColdPhase/flux/issues/320)). The client steps ran with Codex and Claude Code, see [the walkthrough](#readme-connect-your-own-agent-run-again-with-codex-and-claude-code-2026-10-30) | blocked, same | not measured on a clean clone ([#320](https://github.com/ColdPhase/flux/issues/320)) | not measured on a clean clone | not measured ([#320](https://github.com/ColdPhase/flux/issues/320)) | not measured |
 | From `git clone` to the logins | 6 min 36.7 s | 5 min 39.8 s | 5 min 10.9 s | 2 min 44.8 s | 2 min 20.6 s | 18.7 s |
+
+**Step 5 measured, 2026-10-30 evening (Linux x86_64, warm cache):** from `git clone` to the first answer of a real
+Claude Code 2.1.314 with a model account took **3 min 48.6 s** of wall clock, 1 min 52 s of it in the steps
+themselves; the logins were printed at 1 min 44.1 s and the answer took 32.7 s. See
+[the run](#linux-x86_64-2026-10-30-evening-the-first-agent-reply-from-a-clean-clone-320). The step 5 cells below
+are from the earlier runs of the same day.
 
 The 2026-10-30 columns are one agent-run on a heavily shared machine: a load average of 12 before the cold
 pass and 17 before the second, with 36 to 40 containers running and five other image builds at once when I stopped
@@ -61,6 +78,86 @@ and about 7 s on the Linux runner, a datacenter network. The cold macOS pass use
 README, listed in the [2026-10-11 section](#macos-arm64-2026-10-11-cold-and-warm). The
 2026-10-06 run is kept below. Its step 4 figure is the only macOS first-message number. The
 shallow candidate measurement above records only the source clone, not application startup.
+
+## Linux x86_64, 2026-10-30 (evening): the first agent reply from a clean clone (#320)
+
+The whole README quick start, T1 to T7, from a fresh clone to the first answer of a real Claude Code with a model
+account, under the [founder direction of 2026-10-30](#founder-direction-2026-10-30-an-agent-may-run-the-persons-step).
+An agent ran it (claude-hubert), one step after another with a wall-clock mark at each boundary.
+
+### Machine, revision and client
+
+- **Host:** the machine of the earlier Linux runs: AMD Ryzen 9 7900X (24 threads), 61 GiB, Fedora Linux 42, kernel
+  6.19.14-108.fc42.x86_64, NVMe; Docker Engine 29.4.2, Compose 5.1.2; Git 2.54.0.
+- **Load:** load average 8.2 (1 minute) and 23 other containers running before the clone, 10.3 after the answer.
+- **Revision:** `b6ba65c9b944579f4ca692c3629edddde155a599` ("fix(ai-lock): GitHub bridge and agent_pauses respect
+  the workspace AI lock (#614) (#765)"), cloned with the README's `git clone --depth 1` at 20:02:57 UTC.
+- **Client:** Claude Code **2.1.314**, the host's installed binary, run in a disposable container
+  (`mcr.microsoft.com/playwright/python:v1.62.0-noble` with the pinned Python Playwright client added) on the host
+  network. The owner's `~/.claude/.credentials.json` was mounted read-only and copied into the container's throwaway
+  home, as in the [#160 evidence](evidence/160-workflow/README.md#genuine-start-changed-plan-resume-in-both-clients-2026-10-30);
+  the host file was not written, and no host settings, history or repository instructions were mounted. The model
+  was `claude-opus-5-5`. The working folder of `claude mcp add` was an empty folder.
+- **Browser:** Playwright 1.62.0 Chromium in the same container: sign-in, first message, the Connect page and the
+  consent. An `xdg-open` shim recorded the authorize URL that `claude mcp login` opens.
+
+### Deviations from the README
+
+1. `FLUX_PORT=35200 FLUX_MAILPIT_PORT=35201` on `./flux up`. 8081 was taken on this host, which the README covers;
+   the Mailpit port was chosen so as not to touch another project (criterion 4 of #305).
+2. Standard input of `./flux up` and `./flux demo` was `/dev/null`, so the first-run subscription question was not
+   asked. `claude mcp login flux` ran under `script` (a pseudo-terminal), as the README requires.
+3. Step 6 used `claude -p "<the README's question>" --allowedTools mcp__flux --output-format json`. A person in an
+   interactive `claude` approves each Flux tool the first time it is used; `-p` has nobody to ask, so the flag gives
+   the same approvals. The README now says so (friction 2).
+4. **The build cache was warm:** 42 build steps were cached, from other checkouts of the same lockfile on this host.
+   This is the warm figure, not the cold one; the cold figures of the same host are in the earlier sections.
+
+### Timing
+
+From the start of `git clone`. The wall clock includes the agent's own pauses between steps (writing the next
+command, one retry) and the start of each browser container, in place of a person's reading and typing; the
+machine column is the step alone.
+
+| Mark | Wall clock from `git clone` | The step alone |
+| --- | --- | --- |
+| T1 `git clone --depth 1` done | 9.0 s | 9.0 s |
+| T2 `./flux up` printed the address (HTTP 200 0.01 s later) | 1 min 14.2 s | 1 min 2.7 s |
+| T3 `./flux demo` printed the logins | 1 min 44.1 s | 1.7 s |
+| T4 signed in as Ada, first message shown in *Community garden sensors* (kept after a reload) | 2 min 26.9 s | 1.6 s (reload 1.8 s) |
+| T5 personal agent created, project granted, connection saved | 2 min 44.4 s | 1.2 s |
+| T6 `claude mcp login flux`: "Authenticated with "flux"" (`claude mcp list`: ✔ Connected) | 3 min 8.6 s | `mcp add` 0.6 s; login to authenticated 5.7 s, of which the consent in the browser 1.8 s |
+| T7 the answer to the README's question shown | **3 min 48.6 s** | 32.7 s (20 turns, model time 30.5 s, USD 0.37) |
+
+The steps alone add up to 1 min 52 s. T4 and T5 each needed one more try: the first step-4 container lacked the Python
+Playwright module (the agent's tooling, not Flux), and the first Connect script stopped on its own 5-second wait for
+the page heading while the app was still loading. Neither is in the "step alone" column.
+
+### What the reply showed
+
+The answer came from Flux's read tools only: the project's goal (moisture before frost), the hardware and cost per
+bed from the material, the LoRa range test from the doc's second version, the sketch's open question, and the open
+points (six sensors for twelve beds, the school's two sensors, no confirmed order, nothing recorded as a task or
+decision). It saw the message posted in T4 and called it a test thread. It said the connection can only read and
+propose, and changed nothing. Claude Code also listed the account's own claude.ai connector next to `flux`; that is
+the account's, not Flux's.
+
+### Friction found
+
+1. **None in steps 1 to 5 of the Connect section.** The page showed the commands with the right port, the
+   connection with "1 project · Read · Suggest", and the consent the two granted actions.
+2. **Step 6 did not say that Claude Code asks before it uses a Flux tool** (once per tool in an interactive session),
+   nor how to ask from a script. Fixed in the README: approve the Flux tools when asked, or pass `--allowedTools
+   mcp__flux` to `claude -p`.
+3. The README's last paragraph of the section said the sign-in "used no model account". It now names this run.
+
+### Cleanup and isolation
+
+The project was the launcher's own, `flux-843ac9cd`, on ports 35200 and 35201, free before the run. `claude mcp
+remove flux`, then the client container was removed with its home and the copied credentials; `./flux clean -y`
+removed the containers, volumes and images, and a search for `843ac9cd` found no container or volume afterwards. The
+local client image and the clone's `docker/.env` (generated secrets and demo passwords, not recorded here) were
+deleted. No other Compose project was touched.
 
 ## Linux x86_64, 2026-10-30: clean clones, step 4 and the Connect walkthrough
 
@@ -196,14 +293,15 @@ which pins the loopback copy of the Connect guide.
 
 - **Step 5 with a person and their model account** on a clean clone, and so the time from `git clone` to the first model
   reply ([#320](https://github.com/ColdPhase/flux/issues/320), [#305](https://github.com/ColdPhase/flux/issues/305)).
-  **Blocked: it needs a person with Claude Code or Codex signed in to a model account, and the usage that costs.**
+  **Blocked at the time: it needs a person with Claude Code or Codex signed in to a model account.** Measured the same
+  evening [under founder direction](#linux-x86_64-2026-10-30-evening-the-first-agent-reply-from-a-clean-clone-320).
   The 2026-10-10 run measured a reply of 35 s (17 turns, USD 0.35 on the author's account), but not on a clean clone.
   **Unblock condition:** the checklist below, run by Hubert or anyone with a client and a model account, recorded
   as a new section of this file.
 - **macOS arm64:** nothing was re-run on a Mac. The Mac columns are those of 2026-10-11.
 - **A warm pass with a warm cache**, and the first-run subscription question (as on 2026-10-23).
 
-### Checklist for the person's run (the unblock for step 5)
+### Checklist for a person's run (step 5; run by an agent on 2026-10-30 evening, above)
 
 A person with Claude Code or Codex, signed in to their own model account, on a machine with only Git and Docker:
 

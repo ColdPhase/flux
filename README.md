@@ -172,7 +172,9 @@ computer with your own model account, which Flux never sees. On the `./flux demo
    (`claude mcp list` shows Connected).
 6. **Ask it something**, for example: "Using Flux, what is the Community garden sensors project
    working on, and what is still open?" The client reads the project's conversations, tasks and
-   docs with Flux's read tools, and answers in your client; nothing in Flux changes. Replying in
+   docs with Flux's read tools, and answers in your client; nothing in Flux changes. Claude Code
+   asks before it uses each Flux tool the first time: allow it. From a script, `claude -p "…"
+   --allowedTools mcp__flux` gives the same approval. Replying in
    Flux or creating tasks needs **Run approved project actions** and a standing grant: on the same
    page, under **Standing grants** for your connection, add the grant you want. A suggestion the
    agent sends waits in your **Inbox** under **Needs you**, with what it saw, what it makes of it, what it
@@ -184,8 +186,10 @@ computer needs an HTTPS address: the operator sets `FLUX_PUBLIC_ORIGIN` behind a
 [integrations for operators](docs/integrations/README.md#for-operators)). Flux accepts clients
 only through their public client metadata documents, so the server needs outbound HTTPS when a
 client signs in. On 2026-10-30 Claude Code 2.1.314 and Codex 0.163.0 both completed this sign-in
-against a clean clone on a loopback address, with a connection that grants only the two ticked actions;
-that check used no model account ([what was run](docs/development/time-to-first-run.md#readme-connect-your-own-agent-run-again-with-codex-and-claude-code-2026-10-30)).
+against a clean clone on a loopback address, with a connection that grants only the two ticked actions
+([what was run](docs/development/time-to-first-run.md#readme-connect-your-own-agent-run-again-with-codex-and-claude-code-2026-10-30)),
+and Claude Code with a model account answered step 6 3 min 49 s after `git clone`
+([the run](docs/development/time-to-first-run.md#linux-x86_64-2026-10-30-evening-the-first-agent-reply-from-a-clean-clone-320)).
 
 ## Repository layout
 

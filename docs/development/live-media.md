@@ -6,6 +6,17 @@ uses `livekit-client` `2.17.2` from a lockfile. Both versions must be reviewed
 together before an upgrade. This page describes the TURN/TLS addition. It does
 not certify call quality, k3s installation or real device support.
 
+## Founder direction 2026-10-30: a simulated public host
+
+**Founder direction (Hubert, PelikanFix16), 2026-10-30.** The requirement of [#63](https://github.com/ColdPhase/flux/issues/63)
+for "a public host with DNS, trusted TLS, NAT and TURN on 443" may be met by a faithful simulation that the agents
+build and verify themselves, instead of rented infrastructure. Faithful means: a separate "internet" network, NAT
+routers in front of the client networks, a DNS server for the Flux and TURN names, TLS from one CA the clients trust,
+Flux behind the documented reverse proxy on 443, TURN/TLS on 443 and TURN/UDP on 3478 at the advertised public
+media address, and clients that can reach only the public side. Real browsers must connect through it. The
+simulation does not prove a public ACME certificate, real Internet paths, carrier NAT or physical devices; results
+say so. See [Simulated public host](#simulated-public-host-63-2026-10-30).
+
 ## Compose deployment
 
 Layer `docker/compose.source.yaml`, `docker/compose.live.yaml`, then
