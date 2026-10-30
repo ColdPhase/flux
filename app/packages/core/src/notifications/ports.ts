@@ -92,6 +92,8 @@ export interface NotificationFacts {
   /** Null unless the invitation is still pending and its session still available. */
   liveInvitation(invitationId: string): Promise<LiveInvitationFacts | null>;
   names(userIds: string[]): Promise<Map<string, string>>;
+  /** F-030: the workspace's visible name when it is encrypted, else null. */
+  sealedWorkspace?(workspaceId: string): Promise<{ name: string } | null>;
 }
 
 export type EmailAddressKind = 'account' | 'extra';

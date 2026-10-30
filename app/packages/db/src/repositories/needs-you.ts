@@ -2,6 +2,7 @@ import { and, desc, eq, inArray, sql } from 'drizzle-orm';
 import * as schema from '../schema.js';
 import type { DbExecutor } from './push.js';
 import { toDecisionRecord } from './work.js';
+import { openRows } from '../sealing.js';
 
 /**
  * Drizzle rows for the Inbox "Needs you" queue (#342). They satisfy the `NeedsYouRepository` port of
@@ -34,7 +35,7 @@ export function needsYouRows(db: DbExecutor) {
     /** Proposed decisions of these projects, newest first. */
     async proposedDecisions(projectIds: string[], limit: number) {
       if (!projectIds.length) return [];
-      const rows = await db.select().from(d).where(and(inArray(d.projectId, projectIds), eq(d.status, 'proposed'))).orderBy(desc(d.createdAt)).limit(limit);
+      const rows = await openRows(db, 'project_decisions', await db.select().from(d).where(and(inArray(d.projectId, projectIds), eq(d.status, 'proposed'))).orderBy(desc(d.createdAt)).limit(limit));
       return rows.map(toDecisionRecord);
     },
 

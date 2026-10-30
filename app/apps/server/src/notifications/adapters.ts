@@ -65,7 +65,14 @@ export function settingsPorts(db: Database, mailer: VerificationMailer, origin: 
     async placeNames(list, userId) {
       const readable: typeof list = [];
       for (const place of list) {
-        const decision = await authorizer.canRead(userId, place);
+        let decision: Awaited<ReturnType<typeof authorizer.canRead>>;
+        try { decision = await authorizer.canRead(userId, place); }
+        catch (error) {
+          // F-030 (#712 review P2-3): only an active member learns a lock, so a place of a locked encrypted workspace is
+          // listed, named by its workspace (the openers below), instead of failing the whole settings page.
+          if ((error as { code?: unknown }).code === 'WORKSPACE_LOCKED') { readable.push(place); continue; }
+          throw error;
+        }
         if (decision.workspaceId && readsSource(decision, { workspaceId: decision.workspaceId, ...place })) readable.push(place);
       }
       const projects = await places.projectNames(readable.filter((place) => place.type === 'project').map((place) => place.id));
