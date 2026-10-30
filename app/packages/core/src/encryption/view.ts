@@ -15,6 +15,8 @@ export interface EncryptionViewInput {
   /** The holders of the current version while a rotation runs (who the new key opens for). */
   rotationOpenFor?: { userId: string | null; name: string | null; kind: 'password' | 'recovery' }[];
   rotationReason?: { kind: string; userId: string | null; name: string | null } | null;
+  /** Why the key last changed: the finished rotation's reason (S3). */
+  keyChangeReason?: { kind: string; userId: string | null; name: string | null } | null;
 }
 
 /** A sealed workspace whose key rows are missing reads as locked (fail closed). */
@@ -43,6 +45,7 @@ export function presentEncryption(input: EncryptionViewInput, role: WorkspaceRol
     recoveryCode: input.recoveryCode,
     rotation: rotationView(input, unlocked, role),
     keyChangedAt: input.keyChangedAt ? input.keyChangedAt.toISOString() : null,
+    keyChangeReason: keyChangeReasonView(input, role),
   };
 }
 
@@ -62,4 +65,13 @@ function rotationView(input: EncryptionViewInput, unlocked: boolean, role: Works
     reason: role !== null && role !== 'guest' && input.rotationReason && ['removed', 'demoted', 'holder_deleted'].includes(input.rotationReason.kind)
       ? { kind: input.rotationReason.kind as 'removed' | 'demoted' | 'holder_deleted', userId: input.rotationReason.userId, name: input.rotationReason.name }
       : null };
+}
+
+const REASON_KINDS = ['removed', 'demoted', 'holder_deleted'] as const;
+/** Why the key last changed (S3): the same readers as `rotation.reason` (everyone but guests), only after a rotation finished. */
+function keyChangeReasonView(input: EncryptionViewInput, role: WorkspaceRole | null): WorkspaceEncryption['keyChangeReason'] {
+  const reason = input.keyChangeReason;
+  if (!input.keyChangedAt || !reason || role === null || role === 'guest') return null;
+  const kind = REASON_KINDS.find((known) => known === reason.kind);
+  return kind ? { kind, userId: reason.userId, name: reason.name } : null;
 }

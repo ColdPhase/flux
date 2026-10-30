@@ -1209,13 +1209,17 @@ class KeyRotation(Base):
         section = self.section(page)
         expect(section.locator("[data-key-changed]")).to_have_count(0)
         self.call(world, "ada", "DELETE", f"/api/v1/workspaces/{world.a}/members/{eli['id']}", None, None)
-        expect(section.locator("[data-key-changed]")).to_have_text(re.compile(r"^New key since \d{1,2} \w{3}\.$"), timeout=60000)
+        # Why the key changed outlives the rotation (S3, `keyChangeReason`).
+        expect(section.locator("[data-key-changed]")).to_have_text(re.compile(r"^New key since \d{1,2} \w{3}, after Eli left\.$"), timeout=60000)
         expect(section.locator("[data-key-rotation]")).to_have_count(0)
         expect(section.locator("[data-no-recovery-code]")).to_have_text(f"{A_NAME} has no recovery code. Make a new one and keep it safe.")
         final = self.encryption(world)
         self.assertIsNone(final["rotation"])
         self.assertFalse(final["recoveryCode"])
         self.assertIsNotNone(final["keyChangedAt"])
+        self.assertEqual(final["keyChangeReason"], {"kind": "removed", "userId": eli["id"], "name": "Eli Dahl"})
+        section.scroll_into_view_if_needed()
+        shot(page, "after-real-rotation-computer")
 
     def sign_up_eli(self, world: SimpleNamespace) -> dict:
         """A new admin who really is added, so that a test can really remove them."""

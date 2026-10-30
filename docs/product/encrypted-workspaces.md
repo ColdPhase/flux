@@ -603,7 +603,7 @@ stateDiagram-v2
    old-version value that does not open stalls it the same way. In one transaction the worker then deletes the DEK
    wraps, unlock rows and `workspace_key_versions` rows (their check values are envelopes under the old DEKs) of
    every version below `current_version`, and the tombstones, sets `live_versions =
-   {current_version}` and `rotation = 'none'`, deletes the progress row, and records
+   {current_version}` and `rotation = 'none'`, moves `rotation_reason` to `key_change_reason` (S3), deletes the progress row, and records
    `workspace.key_rotated.v1`. Afterwards it runs `VACUUM` on the tables it touched, then
    `CHECKPOINT` (the Compose database role may; a failed one is retried by the next sweep). That makes the dead row versions holding old
    ciphertext reusable sooner and lets WAL segments be recycled.
@@ -1280,8 +1280,9 @@ project picker and in Create like any other space.
     state again every few seconds. While `rotation.reason` names the person, the progress line says why:
     "Changing the key after Ben left · 62%…" (removed), "…after Ben's role changed" (demoted), "…after Ben's
     account was deleted" (`holder_deleted`). The line below draws `rotation.openFor` ("The new key opens for
-    Ada, Cy and the recovery code."). Both exist only while the rotation runs; after the finish the line
-    reads "New key since 23 Oct." until the wire keeps the reason. After the finish, quietly: "New key since 23 Oct, after Ben left." Below it, from the start
+    Ada, Cy and the recovery code."). Both exist only while the rotation runs. The finish moves the reason to
+    `workspace_keys.key_change_reason` (migration 0133, ids and a kind only), exposed as
+    `encryption.keyChangeReason` to everyone but guests, so after the finish, quietly: "New key since 23 Oct, after Ben left." Below it, from the start
     onwards: "The new key opens for Ada and Cy." That is the holder set the start sealed to.
   - For owners and admins: a quiet **Lock now**, which uses the panel's inline confirm: "Everyone in
     Garden club loses access until an owner or admin unlocks it again." with **Lock Garden club** and

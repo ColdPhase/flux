@@ -48,18 +48,19 @@ function rotationState(rotation: KeyRotation, locked: boolean): RotationState {
   if (!rotation.startedAt) return 'starting';
   return rotation.paused ? 'paused' : 'running';
 }
-/** "after Ben left": why the key changes, when the server names the person. */
-function rotationWhy(rotation: KeyRotation): string {
-  const who = rotation.reason?.name ? first(rotation.reason.name) : '';
+type KeyReason = KeyRotation['reason'];
+/** " after Ben left": why the key changes or changed, when the server names the person. */
+function why(reason: KeyReason): string {
+  const who = reason?.name ? first(reason.name) : '';
   if (!who) return '';
-  switch (rotation.reason!.kind) {
+  switch (reason!.kind) {
     case 'removed': return ` after ${who} left`;
     case 'demoted': return ` after ${who}’s role changed`;
     default: return ` after ${who}’s account was deleted`;
   }
 }
 function rotationLine(rotation: KeyRotation, locked: boolean, name: string): string {
-  const changing = `Changing the key${rotationWhy(rotation)}`;
+  const changing = `Changing the key${why(rotation.reason)}`;
   switch (rotationState(rotation, locked)) {
     // What the security notice every holder gets says too: no table, no column, nothing about the content.
     case 'stalled': return 'The key change can’t finish: some stored data doesn’t open. Ask your server’s operator.';
@@ -97,7 +98,7 @@ export function EncryptionSection({ workspace, members, meId, myRole, offerCode,
   const locked = enc.state === 'locked';
   // A key rotation (an owner or admin left) ends the old recovery code until an owner makes a new one.
   const noCode = !enc.recoveryCode;
-  const rotation = enc.rotation as KeyRotation | null;
+  const rotation = enc.rotation;
   const changedOn = enc.keyChangedAt && !Number.isNaN(Date.parse(enc.keyChangedAt)) ? dayOnly.format(new Date(enc.keyChangedAt)) : '';
   // The other owners and admins, whom a holder can let set a first password.
   const candidates = manager && enc.myPassword && members
@@ -141,7 +142,7 @@ export function EncryptionSection({ workspace, members, meId, myRole, offerCode,
           {grantUntil ? <p className="people__hint" data-password-grant="">You can set an unlock password until {timeOnly.format(new Date(grantUntil))}.</p>
             : !enc.myPassword ? <p className="people__hint">You don’t have an unlock password yet. Another owner or admin can let you set one{noCode ? '.' : ', or use the recovery code.'}</p> : null}
           {rotation ? <p className="people__hint" data-key-rotation={rotationState(rotation, locked)}>{rotationLine(rotation, locked, name)}</p>
-            : changedOn ? <p className="people__hint" data-key-changed="">New key since {changedOn}.</p> : null}
+            : changedOn ? <p className="people__hint" data-key-changed="">New key since {changedOn}{why(enc.keyChangeReason) ? `,${why(enc.keyChangeReason)}` : ''}.</p> : null}
           {rotation && openForLine(rotation) ? <p className="people__hint" data-key-open-for="">{openForLine(rotation)}</p> : null}
           {noCode ? <p className="people__hint" data-no-recovery-code="">{owner ? `${name} has no recovery code. Make a new one and keep it safe.` : `${name} has no recovery code. An owner can make a new one.`}</p> : null}
         </>

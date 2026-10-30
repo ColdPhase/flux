@@ -49,6 +49,11 @@ export interface WorkspaceEncryption {
   };
   /** When the key last changed by a rotation; null while the creation key is current. */
   keyChangedAt: string | null;
+  /**
+   * Why the key last changed ("New key since 23 Oct, after Ben left."): the finished rotation's reason, kept after it
+   * (S3). Null for guests, while the creation key is current, and for a rotation that had none.
+   */
+  keyChangeReason: { kind: 'removed' | 'demoted' | 'holder_deleted'; userId: string | null; name: string | null } | null;
 }
 
 export interface CreateEncryptedWorkspaceCommand {

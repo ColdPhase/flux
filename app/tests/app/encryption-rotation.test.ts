@@ -179,6 +179,12 @@ describe('F-030 S2c key rotation (AC-13)', () => {
     const after = await readWorkspace(c.owner.browser, c.ws);
     assert.equal(after.encryption?.rotation, null);
     assert.ok(after.encryption?.keyChangedAt);
+    // S3: why the key changed outlives the rotation, for everyone but guests ("New key since 23 Oct, after Ben left.").
+    assert.deepEqual(after.encryption?.keyChangeReason, { kind: 'removed', userId: ben.who.id, name: 'Ben' });
+    assert.deepEqual((await readWorkspace(c.people.Cy!.who.browser, c.ws)).encryption?.keyChangeReason, { kind: 'removed', userId: ben.who.id, name: 'Ben' });
+    assert.equal((await readWorkspace(c.people.Dee!.who.browser, c.ws)).encryption?.keyChangeReason, null, 'a guest is not told who left');
+    assert.deepEqual((await pool.query(`SELECT rotation_reason, key_change_reason->>'kind' AS kind FROM workspace_keys WHERE workspace_id = $1`, [c.ws])).rows,
+      [{ rotation_reason: null, kind: 'removed' }], 'the finish moves the reason over');
 
     // Ada has no confirmation of v2 and v1 is gone: her next unlock accepts v2 by its check value and a stored
     // envelope (S1 review carry-over), then confirms it.
@@ -484,9 +490,13 @@ describe('F-030 S2c key rotation (AC-13)', () => {
     const c = await club('Planted tombstone club', ['Ben']);
     await seed(c, 2);
     const ada = await holderOf(c.ws, c.owner.id);
+    const ben = await holderOf(c.ws, c.people.Ben!.who.id);
     // One INSERT, no key and no secret: a tombstone naming the owner's own holder.
     await pool.query(`INSERT INTO workspace_removed_holders (workspace_id, holder_id, user_id, public_key) VALUES ($1, $2, $3, $4)`, [c.ws, ada.id, c.owner.id, ada.public_key]);
     await removeMember(c.owner, c.ws, c.people.Ben!.who);
+    // The decoy does not keep the real removal from being pinned (#718 review P3-1): Ben's record is written at his removal.
+    assert.deepEqual((await pool.query('SELECT holder_id::text AS id, user_id FROM workspace_removals WHERE workspace_id = $1 AND user_id = $2',
+      [c.ws, c.people.Ben!.who.id])).rows, [{ id: ben.id, user_id: c.people.Ben!.who.id }], 'the genuine removal is pinned beside the decoy');
     await waitFor('the start refuses as tampering', async () => (await keysOf(c.ws)).tampered_at);
     assert.equal((await keysOf(c.ws)).rotation, 'pending');
     assert.equal((await pool.query('SELECT count(*)::int AS n FROM workspace_removals WHERE workspace_id = $1 AND holder_id = $2', [c.ws, ada.id])).rows[0].n, 0,

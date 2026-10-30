@@ -1,8 +1,8 @@
 import {
-  ENCRYPTED_WORKSPACES_PATH, WORKSPACE_ENCRYPTION_TAMPERED_EVENT, WORKSPACE_LOCKED, WORKSPACE_LOCKED_EVENT, WORKSPACE_UNLOCKED_EVENT, WORKSPACE_UNLOCK_PASSWORD_GRANTED_EVENT,
-  WORKSPACE_UNLOCK_PASSWORD_SET_EVENT, workspaceLockPath, workspaceRecoveryCodePath, workspaceUnlockGrantsPath, workspaceUnlockPasswordPath, workspaceUnlockPath,
+  ENCRYPTED_WORKSPACES_PATH, WORKSPACE_ENCRYPTION_EVENTS, WORKSPACE_LOCKED, workspaceLockPath, workspaceRecoveryCodePath, workspaceUnlockGrantsPath, workspaceUnlockPasswordPath, workspaceUnlockPath,
   type CreateEncryptedWorkspaceCommand, type CreateEncryptedWorkspaceResult, type EncryptionStateResult, type GrantUnlockPasswordCommand, type GrantUnlockPasswordResult,
-  type NewRecoveryCodeCommand, type NewRecoveryCodeResult, type SetUnlockPasswordCommand, type UnlockWorkspaceCommand, type Workspace,
+  type LockedWorkspaceRef, type NewRecoveryCodeCommand, type NewRecoveryCodeResult, type SetUnlockPasswordCommand, type UnlockWorkspaceCommand, type Workspace,
+  type WorkspaceEncryption,
 } from '@flux/contracts';
 import { ApiError, NetworkError, request } from '../api/client';
 
@@ -17,31 +17,11 @@ export { WORKSPACE_LOCKED };
 /** A workspace with its encryption state; `encryption` is null for a plain workspace. */
 export type EncryptedWorkspace = Workspace;
 
-/**
- * A key rotation as the server reports it (S2c): `startedAt` is null while it waits to start, and `stalled` says it cannot finish
- * (some stored data does not open; every holder also gets a `security` notice). Read as optional, so an older answer without it reads as running.
- */
-export type KeyRotation = NonNullable<Workspace['encryption']>['rotation'] & {
-  startedAt: string | null; stalled?: boolean;
-  /** Who the new key opens for (owners and admins read it; others get []). */
-  openFor?: { userId: string | null; name: string; kind: 'password' | 'recovery' }[];
-  /** Why the key changes; null for guests. */
-  reason?: { kind: 'removed' | 'demoted' | 'holder_deleted'; userId: string | null; name: string | null } | null;
-};
+/** A key rotation as the server reports it (S2c): progress, `stalled`, who the new key opens for and why. */
+export type KeyRotation = NonNullable<WorkspaceEncryption['rotation']>;
+export type { LockedWorkspaceRef };
 
-/** An encrypted workspace that is locked here, as `/search`, `/inbox`, `/needs-you` and `/return` name it (`lockedWorkspaces`, S2a-2c). */
-export interface LockedWorkspaceRef { id: string; name: string }
-
-/**
- * Key rotation (S2c) is not in the contracts' event list yet; its two events are named here so the interface follows them when they arrive
- * (`workspace.key_rotation_started.v1`, `workspace.key_rotated.v1`, ids only).
- */
-export const WORKSPACE_KEY_ROTATION_STARTED_EVENT = 'workspace.key_rotation_started.v1';
-export const WORKSPACE_KEY_ROTATED_EVENT = 'workspace.key_rotated.v1';
-const ENCRYPTION_EVENTS: ReadonlySet<string> = new Set([
-  WORKSPACE_UNLOCKED_EVENT, WORKSPACE_LOCKED_EVENT, WORKSPACE_UNLOCK_PASSWORD_GRANTED_EVENT, WORKSPACE_UNLOCK_PASSWORD_SET_EVENT, WORKSPACE_ENCRYPTION_TAMPERED_EVENT,
-  WORKSPACE_KEY_ROTATION_STARTED_EVENT, WORKSPACE_KEY_ROTATED_EVENT,
-]);
+const ENCRYPTION_EVENTS: ReadonlySet<string> = new Set(WORKSPACE_ENCRYPTION_EVENTS);
 /** Every event that changes what the interface shows of an encrypted workspace: the lock, the passwords and the key. */
 export const isEncryptionEvent = (kind: string) => ENCRYPTION_EVENTS.has(kind);
 
@@ -64,9 +44,9 @@ export function lockedWorkspaceId(error: unknown): string | null {
  * "Waiting to be unlocked" row appears in the sidebar, Home, the Inbox and search. The shell ignores ids it already shows as locked.
  */
 export function noteLockedWorkspaces<T>(answer: T): T {
-  const locked = (answer as { lockedWorkspaces?: unknown } | null)?.lockedWorkspaces;
+  const locked = (answer as { lockedWorkspaces?: LockedWorkspaceRef[] } | null)?.lockedWorkspaces;
   if (Array.isArray(locked) && typeof window !== 'undefined') {
-    for (const space of locked as LockedWorkspaceRef[]) {
+    for (const space of locked) {
       if (typeof space?.id === 'string') window.dispatchEvent(new CustomEvent(WORKSPACE_LOCKED_DOM_EVENT, { detail: { workspaceId: space.id } }));
     }
   }

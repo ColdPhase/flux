@@ -57,6 +57,8 @@ export interface EncryptionViewRow {
   grantUntil: Date | null;
   recoveryCode: boolean;
   keyChangedAt: Date | null;
+  /** S3: why the key last changed (the finished rotation's reason), with the person's name. */
+  keyChangeReason: { kind: string; userId: string | null; name: string | null } | null;
   /** S2c: the rotation state and, while one runs, its progress. */
   rotation: 'none' | 'pending' | 'reencrypting';
   rotationProgress: { rowsDone: number; rowsEstimate: number; startedAt: Date; stalled: boolean } | null;
@@ -167,7 +169,9 @@ export function workspaceEncryptionRows(db: DbExecutor) {
     /**
      * Turns the tombstones without a record into pinned removal records, chained after the last one, and moves the
      * head. The caller holds `workspace_keys` FOR UPDATE. 'broken' (nothing written) when the existing chain does not
-     * verify: appending would launder a deletion. 0 without a configured pin.
+     * verify: appending would launder a deletion. 'broken' too when a tombstone was planted (it names a holder row that
+     * still exists): the genuine tombstones are pinned all the same, and only the planted ones are left out, so a decoy
+     * cannot keep a real removal from being pinned (#718 review P3-1). 0 without a configured pin.
      */
     async recordRemovals(workspaceId: string): Promise<number | 'broken'> {
       if (!removalPinner) return 0;
@@ -186,10 +190,11 @@ export function workspaceEncryptionRows(db: DbExecutor) {
       // naming a row that still exists was planted: pinning it would exclude that holder for good (S2c review P2-2).
       const [planted] = await rowsOf<{ one: number }>(db, sql`SELECT 1 AS one FROM workspace_removed_holders t JOIN workspace_holders h
         ON h.workspace_id = t.workspace_id AND (h.id = t.holder_id OR h.public_key = t.public_key) WHERE t.workspace_id = ${workspaceId} LIMIT 1`);
-      if (planted) return 'broken';
       const fresh = await rowsOf<{ holderId: string; userId: string | null; publicKey: string }>(db, sql`SELECT t.holder_id AS "holderId", t.user_id AS "userId",
         t.public_key AS "publicKey" FROM workspace_removed_holders t WHERE t.workspace_id = ${workspaceId}
-        AND NOT EXISTS (SELECT 1 FROM workspace_removals r WHERE r.workspace_id = t.workspace_id AND r.holder_id = t.holder_id) ORDER BY t.removed_at, t.holder_id`);
+        AND NOT EXISTS (SELECT 1 FROM workspace_removals r WHERE r.workspace_id = t.workspace_id AND r.holder_id = t.holder_id)
+        AND NOT EXISTS (SELECT 1 FROM workspace_holders h WHERE h.workspace_id = t.workspace_id AND (h.id = t.holder_id OR h.public_key = t.public_key))
+        ORDER BY t.removed_at, t.holder_id`);
       let seq = records.length;
       for (const row of fresh) {
         seq += 1;
@@ -199,7 +204,7 @@ export function workspaceEncryptionRows(db: DbExecutor) {
         previous = pin;
       }
       if (fresh.length) await db.execute(sql`UPDATE workspace_keys SET removal_head = ${previous} WHERE workspace_id = ${workspaceId}`);
-      return fresh.length;
+      return planted ? 'broken' : fresh.length;
     },
     tombstones: (workspaceId: string) => rowsOf<{ holderId: string; publicKey: string }>(db, sql`SELECT holder_id AS "holderId", public_key AS "publicKey"
       FROM workspace_removed_holders WHERE workspace_id = ${workspaceId}`),
@@ -347,7 +352,9 @@ export function workspaceEncryptionRows(db: DbExecutor) {
              FROM workspace_dek_wraps dw JOIN workspace_holders h ON h.id = dw.holder_id LEFT JOIN auth_users a ON a.id = h.user_id
              WHERE dw.workspace_id = k.workspace_id AND dw.key_version = k.current_version AND k.rotation = 'reencrypting') AS "rotationOpenFor",
           CASE WHEN k.rotation <> 'none' AND k.rotation_reason IS NOT NULL THEN json_build_object('kind', k.rotation_reason->>'kind',
-            'userId', k.rotation_reason->>'userId', 'name', (SELECT a.name FROM auth_users a WHERE a.id = k.rotation_reason->>'userId')) END AS "rotationReason"
+            'userId', k.rotation_reason->>'userId', 'name', (SELECT a.name FROM auth_users a WHERE a.id = k.rotation_reason->>'userId')) END AS "rotationReason",
+          CASE WHEN k.key_change_reason IS NOT NULL THEN json_build_object('kind', k.key_change_reason->>'kind',
+            'userId', k.key_change_reason->>'userId', 'name', (SELECT a.name FROM auth_users a WHERE a.id = k.key_change_reason->>'userId')) END AS "keyChangeReason"
         FROM workspace_keys k JOIN workspaces w ON w.id = k.workspace_id WHERE w.encrypted AND k.workspace_id IN (${ids})`);
       return new Map(rows.map((row) => [row.workspaceId, { ...row, keyChangedAt: atOrNull(row.keyChangedAt), grantUntil: atOrNull(row.grantUntil),
         rotationProgress: row.rotationProgress ? { rowsDone: Number(row.rotationProgress.rowsDone), rowsEstimate: Number(row.rotationProgress.rowsEstimate),

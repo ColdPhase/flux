@@ -133,10 +133,19 @@ export async function startWorkspaceEncryption(boss: PgBoss, db: Database, env: 
     return job;
   };
   let stopped = false;
+  // The backoff belongs to the stall, not to the workspace (#718 review P3-2): a rotation that went back to `pending` (a
+  // new removal) or whose stall was cleared (a repair) is tried at the next sweep, not after the rest of its backoff.
+  const clearRepairedBackoff = async () => {
+    if (!backoff.size) return;
+    const rows = (await executor.execute(sql`SELECT k.workspace_id::text AS id, k.rotation, p.stalled_at IS NOT NULL AS stalled FROM workspace_keys k
+      LEFT JOIN workspace_rotation_progress p ON p.workspace_id = k.workspace_id WHERE k.workspace_id = ANY(${`{${[...backoff.keys()].join(',')}}`}::uuid[])`))
+      .rows as { id: string; rotation: string; stalled: boolean | null }[];
+    for (const row of rows) if (row.rotation === 'pending' || !row.stalled) backoff.delete(row.id);
+  };
   const rotationSweep = async () => {
     if (stopped) return;
     if (checkpointDue) await checkpoint();
-    try { for (const workspaceId of await rotation.active()) void run(workspaceId); }
+    try { await clearRepairedBackoff(); for (const workspaceId of await rotation.active()) void run(workspaceId); }
     catch (error) { console.error(JSON.stringify({ warning: 'Key rotation sweep failed', code: (error as { code?: unknown }).code ?? null })); }
   };
   const rotationTimer = setInterval(() => { void rotationSweep(); }, options.sweepMs);
