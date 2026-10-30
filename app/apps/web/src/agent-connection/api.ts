@@ -1,12 +1,11 @@
 import {
-  AUTH_BASE_PATH, agentActionGrantPath, agentActionGrantsPath, agentMcpPolicyPath, projectGrantsPath, workspaceAgentsPath, type Agent, type AgentConnection,
+  AGENT_CONNECTIONS_PATH, AGENT_OAUTH_CONSENT_CONTEXT_PATH, AGENT_OAUTH_HELD_CONNECTION_PATH, AUTH_OAUTH2_CONSENT_PATH, AUTH_OAUTH2_CONTINUE_PATH,
+  agentActionGrantPath, agentConnectionPath, agentConnectionSelectPath, agentActionGrantsPath, agentMcpPolicyPath, projectGrantsPath, workspaceAgentsPath, type Agent, type AgentConnection,
   type AgentMcpEntry, type AgentMcpPolicy, type SaveAgentMcpPolicy, type AgentConnectionSetupFacts,
   type AgentScope, type AgentOauthConsentContext, type AgentStandingGrant, type CreateAgentCommand, type CreateAgentConnectionCommand,
   type CreateAgentStandingGrantCommand, type GrantProjectCommand, type NarrowAgentStandingGrantCommand, type Page, type ProjectGrant,
 } from '@flux/contracts';
 import { request } from '../api/client';
-
-const CONNECTIONS_PATH = '/api/v1/agent-connections';
 
 export interface McpPermissionSettings {
   connection: AgentConnection;
@@ -44,15 +43,15 @@ export const SCOPE_LABELS: Record<AgentScope, { title: string; description: stri
 };
 
 export function listAgentConnections(signal?: AbortSignal) {
-  return request<AgentConnection[]>(CONNECTIONS_PATH, { signal });
+  return request<AgentConnection[]>(AGENT_CONNECTIONS_PATH, { signal });
 }
 
 export function createAgentConnection(command: CreateAgentConnectionCommand) {
-  return request<AgentConnection>(CONNECTIONS_PATH, { method: 'POST', body: command });
+  return request<AgentConnection>(AGENT_CONNECTIONS_PATH, { method: 'POST', body: command });
 }
 
 export function revokeAgentConnection(connectionId: string) {
-  return request<null>(`${CONNECTIONS_PATH}/${encodeURIComponent(connectionId)}`, { method: 'DELETE' });
+  return request<null>(agentConnectionPath(encodeURIComponent(connectionId)), { method: 'DELETE' });
 }
 
 /**
@@ -96,32 +95,32 @@ export function grantAgentProject(projectId: string, agentId: string, role: 'vie
 }
 
 export function selectAgentConnection(connectionId: string, oauthQuery: string) {
-  return request<null>(`${CONNECTIONS_PATH}/${encodeURIComponent(connectionId)}/select-for-oauth`, { method: 'POST', body: { oauth_query: oauthQuery } });
+  return request<null>(agentConnectionSelectPath(encodeURIComponent(connectionId)), { method: 'POST', body: { oauth_query: oauthQuery } });
 }
 
 /** The server checks Better Auth's signed OAuth query before returning display data. */
 export function getConsentContext(oauthQuery: string, signal?: AbortSignal) {
-  return request<ConsentContext>(`/api/v1/agent-oauth/consent-context?oauth_query=${encodeURIComponent(oauthQuery)}`, { signal });
+  return request<ConsentContext>(`${AGENT_OAUTH_CONSENT_CONTEXT_PATH}?oauth_query=${encodeURIComponent(oauthQuery)}`, { signal });
 }
 
 /** The saved connection this client held before, or null (#312). A failure only means no preselection. */
 export async function getHeldConnection(oauthQuery: string, signal?: AbortSignal) {
   try {
-    return (await request<{ connectionId: string | null }>(`/api/v1/agent-oauth/held-connection?oauth_query=${encodeURIComponent(oauthQuery)}`, { signal })).connectionId;
+    return (await request<{ connectionId: string | null }>(`${AGENT_OAUTH_HELD_CONNECTION_PATH}?oauth_query=${encodeURIComponent(oauthQuery)}`, { signal })).connectionId;
   } catch { return null; }
 }
 
 interface OAuthRedirect { url?: string; redirect_uri?: string }
 
 export async function continueAgentOAuth(oauthQuery: string) {
-  return request<OAuthRedirect>(`${AUTH_BASE_PATH}/oauth2/continue`, {
+  return request<OAuthRedirect>(AUTH_OAUTH2_CONTINUE_PATH, {
     method: 'POST', body: { postLogin: true, oauth_query: oauthQuery },
   });
 }
 
 /** Approval names exactly the granted scopes, so the token carries no more than the connection allows (#548). */
 export async function decideAgentConsent(accept: boolean, oauthQuery: string, scopes?: readonly string[]) {
-  return request<OAuthRedirect>(`${AUTH_BASE_PATH}/oauth2/consent`, {
+  return request<OAuthRedirect>(AUTH_OAUTH2_CONSENT_PATH, {
     method: 'POST', body: { accept, oauth_query: oauthQuery, ...(accept && scopes?.length ? { scope: scopes.join(' ') } : {}) },
   });
 }

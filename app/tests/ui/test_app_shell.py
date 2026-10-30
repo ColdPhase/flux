@@ -1451,8 +1451,11 @@ class AppShellJourney(unittest.TestCase):
 
         denial = owner.context.request.post(f"{ORIGIN}/api/v1/projects/{project_id}/grants", data={"principal": {"kind": "human", "id": partner_id}, "role": "denied"}, headers={"Origin": ORIGIN})
         self.assertEqual(denial.status, 201, denial.text())
-        open_sources(phone, thread_of(phone))
-        phone.get_by_role("button", name="Discuss this version").click()
+        # The open thread hears of the denial from the live stream (#733): without any action, the next read is refused and
+        # the person lands on the nearest place they can open with one line saying why (#592). Before the live refresh this
+        # waited for a read the person started ("Discuss this version"); now nothing of the project stays on screen meanwhile.
+        expect(phone.get_by_text("That project is no longer available to you.", exact=True)).to_be_visible(timeout=10000)
+        expect(phone).to_have_url(re.compile(r"/projects$"))
         expect(phone.get_by_text("Agreed. Test low light too.", exact=True)).to_have_count(0)
         expect(phone.get_by_label("Reply", exact=True)).to_have_count(0)
         phone.reload()

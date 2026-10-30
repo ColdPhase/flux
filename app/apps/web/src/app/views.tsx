@@ -2,7 +2,7 @@ import { useRef, type ReactNode } from 'react';
 import { Link, useLocation, type NavigateFunction } from 'react-router';
 import { EmptyState } from '../ui';
 import { useShellData } from './data';
-import { useReadingPosition } from './drafts';
+import { useReadingPosition } from '../drafts/store';
 
 /** Home's views: the overview first, then the Map, Tasks and the Wiki. */
 export const VIEWS = [

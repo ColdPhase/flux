@@ -4,7 +4,7 @@ import { Link, redirect, useLoaderData, type LoaderFunctionArgs } from 'react-ro
 import { workspaceAgentsPath, type Agent, type AgentConnection, type AgentScope, type AgentStandingGrant, type ExternalClientDesignation, type Project, type ProjectGrant, type Workspace } from '@flux/contracts';
 import { getMe } from '../api/auth';
 import { ApiError, NetworkError, request as apiRequest } from '../api/client';
-import { listAccessibleProjects } from '../app/conversation-api';
+import { listAccessibleProjects } from '../project/api';
 import { signInPath } from '../auth/logic';
 import { Button, Icon, Select, Option } from '../ui';
 import {

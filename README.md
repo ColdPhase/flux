@@ -209,6 +209,7 @@ that check used no model account ([what was run](docs/development/time-to-first-
 | `scripts` | Check scripts, the demo seed and repository tooling |
 | `docs` | Product, design, development and agent documentation |
 | `site` | The [documentation site](https://coldphase.github.io/flux/) (Astro Starlight), generated from `docs` |
+| `docs/assets` | README screenshots and the demo GIF (each folder says how it was made) and `brand/`, the Kreska logo. The app icons are `app/apps/web/public/icons`, rendered from Kreska ([final design §3](docs/design/final/README.md#3-kreska-logo-agent-icon-and-mascot)) by `app/apps/web/scripts/generate-icons.ts` |
 
 Dependency directions between these are described and enforced in
 [architecture](docs/development/architecture.md).

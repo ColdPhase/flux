@@ -1,5 +1,5 @@
 import { useCallback, useRef } from 'react';
-import type { WorkItem, WorkRowProjection, WorkStatus } from '@flux/contracts';
+import { ME_PATH, type WorkItem, type WorkRowProjection, type WorkStatus } from '@flux/contracts';
 import { ApiError, NetworkError, request } from '../api/client';
 import { useShellData } from '../app/data';
 import { noteChange, useToast, useToastScope } from '../ui';
@@ -47,7 +47,7 @@ export function useStateChange(saved: (item: WorkItem) => void, done: () => void
   const sameSession = useCallback(async () => {
     if (!currentScope()) return false;
     try {
-      const active = await request<MeResponse>('/api/v1/me');
+      const active = await request<MeResponse>(ME_PATH);
       return currentScope() && active.user.id === userId && active.session.id === sessionId;
     } catch (cause) {
       // Only a definite ended session retires this last known identity. A network

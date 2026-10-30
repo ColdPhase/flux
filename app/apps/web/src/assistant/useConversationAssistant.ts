@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ASSISTANT_RUN_CHANGED_EVENT, type ConversationMessage, type AssistantActivity, type AssistantAnswer, type AssistantProposal, type AssistantRun, type AssistantRunKind, type PersonalAssistantStatus } from '@flux/contracts';
 import { useStreamEvents } from '../api/stream';
-import { reply } from '../app/conversation-api';
+import { reply } from '../conversations/api';
 import { getProjectAgents } from '../agents/api';
 import {
   acceptProposal, askAssistant, dismissProposal, getAssistantActivity, getAssistantStatus, getRun, listAnswers, listOwnRuns, listProposals, resumeAssistant, retryRun, stopRun,

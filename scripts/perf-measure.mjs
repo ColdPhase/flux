@@ -120,7 +120,7 @@ const get = (label, path) => ({ label, method: 'GET', path });
 
 /**
  * The views and their requests (#298), from the web app's own loaders and effects (apps/web/src:
- * app/data.ts, project/data.ts, app/ProjectConversation.tsx, work/ProjectTasks.tsx and TaskBoard.tsx,
+ * app/data.ts, project/data.ts, conversations/loader.ts, work/ProjectTasks.tsx and TaskBoard.tsx,
  * sketch/, docs/Wiki.tsx and DocViews.tsx, notifications/, search/). Each inner array is one group
  * the app sends at the same time; groups run one after another, as the app's waterfalls do.
  * Cold loads run the shell loader beside the view's own; it is listed once per view here.

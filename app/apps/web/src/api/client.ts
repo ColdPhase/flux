@@ -25,6 +25,8 @@ export interface ApiRequestInit {
   headers?: Record<string, string>;
   /** Lets the request finish after the page is left (a delayed command sent on the way out). */
   keepalive?: boolean;
+  /** The browser cache mode, e.g. `no-store` for a file or a reachability check that must not be served from cache. */
+  cache?: RequestCache;
 }
 
 // A read starts in a task of its own, after the work that asked for it (#716). A view opening asks for half a dozen reads from
@@ -39,38 +41,52 @@ const nextTask = () => new Promise<void>((resolve) => {
   waiting.push(resolve);
 });
 
-export async function request<T>(path: string, init: ApiRequestInit = {}): Promise<T> {
+/**
+ * The one transport to the Flux API (#93): every call of the web app, JSON or not, goes through here.
+ * Answers the raw response of any status; only a request that got no answer throws (`NetworkError`, or the
+ * caller's `AbortError`). `accept` is sent only when given, so a file read keeps the browser's default;
+ * `batchRead` starts a GET in the next task with the other reads of this one (#716), as every JSON read does.
+ */
+export async function send(path: string, init: ApiRequestInit & { accept?: string; batchRead?: boolean } = {}): Promise<Response> {
   // A page being left starts no request (#471): the browser has stopped its loads, and WebKit reports a
   // fetch that starts now as an uncaught page error. It starts when the page is live again, never sooner
   // than a click or key press proves the person is still here; an unloaded page never starts it.
   if (pageLeaving() && !init.keepalive) await pageIsLive(init.signal);
-  if (!init.method || init.method === 'GET') await nextTask();
-  let response: Response;
+  if (init.batchRead && (!init.method || init.method === 'GET')) await nextTask();
   try {
-    response = await fetch(path, {
+    return await fetch(path, {
       method: init.method ?? 'GET',
       credentials: 'same-origin',
-      headers: { accept: 'application/json', ...(init.body === undefined ? {} : { 'content-type': 'application/json' }), ...init.headers },
+      headers: { ...(init.accept ? { accept: init.accept } : {}), ...(init.body === undefined ? {} : { 'content-type': 'application/json' }), ...init.headers },
       body: init.body === undefined ? undefined : JSON.stringify(init.body),
       signal: init.signal,
       keepalive: init.keepalive,
+      cache: init.cache,
     });
   } catch (error) {
     if (error instanceof DOMException && error.name === 'AbortError') throw error;
     throw new NetworkError();
   }
+}
+
+/** The `ApiError` of a failed response, read from its JSON error body when it has one. */
+export function responseError(response: Response, data: unknown): ApiError {
+  const record = (data && typeof data === 'object' ? data : {}) as { code?: unknown; message?: unknown; error?: unknown };
+  const code = typeof record.code === 'string' ? record.code : null;
+  const message = typeof record.message === 'string' ? record.message : typeof record.error === 'string' ? record.error : response.statusText;
+  // F-029 (#614): the workspace's AI was turned off since the shell last read it; the shell reads it again.
+  if (response.status === 403 && code === 'WORKSPACE_AI_BLOCKED' && typeof window !== 'undefined') window.dispatchEvent(new Event('flux:workspace-ai-blocked'));
+  return new ApiError(response.status, code, message, data);
+}
+
+/** A JSON request: the parsed body of a 2xx answer, or an `ApiError`. */
+export async function request<T>(path: string, init: ApiRequestInit = {}): Promise<T> {
+  const response = await send(path, { ...init, accept: 'application/json', batchRead: true });
   const text = await response.text();
   let data: unknown = null;
   if (text) {
     try { data = JSON.parse(text); } catch { data = null; }
   }
-  if (!response.ok) {
-    const record = (data && typeof data === 'object' ? data : {}) as { code?: unknown; message?: unknown; error?: unknown };
-    const code = typeof record.code === 'string' ? record.code : null;
-    const message = typeof record.message === 'string' ? record.message : typeof record.error === 'string' ? record.error : response.statusText;
-    // F-029 (#614): the workspace's AI was turned off since the shell last read it; the shell reads it again.
-    if (response.status === 403 && code === 'WORKSPACE_AI_BLOCKED' && typeof window !== 'undefined') window.dispatchEvent(new Event('flux:workspace-ai-blocked'));
-    throw new ApiError(response.status, code, message, data);
-  }
+  if (!response.ok) throw responseError(response, data);
   return data as T;
 }

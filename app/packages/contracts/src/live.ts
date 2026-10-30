@@ -1,6 +1,8 @@
 /** Human live collaboration at an existing project object (issues #59/#61). */
 export const LIVE_SESSIONS_PATH = '/api/v1/live-sessions';
 export const liveSessionPath = (id: string) => `${LIVE_SESSIONS_PATH}/${id}`;
+export const LIVE_CAPABILITIES_PATH = `${LIVE_SESSIONS_PATH}/capabilities`;
+export const projectLiveSessionsPath = (projectId: string) => `/api/v1/projects/${projectId}/live-sessions`;
 export const liveJoinPath = (id: string) => `${liveSessionPath(id)}/join`;
 export const liveLeavePath = (id: string) => `${liveSessionPath(id)}/leave`;
 export const livePresentPath = (id: string) => `${liveSessionPath(id)}/present`;

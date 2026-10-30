@@ -25,7 +25,7 @@ allowlist retain their meaning after the move. `docker/` contains deployment inp
 | `app/apps/keyring` | `@flux/keyring` | The keyring of encrypted workspaces ([F-030](../product/encrypted-workspaces.md)): one random boot key in RAM, sealing and opening workspace keys for the API and worker over the internal `keyring` network. | Node built-ins only, so nothing else runs in it. |
 | `app/apps/server` | `@flux/server` | Composition root of the API: Fastify routes, identity, push and static PWA assets. Maps HTTP to core use cases. | Any package except `@flux/worker`, `@flux/web` and React. |
 | `app/apps/worker` | `@flux/worker` | Composition root of background jobs (pg-boss handlers, Web Push delivery). | Any package except `@flux/server`, `@flux/web`, Fastify and React. |
-| `app/apps/web` | `@flux/web` | Browser application and PWA. Talks to the server only through HTTP/WebSocket contracts. | `@flux/contracts` and UI libraries. Never core, db, server, worker, queue or Node built-ins. Build tooling (`vite.config.ts`, `build/`, `scripts/`) is separate from `src/`. |
+| `app/apps/web` | `@flux/web` | Browser application and PWA. Talks to the server only through HTTP/WebSocket contracts. | `src/` only `@flux/contracts` and the browser libraries it declares (an allow-list, #93). Build tooling (`vite.config.ts`, `build/`, `scripts/`) is separate from `src/`. |
 | `app/examples/external-agent` | Apache-2.0 example | An agent outside Flux using the public API. | `@flux/sdk`, `@flux/contracts`, Node built-ins. |
 | `app/tooling` | app workspace | Migration and operations entry points; Dockerfiles/Compose are separate under `docker/`. | Any package except the apps and UI. |
 
@@ -81,6 +81,14 @@ are the only places that choose concrete adapters and wire them together.
 - **One select.** Product UI under `app/apps/web/src` uses the design system's `Select` (`ui/Select.tsx`, with
   `Option` and `OptionGroup`), never a native `<select>`: the system's list ignores the tokens, the dark theme
   and the phone sheet ([#695](https://github.com/ColdPhase/flux/issues/695), [app shell](../design/app-shell/README.md)).
+- **Web feature folders and one transport.** `app/apps/web/src` is organised by capability: `app/` is the
+  shell (layout, sidebar, rail, the shell loader `app/data.ts`), `ui/` the design system's primitives, `api/`
+  the transport, and every other folder one capability (`conversations/`, `materials/`, `drafts/`, `captures/`,
+  `project/`, `work/`, `docs/`, `sketch/`, …) with its own `api.ts` beside its model and views
+  ([#93](https://github.com/ColdPhase/flux/issues/93), [#94](https://github.com/ColdPhase/flux/issues/94)). Every
+  request goes through `api/client.ts` (`request` for JSON, `send` for a raw response such as a file) with a path
+  helper from `@flux/contracts`; no other module calls `fetch` or writes an `/api/` path. The service worker
+  `pwa/sw.js` is plain JavaScript, so its two API paths are literals that a test keeps equal to the contracts.
 - **Transactions stay in one place.** Writes that must be atomic (domain row,
   event, outbox, job) run in one transaction owned by the use case or by an
   adapter method designed for it, not split across callers.
@@ -127,7 +135,12 @@ fails when:
   passes 200 lines;
 - any module under `app/packages/core/src/` reaches `@flux/db`, Drizzle, `pg`, pg-boss, Fastify or web-push,
   core's `package.json` declares a persistence dependency, or the allowlist has a `packages/core/` entry (#92);
-- a `.ts` or `.tsx` file under `app/apps/web/src` contains a native `<select>` (comments ignored, #695).
+- a `.ts` or `.tsx` file under `app/apps/web/src` contains a native `<select>` (comments ignored, #695);
+- a `.ts` or `.tsx` file under `app/apps/web/src` other than `api/client.ts` calls `fetch` or writes an `/api/` path,
+  or the web layer's allow-list names a library that `app/apps/web/package.json` does not declare (#93);
+- a file under `app/apps/web/src/conversations/` or `materials/` passes 150 lines, or one of their `.tsx` views imports an API
+  module or calls `request`, `send` or `fetch` (#94).
+  `app/tests/app/pwa.test.ts` checks that every API path in `pwa/sw.js` is a contract path.
 
 The allowlist can only shrink. Do not add entries for new code; change the code or,
 if a layer rule itself is wrong, update this page and the rule in the same reviewed PR.
@@ -231,3 +244,15 @@ workspace, the key row before it; `addMember` starts at the workspace row), the 
 `FOR UPDATE`, the actor and project access rows through `evaluate*` with `lock`, the expected-version check after authorization, the
 event last, and one savepoint transaction per mutation. PostgreSQL's 23505 and 23503 on a grant write are returned by the adapter as a typed
 result (`GRANT_CONFLICT`, `GRANTEE_REMOVED`) and `ConflictError` is raised in core. `drizzle-orm` left core's `package.json` with #92 ([#91](https://github.com/ColdPhase/flux/issues/91)).
+
+Resolved outside the allowlist: the web app has one transport and feature folders. `api/client.ts` is the only module that calls
+`fetch` (push, sign-out, the export bundle, file bytes, the handoff packet and the reachability probe use its `send`); every API
+path comes from a `@flux/contracts` helper; the web layer's rule is an allow-list. `conversation-api.ts` is split by resource into
+`project/api.ts`, `conversations/api.ts`, `materials/api.ts` and `drafts/api.ts`; the browser draft store, private notes and project
+creation moved to `drafts/`, `captures/` and `project/`; the project conversation's loader, feed model, thread reply and sources
+(`materials/useProjectMaterials.ts`, `MaterialTray.tsx`, whose form now keeps its text in the shared draft store) have their own
+modules. The pane itself is split into hooks that read and act (`paneCore.ts`, `useThreadReplies.ts` with the live refresh of #733,
+`useThreadReading.ts`, `useThreadPlace.ts`, `useComposerDrafts.ts`, `useComposerMenu.ts`, `useComposerSend.ts`, `useAssistantAsk.ts`,
+`useAskBar.ts`) and views that only render (`ThreadFeed.tsx`, `ThreadAnswers.tsx`, `ThreadReply.tsx`, `PaneComposer.tsx`); the
+architecture test keeps every file of `conversations/` and `materials/` within 150 lines and their views free of API calls
+([#93](https://github.com/ColdPhase/flux/issues/93), [#94](https://github.com/ColdPhase/flux/issues/94)).

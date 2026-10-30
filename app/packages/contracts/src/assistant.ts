@@ -146,6 +146,7 @@ export interface AssistantJoinRequest {
 export const assistantSettingsPath = (workspaceId: string, ownerUserId: string) =>
   `/api/v1/workspaces/${workspaceId}/assistants/${ownerUserId}/settings`;
 export const assistantJoinRequestPath = (projectId: string) => `/api/v1/projects/${projectId}/assistant-join-requests`;
+export const assistantJoinRequestAllowPath = (projectId: string, requestId: string) => `${assistantJoinRequestPath(projectId)}/${requestId}/allow`;
 /** "Tell whoever runs Flux" (F-027 Journey 6): one Needs-you item to the workspace's owners; the body may name the plan (`claude_code`, the default, or `codex`). */
 export const assistantOperatorRequestPath = (workspaceId: string) => `/api/v1/workspaces/${workspaceId}/assistant-operator-requests`;
 /** Project-scoped join questions lead to the manager's existing Agents request area. */

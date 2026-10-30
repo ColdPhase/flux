@@ -24,7 +24,7 @@ class DecisionTrace(unittest.TestCase):
     def test_one_path_for_the_lines_in_contracts_server_and_web(self) -> None:
         self.assertIn("/api/v1/projects/${projectId}/object-notices", source("app/packages/contracts/src/work.ts"))
         self.assertIn("projectObjectNoticesPath(':projectId')", source("app/apps/server/src/work/routes.ts"))
-        self.assertIn("projectObjectNoticesPath(projectId)", source("app/apps/web/src/app/conversation-api.ts"))
+        self.assertIn("projectObjectNoticesPath(projectId)", source("app/apps/web/src/conversations/api.ts"))
 
     def test_the_lines_are_read_by_the_audience_of_the_project_and_no_one_else(self) -> None:
         service = source("app/packages/core/src/work/service.ts")
@@ -58,7 +58,7 @@ class DecisionTrace(unittest.TestCase):
         rule = next(line for line in design.splitlines() if line.startswith("| P5 |"))
         for words in ("#694", "decision", "result", "card", "thread"):
             self.assertIn(words, rule)
-        conversation = source("app/apps/web/src/app/ProjectConversation.tsx")
+        conversation = source("app/apps/web/src/conversations/useComposerSend.ts")
         self.assertRegex(conversation, r"fromThread = conversation && rootMessageId \?")
         self.assertIn("kind: 'propose-decision', projectId: project.id, title: text, ...(fromThread", conversation)
         self.assertIn("sources: [{ ref: { type: 'message' as const, id: fromThread.messageId }", conversation)

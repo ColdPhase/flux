@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useId, useRef, useState, type FormEvent } from 'react';
 import { Link, useNavigation, useRevalidator } from 'react-router';
-import { githubRuleDefaultPath, type GithubBinding, type GithubCapabilities, type GithubRepository, type GithubRuleDefault, type GithubTaskLink } from '@flux/contracts';
-import { ApiError, request } from '../api/client';
+import type { GithubBinding, GithubCapabilities, GithubRepository, GithubRuleDefault, GithubTaskLink } from '@flux/contracts';
+import { ApiError } from '../api/client';
+import { bindGithubRepository, disconnectGithubAccount, disconnectGithubBinding, getGithubCapabilities, linkTaskPull, listGithubBindings, listGithubInstallations, listGithubRepositories, listTaskGithubLinks, saveGithubRuleDefault, startGithub } from './api';
 import { useProjectShell, type ProjectShell } from '../project/data';
 import { Button, Spinner, Select, Option } from '../ui';
 import { useShellData } from '../app/data';
@@ -16,7 +17,7 @@ export function GithubSettings() {
   return shell ? <GithubProjectSettings key={`${me.user.id}:${shell.project.id}`} shell={shell} /> : null;
 }
 function GithubProjectSettings({ shell }: { shell: ProjectShell }) {
-  const projectId = shell.project.id; const prefix = `/api/v1/projects/${projectId}/github`;
+  const projectId = shell.project.id;
   const [capabilities, setCapabilities] = useState<GithubCapabilities | null>(null);
   // The default as last saved here; the link form discloses it (#74 G-1a).
   const [savedDefault, setSavedDefault] = useState<{ value: GithubRuleDefault | null } | null>(null);
@@ -25,25 +26,25 @@ function GithubProjectSettings({ shell }: { shell: ProjectShell }) {
   const loadRequest = useRef<AbortController | null>(null);
   const load = useCallback(() => {
     loadRequest.current?.abort(); const controller = new AbortController(); loadRequest.current = controller;
-    return request<GithubCapabilities>(`${prefix}/capabilities`, { signal: controller.signal }).then(async (current) => {
+    return getGithubCapabilities(projectId, controller.signal).then(async (current) => {
       try {
         const rows = current.status === 'configured' && current.authorization === 'connected'
-          ? await request<GithubBinding[]>(`${prefix}/bindings`, { signal: controller.signal }) : [];
+          ? await listGithubBindings(projectId, controller.signal) : [];
         if (controller.signal.aborted) return;
         setBindings(rows); setCapabilities(current);
       } catch (cause) { if (!controller.signal.aborted) { setCapabilities(current); setBindings([]); setError(failure(cause)); } }
     }).catch((cause) => { if (!controller.signal.aborted) { setCapabilities(null); setBindings([]); setError(failure(cause)); } });
-  }, [prefix]);
+  }, [projectId]);
   useEffect(() => { void load(); return () => loadRequest.current?.abort(); }, [load]);
   function refresh() { setCapabilities(null); setBindings([]); setError(''); return load(); }
   async function connect(purpose: 'authorize' | 'install') {
     setBusy(true); setError('');
-    try { const result = await request<{ url: string }>(`${prefix}/${purpose}`, { method: 'POST' }); const url = new URL(result.url);
+    try { const result = await startGithub(projectId, purpose); const url = new URL(result.url);
       if (url.origin !== 'https://github.com') throw new Error('Invalid authorization origin'); window.location.assign(url.toString());
     } catch (cause) { setError(failure(cause)); setBusy(false); }
   }
   async function disconnect(id: string) {
-    setBusy(true); setError(''); try { await request(`/api/v1/github/bindings/${id}`, { method: 'DELETE' }); await refresh(); }
+    setBusy(true); setError(''); try { await disconnectGithubBinding(id); await refresh(); }
     catch (cause) { setError(failure(cause)); } finally { setBusy(false); }
   }
   return <div className="pane-scroll"><div className="pane-in github-settings">
@@ -59,12 +60,12 @@ function GithubProjectSettings({ shell }: { shell: ProjectShell }) {
           <div className="github-settings__actions"><Button variant="secondary" busy={busy} onClick={() => void refresh()}>Refresh access</Button>
             <Button variant="secondary" disabled={busy} onClick={() => void connect('authorize')}>Reconnect GitHub account</Button>
             {shell.project.access === 'manager' ? <Button variant="secondary" disabled={busy} onClick={() => void connect('install')}>Install App on repositories</Button> : null}
-            <Button variant="secondary" disabled={busy} onClick={async () => { setBusy(true); try { await request('/api/v1/github/authorization', { method: 'DELETE' }); await refresh(); } catch (cause) { setError(failure(cause)); } finally { setBusy(false); } }}>Disconnect your GitHub account</Button></div>
+            <Button variant="secondary" disabled={busy} onClick={async () => { setBusy(true); try { await disconnectGithubAccount(); await refresh(); } catch (cause) { setError(failure(cause)); } finally { setBusy(false); } }}>Disconnect your GitHub account</Button></div>
           <p className="github-settings__note" data-testid="github-delivery">Updates: {capabilities.delivery === 'poll' ? 'Every 2 minutes (no public address)' : 'Live (webhooks)'}</p>
           <section><h3>Connected repositories</h3>{bindings.length ? <ul className="github-settings__repos">{bindings.map((binding) => <li key={binding.id}>
             <a href={binding.url} target="_blank" rel="noreferrer">{binding.owner}/{binding.name}</a><span>{binding.private ? 'Private' : 'Public'}</span>
             {shell.project.access === 'manager' ? <Button variant="secondary" disabled={busy} onClick={() => void disconnect(binding.id)}>Disconnect</Button> : null}</li>)}</ul> : <p>{error ? 'Repository access could not be verified. Refresh access or reconnect your account.' : 'No repositories connected to this project yet.'}</p>}</section>
-          {shell.project.access === 'manager' ? <RepositoryPicker prefix={prefix} onBound={refresh} /> : null}
+          {shell.project.access === 'manager' ? <RepositoryPicker projectId={projectId} onBound={refresh} /> : null}
           {shell.project.access === 'manager' && bindings.length ? <RuleDefault projectId={projectId} current={ruleDefault} onSaved={(value) => setSavedDefault({ value })} /> : null}
           {bindings.length ? <PullReferences projectId={projectId} bindings={bindings} canLink={shell.project.access !== 'viewer'} ruleDefault={ruleDefault} /> : null}
         </>}
@@ -76,7 +77,7 @@ function RuleDefault({ projectId, current, onSaved }: { projectId: string; curre
   const id = useId(); const value = current; const [busy, setBusy] = useState(false); const [error, setError] = useState('');
   async function save(enabled: boolean, mode: GithubRuleDefault['mode']) {
     setBusy(true); setError('');
-    try { onSaved((await request<{ ruleDefault: GithubRuleDefault | null }>(githubRuleDefaultPath(projectId), { method: 'PUT', body: { enabled, mode } })).ruleDefault); }
+    try { onSaved((await saveGithubRuleDefault(projectId, enabled, mode)).ruleDefault); }
     catch (cause) { setError(failure(cause)); } finally { setBusy(false); }
   }
   return <section><h3>New required pull requests</h3>
@@ -89,19 +90,19 @@ function RuleDefault({ projectId, current, onSaved }: { projectId: string; curre
     {error ? <p role="alert" className="github-settings__error">{error}</p> : null}
   </section>;
 }
-function RepositoryPicker({ prefix, onBound }: { prefix: string; onBound: () => Promise<void> }) {
+function RepositoryPicker({ projectId, onBound }: { projectId: string; onBound: () => Promise<void> }) {
   const id = useId(); const [installations, setInstallations] = useState<{ id: string; account: string }[]>([]); const [installation, setInstallation] = useState('');
   const [repositories, setRepositories] = useState<GithubRepository[]>([]); const [repository, setRepository] = useState(''); const [page, setPage] = useState(1); const [more, setMore] = useState(false);
   const [busy, setBusy] = useState(false); const [error, setError] = useState('');
-  async function listInstallations() { setBusy(true); setError(''); try { setInstallations(await request(`${prefix}/installations`)); } catch (cause) { setError(failure(cause)); } finally { setBusy(false); } }
+  async function listInstallations() { setBusy(true); setError(''); try { setInstallations(await listGithubInstallations(projectId)); } catch (cause) { setError(failure(cause)); } finally { setBusy(false); } }
   async function listRepos(value: string, nextPage = 1) {
     setInstallation(value); setRepository(''); setRepositories([]); setMore(false); setPage(1); setError('');
     if (!value) return;
     setBusy(true);
-    try { const window = await request<{ items: GithubRepository[]; more: boolean }>(`${prefix}/installations/${value}/repositories?page=${nextPage}`); setRepositories(window.items); setMore(window.more); setPage(nextPage); }
+    try { const window = await listGithubRepositories(projectId, value, nextPage); setRepositories(window.items); setMore(window.more); setPage(nextPage); }
     catch (cause) { setError(failure(cause)); } finally { setBusy(false); }
   }
-  async function bind(event: FormEvent) { event.preventDefault(); setBusy(true); setError(''); try { await request(`${prefix}/bindings`, { method: 'POST', body: { installationId: installation, repositoryId: repository } }); await onBound(); }
+  async function bind(event: FormEvent) { event.preventDefault(); setBusy(true); setError(''); try { await bindGithubRepository(projectId, installation, repository); await onBound(); }
     catch (cause) { setError(failure(cause)); } finally { setBusy(false); } }
   return <section><h3>Add a repository</h3><p>Select an installed App and a repository you can currently access. New repositories are added here only when you choose them.</p>
     <Button variant="secondary" busy={busy} onClick={() => void listInstallations()}>Choose installation</Button>
@@ -126,9 +127,9 @@ function PullReferences({ projectId, bindings, canLink, ruleDefault }: { project
   const id = useId(); const [task, setTask] = useState(''); const [binding, setBinding] = useState(''); const [number, setNumber] = useState('');
   const [role, setRole] = useState<'required_output' | 'related'>('required_output'); const [links, setLinks] = useState<GithubTaskLink[]>([]); const [error, setError] = useState(''); const [busy, setBusy] = useState(false);
   async function openTask(value: string) { setTask(value); setChosen(tasks.find((row) => row.id === value) ?? (chosen?.id === value ? chosen : null)); setLinks([]); setError(''); if (!value) return; setBusy(true);
-    try { setLinks(await request(`/api/v1/work/${value}/github-links`)); } catch (cause) { setError(failure(cause)); } finally { setBusy(false); } }
+    try { setLinks(await listTaskGithubLinks(value)); } catch (cause) { setError(failure(cause)); } finally { setBusy(false); } }
   async function link(event: FormEvent) { event.preventDefault(); setError(''); setBusy(true); try {
-    await request(`/api/v1/work/${task}/github-links`, { method: 'POST', body: { bindingId: binding, number: Number(number), role } }); setLinks(await request(`/api/v1/work/${task}/github-links`));
+    await linkTaskPull(task, { bindingId: binding, number: Number(number), role }); setLinks(await listTaskGithubLinks(task));
   } catch (cause) { setError(failure(cause)); } finally { setBusy(false); } }
   const taskPicker = <><label htmlFor={`${id}-search`}>Find task</label><input id={`${id}-search`} type="search" value={search} onChange={(event) => setSearch(event.target.value)} />
     <label htmlFor={`${id}-task`}>Task</label><Select id={`${id}-task`} value={task} disabled={busy || choices.busy || !choices.page} onChange={(next) => void openTask(next)}><Option value="">Choose task…</Option>{chosen && !tasks.some((row) => row.id === chosen.id) ? <Option value={chosen.id}>{chosen.title}</Option> : null}{tasks.map((row) => <Option key={row.id} value={row.id}>{row.title}</Option>)}</Select>

@@ -2,7 +2,7 @@ import { useRouteLoaderData, type LoaderFunctionArgs } from 'react-router';
 import { PROJECT_VIEWS, projectPeoplePath, workspaceSketchesPath, type DocSummary, type Project, type ProjectPerson, type ProjectViewId, type Sketch, type SketchPage } from '@flux/contracts';
 import { request } from '../api/client';
 import './project.css';
-import { getProject } from '../app/conversation-api';
+import { getProject } from './api';
 import { listProjectDocs } from '../docs/api';
 
 /**

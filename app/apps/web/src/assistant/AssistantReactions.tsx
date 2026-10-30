@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { ASSISTANT_REACTION_ACTIONS, ASSISTANT_REACTION_EVENTS, assistantReactionPath, assistantReactionsPath, type AssistantReaction, type AssistantReactionAction, type AssistantReactionEvent, type GithubBinding, type PersonalAssistantStatus, type SaveAssistantReaction } from '@flux/contracts';
+import { ASSISTANT_REACTION_ACTIONS, ASSISTANT_REACTION_EVENTS, assistantReactionPath, assistantReactionsPath, type AssistantReaction, type AssistantReactionAction, type AssistantReactionEvent, type PersonalAssistantStatus, type SaveAssistantReaction } from '@flux/contracts';
 import { ApiError, request } from '../api/client';
 import { useShellData, type ProjectSummary } from '../app/data';
+import { listGithubBindings } from '../github/api';
 import { Button, Icon, IconButton, Select, Option } from '../ui';
 import { NoteLines, SheetFrame, useBackgroundNote } from './ScheduleSheet';
 import type { ScheduleScope } from './scheduleApi';
@@ -28,7 +29,7 @@ export function AssistantReactions({ status, userId }: { status: PersonalAssista
   useEffect(() => {
     let live = true;
     Promise.all(projects.map(async (project) => {
-      try { const bindings = await request<GithubBinding[]>(`/api/v1/projects/${project.id}/github/bindings`); return bindings.some((item) => item.state === 'active') ? project.id : null; }
+      try { const bindings = await listGithubBindings(project.id); return bindings.some((item) => item.state === 'active') ? project.id : null; }
       catch { return null; }
     })).then((ids) => { if (live) setLinked(ids.filter((id): id is string => !!id)); });
     return () => { live = false; };

@@ -1,7 +1,7 @@
 import { useRef } from 'react';
 import { useLocation } from 'react-router';
 import { useShellData } from './data';
-import { useReadingPosition } from './drafts';
+import { useReadingPosition } from '../drafts/store';
 import { HomeTasks } from './HomeTasks';
 
 /** Home's Tasks: the work you own across your projects (#190 HOME-2). */

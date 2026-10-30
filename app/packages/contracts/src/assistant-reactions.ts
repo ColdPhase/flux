@@ -21,6 +21,7 @@ export interface SaveAssistantReaction {
 }
 export const assistantReactionsPath = (workspaceId: string, ownerId: string) => `/api/v1/workspaces/${workspaceId}/people/${ownerId}/assistant/when`;
 export const assistantReactionPath = (workspaceId: string, ownerId: string, id: string) => `${assistantReactionsPath(workspaceId, ownerId)}/${id}`;
+export const assistantReactionsHistoryPath = (workspaceId: string, ownerId: string) => `${assistantReactionsPath(workspaceId, ownerId)}/history`;
 export const assistantReactionDraftPath = (notificationId: string) => `/api/v1/inbox/${notificationId}/assistant-draft`;
 export interface AssistantReplyDraft { ownerUserId: string; body: string; projectId: string; conversationId: string; url: string }
 

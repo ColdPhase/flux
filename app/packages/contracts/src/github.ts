@@ -54,6 +54,17 @@ export type GithubRuleMode = (typeof GITHUB_RULE_MODES)[number];
 export const githubTaskRulePath = (taskId: string) => `/api/v1/work/${taskId}/github-rule`;
 export const githubTaskRuleResumePath = (taskId: string) => `/api/v1/work/${taskId}/github-rule/resume`;
 export const githubRuleDefaultPath = (projectId: string) => `/api/v1/projects/${projectId}/github/rule-default`;
+/** The project's GitHub settings (#74): capabilities, the person's authorization, installations and bound repositories. */
+export const projectGithubPath = (projectId: string) => `/api/v1/projects/${projectId}/github`;
+export const projectGithubCapabilitiesPath = (projectId: string) => `${projectGithubPath(projectId)}/capabilities`;
+export const projectGithubBindingsPath = (projectId: string) => `${projectGithubPath(projectId)}/bindings`;
+/** POST starts the person's GitHub authorization (`authorize`) or the App installation (`install`). */
+export const projectGithubStartPath = (projectId: string, purpose: 'authorize' | 'install') => `${projectGithubPath(projectId)}/${purpose}`;
+export const projectGithubInstallationsPath = (projectId: string) => `${projectGithubPath(projectId)}/installations`;
+export const projectGithubRepositoriesPath = (projectId: string, installationId: string) => `${projectGithubInstallationsPath(projectId)}/${installationId}/repositories`;
+export const GITHUB_AUTHORIZATION_PATH = '/api/v1/github/authorization';
+export const githubBindingPath = (bindingId: string) => `/api/v1/github/bindings/${bindingId}`;
+export const githubTaskLinksPath = (taskId: string) => `/api/v1/work/${taskId}/github-links`;
 
 /**
  * "Let linked PRs move this task" (#74 G-1a). A person who can edit the task turns it on, and that publishes the status

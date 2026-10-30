@@ -6,7 +6,7 @@ import { useThoughtDraft } from '../sketch/createdDraft';
 import { Button, ErrorState, Spinner } from '../ui';
 import { routeLabel } from './routeLabel';
 import { ReloadRecovery } from './ReloadRecovery';
-import { getProject } from './conversation-api';
+import { getProject } from '../project/api';
 import { useReturning } from '../place/memory';
 
 /** Code download/evaluation failed; retry needs a fresh document/module cache, not API revalidation. */

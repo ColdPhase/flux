@@ -1,4 +1,5 @@
-import { INBOX_PATH, PUSH_PUBLIC_KEY_PATH, PUSH_SUBSCRIPTIONS_PATH, type PushPublicKeyResponse, type PushSubscriptionSummary } from '@flux/contracts';
+import { INBOX_PATH, PUSH_PUBLIC_KEY_PATH, PUSH_SUBSCRIPTIONS_PATH, pushSubscriptionPath, type PushPublicKeyResponse, type PushSubscriptionSummary } from '@flux/contracts';
+import { send } from '../api/client.js';
 import { registerServiceWorker, serviceWorkerSupported } from './register.js';
 
 /**
@@ -55,7 +56,7 @@ function sameKey(subscription: PushSubscription, publicKey: string) {
 }
 
 async function fetchPublicKey(): Promise<string | null> {
-  const response = await fetch(PUSH_PUBLIC_KEY_PATH, { credentials: 'same-origin' });
+  const response = await send(PUSH_PUBLIC_KEY_PATH);
   const body = await response.json().catch(() => null) as PushPublicKeyResponse | null;
   if (response.ok && body?.status === 'available') return body.publicKey;
   if (body?.status === 'unavailable') return null;
@@ -63,12 +64,7 @@ async function fetchPublicKey(): Promise<string | null> {
 }
 
 async function saveSubscription(subscription: PushSubscription, deviceLabel?: string | null) {
-  const response = await fetch(PUSH_SUBSCRIPTIONS_PATH, {
-    method: 'POST',
-    credentials: 'same-origin',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ ...subscription.toJSON(), deviceLabel: deviceLabel ?? null }),
-  });
+  const response = await send(PUSH_SUBSCRIPTIONS_PATH, { method: 'POST', body: { ...subscription.toJSON(), deviceLabel: deviceLabel ?? null } });
   if (!response.ok) throw new Error(`Saving the push subscription failed (${response.status})`);
   return await response.json() as PushSubscriptionSummary;
 }
@@ -129,7 +125,7 @@ export async function disablePushNotifications(): Promise<void> {
   if (!subscription) return;
   // Re-posting is idempotent and returns this endpoint's own row, never another device's.
   const saved = await saveSubscription(subscription).catch(() => null);
-  if (saved) await fetch(`${PUSH_SUBSCRIPTIONS_PATH}/${saved.id}`, { method: 'DELETE', credentials: 'same-origin' });
+  if (saved) await send(pushSubscriptionPath(saved.id), { method: 'DELETE' });
   await subscription.unsubscribe();
 }
 

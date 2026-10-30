@@ -1,4 +1,6 @@
 import { useSyncExternalStore } from 'react';
+import { ME_PATH } from '@flux/contracts';
+import { send } from '../api/client';
 
 /**
  * Whether sends can reach Flux now (#264, HIG-67): the browser's own offline state, plus a send or
@@ -40,7 +42,7 @@ function changed(before: ConnectionState) {
 function probe() {
   probeTimer = 0;
   if (!unreachable || browserOffline) return;
-  void fetch('/api/v1/me', { credentials: 'same-origin', cache: 'no-store', headers: { accept: 'application/json' } })
+  void send(ME_PATH, { cache: 'no-store', accept: 'application/json' })
     .then(() => {
       // Flux answers. Waiting sends go now; if they still get no answer, the next check waits longer.
       probeDelay = Math.min(30000, probeDelay * 2);
@@ -107,7 +109,7 @@ if (typeof window !== 'undefined') {
     // Online again: check Flux now rather than after the remaining backoff.
     if (unreachable) { if (probeTimer) window.clearTimeout(probeTimer); probeTimer = 0; probeDelay = 3000; probe(); }
     // The browser is back, which does not mean Flux is: one check confirms it before anything reloads.
-    else if (unanswered) void fetch('/api/v1/me', { credentials: 'same-origin', cache: 'no-store', headers: { accept: 'application/json' } }).then(answered, () => reportUnreachable());
+    else if (unanswered) void send(ME_PATH, { cache: 'no-store', accept: 'application/json' }).then(answered, () => reportUnreachable());
     changed(before);
   });
 }

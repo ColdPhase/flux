@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { Button, Icon, Spinner } from '../ui';
-import { getConversation, listConversations } from '../app/conversation-api';
+import { getConversation, listConversations } from '../conversations/api';
 import { lastAskedConversation } from './lastAsked';
 import './assistant.css';
 

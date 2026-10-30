@@ -2,7 +2,7 @@ import { useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode } f
 import { Link } from 'react-router';
 import { Avatar, BottomNav, FluxLogo, Icon, IconButton, Overlay, publishTopEdge, type BottomNavItem, type IconName, Select, Option } from '../ui';
 import { handFilesToComposer } from '../composer/handoff';
-import { useDraft } from './drafts';
+import { useDraft } from '../drafts/store';
 import { useShellActions } from './shellContext';
 import { useShellData, type ProjectSummary } from './data';
 

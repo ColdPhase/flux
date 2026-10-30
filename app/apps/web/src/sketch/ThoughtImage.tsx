@@ -1,5 +1,6 @@
 import { useEffect, useState, type CSSProperties } from 'react';
-import { filePath, imageTypeOf } from '@flux/contracts';
+import { imageTypeOf } from '@flux/contracts';
+import { readFileBytes } from '../api/files';
 
 // Images of map thoughts (#252). Stored files always download as attachments, so the bytes are fetched with the
 // session, accepted only as PNG, JPEG, GIF or WebP by their own signature (never SVG) and shown from a local object
@@ -10,8 +11,7 @@ const LIMIT = 60;
 /** A stored file's bytes, as the signed-in person may read them now; null when unavailable. */
 async function fileBytes(fileId: string): Promise<Uint8Array | null> {
   try {
-    const response = await fetch(filePath(fileId), { credentials: 'same-origin' });
-    return response.ok ? new Uint8Array(await response.arrayBuffer()) : null;
+    return await readFileBytes(fileId);
   } catch {
     return null;
   }

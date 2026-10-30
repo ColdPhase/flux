@@ -3,7 +3,7 @@ import {
   type CreateDocCommand, type Doc, type DocPreview, type DocSectionSource, type DocSummary, type DocVersion, type DocVersionSummary,
   type Page, type UpdateDocCommand,
 } from '@flux/contracts';
-import { ApiError, NetworkError, request } from '../api/client.js';
+import { request, responseError, send } from '../api/client.js';
 import { liveDocPath, liveDocEnrollPath, liveDocSavePath, liveDocReceiptPath, type LiveDocBootstrap, type EnrollLiveDoc, type EnrolledLiveDoc, type SaveSharedDoc, type LiveReceipt } from '@flux/contracts';
 
 export const getLiveDoc = (id: string, signal?: AbortSignal) => request<LiveDocBootstrap>(liveDocPath(id), { signal });
@@ -50,17 +50,8 @@ export const docUrl = (projectId: string, docId: string) => `/projects/${project
  * server decides; the web only offers it to managers. Answers the file and the name the server gave it.
  */
 export async function fetchProjectExport(projectId: string): Promise<{ blob: Blob; fileName: string }> {
-  let response: Response;
-  try {
-    response = await fetch(`${projectExportPath(projectId)}?format=bundle`, { credentials: 'same-origin', headers: { accept: 'application/gzip' } });
-  } catch {
-    throw new NetworkError();
-  }
-  if (!response.ok) {
-    const body = await response.json().catch(() => null) as { code?: unknown; message?: unknown; error?: unknown } | null;
-    const message = typeof body?.message === 'string' ? body.message : typeof body?.error === 'string' ? body.error : response.statusText;
-    throw new ApiError(response.status, typeof body?.code === 'string' ? body.code : null, message, body);
-  }
+  const response = await send(`${projectExportPath(projectId)}?format=bundle`, { accept: 'application/gzip' });
+  if (!response.ok) throw responseError(response, await response.json().catch(() => null));
   const named = /filename="([^"]+)"/.exec(response.headers.get('content-disposition') ?? '')?.[1];
   return { blob: await response.blob(), fileName: named ?? `flux-project-${projectId.slice(0, 8)}.tar.gz` };
 }

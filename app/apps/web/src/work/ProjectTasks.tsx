@@ -2,7 +2,7 @@ import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useSta
 import { Navigate, useLoaderData, useLocation, useRevalidator, useSearchParams, type LoaderFunctionArgs } from 'react-router';
 import type { Project, ProactiveComparisonOutcome, ProjectWorkViewQuery, WorkCounts, WorkItem, WorkObjectType, WorkRowProjection } from '@flux/contracts';
 import { Button, EmptyState, ErrorState, Icon, MEDIA, useMediaQuery, useRowMotion } from '../ui';
-import { getProject } from '../app/conversation-api';
+import { getProject } from '../project/api';
 import { useShellActions } from '../app/shellContext';
 import { projectAiBlocked, useShellData } from '../app/data';
 import { isAiBlocked } from '../ai/workspaceAi';
