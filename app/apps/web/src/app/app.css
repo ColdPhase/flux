@@ -49,7 +49,11 @@ body:has(.app) { background: var(--side); }
 .app { position: relative; display: flex; height: calc(100vh - var(--pwa-update-h, 0px)); height: calc(var(--app-h, 100dvh) - var(--pwa-update-h, 0px)); overflow: hidden; background: var(--side); }
 /* While the iOS keyboard is up the app sits in the visual viewport (AppLayout sets these). */
 .app[style*="--app-top"] { transform: translateY(var(--app-top)); }
-.app__side { flex: none; min-height: 0; display: flex; width: var(--side-w); padding-left: env(safe-area-inset-left); }
+.app__side { position: relative; flex: none; min-height: 0; display: flex; width: var(--side-w); padding-left: env(safe-area-inset-left); }
+/* The sidebar is laid out at the width of its own rendering, full or rail: the aside grows or shrinks around it (SizeSwap, #720), so
+   what is in it never reflows or moves while the width changes. The aside's own left padding (a notch) is inside its width. */
+.app__side > .side { flex: none; width: calc(var(--side-w) - env(safe-area-inset-left, 0px)); }
+.app__side > .side--rail { width: calc(var(--rail-w) - env(safe-area-inset-left, 0px)); }
 .app__main {
   flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; overflow: clip; container: main / inline-size;
   margin: var(--sheet-inset) var(--sheet-inset) var(--sheet-inset) 0;
