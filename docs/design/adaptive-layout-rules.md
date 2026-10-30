@@ -54,8 +54,13 @@ Agents is one list with a row for each of Hubert's two agents' connections and M
 
 No rule caps the whole application. Reading measures are set per surface.
 
-**Gap.** The map's phone projection follows the viewport (≤ 640 px), not the space the
-canvas actually has. A narrowed desktop canvas, for example with Details docked, keeps the plane.
+**Map layout and controls (decision, 2026-10-30, #151 AC-1).** The thoughts' layout follows the map's own width
+(*container*): a map at most 640 px wide (`NARROW_MAP` in `sketch/SketchMap.tsx`, measured on the map's wrapper with a
+ResizeObserver) shows the two columns, a wider one the plane, on any device. The controls follow the device and window
+as before (*viewport*, `MEDIA.phone`): a computer keeps its toolbar, zoom and Fit with the columns, and never gets
+the phone's Map options sheet or Add a thought button. In the columns nothing is arranged by dragging, as on a phone.
+So a desktop map beside docked Details at 1001–1200 px (about 450 px wide at 1100) takes the columns with the computer's
+controls, and the plane returns when the map is wider again; each layout keeps its own camera and zoom (test_02b).
 
 ## Input modes
 
@@ -213,7 +218,6 @@ map and list latency budgets above; a limited visual review of 72 screenshots wi
 **Remaining for #151** (open; this record does not deliver them):
 
 - the Agents column's cap (ADAPT-2), pending the design decision above;
-- the map projection still follows the viewport, not the canvas;
 - safe areas in WebKit and on real devices (no simulation exists for them), real browser zoom and an operating system's own text-size setting (the emulations above
   stand in for them);
 - real 4K, ultrawide, Android, iPhone and iPad sessions (optional under #266 item 10).
