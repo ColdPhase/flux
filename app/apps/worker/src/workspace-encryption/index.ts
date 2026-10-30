@@ -1,24 +1,28 @@
 import type { PgBoss } from 'pg-boss';
 import { WORKSPACE_ENCRYPTION_RESUME_JOB, type WorkspaceEncryptionResumeJob } from '@flux/contracts';
 import {
-  createKeyRotation, dropStaleUnlocks, keyPinStatus, keyringFromEnv, ProcessKeys, recordEvent, sealFor, swapFiles, swapSafety, testSwapRoot, type Database,
-  type EncryptionPorts, type EncryptionUnitOfWork, type KeyRotationOptions,
+  createKeyRotation, dropStaleUnlocks, keyPinStatus, keyringFromEnv, processDraftSummary, ProcessKeys, recordEvent, redactedError, replayWaitedEvent, sealFor, swapFiles,
+  swapSafety, testSwapRoot, type Database, type EncryptionPorts, type EncryptionUnitOfWork, type KeyRotationOptions,
 } from '@flux/core';
-import { sql } from 'drizzle-orm';
-import { configureRemovalPin, configureSeals, createDatabase, keyRotationRows, rotationCheckpoint, rotationMaintenance, workspaceEncryptionRows, type DbExecutor } from '@flux/db';
+import {
+  accessReader, configureRemovalPin, configureSeals, createDatabase, draftResultRepository, eventRepository, keyRotationRows, rotationCheckpoint, rotationMaintenance, sql,
+  workspaceEncryptionRows, type DbExecutor,
+} from '@flux/db';
 import { eventPorts } from '../events.js';
+import { generatorUnitOfWork } from '../notifications/adapters.js';
 import { diskRotationObjects } from './file-objects.js';
 
 /**
- * The worker's side of encrypted workspaces (F-030, #655). It holds its own `ProcessKeys` and runs the same 5 s keyring
- * heartbeat as every API process: swap again, then the boot id; a new boot deletes the stale unlock rows and records
- * `workspace.locked.v1 { reason: 'restart' }`.
+ * The worker's side of encrypted workspaces (F-030, #655). It holds its own `ProcessKeys` (S2a opens DEKs here for
+ * notification generation and the resume job) and runs the same 5 s keyring heartbeat as every API process: swap
+ * again, then the boot id; a new boot deletes the stale unlock rows and records `workspace.locked.v1 { reason: 'restart' }`.
+ * The resume job is sent with every unlock and by a 30 s sweep for waits of a workspace that is unlocked here.
  *
- * Key rotation (S2c) runs here: a sweep every few seconds (and `rotation.kick`, called by the resume job's handler) starts each
- * pending rotation of an unlocked workspace and continues each running pass from its stored cursor, so a removal, an
- * account deletion cascading to a holder, an unlock after a removal while locked and a worker restart all lead to the
- * same code path. One run per workspace at a time in this process; the page transactions serialize on the progress row
- * across processes.
+ * Key rotation (S2c) runs here too: a sweep every few seconds, and the resume job's last step (`rotation.kick`), start
+ * each pending rotation of an unlocked workspace and continue each running pass from its stored cursor, so a removal,
+ * an account deletion cascading to a holder, an unlock after a removal while locked and a worker restart all lead to
+ * the same code path. One run per workspace at a time in this process; the page transactions serialize on the
+ * progress row across processes.
  */
 function unitOfWork(db: Database): EncryptionUnitOfWork {
   return {
@@ -57,14 +61,19 @@ export function rotationOptions(env: NodeJS.ProcessEnv): KeyRotationOptions & { 
   };
 }
 
-export async function startWorkspaceEncryption(boss: PgBoss, db: Database, env: NodeJS.ProcessEnv) {
+/**
+ * A step of the one `workspace-encryption.resume.v1` handler, run after the waits were replayed (#655 integrated
+ * review P2-3): S2c adds the start or resumption of a key rotation here instead of registering a second handler.
+ */
+export type ResumeStep = (workspaceId: string) => Promise<void>;
+
+export async function startWorkspaceEncryption(boss: PgBoss, db: Database, env: NodeJS.ProcessEnv, emailAvailable = false, steps: readonly ResumeStep[] = []) {
   const files = swapFiles(testSwapRoot(env));
   const keys = new ProcessKeys(keyringFromEnv(env), () => swapSafety(env, files));
   // The worker's repositories seal and open through these keys too (S2a).
   configureSeals((executor, workspaceId, options) => sealFor(workspaceEncryptionRows(executor), keys, workspaceId, options));
-  const unit = unitOfWork(db);
   const heartbeat = keys.startHeartbeat(async (change) => {
-    if (change.current) await dropStaleUnlocks(unit, change.current, change.observedAt);
+    if (change.current) await dropStaleUnlocks(unitOfWork(db), change.current, change.observedAt);
   }, 5_000, (error) => console.error(JSON.stringify({ warning: 'Keyring heartbeat failed', code: (error as { code?: unknown }).code ?? null })));
   await heartbeat.first;
 
@@ -115,28 +124,65 @@ export async function startWorkspaceEncryption(boss: PgBoss, db: Database, env: 
     return job;
   };
   let stopped = false;
-  const sweep = async () => {
+  const rotationSweep = async () => {
     if (stopped) return;
     if (checkpointDue) await checkpoint();
     try { for (const workspaceId of await rotation.active()) void run(workspaceId); }
     catch (error) { console.error(JSON.stringify({ warning: 'Key rotation sweep failed', code: (error as { code?: unknown }).code ?? null })); }
   };
-  const timer = setInterval(() => { void sweep(); }, options.sweepMs);
-  timer.unref();
-  void sweep(); // a restarted worker continues every running pass from its cursor
+  const rotationTimer = setInterval(() => { void rotationSweep(); }, options.sweepMs);
+  rotationTimer.unref();
+  void rotationSweep(); // a restarted worker continues every running pass from its cursor
 
-  // The resume job sent with every unlock: S1's handler (which #717 turns into the one that replays `sealed_job_waits`)
-  // also kicks the rotation, so an unlock resumes a paused rotation or starts a pending one at once.
+  // After an unlock: replay the work that waited while the workspace was locked, in creation order; each wait is deleted
+  // once handled. A workspace locked again stops the replay (pg-boss retries; notifications never duplicate).
+  const generator = generatorUnitOfWork(db, boss);
   await boss.work<WorkspaceEncryptionResumeJob>(WORKSPACE_ENCRYPTION_RESUME_JOB, async (jobs) => {
     for (const job of jobs) {
-      console.log(JSON.stringify({ job: WORKSPACE_ENCRYPTION_RESUME_JOB, id: job.id, workspaceId: job.data.workspaceId, replayed: 0 }));
-      void run(job.data.workspaceId);
+      const waits = workspaceEncryptionRows(db as unknown as DbExecutor);
+      let replayed = 0;
+      let failed = 0;
+      for (const wait of await waits.waits(job.data.workspaceId)) {
+        try {
+          if (wait.queue === 'notifications.generate' && typeof wait.payload.eventId === 'string') {
+            await replayWaitedEvent(generator, wait.payload.eventId, { emailAvailable });
+          }
+          if (wait.queue === 'draft.summarize.v1' && typeof wait.payload.resultId === 'string') {
+            // Locked again meanwhile: the summary records a new wait itself, and this one goes.
+            await processDraftSummary(wait.payload.resultId, db, { results: draftResultRepository, events: eventRepository, access: accessReader });
+          }
+        } catch (error) {
+          // Locked again: stop, and pg-boss retries. Any other failure keeps that wait for the sweep and replays the rest (#717 review P3-4).
+          if ((error as { code?: unknown }).code === 'WORKSPACE_LOCKED') throw error;
+          failed++;
+          console.error(JSON.stringify({ job: WORKSPACE_ENCRYPTION_RESUME_JOB, id: job.id, waitId: wait.id, error: redactedError(error, [wait.id]).message }));
+          continue;
+        }
+        await waits.deleteWait(wait.id);
+        replayed++;
+      }
+      for (const step of steps) await step(job.data.workspaceId);
+      void run(job.data.workspaceId); // last step: start a pending rotation or resume a paused one (S2c)
+      console.log(JSON.stringify({ job: WORKSPACE_ENCRYPTION_RESUME_JOB, id: job.id, workspaceId: job.data.workspaceId, replayed, failed }));
     }
   });
+  // A wait committed after the unlock's resume job ran (the generator's batch was still open) would sit until the next
+  // unlock; every 30 s, a wait of a workspace this process can open sends the resume job again (#717 review P3-3).
+  const sweep = setInterval(() => {
+    void (async () => {
+      const rows = (await db.execute(sql`SELECT DISTINCT workspace_id AS id FROM sealed_job_waits WHERE created_at < now() - interval '5 seconds'`)).rows as { id: string }[];
+      for (const { id } of rows) {
+        try { await sealFor(workspaceEncryptionRows(db as unknown as DbExecutor), keys, id, { write: false }); }
+        catch { continue; } // still locked here
+        await boss.send(WORKSPACE_ENCRYPTION_RESUME_JOB, { workspaceId: id }, { singletonKey: `sweep:${id}`, singletonSeconds: 60 });
+      }
+    })().catch((error) => console.error(JSON.stringify({ warning: 'Sealed wait sweep failed', error: redactedError(error).message })));
+  }, 30_000);
+  sweep.unref();
   return {
     keys,
     /** Starts a pending rotation or continues a running pass for one workspace (no-op while one runs here). */
     rotation: { kick: (workspaceId: string) => { void run(workspaceId); } },
-    stop: () => { stopped = true; clearInterval(timer); heartbeat.stop(); void rotationDatabase.pool.end(); },
+    stop: () => { stopped = true; clearInterval(rotationTimer); clearInterval(sweep); heartbeat.stop(); void rotationDatabase.pool.end(); },
   };
 }

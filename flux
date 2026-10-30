@@ -1070,6 +1070,11 @@ cmd_restore() {
   restore_key_pin_secret "$RESTORE_DIR/flux.env"
   if [ "$from_schema" != "$to_schema" ] || [ "$migrate" = 1 ]; then say "Migrating from ledger {$from_ledger}..."; fi
   compose_main run --rm migrate || die "The migration after restore failed. See the output above; the archive is unchanged."
+  # F-030: a restored encrypted space is locked. Its unlock rows were sealed to the keyring boot of the backup's server;
+  # they are removed, so it opens only with an unlock password (or recovery code) valid when the backup was taken.
+  compose_main exec -T db psql -X -q -v ON_ERROR_STOP=1 -U "$(pg_user)" -d "$(pg_db)" \
+    -c "DO \$\$ BEGIN IF to_regclass('public.workspace_unlocks') IS NOT NULL THEN TRUNCATE workspace_unlocks; END IF; END \$\$;" >/dev/null \
+    || die "Locking the restored encrypted spaces failed; API and worker were not started."
   # A restored GitHub token/binding cannot resurrect provider authority or queued work.
   image_op revoke-github-access || die "Revoking restored GitHub authorization failed; API and worker were not started."
   # Agent connections and OAuth tokens come back as they were at backup time: one revoked

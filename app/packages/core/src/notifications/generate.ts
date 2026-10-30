@@ -292,6 +292,12 @@ export async function generateNotifications(uow: GeneratorUnitOfWork, options: G
           return count;
         });
       } catch (error) {
+        if ((error as { code?: unknown }).code === 'WORKSPACE_LOCKED' && ports.recordWait) {
+          await ports.recordWait(event);
+          done = event.seq;
+          processed++;
+          continue;
+        }
         // F-030: an error about a sealed workspace's event can quote its content; only its class, code and ids are kept.
         const sealedEvent = await Promise.resolve(ports.facts.sealedWorkspace?.(event.workspaceId)).catch(() => ({ name: '' }));
         const message = sealedEvent ? redactedError(error, [event.id]).message : (error as Error).message ?? String(error);
@@ -309,5 +315,19 @@ export async function generateNotifications(uow: GeneratorUnitOfWork, options: G
     }
     if (done !== null) await ports.advanceCursor(done);
     return { processed, created, stalled: false };
+  });
+}
+
+/**
+ * F-030: replays one event that waited while its sealed workspace was locked (after unlock). Notifications are unique
+ * per (recipient, event), so a replay never duplicates; a workspace locked again throws `WORKSPACE_LOCKED`.
+ */
+export async function replayWaitedEvent(uow: GeneratorUnitOfWork, eventId: string, options: GenerationOptions): Promise<number> {
+  return uow.run(async (ports) => {
+    const event = await ports.eventById?.(eventId);
+    if (!event) return 0;
+    let count = 0;
+    for (const candidate of await candidatesFor(event, ports.facts)) if (await deliver(ports, event, candidate, options)) count++;
+    return count;
   });
 }
