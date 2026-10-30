@@ -214,14 +214,19 @@ export function githubRows(db: DbExecutor,options:{taskFence?:()=>import('./task
         WHERE r.workspace_id = ${binding.workspaceId}::uuid AND r.project_id = ${binding.projectId}::uuid AND r.work_id = ${link.taskId}::uuid
           AND r.kind = 'review' AND r.state IN ('queued', 'deferred', 'claimed', 'resolved') AND r.target->>'type' = 'github_pr'
           AND r.target->>'linkId' = ${link.id} AND r.target->>'headSha' = ${headSha} LIMIT 1`)).rows.length > 0;
+      // F-029 (#614): the holder is an AI principal, so the bridge is an agent's event audience. The policy row is read
+      // FOR SHARE, ordering this delivery strictly before or after a flip; while AI is off, or for a unit admitted under an
+      // older epoch (not yet stopped by the sweep), nobody receives it, so no event of the blocked period reaches an agent.
+      const [policy] = (await db.execute<{ epoch: string }>(sql`SELECT epoch FROM workspace_ai_policies
+        WHERE workspace_id = ${binding.workspaceId}::uuid AND state = 'allowed' FOR SHARE`)).rows;
       if (echo) state = 'suppressed_echo';
-      else {
+      else if (policy) {
         const [holder] = (await db.execute<{ id: string; owner_user_id: string }>(sql`SELECT c.id, c.owner_user_id FROM cowork_units u
           JOIN agent_connections c ON c.id = u.assignment_connection_id AND c.workspace_id = u.workspace_id AND c.revoked_at IS NULL
           JOIN agent_connection_projects cp ON cp.connection_id = c.id AND cp.project_id = u.project_id
           JOIN project_work_items w ON w.id = u.work_id AND w.owner_agent_id = c.agent_id
           WHERE u.workspace_id = ${binding.workspaceId}::uuid AND u.project_id = ${binding.projectId}::uuid AND u.work_id = ${link.taskId}::uuid
-            AND u.role = 'execute' AND u.state IN ('pending', 'claimed', 'paused')
+            AND u.role = 'execute' AND u.state IN ('pending', 'claimed', 'paused') AND u.ai_epoch = ${policy.epoch}::bigint
           ORDER BY u.updated_at DESC, u.id DESC LIMIT 1`)).rows;
         if (holder) {
           // A private repository's facts go only to the binding author's own connection, whose access was just verified.
