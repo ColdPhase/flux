@@ -2,6 +2,7 @@ import { fileRows } from './files.js';
 import { and, asc, eq, inArray, or, sql } from 'drizzle-orm';
 import * as schema from '../schema.js';
 import type { DbExecutor } from './push.js';
+import { openRows } from '../sealing.js';
 
 /**
  * Read rows of one project for the export (issue #123), already in the wire shape of
@@ -46,18 +47,19 @@ export function projectExportRows(db: DbExecutor) {
   async function versioned(projectId: string, kind: 'material' | 'doc') {
     const materials = await db.select().from(m).where(and(eq(m.projectId, projectId), eq(m.kind, kind))).orderBy(asc(m.createdAt), asc(m.id));
     if (!materials.length) return [];
-    const versions = groupBy(await db.select({
-      materialId: v.materialId, version: v.version, title: v.title, body: v.body, url: v.url, state: v.state, reason: v.reason,
+    // F-030: an encrypted workspace's export opens every sealed field (a deliberate copy to the person who asked).
+    const versions = groupBy(await openRows(db, 'project_material_versions', await db.select({
+      materialId: v.materialId, workspaceId: v.workspaceId, version: v.version, title: v.title, body: v.body, url: v.url, state: v.state, reason: v.reason,
       authorId: v.authorId, authorAgentId: v.authorAgentId, createdAt: v.createdAt,
-    }).from(v).where(and(eq(v.projectId, projectId), inArray(v.materialId, materials.map((row) => row.id)))).orderBy(asc(v.materialId), asc(v.version)), (row) => row.materialId);
+    }).from(v).where(and(eq(v.projectId, projectId), inArray(v.materialId, materials.map((row) => row.id)))).orderBy(asc(v.materialId), asc(v.version))), (row) => row.materialId);
     return materials.map((row) => ({ row, versions: versions.get(row.id) ?? [] }));
   }
 
   async function conversations(projectId: string, space: 'people' | 'agents') {
       const conversations = await db.select().from(c).where(and(eq(c.projectId, projectId), eq(c.space, space))).orderBy(asc(c.createdAt), asc(c.id));
       if (!conversations.length) return [];
-      const messageRows = await db.select().from(msg).where(and(eq(msg.projectId, projectId), inArray(msg.conversationId, conversations.map(row => row.id))))
-        .orderBy(asc(msg.conversationId), asc(msg.sequence));
+      const messageRows = await openRows(db, 'project_messages', await db.select().from(msg).where(and(eq(msg.projectId, projectId), inArray(msg.conversationId, conversations.map(row => row.id))))
+        .orderBy(asc(msg.conversationId), asc(msg.sequence)));
       const messages = groupBy(messageRows, (row) => row.conversationId);
       const files = await fileRows(db).messageFiles(messageRows.map(row => row.id));
       return conversations.map((row) => ({
@@ -76,10 +78,12 @@ export function projectExportRows(db: DbExecutor) {
 
   return {
     async files(projectId: string) {
-      const rows = await db.select({ file: schema.projectFiles, conversationId: msg.conversationId }).from(schema.projectFiles)
+      const read = await db.select({ file: schema.projectFiles, conversationId: msg.conversationId }).from(schema.projectFiles)
         .innerJoin(msg, eq(msg.id, schema.projectFiles.messageId))
         .where(and(eq(schema.projectFiles.projectId, projectId), sql`${schema.projectFiles.messageId} IS NOT NULL`))
         .orderBy(asc(schema.projectFiles.id));
+      const opened = await openRows(db, 'project_files', read.map((row) => row.file));
+      const rows = read.map((row, index) => ({ ...row, file: opened[index]! }));
       return rows.map(({ file, conversationId }) => ({ id: file.id, name: file.name, size: file.size!, sha256: file.sha256!,
         messageId: file.messageId!, conversationId, position: file.position!, path: `files/${file.id}` }));
     },
@@ -87,7 +91,8 @@ export function projectExportRows(db: DbExecutor) {
       const [row] = await db.select({ project: schema.projects, workspaceName: schema.workspaces.name }).from(schema.projects)
         .innerJoin(schema.workspaces, eq(schema.workspaces.id, schema.projects.workspaceId)).where(eq(schema.projects.id, projectId));
       if (!row) return null;
-      const { project } = row;
+      const [project] = await openRows(db, 'projects', [row.project]);
+      if (!project) return null;
       return { id: project.id, name: project.name, visibility: project.visibility, createdAt: iso(project.createdAt), workspace: { id: project.workspaceId, name: row.workspaceName } };
     },
 
@@ -125,14 +130,14 @@ export function projectExportRows(db: DbExecutor) {
 
     /** Project sketches only; a private sketch is never selected, and placements are left out. */
     async sketches(projectId: string) {
-      const sketches = await db.select().from(s).where(and(eq(s.projectId, projectId), eq(s.scope, 'project'))).orderBy(asc(s.createdAt), asc(s.id));
+      const sketches = await openRows(db, 'sketches', await db.select().from(s).where(and(eq(s.projectId, projectId), eq(s.scope, 'project'))).orderBy(asc(s.createdAt), asc(s.id)));
       if (!sketches.length) return [];
       const ids = sketches.map((row) => row.id);
-      const thoughts = groupBy(await db.select({
-        id: t.id, sketchId: t.sketchId, text: t.text, x: t.x, y: t.y, width: t.width, height: t.height, shape: t.shape,
+      const thoughts = groupBy(await openRows(db, 'sketch_thoughts', await db.select({
+        id: t.id, workspaceId: t.workspaceId, sketchId: t.sketchId, text: t.text, x: t.x, y: t.y, width: t.width, height: t.height, shape: t.shape,
         createdByUserId: t.createdByUserId, createdByAgentId: t.createdByAgentId, version: t.version, createdAt: t.createdAt,
-      }).from(t).where(inArray(t.sketchId, ids)).orderBy(asc(t.createdAt), asc(t.id)), (row) => row.sketchId);
-      const links = groupBy(await db.select().from(sl).where(inArray(sl.sketchId, ids)).orderBy(asc(sl.createdAt), asc(sl.id)), (row) => row.sketchId);
+      }).from(t).where(inArray(t.sketchId, ids)).orderBy(asc(t.createdAt), asc(t.id))), (row) => row.sketchId);
+      const links = groupBy(await openRows(db, 'sketch_links', await db.select().from(sl).where(inArray(sl.sketchId, ids)).orderBy(asc(sl.createdAt), asc(sl.id))), (row) => row.sketchId);
       return sketches.map((row) => ({
         id: row.id, title: row.title, createdBy: creator(row.createdByUserId, row.createdByAgentId), version: row.version,
         createdAt: iso(row.createdAt), updatedAt: iso(row.updatedAt),
@@ -145,7 +150,7 @@ export function projectExportRows(db: DbExecutor) {
     },
 
     async work(projectId: string) {
-      const rows = await db.select().from(w).where(eq(w.projectId, projectId)).orderBy(asc(w.createdAt), asc(w.id));
+      const rows = await openRows(db, 'project_work_items', await db.select().from(w).where(eq(w.projectId, projectId)).orderBy(asc(w.createdAt), asc(w.id)));
       const notices = rows.length ? await db.select().from(schema.projectTaskNotices).where(eq(schema.projectTaskNotices.projectId, projectId))
         .orderBy(asc(schema.projectTaskNotices.createdAt), asc(schema.projectTaskNotices.id)) : [];
       return rows.map((row) => ({
@@ -164,7 +169,7 @@ export function projectExportRows(db: DbExecutor) {
     },
 
     async decisions(projectId: string) {
-      const rows = await db.select().from(d).where(eq(d.projectId, projectId)).orderBy(asc(d.createdAt), asc(d.id));
+      const rows = await openRows(db, 'project_decisions', await db.select().from(d).where(eq(d.projectId, projectId)).orderBy(asc(d.createdAt), asc(d.id)));
       return rows.map((row) => ({
         id: row.id, title: row.title, rationale: row.rationale, status: row.status, proposedBy: { kind: row.proposedByKind, id: row.proposedById },
         decidedBy: row.decidedBy ? human(row.decidedBy) : null, decidedAt: row.decidedAt ? iso(row.decidedAt) : null,
@@ -173,7 +178,7 @@ export function projectExportRows(db: DbExecutor) {
     },
 
     async results(projectId: string) {
-      const rows = await db.select().from(r).where(eq(r.projectId, projectId)).orderBy(asc(r.createdAt), asc(r.id));
+      const rows = await openRows(db, 'project_results', await db.select().from(r).where(eq(r.projectId, projectId)).orderBy(asc(r.createdAt), asc(r.id)));
       return rows.map((row) => ({ id: row.id, title: row.title, finding: row.finding, evidence: row.evidence, createdBy: { kind: row.createdByKind, id: row.createdById }, createdAt: iso(row.createdAt) }));
     },
 

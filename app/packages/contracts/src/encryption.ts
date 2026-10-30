@@ -156,3 +156,46 @@ export const IDEMPOTENCY_ACCOUNT_OPERATIONS: Readonly<Record<string, string>> = 
 
 /** An encrypted workspace that is locked here, as cross-workspace reads name it (F-030 `lockedWorkspaces`). */
 export interface LockedWorkspaceRef { id: string; name: string }
+
+/**
+ * F-030 event data (S2a-2c-3, migration 0125): in an encrypted workspace every string in an event's `data` is a UUID,
+ * an ISO timestamp, a sealed envelope, an existing account id or principal key, or one of these registered values
+ * (kinds, states, roles, reasons and operations the record sites write). Migration 0125 seeds `event_data_tokens` with
+ * exactly this list, and `tests/app/encryption-registry.test.ts` compares the two. No free word passes.
+ */
+export const EVENT_DATA_TOKENS = [
+  'about', 'accepted', 'admin', 'affects', 'agent', 'assigned', 'blocked', 'contributor', 'conversation', 'copied_from_dm',
+  'copied_to_project', 'creation_reverted', 'decision', 'denied', 'dm', 'doc', 'done', 'group', 'guest', 'human', 'in_progress',
+  'invitation', 'left', 'link_added', 'link_removed', 'link_updated', 'map', 'material', 'member', 'mention', 'mentions', 'message',
+  'not_pursued', 'open', 'owner', 'pair', 'password', 'person', 'private', 'project', 'proposed', 'question', 'recovery', 'rejoined',
+  'related', 'renamed', 'reply', 'restart', 'restricted', 'result', 'review', 'self', 'sketch', 'source', 'still_applies',
+  'superseded', 'thought', 'thought_added', 'thought_removed', 'thought_updated', 'thoughts_moved', 'viewer', 'wiki', 'work',
+  'workspace',
+] as const;
+
+/**
+ * F-030 event data keys (#721 review P2-1, migration 0125): every object key in an encrypted workspace's event `data` is
+ * one of these field names (the record sites' keys), a UUID or `$sealed`. Seeded into `event_data_keys`; the registry
+ * test compares the two.
+ */
+export const EVENT_DATA_KEYS = [
+  'access', 'actor', 'actorId', 'additionalProperties', 'agentId', 'agentIds', 'ai', 'assignedTo', 'at', 'audience',
+  'author', 'automation', 'body', 'boundary', 'by', 'canCreateProject', 'caps', 'changed', 'changes',
+  'clientCommandId', 'clientMessageId', 'code', 'columns', 'command', 'commandId', 'contentIdentity',
+  'conversationId', 'createdAt', 'createdBy', 'data', 'decisionId', 'dm', 'dmId', 'docId', 'draft', 'draftId',
+  'email', 'end', 'error', 'eventId', 'events', 'evidenceRef', 'expected', 'expiresAt', 'fence', 'file', 'fileId',
+  'fingerprint', 'firstMessageBody', 'from', 'fromTitle', 'goal', 'goalId', 'grantId', 'hasMoreBefore', 'height',
+  'id', 'ids', 'inbox', 'index', 'input', 'intent', 'intents', 'interpretation', 'invitationId', 'items', 'keys',
+  'kind', 'level', 'lifecycle', 'limit', 'link', 'linkId', 'linkIds', 'lock', 'materialId', 'maxLength', 'message',
+  'messageId', 'messageIds', 'messagePage', 'messages', 'myName', 'name', 'nextBeforeSequence', 'noticeId',
+  'objectId', 'observed', 'ok', 'op', 'operation', 'outcome', 'owner', 'ownerUserId', 'pairKey', 'participantIds',
+  'password', 'postconditions', 'principal', 'project', 'projectId', 'prompt', 'proposalId', 'provider', 'query',
+  'questionId', 'queue', 'reason', 'recipientId', 'recipients', 'record', 'recoveryCode', 'replayed', 'requestId',
+  'requestedQuestion', 'required', 'resultId', 'results', 'resume', 'retained', 'retryDelay', 'retryLimit',
+  'retryable', 'reviewerConnectionId', 'reviewerOwnerId', 'revision', 'role', 'rootId', 'rootMessageId', 'row',
+  'runId', 'runToken', 'runtime', 'sampleId', 'scope', 'session', 'sessionId', 'sketch', 'sketchId', 'source',
+  'sources', 'stage', 'state', 'status', 'step', 'stop', 'stopId', 'stopped', 'sweep', 'task', 'taskId', 'taskIds',
+  'taskNoticeId', 'tell', 'text', 'thought', 'thoughtId', 'thoughtIds', 'thoughts', 'title', 'to', 'toTitle', 'tool',
+  'tools', 'total', 'type', 'userId', 'value', 'verdict', 'version', 'view', 'visibility', 'waitingFor', 'width',
+  'window', 'work', 'workId', 'workerId', 'workspace', 'workspaceId',
+] as const;
