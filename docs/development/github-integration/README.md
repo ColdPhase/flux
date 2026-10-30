@@ -44,6 +44,7 @@ Set all six optional instance values, then restart the API:
 | `FLUX_GITHUB_APP_ID` | Positive decimal App ID, not installation ID |
 | `FLUX_GITHUB_APP_SLUG` | App URL slug from its settings |
 | `FLUX_GITHUB_WEBHOOK_SECRET` | The configured webhook HMAC secret |
+| `FLUX_GITHUB_DELIVERY` | Optional. `webhook` (default) or `poll` when GitHub cannot reach this server: open linked PRs are reconciled every 2 minutes with conditional requests (G-1c) |
 | `FLUX_GITHUB_ENCRYPTION_KEY` | Random 32-byte key as 64 hex characters |
 
 Development and packaged Compose pass these only to the API. All empty means

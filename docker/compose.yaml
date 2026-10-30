@@ -82,6 +82,7 @@ services:
       FLUX_GITHUB_APP_ID: ${FLUX_GITHUB_APP_ID:-}
       FLUX_GITHUB_APP_SLUG: ${FLUX_GITHUB_APP_SLUG:-}
       FLUX_GITHUB_WEBHOOK_SECRET: ${FLUX_GITHUB_WEBHOOK_SECRET:-}
+      FLUX_GITHUB_DELIVERY: ${FLUX_GITHUB_DELIVERY:-webhook}
       FLUX_GITHUB_ENCRYPTION_KEY: ${FLUX_GITHUB_ENCRYPTION_KEY:-}
       # Encrypted workspaces (F-030): the keyring below, on its internal network. FLUX_KEYRING=off disables them.
       FLUX_KEYRING: ${FLUX_KEYRING:-on}
