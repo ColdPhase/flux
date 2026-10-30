@@ -992,6 +992,22 @@ export const agentProjectPolicies = pgTable('agent_project_policies', {
   publishedAt: timestamp('published_at', { withTimezone: true }).notNull().defaultNow(),
 }, (table) => [primaryKey({ columns: [table.projectId, table.revision] })]);
 
+// A person paused an external agent's work on a task (migration 0131, #160 AC-5). Present while the pause is in force.
+export const agentPauses = pgTable('agent_pauses', {
+  workspaceId: uuid('workspace_id').notNull(),
+  projectId: uuid('project_id').notNull(),
+  taskId: uuid('task_id').notNull(),
+  agentId: uuid('agent_id').notNull(),
+  pausedBy: text('paused_by').notNull().references(() => authUsers.id, { onDelete: 'cascade' }),
+  pausedAt: timestamp('paused_at', { withTimezone: true }).notNull().defaultNow(),
+}, (table) => [
+  primaryKey({ columns: [table.taskId, table.agentId] }),
+  index('agent_pauses_project_idx').on(table.projectId, table.pausedAt.desc()),
+  foreignKey({ columns: [table.workspaceId, table.projectId], foreignColumns: [projects.workspaceId, projects.id] }).onDelete('cascade'),
+  foreignKey({ columns: [table.workspaceId, table.projectId, table.taskId], foreignColumns: [projectWorkItems.workspaceId, projectWorkItems.projectId, projectWorkItems.id] }).onDelete('cascade'),
+  foreignKey({ columns: [table.workspaceId, table.agentId], foreignColumns: [agents.workspaceId, agents.id] }).onDelete('cascade'),
+]);
+
 // A person ended an external agent's work on a task (migration 0065, #347 S13). The task, its owner and its co-work
 // units change through their own commands in the same transaction; this is the record of who did it and when.
 export const agentStops = pgTable('agent_stops', {
@@ -2200,7 +2216,10 @@ export const githubBridgeOutbox = pgTable('github_bridge_outbox', {
   linkId: uuid('link_id').notNull().references(() => githubTaskLinks.id, { onDelete: 'cascade' }),
   taskId: uuid('task_id').notNull(), workspaceId: uuid('workspace_id').notNull(), projectId: uuid('project_id').notNull(),
   headSha: text('head_sha').notNull(), event: text('event').notNull(), providerObjectId: text('provider_object_id'), correlationKey: text('correlation_key').notNull(),
-  state: text('state').notNull().default('pending_audience_adapter'), createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  state: text('state', { enum: ['pending_audience_adapter', 'delivered', 'no_recipient', 'no_access', 'suppressed_echo'] }).notNull().default('pending_audience_adapter'),
+  /** 0132 (#479): the connection the #153 bridge delivered this event to; set exactly when `delivered`. */
+  recipientConnectionId: uuid('recipient_connection_id'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [unique().on(t.deliveryId, t.bindingId, t.linkId), unique().on(t.bindingId, t.linkId, t.correlationKey)]);
 // "Let linked PRs move this task" (#74 G-1a, migration 0052): one rule per task, its automatic changes and the project default.
 const WORK_STATUS = ['open', 'in_progress', 'blocked', 'done', 'not_pursued'] as const;

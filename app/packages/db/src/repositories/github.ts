@@ -150,10 +150,10 @@ export function githubRows(db: DbExecutor,options:{taskFence?:()=>import('./task
     async complete(deliveryId: string, bindingId: string, errorCode: string | null = null) {
       await db.update(p).set({ state: 'completed', errorCode }).where(and(eq(p.deliveryId, deliveryId), eq(p.bindingId, bindingId)));
     },
-    async reconciliationCandidates(appId: string, window: string, limit: number) {
+    async reconciliationCandidates(appId: string, window: string, limit: number, prefix: 'gap' | 'poll' = 'gap') {
       return (await db.select().from(b).where(and(eq(b.appId, appId), eq(b.state, 'active'),
         sql`EXISTS (SELECT 1 FROM github_task_links gl WHERE gl.binding_id=${b.id})`,
-        sql`NOT EXISTS (SELECT 1 FROM github_deliveries gd WHERE gd.id='gap-' || ${b.id}::text || '-' || ${window})`,
+        sql`NOT EXISTS (SELECT 1 FROM github_deliveries gd WHERE gd.id=${prefix} || '-' || ${b.id}::text || '-' || ${window})`,
         sql`NOT EXISTS (SELECT 1 FROM github_processing gp JOIN github_deliveries gd ON gd.id=gp.delivery_id
           WHERE gp.binding_id=${b.id} AND gp.state='pending' AND gd.origin='reconcile')`)).orderBy(asc(b.id)).limit(limit)).map(bindingView);
     },
@@ -173,14 +173,53 @@ export function githubRows(db: DbExecutor,options:{taskFence?:()=>import('./task
       await db.update(p).set({ state: 'completed', errorCode: 'GITHUB_RESTORED_AUTHORIZATION_REVOKED' });
       return { credentials: credentials.length, bindings: bindings.length };
     },
+    /**
+     * The #153 current-recipient bridge (#479, docs/development/github-integration/README.md). One decision per new
+     * correlation, in this processing transaction after the link's facts were saved: deliver a reference to the
+     * connection that holds the task now, suppress an echo of a review Flux already coordinates, and supersede queued
+     * Flux review requests for an older head. No comment text, no wake, no authority.
+     */
     async bridge(delivery: Delivery, binding: Binding, link: Omit<Link, 'pullId'>, facts: GithubPullFacts) {
-      // Technical metadata only. No recipient, client wake or authority is fabricated.
       const comment = delivery.payload.comment as { updated_at?: unknown } | undefined;
       const correlationKey = createHash('sha256').update(JSON.stringify({ event: delivery.event, object: delivery.providerObjectId,
         sourceUpdatedAt: comment?.updated_at ?? null, facts })).digest('hex');
+      const headSha = facts.headSha.toLowerCase();
+      // Every reconciliation of the link (webhook, poll, catch-up or a person's reconcile) applies the current head:
+      // queued or deferred reviews of an older head are stale. A claimed review keeps its claim and its pinned verdict.
+      await db.execute(sql`UPDATE cowork_requests SET state = 'superseded', reason = 'head_changed', version = version + 1,
+        updated_at = clock_timestamp()
+        WHERE workspace_id = ${binding.workspaceId}::uuid AND project_id = ${binding.projectId}::uuid AND work_id = ${link.taskId}::uuid
+          AND kind = 'review' AND state IN ('queued', 'deferred') AND target->>'type' = 'github_pr'
+          AND target->>'linkId' = ${link.id} AND target->>'headSha' <> ${headSha}`);
+      let state: 'delivered' | 'no_recipient' | 'no_access' | 'suppressed_echo' = 'no_recipient';
+      let recipient: string | null = null;
+      // An echo is the GitHub review that the Flux reviewer of this head published itself: the review's author is the
+      // GitHub account of that request's recipient owner (for this App). Anyone else's review reaches the holder.
+      const review = delivery.payload.review as { user?: { id?: unknown } } | undefined;
+      const reviewer = typeof review?.user?.id === 'number' || typeof review?.user?.id === 'string' ? String(review.user.id) : null;
+      const echo = delivery.event === 'pull_request_review' && reviewer !== null && (await db.execute(sql`SELECT 1 FROM cowork_requests r
+        JOIN github_credentials gc ON gc.user_id = r.recipient_owner_id AND gc.app_id = ${binding.appId} AND gc.github_user_id = ${reviewer}
+        WHERE r.workspace_id = ${binding.workspaceId}::uuid AND r.project_id = ${binding.projectId}::uuid AND r.work_id = ${link.taskId}::uuid
+          AND r.kind = 'review' AND r.state IN ('queued', 'deferred', 'claimed', 'resolved') AND r.target->>'type' = 'github_pr'
+          AND r.target->>'linkId' = ${link.id} AND r.target->>'headSha' = ${headSha} LIMIT 1`)).rows.length > 0;
+      if (echo) state = 'suppressed_echo';
+      else {
+        const [holder] = (await db.execute<{ id: string; owner_user_id: string }>(sql`SELECT c.id, c.owner_user_id FROM cowork_units u
+          JOIN agent_connections c ON c.id = u.assignment_connection_id AND c.workspace_id = u.workspace_id AND c.revoked_at IS NULL
+          JOIN agent_connection_projects cp ON cp.connection_id = c.id AND cp.project_id = u.project_id
+          JOIN project_work_items w ON w.id = u.work_id AND w.owner_agent_id = c.agent_id
+          WHERE u.workspace_id = ${binding.workspaceId}::uuid AND u.project_id = ${binding.projectId}::uuid AND u.work_id = ${link.taskId}::uuid
+            AND u.role = 'execute' AND u.state IN ('pending', 'claimed', 'paused')
+          ORDER BY u.updated_at DESC, u.id DESC LIMIT 1`)).rows;
+        if (holder) {
+          // A private repository's facts go only to the binding author's own connection, whose access was just verified.
+          if (binding.private && holder.owner_user_id !== binding.authorUserId) state = 'no_access';
+          else { state = 'delivered'; recipient = holder.id; }
+        }
+      }
       await db.insert(s.githubBridgeOutbox).values({ id: randomUUID(), deliveryId: delivery.id, bindingId: binding.id, linkId: link.id,
         taskId: link.taskId, workspaceId: binding.workspaceId, projectId: binding.projectId, headSha: facts.headSha,
-        event: delivery.event, providerObjectId: delivery.providerObjectId, correlationKey, state: 'pending_audience_adapter' }).onConflictDoNothing();
+        event: delivery.event, providerObjectId: delivery.providerObjectId, correlationKey, state, recipientConnectionId: recipient }).onConflictDoNothing();
     },
     /** After an explicit authorization revoke: the rules reading its bindings and the rules this person set up (see `suspendRules`). */
     async suspendRulesFor(bindingIds: string[], authorUserId: string) {
@@ -257,4 +296,23 @@ export function githubRows(db: DbExecutor,options:{taskFence?:()=>import('./task
           SELECT 1 FROM github_processing gp WHERE gp.delivery_id=gd.id AND gp.state='pending') LIMIT 1000)`);
     },
   };
+}
+
+/**
+ * Linked-PR events the #153 bridge delivered to one connection in one project (#479), newest first, within seven days.
+ * Rechecked now: the binding is active, the link is current and a private repository's binding author still owns the
+ * connection. References only; the caller has already authorized the connection and project.
+ */
+export async function githubBridgeDeliveries(db: DbExecutor, scope: { workspaceId: string; projectId: string; connectionId: string }, limit = 20) {
+  const rows = await db.execute<{ id: string; task_id: string; link_id: string; event: string; head_sha: string; created_at: Date | string }>(sql`
+    SELECT o.id, o.task_id, o.link_id, o.event, o.head_sha, o.created_at FROM github_bridge_outbox o
+      JOIN github_bindings b ON b.id = o.binding_id AND b.state = 'active'
+      JOIN github_task_links l ON l.id = o.link_id AND l.state = 'current'
+      JOIN agent_connections c ON c.id = o.recipient_connection_id
+    WHERE o.recipient_connection_id = ${scope.connectionId}::uuid AND o.workspace_id = ${scope.workspaceId}::uuid
+      AND o.project_id = ${scope.projectId}::uuid AND o.state = 'delivered' AND o.created_at > now() - interval '7 days'
+      AND (NOT b.private OR c.owner_user_id = b.author_user_id)
+    ORDER BY o.created_at DESC, o.id DESC LIMIT ${limit}`);
+  return rows.rows.map((row) => ({ id: row.id, taskId: row.task_id, linkId: row.link_id, event: row.event, headSha: row.head_sha,
+    at: new Date(row.created_at).toISOString() }));
 }

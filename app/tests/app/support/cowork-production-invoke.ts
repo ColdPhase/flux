@@ -11,6 +11,7 @@ export function coworkProductionInvoke(binding: CoworkHostBinding, action: 'star
     throw new Error('Resume requires this isolated action’s own native thread.');
   return ['exec', '--ignore-user-config', '--json', '--skip-git-repo-check', '--sandbox', 'workspace-write',
     '-c', `mcp_servers.flux.url=${JSON.stringify(coworkHostUrl(binding))}`, '-c', 'mcp_servers.flux.required=true',
+    '-c', 'mcp_servers.flux.default_tools_approval_mode="approve"',
     '-c', `developer_instructions=${JSON.stringify(coworkHostInstructions(binding, action))}`,
     '-c', 'features.apps=false', '-c', 'features.plugins=false', '-c', 'features.remote_plugin=false',
     ...(action === 'resume' ? ['resume', binding.threadId!] : []),

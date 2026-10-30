@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
-import { symlinkSync } from 'node:fs';
+import { chmodSync, copyFileSync } from 'node:fs';
 import { writeFile, unlink } from 'node:fs/promises';
 import { coworkHostScope, coworkHostUrl, coworkNativeOutcome, type CoworkHostBinding } from '../../../tooling/cowork.js';
 import { join } from 'node:path';
@@ -28,11 +28,13 @@ test('real configured accounts: supplied Start and Resume reach the model and pr
     const productionFirst = oauthProductionFirstLoginOnly(process.env);
     let diagnostic = createOAuthDiagnostic();
     const { pool } = createDatabase(process.env.DATABASE_URL!);
-    const proxy = startFluxProxy(observation => diagnostic.response(observation)); await proxy.listen();
+    // Every client request to Flux passes this proxy; the quiet-idle window below counts them (#160 AC-4).
+    let fluxRequests = 0;
+    const proxy = startFluxProxy(observation => diagnostic.response(observation), () => { fluxRequests++; }); await proxy.listen();
     const browser = await chromium.launch({ headless: true, args: ['--no-sandbox'] });
     try {
       const only = process.env.FLUX_TEST_MCP_LIVE_CLIENT;
-      assert.equal(only, 'codex', 'Configured-account acceptance is explicitly Codex-only; Claude remains stopped pending new account/auth evidence.');
+      assert.ok(!only || only === 'codex' || only === 'claude', 'FLUX_TEST_MCP_LIVE_CLIENT selects codex or claude');
       for (const client of ['codex', 'claude'] as const) {
         if (only && only !== client) continue;
         await t.test(client, async () => {
@@ -74,8 +76,11 @@ test('real configured accounts: supplied Start and Resume reach the model and pr
           for (const key of ['OPENAI_API_KEY', 'CODEX_API_KEY', 'ANTHROPIC_API_KEY', 'OPENAI_BASE_URL']) home.env[key] = '';
         }
         if (!loginOnly) {
-          if (client === 'codex') symlinkSync('/run/flux-live/codex-auth.json', join(home.env.CODEX_HOME!, 'auth.json'));
-          else symlinkSync('/run/flux-live/claude-credentials.json', join(home.env.CLAUDE_CONFIG_DIR!, '.credentials.json'));
+          // A private writable copy in this disposable HOME: the client may refresh an expired access token there.
+          // The read-only host file is never written, and the copy is removed with the container.
+          const target = client === 'codex' ? join(home.env.CODEX_HOME!, 'auth.json') : join(home.env.CLAUDE_CONFIG_DIR!, '.credentials.json');
+          copyFileSync(client === 'codex' ? '/run/flux-live/codex-auth.json' : '/run/flux-live/claude-credentials.json', target);
+          chmodSync(target, 0o600);
         }
         let binding: CoworkHostBinding = { schema: 'flux.cowork.host/1', ...coworkHostScope(origin, String(connection.id), projectId, 'codex', home.cwd),
           threadId: null, outcome: 'new', updatedAt: new Date().toISOString() };
@@ -145,8 +150,15 @@ test('real configured accounts: supplied Start and Resume reach the model and pr
           const result = client === 'codex'
             ? await sh('codex', coworkProductionInvoke(binding, action), home.env, home.cwd)
             : await sh(claudeBin, ['-p', input, '--output-format', 'stream-json', '--verbose', '--allowedTools', 'mcp__flux', '--max-turns', '20'], home.env, home.cwd);
+          // Only a failed run is an account stop. Claude's stream-json carries routine `rate_limit_event` status lines
+          // in a successful run, so markers are read from its final result (or from a failed process's output) only.
+          const parsed = clientEvents(result.output) as Array<Record<string, unknown>>;
+          const final = parsed.filter(event => event.type === 'result').at(-1);
+          const failedText = client === 'claude'
+            ? (final?.is_error === true || result.code !== 0 ? `${String(final?.result ?? '')} ${String(final?.subtype ?? '')}${final ? '' : result.output}` : '')
+            : (result.code !== 0 ? result.output : parsed.filter(event => event.type === 'error' || event.type === 'turn.failed').map(event => JSON.stringify(event)).join(' '));
           const categories = ['usage_limit', 'rate_limit', 'rate limit', 'weekly limit', 'authentication_error', '401 Unauthorized', 'not logged in']
-            .filter(marker => result.output.toLowerCase().includes(marker.toLowerCase()));
+            .filter(marker => failedText.toLowerCase().includes(marker.toLowerCase()));
           const failure = categories.length > 0;
           if (failure) console.log('LIVE_NATIVE_ACCOUNT_STOP', JSON.stringify({ client, action, categories }));
           assert.ok(!failure, `${client}: configured-account authentication or usage limit; stop this provider, do not retry or substitute a payer`);
@@ -171,7 +183,22 @@ test('real configured accounts: supplied Start and Resume reach the model and pr
             if (event.type === 'item.completed' && event.item?.type === 'mcp_tool_call') calls.push(String(event.item.tool));
             for (const block of event.message?.content ?? []) if (block.type === 'tool_use') calls.push(String(block.name));
           }
-          console.log('LIVE_NATIVE_WORKFLOW_TURN', JSON.stringify({ client, action, toolCalls: calls.length, tools: [...new Set(calls)].sort() }));
+          // Fixture-only diagnostics: failed tool names/statuses and a bounded excerpt of the model's last message on this
+          // disposable fixture project (no person's content), so a stop before the expected effect can be explained.
+          const failed: string[] = [];
+          let lastMessage = '';
+          type Seen = { type?: string; result?: unknown; item?: { type?: string; tool?: string; status?: string; text?: string; error?: { message?: string } };
+            message?: { content?: { type?: string; is_error?: boolean; content?: unknown }[] } };
+          for (const event of events as Seen[]) {
+            if (event.type === 'item.completed' && event.item?.type === 'mcp_tool_call' && event.item.status !== 'completed')
+              failed.push(`${event.item.tool}:${event.item.status}:${String(event.item.error?.message ?? '').slice(0, 160)}`);
+            if (event.type === 'item.completed' && event.item?.type === 'agent_message') lastMessage = String(event.item.text ?? '');
+            if (event.type === 'user') for (const block of event.message?.content ?? []) if (block.type === 'tool_result' && block.is_error)
+              failed.push(`tool_result_error:${JSON.stringify(block.content).slice(0, 160)}`);
+            if (event.type === 'result') lastMessage = String(event.result ?? '');
+          }
+          console.log('LIVE_NATIVE_WORKFLOW_TURN', JSON.stringify({ client, action, exit: result.code, toolCalls: calls.length, tools: [...new Set(calls)].sort(),
+            failedCalls: failed.slice(0, 10), lastMessage: lastMessage.slice(0, 600) }));
         }
         await invoke('start');
         const tasks = (await pool.query(`SELECT w.id,w.criteria,i.intent_key FROM project_work_items w
@@ -181,6 +208,13 @@ test('real configured accounts: supplied Start and Resume reach the model and pr
         const checkpoints = (await pool.query(`SELECT c.progress FROM cowork_checkpoints c JOIN cowork_units u ON u.id=c.unit_id
           WHERE c.project_id=$1 AND u.assignment_connection_id=$2 AND u.state='paused'`, [projectId, connection.id])).rows;
         assert.ok(checkpoints.some(row => row.progress.orientation?.known?.length > 0), `${client}: Start persists actual source coverage at a safe checkpoint`);
+        // Quiet idle (#160 AC-4): after Start's bounded turn the client holds no process and makes no request to Flux
+        // or a model until the person's next supplied action. Count every proxied Flux request over a fixed window.
+        const idleFrom = fluxRequests; const idleMs = Number(process.env.FLUX_TEST_MCP_IDLE_MS ?? 60_000);
+        await new Promise((resolve) => setTimeout(resolve, idleMs));
+        const idleRequests = fluxRequests - idleFrom;
+        console.log('LIVE_NATIVE_QUIET_IDLE', JSON.stringify({ client, windowMs: idleMs, fluxRequests: idleRequests, clientProcesses: 0 }));
+        assert.equal(idleRequests, 0, `${client}: no Flux request while idle between Start and Resume`);
         expect(await owner.request('PATCH', `/api/v1/materials/${plan.materialId}`, { body: {
           clientMutationId: randomUUID(),
           title: 'Current project plan', body: 'Changed outcome: use Experiment as the label, because the audience records small experiments.',
