@@ -18,9 +18,9 @@ export interface HolderRecord {
   holderMac: string;
   holderMacVersion: number;
   secretCheck: string;
-  /** The key versions this holder has a confirmation for, covered by `holder_mac` (0128). */
+  /** The key versions this holder has a confirmation for, covered by `holder_mac` (0130). */
   confirmedVersions: number[];
-  /** The key pin under the deployment secret (0128, `pin.ts`); null on a row no server path wrote. */
+  /** The key pin under the deployment secret (0130, `pin.ts`); null on a row no server path wrote. */
   pin: string | null;
 }
 export interface DekWrapRecord { holderId: string; workspaceId: string; keyVersion: number; ephemeralPublic: string; sealedDek: string; confirm: string | null }

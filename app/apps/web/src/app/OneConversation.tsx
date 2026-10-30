@@ -92,7 +92,7 @@ export function OneConversation({ data, Pane }: { data: ProjectData; Pane: Compo
   // Another member proposes or accepts a decision, records a result or makes a task (#694): the stream and an open thread
   // read it now instead of at the next poll. The events carry ids only; what is shown is read through the API.
   useStreamEvents(me.user.id, (event) => {
-    if (event.objectType === 'project' && event.objectId === project.id && /^project\.(decision_(proposed|accepted)|result_recorded|work_created)\.v1$/.test(event.kind)) revalidator.revalidate();
+    if (event.objectType === 'project' && event.objectId === project.id && /^project\.(decision_(proposed|accepted)|result_recorded|work_created|assistant_change_undone)\.v1$/.test(event.kind)) revalidator.revalidate();
   });
   const root = thread ? roots.roots.find((item) => item.conversationId === thread.id) ?? null : null;
   const [endToken, setEndToken] = useState(0);

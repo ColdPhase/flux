@@ -140,7 +140,7 @@ CREATE TABLE workspace_rotation_progress (  -- one row while a rotation runs; id
   passes integer NOT NULL DEFAULT 0, updated_at timestamptz NOT NULL DEFAULT now()
 );
 ALTER TABLE project_files ADD COLUMN key_version integer;  -- of the stored object; null for a plain workspace
--- 0128 (S2c): workspace_holders.confirmed_versions integer[] (covered by holder_mac), workspace_rotation_progress
+-- 0130 (S2c): workspace_holders.confirmed_versions integer[] (covered by holder_mac), workspace_rotation_progress
 -- .pass_changes and .started_at, the tombstone of every deleted holder (the recovery holder too), and the
 -- workspace_members trigger workspace_manager_lost that leaves a rotation pending when an owner or admin loses the role.
 CREATE TABLE password_attempts (            -- failed password or code checks on any route; pruned after 15 minutes
@@ -314,7 +314,7 @@ move all content under it. Four checks close this. None needs anything the attac
 1. **Holder MAC.** `holder_mac = HMAC-SHA256(HKDF(DEK v, [flux holder-auth v2, workspace id, v]),
    [holder id, kind, user id or "", public key, kdf, wrapped private key, secret check])`, with
    `v = holder_mac_version`, the current version when the MAC was written. `kdf` is compared in the fixed
-   key order `[alg, v, m, t, p, salt]`, so jsonb's reordering does not matter. **S2c (0128, label `flux holder-auth
+   key order `[alg, v, m, t, p, salt]`, so jsonb's reordering does not matter. **S2c (0130, label `flux holder-auth
    v3`):** the MAC also covers `confirmed_versions`, the versions the holder has a confirmation for, and a holder
    verifies only when that list restricted to the live versions equals the confirmations present. A deleted
    `confirm` of a listed version is tampering, and acceptance refuses it before it can fall back to the chain
@@ -493,7 +493,7 @@ stateDiagram-v2
    removal's transaction already deleted the holders, so the seconds until the start change nothing for the removed
    person; values written meanwhile are sealed under *n* and re-encrypted like the rest. (The first revision started
    in the role change's transaction; that would put a keyring call inside it and a second start path in the API.)
-   The removal itself is the 0128 trigger `workspace_manager_lost` on `workspace_members` (an owner or admin losing
+   The removal itself is the 0130 trigger `workspace_manager_lost` on `workspace_members` (an owner or admin losing
    the role by an update or a delete, the account-deletion cascade included): it deletes their password holder and
    the recovery holder (each leaving a tombstone) and sets `pending`. The worker holds DEK *n* in RAM at the start:
    - verify every holder MAC under DEK *n* (a failure marks tampering and stops the start);
@@ -1379,8 +1379,18 @@ token alone is not enough (S1 review): a real deployment never holds a half-seal
     measured on the plaintext. `read` and `has` return or compare plaintext only after the tag verifies; a tampered or
     truncated object is unavailable, never served. Thumbnails are made in the browser, so nothing else is stored. The
     file detail of #704 (`page_count`, `row_count`, `duration_ms`) stays visible metadata, like `size`.
-  - **S2a-2c**: the notification
-    and event backstops with content-free notifications, error-path redaction, `sealed_job_waits` and
+  - **S2a-2c-1** (migration 0124): content-free notifications. The generator opens a sealed workspace's message, task,
+    decision or result only in RAM to decide who is told and why, then stores the template title ("Ada mentioned you
+    in Garden club", one per reason) with an empty body; `flux_notification_content_free` refuses any other title or
+    a body for a sealed workspace (`NOTIFICATION_CONTENT_REFUSED`; the "who" must be an existing account name,
+    `Someone` or `An agent`). Needs-you's proposed decisions and the muted list's project and DM names are opened, and
+    a generation failure about a sealed workspace's event stores only `redactedError` (class, code, ids). An update
+    that keeps title, body and link (read state, delivery) is not re-checked, so a later rename never blocks marking
+    read; the link is one of the generator's id-only forms; the plain morning summary ("N things wait in your inbox",
+    fixed body) is allowed and is anchored on a plain workspace's source when the person has one (an assistant-written
+    line only there). A muted place of a locked workspace is listed under the workspace's name.
+  - **S2a-2c-2**: the event
+    backstop (with its token table), the remaining error-path redaction (pg-boss output, logs), `sealed_job_waits` and
     the resume job, the SQL source scan, cross-workspace `lockedWorkspaces`, the replacement of the
     route-level gate, `./flux export` refusal and restore truncation, and AC-6, AC-9, AC-10 and AC-7.
 - **S2a: sealed database content and files.** `TABLE_CLASSES`, `SEALED_COLUMNS` and `VISIBLE_COLUMNS`
@@ -1398,7 +1408,7 @@ token alone is not enough (S1 review): a real deployment never holds a half-seal
 - **S2c: key rotation** ([design](#rotation)). The start inside every owner/admin removal, demotion,
   leaving and account deletion; the rotate job with progress, compare-and-set, the files step, crash
   and lock resume, and the finish with `VACUUM`; the recovery code invalidation; the `rotation` wire
-  field; AC-13. Fixture-only. Delivered with migration 0128 (`packages/core/src/encryption/rotation.ts`, `@flux/db`
+  field; AC-13. Fixture-only. Delivered with migration 0130 (`packages/core/src/encryption/rotation.ts`, `@flux/db`
   `keyRotationRows`, the worker's sweep). The files step works on `project_files.key_version` and the object header
   through `RotationFileObjects` (`apps/worker/src/workspace-encryption/file-objects.ts`); until S2a-2b-2 seals file
   bytes and re-encrypts real objects; AC-13 covers a stored file, an upload straddling the rotation and a crash

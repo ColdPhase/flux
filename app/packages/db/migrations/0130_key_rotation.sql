@@ -1,5 +1,5 @@
--- F-030 encrypted workspaces, S2c key rotation (#655; docs/product/encrypted-workspaces.md#rotation). 0124-0127 are left
--- to the slices in flight (S2a-2b-2 files, S2b live and search); this file depends on none of them.
+-- F-030 encrypted workspaces, S2c key rotation (#655; docs/product/encrypted-workspaces.md#rotation). Numbered after
+-- 0129 (main); it depends on 0119-0127 only.
 --
 -- * `workspace_holders.confirmed_versions`: the key versions this holder has a confirmation for, covered by `holder_mac`
 --   (S2a-1 review): a deleted `confirm` of a listed live version is tampering, never a fall-back to the commitment chain.

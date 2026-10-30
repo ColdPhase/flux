@@ -1,3 +1,4 @@
+import { redactedError } from '../encryption/redact.js';
 import { messagePreview } from '@flux/contracts';
 import { randomUUID } from 'node:crypto';
 import type { NotificationReason } from '@flux/contracts';
@@ -48,6 +49,20 @@ export interface Candidate {
   url: string;
   /** F-029: set from the event's actor or the source item's author, not from its text. */
   aiOrigin?: boolean;
+  /** Who acted, as the title names them: an account name, `Someone` or `An agent` (F-030 content-free titles). */
+  who: string;
+}
+
+/**
+ * F-030: a sealed workspace's notifications are content-free: "who and why" in the workspace's visible name, an empty
+ * body, ids in the URL. The database refuses any other title (`NOTIFICATION_CONTENT_REFUSED`).
+ */
+export const SEALED_NOTIFICATION_PHRASES: Readonly<Record<Exclude<NotificationReason, 'security'>, string>> = {
+  mention: 'mentioned you', question: 'asked you', reply: 'replied', dm: 'sent you a message', assigned: 'assigned you a task',
+  review: 'asked for your review', invitation: 'invited you to work together',
+};
+export function sealedNotificationTitle(reason: NotificationReason, who: string, workspaceName: string): string {
+  return `${who} ${SEALED_NOTIFICATION_PHRASES[reason as Exclude<NotificationReason, 'security'>]} in ${workspaceName}`;
 }
 
 /** True for an event whose actor is an AI principal: an agent, which includes every member's own assistant. */
@@ -59,7 +74,7 @@ function humanId(actorId: string) {
   return actorId.startsWith('human:') ? actorId.slice('human:'.length) : null;
 }
 
-async function actorName(facts: NotificationFacts, actorId: string) {
+async function actorName(facts: NotificationFacts, actorId: string): Promise<string> {
   const human = humanId(actorId);
   if (!human) return 'An agent';
   return (await facts.names([human])).get(human) ?? 'Someone';
@@ -103,7 +118,7 @@ export async function candidatesFor(event: GeneratorEvent, facts: NotificationFa
             : `${author} replied in ${quote(excerpt(message.opening, 60))}`;
         result.push({ userId, reason, source: { type: 'project', id: message.projectId }, title,
           body: askedThis ? excerpt(message.asked!.question) : excerpt(messagePreview(message.body, message.attachmentCount)), url,
-          aiOrigin: message.author.kind === 'agent' });
+          aiOrigin: message.author.kind === 'agent', who: authorId ? names.get(authorId) ?? 'Someone' : 'An agent' });
       }
       return result;
     }
@@ -117,7 +132,7 @@ export async function candidatesFor(event: GeneratorEvent, facts: NotificationFa
       const title = message.kind === 'pair' ? `${author} sent you a message` : `${author} in ${message.title ? quote(message.title) : 'a group message'}`;
       return people.map((userId) => ({
         userId, reason: 'dm' as const, source: { type: 'dm' as const, id: message.dmId }, title, body: excerpt(message.body),
-        url: `/dm/${message.dmId}#message-${message.id}`,
+        url: `/dm/${message.dmId}#message-${message.id}`, who: author,
       }));
     }
     case 'project.work_created.v1':
@@ -129,17 +144,18 @@ export async function candidatesFor(event: GeneratorEvent, facts: NotificationFa
       const work = await facts.work(workId);
       if (!work || work.projectId !== event.objectId) return [];
       const result: Candidate[] = [];
+      const who = await actorName(facts, event.actorId);
       // Assigned again to someone else since: that later event notifies them instead.
       if (assignee && reachable(assignee) && work.ownerUserId === assignee) result.push({
         userId: assignee, reason: 'assigned', source: { type: 'project', id: work.projectId },
-        title: `${await actorName(facts, event.actorId)} assigned you ${quote(excerpt(work.title, 80))}`,
-        body: `Work in ${work.projectName}`, url: `/projects/${work.projectId}/tasks?open=work:${work.id}`,
+        title: `${who} assigned you ${quote(excerpt(work.title, 80))}`,
+        body: `Work in ${work.projectName}`, url: `/projects/${work.projectId}/tasks?open=work:${work.id}`, who,
       });
       // Someone named you as the one a blocked task waits for (#550); not if it was unblocked or re-pointed since.
       if (waiting && reachable(waiting) && work.waitingForUserId === waiting && work.status === 'blocked') result.push({
         userId: waiting, reason: 'assigned', source: { type: 'project', id: work.projectId },
-        title: `${await actorName(facts, event.actorId)} is waiting for you: #${work.number} ${excerpt(work.title, 80)}`,
-        body: work.blocker ? excerpt(work.blocker) : `Blocked in ${work.projectName}`, url: `/projects/${work.projectId}/tasks?open=work:${work.id}`,
+        title: `${who} is waiting for you: #${work.number} ${excerpt(work.title, 80)}`,
+        body: work.blocker ? excerpt(work.blocker) : `Blocked in ${work.projectName}`, url: `/projects/${work.projectId}/tasks?open=work:${work.id}`, who,
       });
       return result;
     }
@@ -160,7 +176,7 @@ export async function candidatesFor(event: GeneratorEvent, facts: NotificationFa
         body: `${why} · ${by} ${decision ? 'proposed it' : 'recorded it'} in ${item.projectName}`,
         url: `/projects/${item.projectId}/tasks?open=${kind}:${item.id}`,
         // An agent produced the item, whoever the event's actor is on its behalf.
-        aiOrigin: item.by.kind === 'agent',
+        aiOrigin: item.by.kind === 'agent', who: by,
       }));
     }
     case 'project.live_invited.v1': {
@@ -178,7 +194,7 @@ export async function candidatesFor(event: GeneratorEvent, facts: NotificationFa
         userId: recipientId, reason: 'invitation', source: { type: 'project', id: invitation.projectId },
         title: `${inviter} invited you to work together`,
         body: `On ${quote(excerpt(invitation.anchor.label, 80))} in ${invitation.projectName}`,
-        url: `/projects/${invitation.projectId}/live/${invitation.sessionId}?invitation=${invitation.id}`,
+        url: `/projects/${invitation.projectId}/live/${invitation.sessionId}?invitation=${invitation.id}`, who: inviter,
       }];
     }
     default:
@@ -205,9 +221,12 @@ async function deliver(ports: GeneratorPorts, event: GeneratorEvent, candidate: 
   if (!readsSource(decision, source)) return false;
 
   const notificationId = randomUUID();
+  // F-030: content was read in RAM to decide the reason; what is stored for a sealed workspace says only who and why.
+  const sealed = (await ports.facts.sealedWorkspace?.(event.workspaceId)) ?? null;
   const inserted = await ports.insertNotification({
     id: notificationId, userId: candidate.userId, source, reason: candidate.reason, eventId: event.id,
-    title: candidate.title, body: candidate.body, url: candidate.url, inInbox: channels.inApp,
+    title: sealed ? sealedNotificationTitle(candidate.reason, candidate.who, sealed.name) : candidate.title, body: sealed ? '' : candidate.body,
+    url: candidate.url, inInbox: channels.inApp,
     // AI origin is persisted at write time (F-029): an agent actor or an agent-authored source.
     aiOrigin: candidate.aiOrigin === true || isAgentActor(event.actorId),
   });
@@ -273,7 +292,9 @@ export async function generateNotifications(uow: GeneratorUnitOfWork, options: G
           return count;
         });
       } catch (error) {
-        const message = (error as Error).message ?? String(error);
+        // F-030: an error about a sealed workspace's event can quote its content; only its class, code and ids are kept.
+        const sealedEvent = await Promise.resolve(ports.facts.sealedWorkspace?.(event.workspaceId)).catch(() => ({ name: '' }));
+        const message = sealedEvent ? redactedError(error, [event.id]).message : (error as Error).message ?? String(error);
         const attempts = await ports.recordFailure(event.id, message);
         if (attempts < GENERATION_MAX_ATTEMPTS) {
           options.log?.('Notification generation failed; the event will be retried', { eventId: event.id, kind: event.kind, attempts, error: message });

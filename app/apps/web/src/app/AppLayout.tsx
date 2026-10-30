@@ -3,7 +3,7 @@ import { flushSync } from 'react-dom';
 import type { ProjectPerson } from '@flux/contracts';
 import { Outlet, useLocation, useMatches, useNavigate, useNavigationType, useParams, useRevalidator } from 'react-router';
 import { useStreamEvents } from '../api/stream';
-import { Dissolve, Drawer, IconButton, MEDIA, SidePanel, Tabs, flip, setTravelDirection, useMediaQuery, useToast, useSidePanelMode, viewDirection } from '../ui';
+import { Dissolve, Drawer, IconButton, MEDIA, SidePanel, SizeSwap, Tabs, flip, setTravelDirection, useMediaQuery, useToast, useSidePanelMode, viewDirection } from '../ui';
 import { routeView } from '../ui/motion-rules';
 import { useShellData } from './data';
 import { registerServiceWorker, syncPushSubscription } from '../pwa';
@@ -65,6 +65,8 @@ function viewOrder(pathname: string) {
 }
 
 const SIDEBAR_KEY = 'flux.sidebar';
+/** The width the sidebar settles at when it is full and when it is the rail (tokens.css). */
+const SIDE_WIDTHS = { full: '--side-w', rail: '--rail-w' } as const;
 
 /** A view that takes the panel's whole content: opening another one over it leaves "‹ back" (Spokój rule 2). */
 const REPLACING = new Set(['owned', 'thought-tasks', 'work', 'decision', 'result', 'attach-result', 'propose-decision']);
@@ -148,6 +150,7 @@ function AppLayoutContent() {
   const [createOpen, setCreateOpen] = useState(false);
   const [create, setCreate] = useState<CreateRequest | null>(null);
   const paneRef = useRef<HTMLDivElement>(null);
+  const sideRef = useRef<HTMLElement>(null);
   const drawerTitleId = useId();
 
   // One panel for a task, a decision, an agent and a thread (F-026 S4, Spokój rule 2): opening another object from it
@@ -357,6 +360,22 @@ function AppLayoutContent() {
   // page's data: that navigation finishes at once, so no load of this page is left running that
   // could land after the person has moved on or signed out.
   const navigate = useNavigate();
+  // Closing the Details panel by any path (Esc, the close control, a sheet's scrim, a toggle) while the agents' address names
+  // a thread or a task leaves that param behind: a click during the hand-over closes the task's panel before the thread's
+  // owner is registered, and nothing else clears the address (#709). Only the open-to-closed change counts, so a reload on
+  // `?thread=` (the panel not yet shown) keeps it.
+  const wasDetailsOpen = useRef(detailsOpen);
+  useEffect(() => {
+    const was = wasDetailsOpen.current;
+    wasDetailsOpen.current = detailsOpen;
+    if (!was || detailsOpen || !/\/agents\/?$/.test(location.pathname)) return;
+    const search = new URLSearchParams(location.search);
+    if (!search.has('thread') && !search.has('task')) return;
+    search.delete('thread');
+    search.delete('task');
+    const query = search.toString();
+    void navigate({ pathname: location.pathname, search: query ? `?${query}` : '', hash: location.hash }, { replace: true, state: location.state });
+  }, [detailsOpen, location, navigate]);
   const openedAt = useRef<string | null>(null);
   useEffect(() => {
     if (openedAt.current === location.key) return;
@@ -710,7 +729,12 @@ function AppLayoutContent() {
         </Drawer>
       ) : (
         // Tablet (Spokój): the sidebar is the 64 px rail (its width is set in CSS); its expand control opens the sidebar as a drawer.
-        <aside className={`app__side${railed || focusing ? ' app__side--rail' : ''}`} aria-label="Sidebar"><Sidebar {...sidebarProps} collapsed={railed || focusing || tablet} onToggleCollapsed={focusing ? () => void focus.toggle() : tablet ? () => setNavOpen(true) : toggleSidebar} /></aside>
+        <aside className={`app__side${railed || focusing ? ' app__side--rail' : ''}`} aria-label="Sidebar" ref={sideRef}>
+          {/* Folding to the rail and unfolding take a short size change; the control used keeps focus (#720). */}
+          <SizeSwap id={railed || focusing ? 'rail' : 'full'} host={sideRef} dress="app__side" keep=".side__toggle" widths={SIDE_WIDTHS} still={tablet}>
+            <Sidebar {...sidebarProps} collapsed={railed || focusing || tablet} onToggleCollapsed={focusing ? () => void focus.toggle() : tablet ? () => setNavOpen(true) : toggleSidebar} />
+          </SizeSwap>
+        </aside>
       )}
       {!phone && !navDrawer && tablet ? (
         <Drawer open={navOpen} onClose={() => setNavOpen(false)} labelledBy={drawerTitleId} id="nav-drawer" className="nav-drawer">

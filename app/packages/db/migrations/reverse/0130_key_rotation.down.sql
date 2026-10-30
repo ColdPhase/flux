@@ -1,4 +1,4 @@
--- Reversal of 0128 (F-030 S2c, #655). Not applied by the migrator.
+-- Reversal of 0130 (F-030 S2c, #655). Not applied by the migrator.
 DROP TRIGGER IF EXISTS workspace_manager_lost ON workspace_members;
 DROP FUNCTION IF EXISTS workspace_manager_lost();
 CREATE OR REPLACE FUNCTION workspace_holder_deleted() RETURNS trigger LANGUAGE plpgsql AS $$
