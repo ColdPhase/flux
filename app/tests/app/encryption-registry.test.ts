@@ -278,8 +278,8 @@ describe('F-030 events backstop (S2a-2c-3, migration 0125)', () => {
     const insert = (ws: string, data: unknown) => pool.query(`INSERT INTO events (id, kind, object_id, actor_id, data, workspace_id)
       VALUES (gen_random_uuid(), 'test.event.v1', gen_random_uuid(), $1, $2, $3)`, [`human:${ada.id}`, JSON.stringify(data), ws]);
     await insert(A, { messageId: randomUUID(), at: new Date().toISOString(), by: ada.id, actor: `human:${ada.id}`, op: 'thought_added',
-      nested: { list: ['restart', randomUUID()], title: { $sealed: `fx1.1.${'C'.repeat(40)}` } }, count: 3, done: true, none: null });
-    for (const [label, data] of [['a free word', { op: 'secret' }], ['a nested free word', { nested: { list: ['restart', 'plan b'] } }],
+      changes: { items: ['restart', randomUUID()], title: { $sealed: `fx1.1.${'C'.repeat(40)}` } }, total: 3, ok: true, value: null });
+    for (const [label, data] of [['a free word', { op: 'secret' }], ['a nested free word', { changes: { items: ['restart', 'plan b'] } }],
       ['an unknown account', { by: 'not-a-user' }], ['an unknown agent', { actor: `agent:${randomUUID()}` }],
       ['a principal of an unknown account', { actor: 'human:nobody' }], ['an envelope-like word', { title: 'fx1.1.short' }],
       ['a free key value under $sealed', { title: { $sealed: 'plain words' } }], ['a date that is not a timestamp', { at: '2026-10-29 secret' }]] as const) {
@@ -287,9 +287,9 @@ describe('F-030 events backstop (S2a-2c-3, migration 0125)', () => {
     }
     await insert(B, { op: 'secret', title: 'Plain title' });
     // #721 review P2-1: object keys follow the same rule, at any depth; a UUID key and "$sealed" pass.
-    await insert(A, { messageId: randomUUID(), [randomUUID()]: 'restart', nested: { list: [{ op: 'renamed' }] } });
-    for (const [label, data] of [['a free word as a key', { 'secret words': 'accepted' }], ['a free key in a list', { list: [{ secret: 'restart' }] }],
-      ['a nested free key', { nested: { 'plan b': true } }]] as const) {
+    await insert(A, { messageId: randomUUID(), [randomUUID()]: 'restart', changes: { items: [{ op: 'renamed' }] } });
+    for (const [label, data] of [['a free word as a key', { 'secret words': 'accepted' }], ['a free key in a list', { items: [{ secret: 'restart' }] }],
+      ['a nested free key', { changes: { 'plan b': true } }]] as const) {
       await assert.rejects(insert(A, data), { hint: 'EVENT_CONTENT_REFUSED' }, label);
     }
     // P3-3: the actor and the kind are shapes, an update is checked like an insert, and the audience names principals.
