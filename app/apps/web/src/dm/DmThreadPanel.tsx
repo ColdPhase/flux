@@ -13,6 +13,7 @@ import { ownRuns, useObservation, useReceipts } from '../app/receipts';
 import { pageBackTo } from '../app/seekMessage';
 import { useMessageReadingPosition } from '../work/readingPosition';
 import { useLeftPlace, useReturnPlace } from './returnPlace';
+import { useSpareHeight } from '../ui/spareHeight';
 
 function merge(current: DmMessage[], incoming: DmMessage[]) {
   const byId = new Map(current.map((message) => [message.id, message]));
@@ -145,6 +146,10 @@ export function DmThreadPanel({ dmId, rootId, meId, meName, nameOf, audience, wr
   const lines = [...shown.map((message) => ({ message, authorId: message.authorId, at: message.createdAt })),
     ...outbox.pending.map((item) => ({ message: null, item, authorId: meId, at: item.at }))];
   const rows = groupRows(lines);
+  // A short thread sits against its reply field instead of at the top of a tall panel (ui/spareHeight.ts).
+  const columnRef = useRef<HTMLDivElement>(null);
+  const liftRef = useRef<HTMLDivElement>(null);
+  useSpareHeight(feed, columnRef, liftRef, (root ? 1 : 0) + rows.length, feedNode);
   const runs = ownRuns(shown.map((m) => ({ id: m.id, authorId: m.authorId, createdAt: m.createdAt })).concat(outbox.pending.map((item) => ({ id: null as unknown as string, authorId: meId, createdAt: item.at }))), meId, !!older);
   const seen = useReceipts({ scope: `${dmId}/${rootId}`, fetchReceipts: (list, signal) => dmReceipts(dmId, list, signal), runs, tick: receiptTick });
   useObservation({ scope: dmId, observe: (list) => observeDmMessages(dmId, list), enabled: canObserve && !!root && !returned.pending, feed,
@@ -156,7 +161,8 @@ export function DmThreadPanel({ dmId, rootId, meId, meName, nameOf, audience, wr
       <PanelMeta>{count} {count === 1 ? 'reply' : 'replies'}</PanelMeta>
       <div className="thread__pane dm-thread" data-dm-thread={rootId}>
         <div className={`thread__feed${returned.pending ? ' is-returning' : ''}`} ref={attachFeed}>
-          <div className="thread__in dm__in">
+          <div className="thread__lift" aria-hidden="true" ref={liftRef} />
+          <div className="thread__in dm__in" ref={columnRef}>
             {root ? (
               <ol className="dm__list dm-thread__root" aria-label="Message">
                 <DmBubble key={root.id} message={root} mine={root.authorId === meId} name={label(root.authorId)} continued={false} groupLast day={null}

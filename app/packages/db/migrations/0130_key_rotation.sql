@@ -33,6 +33,9 @@ CREATE TABLE workspace_removals (
 );
 ALTER TABLE workspace_keys ADD COLUMN removal_head text;
 ALTER TABLE workspace_rotation_progress ADD COLUMN stalled_on text;
+-- The rotation's events carry ids only: `workspace.key_rotation_started.v1 { version, holders }`. 0125's event data guard
+-- needs the key `holders` (EVENT_DATA_KEYS in contracts).
+INSERT INTO event_data_keys (key) VALUES ('holders') ON CONFLICT DO NOTHING;
 ALTER TABLE workspace_rotation_progress ADD COLUMN stalled_at timestamptz;
 ALTER TABLE workspace_rotation_progress ADD COLUMN pass_changes bigint NOT NULL DEFAULT 0;
 ALTER TABLE workspace_rotation_progress ADD COLUMN started_at timestamptz NOT NULL DEFAULT now();

@@ -155,7 +155,11 @@ export async function startWorkspaceEncryption(boss: PgBoss, db: Database, env: 
           // Locked again: stop, and pg-boss retries. Any other failure keeps that wait for the sweep and replays the rest (#717 review P3-4).
           if ((error as { code?: unknown }).code === 'WORKSPACE_LOCKED') throw error;
           failed++;
-          console.error(JSON.stringify({ job: WORKSPACE_ENCRYPTION_RESUME_JOB, id: job.id, waitId: wait.id, error: redactedError(error, [wait.id]).message }));
+          // Bounded: after five failed replays the wait is dropped, logged without its text (#721 review P3).
+          const attempts = await waits.failWait(wait.id);
+          if (attempts >= 5) await waits.deleteWait(wait.id);
+          console.error(JSON.stringify({ job: WORKSPACE_ENCRYPTION_RESUME_JOB, id: job.id, waitId: wait.id, attempts, dropped: attempts >= 5,
+            error: redactedError(error, [wait.id]).message }));
           continue;
         }
         await waits.deleteWait(wait.id);

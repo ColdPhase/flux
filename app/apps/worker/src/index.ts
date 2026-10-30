@@ -17,6 +17,7 @@ import { registerComparisonWorker } from './proactive-comparison/index.js';
 import { registerWorkspaceAiSweep } from './workspace-ai/index.js';
 import { startWorkspaceEncryption } from './workspace-encryption/index.js';
 import { comparisonProviders } from './proactive-comparison/providers.js';
+import { guardSealedJobs } from './sealed-jobs.js';
 
 // The worker's composition root (#82): environment, pool, pg-boss and signals; each job's
 // handler lives in its registrar.
@@ -28,6 +29,8 @@ pool.on('error', (error) => console.error('Database connection interrupted', err
 const boss = new PgBoss({ connectionString, migrate: false });
 boss.on('error', (error) => console.error(error));
 await boss.start();
+// F-030 Error paths: a failing job of an encrypted workspace stores and logs only the redacted error.
+guardSealedJobs(boss, db, { injectFailures: !!process.env.FLUX_FIXTURE_TOKEN && process.env.FLUX_TEST_FAILURE_INJECTION === 'true' });
 await registerSampleWorker(boss, db, process.env.HOSTNAME ?? 'worker');
 await registerPushWorker(boss, db, createVapidAuthorizer());
 // Notifications from committed events and their email (#116).

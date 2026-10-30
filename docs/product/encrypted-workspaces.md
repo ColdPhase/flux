@@ -519,6 +519,11 @@ stateDiagram-v2
    deadlock with Lock now. A concurrent Lock can leave a stray unlock row for *n*+1, but `sealFor`
    treats a workspace as unlocked only when **every** live version has a current-boot unlock row.
    Otherwise it is locked and the stray rows are deleted.
+   **Wire field (S2c).** `encryption.rotation` is `{ percent, paused, startedAt, stalled, openFor, reason }`: `openFor`
+   lists who the new key opens for (owners and admins see it; the recovery code is named as such), and `reason` says
+   why ("after Ben left": `removed`, `demoted` or `holder_deleted`, with the person's id and name; null for guests).
+   The rotation's events carry ids only (`holders` is in the event data keys of 0125). A `security` notice of a
+   locked space stays in the Inbox: it is content-free and about the lock itself.
 2. **Seal and read during the rotation.** Every new seal, from any process, uses `current_version`.
    Every open chooses the DEK by the envelope's version, which must be in `live_versions`. Reading
    both versions at once is just this: an envelope names its own version. **Writer invariant:** a
@@ -785,8 +790,12 @@ Nothing listed is text that a person wrote, a name of a thing, or file bytes.
   timestamp; a sealed envelope; an **existing** `auth_users.id`, or a principal key (`human:` or
   `agent:`) whose id exists in `auth_users` or `agents`; a token present in `event_data_tokens`. That
   table is seeded by the migration from the enum values in `packages/contracts` (kinds, states,
-  reasons), and the registry test compares the two. No free word passes. The remaining bound: a
-  string equal to a real user id or a registered enum value carries no content.
+  reasons), and the registry test compares the two. Object keys follow the same rule against `event_data_keys`
+  (`EVENT_DATA_KEYS`, the field names the record sites write), and an update of `data` is checked like an insert.
+  `actor_id`, `kind`, `event_audience.recipient` and `sealed_job_waits.queue` must have their fixed shapes. No free
+  word passes. The remaining bounds: a string equal to a real user id or a registered enum value carries no content;
+  and the database cannot verify an AEAD tag, so text dressed as an envelope (`fx1.<v>.` and 38 or more base64url
+  characters) or as a UUID (16 bytes) passes every guard. The application never writes either.
 - **Notification backstop.** A `BEFORE INSERT OR UPDATE` trigger on `notifications` raises
   `NOTIFICATION_CONTENT_REFUSED` for a sealed workspace unless `body = ''` and `title` is one of the
   nine [fixed templates](#notifications-push-and-e-mail), with an account name and the workspace's
@@ -1414,10 +1423,14 @@ token alone is not enough (S1 review): a real deployment never holds a half-seal
     the unlock's resume job ran; the rest replay.
     `./flux export` refuses an encrypted space ("Garden club is encrypted. Export it from the app.") and writes
     nothing; `./flux restore` truncates `workspace_unlocks`, so a restored encrypted space is locked.
-  - **S2a-2c-3**: the event
-    backstop (with its token table), the remaining error-path redaction (pg-boss output, logs), `sealed_job_waits` and
-    the resume job, the SQL source scan, cross-workspace `lockedWorkspaces`, the replacement of the
-    route-level gate, `./flux export` refusal and restore truncation, and AC-6, AC-9, AC-10 and AC-7.
+  - **S2a-2c-3**: the event backstop (migration 0125: `a_sealed_event_data` and `event_data_tokens`, seeded from
+    `EVENT_DATA_TOKENS` in `packages/contracts`; a refused event answers `409 EVENT_CONTENT_REFUSED`); error-path
+    redaction: every API request and worker job runs in `sealedWorkScope`, and one that touched an encrypted
+    workspace's seal (or a job whose payload names one) answers, logs and stores in pg-boss only `redactedError`
+    (`SealedJobError(code)` for jobs); the AC-5 SQL source scan (`tests/app/support/sealed-sql-scan.ts`, each handled
+    site listed with its reason); and the API export of a sealed project, opened for the manager who asks.
+  - **S2a-2c-4**: the replacement of the route-level gate by per-repository sealing with the AC-6 route walk, AC-10
+    (`scripts/check_backup.sh`) and the rest of AC-7 (`pg_dump`, WAL, files volume, container layers).
 - **S2a: sealed database content and files.** `TABLE_CLASSES`, `SEALED_COLUMNS` and `VISIBLE_COLUMNS`
   with the live-catalog test, the backstops (plaintext, notifications, events, idempotency) and relaxed
   checks, **the search placeholder triggers and `search_changes`** (so no sealed column is ever

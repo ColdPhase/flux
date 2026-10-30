@@ -53,3 +53,5 @@ BEGIN
   END IF;
   RAISE EXCEPTION 'An encrypted workspace''s notification must be content-free' USING ERRCODE = 'FX409', HINT = 'NOTIFICATION_CONTENT_REFUSED';
 END $$;
+
+DELETE FROM event_data_keys WHERE key = 'holders';

@@ -496,6 +496,20 @@ describe('F-030 S2a-1: sealed content in the repositories', () => {
     assert.ok(plain.stdout.length > 0);
   });
 
+  test('the API export of A opens every sealed field and file for the manager who asks; the bundle verifies (S2a-2c-3)', async () => {
+    for (const side of ['A', 'B'] as const) {
+      const json = await ada.browser.request('GET', `/api/v1/projects/${ids[side].project}/export`);
+      assert.equal(json.status, 200, json.text.slice(0, 200));
+      for (const kind of ['project', 'message', 'decision', 'rationale', 'result', 'evidence', 'task', 'docTitle', 'materialTitle', 'mapTitle', 'thought'] as const) {
+        assert.ok(json.text.includes(canaries[side][kind].slice(0, 60)), `${side}: the export holds ${kind}`);
+      }
+      assert.equal(/fx1\.[1-9]/.test(json.text), false, `${side}: no envelope in the export`);
+      const bundle = await fetch(new URL(`/api/v1/projects/${ids[side].project}/export?format=bundle`, ada.browser.base), { headers: { cookie: ada.browser.cookieHeader() } });
+      assert.equal(bundle.status, 200, `${side}: the bundle (file digests verify on plaintext)`);
+      assert.ok((await bundle.arrayBuffer()).byteLength > 0);
+    }
+  });
+
   test('A\'s rows hold envelopes, B\'s plain text; the draft versions of A are written by the application, sealed', async () => {
     const one = async (query: string, values: unknown[]) => (await pool.query(query, values)).rows[0] as Record<string, unknown>;
     for (const [side, ws] of [['A', A], ['B', B]] as const) {
@@ -669,5 +683,59 @@ describe('F-030 content-free notifications in use (#712 review)', () => {
       assert.ok(on, 'locked: the day is still claimed (no retry loop on WORKSPACE_LOCKED)');
     } finally { expectStatus(await unlock(ada.browser, A, { password: pw }), 200); }
     await pool.query(`UPDATE notification_preferences SET summary_enabled = false WHERE user_id = $1`, [ben.id]);
+  });
+});
+
+// AC-7 error paths (S2a-2c-3; docs/product/encrypted-workspaces.md#error-paths): a request or job about A that fails
+// with an error quoting content answers, stores and logs only the redacted error. B's same failure keeps its text,
+// the positive control. scripts/check_encryption.sh scans the service logs (and PostgreSQL's for the request) for A's
+// texts (zero hits) and the service logs for B's request text (found: the unredacted path does log).
+describe('F-030 error paths (S2a-2c-3)', () => {
+  const failed = { A: `ERRPATH-A-${randomUUID()}`, B: `ERRPATH-B-${randomUUID()}` };
+  const jobFailed = { A: `JOBFAIL-A-${randomUUID()}`, A2: `JOBFAIL-A2-${randomUUID()}`, B: `JOBFAIL-B-${randomUUID()}` };
+
+  before(async () => {
+    expectStatus(await lock(ada.browser, A), 200);
+    expectStatus(await unlock(ada.browser, A, { password: pw }), 200);
+  });
+
+  test('an injected 500 after a sealed write answers only the code for A; B\'s answer still quotes its text', async () => {
+    for (const side of ['A', 'B'] as const) {
+      const response = await ada.browser.request('POST', `/api/v1/conversations/${ids[side].conversation}/messages`,
+        { body: { body: failed[side], clientMessageId: randomUUID() }, headers: { ...key(), 'x-flux-test-fail': '500' } });
+      assert.equal(response.status, 500, `${side}: ${response.text.slice(0, 200)}`);
+      if (side === 'A') {
+        assert.equal(response.text.includes(failed.A), false, 'A: the answer never quotes the request');
+        assert.deepEqual(JSON.parse(response.text), { error: 'Internal Server Error', code: 'INTERNAL_ERROR' });
+      } else assert.ok(response.text.includes(failed.B), 'B: the control quotes its request in the answer');
+    }
+  });
+
+  test('a failing job about A stores only SealedJobError in pg-boss; B\'s output keeps its text', async () => {
+    const boss = new PgBoss({ connectionString, migrate: false, supervise: false, schedule: false });
+    await boss.start();
+    try {
+      // A names its workspace; A2 names only a project of A (#721 review P3-1); B is the control.
+      for (const [side, data] of [['A', { workspaceId: A }], ['A2', { projectId: ids.A.project }], ['B', { workspaceId: B }]] as const) {
+        const id = await boss.send('sample.process', { sampleId: randomUUID(), ...data, fluxTestFailure: jobFailed[side] }, { retryLimit: 0 });
+        assert.ok(id, `${side}: the job was sent`);
+        let row: { state: string; output: unknown } | undefined;
+        for (let attempt = 0; attempt < 120 && row?.state !== 'failed'; attempt += 1) {
+          row = (await pool.query<{ state: string; output: unknown }>(`SELECT state, output FROM pgboss.job WHERE id = $1`, [id])).rows[0];
+          if (row?.state !== 'failed') await new Promise((resolve) => setTimeout(resolve, 250));
+        }
+        assert.equal(row?.state, 'failed', `${side}: the worker failed the job`);
+        const output = JSON.stringify(row!.output);
+        if (side !== 'B') {
+          assert.equal(output.includes(jobFailed[side]), false, `${side}: pg-boss output never quotes the payload text`);
+          assert.match(output, /SealedJobError/);
+        } else assert.ok(output.includes(jobFailed.B), 'B: the control output quotes its text');
+      }
+    } finally { await boss.stop({ graceful: false }); }
+    const state = process.env.FLUX_TEST_STATE_DIR ?? '/state';
+    // The service logs never hold A's texts; PostgreSQL logs the test's own job insert, so it is scanned for the request only.
+    await writeFile(join(state, 'encryption-error-services.txt'), `${failed.A}\n${jobFailed.A}\n${jobFailed.A2}\n`);
+    await writeFile(join(state, 'encryption-error-postgres.txt'), `${failed.A}\n`);
+    await writeFile(join(state, 'encryption-error-control.txt'), `${failed.B}\n`);
   });
 });

@@ -200,7 +200,8 @@ describe('F-030 S2c key rotation (AC-13)', () => {
     expectStatus(await lock(c.owner.browser, c.ws), 200);
     await removeMember(c.owner, c.ws, c.people.Ben!.who);
     assert.deepEqual(await keysOf(c.ws), { current_version: 1, live_versions: [1], rotation: 'pending', tampered_at: null });
-    assert.deepEqual((await readWorkspace(c.owner.browser, c.ws)).encryption?.rotation, { percent: 0, paused: true, startedAt: null, stalled: false });
+    assert.deepEqual((await readWorkspace(c.owner.browser, c.ws)).encryption?.rotation, { percent: 0, paused: true, startedAt: null, stalled: false, openFor: [],
+      reason: { kind: 'removed', userId: c.people.Ben!.who.id, name: 'Ben' } }, 'pending: the reason, no new key yet');
     await sleep(1_500);
     assert.equal((await keysOf(c.ws)).current_version, 1, 'no new version while locked');
     assert.equal((await pool.query('SELECT count(*)::int AS n FROM workspace_key_versions WHERE workspace_id = $1', [c.ws])).rows[0].n, 1);
@@ -250,6 +251,10 @@ describe('F-030 S2c key rotation (AC-13)', () => {
     assert.equal(view.state, 'locked');
     assert.equal(view.rotation?.paused, true);
     assert.ok(view.rotation?.startedAt);
+    assert.deepEqual(view.rotation?.openFor, [], 'a member does not see who holds the key');
+    assert.deepEqual(view.rotation?.reason, { kind: 'removed', userId: c.people.Ben!.who.id, name: 'Ben' }, '"after Ben left"');
+    const ownerView = (await readWorkspace(c.owner.browser, c.ws)).encryption!.rotation!;
+    assert.deepEqual(ownerView.openFor.map((h) => [h.name, h.kind]), [['Ada', 'password']], 'the new key opens for Ada (the recovery code was dropped)');
     const progress = async () => (await pool.query('SELECT step, cursor, rows_done FROM workspace_rotation_progress WHERE workspace_id = $1', [c.ws])).rows[0];
     const frozen = await progress();
     await sleep(1_500);
@@ -383,6 +388,9 @@ describe('F-030 S2c key rotation (AC-13)', () => {
     const attacker = generateHolderKeyPair();
     await pool.query('UPDATE workspace_holders SET public_key = $2 WHERE id = $1', [ada.id, attacker.publicKey]);
     await refused('a replaced public key');
+    // The security notice of a locked space is content-free and about the lock itself: the Inbox keeps it readable.
+    const inbox = expectStatus(await c.owner.browser.request('GET', '/api/v1/inbox'), 200) as { items: unknown[] };
+    assert.ok(JSON.stringify(inbox.items).includes('changed outside Flux'), 'the tampering notice is in the Inbox while locked');
     await pool.query('UPDATE workspace_holders SET public_key = $2 WHERE id = $1', [ada.id, ada.public_key]);
     // (b) a rogue password holder for the member Cy, with the attacker's key and a copied MAC.
     const rogue = randomUUID();
@@ -568,16 +576,17 @@ describe('F-030 S2c review fixes', () => {
     await waitFor('the assignment notification', async () => (await pool.query(`SELECT 1 FROM notifications WHERE workspace_id = $1 AND user_id = $2`, [c.ws, c.people.Cy!.who.id])).rows.length > 0);
     // A copy in an unregistered place (as a database writer or a future bug would make it): a v1 envelope in a job payload.
     const [project] = (await pool.query('SELECT name FROM projects WHERE id = $1', [ids.project])).rows;
-    const wait = randomUUID();
-    await pool.query(`INSERT INTO sealed_job_waits (id, workspace_id, queue, payload) VALUES ($1, $2, 'test', $3::jsonb)`, [wait, c.ws, JSON.stringify({ copy: project.name })]);
+    const copy = randomUUID();
+    await pool.query(`INSERT INTO events (id, kind, object_id, actor_id, data, workspace_id) VALUES ($1, 'test.copy.v1', $2, $3, $4::jsonb, $2)`,
+      [copy, c.ws, `human:${c.owner.id}`, JSON.stringify({ name: project.name })]);
     await removeMember(c.owner, c.ws, c.people.Ben!.who);
     const stalled = await waitFor('the rotation reports it cannot finish', async () =>
       (await pool.query('SELECT stalled_on FROM workspace_rotation_progress WHERE workspace_id = $1', [c.ws])).rows[0]?.stalled_on as string | undefined);
-    assert.equal(stalled, 'sealed_job_waits.payload');
+    assert.equal(stalled, 'events.data');
     assert.equal((await readWorkspace(c.owner.browser, c.ws)).encryption?.rotation?.stalled, true);
     assert.ok((await pool.query(`SELECT 1 FROM notifications WHERE workspace_id = $1 AND reason = 'security' AND title LIKE '%cannot finish%'`, [c.ws])).rows.length > 0, 'holders are told');
     assert.ok((await keysOf(c.ws)).live_versions.includes(1), 'v1 is kept while a copy needs it');
-    await pool.query('DELETE FROM sealed_job_waits WHERE id = $1', [wait]);
+    await pool.query('DELETE FROM events WHERE id = $1', [copy]);
     await settled(c.ws, 2);
     assert.deepEqual(await anywhereBelow(c.ws, 2), [], 'no table holds an envelope below v2 for the workspace');
     assert.equal((await pool.query(`SELECT count(*)::int AS n FROM notifications WHERE workspace_id = $1 AND (title LIKE '%fx1.%' OR body LIKE '%fx1.%')`, [c.ws])).rows[0].n, 0,

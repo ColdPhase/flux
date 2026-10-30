@@ -232,6 +232,59 @@ TASK_FIELDS = r"""(root, scroll) => {
 # The computed size of the first message's text: it must really grow with the person's text size (WCAG 1.4.4).
 TEXT_PX = "() => parseFloat(getComputedStyle(document.querySelector('.project-convo__message .message-body')).fontSize)"
 
+# The insets the page resolves: a probe styled with env(safe-area-inset-*).
+SAFE_INSETS = """() => {
+  const probe = document.createElement('div');
+  probe.style.cssText = 'position:fixed;visibility:hidden;padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left)';
+  document.body.append(probe);
+  const style = getComputedStyle(probe);
+  const value = {top: parseFloat(style.paddingTop), right: parseFloat(style.paddingRight), bottom: parseFloat(style.paddingBottom), left: parseFloat(style.paddingLeft)};
+  probe.remove();
+  return value;
+}"""
+# Every control that can be hit inside an inset strip: points every 6 px along each strip, at three depths into it.
+UNSAFE_HITS = """(insets) => {
+  const W = innerWidth, H = innerHeight, found = new Map();
+  const control = 'a[href], button, input, textarea, select, summary, [role=button], [role=link], [role=tab], [role=menuitem], [contenteditable=true], [tabindex]:not([tabindex="-1"])';
+  // Content that scrolls may pass under an inset, as a list passes under the home indicator, so long as it can be scrolled
+  // out of it; a control that stays put there (fixed, sticky or in a box that does not scroll) cannot.
+  const scrolls = (el) => {
+    for (let node = el; node && node !== document.documentElement; node = node.parentElement) {
+      const style = getComputedStyle(node);
+      if (style.position === 'fixed' || style.position === 'sticky') return false;
+      const can = (axis) => /(auto|scroll)/.test(axis === 'y' ? style.overflowY : style.overflowX)
+        && (axis === 'y' ? node.scrollHeight > node.clientHeight + 1 : node.scrollWidth > node.clientWidth + 1);
+      if (node !== el && (can('y') || can('x'))) return true;
+    }
+    return false;
+  };
+  const probe = (x, y, edge) => {
+    const el = document.elementFromPoint(x, y)?.closest(control);
+    if (!el || scrolls(el)) return;
+    const name = (el.getAttribute('aria-label') || el.textContent || el.tagName).trim().slice(0, 40);
+    const key = `${edge}:${name}`;
+    const r = el.getBoundingClientRect();
+    if (!found.has(key)) found.set(key, {edge, control: name, at: [x, y], box: [r.left, r.top, r.right, r.bottom].map((v) => Math.round(v * 10) / 10)});
+  };
+  const depths = (size) => [0.5, size / 2, size - 0.5];
+  for (let x = 3; x < W; x += 6) {
+    if (insets.top) for (const d of depths(insets.top)) probe(x, d, 'top');
+    if (insets.bottom) for (const d of depths(insets.bottom)) probe(x, H - d, 'bottom');
+  }
+  for (let y = 3; y < H; y += 6) {
+    if (insets.left) for (const d of depths(insets.left)) probe(d, y, 'left');
+    if (insets.right) for (const d of depths(insets.right)) probe(W - d, y, 'right');
+  }
+  return [...found.values()];
+}"""
+# A control's box against the safe rectangle, and whether its centre hits the control itself.
+SAFE_BOX = """(el, insets) => {
+  const r = el.getBoundingClientRect();
+  const inside = r.top >= insets.top - 0.5 && r.left >= insets.left - 0.5 && r.right <= innerWidth - insets.right + 0.5 && r.bottom <= innerHeight - insets.bottom + 0.5;
+  const at = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+  return {inside, hit: !!at && (el === at || el.contains(at)), box: [r.left, r.top, r.right, r.bottom].map(Math.round), window: [innerWidth, innerHeight]};
+}"""
+
 CAMERA = "() => { const c = document.querySelector('.sk-canvas'); return {left: Math.round(c.scrollLeft), top: Math.round(c.scrollTop)}; }"
 
 
@@ -780,12 +833,20 @@ class AdaptiveMatrix(AdaptiveBase):
                  for body in ("Two sensors on the first board, please.", "Agreed. I will route the second I2C bus.")]
         fx.api(person, "POST", f"/api/v1/conversations/{roots[0]}/messages", {"body": "Both on the first board, then.", "clientMessageId": str(uuid.uuid4())})
         dm = fx.api(person, "POST", f"/api/v1/workspaces/{workspace}/dms", {"participantIds": [colleague_id]})["id"]
-        for body in ("Can we test the lamp tonight?", "Yes, after seven."):
-            fx.api(person, "POST", f"/api/v1/dms/{dm}/messages", {"body": body, "clientMessageId": str(uuid.uuid4())})
+        dm_messages = [fx.api(person, "POST", f"/api/v1/dms/{dm}/messages", {"body": body, "clientMessageId": str(uuid.uuid4())})["id"]
+                       for body in ("Can we test the lamp tonight?", "Yes, after seven.")]
+        # A private reply thread on the first direct message: its root and one reply.
+        fx.api(colleague, "POST", f"/api/v1/dms/{dm}/threads/{dm_messages[0]}/replies", {"body": "I will bring the spare driver.", "clientMessageId": str(uuid.uuid4())})
+        # A task whose thread holds its first contribution and one reply, for the Agents view's task thread. It lives in a
+        # project of its own: a task thread is also a root of its project's conversation, and test_08 counts that stream.
+        tasks = fx.api(person, "POST", f"/api/v1/workspaces/{workspace}/projects", {"name": "Short task thread", "visibility": "restricted"})["id"]
+        task = fx.api(person, "POST", f"/api/v1/projects/{tasks}/work", {"title": "Mount the lamp sensor"})["id"]
+        for body in ("Mount it under the shelf, cable to the left.", "The bracket is in the second drawer."):
+            fx.api(person, "POST", f"/api/v1/work/{task}/discussion", {"body": body, "clientMessageId": str(uuid.uuid4()), "kind": "text"})
         state = person.storage_state()
         person.close()
         colleague.close()
-        AdaptiveMatrix._short = {"state": state, "project": project, "roots": roots, "dm": dm}
+        AdaptiveMatrix._short = {"state": state, "project": project, "roots": roots, "dm": dm, "dm_root": dm_messages[0], "task": task, "task_project": tasks}
         return AdaptiveMatrix._short
 
     def test_08_a_short_stream_stays_connected_to_its_composer_on_tall_screens(self) -> None:
@@ -806,12 +867,12 @@ class AdaptiveMatrix(AdaptiveBase):
         print("\n  space between the newest message and the message field (CSS px): " + ", ".join(f"{size} {gap}" for size, gap in gaps.items()), end="")
 
     def test_09_a_short_thread_and_a_short_direct_message_stay_connected_to_their_fields(self) -> None:
-        """ADAPT-2: the same holds for a thread (its root and one reply) and a direct message (two messages): the newest
-        message sits against the reply field or the message field. Agents' task thread is a page scroll with its own
-        sticky composer and is not covered here."""
+        """ADAPT-2: the same holds for a thread (its root and one reply), a direct message (two messages), a direct
+        message's private reply thread (its root and one reply) and the Agents view's task thread (two messages): the newest
+        message sits against its field."""
         world = self.short_world()
-        gaps = {"thread": {}, "direct message": {}}
-        for width, height in [(390, 844), (820, 1180), (1440, 900), (2560, 1440)]:
+        gaps = {"thread": {}, "direct message": {}, "direct message thread": {}, "Agents task thread": {}}
+        for width, height in [(390, 844), (820, 1180), (1440, 900), (2560, 1440), (3440, 1440)]:
             with self.subTest(width=width, height=height):
                 size = f"{width}×{height}"
                 page = self.page(width, height, state=world["state"])
@@ -822,7 +883,6 @@ class AdaptiveMatrix(AdaptiveBase):
                 last = thread.locator(".project-convo__message").last.bounding_box()
                 field = thread.get_by_label("Reply", exact=True).bounding_box()
                 gaps["thread"][size] = round(field["y"] - (last["y"] + last["height"]))
-                self.assertLessEqual(gaps["thread"][size], MAX_STREAM_GAP, f"the newest reply and the reply field stay together at {size}: {gaps}")
                 dm = self.page(width, height, state=world["state"])
                 dm.goto(f"/dm/{world['dm']}")
                 expect(dm.locator(".dm__list > li")).to_have_count(2)
@@ -830,7 +890,24 @@ class AdaptiveMatrix(AdaptiveBase):
                 last = dm.locator(".dm__list > li").last.bounding_box()
                 field = dm.locator("#dm-composer").bounding_box()
                 gaps["direct message"][size] = round(field["y"] - (last["y"] + last["height"]))
-                self.assertLessEqual(gaps["direct message"][size], MAX_STREAM_GAP, f"the newest message and the message field stay together at {size}: {gaps}")
+                dm.goto(f"/dm/{world['dm']}?thread={world['dm_root']}")
+                panel = dm.locator("[data-dm-thread]")
+                expect(panel.locator(".thread__list > li")).to_have_count(1)
+                self.at_rest(dm)
+                last = panel.locator(".thread__list > li").last.bounding_box()
+                field = panel.locator("#dm-thread-composer").bounding_box()
+                gaps["direct message thread"][size] = round(field["y"] - (last["y"] + last["height"]))
+                agents = self.page(width, height, state=world["state"])
+                agents.goto(f"/projects/{world['task_project']}/agents?task={world['task']}")
+                thread = agents.get_by_role("region", name="Thread of Mount the lamp sensor")
+                expect(thread.locator(".agents-msg")).to_have_count(2)
+                self.at_rest(agents)
+                last = thread.locator(".agents-msg").last.bounding_box()
+                field = thread.get_by_label("Write to this task").bounding_box()
+                gaps["Agents task thread"][size] = round(field["y"] - (last["y"] + last["height"]))
+                # Every surface is measured before any is judged, so one failure still reports the others.
+                for what, values in gaps.items():
+                    self.assertLessEqual(values[size], MAX_STREAM_GAP, f"the newest message of the {what} and its field stay together at {size}: {gaps}")
         for what, values in gaps.items():
             print(f"\n  space between the newest message and the field, {what} (CSS px): " + ", ".join(f"{size} {gap}" for size, gap in values.items()), end="")
 
@@ -1229,6 +1306,47 @@ class AdaptiveReflow(AdaptiveBase):
                     # A changed root size that leaves fixed-pixel text unchanged is not evidence: the message text itself doubles.
                     self.assertGreaterEqual(after, before * 1.9, f"message text grew from {before}px to {after}px at {width}×{height}")
                     self.walk(page, f"{width}×{height} with 200% text", start=False)
+                finally:
+                    self.no_problems()
+
+    def test_22_safe_areas_keep_every_control_out_of_the_unsafe_edges(self) -> None:
+        """MOB/ADAPT-5 safe areas: a notched phone upright (47 px top, 34 px home indicator) and on its side (47 px each
+        side, 21 px bottom). Chromium simulates the insets (`Emulation.setSafeAreaInsetsOverride`) and the page must first
+        resolve `env(safe-area-inset-*)` to them, so the check cannot pass vacuously. In every view no control that stays put
+        (fixed, sticky, or in a box that does not scroll) can be hit inside an inset; scrolling content may pass under one.
+        The view's primary controls lie within the safe rectangle and are not covered. WebKit has no
+        such override: there the case is skipped with that reason, and real-device insets stay unverified."""
+        if UI_BROWSER != "chromium":
+            self.skipTest("only Chromium can simulate a safe area (Emulation.setSafeAreaInsetsOverride); WebKit stays unverified")
+        for (width, height), insets in (((390, 844), {"top": 47, "right": 0, "bottom": 34, "left": 0}),
+                                        ((844, 390), {"top": 0, "right": 47, "bottom": 21, "left": 47})):
+            with self.subTest(width=width, height=height):
+                self.problems = []
+                page = self.page(width, height, coarse=True)
+                session = page.context.new_cdp_session(page)
+                session.send("Emulation.setSafeAreaInsetsOverride", {"insets": insets})
+                page._safe_session = session  # type: ignore[attr-defined]  # a live session keeps the override
+                where = f"{width}×{height} with safe areas {insets}"
+                try:
+                    page.goto(f"/projects/{self.ids['project']}")
+                    seen = page.evaluate(SAFE_INSETS)
+                    self.assertEqual(seen, insets, f"the page resolves env(safe-area-inset-*) to the simulated insets at {where}")
+                    for view in TABS:
+                        if view != "Conversation":
+                            self.tab(page, view)
+                        if view == "Map":
+                            expect(page.locator(".sk-node")).to_have_count(len(fx.THOUGHTS))
+                        elif view == "Agents":
+                            expect(page.get_by_role("heading", level=1, name="Agents")).to_be_visible()
+                        self.at_rest(page)
+                        hits = page.evaluate(UNSAFE_HITS, insets)
+                        self.check(not hits, f"{view} at {where}: no control can be hit inside an inset: {hits}")
+                        for what, locator in self.controls(page, view):
+                            expect(locator, f"{what} in {view} at {where}").to_be_visible()
+                            locator.scroll_into_view_if_needed()
+                            self.settle(page)
+                            box = locator.evaluate(SAFE_BOX, insets)
+                            self.check(box["inside"] and box["hit"], f"{what} in {view} at {where} lies in the safe rectangle, uncovered: {box}")
                 finally:
                     self.no_problems()
 

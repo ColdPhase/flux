@@ -99,6 +99,10 @@ export function registerLockGate(app: FastifyInstance, { db, sessions, keys }: {
       const places = new Set([...lockedIds, ...((await db.execute(sql`SELECT id FROM projects WHERE workspace_id = ANY(${list}::uuid[])
         UNION ALL SELECT id FROM dms WHERE workspace_id = ANY(${list}::uuid[])`)).rows as { id: string }[]).map((row) => row.id)]);
       const ofLocked = (item: unknown) => {
+        // A `security` notice ("…'s encryption keys were changed outside Flux. It stays locked.", a rotation that cannot
+        // finish) is content-free by the notification guard and is about the lock itself: it stays readable (S2c).
+        const reasonOf = (value: unknown) => (value && typeof value === 'object' ? (value as { reason?: unknown }).reason : undefined);
+        if (reasonOf(item) === 'security' || reasonOf((item as { notification?: unknown } | null)?.notification) === 'security') return false;
         const text = JSON.stringify(item ?? null);
         for (const match of text.matchAll(UUIDS)) if (places.has(match[0].toLowerCase())) return true;
         return false;
@@ -114,7 +118,7 @@ export function registerLockGate(app: FastifyInstance, { db, sessions, keys }: {
       if (typeof answer.unread === 'number') {
         const session = await sessions.resolveSession(request.headers);
         const [row] = (await db.execute(sql`SELECT count(*)::int AS n FROM notifications WHERE user_id = ${session?.principal.id ?? ''}
-          AND workspace_id = ANY(${list}::uuid[]) AND in_inbox AND read_at IS NULL`)).rows as { n: number }[];
+          AND workspace_id = ANY(${list}::uuid[]) AND in_inbox AND read_at IS NULL AND reason <> 'security'`)).rows as { n: number }[];
         answer.unread = Math.max(0, answer.unread - (row?.n ?? 0));
       }
       return { ...answer, lockedWorkspaces: locked };

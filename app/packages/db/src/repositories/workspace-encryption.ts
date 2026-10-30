@@ -59,6 +59,8 @@ export interface EncryptionViewRow {
   /** S2c: the rotation state and, while one runs, its progress. */
   rotation: 'none' | 'pending' | 'reencrypting';
   rotationProgress: { rowsDone: number; rowsEstimate: number; startedAt: Date; stalled: boolean } | null;
+  rotationOpenFor: { userId: string | null; name: string | null; kind: 'password' | 'recovery' }[];
+  rotationReason: { kind: string; userId: string | null; name: string | null } | null;
 }
 
 /** A version list as a PostgreSQL integer[] literal (ints only). */
@@ -236,6 +238,11 @@ export function workspaceEncryptionRows(db: DbExecutor) {
     async waits(workspaceId: string): Promise<{ id: string; queue: string; payload: Record<string, unknown> }[]> {
       return rowsOf(db, sql`SELECT id, queue, payload FROM sealed_job_waits WHERE workspace_id = ${workspaceId} ORDER BY created_at, id`);
     },
+    /** One more failed replay of a wait; returns its attempts so far. */
+    async failWait(id: string): Promise<number> {
+      const rows = await rowsOf<{ attempts: number }>(db, sql`UPDATE sealed_job_waits SET attempts = attempts + 1 WHERE id = ${id} RETURNING attempts`);
+      return rows[0]?.attempts ?? 0;
+    },
     async deleteWait(id: string) {
       await db.execute(sql`DELETE FROM sealed_job_waits WHERE id = ${id}`);
     },
@@ -323,7 +330,12 @@ export function workspaceEncryptionRows(db: DbExecutor) {
           EXISTS (SELECT 1 FROM workspace_holders h WHERE h.workspace_id = k.workspace_id AND h.kind = 'recovery') AS "recoveryCode",
           (SELECT max(v.created_at) FROM workspace_key_versions v WHERE v.workspace_id = k.workspace_id AND v.key_version > 1) AS "keyChangedAt",
           k.rotation, (SELECT json_build_object('rowsDone', p.rows_done, 'rowsEstimate', p.rows_estimate, 'startedAt', p.started_at, 'stalled', p.stalled_at IS NOT NULL)
-            FROM workspace_rotation_progress p WHERE p.workspace_id = k.workspace_id AND p.target_version = k.current_version) AS "rotationProgress"
+            FROM workspace_rotation_progress p WHERE p.workspace_id = k.workspace_id AND p.target_version = k.current_version) AS "rotationProgress",
+          (SELECT coalesce(json_agg(json_build_object('userId', h.user_id, 'name', a.name, 'kind', h.kind) ORDER BY h.kind, a.name), '[]'::json)
+             FROM workspace_dek_wraps dw JOIN workspace_holders h ON h.id = dw.holder_id LEFT JOIN auth_users a ON a.id = h.user_id
+             WHERE dw.workspace_id = k.workspace_id AND dw.key_version = k.current_version AND k.rotation = 'reencrypting') AS "rotationOpenFor",
+          CASE WHEN k.rotation <> 'none' AND k.rotation_reason IS NOT NULL THEN json_build_object('kind', k.rotation_reason->>'kind',
+            'userId', k.rotation_reason->>'userId', 'name', (SELECT a.name FROM auth_users a WHERE a.id = k.rotation_reason->>'userId')) END AS "rotationReason"
         FROM workspace_keys k JOIN workspaces w ON w.id = k.workspace_id WHERE w.encrypted AND k.workspace_id IN (${ids})`);
       return new Map(rows.map((row) => [row.workspaceId, { ...row, keyChangedAt: atOrNull(row.keyChangedAt),
         rotationProgress: row.rotationProgress ? { rowsDone: Number(row.rotationProgress.rowsDone), rowsEstimate: Number(row.rotationProgress.rowsEstimate),
