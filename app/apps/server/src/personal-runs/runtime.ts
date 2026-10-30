@@ -1,5 +1,5 @@
-import { clientAvailability, runtimePayer, type AgentRuntimeConfig, type Database, type PersonalRuntimeAvailability, type PersonalRuntimeClient } from '@flux/core';
-import { personalRuntimeRow } from '@flux/db';
+import { clientAvailability, runtimePayer, type AgentRuntimeConfig, type PersonalRuntimeAvailability, type PersonalRuntimeClient } from '@flux/core';
+import { personalRuntimeRow, type Database } from '@flux/db';
 
 /**
  * What the API knows of the owner's own Claude Code or Codex for their assistant (F-022 AIM-3, #280,

@@ -1,6 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { PROJECT_GOAL_MAX, projectGoalPath, projectGoalReachedPath, projectGoalsPath, type SetProjectGoalCommand } from '@flux/contracts';
-import type { Database, ResourceRef } from '@flux/core';
+import type { ResourceRef } from '@flux/core';
+import type { Database } from '@flux/db';
 import type { SessionResolver } from '../identity/index.js';
 import { commandRunner, expectedVersion, requires, useDomainErrors } from '../http/commands.js';
 import { projectGoalUseCases } from './adapters.js';

@@ -1,8 +1,8 @@
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { and, eq, gt, isNull } from 'drizzle-orm';
-import { schema, accessReader } from '@flux/db';
+import { schema, accessReader, type Database } from '@flux/db';
 import { GITHUB_CALLBACK_PATH } from '@flux/contracts';
-import { evaluateProject, enforce, InvalidInputError, ServiceUnavailableError, type Database } from '@flux/core';
+import { evaluateProject, enforce, InvalidInputError, ServiceUnavailableError } from '@flux/core';
 import type { SessionContext } from '../identity/index.js';
 import type { GithubConfig } from './config.js';
 import type { GithubCredentials } from './credentials.js';

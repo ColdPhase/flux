@@ -15,8 +15,8 @@ import {
   type PageQuery,
   type UpdateDocCommand,
 } from '@flux/contracts';
-import { assertAuthorized, type Database, type ResourceRef } from '@flux/core';
-import { accessReader, schema, type DbExecutor } from '@flux/db';
+import { assertAuthorized, type ResourceRef } from '@flux/core';
+import { accessReader, schema, type DbExecutor, type Database } from '@flux/db';
 import { eq } from 'drizzle-orm';
 import type { SessionResolver } from '../identity/index.js';
 import { commandRunner, expectedVersion, useDomainErrors, versionEtag, type ReplayCheck } from '../http/commands.js';

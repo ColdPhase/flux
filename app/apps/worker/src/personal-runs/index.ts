@@ -5,13 +5,13 @@ import {
   PERSONAL_RUN_JOB,
   recoverPersonalRuns,
   unavailablePersonalCompute,
-  type Database,
   type PersonalCompute,
   type PersonalConnectionLookup,
   type PersonalRunTokenIssuer,
   type PersonalRuntime,
   type PersonalToolHost,
 } from '@flux/core';
+import type { Database } from '@flux/db';
 import { personalRunWorkerUnitOfWork } from './adapters.js';
 import { startPersonalRunRecovery } from './recovery.js';
 

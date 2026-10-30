@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { describe, test } from 'node:test';
 import { count, eq } from 'drizzle-orm';
-import { accessPorts, schema, visibleFilter, accessReader } from '@flux/db';
+import { accessPorts, schema, visibleFilter, accessReader, type Database } from '@flux/db';
 import {
   addMember,
   authorize,
@@ -27,7 +27,6 @@ import {
   RuleViolationError,
   shareDraft,
   updateDraft,
-  type Database,
   type Principal,
 } from '@flux/core';
 import { db, insertedHuman, pool } from './support/db.js';

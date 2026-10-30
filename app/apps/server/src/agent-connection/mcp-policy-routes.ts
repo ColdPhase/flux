@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { AGENT_MCP_ENTRIES, agentMcpPolicyPath, type SaveAgentMcpPolicy } from '@flux/contracts';
-import { agentConnectionSetupRepository, accessReader } from '@flux/db';
-import { agentMcpPolicyUseCases, DomainError, evaluateProject, type AgentConnectionSetupPort, type Database } from '@flux/core';
+import { agentConnectionSetupRepository, accessReader, type Database } from '@flux/db';
+import { agentMcpPolicyUseCases, DomainError, evaluateProject, type AgentConnectionSetupPort } from '@flux/core';
 import type { SessionResolver } from '../identity/index.js';
 import { useDomainErrors } from '../http/commands.js';
 import { createMcpPolicyStore } from './mcp-policy-store.js';

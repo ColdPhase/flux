@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { accessReader, assistantChangeRows, assistantRemovalRows, REMOVAL_REASONS, taskGraphRows, type AssistantChangeRow, type DbExecutor, type Removal } from '@flux/db';
+import { accessReader, assistantChangeRows, assistantRemovalRows, REMOVAL_REASONS, taskGraphRows, type AssistantChangeRow, type DbExecutor, type Removal, type Database } from '@flux/db';
 import type { UpdateWorkCommand } from '@flux/contracts';
-import { DomainError, requireWorkspaceAi, restorableFields, WorkspaceAiBlockedError, type Database, type Principal, type UndoRecord } from '@flux/core';
+import { DomainError, requireWorkspaceAi, restorableFields, WorkspaceAiBlockedError, type Principal, type UndoRecord } from '@flux/core';
 import { cancelOwnerAssistantUnitInTransaction } from '../co-work/assistant-units.js';
 import { nativeMapRoomExists, prepareNativeMap } from '../editing/native-map-journal.js';
 import { nativeCapacityRefusal, nativeSketchInEventSession } from '../sketches/adapters.js';

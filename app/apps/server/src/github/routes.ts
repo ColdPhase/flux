@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify';
-import { githubRows, accessReader } from '@flux/db';
+import { githubRows, accessReader, type Database } from '@flux/db';
 import { GITHUB_CALLBACK_PATH, type GithubCapabilities } from '@flux/contracts';
-import { assertAuthorized, DomainError, githubId, InvalidInputError, ServiceUnavailableError, type Database, type GithubProvider } from '@flux/core';
+import { assertAuthorized, DomainError, githubId, InvalidInputError, ServiceUnavailableError, type GithubProvider } from '@flux/core';
 import type { SessionResolver } from '../identity/index.js';
 import { useDomainErrors } from '../http/commands.js';
 import { githubCredentials } from './credentials.js';

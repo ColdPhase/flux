@@ -1,9 +1,8 @@
-import { accessPorts, needsYouRows, returnRows, visibleFilter, accessReader } from '@flux/db';
+import { accessPorts, needsYouRows, returnRows, visibleFilter, accessReader, type Database } from '@flux/db';
 import {
   createNeedsYou,
   evaluateProject,
   listWorkspaces,
-  type Database,
   type NeedsYouAccess,
   type NeedsYouAssistant,
 } from '@flux/core';

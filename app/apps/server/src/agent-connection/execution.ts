@@ -1,9 +1,9 @@
 import { createHash } from 'node:crypto';
 import type { AgentCommandReceipt, AgentExecutionCommand, AgentOperation, AgentPostcondition, AuthenticatedAgentRuntime } from '@flux/contracts';
-import { agentExecutionRows, agentProjectObjectRows, agentThreadGuardRows, accessReader } from '@flux/db';
+import { agentExecutionRows, agentProjectObjectRows, agentThreadGuardRows, accessReader, type Transaction } from '@flux/db';
 import { agentOutcomeFingerprint, DomainError, enforce, evaluateProject, normalizeAgentExecution, validateAgentPostconditions,
   type AgentExecutionOutcome, type AgentExecutionPort, type AgentExecutionScope,
-  type NormalizedAgentExecutionCommand, type Transaction } from '@flux/core';
+  type NormalizedAgentExecutionCommand } from '@flux/core';
 import { agentConnectionInTransaction, type FluxMcpClaims } from './context.js';
 import { agentOperationTarget } from './grants.js';
 

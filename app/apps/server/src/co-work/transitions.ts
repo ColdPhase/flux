@@ -1,8 +1,8 @@
 import type { AgentExecutionCommand, AgentJsonValue, AgentPeerRequestClass, AgentPostcondition, CoWorkSourceRef } from '@flux/contracts';
-import { coworkAdmissionRows, coworkUnitTransitionRows, referencedTaskIds } from '@flux/db';
+import { coworkAdmissionRows, coworkUnitTransitionRows, referencedTaskIds, type Transaction } from '@flux/db';
 import { agentOutcomeFingerprint, ConflictError, InvalidInputError, normalizeAgentExecution, normalizeCoWorkUnitTransition,
   NotFoundError, requireCoWorkUnitTransition, validateCoWorkUnitTransitionPolicy, type CoWorkContext,
-  type CoWorkUnitTransitionPolicy, type Transaction } from '@flux/core';
+  type CoWorkUnitTransitionPolicy } from '@flux/core';
 import { agentExecutionInTransaction } from '../agent-connection/execution.js';
 import type { FluxMcpClaims } from '../agent-connection/context.js';
 import { coWorkNamedTaskGraphLocks, coWorkTaskReference } from './graph.js';

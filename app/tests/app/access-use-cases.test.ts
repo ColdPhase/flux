@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { afterEach, describe, test } from 'node:test';
 import type { WorkspaceRole } from '@flux/contracts';
-import { accessPorts } from '@flux/db';
+import { accessPorts, type Database } from '@flux/db';
 import {
   addMember,
   addProjectView,
@@ -30,7 +30,6 @@ import {
   WorkspaceAiSweepIncomplete,
   type AccessPorts,
   type Actor,
-  type Database,
   type DomainEventSink,
   type DraftRecord,
   type GrantRecord,
@@ -123,6 +122,7 @@ function scene(options: Scene = {}, checked = true) {
     memberRole: async () => { log('encryption.memberRole'); return options.targetRole ?? 'member'; },
     keys: async () => { log('encryption.keys(update)'); return {}; },
     dropUnlockPassword: async () => { log('encryption.dropUnlockPassword'); return options.drop ?? 'deleted'; },
+    recordRemovals: async () => { log('encryption.recordRemovals'); return 1; },
   };
   const projects = {
     lockForGrantChange: async () => { log('projects.lockForGrantChange'); },
@@ -259,7 +259,7 @@ describe('workspace and membership use cases over in-memory repositories', () =>
     const s = scene({ sealed: true, targetRole: 'admin' });
     await changeRole(human(OWNER), WS, TARGET, { role: 'member' }, s.db, s.ports);
     assert.deepEqual(s.calls, ['begin', 'encryption.sealed', 'encryption.memberRole', 'encryption.keys(update)', 'access.workspaceAi(lock)', 'workspaces.lock', 'access.loadActor(lock)',
-      'workspaces.lockMember', 'encryption.dropUnlockPassword', 'workspaces.setRole', ...EVENT_LAST, 'workspaces.findAccount(id)', 'commit']);
+      'workspaces.lockMember', 'encryption.dropUnlockPassword', 'workspaces.setRole', 'encryption.recordRemovals', ...EVENT_LAST, 'workspaces.findAccount(id)', 'commit']);
   });
 
   test('changeRole in a sealed workspace: the last unlock password is refused before anything changes', async () => {
@@ -273,6 +273,11 @@ describe('workspace and membership use cases over in-memory repositories', () =>
     const s = scene({ role: 'guest', targetRole: 'guest' });
     await removeMember(human(TARGET), WS, TARGET, s.db, s.ports);
     assert.deepEqual(s.calls, ['begin', 'encryption.sealed', 'access.workspaceAi(lock)', 'workspaces.lock', 'access.loadActor(lock)', 'workspaces.lockMember', 'workspaces.deleteMember', ...EVENT_LAST, 'commit']);
+    // S2c: an owner or admin removed from a sealed workspace: the key row first, the password dropped, the removal pinned.
+    const sealed = scene({ sealed: true, targetRole: 'admin' });
+    await removeMember(human(OWNER), WS, TARGET, sealed.db, sealed.ports);
+    assert.deepEqual(sealed.calls, ['begin', 'encryption.sealed', 'encryption.memberRole', 'encryption.keys(update)', 'access.workspaceAi(lock)', 'workspaces.lock',
+      'access.loadActor(lock)', 'workspaces.lockMember', 'encryption.dropUnlockPassword', 'workspaces.deleteMember', 'encryption.recordRemovals', ...EVENT_LAST, 'commit']);
     const other = scene({ role: 'guest', targetRole: 'member' });
     await assert.rejects(removeMember(human(OWNER), WS, TARGET, other.db, other.ports), ForbiddenError, 'a guest cannot remove someone else');
   });

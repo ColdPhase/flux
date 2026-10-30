@@ -1,6 +1,5 @@
 import { createCipheriv, createDecipheriv, hkdfSync, randomBytes, randomUUID } from 'node:crypto';
-import { idpLogoutRepository, idpStandingRepository, type IdpCheckResult, type IdpStandingClaim } from '@flux/db';
-import type { Database } from '@flux/core';
+import { idpLogoutRepository, idpStandingRepository, type IdpCheckResult, type IdpStandingClaim, type Database } from '@flux/db';
 import type { OidcConfig } from './config.js';
 import { createJwks } from './backchannel.js';
 import { createStandingProfile, updateStandingProfile } from './standing-profile.js';

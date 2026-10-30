@@ -451,15 +451,6 @@ importers:
       '@flux/contracts':
         specifier: workspace:*
         version: link:../contracts
-      '@flux/db':
-        specifier: workspace:*
-        version: link:../db
-      drizzle-orm:
-        specifier: 0.45.3
-        version: 0.45.3(patch_hash=c4464c575bb21b7d76a56f7c31ea0c5c7f6b3fca4e40581583dadd6e0944f9e3)(@types/pg@8.15.5)(kysely@0.29.6)(pg@8.23.0)
-      pg-boss:
-        specifier: 12.35.0
-        version: 12.35.0
 
   packages/db:
     dependencies:

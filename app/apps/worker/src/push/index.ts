@@ -1,5 +1,6 @@
 import type { PgBoss } from 'pg-boss';
-import { PUSH_SEND_JOB, loadPushSenderConfig, vapidSubjectWarning, type Database, type PushSendJob } from '@flux/core';
+import { PUSH_SEND_JOB, loadPushSenderConfig, vapidSubjectWarning, type PushSendJob } from '@flux/core';
+import type { Database } from '@flux/db';
 import { createPushAgent, deliverPush, type VapidAuthorizer } from './deliver.js';
 
 export { createVapidAuthorizer, deliverPush, type VapidAuthorizer } from './deliver.js';

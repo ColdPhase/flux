@@ -1,8 +1,7 @@
-import { assistantReactionRows, accessReader } from '@flux/db';
+import { assistantReactionRows, accessReader, type Database } from '@flux/db';
 import { evaluateProject } from '@flux/core';
 import type { FastifyInstance } from 'fastify';
 import { NEEDS_YOU_PATH, type ResolveNeedsYouCommand } from '@flux/contracts';
-import type { Database } from '@flux/core';
 import { aiAllowedInProject } from '../access/ai-gate.js';
 import type { SessionResolver } from '../identity/index.js';
 import { useDomainErrors } from '../http/commands.js';

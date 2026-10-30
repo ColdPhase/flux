@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
-import type { Database } from '@flux/core';
+import type { Database } from '@flux/db';
 import { internalAgentThreadWriter } from './internal-agent-thread-writer.js';
 import { createAuth } from '../../../apps/server/src/identity/auth.js';
 import { loadIdentityConfig } from '../../../apps/server/src/identity/config.js';

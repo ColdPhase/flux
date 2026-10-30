@@ -46,7 +46,7 @@ interface Props {
   children: ReactNode;
 }
 
-interface Piece { copy: HTMLElement; top: number; left: number; width: number; height: number; scrolls: [number, number, number][] }
+interface Piece { copy: HTMLElement; top: number; left: number; width: number; height: number; scrolls: [HTMLElement, number, number][] }
 interface Snapshot { pieces: Piece[]; direction: TravelDirection; from: string; scrollTop: number; scrollLeft: number; keep?: boolean; replaces?: Picture }
 /** The picture that is on show for this host: how much of it is left, what it takes to make it wait for the content that is there now, and to end it. */
 interface Picture { frame: HTMLElement; opacity: () => number; rearm: () => void; dismiss: () => void }
@@ -84,6 +84,51 @@ export function copyOf(el: HTMLElement): HTMLElement {
   copy.removeAttribute('id');
   copy.querySelectorAll('[id]').forEach((node) => node.removeAttribute('id'));
   return copy;
+}
+
+/** A list with at least this many children keeps only the ones near the viewport in the picture. */
+const LONG_LIST = 8;
+/** A child shorter than this is cheaper to copy than to stand in for. */
+const STAND_IN_FROM = 48;
+
+/**
+ * The picture of one piece of the old content, and the scroll positions to give its copies. What is within a viewport's height of the
+ * viewport is copied whole; the children of a long list (a screenful of messages, tasks or rows) that lie wholly beyond that are
+ * stood in for by an empty box of the same height, so the picture's layout is the old content's and the rows that can be seen are
+ * the same rows, while the browser styles and lays out a few dozen nodes instead of thousands on every view change (#716). The
+ * boxes are measured before anything has changed, so the reads cost nothing.
+ */
+function pictureOf(source: HTMLElement, view: DOMRect): { copy: HTMLElement; scrolls: [HTMLElement, number, number][] } {
+  const found: [HTMLElement, number, number][] = [];
+  const above = view.top - view.height;
+  const below = view.bottom + view.height;
+  const copyNode = (node: HTMLElement): HTMLElement => {
+    const copy = node.cloneNode(false) as HTMLElement;
+    copy.removeAttribute('id');
+    if (node.scrollTop || node.scrollLeft) found.push([copy, node.scrollTop, node.scrollLeft]);
+    const long = node.childElementCount >= LONG_LIST;
+    for (let child = node.firstChild; child; child = child.nextSibling) {
+      if (!(child instanceof HTMLElement)) {
+        const other = child.cloneNode(true);
+        if (other instanceof Element) { other.removeAttribute('id'); other.querySelectorAll('[id]').forEach((inner) => inner.removeAttribute('id')); }
+        copy.appendChild(other);
+        continue;
+      }
+      if (long) {
+        const box = child.getBoundingClientRect();
+        if (box.height >= STAND_IN_FROM && (box.bottom < above || box.top > below)) {
+          const stand = child.cloneNode(false) as HTMLElement;
+          stand.removeAttribute('id');
+          Object.assign(stand.style, { height: `${box.height}px`, minHeight: '0', maxHeight: 'none', flex: 'none', overflow: 'hidden', boxSizing: 'border-box' });
+          copy.appendChild(stand);
+          continue;
+        }
+      }
+      copy.appendChild(copyNode(child));
+    }
+    return copy;
+  };
+  return { copy: copyNode(source), scrolls: found };
 }
 
 /** One above the nearest layer the host sits in (the docked panel's, an overlay's), so the picture lies over it and under what opens above. */
@@ -147,8 +192,9 @@ export class Dissolve extends Component<Props, Record<string, never>, Snapshot |
       replaces = this.picture;
     }
     const way: TravelDirection = this.props.depth !== undefined ? (depth > (previous.depth ?? 0) ? 'forward' : depth < (previous.depth ?? 0) ? 'back' : travelDirection()) : direction ?? travelDirection();
+    const view = body.getBoundingClientRect();
     const pieces = [...body.children].filter((child): child is HTMLElement => child instanceof HTMLElement && !(skip && child.matches(skip)) && child.offsetWidth > 0 && child.offsetHeight > 0)
-      .map((source) => ({ copy: copyOf(source), top: source.offsetTop, left: source.offsetLeft, width: source.offsetWidth, height: source.offsetHeight, scrolls: scrolls(source) }));
+      .map((source) => ({ ...pictureOf(source, view), top: source.offsetTop, left: source.offsetLeft, width: source.offsetWidth, height: source.offsetHeight }));
     return pieces.length ? { pieces, direction: way, from: previous.id, scrollTop: body.scrollTop, scrollLeft: body.scrollLeft, replaces } : null;
   }
 
@@ -194,7 +240,7 @@ export class Dissolve extends Component<Props, Record<string, never>, Snapshot |
       copy.setAttribute('aria-hidden', 'true');
       Object.assign(copy.style, { position: 'absolute', top: `${piece.top - snapshot.scrollTop}px`, left: `${piece.left - snapshot.scrollLeft}px`, width: `${piece.width}px`, height: `${piece.height}px`, margin: '0', pointerEvents: 'none' });
       parent.appendChild(copy);
-      restoreScrolls(copy, piece.scrolls);
+      for (const [target, top, left] of piece.scrolls) { target.scrollTop = top; target.scrollLeft = left; }
     }
     // The fade starts only once the new content has painted: after the browser has drawn it (the second frame after the swap; the
     // first draws it under the picture) and once it is not waiting on its own first reads (a stream held back until they have settled,

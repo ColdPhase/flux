@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { messageLinkUrls, type MessageLinkPreviews } from '@flux/contracts';
-import { evaluateProject, InvalidInputError, isUuid, NotFoundError, type Database } from '@flux/core';
-import { accessReader, messageReferenceRows, workspaceEncryptionRows } from '@flux/db';
+import { evaluateProject, InvalidInputError, isUuid, NotFoundError } from '@flux/core';
+import { accessReader, messageReferenceRows, workspaceEncryptionRows, type Database } from '@flux/db';
 import type { SessionResolver } from '../identity/index.js';
 import type { LinkPreviewsConfig } from './config.js';
 import { linkPreviews, type LinkPreviews } from './service.js';

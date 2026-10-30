@@ -1,9 +1,9 @@
 import { sql } from 'drizzle-orm';
 import type { CoWorkHandoffPacket, CoWorkOriginalMessage, CoWorkPacketReference, CoWorkSourceRef, TaskCoordination,
   TaskCoordinationRequest, CancelCoWorkRequestCommand } from '@flux/contracts';
-import { coworkCardRows, coworkReviewRows, referenceKey, type CoWorkCardRow, type CoWorkReferenceFact, accessReader } from '@flux/db';
+import { coworkCardRows, coworkReviewRows, referenceKey, type CoWorkCardRow, type CoWorkReferenceFact, accessReader, type Database, type Executor } from '@flux/db';
 import { canCancelCoWorkRequest, enforce, evaluateProject, ForbiddenError, isUuid, NotFoundError, recordEvent, requireCoWorkCancel,
-  type CoWorkCancelActor, type Database, type Executor, type Principal } from '@flux/core';
+  type CoWorkCancelActor, type Principal } from '@flux/core';
 import { ConflictError } from '@flux/core';
 import { eventPorts } from '../events.js';
 import { workUseCases } from '../work/adapters.js';

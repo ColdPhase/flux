@@ -30,7 +30,7 @@ source. The founder prefers `app/` for the application workspace and `docker/`
 for Compose examples. The uncertainty is whether that layout simplifies actual
 build, test and upgrade work enough to justify changing the accepted root pnpm
 workspace and `infra/compose.yaml`. Folder names do not fix the [current
-dependency debt](architecture.md#known-debt) in `core`.
+dependency debt](architecture.md#resolved-debt) in `core`.
 
 ## Observations, 2026-09-27
 
@@ -85,7 +85,7 @@ The repository check still uses root `scripts/check_agent_setup.py`,
 `tests/test_agent_setup.py` and `.agents/` and should remain discoverable there.
 
 There is also real architectural debt independent of paths: the
-[architecture map](architecture.md#known-debt) lists `core` imports of `@flux/db`,
+[architecture map](architecture.md#resolved-debt) lists `core` imports of `@flux/db`,
 Drizzle and pg-boss. Moving `packages/core` beneath `app/` cannot cure them.
 The import scanner and its temporary allowlist need their scan roots updated
 without growing the allowlist. Active #36 and #46 branches touch these modules;

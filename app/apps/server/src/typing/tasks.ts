@@ -1,4 +1,5 @@
-import { NotFoundError, type Database, type TypingTaskDiscussion } from '@flux/core';
+import { NotFoundError, type TypingTaskDiscussion } from '@flux/core';
+import type { Database } from '@flux/db';
 import { taskDiscussionUseCases } from '../work/task-discussions.js';
 
 /**

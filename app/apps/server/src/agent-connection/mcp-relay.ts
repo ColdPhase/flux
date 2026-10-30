@@ -2,7 +2,8 @@ import { randomUUID } from 'node:crypto';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { toWebRequest } from '@modelcontextprotocol/node';
 import { sql } from 'drizzle-orm';
-import { WorkspaceAiBlockedError, type Database, type Transaction } from '@flux/core';
+import { WorkspaceAiBlockedError } from '@flux/core';
+import type { Database, Transaction } from '@flux/db';
 
 /**
  * Request-owned delivery fence (#316 AC-3). `check` runs inside a short database transaction that holds the

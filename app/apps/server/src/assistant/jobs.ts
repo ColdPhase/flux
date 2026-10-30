@@ -5,10 +5,10 @@ import {
   assistantJobRunNowPath, assistantJobsPath, type AssistantMorningSummary, type CreateAssistantJob, type SetMorningSummaryByAssistant, type UpdateAssistantJob,
 } from '@flux/contracts';
 import {
-  createAssistantJobs, createPersonalRunUseCases, setMorningSummaryByAssistant, todaysSummary, type AssistantReactionUnitOfWork, type Database, type PersonalConnectionLookup,
+  createAssistantJobs, createPersonalRunUseCases, setMorningSummaryByAssistant, todaysSummary, type AssistantReactionUnitOfWork, type PersonalConnectionLookup,
   type PersonalRuntimeAvailability,
 } from '@flux/core';
-import { assistantReactionRows, assistantJobRows, assistantSummaryRows, notificationPreferenceRows, personalRunRows, pushSubscriptionRepository } from '@flux/db';
+import { assistantReactionRows, assistantJobRows, assistantSummaryRows, notificationPreferenceRows, personalRunRows, pushSubscriptionRepository, type Database } from '@flux/db';
 import { expectedVersion } from '../http/commands.js';
 import type { SessionResolver } from '../identity/index.js';
 import { personalRunPorts, personalRunUnitOfWork, type PersonalRunQueueFactory } from '../personal-runs/adapters.js';

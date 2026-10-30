@@ -612,6 +612,165 @@ class TypingJourney(unittest.TestCase):
         self.observations.append({"case": "stream-root-arrival", "milliseconds": round(elapsed, 3), "maximum": 2000})
         self.assertLessEqual(elapsed, 2000, "a new conversation reaches the open stream from the live stream")
 
+    # ---- #731: the sentence has its own line in the task panel and the phone sheet ----
+
+    def test_15_the_typing_sentence_is_whole_on_its_own_line_in_the_task_panel_and_phone_sheet(self):
+        """#731: "Alice Rivera and Lee Park are typing…" and "Alice Rivera and 2 others are typing…" are readable in full
+        at 390 px and in the desktop panel: the line is under the audience note (not sharing its row), never cut by an
+        ellipsis, and it appears and disappears without moving the footer, the box or anything above them."""
+        work, _ = self.work_with_root("Check the typing sentence")
+        owner = self.page("alice")
+        self.grant(owner, "outsider", "contributor")
+        self.grant(owner, "viewer", "contributor")
+        self.addCleanup(lambda: self.grant(owner, "viewer", "viewer"))
+        self.addCleanup(lambda: self.grant(owner, "outsider", "denied"))
+        writers = {key: self.panel(key, work["id"]) for key in ("alice", "outsider", "viewer")}
+        for page in writers.values():
+            expect(page.locator("#details .typing-notice")).to_have_attribute("data-availability", "ready")
+        fields = {key: page.locator("#details").get_by_label("Write to this task") for key, page in writers.items()}
+        two = re.compile(r"^(Alice Rivera and Lee Park|Lee Park and Alice Rivera) are typing…$")
+        many = re.compile(r"^(Alice Rivera|Lee Park|Nia Okafor) and 2 others are typing…$")
+        for name, viewport in (("desktop", {"width": 1280, "height": 800}), ("phone", {"width": 390, "height": 844}), ("small phone", {"width": 320, "height": 640})):
+            with self.subTest(view=name):
+                bob = self.panel("bob", work["id"], viewport=viewport)
+                notice = bob.locator("#details .typing-notice")
+                expect(notice).to_have_attribute("data-availability", "ready")
+                field = bob.locator("#details").get_by_label("Write to this task")
+                audience = bob.locator("#details .wd__foot .composer__audience")
+                shape = "() => { const box = (q) => { const b = document.querySelector(q).getBoundingClientRect(); return [b.x, b.y, b.width, b.height].map((n) => Math.round(n * 100) / 100); };" \
+                        " return { foot: box('#details .wd__foot'), field: box('#details .wd__foot textarea'), audience: box('#details .wd__foot .composer__audience'), notice: box('#details .wd__foot .typing-notice') }; }"
+                before = bob.evaluate(shape)
+                for who, text in (("alice", f"PRIVATE-DRAFT sentence {name} 1"), ("outsider", f"PRIVATE-DRAFT sentence {name} 2")):
+                    fields[who].fill(text)
+                expect(notice).to_have_text(two, timeout=4000)
+                self.assert_sentence_whole(bob, notice, audience)
+                shot(bob, f"typing-panel-{name.replace(' ', '-')}-two-writers")
+                fields["viewer"].fill(f"PRIVATE-DRAFT sentence {name} 3")
+                expect(notice).to_have_text(many, timeout=4000)
+                self.assert_sentence_whole(bob, notice, audience)
+                shot(bob, f"typing-panel-{name.replace(' ', '-')}-three-writers")
+                during = bob.evaluate(shape)
+                for key in ("foot", "field", "audience", "notice"):
+                    self.assertEqual(before[key], during[key], f"{key} does not move when the sentence appears at {name}")
+                for page in writers.values():
+                    page.locator("#details").get_by_label("Write to this task").blur()
+                expect(notice).not_to_contain_text("typing", timeout=2000)
+                self.assertEqual(before, bob.evaluate(shape), f"nothing moves when the sentence goes away at {name}")
+                expect(notice).to_have_attribute("data-availability", "ready")
+                bob.context.close()
+
+    def assert_sentence_whole(self, page, notice, audience):
+        """The line is not ellipsized, lies wholly inside the footer, and is a row of its own under the audience note."""
+        measure = notice.evaluate("el => { const b = el.getBoundingClientRect(), f = el.closest('.wd__foot').getBoundingClientRect(); return { cut: el.scrollWidth > el.clientWidth + 1, left: b.left, right: b.right, top: b.top, footLeft: f.left, footRight: f.right }; }")
+        self.assertFalse(measure["cut"], f"the sentence is not cut off: {notice.text_content()!r}")
+        self.assertGreaterEqual(measure["left"], measure["footLeft"])
+        self.assertLessEqual(measure["right"], measure["footRight"])
+        self.assertGreaterEqual(measure["top"], audience.bounding_box()["y"] + audience.bounding_box()["height"] - 0.5, "the line does not share the audience note's row")
+        self.assertLessEqual(page.locator("body").evaluate("el => el.scrollWidth"), page.viewport_size["width"])
+
+    # ---- #732: unavailable is said after a real failure or timeout, never while connecting ----
+
+    INIT_TRACE = """() => {
+      const trace = window.__typingTrace = [];
+      const read = () => {
+        const el = document.querySelector('.typing-notice:not([aria-hidden])');
+        if (!el) return;
+        const entry = { availability: el.getAttribute('data-availability'), text: el.textContent.replace(/\\u00a0/g, ''), height: Math.round(el.getBoundingClientRect().height * 100) / 100 };
+        const last = trace[trace.length - 1];
+        if (!last || last.availability !== entry.availability || last.text !== entry.text) trace.push(entry);
+        else last.height = entry.height;
+      };
+      new MutationObserver(read).observe(document, { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ['data-availability'] });
+      document.addEventListener('DOMContentLoaded', read);
+    }"""
+
+    def withheld_transport(self, state):
+        """Real server frames, withheld on purpose (nothing is invented): the page's socket opens and the relay keeps the
+        server's identity and snapshot until the test releases them, or never."""
+        def transport(socket):
+            server = socket.connect_to_server()
+            connection = {"socket": socket, "held": []}
+            state["connections"].append(connection)
+
+            def received(payload):
+                if state["hold"]:
+                    connection["held"].append(payload)
+                else:
+                    socket.send(payload)
+
+            server.on_message(received)
+
+        return transport
+
+    def release(self, state):
+        """Lets the real frames through again: those kept for the newest connection arrive now, later ones are not kept."""
+        state["hold"] = False
+        if state["connections"]:
+            newest = state["connections"][-1]
+            held, newest["held"] = newest["held"], []
+            for payload in held:
+                try:
+                    newest["socket"].send(payload)
+                except Exception:  # the page has already closed that transport: the next connection is not withheld
+                    pass
+
+    def watched(self, url, state):
+        page = self.page("bob", viewport={"width": 390, "height": 844}, transport=self.withheld_transport(state))
+        page.add_init_script(f"({self.INIT_TRACE})()")
+        page.goto(url)
+        deadline = time.monotonic() + 15
+        while not any(connection["held"] for connection in state["connections"]) and time.monotonic() < deadline:
+            page.wait_for_timeout(50)
+        self.assertTrue(any(connection["held"] for connection in state["connections"]), "the real identity frame reached the relay")
+        return page
+
+    def trace(self, page):
+        return page.evaluate("() => window.__typingTrace")
+
+    def surfaces(self):
+        work, _ = self.work_with_root("Open while the first frame is slow")
+        return (("thread", self.path(), "#thread .typing-notice"), ("task panel", f"/projects/{self.project}/tasks?open=work:{work['id']}", "#details .typing-notice"))
+
+    def test_16_a_slow_first_frame_says_nothing_about_availability(self):
+        """#732: opening a thread or the task panel while the server's first frame is still on its way shows no
+        "Typing activity unavailable"; the line is empty, its height is the one it keeps, and it becomes ready."""
+        for surface, url, selector in self.surfaces():
+            with self.subTest(surface=surface):
+                state = {"hold": True, "connections": []}
+                page = self.watched(url, state)
+                notice = page.locator(selector)
+                page.wait_for_timeout(1200)  # well inside the transport's budget, and far longer than the 10-110 ms flash
+                expect(notice).to_have_attribute("data-availability", "connecting")
+                self.assertEqual(notice.text_content().replace("\u00a0", ""), "", "nothing is said while connecting")
+                self.release(state)
+                expect(notice).to_have_attribute("data-availability", "ready", timeout=5000)
+                self.assertEqual([(entry["availability"], entry["text"]) for entry in self.trace(page)], [("connecting", ""), ("ready", "")], "it never said unavailable on the way to ready")
+                self.assertEqual(len({entry["height"] for entry in self.trace(page)}), 1, "the line keeps one height")
+                self.assert_wire(page, "bob")
+                page.context.close()
+
+    def test_17_a_real_failure_or_timeout_says_unavailable_and_recovery_clears_it(self):
+        """#732: when the first frame never arrives the transport gives up within its budget and only then says
+        "Typing activity unavailable"; it stays that way through the retries (never back to blank) until a frame says ready."""
+        for surface, url, selector in self.surfaces():
+            with self.subTest(surface=surface):
+                state = {"hold": True, "connections": []}
+                page = self.watched(url, state)
+                notice = page.locator(selector)
+                page.wait_for_timeout(800)
+                self.assertEqual([(entry["availability"], entry["text"]) for entry in self.trace(page)], [("connecting", "")], "no notice before the timeout")
+                self.measure("typing-first-frame-timeout", lambda: None, lambda: expect(notice).to_have_text("Typing activity unavailable", timeout=6000), 6000)
+                expect(notice).to_have_attribute("data-availability", "unavailable")
+                page.wait_for_timeout(1500)  # a retry is under way; the notice does not blink out and back
+                expect(notice).to_have_text("Typing activity unavailable")
+                self.release(state)
+                expect(notice).to_have_attribute("data-availability", "ready", timeout=15000)
+                expect(notice).not_to_contain_text("unavailable")
+                self.assertEqual([(entry["availability"], entry["text"]) for entry in self.trace(page)],
+                                 [("connecting", ""), ("unavailable", "Typing activity unavailable"), ("ready", "")])
+                self.assertEqual(len({entry["height"] for entry in self.trace(page)}), 1, "the line keeps one height through all three states")
+                page.context.close()
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

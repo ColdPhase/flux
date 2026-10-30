@@ -1,6 +1,6 @@
-import { accessPorts, assistantJoinRows, assistantJoinView, lockAssistantOwner, accessReader } from '@flux/db';
+import { accessPorts, assistantJoinRows, assistantJoinView, lockAssistantOwner, accessReader, type Database } from '@flux/db';
 import { ConflictError, NotFoundError, assertAuthorized, createNotification, evaluateProject, getProject,
-  grantProject, isUuid, type Database, type Principal } from '@flux/core';
+  grantProject, isUuid, type Principal } from '@flux/core';
 import type { PgBoss } from 'pg-boss';
 import { notificationUnitOfWork, pgBossQueue } from '../push/adapters.js';
 import { transactionEventSession } from '../work/transaction-events.js';

@@ -1,7 +1,7 @@
 import type { AgentProjectOwner } from '@flux/contracts';
 import { and, eq, inArray } from 'drizzle-orm';
-import { schema, accessReader } from '@flux/db';
-import { evaluateProject, type Executor } from '@flux/core';
+import { schema, accessReader, type Executor } from '@flux/db';
+import { evaluateProject } from '@flux/core';
 
 /** The principal with its current scoped owner; humans and agents without a visible owner are returned unchanged. */
 export function scopedPrincipal<P extends { kind: 'human' | 'agent'; id: string }>(who: P, owners: ReadonlyMap<string, AgentProjectOwner>): P {

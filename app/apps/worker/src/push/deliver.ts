@@ -1,12 +1,11 @@
 import https from 'node:https';
 import webpush, { WebPushError } from 'web-push';
-import { assignmentDeliveryAdmission, pushDeliveryRepository, accessReader } from '@flux/db';
+import { assignmentDeliveryAdmission, pushDeliveryRepository, accessReader, type Database } from '@flux/db';
 import { pushPreferenceCheck, pushQuietCheck } from '../notifications/adapters.js';
 import { createPublicOnlyLookup, type PublicLookupResolver } from './public-lookup.js';
 import {
   deliverPushJob,
   policySourceReader,
-  type Database,
   type DeliveryOutcome,
   type PushSender,
   type PushSenderConfig,

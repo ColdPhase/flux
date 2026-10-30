@@ -1,7 +1,7 @@
 import type { FastifyError, FastifyInstance } from 'fastify';
 import { AGENT_OPERATIONS, AGENT_PEER_REQUEST_CLASSES, type CreateAgentConnectionCommand, type CreateAgentStandingGrantCommand, type NarrowAgentStandingGrantCommand, type PageQuery } from '@flux/contracts';
-import { agentProposalRepository, accessReader } from '@flux/db';
-import { agentConnectionUseCases, agentOauthUseCases, agentProposalUseCases, DomainError, enforce, evaluateProject, recordEvent, type Database } from '@flux/core';
+import { agentProposalRepository, accessReader, type Database } from '@flux/db';
+import { agentConnectionUseCases, agentOauthUseCases, agentProposalUseCases, DomainError, enforce, evaluateProject, recordEvent } from '@flux/core';
 import type { SessionResolver } from '../identity/index.js';
 import { createAgentConnectionStore } from './store.js';
 import { agentStandingGrants } from './grants.js';

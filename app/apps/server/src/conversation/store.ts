@@ -1,7 +1,7 @@
 import { messagePreview } from '@flux/contracts';
 import { randomUUID } from 'node:crypto';
 import { and, asc, desc, eq, lt, sql, type SQL } from 'drizzle-orm';
-import { agentThreadGuardRows, artifactResetRows, fileRows, openAliased, openRows, prepareCanonicalArtifactTaskUse, schema, sealFor, sealsOf, openField, taskDiscussionRows, taskUseRows, workRows, accessReader, type DbExecutor } from '@flux/db';
+import { agentThreadGuardRows, artifactResetRows, fileRows, openAliased, openRows, prepareCanonicalArtifactTaskUse, schema, sealFor, sealsOf, openField, taskDiscussionRows, taskUseRows, workRows, accessReader, type DbExecutor, type Database, type Transaction } from '@flux/db';
 import type {
   Conversation, ConversationMessage, ConversationRootWindow, ConversationSummary, Material, MaterialOrDoc,
   AgentProjectOwner, AuthenticatedAgentRuntime, MaterialVersion, MessageReferenceCard, Page, PageQuery, TaskAgentThread,
@@ -9,7 +9,7 @@ import type {
 import {
   ConflictError, conversationUseCases, enforce, evaluateDraft, evaluateProject, InvalidInputError, NotFoundError,
   lockAttachments, messageContribution, storedDetail, positiveVersion, uuid, type FileStorage,
-  parsePage, recordEvent, ServiceUnavailableError, type Database, type Principal, type Transaction,
+  parsePage, recordEvent, ServiceUnavailableError, type Principal,
 } from '@flux/core';
 import type { AgentThreadWindow, AgentThreadPost, ConversationPort } from '@flux/core';
 import { eventPorts } from '../events.js';

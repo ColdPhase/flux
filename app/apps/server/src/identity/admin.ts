@@ -1,7 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { and, eq, inArray, ne, sql } from 'drizzle-orm';
-import { schema } from '@flux/db';
-import type { Database } from '@flux/core';
+import { schema, type Database } from '@flux/db';
 import { oidcProviderId } from './config.js';
 
 /**

@@ -1,6 +1,6 @@
-import { assistantSettingsRows, type AssistantAuthority, type DbExecutor, accessPorts, accessReader } from '@flux/db';
+import { assistantSettingsRows, type AssistantAuthority, type DbExecutor, accessPorts, accessReader, type Transaction } from '@flux/db';
 import { ConflictError, assertAuthorized, evaluateProject, policyPersonalRunAccess, grantProject,
-  initialAgentMcpPolicy, mcpPolicyAdmissionActions, mcpPolicyWithinConsent, type Transaction } from '@flux/core';
+  initialAgentMcpPolicy, mcpPolicyAdmissionActions, mcpPolicyWithinConsent } from '@flux/core';
 import type { TransactionEventSession } from '../work/transaction-events.js';
 
 export function assistantRows(tx: DbExecutor, events: TransactionEventSession) {

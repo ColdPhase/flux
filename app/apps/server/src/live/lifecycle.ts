@@ -1,7 +1,7 @@
 import { and, asc, eq, gt, inArray, lt, lte, or } from 'drizzle-orm';
 import type { Pool } from 'pg';
-import { schema } from '@flux/db';
-import type { Database, LiveMedia } from '@flux/core';
+import { schema, type Database } from '@flux/db';
+import type { LiveMedia } from '@flux/core';
 
 const NEVER_JOINED_GRACE_MS = 300_000;
 const DEPARTED_GRACE_MS = 90_000;

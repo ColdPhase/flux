@@ -113,12 +113,15 @@ export function mapBackend(database:{pool:Pick<ReturnType<typeof createDatabase>
       closed(command,['generation','selected','cursor']);if(id(command.generation)!==c.room.generation)throw new ConflictError('The map generation changed','EDITING_GENERATION_CHANGED');
       if(!Array.isArray(command.selected)||command.selected.length>16)throw new InvalidInputError('Presence names at most16 selected thoughts');
       const selected=command.selected.map(id);if(new Set(selected).size!==selected.length)throw new InvalidInputError('Each selected thought may appear once');
-      if((await sketchRepository(c.db).lockThoughts(sketchId,selected)).length!==selected.length)throw new InvalidInputError('Selection contains another map');
+      // A selection names only this map's current thoughts. One that has just gone (an undo, a peer's delete) or that belongs
+      // elsewhere is left out, not refused: presence is advisory, and refusing it reported a failed map change (#749).
+      const present=new Set((await sketchRepository(c.db).lockThoughts(sketchId,selected)).map(thought=>thought.id.toLowerCase()));
+      const shown=selected.filter(item=>present.has(item));
       if(command.cursor){closed(command.cursor,['x','y']);if(!Number.isInteger(command.cursor.x)||!Number.isInteger(command.cursor.y)||Math.abs(command.cursor.x)>100_000||Math.abs(command.cursor.y)>100_000)throw new InvalidInputError('Invalid map cursor');}
       const rows=liveMapRows(c.db,decodeMapChange,boundary.confirmation);if(!await rows.hasPresence(connectionId))await rows.capacity('presence',sketchId);
-      const packet={type:'map-presence',generation:c.room.generation,connectionId,actor:c.actor,selected,cursor:command.cursor,slot:127,expiresAt:new Date().toISOString()};
+      const packet={type:'map-presence',generation:c.room.generation,connectionId,actor:c.actor,selected:shown,cursor:command.cursor,slot:127,expiresAt:new Date().toISOString()};
       if(Buffer.byteLength(JSON.stringify(packet))>65_536)throw new ServiceUnavailableError('The bounded presence frame is full','EDITING_MAP_CAPACITY');
-      await rows.setPresence(sketchId,c.room.generation,who,id(connectionId),selected,command.cursor);await rows.notify(sketchId);
+      await rows.setPresence(sketchId,c.room.generation,who,id(connectionId),shown,command.cursor);await rows.notify(sketchId);
     },'transient');},
     undo(who,sketchId,command){return run(who,sketchId,true,c=>undoMap(c.db,c.principal,c.room,c.sketch,command));},
     deliverUndo(who,sketchId,commandId,handoff){return run(who,sketchId,false,async c=>{

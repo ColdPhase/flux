@@ -1,6 +1,5 @@
 import { withTaskUseErrors } from '../work/task-use-errors.js';
-import { sql } from '@flux/db';
-import type { Database, Transaction } from '@flux/core';
+import { sql, type Database, type Transaction } from '@flux/db';
 
 /** Cancel in PostgreSQL before the unchanged 2s driver timeout, so rollback can drain. */
 export function githubTransaction<T>(db: Database, work: (tx: Transaction) => Promise<T>): Promise<T> {

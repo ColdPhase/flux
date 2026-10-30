@@ -1,8 +1,8 @@
 import { randomBytes } from 'node:crypto';
 import { and, eq, ne, sql } from 'drizzle-orm';
 import type { Pool } from 'pg';
-import { schema } from '@flux/db';
-import { NotFoundError, ServiceUnavailableError, type Database, type LiveMedia } from '@flux/core';
+import { schema, type Database } from '@flux/db';
+import { NotFoundError, ServiceUnavailableError, type LiveMedia } from '@flux/core';
 import type { LiveLifecycle } from './lifecycle.js';
 
 type Scope = { workspaceId: string; projectId: string | null };

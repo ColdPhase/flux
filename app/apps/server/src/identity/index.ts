@@ -1,7 +1,6 @@
 import type { FastifyInstance } from 'fastify';
-import { createSessionRepository } from '@flux/db';
+import { createSessionRepository, type Database } from '@flux/db';
 import { sql } from 'drizzle-orm';
-import type { Database } from '@flux/core';
 import type { ApiError, IdentityCapabilities } from '@flux/contracts';
 import { createAuth, ensureOauthResource, type FluxAuth } from './auth.js';
 import { registerAuthBridge } from './bridge.js';

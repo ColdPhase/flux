@@ -1,8 +1,8 @@
 import { fromDrizzle, type PgBoss } from 'pg-boss';
-import { assistantReactionRows, assistantJobRows, assistantSummaryRows, pushSubscriptionRepository, sql, type DbExecutor } from '@flux/db';
+import { assistantReactionRows, assistantJobRows, assistantSummaryRows, pushSubscriptionRepository, sql, type DbExecutor, type Database } from '@flux/db';
 import {
   ASSISTANT_TICK_JOB, PERSONAL_RUN_JOB, assistantReactionTick, PUSH_SEND_JOB, assistantTick, createPersonalRunUseCases, settleAssistantSummaries, startAssistantSummary,
-  type AssistantReactionUnitOfWork, type AssistantSummaryUnitOfWork, type Database, type PersonalConnectionLookup, type PersonalRuntimeAvailability,
+  type AssistantReactionUnitOfWork, type AssistantSummaryUnitOfWork, type PersonalConnectionLookup, type PersonalRuntimeAvailability,
 } from '@flux/core';
 import { summaryPorts, type AssistantSummaryStart } from '../jobs/morning-summary.js';
 import { personalRunPorts } from '../personal-runs/adapters.js';

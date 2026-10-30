@@ -2,7 +2,8 @@ import type { FastifyInstance } from 'fastify';
 import { createCipheriv, createDecipheriv, hkdfSync, randomBytes } from 'node:crypto';
 import { LIVE_INVITATIONS_PATH, liveInvitePath, liveInvitationReplyPath,
   type InviteLiveSessionCommand, type ReplyLiveInvitationCommand } from '@flux/contracts';
-import { InvalidInputError, liveInvitationUseCases, type Database, type LiveInvitationCursor } from '@flux/core';
+import { InvalidInputError, liveInvitationUseCases, type LiveInvitationCursor } from '@flux/core';
+import type { Database } from '@flux/db';
 import type { SessionResolver } from '../identity/index.js';
 import { useDomainErrors } from '../http/commands.js';
 import { liveInvitationStore } from './invitations.js';

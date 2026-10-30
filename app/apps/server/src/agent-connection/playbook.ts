@@ -1,8 +1,8 @@
 import type { McpServer } from '@modelcontextprotocol/server';
 import { z } from 'zod';
-import { accessPorts, agentPlaybookRows } from '@flux/db';
+import { accessPorts, agentPlaybookRows, type Database } from '@flux/db';
 import { COWORK_PLAYBOOK, coworkPlaybookReference, coworkPlaybookUri, DomainError, getProject, isUuid,
-  renderCoworkPlaybook, type Database } from '@flux/core';
+  renderCoworkPlaybook } from '@flux/core';
 import { withAgentConnection, type VerifiedFluxMcpClaims } from './context.js';
 import { agentRuntimeInTransaction } from './runtime.js';
 import type { AgentToolRegistry } from './tool-registry.js';

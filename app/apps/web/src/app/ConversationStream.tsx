@@ -359,7 +359,9 @@ export function ConversationStream({ project, meId, meName, roots: stream, notic
   const columnRef = useRef<HTMLDivElement>(null);
   // A short stream sits against its composer instead of at the top of a tall screen (ui/spareHeight.ts).
   const liftRef = useRef<HTMLDivElement>(null);
-  useSpareHeight(feedRef, columnRef, liftRef, display.length + outbox.pending.length, feedNode);
+  // The feed is always rendered, so its element is there when the first measurement runs: waiting for it in state (`feedNode`) only made the
+  // measurement run, and force the layout, a second time in the commit that follows the first (#716).
+  useSpareHeight(feedRef, columnRef, liftRef, display.length + outbox.pending.length, true);
   const pinRef = useRef<{ id: string; offset: number } | null>(null);
   /** The first entry in view and its offset from the top, as the reader last left it. */
   const anchorRef = useRef<{ id: string; offset: number } | null>(null);

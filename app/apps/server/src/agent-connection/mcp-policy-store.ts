@@ -1,5 +1,5 @@
-import { agentMcpPolicyRepository, accessReader } from '@flux/db';
-import { enforce, evaluateProject, initialAgentMcpPolicy, mcpPolicyWithinConsent, mcpPolicyAdmissionActions, type Database } from '@flux/core';
+import { agentMcpPolicyRepository, accessReader, type Database } from '@flux/db';
+import { enforce, evaluateProject, initialAgentMcpPolicy, mcpPolicyWithinConsent, mcpPolicyAdmissionActions } from '@flux/core';
 
 export function createMcpPolicyStore(db: Database) {
   return agentMcpPolicyRepository(db, { initialPolicy: initialAgentMcpPolicy, withinConsent: mcpPolicyWithinConsent,

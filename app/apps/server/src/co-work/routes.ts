@@ -1,7 +1,8 @@
 import type { FastifyInstance } from 'fastify';
 import { projectReviewPolicyPath, taskCoordinationCancelPath, taskCoordinationPacketPath, taskCoordinationPath, type CancelCoWorkRequestCommand,
   type SetCoWorkReviewPolicyCommand, type TaskCoordination } from '@flux/contracts';
-import { normalizeCoWorkCancel, type Database } from '@flux/core';
+import { normalizeCoWorkCancel } from '@flux/core';
+import type { Database } from '@flux/db';
 import type { SessionResolver } from '../identity/index.js';
 import { cancelCoWorkRequest, readHandoffPacket, readTaskCoordination } from './cards.js';
 import { readReviewPolicy, setReviewPolicy } from './review-policy.js';

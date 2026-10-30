@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { before, describe, test } from 'node:test';
-import { createAssistantProposalUseCases, createPersonalRunProcessor, recoverPersonalRuns, type PersonalRunHooks, type Principal, type Transaction } from '@flux/core';
+import { createAssistantProposalUseCases, createPersonalRunProcessor, recoverPersonalRuns, type PersonalRunHooks, type Principal } from '@flux/core';
+import type { Transaction } from '@flux/db';
 import {
   PERSONAL_RUN_CONSENT_VERSION,
   type AssistantAnswer, type AssistantProposal, type AssistantRun, type Conversation, type Decision, type Page, type PersonalAssistantStatus,
