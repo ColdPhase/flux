@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, relative, resolve } from 'node:path';
 import { describe, test } from 'node:test';
-import { checkManifests, checkSources, compare, layerOf, loadExceptions, nativeSelects, reachableImports, scanRepository } from './support/architecture.js';
+import { checkManifests, checkSources, compare, layerOf, loadExceptions, nativeSelects, reachableImports, scanRepository, WEB_LIBRARIES } from './support/architecture.js';
 
 // Repository-wide Clean Architecture rules (issue #46). The layers and their allowed
 // dependencies are defined in support/architecture.ts and explained in
@@ -111,6 +111,33 @@ describe('architecture boundaries', () => {
     assert.deepEqual(found, [], 'use Select and Option from ../ui (apps/web/src/ui/Select.tsx), not a native <select>');
   });
 
+  test('the web app has one transport: no fetch and no hand-written API path outside api/client.ts (#93)', () => {
+    const sources = uiSources(join(root, 'apps/web/src')).filter((path) => !path.endsWith('/api/client.ts'));
+    const found = sources.flatMap((path) => readFileSync(path, 'utf8').split('\n').flatMap((line, index) =>
+      /^\s*(\/\/|\*|\/\*)/.test(line) || !(/\bfetch\(/.test(line) || /['"`]\/api\//.test(line)) ? [] : [`${relative(root, path)}:${index + 1}`]));
+    assert.deepEqual(found, [], 'call the API through apps/web/src/api/client.ts with a path helper from @flux/contracts');
+  });
+
+  test('the conversation and material features stay small and their views only render (#94)', () => {
+    const sources = ['conversations', 'materials'].flatMap((name) => uiSources(join(root, 'apps/web/src', name)));
+    assert.ok(sources.length >= 10, `the scan covers both features (found ${sources.length})`);
+    for (const path of sources) {
+      const text = readFileSync(path, 'utf8');
+      const lines = text.split('\n').length;
+      assert.ok(lines <= 150, `${relative(root, path)} has ${lines} lines; split it before it passes 150`);
+      // A view (.tsx) renders what its hooks and loaders read: it imports no API module and calls no request itself.
+      if (path.endsWith('.tsx')) assert.doesNotMatch(text, /from '[^']*\/api(\/client)?'|(?<![.\w])(?:request|send|fetch)\(/, `${relative(root, path)} renders only; read through a hook or loader`);
+    }
+  });
+
+  test('every browser library the web may import is a declared dependency of @flux/web (#93)', () => {
+    const declared = Object.keys((JSON.parse(readFileSync(join(root, 'apps/web/package.json'), 'utf8')) as { dependencies: Record<string, string> }).dependencies);
+    for (const library of WEB_LIBRARIES) {
+      const prefix = library.endsWith('/*') ? library.slice(0, -1) : null;
+      assert.ok(prefix ? declared.some((name) => name.startsWith(prefix)) : declared.includes(library), `${library} is in apps/web/package.json`);
+    }
+  });
+
   test('the native select rule finds elements and ignores comments (self-test)', () => {
     assert.deepEqual(nativeSelects('const a = <select value={x}>\n<option />\n</select>;'), [1]);
     assert.deepEqual(nativeSelects('x\n  <select\n    id="a">'), [2]);
@@ -130,6 +157,7 @@ describe('architecture boundaries', () => {
       source('apps/web/src/fs-bare.ts', "import fs from 'fs';"),
       source('apps/web/src/fs-prefixed.ts', "import { readFile } from 'node:fs';"),
       source('apps/web/src/fs-subpath.ts', "import { readFile } from 'fs/promises';"),
+      source('apps/web/src/unlisted.ts', "import { debounce } from 'lodash';\nimport { Room } from 'livekit-client';\nimport '@xterm/xterm/css/xterm.css';"),
       source('packages/core/src/x/bare-builtin-ok.ts', "import { createHash } from 'crypto';"),
       source('apps/worker/src/x.ts', "import Fastify from 'fastify';"),
       source('apps/server/src/x.ts', "import { schema } from '../../../packages/db/src/schema.js';"),
@@ -145,6 +173,7 @@ describe('architecture boundaries', () => {
       'apps/web/src/fs-bare.ts -> fs',
       'apps/web/src/fs-prefixed.ts -> node:fs',
       'apps/web/src/fs-subpath.ts -> fs/promises',
+      'apps/web/src/unlisted.ts -> lodash',
       'apps/worker/src/x.ts -> fastify',
       'apps/server/src/x.ts -> ../../../packages/db/src/schema.js',
       'apps/server/src/y.ts -> @flux/db/src/schema.js',

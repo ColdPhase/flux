@@ -33,6 +33,19 @@ export interface FixtureOauthClientRegistered {
 export const AUTH_BASE_PATH = '/api/auth';
 export const IDENTITY_CAPABILITIES_PATH = '/api/v1/auth/capabilities';
 export const ME_PATH = '/api/v1/me';
+/** Better Auth's own endpoints the web client calls, below AUTH_BASE_PATH. */
+export const AUTH_SIGN_UP_EMAIL_PATH = `${AUTH_BASE_PATH}/sign-up/email`;
+export const AUTH_SIGN_IN_EMAIL_PATH = `${AUTH_BASE_PATH}/sign-in/email`;
+export const AUTH_SIGN_IN_SOCIAL_PATH = `${AUTH_BASE_PATH}/sign-in/social`;
+export const AUTH_SIGN_OUT_PATH = `${AUTH_BASE_PATH}/sign-out`;
+export const AUTH_REQUEST_PASSWORD_RESET_PATH = `${AUTH_BASE_PATH}/request-password-reset`;
+export const AUTH_RESET_PASSWORD_PATH = `${AUTH_BASE_PATH}/reset-password`;
+export const AUTH_OAUTH2_CONTINUE_PATH = `${AUTH_BASE_PATH}/oauth2/continue`;
+export const AUTH_OAUTH2_CONSENT_PATH = `${AUTH_BASE_PATH}/oauth2/consent`;
+/** An unverified account's pending address claim (#313) and provider linking (#315). */
+export const IDENTITY_CLAIM_PATH = '/api/v1/identity/claim';
+export const IDENTITY_LINK_PATH = '/api/v1/identity/link';
+export const identityLinkPath = (providerId: string) => `/api/v1/identity/links/${encodeURIComponent(providerId)}`;
 /** Sent with a ME_PATH request by a page that may be signed out: the answer is 200 `null` instead of a 401 that the browser logs (#546). */
 export const ME_PROBE_HEADER = 'x-flux-session-probe';
 export const SESSIONS_PATH = '/api/v1/sessions';

@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto';
 import type { GithubBinding, GithubTaskLink } from '@flux/contracts';
-import { ConflictError, ForbiddenError, InvalidInputError, NotFoundError, ServiceUnavailableError } from '../access/errors.js';
+import { ConflictError, ForbiddenError, InvalidInputError, NotFoundError, RuleViolationError, ServiceUnavailableError } from '../access/errors.js';
 import type { Principal } from '../principal.js';
 import { id } from '../work/validation.js';
 import type { GithubBindingRecord, GithubDelivery, GithubLinkRecord, GithubPorts, GithubUnitOfWork } from './ports.js';
@@ -28,6 +28,44 @@ async function current(ports: GithubPorts, principal: Principal, record: GithubB
     || locked.authorizationGeneration !== record.authorizationGeneration || locked.authorUserId !== record.authorUserId)
     throw new NotFoundError('Repository', 'GITHUB_REPOSITORY_NOT_FOUND');
   return proof;
+}
+/** `https://github.com/<owner>/<repository>/pull/<number>`; a trailing path, query or fragment (`/files`, `#issuecomment-1`) is ignored. */
+export function parseGithubPullUrl(value: unknown): { owner: string; name: string; number: number } {
+  const refuse = () => new InvalidInputError('Give the pull request as https://github.com/<owner>/<repository>/pull/<number>', 'GITHUB_PULL_URL_INVALID');
+  if (typeof value !== 'string' || value.length > 300) throw refuse();
+  let url: URL;
+  try { url = new URL(value); } catch { throw refuse(); }
+  if (url.protocol !== 'https:' || url.hostname !== 'github.com' || url.username || url.password || url.port) throw refuse();
+  const match = /^\/([A-Za-z0-9_.-]{1,100})\/([A-Za-z0-9_.-]{1,100})\/pull\/([1-9][0-9]{0,9})(?:\/.*)?$/.exec(url.pathname);
+  if (!match) throw refuse();
+  return { owner: match[1]!, name: match[2]!, number: Number(match[3]) };
+}
+const sameName = (a: string, b: string) => a.toLowerCase() === b.toLowerCase();
+
+/**
+ * The one verification and write of a task-to-PR link, for a person and for the agent acting for its owner (#160 AC-3): the
+ * binding's repository is proven with `github`'s own current authorization, the PR is read through it and must belong to that
+ * repository, the task's graph and row are locked, and the link is stored once per task, binding, PR and role. `github` also
+ * becomes the author of an adopted task rule. `beforeWrite` runs under the task lock, before anything is written.
+ */
+async function linkVerified(ports: GithubPorts, github: Principal, work: { id: string; workspaceId: string; projectId: string },
+  binding: GithubBindingRecord, number: number, role: 'required_output' | 'related', by: Principal, beforeWrite?: () => Promise<void>): Promise<GithubTaskLink> {
+  const repository = await current(ports, github, binding);
+  const facts = await ports.provider.pull(github, repository, number);
+  if (facts.repositoryId !== binding.repositoryId || facts.number !== number) throw new NotFoundError('Pull request');
+  await ports.tasks.lockForRules(work.workspaceId, work.projectId, [work.id]);
+  await beforeWrite?.();
+  const record = await ports.rows.link({ id: randomUUID(), workspaceId: work.workspaceId, projectId: work.projectId, taskId: work.id,
+    bindingId: binding.id, role, facts, state: 'current', verifiedAt: new Date() });
+  // A new required output reaches the task's rule (or the project default) through a reconciliation.
+  if (role === 'required_output') await adoptGithubRuleOnLink(ports, github, work.id, binding, repository, by);
+  return linkView(record);
+}
+/** The agent holds the task now (the facts of Stop): the task is its own, open and not parked, and no person paused it. */
+async function requireHold(ports: GithubPorts, taskId: string, agentId: string) {
+  const hold = await ports.rows.hold(taskId, agentId);
+  if (hold === 'paused') throw new ConflictError('A person paused this work. Take no new step on this task until they resume it.', 'COWORK_PAUSED');
+  if (hold === 'none') throw new ForbiddenError('Only the agent that holds this task can link its pull request. A person assigns the task to the agent first.', 'TASK_NOT_HELD');
 }
 export function githubUseCases(uow: GithubUnitOfWork) {
   return {
@@ -71,15 +109,30 @@ export function githubUseCases(uow: GithubUnitOfWork) {
         await ports.access.requireProject(principal, 'write', work.projectId);
         const binding = await ports.rows.binding(target);
         if (!binding || binding.projectId !== work.projectId || binding.workspaceId !== work.workspaceId) throw new NotFoundError('Binding');
-        const repository = await current(ports, principal, binding);
-        const facts = await ports.provider.pull(principal, repository, input.number);
-        if (facts.repositoryId !== binding.repositoryId || facts.number !== input.number) throw new NotFoundError('Pull request');
-        await ports.tasks.lockForRules(work.workspaceId,work.projectId,[work.id]);
-        const record = await ports.rows.link({ ...work, id: randomUUID(), taskId: work.id, bindingId: target,
-          role: input.role, facts, state: 'current', verifiedAt: new Date() });
-        // A new required output reaches the task's rule (or the project default) through a reconciliation.
-        if (input.role === 'required_output') await adoptGithubRuleOnLink(ports, principal, work.id, binding, repository);
-        return linkView(record);
+        return linkVerified(ports, principal, work, binding, input.number, input.role, principal);
+      });
+    },
+    /**
+     * An agent links the pull request it produced to the task it holds, on a repository already connected to the task's project
+     * (#160 AC-3). It is the person's link with the agent's authority behind it: the agent needs write access and the hold, its
+     * owner needs write access and their own current GitHub authorization, which verifies the PR through the same read-only App.
+     * The caller has already checked the agent's runtime, standing grant and idempotency. Linking again is the same link.
+     */
+    async linkForAgent(agent: Principal, owner: Principal, taskId: string, input: { pullRequestUrl: string; role?: 'required_output' | 'related' }): Promise<GithubTaskLink> {
+      if (agent.kind !== 'agent' || !agent.id) throw new ForbiddenError('An agent is required', 'GITHUB_NEEDS_AGENT');
+      human(owner); const task = id(taskId, 'taskId'); const wanted = parseGithubPullUrl(input?.pullRequestUrl);
+      const role = input.role ?? 'required_output';
+      if (!['required_output', 'related'].includes(role)) throw new InvalidInputError('A supported relationship is required');
+      return uow.run(async (ports) => {
+        const work = await ports.rows.task(task);
+        if (!work) throw new NotFoundError('Work item');
+        await ports.access.requireProject(agent, 'write', work.projectId);
+        await ports.access.requireProject(owner, 'write', work.projectId);
+        await requireHold(ports, work.id, agent.id);
+        const binding = (await ports.rows.bindings(work.projectId)).find((row) => row.state === 'active' && row.workspaceId === work.workspaceId
+          && sameName(row.owner, wanted.owner) && sameName(row.name, wanted.name));
+        if (!binding) throw new RuleViolationError('That repository is not connected to this project. A person connects it first in the project\'s GitHub settings.', 'GITHUB_REPOSITORY_NOT_BOUND');
+        return linkVerified(ports, owner, work, binding, wanted.number, role, agent, () => requireHold(ports, work.id, agent.id));
       });
     },
     async links(principal: Principal, taskId: string): Promise<GithubTaskLink[]> {

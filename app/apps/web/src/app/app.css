@@ -238,6 +238,8 @@ a.me__btn[aria-current="page"] { background: var(--sub); }
 .pwa-note { margin: 0 0 8px; font-size: var(--fs-sm); line-height: 1.5; color: var(--t3); }
 .pwa-note:last-child { margin-bottom: 0; }
 .pwa-action { width: 100%; }
+/* The install steps are the task itself, so they read at body size (#20 review). */
+.pwa-steps { font-size: var(--fs-base); line-height: 1.45; color: var(--t2); }
 /* The update offer (#20, MOB-5) is a row of the page above the shell, not a layer over it. UpdatePrompt publishes its
    height as --pwa-update-h, and the shell, the sign-in page and the error page give up exactly that much, so no
    header, Back, dock or composer is under it at any width or text size. The row pads the top safe-area inset

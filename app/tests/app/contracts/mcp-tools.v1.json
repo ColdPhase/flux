@@ -41,6 +41,8 @@
     "COWORK_TASK_CLOSED",
     "COWORK_UNIT_REQUESTS_OPEN",
     "COWORK_UNIT_TAKEN",
+    "GITHUB_AUTHORIZATION_REQUIRED",
+    "GITHUB_REPOSITORY_NOT_BOUND",
     "IDEMPOTENCY_CONFLICT",
     "INVALID_INPUT",
     "MCP_SCOPE_REQUIRED",
@@ -49,6 +51,7 @@
     "RUNTIME_UNAVAILABLE",
     "SOURCE_VERSION_CONFLICT",
     "TASK_CREATION_REVERTED",
+    "TASK_NOT_HELD",
     "TASK_PREREQUISITES_UNMET",
     "TASK_TARGET_NOT_FOUND",
     "TASK_TARGET_SET_CHANGED",
@@ -2069,6 +2072,82 @@
       "operation": null,
       "requiredScope": "flux.context.read",
       "title": "Read a native task"
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "readOnlyHint": false
+      },
+      "classes": [
+        "execute",
+        "plan"
+      ],
+      "inputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "clientCommandId": {
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+            "type": "string"
+          },
+          "grantId": {
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+            "type": "string"
+          },
+          "peerRequestClass": {
+            "enum": [
+              "execute",
+              "plan"
+            ],
+            "type": "string"
+          },
+          "projectId": {
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+            "type": "string"
+          },
+          "pullRequestUrl": {
+            "maxLength": 300,
+            "minLength": 1,
+            "type": "string"
+          },
+          "role": {
+            "default": "required_output",
+            "enum": [
+              "required_output",
+              "related"
+            ],
+            "type": "string"
+          },
+          "runtimeSessionId": {
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+            "type": "string"
+          },
+          "workId": {
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "clientCommandId",
+          "grantId",
+          "peerRequestClass",
+          "projectId",
+          "pullRequestUrl",
+          "runtimeSessionId",
+          "workId"
+        ],
+        "type": "object"
+      },
+      "name": "flux_link_pull_request",
+      "operation": "work.update",
+      "requiredScope": "flux.action.execute",
+      "title": "Link a pull request to the task you hold under a standing grant"
     },
     {
       "annotations": {

@@ -4,6 +4,7 @@ import { describe, test } from 'node:test';
 import { createHash } from 'node:crypto';
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { join, relative } from 'node:path';
+import { INBOX_PATH, PUSH_SUBSCRIPTIONS_PATH } from '@flux/contracts';
 import { apiUrl } from './support/http.js';
 
 // Installability and service worker delivery checks over HTTP (issue #41). Browser behaviour
@@ -60,6 +61,16 @@ describe('web app manifest and icons', () => {
     assert.match(html, /<meta name="theme-color" content="#F4F4F5">/);
     assert.match(html, /<meta name="apple-mobile-web-app-capable" content="yes">/);
     assert.match(html, /viewport-fit=cover/);
+  });
+});
+
+describe('service worker API paths', () => {
+  // The worker is plain JavaScript emitted as is (no bundler resolves @flux/contracts there, #93), so its API
+  // paths are literals; this keeps each one equal to the contract the web app and the server use.
+  test('every API path in sw.js is a contract path', () => {
+    const code = readFileSync('apps/web/src/pwa/sw.js', 'utf8');
+    const used = [...code.matchAll(/[`'"](\/api\/[^`'"$]*)/g)].map((match) => match[1]);
+    assert.deepEqual(used.sort(), [`${INBOX_PATH}/`, PUSH_SUBSCRIPTIONS_PATH, '/api/'].sort());
   });
 });
 

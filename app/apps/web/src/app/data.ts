@@ -4,7 +4,7 @@ import { getMe, type MeResponse } from '../api/auth';
 import { signInPath } from '../auth/logic';
 import { listAllDms } from '../api/direct-messages';
 import { audienceLine, dmTitle, othersIn } from '../dm/names';
-import { listAccessibleProjects } from './conversation-api';
+import { listAccessibleProjects } from '../project/api';
 import type { WorkspaceEncryption } from '../encryption/api';
 
 /**

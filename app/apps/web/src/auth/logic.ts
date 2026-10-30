@@ -15,7 +15,7 @@ import { forgetRecentSearches } from '../search/recent';
 import { resetStream } from '../api/stream';
 import { forgetThoughtDrafts } from '../sketch/createdDraft';
 import { forgetComposerDrafts } from '../composer/draft';
-import { forgetBrowserDrafts } from '../app/drafts';
+import { forgetBrowserDrafts } from '../drafts/store';
 import { forgetPlaces } from '../place/memory';
 import { forgetDocumentDrafts } from '../docs/drafts';
 import { forgetThoughtImages } from '../sketch/ThoughtImage';

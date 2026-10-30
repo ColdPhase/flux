@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useId, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { filePath, imageTypeOf, type MessageFile, type MessageReferenceCard } from '@flux/contracts';
+import { readFileBytes } from '../api/files';
 import { Icon, trapTab, type IconName } from '../ui';
 import { detailLine, extensionOf, fileKind, fileLabel, fileWord, looksLikePhoto, playTime, type FileKind } from './fileKind';
 import { MessageReferences } from './References';
@@ -55,7 +56,7 @@ export function FileRow({ file }: { file: MessageFile }) {
 }
 
 /** Bytes of one stored file, read through the access-checked route. A photo is one only when its bytes are an image. */
-type Bytes = { status: 'idle' | 'loading' } | { status: 'ready'; url: string; type: string } | { status: 'other' } | { status: 'denied' };
+type Bytes = { status: 'idle' | 'loading' } | { status: 'ready'; url: string; type: string; blob: Blob } | { status: 'other' } | { status: 'denied' };
 const AUDIO_TYPE: Record<string, string> = { m4a: 'audio/mp4', mp3: 'audio/mpeg', wav: 'audio/wav', ogg: 'audio/ogg', oga: 'audio/ogg', opus: 'audio/ogg', aac: 'audio/aac', flac: 'audio/flac', weba: 'audio/webm' };
 export function useFileBytes(fileId: string | null, as: 'image' | 'audio', enabled = true, name = ''): Bytes {
   const key = fileId && enabled ? `${fileId}:${as}:${name}` : '';
@@ -65,13 +66,13 @@ export function useFileBytes(fileId: string | null, as: 'image' | 'audio', enabl
     const controller = new AbortController();
     let url = '';
     const settle = (bytes: Bytes) => setResult({ key, bytes });
-    fetch(filePath(fileId), { credentials: 'same-origin', signal: controller.signal, cache: 'no-store' }).then(async (response) => {
-      if (!response.ok) { settle({ status: 'denied' }); return; }
-      const data = new Uint8Array(await response.arrayBuffer());
+    readFileBytes(fileId, { signal: controller.signal, cache: 'no-store' }).then((data) => {
+      if (!data) { settle({ status: 'denied' }); return; }
       const type = as === 'image' ? imageTypeOf(data) : AUDIO_TYPE[extensionOf(name)] ?? 'audio/mpeg';
       if (!type) { settle({ status: 'other' }); return; }
-      url = URL.createObjectURL(new Blob([data], { type }));
-      settle({ status: 'ready', url, type });
+      const blob = new Blob([data as BlobPart], { type });
+      url = URL.createObjectURL(blob);
+      settle({ status: 'ready', url, type, blob });
     }).catch(() => { if (!controller.signal.aborted) settle({ status: 'denied' }); });
     return () => { controller.abort(); if (url) URL.revokeObjectURL(url); };
   }, [key, fileId, as, name]);
@@ -240,7 +241,7 @@ export function PhotoViewer({ photos, start, context, onClose }: { photos: Messa
     const link = new URL(window.location.href).toString();
     try {
       if (bytes.status === 'ready' && navigator.canShare) {
-        const shared = new File([await (await fetch(bytes.url)).blob()], file.name, { type: bytes.type });
+        const shared = new File([bytes.blob], file.name, { type: bytes.type });
         if (navigator.canShare({ files: [shared] })) { await navigator.share({ files: [shared], title: file.name }); return; }
       }
       if (navigator.share) { await navigator.share({ title: file.name, url: link }); return; }

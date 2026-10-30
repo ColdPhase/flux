@@ -7,7 +7,7 @@ import * as api from '../api/sketches';
 import { useShellData } from '../app/data';
 import { ensurePersonalSpace } from '../app/personalSpace';
 import { YourNotes } from '../app/YourNotes';
-import { useReadingPosition } from '../app/drafts';
+import { useReadingPosition } from '../drafts/store';
 import { useStreamEvents } from '../api/stream';
 import { audience, sketchHref, thoughtsLine, when } from './format';
 import './sketch.css';

@@ -45,6 +45,8 @@ export const AGENT_MCP_ENTRIES: readonly AgentMcpEntry[] = [
   read('flux_acknowledge_playbook', 'cowork.playbook.read', 'connection.runtime.read'),
   read('flux_coordination_inbox', 'project.identity.read', 'connection.runtime.read'),
   effect('flux_create_task', 'work.create'), effect('flux_update_task', 'work.update'),
+  // #160 AC-3: linking the PR an agent produced to the task it holds is a change to that task, so it uses the task-change grant.
+  effect('flux_link_pull_request', 'work.update'),
   effect('flux_undo_task_creation', 'work.creation.revert'),
   effect('flux_record_result', 'result.record'), effect('flux_propose_decision', 'decision.propose'),
   effect('flux_create_map', 'map.create'), effect('flux_rename_map', 'map.rename'),

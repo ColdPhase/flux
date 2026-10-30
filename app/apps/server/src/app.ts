@@ -62,7 +62,7 @@ import { currentGithubReactionFacts } from './assistant/reactions.js';
 import { githubCredentials } from './github/credentials.js';
 import { githubProvider } from './github/provider.js';
 import { githubTransport } from './github/http.js';
-import { createGithubUseCases } from './github/adapters.js';
+import { createGithubUseCases, type Provider as GithubUnitProvider } from './github/adapters.js';
 import { githubRoutes } from './github/routes.js';
 import { loadGithubConfig } from './github/config.js';
 import type { ServerConfig } from './config.js';
@@ -103,7 +103,9 @@ declare module 'fastify' {
  * configuration, without listening, so tests can build it with their own configuration.
  * `index.ts` only loads the configuration, builds and listens.
  */
-export async function buildApp(config: ServerConfig, migrationsDir = 'packages/db/migrations'): Promise<FastifyInstance> {
+export async function buildApp(config: ServerConfig, migrationsDir = 'packages/db/migrations',
+  /** Test seam: a fixture in place of the GitHub App provider, for the agent PR link and the reads of personal runs. */
+  overrides: { githubProvider?: GithubUnitProvider } = {}): Promise<FastifyInstance> {
   const { connectionString, identity: identityConfig, push: pushConfig, filesDir, env } = config;
   const { exposeWork } = fixtureFlags(config.fixture);
   // F-030: the request serializer drops query strings (a search text is content); bodies are never logged.
@@ -195,6 +197,10 @@ export async function buildApp(config: ServerConfig, migrationsDir = 'packages/d
   await app.register(workReadRoutes, { db, sessions: identity });
   const githubConfig = loadGithubConfig(env, identityConfig.publicOrigin);
   await app.register(githubRoutes, { db, sessions: identity, config: githubConfig });
+  // The read-only App provider for the agents' PR link (#160 AC-3) and the reads of personal runs; it adds no GitHub permission.
+  const githubReadTransport = githubTransport();
+  const githubReadProvider: GithubUnitProvider | null = overrides.githubProvider
+    ?? (githubConfig ? githubProvider(githubCredentials(db, githubConfig, githubReadTransport), githubConfig, githubReadTransport) : null);
   // Configuration alone does not prove the SFU, DNS/TLS or receiver path is healthy.
   app.get('/api/v1/live-sessions/capabilities', async () => ({ status: liveMedia ? 'configured' : 'unavailable' }));
   // Outside the editing routes, whose disabled hook refuses every request (#239 review).
@@ -281,10 +287,9 @@ export async function buildApp(config: ServerConfig, migrationsDir = 'packages/d
     comparisonsEnabled: config.backgroundComparisons });
   registerMcpRoute(app, db, identity.auth, identityConfig.publicOrigin, config.fixture.failureInjection && !!config.fixture.token,
     identity.standing && identityConfig.oidc ? { checker: identity.standing, label: identityConfig.oidc.label } : null,
-    identity.confirmation, identityConfig.oidc?.label);
+    identity.confirmation, identityConfig.oidc?.label, githubReadProvider);
   // A personal run's MCP token (F-027 A2): signed here, the authorization server, for the worker only.
-  const githubReadTransport = githubTransport();
-  const githubRead = githubConfig ? createGithubUseCases(db, githubProvider(githubCredentials(db, githubConfig, githubReadTransport), githubConfig, githubReadTransport)) : null;
+  const githubRead = githubReadProvider ? createGithubUseCases(db, githubReadProvider) : null;
   registerPersonalRunTokenRoute(app, db, identity.auth, identityConfig.publicOrigin, githubRead ? currentGithubReactionFacts(githubRead) : undefined);
   await app.register(returnRoutes, { db, sessions: identity });
   await app.register(projectGoalRoutes, { db, sessions: identity });

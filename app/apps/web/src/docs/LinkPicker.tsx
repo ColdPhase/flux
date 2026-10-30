@@ -7,7 +7,7 @@ import { useWorkChoices } from '../work/useDetailReads';
 import { useWorkRead } from '../work/useWorkRead';
 import { WorkPagination } from '../work/WorkPagination';
 import { Icon, Select, Option } from '../ui';
-import { getConversation, listConversations } from '../app/conversation-api';
+import { getConversation, listConversations } from '../conversations/api';
 import { listProjectDocs } from './api';
 import { kindLabel } from './format';
 

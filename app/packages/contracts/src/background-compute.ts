@@ -106,6 +106,10 @@ export interface ProactiveComparisonProposal {
 
 export const proactiveComparisonProposalsPath = (projectId: string) =>
   `/api/v1/projects/${projectId}/proactive-comparison-proposals`;
+export const proactiveComparisonProposalPath = (proposalId: string) => `/api/v1/proactive-comparison-proposals/${proposalId}`;
+export const proactiveComparisonProposalUsePath = (proposalId: string) => `${proactiveComparisonProposalPath(proposalId)}/use`;
+export const proactiveComparisonRulesPath = (projectId: string) => `/api/v1/projects/${projectId}/proactive-comparison-rules`;
+export const proactiveComparisonRulePath = (ruleId: string) => `/api/v1/proactive-comparison-rules/${ruleId}`;
 
 /** `PATCH /api/v1/background-compute-connections/:id`: rename it, or make it the background connection. */
 export interface UpdateBackgroundComputeConnectionCommand {

@@ -1,9 +1,10 @@
 import { useEffect, useId, useState } from 'react';
 import {
-  githubTaskRulePath, githubTaskRuleResumePath, type GithubCapabilities, type GithubRuleChange, type GithubRuleMode, type GithubTaskLink,
+  githubTaskRulePath, githubTaskRuleResumePath, type GithubRuleChange, type GithubRuleMode, type GithubTaskLink,
   type GithubTaskRuleView, type Project, type WorkItem,
 } from '@flux/contracts';
 import { ApiError, request } from '../api/client';
+import { getGithubCapabilities, getGithubTaskRule, listTaskGithubLinks } from './api';
 import { Button, Icon, Select, Option } from '../ui';
 import { STATUS_LABEL, shortDate } from '../work/format';
 import './task-pull-requests.css';
@@ -56,11 +57,11 @@ export function TaskPullRequests({ item, project, writable, reload }: { item: Ru
     const controller = new AbortController(); const { signal } = controller;
     (async () => {
       const [capabilities, rule] = await Promise.all([
-        request<GithubCapabilities>(`/api/v1/projects/${project.id}/github/capabilities`, { signal }).catch(() => null),
-        hasRule ? request<GithubTaskRuleView>(githubTaskRulePath(item.id), { signal }).catch(() => null) : Promise.resolve(null),
+        getGithubCapabilities(project.id, signal).catch(() => null),
+        hasRule ? getGithubTaskRule(item.id, signal).catch(() => null) : Promise.resolve(null),
       ]);
       const pulls = capabilities?.status === 'configured' && capabilities.authorization === 'connected'
-        ? await request<GithubTaskLink[]>(`/api/v1/work/${item.id}/github-links`, { signal }).catch(() => []) : [];
+        ? await listTaskGithubLinks(item.id, signal).catch((): GithubTaskLink[] => []) : [];
       if (!signal.aborted) { setLinks(pulls); setView(rule); }
     })().catch(() => undefined);
     return () => controller.abort();

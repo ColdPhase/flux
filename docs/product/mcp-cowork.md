@@ -180,6 +180,13 @@ one PR can relate to several tasks. Verify locally supplied PR references agains
 the binding. Owners' local Git/CLI is the default code/push/PR path. Optional App
 writes require narrow explicit authority and never expose installation tokens.
 
+**Agent links (#160 AC-3, 2026-10-30).** The agent that holds a task links the PR it produced with `flux_link_pull_request`, so
+the link is native to Flux rather than something only a person can add. It is a change to that task: it needs the owner's `work.update`
+standing grant, a repository a person already connected to the project, and the hold (the task is the agent's, open, not paused). Flux
+verifies the PR with the **owner's** GitHub authorization through the same read-only App, with the person's verification and storage
+code; the agent has no GitHub identity, cannot connect a repository and gains no GitHub permission. A retry or a repeated link
+is the same link. Details: [agent connection](../development/agent-connection.md#linking-the-pull-request-an-agent-produced-160-ac-3).
+
 Disclosed project rules can move the **same Flux task** from verified PR/CI facts,
 without an LLM or duplicate issue. Rules name triggering facts, required links and
 effects; manual correction suspends automatic movement until explicitly resumed.

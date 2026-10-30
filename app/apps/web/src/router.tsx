@@ -5,7 +5,8 @@ import { ToastProvider, markMotionReady } from './ui';
 import { UpdatePrompt } from './pwa';
 import { AppLayout } from './app/AppLayout';
 import { appLoader, type ShellData } from './app/data';
-import { ProjectConversation, projectConversationLoader, shouldRevalidateProjectConversation } from './app/ProjectConversation';
+import { ProjectConversation } from './conversations/ProjectConversation';
+import { projectConversationLoader, shouldRevalidateProjectConversation } from './conversations/loader';
 import { Booting, RouteCodeLoadError, RouteErrorPage } from './app/errors';
 import { NotFoundView } from './app/views';
 import { Home } from './app/Home';
@@ -56,8 +57,8 @@ const docEditor = secondary(async () => {
 });
 const sketch = secondary(async () => ({ Component: (await import('./sketch/SketchView')).SketchRoute }));
 const material = secondary(async () => {
-  const page = await import('./app/MaterialView');
-  return { Component: page.MaterialView, loader: page.materialLoader };
+  const [page, data] = await Promise.all([import('./materials/MaterialView'), import('./materials/loader')]);
+  return { Component: page.MaterialView, loader: data.materialLoader };
 });
 
 function Root() {
@@ -122,7 +123,7 @@ export const router = createBrowserRouter([
           { index: true, Component: Home },
           { path: 'spaces/:workspaceId', Component: LockedSpacePage },
           { path: 'projects', ...secondary(async () => ({ Component: (await import('./app/ProjectsIndex')).ProjectsIndex })) },
-          { path: 'projects/new', ...secondary(async () => ({ Component: (await import('./app/ProjectSetup')).ProjectSetup })) },
+          { path: 'projects/new', ...secondary(async () => ({ Component: (await import('./project/ProjectSetup')).ProjectSetup })) },
           {
             // One project (#117): its header, audience, state line and view tabs share this data.
             id: 'project',

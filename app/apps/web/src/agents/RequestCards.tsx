@@ -4,7 +4,7 @@ import { taskCoordinationPacketPath, type TaskCoordination, type TaskCoordinatio
 import { ApiError, NetworkError } from '../api/client';
 import { useStreamEvents } from '../api/stream';
 import { Button } from '../ui';
-import { cancelCoWorkRequest, getTaskCoordination } from './api';
+import { cancelCoWorkRequest, getCoordinationPacket, getTaskCoordination } from './api';
 import { KIND_WORDS, splitCards, statusWords, targetWords, verdictWords } from './requestCards';
 import { firstName } from './roster';
 import './requests.css';
@@ -100,9 +100,9 @@ function Card({ workId, projectId, taskNumber, card, verdict, onChange, onReload
   const downloadPacket = async (event: MouseEvent<HTMLAnchorElement>) => {
     event.preventDefault();
     try {
-      const response = await fetch(taskCoordinationPacketPath(workId, card.id), { credentials: 'same-origin' });
-      if (!response.ok) return;
-      const url = URL.createObjectURL(await response.blob());
+      const packet = await getCoordinationPacket(workId, card.id);
+      if (!packet) return;
+      const url = URL.createObjectURL(packet);
       const anchor = document.createElement('a');
       anchor.href = url;
       anchor.download = packetName;

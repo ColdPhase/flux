@@ -75,7 +75,13 @@ export interface NarrowAgentStandingGrantCommand {
   expiresAt?: string;
 }
 
-export const agentActionGrantsPath = (connectionId: string) => `/api/v1/agent-connections/${connectionId}/action-grants`;
+export const AGENT_CONNECTIONS_PATH = '/api/v1/agent-connections';
+export const agentConnectionPath = (connectionId: string) => `${AGENT_CONNECTIONS_PATH}/${connectionId}`;
+/** POST: the connection an OAuth authorization in progress continues with (#312). */
+export const agentConnectionSelectPath = (connectionId: string) => `${agentConnectionPath(connectionId)}/select-for-oauth`;
+export const AGENT_OAUTH_CONSENT_CONTEXT_PATH = '/api/v1/agent-oauth/consent-context';
+export const AGENT_OAUTH_HELD_CONNECTION_PATH = '/api/v1/agent-oauth/held-connection';
+export const agentActionGrantsPath = (connectionId: string) => `${AGENT_CONNECTIONS_PATH}/${connectionId}/action-grants`;
 export const agentActionGrantPath = (connectionId: string, grantId: string) => `${agentActionGrantsPath(connectionId)}/${grantId}`;
 export interface AuthenticatedAgentRuntime {
   id: string;

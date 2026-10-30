@@ -21,7 +21,7 @@ import { restoreTop, usePaneMemory } from '../place/scroll';
 import { Sidebar } from './Sidebar';
 import { startCapture, viewIndex } from './views';
 import { PROJECT_VIEWS, WORKSPACE_AI_POLICY_CHANGED_EVENT, type ProjectViewId } from '@flux/contracts';
-import { addProjectView } from './conversation-api';
+import { addProjectView } from '../project/api';
 import { addableViews, audienceLine, shownViews, useProjectShell } from '../project/data';
 import { useDmSketchCount } from '../dm/useDmSketchCount';
 import { LiveProvider } from '../live/LiveProvider';

@@ -18,7 +18,7 @@ import { OwnedPanelContent, useOwnedPanel } from './ownedPanel';
 import { useShellActions } from './shellContext';
 import { recall, useArrival } from '../place/memory';
 import { useOriginLabel, useOriginPanelBack } from '../place/origin';
-import type { ProjectData } from './ProjectConversation';
+import type { ProjectData } from '../conversations/loader';
 import './one-conversation.css';
 import { useCreateWorkFromMessage } from '../work/inline';
 

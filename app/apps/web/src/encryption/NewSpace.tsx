@@ -1,7 +1,7 @@
 import { useEffect, useId, useRef, useState, type FormEvent, type RefObject } from 'react';
 import { useRevalidator } from 'react-router';
 import { ApiError } from '../api/client';
-import { createWorkspace } from '../app/conversation-api';
+import { createWorkspace } from '../project/api';
 import { useShellActions } from '../app/shellContext';
 import { Button, Icon, Input } from '../ui';
 import { createEncryptedWorkspace, encryptionProblem, newRecoveryCode, type EncryptedWorkspace } from './api';

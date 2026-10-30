@@ -1,7 +1,7 @@
 import { useCallback, useLayoutEffect, useMemo, useRef, useSyncExternalStore } from 'react';
 import { FILE_LIMITS, MESSAGE_REFERENCE_LIMIT, type Conversation, type ConversationMessage, type MessageReferenceKind, type SendMessageCommand, type StagedFile } from '@flux/contracts';
 import { ApiError, NetworkError } from '../api/client';
-import { reply, startConversation } from '../app/conversation-api';
+import { reply, startConversation } from '../conversations/api';
 import { sendDmMessage, sendDmReply } from '../api/direct-messages';
 import { contributeToTask, postTaskAgentThread, stageFile } from './api';
 import { assumeReachable, connectionState, onConnectionChange, reportReachable, reportUnreachable } from './connection';

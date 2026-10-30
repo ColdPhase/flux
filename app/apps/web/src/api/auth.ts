@@ -1,4 +1,7 @@
-import { AUTH_BASE_PATH, IDENTITY_CAPABILITIES_PATH, ME_PATH, ME_PROBE_HEADER, type IdentityCapabilities, type MeResponse } from '@flux/contracts';
+import {
+  AUTH_REQUEST_PASSWORD_RESET_PATH, AUTH_RESET_PASSWORD_PATH, AUTH_SIGN_IN_EMAIL_PATH, AUTH_SIGN_IN_SOCIAL_PATH, AUTH_SIGN_UP_EMAIL_PATH,
+  IDENTITY_CLAIM_PATH, IDENTITY_LINK_PATH, identityLinkPath, IDENTITY_CAPABILITIES_PATH, ME_PATH, ME_PROBE_HEADER, type IdentityCapabilities, type MeResponse,
+} from '@flux/contracts';
 import { ApiError, request } from './client';
 
 export type { MeResponse };
@@ -14,13 +17,13 @@ export function getCapabilities(signal?: AbortSignal) {
 
 /** With verified sign-up the mailed link lands on the sign-in page (#313); otherwise the person is signed in at once. */
 export function signUp(input: { name: string; email: string; password: string }) {
-  return request<{ token: string | null }>(`${AUTH_BASE_PATH}/sign-up/email`, { method: 'POST', body: { ...input, callbackURL: '/sign-in?notice=email-verified' } });
+  return request<{ token: string | null }>(AUTH_SIGN_UP_EMAIL_PATH, { method: 'POST', body: { ...input, callbackURL: '/sign-in?notice=email-verified' } });
 }
 
 /** The address a provider sign-in found held by an unverified account (#313), or null without a pending claim. */
 export async function getPendingClaim(signal?: AbortSignal) {
   try {
-    return await request<{ email: string; expiresAt: string }>('/api/v1/identity/claim', { signal });
+    return await request<{ email: string; expiresAt: string }>(IDENTITY_CLAIM_PATH, { signal });
   } catch (error) {
     if (error instanceof ApiError && error.status === 404) return null;
     throw error;
@@ -29,11 +32,11 @@ export async function getPendingClaim(signal?: AbortSignal) {
 
 /** Releases the address from the unverified account; the provider sign-in can then be repeated. */
 export function claimAddress() {
-  return request<{ providerId: string }>('/api/v1/identity/claim', { method: 'POST' });
+  return request<{ providerId: string }>(IDENTITY_CLAIM_PATH, { method: 'POST' });
 }
 
 export function signIn(input: { email: string; password: string; oauth_query?: string }) {
-  return request<unknown>(`${AUTH_BASE_PATH}/sign-in/email`, { method: 'POST', body: { ...input, rememberMe: true } });
+  return request<unknown>(AUTH_SIGN_IN_EMAIL_PATH, { method: 'POST', body: { ...input, rememberMe: true } });
 }
 
 /**
@@ -46,17 +49,17 @@ export function signIn(input: { email: string; password: string; oauth_query?: s
  */
 /** The owner starts linking the provider to this password account (#315). The browser then runs the provider sign-in. */
 export function startLink() {
-  return request<{ providerId: string; label: string }>('/api/v1/identity/link', { method: 'POST' });
+  return request<{ providerId: string; label: string }>(IDENTITY_LINK_PATH, { method: 'POST' });
 }
 
 /** Whether the signed-in account is linked to the provider (#315). */
 export function getLinkState(providerId: string, signal?: AbortSignal) {
-  return request<{ providerId: string; linked: boolean }>(`/api/v1/identity/links/${encodeURIComponent(providerId)}`, { signal });
+  return request<{ providerId: string; linked: boolean }>(identityLinkPath(providerId), { signal });
 }
 
 export function startSso(providerId: string, next: string, oauthQuery?: string) {
   const failure = oauthQuery ? `/login?${oauthQuery}&sso=failed` : '/sign-in?sso=failed';
-  return request<{ url: string }>(`${AUTH_BASE_PATH}/sign-in/social`, {
+  return request<{ url: string }>(AUTH_SIGN_IN_SOCIAL_PATH, {
     method: 'POST',
     body: { provider: providerId, callbackURL: next, errorCallbackURL: failure, newUserCallbackURL: next, disableRedirect: true,
       ...(oauthQuery ? { oauth_query: oauthQuery } : {}) },
@@ -65,14 +68,14 @@ export function startSso(providerId: string, next: string, oauthQuery?: string) 
 
 /** The mailed link returns to `${origin}/reset-password?token=…` (or `?error=INVALID_TOKEN`). */
 export function requestPasswordReset(email: string) {
-  return request<unknown>(`${AUTH_BASE_PATH}/request-password-reset`, {
+  return request<unknown>(AUTH_REQUEST_PASSWORD_RESET_PATH, {
     method: 'POST',
     body: { email, redirectTo: `${window.location.origin}/reset-password` },
   });
 }
 
 export function resetPassword(token: string, newPassword: string) {
-  return request<unknown>(`${AUTH_BASE_PATH}/reset-password`, { method: 'POST', body: { token, newPassword } });
+  return request<unknown>(AUTH_RESET_PASSWORD_PATH, { method: 'POST', body: { token, newPassword } });
 }
 
 /** Minimum length enforced by the identity service (Better Auth default). */

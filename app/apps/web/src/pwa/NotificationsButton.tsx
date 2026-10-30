@@ -18,13 +18,17 @@ const MESSAGES: Partial<Record<View['state'], string>> = {
  * Settings control for this device's notifications. It never asks for permission on render;
  * the browser prompt appears only after the person presses "Turn on notifications".
  */
-export function NotificationsButton({ deviceLabel }: { deviceLabel?: string }) {
+export function NotificationsButton({ deviceLabel, installStepsBelow }: {
+  deviceLabel?: string;
+  /** The Home Screen steps are shown in the install row below, so this note points there instead of repeating them. */
+  installStepsBelow?: boolean;
+}) {
   const [view, setView] = useState<View>({ state: 'loading' });
   const refresh = () => getPushState().then(setView, (error: unknown) => setView({ state: 'error', message: String(error) }));
   useEffect(() => { void refresh(); }, []);
 
   if (view.state === 'loading') return null;
-  const message = MESSAGES[view.state];
+  const message = view.state === 'needs-install' && installStepsBelow ? 'Notifications work once Flux is on your Home Screen: see Flux on this phone below.' : MESSAGES[view.state];
   if (message) return <p className={note} role="note">{message}</p>;
   if (view.state === 'error') return <p className={note} role="alert">Notification settings could not be loaded. Your Inbox still works.</p>;
   if (view.state === 'subscribed') {
