@@ -28,6 +28,7 @@ Layer `docker/compose.source.yaml`, `docker/compose.live.yaml`, then
 | `FLUX_LIVEKIT_TURN_CERT_DIR` | Absolute host directory with trusted-CA `fullchain.pem` and `privkey.pem`, readable by the LiveKit container. Keep the private key outside the repo. |
 | `FLUX_LIVEKIT_TURN_TLS_BIND` | Public IP dedicated to TCP/443 TURN/TLS; defaults to `0.0.0.0`, which conflicts with an HTTPS ingress on the same IP. |
 | `FLUX_LIVEKIT_TURN_TLS_HOST_PORT` | Keep `443` for a direct public deployment. The isolated Docker test uses a separate host port while browsers reach container TCP/443. |
+| `FLUX_LIVEKIT_MEDIA_CIDR` | The address (as `/32`) or network of the SFU's media interface, when its host or container has more than one interface. Applies to `compose.live.yaml` too. Default `0.0.0.0/0` keeps every IPv4 interface. Without it, LiveKit maps every interface to `node_ip` and may answer from the wrong one; the [simulated public host](#simulated-public-host-63-2026-10-30) showed TURN relays then never connect. |
 
 The API reaches LiveKit at `http://livekit:7880` on the internal
 `livekit-signal` network. Browsers signal through Flux's public `/media` gate,
@@ -420,6 +421,81 @@ Still not covered on these rows:
 - real screen publication outside Chromium;
 - system audio;
 - the public host.
+
+## Simulated public host (#63, 2026-10-30)
+
+Under the [founder direction of 2026-10-30](#founder-direction-2026-10-30-a-simulated-public-host),
+`./scripts/check_public_sim.sh` builds a public self-hosted install in Docker and drives the real Flux web app
+through it from browsers that can reach only the public side. Files: [`docker/public-sim/`](../../docker/public-sim/)
+(Compose overlay, routers, DNS, Caddyfile, client image and the driver) and the script. It is a heavy local check
+(about 10 minutes, one at a time: its subnets are fixed), not a PR Action.
+
+### Topology
+
+| Piece | Simulated as | Faithful to |
+| --- | --- | --- |
+| The Internet | Docker network `203.0.113.0/24` (TEST-NET-3), `internal`: no route to the host or the real Internet | A public network between people and the server |
+| DNS | dnsmasq at `203.0.113.53`, the only resolver of every client and of the driver: `flux.sim.test` → `203.0.113.10`, `turn.sim.test` → `203.0.113.20`, nothing else | The operator's A records |
+| TLS | One local CA signs `flux.sim.test` and `turn.sim.test`. Clients install only the CA certificate: Chromium's NSS database and the system store (WebKit, Node) | A publicly trusted certificate (**not** ACME: no issuance is tested) |
+| Flux origin | Caddy 2.11.7 at `203.0.113.10:443`, the [documented whole-origin proxy](../operations/reverse-proxy.md#public-hostname-and-streaming), `FLUX_PUBLIC_ORIGIN=https://flux.sim.test`, `FLUX_TRUSTED_PROXIES` set to the proxy's one address | The operator's reverse proxy |
+| Media | The operator layers unchanged: `compose.source.yaml`, `compose.live.yaml`, `compose.live.turn.yaml`. LiveKit holds `203.0.113.20` itself (`node_ip`), with TURN/TLS on TCP/443, TURN/UDP on 3478 and ICE on 7881/7882; no host ports are published | A media host with its own public address, as the TURN overlay requires. A Docker port-forwarded SFU is **not** simulated |
+| Restrictive client network | `10.213.1.0/24` behind router A: NAT (masquerade); only TCP/443 and DNS to the resolver leave | A strict office or hotel network |
+| Open client network | `10.213.2.0/24` behind router B: NAT, everything leaves | A home router |
+| People | One Playwright 1.62 server per client network (Chromium 151.0.7922.34, Firefox 153.0, WebKit 26.5), reachable by the driver only through its router's forwarded TCP/3000 | A person's computer |
+
+The script first checks the public side: both names resolve, `curl` reaches `/api/v1/health` through Caddy with the
+CA, `openssl` verifies TURN/TLS 1.3 for `turn.sim.test`, client A cannot open TCP/7881 and resolves no internal
+name, and client B cannot reach the proxy's internal network. The API logged requests from `203.0.113.101` and
+`203.0.113.102`, the routers' public addresses, so the trusted-proxy setting resolves the real client address.
+
+### What the browsers do
+
+Ada (behind router A) opens a wiki page, chooses **Together** and turns her microphone and camera on; Jonas (behind
+router B) chooses **Join** and turns his microphone on. The driver reads `getStats()` from every peer connection the
+page creates. Then, per run: a 15-second cut of every path through router A, `tc netem` delay 40 ± 20 ms with 5 %
+loss both ways at each router for 20 s, a restart of the SFU container, a restart of the API container, and the
+access checks. A person's actions are the app's buttons only; after a reconnect that left a device off, the driver
+presses the microphone button again, as the app asks.
+
+### Observed 2026-10-30 (Chromium on both networks)
+
+Two complete runs of the Chromium rows on this branch, Linux x86_64 host, load average 8 to 12. The figures are from
+the second run; the first agreed within 0.5 s.
+
+| Case | Result |
+| --- | --- |
+| Join through the restrictive network | Audio both ways 2.3 to 2.9 s after **Together**. Ada's selected pair: local `relay`, `relayProtocol=tls`, from `turns:turn.sim.test:443?transport=tcp`, to the SFU's `host` 203.0.113.20:7882 |
+| Join through the open network | Jonas's pair: local `prflx` 203.0.113.102 (his router's public address), direct UDP to 203.0.113.20:7882, no relay |
+| Network drop, 15 s | Ada's bar said "Reconnecting…" during the cut. Media flowed again **1.5 s** after the path came back and both bars said Live after 2.8 s, with no action |
+| 5 % loss, 40 ± 20 ms, over TURN/TLS | 0 RTP packets lost (TCP retransmits on the TLS hop), audio jitter up to 19 ms, selected-pair RTT 254 ms; audio continued |
+| 5 % loss, 40 ± 20 ms, direct UDP | Audio 55 of 1010 packets lost (5.4 %), video 24 of 422, 237 frames decoded in 20 s, jitter 11 ms; audio and video continued |
+| SFU restart | No media flowed by itself. Both bars said Live again after **20.2 s** (the app rejoined a new room) with microphone and camera off, as designed: "Reconnected. Your microphone, camera and screen stay off until you turn them on." Audio flowed 0.5 s after the microphone was turned on again |
+| API restart | Media never stopped (the SFU path does not pass through the API); both bars said "Reconnecting…" and were Live again 2.8 s after the API was healthy |
+| Outsider | Lee, a workspace member without access to the project: the project's live sessions and the join both answered `404 PROJECT_NOT_FOUND` |
+| Access removed during the call | Ada set Jonas's grant to `denied`: his peer connections closed **0.06 to 0.12 s** later; his join and list answered 404 |
+| Issued-token replay | Jonas's join token, captured from the app's own join, at the public gate after removal: `/media/rtc/validate` 401, the WebSocket refused |
+| AI and processors | The session's participants were the two people only; the stack has no egress, ingress or agent service (checked from `docker compose config --services`) |
+
+Not measured here: refreshed tokens (covered by `check_live_sfu.sh`), CPU, memory and egress of the SFU, four people,
+screens, and quality at the receiver beyond the rows above.
+
+### Two defects the simulation found, both fixed in this change
+
+1. **The operator media profile could not relay on a multi-homed SFU.** LiveKit maps every local interface to
+   `node_ip` and keeps one socket per address; it answered TURN-relayed checks from its signaling interface
+   (`192.168.x`), so the TURN server dropped them ("No Permission or Channel exists for 192.168.112.2:7882") and
+   every relayed join failed. The Compose test overlay had worked around it with `rtc.ips.includes`; the operator
+   layers had not. `compose.live.yaml` and `compose.live.turn.yaml` now take `FLUX_LIVEKIT_MEDIA_CIDR` (default
+   `0.0.0.0/0`, the old behaviour); the simulation sets `203.0.113.20/32`. Whether a Docker port-forwarded SFU
+   needs more than this is not simulated; host networking or a dedicated media address is the documented topology.
+2. **WebKit refused LiveKit's TURN URLs.** Playwright's WebKit 26.5 throws "SyntaxError: Invalid TURN URL query
+   string" for any TURN URL with `?transport=`, which LiveKit always sends, so a WebKit person could not join any
+   deployment with TURN. The app now drops `?transport=udp` from `turn:` and `?transport=tcp` from `turns:` URLs,
+   the transports [RFC 7065 §3](https://www.rfc-editor.org/rfc/rfc7065#section-3) gives them by default, before
+   they reach `RTCPeerConnection` (`app/apps/web/src/live/ice-servers.ts`). Whether shipping Safari has the same
+   check was not verified (no Apple device); the change is correct either way.
+
+ENGINE_ROWS_PLACEHOLDER
 
 ## Pointer reachability and camera state on phone and tablet (#63; 2026-10-10)
 
