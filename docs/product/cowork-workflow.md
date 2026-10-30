@@ -273,6 +273,23 @@ Show requested versus acknowledged; Flux cannot kill unrelated local commands or
 erase downloaded context. Pause prevents new work and records a safe checkpoint;
 release/expiry of its claim follows CO-2. No hosted or alternate-payer fallback.
 
+### Proposed amendment for #160 AC-3/AC-4 (2026-10-30, NOT accepted)
+
+Needs an explicit decision (Hubert) before it replaces anything above; until then #160 AC-3/AC-4 stay unmet.
+
+The supported clients run a bounded turn per supplied action (Codex `exec`, Claude Code's `/mcp__flux__start_work`
+and `/mcp__flux__resume_work` prompts) or an interactive session the person controls. Flux cannot start or wake
+either, and no tested integration keeps one alive between turns. Observed 2026-10-30: between Start and Resume a
+genuine Claude Code made **0** requests to Flux in a 60-second window and held no process.
+
+Proposal: accept, for these clients, (1) "safe checkpoint" = the agent's own claim, renew, release and inbox calls
+inside its turn, where Flux already enforces busy deferral, `COWORK_PAUSED` and `COWORK_STOPPED`; (2) "quiet idle" =
+no client process and zero Flux or model calls between turns, measured as above; (3) "wake" = the next supplied
+Resume, with the Agents view showing the waiting request and the owner told through the ordinary Inbox. A local
+always-on adapter (the Codex app-server waiter in `docs/development/evidence/160-workflow/activation-adapter-gap.md`)
+becomes its own issue rather than a condition of #160. This removes the automatic wake of an idle client from #160;
+the user still gets every request delivered durably and handled at the next Resume, without idle model polling.
+
 ## Talk in Flux, retain real review gates — CW-4
 
 **Revised 2026-10-09 by founder direction (see CW-2).** "Live in Flux" below now means the

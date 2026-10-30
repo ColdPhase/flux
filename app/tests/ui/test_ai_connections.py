@@ -379,9 +379,9 @@ class AiConnectionSettings(unittest.TestCase):
             self.assertEqual(positions[f"unavailable-{device}"], positions[f"available-{device}"],
                              f"{device}: the status line, AI connections, usage, rules and Add a connection keep their places")
 
-    def test_11_a_codex_host_action_is_labelled_pending_native_verification(self) -> None:
-        """#635: the Codex Start/Resume host action says it is pending native verification, as Claude's path does,
-        and the guide does not claim a recorded real-account Resume. The Codex connection is created through the API."""
+    def test_11_a_codex_host_action_names_its_real_account_verification(self) -> None:
+        """#635/#160: the Codex Start/Resume host action names the real-account Start and exact-thread Resume recorded on
+        2026-10-30 (docs/development/evidence/160-workflow/README.md). The Codex connection is created through the API."""
         page = self.page()
         headers = {"origin": ORIGIN, "content-type": "application/json"}
 
@@ -400,11 +400,11 @@ class AiConnectionSettings(unittest.TestCase):
         page.locator("label.connection__choice", has_text="Ada Codex laptop").locator("input").check()
         host = page.locator(".mcp-permissions .cowork-host-actions")
         expect(host).to_have_count(1)
-        expect(host.locator("summary")).to_contain_text("pending native verification")
-        expect(host).to_contain_text("no real-account Start or exact-thread Resume through this action is recorded yet")
-        expect(page.locator(".connection__guide")).to_contain_text("It is pending native verification")
-        expect(page.locator(".connection__guide")).not_to_contain_text("resumes only its own saved native thread")
-        shot(page, "ai-connection-1440-codex-host-pending")
+        expect(host.locator("summary")).to_have_text("Start / Resume on this computer")
+        expect(host).to_contain_text("Verified with a real Codex 0.160.1 account on 30 October 2026")
+        expect(page.locator(".connection__guide")).to_contain_text("Resume continues the same saved native thread")
+        expect(page.locator(".connection__guide")).not_to_contain_text("pending native verification")
+        shot(page, "ai-connection-1440-codex-host-verified")
 
 
 if __name__ == "__main__":
