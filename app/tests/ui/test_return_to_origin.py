@@ -668,9 +668,13 @@ class ReturnToOrigin(unittest.TestCase):
                 panel.locator("a[data-agent-thread-link]").click()
                 expect(page).to_have_url(re.compile(r"/projects/[0-9a-f-]{36}/agents\?thread="))
                 expect(self.origin_back(page, "Tasks")).to_have_count(1)
+                # Close the thread once it is the panel's content: a click during the hand-over closes the task's panel
+                # before the thread's owner is registered, so the address keeps the thread param (#709).
+                expect(panel.locator("section.agents-thread")).to_be_visible()
                 # The thread leaves its panel and its address is replaced: the page is still the one the task led to.
                 panel.get_by_role("button", name=re.compile(r"^Close")).click()
-                expect(page).to_have_url(re.compile(r"/projects/[0-9a-f-]{36}/agents$"))
+                # Read the live location: Playwright's page.url can lag a same-document replace on Chromium (#709).
+                page.wait_for_function(r"() => /\/projects\/[0-9a-f-]{36}\/agents$/.test(location.pathname) && !location.search.includes('thread=')")
                 expect(self.origin_back(page, "Tasks")).to_have_count(1)
                 self.assertIsNotNone(page.evaluate("(history.state && history.state.usr && history.state.usr.origin) || null"))
                 self.origin_back(page, "Tasks").click()
