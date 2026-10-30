@@ -45,8 +45,11 @@ Under `prefers-reduced-motion: reduce` and Settings → Appearance → Reduce mo
   the swap) and is not waiting on its own first reads (`aria-busy="true"` or `.is-opening`, as the conversation holds its feed back
   until its first chips have settled), bounded to 500 ms (`HOLD_MS`); until then it stands as the old content did, at full
   strength, so no frame is the ground alone or a view that has not painted. The picture's `data-phase` says `held` or `fading`. A second
-  switch while the picture is up keeps that picture (no picture is taken of the view in between, which has not settled): a picture
-  that is fading is brought back to full strength from where it is and holds for the newest view.
+  switch while the picture is up depends on how much of it is left (`KEEP_AT`, a half). With more, it stays (no picture is taken of the
+  view in between, which has not settled): a picture that is fading into content still waiting on its reads is back at full strength
+  at once, not by a ramp that would show that content on the way, and holds for the newest view. With less (the fade was nearly over),
+  what is on screen is the view behind it, which settled before the fade began, and that view becomes the picture. Either way the
+  newest view is never seen unsettled and what is on screen changes by no more than the part of the picture that was left or gone.
   No query of the page (a class, a text, a role, `#details .wd-eyebrow`) can find a second copy of what is on show. Its one
   difference from the original: the page's `:root[...]` rules do not reach into it (a few shadows and fills for the length of a
   fade). Scroll positions in it are copied, so the old content does not jump. This is the CSS path the issue allows

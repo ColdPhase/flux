@@ -305,7 +305,8 @@ class ViewSwitch(unittest.TestCase):
 
     def test_10_a_picture_that_is_fading_goes_back_to_full_strength_when_the_view_it_fades_into_has_not_settled(self):
         """The Wiki is chosen (its picture of the Conversation starts to fade, here stopped part of the way) and then the Conversation again,
-        whose feed is held back until its reads have settled: the picture comes back from where it is, holds, and dissolves into it."""
+        whose feed is held back until its reads have settled: the picture is back at full strength at once (no ramp that would show the
+        feed unsettled), holds, and dissolves into it."""
         page = self.page()
         project_view(page, "Wiki")  # warm
         page.wait_for_function("() => !document.querySelector('body > [data-dissolve]')")
@@ -328,7 +329,7 @@ class ViewSwitch(unittest.TestCase):
         self.assertIn("held", phases[phases.index("fading") + 1:], f"it was fading and went back to holding: {phases}")
         for frame in frames:
             self.assertTrue(frame["pictures"] or frame["ink"], f"no blank frame: {frame}")
-        # Where it went back: from the opacity it had, rising, never a jump to full strength.
+        # Where it went back: to full strength, never lower than where it was.
         back = [frame["opacity"] for frame in pictures[pictures.index(next(f for f in pictures if f["phase"] == "fading")):] if frame["phase"] == "held"]
         self.assertTrue(back and all(later >= earlier - 1e-6 for earlier, later in zip(back, back[1:])), f"back: {back}")
         # (A slow frame rate may sample it only once it is back at full strength: what is held is that it never dips below where it was.)
@@ -336,6 +337,54 @@ class ViewSwitch(unittest.TestCase):
         self.assertGreaterEqual(min(back), min(fading) - 1e-6, f"it comes back from where it was, never from lower: {fading} then {back}")
         self.assertEqual(back[-1], 1, "to full strength")
         self.assertEqual(page.evaluate(ROOT), "project-page")
+
+    @staticmethod
+    def weights(frame: dict) -> dict:
+        """What the content area shows on a frame, as shares of its sources: the picture's view by what is left of it, the live view (by the
+        root that is in the page, not by the address, which changes a moment before) by the rest, or a blank while it is unsettled."""
+        names = {"project-page": "conversation", "wiki-frame": "docs", "tb-root": "tasks", "sk-page": "map"}
+        shares: dict[str, float] = {}
+        left = frame["opacity"] if frame["pictures"] else 0
+        if frame["pictures"]:
+            shares[frame["of"].rsplit("/", 1)[-1]] = left
+        live = "blank" if frame["busy"] else names.get(frame["view"], frame["view"])
+        shares[live] = shares.get(live, 0) + 1 - left
+        return shares
+
+    def test_11_a_return_in_the_last_part_of_the_fade_never_shows_the_view_unsettled_and_the_screen_never_jumps(self):
+        """The Conversation, the Wiki, and the Conversation again with the second choice 130 to 145 ms into the 150 ms fade (the fade is stopped
+        there, so the window is the same in every engine): the Conversation's feed is held back for its reads, and the nearly gone picture
+        must not leave it showing for a frame or two, nor may the screen jump when the picture is replaced."""
+        page = self.page()
+        project_view(page, "Wiki")  # warm
+        page.wait_for_function("() => !document.querySelector('body > [data-dissolve]')")
+        project_view(page, "Conversation")
+        page.wait_for_function("() => !document.querySelector('body > [data-dissolve]') && document.querySelector('#content .project-page')")
+        for stop in (130, 140, 145):
+            with self.subTest(stopped_at=stop):
+                page.wait_for_timeout(300)
+                page.evaluate("() => { window.__frames = []; }")
+                project_view(page, "Wiki")
+                page.wait_for_function("() => document.querySelector('body > [data-dissolve][data-phase=fading]')", timeout=8000)
+                page.evaluate("(at) => { const fade = (window.__animations || []).filter((a) => a.id === 'flux-motion' && a.playState === 'running' && a.effect?.target?.hasAttribute?.('data-dissolve')).pop(); fade.pause(); fade.currentTime = at; window.__stoppedAt = performance.now(); }", stop)
+                project_view(page, "Conversation")
+                page.wait_for_url(re.compile(PATH["Conversation"]))
+                page.wait_for_function("() => !document.querySelector('body > [data-dissolve]')", timeout=8000)
+                page.wait_for_timeout(250)
+                frames = page.evaluate("() => { const frames = window.__frames; window.__frames = null; return frames; }")
+                stopped = page.evaluate("window.__stoppedAt")
+                for frame in frames:
+                    where = f"stopped at {stop} ms: {frame}"
+                    self.assertTrue(frame["pictures"] or frame["ink"], f"no blank frame: {where}")
+                    if frame["busy"] and frame["t"] - frame["click"] < HOLD_MS:
+                        self.assertTrue(frame["pictures"] and frame["opacity"] == 1, f"the view that is held back is never seen through a picture that is going: {where}")
+                for earlier, later in zip(frames, frames[1:]):
+                    if later["t"] - earlier["t"] > 40 or earlier["t"] <= stopped:
+                        continue  # a slow frame rate samples a normal fade coarsely; and the test's own stop of the fade is not the page's
+                    a, b = self.weights(earlier), self.weights(later)
+                    jump = sum(abs(a.get(key, 0) - b.get(key, 0)) for key in set(a) | set(b)) / 2
+                    self.assertLessEqual(jump, 0.25, f"the screen does not jump (stopped at {stop} ms): {a} then {b}")
+                self.assertEqual(page.evaluate(ROOT), "project-page")
 
 
 if __name__ == "__main__":
