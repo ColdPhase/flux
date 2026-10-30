@@ -1,7 +1,10 @@
 import type { TypingView } from './client';
 import './typing.css';
 
-/** Static reserved line; only changed text is announced, never an animation loop. */
+/**
+ * Static reserved line; only changed text is announced, never an animation loop. While connecting it is empty:
+ * "unavailable" is said only after a real failure or timeout, never because the first frame is still on its way.
+ */
 export function TypingNotice({ availability, people }: TypingView) {
   const names = people.map((person) => person.name);
   const text = availability === 'unavailable' ? 'Typing activity unavailable' : names.length === 1 ? `${names[0]} is typing…`

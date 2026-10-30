@@ -1,7 +1,15 @@
 import { TYPING_PATH, type TypingContext, type TypingSnapshot } from '@flux/contracts';
 
-export interface TypingView { availability: 'ready' | 'unavailable'; people: { id: string; name: string }[] }
-const EMPTY: TypingView = { availability: 'unavailable', people: [] };
+/**
+ * 'connecting' is the quiet state before the first server frame and while a tab is paused: nothing is said about
+ * availability until a real failure or timeout (#732). Once 'unavailable' is shown it stays until a frame says ready.
+ */
+export interface TypingView { availability: 'connecting' | 'ready' | 'unavailable'; people: { id: string; name: string }[] }
+const CONNECTING: TypingView = { availability: 'connecting', people: [] };
+const UNAVAILABLE: TypingView = { availability: 'unavailable', people: [] };
+/** A socket that has not opened, or has opened without a first snapshot, within these budgets has failed. */
+const OPEN_BUDGET_MS = 5000;
+const FRAME_BUDGET_MS = 3000;
 
 /** Owns one ephemeral scope, never the composer value or durable event cursor. */
 export class TypingClient {
@@ -18,7 +26,7 @@ export class TypingClient {
   private retryTimer: number | null = null;
   private freshnessTimer: number | null = null;
   private retry = 0;
-  private view: TypingView = EMPTY;
+  private view: TypingView = CONNECTING;
   private readonly listeners = new Set<() => void>();
   constructor(private readonly context: TypingContext | null, private readonly identity: string) {}
   subscribe = (listener: () => void) => { this.listeners.add(listener); return () => { this.listeners.delete(listener); }; };
@@ -76,16 +84,19 @@ export class TypingClient {
     // Retire the generation before closing: already queued frames from a known
     // failed transport cannot restore ready people while close is in flight.
     this.published = false;
-    this.suspend();
-    this.schedule();
+    this.fail();
   }
-  private suspend = () => {
+  /** A deliberate pause (hidden tab, page hide, unmount): nothing failed, so nothing is announced. */
+  private suspend = () => this.halt(CONNECTING);
+  /** A real failure or timeout: the one place that says typing activity is unavailable, then retries. */
+  private fail() { this.halt(UNAVAILABLE); this.schedule(); }
+  private halt(next: TypingView) {
     this.stop(); this.epoch++; this.authenticated = false;
     this.clearFreshness();
     if (this.retryTimer !== null) window.clearTimeout(this.retryTimer); this.retryTimer = null;
     const socket = this.socket; this.socket = null; socket?.close(1000);
-    this.update(EMPTY);
-  };
+    this.update(next);
+  }
   private resume = () => { if (this.started && document.visibilityState === 'visible') this.connect(); };
   private visibility = () => { if (document.visibilityState === 'hidden') this.suspend(); else this.resume(); };
   private connect() {
@@ -94,8 +105,12 @@ export class TypingClient {
     const socket = new WebSocket(url); this.socket = socket;
     const epoch = ++this.epoch;
     const current = () => this.started && this.socket === socket && this.epoch === epoch;
+    // A handshake that never completes is a timeout too; without this deadline it would say nothing, forever.
+    this.freshnessTimer = window.setTimeout(() => { if (current()) this.fail(); }, OPEN_BUDGET_MS);
     socket.onopen = () => {
-      if (current()) this.freshnessTimer = window.setTimeout(() => { if (current()) { this.suspend(); this.schedule(); } }, 3000);
+      if (!current()) return;
+      this.clearFreshness();
+      this.freshnessTimer = window.setTimeout(() => { if (current()) this.fail(); }, FRAME_BUDGET_MS);
     };
     socket.onmessage = (event) => {
       if (!current()) return;
@@ -124,19 +139,19 @@ export class TypingClient {
           raw.availability === 'unavailable' && raw.people.length || raw.people.some((human) => !human || Object.keys(human).sort().join(',') !== 'id,name' ||
             typeof human.id !== 'string' || !human.id || human.id.length > 128 || human.id === this.identity || typeof human.name !== 'string' || [...human.name].length > 128 || /[\p{Cc}\p{Cf}]/u.test(human.name)) ||
           new Set(raw.people.map((human) => human.id)).size !== raw.people.length) throw new Error('Invalid snapshot');
-      } catch { this.suspend(); this.schedule(); return; }
+      } catch { this.fail(); return; }
       this.retry = 0;
       this.clearFreshness();
       if (raw.availability === 'ready') this.freshnessTimer = window.setTimeout(() => {
         this.freshnessTimer = null;
-        if (current()) { this.suspend(); this.schedule(); }
-      }, 3000);
+        if (current()) this.fail();
+      }, FRAME_BUDGET_MS);
       this.update({ availability: raw.availability, people: raw.people.map((human) => ({ ...human })) });
       if (raw.availability !== 'ready') this.stop();
     };
     socket.onclose = (event) => {
       if (!current()) return;
-      this.socket = null; this.epoch++; this.authenticated = false; this.clearFreshness(); this.stop(); this.update(EMPTY);
+      this.socket = null; this.epoch++; this.authenticated = false; this.clearFreshness(); this.stop(); this.update(UNAVAILABLE);
       if (event.code === 4401) this.terminal = true;
       else this.schedule();
     };
