@@ -595,6 +595,77 @@ class EncryptedWorkspaces(Base):
                 cy.goto(f"/projects/{world.a_project}")
                 expect(cy.get_by_text(A_ROOT).first).to_be_visible()
 
+    def test_16_while_a_space_waits_the_cross_space_places_list_the_others_and_say_so(self) -> None:
+        """S2a-2c answers `/needs-you`, `/inbox`, `/search` and `/return` with `lockedWorkspaces` instead of 423; nothing shows a load error."""
+        world = self.make_world()
+        self.lock(world)
+        for phone in (False, True):
+            with self.subTest(window="phone" if phone else "computer"):
+                page = self.page(world, "ada", phone=phone)
+                self.home(page)
+                need = page.locator("#content .home__need")
+                waiting = need.get_by_role("list", name=LOCKED_LINE)
+                expect(waiting.get_by_role("link", name=re.compile(rf"^{A_NAME}\s*{LOCKED_LINE}$"))).to_be_visible()
+                expect(need.get_by_text("Nothing needs you right now. Enjoy the quiet.")).to_have_count(0)
+                shot(page, f"needs-you-waiting-{'phone' if phone else 'computer'}")
+                page.goto("/inbox")
+                expect(page.locator("[data-locked-note]")).to_contain_text(LOCKED_LINE)
+                expect(page.get_by_text("The Inbox could not load")).to_have_count(0)
+                page.goto("/search?q=dock")
+                unsearched = page.locator("[data-unsearched]")
+                expect(unsearched).to_have_text(f"{A_NAME} isn’t searched while it waits to be unlocked.")
+                expect(page.get_by_role("region", name="Results").get_by_text(B_PROJECT).first).to_be_visible()
+                expect(page.locator(".search__problem")).to_have_count(0)
+                shot(page, f"search-waiting-{'phone' if phone else 'computer'}")
+                for place in ("/docs", "/map", "/tasks"):
+                    page.goto(place)
+                    expect(page.locator("#content")).to_be_visible()
+                    expect(page.get_by_role("alert")).to_have_count(0)
+                    expect(page.get_by_role("heading", name=f"Unlock {A_NAME}")).to_have_count(0)
+
+    def test_17_an_answer_that_names_a_locked_space_turns_its_rows_to_waiting_without_a_reload(self) -> None:
+        """No stream: the first word of the lock is the Inbox's own answer (`lockedWorkspaces`)."""
+        world = self.make_world()
+        page = self.page(world, "cy", stream=False)
+        page.goto("/inbox")
+        side = page.get_by_role("navigation", name="Projects")
+        expect(side.get_by_role("link", name=re.compile(f"^{A_PROJECT}"))).to_be_visible()
+        self.lock(world)
+        page.evaluate("window.dispatchEvent(new Event('flux:inbox-changed'))")
+        expect(side.get_by_role("link", name=re.compile(rf"^{A_NAME}\s+{LOCKED_LINE}$"))).to_be_visible()
+        expect(side.get_by_role("link", name=re.compile(f"^{A_PROJECT}"))).to_have_count(0)
+        expect(page.locator("[data-locked-note]")).to_contain_text(A_NAME)
+
+    def test_18_a_security_notice_is_read_in_the_inbox_and_got_it_marks_it_read(self) -> None:
+        world = self.make_world()
+        self.call(world, "ada", "POST", f"/api/v1/workspaces/{world.a}/unlock-password-grants", {"userId": world.ids["ben"], "password": UNLOCK_PASSWORD})
+        self.call(world, "ben", "PUT", f"/api/v1/workspaces/{world.a}/unlock-password", {"newPassword": NEW_PASSWORD}, None)
+        self.assertTrue(self.holders(world, "ben"))
+        for phone in (False, True):
+            with self.subTest(window="phone" if phone else "computer"):
+                page = self.page(world, "ada", phone=phone)
+                page.goto("/inbox")
+                notices = page.get_by_role("region", name="About your encrypted spaces")
+                if phone:
+                    expect(notices).to_be_visible()
+                    notices.scroll_into_view_if_needed()
+                    shot(page, "security-notice-phone")
+                    continue
+                notice = notices.get_by_role("listitem").filter(has_text=f"now has an unlock password for {A_NAME}")
+                expect(notice).to_have_count(1)
+                self.assertNotIn(UNLOCK_PASSWORD, notices.inner_text())
+                notice.scroll_into_view_if_needed()
+                shot(page, "security-notice-computer")
+                notice.get_by_role("button", name=re.compile("^Got it")).click()
+                expect(notices).to_have_count(0)
+                deadline = time.time() + 5
+                while time.time() < deadline:
+                    items = self.call(world, "ada", "GET", "/api/v1/inbox?limit=100")["items"]
+                    if all(item["readAt"] for item in items if item["reason"] == "security"):
+                        break
+                    time.sleep(0.2)
+                self.assertTrue(all(item["readAt"] for item in items if item["reason"] == "security"), "Got it marks the notice read")
+
     # ---------------------------------------------------------------- People
 
     def test_20_the_encryption_section_and_the_ai_row_sit_before_leave_in_every_state(self) -> None:
@@ -1094,6 +1165,44 @@ class KeyRotation(Base):
                 shown.get_by_role("checkbox", name=re.compile(r"I.ve kept")).check()
                 shown.get_by_role("button", name="Done", exact=True).click()
                 expect(section.locator("[data-no-recovery-code]")).to_have_count(0)
+
+    def test_43_a_rotation_that_waits_to_start_or_cannot_finish_says_so(self) -> None:
+        for phone in (False, True):
+            with self.subTest(window="phone" if phone else "computer"):
+                world = self.make_world()
+                overlay = self.Overlay(world.a)
+                overlay.fields = {"rotation": {"percent": 0, "paused": True, "startedAt": None, "stalled": False}}
+                page = self.overlaid(world, "ada", phone, overlay)
+                self.open_people(page)
+                line = self.section(page).locator("[data-key-rotation]")
+                expect(line).to_have_text(f"Changing the key · starting. It continues while {A_NAME} is unlocked.")
+                expect(line).to_have_attribute("data-key-rotation", "starting")
+                # It cannot finish: the words of the security notice, nothing about the content.
+                overlay.fields = {"rotation": {"percent": 99, "paused": False, "startedAt": now_iso(), "stalled": True}}
+                expect(line).to_have_text("The key change can’t finish: some stored data doesn’t open. Ask your server’s operator.", timeout=15000)
+                self.section(page).scroll_into_view_if_needed()
+                shot(page, f"rotation-stalled-{'phone' if phone else 'computer'}")
+                # A member reads only the first line.
+                cy = self.overlaid(world, "cy", phone, overlay)
+                self.open_people(cy)
+                expect(self.section(cy).locator("[data-key-rotation]")).to_have_count(0)
+
+    def test_44_a_real_rotation_after_an_admin_is_removed_ends_with_the_new_key_line(self) -> None:
+        """S2c's worker rotates for real; the open panel follows it to its end by reading the state again while it runs."""
+        world = self.make_world()
+        eli = self.sign_up_eli(world)
+        page = self.page(world, "ada")
+        self.open_people(page)
+        section = self.section(page)
+        expect(section.locator("[data-key-changed]")).to_have_count(0)
+        self.call(world, "ada", "DELETE", f"/api/v1/workspaces/{world.a}/members/{eli['id']}", None, None)
+        expect(section.locator("[data-key-changed]")).to_have_text(re.compile(r"^New key since \d{1,2} \w{3}\.$"), timeout=60000)
+        expect(section.locator("[data-key-rotation]")).to_have_count(0)
+        expect(section.locator("[data-no-recovery-code]")).to_have_text(f"{A_NAME} has no recovery code. Make a new one and keep it safe.")
+        final = self.encryption(world)
+        self.assertIsNone(final["rotation"])
+        self.assertFalse(final["recoveryCode"])
+        self.assertIsNotNone(final["keyChangedAt"])
 
     def sign_up_eli(self, world: SimpleNamespace) -> dict:
         """A new admin who really is added, so that a test can really remove them."""
