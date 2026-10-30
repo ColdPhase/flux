@@ -56,10 +56,13 @@ step "1. Both Compose files are valid together; the runtime is off by default"
 compose config --quiet
 # The image release.json names (ghcr.io in a release; the dry run's local registry rewrites both alike).
 [ "$(compose config --images | grep -cxF "$runtime_image")" -ge 1 ] || fail "no runtime image $runtime_image in the merged configuration"
-! compose config --images | grep -Eq 'RELEASE_DIGEST|RUNTIME_DIGEST|:latest' || fail "marker or floating tag in the merged configuration"
+# Outputs are captured before grep -q: under pipefail an early grep exit makes the writer's SIGPIPE fail the pipeline.
+images=$(compose config --images)
+! printf '%s\n' "$images" | grep -Eq 'RELEASE_DIGEST|RUNTIME_DIGEST|:latest' || fail "marker or floating tag in the merged configuration"
 runtime_sh up
 [ -z "$(runtime_containers)" ] || fail "runtime containers exist while FLUX_AGENT_RUNTIME is empty: $(runtime_containers)"
-runtime_sh status | grep -q "(off)" || fail "status does not say the runtime is off"
+status_out=$(runtime_sh status)
+printf '%s\n' "$status_out" | grep -q "(off)" || fail "status does not say the runtime is off"
 curl --fail --show-error --silent "http://127.0.0.1:$port/api/v1/health" >/dev/null
 
 step "2. claude_code is refused without the Commercial Terms date and changes nothing"
