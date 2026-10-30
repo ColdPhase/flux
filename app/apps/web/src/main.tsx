@@ -10,7 +10,7 @@ import { installMotionGuards } from './ui/motion';
 import { applyStoredReduceMotion } from './ui/motion-preference';
 import { installPress } from './ui/press';
 import { applyStoredTheme } from './app/theme';
-import { registerServiceWorker } from './pwa';
+import { registerServiceWorker, watchInstallPrompt } from './pwa';
 import { router } from './router';
 
 applyStoredTheme();
@@ -20,6 +20,8 @@ applyStoredTextSize();
 // Motion pauses while the page is hidden, and every pressable control takes the one press (#593).
 installMotionGuards();
 installPress();
+// Chromium offers installation once per load, possibly before Settings is open (#20 MOB-1).
+watchInstallPrompt();
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

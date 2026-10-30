@@ -1,6 +1,7 @@
 import { INBOX_PATH, PUSH_PUBLIC_KEY_PATH, PUSH_SUBSCRIPTIONS_PATH, pushSubscriptionPath, type PushPublicKeyResponse, type PushSubscriptionSummary } from '@flux/contracts';
 import { send } from '../api/client.js';
 import { registerServiceWorker, serviceWorkerSupported } from './register.js';
+import { isAppleMobile, isStandalone } from './install.js';
 
 /**
  * Web Push client (issue #41, MOB-4). Nothing here asks for notification permission on its own:
@@ -25,15 +26,6 @@ export type EnableResult =
   | { status: 'error'; message: string };
 
 export const INBOX_URL = INBOX_PATH;
-
-function isAppleMobile() {
-  const ua = navigator.userAgent;
-  return /iPhone|iPad|iPod/.test(ua) || (ua.includes('Macintosh') && navigator.maxTouchPoints > 1);
-}
-
-function isStandalone() {
-  return window.matchMedia('(display-mode: standalone)').matches || (navigator as Navigator & { standalone?: boolean }).standalone === true;
-}
 
 function pushApisPresent() {
   return serviceWorkerSupported() && 'PushManager' in window && 'Notification' in window;

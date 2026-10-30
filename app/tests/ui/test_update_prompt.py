@@ -357,6 +357,29 @@ class UpdatePromptReach(unittest.TestCase):
             page.get_by_role("button", name="Back").tap(timeout=1500)
         self.assertIn("pwa-update", str(caught.exception))
 
+    def test_10_reload_keeps_the_unsent_draft_and_activates_the_new_version(self) -> None:
+        """MOB-5: a person mid-sentence chooses Reload; the new worker takes the page and the draft is still in the composer."""
+        page = self.page()
+        page.goto(f"/projects/{self.project['id']}")
+        composer = page.locator("#project-composer")
+        expect(composer).to_be_visible()
+        draft = "Probe 3 reads 41% after the rain, check the cable before Friday"
+        composer.tap(timeout=5000)
+        composer.fill(draft)
+        # The draft is saved as it is typed; give the store its moment before the page goes away.
+        page.wait_for_timeout(500)
+        self.offer_update(page)
+        self.assertFalse(page.evaluate("navigator.serviceWorker.controller.scriptURL.includes('deployment=next')"), "the old worker still controls the page")
+        with page.expect_event("load"):
+            page.get_by_test_id(PROMPT).get_by_role("button", name="Reload", exact=True).tap(timeout=5000)
+        page.wait_for_function("navigator.serviceWorker.controller !== null && navigator.serviceWorker.controller.scriptURL.includes('deployment=next')", timeout=20000)
+        expect(page.get_by_test_id(PROMPT)).to_have_count(0)
+        expect(page.locator("#project-composer")).to_have_value(draft)
+        # Negative control on the same page: a draft the store did not hold would be gone after a reload.
+        page.evaluate("for (const store of [localStorage, sessionStorage]) Object.keys(store).filter((k) => (store.getItem(k) || '').includes('Probe 3 reads')).forEach((k) => store.removeItem(k))")
+        page.reload()
+        expect(page.locator("#project-composer")).to_have_value("")
+
 
 if __name__ == "__main__":
     unittest.main()

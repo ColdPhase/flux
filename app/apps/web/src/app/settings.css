@@ -129,7 +129,7 @@
   .sset-sec { margin: 22px 4px 8px; font-size: 13px; font-weight: 500; color: var(--t3); letter-spacing: 0; }
   .sset-in > .sset-sec:first-child { margin-top: 6px; }
   .sset-row { min-height: 56px; padding: 10px 16px; }
-  .sset-row__t { font-size: 16px; font-weight: 400; }
+  .sset-row__t, .sset-row .pwa-steps { font-size: 16px; font-weight: 400; }
   .sset-row__s, .sset-row__meta, .sset-row__go { font-size: 13px; }
   .sset-themes { gap: 10px; }
   .sset-theme__art { height: auto; aspect-ratio: 1 / 1.05; border-radius: 16px; }
