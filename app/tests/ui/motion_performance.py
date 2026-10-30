@@ -56,11 +56,16 @@ STAMP = uuid.uuid4().hex[:10]
 # layoutGap: the worst frame gap during it. layoutRequests: API reads a resize causes (a shell that swaps for another reads its two small agent lists on mount; a bigger window of
 # the same shell reads nothing).
 # heapGrowthMB: the JavaScript heap after a forced collection, at the end of the profile against its start (a single ceiling, not a p95).
+# listScroll: a wheel over a long list (the Tasks board's pane, the conversation stream) to the frame after it moved. mapPan: a wheel over the
+# map to the frame after its view moved. mapZoom: a zoom (Ctrl+wheel on the computer, the zoom control's tap on the phone) to the
+# frame after the map took its new scale. scrollGap: the worst frame gap from that input to its paint.
 BUDGETS = {
     "desktop": {"selectionFeedback": 150, "motionEnd": 370, "selectionCommitted": 200, "keyInput": 100, "frameGap": 50,
-                "layoutSwitch": 100, "layoutGap": 100, "layoutRequests": 3, "heapGrowthMB": 20},
+                "layoutSwitch": 100, "layoutGap": 100, "layoutRequests": 3, "heapGrowthMB": 20,
+                "listScroll": 100, "mapPan": 100, "mapZoom": 100, "scrollGap": 50},
     "phone-cpu4": {"selectionFeedback": 300, "motionEnd": 420, "selectionCommitted": 420, "keyInput": 200, "frameGap": 100,
-                   "layoutSwitch": 250, "layoutGap": 250, "layoutRequests": 3, "heapGrowthMB": 20},
+                   "layoutSwitch": 250, "layoutGap": 250, "layoutRequests": 3, "heapGrowthMB": 20,
+                   "listScroll": 200, "mapPan": 200, "mapZoom": 200, "scrollGap": 100},
 }
 # A frame time is a requestAnimationFrame timestamp, quantised to the 16.7 ms frame: three frames read 50.0 to 50.1 ms. A p95 within
 # half a millisecond of its budget passes; nothing else is allowed over.
@@ -71,13 +76,14 @@ JITTER_MS = 0.5
 KNOWN_MISSES = {"phone-cpu4:workTab:maxFrameGap": {"issue": "#716", "maxP95": 150}}
 
 
-def classify_misses(failures, p95s):
+def classify_misses(failures, p95s, measured=None):
     """Splits budget failures into the known misses still within their ceiling, the failures that are not allowed (an unknown one,
-    or a known one above its ceiling) and the known misses that no longer miss."""
+    or a known one above its ceiling) and the known misses that no longer miss. `measured` (when given) is every key the run
+    measured, so a run of one test does not report the other test's known miss as closed."""
     known = {failure: {"issue": KNOWN_MISSES[failure]["issue"], "maxP95": KNOWN_MISSES[failure]["maxP95"], "p95": p95s[failure]}
              for failure in failures if failure in KNOWN_MISSES and failure in p95s and p95s[failure] <= KNOWN_MISSES[failure]["maxP95"] + JITTER_MS}
     unexpected = sorted(failure for failure in failures if failure not in known)
-    closed = sorted(miss for miss in KNOWN_MISSES if miss not in failures)
+    closed = sorted(miss for miss in KNOWN_MISSES if miss not in failures and (measured is None or miss in measured))
     return known, unexpected, closed
 
 
@@ -89,6 +95,7 @@ LAYOUT_PAIRS = {
     "desktop": {"phone": {"width": 390, "height": 844}, "tablet": {"width": 820, "height": 1180}, "wide": {"width": 3840, "height": 2160}},
     "phone-cpu4": {"landscape": {"width": 844, "height": 390}, "unfolded": {"width": 820, "height": 1180}},
 }
+MAP_THOUGHTS = 60
 LAYOUT_SAMPLES = int(os.environ.get("FLUX_MOTION_LAYOUT_SAMPLES", "100"))
 LAYOUT_WARMUPS = int(os.environ.get("FLUX_MOTION_LAYOUT_WARMUPS", "15"))
 # The shell's landmarks whose place and size settle when the layout switches (the sidebar or its rail, the header or the
@@ -165,6 +172,38 @@ PROBE = r"""(() => {
     };
     requestAnimationFrame(step);
   }, true);
+  // A wheel, Ctrl+wheel or tap the harness armed on a scroller (a list or the map): from the trusted event to the frame after the
+  // scroller's position (or the map's scale) changed, then the following frame; the worst frame gap meanwhile. An input that
+  // moves nothing (a list at its end) is not a sample: it times out and the harness fails it rather than counting it.
+  const moved = window.__movedProbe = { armed: null, result: null };
+  moved.arm = (kind, selector) => {
+    const el = document.querySelector(selector);
+    if (!el) throw new Error(`no ${selector}`);
+    const state = kind === 'zoom' ? () => document.querySelector('.sk-zoomed')?.style.width ?? '' : () => `${el.scrollTop},${el.scrollLeft}`;
+    moved.result = null;
+    moved.armed = { kind, el, state, before: state() };
+  };
+  const onInput = (event) => {
+    const armed = moved.armed;
+    if (!armed || !event.isTrusted || !(event.target instanceof Node) || !armed.el.contains(event.target)) return;
+    if (armed.kind === 'zoom' ? !(event.type === 'click' || (event.type === 'wheel' && (event.ctrlKey || event.metaKey))) : event.type !== 'wheel') return;
+    moved.armed = null;
+    const start = event.timeStamp;
+    let last = performance.now(), maxGap = 0;
+    const step = (now) => {
+      maxGap = Math.max(maxGap, now - last); last = now;
+      if (armed.state() !== armed.before) {
+        requestAnimationFrame((a) => { maxGap = Math.max(maxGap, a - last); last = a; requestAnimationFrame((b) => {
+          maxGap = Math.max(maxGap, b - last);
+          moved.result = { kind: armed.kind, ms: performance.now() - start, maxGap, before: armed.before, after: armed.state() }; }); });
+        return;
+      }
+      if (now - start > 5000) { moved.result = { kind: armed.kind, timeout: true, before: armed.before }; return; }
+      requestAnimationFrame(step);
+    };
+    requestAnimationFrame(step);
+  };
+  for (const type of ['wheel', 'click']) document.addEventListener(type, onInput, { capture: true, passive: true });
   // A resize the harness armed: from the resize event to the frame after the last one in which a landmark of the shell
   // changed place or size, once nothing has changed for SETTLE ms (the layout has settled); the worst frame gap meanwhile.
   const SETTLE = 150;
@@ -243,8 +282,16 @@ def build_fixture(browser):
     thread = post(f"/api/v1/projects/{projects[0]}/conversations", {"body": "Where should the manual switch go?", "clientMessageId": str(uuid.uuid4())})
     for index in range(40):
         post(f"/api/v1/conversations/{thread['id']}/messages", {"body": f"Reply {index + 1}: the switch should stay reachable in the dark.", "clientMessageId": str(uuid.uuid4())})
+    # A map of MAP_THOUGHTS thoughts on a grid wider and taller than the computer's window, each linked to the one before it in its row.
+    sketch = post(f"/api/v1/workspaces/{workspace}/sketches", {"title": "Lamp wiring", "scope": "project", "projectId": projects[0]})["id"]
+    previous = None
+    for index in range(MAP_THOUGHTS):
+        column, row = index % 10, index // 10
+        extra = {"linkFrom": {"thoughtId": previous}} if previous and column else {}
+        previous = post(f"/api/v1/sketches/{sketch}/thoughts", {"text": f"Wire {index + 1}: route it along the shelf, then test the dimmer at dusk.",
+                                                                 "x": 40 + column * 300, "y": 40 + row * 220, **extra})["thought"]["id"]
     owner.close()
-    return {"states": states, "ids": ids, "projects": projects, "thread": thread, "seconds": round(time.monotonic() - started, 3)}
+    return {"states": states, "ids": ids, "projects": projects, "thread": thread, "sketch": sketch, "seconds": round(time.monotonic() - started, 3)}
 
 
 # The profiles: label, window, CPU throttling, reduced motion. The phone is a touch device with a mobile viewport.
@@ -260,15 +307,18 @@ class MotionPerformance(unittest.TestCase):
         cls.browser = cls.pw.chromium.launch()
         fixture = build_fixture(cls.browser)
         cls.p95s = {}
-        cls.states, cls.ids, cls.projects, cls.thread = fixture["states"], fixture["ids"], fixture["projects"], fixture["thread"]
+        cls.states, cls.ids, cls.projects, cls.thread, cls.sketch = fixture["states"], fixture["ids"], fixture["projects"], fixture["thread"], fixture["sketch"]
+        cls.measured = set()
         cls.report = {"schema": 2, "sourceCommit": os.environ.get("FLUX_GIT_COMMIT", "unavailable"), "browser": cls.browser.version,
                       "startedUTC": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), "fixtureSeconds": fixture["seconds"],
-                      "fixture": {"projects": 3, "rootsPerProject": 60, "tasksPerProject": 40, "threadReplies": 40, "people": 2},
+                      "fixture": {"projects": 3, "rootsPerProject": 60, "tasksPerProject": 40, "threadReplies": 40, "people": 2, "mapThoughts": MAP_THOUGHTS},
                       "method": {"warmups": WARMUPS, "samples": SAMPLES, "minSeconds": SECONDS, "layoutWarmups": LAYOUT_WARMUPS, "layoutSamples": LAYOUT_SAMPLES},
                       "budgets": BUDGETS, "profiles": []}
 
     @classmethod
     def tearDownClass(cls):
+        failed, known = cls.report.get("observedFailures"), cls.report.get("knownMisses")
+        cls.report["outcome"] = "observed-budget-failures" if failed else "within-budgets-except-known-misses" if known else "within-budgets"
         OUT.mkdir(parents=True, exist_ok=True)
         (OUT / "motion-performance.json").write_text(json.dumps(cls.report, indent=2) + "\n")
         cls.browser.close()
@@ -286,6 +336,37 @@ class MotionPerformance(unittest.TestCase):
         page.wait_for_selector(".top__views .ui-tabs__indicator[data-target], .views .ui-tabs__indicator[data-target], .phead__menu, #thread-composer")
         page.wait_for_timeout(1000)
         return context, page
+
+    def moved(self, page, kind, selector, act):
+        """One wheel or tap on a scroller, timed in the page from the trusted event to the frame after it moved (or zoomed)."""
+        page.evaluate("([kind, selector]) => window.__movedProbe.arm(kind, selector)", [kind, selector])
+        act()
+        page.wait_for_function("() => window.__movedProbe.result !== null", timeout=30000)
+        result = page.evaluate("() => window.__movedProbe.result")
+        self.assertFalse(result.get("timeout"), f"{kind} on {selector} moved it: {result}")
+        page.wait_for_timeout(120)
+        return result
+
+    def moved_series(self, page, kind, selector, acts):
+        """Warm-ups, then at least SAMPLES inputs over at least SECONDS; the inputs alternate so no sample lands at an end."""
+        for index in range(WARMUPS):
+            self.moved(page, kind, selector, acts[index % len(acts)])
+        results, begun, index = [], time.monotonic(), 0
+        while len(results) < SAMPLES or time.monotonic() - begun < SECONDS:
+            results.append(self.moved(page, kind, selector, acts[index % len(acts)]))
+            index += 1
+        return results, round(time.monotonic() - begun, 3)
+
+    def wheel_at(self, page, selector, dx, dy, ctrl=False):
+        def act():
+            box = page.locator(selector).first.bounding_box()
+            page.mouse.move(box["x"] + box["width"] / 2, box["y"] + box["height"] / 2)
+            if ctrl:
+                page.keyboard.down("Control")
+            page.mouse.wheel(dx, dy)
+            if ctrl:
+                page.keyboard.up("Control")
+        return act
 
     def sample(self, page, act, kind):
         act()
@@ -433,10 +514,70 @@ class MotionPerformance(unittest.TestCase):
             self.assertTrue(box.input_value().startswith("Measured reply text"), "the measurement only typed and erased one character")
             context.close(); watcher.close()
             self.finish(profile, label, failures)
-        misses, unexpected, closed = classify_misses(failures, self.p95s)
-        self.report["knownMisses"] = misses
-        self.report["observedFailures"] = unexpected
-        self.report["outcome"] = "observed-budget-failures" if unexpected else "within-budgets-except-known-misses" if misses else "within-budgets"
+        misses, unexpected, closed = classify_misses(failures, self.p95s, self.measured)
+        self.report.setdefault("knownMisses", {}).update(misses)
+        self.report["observedFailures"] = sorted(set(self.report.get("observedFailures", [])) | set(unexpected))
+        self.assertEqual(unexpected, [], "every p95 is within its budget, or its known miss's ceiling")
+        self.assertEqual(closed, [], "a known miss that no longer misses is deleted from KNOWN_MISSES")
+
+    def test_map_and_list_latency_budgets(self):
+        """#151 AC-4: list scroll, map pan and map zoom, wheel or tap to the following paint, per profile (not reduced motion)."""
+        failures = []
+        for label, viewport, cpu, reduced in PROFILES:
+            if reduced:
+                continue
+            phone = label.startswith("phone")
+            budget = BUDGETS[label]
+            profile = {"label": label, "viewport": viewport, "cpuThrottle": cpu, "touch": phone, "distributions": {},
+                       "note": "wheel input on both profiles (a touch drag has no trusted start event to time from); the phone zooms with the zoom control in its Map options sheet"}
+            lists = (("tasksList", f"/projects/{self.projects[0]}/tasks", ".tb-board, .ws-task", "closest"), ("stream", f"/projects/{self.projects[0]}", ".project-convo__feed", "self"))
+            for name, path, selector, how in lists:
+                context, page = self.open("ada", viewport, cpu, path, phone=phone)
+                page.locator(selector).first.wait_for()
+                if how == "closest":
+                    page.evaluate("(s) => document.querySelector(s).closest('.pane-scroll').setAttribute('data-measured', '')", selector)
+                    scroller = "[data-measured]"
+                else:
+                    scroller = selector
+                room = page.evaluate("(s) => { const el = document.querySelector(s); el.scrollTop = Math.max(0, (el.scrollHeight - el.clientHeight) / 2); return el.scrollHeight - el.clientHeight; }", scroller)
+                self.assertGreater(room, 400, f"the {name} is long enough to scroll at {viewport}")
+                page.wait_for_timeout(300)
+                results, seconds = self.moved_series(page, "scroll", scroller, [self.wheel_at(page, scroller, 0, 180), self.wheel_at(page, scroller, 0, -180)])
+                profile["distributions"][name] = {"seconds": seconds, "scrollRoom": room, "listScroll": summary([r["ms"] for r in results], budget["listScroll"]),
+                                                  "maxFrameGap": summary([r["maxGap"] for r in results], budget["scrollGap"])}
+                context.close()
+            context, page = self.open("ada", viewport, cpu, f"/projects/{self.projects[0]}/map/{self.sketch}", phone=phone)
+            page.wait_for_function(f"() => document.querySelectorAll('.sk-node').length === {MAP_THOUGHTS}", timeout=30000)
+            page.wait_for_timeout(500)
+            canvas = ".sk-canvas"
+            # Pan from the middle of the map, down and back (and sideways on the computer, where the plane is wider than the window).
+            page.evaluate("(s) => { const el = document.querySelector(s); el.scrollTop = (el.scrollHeight - el.clientHeight) / 2; el.scrollLeft = (el.scrollWidth - el.clientWidth) / 2; }", canvas)
+            page.wait_for_timeout(300)
+            pans = [self.wheel_at(page, canvas, 0, 180), self.wheel_at(page, canvas, 0, -180)]
+            if not phone:
+                pans += [self.wheel_at(page, canvas, 180, 0), self.wheel_at(page, canvas, -180, 0)]
+            results, seconds = self.moved_series(page, "scroll", canvas, pans)
+            profile["distributions"]["mapPan"] = {"seconds": seconds, "mapPan": summary([r["ms"] for r in results], budget["mapPan"]),
+                                                  "maxFrameGap": summary([r["maxGap"] for r in results], budget["scrollGap"])}
+            if phone:
+                # The phone's zoom is in its Map options sheet (#341), which stays open while the map zooms behind it.
+                page.get_by_role("button", name="Map options", exact=True).tap()
+                sheet = page.get_by_role("dialog", name="Map options", exact=True)
+                sheet.get_by_role("button", name="Zoom out", exact=True).wait_for()
+                page.wait_for_timeout(500)
+                zoom = lambda name: (lambda: sheet.get_by_role("button", name=name, exact=True).tap())
+                zooms, scope = [zoom("Zoom in"), zoom("Zoom out")], ".sk-options-sheet"
+            else:
+                zooms, scope = [self.wheel_at(page, canvas, 0, -100, ctrl=True), self.wheel_at(page, canvas, 0, 100, ctrl=True)], canvas
+            results, seconds = self.moved_series(page, "zoom", scope, zooms)
+            profile["distributions"]["mapZoom"] = {"seconds": seconds, "input": "the zoom control, tapped" if phone else "Ctrl+wheel",
+                                                   "mapZoom": summary([r["ms"] for r in results], budget["mapZoom"]),
+                                                   "maxFrameGap": summary([r["maxGap"] for r in results], budget["scrollGap"])}
+            context.close()
+            self.finish(profile, label, failures)
+        misses, unexpected, closed = classify_misses(failures, self.p95s, self.measured)
+        self.report.setdefault("knownMisses", {}).update(misses)
+        self.report["observedFailures"] = sorted(set(self.report.get("observedFailures", [])) | set(unexpected))
         self.assertEqual(unexpected, [], "every p95 is within its budget, or its known miss's ceiling")
         self.assertEqual(closed, [], "a known miss that no longer misses is deleted from KNOWN_MISSES")
 
@@ -446,6 +587,8 @@ class MotionPerformance(unittest.TestCase):
                 failures.append(f"{label}:heap:{segment}")
         for name, distribution in profile["distributions"].items():
             for metric, data in distribution.items():
+                if isinstance(data, dict) and "passed" in data:
+                    self.measured.add(f"{label}:{name}:{metric}")
                 if isinstance(data, dict) and data.get("passed") is False:
                     failures.append(f"{label}:{name}:{metric}")
                     self.p95s[f"{label}:{name}:{metric}"] = data["p95"]

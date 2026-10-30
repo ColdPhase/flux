@@ -28,6 +28,7 @@ import { RequestCards } from './RequestCards';
 import { ReviewRule } from './ReviewRule';
 import { useProjectQuestions, useQuestionList } from './questions';
 import { useLatestAgentLine } from './latest';
+import { useSpareHeight } from '../ui/spareHeight';
 import { agentAuthorOwner, useAgentOwners } from './owners';
 import { ProjectPolicy } from './ProjectPolicy';
 import { WORK_ROLE, agentEntries, connectionState, currentWorkLine, firstName, isAgentWorking, mayDo, shortOwner, tasksHeldBy, teammateOf, type AgentEntry } from './roster';
@@ -262,6 +263,18 @@ function TaskThread({ kind, task, projectId, meId, names, canWrite, changingScop
     return mergeMessages(all, sent).sort((a, b) => a.sequence - b.sequence);
   }, [discussion, composer.sent]);
   const outbox = outboxView(messages, composer.pending, composer.sent, meId);
+  // A short thread sits against its composer instead of at the top of a tall panel (ui/spareHeight.ts): the spare height of
+  // the thread's scroller goes into the lift before the thread, taken when messages come or go, never when one grows in place.
+  const scrollerRef = useRef<HTMLElement | null>(null);
+  const threadRef = useRef<HTMLElement | null>(null);
+  const liftRef = useRef<HTMLDivElement>(null);
+  const [threadNode, setThreadNode] = useState<HTMLElement | null>(null);
+  const attachThread = useCallback((element: HTMLElement | null) => {
+    threadRef.current = element;
+    scrollerRef.current = element?.closest<HTMLElement>('.agents-thread-scroll') ?? null;
+    setThreadNode(element);
+  }, []);
+  useSpareHeight(scrollerRef, threadRef, liftRef, accessLost ? 0 : messages.length + outbox.pending.length, threadNode);
   // A thread opens at its newest message, like a conversation: once per load, after its messages are
   // on the page, and not on later updates. An empty thread keeps the view at its top.
   const opened = useRef(false);
@@ -343,7 +356,9 @@ function TaskThread({ kind, task, projectId, meId, names, canWrite, changingScop
   };
 
   return (
-    <section className="agents-thread" data-empty={discussion && !messages.length && !outbox.pending.length && !accessLost ? 'true' : undefined} aria-label={`${kind === 'agents' ? 'Agents’ thread' : 'Thread'} of ${task.title}`}>
+    <>
+    <div className="agents-thread__lift" aria-hidden="true" ref={liftRef} />
+    <section ref={attachThread} className="agents-thread" data-empty={discussion && !messages.length && !outbox.pending.length && !accessLost ? 'true' : undefined} aria-label={`${kind === 'agents' ? 'Agents’ thread' : 'Thread'} of ${task.title}`}>
       {kind === 'agents'
         ? <p className="agents-thread__top">Agents’ thread · visible to everyone with access to this project{taskLink ? <> · <RefLink className="ui-link" to={taskLink}>Open task</RefLink></> : null}</p>
         : <p className="agents-thread__top">Thread of this task · the same one shown in Conversation{inConversation ? <> · <RefLink className="ui-link" to={inConversation}>Open in Conversation</RefLink></> : null}</p>}
@@ -402,6 +417,7 @@ function TaskThread({ kind, task, projectId, meId, names, canWrite, changingScop
         </div>
       </form>
     </section>
+    </>
   );
 }
 

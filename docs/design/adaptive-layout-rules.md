@@ -120,13 +120,14 @@ remain reachable. Own messages stay on the right and other people's on the left.
   - On a first visit to a projection, the selected thought, or else the first one in view, stays
     where the person saw it.
   - Nothing auto-fits on a resize.
-- **Short feeds** (ADAPT-2, tall screens): when the project stream, a thread or a direct message does not fill its feed,
+- **Short feeds** (ADAPT-2, tall screens): when the project stream, a thread, a direct message, a direct message's reply
+  thread or the Agents view's task thread does not fill its feed,
   the spare height goes above it (`ui/spareHeight.ts`, an empty `lift` element before the column), so the newest message
   sits 23–27 px above its field from 390×844 to 3840×2160 instead of up to 1800 px away. The spare height is taken when
   the entries or the feed's size change. A row that changes height in place (a queued message becoming the stored one)
-  only gives height back, so it never moves. A feed that fills its box has no spare height and scrolls as before.
-  **Not covered:** Agents' task thread (a page scroll with its own sticky composer) and a direct message's thread panel
-  still leave their spare height where it falls.
+  only gives height back, so it never moves. A feed that fills its box has no spare height and scrolls as before. The
+  feed's own vertical padding is not spare (the Agents thread's scroller has 10 px). Measured 2026-10-30 from 390×844 to
+  3440×1440: a direct message's reply thread 23–28 px (was 396–944), the Agents task thread 32 px.
 - **Half sheet** (phone): 56% of the screen, but at least 300 px (`.ui-detent-sheet`), so on a short landscape phone the
   composer does not leave a task's fields less than a row of room; every field row can be scrolled clear of the composer.
 - Drafts, selection, the reading anchor, an open thread and the object in Details survive resize,
@@ -151,8 +152,19 @@ its pull request. The test covers:
   CSS boxes as ratio 1 for the pane, feed, map canvas, task board and Details, in four views;
 - the dark theme for the same journey at 390×844 and 3440×1440;
 - wide caps, measured at 1920, 2560 and 3840 px (below);
-- a short stream, thread and direct message on a tall screen: with two messages each, the newest message and its field
-  are at most `MAX_STREAM_GAP` apart from 390×844 to 3840×2160 (test_08, test_09);
+- a short stream, thread, direct message, direct message reply thread and Agents task thread on a tall screen: with two
+  messages each, the newest message and its field are at most `MAX_STREAM_GAP` apart from 390×844 to 3840×2160 (test_08,
+  test_09);
+- safe areas (test_22, Chromium only): a notched phone upright (47 px top, 34 px bottom) and on its side (47 px each side,
+  21 px bottom), simulated with `Emulation.setSafeAreaInsetsOverride` after the page proves it resolves
+  `env(safe-area-inset-*)` to them. In all five views no control can be hit inside an inset and the primary controls lie in
+  the safe rectangle, uncovered. WebKit has no such override, so it skips the case. Its first run (2026-10-30) found three
+  defects, fixed in the same change: the phone's message field and Send sat 2 px into the home indicator (the phone
+  composer dropped its safe-area padding on the assumption of a view bar below it, which #341 removed); the map's "Add a
+  thought" sat in it; and on a phone on its side the rail's controls were squeezed 10 px into the left inset (the inset was
+  taken from the rail's 64 px instead of added to it) and the account button 19 px into the bottom one, with the Settings gear below the window
+  altogether (below 480 px of height the rail's spacing now tightens and Settings is left to the account menu's "All
+  settings"). Scrolling content may pass under an inset; a control that stays put may not;
 - the task in Details: every field row (Status, Owner, Came from, Due) shows its own line above the composer on opening
   on the common phones, and lies wholly above it, hit-testable, once scrolled into view, at every fixture;
 - browser zoom and text enlargement (ADAPT-5): all five views at 1280×1024 at 400% (a 320×256 CSS viewport) and
@@ -189,8 +201,10 @@ the lists of primary targets; the matrix measures their effect. Emulation only, 
 
 - the Agents column's cap (ADAPT-2), pending the design decision above;
 - the map projection still follows the viewport, not the canvas;
-- the spare height of Agents' task thread and a direct message's thread panel (Short feeds, above);
-- safe areas on real devices, real browser zoom and an operating system's own text-size setting (the emulations above
+- on a window under about 420 px tall (a phone on its side) the rail's project list gets almost no height: its places
+  and account fill the rail, so projects are reached through the title or the expanded sidebar (`[`). Observed 2026-10-30,
+  before and after this change; a design decision for the rail at short heights;
+- safe areas in WebKit and on real devices (no simulation exists for them), real browser zoom and an operating system's own text-size setting (the emulations above
   stand in for them);
 - real 4K, ultrawide, Android, iPhone and iPad sessions (optional under #266 item 10).
 

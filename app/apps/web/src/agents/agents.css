@@ -94,15 +94,12 @@
 .agents__open { display: inline-flex; align-items: center; gap: 2px; font-size: var(--fs-sm); }
 .agents__no-tasks { color: var(--t3); font-size: var(--fs-sm); margin: 0; }
 
-/* On a tall screen the thread and its composer sit together at the bottom, as in a conversation.
-   An auto margin on the first item takes only free space; justify-content: flex-end would push
-   an overflowing thread up over the connections and the task picker on a phone. */
-/* It never shrinks below its messages (no min-height: 0): a long thread grows the view, which
-   scrolls in its own pane (.agents-scroll) under the sticky composer. */
-.agents-thread { display: flex; flex-direction: column; gap: var(--s-3); flex: 1 0 auto; }
-.agents-thread > :first-child { margin-top: auto; }
-/* Starting a thread keeps its first-message box beside the task picker. */
-.agents-thread[data-empty="true"] > :first-child { margin-top: 0; }
+/* On a tall screen the thread and its composer sit together at the bottom, as in a conversation: the scroller's spare
+   height goes into the lift before the thread (ui/spareHeight.ts), so a message growing in place moves nothing above it.
+   It never shrinks below its messages (no min-height: 0): a long thread scrolls in .agents-thread-scroll under the sticky
+   composer. An empty thread has no lift, so its first-message box stays at the top beside the task picker. */
+.agents-thread { display: flex; flex-direction: column; gap: var(--s-3); flex: none; }
+.agents-thread__lift { height: 0; flex: none; }
 .agents-thread__top { margin: 0; font-size: var(--fs-xs); color: var(--t3); }
 .agents-thread__empty { margin: 0; color: var(--t3); font-size: var(--fs-sm); }
 .agents-thread__error { margin: 0; color: var(--t1); font-size: var(--fs-sm); }
@@ -188,7 +185,6 @@
 .agents-thread-panel { display: flex; flex: 1; flex-direction: column; min-width: 0; min-height: 0; }
 .agents-thread__task { flex: none; margin: 0; padding: 14px 20px 0; font-size: var(--fs-md); font-weight: 600; line-height: 1.4; overflow-wrap: anywhere; }
 .agents-thread-scroll { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; overflow-y: auto; overscroll-behavior: contain; padding: 10px 20px 0; }
-.agents-thread-scroll > .agents-thread { flex: 1 0 auto; }
 @media (max-width: 640px) {
   .agents-row__owner { display: none; }
   .agents-row__owner-short { display: inline; }
