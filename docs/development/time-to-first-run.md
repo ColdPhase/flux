@@ -7,19 +7,39 @@ measurement as a section, newest first, and keep the summary current.
 
 ## Summary
 
-| Step | Linux x86_64, this host, cold, 2026-10-23 | Linux x86_64, this host, warm, 2026-10-23 | Linux x86_64, candidate #319 clone, 2026-10-18 | macOS arm64, cold, 2026-10-11 | macOS arm64, warm, 2026-10-11 | Linux amd64 CI, cold, 2026-10-10 | Linux amd64 CI, warm, 2026-10-10 |
-| --- | --- | --- | --- | --- | --- | --- | --- |
-| 1. `git clone --depth 1` (the others: full history) | 5.4 s | 6.5 s (again: 6.1 s) | 4.09 s; 17,187,540 pack bytes | 2 min 47.7 s | 2 min 29.6 s | 7.2 s | 6.9 s |
-| 2. `./flux up`, until the printed URL answers HTTP 200 | 2 min 53.4 s (URL 0.01 s) | 39.5 s (URL 0.02 s; again: 31.4 s) | not measured | 2 min 21.4 s (URL 0.1 s) | 13.6 s (URL 0.1 s) | 2 min 12.2 s (URL 0.02 s) | 10.0 s (URL 0.01 s) |
-| 3. `./flux demo`, until the logins print | 1.1 s | 1.7 s (again: 1.9 s) | not measured | 1.3 s | 1.3 s | 1.2 s | 1.2 s |
-| 4. Sign in and post the first message in the demo conversation | 0.90 s | 1.06 s | not measured | not re-measured; 0.8 s on 2026-10-06 | not re-measured; 0.8 s on 2026-10-06 | not measured (the workflow has no browser step) | not measured |
-| 5. First agent reply through your own MCP client | not measured: it needs a model account. The client steps ran, see [the walkthrough](#readme-connect-your-own-agent-run-against-claude-code-and-codex) | same | not measured | not measured on a clean clone ([#320](https://github.com/ColdPhase/flux/issues/320)) | not measured on a clean clone | not measured ([#320](https://github.com/ColdPhase/flux/issues/320)) | not measured |
-| From `git clone` to the logins | 2 min 59.9 s | 47.8 s (again: 39.3 s) | not measured | 5 min 10.9 s | 2 min 44.8 s | 2 min 20.6 s | 18.7 s |
+| Step | Linux x86_64, this host, cold, 2026-10-30 | Linux x86_64, this host, "warm" (the cache was not reused), 2026-10-30 | macOS arm64, cold, 2026-10-11 | macOS arm64, warm, 2026-10-11 | Linux amd64 CI, cold, 2026-10-10 | Linux amd64 CI, warm, 2026-10-10 |
+| --- | --- | --- | --- | --- | --- | --- |
+| 1. `git clone --depth 1` (the others: full history) | 5.2 s | 7.0 s | 2 min 47.7 s | 2 min 29.6 s | 7.2 s | 6.9 s |
+| 2. `./flux up`, until the printed URL answers HTTP 200 | 6 min 29.5 s (URL 0.02 s) | 5 min 31.1 s (URL 0.01 s) | 2 min 21.4 s (URL 0.1 s) | 13.6 s (URL 0.1 s) | 2 min 12.2 s (URL 0.02 s) | 10.0 s (URL 0.01 s) |
+| 3. `./flux demo`, until the logins print | 2.1 s | 1.6 s | 1.3 s | 1.3 s | 1.2 s | 1.2 s |
+| 4. Sign in and post the first message in the demo conversation | 1.19 s (second run: 0.71 s) | not run on this stack | not re-measured; 0.8 s on 2026-10-06 | not re-measured; 0.8 s on 2026-10-06 | not measured (the workflow has no browser step) | not measured |
+| 5. First agent reply through your own MCP client | blocked: it needs a person with a model account ([#320](https://github.com/ColdPhase/flux/issues/320)). The client steps ran with Codex and Claude Code, see [the walkthrough](#readme-connect-your-own-agent-run-again-with-codex-and-claude-code-2026-10-30) | blocked, same | not measured on a clean clone ([#320](https://github.com/ColdPhase/flux/issues/320)) | not measured on a clean clone | not measured ([#320](https://github.com/ColdPhase/flux/issues/320)) | not measured |
+| From `git clone` to the logins | 6 min 36.7 s | 5 min 39.8 s | 5 min 10.9 s | 2 min 44.8 s | 2 min 20.6 s | 18.7 s |
 
-The two "this host" columns are one agent-run on a shared machine whose load average was 3.7 before the cold
-pass and 9 to 11 before the warm ones (see [the section](#linux-x86_64-2026-10-23-clean-clones-on-this-host-and-the-readme-walkthrough)),
-so the warm `./flux up` is slower than the 10 to 14 s measured on quieter machines. They are a
-dev machine's numbers, not a person's: a person adds the time to read, type and choose.
+The 2026-10-30 columns are one agent-run on a heavily shared machine: a load average of 12 before the cold
+pass and 17 before the second, with 36 to 40 containers running and five other image builds at once when I stopped
+my second attempt. Every figure that depends on the CPU or the disk is slower than on a quiet machine. The "warm"
+pass did not get a warm cache: 4 of about 50 build steps were cached, and `apk add` and `pnpm fetch` ran again (the
+2026-10-23 warm pass cached 40). I did not find why; see
+[the section](#linux-x86_64-2026-10-30-clean-clones-step-4-and-the-connect-walkthrough). Read the macOS and CI
+figures, 10 to 14 s, as the warm start. These are a dev machine's numbers, not a person's: a person adds the time
+to read, type and choose.
+
+### Earlier summary rows
+
+The Linux runs on the same host on 2026-10-23, and the shallow clone of the candidate for [#319](https://github.com/ColdPhase/flux/issues/319).
+
+| Step | Linux x86_64, this host, cold, 2026-10-23 | Linux x86_64, this host, warm, 2026-10-23 | Linux x86_64, candidate #319 clone, 2026-10-18 |
+| --- | --- | --- | --- |
+| 1. `git clone --depth 1` (the others: full history) | 5.4 s | 6.5 s (again: 6.1 s) | 4.09 s; 17,187,540 pack bytes |
+| 2. `./flux up`, until the printed URL answers HTTP 200 | 2 min 53.4 s (URL 0.01 s) | 39.5 s (URL 0.02 s; again: 31.4 s) | not measured |
+| 3. `./flux demo`, until the logins print | 1.1 s | 1.7 s (again: 1.9 s) | not measured |
+| 4. Sign in and post the first message in the demo conversation | 0.90 s | 1.06 s | not measured |
+| 5. First agent reply through your own MCP client | not measured: it needs a model account. The client steps ran, see [the walkthrough](#readme-connect-your-own-agent-run-against-claude-code-and-codex) | same | not measured |
+| From `git clone` to the logins | 2 min 59.9 s | 47.8 s (again: 39.3 s) | not measured |
+
+On 2026-10-23 the load average was 3.7 before the cold pass and 9 to 11 before the warm ones (see
+[the section](#linux-x86_64-2026-10-23-clean-clones-on-this-host-and-the-readme-walkthrough)).
 
 The candidate clone used the README's `--depth 1` option. To test this PR before
 it merges, the only command substitution was an explicit branch name:
@@ -41,6 +61,213 @@ and about 7 s on the Linux runner, a datacenter network. The cold macOS pass use
 README, listed in the [2026-10-11 section](#macos-arm64-2026-10-11-cold-and-warm). The
 2026-10-06 run is kept below. Its step 4 figure is the only macOS first-message number. The
 shallow candidate measurement above records only the source clone, not application startup.
+
+## Linux x86_64, 2026-10-30: clean clones, step 4 and the Connect walkthrough
+
+A cold and a "warm" pass of the README quick start from fresh clones of `ColdPhase/flux`, one at a time, in
+`.worktrees/clean-clone`; the first message in a browser; and the README's "Connect your own agent" run again
+with real Codex and Claude Code clients. An agent ran all of it (claude-hubert) for
+[#305](https://github.com/ColdPhase/flux/issues/305) and [#320](https://github.com/ColdPhase/flux/issues/320).
+It is not a person's run, and the model reply (step 5) was not run: see [Not measured](#not-measured-2026-10-30).
+
+### Machine and revision
+
+- **Host:** the machine of the [2026-10-23 run](#linux-x86_64-2026-10-23-clean-clones-on-this-host-and-the-readme-walkthrough):
+  AMD Ryzen 9 7900X (24 threads), 61 GiB memory, Fedora Linux 42, kernel 6.19.14-108.fc42.x86_64, NVMe.
+  **Docker:** Engine 29.4.2, Compose 5.1.2, overlay2. **Git:** 2.54.0.
+- **Browser:** Playwright 1.62.0 Chromium, in `mcr.microsoft.com/playwright/python:v1.62.0-noble` on the host
+  network, with the pinned Python client from `app/tests/ui/requirements.txt` added in a local image that was removed
+  afterwards. **Clients, on the host:** Claude Code 2.1.314 and `codex-cli 0.163.0`.
+- **Revisions:** the cold pass cloned `75df7fffd730a1227e668c138cd26e46286f47b7` ("fix(adaptive): short threads,
+  safe areas, map and list latency budgets, #151 visual review (Refs #151) (#728)"), the first "warm" pass
+  `7b66ff451de9f8bfa47a70756976a83827840ac3` ("feat(encryption): S2a-2c-4 no per-route gate, AC-6 route walk, AC-10
+  backup, AC-7 disk scan (#655) (#723)"), the `main` head 14 minutes later. The two revisions differ in application
+  code, so the source layers had to rebuild in the second pass; the earlier layers are the ones a warm cache is
+  meant to keep.
+- **When:** cold pass from 10:09 UTC (12:09 CEST), "warm" pass from 10:23 UTC, on 2026-10-30.
+- **Other load:** the host is shared with other agents' Docker runs: 36 containers running and a load average of
+  12 (1 minute) before the cold pass, 40 containers and 17 before the "warm" pass, and 24 and 19 after them. A
+  second "warm" attempt (below) saw five other image builds running at once.
+
+### Method
+
+- The README's commands, run from the clone: `git clone --depth 1 https://github.com/ColdPhase/flux.git`, `./flux up`,
+  `./flux demo`. A driver wrote a wall-clock mark at each boundary. Step 2 ends at the first HTTP 200 from `curl` to the
+  printed URL. Standard input was `/dev/null`: no terminal, so the first-run subscription question was not shown.
+- **Deviation 1, own ports:** `FLUX_PORT=33700 FLUX_MAILPIT_PORT=33701` on the first `./flux up`, so that the
+  measurement does not touch another project's port (criterion 4 of #305). The
+  project was the launcher's own, flux-clean-clone-82235368.
+- **Deviation 2, `FLUX_NO_CACHE=1` in the cold pass only**, as on 2026-10-11 and 2026-10-23. The base images and the
+  shared BuildKit cache stayed, so this is a no-cache build on a host that already had the base images, not an empty
+  host. The cache was not pruned: it is shared by all projects (49,115 records, 854.6 GB at the time).
+- **Step 4** is a Playwright script: open the printed URL, sign in as Ada with the printed login, open *Community
+  garden sensors*, type in *Write a message* and choose *Send message*. The container start (a few seconds) and a
+  person's reading and typing are not counted.
+- **Outside knowledge the quick start needed:** none for steps 1 to 4. I did not need the README's port fallback,
+  because I had chosen my own ports.
+
+### Timing
+
+| Mark | Cold (`FLUX_NO_CACHE=1`) | "Warm" (cache not reused) |
+| --- | --- | --- |
+| 1. `git clone --depth 1` | 5.2 s | 7.0 s |
+| 2. `./flux up`, until it exits | 6 min 29.5 s | 5 min 31.1 s |
+| 2. then the printed URL answers HTTP 200 | 0.019 s | 0.011 s |
+| 3. `./flux demo`, until the logins print | 2.1 s | 1.6 s |
+| From clone start to the logins | 6 min 36.7 s | 5 min 39.8 s |
+| 4. Sign-in page shown (run 1 / run 2) | 0.14 s / 0.15 s | not run |
+| 4. Signed in, Home shown | 0.98 s / 0.44 s | not run |
+| 4. Project conversation open | 1.10 s / 0.61 s | not run |
+| 4. Message shown | 1.19 s / 0.70 s | not run |
+| 4. Message saved (HTTP 201, run 2 only) | not recorded / 0.71 s | not run |
+| 4. Message still there after a reload | 1.47 s / 1.02 s | not run |
+
+Step 4 ran twice on the cold pass's stack, the first time just after `./flux demo`. Raw marks, in Unix seconds:
+
+| Mark | Cold | "Warm" |
+| --- | --- | --- |
+| clone_start | 1793354971.004 | 1793355787.119 |
+| clone_done | 1793354976.183 | 1793355794.112 |
+| up_start | 1793354976.189 | 1793355794.116 |
+| up_exited | 1793355365.650 | 1793356125.228 |
+| url_200 | 1793355365.669 | 1793356125.238 |
+| demo_start | 1793355365.671 | 1793356125.239 |
+| demo_exited | 1793355367.733 | 1793356126.870 |
+
+### Cache state
+
+- **Cold:** one cached step (`WORKDIR /app`). The slowest steps were `apk add` 15.0 s, `pnpm fetch` 18.4 s and
+  `pnpm build && pnpm typecheck && pnpm lint` 101.3 s, about a quarter of the 389 s of `./flux up`; the rest is the
+  other steps and the start of the containers, all on a loaded host.
+- **"Warm":** four cached steps of about fifty. `apk add` (15.0 s), `pnpm fetch` (18.9 s) and the build step
+  (87.6 s) ran again, although nothing before the `COPY . .` step had changed. `./flux clean -y` between the passes
+  does not touch the build cache, and `FLUX_NO_CACHE` was not set. I did not find the reason. A `docker buildx du`
+  search for the `apk add` layer, made minutes later, found three records: last used three weeks and six days ago, and
+  the one the running build was using. The layers that my cold pass and first "warm" pass had built were no longer
+  there. That fits other work on this shared host (49,115 records, 854.6 GB) evicting them, but it is a guess.
+- **A second "warm" attempt is not in the table.** It cloned the same revision as the first (`7b66ff451`) and again
+  cached 4 steps, so the cache loss was not caused by a source change. `./flux up` took 7 min 53 s and then failed:
+  `failed to create network flux-clean-clone-82235368_runtime-control: ... all predefined address pools have been
+  fully subnetted`. That is the limit of Docker's default address pools described on 2026-10-23 (friction 4 below).
+  The following `./flux demo` started a second build, because the API was not running, and I stopped it.
+
+### README "Connect your own agent": run again with Codex and Claude Code (2026-10-30)
+
+On the stack of the cold pass, after `./flux demo`. The merged changes of 2026-10-27
+([#673](https://github.com/ColdPhase/flux/pull/673)) made a connection with fewer actions than the client asks for
+consent for Codex too; the 2026-10-23 walkthrough could not show that. **Only step 6, the model's reply, needs a
+model account, and it was not run.** Each client used its own throwaway config folder (`CLAUDE_CONFIG_DIR`,
+`CODEX_HOME`), so neither the author's accounts nor settings were involved, and an `xdg-open` shim first in `PATH` took the
+place of a desktop browser. The folders, with the tokens in them, were deleted afterwards.
+
+| README step | What ran | Result |
+| --- | --- | --- |
+| 1. Open the Connect page | Sign in as Ada; go to `/connect-agent` | Works. By script the page was open 0.09 s after sign-in |
+| 2. Create the personal agent | Name, *Create personal agent* | The *New connection* form appeared 0.06 s later |
+| 3. Grant the project, save the connection | *Grant* with *Read and propose*, tick the project, keep the two ticked actions (**Read selected project context**, **Suggest a next step**), *Save connection* | Saved 0.29 s later, by script. The page then lists the connection with "1 project · Read · Suggest" |
+| 4. Add Flux to the client | `claude mcp add --transport http flux http://127.0.0.1:33700/mcp`, then `claude mcp login flux` under a pseudo-terminal; `codex mcp add flux --url …`, which started the sign-in | Both printed an authorize URL within 0.6 s. Both requested `flux.context.read flux.proposal.write flux.action.execute offline_access`. Claude Code's request carries `prompt=consent`; Codex's does not |
+| 5. Consent | The authorize URL in the browser: the saved connection, *Continue to consent*, *Allow access* | **Codex 0.163.0, two actions granted:** it consented. The client printed "Successfully logged in.", `codex mcp list` showed `flux  enabled  OAuth`, and the database holds a refresh token and a consent with `flux.context.read, flux.proposal.write, offline_access` only. This is the case that failed with "no longer valid" before #673. **Claude Code 2.1.314:** the consent page said "You can grant fewer permissions than a client asks for. It gets only the ones below" and listed "Asked for, not granted: Run approved project actions". After *Allow access* it printed `Authenticated with "flux"`, and `claude mcp list` showed `✔ Connected`. Consent took 2.7 s by script |
+| 6. Ask it something | **Not run: needs a model account.** A scripted MCP client (no model) sent the access token that Claude Code's own login had stored, over MCP protocol `2025-06-18` | `initialize` and `tools/list` (23 tools, the read tools and `flux_create_proposal`), and `flux_list_contexts` answered with the demo project. `flux_create_task` answered `MCP_SCOPE_REQUIRED`: "This agent can't use flux_create_task: permission 'flux.action.execute' (run approved actions) wasn't granted" |
+
+Not repeated: the suggestion in the Inbox (an API test and a browser test cover it), Codex tool calls, the
+Start/Resume prompts, and a client on another computer.
+
+Connect page browser test, on `main` at `cb25512e6` plus this documentation: `FLUX_UI_PORT=33700
+FLUX_UI_MAILPIT_PORT=33701 ./scripts/check_ui.sh test_ai_connections`, 11 tests OK in 20.7 s, including `test_07`,
+which pins the loopback copy of the Connect guide.
+
+### Friction found (2026-10-30)
+
+1. **Finding 7 of 2026-10-23 no longer applies.** On a first visit the Connect page lists *Create your personal
+   agent* before *Connect your MCP client*, and once a connection is saved the connection and its permissions come
+   before the commands, in the README's order of steps 2, 3 and 4. Checked in the running app by listing the headings.
+2. **The README's sentence about the last sign-in check named the 2026-10-23 run.** It now names this one: the
+   2026-10-30 versions and a connection that grants fewer actions than the clients ask for.
+3. **A "warm" pass is not guaranteed on a shared build host** (above). A person with one project on their own machine
+   gets the 10 to 14 s warm start measured on macOS and CI. Not a Flux defect; no issue.
+4. **Docker's address pools run out when many Compose projects run at once** (above and 2026-10-23). A single
+   project is not affected. The cause is the networks each Flux project creates (the API is on four), even when the
+   agent runtime is off. [#744](https://github.com/ColdPhase/flux/issues/744) carries it, with the options.
+5. **The cold and the warm pass cloned different revisions**, because `main` moved between them. A comparison of the
+   two mixes code changes with cache hits. The next measurement should check out one commit for both passes and
+   list that as a deviation from the README.
+
+### Not measured (2026-10-30)
+
+- **Step 5 with a person and their model account** on a clean clone, and so the time from `git clone` to the first model
+  reply ([#320](https://github.com/ColdPhase/flux/issues/320), [#305](https://github.com/ColdPhase/flux/issues/305)).
+  **Blocked: it needs a person with Claude Code or Codex signed in to a model account, and the usage that costs.**
+  The 2026-10-10 run measured a reply of 35 s (17 turns, USD 0.35 on the author's account), but not on a clean clone.
+  **Unblock condition:** the checklist below, run by Hubert or anyone with a client and a model account, recorded
+  as a new section of this file.
+- **macOS arm64:** nothing was re-run on a Mac. The Mac columns are those of 2026-10-11.
+- **A warm pass with a warm cache**, and the first-run subscription question (as on 2026-10-23).
+
+### Checklist for the person's run (the unblock for step 5)
+
+A person with Claude Code or Codex, signed in to their own model account, on a machine with only Git and Docker:
+
+1. Start a stopwatch and run `git clone --depth 1 https://github.com/ColdPhase/flux.git`; note the time when it ends (T1).
+2. `cd flux && ./flux up` (add `FLUX_PORT=<free port>` only if 8081 is taken). Note when it prints the address (T2).
+3. `./flux demo`; note when it prints the logins (T3).
+4. Open the address, sign in as Ada, post a message in *Community garden sensors* (T4).
+5. Follow the README's [Connect your own agent](../../README.md#connect-your-own-agent) without anything else. Note when
+   the connection is saved (T5), when the client says it is authenticated (T6), and when the answer to the README's
+   question has been shown (T7).
+6. Write down every point where you had to look anything up. Record the client name and version, the machine, the
+   revision (`git rev-parse HEAD`) and the date in a new section of this file, with T1 to T7 as differences from the
+   start, and `./flux clean -y` afterwards.
+
+### Cleanup and isolation (2026-10-30)
+
+- The measurement used the project flux-clean-clone-82235368, its networks and its `_pgdata`, `_files` and
+  `_flux-checkout` volumes, and ports 33700 and 33701. The checks of [the contribution run](#contributing-followed-literally-on-a-fresh-clone-306)
+  used the same two ports afterwards, one stack at a time. Before the cold pass both ports had no listener.
+- Other Compose projects were running throughout. None was stopped, restarted or removed. When I stopped my own
+  second attempt, five image builds of other projects were running; only the processes of my clone were stopped.
+- `./flux clean -y` removed each pass's containers, volumes and image. A search for `clean-clone` in containers,
+  volumes, networks and images found nothing afterwards. The throwaway client folders, the local Playwright image and the
+  clones were deleted; the clone's `docker/.env` held generated secrets and demo passwords, none of which is
+  recorded here.
+
+### CONTRIBUTING followed literally on a fresh clone (#306)
+
+[CONTRIBUTING](../CONTRIBUTING.md#make-a-change) followed as written for [#306](https://github.com/ColdPhase/flux/issues/306):
+a full clone, the `upstream` remote and a branch, then one browser module, one core test file, one API test file, the
+repository checks and a draft PR. A fresh clone of `ColdPhase/flux` into `.worktrees/clean-clone`, at
+`cb25512e692a3693c2235bb885307aaa590ae212` ("fix(conversation): another member's message reaches an open thread from
+the live stream (#733) (#741)"), on the machine above, from 10:43 UTC on 2026-10-30. Load average 9.1 (1 minute) at the
+start, and up to four other `check_ui.sh` runs and builds at the same time. An agent ran it (claude-hubert).
+
+| CONTRIBUTING step | Command | Result | Time |
+| --- | --- | --- | --- |
+| Clone | `git clone https://github.com/ColdPhase/flux.git` (full history; `.git` is 265 MB) | done | 42.2 s |
+| Remote, fetch, branch | `git remote add upstream …`, `git fetch upstream`, `git switch -c fix/short-description upstream/main` | done | 0.6 s |
+| One browser module | `FLUX_UI_PORT=33700 FLUX_UI_MAILPIT_PORT=33701 ./scripts/check_ui.sh test_docs` | 9 tests OK in 21.9 s | 15 min 39.4 s |
+| One core test file | `docker build --file docker/Dockerfile --target test --tag flux-unit-ttfr app`, then `docker run --rm --network none flux-unit-ttfr node_modules/.bin/tsx --test tests/app/push-core.test.ts` | 4 tests pass | 3 min 11.1 s build, 4.3 s run |
+| One API test file | `FLUX_TEST_PORT=33700 FLUX_TEST_MAILPIT_PORT=33701 ./scripts/check_application.sh tests/app/search.test.ts` | 17 tests pass in 25.4 s | 9 min 18.7 s |
+| Repository checks | `python3 scripts/check_agent_setup.py`, `python3 -m unittest discover -s tests -p 'test_*.py'`, `git diff --check` | all pass; 189 tests | 11.0 s |
+| Draft PR | `gh pr create --draft` against `ColdPhase/flux:main` | [#743](https://github.com/ColdPhase/flux/pull/743) | n/a |
+
+From the start of the clone to the last check: 29 min 19 s, of which the three Docker commands were 28 min and the
+tests inside them about a minute. A person who reads the instructions adds the reading and the change itself.
+
+Deviations: I am a maintainer, so I cloned `ColdPhase/flux` and opened the draft PR from a branch there, not from a
+fork. The unit-test image has its own tag, flux-unit-ttfr, so it cannot collide with another worker's flux-unit
+on a shared host; it was removed afterwards. The draft PR came from this batch's worktree, because the clone was
+throwaway. The 2026-10-10 run in [#426](https://github.com/ColdPhase/flux/pull/426) covered a core test file and a
+browser module only; this run adds the API file, which [#424](https://github.com/ColdPhase/flux/issues/424) made
+possible.
+
+Gaps found, and fixed in [CONTRIBUTING](../CONTRIBUTING.md):
+
+1. It never sent a newcomer to the open `good first issue` list, and neither did the README. It now links the
+   `good first issue` and `help wanted` labels and asks the person to comment before starting.
+2. It did not say how long the Docker commands take. It now says: minutes, not seconds, almost all of it the image
+   build.
+
+No command failed and no step needed outside knowledge. Not tested: a fork (a maintainer's clone cannot show it)
+and macOS.
 
 ## Linux x86_64, 2026-10-23: clean clones on this host, and the README walkthrough
 

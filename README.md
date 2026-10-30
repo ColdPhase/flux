@@ -183,9 +183,9 @@ computer needs an HTTPS address: the operator sets `FLUX_PUBLIC_ORIGIN` behind a
 ([agent connection](docs/development/agent-connection.md),
 [integrations for operators](docs/integrations/README.md#for-operators)). Flux accepts clients
 only through their public client metadata documents, so the server needs outbound HTTPS when a
-client signs in. On 2026-10-23 Claude Code 2.1.309 and Codex 0.163.0 both completed this sign-in
-against a clean clone on a loopback address; that check used no model account
-([what was run](docs/development/time-to-first-run.md)).
+client signs in. On 2026-10-30 Claude Code 2.1.314 and Codex 0.163.0 both completed this sign-in
+against a clean clone on a loopback address, with a connection that grants only the two ticked actions;
+that check used no model account ([what was run](docs/development/time-to-first-run.md#readme-connect-your-own-agent-run-again-with-codex-and-claude-code-2026-10-30)).
 
 ## Repository layout
 
