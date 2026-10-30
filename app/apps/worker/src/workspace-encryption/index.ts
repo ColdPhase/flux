@@ -166,8 +166,10 @@ export async function startWorkspaceEncryption(boss: PgBoss, db: Database, env: 
             await replayWaitedEvent(generator, wait.payload.eventId, { emailAvailable });
           }
           if (wait.queue === 'draft.summarize.v1' && typeof wait.payload.resultId === 'string') {
-            // Locked again meanwhile: the summary records a new wait itself, and this one goes.
-            await processDraftSummary(wait.payload.resultId, db, { results: draftResultRepository, events: eventRepository, access: accessReader });
+            // Still or again locked here: the summary answers 'waiting' (its wait is this one, kept once per result), so the
+            // wait stays for the next unlock instead of being deleted as handled (#670: a replay that met the lock lost it).
+            const outcome = await processDraftSummary(wait.payload.resultId, db, { results: draftResultRepository, events: eventRepository, access: accessReader });
+            if (outcome === 'waiting') throw Object.assign(new Error('The workspace is locked'), { code: 'WORKSPACE_LOCKED' });
           }
         } catch (error) {
           // Locked again: stop, and pg-boss retries. Any other failure keeps that wait for the sweep and replays the rest (#717 review P3-4).
