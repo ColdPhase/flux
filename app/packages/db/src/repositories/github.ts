@@ -184,20 +184,24 @@ export function githubRows(db: DbExecutor,options:{taskFence?:()=>import('./task
       const correlationKey = createHash('sha256').update(JSON.stringify({ event: delivery.event, object: delivery.providerObjectId,
         sourceUpdatedAt: comment?.updated_at ?? null, facts })).digest('hex');
       const headSha = facts.headSha.toLowerCase();
-      if (delivery.event === 'pull_request') {
-        // A new head stales queued reviews of an older one; a claimed review keeps its claim and its pinned verdict.
-        await db.execute(sql`UPDATE cowork_requests SET state = 'superseded', reason = 'head_changed', version = version + 1,
-          updated_at = clock_timestamp()
-          WHERE workspace_id = ${binding.workspaceId}::uuid AND project_id = ${binding.projectId}::uuid AND work_id = ${link.taskId}::uuid
-            AND kind = 'review' AND state IN ('queued', 'deferred') AND target->>'type' = 'github_pr'
-            AND target->>'linkId' = ${link.id} AND target->>'headSha' <> ${headSha}`);
-      }
+      // Every reconciliation of the link (webhook, poll, catch-up or a person's reconcile) applies the current head:
+      // queued or deferred reviews of an older head are stale. A claimed review keeps its claim and its pinned verdict.
+      await db.execute(sql`UPDATE cowork_requests SET state = 'superseded', reason = 'head_changed', version = version + 1,
+        updated_at = clock_timestamp()
+        WHERE workspace_id = ${binding.workspaceId}::uuid AND project_id = ${binding.projectId}::uuid AND work_id = ${link.taskId}::uuid
+          AND kind = 'review' AND state IN ('queued', 'deferred') AND target->>'type' = 'github_pr'
+          AND target->>'linkId' = ${link.id} AND target->>'headSha' <> ${headSha}`);
       let state: 'delivered' | 'no_recipient' | 'no_access' | 'suppressed_echo' = 'no_recipient';
       let recipient: string | null = null;
-      const echo = delivery.event === 'pull_request_review' && (await db.execute(sql`SELECT 1 FROM cowork_requests
-        WHERE workspace_id = ${binding.workspaceId}::uuid AND project_id = ${binding.projectId}::uuid AND work_id = ${link.taskId}::uuid
-          AND kind = 'review' AND state IN ('queued', 'deferred', 'claimed', 'resolved') AND target->>'type' = 'github_pr'
-          AND target->>'linkId' = ${link.id} AND target->>'headSha' = ${headSha} LIMIT 1`)).rows.length > 0;
+      // An echo is the GitHub review that the Flux reviewer of this head published itself: the review's author is the
+      // GitHub account of that request's recipient owner (for this App). Anyone else's review reaches the holder.
+      const review = delivery.payload.review as { user?: { id?: unknown } } | undefined;
+      const reviewer = typeof review?.user?.id === 'number' || typeof review?.user?.id === 'string' ? String(review.user.id) : null;
+      const echo = delivery.event === 'pull_request_review' && reviewer !== null && (await db.execute(sql`SELECT 1 FROM cowork_requests r
+        JOIN github_credentials gc ON gc.user_id = r.recipient_owner_id AND gc.app_id = ${binding.appId} AND gc.github_user_id = ${reviewer}
+        WHERE r.workspace_id = ${binding.workspaceId}::uuid AND r.project_id = ${binding.projectId}::uuid AND r.work_id = ${link.taskId}::uuid
+          AND r.kind = 'review' AND r.state IN ('queued', 'deferred', 'claimed', 'resolved') AND r.target->>'type' = 'github_pr'
+          AND r.target->>'linkId' = ${link.id} AND r.target->>'headSha' = ${headSha} LIMIT 1`)).rows.length > 0;
       if (echo) state = 'suppressed_echo';
       else {
         const [holder] = (await db.execute<{ id: string; owner_user_id: string }>(sql`SELECT c.id, c.owner_user_id FROM cowork_units u

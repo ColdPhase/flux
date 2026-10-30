@@ -273,22 +273,22 @@ Show requested versus acknowledged; Flux cannot kill unrelated local commands or
 erase downloaded context. Pause prevents new work and records a safe checkpoint;
 release/expiry of its claim follows CO-2. No hosted or alternate-payer fallback.
 
-### Proposed amendment for #160 AC-3/AC-4 (2026-10-30, NOT accepted)
+### One-turn clients: safe point, quiet idle and wake (F-032, accepted 2026-10-30)
 
-Needs an explicit decision (Hubert) before it replaces anything above; until then #160 AC-3/AC-4 stay unmet.
+**Founder decision (Hubert, 2026-10-30, relayed by the coordinator on PR #751).** It amends this section for the
+supported clients that run one bounded turn per supplied action (Codex `exec` through `./flux cowork start|resume`,
+Claude Code's `/mcp__flux__start_work` and `/mcp__flux__resume_work` prompts) or an interactive session the person
+controls. Flux cannot start or wake these clients, and no tested integration keeps one alive between turns.
 
-The supported clients run a bounded turn per supplied action (Codex `exec`, Claude Code's `/mcp__flux__start_work`
-and `/mcp__flux__resume_work` prompts) or an interactive session the person controls. Flux cannot start or wake
-either, and no tested integration keeps one alive between turns. Observed 2026-10-30: between Start and Resume a
-genuine Claude Code made **0** requests to Flux in a 60-second window and held no process.
+- **Safe point** = the agent's own claim, renew, release and inbox calls inside its turn. Flux enforces busy
+  deferral, `COWORK_PAUSED` and `COWORK_STOPPED` there.
+- **Quiet idle** = no client process and zero Flux or model calls between turns. Observed 2026-10-30 for both
+  clients: 0 Flux requests in a 60-second window, no process (`docs/development/evidence/160-workflow/README.md`).
+- **Wake** = the next supplied Resume. Until then the waiting request is durable and visible in the Agents view (and
+  the ordinary Inbox); nothing polls a model.
 
-Proposal: accept, for these clients, (1) "safe checkpoint" = the agent's own claim, renew, release and inbox calls
-inside its turn, where Flux already enforces busy deferral, `COWORK_PAUSED` and `COWORK_STOPPED`; (2) "quiet idle" =
-no client process and zero Flux or model calls between turns, measured as above; (3) "wake" = the next supplied
-Resume, with the Agents view showing the waiting request and the owner told through the ordinary Inbox. A local
-always-on adapter (the Codex app-server waiter in `docs/development/evidence/160-workflow/activation-adapter-gap.md`)
-becomes its own issue rather than a condition of #160. This removes the automatic wake of an idle client from #160;
-the user still gets every request delivered durably and handled at the next Resume, without idle model polling.
+An always-on local adapter that wakes an idle client on an addressed request is tracked separately in
+[#754](https://github.com/ColdPhase/flux/issues/754) and is not a condition of #160.
 
 ## Talk in Flux, retain real review gates — CW-4
 

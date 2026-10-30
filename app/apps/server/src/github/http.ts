@@ -3,6 +3,8 @@ import { InvalidInputError, NotFoundError, ServiceUnavailableError } from '@flux
 export type ProviderJson = Record<string, unknown>;
 export interface GithubTransport { json(url: string, init?: RequestInit): Promise<{ data: ProviderJson; truncated: boolean }> }
 const CONDITIONAL_ENTRIES = 2_000;
+/** Total cached body bytes; the oldest entries go first (#751 review). */
+const CONDITIONAL_BYTES = 32 * 1024 * 1024;
 /** The cache key of one GET for one token: the token itself is never kept, only its digest. */
 function conditionalKey(url: string, init: RequestInit): string | null {
   if (init.method && init.method !== 'GET') return null;
@@ -15,7 +17,9 @@ function conditionalKey(url: string, init: RequestInit): string | null {
  * bounded, in memory only and never shared between tokens.
  */
 export function githubTransport(fetcher: typeof fetch = fetch): GithubTransport {
-  const conditional = new Map<string, { etag: string; data: ProviderJson; truncated: boolean }>();
+  const conditional = new Map<string, { etag: string; data: ProviderJson; truncated: boolean; bytes: number }>();
+  let cachedBytes = 0;
+  const forget = (key: string) => { const old = conditional.get(key); if (old) { cachedBytes -= old.bytes; conditional.delete(key); } };
   return {
     async json(url, init = {}) {
       const target = new URL(url);
@@ -30,7 +34,7 @@ export function githubTransport(fetcher: typeof fetch = fetch): GithubTransport 
       catch { throw new ServiceUnavailableError('GitHub is unavailable', 'GITHUB_UNAVAILABLE'); }
       if (response.status === 304 && cached && key) {
         await response.body?.cancel();
-        conditional.delete(key); conditional.set(key, cached);
+        conditional.delete(key); conditional.set(key, cached); // most recently used last
         return { data: cached.data, truncated: cached.truncated };
       }
       if (!response.ok) {
@@ -47,10 +51,11 @@ export function githubTransport(fetcher: typeof fetch = fetch): GithubTransport 
         if (!data || typeof data !== 'object') throw new Error('invalid json');
         const truncated = /rel="next"/.test(response.headers.get('link') ?? '');
         const etag = response.headers.get('etag');
-        if (key && etag && etag.length <= 200) {
-          conditional.delete(key); conditional.set(key, { etag, data, truncated });
-          if (conditional.size > CONDITIONAL_ENTRIES) conditional.delete(conditional.keys().next().value!);
-        } else if (key) conditional.delete(key);
+        if (key) forget(key);
+        if (key && etag && etag.length <= 200 && size <= CONDITIONAL_BYTES) {
+          conditional.set(key, { etag, data, truncated, bytes: size }); cachedBytes += size;
+          while (conditional.size > CONDITIONAL_ENTRIES || cachedBytes > CONDITIONAL_BYTES) forget(conditional.keys().next().value!);
+        }
         return { data, truncated };
       } catch { throw new ServiceUnavailableError('GitHub returned an invalid response', 'GITHUB_INVALID_RESPONSE'); }
     },

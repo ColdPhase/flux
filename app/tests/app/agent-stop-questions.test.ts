@@ -306,4 +306,16 @@ test('#160 AC-5: Pause keeps the hold, refuses renew and claim with COWORK_PAUSE
   assert.equal((await f.stop(f.hubert, item.id)).status, 201);
   assert.equal((await pool.query('SELECT count(*)::int AS n FROM agent_pauses WHERE task_id=$1', [item.id])).rows[0].n, 0);
   assert.deepEqual([(await pause(f.hubert, true)).status, (await pause(f.hubert, true)).json.code], [409, 'AGENT_NOT_WORKING']);
+
+  // A pause lasts only while the agent holds the task: finishing it, or handing it to someone else, clears the pause.
+  for (const end of [{ status: 'done' }, { owner: null }] as Record<string, unknown>[]) {
+    const next = await f.task(f.hubert, `Held then ended ${JSON.stringify(end)}`);
+    expectStatus(await f.hubert.browser.request('PATCH', `/api/v1/work/${next.id}`, { body: { owner: { kind: 'agent', id: f.agent.id }, status: 'in_progress' },
+      headers: { 'if-match': `"${next.version}"` } }), 200);
+    expectStatus(await f.hubert.browser.request('POST', `/api/v1/projects/${f.p.id}/agent-pauses`,
+      { body: { taskId: next.id, agentId: f.agent.id, paused: true } }), 201);
+    const version = (await f.taskRow(next.id)).version;
+    expectStatus(await f.hubert.browser.request('PATCH', `/api/v1/work/${next.id}`, { body: end, headers: { 'if-match': `"${version}"` } }), 200);
+    assert.equal((await pool.query('SELECT count(*)::int AS n FROM agent_pauses WHERE task_id=$1', [next.id])).rows[0].n, 0, JSON.stringify(end));
+  }
 });

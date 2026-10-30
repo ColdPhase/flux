@@ -151,12 +151,13 @@ inbox. It carries no comment text and no authority; the agent reads current PR s
 - **Repository access.** A private repository's facts reach the recipient only when the recipient's owner is the
   binding's author, whose GitHub access this very processing just verified. Otherwise the row is `no_access`; Flux
   does not call GitHub on another person's behalf. A public repository needs only the Flux checks above.
-- **Echo suppression.** A `pull_request_review` event for a head that a Flux `review` request on the same link already
-  targets (queued, deferred, claimed or resolved) is `suppressed_echo`: the review was coordinated in Flux and is not
-  requested twice.
-- **New head.** A `pull_request` event whose current head differs from the head targeted by queued or deferred Flux
-  review requests on that link supersedes those requests (`reason = 'head_changed'`, version advances). A claimed
-  review keeps its claim; its verdict stays pinned to its own head.
+- **Echo suppression.** A `pull_request_review` event is `suppressed_echo` only when its GitHub author is the reviewer
+  Flux already asked: the GitHub account (from that person's App authorization for this App) of the recipient owner
+  of a Flux `review` request on the same link and head (queued, deferred, claimed or resolved). Anyone else's review,
+  for example a third party's "changes requested", reaches the holder.
+- **New head.** Every reconciliation of a link (webhook, G-1c poll, 30-minute catch-up or a person's reconcile) applies
+  the link's current head: queued or deferred Flux review requests of an older head are superseded (`reason =
+  'head_changed'`, version advances). A claimed review keeps its claim; its verdict stays pinned to its own head.
 - **No recipient.** `no_recipient` when nobody holds the task. Nothing is woken or created; the next holder sees
   current state through ordinary reads.
 - **Read.** The first page of `flux_coordination_inbox` adds `providerEvents` (explained in playbook 1.9.0, not in the tool description): up to 20 rows delivered to this connection in the

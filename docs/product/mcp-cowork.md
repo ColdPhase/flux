@@ -303,6 +303,16 @@ safe boundary (its next lease renewal or claim), and the Agents view says which 
   continues at its next supplied Resume (Connect/Agents host action or the client's `resume_work` prompt). Pause
   and Resume create no conversation message and no notification.
 
+### Supplied Codex action: tool approval (#160, 2026-10-30)
+
+`./flux cowork start|resume` runs `codex exec`, which has nobody to answer a local approval prompt. It passes
+`mcp_servers.flux.default_tools_approval_mode="approve"` inline, for that one invocation and for the `flux` server
+only: no other MCP server, shell command or file write is pre-approved, the sandbox stays `workspace-write`, and the
+person's saved Codex configuration is not changed (`--ignore-user-config`). What a Flux tool may do is still decided
+by the connection's scopes and standing grants on the server; the flag only stops the client from asking twice.
+Observed need: genuine Codex 0.160.1 refused `flux_acknowledge_playbook` with "requires approval, but approval policy
+is never" without it (`docs/development/evidence/160-workflow/README.md`).
+
 ### Questions with ready answers (S14)
 
 An agent asks a person in a project conversation and offers two to four answers. The question is an ordinary message

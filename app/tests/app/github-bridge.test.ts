@@ -122,11 +122,25 @@ test('#479: a linked PR event reaches the task\'s current holder once, echoes ar
   const states = async () => new Map((await pool.query('SELECT id, state, reason FROM cowork_requests WHERE lineage_id=$1', [lineageId])).rows.map((row) => [row.id, [row.state, row.reason]]));
   assert.deepEqual((await states()).get(stale), ['superseded', 'head_changed'], 'a new head stales the queued review of the old head');
   assert.deepEqual((await states()).get(current), ['queued', null], 'the review of the current head stays');
-  // GitHub's review of that same head is the echo of the review Flux already coordinates: not requested twice.
-  await send('pull_request_review', { action: 'submitted', repository: { id: Number(PRIVATE_REPO) }, review: { id: 5001 },
-    pull_request: { id: Number(`${PRIVATE_REPO}42`), number: 42, base: { repo: { id: Number(PRIVATE_REPO) } }, head: { sha: SHA('b') } } });
+  // The Flux reviewer (Marek) publishing his own GitHub review of that head is the echo: not delivered again. His GitHub
+  // account is known from his App authorization for this App.
+  await db.insert(schema.githubCredentials).values({ userId: marek.id, generation: randomUUID(), githubUserId: '7001', appId: APP, state: 'active' });
+  const reviewEvent = (id: number, user: number, state: string) => ({ action: 'submitted', repository: { id: Number(PRIVATE_REPO) },
+    review: { id, user: { id: user }, state }, pull_request: { id: Number(`${PRIVATE_REPO}42`), number: 42, base: { repo: { id: Number(PRIVATE_REPO) } }, head: { sha: SHA('b') } } });
+  await send('pull_request_review', reviewEvent(5001, 7001, 'approved'));
+  // A third party's "changes requested" on the same head is not an echo: it reaches the holder.
+  await send('pull_request_review', reviewEvent(5002, 8888, 'changes_requested'));
   assert.deepEqual((await outbox(mine.item.id)).map((row) => [row.event, row.state, row.head_sha]),
-    [['pull_request', 'delivered', SHA('a')], ['pull_request', 'delivered', SHA('b')], ['pull_request_review', 'suppressed_echo', SHA('b')]]);
+    [['pull_request', 'delivered', SHA('a')], ['pull_request', 'delivered', SHA('b')], ['pull_request_review', 'suppressed_echo', SHA('b')],
+      ['pull_request_review', 'delivered', SHA('b')]]);
+  assert.deepEqual((await inbox(hubertAgent)).providerEvents?.map((row) => row.event).sort(), ['pull_request', 'pull_request', 'pull_request_review']);
+
+  // A G-1c poll window (no webhook at all) that finds a newer head also stales the queued review of the old one.
+  provider.head = SHA('d');
+  const window = String(randomInt(1_000_000, 9_000_000));
+  for (let round = 0; round < 50; round++) if (!await github.schedule(APP, window, 'poll')) break;
+  assert.equal(await github.process(`poll-${privateBinding.id}-${window}`, privateBinding.id), 'completed');
+  assert.deepEqual((await states()).get(current), ['superseded', 'head_changed'], 'the poll applies the current head too');
 
   // Marek's agent holds a task linked to the PRIVATE repository bound by Hubert: Flux never forwards it (no_access).
   const his = await hold(marek, marekAgent, 'Tune the bed PID');
