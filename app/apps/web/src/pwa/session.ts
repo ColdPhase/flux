@@ -1,4 +1,5 @@
-import { AUTH_BASE_PATH } from '@flux/contracts';
+import { AUTH_SIGN_OUT_PATH } from '@flux/contracts';
+import { send } from '../api/client.js';
 import { disablePushNotifications } from './push.js';
 
 /**
@@ -9,11 +10,6 @@ import { disablePushNotifications } from './push.js';
  */
 export async function signOutDevice(): Promise<void> {
   await disablePushNotifications().catch(() => undefined);
-  const response = await fetch(`${AUTH_BASE_PATH}/sign-out`, {
-    method: 'POST',
-    credentials: 'same-origin',
-    headers: { 'Content-Type': 'application/json' },
-    body: '{}',
-  });
+  const response = await send(AUTH_SIGN_OUT_PATH, { method: 'POST', body: {} });
   if (!response.ok) throw new Error(`Sign-out failed (${response.status})`);
 }

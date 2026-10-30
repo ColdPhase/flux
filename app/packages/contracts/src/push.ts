@@ -6,6 +6,9 @@ import type { LockedWorkspaceRef } from './encryption.js';
 export const PUSH_PUBLIC_KEY_PATH = '/api/v1/push/public-key';
 export const PUSH_SUBSCRIPTIONS_PATH = '/api/v1/push/subscriptions';
 export const INBOX_PATH = '/api/v1/inbox';
+export const inboxItemPath = (id: string) => `${INBOX_PATH}/${encodeURIComponent(id)}`;
+export const inboxItemReadPath = (id: string) => `${inboxItemPath(id)}/read`;
+export const pushSubscriptionPath = (id: string) => `${PUSH_SUBSCRIPTIONS_PATH}/${id}`;
 
 /** `unavailable` means the operator has not configured VAPID keys; use the inbox instead. */
 export type PushPublicKeyResponse =

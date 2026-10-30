@@ -1,5 +1,5 @@
 import {
-  LIVE_INVITATIONS_PATH, LIVE_SESSIONS_PATH, liveInvitationReplyPath, liveInvitePath, liveJoinPath, liveLeavePath,
+  LIVE_CAPABILITIES_PATH, LIVE_INVITATIONS_PATH, LIVE_SESSIONS_PATH, projectLiveSessionsPath, liveInvitationReplyPath, liveInvitePath, liveJoinPath, liveLeavePath,
   livePresentPath, livePresentationsPath, liveSessionPath,
   type LiveContextRef, type LiveJoinGrant, type LivePresentationPage, type LivePresentationRef, type LiveSession,
 } from '@flux/contracts';
@@ -28,7 +28,7 @@ export interface LiveInvitationReply {
 }
 
 export const liveCapability = (signal?: AbortSignal) =>
-  request<{ status: LiveCapability }>(`${LIVE_SESSIONS_PATH}/capabilities`, { signal }).then((body) => body.status);
+  request<{ status: LiveCapability }>(LIVE_CAPABILITIES_PATH, { signal }).then((body) => body.status);
 
 export const startSession = (context: LiveContextRef, clientSessionId: string) =>
   request<LiveSession>(LIVE_SESSIONS_PATH, { method: 'POST', body: { context, clientSessionId } });
@@ -46,7 +46,7 @@ export const listPresentations = (id: string, after: string | null, signal?: Abo
   request<LivePresentationPage>(`${livePresentationsPath(id)}?limit=50${after ? `&after=${after}` : ''}`, { signal });
 
 export const discoverSessions = (projectId: string, signal?: AbortSignal) =>
-  request<{ items: LiveSession[]; nextBefore: string | null }>(`/api/v1/projects/${projectId}/live-sessions?limit=20`, { signal });
+  request<{ items: LiveSession[]; nextBefore: string | null }>(`${projectLiveSessionsPath(projectId)}?limit=20`, { signal });
 
 export const inviteToSession = (id: string, recipientId: string) =>
   request<LiveInvitationRow>(liveInvitePath(id), { method: 'POST', body: { recipientId } });

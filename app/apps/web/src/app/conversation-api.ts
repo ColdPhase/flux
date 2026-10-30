@@ -3,7 +3,7 @@ import {
   materialVersionPath, projectConversationRootsPath, projectConversationsPath, projectMaterialsPath, projectObjectNoticesPath, projectPath, projectTaskNoticesPath, workspaceProjectsPath,
   type Conversation, type ConversationMessage, type ConversationRootWindow, type ConversationSummary, type CreateMaterialCommand,
   type ProjectTemplate, type ProjectViewId, projectViewsPath,
-  type Draft, type WorkspaceMember, type Material, type MaterialOrDoc, type MaterialVersion, type Page, type Project, type SendMessageCommand, type TaskCreationNotice, type Workspace, workspaceDraftsPath,
+  type Draft, type WorkspaceMember, type Material, type MaterialOrDoc, type MaterialVersion, type Page, type Project, type SendMessageCommand, type TaskCreationNotice, type Workspace, workspaceDraftsPath, workspaceMembersPath,
   IDEMPOTENCY_KEY_HEADER, projectObservationsPath, projectReceiptsPath, type MessageReceiptsResult, type ObserveMessagesResult, type ObjectNotice,
 } from '@flux/contracts';
 import { request } from '../api/client';
@@ -59,7 +59,7 @@ export const listDrafts = (workspaceId: string, signal?: AbortSignal, offset = 0
 /** A private draft; an `idempotencyKey` makes a retry return the same draft instead of a second one. */
 export const createPrivateDraft = (workspaceId: string, title: string, body: string, idempotencyKey?: string, signal?: AbortSignal) =>
   request<Draft>(workspaceDraftsPath(workspaceId), { method: 'POST', body: { title, body }, signal, ...(idempotencyKey ? { headers: { [IDEMPOTENCY_KEY_HEADER]: idempotencyKey } } : {}) });
-export const listWorkspaceMembers = (workspaceId: string, signal?: AbortSignal) => request<WorkspaceMember[]>(`${WORKSPACES_PATH}/${workspaceId}/members`, { signal });
+export const listWorkspaceMembers = (workspaceId: string, signal?: AbortSignal) => request<WorkspaceMember[]>(workspaceMembersPath(workspaceId), { signal });
 
 /** Viewing receipts of the project's conversation (#534): what this person saw, and who saw the runs of their own messages. */
 export const observeProjectMessages = (projectId: string, messageIds: string[]) =>

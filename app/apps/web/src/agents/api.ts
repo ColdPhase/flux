@@ -1,8 +1,8 @@
 import { agentProjectPolicyPath, agentQuestionAnswerPath, ownWorkingAgentsPath, projectAgentQuestionsPath, projectAgentStopsPath, projectAgentsPath,
-  projectReviewPolicyPath, taskCoordinationCancelPath, taskCoordinationPath, type CoWorkReviewPolicy, type CoWorkReviewRule, type TaskCoordination, type TaskCoordinationRequest,
-  assistantJoinRequestPath, type AssistantJoinRequest, type AgentProjectPolicy, type AgentQuestion, type AgentQuestions, type AgentStop, type AgentStops, type AnswerAgentQuestionCommand, type OwnWorkingAgents,
+  projectReviewPolicyPath, taskCoordinationCancelPath, taskCoordinationPacketPath, taskCoordinationPath, type CoWorkReviewPolicy, type CoWorkReviewRule, type TaskCoordination, type TaskCoordinationRequest,
+  assistantJoinRequestAllowPath, assistantJoinRequestPath, type AssistantJoinRequest, type AgentProjectPolicy, type AgentQuestion, type AgentQuestions, type AgentStop, type AgentStops, type AnswerAgentQuestionCommand, type OwnWorkingAgents,
   type ProjectAgents, type PublishAgentProjectPolicyCommand, type StopAgentCommand } from '@flux/contracts';
-import { request } from '../api/client';
+import { request, send } from '../api/client';
 
 /** The Agents view of a project (UI116-2, #136): current connections. */
 export const getProjectAgents = (projectId: string, signal?: AbortSignal) => request<ProjectAgents>(projectAgentsPath(projectId), { signal });
@@ -22,7 +22,7 @@ export const publishAgentPolicy = (projectId: string, command: PublishAgentProje
 export const requestAssistantJoin = (projectId: string) =>
   request<AssistantJoinRequest>(assistantJoinRequestPath(projectId), { method: 'POST' });
 export const allowAssistantJoin = (projectId: string, requestId: string, openingVersion?: number) =>
-  request<AssistantJoinRequest>(`${assistantJoinRequestPath(projectId)}/${requestId}/allow`, { method: 'POST', headers: openingVersion === undefined ? undefined : { 'if-match': `"${openingVersion}"` } });
+  request<AssistantJoinRequest>(assistantJoinRequestAllowPath(projectId, requestId), { method: 'POST', headers: openingVersion === undefined ? undefined : { 'if-match': `"${openingVersion}"` } });
 /** Who stopped which agent's work in a project, newest first (S13, #347). */
 export const getAgentStops = (projectId: string, signal?: AbortSignal) => request<AgentStops>(projectAgentStopsPath(projectId), { signal });
 
@@ -45,6 +45,11 @@ export const answerAgentQuestion = (questionId: string, command: AnswerAgentQues
 
 /** A task's request cards and review verdicts (#153, #400 AC-4); whoever can read the task reads them. */
 export const getTaskCoordination = (workId: string, signal?: AbortSignal) => request<TaskCoordination>(taskCoordinationPath(workId), { signal });
+/** A request's handoff packet as a file to save; null when the server refuses it. */
+export async function getCoordinationPacket(workId: string, requestId: string): Promise<Blob | null> {
+  const response = await send(taskCoordinationPacketPath(workId, requestId));
+  return response.ok ? await response.blob() : null;
+}
 /** Cancels an open request at the version the person saw. Repeating it after a lost answer succeeds without a second change. */
 export const cancelCoWorkRequest = (workId: string, requestId: string, expectedVersion: number) =>
   request<TaskCoordinationRequest>(taskCoordinationCancelPath(workId, requestId), { method: 'POST', body: { expectedVersion } });

@@ -1,6 +1,8 @@
 import {
   INBOX_PATH,
   INBOX_READ_ALL_PATH,
+  inboxItemPath,
+  inboxItemReadPath,
   NOTIFICATION_ADDRESS_PATH,
   NOTIFICATION_ADDRESS_RESEND_PATH,
   NOTIFICATION_ADDRESS_VERIFY_PATH,
@@ -19,8 +21,8 @@ import { captureNotificationSession, isCurrentNotificationSession, lastConfirmed
 
 /** The inbox and notification settings (#41, #116). */
 export const getInbox = (signal?: AbortSignal, limit = 100) => request<InboxResponse>(`${INBOX_PATH}?limit=${limit}`, { signal });
-export const getInboxItem = (id: string, signal?: AbortSignal) => request<InboxItem>(`${INBOX_PATH}/${encodeURIComponent(id)}`, { signal });
-export const markInboxRead = (id: string) => request<{ id: string; readAt: string }>(`${INBOX_PATH}/${encodeURIComponent(id)}/read`, { method: 'POST' });
+export const getInboxItem = (id: string, signal?: AbortSignal) => request<InboxItem>(inboxItemPath(id), { signal });
+export const markInboxRead = (id: string) => request<{ id: string; readAt: string }>(inboxItemReadPath(id), { method: 'POST' });
 export const markAllInboxRead = () => request<{ updated: number }>(INBOX_READ_ALL_PATH, { method: 'POST' });
 
 export const getPreferences = (signal?: AbortSignal) => request<NotificationPreferences>(NOTIFICATION_PREFERENCES_PATH, { signal });

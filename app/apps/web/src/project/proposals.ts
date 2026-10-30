@@ -1,8 +1,7 @@
-import { proactiveComparisonOutcomePath, proactiveComparisonOutcomesPath, proactiveComparisonProposalsPath,
+import { proactiveComparisonOutcomePath, proactiveComparisonProposalPath, proactiveComparisonProposalUsePath, proactiveComparisonOutcomesPath, proactiveComparisonProposalsPath,
   type InsufficientComparisonOutcome, type Page, type ProactiveComparisonOutcome, type ProactiveComparisonProposal, type WorkItem } from '@flux/contracts';
 import { request } from '../api/client.js';
 
-const path = (id: string) => `/api/v1/proactive-comparison-proposals/${id}`;
 export function comparisonSourceHref(projectId: string, source: ProactiveComparisonProposal['sources'][number]): string | null {
   if (source.type === 'material') return `/materials/${source.id}/versions/${source.version}`;
   if (source.type === 'message' && source.conversationId)
@@ -29,8 +28,8 @@ export const dismissInsufficientComparison = (outcome: InsufficientComparisonOut
     body: { expectedVersion: outcome.version, status: 'dismissed' } });
 export const editComparisonProposal = (proposal: ProactiveComparisonProposal,
   patch: { fact?: string; interpretation?: string; suggestedAction?: string; status?: 'dismissed' }) =>
-  request<ProactiveComparisonProposal>(path(proposal.id), { method: 'PATCH',
+  request<ProactiveComparisonProposal>(proactiveComparisonProposalPath(proposal.id), { method: 'PATCH',
     body: { expectedVersion: proposal.version, ...patch } });
 export const applyComparisonProposal = (proposal: ProactiveComparisonProposal, title: string) =>
-  request<{ proposal: ProactiveComparisonProposal; work: WorkItem }>(`${path(proposal.id)}/use`, { method: 'POST',
+  request<{ proposal: ProactiveComparisonProposal; work: WorkItem }>(proactiveComparisonProposalUsePath(proposal.id), { method: 'POST',
     body: { expectedVersion: proposal.version, title } });

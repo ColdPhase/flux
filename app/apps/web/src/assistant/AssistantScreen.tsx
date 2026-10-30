@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
 import { Link } from 'react-router';
-import { ASSISTANT_AREAS, ASSISTANT_REACTION_EVENTS, assistantReactionsPath, type AssistantReactionRecent, type AssistantChange, aiConnectionLabel, assistantCanSentence, assistantSettingsPath, type AssistantAreaId, type AssistantSettings, type PersonalAssistantStatus, type UpdateAssistantSettings } from '@flux/contracts';
+import { ASSISTANT_AREAS, ASSISTANT_REACTION_EVENTS, assistantReactionsHistoryPath, type AssistantReactionRecent, type AssistantChange, aiConnectionLabel, assistantCanSentence, assistantSettingsPath, type AssistantAreaId, type AssistantSettings, type PersonalAssistantStatus, type UpdateAssistantSettings } from '@flux/contracts';
 import { ApiError, request } from '../api/client';
 import { SwitchRow } from '../app/SettingsHome';
 import { AgentTag, Button, Icon, Kreska, agentHue } from '../ui';
@@ -122,7 +122,7 @@ function RecentChanges({ workspaceId, userId }: { workspaceId: string | null; us
   useEffect(() => {
     if (!workspaceId) return;
     const controller = new AbortController();
-    request<{ items: AssistantReactionRecent[] }>(`${assistantReactionsPath(workspaceId, userId)}/history`, { signal: controller.signal }).then((result) => setBackground(result.items), () => undefined);
+    request<{ items: AssistantReactionRecent[] }>(assistantReactionsHistoryPath(workspaceId, userId), { signal: controller.signal }).then((result) => setBackground(result.items), () => undefined);
     return () => controller.abort();
   }, [workspaceId, userId]);
   const [items, setItems] = useState<AssistantChange[] | null>(null);
