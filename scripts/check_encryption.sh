@@ -59,7 +59,7 @@ $compose build
 $compose up -d db migrate
 $compose --profile setup run --rm files-init
 
-files="${FLUX_ENCRYPTION_FILES:-tests/app/encryption-crypto.test.ts tests/app/encryption-keyring.test.ts tests/app/encrypted-workspaces.test.ts tests/app/encryption-registry.test.ts tests/app/encryption-sealed-content.test.ts tests/app/encryption-search-live.test.ts tests/app/sealed-search-heap.test.ts tests/app/encryption-rotation.test.ts tests/app/live/encryption-two-api.test.ts}"
+files="${FLUX_ENCRYPTION_FILES:-tests/app/encryption-crypto.test.ts tests/app/encryption-keyring.test.ts tests/app/encrypted-workspaces.test.ts tests/app/encryption-registry.test.ts tests/app/encryption-sealed-content.test.ts tests/app/encryption-search-live.test.ts tests/app/sealed-search-heap.test.ts tests/app/encryption-locked-routes.test.ts tests/app/encryption-rotation.test.ts tests/app/live/encryption-two-api.test.ts}"
 # shellcheck disable=SC2086
 $compose run --rm test node_modules/.bin/tsx --test --test-concurrency=1 $files
 
@@ -117,7 +117,8 @@ report_memory
 
 # AC-3: restarts and the lock.
 $compose run --rm test node_modules/.bin/tsx tests/app/encryption-restart.check.ts prepare
-$compose restart
+# Not the one-shot migrate: restarted with db it times out (#723 review P3).
+$compose restart db keyring api api2 worker mailpit
 $compose up -d --wait api api2 worker keyring
 $compose run --rm test node_modules/.bin/tsx tests/app/encryption-restart.check.ts stack-locked
 $compose restart api
@@ -140,5 +141,8 @@ $compose restart keyring
 $compose run --rm --no-deps test $rotation keyring-locked
 FLUX_TEST_ROTATION_HOLD_AFTER_PAGES= $compose up -d worker
 $compose run --rm --no-deps test $rotation keyring-resumed
+
+# AC-7, the stolen-disk part: pg_dump, the raw volumes (pg_wal included), container layers and logs; stops the stack.
+. scripts/check_encryption_scan.sh
 
 echo 'F-030 S1, S2a and S2c encryption checks passed'
