@@ -112,6 +112,8 @@ export function sketchRows(db: DbExecutor) {
   return {
     /** Rows of `workspaceId` matching `audience` (the policy's list condition), newest change first. */
     async list(workspaceId: string, audience: SQL, filter: { projectId?: string; dmId?: string; scope?: 'private'; hideEmpty?: boolean }, page: { limit: number; offset: number }) {
+      // F-030 (AC-6): a locked encrypted workspace answers 423 even when the page would be empty.
+      await sealOf(db, workspaceId, { write: false });
       // An empty sketch (no thought, still the default title) is left out before the limit and in the total (#508).
       const base = and(eq(s.workspaceId, workspaceId), audience, filter.projectId ? eq(s.projectId, filter.projectId) : undefined,
         filter.dmId ? eq(s.dmId, filter.dmId) : undefined, filter.scope ? eq(s.scope, filter.scope) : undefined);
