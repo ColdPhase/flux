@@ -93,6 +93,18 @@ export function githubRows(db: DbExecutor,options:{taskFence?:()=>import('./task
         .from(s.projectWorkItems).where(eq(s.projectWorkItems.id, id));
       return row ?? null;
     },
+    /**
+     * Whether an agent holds a task now, by the facts Stop and Pause use: the task is the agent's (`owner_agent_id`), not parked
+     * and not closed. A person's pause keeps the hold but asks the agent to take no new step. A plain read; the caller repeats it
+     * under the task lock before it writes.
+     */
+    async hold(taskId: string, agentId: string): Promise<'held' | 'paused' | 'none'> {
+      const [task] = await db.select({ owner: w.ownerAgentId, status: w.status, parkedAt: w.parkedAt }).from(w).where(eq(w.id, taskId));
+      if (!task || task.owner !== agentId || task.parkedAt || task.status === 'done' || task.status === 'not_pursued') return 'none';
+      const [pause] = await db.select({ taskId: s.agentPauses.taskId }).from(s.agentPauses)
+        .where(and(eq(s.agentPauses.taskId, taskId), eq(s.agentPauses.agentId, agentId))).limit(1);
+      return pause ? 'paused' : 'held';
+    },
     async links(taskId: string) { return (await db.select().from(l).where(eq(l.taskId, taskId)).orderBy(asc(l.id))).map(linkView); },
     async linkedPulls(bindingId: string) { return (await db.select().from(l).where(eq(l.bindingId, bindingId)).orderBy(asc(l.id))).map(linkView); },
     async linkAt(id:string){const[row]=await db.select().from(l).where(eq(l.id,id));return row?{...linkView(row),pullId:row.pullId}:null;},

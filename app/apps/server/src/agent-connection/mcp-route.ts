@@ -7,6 +7,7 @@ import { agentConnectionWorkspaceId, lockAgentMcpPolicy, loadActor, workspaceAi,
 import type { FluxAuth } from '../identity/auth.js';
 import type { Confirmation } from '../identity/confirmation.js';
 import { createFluxMcpServer } from './mcp-tools.js';
+import type { Provider as GithubActionProvider } from '../github/adapters.js';
 import { signInAgainMessage, type IdpStanding } from '../identity/standing.js';
 import { createAgentConnectionStore } from './store.js';
 import { createMcpDispatch, type McpDispatch } from './mcp-dispatch.js';
@@ -29,7 +30,8 @@ async function aiBlockedResponse(request: Request): Promise<Response> {
 
 /** The only remote MCP entry point. A new tool server is bound to each verified bearer request. */
 export function registerMcpRoute(app: FastifyInstance, db: Database, auth: FluxAuth, publicOrigin: string, testDeliveryGate = false,
-  standing: { checker: Pick<IdpStanding, 'stands'>; label: string } | null = null, confirmation?: Confirmation, label = 'your identity provider') {
+  standing: { checker: Pick<IdpStanding, 'stands'>; label: string } | null = null, confirmation?: Confirmation, label = 'your identity provider',
+  github: GithubActionProvider | null = null) {
   const handleVerified = async (request: Request, token: Record<string, unknown>) => {
     const ownerUserId = token.flux_owner_user_id;
     const connectionId = token.flux_connection_id;
@@ -112,7 +114,7 @@ export function registerMcpRoute(app: FastifyInstance, db: Database, auth: FluxA
       grantReferenceId: typeof token.flux_grant_reference === 'string' ? token.flux_grant_reference : null,
       ...(boundProjectId ? { boundProjectId } : {}),
       ...(run ? { run } : {}),
-    }, cursorSecret), { refuseScope: (name) => agentScopeRefusal(name, granted), ...(run ? { refuseTool: (name: string) => !run!.tools.includes(name) } : {}) });
+    }, cursorSecret, github), { refuseScope: (name) => agentScopeRefusal(name, granted), ...(run ? { refuseTool: (name: string) => !run!.tools.includes(name) } : {}) });
     // Protected bytes are handed to the transport only while the live policy and access still hold.
     const referenceId = typeof token.flux_grant_reference === 'string' ? token.flux_grant_reference : connectionId;
     const fence = { async check(tx: Transaction) {

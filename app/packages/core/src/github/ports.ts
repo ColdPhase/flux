@@ -29,6 +29,8 @@ export interface GithubRepositoryPort {
   bind(record: GithubBindingRecord): Promise<GithubBindingRecord>;
   disconnect(id: string): Promise<void>;
   task(id: string): Promise<{ id: string; workspaceId: string; projectId: string } | null>;
+  /** An agent's hold on a task now (#160 AC-3): held, held but paused by a person, or not held (including a closed or parked task). */
+  hold(taskId: string, agentId: string): Promise<'held' | 'paused' | 'none'>;
   links(taskId: string): Promise<GithubLinkRecord[]>;
   linkedPulls(bindingId: string): Promise<GithubLinkRecord[]>;
   link(record: GithubLinkRecord): Promise<GithubLinkRecord>;

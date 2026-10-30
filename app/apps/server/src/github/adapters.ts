@@ -1,12 +1,13 @@
 import { artifactResetRows, githubRows, prepareCanonicalArtifactTasks, TaskUseRefusal, type TaskUseFence, accessReader, type Database, type Transaction } from '@flux/db';
 import {
   directPrerequisiteIds, enforce, evaluateProject, GITHUB_RULE_AUTOMATION, githubRuleUseCases, githubUseCases, ServiceUnavailableError, sortedIds,
-  unmetPrerequisites, type GithubProvider, type GithubTasks, type GithubTaskState, type GithubUnitOfWork, type WorkRecord,
+  unmetPrerequisites, type GithubPorts, type GithubProvider, type GithubTasks, type GithubTaskState, type GithubUnitOfWork, type WorkRecord,
 } from '@flux/core';
 import { workRepository } from '../work/adapters.js';
 import { transactionEventSession, type TransactionEventSession } from '../work/transaction-events.js';
 import { githubTransaction } from './transactions.js';
-type Provider = GithubProvider & { inTransaction?: (tx: Database) => GithubProvider };
+/** The provider a unit of work gets; the production one also pins the person's credential inside the unit's transaction. */
+export type Provider = GithubProvider & { inTransaction?: (tx: Database) => GithubProvider };
 type Retained={scope:{workspaceId:string;projectId:string}|null;fence:TaskUseFence|null};
 
 /** Native task reads and the rule's status changes, joined to the GitHub unit's transaction and final event batch (#74 G-1a). */
@@ -47,43 +48,57 @@ function githubTasks(tx: Transaction, events: TransactionEventSession, retained:
   };
 }
 
+/**
+ * The GitHub ports on a transaction that is already open: the unit of work's own, or an agent action's (#160 AC-3), whose
+ * runtime, standing grant and receipt are already locked in it. Events join `session`, which its owner flushes.
+ */
+function githubPorts(tx: Transaction, session: TransactionEventSession, provider: Provider): GithubPorts {
+  const retained:Retained={scope:null,fence:null};
+  const rows=githubRows(tx,{taskFence:()=>retained.fence});
+  const reset=async(link:Awaited<ReturnType<typeof rows.link>>)=>{
+    if(!retained.fence)throw new TaskUseRefusal('TASK_TARGET_SET_CHANGED');
+    const binding=await rows.binding(link.bindingId);
+    const stored=await rows.linkAt(link.id);
+    if(!binding||!stored||binding.projectId!==link.projectId||binding.workspaceId!==link.workspaceId||stored.pullId!==link.facts.pullId
+      ||binding.state!=='active'||link.state!=='current'||!/^([0-9a-f]{40}|[0-9a-f]{64})$/.test(link.facts.headSha))return;
+    await artifactResetRows(tx).record(link,{kind:'github_pr',
+      id:link.bindingId+':'+binding.repositoryId+':'+stored.pullId+':'+link.taskId,revision:link.facts.headSha},[link.taskId],retained.fence);
+  };
+  const canonicalRows={...rows,
+    async link(input:Parameters<typeof rows.link>[0]){
+      const saved=await rows.link(input);
+      if(saved.id===input.id)await reset(saved);
+      return saved;
+    },
+    async saveFacts(id:string,facts:Parameters<typeof rows.saveFacts>[1]){
+      const prior=await rows.linkAt(id);
+      if(!prior)throw new TaskUseRefusal('TASK_TARGET_NOT_FOUND');
+      await rows.saveFacts(id,facts);
+      if(prior.facts.headSha!==facts.headSha)await reset({...prior,facts,state:'current'});
+    },
+  };
+  return { provider: provider.inTransaction?.(tx) ?? provider, rows: canonicalRows, tasks: githubTasks(tx, session,retained), access: {
+    async requireProject(principal, action, projectId) {
+      const checked = enforce(await evaluateProject(principal, action === 'manage' ? 'project.manage' : action === 'write' ? 'project.write' : 'project.read', projectId, accessReader(tx), { lock: true }), 'project');
+      return { workspaceId: checked.project!.workspaceId };
+    },
+  } };
+}
+
 export function githubUnitOfWork(db: Database, provider: Provider): GithubUnitOfWork {
   return { run: (work) => githubTransaction(db, async (tx) => {
     const session = transactionEventSession(tx);
-    const retained:Retained={scope:null,fence:null};
-    const rows=githubRows(tx,{taskFence:()=>retained.fence});
-    const reset=async(link:Awaited<ReturnType<typeof rows.link>>)=>{
-      if(!retained.fence)throw new TaskUseRefusal('TASK_TARGET_SET_CHANGED');
-      const binding=await rows.binding(link.bindingId);
-      const stored=await rows.linkAt(link.id);
-      if(!binding||!stored||binding.projectId!==link.projectId||binding.workspaceId!==link.workspaceId||stored.pullId!==link.facts.pullId
-        ||binding.state!=='active'||link.state!=='current'||!/^([0-9a-f]{40}|[0-9a-f]{64})$/.test(link.facts.headSha))return;
-      await artifactResetRows(tx).record(link,{kind:'github_pr',
-        id:link.bindingId+':'+binding.repositoryId+':'+stored.pullId+':'+link.taskId,revision:link.facts.headSha},[link.taskId],retained.fence);
-    };
-    const canonicalRows={...rows,
-      async link(input:Parameters<typeof rows.link>[0]){
-        const saved=await rows.link(input);
-        if(saved.id===input.id)await reset(saved);
-        return saved;
-      },
-      async saveFacts(id:string,facts:Parameters<typeof rows.saveFacts>[1]){
-        const prior=await rows.linkAt(id);
-        if(!prior)throw new TaskUseRefusal('TASK_TARGET_NOT_FOUND');
-        await rows.saveFacts(id,facts);
-        if(prior.facts.headSha!==facts.headSha)await reset({...prior,facts,state:'current'});
-      },
-    };
-    const result = await session.run(() => work({ provider: provider.inTransaction?.(tx) ?? provider, rows: canonicalRows, tasks: githubTasks(tx, session,retained), access: {
-      async requireProject(principal, action, projectId) {
-        const checked = enforce(await evaluateProject(principal, action === 'manage' ? 'project.manage' : action === 'write' ? 'project.write' : 'project.read', projectId, accessReader(tx), { lock: true }), 'project');
-        return { workspaceId: checked.project!.workspaceId };
-      },
-    } }));
+    const result = await session.run(() => work(githubPorts(tx, session, provider)));
     await session.flushEvents();
     return result;
   }) };
 }
+/**
+ * The GitHub use cases inside a transaction another unit already owns (an agent's action, #160 AC-3). The caller flushes `session`
+ * and keeps its own locks, error mapping and timeouts; a refusal here rolls the whole action back.
+ */
+export const createGithubUseCasesIn = (tx: Transaction, session: TransactionEventSession, provider: Provider) =>
+  githubUseCases({ run: (work) => session.run(() => work(githubPorts(tx, session, provider))) });
 /** Without App configuration a rule can still be read or turned off; turning it on needs GitHub. */
 export const unavailableGithubProvider: GithubProvider = {
   async repository() { throw new ServiceUnavailableError('GitHub App integration is unavailable', 'GITHUB_UNAVAILABLE'); },

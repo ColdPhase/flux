@@ -183,9 +183,10 @@ export function githubRuleUseCases(uow: GithubUnitOfWork) {
 
 /**
  * After a writer verified and linked a required PR (holding the binding lock): with an active rule, or the project
- * default and no rule yet, a reconciliation applies the rule to current facts. The default makes the linker its author.
+ * default and no rule yet, a reconciliation applies the rule to current facts. The default makes the linker its author
+ * (`principal`, a person); `by` is who made the change in the task's event (an agent linking for its owner).
  */
-export async function adoptGithubRuleOnLink(ports: GithubPorts, principal: Principal, taskId: string, binding: GithubBindingRecord, proof: GithubRepositoryProof) {
+export async function adoptGithubRuleOnLink(ports: GithubPorts, principal: Principal, taskId: string, binding: GithubBindingRecord, proof: GithubRepositoryProof, by: Principal = principal) {
   const existing = await ports.rows.rule(taskId);
   const fallback = existing ? null : await ports.rows.ruleDefault(binding.projectId);
   if (existing?.state !== 'active' && !fallback) return;
@@ -194,7 +195,7 @@ export async function adoptGithubRuleOnLink(ports: GithubPorts, principal: Princ
   const task = await ports.tasks.find(taskId, true);
   if (!task || await ports.rows.rule(taskId, true)) return;
   await ports.rows.saveRule(activeRule(task, principal, proof, fallback!.mode ?? defaultGithubRuleMode(task.criteria), null));
-  await ports.tasks.updated(principal, task);
+  await ports.tasks.updated(by, task);
 }
 
 type Verdict = 'ok' | 'skip' | 'lost';

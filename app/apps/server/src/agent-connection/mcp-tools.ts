@@ -13,6 +13,8 @@ import { registerAgentDocActions } from './doc-actions.js';
 import { registerAgentConversationActions } from './conversation-actions.js';
 import { registerAgentQuestionActions } from './agent-questions.js';
 import { registerAgentCoworkActions } from './cowork-actions.js';
+import { registerAgentGithubActions } from './github-actions.js';
+import type { Provider as GithubActionProvider } from '../github/adapters.js';
 import { withAgentConnection, type FluxMcpClaims } from './context.js';
 import { toolError, toolResult } from './tool-results.js';
 import { boundRunResult } from './run-token.js';
@@ -41,7 +43,8 @@ function toolsOnly(server: McpServer): McpServer {
 }
 
 /** A fresh server is bound to one verified bearer; each tool rechecks inside its transaction. */
-export function createFluxMcpServer(db: Database, claims: FluxMcpClaims & { dispatch: McpDispatch }, cursorSecret: string): McpServer {
+/** `github` is the read-only GitHub App provider of this installation, or null when it has none (#160 AC-3). */
+export function createFluxMcpServer(db: Database, claims: FluxMcpClaims & { dispatch: McpDispatch }, cursorSecret: string, github: GithubActionProvider | null = null): McpServer {
   const run = claims.run;
   const server = new McpServer({ name: 'flux', version: '0.1.0' }, {
     instructions: run ? RUN_SERVER_INSTRUCTIONS : coworkServerInstructions(), supportedProtocolVersions: [...FLUX_MCP_PROTOCOL_VERSIONS],
@@ -57,6 +60,7 @@ export function createFluxMcpServer(db: Database, claims: FluxMcpClaims & { disp
   registerAgentConversationActions(tools, db, claims);
   registerAgentQuestionActions(tools, db, claims);
   registerAgentCoworkActions(tools, db, claims, cursorSecret);
+  registerAgentGithubActions(tools, db, claims, github);
   tools.forScope('flux.proposal.write').registerTool('flux_create_proposal', {
     title: 'Propose a sourced project action',
     description: 'Submit a human-reviewable suggestion based on the current version of a selected project material.',

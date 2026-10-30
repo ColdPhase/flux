@@ -167,6 +167,24 @@ inbox. It carries no comment text and no authority; the agent reads current PR s
 - **Storage.** Migration 0132 widens `github_bridge_outbox.state` to `pending_audience_adapter` (rows from before
   0132), `delivered`, `no_recipient`, `no_access` and `suppressed_echo`, and adds `recipient_connection_id`.
 
+## Agent pull request link (#160 AC-3, 2026-10-30)
+
+An agent links the pull request it produced to the task it holds with the MCP tool `flux_link_pull_request`
+([agent connection](../agent-connection.md#linking-the-pull-request-an-agent-produced-160-ac-3)). Until now only a person could.
+It is the person's `link` use case with two actors: `GithubUseCases.linkForAgent(agent, owner, taskId, { pullRequestUrl, role })`
+shares `linkVerified` with `link`, so the verification and the stored link are the same code.
+
+- **Who.** The agent needs project write access and the hold (`owner_agent_id` is the agent, the task is open and not parked, no
+  `agent_pauses` row). Its owner needs project write access and their own GitHub authorization for this App: GitHub is asked as the
+  owner, a person, and never as the agent. The standing grant is `work.update`; the executor checks it, the runtime and the replay.
+- **Which repository.** The URL (`https://github.com/<owner>/<repository>/pull/<number>`) must match an active binding of the task's
+  project. There is no repository discovery and no way for an agent to bind one (`GITHUB_REPOSITORY_NOT_BOUND`).
+- **Transaction.** The link joins the executor's transaction (`createGithubUseCasesIn`), so the grant debit, receipt, link, rule
+  adoption and events commit together or not at all. The rule author is the owner (`adoptGithubRuleOnLink`); the event names the agent.
+- **No new GitHub permission.** Only the read-only App and the owner's user token are used. Publishing a PR, a review or a comment stays with the
+  owner's local client ("Owners' local Git/CLI is the default code/push/PR path").
+- **Tests.** `app/tests/app/mcp-github-link.test.ts` (fixture provider; no real installation is claimed).
+
 ## What remains for #74 / #479 (reconciled 2026-10-23)
 
 The merged slices are #168 (bindings, verified links, signed durable deliveries), #270 (G-1a rules), #379 (manual
