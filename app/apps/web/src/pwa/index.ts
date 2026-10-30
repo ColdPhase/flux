@@ -6,3 +6,5 @@ export { getPushState, enablePushNotifications, disablePushNotifications, syncPu
 export { signOutDevice } from './session.js';
 export { UpdatePrompt } from './UpdatePrompt.js';
 export { NotificationsButton } from './NotificationsButton.js';
+export { watchInstallPrompt, onInstallState, installState, isStandalone, type InstallState } from './install.js';
+export { InstallFlux } from './InstallFlux.js';

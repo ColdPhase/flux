@@ -320,6 +320,65 @@ or standards statements unless marked as a report or an inference.
   covers user agent, screen, viewport, touch, `isMobile`, scale factor, permissions,
   color scheme, reduced motion and offline.
 
+### Recheck and install sources (#20 closeout, checked 2026-10-30)
+
+Fetched again on 2026-10-30 for the closing pass. Each item is labelled **vendor** (a
+vendor or standards statement), **data** (compatibility data), **observed** (seen in
+Flux's Docker runs) or **inference** (our conclusion).
+
+- **Chrome install criteria, unchanged (vendor).** [web.dev, What does it take to be installable?](https://web.dev/articles/install-criteria)
+  still says "Last updated 2024-09-19". Chrome fires `beforeinstallprompt` only when
+  "the web app is not already installed", the user "clicked or tapped on the page at
+  least once" and "spent at least 30 seconds viewing the page", the page is served over
+  HTTPS, and the manifest has `short_name` or `name`, 192 and 512 px icons, `start_url`,
+  a `display` of `fullscreen`, `standalone`, `minimal-ui` or `window-controls-overlay`,
+  and no `prefer_related_applications: true`. Flux's manifest meets the manifest part
+  (`pwa.test.ts`). The engagement part cannot be met in a test browser.
+- **`beforeinstallprompt` (vendor; data).** [MDN, Window: beforeinstallprompt event](https://developer.mozilla.org/en-US/docs/Web/API/Window/beforeinstallprompt_event)
+  (modified 26 October 2026) marks it "Limited availability". Calling `preventDefault()`
+  "prevents the browser displaying its own install UI on some platforms", and `prompt()`
+  shows the install dialog and resolves to the user's choice.
+  [MDN browser-compat-data `api/Window.json`](https://github.com/mdn/browser-compat-data/blob/main/api/Window.json)
+  (retrieved 2026-10-30) lists `beforeinstallprompt_event` in `chrome` 61, mirrored to
+  `chrome_android`, `edge` and `webview_android`, and in `samsunginternet_android` 8.0.
+  It lists `firefox` and `safari` as `false`, mirrored to `firefox_android` and
+  `safari_ios`. `appinstalled_event` is listed in `chrome` 64 and `chrome_android` 57,
+  and is `false` in Firefox and Safari.
+  *Inference:* Flux keeps the event for its own **Install Flux** button
+  (`pwa/install.ts`). On Safari and Firefox, Flux shows written steps instead.
+- **iOS and iPadOS Home Screen apps (vendor).** [WebKit Features in Safari 26.0](https://webkit.org/blog/17333/webkit-features-in-safari-26-0/)
+  (15 September 2025): "By default, every website added to the Home Screen opens as a
+  web app" on iOS 26 and iPadOS 26, and a web app experience "no longer requires a
+  manifest file". Add to Home Screen stays a step the person takes in Safari's Share
+  menu. No page can trigger it, so Flux shows "tap Share, then Add to Home Screen".
+- **Apple Web Push, unchanged (vendor).** [Sending web push notifications in web apps and browsers](https://developer.apple.com/documentation/usernotifications/sending-web-push-notifications-in-web-apps-and-browsers)
+  (undated, read through its documentation JSON on 2026-10-30) still says "Add web push
+  to Home Screen web apps in iOS 16.4 or later". The other statements are unchanged:
+  the gesture rule ("call the push subscription method immediately from the gesture's
+  event handler code"), "Safari doesn't support invisible push notifications", allowing
+  `https://*.push.apple.com`, the VAPID rules, and 410 "The device token has expired".
+  The page does not name iPadOS. *Inference* from the WebKit post of 16 February 2023:
+  iPadOS follows iOS.
+- **Test tools used as stand-ins (vendor; protocol definitions).** The
+  [Chrome DevTools Protocol `ServiceWorker` domain](https://github.com/ChromeDevTools/devtools-protocol/blob/master/pdl/domains/ServiceWorker.pdl)
+  (retrieved 2026-10-30) is an "experimental domain". Its
+  `deliverPushMessage(origin, registrationId, data)` hands a push message to a
+  registration. [`Emulation.setEmulatedMedia`](https://github.com/ChromeDevTools/devtools-protocol/blob/master/pdl/domains/Emulation.pdl)
+  takes arbitrary `MediaFeature` name/value pairs, and the definition does not list
+  them. Flux's tests use it for `display-mode: standalone`, and the run shows whether
+  Chromium applied it (see the map below).
+
+**What stays device-only (inference, accepted under #266 item 10).** These cannot be
+run in Docker emulation:
+
+- the real Chrome install dialog and its engagement heuristic;
+- Safari's Add to Home Screen;
+- OS permission prompts and notification display, including a tap on a real notification
+  (the tests call the worker's own tap logic, `notificationTarget()`);
+- safe-area insets and the iOS keyboard.
+
+The rows below map each of these to the code that meets the documented rule.
+
 ### Requirement-to-evidence map (#20, MOB-7)
 
 Code and test references were checked on `main` `a9157027` on 2026-10-10 (no change to the cited paths since `ecdceb95`). Vendor
@@ -338,27 +397,40 @@ not implemented or not tested. Each row keeps the labels of its source.
 | Permission requested from a user gesture (Apple, vendor: "with a gesture, such as clicking or tapping a button"; MDN `Notification.requestPermission()`, 2025-06-11, vendor: request in response to user interaction) | `app/apps/web/src/pwa/NotificationsButton.tsx:49-51` calls `enablePushNotifications()` in the click handler; `push.ts:95-97` calls `requestPermission()` before any other `await` (Flux implementation choice, not a vendor requirement) | `pwa.e2e.ts` counts prompts on load (0). The gesture path is not browser-tested: headless permission starts `denied` | code; the prompt itself is **device** only |
 | Subscribe "immediately from the gesture's event handler" (Apple, vendor) | `push.ts:97-110` subscribes after the awaited prompt, not synchronously | observed on an iPhone Home Screen app, #20 session 1 (2026-10-05) | observed; the literal "immediately" wording is **not** met, so it is open for review |
 | `userVisibleOnly: true` required by Chrome (web.dev, 2016, vendor) | `push.ts:109,142` | observed: Android Chrome `fcm.googleapis.com` subscription and provider 201 (#20 session 1) | observed |
-| A push must show a notification at once or Safari revokes permission (Apple, undated, vendor) | `app/apps/web/src/pwa/sw.js:74-86` (every `push` calls `showNotification`) | none in a browser | code; display is **device** only |
+| A push must show a notification at once or Safari revokes permission (Apple, undated, vendor) | `app/apps/web/src/pwa/sw.js:74-86` (every `push` calls `showNotification`) | `push-browser.e2e.ts` closed-app test: the worker's real encrypted push, decrypted with the subscription keys and handed to the service worker through DevTools `deliverPushMessage` with no Flux window open, makes the handler call `showNotification` once with the server's title, body and tag | emulated (the handler's call); *observed* 2026-10-30: headless Chromium refuses the display itself ("No notification permission has been granted for this origin") even after `grantPermissions`, so display is **device** only |
 | VAPID: `aud` is the push origin, `exp` at most one day ahead, `sub` a `mailto:` or https URI, public key matches (Apple, vendor; RFC 8292 §2.1) | `app/packages/core/src/push/config.ts:87-88,103-105` (subject validation and reachability warning); worker reuses its JWT per origin | `app/tests/app/push.test.ts:40`, `:63`; a 403 on 2026-10-05 before #263 changed the subject | code and API tests; FCM accepted (201); the iPhone 403 is not re-observed since #263 |
 | A `404` or `410` from a push service removes the subscription; `503` is retried, `400`/`403` are not (Apple, vendor; worker behaviour) | `app/packages/core/src/push/delivery.ts:96-103` | `app/tests/app/push.test.ts:189`, `:254` | code and API tests |
 | Outbound HTTPS to the push services (`*.push.apple.com`, `fcm.googleapis.com`) (Apple, vendor) | `docs/development/containers.md:256-257`; `app/apps/worker/src/push/public-lookup.ts` | `app/tests/app/push-public-lookup.test.ts:37`, `:52`, `:70` | documented and API-tested; FCM transport observed |
-| Standalone detection with `display-mode` (MDN, 2026-04-20, vendor) | `push.ts:33-34`, used only for the iOS install note | none; there is no standalone test flag | **open** for the MOB-1 standalone cold launch |
-| Install guidance where the browser offers no install button (contract, MOB-1) | only the iOS note in notification settings; Chrome `beforeinstallprompt` is not used | none | **open** (MOB-1); the surface is for the final design (#341, #352) |
+| Standalone detection with `display-mode` (MDN, 2026-04-20, vendor) and `navigator.standalone` (iOS Home Screen apps) | `app/apps/web/src/pwa/install.ts` `isStandalone()` (`standalone`, `fullscreen`, `minimal-ui` or `navigator.standalone`), used by the install row and the iOS push note | `app/tests/ui/test_pwa_device.py` test_06–test_08 (Chromium and WebKit): with the forced `navigator.standalone` flag, a cold launch at the manifest's `start_url` restores the session and offers no install; a link reopens that project; signed out, the link goes through `/sign-in?next=` and then opens that project | emulated with a forced flag; *observed* 2026-10-30: Chromium's `Emulation.setEmulatedMedia` did not apply `display-mode: standalone`, so the real display mode is **device** only |
+| Install guidance where the browser offers no install button, and the browser's prompt where it does (contract, MOB-1; MDN `beforeinstallprompt`, 2026-10-26, vendor) | `app/apps/web/src/pwa/install.ts` keeps `beforeinstallprompt` from startup (`main.tsx`); `InstallFlux.tsx` is a row in Settings → Appearance ("Install Flux", or "Flux on this phone" in This phone): **Install Flux** calls `prompt()` from the click; iPhone and iPad Safari get Share → Add to Home Screen; Android without an offer gets the browser menu; nothing once installed | `test_pwa_device.py` test_01–test_05 (Chromium and WebKit): no row without an offer on a computer; an offered install is held (`defaultPrevented`), asks nothing until the click, opens one dialog and then says Flux is installed; a dismissed dialog removes the button; the iPhone and Android hints | emulated (the browser fires no real offer in a test, so the event is dispatched with the browser's shape); the real install dialog and Add to Home Screen are **device** only |
 | Editable controls at least 16 px on a coarse pointer (WebKit report, not an Apple statement) | `app/apps/web/src/ui/ui.css:116` (`.ui-input`) | `app/tests/ui/test_phone_shell.py` `test_12`, six routes | emulated on six routes; other routes **open** |
 | Simulated keyboard keeps the field and Send visible; the app follows `visualViewport` (contract; MDN browser-compat `interactive-widget`, 2026-03-26: Safari unsupported) | `app/apps/web/index.html:5`; `app/apps/web/src/app/AppLayout.tsx:263` | `test_phone_shell.py` `test_11` (Chromium and WebKit lanes) | emulated; the iOS keyboard is **device** only |
 | Safe-area insets (MDN `env()`, 2026-09-12, vendor) | `index.html:5` (`viewport-fit=cover`); `app/apps/web/src/app/app.css:13,40,48` | none; emulation cannot apply insets | code; **device** only |
 | Offline: an understandable offline page; API responses never cached (contract, MOB-5) | `sw.js:32-54`, `sw.js:38` (`/api` bypass) | `pwa.e2e.ts` offline test | emulated |
-| Update: the new worker waits, the app asks, one reload on confirmation (contract, MOB-5) | `app/apps/web/src/pwa/register.ts`; `app/apps/web/src/pwa/UpdatePrompt.tsx` | `pwa.e2e.ts` update test; `pwa-update.e2e.ts`; `test_update_prompt.py` (placement, reach, dismissal) | emulated; **open**: drafts and in-progress input across an update are not tested |
-| Lock-screen privacy: generic title unless the server sent a full preview; tap-time recheck through `GET /api/v1/inbox/:id` (contract, #41) | `sw.js:72`, `sw.js:96-107`, `sw.js:112` | `push.test.ts:222` and `:246` (recheck and expiry, API level) | code and API tests; the display is **device** only |
-| Denied or revoked permission keeps the inbox usable (contract, MOB-4) | `NotificationsButton.tsx` `MESSAGES.denied` and `unsupported` | `push.test.ts:315` covers push unavailable, not a browser permission state | **open** for the browser state |
+| Update: the new worker waits, the app asks, one reload on confirmation, and an unsent draft survives it (contract, MOB-5) | `app/apps/web/src/pwa/register.ts`; `app/apps/web/src/pwa/UpdatePrompt.tsx`; drafts in `composer/draft.ts` | `pwa.e2e.ts` update test; `pwa-update.e2e.ts`; `test_update_prompt.py` (placement, reach, dismissal) and test_10: a draft typed on a phone is still in the composer after **Reload** hands the page to the new worker; a negative control on the same page shows the draft is gone when its saved copy is removed | emulated (Chromium and WebKit) |
+| Lock-screen privacy: generic title unless the server sent a full preview; tap-time recheck through `GET /api/v1/inbox/:id` (contract, #41) | `sw.js:72`, `sw.js:96-107`, `sw.js:112` | `push.test.ts:222` and `:246` (recheck and expiry, API level); `push-browser.e2e.ts` closed-app test runs the worker's own `notificationTarget()` in Chromium: the authorized item's address, which then opens the message, and the start page after the reader is removed from the workspace | emulated (tap logic; a real notification click is **device** only) |
+| Denied or revoked permission keeps the inbox usable (contract, MOB-4) | `NotificationsButton.tsx` `MESSAGES.denied` and `unsupported` | `push-browser.e2e.ts` denied test: the browser's real `denied` state, Settings says notifications are blocked and offers no button, and the new message's in-app notification (`/inbox/:id`) opens it; `push.test.ts:315` (push unavailable) | emulated (Chromium) |
 
-Still open for #20 after this map: the install guidance and standalone cold launch
-(MOB-1); browser subscription, mute and unsubscribe flows with the push mock (MOB-4);
-drafts across a service-worker update (MOB-5); the self-hosting walk-through (MOB-6);
-phone and tablet journeys (MOB-2 and MOB-3, owned with #151, #264, #265 and #136).
-Other UI suites still launch Chromium only; `test_settings` and `test_notifications`
-already select WebKit through `FLUX_UI_BROWSER`, and the phone shell and the
-service-worker journey now run in both engines.
+**Status at the #20 closing pass (2026-10-30).** The map's earlier open rows now have
+emulated evidence: install guidance and the browser's install offer, the standalone cold
+launch, deep links and sign-in recovery (MOB-1); the browser's refused permission, a push to a
+closed app and its tap logic (MOB-4); a draft across a service-worker update (MOB-5). The
+operator walk-through is [Phones, tablets and push notifications](../operations/mobile-and-push.md)
+(MOB-6). Phone and tablet layouts and journeys (MOB-2, MOB-3) are covered by
+`test_phone_shell.py` (simulated keyboard and focus zoom), `test_phone_final.py`,
+`test_adaptive_matrix.py` (23 viewports from 320 px, Chromium and WebKit, #151) and
+`push-browser.e2e.ts` (open a notification on a phone and reply). #151's remaining parts are
+computer-width ones. Engines: Chromium 151.0.7922.34 and WebKit 26.5 from the pinned
+Playwright 1.62 image.
+
+Still **device** only, as accepted under #266 item 10:
+
+- the real install dialog and Add to Home Screen;
+- the OS permission prompt and notification display;
+- safe-area insets and the iOS keyboard.
+
+A later physical report that contradicts a documented requirement reopens the affected
+criterion.
 
 ### Lock-screen privacy
 

@@ -7,7 +7,7 @@ import { listAgentConnections } from '../agent-connection/api';
 import { getAssistantStatus } from '../assistant/api';
 import { BACKGROUND_OFF_LINE, backgroundComparisonRuntime, listBackgroundConnections } from '../proactive-comparison/api';
 import { dollars } from '../assistant/format';
-import { NotificationsButton } from '../pwa';
+import { InstallFlux, NotificationsButton } from '../pwa';
 import { AgentTag, Avatar, Button, Icon, Kreska, MEDIA, Spinner, agentHue, setReduceMotion, useMediaQuery, useReduceMotion } from '../ui';
 import { RuntimeSection } from '../agent-runtime/RuntimeSection';
 import '../agent-connection/connection.css';
@@ -328,6 +328,7 @@ export function SettingsAppearance() {
         {phone ? <p className="sset-note">One neutral palette. There is no accent color to pick.</p> : null}
         {phone ? <h2 className="sset-sec">This phone</h2> : null}
         <div className="sset-card">
+          <InstallFlux title={phone ? 'Flux on this phone' : 'Install Flux'} />
           {phone ? <div className="sset-row sset-row--stack"><span className="sset-row__t">Notifications on this phone</span><NotificationsButton /></div> : null}
           {phone ? <TextSizeFollowsPhone /> : <><TextSizeChoice /><ReduceMotionSwitch /></>}
           <KreskaSwitch />
