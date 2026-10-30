@@ -804,7 +804,6 @@ function NoticeFold({ fold, summary, children }: { fold: { key: string; notices:
   );
 }
 
-/** "Since you left: …" with a jump to the first unread item (S7). It floats over the stream and takes no room. */
 /**
  * "Since you left" (S7, #763 A3): what changed in the project after the person last left its conversation. The summary
  * is read when they arrive; when they leave it for another view or place the project's return point is saved at what
@@ -830,6 +829,7 @@ function useSinceYouLeft(projectId: string) {
   return read?.projectId === projectId ? { summary: read.summary, settled: true } : { summary: null, settled: false };
 }
 
+/** "Since you left: …" with a jump to the first unread item (S7). It floats over the stream and takes no room. */
 function SinceLine({ summary, roots, onJump }: { summary: ReturnSummary | null; roots: ConversationRoot[]; onJump: (target: NonNullable<ReturnType<typeof firstUnread>>) => boolean }) {
   const [dismissed, setDismissed] = useState(false);
   if (!summary || dismissed || !summary.point.savedAt || !summary.items.length) return null;
