@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react';
+import { useCallback, useState, type ReactNode } from 'react';
 import { Link } from 'react-router';
 import { type AssistantAnswer, type AssistantProposal, type AssistantRun, type AssistantSourceRef, type ConversationMessage, type NativeWorkRow } from '@flux/contracts';
 import { ApiError, NetworkError } from '../api/client';
@@ -11,6 +11,7 @@ import { ReadySchedule } from './ReadySchedule';
 import { useShellActions } from '../app/shellContext';
 import { answeredBy, canRetry, endedText, isWorking, onRuntime, workingText, type AskState } from './format';
 import { failure } from './WaitingChanges';
+import { useKeepFocus } from './useKeepFocus';
 import { agentAuthorLabel } from '../docs/format';
 import './assistant.css';
 import { RefLink } from '../place/origin';
@@ -64,25 +65,39 @@ function WorkingWords({ run }: { run: AssistantRun }) {
 }
 
 /** The owner's line where the answer will appear: what the assistant is doing, with Stop. */
-export function WorkingLine({ run, onStop, onRetry, onDismiss, changed = 0 }: { run: AssistantRun; onStop: () => Promise<void>; onRetry: () => Promise<void>; onDismiss: () => void;
+export function WorkingLine({ run, onStop, onRetry, onDismiss, composerId, changed = 0 }: { run: AssistantRun; onStop: () => Promise<void>; onRetry: () => Promise<void>; onDismiss: () => void;
+  /** The box the person writes in: where focus goes when they dismiss the line from the keyboard. */
+  composerId?: string;
   /** Changes the run committed before it ended: the line says so instead of "Nothing was posted" and the message below lists them. */
   changed?: number }) {
   const [busy, setBusy] = useState(false);
-  const [failed, setFailed] = useState('');
-  const act = async (action: () => Promise<void>) => {
-    setBusy(true); setFailed('');
-    try { await action(); } catch (error) { setFailed(error instanceof NetworkError ? 'Offline' : error instanceof ApiError && error.status === 404 ? 'This run is no longer available.' : 'Couldn’t reach Flux. Try again.'); }
-    finally { setBusy(false); }
+  // What a failed press said belongs to the run it was pressed for: one line carries a Retry over to its new run.
+  const [pressFailed, setFailed] = useState<{ runId: string; text: string } | null>(null);
+  const failed = pressFailed?.runId === run.id ? pressFailed.text : '';
+  // Stop and Retry go away when pressed; the line keeps the keyboard user's place (AC-8).
+  const { ref: home, holds, keep } = useKeepFocus<HTMLLIElement>();
+  const act = (action: () => Promise<void>) => keep(async () => {
+    const runId = run.id;
+    setBusy(true); setFailed(null);
+    try { await action(); } catch (error) {
+      setFailed({ runId, text: error instanceof NetworkError ? 'Offline' : error instanceof ApiError && error.status === 404 ? 'This run is no longer available.' : 'Couldn’t reach Flux. Try again.' });
+    } finally { setBusy(false); }
+  });
+  const dismiss = () => {
+    const inside = holds();
+    onDismiss();
+    if (inside && composerId) requestAnimationFrame(() => document.getElementById(composerId)?.focus({ preventScroll: true }));
   };
   const working = isWorking(run);
   const ended = endedText(run, changed);
   // Motion follows actual execution only (#155 AC-3): a queued or stopping run is static; its text says why.
   const executing = working && run.status !== 'queued' && !run.stopRequested;
   const loop = useLoopPause<HTMLLIElement>();
+  const line = useCallback((node: HTMLLIElement | null) => { home(node); loop(node); }, [home, loop]);
   // Kreska's thinking face is a small moment: with Settings → Appearance off the working line keeps its words and Stop only.
   const moments = useSmallMoments();
   return (
-    <li ref={loop} className={`assistant-working${executing ? ' is-working' : ''}`} aria-live="polite" data-run-status={run.status}>
+    <li ref={line} tabIndex={-1} className={`assistant-working${executing ? ' is-working' : ''}`} aria-live="polite" data-run-status={run.status}>
       {moments ? <AssistantAvatar expression={runExpression(run)} /> : null}
       <div className="assistant-working__body">
         <p className="assistant-working__text">
@@ -98,7 +113,7 @@ export function WorkingLine({ run, onStop, onRetry, onDismiss, changed = 0 }: { 
         {!working && run.endReason === 'plan_limit' && !run.planLimitResetsAt ? <Button variant="secondary" onClick={onDismiss}>Try again later</Button> : null}
         {!working && run.endReason === 'plan_limit' && run.planLimitResetsAt && run.kind === 'ask' ? <DoItAt run={run} onDone={onDismiss} /> : null}
         {!working && canRetry(run) ? <Button variant="quiet" busy={busy} onClick={() => void act(onRetry)}>Retry</Button> : null}
-        {!working ? <IconButton icon="x" label="Dismiss" onClick={onDismiss} /> : null}
+        {!working ? <IconButton icon="x" label="Dismiss" onClick={dismiss} /> : null}
       </div>
     </li>
   );
@@ -247,18 +262,20 @@ export function ProposalCard({ proposal, workTitle, canAccept, canDismiss, targe
   const { openDetails } = useShellActions();
   const [busy, setBusy] = useState<'' | 'accept' | 'dismiss'>('');
   const [failed, setFailed] = useState('');
-  const decide = async (decision: 'accept' | 'dismiss') => {
+  // Accept and Dismiss go away once decided; the card keeps the keyboard user's place (AC-8).
+  const { ref: home, keep } = useKeepFocus<HTMLElement>();
+  const decide = (decision: 'accept' | 'dismiss') => keep(async () => {
     setBusy(decision); setFailed('');
     try { await onDecide(decision); }
     catch (error) {
       setFailed(error instanceof ApiError && error.status === 403 ? 'Only someone who can decide this can accept it.'
         : error instanceof ApiError && error.status === 409 ? 'This proposal changed. It has been refreshed.' : 'Couldn’t save. Try again.');
     } finally { setBusy(''); }
-  };
+  });
   const decidedBy = proposal.decidedBy ? (proposal.decidedBy.id === meId ? 'you' : proposal.decidedBy.name) : '';
   const drafted = proposal.draftedBy.ownerUserId === meId ? 'your assistant' : proposal.draftedBy.label;
   return (
-    <section className={`assistant-proposal is-${proposal.status}`} aria-label={`Proposal: ${proposal.change.title}`} data-native-ref={proposal.change.finishes ? `work:${proposal.change.finishes.workId}` : undefined} data-proposal-target="">
+    <section ref={home} tabIndex={-1} className={`assistant-proposal is-${proposal.status}`} aria-label={`Proposal: ${proposal.change.title}`} data-native-ref={proposal.change.finishes ? `work:${proposal.change.finishes.workId}` : undefined} data-proposal-target="">
       <p className="assistant-proposal__label">
         <span className="assistant-proposal__ring" aria-hidden="true" />
         {proposal.status === 'proposed' ? 'Proposal · not saved yet' : proposal.status === 'accepted' ? 'Result recorded' : 'Proposal dismissed'}

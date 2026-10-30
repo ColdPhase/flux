@@ -209,7 +209,7 @@ export function createFileUseCases(unit: FileUnitOfWork, storage: FileStorage, c
       const plaintext: Uint8Array[] = [];
       try {
         const limits = { maxBytes: FILE_LIMITS.fileBytes, deadline: Date.now() + FILE_LIMITS.receiveSeconds * 1000 };
-        received = admitted.replay ? await digestOnly(bytes, limits) : await storage.receive(readsDetail(name) ? observed(bytes, plaintext) : bytes, limits);
+        received = admitted.replay ? await digestOnly(bytes, limits) : await storage.receive(readsDetail(name) ? observed(bytes, plaintext) : bytes, limits, admitted.reserved!.id);
       } catch (error) {
         if (admitted.reserved ?? admitted.verification) await release(projectId, uploader, (admitted.reserved ?? admitted.verification)!.id);
         if (error instanceof FileTooLargeError) throw new PayloadTooLargeError('A file is at most 5 MiB', 'FILE_TOO_LARGE');
@@ -254,7 +254,8 @@ export function createFileUseCases(unit: FileUnitOfWork, storage: FileStorage, c
           await received.commit(reservation.id);
           const now = clock();
           const ready = await ports.files.markReady(reservation.id, { size: received.size, sha256: received.sha256, readyAt: now,
-            expiresAt: new Date(now.getTime() + FILE_LIMITS.unpublishedDays * DAY), detail });
+            expiresAt: new Date(now.getTime() + FILE_LIMITS.unpublishedDays * DAY), detail, keyVersion: 'keyVersion' in received ? received.keyVersion ?? null : null });
+          if (ready === 'key_changed') throw new ConflictError('The space\'s key changed while the file was being sent; send it again', 'UPLOAD_KEY_CHANGED');
           if (!ready) throw new ConflictError('The upload took too long; send the file again', 'UPLOAD_EXPIRED');
           return staged((await ports.files.findFile(reservation.id))!);
         });

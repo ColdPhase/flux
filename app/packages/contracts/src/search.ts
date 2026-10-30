@@ -8,6 +8,8 @@
  */
 import type { WorkStatus } from './work.js';
 
+import type { LockedWorkspaceRef } from './encryption.js';
+
 export const SEARCH_PATH = '/api/v1/search';
 
 /** What a result is. `dm_message` results belong to the `message` filter and `thought` results to `sketch`. */
@@ -87,6 +89,11 @@ export interface SearchResult {
 }
 
 export interface SearchResponse {
+  /**
+   * F-030: the caller's encrypted workspaces that are locked on this server; their items are left out, and the page
+   * draws one "Waiting to be unlocked" row for each. Absent when none is locked.
+   */
+  lockedWorkspaces?: LockedWorkspaceRef[];
   items: SearchResult[];
   /** Cursor of the next page; `null` when no more visible results exist. */
   next: string | null;
@@ -94,4 +101,9 @@ export interface SearchResponse {
   counts: Partial<Record<SearchFilterType, number>>;
   /** True when counting stopped at {@link SEARCH_LIMITS.countCap} visible matches. */
   countsCapped: boolean;
+  /**
+   * F-030: encrypted workspaces the reader belongs to that are too large to search in memory
+   * (`FLUX_SEALED_SEARCH_MAX_BYTES`); their content is not in this answer. Absent when there are none.
+   */
+  sealedUnavailable?: string[];
 }

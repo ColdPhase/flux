@@ -48,6 +48,9 @@ export FLUX_AUTH_RATE_LIMIT=false
 # TEST ONLY (#68): personal runs use fixture key connections and the real Anthropic adapter
 # against the Compose mock provider (tests/ui/anthropic_mock.py). Never set in production.
 export FLUX_TEST_FAILURE_INJECTION=true
+# Encrypted workspaces (F-030): the keyring needs its token for the tests that create one through the fixture route.
+export FLUX_KEYRING_TOKEN="${FLUX_KEYRING_TOKEN:-$(head -c 32 /dev/urandom | base64 | tr '+/' '-_' | tr -d '=\n')}"
+export FLUX_KEY_PIN_SECRET="${FLUX_KEY_PIN_SECRET:-$(head -c 32 /dev/urandom | base64 | tr '+/' '-_' | tr -d '=\n')}"
 export FLUX_TEST_PERSONAL_RUNS=anthropic-mock
 export FLUX_TEST_ANTHROPIC_URL=http://anthropic-mock:8090
 # Owner AI connection settings (#179): a throwaway key-custody secret, and an operator allowlist
@@ -57,6 +60,10 @@ head -c 32 /dev/urandom > "$background_secret_dir/background_key"
 chmod 0444 "$background_secret_dir/background_key"
 export FLUX_BACKGROUND_KEY_HOST_FILE="$background_secret_dir/background_key"
 export FLUX_AI_PRIVATE_TARGETS=openai-mock
+# Link cards (#469): on, with public.test connecting to the Compose link-mock (tests/ui/link_mock.py). Everything else
+# is judged by the production rules: a private address, a non-default port or a redirect there fetches nothing.
+export FLUX_LINK_PREVIEWS=on
+export FLUX_TEST_LINK_PREVIEW_HOSTS=public.test=link-mock:8098
 if [ -n "${FLUX_UI_SCREENSHOT_DIR:-}" ]; then mkdir -p "$FLUX_UI_SCREENSHOT_DIR"; fi
 . scripts/test_images.sh
 compose="docker compose -p $project -f docker/compose.source.yaml --profile ui"

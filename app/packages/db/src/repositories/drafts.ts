@@ -41,6 +41,8 @@ export function draftRepository(db: DbExecutor) {
 
     /** One page of the drafts the actor can read (optionally in one project); the filter applies before count and page. */
     async listVisible(actor: AccessActor, projectId: string | undefined, page: { limit: number; offset: number }) {
+      // F-030 (AC-6): a locked encrypted workspace answers 423 even when the page would be empty.
+      await sealOf(db, actor.workspaceId, { write: false });
       const conditions: SQL[] = [visibleDraftsSql(actor)];
       if (projectId !== undefined) conditions.push(eq(schema.drafts.projectId, projectId));
       const filter = and(...conditions);

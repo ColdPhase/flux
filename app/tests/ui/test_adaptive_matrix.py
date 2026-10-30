@@ -64,6 +64,9 @@ WIDE_CAPS = {
 MEASURE = 90
 # The most empty space between the newest message of a short stream and its message field (ADAPT-2, tall screens).
 MAX_STREAM_GAP = 64
+# The most room a long stream's opening adds below its newest message so its top message starts whole (#725;
+# WHOLE_MESSAGE_ROOM in app/apps/web/src/app/messageParts.tsx).
+WHOLE_MESSAGE_ROOM = 48
 # Live editing is the wiki editor whenever it is configured (check_ui.sh sets FLUX_LIVE_EDITING=on by default).
 LIVE = os.environ.get("FLUX_LIVE_EDITING", "on") != "off"
 TARGET = 44
@@ -231,6 +234,59 @@ TASK_FIELDS = r"""(root, scroll) => {
 
 # The computed size of the first message's text: it must really grow with the person's text size (WCAG 1.4.4).
 TEXT_PX = "() => parseFloat(getComputedStyle(document.querySelector('.project-convo__message .message-body')).fontSize)"
+
+# The insets the page resolves: a probe styled with env(safe-area-inset-*).
+SAFE_INSETS = """() => {
+  const probe = document.createElement('div');
+  probe.style.cssText = 'position:fixed;visibility:hidden;padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left)';
+  document.body.append(probe);
+  const style = getComputedStyle(probe);
+  const value = {top: parseFloat(style.paddingTop), right: parseFloat(style.paddingRight), bottom: parseFloat(style.paddingBottom), left: parseFloat(style.paddingLeft)};
+  probe.remove();
+  return value;
+}"""
+# Every control that can be hit inside an inset strip: points every 6 px along each strip, at three depths into it.
+UNSAFE_HITS = """(insets) => {
+  const W = innerWidth, H = innerHeight, found = new Map();
+  const control = 'a[href], button, input, textarea, select, summary, [role=button], [role=link], [role=tab], [role=menuitem], [contenteditable=true], [tabindex]:not([tabindex="-1"])';
+  // Content that scrolls may pass under an inset, as a list passes under the home indicator, so long as it can be scrolled
+  // out of it; a control that stays put there (fixed, sticky or in a box that does not scroll) cannot.
+  const scrolls = (el) => {
+    for (let node = el; node && node !== document.documentElement; node = node.parentElement) {
+      const style = getComputedStyle(node);
+      if (style.position === 'fixed' || style.position === 'sticky') return false;
+      const can = (axis) => /(auto|scroll)/.test(axis === 'y' ? style.overflowY : style.overflowX)
+        && (axis === 'y' ? node.scrollHeight > node.clientHeight + 1 : node.scrollWidth > node.clientWidth + 1);
+      if (node !== el && (can('y') || can('x'))) return true;
+    }
+    return false;
+  };
+  const probe = (x, y, edge) => {
+    const el = document.elementFromPoint(x, y)?.closest(control);
+    if (!el || scrolls(el)) return;
+    const name = (el.getAttribute('aria-label') || el.textContent || el.tagName).trim().slice(0, 40);
+    const key = `${edge}:${name}`;
+    const r = el.getBoundingClientRect();
+    if (!found.has(key)) found.set(key, {edge, control: name, at: [x, y], box: [r.left, r.top, r.right, r.bottom].map((v) => Math.round(v * 10) / 10)});
+  };
+  const depths = (size) => [0.5, size / 2, size - 0.5];
+  for (let x = 3; x < W; x += 6) {
+    if (insets.top) for (const d of depths(insets.top)) probe(x, d, 'top');
+    if (insets.bottom) for (const d of depths(insets.bottom)) probe(x, H - d, 'bottom');
+  }
+  for (let y = 3; y < H; y += 6) {
+    if (insets.left) for (const d of depths(insets.left)) probe(d, y, 'left');
+    if (insets.right) for (const d of depths(insets.right)) probe(W - d, y, 'right');
+  }
+  return [...found.values()];
+}"""
+# A control's box against the safe rectangle, and whether its centre hits the control itself.
+SAFE_BOX = """(el, insets) => {
+  const r = el.getBoundingClientRect();
+  const inside = r.top >= insets.top - 0.5 && r.left >= insets.left - 0.5 && r.right <= innerWidth - insets.right + 0.5 && r.bottom <= innerHeight - insets.bottom + 0.5;
+  const at = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+  return {inside, hit: !!at && (el === at || el.contains(at)), box: [r.left, r.top, r.right, r.bottom].map(Math.round), window: [innerWidth, innerHeight]};
+}"""
 
 CAMERA = "() => { const c = document.querySelector('.sk-canvas'); return {left: Math.round(c.scrollLeft), top: Math.round(c.scrollTop)}; }"
 
@@ -639,6 +695,38 @@ class AdaptiveMatrix(AdaptiveBase):
                 self.shot(page, f"adapt-{width}x{height}-tasks-beside-details")
                 self.no_problems()
 
+    def test_02b_a_narrow_map_beside_docked_details_takes_the_columns_but_keeps_the_computer_controls(self) -> None:
+        """ADAPT-1 (#151): the thoughts' layout follows the map's own width, the controls follow the device. At 1100×800 with
+        Details docked the map is under 640 px wide and shows the two columns; it keeps the computer's toolbar, zoom and Fit,
+        and gets none of the phone's Map options sheet or Add a thought button. At 1440×900 the same map stays the plane."""
+        pid = self.ids["project"]
+        for (width, height), layout in (((1100, 800), "columns"), ((1440, 900), "plane")):
+            with self.subTest(width=width, height=height):
+                page = self.page(width, height, coarse=False)
+                page.goto(f"/projects/{pid}/map/{self.ids['sketch']}")
+                expect(page.locator(".sk-node")).to_have_count(len(fx.THOUGHTS))
+                canvas = page.locator(".sk-canvas")
+                expect(canvas).to_have_attribute("data-layout", "plane")
+                open_details(page)
+                expect(page.locator("#details.ui-panel--docked")).to_be_visible()
+                expect(canvas).to_have_attribute("data-layout", layout)
+                self.at_rest(page)
+                expect(page.locator(".sk-node")).to_have_count(len(fx.THOUGHTS))
+                map_width = page.locator(".sk-canvas-wrap").bounding_box()["width"]
+                self.assertTrue(map_width <= 640 if layout == "columns" else map_width > 640, f"the map is {map_width} px wide at {width}×{height}")
+                # The computer's controls, whatever the layout.
+                expect(page.get_by_role("group", name="Zoom")).to_be_visible()
+                expect(page.get_by_role("button", name="Fit the sketch to the view", exact=True)).to_be_visible()
+                expect(page.locator(".sk-dock__row")).to_be_visible()
+                expect(page.get_by_role("button", name="Map options", exact=True)).to_have_count(0)
+                expect(page.locator(".sk-phone, .sk-fab")).to_have_count(0)
+                if layout == "columns":
+                    # The two columns fit the map's width: nothing reaches past it sideways.
+                    fits = canvas.evaluate("el => ({inner: el.querySelector('.sk-zoomed').getBoundingClientRect().width, room: el.clientWidth})")
+                    self.assertLessEqual(fits["inner"], fits["room"] + 1, f"the columns fit the narrow map at {width}×{height}: {fits}")
+                self.shot(page, f"adapt-{width}x{height}-map-beside-details")
+                self.no_problems()
+
     def test_03_wider_boards_show_more_cards_per_row(self) -> None:
         """ADAPT-2: the Open column's three cards take three rows at 1440 px and one at 3840 px."""
         rows = {}
@@ -780,12 +868,20 @@ class AdaptiveMatrix(AdaptiveBase):
                  for body in ("Two sensors on the first board, please.", "Agreed. I will route the second I2C bus.")]
         fx.api(person, "POST", f"/api/v1/conversations/{roots[0]}/messages", {"body": "Both on the first board, then.", "clientMessageId": str(uuid.uuid4())})
         dm = fx.api(person, "POST", f"/api/v1/workspaces/{workspace}/dms", {"participantIds": [colleague_id]})["id"]
-        for body in ("Can we test the lamp tonight?", "Yes, after seven."):
-            fx.api(person, "POST", f"/api/v1/dms/{dm}/messages", {"body": body, "clientMessageId": str(uuid.uuid4())})
+        dm_messages = [fx.api(person, "POST", f"/api/v1/dms/{dm}/messages", {"body": body, "clientMessageId": str(uuid.uuid4())})["id"]
+                       for body in ("Can we test the lamp tonight?", "Yes, after seven.")]
+        # A private reply thread on the first direct message: its root and one reply.
+        fx.api(colleague, "POST", f"/api/v1/dms/{dm}/threads/{dm_messages[0]}/replies", {"body": "I will bring the spare driver.", "clientMessageId": str(uuid.uuid4())})
+        # A task whose thread holds its first contribution and one reply, for the Agents view's task thread. It lives in a
+        # project of its own: a task thread is also a root of its project's conversation, and test_08 counts that stream.
+        tasks = fx.api(person, "POST", f"/api/v1/workspaces/{workspace}/projects", {"name": "Short task thread", "visibility": "restricted"})["id"]
+        task = fx.api(person, "POST", f"/api/v1/projects/{tasks}/work", {"title": "Mount the lamp sensor"})["id"]
+        for body in ("Mount it under the shelf, cable to the left.", "The bracket is in the second drawer."):
+            fx.api(person, "POST", f"/api/v1/work/{task}/discussion", {"body": body, "clientMessageId": str(uuid.uuid4()), "kind": "text"})
         state = person.storage_state()
         person.close()
         colleague.close()
-        AdaptiveMatrix._short = {"state": state, "project": project, "roots": roots, "dm": dm}
+        AdaptiveMatrix._short = {"state": state, "project": project, "roots": roots, "dm": dm, "dm_root": dm_messages[0], "task": task, "task_project": tasks}
         return AdaptiveMatrix._short
 
     def test_08_a_short_stream_stays_connected_to_its_composer_on_tall_screens(self) -> None:
@@ -806,12 +902,12 @@ class AdaptiveMatrix(AdaptiveBase):
         print("\n  space between the newest message and the message field (CSS px): " + ", ".join(f"{size} {gap}" for size, gap in gaps.items()), end="")
 
     def test_09_a_short_thread_and_a_short_direct_message_stay_connected_to_their_fields(self) -> None:
-        """ADAPT-2: the same holds for a thread (its root and one reply) and a direct message (two messages): the newest
-        message sits against the reply field or the message field. Agents' task thread is a page scroll with its own
-        sticky composer and is not covered here."""
+        """ADAPT-2: the same holds for a thread (its root and one reply), a direct message (two messages), a direct
+        message's private reply thread (its root and one reply) and the Agents view's task thread (two messages): the newest
+        message sits against its field."""
         world = self.short_world()
-        gaps = {"thread": {}, "direct message": {}}
-        for width, height in [(390, 844), (820, 1180), (1440, 900), (2560, 1440)]:
+        gaps = {"thread": {}, "direct message": {}, "direct message thread": {}, "Agents task thread": {}}
+        for width, height in [(390, 844), (820, 1180), (1440, 900), (2560, 1440), (3440, 1440)]:
             with self.subTest(width=width, height=height):
                 size = f"{width}×{height}"
                 page = self.page(width, height, state=world["state"])
@@ -822,7 +918,6 @@ class AdaptiveMatrix(AdaptiveBase):
                 last = thread.locator(".project-convo__message").last.bounding_box()
                 field = thread.get_by_label("Reply", exact=True).bounding_box()
                 gaps["thread"][size] = round(field["y"] - (last["y"] + last["height"]))
-                self.assertLessEqual(gaps["thread"][size], MAX_STREAM_GAP, f"the newest reply and the reply field stay together at {size}: {gaps}")
                 dm = self.page(width, height, state=world["state"])
                 dm.goto(f"/dm/{world['dm']}")
                 expect(dm.locator(".dm__list > li")).to_have_count(2)
@@ -830,7 +925,24 @@ class AdaptiveMatrix(AdaptiveBase):
                 last = dm.locator(".dm__list > li").last.bounding_box()
                 field = dm.locator("#dm-composer").bounding_box()
                 gaps["direct message"][size] = round(field["y"] - (last["y"] + last["height"]))
-                self.assertLessEqual(gaps["direct message"][size], MAX_STREAM_GAP, f"the newest message and the message field stay together at {size}: {gaps}")
+                dm.goto(f"/dm/{world['dm']}?thread={world['dm_root']}")
+                panel = dm.locator("[data-dm-thread]")
+                expect(panel.locator(".thread__list > li")).to_have_count(1)
+                self.at_rest(dm)
+                last = panel.locator(".thread__list > li").last.bounding_box()
+                field = panel.locator("#dm-thread-composer").bounding_box()
+                gaps["direct message thread"][size] = round(field["y"] - (last["y"] + last["height"]))
+                agents = self.page(width, height, state=world["state"])
+                agents.goto(f"/projects/{world['task_project']}/agents?task={world['task']}")
+                thread = agents.get_by_role("region", name="Thread of Mount the lamp sensor")
+                expect(thread.locator(".agents-msg")).to_have_count(2)
+                self.at_rest(agents)
+                last = thread.locator(".agents-msg").last.bounding_box()
+                field = thread.get_by_label("Write to this task").bounding_box()
+                gaps["Agents task thread"][size] = round(field["y"] - (last["y"] + last["height"]))
+                # Every surface is measured before any is judged, so one failure still reports the others.
+                for what, values in gaps.items():
+                    self.assertLessEqual(values[size], MAX_STREAM_GAP, f"the newest message of the {what} and its field stay together at {size}: {gaps}")
         for what, values in gaps.items():
             print(f"\n  space between the newest message and the field, {what} (CSS px): " + ", ".join(f"{size} {gap}" for size, gap in values.items()), end="")
 
@@ -1231,6 +1343,175 @@ class AdaptiveReflow(AdaptiveBase):
                     self.walk(page, f"{width}×{height} with 200% text", start=False)
                 finally:
                     self.no_problems()
+
+    def test_22_safe_areas_keep_every_control_out_of_the_unsafe_edges(self) -> None:
+        """MOB/ADAPT-5 safe areas: a notched phone upright (47 px top, 34 px home indicator) and on its side (47 px each
+        side, 21 px bottom). Chromium simulates the insets (`Emulation.setSafeAreaInsetsOverride`) and the page must first
+        resolve `env(safe-area-inset-*)` to them, so the check cannot pass vacuously. In every view no control that stays put
+        (fixed, sticky, or in a box that does not scroll) can be hit inside an inset; scrolling content may pass under one.
+        The view's primary controls lie within the safe rectangle and are not covered. WebKit has no
+        such override: there the case is skipped with that reason, and real-device insets stay unverified."""
+        if UI_BROWSER != "chromium":
+            self.skipTest("only Chromium can simulate a safe area (Emulation.setSafeAreaInsetsOverride); WebKit stays unverified")
+        for (width, height), insets in (((390, 844), {"top": 47, "right": 0, "bottom": 34, "left": 0}),
+                                        ((844, 390), {"top": 0, "right": 47, "bottom": 21, "left": 47})):
+            with self.subTest(width=width, height=height):
+                self.problems = []
+                page = self.page(width, height, coarse=True)
+                session = page.context.new_cdp_session(page)
+                session.send("Emulation.setSafeAreaInsetsOverride", {"insets": insets})
+                page._safe_session = session  # type: ignore[attr-defined]  # a live session keeps the override
+                where = f"{width}×{height} with safe areas {insets}"
+                try:
+                    page.goto(f"/projects/{self.ids['project']}")
+                    seen = page.evaluate(SAFE_INSETS)
+                    self.assertEqual(seen, insets, f"the page resolves env(safe-area-inset-*) to the simulated insets at {where}")
+                    for view in TABS:
+                        if view != "Conversation":
+                            self.tab(page, view)
+                        if view == "Map":
+                            expect(page.locator(".sk-node")).to_have_count(len(fx.THOUGHTS))
+                        elif view == "Agents":
+                            expect(page.get_by_role("heading", level=1, name="Agents")).to_be_visible()
+                        self.at_rest(page)
+                        hits = page.evaluate(UNSAFE_HITS, insets)
+                        self.check(not hits, f"{view} at {where}: no control can be hit inside an inset: {hits}")
+                        for what, locator in self.controls(page, view):
+                            expect(locator, f"{what} in {view} at {where}").to_be_visible()
+                            locator.scroll_into_view_if_needed()
+                            self.settle(page)
+                            box = locator.evaluate(SAFE_BOX, insets)
+                            self.check(box["inside"] and box["hit"], f"{what} in {view} at {where} lies in the safe rectangle, uncovered: {box}")
+                finally:
+                    self.no_problems()
+
+    def test_23_a_long_stream_opens_with_its_newest_message_against_the_field(self) -> None:
+        """#725: a stream that fills its feed opens at its latest with the newest message against the message field. Its
+        "whole messages" opening adds at most WHOLE_MESSAGE_ROOM (48 px) below it; on phones it once added 137-147 px."""
+        gaps, rooms = {}, {}
+        for width, height in [(320, 568), (360, 640), (390, 844), (820, 1180), (1440, 900)]:
+            with self.subTest(width=width, height=height):
+                page = self.page(width, height)
+                page.goto(f"/projects/{self.ids['project']}")
+                expect(page.locator(".project-convo__message").first).to_be_visible()
+                self.at_rest(page)
+                page.wait_for_timeout(600)  # the opening keeps settling while fonts and previews arrive
+                measured = page.evaluate("""() => {
+                  const feed = document.querySelector('.project-convo__feed');
+                  const items = [...feed.querySelectorAll('.project-convo__message, .convo-notice, .convo-object, .convo-fold, .convo-goal')].filter((el) => el.getClientRects().length);
+                  const column = document.querySelector('.project-convo__in');
+                  // The column's own padding, from a bare copy of it, against what the opening wrote inline.
+                  const bare = column.cloneNode(false);
+                  bare.removeAttribute('style');
+                  bare.style.cssText = 'position:absolute;visibility:hidden;';
+                  column.parentElement.appendChild(bare);
+                  const own = parseFloat(getComputedStyle(bare).paddingBottom);
+                  bare.remove();
+                  return {last: items[items.length - 1].getBoundingClientRect().bottom, fills: feed.scrollHeight > feed.clientHeight + 1,
+                          atLatest: feed.scrollHeight - feed.clientHeight - feed.scrollTop <= 2,
+                          room: column.style.paddingBottom ? Math.round(parseFloat(column.style.paddingBottom) - own) : 0};
+                }""")
+                field = page.get_by_label("Write a message", exact=True).bounding_box()
+                size = f"{width}×{height}"
+                gaps[size] = round(field["y"] - measured["last"])
+                self.assertTrue(measured["fills"], f"the fixture stream fills its feed at {size}: {measured}")
+                self.assertTrue(measured["atLatest"], f"the stream opens at its latest at {size}: {measured}")
+                rooms[size] = measured["room"]
+                self.assertLessEqual(measured["room"], WHOLE_MESSAGE_ROOM, f"the opening adds at most {WHOLE_MESSAGE_ROOM} px below the newest message at {size}: {rooms}")
+                self.assertLessEqual(gaps[size] - measured["room"], MAX_STREAM_GAP, f"without that room the newest message sits against the field at {size}: {gaps}")
+        print("\n  space between the newest message and the field in a long stream, CSS px (of it, room for a whole first message): "
+              + ", ".join(f"{size} {gap} ({rooms[size]})" for size, gap in gaps.items()), end="")
+
+    def test_24_the_map_opens_at_a_readable_size_and_fit_stays_the_overview(self) -> None:
+        """#726: the map opens with thought titles at 12 px or more and their meta lines at 10 px or more (at 1440×900 it
+        opened at Fit's 60% floor: 8 and 7 px), its first thought in view. Fit is the explicit overview and still shrinks the
+        sketch below that."""
+        readable = """() => {
+          const scale = (el) => el.getBoundingClientRect().height / el.offsetHeight;
+          const px = (sel) => Math.min(...[...document.querySelectorAll(sel)].filter((el) => el.offsetHeight).map((el) => parseFloat(getComputedStyle(el).fontSize) * scale(el)));
+          return {title: px('.sk-node .sk-t'), meta: px('.sk-node .sk-k')};
+        }"""
+        for width, height in [(1280, 800), (1440, 900), (820, 1180)]:
+            with self.subTest(width=width, height=height):
+                size = f"{width}×{height}"
+                page = self.page(width, height)
+                page.goto(f"/projects/{self.ids['project']}/map/{self.ids['sketch']}")
+                expect(page.locator(".sk-node")).to_have_count(len(fx.THOUGHTS))
+                self.at_rest(page)
+                text = page.evaluate(readable)
+                self.assertGreaterEqual(text["title"], 12, f"thought titles are readable on opening at {size}: {text}")
+                self.assertGreaterEqual(text["meta"], 10, f"thought meta lines are readable on opening at {size}: {text}")
+                canvas = page.locator(".sk-canvas").bounding_box()
+                first = page.locator(".sk-node").filter(has_text=fx.THOUGHTS[0][1]).bounding_box()
+                self.assertTrue(canvas["x"] <= first["x"] and first["x"] + first["width"] <= canvas["x"] + canvas["width"]
+                                and canvas["y"] <= first["y"] and first["y"] + first["height"] <= canvas["y"] + canvas["height"],
+                                f"the first thought is in view on opening at {size}: {first} in {canvas}")
+                opened = self.zoom_level(page)
+                self.assertGreaterEqual(opened, 90, f"the map opens at a working zoom at {size}")
+                # The first-run hint never sits on a thought's text: where a card lies under it, it steps aside.
+                page.wait_for_timeout(100)
+                hint = page.evaluate("""() => {
+                  const hint = document.querySelector('.sk-dock > .sk-hint');
+                  if (!hint || getComputedStyle(hint).visibility === 'hidden') return {shown: false, over: []};
+                  const h = hint.getBoundingClientRect();
+                  return {shown: true, over: [...document.querySelectorAll('.sk-node')].filter((n) => { const r = n.getBoundingClientRect();
+                    return r.right > h.left && r.left < h.right && r.bottom > h.top && r.top < h.bottom; }).map((n) => n.textContent.slice(0, 30))};
+                }""")
+                self.assertEqual(hint["over"], [], f"the map hint covers no thought at {size}: {hint}")
+                if width == 1440:
+                    page.get_by_role("button", name="Fit the sketch to the view", exact=True).click()
+                    page.wait_for_function("z => !document.querySelector('.sk-zoom__level').textContent.startsWith(z + '%')", arg=opened)
+                    self.assertLess(self.zoom_level(page), opened, f"Fit still gives the overview at {size}")
+
+    def zoom_level(self, page: Page) -> int:
+        return int(re.search(r"(\d+)%", page.locator(".sk-zoom__level").get_attribute("aria-label") or "").group(1))
+
+    def test_25_a_short_window_rail_scrolls_its_places_and_projects_and_keeps_its_controls(self) -> None:
+        """#727: on a window under about 420 px tall (a phone on its side) the rail's middle band, the four places with the
+        projects and messages, scrolls as one, so every project is reachable from the rail; the toggle, New and the account
+        stay where they are, inside the window, and scrolling the band does not move them."""
+        context = BROWSER.new_context(base_url=ORIGIN)
+        email = f"rhea.rail+{fx.STAMP}@example.test"
+        signed_up = context.request.post("/api/auth/sign-up/email", data={"name": "Rhea Rail", "email": email, "password": fx.PASSWORD}, headers={"origin": ORIGIN})
+        self.assertEqual(signed_up.status, 200, signed_up.text())
+        workspace = fx.api(context, "POST", "/api/v1/workspaces", {"name": "Short rail"})["id"]
+        names = ["Bench supply", "Lamp shade", "Sensor shelf", "Driver board", "Cable loom", "Night test"]
+        projects = [fx.api(context, "POST", f"/api/v1/workspaces/{workspace}/projects", {"name": name, "visibility": "restricted"})["id"] for name in names]
+        state = context.storage_state()
+        context.close()
+        controls = """() => Object.fromEntries([['toggle', '.side--rail > .side__toggle'], ['account', '.side--rail .me--compact'], ['new', '.side--rail > :nth-child(2)']]
+          .map(([name, sel]) => { const r = document.querySelector(sel).getBoundingClientRect(); return [name, [r.left, r.top, r.right, r.bottom].map(Math.round)]; }))"""
+        # The rail is the sidebar from 681 to 900 px wide; a phone on its side and a short tablet split.
+        for width, height in [(844, 390), (900, 400)]:
+            with self.subTest(width=width, height=height):
+                size = f"{width}×{height}"
+                page = self.page(width, height, state=state)
+                page.goto(f"/projects/{projects[0]}")
+                rail = page.locator(".side--rail")
+                expect(rail).to_be_visible()
+                self.at_rest(page)
+                before = page.evaluate(controls)
+                shot(page, f"rail-short-{width}x{height}" if UI_BROWSER == "chromium" else f"rail-short-{width}x{height}-{UI_BROWSER}")
+                for name, (left, top, right, bottom) in before.items():
+                    self.assertTrue(left >= 0 and top >= 0 and right <= width and bottom <= height, f"the rail's {name} lies inside the window at {size}: {before}")
+                band = rail.locator(".side__rail-middle")
+                scrolls = band.evaluate("el => ({scrollable: el.scrollHeight > el.clientHeight, room: el.clientHeight, overflow: getComputedStyle(el).overflowY})")
+                self.assertTrue(scrolls["scrollable"] and scrolls["overflow"] == "auto", f"the rail's places and lists scroll as one band at {size}: {scrolls}")
+                fade = band.evaluate("el => ({marked: el.hasAttribute('data-scrolls'), mask: getComputedStyle(el).maskImage || getComputedStyle(el).webkitMaskImage})")
+                self.assertTrue(fade["marked"] and "gradient" in (fade["mask"] or ""), f"a band that scrolls fades softly at its lower edge at {size}: {fade}")
+                tiles = rail.get_by_role("navigation", name="Projects").get_by_role("link")
+                expect(tiles).to_have_count(len(names))
+                for index, name in enumerate(names):
+                    tile = tiles.nth(index)
+                    tile.scroll_into_view_if_needed()
+                    self.settle(page)
+                    box = tile.evaluate(REACH, list(OVERLAYS))
+                    self.assertTrue(box["inside"] and box["hit"], f"the project {name} can be reached in the rail at {size}: {box}")
+                self.assertEqual(page.evaluate(controls), before, f"scrolling the band moves none of the rail's controls at {size}")
+                shot(page, f"rail-short-{width}x{height}-scrolled" if UI_BROWSER == "chromium" else f"rail-short-{width}x{height}-scrolled-{UI_BROWSER}")
+                tiles.nth(len(names) - 1).click()
+                expect(page).to_have_url(re.compile(f"/projects/{projects[-1]}"))
+                self.assertEqual(page.evaluate(controls), before, f"choosing a project keeps the rail's controls in place at {size}")
 
 
 class KnownGapRules(AdaptiveBase):

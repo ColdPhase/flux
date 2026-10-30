@@ -260,6 +260,8 @@ export function workRows(db: DbExecutor) {
 
     /** Unfinished, unparked work of `owner` in projects matching `visibleProjects` (a condition over `projects`). */
     async listAssigned(workspaceId: string, owner: Actor, visibleProjects: SQL, window: Window) {
+      // F-030 (AC-6): a locked encrypted workspace answers 423 even when nothing is assigned.
+      await sealOf(db, workspaceId, { write: false });
       const where = and(
         eq(w.workspaceId, workspaceId),
         owner.kind === 'human' ? eq(w.ownerUserId, owner.id) : eq(w.ownerAgentId, owner.id),
@@ -482,8 +484,9 @@ export function workRows(db: DbExecutor) {
       let found: unknown[];
       switch (ref.type) {
         case 'message':
+          // A message the assistant's Undo took back (#68) cannot be cited.
           found = await db.select({ id: schema.projectMessages.id }).from(schema.projectMessages)
-            .where(and(eq(schema.projectMessages.projectId, projectId), eq(schema.projectMessages.id, ref.id)));
+            .where(and(eq(schema.projectMessages.projectId, projectId), eq(schema.projectMessages.id, ref.id), isNull(schema.projectMessages.removedAt)));
           break;
         case 'thought':
           found = await db.select({ id: schema.sketchThoughts.id }).from(schema.sketchThoughts)
@@ -521,7 +524,7 @@ export function workRows(db: DbExecutor) {
       const messages = of('message');
       if (messages.length) {
         const m = schema.projectMessages;
-        for (const row of await db.select({ id: m.id, body: m.body, conversationId: m.conversationId }).from(m).where(and(eq(m.projectId, projectId), inArray(m.id, messages))))
+        for (const row of await db.select({ id: m.id, body: m.body, conversationId: m.conversationId }).from(m).where(and(eq(m.projectId, projectId), inArray(m.id, messages), isNull(m.removedAt))))
           titles.set(`message:${row.id}`, { title: excerpt(open('project_messages', 'body', [row.id], row.body)), conversationId: row.conversationId });
       }
       const thoughts = of('thought');

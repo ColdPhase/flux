@@ -145,4 +145,29 @@ describe('workspace AI lock: tokens, connections and runs', () => {
     assert.ok(scene.compute.dispatched.length > dispatched, 'control: the provider is called while AI is on');
     expectStatus(await scene.owner.browser.request('GET', `/api/v1/assistant-runs/${control.run.id}`), 200);
   });
+
+  test('#68: Retry and Continue are refused while AI is off and write no run; Stop is not blocked; AI on again works again', async () => {
+    await scene.reset();
+    const invokePath = `/api/v1/conversations/${scene.thread.id}/assistant-runs`;
+    const earlier = await scene.runs.invoke(human(scene.owner), scene.thread.id, { clientRunId: randomUUID(), kind: 'ask', prompt: 'Look' });
+    assert.equal(await scene.processor.process(earlier.run.id), 'completed');
+    const waiting = await scene.runs.invoke(human(scene.owner), scene.thread.id, { clientRunId: randomUUID(), kind: 'ask', prompt: 'Look again' });
+    const runs = async () => Number((await pool.query('SELECT count(*) FROM personal_runs WHERE owner_user_id = $1', [scene.owner.id])).rows[0].count);
+    const written = await runs(); const dispatched = scene.compute.dispatched.length;
+    await setWorkspaceAi(scene.ws.id, 'blocked');
+    const code = (response: { json: unknown }) => (response.json as { code?: string }).code;
+    const retried = await scene.owner.browser.request('POST', `/api/v1/assistant-runs/${earlier.run.id}/retry`, { body: { clientRunId: randomUUID() } });
+    assert.deepEqual([retried.status, code(retried)], [403, 'WORKSPACE_AI_BLOCKED']);
+    const continued = await scene.owner.browser.request('POST', invokePath, { body: { clientRunId: randomUUID(), kind: 'ask', prompt: 'More', continuesRunId: earlier.run.id } });
+    assert.deepEqual([continued.status, code(continued)], [403, 'WORKSPACE_AI_BLOCKED']);
+    assert.equal(await runs(), written, 'neither wrote a run');
+    // A person can always stop their own run; the queued one ended with the switch and costs nothing.
+    const stopped = expectStatus(await scene.owner.browser.request('POST', `/api/v1/assistant-runs/${waiting.run.id}/stop`), 200) as { status: string; cost: { state: string } };
+    assert.deepEqual([stopped.status, stopped.cost.state], ['stopped', 'released']);
+    assert.equal(scene.compute.dispatched.length, dispatched, 'no provider request');
+    await setWorkspaceAi(scene.ws.id, 'allowed');
+    // The HTTP composition is the production one (provider off); the fake provider of the scene stands for it in the control.
+    const again = await scene.runs.retry(human(scene.owner), earlier.run.id, { clientRunId: randomUUID() });
+    assert.deepEqual([again.created, again.run.id === earlier.run.id], [true, false], 'control: Retry starts a new run again once AI is on');
+  });
 });

@@ -140,6 +140,9 @@ CREATE TABLE workspace_rotation_progress (  -- one row while a rotation runs; id
   passes integer NOT NULL DEFAULT 0, updated_at timestamptz NOT NULL DEFAULT now()
 );
 ALTER TABLE project_files ADD COLUMN key_version integer;  -- of the stored object; null for a plain workspace
+-- 0130 (S2c): workspace_holders.confirmed_versions integer[] (covered by holder_mac), workspace_rotation_progress
+-- .pass_changes and .started_at, the tombstone of every deleted holder (the recovery holder too), and the
+-- workspace_members trigger workspace_manager_lost that leaves a rotation pending when an owner or admin loses the role.
 CREATE TABLE password_attempts (            -- failed password or code checks on any route; pruned after 15 minutes
   workspace_id uuid NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
   user_id text NOT NULL REFERENCES auth_users(id) ON DELETE CASCADE,
@@ -234,8 +237,9 @@ Files are limited to 5 MiB (`FILE_LIMITS.fileBytes`), so one GCM pass per file i
 object is `FXF1 ‖ key version (uint32) ‖ nonce 12 ‖ ciphertext ‖ tag 16`, with a per-file key
 `HKDF(K_file, info = [flux file v1, workspace id, file id, key version])` and the same list as AAD.
 The file id is the reservation id (`files/service.ts` reserves before `storage.receive`), so it is
-known before the first byte. `FileStorage.receive` takes an optional `FileCipher`. It encrypts each
-chunk as it streams into the scratch file, so plaintext never reaches `attachments/tmp`. `read`
+known before the first byte. `FileStorage.receive` takes the object id (the reservation); the adapter resolves that
+object's `FileCipher` from its row and encrypts each chunk as it streams into the scratch file, so plaintext never
+reaches `attachments/tmp`. An object id without a row is refused, never written as plaintext. `read`
 returns bytes only after the tag verifies, choosing the DEK by the header's key version.
 `project_files.key_version` repeats it so a rotation can find old objects. `size` stays the
 plaintext size. `sha256` is a [sealed digest](#digests), and `has` compares it with the SHA-256 of
@@ -310,7 +314,11 @@ move all content under it. Four checks close this. None needs anything the attac
 1. **Holder MAC.** `holder_mac = HMAC-SHA256(HKDF(DEK v, [flux holder-auth v2, workspace id, v]),
    [holder id, kind, user id or "", public key, kdf, wrapped private key, secret check])`, with
    `v = holder_mac_version`, the current version when the MAC was written. `kdf` is compared in the fixed
-   key order `[alg, v, m, t, p, salt]`, so jsonb's reordering does not matter. (S2a-1, from the S1 review:
+   key order `[alg, v, m, t, p, salt]`, so jsonb's reordering does not matter. **S2c (0130, label `flux holder-auth
+   v3`):** the MAC also covers `confirmed_versions`, the versions the holder has a confirmation for, and a holder
+   verifies only when that list restricted to the live versions equals the confirmations present. A deleted
+   `confirm` of a listed version is tampering, and acceptance refuses it before it can fall back to the chain
+   (S2a-1 review). (S2a-1, from the S1 review:
    v1 covered only the identity and the public key, so a changed `kdf`, `wrapped_private` or
    `secret_check` showed up only as a failed derivation, not as tampering.) `confirm` is not covered: it
    is itself a MAC under the holder's KEK, written later than this one, and unlock refuses a changed one. A holder is created only while the workspace is unlocked, so the server
@@ -336,8 +344,12 @@ move all content under it. Four checks close this. None needs anything the attac
      `commitment(v) = HMAC(HKDF(DEK v-1, [flux commit v1, workspace id, v-1]), [v, SHA-256(DEK v)])`,
      written when version v is made. It reveals nothing about DEK v to a holder of v-1.
 
-   In both cases the accepted DEK must also open that version's `check_value`, and one existing
-   envelope of that version if there is one (cheap, by the key-free version prefix). Version 1 has no
+   - **only if there is no confirmation and the previous version is no longer live** (a holder who did not
+     unlock during a rotation that has since finished): the DEK must open that version's `check_value` and one
+     stored envelope of that version, found by the key-free version prefix in the registry tables (S1 review
+     carry-over). With no envelope of it yet, the check value alone decides.
+
+   In every case the accepted DEK must also open that version's `check_value`. Version 1 has no
    commitment. The creator's and recovery holder's confirmations, written at creation, are its
    root, so a forged v1 wrap fails even in an empty workspace.
 4. **Order at unlock.** Open the private key; check the derived public key; open the wraps for every
@@ -351,21 +363,45 @@ and runs no rotation step. It sets `workspace_keys.tampered_at`, records
 sticky.** Every unlock attempt verifies everything from scratch, whatever the flag says. The flag is
 only for display and alerting, and it is cleared when a full verification passes. So a fixed bug or
 a repaired restore unlocks normally. Nothing is deleted or repaired automatically. The
-[operations guide](../operations/backup-restore.md) says that restoring **only** `workspace_keys`,
-`workspace_holders`, `workspace_dek_wraps`, `workspace_key_versions` and `workspace_removed_holders`
-from the last good backup is enough, as long as no rotation finished after that backup. Otherwise the
+[operations guide](../operations/backup-restore.md#encrypted-spaces-that-say-their-keys-were-changed) says that
+restoring **only** `workspace_keys` (its `removal_head` included), `workspace_holders`, `workspace_dek_wraps`,
+`workspace_key_versions`, `workspace_removed_holders` and `workspace_removals` of that workspace from the last good
+backup is enough, as long as no rotation finished and no owner or admin was removed after that backup. Otherwise the
 whole instance is restored.
 
 **Removal tombstones and the one remaining path.** A holder's deletion writes a tombstone (id, user,
 public key). The start never seals to a holder id or public key that has a tombstone, and the
 tombstones are cleared at the finish. A person removed and later added again creates a **new**
 holder with a new key pair through the [grant flow](#password-lifecycle). This is defence in depth.
-One tampering path cannot be closed with cryptography, and it is stated here: during `pending`
-(a removal while locked), no key is available to authenticate the removal itself. An ex-holder who
-kept their own holder row, and who can write to the database, could restore that row and their role
-and delete the tombstone. The next unlock would then seal DEK *n*+1 to them. To make that visible,
-the start records the holder set in `workspace.key_rotation_started.v1` (ids), and the Encryption
-section shows "The new key opens for Ada and Cy." Every holder can see who received it.
+**Pinned removal records (S2c, 2026-10-30).** During `pending` (a removal while locked) no DEK is available to
+authenticate the removal, but the key pin is: the role change's transaction (in the API, which holds
+`FLUX_KEY_PIN_SECRET`) turns the tombstones into `workspace_removals` records, each pinned over [workspace, seq,
+holder id, user id, public key, removed-at version, previous record's pin] and chained, with the chain's head
+(`workspace_keys.removal_head`) pinned the same way. Records are kept for good (the finish clears only the tombstones).
+A holder row whose id or public key has a record makes every unlock and start refuse as tampering, so an ex-holder who
+puts back their own genuine row, role and wraps and deletes the tombstones gets no new key; deleting or altering a
+record breaks the chain (tampering too). A person removed and added again gets a new holder (new id and key pair) and
+is unaffected. An account deletion's cascade, or a removal in a process without the secret, leaves plain tombstones,
+which the next start pins after verifying the chain. What remains: a writer who rolls the key tables, the records
+**and** the head back together to a state from before the removal is indistinguishable from that state to the
+database; the start records the holder set in `workspace.key_rotation_started.v1` (ids), and the Encryption section
+shows "The new key opens for Ada and Cy.", so every holder can see who received it.
+
+**The key pin (S2c review, 2026-10-29).** Without it, a database writer could take over the key of a workspace whose
+holders had not yet confirmed the current version: replace a holder's wrap with a DEK of their own and forge the
+check value, commitment, MACs and the sampled envelope (after a finish, no old key is even needed), or plant a new
+`recovery` holder with a MAC under an old DEK they know while the workspace is locked. Everything written after that
+would be readable by them: a **confidentiality** loss for new content, not only integrity. So every holder row
+carries `pin` = HMAC over [workspace, holder id, kind, user id, public key] and every key version `pin` = HMAC over
+[workspace, version, check value, commitment], under a key derived from **`FLUX_KEY_PIN_SECRET`**, a deployment
+secret that is never in the database (`./flux` generates it like the keyring token, `./flux upgrade` adds it, and only
+`api` and `worker` receive it). The server's own paths write the pins (creation, a password, a recovery code, a
+rotation's start); every unlock and every start verifies them, and a row without a valid pin is tampering. A planted
+holder, a minted key version and a replaced check value are refused. The pin does not stop someone who also holds the
+server's environment, the same trust the keyring token carries. Changing the secret makes every encrypted space
+refuse to unlock, so it is backed up with the env file. The two windows a removed person's keys stay useful are stated
+too: until the first unlock after a removal while locked, and for an unlocked space until the worker's sweep (5 s) has
+started the rotation and the pass has finished.
 
 ### Password checks
 
@@ -459,10 +495,15 @@ stateDiagram-v2
    the role check refuses them anyway. **No new DEK is made while locked.** Re-encryption needs the
    old DEK, so a new one made earlier would protect nothing and would have to trust unverified
    holder rows.
-   **Start** (pending to reencrypting) happens in the same transaction when the workspace is unlocked.
-   Otherwise it happens in the first unlock's transaction after its [checks](#authenticating-holders-and-wraps),
-   or in the worker's rotate job when the workspace is unlocked and `pending` (after a cascade). The
-   process holds DEK *n* in RAM then:
+   **Start** (pending to reencrypting) happens in the worker (S2c, 2026-10-29): its sweep (every 5 s) and the
+   resume job sent with every unlock start each `pending` rotation of an unlocked workspace. So a removal while
+   unlocked, the first unlock after a removal while locked, a cascade and a worker restart take one code path. The
+   removal's transaction already deleted the holders, so the seconds until the start change nothing for the removed
+   person; values written meanwhile are sealed under *n* and re-encrypted like the rest. (The first revision started
+   in the role change's transaction; that would put a keyring call inside it and a second start path in the API.)
+   The removal itself is the 0130 trigger `workspace_manager_lost` on `workspace_members` (an owner or admin losing
+   the role by an update or a delete, the account-deletion cascade included): it deletes their password holder and
+   the recovery holder (each leaving a tombstone) and sets `pending`. The worker holds DEK *n* in RAM at the start:
    - verify every holder MAC under DEK *n* (a failure marks tampering and stops the start);
    - make DEK v*n*+1 in RAM; write `workspace_key_versions` for *n*+1 with its commitment from DEK *n*
      and its `check_value`; seal DEK *n*+1 to every member of the **holder set** (never under DEK *n*);
@@ -470,15 +511,20 @@ stateDiagram-v2
    - set `current_version = n+1`, add *n*+1 to `live_versions`, set `rotation = 'reencrypting'`, and upsert `workspace_rotation_progress` (`target_version = n+1`, first
      step, empty cursor, `passes = 0`, `rows_estimate` from `pg_class.reltuples` of the registry
      tables);
-   - ask the keyring to seal DEK *n*+1 and insert its unlock row. If the keyring cannot be reached,
-     roll the start back and leave `pending`, so the workspace is never half unlocked;
-   - record `workspace.key_rotation_started.v1` (ids only), send `workspace-encryption.rotate.v1`,
-     then zero DEK *n*+1 in the API's memory.
+   - ask the keyring to seal DEK *n*+1 (before the transaction) and insert its unlock row. If the keyring cannot
+     be reached, nothing is written and the rotation stays `pending`, so the workspace is never half unlocked;
+   - record `workspace.key_rotation_started.v1` (`{ version, holders }`, ids only), then zero DEK *n*+1. The
+     `rows_estimate` is the number of the workspace's values below *n*+1, counted once at the start.
 
    The role change reads the unlock rows without a lock and takes no row lock on them, so it cannot
    deadlock with Lock now. A concurrent Lock can leave a stray unlock row for *n*+1, but `sealFor`
    treats a workspace as unlocked only when **every** live version has a current-boot unlock row.
    Otherwise it is locked and the stray rows are deleted.
+   **Wire field (S2c).** `encryption.rotation` is `{ percent, paused, startedAt, stalled, openFor, reason }`: `openFor`
+   lists who the new key opens for (owners and admins see it; the recovery code is named as such), and `reason` says
+   why ("after Ben left": `removed`, `demoted` or `holder_deleted`, with the person's id and name; null for guests).
+   The rotation's events carry ids only (`holders` is in the event data keys of 0125). A `security` notice of a
+   locked space stays in the Inbox: it is content-free and about the lock itself.
 2. **Seal and read during the rotation.** Every new seal, from any process, uses `current_version`.
    Every open chooses the DEK by the envelope's version, which must be in `live_versions`. Reading
    both versions at once is just this: an envelope names its own version. **Writer invariant:** a
@@ -502,7 +548,29 @@ stateDiagram-v2
      … WHERE` the column still equals the ciphertext it read. A value that changed meanwhile was
      written by a live process under the current version and is skipped. The page ends by storing
      the step, the cursor and `rows_done` in `workspace_rotation_progress`, so the page's writes and
-     its progress commit together.
+     its progress commit together. Re-encryption changes no content, so the page's compare-and-set runs with
+     `session_replication_role = replica`: the rows' triggers (search, artifact deltas, the immutability guards of
+     append-only tables, the plaintext backstops) do not fire for a value that only changed its key. It writes
+     envelopes only. Because the tables come from `SEALED_COLUMNS`, a table a later slice registers is
+     re-encrypted, sampled and checked by the finish with no change to the rotation. That role setting needs a
+     superuser or `GRANT SET ON PARAMETER session_replication_role` (Compose's database role is a superuser); the
+     worker says so at start when it is missing, and the rotation then stalls visibly. A page reads its rows
+     `FOR NO KEY UPDATE SKIP LOCKED`, so a row a writer holds is taken by the next pass instead of being waited for.
+   - **Fair key gate (S2c review).** Row locks are not queue-fair, so back-to-back writers each taking `FOR SHARE`
+     could starve a start, a finish, an unlock or a role change waiting for `FOR UPDATE`. Every side first takes a
+     transaction-scoped advisory lock on the workspace (writers shared, the `FOR UPDATE` side exclusive); a waiting
+     exclusive request then makes new writers wait behind it. A project write takes the gate before its first row
+     lock (`lockProjectAccess`), so under the exclusive gate the rows still locked belong to writes already inside.
+   - **Drain (S2c delta review).** Pages skip locked rows, and every project write share-locks its project row, so
+     under steady writes that row could be skipped by every pass. After a pass that changed nothing, a drain takes
+     the exclusive gate and re-encrypts whatever is still below the current version, waiting for row locks with a
+     1 s lock timeout; the finish follows. Three timed-out drains in a row mark the rotation `stalled` ("write
+     load"), and the next sweep tries again.
+   - **Uploads that straddle a rotation (S2c review).** An upload's object is sealed while it streams. Its commit
+     (`markReady`) seals the row under the writer's share lock and checks the object's key version against
+     `live_versions`: a version the finish already dropped is refused (`409 UPLOAD_KEY_CHANGED`, the bytes are
+     discarded; send again); an older live one is stored with that version, and the files step re-encrypts it, since
+     the finish refuses while a ready file is below the current version.
    - **Files** come next. For each file of the workspace with `key_version < current_version`, the
      worker reads and verifies the object, encrypts it under the current version into
      `attachments/tmp`, `fsync`s it, renames it over the object (atomic on the same filesystem) and
@@ -525,11 +593,19 @@ stateDiagram-v2
    *n*+1 stay for the remaining holders, and the pass restarts from the first table, because rows
    already re-encrypted to *n*+1 must move to *n*+2.
 7. **Finish.** **Verify invariant:** passes repeat until one complete pass over every table and file
-   changes nothing (`step = 'verify'`, counted in `passes`). Only such a pass can lead to the finish. In one transaction the worker then deletes the DEK
-   wraps and unlock rows of every version below `current_version`, sets `live_versions =
+   changes nothing (counted in `passes`, its changes in `pass_changes`). Only such a pass can lead to the finish,
+   and the finish checks once more under `workspace_keys` `FOR UPDATE` that no value or file is below the current
+   version, and that **no table at all** (catalog-driven, not only the registry: every text, json, jsonb and bytea
+   column of every table that names the workspace) holds an envelope of an old version for the workspace. A copy made
+   outside the registry (until #712 the notification generator copied task and project titles into notifications)
+   would otherwise outlive the old key and stay openable with it, so the finish refuses and the rotation reports
+   `stalled` (`stalled_on` names the table and column, never content; every holder gets a `security` notice). An
+   old-version value that does not open stalls it the same way. In one transaction the worker then deletes the DEK
+   wraps, unlock rows and `workspace_key_versions` rows (their check values are envelopes under the old DEKs) of
+   every version below `current_version`, and the tombstones, sets `live_versions =
    {current_version}` and `rotation = 'none'`, deletes the progress row, and records
    `workspace.key_rotated.v1`. Afterwards it runs `VACUUM` on the tables it touched, then
-   `CHECKPOINT` (the Compose database role may). That makes the dead row versions holding old
+   `CHECKPOINT` (the Compose database role may; a failed one is retried by the next sweep). That makes the dead row versions holding old
    ciphertext reusable sooner and lets WAL segments be recycled.
 
 A holder never has "only an old wrap". The start seals the new DEK to every member of the holder
@@ -715,8 +791,12 @@ Nothing listed is text that a person wrote, a name of a thing, or file bytes.
   timestamp; a sealed envelope; an **existing** `auth_users.id`, or a principal key (`human:` or
   `agent:`) whose id exists in `auth_users` or `agents`; a token present in `event_data_tokens`. That
   table is seeded by the migration from the enum values in `packages/contracts` (kinds, states,
-  reasons), and the registry test compares the two. No free word passes. The remaining bound: a
-  string equal to a real user id or a registered enum value carries no content.
+  reasons), and the registry test compares the two. Object keys follow the same rule against `event_data_keys`
+  (`EVENT_DATA_KEYS`, the field names the record sites write), and an update of `data` is checked like an insert.
+  `actor_id`, `kind`, `event_audience.recipient` and `sealed_job_waits.queue` must have their fixed shapes. No free
+  word passes. The remaining bounds: a string equal to a real user id or a registered enum value carries no content;
+  and the database cannot verify an AEAD tag, so text dressed as an envelope (`fx1.<v>.` and 38 or more base64url
+  characters) or as a UUID (16 bytes) passes every guard. The application never writes either.
 - **Notification backstop.** A `BEFORE INSERT OR UPDATE` trigger on `notifications` raises
   `NOTIFICATION_CONTENT_REFUSED` for a sealed workspace unless `body = ''` and `title` is one of the
   nine [fixed templates](#notifications-push-and-e-mail), with an account name and the workspace's
@@ -974,37 +1054,84 @@ an **encrypted index at rest, decrypted into RAM**:
   `search_changes (seq bigserial)` on insert, update and delete. The content stays only in the
   source tables, sealed. Person rows (account names) keep the SQL path.
 - **In RAM.** Each API process keeps a `SealedSearchIndex` per unlocked workspace
-  (`apps/server/src/search/sealed-index.ts`), partitioned by `audience_key`. It is built on the first
-  search after unlock, or eagerly by the process that unlocked. It reads the placeholder rows and
+  (`packages/db/src/sealed-search.ts`, used by the server's search adapter and by the chooser), partitioned by `audience_key`. It is built
+  on the first search after unlock. It reads the placeholder rows and
   each kind's content through a `sealedContent` loader added to `SEARCH_SOURCES`
   (`packages/core/src/search/sources.ts`), which opens the source columns and composes title and body
   as the triggers do today (a task's body is `#number`, outcome and blocker). Before every search the
-  process applies `search_changes` after its watermark (one indexed query), so a committed edit is
-  searchable at once on every replica. Changes older than 24 hours are pruned by the hourly cleanup
-  job, and an index older than the oldest kept change is rebuilt. The index is never written to disk
-  and is dropped on lock.
+  process applies the `search_changes` it has not seen (one indexed query), so a committed edit is
+  searchable at once on every replica. A change is read by the transaction that wrote it, not by its
+  `seq`: a `bigserial` is assigned at insert, so a lower number can commit after a higher one was read
+  (S2b, migration 0127 adds `search_changes.xid`). The index remembers the first transaction id it has
+  not applied and reads the changes of the transactions below the snapshot's `xmin`, which have all
+  finished, so no change is skipped. Changes older than 24 hours are pruned by the hourly
+  `search-changes.cleanup.v1` job; an index idle for 23 hours is rebuilt instead of caught up. The
+  index is never written to disk. It is dropped on lock (`ProcessKeys.onForget`, which `sealFor` also
+  calls when any process finds the workspace locked, so a lock on another replica drops it at the next
+  search) and when the process drops its keys.
 - **Query.** It accepts the same grammar and the same refusals (`QUERY_NEEDS_WORD`,
-  `QUERY_UNSUPPORTED`), `simple`-style lowercasing without stemming, a prefix match on the last word,
-  title trigram similarity with pg_trgm's default threshold of 0.3, and websearch quotes, `or` and
-  `-word`.
+  `QUERY_UNSUPPORTED`, checked before either source), `simple`-style lowercasing without stemming, a prefix match on the last word,
+  title similarity, and websearch quotes (adjacent words), `or` and `-word`. The title match is the
+  operator the SQL path uses (`title %> query`, `word_similarity` at `pg_trgm.word_similarity_threshold`, 0.6; the earlier
+  text said 0.3, which is the threshold of the other operator). It is the best share of the query's trigrams in a continuous
+  extent of the title's trigrams, found through a trigram posting list so only titles that share enough trigrams are compared.
+  A task reverted at creation (#238) and a task agent thread's messages are not findable, as in SQL.
 - **Access before ranking.** The visible audience keys come from `policySearchAccess` on every request,
   as today. The in-RAM lookup reads only the partitions of those keys, so hidden rows never become
   candidates. The `EXPLAIN (BUFFERS)` saturation property applies to the SQL part. For the in-RAM part
   the test asserts that the work counter (postings read) does not change with hidden matches.
-- **Merge.** Plain and sealed results are merged by `(score, at, doc_key)`. The in-RAM score
-  approximates `ts_rank` (title weight 1.0, body 0.4) plus title similarity, so ordering between the
-  two sources is approximate. The sealed cursor carries the last merged key, and both sources resume
-  after it. Counts add up, and each is capped at 500.
-- **Bound.** `FLUX_SEALED_SEARCH_MAX_BYTES`, by default 256 MiB of decrypted text per workspace per
-  process. A larger workspace answers with `sealedUnavailable: [workspaceId]`, and the page says
-  "Search isn't available in Garden club: it is too large to search in memory."
+- **Merge.** Plain and sealed results are merged by `(score, at, id)`, where `id` is the placeholder row's
+  `search_documents.id`, so the one sealed cursor (already the position of the last visible result) serves both
+  sources: each applies it, returns its best `limit + 1` rows, and the use case merges them. The in-RAM score
+  approximates `ts_rank` (title weight 1.0, body 0.4) plus half the title similarity, so ordering between the
+  two sources is approximate (the sets of results are the same). Counts add up, and each source counts at most 500.
+  Highlighting marks the title whole and a long body as a window around the first match (`ts_headline`'s shape).
+- **Bound.** The index is bounded by its **estimated heap**, not by the text: each distinct term of a document costs a map entry, a
+  string and an array, so the heap measured 16 to 112 times the text on the test corpora (many short titles are the worst case).
+  `docHeapCost` and the per-posting and per-term costs in `sealed-search.ts` come from measurements after a full GC, rounded up, and
+  `tests/app/sealed-search-heap.test.ts` fails when the estimate falls below the measured heap or exceeds 2.5 times it. Two bounds:
+  `FLUX_SEALED_SEARCH_MAX_BYTES` per workspace (default 256 MiB estimated heap) and `FLUX_SEALED_SEARCH_PROCESS_MAX_BYTES` across every
+  workspace of the API process. The process default is a quarter of the container's memory limit (cgroup `memory.max`, which is
+  `FLUX_API_MEMORY`, 2g by default), at most 512 MiB and at least 64 MiB, and 512 MiB when there is no limit; the workspace default is
+  256 MiB or the process bound if that is smaller. An out-of-memory kill drops every key the process holds and locks all its encrypted
+  workspaces, which is why the total is bounded and not only each workspace. A build or catch-up that grows past either stops at once and the workspace answers with
+  `sealedUnavailable: [workspaceId]` (S3 draws "Search isn't available in Garden club: it is too large to search in memory"); a chooser
+  search there finds nothing and says `searchUnavailable: true`. A workspace over its own bound is retried after 10 minutes; one that
+  only lacked room in the process after 1 minute. Before a build, indexes nobody searched for 5 minutes (`FLUX_SEALED_SEARCH_IDLE_MS`) are evicted (oldest first) to
+  make room; an evicted workspace rebuilds at its next search. Stale postings of replaced documents count until their partition is
+  rebuilt (once they pass 64 KiB and outweigh the live ones). A build yields to the event loop between chunks of 500 documents. A row
+  that does not decrypt (tampering, a restored backup of another key) fails the search with a generic error, and that failure is
+  remembered for 15 seconds so a single bad row does not cost a decryption pass of the workspace per request; a Lock or an unlock clears it.
+- **Freshness and replicas.** A change is searchable once every transaction that started before it has finished: the catch-up reads the
+  transactions below the snapshot's `xmin`, so one long open write transaction in the database delays what newer commits changed (nothing
+  is lost; it is found at the next search after that transaction ends). Another API replica learns of a Lock the first time it handles a
+  request or frame for that workspace (every operation checks the unlock rows, and `sealFor` drops the keys, the index and the rooms
+  there); until then it keeps the plaintext index in its memory, as it keeps the cached keys (S1).
+- **The chooser.** A chooser search with text (a task, decision or result of one project) uses the same index for its case-insensitive
+  title filter. It replaces the S2a-2a scan of the newest 2000 objects and its `searchLimited` marker, and its test switch.
+- **Test support.** The explain route of a test deployment adds `sealed: { postings, terms, documents }` (what the index read), the
+  workspaces with an index in the process with the estimated heap of each, and the number of full builds, so the tests prove that matches
+  a reader cannot see change neither the answer nor the postings read, that the bounds hold, and that a bad row does not rebuild per search.
 
 ### Live Wiki and maps
 
 Rooms run in the API as today (`apps/server/src/editing`). Every persisted update, ledger, head,
-archive, snapshot state, receipt and map journal change is sealed by the controller's repository
-call (`packages/db/src/repositories/doc-live.ts`, `live-editing.ts`, `live-map.ts`) inside the same
-transaction, which reads the unlock rows `FOR SHARE`. The two-API arrangement
+archive, snapshot hash, receipt and map journal change is sealed by the repositories
+(`packages/db/src/repositories/doc-live.ts`, `live-editing.ts`, `live-map.ts`, S2b) inside the same
+transaction, which reads the unlock rows `FOR SHARE`: `doc_live_heads` and `doc_live_archives` (body, codec state, hash),
+`doc_live_updates` (the update bytes, the ledger, the fingerprint), `doc_live_snapshots` (hash), `live_editing_intents` (receipt,
+fingerprint; the map's native results too) and `map_live_journal` (change, fingerprint). A catch-up rebuilds a room from the sealed
+snapshot and log; the decoded rooms of a process are a cache and are cleared when it drops keys. The database size limits of the
+journal and the codec state (8 MiB) see the envelope, which is about a third larger than the value, and the undo preparation
+measures a sealed journal opened (`journalCharge`) because the SQL walk cannot see into an envelope. Presence (cursors, selections, slots)
+stays visible in its 5 to 30 second lease and carries no text.
+
+**Locking closes the rooms.** Every live connection records its workspace when it is admitted. When a process drops a workspace's keys
+(a lock anywhere, a keyring restart, unsafe swap) its gate closes that workspace's live connections with close code `4423` and clears
+the decoded rooms; a new upgrade or live route while locked answers `423`. Another replica's connections close at the next frame or
+change it handles, because every operation checks the unlock rows. The ordinary routes (save, undo, native map commands) seal as the
+rest of the repositories do. The "hide empty maps" test compares the opened default title in the application for an encrypted workspace
+(the maps without a thought are opened and the empty ones excluded before the page and the total). The two-API arrangement
 ([live-editing-two-api](../development/live-editing-two-api.md)) works because each API gets the DEK
 through the keyring. The `synchronous_commit = off` transient writes carry no sealed values except
 presence, which stays visible.
@@ -1142,7 +1269,9 @@ project picker and in Create like any other space.
     Garden club loses access until an owner or admin unlocks it again." with **Lock Garden club** and
     **Keep it unlocked**. Owners also get **New recovery code**, behind the same inline confirm and
     their password: "The old code stops working."
-  - Members and guests see only the first line.
+  - Members see the first line and, while a key change runs, its line with the reason ("after Ben left": they can
+    see the membership change anyway); "The new key opens for …" is for owners and admins only. Guests see only the
+    first line. The wire matches: `rotation.reason` is null for guests, `rotation.openFor` empty for non-managers.
 - **Removal and demotion.** Removing, demoting or the leaving of an owner or admin in an encrypted
   space uses the panel's existing inline confirm, with this text in place of the usual one:
   - Remove: **Remove Ben from Garden club?** · "Garden club gets a new key, and everything in it is
@@ -1197,7 +1326,7 @@ route.
 | AC-3 | S1 | **Restart is locked.** Unlock A and write. `docker compose restart` of the whole stack makes A's content routes answer `423` and `encryption.state = 'locked'`, and unlock works again. Restarting only `api` keeps A unlocked. Restarting only `keyring` locks A within 5 s, with one `workspace.locked.v1 { reason: 'restart' }`. | `app/tests/app/encryption-restart.check.ts`, called by `check_application.sh` |
 | AC-4 | S1 | **Multiple processes.** Two API containers, the worker and the keyring (pattern of the [two-API fixture](../development/live-editing-two-api.md)). Unlock on API-1, then read on API-2 at once. Lock on API-2, then API-1's next write gives `423`. The test stack runs PostgreSQL with `log_statement = all` and `log_parameter_max_length = -1`, and the **whole PostgreSQL log** of the run is scanned for the DEK, the subkeys, the KEK, the passwords and the recovery code (hex, base64, base64url, and the texts as typed). S1 needs no key hook: the test derives the KEKs, holder private keys, DEKs and subkeys from the passwords, the code and the stored rows, as the API does. The boot key never leaves the keyring process. There must be zero hits; the API, worker and keyring logs are scanned too (`scripts/check_encryption.sh`). | `tests/app/live/encryption-two-api.test.ts`, `docker/compose.encryption.test.yaml` |
 | AC-5 | S2a | Registry, read from the **live catalog** after all migrations: every table is in `TABLE_CLASSES`, and every text or jsonb column of a content table is in `SEALED_COLUMNS` or `VISIBLE_COLUMNS` (default-deny; `draft_versions` and `search_documents` included). Each sealed table has its backstop trigger. `pg_trigger` and `pg_proc` show no SQL copy of a sealed column except the allowed pair, and `preserve_draft_version` writes nothing for A. An insert of plaintext into each sealed column of A is refused, while B is unchanged. The notification backstop refuses a body or a title outside the templates; the events backstop refuses a free-text string. Every command declares a resolvable scope or an `'account'` operation in the list; the `idempotency_keys` backstop refuses an unscoped row and an unsealed row of A. The SQL source scan finds no unhandled computation over a sealed column. | `tests/app/encryption-registry.test.ts` |
-| AC-6 | S2a | Locked routes: every registered route gives `423` for A's objects or is in `LOCKED_ALLOWED_ROUTES`, with no `500` and no content. Cross-workspace lists return B's items plus `lockedWorkspaces: [A]`. Until S2b, live Wiki, live map and search requests for A answer `409 WORKSPACE_ENCRYPTED_UNSUPPORTED` and write nothing to the live tables. | `tests/app/encryption-locked-routes.test.ts` |
+| AC-6 | S2a | Locked routes: every registered route gives `423` for A's objects or is in `LOCKED_ALLOWED_ROUTES`, with no `500` and no content. Cross-workspace lists return B's items plus `lockedWorkspaces: [A]`. Live Wiki, live map (routes and room upgrades, `423`) and search requests for A answer `423` or leave A out of the answer while it is locked, and write nothing. | `tests/app/encryption-locked-routes.test.ts` |
 | AC-7 | S2a, S2b | **A stolen dump contains no plaintext and no key.** **Writes:** random canaries go into every content type of A through the real API and live sockets, and **every mutating request carries an Idempotency-Key**: project name, message, task discussion reply, DM and group title, task title, outcome, blocker and criteria, a task title change, a doc `PATCH` and an added section, a decision accepted, result, goal, draft and a draft edit (so `draft_versions` gets a row), map title, thought text and link label (live map), Wiki text typed live and saved, material URL, file name and file bytes, a mention notification, a search for a canary, the unlock passwords and the recovery code. **Large canaries:** for each text kind, one value over 8 KiB of repetitive text, so PostgreSQL TOASTs and pglz-compresses it. **Error paths:** a canary in a request that fails validation, one that hits a constraint violation, one that causes an injected 500 (`FLUX_TEST_FAILURE_INJECTION`), a notification generation that fails, an e-mail send that fails (Mailpit refusing), a failing pg-boss job, and a write raced by Lock now mid-request. **Keys:** a fixture-only hook (`FLUX_FIXTURE_TOKEN` and `FLUX_TEST_FAILURE_INJECTION` both set) returns the DEK, `K_seal`, `K_file`, one KEK and the boot key, which become canaries too. **Scan:** the test then **stops the whole stack** and scans `pg_dump` output (the pg-boss schema included; it decompresses TOAST), the raw PostgreSQL volume including `pg_wal`, the files volume, the writable layer of every container (`docker diff` lists the changed paths and `docker export` provides them), every container's log, and the whole PostgreSQL log. Each canary is searched raw, in JSON-escaped form, in hex and in base64 (standard and URL alphabets, at all three offsets; Yjs update bytes are stored as base64 text). **Positive control:** the same canaries in B, including a large compressed one, must be found in the dump. In the raw volume only the uncompressed ones are expected; that is why the dump is scanned too. A must give zero hits, and every AI-class table must have zero rows for A. **PostgreSQL logs, two passes.** Pass 1 runs the whole journey with the production logging settings (`log_statement = none`, the default) and scans the whole PostgreSQL log for **every** canary. Pass 2 repeats it with `log_statement = all` and scans for every canary **except query text**: the search query and the task filter text are sent to PostgreSQL as bind parameters for the plain workspaces' half of a merged search, and PostgreSQL 13 and later log bind parameters in full under `log_statement` (`log_parameter_max_length` defaults to -1). They are transient there and are never written under the default setting. **Digests:** every scan also looks for the SHA-256 hex of each canary and of each request body sent, which would reveal an unkeyed digest. **Per slice:** S2a covers every canary except live Wiki and map typing and search; S2b adds those. Each PR states the canaries it covers, and the S3 PR names the S2 head SHA on which the full AC-7 passed. | `app/tests/app/encryption-dump-scan.check.ts`, `scripts/check_encryption_scan.sh` |
 | AC-8 | S2b | Features in A match B: messages, DMs, tasks and filters, decisions, results, docs and versions, drafts, maps, live Wiki and maps across two APIs, files (upload, download, tampered object refused), export bundle content and digests, and notifications content-free on push (mock) and e-mail (Mailpit). Search covers every kind, labels, typo tolerance, prefix, web syntax, access before ranking (no candidates from hidden audiences; a work counter that does not grow with hidden matches), an edit searchable at once on the other API, merged paging with B, and rebuild after lock and unlock. | `tests/app/encryption-features.test.ts`, `encryption-search.test.ts` |
 | AC-9 | S2a | Locked jobs wait: a message posted, then Lock before the generator runs, gives no notification; after unlock, exactly one. A draft summary is deferred and resumed. Push and e-mail of earlier rows still go out with no content. | `tests/app/encryption-worker.test.ts` |
@@ -1264,13 +1393,57 @@ token alone is not enough (S1 review): a real deployment never holds a half-seal
     thoughts, link labels), opened in every reader including Since-you-left; live Wiki and live maps answer
     `409 WORKSPACE_ENCRYPTED_UNSUPPORTED` for a sealed workspace's objects on every live route and room upgrade until
     S2b; `search_change_log` pinned like the other sealing functions; and a sealed chooser search that reached
-    `SEALED_CHOOSER_SCAN_LIMIT` says so (`searchLimited: true` on the work view). Known gap until S2b: the map list's
-    "hide empty maps" test compares the stored title with the default in SQL, so an empty sealed map is listed.
-  - **S2a-2b-2**: file names, sealed digests and file bytes (the streaming `FileCipher`, `has`/`read` on plaintext).
-  - **S2a-2c**: the notification
-    and event backstops with content-free notifications, error-path redaction, `sealed_job_waits` and
-    the resume job, the SQL source scan, cross-workspace `lockedWorkspaces`, the replacement of the
-    route-level gate, `./flux export` refusal and restore truncation, and AC-6, AC-9, AC-10 and AC-7.
+    `SEALED_CHOOSER_SCAN_LIMIT` says so (`searchLimited: true` on the work view; S2b replaced both with the index).
+    The map list's "hide empty maps" test compared the stored title with the default in SQL until S2b.
+  - **S2a-2b-2**: file names and SHA-256 (a sealed digest) sealed in `project_files`, with `key_version` set at the
+    reservation (S2c: the rotation can start between the reservation and the header written at receive, so S2c sets
+    `key_version` at commit from the object's header instead); file
+    bytes sealed as they stream in. `FileStorage.receive` takes the reservation id, and the disk adapter resolves the
+    object's cipher from its row (`fileCipherOf`, 423 while locked) and writes each chunk through the chunked
+    `FileCipher.sealer()` into the scratch file, so plaintext never reaches `attachments/tmp`; size and digest are
+    measured on the plaintext. `read` and `has` return or compare plaintext only after the tag verifies; a tampered or
+    truncated object is unavailable, never served. Thumbnails are made in the browser, so nothing else is stored. The
+    file detail of #704 (`page_count`, `row_count`, `duration_ms`) stays visible metadata, like `size`.
+  - **S2a-2c-1** (migration 0124): content-free notifications. The generator opens a sealed workspace's message, task,
+    decision or result only in RAM to decide who is told and why, then stores the template title ("Ada mentioned you
+    in Garden club", one per reason) with an empty body; `flux_notification_content_free` refuses any other title or
+    a body for a sealed workspace (`NOTIFICATION_CONTENT_REFUSED`; the "who" must be an existing account name,
+    `Someone` or `An agent`). Needs-you's proposed decisions and the muted list's project and DM names are opened, and
+    a generation failure about a sealed workspace's event stores only `redactedError` (class, code, ids). An update
+    that keeps title, body and link (read state, delivery) is not re-checked, so a later rename never blocks marking
+    read; the link is one of the generator's id-only forms; the plain morning summary ("N things wait in your inbox",
+    fixed body) is allowed and is anchored on a plain workspace's source when the person has one (an assistant-written
+    line only there). A muted place of a locked workspace is listed under the workspace's name.
+  - **S2a-2c-2** (no migration): `lockedWorkspaces`. Search, Inbox, Needs you and Since you left run in
+    `lockedReadScope` (`packages/db/src/sealing.ts`): a sealed workspace that is locked here is skipped there instead of
+    answering 423 for the whole read; its rows open to empty text, the S1 gate leaves its items out of the answer
+    (any item that names the workspace or one of its projects or DMs, a link included) and names every such workspace
+    of the caller in `lockedWorkspaces`; the Inbox unread and Needs you counts leave those items out. Since you left
+    receives no event of a locked workspace, and a place inside one answers 423.
+    Jobs that wait: notification generation records an event of a locked sealed workspace in `sealed_job_waits`
+    and moves its cursor on; `workspace-encryption.resume.v1` replays the waits after unlock in creation order (AC-9).
+    A wait whose replay fails for another reason stays for a 30 s sweep, which also catches a wait committed after
+    the unlock's resume job ran; the rest replay.
+    `./flux export` refuses an encrypted space ("Garden club is encrypted. Export it from the app.") and writes
+    nothing; `./flux restore` truncates `workspace_unlocks`, so a restored encrypted space is locked.
+  - **S2a-2c-3**: the event backstop (migration 0125: `a_sealed_event_data` and `event_data_tokens`, seeded from
+    `EVENT_DATA_TOKENS` in `packages/contracts`; a refused event answers `409 EVENT_CONTENT_REFUSED`); error-path
+    redaction: every API request and worker job runs in `sealedWorkScope`, and one that touched an encrypted
+    workspace's seal (or a job whose payload names one) answers, logs and stores in pg-boss only `redactedError`
+    (`SealedJobError(code)` for jobs); the AC-5 SQL source scan (`tests/app/support/sealed-sql-scan.ts`, each handled
+    site listed with its reason); and the API export of a sealed project, opened for the manager who asks.
+  - **S2a-2c-4** (no migration): the S1 route-level gate is gone. Every repository fails closed through `sealFor`
+    (lists that may be empty, such as a person's drafts and assigned tasks, resolve the seal first), and the gate keeps
+    only the cross-workspace reads. AC-6 (`tests/app/encryption-locked-routes.test.ts`) walks every route the server
+    registers (a test-deployment listing with each route's body and query schema), fills its parameters, body and
+    query with a locked space's objects, and expects `423`, a metadata route of `LOCKED_ALLOWED_ROUTES` (now also the
+    content-free Inbox rows, Needs you keys and the always-empty agent list), a cross-workspace read naming the space,
+    or a refusal of a feature the space does not offer (`WORKSPACE_AI_BLOCKED`, `GITHUB_UNAVAILABLE`); a request
+    refused as invalid input before any read is counted. The live Wiki and map room upgrades answer `423` too. Never a `500`, a canary or
+    an envelope. AC-10 is case 3 of `scripts/check_backup.sh` (`FLUX_BACKUP_CASES=encryption` runs it alone). The rest
+    of AC-7 for S2a's canaries is `scripts/check_encryption_scan.sh`: `pg_dump` (pg-boss included), the raw
+    PostgreSQL volume with `pg_wal` and the files volume after the stack stops, every container's writable layer and
+    every log, with B's canaries as positive controls in the dump and both volumes.
 - **S2a: sealed database content and files.** `TABLE_CLASSES`, `SEALED_COLUMNS` and `VISIBLE_COLUMNS`
   with the live-catalog test, the backstops (plaintext, notifications, events, idempotency) and relaxed
   checks, **the search placeholder triggers and `search_changes`** (so no sealed column is ever
@@ -1280,12 +1453,19 @@ token alone is not enough (S1 review): a real deployment never holds a half-seal
   `sealed_job_waits` and the resume job, log redaction, `./flux export` refusal and restore
   truncation. Live editing and search answer `409 WORKSPACE_ENCRYPTED_UNSUPPORTED` for a sealed
   workspace until S2b. AC-5, AC-6, AC-9, AC-10 and AC-7 for its canaries. Fixture-only.
-- **S2b: live editing and search.** Sealed live Wiki and map persistence, the in-RAM search index and
-  merge, AC-8 and the rest of AC-7. Fixture-only.
+- **S2b: live editing and search** (migration 0127; 0124 to 0126 are other slices'). Sealed live Wiki and map persistence (the 409 refusal
+  is gone; rooms close on lock), the in-RAM search index with its merge, the chooser's use of it, the "hide empty maps" filter in the
+  application, the `search_changes` prune job, the live and search parts of AC-7 and AC-8. Fixture-only.
 - **S2c: key rotation** ([design](#rotation)). The start inside every owner/admin removal, demotion,
   leaving and account deletion; the rotate job with progress, compare-and-set, the files step, crash
   and lock resume, and the finish with `VACUUM`; the recovery code invalidation; the `rotation` wire
-  field; AC-13. Fixture-only. **S3 may not merge until the full AC-7 and AC-13 pass on S2c's final
+  field; AC-13. Fixture-only. Delivered with migration 0130 (`packages/core/src/encryption/rotation.ts`, `@flux/db`
+  `keyRotationRows`, the worker's sweep). The files step works on `project_files.key_version` and the object header
+  through `RotationFileObjects` (`apps/worker/src/workspace-encryption/file-objects.ts`); until S2a-2b-2 seals file
+  bytes and re-encrypts real objects; AC-13 covers a stored file, an upload straddling the rotation and a crash
+  between the rename and the row update (`tests/app/encryption-rotation.test.ts`).
+  With S2a-2b-2 merged, the upload commit checks the object's key version under the writer's share lock (see
+  [the pass](#the-state-machine)). **S3 may not merge until the full AC-7 and AC-13 pass on S2c's final
   head**, named by SHA in the S3 PR.
 - **S3: creation and interface.** The production route; New space with encryption and the recovery
   code step; the removal, demotion and leave confirmations and the rotation progress line; the locked panel and sidebar row; the People panel sections; the project Details line;

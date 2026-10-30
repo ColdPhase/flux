@@ -206,8 +206,8 @@ export function ActivityTimeline({ state, composer, item, project, me, writable,
                   <div className={`wd-act__bubble${hasPhotos(message.files) ? ' has-photos' : ''}`}>
                     <MessageContent files={message.files} context={{ author: name, at: message.createdAt, caption: message.body, place: project.name,
                       onReply: writable ? () => document.getElementById(composerId)?.focus() : undefined, onCreateTask: writable ? () => void makeWork.create(message) : undefined }}
-                    body={message.body ? <div className="message-body"><MessageText body={message.body} linked={false} /></div> : null}>
-                      <LinkPreviews body={message.body} />
+                    body={message.body ? <div className={`message-body${message.removedAt ? ' message-body--removed' : ''}`}><MessageText body={message.body} linked={false} /></div> : null}>
+                      <LinkPreviews body={message.body} projectId={project.id} messageId={message.id} />
                     </MessageContent>
                     {message.contribution ? <ContributionMark contribution={message.contribution} onOpenResult={(resultId) => openDetails({ kind: 'result', id: resultId, projectId: project.id }, { back: 'push' })} /> : null}
                   </div>

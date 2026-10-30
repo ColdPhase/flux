@@ -23,6 +23,7 @@ import { MessageWorkPages } from '../work/MessageWorkPages';
 import { audienceLine, createProjectSketch, useProjectShell } from '../project/data';
 import { useShellActions } from './shellContext';
 import { useWorkspaceAi } from '../ai/workspaceAi';
+import { useStreamEvents } from '../api/stream';
 import { assistantUses, AssistantSuggestions, meetAssistantDismissed, noteAssistantUse } from '../assistant/MeetAssistant';
 import { useConversationAssistant } from '../assistant/useConversationAssistant';
 import { useAssistantChanges, WaitingChanges } from '../assistant/WaitingChanges';
@@ -95,6 +96,9 @@ export async function projectConversationLoader({ params, request }: LoaderFunct
 export function shouldRevalidateProjectConversation({ currentParams, nextParams, defaultShouldRevalidate }: ShouldRevalidateFunctionArgs) {
   return defaultShouldRevalidate || currentParams.projectId !== nextParams.projectId || currentParams.conversationId !== nextParams.conversationId;
 }
+
+/** Project events that change what a conversation pane shows; the assistant's Undo (#68) can take a message back. */
+const LIVE_KINDS = new Set(['project.conversation_created.v1', 'project.message_sent.v1', 'project.assistant_change_undone.v1']);
 
 function readableError(error: unknown) {
   if (error instanceof ApiError && error.status === 404) return 'This project or conversation is no longer available to you.';
@@ -199,6 +203,8 @@ function ProjectConversationContent({ data, variant, feed, rootHeader, rootMessa
     [conversation, stored, publicComposer.sent]);
   const outbox = outboxView(messages, conversation ? publicComposer.pending : [], publicComposer.sent, me.user.id);
   const refreshingRef = useRef(false);
+  /** A refresh was asked for while one was reading: read once more after it, so a message posted meanwhile is not left to the poll (#733). */
+  const refreshAgainRef = useRef(false);
   const [olderCursor, setOlderCursor] = useState(conversation?.messagePage.nextBeforeSequence ?? null);
   const [olderBusy, setOlderBusy] = useState(false);
   const [materialItems, setMaterialItems] = useState(materials);
@@ -322,8 +328,10 @@ function ProjectConversationContent({ data, variant, feed, rootHeader, rootMessa
   const refresh = useCallback(async () => {
     // Offline, a read fails and a failed route reload would replace the stream with an error page:
     // the quiet line says why (#264), and the stream reads again when the connection is back.
-    if (refreshingRef.current || !fluxAnswers()) return;
+    if (!fluxAnswers()) return;
+    if (refreshingRef.current) { refreshAgainRef.current = true; return; }
     refreshingRef.current = true;
+    refreshAgainRef.current = false;
     // The stream's refresh reloads the route (newest roots, the project); a thread reads only its own replies.
     if (!conversationId) revalidateRef.current();
     try {
@@ -346,8 +354,13 @@ function ProjectConversationContent({ data, variant, feed, rootHeader, rootMessa
         setMessages((current) => mergeMessages(current, incoming));
       }
     } catch (cause) { hideIfDenied(cause); }
-    finally { refreshingRef.current = false; }
+    finally {
+      refreshingRef.current = false;
+      if (refreshAgainRef.current) { refreshAgainRef.current = false; queueMicrotask(() => { void refreshLatest.current(); }); }
+    }
   }, [conversationId, hideIfDenied, project.id]);
+  const refreshLatest = useRef(refresh);
+  useEffect(() => { refreshLatest.current = refresh; }, [refresh]);
   useEffect(() => {
     if (!showMaterialForm || !writable) return;
     const controller = new AbortController();
@@ -357,6 +370,12 @@ function ProjectConversationContent({ data, variant, feed, rootHeader, rootMessa
 
   // Flux answers again (not merely a Retry or the browser's `online` event): read what arrived meanwhile.
   useEffect(() => onFluxAnswered(() => { void refresh(); }), [refresh]);
+  // The assistant's Undo took something back (#68): a message it posted reads as removed now, not at the next poll. Ids only; the read is the API's.
+  // A message or a new conversation in this project (#733) reads at once, not at the 15 s poll: the event carries the
+  // project only, so the stream reloads its roots and an open thread reads its own replies. A resync reads the same way.
+  useStreamEvents(me.user.id, (event) => {
+    if (event.objectType === 'project' && event.objectId === project.id && LIVE_KINDS.has(event.kind)) void refresh();
+  }, () => { void refresh(); });
   useEffect(() => {
     const onFocus = () => { void refresh(); };
     const onVisible = () => { if (document.visibilityState === 'visible') void refresh(); };
@@ -428,6 +447,8 @@ function ProjectConversationContent({ data, variant, feed, rootHeader, rootMessa
     typing.input(Boolean(input.trim()) && !asking && !/^\/(ai|task|decide|handoff)(\s|$)/.test(input));
     // Private prompts keep their own draft; invoking /ai never overwrites a public task draft.
     if (!aiOff && !asking && conversation && writable && /^\/ai(\s|$)/.test(input)) {
+      // Typed key by key, "/" and "/a" were the reply's draft a moment ago; they were the command, not words to keep.
+      if (/^\/[a-z]{0,1}$/i.test(publicComposer.draft.body)) publicComposer.setBody('');
       helperComposer.setBody(input.replace(/^\/ai\s?/, '')); setAsking(true); setAskFailure(''); return;
     }
     setAskFailure(''); composer.setBody(input);
@@ -491,6 +512,12 @@ function ProjectConversationContent({ data, variant, feed, rootHeader, rootMessa
     const command = helperComposer.begin();
     if (!command) return;
     const active = captureHelperScope();
+    // The box is disabled while the request goes out, which takes a keyboard user's focus with it (AC-8): back in the box after.
+    const inBox = document.activeElement?.id === composerId;
+    const backToBox = () => {
+      if (!inBox) return;
+      requestAnimationFrame(() => { const now = document.activeElement; if (active() && (!now || now === document.body)) document.getElementById(composerId)?.focus({ preventScroll: true }); });
+    };
     setAskFailure('');
     try {
       noteAssistantUse(me.user.id);
@@ -500,15 +527,18 @@ function ProjectConversationContent({ data, variant, feed, rootHeader, rootMessa
       // The run's working line joins the end of the thread; follow it as a sent message does, or it starts off screen.
       if (active()) { scrollToEnd(); requestAnimationFrame(() => { if (active()) scrollToEnd(); }); }
       if (active()) setAsking(false);
+      backToBox();
     } catch (cause) {
       // Offline: the request waits as "Sends when you're back" and goes out once, under the same id, on reconnect (AST-10.15).
       if (cause instanceof NetworkError && conversation) {
         helperComposer.finish(command.clientMessageId);
         holdAsk({ conversationId: conversation.id, prompt: command.body, clientRunId: command.clientMessageId });
         if (active()) setAsking(false);
+        backToBox();
         return;
       }
       helperComposer.finish(command.clientMessageId, cause);
+      backToBox();
       if (!active()) return;
       setAskFailure(askErrorText(cause));
       setAskFailureCode(cause instanceof ApiError ? cause.code : null);
@@ -777,7 +807,7 @@ function ProjectConversationContent({ data, variant, feed, rootHeader, rootMessa
             {[...assistantChanges.byRun].filter(([runId]) => !assistant.answers.some((answer) => answer.runId === runId)).map(([runId, runChanges]) => (
               <li key={`changes-${runId}`} className="project-convo__message assistant-waiting-item"><WaitingChanges changes={runChanges} onChanged={assistantChanges.refresh} meId={me.user.id} standalone /></li>
             ))}
-            {assistant.run ? <WorkingLine key={assistant.run.id} run={assistant.run} onStop={assistant.stop} onRetry={() => assistant.retry(assistant.run!.id)} onDismiss={assistant.dismissRun}
+            {assistant.run ? <WorkingLine key="assistant-working" run={assistant.run} onStop={assistant.stop} onRetry={() => assistant.retry(assistant.run!.id)} onDismiss={assistant.dismissRun} composerId={composerId}
               changed={(assistantChanges.byRun.get(assistant.run.id) ?? []).filter((change) => change.state === 'applied' || change.state === 'applied_after_wait' || change.state === 'undone').length} /> : null}
             {assistant.others.map((other) => <OthersWorkingLine key={`working-${other.ownerId}`} name={other.ownerName} />)}
             {waitingHere.map((item) => <li key={item.clientRunId} className="assistant-queued" aria-live="polite">Sends when you&apos;re back</li>)}
@@ -890,8 +920,8 @@ function ThreadReply(props: ThreadReplyProps | QueuedReplyProps) {
       <SourceTag messageId={message.id} />
       {!mine && !stored.continued ? <AuthorFace kind={message.authorId === null ? 'agent' : 'human'} name={name} mine={mine} /> : null}
       {!mine && !stored.continued ? <div className="project-convo__message-meta"><strong>{mine ? `${name} · you` : message.authorId === null ? <AgentAuthor message={message} owner={agentAuthorOwner(message.author, owners)} /> : <RefLink className="project-convo__person" to={`/dm/new?workspace=${project.workspaceId}&with=${message.authorId}`} title={`Message ${name} directly`}>{name}</RefLink>}</strong></div> : null}
-      <MessageContent body={message.body ? <WhenNoQuestion projectId={project.id} messageId={message.id}><div className="message-body"><MessageText body={message.body} people={people} /></div></WhenNoQuestion> : null} files={message.files} references={message.references} context={{ author: name, at: message.createdAt, caption: message.body, place: project.name, onReply: writable ? actions.onReply : undefined, onCreateTask: writable ? actions.onCreateWork : undefined }}>
-        <LinkPreviews body={message.body} />
+      <MessageContent body={message.body ? <WhenNoQuestion projectId={project.id} messageId={message.id}><div className={`message-body${message.removedAt ? ' message-body--removed' : ''}`}><MessageText body={message.body} people={people} /></div></WhenNoQuestion> : null} files={message.files} references={message.references} context={{ author: name, at: message.createdAt, caption: message.body, place: project.name, onReply: writable ? actions.onReply : undefined, onCreateTask: writable ? actions.onCreateWork : undefined }}>
+        <LinkPreviews body={message.body} projectId={project.id} messageId={message.id} />
         <MessageObjects message={message} projectId={project.id} preview={preview} />
         {message.source ? <SourceCitation materialId={message.source.materialId} version={message.source.version} onDenied={onDenied} /> : null}
       </MessageContent>

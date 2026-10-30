@@ -1,7 +1,28 @@
-# Flux
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/assets/brand/kreska-dark.svg">
+    <img src="docs/assets/brand/kreska-light.svg" width="64" height="64" alt="Kreska, the Flux logo: a face with one raised brow and two eyes in a rounded square">
+  </picture>
+</p>
 
-An open source, self-hostable workspace where people and AI agents work on the same
-projects: conversations, and the tasks, documents and decisions that come out of them.
+<h1 align="center">Flux</h1>
+
+<p align="center"><b>An open source, self-hostable workspace where people and AI agents work on the same projects: conversations, and the tasks, documents and decisions that come out of them.</b></p>
+
+<p align="center">
+  <a href="https://github.com/ColdPhase/flux/actions/workflows/application-checks.yml"><img src="https://github.com/ColdPhase/flux/actions/workflows/application-checks.yml/badge.svg?branch=main" alt="Application checks"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/github/license/ColdPhase/flux?color=18181b&amp;labelColor=636363" alt="License: AGPL-3.0"></a>
+  <a href="https://github.com/ColdPhase/flux/milestone/2"><img src="https://img.shields.io/badge/release-pre--release-18181b?labelColor=636363" alt="Release: pre-release"></a>
+  <a href="#quick-start"><img src="https://img.shields.io/badge/runs%20on-Docker%20Compose-18181b?logo=docker&amp;logoColor=white&amp;labelColor=636363" alt="Runs on Docker Compose"></a>
+  <a href="https://coldphase.github.io/flux/"><img src="https://img.shields.io/badge/docs-coldphase.github.io%2Fflux-18181b?labelColor=636363" alt="Documentation"></a>
+</p>
+
+<p align="center">
+  <a href="https://coldphase.github.io/flux/"><b>Documentation</b></a> ·
+  <a href="#quick-start">Quick start</a> ·
+  <a href="#connect-your-own-agent">Connect your agent</a> ·
+  <a href="docs/CONTRIBUTING.md">Contributing</a>
+</p>
 
 **Who it is for.** Small software teams, such as a product lead, a designer and an engineer, who
 already hand some work to coding agents like Claude Code or Codex. When you come back to a project
@@ -30,23 +51,25 @@ application on the fictional <code>./flux demo</code> data (<a href="docs/assets
 The [product foundation](docs/product/README.md) describes the direction: human and
 agent collaboration, continuity of project knowledge, self-hosting and extensibility.
 
+## Highlights
+
+- **Conversations that turn into work.** One action makes a message a task, a decision with its
+  reason, or a result, and each stays linked to the message it came from.
+- **Come back and catch up.** Home shows what changed since you left, what was decided and what
+  needs you, so you do not have to ask around.
+- **Your own agent, with your permission.** Connect Claude Code, Codex or any MCP client to the
+  projects you choose. It runs on your computer with your own model account; Flux never sees it.
+- **One project, three views.** The conversation, the map and the wiki, plus tasks, direct
+  messages, a private sketchbook and search.
+- **Everywhere you are.** One calm design on the computer and the phone, installable as a PWA, with
+  Web Push notifications and an inbox.
+- **Yours to run.** One Docker Compose stack started with `./flux up`, with backups, restore,
+  project export, upgrades and single sign-on.
+
 ## Project status
 
 **Pre-release.** No version has been published yet, so there is no upgrade promise or
 supported deployment; do not use it for sensitive data or production teams.
-
-The application runs as a Docker Compose stack (API, worker, PostgreSQL and a browser/PWA
-client) and covers the core loop of working together:
-
-- accounts with email sign-in and password reset, and workspace and project access;
-- project conversations whose messages become tasks, decisions and results, with each
-  project's map, tasks and wiki;
-- direct messages, a private sketchbook, search, an inbox with Web Push notifications and
-  a summary of what changed since you left;
-- connecting your own MCP-capable AI agent to the projects you choose, and an optional
-  in-app assistant that uses a model provider key you connect;
-- optional self-hosted live audio/video, and backups, restore, project export and upgrades
-  through `./flux`.
 
 The [current milestone](https://github.com/ColdPhase/flux/milestone/2) tracks the rest of
 the first release, including installation and notifications on real phones and tablets.
@@ -160,9 +183,9 @@ computer needs an HTTPS address: the operator sets `FLUX_PUBLIC_ORIGIN` behind a
 ([agent connection](docs/development/agent-connection.md),
 [integrations for operators](docs/integrations/README.md#for-operators)). Flux accepts clients
 only through their public client metadata documents, so the server needs outbound HTTPS when a
-client signs in. On 2026-10-23 Claude Code 2.1.309 and Codex 0.163.0 both completed this sign-in
-against a clean clone on a loopback address; that check used no model account
-([what was run](docs/development/time-to-first-run.md)).
+client signs in. On 2026-10-30 Claude Code 2.1.314 and Codex 0.163.0 both completed this sign-in
+against a clean clone on a loopback address, with a connection that grants only the two ticked actions;
+that check used no model account ([what was run](docs/development/time-to-first-run.md#readme-connect-your-own-agent-run-again-with-codex-and-claude-code-2026-10-30)).
 
 ## Repository layout
 
@@ -185,6 +208,7 @@ against a clean clone on a loopback address; that check used no model account
 | `flux` | One-command launcher: `up`, `demo`, `dev`, `down`, `reset`, `clean`, `backup`, `restore`, `export`, `upgrade` |
 | `scripts` | Check scripts, the demo seed and repository tooling |
 | `docs` | Product, design, development and agent documentation |
+| `site` | The [documentation site](https://coldphase.github.io/flux/) (Astro Starlight), generated from `docs` |
 
 Dependency directions between these are described and enforced in
 [architecture](docs/development/architecture.md).

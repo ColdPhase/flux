@@ -3,6 +3,7 @@ type ActorRef = { kind: 'human' | 'agent'; id: string };
 import type { FileDetail, MessageFile } from '@flux/contracts';
 import * as schema from '../schema.js';
 import type { DbExecutor } from './push.js';
+import { openRows, sealFor, sealOf } from '../sealing.js';
 
 const f = schema.projectFiles;
 function wire(row: typeof f.$inferSelect) {
@@ -13,6 +14,8 @@ const uploaderFilter = (actor: ActorRef) => actor.kind === 'human' ? eq(f.upload
 
 /** Persistence only. Admission, publication and cleanup use the same caller-owned transaction. */
 export function fileRows(db: DbExecutor) {
+  // F-030: a sealed workspace's file name and SHA-256 are sealed (a sealed digest); every read opens them.
+  const open = <T extends typeof f.$inferSelect>(rows: T[]) => openRows(db, 'project_files', rows);
   return {
     async lockUploader(projectId: string, uploader: ActorRef) {
       await db.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${`files:${projectId.toLowerCase()}:${uploader.kind}:${uploader.kind === 'agent' ? uploader.id.toLowerCase() : uploader.id}`}))`);
@@ -22,7 +25,7 @@ export function fileRows(db: DbExecutor) {
       return !!row;
     },
     async findUpload(projectId: string, uploader: ActorRef, uploadId: string) {
-      const [row] = await db.select().from(f).where(and(eq(f.projectId, projectId), uploaderFilter(uploader), eq(f.uploadId, uploadId)));
+      const [row] = await open(await db.select().from(f).where(and(eq(f.projectId, projectId), uploaderFilter(uploader), eq(f.uploadId, uploadId))));
       return row ? wire(row) : null;
     },
     async stagedBytes(projectId: string, uploader: ActorRef, now: Date) {
@@ -32,17 +35,31 @@ export function fileRows(db: DbExecutor) {
     },
     async reserve(input: { id: string; workspaceId: string; projectId: string; uploader: ActorRef; uploadId: string; name: string; reservedBytes: number; expiresAt: Date; replayOf?: string }) {
       const { uploader, ...fields } = input;
-      const [row] = await db.insert(f).values({ ...fields, state: 'receiving',
-        uploaderId: uploader.kind === 'human' ? uploader.id : null, uploaderAgentId: uploader.kind === 'agent' ? uploader.id : null }).returning();
+      const seal = await sealOf(db, fields.workspaceId, { write: true });
+      const [row] = await open(await db.insert(f).values(await sealFor(db, 'project_files', fields.workspaceId, { ...fields, state: 'receiving' as const,
+        uploaderId: uploader.kind === 'human' ? uploader.id : null, uploaderAgentId: uploader.kind === 'agent' ? uploader.id : null,
+        keyVersion: seal.sealed ? seal.currentVersion ?? null : null })).returning());
       return wire(row!);
     },
     async findFile(id: string) {
-      const [row] = await db.select().from(f).where(eq(f.id, id));
+      const [row] = await open(await db.select().from(f).where(eq(f.id, id)));
       return row ? wire(row) : null;
     },
-    async markReady(id: string, input: { size: number; sha256: string; readyAt: Date; expiresAt: Date; detail?: FileDetail }) {
-      const { detail, ...fields } = input;
-      const rows = await db.update(f).set({ ...fields, state: 'ready', pageCount: detail?.pages ?? null, rowCount: detail?.rows ?? null, durationMs: detail?.durationMs ?? null }).where(and(eq(f.id, id), eq(f.state, 'receiving'),
+    async markReady(id: string, input: { size: number; sha256: string; readyAt: Date; expiresAt: Date; detail?: FileDetail; keyVersion?: number | null }): Promise<boolean | 'key_changed'> {
+      const { detail, keyVersion, ...plain } = input;
+      const [located] = await db.select({ workspaceId: f.workspaceId }).from(f).where(eq(f.id, id));
+      // Sealing takes the workspace's key share lock (F-030 writer invariant), so a rotation's start and finish are
+      // ordered before or after this commit. An object sealed under a version the finish already dropped is refused;
+      // one under an older live version is stored with that version, and the rotation's files step re-encrypts it
+      // before the finish (which refuses while a ready file is below the current version). S2c review P1-1.
+      const fields = located ? await sealFor(db, 'project_files', located.workspaceId, plain, { id }) : plain;
+      let stamped: { keyVersion?: number } = {};
+      if (located && keyVersion !== null && keyVersion !== undefined) {
+        const [keys] = (await db.execute<{ live: number[] }>(sql`SELECT live_versions AS live FROM workspace_keys WHERE workspace_id = ${located.workspaceId}`)).rows;
+        if (!keys || !keys.live.includes(keyVersion)) return 'key_changed';
+        stamped = { keyVersion };
+      }
+      const rows = await db.update(f).set({ ...fields, ...stamped, state: 'ready', pageCount: detail?.pages ?? null, rowCount: detail?.rows ?? null, durationMs: detail?.durationMs ?? null }).where(and(eq(f.id, id), eq(f.state, 'receiving'),
         isNull(f.publishedAt), sql`${f.expiresAt} > ${input.readyAt}`)).returning({ id: f.id });
       return rows.length === 1;
     },
@@ -60,11 +77,11 @@ export function fileRows(db: DbExecutor) {
     },
     async lockFiles(ids: readonly string[]) {
       if (!ids.length) return [];
-      return (await db.select().from(f).where(inArray(f.id, [...ids])).orderBy(asc(f.id)).for('update')).map(wire);
+      return (await open(await db.select().from(f).where(inArray(f.id, [...ids])).orderBy(asc(f.id)).for('update'))).map(wire);
     },
     async expired(now: Date, limit: number) {
-      return (await db.select().from(f).where(and(isNull(f.publishedAt), lte(f.expiresAt, now)))
-        .orderBy(asc(f.expiresAt), asc(f.id)).limit(limit)).map(wire);
+      return (await open(await db.select().from(f).where(and(isNull(f.publishedAt), lte(f.expiresAt, now)))
+        .orderBy(asc(f.expiresAt), asc(f.id)).limit(limit))).map(wire);
     },
     /** #252: publishes a ready, unpublished file as the image of one map thought; false when it is not both. */
     async publishToThought(id: string, thoughtId: string, publishedAt: Date) {
@@ -76,8 +93,8 @@ export function fileRows(db: DbExecutor) {
     async thoughtFiles(projectId: string, thoughtIds: readonly string[]) {
       const files = new Map<string, MessageFile>();
       for (let start = 0; start < thoughtIds.length; start += MESSAGE_ID_BATCH) {
-        for (const row of await db.select({ id: f.id, name: f.name, size: f.size, thoughtId: f.thoughtId }).from(f)
-          .where(and(eq(f.projectId, projectId), inArray(f.thoughtId, thoughtIds.slice(start, start + MESSAGE_ID_BATCH)))))
+        for (const row of await openRows(db, 'project_files', await db.select({ id: f.id, workspaceId: f.workspaceId, name: f.name, size: f.size, thoughtId: f.thoughtId }).from(f)
+          .where(and(eq(f.projectId, projectId), inArray(f.thoughtId, thoughtIds.slice(start, start + MESSAGE_ID_BATCH))))))
           files.set(row.thoughtId!, { id: row.id, name: row.name, size: row.size! });
       }
       return files;
@@ -86,15 +103,15 @@ export function fileRows(db: DbExecutor) {
       const grouped = new Map<string, MessageFile[]>();
       // Bounded batches: PostgreSQL accepts at most 65,535 bind parameters in one statement.
       for (let start = 0; start < ids.length; start += MESSAGE_ID_BATCH) {
-        groupMessageFiles(grouped, await db.select().from(f).where(inArray(f.messageId, ids.slice(start, start + MESSAGE_ID_BATCH)))
-          .orderBy(asc(f.messageId), asc(f.position)));
+        groupMessageFiles(grouped, await open(await db.select().from(f).where(inArray(f.messageId, ids.slice(start, start + MESSAGE_ID_BATCH)))
+          .orderBy(asc(f.messageId), asc(f.position))));
       }
       return grouped;
     },
     /** Every published file of a project's messages, for export: one query whatever the message count. */
     async projectMessageFiles(projectId: string) {
-      return groupMessageFiles(new Map(), await db.select().from(f).where(and(eq(f.projectId, projectId), isNotNull(f.messageId)))
-        .orderBy(asc(f.messageId), asc(f.position)));
+      return groupMessageFiles(new Map(), await open(await db.select().from(f).where(and(eq(f.projectId, projectId), isNotNull(f.messageId)))
+        .orderBy(asc(f.messageId), asc(f.position))));
     },
   };
 }

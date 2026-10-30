@@ -359,7 +359,9 @@ export function ConversationStream({ project, meId, meName, roots: stream, notic
   const columnRef = useRef<HTMLDivElement>(null);
   // A short stream sits against its composer instead of at the top of a tall screen (ui/spareHeight.ts).
   const liftRef = useRef<HTMLDivElement>(null);
-  useSpareHeight(feedRef, columnRef, liftRef, display.length + outbox.pending.length, feedNode);
+  // The feed is always rendered, so its element is there when the first measurement runs: waiting for it in state (`feedNode`) only made the
+  // measurement run, and force the layout, a second time in the commit that follows the first (#716).
+  useSpareHeight(feedRef, columnRef, liftRef, display.length + outbox.pending.length, true);
   const pinRef = useRef<{ id: string; offset: number } | null>(null);
   /** The first entry in view and its offset from the top, as the reader last left it. */
   const anchorRef = useRef<{ id: string; offset: number } | null>(null);
@@ -854,8 +856,8 @@ function RootItem(props: RootItemProps | QueuedRootProps) {
       {!mine && !stored.continued ? <div className="project-convo__message-meta">
         <strong>{mine ? `${name} · you` : message.authorId === null ? <AgentAuthor message={message} owner={agentAuthorOwner(message.author, owners)} /> : <RefLink className="project-convo__person" to={`/dm/new?workspace=${project.workspaceId}&with=${message.authorId}`} title={`Message ${name} directly`}>{name}</RefLink>}</strong>
       </div> : null}
-      <MessageContent body={message.body ? <WhenNoQuestion projectId={project.id} messageId={message.id}><div className="message-body"><MessageText body={message.body} people={people} /></div></WhenNoQuestion> : null} files={message.files} references={message.references} context={{ author: name, at: message.createdAt, caption: message.body, place: project.name, onReply: writable ? () => onOpen(root, true) : undefined, onCreateTask: writable ? () => void makeWork.create(message) : undefined }}>
-        <LinkPreviews body={message.body} />
+      <MessageContent body={message.body ? <WhenNoQuestion projectId={project.id} messageId={message.id}><div className={`message-body${message.removedAt ? ' message-body--removed' : ''}`}><MessageText body={message.body} people={people} /></div></WhenNoQuestion> : null} files={message.files} references={message.references} context={{ author: name, at: message.createdAt, caption: message.body, place: project.name, onReply: writable ? () => onOpen(root, true) : undefined, onCreateTask: writable ? () => void makeWork.create(message) : undefined }}>
+        <LinkPreviews body={message.body} projectId={project.id} messageId={message.id} />
         <MessageObjects message={message} projectId={project.id} preview={messageWork.previews?.get(message.id) ?? null} thread={root.task ?? null} threadRow={taskRow} />
         {message.source ? <SourceCitation materialId={message.source.materialId} version={message.source.version} onDenied={onDenied} /> : null}
       </MessageContent>

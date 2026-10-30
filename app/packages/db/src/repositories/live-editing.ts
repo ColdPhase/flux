@@ -3,6 +3,7 @@ import { and, asc, eq, gt, lte, sql, type SQL } from 'drizzle-orm';
 import type { LiveCursor, LiveReceipt } from '@flux/contracts';
 import * as schema from '../schema.js';
 import { docRows } from './docs.js';
+import { openRow, openRows, sealFor, sealOf } from '../sealing.js';
 import type { DbExecutor } from './push.js';
 
 export class EditingPresenceCapacityError extends Error { readonly code = 'EDITING_PRESENCE_CAPACITY'; }
@@ -21,6 +22,10 @@ function receipt(value: Record<string, unknown>): LiveReceipt {
 }
 /** Rows only. Current session/resource policy and the input lease precede every call in the composition. */
 export function liveEditingRows<Codec extends State>(db: DbExecutor, decodeState: (value: Record<string, unknown>) => Codec, confirmation?: EditingConfirmationPolicy | null) {
+  // F-030 (S2b): in an encrypted workspace the head's body, codec state and hash, every logged update's bytes and ledger
+  // and every intent's receipt are sealed with the workspace key inside the caller's transaction; each read opens them.
+  const openHead = async <R extends object>(row: R) => (await openRows(db, 'doc_live_heads', [row]))[0]!;
+  const intents = liveEditingIntents(db);
   const summary = { docId: h.docId, workspaceId: h.workspaceId, projectId: h.projectId, generation: h.generation, sequence: h.sequence,
     body: h.body, hash: h.hash, savedVersion: h.savedVersion, savedSequence: h.savedSequence, snapshotSequence: h.snapshotSequence,
     revision: h.revision, initialized: sql<boolean>`${h.codecState} IS NOT NULL` };
@@ -33,27 +38,30 @@ export function liveEditingRows<Codec extends State>(db: DbExecutor, decodeState
     codecState: row.codecState ? decodeState(row.codecState) : null });
   return {
     /** The locked head with its snapshot (codec state at snapshotSequence, not necessarily at sequence). */
-    async lockHead(docId: string) { const [row] = await db.select().from(h).where(eq(h.docId, docId)).for('update'); return row ? present(row) : null; },
+    async lockHead(docId: string) { const [row] = await db.select().from(h).where(eq(h.docId, docId)).for('update'); return row ? present(await openHead(row)) : null; },
     async lockHeadSummary(docId: string) {
       const [row] = await db.select(summary).from(h).where(eq(h.docId, docId)).for('update');
-      return row ? presentSummary(row) : null;
+      return row ? presentSummary(await openHead(row)) : null;
     },
     /** The snapshot of a head this transaction has locked. */
     async snapshot(docId: string) {
-      const [row] = await db.select({ codecState: h.codecState, snapshotSequence: h.snapshotSequence }).from(h).where(eq(h.docId, docId));
+      const [read] = await db.select({ docId: h.docId, workspaceId: h.workspaceId, generation: h.generation, codecState: h.codecState, snapshotSequence: h.snapshotSequence })
+        .from(h).where(eq(h.docId, docId));
+      const row = read ? await openHead(read) : null;
       return row?.codecState ? { state: decodeState(row.codecState), sequence: row.snapshotSequence } : null;
     },
     async insertHead(doc: SavedDoc, generation: string, state: Codec) {
-      const [row] = await db.insert(h).values({ docId: doc.doc.id, workspaceId: doc.doc.workspaceId, projectId: doc.doc.projectId,
+      const [row] = await db.insert(h).values(await sealFor(db, 'doc_live_heads', doc.doc.workspaceId, { docId: doc.doc.id, workspaceId: doc.doc.workspaceId, projectId: doc.doc.projectId,
         generation, sequence: state.sequence, body: state.body, hash: hash(state.body), savedVersion: doc.current.version, savedSequence: 0,
-        codecState: state, snapshotSequence: state.sequence }).returning();
-      return present(row!);
+        codecState: state, snapshotSequence: state.sequence })).returning();
+      return present(await openHead(row!));
     },
     /** Writes the complete state as the snapshot at its own sequence (initialization, enrollment). */
-    async replaceState(head: { resourceId: string; generation: string }, state: Codec, bodyHash: string) {
+    async replaceState(head: { resourceId: string; workspaceId: string; generation: string }, state: Codec, bodyHash: string) {
       if (state.room !== head.resourceId || state.generation !== head.generation) throw new Error('Codec state has another namespace');
-      const changed = await db.update(h).set({ body: state.body, hash: bodyHash, sequence: state.sequence, codecState: state,
-        snapshotSequence: state.sequence, revision: sql`${h.revision} + 1`, updatedAt: new Date() })
+      const set = await sealFor(db, 'doc_live_heads', head.workspaceId, { body: state.body, hash: bodyHash, sequence: state.sequence, codecState: state,
+        snapshotSequence: state.sequence, revision: sql`${h.revision} + 1`, updatedAt: new Date() }, { docId: head.resourceId, generation: head.generation });
+      const changed = await db.update(h).set(set)
         .where(and(eq(h.docId, head.resourceId), eq(h.generation, head.generation))).returning({ revision: h.revision });
       if (changed.length !== 1) throw new Error('The locked live head disappeared');
       return changed[0]!.revision;
@@ -62,26 +70,29 @@ export function liveEditingRows<Codec extends State>(db: DbExecutor, decodeState
      * Appends one admitted text update to the log with the ledger entries it added and advances the
      * locked head. The whole state is written only when `snapshot` is given (bounded compaction).
      */
-    async commitUpdate(head: { resourceId: string; generation: string; sequence: number; revision: number },
+    async commitUpdate(head: { resourceId: string; workspaceId: string; generation: string; sequence: number; revision: number },
       next: { sequence: number; body: string; hash: string }, log: { actor: string; uuid: string; bytes: Uint8Array; fingerprint: string; ledger: Record<string, unknown> },
       snapshot: Codec | null) {
       if (next.sequence !== head.sequence + 1 || (snapshot && (snapshot.sequence !== next.sequence || snapshot.room !== head.resourceId || snapshot.generation !== head.generation))) {
         throw new Error('A logged update must advance the locked head by one');
       }
-      const changed = await db.update(h).set({ sequence: next.sequence, body: next.body, hash: next.hash, revision: sql`${h.revision} + 1`, updatedAt: new Date(),
-        ...(snapshot ? { codecState: snapshot, snapshotSequence: next.sequence } : {}) })
+      const set = await sealFor(db, 'doc_live_heads', head.workspaceId, { sequence: next.sequence, body: next.body, hash: next.hash, revision: sql`${h.revision} + 1`, updatedAt: new Date(),
+        ...(snapshot ? { codecState: snapshot, snapshotSequence: next.sequence } : {}) }, { docId: head.resourceId, generation: head.generation });
+      const changed = await db.update(h).set(set)
         .where(and(eq(h.docId, head.resourceId), eq(h.generation, head.generation), eq(h.sequence, head.sequence), eq(h.revision, head.revision)))
         .returning({ revision: h.revision });
       if (changed.length !== 1) throw new Error('The locked live head changed');
-      await db.insert(u).values({ docId: head.resourceId, generation: head.generation, sequence: next.sequence, actorId: log.actor,
-        commandId: log.uuid, fingerprint: log.fingerprint, bytes: Buffer.from(log.bytes).toString('base64'), ledger: log.ledger });
+      await db.insert(u).values(await sealFor(db, 'doc_live_updates', head.workspaceId, { docId: head.resourceId, generation: head.generation, sequence: next.sequence, actorId: log.actor,
+        commandId: log.uuid, fingerprint: log.fingerprint, bytes: Buffer.from(log.bytes).toString('base64'), ledger: log.ledger }));
       return changed[0]!.revision;
     },
     /** Logged updates (afterSequence, upToSequence] with their ledger entries, for rebuilding a state. */
     async log(docId: string, generation: string, afterSequence: number, upToSequence: number) {
-      const rows = await db.select({ sequence: u.sequence, bytes: sql<Buffer>`decode(${u.bytes}, 'base64')`, ledger: u.ledger }).from(u)
+      const read = await db.select({ docId: u.docId, generation: u.generation, workspaceId: h.workspaceId, sequence: u.sequence, bytes: u.bytes, ledger: u.ledger }).from(u)
+        .innerJoin(h, eq(h.docId, u.docId))
         .where(and(eq(u.docId, docId), eq(u.generation, generation), gt(u.sequence, afterSequence), lte(u.sequence, upToSequence))).orderBy(asc(u.sequence));
-      return rows;
+      const opened = await openRows(db, 'doc_live_updates', read);
+      return opened.map((row) => ({ sequence: row.sequence, bytes: Buffer.from(row.bytes, 'base64'), ledger: row.ledger }));
     },
     async replica(docId: string, generation: string, replicaId: number) {
       const [row] = await db.select().from(r).where(and(eq(r.docId, docId), eq(r.generation, generation), eq(r.replicaId, replicaId))).for('update');
@@ -101,13 +112,10 @@ export function liveEditingRows<Codec extends State>(db: DbExecutor, decodeState
     async lockIntent(actorId: string, commandId: string) {
       await db.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${'flux.editing.intent:' + actorId + ':' + commandId}, 0))`);
     },
-    async intent(actorId: string, commandId: string) {
-      const [row] = await db.select().from(i).where(and(eq(i.actorId, actorId), eq(i.commandId, commandId)));
-      return row ?? null;
-    },
+    intent: intents.find,
     async insertIntent(intent: { actorId: string; commandId: string; workspaceId: string; kind: 'wiki' | 'map'; resourceId: string;
       generation: string; operation: string; fingerprint: string; byteLength: number; receipt: LiveReceipt }) {
-      await db.insert(i).values({ ...intent, receipt: { ...intent.receipt } });
+      await intents.insert({ ...intent, receipt: { ...intent.receipt } });
     },
     /**
      * Up to `limit` confirmed updates after `afterSequence`, in order. Their stored sizes are summed
@@ -119,13 +127,19 @@ export function liveEditingRows<Codec extends State>(db: DbExecutor, decodeState
       let last = afterSequence; let total = 0;
       for (const row of sizes) { if (last > afterSequence && total + row.size > maxBytes) break; total += row.size; last = row.sequence; }
       if (last === afterSequence) return [];
-      const rows = await db.select({ sequence: u.sequence, bytes: sql<Buffer>`decode(${u.bytes}, 'base64')`, commandId: u.commandId,
+      const read = await db.select({ docId: u.docId, generation: u.generation, workspaceId: i.workspaceId, sequence: u.sequence, bytes: u.bytes, commandId: u.commandId,
         actorId: u.actorId, name: schema.authUsers.name, result: i.receipt }).from(u)
         .innerJoin(i, and(eq(i.actorId, u.actorId), eq(i.commandId, u.commandId)))
         .innerJoin(schema.authUsers, eq(schema.authUsers.id, u.actorId))
         .where(and(eq(u.docId, docId), eq(u.generation, generation), gt(u.sequence, afterSequence), lte(u.sequence, last))).orderBy(asc(u.sequence));
-      return rows.map((row) => ({ sequence: row.sequence, bytes: row.bytes, commandId: row.commandId,
-        actor: { kind: 'human' as const, id: row.actorId, name: row.name }, hash: receipt(row.result).hash }));
+      // The bytes and the receipt are separate sealed rows (an update's and an intent's identity).
+      const seal = read.length ? await sealOf(db, read[0]!.workspaceId, { write: false }) : null;
+      return read.map((row) => {
+        const opened = seal!.sealed ? { bytes: openRow('doc_live_updates', { docId: row.docId, generation: row.generation, sequence: row.sequence, bytes: row.bytes }, seal!).bytes,
+          result: openRow('live_editing_intents', { actorId: row.actorId, commandId: row.commandId, receipt: row.result }, seal!).receipt } : { bytes: row.bytes, result: row.result };
+        return { sequence: row.sequence, bytes: Buffer.from(opened.bytes, 'base64'), commandId: row.commandId,
+          actor: { kind: 'human' as const, id: row.actorId, name: row.name }, hash: receipt(opened.result).hash };
+      });
     },
     async setPresence(docId: string, generation: string, identity: { actorId: string; sessionId: string }, connectionId: string, cursor: LiveCursor | null) {
       const p = schema.docLivePresence;
@@ -174,6 +188,23 @@ export function liveEditingRows<Codec extends State>(db: DbExecutor, decodeState
       return result.rows[0]!;
     },
     async notify(docId: string) { await db.execute(sql`SELECT pg_notify(${EDITING_CHANNEL}, ${docId})`); },
+  };
+}
+
+/**
+ * `live_editing_intents` (one row per client command of a live Wiki or map). The fingerprint and the receipt are sealed in an
+ * encrypted workspace; `find` opens them and `insert` seals them in the caller's transaction.
+ */
+export function liveEditingIntents(db: DbExecutor) {
+  const i = schema.liveEditingIntents;
+  return {
+    async find(actorId: string, commandId: string) {
+      const [row] = await db.select().from(i).where(and(eq(i.actorId, actorId), eq(i.commandId, commandId)));
+      return row ? (await openRows(db, 'live_editing_intents', [row]))[0]! : null;
+    },
+    async insert(values: typeof i.$inferInsert) {
+      await db.insert(i).values(await sealFor(db, 'live_editing_intents', values.workspaceId, values));
+    },
   };
 }
 

@@ -3,6 +3,7 @@ import type { WorkspaceRole } from '@flux/contracts';
 import * as schema from '../schema.js';
 import type { DbExecutor } from './push.js';
 import { openRow, sealOf } from '../sealing.js';
+import { keyGate } from './workspace-encryption.js';
 
 /**
  * The SQL side of the access policy (issues #46, #90). `packages/core/src/access/policy.ts` decides
@@ -81,6 +82,12 @@ export async function workspaceAi(db: DbExecutor, workspaceId: string, options: 
  */
 async function lockProjectAccess(db: DbExecutor, actor: AccessActor, projectId: string): Promise<void> {
   if (!isUuid(projectId)) return;
+  // F-030 S2c (delta review P2-A): in an encrypted workspace a write takes the fair key gate before its first row lock,
+  // so a rotation's drain (under the exclusive gate) never waits for a project row a writer holds while it queues for
+  // the gate, and the project row cannot be skipped forever under load.
+  const [located] = (await db.execute<{ workspace_id: string; encrypted: boolean }>(sql`SELECT p.workspace_id, w.encrypted FROM projects p
+    JOIN workspaces w ON w.id = p.workspace_id WHERE p.id = ${projectId}`)).rows;
+  if (located?.encrypted) await keyGate(db, located.workspace_id, 'shared');
   await db.execute(sql`SELECT 1 FROM projects WHERE id = ${projectId} FOR SHARE`);
   const holders: SQL[] = [];
   if (actor.principal.kind === 'human' && isUuid(actor.principal.id)) holders.push(sql`g.user_id = ${actor.principal.id}`);

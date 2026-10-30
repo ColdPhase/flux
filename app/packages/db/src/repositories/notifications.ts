@@ -1,9 +1,28 @@
 import { messagePreview } from '@flux/contracts';
 import { and, asc, eq, gt, gte, inArray, isNotNull, isNull, ne, sql } from 'drizzle-orm';
 import * as schema from '../schema.js';
+import { openRows } from '../sealing.js';
 import { assignmentNotificationActive } from './notification-lifecycle.js';
 import { hiddenWhileAiOff, notificationHiddenWhileAiOff } from './workspace-ai.js';
 import type { DbExecutor } from './push.js';
+
+/**
+ * F-030 (#712 review P2-3): the muted list opens its names per workspace. A place in a locked encrypted workspace is
+ * named by its workspace (visible metadata) instead of failing the whole settings page with 423.
+ */
+async function openNamedOrLocked<T extends { workspaceId: string }>(db: DbExecutor, table: 'projects' | 'dms', rows: T[], name: (row: T, label: string) => T) {
+  const out: T[] = [];
+  for (const workspaceId of new Set(rows.map((row) => row.workspaceId))) {
+    const group = rows.filter((row) => row.workspaceId === workspaceId);
+    try { out.push(...await openRows(db, table, group)); }
+    catch (error) {
+      if ((error as { code?: unknown }).code !== 'WORKSPACE_LOCKED') throw error;
+      const [ws] = await db.select({ name: schema.workspaces.name }).from(schema.workspaces).where(eq(schema.workspaces.id, workspaceId));
+      out.push(...group.map((row) => name(row, ws?.name ?? 'Encrypted space')));
+    }
+  }
+  return out;
+}
 
 /**
  * Drizzle rows for notification generation, preferences, delivery addresses and the email
@@ -86,6 +105,16 @@ export function notificationGeneratorRows(db: DbExecutor) {
         .returning({ attempts: f.attempts });
       return row!.attempts;
     },
+    /** F-030: an event of a locked sealed workspace waits (ids only) for `workspace-encryption.resume.v1`. */
+    async recordWait(event: { id: string; workspaceId: string }) {
+      await db.execute(sql`INSERT INTO sealed_job_waits (id, workspace_id, queue, payload)
+        VALUES (gen_random_uuid(), ${event.workspaceId}::uuid, 'notifications.generate', ${JSON.stringify({ eventId: event.id })}::jsonb)`);
+    },
+    async eventById(id: string) {
+      const [row] = await db.select({ id: e.id, seq: e.seq, kind: e.kind, workspaceId: e.workspaceId, objectId: e.objectId, actorId: e.actorId, data: e.data })
+        .from(e).where(eq(e.id, id));
+      return row && row.workspaceId ? { ...row, workspaceId: row.workspaceId, data: (row.data ?? {}) as Record<string, unknown> } : null;
+    },
     async deadLetter(eventId: string) {
       const f = schema.notificationGenerationFailures;
       await db.update(f).set({ deadAt: sql`now()` }).where(eq(f.eventId, eventId));
@@ -105,8 +134,11 @@ export function notificationFactRows(db: DbExecutor) {
     const rows = await db.select({ id: schema.authUsers.id, name: schema.authUsers.name }).from(schema.authUsers).where(inArray(schema.authUsers.id, ids));
     return new Map(rows.map((row) => [row.id, row.name]));
   };
+  // F-030: a sealed workspace's content is opened here, in RAM, only to decide who is told and why; the generator
+  // stores a content-free title for it (`sealedWorkspace`).
   const projectName = async (projectId: string) => {
-    const [row] = await db.select({ name: schema.projects.name }).from(schema.projects).where(eq(schema.projects.id, projectId));
+    const [row] = await openRows(db, 'projects', await db.select({ id: schema.projects.id, workspaceId: schema.projects.workspaceId, name: schema.projects.name })
+      .from(schema.projects).where(eq(schema.projects.id, projectId)));
     return row?.name ?? 'a project';
   };
   const workOwners = async (ids: string[]) => {
@@ -127,6 +159,10 @@ export function notificationFactRows(db: DbExecutor) {
   };
   return {
     names,
+    async sealedWorkspace(workspaceId: string) {
+      const [row] = await db.select({ name: schema.workspaces.name, encrypted: schema.workspaces.encrypted }).from(schema.workspaces).where(eq(schema.workspaces.id, workspaceId));
+      return row?.encrypted ? { name: row.name } : null;
+    },
     async audience(eventId: string) {
       const rows = await db.select({ recipient: schema.eventAudience.recipient }).from(schema.eventAudience)
         .where(and(eq(schema.eventAudience.eventId, eventId), sql`${schema.eventAudience.recipient} LIKE 'human:%'`));
@@ -137,8 +173,9 @@ export function notificationFactRows(db: DbExecutor) {
       const [row] = await db.select({ message: pm, createdBy: schema.projectConversations.createdBy, createdByAgentId: schema.projectConversations.createdByAgentId }).from(pm)
         .innerJoin(schema.projectConversations, eq(schema.projectConversations.id, pm.conversationId)).where(eq(pm.id, messageId));
       if (!row) return null;
-      const message = row.message;
-      const [opening] = await db.select({ body: pm.body, attachmentCount: pm.attachmentCount }).from(pm).where(eq(pm.conversationId, message.conversationId)).orderBy(asc(pm.sequence)).limit(1);
+      const message = (await openRows(db, 'project_messages', [row.message]))[0]!;
+      const [opening] = await openRows(db, 'project_messages', await db.select({ id: pm.id, workspaceId: pm.workspaceId, body: pm.body, attachmentCount: pm.attachmentCount }).from(pm)
+        .where(eq(pm.conversationId, message.conversationId)).orderBy(asc(pm.sequence)).limit(1));
       const earlier = await db.selectDistinct({ authorId: pm.authorId }).from(pm)
         .where(and(eq(pm.conversationId, message.conversationId), sql`${pm.sequence} < ${message.sequence}`, isNotNull(pm.authorId)));
       const [agent] = message.authorAgentId ? await db.select({ name: schema.agents.name }).from(schema.agents)
@@ -159,19 +196,24 @@ export function notificationFactRows(db: DbExecutor) {
         .where(and(eq(schema.dmMessages.id, messageId), eq(schema.dmMessages.dmId, dmId)));
       if (!row) return null;
       const participants = await db.select({ id: schema.dmParticipants.userId }).from(schema.dmParticipants).where(eq(schema.dmParticipants.dmId, dmId));
+      const [message] = await openRows(db, 'dm_messages', [row.message]);
+      const [dm] = await openRows(db, 'dms', [row.dm]);
       return {
-        id: row.message.id, workspaceId: row.dm.workspaceId, dmId, kind: row.dm.kind as 'pair' | 'group', title: row.dm.title,
-        authorId: row.message.authorId, body: row.message.body, participantIds: participants.map((item) => item.id),
+        id: message!.id, workspaceId: dm!.workspaceId, dmId, kind: dm!.kind as 'pair' | 'group', title: dm!.title,
+        authorId: message!.authorId, body: message!.body, participantIds: participants.map((item) => item.id),
       };
     },
     async work(workId: string) {
       const w = schema.projectWorkItems;
-      const [row] = await db.select({ id: w.id, projectId: w.projectId, title: w.title, number: w.number, ownerUserId: w.ownerUserId, waitingForUserId: w.waitingForUserId, status: w.status, blocker: w.blocker }).from(w).where(and(eq(w.id, workId), isNull(w.creationRevertedAt)));
-      return row ? { ...row, projectName: await projectName(row.projectId) } : null;
+      const [read] = await openRows(db, 'project_work_items', await db.select({ id: w.id, workspaceId: w.workspaceId, projectId: w.projectId, title: w.title, number: w.number, ownerUserId: w.ownerUserId,
+        waitingForUserId: w.waitingForUserId, status: w.status, blocker: w.blocker }).from(w).where(and(eq(w.id, workId), isNull(w.creationRevertedAt))));
+      if (!read) return null;
+      const { workspaceId: _workspace, ...row } = read; void _workspace;
+      return { ...row, projectName: await projectName(row.projectId) };
     },
     async decision(decisionId: string) {
       const d = schema.projectDecisions;
-      const [row] = await db.select({ id: d.id, projectId: d.projectId, title: d.title, kind: d.proposedByKind, by: d.proposedById }).from(d).where(eq(d.id, decisionId));
+      const [row] = await openRows(db, 'project_decisions', await db.select({ id: d.id, workspaceId: d.workspaceId, projectId: d.projectId, title: d.title, kind: d.proposedByKind, by: d.proposedById }).from(d).where(eq(d.id, decisionId)));
       if (!row) return null;
       return {
         id: row.id, projectId: row.projectId, projectName: await projectName(row.projectId), title: row.title,
@@ -180,7 +222,7 @@ export function notificationFactRows(db: DbExecutor) {
     },
     async result(resultId: string) {
       const r = schema.projectResults;
-      const [row] = await db.select({ id: r.id, projectId: r.projectId, title: r.title, kind: r.createdByKind, by: r.createdById }).from(r).where(eq(r.id, resultId));
+      const [row] = await openRows(db, 'project_results', await db.select({ id: r.id, workspaceId: r.workspaceId, projectId: r.projectId, title: r.title, kind: r.createdByKind, by: r.createdById }).from(r).where(eq(r.id, resultId)));
       if (!row) return null;
       return {
         id: row.id, projectId: row.projectId, projectName: await projectName(row.projectId), title: row.title,
@@ -266,13 +308,15 @@ export function notificationPlaceRows(db: DbExecutor) {
   return {
     async projectNames(ids: string[]) {
       if (!ids.length) return new Map<string, string>();
-      const rows = await db.select({ id: schema.projects.id, name: schema.projects.name }).from(schema.projects).where(inArray(schema.projects.id, ids));
+      const rows = await openNamedOrLocked(db, 'projects', await db.select({ id: schema.projects.id, workspaceId: schema.projects.workspaceId, name: schema.projects.name })
+        .from(schema.projects).where(inArray(schema.projects.id, ids)), (row, label) => ({ ...row, name: label }));
       return new Map(rows.map((row) => [row.id, row.name]));
     },
     /** A group's title, or the other participants' names. */
     async dmNames(ids: string[], userId: string) {
       if (!ids.length) return new Map<string, string>();
-      const dms = await db.select({ id: schema.dms.id, title: schema.dms.title }).from(schema.dms).where(inArray(schema.dms.id, ids));
+      const dms = await openNamedOrLocked(db, 'dms', await db.select({ id: schema.dms.id, workspaceId: schema.dms.workspaceId, title: schema.dms.title }).from(schema.dms)
+        .where(inArray(schema.dms.id, ids)), (row, label) => ({ ...row, title: label }));
       const people = await db.select({ dmId: schema.dmParticipants.dmId, name: schema.authUsers.name }).from(schema.dmParticipants)
         .innerJoin(schema.authUsers, eq(schema.authUsers.id, schema.dmParticipants.userId))
         .where(and(inArray(schema.dmParticipants.dmId, ids), ne(schema.dmParticipants.userId, userId))).orderBy(asc(schema.authUsers.name));
@@ -423,6 +467,11 @@ export async function markAllNotificationsRead(db: DbExecutor, userId: string) {
 /** The morning summary (#350): who has it on, the per-day claim, unread inbox rows and the summary row. */
 export function morningSummaryRows(db: DbExecutor) {
   return {
+    /** F-030: whether a source's workspace is encrypted (its summary row is anchored elsewhere, or content-free). */
+    async sealedWorkspace(workspaceId: string) {
+      const [row] = await db.select({ encrypted: schema.workspaces.encrypted }).from(schema.workspaces).where(eq(schema.workspaces.id, workspaceId));
+      return row?.encrypted === true;
+    },
     async candidates() {
       const rows = await db.select({ userId: p.userId, summaryEnabled: p.summaryEnabled, summaryAt: p.summaryAt, summaryByAssistant: p.summaryByAssistant, timeZone: p.timeZone, channels: p.channels, lastOn: p.summaryLastOn })
         .from(p).where(eq(p.summaryEnabled, true));

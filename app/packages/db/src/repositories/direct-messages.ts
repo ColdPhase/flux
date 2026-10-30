@@ -1,7 +1,7 @@
 import { and, asc, count, desc, eq, gte, inArray, isNull, lt, lte, sql, type SQL } from 'drizzle-orm';
 import * as schema from '../schema.js';
 import type { DbExecutor } from './push.js';
-import { openField, openRows, sealFor, sealsOf } from '../sealing.js';
+import { openField, openRows, sealFor, sealOf, sealsOf } from '../sealing.js';
 
 /**
  * Drizzle persistence for direct messages (issues #107, #46). The rows satisfy the ports in
@@ -79,6 +79,8 @@ export function dmRows(db: DbExecutor) {
   return {
     /** DMs of `workspaceId` matching `audience` (the policy's list condition), latest activity first. */
     async list(workspaceId: string, audience: SQL, page: { limit: number; offset: number }) {
+      // F-030 (AC-6): a locked encrypted workspace answers 423 even when the page would be empty.
+      await sealOf(db, workspaceId, { write: false });
       const where = and(eq(d.workspaceId, workspaceId), audience);
       const rows = await select().where(where).orderBy(desc(activity), asc(d.id)).limit(page.limit).offset(page.offset);
       const [total] = await db.select({ total: count() }).from(d).where(where);

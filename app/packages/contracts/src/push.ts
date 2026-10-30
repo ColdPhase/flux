@@ -1,6 +1,8 @@
 import type { NotificationReason } from './notifications.js';
 
 /** Web Push and in-app inbox wire contract (issue #41). */
+import type { LockedWorkspaceRef } from './encryption.js';
+
 export const PUSH_PUBLIC_KEY_PATH = '/api/v1/push/public-key';
 export const PUSH_SUBSCRIPTIONS_PATH = '/api/v1/push/subscriptions';
 export const INBOX_PATH = '/api/v1/inbox';
@@ -87,6 +89,11 @@ export interface InboxItem {
 }
 
 export interface InboxResponse {
+  /**
+   * F-030: the caller's encrypted workspaces that are locked on this server; their items are left out, and the page
+   * draws one "Waiting to be unlocked" row for each. Absent when none is locked.
+   */
+  lockedWorkspaces?: LockedWorkspaceRef[];
   items: InboxItem[];
   /** The sidebar shows this number next to Inbox (F-026 §4). */
   unread: number;

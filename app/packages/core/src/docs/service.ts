@@ -211,6 +211,12 @@ export function createDocUseCases(uow: DocUnitOfWork, options: DocUseCaseOptions
     return view;
   }
 
+  /** Under the graph lock `prepareDocBodyTaskUse` took: the result or decision this doc is started from is still there (the assistant's Undo may have taken it back meanwhile, #68). */
+  async function requireSourceStill(ports: DocPorts, projectId: string, source: DocSectionSource) {
+    if (!(await ports.work.targetExists(projectId, { type: source.type, id: source.id } as ObjectRef)))
+      throw new RuleViolationError(`The ${source.type} is not part of this project`, 'LINK_TARGET_NOT_FOUND');
+  }
+
   function linkSource(ports: DocPorts, scope: { workspaceId: string; projectId: string }, docId: string, source: DocSectionSource, by: ActorRef) {
     return ports.work.insertLinks([{ id: randomUUID(), ...scope, role: 'source', from: { type: 'doc', id: docId }, to: { type: source.type, id: source.id }, createdBy: by }]);
   }
@@ -307,7 +313,7 @@ export function createDocUseCases(uow: DocUnitOfWork, options: DocUseCaseOptions
         const first: NewDocVersion = { title, body, state, reason, author: by };
         const row = await ports.docs.insert({ id: randomUUID(), workspaceId, projectId: project, createdBy: by }, first);
         const taskFence = await prepareDocBodyTaskUse(ports, row, [body], from ? [from] : [], 1);
-        if (from) await linkSource(ports, scope, row.doc.id, from, by);
+        if (from) { await requireSourceStill(ports, project, from); await linkSource(ports, scope, row.doc.id, from, by); }
         return commit(ports, principal, scope, row, true, taskFence);
       });
     },
@@ -359,6 +365,7 @@ export function createDocUseCases(uow: DocUnitOfWork, options: DocUseCaseOptions
         const { body, replaced } = text.upsertSection(current.current.body, from, composed.section);
         const scope = { workspaceId, projectId };
         const taskFence = await prepareDocBodyTaskUse(ports, current, [current.current.body, body], [from]);
+        await requireSourceStill(ports, projectId, from);
         const existing = (await ports.work.links([id])).some((link) => link.role === 'source' && link.fromType === 'doc'
           && link.fromId === id && link.toType === from.type && link.toId === from.id);
         await linkSource(ports, scope, id, from, by);

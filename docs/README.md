@@ -1,6 +1,9 @@
 # Flux documentation
 
-See the [project README](../README.md) for an introduction and quick start.
+See the [project README](../README.md) for an introduction and quick start. The user-facing
+guides below (quick start, connecting an agent, operations, integrations, security and
+contributing) are also published as the [documentation site](https://coldphase.github.io/flux/),
+generated from these files by [`site/`](../site/scripts/sync-docs.mjs); edit them here.
 
 ## Contributing and security
 

@@ -40,7 +40,11 @@ export interface FileRepository {
     reservedBytes: number; expiresAt: Date; replayOf?: string }): Promise<StoredFileRow>;
   findFile(id: string): Promise<StoredFileRow | null>;
   /** Marks a still-receiving reservation ready; false when it is gone or no longer receiving. */
-  markReady(id: string, input: { size: number; sha256: string; readyAt: Date; expiresAt: Date; detail?: FileDetail }): Promise<boolean>;
+  /**
+   * Under the workspace's key share lock (F-030 S2c): `key_changed` when the object's key version is no longer live (a
+   * rotation finished while it was sent), so the upload is refused instead of storing bytes nobody can open.
+   */
+  markReady(id: string, input: { size: number; sha256: string; readyAt: Date; expiresAt: Date; detail?: FileDetail; keyVersion?: number | null }): Promise<boolean | 'key_changed'>;
   /** Removes an unpublished row (a failed or abandoned upload). Published rows are never removed. */
   removeUnpublished(id: string): Promise<boolean>;
   /** Locks these rows FOR UPDATE in ascending id order and returns the ones that exist. */
@@ -61,6 +65,8 @@ export interface ReceivedFile {
   size: number;
   /** Lowercase hex SHA-256. */
   sha256: string;
+  /** The key version the stored object is sealed under (F-030 S2c); absent for a plain workspace. */
+  keyVersion?: number | null;
   /** Makes the bytes durable as the immutable object `objectId` (fsync, atomic rename, directory fsync). */
   commit(objectId: string): Promise<void>;
   /** Removes the scratch bytes; safe after a failed commit. */
@@ -76,7 +82,12 @@ export class FileReceiveTimeoutError extends Error {}
  */
 export interface FileStorage {
   /** Streams into private scratch, refusing more than `maxBytes` (FileTooLargeError) or past `deadline` (FileReceiveTimeoutError). */
-  receive(bytes: AsyncIterable<Uint8Array>, limits: { maxBytes: number; deadline: number }): Promise<ReceivedFile>;
+  receive(bytes: AsyncIterable<Uint8Array>, limits: { maxBytes: number; deadline: number },
+    /**
+     * F-030: the reservation id the bytes will be committed under. For an encrypted workspace's file the adapter seals
+     * the bytes as they arrive (size and SHA-256 stay those of the plaintext), so plaintext never reaches the scratch.
+     */
+    objectId?: string): Promise<ReceivedFile>;
   /** The object's bytes, or null when it is missing. */
   read(objectId: string): Promise<Uint8Array | null>;
   /** Whether immutable bytes exist with exactly this size and, when supplied, SHA-256. */

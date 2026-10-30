@@ -5,10 +5,10 @@ import * as zxcvbnCommon from '@zxcvbn-ts/language-common';
 import * as zxcvbnEnglish from '@zxcvbn-ts/language-en';
 import { WORKSPACE_ENCRYPTION_RESUME_JOB, type WorkspaceEncryptionResumeJob } from '@flux/contracts';
 import {
-  authorize, createEncryptionUseCases, DerivationSemaphore, ForbiddenError, getWorkspace, keyringFromEnv, NotFoundError, ProcessKeys,
+  authorize, createEncryptionUseCases, DerivationSemaphore, ForbiddenError, getWorkspace, keyPinStatus, keyringFromEnv, NotFoundError, ProcessKeys,
   recordEvent, sealFor, swapFiles, swapSafety, testSwapRoot, type Database, type EncryptionPorts, type EncryptionUnitOfWork, type PasswordEstimator,
 } from '@flux/core';
-import { accessPorts, accessReader, configureSeals, loadActor, workspaceEncryptionRows, type DbExecutor } from '@flux/db';
+import { accessPorts, accessReader, configureRemovalPin, configureSeals, dropSealedSearchIndex, loadActor, workspaceEncryptionRows, type DbExecutor, type SealResolver } from '@flux/db';
 import { eventPorts } from '../events.js';
 
 // Adapters of the encrypted-workspace use cases (F-030, #655): the access policy (`workspace.manage_encryption`), the
@@ -64,8 +64,13 @@ export function processKeysFromEnv(env: NodeJS.ProcessEnv): ProcessKeys {
  * Installs core's `sealFor` over this process's keys as the repositories' seal resolver (F-030 S2a): every repository
  * of `@flux/db` seals and opens through it in its own transaction, so a lock fails reads and writes closed.
  */
-export function installSeals(keys: ProcessKeys) {
-  configureSeals((executor, workspaceId, options) => sealFor(workspaceEncryptionRows(executor), keys, workspaceId, options));
+/** Installs this API instance's seals for the process, and returns them so each of its requests can run in them. */
+export function installSeals(keys: ProcessKeys): SealResolver {
+  const resolve: SealResolver = (executor, workspaceId, options) => sealFor(workspaceEncryptionRows(executor), keys, workspaceId, options);
+  configureSeals(resolve);
+  // F-030 S2b: the in-memory search index of a workspace never outlives its keys in this process.
+  keys.onForget((workspaceId) => dropSealedSearchIndex(workspaceId));
+  return resolve;
 }
 
 export interface EncryptionComposition {
@@ -75,8 +80,12 @@ export interface EncryptionComposition {
 
 /** One per API process: the keys, the shared semaphore and the use cases. */
 export function composeEncryption(db: Database, boss: Pick<PgBoss, 'send'>, keys: ProcessKeys): EncryptionComposition {
+  const pin = keyPinStatus(process.env);
+  if (pin.warning) console.error(JSON.stringify({ warning: pin.warning }));
+  // Role changes pin their removal records with it (F-030 S2c).
+  configureRemovalPin(pin.pin ? (record) => pin.pin!.removal(record) : null);
   const useCases = createEncryptionUseCases({
-    unit: encryptionUnitOfWork(db, boss), keys, semaphore: new DerivationSemaphore(2, 8), estimator: zxcvbnEstimator(),
+    unit: encryptionUnitOfWork(db, boss), keys, semaphore: new DerivationSemaphore(2, 8), estimator: zxcvbnEstimator(), pin: pin.pin,
     read: (principal, workspaceId) => getWorkspace(principal, workspaceId, db, accessPorts, { bootId: keys.openableBoot }),
   });
   return { keys, useCases };

@@ -1,9 +1,10 @@
 #!/bin/sh
-# F-030 encrypted workspaces (#655), S1 and S2a-1 acceptance in Docker (docs/product/encrypted-workspaces.md#tests-and-acceptance-criteria):
+# F-030 encrypted workspaces (#655), S1, S2a and S2c acceptance in Docker (docs/product/encrypted-workspaces.md#tests-and-acceptance-criteria):
 #   AC-1 crypto, AC-2 lifecycle / AI forced off / keyring and swap, AC-5 (S2a-1 part) the registry against the live catalog and
 #   the backstops, the S2a-1 sealed repositories with their in-database canary scan, AC-4 two APIs with PostgreSQL logging every
 #   statement and its parameters (docker/compose.encryption.test.yaml), the whole PostgreSQL, API, worker and keyring
-#   logs scanned for every secret of the run, and AC-3 restarts. Its own Compose project; ports FLUX_TEST_PORT and
+#   logs scanned for every secret of the run, AC-3 restarts, and AC-13 key rotation (S2c) with a worker crash and a keyring
+#   restart mid-rotation. Its own Compose project; ports FLUX_TEST_PORT and
 #   FLUX_TEST_MAILPIT_PORT as for check_application.sh.
 set -eu
 
@@ -23,6 +24,7 @@ export FLUX_MAIL_FROM="Flux <flux@example.test>"
 export FLUX_AUTH_RATE_LIMIT=false
 export FLUX_VAPID_PUBLIC_KEY= FLUX_VAPID_PRIVATE_KEY= FLUX_VAPID_SUBJECT=
 export FLUX_KEYRING_TOKEN="$(head -c 32 /dev/urandom | base64 | tr '+/' '-_' | tr -d '=\n')"
+export FLUX_KEY_PIN_SECRET="$(head -c 32 /dev/urandom | base64 | tr '+/' '-_' | tr -d '=\n')"
 . scripts/test_images.sh
 compose="docker compose -p $project -f docker/compose.source.yaml -f docker/compose.test.yaml -f docker/compose.encryption.test.yaml --profile test"
 scan_dir=$(mktemp -d)
@@ -57,12 +59,32 @@ $compose build
 $compose up -d db migrate
 $compose --profile setup run --rm files-init
 
-files="tests/app/encryption-crypto.test.ts tests/app/encryption-keyring.test.ts tests/app/encrypted-workspaces.test.ts tests/app/encryption-registry.test.ts tests/app/encryption-sealed-content.test.ts tests/app/live/encryption-two-api.test.ts"
+files="${FLUX_ENCRYPTION_FILES:-tests/app/encryption-crypto.test.ts tests/app/encryption-keyring.test.ts tests/app/encrypted-workspaces.test.ts tests/app/encryption-registry.test.ts tests/app/encryption-sealed-content.test.ts tests/app/encryption-search-live.test.ts tests/app/sealed-search-heap.test.ts tests/app/encryption-locked-routes.test.ts tests/app/encryption-rotation.test.ts tests/app/live/encryption-two-api.test.ts}"
 # shellcheck disable=SC2086
 $compose run --rm test node_modules/.bin/tsx --test --test-concurrency=1 $files
 
+# AC-7 (S2b part): none of the canaries of the encrypted workspace (search content, live Wiki and live map) is in any file of the
+# PostgreSQL data directory or its WAL, after a checkpoint and a WAL switch; the plain workspace's canaries are (positive control).
+$compose run --rm --no-deps -T test cat /state/encryption-disk-canaries.txt > "$scan_dir/disk-canaries"
+$compose run --rm --no-deps -T test cat /state/encryption-disk-control.txt > "$scan_dir/disk-control"
+db_container=$($compose ps -q db)
+docker exec "$db_container" psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c CHECKPOINT -c 'SELECT pg_switch_wal()' > /dev/null
+docker cp "$scan_dir/disk-canaries" "$db_container:/tmp/disk-canaries"
+docker cp "$scan_dir/disk-control" "$db_container:/tmp/disk-control"
+pgdata=$(docker exec "$db_container" psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Atc 'SHOW data_directory')
+canary_count=$(grep -c . "$scan_dir/disk-canaries")
+[ "$canary_count" -ge 20 ] || { echo "too few disk canaries ($canary_count)" >&2; exit 1; }
+docker exec -u root "$db_container" sh -c "grep -rlaF -f /tmp/disk-control '$pgdata' | head -1" | grep -q . || { echo 'positive control: no plain canary found in the data directory or WAL' >&2; exit 1; }
+if [ -n "$(docker exec -u root "$db_container" sh -c "grep -rlaF -f /tmp/disk-canaries '$pgdata'")" ]; then
+  echo "CANARY of an encrypted workspace FOUND on the PostgreSQL disk (data directory or WAL)" >&2
+  exit 1
+fi
+echo "AC-7 disk scan: $canary_count canary encodings, 0 files of the data directory or WAL hold one; the positive control is found"
+
 # AC-4: no password, recovery code, KEK, holder private key, DEK or subkey in any log, in any encoding.
 $compose run --rm --no-deps -T test cat /state/encryption-secrets.txt > "$scan_dir/secrets"
+# S2c: the rotation tests' passwords, codes and DEKs (old and new versions) too.
+$compose run --rm --no-deps -T test cat /state/rotation-secrets.txt >> "$scan_dir/secrets"
 count=$(grep -c . "$scan_dir/secrets")
 [ "$count" -ge 40 ] || { echo "too few secrets to scan for ($count)" >&2; exit 1; }
 $compose logs --no-color db > "$scan_dir/postgres.log"
@@ -79,13 +101,24 @@ for log in postgres services; do
   fi
 done
 [ "$hits" -eq 0 ] || exit 1
+# AC-7 error paths (S2a-2c-3): A's failed request and job texts are in no service log, the request in no PostgreSQL log;
+# B's failed request text is in the API log (the control: an unredacted failure is logged).
+for pair in services:services postgres:postgres; do
+  file=${pair%%:*}; log=${pair##*:}
+  $compose run --rm --no-deps -T test cat "/state/encryption-error-$file.txt" > "$scan_dir/error-$file"
+  [ "$(grep -c . "$scan_dir/error-$file")" -ge 1 ] || { echo "no error-path texts for the $log log" >&2; exit 1; }
+  if grep -F -f "$scan_dir/error-$file" "$scan_dir/$log.log" > /dev/null; then echo "ERROR-PATH TEXT OF A FOUND in the $log log" >&2; exit 1; fi
+done
+$compose run --rm --no-deps -T test cat /state/encryption-error-control.txt > "$scan_dir/error-control"
+grep -F -f "$scan_dir/error-control" "$scan_dir/services.log" > /dev/null || { echo 'error-path control: the failed request of B is not in the API log' >&2; exit 1; }
 echo "AC-4 log scan: $count secret encodings, $(wc -l < "$scan_dir/postgres.log") PostgreSQL log lines, $(wc -l < "$scan_dir/services.log") service log lines, 0 hits"
 
 report_memory
 
 # AC-3: restarts and the lock.
 $compose run --rm test node_modules/.bin/tsx tests/app/encryption-restart.check.ts prepare
-$compose restart
+# Not the one-shot migrate: restarted with db it times out (#723 review P3).
+$compose restart db keyring api api2 worker mailpit
 $compose up -d --wait api api2 worker keyring
 $compose run --rm test node_modules/.bin/tsx tests/app/encryption-restart.check.ts stack-locked
 $compose restart api
@@ -95,4 +128,21 @@ $compose run --rm test node_modules/.bin/tsx tests/app/encryption-restart.check.
 $compose restart keyring
 $compose run --rm test node_modules/.bin/tsx tests/app/encryption-restart.check.ts keyring-locked
 
-echo 'F-030 S1 encryption checks passed'
+# AC-13 (S2c): a worker crash and a keyring restart mid-rotation.
+rotation="node_modules/.bin/tsx tests/app/encryption-rotation.check.ts"
+FLUX_TEST_ROTATION_HOLD_AFTER_PAGES=3 $compose up -d --wait worker
+$compose run --rm --no-deps test $rotation crash-prepare
+docker kill "$($compose ps -q worker)"
+FLUX_TEST_ROTATION_HOLD_AFTER_PAGES= $compose up -d worker
+$compose run --rm --no-deps test $rotation crash-resumed
+FLUX_TEST_ROTATION_HOLD_AFTER_PAGES=3 $compose up -d --wait worker
+$compose run --rm --no-deps test $rotation keyring-prepare
+$compose restart keyring
+$compose run --rm --no-deps test $rotation keyring-locked
+FLUX_TEST_ROTATION_HOLD_AFTER_PAGES= $compose up -d worker
+$compose run --rm --no-deps test $rotation keyring-resumed
+
+# AC-7, the stolen-disk part: pg_dump, the raw volumes (pg_wal included), container layers and logs; stops the stack.
+. scripts/check_encryption_scan.sh
+
+echo 'F-030 S1, S2a and S2c encryption checks passed'

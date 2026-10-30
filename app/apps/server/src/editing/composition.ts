@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import type { SessionResolver } from '../identity/session.js';
-import { accessReader, EDITING_CHANNEL, listen, sql, type createDatabase, type DbExecutor, type EditingConfirmationPolicy } from '@flux/db';
-import { ConflictError, evaluateProject, evaluateSketch, type Principal } from '@flux/core';
+import { EDITING_CHANNEL, listen, sql, type createDatabase, type DbExecutor, type EditingConfirmationPolicy } from '@flux/db';
+import type { ProcessKeys } from '@flux/core';
 import { editingGate } from './gate.js';
 import { wikiAuthority } from './authority.js';
 import { wikiController } from './wiki-controller.js';
@@ -22,28 +22,20 @@ interface Options {
   developmentEnabled: boolean;
   env?:NodeJS.ProcessEnv;
   confirmation?:EditingConfirmationPolicy|null;
+  /** F-030: when an encrypted workspace locks or its keys are dropped, its live rooms close and the decoded rooms are cleared. */
+  encryptionKeys?:ProcessKeys;
 }
 /**
- * F-030: live Wiki and live maps are not offered for an encrypted workspace until S2b seals their persistence. Every
- * live route and room upgrade answers 409 WORKSPACE_ENCRYPTED_UNSUPPORTED for its objects and writes nothing. The
- * refusal comes after the access check, so only a reader of the doc or map learns it: no session leaves the route
- * to answer 401, and a caller who may not read the object gets the route's own 404.
+ * F-030 (S2b): the workspace of a live doc or map and whether it is encrypted, so the gate can close the rooms of an encrypted
+ * workspace when it locks. Live editing itself works in an encrypted workspace: every persisted update, head, snapshot,
+ * receipt and journal entry is sealed by the live repositories, and a locked workspace answers 423 on every route and upgrade.
  */
-export function refuseSealedLive(db: DbExecutor) {
-  const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-  return async (principal: Principal | null, target: { docId?: unknown; sketchId?: unknown }) => {
-    if (!principal) return;
-    const doc = typeof target.docId === 'string' && UUID.test(target.docId) ? target.docId : null;
-    const sketch = !doc && typeof target.sketchId === 'string' && UUID.test(target.sketchId) ? target.sketchId : null;
-    if (!doc && !sketch) return;
-    const [row] = (await db.execute<{ encrypted: boolean; project_id: string | null }>(doc
-      ? sql`SELECT w.encrypted, o.project_id FROM project_materials o JOIN workspaces w ON w.id = o.workspace_id WHERE o.id = ${doc}::uuid`
-      : sql`SELECT w.encrypted, o.project_id FROM sketches o JOIN workspaces w ON w.id = o.workspace_id WHERE o.id = ${sketch}::uuid`)).rows;
-    if (!row?.encrypted) return;
-    const reader = accessReader(db);
-    const visible = doc ? (await evaluateProject(principal, 'project.read', row.project_id!, reader)).allowed
-      : (await evaluateSketch(principal, 'sketch.read', sketch!, reader)).allowed;
-    if (visible) throw new ConflictError('Live editing is not available in an encrypted space yet', 'WORKSPACE_ENCRYPTED_UNSUPPORTED');
+export function liveWorkspaceOf(db: DbExecutor) {
+  return async (target: { kind: 'map' | 'wiki'; id: string }): Promise<{ workspaceId: string; sealed: boolean } | undefined> => {
+    const [row] = (await db.execute<{ id: string; encrypted: boolean }>(target.kind === 'wiki'
+      ? sql`SELECT w.id, w.encrypted FROM project_materials o JOIN workspaces w ON w.id = o.workspace_id WHERE o.id = ${target.id}::uuid`
+      : sql`SELECT w.id, w.encrypted FROM sketches o JOIN workspaces w ON w.id = o.workspace_id WHERE o.id = ${target.id}::uuid`)).rows;
+    return row ? { workspaceId: row.id, sealed: row.encrypted } : undefined;
   };
 }
 
@@ -55,14 +47,14 @@ export async function registerEditing(app: FastifyInstance, options: Options) {
   const mapsBackend=options.enabled?mapBackend(options.database,{confirmation:options.confirmation}):null;
   const mapsAuthority=mapsBackend?mapAuthority(mapsBackend,outputBudget):null;
   const mapsController=mapsAuthority?mapController(mapsAuthority,outputBudget,()=>telemetry):null;
-  const sealedLive = refuseSealedLive(options.database.db as unknown as DbExecutor);
-  await app.register(editingRoutes, { sessions: options.sessions, authority, outputBudget,maps:mapsAuthority, sealedLive });
+  const workspaceOf = liveWorkspaceOf(options.database.db as unknown as DbExecutor);
+  await app.register(editingRoutes, { sessions: options.sessions, authority, outputBudget,maps:mapsAuthority });
   if (!authority || !controller||!mapsBackend||!mapsAuthority||!mapsController) return null;
   const gate = editingGate({ sessions: options.sessions, publicOrigin: options.publicOrigin,
     async authorize(context) {
-      await sealedLive(context.session.principal, context.target.kind === 'wiki' ? { docId: context.target.id } : { sketchId: context.target.id });
       if(context.target.kind==='wiki')await authority.handoff(context.session,context.target.id,()=>{});
       else await mapsAuthority.authorize(context.session,context.target.id,()=>{});
+      return workspaceOf(context.target);
     }, accept(socket,context){if(context.target.kind==='wiki')controller.accept(socket,context);else mapsController.accept(socket,context);} });
   // NOTIFY contains only a room UUID. Both API replicas re-read committed updates under current policy.
   const notifications = listen(options.connectionString, EDITING_CHANNEL,
@@ -78,6 +70,7 @@ export async function registerEditing(app: FastifyInstance, options: Options) {
       externalInputBytes:authority.runtime.externalInputBytes,externalOutputBytes:outputBudget.bytes};
   };
   telemetry=developmentQueueTelemetry(options.env??process.env,options.enabled&&options.developmentEnabled,resources);
+  options.encryptionKeys?.onForget((workspaceId)=>{authority.rooms.clear();gate.closeSealed(workspaceId);});
   const unobserve=telemetry?observeEditingResources(telemetry.observe):()=>{};
   telemetry?.start();
   let closed:Promise<void>|null=null;
