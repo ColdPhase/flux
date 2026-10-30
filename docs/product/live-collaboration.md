@@ -304,6 +304,11 @@ only verifies local prototype behavior with its stated limits.
 Status 2026-10-10 for #63: the direct-path DTLS assertion and the emulated mobile rows
 are recorded in [live-media.md](../development/live-media.md#platform-rows-and-direct-path-dtls-63-ac-3-ac-4-2026-10-10).
 Receiver calibration, public-host results and real devices are still open, so #63 stays open.
+Status 2026-10-30: the emulated rows also cover a dispatched device change, the reload that
+applies a Flux update (nothing is captured until the person joins again) and rejoining
+([live-media.md](../development/live-media.md#device-change-update-reload-and-rejoin-on-the-platform-rows-63-ac-3-2026-10-30)).
+The public host, the rest of receiver calibration and the desktop Firefox and WebKit rows
+remain open. Real devices are optional.
 
 Only the first row is documentation. The others are required full-application
 outcomes and stay open until demonstrated. Optional audio notes require a later
