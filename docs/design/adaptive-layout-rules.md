@@ -50,6 +50,7 @@ Agents is one list with a row for each of Hubert's two agents' connections and M
 | Thread feed < 400 px | A docked panel on a small laptop has no room beside a bubble: the three message actions sit in the bubble's corner | container | `work/message-actions.css` `@container thread-feed` |
 | Map pane ≤ 680 px, canvas ≤ 1080 px wide or ≤ 560 px tall | "Select several" is its icon alone; the zoom controls rise above the tools; the minimap goes | container | `sketch/sketch.css` `@container` |
 | Agents | One list in an 854 px column; the three connections are three rows | per surface | `agents/agents.css` |
+| Window ≤ 480 px tall, rail | The rail tightens; Settings is in the account menu. Its middle band, the four places with the projects and messages, scrolls as one, so every project is reachable from the rail (#727). The toggle, New, Stop and the account stay outside it, in place, and their menus are not clipped | viewport | `app/app.css` `.side__rail-middle`, `app/Sidebar.tsx` |
 
 No rule caps the whole application. Reading measures are set per surface.
 
@@ -100,7 +101,7 @@ compact 14 px type. Measured longest lines, 320–5120 px (re-measured 2026-10-2
 | Surface | Phone ≤ 640 | Tablet / split 641–1000 | Laptop 1001–1599 | Wide ≥ 1600 |
 | --- | --- | --- | --- | --- |
 | Conversation | One stream; no tab bar; the thread is a sheet (Replies) with Close replies | The stream beside the rail; the thread overlays as the 380 px panel | The thread docks beside the stream as the one panel; Details takes the same panel and a Thread button returns to it | The stream (≥ 600 px, at most 760 px from 1920) and one docked 480 px panel; extra width is margin, never a third column |
-| Map / list | Two card columns at full size; the tools in a grid; its own camera and zoom | The plane fills the pane with Fit; Details overlays | The plane; Details docks and narrows the pane | The plane fills its pane and grows with the screen: 1664, 2304 and 3584 px at 1920, 2560 and 3840 |
+| Map / list | Two card columns at full size; the tools in a grid; its own camera and zoom | The plane fills the pane; Details overlays | The plane; Details docks and narrows the pane | The plane fills its pane and grows with the screen: 1664, 2304 and 3584 px at 1920, 2560 and 3840 |
 | Tasks | The drawn Mine \| All list with state glyphs; no board | A board that shows the status overview (blocked count, one column) while it is under 700 px wide | Three columns; Details docks beside the board | Three columns beside docked Details; more cards per row (the Open column's three cards on one row at 3840 px, three rows at 1440) |
 | Wiki | One column, a page strip above the document | The index beside the document from 768 px | The index (180–196 px) and the 820 px page, 62ch prose | The same: extra width is margin |
 | Agents | One list; the composer below the thread | The same list | One 854 px column, the three connections as three rows, Details docks | The same column (WIDE_CAPS in the matrix; see Remaining) |
@@ -120,6 +121,10 @@ remain reachable. Own messages stay on the right and other people's on the left.
   - On a first visit to a projection, the selected thought, or else the first one in view, stays
     where the person saw it.
   - Nothing auto-fits on a resize.
+  - **Opening zoom** (#726): the plane opens at the largest zoom that shows the whole sketch, but never below 90%, where a
+    thought's title renders at 12.6 px and its meta line at 10.8 px; a larger sketch opens at its top left at 90% and
+    scrolls. Fit (the button) is the explicit overview and keeps its 60% floor (75% on touch). At 1440×900 the map used
+    to open at Fit's floor, with 8 px titles and 7 px meta lines.
 - **Short feeds** (ADAPT-2, tall screens): when the project stream, a thread, a direct message, a direct message's reply
   thread or the Agents view's task thread does not fill its feed,
   the spare height goes above it (`ui/spareHeight.ts`, an empty `lift` element before the column), so the newest message
@@ -128,6 +133,10 @@ remain reachable. Own messages stay on the right and other people's on the left.
   only gives height back, so it never moves. A feed that fills its box has no spare height and scrolls as before. The
   feed's own vertical padding is not spare (the Agents thread's scroller has 10 px). Measured 2026-10-30 from 390×844 to
   3440×1440: a direct message's reply thread 23–28 px (was 396–944), the Agents task thread 32 px.
+- **Opening a long feed** (#725): a stream that fills its feed opens at its latest. When its top message would be cut,
+  up to 48 px of room goes below the newest message so the top one starts whole (direction C, #155); more room than that
+  would part the newest message from its field (137–147 px on 320×568 and 390×844 phones), so the newest message stays
+  against the field and the top one is cut instead.
 - **Half sheet** (phone): 56% of the screen, but at least 300 px (`.ui-detent-sheet`), so on a short landscape phone the
   composer does not leave a task's fields less than a row of room; every field row can be scrolled clear of the composer.
 - Drafts, selection, the reading anchor, an open thread and the object in Details survive resize,
@@ -205,9 +214,6 @@ map and list latency budgets above; a limited visual review of 72 screenshots wi
 
 - the Agents column's cap (ADAPT-2), pending the design decision above;
 - the map projection still follows the viewport, not the canvas;
-- on a window under about 420 px tall (a phone on its side) the rail's project list gets almost no height: its places
-  and account fill the rail, so projects are reached through the title or the expanded sidebar (`[`). Observed 2026-10-30,
-  before and after this change; a design decision for the rail at short heights;
 - safe areas in WebKit and on real devices (no simulation exists for them), real browser zoom and an operating system's own text-size setting (the emulations above
   stand in for them);
 - real 4K, ultrawide, Android, iPhone and iPad sessions (optional under #266 item 10).
