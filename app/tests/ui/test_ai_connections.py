@@ -236,7 +236,8 @@ class AiConnectionSettings(unittest.TestCase):
         expect(guide).not_to_contain_text("Use your self-hosted Flux HTTPS address")
         expect(guide).to_contain_text("run only the actions you grant")
         shot(page, "ai-connection-1440-connect-guide")
-        guide.get_by_role("heading", name="Start work").scroll_into_view_if_needed()
+        # Claude Code and Codex each have their own "Start work" (#160 AC-2); this shot is Codex's.
+        guide.get_by_role("region", name="Codex").get_by_role("heading", name="Start work").scroll_into_view_if_needed()
         shot(page, "ai-connection-1440-connect-guide-codex")
         page.set_viewport_size({"width": 390, "height": 844})
         guide.get_by_role("heading", name="Codex", exact=True).scroll_into_view_if_needed()
