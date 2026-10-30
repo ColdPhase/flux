@@ -18,10 +18,11 @@ cd "$(dirname "$0")/.."
 project="flux-public-sim-$(date +%s)-$$"
 work=$(mktemp -d "${FLUX_SIM_WORK_DIR:-${TMPDIR:-/tmp}}/flux-public-sim.XXXXXX")
 artifacts=${FLUX_SIM_ARTIFACT_DIR:-$work/artifacts}
-mkdir -p "$artifacts" "$work/certs" "$work/ctl"
-chmod 755 "$work" "$work/certs"
+mkdir -p "$artifacts" "$work/certs" "$work/ca" "$work/ctl"
+chmod 755 "$work" "$work/certs" "$work/ca"
 chmod 777 "$work/ctl"
-export FLUX_SIM_CERT_DIR="$work/certs" FLUX_SIM_CTL_DIR="$work/ctl"
+# Server certificates and keys for the proxy and the SFU; the clients and the driver get only the CA certificate.
+export FLUX_SIM_CERT_DIR="$work/certs" FLUX_SIM_CA_DIR="$work/ca" FLUX_SIM_CTL_DIR="$work/ctl"
 export POSTGRES_USER=flux POSTGRES_DB=flux
 export POSTGRES_PASSWORD="flux-sim-$$-$(od -An -N8 -tx1 /dev/urandom | tr -d ' \n')"
 export FLUX_FIXTURE_TOKEN="flux-sim-fixture-$$-$(od -An -N8 -tx1 /dev/urandom | tr -d ' \n')"
@@ -37,14 +38,14 @@ export FLUX_LIVEKIT_DOMAIN=turn.sim.test
 export FLUX_LIVEKIT_TURN_DOMAIN=turn.sim.test
 export FLUX_LIVEKIT_MEDIA_CIDR=203.0.113.20/32
 export FLUX_LIVEKIT_TURN_CERT_DIR="$work/certs/turn"
-export FLUX_VAPID_PUBLIC_KEY= FLUX_VAPID_PRIVATE_KEY= FLUX_VAPID_SUBJECT=
+export FLUX_VAPID_PUBLIC_KEY='' FLUX_VAPID_PRIVATE_KEY='' FLUX_VAPID_SUBJECT=''
 runs=${FLUX_SIM_RUNS:-"chromium:chromium:connect,drop,loss,access chromium:chromium:connect,sfu-restart chromium:chromium:connect,api-restart chromium:webkit:connect,drop,access chromium:firefox:connect,drop,access webkit@turn-udp:chromium:connect,drop firefox@turn-udp:chromium:connect,drop"}
 printf 'Public simulation %s, results in %s\n' "$project" "$artifacts"
 
 compose="docker compose -p $project -f docker/compose.source.yaml -f docker/compose.live.yaml -f docker/compose.live.turn.yaml -f docker/public-sim/compose.yaml"
 cleanup() {
   status=$?
-  [ -n "${ctl_pid:-}" ] && kill "$ctl_pid" 2>/dev/null || true
+  if [ -n "${ctl_pid:-}" ]; then kill "$ctl_pid" 2>/dev/null || true; fi
   if [ "$status" -ne 0 ]; then
     $compose logs --no-color --tail=200 api proxy router-a router-b dns > "$artifacts/compose-logs.txt" 2>&1 || true
     $compose logs --no-color livekit > "$artifacts/livekit.log" 2>&1 || true
@@ -52,8 +53,8 @@ cleanup() {
   cp "$work"/ctl/*.json "$work"/ctl/*.png "$artifacts"/ 2>/dev/null || true
   $compose --profile sim-driver down -v --remove-orphans >/dev/null 2>&1 || true
   docker image rm "flux-foundation:$project" "flux-public-sim-infra:$project" "flux-public-sim-client:$project" >/dev/null 2>&1 || true
-  docker run --rm -v "$work:/work:z" alpine:3.21 rm -rf /work/certs /work/ctl >/dev/null 2>&1 || true
-  rm -rf "$work/certs" "$work/ctl"
+  docker run --rm -v "$work:/work:z" alpine:3.21 rm -rf /work/certs /work/ca /work/ctl >/dev/null 2>&1 || true
+  rm -rf "$work/certs" "$work/ca" "$work/ctl"
   exit "$status"
 }
 trap cleanup EXIT HUP INT TERM
@@ -70,6 +71,7 @@ docker run --rm --network none -v "$work/certs:/certs:z" "flux-public-sim-infra:
   done
   mkdir turn && cat turn.sim.test.crt > turn/fullchain.pem && cp turn.sim.test.key turn/privkey.pem
   rm ca.key ./*.csr ./*.ext && chmod 644 ./*.crt ./*.key turn/*'
+cp "$work/certs/ca.crt" "$work/ca/ca.crt"
 $compose up -d db migrate
 $compose --profile setup run --rm files-init
 $compose up -d --wait api worker livekit dns proxy router-a router-b client-a client-b
@@ -88,7 +90,7 @@ if grep -E -q 'egress|ingress|agent' "$artifacts/services.txt"; then echo 'unexp
       case "$command" in
         "drop a on"|"drop a off") out=$($compose exec -T router-a /bin/sh /impair.sh drop "${command##* }" 2>&1) ;;
         "netem a off"|"netem b off") side=$(printf '%s' "$command" | cut -d' ' -f2); out=$($compose exec -T "router-$side" /bin/sh /impair.sh netem off 2>&1) ;;
-        "netem a "*|"netem b "*) side=$(printf '%s' "$command" | cut -d' ' -f2); out=$($compose exec -T "router-$side" /bin/sh /impair.sh netem ${command#netem ? } 2>&1) ;;
+        "netem a "*|"netem b "*) side=$(printf '%s' "$command" | cut -d' ' -f2); out=$($compose exec -T "router-$side" /bin/sh /impair.sh netem ${command#netem ? } 2>&1) ;; # shellcheck disable=SC2086
         "restart livekit") out=$($compose restart livekit 2>&1) ;;
         "restart api") out=$($compose restart api 2>&1; $compose up -d --wait api 2>&1) ;;
         *) out="refused: $command" ;;

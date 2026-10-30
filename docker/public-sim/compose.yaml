@@ -25,7 +25,8 @@ services:
     image: *infra
     build: { context: ./public-sim, dockerfile: infra.Dockerfile }
     command: ["dnsmasq", "-k", "--conf-file=/etc/flux-sim/dnsmasq.conf", "--log-facility=-"]
-    volumes: ["./public-sim/dnsmasq.conf:/etc/flux-sim/dnsmasq.conf:ro,z"]
+    volumes:
+      - ./public-sim/dnsmasq.conf:/etc/flux-sim/dnsmasq.conf:ro,z
     networks:
       internet: { ipv4_address: 203.0.113.53 }
   proxy:
@@ -42,7 +43,9 @@ services:
     image: *infra
     cap_add: [NET_ADMIN]
     sysctls: { net.ipv4.ip_forward: "1" }
-    volumes: ["./public-sim/router.sh:/router.sh:ro,z", "./public-sim/impair.sh:/impair.sh:ro,z"]
+    volumes:
+      - ./public-sim/router.sh:/router.sh:ro,z
+      - ./public-sim/impair.sh:/impair.sh:ro,z
     command: ["/bin/sh", "/router.sh", "10.213.1.10", "${FLUX_SIM_PROFILE_A:-restrictive}"]
     networks:
       internet: { ipv4_address: 203.0.113.101 }
@@ -51,7 +54,9 @@ services:
     image: *infra
     cap_add: [NET_ADMIN]
     sysctls: { net.ipv4.ip_forward: "1" }
-    volumes: ["./public-sim/router.sh:/router.sh:ro,z", "./public-sim/impair.sh:/impair.sh:ro,z"]
+    volumes:
+      - ./public-sim/router.sh:/router.sh:ro,z
+      - ./public-sim/impair.sh:/impair.sh:ro,z
     command: ["/bin/sh", "/router.sh", "10.213.2.10", "${FLUX_SIM_PROFILE_B:-open}"]
     networks:
       internet: { ipv4_address: 203.0.113.102 }
@@ -61,7 +66,9 @@ services:
     build: { context: ../app/tests/ui, dockerfile: ../../../docker/public-sim/client.Dockerfile }
     cap_add: [NET_ADMIN]
     shm_size: 1gb
-    volumes: ["./public-sim/client.sh:/client.sh:ro,z", "${FLUX_SIM_CERT_DIR:?}/ca.crt:/certs/ca.crt:ro,z"]
+    volumes:
+      - ./public-sim/client.sh:/client.sh:ro,z
+      - ${FLUX_SIM_CA_DIR:?}:/certs:ro,z
     command: ["/bin/sh", "/client.sh", "10.213.1.2"]
     networks:
       lan-a: { ipv4_address: 10.213.1.10 }
@@ -69,7 +76,9 @@ services:
     image: *client
     cap_add: [NET_ADMIN]
     shm_size: 1gb
-    volumes: ["./public-sim/client.sh:/client.sh:ro,z", "${FLUX_SIM_CERT_DIR:?}/ca.crt:/certs/ca.crt:ro,z"]
+    volumes:
+      - ./public-sim/client.sh:/client.sh:ro,z
+      - ${FLUX_SIM_CA_DIR:?}:/certs:ro,z
     command: ["/bin/sh", "/client.sh", "10.213.2.2"]
     networks:
       lan-b: { ipv4_address: 10.213.2.10 }
@@ -84,7 +93,7 @@ services:
       FLUX_SIM_A_RELAY: ${FLUX_SIM_A_RELAY:-tls}
     volumes:
       - ./public-sim/driver.py:/sim/driver.py:ro,z
-      - ${FLUX_SIM_CERT_DIR:?}/ca.crt:/certs/ca.crt:ro,z
+      - ${FLUX_SIM_CA_DIR:?}:/certs:ro,z
       - ${FLUX_SIM_CTL_DIR:?}:/ctl:z
     networks:
       internet: { ipv4_address: 203.0.113.200 }

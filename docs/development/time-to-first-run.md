@@ -153,7 +153,7 @@ the account's, not Flux's.
 
 ### Cleanup and isolation
 
-The project was the launcher's own, `flux-843ac9cd`, on ports 35200 and 35201, free before the run. `claude mcp
+The project was the launcher's own (its name ends in `843ac9cd`), on ports 35200 and 35201, free before the run. `claude mcp
 remove flux`, then the client container was removed with its home and the copied credentials; `./flux clean -y`
 removed the containers, volumes and images, and a search for `843ac9cd` found no container or volume afterwards. The
 local client image and the clone's `docker/.env` (generated secrets and demo passwords, not recorded here) were
