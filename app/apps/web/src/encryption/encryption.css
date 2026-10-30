@@ -97,7 +97,7 @@
 .unsearched a { color: var(--t1); }
 
 /* The Inbox's security notices (content-free titles, Inbox only): quiet rows, each with its own "Got it". */
-.security-notices { margin-top: 28px; }
+.security-notices { margin: 0 0 24px; }
 .security-notices h2 { margin: 0 0 8px; font-size: var(--fs-md); font-weight: 500; color: var(--t2); }
 .security-notices ul { list-style: none; margin: 0; padding: 0; background: var(--el); border-radius: var(--r-card); box-shadow: var(--sh-card); }
 .security-notices li { display: grid; grid-template-columns: 14px minmax(0, 1fr) auto; align-items: center; gap: 12px; padding: 12px 12px 12px 16px; }

@@ -120,6 +120,8 @@ export function InboxView() {
         if (!bar) return null;
         return !phone && actionSlot ? createPortal(<div className="nyq__bar nyq__bar--head">{bar}</div>, actionSlot) : <div className="nyq__bar">{bar}</div>;
       })()}
+      {/* F-030 (#655): security notices about encrypted spaces are rare and read first, above the queue. */}
+      <SecurityNotices userId={me.user.id} />
       {queue.failed && queue.items === null ? (
         <ErrorState title="The Inbox could not load" actions={<Button onClick={queue.reload}>Retry</Button>}>
           <p>Check your connection. Nothing was lost.</p>
@@ -150,7 +152,6 @@ export function InboxView() {
           </p>
         </>
       )}
-      <SecurityNotices userId={me.user.id} />
       <LockedSpacesNote />
       {reviewing ? <AssistantJoinReview key={`${reviewing.key}:${reviewing.assistantRequestIdentity!.openingVersion}`} item={reviewing} onClose={() => {
         const next = new URLSearchParams(asked); next.delete('assistantProject'); next.delete('assistantRequest'); next.delete('openingVersion');
