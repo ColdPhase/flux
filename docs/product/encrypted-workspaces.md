@@ -716,8 +716,12 @@ Nothing listed is text that a person wrote, a name of a thing, or file bytes.
   timestamp; a sealed envelope; an **existing** `auth_users.id`, or a principal key (`human:` or
   `agent:`) whose id exists in `auth_users` or `agents`; a token present in `event_data_tokens`. That
   table is seeded by the migration from the enum values in `packages/contracts` (kinds, states,
-  reasons), and the registry test compares the two. No free word passes. The remaining bound: a
-  string equal to a real user id or a registered enum value carries no content.
+  reasons), and the registry test compares the two. Object keys follow the same rule against `event_data_keys`
+  (`EVENT_DATA_KEYS`, the field names the record sites write), and an update of `data` is checked like an insert.
+  `actor_id`, `kind`, `event_audience.recipient` and `sealed_job_waits.queue` must have their fixed shapes. No free
+  word passes. The remaining bounds: a string equal to a real user id or a registered enum value carries no content;
+  and the database cannot verify an AEAD tag, so text dressed as an envelope (`fx1.<v>.` and 38 or more base64url
+  characters) or as a UUID (16 bytes) passes every guard. The application never writes either.
 - **Notification backstop.** A `BEFORE INSERT OR UPDATE` trigger on `notifications` raises
   `NOTIFICATION_CONTENT_REFUSED` for a sealed workspace unless `body = ''` and `title` is one of the
   nine [fixed templates](#notifications-push-and-e-mail), with an account name and the workspace's

@@ -152,6 +152,11 @@ export function workspaceEncryptionRows(db: DbExecutor) {
     async waits(workspaceId: string): Promise<{ id: string; queue: string; payload: Record<string, unknown> }[]> {
       return rowsOf(db, sql`SELECT id, queue, payload FROM sealed_job_waits WHERE workspace_id = ${workspaceId} ORDER BY created_at, id`);
     },
+    /** One more failed replay of a wait; returns its attempts so far. */
+    async failWait(id: string): Promise<number> {
+      const rows = await rowsOf<{ attempts: number }>(db, sql`UPDATE sealed_job_waits SET attempts = attempts + 1 WHERE id = ${id} RETURNING attempts`);
+      return rows[0]?.attempts ?? 0;
+    },
     async deleteWait(id: string) {
       await db.execute(sql`DELETE FROM sealed_job_waits WHERE id = ${id}`);
     },

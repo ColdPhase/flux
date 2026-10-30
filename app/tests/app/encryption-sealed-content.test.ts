@@ -679,7 +679,7 @@ describe('F-030 content-free notifications in use (#712 review)', () => {
 // texts (zero hits) and the service logs for B's request text (found: the unredacted path does log).
 describe('F-030 error paths (S2a-2c-3)', () => {
   const failed = { A: `ERRPATH-A-${randomUUID()}`, B: `ERRPATH-B-${randomUUID()}` };
-  const jobFailed = { A: `JOBFAIL-A-${randomUUID()}`, B: `JOBFAIL-B-${randomUUID()}` };
+  const jobFailed = { A: `JOBFAIL-A-${randomUUID()}`, A2: `JOBFAIL-A2-${randomUUID()}`, B: `JOBFAIL-B-${randomUUID()}` };
 
   before(async () => {
     expectStatus(await lock(ada.browser, A), 200);
@@ -702,8 +702,9 @@ describe('F-030 error paths (S2a-2c-3)', () => {
     const boss = new PgBoss({ connectionString, migrate: false, supervise: false, schedule: false });
     await boss.start();
     try {
-      for (const [side, ws] of [['A', A], ['B', B]] as const) {
-        const id = await boss.send('sample.process', { sampleId: randomUUID(), workspaceId: ws, fluxTestFailure: jobFailed[side] }, { retryLimit: 0 });
+      // A names its workspace; A2 names only a project of A (#721 review P3-1); B is the control.
+      for (const [side, data] of [['A', { workspaceId: A }], ['A2', { projectId: ids.A.project }], ['B', { workspaceId: B }]] as const) {
+        const id = await boss.send('sample.process', { sampleId: randomUUID(), ...data, fluxTestFailure: jobFailed[side] }, { retryLimit: 0 });
         assert.ok(id, `${side}: the job was sent`);
         let row: { state: string; output: unknown } | undefined;
         for (let attempt = 0; attempt < 120 && row?.state !== 'failed'; attempt += 1) {
@@ -712,15 +713,15 @@ describe('F-030 error paths (S2a-2c-3)', () => {
         }
         assert.equal(row?.state, 'failed', `${side}: the worker failed the job`);
         const output = JSON.stringify(row!.output);
-        if (side === 'A') {
-          assert.equal(output.includes(jobFailed.A), false, 'A: pg-boss output never quotes the payload text');
+        if (side !== 'B') {
+          assert.equal(output.includes(jobFailed[side]), false, `${side}: pg-boss output never quotes the payload text`);
           assert.match(output, /SealedJobError/);
         } else assert.ok(output.includes(jobFailed.B), 'B: the control output quotes its text');
       }
     } finally { await boss.stop({ graceful: false }); }
     const state = process.env.FLUX_TEST_STATE_DIR ?? '/state';
     // The service logs never hold A's texts; PostgreSQL logs the test's own job insert, so it is scanned for the request only.
-    await writeFile(join(state, 'encryption-error-services.txt'), `${failed.A}\n${jobFailed.A}\n`);
+    await writeFile(join(state, 'encryption-error-services.txt'), `${failed.A}\n${jobFailed.A}\n${jobFailed.A2}\n`);
     await writeFile(join(state, 'encryption-error-postgres.txt'), `${failed.A}\n`);
     await writeFile(join(state, 'encryption-error-control.txt'), `${failed.B}\n`);
   });

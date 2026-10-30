@@ -16,7 +16,17 @@ function idsIn(value: unknown, into: Set<string>, depth = 0): Set<string> {
 async function namesSealedWorkspace(db: Database, payloads: unknown[]) {
   const ids = [...payloads.reduce<Set<string>>((into, data) => idsIn(data, into), new Set())];
   if (!ids.length) return false;
-  const result = await db.execute(sql`SELECT EXISTS (SELECT 1 FROM workspaces WHERE encrypted AND id = ANY(${`{${ids.join(',')}}`}::uuid[])) AS sealed`);
+  // A workspace, or an object of one (#721 review P3-1: a payload may name only a project, conversation or DM).
+  const list = `{${ids.join(',')}}`;
+  const result = await db.execute(sql`SELECT EXISTS (SELECT 1 FROM workspaces w WHERE w.encrypted AND (w.id = ANY(${list}::uuid[])
+    OR EXISTS (SELECT 1 FROM projects o WHERE o.workspace_id = w.id AND o.id = ANY(${list}::uuid[]))
+    OR EXISTS (SELECT 1 FROM project_conversations o WHERE o.workspace_id = w.id AND o.id = ANY(${list}::uuid[]))
+    OR EXISTS (SELECT 1 FROM dms o WHERE o.workspace_id = w.id AND o.id = ANY(${list}::uuid[]))
+    OR EXISTS (SELECT 1 FROM project_work_items o WHERE o.workspace_id = w.id AND o.id = ANY(${list}::uuid[]))
+    OR EXISTS (SELECT 1 FROM drafts o WHERE o.workspace_id = w.id AND o.id = ANY(${list}::uuid[]))
+    OR EXISTS (SELECT 1 FROM events o WHERE o.workspace_id = w.id AND o.id = ANY(${list}::uuid[]))
+    OR EXISTS (SELECT 1 FROM notifications o WHERE o.workspace_id = w.id AND o.id = ANY(${list}::uuid[]))
+  )) AS sealed`);
   return (result.rows[0] as { sealed: boolean }).sealed;
 }
 
