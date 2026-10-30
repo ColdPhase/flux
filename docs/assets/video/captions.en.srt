@@ -1,0 +1,32 @@
+1
+00:00:00,000 --> 00:00:04,500
+Flux: people and AI agents, one project.
+
+2
+00:00:05,000 --> 00:00:14,500
+You come back after a break. Flux shows what changed.
+
+3
+00:00:15,000 --> 00:00:26,500
+A message becomes a task, in one action.
+
+4
+00:00:27,000 --> 00:00:36,500
+Decisions keep their reason, and a person accepts them.
+
+5
+00:00:37,000 --> 00:00:51,500
+Your own agent joins only the project you choose.
+
+6
+00:00:52,000 --> 00:01:03,500
+It reads the project and answers in your client.
+Your account, your model; Flux never sees it.
+
+7
+00:01:04,000 --> 00:01:17,500
+Hand work to the agent. Someone else can pick it up.
+
+8
+00:01:18,000 --> 00:01:24,500
+Open source, AGPL-3.0. Version <VERSION>

@@ -22,4 +22,5 @@ the decision exist; Jonas's question is still waiting for her on Home.
 The second argument is the directory that also receives the two stills, which
 `app/tests/ui/record_demo.py` takes after the journey. See the [demo recording](../demo/README.md)
 for what the script needs. Replace both images, the GIF and the commit above together when the
-interface changes noticeably.
+interface changes noticeably. `./scripts/record_media.sh` regenerates both together with the launch video's
+scripted clips; run it from the audited build (founder gate [#763](https://github.com/ColdPhase/flux/issues/763)).
