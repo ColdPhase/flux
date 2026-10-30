@@ -196,5 +196,5 @@ the lists of primary targets; the matrix measures their effect. Emulation only, 
 
 The performance budgets for the adaptive layouts are agreed in
 [adaptive workspaces](adaptive-workspaces.md#agreed-performance-budgets) (2026-10-29, independent agreement still owed)
-and asserted by the opt-in `motion_performance` harness; the phone's frame gap misses its budget
-([#716](https://github.com/ColdPhase/flux/issues/716)).
+and asserted by the opt-in `motion_performance` harness (the phone's frame gap met its budget after
+[#716](https://github.com/ColdPhase/flux/issues/716)).

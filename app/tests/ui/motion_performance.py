@@ -67,8 +67,8 @@ BUDGETS = {
 JITTER_MS = 0.5
 # Budgets the harness measures as missed today. Each is reported as open (never as passing), names its issue and carries a ceiling
 # for its p95 (just above the worst of the runs that found it): the run does not fail for the miss, fails above the ceiling, and
-# fails when the miss stops, so a closed one must be deleted from this list.
-KNOWN_MISSES = {"phone-cpu4:workTab:maxFrameGap": {"issue": "#716", "maxP95": 150}}
+# fails when the miss stops, so a closed one must be deleted from this list. Empty today: #716, the last one, is closed.
+KNOWN_MISSES = {}
 
 
 def classify_misses(failures, p95s):
