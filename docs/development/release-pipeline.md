@@ -134,6 +134,35 @@ leg proves the documented upgrade for one pair of releases; it does not cover a 
 change (`INSTALL.md`: restore into a fresh installation instead), the optional agent runtime, a TLS
 proxy, or content created through the browser.
 
+## Local multi-platform dry run
+
+`FLUX_DRYRUN_PLATFORMS=linux/amd64,linux/arm64` makes `dry_run.sh` build both images (and the previous one)
+the way the `image` job does: a `docker-container` builder with the workflow's pinned BuildKit, provenance
+`mode=max` and SBOM attestations with the workflow's pinned scanner, one index per image in the throwaway
+registry. It then checks that each index lists both platforms and one attestation manifest per platform,
+that every platform has SLSA provenance and an SPDX SBOM, and runs the Codex / no-Claude-Code checks and a
+Node start on each platform. `FLUX_DRYRUN_SMOKE_PLATFORM=linux/arm64` additionally runs the packaged clean
+install, backup/restore and upgrade smokes with that platform's images (`DOCKER_DEFAULT_PLATFORM`).
+A foreign platform needs QEMU binfmt on the engine; the script names the workflow's pinned
+`tonistiigi/binfmt` command (it registers `qemu-aarch64` in the host kernel until reboot or
+`--uninstall qemu-aarch64`). Emulated arm64 is not a native arm64 test, and the dry run never covers GHCR,
+`actions/attest` (Sigstore) or anonymous pulls.
+
+```sh
+FLUX_DRYRUN_PLATFORMS=linux/amd64,linux/arm64 FLUX_DRYRUN_SMOKE_PLATFORM=linux/arm64 \
+  FLUX_DRYRUN_PORT=25800 FLUX_DRYRUN_PREVIOUS=a6e9851d1 bash scripts/release/dry_run.sh
+```
+
+## A supported host for the runtime checks
+
+`smoke_runtime.sh` and `scripts/check_agent_runtime.sh` need a kernel with Yama `ptrace_scope` of 1 or more.
+On a workstation without one (Yama 0, Docker Desktop), `scripts/agent-runtime/supported_guest.sh <state dir>
+[command]` boots the official Ubuntu 24.04 cloud image (checksums verified against Ubuntu's signing key) as a
+KVM guest, with QEMU in a container that gets only `/dev/kvm` and SSH on `127.0.0.1`, installs Ubuntu's Docker
+packages, checks out this commit from a git bundle and runs the command (default
+`scripts/check_agent_runtime.sh`; `scripts/release/dry_run.sh` gives the full release dry run including the
+runtime smoke). It changes nothing on the host.
+
 ## Gates that remain open
 
 Observed on 2026-10-01 unless stated otherwise. None of these can be closed by editing
@@ -165,7 +194,9 @@ this repository, and no release workflow has been dispatched.
   and the public package link.
 - **Runtime smoke on the runner.** `smoke_runtime.sh` needs a runner kernel with `kernel.yama.ptrace_scope` of
   1 or higher (assumed for `ubuntu-latest`, not observed) and the arm64 `docker run` checks of the runtime
-  image rely on the QEMU emulator. Neither has run on GitHub. A bound slot's sign-out and reuse with real
+  image rely on the QEMU emulator. Neither has run on GitHub. Locally, the full `dry_run.sh` including `smoke_runtime.sh`
+  passed in a Yama 1 KVM guest on 2026-10-30 (`scripts/agent-runtime/supported_guest.sh`; evidence in
+  `docs/development/evidence/release-closeout-20261030/`). A bound slot's sign-out and reuse with real
   vendor CLIs and the Claude Code installation (`runtime-install` reaching `downloads.claude.ai`) are
   independent-review items on the downloaded draft (#358 AC-3).
 - **Packaged installation on amd64 and arm64, and a forward upgrade**, by the independent

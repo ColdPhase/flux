@@ -1,0 +1,1 @@
+- Undo for a task an agent or the assistant created and nobody has used yet: it keeps the task's history, its sources and who made it, appends a record of the reversion, and leaves the task as read-only history. A task that has been used cannot be undone this way ([#394](https://github.com/ColdPhase/flux/pull/394)).

@@ -1,0 +1,1 @@
+- Codex signs in with a connection that grants fewer than the three actions it asks for (its authorization request is no longer refused), and an agent's suggestion is a "Needs you" item for the person who connected the agent, with Got it and Decline ([#673](https://github.com/ColdPhase/flux/pull/673)).

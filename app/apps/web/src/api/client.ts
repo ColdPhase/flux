@@ -48,11 +48,14 @@ const nextTask = () => new Promise<void>((resolve) => {
  * `batchRead` starts a GET in the next task with the other reads of this one (#716), as every JSON read does.
  */
 export async function send(path: string, init: ApiRequestInit & { accept?: string; batchRead?: boolean } = {}): Promise<Response> {
+  // A read starts in a task of its own (#716), so the page is checked after that wait, in the same breath as `fetch`: a
+  // navigation can begin in the task between, and a read asked for just before it, with the gate checked first, started
+  // after `beforeunload` (#758, #759: working-agents, needs-you and the other shell reads of a page that is left).
+  if (init.batchRead && (!init.method || init.method === 'GET')) await nextTask();
   // A page being left starts no request (#471): the browser has stopped its loads, and WebKit reports a
   // fetch that starts now as an uncaught page error. It starts when the page is live again, never sooner
   // than a click or key press proves the person is still here; an unloaded page never starts it.
   if (pageLeaving() && !init.keepalive) await pageIsLive(init.signal);
-  if (init.batchRead && (!init.method || init.method === 'GET')) await nextTask();
   try {
     return await fetch(path, {
       method: init.method ?? 'GET',

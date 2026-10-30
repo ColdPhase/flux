@@ -1,7 +1,7 @@
 # Flux v0.1.0 release notes (draft)
 
 > **Draft, not a release.** Drafted on 2026-10-10 from `main` at `05f89591` and refreshed on 2026-10-23
-> against `main` at `c7b89690` for L-3 of the
+> against `main` at `c7b89690` and on 2026-10-30 against `main` at `1e0dc2dd9` for L-3 of the
 > [launch plan](launch-v0.1.md) ([#307](https://github.com/ColdPhase/flux/issues/307), open until the candidate is accepted and these notes are final).
 > Finalise it against the accepted candidate and the
 > [#249](https://github.com/ColdPhase/flux/issues/249) report: every statement below must be
@@ -37,7 +37,8 @@ cd flux
 
 Open the printed URL, <http://127.0.0.1:8081/> by default. The first `./flux up` builds Flux
 and takes a few minutes. Measured from `git clone` to the demo logins: 3 min 0 s with a no-cache
-build and 47.8 s with a warm Docker cache on a Linux workstation (2026-10-23), and 5 min 11 s and
+build and 47.8 s with a warm Docker cache on a Linux workstation (2026-10-23), 6 min 37 s and 5 min 40 s on
+the same machine when it was heavily loaded by other builds (2026-10-30), and 5 min 11 s and
 2 min 45 s on a Mac with the full-history clone (2026-10-11); signing in and posting the first
 message then took about a second in the browser ([time to first run](../development/time-to-first-run.md); restate it for the candidate). To
 connect your own MCP client, follow [Connect your own
@@ -97,6 +98,10 @@ Grouped by what a person does. Each item names the pull request that delivered i
   conversation line and an Inbox item for them ([#570](https://github.com/ColdPhase/flux/pull/570)); an optional shared project goal that a person
   marks reached ([#556](https://github.com/ColdPhase/flux/pull/556)).
 - Undo of an unused AI-created task that keeps its provenance ([#394](https://github.com/ColdPhase/flux/pull/394)).
+- Decisions show in their thread and in the conversation, with their reason and the message they came from
+  ([#696](https://github.com/ColdPhase/flux/pull/696)); a message can cite another message or a thought, files show their details and a pasted
+  link becomes a card fetched safely on the server ([#704](https://github.com/ColdPhase/flux/pull/704), [#708](https://github.com/ColdPhase/flux/pull/708));
+  another member's message reaches an open thread when it is sent ([#741](https://github.com/ColdPhase/flux/pull/741)).
 
 ### Think it through: DMs, sketches and new directions
 
@@ -131,14 +136,21 @@ returns after a pivot with AI off. Their result at the candidate comes from the 
 
 ### On the phone
 
-- An installable PWA and Web Push notifications ([#49](https://github.com/ColdPhase/flux/pull/49)).
+- An installable PWA and Web Push notifications ([#49](https://github.com/ColdPhase/flux/pull/49)). Install from Settings
+  (the browser's own offer, or "Share, then Add to Home Screen" on iPhone and iPad), a standalone launch with your
+  session, a link that reopens its project, Web Push to a closed app and a refused permission said in Settings, tested on emulated
+  Chromium and WebKit in Docker ([#756](https://github.com/ColdPhase/flux/pull/756), [mobile and push](../operations/mobile-and-push.md)).
 - Phone task views ([#138](https://github.com/ColdPhase/flux/pull/138)), blocked work that stays
   visible on narrow phones ([#172](https://github.com/ColdPhase/flux/pull/172)), and 44 px touch
   targets and readable line lengths across layouts ([#265](https://github.com/ColdPhase/flux/pull/265)).
 - The phone shell: Home, Projects and Inbox in one capsule, one `+`, a title menu and full-screen
   conversations ([#414](https://github.com/ColdPhase/flux/pull/414)); the update prompt is a row above the shell, never a layer over controls ([#622](https://github.com/ColdPhase/flux/pull/622)).
-  Whether installation and notifications are accepted on emulated Chromium and WebKit is in the
-  #249 report ([#20](https://github.com/ColdPhase/flux/issues/20) is open).
+  Physical devices are optional (founder direction, [#266](https://github.com/ColdPhase/flux/issues/266)). The
+  [#20](https://github.com/ColdPhase/flux/issues/20) emulation evidence is closed; what the report accepts at the candidate is what is stated here.
+- Layouts that hold from small phones to 4K and ultrawide: short threads, safe areas, a stream band on the phone, a map that fits and a
+  rail that fits a short window ([#669](https://github.com/ColdPhase/flux/pull/669), [#728](https://github.com/ColdPhase/flux/pull/728),
+  [#729](https://github.com/ColdPhase/flux/pull/729), [#745](https://github.com/ColdPhase/flux/pull/745), [#750](https://github.com/ColdPhase/flux/pull/750)).
+  The tracking issue ([#151](https://github.com/ColdPhase/flux/issues/151)) is open.
 
 ### Work with your AI
 
@@ -161,9 +173,15 @@ Flux has exactly two AI modes ([F-022](decisions.md), [AI modes](ai-modes.md)).
     are doing now ([#582](https://github.com/ColdPhase/flux/pull/582), [#417](https://github.com/ColdPhase/flux/pull/417), [#376](https://github.com/ColdPhase/flux/pull/376)). You can stop an agent's work and answer its questions ([#383](https://github.com/ColdPhase/flux/pull/383)). A
     project's agent policy is edited in Flux with conflict-safe publishing
     ([#292](https://github.com/ColdPhase/flux/pull/292)).
-  - **What is not verified.** The supplied Start/Resume host actions are labelled "pending native
-    verification" in Connect: no real-account Start or exact-thread Resume through them is recorded
-    ([#635](https://github.com/ColdPhase/flux/issues/635), [#636](https://github.com/ColdPhase/flux/issues/636), [#616](https://github.com/ColdPhase/flux/pull/616)).
+  - **Start and Resume, verified.** A real Codex (0.160.1) and a real Claude Code (2.1.285) each made one
+    task with criteria and saved a checkpoint; after the owner changed the plan, Resume read only what had changed, and Codex resumed its
+    exact thread. Connect and Agents offer Claude Code's `/mcp__flux__start_work` and `/mcp__flux__resume_work` and Codex's `./flux cowork`
+    ([#616](https://github.com/ColdPhase/flux/pull/616), [#649](https://github.com/ColdPhase/flux/pull/649), [#751](https://github.com/ColdPhase/flux/pull/751)).
+    A person who may stop an agent can pause it at its next safe point; events of a linked GitHub pull request reach the connection whose
+    agent holds the task; an agent can link the pull request it produced to that task ([#760](https://github.com/ColdPhase/flux/pull/760)).
+  - **What is not verified.** Codex's sign-in with a connection that grants fewer than the three actions it asks for, and the agent's
+    suggestions in "Needs you", were fixed with Codex-shaped tests ([#673](https://github.com/ColdPhase/flux/pull/673)); the real Codex lane was not
+    re-run for that change.
 - **The agent in Flux.** Owner-only assistant runs on the owner's own AI connection: only the
   owner can ask, stop or pay ([#141](https://github.com/ColdPhase/flux/pull/141),
   [#142](https://github.com/ColdPhase/flux/pull/142)), and crashed runs recover
@@ -174,8 +192,8 @@ Flux has exactly two AI modes ([F-022](decisions.md), [AI modes](ai-modes.md)).
   isolated runtime slots ([#398](https://github.com/ColdPhase/flux/pull/398), [#575](https://github.com/ColdPhase/flux/pull/575)), with a guided sign-in card ([#577](https://github.com/ColdPhase/flux/pull/577)) and a one-time question in
   `./flux up` ([#494](https://github.com/ColdPhase/flux/pull/494)). Both modes are off until the operator turns them on (see [known limits](#known-limits)).
 - **A workspace can turn AI off.** An admin policy with server enforcement, a turn-off cutover and
-  re-enable, and an interface without any AI ([#633](https://github.com/ColdPhase/flux/pull/633), [#634](https://github.com/ColdPhase/flux/pull/634), [#643](https://github.com/ColdPhase/flux/pull/643)); the issue ([#614](https://github.com/ColdPhase/flux/issues/614))
-  is still open.
+  re-enable, and an interface without any AI ([#633](https://github.com/ColdPhase/flux/pull/633), [#634](https://github.com/ColdPhase/flux/pull/634), [#643](https://github.com/ColdPhase/flux/pull/643), [#653](https://github.com/ColdPhase/flux/pull/653)); the issue ([#614](https://github.com/ColdPhase/flux/issues/614))
+  is still open at 2026-10-30.
 - AI is optional: the human return and handoff journey without AI is part of the release
   (O-004).
 
@@ -183,7 +201,7 @@ Flux has exactly two AI modes ([F-022](decisions.md), [AI modes](ai-modes.md)).
 
 - Live co-editing of the map and the wiki with identified authors: shared mind-map movement and wiki
   text ([#389](https://github.com/ColdPhase/flux/pull/389)), named cursors and who is here on the map ([#585](https://github.com/ColdPhase/flux/pull/585)), completed with the live wiki and map
-  ([#613](https://github.com/ColdPhase/flux/pull/613)), with every map cursor named and told apart by shape, not colour ([#646](https://github.com/ColdPhase/flux/pull/646)). The tracking issues
+  ([#613](https://github.com/ColdPhase/flux/pull/613)), with every map cursor named and told apart by shape, not colour ([#646](https://github.com/ColdPhase/flux/pull/646), [#648](https://github.com/ColdPhase/flux/pull/648)). The tracking issues
   ([#228](https://github.com/ColdPhase/flux/issues/228), [#231](https://github.com/ColdPhase/flux/issues/231)) are closed.
 
 ### Work with GitHub
@@ -209,8 +227,9 @@ Flux has exactly two AI modes ([F-022](decisions.md), [AI modes](ai-modes.md)).
   place ([#370](https://github.com/ColdPhase/flux/pull/370)).
 - The one-row project header and a focus mode that pauses notifications on the server ([#372](https://github.com/ColdPhase/flux/pull/372)); Kreska's
   small moments: splash, loading, empty Inbox, offline, no results, pull to refresh ([#382](https://github.com/ColdPhase/flux/pull/382)); text size and
-  reduce motion in Appearance ([#452](https://github.com/ColdPhase/flux/pull/452)). Light motion for dialogs, the panel and views is still open
-  ([#593](https://github.com/ColdPhase/flux/issues/593)).
+  reduce motion in Appearance ([#452](https://github.com/ColdPhase/flux/pull/452)); light motion for dialogs, the panel, views, state changes and
+  press ([#608](https://github.com/ColdPhase/flux/pull/608)), with view switches that do not flicker and an animated sidebar ([#722](https://github.com/ColdPhase/flux/pull/722));
+  app-drawn selects instead of the browser's ([#699](https://github.com/ColdPhase/flux/pull/699)).
 
 ### Run and operate
 
@@ -223,6 +242,11 @@ Flux has exactly two AI modes ([F-022](decisions.md), [AI modes](ai-modes.md)).
 - A pull-only operator Compose file and versioned installation assets
   ([#159](https://github.com/ColdPhase/flux/pull/159)), and a tested HTTPS reverse-proxy example
   ([#366](https://github.com/ColdPhase/flux/pull/366), [reverse proxy](../operations/reverse-proxy.md)).
+- A separate `keyring` service on an internal network (for encrypted workspaces, not yet usable, see the known limits) and memory limits with
+  swap limited to the same value for `api`, `worker` and `keyring` ([#668](https://github.com/ColdPhase/flux/pull/668)); `./flux upgrade` adds its
+  token to `docker/.env`. `./flux clean` and `reset` work after a first `./flux up` that stopped before the migration ([#671](https://github.com/ColdPhase/flux/pull/671)).
+- Documentation: a README that answers what Flux is, who it is for and how to try it, and a documentation site on GitHub Pages built from the
+  repository ([#740](https://github.com/ColdPhase/flux/pull/740)).
 - Two public extension contracts with a compatibility promise: MCP tool contract 1 and project
   export format 1 ([#260](https://github.com/ColdPhase/flux/pull/260),
   [integration guide](../integrations/README.md)).
@@ -314,26 +338,73 @@ Remove this section before publishing.
   [#238](https://github.com/ColdPhase/flux/issues/238) and [#314](https://github.com/ColdPhase/flux/issues/314)
   are closed and listed under "What works". Restate them from the #249 report at the candidate; an
   unresolved gate blocks the release and does not become an exclusion here.
-- **Open at the 2026-10-23 refresh.** Each is either fixed before the candidate or listed above with
-  what a person sees: Codex's sign-in failing when a connection grants fewer than the three actions
-  it asks for ([#660](https://github.com/ColdPhase/flux/issues/660)) and an agent's MCP suggestion having no
-  screen ([#661](https://github.com/ColdPhase/flux/issues/661)) are fixed in the same change; `./flux clean` refuses after a first
-  `./flux up` that stopped before the migration ([#662](https://github.com/ColdPhase/flux/issues/662));
-  the workspace AI lock ([#614](https://github.com/ColdPhase/flux/issues/614)); installation and
-  notifications on emulated phones and tablets ([#20](https://github.com/ColdPhase/flux/issues/20)).
-- **The changelog lacks lines for merged work** used above. At the refresh, 49 of the 114 pull
-  requests named here have no changelog entry citing their number (some are covered by an entry citing
-  the issue): 291, 372, 375, 376, 377, 383, 384, 386, 387, 389, 390, 392, 393, 394, 398, 412, 414, 416,
-  417, 418, 467, 468, 556, 563, 570, 571, 574, 575, 577, 578, 582, 584, 585, 586, 587, 588, 589, 597,
-  598, 599, 600, 603, 613, 616, 622, 633, 634, 643 and 646. Add them as files under `changes/` before
-  `python3 scripts/changelog.py release 0.1.0 <date>` moves `[Unreleased]` under 0.1.0.
-- **Quick-start times.** The numbers in "Quick start" come from the 2026-10-23 and 2026-10-11 runs in
-  [time to first run](../development/time-to-first-run.md). Re-measure on the candidate and replace
-  them; the macOS figures still need a re-run, and no number covers a person's first reply through
-  their own MCP client.
-- **Phone and tablet.** The PWA and phone views are merged; the MOB-1–MOB-7 and ADAPT emulation
-  evidence is still open in the matrix. Keep the wording to what the report accepts.
+- **Open at the 2026-10-30 refresh.** Each is either fixed before the candidate or listed above with what a
+  person sees. Fixed since 2026-10-23: Codex's sign-in with a connection that grants fewer than the three actions
+  it asks for ([#660](https://github.com/ColdPhase/flux/issues/660)) and an agent's suggestion having no screen
+  ([#661](https://github.com/ColdPhase/flux/issues/661)) in [#673](https://github.com/ColdPhase/flux/pull/673);
+  `./flux clean` refusing after a first `./flux up` that stopped before the migration
+  ([#662](https://github.com/ColdPhase/flux/issues/662)) in [#671](https://github.com/ColdPhase/flux/pull/671);
+  light motion ([#593](https://github.com/ColdPhase/flux/issues/593)); and installation and notifications on emulated
+  phones and tablets ([#20](https://github.com/ColdPhase/flux/issues/20), closed). Still open:
+  - **Encrypted workspaces ([#655](https://github.com/ColdPhase/flux/issues/655)).** Required in v0.1.0 by founder
+    direction of 2026-10-23, so it blocks candidate acceptance and is not a known limit. The keyring, sealed
+    content, notifications, locking, restore and rotation slices are on `main`; S3, the creation route and the
+    interface, is the open [#670](https://github.com/ColdPhase/flux/pull/670). Until it merges nobody can create an
+    encrypted workspace, so the "What works" list says nothing about it. Add a section from the accepted contract
+    ([encrypted workspaces](encrypted-workspaces.md)) only after S3 and its acceptance.
+  - The workspace AI lock ([#614](https://github.com/ColdPhase/flux/issues/614)), adaptive layouts
+    ([#151](https://github.com/ColdPhase/flux/issues/151)), live-collaboration device evidence
+    ([#63](https://github.com/ColdPhase/flux/issues/63)), the first agent reply through a person's own client on a
+    clean clone ([#320](https://github.com/ColdPhase/flux/issues/320)), the time-to-first-run issue
+    ([#305](https://github.com/ColdPhase/flux/issues/305)) and the acceptance itself
+    ([#249](https://github.com/ColdPhase/flux/issues/249)).
+- **The changelog.** At the 2026-10-30 refresh 134 pull requests are named here. The 12 user-visible changes that had
+  no entry now have one under `changes/` (live co-editing, the workspace AI lock, MCP switches, AI-task Undo,
+  partial consent, the assistant's authority and Undo, PWA install and push, co-work Start/Resume and the Codex
+  fixes). 45 pull requests are still not cited by their own number; each is covered by an entry that cites its
+  issue, except [#291](https://github.com/ColdPhase/flux/pull/291), which changes tests only. Run
+  `python3 scripts/changelog.py check`, then `python3 scripts/changelog.py release 0.1.0 <date>` at release.
+- **Quick-start times.** The numbers in "Quick start" come from the 2026-10-30, 2026-10-23 and 2026-10-11 runs
+  in [time to first run](../development/time-to-first-run.md). The 2026-10-30 run was on a heavily loaded host.
+  Re-measure on the candidate and replace them; the macOS figures still need a re-run, and no number covers a
+  person's first reply through their own MCP client.
+- **Phone and tablet.** The PWA and phone views are merged and [#20](https://github.com/ColdPhase/flux/issues/20)
+  closed on 2026-10-30 with its emulation evidence; the adaptive-layout issue
+  ([#151](https://github.com/ColdPhase/flux/issues/151)) is open. Keep the wording to what the report accepts.
 - **The two AI modes.** The real-client (PROV-5) and real-key (PROV-6) evidence was external at
   the matrix pin; state only what the report verified.
+- **Media.** Founder gate [#763](https://github.com/ColdPhase/flux/issues/763): the README and docs-site screenshots, the
+  GIF and the [video](launch-video.md) are recorded from the audited build, after the audit's UI/UX fixes are merged,
+  and again from the released revision. `./scripts/record_media.sh` regenerates the GIF, the stills and the scripted
+  clips in one go ([how](../assets/demo/README.md)). Put the video's link here.
 - **The release upgrade path.** If an rc was published first, replace "This is the first
   release" with the tested upgrade from that rc (R-13).
+
+## Release-day steps for L-3
+
+For whoever publishes ([CI and releases](../agents/ci-and-releases.md)); these are the two repository changes that
+[#307](https://github.com/ColdPhase/flux/issues/307) asks for at release, which cannot be made before the candidate is accepted.
+
+1. **Changelog.** `python3 scripts/changelog.py check && python3 scripts/changelog.py release 0.1.0 <YYYY-MM-DD>`,
+   then read the `[0.1.0]` section once; the "No version has been released yet" sentence under `[Unreleased]` must
+   not survive.
+2. **Build log.** Append an entry at the end of [the build log](../build-log.md) (new entries go at the end; the log's
+   last entry is 2026-10-07, so add one line pointing at the [story](launch-story.md) for the weeks in between):
+
+   ```markdown
+   ## <YYYY-MM-DD> — Flux v0.1.0
+
+   - **Released.** `v0.1.0` from the accepted candidate `<SHA>`. Release: <RELEASE URL>. Acceptance:
+     the `ACCEPTED RELEASE CANDIDATE` lines on issue #249. The assets and the image are checked against
+     `SHA256SUMS` and the build provenance as the release notes describe.
+   - **What it contains.** The release notes at the release URL and the `[0.1.0]` section of
+     `CHANGELOG.md` (link both with Markdown links relative to `docs/`). Known limits are listed there.
+   - **How we show it.** The README GIF and stills and the launch video were recorded from the tag.
+     Video: <VIDEO URL>.
+   ```
+3. **Notes.** Fill the version, the candidate commit, the date, the accepted residual limitations and the checksums
+   from the release; delete "Draft, not a release" and the "Notes for the finaliser" section.
+4. **Media.** On a clone of the tag, once the [#763](https://github.com/ColdPhase/flux/issues/763) audit fixes are
+   in it: `FLUX_VIDEO_VERSION=<VERSION> ./scripts/record_media.sh <dir>` (the GIF and stills land in `docs/assets/`;
+   commit those two only), then the human steps in the [video script](launch-video.md#after-the-recording).
+5. **Posts.** The [posts](launch-posts.md) and the [story](launch-story.md) are the founders' to publish.

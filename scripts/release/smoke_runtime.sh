@@ -54,11 +54,15 @@ esac
 
 step "1. Both Compose files are valid together; the runtime is off by default"
 compose config --quiet
-[ "$(compose config --images | grep -c '^ghcr.io/coldphase/flux-agent-runtime@sha256:')" -ge 1 ] || fail "no runtime image in the merged configuration"
-! compose config --images | grep -Eq 'RELEASE_DIGEST|RUNTIME_DIGEST|:latest' || fail "marker or floating tag in the merged configuration"
+# The image release.json names (ghcr.io in a release; the dry run's local registry rewrites both alike).
+[ "$(compose config --images | grep -cxF "$runtime_image")" -ge 1 ] || fail "no runtime image $runtime_image in the merged configuration"
+# Outputs are captured before grep -q: under pipefail an early grep exit makes the writer's SIGPIPE fail the pipeline.
+images=$(compose config --images)
+! printf '%s\n' "$images" | grep -Eq 'RELEASE_DIGEST|RUNTIME_DIGEST|:latest' || fail "marker or floating tag in the merged configuration"
 runtime_sh up
 [ -z "$(runtime_containers)" ] || fail "runtime containers exist while FLUX_AGENT_RUNTIME is empty: $(runtime_containers)"
-runtime_sh status | grep -q "(off)" || fail "status does not say the runtime is off"
+status_out=$(runtime_sh status)
+printf '%s\n' "$status_out" | grep -q "(off)" || fail "status does not say the runtime is off"
 curl --fail --show-error --silent "http://127.0.0.1:$port/api/v1/health" >/dev/null
 
 step "2. claude_code is refused without the Commercial Terms date and changes nothing"
@@ -84,8 +88,12 @@ docker inspect $(docker ps -q --filter "label=com.docker.compose.project=$projec
 python3 "$root/scripts/agent-runtime/inspect.py" "$project" "$assets" < "$state_dir/inspect.json"
 
 step "5. The images: pinned Codex in, Claude Code out"
-[ "$(compose config --images | grep -c "^$runtime_image\$")" = 1 ] || fail "compose.runtime.yaml does not use the runtime image of release.json"
-[ "$(compose config --images | grep -c "^$app_image\$")" = 1 ] || fail "compose.yaml does not use the application image of release.json"
+# `config --images` lists one line per service: each repository must name exactly the release.json digest.
+images=$(compose config --images | sort -u)
+for pinned in "$runtime_image" "$app_image"; do
+  [ "$(printf '%s\n' "$images" | grep -cF "${pinned%@*}@")" = 1 ] && printf '%s\n' "$images" | grep -qxF "$pinned" ||
+    fail "the Compose files do not use exactly $pinned (release.json): $(printf '%s ' $images)"
+done
 codex_version=$(docker run --rm --network none --entrypoint /opt/flux-runtime/codex/bin/codex "$runtime_image" --version)
 [ "$codex_version" = "codex-cli ${codex_tag#rust-v}" ] || fail "Codex reports '$codex_version', the release pins $codex_tag"
 docker run --rm --network none --entrypoint sh "$runtime_image" -c '

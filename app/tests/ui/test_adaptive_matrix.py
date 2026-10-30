@@ -1448,16 +1448,22 @@ class AdaptiveReflow(AdaptiveBase):
                                 f"the first thought is in view on opening at {size}: {first} in {canvas}")
                 opened = self.zoom_level(page)
                 self.assertGreaterEqual(opened, 90, f"the map opens at a working zoom at {size}")
-                # The first-run hint never sits on a thought's text: where a card lies under it, it steps aside.
-                page.wait_for_timeout(100)
+                # The first-run hint never sits on a thought's text: where a card lies under it, it steps aside. It lives in the
+                # dock's status line, not directly in the dock (#757: a selector for a direct child found nothing, and the check
+                # passed on a hint drawn over a card), so the hint must exist and say what it says for the check to mean anything.
+                page.wait_for_timeout(300)
+                self.assertEqual(page.locator(".sk-dock .sk-hint").count(), 1, f"the first-run hint is in the map's dock at {size}")
                 hint = page.evaluate("""() => {
-                  const hint = document.querySelector('.sk-dock > .sk-hint');
-                  if (!hint || getComputedStyle(hint).visibility === 'hidden') return {shown: false, over: []};
+                  const hint = document.querySelector('.sk-dock .sk-hint');
+                  const style = getComputedStyle(hint);
                   const h = hint.getBoundingClientRect();
-                  return {shown: true, over: [...document.querySelectorAll('.sk-node')].filter((n) => { const r = n.getBoundingClientRect();
-                    return r.right > h.left && r.left < h.right && r.bottom > h.top && r.top < h.bottom; }).map((n) => n.textContent.slice(0, 30))};
+                  const aside = style.visibility === 'hidden' || parseFloat(style.opacity) === 0;
+                  return {text: hint.textContent, aside, box: [h.left, h.top, h.right, h.bottom].map(Math.round),
+                    over: [...document.querySelectorAll('.sk-node')].filter((n) => { const r = n.getBoundingClientRect();
+                      return r.right > h.left && r.left < h.right && r.bottom > h.top && r.top < h.bottom; }).map((n) => n.textContent.slice(0, 30))};
                 }""")
-                self.assertEqual(hint["over"], [], f"the map hint covers no thought at {size}: {hint}")
+                self.assertIn("Drag empty space to move around", hint["text"], f"the element found is the first-run hint at {size}: {hint}")
+                self.assertTrue(hint["aside"] or hint["over"] == [], f"the map hint is clear of every thought or steps aside at {size}: {hint}")
                 if width == 1440:
                     page.get_by_role("button", name="Fit the sketch to the view", exact=True).click()
                     page.wait_for_function("z => !document.querySelector('.sk-zoom__level').textContent.startsWith(z + '%')", arg=opened)

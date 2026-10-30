@@ -39,6 +39,19 @@ passwords. It installs Pillow (pinned by hash in `app/tests/ui/demo-requirements
 that run only, then removes the project, its volumes and its images. Override the ports with
 `FLUX_DEMO_RECORD_PORT` and `FLUX_DEMO_RECORD_MAILPIT_PORT`.
 
-Record it again, and update the commit above, when the journey's screens change noticeably.
+Record it again, and update the commit above, when the journey's screens change noticeably. One command
+regenerates this GIF, the two README stills and the launch video's scripted clips:
+
+```sh
+./scripts/record_media.sh [video-dir]
+```
+
+The founder gate [#763](https://github.com/ColdPhase/flux/issues/763) (2026-10-30) requires the README, docs-site and
+video media to be recorded from the audited build, after the audit's UI/UX fixes are merged. The recorder merges a
+short pointer frame into the frame before it when a dissolve between views is under way (`drop_transition_frames` in
+`app/tests/ui/record_demo.py`), because the interface now dissolves between views and those frames cost the most
+bytes. If the GIF still exceeds its allowlisted size, lower the frame count in the journey before asking for a larger
+allowance.
+
 The journey is in `app/tests/ui/record_demo.py`. It is not part of the browser test suite,
 but it fails loudly when a step cannot be found.
