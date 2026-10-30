@@ -54,7 +54,8 @@ esac
 
 step "1. Both Compose files are valid together; the runtime is off by default"
 compose config --quiet
-[ "$(compose config --images | grep -c '^ghcr.io/coldphase/flux-agent-runtime@sha256:')" -ge 1 ] || fail "no runtime image in the merged configuration"
+# The image release.json names (ghcr.io in a release; the dry run's local registry rewrites both alike).
+[ "$(compose config --images | grep -cxF "$runtime_image")" -ge 1 ] || fail "no runtime image $runtime_image in the merged configuration"
 ! compose config --images | grep -Eq 'RELEASE_DIGEST|RUNTIME_DIGEST|:latest' || fail "marker or floating tag in the merged configuration"
 runtime_sh up
 [ -z "$(runtime_containers)" ] || fail "runtime containers exist while FLUX_AGENT_RUNTIME is empty: $(runtime_containers)"
