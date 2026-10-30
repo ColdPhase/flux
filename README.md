@@ -1,3 +1,5 @@
+<img src="app/apps/web/public/icons/icon.svg" width="56" height="56" align="right" alt="The Flux logo, Kreska: a monoline face with one raised brow and two eyes, knocked out of a dark rounded tile.">
+
 # Flux
 
 An open source, self-hostable workspace where people and AI agents work on the same
@@ -185,6 +187,7 @@ against a clean clone on a loopback address; that check used no model account
 | `flux` | One-command launcher: `up`, `demo`, `dev`, `down`, `reset`, `clean`, `backup`, `restore`, `export`, `upgrade` |
 | `scripts` | Check scripts, the demo seed and repository tooling |
 | `docs` | Product, design, development and agent documentation |
+| `docs/assets` | README screenshots and the demo GIF, each folder with how it was made; the logo and app icons are `app/apps/web/public/icons`, rendered from Kreska ([final design §3](docs/design/final/README.md#3-kreska-logo-agent-icon-and-mascot)) by `app/apps/web/scripts/generate-icons.ts` |
 
 Dependency directions between these are described and enforced in
 [architecture](docs/development/architecture.md).

@@ -1128,7 +1128,7 @@ calm text, few buttons, controls that never move. "Space" is the interface's wor
 ### Creating an encrypted space
 
 Today the only workspace creation in the interface is the first space in project setup
-(`app/newProject.ts`, `ProjectSetup.tsx`). S3 adds **New space** as the last row of Home → Details
+(`project/newProject.ts`, `project/ProjectSetup.tsx`). S3 adds **New space** as the last row of Home → Details
 → People (`app/Details.tsx`, `PeopleEntries`). It opens a small form in the Details panel (the
 Details sheet on a phone):
 
