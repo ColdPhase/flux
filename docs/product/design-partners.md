@@ -8,7 +8,8 @@
 - **Who decides:** the founders choose the teams, contact them and decide every message sent to
   them. Agents never do outreach. This file describes the kind of team to look for; it names no
   real team. The founders keep the shortlist and contacts outside this repository, and a partner
-  is named in public only with their consent.
+  is named in public only with their consent. The drafts they can use (messages, call agenda,
+  checklist) are in the [outreach kit](partner-outreach.md).
 
 ## Who we look for
 
@@ -69,6 +70,8 @@ profile needs a team. A spread of profiles keeps one team's habits from becoming
 
 ## What we count
 
-The weekly review (L-4) records outside installs, outside issues and PRs, the median time to a
-first answer and the time to first run. From partners we also count the tasks they observably ran
-in Flux and the weeks they kept using it. Praise, ours or theirs, is not a measure (rule 17).
+The [weekly review](weekly-review.md) (L-4) records outside installs, outside issues and PRs, the
+median time to a first answer and the time to first run, as defined in
+[lead measures](lead-measures.md). `python3 scripts/lead_measures.py` prints the numbers GitHub holds.
+From partners we also count the tasks they observably ran in Flux and the weeks they kept using it,
+which a founder adds to the entry by hand. Praise, ours or theirs, is not a measure (rule 17).

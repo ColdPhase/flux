@@ -107,14 +107,20 @@ These are drafted in the repository and reviewed like code. Publication follows
   with coding agents, have the problem Flux solves, and will commit time. The founders choose
   and contact them. The agents prepare an onboarding guide and a feedback issue template.
   Drafts: the [partner profile](design-partners.md), the [onboarding guide](partner-onboarding.md)
-  and the [partner feedback form](../../.github/ISSUE_TEMPLATE/partner-feedback.yml).
+  and the [partner feedback form](../../.github/ISSUE_TEMPLATE/partner-feedback.yml). The founders'
+  [outreach kit](partner-outreach.md) holds the messages, the intro call agenda and the steps only
+  they can take.
 - **One weekly review** (rule 20). It records a few lead measures in the build log:
   - outside installs people report;
   - issues and PRs opened by people outside the team;
   - the median time to a first answer;
-  - the time to first run on the latest `main`.
+  - the time to first run on the latest `main`;
+  - merged pull requests with running code (rule 20).
 
-  Our own enthusiasm is not a measure (rule 17).
+  Our own enthusiasm is not a measure (rule 17). The measures are defined in
+  [lead measures](lead-measures.md), `python3 scripts/lead_measures.py` prints the ones GitHub holds,
+  and the [weekly review](weekly-review.md) says who holds the review and what the build-log entry
+  looks like.
 
 **Criteria:**
 
