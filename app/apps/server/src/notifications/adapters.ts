@@ -3,14 +3,13 @@ import {
   notificationEmailRows,
   notificationPlaceRows,
   notificationPreferenceRows,
-  accessReader,
+  accessReader, type Database
 } from '@flux/db';
 import {
   createNotificationSettings,
   policySourceReader,
   preferenceRepository,
   readsSource,
-  type Database,
   type SettingsPorts,
   type StoredPreferences,
   type VerificationMailer,

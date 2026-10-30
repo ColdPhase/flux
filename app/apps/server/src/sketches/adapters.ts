@@ -1,4 +1,4 @@
-import { artifactResetRows, canonicalArtifactTaskIds, fileRows, liveMapRows, prepareCanonicalArtifactTasks, sketchRows, type DbExecutor, visibleFilter, accessPorts, accessReader } from '@flux/db';
+import { artifactResetRows, canonicalArtifactTaskIds, fileRows, liveMapRows, prepareCanonicalArtifactTasks, sketchRows, type DbExecutor, visibleFilter, accessPorts, accessReader, type Database, type Transaction } from '@flux/db';
 import type { PromotionPerson } from '@flux/contracts';
 import {
   authorize,
@@ -17,7 +17,6 @@ import {
   recordEvent,
   RuleViolationError,
   ServiceUnavailableError,
-  type Database,
   type FileStorage,
   type Principal,
   type SketchFiles,
@@ -25,7 +24,6 @@ import {
   type SketchPromotion,
   type SketchRepository,
   type SketchUnitOfWork,
-  type Transaction,
 } from '@flux/core';
 import { decodeMapChange } from '../editing/map-state.js';
 import { nativeMapJournal,prepareNativeMap, type NativeMapOptions } from '../editing/native-map-journal.js';

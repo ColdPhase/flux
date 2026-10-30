@@ -1,7 +1,6 @@
 import type { PgBoss } from 'pg-boss';
 import { SEARCH_CHANGES_CLEANUP_JOB } from '@flux/contracts';
-import type { Database } from '@flux/core';
-import { pruneSearchChanges } from '@flux/db';
+import { pruneSearchChanges, type Database } from '@flux/db';
 
 /**
  * Deletes the search change log of encrypted workspaces older than 24 hours, every hour (F-030 S2b). An in-memory search

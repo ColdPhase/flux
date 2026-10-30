@@ -1,7 +1,7 @@
 import { createCipheriv, createDecipheriv, hkdfSync, randomBytes } from 'node:crypto';
 import type { CoWorkInboxRecord } from '@flux/contracts';
-import { getProject, InvalidInputError, isUuid, type Database } from '@flux/core';
-import { accessPorts, coworkRecoveryRows, type CoWorkRecoveryPosition } from '@flux/db';
+import { getProject, InvalidInputError, isUuid } from '@flux/core';
+import { accessPorts, coworkRecoveryRows, type CoWorkRecoveryPosition, type Database } from '@flux/db';
 import { withAgentConnection, type FluxMcpClaims } from '../agent-connection/context.js';
 
 interface RecoveryScope { workspaceId: string; projectId: string; connectionId: string; ownerUserId: string;

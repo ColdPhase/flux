@@ -1,6 +1,6 @@
 import type { IncomingHttpHeaders } from 'node:http';
-import { audienceKey, authorizeEvent, eventResource, isUuid, type Executor, type Principal, type StreamAudienceRepository } from '@flux/core';
-import { accessReader } from '@flux/db';
+import { audienceKey, authorizeEvent, eventResource, isUuid, type Principal, type StreamAudienceRepository } from '@flux/core';
+import { accessReader, type Executor } from '@flux/db';
 import type { ApiError, StreamEvent, StreamMessage } from '@flux/contracts';
 import type { CursorCodec } from './cursor.js';
 

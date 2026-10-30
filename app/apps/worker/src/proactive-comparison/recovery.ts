@@ -1,5 +1,5 @@
-import { COMPARISON_RECOVERY_BATCH, recoverComparisonReservations, type ComparisonRecoveryUnitOfWork, type Database } from '@flux/core';
-import { comparisonRecoveryRows } from '@flux/db';
+import { COMPARISON_RECOVERY_BATCH, recoverComparisonReservations, type ComparisonRecoveryUnitOfWork } from '@flux/core';
+import { comparisonRecoveryRows, type Database } from '@flux/db';
 
 /** Settles interrupted reservations; never dispatches or retries. Registered with the comparison worker (#58). */
 export async function comparisonRecoveryTick(db: Database, now = new Date()) {

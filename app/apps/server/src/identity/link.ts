@@ -1,7 +1,6 @@
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { and, eq, sql } from 'drizzle-orm';
-import { schema } from '@flux/db';
-import type { Database } from '@flux/core';
+import { schema, type Database } from '@flux/db';
 
 /**
  * Explicit linking of an existing password account to the one provider, before cutover (F-024 S5b, #315). The owner

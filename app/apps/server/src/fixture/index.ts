@@ -2,8 +2,7 @@ import { createHash, randomUUID, timingSafeEqual } from 'node:crypto';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import type { PgBoss } from 'pg-boss';
 import { FIXTURE_OAUTH_CLIENT_PATH, SAMPLE_COMMAND_PATH, type FixtureOauthClientCommand, type FixtureOauthClientRegistered, type SampleCommand } from '@flux/contracts';
-import type { Database } from '@flux/core';
-import { fixtureOauthClientRepository } from '@flux/db';
+import { fixtureOauthClientRepository, type Database } from '@flux/db';
 import type { FixtureConfig } from '../config.js';
 import { createSample, ForcedRollbackError, InvalidSampleError } from './sample.js';
 

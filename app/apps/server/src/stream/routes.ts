@@ -1,6 +1,6 @@
 import type { FastifyInstance, FastifyRequest } from 'fastify';
-import { EVENTS_CHANNEL, listen, streamAudienceRepository } from '@flux/db';
-import { audienceKey, type Database } from '@flux/core';
+import { EVENTS_CHANNEL, listen, streamAudienceRepository, type Database } from '@flux/db';
+import { audienceKey } from '@flux/core';
 import { STREAM_CLOSE_UNAUTHENTICATED, STREAM_PATH, type ApiError } from '@flux/contracts';
 import type { SessionResolver } from '../identity/index.js';
 import { StreamConnection } from './connection.js';

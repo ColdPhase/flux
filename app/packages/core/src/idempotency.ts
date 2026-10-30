@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import { InvalidInputError, RuleViolationError } from './access/errors.js';
 import { principalKey } from './events.js';
-import type { Database, Principal } from './types.js';
+import type { Database, Principal, TransactionPort } from './types.js';
 
 /** Stored responses are replayed for this long; the worker deletes expired keys hourly. */
 export const IDEMPOTENCY_RETENTION_HOURS = 24;
@@ -57,15 +57,15 @@ export interface IdempotencyStore {
   deleteExpired(): Promise<number>;
 }
 
-/** The store bound to a command's transaction. */
-export type IdempotencyStores = (tx: Database) => IdempotencyStore;
+/** The store bound to a command's transaction (`Tx`: the handle the app's transactions run on). */
+export type IdempotencyStores<Tx extends Database = Database> = (tx: Tx) => IdempotencyStore;
 
 /**
  * Re-authorizes a stored response before it is replayed: it must throw the normal
  * NotFoundError/ForbiddenError when the caller can no longer read the object the stored
  * response describes. It runs inside the replay transaction with current rows.
  */
-export type ReplayAuthorization = (stored: CommandResponse, tx: Database) => Promise<void>;
+export type ReplayAuthorization<Tx extends Database = Database> = (stored: CommandResponse, tx: Tx) => Promise<void>;
 
 export function parseIdempotencyKey(value: unknown): string | null {
   if (value === undefined) return null;
@@ -97,7 +97,7 @@ export function requestHash(request: unknown): string {
  * still read what it describes; otherwise the caller gets the same 404/403 as any request
  * for an object it cannot see, and the stored body is never returned.
  */
-export async function runIdempotent(db: Database, stores: IdempotencyStores, scope: IdempotencyScope, run: (tx: Database) => Promise<CommandResponse>, authorizeReplay: ReplayAuthorization): Promise<IdempotentResponse> {
+export async function runIdempotent<Tx extends Database>(db: TransactionPort<Tx>, stores: IdempotencyStores<Tx>, scope: IdempotencyScope, run: (tx: Tx) => Promise<CommandResponse>, authorizeReplay: ReplayAuthorization<Tx>): Promise<IdempotentResponse> {
   const keyScope: IdempotencyKeyScope = { principal: principalKey(scope.principal), workspaceId: scope.workspaceId, operation: scope.operation, key: scope.key };
   return db.transaction(async (tx) => {
     const store = stores(tx);
@@ -108,7 +108,7 @@ export async function runIdempotent(db: Database, stores: IdempotencyStores, sco
     } else if (existing) {
       if (existing.requestHash !== scope.requestHash) throw new RuleViolationError('This Idempotency-Key was already used for a different request', 'IDEMPOTENCY_KEY_REUSED');
       const stored: CommandResponse = existing.response;
-      await authorizeReplay(stored, tx as unknown as Database);
+      await authorizeReplay(stored, tx);
       return { ...stored, replayed: true };
     }
     const response = await run(tx);

@@ -1,7 +1,7 @@
 import type { PgBoss } from 'pg-boss';
 import { WORKSPACE_ENCRYPTION_RESUME_JOB, type WorkspaceEncryptionResumeJob } from '@flux/contracts';
-import { dropStaleUnlocks, keyringFromEnv, processDraftSummary, ProcessKeys, recordEvent, redactedError, replayWaitedEvent, sealFor, swapFiles, swapSafety, testSwapRoot, type Database, type EncryptionPorts, type EncryptionUnitOfWork } from '@flux/core';
-import { accessReader, configureSeals, draftResultRepository, eventRepository, sql, workspaceEncryptionRows, type DbExecutor } from '@flux/db';
+import { dropStaleUnlocks, keyringFromEnv, processDraftSummary, ProcessKeys, recordEvent, redactedError, replayWaitedEvent, sealFor, swapFiles, swapSafety, testSwapRoot, type EncryptionPorts, type EncryptionUnitOfWork } from '@flux/core';
+import { accessReader, configureSeals, draftResultRepository, eventRepository, sql, workspaceEncryptionRows, type DbExecutor, type Database } from '@flux/db';
 import { eventPorts } from '../events.js';
 import { generatorUnitOfWork } from '../notifications/adapters.js';
 

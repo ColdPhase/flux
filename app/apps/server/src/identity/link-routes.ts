@@ -1,7 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { and, eq } from 'drizzle-orm';
-import { schema } from '@flux/db';
-import type { Database } from '@flux/core';
+import { schema, type Database } from '@flux/db';
 import type { SessionResolver } from './session.js';
 import { linkCookie, type LinkIntents } from './link.js';
 

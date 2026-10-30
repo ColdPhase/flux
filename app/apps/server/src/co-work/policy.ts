@@ -1,6 +1,6 @@
 import type { AgentJsonValue } from '@flux/contracts';
-import { coworkReviewPolicyRows, coworkReviewRows, coworkUnitRows, type CoWorkReviewVerdict } from '@flux/db';
-import { InvalidInputError, normalizeCoWorkSource, NotFoundError, requireCoWorkCheckpointSources, requireCoWorkClaimEligibility, type CoWorkUnitPolicy, type Transaction } from '@flux/core';
+import { coworkReviewPolicyRows, coworkReviewRows, coworkUnitRows, type CoWorkReviewVerdict, type Transaction } from '@flux/db';
+import { InvalidInputError, normalizeCoWorkSource, NotFoundError, requireCoWorkCheckpointSources, requireCoWorkClaimEligibility, type CoWorkUnitPolicy } from '@flux/core';
 import { requireTaskPrerequisitesMet } from '../work/task-graph.js';
 import type { CoWorkClaimPolicy } from './claims.js';
 import { coWorkTaskGraphLocks } from './graph.js';

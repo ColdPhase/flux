@@ -1,7 +1,7 @@
 import type { AgentToolRegistrar } from './tool-registry.js';
 import { z } from 'zod';
-import { conversationUseCases, createSearchUseCases, DomainError, getProject, NotFoundError, type Database } from '@flux/core';
-import { accessPorts, schema } from '@flux/db';
+import { conversationUseCases, createSearchUseCases, DomainError, getProject, NotFoundError } from '@flux/core';
+import { accessPorts, schema, type Database } from '@flux/db';
 import { eq } from 'drizzle-orm';
 import { conversationStore } from '../conversation/store.js';
 import { docUseCases } from '../docs/adapters.js';

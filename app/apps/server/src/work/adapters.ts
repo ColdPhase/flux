@@ -1,14 +1,12 @@
-import { artifactResetRows, githubRows, proactiveOutboxRows, referencedTaskIds, workRows, type DbExecutor, visibleFilter, accessReader } from '@flux/db';
+import { artifactResetRows, githubRows, proactiveOutboxRows, referencedTaskIds, workRows, type DbExecutor, visibleFilter, accessReader, type Database, type Transaction } from '@flux/db';
 import {
   evaluateProject,
   createWorkContributions,
   createWorkUseCases,
   COMPARISON_QUIET_WINDOW_MS,
-  type Database,
   type WorkPorts,
   type WorkRepository,
   type WorkUnitOfWork,
-  type Transaction,
 } from '@flux/core';
 import { taskDiscussionInEventSession, taskDiscussionPorts } from './task-discussions.js';
 import { transactionEventSession, type TransactionEventSession } from './transaction-events.js';

@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { and, eq } from 'drizzle-orm';
-import { githubRows, schema } from '@flux/db';
-import { githubId, ServiceUnavailableError, type Database } from '@flux/core';
+import { githubRows, schema, type Database } from '@flux/db';
+import { githubId, ServiceUnavailableError } from '@flux/core';
 import type { GithubConfig } from './config.js';
 import { seal, unseal } from './crypto.js';
 import { apiHeaders, type GithubTransport, providerText } from './http.js';

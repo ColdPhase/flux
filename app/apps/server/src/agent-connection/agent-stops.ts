@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { ownWorkingAgentsPath, projectAgentStopsPath, type StopAgentCommand } from '@flux/contracts';
-import { agentStopRows, accessReader } from '@flux/db';
-import { agentStopUseCases, enforce, evaluateProject, recordEvent, type AgentStopPorts, type AgentStopUnitOfWork, type Database, type Transaction } from '@flux/core';
+import { agentStopRows, accessReader, type Database, type Transaction } from '@flux/db';
+import { agentStopUseCases, enforce, evaluateProject, recordEvent, type AgentStopPorts, type AgentStopUnitOfWork } from '@flux/core';
 import type { SessionResolver } from '../identity/index.js';
 import { commandRunner, requires, useDomainErrors } from '../http/commands.js';
 import { eventPorts } from '../events.js';

@@ -1,5 +1,6 @@
 import type { GithubCheck, GithubPullFacts, GithubRepository, GithubReview } from '@flux/contracts';
-import { githubId, NotFoundError, ServiceUnavailableError, type Database, type GithubProvider, type Principal } from '@flux/core';
+import { githubId, NotFoundError, ServiceUnavailableError, type GithubProvider, type Principal } from '@flux/core';
+import type { Database } from '@flux/db';
 import type { GithubCredentials } from './credentials.js';
 import type { GithubConfig } from './config.js';
 import { apiHeaders, providerDate, providerText, type GithubTransport, type ProviderJson } from './http.js';

@@ -1,7 +1,8 @@
 /** TEST-ONLY writer for the closed agent-thread path (#400). It is not production source: no HTTP/MCP route
  * registers it. Tests call it with a real AS bearer so the guarded write path runs end to end. */
 import { createRequire } from 'node:module';
-import { agentExecutionUseCases, derivedUuid, DomainError, normalizeMessage, type Database } from '@flux/core';
+import { agentExecutionUseCases, derivedUuid, DomainError, normalizeMessage } from '@flux/core';
+import type { Database } from '@flux/db';
 import type { AgentExecutionCommand, AgentJsonValue } from '@flux/contracts';
 import type { FluxAuth } from '../../../apps/server/src/identity/auth.js';
 import { guardedAgentThreadInEventSession } from '../../../apps/server/src/conversation/store.js';

@@ -1,5 +1,6 @@
 import type { PgBoss } from 'pg-boss';
-import type { Database, ProcessKeys, ResourceRef } from '@flux/core';
+import type { ProcessKeys, ResourceRef } from '@flux/core';
+import type { Database } from '@flux/db';
 import type { SessionResolver } from '../identity/index.js';
 import { commandRunner } from '../http/commands.js';
 import { withNoMediaAccessChange, type LiveRevocationCoordinator } from '../live/revocation.js';

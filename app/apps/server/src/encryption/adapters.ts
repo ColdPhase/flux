@@ -6,9 +6,9 @@ import * as zxcvbnEnglish from '@zxcvbn-ts/language-en';
 import { WORKSPACE_ENCRYPTION_RESUME_JOB, type WorkspaceEncryptionResumeJob } from '@flux/contracts';
 import {
   authorize, createEncryptionUseCases, DerivationSemaphore, ForbiddenError, getWorkspace, keyringFromEnv, NotFoundError, ProcessKeys,
-  recordEvent, sealFor, swapFiles, swapSafety, testSwapRoot, type Database, type EncryptionPorts, type EncryptionUnitOfWork, type PasswordEstimator,
+  recordEvent, sealFor, swapFiles, swapSafety, testSwapRoot, type EncryptionPorts, type EncryptionUnitOfWork, type PasswordEstimator,
 } from '@flux/core';
-import { accessPorts, accessReader, configureSeals, dropSealedSearchIndex, loadActor, workspaceEncryptionRows, type DbExecutor } from '@flux/db';
+import { accessPorts, accessReader, configureSeals, dropSealedSearchIndex, loadActor, workspaceEncryptionRows, type DbExecutor, type Database } from '@flux/db';
 import { eventPorts } from '../events.js';
 
 // Adapters of the encrypted-workspace use cases (F-030, #655): the access policy (`workspace.manage_encryption`), the

@@ -3,7 +3,7 @@ import { after, before, describe, test } from 'node:test';
 import { eq } from 'drizzle-orm';
 import { PgBoss } from 'pg-boss';
 import type { DraftSummary } from '@flux/contracts';
-import { accessPorts, accessReader, draftResultRepository, eventRepository, schema } from '@flux/db';
+import { accessPorts, accessReader, draftResultRepository, eventRepository, schema, type Database, type Executor } from '@flux/db';
 import {
   addMember,
   createDraft,
@@ -17,7 +17,6 @@ import {
   requestDraftSummary,
   revokeProjectGrant,
   shareDraft,
-  type Database,
 } from '@flux/core';
 import { pgBossQueue } from '../../apps/server/src/push/adapters.js';
 import { connectionString, db, insertedHuman, pool } from './support/db.js';
@@ -155,7 +154,7 @@ describe('draft.summarize.v1 worker', () => {
     const holding = barrier<number>();
     const gate = barrier();
     const outcome = processDraftSummary(summary.id, db, summaryPorts, {
-      beforeCommit: async (tx) => { holding.resolve(await backendPid(tx)); await gate.promise; },
+      beforeCommit: async (tx: Executor) => { holding.resolve(await backendPid(tx)); await gate.promise; },
     });
     const worker = await holding.promise;
     const revoke = revokeProjectGrant(owner, room.id, access.id, db, accessPorts);

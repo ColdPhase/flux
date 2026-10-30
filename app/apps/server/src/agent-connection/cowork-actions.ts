@@ -1,7 +1,8 @@
 import { z } from 'zod';
 import { AGENT_OPERATION_CLASSES, AGENT_PEER_REQUEST_CLASSES, type AgentExecutionCommand, type AgentJsonValue,
   type AgentOperation, type AgentPeerRequestClass } from '@flux/contracts';
-import { COWORK_CHECKPOINT_LIMITS, COWORK_DECLINE_REASONS, COWORK_DEFER_BOUNDARIES, COWORK_DEFER_REASONS, InvalidInputError, type Database } from '@flux/core';
+import { COWORK_CHECKPOINT_LIMITS, COWORK_DECLINE_REASONS, COWORK_DEFER_BOUNDARIES, COWORK_DEFER_REASONS, InvalidInputError } from '@flux/core';
+import type { Database } from '@flux/db';
 import { ownerAssistantUnitCreationInTransaction } from '../co-work/assistant-units.js';
 import { coWorkClaimCheckpoint, coWorkClaimInTransaction } from '../co-work/claims.js';
 import { COWORK_CLAIM_POLICY, COWORK_RESPONSE_POLICY, coworkPolicies } from '../co-work/policy.js';

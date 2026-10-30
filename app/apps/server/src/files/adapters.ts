@@ -1,5 +1,5 @@
-import { fileRows } from '@flux/db';
-import { createFileUseCases, type Database, type FileStorage, type FileUnitOfWork } from '@flux/core';
+import { fileRows, type Database } from '@flux/db';
+import { createFileUseCases, type FileStorage, type FileUnitOfWork } from '@flux/core';
 import { policyWorkAccess } from '../work/access.js';
 
 export function fileUnitOfWork(db: Database): FileUnitOfWork {

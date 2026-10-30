@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { AGENT_OPERATION_CLASSES, SKETCH_LIMITS, THOUGHT_SHAPES, type AgentJsonValue, type AgentOperation,
   type CreateThoughtCommand, type MoveThoughtsCommand, type ThoughtShape, type UpdateThoughtCommand } from '@flux/contracts';
-import type { Database } from '@flux/core';
+import type { Database } from '@flux/db';
 import { actionAnnotations as annotations, actionId as id, actionInput, actionVersion as version, nativeActionExecutor } from './action-execution.js';
 import type { FluxMcpClaims } from './context.js';
 import type { AgentToolRegistry } from './tool-registry.js';

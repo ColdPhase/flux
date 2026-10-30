@@ -1,7 +1,6 @@
 import type { CoWorkReviewPolicy, SetCoWorkReviewPolicyCommand } from '@flux/contracts';
-import { coworkReviewPolicyRows, accessReader } from '@flux/db';
-import { enforce, evaluateProject, ForbiddenError, isUuid, normalizeCoWorkReviewRule, NotFoundError, recordEvent,
-  type Database, type Principal } from '@flux/core';
+import { coworkReviewPolicyRows, accessReader, type Database } from '@flux/db';
+import { enforce, evaluateProject, ForbiddenError, isUuid, normalizeCoWorkReviewRule, NotFoundError, recordEvent, type Principal } from '@flux/core';
 import { eventPorts } from '../events.js';
 
 // A project's explicit review rule (#153 AC-4): how separate a reviewer must be from the author. Everyone who can read the

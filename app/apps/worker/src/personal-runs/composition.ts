@@ -1,9 +1,9 @@
 import { aiEndpointPolicyFromEnv, parsePrivateTargets, providerPersonalCompute } from '@flux/agent-runtime';
 import {
   TEST_FIXTURE_API_KEY, TEST_FIXTURE_KEY_REF, testFixturePersonalConnections, unavailablePersonalCompute,
-  type AgentRuntimeConfig, type Database, type PersonalCompute, type PersonalConnectionLookup, type PersonalRunTokenIssuer, type PersonalRuntime, type PersonalToolHost,
+  type AgentRuntimeConfig, type PersonalCompute, type PersonalConnectionLookup, type PersonalRunTokenIssuer, type PersonalRuntime, type PersonalToolHost,
 } from '@flux/core';
-import { loadBackgroundMasterKey, personalConnectionLookup, personalKeyResolver } from '@flux/db';
+import { loadBackgroundMasterKey, personalConnectionLookup, personalKeyResolver, type Database } from '@flux/db';
 import { mcpToolHost } from './mcp-session.js';
 import { apiInternalUrl, runTokenIssuer } from './run-tokens.js';
 import { managerPersonalRuntime } from './runtime-engine.js';

@@ -4,8 +4,8 @@ import {
   ASSISTANT_CHANGE_LIMITS, ASSISTANT_LIMITS, ASSISTANT_UNIT_CREATE_VIEW, assistantChangeActionPath, assistantChangeWords, assistantWorkChangeArgs, assistantRunChangesActionPath, assistantRunChangesPath,
   ASSISTANT_CHANGES_PATH, conversationAssistantActivityPath, conversationAssistantChangesPath, type AssistantActivity, type AssistantChange, type AssistantChangeDecision, type AssistantRunUndone,
 } from '@flux/contracts';
-import { assistantChangeRows, type AssistantChangeRow, type DbExecutor, accessReader } from '@flux/db';
-import { assistantChangeLine, ConflictError, ForbiddenError, undoSentence, type UndoRecord, createNotification, DomainError, evaluateProject, isUuid, NotFoundError, type Database,
+import { assistantChangeRows, type AssistantChangeRow, type DbExecutor, accessReader, type Database } from '@flux/db';
+import { assistantChangeLine, ConflictError, ForbiddenError, undoSentence, type UndoRecord, createNotification, DomainError, evaluateProject, isUuid, NotFoundError,
   type Principal } from '@flux/core';
 import { CHANGED_SINCE, REMOVAL_OPERATIONS, requireAiOn, undoChange } from './undo.js';
 import type { SessionResolver } from '../identity/index.js';

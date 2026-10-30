@@ -1,11 +1,11 @@
-import { workRows, accessReader } from '@flux/db';
+import { workRows, accessReader, type Database } from '@flux/db';
 import type { FastifyError, FastifyInstance } from 'fastify';
 import { AI_BASE_URL_MAX_LENGTH, AI_MODEL_LISTS_PATH, AI_PRICE_MAX_MICROS_PER_MTOK, AI_PROVIDER_KINDS, backgroundComparisonRuntimePath, backgroundComputeUsagePath,
   proactiveComparisonOutcomePath, proactiveComparisonOutcomesPath, proactiveComparisonProposalsPath, WORK_LIMITS, type AiModelListQuery,
   type BackgroundComparisonRuntime, type ConnectBackgroundComputeCommand, type UpdateBackgroundComputeConnectionCommand, type CreateProactiveComparisonRule } from '@flux/contracts';
 import { backgroundConnectionRepository, comparisonProposalView, proactiveOutboxRows, proactiveRuleRows, sealBackgroundKey } from '@flux/db';
 import { backgroundConnectionUseCases, baseUrlSyntaxProblem, ConflictError, DomainError, enforce, evaluateProject, InvalidInputError,
-  isUuid, normalizeBaseUrl, NotFoundError, proactiveRuleUseCases, VersionConflictError, visibleProposal, type Database } from '@flux/core';
+  isUuid, normalizeBaseUrl, NotFoundError, proactiveRuleUseCases, VersionConflictError, visibleProposal } from '@flux/core';
 import type { SessionResolver } from '../identity/index.js';
 import { taskUseDomainError } from '../work/task-use-errors.js';
 import { nativeWorkInTransaction } from '../work/adapters.js';

@@ -1,7 +1,7 @@
-import { artifactResetRows, githubRows, prepareCanonicalArtifactTasks, TaskUseRefusal, type TaskUseFence, accessReader } from '@flux/db';
+import { artifactResetRows, githubRows, prepareCanonicalArtifactTasks, TaskUseRefusal, type TaskUseFence, accessReader, type Database, type Transaction } from '@flux/db';
 import {
   directPrerequisiteIds, enforce, evaluateProject, GITHUB_RULE_AUTOMATION, githubRuleUseCases, githubUseCases, ServiceUnavailableError, sortedIds,
-  unmetPrerequisites, type Database, type GithubProvider, type GithubTasks, type GithubTaskState, type GithubUnitOfWork, type Transaction, type WorkRecord,
+  unmetPrerequisites, type GithubProvider, type GithubTasks, type GithubTaskState, type GithubUnitOfWork, type WorkRecord,
 } from '@flux/core';
 import { workRepository } from '../work/adapters.js';
 import { transactionEventSession, type TransactionEventSession } from '../work/transaction-events.js';

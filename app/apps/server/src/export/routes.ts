@@ -1,6 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { projectExportPath } from '@flux/contracts';
-import type { Database, FileStorage } from '@flux/core';
+import type { FileStorage } from '@flux/core';
+import type { Database } from '@flux/db';
 import type { SessionResolver } from '../identity/index.js';
 import { commandRunner, useDomainErrors } from '../http/commands.js';
 import { exportUseCases } from './adapters.js';

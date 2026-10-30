@@ -1,7 +1,6 @@
 import { createPublicKey, verify } from 'node:crypto';
 import { and, eq, sql } from 'drizzle-orm';
-import { schema } from '@flux/db';
-import type { Database } from '@flux/core';
+import { schema, type Database } from '@flux/db';
 import { createJwks } from './backchannel.js';
 import { profileFromClaims, type ProfileResult } from './claim-profile.js';
 import type { OidcConfig } from './config.js';
