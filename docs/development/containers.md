@@ -66,6 +66,14 @@ if a run is already active, do review, implementation or lightweight checks
 while it finishes. Distinct ports prevent collisions, not CPU or disk contention.
 This is an operating convention, not an implemented scheduler or lock.
 
+Each Compose project also takes Docker address pools: 2 networks for a Flux stack or test stack, 10 with the
+agent runtime (`docker/compose.source.runtime.yaml` adds the API's and worker's runtime networks only then,
+#744). A stock daemon has about 31, so roughly 14 stacks at once exhaust it and the next one fails with
+`all predefined address pools have been fully subnetted`. Remove finished projects with their own
+`docker compose -p <project> down`; the fix for the daemon and the measurement
+(`scripts/check_address_pools.sh`, a throwaway daemon in Docker) are in
+[Docker address pools](../operations/README.md#docker-address-pools).
+
 Choose the affected checks using the
 [verification policy](../agents/evaluation.md#choose-verification-by-impact).
 Use `./flux dev` for source iteration; the maintained test scripts still build
@@ -419,7 +427,7 @@ AI wire formats (`app/tests/app/support/provider-mock.ts`) that the adapter cont
 
 The `runtime` Compose profile ([operator guide](../operations/agent-runtime.md)) is off unless
 `FLUX_AGENT_RUNTIME` is set; `./flux up` then starts `runtime-install`, `runtime-manager`,
-`runtime-egress` and the slots `runtime-1` to `runtime-4`. The first interactive `./flux up` and `./flux ai on` ask whether to set it (`codex` on Enter, `codex,claude_code` with a typed `y`; [operator guide](../operations/agent-runtime.md#switch-it-on)); scripts that run `./flux up` on a fresh copy redirect stdin from `/dev/null` so they never wait for the question. No service mounts a Docker or Podman socket
+`runtime-egress` and the slots `runtime-1` to `runtime-4`, and adds `docker/compose.source.runtime.yaml`, which attaches the API and worker to `runtime-control` (and the API to `runtime-api`); a script that starts the runtime by hand layers that file too. The first interactive `./flux up` and `./flux ai on` ask whether to set it (`codex` on Enter, `codex,claude_code` with a typed `y`; [operator guide](../operations/agent-runtime.md#switch-it-on)); scripts that run `./flux up` on a fresh copy redirect stdin from `/dev/null` so they never wait for the question. No service mounts a Docker or Podman socket
 (`tests/test_container_isolation.py`). The slot image is the Dockerfile's `agent-runtime` target (the
 supervisor and the pinned Codex); `agent-runtime-test` replaces both CLIs with the TEST ONLY fakes from
 `app/apps/runtime/src/fakes`, and `docker/compose.runtime.test.yaml` selects it.

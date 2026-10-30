@@ -97,6 +97,13 @@ gh attestation verify oci://ghcr.io/coldphase/flux-agent-runtime@sha256:<runtime
    URL and create the first account. If startup fails, read
    `docker compose --env-file .env -f compose.yaml logs migrate api worker` before changing data.
 
+   If `up` stops with `all predefined address pools have been fully subnetted`, the Docker daemon has no
+   network subnet left: Flux takes 2 networks (10 with the agent runtime), and a stock daemon has about 31 for
+   all projects on the host. Stop other Compose projects you no longer run, or set
+   smaller pools in `/etc/docker/daemon.json`, for example
+   `{"default-address-pools": [{"base": "172.17.0.0/12", "size": 24}, {"base": "192.168.0.0/16", "size": 24}]}`,
+   and restart the daemon ([reference](https://docs.docker.com/reference/cli/dockerd/#daemon-configuration-file)).
+
 ## Agent runtime (optional)
 
 Off by default and not needed for Flux itself. It lets people on this Flux sign in with their own

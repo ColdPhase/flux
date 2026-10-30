@@ -153,9 +153,9 @@ services:
     memswap_limit: ${FLUX_API_MEMORY:-2g}
     ulimits:
       core: 0
-    # runtime-control reaches runtime-manager; runtime-api is where runtime-egress forwards /mcp.
-    # Neither network holds the database. `keyring` holds only api, worker and keyring.
-    networks: [default, runtime-control, runtime-api, keyring]
+    # `keyring` holds only api, worker and keyring. With the agent runtime on, compose.source.runtime.yaml adds
+    # runtime-control and runtime-api (#744: a project without the runtime takes two address pools, not four).
+    networks: [default, keyring]
     volumes:
       - files:/data/files:z
       # Optional 32-byte operator secret; empty tracked placeholder means unavailable.
@@ -212,7 +212,8 @@ services:
     memswap_limit: ${FLUX_WORKER_MEMORY:-1g}
     ulimits:
       core: 0
-    networks: [default, runtime-control, keyring]
+    # runtime-control comes from compose.source.runtime.yaml when the agent runtime is on.
+    networks: [default, keyring]
     volumes:
       - files:/data/files:z
       - ${FLUX_BACKGROUND_KEY_HOST_FILE:-./background-key-unavailable}:/run/secrets/flux_background_key:ro,z
