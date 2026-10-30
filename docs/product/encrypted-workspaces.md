@@ -363,9 +363,10 @@ and runs no rotation step. It sets `workspace_keys.tampered_at`, records
 sticky.** Every unlock attempt verifies everything from scratch, whatever the flag says. The flag is
 only for display and alerting, and it is cleared when a full verification passes. So a fixed bug or
 a repaired restore unlocks normally. Nothing is deleted or repaired automatically. The
-[operations guide](../operations/backup-restore.md) says that restoring **only** `workspace_keys`,
-`workspace_holders`, `workspace_dek_wraps`, `workspace_key_versions` and `workspace_removed_holders`
-from the last good backup is enough, as long as no rotation finished after that backup. Otherwise the
+[operations guide](../operations/backup-restore.md#encrypted-spaces-that-say-their-keys-were-changed) says that
+restoring **only** `workspace_keys` (its `removal_head` included), `workspace_holders`, `workspace_dek_wraps`,
+`workspace_key_versions`, `workspace_removed_holders` and `workspace_removals` of that workspace from the last good
+backup is enough, as long as no rotation finished and no owner or admin was removed after that backup. Otherwise the
 whole instance is restored.
 
 **Removal tombstones and the one remaining path.** A holder's deletion writes a tombstone (id, user,
@@ -1268,7 +1269,9 @@ project picker and in Create like any other space.
     Garden club loses access until an owner or admin unlocks it again." with **Lock Garden club** and
     **Keep it unlocked**. Owners also get **New recovery code**, behind the same inline confirm and
     their password: "The old code stops working."
-  - Members and guests see only the first line.
+  - Members see the first line and, while a key change runs, its line with the reason ("after Ben left": they can
+    see the membership change anyway); "The new key opens for …" is for owners and admins only. Guests see only the
+    first line. The wire matches: `rotation.reason` is null for guests, `rotation.openFor` empty for non-managers.
 - **Removal and demotion.** Removing, demoting or the leaving of an owner or admin in an encrypted
   space uses the panel's existing inline confirm, with this text in place of the usual one:
   - Remove: **Remove Ben from Garden club?** · "Garden club gets a new key, and everything in it is

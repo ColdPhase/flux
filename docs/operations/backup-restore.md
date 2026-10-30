@@ -168,6 +168,18 @@ gone shows the owner *Sign in again*, and a directory that has no binding in the
 signed out (best effort) and deleted, after which that slot restarts before anyone else can use it.
 A disk-level or host snapshot is different: it does capture the slot volumes and their logins.
 
+### Encrypted spaces that say their keys were changed
+
+An encrypted space refuses to unlock with "…'s encryption keys were changed outside Flux. It stays locked." when
+any of its key rows fails verification (F-030, [tampering](../product/encrypted-workspaces.md#authenticating-holders-and-wraps)).
+Nothing is repaired automatically, and the flag clears itself at the first unlock that verifies. To repair one space
+without restoring the whole instance, restore from the last good backup **only** that workspace's rows of
+`workspace_keys` (with its `removal_head`), `workspace_holders`, `workspace_dek_wraps`, `workspace_key_versions`,
+`workspace_removed_holders` and `workspace_removals`, in one transaction, with the same `FLUX_KEY_PIN_SECRET` the
+backup was made with. That is enough when no key rotation finished and no owner or admin was removed after the
+backup; otherwise restore the whole instance. Remove a person through the app (People) before deleting their account
+with SQL, so the removal is recorded at once and not only at the next key change.
+
 ### Restore on a fresh machine or checkout
 
 ```sh

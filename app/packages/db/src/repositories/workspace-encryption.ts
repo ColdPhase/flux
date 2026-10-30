@@ -181,6 +181,11 @@ export function workspaceEncryptionRows(db: DbExecutor) {
         previous = record.pin;
       }
       if ((records.length ? previous : null) !== keys.head) return 'broken';
+      // A real removal deleted the holder row first (the tombstone is written by its AFTER DELETE trigger). A tombstone
+      // naming a row that still exists was planted: pinning it would exclude that holder for good (S2c review P2-2).
+      const [planted] = await rowsOf<{ one: number }>(db, sql`SELECT 1 AS one FROM workspace_removed_holders t JOIN workspace_holders h
+        ON h.workspace_id = t.workspace_id AND (h.id = t.holder_id OR h.public_key = t.public_key) WHERE t.workspace_id = ${workspaceId} LIMIT 1`);
+      if (planted) return 'broken';
       const fresh = await rowsOf<{ holderId: string; userId: string | null; publicKey: string }>(db, sql`SELECT t.holder_id AS "holderId", t.user_id AS "userId",
         t.public_key AS "publicKey" FROM workspace_removed_holders t WHERE t.workspace_id = ${workspaceId}
         AND NOT EXISTS (SELECT 1 FROM workspace_removals r WHERE r.workspace_id = t.workspace_id AND r.holder_id = t.holder_id) ORDER BY t.removed_at, t.holder_id`);

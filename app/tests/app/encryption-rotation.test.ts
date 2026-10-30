@@ -480,6 +480,59 @@ describe('F-030 S2c key rotation (AC-13)', () => {
     assert.ok((await pool.query('SELECT count(*)::int AS n FROM workspace_removals WHERE workspace_id = $1', [c.ws])).rows[0].n >= records.length, 'records outlive the finish');
   });
 
+  test('a planted tombstone naming a live holder is tampering at the start, never pinned; removed, the rotation runs and the owner keeps the key', async () => {
+    const c = await club('Planted tombstone club', ['Ben']);
+    await seed(c, 2);
+    const ada = await holderOf(c.ws, c.owner.id);
+    // One INSERT, no key and no secret: a tombstone naming the owner's own holder.
+    await pool.query(`INSERT INTO workspace_removed_holders (workspace_id, holder_id, user_id, public_key) VALUES ($1, $2, $3, $4)`, [c.ws, ada.id, c.owner.id, ada.public_key]);
+    await removeMember(c.owner, c.ws, c.people.Ben!.who);
+    await waitFor('the start refuses as tampering', async () => (await keysOf(c.ws)).tampered_at);
+    assert.equal((await keysOf(c.ws)).rotation, 'pending');
+    assert.equal((await pool.query('SELECT count(*)::int AS n FROM workspace_removals WHERE workspace_id = $1 AND holder_id = $2', [c.ws, ada.id])).rows[0].n, 0,
+      'the planted tombstone is never pinned');
+    await pool.query('DELETE FROM workspace_removed_holders WHERE workspace_id = $1 AND holder_id = $2', [c.ws, ada.id]);
+    await settled(c.ws, 2);
+    const adaHolder = await holderOf(c.ws, c.owner.id);
+    assert.deepEqual((await events(c.ws, 'workspace.key_rotation_started.v1')).map((e) => e.holders), [[adaHolder.id]]);
+    expectStatus(await lock(c.owner.browser, c.ws), 200);
+    expectStatus(await unlock(c.owner.browser, c.ws, { password: c.ownerPw }), 200, 'the owner keeps the key');
+  });
+
+  test('a repaired restore of the key tables (removal records and head included) unlocks again', async () => {
+    const c = await club('Repair club', ['Ben', 'Fay']);
+    await seed(c, 2);
+    await removeMember(c.owner, c.ws, c.people.Fay!.who);
+    await settled(c.ws, 2);
+    expectStatus(await lock(c.owner.browser, c.ws), 200);
+    const tables = ['workspace_holders', 'workspace_dek_wraps', 'workspace_key_versions', 'workspace_removed_holders', 'workspace_removals'];
+    const backup: Record<string, unknown[]> = {};
+    for (const table of tables) backup[table] = (await pool.query(`SELECT row_to_json(t) AS r FROM ${table} t WHERE workspace_id = $1`, [c.ws])).rows.map((row) => row.r);
+    const [keysBackup] = (await pool.query('SELECT row_to_json(k) AS r FROM workspace_keys k WHERE workspace_id = $1', [c.ws])).rows;
+    assert.ok((backup.workspace_removals ?? []).length > 0);
+    // Tampering: the records deleted and the head cleared, and Ada's public key replaced.
+    await pool.query('DELETE FROM workspace_removals WHERE workspace_id = $1', [c.ws]);
+    await pool.query('UPDATE workspace_keys SET removal_head = NULL WHERE workspace_id = $1', [c.ws]);
+    await pool.query(`UPDATE workspace_holders SET public_key = $2 WHERE workspace_id = $1 AND user_id = $3`, [c.ws, generateHolderKeyPair().publicKey, c.owner.id]);
+    const tampered = await unlock(c.owner.browser, c.ws, { password: c.ownerPw });
+    assert.equal(tampered.status, 409, tampered.text);
+    // The operations guide's repair: the workspace's rows of the six key tables from the backup, in one transaction.
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      await client.query('SET LOCAL session_replication_role = replica');
+      for (const table of [...tables].reverse()) await client.query(`DELETE FROM ${table} WHERE workspace_id = $1`, [c.ws]);
+      for (const table of tables) {
+        for (const row of backup[table]!) await client.query(`INSERT INTO ${table} SELECT * FROM json_populate_record(NULL::${table}, $1::json)`, [JSON.stringify(row)]);
+      }
+      await client.query(`UPDATE workspace_keys k SET current_version = b.current_version, live_versions = b.live_versions, rotation = b.rotation,
+        rotation_reason = b.rotation_reason, removal_head = b.removal_head FROM json_populate_record(NULL::workspace_keys, $2::json) b WHERE k.workspace_id = $1`, [c.ws, JSON.stringify(keysBackup.r)]);
+      await client.query('COMMIT');
+    } finally { client.release(); }
+    expectStatus(await unlock(c.owner.browser, c.ws, { password: c.ownerPw }), 200, 'repaired, it unlocks');
+    assert.equal((await keysOf(c.ws)).tampered_at, null, 'and the flag clears');
+  });
+
   test('cascades: an account deletion leads to a rotation; a holder deleted during reencrypting leads to n+2; the last password and a version without commitment are refused', async () => {
     const c = await club('Cascade club', ['Ben', 'Fay']);
     await seed(c, 150);

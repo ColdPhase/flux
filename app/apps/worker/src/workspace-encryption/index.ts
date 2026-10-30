@@ -106,13 +106,22 @@ export async function startWorkspaceEncryption(boss: PgBoss, db: Database, env: 
     },
   });
   const running = new Map<string, Promise<void>>();
-  const run = (workspaceId: string) => {
+  // A stalled rotation repeats its finish check under the exclusive gate; back off (1 s doubling to 5 min) so a stall
+  // does not hold writers every sweep (S2c review P3). An unlock's kick tries at once.
+  const backoff = new Map<string, { until: number; delay: number }>();
+  const run = (workspaceId: string, force = false) => {
     const existing = running.get(workspaceId);
     if (existing) return existing;
+    const wait = backoff.get(workspaceId);
+    if (!force && wait && Date.now() < wait.until) return Promise.resolve();
     const job = (async () => {
       try {
         const outcome = await rotation.run(workspaceId);
         if (outcome !== 'idle') console.log(JSON.stringify({ job: 'workspace-encryption.rotate', workspaceId, outcome }));
+        if (outcome === 'stalled') {
+          const delay = Math.min(300_000, (backoff.get(workspaceId)?.delay ?? 500) * 2);
+          backoff.set(workspaceId, { until: Date.now() + delay, delay });
+        } else backoff.delete(workspaceId);
       } catch (error) {
         // The SQL text (first line of a failed query, never its parameters) and the SQLSTATE: enough to diagnose, no content.
         const cause = (error as { cause?: { code?: unknown } }).cause;
@@ -166,7 +175,7 @@ export async function startWorkspaceEncryption(boss: PgBoss, db: Database, env: 
         replayed++;
       }
       for (const step of steps) await step(job.data.workspaceId);
-      void run(job.data.workspaceId); // last step: start a pending rotation or resume a paused one (S2c)
+      void run(job.data.workspaceId, true); // last step: start a pending rotation or resume a paused one (S2c)
       console.log(JSON.stringify({ job: WORKSPACE_ENCRYPTION_RESUME_JOB, id: job.id, workspaceId: job.data.workspaceId, replayed, failed }));
     }
   });
@@ -186,7 +195,7 @@ export async function startWorkspaceEncryption(boss: PgBoss, db: Database, env: 
   return {
     keys,
     /** Starts a pending rotation or continues a running pass for one workspace (no-op while one runs here). */
-    rotation: { kick: (workspaceId: string) => { void run(workspaceId); } },
+    rotation: { kick: (workspaceId: string) => { void run(workspaceId, true); } },
     stop: () => { stopped = true; clearInterval(rotationTimer); clearInterval(sweep); heartbeat.stop(); void rotationDatabase.pool.end(); },
   };
 }
