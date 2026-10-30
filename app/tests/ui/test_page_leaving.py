@@ -12,6 +12,8 @@ Runs in the engine FLUX_UI_BROWSER names (chromium by default, webkit for the la
 2. Negative control: a request started by the page's own code in the same window is reported by WebKit
    as a page error, so the guard that fails the journeys still sees this class of error.
 3. A real failure of a read is not swallowed: the person is told and can try again.
+4. A read asked for just before the navigation begins is held too (#758, #759): a read starts in a task of its own, and the
+   navigation can begin in the task between; it starts when the page is live again, and is not dropped.
 """
 
 from __future__ import annotations
@@ -57,6 +59,27 @@ LEAVE_HOOK = """({ throughApp }) => {
     };
     pump();
   });
+}"""
+
+
+# Installed in a page that stays: the app asks for its reads (`focus`, `online`), then the navigation begins (`beforeunload`) before
+# the task each read starts in has run. A request that starts after that is the race of #758 and #759, which WebKit reports as a
+# page error when the page is really left. Resolves with what started while the page was left, and what started altogether.
+ASKED_BEFORE_LEAVING = """() => {
+  const nativeFetch = window.fetch.bind(window);
+  const started = [];
+  let left = false;
+  window.fetch = (input, init) => {
+    const url = typeof input === 'string' ? input : input.url;
+    if (url.includes('/api/')) started.push({ url, left });
+    return nativeFetch(input, init);
+  };
+  dispatchEvent(new Event('focus'));
+  dispatchEvent(new Event('online'));
+  left = true;
+  dispatchEvent(new Event('beforeunload'));
+  window.__started = started;
+  return new Promise((resolve) => setTimeout(() => resolve(started.map((entry) => ({ ...entry }))), 300));
 }"""
 
 
@@ -151,6 +174,16 @@ class PageLeaving(unittest.TestCase):
         alert.get_by_role("button", name="Try again").click()
         expect(page.get_by_role("list", name="People in Quiet Harbour").get_by_role("listitem")).to_have_count(1)
         expect(alert).to_have_count(0)
+        self.assertEqual(errors, [], "no uncaught page errors")
+
+    def test_4_a_read_asked_for_just_before_the_page_is_left_waits_too(self) -> None:
+        page, errors = self.home()
+        page.wait_for_load_state("networkidle")
+        during = page.evaluate(ASKED_BEFORE_LEAVING)
+        self.assertEqual([entry for entry in during if entry["left"]], [], f"a read asked for before the navigation began did not start after it: {during}")
+        # Held back, not dropped: the person is still here (a click), so the reads start.
+        page.mouse.click(5, 5)
+        page.wait_for_function("() => window.__started.some((entry) => entry.left)")
         self.assertEqual(errors, [], "no uncaught page errors")
 
 

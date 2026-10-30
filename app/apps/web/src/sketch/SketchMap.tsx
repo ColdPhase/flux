@@ -627,7 +627,8 @@ export function SketchMap(props: SketchMapProps) {
 
   // The first-run hint floats over the canvas above the dock; where a thought lies under it (a card at the bottom of the
   // view, as at 1440×900 opening at 90%), it steps aside, so it never sits on a card's text. Checked after a scroll,
-  // a resize or a change of the thoughts, a frame later.
+  // a resize or a change of the thoughts, a frame later. The hint sits inside the status line (`.sk-dock > .sk-line`,
+  // #757); the drag hint, a direct child of the dock, is feedback for a gesture in progress and stays.
   useEffect(() => {
     const canvas = canvasRef.current;
     const dock = dockRef.current;
@@ -635,7 +636,7 @@ export function SketchMap(props: SketchMapProps) {
     let frame = 0;
     const check = () => {
       frame = 0;
-      const hint = dock.querySelector<HTMLElement>(':scope > .sk-hint');
+      const hint = dock.querySelector<HTMLElement>(':scope > .sk-line > .sk-hint');
       if (!hint) return;
       const h = hint.getBoundingClientRect();
       const over = [...canvas.querySelectorAll<HTMLElement>('.sk-node')].some((node) => {
