@@ -85,6 +85,24 @@ function headings(lines: string[]) {
   return found;
 }
 
+const CARD_LINE = /^\[.*\]\(flux:decision\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\)\s*$/i;
+
+/**
+ * F-034: a decision card (a decision reference standing on its own line, outside fenced code) after a section's
+ * `Source:` line is never part of that section, so rewriting the section keeps the cards that follow it.
+ */
+function cardAfter(lines: string[], from: number, end: number) {
+  let fence: string | null = null;
+  for (let at = from + 1; at < end; at++) {
+    const run = FENCE.exec(lines[at]!)?.[1];
+    if (run) {
+      if (!fence) fence = run;
+      else if (run[0] === fence[0] && run.length >= fence.length) fence = null;
+    } else if (!fence && CARD_LINE.test(lines[at]!)) return at;
+  }
+  return end;
+}
+
 /**
  * Adds the section of a result or decision to a doc text, or rewrites the section that already
  * cites it (its `Source:` line names the same reference). Earlier text stays in the earlier
@@ -101,7 +119,8 @@ export function upsertSection(text: string, source: DocSectionSource, section: s
     const kept = text.replace(/\s+$/, '');
     return { body: kept ? `${kept}\n\n${sectionLines.join('\n')}\n` : `${sectionLines.join('\n')}\n`, replaced: false };
   }
-  const end = all.find((heading) => heading.index > start.index && heading.level <= start.level)?.index ?? lines.length;
+  const next = all.find((heading) => heading.index > start.index && heading.level <= start.level)?.index ?? lines.length;
+  const end = cardAfter(lines, markerAt, next);
   const before = lines.slice(0, start.index);
   const after = lines.slice(end);
   // Only the section's own lines change; everything around it is kept byte for byte.

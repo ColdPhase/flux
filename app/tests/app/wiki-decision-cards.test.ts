@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { createHash, randomUUID } from 'node:crypto';
 import { before, describe, test } from 'node:test';
-import { convertDecisionSections, placeDecisionReference } from '@flux/core';
+import { convertDecisionSections, placeDecisionReference, upsertSection } from '@flux/core';
 import { projectWorkReferenceRowsPath, type Decision, type Doc, type DocVersionSummary, type Page, type Project, type WorkReferenceRows, type WorkResult, type Workspace } from '@flux/contracts';
 import { pool } from './support/db.js';
 import type { ClientResponse } from './support/http.js';
@@ -193,6 +193,11 @@ describe('F-034: decisions in the Wiki are live cards', () => {
     const extraLine = section.replace('**Current rule**', 'Jonas: we agreed.\n\n**Current rule**');
     assert.equal(convertDecisionSections(extraLine, map).kept, 1, 'a line a person put into the section keeps it');
     assert.deepEqual(placeDecisionReference(once.body, id, 'A'), { body: once.body, replaced: false });
+    // A result's section rewritten later keeps the cards after it (they are not part of the section).
+    const result = { type: 'result' as const, id: '22222222-2222-4222-8222-222222222222' };
+    const resultText = ['## Result: R', '', 'Old.', '', `Source: [R](flux:result/${result.id})`, '', `[A](flux:decision/${id})`, '', 'Tail.', ''].join('\n');
+    assert.equal(upsertSection(resultText, result, ['## Result: R', '', 'New.', '', `Source: [R](flux:result/${result.id})`].join('\n')).body,
+      ['## Result: R', '', 'New.', '', `Source: [R](flux:result/${result.id})`, '', `[A](flux:decision/${id})`, '', 'Tail.', ''].join('\n'));
     assert.deepEqual(placeDecisionReference(section, id, 'A'), { body: `[A](flux:decision/${id})\n`, replaced: true }, 'Add to docs turns its own old section into the card');
   });
 
