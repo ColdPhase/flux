@@ -6,7 +6,7 @@ import { whenPageLive } from '../api/pageLeaving';
 import { useStreamEvents } from '../api/stream';
 import { useShellData } from '../app/data';
 import { Avatar, Button, Icon, Input, Spinner, useRowMotion, useToast, Select, Option } from '../ui';
-import { isEncryptionEvent, type EncryptedWorkspace } from '../encryption/api';
+import { isEncryptionEvent, type EncryptedWorkspace, type KeyRotation } from '../encryption/api';
 import { EncryptionSection } from '../encryption/EncryptionSection';
 import { ROLE_HINT, ROLE_LABEL, addMember, attemptKeys, changeRole, firstName, getWorkspace, isManagerRole, listMembers, problemText, removeMember, setWorkspaceAi } from './api';
 import './people.css';
@@ -55,6 +55,16 @@ export function WorkspacePeople({ workspaceId, onBack }: { workspaceId: string; 
     return () => { waiting(); controller.abort(); };
   }, [workspaceId, reload]);
   const load = () => setReload((n) => n + 1);
+  // F-030 (#655): a key rotation's progress has no event of its own; while one runs (or is about to) in an unlocked space, the
+  // section reads it again every few seconds. It stops when the rotation finishes, pauses, stalls or the panel closes.
+  const rotation = roster?.workspace.encryption?.rotation as KeyRotation | null | undefined;
+  // Unlocked, `paused` only means pending: the worker starts it within seconds.
+  const moving = roster?.workspace.encryption?.state === 'unlocked' && !!rotation && !rotation.stalled;
+  useEffect(() => {
+    if (!moving) return undefined;
+    const timer = window.setTimeout(() => setReload((n) => n + 1), 4000);
+    return () => window.clearTimeout(timer);
+  }, [moving, roster]);
   // Someone turned AI off or on here (F-029, #614), or unlocked, locked or gave an unlock password (F-030, #655): the rows show the state as it is now.
   useStreamEvents(me.user.id, (event) => { if ((event.kind === WORKSPACE_AI_POLICY_CHANGED_EVENT || isEncryptionEvent(event.kind)) && event.objectId === workspaceId) load(); }, load);
 

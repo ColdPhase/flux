@@ -1170,6 +1170,15 @@ project picker and in Create like any other space.
     yet. Another owner or admin can unlock it, or you can use the recovery code."
 - An open page in that workspace turns into the locked panel on `workspace.locked.v1` or on any
   `423`, and back on `workspace.unlocked.v1`, without a reload.
+- **Cross-workspace places.** Home's "Needs you" lists one quiet row per waiting space below its queue
+  (lock, "Garden club", "Waiting to be unlocked"), and its empty line reads "Nothing needs you in your
+  open spaces." while any space waits. The Inbox keeps its "Waiting to be unlocked" note. Search says
+  above its results "Garden club isn't searched while it waits to be unlocked." and, for `sealedUnavailable`,
+  "Search isn't available in Garden club: it is too large to search in memory." A cross-workspace answer's
+  `lockedWorkspaces` naming a space the page still shows as open makes the shell read the workspaces again,
+  as a `423` does. Lists read space by space (Wiki, Sketchbook) skip a waiting space and list the others.
+- **Security notices** (`reason: 'security'`, Inbox only) are listed in the Inbox under "About your
+  encrypted spaces", each with its time and a quiet **Got it** that marks it read.
 
 ### Inside an encrypted space
 
@@ -1186,7 +1195,10 @@ project picker and in Create like any other space.
     password**, which asks for the holder's own unlock password in the inline confirm group.
   - While a rotation runs, one line below the first: "Changing the key · 62%. It continues while
     Garden club is unlocked." While locked: "Changing the key · paused until Garden club is
-    unlocked." After the finish, quietly: "New key since 23 Oct, after Ben left." Below it, from the start
+    unlocked." Pending while unlocked (the worker starts it within seconds): "Changing the key · starting.
+    It continues while Garden club is unlocked." Stalled (`rotation.stalled`): "The key change can't finish:
+    some stored data doesn't open. Ask your server's operator." While one runs, the section reads the
+    state again every few seconds. After the finish, quietly: "New key since 23 Oct, after Ben left." Below it, from the start
     onwards: "The new key opens for Ada and Cy." That is the holder set the start sealed to.
   - For owners and admins: a quiet **Lock now**, which uses the panel's inline confirm: "Everyone in
     Garden club loses access until an owner or admin unlocks it again." with **Lock Garden club** and

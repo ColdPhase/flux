@@ -2,7 +2,7 @@ import { useEffect, useId, useRef, useState, type FormEvent, type KeyboardEvent 
 import type { WorkspaceMember } from '@flux/contracts';
 import { ApiError } from '../api/client';
 import { Button, Icon, Input, Option, Select } from '../ui';
-import { encryptionProblem, grantUnlockPassword, isWrongPassword, lockWorkspace, newRecoveryCode, setUnlockPassword, type EncryptedWorkspace } from './api';
+import { encryptionProblem, grantUnlockPassword, isWrongPassword, lockWorkspace, newRecoveryCode, setUnlockPassword, type EncryptedWorkspace, type KeyRotation } from './api';
 import { checkPassword, generatePassphrase, loadWords } from './passphrase';
 import { PasswordLength, passwordRefusal } from './PasswordLength';
 import { RecoveryCodeBlock } from './RecoveryCode';
@@ -40,6 +40,24 @@ const first = (person: string) => person.trim().split(/\s+/)[0] || person;
  * lasts, **Use the recovery code** otherwise, and a dimmed **Set your unlock password** when neither is possible; a holder
  * who lets someone set a first password is offered only the owners and admins without one.
  */
+type RotationState = 'stalled' | 'paused' | 'starting' | 'running';
+/** Where a key rotation is (S2c): it cannot finish; it waits for an unlock; it is about to start (pending while unlocked); it runs. */
+function rotationState(rotation: KeyRotation, locked: boolean): RotationState {
+  if (rotation.stalled) return 'stalled';
+  if (locked) return 'paused';
+  if (!rotation.startedAt) return 'starting';
+  return rotation.paused ? 'paused' : 'running';
+}
+function rotationLine(rotation: KeyRotation, locked: boolean, name: string): string {
+  switch (rotationState(rotation, locked)) {
+    // What the security notice every holder gets says too: no table, no column, nothing about the content.
+    case 'stalled': return 'The key change can’t finish: some stored data doesn’t open. Ask your server’s operator.';
+    case 'paused': return `Changing the key · paused until ${name} is unlocked.`;
+    case 'starting': return `Changing the key · starting. It continues while ${name} is unlocked.`;
+    default: return `Changing the key · ${Math.max(0, Math.min(99, Math.round(rotation.percent)))}%. It continues while ${name} is unlocked.`;
+  }
+}
+
 export function EncryptionSection({ workspace, members, meId, myRole, offerCode, onChanged }: {
   workspace: EncryptedWorkspace; members: WorkspaceMember[] | null; meId: string; myRole: string;
   /** Counts up when an owner has just removed an owner or admin: the group that makes a new recovery code opens in place. */
@@ -61,7 +79,7 @@ export function EncryptionSection({ workspace, members, meId, myRole, offerCode,
   const locked = enc.state === 'locked';
   // A key rotation (an owner or admin left) ends the old recovery code until an owner makes a new one.
   const noCode = !enc.recoveryCode;
-  const rotation = enc.rotation;
+  const rotation = enc.rotation as KeyRotation | null;
   const changedOn = enc.keyChangedAt && !Number.isNaN(Date.parse(enc.keyChangedAt)) ? dayOnly.format(new Date(enc.keyChangedAt)) : '';
   // The other owners and admins, whom a holder can let set a first password.
   const candidates = manager && enc.myPassword && members
@@ -104,9 +122,7 @@ export function EncryptionSection({ workspace, members, meId, myRole, offerCode,
           {locked ? <p className="people__hint">These need {name} to be unlocked first.</p> : null}
           {grantUntil ? <p className="people__hint" data-password-grant="">You can set an unlock password until {timeOnly.format(new Date(grantUntil))}.</p>
             : !enc.myPassword ? <p className="people__hint">You don’t have an unlock password yet. Another owner or admin can let you set one{noCode ? '.' : ', or use the recovery code.'}</p> : null}
-          {rotation ? <p className="people__hint" data-key-rotation={rotation.paused ? 'paused' : 'running'}>{rotation.paused || locked
-            ? `Changing the key · paused until ${name} is unlocked.`
-            : `Changing the key · ${Math.max(0, Math.min(100, Math.round(rotation.percent)))}%. It continues while ${name} is unlocked.`}</p>
+          {rotation ? <p className="people__hint" data-key-rotation={rotationState(rotation, locked)}>{rotationLine(rotation, locked, name)}</p>
             : changedOn ? <p className="people__hint" data-key-changed="">New key since {changedOn}.</p> : null}
           {noCode ? <p className="people__hint" data-no-recovery-code="">{owner ? `${name} has no recovery code. Make a new one and keep it safe.` : `${name} has no recovery code. An owner can make a new one.`}</p> : null}
         </>

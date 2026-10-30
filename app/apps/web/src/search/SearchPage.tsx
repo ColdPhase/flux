@@ -7,6 +7,7 @@ import { targetHref } from './api';
 import { useRecentSearches } from './recent';
 import { ResultBody } from './ResultRow';
 import { useSearch } from './useSearch';
+import { UnsearchedSpaces } from '../encryption/LockedSpace';
 import './search.css';
 import { RefLink } from '../place/origin';
 import { currentEntry, onPlacesForgotten, useArrival, usePlaceState } from '../place/memory';
@@ -161,6 +162,8 @@ export function SearchPage() {
         </div>
 
         <p className="ui-vh" role="status">{state.status === 'ready' ? (items.length ? `${total}${state.answer.countsCapped ? '+' : ''} ${total === 1 ? 'result' : 'results'}` : 'No results') : ''}</p>
+        {/* F-030 (#655): encrypted spaces this search did not look into, said above the results. */}
+        {draft.trim() && answer ? <UnsearchedSpaces tooLarge={answer.sealedUnavailable ?? []} /> : null}
 
         {!draft.trim() ? (
           recent.items.length ? (

@@ -140,3 +140,46 @@ export function LockedSpacesNote() {
     </section>
   );
 }
+
+/**
+ * Home's "Needs you" (F-030, #655): what needs the person in a space that waits to be unlocked is not known until it is unlocked, so the
+ * queue says which spaces it could not look into, one quiet row each, instead of "Nothing needs you".
+ */
+export function WaitingSpaces() {
+  const locked = useLockedWorkspaces();
+  if (!locked.length) return null;
+  return (
+    <ul className="waiting-spaces" aria-label="Waiting to be unlocked" data-waiting-spaces="">
+      {locked.map((space) => (
+        <li key={space.id}>
+          <Link to={`/spaces/${space.id}`} data-locked-space={space.id}>
+            <Icon name="lock" size={13} /><span className="waiting-spaces__name">{space.name}</span><span className="waiting-spaces__state">Waiting to be unlocked</span>
+          </Link>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+/**
+ * Search's line about encrypted spaces it did not search (F-030, #655): one that waits to be unlocked (the shell's list, which a search
+ * answer's `lockedWorkspaces` refreshes), and one the server cannot search in memory because it is too large (`sealedUnavailable`).
+ */
+export function UnsearchedSpaces({ tooLarge }: { tooLarge: readonly string[] }) {
+  const locked = useLockedWorkspaces();
+  const { workspaces } = useShellData();
+  const large = tooLarge.map((id) => workspaces.find((space) => space.id === id)).filter((space): space is NonNullable<typeof space> => !!space);
+  if (!locked.length && !large.length) return null;
+  return (
+    <ul className="unsearched" aria-label="Not searched" data-unsearched="">
+      {locked.map((space) => (
+        <li key={space.id} data-locked-space={space.id}><Icon name="lock" size={13} />
+          <span><Link to={`/spaces/${space.id}`}>{space.name}</Link> isn’t searched while it waits to be unlocked.</span></li>
+      ))}
+      {large.map((space) => (
+        <li key={space.id} data-too-large={space.id}><Icon name="lock" size={13} />
+          <span>Search isn’t available in {space.name}: it is too large to search in memory.</span></li>
+      ))}
+    </ul>
+  );
+}

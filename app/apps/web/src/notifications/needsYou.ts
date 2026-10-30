@@ -8,6 +8,7 @@ import {
   type ResolveNeedsYouCommand,
 } from '@flux/contracts';
 import { request } from '../api/client';
+import { noteLockedWorkspaces } from '../encryption/api';
 import { useStreamEvents } from '../api/stream';
 import { INBOX_CHANGED, NEEDS_YOU_ACCEPTED, announceInboxChange, type AcceptedInboxItem } from './api';
 import { acceptingIds } from './pendingAccept';
@@ -15,7 +16,7 @@ import { onPlacesForgotten } from '../place/memory';
 import { useProjectAiBlocked } from '../ai/workspaceAi';
 
 /** The Inbox "Needs you" queue (#342): what asks something of you, computed for you alone. */
-export const getNeedsYou = (signal?: AbortSignal) => request<NeedsYouResponse>(NEEDS_YOU_PATH, { signal });
+export const getNeedsYou = (signal?: AbortSignal) => request<NeedsYouResponse>(NEEDS_YOU_PATH, { signal }).then(noteLockedWorkspaces);
 export const resolveNeedsYou = (key: string, command: ResolveNeedsYouCommand) =>
   request<NeedsYouResolved>(needsYouItemPath(key), { method: 'POST', body: command });
 /** Undo of `resolveNeedsYou`: the item is back as it was. */

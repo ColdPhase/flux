@@ -14,6 +14,7 @@ import { AssistantJoinReview } from './AssistantJoinReview';
 import { NeedsYouCard, type CardHandlers } from './NeedsYouCard';
 import { useNeedsYou } from './needsYou';
 import { LockedSpacesNote } from '../encryption/LockedSpace';
+import { SecurityNotices } from '../encryption/SecurityNotices';
 import { useNeedsYouActions } from './useNeedsYouActions';
 import './notifications.css';
 import './needs-you.css';
@@ -149,6 +150,7 @@ export function InboxView() {
           </p>
         </>
       )}
+      <SecurityNotices userId={me.user.id} />
       <LockedSpacesNote />
       {reviewing ? <AssistantJoinReview key={`${reviewing.key}:${reviewing.assistantRequestIdentity!.openingVersion}`} item={reviewing} onClose={() => {
         const next = new URLSearchParams(asked); next.delete('assistantProject'); next.delete('assistantRequest'); next.delete('openingVersion');

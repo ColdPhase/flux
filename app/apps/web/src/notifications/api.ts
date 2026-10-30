@@ -15,10 +15,11 @@ import {
   type UpdateNotificationPreferencesCommand,
 } from '@flux/contracts';
 import { request } from '../api/client';
+import { noteLockedWorkspaces } from '../encryption/api';
 import { captureNotificationSession, isCurrentNotificationSession, lastConfirmedNotificationPause, markNotificationPauseUncertain, recordNotificationPause, type NotificationSession } from './session';
 
 /** The inbox and notification settings (#41, #116). */
-export const getInbox = (signal?: AbortSignal, limit = 100) => request<InboxResponse>(`${INBOX_PATH}?limit=${limit}`, { signal });
+export const getInbox = (signal?: AbortSignal, limit = 100) => request<InboxResponse>(`${INBOX_PATH}?limit=${limit}`, { signal }).then(noteLockedWorkspaces);
 export const getInboxItem = (id: string, signal?: AbortSignal) => request<InboxItem>(`${INBOX_PATH}/${encodeURIComponent(id)}`, { signal });
 export const markInboxRead = (id: string) => request<{ id: string; readAt: string }>(`${INBOX_PATH}/${encodeURIComponent(id)}/read`, { method: 'POST' });
 export const markAllInboxRead = () => request<{ updated: number }>(INBOX_READ_ALL_PATH, { method: 'POST' });

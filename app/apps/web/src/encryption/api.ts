@@ -18,6 +18,15 @@ export { WORKSPACE_LOCKED };
 export type EncryptedWorkspace = Workspace;
 
 /**
+ * A key rotation as the server reports it (S2c): `startedAt` is null while it waits to start, and `stalled` says it cannot finish
+ * (some stored data does not open; every holder also gets a `security` notice). Read as optional, so an older answer without it reads as running.
+ */
+export type KeyRotation = NonNullable<Workspace['encryption']>['rotation'] & { startedAt: string | null; stalled?: boolean };
+
+/** An encrypted workspace that is locked here, as `/search`, `/inbox`, `/needs-you` and `/return` name it (`lockedWorkspaces`, S2a-2c). */
+export interface LockedWorkspaceRef { id: string; name: string }
+
+/**
  * Key rotation (S2c) is not in the contracts' event list yet; its two events are named here so the interface follows them when they arrive
  * (`workspace.key_rotation_started.v1`, `workspace.key_rotated.v1`, ids only).
  */
@@ -30,7 +39,6 @@ const ENCRYPTION_EVENTS: ReadonlySet<string> = new Set([
 /** Every event that changes what the interface shows of an encrypted workspace: the lock, the passwords and the key. */
 export const isEncryptionEvent = (kind: string) => ENCRYPTION_EVENTS.has(kind);
 
-/** `423 WORKSPACE_LOCKED`: a content route of a locked encrypted workspace. `details.workspaceId` names it. */
 /** The DOM event `request()` raises on `423 WORKSPACE_LOCKED`; the shell answers it by reading the workspaces again. */
 export const WORKSPACE_LOCKED_DOM_EVENT = 'flux:workspace-locked';
 
@@ -42,6 +50,29 @@ export function lockedWorkspaceId(error: unknown): string | null {
   if (!isWorkspaceLocked(error)) return null;
   const details = (error.body as { details?: { workspaceId?: unknown } } | null)?.details;
   return typeof details?.workspaceId === 'string' ? details.workspaceId : null;
+}
+
+/**
+ * A cross-workspace read names the encrypted workspaces it left out because they are locked here (`lockedWorkspaces`). One the shell
+ * still shows as open locked since it was read: the same signal as a `423` tells the shell to read the workspaces again, so its
+ * "Waiting to be unlocked" row appears in the sidebar, Home, the Inbox and search. The shell ignores ids it already shows as locked.
+ */
+export function noteLockedWorkspaces<T>(answer: T): T {
+  const locked = (answer as { lockedWorkspaces?: unknown } | null)?.lockedWorkspaces;
+  if (Array.isArray(locked) && typeof window !== 'undefined') {
+    for (const space of locked as LockedWorkspaceRef[]) {
+      if (typeof space?.id === 'string') window.dispatchEvent(new CustomEvent(WORKSPACE_LOCKED_DOM_EVENT, { detail: { workspaceId: space.id } }));
+    }
+  }
+  return answer;
+}
+
+/** A read of one workspace's content that answers `423` because it locked meanwhile: nothing to list there until it is unlocked. */
+export async function unlessLocked<T>(read: Promise<T>, fallback: T): Promise<T> {
+  try { return await read; } catch (error) {
+    if (isWorkspaceLocked(error)) return fallback;
+    throw error;
+  }
 }
 
 /** `POST /encrypted-workspaces`: one `creationId` per form, so a retry after a lost answer returns the space without a second one or the code. */

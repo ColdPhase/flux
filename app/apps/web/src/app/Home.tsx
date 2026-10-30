@@ -8,6 +8,7 @@ import { NeedsYouCard } from '../notifications/NeedsYouCard';
 import { useNeedsYou } from '../notifications/needsYou';
 import { useNeedsYouActions } from '../notifications/useNeedsYouActions';
 import { getReturnSummary, saveReturnPoint } from '../returns/api';
+import { WaitingSpaces } from '../encryption/LockedSpace';
 import { SourceLink } from '../returns/SinceYouLeft';
 import { listAssignedWork } from '../work/api';
 import { STATUS_LABEL } from '../work/format';
@@ -123,8 +124,11 @@ export function Home() {
               ))}
             </ul>
           ) : (
-            <div className="home__card home__clear">{moments ? <Kreska size={32} expression="done" /> : null}<span>Nothing needs you right now. Enjoy the quiet.</span></div>
+            <div className="home__card home__clear">{moments ? <Kreska size={32} expression="done" /> : null}<span>{lockedWorkspaces.length
+              ? 'Nothing needs you in your open spaces.' : 'Nothing needs you right now. Enjoy the quiet.'}</span></div>
           )}
+        {/* F-030 (#655): a space that waits to be unlocked is not looked into; it says so instead of the queue saying "nothing". */}
+        {queue.items === null ? null : <WaitingSpaces />}
       </section>
 
       <div className="home__pair">
