@@ -50,11 +50,17 @@ Agents is one list with a row for each of Hubert's two agents' connections and M
 | Thread feed < 400 px | A docked panel on a small laptop has no room beside a bubble: the three message actions sit in the bubble's corner | container | `work/message-actions.css` `@container thread-feed` |
 | Map pane ≤ 680 px, canvas ≤ 1080 px wide or ≤ 560 px tall | "Select several" is its icon alone; the zoom controls rise above the tools; the minimap goes | container | `sketch/sketch.css` `@container` |
 | Agents | One list in an 854 px column; the three connections are three rows | per surface | `agents/agents.css` |
+| Window ≤ 480 px tall, rail | The rail tightens; Settings is in the account menu. Its middle band, the four places with the projects and messages, scrolls as one, so every project is reachable from the rail (#727). The toggle, New, Stop and the account stay outside it, in place, and their menus are not clipped | viewport | `app/app.css` `.side__rail-middle`, `app/Sidebar.tsx` |
 
 No rule caps the whole application. Reading measures are set per surface.
 
-**Gap.** The map's phone projection follows the viewport (≤ 640 px), not the space the
-canvas actually has. A narrowed desktop canvas, for example with Details docked, keeps the plane.
+**Map layout and controls (decision, 2026-10-30, #151 AC-1).** The thoughts' layout follows the map's own width
+(*container*): a map at most 640 px wide (`NARROW_MAP` in `sketch/SketchMap.tsx`, measured on the map's wrapper with a
+ResizeObserver) shows the two columns, a wider one the plane, on any device. The controls follow the device and window
+as before (*viewport*, `MEDIA.phone`): a computer keeps its toolbar, zoom and Fit with the columns, and never gets
+the phone's Map options sheet or Add a thought button. In the columns nothing is arranged by dragging, as on a phone.
+So a desktop map beside docked Details at 1001–1200 px (about 450 px wide at 1100) takes the columns with the computer's
+controls, and the plane returns when the map is wider again; each layout keeps its own camera and zoom (test_02b).
 
 ## Input modes
 
@@ -100,7 +106,7 @@ compact 14 px type. Measured longest lines, 320–5120 px (re-measured 2026-10-2
 | Surface | Phone ≤ 640 | Tablet / split 641–1000 | Laptop 1001–1599 | Wide ≥ 1600 |
 | --- | --- | --- | --- | --- |
 | Conversation | One stream; no tab bar; the thread is a sheet (Replies) with Close replies | The stream beside the rail; the thread overlays as the 380 px panel | The thread docks beside the stream as the one panel; Details takes the same panel and a Thread button returns to it | The stream (≥ 600 px, at most 760 px from 1920) and one docked 480 px panel; extra width is margin, never a third column |
-| Map / list | Two card columns at full size; the tools in a grid; its own camera and zoom | The plane fills the pane with Fit; Details overlays | The plane; Details docks and narrows the pane | The plane fills its pane and grows with the screen: 1664, 2304 and 3584 px at 1920, 2560 and 3840 |
+| Map / list | Two card columns at full size; the tools in a grid; its own camera and zoom | The plane fills the pane; Details overlays | The plane; Details docks and narrows the pane | The plane fills its pane and grows with the screen: 1664, 2304 and 3584 px at 1920, 2560 and 3840 |
 | Tasks | The drawn Mine \| All list with state glyphs; no board | A board that shows the status overview (blocked count, one column) while it is under 700 px wide | Three columns; Details docks beside the board | Three columns beside docked Details; more cards per row (the Open column's three cards on one row at 3840 px, three rows at 1440) |
 | Wiki | One column, a page strip above the document | The index beside the document from 768 px | The index (180–196 px) and the 820 px page, 62ch prose | The same: extra width is margin |
 | Agents | One list; the composer below the thread | The same list | One 854 px column, the three connections as three rows, Details docks | The same column (WIDE_CAPS in the matrix; see Remaining) |
@@ -120,13 +126,22 @@ remain reachable. Own messages stay on the right and other people's on the left.
   - On a first visit to a projection, the selected thought, or else the first one in view, stays
     where the person saw it.
   - Nothing auto-fits on a resize.
-- **Short feeds** (ADAPT-2, tall screens): when the project stream, a thread or a direct message does not fill its feed,
+  - **Opening zoom** (#726): the plane opens at the largest zoom that shows the whole sketch, but never below 90%, where a
+    thought's title renders at 12.6 px and its meta line at 10.8 px; a larger sketch opens at its top left at 90% and
+    scrolls. Fit (the button) is the explicit overview and keeps its 60% floor (75% on touch). At 1440×900 the map used
+    to open at Fit's floor, with 8 px titles and 7 px meta lines.
+- **Short feeds** (ADAPT-2, tall screens): when the project stream, a thread, a direct message, a direct message's reply
+  thread or the Agents view's task thread does not fill its feed,
   the spare height goes above it (`ui/spareHeight.ts`, an empty `lift` element before the column), so the newest message
   sits 23–27 px above its field from 390×844 to 3840×2160 instead of up to 1800 px away. The spare height is taken when
   the entries or the feed's size change. A row that changes height in place (a queued message becoming the stored one)
-  only gives height back, so it never moves. A feed that fills its box has no spare height and scrolls as before.
-  **Not covered:** Agents' task thread (a page scroll with its own sticky composer) and a direct message's thread panel
-  still leave their spare height where it falls.
+  only gives height back, so it never moves. A feed that fills its box has no spare height and scrolls as before. The
+  feed's own vertical padding is not spare (the Agents thread's scroller has 10 px). Measured 2026-10-30 from 390×844 to
+  3440×1440: a direct message's reply thread 23–28 px (was 396–944), the Agents task thread 32 px.
+- **Opening a long feed** (#725): a stream that fills its feed opens at its latest. When its top message would be cut,
+  up to 48 px of room goes below the newest message so the top one starts whole (direction C, #155); more room than that
+  would part the newest message from its field (137–147 px on 320×568 and 390×844 phones), so the newest message stays
+  against the field and the top one is cut instead.
 - **Half sheet** (phone): 56% of the screen, but at least 300 px (`.ui-detent-sheet`), so on a short landscape phone the
   composer does not leave a task's fields less than a row of room; every field row can be scrolled clear of the composer.
 - Drafts, selection, the reading anchor, an open thread and the object in Details survive resize,
@@ -151,8 +166,19 @@ its pull request. The test covers:
   CSS boxes as ratio 1 for the pane, feed, map canvas, task board and Details, in four views;
 - the dark theme for the same journey at 390×844 and 3440×1440;
 - wide caps, measured at 1920, 2560 and 3840 px (below);
-- a short stream, thread and direct message on a tall screen: with two messages each, the newest message and its field
-  are at most `MAX_STREAM_GAP` apart from 390×844 to 3840×2160 (test_08, test_09);
+- a short stream, thread, direct message, direct message reply thread and Agents task thread on a tall screen: with two
+  messages each, the newest message and its field are at most `MAX_STREAM_GAP` apart from 390×844 to 3840×2160 (test_08,
+  test_09);
+- safe areas (test_22, Chromium only): a notched phone upright (47 px top, 34 px bottom) and on its side (47 px each side,
+  21 px bottom), simulated with `Emulation.setSafeAreaInsetsOverride` after the page proves it resolves
+  `env(safe-area-inset-*)` to them. In all five views no control can be hit inside an inset and the primary controls lie in
+  the safe rectangle, uncovered. WebKit has no such override, so it skips the case. Its first run (2026-10-30) found three
+  defects, fixed in the same change: the phone's message field and Send sat 2 px into the home indicator (the phone
+  composer dropped its safe-area padding on the assumption of a view bar below it, which #341 removed); the map's "Add a
+  thought" sat in it; and on a phone on its side the rail's controls were squeezed 10 px into the left inset (the inset was
+  taken from the rail's 64 px instead of added to it) and the account button 19 px into the bottom one, with the Settings gear below the window
+  altogether (below 480 px of height the rail's spacing now tightens and Settings is left to the account menu's "All
+  settings"). Scrolling content may pass under an inset; a control that stays put may not;
 - the task in Details: every field row (Status, Owner, Came from, Due) shows its own line above the composer on opening
   on the common phones, and lies wholly above it, hit-testable, once scrolled into view, at every fixture;
 - browser zoom and text enlargement (ADAPT-5): all five views at 1280×1024 at 400% (a 320×256 CSS viewport) and
@@ -185,16 +211,18 @@ and widths of the pane table were read against the source and match: 640, 680, 9
 and the board's 700 px container breakpoint. Not read line by line: the Wiki, thread-feed and map container rules and
 the lists of primary targets; the matrix measures their effect. Emulation only, as above.
 
+**Close-out, 2026-10-30** ([evidence](../development/evidence/151-finish/README.md)): the short threads, safe areas and the
+map and list latency budgets above; a limited visual review of 72 screenshots with three findings filed as #725, #726 and
+#727, and the ultrawide Agents spacing recorded under the founders' cap.
+
 **Remaining for #151** (open; this record does not deliver them):
 
 - the Agents column's cap (ADAPT-2), pending the design decision above;
-- the map projection still follows the viewport, not the canvas;
-- the spare height of Agents' task thread and a direct message's thread panel (Short feeds, above);
-- safe areas on real devices, real browser zoom and an operating system's own text-size setting (the emulations above
+- safe areas in WebKit and on real devices (no simulation exists for them), real browser zoom and an operating system's own text-size setting (the emulations above
   stand in for them);
 - real 4K, ultrawide, Android, iPhone and iPad sessions (optional under #266 item 10).
 
 The performance budgets for the adaptive layouts are agreed in
 [adaptive workspaces](adaptive-workspaces.md#agreed-performance-budgets) (2026-10-29, independent agreement still owed)
-and asserted by the opt-in `motion_performance` harness; the phone's frame gap misses its budget
-([#716](https://github.com/ColdPhase/flux/issues/716)).
+and asserted by the opt-in `motion_performance` harness (the phone's frame gap met its budget after
+[#716](https://github.com/ColdPhase/flux/issues/716)).

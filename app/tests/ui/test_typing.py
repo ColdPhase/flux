@@ -203,9 +203,8 @@ class TypingJourney(unittest.TestCase):
         expect(self.thread(alice).locator("[data-client-message-id]")).to_have_count(0)
         native = alice.request.get(f"/api/v1/conversations/{self.conversations[0]}").json()
         self.assertEqual(sum(message["body"] == "A manual switch still works when the sensor is unavailable." for message in native["messages"]), 1)
-        # The existing project feed refetches on focus and its 15-second fallback.
-        # Presence remains independent of that durable history refresh.
-        expect(self.thread(bob).locator(".project-convo__message", has_text="A manual switch still works when the sensor is unavailable.")).to_have_count(1, timeout=20000)
+        # The reader's open thread reads the reply from the live event stream (#733), not the 15-second fallback.
+        expect(self.thread(bob).locator(".project-convo__message", has_text="A manual switch still works when the sensor is unavailable.")).to_have_count(1, timeout=2000)
         expect(self.composer(alice)).to_have_value("")
 
     def test_03_dm_is_exact_scope_and_send_is_durable_once(self):
@@ -577,6 +576,41 @@ class TypingJourney(unittest.TestCase):
         # Opening the second thread moves the writer's scope: the first thread's reader hears the stop.
         self.measure("thread-switch-stop", lambda: self.open_thread(alice, 1), lambda: expect(same.locator("#thread .typing-notice")).not_to_contain_text("Alice Rivera", timeout=750), 750)
         self.assert_wire(alice, "alice")
+
+    def test_14_another_members_message_arrives_live_with_the_end_of_typing(self):
+        """#733: with two people in one open thread, the other person's message arrives within about a second of
+        Send, together with the end of their typing line, in the thread and as a new root in the stream; it does
+        not wait for the 15-second fallback refresh."""
+        alice = self.open("alice")
+        bob = self.open("bob")
+        notice = bob.locator("#thread .typing-notice")
+        for attempt in range(2):
+            body = f"Live arrival {attempt + 1}: the clip holds the cable on the base, front left."
+            self.composer(alice).fill(body)
+            expect(notice).to_have_text("Alice Rivera is typing…", timeout=2000)
+            arrived = self.thread(bob).locator(".project-convo__message", has_text=body)
+            start = time.monotonic()
+            self.composer(alice).press("Enter")
+            expect(notice).not_to_contain_text("Alice Rivera", timeout=2000)
+            stopped = (time.monotonic() - start) * 1000
+            expect(arrived).to_have_count(1, timeout=2000)
+            elapsed = (time.monotonic() - start) * 1000
+            self.observations.append({"case": f"thread-message-arrival-{attempt + 1}", "milliseconds": round(elapsed, 3), "typing_stop": round(stopped, 3), "maximum": 2000})
+            self.assertLessEqual(elapsed, 2000, "the reply reaches the open thread from the live stream")
+            self.assertLessEqual(elapsed - stopped, 1500, "the typing line and the message change together")
+        # A new conversation from the other member reaches the stream's roots the same way.
+        root = f"Live root {STAMP}: should the lamp dim before it switches off?"
+        stream = self.page("bob")
+        stream.goto(f"/projects/{self.project}")
+        expect(stream.get_by_label("Write a message", exact=True)).to_be_visible()
+        stream.wait_for_timeout(500)
+        start = time.monotonic()
+        response = alice.request.post(f"/api/v1/projects/{self.project}/conversations", data={"body": root, "clientMessageId": str(uuid.uuid4())}, headers={"origin": ORIGIN})
+        self.assertEqual(response.status, 201, response.text())
+        expect(stream.get_by_text(root, exact=True)).to_have_count(1, timeout=2000)
+        elapsed = (time.monotonic() - start) * 1000
+        self.observations.append({"case": "stream-root-arrival", "milliseconds": round(elapsed, 3), "maximum": 2000})
+        self.assertLessEqual(elapsed, 2000, "a new conversation reaches the open stream from the live stream")
 
 
 if __name__ == "__main__":

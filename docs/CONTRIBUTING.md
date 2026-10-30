@@ -13,6 +13,11 @@ documentation, and reproducible bug fixes are welcome.
 - Use [Discussions](https://github.com/ColdPhase/flux/discussions) for questions,
   open-ended ideas, and substantial product or architecture changes.
 - Follow [SECURITY.md](SECURITY.md) to report vulnerabilities privately.
+- Looking for a first task? Open issues labelled
+  [good first issue](https://github.com/ColdPhase/flux/labels/good%20first%20issue) are small, name the
+  files to change and say how to check the result; [help wanted](https://github.com/ColdPhase/flux/labels/help%20wanted)
+  marks larger work. Comment on the issue that you are taking it before you start, so that two people do not
+  do the same task.
 
 English is preferred for shared documentation and discussions. Polish reports and
 questions are welcome. Be respectful, give constructive feedback, and avoid
@@ -106,6 +111,9 @@ stacks. Use them when the selected verification needs the full coverage:
 ./scripts/check_ui.sh
 ```
 
+Each script builds the application image before it runs a test, so expect minutes, not seconds: on a busy
+shared host (2026-10-30) one browser module took 16 minutes, one API test file 9 and the unit-test image 3, while
+the tests themselves ran in under 30 seconds each; a warm Docker build cache shortens the builds.
 Each script uses its own Compose project; set `FLUX_TEST_PORT`/`FLUX_TEST_MAILPIT_PORT`
 or `FLUX_UI_PORT`/`FLUX_UI_MAILPIT_PORT` when the default ports are taken. Follow
 the [shared-host limits](development/containers.md#shared-host-test-budget).

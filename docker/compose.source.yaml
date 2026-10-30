@@ -145,6 +145,7 @@ services:
       # (every encrypted workspace then stays locked). See docs/product/encrypted-workspaces.md.
       FLUX_KEYRING: ${FLUX_KEYRING:-on}
       FLUX_KEYRING_TOKEN: ${FLUX_KEYRING_TOKEN:-}
+      FLUX_KEY_PIN_SECRET: ${FLUX_KEY_PIN_SECRET:-}
       FLUX_SWAP_ACKNOWLEDGED: ${FLUX_SWAP_ACKNOWLEDGED:-}
       PORT: 8080
     # Memory equal to memory+swap: this container cannot page keys or content to a swap device (F-030).
@@ -205,6 +206,7 @@ services:
       FLUX_RUNTIME_MANAGER_SECRET: ${FLUX_RUNTIME_MANAGER_SECRET:-}
       FLUX_KEYRING: ${FLUX_KEYRING:-on}
       FLUX_KEYRING_TOKEN: ${FLUX_KEYRING_TOKEN:-}
+      FLUX_KEY_PIN_SECRET: ${FLUX_KEY_PIN_SECRET:-}
       FLUX_SWAP_ACKNOWLEDGED: ${FLUX_SWAP_ACKNOWLEDGED:-}
     mem_limit: ${FLUX_WORKER_MEMORY:-1g}
     memswap_limit: ${FLUX_WORKER_MEMORY:-1g}

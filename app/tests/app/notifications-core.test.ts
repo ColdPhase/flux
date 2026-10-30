@@ -7,8 +7,10 @@ import {
   deliverableAt,
   localMinutes,
   GENERATION_MAX_ATTEMPTS,
+  deliverPlainSummary,
   generateNotifications,
   preferenceRepository,
+  type SummaryPorts,
   type GeneratorEvent,
   type GeneratorPorts,
   type NotificationFacts,
@@ -25,14 +27,14 @@ function dmEvent(seq: number): GeneratorEvent {
 }
 
 function harness(events: GeneratorEvent[], failures: Map<string, number>) {
-  const state = { cursor: 0, notifications: [] as string[], attempts: new Map<string, number>(), dead: new Set<string>() };
+  const state = { cursor: 0, notifications: [] as string[], attempts: new Map<string, number>(), dead: new Set<string>(), errors: [] as string[] };
   const facts: NotificationFacts = {
     audience: async () => ['kai'],
     projectMessage: async () => null,
     dmMessage: async (_dm, messageId) => {
       const event = events.find((item) => item.data.messageId === messageId)!;
       const left = failures.get(event.id) ?? 0;
-      if (left > 0) { failures.set(event.id, left - 1); throw new Error('connection reset'); }
+      if (left > 0) { failures.set(event.id, left - 1); throw Object.assign(new Error(`connection reset near ${messageId}: CANARY-in-the-message`), { detail: 'CANARY-in-the-detail' }); }
       return { id: messageId, workspaceId, dmId, kind: 'pair', title: null, authorId: 'ada', body: 'hi', participantIds: ['ada', 'kai'] };
     },
     work: async () => null,
@@ -54,7 +56,7 @@ function harness(events: GeneratorEvent[], failures: Map<string, number>) {
     insertEmail: async () => true,
     enqueuePush: async () => null,
     enqueueEmail: async () => null,
-    recordFailure: async (eventId) => { const attempts = (state.attempts.get(eventId) ?? 0) + 1; state.attempts.set(eventId, attempts); return attempts; },
+    recordFailure: async (eventId, error) => { state.errors.push(error); const attempts = (state.attempts.get(eventId) ?? 0) + 1; state.attempts.set(eventId, attempts); return attempts; },
     deadLetter: async (eventId) => { state.dead.add(eventId); },
     // A savepoint: a failure inside undoes only what this event wrote.
     isolate: async (work) => {
@@ -92,6 +94,61 @@ describe('notification generation cursor', () => {
     assert.equal(state.cursor, 2);
     assert.deepEqual([...state.dead], [events[0]!.id]);
     assert.deepEqual(state.notifications, [events[1]!.id]);
+  });
+});
+
+describe('F-030 generation failures of a sealed workspace (#712 review P3)', () => {
+  test('the failure stored and logged for a sealed workspace\'s event keeps class, code and ids only; a plain one keeps its text', async () => {
+    for (const sealed of [true, false]) {
+      const events = [dmEvent(1)];
+      const { state, ports, uow } = harness(events, new Map([[events[0]!.id, 1]]));
+      if (sealed) ports.facts.sealedWorkspace = async () => ({ name: 'Garden club' });
+      const logged: unknown[] = [];
+      await generateNotifications(uow, { emailAvailable: false, log: (_message, details) => logged.push(details) });
+      const stored = state.errors.join('\n') + JSON.stringify(logged);
+      assert.equal(stored.includes('CANARY'), !sealed, sealed ? 'no content in a sealed failure' : 'the plain failure keeps its message');
+      if (sealed) assert.match(state.errors[0]!, new RegExp(`^Error · ids ${events[0]!.id}$`));
+    }
+  });
+});
+
+describe('F-030 morning summary of encrypted workspaces (#712 review)', () => {
+  const plainWs = randomUUID(); const sealedWs = randomUUID(); const lockedWs = randomUUID();
+  const source = (workspaceId: string) => ({ workspaceId, type: 'project' as const, id: randomUUID() });
+  function ports(sources: ReturnType<typeof source>[]) {
+    const inserted: { source: { workspaceId: string }; title: string; aiOrigin: boolean; sources: unknown[] }[] = [];
+    const summary: SummaryPorts = {
+      authorizer: { canRead: async (_user, place) => {
+        const workspaceId = sources.find((item) => item.id === place.id)!.workspaceId;
+        if (workspaceId === lockedWs) throw Object.assign(new Error('locked'), { code: 'WORKSPACE_LOCKED' });
+        return { visible: true, allowed: true, workspaceId };
+      } },
+      lockCandidate: async () => null, isMuted: async () => false, claimDay: async () => true,
+      unread: async () => sources.map((item) => ({ id: randomUUID(), source: item })),
+      insertSummary: async (row) => { inserted.push(row); },
+      deliverableSubscriptions: async () => [], enqueuePush: async () => null,
+      sealedWorkspace: async (workspaceId) => workspaceId !== plainWs,
+    };
+    return { summary, inserted };
+  }
+
+  test('the row is anchored on the newest plain source; an assistant line is kept only there', async () => {
+    const mixed = ports([source(sealedWs), source(plainWs)]);
+    assert.equal(await deliverPlainSummary(mixed.summary, 'ben', 'Your assistant: all good.'), 'sent');
+    assert.equal(mixed.inserted[0]!.source.workspaceId, plainWs);
+    assert.equal(mixed.inserted[0]!.title, 'Your assistant: all good.');
+    const sealedOnly = ports([source(sealedWs)]);
+    await deliverPlainSummary(sealedOnly.summary, 'ben', 'Your assistant: all good.');
+    assert.deepEqual({ ws: sealedOnly.inserted[0]!.source.workspaceId, title: sealedOnly.inserted[0]!.title, ai: sealedOnly.inserted[0]!.aiOrigin },
+      { ws: sealedWs, title: '1 thing waits in your inbox', ai: false }, 'only sealed sources: the plain count, never the line');
+  });
+
+  test('an item of a locked workspace is left out instead of failing the summary', async () => {
+    const withLocked = ports([source(lockedWs), source(plainWs)]);
+    assert.equal(await deliverPlainSummary(withLocked.summary, 'ben'), 'sent');
+    assert.equal(withLocked.inserted[0]!.title, '1 thing waits in your inbox');
+    assert.equal(withLocked.inserted[0]!.sources.length, 1);
+    assert.equal(await deliverPlainSummary(ports([source(lockedWs)]).summary, 'ben'), 'empty', 'only locked items: nothing to send, no failure');
   });
 });
 

@@ -254,7 +254,8 @@ export function createFileUseCases(unit: FileUnitOfWork, storage: FileStorage, c
           await received.commit(reservation.id);
           const now = clock();
           const ready = await ports.files.markReady(reservation.id, { size: received.size, sha256: received.sha256, readyAt: now,
-            expiresAt: new Date(now.getTime() + FILE_LIMITS.unpublishedDays * DAY), detail });
+            expiresAt: new Date(now.getTime() + FILE_LIMITS.unpublishedDays * DAY), detail, keyVersion: 'keyVersion' in received ? received.keyVersion ?? null : null });
+          if (ready === 'key_changed') throw new ConflictError('The space\'s key changed while the file was being sent; send it again', 'UPLOAD_KEY_CHANGED');
           if (!ready) throw new ConflictError('The upload took too long; send the file again', 'UPLOAD_EXPIRED');
           return staged((await ports.files.findFile(reservation.id))!);
         });

@@ -86,6 +86,7 @@ services:
       # Encrypted workspaces (F-030): the keyring below, on its internal network. FLUX_KEYRING=off disables them.
       FLUX_KEYRING: ${FLUX_KEYRING:-on}
       FLUX_KEYRING_TOKEN: ${FLUX_KEYRING_TOKEN:-}
+      FLUX_KEY_PIN_SECRET: ${FLUX_KEY_PIN_SECRET:-}
       FLUX_SWAP_ACKNOWLEDGED: ${FLUX_SWAP_ACKNOWLEDGED:-}
       PORT: 8080
     # Memory equal to memory+swap: no swap for this container (F-030); core dumps off.
@@ -126,6 +127,7 @@ services:
       FLUX_VAPID_SUBJECT: ${FLUX_VAPID_SUBJECT:-}
       FLUX_KEYRING: ${FLUX_KEYRING:-on}
       FLUX_KEYRING_TOKEN: ${FLUX_KEYRING_TOKEN:-}
+      FLUX_KEY_PIN_SECRET: ${FLUX_KEY_PIN_SECRET:-}
       FLUX_SWAP_ACKNOWLEDGED: ${FLUX_SWAP_ACKNOWLEDGED:-}
     mem_limit: ${FLUX_WORKER_MEMORY:-1g}
     memswap_limit: ${FLUX_WORKER_MEMORY:-1g}

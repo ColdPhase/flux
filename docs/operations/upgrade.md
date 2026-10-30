@@ -32,7 +32,12 @@ matching image/database. Do not edit the ledger or rename a migration to make th
 From schema 119 (F-030, [encrypted workspaces](../product/encrypted-workspaces.md), S1) every install
 runs a small `keyring` service next to `api` and `worker`, on an internal network that only these three
 join. `./flux upgrade` adds the keyring's `FLUX_KEYRING_TOKEN` to `docker/.env` when it is missing and
-never changes an existing one; without a token the keyring stays idle.
+never changes an existing one; without a token the keyring stays idle. From schema 130 (S2c) it also
+adds `FLUX_KEY_PIN_SECRET`, which pins every encrypted space's unlock passwords and key versions so rows
+planted in the database are refused. It is never changed afterwards and is not in the database: back it
+up with `docker/.env`. Without it (or with one shorter than 32 characters) the API and worker log a
+warning at start and encrypted spaces cannot be created or unlocked; changing it makes every encrypted
+space refuse to unlock as tampered.
 
 **Upgrading locks encrypted spaces; have an unlock password ready.** `./flux upgrade` recreates every
 container, so each encrypted space waits until one of its owners or admins unlocks it again

@@ -64,6 +64,19 @@ export function Sidebar({ projects, directMessages, user, session, onClose, titl
   const glideTo = useTravelingHighlight(projectList, glide, ['.side__project[data-pending]', '.side__project.is-open']);
   // The collapsed rail (a tablet's sidebar, or `[` on a computer) has the same highlight over its project tiles; only one
   // of the two lists is rendered at a time, and the other's refs are empty.
+  // Where the rail's middle band can scroll (a short window, #727), its lower edge fades softly, so a cut tile reads as
+  // "more below"; the fade is static, set only when the band's size or contents change.
+  const railMiddle = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const band = railMiddle.current;
+    if (!band) return undefined;
+    const check = () => band.toggleAttribute('data-scrolls', band.scrollHeight > band.clientHeight + 1);
+    check();
+    const observer = new ResizeObserver(check);
+    observer.observe(band);
+    for (const child of band.children) observer.observe(child);
+    return () => observer.disconnect();
+  }, [collapsed, onClose, projects.length, directMessages.length]);
   const railProjects = useRef<HTMLElement>(null);
   const railGlide = useRef<HTMLSpanElement>(null);
   const glideRailTo = useTravelingHighlight(railProjects, railGlide, ['.side__rail-project[data-pending]', '.side__rail-project.is-open']);
@@ -89,6 +102,9 @@ export function Sidebar({ projects, directMessages, user, session, onClose, titl
         {/* The toggle is in the top row, where the expanded sidebar's collapse control is (S1, Spokój anchors). */}
         <IconButton icon="sidebar" label="Expand sidebar" aria-keyshortcuts="[" className="side__toggle" onClick={onToggleCollapsed} />
         <NewMenu compact onNew={onNew} />
+        {/* Places and the lists share one middle band: on a short window (a phone on its side) the whole band scrolls, so
+            projects keep room; the toggle, New, Stop and the account stay put outside it, and their menus are not clipped (#727). */}
+        <div className="side__rail-middle" ref={railMiddle}>
         <nav className="side__rail-places" aria-label="Places">
           <button type="button" className="side__ib" aria-label="Search" aria-keyshortcuts={searchKeys} onClick={openSearch}><Icon name="search" size={18} /></button>
           <Link to="/" className="side__ib" aria-label="Home" aria-current={home ? 'page' : undefined}><Icon name="home" size={18} /></Link>
@@ -123,6 +139,7 @@ export function Sidebar({ projects, directMessages, user, session, onClose, titl
             </NavLink>
           ))}
         </nav>
+        </div>
         </div>
         <WorkingAgent compact />
         <UserMenu compact name={user.name} email={user.email} sessionExpiresAt={session.expiresAt} />

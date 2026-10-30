@@ -52,6 +52,7 @@ export FLUX_KEYRING_TOKEN="$(head -c 32 /dev/urandom | base64 | tr '+/' '-_' | t
 export FLUX_TEST_FAILURE_INJECTION=true
 # Encrypted workspaces (F-030): the keyring needs its token for the tests that create one through the fixture route.
 export FLUX_KEYRING_TOKEN="${FLUX_KEYRING_TOKEN:-$(head -c 32 /dev/urandom | base64 | tr '+/' '-_' | tr -d '=\n')}"
+export FLUX_KEY_PIN_SECRET="${FLUX_KEY_PIN_SECRET:-$(head -c 32 /dev/urandom | base64 | tr '+/' '-_' | tr -d '=\n')}"
 export FLUX_TEST_PERSONAL_RUNS=anthropic-mock
 export FLUX_TEST_ANTHROPIC_URL=http://anthropic-mock:8090
 # Owner AI connection settings (#179): a throwaway key-custody secret, and an operator allowlist

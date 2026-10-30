@@ -27,11 +27,24 @@ export interface ApiRequestInit {
   keepalive?: boolean;
 }
 
+// A read starts in a task of its own, after the work that asked for it (#716). A view opening asks for half a dozen reads from
+// its effects; each `fetch` call costs milliseconds on the main thread of a phone, and made in the commit's own task they
+// were a third of the longest frame of a view change. One port message batches every read asked for in the same task.
+const later = typeof MessageChannel === 'undefined' ? null : new MessageChannel();
+const waiting: (() => void)[] = [];
+if (later) later.port1.onmessage = () => { for (const start of waiting.splice(0)) start(); };
+const nextTask = () => new Promise<void>((resolve) => {
+  if (!later) { setTimeout(resolve, 0); return; }
+  if (!waiting.length) later.port2.postMessage(0);
+  waiting.push(resolve);
+});
+
 export async function request<T>(path: string, init: ApiRequestInit = {}): Promise<T> {
   // A page being left starts no request (#471): the browser has stopped its loads, and WebKit reports a
   // fetch that starts now as an uncaught page error. It starts when the page is live again, never sooner
   // than a click or key press proves the person is still here; an unloaded page never starts it.
   if (pageLeaving() && !init.keepalive) await pageIsLive(init.signal);
+  if (!init.method || init.method === 'GET') await nextTask();
   let response: Response;
   try {
     response = await fetch(path, {

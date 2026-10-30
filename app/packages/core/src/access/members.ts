@@ -91,6 +91,8 @@ export async function changeRole(principal: Principal, workspaceId: string, user
     if (target.role === 'owner' && role !== 'owner' && await workspaces.ownerCount(workspaceId) <= 1) throw new ConflictError('A workspace needs at least one owner', 'LAST_OWNER');
     if (isManager(target.role) && !isManager(role)) await dropUnlockPassword(tx, ports, workspaceId, userId, sealedChange);
     const updated = await workspaces.setRole(workspaceId, userId, role);
+    // The trigger deleted their holder and the recovery holder; their removal records are pinned now, in this transaction.
+    if (sealedChange) await ports.encryption(tx).recordRemovals(workspaceId);
     await recordEvent(eventPorts(ports, tx), principal, workspaceId, 'workspace.member_role_changed.v1', workspaceId, { userId, from: target.role, role });
     const user = await workspaces.findAccount({ userId });
     return { userId, email: user!.email, name: user!.name, role, createdAt: updated.createdAt.toISOString() };
@@ -116,6 +118,7 @@ export async function removeMember(principal: Principal, workspaceId: string, us
     if (target.role === 'owner' && await workspaces.ownerCount(workspaceId) <= 1) throw new ConflictError('A workspace needs at least one owner', 'LAST_OWNER');
     if (isManager(target.role)) await dropUnlockPassword(tx, ports, workspaceId, userId, sealedChange);
     await workspaces.deleteMember(workspaceId, userId);
+    if (sealedChange) await ports.encryption(tx).recordRemovals(workspaceId);
     await recordEvent(eventPorts(ports, tx), principal, workspaceId, 'workspace.member_removed.v1', workspaceId, { userId });
   });
 }

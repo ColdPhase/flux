@@ -170,6 +170,14 @@ ensure_keyring_token() {
   set_env_line "$file" FLUX_KEYRING_TOKEN "$(random_b64url)"
   say "Added FLUX_KEYRING_TOKEN (encrypted spaces' keyring) to ${file#"$FLUX_ROOT"/}."
 }
+# Adds FLUX_KEY_PIN_SECRET (F-030 S2c: the pin over encrypted spaces' holders and key versions, kept out of the
+# database) to an env file that lacks one; never changes an existing secret, because every pin is made with it.
+ensure_key_pin_secret() {
+  file=${1:-$ENV_FILE}
+  [ -n "$(sed -n 's/^FLUX_KEY_PIN_SECRET=//p' "$file" | tail -n 1)" ] && return 0
+  set_env_line "$file" FLUX_KEY_PIN_SECRET "$(random_b64url)"
+  say "Added FLUX_KEY_PIN_SECRET (encrypted spaces' key pin) to ${file#"$FLUX_ROOT"/}."
+}
 
 # Writes KEY=value into an env file (replacing the line or appending it), via a temp file.
 set_env_line() {
@@ -209,6 +217,7 @@ ensure_env() {
   set_env_line "$draft" FLUX_FIXTURE_TOKEN "$(random_hex 32)"
   set_env_line "$draft" FLUX_AUTH_SECRET "$(random_hex 32)"
   set_env_line "$draft" FLUX_KEYRING_TOKEN "$(random_b64url)"
+  set_env_line "$draft" FLUX_KEY_PIN_SECRET "$(random_b64url)"
   set_env_line "$draft" FLUX_DEMO_OWNER_PASSWORD "demo-$(random_hex 8)"
   set_env_line "$draft" FLUX_DEMO_PARTNER_PASSWORD "demo-$(random_hex 8)"
   # Agent runtime secrets (F-022 T3): the service secret and one secret per slot. Generated now so
@@ -970,6 +979,15 @@ env_from_archive() {
 }
 
 archived_env_value() { sed -n "s/^$2=//p" "$1" | tail -n 1; }
+# Takes FLUX_KEY_PIN_SECRET from a backup's flux.env into the current env file when they differ (F-030 S2c). A backup
+# from before S2c has none: the current secret stays, and no restored space is encrypted with pins anyway.
+restore_key_pin_secret() {
+  archived=$(archived_env_value "$1" FLUX_KEY_PIN_SECRET)
+  [ -n "$archived" ] || return 0
+  [ "$archived" = "$(sed -n 's/^FLUX_KEY_PIN_SECRET=//p' "$ENV_FILE" | tail -n 1)" ] && return 0
+  set_env_line "$ENV_FILE" FLUX_KEY_PIN_SECRET "$archived"
+  warn "NOTE: FLUX_KEY_PIN_SECRET differs from the backup; the backup's value now replaces it in ${ENV_FILE#"$FLUX_ROOT"/} (encrypted spaces are pinned with it)."
+}
 
 cmd_restore() {
   archive='' migrate=0 revoke_agents=0 ASSUME_YES=0
@@ -1046,8 +1064,17 @@ cmd_restore() {
   compose_main --profile ops run --rm --no-deps -T files-archive tar -C /data/files -xzf - < "$RESTORE_DIR/files.tar.gz" \
     || die "Restoring the files volume failed; run ./flux restore again."
   compose_main --profile setup run --rm files-init >/dev/null
+  # F-030 S2c: the key pin belongs to the restored data (every encrypted space's holders and key versions are pinned
+  # with it). An existing .env with another secret would make every restored encrypted space refuse to unlock as
+  # "changed outside Flux", so the backup's secret replaces it, before api and worker start.
+  restore_key_pin_secret "$RESTORE_DIR/flux.env"
   if [ "$from_schema" != "$to_schema" ] || [ "$migrate" = 1 ]; then say "Migrating from ledger {$from_ledger}..."; fi
   compose_main run --rm migrate || die "The migration after restore failed. See the output above; the archive is unchanged."
+  # F-030: a restored encrypted space is locked. Its unlock rows were sealed to the keyring boot of the backup's server;
+  # they are removed, so it opens only with an unlock password (or recovery code) valid when the backup was taken.
+  compose_main exec -T db psql -X -q -v ON_ERROR_STOP=1 -U "$(pg_user)" -d "$(pg_db)" \
+    -c "DO \$\$ BEGIN IF to_regclass('public.workspace_unlocks') IS NOT NULL THEN TRUNCATE workspace_unlocks; END IF; END \$\$;" >/dev/null \
+    || die "Locking the restored encrypted spaces failed; API and worker were not started."
   # A restored GitHub token/binding cannot resurrect provider authority or queued work.
   image_op revoke-github-access || die "Revoking restored GitHub authorization failed; API and worker were not started."
   # Agent connections and OAuth tokens come back as they were at backup time: one revoked
@@ -1177,6 +1204,7 @@ cmd_upgrade() {
   check_owner "$PROJECT"
   # F-030: an install from before encrypted workspaces gets its keyring token here (the upgrade restarts the keyring).
   ensure_keyring_token "$ENV_FILE"
+  ensure_key_pin_secret "$ENV_FILE"
   docker volume inspect "${PROJECT}_pgdata" >/dev/null 2>&1 || die "Compose project $PROJECT has no data yet; use ./flux up."
   if [ "$pull" = 1 ] && [ "$(git_commit)" = unknown ]; then die "upgrade --pull needs a git checkout; update the files yourself and run ./flux upgrade."; fi
   compose_main up -d --wait --wait-timeout "$WAIT_TIMEOUT" db >/dev/null || die "The database of $PROJECT did not start."

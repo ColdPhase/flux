@@ -1,0 +1,256 @@
+{
+  "schema": 2,
+  "sourceCommit": "unavailable",
+  "browser": "151.0.7922.34",
+  "startedUTC": "2026-10-30T07:49:20Z",
+  "fixtureSeconds": 15.352,
+  "fixture": {
+    "projects": 3,
+    "rootsPerProject": 60,
+    "tasksPerProject": 40,
+    "threadReplies": 40,
+    "people": 2,
+    "mapThoughts": 60
+  },
+  "method": {
+    "warmups": 30,
+    "samples": 200,
+    "minSeconds": 60.0,
+    "layoutWarmups": 15,
+    "layoutSamples": 100
+  },
+  "budgets": {
+    "desktop": {
+      "selectionFeedback": 150,
+      "motionEnd": 370,
+      "selectionCommitted": 200,
+      "keyInput": 100,
+      "frameGap": 50,
+      "layoutSwitch": 100,
+      "layoutGap": 100,
+      "layoutRequests": 3,
+      "heapGrowthMB": 20,
+      "listScroll": 100,
+      "mapPan": 100,
+      "mapZoom": 100,
+      "scrollGap": 50
+    },
+    "phone-cpu4": {
+      "selectionFeedback": 300,
+      "motionEnd": 420,
+      "selectionCommitted": 420,
+      "keyInput": 200,
+      "frameGap": 100,
+      "layoutSwitch": 250,
+      "layoutGap": 250,
+      "layoutRequests": 3,
+      "heapGrowthMB": 20,
+      "listScroll": 200,
+      "mapPan": 200,
+      "mapZoom": 200,
+      "scrollGap": 100
+    },
+    "desktop-reduced": {
+      "selectionFeedback": 150,
+      "motionEnd": 370,
+      "selectionCommitted": 200,
+      "keyInput": 100,
+      "frameGap": 50,
+      "layoutSwitch": 100,
+      "layoutGap": 100,
+      "layoutRequests": 3,
+      "heapGrowthMB": 20,
+      "listScroll": 100,
+      "mapPan": 100,
+      "mapZoom": 100,
+      "scrollGap": 50
+    }
+  },
+  "profiles": [
+    {
+      "label": "desktop",
+      "viewport": {
+        "width": 1280,
+        "height": 800
+      },
+      "cpuThrottle": 1,
+      "touch": false,
+      "distributions": {
+        "tasksList": {
+          "seconds": 60.18,
+          "scrollRoom": 3648,
+          "listScroll": {
+            "n": 300,
+            "p50": 56.7,
+            "p95": 58,
+            "max": 66.8,
+            "budgetP95": 100,
+            "passed": true
+          },
+          "maxFrameGap": {
+            "n": 300,
+            "p50": 16.7,
+            "p95": 16.7,
+            "max": 16.8,
+            "budgetP95": 50,
+            "passed": true
+          }
+        },
+        "stream": {
+          "seconds": 60.097,
+          "scrollRoom": 1806,
+          "listScroll": {
+            "n": 297,
+            "p50": 57,
+            "p95": 59.1,
+            "max": 174.2,
+            "budgetP95": 100,
+            "passed": true
+          },
+          "maxFrameGap": {
+            "n": 297,
+            "p50": 16.7,
+            "p95": 16.7,
+            "max": 16.8,
+            "budgetP95": 50,
+            "passed": true
+          }
+        },
+        "mapPan": {
+          "seconds": 60.115,
+          "mapPan": {
+            "n": 300,
+            "p50": 73.8,
+            "p95": 75.1,
+            "max": 86.1,
+            "budgetP95": 100,
+            "passed": true
+          },
+          "maxFrameGap": {
+            "n": 300,
+            "p50": 16.7,
+            "p95": 16.8,
+            "max": 16.8,
+            "budgetP95": 50,
+            "passed": true
+          }
+        },
+        "mapZoom": {
+          "seconds": 60.146,
+          "input": "Ctrl+wheel",
+          "mapZoom": {
+            "n": 289,
+            "p50": 73.1,
+            "p95": 74.9,
+            "max": 663.5,
+            "budgetP95": 100,
+            "passed": true
+          },
+          "maxFrameGap": {
+            "n": 289,
+            "p50": 16.7,
+            "p95": 16.8,
+            "max": 600,
+            "budgetP95": 50,
+            "passed": true
+          }
+        }
+      },
+      "note": "wheel input on both profiles (a touch drag has no trusted start event to time from); the phone zooms with the zoom control in its Map options sheet"
+    },
+    {
+      "label": "phone-cpu4",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "cpuThrottle": 4,
+      "touch": true,
+      "distributions": {
+        "tasksList": {
+          "seconds": 60.017,
+          "scrollRoom": 1931,
+          "listScroll": {
+            "n": 293,
+            "p50": 52,
+            "p95": 65.4,
+            "max": 75.2,
+            "budgetP95": 200,
+            "passed": true
+          },
+          "maxFrameGap": {
+            "n": 293,
+            "p50": 16.7,
+            "p95": 16.8,
+            "max": 16.8,
+            "budgetP95": 100,
+            "passed": true
+          }
+        },
+        "stream": {
+          "seconds": 60.114,
+          "scrollRoom": 3089,
+          "listScroll": {
+            "n": 292,
+            "p50": 52.6,
+            "p95": 64.9,
+            "max": 168.3,
+            "budgetP95": 200,
+            "passed": true
+          },
+          "maxFrameGap": {
+            "n": 292,
+            "p50": 16.7,
+            "p95": 16.8,
+            "max": 16.8,
+            "budgetP95": 100,
+            "passed": true
+          }
+        },
+        "mapPan": {
+          "seconds": 60.132,
+          "mapPan": {
+            "n": 299,
+            "p50": 69.6,
+            "p95": 78.2,
+            "max": 82.7,
+            "budgetP95": 200,
+            "passed": true
+          },
+          "maxFrameGap": {
+            "n": 299,
+            "p50": 16.7,
+            "p95": 16.8,
+            "max": 16.8,
+            "budgetP95": 100,
+            "passed": true
+          }
+        },
+        "mapZoom": {
+          "seconds": 60.096,
+          "input": "the zoom control, tapped",
+          "mapZoom": {
+            "n": 277,
+            "p50": 63.2,
+            "p95": 64.9,
+            "max": 66.7,
+            "budgetP95": 200,
+            "passed": true
+          },
+          "maxFrameGap": {
+            "n": 277,
+            "p50": 16.7,
+            "p95": 16.7,
+            "max": 16.8,
+            "budgetP95": 100,
+            "passed": true
+          }
+        }
+      },
+      "note": "wheel input on both profiles (a touch drag has no trusted start event to time from); the phone zooms with the zoom control in its Map options sheet"
+    }
+  ],
+  "knownMisses": {},
+  "observedFailures": [],
+  "outcome": "within-budgets"
+}

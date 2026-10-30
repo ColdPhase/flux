@@ -68,10 +68,9 @@ at least one owner or admin of each encrypted space can unlock it after the upgr
   `./flux restore` after the key change has finished (People → Encryption says "New key since …").
 - **"Encryption keys were changed outside Flux. It stays locked."** Unlocking answers this when a
   space's key rows fail verification (an edit of the database, or a partial restore).
-  Flux deletes and repairs nothing. Restoring **only** the tables `workspace_keys`,
-  `workspace_holders`, `workspace_dek_wraps`, `workspace_key_versions` and `workspace_removed_holders`
-  from the last good backup is enough, as long as no key change finished after that backup; otherwise
-  restore the whole instance. The next unlock checks everything again.
+  Flux deletes and repairs nothing. [Backup and restore](backup-restore.md#encrypted-spaces-that-say-their-keys-were-changed)
+  says which tables of that space to restore from the last good backup, and when the whole instance has
+  to be restored instead. The next unlock checks everything again.
 - **"The key change can't finish: some stored data doesn't open."** A value of the space that the old
   key cannot open stops a key change from finishing; owners and admins get this Inbox notice and People
   shows it. Nothing is lost or exposed; the worker's log names the table and column (never content).
