@@ -187,7 +187,8 @@ async function reverted(page: Page, item: WorkItem) {
   await title(page, item).waitFor();
   await panel(page).getByText('Creation undone · read-only history', { exact: true }).waitFor();
   await panel(page).locator('[data-task-lifecycle="creation_reverted"]').waitFor();
-  assert.equal(await panel(page).locator('.wd-where .ui-task-number').innerText(), `#${item.number}`);
+  // Since the unified panel (#601) the task number is the panel header's meta (PanelMeta), not a line in Details.
+  assert.equal(await page.locator('#details-meta').innerText(), `#${item.number}`);
   assert.equal(await undoButton(page).count(), 0); assert.equal(await panel(page).getByLabel('Status', { exact: true }).count(), 0);
   assert.equal(await panel(page).getByRole('textbox').count(), 0);
   assert.equal(await panel(page).locator('.lv-inline').count(), 0);
