@@ -22,7 +22,9 @@ What is emulated and what is not:
   mock devices). Camera denial is the existing ``__denyCamera`` hook.
 * Lifecycle. Rotation is a viewport change. Visibility is a dispatched ``visibilitychange`` after
   faking ``document.visibilityState``. Neither is an operating-system suspension or rotation event.
-  Offline/rejoin, headphone changes and service-worker updates are not covered here.
+  A headphone change is a dispatched ``devicechange`` (no device actually changes). A Flux update is
+  its only effect on the page, one reload (``register.ts``): the reloaded page must capture nothing
+  until the person joins and turns the microphone on again. Network loss is not covered here.
 
 No physical device is used, and nothing here certifies a network path (see live-turn checks).
 """
@@ -465,6 +467,35 @@ class PlatformRows(LiveBase):
         expect(bar.get_by_role("button", name=re.compile("^Microphone on"))).to_be_visible()
         self.assertEqual(page.evaluate("window.__live.gum + window.__live.gdm"), captures,
                          "rotation and visibility return request no capture")
+
+        # Headphones or a Bluetooth headset connecting: the browser fires `devicechange` on mediaDevices. Dispatched
+        # here (no device actually changes), so this shows only that the event alone neither ends the session nor
+        # mutes or reacquires the microphone.
+        page.evaluate("navigator.mediaDevices.dispatchEvent(new Event('devicechange'))")
+        page.wait_for_timeout(1500)
+        expect(bar.get_by_role("status").first).to_contain_text("Live")
+        expect(bar.get_by_role("button", name=re.compile("^Microphone on"))).to_be_visible()
+        self.assertEqual(page.evaluate("window.__live.gum + window.__live.gdm"), captures, "a device change requests no capture")
+        self.observed[row.name]["deviceChange"] = "dispatched devicechange: session Live, microphone on, no new capture"
+
+        # Applying a Flux update reloads the page once (UpdatePrompt → Reload, register.ts). The reloaded app must not
+        # rejoin or capture on its own: the microphone comes back only when the person joins again.
+        page.reload()
+        self.open_conversation(page, conversation)
+        page.wait_for_timeout(3000)
+        after_reload = page.evaluate("({ gum: window.__live.gum, gdm: window.__live.gdm })")
+        self.observed[row.name]["afterReload"] = after_reload
+        self.assertEqual(after_reload, {"gum": 0, "gdm": 0}, "a reload (the update's only effect) captures nothing by itself")
+        expect(self.bar(page).get_by_role("button", name=re.compile("^Microphone on"))).to_have_count(0)
+        rejoin = page.locator("header.top, header.phead").get_by_role("button", name="Join")
+        expect(rejoin).to_be_visible()
+        rejoin.click()
+        expect(bar.get_by_role("status").first).to_contain_text("Live")
+        self.observed[row.name]["rejoinAfterReload"] = "verified: Join after the reload returns the person to the open session"
+        # The reloaded document's counters are live, so the zero above was observable: turning the microphone on counts.
+        bar.get_by_role("button", name=re.compile("^Microphone off")).click()
+        expect(bar.get_by_role("button", name=re.compile("^Microphone on"))).to_be_visible(timeout=30000)
+        self.assertGreater(page.evaluate("window.__live.gum"), 0, "the reloaded page's instrumentation counts a capture the person asks for")
 
         bar.get_by_role("button", name="Leave", exact=True).click()
         expect(bar).to_have_count(0)

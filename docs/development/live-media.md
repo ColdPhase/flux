@@ -379,6 +379,37 @@ macOS rows; real screen publication in Firefox or WebKit; system audio; the
 reviewer's Firefox join failure (above). Playwright's Firefox does not emulate
 `is_mobile` or touch, so the Firefox row is viewport and user agent only.
 
+## Device change, update reload and rejoin on the platform rows (#63 AC-3; 2026-10-30)
+
+`test_live_platforms.py` now covers three more steps in each of the four emulated rows
+(Android Chrome, Android Firefox, iPhone Safari, iPad Safari), after the rotation and
+visibility checks:
+
+- **Headphones or a Bluetooth headset.** The test dispatches `devicechange` on
+  `navigator.mediaDevices`. The session stays Live, the microphone stays on, and no capture
+  is requested. No device actually changes, so this shows only that the event alone does
+  not end the session, mute or reacquire. A real device switch is **device** only.
+- **A Flux update.** Applying an update reloads the page once (`UpdatePrompt` → Reload,
+  `pwa/register.ts`), so the test reloads. The reloaded page requests no capture (0 camera
+  or microphone calls) and shows no microphone on. **Join** returns the person to the open
+  session. A control on the same reloaded page shows its counters work: turning the
+  microphone on counts a capture.
+- **Rejoin.** Join after the reload reaches Live again with the host still sharing.
+
+Observed 2026-10-30 at this branch, with Playwright 1.62 engines (Chromium 151.0.7922.34,
+Firefox 153.0, WebKit 26.5). The command was
+`FLUX_LIVE_UI_PATTERN=test_live_platforms.py ./scripts/check_live_ui.sh` with
+`FLUX_LIVE_UI_*` ports 34120–34124, and the result was `Ran 4 tests in 81.435s`, `OK`.
+
+Still not covered on these rows:
+
+- network loss and recovery of the media path (Playwright's offline mode does not cut
+  WebRTC; the SFU restart is covered by `live-sfu-restart.e2e.ts`);
+- the Windows, macOS and Fedora/Wayland desktop rows in Firefox and WebKit;
+- real screen publication outside Chromium;
+- system audio;
+- the public host.
+
 ## Pointer reachability and camera state on phone and tablet (#63; 2026-10-10)
 
 Two stacking faults put conversation content over live controls on phone and tablet widths:
