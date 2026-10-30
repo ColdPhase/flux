@@ -7,7 +7,7 @@ import { AgentTag, Icon, IconButton, Kreska, StatusGlyph, initials, usePop, useR
 import { updateWork } from './api';
 import { useShellActions } from '../app/shellContext';
 import { STATUS_LABEL, blockedLine, isFinished, taskNumber } from './format';
-import { STATE_KEYS, useStateChange } from './taskState';
+import { STATE_KEYS, useStateChanges } from './taskState';
 import { getProjectWorkView, getWorkRelations, workRelationReadUrl, workViewReadUrl } from './read-api';
 import type { ReadState } from './read-state';
 import { useWorkRead } from './useWorkRead';
@@ -319,7 +319,7 @@ export function TaskBoard({ project, openRead, meId, mine, query, writable, revi
     setArrived(saved.id);
     timers.current.arrived = window.setTimeout(() => setArrived(null), 1200);
   }, [rememberSaved]);
-  const changeState = useStateChange(shownSaved, refresh);
+  const { change: changeState, offer: offerUndo } = useStateChanges(shownSaved, refresh);
   const [refusal, setRefusal] = useState<string | null>(null);
 
   // A server acknowledgment outlives staggered group snapshots, but not its read scope or a
@@ -435,7 +435,7 @@ export function TaskBoard({ project, openRead, meId, mine, query, writable, revi
       setArrived(item.id);
       timers.current.arrived = window.setTimeout(() => setArrived(null), 1200);
       // A drag or "Move to…" is confirmed like a key or a tap: the bottom toast with Undo (Z), so the board never shifts (#763 C3).
-      changeState.offer(item, saved, status);
+      offerUndo(item, saved, status);
     } catch (cause) {
       // A refusal is final for this version; a lost response keeps its id so a retry cannot apply twice.
       if (cause instanceof ApiError) attempts.current.delete(key);

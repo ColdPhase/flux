@@ -87,7 +87,12 @@ test('tasks carry bounded criteria, same-project prerequisites and an immutable 
   assert.deepEqual(planned.planIntent, intentOf(f));
   assert.equal(planned.createdBy.id, f.writer.id);
   assert.equal(planned.status, 'open');
-  assert.deepEqual(await f.read(planned.id), planned);
+  // Eligibility is per reader (#763 B1): its creator reads task_used (it has prerequisites), anyone else not_ai_origin.
+  const { creationUndo: createdUndo, ...plannedFields } = planned;
+  const { creationUndo: readUndo, ...readFields } = await f.read(planned.id);
+  assert.deepEqual(readFields, plannedFields);
+  assert.equal(createdUndo?.reason, 'task_used');
+  assert.notEqual(readUndo?.reason, 'eligible');
   const listed = expectStatus(await f.viewer.browser.request('GET', `${f.tasks}?limit=100`), 200) as Page<WorkItem>;
   assert.equal(listed.items.find((item) => item.id === planned.id)!.creationUndo, undefined);
   sameHumanWork(listed.items.find((item) => item.id === planned.id)!, planned, 'a viewer reads the same plan fields');

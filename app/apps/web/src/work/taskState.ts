@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef } from 'react';
+import { useCallback, useRef } from 'react';
 import { ME_PATH, type WorkItem, type WorkRowProjection, type WorkStatus } from '@flux/contracts';
 import { ApiError, NetworkError, request } from '../api/client';
 import { useShellData } from '../app/data';
@@ -49,7 +49,7 @@ export function restoreOf(item: Pick<StateTarget, 'status' | 'blocker'> & Partia
  * so the caller can show it before its own reads catch up. Resolves to the stored task, or null when refused.
  * `offer` shows the same toast for a change the caller stored itself (a drag or "Move to…" on the board).
  */
-export function useStateChange(saved: (item: WorkItem) => void, done: () => void) {
+export function useStateChanges(saved: (item: WorkItem) => void, done: () => void) {
   const toast = useToast();
   const { me } = useShellData();
   const userId = me.user.id;
@@ -112,7 +112,12 @@ export function useStateChange(saved: (item: WorkItem) => void, done: () => void
       done();
     }
   }, [saved, done, toast, sameSession, offer]);
-  return useMemo(() => Object.assign(change, { offer }), [change, offer]);
+  return { change, offer };
+}
+
+/** The state change alone (the list, the glyph, the keys): see `useStateChanges`. */
+export function useStateChange(saved: (item: WorkItem) => void, done: () => void) {
+  return useStateChanges(saved, done).change;
 }
 
 /**

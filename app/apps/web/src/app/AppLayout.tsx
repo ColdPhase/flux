@@ -765,7 +765,7 @@ function AppLayoutContent() {
             <span className="top__actions" ref={setActionSlot} />
             {focusing && focus.until ? <FocusPill until={focus.until} uncertain={focus.uncertain} onEnd={() => void focus.toggle()} /> : (
               <>
-                {activeProject && needsYou ? <NeedsYouChip count={needsYou} project={project?.name ?? null} onOpen={openNeedsYou} /> : null}
+                {activeProject && needsYou ? <NeedsYouChip count={needsYou} project={activeProject?.name ?? null} onOpen={openNeedsYou} /> : null}
                 {project?.people ? <HeaderFaces people={project.people} audience={audience} onOpen={openAudience} /> : null}
                 {activeProject ? <LiveEntry /> : null}
                 <MoreMenu items={moreItems} />
