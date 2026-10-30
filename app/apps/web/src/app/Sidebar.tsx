@@ -81,6 +81,9 @@ export function Sidebar({ projects, directMessages, user, session, onClose, titl
         {/* The toggle is in the top row, where the expanded sidebar's collapse control is (S1, Spokój anchors). */}
         <IconButton icon="sidebar" label="Expand sidebar" aria-keyshortcuts="[" className="side__toggle" onClick={onToggleCollapsed} />
         <NewMenu compact onNew={onNew} />
+        {/* Places and the lists share one middle band: on a short window (a phone on its side) the whole band scrolls, so
+            projects keep room; the toggle, New, Stop and the account stay put outside it, and their menus are not clipped (#727). */}
+        <div className="side__rail-middle">
         <nav className="side__rail-places" aria-label="Places">
           <button type="button" className="side__ib" aria-label="Search" aria-keyshortcuts={searchKeys} onClick={openSearch}><Icon name="search" size={18} /></button>
           <Link to="/" className="side__ib" aria-label="Home" aria-current={home ? 'page' : undefined}><Icon name="home" size={18} /></Link>
@@ -110,6 +113,7 @@ export function Sidebar({ projects, directMessages, user, session, onClose, titl
             </NavLink>
           ))}
         </nav>
+        </div>
         </div>
         <WorkingAgent compact />
         <UserMenu compact name={user.name} email={user.email} sessionExpiresAt={session.expiresAt} />

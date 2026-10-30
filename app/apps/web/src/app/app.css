@@ -154,14 +154,22 @@ body:has(.app) { background: var(--side); }
    clamp the map's camera; the rail's contents follow a frame later. */
 @media (max-width: 900px) { .app__side { width: calc(var(--rail-w) + env(safe-area-inset-left, 0px)); } }
 .side--rail { align-items: center; gap: 6px; padding: 14px 12px 12px; padding-top: max(14px, env(safe-area-inset-top)); padding-bottom: max(12px, env(safe-area-inset-bottom)); }
-.side--rail > :not(.side__rail-scroll) { flex-shrink: 0; }
+.side--rail > :not(.side__rail-middle) { flex-shrink: 0; }
+/* The places, then the lists; it takes the rail's spare height (#727). */
+.side__rail-middle { flex: 1; min-height: 0; width: var(--rail-w); display: flex; flex-direction: column; align-items: center; gap: 6px; }
+.side__rail-middle > .side__rail-places { flex: none; }
 /* A short window (a phone on its side) tightens the rail's spacing and leaves Settings to the account menu ("All
    settings"), so the account control stays on screen and above the bottom safe area; at 390 px the gear was below the
-   window (#151 AC-4). The rail does not scroll as a whole: its account and New menus open beside it and would be clipped. */
+   window (#151 AC-4). The rail does not scroll as a whole: its account and New menus open beside it and would be clipped.
+   Its middle band does (#727): the four places scroll with the projects and messages, so the lists keep room for
+   several tiles; the toggle, New, Stop and the account stay where they are, outside the scroller. */
 @media (max-height: 480px) {
   .side--rail { padding-top: max(8px, env(safe-area-inset-top)); }
-  .side--rail, .side__rail-places { gap: 2px; }
+  .side--rail, .side__rail-places, .side__rail-middle { gap: 2px; }
   .me--compact .me__settings { display: none; }
+  .side__rail-middle { overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain; scrollbar-width: thin; padding: 4px 0; }
+  .side__rail-middle::-webkit-scrollbar { width: 4px; }
+  .side__rail-middle > .side__rail-scroll { flex: none; overflow: visible; }
 }
 /* Centred like the collapse control in the expanded sidebar's 40 px top row, so the toggle stays put (S1). */
 .side--rail > .side__toggle { margin-block: max(0px, calc((40px - var(--ctl)) / 2)); }

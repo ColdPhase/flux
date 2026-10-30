@@ -64,6 +64,9 @@ WIDE_CAPS = {
 MEASURE = 90
 # The most empty space between the newest message of a short stream and its message field (ADAPT-2, tall screens).
 MAX_STREAM_GAP = 64
+# The most room a long stream's opening adds below its newest message so its top message starts whole (#725;
+# WHOLE_MESSAGE_ROOM in app/apps/web/src/app/messageParts.tsx).
+WHOLE_MESSAGE_ROOM = 48
 # Live editing is the wiki editor whenever it is configured (check_ui.sh sets FLUX_LIVE_EDITING=on by default).
 LIVE = os.environ.get("FLUX_LIVE_EDITING", "on") != "off"
 TARGET = 44
@@ -1349,6 +1352,122 @@ class AdaptiveReflow(AdaptiveBase):
                             self.check(box["inside"] and box["hit"], f"{what} in {view} at {where} lies in the safe rectangle, uncovered: {box}")
                 finally:
                     self.no_problems()
+
+    def test_23_a_long_stream_opens_with_its_newest_message_against_the_field(self) -> None:
+        """#725: a stream that fills its feed opens at its latest with the newest message against the message field. Its
+        "whole messages" opening adds at most WHOLE_MESSAGE_ROOM (48 px) below it; on phones it once added 137-147 px."""
+        gaps, rooms = {}, {}
+        for width, height in [(320, 568), (360, 640), (390, 844), (820, 1180), (1440, 900)]:
+            with self.subTest(width=width, height=height):
+                page = self.page(width, height)
+                page.goto(f"/projects/{self.ids['project']}")
+                expect(page.locator(".project-convo__message").first).to_be_visible()
+                self.at_rest(page)
+                page.wait_for_timeout(600)  # the opening keeps settling while fonts and previews arrive
+                measured = page.evaluate("""() => {
+                  const feed = document.querySelector('.project-convo__feed');
+                  const items = [...feed.querySelectorAll('.project-convo__message, .convo-notice, .convo-object, .convo-fold, .convo-goal')].filter((el) => el.getClientRects().length);
+                  const column = document.querySelector('.project-convo__in');
+                  // The column's own padding, from a bare copy of it, against what the opening wrote inline.
+                  const bare = column.cloneNode(false);
+                  bare.removeAttribute('style');
+                  bare.style.cssText = 'position:absolute;visibility:hidden;';
+                  column.parentElement.appendChild(bare);
+                  const own = parseFloat(getComputedStyle(bare).paddingBottom);
+                  bare.remove();
+                  return {last: items[items.length - 1].getBoundingClientRect().bottom, fills: feed.scrollHeight > feed.clientHeight + 1,
+                          atLatest: feed.scrollHeight - feed.clientHeight - feed.scrollTop <= 2,
+                          room: column.style.paddingBottom ? Math.round(parseFloat(column.style.paddingBottom) - own) : 0};
+                }""")
+                field = page.get_by_label("Write a message", exact=True).bounding_box()
+                size = f"{width}×{height}"
+                gaps[size] = round(field["y"] - measured["last"])
+                self.assertTrue(measured["fills"], f"the fixture stream fills its feed at {size}: {measured}")
+                self.assertTrue(measured["atLatest"], f"the stream opens at its latest at {size}: {measured}")
+                rooms[size] = measured["room"]
+                self.assertLessEqual(measured["room"], WHOLE_MESSAGE_ROOM, f"the opening adds at most {WHOLE_MESSAGE_ROOM} px below the newest message at {size}: {rooms}")
+                self.assertLessEqual(gaps[size] - measured["room"], MAX_STREAM_GAP, f"without that room the newest message sits against the field at {size}: {gaps}")
+        print("\n  space between the newest message and the field in a long stream, CSS px (of it, room for a whole first message): "
+              + ", ".join(f"{size} {gap} ({rooms[size]})" for size, gap in gaps.items()), end="")
+
+    def test_24_the_map_opens_at_a_readable_size_and_fit_stays_the_overview(self) -> None:
+        """#726: the map opens with thought titles at 12 px or more and their meta lines at 10 px or more (at 1440×900 it
+        opened at Fit's 60% floor: 8 and 7 px), its first thought in view. Fit is the explicit overview and still shrinks the
+        sketch below that."""
+        readable = """() => {
+          const scale = (el) => el.getBoundingClientRect().height / el.offsetHeight;
+          const px = (sel) => Math.min(...[...document.querySelectorAll(sel)].filter((el) => el.offsetHeight).map((el) => parseFloat(getComputedStyle(el).fontSize) * scale(el)));
+          return {title: px('.sk-node .sk-t'), meta: px('.sk-node .sk-k')};
+        }"""
+        for width, height in [(1280, 800), (1440, 900), (820, 1180)]:
+            with self.subTest(width=width, height=height):
+                size = f"{width}×{height}"
+                page = self.page(width, height)
+                page.goto(f"/projects/{self.ids['project']}/map/{self.ids['sketch']}")
+                expect(page.locator(".sk-node")).to_have_count(len(fx.THOUGHTS))
+                self.at_rest(page)
+                text = page.evaluate(readable)
+                self.assertGreaterEqual(text["title"], 12, f"thought titles are readable on opening at {size}: {text}")
+                self.assertGreaterEqual(text["meta"], 10, f"thought meta lines are readable on opening at {size}: {text}")
+                canvas = page.locator(".sk-canvas").bounding_box()
+                first = page.locator(".sk-node").filter(has_text=fx.THOUGHTS[0][1]).bounding_box()
+                self.assertTrue(canvas["x"] <= first["x"] and first["x"] + first["width"] <= canvas["x"] + canvas["width"]
+                                and canvas["y"] <= first["y"] and first["y"] + first["height"] <= canvas["y"] + canvas["height"],
+                                f"the first thought is in view on opening at {size}: {first} in {canvas}")
+                opened = self.zoom_level(page)
+                self.assertGreaterEqual(opened, 90, f"the map opens at a working zoom at {size}")
+                if width == 1440:
+                    page.get_by_role("button", name="Fit the sketch to the view", exact=True).click()
+                    page.wait_for_function("z => !document.querySelector('.sk-zoom__level').textContent.startsWith(z + '%')", arg=opened)
+                    self.assertLess(self.zoom_level(page), opened, f"Fit still gives the overview at {size}")
+
+    def zoom_level(self, page: Page) -> int:
+        return int(re.search(r"(\d+)%", page.locator(".sk-zoom__level").get_attribute("aria-label") or "").group(1))
+
+    def test_25_a_short_window_rail_scrolls_its_places_and_projects_and_keeps_its_controls(self) -> None:
+        """#727: on a window under about 420 px tall (a phone on its side) the rail's middle band, the four places with the
+        projects and messages, scrolls as one, so every project is reachable from the rail; the toggle, New and the account
+        stay where they are, inside the window, and scrolling the band does not move them."""
+        context = BROWSER.new_context(base_url=ORIGIN)
+        email = f"rhea.rail+{fx.STAMP}@example.test"
+        signed_up = context.request.post("/api/auth/sign-up/email", data={"name": "Rhea Rail", "email": email, "password": fx.PASSWORD}, headers={"origin": ORIGIN})
+        self.assertEqual(signed_up.status, 200, signed_up.text())
+        workspace = fx.api(context, "POST", "/api/v1/workspaces", {"name": "Short rail"})["id"]
+        names = ["Bench supply", "Lamp shade", "Sensor shelf", "Driver board", "Cable loom", "Night test"]
+        projects = [fx.api(context, "POST", f"/api/v1/workspaces/{workspace}/projects", {"name": name, "visibility": "restricted"})["id"] for name in names]
+        state = context.storage_state()
+        context.close()
+        controls = """() => Object.fromEntries([['toggle', '.side--rail > .side__toggle'], ['account', '.side--rail .me--compact'], ['new', '.side--rail > :nth-child(2)']]
+          .map(([name, sel]) => { const r = document.querySelector(sel).getBoundingClientRect(); return [name, [r.left, r.top, r.right, r.bottom].map(Math.round)]; }))"""
+        # The rail is the sidebar from 681 to 900 px wide; a phone on its side and a short tablet split.
+        for width, height in [(844, 390), (900, 400)]:
+            with self.subTest(width=width, height=height):
+                size = f"{width}×{height}"
+                page = self.page(width, height, state=state)
+                page.goto(f"/projects/{projects[0]}")
+                rail = page.locator(".side--rail")
+                expect(rail).to_be_visible()
+                self.at_rest(page)
+                before = page.evaluate(controls)
+                shot(page, f"rail-short-{width}x{height}" if UI_BROWSER == "chromium" else f"rail-short-{width}x{height}-{UI_BROWSER}")
+                for name, (left, top, right, bottom) in before.items():
+                    self.assertTrue(left >= 0 and top >= 0 and right <= width and bottom <= height, f"the rail's {name} lies inside the window at {size}: {before}")
+                band = rail.locator(".side__rail-middle")
+                scrolls = band.evaluate("el => ({scrollable: el.scrollHeight > el.clientHeight, room: el.clientHeight, overflow: getComputedStyle(el).overflowY})")
+                self.assertTrue(scrolls["scrollable"] and scrolls["overflow"] == "auto", f"the rail's places and lists scroll as one band at {size}: {scrolls}")
+                tiles = rail.get_by_role("navigation", name="Projects").get_by_role("link")
+                expect(tiles).to_have_count(len(names))
+                for index, name in enumerate(names):
+                    tile = tiles.nth(index)
+                    tile.scroll_into_view_if_needed()
+                    self.settle(page)
+                    box = tile.evaluate(REACH, list(OVERLAYS))
+                    self.assertTrue(box["inside"] and box["hit"], f"the project {name} can be reached in the rail at {size}: {box}")
+                self.assertEqual(page.evaluate(controls), before, f"scrolling the band moves none of the rail's controls at {size}")
+                shot(page, f"rail-short-{width}x{height}-scrolled" if UI_BROWSER == "chromium" else f"rail-short-{width}x{height}-scrolled-{UI_BROWSER}")
+                tiles.nth(len(names) - 1).click()
+                expect(page).to_have_url(re.compile(f"/projects/{projects[-1]}"))
+                self.assertEqual(page.evaluate(controls), before, f"choosing a project keeps the rail's controls in place at {size}")
 
 
 class KnownGapRules(AdaptiveBase):
