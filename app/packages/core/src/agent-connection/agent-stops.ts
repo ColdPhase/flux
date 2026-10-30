@@ -161,13 +161,13 @@ export function agentStopUseCases(uow: AgentStopUnitOfWork) {
       if (!allowed) throw new ForbiddenError('Only a project manager, the agent\'s owner or the task\'s creator can pause it', 'PAUSE_NOT_ALLOWED');
       if (!command.paused) {
         if (await ports.rows.resume(projectId, taskId, agentId))
-          await ports.events.record(principal, workspaceId, 'project.agent_paused.v1', projectId, { taskId, agentId, paused: false });
+          await ports.events.record(principal, workspaceId, 'project.agent_paused.v1', projectId, { taskId, agentId });
         return null;
       }
       if (task.ownerAgentId !== agentId || task.parked || task.status === 'done' || task.status === 'not_pursued')
         throw new ConflictError('That agent is not working on this task now', 'AGENT_NOT_WORKING');
       if (await ports.rows.pause({ workspaceId, projectId, taskId, agentId, pausedBy: principal.id }))
-        await ports.events.record(principal, workspaceId, 'project.agent_paused.v1', projectId, { taskId, agentId, paused: true });
+        await ports.events.record(principal, workspaceId, 'project.agent_paused.v1', projectId, { taskId, agentId });
       const stored = (await ports.rows.pauses(projectId)).find((row) => row.taskId === taskId && row.agent.id === agentId);
       if (!stored) throw new InvalidInputError('The pause was not stored');
       return agentPauseView(stored);

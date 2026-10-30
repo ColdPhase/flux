@@ -288,7 +288,7 @@ safe boundary (its next lease renewal or claim), and the Agents view says which 
 - **Who.** The same people as Stop: write access and one of manager, the agent's owner or the task's creator
   (`403 PAUSE_NOT_ALLOWED`). An agent never pauses an agent.
 - **Effect.** One `agent_pauses` row per (task, agent) while the pause is in force (migration 0131), and one
-  `project.agent_paused.v1` event (ids and `paused` only). The task, its owner and its status do not change, and no
+  `project.agent_paused.v1` event (task and agent ids only, for a pause and a resume alike). The task, its owner and its status do not change, and no
   co-work unit is stopped. While the row exists, `flux_claim_unit` and `flux_renew_unit` on any unit of that task
   held by one of the agent's connections answer `409 COWORK_PAUSED` ("A person paused this work. Release this unit
   now with flux_release_unit and a checkpoint, and take no new step until they resume it."). Release, complete,
