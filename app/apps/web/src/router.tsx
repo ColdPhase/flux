@@ -56,8 +56,8 @@ const docEditor = secondary(async () => {
 });
 const sketch = secondary(async () => ({ Component: (await import('./sketch/SketchView')).SketchRoute }));
 const material = secondary(async () => {
-  const page = await import('./materials/MaterialView');
-  return { Component: page.MaterialView, loader: page.materialLoader };
+  const [page, data] = await Promise.all([import('./materials/MaterialView'), import('./materials/loader')]);
+  return { Component: page.MaterialView, loader: data.materialLoader };
 });
 
 function Root() {

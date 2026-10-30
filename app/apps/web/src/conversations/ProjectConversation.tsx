@@ -1,17 +1,16 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import { useLoaderData, useLocation, useNavigate, useRevalidator } from 'react-router';
-import type { ConversationMessage, Conversation, Draft, Material } from '@flux/contracts';
+import type { ConversationMessage, Conversation, Material } from '@flux/contracts';
 import { ApiError, NetworkError } from '../api/client';
 import { outboxView, useComposerDraft, useComposerScope } from '../composer/draft';
 import { takeHandedFiles } from '../composer/handoff';
 import { ComposerFiles, useFileDrop } from '../composer/Files';
 import { ConnectionLine, SendAnnouncer } from '../composer/Outbox';
 import { fluxAnswers, onFluxAnswered } from '../composer/connection';
-import { Button, Icon, Input, MEDIA, sendsOnEnter, useArrivals, useMediaQuery, Select, Option } from '../ui';
+import { Button, Icon, MEDIA, sendsOnEnter, useArrivals, useMediaQuery } from '../ui';
 import { getConversation, observeProjectMessages, olderMessages, projectReceipts } from './api';
-import { getMaterialVersion, listMaterials, publishMaterial } from '../materials/api';
+import { getMaterialVersion, listMaterials } from '../materials/api';
 import { getProject } from '../project/api';
-import { listDrafts } from '../drafts/api';
 import { pageBackTo } from '../app/seekMessage';
 import { useShellData } from '../app/data';
 import { useCreateWorkFromMessage } from '../work/inline';
@@ -49,23 +48,17 @@ import { useSpareHeight } from '../ui/spareHeight';
 import { useTyping } from '../typing/useTyping';
 import { TypingNotice } from '../typing/TypingNotice';
 import '../app/project-conversation.css';
-import { RefLink } from '../place/origin';
 import { ObjectNoticeItem } from '../app/ObjectNotices';
 import { threadObjects } from '../app/objectNotices';
 import type { ProjectData } from './loader';
 import { readableError } from './errors';
 import { feedEntries, mergeMessages, type FeedEntry } from './feed';
 import { ThreadReply } from './ThreadReply';
+import { useProjectMaterials } from '../materials/useProjectMaterials';
+import { MaterialTray } from '../materials/MaterialTray';
 
 /** A request made offline, held under its own id until it can go out (AST-10.15). */
 interface WaitingAsk { conversationId: string; prompt: string; clientRunId: string }
-interface MaterialFormSnapshot { open: boolean; title: string; body: string; url: string; sourceDraft: Draft | null; mutationId: string }
-function savedMaterialForm(key: string): MaterialFormSnapshot {
-  try {
-    const value = JSON.parse(sessionStorage.getItem(key) ?? '{}') as Partial<MaterialFormSnapshot>;
-    return { open: value.open === true, title: value.title ?? '', body: value.body ?? '', url: value.url ?? '', sourceDraft: value.sourceDraft ?? null, mutationId: value.mutationId ?? crypto.randomUUID() };
-  } catch { return { open: false, title: '', body: '', url: '', sourceDraft: null, mutationId: crypto.randomUUID() }; }
-}
 export function ProjectConversation() {
   const data = useLoaderData() as ProjectData;
   const { me } = useShellData();
@@ -84,7 +77,7 @@ export function ProjectConversation() {
 function ProjectConversationContent({ data, variant, feed, rootHeader, rootMessageId = null, objects = [], onPosted, onSending, newestRootAt, onThreadSize, focusComposer = false }: PaneProps) {
   // Touch devices add a line with Enter and send with the button (#189).
   const touch = useMediaQuery(MEDIA.touch);
-  const { project, materials, members } = data;
+  const { project, members } = data;
   const conversation = variant === 'thread' ? data.conversation : null;
   const shell = useProjectShell();
   const people = shell?.people ?? null;
@@ -99,7 +92,6 @@ function ProjectConversationContent({ data, variant, feed, rootHeader, rootMessa
   const audience = audienceLine(people, me.user.id, project.visibility === 'workspace');
   const audienceShort = audience.replace(/ · only you two$/, '');
   // The stream's composer keeps the former new-conversation draft; each thread keeps its own reply draft.
-  const materialFormKey = `flux.project-material.${me.user.id}.${project.id}${conversation ? '.thread' : ''}`;
   const composerId = conversation ? 'thread-composer' : 'project-composer';
   const [asking, setAsking] = useState(false);
   const publicComposer = useComposerDraft(me.user.id, project.id, conversation?.task ? `task:${conversation.task.workId}` : conversation ? `conversation:${conversation.id}` : 'new');
@@ -138,7 +130,6 @@ function ProjectConversationContent({ data, variant, feed, rootHeader, rootMessa
   const activeIndex = Math.min(menuIndex, Math.max(0, options.length - 1));
   const captureScope = useComposerScope(publicComposer.key);
   const captureHelperScope = useComposerScope(helperComposer.key);
-  const savedMaterial = useMemo(() => savedMaterialForm(materialFormKey), [materialFormKey]);
   const busy = publicComposer.sending;
   const [readFailure, setReadFailure] = useState<{ message: string; retry: () => void } | null>(null);
   const [accessLost, setAccessLost] = useState(false);
@@ -151,20 +142,6 @@ function ProjectConversationContent({ data, variant, feed, rootHeader, rootMessa
   const refreshingRef = useRef(false);
   const [olderCursor, setOlderCursor] = useState(conversation?.messagePage.nextBeforeSequence ?? null);
   const [olderBusy, setOlderBusy] = useState(false);
-  const [materialItems, setMaterialItems] = useState(materials);
-  const [materialOffset, setMaterialOffset] = useState(materials.length);
-  const [materialTotal, setMaterialTotal] = useState(data.materialTotal);
-  const [moreMaterialsBusy, setMoreMaterialsBusy] = useState(false);
-  const [showMaterialForm, setShowMaterialForm] = useState(savedMaterial.open);
-  const [sourcesOpen, setSourcesOpen] = useState(savedMaterial.open);
-  const [materialTitle, setMaterialTitle] = useState(savedMaterial.title);
-  const [materialBody, setMaterialBody] = useState(savedMaterial.body);
-  const [materialUrl, setMaterialUrl] = useState(savedMaterial.url);
-  const [materialBusy, setMaterialBusy] = useState(false);
-  const [materialError, setMaterialError] = useState('');
-  const [materialMutationId, setMaterialMutationId] = useState(savedMaterial.mutationId);
-  const [privateDrafts, setPrivateDrafts] = useState<Draft[]>([]);
-  const [sourceDraft, setSourceDraft] = useState<Draft | null>(savedMaterial.sourceDraft);
   const scrollRef = useRef<HTMLDivElement>(null);
   const [feedNode, setFeedNode] = useState<HTMLDivElement | null>(null);
   const attachFeed = useCallback((node: HTMLDivElement | null) => { scrollRef.current = node; setFeedNode(node); }, []);
@@ -255,6 +232,8 @@ function ProjectConversationContent({ data, variant, feed, rootHeader, rootMessa
     revalidateRef.current();
     void getProject(project.id).then(() => setAccessLost(false)).catch(() => { /* denial keeps previous content hidden */ });
   }, [project.id]);
+  const materials = useProjectMaterials({ userId: me.user.id, project, inThread: !!conversation, writable, initial: data.materials, initialTotal: data.materialTotal,
+    onDenied: hideIfDenied, onSaved: () => { void refresh(); } });
   useEffect(() => {
     if (referenceWork.state.phase !== 'unavailable') return;
     const cause = referenceWork.state.error;
@@ -265,10 +244,7 @@ function ProjectConversationContent({ data, variant, feed, rootHeader, rootMessa
     return () => { current = false; };
   }, [referenceWork.state, hideIfDenied]);
   useEffect(() => { messagesRef.current = stored; }, [stored]);
-  useEffect(() => {
-    try { sessionStorage.setItem(materialFormKey, JSON.stringify({ open: showMaterialForm, title: materialTitle, body: materialBody, url: materialUrl, sourceDraft, mutationId: materialMutationId } satisfies MaterialFormSnapshot)); }
-    catch { /* private mode: the form remains usable during this visit */ }
-  }, [materialFormKey, showMaterialForm, materialTitle, materialBody, materialUrl, sourceDraft, materialMutationId]);
+  const mergeMaterials = materials.merge;
   const refresh = useCallback(async () => {
     // Offline, a read fails and a failed route reload would replace the stream with an error page:
     // the quiet line says why (#264), and the stream reads again when the connection is back.
@@ -281,8 +257,7 @@ function ProjectConversationContent({ data, variant, feed, rootHeader, rootMessa
         listMaterials(project.id),
         conversationId ? getConversation(conversationId) : Promise.resolve(null),
       ]);
-      setMaterialItems((current) => [...latestMaterials.items, ...current.filter((item) => !latestMaterials.items.some((latest) => latest.materialId === item.materialId))]);
-      setMaterialTotal(latestMaterials.total);
+      mergeMaterials(latestMaterials);
       if (latestConversation) {
         const newestSeen = messagesRef.current.at(-1)?.sequence ?? 0;
         let incoming = latestConversation.messages;
@@ -297,13 +272,7 @@ function ProjectConversationContent({ data, variant, feed, rootHeader, rootMessa
       }
     } catch (cause) { hideIfDenied(cause); }
     finally { refreshingRef.current = false; }
-  }, [conversationId, hideIfDenied, project.id]);
-  useEffect(() => {
-    if (!showMaterialForm || !writable) return;
-    const controller = new AbortController();
-    listDrafts(project.workspaceId, controller.signal).then((page) => setPrivateDrafts(page.items.filter((item) => item.visibility === 'private' && item.owner.kind === 'human' && item.owner.id === me.user.id))).catch(() => { /* publication remains available without a draft */ });
-    return () => controller.abort();
-  }, [showMaterialForm, writable, project.workspaceId, me.user.id]);
+  }, [conversationId, hideIfDenied, project.id, mergeMaterials]);
 
   // Flux answers again (not merely a Retry or the browser's `online` event): read what arrived meanwhile.
   useEffect(() => onFluxAnswered(() => { void refresh(); }), [refresh]);
@@ -521,7 +490,7 @@ function ProjectConversationContent({ data, variant, feed, rootHeader, rootMessa
       document.getElementById(composerId)?.closest('.composer')?.querySelector<HTMLButtonElement>('.composer__attach')?.click();
       return;
     }
-    if (option.slash === 'source') { changeDraft(before + after, before.length); setSourcesOpen(true); placeCaret(before.length, before + after); return; }
+    if (option.slash === 'source') { changeDraft(before + after, before.length); materials.setSourcesOpen(true); placeCaret(before.length, before + after); return; }
     changeDraft(before + option.insert + after, before.length + option.insert.length);
     placeCaret(before.length + option.insert.length, before + option.insert + after);
   }
@@ -590,32 +559,12 @@ function ProjectConversationContent({ data, variant, feed, rootHeader, rootMessa
     } catch (cause) { hideIfDenied(cause); setReadFailure({ message: readableError(cause), retry: () => void loadOlder() }); }
     finally { setOlderBusy(false); }
   }
-  async function loadMoreMaterials() {
-    if (moreMaterialsBusy || materialOffset >= materialTotal) return;
-    setMoreMaterialsBusy(true);
-    try {
-      const page = await listMaterials(project.id, undefined, materialOffset);
-      setMaterialItems((current) => [...current, ...page.items.filter((item) => !current.some((existing) => existing.materialId === item.materialId))]);
-      setMaterialOffset((current) => current + page.items.length);
-      setMaterialTotal(page.total);
-    } catch (cause) { hideIfDenied(cause); setMaterialError(readableError(cause)); }
-    finally { setMoreMaterialsBusy(false); }
-  }
-  async function submitMaterial(event: FormEvent) {
-    event.preventDefault(); if (!writable || !materialTitle.trim() || materialBusy) return;
-    setMaterialBusy(true); setMaterialError('');
-    try {
-      await publishMaterial(project.id, { title: materialTitle.trim(), body: materialBody, ...(materialUrl.trim() ? { url: materialUrl.trim() } : {}), ...(sourceDraft ? { sourceDraftId: sourceDraft.id, sourceDraftVersion: sourceDraft.version } : {}), clientMutationId: materialMutationId });
-      setMaterialTitle(''); setMaterialBody(''); setMaterialUrl(''); setSourceDraft(null); setMaterialMutationId(crypto.randomUUID()); setShowMaterialForm(false); void refresh();
-    } catch (cause) { hideIfDenied(cause); setMaterialError(readableError(cause)); }
-    finally { setMaterialBusy(false); }
-  }
   async function cite(material: Material) {
     setReadFailure(null);
     try {
       const snapshot = await getMaterialVersion(material.materialId, material.version);
       const selected = { title: snapshot.title, materialId: material.materialId, version: snapshot.version };
-      publicComposer.setReference(selected); setSourcesOpen(false);
+      publicComposer.setReference(selected); materials.setSourcesOpen(false);
       document.getElementById(composerId)?.focus();
     } catch (cause) { hideIfDenied(cause); setReadFailure({ message: readableError(cause), retry: () => void cite(material) }); }
   }
@@ -672,7 +621,7 @@ function ProjectConversationContent({ data, variant, feed, rootHeader, rootMessa
         : referenceWork.state.phase === 'unavailable' ? 'failed' as const : 'checking' as const,
     };
   };
-  const trayOpen = sourcesOpen || (writable && showMaterialForm);
+  const trayOpen = materials.trayOpen;
   const title = conversation ? conversation.firstMessageBody.split('\n')[0] || 'Conversation' : project.name;
   let lastDay = '';
   const discussedRow = discussedTask ? referenceWork.rows.get(`work:${discussedTask}`) ?? null : null;
@@ -757,17 +706,7 @@ function ProjectConversationContent({ data, variant, feed, rootHeader, rootMessa
     {conversation ? <MessageWorkPages read={messageWork} /> : null}
     {conversation && referenceWork.state.phase === 'unavailable' ? <div className="ws-message-pages" role="alert">Referenced tasks could not be checked. Your reply is kept. <button type="button" className="ws-none__b" onClick={referenceWork.refresh}>Refresh task references</button></div> : null}
     <div className="composer project-convo__composer"><div className="composer__in" data-shift={conversation ? undefined : true}>
-      {trayOpen ? <section id={`${conversation ? 'thread' : 'project'}-sources`} aria-label="Project materials" className="project-convo__materials">
-        <div className="project-convo__section-head"><h3>Sources · saved for {project.name}</h3><span>{materialTotal}</span><button type="button" className="project-convo__tray-close" aria-label="Close sources" onClick={() => { setSourcesOpen(false); setShowMaterialForm(false); }}><Icon name="x" size={14} /></button></div>
-        <div className="project-convo__tray">
-          {materialItems.map((material) => <article className="project-convo__material" key={material.materialId}><div><strong>{writable ? material.title : <RefLink className="project-convo__material-read" to={`/materials/${material.materialId}/versions/${material.version}`}>{material.title}</RefLink>}</strong><small>v{material.version} · {author(material.authorId)} · {day(material.updatedAt)}{material.url ? <> · <a href={material.url} target="_blank" rel="noreferrer">Open link</a></> : null}</small></div>{writable ? <Button variant="link" onClick={() => void cite(material)}>Discuss this version</Button> : null}</article>)}
-          {!materialItems.length ? <p className="project-convo__muted">{writable ? "Text and links you save here can be cited in any reply." : "No sources have been saved to this project yet."}</p> : null}
-          {materialOffset < materialTotal ? <Button variant="quiet" busy={moreMaterialsBusy} onClick={() => void loadMoreMaterials()}>Load more materials</Button> : null}
-          {writable && !showMaterialForm ? <Button variant="secondary" icon="plus" disabled={materialBusy} onClick={() => setShowMaterialForm(true)}>Add material</Button> : null}
-          {writable && showMaterialForm ? <form className="project-convo__material-form" onSubmit={(event) => void submitMaterial(event)}><fieldset className="project-convo__material-fields" disabled={materialBusy}>{privateDrafts.length ? <label>Start from a private draft<Select value={sourceDraft?.id ?? ''} onChange={(next) => { const chosen = privateDrafts.find((item) => item.id === next) ?? null; setSourceDraft(chosen); if (chosen) { setMaterialTitle(chosen.title); setMaterialBody(chosen.body); } setMaterialMutationId(crypto.randomUUID()); }}><Option value="">No private draft</Option>{privateDrafts.map((item) => <Option key={item.id} value={item.id}>{item.title} · v{item.version}</Option>)}</Select></label> : null}<Input label="Title" value={materialTitle} onChange={(event) => { setMaterialTitle(event.target.value); setMaterialMutationId(crypto.randomUUID()); }} required maxLength={200} /><label htmlFor={`${composerId}-material-body`}>Text</label><textarea id={`${composerId}-material-body`} value={materialBody} onChange={(event) => { setMaterialBody(event.target.value); setMaterialMutationId(crypto.randomUUID()); }} maxLength={100000} /><Input label="Link (optional)" type="url" value={materialUrl} onChange={(event) => { setMaterialUrl(event.target.value); setMaterialMutationId(crypto.randomUUID()); }} />{sourceDraft ? <p className="project-convo__publication">Publishing selected content from private draft v{sourceDraft.version}. Review the exact text and link above. Your original draft remains private.</p> : null}{materialError ? <p role="alert">{materialError}</p> : null}<div className="project-convo__form-actions"><Button type="submit" variant="primary" busy={materialBusy}>Save for this project</Button><Button variant="quiet" disabled={materialBusy} onClick={() => setShowMaterialForm(false)}>Cancel</Button></div></fieldset></form> : null}
-          {materialError && !showMaterialForm ? <p role="alert">{materialError}</p> : null}
-        </div>
-      </section> : null}
+      {trayOpen ? <MaterialTray materials={materials} projectName={project.name} writable={writable} inThread={!!conversation} composerId={composerId} author={author} onCite={(material) => void cite(material)} /> : null}
       {writable ? <ConnectionLine /> : null}
       {/* On the phone "Replying to" and the audience share one line, keeping the composer compact. */}
       {conversation && writable && !asking && assistantEntry?.mode === 'ask' && assistant.member === true && assistantUses(me.user.id) < 3 ? <AssistantSuggestions onPick={(text) => {
@@ -799,7 +738,7 @@ function ProjectConversationContent({ data, variant, feed, rootHeader, rootMessa
         sendLabel={asking ? 'Send to your assistant' : conversation ? 'Send reply' : 'Send message'}
         sendDisabled={!composer.canSend || busy || askBusy || assistantInStream || (asking && ask.kind !== 'ready')} onSend={() => void send()}
         menu={<ComposerMenu open={menuOpen} id={`${composerId}-menu`} options={options} active={activeIndex} trigger={trigger?.char ?? '@'} aiOff={aiOff} onPick={pick} onHover={setMenuIndex} />} />
-        : <div className="composer__box"><button type="button" className="composer__ask project-convo__sources-btn" aria-expanded={trayOpen} aria-controls={trayOpen ? `${conversation ? 'thread' : 'project'}-sources` : undefined} aria-label={`Sources${materialTotal ? `, ${materialTotal} saved` : ''}`} data-tip="Saved sources to read" data-tip-align="start" onClick={() => { if (trayOpen) setSourcesOpen(false); else setSourcesOpen(true); }}><Icon name="doc" /><span className="project-convo__sources-t" aria-hidden="true">Sources</span>{materialTotal ? <span className="project-convo__sources-n" aria-hidden="true">{materialTotal > 99 ? '99+' : materialTotal}</span> : null}</button><p className="project-convo__read-only">Read-only · <span>You have read access to this project.</span></p></div>}
+        : <div className="composer__box"><button type="button" className="composer__ask project-convo__sources-btn" aria-expanded={trayOpen} aria-controls={trayOpen ? `${conversation ? 'thread' : 'project'}-sources` : undefined} aria-label={`Sources${materials.total ? `, ${materials.total} saved` : ''}`} data-tip="Saved sources to read" data-tip-align="start" onClick={() => { if (trayOpen) materials.setSourcesOpen(false); else materials.setSourcesOpen(true); }}><Icon name="doc" /><span className="project-convo__sources-t" aria-hidden="true">Sources</span>{materials.total ? <span className="project-convo__sources-n" aria-hidden="true">{materials.total > 99 ? '99+' : materials.total}</span> : null}</button><p className="project-convo__read-only">Read-only · <span>You have read access to this project.</span></p></div>}
       {conversation && !accessLost ? <TypingNotice {...typing} /> : null}
       {writable ? <SendAnnouncer pending={publicComposer.pending} /> : null}
       {writable && assistantInStream ? <p id={`${composerId}-ai-hint`} className="project-convo__hint" role="status">Your assistant answers inside a conversation. Open one and type /ai there. This text is not posted.</p> : null}
