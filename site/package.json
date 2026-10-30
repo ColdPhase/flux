@@ -1,0 +1,16 @@
+{
+  "name": "flux-docs-site",
+  "private": true,
+  "type": "module",
+  "description": "The Flux documentation site (Astro Starlight). Its pages are generated from docs/ by scripts/sync-docs.mjs.",
+  "scripts": {
+    "sync": "node scripts/sync-docs.mjs",
+    "build": "node scripts/sync-docs.mjs && astro build",
+    "preview": "astro preview"
+  },
+  "dependencies": {
+    "@astrojs/starlight": "0.42.6",
+    "astro": "7.4.0",
+    "starlight-links-validator": "0.27.0"
+  }
+}

@@ -96,6 +96,9 @@ const ZOOMS = [0.5, 0.67, 0.8, 0.9, 1, 1.1, 1.25, 1.5];
 const FIT_MIN = 0.6;
 /** On touch screens text stays larger; the rest of a wide sketch is a swipe away. */
 const FIT_MIN_COARSE = 0.75;
+/** The map opens at a working size (#726): a thought's title at 12.6 px or more and its meta line at 10.8 px or more
+ *  (90% of 14 and 12 px), as the map is drawn. A larger sketch opens at its top left and Fit is the overview. */
+const OPEN_MIN = 0.9;
 const zoomIn = (z: number) => ZOOMS.find((step) => step > z + 0.001) ?? ZOOMS[ZOOMS.length - 1]!;
 const zoomOut = (z: number) => [...ZOOMS].reverse().find((step) => step < z - 0.001) ?? ZOOMS[0]!;
 
@@ -561,8 +564,9 @@ export function SketchMap(props: SketchMapProps) {
     setZoom(target);
   }, [setZoom]);
 
-  // Fit: show the whole graph when it fits at a readable size, otherwise start at its top left.
-  const fit = useCallback(() => {
+  // Fit: show the whole graph when it fits at a readable size, otherwise start at its top left. Opening uses the
+  // working floor (OPEN_MIN); the Fit button, an explicit overview, may go down to FIT_MIN.
+  const fit = useCallback((floor = FIT_MIN) => {
     const canvas = canvasRef.current;
     const { rects: all, origin: o } = geometry.current;
     if (!canvas || !all.size) return;
@@ -590,7 +594,7 @@ export function SketchMap(props: SketchMapProps) {
     const view = canvas.getBoundingClientRect();
     const corner = wrapRef.current?.querySelector('.sk-corner')?.getBoundingClientRect();
     if (corner?.width) scale = Math.min(scale, Math.max((corner.left - view.left - 8) / (maxX - minX), (corner.top - view.top - top - 8) / (maxY - minY)));
-    const z = Math.max(coarseRef.current ? FIT_MIN_COARSE : FIT_MIN, Math.floor(scale * 100) / 100);
+    const z = Math.max(coarseRef.current ? Math.max(FIT_MIN_COARSE, floor) : floor, Math.floor(scale * 100) / 100);
     setZoom(z);
     cameras.current.plane = { left: Math.max(0, (minX - o.x) * z), top: Math.max(0, (minY - o.y) * z) };
     requestAnimationFrame(apply);
@@ -600,10 +604,37 @@ export function SketchMap(props: SketchMapProps) {
   useEffect(() => {
     if (fitted.current || !hasThoughts) return;
     fitted.current = true;
-    fit();
+    fit(OPEN_MIN);
   }, [hasThoughts, fit]);
   const highlighted = (id: string) => selection.includes(id) || connectFrom === id;
 
+  // The first-run hint floats over the canvas above the dock; where a thought lies under it (a card at the bottom of the
+  // view, as at 1440×900 opening at 90%), it steps aside, so it never sits on a card's text. Checked after a scroll,
+  // a resize or a change of the thoughts, a frame later.
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    const dock = dockRef.current;
+    if (!canvas || !dock || compact) return undefined;
+    let frame = 0;
+    const check = () => {
+      frame = 0;
+      const hint = dock.querySelector<HTMLElement>(':scope > .sk-hint');
+      if (!hint) return;
+      const h = hint.getBoundingClientRect();
+      const over = [...canvas.querySelectorAll<HTMLElement>('.sk-node')].some((node) => {
+        const r = node.getBoundingClientRect();
+        return r.right > h.left && r.left < h.right && r.bottom > h.top && r.top < h.bottom;
+      });
+      if (over) hint.setAttribute('data-over-card', ''); else hint.removeAttribute('data-over-card');
+    };
+    const later = () => { if (!frame) frame = requestAnimationFrame(check); };
+    later();
+    canvas.addEventListener('scroll', later, { passive: true });
+    const observer = new ResizeObserver(later);
+    observer.observe(canvas);
+    observer.observe(dock);
+    return () => { if (frame) cancelAnimationFrame(frame); canvas.removeEventListener('scroll', later); observer.disconnect(); };
+  }, [compact, rects, zoom]);
   // #509 AC-3: Ctrl/⌘ + wheel (a trackpad pinch arrives the same way) zooms smoothly around the
   // pointer; a plain wheel or two-finger scroll pans natively. React's wheel listener is passive, and
   // the zoom must be cancellable to replace the browser's page zoom.
@@ -904,7 +935,7 @@ export function SketchMap(props: SketchMapProps) {
       <button type="button" className="sk-zoom__level" aria-label={`Zoom ${Math.round(zoom * 100)}%, reset to 100%`} onClick={() => zoomAt(1)}>{Math.round(zoom * 100)}%</button>
       <button type="button" aria-label="Zoom in" data-tip="Zoom in" disabled={zoom >= ZOOMS[ZOOMS.length - 1]!} onClick={() => zoomAt(zoomIn(zoom))}><Icon name="plus" size={14} /></button>
       <span className="sk-div" aria-hidden="true" />
-      <button type="button" className="sk-zoom__fit" aria-label="Fit the sketch to the view" onClick={fit}>Fit</button>
+      <button type="button" className="sk-zoom__fit" aria-label="Fit the sketch to the view" onClick={() => fit()}>Fit</button>
     </div>
   );
 

@@ -119,7 +119,10 @@ class RailNavigation(unittest.TestCase):
                     settings.press("Enter")
                     expect(page).to_have_url(re.compile(r"/settings$"))
                     expect(page.get_by_role("heading", name="Settings", exact=True)).to_be_visible()
-                    self.assertAlmostEqual(page.get_by_role("complementary", name="Sidebar").bounding_box()["width"], 64, delta=.001)
+                    side = page.get_by_role("complementary", name="Sidebar")
+                    # SizeSwap animates the aside's width (#720/#722); read it once that has finished (#730).
+                    side.evaluate("el => Promise.all(el.getAnimations().map((animation) => animation.finished.catch(() => null)))")
+                    self.assertAlmostEqual(side.bounding_box()["width"], 64, delta=.001)
                     shot(page, f"340-rail-navigation-{engine}-{'dark-coarse' if coarse else 'light'}")
 
     def test_02_current_account_signs_out_from_the_compact_existing_form(self):

@@ -57,6 +57,9 @@ import { ThreadReply } from './ThreadReply';
 import { useProjectMaterials } from '../materials/useProjectMaterials';
 import { MaterialTray } from '../materials/MaterialTray';
 
+/** Project events that change what a conversation pane shows; the assistant's Undo (#68) can take a message back. */
+const LIVE_KINDS = new Set(['project.conversation_created.v1', 'project.message_sent.v1', 'project.assistant_change_undone.v1']);
+
 /** A request made offline, held under its own id until it can go out (AST-10.15). */
 interface WaitingAsk { conversationId: string; prompt: string; clientRunId: string }
 export function ProjectConversation() {
@@ -140,6 +143,8 @@ function ProjectConversationContent({ data, variant, feed, rootHeader, rootMessa
     [conversation, stored, publicComposer.sent]);
   const outbox = outboxView(messages, conversation ? publicComposer.pending : [], publicComposer.sent, me.user.id);
   const refreshingRef = useRef(false);
+  /** A refresh was asked for while one was reading: read once more after it, so a message posted meanwhile is not left to the poll (#733). */
+  const refreshAgainRef = useRef(false);
   const [olderCursor, setOlderCursor] = useState(conversation?.messagePage.nextBeforeSequence ?? null);
   const [olderBusy, setOlderBusy] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -248,8 +253,10 @@ function ProjectConversationContent({ data, variant, feed, rootHeader, rootMessa
   const refresh = useCallback(async () => {
     // Offline, a read fails and a failed route reload would replace the stream with an error page:
     // the quiet line says why (#264), and the stream reads again when the connection is back.
-    if (refreshingRef.current || !fluxAnswers()) return;
+    if (!fluxAnswers()) return;
+    if (refreshingRef.current) { refreshAgainRef.current = true; return; }
     refreshingRef.current = true;
+    refreshAgainRef.current = false;
     // The stream's refresh reloads the route (newest roots, the project); a thread reads only its own replies.
     if (!conversationId) revalidateRef.current();
     try {
@@ -271,15 +278,22 @@ function ProjectConversationContent({ data, variant, feed, rootHeader, rootMessa
         setMessages((current) => mergeMessages(current, incoming));
       }
     } catch (cause) { hideIfDenied(cause); }
-    finally { refreshingRef.current = false; }
+    finally {
+      refreshingRef.current = false;
+      if (refreshAgainRef.current) { refreshAgainRef.current = false; queueMicrotask(() => { void refreshLatest.current(); }); }
+    }
   }, [conversationId, hideIfDenied, project.id, mergeMaterials]);
+  const refreshLatest = useRef(refresh);
+  useEffect(() => { refreshLatest.current = refresh; }, [refresh]);
 
   // Flux answers again (not merely a Retry or the browser's `online` event): read what arrived meanwhile.
   useEffect(() => onFluxAnswered(() => { void refresh(); }), [refresh]);
   // The assistant's Undo took something back (#68): a message it posted reads as removed now, not at the next poll. Ids only; the read is the API's.
+  // A message or a new conversation in this project (#733) reads at once, not at the 15 s poll: the event carries the
+  // project only, so the stream reloads its roots and an open thread reads its own replies. A resync reads the same way.
   useStreamEvents(me.user.id, (event) => {
-    if (event.objectType === 'project' && event.objectId === project.id && event.kind === 'project.assistant_change_undone.v1') void refresh();
-  });
+    if (event.objectType === 'project' && event.objectId === project.id && LIVE_KINDS.has(event.kind)) void refresh();
+  }, () => { void refresh(); });
   useEffect(() => {
     const onFocus = () => { void refresh(); };
     const onVisible = () => { if (document.visibilityState === 'visible') void refresh(); };
