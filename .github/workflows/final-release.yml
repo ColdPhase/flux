@@ -276,7 +276,7 @@ jobs:
         run: |
           set -euo pipefail
           export POSTGRES_PASSWORD=x FLUX_FIXTURE_TOKEN=x FLUX_PUBLIC_ORIGIN=http://127.0.0.1 FLUX_AUTH_SECRET=x
-          docker compose -f docker/compose.source.yaml --profile runtime config --format json > "$RUNNER_TEMP/source-config.json"
+          docker compose -f docker/compose.source.yaml -f docker/compose.source.runtime.yaml --profile runtime config --format json > "$RUNNER_TEMP/source-config.json"
           export FLUX_PROJECT=fluxcompare
           docker compose -f release-assets/compose.yaml -f release-assets/compose.runtime.yaml --profile runtime config --format json \
             > "$RUNNER_TEMP/release-config.json"

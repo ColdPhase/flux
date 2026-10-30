@@ -163,7 +163,7 @@ refuses 'same digest for both images' python3 scripts/release/prepare_assets.py 
 step "Runtime overlay against the source stack (docker compose config)"
 (
   export POSTGRES_PASSWORD=x FLUX_FIXTURE_TOKEN=x FLUX_PUBLIC_ORIGIN=http://127.0.0.1 FLUX_AUTH_SECRET=x
-  docker compose -f docker/compose.source.yaml --profile runtime config --format json > "$work/source-config.json"
+  docker compose -f docker/compose.source.yaml -f docker/compose.source.runtime.yaml --profile runtime config --format json > "$work/source-config.json"
   FLUX_PROJECT=fluxcompare docker compose -f "$work/release-assets/compose.yaml" -f "$work/release-assets/compose.runtime.yaml" \
     --profile runtime config --format json > "$work/release-config.json"
   python3 scripts/release/compare_runtime_overlay.py "$work/source-config.json" "$work/release-config.json"
