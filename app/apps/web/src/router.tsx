@@ -116,7 +116,7 @@ export const router = createBrowserRouter([
         children: [
           { index: true, Component: Home },
           { path: 'projects', ...secondary(async () => ({ Component: (await import('./app/ProjectsIndex')).ProjectsIndex })) },
-          { path: 'projects/new', ...secondary(async () => ({ Component: (await import('./app/ProjectSetup')).ProjectSetup })) },
+          { path: 'projects/new', ...secondary(async () => ({ Component: (await import('./project/ProjectSetup')).ProjectSetup })) },
           {
             // One project (#117): its header, audience, state line and view tabs share this data.
             id: 'project',

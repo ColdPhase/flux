@@ -3,8 +3,8 @@ import { useRevalidator } from 'react-router';
 import type { Project, ProjectTemplate } from '@flux/contracts';
 import { ApiError } from '../api/client';
 import { useIntentKeys } from '../api/intent-keys';
-import { createProject, createWorkspace } from './conversation-api';
-import { useShellData } from './data';
+import { createProject, createWorkspace } from '../app/conversation-api';
+import { useShellData } from '../app/data';
 
 /** What a project can start from (F-026 S20). Conversation is always there; the second line says what else. */
 export const TEMPLATES: { id: ProjectTemplate; name: string; has: string }[] = [

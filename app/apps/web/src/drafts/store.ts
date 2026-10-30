@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useSyncExternalStore, type RefObject } from 'react';
-import { forgetReloadRetention, setReloadRetention } from './reload-retention';
+import { forgetReloadRetention, setReloadRetention } from '../app/reload-retention';
 
 /**
  * Unfinished work survives a view switch and a reload (#40): the text in a composer before it
