@@ -8,7 +8,7 @@ import {
   authorize, createEncryptionUseCases, DerivationSemaphore, ForbiddenError, getWorkspace, keyPinStatus, keyringFromEnv, NotFoundError, ProcessKeys,
   recordEvent, sealFor, swapFiles, swapSafety, testSwapRoot, type Database, type EncryptionPorts, type EncryptionUnitOfWork, type PasswordEstimator,
 } from '@flux/core';
-import { accessPorts, accessReader, configureSeals, dropSealedSearchIndex, loadActor, workspaceEncryptionRows, type DbExecutor } from '@flux/db';
+import { accessPorts, accessReader, configureRemovalPin, configureSeals, dropSealedSearchIndex, loadActor, workspaceEncryptionRows, type DbExecutor } from '@flux/db';
 import { eventPorts } from '../events.js';
 
 // Adapters of the encrypted-workspace use cases (F-030, #655): the access policy (`workspace.manage_encryption`), the
@@ -79,6 +79,8 @@ export interface EncryptionComposition {
 export function composeEncryption(db: Database, boss: Pick<PgBoss, 'send'>, keys: ProcessKeys): EncryptionComposition {
   const pin = keyPinStatus(process.env);
   if (pin.warning) console.error(JSON.stringify({ warning: pin.warning }));
+  // Role changes pin their removal records with it (F-030 S2c).
+  configureRemovalPin(pin.pin ? (record) => pin.pin!.removal(record) : null);
   const useCases = createEncryptionUseCases({
     unit: encryptionUnitOfWork(db, boss), keys, semaphore: new DerivationSemaphore(2, 8), estimator: zxcvbnEstimator(), pin: pin.pin,
     read: (principal, workspaceId) => getWorkspace(principal, workspaceId, db, accessPorts, { bootId: keys.openableBoot }),

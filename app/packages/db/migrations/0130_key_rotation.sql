@@ -16,6 +16,22 @@ ALTER TABLE workspace_holders ADD COLUMN pin text;
 ALTER TABLE workspace_key_versions ADD COLUMN pin text;
 -- A rotation that cannot finish (an unopenable value, or a copy of an old-version envelope outside the registry) says
 -- where (a table and column name, never content) and since when.
+-- Pinned removal records (S2c, founder-delegated decision 2026-10-30): every removed holder, kept for good (unlike the
+-- tombstones, which the finish clears), each pinned under FLUX_KEY_PIN_SECRET and chained to the previous one, with
+-- the chain's head on workspace_keys. A holder whose id or public key has a record is never sealed to again and makes
+-- an unlock refuse; a deleted or altered record breaks the chain (tampering).
+CREATE TABLE workspace_removals (
+  workspace_id uuid NOT NULL REFERENCES workspace_keys(workspace_id) ON DELETE CASCADE,
+  seq integer NOT NULL CHECK (seq >= 1),
+  holder_id uuid NOT NULL,
+  user_id text,
+  public_key text NOT NULL,
+  removed_version integer NOT NULL CHECK (removed_version >= 1),
+  pin text NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  PRIMARY KEY (workspace_id, seq)
+);
+ALTER TABLE workspace_keys ADD COLUMN removal_head text;
 ALTER TABLE workspace_rotation_progress ADD COLUMN stalled_on text;
 ALTER TABLE workspace_rotation_progress ADD COLUMN stalled_at timestamptz;
 ALTER TABLE workspace_rotation_progress ADD COLUMN pass_changes bigint NOT NULL DEFAULT 0;

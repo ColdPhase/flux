@@ -419,7 +419,7 @@ describe('F-030 S2c key rotation (AC-13)', () => {
     for (const holder of holders) assert.equal(deksOf({ id: holder.id, workspace_id: c.ws }, attacker.privateKey, all).size, 0);
   });
 
-  test('a restored old holder row with its tombstone is not sealed to; the started event lists the holder set; its stale MAC then locks the space', async () => {
+  test('the pinned removal record: a removed admin who puts back his own genuine row, membership and wraps and deletes the tombstones gets no new key', async () => {
     const c = await club('Restored row club', ['Ben']);
     await seed(c, 3);
     const ben = c.people.Ben!;
@@ -427,7 +427,10 @@ describe('F-030 S2c key rotation (AC-13)', () => {
     const wraps = (await pool.query('SELECT * FROM workspace_dek_wraps WHERE holder_id = $1', [row.id])).rows;
     expectStatus(await lock(c.owner.browser, c.ws), 200);
     await removeMember(c.owner, c.ws, ben.who);
-    // Ben, who can write to the database, restores his membership, his holder row and his wraps; the tombstone stays.
+    const records = (await pool.query('SELECT * FROM workspace_removals WHERE workspace_id = $1 ORDER BY seq', [c.ws])).rows;
+    assert.ok(records.some((r) => r.holder_id === row.id && r.user_id === ben.who.id), 'the removal is pinned in the role change\'s transaction');
+    // Ben, who can write to the database, puts back his membership, his genuine holder row (its own valid pin) and
+    // wraps, and deletes the tombstones.
     await pool.query(`INSERT INTO workspace_members (workspace_id, user_id, role, created_by) VALUES ($1, $2, 'admin', $3)`, [c.ws, ben.who.id, c.owner.id]);
     await pool.query(`INSERT INTO workspace_holders (id, workspace_id, kind, user_id, kdf, public_key, wrapped_private, holder_mac, holder_mac_version, secret_check, confirmed_versions, pin)
       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`, [row.id, c.ws, row.kind, row.user_id, row.kdf, row.public_key, row.wrapped_private, row.holder_mac,
@@ -436,16 +439,37 @@ describe('F-030 S2c key rotation (AC-13)', () => {
       await pool.query(`INSERT INTO workspace_dek_wraps (holder_id, workspace_id, key_version, ephemeral_public, sealed_dek, confirm) VALUES ($1, $2, $3, $4, $5, $6)`,
         [wrap.holder_id, wrap.workspace_id, wrap.key_version, wrap.ephemeral_public, wrap.sealed_dek, wrap.confirm]);
     }
-    expectStatus(await unlock(c.owner.browser, c.ws, { password: c.ownerPw }), 200, 'the restored row still verifies at v1');
+    await pool.query('DELETE FROM workspace_removed_holders WHERE workspace_id = $1', [c.ws]);
+    const refused = async (label: string) => {
+      const answer = await unlock(c.owner.browser, c.ws, { password: c.ownerPw });
+      assert.equal(answer.status, 409, `${label}: ${answer.text}`);
+      assert.equal(codeOf(answer), 'ENCRYPTION_TAMPERED');
+      assert.equal(await unlockRowCount(c.ws), 0);
+    };
+    await refused('a row of someone with a pinned removal record');
+    // He deletes the removal records too: the pinned chain no longer ends at the head.
+    await pool.query('DELETE FROM workspace_removals WHERE workspace_id = $1', [c.ws]);
+    await refused('deleted removal records');
+    // ... and clears the head as well: the head was pinned, so a missing record still shows unless the whole state is
+    // rolled back to before the removal (stated in the contract).
+    const [{ removal_head: head }] = (await pool.query('SELECT removal_head FROM workspace_keys WHERE workspace_id = $1', [c.ws])).rows;
+    assert.ok(head);
+    await sleep(800);
+    assert.equal((await keysOf(c.ws)).current_version, 1, 'no rotation started');
+    assert.equal((await pool.query('SELECT count(*)::int AS n FROM workspace_dek_wraps WHERE holder_id = $1 AND key_version > 1', [row.id])).rows[0].n, 0);
+    // Repaired: the records back, Ben's row and membership gone.
+    for (const record of records) {
+      await pool.query(`INSERT INTO workspace_removals (workspace_id, seq, holder_id, user_id, public_key, removed_version, pin, created_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+        [record.workspace_id, record.seq, record.holder_id, record.user_id, record.public_key, record.removed_version, record.pin, record.created_at]);
+    }
+    await pool.query('DELETE FROM workspace_holders WHERE id = $1', [row.id]);
+    await pool.query('DELETE FROM workspace_members WHERE workspace_id = $1 AND user_id = $2', [c.ws, ben.who.id]);
+    expectStatus(await unlock(c.owner.browser, c.ws, { password: c.ownerPw }), 200, 'repaired, it unlocks');
     await settled(c.ws, 2);
-    const started = await events(c.ws, 'workspace.key_rotation_started.v1');
     const adaHolder = await holderOf(c.ws, c.owner.id);
-    assert.deepEqual(started.map((e) => e.holders), [[adaHolder.id]], 'Ben\'s restored row is not in the holder set');
-    assert.equal((await pool.query('SELECT count(*)::int AS n FROM workspace_dek_wraps WHERE holder_id = $1', [row.id])).rows[0].n, 0, 'no wrap of v2 for Ben');
-    expectStatus(await lock(c.owner.browser, c.ws), 200);
-    const answer = await unlock(c.owner.browser, c.ws, { password: c.ownerPw });
-    assert.equal(answer.status, 409, 'the restored row\'s MAC is of v1: its presence locks the space instead of being skipped');
-    assert.equal(codeOf(answer), 'ENCRYPTION_TAMPERED');
+    assert.deepEqual((await events(c.ws, 'workspace.key_rotation_started.v1')).map((e) => e.holders), [[adaHolder.id]], 'the new key opens for Ada only');
+    assert.equal((await pool.query('SELECT count(*)::int AS n FROM workspace_dek_wraps WHERE holder_id = $1', [row.id])).rows[0].n, 0, 'nothing for Ben');
+    assert.ok((await pool.query('SELECT count(*)::int AS n FROM workspace_removals WHERE workspace_id = $1', [c.ws])).rows[0].n >= records.length, 'records outlive the finish');
   });
 
   test('cascades: an account deletion leads to a rotation; a holder deleted during reencrypting leads to n+2; the last password and a version without commitment are refused', async () => {

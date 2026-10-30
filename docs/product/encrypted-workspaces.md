@@ -372,12 +372,19 @@ whole instance is restored.
 public key). The start never seals to a holder id or public key that has a tombstone, and the
 tombstones are cleared at the finish. A person removed and later added again creates a **new**
 holder with a new key pair through the [grant flow](#password-lifecycle). This is defence in depth.
-One tampering path cannot be closed with cryptography, and it is stated here: during `pending`
-(a removal while locked), no key is available to authenticate the removal itself. An ex-holder who
-kept their own holder row, and who can write to the database, could restore that row and their role
-and delete the tombstone. The next unlock would then seal DEK *n*+1 to them. To make that visible,
-the start records the holder set in `workspace.key_rotation_started.v1` (ids), and the Encryption
-section shows "The new key opens for Ada and Cy." Every holder can see who received it.
+**Pinned removal records (S2c, 2026-10-30).** During `pending` (a removal while locked) no DEK is available to
+authenticate the removal, but the key pin is: the role change's transaction (in the API, which holds
+`FLUX_KEY_PIN_SECRET`) turns the tombstones into `workspace_removals` records, each pinned over [workspace, seq,
+holder id, user id, public key, removed-at version, previous record's pin] and chained, with the chain's head
+(`workspace_keys.removal_head`) pinned the same way. Records are kept for good (the finish clears only the tombstones).
+A holder row whose id or public key has a record makes every unlock and start refuse as tampering, so an ex-holder who
+puts back their own genuine row, role and wraps and deletes the tombstones gets no new key; deleting or altering a
+record breaks the chain (tampering too). A person removed and added again gets a new holder (new id and key pair) and
+is unaffected. An account deletion's cascade, or a removal in a process without the secret, leaves plain tombstones,
+which the next start pins after verifying the chain. What remains: a writer who rolls the key tables, the records
+**and** the head back together to a state from before the removal is indistinguishable from that state to the
+database; the start records the holder set in `workspace.key_rotation_started.v1` (ids), and the Encryption section
+shows "The new key opens for Ada and Cy.", so every holder can see who received it.
 
 **The key pin (S2c review, 2026-10-29).** Without it, a database writer could take over the key of a workspace whose
 holders had not yet confirmed the current version: replace a holder's wrap with a DEK of their own and forge the

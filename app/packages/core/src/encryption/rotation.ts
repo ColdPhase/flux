@@ -5,7 +5,7 @@ import { envelopeVersion } from './envelope.js';
 import { DecryptionFailedError } from './primitives.js';
 import { WorkspaceLockedError } from './errors.js';
 import { fileObjectVersion } from './files.js';
-import { holderIdentity, holdersValid, recordTampering, SYSTEM, TamperedError, TamperSignal, zero, type Deks } from './holder-set.js';
+import { holderIdentity, holdersValid, removedHolder, recordTampering, SYSTEM, TamperedError, TamperSignal, zero, type Deks } from './holder-set.js';
 import { holderMac, keyCommitment, sealDekToHolder } from './holders.js';
 import { keyCheckValue, newDek, WorkspaceKey } from './keys.js';
 import type { KeyPin } from './pin.js';
@@ -114,7 +114,7 @@ export function createKeyRotation({ unit, keys, files, maintenance, options, pin
       const k = await ports.rows.keys(workspaceId);
       if (!k || k.rotation !== 'pending') return null;
       return { k, state: (await ports.rows.sealState(workspaceId, { lock: false }))!, holders: await ports.rows.holders(workspaceId),
-        wraps: await ports.rows.dekWraps(workspaceId), managers: await ports.rows.managers(workspaceId) };
+        wraps: await ports.rows.dekWraps(workspaceId), managers: await ports.rows.managers(workspaceId), removals: await ports.rows.removals(workspaceId) };
     });
     if (!read) return 'idle';
     if (!pin) return 'locked';
@@ -145,12 +145,17 @@ export function createKeyRotation({ unit, keys, files, maintenance, options, pin
             throw new ConflictError('The workspace keys changed meanwhile', 'ENCRYPTION_CHANGED');
           }
           const m = { keys: k, holders: await ports.rows.holders(workspaceId), wraps: await ports.rows.dekWraps(workspaceId),
-            managers: await ports.rows.managers(workspaceId) };
+            managers: await ports.rows.managers(workspaceId), removals: await ports.rows.removals(workspaceId) };
           if (!holdersValid(m, deks, pin)) throw new TamperSignal();
+          // Removals not pinned yet (an account deletion's cascade, a removal in a process without the pin) are pinned
+          // now, after the chain verified above; a broken chain is tampering.
+          if (await ports.rows.recordRemovals(workspaceId) === 'broken') throw new TamperSignal();
+          const removals = await ports.rows.removals(workspaceId);
           const tombstones = await ports.rows.tombstones(workspaceId);
           // The holder set: every row verified above whose id and public key have no tombstone (a restored row is skipped,
           // and its stale MAC then makes the next unlock refuse).
-          const set = m.holders.filter((holder) => !tombstones.some((t) => t.holderId === holder.id || t.publicKey === holder.publicKey));
+          const set = m.holders.filter((holder) => !removedHolder(holder, removals)
+            && !tombstones.some((t) => t.holderId === holder.id || t.publicKey === holder.publicKey));
           const commitment = keyCommitment(deks.get(n)!, workspaceId, next, fresh);
           const checkValue = keyCheckValue(key);
           await ports.rows.insertKeyVersion({ workspaceId, keyVersion: next, commitment, checkValue,

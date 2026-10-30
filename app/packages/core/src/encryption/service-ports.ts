@@ -32,7 +32,10 @@ export interface KeysRecord {
   liveVersions: number[];
   rotation: 'none' | 'pending' | 'reencrypting';
   tamperedAt: Date | null;
+  /** The pin of the last removal record (0130); null: none. */
+  removalHead: string | null;
 }
+export interface RemovalRecord { seq: number; holderId: string; userId: string | null; publicKey: string; removedVersion: number; pin: string }
 
 /** Rows only; no access decision. */
 export interface EncryptionRepository extends SealStateReader {
@@ -50,6 +53,10 @@ export interface EncryptionRepository extends SealStateReader {
   /** A new MAC (and confirmed set) for an unchanged holder: after a confirmation, and at a rotation's start. */
   updateHolderMac(id: string, row: Pick<HolderRecord, 'holderMac' | 'holderMacVersion' | 'confirmedVersions'>): Promise<void>;
   insertDekWrap(row: DekWrapRecord): Promise<void>;
+  /** The pinned removal records, by seq (0130). */
+  removals(workspaceId: string): Promise<RemovalRecord[]>;
+  /** Pins the tombstones without a record (the caller holds the key row FOR UPDATE); 'broken' when the chain does not verify. */
+  recordRemovals(workspaceId: string): Promise<number | 'broken'>;
   /** Holders removed since the last finished rotation (S2c): never sealed to. */
   tombstones(workspaceId: string): Promise<{ holderId: string; publicKey: string }[]>;
   /**

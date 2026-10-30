@@ -24,7 +24,7 @@ import { unlockedRows } from './seal-for.js';
 import type { DerivationSemaphore } from './semaphore.js';
 import type { ProcessKeys } from './process-keys.js';
 import type { PasswordEstimator } from './ports.js';
-import type { DekWrapRecord, EncryptionPorts, EncryptionUnitOfWork, HolderRecord, KeysRecord, KeyVersionRecord, WorkspaceReader } from './service-ports.js';
+import type { DekWrapRecord, RemovalRecord, EncryptionPorts, EncryptionUnitOfWork, HolderRecord, KeysRecord, KeyVersionRecord, WorkspaceReader } from './service-ports.js';
 
 /**
  * The unlock lifecycle of encrypted workspaces (F-030, #655, S1; docs/product/encrypted-workspaces.md): creation (a
@@ -54,7 +54,7 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 type Sample = { field: string; identity: string[]; envelope: string } | null;
 interface Material {
-  keys: KeysRecord; holders: HolderRecord[]; wraps: DekWrapRecord[]; versions: KeyVersionRecord[]; managers: string[];
+  keys: KeysRecord; holders: HolderRecord[]; wraps: DekWrapRecord[]; versions: KeyVersionRecord[]; managers: string[]; removals: RemovalRecord[];
   /** One stored envelope of each live version whose previous version is no longer live (the post-rotation case). */
   samples: Map<number, Sample>;
 }
@@ -79,7 +79,8 @@ export function createEncryptionUseCases({ unit, keys, semaphore, estimator, rea
       if (version > 1 && !k.liveVersions.includes(version - 1)) samples.set(version, await ports.rows.envelopeSample(workspaceId, version));
     }
     return { keys: k, holders: await ports.rows.holders(workspaceId), wraps: await ports.rows.dekWraps(workspaceId),
-      versions: await ports.rows.keyVersions(workspaceId), managers: await ports.rows.managers(workspaceId), samples };
+      versions: await ports.rows.keyVersions(workspaceId), managers: await ports.rows.managers(workspaceId), samples,
+      removals: await ports.rows.removals(workspaceId) };
   }
 
   /** Authorizes, then reads what a command needs. */
@@ -213,7 +214,8 @@ export function createEncryptionUseCases({ unit, keys, semaphore, estimator, rea
     }
     const holders = await ports.rows.holders(m.keys.workspaceId);
     const wraps = await ports.rows.dekWraps(m.keys.workspaceId);
-    if (!holdersValid({ keys: k, holders, wraps, managers: await ports.rows.managers(m.keys.workspaceId) }, deks, requirePin())) throw new TamperSignal();
+    if (!holdersValid({ keys: k, holders, wraps, managers: await ports.rows.managers(m.keys.workspaceId), removals: await ports.rows.removals(m.keys.workspaceId) },
+      deks, requirePin())) throw new TamperSignal();
   }
 
   /** Runs a final unit of work; a holder that no longer verifies inside it is recorded as tampering after the rollback. */

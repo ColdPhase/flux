@@ -10,8 +10,20 @@ import { envelopeSample } from './key-rotation.js';
  * decision; the caller authorizes.
  */
 
+/** One pinned removal record (0130). */
+export interface RemovalRow { seq: number; holderId: string; userId: string | null; publicKey: string; removedVersion: number; pin: string }
+type RemovalPinner = (record: { workspaceId: string; seq: number; holderId: string; userId: string | null; publicKey: string; removedVersion: number; previous: string }) => string;
+let removalPinner: RemovalPinner | null = null;
+/**
+ * Installed once per API and worker process with core's `KeyPin.removal` (the secret never reaches this package as
+ * data). Without it, removals stay plain tombstones until a process with the pin records them.
+ */
+export function configureRemovalPin(next: RemovalPinner | null) { removalPinner = next; }
+
 export interface WorkspaceKeysRow {
   workspaceId: string;
+  /** The pin of the last removal record (null: none). */
+  removalHead: string | null;
   name: string;
   currentVersion: number;
   liveVersions: number[];
@@ -102,7 +114,7 @@ export function workspaceEncryptionRows(db: DbExecutor) {
     async keys(workspaceId: string, options: { lock?: 'update' | 'share' } = {}): Promise<WorkspaceKeysRow | null> {
       if (options.lock) await keyGate(db, workspaceId, options.lock === 'update' ? 'exclusive' : 'shared');
       const [row] = await rowsOf<WorkspaceKeysRow>(db, sql`SELECT k.workspace_id AS "workspaceId", w.name, k.current_version AS "currentVersion",
-        k.live_versions AS "liveVersions", k.rotation, k.tampered_at AS "tamperedAt", k.created_at AS "createdAt"
+        k.live_versions AS "liveVersions", k.rotation, k.tampered_at AS "tamperedAt", k.created_at AS "createdAt", k.removal_head AS "removalHead"
         FROM workspace_keys k JOIN workspaces w ON w.id = k.workspace_id WHERE k.workspace_id = ${workspaceId}${options.lock ? sql` FOR ${options.lock === 'update' ? sql`UPDATE` : sql`SHARE`} OF k` : sql``}`);
       return row ? { ...row, tamperedAt: atOrNull(row.tamperedAt), createdAt: at(row.createdAt) } : null;
     },
@@ -146,6 +158,40 @@ export function workspaceEncryptionRows(db: DbExecutor) {
     async insertDekWrap(row: DekWrapRow) {
       await db.execute(sql`INSERT INTO workspace_dek_wraps (holder_id, workspace_id, key_version, ephemeral_public, sealed_dek, confirm)
         VALUES (${row.holderId}, ${row.workspaceId}, ${row.keyVersion}, ${row.ephemeralPublic}, ${row.sealedDek}, ${row.confirm})`);
+    },
+    removals: (workspaceId: string) => rowsOf<RemovalRow>(db, sql`SELECT seq, holder_id AS "holderId", user_id AS "userId", public_key AS "publicKey",
+      removed_version AS "removedVersion", pin FROM workspace_removals WHERE workspace_id = ${workspaceId} ORDER BY seq`),
+    /**
+     * Turns the tombstones without a record into pinned removal records, chained after the last one, and moves the
+     * head. The caller holds `workspace_keys` FOR UPDATE. 'broken' (nothing written) when the existing chain does not
+     * verify: appending would launder a deletion. 0 without a configured pin.
+     */
+    async recordRemovals(workspaceId: string): Promise<number | 'broken'> {
+      if (!removalPinner) return 0;
+      const pinner = removalPinner;
+      const records = await self.removals(workspaceId);
+      const [keys] = await rowsOf<{ head: string | null; version: number }>(db, sql`SELECT removal_head AS head, current_version AS version FROM workspace_keys
+        WHERE workspace_id = ${workspaceId}`);
+      if (!keys) return 0;
+      let previous = '';
+      for (const [index, record] of records.entries()) {
+        if (record.seq !== index + 1 || record.pin !== pinner({ ...record, workspaceId, previous })) return 'broken';
+        previous = record.pin;
+      }
+      if ((records.length ? previous : null) !== keys.head) return 'broken';
+      const fresh = await rowsOf<{ holderId: string; userId: string | null; publicKey: string }>(db, sql`SELECT t.holder_id AS "holderId", t.user_id AS "userId",
+        t.public_key AS "publicKey" FROM workspace_removed_holders t WHERE t.workspace_id = ${workspaceId}
+        AND NOT EXISTS (SELECT 1 FROM workspace_removals r WHERE r.workspace_id = t.workspace_id AND r.holder_id = t.holder_id) ORDER BY t.removed_at, t.holder_id`);
+      let seq = records.length;
+      for (const row of fresh) {
+        seq += 1;
+        const pin = pinner({ ...row, workspaceId, seq, removedVersion: keys.version, previous });
+        await db.execute(sql`INSERT INTO workspace_removals (workspace_id, seq, holder_id, user_id, public_key, removed_version, pin)
+          VALUES (${workspaceId}, ${seq}, ${row.holderId}, ${row.userId}, ${row.publicKey}, ${keys.version}, ${pin})`);
+        previous = pin;
+      }
+      if (fresh.length) await db.execute(sql`UPDATE workspace_keys SET removal_head = ${previous} WHERE workspace_id = ${workspaceId}`);
+      return fresh.length;
     },
     tombstones: (workspaceId: string) => rowsOf<{ holderId: string; publicKey: string }>(db, sql`SELECT holder_id AS "holderId", public_key AS "publicKey"
       FROM workspace_removed_holders WHERE workspace_id = ${workspaceId}`),

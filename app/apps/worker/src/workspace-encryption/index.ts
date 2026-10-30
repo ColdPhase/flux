@@ -5,7 +5,7 @@ import {
   type EncryptionPorts, type EncryptionUnitOfWork, type KeyRotationOptions,
 } from '@flux/core';
 import { sql } from 'drizzle-orm';
-import { configureSeals, createDatabase, keyRotationRows, rotationCheckpoint, rotationMaintenance, workspaceEncryptionRows, type DbExecutor } from '@flux/db';
+import { configureRemovalPin, configureSeals, createDatabase, keyRotationRows, rotationCheckpoint, rotationMaintenance, workspaceEncryptionRows, type DbExecutor } from '@flux/db';
 import { eventPorts } from '../events.js';
 import { diskRotationObjects } from './file-objects.js';
 
@@ -71,6 +71,7 @@ export async function startWorkspaceEncryption(boss: PgBoss, db: Database, env: 
   const options = rotationOptions(env);
   const pinStatus = keyPinStatus(env);
   if (pinStatus.warning) console.error(JSON.stringify({ warning: pinStatus.warning }));
+  configureRemovalPin(pinStatus.pin ? (record) => pinStatus.pin!.removal(record) : null);
   // The rotation's own two connections: a page, the finish's catalog scan, VACUUM and CHECKPOINT may take longer than
   // the 2 s statement limit of the request pool, and they never take a request connection.
   const rotationDatabase = createDatabase(env.DATABASE_URL!, undefined, { queryTimeoutMs: 10 * 60_000, max: 2 });

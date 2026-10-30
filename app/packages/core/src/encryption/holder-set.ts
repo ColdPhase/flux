@@ -3,7 +3,7 @@ import type { Principal } from '../principal.js';
 import { WORKSPACE_ENCRYPTION_TAMPERED_EVENT } from '@flux/contracts';
 import { canonicalVersions, holderMacValid, type HolderIdentity } from './holders.js';
 import type { KeyPin } from './pin.js';
-import type { DekWrapRecord, EncryptionUnitOfWork, HolderRecord, KeysRecord } from './service-ports.js';
+import type { DekWrapRecord, EncryptionUnitOfWork, HolderRecord, KeysRecord, RemovalRecord } from './service-ports.js';
 
 /**
  * The holder-set checks shared by unlock, the password routes and the rotation (F-030 Authenticating holders and
@@ -21,7 +21,11 @@ export const holderIdentity = (holder: HolderRecord, confirmedVersions: readonly
   ({ ...holderPlace(holder), publicKey: holder.publicKey, kdf: holder.kdf, wrappedPrivate: holder.wrappedPrivate, secretCheck: holder.secretCheck,
     confirmedVersions: canonicalVersions(confirmedVersions) });
 
-export interface HolderSetInput { keys: KeysRecord; holders: HolderRecord[]; wraps: DekWrapRecord[]; managers: string[] }
+export interface HolderSetInput { keys: KeysRecord; holders: HolderRecord[]; wraps: DekWrapRecord[]; managers: string[]; removals: RemovalRecord[] }
+
+/** A holder row of someone removed: its id or public key has a pinned removal record. Never sealed to again. */
+export const removedHolder = (holder: Pick<HolderRecord, 'id' | 'publicKey'>, removals: readonly RemovalRecord[]) =>
+  removals.some((r) => r.holderId === holder.id || r.publicKey === holder.publicKey);
 
 /** The live versions the holder's wraps confirm. */
 export function confirmedLive(keys: Pick<KeysRecord, 'liveVersions'>, wraps: DekWrapRecord[], holderId: string): number[] {
@@ -49,7 +53,10 @@ export function holderValid(m: HolderSetInput, current: Buffer, holder: HolderRe
 /** Every holder row verifies under the current DEK (unlocking: one rogue or stale row locks the workspace). */
 export function holdersValid(m: HolderSetInput, deks: Deks, pin: KeyPin): boolean {
   const current = deks.get(m.keys.currentVersion);
-  return !!current && m.holders.every((holder) => holderValid(m, current, holder, pin));
+  // The removal records form an unbroken pinned chain, and no holder row belongs to someone removed (a genuine row
+  // put back by a removed person who can write to the database is tampering, not a holder).
+  return !!current && pin.removalsValid(m.keys.workspaceId, m.removals, m.keys.removalHead)
+    && m.holders.every((holder) => !removedHolder(holder, m.removals) && holderValid(m, current, holder, pin));
 }
 
 export class TamperedError extends ConflictError {

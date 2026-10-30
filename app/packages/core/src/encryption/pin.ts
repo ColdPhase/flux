@@ -10,9 +10,11 @@ import { encodeContext, hkdfKey } from './primitives.js';
  * (a rogue recovery holder while locked included) nor mint a key version a holder would accept. It does not stop
  * someone who also holds the server's environment (the same trust the keyring token carries).
  */
-const LABEL = { key: 'flux key pin v1', holder: 'flux pin holder v1', version: 'flux pin version v1' } as const;
+const LABEL = { key: 'flux key pin v1', holder: 'flux pin holder v1', version: 'flux pin version v1', removal: 'flux pin removal v1' } as const;
 
 export interface PinnedHolder { workspaceId: string; holderId: string; kind: 'password' | 'recovery'; userId: string | null; publicKey: string }
+/** One removal record; `previous` is the pin of the record before it (empty for the first), so the records form a chain. */
+export interface PinnedRemoval { workspaceId: string; seq: number; holderId: string; userId: string | null; publicKey: string; removedVersion: number; previous: string }
 export interface PinnedVersion { workspaceId: string; keyVersion: number; checkValue: string; commitment: string | null }
 
 const same = (given: unknown, expected: string) => {
@@ -20,6 +22,8 @@ const same = (given: unknown, expected: string) => {
   const a = Buffer.from(given); const b = Buffer.from(expected);
   return a.length === b.length && timingSafeEqual(a, b);
 };
+
+export interface RemovalRecordLike { seq: number; holderId: string; userId: string | null; publicKey: string; removedVersion: number; pin: string }
 
 export class KeyPin {
   private constructor(private readonly key: KeyObject) {}
@@ -43,6 +47,24 @@ export class KeyPin {
     return this.mac([LABEL.version, v.workspaceId, v.keyVersion, v.checkValue, v.commitment ?? '']);
   }
   versionValid(v: PinnedVersion, pin: unknown): boolean { return same(pin, this.version(v)); }
+
+  removal(r: PinnedRemoval): string {
+    return this.mac([LABEL.removal, r.workspaceId, r.seq, r.holderId, r.userId ?? '', r.publicKey, r.removedVersion, r.previous]);
+  }
+
+  /**
+   * Whether the removal records form an unbroken chain ending at `head` (null: no record). A deleted, altered or
+   * reordered record breaks it. A rollback of the records and the head together to an earlier state is not detected
+   * (the database alone cannot tell it from that state).
+   */
+  removalsValid(workspaceId: string, records: readonly RemovalRecordLike[], head: string | null): boolean {
+    let previous = '';
+    for (const [index, record] of [...records].sort((a, b) => a.seq - b.seq).entries()) {
+      if (record.seq !== index + 1 || !same(record.pin, this.removal({ ...record, workspaceId, previous }))) return false;
+      previous = record.pin;
+    }
+    return records.length ? same(head, previous) : head === null;
+  }
 }
 
 /**

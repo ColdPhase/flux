@@ -15,6 +15,8 @@ ALTER FUNCTION workspace_holder_deleted() RESET search_path;
 ALTER TABLE workspace_rotation_progress DROP COLUMN IF EXISTS started_at, DROP COLUMN IF EXISTS pass_changes;
 ALTER TABLE workspace_holders DROP COLUMN IF EXISTS confirmed_versions, DROP COLUMN IF EXISTS pin;
 ALTER TABLE workspace_key_versions DROP COLUMN IF EXISTS pin;
+DROP TABLE IF EXISTS workspace_removals;
+ALTER TABLE workspace_keys DROP COLUMN IF EXISTS removal_head;
 ALTER TABLE workspace_rotation_progress DROP COLUMN IF EXISTS stalled_on, DROP COLUMN IF EXISTS stalled_at;
 
 -- 0124's content-free notification check as it was.
