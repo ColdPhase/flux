@@ -212,7 +212,7 @@ step "SBOMs: $syft_image on docker-archives (the workflow uses anchore/sbom-acti
 docker pull -q "$syft_image" >/dev/null
 for image in flux flux-agent-runtime; do
   docker save "127.0.0.1:$registry_port/$image:dry" -o "$work/$image.tar"
-  docker run --rm --network none -e SYFT_CHECK_FOR_APP_UPDATE=false -v "$work:/w" "$syft_image" \
+  docker run --rm --network none -e SYFT_CHECK_FOR_APP_UPDATE=false -v "$work:/w:z" "$syft_image" \
     "docker-archive:/w/$image.tar" -o "spdx-json=/w/sbom-$image.spdx.json" -q
   rm -f "$work/$image.tar"
   python3 -c "import json,sys; d=json.load(open(sys.argv[1])); print(sys.argv[2], d['spdxVersion'], len(d['packages']), 'packages')" "$work/sbom-$image.spdx.json" "$image"
