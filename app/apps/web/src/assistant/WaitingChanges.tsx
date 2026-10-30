@@ -6,6 +6,7 @@ import { Button } from '../ui';
 import { useShellActions } from '../app/shellContext';
 import { applyChange, applyRunChanges, listConversationChanges, moveRunChangesToInbox, notNowRunChanges, sendChange, undoChange, undoRunChanges } from './api';
 import { RefLink } from '../place/origin';
+import { useKeepFocus } from './useKeepFocus';
 
 // What the owner's assistant prepared in this conversation and waits for them on (F-027 AST-5, A3). Only the
 // owner's own changes ever reach this view: the server answers everyone else with nothing.
@@ -73,6 +74,8 @@ function RunMessage({ changes, onChanged, meId, standalone = false }: { changes:
   const [busy, setBusy] = useState('');
   const [note, setNote] = useState('');
   const [itemNotes, setItemNotes] = useState<Record<string, string>>({});
+  // Undo goes away once everything is undone; the message keeps the keyboard user's place (AC-8), or else the answer it belongs to.
+  const { ref: home, keep } = useKeepFocus<HTMLElement>(() => document.getElementById(`answer-${changes[0]?.runId}`));
   const done = changes.filter(made);
   const skips = changes.filter(skipped);
   if (!done.length && !skips.length || changes[0]!.runState === 'working') return null;
@@ -85,11 +88,11 @@ function RunMessage({ changes, onChanged, meId, standalone = false }: { changes:
   const whose = !owner || !meId || owner.id === meId ? 'your' : `${owner.name.trim().split(/\s+/)[0] || owner.name}’s`;
   const header = allUndone ? `Undone by ${done.find((change) => change.decidedBy)?.decidedBy?.name ?? 'you'}` : live.length && live.length < done.length ? `Undid ${done.length - live.length} of ${done.length} changes` : live.length ? assistantMessageHeader(live) : 'Nothing was changed';
   const shown = open ? done : done.slice(0, 3);
-  const act = async (key: string, action: () => Promise<void>) => {
+  const act = (key: string, action: () => Promise<void>) => keep(async () => {
     setBusy(key);
     try { await action(); } catch (error) { setNote(failure(error)); }
     finally { setBusy(''); await onChanged(); }
-  };
+  });
   const undoAll = () => act('all', async () => {
     const result = await undoRunChanges(runId);
     setNote(result.changedSince.length || result.message !== `Undid ${result.undone} change${result.undone === 1 ? '' : 's'}` ? result.message : '');
@@ -102,7 +105,7 @@ function RunMessage({ changes, onChanged, meId, standalone = false }: { changes:
     setItemNotes((current) => ({ ...current, [change.id]: result.message ?? '' }));
   });
   return (
-    <section className="assistant-message" aria-label={`What ${whose} assistant changed`} data-run={runId}>
+    <section ref={home} tabIndex={-1} className="assistant-message" aria-label={`What ${whose} assistant changed`} data-run={runId}>
       {standalone && whose !== 'your' ? <p className="assistant-message__who">{whose[0]!.toUpperCase()}{whose.slice(1)} assistant</p> : null}
       <p className="assistant-message__head" role="status" aria-live="polite"><span>{header}</span>
         {undoable ? <Button variant="link" busy={busy === 'all'} disabled={!!busy && busy !== 'all'} onClick={() => void undoAll()}>Undo</Button> : null}</p>
@@ -141,14 +144,16 @@ export function WaitingChanges({ changes, onChanged, meId, standalone = false }:
   const [busy, setBusy] = useState('');
   const [messages, setMessages] = useState<string[]>([]);
   const runId = changes[0]!.runId;
-  const act = async (key: string, action: () => Promise<{ changes?: { message: string | null }[]; message?: string | null } | unknown>) => {
+  // Apply, Not now and Send go away once decided; the card keeps the keyboard user's place, or else the run's message or its answer (AC-8).
+  const { ref: home, keep } = useKeepFocus<HTMLElement>(() => document.querySelector<HTMLElement>(`.assistant-message[data-run="${runId}"]`) ?? document.getElementById(`answer-${runId}`));
+  const act = (key: string, action: () => Promise<{ changes?: { message: string | null }[]; message?: string | null } | unknown>) => keep(async () => {
     setBusy(key); setMessages([]);
     try {
       const result = await action() as { changes?: { message: string | null }[]; message?: string | null };
       setMessages([...(result.changes ?? []).map((entry) => entry.message), result.message ?? null].filter((message): message is string => !!message));
     } catch (error) { setMessages([failure(error)]); }
     finally { setBusy(''); await onChanged(); }
-  };
+  });
   const selected = waiting.filter((change) => !unticked.has(change.id));
   const applySelected = () => act('apply', async () => {
     const results: { message: string | null }[] = [];
@@ -161,7 +166,7 @@ export function WaitingChanges({ changes, onChanged, meId, standalone = false }:
   const hasWaitingParts = waiting.length > 0 || changes.some((change) => deferred(change) || suggestion(change) || settled(change) && !made(change));
   return (<>
     <RunMessage changes={changes} onChanged={onChanged} meId={meId} standalone={standalone} />
-    {hasWaitingParts || messages.length ? <section className="assistant-waiting" aria-label="Your assistant's changes" data-run={runId}>
+    {hasWaitingParts || messages.length ? <section ref={home} tabIndex={-1} className="assistant-waiting" aria-label="Your assistant's changes" data-run={runId}>
       {waiting.length ? <>
         <p className="assistant-waiting__head"><span className="assistant-proposal__ring" aria-hidden="true" />Waiting for you: {assistantChangeSummary(waiting)}</p>
         {reviewing ? <ul className="assistant-waiting__list">

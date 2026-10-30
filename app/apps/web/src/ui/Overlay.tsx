@@ -223,7 +223,13 @@ export function Overlay({ open, onClose, placement, label, labelledBy, initialFo
       // Focus returns first and at once: the exit below never delays it, the next action or the next open.
       const target = returnRef.current;
       returnRef.current = null;
-      if (target?.isConnected) target.focus({ preventScroll: true });
+      if (target?.isConnected) {
+        target.focus({ preventScroll: true });
+        // WebKit may not focus what the app has only just been made operable again for; once more on the next frame.
+        if (document.activeElement !== target) requestAnimationFrame(() => {
+          if (target.isConnected && (!document.activeElement || document.activeElement === document.body)) target.focus({ preventScroll: true });
+        });
+      }
       const { exit } = timing(placement);
       // A drag that closed the surface continues from where the finger let go (#266 PF-4); a close during the
       // enter continues from where the enter had got to.

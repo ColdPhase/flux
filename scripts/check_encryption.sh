@@ -57,9 +57,27 @@ $compose build
 $compose up -d db migrate
 $compose --profile setup run --rm files-init
 
-files="tests/app/encryption-crypto.test.ts tests/app/encryption-keyring.test.ts tests/app/encrypted-workspaces.test.ts tests/app/encryption-registry.test.ts tests/app/encryption-sealed-content.test.ts tests/app/live/encryption-two-api.test.ts"
+files="${FLUX_ENCRYPTION_FILES:-tests/app/encryption-crypto.test.ts tests/app/encryption-keyring.test.ts tests/app/encrypted-workspaces.test.ts tests/app/encryption-registry.test.ts tests/app/encryption-sealed-content.test.ts tests/app/encryption-search-live.test.ts tests/app/sealed-search-heap.test.ts tests/app/live/encryption-two-api.test.ts}"
 # shellcheck disable=SC2086
 $compose run --rm test node_modules/.bin/tsx --test --test-concurrency=1 $files
+
+# AC-7 (S2b part): none of the canaries of the encrypted workspace (search content, live Wiki and live map) is in any file of the
+# PostgreSQL data directory or its WAL, after a checkpoint and a WAL switch; the plain workspace's canaries are (positive control).
+$compose run --rm --no-deps -T test cat /state/encryption-disk-canaries.txt > "$scan_dir/disk-canaries"
+$compose run --rm --no-deps -T test cat /state/encryption-disk-control.txt > "$scan_dir/disk-control"
+db_container=$($compose ps -q db)
+docker exec "$db_container" psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c CHECKPOINT -c 'SELECT pg_switch_wal()' > /dev/null
+docker cp "$scan_dir/disk-canaries" "$db_container:/tmp/disk-canaries"
+docker cp "$scan_dir/disk-control" "$db_container:/tmp/disk-control"
+pgdata=$(docker exec "$db_container" psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Atc 'SHOW data_directory')
+canary_count=$(grep -c . "$scan_dir/disk-canaries")
+[ "$canary_count" -ge 20 ] || { echo "too few disk canaries ($canary_count)" >&2; exit 1; }
+docker exec -u root "$db_container" sh -c "grep -rlaF -f /tmp/disk-control '$pgdata' | head -1" | grep -q . || { echo 'positive control: no plain canary found in the data directory or WAL' >&2; exit 1; }
+if [ -n "$(docker exec -u root "$db_container" sh -c "grep -rlaF -f /tmp/disk-canaries '$pgdata'")" ]; then
+  echo "CANARY of an encrypted workspace FOUND on the PostgreSQL disk (data directory or WAL)" >&2
+  exit 1
+fi
+echo "AC-7 disk scan: $canary_count canary encodings, 0 files of the data directory or WAL hold one; the positive control is found"
 
 # AC-4: no password, recovery code, KEK, holder private key, DEK or subkey in any log, in any encoding.
 $compose run --rm --no-deps -T test cat /state/encryption-secrets.txt > "$scan_dir/secrets"

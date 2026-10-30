@@ -5,6 +5,17 @@
 > the rest of this decision stays in force, except that the input bound is now the
 > provider-neutral Flux estimate ([PROV-3](model-providers.md#prov-3--cost-caps-and-token-bounds)).
 
+> **Revised 2026-10-16 by founder direction ([#68](https://github.com/ColdPhase/flux/issues/68#issuecomment-6209541261)),
+> accepted as built ([#68](https://github.com/ColdPhase/flux/issues/68#issuecomment-6209738774)).**
+> The run API is **HTTP requests only**: there is no WebSocket `assistant.run` or `assistant.stop`
+> command, because the HTTP requests are enough and the person sees no difference. Three
+> extras of the 2026-09-28 text are dropped, because none is in the final design (Prostota) and
+> the calm-UI rule applies: the *Ask* entry on a map thought, an assistant status button in the
+> project header, and a `draftedBy` marker on the result object itself (the accepted proposal keeps
+> `resultId` and its "drafted by" line). The `map_thought` run kind stays in the API without a
+> screen. O-008 is gated only by the mock verification gates of 2026-10-08, with no PROV-6
+> real-key pass; `FLUX_PERSONAL_RUNS` stays off by default. Everything else is unchanged.
+
 > **Revised 2026-10-16 by founder direction ([#484](https://github.com/ColdPhase/flux/issues/484)).**
 > A request of a run with tools allows up to 32,000 input tokens instead of 16,000 (a single request
 > without tools keeps 16,000). Its largest request is priced at that bound: at Sonnet 5 it is
@@ -28,18 +39,21 @@
 
 **Status:** accepted, 2026-09-28, by independent
 [review](https://github.com/ColdPhase/flux/pull/125#pullrequestreview-5334126978)
-at `44eb0d9`; merged in PR #125 as `4563b29`. **Decision owner:**
+at `44eb0d9`; merged in PR #125 as `4563b29`. **Accepted as built and amended,
+2026-10-16, by founder direction on [#68](https://github.com/ColdPhase/flux/issues/68#issuecomment-6209738774)**
+(HTTP only, three extras dropped; see the revision above). **Decision owner:**
 `@Zamojski5` (`claude-maurycy`); **evaluator:** `@PelikanFix16` (`codex-hubert`).
-This resolves the blocking compute-source dependency of
-[#68](https://github.com/ColdPhase/flux/issues/68). It does not implement or
-accept #68. It builds on [#57](https://github.com/ColdPhase/flux/issues/57), the
+This resolved the blocking compute-source dependency of
+[#68](https://github.com/ColdPhase/flux/issues/68). The decision did not by itself
+accept #68's implementation. It builds on [#57](https://github.com/ColdPhase/flux/issues/57), the
 [interaction design](../design/personal-ai/README.md) (PR #64), [O-005](first-agent-path.md)
 and the accepted [O-007](background-compute.md).
 
 ## Situation and decision
 
 Jo is in a project conversation with Kai. She types `/ai summarize this thread`
-or picks *Ask my assistant* on a map thought. Her laptop CLI may not be running.
+or picks *Ask my assistant* on an answer (there is no entry on a map thought, 2026-10-16).
+Her laptop CLI may not be running.
 Flux must answer in place, with her assistant, at her payer's expense. It must
 never use Kai's connection, and it must never send her DMs, private captures or
 other projects to the provider. O-005 does not cover this: it accepts only a
@@ -134,16 +148,15 @@ O-005 Claude Code path and this key path. Human work never needs either.
      to the provider.
    - **Invoke:** `POST /api/v1/conversations/:conversationId/assistant-runs` with
      `{ clientRunId, kind: "ask" | "summarize" | "map_thought", prompt, target?,
-     continuesRunId? }`. The WebSocket command on the existing stream,
-     `{ type: "assistant.run", ... }`, is a thin adapter over the same use case.
-     Both resolve the connection **only from the authenticated session**. An
+     continuesRunId? }`. There is no WebSocket command (2026-10-16): the stream stays
+     server-to-client and ignores client frames. The request resolves the
+     connection **only from the authenticated session**. An
      `ownerId`, `connectionId` or `agentId` in the body never selects the
      connection. If it names anything other than the caller's own, the request
      gets 403 with no reservation or model call. The use case checks `agent.invoke` in `policy.ts`, writes
      the run row, reservation and job in one transaction, and returns `202` with
      `runId`. A peer's attempt returns 404 or 403 before any reservation.
-   - **Stop:** `POST /api/v1/assistant-runs/:runId/stop`, or the
-     `{ type: "assistant.stop", runId }` command. Only the run's owner can stop
+   - **Stop:** `POST /api/v1/assistant-runs/:runId/stop`. Only the run's owner can stop
      it; any other caller gets 404. Before dispatch, the stop is certain and
      free. During dispatch, Flux aborts the HTTP request as best effort and keeps
      the reservation until the charge is known. After a stop, no output is ever

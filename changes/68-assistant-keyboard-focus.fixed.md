@@ -1,0 +1,1 @@
+- Stop, Retry, Accept, Apply and Undo of your assistant keep the keyboard where it was when the button goes away, typing `/ai` key by key no longer leaves `/a` in the reply box, and a result opened from a thread button takes focus into Details instead of dropping it to the page ([#68](https://github.com/ColdPhase/flux/issues/68)).

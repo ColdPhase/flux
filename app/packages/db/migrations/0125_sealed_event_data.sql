@@ -286,11 +286,11 @@ BEGIN
   EXECUTE format('ALTER FUNCTION flux_event_data_free() SET search_path = pg_catalog, %I, pg_temp', current_schema());
 END $$;
 CREATE TRIGGER a_sealed_event_data BEFORE INSERT OR UPDATE ON events FOR EACH ROW EXECUTE FUNCTION flux_event_data_free();
--- A wait of a locked workspace's job carries ids only (#717 review P3-5): its payload is {"eventId": <uuid>}.
+-- A wait of a locked workspace's job carries ids only (#717 review P3-5): its payload is {"eventId": <uuid>} or, for a draft summary, {"resultId": <uuid>}.
 CREATE FUNCTION flux_sealed_wait_ids_only() RETURNS trigger LANGUAGE plpgsql AS $$
 BEGIN
   IF NEW.queue ~ '^[a-z][a-z0-9_.-]{0,63}$' AND jsonb_typeof(NEW.payload) = 'object' AND NOT EXISTS (SELECT 1 FROM jsonb_each(NEW.payload) p
-      WHERE p.key <> 'eventId' OR jsonb_typeof(p.value) <> 'string'
+      WHERE p.key NOT IN ('eventId', 'resultId') OR jsonb_typeof(p.value) <> 'string'
         OR NOT (p.value #>> '{}') ~ '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$') THEN RETURN NEW; END IF;
   RAISE EXCEPTION 'A sealed job wait carries ids only' USING ERRCODE = 'FX409', HINT = 'EVENT_CONTENT_REFUSED';
 END $$;
