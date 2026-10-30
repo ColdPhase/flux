@@ -11,6 +11,7 @@ import { githubTransport } from '../../apps/server/src/github/http.js';
 import { agentConnection } from './support/mcp-actions.js';
 import { toolValue } from './support/mcp.js';
 import { addMember, expectStatus, person, project, workspace, type Person } from './support/people.js';
+import { setWorkspaceAi } from './support/workspace-ai.js';
 
 // #479 AC-3/AC-4: the #153 current-recipient bridge (docs/development/github-integration/README.md "#153 current-recipient
 // bridge"). Real sessions, OAuth bearers and MCP tools; the GitHub provider is a fixture, so no real installation is claimed.
@@ -153,6 +154,19 @@ test('#479: a linked PR event reaches the task\'s current holder once, echoes ar
   await send('pull_request', pullEvent(PUBLIC_REPO, 7));
   assert.deepEqual((await outbox(open.item.id)).map((row) => [row.state, row.recipient_connection_id]), [['delivered', marekAgent.connected.connectionId]]);
   assert.deepEqual((await inbox(marekAgent)).providerEvents?.map((row) => row.taskId), [open.item.id]);
+
+  // F-029 (#614): the holder is an agent, so the bridge respects the workspace AI lock. The flip is applied without its
+  // sweep (the window before the sweep commits): while AI is off nobody receives the event, and after AI is on again the
+  // unit admitted under the old epoch is no holder, so no event of the blocked period ever reaches the agent.
+  await setWorkspaceAi(ws.id, 'blocked');
+  provider.head = SHA('e');
+  await send('pull_request', pullEvent(PUBLIC_REPO, 7));
+  await setWorkspaceAi(ws.id, 'allowed');
+  provider.head = SHA('f');
+  await send('pull_request', pullEvent(PUBLIC_REPO, 7));
+  assert.deepEqual((await outbox(open.item.id)).map((row) => [row.state, row.head_sha]),
+    [['delivered', SHA('d')], ['no_recipient', SHA('e')], ['no_recipient', SHA('f')]]);
+  assert.deepEqual((await inbox(marekAgent)).providerEvents?.map((row) => row.headSha), [SHA('d')], 'only the event from before AI was turned off');
 
   // Disconnecting the binding withdraws what its deliveries showed; nothing is woken.
   await github.disconnect(principal, privateBinding.id);
