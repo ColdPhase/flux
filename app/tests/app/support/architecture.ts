@@ -21,6 +21,8 @@ const UI = ['react', 'react-dom'];
 const PERSISTENCE = ['@flux/db', 'drizzle-orm', 'pg', 'pg-boss'];
 const HTTP = ['fastify', '@fastify/*'];
 const APPS = ['@flux/server', '@flux/worker', '@flux/web', '@flux/runtime', '@flux/keyring'];
+/** The browser libraries `apps/web/src` may import; each is a declared dependency of `apps/web/package.json`. */
+export const WEB_LIBRARIES = ['react', 'react-dom', 'react-router', '@codemirror/state', '@codemirror/view', '@xterm/*', 'diff', 'livekit-client', 'y-codemirror.next', 'y-protocols', 'yjs'];
 
 export const LAYERS: Layer[] = [
   // Public wire types, Apache-2.0: portable, no runtime dependencies at all.
@@ -42,9 +44,9 @@ export const LAYERS: Layer[] = [
   // The keyring of encrypted workspaces (F-030): one boot key in RAM; Node built-ins only, so nothing else runs in it.
   { name: 'keyring', paths: ['apps/keyring/'], allow: ['node:*'] },
   { name: 'runtime', paths: ['apps/runtime/'], allow: ['@flux/runtime-protocol', 'node-pty', 'node:*'] },
-  // Browser application: talks to the server only through HTTP/WebSocket contracts. UI
-  // libraries are its own choice; server-side packages and Node built-ins are not.
-  { name: 'web', paths: ['apps/web/src/'], deny: ['@flux/core', '@flux/db', '@flux/agent-runtime', '@flux/runtime-protocol', ...APPS, ...PERSISTENCE, ...HTTP, 'web-push', 'nodemailer', 'node:*'] },
+  // Browser application: talks to the server only through HTTP/WebSocket contracts. An allow-list (#93): the wire
+  // types and the browser libraries it declares; anything else, server-side packages and Node built-ins included, is not.
+  { name: 'web', paths: ['apps/web/src/'], allow: ['@flux/contracts', ...WEB_LIBRARIES] },
   // Web build tooling (Vite config and plugins, icon generation): never application code.
   { name: 'web-build', paths: ['apps/web/'], deny: ['@flux/core', '@flux/db', '@flux/server', '@flux/worker', 'drizzle-orm', 'pg', 'pg-boss', ...HTTP] },
   // Composition roots and adapters. They may wire everything except each other and the UI.
