@@ -52,7 +52,7 @@ A separate reviewer with a neutral brief (no code or rationale) judged the scree
 **accept with minor fixes**: as calm as C and more discoverable than v8. Applied: the state line
 leads with what needs you and keeps it whole; the cited source is a quiet chip like the other
 references; the composer's source button is labelled "Sources" with its count; the desktop
-keyboard hint was dropped. After peer review (#122): the feed opens on whole messages (never mid-message at the top),
+keyboard hint was dropped. After peer review (#122): the feed opens on whole messages (no message cut at the top; since #725, 2026-10-30, at most 48 px of room is added below the newest message for that, so on a phone the top message may be cut rather than the newest one parted from the field),
 and on touch each message's actions start as one 44 px overflow button beside the author instead
 of a row under every message. Kept, with reasons: "Replying to" on the phone (the conversation title has scrolled away);
 "· only you two" (the accepted wording for a pair). The Map count differs between desktop and

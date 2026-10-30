@@ -375,6 +375,8 @@ span.sk-li-img { width: 160px; height: 96px; }
 .sk-dock__row { pointer-events: auto; display: flex; align-items: center; gap: 6px; max-width: 100%; padding: 5px 8px 5px 5px; border-radius: var(--r-pill);
   background: var(--el); box-shadow: var(--sh-pop), inset 0 0 0 1px var(--line); }
 .sk-line { display: flex; flex-direction: column; align-items: center; gap: 2px; max-width: 100%; }
+/* The first-run hint steps aside while a thought lies under it (SketchMap measures it), instead of sitting on its text. */
+.sk-dock > .sk-hint[data-over-card] { visibility: hidden; }
 .sk-hint, .sk--map .sk-status { margin: 0; padding: 0; flex: none; max-width: min(640px, 100%); font-size: var(--fs-sm); color: var(--t3); text-align: center; white-space: normal; overflow: visible; }
 .sk--map .sk-status:empty { display: none; }
 .sk-dock .sk-tools { gap: 4px; flex-wrap: wrap; justify-content: center; flex: 0 1 auto; min-width: 0; }
@@ -403,7 +405,7 @@ span.sk-li-img { width: 160px; height: 96px; }
 .sk-taskline svg { flex: none; }
 @media (pointer: coarse) { .sk-edit-btn--icon { width: 44px; } .sk-tool { width: 44px; height: 44px; } .sk-dock .ui-btn { min-height: 44px; } }
 /* S15: one primary Add a thought. Secondary map and selection controls open named sheets. */
-.sk-phone { position: absolute; left: 0; right: 0; bottom: 14px; z-index: 7; display: flex; flex-direction: column; align-items: center; gap: 8px; pointer-events: none; }
+.sk-phone { position: absolute; left: 0; right: 0; bottom: max(14px, env(safe-area-inset-bottom)); z-index: 7; display: flex; flex-direction: column; align-items: center; gap: 8px; pointer-events: none; }
 .sk-phone > * { pointer-events: auto; }
 @media (max-width: 640px) {
   .sk--map .sk-canvas-wrap { background-color: var(--bg); background-image: radial-gradient(var(--line2) 1px, transparent 1.3px); background-size: 20px 20px; }

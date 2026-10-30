@@ -92,10 +92,15 @@ export interface SketchMapProps {
 }
 
 const ZOOMS = [0.5, 0.67, 0.8, 0.9, 1, 1.1, 1.25, 1.5];
+/** A map at most this wide (CSS px) shows its thoughts in the two columns, on any device (#151 AC-1). */
+const NARROW_MAP = 640;
 /** Fitting never shrinks text below a readable size; wider sketches keep their scroll. */
 const FIT_MIN = 0.6;
 /** On touch screens text stays larger; the rest of a wide sketch is a swipe away. */
 const FIT_MIN_COARSE = 0.75;
+/** The map opens at a working size (#726): a thought's title at 12.6 px or more and its meta line at 10.8 px or more
+ *  (90% of 14 and 12 px), as the map is drawn. A larger sketch opens at its top left and Fit is the overview. */
+const OPEN_MIN = 0.9;
 const zoomIn = (z: number) => ZOOMS.find((step) => step > z + 0.001) ?? ZOOMS[ZOOMS.length - 1]!;
 const zoomOut = (z: number) => [...ZOOMS].reverse().find((step) => step < z - 0.001) ?? ZOOMS[0]!;
 
@@ -214,8 +219,22 @@ export function SketchMap(props: SketchMapProps) {
   const zoomedRef = useRef<HTMLDivElement>(null);
   /** P12: a connection being drawn from a dot; `x`,`y` are in stored plane units, `over` the thought under the pointer. */
   const [wire, setWire] = useState<{ from: string; x: number; y: number; over: string | null } | null>(null);
-  // Each projection keeps its own zoom: the phone's two columns already fit at full size (#151).
-  const mode: Mode = compact ? 'compact' : 'plane';
+  // The thoughts' layout follows the map's own width, not the window (#151 AC-1): a map narrower than NARROW_MAP (a phone,
+  // or a desktop map beside a docked panel) shows the two columns; a wider one, the plane. The controls stay the device's:
+  // `compact` (a phone window) chooses the phone's sheet and tools, never the width of the map. The wrapper's width is read
+  // (not the canvas's client width), so a scrollbar that comes or goes with the layout cannot flip it back.
+  const [mapWidth, setMapWidth] = useState(0);
+  useLayoutEffect(() => {
+    const el = wrapRef.current;
+    if (!el || typeof ResizeObserver === 'undefined') return undefined;
+    setMapWidth(el.offsetWidth);
+    const ro = new ResizeObserver(() => setMapWidth(el.offsetWidth));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+  const columns = compact || (mapWidth > 0 && mapWidth <= NARROW_MAP);
+  // Each projection keeps its own zoom: the two columns already fit at full size (#151).
+  const mode: Mode = columns ? 'compact' : 'plane';
   const [zooms, setZooms] = useState<Record<Mode, number>>({ plane: 1, compact: 1 });
   const zoom = zooms[mode];
   const modeRef = useRef<Mode>(mode);
@@ -225,7 +244,8 @@ export function SketchMap(props: SketchMapProps) {
   }), []);
   const [, remeasure] = useState(0);
   // S15: on a phone nothing is connected or arranged; people who can write may still add and edit text.
-  const arrange = canWrite && !compact;
+  // In the two columns (a phone, or a narrow map) thoughts keep their saved places: nothing is arranged by dragging.
+  const arrange = canWrite && !columns;
   const observer = useRef<ResizeObserver | null>(null);
   const events = useRef<NodeEvents>(IDLE_EVENTS);
   // One ref callback for every node. An inline callback is a new function on every render, so
@@ -315,9 +335,9 @@ export function SketchMap(props: SketchMapProps) {
     canvas.addEventListener('scroll', placeBar, { passive: true });
     return () => { observer.disconnect(); canvas.removeEventListener('scroll', placeBar); };
   });
-  const projection = compact && canvasWidth && shown.length ? project(shown, heights, canvasWidth, null) : null;
-  // On a phone nothing is drawn until the width is known, so thoughts never slide in from the plane layout.
-  const measuring = compact && !canvasWidth;
+  const projection = columns && canvasWidth && shown.length ? project(shown, heights, canvasWidth, null) : null;
+  // Nothing is drawn until the widths are known, so thoughts never slide in from the other layout.
+  const measuring = (columns && !canvasWidth) || (!compact && !mapWidth);
   const rects = projection ? projection.rects : new Map<string, Rect>(shown.map((t) => [t.id, rectOf(t, heights)]));
   const scaleX = projection?.scaleX ?? 1;
   // Moving every top-row thought changes the preview's minY. Deriving the plane origin
@@ -325,17 +345,17 @@ export function SketchMap(props: SketchMapProps) {
   // Keep signed native bounds for the plane; phone projection, live rects, sizes and Fit
   // still use the actual displayed graph. A thought being dragged past the edge does not move
   // the origin under the pointer; the plane grows when the move lands (#509).
-  const originPoints = compact ? [...rects.values()] : props.liveEnabled ? props.confirmedThoughts ?? sketch.thoughts : sketch.thoughts;
+  const originPoints = columns ? [...rects.values()] : props.liveEnabled ? props.confirmedThoughts ?? sketch.thoughts : sketch.thoughts;
   // #509: the plane reaches a margin beyond the thoughts in every direction, so the view pans past
   // the first thought up or left as well. The phone's two columns keep their own edges.
-  const margin = compact ? 0 : PLANE_MARGIN;
-  const origin = { x: Math.min(0, ...originPoints.map((r) => r.x - PAD)) - margin, y: Math.min(0, ...originPoints.map((r) => r.y - (compact ? PAD : 128))) - margin };
+  const margin = columns ? 0 : PLANE_MARGIN;
+  const origin = { x: Math.min(0, ...originPoints.map((r) => r.x - PAD)) - margin, y: Math.min(0, ...originPoints.map((r) => r.y - (columns ? PAD : 128))) - margin };
   let width = 0;
   let height = 0;
   for (const r of rects.values()) { width = Math.max(width, r.x + r.w - origin.x); height = Math.max(height, r.y + r.h - origin.y); }
   // Room to keep sketching beyond the last thought.
-  width += compact ? 0 : PLANE_MARGIN;
-  height += compact ? 160 : PLANE_MARGIN;
+  width += columns ? 0 : PLANE_MARGIN;
+  height += columns ? 160 : PLANE_MARGIN;
   const place = (r: Rect) => ({ x: r.x - origin.x, y: r.y - origin.y });
   // When the origin moves, every thought's place changes with it while the view compensates: that
   // change must not animate, or the whole map would slide across the screen (#509).
@@ -561,8 +581,9 @@ export function SketchMap(props: SketchMapProps) {
     setZoom(target);
   }, [setZoom]);
 
-  // Fit: show the whole graph when it fits at a readable size, otherwise start at its top left.
-  const fit = useCallback(() => {
+  // Fit: show the whole graph when it fits at a readable size, otherwise start at its top left. Opening uses the
+  // working floor (OPEN_MIN); the Fit button, an explicit overview, may go down to FIT_MIN.
+  const fit = useCallback((floor = FIT_MIN) => {
     const canvas = canvasRef.current;
     const { rects: all, origin: o } = geometry.current;
     if (!canvas || !all.size) return;
@@ -590,7 +611,7 @@ export function SketchMap(props: SketchMapProps) {
     const view = canvas.getBoundingClientRect();
     const corner = wrapRef.current?.querySelector('.sk-corner')?.getBoundingClientRect();
     if (corner?.width) scale = Math.min(scale, Math.max((corner.left - view.left - 8) / (maxX - minX), (corner.top - view.top - top - 8) / (maxY - minY)));
-    const z = Math.max(coarseRef.current ? FIT_MIN_COARSE : FIT_MIN, Math.floor(scale * 100) / 100);
+    const z = Math.max(coarseRef.current ? Math.max(FIT_MIN_COARSE, floor) : floor, Math.floor(scale * 100) / 100);
     setZoom(z);
     cameras.current.plane = { left: Math.max(0, (minX - o.x) * z), top: Math.max(0, (minY - o.y) * z) };
     requestAnimationFrame(apply);
@@ -600,10 +621,37 @@ export function SketchMap(props: SketchMapProps) {
   useEffect(() => {
     if (fitted.current || !hasThoughts) return;
     fitted.current = true;
-    fit();
+    fit(OPEN_MIN);
   }, [hasThoughts, fit]);
   const highlighted = (id: string) => selection.includes(id) || connectFrom === id;
 
+  // The first-run hint floats over the canvas above the dock; where a thought lies under it (a card at the bottom of the
+  // view, as at 1440×900 opening at 90%), it steps aside, so it never sits on a card's text. Checked after a scroll,
+  // a resize or a change of the thoughts, a frame later.
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    const dock = dockRef.current;
+    if (!canvas || !dock || compact) return undefined;
+    let frame = 0;
+    const check = () => {
+      frame = 0;
+      const hint = dock.querySelector<HTMLElement>(':scope > .sk-hint');
+      if (!hint) return;
+      const h = hint.getBoundingClientRect();
+      const over = [...canvas.querySelectorAll<HTMLElement>('.sk-node')].some((node) => {
+        const r = node.getBoundingClientRect();
+        return r.right > h.left && r.left < h.right && r.bottom > h.top && r.top < h.bottom;
+      });
+      if (over) hint.setAttribute('data-over-card', ''); else hint.removeAttribute('data-over-card');
+    };
+    const later = () => { if (!frame) frame = requestAnimationFrame(check); };
+    later();
+    canvas.addEventListener('scroll', later, { passive: true });
+    const observer = new ResizeObserver(later);
+    observer.observe(canvas);
+    observer.observe(dock);
+    return () => { if (frame) cancelAnimationFrame(frame); canvas.removeEventListener('scroll', later); observer.disconnect(); };
+  }, [compact, rects, zoom]);
   // #509 AC-3: Ctrl/⌘ + wheel (a trackpad pinch arrives the same way) zooms smoothly around the
   // pointer; a plain wheel or two-finger scroll pans natively. React's wheel listener is passive, and
   // the zoom must be cancellable to replace the browser's page zoom.
@@ -904,7 +952,7 @@ export function SketchMap(props: SketchMapProps) {
       <button type="button" className="sk-zoom__level" aria-label={`Zoom ${Math.round(zoom * 100)}%, reset to 100%`} onClick={() => zoomAt(1)}>{Math.round(zoom * 100)}%</button>
       <button type="button" aria-label="Zoom in" data-tip="Zoom in" disabled={zoom >= ZOOMS[ZOOMS.length - 1]!} onClick={() => zoomAt(zoomIn(zoom))}><Icon name="plus" size={14} /></button>
       <span className="sk-div" aria-hidden="true" />
-      <button type="button" className="sk-zoom__fit" aria-label="Fit the sketch to the view" onClick={fit}>Fit</button>
+      <button type="button" className="sk-zoom__fit" aria-label="Fit the sketch to the view" onClick={() => fit()}>Fit</button>
     </div>
   );
 
@@ -937,7 +985,7 @@ export function SketchMap(props: SketchMapProps) {
   return (
     <div ref={wrapRef} className={`sk-canvas-wrap sk-canvas-wrap--controls${hasComposition ? ' has-composition' : ''}`} style={(compact ? { '--sk-phone-tools-height': `${hasComposition ? compositionHeight : phoneToolsHeight}px` } : { '--sk-dock-h': `${dockHeight}px` }) as unknown as CSSProperties}>
     {props.presenceStore ? <MapPeople source={props.presenceStore} /> : null}
-    <div className={`sk-canvas${panning ? ' is-panning' : ''}${panMode ? ' is-hand' : ''}${connectFrom ? ' is-connecting' : ''}${wire ? ' is-wiring' : ''}`} ref={canvasRef} role="group" tabIndex={0}
+    <div data-layout={columns ? 'columns' : 'plane'} className={`sk-canvas${panning ? ' is-panning' : ''}${panMode ? ' is-hand' : ''}${connectFrom ? ' is-connecting' : ''}${wire ? ' is-wiring' : ''}`} ref={canvasRef} role="group" tabIndex={0}
       data-live-own-gesture={props.ownGesture?.id} data-live-own-sequence={props.ownGesture?.sequence} data-live-generation={props.ownGesture?.generation}
       aria-label={`Sketch: ${sketch.title}`} aria-describedby={helpId} onKeyDown={onCanvasKeyDown}>
       <div className="sk-zoomed" ref={zoomedRef} data-origin-x={origin.x} data-origin-y={origin.y} style={{ width: width * zoom, height: height * zoom }}
@@ -1009,7 +1057,7 @@ export function SketchMap(props: SketchMapProps) {
           {wire && !wire.over && wireFrom ? (
             <div className="sk-ghost" aria-hidden="true" style={{ transform: `translate(${wire.x - origin.x}px, ${wire.y - origin.y}px)`, width: DEFAULT_THOUGHT_SIZE.width, height: DEFAULT_THOUGHT_SIZE.height }}>New thought</div>
           ) : null}
-          {props.draft && !compact ? (
+          {props.draft && !columns ? (
             <div className="sk-ghost sk-ghost--draft" aria-hidden="true" style={{ transform: `translate(${props.draft.x - origin.x}px, ${props.draft.y - origin.y}px)`, width: DEFAULT_THOUGHT_SIZE.width, height: DEFAULT_THOUGHT_SIZE.height }}>{props.draft.label}</div>
           ) : null}
           {editing && editingRect && editingThought && canWrite ? (

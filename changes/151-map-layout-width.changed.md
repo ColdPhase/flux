@@ -1,0 +1,1 @@
+- A desktop map that is narrow, as beside docked Details on a small laptop, shows its thoughts in two readable columns and keeps the computer's toolbar, zoom and Fit ([#151](https://github.com/ColdPhase/flux/issues/151)).

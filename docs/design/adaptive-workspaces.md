@@ -156,9 +156,13 @@ hardware is optional extra evidence, never a gate.
 
 **Agreed 2026-10-29** for #151 AC-4 and #155 AC-4 by claude-hubert under the founders'
 [delegation](../product/autonomy.md), written down before any optimisation for them; the "measured" columns are the
-unoptimised baseline of `main` `3f0311a26`. **Independent agreement is still owed**: the review of PR #714 found the
-first version of this table loosened two frame-gap budgets to pass; this version restores them. A budget changes only
-with new measurements and a review. The opt-in harness
+unoptimised baseline of `main` `3f0311a26`. The review of PR #714 found the first version of this table loosened two
+frame-gap budgets to pass; this version restores them. **Independent agreement, 2026-10-30:** a separate agent session
+(the #151 close-out, which did not write the 2026-10-29 rows; same GitHub account, so session independence) read every
+2026-10-29 row against its basis below and the harness constants and agrees with them: none is looser than its
+inherited value, and the phone's frame gap stays a recorded miss (#716), not a changed budget. The four rows that session
+added on 2026-10-30 (`listScroll`, `mapPan`, `mapZoom`, `scrollGap`) still need an agreement by someone other than their
+author. A budget changes only with new measurements and a review. The opt-in harness
 [`motion_performance.py`](../../app/tests/ui/motion_performance.py) fails when a p95 exceeds its budget (a miss it lists
 in `KNOWN_MISSES`, with its issue and a ceiling for its p95, is reported as open, fails the run above that ceiling and
 fails it once it stops missing), and
@@ -192,10 +196,22 @@ fails it once it stops missing), and
 | `layoutGap` | worst gap between two frames during a layout switch, ms | 100 | 250 | 67 | 200 |
 | `layoutRequests` | API reads one layout switch causes, count | 3 | 3 | 2 | 3 |
 | `heapGrowthMB` | JavaScript heap growth after a forced collection over one segment of a profile (a ceiling, not a p95), MB | 20 | 20 | 4.9 | 5.8 |
+| `listScroll` | a wheel over a long list (the Tasks board or list pane, the conversation stream) to the frame after it moved, ms | 100 | 200 | 59 | 65 |
+| `mapPan` | a wheel over the map to the frame after its view moved, ms | 100 | 200 | 78 | 78 |
+| `mapZoom` | a zoom (Ctrl+wheel on the computer, the zoom control in the phone's Map options sheet) to the frame after the map took its new scale, ms | 100 | 200 | 75 | 65 |
+| `scrollGap` | worst gap between two frames from a list, pan or zoom input to its paint, ms | 50 | 100 | 17 | 17 |
 
 "Measured" is the worst p95 of the full runs of the harness on 2026-10-29: three for the first seven rows (the
 third, 1011 s, ran with these budgets and met every one but the frame gap that #716 closed), two for the request count and heap, which
 were added after the first. The summary is in [the closeout report](../development/evidence/151-155-closeout/README.md).
+The last four rows were added on 2026-10-30 (#151 AC-4) before any optimisation for them and measured at full size
+(at least 200 inputs over at least 60 s after 30 warm-ups per distribution; the computer's distributions in two runs), by
+`motion_performance.MotionPerformance.test_map_and_list_latency_budgets` on branch `claude-hubert/151-finish`, on the same
+host and browser (load average about 8). "Measured" is the worst p95 of the runs, of the two lists for `listScroll` and of
+all four distributions for `scrollGap`; every one met its budget (outcome `within-budgets`). The phone's p95s are close to
+the computer's because Chromium scrolls a wheel off the main thread; a CPU-bound regression in the scrolled content would
+still show in the frame gap. Single outliers (one 664 ms zoom and one 600 ms frame gap in about 1200 computer inputs) are
+above the p95 and recorded in the report, not budgeted.
 
 **Known miss closed (#716, 2026-10-30).** The phone's `frameGap` was 133 ms at p95 in the first two runs and 117 in the
 third, against 100: [#716](https://github.com/ColdPhase/flux/issues/716). A long-animation-frame profile of 80 view
@@ -238,6 +254,21 @@ view change or a resize is this page's inference.
   and 31 and 33 ms in the first, so a tighter bound would flake. Phone 250 ms, 1.25× the measured 196 and 200 ms.
 - `layoutRequests` (new): the p95 of a discrete count was 2 on the computer and up to 3 on the phone; the budget is 3.
   It counts the two small agent lists that a swapped shell reads when it mounts.
+- `listScroll` (added 2026-10-30): **inherited unchanged** from the
+  [native-work kickoff](../development/performance/2026-10-01-native-work.md) ("actual list wheel/scroll → following paint",
+  100/200 ms). It is measured here on this dataset's two long lists: the Tasks pane (40 tasks: a board on the computer, the
+  list on the phone) and the 60-root conversation stream, each scrolled from its middle by alternating ±180 px wheels, so no
+  sample lands on an end (an input that moves nothing times out and fails the run).
+- `mapPan` (added 2026-10-30): a wheel over the map is the same input to the same kind of paint as a list scroll (the map's
+  canvas is a native scroller), so it takes the inherited list budget, 100/200 ms, not a looser one. Measured on a 60-thought
+  linked map (a 10 × 6 grid, wider and taller than the computer's window) from its middle, down and up, and on the computer
+  also left and right.
+- `mapZoom` (added 2026-10-30): RAIL's 100 ms response for a direct manipulation on the computer, and the kickoff's
+  doubling for the 4× throttled phone (200 ms). The computer zooms by Ctrl+wheel (a trackpad pinch arrives the same way);
+  the phone by the zoom buttons of its Map options sheet, because a two-finger pinch has no trusted start event the page can
+  time from.
+- `scrollGap` (added 2026-10-30): the same 50/100 ms as `frameGap` (MDN's long task and RAIL's 100 ms), from the input to its
+  paint.
 - `heapGrowthMB` (new): a leak ceiling, not a bound a user feels: about 3.5× the measured 5 to 6 MB over roughly 900 actions,
   which allows route chunks to load once and flags a heap that grows by about 20 KB per action.
 
@@ -251,8 +282,9 @@ view change or a resize is this page's inference.
 - WebKit has no CPU throttling command, so these budgets are Chromium only.
 
 **Not covered.** Physical phones, tablets and 4K or ultrawide displays (optional, founder direction #266 item
-10); network throttling; map pan, zoom and long-list scroll latency (list scroll is in the native-work kickoff);
-memory other than the JavaScript heap; other hosts. Unknown stays unverified.
+10); network throttling;
+memory other than the JavaScript heap; other hosts; touch-drag and pinch latency (timed here through wheel and the zoom
+control, above). Unknown stays unverified.
 
 ## Delivery and evidence status
 

@@ -66,6 +66,15 @@ head; that head's passing run and eligible independent documentation review are
 required before its PR merges. These fast gates do not replace application or
 release acceptance.
 
+[Docs site](../../.github/workflows/docs-site.yml) (#734) builds the documentation site in
+`site/` (Astro Starlight) with `./scripts/check_docs_site.sh`, in the same pinned Node image as the
+application, and fails on a broken internal link or anchor. It runs on pull requests that change the
+site or one of the documents it publishes (path filter), cancels superseded PR runs, and deploys to
+GitHub Pages only on a push to `main` or a dispatch from `main`. It is not a required check. The
+pages are generated from `README.md` and the user-facing files under `docs/` by
+`site/scripts/sync-docs.mjs`; internal agent, process and design documents are not published. A new
+user-facing document is published by adding it to `PAGES` there and to the workflow's paths.
+
 ## 1. Design checks from the actual stack
 
 Once the application architecture is accepted, the planner creates pipeline tasks

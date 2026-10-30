@@ -44,10 +44,13 @@ export function day(iso: string) {
 /** Longest a feed waits for its first chips, references and state line before it shows (#155). */
 export const OPENING_REVEAL_MS = 1000;
 
+/** Most room a feed adds below its newest message so its first one starts whole (#725): about two lines. */
+export const WHOLE_MESSAGE_ROOM = 48;
+
 /**
  * Opens a feed on whole messages at its latest: when the latest screen would start mid-message, it begins at
- * the next message instead, with a little room below the last one (direction C "return anchor"). Layout
- * settles as lines, fonts and late message previews arrive, so this repeats until the reader acts. Only
+ * the next message instead, with a little room below the last one (direction C "return anchor"), when that
+ * room is at most WHOLE_MESSAGE_ROOM. Layout settles as lines, fonts and late message previews arrive, so this repeats until the reader acts. Only
  * genuine reader input ends it (readerIntent.ts, #155), or a scroll settle() did not write that follows such
  * input; layout growth, scroll anchoring and other writers never end it. Returns the cleanup.
  */
@@ -65,7 +68,9 @@ export function openOnWholeMessages(feed: HTMLElement, column: HTMLElement, sele
     const next = list[index + 1];
     if (!next) { list[index]!.scrollIntoView({ block: 'start' }); written = feed.scrollTop; return; }
     const delta = next.getBoundingClientRect().top - top;
-    if (delta <= 0) return;
+    // The room is a line or two at most (#725): more would open a band between the newest message and its field,
+    // a third of a small phone's feed. Then the newest message stays against the field and the top one is cut.
+    if (delta <= 0 || delta > WHOLE_MESSAGE_ROOM) return;
     column.style.paddingBottom = `${parseFloat(getComputedStyle(column).paddingBottom) + delta}px`;
     feed.scrollTop = feed.scrollHeight;
     written = feed.scrollTop;

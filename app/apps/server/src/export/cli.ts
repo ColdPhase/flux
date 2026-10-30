@@ -1,5 +1,5 @@
 import { pipeline } from 'node:stream/promises';
-import { createDatabase, exportOperatorRows } from '@flux/db';
+import { createDatabase, exportOperatorRows, sql } from '@flux/db';
 import { DomainError, ForbiddenError } from '@flux/core';
 import { diskFileStorage } from '../files/storage.js';
 import { exportUseCases } from './adapters.js';
@@ -33,6 +33,9 @@ try {
   if (!matches.length) fail(`no project has the id or name "${project}"`);
   if (matches.length > 1) fail(`several projects are named "${project}"; pass the id instead: ${matches.map((match) => match.id).join(', ')}`);
   const target = matches[0]!;
+  // F-030: this command writes a plaintext bundle onto the server's disk, so an encrypted space refuses it.
+  const [space] = (await db.execute<{ name: string; encrypted: boolean }>(sql`SELECT name, encrypted FROM workspaces WHERE id = ${target.workspaceId}::uuid`)).rows;
+  if (space?.encrypted) fail(`${space.name} is encrypted. Export it from the app.`);
   const userId = as ? await operator.findUserByEmail(as) : await operator.workspaceOwner(target.workspaceId);
   if (!userId) fail(as ? `no account has the e-mail address ${as}` : 'the project workspace has no owner; pass --as <email>');
   const storage = await diskFileStorage(process.env.FLUX_FILES_DIR ?? '/data/files');

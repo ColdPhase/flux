@@ -51,6 +51,8 @@ function generatorPorts(tx: Transaction, boss: PgBoss): GeneratorPorts {
     enqueueEmail: (job, startAfter) => boss.send(NOTIFICATION_EMAIL_JOB, job, { db: queueDb, singletonKey: job.emailId, ...later(startAfter) }),
     recordFailure: (eventId, error) => rows.recordFailure(eventId, error),
     deadLetter: (eventId) => rows.deadLetter(eventId),
+    recordWait: (event) => rows.recordWait(event),
+    eventById: (id) => rows.eventById(id),
     isolate: (work) => tx.transaction(() => work()),
   };
 }

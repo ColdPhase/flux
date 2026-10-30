@@ -69,6 +69,8 @@ export function projectRepository(db: DbExecutor) {
 
     /** One page of the projects the actor can see, with their level; the filter applies before count and page. */
     async listVisible(actor: AccessActor, page: { limit: number; offset: number }) {
+      // F-030 (AC-6): a locked encrypted workspace answers 423 even when the page would be empty.
+      await sealOf(db, actor.workspaceId, { write: false });
       const filter = visibleProjectsSql(actor);
       const [counted] = await db.select({ count: sql<number>`count(*)::int` }).from(schema.projects).where(filter);
       const rows = await db.select({ project: schema.projects, level: projectLevelSql(actor, schema.projects.id, schema.projects.visibility).mapWith(Number) })

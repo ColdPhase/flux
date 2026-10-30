@@ -57,7 +57,7 @@ $compose build
 $compose up -d db migrate
 $compose --profile setup run --rm files-init
 
-files="${FLUX_ENCRYPTION_FILES:-tests/app/encryption-crypto.test.ts tests/app/encryption-keyring.test.ts tests/app/encrypted-workspaces.test.ts tests/app/encryption-registry.test.ts tests/app/encryption-sealed-content.test.ts tests/app/encryption-search-live.test.ts tests/app/sealed-search-heap.test.ts tests/app/live/encryption-two-api.test.ts}"
+files="${FLUX_ENCRYPTION_FILES:-tests/app/encryption-crypto.test.ts tests/app/encryption-keyring.test.ts tests/app/encrypted-workspaces.test.ts tests/app/encryption-registry.test.ts tests/app/encryption-sealed-content.test.ts tests/app/encryption-search-live.test.ts tests/app/sealed-search-heap.test.ts tests/app/encryption-locked-routes.test.ts tests/app/live/encryption-two-api.test.ts}"
 # shellcheck disable=SC2086
 $compose run --rm test node_modules/.bin/tsx --test --test-concurrency=1 $files
 
@@ -97,13 +97,24 @@ for log in postgres services; do
   fi
 done
 [ "$hits" -eq 0 ] || exit 1
+# AC-7 error paths (S2a-2c-3): A's failed request and job texts are in no service log, the request in no PostgreSQL log;
+# B's failed request text is in the API log (the control: an unredacted failure is logged).
+for pair in services:services postgres:postgres; do
+  file=${pair%%:*}; log=${pair##*:}
+  $compose run --rm --no-deps -T test cat "/state/encryption-error-$file.txt" > "$scan_dir/error-$file"
+  [ "$(grep -c . "$scan_dir/error-$file")" -ge 1 ] || { echo "no error-path texts for the $log log" >&2; exit 1; }
+  if grep -F -f "$scan_dir/error-$file" "$scan_dir/$log.log" > /dev/null; then echo "ERROR-PATH TEXT OF A FOUND in the $log log" >&2; exit 1; fi
+done
+$compose run --rm --no-deps -T test cat /state/encryption-error-control.txt > "$scan_dir/error-control"
+grep -F -f "$scan_dir/error-control" "$scan_dir/services.log" > /dev/null || { echo 'error-path control: the failed request of B is not in the API log' >&2; exit 1; }
 echo "AC-4 log scan: $count secret encodings, $(wc -l < "$scan_dir/postgres.log") PostgreSQL log lines, $(wc -l < "$scan_dir/services.log") service log lines, 0 hits"
 
 report_memory
 
 # AC-3: restarts and the lock.
 $compose run --rm test node_modules/.bin/tsx tests/app/encryption-restart.check.ts prepare
-$compose restart
+# Not the one-shot migrate: restarted with db it times out (#723 review P3).
+$compose restart db keyring api api2 worker mailpit
 $compose up -d --wait api api2 worker keyring
 $compose run --rm test node_modules/.bin/tsx tests/app/encryption-restart.check.ts stack-locked
 $compose restart api
@@ -112,5 +123,8 @@ $compose run --rm test node_modules/.bin/tsx tests/app/encryption-restart.check.
 $compose run --rm test node_modules/.bin/tsx tests/app/encryption-restart.check.ts mark
 $compose restart keyring
 $compose run --rm test node_modules/.bin/tsx tests/app/encryption-restart.check.ts keyring-locked
+
+# AC-7, the stolen-disk part: pg_dump, the raw volumes (pg_wal included), container layers and logs; stops the stack.
+. scripts/check_encryption_scan.sh
 
 echo 'F-030 S1 encryption checks passed'

@@ -114,8 +114,8 @@ export const CROSS_WORKSPACE_READ_ROUTES: readonly string[] = [
 
 /**
  * Routes that keep working while a sealed workspace is locked: workspace metadata only, each with its reason.
- * Keyed by `METHOD path` exactly as registered. S1's lock gate refuses every other route that names an object
- * of a locked sealed workspace by a known parameter; S2a's route test enumerates every route.
+ * Keyed by `METHOD path` exactly as registered. Every other route answers 423 for a locked workspace's objects because
+ * its repositories fail closed (S2a-2c-4); `tests/app/encryption-locked-routes.test.ts` walks every route (AC-6).
  */
 export const LOCKED_ALLOWED_ROUTES: Readonly<Record<string, string>> = {
   'GET /api/v1/workspaces/:workspaceId': 'The workspace\'s name, role and encryption state, so the locked panel can be drawn',
@@ -129,6 +129,12 @@ export const LOCKED_ALLOWED_ROUTES: Readonly<Record<string, string>> = {
   'POST /api/v1/workspaces/:workspaceId/unlock-password-grants': 'Answers 423 itself: a grant is useful only while unlocked',
   'PUT /api/v1/workspaces/:workspaceId/unlock-password': 'Answers 423 itself unless the recovery code unlocks the key',
   'POST /api/v1/workspaces/:workspaceId/recovery-code': 'Answers 423 itself',
+  // S2a-2c-4 (AC-6 walk): routes that read or change only content-free rows of a locked workspace.
+  'GET /api/v1/inbox/:id': 'An encrypted workspace\'s notification is content-free (a template title, no body, an id-only link; 0124)',
+  'POST /api/v1/inbox/:id/read': 'Read state of a content-free notification',
+  'POST /api/v1/needs-you/:key': 'Snoozing an item: its key is ids only',
+  'DELETE /api/v1/needs-you/:key': 'Dismissing an item: its key is ids only',
+  'GET /api/v1/workspaces/:workspaceId/agents': 'Always empty: an encrypted workspace has no agents (F-029)',
 };
 
 const AI_ONLY = 'AI work: F-029 forces it off in an encrypted workspace before any write, so no stored response can concern one';
@@ -153,3 +159,49 @@ export const IDEMPOTENCY_ACCOUNT_OPERATIONS: Readonly<Record<string, string>> = 
   'POST /api/v1/assistant-proposals/:proposalId/accept': AI_ONLY,
   'POST /api/v1/assistant-proposals/:proposalId/dismiss': AI_ONLY,
 };
+
+/** An encrypted workspace that is locked here, as cross-workspace reads name it (F-030 `lockedWorkspaces`). */
+export interface LockedWorkspaceRef { id: string; name: string }
+
+/**
+ * F-030 event data (S2a-2c-3, migration 0125): in an encrypted workspace every string in an event's `data` is a UUID,
+ * an ISO timestamp, a sealed envelope, an existing account id or principal key, or one of these registered values
+ * (kinds, states, roles, reasons and operations the record sites write). Migration 0125 seeds `event_data_tokens` with
+ * exactly this list, and `tests/app/encryption-registry.test.ts` compares the two. No free word passes.
+ */
+export const EVENT_DATA_TOKENS = [
+  'about', 'accepted', 'admin', 'affects', 'agent', 'assigned', 'blocked', 'contributor', 'conversation', 'copied_from_dm',
+  'copied_to_project', 'creation_reverted', 'decision', 'denied', 'dm', 'doc', 'done', 'group', 'guest', 'human', 'in_progress',
+  'invitation', 'left', 'link_added', 'link_removed', 'link_updated', 'map', 'material', 'member', 'mention', 'mentions', 'message',
+  'not_pursued', 'open', 'owner', 'pair', 'password', 'person', 'private', 'project', 'proposed', 'question', 'recovery', 'rejoined',
+  'related', 'renamed', 'reply', 'restart', 'restricted', 'result', 'review', 'self', 'sketch', 'source', 'still_applies',
+  'superseded', 'thought', 'thought_added', 'thought_removed', 'thought_updated', 'thoughts_moved', 'viewer', 'wiki', 'work',
+  'workspace',
+] as const;
+
+/**
+ * F-030 event data keys (#721 review P2-1, migration 0125): every object key in an encrypted workspace's event `data` is
+ * one of these field names (the record sites' keys), a UUID or `$sealed`. Seeded into `event_data_keys`; the registry
+ * test compares the two.
+ */
+export const EVENT_DATA_KEYS = [
+  'access', 'actor', 'actorId', 'additionalProperties', 'agentId', 'agentIds', 'ai', 'assignedTo', 'at', 'audience',
+  'author', 'automation', 'body', 'boundary', 'by', 'canCreateProject', 'caps', 'changed', 'changes',
+  'clientCommandId', 'clientMessageId', 'code', 'columns', 'command', 'commandId', 'contentIdentity',
+  'conversationId', 'createdAt', 'createdBy', 'data', 'decisionId', 'dm', 'dmId', 'docId', 'draft', 'draftId',
+  'email', 'end', 'error', 'eventId', 'events', 'evidenceRef', 'expected', 'expiresAt', 'fence', 'file', 'fileId',
+  'fingerprint', 'firstMessageBody', 'from', 'fromTitle', 'goal', 'goalId', 'grantId', 'hasMoreBefore', 'height',
+  'id', 'ids', 'inbox', 'index', 'input', 'intent', 'intents', 'interpretation', 'invitationId', 'items', 'keys',
+  'kind', 'level', 'lifecycle', 'limit', 'link', 'linkId', 'linkIds', 'lock', 'materialId', 'maxLength', 'message',
+  'messageId', 'messageIds', 'messagePage', 'messages', 'myName', 'name', 'nextBeforeSequence', 'noticeId',
+  'objectId', 'observed', 'ok', 'op', 'operation', 'outcome', 'owner', 'ownerUserId', 'pairKey', 'participantIds',
+  'password', 'postconditions', 'principal', 'project', 'projectId', 'prompt', 'proposalId', 'provider', 'query',
+  'questionId', 'queue', 'reason', 'recipientId', 'recipients', 'record', 'recoveryCode', 'replayed', 'requestId',
+  'requestedQuestion', 'required', 'resultId', 'results', 'resume', 'retained', 'retryDelay', 'retryLimit',
+  'retryable', 'reviewerConnectionId', 'reviewerOwnerId', 'revision', 'role', 'rootId', 'rootMessageId', 'row',
+  'runId', 'runToken', 'runtime', 'sampleId', 'scope', 'session', 'sessionId', 'sketch', 'sketchId', 'source',
+  'sources', 'stage', 'state', 'status', 'step', 'stop', 'stopId', 'stopped', 'sweep', 'task', 'taskId', 'taskIds',
+  'taskNoticeId', 'tell', 'text', 'thought', 'thoughtId', 'thoughtIds', 'thoughts', 'title', 'to', 'toTitle', 'tool',
+  'tools', 'total', 'type', 'userId', 'value', 'verdict', 'version', 'view', 'visibility', 'waitingFor', 'width',
+  'window', 'work', 'workId', 'workerId', 'workspace', 'workspaceId',
+] as const;

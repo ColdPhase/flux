@@ -716,8 +716,12 @@ Nothing listed is text that a person wrote, a name of a thing, or file bytes.
   timestamp; a sealed envelope; an **existing** `auth_users.id`, or a principal key (`human:` or
   `agent:`) whose id exists in `auth_users` or `agents`; a token present in `event_data_tokens`. That
   table is seeded by the migration from the enum values in `packages/contracts` (kinds, states,
-  reasons), and the registry test compares the two. No free word passes. The remaining bound: a
-  string equal to a real user id or a registered enum value carries no content.
+  reasons), and the registry test compares the two. Object keys follow the same rule against `event_data_keys`
+  (`EVENT_DATA_KEYS`, the field names the record sites write), and an update of `data` is checked like an insert.
+  `actor_id`, `kind`, `event_audience.recipient` and `sealed_job_waits.queue` must have their fixed shapes. No free
+  word passes. The remaining bounds: a string equal to a real user id or a registered enum value carries no content;
+  and the database cannot verify an AEAD tag, so text dressed as an envelope (`fx1.<v>.` and 38 or more base64url
+  characters) or as a UUID (16 bytes) passes every guard. The application never writes either.
 - **Notification backstop.** A `BEFORE INSERT OR UPDATE` trigger on `notifications` raises
   `NOTIFICATION_CONTENT_REFUSED` for a sealed workspace unless `body = ''` and `title` is one of the
   nine [fixed templates](#notifications-push-and-e-mail), with an account name and the workspace's
@@ -1323,10 +1327,46 @@ token alone is not enough (S1 review): a real deployment never holds a half-seal
     measured on the plaintext. `read` and `has` return or compare plaintext only after the tag verifies; a tampered or
     truncated object is unavailable, never served. Thumbnails are made in the browser, so nothing else is stored. The
     file detail of #704 (`page_count`, `row_count`, `duration_ms`) stays visible metadata, like `size`.
-  - **S2a-2c**: the notification
-    and event backstops with content-free notifications, error-path redaction, `sealed_job_waits` and
-    the resume job, the SQL source scan, cross-workspace `lockedWorkspaces`, the replacement of the
-    route-level gate, `./flux export` refusal and restore truncation, and AC-6, AC-9, AC-10 and AC-7.
+  - **S2a-2c-1** (migration 0124): content-free notifications. The generator opens a sealed workspace's message, task,
+    decision or result only in RAM to decide who is told and why, then stores the template title ("Ada mentioned you
+    in Garden club", one per reason) with an empty body; `flux_notification_content_free` refuses any other title or
+    a body for a sealed workspace (`NOTIFICATION_CONTENT_REFUSED`; the "who" must be an existing account name,
+    `Someone` or `An agent`). Needs-you's proposed decisions and the muted list's project and DM names are opened, and
+    a generation failure about a sealed workspace's event stores only `redactedError` (class, code, ids). An update
+    that keeps title, body and link (read state, delivery) is not re-checked, so a later rename never blocks marking
+    read; the link is one of the generator's id-only forms; the plain morning summary ("N things wait in your inbox",
+    fixed body) is allowed and is anchored on a plain workspace's source when the person has one (an assistant-written
+    line only there). A muted place of a locked workspace is listed under the workspace's name.
+  - **S2a-2c-2** (no migration): `lockedWorkspaces`. Search, Inbox, Needs you and Since you left run in
+    `lockedReadScope` (`packages/db/src/sealing.ts`): a sealed workspace that is locked here is skipped there instead of
+    answering 423 for the whole read; its rows open to empty text, the S1 gate leaves its items out of the answer
+    (any item that names the workspace or one of its projects or DMs, a link included) and names every such workspace
+    of the caller in `lockedWorkspaces`; the Inbox unread and Needs you counts leave those items out. Since you left
+    receives no event of a locked workspace, and a place inside one answers 423.
+    Jobs that wait: notification generation records an event of a locked sealed workspace in `sealed_job_waits`
+    and moves its cursor on; `workspace-encryption.resume.v1` replays the waits after unlock in creation order (AC-9).
+    A wait whose replay fails for another reason stays for a 30 s sweep, which also catches a wait committed after
+    the unlock's resume job ran; the rest replay.
+    `./flux export` refuses an encrypted space ("Garden club is encrypted. Export it from the app.") and writes
+    nothing; `./flux restore` truncates `workspace_unlocks`, so a restored encrypted space is locked.
+  - **S2a-2c-3**: the event backstop (migration 0125: `a_sealed_event_data` and `event_data_tokens`, seeded from
+    `EVENT_DATA_TOKENS` in `packages/contracts`; a refused event answers `409 EVENT_CONTENT_REFUSED`); error-path
+    redaction: every API request and worker job runs in `sealedWorkScope`, and one that touched an encrypted
+    workspace's seal (or a job whose payload names one) answers, logs and stores in pg-boss only `redactedError`
+    (`SealedJobError(code)` for jobs); the AC-5 SQL source scan (`tests/app/support/sealed-sql-scan.ts`, each handled
+    site listed with its reason); and the API export of a sealed project, opened for the manager who asks.
+  - **S2a-2c-4** (no migration): the S1 route-level gate is gone. Every repository fails closed through `sealFor`
+    (lists that may be empty, such as a person's drafts and assigned tasks, resolve the seal first), and the gate keeps
+    only the cross-workspace reads. AC-6 (`tests/app/encryption-locked-routes.test.ts`) walks every route the server
+    registers (a test-deployment listing with each route's body and query schema), fills its parameters, body and
+    query with a locked space's objects, and expects `423`, a metadata route of `LOCKED_ALLOWED_ROUTES` (now also the
+    content-free Inbox rows, Needs you keys and the always-empty agent list), a cross-workspace read naming the space,
+    or a refusal of a feature the space does not offer (`WORKSPACE_AI_BLOCKED`, `GITHUB_UNAVAILABLE`); a request
+    refused as invalid input before any read is counted. The live Wiki and map room upgrades answer `423` too. Never a `500`, a canary or
+    an envelope. AC-10 is case 3 of `scripts/check_backup.sh` (`FLUX_BACKUP_CASES=encryption` runs it alone). The rest
+    of AC-7 for S2a's canaries is `scripts/check_encryption_scan.sh`: `pg_dump` (pg-boss included), the raw
+    PostgreSQL volume with `pg_wal` and the files volume after the stack stops, every container's writable layer and
+    every log, with B's canaries as positive controls in the dump and both volumes.
 - **S2a: sealed database content and files.** `TABLE_CLASSES`, `SEALED_COLUMNS` and `VISIBLE_COLUMNS`
   with the live-catalog test, the backstops (plaintext, notifications, events, idempotency) and relaxed
   checks, **the search placeholder triggers and `search_changes`** (so no sealed column is ever

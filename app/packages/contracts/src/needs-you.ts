@@ -3,6 +3,8 @@
 // with an item (done, not now, declined) is stored, per person.
 import type { AssistantRequestIdentity } from './push.js';
 
+import type { LockedWorkspaceRef } from './encryption.js';
+
 export const NEEDS_YOU_PATH = '/api/v1/needs-you';
 export const needsYouItemPath = (key: string) => `${NEEDS_YOU_PATH}/${encodeURIComponent(key)}`;
 
@@ -113,6 +115,11 @@ export interface NeedsYouAssistantChanges {
 }
 
 export interface NeedsYouResponse {
+  /**
+   * F-030: the caller's encrypted workspaces that are locked on this server; their items are left out, and the page
+   * draws one "Waiting to be unlocked" row for each. Absent when none is locked.
+   */
+  lockedWorkspaces?: LockedWorkspaceRef[];
   /** Most urgent first: decisions, questions, blocked tasks, then mentions; newest first within a kind. */
   items: NeedsYouItem[];
   /** How many items need you now; the sidebar and Home show this number. */

@@ -1,3 +1,4 @@
+import { AsyncLocalStorage } from 'node:async_hooks';
 import { sql } from 'drizzle-orm';
 import type { DbExecutor } from './repositories/push.js';
 import { SEALED_COLUMNS, type SealedTable } from './sealed-columns.js';
@@ -49,6 +50,11 @@ let resolver: SealResolver | null = null;
 export function configureSeals(next: SealResolver) {
   resolver = next;
 }
+/**
+ * The resolver of the API instance serving the request in progress. One process can build several API instances (the
+ * in-process tests do), each with its own keys; with no per-route gate (S2a-2c-4), each request must use its own.
+ */
+export const sealResolverScope = new AsyncLocalStorage<SealResolver>();
 
 /**
  * Workspaces known not to be encrypted. `workspaces.encrypted` cannot change (0119 trigger), and an id is cached only
@@ -67,6 +73,17 @@ const passThrough = (workspaceId: string): FieldSeal => ({
 
 /** The seal of a workspace in this transaction: pass-through for a plain one; `sealFor` for an encrypted one. */
 export async function sealOf(executor: DbExecutor, workspaceId: string, options: { write: boolean }): Promise<FieldSeal> {
+  const scope = options.write ? undefined : lockedReadScope.getStore();
+  if (!scope) return resolveSeal(executor, workspaceId, options);
+  try { return await resolveSeal(executor, workspaceId, options); }
+  catch (error) {
+    if (!isLocked(error)) throw error;
+    scope.skipped.add(workspaceId);
+    return skippedSeal(workspaceId);
+  }
+}
+
+async function resolveSeal(executor: DbExecutor, workspaceId: string, options: { write: boolean }): Promise<FieldSeal> {
   if (plain.has(workspaceId)) return passThrough(workspaceId);
   const result = await executor.execute(sql`SELECT encrypted FROM workspaces WHERE id = ${workspaceId}::uuid`);
   const row = result.rows[0] as { encrypted: boolean } | undefined;
@@ -76,13 +93,46 @@ export async function sealOf(executor: DbExecutor, workspaceId: string, options:
     return passThrough(workspaceId);
   }
   if (!row) return passThrough(workspaceId); // no such workspace: nothing to seal or open, and the write fails on its own
-  if (!resolver) throw new SealsUnavailableError(workspaceId);
-  const seal = await resolver(executor, workspaceId, options);
+  const work = sealedWorkScope.getStore();
+  if (work) work.sealed = true;
+  const resolve = sealResolverScope.getStore() ?? resolver;
+  if (!resolve) throw new SealsUnavailableError(workspaceId);
+  const seal = await resolve(executor, workspaceId, options);
   if (!seal.sealed) throw new SealsUnavailableError(workspaceId); // never the identity seal for an encrypted workspace
   return seal;
 }
 
 /** The seals of several workspaces (a list that spans them), one lookup each. */
+/**
+ * F-030 `lockedWorkspaces`: a cross-workspace read (search, Inbox, Needs you, Since you left) runs in this scope. A
+ * sealed workspace that is locked here is then skipped instead of failing the whole read: its rows open to empty text
+ * (no reader can crash on a missing row), the workspace is recorded, and the route leaves its items out and names it
+ * (`lockedWorkspaces`, absent when none is locked). Outside the scope a locked workspace still answers 423.
+ */
+/**
+ * F-030 Error paths: a request or job runs in this scope, and it records whether the work asked for an encrypted
+ * workspace's seal. Its errors are then stored and logged only through `redactedError` (code, SQLSTATE, constraint, ids).
+ */
+export const sealedWorkScope = new AsyncLocalStorage<{ sealed: boolean }>();
+/** True inside a request or job that touched an encrypted workspace's seal. */
+export const touchedSealedWorkspace = () => sealedWorkScope.getStore()?.sealed === true;
+
+export const lockedReadScope = new AsyncLocalStorage<{ skipped: Set<string>; locked?: Map<string, string> }>();
+/**
+ * The caller's locked encrypted workspaces (id to name) of the cross-workspace read in progress, filled before its
+ * handler runs; readers that aggregate events (Return) leave these workspaces out entirely (#717 review P2-2).
+ */
+export const lockedWorkspacesOfRead = (): ReadonlyMap<string, string> => lockedReadScope.getStore()?.locked ?? new Map();
+const isLocked = (error: unknown) => (error as { code?: unknown }).code === 'WORKSPACE_LOCKED';
+const SKIPPED = Symbol('skipped');
+const skippedSeal = (workspaceId: string): FieldSeal & { [SKIPPED]: true } => ({
+  sealed: true, workspaceId, [SKIPPED]: true,
+  seal: () => { throw Object.assign(new Error('A locked workspace is skipped here'), { code: 'WORKSPACE_LOCKED' }); },
+  open: () => '',
+  digest: () => { throw Object.assign(new Error('A locked workspace is skipped here'), { code: 'WORKSPACE_LOCKED' }); },
+  digestMatches: () => false,
+});
+
 export async function sealsOf(executor: DbExecutor, workspaceIds: Iterable<string>, options: { write: boolean }) {
   const seals = new Map<string, FieldSeal>();
   for (const id of new Set(workspaceIds)) seals.set(id, await sealOf(executor, id, options));
@@ -145,6 +195,7 @@ export function openRow<T extends object>(table: string, row: T, seal: FieldSeal
     const [key, value] = found;
     if (value === null || value === undefined || value === '') continue;
     if (spec.kind === 'json') {
+      if ((seal as { [SKIPPED]?: true })[SKIPPED]) { out[key] = null; continue; } // a locked workspace skipped in a cross-workspace read
       const envelope = typeof value === 'object' && value !== null ? (value as { $sealed?: unknown }).$sealed : value;
       out[key] = JSON.parse(seal.open(spec.field, identity, String(envelope)));
     } else {

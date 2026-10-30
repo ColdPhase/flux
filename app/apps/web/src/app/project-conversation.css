@@ -136,10 +136,11 @@ button.project-convo__contribution { cursor: pointer; }
   .project-convo__message > p:not(.photo-meta) { padding: 11px 14px; }
   .project-convo__composer { padding: 8px 14px 15px; padding-bottom: max(15px, env(safe-area-inset-bottom)); }
 }
-/* Phone (#266 PF-3): the view bar below already keeps the safe area, so the composer is one compact
-   card — the text, then a slim row of tools — with the audience as one quiet line under it. */
+/* Phone (#266 PF-3): the composer is one compact card — the text, then a slim row of tools — with the audience
+   as one quiet line under it. No view bar sits below it in a conversation (#341), so it keeps the bottom safe area
+   (the home indicator) itself (#151 AC-4). */
 @media (max-width: 640px) {
-  .project-convo__composer { padding: 6px 10px 6px; }
+  .project-convo__composer { padding: 6px 10px 6px; padding-bottom: max(6px, env(safe-area-inset-bottom)); }
   .project-convo__composer .project-convo__to { margin: 4px 4px 0; }
 }
 
