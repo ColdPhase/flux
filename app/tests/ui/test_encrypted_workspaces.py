@@ -642,7 +642,8 @@ class EncryptedWorkspaces(Base):
         self.call(world, "ada", "POST", f"/api/v1/workspaces/{world.a}/unlock-password-grants", {"userId": world.ids["ben"], "password": UNLOCK_PASSWORD}, 201)
         self.call(world, "ben", "PUT", f"/api/v1/workspaces/{world.a}/unlock-password", {"newPassword": NEW_PASSWORD}, None)
         self.assertTrue(self.holders(world, "ben"))
-        for phone in (False, True):
+        # The phone first: the computer's Got it marks the notice read.
+        for phone in (True, False):
             with self.subTest(window="phone" if phone else "computer"):
                 page = self.page(world, "ada", phone=phone)
                 page.goto("/inbox")
