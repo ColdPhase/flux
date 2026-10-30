@@ -47,9 +47,9 @@ test('#479: a linked PR event reaches the task\'s current holder once, echoes ar
   const hubert = await person('Hubert bridge'), marek = await person('Marek bridge');
   provider.allowed.add(hubert.id);
   const ws = await workspace(hubert, 'Bridge');
-  await addMember(hubert, ws.id, marek, 'member');
+  // Standing grants need project management, so Marek is a workspace admin; he still is not the private binding's author.
+  await addMember(hubert, ws.id, marek, 'admin');
   const p = await project(hubert, ws.id, 'Printer firmware', 'restricted');
-  await grant(hubert, p.id, marek, 'contributor');
   const makeAgent = async (who: Person, name: string) => {
     const agent = expectStatus(await who.browser.request('POST', `/api/v1/workspaces/${ws.id}/agents`, { body: { name, owner: 'self' } }), 201) as Agent;
     expectStatus(await hubert.browser.request('POST', `/api/v1/projects/${p.id}/grants`, { body: { principal: { kind: 'agent', id: agent.id }, role: 'contributor' } }), 201);
