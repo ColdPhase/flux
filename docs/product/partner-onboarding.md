@@ -3,6 +3,8 @@
 For a [design-partner team](design-partners.md) trying Flux before or around v0.1. It takes
 about half an hour: install, connect your own agent, run one journey on your own project, and
 tell us what happened. It links to the README instead of repeating it, so the steps stay current.
+The same quick start and agent connection are on the
+[documentation site](https://coldphase.github.io/flux/), which is easier to read away from GitHub.
 
 ## Before you start
 
@@ -13,12 +15,41 @@ tell us what happened. It links to the README instead of repeating it, so the st
 - **Note the time.** Write down when you run `git clone` and when each step below works. That is
   the most useful number you can give us ([our own measurements](../development/time-to-first-run.md)).
 
+## Checklist
+
+Tick these as you go and note the time of each step. Each links to the part of this guide, or the
+documentation site, that explains it.
+
+- [ ] **Docker and Git work** on a machine you control. Write down when you start `git clone`.
+- [ ] **Install** with `git clone --depth 1 https://github.com/ColdPhase/flux.git`, `cd flux`,
+      `./flux up` ([step 1](#1-install), [quick start](https://coldphase.github.io/flux/start/quick-start/)).
+      Note when the printed address opens.
+- [ ] **Look around the sample project first, about 10 minutes.** Run `./flux demo` and sign in as Ada
+      with the login it prints. Open Home (what changed since Ada left), then the *Community garden
+      sensors* conversation. Turn a message into a task and find the decision under its message. It
+      shows what a project looks like when it is going well, and it is safe to click.
+      (`./flux demo` works on a local address only; it refuses a server address.)
+- [ ] **Connect your agent to the sample project**, and ask it: "Using Flux, what is this project working
+      on, and what is still open?"
+      ([step 3](#3-connect-your-own-agent), [connect your agent](https://coldphase.github.io/flux/start/connect-your-agent/)).
+      Note which client you used and whether it worked.
+- [ ] **Create your own account and project** ([step 2](#2-your-account-and-project)) and add a
+      teammate if you can.
+- [ ] **Run the first journey on your real project** ([step 4](#4-the-first-journey)): talk, make a task,
+      propose a decision, ask your agent.
+- [ ] **Send your first feedback issue within the first week**
+      ([step 5](#5-give-feedback)), then one each week for four weeks.
+- [ ] **Come back after a day or more away**, and note whether you could tell what changed, why and what
+      to do next without asking anyone. This is what we most want to know.
+- [ ] **At the end of week four**, tell us whether you will keep using it and what you went back to your
+      old tools for.
+
 ## 1. Install
 
 Follow the [README quick start](../../README.md#quick-start) exactly as written:
 
 ```sh
-git clone https://github.com/ColdPhase/flux.git
+git clone --depth 1 https://github.com/ColdPhase/flux.git
 cd flux
 ./flux up
 ```
