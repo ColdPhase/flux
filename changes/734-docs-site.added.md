@@ -1,1 +1,0 @@
-- A documentation site at <https://coldphase.github.io/flux/>, generated from the repository's user-facing docs, and a README with the Kreska header, badges and highlights ([#734](https://github.com/ColdPhase/flux/issues/734)).
