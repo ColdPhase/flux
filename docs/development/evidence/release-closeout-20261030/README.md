@@ -99,3 +99,46 @@ The first full runs found three defects in `smoke_runtime.sh`, which had never g
    The same pattern hid any match in the marker check. Both now grep captured output.
 3. Step 5 expected one `config --images` line per image, but Compose prints one per service. It now requires each repository
    to name exactly the digest in `release.json`.
+
+## Multi-platform dry run (amd64 + arm64 under QEMU) in the guest
+
+The command was `FLUX_GUEST_BINFMT=arm64 FLUX_GUEST_CPUS=12 FLUX_GUEST_MEMORY=24G scripts/agent-runtime/supported_guest.sh <state>
+env FLUX_DRYRUN_PLATFORMS=linux/amd64,linux/arm64 FLUX_DRYRUN_SMOKE_PLATFORM=linux/arm64 FLUX_DRYRUN_PREVIOUS=a6e9851d1 bash scripts/release/dry_run.sh`,
+run at `485f00b7`. The guest's Docker 29.1.3 uses the containerd image store, and the workflow's pinned `tonistiigi/binfmt`
+qemu-v10.2.3 was registered in the guest kernel only. The run exited 1.
+
+Passed:
+
+- Both platforms ran a step in the builder (`linux/arm64 runs in the builder as linux/arm64`). The builder used BuildKit
+  `v0.33.0@sha256:6c2fa84a…`, the workflow's pin.
+- Build times with 12 vCPU, both platforms:
+  - `flux:dry: built for linux/amd64,linux/arm64 and pushed in 1909 s`
+  - `flux-agent-runtime:dry: … 134 s`
+  - `flux:prev: … 1344 s`
+
+  Both images together took about 34 minutes, against the workflow's 150-minute limit. A GitHub runner has fewer cores, so
+  this is an indication only.
+- Indexes:
+  - `flux: index application/vnd.oci.image.index.v1+json, platforms ['linux/amd64', 'linux/arm64'], 2 attestation manifests`
+  - `flux-agent-runtime: …` the same.
+
+  Each platform had `SLSA provenance present` and an SBOM attestation (628 packages for the application, 203 for the runtime).
+- Per-platform image checks:
+  - `linux/arm64: codex-cli 0.160.1; no Claude Code; empty /opt/flux-tools; aarch64`
+  - `application image: node v24.21.0 arm64`
+
+  amd64 gave the same results.
+- The assets, the overlay comparison and the negative controls passed as on amd64.
+
+Not passed: the packaged clean install on emulated arm64. The arm64 PostgreSQL started (`PostgreSQL 18.6 on
+aarch64-unknown-linux-musl`), and `migrate` completed, so `api` and `worker` started. Then `up --wait` stopped with
+`container …-keyring-1 is unhealthy`. The keyring health check runs `node -e "fetch(…)"` every 3 s, with a 3 s timeout
+and 20 retries. In the same guest, one emulated arm64 `node -e fetch(...)` in a fresh container took 1.9–2.1 s, against
+0.74–0.76 s on amd64. Inference, not established: under the load of five emulated services the check, or the keyring's
+emulated start, did not finish within these limits. The run did not collect keyring logs, so the cause is not diagnosed.
+The product's timeouts were not changed for an emulator. **arm64 install, upgrade and backup/restore therefore remain
+unverified** until a native arm64 host runs them (#77 AC-3).
+
+On the Fedora workstation itself, emulation does not work in containers: SELinux makes emulated processes in containers die
+with SIGSEGV (139), and they run with `--security-opt label=disable`. The classic image store also keeps one platform per digest.
+That is why the run uses the guest.
