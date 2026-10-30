@@ -3,6 +3,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { readFile, readdir, writeFile } from 'node:fs/promises';
 import { Readable } from 'node:stream';
 import { join } from 'node:path';
+import { spawnSync } from 'node:child_process';
 import { before, describe, test } from 'node:test';
 import WebSocket from 'ws';
 import { PgBoss } from 'pg-boss';
@@ -397,6 +398,102 @@ describe('F-030 S2a-1: sealed content in the repositories', () => {
       }
       assert.equal(left, false, `${side}: an aborted upload leaves no scratch file`);
     }
+  });
+
+  test('while A is locked, cross-workspace reads skip it and name it (lockedWorkspaces); B\'s items stay; A\'s own routes answer 423 (S2a-2c)', async () => {
+    assert.ok((await ben.browser.request('GET', '/api/v1/needs-you')).text.includes(ids.A.project), 'unlocked, Needs you holds A\'s mention');
+    expectStatus(await lock(ada.browser, A), 200);
+    try {
+      for (const path of ['/api/v1/inbox', '/api/v1/needs-you', '/api/v1/return?place=home&from=7d&scope=all', `/api/v1/search?q=${encodeURIComponent(canaries.B.project.slice(0, 20))}`]) {
+        const answer = await ben.browser.request('GET', path);
+        assert.equal(answer.status, 200, `${path}: ${answer.text.slice(0, 200)}`);
+        const json = answer.json as { lockedWorkspaces?: { id: string; name: string }[]; items?: { source?: { workspaceId?: string } }[] };
+        assert.deepEqual(json.lockedWorkspaces, [{ id: A, name: 'Garden club' }], path);
+        assert.equal(/fx1\.[1-9]/.test(answer.text), false, `${path}: no envelope`);
+        for (const item of json.items ?? []) assert.notEqual(item.source?.workspaceId, A, `${path}: no item of A`);
+      }
+      const inbox = (await ben.browser.request('GET', '/api/v1/inbox')).json as { items: { body: string; readAt: string | null }[]; unread: number };
+      assert.ok(inbox.items.some((item) => item.body.includes(canaries.B.mention)), 'B\'s items stay');
+      assert.equal(inbox.unread, inbox.items.filter((item) => item.readAt === null).length, 'the unread count leaves A out (#717 review P3-1)');
+      const needs = (await ben.browser.request('GET', '/api/v1/needs-you')).json as { items: unknown[]; count: number };
+      assert.equal(needs.count, needs.items.length, 'the Needs you count leaves A out');
+      // #717 review P2-1/P2-2: no trace of A's places anywhere in an answer (a mention's url, Return's digest, next step).
+      const traces = [A, ids.A.project, ids.A.conversation, ids.A.dm, ids.A.decision, ids.A.result, ids.A.task];
+      for (const path of ['/api/v1/needs-you', '/api/v1/inbox', '/api/v1/return?place=home&from=7d&scope=all', '/api/v1/return?place=home&from=7d&scope=all&digest=1',
+        '/api/v1/return?place=home&from=7d&scope=mine&digest=1']) {
+        const text = (await ben.browser.request('GET', path)).text;
+        const found = traces.filter((id) => text.replace(`"id":"${A}"`, '').includes(id));
+        assert.deepEqual(found, [], `${path}: no id of A beyond lockedWorkspaces`);
+      }
+      for (const place of [`place=project&id=${ids.A.project}`, `place=conversation&id=${ids.A.conversation}`]) {
+        assert.equal((await ben.browser.request('GET', `/api/v1/return?${place}&from=7d&scope=all&digest=1`)).status, 423, `Return ${place} stays 423`);
+      }
+      assert.equal((await ben.browser.request('GET', `/api/v1/projects/${ids.A.project}`)).status, 423, 'A\'s own routes answer 423');
+    } finally {
+      expectStatus(await unlock(ada.browser, A, { password: pw }), 200);
+    }
+    assert.equal(((await ben.browser.request('GET', '/api/v1/inbox')).json as { lockedWorkspaces?: unknown }).lockedWorkspaces, undefined);
+  });
+
+  test('a draft summary of A while A is locked waits and runs after unlock on the opened body (#655 integrated review P2-2)', async () => {
+    expectStatus(await lock(ada.browser, A), 200);
+    const resultId = randomUUID();
+    await pool.query(`INSERT INTO draft_results (id, workspace_id, draft_id, principal_kind, principal_id) VALUES ($1, $2, $3, 'human', $4)`, [resultId, A, ids.A.draft, ada.id]);
+    const boss = new PgBoss({ connectionString, migrate: false, supervise: false, schedule: false });
+    await boss.start();
+    try { await boss.send('draft.summarize.v1', { resultId }); } finally { await boss.stop({ graceful: false }); }
+    const waits = async () => (await pool.query(`SELECT count(*)::int AS n FROM sealed_job_waits WHERE queue = 'draft.summarize.v1' AND payload->>'resultId' = $1`, [resultId])).rows[0].n as number;
+    const result = async () => (await pool.query<{ status: string; word_count: number | null }>(`SELECT status, word_count FROM draft_results WHERE id = $1`, [resultId])).rows[0]!;
+    for (let attempt = 0; attempt < 80 && await waits() === 0; attempt += 1) await new Promise((resolve) => setTimeout(resolve, 250));
+    assert.equal(await waits(), 1, 'the summary waits while A is locked');
+    assert.notEqual((await result()).status, 'completed');
+    expectStatus(await unlock(ada.browser, A, { password: pw }), 200);
+    for (let attempt = 0; attempt < 80 && (await result()).status !== 'completed'; attempt += 1) await new Promise((resolve) => setTimeout(resolve, 250));
+    assert.deepEqual(await result(), { status: 'completed', word_count: canaries.A.draftEdit.split(/\s+/u).length }, 'counted on the opened body, not the envelope');
+    // The resume job deletes the wait just after the summary commits.
+    for (let attempt = 0; attempt < 40 && await waits() > 0; attempt += 1) await new Promise((resolve) => setTimeout(resolve, 250));
+    assert.equal(await waits(), 0, 'the replayed wait is deleted');
+  });
+
+  test('an event of A that arrives while A is locked waits: no notification; after unlock exactly one (AC-9)', async () => {
+    // The mention event of the earlier test, copied as a new event (the generator sees a fresh one) while A is locked.
+    const [mention] = (await pool.query(`SELECT e.id, e.kind, e.object_id, e.actor_id, e.data FROM events e JOIN notifications n ON n.event_id = e.id
+      WHERE e.workspace_id = $1 AND n.user_id = $2 AND n.reason = 'mention' ORDER BY e.seq DESC LIMIT 1`, [A, ben.id])).rows;
+    assert.ok(mention, 'the mention event of A');
+    expectStatus(await lock(ada.browser, A), 200);
+    const eventId = randomUUID();
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      await client.query(`INSERT INTO events (id, kind, object_id, actor_id, data, workspace_id, seq) VALUES ($1, $2, $3, $4, $5, $6, 0)`,
+        [eventId, mention.kind, mention.object_id, mention.actor_id, mention.data, A]);
+      await client.query(`INSERT INTO event_audience (recipient, seq, event_id) SELECT recipient, (SELECT seq FROM events WHERE id = $1), $1 FROM event_audience
+        WHERE event_id = $2`, [eventId, mention.id]);
+      await client.query('COMMIT');
+    } finally { client.release(); }
+    const waits = async () => (await pool.query(`SELECT count(*)::int AS n FROM sealed_job_waits WHERE workspace_id = $1 AND payload->>'eventId' = $2`, [A, eventId])).rows[0].n as number;
+    const notified = async () => (await pool.query(`SELECT count(*)::int AS n FROM notifications WHERE event_id = $1`, [eventId])).rows[0].n as number;
+    for (let attempt = 0; attempt < 60 && await waits() === 0; attempt += 1) await new Promise((resolve) => setTimeout(resolve, 250));
+    assert.equal(await waits(), 1, 'the event waits');
+    assert.equal(await notified(), 0, 'no notification while locked');
+    expectStatus(await unlock(ada.browser, A, { password: pw }), 200);
+    for (let attempt = 0; attempt < 80 && (await waits() > 0 || await notified() === 0); attempt += 1) await new Promise((resolve) => setTimeout(resolve, 250));
+    assert.equal(await waits(), 0, 'the resume job replayed and deleted the wait');
+    assert.equal(await notified(), 1, 'exactly one notification after unlock');
+    const [row] = (await pool.query(`SELECT title, body FROM notifications WHERE event_id = $1`, [eventId])).rows;
+    assert.deepEqual(row, { title: 'Ada mentioned you in Garden club', body: '' });
+  });
+
+  test('./flux export refuses an encrypted space (it would write plaintext onto the server); B exports (AC-10 part)', () => {
+    const run = (projectId: string) => spawnSync(process.execPath, ['--import', 'tsx', 'apps/server/src/export/cli.ts', projectId],
+      { env: { ...process.env, FLUX_FILES_DIR: '/data/files' }, encoding: 'buffer', maxBuffer: 64 * 1024 * 1024 });
+    const sealed = run(ids.A.project);
+    assert.notEqual(sealed.status, 0);
+    assert.match(sealed.stderr.toString(), /Garden club is encrypted\. Export it from the app\./);
+    assert.equal(sealed.stdout.length, 0, 'nothing written');
+    const plain = run(ids.B.project);
+    assert.equal(plain.status, 0, plain.stderr.toString());
+    assert.ok(plain.stdout.length > 0);
   });
 
   test('A\'s rows hold envelopes, B\'s plain text; the draft versions of A are written by the application, sealed', async () => {

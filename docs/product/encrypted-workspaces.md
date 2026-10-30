@@ -1333,7 +1333,19 @@ token alone is not enough (S1 review): a real deployment never holds a half-seal
     read; the link is one of the generator's id-only forms; the plain morning summary ("N things wait in your inbox",
     fixed body) is allowed and is anchored on a plain workspace's source when the person has one (an assistant-written
     line only there). A muted place of a locked workspace is listed under the workspace's name.
-  - **S2a-2c-2**: the event
+  - **S2a-2c-2** (no migration): `lockedWorkspaces`. Search, Inbox, Needs you and Since you left run in
+    `lockedReadScope` (`packages/db/src/sealing.ts`): a sealed workspace that is locked here is skipped there instead of
+    answering 423 for the whole read; its rows open to empty text, the S1 gate leaves its items out of the answer
+    (any item that names the workspace or one of its projects or DMs, a link included) and names every such workspace
+    of the caller in `lockedWorkspaces`; the Inbox unread and Needs you counts leave those items out. Since you left
+    receives no event of a locked workspace, and a place inside one answers 423.
+    Jobs that wait: notification generation records an event of a locked sealed workspace in `sealed_job_waits`
+    and moves its cursor on; `workspace-encryption.resume.v1` replays the waits after unlock in creation order (AC-9).
+    A wait whose replay fails for another reason stays for a 30 s sweep, which also catches a wait committed after
+    the unlock's resume job ran; the rest replay.
+    `./flux export` refuses an encrypted space ("Garden club is encrypted. Export it from the app.") and writes
+    nothing; `./flux restore` truncates `workspace_unlocks`, so a restored encrypted space is locked.
+  - **S2a-2c-3**: the event
     backstop (with its token table), the remaining error-path redaction (pg-boss output, logs), `sealed_job_waits` and
     the resume job, the SQL source scan, cross-workspace `lockedWorkspaces`, the replacement of the
     route-level gate, `./flux export` refusal and restore truncation, and AC-6, AC-9, AC-10 and AC-7.

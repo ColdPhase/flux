@@ -11,7 +11,7 @@ import { wikiAuthority } from '../../apps/server/src/editing/authority.js';
 import type { SessionContext } from '../../apps/server/src/identity/session.js';
 import { db, pool } from './support/db.js';
 import { apiUrl, publicOrigin } from './support/http.js';
-import { codeOf, createSealed, installTestSeals, lock, passphrase, unlock } from './support/encryption.js';
+import { createSealed, installTestSeals, lock, passphrase, unlock } from './support/encryption.js';
 import { addMember, expectStatus, grant, person, project, workspace, type Person } from './support/people.js';
 
 // F-030 S2b (#655; docs/product/encrypted-workspaces.md#search, #live-wiki-and-maps): search in an encrypted workspace A answers from
@@ -244,14 +244,18 @@ describe('F-030 S2b: search in an encrypted workspace', () => {
     assert.ok((await indexed()).includes(A), 'earlier searches built the index');
     assert.equal((await lock(ada.browser, A)).status, 200);
     assert.equal((await indexed()).includes(A), false, 'the lock dropped it');
-    // Until S2c lists locked workspaces beside the answer, a search by a member of a locked workspace is refused as a whole (S1 gate).
+    // A search by a member of a locked workspace answers the other workspaces and names the locked one (S2a-2c-2
+    // `lockedWorkspaces`); nothing of A is in it.
     const locked = await ada.browser.request('GET', '/api/v1/search?q=sensor');
-    assert.equal(locked.status, 423);
-    assert.equal(codeOf(locked), 'WORKSPACE_LOCKED');
-    assert.equal(JSON.stringify(locked.json).includes('sensor'), false, 'no content in the refusal');
+    assert.equal(locked.status, 200);
+    const answer = locked.json as { items: { workspaceId?: string; source?: { workspaceId?: string } }[]; lockedWorkspaces?: { id: string }[] };
+    assert.deepEqual(answer.lockedWorkspaces?.map((workspace) => workspace.id), [A]);
+    assert.equal(JSON.stringify(answer.items).includes(A), false, 'no item of A while locked');
     assert.equal((await indexed()).includes(A), false, 'nothing built it while locked');
-    // Cy, who is still a member, gets the same refusal; a search by someone outside A is unaffected by A's lock.
-    assert.equal((await cy.browser.request('GET', '/api/v1/search?q=sensor')).status, 423);
+    // Cy, who is still a member, is told the same; a search by someone outside A is unaffected by A's lock.
+    const cyAnswer = await cy.browser.request('GET', '/api/v1/search?q=sensor');
+    assert.equal(cyAnswer.status, 200);
+    assert.deepEqual((cyAnswer.json as { lockedWorkspaces?: { id: string }[] }).lockedWorkspaces?.map((workspace) => workspace.id), [A]);
     assert.equal((await unlock(ada.browser, A, { password: pw })).status, 200);
     const again = await search(ada, { q: 'sensor', place: `project:${ids.A.project}` });
     assert.ok(again.items.length > 0, 'A answers again');

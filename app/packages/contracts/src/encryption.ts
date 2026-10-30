@@ -153,3 +153,6 @@ export const IDEMPOTENCY_ACCOUNT_OPERATIONS: Readonly<Record<string, string>> = 
   'POST /api/v1/assistant-proposals/:proposalId/accept': AI_ONLY,
   'POST /api/v1/assistant-proposals/:proposalId/dismiss': AI_ONLY,
 };
+
+/** An encrypted workspace that is locked here, as cross-workspace reads name it (F-030 `lockedWorkspaces`). */
+export interface LockedWorkspaceRef { id: string; name: string }
