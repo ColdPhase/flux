@@ -1,7 +1,8 @@
 import type { FastifyInstance } from 'fastify';
 import { Readable } from 'node:stream';
 import { FILE_LIMITS } from '@flux/contracts';
-import { type Database, type FileStorage, InvalidInputError, PayloadTooLargeError } from '@flux/core';
+import { type FileStorage, InvalidInputError, PayloadTooLargeError } from '@flux/core';
+import type { Database } from '@flux/db';
 import type { SessionResolver } from '../identity/index.js';
 import { useDomainErrors } from '../http/commands.js';
 import { fileUseCases } from './adapters.js';

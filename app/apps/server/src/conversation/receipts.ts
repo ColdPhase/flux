@@ -1,7 +1,7 @@
 import { and, asc, eq, inArray, sql } from 'drizzle-orm';
 import { RECEIPT_LIMITS, type MessageReceiptsResult, type ObserveMessagesResult } from '@flux/contracts';
-import { schema, accessPorts, accessReader } from '@flux/db';
-import { enforce, evaluateProject, InvalidInputError, listProjectPeople, NotFoundError, RuleViolationError, uuid, type Database, type Principal } from '@flux/core';
+import { schema, accessPorts, accessReader, type Database } from '@flux/db';
+import { enforce, evaluateProject, InvalidInputError, listProjectPeople, NotFoundError, RuleViolationError, uuid, type Principal } from '@flux/core';
 
 // Viewing receipts of the project's conversation (#534). A person observes messages of a project they can read
 // now; "Seen by" for one of their own author runs names the people who can read the project NOW and observed every

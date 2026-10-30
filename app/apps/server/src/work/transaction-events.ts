@@ -1,4 +1,5 @@
-import { recordEvents, type EventIntent, type Transaction } from '@flux/core';
+import { recordEvents, type EventIntent } from '@flux/core';
+import type { Transaction } from '@flux/db';
 import { eventPorts } from '../events.js';
 import { withTaskUseErrors } from './task-use-errors.js';
 

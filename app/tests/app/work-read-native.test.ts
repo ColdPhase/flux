@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { after, before, describe, test } from 'node:test';
-import { createDatabase, nativeWorkAssociationRows, nativeWorkVisibilityRows, sql, type NativeWorkAssociationSelector } from '@flux/db';
-import { createBoundedWorkReads, DomainError, type Transaction, type WorkReadUnitOfWork } from '@flux/core';
+import { createDatabase, nativeWorkAssociationRows, nativeWorkVisibilityRows, sql, type NativeWorkAssociationSelector, type Transaction } from '@flux/db';
+import { createBoundedWorkReads, DomainError, type WorkReadUnitOfWork } from '@flux/core';
 import type { Agent, Conversation, Decision, Material, ProjectWorkSummary, ProjectWorkView, WorkAssociations, WorkDetailProjection, WorkItem, WorkRelations, WorkResult, WorkRowProjection } from '@flux/contracts';
 import { nativeWorkReadFinalFence, nativeWorkReadUnitOfWork } from '../../apps/server/src/work-read/adapters.js';
 import { createAuth } from '../../apps/server/src/identity/auth.js';

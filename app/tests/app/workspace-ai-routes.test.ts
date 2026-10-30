@@ -3,7 +3,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { after, before, beforeEach, describe, test } from 'node:test';
 import Fastify from 'fastify';
 import { AI_HTTP_ROUTES, INBOX_PATH, NEEDS_YOU_PATH, type AiRouteRule, type AiScopeKind, type InboxResponse } from '@flux/contracts';
-import type { Database } from '@flux/core';
+import type { Database } from '@flux/db';
 import { aiRoutes } from '../../apps/server/src/access/ai-gate.js';
 import { buildApp } from '../../apps/server/src/app.js';
 import { loadServerConfig } from '../../apps/server/src/config.js';

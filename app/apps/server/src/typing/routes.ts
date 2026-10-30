@@ -1,6 +1,6 @@
 import type { FastifyInstance, FastifyRequest } from 'fastify';
-import { listen, typingNotifications } from '@flux/db';
-import { TYPING_CHANNEL, type Database, type TypingActor, type TypingTaskDiscussion } from '@flux/core';
+import { listen, typingNotifications, type Database } from '@flux/db';
+import { TYPING_CHANNEL, type TypingActor, type TypingTaskDiscussion } from '@flux/core';
 import { TYPING_PATH } from '@flux/contracts';
 import type { SessionResolver } from '../identity/index.js';
 import { typingAccess } from './access.js';

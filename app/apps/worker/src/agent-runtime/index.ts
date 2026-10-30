@@ -1,5 +1,5 @@
-import { reconcileAgentRuntime, type AgentRuntimeConfig, type Database } from '@flux/core';
-import { agentRuntimeStore, withRuntimeReconcileLock } from '@flux/db';
+import { reconcileAgentRuntime, type AgentRuntimeConfig } from '@flux/core';
+import { agentRuntimeStore, withRuntimeReconcileLock, type Database } from '@flux/db';
 import { createRuntimeManagerClient, runtimeManagerPort } from '@flux/runtime-protocol';
 
 // The worker's side of the `runtime` transport (F-022 T3): it reconciles the database's bindings with

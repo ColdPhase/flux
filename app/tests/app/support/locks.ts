@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import type { Pool } from 'pg';
 import { sql, type SQL } from 'drizzle-orm';
-import type { Database, DatabaseHandle } from '@flux/core';
+import type { Database, DatabaseHandle } from '@flux/db';
 
 /** Anything with drizzle's `execute`: a database handle or an open transaction. */
 interface Executes {

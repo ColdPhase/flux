@@ -121,12 +121,12 @@ export type RecordReader = AccessReader<ProjectRecord, DraftRecord, AgentRecord>
  * it uses with `Pick`.
  */
 export interface AccessPorts {
-  workspaces: (db: Executor) => WorkspaceRepository;
-  projects: (db: Executor) => ProjectRepository;
-  agents: (db: Executor) => AgentRepository;
-  drafts: (db: Executor) => DraftRepository;
-  encryption: (db: Executor) => WorkspaceEncryptionRows;
-  aiSweep: (db: Executor) => WorkspaceAiSweepRows;
-  access: (db: Executor) => RecordReader;
-  events: (db: Executor) => EventRepository;
+  workspaces(db: Executor): WorkspaceRepository;
+  projects(db: Executor): ProjectRepository;
+  agents(db: Executor): AgentRepository;
+  drafts(db: Executor): DraftRepository;
+  encryption(db: Executor): WorkspaceEncryptionRows;
+  aiSweep(db: Executor): WorkspaceAiSweepRows;
+  access(db: Executor): RecordReader;
+  events(db: Executor): EventRepository;
 }

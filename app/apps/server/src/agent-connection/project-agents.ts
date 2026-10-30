@@ -1,6 +1,6 @@
 import type { FastifyError, FastifyInstance } from 'fastify';
-import { projectAgentRepository, accessReader } from '@flux/db';
-import { DomainError, enforce, evaluateProject, projectAgentUseCases, type Database } from '@flux/core';
+import { projectAgentRepository, accessReader, type Database } from '@flux/db';
+import { DomainError, enforce, evaluateProject, projectAgentUseCases } from '@flux/core';
 import type { SessionResolver } from '../identity/index.js';
 
 interface Options { db: Database; sessions: SessionResolver }

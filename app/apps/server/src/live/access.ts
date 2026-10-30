@@ -1,7 +1,7 @@
 import { and, eq, inArray, isNull } from 'drizzle-orm';
-import { schema, accessReader } from '@flux/db';
+import { schema, accessReader, type Executor } from '@flux/db';
 import type { LiveContextRef, LivePresentationRef } from '@flux/contracts';
-import { assertAuthorized, enforce, evaluateProject, NotFoundError, type Executor, type LiveAccess, type Principal } from '@flux/core';
+import { assertAuthorized, enforce, evaluateProject, NotFoundError, type LiveAccess, type Principal } from '@flux/core';
 
 /** Recheck and lock the context when a session is created, after resolving its project. */
 export async function requireLiveContext(principal: Principal, ref: LiveContextRef,

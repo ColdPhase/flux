@@ -1,6 +1,6 @@
 import type { PgBoss } from 'pg-boss';
-import { deleteExpiredIdempotencyKeys, IDEMPOTENCY_CLEANUP_JOB, type Database } from '@flux/core';
-import { idempotencyRepository } from '@flux/db';
+import { deleteExpiredIdempotencyKeys, IDEMPOTENCY_CLEANUP_JOB } from '@flux/core';
+import { idempotencyRepository, type Database } from '@flux/db';
 
 /**
  * Deletes expired idempotency keys every hour; keys are retained for 24 hours

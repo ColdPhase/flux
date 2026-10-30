@@ -1,6 +1,6 @@
 import { withTaskUseErrors } from '../work/task-use-errors.js';
 import { fromDrizzle, type PgBoss } from 'pg-boss';
-import { personalRunRows, withIdpStanding, sql, workRows, type DbExecutor, accessReader } from '@flux/db';
+import { personalRunRows, withIdpStanding, sql, workRows, type DbExecutor, accessReader, type Database, type Transaction } from '@flux/db';
 import {
   createAssistantProposalUseCases,
   createPersonalRunUseCases,
@@ -8,13 +8,11 @@ import {
   PERSONAL_RUN_JOB,
   policyPersonalRunAccess,
   recordEvent,
-  type Database,
   type PersonalConnectionLookup, type PersonalRuntimeAvailability,
   type PersonalRunPorts,
   type PersonalRunQueue,
   type PersonalRunUnitOfWork,
   type ProposalUnitOfWork,
-  type Transaction,
 } from '@flux/core';
 import { nativeWorkInEventSession } from '../work/adapters.js';
 import { transactionEventSession } from '../work/transaction-events.js';

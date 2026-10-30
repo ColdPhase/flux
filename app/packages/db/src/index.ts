@@ -3,6 +3,7 @@ import { drizzle } from 'drizzle-orm/node-postgres';
 import * as schema from './schema.js';
 
 export { schema };
+export type { Database, DatabaseHandle, Executor, Transaction } from './handles.js';
 export { sql } from 'drizzle-orm';
 export type { SQL } from 'drizzle-orm';
 export * from './repositories/sessions.js';

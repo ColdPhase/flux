@@ -1,8 +1,7 @@
-import { searchRows, sealedSearchRows, type SearchExecutor, type SQL, visibleFilter, accessReader } from '@flux/db';
+import { searchRows, sealedSearchRows, type SearchExecutor, type SQL, visibleFilter, accessReader, type Database } from '@flux/db';
 import {
   authorize,
   createSearchUseCases,
-  type Database,
   type Principal,
   type SearchAccess,
   type SearchAudience,

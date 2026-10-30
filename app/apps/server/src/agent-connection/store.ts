@@ -1,5 +1,5 @@
-import { agentConnectionRepository, accessReader } from '@flux/db';
-import { enforce, evaluateProject, initialAgentMcpPolicy, type Database } from '@flux/core';
+import { agentConnectionRepository, accessReader, type Database } from '@flux/db';
+import { enforce, evaluateProject, initialAgentMcpPolicy } from '@flux/core';
 
 /** One policy adapter for browser selection, OAuth issuance, and MCP calls. */
 export function createAgentConnectionStore(db: Database) {

@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { afterEach, describe, test } from 'node:test';
 import type { WorkspaceRole } from '@flux/contracts';
-import { accessPorts } from '@flux/db';
+import { accessPorts, type Database } from '@flux/db';
 import {
   addMember,
   addProjectView,
@@ -30,7 +30,6 @@ import {
   WorkspaceAiSweepIncomplete,
   type AccessPorts,
   type Actor,
-  type Database,
   type DomainEventSink,
   type DraftRecord,
   type GrantRecord,

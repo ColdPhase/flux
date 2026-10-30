@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import type { AuthenticatedAgentRuntime } from '@flux/contracts';
-import { agentExecutionRows } from '@flux/db';
-import { DomainError, isUuid, type Transaction } from '@flux/core';
+import { agentExecutionRows, type Transaction } from '@flux/db';
+import { DomainError, isUuid } from '@flux/core';
 import { agentConnectionInTransaction, type FluxMcpClaims } from './context.js';
 
 /** Runtime creation/recovery never derives identity or authority from MCP clientInfo/ACK. */

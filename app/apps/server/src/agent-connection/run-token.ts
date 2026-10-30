@@ -1,6 +1,6 @@
 import { RUN_TOKEN_LIMITS } from '@flux/contracts';
-import { DomainError, requireWorkspaceAi, type Database, type Transaction } from '@flux/core';
-import { personalRunTokenRows, accessReader } from '@flux/db';
+import { DomainError, requireWorkspaceAi } from '@flux/core';
+import { personalRunTokenRows, accessReader, type Database, type Transaction } from '@flux/db';
 import { toolError } from './tool-results.js';
 
 // A personal run's MCP token at the MCP route (F-022 "Agent connection and permissions", F-027 A2/AST-8,

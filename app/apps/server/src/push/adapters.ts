@@ -1,12 +1,11 @@
 import { and, eq, or, sql, type SQL } from 'drizzle-orm';
 import { fromDrizzle, type PgBoss } from 'pg-boss';
-import { markAllNotificationsRead, notificationRows, pushSubscriptionRepository, schema, type DbExecutor, visibleFilter, accessReader } from '@flux/db';
+import { markAllNotificationsRead, notificationRows, pushSubscriptionRepository, schema, type DbExecutor, visibleFilter, accessReader, type Database } from '@flux/db';
 import {
   DRAFT_SUMMARY_JOB,
   PUSH_SEND_JOB,
   createNotification,
   policySourceReader,
-  type Database,
   type JobQueue,
   type NotificationInput,
   type NotificationRepository,

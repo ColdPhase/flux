@@ -56,7 +56,7 @@ concurrent revocation is either seen or waits.
 - `app/packages/core/src/access/sketch-access.ts` is the policy adapter for `SketchAccess`.
   It imports no persistence library and reaches none through `policy.ts` either: it takes an
   `AccessReader` (`policySketchAccess(accessReader(tx))`), whose SQL is in `@flux/db`
-  ([architecture rules](architecture.md#known-debt), #90).
+  ([architecture rules](architecture.md#resolved-debt), #90).
 - `app/packages/db/src/repositories/sketches.ts` holds the rows. It makes no access decisions;
   lists take the policy's condition from the caller.
 - `app/apps/server/src/sketches/` holds the adapters: the unit of work, the `visibleFilter`

@@ -1,7 +1,7 @@
 import type { FastifyInstance, FastifyRequest, RouteOptions } from 'fastify';
 import { AI_HTTP_ROUTES, type AiRouteRule } from '@flux/contracts';
-import { WorkspaceAiBlockedError, type Database } from '@flux/core';
-import { workspaceIdOfAiScope, loadActor, workspaceAi } from '@flux/db';
+import { WorkspaceAiBlockedError } from '@flux/core';
+import { workspaceIdOfAiScope, loadActor, workspaceAi, type Database } from '@flux/db';
 import type { SessionResolver } from '../identity/index.js';
 
 type GatedRule = Extract<AiRouteRule, { gate: 'gated' }>;

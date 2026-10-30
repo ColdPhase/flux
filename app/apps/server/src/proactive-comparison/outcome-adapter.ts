@@ -1,5 +1,5 @@
-import { comparisonOutcomeRows, type DbExecutor, accessReader } from '@flux/db';
-import { authorize, comparisonOutcomeUseCases, enforce, evaluateProject, type ComparisonOutcomePorts, type Database } from '@flux/core';
+import { comparisonOutcomeRows, type DbExecutor, accessReader, type Database } from '@flux/db';
+import { authorize, comparisonOutcomeUseCases, enforce, evaluateProject, type ComparisonOutcomePorts } from '@flux/core';
 
 /**
  * The central policy for outcome operations. A change holds the access rows it decided on (`lock`);

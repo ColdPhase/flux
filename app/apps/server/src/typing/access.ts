@@ -1,5 +1,5 @@
-import { typingRows, accessReader } from '@flux/db';
-import { authorize, dmClosedFor, type Database, type TypingAccessPorts, type TypingTaskDiscussion } from '@flux/core';
+import { typingRows, accessReader, type Database } from '@flux/db';
+import { authorize, dmClosedFor, type TypingAccessPorts, type TypingTaskDiscussion } from '@flux/core';
 
 /** Composes exact live human sessions with the existing single native policy. */
 export function typingAccess(db: Database, tasks?: TypingTaskDiscussion): TypingAccessPorts {

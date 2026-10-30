@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { ASSISTANT_REACTION_ACTIONS, ASSISTANT_REACTION_EVENTS, assistantReactionDraftPath, assistantReactionPath, assistantReactionsPath, type SaveAssistantReaction } from '@flux/contracts';
-import { createAssistantReactions, type AssistantReactionUnitOfWork, type Database } from '@flux/core';
-import { assistantReactionRows, githubRows } from '@flux/db';
+import { createAssistantReactions, type AssistantReactionUnitOfWork } from '@flux/core';
+import { assistantReactionRows, githubRows, type Database } from '@flux/db';
 import type { SessionResolver } from '../identity/index.js';
 import type { createGithubUseCases } from '../github/adapters.js';
 

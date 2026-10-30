@@ -1,7 +1,7 @@
 import type { AgentPeerRequestClass, AuthenticatedAgentRuntime } from '@flux/contracts';
-import { coworkUnitCreationRows, accessReader } from '@flux/db';
+import { coworkUnitCreationRows, accessReader, type Transaction } from '@flux/db';
 import { assistantHandoffRunId, ConflictError, evaluateProject, normalizeCoWorkUnitCreate, requireOwnerAssistantHandoff, validateCoWorkUnitPolicy,
-  type CoWorkContext, type CoWorkUnitPolicy, type Principal, type Transaction } from '@flux/core';
+  type CoWorkContext, type CoWorkUnitPolicy, type Principal } from '@flux/core';
 import { coWorkTaskGraphLocks } from './graph.js';
 import type { CoWorkUnitCreation } from './units.js';
 

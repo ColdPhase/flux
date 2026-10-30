@@ -50,14 +50,14 @@ export type DraftResultStores = (db: Executor) => DraftResultRepository;
 
 /** Result rows, event storage and the access policy's reader, each bound to the transaction or connection a step runs in (#87, #89, #90). */
 export interface DraftSummaryPorts {
-  results: DraftResultStores;
-  events: (tx: Executor) => EventRepository;
-  access: (db: Executor) => AccessReader;
+  results(db: Executor): DraftResultRepository;
+  events(tx: Executor): EventRepository;
+  access(db: Executor): AccessReader;
 }
 
 export interface DraftSummaryRequestPorts extends DraftSummaryPorts {
   /** Bound to the request transaction, so the job commits with its result row. */
-  queue: (tx: Executor) => Pick<JobQueue, 'enqueueDraftSummary'>;
+  queue(tx: Executor): Pick<JobQueue, 'enqueueDraftSummary'>;
 }
 
 function toSummary(row: DraftResultRecord): DraftSummary {
@@ -122,7 +122,7 @@ export type DraftSummaryOutcome = 'completed' | 'denied' | 'skipped' | 'waiting'
  */
 export interface DraftSummaryHooks {
   afterRead?: () => Promise<void>;
-  beforeCommit?: (tx: Executor) => Promise<void>;
+  beforeCommit?(tx: Executor): Promise<void>;
 }
 
 function isAccessDenial(error: unknown) {

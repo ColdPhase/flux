@@ -1,6 +1,5 @@
 import type { CoWorkSourceRef } from '@flux/contracts';
-import { referencedTaskIds, TaskUseRefusal, workRows, type CoWorkTaskLockInput } from '@flux/db';
-import type { Transaction } from '@flux/core';
+import { referencedTaskIds, TaskUseRefusal, workRows, type CoWorkTaskLockInput, type Transaction } from '@flux/db';
 import { lockProjectTaskGraphs, taskPrerequisiteIds } from '../work/task-graph.js';
 
 /**

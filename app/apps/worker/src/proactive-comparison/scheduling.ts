@@ -1,5 +1,5 @@
-import { comparisonSchedulingRows } from '@flux/db';
-import { collectComparisonSourceChanges, COMPARISON_EVENT_BATCH, reconsiderComparisonSources, type Database } from '@flux/core';
+import { comparisonSchedulingRows, type Database } from '@flux/db';
+import { collectComparisonSourceChanges, COMPARISON_EVENT_BATCH, reconsiderComparisonSources } from '@flux/core';
 import { comparisonScheduling } from './scheduling-adapter.js';
 
 /** Selects ready candidate ids only; no key or provider port is present. Registered by
