@@ -115,5 +115,7 @@ site-search button[data-open-modal] { border-radius: var(--flux-r-sm); }
 
 /* The README's centred screenshots: the desktop and the phone side by side, as on GitHub. */
 .sl-markdown-content p[align='center'] { text-align: center; }
-.sl-markdown-content p[align='center'] img { display: inline-block; vertical-align: top; margin: 0 .25rem; }
+.sl-markdown-content p[align='center'] img { display: inline-block; vertical-align: top; margin: 0; }
 .hero .tagline { color: var(--sl-color-gray-2); max-width: 36rem; }
+/* The README's small captions under its pictures. */
+.sl-markdown-content p[align='center'] sub { font-size: .8125rem; line-height: 1.4; vertical-align: baseline; color: var(--sl-color-gray-3); }

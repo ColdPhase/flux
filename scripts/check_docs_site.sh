@@ -12,7 +12,7 @@ port="${FLUX_DOCS_PORT:-33800}"
 command="npm ci --no-audit --no-fund && npm run build"
 publish=""
 if [ "${1:-}" = "--serve" ]; then
-  command="$command && npx astro preview --host 0.0.0.0 --port 4321"
+  command="$command && npx astro preview --ignore-lock --host 0.0.0.0 --port 4321"
   publish="-p 127.0.0.1:$port:4321"
 fi
 # shellcheck disable=SC2086 # $publish is either empty or two words on purpose.
