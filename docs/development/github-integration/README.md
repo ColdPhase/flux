@@ -198,6 +198,9 @@ criteria (AC-2, AC-3, AC-4, AC-1 at fixture level). Proposed direction for #755,
 2. **B2.** The App stays read-only. The reviewing agent publishes the GitHub review from its own local client under
    its owner's identity; Flux verifies the review on the linked PR at that head through the read-only App and links its
    ID once to the Flux assessment. No App write permission is added.
+3. **Option for self-hosters without an App.** Poll mode with a fine-grained personal access token (selected
+   repositories, read-only). Not accepted; its credential storage, per-person authority and revocation need their
+   own design in #755.
 
 ### Primary sources re-read 2026-10-23
 
