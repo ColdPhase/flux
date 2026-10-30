@@ -57,7 +57,7 @@ const content = [
   'doc_live_replicas', 'map_live_presence', 'map_live_gestures', 'map_live_heads', 'map_live_journal', 'map_live_object_versions', 'map_live_undone',
   'live_editing_intents', 'notifications', 'notification_generation_failures', 'notification_emails', 'notification_mutes', 'needs_you_states',
   'events', 'event_audience', 'idempotency_keys', 'search_documents', 'search_changes', 'live_sessions', 'live_presentations', 'live_invitations',
-  'live_admissions',
+  'live_admissions', 'doc_decision_card_migrations',
 ] as const;
 
 export const TABLE_CLASSES: Readonly<Record<string, TableClass>> = Object.freeze(Object.fromEntries([

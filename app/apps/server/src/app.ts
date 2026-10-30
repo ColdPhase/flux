@@ -48,6 +48,7 @@ import { returnRoutes } from './returns/routes.js';
 import { projectGoalRoutes } from './project-goals/routes.js';
 import { needsYouRoutes } from './needs-you/routes.js';
 import { docRoutes } from './docs/routes.js';
+import { registerDecisionCardMigration } from './docs/decision-cards.js';
 import { notificationRoutes } from './notifications/routes.js';
 import { searchRoutes } from './search/routes.js';
 import { personalRunRoutes } from './personal-runs/routes.js';
@@ -286,6 +287,7 @@ export async function buildApp(config: ServerConfig, migrationsDir = 'packages/d
   await app.register(projectGoalRoutes, { db, sessions: identity });
   await app.register(needsYouRoutes, { db, sessions: identity });
   await app.register(docRoutes, { db, sessions: identity });
+  registerDecisionCardMigration(app, { db, seals, fixtureToken: config.fixture.token });
   await app.register(notificationRoutes, { db, sessions: identity, smtp: identityConfig.smtp, publicOrigin: identityConfig.publicOrigin });
   // Personal assistant runs (#68): the server queues; the worker dispatches.
   const personalRuns = personalRunServerComposition(env, db);

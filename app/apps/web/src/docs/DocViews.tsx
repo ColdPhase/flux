@@ -240,7 +240,7 @@ function DocReading({ live }: { live: LiveReadingState | null }) {
   const working = live?.working ?? null;
   const html = working?.html ?? shown.html;
   const text = working?.text ?? shown.body;
-  const { headings, marks } = useProse(prose, html, project.id, owners);
+  const { headings, marks, cards } = useProse(prose, html, project.id, owners);
   const onClick = useReferenceClicks();
   const capability = useEditingCapability();
   const current = !historical && (capability === 'configured' || shown.version === doc.version);
@@ -248,7 +248,10 @@ function DocReading({ live }: { live: LiveReadingState | null }) {
   useEffect(() => {
     if (!historical && savedVersion > doc.version && revalidator.state === 'idle') revalidator.revalidate();
   }, [historical, savedVersion, doc.version, revalidator]);
-  const { sources, mentions, backlinks } = docLinks(doc);
+  const links = docLinks(doc);
+  // F-034: a decision already shown as a card in the page is not listed again under it.
+  const notCard = (link: ObjectLink) => !(link.to.type === 'decision' && cards.has(link.to.id));
+  const sources = links.sources.filter(notCard), mentions = links.mentions.filter(notCard), backlinks = links.backlinks;
   const missing = shown.mentions.filter((item) => !item.path).length;
   const base = docUrl(project.id, doc.id);
   const edit = `${base}/edit`;

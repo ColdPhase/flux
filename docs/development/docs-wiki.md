@@ -83,15 +83,50 @@ open in the app: docs, messages and sketches by route, work objects in the Detai
 
 ## Add to docs
 
-On a result or decision, **Add to docs** (Details panel) starts a doc from it or writes its
-section into an existing doc as a new version. The section is a `## Result: …` or
-`## Decision: …` heading with the finding or rule state, its evidence or rationale, and a
-`Source: [title](flux:result/<id>)` line. The doc also gets a `source` link to the object, which
-is kept across later edits. Adding the same object again rewrites **only its section** (found by
-its `Source:` line; other text is kept byte for byte) with the current state, for example
-"Earlier rule · replaced Sep 28 by [new rule]", as the next version with the reason "Updated the
-decision “…”". The earlier statement stays in the earlier version. Nothing to change makes no
-version. Headings inside quoted evidence are escaped so a section keeps its shape.
+On a result or decision, **Add to docs** (Details panel) starts a doc from it or adds it to an
+existing doc as a new version. The doc also gets a `source` link to the object, which is kept
+across later edits.
+
+A **result** is written as a section: a `## Result: …` heading with the finding, its evidence and a
+`Source: [title](flux:result/<id>)` line. Adding the same result again rewrites **only its
+section** (found by its `Source:` line; other text is kept byte for byte) with the current state,
+as the next version with the reason "Updated the result “…”". The earlier statement stays in the
+earlier version. Nothing to change makes no version. Headings inside quoted evidence are escaped so
+a section keeps its shape.
+
+### Decisions in the Wiki (F-034)
+
+Founder decision 2026-10-30 ([#763 E1](https://github.com/ColdPhase/flux/issues/763#issuecomment-6532915221)).
+A **decision** is never copied into a page. Add to docs inserts one reference line at the end of
+the page, `[title](flux:decision/<id>)` on its own line, as the next version with the reason
+"Added the decision “…”". If the page already holds that line, nothing changes and no version is
+made; if it still holds an old copied section of that decision, only that section becomes the line.
+
+- **The card.** The reader shows a decision reference standing alone on its line as Prostota's one
+  line (`desktop-wiki.webp`): the state glyph and word ("Decision accepted", "Decision replaced"),
+  the title, the date and who, and under it the decision's short reason, the first sentence of its
+  rationale (`DecisionRowProjection.reason`, at most 160 characters). The whole card opens the
+  decision in the Details panel. A reference inside a sentence stays an inline link.
+- **Live.** The card is read from the decision as it is now (the reader's reference read on load,
+  focus and every 20 seconds), so accepting or replacing a decision changes no page text and adds
+  no version. A page's history holds the edits people make, and its outline its own headings.
+- **Proposed decisions stay out.** Adding a proposed decision is refused with 422
+  `DECISION_NOT_ACCEPTED` (also when starting a doc from it); the Details panel dims Add to docs
+  with "Accept it first to add it to the Wiki". A decision referenced earlier that is later
+  replaced shows "Decision replaced".
+- **Migration of copied sections.** Pages written before F-034 hold `## Decision: …` sections. The
+  API process converts them once per doc (`apps/server/src/docs/decision-cards.ts`, at start and
+  every 10 minutes; table `doc_decision_card_migrations`, migration 0135). A section is converted
+  only when it is still in the shape Flux wrote (the heading, the generated status line, the copied
+  rationale equal to the decision's rationale, and its `Source:` line); it then becomes the
+  reference line. Text people wrote before, after or between sections is kept byte for byte; a
+  section whose copied text was edited is left as it is. A doc with a conversion gets one version
+  with the reason "Turned N copied decisions into live cards", authored by the person who last
+  added a decision to it; the version before keeps the copied text, and the table records both
+  versions (`from_version`, `to_version`) for reversal. Running it again changes nothing. A doc
+  whose shared working copy has unsaved typing, or whose encrypted workspace is locked, is skipped
+  and tried again later. Encrypted workspaces are converted through the same repositories, so the
+  new version is sealed like any other.
 
 ## Events
 
@@ -143,8 +178,8 @@ field is never covered. Targets are 44 px on touch.
 `app/tests/app/docs.test.ts` (API, two people, a viewer, an outsider and an agent principal:
 access, version immutability and citations, If-Match 428/409 and a concurrent race, idempotent
 retries, links and backlinks across all target types without cross-project leaks, sanitization,
-Add to docs with section rewrite, events and the workspace list filter), `app/tests/app/returns.test.ts`
-(doc items in the return view) and `app/tests/ui/test_docs.py` (Playwright: write with preview and a
+Add to docs with result section rewrite and decision references, the F-034 migration, events and the workspace list filter), `app/tests/app/returns.test.ts`
+(doc items in the return view), `app/tests/app/wiki-decision-cards.test.ts` (F-034: the reference line, the live card read, proposed decisions refused, the migration's conservative conversion, idempotency, live working copy and an encrypted workspace) and `app/tests/ui/test_wiki_decision_cards.py` (Chromium and WebKit: cards with their reason, the outline and history, Add to docs, a replaced decision, the phone) and `app/tests/ui/test_docs.py` (Playwright: write with preview and a
 link, publish, concurrent edit and conflict, history and diff at 1440 and 1280, add from a
 result, phone read/edit/compare, hostile text) and `app/tests/ui/test_wiki_panes.py` (the two panes,
 quiet selection and focus ring in every theme, search and its count, New page, Import .md with its

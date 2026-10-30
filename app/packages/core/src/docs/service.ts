@@ -151,12 +151,10 @@ async function authorized(ports: DocPorts, principal: Principal, docId: unknown,
   }
 }
 
-/** Escapes headings inside quoted text so a section keeps its shape. */
-const block = (markdown: string) => markdown.trim().split('\n').map((line) => (/^\s{0,3}#{1,6}\s/.test(line) ? `\\${line.trimStart()}` : line)).join('\n');
-
 /**
- * The Markdown section for a result or decision of the project, as it stands now. It names the
- * source with a `flux:` reference so the section can be found and rewritten later.
+ * What "Add to docs" writes for a result or decision of the project: a result's Markdown section as it stands now,
+ * named by a `flux:` reference so it can be found and rewritten later, or a decision's one reference line (F-034),
+ * which the reader shows as the live card. A proposed decision is refused.
  */
 async function composeSection(ports: DocPorts, projectId: string, source: DocSectionSource) {
   const missing = () => new RuleViolationError(`The ${source.type} is not part of this project`, 'LINK_TARGET_NOT_FOUND');
@@ -166,23 +164,33 @@ async function composeSection(ports: DocPorts, projectId: string, source: DocSec
     if (!result || result.projectId !== projectId) throw missing();
     const finding = result.finding === 'negative' ? 'Negative result' : 'Positive result';
     const lines = [`## Result: ${text.literal(result.title)}`, '', `**${finding}** · recorded by ${text.literal(await actorName(result.createdBy))} · ${text.dateLine(result.createdAt)}`, ''];
-    if (result.evidence.trim()) lines.push(block(result.evidence), '');
+    if (result.evidence.trim()) lines.push(text.quotedBlock(result.evidence), '');
     lines.push(text.sourceLine(source, result.title));
     return { section: lines.join('\n'), title: result.title, label: 'result' };
   }
   const decision = await ports.work.findDecision(source.id);
   if (!decision || decision.projectId !== projectId) throw missing();
-  let status: string;
-  if (decision.status === 'accepted') status = `**Current rule** · accepted by ${text.literal(await actorName({ kind: 'human', id: decision.decidedBy! }))} · ${text.dateLine(decision.decidedAt!)}`;
-  else if (decision.status === 'proposed') status = `**Proposed decision** · proposed by ${text.literal(await actorName(decision.proposedBy))} · ${text.dateLine(decision.createdAt)} · not accepted yet`;
-  else {
-    const later = decision.supersededById ? await ports.work.findDecision(decision.supersededById) : null;
-    status = `**Earlier rule** · replaced ${text.dateLine(decision.supersededAt!)}${later ? ` by [${text.literal(later.title)}](flux:decision/${later.id})` : ''}`;
-  }
-  const lines = [`## Decision: ${text.literal(decision.title)}`, '', status, ''];
-  if (decision.rationale.trim()) lines.push(block(decision.rationale), '');
-  lines.push(text.sourceLine(source, decision.title));
-  return { section: lines.join('\n'), title: decision.title, label: 'decision' };
+  // F-034: a proposed decision stays out of the Wiki until it is accepted.
+  if (decision.status === 'proposed') throw new RuleViolationError('Accept the decision before adding it to the Wiki', 'DECISION_NOT_ACCEPTED');
+  return { section: text.decisionReferenceLine(decision.title, decision.id), title: decision.title, label: 'decision' };
+}
+
+/** Writes what {@link composeSection} made into a doc text: a result's section, or a decision's one reference line. */
+function place(body: string, source: DocSectionSource, composed: { section: string; title: string }) {
+  return source.type === 'decision' ? text.placeDecisionReference(body, source.id, composed.title) : text.upsertSection(body, source, composed.section);
+}
+
+/** F-034 migration: who added the decisions a doc copied, for the one version that turns them into cards. */
+const ADDED_DECISION = /^(Added|Updated) the decision “|^Started from the decision “/;
+
+/** What the F-034 migration did with one doc. */
+export interface DecisionCardConversion {
+  status: 'converted' | 'unchanged' | 'busy' | 'gone';
+  /** Sections turned into reference lines, and copied sections left as they are (edited, or not the shape Flux wrote). */
+  converted: number;
+  kept: number;
+  fromVersion?: number;
+  toVersion?: number;
 }
 
 export interface DocUseCaseOptions {
@@ -306,7 +314,7 @@ export function createDocUseCases(uow: DocUnitOfWork, options: DocUseCaseOptions
         let reason = given || 'Started the doc';
         if (from) {
           const composed = await composeSection(ports, project, from);
-          body = text.upsertSection(initial, from, composed.section).body;
+          body = place(initial, from, composed).body;
           reason = given || `Started from the ${composed.label} “${composed.title}”`;
         }
         if (body.length > DOC_LIMITS.body) throw new InvalidInputError(`body must be at most ${DOC_LIMITS.body} characters`);
@@ -362,7 +370,7 @@ export function createDocUseCases(uow: DocUnitOfWork, options: DocUseCaseOptions
         await fenceLegacy(ports, current);
         if (current.doc.currentVersion !== version) throw new VersionConflictError(current.doc.currentVersion, await present(ports, current));
         const composed = await composeSection(ports, projectId, from);
-        const { body, replaced } = text.upsertSection(current.current.body, from, composed.section);
+        const { body, replaced } = place(current.current.body, from, composed);
         const scope = { workspaceId, projectId };
         const taskFence = await prepareDocBodyTaskUse(ports, current, [current.current.body, body], [from]);
         await requireSourceStill(ports, projectId, from);
@@ -375,12 +383,44 @@ export function createDocUseCases(uow: DocUnitOfWork, options: DocUseCaseOptions
           return present(ports, current);
         }
         if (body.length > DOC_LIMITS.body) throw new RuleViolationError('The doc would become too long; start a new doc for this', 'DOC_TOO_LONG');
-        const reason = `${replaced ? 'Updated' : 'Added'} the ${composed.label} “${composed.title}”`;
+        const reason = `${replaced && from.type === 'result' ? 'Updated' : 'Added'} the ${composed.label} “${composed.title}”`;
         const row = await ports.docs.append(id, { title: current.current.title, body, state: current.current.state, reason, author: by });
         await ports.live.rebindSaved(row, randomUUID());
         return commit(ports, principal, scope, row, false, taskFence);
       });
     },
+
+    /**
+     * F-034 migration, run by the API process for each doc once (no person asks for it, so no access check): turns
+     * copied decision sections still in the shape Flux wrote into reference lines, as one new version authored by the
+     * person who last added a decision to the doc. `busy` when the shared working copy holds unsaved typing (tried
+     * again later); `unchanged` when there is nothing to convert. Idempotent.
+     */
+    convertDecisionSections: (docId: string) => uow.run(async (ports): Promise<DecisionCardConversion> => {
+      const id = valid.id(docId, 'docId');
+      const current = await ports.docs.find(id, { lock: true });
+      if (!current) return { status: 'gone', converted: 0, kept: 0 };
+      const head = await ports.live.lock(id);
+      if (head && (head.savedVersion !== current.doc.currentVersion || head.body !== current.current.body)) return { status: 'busy', converted: 0, kept: 0 };
+      const before = current.current.body;
+      const decisions = new Map<string, { title: string; rationale: string }>();
+      for (const decisionId of text.legacyDecisionIds(before)) {
+        const found = await ports.work.findDecision(decisionId);
+        if (found && found.projectId === current.doc.projectId) decisions.set(decisionId, { title: found.title, rationale: found.rationale });
+      }
+      const { body, converted, kept } = text.convertDecisionSections(before, decisions);
+      const fromVersion = current.doc.currentVersion;
+      if (!converted.length) return { status: 'unchanged', converted: 0, kept, fromVersion };
+      const history = await ports.docs.versions(id, { limit: 100, offset: 0 });
+      const author = history.items.find((item) => ADDED_DECISION.test(item.reason))?.author ?? current.current.author;
+      const scope = { workspaceId: current.doc.workspaceId, projectId: current.doc.projectId };
+      const taskFence = await prepareDocBodyTaskUse(ports, current, [before, body]);
+      const reason = `Turned ${converted.length === 1 ? 'a copied decision' : `${converted.length} copied decisions`} into live ${converted.length === 1 ? 'card' : 'cards'}`;
+      const row = await ports.docs.append(id, { title: current.current.title, body, state: current.current.state, reason, author });
+      await ports.live.rebindSaved(row, randomUUID());
+      await commit(ports, { kind: author.kind, id: author.id }, scope, row, false, taskFence);
+      return { status: 'converted', converted: converted.length, kept, fromVersion, toVersion: row.doc.currentVersion };
+    }),
 
     /** A deliberate immutable version of one confirmed live head; never a client-supplied body. */
     async saveLiveVersion(principal: Principal, docId: string, command: SaveLiveDocCommand, expected: number | undefined): Promise<Doc> {

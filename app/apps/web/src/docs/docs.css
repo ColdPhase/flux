@@ -221,6 +221,8 @@
 .doc-decision__t b { font-weight: 500; }
 .doc-decision__title { color: var(--t2); }
 .doc-decision__meta { font-size: var(--fs-xs); color: var(--t3); white-space: nowrap; }
+/* F-034: the decision's short reason under its line, in the title's column. */
+.doc-decision__reason { grid-column: 2 / -1; margin-top: -6px; font-size: var(--fs-sm); line-height: 1.45; color: var(--t2); overflow-wrap: anywhere; }
 .doc-ref--missing { color: var(--t3); text-decoration: none; }
 .doc-ref--missing::after { content: " (not available)"; font-size: var(--fs-xs); }
 
