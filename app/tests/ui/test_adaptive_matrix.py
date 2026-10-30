@@ -695,6 +695,38 @@ class AdaptiveMatrix(AdaptiveBase):
                 self.shot(page, f"adapt-{width}x{height}-tasks-beside-details")
                 self.no_problems()
 
+    def test_02b_a_narrow_map_beside_docked_details_takes_the_columns_but_keeps_the_computer_controls(self) -> None:
+        """ADAPT-1 (#151): the thoughts' layout follows the map's own width, the controls follow the device. At 1100×800 with
+        Details docked the map is under 640 px wide and shows the two columns; it keeps the computer's toolbar, zoom and Fit,
+        and gets none of the phone's Map options sheet or Add a thought button. At 1440×900 the same map stays the plane."""
+        pid = self.ids["project"]
+        for (width, height), layout in (((1100, 800), "columns"), ((1440, 900), "plane")):
+            with self.subTest(width=width, height=height):
+                page = self.page(width, height, coarse=False)
+                page.goto(f"/projects/{pid}/map/{self.ids['sketch']}")
+                expect(page.locator(".sk-node")).to_have_count(len(fx.THOUGHTS))
+                canvas = page.locator(".sk-canvas")
+                expect(canvas).to_have_attribute("data-layout", "plane")
+                open_details(page)
+                expect(page.locator("#details.ui-panel--docked")).to_be_visible()
+                expect(canvas).to_have_attribute("data-layout", layout)
+                self.at_rest(page)
+                expect(page.locator(".sk-node")).to_have_count(len(fx.THOUGHTS))
+                map_width = page.locator(".sk-canvas-wrap").bounding_box()["width"]
+                self.assertTrue(map_width <= 640 if layout == "columns" else map_width > 640, f"the map is {map_width} px wide at {width}×{height}")
+                # The computer's controls, whatever the layout.
+                expect(page.get_by_role("group", name="Zoom")).to_be_visible()
+                expect(page.get_by_role("button", name="Fit the sketch to the view", exact=True)).to_be_visible()
+                expect(page.locator(".sk-dock__row")).to_be_visible()
+                expect(page.get_by_role("button", name="Map options", exact=True)).to_have_count(0)
+                expect(page.locator(".sk-phone, .sk-fab")).to_have_count(0)
+                if layout == "columns":
+                    # The two columns fit the map's width: nothing reaches past it sideways.
+                    fits = canvas.evaluate("el => ({inner: el.querySelector('.sk-zoomed').getBoundingClientRect().width, room: el.clientWidth})")
+                    self.assertLessEqual(fits["inner"], fits["room"] + 1, f"the columns fit the narrow map at {width}×{height}: {fits}")
+                self.shot(page, f"adapt-{width}x{height}-map-beside-details")
+                self.no_problems()
+
     def test_03_wider_boards_show_more_cards_per_row(self) -> None:
         """ADAPT-2: the Open column's three cards take three rows at 1440 px and one at 3840 px."""
         rows = {}
