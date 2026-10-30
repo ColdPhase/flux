@@ -82,6 +82,8 @@ export interface CoWorkClaimEligibilityReader {
   task(taskId: string): Promise<{ id: string; projectId: string; status: WorkStatus } | null>;
   /** #171: every direct prerequisite done and unparked now, else TASK_PREREQUISITES_UNMET. Takes no lock. */
   requirePrerequisitesMet(taskId: string): Promise<void>;
+  /** #160 AC-5: a person paused this connection's agent on the task. Takes no lock. */
+  pausedByPerson?(taskId: string, connectionId: string): Promise<boolean>;
 }
 /**
  * Role eligibility for a new claim or a renewal: the task is open, and an execute unit's prerequisites are met now.
@@ -94,6 +96,9 @@ export async function requireCoWorkClaimEligibility(reader: CoWorkClaimEligibili
   const task = await reader.task(unit.taskId);
   if (!task || task.id !== unit.taskId || task.projectId !== unit.projectId) throw new NotFoundError('Work unit', 'COWORK_UNIT_NOT_FOUND');
   if (task.status === 'done' || task.status === 'not_pursued') throw new ConflictError('The task is closed', 'COWORK_TASK_CLOSED');
+  if (await reader.pausedByPerson?.(unit.taskId, unit.assignmentConnectionId))
+    throw new ConflictError('A person paused this work. Release this unit now with flux_release_unit and a checkpoint, and take no '
+      + 'new step until they resume it.', 'COWORK_PAUSED');
   if (unit.role === 'execute') await reader.requirePrerequisitesMet(unit.taskId);
 }
 

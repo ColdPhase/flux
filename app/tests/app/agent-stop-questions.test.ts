@@ -253,3 +253,57 @@ test('the sidebar card says whether a working agent was ever signed in (#347 rev
   assert.deepEqual([signed?.signedIn, signed?.online, signed?.working], [true, true, false]);
   assert.deepEqual([unsigned?.signedIn, unsigned?.online, unsigned?.working], [false, false, false]);
 });
+
+test('#160 AC-5: Pause keeps the hold, refuses renew and claim with COWORK_PAUSED, lets the agent checkpoint, and Resume lets it claim again', async () => {
+  const f = await scene();
+  const item = await f.task();
+  const { unitId, claim } = await f.work(item);
+  const pause = (who: Person, paused: boolean, headers: Record<string, string> = {}): Promise<Reply> =>
+    who.browser.request('POST', `/api/v1/projects/${f.p.id}/agent-pauses`, { body: { taskId: item.id, agentId: f.agent.id, paused }, headers }) as Promise<Reply>;
+
+  // The same people as Stop: a contributor who is neither manager, owner nor creator may not; a viewer cannot write.
+  assert.deepEqual([(await pause(f.marek, true)).status, (await pause(f.marek, true)).json.code], [403, 'PAUSE_NOT_ALLOWED']);
+  assert.equal((await pause(f.eve, true)).status, 403);
+  const key = randomUUID();
+  const paused = await pause(f.hubert, true, { 'idempotency-key': key });
+  assert.equal(paused.status, 201, paused.text);
+  const replay = await pause(f.hubert, true, { 'idempotency-key': key });
+  assert.equal(replay.headers.get('idempotent-replayed'), 'true');
+  assert.equal((await pause(f.hubert, true)).status, 201, 'pausing again returns the pause in force');
+  assert.equal((await pool.query('SELECT count(*)::int AS n FROM agent_pauses WHERE task_id=$1', [item.id])).rows[0].n, 1);
+  assert.equal((await pool.query("SELECT count(*)::int AS n FROM events WHERE kind='project.agent_paused.v1' AND object_id=$1", [f.p.id])).rows[0].n, 1);
+  // The hold and the claim are untouched; no conversation message is written.
+  const held = await f.taskRow(item.id);
+  assert.deepEqual([held.status, held.owner_agent_id], ['in_progress', f.agent.id]);
+  assert.equal((await f.unitRow(unitId)).state, 'claimed');
+  const list = expectStatus(await f.marek.browser.request('GET', `/api/v1/projects/${f.p.id}/agent-stops`), 200) as AgentStops;
+  assert.deepEqual(list.pauses.map((entry) => [entry.taskId, entry.taskNumber, entry.agent.id, entry.pausedBy.name]), [[item.id, 1, f.agent.id, 'Hubert']]);
+
+  // The agent's next renewal is its safe point: refused with COWORK_PAUSED, and it can still release with a checkpoint.
+  const renew = await f.connected.grant('cowork.renew', 'execute', 5, unitId);
+  assert.equal(toolFailure(await f.connected.tool('flux_renew_unit', { ...f.run(), grantId: renew.id, clientCommandId: randomUUID(), unitId,
+    expectedVersion: claim.version, generation: claim.generation, leaseId: claim.lease.id })).code, 'COWORK_PAUSED');
+  const release = await f.connected.grant('cowork.release', 'execute', 5, unitId);
+  const released = toolValue(await f.connected.tool('flux_release_unit', { ...f.run(), grantId: release.id, clientCommandId: randomUUID(), unitId,
+    expectedVersion: claim.version, generation: claim.generation, leaseId: claim.lease.id,
+    checkpoint: { summary: 'Measured three corners.', nextAction: 'Measure the fourth corner.', blocker: null } })) as { state: string; version: number };
+  assert.equal(released.state, 'paused');
+  const claimAgain = await f.connected.grant('cowork.claim', 'execute', 5, unitId);
+  const refused = toolFailure(await f.connected.tool('flux_claim_unit', { ...f.run(), grantId: claimAgain.id, clientCommandId: randomUUID(), unitId,
+    expectedVersion: released.version }));
+  assert.equal(refused.code, 'COWORK_PAUSED', 'no new step until a person resumes');
+
+  // Resume (204, also when nothing is paused) lets the same unit be claimed again with its checkpoint.
+  assert.equal((await pause(f.hubert, false)).status, 204);
+  assert.equal((await pause(f.hubert, false)).status, 204);
+  assert.equal((await pool.query('SELECT count(*)::int AS n FROM agent_pauses WHERE task_id=$1', [item.id])).rows[0].n, 0);
+  const resumed = toolValue(await f.connected.tool('flux_claim_unit', { ...f.run(), grantId: claimAgain.id, clientCommandId: randomUUID(), unitId,
+    expectedVersion: released.version })) as { state: string; checkpoint: { summary: string } | null };
+  assert.deepEqual([resumed.state, resumed.checkpoint?.summary], ['claimed', 'Measured three corners.']);
+
+  // A pause needs the agent holding the task; Stop clears a pause in force.
+  assert.equal((await pause(f.hubert, true)).status, 201);
+  assert.equal((await f.stop(f.hubert, item.id)).status, 201);
+  assert.equal((await pool.query('SELECT count(*)::int AS n FROM agent_pauses WHERE task_id=$1', [item.id])).rows[0].n, 0);
+  assert.deepEqual([(await pause(f.hubert, true)).status, (await pause(f.hubert, true)).json.code], [409, 'AGENT_NOT_WORKING']);
+});

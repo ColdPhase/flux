@@ -33,7 +33,7 @@ export interface CoworkPlaybook {
 
 const playbook: CoworkPlaybook = {
   bundleId: 'flux.cowork',
-  version: '1.8.0',
+  version: '1.9.0',
   toolContractVersion: 1,
   startPayload: `Start my authorized Flux work in the bound project. Load this playbook and the authenticated bootstrap first. \
 Understand the project's current plan, wiki, relevant conversations, decisions and existing tasks before planning or creating more \
@@ -141,7 +141,9 @@ COWORK_CONNECTION_BUSY means you already hold another live unit: finish or relea
 TASK_PREREQUISITES_UNMET means the task cannot be worked on now; choose other work. COWORK_CLAIM_LOST means you no longer \
 hold a live lease on the unit: recover its current state before any further effect, and claim it again only once no other \
 session holds a live lease on it. COWORK_STOPPED means a person stopped this work: end it now, do not claim the unit again, \
-and ask in the task thread if you need to know why. \
+and ask in the task thread if you need to know why. COWORK_PAUSED means a person paused this work: finish only the step you \
+are in, release the unit at once with flux_release_unit and a checkpoint, take no new step on that task, and continue only after \
+a later Resume. \
 Starting (in_progress) or finishing (done) requires every prerequisite to be done; otherwise finish or report the prerequisite \
 first. With a live work.update grant, keep the task current with flux_update_task at the version you last read: status, \
 criteria, blocker. After a version conflict, read the task again and reapply only your own change. Work locally with the \

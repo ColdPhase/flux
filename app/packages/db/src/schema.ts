@@ -992,6 +992,22 @@ export const agentProjectPolicies = pgTable('agent_project_policies', {
   publishedAt: timestamp('published_at', { withTimezone: true }).notNull().defaultNow(),
 }, (table) => [primaryKey({ columns: [table.projectId, table.revision] })]);
 
+// A person paused an external agent's work on a task (migration 0131, #160 AC-5). Present while the pause is in force.
+export const agentPauses = pgTable('agent_pauses', {
+  workspaceId: uuid('workspace_id').notNull(),
+  projectId: uuid('project_id').notNull(),
+  taskId: uuid('task_id').notNull(),
+  agentId: uuid('agent_id').notNull(),
+  pausedBy: text('paused_by').notNull().references(() => authUsers.id, { onDelete: 'cascade' }),
+  pausedAt: timestamp('paused_at', { withTimezone: true }).notNull().defaultNow(),
+}, (table) => [
+  primaryKey({ columns: [table.taskId, table.agentId] }),
+  index('agent_pauses_project_idx').on(table.projectId, table.pausedAt.desc()),
+  foreignKey({ columns: [table.workspaceId, table.projectId], foreignColumns: [projects.workspaceId, projects.id] }).onDelete('cascade'),
+  foreignKey({ columns: [table.workspaceId, table.projectId, table.taskId], foreignColumns: [projectWorkItems.workspaceId, projectWorkItems.projectId, projectWorkItems.id] }).onDelete('cascade'),
+  foreignKey({ columns: [table.workspaceId, table.agentId], foreignColumns: [agents.workspaceId, agents.id] }).onDelete('cascade'),
+]);
+
 // A person ended an external agent's work on a task (migration 0065, #347 S13). The task, its owner and its co-work
 // units change through their own commands in the same transaction; this is the record of who did it and when.
 export const agentStops = pgTable('agent_stops', {

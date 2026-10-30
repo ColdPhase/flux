@@ -24,7 +24,8 @@ creating its own task while nobody has used or changed it (#238). Since 1.5.0 (2
 read their inbox and resolve a request by naming an existing record as evidence, with a pinned verdict for a review. 1.6.0 (2026-10-17) carries both that change and the task's agents' thread
 tools (#400, PR #582). 1.7.0 (2026-10-17, #153) adds declining a transferred unit and deferring a queued request with a reason.
 1.8.0 (2026-10-18, #152/#160) discovers the connection's existing work through opt-in bootstrap recovery and stores canonical
-source coverage and missing context in its existing release checkpoint for changed-plan reanalysis. This page remains the design rationale; change the shipped text in
+source coverage and missing context in its existing release checkpoint for changed-plan reanalysis. 1.9.0 (2026-10-30, #160 AC-5)
+explains `COWORK_PAUSED`: a person paused the work, so the agent releases with a checkpoint and waits for Resume. This page remains the design rationale; change the shipped text in
 that module, with a new version. Delivery is described in
 [agent connection](../development/agent-connection.md#built-in-co-work-playbook-160).
 
