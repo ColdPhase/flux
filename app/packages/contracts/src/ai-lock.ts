@@ -48,6 +48,8 @@ export const AI_HTTP_ROUTES: Readonly<Record<string, AiRouteRule>> = {
   'GET /api/v1/working-agents': useCase('The person\'s working agents across workspaces; agents of a workspace with AI off are left out'),
   'GET /api/v1/projects/:projectId/agent-stops': gated('params', 'projectId', 'project'),
   'POST /api/v1/projects/:projectId/agent-stops': exempt(REDUCES),
+  // #160 AC-5: pausing only narrows; resuming lets the agent claim again, so it needs the workspace's AI on.
+  'POST /api/v1/projects/:projectId/agent-pauses': gated('params', 'projectId', 'project', { body: 'paused', equals: false }),
   'GET /api/v1/projects/:projectId/agent-questions': gated('params', 'projectId', 'project'),
   'POST /api/v1/agent-questions/:questionId/answer': gated('params', 'questionId', 'agent_question'),
   'GET /api/v1/agent-connections/:connectionId/permissions': gated('params', 'connectionId', 'connection'),
