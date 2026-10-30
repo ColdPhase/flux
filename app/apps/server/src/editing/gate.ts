@@ -22,12 +22,14 @@ export interface EditingGateOptions {
   publicOrigin: string;
   sessions: Pick<SessionResolver, 'resolveSession'>;
   /** Current core resource use case/policy; invisible resources must remain opaque. */
-  authorize(context: EditingContext): Promise<void>;
+  authorize(context: EditingContext): Promise<{ workspaceId: string; sealed: boolean } | void>;
   /** Installs message/error handlers synchronously; protected delivery uses the SQL fence. */
   accept(socket: WebSocket, context: EditingContext): void;
 }
 export interface EditingGate extends UpgradeGate {
   close(): Promise<void>;
+  /** F-030: closes the live connections of an encrypted workspace (or of all, with null) when it locks or its keys are dropped. */
+  closeSealed(workspaceId: string | null): void;
   readonly pending: number;
   readonly connected: number;
 }
@@ -52,6 +54,7 @@ export function editingGate(options: EditingGateOptions): EditingGate {
   const server = new WebSocketServer(serverOptions);
   const reservations = new Set<Duplex>();
   const clients = new Set<WebSocket>();
+  const sealedClients = new Map<WebSocket, string>();
   const work = new Set<Promise<void>>();
   let closing = false;
 
@@ -88,10 +91,11 @@ export function editingGate(options: EditingGateOptions): EditingGate {
           if (!session || session.expiresAt.getTime() <= Date.now()) { refuse(socket, 401, 'Authentication required'); return; }
           if (closing || expired || socket.destroyed) return;
           const context: EditingContext = { target: { kind, id: id.toLowerCase() }, session, connectionId: randomUUID() };
-          try { await options.authorize(context); }
+          let admitted: Awaited<ReturnType<typeof options.authorize>>;
+          try { admitted = await options.authorize(context); }
           catch (error) {
-            // F-030: a reader of an encrypted workspace's doc or map learns that live editing is not offered there yet.
-            if ((error as { code?: unknown }).code === 'WORKSPACE_ENCRYPTED_UNSUPPORTED') refuse(socket, 409, 'Not available in an encrypted space');
+            // F-030: a reader of a locked encrypted workspace's doc or map learns that it is waiting to be unlocked (it is still opaque to everyone else).
+            if ((error as { code?: unknown }).code === 'WORKSPACE_LOCKED') refuse(socket, 423, 'Locked');
             else refuse(socket, 404, 'Not Found');
             return;
           }
@@ -99,8 +103,9 @@ export function editingGate(options: EditingGateOptions): EditingGate {
           if (closing || expired || socket.destroyed) return;
           server.handleUpgrade(request, socket, head, (client) => {
             clients.add(client);editingResourcesChanged();
+            if (admitted?.sealed) sealedClients.set(client, admitted.workspaceId);
             client.on('error', () => client.terminate());
-            client.once('close', () => {clients.delete(client);editingResourcesChanged();});
+            client.once('close', () => {clients.delete(client);sealedClients.delete(client);editingResourcesChanged();});
             try { options.accept(client, context); }
             catch { client.terminate(); }
             // Explicitly resume only after synchronous listener installation; test initial head frames.
@@ -111,6 +116,9 @@ export function editingGate(options: EditingGateOptions): EditingGate {
       })();
       work.add(pending);void pending.finally(()=>work.delete(pending));
       return true;
+    },
+    closeSealed(workspaceId) {
+      for (const [client, id] of sealedClients) if (workspaceId === null || id === workspaceId) client.close(4423, 'Locked');
     },
     async close() {
       closing = true;

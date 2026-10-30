@@ -209,7 +209,7 @@ export function createFileUseCases(unit: FileUnitOfWork, storage: FileStorage, c
       const plaintext: Uint8Array[] = [];
       try {
         const limits = { maxBytes: FILE_LIMITS.fileBytes, deadline: Date.now() + FILE_LIMITS.receiveSeconds * 1000 };
-        received = admitted.replay ? await digestOnly(bytes, limits) : await storage.receive(readsDetail(name) ? observed(bytes, plaintext) : bytes, limits);
+        received = admitted.replay ? await digestOnly(bytes, limits) : await storage.receive(readsDetail(name) ? observed(bytes, plaintext) : bytes, limits, admitted.reserved!.id);
       } catch (error) {
         if (admitted.reserved ?? admitted.verification) await release(projectId, uploader, (admitted.reserved ?? admitted.verification)!.id);
         if (error instanceof FileTooLargeError) throw new PayloadTooLargeError('A file is at most 5 MiB', 'FILE_TOO_LARGE');

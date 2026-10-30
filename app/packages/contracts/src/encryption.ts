@@ -104,6 +104,8 @@ export type WorkspaceLockReason = 'person' | 'restart';
 
 /** Sent with every unlock; replays the work that waited while the workspace was locked (S2a). */
 export const WORKSPACE_ENCRYPTION_RESUME_JOB = 'workspace-encryption.resume.v1';
+/** Hourly: deletes the search change log of encrypted workspaces older than 24 hours (S2b). */
+export const SEARCH_CHANGES_CLEANUP_JOB = 'search-changes.cleanup.v1';
 export interface WorkspaceEncryptionResumeJob { workspaceId: string }
 
 /**

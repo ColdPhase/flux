@@ -1,5 +1,8 @@
 import assert from 'node:assert/strict';
 import { createHash, randomUUID } from 'node:crypto';
+import { readFile, readdir, writeFile } from 'node:fs/promises';
+import { Readable } from 'node:stream';
+import { join } from 'node:path';
 import { before, describe, test } from 'node:test';
 import WebSocket from 'ws';
 import { projectObjectNoticesPath, type Project } from '@flux/contracts';
@@ -18,7 +21,7 @@ let ada: Person; let ben: Person; let cy: Person;
 let A: string; let B: string;
 const pw = passphrase();
 const kinds = ['project', 'goal', 'message', 'reply', 'large', 'dmTitle', 'dmMessage', 'decision', 'rationale', 'result', 'evidence', 'draft', 'draftBody', 'draftEdit', 'task', 'outcome', 'criterion', 'blocker', 'taskRename',
-  'docTitle', 'docBody', 'docEdit', 'materialTitle', 'materialBody', 'materialUrl', 'mapTitle', 'thought', 'linkLabel'] as const;
+  'docTitle', 'docBody', 'docEdit', 'materialTitle', 'materialBody', 'materialUrl', 'mapTitle', 'thought', 'linkLabel', 'fileName'] as const;
 type Kind = typeof kinds[number];
 const canaries: Record<'A' | 'B', Record<Kind, string>> = { A: {} as Record<Kind, string>, B: {} as Record<Kind, string> };
 for (const side of ['A', 'B'] as const) {
@@ -198,7 +201,7 @@ describe('F-030 S2a-1: sealed content in the repositories', () => {
     }
   });
 
-  test('docs, materials and maps read back opened; live Wiki and live maps answer 409 for A until S2b (S2a-2b)', async () => {
+  test('docs, materials and maps read back opened; live Wiki and live maps are offered for A as for B (S2b)', async () => {
     for (const side of ['A', 'B'] as const) {
       const c = canaries[side]; const id = ids[side];
       const doc = expectStatus(await ben.browser.request('GET', `/api/v1/docs/${id.doc}`), 200, `${side}: doc`) as { title: string; body: string };
@@ -211,18 +214,15 @@ describe('F-030 S2a-1: sealed content in the repositories', () => {
       const map = JSON.stringify(expectStatus(await ben.browser.request('GET', `/api/v1/sketches/${id.sketch}`), 200, `${side}: map`));
       for (const text of [c.mapTitle, c.thought, c.linkLabel.slice(0, 60)]) assert.ok(map.includes(text), `${side}: the map shows ${text.slice(0, 20)}`);
       for (const text of [doc.title, map]) assert.equal(/fx1\.[1-9]/.test(text), false, `${side}: no envelope reaches a reader`);
-      const live = [await ben.browser.request('GET', `/api/v1/docs/${id.doc}/live`), await ben.browser.request('GET', `/api/v1/sketches/${id.sketch}/live`)];
-      for (const response of live) {
-        if (side === 'A') { assert.equal(response.status, 409, response.text); assert.equal((response.json as { code?: string }).code, 'WORKSPACE_ENCRYPTED_UNSUPPORTED'); }
-        else assert.notEqual((response.json as { code?: string } | null)?.code, 'WORKSPACE_ENCRYPTED_UNSUPPORTED');
+      for (const path of [`/api/v1/docs/${id.doc}/live`, `/api/v1/sketches/${id.sketch}/live`]) {
+        const response = await ben.browser.request('GET', path);
+        assert.equal(response.status, 200, `${side}: ${path} ${response.text.slice(0, 120)}`);
+        assert.equal(/fx1\.[1-9]/.test(response.text), false, `${side}: no envelope reaches a reader`);
       }
     }
-    const live = (await pool.query(`SELECT (SELECT count(*) FROM doc_live_heads h JOIN project_materials m ON m.id = h.doc_id WHERE m.workspace_id = $1)
-      + (SELECT count(*) FROM map_live_heads WHERE workspace_id = $1) AS n`, [A])).rows[0];
-    assert.equal(Number(live.n), 0, 'nothing was written to the live tables for A');
   });
 
-  test('a live room for A\'s doc or map is refused with 409 for a reader and 404 for an outsider; B\'s opens (S2a-2b review)', async () => {
+  test('a live room for A\'s doc or map opens for a reader and answers 404 to an outsider, as B\'s does (S2b)', async () => {
     const outsider = await person('Room outsider');
     const join = (who: Person, kind: 'wiki' | 'map', id: string) => new Promise<string>((resolve) => {
       const url = new URL(`/api/v1/editing?kind=${kind}&id=${id}`, apiUrl); url.protocol = 'ws:';
@@ -233,32 +233,28 @@ describe('F-030 S2a-1: sealed content in the repositories', () => {
       socket.once('error', (error) => { clearTimeout(timer); resolve(`error ${error.message}`); });
     });
     for (const [kind, key] of [['wiki', 'doc'], ['map', 'sketch']] as const) {
-      assert.equal(await join(ben, kind, ids.A[key]), 'refused 409', `A ${kind}: a reader learns it is not offered yet`);
+      assert.equal(await join(ben, kind, ids.A[key]), 'open', `A ${kind}: a reader opens it`);
       assert.equal(await join(outsider, kind, ids.A[key]), 'refused 404', `A ${kind}: an outsider learns nothing`);
       assert.equal(await join(ben, kind, ids.B[key]), 'open', `B ${kind} opens`);
     }
-    // Over HTTP too, the refusal follows the session and access checks.
+    // Over HTTP too, the answer follows the session and access checks.
     assert.equal((await new Browser().request('GET', `/api/v1/docs/${ids.A.doc}/live`)).status, 401, 'no session: 401 first');
     assert.equal((await outsider.browser.request('GET', `/api/v1/docs/${ids.A.doc}/live`)).status, 404, 'an outsider: 404');
   });
 
-  test('a sealed chooser search that reaches its scan limit says so (searchLimited); below the limit and in B it does not', async () => {
-    const limit = Number(process.env.FLUX_TEST_SEALED_CHOOSER_SCAN_LIMIT ?? 0);
+  test('a sealed chooser search uses the in-memory index: it finds every match with no cap or marker, as B does (S2b)', async () => {
     for (const [side, ws] of [['A', A], ['B', B]] as const) {
       const project = await post(ada, `/api/v1/workspaces/${ws}/projects`, { name: `Many ${side}`, visibility: 'workspace' }, 201);
-      const search = async () => (await ada.browser.request('GET', `/api/v1/projects/${String(project.id)}/work-view?purpose=choices&choice=pivot_work&q=needle`)).json as
-        { searchLimited?: boolean; total: number };
+      const search = async (q = 'needle') => (await ada.browser.request('GET', `/api/v1/projects/${String(project.id)}/work-view?purpose=choices&choice=pivot_work&q=${q}`)).json as
+        { searchUnavailable?: boolean; total: number; items: { title: string }[] };
       await post(ada, `/api/v1/projects/${String(project.id)}/work`, { title: 'needle 0' }, 201);
-      assert.equal((await search()).searchLimited, undefined, `${side}: below the limit`);
       for (let index = 1; index <= 9; index += 1) await post(ada, `/api/v1/projects/${String(project.id)}/work`, { title: `needle ${index}` }, 201);
+      await post(ada, `/api/v1/projects/${String(project.id)}/work`, { title: 'Haystack' }, 201);
       const many = await search();
-      if (side === 'A' && limit > 0 && limit < 10) {
-        assert.equal(many.searchLimited, true, 'A: more objects than the scan opens');
-        assert.equal(many.total, limit, 'A: total counts matches among the opened ones');
-      } else {
-        assert.equal(many.searchLimited, undefined, `${side}: no marker`);
-        assert.equal(many.total, 10);
-      }
+      assert.equal(many.searchUnavailable, undefined, `${side}: no marker`);
+      assert.equal(many.total, 10, `${side}: every match`);
+      assert.equal((await search('NEEDLE 7')).total, 1, `${side}: case-insensitive, any part of the title`);
+      assert.equal((await search('absent')).total, 0, `${side}: no match`);
     }
   });
 
@@ -273,6 +269,109 @@ describe('F-030 S2a-1: sealed content in the repositories', () => {
       await post(ada, `/api/v1/sketches/${String(sketch.id)}/promotion`, { target: { kind: 'new', name }, token: preview.token, participants: 'none' }, 201);
       const source = expectStatus(await ada.browser.request('GET', `/api/v1/sketches/${String(sketch.id)}`), 200, `${side}: source`) as { copies?: { projectName: string }[] };
       assert.deepEqual(source.copies?.map((copy) => copy.projectName), [name], `${side}: the copy shows the opened project name`);
+    }
+  });
+
+  test('a file of A is sealed on disk as it arrives and served opened; its name and digest are sealed; a tampered object is never served (S2a-2b-2)', async () => {
+    const objectFile = async (id: string) => {
+      const find = async (dir: string): Promise<string | null> => {
+        for (const entry of await readdir(dir, { withFileTypes: true })) {
+          const path = join(dir, entry.name);
+          if (entry.isDirectory()) { const found = await find(path); if (found) return found; } else if (entry.name === id) return path;
+        }
+        return null;
+      };
+      return find('/data/files');
+    };
+    for (const [side, ws] of [['A', A], ['B', B]] as const) {
+      void ws;
+      const c = canaries[side];
+      const bytes = Buffer.from(`file bytes ${c.fileName} ${'x'.repeat(5000)}`);
+      const name = `${c.fileName}.txt`;
+      const response = await fetch(new URL(`/api/v1/projects/${ids[side].project}/files?uploadId=${randomUUID()}&name=${encodeURIComponent(name)}`, ada.browser.base), {
+        method: 'POST', headers: { 'content-type': 'application/octet-stream', cookie: ada.browser.cookieHeader(), origin: ada.browser.defaultOrigin }, body: bytes });
+      assert.equal(response.status, 201, await response.clone().text());
+      const staged = await response.json() as { id: string; name: string; size: number };
+      assert.deepEqual({ name: staged.name, size: staged.size }, { name, size: bytes.length }, `${side}: the plaintext size and name`);
+      const served = await fetch(new URL(`/api/v1/files/${staged.id}`, ada.browser.base), { headers: { cookie: ada.browser.cookieHeader() } });
+      assert.equal(served.status, 200);
+      assert.deepEqual(Buffer.from(await served.arrayBuffer()), bytes, `${side}: the download is the uploaded bytes`);
+      const path = await objectFile(staged.id);
+      assert.ok(path, `${side}: the object exists`);
+      const stored = await readFile(path!);
+      const row = (await pool.query(`SELECT flux_is_sealed(name) AS name, flux_is_sealed(sha256) AS sha, key_version FROM project_files WHERE id = $1`, [staged.id])).rows[0];
+      if (side === 'A') {
+        assert.equal(stored.subarray(0, 4).toString('ascii'), 'FXF1', 'A: a sealed object');
+        assert.equal(stored.length, bytes.length + 36, 'A: header and tag around the plaintext length');
+        for (const needle of [c.fileName, createHash('sha256').update(bytes).digest('hex')]) assert.equal(stored.includes(needle), false, 'A: no plaintext on disk');
+        assert.deepEqual(row, { name: true, sha: true, key_version: 1 });
+        // A changed byte makes the object unavailable, never served.
+        const tampered = Buffer.from(stored); tampered[tampered.length - 1] ^= 1;
+        await writeFile(path!, tampered);
+        assert.notEqual((await fetch(new URL(`/api/v1/files/${staged.id}`, ada.browser.base), { headers: { cookie: ada.browser.cookieHeader() } })).status, 200, 'A: a tampered object is refused');
+        await writeFile(path!, stored);
+      } else {
+        assert.ok(stored.equals(bytes), 'B: stored as it was sent');
+        assert.deepEqual(row, { name: false, sha: false, key_version: null });
+      }
+    }
+  });
+
+  test('mid-upload, the scratch file of A holds ciphertext only (B plaintext); an aborted upload leaves nothing in tmp (#707 review)', async () => {
+    const tmp = '/data/files/attachments/tmp';
+    const scratch = async () => { try { return await readdir(tmp); } catch { return []; } };
+    const start = (projectId: string, first: Buffer, gate: Promise<void>, rest: Buffer, signal?: AbortSignal) => {
+      const body = Readable.toWeb(Readable.from((async function* () { yield first; await gate; yield rest; })())) as unknown as ReadableStream;
+      return fetch(new URL(`/api/v1/projects/${projectId}/files?uploadId=${randomUUID()}&name=gated.txt`, ada.browser.base), {
+        method: 'POST', body, signal, duplex: 'half',
+        headers: { 'content-type': 'application/octet-stream', cookie: ada.browser.cookieHeader(), origin: ada.browser.defaultOrigin },
+      } as RequestInit & { duplex: 'half' });
+    };
+    // Every file the upload created in tmp (the scratch file and anything beside it), once the first chunk is written.
+    const waitForScratch = async (before: Set<string>) => {
+      for (let attempt = 0; attempt < 80; attempt += 1) {
+        const fresh = (await scratch()).filter((name) => !before.has(name));
+        const files = await Promise.all(fresh.map(async (name) => ({ name, bytes: await readFile(join(tmp, name)).catch(() => Buffer.alloc(0)) })));
+        if (files.some((file) => file.bytes.length > 64 * 1024)) {
+          await new Promise((resolve) => setTimeout(resolve, 200)); // anything written beside it lands too
+          const settled = await Promise.all((await scratch()).filter((name) => !before.has(name))
+            .map(async (name) => ({ name, bytes: await readFile(join(tmp, name)).catch(() => Buffer.alloc(0)) })));
+          return { names: settled.map((file) => file.name), files: settled };
+        }
+        await new Promise((resolve) => setTimeout(resolve, 100));
+      }
+      throw new Error('the upload never reached its scratch file');
+    };
+    for (const side of ['A', 'B'] as const) {
+      const needle = `scratch-${side}-${randomUUID()}`;
+      const first = Buffer.from(`${needle} ${'y'.repeat(200_000)}`);
+      let open!: () => void; const gate = new Promise<void>((resolve) => { open = resolve; });
+      const before = new Set(await scratch());
+      const response = start(ids[side].project, first, gate, Buffer.from(' the end'));
+      const during = await waitForScratch(before);
+      if (side === 'A') {
+        assert.ok(during.files.some((file) => file.bytes.subarray(0, 4).toString('ascii') === 'FXF1'), 'A: the scratch file starts as a sealed object');
+        for (const file of during.files) assert.equal(file.bytes.includes(needle), false, `A: no plaintext anywhere in tmp while the upload is open (${file.name})`);
+      } else {
+        assert.ok(during.files.some((file) => file.bytes.includes(needle)), 'B: the plain control writes plaintext');
+      }
+      open();
+      assert.equal((await response).status, 201, `${side}: the gated upload finishes`);
+      // Abort mid-stream: the scratch file goes away.
+      const controller = new AbortController();
+      let neverOpen!: () => void; const stuck = new Promise<void>((resolve) => { neverOpen = resolve; });
+      const beforeAbort = new Set(await scratch());
+      const aborted = start(ids[side].project, first, stuck, Buffer.from('never'), controller.signal).catch(() => null);
+      const pending = await waitForScratch(beforeAbort);
+      controller.abort(); neverOpen();
+      await aborted;
+      let left = true;
+      for (let attempt = 0; attempt < 100 && left; attempt += 1) {
+        const now = await scratch();
+        left = pending.names.some((name) => now.includes(name));
+        if (left) await new Promise((resolve) => setTimeout(resolve, 100));
+      }
+      assert.equal(left, false, `${side}: an aborted upload leaves no scratch file`);
     }
   });
 

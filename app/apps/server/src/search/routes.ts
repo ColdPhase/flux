@@ -3,6 +3,7 @@ import { SEARCH_FILTER_TYPES, SEARCH_LIMITS, SEARCH_PATH, type SearchQuery } fro
 import type { Database } from '@flux/core';
 import type { SessionResolver } from '../identity/index.js';
 import { commandRunner, useDomainErrors } from '../http/commands.js';
+import { sealedSearchBuilds, sealedSearchIndexedWorkspaces, sealedSearchIndexHeap } from '@flux/db';
 import { searchUseCases } from './adapters.js';
 import { SearchCursorCodec } from './cursor.js';
 
@@ -41,6 +42,6 @@ export async function searchRoutes(app: FastifyInstance, { db, sessions, cursorS
   });
   if (exposeWork) {
     app.get<{ Querystring: SearchQuery }>(`${SEARCH_PATH}/explain`, { schema: { querystring } }, async (request) =>
-      search.explain(await principal(request), request.query));
+      ({ ...await search.explain(await principal(request), request.query), sealedIndexes: sealedSearchIndexedWorkspaces(), sealedIndexHeap: sealedSearchIndexHeap(), sealedBuilds: sealedSearchBuilds() }));
   }
 }

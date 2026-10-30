@@ -28,8 +28,8 @@ export function ThreadRoot({ message, projectId, body, author, agentOwner = null
             <strong>{mine ? `${author} · you` : message.authorId === null ? <AgentAuthor message={message} owner={agentOwner} /> : author}</strong>
           </div>
         ) : null}
-        <MessageContent body={message?.body || !message ? <WhenNoQuestion projectId={projectId} messageId={message?.id ?? null}><div className="message-body"><MessageText body={body} people={people} /></div></WhenNoQuestion> : null} files={message?.files} references={message?.references} context={message ? { author: author ?? undefined, at: message.createdAt, caption: message.body, ...photo } : undefined}>
-          <LinkPreviews body={body} />
+        <MessageContent body={message?.body || !message ? <WhenNoQuestion projectId={projectId} messageId={message?.id ?? null}><div className={`message-body${message?.removedAt ? ' message-body--removed' : ''}`}><MessageText body={body} people={people} /></div></WhenNoQuestion> : null} files={message?.files} references={message?.references} context={message ? { author: author ?? undefined, at: message.createdAt, caption: message.body, ...photo } : undefined}>
+          <LinkPreviews body={body} projectId={projectId} messageId={message?.id ?? null} />
           {message ? <MessageObjects message={message} projectId={projectId} preview={preview} thread={task} threadRow={taskRow} />
             : task ? <div className="ws-attach"><DiscussedTask task={task} row={taskRow} /></div> : null}
           {message?.source ? <SourceCitation materialId={message.source.materialId} version={message.source.version} onDenied={onDenied} /> : null}

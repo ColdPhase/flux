@@ -1,4 +1,4 @@
-import { searchRows, type SearchExecutor, type SQL, visibleFilter, accessReader } from '@flux/db';
+import { searchRows, sealedSearchRows, type SearchExecutor, type SQL, visibleFilter, accessReader } from '@flux/db';
 import {
   authorize,
   createSearchUseCases,
@@ -9,6 +9,7 @@ import {
   type SearchAudienceType,
   type SearchCursors,
   type SearchRepository,
+  type SealedSearchRepository,
 } from '@flux/core';
 
 // Adapters that connect core search (#114) to the access policy and the Drizzle rows. Core
@@ -52,6 +53,11 @@ export function searchRepository(db: SearchExecutor): SearchRepository<SQL> {
   return searchRows(db);
 }
 
+/** Encrypted workspaces answer from the in-memory index of this process (F-030 S2b). */
+export function sealedSearchRepository(db: Database): SealedSearchRepository<SQL> {
+  return sealedSearchRows(db);
+}
+
 /** The search use cases bound to a connection. */
 export const searchUseCases = (db: Database, cursors: SearchCursors) =>
-  createSearchUseCases({ access: policySearchAccess(db), rows: searchRepository(db), cursors });
+  createSearchUseCases({ access: policySearchAccess(db), rows: searchRepository(db), sealed: sealedSearchRepository(db), cursors });

@@ -5,6 +5,7 @@ import { backgroundComparisonsEnabled, loadAgentRuntimeConfig } from '@flux/core
 import { startAgentRuntimeReconciler } from './agent-runtime/index.js';
 import { registerDraftSummaryWorker } from './jobs/draft-summary.js';
 import { registerIdempotencyCleanup } from './jobs/idempotency-cleanup.js';
+import { registerSearchChangesCleanup } from './jobs/search-changes-cleanup.js';
 import { registerMorningSummary } from './jobs/morning-summary.js';
 import { assistantSummaryStart, registerAssistantTick } from './assistant/index.js';
 import { registerSampleWorker } from './jobs/sample.js';
@@ -48,6 +49,7 @@ await registerAssistantTick(boss, db, assistantRuns);
 const comparisonsOn = backgroundComparisonsEnabled(process.env);
 await registerComparisonWorker(boss, db, { enabled: comparisonsOn, masterKey: comparisonsOn ? loadBackgroundMasterKey() : null, provider: comparisonProviders(process.env) });
 await registerIdempotencyCleanup(boss, db);
+await registerSearchChangesCleanup(boss, db);
 await registerWorkspaceAiSweep(boss, db);
 // Encrypted workspaces (F-030): the keyring heartbeat and the resume job sent with every unlock.
 const encryption = await startWorkspaceEncryption(boss, db, process.env);

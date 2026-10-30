@@ -36,7 +36,7 @@ export interface SearchAudienceRows {
  * condition. A source that carries its own permission (for example docs) adds one entry here,
  * one in the server's policy adapter and a trigger that writes its rows.
  */
-const AUDIENCE_KEYS: Record<SearchAudienceType, (audience: SearchAudienceRows) => SQL> = {
+export const AUDIENCE_KEYS: Record<SearchAudienceType, (audience: SearchAudienceRows) => SQL> = {
   project: ({ condition }) => sql`SELECT 'project:' || ${schema.projects.id} FROM ${schema.projects} WHERE ${condition}`,
   dm: ({ condition }) => sql`SELECT 'dm:' || ${schema.dms.id} FROM ${schema.dms} WHERE ${condition}`,
   sketch: ({ condition }) => sql`SELECT 'sketch:' || ${schema.sketches.id} FROM ${schema.sketches} WHERE ${condition}`,
@@ -147,7 +147,7 @@ function audienceCte(audiences: SearchAudienceRows[], plan: SearchPlanRows): SQL
       FROM (SELECT ${visibleKeys(audiences)} AS keys) v)`;
 }
 
-function visibleKeys(audiences: SearchAudienceRows[]): SQL {
+export function visibleKeys(audiences: SearchAudienceRows[]): SQL {
   return sql`ARRAY(${sql.join(audiences.map((audience) => AUDIENCE_KEYS[audience.type](audience)), sql` UNION ALL `)})`;
 }
 

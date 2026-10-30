@@ -1,23 +1,28 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
-import { describe, test } from 'node:test';
+import { afterEach, describe, test } from 'node:test';
 import type { WorkspaceRole } from '@flux/contracts';
 import { accessPorts } from '@flux/db';
 import {
   addMember,
+  addProjectView,
   ConflictError,
   changeRole,
   createAgent,
   createDraft,
+  createProject,
   createWorkspace,
   ForbiddenError,
   grantProject,
   InvalidInputError,
+  moveDraft,
   NotFoundError,
   PreconditionRequiredError,
   removeMember,
+  revokeAgent,
   revokeProjectGrant,
   setWorkspaceAiPolicy,
+  shareDraft,
   sweepWorkspaceAi,
   updateDraft,
   VersionConflictError,
@@ -26,6 +31,7 @@ import {
   type AccessPorts,
   type Actor,
   type Database,
+  type DomainEventSink,
   type DraftRecord,
   type GrantRecord,
   type GrantWrite,
@@ -37,6 +43,9 @@ import {
 // The workspace, project, grant, agent and draft use cases over in-memory repositories: no database, no SQL (issues #46, #91).
 // The repositories and the access reader record each call, so a test pins the order of the statements (which lock comes first, that
 // the version precondition follows the authorization, that the event is the last write) and that one mutation is one transaction.
+// Every port is also recorded with the handle it was bound to: each test ends by checking, call by call, that a port created while a
+// transaction was open was bound to that transaction (never to `db` or to another transaction), so a repository that ran outside the
+// use case's locks and savepoint fails here.
 // What the SQL does behind the real repositories is exercised against PostgreSQL by access-policy.test.ts and its siblings.
 
 // The SQL adapters satisfy core's ports: a mismatch fails to compile here and at every call site.
@@ -46,6 +55,7 @@ const WS = randomUUID();
 const PROJECT = randomUUID();
 const DRAFT = randomUUID();
 const GRANT = randomUUID();
+const AGENT = randomUUID();
 const OWNER = 'owner-user';
 const TARGET = 'target-user';
 const now = new Date('2026-10-27T10:00:00.000Z');
@@ -68,11 +78,16 @@ interface Scene {
   grantWrite?: GrantWrite;
   existingGrant?: GrantRecord | null;
   draft?: DraftRecord;
+  views?: string[];
   failStep?: string;
 }
 
-/** Ports whose every call lands in `calls`; a method a use case should not reach is missing, so calling it throws. */
-function scene(options: Scene = {}) {
+/**
+ * Ports whose every call lands in `calls`; a method a use case should not reach is missing, so calling it throws. `bindings` records,
+ * for each port a use case created, the handle it was bound to and which transaction was open then (`checked: false` keeps a scene that
+ * is wrong on purpose out of the end-of-test check).
+ */
+function scene(options: Scene = {}, checked = true) {
   const calls: string[] = [];
   const log = (call: string) => calls.push(call);
   const actor = (principal: Principal, workspaceId: string): Actor => ({ principal, workspaceId, role: principal.kind === 'human' ? options.role ?? 'owner' : null, agent: null, active: true });
@@ -81,13 +96,14 @@ function scene(options: Scene = {}) {
     workspaceAi: async (_workspaceId: string, o?: { lock?: boolean }) => { log(`access.workspaceAi${o?.lock ? '(lock)' : ''}`); return { state: options.aiState ?? 'allowed', epoch: 4, version: 2 }; },
     locateProject: async () => { log('access.locateProject'); return { workspaceId: WS }; },
     lockProjectAccess: async () => { log('access.lockProjectAccess'); },
-    readProject: async () => { log('access.readProject'); return { project, level: 3 }; },
+    readProject: async () => { log('access.readProject'); return { project: { ...project, views: options.views ?? [] }, level: 3 }; },
     locateDraft: async () => { log('access.locateDraft'); return { workspaceId: WS }; },
-    lockDraftForUpdate: async () => { log('access.lockDraftForUpdate'); return { projectId: null }; },
+    lockDraftForUpdate: async () => { log('access.lockDraftForUpdate'); return { projectId: (options.draft ?? draftRow()).projectId }; },
     readDraft: async (_actor: Actor, _id: string, o: { lock: boolean }) => {
       log(`access.readDraft${o.lock ? '(lock)' : ''}`);
       return { draft: options.draft ?? draftRow(), readable: true, level: 0, isOwner: true };
     },
+    readAgent: async () => { log('access.readAgent'); return { id: AGENT, workspaceId: WS, ownerUserId: null, revokedAt: null }; },
   };
   const workspaces = {
     createWithOwner: async (row: { id: string; name: string }) => { log('workspaces.createWithOwner'); return { id: row.id, name: row.name, version: 1, encrypted: false, createdAt: now }; },
@@ -119,12 +135,19 @@ function scene(options: Scene = {}) {
     memberRole: async () => { log('projects.memberRole'); return 'member' as const; },
     deleteGrant: async () => { log('projects.deleteGrant'); },
     get: async () => { log('projects.get'); return project; },
+    insert: async (row: { id: string; name: string; visibility: 'workspace' | 'restricted'; views: string[] }) => {
+      log('projects.insert');
+      return { ...project, id: row.id, name: row.name, visibility: row.visibility, views: row.views };
+    },
+    shownGoals: async () => { log('projects.shownGoals'); return new Map(); },
+    setViews: async (_id: string, views: string[]) => { log('projects.setViews'); return { ...project, views, version: 2 }; },
   };
   const agents = {
     insert: async (row: { id: string; workspaceId: string; name: string; ownerUserId: string | null }) => {
       log('agents.insert');
       return { id: row.id, workspaceId: row.workspaceId, name: row.name, ownerUserId: row.ownerUserId, revokedAt: null, createdAt: now };
     },
+    revoke: async (id: string, revokedAt: Date) => { log('agents.revoke'); return { id, workspaceId: WS, name: 'Helper', ownerUserId: null, revokedAt, createdAt: now }; },
   };
   const drafts = {
     insert: async (row: { id: string; workspaceId: string; projectId: string | null; title: string; body: string; ownerUserId: string | null; ownerAgentId: string | null }) => {
@@ -132,6 +155,10 @@ function scene(options: Scene = {}) {
       return draftRow({ ...row, version: 1, visibility: 'private' });
     },
     updateText: async (_id: string, changes: { title?: string; body?: string }) => { log('drafts.updateText'); return draftRow({ ...changes, version: 4 }); },
+    setAudience: async (_id: string, audience: { projectId: string | null; visibility: 'private' | 'project' | 'workspace' }) => {
+      log('drafts.setAudience');
+      return draftRow({ ...audience, version: 4 });
+    },
   };
   const aiSweep = Object.fromEntries(['endQueuedRuns', 'stopInFlightRuns', 'closeRunTokens', 'endComparisons', 'skipReactionEvents', 'cancelRequests', 'stopUnits', 'revokeSessions']
     .map((step) => [step, async () => {
@@ -143,20 +170,42 @@ function scene(options: Scene = {}) {
     candidates: async () => { log('events.candidates'); return []; },
     insert: async () => { log('events.insert'); },
   };
-  const ports = { workspaces: () => workspaces, projects: () => projects, agents: () => agents, drafts: () => drafts, encryption: () => encryption,
-    aiSweep: () => aiSweep, access: () => access, events: () => events } as unknown as AccessPorts;
+  const bindings: { port: string; handle: string; open: string }[] = [];
+  const names = new WeakMap<object, string>();
+  let transactions = 0;
+  let open = 'db';
+  const bind = <T>(port: string, repository: T) => (handle: unknown) => {
+    bindings.push({ port, handle: handle === db ? 'db' : names.get(handle as object) ?? 'unknown', open });
+    return repository;
+  };
+  const ports = { workspaces: bind('workspaces', workspaces), projects: bind('projects', projects), agents: bind('agents', agents), drafts: bind('drafts', drafts),
+    encryption: bind('encryption', encryption), aiSweep: bind('aiSweep', aiSweep), access: bind('access', access), events: bind('events', events) } as unknown as AccessPorts;
   const db = {
     transaction: async <T>(work: (tx: unknown) => Promise<T>): Promise<T> => {
+      const tx = {};
+      names.set(tx, `tx${++transactions}`);
       log('begin');
-      try { const result = await work({}); log('commit'); return result; } catch (error) { log('rollback'); throw error; }
+      open = names.get(tx)!;
+      try { const result = await work(tx); log('commit'); return result; } catch (error) { log('rollback'); throw error; } finally { open = 'db'; }
     },
   } as unknown as Database;
-  return { calls, ports, db };
+  const assertBound = () => {
+    for (const { port, handle, open: during } of bindings) assert.equal(handle, during, `${port} was bound to ${handle} while ${during} was open`);
+  };
+  const made = { calls, ports, db, bindings, assertBound };
+  if (checked) scenes.push(made);
+  return made;
 }
+
+/** Every scene a test made is checked when it ends: each port was bound to the transaction that was open, or to `db` outside one. */
+const scenes: { assertBound(): void }[] = [];
+const verifyBindings = () => afterEach(() => { for (const made of scenes.splice(0)) made.assertBound(); });
 
 const EVENT_LAST = ['events.candidates', 'events.insert'];
 
 describe('workspace and membership use cases over in-memory repositories', () => {
+  verifyBindings();
+
   test('createWorkspace: the workspace and owner, then the event, in one transaction; agents cannot create one', async () => {
     const s = scene();
     const created = await createWorkspace(human(OWNER), { name: ' Lamp shop ' }, s.db, s.ports);
@@ -265,6 +314,8 @@ describe('workspace and membership use cases over in-memory repositories', () =>
 });
 
 describe('grant, agent and draft use cases over in-memory repositories', () => {
+  verifyBindings();
+
   test('grantProject: the project row for the change, then the actor and grant rows under lock, the write, the event last', async () => {
     const s = scene();
     const granted = await grantProject(human(OWNER), PROJECT, { principal: { kind: 'human', id: TARGET }, role: 'contributor' }, s.db, s.ports);
@@ -344,6 +395,87 @@ describe('grant, agent and draft use cases over in-memory repositories', () => {
     const nothing = scene();
     await assert.rejects(updateDraft(human(OWNER), DRAFT, {}, nothing.db, nothing.ports), InvalidInputError);
     assert.deepEqual(nothing.calls, []);
+  });
+});
+
+describe('the remaining mutations, and the check that every port is bound to its transaction', () => {
+  verifyBindings();
+
+  const decide = ['access.locateDraft', 'access.loadActor(lock)', 'access.lockDraftForUpdate', 'access.readDraft(lock)'];
+  const target = ['access.locateProject', 'access.loadActor(lock)', 'access.lockProjectAccess', 'access.readProject'];
+
+  test('createProject: the actor under lock, the insert, the event last; a caller-supplied sink takes the event instead', async () => {
+    const s = scene();
+    const created = await createProject(human(OWNER), WS, { name: 'Lamp', visibility: 'restricted' }, s.db, s.ports);
+    assert.deepEqual([created.name, created.visibility, created.access], ['Lamp', 'restricted', 'manager']);
+    assert.deepEqual(s.calls, ['begin', 'access.loadActor(lock)', 'projects.insert', ...EVENT_LAST, 'commit']);
+    const sunk = scene();
+    const recorded: string[] = [];
+    const sink: DomainEventSink = { record: async (_principal, _workspaceId, kind) => { recorded.push(kind); } };
+    await createProject(human(OWNER), WS, { name: 'Lamp' }, sunk.db, sunk.ports, sink);
+    assert.deepEqual(recorded, ['project.created.v1']);
+    assert.deepEqual(sunk.calls, ['begin', 'access.loadActor(lock)', 'projects.insert', 'commit'], 'the sink replaces the event ports');
+  });
+
+  test('addProjectView: the project row for the change, the project under lock, the update, the event last; a view already shown writes nothing', async () => {
+    const s = scene();
+    const added = await addProjectView(human(OWNER), PROJECT, { view: 'map' }, s.db, s.ports);
+    assert.deepEqual(added.views, ['map']);
+    assert.deepEqual(s.calls, ['begin', 'projects.lockForGrantChange', ...target, 'projects.shownGoals', 'projects.setViews', ...EVENT_LAST, 'commit']);
+    const again = scene({ views: ['map'] });
+    await addProjectView(human(OWNER), PROJECT, { view: 'map' }, again.db, again.ports);
+    assert.deepEqual(again.calls, ['begin', 'projects.lockForGrantChange', ...target, 'projects.shownGoals', 'commit']);
+  });
+
+  test('shareDraft: the draft row and its project, the version check, the target project under lock, the update, the event last', async () => {
+    const workspaceWide = scene();
+    const shared = await shareDraft(human(OWNER), DRAFT, { scope: 'workspace', expectedVersion: 3 }, workspaceWide.db, workspaceWide.ports);
+    assert.deepEqual([shared.visibility, shared.version], ['workspace', 4]);
+    assert.deepEqual(workspaceWide.calls, ['begin', ...decide, 'drafts.setAudience', ...EVENT_LAST, 'commit']);
+    const inProject = scene({ draft: draftRow({ projectId: PROJECT }) });
+    await shareDraft(human(OWNER), DRAFT, { scope: 'project', expectedVersion: 3 }, inProject.db, inProject.ports);
+    assert.deepEqual(inProject.calls, ['begin', ...decide.slice(0, 3), 'access.lockProjectAccess', 'access.readDraft(lock)', ...target, 'projects.get', 'drafts.setAudience', ...EVENT_LAST, 'commit']);
+    const stale = scene();
+    await assert.rejects(shareDraft(human(OWNER), DRAFT, { scope: 'workspace', expectedVersion: 2 }, stale.db, stale.ports), VersionConflictError);
+    assert.ok(!stale.calls.includes('drafts.setAudience'));
+  });
+
+  test('moveDraft: the draft row, the version check, the target project under lock, the update, the event last', async () => {
+    const s = scene();
+    const moved = await moveDraft(human(OWNER), DRAFT, { projectId: PROJECT, visibility: 'project', expectedVersion: 3 }, s.db, s.ports);
+    assert.deepEqual([moved.projectId, moved.visibility], [PROJECT, 'project']);
+    assert.deepEqual(s.calls, ['begin', ...decide, ...target, 'drafts.setAudience', ...EVENT_LAST, 'commit']);
+    const out = scene();
+    await moveDraft(human(OWNER), DRAFT, { projectId: null, visibility: 'private', expectedVersion: 3 }, out.db, out.ports);
+    assert.deepEqual(out.calls, ['begin', ...decide, 'drafts.setAudience', ...EVENT_LAST, 'commit']);
+  });
+
+  test('revokeAgent: the agent evaluated under lock, the revocation, the event last', async () => {
+    const s = scene();
+    const revoked = await revokeAgent(human(OWNER), AGENT, s.db, s.ports);
+    assert.equal(revoked.id, AGENT);
+    assert.notEqual(revoked.revokedAt, null);
+    assert.deepEqual(s.calls, ['begin', 'access.readAgent', 'access.loadActor(lock)', 'agents.revoke', ...EVENT_LAST, 'commit']);
+  });
+
+  test('every port a mutation creates is bound to that mutation\'s transaction, and the check notices one that is not', async () => {
+    const s = scene();
+    await addMember(human(OWNER), WS, { userId: TARGET, role: 'member' }, s.db, s.ports);
+    assert.deepEqual(s.bindings.map(({ port, handle }) => `${port}:${handle}`), ['workspaces:tx1', 'access:tx1', 'access:tx1', 'events:tx1']);
+    const sweep = scene();
+    await sweepWorkspaceAi({ workspaceId: WS, epoch: 2 }, sweep.db, sweep.ports);
+    assert.deepEqual(sweep.bindings.map(({ handle }) => handle), ['tx1', 'tx2', 'tx3', 'tx4', 'tx5', 'tx6', 'tx7'], 'each sweep step binds its own transaction');
+    const miswired = scene({}, false);
+    await miswired.db.transaction(async () => { miswired.ports.workspaces(miswired.db); });
+    assert.throws(() => miswired.assertBound(), /workspaces was bound to db while tx1 was open/);
+    const stale = scene({}, false);
+    let first: unknown;
+    await stale.db.transaction(async (tx) => { first = tx; stale.ports.workspaces(tx as never); });
+    await stale.db.transaction(async () => { stale.ports.workspaces(first as never); });
+    assert.throws(() => stale.assertBound(), /workspaces was bound to tx1 while tx2 was open/);
+    const outside = scene({}, false);
+    outside.ports.workspaces(outside.db);
+    outside.assertBound();
   });
 });
 

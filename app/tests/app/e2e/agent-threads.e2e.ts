@@ -4,6 +4,7 @@ import http from 'node:http';
 import net from 'node:net';
 import { after, before, test } from 'node:test';
 import { chromium, webkit, type Browser } from 'playwright';
+import { expect } from 'playwright/test';
 import type { ConversationMessage, TaskAgentThread, WorkItem } from '@flux/contracts';
 import { addMember, expectStatus, grant, person, password, project, workspace, type Person } from '../support/people.js';
 
@@ -73,7 +74,8 @@ test('task Details links to the agents’ thread with its message count and open
       await page.locator(`[data-detail-kind="work"][data-detail-id="${f.task.id}"]`).waitFor();
       const link = page.locator(`[data-agent-thread-link="${f.task.id}"]`);
       await link.waitFor();
-      assert.match(await link.innerText(), /Agents’ thread · \d+ messages?/, 'Details names the thread with its message count');
+      // The link shows at once; its count follows the read of the thread (AgentThreadLink), so this retries until the count is there.
+      await expect(link, 'Details names the thread with its message count').toHaveText(/Agents’ thread · \d+ messages?/, { timeout: 15_000 });
       assert.equal(await page.locator('[data-agent-thread-task]').count(), 0, 'Details itself holds no thread panel');
       await link.click();
       await page.waitForURL(new RegExp(`/agents\\?thread=${f.task.id}`));

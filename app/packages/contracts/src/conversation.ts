@@ -32,6 +32,8 @@ export interface ConversationMessageFields {
   /** Monotonic per conversation, including concurrent sends. */
   sequence: number;
   createdAt: string;
+  /** Present only when the assistant's Undo took the message back (#68): `body` is then a fixed marker, and the message keeps its place. */
+  removedAt?: string;
   /** Present only for a saved blocker, a published result or an explicit public handoff. */
   contribution?: MessageContribution;
   /**
@@ -68,6 +70,36 @@ export type MessageReferenceCard =
     target: MessageReferenceTarget;
   }
   | { kind: MessageReferenceKind; state: 'unavailable' };
+
+/**
+ * The web addresses of a message that get a link card (#469), in order and without repeats: the one rule the reader and the
+ * server share, so a card the server returns lands on the address the reader shows. The server reads them from the stored body,
+ * never from a request, so no caller can name an address for it to fetch.
+ */
+export const LINK_URL_SOURCE = String.raw`https?:\/\/[^\s<>"']+[^\s<>"'.,;:!?)\]]`;
+export const LINK_CARD_LIMIT = 3;
+export const LINK_URL_MAX_LENGTH = 2048;
+export function messageLinkUrls(body: string): string[] {
+  const found = new Set<string>();
+  for (const match of body.matchAll(new RegExp(LINK_URL_SOURCE, 'g'))) {
+    if (match[0].length <= LINK_URL_MAX_LENGTH) found.add(match[0]);
+    if (found.size === LINK_CARD_LIMIT) break;
+  }
+  return [...found];
+}
+
+/**
+ * `GET /api/v1/projects/:projectId/messages/:messageId/link-previews` (#469, F-026 §6): what the page behind each web address
+ * of a stored message says about itself, fetched by the Flux server and shown as plain text. Only addresses with something to
+ * show are listed; the reader draws the address card for every other one.
+ * - `ready`: fetched (or cached) now; `cards` may be empty.
+ * - `off`: the operator has not turned link previews on (`FLUX_LINK_PREVIEWS`); no page was fetched.
+ * - `sealed`: the workspace is encrypted; no page is ever fetched for it, so none of its addresses leave the server.
+ * - `busy`: this person asked for too many fetches lately; retry later.
+ */
+export interface LinkPreviewCard { url: string; title: string | null; description: string | null }
+export interface MessageLinkPreviews { status: 'ready' | 'off' | 'sealed' | 'busy'; cards: LinkPreviewCard[] }
+export const messageLinkPreviewsPath = (projectId: string, messageId: string) => `/api/v1/projects/${projectId}/messages/${messageId}/link-previews`;
 
 /** Optional current-project display metadata; never changes a stored author or grants access. */
 export type AgentProjectOwner = { kind: 'workspace' } | { kind: 'human'; id: string };

@@ -19,6 +19,18 @@ export interface FieldSeal {
   open(field: string, identity: readonly string[], envelope: string): string;
   digest(field: string, identity: readonly string[], bytes: Buffer | string): string;
   digestMatches(field: string, identity: readonly string[], stored: string, bytes: Buffer | string): boolean;
+  /** The key version new seals use (core's WorkspaceSeal); 0 or absent for a plain workspace. */
+  readonly currentVersion?: number;
+  /** One file's cipher (core's WorkspaceSeal): null for a plain workspace. */
+  fileCipher?(fileId: string): StoredFileCipher | null;
+}
+
+/** Streams a file's plaintext into its stored object and back (F-030 Files); core's `FileCipher` meets it. */
+export interface StoredFileCipher {
+  /** Turns plaintext chunks into the object: the first output carries the header, `final` the tag. */
+  sealer(): { update(chunk: Uint8Array): Buffer; final(): Buffer };
+  /** The plaintext of a stored object, only after its tag verifies; throws otherwise. */
+  open(object: Buffer): Buffer;
 }
 
 export type SealResolver = (executor: DbExecutor, workspaceId: string, options: { write: boolean }) => Promise<FieldSeal>;
@@ -46,7 +58,7 @@ const plain = new Set<string>();
 const PLAIN_LIMIT = 50_000;
 
 const passThrough = (workspaceId: string): FieldSeal => ({
-  sealed: false, workspaceId,
+  sealed: false, workspaceId, currentVersion: 0, fileCipher: () => null,
   seal: (_f, _i, value) => value,
   open: (_f, _i, value) => value,
   digest: () => { throw new Error('A plain workspace stores its digests as before'); },
@@ -193,4 +205,13 @@ export async function openAliased<T extends object, K extends keyof T>(executor:
     if (!seal.sealed || !identity) return row;
     return { ...row, [spec.key]: openField(spec.table, spec.column, identity, row[spec.key] as string | null, seal) };
   });
+}
+
+/** The cipher of one file of a workspace: null for a plain one; for a sealed one `sealFor`'s (423 while locked). */
+export async function fileCipherOf(executor: DbExecutor, workspaceId: string, fileId: string, options: { write: boolean }): Promise<StoredFileCipher | null> {
+  const seal = await sealOf(executor, workspaceId, options);
+  if (!seal.sealed) return null;
+  const cipher = seal.fileCipher?.(fileId);
+  if (!cipher) throw new SealsUnavailableError(workspaceId); // never plaintext bytes for a sealed workspace
+  return cipher;
 }

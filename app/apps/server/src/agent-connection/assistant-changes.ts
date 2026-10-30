@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { AGENT_MCP_ENTRIES, ASSISTANT_CHANGE_LIMITS, assistantChangeWords, assistantWorkChangeArgs, type AgentJsonValue, type AgentOperation, type AgentPostcondition,
   type AgentScope, type AssistantObjectType, type AuthenticatedAgentRuntime } from '@flux/contracts';
-import { assistantChangeRows, lockAgentMcpPolicy, needsYouRows, sketchRows, type AssistantChangeRow, type DbExecutor, loadActor, accessReader } from '@flux/db';
+import { assistantChangeRows, assistantRemovalRows, lockAgentMcpPolicy, needsYouRows, sketchRows, type AssistantChangeRow, type DbExecutor, loadActor, accessReader } from '@flux/db';
 import { changedParagraphs, classifyAssistantChange, DomainError, fieldWords, type UndoRecord, evaluateProject, redactSecrets, type Database,
   type Transaction } from '@flux/core';
 import { nativeConversationsInEventSession } from '../conversation/store.js';
@@ -51,6 +51,8 @@ export function redactCall<T>(value: T): T {
 }
 
 const created = (title: string): UndoRecord => ({ plan: { kind: 'created' }, before: null, after: title || null });
+/** A map, a result, a decision or a message the assistant made, which only the assistant's Undo can take back while nobody used it (#68). */
+const removal = (title: string, plan: Omit<Extract<UndoRecord['plan'], { kind: 'removal' }>, 'kind'> = {}): UndoRecord => ({ plan: { kind: 'removal', ...plan }, before: null, after: title || null });
 const enforceRead = (allowed: boolean) => { if (!allowed) throw new DomainError(404, 'PROJECT_NOT_FOUND', 'Project not found'); };
 /**
  * What an applied or skipped change keeps of its call: the tool and which fields it changed (a status value only),
@@ -83,6 +85,8 @@ interface Target {
   recipient?: string;
   /** What Undo needs, read before the change (A4); null when the change cannot be taken back. */
   undo: UndoRecord | null;
+  /** The task a result finishes, as it is before: Undo puts it back if nobody touched it since. */
+  finishesBefore?: { workId: string; status: string; blocker: string | null };
   words: ReturnType<typeof assistantChangeWords>;
 }
 
@@ -92,6 +96,36 @@ type WorkView = NonNullable<Awaited<ReturnType<ReturnType<typeof assistantChange
 /** One task field as Undo compares it: the stored value, waiting-for as the person's id, prerequisites sorted. */
 const workField = (work: WorkView, key: string): unknown =>
   key === 'waitingFor' ? work.waitingForUserId : ((work as unknown as Record<string, unknown>)[key] ?? null);
+
+/**
+ * What taking back a just-made map, result, decision or message needs, read from what the change really wrote (a trimmed title, the
+ * task a result finished and the version it has now). Null for any other change, and for a message in a task's agents' thread.
+ */
+async function removalUndo(tx: Transaction, operation: string, value: Record<string, unknown>, postconditions: AgentPostcondition[], target: Target,
+  agentId: string): Promise<UndoRecord | null> {
+  const rows = assistantChangeRows(tx as DbExecutor);
+  const made = producedId(value);
+  if (!made) return null;
+  switch (operation) {
+    case 'map.create': {
+      const map = await rows.map(made);
+      return map ? removal(map.title, { title: map.title }) : null;
+    }
+    case 'decision.propose': {
+      const version = afterVersion(postconditions);
+      return removal(target.title, version ? { version } : {});
+    }
+    case 'result.record': {
+      const before = target.finishesBefore;
+      const work = before ? await rows.work(before.workId) : null;
+      const finished = before && work && before.status !== 'done' && String(workField(work, 'status')) === 'done';
+      return removal(target.title, finished ? { finishes: before } : {});
+    }
+    case 'conversation.create': case 'conversation.reply':
+      return await assistantRemovalRows(tx as DbExecutor).messageIsUndoable(made, agentId) ? removal(target.title) : null;
+    default: return null;
+  }
+}
 
 /** Who made the target and how the change reads, read inside the change's transaction. */
 async function describe(tx: Transaction, operation: string, objectId: string | null, payload: Record<string, unknown>,
@@ -111,7 +145,8 @@ async function describe(tx: Transaction, operation: string, objectId: string | n
       if (!work) return { ...base, objectId: null, title: text(payload.title) };
       const maker = { userId: work.ownerUserId ?? (work.createdByKind === 'human' ? work.createdById : null),
         agentId: work.ownerAgentId ?? (work.createdByKind === 'agent' ? work.createdById : null) };
-      return { ...base, objectId: null, title: text(payload.title), mine: ours(maker), maker: otherPerson(maker) };
+      return { ...base, objectId: null, title: text(payload.title), mine: ours(maker), maker: otherPerson(maker),
+        finishesBefore: { workId: work.id, status: String(workField(work, 'status')), blocker: (workField(work, 'blocker') as string | null) ?? null } };
     }
     case 'work.update': {
       const work = objectId ? await rows.work(objectId) : null;
@@ -376,6 +411,8 @@ export function assistantChangeExecutor(db: Database, claims: FluxMcpClaims) {
         // The accepted effect is a native human creation. Its existing creation-Undo contract excludes
         // human-origin tasks; do not invent an AI origin or advertise an Undo that native commands refuse.
         let undo = approval?.suggestion && operation === 'work.create' ? null : target.undo;
+        // A map, a result, a decision and a message are the assistant's own to take back (#68), but a suggestion a person accepted was made as that person.
+        if (!approval?.suggestion) undo = await removalUndo(tx, operation, produced.value as Record<string, unknown>, produced.postconditions, target, authority.agentId) ?? undo;
         if (undo?.plan.kind === 'fields' && objectId) {
           const fields = undo.plan.fields;
           const read: ((key: string) => unknown) | null = operation === 'work.update' ? await rows.work(objectId).then((work) => work && ((key: string) => workField(work, key)))

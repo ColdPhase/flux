@@ -31,7 +31,8 @@ export interface LoadOptions {
 
 // What a decision needs to know about each kind of object. The reader returns whole table rows,
 // which are assignable to these; evaluations are generic in the row, so callers that hold the
-// adapter keep every column (the use cases in `domain.ts` map them to the API's shapes).
+// adapter keep every column (the use cases in `workspaces.ts`, `projects.ts`, `grants.ts`, `agents.ts` and
+// `drafts.ts` read them through `RecordReader` and map them to the API's shapes).
 export interface ProjectFacts { id: string; workspaceId: string; visibility: 'workspace' | 'restricted' }
 export interface DraftFacts {
   id: string;

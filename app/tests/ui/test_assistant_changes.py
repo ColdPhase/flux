@@ -10,6 +10,7 @@ its verb, at computer and phone width.
 from __future__ import annotations
 
 import json
+import os
 import re
 import time
 import unittest
@@ -19,6 +20,7 @@ from playwright.sync_api import Browser, BrowserContext, Page, Route, expect, sy
 
 from test_app_shell import DESKTOP, ORIGIN, PHONE, UPSTREAM, shot, start_forwarder
 
+UI_BROWSER = os.environ.get("FLUX_UI_BROWSER", "chromium")  # chromium (default) or webkit, as in the other journeys (#68 AC-8)
 PASSWORD = "waiting for my ok"
 STAMP = int(time.time() * 1000)
 ADA = {"name": "Ada Brandt", "email": f"ada.changes+{STAMP}@example.test"}
@@ -39,7 +41,7 @@ class AssistantChanges(unittest.TestCase):
         if UPSTREAM:
             start_forwarder(ORIGIN, UPSTREAM)
         cls.pw = sync_playwright().start()
-        cls.browser = cls.pw.chromium.launch()
+        cls.browser = getattr(cls.pw, UI_BROWSER).launch()
         expect.set_options(timeout=10000)
 
     @classmethod

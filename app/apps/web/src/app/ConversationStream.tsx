@@ -854,8 +854,8 @@ function RootItem(props: RootItemProps | QueuedRootProps) {
       {!mine && !stored.continued ? <div className="project-convo__message-meta">
         <strong>{mine ? `${name} · you` : message.authorId === null ? <AgentAuthor message={message} owner={agentAuthorOwner(message.author, owners)} /> : <RefLink className="project-convo__person" to={`/dm/new?workspace=${project.workspaceId}&with=${message.authorId}`} title={`Message ${name} directly`}>{name}</RefLink>}</strong>
       </div> : null}
-      <MessageContent body={message.body ? <WhenNoQuestion projectId={project.id} messageId={message.id}><div className="message-body"><MessageText body={message.body} people={people} /></div></WhenNoQuestion> : null} files={message.files} references={message.references} context={{ author: name, at: message.createdAt, caption: message.body, place: project.name, onReply: writable ? () => onOpen(root, true) : undefined, onCreateTask: writable ? () => void makeWork.create(message) : undefined }}>
-        <LinkPreviews body={message.body} />
+      <MessageContent body={message.body ? <WhenNoQuestion projectId={project.id} messageId={message.id}><div className={`message-body${message.removedAt ? ' message-body--removed' : ''}`}><MessageText body={message.body} people={people} /></div></WhenNoQuestion> : null} files={message.files} references={message.references} context={{ author: name, at: message.createdAt, caption: message.body, place: project.name, onReply: writable ? () => onOpen(root, true) : undefined, onCreateTask: writable ? () => void makeWork.create(message) : undefined }}>
+        <LinkPreviews body={message.body} projectId={project.id} messageId={message.id} />
         <MessageObjects message={message} projectId={project.id} preview={messageWork.previews?.get(message.id) ?? null} thread={root.task ?? null} threadRow={taskRow} />
         {message.source ? <SourceCitation materialId={message.source.materialId} version={message.source.version} onDenied={onDenied} /> : null}
       </MessageContent>

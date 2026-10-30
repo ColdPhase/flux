@@ -41,6 +41,9 @@
 .thread__feed { flex: 1; min-height: 0; overflow: auto; overscroll-behavior: contain; overflow-anchor: none; }
 /* The pane is the container of its messages' toolbar: below 400px it is one button (work/message-actions.css). */
 .thread__feed { container: thread-feed / inline-size; }
+/* The conversation column is the container of its reference cards: below 760px (the reading column's own width: a phone, a tablet,
+   a small window) a card is the one-row form of the Spokój boards, as in the thread (work/work.css, #665). */
+.project-convo__feed { container: conversation-feed / inline-size; }
 /* Laid out but hidden until its first bounded reads settle (#155, at most 1 s), so nothing shifts as they arrive. */
 .thread__feed.is-opening { visibility: hidden; }
 .thread__in { padding: 18px 20px 12px; }
@@ -72,3 +75,6 @@
 }
 
 .thread .project-convo__message.is-continued { margin-top: 4px; }
+
+/* A message the assistant's Undo took back keeps its place and says so quietly (#68). */
+.message-body--removed { color: var(--t2); font-style: italic; }
