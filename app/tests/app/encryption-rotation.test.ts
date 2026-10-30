@@ -87,8 +87,9 @@ async function seed(c: Club, count: number) {
   const project = await post(`/api/v1/workspaces/${c.ws}/projects`, { name: texts.project, visibility: 'workspace' });
   texts.messages.push(canary('opening'));
   const conversation = await post(`/api/v1/projects/${project.id}/conversations`, { body: texts.messages[0], clientMessageId: randomUUID() });
-  for (let i = 1; i < count; i += 10) {
-    const batch = Array.from({ length: Math.min(10, count - i) }, () => canary('message'));
+  // Four at a time: they all lock the conversation's sequence row, and the request pool's statement limit is 2 s.
+  for (let i = 1; i < count; i += 4) {
+    const batch = Array.from({ length: Math.min(4, count - i) }, () => canary('message'));
     texts.messages.push(...batch);
     await Promise.all(batch.map((body) => post(`/api/v1/conversations/${conversation.id}/messages`, { body, clientMessageId: randomUUID() })));
   }
