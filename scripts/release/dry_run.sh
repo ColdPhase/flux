@@ -15,12 +15,21 @@
 # the release asset set of #654 or later (a6e9851d1). Its agent-runtime digest and SBOMs are this commit's: the upgrade
 # leg never pulls the runtime image.
 #
+# FLUX_DRYRUN_PLATFORMS=linux/amd64,linux/arm64 builds both images (and the previous one) for those platforms like the
+# workflow: a docker-container builder with the workflow's pinned BuildKit, BuildKit provenance (mode=max) and SBOM
+# attestations with the workflow's pinned scanner, pushed to the throwaway registry as one index each. It then checks
+# the index platforms and attestations and runs the Codex/Claude Code checks on every platform. Foreign platforms need
+# QEMU binfmt on the engine (the workflow's pinned emulator, which changes the host kernel's binfmt_misc until reboot):
+#   docker run --privileged --rm docker.io/tonistiigi/binfmt:qemu-v10.2.3@sha256:400a4873b838d1b89194d982c45e5fb3cda4593fbfd7e08a02e76b03b21166f0 --install arm64
+# FLUX_DRYRUN_SMOKE_PLATFORM=linux/arm64 runs the packaged install, backup/restore and upgrade smokes on that platform
+# (DOCKER_DEFAULT_PLATFORM; emulated unless the engine is native). Emulation is not a native platform test.
 # Ports: FLUX_DRYRUN_PORT (default 25800): registry on +9, packaged install on +1, restore on +2, runtime on +3.
 # FLUX_DRYRUN_PROJECT (default fluxdry<pid>) prefixes the Compose projects, the registry container and nothing else.
 # Runs on GNU/Linux and macOS (bash 3.2, BSD sed); on Docker Desktop the engine is a Linux VM of the host architecture.
 # The runtime smoke needs the engine's kernel to have Yama ptrace_scope >= 1; otherwise this script runs the
 # part that does not need it and says what was not run. Not covered (needs the workflow): linux/arm64 and the
-# multi-platform index, QEMU, provenance and SBOM attestations, GHCR, anonymous pulls.
+# multi-platform index, QEMU, provenance and SBOM attestations unless FLUX_DRYRUN_PLATFORMS is set; always GHCR,
+# actions/attest (Sigstore), anonymous pulls.
 set -euo pipefail
 
 root=$(cd "$(dirname "$0")/../.." && pwd)
@@ -30,11 +39,17 @@ out=${1:-}
 run_id=${FLUX_DRYRUN_PROJECT:-fluxdry$$}
 previous_rev=${FLUX_DRYRUN_PREVIOUS:-}
 syft_image=${FLUX_DRYRUN_SYFT:-anchore/syft:v1.54.0}
+platforms=${FLUX_DRYRUN_PLATFORMS:-}
+smoke_platform=${FLUX_DRYRUN_SMOKE_PLATFORM:-}
+# The workflow's pins (final-release.yml): BuildKit and the BuildKit SBOM scanner.
+buildkit_image=moby/buildkit:v0.33.0@sha256:6c2fa84a6b61ccd72899dde4239f8d5717f05f9a8ca6f3cad185fb1a95a94de3
+sbom_scanner=docker/buildkit-syft-scanner@sha256:ae4f3b554449e7e25548e7d8ccc029d17357348e30c6e3df01b92bc93654d6a9
 version=v0.1.0-rc.1
 previous_version=
 if [ -n "$previous_rev" ]; then version=v0.1.0-rc.2; previous_version=v0.1.0-rc.1; fi
 work=$(mktemp -d "${TMPDIR:-/tmp}/flux-release-dryrun.XXXXXX")
 registry="$run_id-registry"
+builder="$run_id-builder"
 step() { printf '\n== %s\n' "$*"; }
 fail() { echo "dry_run: $*" >&2; exit 1; }
 sha256() { if command -v sha256sum >/dev/null 2>&1; then sha256sum "$@"; else shasum -a 256 "$@"; fi; }
@@ -48,6 +63,7 @@ cleanup() {
     docker network ls -q --filter "label=com.docker.compose.project=$project" | xargs -r docker network rm >/dev/null 2>&1 || true
   done
   docker rm -f "$registry" >/dev/null 2>&1 || true
+  [ -z "$platforms" ] || docker buildx rm -f "$builder" >/dev/null 2>&1 || true
   docker image rm -f "127.0.0.1:$registry_port/flux:dry" "127.0.0.1:$registry_port/flux:prev" \
     "127.0.0.1:$registry_port/flux-agent-runtime:dry" >/dev/null 2>&1 || true
   rm -rf "$work"
@@ -72,6 +88,19 @@ for _ in $(seq 1 30); do curl -fsS "http://127.0.0.1:$registry_port/v2/" >/dev/n
 curl -fsS "http://127.0.0.1:$registry_port/v2/" >/dev/null
 
 platform="linux/$(docker version --format '{{.Server.Arch}}')"
+if [ -n "$platforms" ]; then
+  step "Multi-platform builder: $platforms, BuildKit $buildkit_image"
+  for p in ${platforms//,/ }; do
+    arch=$(docker run --rm --platform "$p" --network none --entrypoint uname "$syft_image" -m 2>/dev/null ||
+           docker run --rm --platform "$p" --network none alpine:3.21 uname -m 2>/dev/null) ||
+      fail "the engine cannot run $p (install QEMU binfmt, see the header of this script)"
+    echo "$p runs here as $arch"
+  done
+  printf '[registry."127.0.0.1:%s"]\n  http = true\n  insecure = true\n' "$registry_port" > "$work/buildkitd.toml"
+  docker buildx create --name "$builder" --driver docker-container --driver-opt network=host \
+    --driver-opt "image=$buildkit_image" --buildkitd-config "$work/buildkitd.toml" >/dev/null
+  docker buildx inspect --bootstrap "$builder" | grep -E '^(Name|Driver|Platforms|BuildKit version):' || true
+fi
 # The digest the registry serves for a tag. `docker inspect` RepoDigests can name another manifest than the one a
 # push stored (observed on Docker Desktop's containerd image store), and pulling by it would then fail.
 registry_digest() { # repository tag
@@ -81,10 +110,20 @@ registry_digest() { # repository tag
 build_push() { # target repository tag [directory holding docker/Dockerfile and app/; default the candidate] [revision] [version]
   start=$(date +%s)
   dir=${4:-$work/src}; rev=${5:-$sha}; ver=${6:-$version}
+  labels=(--label org.opencontainers.image.source=https://github.com/ColdPhase/flux
+    --label "org.opencontainers.image.revision=$rev" --label "org.opencontainers.image.version=$ver")
+  if [ -n "$platforms" ]; then
+    # The workflow's build-push-action settings, with a tag instead of push-by-digest so the registry can name the index.
+    ( cd "$dir" && docker buildx build --builder "$builder" --platform "$platforms" --target "$1" -f docker/Dockerfile \
+        "${labels[@]}" --provenance mode=max --sbom "generator=$sbom_scanner" --progress plain \
+        --output "type=image,name=127.0.0.1:$registry_port/$2:$3,push=true" app ) > "$work/build-$2-$3.log" 2>&1 ||
+      { tail -n 60 "$work/build-$2-$3.log"; fail "build of $2:$3 failed"; }
+    docker pull -q "127.0.0.1:$registry_port/$2:$3" > "$work/push-$2-$3.log" 2>&1 || { cat "$work/push-$2-$3.log"; fail "pull of $2:$3 failed"; }
+    echo "$2:$3: built for $platforms and pushed in $(( $(date +%s) - start )) s"
+    return
+  fi
   ( cd "$dir" && docker buildx build --platform "$platform" --target "$1" -f docker/Dockerfile \
-      --label org.opencontainers.image.source=https://github.com/ColdPhase/flux \
-      --label "org.opencontainers.image.revision=$rev" --label "org.opencontainers.image.version=$ver" \
-      --progress plain -t "127.0.0.1:$registry_port/$2:$3" --load app ) > "$work/build-$2-$3.log" 2>&1 ||
+      "${labels[@]}" --progress plain -t "127.0.0.1:$registry_port/$2:$3" --load app ) > "$work/build-$2-$3.log" 2>&1 ||
     { tail -n 60 "$work/build-$2-$3.log"; fail "build of $2:$3 failed"; }
   docker push "127.0.0.1:$registry_port/$2:$3" > "$work/push-$2-$3.log" 2>&1 || { cat "$work/push-$2-$3.log"; fail "push of $2:$3 failed"; }
   echo "$2:$3: built and pushed in $(( $(date +%s) - start )) s ($platform)"
@@ -116,17 +155,56 @@ if [ -n "$previous_rev" ]; then
   echo "previous application $previous_digest"
 fi
 
-step "Pinned Codex in, Claude Code out (the workflow's check, on the host platform)"
+if [ -n "$platforms" ]; then
+  step "Index platforms and attestations (the workflow's 'Confirm both platform manifests', plus BuildKit's attestations)"
+  for image in flux flux-agent-runtime; do
+    docker buildx imagetools inspect --raw "127.0.0.1:$registry_port/$image:dry" > "$work/index-$image.json"
+    python3 - "$work/index-$image.json" "$image" "$platforms" <<'PY'
+import json, sys
+index = json.load(open(sys.argv[1], encoding="utf-8"))
+items = index.get("manifests", [])
+found = {f"{m['platform']['os']}/{m['platform']['architecture']}" for m in items if m.get("platform", {}).get("os") != "unknown"}
+wanted = set(sys.argv[3].split(","))
+assert wanted <= found, (found, wanted)
+attest = [m for m in items if m.get("annotations", {}).get("vnd.docker.reference.type") == "attestation-manifest"]
+assert len(attest) == len(wanted), f"{len(attest)} attestation manifests for {len(wanted)} platforms"
+print(f"{sys.argv[2]}: index {index.get('mediaType')}, platforms {sorted(found)}, {len(attest)} attestation manifests")
+PY
+    # BuildKit's in-toto statements: SLSA provenance (mode=max) and SPDX SBOM per platform.
+    docker buildx imagetools inspect "127.0.0.1:$registry_port/$image:dry" --format '{{json .Provenance}}' > "$work/prov-$image.json"
+    docker buildx imagetools inspect "127.0.0.1:$registry_port/$image:dry" --format '{{json .SBOM}}' > "$work/sbom-attest-$image.json"
+    python3 - "$work/prov-$image.json" "$work/sbom-attest-$image.json" "$image" "$sha" <<'PY'
+import json, sys
+prov, sbom = json.load(open(sys.argv[1])), json.load(open(sys.argv[2]))
+def per_platform(doc):  # one platform: the statement itself; several: a map platform -> statement
+    return doc if all(k.startswith("linux/") for k in doc) else {"single": doc}
+for plat, p in per_platform(prov).items():
+    pred = p.get("SLSA", {})
+    assert pred, f"no provenance for {plat}"
+    text = json.dumps(pred)
+    assert "buildDefinition" in text or "invocation" in text, plat
+for plat, b in per_platform(sbom).items():
+    assert b.get("SPDX", {}).get("packages"), f"no SPDX SBOM for {plat}"
+    print(f"{sys.argv[3]} {plat}: SLSA provenance present; SBOM attestation {len(b['SPDX']['packages'])} packages")
+PY
+  done
+fi
+
 pinned=$(grep -o 'rust-v[0-9]*\.[0-9]*\.[0-9]*' docker/Dockerfile | sort -u)
 runtime_ref="127.0.0.1:$registry_port/flux-agent-runtime@$runtime_digest"
-version_line=$(docker run --rm --network none --entrypoint /opt/flux-runtime/codex/bin/codex "$runtime_ref" --version)
-[ "$version_line" = "codex-cli ${pinned#rust-v}" ] || fail "Codex reports '$version_line'"
-docker run --rm --network none --entrypoint sh "$runtime_ref" -c '
-  ! command -v claude >/dev/null 2>&1 &&
-  [ -z "$(find / -xdev \( -name claude -o -name claude-code \) -not -path "/proc/*" 2>/dev/null | head -n 1)" ] &&
-  [ -z "$(ls -A /opt/flux-tools)" ]' || fail "Claude Code is in the runtime image"
-echo "$version_line; no Claude Code; empty /opt/flux-tools"
-docker run --rm --network none --entrypoint sh "$runtime_ref" -c 'command -v gpg' && echo "gpg present (runtime-install)"
+for check_platform in $(printf '%s' "${platforms:-$platform}" | tr ',' ' '); do
+  step "Pinned Codex in, Claude Code out (the workflow's check) on $check_platform"
+  version_line=$(docker run --rm --platform "$check_platform" --network none --entrypoint /opt/flux-runtime/codex/bin/codex "$runtime_ref" --version)
+  [ "$version_line" = "codex-cli ${pinned#rust-v}" ] || fail "Codex reports '$version_line' on $check_platform"
+  docker run --rm --platform "$check_platform" --network none --entrypoint sh "$runtime_ref" -c '
+    ! command -v claude >/dev/null 2>&1 &&
+    [ -z "$(find / -xdev \( -name claude -o -name claude-code \) -not -path "/proc/*" 2>/dev/null | head -n 1)" ] &&
+    [ -z "$(ls -A /opt/flux-tools)" ]' || fail "Claude Code is in the runtime image ($check_platform)"
+  echo "$check_platform: $version_line; no Claude Code; empty /opt/flux-tools; $(docker run --rm --platform "$check_platform" --network none --entrypoint uname "$runtime_ref" -m)"
+  docker run --rm --platform "$check_platform" --network none --entrypoint sh "$runtime_ref" -c 'command -v gpg' && echo "gpg present (runtime-install)"
+  docker run --rm --platform "$check_platform" --network none --entrypoint node "127.0.0.1:$registry_port/flux@$app_digest" -e \
+    'console.log(`application image: node ${process.version} ${process.arch}`)'
+done
 echo "arm64 Codex download checksum (BuildKit ADD --checksum, no emulation):"
 docker buildx build --platform linux/arm64 --target codex-arm64 -f docker/Dockerfile --progress plain --output type=cacheonly app 2>&1 | grep -E 'DONE|ERROR|checksum' | tail -n 3
 
@@ -193,6 +271,12 @@ if [ -n "$previous_rev" ]; then
   previous_env=(env "FLUX_SMOKE_PREVIOUS_ASSETS=$work/previous-local-assets")
 fi
 
+if [ -n "$smoke_platform" ]; then
+  # Compose pulls and creates every container for this platform (from the multi-platform indexes).
+  export DOCKER_DEFAULT_PLATFORM=$smoke_platform
+  export FLUX_SMOKE_WAIT=${FLUX_SMOKE_WAIT:-1800}
+  echo "smokes on $smoke_platform (DOCKER_DEFAULT_PLATFORM; up --wait allows $FLUX_SMOKE_WAIT s)"
+fi
 step "Packaged clean install, paired backup and restore (scripts/release/smoke_artifacts.sh; image pulled by digest)${previous_rev:+ and the upgrade from $previous_version}"
 start=$(date +%s)
 FLUX_SMOKE_PORT=$((base + 1)) FLUX_SMOKE_RESTORE_PORT=$((base + 2)) \

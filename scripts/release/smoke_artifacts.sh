@@ -45,6 +45,8 @@ up_env="$up_dir/source.env"
 up_restore_env="$up_dir/restore.env"
 
 fail() { echo "smoke_artifacts: $*" >&2; exit 1; }
+# FLUX_SMOKE_WAIT: seconds `up --wait` allows (default 300; an emulated platform needs more).
+wait_timeout=${FLUX_SMOKE_WAIT:-300}
 step() { printf '\n== %s\n' "$*"; }
 json_field() { python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))[sys.argv[2]])' "$1" "$2"; }
 db_image() { sed -n 's/^ *image: *\(postgres@sha256:[0-9a-f]*\).*/\1/p' "$1/compose.yaml"; }
@@ -136,10 +138,10 @@ paired_backup() { # project, environment file, assets directory, output director
 }
 restore_backup() { # project, environment file, assets directory, backup directory, port: INSTALL.md's restore
   dc "$1" "$2" "$3" config --quiet
-  dc "$1" "$2" "$3" up -d --wait --wait-timeout 300 db
+  dc "$1" "$2" "$3" up -d --wait --wait-timeout "$wait_timeout" db
   dc "$1" "$2" "$3" exec -T db sh -c 'pg_restore -U "$POSTGRES_USER" -d "$POSTGRES_DB" --no-owner --exit-on-error' < "$4/database.dump"
   dc "$1" "$2" "$3" run -T --rm --no-deps --entrypoint tar api -C /data/files -xf - < "$4/files.tar"
-  dc "$1" "$2" "$3" up -d --wait --wait-timeout 300
+  dc "$1" "$2" "$3" up -d --wait --wait-timeout "$wait_timeout"
   health "$5" >/dev/null
 }
 make_env() { # template, destination, port
@@ -158,8 +160,9 @@ restore_env_from "$source_env" "$restore_env" "$restore_port"
 
 dc "$source_project" "$source_env" "$assets" config --quiet
 dc "$source_project" "$source_env" "$assets" pull
-dc "$source_project" "$source_env" "$assets" up -d --wait --wait-timeout 300
+dc "$source_project" "$source_env" "$assets" up -d --wait --wait-timeout "$wait_timeout"
 health "$source_port" >/dev/null
+echo "running: api $(dc "$source_project" "$source_env" "$assets" exec -T api uname -m), db $(dc "$source_project" "$source_env" "$assets" exec -T db uname -m)"
 python3 "$root/scripts/release/smoke_data.py" seed --origin "http://127.0.0.1:$source_port" --state "$state_dir/account.json"
 # The database holds the account; this file in the files volume proves the paired archive too.
 probe=$(python3 -c 'import secrets; print(secrets.token_hex(16))')
@@ -192,7 +195,7 @@ candidate_ledger=$(expected_ledger)
 echo "-- 1. the previous release, installed from its own assets"
 dc "$source_project" "$up_env" "$previous_assets" config --quiet
 dc "$source_project" "$up_env" "$previous_assets" pull
-dc "$source_project" "$up_env" "$previous_assets" up -d --wait --wait-timeout 300
+dc "$source_project" "$up_env" "$previous_assets" up -d --wait --wait-timeout "$wait_timeout"
 health "$source_port" >/dev/null
 python3 "$root/scripts/release/smoke_data.py" seed --origin "http://127.0.0.1:$source_port" --state "$up_dir/account.json"
 up_probe=$(python3 -c 'import secrets; print(secrets.token_hex(16))')
@@ -205,7 +208,7 @@ echo "previous release: schemaVersion $schema_before, $(grep -c . "$up_dir/ledge
 
 echo "-- 2. paired backup with the previous release's files, then stop its writers"
 paired_backup "$source_project" "$up_env" "$previous_assets" "$up_dir/backup-previous"
-dc "$source_project" "$up_env" "$previous_assets" up -d --wait --wait-timeout 300
+dc "$source_project" "$up_env" "$previous_assets" up -d --wait --wait-timeout "$wait_timeout"
 dc "$source_project" "$up_env" "$previous_assets" stop api worker
 table_snapshot "$source_project" "$up_env" "$previous_assets" "$up_dir/columns" > "$up_dir/tables.before"
 volume_stamps "$source_project" > "$up_dir/volumes.before"
@@ -214,7 +217,7 @@ echo "-- 3. pull and start the candidate with the same environment file and proj
 started=$(date +%s)
 dc "$source_project" "$up_env" "$assets" config --quiet
 dc "$source_project" "$up_env" "$assets" pull
-dc "$source_project" "$up_env" "$assets" up -d --wait --wait-timeout 300
+dc "$source_project" "$up_env" "$assets" up -d --wait --wait-timeout "$wait_timeout"
 downtime=$(( $(date +%s) - started ))
 dc "$source_project" "$up_env" "$assets" ps
 
@@ -230,7 +233,7 @@ printf '%s\n' "$ledger_after" | tr ',' '\n' > "$up_dir/ledger.after"
 table_snapshot "$source_project" "$up_env" "$assets" "$up_dir/columns" > "$up_dir/tables.after"
 cmp "$up_dir/tables.before" "$up_dir/tables.after" || { diff "$up_dir/tables.before" "$up_dir/tables.after" >&2 || true; fail "content rows changed across the upgrade"; }
 [ "$(volume_stamps "$source_project")" = "$(cat "$up_dir/volumes.before")" ] || fail "a volume was recreated by the upgrade"
-dc "$source_project" "$up_env" "$assets" up -d --wait --wait-timeout 300
+dc "$source_project" "$up_env" "$assets" up -d --wait --wait-timeout "$wait_timeout"
 health "$source_port" >/dev/null
 python3 "$root/scripts/release/smoke_data.py" verify --origin "http://127.0.0.1:$source_port" --state "$up_dir/account.json" --write
 check_probe "$source_project" "$up_env" "$assets" "$up_probe"
@@ -252,7 +255,7 @@ check_probe "$restore_project" "$up_restore_env" "$previous_assets" "$up_probe"
 [ "$(schema_version "$restore_port")" = "$schema_before" ] || fail "the restored previous release reports another schemaVersion"
 dc "$restore_project" "$up_restore_env" "$previous_assets" stop api worker
 dc "$restore_project" "$up_restore_env" "$assets" config --quiet
-dc "$restore_project" "$up_restore_env" "$assets" up -d --wait --wait-timeout 300
+dc "$restore_project" "$up_restore_env" "$assets" up -d --wait --wait-timeout "$wait_timeout"
 [ "$(schema_version "$restore_port")" = "$schema_after" ] || fail "the restored installation did not reach schemaVersion $schema_after"
 [ "$(ledger "$restore_project" "$up_restore_env" "$assets")" = "$candidate_ledger" ] || fail "the restored and upgraded installation has another ledger"
 python3 "$root/scripts/release/smoke_data.py" verify --origin "http://127.0.0.1:$restore_port" --state "$up_dir/account.json" --write
