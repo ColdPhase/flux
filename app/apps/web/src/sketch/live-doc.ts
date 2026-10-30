@@ -459,6 +459,11 @@ export function useLiveSketchDoc(sketchId: string, me: Me) {
         }
       }
       return result;
+    }).catch(async (error: unknown) => {
+      // A refused save (the connection or the sketch gone, a conflict) reads the sketch again, as the ordinary document does:
+      // a sketch that is no longer available then shows its not-found page with the unsaved label to recover (#749).
+      if (error instanceof ApiError && scope.current.active && scope.current.number === instance) await reload();
+      throw error;
     }).finally(() => { inFlight.current--; if (!inFlight.current) setSaving(false); });
     queue.current = operation.then(() => undefined, () => undefined);
     return operation;

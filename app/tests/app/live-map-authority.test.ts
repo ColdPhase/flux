@@ -283,6 +283,20 @@ test('each person in a map room keeps one slot, across connections and arrivals,
   } finally {await authority.close();await database.pool.end();assert.equal(apiEditingOutputBudget.bytes,0);}
 });
 
+test('a selection that names a thought no longer on this map is shown without it, not refused (#749)', {timeout:20000},async()=>{
+  const f=await scene();const database=createDatabase(connectionString);
+  const backend=mapBackend(database);const authority=mapAuthority(backend,apiEditingOutputBudget);
+  try {
+    const head=await bootstrap(backend,f.ownerSession,f.sketch.id);
+    // An undo or a peer's delete can remove a selected thought before the selection's next presence frame arrives.
+    const gone=randomUUID();
+    await authority.presence(f.ownerSession,f.sketch.id,randomUUID(),{generation:head.generation,selected:[f.ids[0]!,gone],cursor:{x:1,y:2}});
+    const selected:string[][]=[];
+    await backend.deliver(who(f.ownerSession),f.sketch.id,head.generation,0,value=>{for(const item of value.transient)if(item.type==='map-presence')selected.push(item.selected);});
+    assert.deepEqual(selected,[[f.ids[0]]],'only the map\'s current thoughts are shown as selected');
+  } finally {await authority.close();await database.pool.end();assert.equal(apiEditingOutputBudget.bytes,0);}
+});
+
 test('withheld map handoff filters expired producer sessions, transient leases and lapsed confirmation after positive checks', {timeout:20000},async()=>{
   for(const expiry of ['producer-session','transient-lease','provider-confirmation'] as const) {
     const f=await scene();
