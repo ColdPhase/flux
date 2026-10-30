@@ -19,6 +19,7 @@ import type { GithubTransport } from '../../../apps/server/src/github/http.js';
 import { loadIdentityConfig, registerIdentity } from '../../../apps/server/src/identity/index.js';
 import { addMember, expectStatus, grant, person, project, workspace, type Person } from '../support/people.js';
 import { apiUrl, publicOrigin } from '../support/http.js';
+import { selectedValue } from '../support/app-select.js';
 
 /** "Let linked PRs move this task" (#74 G-1a) in the running web app: the toggle, its history line, the paused state with
  * Resume and Ready to close with one-tap Done, at desktop and 390 px. Real sessions, routes and SQL; only the GitHub
@@ -127,13 +128,15 @@ test('task Details: turn the rule on, see sourced automatic changes, resume afte
   await toggle.click(); // controlled by the server's answer, so not Playwright's check()
   await details(page).getByText('Set up by Ada Lind.', { exact: false }).waitFor();
   assert.equal(await toggle.isChecked(), true);
-  assert.equal(await details(page).getByLabel('When every required PR is merged').inputValue(), 'ready', 'written criteria default to Ready to close');
+  // The app Select (#695) carries its value on the control, not in a native input.
+  assert.equal(await selectedValue(details(page).getByLabel('When every required PR is merged')), 'ready', 'written criteria default to Ready to close');
 
   // A failing check on the PR's head blocks it, with the check and PR as the reason and a history line.
   provider.now.checks = [check('failure')]; await settle(binding);
   page = await open(owner, link);
-  await details(page).getByRole('region', { name: 'Blocker' }).waitFor();
-  assert.equal(await details(page).getByLabel('What is it waiting for?', { exact: true }).inputValue(), 'Check “firmware / test” failed on PR #42');
+  const blocker = details(page).getByRole('region', { name: 'Blocker' }); await blocker.waitFor();
+  // Since the unified task panel (#601) the reason is read in the Blocker section; its field appears only after Edit.
+  assert.equal(await blocker.locator('.wd-blocker__text').innerText(), 'Check “firmware / test” failed on PR #42');
   const history = details(page).getByRole('list', { name: 'Changes by GitHub rule' });
   await history.getByText('by GitHub rule · set up by Ada Lind', { exact: false }).first().waitFor();
   assert.match(await history.innerText(), /Blocked\s*Check “firmware \/ test” failed on PR #42/);

@@ -45,6 +45,10 @@ function AccountMenu({ name, email, sessionExpiresAt, compact }: { name: string;
   const popRef = useRef<HTMLDivElement>(null);
   const popId = useId();
   const pop = usePop(open, { from: 'above' });
+  // Following one of its links leaves the menu at once: it does not fade over the page it led to (#752). Esc, a click
+  // outside and the account button still close it with its exit motion (#593).
+  const [left, setLeft] = useState(false);
+  const follow = () => { setLeft(true); close(false); };
   // Signing out is a navigation of its own, not a fetcher: it replaces whatever this tab is still
   // loading. A fetcher's redirect would leave that load running, and when it finished it took the
   // tab back to the previous account's page after the sign-in page. A failure is
@@ -75,7 +79,7 @@ function AccountMenu({ name, email, sessionExpiresAt, compact }: { name: string;
 
   return (
     <div className={`me${compact ? ' me--compact' : ''}`}>
-      {pop.mounted ? (
+      {pop.mounted && !(left && !open) ? (
         <div {...pop.props} ref={popRef} id={popId} className="me__pop" role="dialog" aria-label="Account" onKeyDown={onKeyDown}>
           <div className="me__who">
             <b>{name}</b>
@@ -88,9 +92,9 @@ function AccountMenu({ name, email, sessionExpiresAt, compact }: { name: string;
           </div>
           <AppearanceControls idPrefix={popId} />
           <div className="me__sec">
-            <Link to="/settings" className="me__item" onClick={() => close(false)}><Icon name="gear" />All settings</Link>
-            {allAiOff ? null : <Link to="/settings/assistant" className="me__item" data-ai-surface="user-menu-assistant" onClick={() => close(false)}><Icon name="spark" />Your assistant</Link>}
-            {allAiOff ? null : <Link className="me__item" style={{ textDecoration: 'none' }} to="/settings/background-compute" data-ai-surface="user-menu-background" onClick={() => close(false)}>
+            <Link to="/settings" className="me__item" onClick={follow}><Icon name="gear" />All settings</Link>
+            {allAiOff ? null : <Link to="/settings/assistant" className="me__item" data-ai-surface="user-menu-assistant" onClick={follow}><Icon name="spark" />Your assistant</Link>}
+            {allAiOff ? null : <Link className="me__item" style={{ textDecoration: 'none' }} to="/settings/background-compute" data-ai-surface="user-menu-background" onClick={follow}>
               <Icon name="spark" />Your background suggestions
             </Link>}
           </div>
@@ -104,7 +108,7 @@ function AccountMenu({ name, email, sessionExpiresAt, compact }: { name: string;
       {/* The account and Settings (F-026 §4): the name opens the account; the gear is Settings. */}
       <div className="me__row">
         <button ref={buttonRef} type="button" className="me__btn" aria-expanded={open} aria-controls={open ? popId : undefined}
-          aria-haspopup="dialog" title={compact ? `${name}, account and sign out` : undefined} onClick={() => (open ? close(false) : setOpen(true))}>
+          aria-haspopup="dialog" title={compact ? `${name}, account and sign out` : undefined} onClick={() => { if (open) close(false); else { setLeft(false); setOpen(true); } }}>
           <Avatar name={name} tone="me" size={compact ? 'lg' : 'sm'} />
           {compact ? <span className="ui-vh">{name}, {email}</span>
             : <span className="me__text"><b>{name}</b><span className="ui-vh">{email}</span></span>}
