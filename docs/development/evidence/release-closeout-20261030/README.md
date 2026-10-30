@@ -24,7 +24,7 @@ refuses a network. Containers are created but never started.
 | this change, `compose.source.runtime.yaml` + `--profile runtime` | stock | 2 | `Network p2_runtime-api … fully subnetted` (10 networks per project) |
 | this change, runtime off | `172.17.0.0/12=24`, `192.168.0.0/16=24` (the documented daemon pools) | **300** (the script's limit), 603 bridge networks | not stopped |
 
-With the runtime off, `./flux up` ran on a `git archive` copy of `8bb0888dc` (project `flux-hub-744`, port 34100). Before
+With the runtime off, `./flux up` ran on a `git archive` copy of `8bb0888dc` (project flux-hub-744, port 34100). Before
 the start, a stale `<project>_runtime-control` network was created to stand in for one left by an older start. Result:
 health `{"status":"ok","schemaVersion":130}`, and the project had 2 networks (`default`, `keyring`) with `api` and `worker` on
 those two only. The stale runtime network was removed. The run was cleaned up with `./flux clean`. With the runtime on, the
