@@ -81,12 +81,11 @@ import { useJsonCompression } from './http/compress.js';
 import { useFramingProtection } from './http/framing.js';
 
 /**
- * S3 SWITCH, one line (F-030, #655): `false` keeps encrypted-space creation a test-only route (fixture token and bearer).
- * Flip it to `true` only in the change that merges S3 after S2a-2b-2, S2a-2c, S2b and S2c pass their acceptance criteria and
- * the full AC-7 and AC-13 pass on S2c's final head (docs/product/encrypted-workspaces.md, delivery slices). Until then a
- * production install must not be able to make a sealed workspace.
+ * S3 SWITCH (F-030, #655): encrypted-space creation is a production route, for any signed-in person (no fixture token or bearer).
+ * Flipped in the change that merges S3, after S2a-2b-2, S2a-2c, S2b and S2c passed their acceptance criteria and the full AC-7 and
+ * AC-13 passed on S2c's final head (docs/product/encrypted-workspaces.md, delivery slices).
  */
-const ENCRYPTED_CREATION_IN_PRODUCTION = false;
+const ENCRYPTED_CREATION_IN_PRODUCTION = true;
 
 declare module 'fastify' {
   interface FastifyInstance {

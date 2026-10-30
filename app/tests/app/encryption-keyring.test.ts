@@ -160,16 +160,16 @@ describe('F-030 swap rule', () => {
   });
 });
 
-describe('F-030 creation is fixture-only (S1 and S2)', () => {
-  test('with a fixture token but without failure injection (a ./flux up install) there is no creation route', async () => {
+describe('F-030 creation is a production route (S3)', () => {
+  test('an install without a fixture token or failure injection (a ./flux up install) has the creation route, with no bearer', async () => {
     const ada = await person('Ada');
-    const app = await buildApp(loadServerConfig({ ...process.env, FLUX_FIXTURE_TOKEN: 'fixture-token-of-an-install', FLUX_TEST_FAILURE_INJECTION: 'false' },
+    const app = await buildApp(loadServerConfig({ ...process.env, FLUX_FIXTURE_TOKEN: '', FLUX_TEST_FAILURE_INJECTION: 'false' },
       '/nonexistent/flux_background_key'));
     try {
       const response = await app.inject({ method: 'POST', url: ENCRYPTED_WORKSPACES_PATH, payload: { name: 'Garden club', creationId: randomUUID(),
-        password: 'quartz lantern hollow meadow ripple kestrel 4821' }, headers: { cookie: ada.browser.cookieHeader(), origin: process.env.FLUX_PUBLIC_ORIGIN ?? '',
-        authorization: 'Bearer fixture-token-of-an-install' } });
-      assert.equal(response.statusCode, 404, response.body);
+        password: 'quartz lantern hollow meadow ripple kestrel 4821' }, headers: { cookie: ada.browser.cookieHeader(), origin: process.env.FLUX_PUBLIC_ORIGIN ?? '' } });
+      // The route answers (201, or 503 when this in-process app has no keyring); it is neither missing nor asking for a bearer.
+      assert.ok(response.statusCode !== 404 && response.statusCode !== 401, `${response.statusCode} ${response.body}`);
     } finally { await app.close(); }
   });
 });

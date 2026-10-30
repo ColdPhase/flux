@@ -4,6 +4,7 @@ import { before, describe, test } from 'node:test';
 import { ENCRYPTED_WORKSPACES_PATH, workspaceRecoveryCodePath, workspaceUnlockGrantsPath, workspaceUnlockPasswordPath } from '@flux/contracts';
 import { createEncryptionUseCases, type EncryptionUseCaseDeps } from '@flux/core';
 import { pool } from './support/db.js';
+import { Browser } from './support/http.js';
 import { codeOf, contentCall, createSealed, fixtureBearer, lock, passphrase, readWorkspace, unlock } from './support/encryption.js';
 import { addMember, expectStatus, person, workspace, type Person } from './support/people.js';
 
@@ -63,12 +64,12 @@ describe('F-030 creation (fixture route)', () => {
     assert.equal(again.headers.get('cache-control'), 'no-store');
   });
 
-  test('creation needs the fixture bearer as well as a session', async () => {
+  test('creation is a production route (S3): a session alone makes the space, and no session is refused', async () => {
     const response = await eve.browser.request('POST', ENCRYPTED_WORKSPACES_PATH, { body: { name: 'No bearer club', creationId: randomUUID(), password: pw.eve } });
-    assert.equal(response.status, 401);
-    const wrong = await eve.browser.request('POST', ENCRYPTED_WORKSPACES_PATH, { body: { name: 'No bearer club', creationId: randomUUID(), password: pw.eve },
-      headers: { authorization: 'Bearer not-the-fixture-token' } });
-    assert.equal(wrong.status, 401);
+    assert.equal(response.status, 201);
+    assert.equal(typeof (response.json as { recoveryCode?: unknown }).recoveryCode, 'string');
+    const signedOut = await new Browser().request('POST', ENCRYPTED_WORKSPACES_PATH, { body: { name: 'Nobody club', creationId: randomUUID(), password: pw.eve } });
+    assert.equal(signedOut.status, 401);
   });
 
   test('own passwords: under 20 characters and "abcdefghabcdefghabcd" are too weak', async () => {
