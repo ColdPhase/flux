@@ -65,8 +65,11 @@ export function WorkspacePeople({ workspaceId, onBack }: { workspaceId: string; 
     const timer = window.setTimeout(() => setReload((n) => n + 1), 4000);
     return () => window.clearTimeout(timer);
   }, [moving, roster]);
-  // Someone turned AI off or on here (F-029, #614), or unlocked, locked or gave an unlock password (F-030, #655): the rows show the state as it is now.
-  useStreamEvents(me.user.id, (event) => { if ((event.kind === WORKSPACE_AI_POLICY_CHANGED_EVENT || isEncryptionEvent(event.kind)) && event.objectId === workspaceId) load(); }, load);
+  // Someone turned AI off or on here (F-029, #614), unlocked, locked, gave an unlock password or changed the key (F-030, #655), or
+  // added, removed or changed someone (whose removal starts a key change): the rows show the state as it is now.
+  useStreamEvents(me.user.id, (event) => {
+    if ((event.kind === WORKSPACE_AI_POLICY_CHANGED_EVENT || isEncryptionEvent(event.kind) || event.kind.startsWith('workspace.member_')) && event.objectId === workspaceId) load();
+  }, load);
 
   // F-030 (#655): after an owner removes or demotes an owner or admin of an encrypted space, the old recovery code has stopped
   // working, and the group that makes a new one opens in the Encryption section, where focus goes.

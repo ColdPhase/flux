@@ -439,7 +439,7 @@ class EncryptedWorkspaces(Base):
                 page = self.page(world, "cy", phone=phone)
                 self.home(page)
                 home = page.locator("#content .home")
-                row = home.get_by_role("link", name=re.compile(rf"^{A_NAME}\s+{LOCKED_LINE}$"))
+                row = home.locator(".home__projects").get_by_role("link", name=re.compile(rf"^{A_NAME}\s+{LOCKED_LINE}$"))
                 expect(row).to_be_visible()
                 self.assertEqual(home.get_by_text(A_PROJECT).count(), 0, "no project of the locked space is listed")
                 expect(home.get_by_role("link", name=re.compile(f"^{B_NAME}"))).to_have_count(0)
@@ -565,7 +565,7 @@ class EncryptedWorkspaces(Base):
                 self.assertEqual(cy.get_by_text(A_ROOT).count(), 0)
                 expect(cy).to_have_url(re.compile(rf"/projects/{world.a_project}$"))
                 # Ada's own tab is on Home: the space's projects give way to its one row.
-                home = ada.locator("#content .home")
+                home = ada.locator("#content .home__projects")
                 expect(home.get_by_role("link", name=re.compile(rf"^{A_NAME}\s+{LOCKED_LINE}$"))).to_be_visible()
                 expect(home.get_by_role("link", name=re.compile(f"^{A_PROJECT}"))).to_have_count(0)
                 # Unlocking from another window brings Cy's tab back.
@@ -606,7 +606,7 @@ class EncryptedWorkspaces(Base):
                 self.home(page)
                 need = page.locator("#content .home__need")
                 waiting = need.get_by_role("list", name=LOCKED_LINE)
-                expect(waiting.get_by_role("link", name=re.compile(rf"^{A_NAME}\s*{LOCKED_LINE}$"))).to_be_visible()
+                expect(waiting.get_by_role("link", name=re.compile(rf"^{A_NAME}\s+{LOCKED_LINE}$"))).to_be_visible()
                 expect(need.get_by_text("Nothing needs you right now. Enjoy the quiet.")).to_have_count(0)
                 shot(page, f"needs-you-waiting-{'phone' if phone else 'computer'}")
                 page.goto("/inbox")
@@ -639,7 +639,7 @@ class EncryptedWorkspaces(Base):
 
     def test_18_a_security_notice_is_read_in_the_inbox_and_got_it_marks_it_read(self) -> None:
         world = self.make_world()
-        self.call(world, "ada", "POST", f"/api/v1/workspaces/{world.a}/unlock-password-grants", {"userId": world.ids["ben"], "password": UNLOCK_PASSWORD})
+        self.call(world, "ada", "POST", f"/api/v1/workspaces/{world.a}/unlock-password-grants", {"userId": world.ids["ben"], "password": UNLOCK_PASSWORD}, 201)
         self.call(world, "ben", "PUT", f"/api/v1/workspaces/{world.a}/unlock-password", {"newPassword": NEW_PASSWORD}, None)
         self.assertTrue(self.holders(world, "ben"))
         for phone in (False, True):
