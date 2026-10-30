@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { createHmac, randomInt, randomUUID } from 'node:crypto';
+import { createHash, createHmac, randomInt, randomUUID } from 'node:crypto';
 import { after, test } from 'node:test';
 import Fastify from 'fastify';
 import { createDatabase, schema } from '@flux/db';
@@ -110,7 +110,7 @@ test('#479: a linked PR event reaches the task\'s current holder once, echoes ar
     const id = randomUUID();
     await db.insert(schema.coworkRequests).values({ aiEpoch: 1, id, lineageId, workspaceId: ws.id, projectId: p.id, taskId: mine.item.id, unitId: mine.unitId,
       senderConnectionId: hubertAgent.connected.connectionId, recipientConnectionId: marekAgent.connected.connectionId, senderOwnerId: hubert.id, recipientOwnerId: marek.id,
-      intentKey: `review:${headSha}`, fingerprint: id, kind: 'review', target: { type: 'github_pr', bindingId: privateBinding.id, linkId: link.id, headSha },
+      intentKey: `review:${headSha}`, fingerprint: createHash('sha256').update(id).digest('hex'), kind: 'review', target: { type: 'github_pr', bindingId: privateBinding.id, linkId: link.id, headSha },
       sourceRefs: [{ type: 'work', id: mine.item.id, version: 1 }], criteriaRefs: [{ type: 'work', id: mine.item.id, version: 1 }], depth: 0, reviewRound: 1,
       priority: 1, peerUnblocking: false, expiresAt: new Date(Date.now() + 86_400_000) });
     return id;
