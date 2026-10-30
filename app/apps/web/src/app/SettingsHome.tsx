@@ -328,10 +328,11 @@ export function SettingsAppearance() {
         {phone ? <p className="sset-note">One neutral palette. There is no accent color to pick.</p> : null}
         {phone ? <h2 className="sset-sec">This phone</h2> : null}
         <div className="sset-card">
-          <InstallFlux title={phone ? 'Flux on this phone' : 'Install Flux'} />
-          {phone ? <div className="sset-row sset-row--stack"><span className="sset-row__t">Notifications on this phone</span><NotificationsButton /></div> : null}
+          {phone ? <div className="sset-row sset-row--stack"><span className="sset-row__t">Notifications on this phone</span><NotificationsButton installStepsBelow /></div> : null}
           {phone ? <TextSizeFollowsPhone /> : <><TextSizeChoice /><ReduceMotionSwitch /></>}
           <KreskaSwitch />
+          {/* Last in the card: an install offer that arrives late, or goes away, never moves another row. */}
+          <InstallFlux title={phone ? 'Flux on this phone' : 'Install Flux'} phone={phone} />
         </div>
       </div>
     </div>

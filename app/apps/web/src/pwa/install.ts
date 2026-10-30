@@ -10,11 +10,14 @@ interface InstallPromptEvent extends Event {
   userChoice: Promise<{ outcome: 'accepted' | 'dismissed' }>;
 }
 
+/** `failed`: the browser refused to open its dialog (for example a spent offer); the offer is kept for another try. */
+export type InstallOutcome = 'accepted' | 'dismissed' | 'failed';
+
 export type InstallState =
   /** Already running as an installed app (standalone window or Home Screen web app). */
   | { state: 'installed' }
   /** The browser offered installation; `install()` must run from a tap or click. */
-  | { state: 'available'; install: () => Promise<'accepted' | 'dismissed'> }
+  | { state: 'available'; install: () => Promise<InstallOutcome> }
   /** Installed from this page just now; the app opens from the home screen or app list. */
   | { state: 'just-installed' }
   /** iPhone or iPad Safari: Share, then Add to Home Screen. */
@@ -51,10 +54,15 @@ export function installState(): InstallState {
     return {
       state: 'available',
       async install() {
+        let outcome: 'accepted' | 'dismissed';
+        try {
+          await event.prompt();
+          ({ outcome } = await event.userChoice);
+        } catch {
+          return 'failed';
+        }
         // The browser allows one prompt per event; a later offer arrives as a new event.
-        deferred = null;
-        await event.prompt();
-        const { outcome } = await event.userChoice;
+        if (deferred === event) deferred = null;
         if (outcome === 'accepted') justInstalled = true;
         notify();
         return outcome;

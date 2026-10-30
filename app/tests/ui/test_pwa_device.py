@@ -35,6 +35,10 @@ STAMP = int(time.time() * 1000)
 NAME, EMAIL = "Maja Wrona", f"maja.install+{STAMP}@example.test"
 IPHONE_UA = ("Mozilla/5.0 (iPhone; CPU iPhone OS 26_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) "
              "Version/26.0 Mobile/15E148 Safari/604.1")
+IPAD_UA = ("Mozilla/5.0 (iPad; CPU OS 26_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.0 "
+           "Mobile/15E148 Safari/604.1")
+IPADOS_DESKTOP_UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.0 Safari/605.1.15"
+TABLET = {"width": 820, "height": 1180}
 ANDROID_UA = ("Mozilla/5.0 (Linux; Android 16; Pixel 9) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 "
               "Mobile Safari/537.36")
 
@@ -85,8 +89,9 @@ class InstallAndLaunch(unittest.TestCase):
         assert response.status == status, f"{method} {path}: {response.status}, expected {status}: {response.text()}"
         return response.json()
 
-    def context(self, viewport: dict, *, user_agent: str | None = None, signed_in: bool = True, standalone: bool = False) -> BrowserContext:
-        phone = viewport["width"] <= 640
+    def context(self, viewport: dict, *, user_agent: str | None = None, signed_in: bool = True, standalone: bool = False,
+                touch: bool | None = None) -> BrowserContext:
+        phone = viewport["width"] <= 640 if touch is None else touch
         options: dict = {"base_url": ORIGIN, "viewport": viewport, "locale": "en-GB", "timezone_id": "Europe/Warsaw", "service_workers": "allow"}
         if signed_in:
             options["storage_state"] = self.state
@@ -124,39 +129,137 @@ class InstallAndLaunch(unittest.TestCase):
         page.wait_for_timeout(500)
         expect(page.get_by_test_id("install-flux")).to_have_count(0)
 
+    def row_tops(self, page: Page) -> list[float]:
+        """The top of every other row in the Appearance card: none may move when the install row comes or goes."""
+        return page.evaluate("""() => [...document.querySelectorAll('.sset-card > *')]
+          .filter((el) => el.getAttribute('data-testid') !== 'install-flux').map((el) => el.getBoundingClientRect().top)""")
+
+    def focused(self, page: Page) -> str:
+        return page.evaluate("(() => { const el = document.activeElement; return el ? (el.getAttribute('role') || el.tagName.toLowerCase()) + ':' + el.textContent.trim() : ''; })()")
+
     def test_02_an_offered_install_opens_the_browser_dialog_from_the_button(self) -> None:
         page = self.page(self.context(DESKTOP))
         self.appearance(page)
+        before = self.row_tops(page)
         prevented = page.evaluate(OFFER_INSTALL, "accepted")
         self.assertTrue(prevented, "Flux keeps the offer for its own button instead of the browser's banner")
         row = page.get_by_test_id("install-flux")
         expect(row.locator(".sset-row__t")).to_have_text("Install Flux")
-        expect(row.get_by_role("button", name="Install Flux")).to_be_visible()
+        button = row.get_by_role("button", name="Install Flux")
+        expect(button).to_be_visible()
+        self.assertEqual(self.row_tops(page), before, "a late offer moves no other row: the install row is last")
+        # A settings row: text on the left, the compact control on the right.
+        layout = row.evaluate("""(el) => { const t = el.querySelector('.sset-row__t').getBoundingClientRect();
+          const b = el.querySelector('button').getBoundingClientRect(); return { right: b.left > t.right, width: b.width, row: el.getBoundingClientRect().width }; }""")
+        self.assertTrue(layout["right"], f"the button is right of the title: {layout}")
+        self.assertLess(layout["width"], layout["row"] / 2, f"a compact button, not a full-width bar: {layout}")
+        # The live region exists, empty, before anything happens, so its later text is announced.
+        expect(row.get_by_role("status")).to_have_text("")
         self.assertEqual(page.evaluate("window.__installPrompts"), 0, "nothing is asked before the person chooses")
-        row.get_by_role("button", name="Install Flux").click()
-        expect(row.get_by_role("status")).to_have_text(re.compile("Flux is installed"))
-        self.assertEqual(page.evaluate("window.__installPrompts"), 1, "one browser dialog, from the click")
+        button.focus()
+        page.keyboard.press("Enter")
+        expect(row.locator(".sset-row__t")).to_have_text("Flux is installed")
+        expect(row.get_by_role("status")).to_have_text(re.compile("Open it from"))
+        expect(row.get_by_role("button")).to_have_count(0)
+        self.assertEqual(page.evaluate("window.__installPrompts"), 1, "one browser dialog, from the key press")
+        page.wait_for_function("document.activeElement && document.activeElement.getAttribute('role') === 'status'")
+        self.assertEqual(self.row_tops(page), before, "the outcome moves no other row")
 
-    def test_03_a_dismissed_install_dialog_takes_the_button_away(self) -> None:
+    def test_03_a_dismissed_install_dialog_keeps_the_row_and_says_so(self) -> None:
         page = self.page(self.context(DESKTOP))
         self.appearance(page)
+        before = self.row_tops(page)
         page.evaluate(OFFER_INSTALL, "dismissed")
-        page.get_by_test_id("install-flux").get_by_role("button", name="Install Flux").click()
-        expect(page.get_by_test_id("install-flux")).to_have_count(0)
+        row = page.get_by_test_id("install-flux")
+        row.get_by_role("button", name="Install Flux").focus()
+        page.keyboard.press(" ")
+        expect(row.get_by_role("status")).to_have_text(re.compile("Not installed"))
+        expect(row.get_by_role("button")).to_have_count(0)
+        page.wait_for_function("document.activeElement && document.activeElement.getAttribute('role') === 'status'")
         self.assertEqual(page.evaluate("window.__installPrompts"), 1)
+        self.assertEqual(self.row_tops(page), before)
 
-    def test_04_an_iphone_safari_tab_shows_the_home_screen_steps(self) -> None:
+    def test_03b_a_dialog_that_fails_to_open_leaves_a_working_button_and_a_message(self) -> None:
+        page = self.page(self.context(DESKTOP))
+        self.appearance(page)
+        page.evaluate("""() => {
+          window.__installPrompts = 0;
+          const event = new Event('beforeinstallprompt', { cancelable: true });
+          event.userChoice = new Promise(() => {});
+          event.prompt = () => { window.__installPrompts++; return Promise.reject(new DOMException('The prompt() method cannot be called again.', 'InvalidStateError')); };
+          window.dispatchEvent(event);
+        }""")
+        row = page.get_by_test_id("install-flux")
+        button = row.get_by_role("button", name="Install Flux")
+        button.focus()
+        page.keyboard.press("Enter")
+        expect(row.get_by_role("status")).to_have_text(re.compile("did not open"))
+        expect(button).to_be_visible()
+        expect(button).not_to_have_attribute("aria-disabled", "true")
+        self.assertTrue(button.evaluate("(el) => el === document.activeElement"), "the focus stays on the button")
+        page.keyboard.press("Enter")
+        page.wait_for_function("window.__installPrompts === 2")
+        expect(row.get_by_role("status")).to_have_text(re.compile("did not open"))
+        # page() fails the test on any uncaught page error, so neither rejection escaped.
+
+    def test_03c_installing_from_the_browser_menu_is_noticed(self) -> None:
+        """The `appinstalled` listener: Flux installed through the browser's own menu, while an offer was showing."""
+        page = self.page(self.context(DESKTOP))
+        self.appearance(page)
+        page.evaluate(OFFER_INSTALL, "accepted")
+        row = page.get_by_test_id("install-flux")
+        expect(row.get_by_role("button", name="Install Flux")).to_be_visible()
+        page.evaluate("window.dispatchEvent(new Event('appinstalled'))")
+        expect(row.locator(".sset-row__t")).to_have_text("Flux is installed")
+        expect(row.get_by_role("button")).to_have_count(0)
+        self.assertEqual(page.evaluate("window.__installPrompts"), 0, "no dialog was opened by Flux")
+
+    def test_04_an_iphone_safari_tab_shows_the_home_screen_steps_once(self) -> None:
         page = self.page(self.context(PHONE, user_agent=IPHONE_UA))
         self.appearance(page)
         row = page.get_by_test_id("install-flux")
-        expect(row.get_by_text("Flux on this phone", exact=True)).to_be_visible()
-        expect(row.get_by_role("note")).to_have_text(re.compile(r"tap Share, then Add to Home Screen"))
+        expect(row.locator(".sset-row__t")).to_have_text("Flux on this phone")
+        steps = row.get_by_role("note")
+        expect(steps).to_have_text(re.compile(r"Tap Share, then Add to Home Screen"))
         self.assertEqual(page.get_by_role("button", name="Install Flux").count(), 0, "Safari has no install dialog to open")
+        # Said once: the notifications row above points here instead of repeating the steps.
+        expect(page.get_by_text(re.compile("Add to Home Screen"))).to_have_count(1)
+        # Body size, like the row's title: the steps are the task, not a footnote.
+        sizes = row.evaluate("(el) => [getComputedStyle(el.querySelector('.sset-row__t')).fontSize, getComputedStyle(el.querySelector('[role=note]')).fontSize]")
+        self.assertGreaterEqual(float(sizes[1].rstrip("px")), float(sizes[0].rstrip("px")), f"steps at body size, not meta text: {sizes}")
+
+    def test_04b_an_ipad_shows_the_home_screen_steps(self) -> None:
+        """iPad: the classic "iPad" user agent, and iPadOS's desktop one ("Macintosh" with touch points)."""
+        for name, user_agent in (("iPad", IPAD_UA), ("iPadOS desktop UA", IPADOS_DESKTOP_UA)):
+            with self.subTest(name):
+                context = self.context(TABLET, user_agent=user_agent, touch=True)
+                context.add_init_script("Object.defineProperty(Navigator.prototype, 'maxTouchPoints', { configurable: true, get: () => 5 });")
+                page = self.page(context)
+                self.appearance(page)
+                row = page.get_by_test_id("install-flux")
+                expect(row.locator(".sset-row__t")).to_have_text("Install Flux")
+                expect(row.get_by_role("note")).to_have_text(re.compile(r"Tap Share, then Add to Home Screen"))
+                self.assertEqual(page.get_by_role("button", name="Install Flux").count(), 0)
 
     def test_05_an_android_tab_without_an_offer_names_the_browser_menu(self) -> None:
         page = self.page(self.context(PHONE, user_agent=ANDROID_UA))
         self.appearance(page)
         expect(page.get_by_test_id("install-flux").get_by_role("note")).to_have_text(re.compile(r"Install app or Add to Home screen"))
+
+    def test_05b_an_android_phone_with_an_offer_gets_the_install_button(self) -> None:
+        page = self.page(self.context(PHONE, user_agent=ANDROID_UA))
+        self.appearance(page)
+        page.evaluate(OFFER_INSTALL, "accepted")
+        row = page.get_by_test_id("install-flux")
+        expect(row.locator(".sset-row__t")).to_have_text("Flux on this phone")
+        expect(row.get_by_role("note")).to_have_count(0)
+        button = row.get_by_role("button", name="Install Flux")
+        box = button.bounding_box()
+        self.assertIsNotNone(box)
+        self.assertGreaterEqual(box["height"], 44, f"a 44 px target on a phone: {box}")
+        button.tap()
+        expect(row.locator(".sset-row__t")).to_have_text("Flux is installed")
+        self.assertEqual(page.evaluate("window.__installPrompts"), 1)
 
     # ------------------------------------------------------------ the installed app
 
