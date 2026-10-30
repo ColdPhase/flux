@@ -23,8 +23,9 @@ const upstream = new URL(process.env.FLUX_API_URL ?? 'http://api:8080');
 const root = mkdtempSync(join(tmpdir(), 'mcp-clients-'));
 
 /** The clients reach Flux at its public origin (127.0.0.1), which inside this container is this proxy. */
-export function startFluxProxy(observe?: (observation: OAuthHttpObservation) => void) {
+export function startFluxProxy(observe?: (observation: OAuthHttpObservation) => void, onRequest?: () => void) {
   const proxy = http.createServer((request, response) => {
+    onRequest?.();
     const forward = http.request({ host: upstream.hostname, port: upstream.port || 80, method: request.method, path: request.url, headers: request.headers }, (answer) => {
       if (observe) { const observation = oauthHttpObservation(request.url ?? '/', answer.statusCode ?? 502); if (observation) observe(observation); }
       response.writeHead(answer.statusCode ?? 502, answer.headers); answer.pipe(response);

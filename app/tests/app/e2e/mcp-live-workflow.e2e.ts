@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
-import { symlinkSync } from 'node:fs';
+import { chmodSync, copyFileSync } from 'node:fs';
 import { writeFile, unlink } from 'node:fs/promises';
 import { coworkHostScope, coworkHostUrl, coworkNativeOutcome, type CoworkHostBinding } from '../../../tooling/cowork.js';
 import { join } from 'node:path';
@@ -28,11 +28,13 @@ test('real configured accounts: supplied Start and Resume reach the model and pr
     const productionFirst = oauthProductionFirstLoginOnly(process.env);
     let diagnostic = createOAuthDiagnostic();
     const { pool } = createDatabase(process.env.DATABASE_URL!);
-    const proxy = startFluxProxy(observation => diagnostic.response(observation)); await proxy.listen();
+    // Every client request to Flux passes this proxy; the quiet-idle window below counts them (#160 AC-4).
+    let fluxRequests = 0;
+    const proxy = startFluxProxy(observation => diagnostic.response(observation), () => { fluxRequests++; }); await proxy.listen();
     const browser = await chromium.launch({ headless: true, args: ['--no-sandbox'] });
     try {
       const only = process.env.FLUX_TEST_MCP_LIVE_CLIENT;
-      assert.equal(only, 'codex', 'Configured-account acceptance is explicitly Codex-only; Claude remains stopped pending new account/auth evidence.');
+      assert.ok(!only || only === 'codex' || only === 'claude', 'FLUX_TEST_MCP_LIVE_CLIENT selects codex or claude');
       for (const client of ['codex', 'claude'] as const) {
         if (only && only !== client) continue;
         await t.test(client, async () => {
@@ -74,8 +76,11 @@ test('real configured accounts: supplied Start and Resume reach the model and pr
           for (const key of ['OPENAI_API_KEY', 'CODEX_API_KEY', 'ANTHROPIC_API_KEY', 'OPENAI_BASE_URL']) home.env[key] = '';
         }
         if (!loginOnly) {
-          if (client === 'codex') symlinkSync('/run/flux-live/codex-auth.json', join(home.env.CODEX_HOME!, 'auth.json'));
-          else symlinkSync('/run/flux-live/claude-credentials.json', join(home.env.CLAUDE_CONFIG_DIR!, '.credentials.json'));
+          // A private writable copy in this disposable HOME: the client may refresh an expired access token there.
+          // The read-only host file is never written, and the copy is removed with the container.
+          const target = client === 'codex' ? join(home.env.CODEX_HOME!, 'auth.json') : join(home.env.CLAUDE_CONFIG_DIR!, '.credentials.json');
+          copyFileSync(client === 'codex' ? '/run/flux-live/codex-auth.json' : '/run/flux-live/claude-credentials.json', target);
+          chmodSync(target, 0o600);
         }
         let binding: CoworkHostBinding = { schema: 'flux.cowork.host/1', ...coworkHostScope(origin, String(connection.id), projectId, 'codex', home.cwd),
           threadId: null, outcome: 'new', updatedAt: new Date().toISOString() };
@@ -181,6 +186,13 @@ test('real configured accounts: supplied Start and Resume reach the model and pr
         const checkpoints = (await pool.query(`SELECT c.progress FROM cowork_checkpoints c JOIN cowork_units u ON u.id=c.unit_id
           WHERE c.project_id=$1 AND u.assignment_connection_id=$2 AND u.state='paused'`, [projectId, connection.id])).rows;
         assert.ok(checkpoints.some(row => row.progress.orientation?.known?.length > 0), `${client}: Start persists actual source coverage at a safe checkpoint`);
+        // Quiet idle (#160 AC-4): after Start's bounded turn the client holds no process and makes no request to Flux
+        // or a model until the person's next supplied action. Count every proxied Flux request over a fixed window.
+        const idleFrom = fluxRequests; const idleMs = Number(process.env.FLUX_TEST_MCP_IDLE_MS ?? 60_000);
+        await new Promise((resolve) => setTimeout(resolve, idleMs));
+        const idleRequests = fluxRequests - idleFrom;
+        console.log('LIVE_NATIVE_QUIET_IDLE', JSON.stringify({ client, windowMs: idleMs, fluxRequests: idleRequests, clientProcesses: 0 }));
+        assert.equal(idleRequests, 0, `${client}: no Flux request while idle between Start and Resume`);
         expect(await owner.request('PATCH', `/api/v1/materials/${plan.materialId}`, { body: {
           clientMutationId: randomUUID(),
           title: 'Current project plan', body: 'Changed outcome: use Experiment as the label, because the audience records small experiments.',
