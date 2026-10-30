@@ -1,0 +1,121 @@
+/* Flux tokens for Starlight: the final design "Prostota" (docs/design/final/README.md §2). One neutral
+   palette in light and dark, no accent colour, Geist type, soft radii. Starlight's dark theme is
+   :root and its light theme is [data-theme='light']; in light, "white" is the strongest ink. */
+
+@font-face {
+  font-family: "Geist"; font-style: normal; font-weight: 100 900; font-display: swap;
+  src: url("/flux/fonts/Geist-Variable.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Geist Mono"; font-style: normal; font-weight: 100 900; font-display: swap;
+  src: url("/flux/fonts/GeistMono-Variable.woff2") format("woff2");
+}
+
+:root {
+  --sl-font: "Geist", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --sl-font-mono: "Geist Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --flux-r: 14px;
+  --flux-r-sm: 10px;
+
+  /* Dark: --side #0B0B0B, --bg #111111, --el #1C1C1C, --sub #242424, --hov #2C2C2C,
+     --t1 #F0F0F0, --t2 #BDBDBD, --t3 #A1A1A1 */
+  --sl-color-white: #f0f0f0;
+  --sl-color-gray-1: #e4e4e4;
+  --sl-color-gray-2: #bdbdbd;
+  --sl-color-gray-3: #a1a1a1;
+  --sl-color-gray-4: #6b6b6b;
+  --sl-color-gray-5: #2c2c2c;
+  --sl-color-gray-6: #1c1c1c;
+  --sl-color-black: #111111;
+  --sl-color-accent-low: #242424;
+  --sl-color-accent: #f0f0f0;
+  --sl-color-accent-high: #f0f0f0;
+  --sl-color-text-accent: #f0f0f0;
+  --sl-color-bg-nav: #0b0b0b;
+  --sl-color-bg-sidebar: #0b0b0b;
+  --sl-color-hairline: rgba(255, 255, 255, .08);
+  --sl-color-hairline-light: rgba(255, 255, 255, .08);
+  --sl-color-hairline-shade: #0b0b0b;
+  --sl-color-bg-inline-code: #242424;
+  --flux-inv: #f0f0f0;
+  --flux-oninv: #111111;
+}
+
+:root[data-theme='light'] {
+  /* Light: --side #EBEBED, --bg #F4F4F5, --el #FFFFFF, --sub #EBEBEC, --hov #E3E3E5,
+     --t1 #18181B, --t2 #4A4A4A, --t3 #636363 */
+  --sl-color-white: #18181b;
+  --sl-color-gray-1: #27272a;
+  --sl-color-gray-2: #4a4a4a;
+  --sl-color-gray-3: #636363;
+  --sl-color-gray-4: #9a9a9e;
+  --sl-color-gray-5: #e3e3e5;
+  --sl-color-gray-6: #ebebec;
+  --sl-color-gray-7: #f4f4f5;
+  --sl-color-black: #ffffff;
+  --sl-color-accent-low: #ebebec;
+  --sl-color-accent: #18181b;
+  --sl-color-accent-high: #18181b;
+  --sl-color-text-accent: #18181b;
+  --sl-color-bg-nav: #f4f4f5;
+  --sl-color-bg-sidebar: #f4f4f5;
+  --sl-color-hairline: rgba(0, 0, 0, .07);
+  --sl-color-hairline-light: rgba(0, 0, 0, .07);
+  --sl-color-hairline-shade: rgba(0, 0, 0, .14);
+  --sl-color-bg-inline-code: #ebebec;
+  --flux-inv: #18181b;
+  --flux-oninv: #ffffff;
+}
+
+/* Reading text: calm, slightly tighter than Starlight's default. */
+.sl-markdown-content { line-height: 1.6; }
+.sl-markdown-content :is(h1, h2, h3, h4) { letter-spacing: -.02em; font-weight: 600; }
+h1#_top { letter-spacing: -.02em; font-weight: 600; }
+
+/* Links are ink with an underline, not a colour. */
+.sl-markdown-content a:not(:where(.not-content *)) {
+  color: var(--sl-color-white);
+  text-decoration-color: var(--sl-color-gray-4);
+  text-underline-offset: .18em;
+}
+.sl-markdown-content a:not(:where(.not-content *)):hover { text-decoration-color: currentColor; }
+
+/* Sidebar: the current page is a quiet fill, as in the app's navigation. */
+.sidebar-content a[aria-current='page'],
+.sidebar-content a[aria-current='page']:hover,
+.sidebar-content a[aria-current='page']:focus {
+  background-color: var(--sl-color-accent-low);
+  color: var(--sl-color-white);
+  font-weight: 600;
+}
+.sidebar-content a { border-radius: var(--flux-r-sm); }
+
+/* Code, tables and asides use the soft radii. */
+.sl-markdown-content :is(pre, .expressive-code figure) { border-radius: var(--flux-r-sm); }
+.expressive-code { --ec-brdRad: 10px; }
+.sl-markdown-content code:not(pre code) { border-radius: 6px; padding: .1em .35em; }
+.sl-markdown-content table { display: block; overflow-x: auto; border-radius: var(--flux-r-sm); }
+.sl-markdown-content img { border-radius: var(--flux-r-sm); }
+
+/* The primary button is the inverted ink, like the app's. */
+.sl-link-button.primary, .action.primary {
+  background: var(--flux-inv);
+  border-color: var(--flux-inv);
+  color: var(--flux-oninv);
+  border-radius: 999px;
+}
+.action { border-radius: 999px; }
+
+/* Search: a quiet field. */
+site-search button[data-open-modal] { border-radius: var(--flux-r-sm); }
+
+/* The splash page: Kreska leads the hero, a little smaller than Starlight's default image. */
+.hero > img, .hero > .hero-html { width: 9rem; justify-self: center; }
+@media (max-width: 50rem) { .hero > img, .hero > .hero-html { width: 5rem; } }
+
+/* The README's centred screenshots: the desktop and the phone side by side, as on GitHub. */
+.sl-markdown-content p[align='center'] { text-align: center; }
+.sl-markdown-content p[align='center'] img { display: inline-block; vertical-align: top; margin: 0; }
+.hero .tagline { color: var(--sl-color-gray-2); max-width: 36rem; }
+/* The README's small captions under its pictures. */
+.sl-markdown-content p[align='center'] sub { font-size: .8125rem; line-height: 1.4; vertical-align: baseline; color: var(--sl-color-gray-3); }

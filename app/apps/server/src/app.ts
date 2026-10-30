@@ -6,7 +6,7 @@ import Fastify, { type FastifyInstance } from 'fastify';
 import fastifyStatic from '@fastify/static';
 import websocket from '@fastify/websocket';
 import { PgBoss } from 'pg-boss';
-import { assertExactMigrationLedger, fileCipherOf, FLUX_SCHEMA_VERSION, readAppliedMigrationVersions, readMigrationManifest, sql as dbSql, type DbExecutor } from '@flux/db';
+import { assertExactMigrationLedger, fileCipherOf, FLUX_SCHEMA_VERSION, readAppliedMigrationVersions, readMigrationManifest, sealResolverScope, sql as dbSql, type DbExecutor } from '@flux/db';
 import { EDITING_CAPABILITIES_PATH, type EditingCapability } from '@flux/contracts';
 import { registerDatabase } from './plugins/database.js';
 import { aiRoutes } from './access/ai-gate.js';
@@ -105,6 +105,15 @@ export async function buildApp(config: ServerConfig, migrationsDir = 'packages/d
   // F-030 (#655): this process's keys of encrypted workspaces, refreshed by the keyring heartbeat; and the lock gate,
   // registered before any route so every later route gets it.
   const testDeployment = config.fixture.token !== null && config.fixture.failureInjection;
+  // AC-6, test deployment only: every registered route, so the locked-route walk can classify each one.
+  if (testDeployment) {
+    const routes: { method: string; url: string; body: unknown; query: unknown }[] = [];
+    app.addHook('onRoute', (route) => { for (const method of [route.method].flat()) if (method !== 'HEAD') routes.push({ method, url: route.url, body: (route.schema as { body?: unknown } | undefined)?.body ?? null, query: (route.schema as { querystring?: unknown } | undefined)?.querystring ?? null }); });
+    app.get('/api/v1/test/routes', async (request, reply) => {
+      if (request.headers.authorization !== `Bearer ${config.fixture.token}`) return reply.code(401).send({ error: 'Unauthorized' });
+      return { routes };
+    });
+  }
   // AC-7 error paths, test deployment only: `x-flux-test-fail: 500` fails the request after its handler ran, with an
   // error whose message and detail quote the request body, so the test proves such text is never answered or logged.
   if (testDeployment) app.addHook('preSerialization', async (request, _reply, payload) => {
@@ -114,7 +123,8 @@ export async function buildApp(config: ServerConfig, migrationsDir = 'packages/d
     throw Object.assign(new Error(`Injected failure after ${quoted}`), { detail: quoted });
   });
   const encryptionKeys = processKeysFromEnv(env);
-  installSeals(encryptionKeys);
+  const seals = installSeals(encryptionKeys);
+  app.addHook('onRequest', (_request, _reply, done) => { sealResolverScope.run(seals, done); });
   useJsonCompression(app);
   // Every response refuses framing, the OAuth consent page included (#287).
   useFramingProtection(app);
