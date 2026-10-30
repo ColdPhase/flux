@@ -10,7 +10,7 @@ import { githubWebhookRoutes } from '../../apps/server/src/github/webhook.js';
 import { githubTransport } from '../../apps/server/src/github/http.js';
 import { agentConnection } from './support/mcp-actions.js';
 import { toolValue } from './support/mcp.js';
-import { addMember, expectStatus, grant, person, project, workspace, type Person } from './support/people.js';
+import { addMember, expectStatus, person, project, workspace, type Person } from './support/people.js';
 
 // #479 AC-3/AC-4: the #153 current-recipient bridge (docs/development/github-integration/README.md "#153 current-recipient
 // bridge"). Real sessions, OAuth bearers and MCP tools; the GitHub provider is a fixture, so no real installation is claimed.
