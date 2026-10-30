@@ -165,7 +165,7 @@ class RuntimeConsole(unittest.TestCase):
         page = self.page()
         page.goto("/settings/agents")
         section = page.locator("section.rt")
-        expect(section.get_by_role("heading", name=re.compile("Claude Code in Flux · not signed in"))).to_be_visible()
+        expect(section.get_by_role("heading", name=re.compile("Claude Code and Codex in Flux · Claude Code not signed in"))).to_be_visible()
         facts = section.get_by_role("list", name="Before you sign in")
         expect(facts).to_contain_text("The person who runs this server can technically read that storage")
         expect(facts).to_contain_text("Anthropic recommends API keys for products and automation, and may restrict this kind of use without notice")
@@ -217,7 +217,7 @@ class RuntimeConsole(unittest.TestCase):
         shot(page, "runtime-signed-in-phone-390")
         page.get_by_role("link", name="Back to Agents and AI").tap()
         section = page.locator("section.rt")
-        expect(section.get_by_role("heading", name=re.compile("Claude Code in Flux · signed in"))).to_be_visible()
+        expect(section.get_by_role("heading", name=re.compile("Claude Code and Codex in Flux · Claude Code signed in"))).to_be_visible()
         expect(section.get_by_role("list", name="Your sign-in")).to_contain_text("Anthropic Console · API billing")
         expect(section.get_by_role("list", name="Your sign-in")).to_contain_text("o***@example.org")
         for name in ("Check sign-in", "Sign out", "Remove shared runtime space from Flux…"):
@@ -260,7 +260,7 @@ class RuntimeConsole(unittest.TestCase):
         page.goto("/settings/agents")
         section = page.locator("section.rt")
         section.get_by_role("button", name="Sign out").tap()
-        expect(section.get_by_role("heading", name=re.compile("Claude Code in Flux · not signed in"))).to_be_visible()
+        expect(section.get_by_role("heading", name=re.compile("Claude Code and Codex in Flux · Claude Code not signed in"))).to_be_visible()
         expect(section.get_by_role("link", name="Sign in with Claude")).to_be_visible()
         self.assertEqual(self.api(page, "GET", "/api/v1/agent-runtime")["connections"]["claude_code"]["state"], "signed_out")
 
@@ -401,8 +401,8 @@ class RuntimeConsole(unittest.TestCase):
         self.phone_layout(page, "section.rt")
         shot(page, "runtime-remove-phone-390")
         confirm.get_by_role("button", name="Sign out and remove").tap()
-        expect(section.get_by_role("heading", name=re.compile("Claude Code in Flux · removing"))).to_be_visible()
-        expect(section.get_by_role("heading", name=re.compile("Claude Code in Flux · not signed in"))).to_be_visible(timeout=60000)
+        expect(section.get_by_role("status").filter(has_text="Signing out of both clients and removing your shared runtime space")).to_be_visible()
+        expect(section.get_by_role("heading", name=re.compile("Claude Code and Codex in Flux · Claude Code not signed in"))).to_be_visible(timeout=60000)
         deadline = time.time() + 30
         while self.api(page, "GET", "/api/v1/agent-runtime")["binding"] is not None and time.time() < deadline:
             time.sleep(0.5)

@@ -103,7 +103,7 @@ log "Source $sha as a git bundle"
 git -C "$root" bundle create -q "$state/source.bundle" HEAD
 scp -q -P "$port" -i "$state/id_ed25519" -o StrictHostKeyChecking=no -o UserKnownHostsFile="$state/known_hosts" \
   "$state/source.bundle" flux@127.0.0.1:source.bundle
-ssh_guest "set -e; rm -rf flux; git clone -q source.bundle flux; cd flux; git checkout -q --detach $sha; git rev-parse HEAD"
+ssh_guest "set -e; rm -rf flux; git clone -q source.bundle flux; cd flux; git -c advice.detachedHead=false checkout -q --detach $sha; git rev-parse HEAD"
 
 stamp=$(date -u +%Y%m%dT%H%M%SZ)
 log "In the guest: $* (log: $state/guest-$stamp.log)"
