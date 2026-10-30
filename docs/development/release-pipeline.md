@@ -194,7 +194,9 @@ this repository, and no release workflow has been dispatched.
   and the public package link.
 - **Runtime smoke on the runner.** `smoke_runtime.sh` needs a runner kernel with `kernel.yama.ptrace_scope` of
   1 or higher (assumed for `ubuntu-latest`, not observed) and the arm64 `docker run` checks of the runtime
-  image rely on the QEMU emulator. Neither has run on GitHub. A bound slot's sign-out and reuse with real
+  image rely on the QEMU emulator. Neither has run on GitHub. Locally, the full `dry_run.sh` including `smoke_runtime.sh`
+  passed in a Yama 1 KVM guest on 2026-10-30 (`scripts/agent-runtime/supported_guest.sh`; evidence in
+  `docs/development/evidence/release-closeout-20261030/`). A bound slot's sign-out and reuse with real
   vendor CLIs and the Claude Code installation (`runtime-install` reaching `downloads.claude.ai`) are
   independent-review items on the downloaded draft (#358 AC-3).
 - **Packaged installation on amd64 and arm64, and a forward upgrade**, by the independent

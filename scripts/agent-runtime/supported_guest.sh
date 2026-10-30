@@ -10,7 +10,8 @@
 # it on a tmpfs). This commit is sent as a git bundle and checked out at the same SHA in the guest; the command (by
 # default `scripts/check_agent_runtime.sh`) runs there and its output is copied to <state>/guest-<UTC time>.log.
 # FLUX_GUEST_SSH_PORT (default 34022), FLUX_GUEST_CPUS (8), FLUX_GUEST_MEMORY (16G), FLUX_GUEST_DISK (80G).
-# FLUX_GUEST_KEEP=1 leaves the guest running afterwards (ssh -p <port> -i <state>/id_ed25519 flux@127.0.0.1).
+# FLUX_GUEST_BINFMT=arm64 registers the release workflow's pinned QEMU emulator in the GUEST kernel first (for
+# FLUX_DRYRUN_PLATFORMS in scripts/release/dry_run.sh). FLUX_GUEST_KEEP=1 leaves the guest running afterwards (ssh -p <port> -i <state>/id_ed25519 flux@127.0.0.1).
 set -euo pipefail
 
 root=$(cd "$(dirname "$0")/../.." && pwd)
@@ -105,6 +106,10 @@ scp -q -P "$port" -i "$state/id_ed25519" -o StrictHostKeyChecking=no -o UserKnow
   "$state/source.bundle" flux@127.0.0.1:source.bundle
 ssh_guest "set -e; rm -rf flux; git clone -q source.bundle flux; cd flux; git -c advice.detachedHead=false checkout -q --detach $sha; git rev-parse HEAD"
 
+if [ -n "${FLUX_GUEST_BINFMT:-}" ]; then
+  log "QEMU binfmt for ${FLUX_GUEST_BINFMT} in the guest (the workflow's pinned tonistiigi/binfmt)"
+  ssh_guest "sudo -n docker run --privileged --rm docker.io/tonistiigi/binfmt:qemu-v10.2.3@sha256:400a4873b838d1b89194d982c45e5fb3cda4593fbfd7e08a02e76b03b21166f0 --install ${FLUX_GUEST_BINFMT} >/dev/null && ls /proc/sys/fs/binfmt_misc/ | grep qemu && sudo -n docker info --format 'image store: {{.DriverStatus}}'"
+fi
 stamp=$(date -u +%Y%m%dT%H%M%SZ)
 log "In the guest: $* (log: $state/guest-$stamp.log)"
 quoted=$(printf '%q ' "$@")
