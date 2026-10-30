@@ -81,17 +81,20 @@ These are drafted in the repository and reviewed like code. Publication follows
 
   The draft is in [release-notes-v0.1.0-draft.md](release-notes-v0.1.0-draft.md).
 - **README:**
-  - refresh the demo GIF once the final design (#336) is on `main`;
+  - refresh the demo GIF once the final design (#336) is on `main` and the pre-release audit
+    ([#763](https://github.com/ColdPhase/flux/issues/763)) fixes are merged; `./scripts/record_media.sh` does it;
   - add one phone screenshot;
   - make sure the first screen answers what Flux is, who it is for, and how to try it.
 - **A 60–90 s demo video of the core journey** on the demo data: a person and an agent in one
   conversation, a task, a handoff that someone resumes. The script and shot list are in
-  [launch-video.md](launch-video.md); a person records it, because it needs a real model account and a
-  screen capture.
+  [launch-video.md](launch-video.md). A script records shots 1 to 4 and 8 from the running application
+  (`./scripts/record_video.sh`); a person records the rest, because it needs a real model account and a
+  screen capture, and adds the voice-over.
 - **The story, as drafts in English and Polish for the founders:** two founders and two agents
   built Flux in public, with dated evidence from the build log. The founders choose where to
   publish it (for example Show HN, r/selfhosted, LinkedIn) and when.
-  The drafts are in [launch-story.md](launch-story.md).
+  The drafts are in [launch-story.md](launch-story.md); the Show HN, r/selfhosted and blog drafts, with the
+  rules of each place checked on 2026-10-30, are in [launch-posts.md](launch-posts.md).
 - **The changelog:** `[Unreleased]` moves under `0.1.0` with its date. The build log gets a
   release entry.
 

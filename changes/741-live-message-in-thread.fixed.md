@@ -1,0 +1,1 @@
+- Another member's message appears in an open conversation or thread when it is sent, not after the 15 second refresh ([#741](https://github.com/ColdPhase/flux/pull/741)).

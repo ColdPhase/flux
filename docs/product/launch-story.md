@@ -15,8 +15,9 @@
 >   the Polish version;
 > - the build log ends on 2026-10-07: the new section cites pull requests, issues and the
 >   [time to first run](../development/time-to-first-run.md) page instead, so check it against what you remember;
-> - the lines about Codex ([#660](https://github.com/ColdPhase/flux/issues/660)) and the review rules: change
->   them if the bug is fixed or the rules change again before you post.
+> - the lines about Codex ([#660](https://github.com/ColdPhase/flux/issues/660), fixed on 27 October in
+>   [#673](https://github.com/ColdPhase/flux/pull/673)) and the review rules: change them if the rules change again
+>   before you post.
 >
 > Every fact below comes from the build log or the linked pull requests and issues. There are no
 > other numbers in it, and none should be added without a source.
@@ -105,7 +106,8 @@ design; show rendered screens early.
   grant fewer permissions than a client asks for ([#548](https://github.com/ColdPhase/flux/issues/548),
   merged on 17 October in [#571](https://github.com/ColdPhase/flux/pull/571)). On 23 October the same
   walkthrough with Codex showed that the fix covered only the way Claude Code asks
-  ([#660](https://github.com/ColdPhase/flux/issues/660)).
+  ([#660](https://github.com/ColdPhase/flux/issues/660)); it was fixed on 27 October
+  ([#673](https://github.com/ColdPhase/flux/pull/673)).
 - *Editing together took three steps.* Live movement on a map and shared wiki text arrived on 14 October
   ([#389](https://github.com/ColdPhase/flux/pull/389)), named cursors on 17 October
   ([#585](https://github.com/ColdPhase/flux/pull/585)) and the finished version on 23 October
@@ -213,7 +215,8 @@ pokazujcie wyrenderowane ekrany wcześnie.
   można przyznać mniej uprawnień, niż prosi klient ([#548](https://github.com/ColdPhase/flux/issues/548),
   scalone 17 października w [#571](https://github.com/ColdPhase/flux/pull/571)). 23 października to samo
   przejście z Codexem pokazało, że poprawka obejmowała tylko sposób, w jaki prosi Claude Code
-  ([#660](https://github.com/ColdPhase/flux/issues/660)).
+  ([#660](https://github.com/ColdPhase/flux/issues/660)); naprawiliśmy to 27 października
+  ([#673](https://github.com/ColdPhase/flux/pull/673)).
 - *Wspólna edycja zajęła trzy kroki.* Ruch na mapie na żywo i wspólny tekst wiki pojawiły się
   14 października ([#389](https://github.com/ColdPhase/flux/pull/389)), nazwane kursory 17 października
   ([#585](https://github.com/ColdPhase/flux/pull/585)), a gotowa wersja 23 października

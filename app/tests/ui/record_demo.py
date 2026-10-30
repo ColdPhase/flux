@@ -23,7 +23,7 @@ import sys
 import uuid
 from pathlib import Path
 
-from PIL import Image
+from PIL import Image, ImageChops
 from playwright.sync_api import APIRequestContext, Locator, Page, expect, sync_playwright
 
 from test_app_shell import ORIGIN, UPSTREAM, start_forwarder
@@ -215,8 +215,27 @@ def readme_stills(browser, request: APIRequestContext) -> None:
         context.close()
 
 
+def drop_transition_frames(images: list[Image.Image], durations: list[int]) -> tuple[list[Image.Image], list[int]]:
+    """Merges a short pointer frame into the one before it when much of the screen changed between them.
+
+    The interface now dissolves between views (#722), so a pointer step taken during a dissolve is a
+    half-faded screen. It costs the most bytes in the GIF and shows nothing the next frame does not, so its
+    time goes to the frame before it. The file stays within its allowlisted size.
+    """
+    kept: list[Image.Image] = []
+    times: list[int] = []
+    for image, ms in zip(images, durations):
+        box = ImageChops.difference(image, kept[-1]).getbbox() if kept else None
+        if box and ms <= 60 and (box[2] - box[0]) * (box[3] - box[1]) > 250_000:
+            times[-1] += ms
+            continue
+        kept.append(image)
+        times.append(ms)
+    return kept, times
+
+
 def write_gif(frames: list[tuple[bytes, int]], path: Path) -> None:
-    images = [Image.open(io.BytesIO(png)).convert("RGB") for png, _ in frames]
+    images, durations = drop_transition_frames([Image.open(io.BytesIO(png)).convert("RGB") for png, _ in frames], [ms for _, ms in frames])
     # One palette for every frame, so colours do not flicker and unchanged areas stay identical.
     sample = images[:: max(1, len(images) // 8)]
     width, height = images[0].size
@@ -228,7 +247,7 @@ def write_gif(frames: list[tuple[bytes, int]], path: Path) -> None:
     palette = sheet.quantize(colors=48, method=Image.Quantize.MEDIANCUT, dither=Image.Dither.NONE)
     indexed = [image.quantize(palette=palette, dither=Image.Dither.NONE) for image in images]
     path.parent.mkdir(parents=True, exist_ok=True)
-    indexed[0].save(path, save_all=True, append_images=indexed[1:], duration=[ms for _, ms in frames], loop=0, optimize=True, disposal=1)
+    indexed[0].save(path, save_all=True, append_images=indexed[1:], duration=durations, loop=0, optimize=True, disposal=1)
 
 
 def main() -> None:
