@@ -78,12 +78,15 @@ docker run --rm -v "$state/seed:/s" "$tools_image" sh -euc \
 log "Disk and guest ($cpus vCPU, $memory, $disk overlay on the read-only image; QEMU in a container with /dev/kvm)"
 docker rm -f "$name" >/dev/null 2>&1 || true
 rm -f "$state/disk.qcow2"
-docker run -d --name "$name" --device /dev/kvm -p "127.0.0.1:$port:2222" -v "$state:/g" "$tools_image" sh -euc "
-  apk add -q qemu-system-x86_64 qemu-img >/dev/null
+# QEMU's user-mode forward answers connections from the container's own loopback only (a connection through the
+# published port reached it and got no SSH banner), so socat relays the published port 2223 to it.
+docker run -d --name "$name" --device /dev/kvm -p "127.0.0.1:$port:2223" -v "$state:/g" "$tools_image" sh -euc "
+  apk add -q qemu-system-x86_64 qemu-img socat >/dev/null
   qemu-img create -q -f qcow2 -F qcow2 -b /g/image/$image /g/disk.qcow2 $disk
+  socat TCP-LISTEN:2223,fork,reuseaddr TCP:127.0.0.1:2222 &
   exec qemu-system-x86_64 -machine q35,accel=kvm -cpu host -smp $cpus -m $memory -nographic \
     -drive file=/g/disk.qcow2,if=virtio -drive file=/g/seed/seed.iso,if=virtio,media=cdrom \
-    -netdev user,id=n0,hostfwd=tcp::2222-:22 -device virtio-net-pci,netdev=n0 -serial file:/g/serial.log -monitor none" >/dev/null
+    -netdev user,id=n0,hostfwd=tcp:127.0.0.1:2222-:22 -device virtio-net-pci,netdev=n0 -serial file:/g/serial.log -monitor none" >/dev/null
 ssh_guest() { ssh -q -p "$port" -i "$state/id_ed25519" -o StrictHostKeyChecking=no -o UserKnownHostsFile="$state/known_hosts" \
   -o ConnectTimeout=5 -o ServerAliveInterval=30 flux@127.0.0.1 "$@"; }
 for _ in $(seq 1 120); do ssh_guest test -f /var/lib/cloud/flux-ready 2>/dev/null && break; sleep 5; done
