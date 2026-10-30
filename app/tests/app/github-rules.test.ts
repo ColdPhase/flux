@@ -23,7 +23,7 @@ const { db, pool } = createDatabase(connectionString); after(() => pool.end());
 // Its own App ID: signed deliveries fan out to every binding of a repository under one App, and github.test.ts counts them.
 const APP = '54321'; const INSTALL = '555'; const REPO = '777'; const REPO2 = '778';
 const SHA1 = 'a'.repeat(40); const SHA2 = 'b'.repeat(40);
-const config: GithubConfig = { clientId: 'Iv1.rule-fixture', clientSecret: 'rule-fixture-client-secret', appId: APP, appSlug: 'flux-rule-fixture',
+const config: GithubConfig = { delivery: 'webhook', clientId: 'Iv1.rule-fixture', clientSecret: 'rule-fixture-client-secret', appId: APP, appSlug: 'flux-rule-fixture',
   webhookSecret: 'rule-fixture-webhook-secret-at-least-thirty-two', encryptionKey: Buffer.alloc(32, 21), publicOrigin };
 const actor = (p: Person): Principal => ({ kind: 'human', id: p.id });
 const check = (state: GithubCheck['state'], name = 'firmware / test'): GithubCheck => ({ id: '982', name, appId: '55', state, sourceUpdatedAt: '2026-10-05T10:00:00.000Z' });

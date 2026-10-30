@@ -23,7 +23,7 @@ import { apiUrl, publicOrigin } from '../support/http.js';
 /** "Let linked PRs move this task" (#74 G-1a) in the running web app: the toggle, its history line, the paused state with
  * Resume and Ready to close with one-tap Done, at desktop and 390 px. Real sessions, routes and SQL; only the GitHub
  * provider is a typed fixture injected in this process, behind the same proxy as github.e2e.ts. No real installation. */
-const config: GithubConfig = { appId: '34567', appSlug: 'flux-rule-browser', clientId: 'Iv1.rule-browser', clientSecret: 'rule-browser-client-secret',
+const config: GithubConfig = { delivery: 'webhook', appId: '34567', appSlug: 'flux-rule-browser', clientId: 'Iv1.rule-browser', clientSecret: 'rule-browser-client-secret',
   webhookSecret: 'rule-browser-webhook-secret-thirty-two-chars', encryptionKey: Buffer.alloc(32, 23), publicOrigin };
 const SHA = 'c'.repeat(40);
 const check = (state: GithubCheck['state']): GithubCheck => ({ id: '4401', name: 'firmware / test', appId: '45', state, sourceUpdatedAt: '2026-10-05T10:00:00.000Z' });

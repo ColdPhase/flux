@@ -21,7 +21,7 @@ const connectionString = process.env.DATABASE_URL;
 if (!connectionString) throw new Error('DATABASE_URL is required');
 const { db, pool } = createDatabase(connectionString); after(() => pool.end());
 const APP = '12345'; const INSTALL = '555'; const REPO = '777'; const SHA1 = 'a'.repeat(40); const SHA2 = 'b'.repeat(40);
-const config: GithubConfig = { clientId: 'Iv1.fixture', clientSecret: 'fixture-private-client-secret', appId: APP, appSlug: 'flux-fixture',
+const config: GithubConfig = { delivery: 'webhook', clientId: 'Iv1.fixture', clientSecret: 'fixture-private-client-secret', appId: APP, appSlug: 'flux-fixture',
   webhookSecret: 'fixture-webhook-secret-at-least-thirty-two', encryptionKey: Buffer.alloc(32, 14), publicOrigin };
 const actor = (p: Person): Principal => ({ kind: 'human', id: p.id });
 const rejected = (promise: Promise<unknown>, code: string) => assert.rejects(promise, (error: unknown) => error instanceof DomainError && error.code === code);

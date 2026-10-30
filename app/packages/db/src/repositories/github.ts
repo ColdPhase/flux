@@ -150,10 +150,10 @@ export function githubRows(db: DbExecutor,options:{taskFence?:()=>import('./task
     async complete(deliveryId: string, bindingId: string, errorCode: string | null = null) {
       await db.update(p).set({ state: 'completed', errorCode }).where(and(eq(p.deliveryId, deliveryId), eq(p.bindingId, bindingId)));
     },
-    async reconciliationCandidates(appId: string, window: string, limit: number) {
+    async reconciliationCandidates(appId: string, window: string, limit: number, prefix: 'gap' | 'poll' = 'gap') {
       return (await db.select().from(b).where(and(eq(b.appId, appId), eq(b.state, 'active'),
         sql`EXISTS (SELECT 1 FROM github_task_links gl WHERE gl.binding_id=${b.id})`,
-        sql`NOT EXISTS (SELECT 1 FROM github_deliveries gd WHERE gd.id='gap-' || ${b.id}::text || '-' || ${window})`,
+        sql`NOT EXISTS (SELECT 1 FROM github_deliveries gd WHERE gd.id=${prefix} || '-' || ${b.id}::text || '-' || ${window})`,
         sql`NOT EXISTS (SELECT 1 FROM github_processing gp JOIN github_deliveries gd ON gd.id=gp.delivery_id
           WHERE gp.binding_id=${b.id} AND gp.state='pending' AND gd.origin='reconcile')`)).orderBy(asc(b.id)).limit(limit)).map(bindingView);
     },

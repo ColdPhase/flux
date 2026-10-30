@@ -7,6 +7,7 @@ import type { Agent, GithubPullFacts, WorkItem } from '@flux/contracts';
 import { NotFoundError, type GithubProvider, type Principal } from '@flux/core';
 import { createGithubUseCases } from '../../apps/server/src/github/adapters.js';
 import { githubWebhookRoutes } from '../../apps/server/src/github/webhook.js';
+import { githubTransport } from '../../apps/server/src/github/http.js';
 import { agentConnection } from './support/mcp-actions.js';
 import { toolValue } from './support/mcp.js';
 import { addMember, expectStatus, grant, person, project, workspace, type Person } from './support/people.js';
@@ -18,7 +19,7 @@ if (!url) throw new Error('DATABASE_URL is required');
 const { db, pool } = createDatabase(url);
 after(() => pool.end());
 
-const APP = '12345', INSTALL = '556', SECRET = 'fixture-webhook-secret-at-least-thirty-two';
+const APP = '24680', INSTALL = '556', SECRET = 'fixture-webhook-secret-at-least-thirty-two';
 const PRIVATE_REPO = String(randomInt(100_000, 900_000)), PUBLIC_REPO = String(randomInt(900_001, 999_999));
 const SHA = (c: string) => c.repeat(40);
 class Provider implements GithubProvider {
@@ -142,4 +143,49 @@ test('#479: a linked PR event reaches the task\'s current holder once, echoes ar
   // Disconnecting the binding withdraws what its deliveries showed; nothing is woken.
   await github.disconnect(principal, privateBinding.id);
   assert.deepEqual((await inbox(hubertAgent)).providerEvents, []);
+});
+
+test('G-1c (#479): conditional GETs send the last ETag for the same URL and token and reuse the body on 304', async () => {
+  const seen: (string | null)[] = [];
+  let calls = 0;
+  const fetcher = (async (_url: string, init: RequestInit) => {
+    seen.push(new Headers(init.headers).get('if-none-match'));
+    calls++;
+    if (calls === 2) return new Response(null, { status: 304 });
+    return new Response(JSON.stringify({ number: calls }), { status: 200, headers: { etag: `"v${calls}"` } });
+  }) as typeof fetch;
+  const transport = githubTransport(fetcher);
+  const url = 'https://api.github.com/repos/fixture/pulls/1';
+  const first = await transport.json(url, { headers: { authorization: 'Bearer one' } });
+  const second = await transport.json(url, { headers: { authorization: 'Bearer one' } });
+  const other = await transport.json(url, { headers: { authorization: 'Bearer two' } });
+  assert.deepEqual([first.data, second.data, other.data], [{ number: 1 }, { number: 1 }, { number: 3 }]);
+  assert.deepEqual(seen, [null, '"v1"', null], 'the ETag is sent only for the same token');
+});
+
+test('G-1c (#479): a poll window reconciles bound repositories with links and refreshes only their open PRs', async () => {
+  const provider = new Provider();
+  const github = createGithubUseCases(db, provider);
+  const hubert = await person('Hubert poll');
+  provider.allowed.add(hubert.id);
+  const ws = await workspace(hubert, 'Poll');
+  const p = await project(hubert, ws.id, 'Poll project', 'restricted');
+  const repo = String(randomInt(1_000_000, 9_000_000));
+  const principal: Principal = { kind: 'human', id: hubert.id };
+  const binding = await github.bind(principal, p.id, { installationId: INSTALL, repositoryId: repo });
+  const item = expectStatus(await hubert.browser.request('POST', `/api/v1/projects/${p.id}/work`, { body: { title: 'Polled task' } }), 201) as WorkItem;
+  await github.link(principal, item.id, { bindingId: binding.id, number: 5, role: 'required_output' });
+  await github.link(principal, item.id, { bindingId: binding.id, number: 6, role: 'related' });
+  await pool.query("UPDATE github_task_links SET facts = jsonb_set(facts, '{state}', '\"closed\"') WHERE binding_id=$1 AND (facts->>'number')::int = 6", [binding.id]);
+  const window = String(randomInt(1_000_000, 9_000_000));
+  // Every binding of this App with links is a candidate; at least ours is scheduled once per window.
+  for (let round = 0; round < 50; round++) if (!await github.schedule(APP, window, 'poll')) break;
+  const id = `poll-${binding.id}-${window}`;
+  assert.equal((await pool.query('SELECT origin FROM github_deliveries WHERE id=$1', [id])).rows[0]?.origin, 'reconcile');
+  provider.head = SHA('c');
+  assert.equal(await github.process(id, binding.id), 'completed');
+  const heads = new Map((await pool.query("SELECT (facts->>'number')::int AS n, facts->>'headSha' AS head FROM github_task_links WHERE binding_id=$1", [binding.id])).rows.map((row) => [row.n, row.head]));
+  assert.deepEqual([heads.get(5), heads.get(6)], [SHA('c'), SHA('a')], 'the open PR is refreshed, the closed one is left to webhooks and the catch-up');
+  assert.equal(await github.schedule(APP, window, 'poll') >= 0, true);
+  assert.equal((await pool.query('SELECT count(*)::int AS n FROM github_deliveries WHERE id=$1', [id])).rows[0].n, 1, 'one poll per binding and window');
 });

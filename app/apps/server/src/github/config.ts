@@ -1,6 +1,8 @@
 export interface GithubConfig {
   clientId: string; clientSecret: string; appId: string; appSlug: string;
   webhookSecret: string; encryptionKey: Buffer; publicOrigin: string;
+  /** G-1c (#479): `poll` when GitHub cannot reach this instance's webhook; the operator decides. */
+  delivery: 'webhook' | 'poll';
 }
 export function loadGithubConfig(env: NodeJS.ProcessEnv, publicOrigin: string): GithubConfig | null {
   const keys = ['FLUX_GITHUB_CLIENT_ID', 'FLUX_GITHUB_CLIENT_SECRET', 'FLUX_GITHUB_APP_ID', 'FLUX_GITHUB_APP_SLUG', 'FLUX_GITHUB_WEBHOOK_SECRET', 'FLUX_GITHUB_ENCRYPTION_KEY'];
@@ -10,6 +12,8 @@ export function loadGithubConfig(env: NodeJS.ProcessEnv, publicOrigin: string): 
   if (!/^[a-z0-9-]{1,100}$/.test(env.FLUX_GITHUB_APP_SLUG!)) throw new Error('FLUX_GITHUB_APP_SLUG is invalid');
   if (!/^[a-f0-9]{64}$/i.test(env.FLUX_GITHUB_ENCRYPTION_KEY!)) throw new Error('FLUX_GITHUB_ENCRYPTION_KEY must be a 32-byte hex key');
   if (env.FLUX_GITHUB_WEBHOOK_SECRET!.length < 32) throw new Error('FLUX_GITHUB_WEBHOOK_SECRET must be at least 32 characters');
-  return { clientId: env.FLUX_GITHUB_CLIENT_ID!, clientSecret: env.FLUX_GITHUB_CLIENT_SECRET!, appId: env.FLUX_GITHUB_APP_ID!,
+  const delivery = env.FLUX_GITHUB_DELIVERY?.trim() || 'webhook';
+  if (delivery !== 'webhook' && delivery !== 'poll') throw new Error('FLUX_GITHUB_DELIVERY must be webhook or poll');
+  return { delivery, clientId: env.FLUX_GITHUB_CLIENT_ID!, clientSecret: env.FLUX_GITHUB_CLIENT_SECRET!, appId: env.FLUX_GITHUB_APP_ID!,
     appSlug: env.FLUX_GITHUB_APP_SLUG!, webhookSecret: env.FLUX_GITHUB_WEBHOOK_SECRET!, encryptionKey: Buffer.from(env.FLUX_GITHUB_ENCRYPTION_KEY!, 'hex'), publicOrigin };
 }
