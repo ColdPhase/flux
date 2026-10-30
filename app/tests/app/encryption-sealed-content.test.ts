@@ -607,7 +607,7 @@ describe('F-030 content-free notifications in use (#712 review)', () => {
   const inbox = async () => (expectStatus(await ben.browser.request('GET', '/api/v1/inbox'), 200) as { items: { id: string; title: string; readAt: string | null; source: { workspaceId?: string } }[] }).items;
 
   test('after an account rename, a sealed notification is still marked read, one by one and all at once', async () => {
-    const sealed = (await inbox()).filter((item) => item.title.endsWith(' in Garden club'));
+    const sealed = (await inbox()).filter((item) => item.title.startsWith('Ada ') && item.title.endsWith(' in Garden club'));
     assert.ok(sealed.length >= 1, 'a sealed notification to mark');
     await pool.query(`UPDATE auth_users SET name = 'Ada Renamed' WHERE id = $1`, [ada.id]);
     try {
@@ -616,8 +616,13 @@ describe('F-030 content-free notifications in use (#712 review)', () => {
       // A changed title is still checked against the current names.
       await assert.rejects(pool.query(`UPDATE notifications SET title = 'Ada mentioned you in Garden club, secret' WHERE id = $1`, [sealed[0]!.id]),
         { hint: 'NOTIFICATION_CONTENT_REFUSED' });
-      await assert.rejects(pool.query(`UPDATE notifications SET url = '/projects/x?q=secret' WHERE id = $1`, [sealed[0]!.id]), { hint: 'NOTIFICATION_CONTENT_REFUSED' }, 'url: ids only');
     } finally { await pool.query(`UPDATE auth_users SET name = 'Ada' WHERE id = $1`, [ada.id]); }
+    // With the names as they were, only the link decides: an id-only form passes, anything else is refused.
+    const ok = `/projects/${randomUUID()}/conversations/${randomUUID()}#message-${randomUUID()}`;
+    const original = (await pool.query<{ title: string }>(`SELECT title FROM notifications WHERE id = $1`, [sealed[0]!.id])).rows[0]!.title;
+    assert.match(original, /^Ada /);
+    await pool.query(`UPDATE notifications SET url = $2 WHERE id = $1`, [sealed[0]!.id, ok]);
+    await assert.rejects(pool.query(`UPDATE notifications SET url = '/projects/x?q=secret' WHERE id = $1`, [sealed[0]!.id]), { hint: 'NOTIFICATION_CONTENT_REFUSED' }, 'url: ids only');
   });
 
   test('a proposed decision of A in Needs you, and a muted place of A in the settings, open for Ben; locked, the settings name the workspace', async () => {
@@ -668,6 +673,20 @@ describe('F-030 content-free notifications in use (#712 review)', () => {
     assert.equal(row.workspace_id, A, 'every unread is in A (the rest were marked read): the plain count, in A');
     const claimed = (await pool.query<{ on: string | null }>(`SELECT summary_last_on::text AS on FROM notification_preferences WHERE user_id = $1`, [ben.id])).rows[0];
     assert.ok(claimed?.on, 'the day is claimed');
+    // #712 review P2-4: with A locked, the next day's summary leaves A's items out and still claims the day.
+    expectStatus(await lock(ada.browser, A), 200);
+    try {
+      await pool.query(`UPDATE notification_preferences SET summary_last_on = NULL WHERE user_id = $1`, [ben.id]);
+      const again = new PgBoss({ connectionString, migrate: false, supervise: false, schedule: false });
+      await again.start();
+      try { await again.send('notification.morning-summary.v1', {}); } finally { await again.stop({ graceful: false }); }
+      let on: string | null = null;
+      for (let attempt = 0; attempt < 120 && !on; attempt += 1) {
+        on = (await pool.query<{ on: string | null }>(`SELECT summary_last_on::text AS on FROM notification_preferences WHERE user_id = $1`, [ben.id])).rows[0]?.on ?? null;
+        if (!on) await new Promise((resolve) => setTimeout(resolve, 500));
+      }
+      assert.ok(on, 'locked: the day is still claimed (no retry loop on WORKSPACE_LOCKED)');
+    } finally { expectStatus(await unlock(ada.browser, A, { password: pw }), 200); }
     await pool.query(`UPDATE notification_preferences SET summary_enabled = false WHERE user_id = $1`, [ben.id]);
   });
 });
@@ -678,7 +697,7 @@ describe('F-030 content-free notifications in use (#712 review)', () => {
 // texts (zero hits) and the service logs for B's request text (found: the unredacted path does log).
 describe('F-030 error paths (S2a-2c-3)', () => {
   const failed = { A: `ERRPATH-A-${randomUUID()}`, B: `ERRPATH-B-${randomUUID()}` };
-  const jobFailed = { A: `JOBFAIL-A-${randomUUID()}`, B: `JOBFAIL-B-${randomUUID()}` };
+  const jobFailed = { A: `JOBFAIL-A-${randomUUID()}`, A2: `JOBFAIL-A2-${randomUUID()}`, B: `JOBFAIL-B-${randomUUID()}` };
 
   before(async () => {
     expectStatus(await lock(ada.browser, A), 200);
@@ -701,8 +720,9 @@ describe('F-030 error paths (S2a-2c-3)', () => {
     const boss = new PgBoss({ connectionString, migrate: false, supervise: false, schedule: false });
     await boss.start();
     try {
-      for (const [side, ws] of [['A', A], ['B', B]] as const) {
-        const id = await boss.send('sample.process', { sampleId: randomUUID(), workspaceId: ws, fluxTestFailure: jobFailed[side] }, { retryLimit: 0 });
+      // A names its workspace; A2 names only a project of A (#721 review P3-1); B is the control.
+      for (const [side, data] of [['A', { workspaceId: A }], ['A2', { projectId: ids.A.project }], ['B', { workspaceId: B }]] as const) {
+        const id = await boss.send('sample.process', { sampleId: randomUUID(), ...data, fluxTestFailure: jobFailed[side] }, { retryLimit: 0 });
         assert.ok(id, `${side}: the job was sent`);
         let row: { state: string; output: unknown } | undefined;
         for (let attempt = 0; attempt < 120 && row?.state !== 'failed'; attempt += 1) {
@@ -711,15 +731,15 @@ describe('F-030 error paths (S2a-2c-3)', () => {
         }
         assert.equal(row?.state, 'failed', `${side}: the worker failed the job`);
         const output = JSON.stringify(row!.output);
-        if (side === 'A') {
-          assert.equal(output.includes(jobFailed.A), false, 'A: pg-boss output never quotes the payload text');
+        if (side !== 'B') {
+          assert.equal(output.includes(jobFailed[side]), false, `${side}: pg-boss output never quotes the payload text`);
           assert.match(output, /SealedJobError/);
         } else assert.ok(output.includes(jobFailed.B), 'B: the control output quotes its text');
       }
     } finally { await boss.stop({ graceful: false }); }
     const state = process.env.FLUX_TEST_STATE_DIR ?? '/state';
     // The service logs never hold A's texts; PostgreSQL logs the test's own job insert, so it is scanned for the request only.
-    await writeFile(join(state, 'encryption-error-services.txt'), `${failed.A}\n${jobFailed.A}\n`);
+    await writeFile(join(state, 'encryption-error-services.txt'), `${failed.A}\n${jobFailed.A}\n${jobFailed.A2}\n`);
     await writeFile(join(state, 'encryption-error-postgres.txt'), `${failed.A}\n`);
     await writeFile(join(state, 'encryption-error-control.txt'), `${failed.B}\n`);
   });

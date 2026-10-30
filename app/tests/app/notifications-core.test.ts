@@ -7,8 +7,10 @@ import {
   deliverableAt,
   localMinutes,
   GENERATION_MAX_ATTEMPTS,
+  deliverPlainSummary,
   generateNotifications,
   preferenceRepository,
+  type SummaryPorts,
   type GeneratorEvent,
   type GeneratorPorts,
   type NotificationFacts,
@@ -107,6 +109,46 @@ describe('F-030 generation failures of a sealed workspace (#712 review P3)', () 
       assert.equal(stored.includes('CANARY'), !sealed, sealed ? 'no content in a sealed failure' : 'the plain failure keeps its message');
       if (sealed) assert.match(state.errors[0]!, new RegExp(`^Error · ids ${events[0]!.id}$`));
     }
+  });
+});
+
+describe('F-030 morning summary of encrypted workspaces (#712 review)', () => {
+  const plainWs = randomUUID(); const sealedWs = randomUUID(); const lockedWs = randomUUID();
+  const source = (workspaceId: string) => ({ workspaceId, type: 'project' as const, id: randomUUID() });
+  function ports(sources: ReturnType<typeof source>[]) {
+    const inserted: { source: { workspaceId: string }; title: string; aiOrigin: boolean; sources: unknown[] }[] = [];
+    const summary: SummaryPorts = {
+      authorizer: { canRead: async (_user, place) => {
+        const workspaceId = sources.find((item) => item.id === place.id)!.workspaceId;
+        if (workspaceId === lockedWs) throw Object.assign(new Error('locked'), { code: 'WORKSPACE_LOCKED' });
+        return { visible: true, allowed: true, workspaceId };
+      } },
+      lockCandidate: async () => null, isMuted: async () => false, claimDay: async () => true,
+      unread: async () => sources.map((item) => ({ id: randomUUID(), source: item })),
+      insertSummary: async (row) => { inserted.push(row); },
+      deliverableSubscriptions: async () => [], enqueuePush: async () => null,
+      sealedWorkspace: async (workspaceId) => workspaceId !== plainWs,
+    };
+    return { summary, inserted };
+  }
+
+  test('the row is anchored on the newest plain source; an assistant line is kept only there', async () => {
+    const mixed = ports([source(sealedWs), source(plainWs)]);
+    assert.equal(await deliverPlainSummary(mixed.summary, 'ben', 'Your assistant: all good.'), 'sent');
+    assert.equal(mixed.inserted[0]!.source.workspaceId, plainWs);
+    assert.equal(mixed.inserted[0]!.title, 'Your assistant: all good.');
+    const sealedOnly = ports([source(sealedWs)]);
+    await deliverPlainSummary(sealedOnly.summary, 'ben', 'Your assistant: all good.');
+    assert.deepEqual({ ws: sealedOnly.inserted[0]!.source.workspaceId, title: sealedOnly.inserted[0]!.title, ai: sealedOnly.inserted[0]!.aiOrigin },
+      { ws: sealedWs, title: '1 thing waits in your inbox', ai: false }, 'only sealed sources: the plain count, never the line');
+  });
+
+  test('an item of a locked workspace is left out instead of failing the summary', async () => {
+    const withLocked = ports([source(lockedWs), source(plainWs)]);
+    assert.equal(await deliverPlainSummary(withLocked.summary, 'ben'), 'sent');
+    assert.equal(withLocked.inserted[0]!.title, '1 thing waits in your inbox');
+    assert.equal(withLocked.inserted[0]!.sources.length, 1);
+    assert.equal(await deliverPlainSummary(ports([source(lockedWs)]).summary, 'ben'), 'empty', 'only locked items: nothing to send, no failure');
   });
 });
 
