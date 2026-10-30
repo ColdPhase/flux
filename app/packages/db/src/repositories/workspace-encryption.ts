@@ -31,9 +31,10 @@ export interface HolderRow {
   holderMacVersion: number;
   secretCheck: string;
   confirmedVersions: number[];
+  pin: string | null;
 }
 export interface DekWrapRow { holderId: string; workspaceId: string; keyVersion: number; ephemeralPublic: string; sealedDek: string; confirm: string | null }
-export interface KeyVersionRow { keyVersion: number; commitment: string | null; checkValue: string }
+export interface KeyVersionRow { keyVersion: number; commitment: string | null; checkValue: string; pin: string | null }
 export interface UnlockRowData { keyVersion: number; bootId: string; sealedDek: string; unlockedAt: Date; unlockedBy: string | null }
 export interface EncryptionViewRow {
   workspaceId: string;
@@ -45,11 +46,23 @@ export interface EncryptionViewRow {
   keyChangedAt: Date | null;
   /** S2c: the rotation state and, while one runs, its progress. */
   rotation: 'none' | 'pending' | 'reencrypting';
-  rotationProgress: { rowsDone: number; rowsEstimate: number; startedAt: Date } | null;
+  rotationProgress: { rowsDone: number; rowsEstimate: number; startedAt: Date; stalled: boolean } | null;
 }
 
 /** A version list as a PostgreSQL integer[] literal (ints only). */
 const versionsArray = (versions: readonly number[]) => `{${versions.filter((v) => Number.isSafeInteger(v)).join(',')}}`;
+/**
+ * The fair gate in front of `workspace_keys` (S2c review P2-1). Row locks are not queue-fair: back-to-back writers each
+ * taking `FOR SHARE` can starve a rotation's start or finish, an unlock or a role change waiting for `FOR UPDATE`.
+ * Every side first takes this transaction-scoped advisory lock (writers shared, the `FOR UPDATE` side exclusive);
+ * PostgreSQL's lock manager queues a waiting exclusive request ahead of later shared ones, so new writers wait behind it.
+ */
+export async function keyGate(db: DbExecutor, workspaceId: string, mode: 'shared' | 'exclusive') {
+  const name = `flux-workspace-keys:${workspaceId}`;
+  if (mode === 'shared') await db.execute(sql`SELECT pg_advisory_xact_lock_shared(hashtextextended(${name}, 0))`);
+  else await db.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${name}, 0))`);
+}
+
 const rowsOf = async <T>(db: DbExecutor, query: SQL) => (await db.execute(query)).rows as unknown as T[];
 /** Raw `execute` rows carry timestamps as text; every timestamp leaves this module as a Date. */
 const at = (value: unknown): Date => (value instanceof Date ? value : new Date(String(value)));
@@ -59,7 +72,7 @@ const lockClause = (lock: 'update' | 'share' | undefined) => (lock === 'update' 
 
 const HOLDER = sql`id, workspace_id AS "workspaceId", kind, user_id AS "userId", kdf, public_key AS "publicKey", wrapped_private AS "wrappedPrivate",
   holder_mac AS "holderMac", holder_mac_version AS "holderMacVersion", secret_check AS "secretCheck",
-  confirmed_versions AS "confirmedVersions"`;
+  confirmed_versions AS "confirmedVersions", pin`;
 const UNLOCK = sql`key_version AS "keyVersion", boot_id AS "bootId", sealed_dek AS "sealedDek", unlocked_at AS "unlockedAt", unlocked_by AS "unlockedBy"`;
 
 export function workspaceEncryptionRows(db: DbExecutor) {
@@ -73,7 +86,10 @@ export function workspaceEncryptionRows(db: DbExecutor) {
     async sealState(workspaceId: string, options: { lock: boolean }) {
       // Lock order of a write to a sealed workspace: workspace_keys, then the unlock rows, both FOR SHARE, so a
       // rotation's start or finish (FOR UPDATE) and Lock now are each ordered strictly before or after it.
-      if (options.lock) await db.execute(sql`SELECT 1 FROM workspace_keys WHERE workspace_id = ${workspaceId} FOR SHARE`);
+      if (options.lock) {
+        await keyGate(db, workspaceId, 'shared');
+        await db.execute(sql`SELECT 1 FROM workspace_keys WHERE workspace_id = ${workspaceId} FOR SHARE`);
+      }
       const unlocks = unlockRows(await rowsOf<UnlockRowData>(db, sql`SELECT ${UNLOCK} FROM workspace_unlocks WHERE workspace_id = ${workspaceId}
         ORDER BY key_version${options.lock ? sql` FOR SHARE` : sql``}`));
       const [row] = await rowsOf<{ name: string; encrypted: boolean; tampered: boolean; currentVersion: number | null; liveVersions: number[] | null }>(db, sql`
@@ -84,6 +100,7 @@ export function workspaceEncryptionRows(db: DbExecutor) {
         currentVersion: row.currentVersion ?? 0, liveVersions: row.liveVersions ?? [], unlocks };
     },
     async keys(workspaceId: string, options: { lock?: 'update' | 'share' } = {}): Promise<WorkspaceKeysRow | null> {
+      if (options.lock) await keyGate(db, workspaceId, options.lock === 'update' ? 'exclusive' : 'shared');
       const [row] = await rowsOf<WorkspaceKeysRow>(db, sql`SELECT k.workspace_id AS "workspaceId", w.name, k.current_version AS "currentVersion",
         k.live_versions AS "liveVersions", k.rotation, k.tampered_at AS "tamperedAt", k.created_at AS "createdAt"
         FROM workspace_keys k JOIN workspaces w ON w.id = k.workspace_id WHERE k.workspace_id = ${workspaceId}${options.lock ? sql` FOR ${options.lock === 'update' ? sql`UPDATE` : sql`SHARE`} OF k` : sql``}`);
@@ -92,7 +109,7 @@ export function workspaceEncryptionRows(db: DbExecutor) {
     holders: (workspaceId: string) => rowsOf<HolderRow>(db, sql`SELECT ${HOLDER} FROM workspace_holders WHERE workspace_id = ${workspaceId} ORDER BY created_at, id`),
     dekWraps: (workspaceId: string) => rowsOf<DekWrapRow>(db, sql`SELECT holder_id AS "holderId", workspace_id AS "workspaceId", key_version AS "keyVersion",
       ephemeral_public AS "ephemeralPublic", sealed_dek AS "sealedDek", confirm FROM workspace_dek_wraps WHERE workspace_id = ${workspaceId}`),
-    keyVersions: (workspaceId: string) => rowsOf<KeyVersionRow>(db, sql`SELECT key_version AS "keyVersion", commitment, check_value AS "checkValue"
+    keyVersions: (workspaceId: string) => rowsOf<KeyVersionRow>(db, sql`SELECT key_version AS "keyVersion", commitment, check_value AS "checkValue", pin
       FROM workspace_key_versions WHERE workspace_id = ${workspaceId} ORDER BY key_version`),
     unlocks: async (workspaceId: string, options: { lock?: 'update' | 'share' } = {}) =>
       unlockRows(await rowsOf<UnlockRowData>(db, sql`SELECT ${UNLOCK} FROM workspace_unlocks WHERE workspace_id = ${workspaceId} ORDER BY key_version${lockClause(options.lock)}`)),
@@ -106,21 +123,21 @@ export function workspaceEncryptionRows(db: DbExecutor) {
       await db.execute(sql`INSERT INTO workspace_members (workspace_id, user_id, role, created_by) VALUES (${row.id}, ${row.createdBy}, 'owner', ${row.createdBy})`);
       await db.execute(sql`INSERT INTO workspace_keys (workspace_id) VALUES (${row.id})`);
     },
-    async insertKeyVersion(row: { workspaceId: string; keyVersion: number; commitment: string | null; checkValue: string }) {
-      await db.execute(sql`INSERT INTO workspace_key_versions (workspace_id, key_version, commitment, check_value)
-        VALUES (${row.workspaceId}, ${row.keyVersion}, ${row.commitment}, ${row.checkValue})`);
+    async insertKeyVersion(row: { workspaceId: string; keyVersion: number; commitment: string | null; checkValue: string; pin: string }) {
+      await db.execute(sql`INSERT INTO workspace_key_versions (workspace_id, key_version, commitment, check_value, pin)
+        VALUES (${row.workspaceId}, ${row.keyVersion}, ${row.commitment}, ${row.checkValue}, ${row.pin})`);
     },
     async insertHolder(row: HolderRow) {
       await db.execute(sql`INSERT INTO workspace_holders (id, workspace_id, kind, user_id, kdf, public_key, wrapped_private, holder_mac, holder_mac_version,
-          secret_check, confirmed_versions)
+          secret_check, confirmed_versions, pin)
         VALUES (${row.id}, ${row.workspaceId}, ${row.kind}, ${row.userId}, ${JSON.stringify(row.kdf)}::jsonb, ${row.publicKey}, ${row.wrappedPrivate},
-          ${row.holderMac}, ${row.holderMacVersion}, ${row.secretCheck}, ${versionsArray(row.confirmedVersions)}::integer[])`);
+          ${row.holderMac}, ${row.holderMacVersion}, ${row.secretCheck}, ${versionsArray(row.confirmedVersions)}::integer[], ${row.pin})`);
     },
     /** A new key pair or password for an existing holder, in place (deleting a password holder would leave a rotation pending). */
-    async updateHolder(id: string, row: Pick<HolderRow, 'kdf' | 'publicKey' | 'wrappedPrivate' | 'holderMac' | 'holderMacVersion' | 'secretCheck' | 'confirmedVersions'>) {
+    async updateHolder(id: string, row: Pick<HolderRow, 'kdf' | 'publicKey' | 'wrappedPrivate' | 'holderMac' | 'holderMacVersion' | 'secretCheck' | 'confirmedVersions' | 'pin'>) {
       await db.execute(sql`UPDATE workspace_holders SET kdf = ${JSON.stringify(row.kdf)}::jsonb, public_key = ${row.publicKey}, wrapped_private = ${row.wrappedPrivate},
         holder_mac = ${row.holderMac}, holder_mac_version = ${row.holderMacVersion}, secret_check = ${row.secretCheck},
-        confirmed_versions = ${versionsArray(row.confirmedVersions)}::integer[], updated_at = now() WHERE id = ${id}`);
+        confirmed_versions = ${versionsArray(row.confirmedVersions)}::integer[], pin = ${row.pin}, updated_at = now() WHERE id = ${id}`);
     },
     async updateHolderMac(id: string, row: Pick<HolderRow, 'holderMac' | 'holderMacVersion' | 'confirmedVersions'>) {
       await db.execute(sql`UPDATE workspace_holders SET holder_mac = ${row.holderMac}, holder_mac_version = ${row.holderMacVersion},
@@ -252,12 +269,12 @@ export function workspaceEncryptionRows(db: DbExecutor) {
           EXISTS (SELECT 1 FROM workspace_holders h WHERE h.workspace_id = k.workspace_id AND h.kind = 'password' AND h.user_id = ${userId}) AS "myPassword",
           EXISTS (SELECT 1 FROM workspace_holders h WHERE h.workspace_id = k.workspace_id AND h.kind = 'recovery') AS "recoveryCode",
           (SELECT max(v.created_at) FROM workspace_key_versions v WHERE v.workspace_id = k.workspace_id AND v.key_version > 1) AS "keyChangedAt",
-          k.rotation, (SELECT json_build_object('rowsDone', p.rows_done, 'rowsEstimate', p.rows_estimate, 'startedAt', p.started_at)
+          k.rotation, (SELECT json_build_object('rowsDone', p.rows_done, 'rowsEstimate', p.rows_estimate, 'startedAt', p.started_at, 'stalled', p.stalled_at IS NOT NULL)
             FROM workspace_rotation_progress p WHERE p.workspace_id = k.workspace_id AND p.target_version = k.current_version) AS "rotationProgress"
         FROM workspace_keys k JOIN workspaces w ON w.id = k.workspace_id WHERE w.encrypted AND k.workspace_id IN (${ids})`);
       return new Map(rows.map((row) => [row.workspaceId, { ...row, keyChangedAt: atOrNull(row.keyChangedAt),
         rotationProgress: row.rotationProgress ? { rowsDone: Number(row.rotationProgress.rowsDone), rowsEstimate: Number(row.rotationProgress.rowsEstimate),
-          startedAt: at(row.rotationProgress.startedAt) } : null,
+          startedAt: at(row.rotationProgress.startedAt), stalled: row.rotationProgress.stalled === true } : null,
         unlocks: (row.unlocks ?? []).map((unlock) => ({ ...unlock, unlockedAt: new Date(unlock.unlockedAt) })) }]));
     },
   };

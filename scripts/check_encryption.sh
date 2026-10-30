@@ -24,6 +24,7 @@ export FLUX_MAIL_FROM="Flux <flux@example.test>"
 export FLUX_AUTH_RATE_LIMIT=false
 export FLUX_VAPID_PUBLIC_KEY= FLUX_VAPID_PRIVATE_KEY= FLUX_VAPID_SUBJECT=
 export FLUX_KEYRING_TOKEN="$(head -c 32 /dev/urandom | base64 | tr '+/' '-_' | tr -d '=\n')"
+export FLUX_KEY_PIN_SECRET="$(head -c 32 /dev/urandom | base64 | tr '+/' '-_' | tr -d '=\n')"
 . scripts/test_images.sh
 compose="docker compose -p $project -f docker/compose.source.yaml -f docker/compose.test.yaml -f docker/compose.encryption.test.yaml --profile test"
 scan_dir=$(mktemp -d)

@@ -9,6 +9,15 @@
 -- * Every deleted holder leaves a tombstone, the recovery holder too, so a restored row is never sealed to.
 -- * `workspace_rotation_progress` gains the pass's change count (the verify invariant) and the start time (wire field).
 ALTER TABLE workspace_holders ADD COLUMN confirmed_versions integer[] NOT NULL DEFAULT '{}';
+-- The key pin (S2c review): an HMAC under FLUX_KEY_PIN_SECRET, a deployment secret that is not in the database, over a
+-- holder's identity and public key and over a key version's check value and commitment. Null on a row no server path
+-- wrote: such a row fails verification (tampering).
+ALTER TABLE workspace_holders ADD COLUMN pin text;
+ALTER TABLE workspace_key_versions ADD COLUMN pin text;
+-- A rotation that cannot finish (an unopenable value, or a copy of an old-version envelope outside the registry) says
+-- where (a table and column name, never content) and since when.
+ALTER TABLE workspace_rotation_progress ADD COLUMN stalled_on text;
+ALTER TABLE workspace_rotation_progress ADD COLUMN stalled_at timestamptz;
 ALTER TABLE workspace_rotation_progress ADD COLUMN pass_changes bigint NOT NULL DEFAULT 0;
 ALTER TABLE workspace_rotation_progress ADD COLUMN started_at timestamptz NOT NULL DEFAULT now();
 

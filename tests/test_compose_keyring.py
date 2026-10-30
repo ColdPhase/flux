@@ -86,10 +86,13 @@ class ComposeKeyringTest(unittest.TestCase):
                 self.assertIn(f"mem_limit: ${{{variable}:-{default}}}\n    memswap_limit: ${{{variable}:-{default}}}", block, f"{name}: {service}")
                 self.assertIn("core: 0", block)
                 self.assertIn("FLUX_KEYRING_TOKEN: ${FLUX_KEYRING_TOKEN:-}", block)
+                # F-030 S2c: the key pin's secret reaches the processes that verify holders, never the keyring.
+                self.assertIn("FLUX_KEY_PIN_SECRET: ${FLUX_KEY_PIN_SECRET:-}", block)
                 # OpenSSL's Argon2 allocates its memory from the secure heap when one is set (observed 2026-10-23), so
                 # the processes that derive KEKs run without it; only the keyring does.
                 self.assertNotIn("--secure-heap", block)
             self.assertIn("NODE_OPTIONS: --secure-heap=65536", services(text)["keyring"])
+            self.assertNotIn("FLUX_KEY_PIN_SECRET", services(text)["keyring"])
 
     def test_flux_generates_and_upgrade_adds_a_missing_token(self) -> None:
         launcher = (ROOT / "flux").read_text(encoding="utf-8")
@@ -97,6 +100,9 @@ class ComposeKeyringTest(unittest.TestCase):
         upgrade = launcher[launcher.index("cmd_upgrade() {"):]
         upgrade = upgrade[: upgrade.index("\n}\n")]
         self.assertIn('ensure_keyring_token "$ENV_FILE"', upgrade)
+        self.assertIn('set_env_line "$draft" FLUX_KEY_PIN_SECRET "$(random_b64url)"', launcher)
+        self.assertIn('ensure_key_pin_secret "$ENV_FILE"', upgrade)
+        self.assertIn("FLUX_KEY_PIN_SECRET=", (ROOT / "docker" / ".env.example").read_text(encoding="utf-8"))
         functions = "\n".join(
             re.search(rf"(?ms)^{name}\(\) \{{.*?^\}}\n" if name in ("set_env_line", "ensure_keyring_token") else rf"(?m)^{name}\(\) .*$", launcher).group(0)
             for name in ("random_b64url", "set_env_line", "ensure_keyring_token")

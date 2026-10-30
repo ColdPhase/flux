@@ -33,7 +33,7 @@ export interface WorkspaceEncryption {
    * A pending or running rotation (S2c): `percent` of the estimated sealed values done in this pass, `paused` while the
    * space is locked (or pending until its next unlock), `startedAt` when the current pass target was made (null while pending).
    */
-  rotation: null | { percent: number; paused: boolean; startedAt: string | null };
+  rotation: null | { percent: number; paused: boolean; startedAt: string | null; /** It cannot finish (some stored data does not open); holders are told. */ stalled: boolean };
   /** When the key last changed by a rotation; null while the creation key is current. */
   keyChangedAt: string | null;
 }

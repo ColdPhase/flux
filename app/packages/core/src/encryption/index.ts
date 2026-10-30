@@ -6,6 +6,7 @@ export * from './envelope.js';
 export * from './files.js';
 export * from './holders.js';
 export * from './holder-set.js';
+export * from './pin.js';
 export * from './kdf.js';
 export * from './recovery.js';
 export * from './passwords.js';

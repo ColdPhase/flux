@@ -45,11 +45,21 @@ export function fileRows(db: DbExecutor) {
       const [row] = await open(await db.select().from(f).where(eq(f.id, id)));
       return row ? wire(row) : null;
     },
-    async markReady(id: string, input: { size: number; sha256: string; readyAt: Date; expiresAt: Date; detail?: FileDetail }) {
-      const { detail, ...plain } = input;
+    async markReady(id: string, input: { size: number; sha256: string; readyAt: Date; expiresAt: Date; detail?: FileDetail; keyVersion?: number | null }): Promise<boolean | 'key_changed'> {
+      const { detail, keyVersion, ...plain } = input;
       const [located] = await db.select({ workspaceId: f.workspaceId }).from(f).where(eq(f.id, id));
+      // Sealing takes the workspace's key share lock (F-030 writer invariant), so a rotation's start and finish are
+      // ordered before or after this commit. An object sealed under a version the finish already dropped is refused;
+      // one under an older live version is stored with that version, and the rotation's files step re-encrypts it
+      // before the finish (which refuses while a ready file is below the current version). S2c review P1-1.
       const fields = located ? await sealFor(db, 'project_files', located.workspaceId, plain, { id }) : plain;
-      const rows = await db.update(f).set({ ...fields, state: 'ready', pageCount: detail?.pages ?? null, rowCount: detail?.rows ?? null, durationMs: detail?.durationMs ?? null }).where(and(eq(f.id, id), eq(f.state, 'receiving'),
+      let stamped: { keyVersion?: number } = {};
+      if (located && keyVersion !== null && keyVersion !== undefined) {
+        const [keys] = (await db.execute<{ live: number[] }>(sql`SELECT live_versions AS live FROM workspace_keys WHERE workspace_id = ${located.workspaceId}`)).rows;
+        if (!keys || !keys.live.includes(keyVersion)) return 'key_changed';
+        stamped = { keyVersion };
+      }
+      const rows = await db.update(f).set({ ...fields, ...stamped, state: 'ready', pageCount: detail?.pages ?? null, rowCount: detail?.rows ?? null, durationMs: detail?.durationMs ?? null }).where(and(eq(f.id, id), eq(f.state, 'receiving'),
         isNull(f.publishedAt), sql`${f.expiresAt} > ${input.readyAt}`)).returning({ id: f.id });
       return rows.length === 1;
     },

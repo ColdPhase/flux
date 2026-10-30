@@ -61,10 +61,12 @@ export function databaseConnectTimeoutMs(env: NodeJS.ProcessEnv = process.env): 
  */
 export const DATABASE_SESSION_OPTIONS = `-c idle_in_transaction_session_timeout=${IDLE_IN_TRANSACTION_TIMEOUT_MS} -c jit=off`;
 
-export function createDatabase(connectionString: string, connectTimeoutMs = databaseConnectTimeoutMs()) {
-  // A client whose BEGIN or ROLLBACK fails is destroyed by the drizzle-orm patch in app/patches (#234).
-  const pool = new pg.Pool({ connectionString, connectionTimeoutMillis: connectTimeoutMs, query_timeout: 2000,
-    options: DATABASE_SESSION_OPTIONS });
+export function createDatabase(connectionString: string, connectTimeoutMs = databaseConnectTimeoutMs(),
+  options: { queryTimeoutMs?: number; max?: number } = {}) {
+  // A client whose BEGIN or ROLLBACK fails is destroyed by the drizzle-orm patch in app/patches (#234). The key
+  // rotation's own small pool allows longer statements (whole-table scans, VACUUM, CHECKPOINT; F-030 S2c).
+  const pool = new pg.Pool({ connectionString, connectionTimeoutMillis: connectTimeoutMs, query_timeout: options.queryTimeoutMs ?? 2000,
+    options: DATABASE_SESSION_OPTIONS, ...(options.max ? { max: options.max } : {}) });
   const db = drizzle({ client: pool, schema });
   return { pool, db };
 }

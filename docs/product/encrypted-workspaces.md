@@ -379,13 +379,21 @@ and delete the tombstone. The next unlock would then seal DEK *n*+1 to them. To 
 the start records the holder set in `workspace.key_rotation_started.v1` (ids), and the Encryption
 section shows "The new key opens for Ada and Cy." Every holder can see who received it.
 
-A second path, stated in S2c (2026-10-29): a holder without a confirmation of a version accepts it through the
-chain (keyed by DEK *v*-1) or, after the finish, by its check value and a stored envelope. The person removed knows
-DEK *v*-1 and, writing to the database, could replace such a holder's wrap of *v* by a DEK of their own with a valid
-commitment, check value and holder MACs under it. Covering `confirmed_versions` closes this for every holder that
-has confirmed *v* (one unlock during or after the rotation does it), and it never applies to the holder whose
-unlock wrote the confirmation. The rest is integrity, not confidentiality: a copy of the data taken after the
-finish still opens nothing with the removed person's keys.
+**The key pin (S2c review, 2026-10-29).** Without it, a database writer could take over the key of a workspace whose
+holders had not yet confirmed the current version: replace a holder's wrap with a DEK of their own and forge the
+check value, commitment, MACs and the sampled envelope (after a finish, no old key is even needed), or plant a new
+`recovery` holder with a MAC under an old DEK they know while the workspace is locked. Everything written after that
+would be readable by them: a **confidentiality** loss for new content, not only integrity. So every holder row
+carries `pin` = HMAC over [workspace, holder id, kind, user id, public key] and every key version `pin` = HMAC over
+[workspace, version, check value, commitment], under a key derived from **`FLUX_KEY_PIN_SECRET`**, a deployment
+secret that is never in the database (`./flux` generates it like the keyring token, `./flux upgrade` adds it, and only
+`api` and `worker` receive it). The server's own paths write the pins (creation, a password, a recovery code, a
+rotation's start); every unlock and every start verifies them, and a row without a valid pin is tampering. A planted
+holder, a minted key version and a replaced check value are refused. The pin does not stop someone who also holds the
+server's environment, the same trust the keyring token carries. Changing the secret makes every encrypted space
+refuse to unlock, so it is backed up with the env file. The two windows a removed person's keys stay useful are stated
+too: until the first unlock after a removal while locked, and for an unlocked space until the worker's sweep (5 s) has
+started the rotation and the pass has finished.
 
 ### Password checks
 
@@ -531,7 +539,19 @@ stateDiagram-v2
      `session_replication_role = replica`: the rows' triggers (search, artifact deltas, the immutability guards of
      append-only tables, the plaintext backstops) do not fire for a value that only changed its key. It writes
      envelopes only. Because the tables come from `SEALED_COLUMNS`, a table a later slice registers is
-     re-encrypted, sampled and checked by the finish with no change to the rotation.
+     re-encrypted, sampled and checked by the finish with no change to the rotation. That role setting needs a
+     superuser or `GRANT SET ON PARAMETER session_replication_role` (Compose's database role is a superuser); the
+     worker says so at start when it is missing, and the rotation then stalls visibly. A page reads its rows
+     `FOR NO KEY UPDATE SKIP LOCKED`, so a row a writer holds is taken by the next pass instead of being waited for.
+   - **Fair key gate (S2c review).** Row locks are not queue-fair, so back-to-back writers each taking `FOR SHARE`
+     could starve a start, a finish, an unlock or a role change waiting for `FOR UPDATE`. Every side first takes a
+     transaction-scoped advisory lock on the workspace (writers shared, the `FOR UPDATE` side exclusive); a waiting
+     exclusive request then makes new writers wait behind it.
+   - **Uploads that straddle a rotation (S2c review).** An upload's object is sealed while it streams. Its commit
+     (`markReady`) seals the row under the writer's share lock and checks the object's key version against
+     `live_versions`: a version the finish already dropped is refused (`409 UPLOAD_KEY_CHANGED`, the bytes are
+     discarded; send again); an older live one is stored with that version, and the files step re-encrypts it, since
+     the finish refuses while a ready file is below the current version.
    - **Files** come next. For each file of the workspace with `key_version < current_version`, the
      worker reads and verifies the object, encrypts it under the current version into
      `attachments/tmp`, `fsync`s it, renames it over the object (atomic on the same filesystem) and
@@ -556,12 +576,17 @@ stateDiagram-v2
 7. **Finish.** **Verify invariant:** passes repeat until one complete pass over every table and file
    changes nothing (counted in `passes`, its changes in `pass_changes`). Only such a pass can lead to the finish,
    and the finish checks once more under `workspace_keys` `FOR UPDATE` that no value or file is below the current
-   version. In one transaction the worker then deletes the DEK
+   version, and that **no table at all** (catalog-driven, not only the registry: every text, json, jsonb and bytea
+   column of every table that names the workspace) holds an envelope of an old version for the workspace. A copy made
+   outside the registry (until #712 the notification generator copied task and project titles into notifications)
+   would otherwise outlive the old key and stay openable with it, so the finish refuses and the rotation reports
+   `stalled` (`stalled_on` names the table and column, never content; every holder gets a `security` notice). An
+   old-version value that does not open stalls it the same way. In one transaction the worker then deletes the DEK
    wraps, unlock rows and `workspace_key_versions` rows (their check values are envelopes under the old DEKs) of
    every version below `current_version`, and the tombstones, sets `live_versions =
    {current_version}` and `rotation = 'none'`, deletes the progress row, and records
    `workspace.key_rotated.v1`. Afterwards it runs `VACUUM` on the tables it touched, then
-   `CHECKPOINT` (the Compose database role may). That makes the dead row versions holding old
+   `CHECKPOINT` (the Compose database role may; a failed one is retried by the next sweep). That makes the dead row versions holding old
    ciphertext reusable sooner and lets WAL segments be recycled.
 
 A holder never has "only an old wrap". The start seals the new DEK to every member of the holder
@@ -1376,10 +1401,10 @@ token alone is not enough (S1 review): a real deployment never holds a half-seal
   field; AC-13. Fixture-only. Delivered with migration 0128 (`packages/core/src/encryption/rotation.ts`, `@flux/db`
   `keyRotationRows`, the worker's sweep). The files step works on `project_files.key_version` and the object header
   through `RotationFileObjects` (`apps/worker/src/workspace-encryption/file-objects.ts`); until S2a-2b-2 seals file
-  bytes a sealed workspace stores no file, so AC-13's file cases run against the step itself
-  (`tests/app/encryption-rotation.test.ts`) and the post-rotation scan of the files volume finds no object yet.
-  S2a-2b-2's commit transaction must set `key_version` under the `workspace_keys` share lock of every writer, so an
-  upload that started under *n* and commits after a start is found by the files step. **S3 may not merge until the full AC-7 and AC-13 pass on S2c's final
+  bytes and re-encrypts real objects; AC-13 covers a stored file, an upload straddling the rotation and a crash
+  between the rename and the row update (`tests/app/encryption-rotation.test.ts`).
+  With S2a-2b-2 merged, the upload commit checks the object's key version under the writer's share lock (see
+  [the pass](#the-state-machine)). **S3 may not merge until the full AC-7 and AC-13 pass on S2c's final
   head**, named by SHA in the S3 PR.
 - **S3: creation and interface.** The production route; New space with encryption and the recovery
   code step; the removal, demotion and leave confirmations and the rotation progress line; the locked panel and sidebar row; the People panel sections; the project Details line;

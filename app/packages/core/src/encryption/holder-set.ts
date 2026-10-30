@@ -2,6 +2,7 @@ import { ConflictError } from '../access/errors.js';
 import type { Principal } from '../principal.js';
 import { WORKSPACE_ENCRYPTION_TAMPERED_EVENT } from '@flux/contracts';
 import { canonicalVersions, holderMacValid, type HolderIdentity } from './holders.js';
+import type { KeyPin } from './pin.js';
 import type { DekWrapRecord, EncryptionUnitOfWork, HolderRecord, KeysRecord } from './service-ports.js';
 
 /**
@@ -29,24 +30,26 @@ export function confirmedLive(keys: Pick<KeysRecord, 'liveVersions'>, wraps: Dek
 }
 
 /**
- * One holder row verifies: its MAC under the current DEK (over its confirmed set, so a deleted confirmation of a listed
+ * One holder row verifies: its key pin (deployment secret, `pin.ts`), its MAC under the current DEK (over its confirmed set, so a deleted confirmation of a listed
  * live version is tampering), its confirmed set restricted to the live versions equals the confirmations present, and
  * a password holder is an owner or admin now.
  */
-export function holderValid(m: HolderSetInput, current: Buffer, holder: HolderRecord): boolean {
+export function holderValid(m: HolderSetInput, current: Buffer, holder: HolderRecord, pin: KeyPin): boolean {
   const live = m.keys.liveVersions;
   const listed = canonicalVersions(holder.confirmedVersions.filter((v) => live.includes(v)));
   const present = confirmedLive(m.keys, m.wraps, holder.id);
-  return holder.holderMacVersion === m.keys.currentVersion
+  return pin.holderValid({ workspaceId: holder.workspaceId, holderId: holder.id, kind: holder.kind, userId: holder.userId,
+    publicKey: holder.publicKey }, holder.pin)
+    && holder.holderMacVersion === m.keys.currentVersion
     && holderMacValid(current, m.keys.currentVersion, holderIdentity(holder), holder.holderMac)
     && listed.length === present.length && listed.every((v, i) => v === present[i])
     && (holder.kind === 'recovery' || (holder.userId !== null && m.managers.includes(holder.userId)));
 }
 
 /** Every holder row verifies under the current DEK (unlocking: one rogue or stale row locks the workspace). */
-export function holdersValid(m: HolderSetInput, deks: Deks): boolean {
+export function holdersValid(m: HolderSetInput, deks: Deks, pin: KeyPin): boolean {
   const current = deks.get(m.keys.currentVersion);
-  return !!current && m.holders.every((holder) => holderValid(m, current, holder));
+  return !!current && m.holders.every((holder) => holderValid(m, current, holder, pin));
 }
 
 export class TamperedError extends ConflictError {

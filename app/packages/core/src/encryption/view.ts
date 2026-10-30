@@ -9,7 +9,7 @@ export interface EncryptionViewInput {
   recoveryCode: boolean;
   keyChangedAt: Date | null;
   rotation?: 'none' | 'pending' | 'reencrypting';
-  rotationProgress?: { rowsDone: number; rowsEstimate: number; startedAt: Date } | null;
+  rotationProgress?: { rowsDone: number; rowsEstimate: number; startedAt: Date; stalled?: boolean } | null;
 }
 
 /** A sealed workspace whose key rows are missing reads as locked (fail closed). */
@@ -48,5 +48,6 @@ function rotationView(input: EncryptionViewInput, unlocked: boolean): WorkspaceE
   if (!input.rotation || input.rotation === 'none') return null;
   const progress = input.rotation === 'reencrypting' ? input.rotationProgress ?? null : null;
   const percent = progress ? (progress.rowsEstimate > 0 ? Math.min(99, Math.floor((progress.rowsDone / progress.rowsEstimate) * 100)) : 99) : 0;
-  return { percent, paused: !unlocked || input.rotation === 'pending', startedAt: progress ? progress.startedAt.toISOString() : null };
+  return { percent, paused: !unlocked || input.rotation === 'pending', startedAt: progress ? progress.startedAt.toISOString() : null,
+    stalled: progress?.stalled === true };
 }

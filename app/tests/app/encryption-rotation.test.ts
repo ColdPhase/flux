@@ -4,9 +4,10 @@ import { writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { after, describe, test } from 'node:test';
 import { workspaceUnlockGrantsPath, workspaceUnlockPasswordPath, workspaceRecoveryCodePath } from '@flux/contracts';
+import { Readable } from 'node:stream';
 import {
-  generateHolderKeyPair, keyCheckValue, keyCommitment, newDek, realSeal, rotateFileObject, sealDekToHolder, sealField, WorkspaceKey,
-  type RotationFileObjects,
+  generateHolderKeyPair, holderMac, holderSecretCheck, keyCheckValue, keyCommitment, newDek, newKdfParams, realSeal, rotateFileObject, sealDekToHolder, sealField,
+  wrapPrivateKey, WorkspaceKey, type RotationFileObjects,
 } from '@flux/core';
 import { pool } from './support/db.js';
 import { codeOf, createSealed, lock, passphrase, readWorkspace, unlock } from './support/encryption.js';
@@ -198,7 +199,7 @@ describe('F-030 S2c key rotation (AC-13)', () => {
     expectStatus(await lock(c.owner.browser, c.ws), 200);
     await removeMember(c.owner, c.ws, c.people.Ben!.who);
     assert.deepEqual(await keysOf(c.ws), { current_version: 1, live_versions: [1], rotation: 'pending', tampered_at: null });
-    assert.deepEqual((await readWorkspace(c.owner.browser, c.ws)).encryption?.rotation, { percent: 0, paused: true, startedAt: null });
+    assert.deepEqual((await readWorkspace(c.owner.browser, c.ws)).encryption?.rotation, { percent: 0, paused: true, startedAt: null, stalled: false });
     await sleep(1_500);
     assert.equal((await keysOf(c.ws)).current_version, 1, 'no new version while locked');
     assert.equal((await pool.query('SELECT count(*)::int AS n FROM workspace_key_versions WHERE workspace_id = $1', [c.ws])).rows[0].n, 1);
@@ -306,14 +307,18 @@ describe('F-030 S2c key rotation (AC-13)', () => {
     await running(c.ws, 2);
     const written: string[] = [];
     let stop = false;
-    const writer = (async () => {
+    // Three writers back to back (S2c review P2-1): the fair key gate keeps the start, the finish and Hal's password from
+    // starving behind them, and the rotation's pages skip a row a writer holds instead of waiting for it.
+    const writers = Array.from({ length: 3 }, () => (async () => {
       while (!stop) {
         const body = `during-${randomUUID()}`;
         const answer = await c.owner.browser.request('POST', `/api/v1/conversations/${conversation}/messages`, { body: { body, clientMessageId: randomUUID() }, headers: key() });
         assert.equal(answer.status, 201, answer.text);
         written.push(body);
       }
-    })();
+    })());
+    const started = Date.now();
+    try {
     const hal = c.people.Hal!;
     hal.pw = passphrase();
     secrets.add(hal.pw);
@@ -324,13 +329,17 @@ describe('F-030 S2c key rotation (AC-13)', () => {
     assert.deepEqual(seen.hal, seen.live_versions, 'Hal has a confirmed wrap of every live version');
     assert.deepEqual(seen.live_versions, [1, 2], 'set while v1 and v2 were live');
     await settled(c.ws, 2);
-    stop = true;
-    await writer;
+    assert.ok(Date.now() - started < 60_000, `the rotation finished under sustained writes in ${Date.now() - started} ms`);
+    } finally {
+      stop = true;
+      await Promise.allSettled(writers);
+    }
+    await Promise.all(writers);
     assert.ok(written.length > 0);
     const bodies = new Set(await bodiesAt(c, 2));
     assert.deepEqual(written.filter((body) => !bodies.has(body)), [], 'every write during the rotation is there, at v2');
-    expectStatus(await lock(hal.who.browser, c.ws), 200);
-    expectStatus(await unlock(hal.who.browser, c.ws, { password: hal.pw }), 200, 'Hal unlocks after the finish');
+    expectStatus(await lock(c.people.Hal!.who.browser, c.ws), 200);
+    expectStatus(await unlock(c.people.Hal!.who.browser, c.ws, { password: c.people.Hal!.pw! }), 200, 'Hal unlocks after the finish');
   });
 
   test('a writer holding workspace_keys FOR SHARE across a removal commits before the start; its v1 value is re-encrypted', async () => {
@@ -419,9 +428,9 @@ describe('F-030 S2c key rotation (AC-13)', () => {
     await removeMember(c.owner, c.ws, ben.who);
     // Ben, who can write to the database, restores his membership, his holder row and his wraps; the tombstone stays.
     await pool.query(`INSERT INTO workspace_members (workspace_id, user_id, role, created_by) VALUES ($1, $2, 'admin', $3)`, [c.ws, ben.who.id, c.owner.id]);
-    await pool.query(`INSERT INTO workspace_holders (id, workspace_id, kind, user_id, kdf, public_key, wrapped_private, holder_mac, holder_mac_version, secret_check, confirmed_versions)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`, [row.id, c.ws, row.kind, row.user_id, row.kdf, row.public_key, row.wrapped_private, row.holder_mac,
-      row.holder_mac_version, row.secret_check, row.confirmed_versions]);
+    await pool.query(`INSERT INTO workspace_holders (id, workspace_id, kind, user_id, kdf, public_key, wrapped_private, holder_mac, holder_mac_version, secret_check, confirmed_versions, pin)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`, [row.id, c.ws, row.kind, row.user_id, row.kdf, row.public_key, row.wrapped_private, row.holder_mac,
+      row.holder_mac_version, row.secret_check, row.confirmed_versions, row.pin]);
     for (const wrap of wraps) {
       await pool.query(`INSERT INTO workspace_dek_wraps (holder_id, workspace_id, key_version, ephemeral_public, sealed_dek, confirm) VALUES ($1, $2, $3, $4, $5, $6)`,
         [wrap.holder_id, wrap.workspace_id, wrap.key_version, wrap.ephemeral_public, wrap.sealed_dek, wrap.confirm]);
@@ -464,6 +473,160 @@ describe('F-030 S2c confirmed set covered by every holder MAC', () => {
     assert.equal(codeOf(answer), 'ENCRYPTION_TAMPERED');
     await pool.query('UPDATE workspace_dek_wraps SET confirm = $2 WHERE holder_id = $1 AND key_version = 1', [ben.id, wrap.confirm]);
     expectStatus(await unlock(c.owner.browser, c.ws, { password: c.ownerPw }), 200);
+  });
+});
+
+async function upload(who: Person, projectId: string, name: string, body: Buffer | ReadableStream) {
+  const url = new URL(`/api/v1/projects/${projectId}/files?uploadId=${randomUUID()}&name=${encodeURIComponent(name)}`, who.browser.base);
+  const init: RequestInit & { duplex?: 'half' } = { method: 'POST', headers: { 'content-type': 'application/octet-stream', cookie: who.browser.cookieHeader(), origin: who.browser.defaultOrigin }, body: body as never };
+  if (!(body instanceof Buffer)) init.duplex = 'half';
+  const response = await fetch(url, init);
+  const text = await response.text();
+  return { status: response.status, json: (() => { try { return JSON.parse(text) as Record<string, unknown>; } catch { return null; } })(), text };
+}
+const download = async (who: Person, fileId: string) => {
+  const response = await fetch(new URL(`/api/v1/files/${fileId}`, who.browser.base), { headers: { cookie: who.browser.cookieHeader() } });
+  return { status: response.status, bytes: Buffer.from(await response.arrayBuffer()) };
+};
+
+/** Every row of the workspace, in every table (not only the registry), that still holds an envelope below `version`. */
+async function anywhereBelow(ws: string, version: number): Promise<string[]> {
+  const tables = (await pool.query(`SELECT table_name AS t FROM information_schema.columns WHERE table_schema = current_schema() AND column_name = 'workspace_id'
+    AND table_name NOT IN ('workspace_key_versions')`)).rows.map((row) => row.t as string);
+  const hits: string[] = [];
+  for (const table of tables) {
+    const rows = (await pool.query(`SELECT row_to_json(t)::text AS j FROM ${table} t WHERE workspace_id = $1`, [ws])).rows as { j: string }[];
+    for (const row of rows) for (const match of row.j.matchAll(/fx1\.(\d+)\./g)) if (Number(match[1]) < version) hits.push(table);
+  }
+  return [...new Set(hits)];
+}
+
+describe('F-030 S2c review fixes', () => {
+  test('files: a stored file is re-encrypted; an upload that straddles the whole rotation is refused, never stored under the old key', async () => {
+    const c = await club('Files rotation club', ['Ben']);
+    const project = expectStatus(await c.owner.browser.request('POST', `/api/v1/workspaces/${c.ws}/projects`, { body: { name: 'Files', visibility: 'workspace' }, headers: key() }), 201) as { id: string };
+    const before = Buffer.from('file before the rotation '.repeat(500));
+    const stored = await upload(c.owner, project.id, 'before.txt', before);
+    assert.equal(stored.status, 201, stored.text);
+    const fileId = String(stored.json!.id);
+    const kept = await keptBy(c.ws, c.people.Ben!.who.id, c.people.Ben!.pw!);
+    assert.equal(filesOpened(c.ws, kept.deks.get(1)!, await fileObjects(c.ws)), 1, 'positive control: before, DEK v1 opens the object');
+
+    const body = Buffer.from('straddling upload '.repeat(2000));
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    const stream = Readable.toWeb(Readable.from((async function* () { yield body.subarray(0, 8000); await gate; yield body.subarray(8000); })())) as unknown as ReadableStream;
+    const pending = upload(c.owner, project.id, 'straddle.txt', stream);
+    await waitFor('the upload is receiving under v1', async () => (await pool.query(`SELECT 1 FROM project_files WHERE workspace_id = $1 AND state = 'receiving' AND key_version = 1`, [c.ws])).rows.length > 0);
+    await sleep(500);
+    await removeMember(c.owner, c.ws, c.people.Ben!.who);
+    await settled(c.ws, 2);
+    release();
+    const straddled = await pending;
+    assert.equal(straddled.status, 409, `the object is sealed under a version the finish dropped: ${straddled.text}`);
+    assert.equal(codeOf({ json: straddled.json } as never), 'UPLOAD_KEY_CHANGED');
+    assert.equal((await pool.query(`SELECT count(*)::int AS n FROM project_files WHERE workspace_id = $1 AND id <> $2`, [c.ws, fileId])).rows[0].n, 0, 'no row of it is kept');
+    const row = (await pool.query('SELECT key_version FROM project_files WHERE id = $1', [fileId])).rows[0];
+    assert.equal(row.key_version, 2);
+    const got = await download(c.owner, fileId);
+    assert.equal(got.status, 200);
+    assert.ok(got.bytes.equals(before), 'the re-encrypted file downloads unchanged');
+    await copyOpensNothing(c.ws, 2, [{ pw: c.people.Ben!.pw!, deks: kept.deks }], [c.recovery]);
+    const again = await upload(c.owner, project.id, 'again.txt', body);
+    assert.equal(again.status, 201, 'sent again, it is stored under v2');
+  });
+
+  test('copies outside the registry: a notification copy is made content-free at the finish; any other copy blocks the finish and is reported', async () => {
+    const c = await club('Copies club', ['Ben'], { Cy: 'member' });
+    const { ids } = await seed(c, 2);
+    expectStatus(await c.owner.browser.request('POST', `/api/v1/projects/${ids.project}/work`, { body: { title: `canary-task-${randomUUID()}`, owner: { kind: 'human', id: c.people.Cy!.who.id } }, headers: key() }), 201);
+    await waitFor('the assignment notification', async () => (await pool.query(`SELECT 1 FROM notifications WHERE workspace_id = $1 AND user_id = $2`, [c.ws, c.people.Cy!.who.id])).rows.length > 0);
+    // A copy in an unregistered place (as a database writer or a future bug would make it): a v1 envelope in a job payload.
+    const [project] = (await pool.query('SELECT name FROM projects WHERE id = $1', [ids.project])).rows;
+    const wait = randomUUID();
+    await pool.query(`INSERT INTO sealed_job_waits (id, workspace_id, queue, payload) VALUES ($1, $2, 'test', $3::jsonb)`, [wait, c.ws, JSON.stringify({ copy: project.name })]);
+    await removeMember(c.owner, c.ws, c.people.Ben!.who);
+    const stalled = await waitFor('the rotation reports it cannot finish', async () =>
+      (await pool.query('SELECT stalled_on FROM workspace_rotation_progress WHERE workspace_id = $1', [c.ws])).rows[0]?.stalled_on as string | undefined);
+    assert.equal(stalled, 'sealed_job_waits.payload');
+    assert.equal((await readWorkspace(c.owner.browser, c.ws)).encryption?.rotation?.stalled, true);
+    assert.ok((await pool.query(`SELECT 1 FROM notifications WHERE workspace_id = $1 AND reason = 'security' AND title LIKE '%cannot finish%'`, [c.ws])).rows.length > 0, 'holders are told');
+    assert.ok((await keysOf(c.ws)).live_versions.includes(1), 'v1 is kept while a copy needs it');
+    await pool.query('DELETE FROM sealed_job_waits WHERE id = $1', [wait]);
+    await settled(c.ws, 2);
+    assert.deepEqual(await anywhereBelow(c.ws, 2), [], 'no table holds an envelope below v2 for the workspace');
+    assert.equal((await pool.query(`SELECT count(*)::int AS n FROM notifications WHERE workspace_id = $1 AND (title LIKE '%fx1.%' OR body LIKE '%fx1.%')`, [c.ws])).rows[0].n, 0,
+      'notification copies are content-free');
+  });
+
+  test('the key pin: a recovery holder planted while locked and a key version forged after the finish are refused; nothing is sealed to the planted key', async () => {
+    const c = await club('Pin club', ['Ben']);
+    await seed(c, 3);
+    const ben = await keptBy(c.ws, c.people.Ben!.who.id, c.people.Ben!.pw!);
+    expectStatus(await lock(c.owner.browser, c.ws), 200);
+    await removeMember(c.owner, c.ws, c.people.Ben!.who);
+    // Ben, who knows DEK v1 and writes to the database, plants a recovery holder of his own with a valid MAC under v1.
+    const rogue = randomUUID();
+    const pair = generateHolderKeyPair();
+    const kek = randomBytes(32);
+    const kdf = newKdfParams();
+    const who = { workspaceId: c.ws, holderId: rogue, kind: 'recovery' as const, userId: null };
+    const wrappedPrivate = wrapPrivateKey(kek, pair, who);
+    const secretCheck = holderSecretCheck(kek, who);
+    const mac = holderMac(ben.deks.get(1)!, 1, { ...who, publicKey: pair.publicKey, kdf, wrappedPrivate, secretCheck, confirmedVersions: [] });
+    await pool.query(`INSERT INTO workspace_holders (id, workspace_id, kind, user_id, kdf, public_key, wrapped_private, holder_mac, holder_mac_version, secret_check, confirmed_versions)
+      VALUES ($1, $2, 'recovery', NULL, $3::jsonb, $4, $5, $6, 1, $7, '{}')`, [rogue, c.ws, JSON.stringify(kdf), pair.publicKey, wrappedPrivate, mac, secretCheck]);
+    const refused = await unlock(c.owner.browser, c.ws, { password: c.ownerPw });
+    assert.equal(refused.status, 409, refused.text);
+    assert.equal(codeOf(refused), 'ENCRYPTION_TAMPERED');
+    await sleep(1_000);
+    assert.equal((await keysOf(c.ws)).current_version, 1, 'no rotation started');
+    await pool.query('DELETE FROM workspace_holders WHERE id = $1', [rogue]);
+    expectStatus(await unlock(c.owner.browser, c.ws, { password: c.ownerPw }), 200, 'removed again, it unlocks');
+    await settled(c.ws, 2);
+    assert.equal((await pool.query('SELECT count(*)::int AS n FROM workspace_dek_wraps WHERE holder_id = $1', [rogue])).rows[0].n, 0);
+
+    // After the finish Ada has no confirmation of v2. A database writer forges v2 for her: a DEK of their own in her wrap,
+    // a matching check value, commitment, MAC and sampled envelope. The version pin refuses it.
+    expectStatus(await lock(c.owner.browser, c.ws), 200);
+    const ada = await holderOf(c.ws, c.owner.id) as HolderRow & { holder_mac: string; confirmed_versions: number[]; pin: string };
+    const [wrap] = (await pool.query('SELECT * FROM workspace_dek_wraps WHERE holder_id = $1 AND key_version = 2', [ada.id])).rows;
+    assert.equal(wrap.confirm, null, 'Ada has not confirmed v2 yet');
+    const [kv] = (await pool.query('SELECT check_value, commitment FROM workspace_key_versions WHERE workspace_id = $1 AND key_version = 2', [c.ws])).rows;
+    const evil = newDek();
+    const evilKey = WorkspaceKey.fromDek(c.ws, 2, evil);
+    const box = sealDekToHolder(evil, ada.public_key, { workspaceId: c.ws, holderId: ada.id, keyVersion: 2 });
+    await pool.query('UPDATE workspace_dek_wraps SET ephemeral_public = $2, sealed_dek = $3 WHERE holder_id = $1 AND key_version = 2', [ada.id, box.ephemeralPublic, box.sealedDek]);
+    await pool.query('UPDATE workspace_key_versions SET check_value = $2 WHERE workspace_id = $1 AND key_version = 2', [c.ws, keyCheckValue(evilKey)]);
+    await pool.query('UPDATE workspace_holders SET holder_mac = $2 WHERE id = $1', [ada.id, holderMac(evil, 2, {
+      workspaceId: c.ws, holderId: ada.id, kind: 'password', userId: c.owner.id, publicKey: ada.public_key, kdf: ada.kdf, wrappedPrivate: ada.wrapped_private,
+      secretCheck: ada.secret_check, confirmedVersions: ada.confirmed_versions })]);
+    const [sample] = (await pool.query(`SELECT id::text FROM projects WHERE workspace_id = $1 LIMIT 1`, [c.ws])).rows;
+    const [sampleRow] = (await pool.query('SELECT name FROM projects WHERE id = $1', [sample.id])).rows;
+    await pool.query('UPDATE projects SET name = $2 WHERE id = $1', [sample.id, sealField(evilKey, { workspaceId: c.ws, field: 'projects.name', identity: [sample.id] }, 'forged')]);
+    const forged = await unlock(c.owner.browser, c.ws, { password: c.ownerPw });
+    assert.equal(forged.status, 409, `a forged key version is refused: ${forged.text}`);
+    assert.equal(codeOf(forged), 'ENCRYPTION_TAMPERED');
+    assert.equal(await unlockRowCount(c.ws), 0);
+    await pool.query('UPDATE workspace_dek_wraps SET ephemeral_public = $2, sealed_dek = $3 WHERE holder_id = $1 AND key_version = 2', [ada.id, wrap.ephemeral_public, wrap.sealed_dek]);
+    await pool.query('UPDATE workspace_key_versions SET check_value = $2, commitment = $3 WHERE workspace_id = $1 AND key_version = 2', [c.ws, kv.check_value, kv.commitment]);
+    await pool.query('UPDATE workspace_holders SET holder_mac = $2 WHERE id = $1', [ada.id, ada.holder_mac]);
+    await pool.query('UPDATE projects SET name = $2 WHERE id = $1', [sample.id, sampleRow.name]);
+    expectStatus(await unlock(c.owner.browser, c.ws, { password: c.ownerPw }), 200, 'repaired, it unlocks');
+  });
+
+  test('an old-version value that does not open stalls the rotation visibly; removed, the rotation finishes', async () => {
+    const c = await club('Stuck club', ['Ben']);
+    const { ids } = await seed(c, 2);
+    const [row] = (await pool.query('SELECT name FROM projects WHERE id = $1', [ids.project])).rows;
+    // A value that names v1 but does not open (planted by a database writer, or damaged).
+    await pool.query('UPDATE projects SET name = $2 WHERE id = $1', [ids.project, `fx1.1.${randomBytes(48).toString('base64url')}`]);
+    await removeMember(c.owner, c.ws, c.people.Ben!.who);
+    const on = await waitFor('stalled', async () => (await pool.query('SELECT stalled_on FROM workspace_rotation_progress WHERE workspace_id = $1', [c.ws])).rows[0]?.stalled_on as string | undefined);
+    assert.equal(on, 'projects.name');
+    assert.equal((await readWorkspace(c.owner.browser, c.ws)).encryption?.rotation?.stalled, true);
+    await pool.query('UPDATE projects SET name = $2 WHERE id = $1', [ids.project, row.name]);
+    await settled(c.ws, 2);
   });
 });
 

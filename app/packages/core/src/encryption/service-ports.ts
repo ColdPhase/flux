@@ -20,9 +20,11 @@ export interface HolderRecord {
   secretCheck: string;
   /** The key versions this holder has a confirmation for, covered by `holder_mac` (0128). */
   confirmedVersions: number[];
+  /** The key pin under the deployment secret (0128, `pin.ts`); null on a row no server path wrote. */
+  pin: string | null;
 }
 export interface DekWrapRecord { holderId: string; workspaceId: string; keyVersion: number; ephemeralPublic: string; sealedDek: string; confirm: string | null }
-export interface KeyVersionRecord { keyVersion: number; commitment: string | null; checkValue: string }
+export interface KeyVersionRecord { keyVersion: number; commitment: string | null; checkValue: string; pin: string | null }
 export interface KeysRecord {
   workspaceId: string;
   name: string;
@@ -42,9 +44,9 @@ export interface EncryptionRepository extends SealStateReader {
   unlocks(workspaceId: string, options?: { lock?: 'update' | 'share' }): Promise<UnlockRow[]>;
   workspaceByCreation(createdBy: string, creationId: string): Promise<{ id: string; name: string } | null>;
   insertSealedWorkspace(row: { id: string; name: string; createdBy: string; creationId: string }): Promise<void>;
-  insertKeyVersion(row: { workspaceId: string; keyVersion: number; commitment: string | null; checkValue: string }): Promise<void>;
+  insertKeyVersion(row: { workspaceId: string; keyVersion: number; commitment: string | null; checkValue: string; pin: string }): Promise<void>;
   insertHolder(row: HolderRecord): Promise<void>;
-  updateHolder(id: string, row: Pick<HolderRecord, 'kdf' | 'publicKey' | 'wrappedPrivate' | 'holderMac' | 'holderMacVersion' | 'secretCheck' | 'confirmedVersions'>): Promise<void>;
+  updateHolder(id: string, row: Pick<HolderRecord, 'kdf' | 'publicKey' | 'wrappedPrivate' | 'holderMac' | 'holderMacVersion' | 'secretCheck' | 'confirmedVersions' | 'pin'>): Promise<void>;
   /** A new MAC (and confirmed set) for an unchanged holder: after a confirmation, and at a rotation's start. */
   updateHolderMac(id: string, row: Pick<HolderRecord, 'holderMac' | 'holderMacVersion' | 'confirmedVersions'>): Promise<void>;
   insertDekWrap(row: DekWrapRecord): Promise<void>;
@@ -127,6 +129,15 @@ export interface KeyRotationRepository {
    * version rows below `current` go, `live_versions = {current}`, `rotation = 'none'`, the tombstones and the progress.
    */
   finish(workspaceId: string, current: number): Promise<void>;
+  /**
+   * The first `table.column` anywhere (catalog-driven, not only the registry) where a row of the workspace still holds
+   * an envelope of one of `oldVersions`, or null.
+   */
+  leftover(workspaceId: string, oldVersions: number[]): Promise<string | null>;
+  /** Makes the known copies outside the registry (pre-#712 notifications) content-free; returns how many. */
+  scrubCopies(workspaceId: string, workspaceName: string): Promise<number>;
+  /** Records that the pass cannot finish (`table.column`, no content); true the first time. */
+  stall(workspaceId: string, on: string): Promise<boolean>;
   /** Starts version `next`: `current_version`, `live_versions`, `rotation = 'reencrypting'`. */
   advance(workspaceId: string, next: number): Promise<void>;
 }

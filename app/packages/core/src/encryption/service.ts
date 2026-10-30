@@ -7,7 +7,7 @@ import {
 } from '@flux/contracts';
 import { ConflictError, ForbiddenError, InvalidInputError, RateLimitedError } from '../access/errors.js';
 import type { Principal } from '../principal.js';
-import { WorkspaceLockedError, UnlockIncorrectError } from './errors.js';
+import { KeyringUnavailableError, WorkspaceLockedError, UnlockIncorrectError } from './errors.js';
 import {
   canonicalVersions, generateHolderKeyPair, holderMac, HolderKeyMismatchError, holderSecretCheck, holderSecretCheckValid, keyCommitmentValid, openDekForHolder, sealDekToHolder,
   unwrapPrivateKey, wrapConfirmation, wrapConfirmationValid, wrapPrivateKey, type HolderKeyPair,
@@ -17,6 +17,7 @@ import { keyCheckValid, keyCheckValue, newDek, WorkspaceKey } from './keys.js';
 import { openField } from './envelope.js';
 import { holderIdentity, holderPlace as place, holdersValid, recordTampering, SYSTEM, TamperSignal, zero, type Deks } from './holder-set.js';
 import { DecryptionFailedError } from './primitives.js';
+import type { KeyPin } from './pin.js';
 import { generateRecoveryCode, normalizeRecoveryCode } from './recovery.js';
 import { typedSecret, unlockPassword } from './passwords.js';
 import { unlockedRows } from './seal-for.js';
@@ -45,6 +46,8 @@ export interface EncryptionUseCaseDeps {
   semaphore: DerivationSemaphore;
   estimator: PasswordEstimator;
   read: WorkspaceReader;
+  /** The key pin (`FLUX_KEY_PIN_SECRET`); null: encrypted spaces cannot be created or unlocked here. */
+  pin: KeyPin | null;
 }
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -58,7 +61,9 @@ interface Material {
 
 const sameVersions = (a: number[], b: number[]) => a.length === b.length && [...a].sort().every((v, i) => v === [...b].sort()[i]);
 
-export function createEncryptionUseCases({ unit, keys, semaphore, estimator, read }: EncryptionUseCaseDeps) {
+export function createEncryptionUseCases({ unit, keys, semaphore, estimator, read, pin: maybePin }: EncryptionUseCaseDeps) {
+  /** Every path that verifies or writes holders needs the pin; without it the process cannot open a sealed space. */
+  const requirePin = (): KeyPin => { if (!maybePin) throw new KeyringUnavailableError(); return maybePin; };
   const person = (principal: Principal) => {
     if (principal.kind !== 'human' || !principal.id) throw new ForbiddenError('Only workspace owners and admins can manage encryption', 'WORKSPACE_ENCRYPTION_ADMIN_REQUIRED');
     return principal.id;
@@ -146,6 +151,8 @@ export function createEncryptionUseCases({ unit, keys, semaphore, estimator, rea
       const wrap = m.wraps.find((row) => row.holderId === holder.id && row.keyVersion === version);
       const kv = m.versions.find((row) => row.keyVersion === version);
       if (!wrap || !kv) return fail();
+      // The version's check value and commitment carry the key pin: a database writer cannot mint a version (S2c review).
+      if (!requirePin().versionValid({ workspaceId, keyVersion: version, checkValue: kv.checkValue, commitment: kv.commitment }, kv.pin)) return fail();
       const dekPlace = { workspaceId, holderId: holder.id, keyVersion: version };
       let dek: Buffer;
       try { dek = openDekForHolder(privateKey, wrap, dekPlace); } catch { return fail(); }
@@ -166,7 +173,7 @@ export function createEncryptionUseCases({ unit, keys, semaphore, estimator, rea
       if (wrap.confirm === null) confirmations.push({ keyVersion: version, confirm: wrapConfirmation(kek, dekPlace, dek) });
       deks.set(version, dek);
     }
-    return holdersValid(m, deks) ? { deks, confirmations } : fail();
+    return holdersValid(m, deks, requirePin()) ? { deks, confirmations } : fail();
   }
 
   /** No sample (nothing of that version stored yet): the check value alone. A sample must open. */
@@ -187,6 +194,7 @@ export function createEncryptionUseCases({ unit, keys, semaphore, estimator, rea
       id: holderId, workspaceId, kind, userId, kdf, publicKey: pair.publicKey, wrappedPrivate,
       holderMac: holderMac(deks.get(currentVersion)!, currentVersion, { ...who, publicKey: pair.publicKey, kdf, wrappedPrivate, secretCheck, confirmedVersions }),
       holderMacVersion: currentVersion, secretCheck, confirmedVersions,
+      pin: requirePin().holder({ workspaceId, holderId, kind, userId, publicKey: pair.publicKey }),
     };
     const wraps = [...deks].map(([keyVersion, dek]) => {
       const dekPlace = { workspaceId, holderId, keyVersion };
@@ -205,7 +213,7 @@ export function createEncryptionUseCases({ unit, keys, semaphore, estimator, rea
     }
     const holders = await ports.rows.holders(m.keys.workspaceId);
     const wraps = await ports.rows.dekWraps(m.keys.workspaceId);
-    if (!holdersValid({ keys: k, holders, wraps, managers: await ports.rows.managers(m.keys.workspaceId) }, deks)) throw new TamperSignal();
+    if (!holdersValid({ keys: k, holders, wraps, managers: await ports.rows.managers(m.keys.workspaceId) }, deks, requirePin())) throw new TamperSignal();
   }
 
   /** Runs a final unit of work; a holder that no longer verifies inside it is recorded as tampering after the rollback. */
@@ -227,7 +235,7 @@ export function createEncryptionUseCases({ unit, keys, semaphore, estimator, rea
       zero(deks);
       throw new WorkspaceLockedError(m.keys.workspaceId, m.keys.name);
     }
-    if (!holdersValid(m, deks)) { zero(deks); return tampered(m.keys.workspaceId, m.keys.name, m.holders); }
+    if (!holdersValid(m, deks, requirePin())) { zero(deks); return tampered(m.keys.workspaceId, m.keys.name, m.holders); }
     return deks;
   }
 
@@ -248,7 +256,7 @@ export function createEncryptionUseCases({ unit, keys, semaphore, estimator, rea
       const retried = await again();
       if (retried) return retried;
       const password = unlockPassword(command.password, estimator);
-      keys.requireAvailable();
+      keys.requireAvailable(); requirePin();
       const workspaceId = randomUUID();
       const code = generateRecoveryCode();
       const ownerKdf = newKdfParams();
@@ -264,7 +272,9 @@ export function createEncryptionUseCases({ unit, keys, semaphore, estimator, rea
         try {
           await unit.run(async (ports) => {
             await ports.rows.insertSealedWorkspace({ id: workspaceId, name, createdBy: principal.id, creationId });
-            await ports.rows.insertKeyVersion({ workspaceId, keyVersion: 1, commitment: null, checkValue: keyCheckValue(key) });
+            const checkValue = keyCheckValue(key);
+            await ports.rows.insertKeyVersion({ workspaceId, keyVersion: 1, commitment: null, checkValue,
+              pin: requirePin().version({ workspaceId, keyVersion: 1, checkValue, commitment: null }) });
             for (const holder of [owner, recovery]) {
               await ports.rows.insertHolder(holder.holder);
               await ports.rows.replaceDekWraps(holder.holder.id, holder.wraps);
@@ -291,7 +301,7 @@ export function createEncryptionUseCases({ unit, keys, semaphore, estimator, rea
       person(principal);
       const { m, state } = await prepare(principal, workspaceId);
       if (await unlockedRows(state, keys)) return encryptionOf(principal, workspaceId);
-      keys.requireAvailable();
+      keys.requireAvailable(); requirePin();
       const password = command?.password === undefined ? null : typedSecret(command.password);
       const code = command?.recoveryCode === undefined ? null : normalizeRecoveryCode(command.recoveryCode);
       if ((command?.password === undefined) === (command?.recoveryCode === undefined) || (command.password !== undefined && password === null)) {

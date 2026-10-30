@@ -13,4 +13,6 @@ BEGIN
 END $$;
 ALTER FUNCTION workspace_holder_deleted() RESET search_path;
 ALTER TABLE workspace_rotation_progress DROP COLUMN IF EXISTS started_at, DROP COLUMN IF EXISTS pass_changes;
-ALTER TABLE workspace_holders DROP COLUMN IF EXISTS confirmed_versions;
+ALTER TABLE workspace_holders DROP COLUMN IF EXISTS confirmed_versions, DROP COLUMN IF EXISTS pin;
+ALTER TABLE workspace_key_versions DROP COLUMN IF EXISTS pin;
+ALTER TABLE workspace_rotation_progress DROP COLUMN IF EXISTS stalled_on, DROP COLUMN IF EXISTS stalled_at;

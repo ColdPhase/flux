@@ -2,11 +2,13 @@ import { Readable } from 'node:stream';
 import { WORKSPACE_KEY_ROTATED_EVENT, WORKSPACE_KEY_ROTATION_STARTED_EVENT } from '@flux/contracts';
 import { ConflictError } from '../access/errors.js';
 import { envelopeVersion } from './envelope.js';
+import { DecryptionFailedError } from './primitives.js';
 import { WorkspaceLockedError } from './errors.js';
 import { fileObjectVersion } from './files.js';
 import { holderIdentity, holdersValid, recordTampering, SYSTEM, TamperedError, TamperSignal, zero, type Deks } from './holder-set.js';
 import { holderMac, keyCommitment, sealDekToHolder } from './holders.js';
 import { keyCheckValue, newDek, WorkspaceKey } from './keys.js';
+import type { KeyPin } from './pin.js';
 import type { WorkspaceSeal } from './ports.js';
 import type { ProcessKeys } from './process-keys.js';
 import { sealFor, unlockedRows } from './seal-for.js';
@@ -54,10 +56,17 @@ export interface KeyRotationDeps {
   files: RotationFileObjects | null;
   maintenance: RotationMaintenance;
   options: KeyRotationOptions;
+  /** The key pin (`FLUX_KEY_PIN_SECRET`); without it no rotation starts (it could not pin the new version or verify holders). */
+  pin: KeyPin | null;
 }
 
 export type StartOutcome = 'started' | 'idle' | 'locked' | 'tampered' | 'changed';
-export type PassOutcome = 'finished' | 'locked' | 'idle';
+export type PassOutcome = 'finished' | 'locked' | 'idle' | 'stalled';
+
+/** A value below the current version that does not open: the pass cannot move it. */
+class StaleValueError extends Error {
+  constructor(readonly place: string) { super('A stored value does not open'); this.name = 'StaleValueError'; }
+}
 
 const KEY_TABLES = ['workspace_keys', 'workspace_holders', 'workspace_dek_wraps', 'workspace_key_versions', 'workspace_unlocks',
   'workspace_removed_holders', 'workspace_rotation_progress', 'project_files'];
@@ -96,7 +105,7 @@ export async function rotateFileObject(seal: WorkspaceSeal, objects: RotationFil
   return setVersion(file.id, file.keyVersion, current);
 }
 
-export function createKeyRotation({ unit, keys, files, maintenance, options }: KeyRotationDeps) {
+export function createKeyRotation({ unit, keys, files, maintenance, options, pin }: KeyRotationDeps) {
   /** Pending to reencrypting (the start). */
   async function start(workspaceId: string): Promise<StartOutcome> {
     const read = await unit.run(async (ports) => {
@@ -106,6 +115,7 @@ export function createKeyRotation({ unit, keys, files, maintenance, options }: K
         wraps: await ports.rows.dekWraps(workspaceId), managers: await ports.rows.managers(workspaceId) };
     });
     if (!read) return 'idle';
+    if (!pin) return 'locked';
     const rows = await unlockedRows(read.state, keys);
     if (!rows) return 'locked';
     const deks: Deks = new Map();
@@ -114,7 +124,7 @@ export function createKeyRotation({ unit, keys, files, maintenance, options }: K
       try {
         for (const version of read.k.liveVersions) deks.set(version, (await keys.key(workspaceId, rows.get(version)!)).exportDek());
       } catch { return 'locked'; }
-      if (!holdersValid({ ...read, keys: read.k }, deks)) {
+      if (!holdersValid({ ...read, keys: read.k }, deks, pin)) {
         await recordTampering(unit, workspaceId, read.k.name, read.holders).catch((error) => { if (!(error instanceof TamperedError)) throw error; });
         return 'tampered';
       }
@@ -134,12 +144,15 @@ export function createKeyRotation({ unit, keys, files, maintenance, options }: K
           }
           const m = { keys: k, holders: await ports.rows.holders(workspaceId), wraps: await ports.rows.dekWraps(workspaceId),
             managers: await ports.rows.managers(workspaceId) };
-          if (!holdersValid(m, deks)) throw new TamperSignal();
+          if (!holdersValid(m, deks, pin)) throw new TamperSignal();
           const tombstones = await ports.rows.tombstones(workspaceId);
           // The holder set: every row verified above whose id and public key have no tombstone (a restored row is skipped,
           // and its stale MAC then makes the next unlock refuse).
           const set = m.holders.filter((holder) => !tombstones.some((t) => t.holderId === holder.id || t.publicKey === holder.publicKey));
-          await ports.rows.insertKeyVersion({ workspaceId, keyVersion: next, commitment: keyCommitment(deks.get(n)!, workspaceId, next, fresh), checkValue: keyCheckValue(key) });
+          const commitment = keyCommitment(deks.get(n)!, workspaceId, next, fresh);
+          const checkValue = keyCheckValue(key);
+          await ports.rows.insertKeyVersion({ workspaceId, keyVersion: next, commitment, checkValue,
+            pin: pin.version({ workspaceId, keyVersion: next, checkValue, commitment }) });
           for (const holder of set) {
             const box = sealDekToHolder(fresh, holder.publicKey, { workspaceId, holderId: holder.id, keyVersion: next });
             await ports.rows.insertDekWrap({ holderId: holder.id, workspaceId, keyVersion: next, ...box, confirm: null });
@@ -197,7 +210,10 @@ export function createKeyRotation({ unit, keys, files, maintenance, options }: K
             const envelope = column.kind === 'json' ? (stored as { $sealed?: unknown } | null)?.$sealed : stored;
             const version = envelopeVersion(envelope);
             if (version === null || version >= current) continue;
-            const value = seal.seal(column.field, row.identity, seal.open(column.field, row.identity, envelope as string));
+            let plaintext: string;
+            try { plaintext = seal.open(column.field, row.identity, envelope as string); }
+            catch { throw new StaleValueError(`${table.table}.${column.column}`); }
+            const value = seal.seal(column.field, row.identity, plaintext);
             if (await r.compareAndSet(table.table, row.identity, column.column, stored, column.kind === 'json' ? { $sealed: value } : value)) changed++;
           }
         }
@@ -206,7 +222,12 @@ export function createKeyRotation({ unit, keys, files, maintenance, options }: K
       } else {
         const stale = files ? await r.staleFiles(workspaceId, current, cursor?.[0] ?? null, options.filePageSize) : [];
         for (const file of stale) {
-          if (await rotateFileObject(seal, files!, file, current, (id, from, to) => r.setFileVersion(id, from, to), options.afterFileReplace)) changed++;
+          try {
+            if (await rotateFileObject(seal, files!, file, current, (id, from, to) => r.setFileVersion(id, from, to), options.afterFileReplace)) changed++;
+          } catch (error) {
+            if (error instanceof DecryptionFailedError) throw new StaleValueError('project_files.object');
+            throw error;
+          }
         }
         if (stale.length) cursor = [stale[stale.length - 1]!.id];
         full = stale.length === options.filePageSize;
@@ -222,8 +243,24 @@ export function createKeyRotation({ unit, keys, files, maintenance, options }: K
     });
   }
 
-  async function finish(workspaceId: string): Promise<boolean> {
-    const done = await unit.run(async (ports) => {
+  /** Records once that the rotation cannot finish, and tells the holders (no content: a table and column name). */
+  async function stalled(workspaceId: string, on: string): Promise<'stalled'> {
+    console.error(JSON.stringify({ warning: 'Key rotation cannot finish', workspaceId, on }));
+    await unit.run(async (ports) => {
+      if (!await rotationRows(ports).stall(workspaceId, on)) return;
+      const k = await ports.rows.keys(workspaceId);
+      const managers = new Set(await ports.rows.managers(workspaceId));
+      const holders = await ports.rows.holders(workspaceId);
+      for (const userId of new Set(holders.map((h) => h.userId).filter((id): id is string => !!id && managers.has(id)))) {
+        await ports.rows.insertSecurityNotice({ userId, workspaceId, eventId: null,
+          title: `${k?.name ?? 'This space'}'s key change cannot finish: some stored data does not open. Ask your server's operator.` });
+      }
+    });
+    return 'stalled';
+  }
+
+  async function finish(workspaceId: string): Promise<boolean | { stalled: string }> {
+    const done = await unit.run(async (ports): Promise<boolean | { stalled: string }> => {
       const r = rotationRows(ports);
       const k = await ports.rows.keys(workspaceId, { lock: 'update' });
       if (!k || k.rotation !== 'reencrypting') return false;
@@ -234,11 +271,16 @@ export function createKeyRotation({ unit, keys, files, maintenance, options }: K
         await r.saveProgress(workspaceId, { step: r.tables()[0]!.table, cursor: null, rowsDone: progress.rowsDone, passes: progress.passes + 1, passChanges: 0 });
         return false;
       }
+      // A copy of an old-version envelope outside the registry would outlive the old key's deletion and stay openable
+      // with it: refuse to finish while any table holds one for this workspace (S2c review P1-2).
+      await r.scrubCopies(workspaceId, k.name);
+      const leftover = await r.leftover(workspaceId, k.liveVersions.filter((v) => v < k.currentVersion));
+      if (leftover) return { stalled: leftover };
       await r.finish(workspaceId, k.currentVersion);
       await ports.event(SYSTEM, workspaceId, WORKSPACE_KEY_ROTATED_EVENT, { version: k.currentVersion });
       return true;
     });
-    if (done) {
+    if (done === true) {
       keys.forget(workspaceId); // drops the old versions' key objects; the next seal loads the current one
       await maintenance.vacuum([...new Set([...KEY_TABLES, ...unitTables()])]);
       await maintenance.checkpoint();
@@ -252,10 +294,17 @@ export function createKeyRotation({ unit, keys, files, maintenance, options }: K
   async function pass(workspaceId: string): Promise<PassOutcome> {
     let pages = 0;
     for (;;) {
-      const outcome = await page(workspaceId);
+      let outcome: Awaited<ReturnType<typeof page>>;
+      try { outcome = await page(workspaceId); } catch (error) {
+        // An old-version value that does not open (planted or damaged) would stop every pass here: say so (S2c review P3).
+        if (error instanceof StaleValueError) return stalled(workspaceId, error.place);
+        throw error;
+      }
       if (outcome === 'locked' || outcome === 'idle') return outcome;
       if (outcome === 'verified') {
-        if (await finish(workspaceId)) return 'finished';
+        const done = await finish(workspaceId);
+        if (done === true) return 'finished';
+        if (done !== false) return stalled(workspaceId, done.stalled);
         continue;
       }
       pages += 1;

@@ -170,6 +170,14 @@ ensure_keyring_token() {
   set_env_line "$file" FLUX_KEYRING_TOKEN "$(random_b64url)"
   say "Added FLUX_KEYRING_TOKEN (encrypted spaces' keyring) to ${file#"$FLUX_ROOT"/}."
 }
+# Adds FLUX_KEY_PIN_SECRET (F-030 S2c: the pin over encrypted spaces' holders and key versions, kept out of the
+# database) to an env file that lacks one; never changes an existing secret, because every pin is made with it.
+ensure_key_pin_secret() {
+  file=${1:-$ENV_FILE}
+  [ -n "$(sed -n 's/^FLUX_KEY_PIN_SECRET=//p' "$file" | tail -n 1)" ] && return 0
+  set_env_line "$file" FLUX_KEY_PIN_SECRET "$(random_b64url)"
+  say "Added FLUX_KEY_PIN_SECRET (encrypted spaces' key pin) to ${file#"$FLUX_ROOT"/}."
+}
 
 # Writes KEY=value into an env file (replacing the line or appending it), via a temp file.
 set_env_line() {
@@ -209,6 +217,7 @@ ensure_env() {
   set_env_line "$draft" FLUX_FIXTURE_TOKEN "$(random_hex 32)"
   set_env_line "$draft" FLUX_AUTH_SECRET "$(random_hex 32)"
   set_env_line "$draft" FLUX_KEYRING_TOKEN "$(random_b64url)"
+  set_env_line "$draft" FLUX_KEY_PIN_SECRET "$(random_b64url)"
   set_env_line "$draft" FLUX_DEMO_OWNER_PASSWORD "demo-$(random_hex 8)"
   set_env_line "$draft" FLUX_DEMO_PARTNER_PASSWORD "demo-$(random_hex 8)"
   # Agent runtime secrets (F-022 T3): the service secret and one secret per slot. Generated now so
@@ -1177,6 +1186,7 @@ cmd_upgrade() {
   check_owner "$PROJECT"
   # F-030: an install from before encrypted workspaces gets its keyring token here (the upgrade restarts the keyring).
   ensure_keyring_token "$ENV_FILE"
+  ensure_key_pin_secret "$ENV_FILE"
   docker volume inspect "${PROJECT}_pgdata" >/dev/null 2>&1 || die "Compose project $PROJECT has no data yet; use ./flux up."
   if [ "$pull" = 1 ] && [ "$(git_commit)" = unknown ]; then die "upgrade --pull needs a git checkout; update the files yourself and run ./flux upgrade."; fi
   compose_main up -d --wait --wait-timeout "$WAIT_TIMEOUT" db >/dev/null || die "The database of $PROJECT did not start."
