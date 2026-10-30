@@ -137,11 +137,13 @@ encryption_case() {
   done
   { printf '%s\n' "$canary"; printf '%s' "$canary" | od -An -v -tx1 | tr -d ' \n'; echo; printf '%s' "$canary" | sha256sum | cut -d' ' -f1; } >> "$work/e-encodings"
   for part in "$work/e-dump.sql" "$work/e-files.bin" "$work/e-unpacked/flux.env" "$work/e-unpacked/manifest.json" "$earchive"; do
-    if grep -aqF -f "$work/e-encodings" "$part"; then fail "the backup holds the encrypted space's canary ($(basename "$part"))"; fi
+    # Case-insensitive: the search index stores lowercased text.
+    if grep -aqiF -f "$work/e-encodings" "$part"; then fail "the backup holds the encrypted space's canary ($(basename "$part"))"; fi
   done
   grep -qF "$control" "$work/e-dump.sql" || fail "positive control: the plain project's name is not in the backup's database"
   echo "archive scanned: $(wc -l < "$work/e-encodings" | tr -d ' ') encodings of the canary, 0 hits; the plain control is there"
   flux_e restore "$earchive" -y > "$work/e-restore.out" 2>&1 || { cat "$work/e-restore.out"; fail "restore of E failed"; }
+  [ "$(compose_in "$E" exec -T db psql -X -At -U flux -d flux -c 'SELECT count(*) FROM workspace_unlocks')" = 0 ] || fail "the restore left unlock rows of the backup's server"
   enc restored "$estate" || fail "the restored encrypted space did not behave as AC-10 requires"
   if flux_e export "$eproject" --output "$work/e-export.tar.gz" > "$work/e-export.out" 2>&1; then fail "./flux export of an encrypted space succeeded"; fi
   grep -q 'is encrypted. Export it from the app.' "$work/e-export.out" || fail "no encrypted-space refusal: $(cat "$work/e-export.out")"

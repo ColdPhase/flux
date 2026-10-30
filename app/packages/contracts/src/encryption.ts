@@ -112,8 +112,8 @@ export const CROSS_WORKSPACE_READ_ROUTES: readonly string[] = [
 
 /**
  * Routes that keep working while a sealed workspace is locked: workspace metadata only, each with its reason.
- * Keyed by `METHOD path` exactly as registered. S1's lock gate refuses every other route that names an object
- * of a locked sealed workspace by a known parameter; S2a's route test enumerates every route.
+ * Keyed by `METHOD path` exactly as registered. Every other route answers 423 for a locked workspace's objects because
+ * its repositories fail closed (S2a-2c-4); `tests/app/encryption-locked-routes.test.ts` walks every route (AC-6).
  */
 export const LOCKED_ALLOWED_ROUTES: Readonly<Record<string, string>> = {
   'GET /api/v1/workspaces/:workspaceId': 'The workspace\'s name, role and encryption state, so the locked panel can be drawn',

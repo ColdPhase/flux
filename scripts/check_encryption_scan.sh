@@ -12,14 +12,16 @@
 
 $compose run --rm --no-deps -T test cat /state/encryption-canaries-A.txt > "$scan_dir/canaries-a"
 $compose run --rm --no-deps -T test cat /state/encryption-canaries-B.txt > "$scan_dir/canaries-b"
+$compose run --rm --no-deps -T test cat /state/encryption-canaries-B-pgdata.txt > "$scan_dir/canaries-b-pgdata"
+$compose run --rm --no-deps -T test cat /state/encryption-canaries-B-files.txt > "$scan_dir/canaries-b-files"
 # The keys and passwords of the run (AC-4's list: DEK, subkeys, KEK, holder keys, boot key, passwords, recovery code)
 # are canaries of the disk too.
 cat "$scan_dir/secrets" >> "$scan_dir/canaries-a"
 [ "$(grep -c . "$scan_dir/canaries-a")" -ge 100 ] || { echo "too few encodings of A's canaries ($(grep -c . "$scan_dir/canaries-a"))" >&2; exit 1; }
 [ "$(grep -c . "$scan_dir/canaries-b")" -ge 20 ] || { echo "too few canaries of B" >&2; exit 1; }
 hit() { # label file
-  if grep -aqF -f "$scan_dir/canaries-a" "$2"; then
-    echo "AC-7: A's canary found in $1: $(grep -aoF -f "$scan_dir/canaries-a" "$2" | head -3 | cut -c1-40 | paste -sd' ' -)" >&2
+  if grep -aqiF -f "$scan_dir/canaries-a" "$2"; then
+    echo "AC-7: A's canary found in $1: $(grep -aoiF -f "$scan_dir/canaries-a" "$2" | head -3 | cut -c1-40 | paste -sd' ' -)" >&2
     exit 1
   fi
 }
@@ -42,7 +44,7 @@ $compose stop
 # SELinux hosts label each volume for its own container, so the scanner runs unlabelled; the patterns come on stdin.
 scan_volume() { # volume patterns
   docker run --rm -i --network none --security-opt label=disable -v "$1:/scan:ro" --entrypoint sh "$db_image" \
-    -c 'grep -raF -f - -l /scan > /tmp/hits; status=$?; head -5 /tmp/hits; [ "$status" -le 1 ] || echo SCAN-ERROR' < "$2"
+    -c 'grep -raiF -f - -l /scan > /tmp/hits; status=$?; head -5 /tmp/hits; [ "$status" -le 1 ] || echo SCAN-ERROR' < "$2"
 }
 for name in pgdata files; do
   volume="${project}_$name"
@@ -50,9 +52,13 @@ for name in pgdata files; do
   scan_volume "$volume" "$scan_dir/canaries-a" > "$scan_dir/volume.hits"
   ! grep -q SCAN-ERROR "$scan_dir/volume.hits" || { echo "the scan of volume $volume failed" >&2; exit 1; }
   [ ! -s "$scan_dir/volume.hits" ] || { echo "AC-7: A's canary found in volume $volume: $(cat "$scan_dir/volume.hits")" >&2; exit 1; }
-  scan_volume "$volume" "$scan_dir/canaries-b" > "$scan_dir/volume-b"
-  ! grep -q SCAN-ERROR "$scan_dir/volume-b" || { echo "the scan of volume $volume failed" >&2; exit 1; }
-  [ -s "$scan_dir/volume-b" ] || { echo "positive control: no canary of B in volume $volume" >&2; exit 1; }
+  # Per-string positive controls: every one must be found in this volume, not any one.
+  while read -r control; do
+    printf '%s\n' "$control" > "$scan_dir/control"
+    scan_volume "$volume" "$scan_dir/control" > "$scan_dir/volume-b"
+    ! grep -q SCAN-ERROR "$scan_dir/volume-b" || { echo "the scan of volume $volume failed" >&2; exit 1; }
+    [ -s "$scan_dir/volume-b" ] || { echo "positive control: B's $control is not in volume $volume" >&2; exit 1; }
+  done < "$scan_dir/canaries-b-$name"
 done
 volumes="${project}_pgdata (pg_wal included) and ${project}_files"
 
@@ -66,4 +72,4 @@ for container in $($compose ps -aq); do
   done
 done
 [ "$layers" -gt 0 ] || { echo "no changed path in any container layer was scanned" >&2; exit 1; }
-echo "AC-7 disk scan: $(grep -c . "$scan_dir/canaries-a") encodings of A, pg_dump $(wc -c < "$scan_dir/dump.sql") bytes, volumes: $volumes, $layers changed paths in container layers, $(wc -l < "$scan_dir/all.log") log lines, 0 hits; B found in the dump, the PostgreSQL volume and the files volume"
+echo "AC-7 disk scan (case-insensitive): $(grep -c . "$scan_dir/canaries-a") encodings of A, pg_dump $(wc -c < "$scan_dir/dump.sql") bytes, volumes: $volumes, $layers changed paths in container layers, $(wc -l < "$scan_dir/all.log") log lines, 0 hits; each of B's $(grep -c . "$scan_dir/canaries-b") controls in the dump, $(grep -c . "$scan_dir/canaries-b-pgdata") in the PostgreSQL volume and $(grep -c . "$scan_dir/canaries-b-files") in the files volume"

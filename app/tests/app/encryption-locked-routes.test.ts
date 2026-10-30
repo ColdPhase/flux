@@ -135,7 +135,7 @@ describe('F-030 AC-6: every route, called with a locked workspace\'s objects (S2
     assert.equal(listing.status, 200);
     const routes = ((await listing.json()) as { routes: Route[] }).routes.filter((route) => route.url.startsWith('/api/v1/') && route.url !== '/api/v1/test/routes');
     assert.ok(routes.length > 250, `the server lists its routes (${routes.length})`);
-    const unexpected: string[] = []; const walked: string[] = []; const notOfA: string[] = []; const refusedInput: string[] = []; let locked = 0;
+    const unexpected: string[] = []; const walked: string[] = []; const notOfA: string[] = []; const refusedInput: string[] = []; let locked = 0; let crossWalked = 0;
     // Destructive routes run last, the deepest first, so they cannot take A's objects away from the others.
     const order = (route: Route) => (route.method === 'DELETE' ? 10 - route.url.split('/').length / 10 : LOCKED_ALLOWED_ROUTES[`${route.method} ${route.url}`] ? 1 : 0);
     for (const route of [...routes].sort((a, b) => order(a) - order(b))) {
@@ -145,13 +145,14 @@ describe('F-030 AC-6: every route, called with a locked workspace\'s objects (S2
       const foreign = params.find((param) => NOT_A_WORKSPACE_OBJECT[param] || (param === 'id' && generic === 'account'));
       const body = route.method === 'GET' || route.method === 'DELETE' ? undefined : sample(route.body ?? { type: 'object' });
       const namesA = params.some((param) => objects[param] || param === 'id') || (body !== null && typeof body === 'object' && ('workspaceId' in body || 'projectId' in body));
-      if (foreign || !namesA) { notOfA.push(`${routeKey}${foreign ? ` (${foreign})` : ''}`); continue; }
+      const cross = CROSS_WORKSPACE_READ_ROUTES.includes(routeKey); // walked always: they must name A in lockedWorkspaces
+      if (!cross && (foreign || !namesA)) { notOfA.push(`${routeKey}${foreign ? ` (${foreign})` : ''}`); continue; }
       let path = route.url;
       for (const param of params) path = path.replace(`:${param}`, encodeURIComponent(param === 'id' ? objects[generic ?? 'notification']! : objects[param] ?? randomUUID()));
       const query = route.query ? sample(route.query) as Record<string, unknown> : {};
       for (const [name, value] of Object.entries(query ?? {})) if (value !== null && typeof value !== 'object') path += `${path.includes('?') ? '&' : '?'}${name}=${encodeURIComponent(String(value))}`;
       // Ada created everything (her private drafts too); the Inbox and Needs you rows are Ben's.
-      const who = /^\/api\/v1\/(inbox|needs-you)/.test(route.url) ? ben : ada;
+      const who = /^\/api\/v1\/(inbox|needs-you|search|return)/.test(route.url) ? ben : ada;
       const response = await who.browser.request(route.method, path, { ...(body === undefined ? {} : { body }), headers: { ...key(), 'if-match': '"1"' } });
       walked.push(routeKey);
       if (response.status === 423) locked += 1;
@@ -159,8 +160,9 @@ describe('F-030 AC-6: every route, called with a locked workspace\'s objects (S2
       if (response.status >= 500 && !NOT_OFFERED[`${response.status} ${codeOf(text)}`]) unexpected.push(`${routeKey} → ${response.status} ${text.slice(0, 120)}`);
       else if (text.includes(canary)) unexpected.push(`${routeKey} → a canary`);
       else if (/fx1\.[1-9][0-9]*\.[A-Za-z0-9_-]{20}/.test(text)) unexpected.push(`${routeKey} → an envelope`);
-      else if (CROSS_WORKSPACE_READ_ROUTES.includes(routeKey)) {
-        if (response.status === 200 && !text.includes(`"id":"${A}"`)) unexpected.push(`${routeKey} → 200 without lockedWorkspaces naming A`);
+      else if (cross) {
+        crossWalked += 1;
+        if (response.status !== 200 || !text.includes(`"id":"${A}"`)) unexpected.push(`${routeKey} → ${response.status}, not 200 with lockedWorkspaces naming A`);
       } else if (response.status === 400) refusedInput.push(routeKey);
       else if (response.status !== 423 && !LOCKED_ALLOWED_ROUTES[routeKey] && !NOT_OFFERED[`${response.status} ${codeOf(text)}`]) unexpected.push(`${routeKey} → ${response.status} ${text.slice(0, 100)}`);
     }
@@ -177,5 +179,8 @@ describe('F-030 AC-6: every route, called with a locked workspace\'s objects (S2
     assert.deepEqual(unexpected, [], `routes walked: ${walked.length}; not A's objects: ${notOfA.length}; input refused before any read: ${refusedInput.length}`);
     assert.ok(walked.length > 150, `the walk reached the workspace routes (${walked.length})`);
     assert.ok(locked * 2 > walked.length, `most routes answered 423 (${locked} of ${walked.length})`);
+    assert.equal(crossWalked, CROSS_WORKSPACE_READ_ROUTES.length, 'every cross-workspace read was walked');
+    console.log(`AC-6 walk: ${walked.length} routes walked, ${locked} answered 423, ${crossWalked} cross-workspace reads named A, `
+      + `${refusedInput.length} refused as invalid input before any read, ${notOfA.length} take no object of a workspace`);
   });
 });
