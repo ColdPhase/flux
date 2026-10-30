@@ -50,6 +50,11 @@ let resolver: SealResolver | null = null;
 export function configureSeals(next: SealResolver) {
   resolver = next;
 }
+/**
+ * The resolver of the API instance serving the request in progress. One process can build several API instances (the
+ * in-process tests do), each with its own keys; with no per-route gate (S2a-2c-4), each request must use its own.
+ */
+export const sealResolverScope = new AsyncLocalStorage<SealResolver>();
 
 /**
  * Workspaces known not to be encrypted. `workspaces.encrypted` cannot change (0119 trigger), and an id is cached only
@@ -90,8 +95,9 @@ async function resolveSeal(executor: DbExecutor, workspaceId: string, options: {
   if (!row) return passThrough(workspaceId); // no such workspace: nothing to seal or open, and the write fails on its own
   const work = sealedWorkScope.getStore();
   if (work) work.sealed = true;
-  if (!resolver) throw new SealsUnavailableError(workspaceId);
-  const seal = await resolver(executor, workspaceId, options);
+  const resolve = sealResolverScope.getStore() ?? resolver;
+  if (!resolve) throw new SealsUnavailableError(workspaceId);
+  const seal = await resolve(executor, workspaceId, options);
   if (!seal.sealed) throw new SealsUnavailableError(workspaceId); // never the identity seal for an encrypted workspace
   return seal;
 }
