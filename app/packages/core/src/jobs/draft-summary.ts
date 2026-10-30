@@ -42,6 +42,8 @@ export interface DraftResultRepository {
   /** Completes a running result; false when it is no longer running. */
   complete(resultId: string, wordCount: number, draftVersion: number): Promise<boolean>;
   readDraftBody(draftId: string): Promise<{ body: string; version: number } | null>;
+  /** F-030: the summary of a locked encrypted workspace's draft waits for the unlock (ids only). */
+  recordWait?(resultId: string, workspaceId: string): Promise<void>;
 }
 
 export type DraftResultStores = (db: Executor) => DraftResultRepository;
@@ -111,7 +113,7 @@ export async function getDraftSummary(principal: Principal, draftId: string, res
   return toSummary(row);
 }
 
-export type DraftSummaryOutcome = 'completed' | 'denied' | 'skipped';
+export type DraftSummaryOutcome = 'completed' | 'denied' | 'skipped' | 'waiting';
 
 /**
  * Test seams: `afterRead` runs after the inputs were read and before the commit
@@ -144,34 +146,45 @@ async function deny(tx: Executor, ports: DraftSummaryPorts, row: DraftResultReco
 export async function processDraftSummary(resultId: string, db: Database, ports: DraftSummaryPorts, hooks: DraftSummaryHooks = {}): Promise<DraftSummaryOutcome> {
   const { results } = ports;
   if (!isUuid(resultId)) return 'skipped';
-  const row = await results(db).claim(resultId);
-  if (!row) return 'skipped';
+  const claimed = await results(db).claim(resultId);
+  if (!claimed) return 'skipped';
+  const row: DraftResultRecord = claimed;
   const principal: Principal = { kind: row.principalKind, id: row.principalId };
   const draftRef = { type: 'draft', id: row.draftId } as const;
-
-  try {
-    await assertAuthorized(principal, 'draft.read', draftRef, ports.access(db));
-  } catch (error) {
-    if (!isAccessDenial(error)) throw error;
-    await db.transaction((tx) => deny(tx, ports, row, principal, 'before_read'));
-    return 'denied';
+  try { return await summarize(); }
+  catch (error) {
+    // F-030: the draft's encrypted workspace is locked here. The job completes; the result waits (ids only) and
+    // `workspace-encryption.resume.v1` runs it again after the unlock.
+    if ((error as { code?: unknown }).code !== 'WORKSPACE_LOCKED' || !results(db).recordWait) throw error;
+    await results(db).recordWait!(row.id, row.workspaceId);
+    return 'waiting';
   }
-  const draft = await results(db).readDraftBody(row.draftId);
-  if (!draft) return 'skipped';
-  const wordCount = countWords(draft.body);
-  await hooks.afterRead?.();
 
-  return db.transaction(async (tx) => {
+  async function summarize(): Promise<DraftSummaryOutcome> {
     try {
-      await assertAuthorized(principal, 'draft.read', draftRef, ports.access(tx), { lock: true });
+      await assertAuthorized(principal, 'draft.read', draftRef, ports.access(db));
     } catch (error) {
       if (!isAccessDenial(error)) throw error;
-      await deny(tx, ports, row, principal, 'before_commit');
-      return 'denied' as const;
+      await db.transaction((tx) => deny(tx, ports, row, principal, 'before_read'));
+      return 'denied';
     }
-    if (!(await results(tx).complete(row.id, wordCount, draft.version))) return 'skipped' as const;
-    await hooks.beforeCommit?.(tx);
-    await recordEvent(policyEventPorts(ports.access(tx), ports.events(tx)), principal, row.workspaceId, 'draft.summary_completed.v1', row.draftId, { resultId: row.id });
-    return 'completed' as const;
-  });
+    const draft = await results(db).readDraftBody(row.draftId);
+    if (!draft) return 'skipped';
+    const wordCount = countWords(draft.body);
+    await hooks.afterRead?.();
+
+    return db.transaction(async (tx) => {
+      try {
+        await assertAuthorized(principal, 'draft.read', draftRef, ports.access(tx), { lock: true });
+      } catch (error) {
+        if (!isAccessDenial(error)) throw error;
+        await deny(tx, ports, row, principal, 'before_commit');
+        return 'denied' as const;
+      }
+      if (!(await results(tx).complete(row.id, wordCount, draft.version))) return 'skipped' as const;
+      await hooks.beforeCommit?.(tx);
+      await recordEvent(policyEventPorts(ports.access(tx), ports.events(tx)), principal, row.workspaceId, 'draft.summary_completed.v1', row.draftId, { resultId: row.id });
+      return 'completed' as const;
+    });
+  }
 }

@@ -1,7 +1,7 @@
 import type { PgBoss } from 'pg-boss';
 import { WORKSPACE_ENCRYPTION_RESUME_JOB, type WorkspaceEncryptionResumeJob } from '@flux/contracts';
-import { dropStaleUnlocks, keyringFromEnv, ProcessKeys, recordEvent, redactedError, replayWaitedEvent, sealFor, swapFiles, swapSafety, testSwapRoot, type Database, type EncryptionPorts, type EncryptionUnitOfWork } from '@flux/core';
-import { configureSeals, sql, workspaceEncryptionRows, type DbExecutor } from '@flux/db';
+import { dropStaleUnlocks, keyringFromEnv, processDraftSummary, ProcessKeys, recordEvent, redactedError, replayWaitedEvent, sealFor, swapFiles, swapSafety, testSwapRoot, type Database, type EncryptionPorts, type EncryptionUnitOfWork } from '@flux/core';
+import { accessReader, configureSeals, draftResultRepository, eventRepository, sql, workspaceEncryptionRows, type DbExecutor } from '@flux/db';
 import { eventPorts } from '../events.js';
 import { generatorUnitOfWork } from '../notifications/adapters.js';
 
@@ -22,7 +22,13 @@ function unitOfWork(db: Database): EncryptionUnitOfWork {
   };
 }
 
-export async function startWorkspaceEncryption(boss: PgBoss, db: Database, env: NodeJS.ProcessEnv, emailAvailable = false) {
+/**
+ * A step of the one `workspace-encryption.resume.v1` handler, run after the waits were replayed (#655 integrated
+ * review P2-3): S2c adds the start or resumption of a key rotation here instead of registering a second handler.
+ */
+export type ResumeStep = (workspaceId: string) => Promise<void>;
+
+export async function startWorkspaceEncryption(boss: PgBoss, db: Database, env: NodeJS.ProcessEnv, emailAvailable = false, steps: readonly ResumeStep[] = []) {
   const files = swapFiles(testSwapRoot(env));
   const keys = new ProcessKeys(keyringFromEnv(env), () => swapSafety(env, files));
   // The worker's repositories seal and open through these keys too (S2a).
@@ -44,6 +50,10 @@ export async function startWorkspaceEncryption(boss: PgBoss, db: Database, env: 
           if (wait.queue === 'notifications.generate' && typeof wait.payload.eventId === 'string') {
             await replayWaitedEvent(generator, wait.payload.eventId, { emailAvailable });
           }
+          if (wait.queue === 'draft.summarize.v1' && typeof wait.payload.resultId === 'string') {
+            // Locked again meanwhile: the summary records a new wait itself, and this one goes.
+            await processDraftSummary(wait.payload.resultId, db, { results: draftResultRepository, events: eventRepository, access: accessReader });
+          }
         } catch (error) {
           // Locked again: stop, and pg-boss retries. Any other failure keeps that wait for the sweep and replays the rest (#717 review P3-4).
           if ((error as { code?: unknown }).code === 'WORKSPACE_LOCKED') throw error;
@@ -54,6 +64,7 @@ export async function startWorkspaceEncryption(boss: PgBoss, db: Database, env: 
         await waits.deleteWait(wait.id);
         replayed++;
       }
+      for (const step of steps) await step(job.data.workspaceId);
       console.log(JSON.stringify({ job: WORKSPACE_ENCRYPTION_RESUME_JOB, id: job.id, workspaceId: job.data.workspaceId, replayed, failed }));
     }
   });

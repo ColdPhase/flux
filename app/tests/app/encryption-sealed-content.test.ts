@@ -435,6 +435,24 @@ describe('F-030 S2a-1: sealed content in the repositories', () => {
     assert.equal(((await ben.browser.request('GET', '/api/v1/inbox')).json as { lockedWorkspaces?: unknown }).lockedWorkspaces, undefined);
   });
 
+  test('a draft summary of A while A is locked waits and runs after unlock on the opened body (#655 integrated review P2-2)', async () => {
+    expectStatus(await lock(ada.browser, A), 200);
+    const resultId = randomUUID();
+    await pool.query(`INSERT INTO draft_results (id, workspace_id, draft_id, principal_kind, principal_id) VALUES ($1, $2, $3, 'human', $4)`, [resultId, A, ids.A.draft, ada.id]);
+    const boss = new PgBoss({ connectionString, migrate: false, supervise: false, schedule: false });
+    await boss.start();
+    try { await boss.send('draft.summarize.v1', { resultId }); } finally { await boss.stop({ graceful: false }); }
+    const waits = async () => (await pool.query(`SELECT count(*)::int AS n FROM sealed_job_waits WHERE queue = 'draft.summarize.v1' AND payload->>'resultId' = $1`, [resultId])).rows[0].n as number;
+    const result = async () => (await pool.query<{ status: string; word_count: number | null }>(`SELECT status, word_count FROM draft_results WHERE id = $1`, [resultId])).rows[0]!;
+    for (let attempt = 0; attempt < 80 && await waits() === 0; attempt += 1) await new Promise((resolve) => setTimeout(resolve, 250));
+    assert.equal(await waits(), 1, 'the summary waits while A is locked');
+    assert.notEqual((await result()).status, 'completed');
+    expectStatus(await unlock(ada.browser, A, { password: pw }), 200);
+    for (let attempt = 0; attempt < 80 && (await result()).status !== 'completed'; attempt += 1) await new Promise((resolve) => setTimeout(resolve, 250));
+    assert.deepEqual(await result(), { status: 'completed', word_count: canaries.A.draftEdit.split(/\s+/u).length }, 'counted on the opened body, not the envelope');
+    assert.equal(await waits(), 0);
+  });
+
   test('an event of A that arrives while A is locked waits: no notification; after unlock exactly one (AC-9)', async () => {
     // The mention event of the earlier test, copied as a new event (the generator sees a fresh one) while A is locked.
     const [mention] = (await pool.query(`SELECT e.id, e.kind, e.object_id, e.actor_id, e.data FROM events e JOIN notifications n ON n.event_id = e.id
