@@ -357,6 +357,22 @@ function AppLayoutContent() {
   // page's data: that navigation finishes at once, so no load of this page is left running that
   // could land after the person has moved on or signed out.
   const navigate = useNavigate();
+  // Closing the Details panel by any path (Esc, the close control, a sheet's scrim, a toggle) while the agents' address names
+  // a thread or a task leaves that param behind: a click during the hand-over closes the task's panel before the thread's
+  // owner is registered, and nothing else clears the address (#709). Only the open-to-closed change counts, so a reload on
+  // `?thread=` (the panel not yet shown) keeps it.
+  const wasDetailsOpen = useRef(detailsOpen);
+  useEffect(() => {
+    const was = wasDetailsOpen.current;
+    wasDetailsOpen.current = detailsOpen;
+    if (!was || detailsOpen || !/\/agents\/?$/.test(location.pathname)) return;
+    const search = new URLSearchParams(location.search);
+    if (!search.has('thread') && !search.has('task')) return;
+    search.delete('thread');
+    search.delete('task');
+    const query = search.toString();
+    void navigate({ pathname: location.pathname, search: query ? `?${query}` : '', hash: location.hash }, { replace: true, state: location.state });
+  }, [detailsOpen, location, navigate]);
   const openedAt = useRef<string | null>(null);
   useEffect(() => {
     if (openedAt.current === location.key) return;

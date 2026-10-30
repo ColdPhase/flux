@@ -680,6 +680,22 @@ class ReturnToOrigin(unittest.TestCase):
                 self.origin_back(page, "Tasks").click()
                 expect(page).to_have_url(re.compile(r"/projects/[0-9a-f-]{36}/tasks"))
 
+    def test_15b_closing_during_the_hand_over_clears_the_thread_from_the_address(self):
+        # Close is clicked straight after the thread link, before the thread panel has taken the task's panel (#709).
+        for engine in self.browsers:
+            with self.subTest(engine=engine):
+                page = self.page(engine)
+                page.goto(f"/projects/{self.project}/tasks?show=mine&view=list")
+                row = page.locator(".ws-task").filter(has_text="Check the lamp sensor 05")
+                row.locator(".ws-item").click()
+                panel = page.locator("#details")
+                expect(panel.get_by_role("heading", name="Check the lamp sensor 05")).to_be_visible()
+                panel.locator("a[data-agent-thread-link]").click()
+                expect(page).to_have_url(re.compile(r"/projects/[0-9a-f-]{36}/agents\?thread="))
+                panel.get_by_role("button", name=re.compile(r"^Close")).click()
+                page.wait_for_function(r"() => /\/projects\/[0-9a-f-]{36}\/agents$/.test(location.pathname) && !location.search.includes('thread=')")
+                self.assertEqual(page.evaluate("location.search"), "", "no thread param is left in the address")
+
     # ---- nothing private is kept, and sign-out forgets the places ----
 
     def test_16_no_message_text_is_kept_and_sign_out_forgets_the_places(self):
