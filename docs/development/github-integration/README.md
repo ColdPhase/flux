@@ -176,34 +176,28 @@ way round; this table uses the design document's labels ([G-1 §2](2026-10-05-ap
 
 | Remaining outcome | Issue criterion | State |
 | --- | --- | --- |
-| Real least-privilege App on public HTTPS: bind, PR/CI/review/merge, duplicate and out-of-order delivery, access loss and recovery | AC-1, AC-5 | Needs a registered test App and a reachable public HTTPS origin (external). No fixture counts as this. |
+| Real least-privilege App: bind, PR/CI/review/merge, duplicate and out-of-order delivery, access loss and recovery | AC-1, AC-5 | Deferred to a later version, [#755](https://github.com/ColdPhase/flux/issues/755). No fixture counts as this. |
 | G-1c polling for instances without public HTTPS (2-minute poll of linked open PRs, conditional requests, mode shown in Settings) | AC-3, AC-5 | Delivered 2026-10-30 (`FLUX_GITHUB_DELIVERY=poll`, G-1c "As implemented"). |
-| G-1b one-click App setup through the manifest flow | AC-1 | Not started. Needs encrypted storage of the returned App credentials and the six variables winning when set. |
-| G-1d suggested links found in PR titles, branches and bodies | AC-2 | Not started. Needs a suggestion record, a one-tap confirm and the rule that an ID alone never links across bindings. |
+| G-1b one-click App setup through the manifest flow | AC-1 | Deferred to a later version, [#755](https://github.com/ColdPhase/flux/issues/755). |
+| G-1d suggested links found in PR titles, branches and bodies | AC-2 | Deferred to a later version, [#755](https://github.com/ColdPhase/flux/issues/755). |
 | #153 current-recipient bridge and causal echo suppression | AC-3, AC-4 | Delivered 2026-10-30 (section above). |
-| Eligible once-only external review | AC-5 | Not started. Publishing a review needs a separately scoped write grant (the App is read-only by design); see the proposal on PR for #479. |
-| Portable source history import | AC-3 | Proposal only; export lists rules dormant. |
+| Eligible once-only external review | AC-5 | Deferred, [#755](https://github.com/ColdPhase/flux/issues/755) (proposed direction B2 above). |
+| Portable source history import | AC-3 | Deferred to a later version, [#755](https://github.com/ColdPhase/flux/issues/755). |
 
-### Proposed contract changes for the externally blocked criteria (2026-10-30, NOT accepted)
+### Deferred to a later version (founder decision, 2026-10-30)
 
-These keep the user value of #479 AC-1/AC-5 without lowering a criterion silently. Each needs an explicit decision
-(Hubert) before it replaces the current wording; until then the criteria above stand unchanged and stay unmet.
+**Founder decision (Hubert, 2026-10-30, relayed by the coordinator on PR #751).** The real GitHub App work is
+deferred to a later version and tracked in [#755](https://github.com/ColdPhase/flux/issues/755): registering a
+least-privilege test App and its real installation run (#479 AC-1's real-App part and AC-5), publishing a review on
+GitHub, G-1b manifest setup, G-1d suggested links and portable history import. #479 closes with its in-repository
+criteria (AC-2, AC-3, AC-4, AC-1 at fixture level). Proposed direction for #755, not yet accepted:
 
-1. **Real least-privilege installation (AC-1, AC-5).** Today: needs a registered test App *and* a public HTTPS origin.
-   G-1c polling removes the public-HTTPS half: a registered App on `FLUX_GITHUB_DELIVERY=poll` can bind, see PR/CI/
-   review/merge and recover from access loss on a laptop. Proposal: accept AC-5's "real installation" with a test App
-   in poll mode; keep one webhook-mode delivery check (signature, redelivery, out-of-order) on fixtures, which already
-   pass. Still needs a person to register the App on github.com (no API creates one without the browser manifest flow).
-2. **Once-only external review (AC-5).** Today: the App is read-only by design, so Flux cannot publish a review.
-   Proposal: the reviewing agent publishes the GitHub review from its own local client under its owner's identity
-   (code execution and writes already stay in owner clients, AC-5), then records the external review ID on its Flux
-   assessment with a new idempotent tool; Flux verifies the review exists on the linked PR at that head through the
-   read-only App (`Pull requests: read`) before linking it, and refuses a second record for the same request. No App
-   write permission is added. This replaces "publish through an eligible authorized identity" by "verify and link the
-   review the eligible identity published"; the eligibility and GitHub's own approval gates are unchanged.
-3. **G-1b manifest setup, G-1d suggested links, portable import.** Listed in the issue's remaining-work paragraph,
-   not in the criteria text. Proposal: move them to their own issues (they are setup convenience and suggestions,
-   not gates) instead of keeping #479 open for them.
+1. **B1.** Run the real installation with `FLUX_GITHUB_DELIVERY=poll` (G-1c), so no public HTTPS origin is needed;
+   keep the webhook-mode delivery checks (signature, redelivery, out-of-order) on fixtures. A person still registers
+   the App on github.com.
+2. **B2.** The App stays read-only. The reviewing agent publishes the GitHub review from its own local client under
+   its owner's identity; Flux verifies the review on the linked PR at that head through the read-only App and links its
+   ID once to the Flux assessment. No App write permission is added.
 
 ### Primary sources re-read 2026-10-23
 

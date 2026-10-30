@@ -66,6 +66,8 @@ provider transport sends `If-None-Match` with the `ETag` it last saw for the sam
 cache of at most 2,000 entries and 32 MiB of bodies, oldest first out, never persisted) and reuses the cached body on `304`. The capabilities read reports
 `delivery: 'webhook' | 'poll'`, and Settings shows "Live (webhooks)" or "Every 2 minutes (no public address)".
 
+*Deferred 2026-10-30 (founder decision): G-1b and G-1d move to [#755](https://github.com/ColdPhase/flux/issues/755) with the real App.*
+
 **G-1d. Links found in PRs.** A PR in a bound repository whose title, branch or body names a task's short ID (`FX-1A2B3C4D`, the ID shown on task cards) appears on that task as a **suggested link**.
 - A writer confirms it with one tap. Rules act only on confirmed required links.
 - The ID alone never links across projects or bindings.
