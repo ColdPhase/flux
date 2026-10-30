@@ -150,8 +150,15 @@ test('real configured accounts: supplied Start and Resume reach the model and pr
           const result = client === 'codex'
             ? await sh('codex', coworkProductionInvoke(binding, action), home.env, home.cwd)
             : await sh(claudeBin, ['-p', input, '--output-format', 'stream-json', '--verbose', '--allowedTools', 'mcp__flux', '--max-turns', '20'], home.env, home.cwd);
+          // Only a failed run is an account stop. Claude's stream-json carries routine `rate_limit_event` status lines
+          // in a successful run, so markers are read from its final result (or from a failed process's output) only.
+          const parsed = clientEvents(result.output) as Array<Record<string, unknown>>;
+          const final = parsed.filter(event => event.type === 'result').at(-1);
+          const failedText = client === 'claude'
+            ? (final?.is_error === true || result.code !== 0 ? `${String(final?.result ?? '')} ${String(final?.subtype ?? '')}${final ? '' : result.output}` : '')
+            : (result.code !== 0 ? result.output : parsed.filter(event => event.type === 'error' || event.type === 'turn.failed').map(event => JSON.stringify(event)).join(' '));
           const categories = ['usage_limit', 'rate_limit', 'rate limit', 'weekly limit', 'authentication_error', '401 Unauthorized', 'not logged in']
-            .filter(marker => result.output.toLowerCase().includes(marker.toLowerCase()));
+            .filter(marker => failedText.toLowerCase().includes(marker.toLowerCase()));
           const failure = categories.length > 0;
           if (failure) console.log('LIVE_NATIVE_ACCOUNT_STOP', JSON.stringify({ client, action, categories }));
           assert.ok(!failure, `${client}: configured-account authentication or usage limit; stop this provider, do not retry or substitute a payer`);
@@ -176,7 +183,22 @@ test('real configured accounts: supplied Start and Resume reach the model and pr
             if (event.type === 'item.completed' && event.item?.type === 'mcp_tool_call') calls.push(String(event.item.tool));
             for (const block of event.message?.content ?? []) if (block.type === 'tool_use') calls.push(String(block.name));
           }
-          console.log('LIVE_NATIVE_WORKFLOW_TURN', JSON.stringify({ client, action, toolCalls: calls.length, tools: [...new Set(calls)].sort() }));
+          // Fixture-only diagnostics: failed tool names/statuses and a bounded excerpt of the model's last message on this
+          // disposable fixture project (no person's content), so a stop before the expected effect can be explained.
+          const failed: string[] = [];
+          let lastMessage = '';
+          type Seen = { type?: string; result?: unknown; item?: { type?: string; tool?: string; status?: string; text?: string; error?: { message?: string } };
+            message?: { content?: { type?: string; is_error?: boolean; content?: unknown }[] } };
+          for (const event of events as Seen[]) {
+            if (event.type === 'item.completed' && event.item?.type === 'mcp_tool_call' && event.item.status !== 'completed')
+              failed.push(`${event.item.tool}:${event.item.status}:${String(event.item.error?.message ?? '').slice(0, 160)}`);
+            if (event.type === 'item.completed' && event.item?.type === 'agent_message') lastMessage = String(event.item.text ?? '');
+            if (event.type === 'user') for (const block of event.message?.content ?? []) if (block.type === 'tool_result' && block.is_error)
+              failed.push(`tool_result_error:${JSON.stringify(block.content).slice(0, 160)}`);
+            if (event.type === 'result') lastMessage = String(event.result ?? '');
+          }
+          console.log('LIVE_NATIVE_WORKFLOW_TURN', JSON.stringify({ client, action, exit: result.code, toolCalls: calls.length, tools: [...new Set(calls)].sort(),
+            failedCalls: failed.slice(0, 10), lastMessage: lastMessage.slice(0, 600) }));
         }
         await invoke('start');
         const tasks = (await pool.query(`SELECT w.id,w.criteria,i.intent_key FROM project_work_items w
