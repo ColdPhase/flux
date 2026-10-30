@@ -1416,6 +1416,16 @@ class AdaptiveReflow(AdaptiveBase):
                                 f"the first thought is in view on opening at {size}: {first} in {canvas}")
                 opened = self.zoom_level(page)
                 self.assertGreaterEqual(opened, 90, f"the map opens at a working zoom at {size}")
+                # The first-run hint never sits on a thought's text: where a card lies under it, it steps aside.
+                page.wait_for_timeout(100)
+                hint = page.evaluate("""() => {
+                  const hint = document.querySelector('.sk-dock > .sk-hint');
+                  if (!hint || getComputedStyle(hint).visibility === 'hidden') return {shown: false, over: []};
+                  const h = hint.getBoundingClientRect();
+                  return {shown: true, over: [...document.querySelectorAll('.sk-node')].filter((n) => { const r = n.getBoundingClientRect();
+                    return r.right > h.left && r.left < h.right && r.bottom > h.top && r.top < h.bottom; }).map((n) => n.textContent.slice(0, 30))};
+                }""")
+                self.assertEqual(hint["over"], [], f"the map hint covers no thought at {size}: {hint}")
                 if width == 1440:
                     page.get_by_role("button", name="Fit the sketch to the view", exact=True).click()
                     page.wait_for_function("z => !document.querySelector('.sk-zoom__level').textContent.startsWith(z + '%')", arg=opened)
@@ -1455,6 +1465,8 @@ class AdaptiveReflow(AdaptiveBase):
                 band = rail.locator(".side__rail-middle")
                 scrolls = band.evaluate("el => ({scrollable: el.scrollHeight > el.clientHeight, room: el.clientHeight, overflow: getComputedStyle(el).overflowY})")
                 self.assertTrue(scrolls["scrollable"] and scrolls["overflow"] == "auto", f"the rail's places and lists scroll as one band at {size}: {scrolls}")
+                fade = band.evaluate("el => ({marked: el.hasAttribute('data-scrolls'), mask: getComputedStyle(el).maskImage || getComputedStyle(el).webkitMaskImage})")
+                self.assertTrue(fade["marked"] and "gradient" in (fade["mask"] or ""), f"a band that scrolls fades softly at its lower edge at {size}: {fade}")
                 tiles = rail.get_by_role("navigation", name="Projects").get_by_role("link")
                 expect(tiles).to_have_count(len(names))
                 for index, name in enumerate(names):

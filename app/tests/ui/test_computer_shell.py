@@ -72,13 +72,20 @@ class ComputerShell(unittest.TestCase):
     def sidebar(self, page: Page):
         return page.get_by_role("complementary", name="Sidebar")
 
+    @staticmethod
+    def settled_width(side) -> int:
+        """The sidebar's width once its resize has finished: since #720/#722 SizeSwap animates the aside's width, so a read
+        right after the toggle lands mid-animation (#730)."""
+        side.evaluate("el => Promise.all(el.getAnimations().map((animation) => animation.finished.catch(() => null)))")
+        return round(side.bounding_box()["width"])
+
     def test_01_the_sidebar_follows_the_drawn_order(self) -> None:
         self.ensure_account()
         for scheme in ("light", "dark"):
             page = self.page(scheme)
             page.goto("/")
             side = self.sidebar(page)
-            self.assertEqual(round(side.bounding_box()["width"]), 248)
+            self.assertEqual(self.settled_width(side), 248)
             expect(side.get_by_role("img", name="Flux")).to_be_visible()
             expect(side.get_by_role("button", name="Collapse sidebar")).to_have_attribute("aria-keyshortcuts", "[")
             expect(side.get_by_role("button", name=re.compile("^New"))).to_have_attribute("aria-keyshortcuts", "C")
@@ -105,7 +112,7 @@ class ComputerShell(unittest.TestCase):
         expect(side.get_by_role("button", name="Collapse sidebar")).to_be_visible()
         page.keyboard.press("[")
         expect(side.locator(".side--rail")).to_have_count(1)
-        self.assertEqual(round(side.bounding_box()["width"]), 64)
+        self.assertEqual(self.settled_width(side), 64)
         rail = side.locator(".side--rail")
         expect(rail.get_by_role("link", name="Home")).to_have_attribute("aria-current", "page")
         expect(rail.get_by_role("navigation", name="Projects").get_by_role("link")).to_have_count(2)
@@ -115,7 +122,7 @@ class ComputerShell(unittest.TestCase):
         expect(self.sidebar(page).get_by_role("button", name="Expand sidebar")).to_be_visible()
         page.keyboard.press("[")
         expect(self.sidebar(page).locator(".side--rail")).to_have_count(0)
-        self.assertEqual(round(self.sidebar(page).bounding_box()["width"]), 248)
+        self.assertEqual(self.settled_width(self.sidebar(page)), 248)
         # Typing "[" in a field never collapses the sidebar.
         page.goto(f"/projects/{self.ids['projects'][0]}")
         composer = page.locator("#project-composer")
@@ -137,7 +144,7 @@ class ComputerShell(unittest.TestCase):
         expect(page.get_by_role("button", name=re.compile(r"^Focus · notifications paused"))).to_have_count(0)
         expect(side.locator(".side--rail")).to_have_count(0)
         expect(side.get_by_role("button", name="Collapse sidebar")).to_be_visible()
-        self.assertEqual(round(side.bounding_box()["width"]), 248)
+        self.assertEqual(self.settled_width(side), 248)
 
     def test_03_c_opens_the_create_window_and_a_task_starts_in_the_open_project(self) -> None:
         self.ensure_account()

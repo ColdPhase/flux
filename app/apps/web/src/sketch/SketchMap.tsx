@@ -608,6 +608,33 @@ export function SketchMap(props: SketchMapProps) {
   }, [hasThoughts, fit]);
   const highlighted = (id: string) => selection.includes(id) || connectFrom === id;
 
+  // The first-run hint floats over the canvas above the dock; where a thought lies under it (a card at the bottom of the
+  // view, as at 1440×900 opening at 90%), it steps aside, so it never sits on a card's text. Checked after a scroll,
+  // a resize or a change of the thoughts, a frame later.
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    const dock = dockRef.current;
+    if (!canvas || !dock || compact) return undefined;
+    let frame = 0;
+    const check = () => {
+      frame = 0;
+      const hint = dock.querySelector<HTMLElement>(':scope > .sk-hint');
+      if (!hint) return;
+      const h = hint.getBoundingClientRect();
+      const over = [...canvas.querySelectorAll<HTMLElement>('.sk-node')].some((node) => {
+        const r = node.getBoundingClientRect();
+        return r.right > h.left && r.left < h.right && r.bottom > h.top && r.top < h.bottom;
+      });
+      if (over) hint.setAttribute('data-over-card', ''); else hint.removeAttribute('data-over-card');
+    };
+    const later = () => { if (!frame) frame = requestAnimationFrame(check); };
+    later();
+    canvas.addEventListener('scroll', later, { passive: true });
+    const observer = new ResizeObserver(later);
+    observer.observe(canvas);
+    observer.observe(dock);
+    return () => { if (frame) cancelAnimationFrame(frame); canvas.removeEventListener('scroll', later); observer.disconnect(); };
+  }, [compact, rects, zoom]);
   // #509 AC-3: Ctrl/⌘ + wheel (a trackpad pinch arrives the same way) zooms smoothly around the
   // pointer; a plain wheel or two-finger scroll pans natively. React's wheel listener is passive, and
   // the zoom must be cancellable to replace the browser's page zoom.

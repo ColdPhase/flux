@@ -174,6 +174,8 @@ body:has(.app) { background: var(--side); }
   .side__rail-middle { overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain; scrollbar-width: thin; padding: 4px 0; }
   .side__rail-middle::-webkit-scrollbar { width: 4px; }
   .side__rail-middle > .side__rail-scroll { flex: none; overflow: visible; }
+  /* A soft, static fade at the band's lower edge while it can scroll; the end of the band has room to clear it. */
+  .side__rail-middle[data-scrolls] { padding-bottom: 20px; mask-image: linear-gradient(to bottom, #000 calc(100% - 20px), transparent); -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 20px), transparent); }
 }
 /* Centred like the collapse control in the expanded sidebar's 40 px top row, so the toggle stays put (S1). */
 .side--rail > .side__toggle { margin-block: max(0px, calc((40px - var(--ctl)) / 2)); }
