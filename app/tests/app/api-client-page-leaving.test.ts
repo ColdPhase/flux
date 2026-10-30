@@ -6,7 +6,14 @@ import { after, afterEach, beforeEach, mock, test } from 'node:test';
 // handles the rejection. The request waits and starts when the page is live again; a real failure is still
 // an error the caller sees. A fake window and fetch drive the real client and gate.
 const globals = globalThis as unknown as Record<string, unknown>;
-const saved = { window: globals.window, fetch: globals.fetch };
+const saved = { window: globals.window, fetch: globals.fetch, MessageChannel: globals.MessageChannel };
+// A read starts in a task of its own, which the client schedules through a MessageChannel (#716). A real port with a
+// listener keeps a Node process alive, so a stand-in delivers the same message on the next turn of the event loop.
+class TaskChannel {
+  port1: { onmessage: (() => void) | null } = { onmessage: null };
+  port2 = { postMessage: () => { setImmediate(() => this.port1.onmessage?.()); } };
+}
+globals.MessageChannel = TaskChannel;
 const window = Object.assign(new EventTarget(), {
   setTimeout: (run: () => void, ms: number) => globalThis.setTimeout(run, ms),
   clearTimeout: (id: number) => globalThis.clearTimeout(id),
@@ -34,12 +41,16 @@ afterEach(() => {
   mock.timers.reset();
   globals.fetch = saved.fetch;
 });
-after(() => { globals.window = saved.window; });
+after(() => { globals.window = saved.window; globals.MessageChannel = saved.MessageChannel; });
 
-test('a live page starts the request at once', async () => {
-  const done = request<{ ok: boolean }>('/api/v1/a');
-  assert.equal(calls.length, 1, 'fetch is called before the first await');
-  assert.deepEqual(await done, { ok: true });
+test('a live page starts a read in a task of its own and a write at once', async () => {
+  const read = request<{ ok: boolean }>('/api/v1/a');
+  assert.equal(calls.length, 0, 'a read waits for a task of its own (#716)');
+  assert.deepEqual(await read, { ok: true });
+  assert.equal(calls.length, 1);
+  const write = request('/api/v1/b', { method: 'POST', body: {} });
+  assert.equal(calls.length, 2, 'fetch is called before the first await');
+  await write;
 });
 
 test('a page being left starts no request until a click proves the person is still here', async () => {
@@ -50,6 +61,32 @@ test('a page being left starts no request until a click proves the person is sti
   fire('pointerdown');
   await done;
   assert.equal(calls.length, 1);
+});
+
+// #758, #759: the shell's reads (working-agents, needs-you, notification preferences) are asked for by effects and start in the
+// task after the one that asked. A navigation that begins in between used to find the gate open, and its read then started
+// after `beforeunload`, which WebKit reports as an uncaught page error.
+test('a read asked for just before the page begins to leave waits for the page to be live', async () => {
+  const done = request('/api/v1/a');
+  fire('beforeunload');
+  await settle();
+  await settle();
+  assert.equal(calls.length, 0, 'the navigation began before the read started, so the read does not start');
+  fire('pointerdown');
+  await done;
+  assert.equal(calls.length, 1, 'held back, not dropped');
+});
+
+test('reads asked for in one task, then the page is left, all wait and all start once it is live', async () => {
+  const all = Promise.all([request('/api/v1/a'), request('/api/v1/b'), request('/api/v1/c')]);
+  fire('beforeunload');
+  fire('pagehide');
+  await settle();
+  await settle();
+  assert.equal(calls.length, 0);
+  fire('pageshow');
+  await all;
+  assert.deepEqual(calls.map((call) => call.path), ['/api/v1/a', '/api/v1/b', '/api/v1/c']);
 });
 
 test('the request starts after the grace of a navigation that was cancelled', async () => {
