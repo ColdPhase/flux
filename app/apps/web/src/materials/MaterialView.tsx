@@ -1,7 +1,7 @@
 import { Link, Navigate, useLoaderData, useLocation, type LoaderFunctionArgs } from 'react-router';
 import type { MaterialOrDoc, MaterialVersion } from '@flux/contracts';
-import { getMaterial, getMaterialVersion } from '../materials/api';
-import { useShellData } from './data';
+import { getMaterial, getMaterialVersion } from './api';
+import { useShellData } from '../app/data';
 import { agentAuthorLabel } from '../docs/format';
 
 export async function materialLoader({ params, request }: LoaderFunctionArgs): Promise<{ redirectTo: string } | { material: MaterialOrDoc; version: MaterialVersion }> {

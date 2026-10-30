@@ -5,7 +5,7 @@ import { ToastProvider, markMotionReady } from './ui';
 import { UpdatePrompt } from './pwa';
 import { AppLayout } from './app/AppLayout';
 import { appLoader, type ShellData } from './app/data';
-import { ProjectConversation, projectConversationLoader, shouldRevalidateProjectConversation } from './app/ProjectConversation';
+import { ProjectConversation, projectConversationLoader, shouldRevalidateProjectConversation } from './conversations/ProjectConversation';
 import { Booting, RouteCodeLoadError, RouteErrorPage } from './app/errors';
 import { NotFoundView } from './app/views';
 import { Home } from './app/Home';
@@ -55,7 +55,7 @@ const docEditor = secondary(async () => {
 });
 const sketch = secondary(async () => ({ Component: (await import('./sketch/SketchView')).SketchRoute }));
 const material = secondary(async () => {
-  const page = await import('./app/MaterialView');
+  const page = await import('./materials/MaterialView');
   return { Component: page.MaterialView, loader: page.materialLoader };
 });
 
