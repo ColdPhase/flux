@@ -135,7 +135,9 @@ fails when:
   is reachable, #90, #91), or any file there other than `policy.ts` passes 200 lines;
 - a `.ts` or `.tsx` file under `app/apps/web/src` contains a native `<select>` (comments ignored, #695);
 - a `.ts` or `.tsx` file under `app/apps/web/src` other than `api/client.ts` calls `fetch` or writes an `/api/` path,
-  or the web layer's allow-list names a library that `app/apps/web/package.json` does not declare (#93).
+  or the web layer's allow-list names a library that `app/apps/web/package.json` does not declare (#93);
+- a file under `app/apps/web/src/conversations/` or `materials/` passes 150 lines, or one of their `.tsx` views imports an API
+  module or calls `request`, `send` or `fetch` (#94).
   `app/tests/app/pwa.test.ts` checks that every API path in `pwa/sw.js` is a contract path.
 
 The allowlist can only shrink. Do not add entries for new code; change the code or,
@@ -150,7 +152,6 @@ recorded in the allowlist and tracked by [#46](https://github.com/ColdPhase/flux
 | --- | --- | --- |
 | `app/packages/core/src/types.ts` | `@flux/db` | Replace the Drizzle-derived `Database`/`Executor` types with a core-owned transaction port. |
 | `app/packages/core/package.json` | `@flux/db`, `drizzle-orm`, `pg-boss` | Remove each dependency when no core file uses it. |
-| `app/apps/web/src/conversations/ProjectConversation.tsx` | — (size, not a dependency) | The pane still reads its replies and renders them in one component of about 750 lines; split the thread model (replies, paging, refresh, access) and the composer's commands and assistant ask out of it ([#94](https://github.com/ColdPhase/flux/issues/94) AC-2). |
 
 The workspace AI lock ([F-029](../product/workspace-ai-lock.md)) added to the same debt with no new entry, and it is paid
 the same way: the policy's read side, `workspaceAi`, moved with the grant lookup into the `@flux/db` access adapter (#90) and
@@ -252,4 +253,8 @@ path comes from a `@flux/contracts` helper; the web layer's rule is an allow-lis
 `project/api.ts`, `conversations/api.ts`, `materials/api.ts` and `drafts/api.ts`; the browser draft store, private notes and project
 creation moved to `drafts/`, `captures/` and `project/`; the project conversation's loader, feed model, thread reply and sources
 (`materials/useProjectMaterials.ts`, `MaterialTray.tsx`, whose form now keeps its text in the shared draft store) have their own
-modules ([#93](https://github.com/ColdPhase/flux/issues/93), [#94](https://github.com/ColdPhase/flux/issues/94)).
+modules. The pane itself is split into hooks that read and act (`paneCore.ts`, `useThreadReplies.ts` with the live refresh of #733,
+`useThreadReading.ts`, `useThreadPlace.ts`, `useComposerDrafts.ts`, `useComposerMenu.ts`, `useComposerSend.ts`, `useAssistantAsk.ts`,
+`useAskBar.ts`) and views that only render (`ThreadFeed.tsx`, `ThreadAnswers.tsx`, `ThreadReply.tsx`, `PaneComposer.tsx`); the
+architecture test keeps every file of `conversations/` and `materials/` within 150 lines and their views free of API calls
+([#93](https://github.com/ColdPhase/flux/issues/93), [#94](https://github.com/ColdPhase/flux/issues/94)).

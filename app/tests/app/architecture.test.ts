@@ -115,6 +115,18 @@ describe('architecture boundaries', () => {
     assert.deepEqual(found, [], 'call the API through apps/web/src/api/client.ts with a path helper from @flux/contracts');
   });
 
+  test('the conversation and material features stay small and their views only render (#94)', () => {
+    const sources = ['conversations', 'materials'].flatMap((name) => uiSources(join(root, 'apps/web/src', name)));
+    assert.ok(sources.length >= 10, `the scan covers both features (found ${sources.length})`);
+    for (const path of sources) {
+      const text = readFileSync(path, 'utf8');
+      const lines = text.split('\n').length;
+      assert.ok(lines <= 150, `${relative(root, path)} has ${lines} lines; split it before it passes 150`);
+      // A view (.tsx) renders what its hooks and loaders read: it imports no API module and calls no request itself.
+      if (path.endsWith('.tsx')) assert.doesNotMatch(text, /from '[^']*\/api(\/client)?'|(?<![.\w])(?:request|send|fetch)\(/, `${relative(root, path)} renders only; read through a hook or loader`);
+    }
+  });
+
   test('every browser library the web may import is a declared dependency of @flux/web (#93)', () => {
     const declared = Object.keys((JSON.parse(readFileSync(join(root, 'apps/web/package.json'), 'utf8')) as { dependencies: Record<string, string> }).dependencies);
     for (const library of WEB_LIBRARIES) {

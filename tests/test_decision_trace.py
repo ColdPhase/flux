@@ -58,7 +58,7 @@ class DecisionTrace(unittest.TestCase):
         rule = next(line for line in design.splitlines() if line.startswith("| P5 |"))
         for words in ("#694", "decision", "result", "card", "thread"):
             self.assertIn(words, rule)
-        conversation = source("app/apps/web/src/conversations/ProjectConversation.tsx")
+        conversation = source("app/apps/web/src/conversations/useComposerSend.ts")
         self.assertRegex(conversation, r"fromThread = conversation && rootMessageId \?")
         self.assertIn("kind: 'propose-decision', projectId: project.id, title: text, ...(fromThread", conversation)
         self.assertIn("sources: [{ ref: { type: 'message' as const, id: fromThread.messageId }", conversation)
