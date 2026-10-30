@@ -546,7 +546,13 @@ stateDiagram-v2
    - **Fair key gate (S2c review).** Row locks are not queue-fair, so back-to-back writers each taking `FOR SHARE`
      could starve a start, a finish, an unlock or a role change waiting for `FOR UPDATE`. Every side first takes a
      transaction-scoped advisory lock on the workspace (writers shared, the `FOR UPDATE` side exclusive); a waiting
-     exclusive request then makes new writers wait behind it.
+     exclusive request then makes new writers wait behind it. A project write takes the gate before its first row
+     lock (`lockProjectAccess`), so under the exclusive gate the rows still locked belong to writes already inside.
+   - **Drain (S2c delta review).** Pages skip locked rows, and every project write share-locks its project row, so
+     under steady writes that row could be skipped by every pass. After a pass that changed nothing, a drain takes
+     the exclusive gate and re-encrypts whatever is still below the current version, waiting for row locks with a
+     1 s lock timeout; the finish follows. Three timed-out drains in a row mark the rotation `stalled` ("write
+     load"), and the next sweep tries again.
    - **Uploads that straddle a rotation (S2c review).** An upload's object is sealed while it streams. Its commit
      (`markReady`) seals the row under the writer's share lock and checks the object's key version against
      `live_versions`: a version the finish already dropped is refused (`409 UPLOAD_KEY_CHANGED`, the bytes are

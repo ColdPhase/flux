@@ -5,7 +5,7 @@ import * as zxcvbnCommon from '@zxcvbn-ts/language-common';
 import * as zxcvbnEnglish from '@zxcvbn-ts/language-en';
 import { WORKSPACE_ENCRYPTION_RESUME_JOB, type WorkspaceEncryptionResumeJob } from '@flux/contracts';
 import {
-  authorize, createEncryptionUseCases, DerivationSemaphore, ForbiddenError, getWorkspace, keyPinFromEnv, keyringFromEnv, NotFoundError, ProcessKeys,
+  authorize, createEncryptionUseCases, DerivationSemaphore, ForbiddenError, getWorkspace, keyPinStatus, keyringFromEnv, NotFoundError, ProcessKeys,
   recordEvent, sealFor, swapFiles, swapSafety, testSwapRoot, type Database, type EncryptionPorts, type EncryptionUnitOfWork, type PasswordEstimator,
 } from '@flux/core';
 import { accessPorts, accessReader, configureSeals, dropSealedSearchIndex, loadActor, workspaceEncryptionRows, type DbExecutor } from '@flux/db';
@@ -77,8 +77,10 @@ export interface EncryptionComposition {
 
 /** One per API process: the keys, the shared semaphore and the use cases. */
 export function composeEncryption(db: Database, boss: Pick<PgBoss, 'send'>, keys: ProcessKeys): EncryptionComposition {
+  const pin = keyPinStatus(process.env);
+  if (pin.warning) console.error(JSON.stringify({ warning: pin.warning }));
   const useCases = createEncryptionUseCases({
-    unit: encryptionUnitOfWork(db, boss), keys, semaphore: new DerivationSemaphore(2, 8), estimator: zxcvbnEstimator(), pin: keyPinFromEnv(process.env),
+    unit: encryptionUnitOfWork(db, boss), keys, semaphore: new DerivationSemaphore(2, 8), estimator: zxcvbnEstimator(), pin: pin.pin,
     read: (principal, workspaceId) => getWorkspace(principal, workspaceId, db, accessPorts, { bootId: keys.openableBoot }),
   });
   return { keys, useCases };

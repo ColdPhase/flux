@@ -45,8 +45,20 @@ export class KeyPin {
   versionValid(v: PinnedVersion, pin: unknown): boolean { return same(pin, this.version(v)); }
 }
 
-/** The pin of this process, or null when `FLUX_KEY_PIN_SECRET` is not set (encrypted spaces then cannot be opened). */
+/**
+ * The pin of this process, or null when `FLUX_KEY_PIN_SECRET` is missing or shorter than 32 characters (encrypted
+ * spaces then cannot be created or unlocked here). `warning` says which, for the process to log once at start; with
+ * the keyring off (`FLUX_KEYRING=off`) a missing secret is expected and not warned about.
+ */
 export function keyPinFromEnv(env: Readonly<Record<string, string | undefined>>): KeyPin | null {
-  const secret = env.FLUX_KEY_PIN_SECRET?.trim();
-  return secret ? KeyPin.fromSecret(secret) : null;
+  return keyPinStatus(env).pin;
+}
+export function keyPinStatus(env: Readonly<Record<string, string | undefined>>): { pin: KeyPin | null; warning: string | null } {
+  const secret = env.FLUX_KEY_PIN_SECRET?.trim() ?? '';
+  if (!secret) {
+    return { pin: null, warning: env.FLUX_KEYRING === 'off' ? null
+      : 'FLUX_KEY_PIN_SECRET is not set: encrypted spaces cannot be created or unlocked. Run ./flux upgrade to add it.' };
+  }
+  if (secret.length < 32) return { pin: null, warning: 'FLUX_KEY_PIN_SECRET is shorter than 32 characters: encrypted spaces cannot be created or unlocked.' };
+  return { pin: KeyPin.fromSecret(secret), warning: null };
 }

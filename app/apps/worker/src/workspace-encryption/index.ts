@@ -1,7 +1,7 @@
 import type { PgBoss } from 'pg-boss';
 import { WORKSPACE_ENCRYPTION_RESUME_JOB, type WorkspaceEncryptionResumeJob } from '@flux/contracts';
 import {
-  createKeyRotation, dropStaleUnlocks, keyPinFromEnv, keyringFromEnv, ProcessKeys, recordEvent, sealFor, swapFiles, swapSafety, testSwapRoot, type Database,
+  createKeyRotation, dropStaleUnlocks, keyPinStatus, keyringFromEnv, ProcessKeys, recordEvent, sealFor, swapFiles, swapSafety, testSwapRoot, type Database,
   type EncryptionPorts, type EncryptionUnitOfWork, type KeyRotationOptions,
 } from '@flux/core';
 import { sql } from 'drizzle-orm';
@@ -69,6 +69,8 @@ export async function startWorkspaceEncryption(boss: PgBoss, db: Database, env: 
   await heartbeat.first;
 
   const options = rotationOptions(env);
+  const pinStatus = keyPinStatus(env);
+  if (pinStatus.warning) console.error(JSON.stringify({ warning: pinStatus.warning }));
   // The rotation's own two connections: a page, the finish's catalog scan, VACUUM and CHECKPOINT may take longer than
   // the 2 s statement limit of the request pool, and they never take a request connection.
   const rotationDatabase = createDatabase(env.DATABASE_URL!, undefined, { queryTimeoutMs: 10 * 60_000, max: 2 });
@@ -86,7 +88,7 @@ export async function startWorkspaceEncryption(boss: PgBoss, db: Database, env: 
     console.error(JSON.stringify({ warning: 'CHECKPOINT after a key rotation failed; retried by the next sweep', code: (error as { code?: unknown }).code ?? null }));
   });
   const rotation = createKeyRotation({
-    unit: unitOfWork(rotationDb), keys, options, pin: keyPinFromEnv(env),
+    unit: unitOfWork(rotationDb), keys, options, pin: pinStatus.pin,
     files: await diskRotationObjects(env.FLUX_FILES_DIR ?? '/data/files').catch(() => null),
     maintenance: {
       vacuum: (tables) => rotationMaintenance(executor, tables),

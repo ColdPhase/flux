@@ -117,7 +117,9 @@ export interface KeyRotationRepository {
   resetProgress(workspaceId: string, targetVersion: number, firstStep: string): Promise<void>;
   saveProgress(workspaceId: string, row: Omit<RotationProgressRecord, 'targetVersion' | 'rowsEstimate'>): Promise<void>;
   /** Rows of the workspace with a sealed value below `current`, after `cursor`, by primary key. */
-  stalePage(table: string, workspaceId: string, current: number, cursor: string[] | null, limit: number): Promise<StaleRow[]>;
+  /** `skipLocked` (default): a row a writer holds is left to the next pass; false: wait for it (the drain). */
+  stalePage(table: string, workspaceId: string, current: number, cursor: string[] | null, limit: number, options?: { skipLocked?: boolean }): Promise<StaleRow[]>;
+  lockTimeout(ms: number): Promise<void>;
   /** Writes `next` only where the column still holds `previous` (compare-and-set); false when it changed meanwhile. */
   compareAndSet(table: string, identity: string[], column: string, previous: unknown, next: unknown): Promise<boolean>;
   /** Whether any sealed value or file of the workspace is still below `current` (the finish's last check). */
@@ -134,8 +136,6 @@ export interface KeyRotationRepository {
    * an envelope of one of `oldVersions`, or null.
    */
   leftover(workspaceId: string, oldVersions: number[]): Promise<string | null>;
-  /** Makes the known copies outside the registry (pre-#712 notifications) content-free; returns how many. */
-  scrubCopies(workspaceId: string, workspaceName: string): Promise<number>;
   /** Records that the pass cannot finish (`table.column`, no content); true the first time. */
   stall(workspaceId: string, on: string): Promise<boolean>;
   /** Starts version `next`: `current_version`, `live_versions`, `rotation = 'reencrypting'`. */

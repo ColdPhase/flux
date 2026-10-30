@@ -979,6 +979,15 @@ env_from_archive() {
 }
 
 archived_env_value() { sed -n "s/^$2=//p" "$1" | tail -n 1; }
+# Takes FLUX_KEY_PIN_SECRET from a backup's flux.env into the current env file when they differ (F-030 S2c). A backup
+# from before S2c has none: the current secret stays, and no restored space is encrypted with pins anyway.
+restore_key_pin_secret() {
+  archived=$(archived_env_value "$1" FLUX_KEY_PIN_SECRET)
+  [ -n "$archived" ] || return 0
+  [ "$archived" = "$(sed -n 's/^FLUX_KEY_PIN_SECRET=//p' "$ENV_FILE" | tail -n 1)" ] && return 0
+  set_env_line "$ENV_FILE" FLUX_KEY_PIN_SECRET "$archived"
+  warn "NOTE: FLUX_KEY_PIN_SECRET differs from the backup; the backup's value now replaces it in ${ENV_FILE#"$FLUX_ROOT"/} (encrypted spaces are pinned with it)."
+}
 
 cmd_restore() {
   archive='' migrate=0 revoke_agents=0 ASSUME_YES=0
@@ -1055,6 +1064,10 @@ cmd_restore() {
   compose_main --profile ops run --rm --no-deps -T files-archive tar -C /data/files -xzf - < "$RESTORE_DIR/files.tar.gz" \
     || die "Restoring the files volume failed; run ./flux restore again."
   compose_main --profile setup run --rm files-init >/dev/null
+  # F-030 S2c: the key pin belongs to the restored data (every encrypted space's holders and key versions are pinned
+  # with it). An existing .env with another secret would make every restored encrypted space refuse to unlock as
+  # "changed outside Flux", so the backup's secret replaces it, before api and worker start.
+  restore_key_pin_secret "$RESTORE_DIR/flux.env"
   if [ "$from_schema" != "$to_schema" ] || [ "$migrate" = 1 ]; then say "Migrating from ledger {$from_ledger}..."; fi
   compose_main run --rm migrate || die "The migration after restore failed. See the output above; the archive is unchanged."
   # A restored GitHub token/binding cannot resurrect provider authority or queued work.

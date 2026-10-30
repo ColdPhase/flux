@@ -537,7 +537,7 @@ describe('F-030 S2c review fixes', () => {
     assert.equal(again.status, 201, 'sent again, it is stored under v2');
   });
 
-  test('copies outside the registry: a notification copy is made content-free at the finish; any other copy blocks the finish and is reported', async () => {
+  test('copies outside the registry: any copy of an old-version envelope blocks the finish and is reported; notifications hold none', async () => {
     const c = await club('Copies club', ['Ben'], { Cy: 'member' });
     const { ids } = await seed(c, 2);
     expectStatus(await c.owner.browser.request('POST', `/api/v1/projects/${ids.project}/work`, { body: { title: `canary-task-${randomUUID()}`, owner: { kind: 'human', id: c.people.Cy!.who.id } }, headers: key() }), 201);
@@ -558,6 +558,52 @@ describe('F-030 S2c review fixes', () => {
     assert.deepEqual(await anywhereBelow(c.ws, 2), [], 'no table holds an envelope below v2 for the workspace');
     assert.equal((await pool.query(`SELECT count(*)::int AS n FROM notifications WHERE workspace_id = $1 AND (title LIKE '%fx1.%' OR body LIKE '%fx1.%')`, [c.ws])).rows[0].n, 0,
       'notification copies are content-free');
+  });
+
+  test('writers busy before the removal (3 conversations and a task updater) do not keep the rotation from finishing within 60 s', async () => {
+    const c = await club('Load club', ['Ben']);
+    const { ids } = await seed(c, 4);
+    const conversations = [ids.conversation];
+    for (let i = 0; i < 2; i += 1) {
+      conversations.push((expectStatus(await c.owner.browser.request('POST', `/api/v1/projects/${ids.project}/conversations`, { body: { body: `canary-${randomUUID()}`, clientMessageId: randomUUID() },
+        headers: key() }), 201) as { id: string }).id);
+    }
+    let task = expectStatus(await c.owner.browser.request('POST', `/api/v1/projects/${ids.project}/work`, { body: { title: `canary-task-${randomUUID()}` }, headers: key() }), 201) as { id: string; version: number; title: string };
+    const written: string[] = [];
+    let stop = false;
+    const writers = [
+      ...conversations.map((conversation) => (async () => {
+        while (!stop) {
+          const body = `load-${randomUUID()}`;
+          const answer = await c.owner.browser.request('POST', `/api/v1/conversations/${conversation}/messages`, { body: { body, clientMessageId: randomUUID() }, headers: key() });
+          assert.equal(answer.status, 201, answer.text);
+          written.push(body);
+        }
+      })()),
+      (async () => {
+        while (!stop) {
+          const title = `canary-title-${randomUUID()}`;
+          const answer = await c.owner.browser.request('PATCH', `/api/v1/work/${task.id}`, { body: { title }, headers: { ...key(), 'if-match': `"${task.version}"` } });
+          assert.equal(answer.status, 200, answer.text);
+          task = answer.json as typeof task;
+        }
+      })(),
+    ];
+    try {
+      await sleep(1_000); // the writers are in full swing before the removal, as in production
+      const started = Date.now();
+      await removeMember(c.owner, c.ws, c.people.Ben!.who);
+      await settled(c.ws, 2);
+      assert.ok(Date.now() - started < 60_000, `finished under load in ${Date.now() - started} ms`);
+    } finally {
+      stop = true;
+      await Promise.allSettled(writers);
+    }
+    await Promise.all(writers);
+    assert.deepEqual(await anywhereBelow(c.ws, 2), []);
+    const bodies = new Set(await bodiesAt(c, 2));
+    assert.deepEqual(written.filter((body) => !bodies.has(body)), [], 'every write is there, at v2');
+    assert.equal((expectStatus(await c.owner.browser.request('GET', `/api/v1/work/${task.id}`), 200) as { title: string }).title, task.title, 'the last title is the stored one');
   });
 
   test('the key pin: a recovery holder planted while locked and a key version forged after the finish are refused; nothing is sealed to the planted key', async () => {

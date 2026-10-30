@@ -100,6 +100,10 @@ In this order, stopping at the first problem:
    port). With the same `FLUX_AUTH_SECRET` and VAPID keys, signed-in sessions and push
    subscriptions keep working. An existing `docker/.env` is kept, and the restore warns when its
    signing secret or VAPID key differ (everyone signs in again; devices turn push on again).
+   `FLUX_KEY_PIN_SECRET` is different: every encrypted space's unlock passwords and key versions are
+   pinned with it, so it belongs to the data. When the archive has one that differs, the restore writes
+   it into the existing `docker/.env` (with a note) before `api` and `worker` start. Keep the env file
+   with the backups: losing the secret makes every encrypted space refuse to unlock.
 6. **Replace the data.** It builds this checkout, removes this project's containers and
    volumes (`down -v`, never another project's), starts an empty database, converts the dump with
    `pg_restore --no-owner --no-privileges -f -` and replays it with `psql --single-transaction

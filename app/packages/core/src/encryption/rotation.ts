@@ -45,6 +45,8 @@ export interface KeyRotationOptions {
   filePageSize: number;
   /** Pause between pages (20 ms), so a rotation never takes the database for itself. */
   pauseMs: number;
+  /** The drain's lock timeout under the exclusive gate (1 s). */
+  drainLockMs?: number;
   /** TEST ONLY hooks of a test deployment (crash mid-rotation; crash between a file's rename and its row update). */
   afterPage?: (pages: number) => Promise<void>;
   afterFileReplace?: (fileId: string) => Promise<void>;
@@ -180,6 +182,85 @@ export function createKeyRotation({ unit, keys, files, maintenance, options, pin
   }
 
   /** One page; null when there is nothing to do here. */
+  /** Re-encrypts the stale sealed values of one page of rows, compare-and-set; returns how many changed. */
+  async function reseal(r: KeyRotationRepository, seal: WorkspaceSeal, table: { table: string; columns: { column: string; field: string; kind: string }[] },
+    rows: { identity: string[]; values: Record<string, unknown> }[], current: number): Promise<number> {
+    let changed = 0;
+    for (const row of rows) {
+      for (const column of table.columns) {
+        const stored = row.values[column.column];
+        const envelope = column.kind === 'json' ? (stored as { $sealed?: unknown } | null)?.$sealed : stored;
+        const version = envelopeVersion(envelope);
+        if (version === null || version >= current) continue;
+        let plaintext: string;
+        try { plaintext = seal.open(column.field, row.identity, envelope as string); }
+        catch { throw new StaleValueError(`${table.table}.${column.column}`); }
+        const value = seal.seal(column.field, row.identity, plaintext);
+        if (await r.compareAndSet(table.table, row.identity, column.column, stored, column.kind === 'json' ? { $sealed: value } : value)) changed++;
+      }
+    }
+    return changed;
+  }
+  async function resealFiles(r: KeyRotationRepository, seal: WorkspaceSeal, stale: { id: string; keyVersion: number }[], current: number): Promise<number> {
+    let changed = 0;
+    for (const file of stale) {
+      try {
+        if (await rotateFileObject(seal, files!, file, current, (id, from, to) => r.setFileVersion(id, from, to), options.afterFileReplace)) changed++;
+      } catch (error) {
+        if (error instanceof DecryptionFailedError) throw new StaleValueError('project_files.object');
+        throw error;
+      }
+    }
+    return changed;
+  }
+
+  /**
+   * The drain before the finish (S2c delta review P2-A). Pages skip rows a writer holds, so under steady writes a hot
+   * row (the project row every write share-locks) could be skipped by every pass. Here, under the **exclusive** fair
+   * gate, no new write can start, and writes take the gate before their first row lock, so the rows still held are
+   * released by writes already inside: the drain waits for them (with a short lock timeout) and re-encrypts what is
+   * left. 'busy' when a lock wait timed out.
+   */
+  async function drain(workspaceId: string): Promise<'drained' | 'busy' | 'idle' | 'locked'> {
+    try {
+      return await unit.run(async (ports) => {
+        const r = rotationRows(ports);
+        const k = await ports.rows.keys(workspaceId, { lock: 'update' });
+        if (!k || k.rotation !== 'reencrypting') return 'idle';
+        let seal: WorkspaceSeal;
+        try { seal = await sealFor(ports.rows, keys, workspaceId, { write: true }); } catch (error) {
+          if (error instanceof WorkspaceLockedError) return 'locked';
+          throw error;
+        }
+        await r.lockTimeout(options.drainLockMs ?? 1_000);
+        const current = k.currentVersion;
+        for (const table of r.tables()) {
+          let cursor: string[] | null = null;
+          for (;;) {
+            const rows = await r.stalePage(table.table, workspaceId, current, cursor, options.pageSize, { skipLocked: false });
+            await reseal(r, seal, table, rows, current);
+            if (rows.length < options.pageSize) break;
+            cursor = rows[rows.length - 1]!.identity;
+          }
+        }
+        if (files) {
+          let cursor: string | null = null;
+          for (;;) {
+            const stale = await r.staleFiles(workspaceId, current, cursor, options.filePageSize);
+            await resealFiles(r, seal, stale, current);
+            if (stale.length < options.filePageSize) break;
+            cursor = stale[stale.length - 1]!.id;
+          }
+        }
+        return 'drained' as const;
+      });
+    } catch (error) {
+      const code = (error as { code?: unknown; cause?: { code?: unknown } }).code ?? (error as { cause?: { code?: unknown } }).cause?.code;
+      if (code === '55P03') return 'busy'; // lock_timeout
+      throw error;
+    }
+  }
+
   async function page(workspaceId: string): Promise<'page' | 'verified' | 'locked' | 'idle'> {
     return unit.run(async (ports) => {
       const r = rotationRows(ports);
@@ -204,31 +285,12 @@ export function createKeyRotation({ unit, keys, files, maintenance, options, pin
       if (step !== 'files') {
         const table = tables[index]!;
         const rows = await r.stalePage(table.table, workspaceId, current, cursor, options.pageSize);
-        for (const row of rows) {
-          for (const column of table.columns) {
-            const stored = row.values[column.column];
-            const envelope = column.kind === 'json' ? (stored as { $sealed?: unknown } | null)?.$sealed : stored;
-            const version = envelopeVersion(envelope);
-            if (version === null || version >= current) continue;
-            let plaintext: string;
-            try { plaintext = seal.open(column.field, row.identity, envelope as string); }
-            catch { throw new StaleValueError(`${table.table}.${column.column}`); }
-            const value = seal.seal(column.field, row.identity, plaintext);
-            if (await r.compareAndSet(table.table, row.identity, column.column, stored, column.kind === 'json' ? { $sealed: value } : value)) changed++;
-          }
-        }
+        changed += await reseal(r, seal, table, rows, current);
         if (rows.length) cursor = rows[rows.length - 1]!.identity;
         full = rows.length === options.pageSize;
       } else {
         const stale = files ? await r.staleFiles(workspaceId, current, cursor?.[0] ?? null, options.filePageSize) : [];
-        for (const file of stale) {
-          try {
-            if (await rotateFileObject(seal, files!, file, current, (id, from, to) => r.setFileVersion(id, from, to), options.afterFileReplace)) changed++;
-          } catch (error) {
-            if (error instanceof DecryptionFailedError) throw new StaleValueError('project_files.object');
-            throw error;
-          }
-        }
+        changed += await resealFiles(r, seal, stale, current);
         if (stale.length) cursor = [stale[stale.length - 1]!.id];
         full = stale.length === options.filePageSize;
       }
@@ -253,7 +315,7 @@ export function createKeyRotation({ unit, keys, files, maintenance, options, pin
       const holders = await ports.rows.holders(workspaceId);
       for (const userId of new Set(holders.map((h) => h.userId).filter((id): id is string => !!id && managers.has(id)))) {
         await ports.rows.insertSecurityNotice({ userId, workspaceId, eventId: null,
-          title: `${k?.name ?? 'This space'}'s key change cannot finish: some stored data does not open. Ask your server's operator.` });
+          title: `${k?.name ?? 'This space'}'s key change cannot finish yet. Ask your server's operator.` });
       }
     });
     return 'stalled';
@@ -273,7 +335,6 @@ export function createKeyRotation({ unit, keys, files, maintenance, options, pin
       }
       // A copy of an old-version envelope outside the registry would outlive the old key's deletion and stay openable
       // with it: refuse to finish while any table holds one for this workspace (S2c review P1-2).
-      await r.scrubCopies(workspaceId, k.name);
       const leftover = await r.leftover(workspaceId, k.liveVersions.filter((v) => v < k.currentVersion));
       if (leftover) return { stalled: leftover };
       await r.finish(workspaceId, k.currentVersion);
@@ -293,6 +354,7 @@ export function createKeyRotation({ unit, keys, files, maintenance, options, pin
   /** The re-encryption pass from the stored cursor to the finish, or until locked. */
   async function pass(workspaceId: string): Promise<PassOutcome> {
     let pages = 0;
+    let busy = 0;
     for (;;) {
       let outcome: Awaited<ReturnType<typeof page>>;
       try { outcome = await page(workspaceId); } catch (error) {
@@ -302,6 +364,15 @@ export function createKeyRotation({ unit, keys, files, maintenance, options, pin
       }
       if (outcome === 'locked' || outcome === 'idle') return outcome;
       if (outcome === 'verified') {
+        const drained = await drain(workspaceId);
+        if (drained === 'locked' || drained === 'idle') return drained;
+        if (drained === 'busy') {
+          // Writes held a row past the lock timeout three times in a row: say so, and let the next sweep try again.
+          if (++busy >= 3) return stalled(workspaceId, 'write load (a row stayed locked)');
+          await sleep(options.pauseMs * 10);
+          continue;
+        }
+        busy = 0;
         const done = await finish(workspaceId);
         if (done === true) return 'finished';
         if (done !== false) return stalled(workspaceId, done.stalled);

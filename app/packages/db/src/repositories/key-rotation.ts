@@ -68,7 +68,7 @@ function registry(table: string): SealedTable {
   return entry;
 }
 
-async function stalePage(db: DbExecutor, table: string, workspaceId: string, current: number, cursor: string[] | null, limit: number) {
+async function stalePage(db: DbExecutor, table: string, workspaceId: string, current: number, cursor: string[] | null, limit: number, skipLocked = true) {
   const entry = registry(table);
   const columns = Object.entries(entry.columns);
   const types = await identityTypes(db, table, entry);
@@ -78,7 +78,7 @@ async function stalePage(db: DbExecutor, table: string, workspaceId: string, cur
   const values = sql.join(columns.map(([column]) => sql`t.${id(column)}`), sql`, `);
   const rows = await rowsOf<Record<string, unknown> & { __identity: string[] }>(db, sql`SELECT ARRAY[${identity}] AS __identity, ${values}
     FROM ${id(table)} t WHERE ${workspaceTest(entry, workspaceId)} AND (${stale})${after}
-    ORDER BY ${identityRow(entry)} LIMIT ${limit} FOR NO KEY UPDATE OF t SKIP LOCKED`);
+    ORDER BY ${identityRow(entry)} LIMIT ${limit} FOR NO KEY UPDATE OF t${skipLocked ? sql` SKIP LOCKED` : sql``}`);
   return rows.map(({ __identity, ...rest }) => ({ identity: __identity, values: rest }));
 }
 
@@ -103,7 +103,7 @@ const KEY_TABLES = new Set(['workspace_keys', 'workspace_holders', 'workspace_de
 interface CatalogColumn { table: string; column: string; type: string; path: string | null }
 let catalog: CatalogColumn[] | null = null;
 /**
- * Every text, jsonb, json and bytea column of every table that names its workspace (its own `workspace_id`, or the
+ * Every text, jsonb, json, bytea and array column of every table that names its workspace (its own `workspace_id`, or the
  * registry's parent path), read from the live catalog once per process (S2c review P1-2).
  */
 async function catalogColumns(db: DbExecutor): Promise<CatalogColumn[]> {
@@ -111,7 +111,7 @@ async function catalogColumns(db: DbExecutor): Promise<CatalogColumn[]> {
   const rows = await rowsOf<{ table: string; column: string; type: string }>(db, sql`SELECT c.table_name AS "table", c.column_name AS "column", c.data_type AS "type"
     FROM information_schema.columns c JOIN information_schema.tables t ON t.table_schema = c.table_schema AND t.table_name = c.table_name
     WHERE c.table_schema = current_schema() AND t.table_type = 'BASE TABLE'
-      AND c.data_type IN ('text', 'character varying', 'jsonb', 'json', 'bytea') ORDER BY 1, 2`);
+      AND c.data_type IN ('text', 'character varying', 'jsonb', 'json', 'bytea', 'ARRAY') ORDER BY 1, 2`);
   const withWorkspace = new Set((await rowsOf<{ table: string }>(db, sql`SELECT table_name AS "table" FROM information_schema.columns
     WHERE table_schema = current_schema() AND column_name = 'workspace_id'`)).map((row) => row.table));
   catalog = rows.filter((row) => !KEY_TABLES.has(row.table)).flatMap((row): CatalogColumn[] => {
@@ -135,7 +135,7 @@ export async function leftoverEnvelope(db: DbExecutor, workspaceId: string, oldV
     const value = sql`t.${id(column.column)}`;
     const test = column.type === 'bytea'
       ? sql.join(oldVersions.map((v) => sql`position(convert_to(${`fx1.${v}.`}, 'UTF8') IN ${value}) > 0`), sql` OR `)
-      : sql`${column.type === 'jsonb' || column.type === 'json' ? sql`${value}::text` : value} LIKE ANY (${`{${oldVersions.map((v) => `"%fx1.${v}.%"`).join(',')}}`}::text[])`;
+      : sql`${column.type === 'jsonb' || column.type === 'json' || column.type === 'ARRAY' ? sql`${value}::text` : value} LIKE ANY (${`{${oldVersions.map((v) => `"%fx1.${v}.%"`).join(',')}}`}::text[])`;
     const [row] = await rowsOf<{ one: number }>(db, sql`SELECT 1 AS one FROM ${id(column.table)} t WHERE ${where} AND (${test}) LIMIT 1`);
     if (row) return `${column.table}.${column.column}`;
   }
@@ -180,7 +180,12 @@ export function keyRotationRows(db: DbExecutor) {
       await db.execute(sql`UPDATE workspace_rotation_progress SET step = ${row.step}, cursor = ${row.cursor ? JSON.stringify(row.cursor) : null}::jsonb,
         rows_done = ${row.rowsDone}, passes = ${row.passes}, pass_changes = ${row.passChanges}, updated_at = now() WHERE workspace_id = ${workspaceId}`);
     },
-    stalePage: (table: string, workspaceId: string, current: number, cursor: string[] | null, limit: number) => stalePage(db, table, workspaceId, current, cursor, limit),
+    stalePage: (table: string, workspaceId: string, current: number, cursor: string[] | null, limit: number, options: { skipLocked?: boolean } = {}) =>
+      stalePage(db, table, workspaceId, current, cursor, limit, options.skipLocked ?? true),
+    /** A lock wait longer than this fails the transaction (the drain under the exclusive gate never waits long). */
+    async lockTimeout(ms: number) {
+      await db.execute(sql.raw(`SET LOCAL lock_timeout = ${Math.max(1, Math.floor(ms))}`));
+    },
     /**
      * Compare-and-set of one sealed value. Re-encryption changes no content, so the row's triggers (search, artifact
      * deltas, version bumps, the immutability guards of append-only tables) do not run for it: the page transaction
@@ -221,19 +226,6 @@ export function keyRotationRows(db: DbExecutor) {
       } finally { await triggersOn(db); }
     },
     leftover: (workspaceId: string, oldVersions: number[]) => leftoverEnvelope(db, workspaceId, oldVersions),
-    /**
-     * The one known copy site outside the registry: before #712 the notification generator copied task and project
-     * titles (envelopes) into `notifications.title`/`body`. Such a row is made content-free here, in the finish's
-     * transaction, so it neither blocks the finish nor outlives the old key. Returns how many rows changed.
-     */
-    async scrubCopies(workspaceId: string, workspaceName: string): Promise<number> {
-      await db.execute(sql`SET LOCAL session_replication_role = replica`);
-      try {
-        const result = await db.execute(sql`UPDATE notifications SET title = ${`Something new in ${workspaceName}`}, body = ''
-          WHERE workspace_id = ${workspaceId}::uuid AND (title LIKE '%fx1.%' OR body LIKE '%fx1.%')`);
-        return result.rowCount ?? 0;
-      } finally { await triggersOn(db); }
-    },
     /** Marks the running pass as unable to finish (a table and column name, never content); true the first time. */
     async stall(workspaceId: string, on: string): Promise<boolean> {
       const [row] = await rowsOf<{ first: boolean }>(db, sql`UPDATE workspace_rotation_progress SET stalled_on = ${on},

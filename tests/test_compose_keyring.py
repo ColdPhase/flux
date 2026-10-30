@@ -122,5 +122,27 @@ class ComposeKeyringTest(unittest.TestCase):
             self.assertIn(f"FLUX_KEYRING_TOKEN={first}", env.read_text(encoding="utf-8"), "an existing token is never changed")
 
 
+    def test_restore_takes_the_pin_secret_from_the_backup(self) -> None:
+        launcher = (ROOT / "flux").read_text(encoding="utf-8")
+        restore = launcher[launcher.index("cmd_restore() {"):]
+        self.assertIn('restore_key_pin_secret "$RESTORE_DIR/flux.env"', restore[: restore.index("\n}\n")])
+        functions = "\n".join(
+            re.search(rf"(?ms)^{name}\(\) \{{.*?^\}}\n" if name in ("set_env_line", "restore_key_pin_secret") else rf"(?m)^{name}\(\) .*$", launcher).group(0)
+            for name in ("warn", "archived_env_value", "set_env_line", "restore_key_pin_secret")
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            env = Path(directory) / ".env"
+            archived = Path(directory) / "flux.env"
+            env.write_text("FLUX_AUTH_SECRET=keep\nFLUX_KEY_PIN_SECRET=fresh-install-secret\n", encoding="utf-8")
+            archived.write_text("FLUX_KEY_PIN_SECRET=the-backups-secret\n", encoding="utf-8")
+            script = f'FLUX_ROOT={directory}\nENV_FILE={env}\n{functions}\nrestore_key_pin_secret {archived}\n'
+            result = subprocess.run(["sh", "-c", script], check=True, capture_output=True, text=True)
+            self.assertIn("FLUX_KEY_PIN_SECRET=the-backups-secret", env.read_text(encoding="utf-8"))
+            self.assertIn("FLUX_AUTH_SECRET=keep", env.read_text(encoding="utf-8"))
+            self.assertIn("FLUX_KEY_PIN_SECRET differs from the backup", result.stderr)
+            archived.write_text("FLUX_AUTH_SECRET=x\n", encoding="utf-8")
+            subprocess.run(["sh", "-c", script], check=True)
+            self.assertIn("FLUX_KEY_PIN_SECRET=the-backups-secret", env.read_text(encoding="utf-8"), "a backup without one keeps the current secret")
+
 if __name__ == "__main__":
     unittest.main()
