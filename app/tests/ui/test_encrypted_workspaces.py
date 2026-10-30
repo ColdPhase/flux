@@ -167,9 +167,32 @@ class Base(unittest.TestCase):
         return context
 
     def page(self, world: SimpleNamespace, who: str, *, phone: bool = False, stream: bool = True) -> Page:
-        page = self.context(world, who, phone=phone, stream=stream).new_page()
+        return self.watched(self.context(world, who, phone=phone, stream=stream).new_page())
+
+    def watched(self, page: Page) -> Page:
+        """Every uncaught page error fails the test, except WebKit's report of a fetch that the test's own `goto` or `reload` cancelled
+        ("... due to access control checks", #471; the app handles it), and only while that navigation runs (as test_phone_final)."""
         errors: list[str] = []
-        page.on("pageerror", lambda error: errors.append(str(error)))
+        leaving = {"now": False}
+
+        def on_error(error) -> None:
+            if UI_BROWSER == "webkit" and leaving["now"] and str(error).endswith("due to access control checks."):
+                return
+            errors.append(str(error))
+
+        page.on("pageerror", on_error)
+
+        def leaving_while(navigate):
+            def wrapped(*args, **kwargs):
+                leaving["now"] = True
+                try:
+                    return navigate(*args, **kwargs)
+                finally:
+                    leaving["now"] = False
+            return wrapped
+
+        page.goto = leaving_while(page.goto)  # type: ignore[method-assign]
+        page.reload = leaving_while(page.reload)  # type: ignore[method-assign]
         self.addCleanup(lambda: self.assertEqual(errors, [], "no uncaught page errors"))
         return page
 
@@ -1060,11 +1083,7 @@ class KeyRotation(Base):
             else:
                 route.continue_()
         context.route(re.compile(r".*/api/v1/workspaces(/.*)?$"), handle)
-        page = context.new_page()
-        errors: list[str] = []
-        page.on("pageerror", lambda error: errors.append(str(error)))
-        self.addCleanup(lambda: self.assertEqual(errors, [], "no uncaught page errors"))
-        return page
+        return self.watched(context.new_page())
 
     def test_40_a_rotation_shows_its_progress_pauses_while_locked_and_ends_with_a_quiet_line(self) -> None:
         for phone in (False, True):
