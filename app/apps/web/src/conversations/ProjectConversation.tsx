@@ -1,29 +1,26 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent } from 'react';
-import { useLoaderData, useLocation, useNavigate, useRevalidator, type LoaderFunctionArgs, type ShouldRevalidateFunctionArgs } from 'react-router';
-import type { AssistantAnswer, ConversationMessage, Conversation, ConversationRootWindow, Draft, Material, ObjectNotice, Page, Project, ProjectGoal, ProjectPerson, TaskCreationNotice, WorkspaceMember } from '@flux/contracts';
+import { useLoaderData, useLocation, useNavigate, useRevalidator } from 'react-router';
+import type { ConversationMessage, Conversation, Draft, Material } from '@flux/contracts';
 import { ApiError, NetworkError } from '../api/client';
-import { outboxView, useComposerDraft, useComposerScope, type PendingSend } from '../composer/draft';
+import { outboxView, useComposerDraft, useComposerScope } from '../composer/draft';
 import { takeHandedFiles } from '../composer/handoff';
-import { ComposerFiles, MessageContent, useFileDrop } from '../composer/Files';
-import { LinkPreviews, MessageText } from '../app/MessageText';
+import { ComposerFiles, useFileDrop } from '../composer/Files';
 import { ConnectionLine, SendAnnouncer } from '../composer/Outbox';
 import { fluxAnswers, onFluxAnswered } from '../composer/connection';
-import { Button, Icon, Input, MEDIA, sendsOnEnter, useArrivals, useMediaQuery, useToast, Select, Option } from '../ui';
-import { getConversation, listConversationRoots, listObjectNotices, listTaskNotices, observeProjectMessages, olderMessages, projectReceipts } from './api';
+import { Button, Icon, Input, MEDIA, sendsOnEnter, useArrivals, useMediaQuery, Select, Option } from '../ui';
+import { getConversation, observeProjectMessages, olderMessages, projectReceipts } from './api';
 import { getMaterialVersion, listMaterials, publishMaterial } from '../materials/api';
-import { getProject, listWorkspaceMembers } from '../project/api';
+import { getProject } from '../project/api';
 import { listDrafts } from '../drafts/api';
 import { pageBackTo } from '../app/seekMessage';
 import { useShellData } from '../app/data';
-import { MessageObjects, useCreateWorkFromMessage } from '../work/inline';
+import { useCreateWorkFromMessage } from '../work/inline';
 import { firstLine } from '../work/format';
-import { MessageActions, useTouchActions } from '../work/messageActions';
 import { useMessageWork } from '../work/useMessageWork';
-import type { MessageWorkPreview } from '../work/message-associations';
 import { useProjectWorkSummary } from '../work/WorkReadContext';
 import { useReferenceWork } from '../work/useReferenceWork';
 import { MessageWorkPages } from '../work/MessageWorkPages';
-import { audienceLine, createProjectSketch, useProjectShell } from '../project/data';
+import { audienceLine, useProjectShell } from '../project/data';
 import { useShellActions } from '../app/shellContext';
 import { useWorkspaceAi } from '../ai/workspaceAi';
 import { useStreamEvents } from '../api/stream';
@@ -38,73 +35,28 @@ import { requestAssistantJoin } from '../agents/api';
 import { tellOperator } from '../assistant/api';
 import { agentAuthorLabel } from '../docs/format';
 import { ownRuns, useObservation, useReceiptTick, useReceipts } from '../app/receipts';
-import { AgentAuthor, AuthorFace, ContributionMark, OPENING_REVEAL_MS, SourceCitation, SourceTag, MessageDay, MessageTime, sameMessageAuthor, clock, day, pendingMessageRow, when } from '../app/messageParts';
-import { agentAuthorOwner, useAgentOwners, type AgentOwners } from '../agents/owners';
+import { OPENING_REVEAL_MS, MessageDay, sameMessageAuthor, clock, day, when } from '../app/messageParts';
+import { useAgentOwners } from '../agents/owners';
 import { OneConversation, type PaneProps } from '../app/OneConversation';
 import { currentEntry, isBooted, recall, useArrival } from '../place/memory';
 import { threadPlace } from '../work/useMessageWork';
 import { ComposerBox } from '../composer/ComposerBox';
 import { ComposerMenu, composerOptions, composerTrigger, type ComposerOption } from '../app/ComposerMenu';
-import { cite as citeMessage, messageCite, onCite, takeHeldCite } from '../app/citeBus';
+import { onCite, takeHeldCite } from '../app/citeBus';
 import type { DraftCite } from '../composer/draft';
-import { QuestionCard, WhenNoQuestion } from '../agents/QuestionCard';
 import { useProjectQuestions } from '../agents/questions';
 import { useSpareHeight } from '../ui/spareHeight';
 import { useTyping } from '../typing/useTyping';
 import { TypingNotice } from '../typing/TypingNotice';
-import { listProjectGoals } from '../project/goal';
 import '../app/project-conversation.css';
 import { RefLink } from '../place/origin';
 import { ObjectNoticeItem } from '../app/ObjectNotices';
 import { threadObjects } from '../app/objectNotices';
+import type { ProjectData } from './loader';
+import { readableError } from './errors';
+import { feedEntries, mergeMessages, type FeedEntry } from './feed';
+import { ThreadReply } from './ThreadReply';
 
-/** The project's one conversation (UI116-1): the newest roots and task announcements (UI116-3), and the thread a URL opens. */
-export interface ProjectData {
-  project: Project; roots: ConversationRootWindow; notices: Page<TaskCreationNotice>; objectNotices: Page<ObjectNotice>; materials: Material[]; materialTotal: number; members: WorkspaceMember[]; conversation: Conversation | null;
-  /** The project's reached goals (#520), each one entry in the stream at the moment it was reached. */
-  goals: ProjectGoal[];
-}
-export async function projectConversationLoader({ params, request }: LoaderFunctionArgs): Promise<ProjectData> {
-  const projectId = params.projectId!;
-  const project = await getProject(projectId, request.signal);
-  // Work, decisions and results come with the project (#117 parent route).
-  const [roots, notices, objectNotices, materials, members, goals] = await Promise.all([
-    listConversationRoots(projectId, {}, request.signal),
-    // Announcements add to the stream; a failure that is not about access leaves the stream readable without them.
-    listTaskNotices(projectId, {}, request.signal).catch((error: unknown) => {
-      if (error instanceof ApiError && [401, 403, 404].includes(error.status)) throw error;
-      return { items: [], total: 0, limit: 100, offset: 0 };
-    }),
-    // The same for the decisions and results the stream announces (#694).
-    listObjectNotices(projectId, {}, request.signal).catch((error: unknown) => {
-      if (error instanceof ApiError && [401, 403, 404].includes(error.status)) throw error;
-      return { items: [], total: 0, limit: 100, offset: 0 };
-    }),
-    listMaterials(projectId, request.signal),
-    listWorkspaceMembers(project.workspaceId, request.signal).catch((error: unknown) => {
-      if (error instanceof ApiError && error.status === 403) return [];
-      throw error;
-    }),
-    // Only a project that had a goal reads its history; the stream stays readable without it.
-    project.goal ? listProjectGoals(projectId, request.signal).then((list) => list.items.filter((goal) => goal.reachedAt)).catch((error: unknown) => {
-      if (error instanceof ApiError && [401, 403, 404].includes(error.status)) throw error;
-      return [];
-    }) : Promise.resolve([]),
-  ]);
-  const conversation = params.conversationId ? await getConversation(params.conversationId, request.signal) : null;
-  if (conversation && conversation.projectId !== projectId) throw new Response('Not found', { status: 404 });
-  return { project, roots, notices, objectNotices, materials: materials.items, materialTotal: materials.total, members, conversation, goals };
-}
-/** The stream stays mounted while a thread opens or closes; its loader refreshes the open thread then. */
-export function shouldRevalidateProjectConversation({ currentParams, nextParams, defaultShouldRevalidate }: ShouldRevalidateFunctionArgs) {
-  return defaultShouldRevalidate || currentParams.projectId !== nextParams.projectId || currentParams.conversationId !== nextParams.conversationId;
-}
-
-function readableError(error: unknown) {
-  if (error instanceof ApiError && error.status === 404) return 'This project or conversation is no longer available to you.';
-  if (error instanceof ApiError && error.status === 403) return 'You can read this project, but cannot post here.';
-  return error instanceof Error ? error.message : 'Could not save. Try again.';
-}
 /** A request made offline, held under its own id until it can go out (AST-10.15). */
 interface WaitingAsk { conversationId: string; prompt: string; clientRunId: string }
 interface MaterialFormSnapshot { open: boolean; title: string; body: string; url: string; sourceDraft: Draft | null; mutationId: string }
@@ -114,12 +66,6 @@ function savedMaterialForm(key: string): MaterialFormSnapshot {
     return { open: value.open === true, title: value.title ?? '', body: value.body ?? '', url: value.url ?? '', sourceDraft: value.sourceDraft ?? null, mutationId: value.mutationId ?? crypto.randomUUID() };
   } catch { return { open: false, title: '', body: '', url: '', sourceDraft: null, mutationId: crypto.randomUUID() }; }
 }
-function mergeMessages(current: Conversation['messages'], incoming: Conversation['messages']) {
-  const byId = new Map(current.map((message) => [message.id, message]));
-  for (const message of incoming) byId.set(message.id, message);
-  return [...byId.values()].sort((a, b) => a.sequence - b.sequence);
-}
-
 export function ProjectConversation() {
   const data = useLoaderData() as ProjectData;
   const { me } = useShellData();
@@ -861,86 +807,4 @@ function ProjectConversationContent({ data, variant, feed, rootHeader, rootMessa
       {readFailure ? <p className="project-convo__error" role="alert">{readFailure.message} <button type="button" onClick={readFailure.retry}>Retry read</button></p> : null}
     </div></div>
   </div>;
-}
-
-/** One reply of the open thread: the message with its actions (hover, swipe, long press) and what was made from it. */
-type ThreadReplyProps = {
-  continued?: boolean; groupLast?: boolean;
-  message: ConversationMessage; mine: boolean; meId: string; arrived: boolean; name: string; project: Project; owners: AgentOwners; people: ProjectPerson[] | null;
-  preview: MessageWorkPreview | null; makeWork: ReturnType<typeof useCreateWorkFromMessage>; writable: boolean;
-  /** Another person's reply is watched for viewing receipts; `seenBy` names who observed every reply of this author run. */
-  observed?: boolean; seenBy?: readonly string[];
-  onOpenResult: (resultId: string) => void; onDenied: (cause: unknown) => void;
-};
-type QueuedReplyProps = { continued?: boolean; pending: PendingSend; name: string; onRetry: () => void; onRemove: () => void };
-
-/**
- * One reply of the open thread, or the person's queued reply that becomes it: one component and one list
- * item for both, so the stored reply reuses the queued one's item (#264). The reply has its actions (hover,
- * swipe, long press) and what was made from it.
- */
-function ThreadReply(props: ThreadReplyProps | QueuedReplyProps) {
-  const projectShell = useProjectShell();
-  const navigate = useNavigate();
-  const toast = useToast();
-  const stored = 'pending' in props ? null : props;
-  const message = stored?.message;
-  const actions = stored && message ? {
-    projectId: stored.project.id, message, writable: stored.writable, onCreateWork: () => void stored.makeWork.create(message),
-    onReply: () => document.getElementById('thread-composer')?.focus(),
-    onCite: () => citeMessage('thread', messageCite(message, stored.name)),
-    onAddToMap: () => {
-      const source = { messageId: message.id, projectId: stored.project.id, body: message.body };
-      const sketch = projectShell?.sketches?.items[0];
-      if (sketch) { navigate(`/projects/${stored.project.id}/map/${sketch.id}`, { state: { addThoughtFromMessage: source } }); return; }
-      void createProjectSketch(stored.project.workspaceId, stored.project.id, 'Untitled sketch', crypto.randomUUID())
-        .then((created) => navigate(`/projects/${stored.project.id}/map/${created.id}`, { state: { addThoughtFromMessage: source } }))
-        .catch(() => toast({ message: 'The map could not be opened. Try again.', tone: 'danger' }));
-    },
-  } : null;
-  const touch = useTouchActions(actions);
-  if (!stored || !message || !actions) {
-    const queued = props as QueuedReplyProps;
-    return pendingMessageRow({ place: 'thread', continued: queued.continued, keyed: false, item: queued.pending, name: queued.name, onRetry: queued.onRetry, onRemove: queued.onRemove });
-  }
-  const { mine, meId, arrived, name, project, owners, people, preview, writable, onOpenResult, onDenied } = stored;
-  return (
-    <li {...touch.props} id={`message-${message.id}`} data-message-id={message.id} {...(stored.observed ? { 'data-observe-id': message.id } : {})} aria-label={mine ? 'Your message' : `${name}’s message`} tabIndex={-1} className={`project-convo__message${mine ? ' is-mine' : ''}${arrived ? ' is-arrived' : ''}${stored.continued ? ' is-continued' : ''} ${touch.props.className}`}>
-      <SourceTag messageId={message.id} />
-      {!mine && !stored.continued ? <AuthorFace kind={message.authorId === null ? 'agent' : 'human'} name={name} mine={mine} /> : null}
-      {!mine && !stored.continued ? <div className="project-convo__message-meta"><strong>{mine ? `${name} · you` : message.authorId === null ? <AgentAuthor message={message} owner={agentAuthorOwner(message.author, owners)} /> : <RefLink className="project-convo__person" to={`/dm/new?workspace=${project.workspaceId}&with=${message.authorId}`} title={`Message ${name} directly`}>{name}</RefLink>}</strong></div> : null}
-      <MessageContent body={message.body ? <WhenNoQuestion projectId={project.id} messageId={message.id}><div className={`message-body${message.removedAt ? ' message-body--removed' : ''}`}><MessageText body={message.body} people={people} /></div></WhenNoQuestion> : null} files={message.files} references={message.references} context={{ author: name, at: message.createdAt, caption: message.body, place: project.name, onReply: writable ? actions.onReply : undefined, onCreateTask: writable ? actions.onCreateWork : undefined }}>
-        <LinkPreviews body={message.body} projectId={project.id} messageId={message.id} />
-        <MessageObjects message={message} projectId={project.id} preview={preview} />
-        {message.source ? <SourceCitation materialId={message.source.materialId} version={message.source.version} onDenied={onDenied} /> : null}
-      </MessageContent>
-      <QuestionCard projectId={project.id} messageId={message.id} meId={meId} writable={writable} />
-      {message.contribution ? <ContributionMark contribution={message.contribution} onOpenResult={onOpenResult} /> : null}
-      {stored.groupLast !== false ? <MessageTime at={message.createdAt} seenBy={stored.seenBy} /> : null}
-      <MessageActions {...actions} />
-      {touch.node}
-    </li>
-  );
-}
-
-type FeedEntry =
-  | { type: 'message'; key: string; at: string; message: Conversation['messages'][number] }
-  | { type: 'answer'; key: string; at: string; answer: AssistantAnswer }
-  | { type: 'object'; key: string; at: string; notice: ObjectNotice };
-
-/**
- * Messages and committed assistant answers in one chronological feed. While earlier messages
- * are not loaded, answers from before the first loaded message wait with them.
- */
-function feedEntries(messages: Conversation['messages'], answers: AssistantAnswer[], hasOlder: boolean, objects: ObjectNotice[] = []): FeedEntry[] {
-  const first = messages[0]?.createdAt ?? null;
-  const entries: FeedEntry[] = [
-    ...messages.map((message) => ({ type: 'message' as const, key: message.id, at: message.createdAt, message })),
-    ...answers.filter((answer) => !hasOlder || !first || answer.committedAt >= first)
-      .map((answer) => ({ type: 'answer' as const, key: `answer-${answer.runId}`, at: answer.committedAt, answer })),
-    ...objects.filter((notice) => !hasOlder || !first || notice.createdAt >= first)
-      .map((notice) => ({ type: 'object' as const, key: `object-${notice.id}`, at: notice.createdAt, notice })),
-  ];
-  const rank = { message: 0, object: 1, answer: 2 } as const;
-  return entries.sort((a, b) => a.at.localeCompare(b.at) || rank[a.type] - rank[b.type]);
 }
