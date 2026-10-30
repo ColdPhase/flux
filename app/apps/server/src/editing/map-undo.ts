@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import { and,eq,inArray,sql } from 'drizzle-orm';
-import { liveMapRows,schema,type DbExecutor } from '@flux/db';
+import { liveEditingIntents,liveMapRows,schema,sealFor,type DbExecutor } from '@flux/db';
 import { ConflictError,InvalidInputError,recordEvent,type MapNativeChange,type MapJournalLink,type SketchRecord,type ThoughtRecord } from '@flux/core';
 import type { UndoLiveMap } from '@flux/contracts';
 import { sketchRepository } from '../sketches/adapters.js';
@@ -30,7 +30,7 @@ export async function undoMap(db:DbExecutor,principal:{kind:'human';id:string},r
   const operation='map-undo';const fingerprint=createHash('sha256').update(JSON.stringify({workspace:room.workspaceId,kind:'map',room:room.sketchId,generation:room.generation,
     actor:principal.id,operation,commandId,originalCommandIds:ids})).digest('hex');
   await db.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${'flux.editing.intent:'+principal.id+':'+commandId},0))`);
-  const [known]=await db.select().from(schema.liveEditingIntents).where(and(eq(schema.liveEditingIntents.actorId,principal.id),eq(schema.liveEditingIntents.commandId,commandId)));
+  const known=await liveEditingIntents(db).find(principal.id,commandId);
   if(known) {
     if(known.kind!=='map'||known.resourceId!==room.sketchId||known.workspaceId!==room.workspaceId||known.generation!==room.generation||known.operation!==operation||known.fingerprint!==fingerprint)
       throw new ConflictError('This UUID belongs to another immutable intent','EDITING_IDEMPOTENCY_CONFLICT');
@@ -94,8 +94,11 @@ export async function undoMap(db:DbExecutor,principal:{kind:'human';id:string},r
         sourceAuthorName:target.source?.authorName??null,sourceSentAt:target.source?.sentAt??null,sourceDmId:target.source?.dmId??null,sourceMessageId:target.source?.messageId??null,
         sourceProjectMessageId:target.source?.projectMessageId??null,
         createdByUserId:target.createdBy.kind==='human'?target.createdBy.id:null,createdByAgentId:target.createdBy.kind==='agent'?target.createdBy.id:null,createdAt:target.createdAt,updatedAt:sql`clock_timestamp()`};
-      await db.insert(schema.sketchThoughts).values({id,workspaceId:room.workspaceId,sketchId:room.sketchId,...values})
-        .onConflictDoUpdate({target:schema.sketchThoughts.id,set:values,setWhere:eq(schema.sketchThoughts.sketchId,room.sketchId)});
+      // F-030: the text is sealed with the thought's identity in an encrypted workspace, on insert and on conflict alike.
+      const sealed=await sealFor(db,'sketch_thoughts',room.workspaceId,{id,workspaceId:room.workspaceId,sketchId:room.sketchId,...values});
+      const set=Object.fromEntries(Object.entries(sealed).filter(([key])=>key!=='id'&&key!=='workspaceId'&&key!=='sketchId'));
+      await db.insert(schema.sketchThoughts).values(sealed)
+        .onConflictDoUpdate({target:schema.sketchThoughts.id,set,setWhere:eq(schema.sketchThoughts.sketchId,room.sketchId)});
     }
     await rows.putVersion('thought',id,room.sketchId,version);
   }
@@ -103,8 +106,8 @@ export async function undoMap(db:DbExecutor,principal:{kind:'human';id:string},r
     const target=links.get(id);const retained=await rows.version('link',id);const epoch=(retained?.version??0)+1;if(!Number.isSafeInteger(epoch))throw new ConflictError('The link epoch capacity is full','EDITING_MAP_CAPACITY');
     if(target) {
       if(!thoughts.get(target.fromId)||!thoughts.get(target.toId))throw conflict();
-      await db.insert(schema.sketchLinks).values({id,workspaceId:room.workspaceId,sketchId:room.sketchId,fromId:target.fromId,toId:target.toId,label:target.label,createdAt:target.createdAt,
-        createdByUserId:target.createdBy.kind==='human'?target.createdBy.id:null,createdByAgentId:target.createdBy.kind==='agent'?target.createdBy.id:null});
+      await db.insert(schema.sketchLinks).values(await sealFor(db,'sketch_links',room.workspaceId,{id,workspaceId:room.workspaceId,sketchId:room.sketchId,fromId:target.fromId,toId:target.toId,label:target.label,createdAt:target.createdAt,
+        createdByUserId:target.createdBy.kind==='human'?target.createdBy.id:null,createdByAgentId:target.createdBy.kind==='agent'?target.createdBy.id:null}));
     }
     await rows.putVersion('link',id,room.sketchId,epoch);
   }
@@ -118,7 +121,7 @@ export async function undoMap(db:DbExecutor,principal:{kind:'human';id:string},r
   change.sketchAfter=(await repository.findSketch(room.sketchId))!;change.clearedLeaseIds=await rows.clearAffected(room.sketchId,thoughtChanges);
   const sequence=await rows.append(room,{kind:'human',id:principal.id},commandId,fingerprint,change);
   await rows.markUndone(room.sketchId,room.generation,ordered.map(row=>row.sequence),sequence);
-  await db.insert(schema.liveEditingIntents).values({actorId:principal.id,commandId,workspaceId:room.workspaceId,kind:'map',resourceId:room.sketchId,generation:room.generation,
+  await liveEditingIntents(db).insert({actorId:principal.id,commandId,workspaceId:room.workspaceId,kind:'map',resourceId:room.sketchId,generation:room.generation,
     operation,fingerprint,byteLength:0,receipt:{commandId,generation:room.generation,sequence,operation,originalCommandIds:ids}});
   await recordEvent(eventPorts(db),principal,room.workspaceId,'sketch.changed.v1',room.sketchId,{op:'own_undo',thoughtIds:thoughtChanges,linkIds:linkChanges});
   return commandId;

@@ -11,6 +11,7 @@ export { installPress } from './press';
 export { useRowMotion } from './rowMotion';
 export { DetentSheet, SheetGrabber } from './DetentSheet';
 export { Dissolve } from './Dissolve';
+export { SizeSwap } from './SizeSwap';
 export { viewDirection } from './motion-rules';
 export { applyStoredReduceMotion, prefersReducedMotion, setReduceMotion, useReduceMotion } from './motion-preference';
 export { Drawer, Overlay, Sheet, focusableIn, trapTab, useStripOnlyModal } from './Overlay';

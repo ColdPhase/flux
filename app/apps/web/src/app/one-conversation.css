@@ -75,3 +75,6 @@
 }
 
 .thread .project-convo__message.is-continued { margin-top: 4px; }
+
+/* A message the assistant's Undo took back keeps its place and says so quietly (#68). */
+.message-body--removed { color: var(--t2); font-style: italic; }

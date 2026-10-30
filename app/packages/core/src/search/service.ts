@@ -160,6 +160,36 @@ function toResult(row: SearchRow): SearchResult {
 
 const EMPTY: SearchResponse = { items: [], next: null, counts: {}, countsCapped: false };
 
+/** A cursor position's instant in microseconds (PostgreSQL `timestamptz::text`), so two sources order equal instants alike. */
+function microsOf(text: string): bigint {
+  const match = /^(\d{4})-(\d\d)-(\d\d)[ T](\d\d):(\d\d):(\d\d)(?:\.(\d{1,6}))?([+-]\d\d)(?::?(\d\d))?$/.exec(text);
+  if (!match) return 0n;
+  const [, y, mo, d, h, mi, s, f = '', oh, om = '00'] = match;
+  const offset = (Math.abs(Number(oh)) * 60 + Number(om)) * (oh!.startsWith('-') ? -1 : 1) * 60_000;
+  return BigInt(Date.UTC(Number(y), Number(mo) - 1, Number(d), Number(h), Number(mi), Number(s)) - offset) * 1000n + BigInt(f.padEnd(6, '0'));
+}
+
+/** Rank, then time, then row: the order both sources sort by. Negative when `a` comes first. */
+function byPosition(a: SearchRow, b: SearchRow): number {
+  const score = Number(b.position.score) - Number(a.position.score);
+  if (score) return score;
+  const at = microsOf(b.position.at) - microsOf(a.position.at);
+  if (at) return at < 0n ? -1 : 1;
+  const id = BigInt(b.position.id) - BigInt(a.position.id);
+  return id === 0n ? 0 : id < 0n ? -1 : 1;
+}
+
+/** Two lists, each best first, as one (the SQL rows and the encrypted workspaces' rows, F-030 S2b). */
+function mergeRows(a: SearchRow[], b: SearchRow[]): SearchRow[] {
+  if (!b.length) return a;
+  const out: SearchRow[] = [];
+  let i = 0; let j = 0;
+  while (i < a.length || j < b.length) out.push(j >= b.length || (i < a.length && byPosition(a[i]!, b[j]!) <= 0) ? a[i++]! : b[j++]!);
+  return out;
+}
+
+const NO_SEALED = { rows: [], counts: new Map<SearchKind, number>(), capped: false, unavailable: [] as string[], work: { postings: 0, terms: 0, documents: 0 } };
+
 export function createSearchUseCases<C>(ports: SearchPorts<C>) {
   async function prepare(principal: Principal, query: Partial<SearchQuery>) {
     const me = reader(principal);
@@ -190,14 +220,17 @@ export function createSearchUseCases<C>(ports: SearchPorts<C>) {
     async search(principal: Principal, query: Partial<SearchQuery>): Promise<SearchResponse> {
       const { plan, scope, audiences, searchable } = await prepare(principal, query);
       if (!searchable || !audiences.length) return EMPTY;
-      const [rows, counted] = await Promise.all([
+      const [sqlRows, counted, sealed] = await Promise.all([
         ports.rows.page(audiences, plan),
         ports.rows.counts(audiences, plan, SEARCH_LIMITS.countCap),
+        ports.sealed ? ports.sealed.search(audiences, plan, SEARCH_LIMITS.countCap) : Promise.resolve(NO_SEALED),
       ]);
+      // Encrypted workspaces answer from their in-memory index; both sources are already past the cursor, so the merge resumes after it.
+      const rows = mergeRows(sqlRows, sealed.rows);
       const page = rows.slice(0, plan.limit);
       const more = rows.length > plan.limit;
       const counts: SearchResponse['counts'] = {};
-      for (const [kind, n] of counted.counts) {
+      for (const [kind, n] of [...counted.counts, ...sealed.counts]) {
         const filter = SEARCH_SOURCES[kind as SearchKind].filter;
         counts[filter] = (counts[filter] ?? 0) + n;
       }
@@ -205,15 +238,17 @@ export function createSearchUseCases<C>(ports: SearchPorts<C>) {
         items: page.map(toResult),
         next: more ? ports.cursors.seal(principal, scope, page[page.length - 1]!.position) : null,
         counts,
-        countsCapped: counted.capped,
+        countsCapped: counted.capped || sealed.capped,
+        ...(sealed.unavailable.length ? { sealedUnavailable: sealed.unavailable } : {}),
       };
     },
 
     /** Test support (served only with test failure injection): rows examined by this search. */
     async explain(principal: Principal, query: Partial<SearchQuery>) {
       const { plan, audiences, searchable } = await prepare(principal, query);
-      if (!searchable) return { rows: 0, indexRows: 0, searchBuffers: 0, buffers: 0, indexScans: 0, lookups: 0, nodes: [] };
-      return ports.rows.explain(audiences, plan, SEARCH_LIMITS.countCap);
+      const none = { rows: 0, indexRows: 0, searchBuffers: 0, buffers: 0, indexScans: 0, lookups: 0, nodes: [] as string[] };
+      const sealed = searchable && ports.sealed ? (await ports.sealed.search(audiences, plan, SEARCH_LIMITS.countCap)).work : { postings: 0, terms: 0, documents: 0 };
+      return { ...(searchable ? await ports.rows.explain(audiences, plan, SEARCH_LIMITS.countCap) : none), sealed };
     },
   };
 }

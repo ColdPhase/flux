@@ -9,6 +9,11 @@ import { MOTION_ID, duration, motionAllowed, token, track, travelDirection, type
  * head and controls; the header, sidebar and tab bar; the new content itself) does not. Reduced motion, a hidden page and the first
  * screen simply swap.
  *
+ * The picture is a whole picture: it wears the ground the content lay on (the first painted background above the host, in whatever theme
+ * is on), so while it fades the new content is revealed through it as old-to-new, never old ink over new ink. It fades only once the
+ * new content has painted and is not still waiting on its own first reads (`UNSETTLED`, bounded by `HOLD_MS`); until then it stands as
+ * the old content did, so there is never a frame of only the ground or of a view that has not painted. (#719)
+ *
  * It renders its children and nothing else: it is a class only because React offers the moment before the swap (what the
  * outgoing content looks like) to class components alone, in `getSnapshotBeforeUpdate`.
  *
@@ -42,18 +47,39 @@ interface Props {
 }
 
 interface Piece { copy: HTMLElement; top: number; left: number; width: number; height: number; scrolls: [number, number, number][] }
-interface Snapshot { pieces: Piece[]; direction: TravelDirection; from: string; scrollTop: number; scrollLeft: number }
+interface Snapshot { pieces: Piece[]; direction: TravelDirection; from: string; scrollTop: number; scrollLeft: number; keep?: boolean; replaces?: Picture }
+/** The picture that is on show for this host: how much of it is left, what it takes to make it wait for the content that is there now, and to end it. */
+interface Picture { frame: HTMLElement; opacity: () => number; rearm: () => void; dismiss: () => void }
 
 const MARK = 'data-dissolve';
+/** Content that has not painted what it will show: a stream held back until its first reads have settled, a list that is loading. */
+const UNSETTLED = '[aria-busy="true"]:not(button, a, [role="button"], [role="menuitem"]), .is-opening';
+/**
+ * How long the old content is held at full strength for the new to settle (it never delays the new content, which is live
+ * underneath): by then a view has either painted or is showing its own loading moment, and the old content goes.
+ */
+const HOLD_MS = 500;
+/**
+ * A picture that is replaced while it is still on show: from this much of it left it stays (it goes back to full strength, a rise of at
+ * most this much, and holds for the newest content); with less left the settled view behind it is what is on screen, and that view
+ * becomes the picture (a rise of the old one's opacity, at most this much, and the new content is never seen unsettled).
+ */
+const KEEP_AT = 0.5;
 
-function scrolls(root: HTMLElement): [number, number, number][] {
+export function scrolls(root: HTMLElement): [number, number, number][] {
   const found: [number, number, number][] = [];
   if (root.scrollTop || root.scrollLeft) found.push([-1, root.scrollTop, root.scrollLeft]);
   root.querySelectorAll<HTMLElement>('*').forEach((node, index) => { if (node.scrollTop || node.scrollLeft) found.push([index, node.scrollTop, node.scrollLeft]); });
   return found;
 }
 
-function copyOf(el: HTMLElement): HTMLElement {
+/** Puts the scroll positions `scrolls` read from the original into its copy. */
+export function restoreScrolls(copy: HTMLElement, list: [number, number, number][]) {
+  const nodes = copy.querySelectorAll<HTMLElement>('*');
+  for (const [index, top, left] of list) { const target = index < 0 ? copy : nodes[index]; if (target) { target.scrollTop = top; target.scrollLeft = left; } }
+}
+
+export function copyOf(el: HTMLElement): HTMLElement {
   const copy = el.cloneNode(true) as HTMLElement;
   copy.removeAttribute('id');
   copy.querySelectorAll('[id]').forEach((node) => node.removeAttribute('id'));
@@ -70,12 +96,24 @@ function above(node: HTMLElement): number {
 }
 
 /**
+ * The ground the content lies on: the first ancestor that paints a colour of its own. The picture wears it, so the old content is a
+ * whole picture that fades away over the new, never ink floating over the new content's ink (a double paint).
+ */
+export function groundOf(node: HTMLElement): string {
+  for (let el: HTMLElement | null = node; el; el = el.parentElement) {
+    const color = getComputedStyle(el).backgroundColor;
+    if (color && color !== 'transparent' && !/^rgba\(.*,\s*0\)$/.test(color)) return color;
+  }
+  return 'transparent';
+}
+
+/**
  * The page's own style sheets, as sheets a shadow root can wear (one per sheet). They are rebuilt whenever the sheets or the number of
  * rules in any of them change: a route's styles arrive as a sheet that is listed a moment before its rules can be read.
  * Null where they cannot be shared.
  */
 let worn: { signature: string; sheets: CSSStyleSheet[] } | null = null;
-function styles(): CSSStyleSheet[] | null {
+export function styles(): CSSStyleSheet[] | null {
   if (typeof CSSStyleSheet === 'undefined' || typeof CSSStyleSheet.prototype.replaceSync !== 'function' || !('adoptedStyleSheets' in ShadowRoot.prototype)) return null;
   const sources = [...document.styleSheets];
   const signature = sources.map((source) => { try { return source.cssRules.length; } catch { return -1; } }).join(',');
@@ -93,22 +131,34 @@ function styles(): CSSStyleSheet[] | null {
 }
 
 export class Dissolve extends Component<Props, Record<string, never>, Snapshot | null> {
+  private picture: Picture | null = null;
+
   getSnapshotBeforeUpdate(previous: Props): Snapshot | null {
     const { id, depth = 0, direction, host, time, skip } = this.props;
     const body = host.current;
     if (previous.id === id || !body || !motionAllowed() || !duration(time) || !styles()) return null;
+    // Replaced again while the picture of an earlier replacement is still on show (held or fading): with most of it left it stays what
+    // it is, the picture of the first old content, and waits for this newest content (the view in between, or one that has not settled,
+    // is never taken as a picture of its own). With little of it left (the fade was nearly over) what is on screen is the view behind it,
+    // which settled before the fade began: that view, not the nearly gone picture, is what the new picture is of.
+    let replaces: Picture | undefined;
+    if (this.picture?.frame.isConnected) {
+      if (this.picture.opacity() >= KEEP_AT) return { pieces: [], direction: 'forward', from: previous.id, scrollTop: 0, scrollLeft: 0, keep: true };
+      replaces = this.picture;
+    }
     const way: TravelDirection = this.props.depth !== undefined ? (depth > (previous.depth ?? 0) ? 'forward' : depth < (previous.depth ?? 0) ? 'back' : travelDirection()) : direction ?? travelDirection();
     const pieces = [...body.children].filter((child): child is HTMLElement => child instanceof HTMLElement && !(skip && child.matches(skip)) && child.offsetWidth > 0 && child.offsetHeight > 0)
       .map((source) => ({ copy: copyOf(source), top: source.offsetTop, left: source.offsetLeft, width: source.offsetWidth, height: source.offsetHeight, scrolls: scrolls(source) }));
-    return pieces.length ? { pieces, direction: way, from: previous.id, scrollTop: body.scrollTop, scrollLeft: body.scrollLeft } : null;
+    return pieces.length ? { pieces, direction: way, from: previous.id, scrollTop: body.scrollTop, scrollLeft: body.scrollLeft, replaces } : null;
   }
 
   componentDidUpdate(_previous: Props, _state: Record<string, never>, snapshot: Snapshot | null) {
-    const { host, dress, shift: shiftToken, time, layer: given } = this.props;
+    const { host, dress, shift: shiftToken, time, layer: given, skip } = this.props;
     const body = host.current;
     const ms = duration(time);
     const sheets = styles();
     if (!snapshot || !body || !ms || !sheets) return;
+    if (snapshot.keep) { if (this.picture?.frame.isConnected) this.picture.rearm(); return; }
     const shift = parseFloat(token(shiftToken)) || 16;
     // The copy leaves the way the person came from: forward, it goes towards where they were; back, the other way.
     const travel = (snapshot.direction === 'back' ? 1 : -1) * shift;
@@ -118,9 +168,12 @@ export class Dissolve extends Component<Props, Record<string, never>, Snapshot |
     frame.setAttribute('inert', '');
     frame.setAttribute('aria-hidden', 'true');
     Object.assign(frame.style, { position: 'fixed', left: `${box.left + body.clientLeft}px`, top: `${box.top + body.clientTop}px`, width: `${body.clientWidth}px`, height: `${body.clientHeight}px`,
-      overflow: 'hidden', pointerEvents: 'none', zIndex: String(given ?? above(body)) });
+      overflow: 'hidden', pointerEvents: 'none', zIndex: String(given ?? above(body)), backgroundColor: groundOf(body) });
+    frame.dataset.phase = 'held';
     // On the page before it wears the sheets: WebKit does not apply sheets adopted by a root that is not in the document yet.
     document.body.appendChild(frame);
+    // The picture it replaces goes in the same task, under the new one: no frame has neither.
+    snapshot.replaces?.dismiss();
     const root = frame.attachShadow({ mode: 'closed' });
     root.adoptedStyleSheets = sheets;
     // The host's own ancestors, empty and without a box of their own, so the copy is styled by the same selectors as the original.
@@ -141,30 +194,70 @@ export class Dissolve extends Component<Props, Record<string, never>, Snapshot |
       copy.setAttribute('aria-hidden', 'true');
       Object.assign(copy.style, { position: 'absolute', top: `${piece.top - snapshot.scrollTop}px`, left: `${piece.left - snapshot.scrollLeft}px`, width: `${piece.width}px`, height: `${piece.height}px`, margin: '0', pointerEvents: 'none' });
       parent.appendChild(copy);
-      const nodes = copy.querySelectorAll<HTMLElement>('*');
-      for (const [index, top, left] of piece.scrolls) { const target = index < 0 ? copy : nodes[index]; if (target) { target.scrollTop = top; target.scrollLeft = left; } }
+      restoreScrolls(copy, piece.scrolls);
     }
-    // The fade starts on the first frame the browser draws after the swap, not at the swap: a page that is busy with the new content
-    // (its code arriving, its first layout) would otherwise have the whole fade run its course unseen. Until then the picture stands
-    // as the old content did, at full strength.
+    // The fade starts only once the new content has painted: after the browser has drawn it (the second frame after the swap; the
+    // first draws it under the picture) and once it is not waiting on its own first reads (a stream held back until they have settled,
+    // a list that is loading). Until then the picture stands as the old content did, at full strength, and the new content is live
+    // beneath it. The wait is bounded (HOLD_MS), and a page that draws no frames lets the picture go all the same.
     let started = false;
+    let leave: Animation | null = null;
     const fade = () => {
-      if (started) return;
-      started = true;
-      if (!frame.isConnected) return;
+      if (started || !frame.isConnected) return;
       if (!motionAllowed()) { frame.remove(); return; }
-      const gone: Promise<unknown>[] = [];
-      for (const piece of snapshot.pieces) {
-        const leave = piece.copy.animate([{ opacity: 1, transform: 'none' }, { opacity: 0, transform: `translateX(${travel}px)` }], { duration: ms, easing: token('--ease-in') || 'ease-in', fill: 'forwards' });
-        leave.id = MOTION_ID;
-        track(leave);
-        gone.push(leave.finished.catch(() => undefined));
-      }
-      void Promise.all(gone).then(() => frame.remove());
+      started = true;
+      frame.dataset.phase = 'fading';
+      // One fade of the whole picture (its ground with the old content on it): the new content is revealed as the old goes, a true
+      // crossfade, so no frame holds the two together or only the ground.
+      const mine = frame.animate([{ opacity: 1, transform: 'none' }, { opacity: 0, transform: `translateX(${travel}px)` }], { duration: ms, easing: token('--ease-in') || 'ease-in', fill: 'forwards' });
+      mine.id = MOTION_ID;
+      track(mine);
+      const earlier = leave;
+      leave = mine;
+      earlier?.cancel();
+      // It goes when its own fade has run to its end; one that was brought back (below) or replaced does not take it with it.
+      void mine.finished.then(() => { if (leave === mine && started) frame.remove(); }, () => { if (leave === mine) frame.remove(); });
     };
-    requestAnimationFrame(fade);
-    // A page that draws no frame (hidden, or not painting) still lets the picture go.
-    window.setTimeout(fade, 400);
+    const unsettled = () => [...body.children].some((child) => !(skip && child.matches(skip)) && (child.matches(UNSETTLED) || child.querySelector(UNSETTLED) !== null));
+    let since = performance.now();
+    let frames = 0;
+    let looping = false;
+    let failsafe = 0;
+    const watch = () => {
+      if (started || !frame.isConnected) { looping = false; return; }
+      frames += 1;
+      if (frames < 2 || (unsettled() && performance.now() - since < HOLD_MS)) requestAnimationFrame(watch);
+      else { looping = false; fade(); }
+    };
+    // Waits for the content that is in the host now. Asked again when it is replaced before the picture has gone: a picture that is
+    // fading into content that is still waiting on its reads is back at full strength at once and holds until the newest content has
+    // painted and settled.
+    const arm = () => {
+      if (started && leave && leave.playState !== 'finished') {
+        // Fading into content that has already settled, it goes on (a fade that went back and forth would be a blink of its own).
+        if (!unsettled()) return;
+        // Fading into content that is still waiting on its reads: back to full strength at once, not by a ramp that would show that
+        // content on the way, and a fade that starts afresh from there when it has settled.
+        const stopped = leave;
+        leave = null;
+        started = false;
+        stopped.cancel();
+        frame.dataset.phase = 'held';
+      }
+      since = performance.now();
+      frames = 0;
+      if (!looping) { looping = true; requestAnimationFrame(watch); }
+      window.clearTimeout(failsafe);
+      // A page that draws no frames still lets the picture go.
+      failsafe = window.setTimeout(fade, HOLD_MS + 250);
+    };
+    const picture: Picture = {
+      frame, rearm: arm,
+      opacity: () => (leave && leave.playState === 'finished' ? 0 : Number(getComputedStyle(frame).opacity)),
+      dismiss: () => { const ended = leave; leave = null; started = true; ended?.cancel(); frame.remove(); },
+    };
+    this.picture = picture;
+    arm();
   }
 
   render() { return this.props.children; }
