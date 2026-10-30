@@ -450,7 +450,9 @@ describe('F-030 S2a-1: sealed content in the repositories', () => {
     expectStatus(await unlock(ada.browser, A, { password: pw }), 200);
     for (let attempt = 0; attempt < 80 && (await result()).status !== 'completed'; attempt += 1) await new Promise((resolve) => setTimeout(resolve, 250));
     assert.deepEqual(await result(), { status: 'completed', word_count: canaries.A.draftEdit.split(/\s+/u).length }, 'counted on the opened body, not the envelope');
-    assert.equal(await waits(), 0);
+    // The resume job deletes the wait just after the summary commits.
+    for (let attempt = 0; attempt < 40 && await waits() > 0; attempt += 1) await new Promise((resolve) => setTimeout(resolve, 250));
+    assert.equal(await waits(), 0, 'the replayed wait is deleted');
   });
 
   test('an event of A that arrives while A is locked waits: no notification; after unlock exactly one (AC-9)', async () => {
