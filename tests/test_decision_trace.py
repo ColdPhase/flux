@@ -24,7 +24,7 @@ class DecisionTrace(unittest.TestCase):
     def test_one_path_for_the_lines_in_contracts_server_and_web(self) -> None:
         self.assertIn("/api/v1/projects/${projectId}/object-notices", source("app/packages/contracts/src/work.ts"))
         self.assertIn("projectObjectNoticesPath(':projectId')", source("app/apps/server/src/work/routes.ts"))
-        self.assertIn("projectObjectNoticesPath(projectId)", source("app/apps/web/src/app/conversation-api.ts"))
+        self.assertIn("projectObjectNoticesPath(projectId)", source("app/apps/web/src/conversations/api.ts"))
 
     def test_the_lines_are_read_by_the_audience_of_the_project_and_no_one_else(self) -> None:
         service = source("app/packages/core/src/work/service.ts")

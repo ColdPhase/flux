@@ -3,7 +3,7 @@ import { Link, useLocation, useNavigate, useSearchParams } from 'react-router';
 import { DM_LIMITS, type WorkspaceMember } from '@flux/contracts';
 import { ApiError } from '../api/client';
 import { openDm } from '../api/direct-messages';
-import { listWorkspaceMembers } from '../app/conversation-api';
+import { listWorkspaceMembers } from '../project/api';
 import { useShellData } from '../app/data';
 import { Avatar, Button, EmptyState, Icon, Select, Option } from '../ui';
 import { audienceOf } from './names';

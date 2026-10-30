@@ -1,6 +1,7 @@
 import type { LiveContextRef, LivePresentationRef } from '@flux/contracts';
 import { ApiError } from '../api/client';
-import { getConversation, getMaterial } from '../app/conversation-api';
+import { getConversation } from '../conversations/api';
+import { getMaterial } from '../materials/api';
 import { getSketch } from '../api/sketches';
 import { getDoc } from '../docs/api';
 import { getResult, getWork } from '../work/api';

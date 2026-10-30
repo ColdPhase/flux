@@ -5,7 +5,7 @@ import type { Agent, ObjectLink, Project, WorkspaceMember, WorkStatus, WorkDetai
 import { ApiError } from '../api/client';
 import { useStreamEvents } from '../api/stream';
 import { AgentIdentity, Avatar, Button, Icon, Input, Kreska, Morph, PanelActions, PanelGlyph, PanelMeta, StatusGlyph, useToast, Select, Option } from '../ui';
-import { getProject, listWorkspaceMembers } from '../app/conversation-api';
+import { getProject, listWorkspaceMembers } from '../project/api';
 import { useShellData } from '../app/data';
 import { useRegisterLiveHere } from '../live/LiveProvider';
 import { LiveEntry } from '../live/LiveEntry';

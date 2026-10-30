@@ -4,7 +4,7 @@ import type { DocSummary, Project } from '@flux/contracts';
 import { ApiError } from '../api/client';
 import { useIntentKeys } from '../api/intent-keys';
 import { Icon, Spinner, useToast } from '../ui';
-import { getProject } from '../app/conversation-api';
+import { getProject } from '../project/api';
 import { createDoc, docUrl, listProjectDocs } from './api';
 import { readMarkdownFile } from './markdown-file';
 import { WikiIcon } from './WikiParts';

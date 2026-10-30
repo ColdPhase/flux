@@ -1,6 +1,6 @@
 import { Link, Navigate, useLoaderData, useLocation, type LoaderFunctionArgs } from 'react-router';
 import type { MaterialOrDoc, MaterialVersion } from '@flux/contracts';
-import { getMaterial, getMaterialVersion } from './conversation-api';
+import { getMaterial, getMaterialVersion } from '../materials/api';
 import { useShellData } from './data';
 import { agentAuthorLabel } from '../docs/format';
 

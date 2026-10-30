@@ -1,7 +1,8 @@
 import { createContext, useCallback, useContext, useEffect, useState, type MouseEvent } from 'react';
 import { Link, useLocation, useNavigate, type LinkProps, type NavigateOptions, type To } from 'react-router';
 import { ApiError } from '../api/client';
-import { getMaterial, getProject } from '../app/conversation-api';
+import { getMaterial } from '../materials/api';
+import { getProject } from '../project/api';
 import { useShellData } from '../app/data';
 import { Icon, useSidePanelMode } from '../ui';
 import { currentEntry, flushPlace, type ReturnState } from './memory';

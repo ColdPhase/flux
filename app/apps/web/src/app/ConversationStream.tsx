@@ -11,7 +11,7 @@ import { useReferenceWork } from '../work/useReferenceWork';
 import { useProjectWorkSummary } from '../work/WorkReadContext';
 import { MessageWorkPages } from '../work/MessageWorkPages';
 import { useShellActions } from './shellContext';
-import { listConversationRoots, listObjectNotices, listTaskNotices, observeProjectMessages, projectReceipts } from './conversation-api';
+import { listConversationRoots, listObjectNotices, listTaskNotices, observeProjectMessages, projectReceipts } from '../conversations/api';
 import { QuestionCard, WhenNoQuestion } from '../agents/QuestionCard';
 import { ownRuns, useObservation, useReceiptTick, useReceipts } from './receipts';
 import { AgentAuthor, AuthorFace, ContributionMark, OPENING_REVEAL_MS, SourceCitation, SourceTag, MessageDay, MessageTime, sameMessageAuthor, clock, day, openOnWholeMessages, pendingMessageRow, when } from './messageParts';

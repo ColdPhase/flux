@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'rea
 import { Link, useSearchParams } from 'react-router';
 import { workspaceAgentsPath, type Agent, type BackgroundComputeConnection, type Project, type ProjectGrant, type ProactiveComparisonRule } from '@flux/contracts';
 import { ApiError, request } from '../api/client';
-import { listAccessibleProjects } from '../app/conversation-api';
+import { listAccessibleProjects } from '../project/api';
 import { useShellData } from '../app/data';
 import { useAllAiBlocked, useBlockedWorkspaceIds } from '../ai/workspaceAi';
 import { createPersonalAgent, grantAgentProject, listProjectGrants } from '../agent-connection/api';

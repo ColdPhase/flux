@@ -5,7 +5,7 @@ import { useStreamEvents } from '../api/stream';
 import { Button, EmptyState, Icon, MEDIA, PullToRefresh, Spinner, useMediaQuery } from '../ui';
 import { listAssignedWork } from '../work/api';
 import { STATUS_LABEL } from '../work/format';
-import { getProject } from './conversation-api';
+import { getProject } from '../project/api';
 import { useShellData } from './data';
 import { useShellActions } from './shellContext';
 import { RefLink } from '../place/origin';

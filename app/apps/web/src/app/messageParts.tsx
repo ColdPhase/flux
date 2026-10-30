@@ -3,7 +3,7 @@ import type { ConversationMessage } from '@flux/contracts';
 import { AgentIdentity, Icon } from '../ui';
 import type { PendingSend } from '../composer/draft';
 import { OutboxStatus, PendingFiles, PendingSource } from '../composer/Outbox';
-import { getMaterialVersion } from './conversation-api';
+import { getMaterialVersion } from '../materials/api';
 import { readerActive, watchReaderInput } from '../work/readerIntent';
 import { RefLink } from '../place/origin';
 

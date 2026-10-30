@@ -3,7 +3,7 @@ import { useAllAiBlocked } from '../ai/workspaceAi';
 import { useLocation, useRevalidator } from 'react-router';
 import type { Draft } from '@flux/contracts';
 import { Button, EmptyState, Icon, IconButton, MEDIA, duration, sendsOnEnter, useMediaQuery, type IconName, Select, Option } from '../ui';
-import { createPrivateDraft, listDrafts } from './conversation-api';
+import { createPrivateDraft, listDrafts } from '../drafts/api';
 import { captureExists, clearMoveTarget, moveKey, moveTarget, noteTitle, removeCapture, useCaptures } from '../captures/store';
 import { AccountChangedError, assertSignedInAs, ensurePersonalSpace } from './personalSpace';
 import { useIntentKeys } from '../api/intent-keys';
