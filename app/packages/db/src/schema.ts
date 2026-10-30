@@ -708,6 +708,8 @@ export const projectMessages = pgTable('project_messages', {
   resultId: uuid('result_id'),
   /** How many published files belong to this message (#154, migration 0045); text or at least one file. */
   attachmentCount: smallint('attachment_count').notNull().default(0),
+  /** The assistant's Undo took this message back (migration 0129, #68): the text is the fixed marker and the row keeps its place. */
+  removedAt: timestamp('removed_at', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 }, (table) => [
   unique().on(table.conversationId, table.sequence),

@@ -368,4 +368,16 @@ describe('F-030 AI forced off', () => {
       if (status === 403) assert.equal(codeOf(response), 'WORKSPACE_AI_BLOCKED');
     }
   });
+
+  test('#68: a personal assistant run is refused in A (403 WORKSPACE_AI_BLOCKED) with no run or usage row, and reaches its own checks in B', async () => {
+    const before = Number((await pool.query('SELECT count(*) FROM personal_runs WHERE owner_user_id = $1', [ada.id])).rows[0].count);
+    for (const [ws, status, code] of [[A, 403, 'WORKSPACE_AI_BLOCKED'], [B, 409, 'PERSONAL_RUN_NOT_ENABLED']] as const) {
+      const project = (expectStatus(await ada.browser.request('POST', `/api/v1/workspaces/${ws}/projects`, { body: { name: 'Assistant' } }), 201) as { id: string }).id;
+      const thread = expectStatus(await ada.browser.request('POST', `/api/v1/projects/${project}/conversations`,
+        { body: { body: 'Camera or ToF sensor?', clientMessageId: randomUUID() } }), 201) as { id: string };
+      const asked = await ada.browser.request('POST', `/api/v1/conversations/${thread.id}/assistant-runs`, { body: { clientRunId: randomUUID(), kind: 'ask', prompt: 'Look' } });
+      assert.deepEqual([asked.status, codeOf(asked)], [status, code], `${ws === A ? 'sealed A' : 'plain B'}: ${asked.text}`);
+    }
+    assert.equal(Number((await pool.query('SELECT count(*) FROM personal_runs WHERE owner_user_id = $1', [ada.id])).rows[0].count), before, 'no run row anywhere');
+  });
 });

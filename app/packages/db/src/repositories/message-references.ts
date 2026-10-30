@@ -1,4 +1,4 @@
-import { and, asc, eq, inArray } from 'drizzle-orm';
+import { and, asc, eq, inArray, isNull } from 'drizzle-orm';
 import type { MessageReference } from '@flux/contracts';
 import * as schema from '../schema.js';
 import { openField, openRows, sealOf } from '../sealing.js';
@@ -35,6 +35,18 @@ export function messageReferenceRows(db: DbExecutor) {
       if (!references.length) return;
       await db.insert(r).values(references.map((reference, position) => ({ workspaceId, position, kind: reference.kind, targetId: reference.id,
         projectMessageId: owner.kind === 'project' ? owner.id : null, dmMessageId: owner.kind === 'dm' ? owner.id : null })));
+    },
+
+    /**
+     * On a write: the project messages a new message cites are held `FOR SHARE` (ascending, so two writers never cross) until it commits.
+     * The assistant's Undo of one of them takes the row `FOR UPDATE`, so it waits for the citation and then refuses, or has committed first
+     * and the citation finds the message taken back (#68). Returns the ids that are live and now held; a direct message is not in this table.
+     */
+    async lockCitable(ids: readonly string[]): Promise<Set<string>> {
+      if (!ids.length) return new Set();
+      const m = schema.projectMessages;
+      const live = await db.select({ id: m.id }).from(m).where(and(inArray(m.id, [...ids]), isNull(m.removedAt))).orderBy(asc(m.id)).for('share');
+      return new Set(live.map((row) => row.id));
     },
 
     /** The stored references of these messages, each list in attachment order. Messages without any are absent. */

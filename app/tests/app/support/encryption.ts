@@ -32,3 +32,16 @@ export const readWorkspace = async (browser: Browser, workspaceId: string) =>
 /** A content route of the workspace (its project list): 423 while locked. */
 export const contentCall = (browser: Browser, workspaceId: string) => browser.request('GET', `/api/v1/workspaces/${workspaceId}/projects`);
 export const codeOf = (response: ClientResponse) => (response.json as { code?: string } | null)?.code;
+
+/**
+ * Installs the repository seal resolver in this test process over the real keyring (F-030 S2b), so a test can call the
+ * repositories and the live-editing authority directly on an encrypted workspace the API unlocked. Check-stack only.
+ */
+export async function installTestSeals() {
+  const { ProcessKeys, keyringFromEnv, sealFor } = await import('@flux/core');
+  const { configureSeals, workspaceEncryptionRows } = await import('@flux/db');
+  const keys = new ProcessKeys(keyringFromEnv(process.env), () => ({ safe: true, via: 'cgroup' }));
+  configureSeals((executor, workspaceId, options) => sealFor(workspaceEncryptionRows(executor), keys, workspaceId, options));
+  await keys.refresh({ force: true });
+  return keys;
+}

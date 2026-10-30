@@ -8,7 +8,7 @@ import {
   authorize, createEncryptionUseCases, DerivationSemaphore, ForbiddenError, getWorkspace, keyringFromEnv, NotFoundError, ProcessKeys,
   recordEvent, sealFor, swapFiles, swapSafety, testSwapRoot, type Database, type EncryptionPorts, type EncryptionUnitOfWork, type PasswordEstimator,
 } from '@flux/core';
-import { accessPorts, accessReader, configureSeals, loadActor, workspaceEncryptionRows, type DbExecutor } from '@flux/db';
+import { accessPorts, accessReader, configureSeals, dropSealedSearchIndex, loadActor, workspaceEncryptionRows, type DbExecutor } from '@flux/db';
 import { eventPorts } from '../events.js';
 
 // Adapters of the encrypted-workspace use cases (F-030, #655): the access policy (`workspace.manage_encryption`), the
@@ -66,6 +66,8 @@ export function processKeysFromEnv(env: NodeJS.ProcessEnv): ProcessKeys {
  */
 export function installSeals(keys: ProcessKeys) {
   configureSeals((executor, workspaceId, options) => sealFor(workspaceEncryptionRows(executor), keys, workspaceId, options));
+  // F-030 S2b: the in-memory search index of a workspace never outlives its keys in this process.
+  keys.onForget((workspaceId) => dropSealedSearchIndex(workspaceId));
 }
 
 export interface EncryptionComposition {

@@ -838,6 +838,20 @@ settle atomically; held Stop/revoke/version/live-session races prove this bounda
     After recipient start, Undo changes nothing: "Your Codex already started. Open
     the task". It never resets a recipient claim, stops their CLI or changes grants;
     the cancelled intent/audit/budget history remains and replay cannot recreate it.
+  - **A map, a recorded result, a proposed decision and a posted message** (founder direction 2026-10-29, #68), which no
+    person can remove, are taken back by the same Undo, only if the assistant made them in that run and nobody has used them
+    since; no delete is added for people, and only the person whose assistant made them takes them back (not every editor of
+    the project). *Used* means an edit, a decision, a reply or other later message in the thread, or a citation (an object
+    link, a message reference, a thought started from it), and the item then says why: "Replies since", "Used since",
+    "Decided since", "Renamed since", "It has thoughts now", "The task changed since". The check is atomic with the citing
+    write: the Undo takes the project's task-graph lock (a map's own row first, as the writers of its thoughts do), and every work
+    path that cites one of these re-checks its targets after taking the same lock, so a citation either commits before the check or
+    finds the object gone; a message reference, written without the graph lock, holds the cited message `FOR SHARE`.
+    A message keeps its row as a tombstone (its place, its sequence and the ids events carry) with the fixed text "[Removed with
+    Undo]" and the moment; a map, a result and a decision leave with the links and notices only they owned. A result also
+    tombstones what it told each task's discussion and puts the task it finished back as it was, if it is still done. The Undo is
+    recorded in the change log (who, when, a hash and length for a message, never its text), emits an ids-only event, and follows
+    the workspace AI lock (F-029): refused while AI is off, which includes every encrypted workspace (F-030).
   - If a changed field was edited again since, that item says "Changed since. Open it"
     and does nothing. A partial Undo says "Undid 5 changes. 2 changed since: #4, #7 ·
     Open".
