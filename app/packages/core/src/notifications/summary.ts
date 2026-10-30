@@ -109,7 +109,15 @@ export async function sendMorningSummaries(uow: SummaryUnitOfWork, now: Date = n
 export async function deliverPlainSummary(ports: SummaryPorts, userId: string, line?: string): Promise<'sent' | 'empty'> {
   const rows = await ports.unread(userId, MORNING_SUMMARY_LOOKBACK + 1);
   const readable: NotificationSourceRef[] = [];
-  for (const row of rows) if (!await ports.isMuted(userId, row.source) && readsSource(await ports.authorizer.canRead(userId, row.source), row.source)) readable.push(row.source);
+  for (const row of rows) {
+    try {
+      if (!await ports.isMuted(userId, row.source) && readsSource(await ports.authorizer.canRead(userId, row.source), row.source)) readable.push(row.source);
+    } catch (error) {
+      // F-030 (#712 review P2-4): an item of a locked encrypted workspace cannot be checked now; it is left out of
+      // today's count, and the rest still goes out (and the day is claimed).
+      if ((error as { code?: unknown }).code !== 'WORKSPACE_LOCKED') throw error;
+    }
+  }
   if (!readable.length) return 'empty';
   const more = readable.length > MORNING_SUMMARY_LOOKBACK;
   const id = randomUUID();
