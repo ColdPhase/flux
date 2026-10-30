@@ -3,7 +3,7 @@ import { alias } from 'drizzle-orm/pg-core';
 import { UNTITLED_SKETCH } from '@flux/contracts';
 import * as schema from '../schema.js';
 import type { DbExecutor } from './push.js';
-import { openAliased, openRows, sealFor } from '../sealing.js';
+import { openAliased, openRows, sealFor, sealOf } from '../sealing.js';
 
 /**
  * Drizzle persistence for sketches, thoughts and links (issues #69, #46). The rows satisfy the
@@ -112,6 +112,8 @@ export function sketchRows(db: DbExecutor) {
   return {
     /** Rows of `workspaceId` matching `audience` (the policy's list condition), newest change first. */
     async list(workspaceId: string, audience: SQL, filter: { projectId?: string; dmId?: string; scope?: 'private'; hideEmpty?: boolean }, page: { limit: number; offset: number }) {
+      // F-030 (AC-6): a locked encrypted workspace answers 423 even when the page would be empty.
+      await sealOf(db, workspaceId, { write: false });
       // An empty sketch (no thought, still the default title) is left out before the limit and in the total (#508).
       const withContent = sql`(EXISTS (SELECT 1 FROM ${t} WHERE ${t.sketchId} = ${s.id}) OR btrim(${s.title}) NOT IN ('', ${UNTITLED_SKETCH}))`;
       const where = and(eq(s.workspaceId, workspaceId), audience, filter.projectId ? eq(s.projectId, filter.projectId) : undefined,

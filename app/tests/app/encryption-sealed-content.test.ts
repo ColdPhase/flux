@@ -98,6 +98,19 @@ before(async () => {
   }
   await writeEverything('A', A);
   await writeEverything('B', B);
+  // AC-7 (scripts/check_encryption_scan.sh): every encoding of A's canaries, which no dump, volume, layer or log may
+  // hold, and a prefix of each of B's, which the dump must hold (the positive control).
+  const scanEncodings = (value: string) => {
+    const out = new Set(encodings(value));
+    for (const pad of ['', 'x', 'xy']) {
+      const standard = Buffer.from(pad + value).toString('base64');
+      for (const alphabet of [standard, standard.replaceAll('+', '-').replaceAll('/', '_')]) out.add(alphabet.slice(4, Math.min(alphabet.length - 4, 200)));
+    }
+    return [...out].filter((item) => item.length >= 16);
+  };
+  const state = process.env.FLUX_TEST_STATE_DIR ?? '/state';
+  await writeFile(join(state, 'encryption-canaries-A.txt'), kinds.flatMap((kind) => scanEncodings(canaries.A[kind])).join('\n') + '\n');
+  await writeFile(join(state, 'encryption-canaries-B.txt'), kinds.map((kind) => canaries.B[kind].slice(0, 60)).join('\n') + '\n');
 });
 
 describe('F-030 S2a-1: sealed content in the repositories', () => {

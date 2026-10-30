@@ -25,6 +25,12 @@
 #     work since the start is not in the backup; an unconfirmed stop is reported as such.
 #     When this tree adds #238's 0048, its guarded reversal (0060, then 0048) runs before any #238 fact exists, the
 #     previous image starts on the exact prior ledger with its data, and this tree upgrades again.
+#  3. AC-10 of F-030 (encrypted workspaces): checkout E, a test deployment (encrypted spaces are fixture-only until S3),
+#     seeds an encrypted space with a canary project name and a plain control, backs up, then changes the unlock
+#     password. The archive (database as SQL, files, env, manifest) holds the canary in no encoding and the control in
+#     plain text. After ./flux restore the space is locked, the later password does not open it, the password of
+#     backup time does, and ./flux export of its project exits non-zero with "is encrypted. Export it from the app.".
+#     FLUX_BACKUP_CASES=encryption runs only this case.
 set -eu
 
 here=$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd -P)
@@ -33,7 +39,7 @@ base_port=${FLUX_BACKUP_TEST_PORT:-19571}
 port_a=$base_port port_b=$((base_port + 3)) port_u=$((base_port + 6))
 work=$(mktemp -d "${TMPDIR:-/tmp}/flux-backup-check.XXXXXX")
 work=$(cd "$work" && pwd -P)
-A="$work/a/flux" B="$work/b/flux" U="$work/u/flux"
+A="$work/a/flux" B="$work/b/flux" U="$work/u/flux" E="$work/e/flux" port_e=$((base_port + 9))
 
 step() { printf '\n== %s\n' "$*"; }
 fail() { printf 'FAIL: %s\n' "$*" >&2; exit 1; }
@@ -42,6 +48,7 @@ fail() { printf 'FAIL: %s\n' "$*" >&2; exit 1; }
 flux_a() { FLUX_PORT=$port_a FLUX_DEV_PORT=$((port_a + 1)) FLUX_MAILPIT_PORT=$((port_a + 2)) "$A/flux" "$@"; }
 # B replaces A on A's address after A is destroyed: OAuth issuer and audience are the origin.
 flux_b() { FLUX_PORT=$port_a FLUX_PUBLIC_ORIGIN="http://127.0.0.1:$port_a" FLUX_DEV_PORT=$((port_b + 1)) FLUX_MAILPIT_PORT=$((port_b + 2)) "$B/flux" "$@"; }
+flux_e() { FLUX_PORT=$port_e FLUX_DEV_PORT=$((port_e + 1)) FLUX_MAILPIT_PORT=$((port_e + 2)) "$E/flux" "$@"; }
 flux_u() { FLUX_PORT=$port_u FLUX_DEV_PORT=$((port_u + 1)) FLUX_MAILPIT_PORT=$((port_u + 2)) "$U/flux" "$@"; }
 env_path() { if [ -f "$1/docker/.env" ]; then printf '%s/docker/.env' "$1"; else printf '%s/.env' "$1"; fi; }
 migration_dir() { if [ -d "$1/app/packages/db/migrations" ]; then printf '%s/app/packages/db/migrations' "$1"; else printf '%s/packages/db/migrations' "$1"; fi; }
@@ -79,7 +86,7 @@ oauth_client="flux-backup-check-$$"
 
 cleanup() {
   status=$?
-  for checkout in "$A" "$B" "$U"; do
+  for checkout in "$A" "$B" "$U" "$E"; do
     if [ "$status" -ne 0 ] && [ -f "$(env_path "$checkout")" ]; then compose_in "$checkout" logs --no-color --tail 60 2>/dev/null || true; fi
     if [ -x "$checkout/flux" ] && [ -f "$(env_path "$checkout")" ]; then "$checkout/flux" clean -y >/dev/null 2>&1 || true; fi
     docker volume ls -q --filter "label=com.flux.checkout=$checkout" | xargs docker volume rm >/dev/null 2>&1 || true
@@ -94,6 +101,59 @@ docker info >/dev/null 2>&1 || fail "the Docker daemon is not reachable (this ch
 free_kb=$(df -Pk "$work" | awk 'NR == 2 { print $4 }')
 [ "$free_kb" -ge 20971520 ] || fail "only $((free_kb / 1048576)) GB free on $(df -P "$work" | awk 'NR == 2 { print $6 }'); need 20 GB"
 echo "Docker $(docker info --format '{{.ServerVersion}}'), $((free_kb / 1048576)) GB free"
+
+# AC-10 (F-030): see 3. in the header.
+encryption_case() {
+  step "AC-10: an encrypted space's backup holds no content; restored, it is locked and opens only with the password of backup time"
+  copy_tree "$E"
+  flux_e up >/dev/null
+  printf 'FLUX_TEST_FAILURE_INJECTION=true\n' >> "$(env_path "$E")"
+  flux_e up >/dev/null
+  flux_e demo >/dev/null
+  enc() { # mode [state-json]
+    compose_in "$E" exec -T -e FLUX_FIXTURE_MODE="$1" -e FLUX_FIXTURE_STATE="${2:-}" -e FLUX_PUBLIC_ORIGIN="$(env_of "$E" FLUX_PUBLIC_ORIGIN)" \
+      -e FLUX_DEMO_OWNER_PASSWORD="$(env_of "$E" FLUX_DEMO_OWNER_PASSWORD)" -e FLUX_FIXTURE_TOKEN="$(env_of "$E" FLUX_FIXTURE_TOKEN)" \
+      api node --input-type=module - < "$here/scripts/encryption-backup-fixture.mjs"
+  }
+  estate=$(enc seed | sed -n 's/^FLUX_ENCRYPTION //p')
+  [ -n "$estate" ] || fail "the encryption fixture did not report its state"
+  field() { printf '%s' "$estate" | sed -n "s/.*\"$1\":\"\([^\"]*\)\".*/\1/p"; }
+  canary=$(field canary) control=$(field control) eproject=$(field projectId)
+  [ -n "$canary" ] && [ -n "$control" ] && [ -n "$eproject" ] || fail "incomplete encryption fixture state: $estate"
+  flux_e backup --output "$work/e-backups" > "$work/e-backup.out" || { cat "$work/e-backup.out"; fail "backup of E failed"; }
+  earchive=$(sed -n 's/^Backup written: \(.*\.tar\) (.*/\1/p' "$work/e-backup.out")
+  [ -f "$earchive" ] || fail "no archive of E"
+  enc rekey "$estate" | grep -q 'FLUX_ENCRYPTION rekeyed' || fail "changing the unlock password after the backup failed"
+  # The AC-7 scanner on the archive: every part, the database as SQL (pg_restore decompresses the custom format).
+  mkdir -p "$work/e-unpacked"
+  tar -xf "$earchive" -C "$work/e-unpacked"
+  compose_in "$E" exec -T db pg_restore -f - < "$work/e-unpacked/database.dump" > "$work/e-dump.sql" || fail "pg_restore could not read the archive's dump"
+  tar -xzOf "$work/e-unpacked/files.tar.gz" > "$work/e-files.bin" 2>/dev/null || true
+  : > "$work/e-encodings"
+  for pad in '' 'x' 'xy'; do
+    encoded=$(printf '%s%s' "$pad" "$canary" | base64 | tr -d '\n')
+    printf '%s\n' "$encoded" | cut -c5-40 >> "$work/e-encodings"
+    printf '%s\n' "$encoded" | tr '+/' '-_' | cut -c5-40 >> "$work/e-encodings"
+  done
+  { printf '%s\n' "$canary"; printf '%s' "$canary" | od -An -v -tx1 | tr -d ' \n'; echo; printf '%s' "$canary" | sha256sum | cut -d' ' -f1; } >> "$work/e-encodings"
+  for part in "$work/e-dump.sql" "$work/e-files.bin" "$work/e-unpacked/flux.env" "$work/e-unpacked/manifest.json" "$earchive"; do
+    if grep -aqF -f "$work/e-encodings" "$part"; then fail "the backup holds the encrypted space's canary ($(basename "$part"))"; fi
+  done
+  grep -qF "$control" "$work/e-dump.sql" || fail "positive control: the plain project's name is not in the backup's database"
+  echo "archive scanned: $(wc -l < "$work/e-encodings" | tr -d ' ') encodings of the canary, 0 hits; the plain control is there"
+  flux_e restore "$earchive" -y > "$work/e-restore.out" 2>&1 || { cat "$work/e-restore.out"; fail "restore of E failed"; }
+  enc restored "$estate" || fail "the restored encrypted space did not behave as AC-10 requires"
+  if flux_e export "$eproject" --output "$work/e-export.tar.gz" > "$work/e-export.out" 2>&1; then fail "./flux export of an encrypted space succeeded"; fi
+  grep -q 'is encrypted. Export it from the app.' "$work/e-export.out" || fail "no encrypted-space refusal: $(cat "$work/e-export.out")"
+  [ ! -e "$work/e-export.tar.gz" ] || fail "a refused export left a file"
+  flux_e clean -y >/dev/null
+}
+
+if [ "${FLUX_BACKUP_CASES:-all}" = encryption ]; then
+  encryption_case
+  step "PASS: AC-10 encrypted-space backup and restore"
+  exit 0
+fi
 
 step "Copy the working tree to $A and $B"
 copy_tree "$A"
@@ -461,5 +521,7 @@ flux_u upgrade -y > "$work/layout-reupgrade.out" 2>&1 || { cat "$work/layout-reu
 [ ! -e "$U/.env" ] || fail "re-upgrade left two executable env locations"
 flux_u demo | grep -q 'already exists; nothing new was seeded' || fail "re-upgrade lost restored data"
 flux_u clean -y >/dev/null
+
+encryption_case
 
 step "PASS: backup, restore into a fresh project, agent access, export, upgrade from $(git -C "$here" rev-parse --short "$from") (+$(printf '%s\n' "$new_migrations" | wc -l | tr -d ' ') migrations) and failed-upgrade recovery"

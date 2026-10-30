@@ -57,7 +57,7 @@ $compose build
 $compose up -d db migrate
 $compose --profile setup run --rm files-init
 
-files="tests/app/encryption-crypto.test.ts tests/app/encryption-keyring.test.ts tests/app/encrypted-workspaces.test.ts tests/app/encryption-registry.test.ts tests/app/encryption-sealed-content.test.ts tests/app/live/encryption-two-api.test.ts"
+files="tests/app/encryption-crypto.test.ts tests/app/encryption-keyring.test.ts tests/app/encrypted-workspaces.test.ts tests/app/encryption-registry.test.ts tests/app/encryption-sealed-content.test.ts tests/app/encryption-locked-routes.test.ts tests/app/live/encryption-two-api.test.ts"
 # shellcheck disable=SC2086
 $compose run --rm test node_modules/.bin/tsx --test --test-concurrency=1 $files
 
@@ -104,5 +104,8 @@ $compose run --rm test node_modules/.bin/tsx tests/app/encryption-restart.check.
 $compose run --rm test node_modules/.bin/tsx tests/app/encryption-restart.check.ts mark
 $compose restart keyring
 $compose run --rm test node_modules/.bin/tsx tests/app/encryption-restart.check.ts keyring-locked
+
+# AC-7, the stolen-disk part: pg_dump, the raw volumes (pg_wal included), container layers and logs; stops the stack.
+. scripts/check_encryption_scan.sh
 
 echo 'F-030 S1 encryption checks passed'

@@ -260,6 +260,8 @@ export function workRows(db: DbExecutor) {
 
     /** Unfinished, unparked work of `owner` in projects matching `visibleProjects` (a condition over `projects`). */
     async listAssigned(workspaceId: string, owner: Actor, visibleProjects: SQL, window: Window) {
+      // F-030 (AC-6): a locked encrypted workspace answers 423 even when nothing is assigned.
+      await sealOf(db, workspaceId, { write: false });
       const where = and(
         eq(w.workspaceId, workspaceId),
         owner.kind === 'human' ? eq(w.ownerUserId, owner.id) : eq(w.ownerAgentId, owner.id),
