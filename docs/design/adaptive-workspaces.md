@@ -160,7 +160,7 @@ unoptimised baseline of `main` `3f0311a26`. The review of PR #714 found the firs
 frame-gap budgets to pass; this version restores them. **Independent agreement, 2026-10-30:** a separate agent session
 (the #151 close-out, which did not write the 2026-10-29 rows; same GitHub account, so session independence) read every
 2026-10-29 row against its basis below and the harness constants and agrees with them: none is looser than its
-inherited value, and the phone's frame gap stays a recorded miss (#716), not a changed budget. The four rows that session
+inherited value, and the phone's frame gap stayed a recorded miss (#716, closed below), not a changed budget. The four rows that session
 added on 2026-10-30 (`listScroll`, `mapPan`, `mapZoom`, `scrollGap`) still need an agreement by someone other than their
 author. A budget changes only with new measurements and a review. The opt-in harness
 [`motion_performance.py`](../../app/tests/ui/motion_performance.py) fails when a p95 exceeds its budget (a miss it lists
