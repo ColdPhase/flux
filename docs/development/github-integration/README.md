@@ -148,6 +148,8 @@ inbox. It carries no comment text and no authority; the agent reads current PR s
   unit, when that connection is unrevoked, still has the project selected and its agent holds the task
   (`owner_agent_id`). Holding the task is the standing subscription: no hold, no delivery, and a webhook never
   reassigns or widens the audience. The outbox row then records `delivered` and the recipient.
+- **Workspace AI lock (F-029).** The holder is an agent, so delivery needs AI on in the workspace (policy row read
+  `FOR SHARE`) and an execute unit admitted under the current AI epoch; otherwise the row is `no_recipient`.
 - **Repository access.** A private repository's facts reach the recipient only when the recipient's owner is the
   binding's author, whose GitHub access this very processing just verified. Otherwise the row is `no_access`; Flux
   does not call GitHub on another person's behalf. A public repository needs only the Flux checks above.
