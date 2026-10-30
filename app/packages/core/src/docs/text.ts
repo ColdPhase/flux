@@ -85,7 +85,7 @@ function headings(lines: string[]) {
   return found;
 }
 
-const CARD_LINE = /^\[.*\]\(flux:decision\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\)\s*$/i;
+const CARD_LINE = /^\[(?:\\.|[^\]\\])*\]\(flux:decision\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\)\s*$/i;
 
 /**
  * F-034: a decision card (a decision reference standing on its own line, outside fenced code) after a section's
@@ -151,7 +151,7 @@ export function hasDecisionReference(text: string, id: string) {
       continue;
     }
     const trimmed = line.trim();
-    if (!fence && trimmed.startsWith('[') && trimmed.endsWith(marker)) return true;
+    if (!fence && trimmed.endsWith(marker) && /^\[(?:\\.|[^\]\\])*\]$/.test(trimmed.slice(0, -marker.length + 1))) return true;
   }
   return false;
 }
