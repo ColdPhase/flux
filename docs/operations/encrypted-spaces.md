@@ -21,6 +21,12 @@ changes an existing token. An install from a release needs the variable set in i
 the keyring stays idle and an encrypted space cannot be made or unlocked ("Encrypted spaces aren't
 available on this server right now: its key service isn't running").
 
+**`FLUX_KEY_PIN_SECRET`** (from schema 130) pins every encrypted space's unlock passwords and key
+versions, so rows planted in the database are refused. `./flux up` and `./flux upgrade` add it to
+`docker/.env`, and it is never changed afterwards. It is not in the database: keep it with your backups
+of `docker/.env`. Without it (or with one shorter than 32 characters) encrypted spaces cannot be made or
+unlocked; **changing it makes every encrypted space refuse to unlock as tampered.**
+
 ## Restarts lock encrypted spaces
 
 The unlocked key lives only in the memory of the running keyring, API and worker. When the **keyring,
@@ -47,6 +53,8 @@ at least one owner or admin of each encrypted space can unlock it after the upgr
 - **`./flux backup`** copies the database and the files as they are, so encrypted content stays
   encrypted in the archive. The archive's `flux.env` holds `FLUX_KEYRING_TOKEN`, which opens nothing
   without the running keyring.
+- **`./flux restore`** needs the same `FLUX_KEY_PIN_SECRET` as the backup (it is in the archive's
+  `flux.env`; an existing `docker/.env` with another value makes every restored space read as tampered).
 - **`./flux restore`** brings encrypted spaces back **locked**. A space opens with an owner's or admin's
   unlock password **as it was when the backup was taken**, or the recovery code valid then. A password
   changed or set after the backup does not open the restored space. A backup whose passwords and

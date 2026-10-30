@@ -21,7 +21,13 @@ export type EncryptedWorkspace = Workspace;
  * A key rotation as the server reports it (S2c): `startedAt` is null while it waits to start, and `stalled` says it cannot finish
  * (some stored data does not open; every holder also gets a `security` notice). Read as optional, so an older answer without it reads as running.
  */
-export type KeyRotation = NonNullable<Workspace['encryption']>['rotation'] & { startedAt: string | null; stalled?: boolean };
+export type KeyRotation = NonNullable<Workspace['encryption']>['rotation'] & {
+  startedAt: string | null; stalled?: boolean;
+  /** Who the new key opens for (owners and admins read it; others get []). */
+  openFor?: { userId: string | null; name: string; kind: 'password' | 'recovery' }[];
+  /** Why the key changes; null for guests. */
+  reason?: { kind: 'removed' | 'demoted' | 'holder_deleted'; userId: string | null; name: string | null } | null;
+};
 
 /** An encrypted workspace that is locked here, as `/search`, `/inbox`, `/needs-you` and `/return` name it (`lockedWorkspaces`, S2a-2c). */
 export interface LockedWorkspaceRef { id: string; name: string }

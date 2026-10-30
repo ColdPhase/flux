@@ -48,14 +48,32 @@ function rotationState(rotation: KeyRotation, locked: boolean): RotationState {
   if (!rotation.startedAt) return 'starting';
   return rotation.paused ? 'paused' : 'running';
 }
+/** "after Ben left": why the key changes, when the server names the person. */
+function rotationWhy(rotation: KeyRotation): string {
+  const who = rotation.reason?.name ? first(rotation.reason.name) : '';
+  if (!who) return '';
+  switch (rotation.reason!.kind) {
+    case 'removed': return ` after ${who} left`;
+    case 'demoted': return ` after ${who}’s role changed`;
+    default: return ` after ${who}’s account was deleted`;
+  }
+}
 function rotationLine(rotation: KeyRotation, locked: boolean, name: string): string {
+  const changing = `Changing the key${rotationWhy(rotation)}`;
   switch (rotationState(rotation, locked)) {
     // What the security notice every holder gets says too: no table, no column, nothing about the content.
     case 'stalled': return 'The key change can’t finish: some stored data doesn’t open. Ask your server’s operator.';
-    case 'paused': return `Changing the key · paused until ${name} is unlocked.`;
-    case 'starting': return `Changing the key · starting. It continues while ${name} is unlocked.`;
-    default: return `Changing the key · ${Math.max(0, Math.min(99, Math.round(rotation.percent)))}%. It continues while ${name} is unlocked.`;
+    case 'paused': return `${changing} · paused until ${name} is unlocked.`;
+    case 'starting': return `${changing} · starting. It continues while ${name} is unlocked.`;
+    default: return `${changing} · ${Math.max(0, Math.min(99, Math.round(rotation.percent)))}%. It continues while ${name} is unlocked.`;
   }
+}
+/** "The new key opens for Ada, Cy and the recovery code.": the holder set the rotation sealed the new key to. */
+function openForLine(rotation: KeyRotation): string {
+  const names = (rotation.openFor ?? []).map((holder) => (holder.kind === 'recovery' ? 'the recovery code' : first(holder.name)));
+  if (!names.length) return '';
+  const list = names.length === 1 ? names[0]! : `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`;
+  return `The new key opens for ${list}.`;
 }
 
 export function EncryptionSection({ workspace, members, meId, myRole, offerCode, onChanged }: {
@@ -124,6 +142,7 @@ export function EncryptionSection({ workspace, members, meId, myRole, offerCode,
             : !enc.myPassword ? <p className="people__hint">You don’t have an unlock password yet. Another owner or admin can let you set one{noCode ? '.' : ', or use the recovery code.'}</p> : null}
           {rotation ? <p className="people__hint" data-key-rotation={rotationState(rotation, locked)}>{rotationLine(rotation, locked, name)}</p>
             : changedOn ? <p className="people__hint" data-key-changed="">New key since {changedOn}.</p> : null}
+          {rotation && openForLine(rotation) ? <p className="people__hint" data-key-open-for="">{openForLine(rotation)}</p> : null}
           {noCode ? <p className="people__hint" data-no-recovery-code="">{owner ? `${name} has no recovery code. Make a new one and keep it safe.` : `${name} has no recovery code. An owner can make a new one.`}</p> : null}
         </>
       ) : null}

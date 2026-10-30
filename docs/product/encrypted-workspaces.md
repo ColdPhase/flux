@@ -1198,7 +1198,11 @@ project picker and in Create like any other space.
     unlocked." Pending while unlocked (the worker starts it within seconds): "Changing the key · starting.
     It continues while Garden club is unlocked." Stalled (`rotation.stalled`): "The key change can't finish:
     some stored data doesn't open. Ask your server's operator." While one runs, the section reads the
-    state again every few seconds. After the finish, quietly: "New key since 23 Oct, after Ben left." Below it, from the start
+    state again every few seconds. While `rotation.reason` names the person, the progress line says why:
+    "Changing the key after Ben left · 62%…" (removed), "…after Ben's role changed" (demoted), "…after Ben's
+    account was deleted" (`holder_deleted`). The line below draws `rotation.openFor` ("The new key opens for
+    Ada, Cy and the recovery code."). Both exist only while the rotation runs; after the finish the line
+    reads "New key since 23 Oct." until the wire keeps the reason. After the finish, quietly: "New key since 23 Oct, after Ben left." Below it, from the start
     onwards: "The new key opens for Ada and Cy." That is the holder set the start sealed to.
   - For owners and admins: a quiet **Lock now**, which uses the panel's inline confirm: "Everyone in
     Garden club loses access until an owner or admin unlocks it again." with **Lock Garden club** and

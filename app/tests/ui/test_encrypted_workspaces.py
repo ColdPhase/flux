@@ -1076,6 +1076,17 @@ class KeyRotation(Base):
                 self.open_people(page)
                 section = self.section(page)
                 expect(section.locator("[data-key-rotation]")).to_have_text(f"Changing the key · 40%. It continues while {A_NAME} is unlocked.")
+                # S2c names why and who the new key opens for: the reason in the progress line, the holders on the line below.
+                overlay.fields = {"rotation": {"percent": 55, "paused": False, "startedAt": now_iso(), "stalled": False,
+                                               "reason": {"kind": "removed", "userId": world.ids["ben"], "name": NAMES["ben"]},
+                                               "openFor": [{"userId": world.ids["ada"], "name": NAMES["ada"], "kind": "password"},
+                                                           {"userId": world.ids["cy"], "name": NAMES["cy"], "kind": "password"},
+                                                           {"userId": None, "name": "Recovery code", "kind": "recovery"}]}}
+                expect(section.locator("[data-key-rotation]")).to_have_text(f"Changing the key after Ben left · 55%. It continues while {A_NAME} is unlocked.", timeout=15000)
+                expect(section.locator("[data-key-open-for]")).to_have_text("The new key opens for Ada, Cy and the recovery code.")
+                section.scroll_into_view_if_needed()
+                shot(page, f"rotation-running-{'phone' if phone else 'computer'}")
+                overlay.fields = {"rotation": {"percent": 40, "paused": False, "startedAt": now_iso()}}
                 self.lock(world)
                 page.reload()
                 self.open_people(page)
