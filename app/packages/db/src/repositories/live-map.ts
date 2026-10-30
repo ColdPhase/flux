@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { and, asc, eq, gt, inArray, or, sql } from 'drizzle-orm';
 import type { LiveMapPosition } from '@flux/contracts';
 import * as schema from '../schema.js';
+import { openRows, sealFor, sealOf } from '../sealing.js';
 import type { DbExecutor } from './push.js';
 import { EDITING_CHANNEL, editingConfirmationCurrent, type EditingConfirmationPolicy } from './live-editing.js';
 
@@ -10,12 +11,33 @@ const h=schema.mapLiveHeads; const j=schema.mapLiveJournal; const v=schema.mapLi
 const g=schema.mapLiveGestures; const p=schema.mapLivePresence;
 interface Actor { kind:'human'|'agent';id:string }
 interface Who { actorId:string;sessionId:string }
+/**
+ * The memory a journal's parsed representation takes, in the unit of the SQL walk `originals` runs for a plain workspace:
+ * 256 per object or array, twice the UTF-8 bytes of a string, 16 per scalar, and 128 plus twice the key's bytes per member.
+ * An encrypted workspace stores `{"$sealed": envelope}`, which that walk cannot see into, so it measures the opened value.
+ */
+export function journalCharge(value: unknown, key = ''): number {
+  const member = key === '' ? 0 : 128 + 2 * Buffer.byteLength(key);
+  if (Array.isArray(value)) return member + 256 + value.reduce<number>((total, child, index) => total + journalCharge(child, String(index)), 0);
+  if (value && typeof value === 'object') return member + 256 + Object.entries(value).reduce((total, [name, child]) => total + journalCharge(child, name), 0);
+  if (typeof value === 'string') return member + 2 * Buffer.byteLength(value);
+  return member + 16;
+}
+
 export function liveMapRows<Change extends Record<string,unknown>>(db:DbExecutor, decode:(value:Record<string,unknown>)=>Change, confirmation?:EditingConfirmationPolicy|null) {
   // This rows instance retains original raw/decoded journals through the caller's undo transaction.
   // Current graph preparation must fit beside them in the same shared24MiB reservation.
   let originalsRetained=0;
   const head = async (sketchId:string) => { const [row]=await db.select().from(h).where(eq(h.sketchId,sketchId)).for('update');return row??null; };
   const journal = (row:typeof j.$inferSelect) => ({...row,change:decode(row.change)});
+  // F-030 (S2b): the change and its fingerprint are sealed in an encrypted workspace. A journal row names its map, so its
+  // workspace comes from the join; the rows are opened here and callers see the plain change.
+  const sk = schema.sketches;
+  const readJournal = async (read:{row:typeof j.$inferSelect;workspaceId:string}[]) => {
+    const workspaces = new Map(read.map(({row,workspaceId})=>[row,workspaceId]));
+    return (await openRows(db,'map_live_journal',read.map(({row})=>row),(row)=>workspaces.get(row)!)).map(journal);
+  };
+  const journalSelect = () => db.select({row:j,workspaceId:sk.workspaceId}).from(j).innerJoin(sk,eq(sk.id,j.sketchId));
   const alive = sql`LEAST(clock_timestamp()+interval '5 seconds',(SELECT expires_at FROM auth_sessions WHERE id=${g.sessionId}))`;
   return {
     head,
@@ -27,7 +49,7 @@ export function liveMapRows<Change extends Record<string,unknown>>(db:DbExecutor
     async append(room:Pick<typeof h.$inferSelect,'workspaceId'|'sketchId'|'generation'|'sequence'>,actor:Actor,commandId:string,fingerprint:string,change:Change) {
       if (Buffer.byteLength(JSON.stringify(change))>8*1024*1024 || room.sequence>=Number.MAX_SAFE_INTEGER) throw new LiveMapCapacityError('The bounded map journal is full');
       const sequence=room.sequence+1;
-      await db.insert(j).values({sketchId:room.sketchId,generation:room.generation,sequence,actorKind:actor.kind,actorId:actor.id,commandId,fingerprint,change});
+      await db.insert(j).values(await sealFor(db,'map_live_journal',room.workspaceId,{sketchId:room.sketchId,generation:room.generation,sequence,actorKind:actor.kind,actorId:actor.id,commandId,fingerprint,change}));
       await db.update(h).set({sequence,updatedAt:sql`clock_timestamp()`}).where(eq(h.sketchId,room.sketchId));
       await db.execute(sql`SELECT pg_notify(${EDITING_CHANNEL},${room.sketchId})`);
       return sequence;
@@ -40,11 +62,11 @@ export function liveMapRows<Change extends Record<string,unknown>>(db:DbExecutor
         throw new LiveMapCapacityError('The native snapshot reached its bounded representation capacity');
     },
     async after(sketchId:string,generation:string,sequence:number) {
-      const [row]=await db.select().from(j).where(and(eq(j.sketchId,sketchId),eq(j.generation,generation),gt(j.sequence,sequence))).orderBy(asc(j.sequence)).limit(1);
-      return row?journal(row):null;
+      const [row]=await readJournal(await journalSelect().where(and(eq(j.sketchId,sketchId),eq(j.generation,generation),gt(j.sequence,sequence))).orderBy(asc(j.sequence)).limit(1));
+      return row??null;
     },
     async command(actor:Actor,commandId:string) {
-      const [row]=await db.select().from(j).where(and(eq(j.actorKind,actor.kind),eq(j.actorId,actor.id),eq(j.commandId,commandId)));return row?journal(row):null;
+      const [row]=await readJournal(await journalSelect().where(and(eq(j.actorKind,actor.kind),eq(j.actorId,actor.id),eq(j.commandId,commandId))));return row??null;
     },
     async originals(sketchId:string,generation:string,ids:string[]) {
       const [size]=await db.select({bytes:sql<number>`COALESCE(sum(octet_length(${j.change}::text)),0)::bigint`}).from(j)
@@ -64,9 +86,14 @@ export function liveMapRows<Change extends Record<string,unknown>>(db:DbExecutor
           ) child
         ) SELECT COALESCE(sum((CASE jsonb_typeof(value) WHEN 'object' THEN 256 WHEN 'array' THEN 256 WHEN 'string' THEN 2*octet_length(value#>>'{}') ELSE 16 END)
           +(CASE WHEN key='' THEN 0 ELSE 128+2*octet_length(key) END)),0)::text AS charge FROM walk`);
-      originalsRetained=65_536+8_192*ids.length+2*Number(measured.rows[0]!.charge)+4*Number(size!.bytes);
+      // An encrypted workspace's rows are at most 4 MiB sealed (a bound on what is opened); their parsed size is measured opened.
+      const [located]=await db.select({workspaceId:sk.workspaceId}).from(sk).where(eq(sk.id,sketchId));
+      const sealed=!!located&&(await sealOf(db,located.workspaceId,{write:false})).sealed;
+      const read=sealed?await readJournal(await journalSelect().where(and(eq(j.sketchId,sketchId),eq(j.generation,generation),inArray(j.commandId,ids))).limit(200)):null;
+      const charge=read?read.reduce((total,row)=>total+journalCharge(row.change),0):Number(measured.rows[0]!.charge);
+      originalsRetained=65_536+8_192*ids.length+2*charge+4*Number(size!.bytes);
       if(!Number.isSafeInteger(originalsRetained)||originalsRetained>24*1024*1024)throw new LiveMapCapacityError('The aggregate undo journals reached their bounded parsed representation capacity');
-      return (await db.select().from(j).where(and(eq(j.sketchId,sketchId),eq(j.generation,generation),inArray(j.commandId,ids))).limit(200)).map(journal);
+      return read??await readJournal(await journalSelect().where(and(eq(j.sketchId,sketchId),eq(j.generation,generation),inArray(j.commandId,ids))).limit(200));
     },
     async undone(sketchId:string,generation:string,sequences:number[]) {
       return db.select().from(schema.mapLiveUndone).where(and(eq(schema.mapLiveUndone.sketchId,sketchId),eq(schema.mapLiveUndone.generation,generation),inArray(schema.mapLiveUndone.originalSequence,sequences)));
@@ -86,7 +113,9 @@ export function liveMapRows<Change extends Record<string,unknown>>(db:DbExecutor
       // Count/size before loading any graph-dependent rows into JavaScript.
       const [size]=await db.select({n:sql<number>`count(*)::int`,bytes:sql<number>`COALESCE(sum(octet_length(to_jsonb(${l})::text)),0)::int`}).from(l).where(where);
       if(size!.n>20_000||size!.bytes>2*1024*1024)throw new LiveMapCapacityError('The affected dependency bag reached its bounded capacity');
-      const rows=await db.select({link:l,epoch:v.version}).from(l).leftJoin(v,and(eq(v.kind,'link'),eq(v.objectId,l.id))).where(where).orderBy(asc(l.id));
+      const read=await db.select({link:l,epoch:v.version}).from(l).leftJoin(v,and(eq(v.kind,'link'),eq(v.objectId,l.id))).where(where).orderBy(asc(l.id));
+      const opened=await openRows(db,'sketch_links',read.map(({link})=>link));
+      const rows=read.map(({epoch},index)=>({link:opened[index]!,epoch}));
       return rows.map(({link,epoch})=>({id:link.id,sketchId:link.sketchId,fromId:link.fromId,toId:link.toId,label:link.label,createdAt:link.createdAt,epoch:epoch??1,createdBy:link.createdByUserId?{kind:'human' as const,id:link.createdByUserId}:{kind:'agent' as const,id:link.createdByAgentId!}}));
     },
     /** Count the affected representation before loading/cloning journal graph rows.

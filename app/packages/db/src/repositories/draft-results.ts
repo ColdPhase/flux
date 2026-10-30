@@ -1,5 +1,6 @@
-import { and, desc, eq, inArray } from 'drizzle-orm';
+import { and, desc, eq, inArray, sql } from 'drizzle-orm';
 import * as schema from '../schema.js';
+import { openRow, sealOf } from '../sealing.js';
 import type { DbExecutor } from './push.js';
 
 /**
@@ -44,9 +45,18 @@ export function draftResultRepository(db: DbExecutor) {
         .where(and(eq(r.id, resultId), eq(r.status, 'running'))).returning({ id: r.id });
       return updated.length > 0;
     },
+    /** F-030 (#655 integrated review P2-2): an encrypted workspace's body is opened through its seal (423 while locked). */
     async readDraftBody(draftId: string): Promise<{ body: string; version: number } | null> {
-      const [draft] = await db.select({ body: schema.drafts.body, version: schema.drafts.version }).from(schema.drafts).where(eq(schema.drafts.id, draftId));
-      return draft ?? null;
+      const [draft] = await db.select({ id: schema.drafts.id, workspaceId: schema.drafts.workspaceId, body: schema.drafts.body, version: schema.drafts.version })
+        .from(schema.drafts).where(eq(schema.drafts.id, draftId));
+      if (!draft) return null;
+      const opened = openRow('drafts', draft, await sealOf(db, draft.workspaceId, { write: false }));
+      return { body: opened.body, version: opened.version };
+    },
+    /** A summary of a locked encrypted workspace's draft waits (ids only) for `workspace-encryption.resume.v1`. */
+    async recordWait(resultId: string, workspaceId: string) {
+      await db.execute(sql`INSERT INTO sealed_job_waits (id, workspace_id, queue, payload)
+        VALUES (gen_random_uuid(), ${workspaceId}::uuid, 'draft.summarize.v1', ${JSON.stringify({ resultId })}::jsonb)`);
     },
   };
 }

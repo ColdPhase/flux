@@ -208,6 +208,7 @@ export const AI_WORK_QUEUES = {
     NOTIFICATION_EMAIL_JOB: 'notification.email.v1 sends a person\'s e-mail; it skips an AI-origin notification of a workspace whose AI is off (ai_origin)',
     PUSH_SEND_JOB: 'push.send sends a person\'s push; it skips an AI-origin notification of a workspace whose AI is off (ai_origin)',
     SAMPLE_JOB: 'sample.process is the platform example job: it processes a sample row and touches no workspace content',
+    SEARCH_CHANGES_CLEANUP_JOB: 'search-changes.cleanup.v1 deletes the change log (document keys and times) of encrypted workspaces after 24 hours; it opens no content',
     WORKSPACE_ENCRYPTION_RESUME_JOB: 'workspace-encryption.resume.v1 replays a sealed workspace\'s waiting work after an unlock; AI is always off there (F-030)',
   } as Readonly<Record<string, string>>,
   /** Tables whose rows wait for AI work: each has `ai_epoch` (no default) and the `ai_work_admission` trigger. */

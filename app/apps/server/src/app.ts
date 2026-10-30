@@ -203,7 +203,7 @@ export async function buildApp(config: ServerConfig, migrationsDir = 'packages/d
   const liveSignaling = liveMedia ? registerLiveSignaling(app, { db, connectionString, publicOrigin: identityConfig.publicOrigin,
     sessions: identity, ports: livePorts!, media: liveMedia.media, config: liveMedia.config }) : null;
   editing = await registerEditing(app, { database: { db, pool }, sessions: identity, publicOrigin: identityConfig.publicOrigin,
-    connectionString, enabled: config.liveEditing, developmentEnabled: config.developmentLiveEditing, env, confirmation: editingConfirmation });
+    connectionString, enabled: config.liveEditing, developmentEnabled: config.developmentLiveEditing, env, confirmation: editingConfirmation, encryptionKeys });
   if (editing && config.developmentLiveEditing) app.log.info('Isolated live editing calibration selected');
   // One listener owns every upgrade: media, then editing, then the Fastify stream emitter (1 KiB bound).
   const removeUpgradeDispatcher = registerUpgradeDispatcher(app.server, streamUpgrades,

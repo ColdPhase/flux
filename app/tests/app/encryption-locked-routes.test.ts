@@ -2,7 +2,9 @@ import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { before, describe, test } from 'node:test';
 import { CROSS_WORKSPACE_READ_ROUTES, LOCKED_ALLOWED_ROUTES, type Project } from '@flux/contracts';
+import WebSocket from 'ws';
 import { pool } from './support/db.js';
+import { apiUrl, publicOrigin } from './support/http.js';
 import { createSealed, lock, passphrase } from './support/encryption.js';
 import { addMember, expectStatus, person, type Person } from './support/people.js';
 
@@ -37,7 +39,6 @@ const ID_ROUTES: Readonly<Record<string, 'notification' | 'account' | 'decision'
 /** Answers that refuse a feature an encrypted workspace does not offer, before any of its objects is read. */
 const NOT_OFFERED: Readonly<Record<string, string>> = {
   '403 WORKSPACE_AI_BLOCKED': 'AI is always off in an encrypted workspace (F-029)',
-  '409 WORKSPACE_ENCRYPTED_UNSUPPORTED': 'live Wiki and live maps until S2b',
   '503 GITHUB_UNAVAILABLE': 'GitHub is refused for an encrypted workspace, and not configured on the test server',
 };
 const codeOf = (text: string) => { try { return (JSON.parse(text) as { code?: string }).code ?? ''; } catch { return ''; } };
@@ -129,7 +130,23 @@ function sample(schema: Schema | undefined, name = ''): unknown {
   }
 }
 
+/** A WebSocket upgrade as a browser makes it: the answer's status, 101 when the socket opened. */
+const upgrade = (who: Person, path: string) => new Promise<number>((resolve) => {
+  const url = new URL(path, apiUrl); url.protocol = 'ws:';
+  const ws = new WebSocket(url, { headers: { origin: publicOrigin, host: new URL(publicOrigin).host, cookie: who.browser.cookieHeader() }, perMessageDeflate: false });
+  ws.once('open', () => { resolve(101); ws.close(); });
+  ws.once('unexpected-response', (_request, response) => { resolve(response.statusCode ?? 0); ws.terminate(); });
+  ws.once('error', () => resolve(0));
+});
+
 describe('F-030 AC-6: every route, called with a locked workspace\'s objects (S2a-2c-4)', () => {
+  test('WebSocket upgrades: the live rooms of a locked workspace\'s doc and map answer 423 (#655 integrated review P3)', async () => {
+    assert.equal(await upgrade(ada, `/api/v1/editing?kind=wiki&id=${objects.docId}`), 423, 'live Wiki room');
+    assert.equal(await upgrade(ada, `/api/v1/editing?kind=map&id=${objects.sketchId}`), 423, 'live map room');
+    // The event stream and the typing channel name no object of a workspace when they open (their frames are
+    // content-free for an encrypted workspace); live media (/media/*) is not configured on the test server.
+  });
+
   test('answers 423 or is a listed metadata route or a cross-workspace read; never 500, a canary or an envelope', async () => {
     const listing = await fetch(new URL('/api/v1/test/routes', ada.browser.base), { headers: { authorization: `Bearer ${process.env.FLUX_FIXTURE_TOKEN}` } });
     assert.equal(listing.status, 200);

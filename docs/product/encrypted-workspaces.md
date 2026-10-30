@@ -979,37 +979,84 @@ an **encrypted index at rest, decrypted into RAM**:
   `search_changes (seq bigserial)` on insert, update and delete. The content stays only in the
   source tables, sealed. Person rows (account names) keep the SQL path.
 - **In RAM.** Each API process keeps a `SealedSearchIndex` per unlocked workspace
-  (`apps/server/src/search/sealed-index.ts`), partitioned by `audience_key`. It is built on the first
-  search after unlock, or eagerly by the process that unlocked. It reads the placeholder rows and
+  (`packages/db/src/sealed-search.ts`, used by the server's search adapter and by the chooser), partitioned by `audience_key`. It is built
+  on the first search after unlock. It reads the placeholder rows and
   each kind's content through a `sealedContent` loader added to `SEARCH_SOURCES`
   (`packages/core/src/search/sources.ts`), which opens the source columns and composes title and body
   as the triggers do today (a task's body is `#number`, outcome and blocker). Before every search the
-  process applies `search_changes` after its watermark (one indexed query), so a committed edit is
-  searchable at once on every replica. Changes older than 24 hours are pruned by the hourly cleanup
-  job, and an index older than the oldest kept change is rebuilt. The index is never written to disk
-  and is dropped on lock.
+  process applies the `search_changes` it has not seen (one indexed query), so a committed edit is
+  searchable at once on every replica. A change is read by the transaction that wrote it, not by its
+  `seq`: a `bigserial` is assigned at insert, so a lower number can commit after a higher one was read
+  (S2b, migration 0127 adds `search_changes.xid`). The index remembers the first transaction id it has
+  not applied and reads the changes of the transactions below the snapshot's `xmin`, which have all
+  finished, so no change is skipped. Changes older than 24 hours are pruned by the hourly
+  `search-changes.cleanup.v1` job; an index idle for 23 hours is rebuilt instead of caught up. The
+  index is never written to disk. It is dropped on lock (`ProcessKeys.onForget`, which `sealFor` also
+  calls when any process finds the workspace locked, so a lock on another replica drops it at the next
+  search) and when the process drops its keys.
 - **Query.** It accepts the same grammar and the same refusals (`QUERY_NEEDS_WORD`,
-  `QUERY_UNSUPPORTED`), `simple`-style lowercasing without stemming, a prefix match on the last word,
-  title trigram similarity with pg_trgm's default threshold of 0.3, and websearch quotes, `or` and
-  `-word`.
+  `QUERY_UNSUPPORTED`, checked before either source), `simple`-style lowercasing without stemming, a prefix match on the last word,
+  title similarity, and websearch quotes (adjacent words), `or` and `-word`. The title match is the
+  operator the SQL path uses (`title %> query`, `word_similarity` at `pg_trgm.word_similarity_threshold`, 0.6; the earlier
+  text said 0.3, which is the threshold of the other operator). It is the best share of the query's trigrams in a continuous
+  extent of the title's trigrams, found through a trigram posting list so only titles that share enough trigrams are compared.
+  A task reverted at creation (#238) and a task agent thread's messages are not findable, as in SQL.
 - **Access before ranking.** The visible audience keys come from `policySearchAccess` on every request,
   as today. The in-RAM lookup reads only the partitions of those keys, so hidden rows never become
   candidates. The `EXPLAIN (BUFFERS)` saturation property applies to the SQL part. For the in-RAM part
   the test asserts that the work counter (postings read) does not change with hidden matches.
-- **Merge.** Plain and sealed results are merged by `(score, at, doc_key)`. The in-RAM score
-  approximates `ts_rank` (title weight 1.0, body 0.4) plus title similarity, so ordering between the
-  two sources is approximate. The sealed cursor carries the last merged key, and both sources resume
-  after it. Counts add up, and each is capped at 500.
-- **Bound.** `FLUX_SEALED_SEARCH_MAX_BYTES`, by default 256 MiB of decrypted text per workspace per
-  process. A larger workspace answers with `sealedUnavailable: [workspaceId]`, and the page says
-  "Search isn't available in Garden club: it is too large to search in memory."
+- **Merge.** Plain and sealed results are merged by `(score, at, id)`, where `id` is the placeholder row's
+  `search_documents.id`, so the one sealed cursor (already the position of the last visible result) serves both
+  sources: each applies it, returns its best `limit + 1` rows, and the use case merges them. The in-RAM score
+  approximates `ts_rank` (title weight 1.0, body 0.4) plus half the title similarity, so ordering between the
+  two sources is approximate (the sets of results are the same). Counts add up, and each source counts at most 500.
+  Highlighting marks the title whole and a long body as a window around the first match (`ts_headline`'s shape).
+- **Bound.** The index is bounded by its **estimated heap**, not by the text: each distinct term of a document costs a map entry, a
+  string and an array, so the heap measured 16 to 112 times the text on the test corpora (many short titles are the worst case).
+  `docHeapCost` and the per-posting and per-term costs in `sealed-search.ts` come from measurements after a full GC, rounded up, and
+  `tests/app/sealed-search-heap.test.ts` fails when the estimate falls below the measured heap or exceeds 2.5 times it. Two bounds:
+  `FLUX_SEALED_SEARCH_MAX_BYTES` per workspace (default 256 MiB estimated heap) and `FLUX_SEALED_SEARCH_PROCESS_MAX_BYTES` across every
+  workspace of the API process. The process default is a quarter of the container's memory limit (cgroup `memory.max`, which is
+  `FLUX_API_MEMORY`, 2g by default), at most 512 MiB and at least 64 MiB, and 512 MiB when there is no limit; the workspace default is
+  256 MiB or the process bound if that is smaller. An out-of-memory kill drops every key the process holds and locks all its encrypted
+  workspaces, which is why the total is bounded and not only each workspace. A build or catch-up that grows past either stops at once and the workspace answers with
+  `sealedUnavailable: [workspaceId]` (S3 draws "Search isn't available in Garden club: it is too large to search in memory"); a chooser
+  search there finds nothing and says `searchUnavailable: true`. A workspace over its own bound is retried after 10 minutes; one that
+  only lacked room in the process after 1 minute. Before a build, indexes nobody searched for 5 minutes (`FLUX_SEALED_SEARCH_IDLE_MS`) are evicted (oldest first) to
+  make room; an evicted workspace rebuilds at its next search. Stale postings of replaced documents count until their partition is
+  rebuilt (once they pass 64 KiB and outweigh the live ones). A build yields to the event loop between chunks of 500 documents. A row
+  that does not decrypt (tampering, a restored backup of another key) fails the search with a generic error, and that failure is
+  remembered for 15 seconds so a single bad row does not cost a decryption pass of the workspace per request; a Lock or an unlock clears it.
+- **Freshness and replicas.** A change is searchable once every transaction that started before it has finished: the catch-up reads the
+  transactions below the snapshot's `xmin`, so one long open write transaction in the database delays what newer commits changed (nothing
+  is lost; it is found at the next search after that transaction ends). Another API replica learns of a Lock the first time it handles a
+  request or frame for that workspace (every operation checks the unlock rows, and `sealFor` drops the keys, the index and the rooms
+  there); until then it keeps the plaintext index in its memory, as it keeps the cached keys (S1).
+- **The chooser.** A chooser search with text (a task, decision or result of one project) uses the same index for its case-insensitive
+  title filter. It replaces the S2a-2a scan of the newest 2000 objects and its `searchLimited` marker, and its test switch.
+- **Test support.** The explain route of a test deployment adds `sealed: { postings, terms, documents }` (what the index read), the
+  workspaces with an index in the process with the estimated heap of each, and the number of full builds, so the tests prove that matches
+  a reader cannot see change neither the answer nor the postings read, that the bounds hold, and that a bad row does not rebuild per search.
 
 ### Live Wiki and maps
 
 Rooms run in the API as today (`apps/server/src/editing`). Every persisted update, ledger, head,
-archive, snapshot state, receipt and map journal change is sealed by the controller's repository
-call (`packages/db/src/repositories/doc-live.ts`, `live-editing.ts`, `live-map.ts`) inside the same
-transaction, which reads the unlock rows `FOR SHARE`. The two-API arrangement
+archive, snapshot hash, receipt and map journal change is sealed by the repositories
+(`packages/db/src/repositories/doc-live.ts`, `live-editing.ts`, `live-map.ts`, S2b) inside the same
+transaction, which reads the unlock rows `FOR SHARE`: `doc_live_heads` and `doc_live_archives` (body, codec state, hash),
+`doc_live_updates` (the update bytes, the ledger, the fingerprint), `doc_live_snapshots` (hash), `live_editing_intents` (receipt,
+fingerprint; the map's native results too) and `map_live_journal` (change, fingerprint). A catch-up rebuilds a room from the sealed
+snapshot and log; the decoded rooms of a process are a cache and are cleared when it drops keys. The database size limits of the
+journal and the codec state (8 MiB) see the envelope, which is about a third larger than the value, and the undo preparation
+measures a sealed journal opened (`journalCharge`) because the SQL walk cannot see into an envelope. Presence (cursors, selections, slots)
+stays visible in its 5 to 30 second lease and carries no text.
+
+**Locking closes the rooms.** Every live connection records its workspace when it is admitted. When a process drops a workspace's keys
+(a lock anywhere, a keyring restart, unsafe swap) its gate closes that workspace's live connections with close code `4423` and clears
+the decoded rooms; a new upgrade or live route while locked answers `423`. Another replica's connections close at the next frame or
+change it handles, because every operation checks the unlock rows. The ordinary routes (save, undo, native map commands) seal as the
+rest of the repositories do. The "hide empty maps" test compares the opened default title in the application for an encrypted workspace
+(the maps without a thought are opened and the empty ones excluded before the page and the total). The two-API arrangement
 ([live-editing-two-api](../development/live-editing-two-api.md)) works because each API gets the DEK
 through the keyring. The `synchronous_commit = off` transient writes carry no sealed values except
 presence, which stays visible.
@@ -1202,7 +1249,7 @@ route.
 | AC-3 | S1 | **Restart is locked.** Unlock A and write. `docker compose restart` of the whole stack makes A's content routes answer `423` and `encryption.state = 'locked'`, and unlock works again. Restarting only `api` keeps A unlocked. Restarting only `keyring` locks A within 5 s, with one `workspace.locked.v1 { reason: 'restart' }`. | `app/tests/app/encryption-restart.check.ts`, called by `check_application.sh` |
 | AC-4 | S1 | **Multiple processes.** Two API containers, the worker and the keyring (pattern of the [two-API fixture](../development/live-editing-two-api.md)). Unlock on API-1, then read on API-2 at once. Lock on API-2, then API-1's next write gives `423`. The test stack runs PostgreSQL with `log_statement = all` and `log_parameter_max_length = -1`, and the **whole PostgreSQL log** of the run is scanned for the DEK, the subkeys, the KEK, the passwords and the recovery code (hex, base64, base64url, and the texts as typed). S1 needs no key hook: the test derives the KEKs, holder private keys, DEKs and subkeys from the passwords, the code and the stored rows, as the API does. The boot key never leaves the keyring process. There must be zero hits; the API, worker and keyring logs are scanned too (`scripts/check_encryption.sh`). | `tests/app/live/encryption-two-api.test.ts`, `docker/compose.encryption.test.yaml` |
 | AC-5 | S2a | Registry, read from the **live catalog** after all migrations: every table is in `TABLE_CLASSES`, and every text or jsonb column of a content table is in `SEALED_COLUMNS` or `VISIBLE_COLUMNS` (default-deny; `draft_versions` and `search_documents` included). Each sealed table has its backstop trigger. `pg_trigger` and `pg_proc` show no SQL copy of a sealed column except the allowed pair, and `preserve_draft_version` writes nothing for A. An insert of plaintext into each sealed column of A is refused, while B is unchanged. The notification backstop refuses a body or a title outside the templates; the events backstop refuses a free-text string. Every command declares a resolvable scope or an `'account'` operation in the list; the `idempotency_keys` backstop refuses an unscoped row and an unsealed row of A. The SQL source scan finds no unhandled computation over a sealed column. | `tests/app/encryption-registry.test.ts` |
-| AC-6 | S2a | Locked routes: every registered route gives `423` for A's objects or is in `LOCKED_ALLOWED_ROUTES`, with no `500` and no content. Cross-workspace lists return B's items plus `lockedWorkspaces: [A]`. Until S2b, live Wiki, live map and search requests for A answer `409 WORKSPACE_ENCRYPTED_UNSUPPORTED` and write nothing to the live tables. | `tests/app/encryption-locked-routes.test.ts` |
+| AC-6 | S2a | Locked routes: every registered route gives `423` for A's objects or is in `LOCKED_ALLOWED_ROUTES`, with no `500` and no content. Cross-workspace lists return B's items plus `lockedWorkspaces: [A]`. Live Wiki, live map (routes and room upgrades, `423`) and search requests for A answer `423` or leave A out of the answer while it is locked, and write nothing. | `tests/app/encryption-locked-routes.test.ts` |
 | AC-7 | S2a, S2b | **A stolen dump contains no plaintext and no key.** **Writes:** random canaries go into every content type of A through the real API and live sockets, and **every mutating request carries an Idempotency-Key**: project name, message, task discussion reply, DM and group title, task title, outcome, blocker and criteria, a task title change, a doc `PATCH` and an added section, a decision accepted, result, goal, draft and a draft edit (so `draft_versions` gets a row), map title, thought text and link label (live map), Wiki text typed live and saved, material URL, file name and file bytes, a mention notification, a search for a canary, the unlock passwords and the recovery code. **Large canaries:** for each text kind, one value over 8 KiB of repetitive text, so PostgreSQL TOASTs and pglz-compresses it. **Error paths:** a canary in a request that fails validation, one that hits a constraint violation, one that causes an injected 500 (`FLUX_TEST_FAILURE_INJECTION`), a notification generation that fails, an e-mail send that fails (Mailpit refusing), a failing pg-boss job, and a write raced by Lock now mid-request. **Keys:** a fixture-only hook (`FLUX_FIXTURE_TOKEN` and `FLUX_TEST_FAILURE_INJECTION` both set) returns the DEK, `K_seal`, `K_file`, one KEK and the boot key, which become canaries too. **Scan:** the test then **stops the whole stack** and scans `pg_dump` output (the pg-boss schema included; it decompresses TOAST), the raw PostgreSQL volume including `pg_wal`, the files volume, the writable layer of every container (`docker diff` lists the changed paths and `docker export` provides them), every container's log, and the whole PostgreSQL log. Each canary is searched raw, in JSON-escaped form, in hex and in base64 (standard and URL alphabets, at all three offsets; Yjs update bytes are stored as base64 text). **Positive control:** the same canaries in B, including a large compressed one, must be found in the dump. In the raw volume only the uncompressed ones are expected; that is why the dump is scanned too. A must give zero hits, and every AI-class table must have zero rows for A. **PostgreSQL logs, two passes.** Pass 1 runs the whole journey with the production logging settings (`log_statement = none`, the default) and scans the whole PostgreSQL log for **every** canary. Pass 2 repeats it with `log_statement = all` and scans for every canary **except query text**: the search query and the task filter text are sent to PostgreSQL as bind parameters for the plain workspaces' half of a merged search, and PostgreSQL 13 and later log bind parameters in full under `log_statement` (`log_parameter_max_length` defaults to -1). They are transient there and are never written under the default setting. **Digests:** every scan also looks for the SHA-256 hex of each canary and of each request body sent, which would reveal an unkeyed digest. **Per slice:** S2a covers every canary except live Wiki and map typing and search; S2b adds those. Each PR states the canaries it covers, and the S3 PR names the S2 head SHA on which the full AC-7 passed. | `app/tests/app/encryption-dump-scan.check.ts`, `scripts/check_encryption_scan.sh` |
 | AC-8 | S2b | Features in A match B: messages, DMs, tasks and filters, decisions, results, docs and versions, drafts, maps, live Wiki and maps across two APIs, files (upload, download, tampered object refused), export bundle content and digests, and notifications content-free on push (mock) and e-mail (Mailpit). Search covers every kind, labels, typo tolerance, prefix, web syntax, access before ranking (no candidates from hidden audiences; a work counter that does not grow with hidden matches), an edit searchable at once on the other API, merged paging with B, and rebuild after lock and unlock. | `tests/app/encryption-features.test.ts`, `encryption-search.test.ts` |
 | AC-9 | S2a | Locked jobs wait: a message posted, then Lock before the generator runs, gives no notification; after unlock, exactly one. A draft summary is deferred and resumed. Push and e-mail of earlier rows still go out with no content. | `tests/app/encryption-worker.test.ts` |
@@ -1269,8 +1316,8 @@ token alone is not enough (S1 review): a real deployment never holds a half-seal
     thoughts, link labels), opened in every reader including Since-you-left; live Wiki and live maps answer
     `409 WORKSPACE_ENCRYPTED_UNSUPPORTED` for a sealed workspace's objects on every live route and room upgrade until
     S2b; `search_change_log` pinned like the other sealing functions; and a sealed chooser search that reached
-    `SEALED_CHOOSER_SCAN_LIMIT` says so (`searchLimited: true` on the work view). Known gap until S2b: the map list's
-    "hide empty maps" test compares the stored title with the default in SQL, so an empty sealed map is listed.
+    `SEALED_CHOOSER_SCAN_LIMIT` says so (`searchLimited: true` on the work view; S2b replaced both with the index).
+    The map list's "hide empty maps" test compared the stored title with the default in SQL until S2b.
   - **S2a-2b-2**: file names and SHA-256 (a sealed digest) sealed in `project_files`, with `key_version` set at the
     reservation (S2c: the rotation can start between the reservation and the header written at receive, so S2c sets
     `key_version` at commit from the object's header instead); file
@@ -1314,8 +1361,8 @@ token alone is not enough (S1 review): a real deployment never holds a half-seal
     registers (a test-deployment listing with each route's body and query schema), fills its parameters, body and
     query with a locked space's objects, and expects `423`, a metadata route of `LOCKED_ALLOWED_ROUTES` (now also the
     content-free Inbox rows, Needs you keys and the always-empty agent list), a cross-workspace read naming the space,
-    or a refusal of a feature the space does not offer (`WORKSPACE_AI_BLOCKED`, `WORKSPACE_ENCRYPTED_UNSUPPORTED`,
-    `GITHUB_UNAVAILABLE`); a request refused as invalid input before any read is counted. Never a `500`, a canary or
+    or a refusal of a feature the space does not offer (`WORKSPACE_AI_BLOCKED`, `GITHUB_UNAVAILABLE`); a request
+    refused as invalid input before any read is counted. The live Wiki and map room upgrades answer `423` too. Never a `500`, a canary or
     an envelope. AC-10 is case 3 of `scripts/check_backup.sh` (`FLUX_BACKUP_CASES=encryption` runs it alone). The rest
     of AC-7 for S2a's canaries is `scripts/check_encryption_scan.sh`: `pg_dump` (pg-boss included), the raw
     PostgreSQL volume with `pg_wal` and the files volume after the stack stops, every container's writable layer and
@@ -1329,8 +1376,9 @@ token alone is not enough (S1 review): a real deployment never holds a half-seal
   `sealed_job_waits` and the resume job, log redaction, `./flux export` refusal and restore
   truncation. Live editing and search answer `409 WORKSPACE_ENCRYPTED_UNSUPPORTED` for a sealed
   workspace until S2b. AC-5, AC-6, AC-9, AC-10 and AC-7 for its canaries. Fixture-only.
-- **S2b: live editing and search.** Sealed live Wiki and map persistence, the in-RAM search index and
-  merge, AC-8 and the rest of AC-7. Fixture-only.
+- **S2b: live editing and search** (migration 0127; 0124 to 0126 are other slices'). Sealed live Wiki and map persistence (the 409 refusal
+  is gone; rooms close on lock), the in-RAM search index with its merge, the chooser's use of it, the "hide empty maps" filter in the
+  application, the `search_changes` prune job, the live and search parts of AC-7 and AC-8. Fixture-only.
 - **S2c: key rotation** ([design](#rotation)). The start inside every owner/admin removal, demotion,
   leaving and account deletion; the rotate job with progress, compare-and-set, the files step, crash
   and lock resume, and the finish with `VACUUM`; the recovery code invalidation; the `rotation` wire

@@ -146,7 +146,7 @@ export function createBoundedWorkReads(unit: WorkReadUnitOfWork, finalFence: Wor
           requireFact(selected.kind === 'work' && selected.id === selectedId);
           rowFacts([selected], projectId, workspaceId);
         }
-        return { ...page, summary, selected, ...(slice.searchLimited ? { searchLimited: true as const } : {}) };
+        return { ...page, summary, selected, ...(slice.searchUnavailable ? { searchUnavailable: true as const } : {}) };
       }, input.selection.purpose !== 'choices' ? undefined : input.selection.choice === 'parked_work'
         ? { parkedDecisionId: input.selection.decisionId } : input.selection.choice === 'result_work' && input.selection.selected
           ? { objects: [{ kind: 'work', id: input.selection.selected }] } : undefined);
