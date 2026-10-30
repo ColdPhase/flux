@@ -105,6 +105,14 @@ export async function buildApp(config: ServerConfig, migrationsDir = 'packages/d
   // F-030 (#655): this process's keys of encrypted workspaces, refreshed by the keyring heartbeat; and the lock gate,
   // registered before any route so every later route gets it.
   const testDeployment = config.fixture.token !== null && config.fixture.failureInjection;
+  // AC-7 error paths, test deployment only: `x-flux-test-fail: 500` fails the request after its handler ran, with an
+  // error whose message and detail quote the request body, so the test proves such text is never answered or logged.
+  if (testDeployment) app.addHook('preSerialization', async (request, _reply, payload) => {
+    if (request.headers['x-flux-test-fail'] !== '500' || (request as { injected?: boolean }).injected) return payload;
+    (request as { injected?: boolean }).injected = true;
+    const quoted = JSON.stringify(request.body ?? null);
+    throw Object.assign(new Error(`Injected failure after ${quoted}`), { detail: quoted });
+  });
   const encryptionKeys = processKeysFromEnv(env);
   installSeals(encryptionKeys);
   useJsonCompression(app);
