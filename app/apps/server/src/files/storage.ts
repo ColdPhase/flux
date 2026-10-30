@@ -93,6 +93,9 @@ export async function diskFileStorage(filesDir: string, options: { cipherFor?: O
       const file = await open(scratch, constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW, 0o600);
       const hash = createHash('sha256');
       let size = 0;
+      // F-030 S2c: the key version in the sealed object's header (bytes 4–8 of its first output).
+      let keyVersion: number | null = null;
+      const sealed = (chunk: Buffer) => { if (keyVersion === null && chunk.length >= 8) keyVersion = chunk.readUInt32BE(4); return chunk; };
       try {
         while (true) {
           const remaining = limits.deadline - Date.now();
@@ -105,9 +108,9 @@ export async function diskFileStorage(filesDir: string, options: { cipherFor?: O
           size += item.value.byteLength;
           if (size > limits.maxBytes) throw new FileTooLargeError();
           hash.update(item.value);
-          await writeAll(file, sealer ? sealer.update(item.value) : item.value);
+          await writeAll(file, sealer ? sealed(sealer.update(item.value)) : item.value);
         }
-        if (sealer) await writeAll(file, sealer.final());
+        if (sealer) await writeAll(file, sealed(sealer.final()));
         await file.sync();
       } catch (error) {
         void iterator.return?.().catch(() => undefined);
@@ -115,7 +118,7 @@ export async function diskFileStorage(filesDir: string, options: { cipherFor?: O
         throw error;
       }
       await file.close();
-      return { size, sha256: hash.digest('hex'),
+      return { size, sha256: hash.digest('hex'), keyVersion,
         async commit(id) {
           const destination = await objectPath(id, true);
           // Server random UUIDs are never reused; refuse a pre-existing object, including a symlink.

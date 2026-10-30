@@ -42,6 +42,7 @@ export FLUX_AUTH_RATE_LIMIT=false
 export FLUX_STREAM_HEARTBEAT_MS=1000
 # F-030 (#655): the keyring of encrypted workspaces, one random token per run.
 export FLUX_KEYRING_TOKEN="$(head -c 32 /dev/urandom | base64 | tr '+/' '-_' | tr -d '=\n')"
+export FLUX_KEY_PIN_SECRET="$(head -c 32 /dev/urandom | base64 | tr '+/' '-_' | tr -d '=\n')"
 . scripts/test_images.sh
 compose="docker compose -p $project -f docker/compose.source.yaml -f docker/compose.test.yaml --profile test"
 

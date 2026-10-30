@@ -106,7 +106,7 @@ export function holderPublicKey(privateKey: KeyObject) { return publicKeyText(cr
 
 // --- Authenticating holders and wraps (F-030): none of these needs anything a database writer has.
 
-const AUTH = { holder: 'flux holder-auth v2', confirm: 'flux confirm v1', commit: 'flux commit v1', secret: 'flux secret-check v1' } as const;
+const AUTH = { holder: 'flux holder-auth v3', confirm: 'flux confirm v1', commit: 'flux commit v1', secret: 'flux secret-check v1' } as const;
 
 function hmac(key: KeyObject, parts: readonly (string | number)[]): string {
   return createHmac('sha256', key).update(encodeContext(parts)).digest('base64url');
@@ -136,6 +136,16 @@ export interface HolderIdentity {
   kdf: unknown;
   wrappedPrivate: string;
   secretCheck: string;
+  /**
+   * `confirmed_versions`: the key versions this holder has a confirmation for (S2a-1 review, before S2c). Covered, so a
+   * deleted `confirm` of a listed live version is tampering instead of a fall-back to the commitment chain.
+   */
+  confirmedVersions: readonly number[];
+}
+
+/** Sorted, distinct, positive versions (the canonical form the MAC covers). */
+export function canonicalVersions(versions: readonly number[]): number[] {
+  return [...new Set(versions)].filter((v) => Number.isSafeInteger(v) && v >= 1).sort((a, b) => a - b);
 }
 
 /** The KDF parameters in a fixed key order, so the MAC does not depend on how jsonb reorders the stored object. */
@@ -145,14 +155,15 @@ function canonicalKdf(kdf: unknown): string {
 }
 
 /**
- * `holder_mac`: HMAC under HKDF(DEK v, [flux holder-auth v2, workspace, v]) over [holder id, kind, user or "", public key,
- * kdf, wrapped private key, secret check] (S1 review: a changed `kdf`, `wrapped_private` or `secret_check` is tampering
- * too, not only a changed public key). `confirm` is not covered: it is itself a MAC under the holder's KEK, written after
- * this one, and unlock already refuses a changed one.
+ * `holder_mac`: HMAC under HKDF(DEK v, [flux holder-auth v3, workspace, v]) over [holder id, kind, user or "", public key,
+ * kdf, wrapped private key, secret check, confirmed versions] (S1 review: a changed `kdf`, `wrapped_private` or
+ * `secret_check` is tampering too; S2a-1 review: so is a deleted confirmation). `confirm` itself is not covered: it is a
+ * MAC under the holder's KEK, and unlock refuses a changed one.
  */
 export function holderMac(dek: Buffer, version: number, holder: HolderIdentity): string {
   const key = hkdfKey(dek, Buffer.alloc(0), encodeContext([AUTH.holder, holder.workspaceId, version]));
-  return hmac(key, [holder.holderId, holder.kind, holder.userId ?? '', holder.publicKey, canonicalKdf(holder.kdf), holder.wrappedPrivate, holder.secretCheck]);
+  return hmac(key, [holder.holderId, holder.kind, holder.userId ?? '', holder.publicKey, canonicalKdf(holder.kdf), holder.wrappedPrivate, holder.secretCheck,
+    canonicalVersions(holder.confirmedVersions).join(',')]);
 }
 export const holderMacValid = (dek: Buffer, version: number, holder: HolderIdentity, mac: unknown) => sameMac(mac, holderMac(dek, version, holder));
 

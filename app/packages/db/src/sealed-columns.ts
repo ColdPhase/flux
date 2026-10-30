@@ -40,7 +40,7 @@ const account = [
 const system = [
   'flux_schema_version', 'outbox', 'file_garbage', 'notification_cursor', 'password_attempts', 'samples', 'sample_results', 'live_access_fences',
   'live_webhook_events', 'sealed_job_waits', 'workspace_keys', 'workspace_holders', 'workspace_dek_wraps', 'workspace_key_versions',
-  'workspace_unlocks', 'workspace_removed_holders', 'workspace_rotation_progress', 'workspace_wrap_grants', 'idempotency_account_operations',
+  'workspace_unlocks', 'workspace_removed_holders', 'workspace_removals', 'workspace_rotation_progress', 'workspace_wrap_grants', 'idempotency_account_operations',
   'event_data_tokens', 'event_data_keys',
 ] as const;
 const refused = [
