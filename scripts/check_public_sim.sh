@@ -8,7 +8,7 @@
 # FLUX_SIM_RUNS: space-separated runs of BROWSER_A:BROWSER_B:PHASES; A is behind the restrictive router, B behind
 # the open one, and BROWSER@turn-udp also lets TURN/UDP out of router A. The default runs every Chromium case, then
 # WebKit and Firefox on the open network and relayed over TURN/UDP (Playwright's WebKit and Firefox cannot be made to
-# trust the simulation's CA for TURN/TLS; see docs/development/live-media.md). Phases: connect, drop, loss,
+# trust the simulation's CA for TURN/TLS; see docs/development/live-media.md). Phases: connect, drop, loss, weak,
 # sfu-restart, api-restart, access. FLUX_SIM_ARTIFACT_DIR keeps the results (default: under FLUX_SIM_WORK_DIR or
 # TMPDIR). FLUX_SIM_HOLD=1 keeps the stack up before the runs. Heavy and local: one simulation at a time (its
 # subnets are fixed).
@@ -39,7 +39,7 @@ export FLUX_LIVEKIT_TURN_DOMAIN=turn.sim.test
 export FLUX_LIVEKIT_MEDIA_CIDR=203.0.113.20/32
 export FLUX_LIVEKIT_TURN_CERT_DIR="$work/certs/turn"
 export FLUX_VAPID_PUBLIC_KEY='' FLUX_VAPID_PRIVATE_KEY='' FLUX_VAPID_SUBJECT=''
-runs=${FLUX_SIM_RUNS:-"chromium:chromium:connect,drop,loss,access chromium:chromium:connect,sfu-restart chromium:chromium:connect,api-restart chromium:webkit:connect,drop,access chromium:firefox:connect,drop,access webkit@turn-udp:chromium:connect,drop firefox@turn-udp:chromium:connect,drop"}
+runs=${FLUX_SIM_RUNS:-"chromium:chromium:connect,drop,loss,weak,access chromium:chromium:connect,sfu-restart chromium:chromium:connect,api-restart chromium:webkit:connect,drop,access chromium:firefox:connect,drop,access webkit@turn-udp:chromium:connect,drop firefox@turn-udp:chromium:connect,drop"}
 printf 'Public simulation %s, results in %s\n' "$project" "$artifacts"
 
 compose="docker compose -p $project -f docker/compose.source.yaml -f docker/compose.live.yaml -f docker/compose.live.turn.yaml -f docker/public-sim/compose.yaml"

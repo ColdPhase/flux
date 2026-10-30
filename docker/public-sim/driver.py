@@ -3,7 +3,7 @@ Playwright server only through that client's NAT router, and drives the real Flu
 https://flux.sim.test. Impairments and restarts are asked of scripts/check_public_sim.sh through /ctl.
 
 Environment: FLUX_SIM_BROWSER_A (behind the restrictive router), FLUX_SIM_BROWSER_B (behind the open router),
-FLUX_SIM_PHASES (comma list of connect, drop, loss, sfu-restart, api-restart, access; or "all").
+FLUX_SIM_PHASES (comma list of connect, drop, loss, weak, sfu-restart, api-restart, access; or "all").
 Prints one JSON line per measurement prefixed "SIM " and writes /ctl/result-<run>.json.
 """
 from __future__ import annotations
@@ -19,7 +19,7 @@ from playwright.sync_api import Page, expect, sync_playwright
 ORIGIN = "https://flux.sim.test"
 RUN = f"{os.environ['FLUX_SIM_BROWSER_A']}-{os.environ['FLUX_SIM_BROWSER_B']}-{int(time.time())}"
 PHASES = os.environ.get("FLUX_SIM_PHASES", "all")
-PHASES = {"connect", "drop", "loss", "sfu-restart", "api-restart", "access"} if PHASES == "all" else set(PHASES.split(","))
+PHASES = {"connect", "drop", "loss", "weak", "sfu-restart", "api-restart", "access"} if PHASES == "all" else set(PHASES.split(","))
 PASSWORD = "simulated public host calm"
 RESULT: dict = {"run": RUN, "phases": {}}
 DOC = "Relay test notes"
@@ -257,6 +257,35 @@ def live_status(page: Page) -> str:
         return ""
 
 
+def window(page: Page, seconds: float) -> dict:
+    """Received audio/video over an interval: bitrate, packets lost, frames decoded, size, and what Ada sends."""
+    def sample():
+        audio = {"bytes": 0, "packets": 0, "lost": 0}
+        video = {"bytes": 0, "packets": 0, "lost": 0, "frames": 0, "width": 0, "height": 0}
+        sent = 0
+        for item in stats(page):
+            if item.get("closed"):
+                continue
+            for key in audio:
+                audio[key] += item["inbound"]["audio"][key]
+            for key in ("bytes", "packets", "lost", "frames"):
+                video[key] += item["inbound"]["video"][key]
+            video["width"] = max(video["width"], item["inbound"]["video"]["width"])
+            video["height"] = max(video["height"], item["inbound"]["video"]["height"])
+            sent += item["outboundBytes"]
+        return audio, video, sent
+    a0, v0, s0 = sample()
+    start = time.time()
+    time.sleep(seconds)
+    a1, v1, s1 = sample()
+    span = time.time() - start
+    return {"seconds": round(span, 1), "audioKbps": round(8 * (a1["bytes"] - a0["bytes"]) / span / 1000, 1),
+            "audioLostPct": round(100 * (a1["lost"] - a0["lost"]) / max(1, a1["packets"] - a0["packets"] + a1["lost"] - a0["lost"]), 2),
+            "videoKbps": round(8 * (v1["bytes"] - v0["bytes"]) / span / 1000, 1), "videoFps": round((v1["frames"] - v0["frames"]) / span, 1),
+            "videoLostPct": round(100 * (v1["lost"] - v0["lost"]) / max(1, v1["packets"] - v0["packets"] + v1["lost"] - v0["lost"]), 2),
+            "videoSize": f"{v1['width']}x{v1['height']}", "sentKbps": round(8 * (s1 - s0) / span / 1000, 1)}
+
+
 def recover(name: str, page: Page, other: Page, timeout: float = 20) -> dict:
     """How a call comes back after an interruption, as a person sees it.
 
@@ -416,6 +445,22 @@ def _phases(ada: Page, jonas: Page, lee: Page, ids: dict, pid: str, sid: str, to
                    "stillFlowingAfterS": flowing_since(page, 10), "bar": bar_text(page)}
         log("loss", **outcome)
         result["phases"][f"loss-{side}"] = outcome
+
+    if "weak" in PHASES:
+        # One weak receiver: Jonas's link (router B) at 400 kbit/s with 3 % loss and 60 ms delay, both ways, while Ada
+        # sends camera and microphone. What Jonas receives degrades; what Ada sends and receives must not.
+        weak: dict = {"profile": "router B: rate 400kbit, delay 60ms, loss 3%, both ways, 25 s"}
+        weak["baselineJonas"], weak["baselineAda"] = window(jonas, 8), window(ada, 4)
+        ctl("netem b rate 400kbit delay 60ms loss 3%")
+        time.sleep(10)
+        weak["weakJonas"], weak["weakAda"] = window(jonas, 8), window(ada, 6)
+        weak["barJonas"] = bar_text(jonas)
+        ctl("netem b off")
+        time.sleep(8)
+        weak["afterJonas"] = window(jonas, 6)
+        log("weak", **weak)
+        result["phases"]["weak"] = weak
+        assert weak["weakAda"]["audioKbps"] > 0 and weak["afterJonas"]["videoKbps"] > 0, weak
 
     if "sfu-restart" in PHASES:
         ctl("restart livekit", timeout=180)

@@ -436,7 +436,7 @@ through it from browsers that can reach only the public side. Files: [`docker/pu
 | --- | --- | --- |
 | The Internet | Docker network `203.0.113.0/24` (TEST-NET-3), `internal`: no route to the host or the real Internet | A public network between people and the server |
 | DNS | dnsmasq at `203.0.113.53`, the only resolver of every client and of the driver: `flux.sim.test` → `203.0.113.10`, `turn.sim.test` → `203.0.113.20`, nothing else | The operator's A records |
-| TLS | One local CA signs `flux.sim.test` and `turn.sim.test`. Clients install only the CA certificate: Chromium's NSS database and the system store (WebKit, Node) | A publicly trusted certificate (**not** ACME: no issuance is tested) |
+| TLS | One local CA signs `flux.sim.test` and `turn.sim.test`. Clients install only the CA certificate: Chromium's NSS database and the system store (WebKit pages, Node). Playwright's Firefox cannot be given it, so Firefox pages ignore certificate errors (a deviation) | A publicly trusted certificate (**not** ACME: no issuance is tested) |
 | Flux origin | Caddy 2.11.7 at `203.0.113.10:443`, the [documented whole-origin proxy](../operations/reverse-proxy.md#public-hostname-and-streaming), `FLUX_PUBLIC_ORIGIN=https://flux.sim.test`, `FLUX_TRUSTED_PROXIES` set to the proxy's one address | The operator's reverse proxy |
 | Media | The operator layers unchanged: `compose.source.yaml`, `compose.live.yaml`, `compose.live.turn.yaml`. LiveKit holds `203.0.113.20` itself (`node_ip`), with TURN/TLS on TCP/443, TURN/UDP on 3478 and ICE on 7881/7882; no host ports are published | A media host with its own public address, as the TURN overlay requires. A Docker port-forwarded SFU is **not** simulated |
 | Restrictive client network | `10.213.1.0/24` behind router A: NAT (masquerade); only TCP/443 and DNS to the resolver leave | A strict office or hotel network |
@@ -454,27 +454,34 @@ Ada (behind router A) opens a wiki page, chooses **Together** and turns her micr
 router B) chooses **Join** and turns his microphone on. The driver reads `getStats()` from every peer connection the
 page creates. Then, per run: a 15-second cut of every path through router A, `tc netem` delay 40 ± 20 ms with 5 %
 loss both ways at each router for 20 s, a restart of the SFU container, a restart of the API container, and the
-access checks. A person's actions are the app's buttons only; after a reconnect that left a device off, the driver
+one receiver on a slow lossy link (400 kbit/s, 60 ms, 3 % loss), and the access checks. A person's actions are the app's buttons only; after a reconnect that left a device off, the driver
 presses the microphone button again, as the app asks.
 
-### Observed 2026-10-30 (Chromium on both networks)
+### Observed 2026-10-30
 
-Two complete runs of the Chromium rows on this branch, Linux x86_64 host, load average 8 to 12. The figures are from
-the second run; the first agreed within 0.5 s.
+`./scripts/check_public_sim.sh` at `4ca85493e` exited 0: seven runs, all passed. Linux x86_64 host shared with other
+agents' Docker work, load average 15 before and 23 after. Earlier development runs of the Chromium rows agreed within
+0.5 s. Ada is always behind the restrictive router A, Jonas behind the open router B.
 
-| Case | Result |
-| --- | --- |
-| Join through the restrictive network | Audio both ways 2.3 to 2.9 s after **Together**. Ada's selected pair: local `relay`, `relayProtocol=tls`, from `turns:turn.sim.test:443?transport=tcp`, to the SFU's `host` 203.0.113.20:7882 |
-| Join through the open network | Jonas's pair: local `prflx` 203.0.113.102 (his router's public address), direct UDP to 203.0.113.20:7882, no relay |
-| Network drop, 15 s | Ada's bar said "Reconnecting…" during the cut. Media flowed again **1.5 s** after the path came back and both bars said Live after 2.8 s, with no action |
-| 5 % loss, 40 ± 20 ms, over TURN/TLS | 0 RTP packets lost (TCP retransmits on the TLS hop), audio jitter up to 19 ms, selected-pair RTT 254 ms; audio continued |
-| 5 % loss, 40 ± 20 ms, direct UDP | Audio 55 of 1010 packets lost (5.4 %), video 24 of 422, 237 frames decoded in 20 s, jitter 11 ms; audio and video continued |
-| SFU restart | No media flowed by itself. Both bars said Live again after **20.2 s** (the app rejoined a new room) with microphone and camera off, as designed: "Reconnected. Your microphone, camera and screen stay off until you turn them on." Audio flowed 0.5 s after the microphone was turned on again |
-| API restart | Media never stopped (the SFU path does not pass through the API); both bars said "Reconnecting…" and were Live again 2.8 s after the API was healthy |
-| Outsider | Lee, a workspace member without access to the project: the project's live sessions and the join both answered `404 PROJECT_NOT_FOUND` |
-| Access removed during the call | Ada set Jonas's grant to `denied`: his peer connections closed **0.06 to 0.12 s** later; his join and list answered 404 |
-| Issued-token replay | Jonas's join token, captured from the app's own join, at the public gate after removal: `/media/rtc/validate` 401, the WebSocket refused |
-| AI and processors | The session's participants were the two people only; the stack has no egress, ingress or agent service (checked from `docker compose config --services`) |
+| Case | Ada (A) / Jonas (B) | Result |
+| --- | --- | --- |
+| Join through the restrictive network | Chromium / Chromium | Audio both ways 2.9 to 3.0 s after **Together**. Ada's selected pair: local `relay`, `relayProtocol=tls`, from `turns:turn.sim.test:443?transport=tcp`, to the SFU's `host` 203.0.113.20:7882 |
+| Join through the open network | same | Jonas's pair: local `prflx` 203.0.113.102 (his router's public address), direct UDP to 203.0.113.20:7882, no relay |
+| Network drop, 15 s | same | Ada's bar said "Reconnecting…" during the cut. Media flowed again **1.8 s** after the path came back and both bars said Live after 3.1 s, with no action |
+| 5 % loss, 40 ± 20 ms, over TURN/TLS | same | 0 RTP packets lost (TCP retransmits on the TLS hop; the counter even moved back by 6), audio jitter up to 15 ms, selected-pair RTT 293 ms; audio continued |
+| 5 % loss, 40 ± 20 ms, direct UDP | same | Audio 35 of 945 packets lost (3.7 %), video 24 of 473, 374 frames decoded in 20 s, jitter 11 ms, RTT 102 ms; audio and video continued |
+| One weak receiver | Chromium / Chromium, separate run of `connect,weak` at this branch, exit 0 | Jonas's link at 400 kbit/s, 60 ms, 3 % loss both ways while Ada sends camera and microphone. Jonas received audio at 72 kbit/s with 1.7 % loss (74.8 kbit/s, 0 % before) and Ada's camera at 10 fps instead of 20, 3.7 % loss, still 320×180 (the size the app asks for with the camera stage closed); his bar stayed Live. Ada kept sending at 224 kbit/s (222 before). She heard Jonas with 3.3 % loss, his own impaired uplink. Six seconds after the link was restored, Jonas received 154 kbit/s of video with no loss |
+| SFU restart | same | No media flowed by itself. Both bars said Live again after **20.2 s** (the app rejoined a new room) with microphone and camera off, as designed: "Reconnected. Your microphone, camera and screen stay off until you turn them on." Audio flowed 0.5 s after the microphone was turned on again |
+| API restart | same | Media never stopped (the SFU path does not pass through the API); both bars said "Reconnecting…" and were Live again 2.0 s after the API was healthy |
+| Outsider | every run with access | Lee, a workspace member without access to the project: the project's live sessions and the join both answered `404 PROJECT_NOT_FOUND` |
+| Access removed during the call | Chromium, WebKit or Firefox as Jonas | Ada set Jonas's grant to `denied`: his peer connections closed **0.10 to 0.20 s** later; his join and list answered 404 |
+| Issued-token replay | same | Jonas's join token, captured from the app's own join, at the public gate after removal: `/media/rtc/validate` 401, the WebSocket refused |
+| AI and processors | same | The session's participants were the two people only; the stack has no egress, ingress or agent service (checked from `docker compose config --services`) |
+| WebKit 26.5 on the open network | Chromium / WebKit | Joined in 4.5 s, direct UDP (`srflx` 203.0.113.102); after the 15 s drop, media in 2.0 s and Live in 3.1 s |
+| Firefox 153.0 on the open network | Chromium / Firefox | Joined in 3.1 s, direct UDP (`prflx`; Firefox redacts the address); after the drop, media in 1.3 s and Live in 2.6 s |
+| WebKit behind router A with TURN/UDP allowed | WebKit / Chromium | Relayed: local `relay` from `turn:203.0.113.20:3478` (WebKit reports no `relayProtocol`); joined in 3.6 s; after the drop, media in 2.3 s and Live in 3.3 s |
+| Firefox behind router A with TURN/UDP allowed | Firefox / Chromium | Relayed: local `relay`, `relayProtocol=udp`; joined in 4.7 s; after the drop, media in 1.5 s and Live in 2.3 s |
+| WebKit or Firefox behind router A, TURN/TLS only | development run `engines1` | **Not passed, not counted.** Firefox reported ICE error 701 for `turns:turn.sim.test:443` 16 ms after it began; WebKit gathered no relay candidate. Router A counted one TCP connection from each to 203.0.113.20:443. Neither browser can be made to trust the simulation's CA here: Playwright's Firefox ignored `policies.json` (next to its binary and in `/etc/firefox/policies`) and the enterprise-roots preferences, and loaded pages only with certificate errors ignored; WebKit trusts the system store for pages, but its TURN client evidently does not use it. **Inference, not verified:** with a publicly trusted certificate both would relay over TLS as Chromium does |
 
 Not measured here: refreshed tokens (covered by `check_live_sfu.sh`), CPU, memory and egress of the SFU, four people,
 screens, and quality at the receiver beyond the rows above.
@@ -494,8 +501,6 @@ screens, and quality at the receiver beyond the rows above.
    the transports [RFC 7065 §3](https://www.rfc-editor.org/rfc/rfc7065#section-3) gives them by default, before
    they reach `RTCPeerConnection` (`app/apps/web/src/live/ice-servers.ts`). Whether shipping Safari has the same
    check was not verified (no Apple device); the change is correct either way.
-
-ENGINE_ROWS_PLACEHOLDER
 
 ## Pointer reachability and camera state on phone and tablet (#63; 2026-10-10)
 
