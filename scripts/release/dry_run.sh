@@ -21,6 +21,10 @@
 # the index platforms and attestations and runs the Codex/Claude Code checks on every platform. Foreign platforms need
 # QEMU binfmt on the engine (the workflow's pinned emulator, which changes the host kernel's binfmt_misc until reboot):
 #   docker run --privileged --rm docker.io/tonistiigi/binfmt:qemu-v10.2.3@sha256:400a4873b838d1b89194d982c45e5fb3cda4593fbfd7e08a02e76b03b21166f0 --install arm64
+# The per-platform `docker run` checks need an engine with the containerd image store (the classic store keeps one
+# platform per digest) and, on SELinux hosts, a policy that lets containers run the binfmt interpreter (Fedora's denies
+# it: emulated processes die with SIGSEGV unless --security-opt label=disable). scripts/agent-runtime/supported_guest.sh
+# with FLUX_GUEST_BINFMT=arm64 gives such an engine.
 # FLUX_DRYRUN_SMOKE_PLATFORM=linux/arm64 runs the packaged install, backup/restore and upgrade smokes on that platform
 # (DOCKER_DEFAULT_PLATFORM; emulated unless the engine is native). Emulation is not a native platform test.
 # Ports: FLUX_DRYRUN_PORT (default 25800): registry on +9, packaged install on +1, restore on +2, runtime on +3.
@@ -90,16 +94,18 @@ curl -fsS "http://127.0.0.1:$registry_port/v2/" >/dev/null
 platform="linux/$(docker version --format '{{.Server.Arch}}')"
 if [ -n "$platforms" ]; then
   step "Multi-platform builder: $platforms, BuildKit $buildkit_image"
-  for p in ${platforms//,/ }; do
-    arch=$(docker run --rm --platform "$p" --network none --entrypoint uname "$syft_image" -m 2>/dev/null ||
-           docker run --rm --platform "$p" --network none alpine:3.21 uname -m 2>/dev/null) ||
-      fail "the engine cannot run $p (install QEMU binfmt, see the header of this script)"
-    echo "$p runs here as $arch"
-  done
   printf '[registry."127.0.0.1:%s"]\n  http = true\n  insecure = true\n' "$registry_port" > "$work/buildkitd.toml"
   docker buildx create --name "$builder" --driver docker-container --driver-opt network=host \
     --driver-opt "image=$buildkit_image" --buildkitd-config "$work/buildkitd.toml" >/dev/null
   docker buildx inspect --bootstrap "$builder" | grep -E '^(Name|Driver|Platforms|BuildKit version):' || true
+  # Each platform runs a step in the builder (the pinned Node base, as the Dockerfile does); no local image or tag changes.
+  mkdir "$work/probe"
+  printf 'FROM %s\nRUN node -p "process.platform + \x27/\x27 + process.arch" > /arch\n' "$(sed -n 's/^FROM \(node@sha256:[0-9a-f]*\) AS build$/\1/p' docker/Dockerfile)" > "$work/probe/Dockerfile"
+  for p in ${platforms//,/ }; do
+    docker buildx build --builder "$builder" --platform "$p" --no-cache --progress quiet --output "type=local,dest=$work/probe/$p" "$work/probe" >/dev/null 2>&1 ||
+      fail "the builder cannot run $p (install QEMU binfmt, see the header of this script)"
+    echo "$p runs in the builder as $(cat "$work/probe/$p/arch")"
+  done
 fi
 # The digest the registry serves for a tag. `docker inspect` RepoDigests can name another manifest than the one a
 # push stored (observed on Docker Desktop's containerd image store), and pulling by it would then fail.
