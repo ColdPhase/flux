@@ -113,7 +113,8 @@ report_memory
 
 # AC-3: restarts and the lock.
 $compose run --rm test node_modules/.bin/tsx tests/app/encryption-restart.check.ts prepare
-$compose restart
+# Not the one-shot migrate: restarted with db it times out (#723 review P3).
+$compose restart db keyring api api2 worker mailpit
 $compose up -d --wait api api2 worker keyring
 $compose run --rm test node_modules/.bin/tsx tests/app/encryption-restart.check.ts stack-locked
 $compose restart api
