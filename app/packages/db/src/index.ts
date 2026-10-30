@@ -18,6 +18,7 @@ export { agentRepository } from './repositories/agents.js';
 export { draftRepository } from './repositories/drafts.js';
 export { accessPorts } from './repositories/access-ports.js';
 export * from './repositories/workspace-encryption.js';
+export * from './repositories/key-rotation.js';
 export * from './sealed-columns.js';
 export * from './sealed-search.js';
 export * from './sealing.js';
@@ -32,7 +33,7 @@ export * from './migrations/reverse-task-creation-undo.js';
 export * from './migrations/summary-compatibility.js';
 export * from './migrations/task-creation-undo-compatibility.js';
 // Highest numbered file in packages/db/migrations. The API refuses other versions.
-export const FLUX_SCHEMA_VERSION = 129;
+export const FLUX_SCHEMA_VERSION = 130;
 // pg-boss 12.35.0 declares schema 43. Update this with the pinned package.
 export const PG_BOSS_SCHEMA_VERSION = 43;
 
@@ -61,10 +62,12 @@ export function databaseConnectTimeoutMs(env: NodeJS.ProcessEnv = process.env): 
  */
 export const DATABASE_SESSION_OPTIONS = `-c idle_in_transaction_session_timeout=${IDLE_IN_TRANSACTION_TIMEOUT_MS} -c jit=off`;
 
-export function createDatabase(connectionString: string, connectTimeoutMs = databaseConnectTimeoutMs()) {
-  // A client whose BEGIN or ROLLBACK fails is destroyed by the drizzle-orm patch in app/patches (#234).
-  const pool = new pg.Pool({ connectionString, connectionTimeoutMillis: connectTimeoutMs, query_timeout: 2000,
-    options: DATABASE_SESSION_OPTIONS });
+export function createDatabase(connectionString: string, connectTimeoutMs = databaseConnectTimeoutMs(),
+  options: { queryTimeoutMs?: number; max?: number } = {}) {
+  // A client whose BEGIN or ROLLBACK fails is destroyed by the drizzle-orm patch in app/patches (#234). The key
+  // rotation's own small pool allows longer statements (whole-table scans, VACUUM, CHECKPOINT; F-030 S2c).
+  const pool = new pg.Pool({ connectionString, connectionTimeoutMillis: connectTimeoutMs, query_timeout: options.queryTimeoutMs ?? 2000,
+    options: DATABASE_SESSION_OPTIONS, ...(options.max ? { max: options.max } : {}) });
   const db = drizzle({ client: pool, schema });
   return { pool, db };
 }

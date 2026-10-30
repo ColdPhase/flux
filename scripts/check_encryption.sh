@@ -1,9 +1,10 @@
 #!/bin/sh
-# F-030 encrypted workspaces (#655), S1 and S2a-1 acceptance in Docker (docs/product/encrypted-workspaces.md#tests-and-acceptance-criteria):
+# F-030 encrypted workspaces (#655), S1, S2a and S2c acceptance in Docker (docs/product/encrypted-workspaces.md#tests-and-acceptance-criteria):
 #   AC-1 crypto, AC-2 lifecycle / AI forced off / keyring and swap, AC-5 (S2a-1 part) the registry against the live catalog and
 #   the backstops, the S2a-1 sealed repositories with their in-database canary scan, AC-4 two APIs with PostgreSQL logging every
 #   statement and its parameters (docker/compose.encryption.test.yaml), the whole PostgreSQL, API, worker and keyring
-#   logs scanned for every secret of the run, and AC-3 restarts. Its own Compose project; ports FLUX_TEST_PORT and
+#   logs scanned for every secret of the run, AC-3 restarts, and AC-13 key rotation (S2c) with a worker crash and a keyring
+#   restart mid-rotation. Its own Compose project; ports FLUX_TEST_PORT and
 #   FLUX_TEST_MAILPIT_PORT as for check_application.sh.
 set -eu
 
@@ -23,6 +24,7 @@ export FLUX_MAIL_FROM="Flux <flux@example.test>"
 export FLUX_AUTH_RATE_LIMIT=false
 export FLUX_VAPID_PUBLIC_KEY= FLUX_VAPID_PRIVATE_KEY= FLUX_VAPID_SUBJECT=
 export FLUX_KEYRING_TOKEN="$(head -c 32 /dev/urandom | base64 | tr '+/' '-_' | tr -d '=\n')"
+export FLUX_KEY_PIN_SECRET="$(head -c 32 /dev/urandom | base64 | tr '+/' '-_' | tr -d '=\n')"
 . scripts/test_images.sh
 compose="docker compose -p $project -f docker/compose.source.yaml -f docker/compose.test.yaml -f docker/compose.encryption.test.yaml --profile test"
 scan_dir=$(mktemp -d)
@@ -57,7 +59,7 @@ $compose build
 $compose up -d db migrate
 $compose --profile setup run --rm files-init
 
-files="${FLUX_ENCRYPTION_FILES:-tests/app/encryption-crypto.test.ts tests/app/encryption-keyring.test.ts tests/app/encrypted-workspaces.test.ts tests/app/encryption-registry.test.ts tests/app/encryption-sealed-content.test.ts tests/app/encryption-search-live.test.ts tests/app/sealed-search-heap.test.ts tests/app/encryption-locked-routes.test.ts tests/app/live/encryption-two-api.test.ts}"
+files="${FLUX_ENCRYPTION_FILES:-tests/app/encryption-crypto.test.ts tests/app/encryption-keyring.test.ts tests/app/encrypted-workspaces.test.ts tests/app/encryption-registry.test.ts tests/app/encryption-sealed-content.test.ts tests/app/encryption-search-live.test.ts tests/app/sealed-search-heap.test.ts tests/app/encryption-locked-routes.test.ts tests/app/encryption-rotation.test.ts tests/app/live/encryption-two-api.test.ts}"
 # shellcheck disable=SC2086
 $compose run --rm test node_modules/.bin/tsx --test --test-concurrency=1 $files
 
@@ -81,6 +83,8 @@ echo "AC-7 disk scan: $canary_count canary encodings, 0 files of the data direct
 
 # AC-4: no password, recovery code, KEK, holder private key, DEK or subkey in any log, in any encoding.
 $compose run --rm --no-deps -T test cat /state/encryption-secrets.txt > "$scan_dir/secrets"
+# S2c: the rotation tests' passwords, codes and DEKs (old and new versions) too.
+$compose run --rm --no-deps -T test cat /state/rotation-secrets.txt >> "$scan_dir/secrets"
 count=$(grep -c . "$scan_dir/secrets")
 [ "$count" -ge 40 ] || { echo "too few secrets to scan for ($count)" >&2; exit 1; }
 $compose logs --no-color db > "$scan_dir/postgres.log"
@@ -124,7 +128,21 @@ $compose run --rm test node_modules/.bin/tsx tests/app/encryption-restart.check.
 $compose restart keyring
 $compose run --rm test node_modules/.bin/tsx tests/app/encryption-restart.check.ts keyring-locked
 
+# AC-13 (S2c): a worker crash and a keyring restart mid-rotation.
+rotation="node_modules/.bin/tsx tests/app/encryption-rotation.check.ts"
+FLUX_TEST_ROTATION_HOLD_AFTER_PAGES=3 $compose up -d --wait worker
+$compose run --rm --no-deps test $rotation crash-prepare
+docker kill "$($compose ps -q worker)"
+FLUX_TEST_ROTATION_HOLD_AFTER_PAGES= $compose up -d worker
+$compose run --rm --no-deps test $rotation crash-resumed
+FLUX_TEST_ROTATION_HOLD_AFTER_PAGES=3 $compose up -d --wait worker
+$compose run --rm --no-deps test $rotation keyring-prepare
+$compose restart keyring
+$compose run --rm --no-deps test $rotation keyring-locked
+FLUX_TEST_ROTATION_HOLD_AFTER_PAGES= $compose up -d worker
+$compose run --rm --no-deps test $rotation keyring-resumed
+
 # AC-7, the stolen-disk part: pg_dump, the raw volumes (pg_wal included), container layers and logs; stops the stack.
 . scripts/check_encryption_scan.sh
 
-echo 'F-030 S1 encryption checks passed'
+echo 'F-030 S1, S2a and S2c encryption checks passed'

@@ -135,6 +135,7 @@ services:
       NODE_EXTRA_CA_CERTS: /tls/cert.pem
       # F-030 (#655): in-process API instances of the encryption tests use the stack's one keyring.
       FLUX_KEYRING_TOKEN: ${FLUX_KEYRING_TOKEN:-}
+      FLUX_KEY_PIN_SECRET: ${FLUX_KEY_PIN_SECRET:-}
     # The test runner joins the keyring network only so its in-process APIs act as further replicas (never in production).
     networks: [default, keyring]
     volumes:
