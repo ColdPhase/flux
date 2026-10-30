@@ -159,7 +159,7 @@ inbox. It carries no comment text and no authority; the agent reads current PR s
   review keeps its claim; its verdict stays pinned to its own head.
 - **No recipient.** `no_recipient` when nobody holds the task. Nothing is woken or created; the next holder sees
   current state through ordinary reads.
-- **Read.** The first page of `flux_coordination_inbox` adds `providerEvents`: up to 20 rows delivered to this connection in the
+- **Read.** The first page of `flux_coordination_inbox` adds `providerEvents` (explained in playbook 1.9.0, not in the tool description): up to 20 rows delivered to this connection in the
   project within seven days, newest first, `{ id, taskId, linkId, event, headSha, at }`, rechecked now (binding active,
   link current, private repository still the author's). Reading is not an
   acknowledgement.
