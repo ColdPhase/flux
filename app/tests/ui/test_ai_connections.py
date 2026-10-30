@@ -226,7 +226,8 @@ class AiConnectionSettings(unittest.TestCase):
         expect(guide).to_contain_text("use its supplied Start/Resume command")
         expect(guide).to_contain_text("Codex 0.160.1")
         expect(guide).to_contain_text("Unsupported protocol version")
-        expect(guide).to_contain_text("Claude’s supplied Start/Resume workflow remains pending verification")
+        expect(guide).to_contain_text("/mcp__flux__start_work")
+        expect(guide).to_contain_text("Verified with a real Claude Code 2.1.285 account on 30 October 2026")
         # #320: the quick start's loopback http:// address is the one to use; HTTPS is needed only
         # for a client on another computer, so the guide must not ask for it here.
         self.assertRegex(ORIGIN, r"^http://(127\.\d+\.\d+\.\d+|localhost)(:\d+)?$", "this suite runs on a loopback http origin")

@@ -35,7 +35,9 @@ export function ClientGuide({ origin }: { origin: string }) {
       <h3 id="guide-claude-code">Claude Code</h3>
       <code>claude mcp add --transport http flux {url}</code>
       <code>claude mcp login flux</code>
-      <p>Claude’s supplied Start/Resume workflow remains pending verification. Its MCP connection can still authorize the access you choose.</p>
+      <h4>Start work</h4>
+      <p>In Claude Code, type <code>/mcp__flux__start_work</code> and choose your project. Later, <code>/mcp__flux__resume_work</code> picks up where it left off and reads only what changed. Flux supplies the instructions; you write no prompt.</p>
+      <p>Verified with a real Claude Code 2.1.285 account on 30 October 2026: Start created the planned task, and Resume found the changed plan and recorded a result.</p>
     </section>
     <section className="connection__client" aria-labelledby="guide-codex">
       <h3 id="guide-codex">Codex</h3>
