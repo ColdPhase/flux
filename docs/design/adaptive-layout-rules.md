@@ -197,6 +197,10 @@ and widths of the pane table were read against the source and match: 640, 680, 9
 and the board's 700 px container breakpoint. Not read line by line: the Wiki, thread-feed and map container rules and
 the lists of primary targets; the matrix measures their effect. Emulation only, as above.
 
+**Close-out, 2026-10-30** ([evidence](../development/evidence/151-finish/README.md)): the short threads, safe areas and the
+map and list latency budgets above; a limited visual review of 72 screenshots with three findings filed as #725, #726 and
+#727, and the ultrawide Agents spacing recorded under the founders' cap.
+
 **Remaining for #151** (open; this record does not deliver them):
 
 - the Agents column's cap (ADAPT-2), pending the design decision above;
