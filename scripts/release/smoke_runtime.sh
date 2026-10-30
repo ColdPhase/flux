@@ -88,8 +88,12 @@ docker inspect $(docker ps -q --filter "label=com.docker.compose.project=$projec
 python3 "$root/scripts/agent-runtime/inspect.py" "$project" "$assets" < "$state_dir/inspect.json"
 
 step "5. The images: pinned Codex in, Claude Code out"
-[ "$(compose config --images | grep -c "^$runtime_image\$")" = 1 ] || fail "compose.runtime.yaml does not use the runtime image of release.json"
-[ "$(compose config --images | grep -c "^$app_image\$")" = 1 ] || fail "compose.yaml does not use the application image of release.json"
+# `config --images` lists one line per service: each repository must name exactly the release.json digest.
+images=$(compose config --images | sort -u)
+for pinned in "$runtime_image" "$app_image"; do
+  [ "$(printf '%s\n' "$images" | grep -cF "${pinned%@*}@")" = 1 ] && printf '%s\n' "$images" | grep -qxF "$pinned" ||
+    fail "the Compose files do not use exactly $pinned (release.json): $(printf '%s ' $images)"
+done
 codex_version=$(docker run --rm --network none --entrypoint /opt/flux-runtime/codex/bin/codex "$runtime_image" --version)
 [ "$codex_version" = "codex-cli ${codex_tag#rust-v}" ] || fail "Codex reports '$codex_version', the release pins $codex_tag"
 docker run --rm --network none --entrypoint sh "$runtime_image" -c '
