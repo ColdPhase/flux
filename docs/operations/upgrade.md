@@ -32,8 +32,11 @@ matching image/database. Do not edit the ledger or rename a migration to make th
 From schema 119 (F-030, [encrypted workspaces](../product/encrypted-workspaces.md), S1) every install
 runs a small `keyring` service next to `api` and `worker`, on an internal network that only these three
 join. `./flux upgrade` adds the keyring's `FLUX_KEYRING_TOKEN` to `docker/.env` when it is missing and
-never changes an existing one; without a token the keyring stays idle. Encrypted workspaces cannot be
-created in a normal install before S3, so nothing else changes for people.
+never changes an existing one; without a token the keyring stays idle.
+
+**Upgrading locks encrypted spaces; have an unlock password ready.** `./flux upgrade` recreates every
+container, so each encrypted space waits until one of its owners or admins unlocks it again
+([Encrypted spaces](encrypted-spaces.md)).
 
 `api`, `worker` and `keyring` now have memory limits with swap limited to the same value, so they
 cannot write memory to a swap device, and core dumps are off. The defaults are `FLUX_API_MEMORY=2g`,

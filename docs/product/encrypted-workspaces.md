@@ -352,7 +352,7 @@ and runs no rotation step. It sets `workspace_keys.tampered_at`, records
 sticky.** Every unlock attempt verifies everything from scratch, whatever the flag says. The flag is
 only for display and alerting, and it is cleared when a full verification passes. So a fixed bug or
 a repaired restore unlocks normally. Nothing is deleted or repaired automatically. The
-[operations guide](../operations/backup-restore.md) says that restoring **only** `workspace_keys`,
+[operations guide](../operations/encrypted-spaces.md#backup-and-restore) says that restoring **only** `workspace_keys`,
 `workspace_holders`, `workspace_dek_wraps`, `workspace_key_versions` and `workspace_removed_holders`
 from the last good backup is enough, as long as no rotation finished after that backup. Otherwise the
 whole instance is restored.

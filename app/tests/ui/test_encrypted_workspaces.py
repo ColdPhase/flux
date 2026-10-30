@@ -20,8 +20,9 @@ none depends on another. Ada owns A with an unlock password, Ben is its admin wi
   fixed with no switch; what removing or demoting an owner or admin says; and zero AI surfaces in A while B keeps its own;
 * a control never moves: bounding boxes of the controls named above before and after each state change.
 
-`KeyRotation` covers what S2c will add to the wire (`rotation`, `recoveryCode: false`), which the S1 server never sends: the real server
-answers and a Playwright route handler overlays those fields on its workspace answers. It proves the interface follows them, not the server.
+`KeyRotation` draws the rotation states (running at a percent, paused, starting, stalled, finished) by overlaying `rotation`,
+`recoveryCode: false` and `keyChangedAt` on the real server's workspace answers, because a real rotation of a small space is over before
+a percent can be seen; test_44 then follows a real S2c rotation, started by removing an admin, to its end.
 
 Screenshots (encrypted-*-<browser>.png) go to FLUX_UI_SCREENSHOTS when set.
 """
@@ -1015,7 +1016,7 @@ class EncryptedWorkspaces(Base):
 
 
 class KeyRotation(Base):
-    """What S2c adds to the wire. The real S1 server answers; `Overlay` adds `rotation`, `recoveryCode: false` and `keyChangedAt` to its answers."""
+    """The rotation states. The real server answers; `Overlay` sets `rotation`, `recoveryCode: false` and `keyChangedAt` in its answers."""
 
     class Overlay:
         def __init__(self, space: str) -> None:
