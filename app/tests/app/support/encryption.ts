@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { randomInt, randomUUID } from 'node:crypto';
 import { ENCRYPTED_WORKSPACES_PATH, type CreateEncryptedWorkspaceResult, type Workspace } from '@flux/contracts';
+import { pool } from './db.js';
 import { expectStatus, type Person } from './people.js';
 import type { Browser, ClientResponse } from './http.js';
 
@@ -19,6 +20,8 @@ export function passphrase(): string {
 }
 
 export async function createSealed(owner: Person, name: string, password: string, creationId = randomUUID()) {
+  // Fixtures make many spaces per person; the creation limit (five in 15 minutes) has its own test.
+  await pool.query('DELETE FROM encrypted_workspace_creations WHERE user_id = $1', [owner.id]);
   const body = expectStatus(await owner.browser.request('POST', ENCRYPTED_WORKSPACES_PATH, { body: { name, creationId, password }, headers: fixtureBearer() }), 201) as CreateEncryptedWorkspaceResult;
   assert.ok(body.recoveryCode);
   return { workspace: body.workspace, recoveryCode: body.recoveryCode, creationId };

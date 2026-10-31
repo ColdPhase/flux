@@ -235,16 +235,38 @@ describe('F-030 crypto: passwords, semaphore and redaction', () => {
     const semaphore = new DerivationSemaphore(2, 8);
     const releases: (() => void)[] = [];
     let running = 0; let peak = 0;
-    const work = () => semaphore.run(() => new Promise<void>((resolve) => { running += 1; peak = Math.max(peak, running);
+    const work = (person: string) => semaphore.run(person, () => new Promise<void>((resolve) => { running += 1; peak = Math.max(peak, running);
       releases.push(() => { running -= 1; resolve(); }); }));
-    const started = Array.from({ length: 10 }, () => work());
+    const started = Array.from({ length: 10 }, (_, i) => work(`p${i}`));
     await new Promise((resolve) => setImmediate(resolve));
-    assert.deepEqual(semaphore.load, { active: 2, waiting: 8 });
-    await assert.rejects(work(), { code: 'UNLOCK_BUSY', status: 503 });
+    assert.deepEqual(semaphore.load, { active: 2, waiting: 8, people: 10 });
+    await assert.rejects(work('p10'), { code: 'UNLOCK_BUSY', status: 503 });
     while (releases.length) { releases.shift()!(); await new Promise((resolve) => setImmediate(resolve)); }
     await Promise.all(started);
     assert.equal(peak, 2);
-    assert.deepEqual(semaphore.load, { active: 0, waiting: 0 });
+    assert.deepEqual(semaphore.load, { active: 0, waiting: 0, people: 0 });
+  });
+
+  test('one derivation per person: a second at the same moment answers 503 at once and takes neither a slot nor the queue (S3 review)', async () => {
+    const semaphore = new DerivationSemaphore(2, 8);
+    const releases: (() => void)[] = [];
+    const work = (person: string) => semaphore.run(person, () => new Promise<void>((resolve) => releases.push(resolve)));
+    const mal = work('mal');
+    for (let i = 0; i < 15; i += 1) await assert.rejects(work('mal'), { code: 'UNLOCK_BUSY', status: 503 });
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.deepEqual(semaphore.load, { active: 1, waiting: 0, people: 1 });
+    const eve = work('eve'); // the other slot is free for another person
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.deepEqual(semaphore.load, { active: 2, waiting: 0, people: 2 });
+    releases.shift()!(); await mal;
+    const again = work('mal'); // after the first one ends, the same person may derive again
+    await new Promise((resolve) => setImmediate(resolve));
+    releases.shift()!(); releases.shift()!();
+    await Promise.all([eve, again]);
+    // A thrown derivation frees the person too.
+    await assert.rejects(semaphore.run('mal', async () => { throw new Error('boom'); }), /boom/);
+    await semaphore.run('mal', async () => undefined);
+    assert.deepEqual(semaphore.load, { active: 0, waiting: 0, people: 0 });
   });
 
   test('redactedError keeps the class, code, SQLSTATE, constraint and ids, never the message or detail', () => {

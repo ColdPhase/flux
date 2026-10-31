@@ -1,4 +1,5 @@
 import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { FORMER_MEMBER } from '../docs/format';
 import { useNavigate } from 'react-router';
 import type { Conversation, ConversationMessage, ConversationRoot, ConversationRootWindow, NativeWorkRow, ObjectNotice, Page, Project, ProjectGoal, ReturnSummary, TaskCreationNotice } from '@flux/contracts';
 import { AgentIdentity, Avatar, Button, EmptyState, Icon, IconButton, Kreska, Opening, StatusGlyph, useArrivals, useToast } from '../ui';
@@ -727,7 +728,7 @@ function NoticeItem({ notice, meId, owners, row, authorOf, hasMessage, onOpenTas
   const current = row?.kind === 'work' && row.id === notice.workId ? row : null;
   const title = current?.title ?? notice.workTitle;
   const creator = notice.createdBy;
-  const name = creator.name ?? (creator.kind === 'agent' ? 'Agent' : 'Member');
+  const name = creator.name ?? (creator.kind === 'agent' ? 'Agent' : FORMER_MEMBER);
   const mine = creator.kind === 'human' && creator.id === meId;
   // One short line when a task becomes blocked or unblocked (#550): "#14 blocked · waiting for Kai".
   if (notice.kind === 'task.blocked' || notice.kind === 'task.unblocked') {

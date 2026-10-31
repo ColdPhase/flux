@@ -10,7 +10,7 @@ import { ContributionMark, clock, day, when } from '../app/messageParts';
 import { useShellActions } from '../app/shellContext';
 import { useProjectShell } from '../project/data';
 import { getTaskDiscussion } from '../composer/api';
-import { agentDisplayName } from '../docs/format';
+import { agentDisplayName, FORMER_MEMBER } from '../docs/format';
 import { agentAuthorOwner, useAgentOwners } from '../agents/owners';
 import { AgentThreadLink } from '../agents/AgentThreadLink';
 import { RefLink } from '../place/origin';
@@ -128,7 +128,7 @@ export function useTaskActivity({ item, links, project, members, me, revision }:
     if (message.authorId === null) return agentDisplayName(message.author);
     if (message.authorId === me.id) return me.name;
     return members.find((member) => member.userId === message.authorId)?.name
-      ?? people?.find((person) => person.kind === 'human' && person.id === message.authorId)?.name ?? 'Member';
+      ?? people?.find((person) => person.kind === 'human' && person.id === message.authorId)?.name ?? FORMER_MEMBER;
   }, [me.id, me.name, members, people]);
 
   const lines = useMemo<Line[]>(() => {

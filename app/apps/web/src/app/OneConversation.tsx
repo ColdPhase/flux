@@ -9,7 +9,7 @@ import { useRegisterLiveHere } from '../live/LiveProvider';
 import { excerpt } from '../live/anchors';
 import { audienceLine, useProjectShell } from '../project/data';
 import { useShellData } from './data';
-import { agentAuthorLabel } from '../docs/format';
+import { agentAuthorLabel, FORMER_MEMBER } from '../docs/format';
 import { ConversationStream, streamPlace, useConversationRoots, useObjectNotices, useTaskNotices } from './ConversationStream';
 import { useStreamEvents } from '../api/stream';
 import { ThreadRoot } from './ThreadRoot';
@@ -104,7 +104,7 @@ export function OneConversation({ data, Pane }: { data: ProjectData; Pane: Compo
     if (message.authorId === null) return agentAuthorLabel(message.author);
     if (message.authorId === me.user.id) return me.user.name;
     return members.find((member) => member.userId === message.authorId)?.name
-      ?? people?.find((person) => person.kind === 'human' && person.id === message.authorId)?.name ?? 'Member';
+      ?? people?.find((person) => person.kind === 'human' && person.id === message.authorId)?.name ?? FORMER_MEMBER;
   }, [me.user.id, me.user.name, members, people]);
 
   // "Work on this together" starts at the open thread, or at the newest root as the project page did.

@@ -13,6 +13,8 @@ import { announceInboxChange, getInboxItem, markInboxRead } from './api';
 import { AssistantJoinReview } from './AssistantJoinReview';
 import { NeedsYouCard, type CardHandlers } from './NeedsYouCard';
 import { useNeedsYou } from './needsYou';
+import { LockedSpacesNote } from '../encryption/LockedSpace';
+import { SecurityNotices } from '../encryption/SecurityNotices';
 import { useNeedsYouActions } from './useNeedsYouActions';
 import './notifications.css';
 import './needs-you.css';
@@ -126,6 +128,8 @@ export function InboxView() {
         if (!bar) return null;
         return !narrow && actionSlot ? createPortal(<div className="nyq__bar nyq__bar--head">{bar}</div>, actionSlot) : <div className="nyq__bar">{bar}</div>;
       })()}
+      {/* F-030 (#655): security notices about encrypted spaces are rare and read first, above the queue. */}
+      <SecurityNotices userId={me.user.id} />
       {queue.failed && queue.items === null ? (
         <ErrorState title="The Inbox could not load" actions={<Button onClick={queue.reload}>Retry</Button>}>
           <p>Check your connection. Nothing was lost.</p>
@@ -156,6 +160,7 @@ export function InboxView() {
           </p>
         </>
       )}
+      <LockedSpacesNote />
       {reviewing ? <AssistantJoinReview key={`${reviewing.key}:${reviewing.assistantRequestIdentity!.openingVersion}`} item={reviewing} onClose={() => {
         const next = new URLSearchParams(asked); next.delete('assistantProject'); next.delete('assistantRequest'); next.delete('openingVersion');
         setAsked(next, { replace: true, state: location.state }); announceInboxChange();

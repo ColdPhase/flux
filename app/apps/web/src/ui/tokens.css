@@ -3,7 +3,7 @@
    Status is a glyph plus a word; colour appears only in user photos and in the Agents section.
    scripts/check_contrast.py checks the text and icon pairs in both themes. */
 
-/* Geist and Geist Mono 1.7.2 (SIL Open Font License 1.1, ./fonts/OFL.txt), served with the app. */
+/* Geist and Geist Mono 1.7.2 (SIL Open Font License 1.1), served with the app; the licence ships with the built assets as /fonts/OFL.txt (app/apps/web/public/fonts/OFL.txt). */
 @font-face {
   font-family: "Geist"; font-style: normal; font-weight: 100 900; font-display: swap;
   src: url("./fonts/Geist-Variable.woff2") format("woff2");

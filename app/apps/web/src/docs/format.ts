@@ -25,6 +25,8 @@ export const AGENT_SUFFIX = ' · agent';
 export const agentDisplayName = (agent: { name?: string }) => agent.name ?? 'Agent';
 /** How a reader names an agent: "<name> · agent", as in the conversation. A missing name shows "Agent". */
 export const agentAuthorLabel = (agent: { name?: string }) => `${agentDisplayName(agent)}${AGENT_SUFFIX}`;
+/** A person who wrote here and is no longer a member (#763 XC-2): named the same way everywhere, never the bare role "Member". */
+export const FORMER_MEMBER = 'Former member';
 /** Who made a version: an agent writing under its owner's standing grant (#152) is named "name · agent", as in the conversation. */
 export const authorLabel = (who: NamedPrincipal) => (who.kind === 'agent' ? agentAuthorLabel(who) : who.name);
 
