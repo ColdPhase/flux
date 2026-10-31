@@ -53,10 +53,16 @@ export function draftResultRepository(db: DbExecutor) {
       const opened = openRow('drafts', draft, await sealOf(db, draft.workspaceId, { write: false }));
       return { body: opened.body, version: opened.version };
     },
-    /** A summary of a locked encrypted workspace's draft waits (ids only) for `workspace-encryption.resume.v1`. */
+    /**
+     * A summary of a locked encrypted workspace's draft waits (ids only) for `workspace-encryption.resume.v1`. Once per
+     * result: the same job run twice while locked (a pg-boss retry of its batch, or a replay that meets the lock again)
+     * keeps the one wait, so the result is replayed once (#670: check_encryption saw two waits for one result).
+     */
     async recordWait(resultId: string, workspaceId: string) {
       await db.execute(sql`INSERT INTO sealed_job_waits (id, workspace_id, queue, payload)
-        VALUES (gen_random_uuid(), ${workspaceId}::uuid, 'draft.summarize.v1', ${JSON.stringify({ resultId })}::jsonb)`);
+        SELECT gen_random_uuid(), ${workspaceId}::uuid, 'draft.summarize.v1', ${JSON.stringify({ resultId })}::jsonb
+        WHERE NOT EXISTS (SELECT 1 FROM sealed_job_waits w WHERE w.workspace_id = ${workspaceId}::uuid AND w.queue = 'draft.summarize.v1'
+          AND w.payload->>'resultId' = ${resultId})`);
     },
   };
 }

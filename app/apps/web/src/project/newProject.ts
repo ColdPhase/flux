@@ -34,7 +34,9 @@ export function useNewProject() {
   const { me, workspaces, projects } = useShellData();
   const places = workspaces.filter(canCreateIn);
   const [template, setTemplate] = useState<ProjectTemplate>('build');
-  const [chosen, setChosen] = useState<string | null>(null);
+  // `?in=<workspaceId>` (F-030 S3, UI audit NS-1): a new space's "Start the first project in Garden club" opens New project
+  // with that space already chosen in the picker.
+  const [chosen, setChosen] = useState<string | null>(() => (typeof window === 'undefined' ? null : new URLSearchParams(window.location.search).get('in')));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const revalidator = useRevalidator();

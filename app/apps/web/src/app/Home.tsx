@@ -8,6 +8,7 @@ import { NeedsYouCard } from '../notifications/NeedsYouCard';
 import { useNeedsYou } from '../notifications/needsYou';
 import { useNeedsYouActions } from '../notifications/useNeedsYouActions';
 import { getReturnSummary, saveReturnPoint } from '../returns/api';
+import { WaitingSpaces } from '../encryption/LockedSpace';
 import { SourceLink } from '../returns/SinceYouLeft';
 import { listAssignedWork } from '../work/api';
 import { STATUS_LABEL } from '../work/format';
@@ -90,7 +91,7 @@ function ContinueCard({ userId, workspaceIds }: { userId: string; workspaceIds: 
 /** Home (F-026 §7, S1, P1): the date and a greeting, the top three that need you, where to continue, and your projects. */
 export function Home() {
   const moments = useSmallMoments();
-  const { me, workspaces, projects } = useShellData();
+  const { me, workspaces, projects, lockedWorkspaces } = useShellData();
   const { openDetails, openCreate } = useShellActions();
   const phone = useMediaQuery(MEDIA.navDrawer);
   const queue = useNeedsYou(me.user.id);
@@ -102,7 +103,8 @@ export function Home() {
   const workspaceIds = useMemo(() => workspaces.map((space) => space.id), [workspaces]);
   const news = useProjectNews(useMemo(() => projects.slice(0, 5).map((project) => project.id), [projects]));
   // A person with no project yet gets one first step, not an empty queue and links to empty pages (#763 FT-1, S21).
-  const firstRun = projects.length === 0 && !top.length;
+  // A space waiting to be unlocked is not a first run: its row stays in Projects (F-030, #655).
+  const firstRun = projects.length === 0 && !lockedWorkspaces.length && !top.length;
 
   return (
     <div className="pane-scroll"><div className="pane-in home">
@@ -141,15 +143,18 @@ export function Home() {
               ))}
             </ul>
           ) : (
-            <div className="home__card home__clear">{moments ? <Kreska size={32} expression="done" /> : null}<span>Nothing needs you right now. Enjoy the quiet.</span></div>
+            <div className="home__card home__clear">{moments ? <Kreska size={32} expression="done" /> : null}<span>{lockedWorkspaces.length
+              ? 'Nothing needs you in your open spaces.' : 'Nothing needs you right now. Enjoy the quiet.'}</span></div>
           )}
+        {/* F-030 (#655): a space that waits to be unlocked is not looked into; it says so instead of the queue saying "nothing". */}
+        {queue.items === null ? null : <WaitingSpaces />}
       </section>
 
       <div className="home__pair">
         {!phone ? <ContinueCard userId={me.user.id} workspaceIds={workspaceIds} /> : null}
         <section className="home__card home__projects" aria-labelledby="home-projects">
           <h3 id="home-projects" className="home__k">Projects</h3>
-          {projects.length ? (
+          {projects.length || lockedWorkspaces.length ? (
             <ul>
               {projects.slice(0, 5).map((project) => (
                 <li key={project.id}>
@@ -157,6 +162,16 @@ export function Home() {
                     <span className="home__tile" aria-hidden="true">{(project.name.trim()[0] ?? '?').toUpperCase()}</span>
                     <span className="home__pn">{project.name}</span>
                     <span className={`home__state${news.has(project.id) ? ' is-new' : ''}`}>{news.has(project.id) ? 'new' : 'quiet'}</span>
+                  </Link>
+                </li>
+              ))}
+              {/* An encrypted space that waits to be unlocked is one row in place of its projects (F-030, #655). */}
+              {lockedWorkspaces.map((space) => (
+                <li key={space.id}>
+                  <Link to={`/spaces/${space.id}`} className="home__project home__project--locked" data-locked-space={space.id}>
+                    <span className="home__tile" aria-hidden="true"><Icon name="lock" size={12} /></span>
+                    <span className="home__pn">{space.name}</span>
+                    <span className="home__state">Waiting to be unlocked</span>
                   </Link>
                 </li>
               ))}

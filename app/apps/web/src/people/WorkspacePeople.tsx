@@ -7,6 +7,8 @@ import { whenPageLive } from '../api/pageLeaving';
 import { useStreamEvents } from '../api/stream';
 import { useShellData } from '../app/data';
 import { Avatar, Button, Icon, Input, Spinner, useRowMotion, useToast, Select, Option } from '../ui';
+import { isEncryptionEvent, type EncryptedWorkspace } from '../encryption/api';
+import { EncryptionSection } from '../encryption/EncryptionSection';
 import { ROLE_HINT, ROLE_LABEL, addMember, attemptKeys, changeRole, createInvite, firstName, getWorkspace, isManagerRole, listInvites, listMembers, problemText, removeMember, revokeInvite,
   setWorkspaceAi } from './api';
 import './people.css';
@@ -15,10 +17,10 @@ const ROLES: WorkspaceRole[] = ['member', 'guest', 'admin', 'owner'];
 /** Roles the caller may hand out: only an owner grants or changes the owner role (#29). */
 const assignable = (mine: WorkspaceRole) => ROLES.filter((role) => role !== 'owner' || mine === 'owner');
 
-type Roster = { workspace: Workspace; members: WorkspaceMember[] | null };
+type Roster = { workspace: EncryptedWorkspace; members: WorkspaceMember[] | null };
 
 async function fetchRoster(workspaceId: string, signal: AbortSignal): Promise<Roster> {
-  const workspace = await getWorkspace(workspaceId, signal);
+  const workspace: EncryptedWorkspace = await getWorkspace(workspaceId, signal);
   // Guests may not read the roster (`workspace.read_members`): they see their own place only.
   const members = await listMembers(workspaceId, signal).catch((error: unknown) => {
     if (error instanceof ApiError && error.status === 403) return null;
@@ -55,22 +57,40 @@ export function WorkspacePeople({ workspaceId, onBack, page = false }: { workspa
     return () => { waiting(); controller.abort(); };
   }, [workspaceId, reload]);
   const load = () => setReload((n) => n + 1);
+  // F-030 (#655): a key rotation's progress has no event of its own; while one runs (or is about to) in an unlocked space, the
+  // section reads it again every few seconds. It stops when the rotation finishes, pauses, stalls or the panel closes.
+  const rotation = roster?.workspace.encryption?.rotation;
+  // Unlocked, `paused` only means pending: the worker starts it within seconds.
+  const moving = roster?.workspace.encryption?.state === 'unlocked' && !!rotation && !rotation.stalled;
+  useEffect(() => {
+    if (!moving) return undefined;
+    const timer = window.setTimeout(() => setReload((n) => n + 1), 4000);
+    return () => window.clearTimeout(timer);
+  }, [moving, roster]);
+  // Someone turned AI off or on here (F-029, #614), unlocked, locked, gave an unlock password or changed the key (F-030, #655), or
+  // added, removed or changed someone (whose removal starts a key change): the rows show the state as it is now.
   const [invitesSeen, setInvitesSeen] = useState(0);
-  // Someone turned AI off or on here (F-029, #614): the row shows the state as it is now.
+  // Someone turned AI off or on here (F-029, #614), unlocked, locked, gave an unlock password or changed the key (F-030, #655), or
+  // added, removed or changed someone (whose removal starts a key change): the rows show the state as it is now.
   useStreamEvents(me.user.id, (event) => {
     if (event.objectId !== workspaceId) return;
-    if (event.kind === WORKSPACE_AI_POLICY_CHANGED_EVENT) load();
+    if (event.kind === WORKSPACE_AI_POLICY_CHANGED_EVENT || isEncryptionEvent(event.kind) || event.kind.startsWith('workspace.member_')) load();
     // Someone joined through a link, or a link was made or revoked elsewhere (F-035).
     if (event.kind === 'workspace.member_added.v1' || event.kind === INVITE_CREATED_EVENT || event.kind === INVITE_REVOKED_EVENT) setInvitesSeen((n) => n + 1);
   }, load);
 
-  const changed = (message: string, editorClosed: boolean) => {
+  // F-030 (#655): after an owner removes or demotes an owner or admin of an encrypted space, the old recovery code has stopped
+  // working, and the group that makes a new one opens in the Encryption section, where focus goes.
+  const [offerCode, setOfferCode] = useState(0);
+  const changed = (message: string, editorClosed: boolean, holderLeft = false) => {
     setDone(message); setEditing(null);
     load();
+    const offering = holderLeft && roster?.workspace.encryption?.state === 'unlocked' && roster.workspace.role === 'owner';
+    if (offering) setOfferCode((count) => count + 1);
     // A member's editor that had focus is gone: focus the roster, whose status line says what changed.
     // Adding someone leaves focus where it is, in the form the person may fill again at once: a focus
     // move one frame later took the keystrokes of the next address (#491).
-    if (editorClosed) requestAnimationFrame(() => rosterRef.current?.focus({ preventScroll: true }));
+    if (editorClosed && !offering) requestAnimationFrame(() => rosterRef.current?.focus({ preventScroll: true }));
     // Roles change what the sidebar may list for the caller.
     revalidator.revalidate();
   };
@@ -115,7 +135,7 @@ export function WorkspacePeople({ workspaceId, onBack, page = false }: { workspa
               <MemberRow key={member.userId} member={member} self={member.userId === me.user.id} workspace={workspace} myRole={myRole}
                 editable={manager && (member.role !== 'owner' || myRole === 'owner')}
                 editing={editing === member.userId} onEdit={(open) => { setDone(''); setEditing(open ? member.userId : null); }}
-                onChanged={(message) => changed(message, true)} />
+                onChanged={(message, holderLeft) => changed(message, true, holderLeft)} />
             ))}
           </ul>
         ) : (
@@ -131,9 +151,12 @@ export function WorkspacePeople({ workspaceId, onBack, page = false }: { workspa
         ) : null}
       </section>
 
+      {/* Encrypted spaces (F-030, #655): Encryption comes before AI and keeps its place in every state; AI is off for good and has no switch. */}
+      {workspace.encryption ? <EncryptionSection workspace={workspace} members={members} meId={me.user.id} myRole={myRole} offerCode={offerCode} onChanged={() => { load(); revalidator.revalidate(); }} /> : null}
+
       <AiRow workspace={workspace} manager={manager} onChanged={() => { load(); revalidator.revalidate(); }} />
 
-      <Leave workspace={workspace} soleOwner={myRole === 'owner' && owners <= 1} onLeft={onBack} meId={me.user.id} />
+      <Leave workspace={workspace} soleOwner={myRole === 'owner' && owners <= 1} holder={manager} onLeft={onBack} meId={me.user.id} />
       {page ? null : <p className="details__keys"><kbd>]</kbd> toggles this panel · <kbd>Esc</kbd> closes it</p>}
     </div>
   );
@@ -196,8 +219,8 @@ function AddPerson({ workspace, members, myRole, invitesSeen, onJoined, onAdded 
 }
 
 function MemberRow({ member, self, workspace, myRole, editable, editing, onEdit, onChanged }: {
-  member: WorkspaceMember; self: boolean; workspace: Workspace; myRole: WorkspaceRole; editable: boolean;
-  editing: boolean; onEdit: (open: boolean) => void; onChanged: (message: string) => void;
+  member: WorkspaceMember; self: boolean; workspace: EncryptedWorkspace; myRole: WorkspaceRole; editable: boolean;
+  editing: boolean; onEdit: (open: boolean) => void; onChanged: (message: string, holderLeft?: boolean) => void;
 }) {
   const editId = useId();
   const changeRef = useRef<HTMLButtonElement>(null);
@@ -221,25 +244,32 @@ function MemberRow({ member, self, workspace, myRole, editable, editing, onEdit,
 
 /** One member's role and removal; mounted fresh each time it opens, so nothing stale carries over. */
 function MemberEditor({ id, member, self, workspace, myRole, onClose, onChanged }: {
-  id: string; member: WorkspaceMember; self: boolean; workspace: Workspace; myRole: WorkspaceRole;
-  onClose: () => void; onChanged: (message: string) => void;
+  id: string; member: WorkspaceMember; self: boolean; workspace: EncryptedWorkspace; myRole: WorkspaceRole;
+  onClose: () => void; onChanged: (message: string, holderLeft?: boolean) => void;
 }) {
   const [role, setRole] = useState<WorkspaceRole>(member.role);
-  const [confirmRemove, setConfirmRemove] = useState(false);
+  const [confirm, setConfirm] = useState<'remove' | 'demote' | null>(null);
   const [busy, setBusy] = useState<'role' | 'remove' | null>(null);
   const [problem, setProblem] = useState('');
   const keys = useRef(attemptKeys());
   const selectRef = useRef<HTMLButtonElement>(null);
   useEffect(() => { selectRef.current?.focus(); }, []);
   const article = (value: WorkspaceRole) => (value === 'admin' || value === 'owner' ? 'an' : 'a');
+  // F-030 (#655): an owner or admin who stops being one (removed, demoted, leaving) changes the key of an encrypted space: its content
+  // is encrypted again in the background, and what that person may have kept (a backup) still opens with their old password.
+  const holder = !!workspace.encryption && isManagerRole(member.role);
+  const demoting = holder && !isManagerRole(role);
+  const first = firstName(member.name);
+  const rotationText = `${workspace.name} gets a new key, and everything in it is encrypted again in the background. When that finishes, ${first}’s unlock password opens nothing made from then on. The recovery code stops working, and an owner makes a new one. A copy ${first} may already have, such as an old backup, still opens with their old password.`;
 
   async function saveRole() {
     if (busy || role === member.role) return;
+    setConfirm(null);
     setBusy('role'); setProblem('');
     try {
       await changeRole(workspace.id, member.userId, role, keys.current.for(`${member.userId}:${role}`));
       keys.current.done();
-      onChanged(self ? `You’re now ${article(role)} ${ROLE_LABEL[role].toLowerCase()} of ${workspace.name}.` : `${member.name} is now ${article(role)} ${ROLE_LABEL[role].toLowerCase()}.`);
+      onChanged(self ? `You’re now ${article(role)} ${ROLE_LABEL[role].toLowerCase()} of ${workspace.name}.` : `${member.name} is now ${article(role)} ${ROLE_LABEL[role].toLowerCase()}.`, demoting);
     } catch (error) {
       setProblem(problemText(error, { workspace: workspace.name, who: self ? 'You' : member.name }));
       setBusy(null);
@@ -251,7 +281,7 @@ function MemberEditor({ id, member, self, workspace, myRole, onClose, onChanged 
     setBusy('remove'); setProblem('');
     try {
       await removeMember(workspace.id, member.userId);
-      onChanged(`${member.name} is no longer in ${workspace.name}.`);
+      onChanged(`${member.name} is no longer in ${workspace.name}.`, holder);
     } catch (error) {
       setProblem(problemText(error, { workspace: workspace.name, who: member.name }));
       setBusy(null);
@@ -269,18 +299,39 @@ function MemberEditor({ id, member, self, workspace, myRole, onClose, onChanged 
         <p className="people__hint" id={`${id}-hint`}>{ROLE_HINT[role]}</p>
       </div>
       <div className="details__actions">
-        <Button variant="primary" busy={busy === 'role'} disabled={role === member.role} onClick={() => void saveRole()}>Save role</Button>
+        <Button variant="primary" busy={busy === 'role'} disabled={role === member.role} onClick={() => (demoting ? setConfirm('demote') : void saveRole())}>Save role</Button>
         <Button variant="secondary" onClick={onClose}>Cancel</Button>
       </div>
-      {!self ? (confirmRemove ? (
-        <div className="details__confirm people__confirm" role="group" aria-label={`Remove ${member.name}`}>
-          <p>{firstName(member.name)} loses access to {workspace.name} at once: its projects, and any access given to them there.</p>
+      {confirm === 'demote' ? (
+        <div className="details__confirm people__confirm" role="group" aria-label={`Make ${first} ${article(role)} ${ROLE_LABEL[role].toLowerCase()}`} data-rotation-confirm="demote">
+          <p><b>Make {first} {article(role)} {ROLE_LABEL[role].toLowerCase()}?</b></p>
+          <p>{rotationText}</p>
           <div className="details__actions">
-            <Button variant="danger" busy={busy === 'remove'} onClick={() => void remove()}>Remove {firstName(member.name)}</Button>
-            <Button variant="secondary" onClick={() => setConfirmRemove(false)}>Keep</Button>
+            <Button variant="primary" busy={busy === 'role'} onClick={() => void saveRole()}>Make {first} {article(role)} {ROLE_LABEL[role].toLowerCase()}</Button>
+            <Button variant="quiet" onClick={() => setConfirm(null)}>Keep {first} {article(member.role)} {ROLE_LABEL[member.role].toLowerCase()}</Button>
           </div>
         </div>
-      ) : <Button variant="quiet" className="details__leave people__remove" onClick={() => setConfirmRemove(true)}>Remove from {workspace.name}</Button>) : null}
+      ) : null}
+      {!self ? (confirm === 'remove' ? (
+        holder ? (
+          <div className="details__confirm people__confirm" role="group" aria-label={`Remove ${member.name}`} data-rotation-confirm="remove">
+            <p><b>Remove {first} from {workspace.name}?</b></p>
+            <p>{rotationText}</p>
+            <div className="details__actions">
+              <Button variant="primary" busy={busy === 'remove'} onClick={() => void remove()}>Remove {first}</Button>
+              <Button variant="quiet" onClick={() => setConfirm(null)}>Keep {first}</Button>
+            </div>
+          </div>
+        ) : (
+          <div className="details__confirm people__confirm" role="group" aria-label={`Remove ${member.name}`}>
+            <p>{first} loses access to {workspace.name} at once: its projects, and any access given to them there.</p>
+            <div className="details__actions">
+              <Button variant="danger" busy={busy === 'remove'} onClick={() => void remove()}>Remove {first}</Button>
+              <Button variant="secondary" onClick={() => setConfirm(null)}>Keep</Button>
+            </div>
+          </div>
+        )
+      ) : <Button variant="quiet" className="details__leave people__remove" onClick={() => setConfirm('remove')}>Remove from {workspace.name}</Button>) : null}
       {problem ? <p className="people__notice" role="alert"><Icon name="alert" size={13} />{problem}</p> : null}
     </div>
   );
@@ -416,7 +467,7 @@ function InviteLinks({ prefill, workspace, myRole, seen, onJoined }: { prefill: 
 }
 
 /** Leaving ends access at once, so it asks first; the last owner is told what to do instead. */
-function Leave({ workspace, soleOwner, onLeft, meId }: { workspace: Workspace; soleOwner: boolean; onLeft: () => void; meId: string }) {
+function Leave({ workspace, soleOwner, holder, onLeft, meId }: { workspace: EncryptedWorkspace; soleOwner: boolean; holder: boolean; onLeft: () => void; meId: string }) {
   const navigate = useNavigate();
   const revalidator = useRevalidator();
   const toast = useToast();
@@ -442,6 +493,8 @@ function Leave({ workspace, soleOwner, onLeft, meId }: { workspace: Workspace; s
         : confirm ? (
           <div role="group" aria-label={`Leave ${workspace.name}`} className="details__confirm">
             <p>You lose access to {workspace.name} and its projects at once. Someone has to add you again to come back.</p>
+            {/* F-030 (#655): an owner or admin who leaves an encrypted space changes its key. */}
+            {holder && workspace.encryption ? <p data-rotation-confirm="leave">{workspace.name} gets a new key when you leave. Your unlock password stops opening anything made after that.</p> : null}
             <div className="details__actions">
               <Button variant="danger" busy={busy} onClick={() => void leave()}>Leave</Button>
               <Button variant="secondary" onClick={() => setConfirm(false)}>Cancel</Button>
@@ -468,7 +521,7 @@ function stoppedLine(stopped: SetWorkspaceAiPolicyResult['stopped']) {
  * Only the line and the button's label change between states, so the control never moves (Spokój rule 7). Everyone else
  * sees one read-only line while AI is off, and nothing while it is on.
  */
-function AiRow({ workspace, manager, onChanged }: { workspace: Workspace; manager: boolean; onChanged: () => void }) {
+function AiRow({ workspace, manager, onChanged }: { workspace: EncryptedWorkspace; manager: boolean; onChanged: () => void }) {
   const ai = workspace.ai;
   const blocked = ai?.state === 'blocked';
   const [confirming, setConfirming] = useState(false);
@@ -486,6 +539,16 @@ function AiRow({ workspace, manager, onChanged }: { workspace: Workspace; manage
   const seen = useRef(ai?.version);
   useEffect(() => { if (seen.current !== ai?.version) { seen.current = ai?.version; setConfirming(false); } }, [ai?.version]);
   if (!ai) return null;
+
+  // An encrypted space is always without AI (F-030, #655): everyone reads the same fixed line, in the row's place, and nobody has a switch.
+  if (workspace.encryption || ai.fixed === 'encrypted') {
+    return (
+      <section className="details__sec people__ai" aria-labelledby={`${lineId}-h`} data-ai-row="fixed">
+        <h4 id={`${lineId}-h`}>AI in {workspace.name}</h4>
+        <p className="people__ai-line" id={lineId}>Off · {workspace.name} is encrypted, so AI can never be turned on here.</p>
+      </section>
+    );
+  }
 
   if (!manager) {
     return blocked ? (

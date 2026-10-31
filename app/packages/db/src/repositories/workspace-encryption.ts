@@ -54,13 +54,20 @@ export interface EncryptionViewRow {
   liveVersions: number[];
   unlocks: { keyVersion: number; bootId: string; unlockedAt: Date; unlockedBy: string | null; unlockedByName: string | null }[];
   myPassword: boolean;
+  grantUntil: Date | null;
   recoveryCode: boolean;
   keyChangedAt: Date | null;
+  /** S3: why the key last changed (the finished rotation's reason), with the person's name. */
+  keyChangeReason: { kind: string; userId: string | null; name: string | null } | null;
   /** S2c: the rotation state and, while one runs, its progress. */
   rotation: 'none' | 'pending' | 'reencrypting';
   rotationProgress: { rowsDone: number; rowsEstimate: number; startedAt: Date; stalled: boolean } | null;
   rotationOpenFor: { userId: string | null; name: string | null; kind: 'password' | 'recovery' }[];
   rotationReason: { kind: string; userId: string | null; name: string | null } | null;
+  /** S3 UI audit LK-1: the last `workspace.locked.v1` while no unlock row exists (why it is locked, and who locked it). */
+  lastLock: { reason: string; at: Date; by: string | null; byName: string | null } | null;
+  /** Owners and admins with an unlock password (who can unlock it), by name. */
+  unlockers: { id: string; name: string }[];
 }
 
 /** A version list as a PostgreSQL integer[] literal (ints only). */
@@ -166,7 +173,9 @@ export function workspaceEncryptionRows(db: DbExecutor) {
     /**
      * Turns the tombstones without a record into pinned removal records, chained after the last one, and moves the
      * head. The caller holds `workspace_keys` FOR UPDATE. 'broken' (nothing written) when the existing chain does not
-     * verify: appending would launder a deletion. 0 without a configured pin.
+     * verify: appending would launder a deletion. 'broken' too when a tombstone was planted (it names a holder row that
+     * still exists): the genuine tombstones are pinned all the same, and only the planted ones are left out, so a decoy
+     * cannot keep a real removal from being pinned (#718 review P3-1). 0 without a configured pin.
      */
     async recordRemovals(workspaceId: string): Promise<number | 'broken'> {
       if (!removalPinner) return 0;
@@ -185,10 +194,11 @@ export function workspaceEncryptionRows(db: DbExecutor) {
       // naming a row that still exists was planted: pinning it would exclude that holder for good (S2c review P2-2).
       const [planted] = await rowsOf<{ one: number }>(db, sql`SELECT 1 AS one FROM workspace_removed_holders t JOIN workspace_holders h
         ON h.workspace_id = t.workspace_id AND (h.id = t.holder_id OR h.public_key = t.public_key) WHERE t.workspace_id = ${workspaceId} LIMIT 1`);
-      if (planted) return 'broken';
       const fresh = await rowsOf<{ holderId: string; userId: string | null; publicKey: string }>(db, sql`SELECT t.holder_id AS "holderId", t.user_id AS "userId",
         t.public_key AS "publicKey" FROM workspace_removed_holders t WHERE t.workspace_id = ${workspaceId}
-        AND NOT EXISTS (SELECT 1 FROM workspace_removals r WHERE r.workspace_id = t.workspace_id AND r.holder_id = t.holder_id) ORDER BY t.removed_at, t.holder_id`);
+        AND NOT EXISTS (SELECT 1 FROM workspace_removals r WHERE r.workspace_id = t.workspace_id AND r.holder_id = t.holder_id)
+        AND NOT EXISTS (SELECT 1 FROM workspace_holders h WHERE h.workspace_id = t.workspace_id AND (h.id = t.holder_id OR h.public_key = t.public_key))
+        ORDER BY t.removed_at, t.holder_id`);
       let seq = records.length;
       for (const row of fresh) {
         seq += 1;
@@ -198,7 +208,7 @@ export function workspaceEncryptionRows(db: DbExecutor) {
         previous = pin;
       }
       if (fresh.length) await db.execute(sql`UPDATE workspace_keys SET removal_head = ${previous} WHERE workspace_id = ${workspaceId}`);
-      return fresh.length;
+      return planted ? 'broken' : fresh.length;
     },
     tombstones: (workspaceId: string) => rowsOf<{ holderId: string; publicKey: string }>(db, sql`SELECT holder_id AS "holderId", public_key AS "publicKey"
       FROM workspace_removed_holders WHERE workspace_id = ${workspaceId}`),
@@ -277,6 +287,20 @@ export function workspaceEncryptionRows(db: DbExecutor) {
     async releaseAttempt(id: string) {
       await db.execute(sql`DELETE FROM password_attempts WHERE id = ${id}`);
     },
+    async reserveCreation(userId: string, limit: number, windowSeconds: number): Promise<{ id: string } | { retryAfterSeconds: number }> {
+      await db.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${`flux-encrypted-creations:${userId}`}, 0))`);
+      await db.execute(sql`DELETE FROM encrypted_workspace_creations WHERE user_id = ${userId} AND at < now() - make_interval(secs => ${windowSeconds})`);
+      const [row] = await rowsOf<{ count: number; retry: number | null }>(db, sql`SELECT count(*)::int AS count,
+        ceil(extract(epoch FROM (min(at) + make_interval(secs => ${windowSeconds}) - now())))::int AS retry
+        FROM encrypted_workspace_creations WHERE user_id = ${userId}`);
+      if ((row?.count ?? 0) >= limit) return { retryAfterSeconds: Math.max(1, row?.retry ?? windowSeconds) };
+      const id = randomUUID();
+      await db.execute(sql`INSERT INTO encrypted_workspace_creations (id, user_id) VALUES (${id}, ${userId})`);
+      return { id };
+    },
+    async releaseCreation(id: string) {
+      await db.execute(sql`DELETE FROM encrypted_workspace_creations WHERE id = ${id}`);
+    },
     async grant(workspaceId: string, userId: string, options: { lock?: boolean } = {}): Promise<{ grantedBy: string; expiresAt: Date } | null> {
       const [row] = await rowsOf<{ grantedBy: string; expiresAt: Date }>(db, sql`SELECT granted_by AS "grantedBy", expires_at AS "expiresAt"
         FROM workspace_wrap_grants WHERE workspace_id = ${workspaceId} AND user_id = ${userId} AND expires_at > now()${options.lock ? sql` FOR UPDATE` : sql``}`);
@@ -322,6 +346,11 @@ export function workspaceEncryptionRows(db: DbExecutor) {
       await db.execute(sql`DELETE FROM workspace_holders WHERE workspace_id = ${workspaceId} AND kind = 'password' AND user_id = ${userId}`);
       return 'deleted';
     },
+    /** Who has an unlock password here (empty for a plain workspace, which has no holders). */
+    async passwordHolders(workspaceId: string): Promise<string[]> {
+      return (await rowsOf<{ userId: string }>(db, sql`SELECT user_id AS "userId" FROM workspace_holders WHERE workspace_id = ${workspaceId} AND kind = 'password' AND user_id IS NOT NULL`))
+        .map((row) => row.userId);
+    },
     /** The `encryption` field of each sealed workspace for one reader (null user for an agent). Plain workspaces are absent. */
     async views(workspaceIds: string[], userId: string | null): Promise<Map<string, EncryptionViewRow>> {
       if (!workspaceIds.length) return new Map();
@@ -332,6 +361,7 @@ export function workspaceEncryptionRows(db: DbExecutor) {
              'unlockedByName', a.name) ORDER BY u.key_version) FROM workspace_unlocks u LEFT JOIN auth_users a ON a.id = u.unlocked_by
              WHERE u.workspace_id = k.workspace_id) AS unlocks,
           EXISTS (SELECT 1 FROM workspace_holders h WHERE h.workspace_id = k.workspace_id AND h.kind = 'password' AND h.user_id = ${userId}) AS "myPassword",
+          (SELECT g.expires_at FROM workspace_wrap_grants g WHERE g.workspace_id = k.workspace_id AND g.user_id = ${userId} AND g.expires_at > now()) AS "grantUntil",
           EXISTS (SELECT 1 FROM workspace_holders h WHERE h.workspace_id = k.workspace_id AND h.kind = 'recovery') AS "recoveryCode",
           (SELECT max(v.created_at) FROM workspace_key_versions v WHERE v.workspace_id = k.workspace_id AND v.key_version > 1) AS "keyChangedAt",
           k.rotation, (SELECT json_build_object('rowsDone', p.rows_done, 'rowsEstimate', p.rows_estimate, 'startedAt', p.started_at, 'stalled', p.stalled_at IS NOT NULL)
@@ -340,11 +370,23 @@ export function workspaceEncryptionRows(db: DbExecutor) {
              FROM workspace_dek_wraps dw JOIN workspace_holders h ON h.id = dw.holder_id LEFT JOIN auth_users a ON a.id = h.user_id
              WHERE dw.workspace_id = k.workspace_id AND dw.key_version = k.current_version AND k.rotation = 'reencrypting') AS "rotationOpenFor",
           CASE WHEN k.rotation <> 'none' AND k.rotation_reason IS NOT NULL THEN json_build_object('kind', k.rotation_reason->>'kind',
-            'userId', k.rotation_reason->>'userId', 'name', (SELECT a.name FROM auth_users a WHERE a.id = k.rotation_reason->>'userId')) END AS "rotationReason"
+            'userId', k.rotation_reason->>'userId', 'name', (SELECT a.name FROM auth_users a WHERE a.id = k.rotation_reason->>'userId')) END AS "rotationReason",
+          CASE WHEN k.key_change_reason IS NOT NULL THEN json_build_object('kind', k.key_change_reason->>'kind',
+            'userId', k.key_change_reason->>'userId', 'name', (SELECT a.name FROM auth_users a WHERE a.id = k.key_change_reason->>'userId')) END AS "keyChangeReason",
+          (SELECT json_build_object('reason', e.data->>'reason', 'at', e.created_at, 'by', a.id, 'byName', a.name)
+             FROM events e LEFT JOIN auth_users a ON e.actor_id LIKE 'human:%' AND a.id = substr(e.actor_id, 7)
+             WHERE e.workspace_id = k.workspace_id AND e.kind = 'workspace.locked.v1'
+               AND NOT EXISTS (SELECT 1 FROM workspace_unlocks u WHERE u.workspace_id = k.workspace_id)
+             ORDER BY e.created_at DESC LIMIT 1) AS "lastLock",
+          (SELECT coalesce(json_agg(json_build_object('id', h.user_id, 'name', a.name) ORDER BY a.name), '[]'::json)
+             FROM workspace_holders h JOIN workspace_members m ON m.workspace_id = h.workspace_id AND m.user_id = h.user_id AND m.role IN ('owner', 'admin')
+             JOIN auth_users a ON a.id = h.user_id
+             WHERE h.workspace_id = k.workspace_id AND h.kind = 'password') AS "unlockers"
         FROM workspace_keys k JOIN workspaces w ON w.id = k.workspace_id WHERE w.encrypted AND k.workspace_id IN (${ids})`);
-      return new Map(rows.map((row) => [row.workspaceId, { ...row, keyChangedAt: atOrNull(row.keyChangedAt),
+      return new Map(rows.map((row) => [row.workspaceId, { ...row, keyChangedAt: atOrNull(row.keyChangedAt), grantUntil: atOrNull(row.grantUntil),
         rotationProgress: row.rotationProgress ? { rowsDone: Number(row.rotationProgress.rowsDone), rowsEstimate: Number(row.rotationProgress.rowsEstimate),
           startedAt: at(row.rotationProgress.startedAt), stalled: row.rotationProgress.stalled === true } : null,
+        lastLock: row.lastLock ? { ...row.lastLock, at: new Date(row.lastLock.at as unknown as string) } : null, unlockers: row.unlockers ?? [],
         unlocks: (row.unlocks ?? []).map((unlock) => ({ ...unlock, unlockedAt: new Date(unlock.unlockedAt) })) }]));
     },
   };

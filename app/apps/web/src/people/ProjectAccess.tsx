@@ -8,6 +8,7 @@ import { useShellActions } from '../app/shellContext';
 import { AgentTag, Avatar, Button, Icon, Kreska, prefersReducedMotion, useRowMotion, Select, Option } from '../ui';
 import { ROLE_LABEL, attemptKeys, firstName, grantPerson, isManagerRole, levelFor, listGrants, listMembers, problemText, revokeGrant } from './api';
 import './people.css';
+import { useWorkspaceEncryption } from '../encryption/state';
 
 /** Each person's role in one or two words. */
 const ROLE_SHORT: Record<Access, string> = { manager: 'Manages', contributor: 'Can write', viewer: 'Can read' };
@@ -139,6 +140,7 @@ export function ProjectAccess({ project, people, focusToken }: { project: Projec
   };
 
   const restricted = project.visibility === 'restricted';
+  const encrypted = !!useWorkspaceEncryption(project.workspaceId);
   const meRow = <li className="people__item"><div className="people__row"><Avatar name={me.user.name} size="md" tone="me" /><span className="people__who"><b>{me.user.name} <span className="people__you">· you</span></b></span><span className="people__role">{ROLE_SHORT[project.access]}</span></div></li>;
   // Invite: someone already in the space is given access here; someone new is first added to the space.
   const invite = () => {
@@ -200,6 +202,8 @@ export function ProjectAccess({ project, people, focusToken }: { project: Projec
         <span>{restricted ? 'Only the people listed here can open it.' : `Everyone in ${workspaceName} can open it; guests only by invitation.`}
           {manager ? <> <Button variant="link" className="access__change" aria-expanded={managing} onClick={() => { setManaging((on) => !on); setEditing(null); setDone(''); }}>Change access</Button></> : null}</span>
       </p>
+      {/* F-030 (#655): an encrypted space says so in the audience section, in one line. */}
+      {encrypted ? <p className="access__line" data-encrypted-line=""><Icon name="lock" size={13} /><span>Encrypted space · only people work here, no AI.</span></p> : null}
     </section>
   );
 }

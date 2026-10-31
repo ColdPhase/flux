@@ -39,6 +39,9 @@ export interface OverviewView {
 /** The people of one workspace (#188): members and roles; owners and admins add and manage them. */
 export interface PeopleView { kind: 'people'; workspaceId: string }
 
+/** A new space (F-030, #655): the form in the Details panel, plain or encrypted. Never kept in a history entry: it holds a password. */
+export interface NewSpaceView { kind: 'new-space' }
+
 /** "Make it a project…" for a DM sketch (#96): the exact audience and content before anything is shared. */
 export interface PromoteSketchView { kind: 'promote-sketch'; sketchId: string; title: string }
 
@@ -61,7 +64,7 @@ export interface OwnedView { kind: 'owned' }
 export const isOwned = (view: DetailsView): view is OwnedView => typeof view === 'object' && view.kind === 'owned';
 
 /** What the Details panel shows: the current place, a project object or form, or how to connect a personal AI (#57). */
-export type DetailsView = 'place' | 'connect-ai' | ObjectView | WorkFormView | AddToDocView | OverviewView | PromoteSketchView | RecapView | PeopleView | ThoughtTasksView | OwnedView;
+export type DetailsView = 'place' | 'connect-ai' | ObjectView | WorkFormView | AddToDocView | OverviewView | PromoteSketchView | RecapView | PeopleView | NewSpaceView | ThoughtTasksView | OwnedView;
 
 /**
  * A panel a route's own view owns (F-026 S4, #488): a conversation thread, a direct-message thread, an agent or a task's
@@ -132,6 +135,11 @@ export interface ShellActions {
   hidePanel(key: string): void;
   /** Closes the panel as Esc and its close control do: a view-owned panel leaves its address first. */
   closePanel(): void;
+  /**
+   * A panel content that must not be dismissed by accident (the one-time recovery code, UI audit RC-1) holds Esc and ×:
+   * while its guard returns true, closing is refused and the content asks in place. Null releases it.
+   */
+  guardPanel(guard: (() => boolean) | null): void;
   /** Shows that view-owned panel again when something else closed or covered it while the view kept it open. */
   reopenPanel(key: string): void;
   /** The element inside the panel the owner renders into, while the panel shows the owned view. */
@@ -140,7 +148,7 @@ export interface ShellActions {
   panelKey: string | null;
 }
 
-export const ShellContext = createContext<ShellActions>({ openDetails: () => undefined, labelPanel: () => undefined, openCreate: () => undefined, openSearch: () => undefined, openNavigation: () => undefined, actionSlot: null, metadataSlot: null, toggleFocus: () => undefined, toggleSidebar: () => undefined, sidebarHidden: false, showPanel: () => undefined, hidePanel: () => undefined, reopenPanel: () => undefined, closePanel: () => undefined, panelSlot: null, panelKey: null });
+export const ShellContext = createContext<ShellActions>({ openDetails: () => undefined, labelPanel: () => undefined, openCreate: () => undefined, openSearch: () => undefined, openNavigation: () => undefined, actionSlot: null, metadataSlot: null, toggleFocus: () => undefined, toggleSidebar: () => undefined, sidebarHidden: false, showPanel: () => undefined, hidePanel: () => undefined, reopenPanel: () => undefined, closePanel: () => undefined, guardPanel: () => undefined, panelSlot: null, panelKey: null });
 
 export function useShellActions(): ShellActions {
   return useContext(ShellContext);
