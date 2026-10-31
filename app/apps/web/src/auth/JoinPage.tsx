@@ -106,7 +106,8 @@ export function JoinPage() {
   }
   if (state.kind === 'joined') {
     const { result } = state;
-    const open = () => { revalidator.revalidate(); navigate('/', { replace: true }); };
+    // #763 FT-3: an invite made from a project lands in it.
+    const open = () => { revalidator.revalidate(); navigate(result.projectId ? `/projects/${result.projectId}` : '/', { replace: true }); };
     return (
       <>
         <div className="auth__head"><h1 className="auth__title">{result.status === 'joined' ? `You joined ${result.workspaceName}` : `You’re in ${result.workspaceName}`}</h1>
@@ -120,7 +121,7 @@ export function JoinPage() {
             </div>
           </div>
         ) : null}
-        <div className="auth__card"><Button variant="primary" size="lg" block autoFocus onClick={open}>{`Open ${result.workspaceName}`}</Button></div>
+        <div className="auth__card"><Button variant="primary" size="lg" block autoFocus onClick={open}>{result.projectId ? 'Open the project' : `Open ${result.workspaceName}`}</Button></div>
       </>
     );
   }
@@ -132,7 +133,7 @@ export function JoinPage() {
       <div className="auth__head">
         <h1 className="auth__title">{already ? `You’re in ${preview.workspaceName}` : `Join ${preview.workspaceName}`}</h1>
         <p className="auth__lead">{already ? 'This invite link has nothing more to do for this account.'
-          : `${preview.invitedBy} invited you to ${preview.workspaceName} as ${ROLE_NAME[preview.role]}. ${ROLE_SENTENCE[preview.role]}`}</p>
+          : `${preview.invitedBy} invited you to ${preview.workspaceName} as ${ROLE_NAME[preview.role]}. ${ROLE_SENTENCE[preview.role]}${preview.projectName ? ` You start in ${preview.projectName}.` : ''}`}</p>
       </div>
       {!already && (preview.emailLocked || preview.encrypted) ? (
         <div className="auth__notice" role="note">

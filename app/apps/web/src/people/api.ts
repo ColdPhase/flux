@@ -49,7 +49,7 @@ export const setWorkspaceAi = (workspaceId: string, state: 'allowed' | 'blocked'
 
 /** Invite links (F-035): owners and admins create, list and revoke them; whoever has one previews and accepts it. */
 export const listInvites = (workspaceId: string, signal?: AbortSignal) => request<WorkspaceInvite[]>(workspaceInvitesPath(workspaceId), { signal });
-export const createInvite = (workspaceId: string, body: { role: InviteRole; email: string | null; expiresInDays: InviteExpiryDays }, idempotencyKey: string) =>
+export const createInvite = (workspaceId: string, body: { role: InviteRole; email: string | null; expiresInDays: InviteExpiryDays; projectId?: string | null }, idempotencyKey: string) =>
   request<WorkspaceInvite>(workspaceInvitesPath(workspaceId), { method: 'POST', body, headers: key(idempotencyKey) });
 export const revokeInvite = (workspaceId: string, inviteId: string) => request<null>(workspaceInvitePath(workspaceId, inviteId), { method: 'DELETE' });
 export const previewInvite = (token: string, signal?: AbortSignal) => request<InvitePreview>(INVITE_PREVIEW_PATH, { method: 'POST', body: { token }, signal });

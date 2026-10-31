@@ -36,11 +36,13 @@ const GUIDE_TABS: TabItem[] = [
  * One client at a time (#763 AG-2): a tab per client, each with its own add and login commands and how work starts. Release
  * verification notes live in docs and the CHANGELOG, never on this page (#763 AG-3).
  */
-export function ClientGuide({ origin, initial = 'claude_code' }: { origin: string; initial?: GuideClient }) {
+export function ClientGuide({ origin, initial = 'claude_code', second = false }: { origin: string; initial?: GuideClient; second?: boolean }) {
   const url = `${origin}/mcp`;
   const [client, setClient] = useState<GuideClient>(initial);
   return <div className="connection__guide">
     <h2>Connect your MCP client</h2>
+    {/* #763 FT-10: with no personal agent yet, this is the second step and says so. */}
+    {second ? <p className="connection__order">Second step: after your personal agent exists, add Flux to your client.</p> : null}
     <p>Add this Flux address to the client you already use. It opens Flux to ask for your consent, and gets only the access you approve.</p>
     {isLoopbackOrigin(origin)
       ? <p>This address works only on this computer. A client on another computer needs an HTTPS address for this Flux server, which its operator sets up.</p>
@@ -49,7 +51,7 @@ export function ClientGuide({ origin, initial = 'claude_code' }: { origin: strin
     {client === 'claude_code' ? <section className="connection__client" role="tabpanel" id="guide-claude_code" aria-labelledby="guide-tab-claude_code">
       <code>{`claude mcp add --transport http flux ${url}\nclaude mcp login flux`}</code>
       <h3>Start work</h3>
-      <p>In Claude Code, type <code>/mcp__flux__start_work</code> and choose your project. Later, <code>/mcp__flux__resume_work</code> picks up where it left off and reads only what changed. Flux supplies the instructions; you write no prompt.</p>
+      <p>In Claude Code, type <code>/mcp__flux__start_work</code> followed by your project’s name, for example <code>/mcp__flux__start_work My project</code> (with one project selected, the name can be left out). Later, <code>/mcp__flux__resume_work</code> picks up where it left off and reads only what changed. Flux supplies the instructions; you write no prompt.</p>
     </section> : client === 'codex' ? <section className="connection__client" role="tabpanel" id="guide-codex" aria-labelledby="guide-tab-codex">
       <code>{`codex mcp add flux --url ${url}\ncodex mcp login flux`}</code>
       <p>Codex starts signing in when it adds the server; run the login command if it asks you to.</p>

@@ -1,6 +1,6 @@
 import {
   AGENT_CONNECTIONS_PATH, AGENT_OAUTH_CONSENT_CONTEXT_PATH, AGENT_OAUTH_HELD_CONNECTION_PATH, AUTH_OAUTH2_CONSENT_PATH, AUTH_OAUTH2_CONTINUE_PATH,
-  agentActionGrantPath, agentConnectionPath, agentConnectionSelectPath, agentActionGrantsPath, agentMcpPolicyPath, projectGrantsPath, workspaceAgentsPath, type Agent, type AgentConnection,
+  agentActionGrantPath, agentConnectionPath, agentProjectAccessPath, projectAgentRequestPath, projectAgentRequestsPath, type AgentAccessRequest, type AgentProjectAccess, agentConnectionSelectPath, agentActionGrantsPath, agentMcpPolicyPath, projectGrantsPath, workspaceAgentsPath, type Agent, type AgentConnection,
   type AgentMcpEntry, type AgentMcpPolicy, type SaveAgentMcpPolicy, type AgentConnectionSetupFacts,
   type AgentScope, type AgentOauthConsentContext, type AgentStandingGrant, type CreateAgentCommand, type CreateAgentConnectionCommand,
   type CreateAgentStandingGrantCommand, type ExternalClientDesignation, type GrantProjectCommand, type NarrowAgentStandingGrantCommand, type Page, type ProjectGrant,
@@ -131,4 +131,25 @@ export function followOAuthRedirect(result: OAuthRedirect) {
   if (!target) throw new Error('Flux did not return the next authorization step. Please try connecting again.');
   // Better Auth issues this destination after validating the registered client and signed flow.
   window.location.assign(target);
+}
+
+/** #763 FT-1: the owner's own agent in each project of its workspace the owner can open: its grant and any open request. */
+export function getAgentProjectAccess(agentId: string, signal?: AbortSignal) {
+  return request<AgentProjectAccess[]>(agentProjectAccessPath(encodeURIComponent(agentId)), { signal });
+}
+
+/** Asks the project's managers to let the owner's agent in; they get a Needs-you item. Asking grants nothing. */
+export function requestAgentAccess(projectId: string, agentId: string, role?: 'contributor' | 'viewer') {
+  return request<AgentAccessRequest & { notified: { id: string; name: string }[] }>(projectAgentRequestsPath(projectId), {
+    method: 'POST', body: { agentId, ...(role ? { role } : {}) } });
+}
+
+/** Managers: the project's open agent requests; others: their own. */
+export function listAgentAccessRequests(projectId: string, signal?: AbortSignal) {
+  return request<AgentAccessRequest[]>(projectAgentRequestsPath(projectId), { signal });
+}
+
+/** A project manager allows (the ordinary agent grant) or declines a request. */
+export function answerAgentAccessRequest(projectId: string, requestId: string, allow: boolean) {
+  return request<AgentAccessRequest>(projectAgentRequestPath(projectId, requestId), { method: 'POST', body: { allow } });
 }

@@ -105,6 +105,7 @@ export function Home() {
   // A person with no project yet gets one first step, not an empty queue and links to empty pages (#763 FT-1, S21).
   // A space waiting to be unlocked is not a first run: its row stays in Projects (F-030, #655).
   const firstRun = projects.length === 0 && !lockedWorkspaces.length && !top.length;
+  const joinedSpace = workspaces.find((space) => space.role !== null && space.role !== 'owner') ?? null;
 
   return (
     <div className="pane-scroll"><div className="pane-in home">
@@ -119,10 +120,17 @@ export function Home() {
       {firstRun ? (
         <section className="home__card home__first" aria-labelledby="home-first">
           {moments ? <Kreska size={56} expression="hello" /> : null}
+          {joinedSpace ? <>
+            {/* #763 FT-3: someone who joined a space but has no project there yet is told so, not sent to an invite link. */}
+            <h3 id="home-first">You joined {joinedSpace.name}</h3>
+            <p>Nobody has added you to a project there yet. A project’s manager gives you access, and it appears here at once. You can also start your own.</p>
+            <Button variant="secondary" size="lg" onClick={() => openCreate({ kind: 'project' })}>Start your own project</Button>
+          </> : <>
           <h3 id="home-first">Start with a project</h3>
           <p>A project is where people and agents talk, turn what is said into tasks and decisions, and keep what they learn.</p>
           <Button variant="primary" size="lg" onClick={() => openCreate({ kind: 'project' })}>Start your first project</Button>
           <p className="home__first-note">Got an invite link? Open it to join your team.</p>
+          </>}
         </section>
       ) : null}
       {/* Details (the space and its people, where invite links are made) stays reachable; the links to empty pages wait. */}

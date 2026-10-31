@@ -35,7 +35,7 @@ async function fetchRoster(workspaceId: string, signal: AbortSignal): Promise<Ro
  * email, change roles and remove people; anyone can leave. Being here never opens a restricted
  * project: that takes access given in the project itself (#44).
  */
-export function WorkspacePeople({ workspaceId, onBack, page = false }: { workspaceId: string; onBack: () => void; page?: boolean }) {
+export function WorkspacePeople({ workspaceId, onBack, page = false, project }: { workspaceId: string; onBack: () => void; page?: boolean; project?: { id: string; name: string } }) {
   const { me } = useShellData();
   const [roster, setRoster] = useState<Roster | null>(null);
   const [failed, setFailed] = useState('');
@@ -125,7 +125,7 @@ export function WorkspacePeople({ workspaceId, onBack, page = false }: { workspa
       <h3 className="details__title">People</h3>
       <p className="details__lead">Being in {workspace.name} doesn’t open every project. Restricted projects show only to the people given access in the project itself.</p>
 
-      {manager && members ? <AddPerson workspace={workspace} members={members} myRole={myRole} invitesSeen={invitesSeen} onJoined={load} onAdded={(member) => changed(`${member.name} joined ${workspace.name} as ${ROLE_LABEL[member.role].toLowerCase()}.`, false)} /> : null}
+      {manager && members ? <AddPerson workspace={workspace} project={project} members={members} myRole={myRole} invitesSeen={invitesSeen} onJoined={load} onAdded={(member) => changed(`${member.name} joined ${workspace.name} as ${ROLE_LABEL[member.role].toLowerCase()}.`, false)} /> : null}
 
       <section className="details__sec" aria-labelledby="people-here">
         <h4 id="people-here" ref={rosterRef} tabIndex={-1}>{ordered ? `In ${workspace.name} · ${ordered.length}` : `You in ${workspace.name}`}</h4>
@@ -162,7 +162,7 @@ export function WorkspacePeople({ workspaceId, onBack, page = false }: { workspa
   );
 }
 
-function AddPerson({ workspace, members, myRole, invitesSeen, onJoined, onAdded }: { workspace: Workspace; members: WorkspaceMember[]; myRole: WorkspaceRole;
+function AddPerson({ workspace, project, members, myRole, invitesSeen, onJoined, onAdded }: { workspace: Workspace; project?: { id: string; name: string }; members: WorkspaceMember[]; myRole: WorkspaceRole;
   invitesSeen: number; onJoined: () => void; onAdded: (member: WorkspaceMember) => void }) {
   const [email, setEmail] = useState('');
   const [role, setRole] = useState<WorkspaceRole>('member');
@@ -213,7 +213,7 @@ function AddPerson({ workspace, members, myRole, invitesSeen, onJoined, onAdded 
       </form>
     </section>
       {/* Someone without an account (#763 PE-2): the address Flux could not find is filled into the invite link (F-035). */}
-      <InviteLinks key={newcomer} prefill={newcomer} workspace={workspace} myRole={myRole} seen={invitesSeen} onJoined={onJoined} />
+      <InviteLinks key={newcomer} prefill={newcomer} workspace={workspace} project={project} myRole={myRole} seen={invitesSeen} onJoined={onJoined} />
     </>
   );
 }
@@ -350,7 +350,10 @@ async function copyText(text: string): Promise<boolean> {
  * and sends it themselves (Flux sends no email). The new link shows once at the top, ready to copy; every pending link
  * stays listed with Copy and Revoke. Whoever opens it signs in or creates an account and joins with that role.
  */
-function InviteLinks({ prefill, workspace, myRole, seen, onJoined }: { prefill: string; workspace: Workspace; myRole: WorkspaceRole; seen: number; onJoined: () => void }) {
+function InviteLinks({ prefill, workspace, project, myRole, seen, onJoined }: { prefill: string; workspace: Workspace; project?: { id: string; name: string }; myRole: WorkspaceRole; seen: number; onJoined: () => void }) {
+  // #763 FT-3: a link made from a project also opens it, unless the person unticks it.
+  const [withProject, setWithProject] = useState(!!project);
+  const [revoking, setRevoking] = useState<string | null>(null);
   const [invites, setInvites] = useState<WorkspaceInvite[] | null>(null);
   const [role, setRole] = useState<InviteRole>('member');
   const [email, setEmail] = useState(prefill);
@@ -383,7 +386,8 @@ function InviteLinks({ prefill, workspace, myRole, seen, onJoined }: { prefill: 
     if (address && !/^[^\s@]+@[^\s@]+$/.test(address)) { setProblem('Enter an email address, or leave it empty for anyone with the link.'); return; }
     setBusy(true); setProblem(''); setStatus('');
     try {
-      const invite = await createInvite(workspace.id, { role, email: address || null, expiresInDays: days }, keys.current.for(`${role}:${address}:${days}`));
+      const projectId = project && withProject ? project.id : null;
+      const invite = await createInvite(workspace.id, { role, email: address || null, expiresInDays: days, projectId }, keys.current.for(`${role}:${address}:${days}:${projectId ?? ''}`));
       keys.current.done();
       setFresh(invite);
       setInvites((list) => [invite, ...(list ?? []).filter((item) => item.id !== invite.id)]);
@@ -434,6 +438,8 @@ function InviteLinks({ prefill, workspace, myRole, seen, onJoined }: { prefill: 
             {([1, 7, 30] as const).map((option) => <Option key={option} value={String(option)}>{expiryLabel[option]}</Option>)}
           </Select>
         </div>
+        {project ? <label className="people__check"><input type="checkbox" checked={withProject} onChange={(event) => setWithProject(event.target.checked)} />
+          <span>Also give access to {project.name}<small>They land in it when they join.</small></span></label> : null}
         {problem ? <p className="people__notice" role="alert"><Icon name="alert" size={13} />{problem}</p> : null}
         <div className="details__actions"><Button type="submit" variant="secondary" busy={busy}><Icon name="link" size={14} />Create invite link</Button></div>
       </form>
@@ -452,11 +458,21 @@ function InviteLinks({ prefill, workspace, myRole, seen, onJoined }: { prefill: 
             {invites.map((invite) => (
               <li className="people__item" key={invite.id}>
                 <div className="people__row">
-                  <span className="people__who"><b>{who(invite)}</b><span>{ROLE_LABEL[invite.role]} · until {until.format(new Date(invite.expiresAt))} · by {invite.createdBy.name}</span></span>
+                  <span className="people__who"><b>{who(invite)}</b><span>{ROLE_LABEL[invite.role]}{invite.project ? ` · opens ${invite.project.name}` : ''} · until {until.format(new Date(invite.expiresAt))} · by {invite.createdBy.name}</span></span>
                   <Button variant="quiet" className="people__change" onClick={() => void copy(invite)}>Copy<span className="ui-vh"> link for {who(invite)}</span></Button>
                   {invite.role !== 'admin' || myRole === 'owner'
-                    ? <Button variant="quiet" className="people__change" onClick={() => void revoke(invite)}>Revoke<span className="ui-vh"> link for {who(invite)}</span></Button> : null}
+                    ? <Button variant="quiet" className="people__change" aria-expanded={revoking === invite.id} onClick={() => setRevoking(revoking === invite.id ? null : invite.id)}>Revoke<span className="ui-vh"> link for {who(invite)}</span></Button> : null}
                 </div>
+                {/* #763 FT-13: a revoked link can't come back, so Revoke asks once, in place. */}
+                {revoking === invite.id ? (
+                  <div className="people__edit" role="group" aria-label={`Revoke link for ${who(invite)}`} onKeyDown={(event) => { if (event.key === 'Escape') { event.stopPropagation(); setRevoking(null); } }}>
+                    <p className="access__preview">The link stops working at once and can’t be restored. You can make a new one.</p>
+                    <div className="details__actions">
+                      <Button variant="danger" onClick={() => { setRevoking(null); void revoke(invite); }}>Revoke link</Button>
+                      <Button variant="secondary" onClick={() => setRevoking(null)}>Keep it</Button>
+                    </div>
+                  </div>
+                ) : null}
               </li>
             ))}
           </ul>

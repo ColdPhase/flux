@@ -37,7 +37,8 @@ export interface OverviewView {
 }
 
 /** The people of one workspace (#188): members and roles; owners and admins add and manage them. */
-export interface PeopleView { kind: 'people'; workspaceId: string }
+/** `project`: opened from a project's Invite, so a new link also opens that project (#763 FT-3). */
+export interface PeopleView { kind: 'people'; workspaceId: string; project?: { id: string; name: string } }
 
 /** A new space (F-030, #655): the form in the Details panel, plain or encrypted. Never kept in a history entry: it holds a password. */
 export interface NewSpaceView { kind: 'new-space' }
