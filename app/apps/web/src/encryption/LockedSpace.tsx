@@ -62,8 +62,12 @@ export function LockedSpace({ workspaceId }: { workspaceId: string | null }) {
   }, [workspaceId]);
 
   // The space is open for this tab already (another tab or person unlocked it, and the shell has read that): load the place again.
+  // Once each time the shell turns to "open": `revalidator` is a new object on every revalidation, so with it as a dependency a
+  // shell read that still says open while the place answers 423 (the lock not yet in the list) read everything again without end.
   const unlockedNow = !!space && encryption?.state !== 'locked';
-  useEffect(() => { if (unlockedNow) void revalidator.revalidate(); }, [unlockedNow, revalidator]);
+  const revalidate = useRef(revalidator.revalidate);
+  useLayoutEffect(() => { revalidate.current = revalidator.revalidate; });
+  useEffect(() => { if (unlockedNow) void revalidate.current(); }, [unlockedNow]);
 
   return (
     <div className="pane-scroll"><div className="pane-in locked">
