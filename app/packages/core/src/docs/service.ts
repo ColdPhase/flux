@@ -151,12 +151,10 @@ async function authorized(ports: DocPorts, principal: Principal, docId: unknown,
   }
 }
 
-/** Escapes headings inside quoted text so a section keeps its shape. */
-const block = (markdown: string) => markdown.trim().split('\n').map((line) => (/^\s{0,3}#{1,6}\s/.test(line) ? `\\${line.trimStart()}` : line)).join('\n');
-
 /**
- * The Markdown section for a result or decision of the project, as it stands now. It names the
- * source with a `flux:` reference so the section can be found and rewritten later.
+ * What "Add to docs" writes for a result or decision of the project: a result's Markdown section as it stands now,
+ * named by a `flux:` reference so it can be found and rewritten later, or a decision's one reference line (F-034),
+ * which the reader shows as the live card. A proposed decision is refused.
  */
 async function composeSection(ports: DocPorts, projectId: string, source: DocSectionSource) {
   const missing = () => new RuleViolationError(`The ${source.type} is not part of this project`, 'LINK_TARGET_NOT_FOUND');
@@ -166,23 +164,20 @@ async function composeSection(ports: DocPorts, projectId: string, source: DocSec
     if (!result || result.projectId !== projectId) throw missing();
     const finding = result.finding === 'negative' ? 'Negative result' : 'Positive result';
     const lines = [`## Result: ${text.literal(result.title)}`, '', `**${finding}** · recorded by ${text.literal(await actorName(result.createdBy))} · ${text.dateLine(result.createdAt)}`, ''];
-    if (result.evidence.trim()) lines.push(block(result.evidence), '');
+    if (result.evidence.trim()) lines.push(text.quotedBlock(result.evidence), '');
     lines.push(text.sourceLine(source, result.title));
     return { section: lines.join('\n'), title: result.title, label: 'result' };
   }
   const decision = await ports.work.findDecision(source.id);
   if (!decision || decision.projectId !== projectId) throw missing();
-  let status: string;
-  if (decision.status === 'accepted') status = `**Current rule** · accepted by ${text.literal(await actorName({ kind: 'human', id: decision.decidedBy! }))} · ${text.dateLine(decision.decidedAt!)}`;
-  else if (decision.status === 'proposed') status = `**Proposed decision** · proposed by ${text.literal(await actorName(decision.proposedBy))} · ${text.dateLine(decision.createdAt)} · not accepted yet`;
-  else {
-    const later = decision.supersededById ? await ports.work.findDecision(decision.supersededById) : null;
-    status = `**Earlier rule** · replaced ${text.dateLine(decision.supersededAt!)}${later ? ` by [${text.literal(later.title)}](flux:decision/${later.id})` : ''}`;
-  }
-  const lines = [`## Decision: ${text.literal(decision.title)}`, '', status, ''];
-  if (decision.rationale.trim()) lines.push(block(decision.rationale), '');
-  lines.push(text.sourceLine(source, decision.title));
-  return { section: lines.join('\n'), title: decision.title, label: 'decision' };
+  // F-034: a proposed decision stays out of the Wiki until it is accepted.
+  if (decision.status === 'proposed') throw new RuleViolationError('Accept the decision before adding it to the Wiki', 'DECISION_NOT_ACCEPTED');
+  return { section: text.decisionReferenceLine(decision.title, decision.id), title: decision.title, label: 'decision' };
+}
+
+/** Writes what {@link composeSection} made into a doc text: a result's section, or a decision's one reference line. */
+function place(body: string, source: DocSectionSource, composed: { section: string; title: string }) {
+  return source.type === 'decision' ? text.placeDecisionReference(body, source.id, composed.title) : text.upsertSection(body, source, composed.section);
 }
 
 export interface DocUseCaseOptions {
@@ -306,7 +301,7 @@ export function createDocUseCases(uow: DocUnitOfWork, options: DocUseCaseOptions
         let reason = given || 'Started the doc';
         if (from) {
           const composed = await composeSection(ports, project, from);
-          body = text.upsertSection(initial, from, composed.section).body;
+          body = place(initial, from, composed).body;
           reason = given || `Started from the ${composed.label} “${composed.title}”`;
         }
         if (body.length > DOC_LIMITS.body) throw new InvalidInputError(`body must be at most ${DOC_LIMITS.body} characters`);
@@ -362,7 +357,7 @@ export function createDocUseCases(uow: DocUnitOfWork, options: DocUseCaseOptions
         await fenceLegacy(ports, current);
         if (current.doc.currentVersion !== version) throw new VersionConflictError(current.doc.currentVersion, await present(ports, current));
         const composed = await composeSection(ports, projectId, from);
-        const { body, replaced } = text.upsertSection(current.current.body, from, composed.section);
+        const { body, replaced } = place(current.current.body, from, composed);
         const scope = { workspaceId, projectId };
         const taskFence = await prepareDocBodyTaskUse(ports, current, [current.current.body, body], [from]);
         await requireSourceStill(ports, projectId, from);
@@ -375,7 +370,7 @@ export function createDocUseCases(uow: DocUnitOfWork, options: DocUseCaseOptions
           return present(ports, current);
         }
         if (body.length > DOC_LIMITS.body) throw new RuleViolationError('The doc would become too long; start a new doc for this', 'DOC_TOO_LONG');
-        const reason = `${replaced ? 'Updated' : 'Added'} the ${composed.label} “${composed.title}”`;
+        const reason = `${replaced && from.type === 'result' ? 'Updated' : 'Added'} the ${composed.label} “${composed.title}”`;
         const row = await ports.docs.append(id, { title: current.current.title, body, state: current.current.state, reason, author: by });
         await ports.live.rebindSaved(row, randomUUID());
         return commit(ports, principal, scope, row, false, taskFence);

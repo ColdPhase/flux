@@ -12,11 +12,18 @@ const w = schema.projectWorkItems, d = schema.projectDecisions, r = schema.proje
 const base = (table: typeof w | typeof d | typeof r) => ({ id: table.id, workspaceId: table.workspaceId, projectId: table.projectId, title: table.title, createdAt: table.createdAt });
 const workFields = { ...base(w), number: w.number, status: w.status, blocker: w.blocker, waitingForUserId: w.waitingForUserId, dueOn: w.dueOn, ownerUserId: w.ownerUserId, ownerAgentId: w.ownerAgentId, parkedByDecisionId: w.parkedByDecisionId, parkedAt: w.parkedAt, version: w.version, updatedAt: w.updatedAt,
   revertedAt: w.creationRevertedAt, revertedByKind: w.creationRevertedByKind, revertedById: w.creationRevertedById, reversionNoticeId: w.creationReversionNoticeId };
-const decisionFields = { ...base(d), status: d.status, proposedByKind: d.proposedByKind, proposedById: d.proposedById, decidedBy: d.decidedBy, decidedAt: d.decidedAt, supersedesId: d.supersedesId, supersededById: d.supersededById, supersededAt: d.supersededAt, version: d.version, updatedAt: d.updatedAt };
+const decisionFields = { ...base(d), rationale: d.rationale, status: d.status, proposedByKind: d.proposedByKind, proposedById: d.proposedById, decidedBy: d.decidedBy, decidedAt: d.decidedAt, supersedesId: d.supersedesId, supersededById: d.supersededById, supersededAt: d.supersededAt, version: d.version, updatedAt: d.updatedAt };
 const resultFields = { ...base(r), finding: r.finding, createdByKind: r.createdByKind, createdById: r.createdById };
 const iso = (date: Date) => date.toISOString();
 const audience = (record: { projectId: string; createdAt: Date }) => ({ audience: { kind: 'project' as const, projectId: record.projectId }, createdAt: iso(record.createdAt) });
 const actorKey = (ref: PrincipalRef) => `${ref.kind}:${ref.id}`;
+
+/** F-034: a decision's short reason for its card, the first sentence of the rationale as plain words. */
+export function shortReason(rationale: string, max = 160): string {
+  const flat = rationale.replace(/!?\[([^\]]*)\]\([^)]*\)/g, '$1').replace(/^\s{0,3}(#{1,6}|>|[-*+]|\d+[.)])\s+/gm, '').replace(/[*_`~\\]/g, '').replace(/\s+/g, ' ').trim();
+  const sentence = /^(.+?[.!?])(\s|$)/.exec(flat)?.[1] ?? flat;
+  return sentence.length > max ? `${sentence.slice(0, max - 1).trimEnd()}…` : sentence;
+}
 
 /** Bounded native row/detail projection; not the legacy full object/link presenter. */
 /** The composing adapter adds a task's "Let linked PRs move this task" rule (#74 G-1a), presented by core. */
@@ -75,7 +82,7 @@ export function nativeWorkObjectRows(db: DbExecutor) {
     }
     for (const decision of decisions) {
       const projected: DecisionRowProjection = { kind: 'decision', id: decision.id, projectId: decision.projectId, workspaceId: decision.workspaceId, title: decision.title, ...audience(decision), relations: counts('decision', decision.id),
-        status: decision.status, proposedBy: named({ kind: decision.proposedByKind, id: decision.proposedById }), decidedBy: decision.decidedBy ? named({ kind: 'human', id: decision.decidedBy }) : null,
+        reason: shortReason(decision.rationale), status: decision.status, proposedBy: named({ kind: decision.proposedByKind, id: decision.proposedById }), decidedBy: decision.decidedBy ? named({ kind: 'human', id: decision.decidedBy }) : null,
         decidedAt: decision.decidedAt ? iso(decision.decidedAt) : null, supersedes: decision.supersedesId, supersededBy: decision.supersededById, supersededAt: decision.supersededAt ? iso(decision.supersededAt) : null,
         version: decision.version, updatedAt: iso(decision.updatedAt) };
       byId.set(`decision:${decision.id}`, projected);
