@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { FILE_LIMITS, imageTypeOf, type FileDetail, type MessageFile, type StagedFile, type ThoughtFile } from '@flux/contracts';
+import { FILE_LIMITS, imageTypeOf, type FileDetail, type StagedFile, type ThoughtFile } from '@flux/contracts';
 import { ConflictError, ForbiddenError, InvalidInputError, NotFoundError, PayloadTooLargeError } from '../access/errors.js';
 import type { Principal } from '../principal.js';
 import type { ActorRef } from '../work/ports.js';
@@ -143,12 +143,6 @@ export async function prepareThoughtImage(files: FileRepository, storage: Pick<F
 export async function placeThoughtImage(files: FileRepository, storage: Pick<FileStorage, 'read'>, principal: Principal,
   input: { projectId: string; fileId: string; thoughtId: string }, clock: () => Date = () => new Date()): Promise<ThoughtFile> {
   return(await prepareThoughtImage(files,storage,principal,input,clock))();
-}
-
-/** The current file list of each message, for read projections. */
-export function messageFiles(rows: Map<string, MessageFile[]>, messageId: string): { files?: MessageFile[] } {
-  const files = rows.get(messageId);
-  return files?.length ? { files } : {};
 }
 
 /**

@@ -46,8 +46,6 @@ export const listConversationChanges = (conversationId: string, signal?: AbortSi
 export const listRecentChanges = (signal?: AbortSignal) => request<{ items: AssistantChange[] }>(`${ASSISTANT_CHANGES_PATH}?limit=20`, { signal });
 export const applyChange = (change: Pick<AssistantChange, 'id' | 'version'>) =>
   request<AssistantChangeDecision>(assistantChangeActionPath(change.id, 'apply'), { method: 'POST', body: { expectedVersion: change.version } });
-export const notNowChange = (change: Pick<AssistantChange, 'id' | 'version'>) =>
-  request<AssistantChangeDecision>(assistantChangeActionPath(change.id, 'not-now'), { method: 'POST', body: { expectedVersion: change.version } });
 export const sendChange = (change: Pick<AssistantChange, 'id' | 'version'>) =>
   request<AssistantChangeDecision>(assistantChangeActionPath(change.id, 'send'), { method: 'POST', body: { expectedVersion: change.version } });
 export const applyRunChanges = (runId: string) => request<AssistantChangesDecided>(assistantRunChangesActionPath(runId, 'apply'), { method: 'POST', body: {} });

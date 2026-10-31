@@ -1,11 +1,7 @@
 import { useSyncExternalStore } from 'react';
 
 export type ThemeChoice = 'system' | 'light' | 'dark';
-type ResolvedTheme = 'light' | 'dark';
 const KEY = 'flux.theme';
-// Earlier versions stored an accent colour per theme. The final design has none (F-026), so those
-// keys are removed on load; the stored theme choice is kept as it is.
-const RETIRED_KEYS = ['flux.accent', 'flux.accent.light', 'flux.accent.dark'];
 const listeners = new Set<() => void>();
 
 function read(): ThemeChoice {
@@ -17,19 +13,9 @@ function read(): ThemeChoice {
   }
 }
 
-function forgetRetiredChoices() {
-  for (const key of RETIRED_KEYS) {
-    try { localStorage.removeItem(key); } catch { /* storage may be unavailable */ }
-  }
-}
-
 let current: ThemeChoice = typeof window === 'undefined' ? 'system' : read();
 const systemTheme = typeof window === 'undefined' ? null : window.matchMedia('(prefers-color-scheme: dark)');
 let listening = false;
-
-function resolvedTheme(): ResolvedTheme {
-  return current === 'system' ? systemTheme?.matches ? 'dark' : 'light' : current;
-}
 
 /**
  * An installed app's title bar follows the theme actually shown, not only the system setting:
@@ -70,7 +56,6 @@ function apply(choice: ThemeChoice) {
 export function applyStoredTheme() {
   current = read();
   apply(current);
-  forgetRetiredChoices();
   publish();
   if (!listening) {
     listening = true;
@@ -104,13 +89,5 @@ export function useTheme(): ThemeChoice {
     (listener) => { listeners.add(listener); return () => listeners.delete(listener); },
     () => current,
     () => 'system',
-  );
-}
-
-export function useResolvedTheme(): ResolvedTheme {
-  return useSyncExternalStore(
-    (listener) => { listeners.add(listener); return () => listeners.delete(listener); },
-    resolvedTheme,
-    () => 'light',
   );
 }

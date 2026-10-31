@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useState, type MouseEvent } from 'react';
+import { useCallback, useEffect, useState, type MouseEvent } from 'react';
 import { Link, useLocation, useNavigate, type LinkProps, type NavigateOptions, type To } from 'react-router';
 import { ApiError } from '../api/client';
 import { getMaterial } from '../materials/api';
@@ -174,14 +174,4 @@ export function OriginBack({ label, onClick, className = '' }: { label: string; 
 export function RouteOriginBack({ origin, className }: { origin: Origin; className?: string }) {
   const go = useGoToOrigin(origin);
   return <OriginBack label={origin.label} onClick={go} className={className} />;
-}
-
-/** A panel's own labels: what the open object is called, so the panel that replaces it can lead back to it. */
-export const PanelLabelContext = createContext<(label: string | null) => void>(() => undefined);
-export function usePanelLabel(label: string | null) {
-  const set = useContext(PanelLabelContext);
-  useEffect(() => {
-    set(label);
-    return () => set(null);
-  }, [label, set]);
 }

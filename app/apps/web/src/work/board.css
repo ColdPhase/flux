@@ -28,15 +28,11 @@
 .tb-mode__b svg { display: none; }
 .tb-mode__b:hover { color: var(--t1); }
 .tb-mode__b[aria-checked="true"] { background: var(--el); color: var(--t1); box-shadow: var(--sh-1), 0 2px 6px -2px rgba(0, 0, 0, .14); }
-.tb-mine, .tb-dr {
+.tb-mine {
   display: inline-flex; align-items: center; gap: 6px; min-height: var(--ctl); padding: 0 10px; border-radius: var(--r);
   font-size: var(--fs-sm); font-weight: 500; color: var(--t2); white-space: nowrap; transition: var(--tr);
 }
-.tb-mine:hover, .tb-dr:hover { background: var(--hov); color: var(--t1); }
-.tb-dr svg { color: var(--t3); }
-.tb-dr { position: relative; }
-.tb-dr__n { font-family: var(--mono); min-width: 17px; height: 17px; padding: 0 4px; border-radius: 9px; background: var(--inv); color: var(--oninv);
-  font-size: 10px; font-weight: 700; line-height: 17px; text-align: center; font-variant-numeric: tabular-nums; }
+.tb-mine:hover { background: var(--hov); color: var(--t1); }
 .tb-mine { min-height: 28px; padding: 0 10px; border-radius: var(--r-pill); box-shadow: inset 0 0 0 1px var(--line); }
 .tb-mine svg { display: none; }
 .tb-mine[aria-pressed="true"] { background: var(--sub); color: var(--t1); box-shadow: inset 0 0 0 1px var(--line2); }
@@ -48,7 +44,6 @@
 .tb-also__b { min-height: 28px; color: var(--t2); text-decoration: underline; text-decoration-color: var(--line2); text-underline-offset: 3px; transition: var(--tr); }
 .tb-also__b:hover { color: var(--t1); text-decoration-color: currentColor; }
 .tb-also__b--need { color: var(--t1); font-weight: 500; }
-.tb-also--list { padding: 0 0 8px; }
 .tb-aside { max-width: calc(var(--col) + 2 * var(--space-page)); padding: 0 var(--space-page); }
 .tb-aside:empty { display: none; }
 
@@ -56,8 +51,6 @@
 .tb-wrap { flex: 1; min-height: 0; display: flex; flex-direction: column; }
 .tb-note { display: flex; align-items: flex-start; gap: 8px; margin: 14px var(--space-page) 0; padding: 9px 12px; border-radius: var(--r); font-size: var(--fs-md); line-height: 1.5; color: var(--t1); overflow-wrap: anywhere; }
 .tb-note svg { margin-top: 2px; }
-.tb-note--ok { background: var(--sub); }
-.tb-note--ok svg { color: var(--t1); }
 .tb-note--error { background: var(--sub); }
 .tb-note--error svg { color: var(--t2); }
 .tb-note__x { flex: none; margin-left: auto; min-height: 24px; font-weight: 500; color: var(--t2); text-decoration: underline; text-underline-offset: 3px; }
@@ -121,7 +114,6 @@ html.tb-is-dragging .tb-card:hover { box-shadow: var(--sh-card); }
 .tb-card__foot { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; min-width: 0; font-size: var(--fs-sm); }
 .tb-card__owner { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 7px; min-width: 0; }
 .tb-card__name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--t3); }
-.tb-card__kind { color: var(--t3); }
 .tb-card__owner--none { color: var(--t3); }
 .tb-av {
   display: grid; place-items: center; flex: none; width: 20px; height: 20px; border-radius: 50%;
@@ -185,7 +177,7 @@ html.tb-is-dragging, html.tb-is-dragging * { cursor: grabbing !important; user-s
 }
 
 /* ---------- Phone (F-026 S-P-Tasks): no toolbar; the view menu sits in the title and the page has its own Mine | All row ---------- */
-.tb-search__l, .tb-dr__s { display: none; }
+.tb-search__l { display: none; }
 @media (max-width: 640px) {
   .tb-bar { display: none; }
   .tb-also { padding-top: 8px; }

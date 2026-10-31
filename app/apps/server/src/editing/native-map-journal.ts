@@ -16,7 +16,6 @@ export async function prepareNativeMap(context:unknown) {
   try {const response=await admissions.admit(0);return ()=>{response();input();};}
   catch(error){input();throw error;}
 }
-export const nativeMapAdmissionQueued=()=>admissions.queued;
 /** Non-locking room read before any live preparation; a map without a live room stays ordinary (#239 review). */
 export const nativeMapRoomExists=(db:DbExecutor,sketchId:string)=>liveMapRows(db,decodeMapChange).exists(sketchId);
 

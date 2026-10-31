@@ -1,16 +1,15 @@
-# HTTPS through Caddy
+# HTTPS and reverse proxies
 
 One proxy serves the entire Flux origin: the web app, authentication, OAuth discovery,
 `/mcp`, `/api/v1/stream` and, when enabled, `/media/*`. Keep Flux's API port on loopback.
 Set `FLUX_PUBLIC_ORIGIN` to the exact HTTPS URL people open, including a nonstandard port.
 Do not strip paths, authorization or cookies, or replace Host with the upstream address.
+The Caddy example below is the most complete; [nginx](#nginx) and [Traefik](#traefik) follow,
+and any proxy that passes WebSocket upgrades and request bodies of at least 5 MiB works the same way.
 
-This example was exercised on Linux Docker Engine, `linux/amd64`, with Caddy **2.11.7** on
-2026-10-07. Its host network reaches the host's published Flux loopback port; this topology
-is not an installation test for Docker Desktop. The [verification record](https://github.com/ColdPhase/flux/blob/b17ae9e357441e9a383eb275d1034e69ec50c98a/docs/agents/evidence/327-https-proxy/README.md)
-contains the exact image, configuration, browser and SQL observations.
+## Caddy
 
-## Local HTTPS example
+### Local HTTPS example
 
 Start Flux using the existing [source launcher](README.md) or [release installation](install-release.md).
 Edit only these settings in **source `docker/.env`**, or **release `.env`**:
@@ -60,11 +59,9 @@ curl --cacert ./flux-local-root.crt -fsS https://localhost:19443/api/v1/health
 
 Only the public CA certificate is exported. Trust it in the browser used for this local
 installation, then open `https://localhost:19443` and create an account. This local CA does
-not obtain a public ACME certificate. Browser automation in the verification record explicitly
-ignored local certificate errors; its separate curl checks verified the CA and hostname.
-Installation of browser or device trust was not tested.
+not obtain a public ACME certificate.
 
-## Trust only the measured proxy peer
+### Trust only the measured proxy peer
 
 Initially leave `FLUX_TRUSTED_PROXIES` empty. Create an identifiable account through Caddy,
 for example `proxy-probe@example.org`, and inspect **only** its session address. For the
@@ -86,19 +83,19 @@ With trust empty, this address is the API's socket peer, including Docker's NAT 
 Set `FLUX_TRUSTED_PROXIES` to **that address** with `/32` for IPv4 or `/128` for IPv6, and
 apply the settings again. In our isolated project the observed peer was `172.27.0.1`, so
 the tested setting was `172.27.0.1/32`. This is an observation, not a reusable default.
+A quick cross-check is the gateway of the project's network:
+`docker network inspect <FLUX_PROJECT>_default --format '{{range .IPAM.Config}}{{.Gateway}}{{end}}'`.
 The address can change when a Compose network is recreated; measure it again. A bridge
 gateway identifies a network hop, not uniquely the Caddy process. Do not trust every
 private network or `0.0.0.0/0`; keep the API loopback publication in place.
 
 Sign out and sign in through Caddy, then repeat the query. In this loopback example the
-new session must contain the browser's client address `127.0.0.1`. The actual check also
-sent a forged `X-Forwarded-For: 203.0.113.199` through Caddy: the saved session remained
-`127.0.0.1`. Caddy's direct-edge default discards client-supplied forwarding values. Flux
+new session must contain the browser's client address `127.0.0.1`. Caddy's direct-edge default discards client-supplied forwarding values. Flux
 resolves the client address through its configured peers and strips arbitrary forwarding
 headers before authentication. No Caddy `trusted_proxies` option is needed for this direct
 edge; putting another proxy ahead of Caddy requires a separate, narrow trust configuration.
 
-## Public hostname and streaming
+### Public hostname and streaming
 
 For a public hostname, keep the same whole-origin proxy and matching upstream port. Change
 `FLUX_PUBLIC_ORIGIN` to `https://flux.example.org`, apply Flux's settings, and replace the
@@ -113,20 +110,16 @@ flux.example.org {
 Use your hostname and actual `FLUX_PORT`. Its A/AAAA records must reach this host; inbound
 80 and 443 must reach Caddy. Preserve writable `/data` and `/config` volumes, and restart
 the proxy to load its new configuration. Caddy's automatic HTTPS obtains and renews the
-public certificate. The actual acceptance run used the local CA configuration above;
-public DNS, ACME issuance and an Internet-facing installation remain unverified here.
+public certificate.
 
 The same `reverse_proxy` supports the WebSocket upgrade at `/api/v1/stream`; no separate
-WebSocket location or path rewrite is required. The acceptance run received a real 101
-upgrade and the stored message's event in another browser. That browser displayed the
-message without reloading its document. The current conversation thread refreshes through
-its existing 15-second polling path; this check does not certify immediate UI updates.
+WebSocket location or path rewrite is required.
 
 When the optional [live-media overlay](../development/live-media.md) is enabled, the
 whole-origin proxy also covers `/media/rtc`, `/media/rtc/v1` and the other `/media/*`
 signaling paths. Actual media RTP/ICE/TURN reachability follows that guide separately;
-an HTTPS proxy does not establish working audio/video transport. Media was not exercised
-in this HTTPS check. The optional source overlay is not shipped in the release operator file.
+an HTTPS proxy does not establish working audio/video transport. The live-media overlay is not
+part of the release `compose.yaml` yet.
 
 Check discovery and the unauthenticated MCP challenge at your exact public origin:
 
@@ -139,7 +132,143 @@ Expect metadata 200 with `resource=https://flux.example.org/mcp`, then 401 whose
 `WWW-Authenticate` points to `https://flux.example.org/.well-known/oauth-protected-resource/mcp`.
 For the local example use `https://localhost:19443` and `--cacert ./flux-local-root.crt`.
 
-Primary references, checked 2026-10-07: [Caddy 2.11.7](https://github.com/caddyserver/caddy/releases/tag/v2.11.7),
-[reverse proxy](https://caddyserver.com/docs/caddyfile/directives/reverse_proxy),
-[automatic HTTPS](https://caddyserver.com/docs/automatic-https) and
-[Docker host networking](https://docs.docker.com/engine/network/drivers/host/).
+**Tested** on 2026-10-07 with Caddy 2.11.7 on the host network of a Linux Docker Engine host, using
+the local example above: health, sign-up, a WebSocket 101 on `/api/v1/stream`, the MCP discovery and
+challenge, and a forged `X-Forwarded-For` replaced by the real client address. Public DNS and ACME
+were not exercised ([record](https://github.com/ColdPhase/flux/blob/b17ae9e357441e9a383eb275d1034e69ec50c98a/docs/agents/evidence/327-https-proxy/README.md);
+references: [reverse proxy](https://caddyserver.com/docs/caddyfile/directives/reverse_proxy),
+[automatic HTTPS](https://caddyserver.com/docs/automatic-https)).
+
+## nginx
+
+The same whole-origin rule with nginx. Put this in a file under `/etc/nginx/conf.d/` (the `map`
+block must be at `http` level, which `conf.d` files are): pass every path, keep `Host`, forward WebSocket upgrades,
+replace the client's `X-Forwarded-For` with the address nginx sees, and let request bodies through
+(nginx accepts 1 MiB by default; Flux takes files up to 5 MiB).
+
+```nginx
+map $http_upgrade $connection_upgrade {
+    default upgrade;
+    ''      close;
+}
+
+server {
+    listen 443 ssl;
+    http2 on;
+    server_name flux.example.org;
+
+    ssl_certificate     /etc/letsencrypt/live/flux.example.org/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/flux.example.org/privkey.pem;
+
+    # Files up to 5 MiB are accepted by Flux; nginx's default is 1 MiB.
+    client_max_body_size 10m;
+
+    location / {
+        proxy_pass http://127.0.0.1:8081;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $remote_addr;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection $connection_upgrade;
+        # Live streams stay open; Flux pings every 25 s (FLUX_STREAM_HEARTBEAT_MS).
+        proxy_read_timeout 1h;
+        proxy_send_timeout 1h;
+        proxy_buffering off;
+    }
+}
+
+server {
+    listen 80;
+    server_name flux.example.org;
+    return 301 https://$host$request_uri;
+}
+```
+
+nginx does not obtain certificates itself; use your ACME client (for example certbot) for the files
+named above. Use your `FLUX_PORT` in `proxy_pass`. Then [trust only the measured proxy
+peer](#trust-only-the-measured-proxy-peer) as for Caddy, with the database query from that section.
+
+**Tested** on 2026-10-31 with `nginx:1.29-alpine` (nginx 1.29.8, digest
+`sha256:5616878291a2eed594aee8db4dade5878cf7edcb475e59193904b198d9b830de`) on the host network of a
+Linux Docker Engine 29.4.2 host, in front of a source `./flux up` on a loopback port, with a
+self-signed certificate for `localhost` and `FLUX_PUBLIC_ORIGIN=https://localhost:<port>`: the
+`server` block above with that port, address and certificate (the port-80 redirect was not part of
+the run). Through the proxy: health answered `ok`; sign-up and `GET /api/v1/me` answered 200; a
+WebSocket upgrade of `/api/v1/stream` with the session cookie answered 101; the MCP metadata named
+`https://localhost:<port>/mcp` and `POST /mcp` answered 401 with the matching `WWW-Authenticate`;
+a 6 MB upload reached Flux (its own 400 answer, not nginx's 413). With `FLUX_TRUSTED_PROXIES` empty
+the session recorded the Docker bridge gateway `192.168.160.1`; with that address as
+`192.168.160.1/32`, a sign-in carrying a forged `X-Forwarded-For: 203.0.113.199` recorded the real
+client `127.0.0.1`. Public DNS, ACME and the redirect block were not exercised.
+
+## Traefik
+
+Traefik's file provider, with a static configuration (`traefik.yml`) and a dynamic one
+(`flux.yml`). Traefik forwards WebSocket upgrades and sets `X-Forwarded-For` itself, and by default
+it does not believe a client's own forwarding headers.
+
+```yaml
+# traefik.yml
+entryPoints:
+  web:
+    address: ":80"
+    http:
+      redirections:
+        entryPoint: { to: websecure, scheme: https }
+  websecure:
+    address: ":443"
+    transport:
+      respondingTimeouts:
+        readTimeout: 0s   # no limit on reading a slow upload
+certificatesResolvers:
+  letsencrypt:
+    acme:
+      email: ops@example.org
+      storage: /letsencrypt/acme.json
+      httpChallenge: { entryPoint: web }
+providers:
+  file:
+    filename: /etc/traefik/flux.yml
+```
+
+```yaml
+# flux.yml
+http:
+  routers:
+    flux:
+      rule: Host(`flux.example.org`)
+      entryPoints: [websecure]
+      service: flux
+      tls:
+        certResolver: letsencrypt
+  services:
+    flux:
+      loadBalancer:
+        servers:
+          - url: http://127.0.0.1:8081
+```
+
+Run Traefik on the host network (or otherwise able to reach `127.0.0.1:<FLUX_PORT>`), keep
+`/letsencrypt` on a volume, and [trust only the measured proxy peer](#trust-only-the-measured-proxy-peer).
+If Flux and Traefik share a Compose network you could point the service at the API container
+instead, but Flux's Compose files publish the API on loopback only, and this guide keeps it so.
+
+**Tested** on 2026-10-31 with `traefik:v3.5` (Traefik 3.5.6, digest
+`sha256:16acb89c6db341182970d6fdafece31303b0a380a8ed7aa51682e225229bf1d2`), same host and Flux as the
+nginx run, with a `websecure` entry point on the test port, the same `readTimeout`, the file
+provider and a static certificate under `tls.certificates` instead of the ACME resolver. The same
+probes passed: health, sign-up, `/api/v1/me`, WebSocket 101 on `/api/v1/stream`, MCP metadata and
+401 challenge, and a 6 MB upload reaching Flux. A sign-in with a forged
+`X-Forwarded-For: 203.0.113.199` recorded `127.0.0.1`. The ACME resolver, the port-80 redirect and
+public DNS were not exercised.
+
+## Other proxies
+
+Any proxy works when it serves the whole origin from one host name, passes WebSocket upgrades on any
+path (`/api/v1/stream`, `/api/v1/typing`, `/api/v1/agent-runtime/console`, and `/media/*` with
+live media), does not buffer or time
+out long-lived connections sooner than a few minutes, accepts request bodies of at least 5 MiB, and
+does not rewrite paths, `Host`, cookies or `Authorization`. A CDN or second proxy in front changes
+which address Flux sees: trust only the hop that connects to Flux, and make sure that hop replaces
+any client-supplied `X-Forwarded-For`.

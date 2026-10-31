@@ -123,13 +123,3 @@ export function FluxLogo({ size = 24, label }: { size?: number; label?: string }
     </svg>
   );
 }
-
-/** The logo with the "flux" wordmark. */
-export function FluxLockup({ size = 22, label = 'Flux' }: { size?: number; label?: string }) {
-  return (
-    <span className="flux-lockup" role="img" aria-label={label}>
-      <FluxLogo size={size} />
-      <b aria-hidden="true">flux</b>
-    </span>
-  );
-}

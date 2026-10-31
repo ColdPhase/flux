@@ -13,8 +13,6 @@
 .dm__older { display: flex; justify-content: center; padding: 12px 0 0; }
 .dm__first { padding: 28px 0; font-size: var(--fs-md); color: var(--t3); }
 .dm__list { list-style: none; margin: 0; padding: 6px 0 0; }
-.dm__day { display: flex; align-items: center; gap: 10px; margin: 14px 0 6px; font-size: var(--fs-xs); font-weight: 500; color: var(--t3); }
-.dm__day::before, .dm__day::after { content: ""; flex: 1; height: 1px; background: var(--line); }
 .dm-msg__row { display: grid; grid-template-columns: 26px minmax(0, 1fr); gap: 10px; padding: 7px 0 3px; }
 .dm-msg--cont .dm-msg__row { padding-top: 1px; }
 .dm-msg__meta { display: flex; align-items: baseline; gap: 8px; font-size: var(--fs-xs); color: var(--t3); line-height: 1.4; }
@@ -154,7 +152,6 @@
 .dm-msg.is-arrived, .dm-msg.is-picked { box-shadow: none; border-radius: var(--r); }
 .dm-msg.is-arrived .message-bubble { background: var(--sub); }
 .dm-msg.is-picked .message-time, .dm-msg.is-picked .message-seen { color: var(--t2); }
-.dm__day { margin: 20px 0; }
 
 .dm-msg { margin-top: 24px; }
 .dm-msg.dm-msg--cont { margin-top: 4px; }

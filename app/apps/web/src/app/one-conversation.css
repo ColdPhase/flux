@@ -23,10 +23,6 @@
 .convo-replies .convo-replies__open { color: var(--t1); }
 .convo-replies .convo-replies__open:hover { color: var(--t1); }
 .convo-replies__when { color: var(--t3); font-weight: 400; }
-@media (hover: hover) {
-  .convo-replies__open + .convo-replies__reply { opacity: 0; transition: var(--tr); }
-  .project-convo__message:hover .convo-replies__reply, .project-convo__message.is-open .convo-replies__reply, .convo-replies__reply:focus-visible { opacity: 1; }
-}
 @media (pointer: coarse) { .convo-replies button { min-height: 44px; min-width: 44px; justify-content: center; } }
 /* The root whose thread is open, marked without colour alone: its control is also expanded. */
 /* Spokój marks the selected source with a quiet fill. */

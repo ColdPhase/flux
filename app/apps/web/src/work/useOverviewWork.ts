@@ -4,7 +4,7 @@ import type { WorkAssociationQuery } from '@flux/contracts';
 import { getWorkAssociations, getWorkRelations, workAssociationReadUrl, workRelationReadUrl } from './read-api';
 import { useWorkRead } from './useWorkRead';
 
-/** One object window and one global relation window; neither is a complete ProjectWork. */
+/** One object window and one global relation window; neither is a complete list of the project's work. */
 export function useOverviewWork(accountId: string, projectId: string | null, conversationId: string | null, messageId?: string) {
   const revalidator = useRevalidator();
   const key = JSON.stringify([accountId, projectId, conversationId, messageId ?? null]);

@@ -548,5 +548,3 @@ export function createReturnUseCases(ports: ReturnPorts) {
     },
   };
 }
-
-export type ReturnUseCases = ReturnType<typeof createReturnUseCases>;

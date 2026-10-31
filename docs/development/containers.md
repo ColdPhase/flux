@@ -72,7 +72,7 @@ agent runtime (`docker/compose.source.runtime.yaml` adds the API's and worker's 
 `all predefined address pools have been fully subnetted`. Remove finished projects with their own
 `docker compose -p <project> down`; the fix for the daemon and the measurement
 (`scripts/check_address_pools.sh`, a throwaway daemon in Docker) are in
-[Docker address pools](../operations/README.md#docker-address-pools).
+[Docker address pools](../operations/troubleshooting.md#docker-address-pools).
 
 Choose the affected checks using the
 [verification policy](../agents/evaluation.md#choose-verification-by-impact).

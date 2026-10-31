@@ -26,3 +26,5 @@ jobs:
         run: python3 scripts/check_agent_setup.py
       - name: Test the foundation checks
         run: python3 -m unittest discover -s tests -p 'test_*.py'
+      - name: Configuration reference matches the code
+        run: python3 scripts/config_reference.py --check

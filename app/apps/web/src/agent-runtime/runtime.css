@@ -10,19 +10,6 @@
 .rt-notice > span { flex: 1 1 16em; }
 .rt-actions .ui-btn { flex: none; }
 .rt-page h2 { overflow-wrap: anywhere; }
-.rt-methods { display: grid; gap: 8px; margin: 0; padding-top: 16px; border: 0; border-bottom: 1px solid var(--line); min-width: 0; }
-.rt-legend { padding: 0; margin-bottom: 4px; font-size: var(--fs-base); font-weight: 600; }
-.rt-method {
-  display: flex; gap: 12px; align-items: flex-start; min-height: 56px; padding: 12px 14px; border-radius: var(--r-lg);
-  box-shadow: inset 0 0 0 1px var(--line); cursor: pointer; transition: var(--tr);
-}
-.rt-method:hover { box-shadow: inset 0 0 0 1px var(--line2); }
-.rt-method.is-on { box-shadow: inset 0 0 0 2px var(--t1); background: var(--sub); }
-.rt-method input { flex: none; width: 18px; height: 18px; margin: 2px 0 0; accent-color: var(--t1); }
-.rt-method__b { display: grid; gap: 3px; min-width: 0; }
-.rt-method__t { font-size: var(--fs-base); font-weight: 600; color: var(--t1); }
-.rt-method__s, .rt-method__p { font-size: var(--fs-sm); line-height: 1.45; color: var(--t2); }
-.rt-method__p { color: var(--t3); }
 .rt-steps { margin: 0 0 8px; padding-left: 20px; display: grid; gap: 6px; font-size: var(--fs-sm); line-height: 1.5; color: var(--t1); }
 .rt-phase { display: flex; align-items: center; gap: 8px; min-height: 24px; margin: -4px 0 10px; font-size: var(--fs-sm); color: var(--t2); }
 .rt-open { margin: 0 0 12px; max-width: 100%; white-space: normal; text-align: left; }
@@ -53,8 +40,6 @@
   .rt-actions .ui-btn { justify-content: center; }
 }
 @media (pointer: coarse) {
-  .rt-method { min-height: 64px; }
-  .rt-method input { width: 22px; height: 22px; }
   .rt-open { min-height: 48px; }
   .rt-code__row .ui-btn { min-width: 72px; }
   .rt-device .ui-btn { min-height: 48px; }

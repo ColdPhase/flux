@@ -23,11 +23,6 @@ export const SIGN_IN_PROBLEM: Record<'device_auth_disabled' | 'code_expired', { 
   code_expired: { text: 'That code has expired. Codes work once, for a few minutes.', action: 'Get a new code' },
 };
 
-export const METHOD_NAME: Record<AgentRuntimeSignInMethod, string> = {
-  claude_account: 'Claude account', console: 'Anthropic Console', sso: 'single sign-on',
-  device_code: 'ChatGPT device code', api_key: 'OpenAI API key', access_token: 'access token',
-};
-
 /** F-027 AST-1: plain account labels for a signed-in Claude Code or Codex account. */
 export const accountLabel = (method: AgentRuntimeSignInMethod | null) => (
   method === 'console' ? 'Anthropic Console · API billing' : method === 'sso' ? 'Claude · your organization'

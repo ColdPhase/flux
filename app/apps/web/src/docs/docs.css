@@ -13,7 +13,6 @@
 
 /* ---------- List ---------- */
 .doc-list { padding-top: 16px; }
-.doc-list__head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 8px; }
 .doc-group { margin-top: 20px; }
 .doc-group__h { display: flex; gap: 6px; margin: 0 0 4px; font-size: var(--fs-xs); font-weight: 500; color: var(--t3); }
 .doc-group__h span { font-family: var(--mono); font-variant-numeric: tabular-nums; }
@@ -144,8 +143,6 @@
 .wiki-doc__crumb span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .wiki-doc > .doc-audience { margin-top: 28px; }
 
-.doc-crumb a { display: inline-flex; align-items: center; gap: 4px; min-height: 32px; margin-left: -6px; padding: 0 6px; border-radius: var(--r-sm); font-size: var(--fs-sm); color: var(--t3); text-decoration: none; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; transition: var(--tr); }
-.doc-crumb a:hover { background: var(--hov); color: var(--t1); }
 .doc-head { margin: 0 0 18px; }
 .doc-head__k { margin: 0; font-size: var(--fs-xs); font-weight: 500; color: var(--t3); }
 .doc-head__t { margin: 0; font-size: var(--fs-doc-title); font-weight: 600; line-height: 1.2; letter-spacing: -0.035em; overflow-wrap: anywhere; }
@@ -154,9 +151,6 @@
 .wiki-who time { font-family: var(--font); }
 .wiki-who__agent { color: var(--t2); }
 .wiki-who__dot { color: var(--line2); }
-.doc-head__change { margin: 6px 0 0; font-size: var(--fs-sm); color: var(--t3); line-height: 1.55; }
-.doc-head__change span:first-child { color: var(--t2); font-weight: 500; }
-.doc-head__why { color: var(--t2); }
 .doc-empty { padding: 12px 0 24px; }
 
 .doc-prose { font-size: .9375rem; line-height: 1.667; color: var(--t2); overflow-wrap: anywhere; }
@@ -333,7 +327,7 @@
 .doc-picker__touch { display: none; }
 
 @media (pointer: coarse) {
-  .doc-crumb a, .doc-links__a, .doc-version, .wiki-page, .wiki-pop__item { min-height: 44px; }
+  .doc-links__a, .doc-version, .wiki-page, .wiki-pop__item { min-height: 44px; }
   .wiki-search { min-height: 44px; }
   .wiki-search input { height: 44px; font-size: 16px; }
   .wiki-index__head .ui-icon-btn { width: 44px; height: 44px; }
@@ -417,7 +411,6 @@
   .doc-decision__t b { font-weight: 600; }
   .doc-decision__title { font-size: var(--fs-sm); color: var(--t2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .doc-decision__sep, .doc-decision__meta { display: none; }
-  .doc-history .doc-head__change { display: none; }
   .doc-edit__text { min-height: 300px; }
   .doc-edit__preview { min-height: 200px; }
   .doc-edit__acts { width: 100%; margin-left: 0; }

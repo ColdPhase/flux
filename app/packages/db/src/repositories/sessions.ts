@@ -45,5 +45,3 @@ export function createSessionRepository(db: DbExecutor) {
     },
   };
 }
-
-export type SessionRepository = ReturnType<typeof createSessionRepository>;

@@ -28,7 +28,6 @@ function unit(row: UnitRow) {
     role: row.role, state: row.state, version: row.version, generation: row.generation, checkpointId: row.checkpointId,
     lease: row.leaseId ? { id: row.leaseId, runtimeSessionId: row.leaseSessionId!, expiresAt: row.leaseExpiresAt! } : null };
 }
-export type CoWorkAdmissionUnit = ReturnType<typeof unit>;
 const clock = sql<Date>`clock_timestamp()`.mapWith((value: Date | string) => new Date(value instanceof Date ? value.getTime() : value));
 
 export function coworkAdmissionRows(tx: DbExecutor) {

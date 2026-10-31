@@ -410,5 +410,3 @@ export function createDocUseCases(uow: DocUnitOfWork, options: DocUseCaseOptions
     },
   };
 }
-
-export type DocUseCases = ReturnType<typeof createDocUseCases>;

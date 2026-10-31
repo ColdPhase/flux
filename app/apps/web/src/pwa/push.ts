@@ -1,4 +1,4 @@
-import { INBOX_PATH, PUSH_PUBLIC_KEY_PATH, PUSH_SUBSCRIPTIONS_PATH, pushSubscriptionPath, type PushPublicKeyResponse, type PushSubscriptionSummary } from '@flux/contracts';
+import { PUSH_PUBLIC_KEY_PATH, PUSH_SUBSCRIPTIONS_PATH, pushSubscriptionPath, type PushPublicKeyResponse, type PushSubscriptionSummary } from '@flux/contracts';
 import { send } from '../api/client.js';
 import { registerServiceWorker, serviceWorkerSupported } from './register.js';
 import { isAppleMobile, isStandalone } from './install.js';
@@ -24,8 +24,6 @@ export type EnableResult =
   | { status: 'dismissed' }
   | { status: 'unsupported' }
   | { status: 'error'; message: string };
-
-export const INBOX_URL = INBOX_PATH;
 
 function pushApisPresent() {
   return serviceWorkerSupported() && 'PushManager' in window && 'Notification' in window;

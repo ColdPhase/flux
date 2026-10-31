@@ -1,20 +1,7 @@
 /* Work items, decisions and results (#101), 1px rules, one inverted mark for "needs you",
    status as a small dot with text, framed objects only for things attached to a message. */
 
-/* ---------- Calm state line ---------- */
-.ws-state { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 0; margin: 0 0 12px; font-size: var(--fs-sm); color: var(--t3); line-height: 1.5; }
-.ws-state--empty { padding: 4px 0; }
-.ws-part { display: inline-flex; align-items: center; min-width: 0; max-width: 100%; }
-.ws-sep { padding: 0 6px; color: var(--t3); }
-.ws-seg { display: inline-flex; align-items: center; gap: 6px; min-height: 28px; padding: 0 6px; margin: 0 -2px; border-radius: var(--r-sm); color: var(--t2); text-align: left; transition: var(--tr); }
-.ws-seg span:last-child { min-width: 0; overflow-wrap: anywhere; }
-.ws-seg svg { flex: none; color: var(--t3); }
-.ws-seg:hover { background: var(--hov); color: var(--t1); }
-.ws-seg--need { color: var(--t1); font-weight: 500; }
-.ws-seg--warn svg { color: var(--t2); }
 .ws-need { color: var(--t1); font-weight: 500; }
-.ws-dot { display: inline-block; flex: none; width: 8px; height: 8px; border-radius: 50%; }
-.ws-dot--need { box-shadow: none; background: var(--inv); }
 
 /* ---------- Actions and objects under a message ---------- */
 .ws-attach { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
@@ -105,9 +92,6 @@ button.ws-task__glyph:active { background: var(--hov); }
 .wd-decision-identity { position: sticky; top: -20px; z-index: 2; padding: var(--s-2) 0 var(--s-1); background: var(--panel-bg, var(--el)); border-bottom: 1px solid var(--line); }
 .ui-sheet .wd-decision-identity { top: -18px; }
 /* The Accept block is a section like the others: no surface of its own, the panel's rhythm inside it (#693). */
-.wd-accept-finish { margin-top: var(--s-3); padding-top: var(--s-3); border-top: 1px solid var(--line); }
-.wd-accept-finish .wd-actions { margin-top: 0; }
-.wd-accept-finish .wd-muted { margin: 0 0 var(--s-2); }
 .wd-accept > .wd-muted { margin-top: var(--s-2); }
 /* A form's primary action and its one line of help are a section: --s-2 between them, the section gap around (#692). */
 .wd-submit .wd-actions { margin-top: 0; }
@@ -119,9 +103,7 @@ button.ws-task__glyph:active { background: var(--hov); }
 .wd-finding--negative svg { color: var(--t2); }
 .wd-finding--positive svg { color: var(--t1); }
 .wd-was { color: var(--t3); text-decoration: line-through; text-decoration-color: var(--line2); }
-.wd-controls { display: grid; grid-template-columns: max-content minmax(0, 1fr); align-items: center; gap: 8px 12px; margin: 18px 0 0; padding: 0; border: 0; min-width: 0; }
-.wd-controls label { font-size: var(--fs-sm); color: var(--t3); }
-.wd-controls .ui-select, .wd-form .ui-select { width: 100%; min-height: var(--ctl); padding: 0 8px; border: 0; border-radius: var(--r); background: var(--el); color: var(--t1); font-size: var(--fs-md); box-shadow: inset 0 0 0 1px var(--line2); }
+.wd-form .ui-select { width: 100%; min-height: var(--ctl); padding: 0 8px; border: 0; border-radius: var(--r); background: var(--el); color: var(--t1); font-size: var(--fs-md); box-shadow: inset 0 0 0 1px var(--line2); }
 .wd-blocker-form { grid-column: 1 / -1; display: flex; align-items: flex-end; gap: 8px; }
 
 /* ---------- The task panel (F-026 S4, S9, S10, P10): rows, a blocker card, Results, Activity ---------- */
@@ -217,7 +199,7 @@ button.wd-link:active:not(:disabled) { background: var(--sub); }
 .wd-form { display: grid; gap: 8px; min-width: 0; margin: 0; padding: 0; border: 0; }
 .wd-form > label { margin-top: 6px; font-size: var(--fs-sm); font-weight: 500; color: var(--t2); }
 .wd-form textarea { width: 100%; padding: 9px 12px; border: 0; border-radius: var(--r); background: var(--el); color: var(--t1); font-size: var(--fs-base); line-height: 1.5; resize: vertical; box-shadow: inset 0 0 0 1px var(--line2); }
-.wd-form textarea:focus, .wd-form .ui-select:focus, .wd-controls .ui-select:focus { outline: none; box-shadow: inset 0 0 0 1px var(--t1), 0 0 0 3px var(--sub); }
+.wd-form textarea:focus, .wd-form .ui-select:focus { outline: none; box-shadow: inset 0 0 0 1px var(--t1), 0 0 0 3px var(--sub); }
 .wd-seg { display: flex; padding: 2px; margin-top: 6px; border-radius: var(--r); background: var(--hov); }
 .wd-seg__b { position: relative; flex: 1; display: flex; align-items: center; justify-content: center; min-height: 32px; border-radius: 6px; font-size: var(--fs-sm); font-weight: 500; color: var(--t3); cursor: pointer; transition: var(--tr); }
 .wd-seg__b input { position: absolute; opacity: 0; inset: 0; margin: 0; cursor: pointer; }
@@ -232,17 +214,11 @@ button.wd-link:active:not(:disabled) { background: var(--sub); }
 .wd-pivot__c { display: inline-flex; align-items: center; gap: 5px; min-height: 28px; font-size: var(--fs-sm); color: var(--t2); }
 
 @media (pointer: coarse) {
-  .ws-seg, .wd-pivot__c { min-height: 44px; }
+  .wd-pivot__c { min-height: 44px; }
   .wd-link { min-height: 44px; }
   .wd-seg__b { min-height: 44px; }
-  .wd-controls .ui-select, .wd-form .ui-select, .wd-pick .ui-select { min-height: 44px; font-size: 16px; }
+  .wd-form .ui-select, .wd-pick .ui-select { min-height: 44px; font-size: 16px; }
   .wd-form textarea { font-size: 16px; }
-}
-@media (max-width: 640px) {
-  .ws-state { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; margin-right: -16px; padding-right: 16px; }
-  .ws-state::-webkit-scrollbar { display: none; }
-  .ws-part { flex: none; max-width: 80vw; }
-  .ws-seg span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 }
 /* The message is only as wide as its own author line and bubble on a touch screen, so the bubble sits at its own
    width instead of floating at a fixed 260px measure beside a short message (#189). */
@@ -305,7 +281,6 @@ button.wd-link:active:not(:disabled) { background: var(--sub); }
 .ws-view { display: inline-flex; align-items: center; gap: 6px; min-height: 32px; padding: 0 12px; border-radius: 999px; font-size: var(--fs-sm); font-weight: 500; color: var(--t2); box-shadow: inset 0 0 0 1px var(--line2); white-space: nowrap; transition: var(--tr); }
 .ws-view:hover { background: var(--hov); color: var(--t1); }
 .ws-view[aria-pressed="true"] { background: var(--t1); color: var(--oninv); box-shadow: none; }
-.ws-view--need:not([aria-pressed="true"]) { color: var(--t1); }
 .ws-view__n { font-family: var(--mono); font-variant-numeric: tabular-nums; font-weight: 400; opacity: .75; }
 .ws-view:focus-visible, .ws-none__b:focus-visible { outline: 2px solid var(--t1); outline-offset: 2px; }
 .ws-mine { display: inline-flex; align-items: center; gap: 8px; min-height: 32px; font-size: var(--fs-sm); color: var(--t2); cursor: pointer; }

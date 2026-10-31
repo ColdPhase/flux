@@ -7,7 +7,7 @@ import {
 } from '@flux/contracts';
 import { request } from '../api/client.js';
 
-// These GETs return explicit bounded projections. Never adapt a page to ProjectWork,
+// These GETs return explicit bounded projections. Never adapt a page to whole-project lists,
 // concatenate continuations, or use an unavailable read as an empty collection.
 function withQuery(path: string, fields: Record<string, string | number | boolean | undefined>) {
   const query = new URLSearchParams();

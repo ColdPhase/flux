@@ -37,16 +37,21 @@ describe('owner-only When sentences (F-027 A9, #409)', () => {
   const make = async (event: AssistantReactionEvent, action: AssistantReactionAction = 'tell', more: Record<string, unknown> = {}) =>
     expectStatus(await owner.browser.request('POST', path(), { body: { projectId: place.id, event, action, enabled: true, ...more } }), 201) as AssistantReaction;
   const events = async () => (await pool.query(`SELECT e.* FROM assistant_reaction_events e JOIN assistant_reactions r ON r.id=e.reaction_id WHERE r.owner_user_id=$1 ORDER BY e.created_at,e.id`, [owner.id])).rows;
-  const task = async (person: Person, status = 'open', blocker: string | null = null) => {
-    const id = randomUUID();
+  // A write that the canonical taps turn into reaction events, with those events moved to the test's future clock in the same
+  // transaction. The worker's own tick runs on the real clock against this database; it never sees an event queued "now" (#752).
+  const tapped = async (object: string, statements: [string, unknown[]][]) => {
     const client = await pool.connect();
     try {
       await client.query('BEGIN');
-      await client.query(`INSERT INTO project_work_items(id,workspace_id,project_id,title,status,blocker,owner_user_id,created_by_kind,created_by_id)
-        VALUES($1,$2,$3,'Calibrate sensor',$4,$5,$6,'human',$6)`, [id,ws.id,place.id,status,blocker,person.id]);
-      await client.query(`UPDATE assistant_reaction_events SET created_at=$2 WHERE object_id=$1`, [id,future]);
+      for (const [text, values] of statements) await client.query(text, values);
+      await client.query(`UPDATE assistant_reaction_events SET created_at=$2 WHERE object_id=$1`, [object,future]);
       await client.query('COMMIT');
     } catch(error) { await client.query('ROLLBACK'); throw error; } finally { client.release(); }
+  };
+  const task = async (person: Person, status = 'open', blocker: string | null = null) => {
+    const id = randomUUID();
+    await tapped(id, [[`INSERT INTO project_work_items(id,workspace_id,project_id,title,status,blocker,owner_user_id,created_by_kind,created_by_id)
+        VALUES($1,$2,$3,'Calibrate sensor',$4,$5,$6,'human',$6)`, [id,ws.id,place.id,status,blocker,person.id]]]);
     return id;
   };
   const process = async () => {
@@ -92,7 +97,7 @@ describe('owner-only When sentences (F-027 A9, #409)', () => {
     const run=(await pool.query(`SELECT prompt,authority,kind,silent FROM personal_runs WHERE id=$1`,[fired[0]!.run_id])).rows[0];
     assert.equal(run.authority,'owner_reaction'); assert.equal(run.kind,'reaction'); assert.equal(run.silent,true);
     assert.match(run.prompt,/<event-data/); assert.match(run.prompt,/UNTRUSTED_BLOCKER/);
-    await pool.query(`SELECT assistant_capture_reaction($1,$2,'blocked',$3,$4)`,[place.id,owner.id,id,randomUUID()]);
+    await tapped(id,[[`SELECT assistant_capture_reaction($1,$2,'blocked',$3,$4)`,[place.id,owner.id,id,randomUUID()]]]);
     await tick(new Date(future.getTime()+29*60_000));
     assert.equal((await events()).filter((event)=>event.run_id).length,1);
   });
@@ -120,7 +125,7 @@ describe('owner-only When sentences (F-027 A9, #409)', () => {
   test('AST-7.8: a durable mention reply is private and never posts',async()=>{
     await make('mentioned','draft_reply');
     const id=randomUUID();
-    await pool.query(`INSERT INTO notifications(id,user_id,workspace_id,source_type,source_id,title,body,url,reason,created_at,ai_origin) VALUES($1,$2,$3,'project',$4,'Jonas mentioned you','@when-ada please check', $5,'mention',$6,false)`,[id,owner.id,ws.id,place.id,`/projects/${place.id}/conversations/${thread.id}#message-${randomUUID()}`,future]);
+    await tapped(id,[[`INSERT INTO notifications(id,user_id,workspace_id,source_type,source_id,title,body,url,reason,created_at,ai_origin) VALUES($1,$2,$3,'project',$4,'Jonas mentioned you','@when-ada please check', $5,'mention',$6,false)`,[id,owner.id,ws.id,place.id,`/projects/${place.id}/conversations/${thread.id}#message-${randomUUID()}`,future]]]);
     await pool.query(`INSERT INTO notifications(id,user_id,workspace_id,source_type,source_id,title,body,url,reason,created_at,ai_origin) VALUES($1,$2,$3,'project',$4,'Mention for Jonas','@when-jonas please check',$5,'mention',$6,false)`,[randomUUID(),peer.id,ws.id,place.id,`/projects/${place.id}/conversations/${thread.id}#message-${randomUUID()}`,future]);
     assert.equal((await events()).length,1,'another person’s mention does not start the owner’s sentence');
     // Real mention source (the notification text alone never supplies instructions/authority).
@@ -143,8 +148,8 @@ describe('owner-only When sentences (F-027 A9, #409)', () => {
     const mine=await task(owner); const theirs=await task(peer);
     for(const target of [theirs,mine]) {
       const result=randomUUID();
-      await pool.query(`INSERT INTO project_results(id,workspace_id,project_id,title,finding,evidence,created_by_kind,created_by_id) VALUES($1,$2,$3,'Low-light test','negative','Fails at 3 lux','human',$4)`,[result,ws.id,place.id,peer.id]);
-      await pool.query(`INSERT INTO project_object_links(id,workspace_id,project_id,role,from_type,from_id,to_type,to_id,created_by_kind,created_by_id) VALUES($1,$2,$3,'about','result',$4,'work',$5,'human',$6)`,[randomUUID(),ws.id,place.id,result,target,peer.id]);
+      await tapped(target,[[`INSERT INTO project_results(id,workspace_id,project_id,title,finding,evidence,created_by_kind,created_by_id) VALUES($1,$2,$3,'Low-light test','negative','Fails at 3 lux','human',$4)`,[result,ws.id,place.id,peer.id]],
+        [`INSERT INTO project_object_links(id,workspace_id,project_id,role,from_type,from_id,to_type,to_id,created_by_kind,created_by_id) VALUES($1,$2,$3,'about','result',$4,'work',$5,'human',$6)`,[randomUUID(),ws.id,place.id,result,target,peer.id]]]);
     }
     assert.equal((await events()).length,1,'only my failed result');
     const binding=randomUUID(); const generation=randomUUID();
@@ -152,7 +157,7 @@ describe('owner-only When sentences (F-027 A9, #409)', () => {
     await pool.query(`INSERT INTO github_bindings(id,workspace_id,project_id,installation_id,repository_id,owner,name,private,url,author_user_id,author_github_user_id,app_id,authorization_generation,state) VALUES($1,$2,$3,'11','22','Ada','sensor',true,'https://github.com/Ada/sensor',$4,'314','999',$5,'active')`,[binding,ws.id,place.id,owner.id,generation]);
     const readyRule=await make('pr_ready','check_task');
     const facts: GithubPullFacts={repositoryId:'22',pullId:'33',number:7,title:'PRIVATE_PR_TITLE',url:'https://github.com/Ada/sensor/pull/7',author:{id:'314',login:'Ada'},headSha:'a'.repeat(40),state:'open',draft:false,merged:false,sourceCreatedAt:new Date().toISOString(),sourceUpdatedAt:new Date().toISOString(),sourceMergedAt:null,checks:[{id:'1',name:'unit tests',appId:null,state:'success',sourceUpdatedAt:new Date().toISOString()}],reviews:[],truncated:false,execution:'ready_for_review'};
-    for(const target of [theirs,mine]) await pool.query(`INSERT INTO github_task_links(id,workspace_id,project_id,task_id,binding_id,pull_id,role,facts) VALUES($1,$2,$3,$4,$5,'33','related',$6)`,[randomUUID(),ws.id,place.id,target,binding,JSON.stringify(facts)]);
+    for(const target of [theirs,mine]) await tapped(target,[[`INSERT INTO github_task_links(id,workspace_id,project_id,task_id,binding_id,pull_id,role,facts) VALUES($1,$2,$3,$4,$5,'33','related',$6)`,[randomUUID(),ws.id,place.id,target,binding,JSON.stringify(facts)]]]);
     assert.equal((await events()).filter((event)=>event.state==='proof').length,1);
     const before=(await events()).filter((event)=>event.run_id).length;
     await tick(future); assert.equal((await events()).filter((event)=>event.run_id).length,before+1,'only failed-result starts without PR proof');
@@ -167,7 +172,7 @@ describe('owner-only When sentences (F-027 A9, #409)', () => {
     // not the earlier queue snapshot. The provider is a fake, the authorizer/native rows are real.
     await pool.query(`UPDATE github_credentials SET state='active' WHERE user_id=$1`,[owner.id]);
     const nextTask=await task(owner);
-    await pool.query(`INSERT INTO github_task_links(id,workspace_id,project_id,task_id,binding_id,pull_id,role,facts) VALUES($1,$2,$3,$4,$5,'33','related',$6)`,[randomUUID(),ws.id,place.id,nextTask,binding,JSON.stringify(facts)]);
+    await tapped(nextTask,[[`INSERT INTO github_task_links(id,workspace_id,project_id,task_id,binding_id,pull_id,role,facts) VALUES($1,$2,$3,$4,$5,'33','related',$6)`,[randomUUID(),ws.id,place.id,nextTask,binding,JSON.stringify(facts)]]]);
     await authorizeGithubReactionEvents(db,github);
     await tick(new Date(future.getTime()+32*60_000));
     const pending=(await events()).find((event)=>event.object_id===nextTask && event.run_id)!;

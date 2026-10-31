@@ -1,6 +1,6 @@
 # Project export
 
-A project export (issue #123) is an open, documented copy of one project that people can read,
+A project export is an open, documented copy of one project that people can read,
 keep and process with ordinary tools. It is not a backup: it has one project and none of the
 private or internal data that a [backup](backup-restore.md) keeps.
 
@@ -49,7 +49,7 @@ JSON-only export carries metadata, while the bundle carries the bytes as well.
 
 ## `project.json`
 
-Task agents’ threads (#400) appear in the additive `agentThreads` array in format 1. Each item carries `workId`, its original conversation ID, authors, ordered messages and attachment metadata. The existing `conversations` array remains people-space history. Format-1 readers that ignore unknown fields keep their old behavior; the bundled schema and versioned EXT-2 snapshot include the new array. The same project-manager authority and private-data exclusions apply. This extension does not publish new MCP tools or change existing people-space replies.
+Task agents’ threads appear in the additive `agentThreads` array in format 1. Each item carries `workId`, its original conversation ID, authors, ordered messages and attachment metadata. The existing `conversations` array remains people-space history. Format-1 readers that ignore unknown fields keep their old behavior; the bundled schema and versioned EXT-2 snapshot include the new array. The same project-manager authority and private-data exclusions apply. This extension does not publish new MCP tools or change existing people-space replies.
 
 Format `flux.project-export`, `formatVersion` 1. The TypeScript types (`ProjectExport`) and the
 JSON Schema (`PROJECT_EXPORT_JSON_SCHEMA`) are in
@@ -67,14 +67,14 @@ names.
 | `people` | Everyone who can read the project now, with `access` (`manager`, `contributor`, `viewer`) and `workspaceRole`, decided by the access policy. |
 | `grants` | Explicit project grants, including `denied`. |
 | `actors` | Names of every person and agent referenced anywhere in the export. |
-| `conversations` | Each conversation with all messages in sequence: author, text, cited material or doc version, time. A message made by a saved blocker, a published result or a public handoff (#154) also has `contribution` (`{ "kind": "blocker" \| "handoff" }` or `{ "kind": "result", "resultId" }`); ordinary messages omit it. |
+| `conversations` | Each conversation with all messages in sequence: author, text, cited material or doc version, time. A message made by a saved blocker, a published result or a public handoff also has `contribution` (`{ "kind": "blocker" \| "handoff" }` or `{ "kind": "result", "resultId" }`); ordinary messages omit it. |
 | `agentThreads` | Task-bound agents-space conversation history, with `workId` and the same ordered message/author/source/files fields. Additive in format1; readers ignore unknown fields. |
 | `files` (optional) | Published attachments: id, display name, size, SHA-256, message and conversation ids, order, and bundle path. Absent for projects without published files. Message `files` lists id, name and size in attachment order. |
 | `materials` | Published materials with every immutable version: title, text, URL, author, time. |
 | `docs` | Docs with every version: title, Markdown text, `draft`/`published`, reason, author, time, and `file` (the Markdown file of the current text). |
 | `sketches` | Project sketches with their thoughts (text, position, size, shape, author, version) and links between thoughts (label). |
-| `work`, `decisions`, `results` | All fields of #101: status, blocker, owner, parking, who proposed and who accepted, supersession, finding, evidence. |
-| `githubSources` (optional) | Only for projects with GitHub task rules (#74): `dormant: true`, the project's default rule mode and `rules` (task id, mode, the state it had, `enabled: false`). Repository bindings are never exported here: a repository's name, URL and id are private GitHub facts that need the exporter's own current GitHub proof, which this export does not check. No installation or App ids, tokens, connecting person, deliveries or pull request data either. Nothing imports it yet (`reimportSupported: false`); a future import must create rules disabled and require a person to connect and authorize repositories on the destination. |
+| `work`, `decisions`, `results` | All fields: status, blocker, owner, parking, who proposed and who accepted, supersession, finding, evidence. |
+| `githubSources` (optional) | Only for projects with GitHub task rules: `dormant: true`, the project's default rule mode and `rules` (task id, mode, the state it had, `enabled: false`). Repository bindings are never exported here: a repository's name, URL and id are private GitHub facts that need the exporter's own current GitHub proof, which this export does not check. No installation or App ids, tokens, connecting person, deliveries or pull request data either. Nothing imports it yet (`reimportSupported: false`); a future import must create rules disabled and require a person to connect and authorize repositories on the destination. |
 | `links` | Typed links (`source`, `affects`, `still_applies`, `about`, `related`, `mentions`) whose two ends are both in the export. |
 
 ## What is never exported
@@ -84,12 +84,12 @@ names.
 - private notes (drafts), including the private note a material was published from: the
   material's text is exported, its source note and the note's id are not;
 - private sketches, and the placement of a note on any sketch;
-- images placed on map thoughts (#252): the thought and its caption are exported, the image
+- images placed on map thoughts: the thought and its caption are exported, the image
   is not in format version 1; a full backup keeps it;
 - accounts, e-mail addresses, sessions, push subscriptions and notifications;
-- approved project policies for agents (#160): a full backup keeps them, a project export does not;
+- approved project policies for agents: a full backup keeps them, a project export does not;
 - agent connections, OAuth clients, access and refresh tokens and signing keys (secrets of this
-  instance), and pending agent proposals (#52), which are not part of format version 1;
+  instance), and pending agent proposals, which are not part of format version 1;
 - events, idempotency records and other internal rows.
 
 Drafts shared with the project are also left out in format version 1: a shared note becomes
@@ -113,7 +113,7 @@ keys so that a change to the format cannot go unnoticed in the tests, and
 `app/tests/app/extension-contracts.test.ts` pins the schema and bundle layout to
 `app/tests/app/contracts/project-export.v1.json`. See [integrations](../integrations/README.md#ext-2-read-a-project-export).
 
-Task creation Undo (#238) keeps every task in the export. Each task carries `lifecycle` (active, or creation
+Task creation Undo keeps every task in the export. Each task carries `lifecycle` (active, or creation
 reverted with the notice, time and actor) and `creationHistory` (trusted origin, immutable baseline, first persisted
 use, proposal identity, and the original and reversion notices with their actual actors). Active application lists
 leave creation-reverted tasks out; direct reads and the export name them explicitly. Command receipts stay in full

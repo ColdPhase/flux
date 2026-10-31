@@ -1,11 +1,9 @@
 # Agent runtime: the owner's own Claude Code or Codex in Flux
 
 This guide is for the person who runs a Flux instance with [`./flux`](../../flux). It covers the
-`runtime` transport of [F-022 AIM-3](../product/ai-modes.md#aim-3--the-runtime-transport), delivered
-in slices: T3 ([#278](https://github.com/ColdPhase/flux/issues/278)) adds the runtime itself (slots,
-supervisor, isolation, operator steps); T4 ([#279](https://github.com/ColdPhase/flux/issues/279)) adds
-the Claude Code [sign-in console](#the-sign-in-console). Runs (T5) follow; until then an owner can sign
-in, check and sign out, but not run.
+optional agent runtime: people sign in with their own Claude or ChatGPT subscription, and Flux runs
+that CLI (Claude Code or Codex) for them in an isolated slot on your server
+([product contract](../product/ai-modes.md#aim-3--the-runtime-transport)).
 
 **It is off by default.** With `FLUX_AGENT_RUNTIME` empty, no runtime service runs, the API reports the
 feature as not enabled, and nothing below applies. The published release `compose.yaml` does not
@@ -59,7 +57,7 @@ organization). Have you accepted them?  [y/N]
   client. To turn the runtime off, empty `FLUX_AGENT_RUNTIME` and run `./flux up` (see
   [Switching off](#switching-off-purging-reset-and-clean)).
 - **Enter means yes, for Codex.** `Enter` on the first question writes `FLUX_AGENT_RUNTIME=codex`.
-  Codex is available since F-022 T6 (#281): owners sign in with ChatGPT on Settings → Agents and AI.
+  Codex is available: owners sign in with ChatGPT on Settings → Agents and AI.
   `n` writes nothing and does not ask the second question.
 - **Claude Code needs a typed `y`.** The second question records *your* statement that you have agreed to
   Anthropic's Commercial Terms (see [Before you switch it on](#before-you-switch-it-on)), so `Enter`, `n`
@@ -117,7 +115,7 @@ secret; `runtime-manager` receives all of them.
 **No Docker socket.** No Flux service, the runtime included, mounts a Docker or Podman socket or gets any
 other container engine API (`tests/test_container_isolation.py` checks every Compose file). Rootless
 Docker or Podman is therefore not a prerequisite. The engine must support `internal` networks, a
-read-only root filesystem, `cap_drop`, `pids_limit`, and memory and CPU limits. T3 is tested on Docker
+read-only root filesystem, `cap_drop`, `pids_limit`, and memory and CPU limits. The runtime is tested on Docker
 Engine 29; other engines are **unverified**. gVisor (`runtime: runsc` in an override) is optional and
 untested.
 
@@ -253,7 +251,7 @@ their runtime's storage, what Anthropic says about this kind of use, and who pay
 
 The image of each slot contains node-pty 1.1.0 (pinned; compiled from source in the build stage) for
 the terminal. Nothing else is added to the slot image.
-## Runs (F-022 T5, #280)
+## Runs
 
 Once an owner is signed in, they can turn their assistant on with *Claude Code* in Settings → Your
 assistant (consent `f-022-runtime-2026-10-16`; no API key is used or needed). Each *Ask my assistant* then
@@ -294,14 +292,14 @@ API-key runs, for `/mcp`.
 
 ## Known limits (accepted)
 
-Recorded from the T3 review (#331); none of them is hidden by the checks.
+None of them is hidden by the checks.
 
-- **A slot can be bound without a sign-in (m5, accepted under #331).** The web client no longer binds when the owner
+- **A slot can be bound without a sign-in .** The web client no longer binds when the owner
   opens Settings: a binding starts only when a sign-in console is opened, at ticket time, and the console's
   attach then binds again under the owner's session. The API route `POST /api/v1/agent-runtime/binding` still
   binds a slot with no sign-in, so any signed-in account on the instance can call it. Your controls: close or
   restrict sign-up, watch `./flux runtime status`, release a slot with `./flux runtime release`, and set
-  `FLUX_AGENT_RUNTIME_IDLE_DAYS` (a binding that never ran counts from its creation). Accepted (#331 m5).
+  `FLUX_AGENT_RUNTIME_IDLE_DAYS` (a binding that never ran counts from its creation).
 - **`runtime-egress` is not vendor-exclusive (m6).** Cleanup must still reach a vendor after you switch its
   client off (TLS hides the request path), so the proxy allows the recorded hosts of every client at all
   times; the supervisor, not the proxy, refuses login, status and runs for a client that is off. So a
@@ -328,8 +326,7 @@ Recorded from the T3 review (#331); none of them is hidden by the checks.
 
 ## Installing from a release
 
-A GitHub Release ([#77](https://github.com/ColdPhase/flux/issues/77),
-[#358](https://github.com/ColdPhase/flux/issues/358)) carries the runtime as two more assets next to
+A GitHub Release carries the runtime as two more assets next to
 `compose.yaml`: `compose.runtime.yaml` and `runtime.sh` (sources: `docker/compose.runtime.yaml`,
 `docker/runtime.sh`). Its release installation guide (`INSTALL.md`, source
 [`release-guide.md`](release-guide.md)) has the commands. What differs from the source checkout:
@@ -400,24 +397,12 @@ Each Flux release pins the CLI versions its flag contract check passed: Claude C
 (`DISABLE_UPDATES=1`).
 
 The separate published runtime image and release-matched operator assets are built by the final release
-workflow ([#358](https://github.com/ColdPhase/flux/issues/358), [#77](https://github.com/ColdPhase/flux/issues/77);
-[Installing from a release](#installing-from-a-release)); until a release is published, a source-built slot is
+workflow ([Installing from a release](#installing-from-a-release)); until a release is published, a source-built slot is
 not a published runtime release.
 
 `./scripts/check_runtime_cli_contract.sh` is the opt-in flag contract check against these real CLIs
-(no account needed; internet access to github.com and downloads.claude.ai). It is not part of CI; the
-automated checks use fake CLIs. **Sign-in assertion table, run on 2026-10-08:** the same compiled table (`apps/runtime/dist/contract/check-auth.js`) passed 21 of 21 rows against the checksum-verified Claude Code 2.1.285 and codex-cli 0.160.1 binaries in `docker run --network none` (obtained by hand from the pinned URLs, not through the script, which has not run end to end). **Run on 2026-10-06 at `5a9a2cf9`:** `runtime-install` verified and
-installed Claude Code 2.1.285 (`linux-x64-musl`, SHA-256 `7b4414af…eaf102` from the signed manifest), and
-every flag and subcommand of the templates is in the help of Claude Code 2.1.285 and codex-cli 0.160.1,
-except `--max-turns`, which `claude --help` does not list but the CLI accepts (a made-up flag is refused).
-**Codex part, run on 2026-10-16 (T6 #281):** `apps/runtime/src/contract/check-codex.ts` against the
-checksum-verified `codex-cli 0.160.1` (`codex-x86_64-unknown-linux-musl`, SHA-256 `9226581b…a33f`) in
-`docker run --network none` (by hand; not through the script): every default-on feature of `codex features
-list` is in the reviewed list, every override switches its feature off except `unified_exec`, which the
-pinned Codex keeps on (recorded, harmless while `shell_tool` is off), `config/read` reflects the run's `-c`
-overrides (so the blocking preflight is kept), and the app-server client refuses `command/exec`. No real
-ChatGPT or OpenAI account was used; runs, sign-in and plan limits are verified with the fake `codex` only.
-Run it again whenever a pin changes. It proves the flags exist, not how the CLIs behave in a run (T5, T6).
+(no account needed; internet access to github.com and downloads.claude.ai). Run it again whenever a pin
+changes. It proves the flags exist, not how the CLIs behave in a run; the automated checks use fake CLIs.
 
 ## Checks
 

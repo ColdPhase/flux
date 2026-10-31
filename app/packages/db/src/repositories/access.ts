@@ -366,5 +366,3 @@ export function accessReader(db: DbExecutor) {
     },
   };
 }
-
-export type DbAccessReader = ReturnType<typeof accessReader>;

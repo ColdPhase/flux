@@ -7,9 +7,6 @@ import { diffWordsWithSpace } from 'diff';
 // and tables are compared item by item and row by row, so one changed cell does not replace a table.
 // The output is built from the server's sanitized nodes and text only; nothing is parsed as markup.
 
-export type BlockKind = 'same' | 'added' | 'removed' | 'changed';
-export interface BlockOp { kind: BlockKind; html: string }
-
 /** Above this many pairs a full alignment is too costly; the comparison falls back to remove-all, add-all. */
 const MAX_PAIRS = 250_000;
 /** Below this share of words in common, two blocks read better as one removed and one added. */
