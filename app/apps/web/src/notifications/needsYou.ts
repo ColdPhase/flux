@@ -10,7 +10,7 @@ import {
 import { request } from '../api/client';
 import { useStreamEvents } from '../api/stream';
 import { INBOX_CHANGED, NEEDS_YOU_ACCEPTED, announceInboxChange, type AcceptedInboxItem } from './api';
-import { acceptingIds } from './pendingAccept';
+import { acceptingIds, answeringIds } from './pendingAccept';
 import { onPlacesForgotten } from '../place/memory';
 import { useProjectAiBlocked } from '../ai/workspaceAi';
 
@@ -146,8 +146,9 @@ export function useNeedsYou(userId: string, fromMemory = false): Queue {
   const mine = state.userId === userId ? state : { userId, response: null, failed: false };
   // A decision this person just accepted is not shown while the accept is waiting or on its way.
   const accepting = acceptingIds();
+  const answering = answeringIds();
   // F-029 (#614): what an agent or assistant asks in a workspace whose AI is off is not shown, even from a read made before it was turned off.
-  const items = mine.response ? mine.response.items.filter((item) => !(item.decision && accepting.has(item.decision.id))
+  const items = mine.response ? mine.response.items.filter((item) => !(item.decision && accepting.has(item.decision.id)) && !(item.agentQuestion && answering.has(item.agentQuestion.id))
     && !(item.project && aiOff(item.project.id) && (item.from?.kind === 'agent' || item.key.startsWith('assistant:')))) : null;
   return { userId, items, count: items?.length ?? 0, later: mine.response?.later ?? 0, doneToday: mine.response?.doneToday ?? 0, failed: mine.failed, reload, hide, show };
 }

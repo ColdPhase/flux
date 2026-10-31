@@ -38,7 +38,7 @@ const OWN_PLACE: Record<string, PlaceName> = {
 const placeName = (name: PlaceName) => (name.side ? `${name.label} · ${name.side}` : name.label);
 
 /** `@` searches people and agents, `#` tasks by number or title; anything else searches everything. */
-type Scope = 'all' | 'people' | 'tasks' | 'agents' | 'wiki';
+export type Scope = 'all' | 'people' | 'tasks' | 'agents' | 'wiki';
 /** The phone's scope chips (S-P-Search): the same scopes `@` and `#` reach from the keyboard, plus Agents and Wiki. */
 const CHIPS: { id: Scope; label: string }[] = [
   { id: 'all', label: 'All' }, { id: 'tasks', label: 'Tasks' }, { id: 'people', label: 'People' }, { id: 'agents', label: 'Agents' }, { id: 'wiki', label: 'Wiki' },
@@ -96,8 +96,31 @@ export function JumpTo({ open, onClose, userId }: { open: boolean; onClose: () =
   );
 }
 
-function JumpBody({ onClose, userId, phone }: { onClose: () => void; userId: string; phone: boolean }) {
-  const [query, setQuery] = useState('');
+/** What the phone's Search page (`/search`) starts with: its address's words, scope and project (#763 SE-2). */
+export interface SearchPageStart {
+  query: string;
+  chip: Scope;
+  project: string | null;
+  /** The words changed: the page keeps its address in step. */
+  onQuery: (query: string) => void;
+  onCancel: () => void;
+}
+
+/**
+ * The phone has one search (#763 SE-2, S16): the round Search button's sheet and the `/search` page are this same body, with
+ * the same chips (All, Tasks, People, Agents, Wiki), Cancel and the recent places. The page is the sheet's content in place.
+ */
+export function PhoneSearchPage({ userId, start }: { userId: string; start: SearchPageStart }) {
+  return (
+    <div className="pane-scroll"><div className="pane-in jump jump--page" data-shift>
+      <JumpBody onClose={() => undefined} userId={userId} phone page={start} />
+    </div></div>
+  );
+}
+
+function JumpBody({ onClose, userId, phone, page }: { onClose: () => void; userId: string; phone: boolean; page?: SearchPageStart }) {
+  const [query, setQueryState] = useState(page?.query ?? '');
+  const setQuery = (value: string) => { setQueryState(value); page?.onQuery(value); };
   // The highlighted option, reset to the first whenever the text changes.
   const [activeFor, setActiveFor] = useState({ text: '', index: 0 });
   const inputRef = useRef<HTMLInputElement>(null);
@@ -114,9 +137,10 @@ function JumpBody({ onClose, userId, phone }: { onClose: () => void; userId: str
   const aiOff = useBlockedWorkspaceIds();
   const { openCreate, openDetails, toggleFocus, toggleSidebar, sidebarHidden } = useShellActions();
   const location = useLocation();
-  const here = location.pathname.match(/^\/projects\/([^/]+)/)?.[1];
+  // The page names its project in its address (`place=project:<id>`); the sheet takes the project in view.
+  const here = page ? page.project ?? undefined : location.pathname.match(/^\/projects\/([^/]+)/)?.[1];
   // On the phone the chips choose the scope; on the computer `@` and `#` do (⌘K is unchanged).
-  const [chip, setChip] = useState<Scope>('all');
+  const [chip, setChip] = useState<Scope>(page?.chip ?? 'all');
   const [where, setWhere] = useState<'here' | 'all'>('here');
   const prefixed = scopeOf(query);
   const scope: Scope = phone && chip !== 'all' ? chip : prefixed.scope;
@@ -126,7 +150,7 @@ function JumpBody({ onClose, userId, phone }: { onClose: () => void; userId: str
   // On the phone, inside a project, the search starts in that project and offers all projects when nothing matches.
   const inProject = phone && !!here && (scope === 'all' || scope === 'tasks' || scope === 'wiki');
   const place = inProject && where === 'here' ? `project:${here}` : null;
-  const { state } = useSearch(asked, { limit: 8, type: SEARCH_TYPE[scope], place });
+  const { state } = useSearch(asked, { limit: page ? 20 : 8, type: SEARCH_TYPE[scope], place });
   // An agent opens in a project of its own workspace: the one in view when it shares it, else the first the person can open.
   const hereSpace = projects.find((project) => project.id === here)?.workspaceId;
   const agentProject = (agent: Agent) => (hereSpace === agent.workspaceId ? here : projects.find((project) => project.workspaceId === agent.workspaceId)?.id) ?? '';
@@ -189,7 +213,7 @@ function JumpBody({ onClose, userId, phone }: { onClose: () => void; userId: str
   const agentMatches: Option[] = aiHere && (scope === 'people' || scope === 'agents') ? agents.filter((agent) => agent.name.toLowerCase().includes(rest.toLowerCase())).slice(0, scope === 'agents' ? 8 : 5).map((agent) => ({ kind: 'agent' as const, id: `agent-${agent.id}`, agent })) : [];
   const withResults = scope === 'people' ? [...agentMatches, ...results] : scope === 'agents' ? agentMatches : results;
   const options: Option[] = rest || scope !== 'all'
-    ? [...actions, ...withResults, ...(scope === 'all' && state.status === 'ready' && shown.length ? [{ kind: 'all' as const, id: 'all' }] : [])]
+    ? [...actions, ...withResults, ...(!phone && scope === 'all' && state.status === 'ready' && shown.length ? [{ kind: 'all' as const, id: 'all' }] : [])]
     : emptyOptions;
   const current = Math.min(activeFor.text === text ? activeFor.index : 0, Math.max(options.length - 1, 0));
   const setActive = (index: number) => setActiveFor({ text, index });
@@ -213,7 +237,7 @@ function JumpBody({ onClose, userId, phone }: { onClose: () => void; userId: str
     else if (event.key === 'Enter' && !event.nativeEvent.isComposing) {
       event.preventDefault();
       if (options.length) choose(options[current]);
-      else if (rest && scope === 'all') { recent.remember(text); onClose(); void follow(`/search?q=${encodeURIComponent(text)}`); }
+      else if (!options.length && !phone && rest && scope === 'all') { recent.remember(text); onClose(); void follow(`/search?q=${encodeURIComponent(text)}`); }
     }
   };
 
@@ -223,45 +247,13 @@ function JumpBody({ onClose, userId, phone }: { onClose: () => void; userId: str
   const extra = agentMatches.length;
   const total = state.status === 'ready' ? Object.values(state.answer.counts).reduce((sum, n) => sum + (n ?? 0), 0) : 0;
   const status = !text ? '' : state.status === 'loading' ? 'Searching…' : state.status === 'failed' ? state.message
-    : state.status === 'ready' ? (shown.length || extra ? `${total + extra}${state.answer.countsCapped ? '+' : ''} ${total + extra === 1 ? 'result' : 'results'}` : 'No results')
+    // The count that is listed: a scope (`@`, `#`, a chip) lists only its own kind, while the answer counts every kind (#763 SE-3).
+    : state.status === 'ready' ? (withResults.length ? (scope === 'all'
+      ? `${total + extra}${state.answer.countsCapped ? '+' : ''} ${total + extra === 1 ? 'result' : 'results'}`
+      : `${withResults.length} ${withResults.length === 1 ? 'result' : 'results'}`) : 'No results')
       : scope !== 'all' && !rest ? (scope === 'tasks' ? 'Type a task number or title' : 'Type a name to find a person or an agent') : '';
 
-  if (pickingWhere) {
-    return (
-      <div className="jump__in">
-        {phone ? <h2 className="jump__title">Ask my assistant</h2> : null}
-        <div className="jump__body"><AskWhere userId={userId} projectId={here} projects={projects.filter((project) => !aiOff.has(project.workspaceId ?? ''))} onOpen={onClose} onBack={() => setPickingWhere(false)} /></div>
-      </div>
-    );
-  }
-  return (
-    <div className="jump__in">
-      {phone ? <h2 className="jump__title">Search</h2> : null}
-      <div className="jump__field">
-        <Icon name="search" size={16} className="jump__icon" />
-        <input ref={inputRef} className="jump__input" type="search" value={query} placeholder="Search or create · # tasks · @ people"
-          role="combobox" aria-expanded={options.length > 0} aria-controls={listId} aria-autocomplete="list" aria-label="Jump to"
-          aria-describedby={statusId} aria-activedescendant={options.length ? `${listId}-${current}` : undefined}
-          enterKeyHint="search" autoComplete="off" spellCheck={false}
-          onChange={(event) => setQuery(event.target.value)} onKeyDown={onKeyDown} />
-        {state.status === 'loading' ? <Spinner /> : null}
-        <button type="button" className="jump__close" onClick={onClose}>{phone ? 'Cancel' : <><span className="ui-vh">Close</span><kbd aria-hidden="true">Esc</kbd></>}</button>
-      </div>
-      {phone ? (
-        <div className="jump__chips" role="group" aria-label="Search in">
-          {CHIPS.filter((item) => item.id !== 'agents' || aiHere).map((item) => <button key={item.id} type="button" className="jump__chip" aria-pressed={chip === item.id} onClick={() => { setChip(item.id); inputRef.current?.focus(); }}>{item.label}</button>)}
-        </div>
-      ) : null}
-      {inProject && rest ? (
-        <div className="jump__chips" role="group" aria-label="Search where">
-          <button type="button" className="jump__chip" aria-pressed={where === 'here'} onClick={() => setWhere('here')}>This project</button>
-          <button type="button" className="jump__chip" aria-pressed={where === 'all'} onClick={() => setWhere('all')}>All projects</button>
-        </div>
-      ) : null}
-      <p className="ui-vh" id={statusId} role="status">{status}</p>
-      <div className="jump__body">
-        {!text && !places.length ? <p className="jump__hint">Find a message, a material and each of its versions, a task, a rule, a result, a thought or a person. Only what you can open is searched.</p> : null}
-        {options.length ? (
+  const list = options.length ? (
           <ul className="jump__list" role="listbox" id={listId} aria-label={rest || scope !== 'all' ? 'Results' : places.length ? 'Recent places and actions' : 'Actions'}>
             {options.map((option, index) => {
               const section = sectionOf(option, scope);
@@ -281,8 +273,8 @@ function JumpBody({ onClose, userId, phone }: { onClose: () => void; userId: str
               )];
             })}
           </ul>
-        ) : null}
-        {noneHere ? (
+        ) : null;
+  const empty = noneHere ? (
           <div className="jump__none">
             <Kreska expression="looking" size={64} />
             <h3>No match in this project</h3>
@@ -290,8 +282,53 @@ function JumpBody({ onClose, userId, phone }: { onClose: () => void; userId: str
             <Button variant="secondary" onClick={() => setWhere('all')}>Search all projects</Button>
           </div>
         ) : rest && state.status === 'ready' && !withResults.length ? (
-          <p className="jump__empty">{/[\p{L}\p{N}]{2,}/u.test(rest) ? <>Nothing you can open matches “{rest}”. Try fewer or different words.</> : 'Type at least two letters of a word.'}</p>
-        ) : state.status === 'failed' ? <p className="jump__empty" role="alert">{state.message}</p> : null}
+          page ? (
+            // The page says it as the drawn no-results moment does (phone-noresults): the face looking aside, then the words.
+            <div className="jump__none">
+              <Kreska expression="looking" size={64} />
+              <h3>Nothing matches “{rest}”</h3>
+              <p>{/[\p{L}\p{N}]{2,}/u.test(rest) ? 'Try fewer or different words. Only what you can open is searched.' : 'Type at least two letters of a word.'}</p>
+            </div>
+          ) : <p className="jump__empty">{/[\p{L}\p{N}]{2,}/u.test(rest) ? <>Nothing you can open matches “{rest}”. Try fewer or different words.</> : 'Type at least two letters of a word.'}</p>
+        ) : state.status === 'failed' ? <p className="jump__empty" role="alert">{state.message}</p> : null;
+
+  if (pickingWhere) {
+    return (
+      <div className="jump__in">
+        {phone ? <h2 className="jump__title">Ask my assistant</h2> : null}
+        <div className="jump__body"><AskWhere userId={userId} projectId={here} projects={projects.filter((project) => !aiOff.has(project.workspaceId ?? ''))} onOpen={onClose} onBack={() => setPickingWhere(false)} /></div>
+      </div>
+    );
+  }
+  return (
+    <div className="jump__in">
+      {/* The page's own header already says Search. */}
+      {phone && !page ? <h2 className="jump__title">Search</h2> : null}
+      <div className="jump__field">
+        <Icon name="search" size={16} className="jump__icon" />
+        <input ref={inputRef} className="jump__input" type="search" value={query} placeholder="Search or create · # tasks · @ people"
+          role="combobox" aria-expanded={options.length > 0} aria-controls={listId} aria-autocomplete="list" aria-label="Jump to"
+          aria-describedby={statusId} aria-activedescendant={options.length ? `${listId}-${current}` : undefined}
+          enterKeyHint="search" autoComplete="off" spellCheck={false}
+          onChange={(event) => setQuery(event.target.value)} onKeyDown={onKeyDown} />
+        {state.status === 'loading' ? <Spinner /> : null}
+        <button type="button" className="jump__close" onClick={page ? page.onCancel : onClose}>{phone ? 'Cancel' : <><span className="ui-vh">Close</span><kbd aria-hidden="true">Esc</kbd></>}</button>
+      </div>
+      {phone ? (
+        <div className="jump__chips" role="group" aria-label="Search in">
+          {CHIPS.filter((item) => item.id !== 'agents' || aiHere).map((item) => <button key={item.id} type="button" className="jump__chip" aria-pressed={chip === item.id} onClick={() => { setChip(item.id); inputRef.current?.focus(); }}>{item.label}</button>)}
+        </div>
+      ) : null}
+      {inProject && rest ? (
+        <div className="jump__chips" role="group" aria-label="Search where">
+          <button type="button" className="jump__chip" aria-pressed={where === 'here'} onClick={() => setWhere('here')}>This project</button>
+          <button type="button" className="jump__chip" aria-pressed={where === 'all'} onClick={() => setWhere('all')}>All projects</button>
+        </div>
+      ) : null}
+      <p className="ui-vh" id={statusId} role="status">{status}</p>
+      <div className="jump__body">
+        {!text && !places.length ? <p className="jump__hint">Find a message, a material and each of its versions, a task, a rule, a result, a thought or a person. Only what you can open is searched.</p> : null}
+        {list}{empty}
       </div>
       <p className="jump__foot" aria-hidden="true">{options.length ? <><span className="jump__keyhint"><kbd>↑</kbd><kbd>↓</kbd> move</span><span className="jump__keyhint"><kbd>↵</kbd> open</span></> : null}<span><kbd>#</kbd> task number</span><span><kbd>@</kbd> people and agents</span><span className="jump__keyhint"><kbd>Esc</kbd> close</span></p>
     </div>

@@ -30,6 +30,14 @@ export interface NeedsYouRepository {
     id: string; projectId: string; agentId: string; agentName: string; fact: string; interpretation: string; suggestedAction: string;
     source: { materialId: string; title: string; version: number }; createdAt: Date;
   }[]>;
+  /**
+   * Agent questions with ready-made answers asked of this person in exactly these readable projects (S14, #763): every
+   * open one, and those answered since `since` (so their notifications are not listed as questions), newest first.
+   */
+  agentQuestions(userId: string, projectIds: string[], since: Date, limit: number): Promise<{
+    id: string; projectId: string; conversationId: string; messageId: string; taskId: string | null;
+    agent: { id: string; name: string }; question: string; options: string[]; createdAt: Date; answered: boolean;
+  }[]>;
   /** Sets or clears the read time of the person's own notification; false when it is not theirs. */
   setNotificationRead(userId: string, id: string, read: boolean): Promise<boolean>;
   /** The status of each task that exists, by id. */

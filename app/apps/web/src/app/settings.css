@@ -166,4 +166,8 @@
 .proj-index__head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px 16px; margin: 4px 2px 14px; }
 .proj-index__lead { flex: 1 1 16em; margin: 0; font-size: var(--fs-sm); color: var(--t3); line-height: 1.5; }
 .proj-index__dot { width: 8px; height: 8px; flex: none; border-radius: 50%; background: var(--inv); }
+.proj-index__tile { font-size: var(--fs-sm); font-weight: 600; box-shadow: inset 0 0 0 1px var(--line); }
+.proj-index__dmlist { width: 100%; justify-self: stretch; }
+.proj-index__one { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; overflow-wrap: normal; }
+.proj-index__time { flex: none; width: 4.5em; text-align: right; white-space: nowrap; font-size: var(--fs-xs); color: var(--t3); font-variant-numeric: tabular-nums; }
 .proj-index__empty { display: grid; gap: 12px; justify-items: start; padding: 20px 2px; color: var(--t2); font-size: var(--fs-md); }

@@ -9,7 +9,9 @@ import { acceptSuggestion, dismissSuggestion, applyRunChanges } from '../assista
 import { announceAcceptedInboxItem, announceInboxChange } from './api';
 import type { CardHandlers, SnoozeChoice } from './NeedsYouCard';
 import { nextWeek, tomorrowMorning } from './format';
-import { ACCEPT_UNDO_MS, flushAccepts, startAccept } from './pendingAccept';
+import { ACCEPT_UNDO_MS, flushAccepts, startAccept, startAnswer } from './pendingAccept';
+import { answerAgentQuestion } from '../agents/api';
+import { rememberQuestion } from '../agents/questions';
 import { restoreNeedsYou, resolveNeedsYou, type Queue } from './needsYou';
 
 const apiMessage = (error: unknown, fallback: string) => (error instanceof ApiError && error.message ? error.message : fallback);
@@ -85,6 +87,28 @@ export function useNeedsYouActions(queue: Queue): CardHandlers {
         if (handle.undo()) { current.show(item); return; }
         // It was already sent (the place was left, or the window ended): a decision is never un-accepted.
         toast({ message: 'It is already accepted. To change direction, propose a new decision.' });
+      } } });
+    },
+
+    answer(item: NeedsYouItem, optionIndex: number) {
+      const current = latest.current;
+      const question = item.agentQuestion;
+      const option = question?.options[optionIndex];
+      if (!question || option === undefined) return;
+      // An answer is the person's reply in the agent's thread and is given once, so Undo holds it back for the window (S14, rule 6).
+      const handle = startAnswer(question.id, async (key, keepalive) => { rememberQuestion(await answerAgentQuestion(question.id, { optionIndex }, key, keepalive)); }, (outcome) => {
+        if (outcome === 'accepted') announceAcceptedInboxItem(current.userId, item.key);
+        announceInboxChange();
+        if (outcome === 'accepted') return;
+        current.reload();
+        toast(outcome === 'conflict'
+          ? { message: 'This question was answered already, or you can no longer answer it. Open it to look again.', tone: 'danger' }
+          : { message: 'Your answer didn’t send. Nothing changed. Try again.', tone: 'danger' });
+      });
+      current.hide(item.key);
+      toast({ message: `Answered: ${option}`, tone: 'success', timeout: ACCEPT_UNDO_MS, action: { label: 'Undo', key: 'Z', onClick: () => {
+        if (handle.undo()) { current.show(item); return; }
+        toast({ message: 'Your answer was already sent. Reply in the thread to change it.' });
       } } });
     },
 

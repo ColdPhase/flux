@@ -187,7 +187,8 @@ export const router = createBrowserRouter([
               { path: 'ai-connections', ...secondary(async () => { const page = await import('./proactive-comparison/BackgroundComputeSettings'); return { Component: page.AiConnectionsSettings, loader: page.aiConnectionsLoader }; }) },
             ],
           },
-          { path: '*', Component: NotFoundView },
+          // The header names it as such (#763 NV-1): it is no place of the sidebar.
+          { path: '*', Component: NotFoundView, handle: { notFound: true } },
         ],
       },
     ],

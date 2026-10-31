@@ -429,9 +429,9 @@ class PhoneShellJourney(unittest.TestCase):
         self.assertGreaterEqual(look["height"], 44, "a project row is a full touch target")
         self.assertEqual(look["underline"], "none")
         self.assertEqual(look["bullet"], "none")
-        # The search field is 44 px tall on touch.
+        # The search field is 44 px tall on touch (the phone's one search, #763 SE-2).
         page.goto("/search?q=garden")
-        field = page.locator("input.search__input")
+        field = page.get_by_role("combobox", name="Jump to")
         expect(field).to_be_visible()
         self.assertGreaterEqual(self.box(field)["height"], 44)
 

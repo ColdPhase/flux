@@ -14,7 +14,8 @@ import { useShellData, type ProjectSummary } from './data';
 
 /** The places of the tab capsule; Messages live inside Projects. */
 export function phonePlaces(pathname: string, inboxUnread: number): BottomNavItem[] {
-  const home = /^\/(map|tasks|docs)?(\/|$)/.test(pathname);
+  // Only Home itself is Home (#763 NV-1); Your tasks, the Wiki and the Sketchbook are pages reached from it, with "‹ Home".
+  const home = pathname === '/';
   const inbox = /^\/inbox(\/|$)/.test(pathname);
   const projects = /^\/(projects|dm)(\/|$)/.test(pathname);
   return [
