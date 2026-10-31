@@ -204,6 +204,40 @@ export interface Agent {
   createdAt: string;
 }
 
+/**
+ * A person's request that the managers of a project let their own agent in (#763 FT-1). Only the agent's owner asks;
+ * only a current project manager allows (the ordinary agent grant) or declines. Asking grants nothing.
+ */
+export interface AgentAccessRequest {
+  id: string;
+  workspaceId: string;
+  projectId: string;
+  agent: { id: string; name: string };
+  owner: { id: string; name: string };
+  /** The grant asked for; a person-owned agent is still capped at its owner's own access. */
+  role: 'contributor' | 'viewer';
+  state: 'pending' | 'accepted' | 'declined';
+  createdAt: string;
+  updatedAt: string;
+}
+export interface CreateAgentAccessRequestCommand { agentId: string; role?: 'contributor' | 'viewer' }
+export interface RespondAgentAccessRequestCommand { allow: boolean }
+/** GET (managers: pending requests; the owner: their own) and POST (the agent's owner asks). */
+export const projectAgentRequestsPath = (projectId: string) => `${projectPath(projectId)}/agent-requests`;
+/** POST `{ allow }`: a current project manager answers. */
+export const projectAgentRequestPath = (projectId: string, requestId: string) => `${projectAgentRequestsPath(projectId)}/${requestId}`;
+
+/** One project the owner can open and their agent's place in it (#763 FT-1): its grant and any open request. */
+export interface AgentProjectAccess {
+  projectId: string;
+  /** The agent's explicit grant, or null without one. */
+  grant: ProjectGrantRole | null;
+  /** The agent's open request here, or null. */
+  request: { id: string; role: 'contributor' | 'viewer' } | null;
+}
+/** GET: the owner's own agent, in every project of its workspace the owner can open. */
+export const agentProjectAccessPath = (agentId: string) => `${agentPath(agentId)}/project-access`;
+
 export interface Draft {
   id: string;
   workspaceId: string;
@@ -250,6 +284,11 @@ export interface CreateInviteCommand {
   /** Locks the link to this address (compared case-insensitively). */
   email?: string | null;
   expiresInDays?: InviteExpiryDays;
+  /**
+   * A project the creator manages (#763 FT-3): joining also gives the new person access to it (a contributor grant,
+   * a viewer grant for a guest unless `projectRole` says otherwise). Null or absent: the space only.
+   */
+  projectId?: string | null;
 }
 
 /** A pending invite as its workspace's owners and admins see it. */
@@ -261,6 +300,8 @@ export interface WorkspaceInvite {
   createdBy: { id: string; name: string };
   createdAt: string;
   expiresAt: string;
+  /** The project joining also opens (#763 FT-3); null for the space only. */
+  project: { id: string; name: string } | null;
   /** The full link to copy: `<origin>/join#<token>`. */
   link: string;
 }
@@ -275,6 +316,8 @@ export interface InvitePreview {
   expiresAt: string;
   emailLocked: boolean;
   encrypted: boolean;
+  /** The project joining also opens (#763 FT-3), or null. */
+  projectName: string | null;
   /** `joined`: the signed-in account already used this link; `member`: it is already in the workspace. */
   state: 'pending' | 'joined' | 'member';
 }
@@ -287,6 +330,8 @@ export interface AcceptInviteResult {
   encrypted: boolean;
   /** An admin of an encrypted workspace without an unlock password: a current holder grants one (F-030). */
   needsUnlockPassword: boolean;
+  /** Where to land after joining (#763 FT-3): the invite's project when the person can open it now, else null. */
+  projectId: string | null;
 }
 
 export const INVITE_CREATED_EVENT = 'workspace.invite_created.v1';

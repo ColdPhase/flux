@@ -1,6 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { accessContext, type AccessRouteOptions } from './context.js';
 import { agentRoutes } from './agents.js';
+import { agentRequestRoutes } from './agent-requests.js';
 import { draftSummaryRoutes } from './draft-summaries.js';
 import { draftRoutes } from './drafts.js';
 import { inviteLimiters, inviteRoutes } from './invites.js';
@@ -20,7 +21,8 @@ export async function accessRoutes(app: FastifyInstance, options: AccessRouteOpt
   workspaceRoutes(app, context, options.boss);
   projectRoutes(app, context);
   agentRoutes(app, context);
+  agentRequestRoutes(app, context, options.boss);
   draftRoutes(app, context);
   draftSummaryRoutes(app, context, options.boss);
-  if (options.inviteSigner) inviteRoutes(app, context, options.inviteSigner, inviteLimiters());
+  if (options.inviteSigner) inviteRoutes(app, context, options.inviteSigner, inviteLimiters(), options.boss);
 }

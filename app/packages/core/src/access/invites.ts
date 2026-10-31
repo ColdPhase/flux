@@ -7,7 +7,8 @@ import { recordEvent } from '../events.js';
 import type { Database, Principal } from '../types.js';
 import { eventPorts } from './common.js';
 import { ConflictError, ForbiddenError, GoneError, InvalidInputError, NotFoundError } from './errors.js';
-import { enforce, evaluateWorkspace, isManager } from './policy.js';
+import { enforce, evaluateProject, evaluateWorkspace, isManager, isUuid } from './policy.js';
+import { grantProject } from './grants.js';
 import { inviteIdOf, inviteToken, inviteTokenHash, type InviteSigner } from './invite-tokens.js';
 import type { AccessPorts, InviteRepository, InviteRow } from './repositories.js';
 
@@ -19,7 +20,10 @@ export { inviteIdOf, inviteToken, inviteTokenHash, type InviteSigner };
 // forged token is the same 404, so someone without the link learns nothing. Accepting takes the workspace row first
 // (as `addMember`), then the invite row `FOR UPDATE`, and rechecks everything there.
 
-type InvitePorts = Pick<AccessPorts, 'workspaces' | 'invites' | 'access' | 'events'>;
+type InvitePorts = Pick<AccessPorts, 'workspaces' | 'invites' | 'access' | 'events' | 'projects'>;
+
+/** Told inside the joining transaction about a fresh join (#763 FT-3): the server notifies the inviter. */
+export type InviteJoined = (tx: Database, joined: { workspaceId: string; userId: string; inviterId: string; projectId: string | null }) => Promise<void>;
 
 const INVITE_ROLES: readonly InviteRole[] = ['admin', 'member', 'guest'];
 const MAX_PENDING = 50;
@@ -27,15 +31,16 @@ const DAY_MS = 86_400_000;
 
 const linkOf = (signer: InviteSigner, inviteId: string) => `${signer.publicOrigin}${INVITE_JOIN_PAGE}#${inviteToken(signer, inviteId)}`;
 
-function presentWithoutLink(row: InviteRow, creatorName: string): Omit<WorkspaceInvite, 'link'> {
+function presentWithoutLink(row: InviteRow, creatorName: string, projectName: string | null): Omit<WorkspaceInvite, 'link'> {
   return {
     id: row.id, workspaceId: row.workspaceId, role: row.role, email: row.email, createdBy: { id: row.createdBy, name: creatorName },
     createdAt: row.createdAt.toISOString(), expiresAt: row.expiresAt.toISOString(),
+    project: row.projectId && projectName !== null ? { id: row.projectId, name: projectName } : null,
   };
 }
 
-const present = (signer: InviteSigner, row: InviteRow, creatorName: string): WorkspaceInvite =>
-  ({ ...presentWithoutLink(row, creatorName), link: linkOf(signer, row.id) });
+const present = (signer: InviteSigner, row: InviteRow, creatorName: string, projectName: string | null): WorkspaceInvite =>
+  ({ ...presentWithoutLink(row, creatorName, projectName), link: linkOf(signer, row.id) });
 
 function normalizeEmail(value: unknown): string | null {
   if (value === undefined || value === null || value === '') return null;
@@ -57,6 +62,8 @@ export async function createInvite(principal: Principal, workspaceId: string, co
   const days = command.expiresInDays ?? INVITE_DEFAULT_EXPIRY_DAYS;
   if (!(INVITE_EXPIRY_DAYS as readonly number[]).includes(days)) throw new InvalidInputError('expiresInDays must be 1, 7 or 30');
   const email = normalizeEmail(command.email);
+  const projectId = command.projectId ?? null;
+  if (projectId !== null && !isUuid(projectId)) throw new InvalidInputError('projectId must be a project id');
   return db.transaction(async (tx) => {
     await ports.workspaces(tx).lock(workspaceId);
     const { actor } = enforce(await evaluateWorkspace(principal, 'workspace.manage_members', workspaceId, ports.access(tx), { lock: true }), 'workspace');
@@ -64,12 +71,19 @@ export async function createInvite(principal: Principal, workspaceId: string, co
     if (role === 'admin' && actor.role !== 'owner') throw new ForbiddenError('Only an owner can invite an admin', 'OWNER_REQUIRED');
     const invites = ports.invites(tx);
     if (await invites.pendingCount(workspaceId, now) >= MAX_PENDING) throw new ConflictError(`A workspace holds at most ${MAX_PENDING} pending invite links`, 'INVITE_LIMIT');
+    // An invite into a project needs its creator to manage that project now (#763 FT-3).
+    let projectName: string | null = null;
+    if (projectId) {
+      const checked = await evaluateProject(principal, 'project.manage', projectId, ports.access(tx), { lock: true });
+      if (!checked.allowed || checked.project?.workspaceId !== workspaceId) throw new NotFoundError('Project', 'PROJECT_NOT_FOUND');
+      projectName = await invites.projectName(workspaceId, projectId);
+    }
     const id = randomUUID();
     const row = await invites.insert({ id, workspaceId, role, email, tokenHash: inviteTokenHash(inviteToken(signer, id)), createdBy: principal.id,
-      expiresAt: new Date(now.getTime() + days * DAY_MS) });
+      expiresAt: new Date(now.getTime() + days * DAY_MS), projectId: projectId?.toLowerCase() ?? null });
     await recordEvent(eventPorts(ports, tx), principal, workspaceId, INVITE_CREATED_EVENT, workspaceId, { inviteId: id, role });
     const creator = await ports.workspaces(tx).findAccount({ userId: principal.id });
-    return presentWithoutLink(row, creator?.name ?? '');
+    return presentWithoutLink(row, creator?.name ?? '', projectName);
   });
 }
 
@@ -82,7 +96,7 @@ export async function listInvites(principal: Principal, workspaceId: string, db:
   now = new Date()): Promise<WorkspaceInvite[]> {
   enforce(await evaluateWorkspace(principal, 'workspace.manage_members', workspaceId, ports.access(db)), 'workspace');
   const rows = await ports.invites(db).pending(workspaceId, now);
-  return rows.map(({ invite, creatorName }) => present(signer, invite, creatorName));
+  return rows.map(({ invite, creatorName, projectName }) => present(signer, invite, creatorName, projectName));
 }
 
 /** Revokes a pending invite (owners and admins); anything else is `404 INVITE_NOT_FOUND`. */
@@ -141,12 +155,13 @@ export async function previewInvite(principal: Principal | null, token: unknown,
   return {
     workspaceName: found.workspaceName, invitedBy: found.creatorName, role: invite.role, expiresAt: invite.expiresAt.toISOString(),
     emailLocked: invite.email !== null, encrypted: found.encrypted, state: joined ? 'joined' : member ? 'member' : 'pending',
+    projectName: found.projectName ?? null,
   };
 }
 
 /** Joins the workspace with the link's role; single use, and idempotent for the account that used it. */
 export async function acceptInvite(principal: Principal, token: unknown, db: Database, ports: InvitePorts, signer: InviteSigner,
-  options: { verifiedEmailOnly?: boolean } = {}, now = new Date()): Promise<AcceptInviteResult> {
+  options: { verifiedEmailOnly?: boolean; onJoined?: InviteJoined } = {}, now = new Date()): Promise<AcceptInviteResult> {
   if (principal.kind !== 'human') throw new ForbiddenError('Only a person can accept an invite link', 'FORBIDDEN');
   // The workspace is found first without a lock (an unknown token answers before any lock), then locked in order.
   const first = await find(signer, token, ports.invites(db), false);
@@ -154,8 +169,12 @@ export async function acceptInvite(principal: Principal, token: unknown, db: Dat
     await ports.workspaces(tx).lock(first.invite.workspaceId);
     const found = await find(signer, token, ports.invites(tx), true);
     const { invite } = found;
-    const result = (status: AcceptInviteResult['status'], role: WorkspaceRole, needsUnlockPassword = false): AcceptInviteResult => ({
+    // Where to land: the invite's project, when the person can open it now (#763 FT-3).
+    const landing = async () => invite.projectId
+      && (await evaluateProject(principal, 'project.read', invite.projectId, ports.access(tx))).allowed ? invite.projectId : null;
+    const result = async (status: AcceptInviteResult['status'], role: WorkspaceRole, needsUnlockPassword = false): Promise<AcceptInviteResult> => ({
       status, workspaceId: invite.workspaceId, workspaceName: found.workspaceName, role, encrypted: found.encrypted, needsUnlockPassword,
+      projectId: await landing(),
     });
     const gone = await goneReason(found, principal.id, ports, tx, now);
     if (gone) throw gone;
@@ -164,21 +183,36 @@ export async function acceptInvite(principal: Principal, token: unknown, db: Dat
     // The same account accepting again: the join it made (if it left since, the link stays used).
     if (invite.acceptedAt) {
       if (!currentRole) throw new GoneError('This invite link was already used', 'INVITE_USED');
-      return result('joined', currentRole);
+      return await result('joined', currentRole);
     }
     // Someone already here leaves the link unused for the person it was meant for.
-    if (currentRole) return result('already_member', currentRole);
+    if (currentRole) return await result('already_member', currentRole);
     const account = await ports.workspaces(tx).findAccount({ userId: principal.id });
     if (!account) throw new NotFoundError('Account', 'ACCOUNT_NOT_FOUND');
     if (invite.email !== null && (account.email.trim().toLowerCase() !== invite.email || (options.verifiedEmailOnly && !account.emailVerified))) {
       throw new ForbiddenError('This invite link is for a different email address', 'INVITE_WRONG_ACCOUNT');
     }
     const member = await ports.workspaces(tx).insertMember({ workspaceId: invite.workspaceId, userId: principal.id, role: invite.role, createdBy: invite.createdBy });
-    if (!member) return result('already_member', invite.role);
+    if (!member) return await result('already_member', invite.role);
     await invites.markAccepted(invite.id, principal.id, now);
     await recordEvent(eventPorts(ports, tx), principal, invite.workspaceId, 'workspace.member_added.v1', invite.workspaceId,
       { userId: principal.id, role: invite.role, inviteId: invite.id });
+    // #763 FT-3: an invite made from a project also opens it, as a grant its creator makes (they still manage it, or
+    // nothing is granted). A workspace member of a project everyone in the space opens already writes there.
+    let projectId: string | null = null;
+    if (invite.projectId) {
+      const inviter: Principal = { kind: 'human', id: invite.createdBy };
+      const manages = (await evaluateProject(inviter, 'project.manage', invite.projectId, ports.access(tx))).allowed;
+      if (manages) {
+        const level = await evaluateProject(principal, 'project.write', invite.projectId, ports.access(tx));
+        if (!level.allowed && !isManager(invite.role)) {
+          await grantProject(inviter, invite.projectId, { principal: { kind: 'human', id: principal.id }, role: 'contributor' }, tx, ports);
+        }
+        projectId = invite.projectId;
+      }
+    }
+    await options.onJoined?.(tx, { workspaceId: invite.workspaceId, userId: principal.id, inviterId: invite.createdBy, projectId });
     // F-030: an admin of an encrypted workspace has no unlock password until a current holder grants one.
-    return result('joined', invite.role, found.encrypted && isManager(invite.role));
+    return await result('joined', invite.role, found.encrypted && isManager(invite.role));
   });
 }
