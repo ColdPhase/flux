@@ -1,9 +1,11 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { once } from 'node:events';
-import { test } from 'node:test';
+import { before, test } from 'node:test';
 import { createDatabase } from '@flux/db';
-import { fixtureDatabase } from './support/undo-legacy-database.js';
+import { fixtureDatabase, prepareCurrentSchemaFixtures } from './support/undo-legacy-database.js';
+
+before(prepareCurrentSchemaFixtures);
 
 async function databaseExists(admin: ReturnType<typeof createDatabase>['pool'], name: string): Promise<boolean> {
   const result = await admin.query('SELECT EXISTS(SELECT 1 FROM pg_database WHERE datname=$1) AS exists', [name]);

@@ -34,7 +34,12 @@ export interface ApiRequestInit {
 // were a third of the longest frame of a view change. One port message batches every read asked for in the same task.
 const later = typeof MessageChannel === 'undefined' ? null : new MessageChannel();
 const waiting: (() => void)[] = [];
-if (later) later.port1.onmessage = () => { for (const start of waiting.splice(0)) start(); };
+if (later) {
+  later.port1.onmessage = () => { for (const start of waiting.splice(0)) start(); };
+  // Outside a browser (Node runs the client in tests and tools) a port with a listener keeps the process alive; a
+  // scheduler must not, so it is unreferenced where that exists (#752). Browsers have no such thing.
+  (later.port1 as MessagePort & { unref?: () => void }).unref?.();
+}
 const nextTask = () => new Promise<void>((resolve) => {
   if (!later) { setTimeout(resolve, 0); return; }
   if (!waiting.length) later.port2.postMessage(0);

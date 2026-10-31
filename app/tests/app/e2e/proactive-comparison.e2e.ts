@@ -261,10 +261,17 @@ test('owner-only background setup persists consent, clears keys and preserves an
   const errors: string[] = [];
   page.on('pageerror', (error) => errors.push(error.message));
   await page.getByRole('button', { name: /account and sign out/ }).click();
-  await page.getByRole('link', { name: 'Your background suggestions', exact: true }).focus();
+  // Since #770 (#763 SG-7) the menu leads to Settings; background suggestions are under Settings → Agents and AI.
+  await page.getByRole('link', { name: 'All settings', exact: true }).focus();
+  await page.keyboard.press('Enter');
+  await page.waitForURL(/\/settings$/);
+  assert.equal(await page.getByRole('dialog', { name: 'Account', exact: true }).count(), 0);
+  await page.getByRole('link', { name: 'Agents and AI', exact: true }).first().click();
+  await page.waitForURL(/\/settings\/agents$/);
+  // The row is followed by keyboard, as the menu link was: its section settles in while its reads arrive.
+  await page.getByRole('link', { name: /^Background suggestions/ }).focus();
   await page.keyboard.press('Enter');
   await page.getByRole('heading', { name: 'Your background suggestions', exact: true }).waitFor();
-  assert.equal(await page.getByRole('dialog', { name: 'Account', exact: true }).count(), 0);
   assert.match(await page.getByRole('note').innerText(), /not available/);
   // #513: the connections and their form live on one AI connections page, linked beside the status line.
   await page.getByRole('link', { name: 'AI connections', exact: true }).click();
