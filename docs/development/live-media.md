@@ -459,9 +459,10 @@ presses the microphone button again, as the app asks.
 
 ### Observed 2026-10-30
 
-`./scripts/check_public_sim.sh` at `4ca85493e` exited 0: seven runs, all passed. Linux x86_64 host shared with other
-agents' Docker work, load average 15 before and 23 after. Earlier development runs of the Chromium rows agreed within
-0.5 s. Ada is always behind the restrictive router A, Jonas behind the open router B.
+`./scripts/check_public_sim.sh` exited 0 at `4ca85493e` (seven runs; load average 15 before, 23 after) and again at
+`2d57e7dba` with the weak-receiver phase added (seven runs, 6 min 17 s; load average 1 before, 17 after). The figures
+below are from the first; the second agreed within 1.1 s on every timing (join 2.9 to 4.0 s, drop recovery 1.0 to
+1.5 s, Live 1.8 to 3.1 s, SFU restart Live in 20.2 s). Linux x86_64 host shared with other agents' Docker work. Ada is always behind the restrictive router A, Jonas behind the open router B.
 
 | Case | Ada (A) / Jonas (B) | Result |
 | --- | --- | --- |
@@ -474,7 +475,7 @@ agents' Docker work, load average 15 before and 23 after. Earlier development ru
 | SFU restart | same | No media flowed by itself. Both bars said Live again after **20.2 s** (the app rejoined a new room) with microphone and camera off, as designed: "Reconnected. Your microphone, camera and screen stay off until you turn them on." Audio flowed 0.5 s after the microphone was turned on again |
 | API restart | same | Media never stopped (the SFU path does not pass through the API); both bars said "Reconnecting…" and were Live again 2.0 s after the API was healthy |
 | Outsider | every run with access | Lee, a workspace member without access to the project: the project's live sessions and the join both answered `404 PROJECT_NOT_FOUND` |
-| Access removed during the call | Chromium, WebKit or Firefox as Jonas | Ada set Jonas's grant to `denied`: his peer connections closed **0.10 to 0.20 s** later; his join and list answered 404 |
+| Access removed during the call | Chromium, WebKit or Firefox as Jonas | Ada set Jonas's grant to `denied`: his peer connections closed **0.09 to 1.21 s** later; his join and list answered 404 |
 | Issued-token replay | same | Jonas's join token, captured from the app's own join, at the public gate after removal: `/media/rtc/validate` 401, the WebSocket refused |
 | AI and processors | same | The session's participants were the two people only; the stack has no egress, ingress or agent service (checked from `docker compose config --services`) |
 | WebKit 26.5 on the open network | Chromium / WebKit | Joined in 4.5 s, direct UDP (`srflx` 203.0.113.102); after the 15 s drop, media in 2.0 s and Live in 3.1 s |
@@ -526,7 +527,7 @@ Status of each part of [#63](https://github.com/ColdPhase/flux/issues/63)'s crit
 | AC-3 | Network loss and recovery of the media path | **Met on desktop engines, simulated** | 15 s drop: media back in 1.3 to 2.3 s, Live in 2.3 to 3.3 s on all three engines; not on the emulated phone rows |
 | AC-3 | Denied or revoked permissions, no silent reactivation | **Met** | Camera denial on the platform rows; after an SFU restart the app rejoined with microphone and camera off |
 | AC-3 | Screen publication outside Chromium, system or tab audio | **Open** | Honest unsupported states on phones; desktop Firefox/WebKit screen publication not exercised |
-| AC-4 | Outsider non-discovery, active access removal, issued-token replay on the self-hosted setup | **Met, simulated** | 404 for a workspace member without the project; removal closes the peer connections in 0.10 to 0.20 s on all three engines; the issued token is refused at the public gate (401, WebSocket refused) |
+| AC-4 | Outsider non-discovery, active access removal, issued-token replay on the self-hosted setup | **Met, simulated** | 404 for a workspace member without the project; removal closes the peer connections in 0.09 to 1.21 s on all three engines; the issued token is refused at the public gate (401, WebSocket refused) |
 | AC-4 | Refreshed-token reconnect | Partial | Covered against the real SFU by `check_live_sfu.sh`; not on the simulation |
 | AC-4 | Encryption boundary, key distribution, downgrade | **Met** | [live-media-encryption.md](live-media-encryption.md): DTLS-SRTP to the SFU, not end-to-end; DTLS assertion with a negative control on relay and direct paths (Chromium) |
 | AC-4 | AI receives no media by default; human calls with AI off | Partial | No agent or processor in the room or the stack (simulated); a call with the workspace AI turned off was not run |
