@@ -384,40 +384,35 @@ class FirstRunSettingsPeople(unittest.TestCase):
         expect(phone).to_have_url(re.compile(r"/settings/people$"))
         self.assertLessEqual(phone.evaluate("document.documentElement.scrollWidth"), PHONE["width"])
 
-    def test_11_someone_new_gets_a_sign_up_link_with_their_address(self) -> None:
+    def test_11_someone_new_gets_an_invite_link_with_their_address(self) -> None:
+        """#763 PE-2 / F-035: the address Flux could not find is filled into an invite link that joins the workspace."""
         page = self.page("maria")
-        if UI_BROWSER == "chromium":
-            page.context.grant_permissions(["clipboard-read", "clipboard-write"], origin=ORIGIN)
         page.goto(f"/settings/people/{self.ids['maria:space']}")
         add = page.get_by_role("region", name="Add someone")
         newcomer = f"piotr.new+{STAMP}@example.test"
         add.get_by_label("Email").fill(newcomer)
         add.get_by_role("button", name=re.compile("^Add to ")).click()
-        expect(add.get_by_role("alert")).to_contain_text(f"No one has an account with {newcomer} here yet.")
-        invite = page.get_by_role("region", name="Someone new to Flux")
-        expect(invite).to_contain_text(f"as {newcomer}")
-        invite.get_by_role("button", name="Copy sign-up link").click()
-        expected = f"{ORIGIN}/sign-up?email={newcomer.replace('@', '%40').replace('+', '%2B')}"
-        copied = invite.get_by_role("status")
-        expect(copied).to_have_text(re.compile("Sign-up link copied.|Copy this link and send it to them."))
-        if "copied" in copied.inner_text():
-            # WebKit lets the page write the clipboard but not a test read it back.
-            if UI_BROWSER == "chromium":
-                self.assertEqual(page.evaluate("navigator.clipboard.readText()"), expected)
-        else:
-            expect(invite.get_by_label("Sign-up link")).to_have_value(expected)
-        shot(page, f"763-people-sign-up-link-1440-{UI_BROWSER}")
-        # The link opens sign-up with the address filled in; once the account exists, Maria adds it.
+        expect(add.get_by_role("alert")).to_have_text(f"No one has an account with {newcomer} here yet. Create an invite link for them below and send it yourself.")
+        invite = page.get_by_role("region", name="Invite with a link")
+        expect(invite.get_by_label("Only for (optional)")).to_have_value(newcomer)
+        invite.get_by_role("button", name="Create invite link").click()
+        field = invite.get_by_role("group", name="New invite link").get_by_role("textbox")
+        expect(field).to_have_value(re.compile(f"^{re.escape(ORIGIN)}/join#[A-Za-z0-9_-]{{54}}$"))
+        expect(invite.get_by_role("list", name=re.compile("^Waiting to be used"))).to_contain_text(newcomer)
+        shot(page, f"763-people-invite-link-1440-{UI_BROWSER}")
+        # The link opens the join page; Piotr creates his account there and joins as a member.
         stranger = self.page()
-        stranger.goto(expected.replace(ORIGIN, ""))
-        expect(stranger.get_by_label("Email")).to_have_value(newcomer)
+        stranger.goto(field.input_value())
+        stranger.get_by_role("button", name="Create an account").click()
         stranger.get_by_label("Name").fill("Piotr Nowy")
+        stranger.get_by_label("Email").fill(newcomer)
         stranger.get_by_label("Password").fill(PASSWORD)
         stranger.get_by_role("button", name="Create account").click()
+        stranger.get_by_role("button", name="Join Maria’s space").click()
+        expect(stranger.get_by_role("heading", level=1, name="You joined Maria’s space")).to_be_visible()
+        stranger.get_by_role("button", name="Open Maria’s space").click()
         expect(stranger.get_by_role("heading", level=1, name="Home")).to_be_visible()
-        add.get_by_label("Email").fill(newcomer)
-        add.get_by_role("button", name=re.compile("^Add to ")).click()
-        expect(page.locator(".people__done")).to_contain_text("Piotr Nowy joined Maria’s space as member.")
+        expect(page.get_by_role("list", name="People in Maria’s space")).to_contain_text("Piotr Nowy")
 
     # ---------------------------------------------------------------- mention chips (PE-4)
 

@@ -1,5 +1,5 @@
 import type { PgBoss } from 'pg-boss';
-import type { ProcessKeys, ResourceRef } from '@flux/core';
+import type { InviteSigner, ProcessKeys, ResourceRef } from '@flux/core';
 import type { Database } from '@flux/db';
 import type { SessionResolver } from '../identity/index.js';
 import { commandRunner } from '../http/commands.js';
@@ -14,13 +14,17 @@ export interface AccessRouteOptions {
   verifiedEmailMembers?: boolean;
   /** F-030: this process's keys, so a workspace's `encryption.state` uses this API's keyring boot. */
   encryptionKeys?: ProcessKeys;
+  /** F-035: signs and finds invite links (the identity secret and the public origin). Without it no invite route is registered. */
+  inviteSigner?: InviteSigner;
+  /** F-035: an email-locked invite needs a verified address (with a sign-on provider, or sign-up verified by mail). */
+  inviteVerifiedEmail?: boolean;
 }
 
 /**
  * What every access route module shares (#85): the session's principal, the command runner, the
  * idempotency scopes, and the media fences around membership and grant changes.
  */
-export function accessContext({ db, sessions, liveRevocation, verifiedEmailMembers = false, encryptionKeys }: AccessRouteOptions) {
+export function accessContext({ db, sessions, liveRevocation, verifiedEmailMembers = false, inviteVerifiedEmail = false, encryptionKeys }: AccessRouteOptions) {
   const workspaceChange = <T>(id: string, mutation: (connection: Database) => Promise<T>): Promise<T> => {
     if (liveRevocation) return liveRevocation.withWorkspaceChange(id, () => mutation(db));
     return withNoMediaAccessChange(db, { workspaceId: id, projectId: null }, mutation);
@@ -31,7 +35,9 @@ export function accessContext({ db, sessions, liveRevocation, verifiedEmailMembe
   };
   return {
     db,
+    sessions,
     verifiedEmailMembers,
+    inviteVerifiedEmail: inviteVerifiedEmail || verifiedEmailMembers,
     /** How this API reads a workspace's encryption state: its keyring boot (null while unreachable), or rows only. */
     readOptions: () => (encryptionKeys ? { bootId: encryptionKeys.openableBoot } : {}),
     ...commandRunner(db, sessions),

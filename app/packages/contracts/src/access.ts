@@ -223,6 +223,70 @@ export interface AddMemberCommand {
   role: WorkspaceRole;
 }
 
+/**
+ * Invite links (F-035, #763 PE-2; docs/development/access-policy.md#invite-links-f-035). An owner or admin creates a
+ * one-time link with a role; whoever opens it signs in or signs up and joins. The token travels in the link's fragment.
+ */
+export const INVITES_PATH = '/api/v1/invites';
+export const INVITE_PREVIEW_PATH = `${INVITES_PATH}/preview`;
+export const INVITE_ACCEPT_PATH = `${INVITES_PATH}/accept`;
+/** The web page an invite link opens; the token follows `#`. */
+export const INVITE_JOIN_PAGE = '/join';
+export const workspaceInvitesPath = (workspaceId: string) => `${workspacePath(workspaceId)}/invites`;
+export const workspaceInvitePath = (workspaceId: string, inviteId: string) => `${workspaceInvitesPath(workspaceId)}/${inviteId}`;
+/** An invite never makes an owner; `admin` needs an owner to create it. */
+export type InviteRole = Exclude<WorkspaceRole, 'owner'>;
+export const INVITE_EXPIRY_DAYS = [1, 7, 30] as const;
+export type InviteExpiryDays = (typeof INVITE_EXPIRY_DAYS)[number];
+export const INVITE_DEFAULT_EXPIRY_DAYS: InviteExpiryDays = 7;
+
+export interface CreateInviteCommand {
+  role: InviteRole;
+  /** Locks the link to this address (compared case-insensitively). */
+  email?: string | null;
+  expiresInDays?: InviteExpiryDays;
+}
+
+/** A pending invite as its workspace's owners and admins see it. */
+export interface WorkspaceInvite {
+  id: string;
+  workspaceId: string;
+  role: InviteRole;
+  email: string | null;
+  createdBy: { id: string; name: string };
+  createdAt: string;
+  expiresAt: string;
+  /** The full link to copy: `<origin>/join#<token>`. */
+  link: string;
+}
+
+export interface InviteTokenCommand { token: string }
+
+/** What the link's holder sees before joining: never the locked address itself. */
+export interface InvitePreview {
+  workspaceName: string;
+  invitedBy: string;
+  role: InviteRole;
+  expiresAt: string;
+  emailLocked: boolean;
+  encrypted: boolean;
+  /** `joined`: the signed-in account already used this link; `member`: it is already in the workspace. */
+  state: 'pending' | 'joined' | 'member';
+}
+
+export interface AcceptInviteResult {
+  status: 'joined' | 'already_member';
+  workspaceId: string;
+  workspaceName: string;
+  role: WorkspaceRole;
+  encrypted: boolean;
+  /** An admin of an encrypted workspace without an unlock password: a current holder grants one (F-030). */
+  needsUnlockPassword: boolean;
+}
+
+export const INVITE_CREATED_EVENT = 'workspace.invite_created.v1';
+export const INVITE_REVOKED_EVENT = 'workspace.invite_revoked.v1';
+
 export interface ChangeRoleCommand {
   role: WorkspaceRole;
 }
