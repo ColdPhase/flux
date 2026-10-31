@@ -157,7 +157,7 @@ class PeopleJourney(unittest.TestCase):
         self.open_people(page, "Riverside Makers")
         people = page.get_by_role("list", name="People in Riverside Makers")
         expect(people.get_by_text("Ada Kowalska (you)")).to_be_visible()
-        expect(page.get_by_text("Their Flux account’s address. Someone new? Send them a sign-up link first.")).to_be_visible()
+        expect(page.get_by_text("Their Flux account’s address. Someone new? Create an invite link below.")).to_be_visible()
 
         # Keyboard only: type the address, Tab to the role (Member by default), Tab to the button, Enter.
         form = page.get_by_role("region", name="Add someone")
@@ -212,8 +212,7 @@ class PeopleJourney(unittest.TestCase):
         form = page.get_by_role("region", name="Add someone")
         self.add(page, NOBODY)
         alert = form.get_by_role("alert")
-        expect(alert).to_contain_text(f"No one has an account with {NOBODY} here yet.")
-        expect(alert).to_contain_text("Copy a sign-up link for them below, then add them once they have one.")
+        expect(alert).to_have_text(f"No one has an account with {NOBODY} here yet. Create an invite link for them below and send it yourself.")
         expect(form.get_by_label("Email")).to_be_focused()
         shot(page, "people-desktop-1440-not-found")
 

@@ -3,3 +3,5 @@
 .cowork-host-actions p { margin-block: 8px; }
 .cowork-host-actions code { display: block; padding: 10px; background: var(--sub); border-radius: 10px; overflow-wrap: anywhere; white-space: pre-wrap; font-size: 13px; color: var(--t1); }
 @media (pointer: coarse) { .cowork-host-actions summary { min-height: 44px; padding-block: 10px; box-sizing: border-box; } }
+.cowork-host-actions code.cowork-host-actions__inline { display: inline; padding: 1px 4px; border-radius: 4px; }
+.cowork-host-actions__note { margin-block: 12px; color: var(--t3); font-size: 14px; line-height: 1.5; }

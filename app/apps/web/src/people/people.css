@@ -24,6 +24,10 @@
 .people__done, .people__invite-status { display: flex; align-items: flex-start; gap: 6px; margin: 8px 0 0; font-size: var(--fs-sm) !important; color: var(--t2) !important; }
 .people__done:empty, .people__invite-status:empty { display: none; }
 .people__done svg, .people__invite-status svg { flex: none; margin-top: 2px; color: var(--t1); }
+/* Invite links (F-035): the new link, read-only and selectable, and the pending list's heading. */
+.people__link { display: grid; gap: 10px; margin-top: 14px; padding: 12px; border-radius: var(--r-lg); box-shadow: inset 0 0 0 1px var(--line2); }
+.people__link input { font-family: var(--mono, ui-monospace, monospace); font-size: var(--fs-sm); }
+.people__sub { margin: 18px 0 4px !important; }
 .people__confirm { padding-top: 10px; border-top: 1px solid var(--line); }
 .people__confirm p { font-size: var(--fs-md); color: var(--t2); line-height: 1.5; }
 .people__remove.ui-btn { justify-self: start; margin-left: -8px; }
@@ -81,7 +85,5 @@
 .people__ai-status { display: flex; align-items: flex-start; gap: 6px; margin: 8px 0 0; font-size: var(--fs-sm) !important; color: var(--t2) !important; }
 .people__ai-status:empty { display: none; }
 .people__ai-status svg { flex: none; margin-top: 2px; color: var(--t1); }
-/* Someone new to Flux (#763 PE-2): the link shows only where the clipboard could not take it. */
-.people__invite-link { width: 100%; margin-top: 8px; font-size: var(--fs-sm); }
 /* People as a Settings page (#763 PE-1): the panel's content in the page column. */
 .people--page { padding: 0; }
