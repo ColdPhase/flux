@@ -1,9 +1,0 @@
-{
-  "row_count": 56,
-  "columns": [
-    "version",
-    "applied_at"
-  ],
-  "timestamp_rows_sha256": "5b896cb7da738c686da286b6e3c8f85850ff539e77cf9f8694bff930438daf9d",
-  "matches_actual_archive_manifest": true
-}
