@@ -25,7 +25,7 @@
 .handoff__can { margin: 0; padding: var(--s-3) var(--s-4); border-radius: var(--r); background: var(--sub); font-size: var(--fs-base); line-height: 1.55; color: var(--t2); overflow-wrap: anywhere; }
 .handoff__can b { color: var(--t1); font-weight: 600; }
 .handoff__can:not([data-allowed]) { box-shadow: inset 0 0 0 1px var(--line2); }
-.handoff__note { margin: 0; font-size: var(--fs-sm); line-height: 1.5; color: var(--t2); }
+.handoff__note { margin: 0; font-size: var(--fs-sm); line-height: 1.5; color: var(--t2); overflow-wrap: anywhere; }
 .handoff__error { margin: 0; font-size: var(--fs-sm); color: var(--t1); font-weight: 600; }
 .handoff__task { display: flex; align-items: center; gap: var(--s-2); }
 .handoff__task label { font-size: var(--fs-sm); color: var(--t3); }
@@ -45,7 +45,9 @@
 }
 
 /* The shared surface owns its layout even on a cold task-details route. */
-.ui-overlay--center .ui-overlay__surface.handoff-dialog { top: 50%; translate: -50% -50%; height: min(480px, 76dvh); }
+/* One fixed height for both steps, so Cancel/Back and Next/Hand off never move (Spokój rule 1); 400 rather than 480
+   leaves no empty well under one agent (#763 AG-7). The list scrolls when there are many. */
+.ui-overlay--center .ui-overlay__surface.handoff-dialog { top: 50%; translate: -50% -50%; height: min(400px, 76dvh); }
 .ui-overlay--center .ui-overlay__surface.handoff-dialog:has(.handoff--empty) { height: min(312px, 76dvh); }
 .handoff__foot > .ui-btn { flex: none; width: 84px; }
 .handoff__foot > .ui-btn--primary { width: 144px; }

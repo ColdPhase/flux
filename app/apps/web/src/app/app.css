@@ -127,6 +127,8 @@ body:has(.app) { background: var(--side); }
 .side__dot { width: 6px; height: 6px; border-radius: 50%; background: var(--inv); margin-left: auto; flex: none; }
 .side__empty { padding: 2px 10px 6px; font-size: var(--fs-sm); line-height: 1.5; color: var(--t2); }
 .side__names { display: flex; flex-direction: column; flex: 1 1 auto; min-width: 0; line-height: 1.25; }
+/* A project name keeps its full length in the 248 px sidebar where it can ("Community garden sensors", #763 NV-9). */
+.side__project { gap: 8px; padding-inline: 8px 6px; }
 .side__project:has(.side__names) { padding-block: 4px; }
 .side__sub { min-width: 0; overflow: hidden; text-overflow: ellipsis; font-size: var(--fs-xs); font-weight: 400; color: var(--t2); white-space: nowrap; }
 .side__label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

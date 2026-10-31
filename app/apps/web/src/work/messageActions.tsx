@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type KeyboardEvent, type MouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode, type RefObject } from 'react';
 import { createPortal } from 'react-dom';
-import type { ConversationMessage } from '@flux/contracts';
+import { messagePreview, type ConversationMessage } from '@flux/contracts';
 import { Icon, Kreska, useMediaQuery, usePop, useToast, type IconName } from '../ui';
 import { useShellActions } from '../app/shellContext';
 import { useShellData } from '../app/data';
@@ -9,6 +9,7 @@ import { useNeedsYou } from '../notifications/needsYou';
 import { useNeedsYouActions } from '../notifications/useNeedsYouActions';
 import { useProjectShell } from '../project/data';
 import { HandOffDialog } from '../agents/HandOff';
+import { firstClause, firstLine } from './format';
 import './message-actions.css';
 
 // Actions on one message (F-026 S6). On a computer they appear on hover and focus: reply in a thread,
@@ -61,7 +62,7 @@ interface MenuItem { id: string; label: string; icon: IconName | 'kreska'; run: 
  * "+" Create, a result is recorded from its task. A computer's menu lists only what its toolbar lacks (#763 B4).
  */
 function useMenuItems(options: MessageActionOptions | DmActionOptions | null, touch: boolean): { items: MenuItem[]; extra: ReactNode } {
-  const { openDetails } = useShellActions();
+  const { openDetails, openCreate } = useShellActions();
   const { me } = useShellData();
   const toast = useToast();
   const aiOff = useProjectAiBlocked();
@@ -106,7 +107,12 @@ function useMenuItems(options: MessageActionOptions | DmActionOptions | null, to
     ...(onCite ? [{ id: 'cite', label: 'Cite', icon: 'cite' as const, run: onCite }] : []),
     ...copyItem,
     ...(touch ? [] : [
-      { id: 'decision', label: 'Propose a decision', icon: 'rule', secondary: true, run: () => openDetails({ kind: 'propose-decision', projectId, source }) },
+      // The same Create window as Create task, on its Decision tab, with the message as the source and a short title
+      // from its first clause, selected (#763 SP-5, WF-3).
+      { id: 'decision', label: 'Propose a decision', icon: 'rule', secondary: true, run: () => {
+        const preview = firstLine(messagePreview(message.body, message.files?.length));
+        openCreate({ kind: 'decision', projectId, title: firstClause(preview), sources: [{ ref: { type: 'message', id: message.id }, label: preview }] });
+      } },
       { id: 'result', label: 'Record a result', icon: 'result', secondary: true, run: () => openDetails({ kind: 'attach-result', projectId, source }) },
       details,
     ] satisfies MenuItem[]),

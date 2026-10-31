@@ -107,7 +107,8 @@ export function InboxView() {
   const openMenu = useCallback((key: string) => { setSelected(key); setMenu((open) => (open === key ? null : key)); }, [setSelected]);
   useQueueKeys(shown, current?.key ?? null, select, handlers, openMenu);
 
-  const tabs: TabItem[] = FILTERS.map((entry) => ({ id: entry.id, label: entry.label, count: counts[entry.id], countLabel: `, ${counts[entry.id]}` }));
+  // A filter with nothing in it is not offered (#763 LD-5, Spokój rule 4); All stays, and so does the one you are on.
+  const tabs: TabItem[] = FILTERS.filter((entry) => entry.id === 'all' || entry.id === filter || counts[entry.id] > 0).map((entry) => ({ id: entry.id, label: entry.label, count: counts[entry.id], countLabel: `, ${counts[entry.id]}` }));
   const where = projectId ? projectName ?? 'this project' : 'all projects';
   const summary = queue.items === null ? '' : counts.all ? `${counts.all} need${counts.all === 1 ? 's' : ''} you · ${where}` : `all clear · ${where}`;
 
@@ -148,6 +149,7 @@ export function InboxView() {
           <ul className="nyq__list" aria-label="Needs you">
             {shown.map((item) => (
               <NeedsYouCard key={item.key} item={item} selected={item.key === current?.key} handlers={handlers}
+                compact={item.key !== current?.key} onSelect={() => setSelected(item.key)}
                 menuOpen={menu === item.key} onMenuOpen={(open) => setMenu(open ? item.key : null)} />
             ))}
           </ul>

@@ -181,6 +181,9 @@ class WorkDecisionsJourney(unittest.TestCase):
         page.keyboard.press("Enter")
         page.get_by_role("menuitem", name="Propose a decision").focus()
         page.keyboard.press("Enter")
+        # #763 SP-5: the Create window's Decision tab; its full form in Details is one key away.
+        page.get_by_role("dialog", name="New decision").get_by_role("button", name="Replace a current rule…").focus()
+        page.keyboard.press("Enter")
         panel = self.details(page)
         expect(panel.get_by_role("heading", name="Propose a decision")).to_be_visible()
         expect(panel.get_by_label("Decision")).to_have_value(IDEA)
@@ -258,6 +261,7 @@ class WorkDecisionsJourney(unittest.TestCase):
         page.goto(f"/projects/{self.project_id}/conversations/{self.conversation_id}")
         message = page.locator(f"#message-{self.messages['pivot']}")
         open_message_menu(message, phone=False).get_by_role("menuitem", name="Propose a decision").click()
+        page.get_by_role("dialog", name="New decision").get_by_role("button", name="Replace a current rule…").click()  # #763 SP-5
         panel.get_by_label("Why").fill("The camera failed in low light; a ToF sensor works in the dark and stores no images")
         choose(panel.get_by_label("Replaces"), label="Use a camera for gesture control")
         panel.get_by_role("button", name="Propose decision").click()

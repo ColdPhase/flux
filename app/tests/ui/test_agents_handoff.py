@@ -207,7 +207,8 @@ class HandOffJourney(unittest.TestCase):
         expect(detail.get_by_test_id("agent-permissions")).to_have_text("Can read projects · Can suggest changes")
         expect(detail.get_by_role("region", name="Now")).to_contain_text("Calibrate the probes at two soil depths")
         expect(detail.get_by_role("region", name="Can")).to_contain_text("It can’t accept decisions")
-        expect(detail.get_by_role("region", name="Recent")).to_be_visible()
+        # #763 WF-6: an empty Recent is not shown (Spokój rule 4); nothing was recorded for this agent yet.
+        expect(detail.get_by_text("Nothing recorded yet.")).to_have_count(0)
         # Stop (S13) is on the working agent's row and in its panel, for its owner; test_agent_stop_questions exercises it.
         expect(detail.get_by_role("button", name="Stop Claude Code agent")).to_be_visible()
         expect(page.get_by_role("button", name="Stop Reader agent")).to_have_count(0)

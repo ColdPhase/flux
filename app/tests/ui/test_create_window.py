@@ -732,9 +732,14 @@ class CreateWindow(unittest.TestCase):
         decision.get_by_label("Why", exact=True).fill("Resistive probes corrode within a season")
         decision.get_by_role("button", name=re.compile("^Propose decision")).click()
         expect(window(page)).to_have_count(0)
-        details = page.get_by_role("complementary", name="Details")
-        expect(details.get_by_role("heading", name=text)).to_be_visible()
-        stored = [item for item in self.api(page, "GET", f"/api/v1/projects/{self.ids['project']}/decisions?limit=100", status=200)["items"] if item["title"] == text]
+        # #763 WF-3: "Decision proposed" with Undo; it reaches the people who can accept it when that window ends.
+        expect(page.locator(".ui-toast", has_text="Decision proposed").get_by_role("button", name="Undo")).to_be_visible()
+        stored: list = []
+        for _ in range(60):
+            stored = [item for item in self.api(page, "GET", f"/api/v1/projects/{self.ids['project']}/decisions?limit=100", status=200)["items"] if item["title"] == text]
+            if stored:
+                break
+            page.wait_for_timeout(250)
         self.assertEqual(len(stored), 1)
         self.assertEqual(stored[0]["status"], "proposed")
 
@@ -778,6 +783,7 @@ class CreateWindow(unittest.TestCase):
         create_other(page, "Decision")
         page.evaluate(twice)
         expect(window(page)).to_have_count(0)
+        page.wait_for_timeout(7000)  # #763 WF-3: the proposal is sent when its Undo window ends
         self.assertEqual(posts, [f"projects/{self.ids['project']}/decisions"])
         # A message's link belongs to its project: another project starts without it, so the task is made there.
         made = self.thread(page, "Sources stay home: label the bed rows")

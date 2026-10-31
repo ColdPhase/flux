@@ -22,7 +22,7 @@ export function ObjectNoticeItem({ notice, meId, owners, authorOf, inThread = fa
   const by = notice.by;
   const name = by.name ?? (by.kind === 'agent' ? 'Agent' : 'Member');
   const mine = by.kind === 'human' && by.id === meId;
-  const phrase = objectPhrase(notice, authorOf, inThread);
+  const phrase = objectPhrase(notice, authorOf, inThread, { name, mine });
   const state = objectState(notice);
   const target = objectTarget(notice);
   const noun = target.kind === 'decision' ? 'decision' : 'result';

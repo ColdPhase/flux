@@ -109,7 +109,7 @@ export function SketchIndex() {
         {typeof state === 'object' && !state.items.length ? (
           <div className="view-empty">
             <EmptyState icon="map" title="Start a sketch" action={action}>
-              <p>Maps are for thinking out loud: put thoughts down, connect them and move them around. Nothing on a map has to become work.</p>
+              <p>Maps are for thinking out loud: put thoughts down, connect them and move them around. Nothing on a map has to become a task.</p>
             </EmptyState>
           </div>
         ) : null}

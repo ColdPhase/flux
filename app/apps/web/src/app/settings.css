@@ -62,10 +62,10 @@
 .sset-switch:disabled { opacity: .45; cursor: not-allowed; }
 /* Touch (#763 SG-4): every switch takes at least 44 × 44 px, and the section list's rows are 44 px tall. */
 @media (pointer: coarse), (hover: none) {
-  .sset-switch { width: 44px; height: 28px; }
+  /* The track is 44 × 28 inside a 44 × 44 box: a transparent border above and below makes the box the target (#763 SG-4). */
+  .sset-switch { width: 44px; height: 44px; box-sizing: border-box; border: solid transparent; border-width: 8px 0; background-clip: padding-box; }
   .sset-switch > span { width: 22px; height: 22px; }
   .sset-switch[aria-checked="true"] > span { transform: translateX(16px); }
-  .sset-switch::after { content: ""; position: absolute; inset: -8px 0; }
   .sset__link { min-height: 44px; }
   .sset-row--link, .sset-row { min-height: 52px; }
 }
@@ -143,10 +143,10 @@
   .sset-themes { gap: 10px; }
   .sset-theme__art { height: auto; aspect-ratio: 1 / 1.05; border-radius: 16px; }
   .sset-theme__label { justify-content: center; min-height: 44px; font-size: var(--fs-base); }
-  .sset-switch { width: 44px; height: 28px; }
+  /* The track is 44 × 28 inside a 44 × 44 box: a transparent border above and below makes the box the target (#763 SG-4). */
+  .sset-switch { width: 44px; height: 44px; box-sizing: border-box; border: solid transparent; border-width: 8px 0; background-clip: padding-box; }
   .sset-switch > span { width: 22px; height: 22px; }
   .sset-switch[aria-checked="true"] > span { transform: translateX(16px); }
-  .sset-switch::after { content: ""; position: absolute; inset: -8px; }
   .sset-keys td { width: 112px; }
   .sset-row__go-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
 }

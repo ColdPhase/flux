@@ -547,17 +547,19 @@ class AppShellJourney(unittest.TestCase):
         rail = places
         marker = places.get_by_role("link", name="Home").evaluate("el => [getComputedStyle(el).backgroundColor, getComputedStyle(el).boxShadow !== 'none']")
         self.assertEqual(marker, ["rgb(255, 255, 255)", True], "the current place is a raised white pill (F-026 §4)")
-        expect(sidebar.get_by_text("No projects yet")).to_be_visible()
+        # #763 FR-4: an empty section is not shown; Home carries the one first step instead.
+        expect(sidebar.get_by_text("No projects yet")).to_have_count(0)
+        expect(page.get_by_role("button", name="Start your first project")).to_be_visible()
         expect(sidebar.get_by_role("button", name=re.compile("^New"))).to_have_attribute("aria-keyshortcuts", "C")
         # Home has no views bar (#508); its quiet links lead to the personal pages. Project-header views are covered by
         # test_project_header.py and retain Conversation · Map · Tasks · Wiki · Agents (#340).
         views = page.get_by_role("navigation", name="Views")
         expect(views).to_have_count(0)
-        for label in ("All my tasks", "Sketchbook", "Wiki"):
-            expect(page.locator(".home__more").get_by_role("link", name=label, exact=True)).to_be_visible()
+        # #763 FT-1: with no project yet Home is one first step; the links to empty pages, Needs you and Projects wait.
+        expect(page.locator(".home__more").get_by_role("link")).to_have_count(0)
         expect(page.get_by_role("heading", level=2, name=re.compile("^Good "))).to_be_visible()
-        expect(page.get_by_role("region", name="Needs you")).to_be_visible()
-        expect(page.get_by_role("region", name="Projects")).to_be_visible()
+        expect(page.get_by_role("region", name="Needs you")).to_have_count(0)
+        expect(page.get_by_role("region", name="Start with a project")).to_be_visible()
         shot(page, "desktop-1440-home-light")
 
         # Private notes moved from Home's former conversation into Your notes in the Sketchbook.
@@ -605,13 +607,14 @@ class AppShellJourney(unittest.TestCase):
         # The personal pages stay reachable and keep Back: Home's quiet links, then the browser's Back (#508 AC-5).
         places.get_by_role("link", name="Home").click()
         expect(page.get_by_role("heading", level=2, name=re.compile("^Good "))).to_be_visible()
-        page.locator(".home__more").get_by_role("link", name="All my tasks", exact=True).click()
+        # #763 FT-1: with no project Home does not list the personal pages; they stay reachable by address and Back.
+        page.goto("/tasks")
         expect(page).to_have_url(f"{ORIGIN}/tasks")
         expect(page.get_by_role("heading", name="Nothing is waiting for you")).to_be_visible()
         expect(page.get_by_role("navigation", name="Views")).to_have_count(0)
         page.go_back()
         expect(page).to_have_url(f"{ORIGIN}/")
-        page.locator(".home__more").get_by_role("link", name="Sketchbook", exact=True).click()
+        places.get_by_role("link", name="Sketchbook", exact=True).click()
         expect(page.get_by_role("heading", level=1, name="Sketchbook", exact=True)).to_be_visible()
         shot(page, "desktop-1440-map-light")
 
@@ -645,7 +648,7 @@ class AppShellJourney(unittest.TestCase):
         expect(page.get_by_role("heading", level=1, name="Direct messages")).to_be_visible()
         expect(page.get_by_role("heading", name="No direct messages yet")).to_be_visible()
         expect(sidebar.locator("#side-dms").get_by_role("link", name="Messages", exact=True)).to_have_attribute("aria-current", "page")
-        expect(sidebar.get_by_text("No conversations yet", exact=False)).to_be_visible()
+        expect(sidebar.get_by_text("No conversations yet", exact=False)).to_have_count(0)  # #763 FR-4
         # On the computer New (C) starts a message; the sidebar has no second "+".
         expect(sidebar.get_by_role("link", name="New message")).to_have_count(0)
         expect(page.get_by_role("navigation", name="Views")).to_have_count(0)

@@ -20,7 +20,8 @@
 .nyc { position: relative; list-style: none; }
 .nyc__scroll { border-radius: var(--r-card); }
 .nyc__card { position: relative; display: grid; grid-template-columns: 32px minmax(0, 1fr) auto; column-gap: 12px; align-items: start; padding: 16px 20px; background: var(--el); border-radius: var(--r-card); box-shadow: var(--sh-card); }
-.nyc.is-selected .nyc__card { box-shadow: var(--sh-card), 0 0 0 2px var(--t1); }
+/* The selected card is the one that is open; it is not ringed (#763 IN-3, Spokój rule 6). Keyboard focus keeps an outline. */
+.nyc__card:has(:focus-visible) { box-shadow: var(--sh-card), 0 0 0 2px var(--line2); }
 .nyc__face { display: grid; place-items: center; width: 32px; height: 32px; flex: none; }
 .nyc__face .ui-avatar { width: 32px; height: 32px; }
 .nyc__face--glyph, .nyc__face--icon { border-radius: 50%; color: var(--t2); }
@@ -67,6 +68,22 @@
 .nyc--row .nyc__title { font-size: var(--fs-base); line-height: 1.35; }
 .nyc--row .nyc__scroll { border-radius: 0; }
 .nyc__rowactions { display: flex; align-items: center; gap: 8px; }
+/* An agent's ready answers wrap inside their button, and the row of them wraps, so a long answer never runs into the next
+   or squeezes the question to a letter per line (#763 H11-1). */
+.nyc__answer.ui-btn { white-space: normal; text-align: center; height: auto; min-height: var(--ctl); padding-block: 6px; overflow-wrap: anywhere; max-width: 100%; }
+.nyc__actions:has(.nyc__answer), .nyc__rowactions:has(.nyc__answer) { flex-wrap: wrap; }
+/* On Home the answers go under the question at every width, so the Details panel never squeezes the question. */
+.nyc--row .nyc__card:has(.nyc__answer) { grid-template-columns: 32px minmax(0, 1fr); }
+.nyc--row .nyc__rowactions:has(.nyc__answer) { grid-column: 2; justify-content: flex-start; margin-top: 8px; }
+
+/* The others are one line: who and what, the title and their one action (#763 LD-1, desktop-inbox). */
+.nyc--compact .nyc__card { align-items: center; padding: 12px 20px; cursor: pointer; }
+.nyc--compact .nyc__body { gap: 2px; }
+.nyc--compact .nyc__title { font-size: var(--fs-base); line-height: 1.35; }
+.nyc--compact .nyc__open { display: block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.nyc--compact .nyc__eyebrow { flex-wrap: nowrap; min-width: 0; white-space: nowrap; }
+.nyc--compact .nyc__eyebrow .nyc__meta { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.nyc--compact .nyc__card:hover { background: color-mix(in srgb, var(--hov) 40%, var(--el)); }
 
 /* Not now: when should it return */
 .nym { position: absolute; z-index: 5; top: calc(100% - 6px); left: 20px; display: flex; flex-direction: column; min-width: 232px; padding: 6px; border-radius: var(--r); background: var(--el); box-shadow: var(--sh-pop), inset 0 0 0 1px var(--line); }
@@ -93,10 +110,12 @@
   .nyc__accept kbd { display: none; }
   .nyc__foot .nyc__actions { flex-wrap: nowrap; }
   /* An agent's ready answers share the row evenly, as drawn (phone-inbox, S14). */
-  .nyc__answer { flex: 1; min-width: 0; }
+  .nyc__answer { flex: 1 1 calc(50% - 4px); min-width: 0; }
+  .nyc--compact .nyc__card { grid-template-columns: 32px minmax(0, 1fr) auto; padding: 10px 12px 10px 16px; }
   .nyc--row .nyc__card { grid-template-columns: 32px minmax(0, 1fr); }
   .nyc--row .nyc__rowactions { grid-column: 2; margin-top: 8px; }
   .nyc--row .nyc__rowactions .ui-btn { flex: 1; }
+  .nyc--row .nyc__rowactions .nyc__answer.ui-btn, .nyc__actions .nyc__answer.ui-btn { flex: 1 1 calc(50% - 4px); }
 }
 @media (pointer: coarse) { .nyc__open { min-height: 44px; } .nym__item { min-height: 44px; } }
 

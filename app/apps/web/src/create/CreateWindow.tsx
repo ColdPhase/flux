@@ -19,6 +19,7 @@ import { Button, Icon, MEDIA, Overlay, Spinner, StatusGlyph, Tabs, useMediaQuery
 import { createWork, listAgents, proposeDecision } from '../work/api';
 import { STATUS_LABEL } from '../work/format';
 import { useCreatedToast } from '../work/taskState';
+import { ACCEPT_UNDO_MS, startProposal } from '../notifications/pendingAccept';
 import './create.css';
 
 // The one Create window (F-026 S3, #345, #521): the computer's centred window and the phone's bottom sheet hold the
@@ -46,7 +47,7 @@ export function CreateHost({ request, onClose }: { request: CreateRequest | null
   // Each opening starts on Task (F-026 S3), or on Project while the person has none, since a task needs one (#763 FR-2);
   // the window is named after the tab it shows, so no heading repeats the tab.
   const { projects } = useShellData();
-  const opening: Kind = request?.kind === 'project' || !projects.length ? 'project' : 'task';
+  const opening: Kind = request?.kind === 'project' || !projects.length ? 'project' : request?.kind === 'decision' ? 'decision' : 'task';
   const [chosen, setChosen] = useState<{ request: CreateRequest | null; kind: Kind }>({ request: null, kind: 'task' });
   const kind = chosen.request === request ? chosen.kind : opening;
   return (
@@ -114,7 +115,7 @@ function CreateBody({ request, phone, kind, onKind, onClose }: { request: Create
       <TaskForm {...shared} ids={ids('task')} request={request} prefilled={prefilled} />
       <ThoughtForm {...shared} ids={ids('thought')} />
       <MessageForm {...shared} ids={ids('message')} />
-      <DecisionForm {...shared} ids={ids('decision')} />
+      <DecisionForm {...shared} ids={ids('decision')} request={request} />
       <ProjectForm {...shared} ids={ids('project')} />
     </div>
   );
@@ -545,48 +546,63 @@ function MessageForm({ ids, phone, carried, onClose }: PanelProps) {
   );
 }
 
-/** Decision: a proposal in the chosen project, as the composer's /decide makes it; it opens in Details once made. */
-function DecisionForm({ ids, phone, carried, projectId, onProject, onClose }: PanelProps) {
+/**
+ * Decision: a proposal in the chosen project, as the composer's /decide makes it. One made from a message (its menu's
+ * Propose a decision) starts from the message's first clause, selected, with the message quoted as its source (#763 WF-3).
+ * "Decision proposed · Undo" follows, and the proposal reaches the people who can accept it only when that window ends.
+ */
+function DecisionForm({ ids, phone, carried, projectId, onProject, onClose, request }: PanelProps & { request: CreateRequest }) {
   const { projects } = useShellData();
   const { openDetails } = useShellActions();
   const revalidator = useRevalidator();
+  const toast = useToast();
   const [why, setWhy] = useState('');
-  const [busy, setBusy] = useState(false);
+  // Nothing is sent while the window is open: proposing is held for Undo, so the form never waits on the server.
+  const busy = false;
   const inFlight = useRef(false);
   const [error, setError] = useState('');
-  const attempt = useRef<{ payload: string; key: string } | null>(null);
+  const titleRef = useRef<HTMLInputElement>(null);
   const project = projects.find((item) => item.id === projectId);
+  // A message source belongs to the project it was said in.
+  const source = request.projectId === projectId ? request.sources?.find((item) => item.ref.type === 'message') ?? null : null;
   const title = oneLine(carried.text);
   const ready = !!title && title.length <= WORK_LIMITS.title && !!project && !busy;
-  async function submit() {
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { if (ids.active && request.kind === 'decision') { titleRef.current?.focus(); if (source) titleRef.current?.select(); } }, []);
+  function submit() {
     if (!ready || !project || inFlight.current) return;
     inFlight.current = true;
-    setBusy(true); setError('');
     const snapshot = carried.begin();
-    const command = { title, ...(why.trim() ? { rationale: why.trim() } : {}) };
-    const payload = JSON.stringify([project.id, command]);
-    if (attempt.current?.payload !== payload) attempt.current = { payload, key: crypto.randomUUID() };
-    try {
-      const decision = await proposeDecision(project.id, command, attempt.current.key);
-      attempt.current = null;
-      carried.made(snapshot);
+    const command = { title, ...(why.trim() ? { rationale: why.trim() } : {}), ...(source ? { sources: [{ type: 'message' as const, id: source.ref.id }] } : {}) };
+    const target = project.id;
+    const handle = startProposal((key, keepalive) => proposeDecision(target, command, key, keepalive), (outcome) => {
       revalidator.revalidate();
-      onClose();
-      openDetails({ kind: 'decision', id: decision.id, projectId: project.id });
-    } catch (cause) {
-      setError(cause instanceof ApiError && cause.status === 403 ? 'You can read this project but not propose decisions.' : 'Could not propose the decision. Your text is still here; try again.');
-    } finally { inFlight.current = false; setBusy(false); }
+      if (outcome !== 'accepted') toast({ tone: 'danger', message: `“${title}” wasn’t proposed. Nothing changed; propose it again.` });
+    });
+    carried.made(snapshot);
+    // Stays set: the window closes, and a second submit in the same tick must not hold a second proposal.
+    onClose();
+    toast({ message: 'Decision proposed', tone: 'neutral', timeout: ACCEPT_UNDO_MS, action: { label: 'Undo', key: 'Z', onClick: () => {
+      if (handle.undo()) toast({ message: 'Not proposed' });
+      else toast({ message: 'It was already proposed; it waits in the Inbox of those who can accept it.' });
+    } } });
   }
   return (
-    <Panel ids={ids} where={<ProjectWhere ids={ids} projectId={projectId} onProject={onProject} phone={phone} />} onSubmit={() => void submit()}
-      foot={<><p className="create__note">{project ? 'A person with write access accepts it' : 'A decision belongs to a project'}</p><Go label="Propose decision" busy={busy} ready={ready} phone={phone} /></>}>
+    <Panel ids={ids} where={<ProjectWhere ids={ids} projectId={projectId} onProject={onProject} phone={phone} />} onSubmit={submit}
+      foot={<><p className="create__note">{project ? 'Goes to the Inbox of those who can accept it' : 'A decision belongs to a project'}</p><Go label="Propose decision" busy={busy} ready={ready} phone={phone} /></>}>
       {project ? <>
-        <input id={ids.field} className="create__name" aria-label="Decision" value={flat(carried.text)} maxLength={WORK_LIMITS.title} disabled={busy} placeholder="What is being decided?"
+        <input ref={titleRef} id={ids.field} className="create__name" aria-label="Decision" value={flat(carried.text)} maxLength={WORK_LIMITS.title} disabled={busy} placeholder="What is being decided?"
           onChange={(event) => { carried.set(event.target.value); setError(''); }} />
+        {source ? <blockquote className="create__source"><span>From the message</span>{source.label}</blockquote> : null}
         <textarea className="create__details" aria-label="Why" rows={2} value={why} maxLength={WORK_LIMITS.rationale} disabled={busy} placeholder="Why this is the right call (optional)"
           onChange={(event) => { setWhy(event.target.value); setError(''); }} />
         <TooLong text={title} limit={WORK_LIMITS.title} />
         {error ? <p className="create__error" role="alert">{error}</p> : null}
+        {/* Replacing a current rule (a pivot) and its choices live in the full form in Details, with the same text and source. */}
+        <button type="button" className="create__more" onClick={() => {
+          onClose();
+          openDetails({ kind: 'propose-decision', projectId: project.id, ...(title ? { title } : {}), ...(source ? { source: { messageId: source.ref.id, text: source.label } } : {}) });
+        }}>Replace a current rule…</button>
       </> : <p className="create__note">There is no project yet. Make one in the Project tab, then propose its decisions here.</p>}
     </Panel>
   );

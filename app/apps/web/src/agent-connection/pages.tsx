@@ -6,7 +6,7 @@ import { getMe } from '../api/auth';
 import { ApiError, NetworkError, request as apiRequest } from '../api/client';
 import { listAccessibleProjects } from '../project/api';
 import { signInPath } from '../auth/logic';
-import { Button, Icon, Select, Option } from '../ui';
+import { Button, Icon, Kreska, Select, Option } from '../ui';
 import {
   SCOPE_LABELS, continueAgentOAuth, getOauthRequester, createAgentConnection, createPersonalAgent, decideAgentConsent,
   followOAuthRedirect, getConsentContext, grantAgentProject, listActionGrants, listAgentConnections, listProjectGrants,
@@ -125,9 +125,13 @@ function describeError(error: unknown) {
   return error instanceof Error && error.message.startsWith('Flux did not return') ? error.message : 'Something went wrong. Try again.';
 }
 
+/** The asking client's own name, for the title and the connection's name (#763 WF-5); null when it is not one Flux knows. */
+const CLIENT_NAMES: Partial<Record<ExternalClientDesignation, string>> = { claude_code: 'Claude Code', codex: 'Codex' };
+
 function FlowHeader({ step, title, children }: { step: string; title: string; children: ReactNode }) {
   return <header className="connection__head">
-    <span className="connection__eyebrow"><Icon name="spark" size={15} /> {step}</span>
+    {/* Agents are Kreska (F-026 §3), not the assistant's spark (#763 WF-5). */}
+    <span className="connection__eyebrow"><Kreska size={16} /> {step}</span>
     <h1>{title}</h1>
     <p>{children}</p>
   </header>;
@@ -173,15 +177,25 @@ export function AgentConnectionPage() {
   const [adding, setAdding] = useState(items.length === 0);
   const [personalAgents, setPersonalAgents] = useState(agents);
   const [agentId, setAgentId] = useState(agents[0]?.id ?? '');
-  const [creatingAgent, setCreatingAgent] = useState(agents.length === 0);
-  const [agentName, setAgentName] = useState('');
-  const [connectionName, setConnectionName] = useState('');
+  const clientName = requesterClient ? CLIENT_NAMES[requesterClient] ?? null : null;
+  // During a client's sign-in the personal agent is made behind the connection (#763 WF-5): no separate step.
+  const quick = !!oauthQuery && agents.length === 0;
+  const [creatingAgent, setCreatingAgent] = useState(agents.length === 0 && !oauthQuery);
+  const [agentName, setAgentName] = useState(quick ? clientName ?? 'My agent' : '');
+  // The connection is named after the client that asks, so the field starts with a value, not a look-alike placeholder.
+  const [connectionName, setConnectionName] = useState(oauthQuery ? `${clientName ?? 'Agent client'} on this computer` : '');
   const [clientDesignation, setClientDesignation] = useState<ExternalClientDesignation>(requesterClient ?? 'other');
   const [workspaceId, setWorkspaceId] = useState(workspaces[0]?.id ?? '');
   const [currentGrants, setCurrentGrants] = useState(grants);
   const [grantRoles, setGrantRoles] = useState<Record<string, 'viewer' | 'contributor'>>({});
   const [revoking, setRevoking] = useState<string | null>(null);
-  const [projectIds, setProjectIds] = useState<string[]>([]);
+  // With one project to choose, it is already chosen.
+  const [projectIds, setProjectIds] = useState<string[]>(() => {
+    const space = agents[0]?.workspaceId ?? workspaces[0]?.id;
+    const here = projects.filter((project) => project.workspaceId === space && (!quick || project.access === 'manager'));
+    return oauthQuery && here.length === 1 ? [here[0]!.id] : [];
+  });
+  const [missing, setMissing] = useState<string | null>(null);
   const [scopes, setScopes] = useState<AgentScope[]>(['flux.context.read', 'flux.proposal.write']);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -189,13 +203,25 @@ export function AgentConnectionPage() {
   const projectsById = new Map(projects.map((project) => [project.id, project]));
   const agentNames = new Map(personalAgents.map((agent) => [agent.id, agent.name]));
   const chosenAgent = personalAgents.find((agent) => agent.id === agentId);
-  const eligibleProjects = projects.filter((project) => project.workspaceId === chosenAgent?.workspaceId && !aiOffSpaces.some((space) => space.id === project.workspaceId));
+  const agentSpace = quick && !chosenAgent ? workspaceId : chosenAgent?.workspaceId;
+  const eligibleProjects = projects.filter((project) => project.workspaceId === agentSpace && !aiOffSpaces.some((space) => space.id === project.workspaceId));
+  const writes = scopes.some((scope) => scope === 'flux.proposal.write' || scope === 'flux.action.execute');
 
   function grantFor(project: Project) {
     return currentGrants[project.id]?.find((grant) => grant.principal.kind === 'agent' && grant.principal.id === agentId);
   }
 
+  /** During a client's sign-in a manager's project without the agent's grant can be chosen: Continue grants it (#763 WF-5). */
+  function grantsOnContinue(project: Project) {
+    if (!oauthQuery || project.access !== 'manager') return false;
+    if (quick && !chosenAgent) return true;
+    const role = grantFor(project)?.role;
+    return !role || (role === 'viewer' && writes);
+  }
+
   function canSelect(project: Project) {
+    if (grantsOnContinue(project)) return true;
+    if (quick && !chosenAgent) return false;
     if (!currentGrants[project.id]) return true; // A non-manager cannot inspect grants; the server validates on save.
     const role = grantFor(project)?.role;
     return role === 'contributor' || (role === 'viewer' && !scopes.some((scope) => scope === 'flux.proposal.write' || scope === 'flux.action.execute'));
@@ -250,15 +276,35 @@ export function AgentConnectionPage() {
   }
 
   // During a client's sign-in there is one way on (#763 AG-6): Continue saves the new connection first when its form is open.
-  const formOpen = personalAgents.length > 0 && adding;
-  const formReady = formOpen && !!agentId && !!connectionName.trim() && projectIds.length > 0 && scopes.length > 0;
+  const formOpen = (personalAgents.length > 0 || quick) && adding;
+  /** What Continue still needs, in words (#763 WF-5): it stays pressable and says this instead of greying out. */
+  const lacking = !formOpen ? (selected ? null : 'Choose a saved connection, or create a new one.')
+    : quick && !workspaceId ? 'Your agent belongs to a workspace, and you are not in one yet.'
+    : quick && !agentName.trim() ? 'Give your agent a name under More options.'
+    : !connectionName.trim() ? 'Name this connection.'
+    : !projectIds.length ? 'Choose at least one project the agent may use.'
+    : !scopes.length ? 'Allow at least one action under More options.' : null;
   async function connect() {
-    if (!oauthQuery || (formOpen ? !formReady : !selected)) return;
+    if (!oauthQuery) return;
+    if (lacking) { setMissing(lacking); return; }
+    setMissing(null);
     setBusy(true); setError(null);
     try {
       let chosen = selected;
       if (formOpen) {
-        const connection = await createAgentConnection({ agentId, name: connectionName.trim(), clientDesignation, selectedProjectIds: projectIds, scopes });
+        // The personal agent is made behind the connection, and the chosen projects are granted to it as the actions need.
+        let id = agentId;
+        if (quick && !chosenAgent) {
+          const agent = await createPersonalAgent(workspaceId, agentName.trim());
+          setPersonalAgents((current) => [...current, agent]);
+          setAgentId(agent.id);
+          id = agent.id;
+        }
+        for (const project of eligibleProjects.filter((item) => projectIds.includes(item.id) && grantsOnContinue(item))) {
+          const grant = await grantAgentProject(project.id, id, writes ? 'contributor' : 'viewer');
+          setCurrentGrants((current) => ({ ...current, [project.id]: [...(current[project.id] ?? []).filter((item) => !(item.principal.kind === 'agent' && item.principal.id === id)), grant] }));
+        }
+        const connection = await createAgentConnection({ agentId: id, name: connectionName.trim(), clientDesignation, selectedProjectIds: projectIds, scopes });
         setItems((current) => [...current, connection]);
         setSelected(connection.id);
         setAdding(false);
@@ -269,9 +315,48 @@ export function AgentConnectionPage() {
     } catch (cause) { setError(describeError(cause)); setBusy(false); }
   }
 
+  const clientField = <>
+    <label className="connection__label" htmlFor="connection-client">Client label</label>
+    <Select id="connection-client" value={clientDesignation} onChange={(next) => setClientDesignation(next as ExternalClientDesignation)} disabled={busy}>
+      <Option value="other">External client</Option><Option value="claude_code">Claude Code</Option><Option value="codex">Codex</Option>
+    </Select>
+    <p>This label helps you recognize the connection. It does not verify which application uses it.</p>
+  </>;
+  const actionsField = <fieldset className="connection__group" disabled={busy || (!agentId && !quick)}>
+    <legend>Allowed actions</legend>
+    <p className="connection__help">You can grant fewer permissions than an agent asks for. It gets only the ones ticked here, and anything else it tries is refused.</p>
+    <div className="connection__checks">{ALL_SCOPES.map((scope) => <label key={scope}>
+      <input type="checkbox" checked={scopes.includes(scope)} onChange={(event) => {
+        setScopes((current) => event.target.checked ? [...current, scope] : current.filter((item) => item !== scope));
+        if ((scope === 'flux.proposal.write' || scope === 'flux.action.execute') && event.target.checked && !oauthQuery) setProjectIds((current) => current.filter((id) => {
+          const project = eligibleProjects.find((item) => item.id === id);
+          return project && (!currentGrants[id] || grantFor(project)?.role === 'contributor');
+        }));
+      }} />
+      <span><strong>{SCOPE_LABELS[scope].title}</strong><small>{SCOPE_LABELS[scope].description}</small></span>
+    </label>)}</div>
+  </fieldset>;
+  const agentField = quick && !chosenAgent ? <>
+    {workspaces.length > 1 ? <>
+      <label className="connection__label" htmlFor="agent-workspace">Workspace</label>
+      <Select id="agent-workspace" value={workspaceId} onChange={(next) => { setWorkspaceId(next); setProjectIds([]); }} disabled={busy} required>
+        {workspaces.map((workspace) => <Option key={workspace.id} value={workspace.id}>{workspace.name}</Option>)}
+      </Select>
+    </> : null}
+    <label className="connection__label" htmlFor="agent-name">Your agent’s name</label>
+    <input id="agent-name" value={agentName} onChange={(event) => setAgentName(event.target.value)} maxLength={160} disabled={busy} required />
+    <p>A personal agent of yours is made with this name. It belongs only to you.</p>
+  </> : <>
+    <label className="connection__label" htmlFor="connection-agent">Your agent</label>
+    <Select id="connection-agent" value={agentId} onChange={(next) => { setAgentId(next); setProjectIds([]); }} disabled={busy} required>
+      {personalAgents.length ? personalAgents.map((agent) => <Option key={agent.id} value={agent.id}>{agent.name}</Option>) : <Option value="">Create a personal agent first</Option>}
+    </Select>
+  </>;
+
   return <section className="connection" aria-label="Connect an agent">
-    <FlowHeader step={oauthQuery ? 'Agent connection · 1 of 2' : 'Personal agent access'} title={oauthQuery ? 'Choose what your agent can use' : 'Your agent connections'}>
-      Select your own agent and its permitted projects. Access is checked again whenever the agent calls Flux.
+    <FlowHeader step={oauthQuery ? 'Agent connection · 1 of 2' : 'Personal agent access'} title={oauthQuery ? `Connect ${clientName ?? 'your agent'} to Flux` : 'Your agent connections'}>
+      {oauthQuery ? <><strong>{clientName ?? 'An agent client'}</strong> wants to connect. Choose the projects it may use; you review its access on the next step.</>
+        : 'Select your own agent and its permitted projects. Access is checked again whenever the agent calls Flux.'}
     </FlowHeader>
     {error ? <div className="connection__alert" role="alert">{error}</div> : null}
     {aiOffSpaces.length ? <div className="connection__help" role="note" data-ai-off="">
@@ -311,34 +396,29 @@ export function AgentConnectionPage() {
       <div className="connection__actions"><Button type="submit" variant="secondary" busy={busy} disabled={!workspaceId || !agentName.trim()}>Create personal agent</Button>
         {personalAgents.length ? <Button onClick={() => setCreatingAgent(false)}>Cancel</Button> : null}</div>
       </>}
-    </form> : <Button variant="link" onClick={() => setCreatingAgent(true)}>Create personal agent</Button>}
+    </form> : oauthQuery ? null : <Button variant="link" onClick={() => setCreatingAgent(true)}>Create personal agent</Button>}
     {!oauthQuery ? <ClientGuide origin={window.location.origin} /> : null}
-    {personalAgents.length > 0 && adding ? <form className="connection__create" onSubmit={(event) => { if (oauthQuery) { event.preventDefault(); void connect(); } else void addConnection(event); }}>
+    {formOpen ? <form className="connection__create" onSubmit={(event) => { if (oauthQuery) { event.preventDefault(); void connect(); } else void addConnection(event); }}>
       <h2>New connection</h2>
       <label className="connection__label" htmlFor="connection-name">Connection name</label>
-      <input id="connection-name" value={connectionName} onChange={(event) => setConnectionName(event.target.value)} maxLength={120} disabled={busy} required placeholder="Research laptop" />
-      <label className="connection__label" htmlFor="connection-client">Client label</label>
-      <Select id="connection-client" value={clientDesignation} onChange={(next) => setClientDesignation(next as ExternalClientDesignation)} disabled={busy}>
-        <Option value="other">External client</Option><Option value="claude_code">Claude Code</Option><Option value="codex">Codex</Option>
-      </Select>
-      <p>This label helps you recognize the connection. It does not verify which application uses it.</p>
-      <p>Flux accepts only projects already granted to your agent. Saving this selection does not change project access.</p>
-      <label className="connection__label" htmlFor="connection-agent">Your agent</label>
-      <Select id="connection-agent" value={agentId} onChange={(next) => { setAgentId(next); setProjectIds([]); }} disabled={busy} required>
-        {personalAgents.length ? personalAgents.map((agent) => <Option key={agent.id} value={agent.id}>{agent.name}</Option>) : <Option value="">Create a personal agent first</Option>}
-      </Select>
-      <fieldset className="connection__group" disabled={busy || !agentId}>
+      <input id="connection-name" value={connectionName} onChange={(event) => { setConnectionName(event.target.value); setMissing(null); }} maxLength={120} disabled={busy} required placeholder="e.g. Research laptop" />
+      {oauthQuery ? null : <>
+        {clientField}
+        <p>Flux accepts only projects already granted to your agent. Saving this selection does not change project access.</p>
+        {agentField}
+      </>}
+      <fieldset className="connection__group" disabled={busy || (!agentId && !quick)}>
         <legend>Projects</legend>
         <div className="connection__checks">{eligibleProjects.map((project) => {
           const role = grantFor(project)?.role;
           const selectable = canSelect(project);
           return <div className="connection__project" key={project.id}><label>
-            <input type="checkbox" disabled={!selectable || (projectIds.length >= 50 && !projectIds.includes(project.id))} checked={projectIds.includes(project.id) && selectable} onChange={(event) => setProjectIds((current) => event.target.checked ? [...current, project.id] : current.filter((id) => id !== project.id))} />
-            <span><strong>{project.name}</strong><small>{currentGrants[project.id]
+            <input type="checkbox" disabled={!selectable || (projectIds.length >= 50 && !projectIds.includes(project.id))} checked={projectIds.includes(project.id) && selectable} onChange={(event) => { setMissing(null); setProjectIds((current) => event.target.checked ? [...current, project.id] : current.filter((id) => id !== project.id)); }} />
+            <span><strong>{project.name}</strong><small>{grantsOnContinue(project) ? (writes ? 'Continue lets your agent read and propose here' : 'Continue lets your agent read here') : currentGrants[project.id]
               ? role === 'contributor' ? 'Agent grant: read and propose' : role === 'viewer' ? 'Agent grant: read only' : role === 'denied' ? 'Agent access denied' : 'No agent grant yet'
               : 'Ask a project manager to confirm this agent’s grant before saving.'}</small></span>
           </label>
-          {project.access === 'manager' && !selectable ? <div className="connection__grant">
+          {project.access === 'manager' && !selectable && !oauthQuery ? <div className="connection__grant">
             <label htmlFor={`grant-${project.id}`}>Grant agent access</label>
             <Select id={`grant-${project.id}`} value={grantRoles[project.id] ?? (scopes.some((scope) => scope === 'flux.proposal.write' || scope === 'flux.action.execute') ? 'contributor' : 'viewer')} onChange={(next) => setGrantRoles((current) => ({ ...current, [project.id]: next as 'viewer' | 'contributor' }))} disabled={busy}>
               <Option value="viewer">Read only</Option><Option value="contributor">Read and propose</Option>
@@ -349,25 +429,20 @@ export function AgentConnectionPage() {
         {projectIds.length >= 50 ? <p>One selection can include up to 50 projects.</p> : null}
         {!eligibleProjects.length ? <p>No projects are available in this agent’s workspace.</p> : null}
       </fieldset>
-      <fieldset className="connection__group" disabled={busy || !agentId}>
-        <legend>Allowed actions</legend>
-        <p className="connection__help">You can grant fewer permissions than an agent asks for. It gets only the ones ticked here, and anything else it tries is refused.</p>
-        <div className="connection__checks">{ALL_SCOPES.map((scope) => <label key={scope}>
-          <input type="checkbox" checked={scopes.includes(scope)} onChange={(event) => {
-            setScopes((current) => event.target.checked ? [...current, scope] : current.filter((item) => item !== scope));
-            if ((scope === 'flux.proposal.write' || scope === 'flux.action.execute') && event.target.checked) setProjectIds((current) => current.filter((id) => {
-              const project = eligibleProjects.find((item) => item.id === id);
-              return project && (!currentGrants[id] || grantFor(project)?.role === 'contributor');
-            }));
-          }} />
-          <span><strong>{SCOPE_LABELS[scope].title}</strong><small>{SCOPE_LABELS[scope].description}</small></span>
-        </label>)}</div>
-      </fieldset>
+      {oauthQuery ? <details className="connection__more">
+        <summary><Icon name="chevron-down" size={14} />More options</summary>
+        <div className="connection__more-in">
+          {agentField}
+          {clientField}
+          {actionsField}
+        </div>
+      </details> : actionsField}
       <div className="connection__actions">{oauthQuery ? null : <Button type="submit" variant="secondary" busy={busy} disabled={!agentId || !connectionName.trim() || !projectIds.length || !scopes.length}>Save connection</Button>}
         {items.length ? <Button onClick={() => setAdding(false)}>{oauthQuery ? 'Use a saved connection' : 'Cancel'}</Button> : null}</div>
     </form> : personalAgents.length ? <Button variant="link" onClick={() => setAdding(true)}>Create another selection</Button> : null}
     <div className="connection__footer">
-      {oauthQuery ? <Button variant="primary" size="lg" onClick={() => { void connect(); }} busy={busy} disabled={formOpen ? !formReady : !selected}>Continue to consent</Button> : null}
+      {oauthQuery ? <Button variant="primary" size="lg" onClick={() => { void connect(); }} busy={busy} aria-describedby={missing ? 'connection-missing' : undefined}>Continue to consent</Button> : null}
+      {oauthQuery && missing ? <p id="connection-missing" className="connection__missing" role="alert">{missing}</p> : null}
       {oauthQuery ? <Link className="ui-link" to="/">Back to Flux</Link> : null}
     </div>
   </section>;
@@ -437,24 +512,25 @@ function ConsentReview({ context, oauthQuery }: { context: ConsentContext; oauth
   }
   return <section className="connection connection--consent" aria-label="Agent access consent">
     <FlowHeader step="Agent connection · 2 of 2" title="Review access before connecting">
-      <strong>{context.clientName}</strong> is asking to connect to Flux. Check where access goes, the selected projects and the actions below.
+      <strong>{context.clientName}</strong> wants to connect to Flux. Check where access goes and what it may do.
     </FlowHeader>
     {error ? <div className="connection__alert" role="alert">{error}</div> : null}
     <ConsentDestination context={context} />
     <ConnectionSummary connection={context.connection} agentName={context.agentName ?? `Agent ${context.connection.agentId.slice(0, 8)}`} projectNames={projectNames} showScopes={false} />
     <div className="connection__requested">
       <h2>This client will be allowed</h2>
-      <p>{notGranted.length ? 'You can grant fewer permissions than a client asks for. It gets only the ones below, and the rest are refused.' : 'These are the permissions this connection has.'} Approval does not add projects or agent grants.</p>
+      {notGranted.length ? <p>You can grant fewer permissions than a client asks for. It gets only the ones below, and the rest are refused.</p> : null}
       <ScopeList scopes={context.scopes} />
       {notGranted.length ? <>
         <p className="connection__help" data-testid="not-granted">Asked for, not granted:</p>
         <ul className="connection__scopes">{notGranted.map((scope) => <li key={scope}><span><strong>{SCOPE_LABELS[scope as AgentScope]?.title ?? scope}</strong></span></li>)}</ul>
       </> : null}
     </div>
-    <p className="connection__help">Your external client handles compute. Flux does not receive provider credentials or verify how the client is billed. You can revoke this connection in Flux; access also ends if a project grant is removed.</p>
+    {/* Allow sits right after what it allows, above the fold at 1440 × 900 (#763 WF-5); the fine print follows it. */}
     <div className="connection__footer">
       <Button variant="primary" size="lg" busy={busy} onClick={() => { void decide(true); }}>Allow access</Button>
       <Button size="lg" disabled={busy} onClick={() => { void decide(false); }}>Deny</Button>
     </div>
+    <p className="connection__help">Approval does not add projects or agent grants. Your external client handles compute; Flux does not receive provider credentials or verify how the client is billed. You can revoke this connection in Flux, and access also ends if a project grant is removed.</p>
   </section>;
 }

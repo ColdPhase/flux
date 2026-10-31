@@ -635,6 +635,8 @@ class ScenarioJourney:
             message = page.locator(f"#message-{s['m1']}")
             menu = open_message_menu(message, phone=False)
             self.tap(menu.get_by_role("menuitem", name="Propose a decision"))
+            # #763 SP-5: the message's Propose a decision opens the Create window; the full form (Replaces) is one step on.
+            self.tap(page.get_by_role("dialog", name="New decision").get_by_role("button", name="Replace a current rule…"))
         panel = self.details(page)
         expect(panel.get_by_role("heading", name="Propose a decision")).to_be_visible()
         panel.get_by_label("Decision").fill(D1)

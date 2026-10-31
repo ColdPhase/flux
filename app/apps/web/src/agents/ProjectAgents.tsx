@@ -690,16 +690,17 @@ function AgentDetail({ entry, held, meId, projectId, now, asking, canHandOff, ma
         {entry.connection && currentWork ? <p className="agents-detail__note">{availabilityLine(entry.connection, now)}</p> : null}
         {entry.connection?.requests.map((request) => <p key={request.id} className="agents-detail__note">{requestLine(request)}</p>)}
       </section>
-      <section aria-label="Recent">
+      {/* An empty section is not shown (Spokój rule 4, #763 WF-6). */}
+      {last || otherHeld.length || stops.length ? <section aria-label="Recent">
         <h3>Recent</h3>
-        {last || otherHeld.length || stops.length ? (
+        {(
           <ul className="agents-detail__recent">
             {stops.slice(0, 3).map((item) => <li key={item.id} data-stop={item.id}><span>Stopped by {item.stoppedBy.id === meId ? 'you' : item.stoppedBy.name} · <span className="ui-task-number">#{item.taskNumber}</span></span><time dateTime={item.stoppedAt}>{when(item.stoppedAt)}</time></li>)}
             {last ? <li><span>{sentence(OPERATION_LABEL[last.operation])}</span><time dateTime={last.at}>{when(last.at)}</time></li> : null}
             {otherHeld.map((row) => <li key={row.id}><button type="button" className="agents-detail__thread" onClick={() => onThread(row.id)}>Also holds #{row.number} · {row.title}</button></li>)}
           </ul>
-        ) : <p className="agents-detail__note">Nothing recorded yet.</p>}
-      </section>
+        )}
+      </section> : null}
       <section aria-label="Can">
         <h3>Can</h3>
         <p className="agents-detail__note">{sentence(grant.can)}</p>

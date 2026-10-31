@@ -15,6 +15,7 @@ import base64
 import hashlib
 import http.server
 import json
+import re
 import os
 import secrets
 import threading
@@ -91,7 +92,7 @@ class OauthConsentJourney(unittest.TestCase):
                                         "code_challenge": challenge, "code_challenge_method": "S256", "state": state,
                                         "scope": scope, "resource": f"{ORIGIN}/mcp", "prompt": "consent"})
         page.goto(f"/api/auth/oauth2/authorize?{query}")
-        expect(page.get_by_role("heading", level=1, name="Choose what your agent can use")).to_be_visible()
+        expect(page.get_by_role("heading", level=1, name=re.compile(r"^Connect .+ to Flux$"))).to_be_visible()
         page.locator(".connection__saved").filter(has_text="Studio laptop").get_by_role("radio").check()
         page.get_by_role("button", name="Continue to consent").click()
         expect(page.get_by_role("heading", level=1, name="Review access before connecting")).to_be_visible()
@@ -174,7 +175,7 @@ class OauthConsentJourney(unittest.TestCase):
         sizes = page.evaluate("""() => [...document.querySelectorAll(
             '.connection__destination dd, .connection__warning, .connection--consent .connection__head p, .connection__requested p')]
             .map((el) => [el.textContent.trim().slice(0, 40), parseFloat(getComputedStyle(el).fontSize)])""")
-        self.assertGreaterEqual(len(sizes), 5)
+        self.assertGreaterEqual(len(sizes), 4)  # #763 WF-5: the requested list has no lead paragraph when nothing was refused
         for text, size in sizes:
             self.assertGreaterEqual(size, 16, f"16px reading text on a touch phone: {text}")
         secondary = page.evaluate("""() => [...document.querySelectorAll('.connection--consent *')]
@@ -237,17 +238,27 @@ class OauthConsentJourney(unittest.TestCase):
                                         "code_challenge": challenge, "code_challenge_method": "S256", "state": str(uuid.uuid4()),
                                         "scope": SCOPES, "resource": f"{ORIGIN}/mcp", "prompt": "consent"})
         page.goto(f"/api/auth/oauth2/authorize?{query}")
-        expect(page.get_by_role("heading", level=1, name="Choose what your agent can use")).to_be_visible()
+        expect(page.get_by_role("heading", level=1, name=re.compile(r"^Connect .+ to Flux$"))).to_be_visible()
         expect(page.get_by_role("button", name="Revoke connection")).to_have_count(0)
         page.get_by_role("button", name="Create another selection").click()
         # The "Claude Code" fixture client asks: the new connection's label starts as Claude Code (a recognition aid only).
         expect_value(page.get_by_label("Client label", exact=True), "claude_code")
         expect(page.get_by_role("button", name="Save connection")).to_have_count(0)
         go = page.get_by_role("button", name="Continue to consent")
-        expect(go).to_be_disabled()
-        page.get_by_label("Connection name").fill("Travel laptop")
-        page.locator(".connection__project").filter(has_text="Sensor study").get_by_role("checkbox").check()
+        # #763 WF-5: the connection starts named after the asking client, Continue is never greyed out, and pressing it
+        # too early says what is missing instead.
+        expect(page.get_by_label("Connection name")).to_have_value("Claude Code on this computer")
         expect(go).to_be_enabled()
+        page.get_by_label("Connection name").fill("")
+        go.click()
+        expect(page.get_by_role("alert")).to_have_text("Name this connection.")
+        expect(page.get_by_role("heading", level=1, name=re.compile(r"^Connect .+ to Flux$"))).to_be_visible()
+        page.get_by_label("Connection name").fill("Travel laptop")
+        project = page.locator(".connection__project").filter(has_text="Sensor study").get_by_role("checkbox")
+        if not project.is_checked():
+            go.click()
+            expect(page.get_by_role("alert")).to_have_text("Choose at least one project the agent may use.")
+            project.check()
         self.assertEqual(page.locator(".connection .ui-btn--primary").count(), 1, "one primary on the step")
         go.click()
         expect(page.get_by_role("heading", level=1, name="Review access before connecting")).to_be_visible()

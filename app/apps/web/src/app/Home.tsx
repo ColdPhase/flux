@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router';
 import type { ReturnNextStep, WorkItem } from '@flux/contracts';
-import { Icon, Kreska, MEDIA, StatusGlyph, useMediaQuery } from '../ui';
+import { Button, Icon, Kreska, MEDIA, StatusGlyph, useMediaQuery } from '../ui';
 import { MeetAssistantCard } from '../assistant/MeetAssistant';
 import { MorningLine } from '../assistant/MorningLine';
 import { NeedsYouCard } from '../notifications/NeedsYouCard';
@@ -14,6 +14,7 @@ import { STATUS_LABEL } from '../work/format';
 import { useShellData } from './data';
 import { useShellActions } from './shellContext';
 import { useSmallMoments } from './smallMoments';
+import { useProjectNews } from './projectNews';
 import { HomeWorkingAgents, WorkingAssistant } from './WorkingAgent';
 import '../notifications/needs-you.css';
 import './home.css';
@@ -90,7 +91,7 @@ function ContinueCard({ userId, workspaceIds }: { userId: string; workspaceIds: 
 export function Home() {
   const moments = useSmallMoments();
   const { me, workspaces, projects } = useShellData();
-  const { openDetails } = useShellActions();
+  const { openDetails, openCreate } = useShellActions();
   const phone = useMediaQuery(MEDIA.navDrawer);
   const queue = useNeedsYou(me.user.id);
   const handlers = useNeedsYouActions(queue);
@@ -99,6 +100,9 @@ export function Home() {
   const firstName = me.user.name.trim().split(/\s+/)[0] || me.user.name;
   const top = (queue.items ?? []).slice(0, 3);
   const workspaceIds = useMemo(() => workspaces.map((space) => space.id), [workspaces]);
+  const news = useProjectNews(useMemo(() => projects.slice(0, 5).map((project) => project.id), [projects]));
+  // A person with no project yet gets one first step, not an empty queue and links to empty pages (#763 FT-1, S21).
+  const firstRun = projects.length === 0 && !top.length;
 
   return (
     <div className="pane-scroll"><div className="pane-in home">
@@ -110,6 +114,20 @@ export function Home() {
       {/* Without a sidebar (phone, narrow drawer) Home carries the working agents with Stop, under Continue as drawn (S13). */}
       {phone ? <><WorkingAssistant /><HomeWorkingAgents /></> : null}
 
+      {firstRun ? (
+        <section className="home__card home__first" aria-labelledby="home-first">
+          {moments ? <Kreska size={56} expression="hello" /> : null}
+          <h3 id="home-first">Start with a project</h3>
+          <p>A project is where people and agents talk, turn what is said into tasks and decisions, and keep what they learn.</p>
+          <Button variant="primary" size="lg" onClick={() => openCreate({ kind: 'project' })}>Start your first project</Button>
+          <p className="home__first-note">Got an invite link? Open it to join your team.</p>
+        </section>
+      ) : null}
+      {/* Details (the space and its people, where invite links are made) stays reachable; the links to empty pages wait. */}
+      {/* Where to continue stays: it is empty for someone with nothing yet, and shows what a shared space already holds. */}
+      {firstRun && !phone ? <ContinueCard userId={me.user.id} workspaceIds={workspaceIds} /> : null}
+      {firstRun && workspaces.length ? <p className="home__more"><button type="button" onClick={() => openDetails()}>Details</button></p> : null}
+      {firstRun ? null : <>
       <section className="home__need" aria-labelledby="home-need">
         <div className="home__sech">
           <h3 id="home-need">Needs you{queue.count ? <span className="home__n">{queue.count}</span> : null}</h3>
@@ -138,18 +156,19 @@ export function Home() {
                   <Link to={`/projects/${project.id}`} className="home__project">
                     <span className="home__tile" aria-hidden="true">{(project.name.trim()[0] ?? '?').toUpperCase()}</span>
                     <span className="home__pn">{project.name}</span>
-                    <span className={`home__state${project.hasNew ? ' is-new' : ''}`}>{project.hasNew ? 'new' : 'quiet'}</span>
+                    <span className={`home__state${news.has(project.id) ? ' is-new' : ''}`}>{news.has(project.id) ? 'new' : 'quiet'}</span>
                   </Link>
                 </li>
               ))}
             </ul>
-          ) : <p className="home__empty">No projects yet. <Link to="/projects/new">Create one</Link> with the New button.</p>}
+          ) : <p className="home__empty">No projects yet. When someone adds you to one, it appears here.</p>}
         </section>
       </div>
 
       <MeetAssistantCard userId={me.user.id} />
 
       <p className="home__more"><Link to="/tasks">All my tasks</Link><Link to="/map">Sketchbook</Link><Link to="/docs">Wiki</Link><button type="button" onClick={() => openDetails()}>Details</button></p>
+      </>}
 
       <p className="home__keys" aria-hidden="true">
         <span><kbd>C</kbd> new</span><span><kbd>⌘K</kbd> search or run</span><span><kbd>G</kbd><kbd>I</kbd> Inbox</span><span><kbd>[</kbd> hide sidebar</span>

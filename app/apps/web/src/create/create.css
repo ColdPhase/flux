@@ -31,6 +31,9 @@
 .create__text { width: 100%; border: 0; background: none; resize: none; padding: 4px 0; font: inherit; font-size: var(--fs-lg); line-height: 1.45; color: var(--t1); outline: none; min-height: 76px; max-height: 40vh; field-sizing: content; }
 .create__text::placeholder { color: var(--t3); }
 .create__details { width: 100%; border: 0; background: none; resize: none; padding: 0; font: inherit; font-size: var(--fs-base); line-height: 1.45; color: var(--t1); outline: none; min-height: 40px; max-height: 30vh; field-sizing: content; }
+/* The message a decision is proposed from, quoted under its title (#763 WF-3). */
+.create__source { margin: 0 0 10px; padding: 6px 12px; border-left: 2px solid var(--line2); font-size: var(--fs-md); color: var(--t2); overflow-wrap: anywhere; }
+.create__source span { display: block; font-size: var(--fs-xs); font-weight: 500; color: var(--t3); }
 
 .create__props { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 4px; }
 .create__prop { display: contents; }
@@ -109,3 +112,8 @@
   .ui-overlay .create .create__chip--link > span { padding-right: 16px; }
   .ui-overlay .create .create__chip--link button { flex: none; width: 44px; height: 44px; margin: 0 -6px 0 -6px; }
 }
+
+/* The way to the full decision form (Replaces, pivots) from the quick one (#763 SP-5). */
+.create__more { align-self: flex-start; padding: 0; border: 0; background: none; font: inherit; font-size: var(--fs-sm); color: var(--t2); text-decoration: underline; text-decoration-color: var(--line2); text-underline-offset: 3px; cursor: pointer; }
+.create__more:hover { color: var(--t1); text-decoration-color: currentColor; }
+@media (pointer: coarse) { .create__more { min-height: 44px; } }

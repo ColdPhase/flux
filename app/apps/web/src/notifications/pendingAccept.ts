@@ -35,9 +35,11 @@ const answering = new Set<string>();
 export const acceptingIds = (): ReadonlySet<string> => accepting;
 export const answeringIds = (): ReadonlySet<string> => answering;
 
+/** The set a waiting command is listed in; a held proposal (`proposal:<key>`) is in none. */
+const listOf = (kind: string) => (kind === 'decision' ? accepting : kind === 'question' ? answering : null);
 const release = (id: string) => {
   const [kind, value] = id.split(':') as [string, string];
-  (kind === 'decision' ? accepting : answering).delete(value);
+  listOf(kind)?.delete(value);
 };
 
 /**
@@ -70,7 +72,7 @@ function start(id: string, run: Waiting['run'], settle: (outcome: AcceptOutcome)
   const entry: Waiting = { id, key: crypto.randomUUID(), run, settle, timer: setTimeout(() => dispatch(entry), delay) };
   waiting.set(id, entry);
   const [kind, value] = id.split(':') as [string, string];
-  (kind === 'decision' ? accepting : answering).add(value);
+  listOf(kind)?.add(value);
   return {
     /** True when the command had not been sent yet and now never will be. */
     undo(): boolean {
@@ -95,6 +97,14 @@ export function startAccept(decision: { id: string; version: number }, settle: (
  */
 export function startAnswer(questionId: string, answer: (key: string, keepalive: boolean) => Promise<unknown>, settle: (outcome: AcceptOutcome) => void, delay = ACCEPT_UNDO_MS) {
   return start(`question:${questionId}`, answer, settle, delay);
+}
+
+/**
+ * Starts a held proposal of a decision (#763 WF-3): "Decision proposed · Undo" for the same window, and it reaches the
+ * people who can accept it (their Inbox) only when the window ends. `undo()` cancels it while it waits.
+ */
+export function startProposal(propose: (key: string, keepalive: boolean) => Promise<unknown>, settle: (outcome: AcceptOutcome) => void, delay = ACCEPT_UNDO_MS) {
+  return start(`proposal:${crypto.randomUUID()}`, propose, settle, delay);
 }
 
 /** Sends every waiting command now. Called when the person leaves the place that showed them. */

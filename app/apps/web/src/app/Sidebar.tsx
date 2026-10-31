@@ -1,5 +1,6 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import { Link, NavLink, useLocation, useNavigation } from 'react-router';
+import { useProjectNews } from './projectNews';
 import { Avatar, FluxLogo, Icon, IconButton, choosesInPlace, useTravelingHighlight } from '../ui';
 import { type DirectMessageSummary, type ProjectSummary, type WorkspaceSummary } from './data';
 import { placeOf } from './place';
@@ -41,6 +42,7 @@ export function Sidebar({ projects, directMessages, user, session, onClose, titl
   const location = useLocation();
   const place = placeOf(location.pathname);
   const projectId = location.pathname.match(/^\/projects\/([^/]+)/)?.[1];
+  const news = useProjectNews(useMemo(() => projects.map((project) => project.id), [projects]));
   const navigate = onClose ? () => onClose() : undefined;
   const sketchbook = place === 'home' && /^\/map(\/|$)/.test(location.pathname);
   // Home is current only on Home (#763 NV-1): a page reached from it (Your tasks, the Wiki, New project, a missing page) is no
@@ -167,7 +169,8 @@ export function Sidebar({ projects, directMessages, user, session, onClose, titl
           </Link>
         </nav>
 
-        <nav className="side__sec" aria-labelledby="side-projects">
+        {/* An empty section is not shown (Spokój rule 4, #763 FR-4); the narrow drawer keeps its heading for its "+". */}
+        {projects.length || onClose ? <nav className="side__sec" aria-labelledby="side-projects">
           <div className="side__head">
             <h2 className="side__h" id="side-projects">Projects</h2>
             {/* On the computer New (C) creates; the narrow-tablet drawer keeps its own "+". */}
@@ -183,7 +186,7 @@ export function Sidebar({ projects, directMessages, user, session, onClose, titl
                     <NavLink to={`/projects/${project.id}`} end={false} className={`side__item side__project${open ? ' is-open' : ''}`} onClick={(event) => { if (choosesInPlace(event)) glideTo(event.currentTarget); navigate?.(); }}
                       data-glide-id={project.id} data-pending={pendingProject === project.id && !open ? '' : undefined}
                       title={project.workspaceName ? `${project.name} · ${project.workspaceName}` : project.name}
-                      aria-label={project.hasNew ? `${project.name}, new activity` : undefined}>
+                      aria-label={news.has(project.id) ? `${project.name}, new activity` : undefined}>
                       <ProjectTile name={project.name} />
                       {project.workspaceName ? (
                         <span className="side__names">
@@ -191,16 +194,16 @@ export function Sidebar({ projects, directMessages, user, session, onClose, titl
                           <span className="side__sub">{project.workspaceName}</span>
                         </span>
                       ) : <span className="side__label">{project.name}</span>}
-                      {project.hasNew ? <span className="side__dot" aria-hidden="true" /> : null}
+                      {news.has(project.id) ? <span className="side__dot" aria-hidden="true" /> : null}
                     </NavLink>
                   </li>
                 );
               })}
             </ul>
           ) : (
-            <p className="side__empty">No projects yet. <Link to="/projects/new" onClick={navigate}>Create a project</Link>, or it appears here when someone adds you to one.</p>
+            <p className="side__empty">No projects yet. Use + to start one, or it appears here when someone adds you to one.</p>
           )}
-        </nav>
+        </nav> : null}
 
         <nav className="side__sec" aria-labelledby="side-dms">
           <div className="side__head">
@@ -218,9 +221,7 @@ export function Sidebar({ projects, directMessages, user, session, onClose, titl
                 </li>
               ))}
             </ul>
-          ) : (
-            <p className="side__empty">No conversations yet. Only the people in each one can read it.</p>
-          )}
+          ) : null /* Its heading leads to Messages; an empty list says nothing (#763 FR-4). */}
         </nav>
       </div>
       <WorkingAgent />
