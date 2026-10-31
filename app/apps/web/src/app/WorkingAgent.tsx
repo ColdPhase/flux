@@ -9,6 +9,7 @@ import { Icon, Kreska, agentHue, useToast, type KreskaExpression } from '../ui';
 import { useSmallMoments } from './smallMoments';
 import { getOwnWorkingAgents } from '../agents/api';
 import { stopFailure, stopAgentWork } from '../agents/stop';
+import { holdsLine, pausedLine, workingLine } from '../agents/status';
 import { useShellData } from './data';
 import { RefLink } from '../place/origin';
 import { useAllAiBlocked, useProjectAiBlocked } from '../ai/workspaceAi';
@@ -180,10 +181,13 @@ function useStopOwnAgent(item: OwnWorkingAgent, onChanged: () => void) {
 function OwnAgentCard({ item, compact, onChanged }: { item: OwnWorkingAgent; compact: boolean; onChanged: () => void }) {
   const { stopping, stop } = useStopOwnAgent(item, onChanged);
   // A live session alone is not work: C-1 requires the current task's live claimed unit.
-  const label = item.working ? `${item.agent.name} is working on #${item.task.number}` : `${item.agent.name} · handed #${item.task.number}`;
-  const expression: KreskaExpression = item.working ? 'working' : item.online ? 'idle' : 'asleep';
-  const taskLabel = item.working ? `#${item.task.number} · ${item.task.title}`
-    : `Handed #${item.task.number}${item.online ? '' : ` · ${item.signedIn ? 'offline' : 'not signed in yet'}`}`;
+  // #763 AG-4: the same words as the Agents row and panel, a pause included.
+  const me = useShellData().me.user.id;
+  const taskLabel = item.paused ? pausedLine(item.paused.by.id === me ? 'you' : item.paused.by.name, item.task.number, item.working)
+    : item.working ? workingLine(item.task.number, item.task.title)
+      : holdsLine(item.task.number, item.online ? item.task.title : item.signedIn ? 'offline' : 'not signed in yet');
+  const label = `${item.agent.name} · ${taskLabel}`;
+  const expression: KreskaExpression = item.paused && !item.working ? 'asleep' : item.working ? 'working' : item.online ? 'idle' : 'asleep';
   const destination = `/projects/${item.task.projectId}/agents`;
   const hue = agentHue(item.agent.id);
   return (

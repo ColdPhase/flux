@@ -309,6 +309,10 @@ safe boundary (its next lease renewal or claim), and the Agents view says which 
   claim remains it says "Paused by <name>", and the button becomes Resume. Resume removes the pause; the agent
   continues at its next supplied Resume (Connect/Agents host action or the client's `resume_work` prompt). Pause
   and Resume create no conversation message and no notification.
+- **Where it shows (#763 AG-4, 2026-10-31).** The same words appear wherever the agent is shown: its Agents row, its
+  panel and the owner's sidebar card (and Home where there is no sidebar), with Kreska asleep once the pause is in force.
+  `GET /api/v1/working-agents` returns `paused: { by: {id, name} } | null` per item for that. The confirmation toast
+  after Pause offers Resume. A held task that is not worked on reads "Has #N · …" (never "Working", C-1).
 
 ### Supplied Codex action: tool approval (#160, 2026-10-30)
 

@@ -25,6 +25,7 @@ import uuid
 
 from playwright.sync_api import Browser, Page, expect, sync_playwright
 
+from app_select import expect_value
 from test_app_shell import DESKTOP, ORIGIN, PHONE, UPSTREAM, shot, start_forwarder
 
 PASSWORD = "a client that says where it goes"
@@ -225,6 +226,36 @@ class OauthConsentJourney(unittest.TestCase):
         expect(framing.frame_locator("iframe").get_by_role("heading", name="Review access before connecting")).to_have_count(0)
         # The same page opened directly still works.
         expect(page.get_by_role("heading", level=1, name="Review access before connecting")).to_be_visible()
+
+    def test_05_one_way_on_continue_saves_a_new_connection_with_the_asking_clients_label(self) -> None:
+        """#763 AG-6: during a client's sign-in the choice step has one primary, "Continue to consent", which also saves a
+        new connection; its client label starts from the asking client's own name; Revoke is not on this path."""
+        page = self.page()
+        verifier = secrets.token_urlsafe(32)
+        challenge = base64.urlsafe_b64encode(hashlib.sha256(verifier.encode()).digest()).rstrip(b"=").decode()
+        query = urllib.parse.urlencode({"client_id": self.ids["web"], "redirect_uri": WEB_REDIRECT, "response_type": "code",
+                                        "code_challenge": challenge, "code_challenge_method": "S256", "state": str(uuid.uuid4()),
+                                        "scope": SCOPES, "resource": f"{ORIGIN}/mcp", "prompt": "consent"})
+        page.goto(f"/api/auth/oauth2/authorize?{query}")
+        expect(page.get_by_role("heading", level=1, name="Choose what your agent can use")).to_be_visible()
+        expect(page.get_by_role("button", name="Revoke connection")).to_have_count(0)
+        page.get_by_role("button", name="Create another selection").click()
+        # The "Claude Code" fixture client asks: the new connection's label starts as Claude Code (a recognition aid only).
+        expect_value(page.get_by_label("Client label"), "claude_code")
+        expect(page.get_by_role("button", name="Save connection")).to_have_count(0)
+        go = page.get_by_role("button", name="Continue to consent")
+        expect(go).to_be_disabled()
+        page.get_by_label("Connection name").fill("Travel laptop")
+        page.locator(".connection__project").filter(has_text="Sensor study").get_by_role("checkbox").check()
+        expect(go).to_be_enabled()
+        self.assertEqual(page.locator(".connection .ui-btn--primary").count(), 1, "one primary on the step")
+        go.click()
+        expect(page.get_by_role("heading", level=1, name="Review access before connecting")).to_be_visible()
+        expect(page.locator(".connection__summary")).to_contain_text("Travel laptop")
+        expect(page.locator(".connection__summary")).to_contain_text("Your client label: Claude Code")
+        saved = [item["name"] for item in self.api(page, "GET", "/api/v1/agent-connections", status=200) if not item.get("revokedAt")]
+        self.assertIn("Travel laptop", saved)
+        # Negative control: before this change the form had its own Save connection and Continue stayed disabled until saved.
 
 
 if __name__ == "__main__":

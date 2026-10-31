@@ -190,7 +190,7 @@ function ReduceMotionSwitch() {
 const ASSISTANT_STATE: Record<PersonalAssistantStatus['state'], string> = {
   not_enabled: 'not set up', ready: 'in Flux', paused: 'paused', capped: 'daily limit reached', unavailable: 'unavailable',
 };
-const DESIGNATION: Record<AgentConnection['clientDesignation'], string> = { claude_code: 'Claude Code', codex: 'Codex', other: 'another app' };
+const DESIGNATION: Record<AgentConnection['clientDesignation'], string> = { claude_code: 'Claude Code', codex: 'Codex', other: 'Your agent app' };
 const THEME_LABEL: Record<ThemeChoice, string> = { light: 'Light', dark: 'Dark', system: 'System' };
 
 /**
@@ -304,7 +304,7 @@ function AgentsAndAi() {
             detail="Claude Code, Codex or another app · connect it to Flux" action="Manage" />
           {mine.map((connection) => (
             <LinkRow key={connection.id} to="/connect-agent" icon={<Kreska size={22} hue={agentHue(connection.agentId)} />}
-              title={<><span className="sset-row__identity">{connection.name}{' '}<AgentTag /></span><span className="sset-row__meta"> · for you · {DESIGNATION[connection.clientDesignation]} · connected</span></>} action="Manage" />
+              title={<><span className="sset-row__identity">{DESIGNATION[connection.clientDesignation]}{' '}<AgentTag /></span><span className="sset-row__meta"> · for you · {connection.name}</span></>} action="Manage" />
           ))}
         </ul>
         <AiOffThere />

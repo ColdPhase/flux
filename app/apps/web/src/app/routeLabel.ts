@@ -5,6 +5,7 @@ export function routeLabel(pathname: string): string {
   if (pathname === '/sign-out') return 'sign-out';
   if (/^\/(forgot-password|reset-password)(\/|$)/.test(pathname)) return 'password reset';
   if (/^\/(connect-agent|consent)(\/|$)/.test(pathname)) return 'agent connection';
+  if (pathname === '/settings/agents/connect') return 'agent connection';
   if (pathname === '/settings/background-compute') return 'background suggestions';
   if (pathname === '/settings/ai-connections') return 'AI connections';
   if (pathname === '/settings/assistant') return 'your assistant';

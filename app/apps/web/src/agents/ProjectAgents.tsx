@@ -33,6 +33,7 @@ import { agentAuthorOwner, useAgentOwners } from './owners';
 import { ProjectPolicy } from './ProjectPolicy';
 import { WORK_ROLE, agentEntries, connectionState, currentWorkLine, firstName, isAgentWorking, mayDo, shortOwner, tasksHeldBy, teammateOf, type AgentEntry } from './roster';
 import { useSessionClock } from './useSessionClock';
+import { holdsLine, pausedLine } from './status';
 import { CoworkHostActions } from '../agent-connection/CoworkHostActions';
 import { useTyping } from '../typing/useTyping';
 import { TypingNotice } from '../typing/TypingNotice';
@@ -493,24 +494,28 @@ export function agentLabel(entry: AgentEntry, meId: string): string {
 }
 
 /** The face of an agent: Working only for a claimed unit on a usable live session (C-1); asleep when paused or not live. */
-function agentExpression(entry: AgentEntry, now: number): KreskaExpression {
+function agentExpression(entry: AgentEntry, now: number, paused: AgentPause | null = null): KreskaExpression {
+  if (paused && !pauseSettling(entry, now)) return 'asleep';
   return entry.connection?.state === 'unavailable' ? 'worried' : isAgentWorking(entry, now) ? 'working'
     : entry.connection?.currentWork?.state === 'paused' ? 'asleep' : entry.connection ? connectionExpression(entry.connection, now) : 'idle';
 }
+
+/** A pause is in force but the agent still works on its claim until its next safe point. */
+const pauseSettling = (entry: AgentEntry, now: number) => entry.connection?.currentWork?.state === 'claimed' && isAgentWorking(entry, now);
 
 /** Where a connection is, said beside a recorded unit of work (the unit's own line never says it). */
 function availabilityLine(connection: ProjectAgentConnection, now: number): string {
   return shownState(connection, now) === 'session_open' ? `Session open since ${when(connection.session!.startedAt)}` : stateLine(connection, now);
 }
 
-/** A task handed to an agent but not claimed on a live session (C-1): "Handed", with what keeps it from being worked on. */
+/** A task handed to an agent but not claimed on a live session (C-1): "Has #N", with what keeps it from being worked on. */
 function handedLine(task: WorkRowProjection, connection: ProjectAgentConnection | null, now: number): string {
-  if (!connection || connection.state === 'not_signed_in') return `Handed #${task.number} · not signed in yet`;
-  if (connection.state === 'unavailable') return `Handed #${task.number} · can’t act here now`;
+  if (!connection || connection.state === 'not_signed_in') return holdsLine(task.number, 'not signed in yet');
+  if (connection.state === 'unavailable') return holdsLine(task.number, 'can’t act here now');
   if (shownState(connection, now) !== 'session_open') {
-    return `Handed #${task.number} · offline${connection.lastActivity ? ` · last seen ${when(connection.lastActivity.at)}` : ''}`;
+    return holdsLine(task.number, `offline${connection.lastActivity ? ` · last seen ${when(connection.lastActivity.at)}` : ''}`);
   }
-  return `Handed #${task.number} · ${task.title}`;
+  return holdsLine(task.number, task.title);
 }
 
 /** What a row says, its Kreska, whether it is working (a claimed unit on a live session) and its place in the list. */
@@ -522,12 +527,17 @@ interface RowView { line: ReactNode; expression: KreskaExpression; working: bool
  * native ownership is not execution); its recent stop; else what Flux can prove about the connection.
  * Only the agent's lead row (its first online connection, else its first row) speaks for its questions and recent stop.
  */
-function rowView(entry: AgentEntry, held: WorkRowProjection[], lead: boolean, now: number, stopped: AgentStop | null, asking: AgentQuestion | null, meId: string): RowView {
+function rowView(entry: AgentEntry, held: WorkRowProjection[], lead: boolean, now: number, stopped: AgentStop | null, asking: AgentQuestion | null, meId: string, paused: AgentPause | null): RowView {
   const connection = entry.connection;
   const task = held[0];
   const work = connection?.currentWork ?? null;
-  const expression = agentExpression(entry, now);
+  const expression = agentExpression(entry, now, paused);
   if (lead && asking) return { line: `Waiting for you · asks “${briefly(asking.question)}”`, expression: 'waiting', working: false, rank: 1 };
+  // #763 AG-4: a pause in force reads the same here as on the agent's panel and the sidebar card.
+  if (paused) {
+    const settling = pauseSettling(entry, now);
+    return { line: pausedLine(paused.pausedBy.id === meId ? 'you' : paused.pausedBy.name, paused.taskNumber, settling), expression, working: settling, rank: settling ? 2 : 4 };
+  }
   if (work) {
     const working = isAgentWorking(entry, now);
     // The unit says where its connection is on the same line, so a phone row stays compact (P2-6).
@@ -567,9 +577,9 @@ function StopButton({ label, text, busy, onClick, className }: { label: string; 
 /** What a row may offer on its lead row: Stop (in progress) or Take back (open or blocked), and whether it is busy. */
 interface RowStop { label: string; text: string; busy: boolean; run: () => void }
 
-function AgentRow({ entry, view, duplicate, short, now, selected, dropping, stop, canDrop, onOpen, onDropTask, onDropping }: {
+function AgentRow({ entry, view, duplicate, short, now, selected, dropping, canDrop, onOpen, onDropTask, onDropping }: {
   entry: AgentEntry; view: RowView; duplicate: boolean; short: string | null; now: number; selected: boolean; dropping: boolean;
-  stop: RowStop | null; canDrop: boolean; onOpen: () => void; onDropTask: (taskId: string) => void; onDropping: (on: boolean) => void;
+  canDrop: boolean; onOpen: () => void; onDropTask: (taskId: string) => void; onDropping: (on: boolean) => void;
 }) {
   const last = entry.connection?.lastActivity;
   // Two connections of one agent are told apart by client and connection; the meta then starts with the agent's name (P2-6).
@@ -597,7 +607,6 @@ function AgentRow({ entry, view, duplicate, short, now, selected, dropping, stop
         {last ? <time className="agents-row__time" dateTime={last.at}>{when(last.at)}</time> : null}
         <Icon name="chevron-right" size={14} className="agents-row__go" />
       </button>
-      {stop ? <StopButton className={`agents-row__stop${stop.text.startsWith('Take back') ? ' agents-row__stop--take' : ''}`} label={stop.label} text={stop.text} busy={stop.busy} onClick={stop.run} /> : null}
     </li>
   );
 }
@@ -626,8 +635,10 @@ function taskNote(task: WorkRowProjection, asking: AgentQuestion | null, connect
  * thread), what Flux has recorded and what its grant here lets it do. Stop ends the agent's hold on its task; Flux cannot kill
  * the agent's own program, so the panel says what was stopped, and by whom.
  */
-function AgentDetail({ entry, held, meId, projectId, now, asking, canHandOff, stops, stop, pause, refocus, onRefocused, onHandOff, onThread }: {
+function AgentDetail({ entry, held, meId, projectId, now, asking, canHandOff, manages, stops, stop, pause, refocus, onRefocused, onHandOff, onThread }: {
   entry: AgentEntry; held: WorkRowProjection[]; meId: string; projectId: string; now: number; asking: AgentQuestion | null; canHandOff: boolean; stops: AgentStop[];
+  /** This person manages the agent here (its owner, with write access): Pause and Stop stay in place, dimmed when idle. */
+  manages: boolean;
   /** #160 AC-5: the pause in force on the held task, and Pause/Resume when this person may stop the agent. */
   pause: { paused: AgentPause | null; busy: boolean; run: () => void } | null;
   /** Present when this person may stop the agent's task now. */
@@ -651,7 +662,7 @@ function AgentDetail({ entry, held, meId, projectId, now, asking, canHandOff, st
   return (
     <section className="agents-detail" aria-label={`${entry.name}, details`}>
       <header className="agents-detail__head">
-        <Kreska size={40} expression={agentExpression(entry, now)} hue={agentHue(entry.agentId)} />
+        <Kreska size={40} expression={agentExpression(entry, now, pause?.paused ?? null)} hue={agentHue(entry.agentId)} />
         <div>
           <h2 className="agents-detail__name" ref={heading} tabIndex={-1}><AgentIdentity name={entry.name} icon={false} /></h2>
           <p className="agents-detail__for">{[entry.owner ? `for ${entry.owner}` : null, entry.via, entry.connection ? 'local MCP' : null].filter(Boolean).join(' · ')}</p>
@@ -675,9 +686,7 @@ function AgentDetail({ entry, held, meId, projectId, now, asking, canHandOff, st
         ) : task ? (
           <p className="agents-detail__note">{taskNote(task, asking, entry.connection, now)}{held.length > 1 ? ` · ${held.length - 1} more handed` : ''} · <RefLink className="ui-link" to={`/projects/${projectId}/tasks?open=work:${task.id}`}>Open task</RefLink></p>
         ) : <p className="agents-detail__note">{entry.connection ? stateLine(entry.connection, now) : 'Nothing is handed to it.'}</p>}
-        {pause?.paused ? <p className="agents-detail__note" data-testid="agent-pause">{currentWork?.state === 'claimed' && isAgentWorking(entry, now)
-          ? 'Pausing · waits for a safe point'
-          : `Paused by ${pause.paused.pausedBy.id === meId ? 'you' : pause.paused.pausedBy.name} · #${pause.paused.taskNumber}`}</p> : null}
+        {pause?.paused ? <p className="agents-detail__note" data-testid="agent-pause">{pausedLine(pause.paused.pausedBy.id === meId ? 'you' : pause.paused.pausedBy.name, pause.paused.taskNumber, pauseSettling(entry, now))}</p> : null}
         {entry.connection && currentWork ? <p className="agents-detail__note">{availabilityLine(entry.connection, now)}</p> : null}
         {entry.connection?.requests.map((request) => <p key={request.id} className="agents-detail__note">{requestLine(request)}</p>)}
       </section>
@@ -695,10 +704,14 @@ function AgentDetail({ entry, held, meId, projectId, now, asking, canHandOff, st
         <h3>Can</h3>
         <p className="agents-detail__note">{sentence(grant.can)}</p>
       </section>
+      {/* Spokój rule 7 (#763 AG-5): the owner's controls keep their places; one that can't be used now is dimmed, never removed. */}
       <div className="agents-detail__actions">
-        {stop ? <StopButton label={stop.label} text={stop.text} busy={stop.busy} onClick={stop.run} /> : null}
-        {pause && task ? <Button variant="secondary" onClick={pause.run} disabled={pause.busy}>{pause.paused ? 'Resume' : 'Pause'}</Button> : null}
-        {task ? <Button variant="secondary" onClick={() => onThread(task.id)}>Message</Button> : null}
+        <Button variant="secondary" onClick={() => { if (task) onThread(task.id); }} disabled={!task}>Message</Button>
+        {manages ? <Button variant="secondary" onClick={() => pause?.run()} disabled={!pause || pause.busy}>{pause?.paused ? 'Resume' : 'Pause'}</Button> : null}
+        {stop ? <StopButton label={stop.label} text={stop.text} busy={stop.busy} onClick={stop.run} />
+          : manages ? <button type="button" className="agents-stop" aria-label={`Stop ${entry.name}`} disabled>
+            <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true"><rect width="10" height="10" rx="2" fill="currentColor" /></svg><span>Stop</span>
+          </button> : null}
         {canHandOff ? <Button variant="secondary" onClick={onHandOff} disabled={!grant.canTake}>{teammate ? `Ask ${firstName(entry.owner ?? 'them')} to use ${entry.name}` : `Hand off to ${entry.name}`}</Button> : null}
       </div>
       {stop && task ? <p className="agents-detail__note">{task.status === 'in_progress'
@@ -776,9 +789,14 @@ function ProjectAgentsLoaded({ data }: { data: ProjectAgentsData }) {
   const listed = useMemo(() => agentEntries(shell?.people ?? null, sortedConnections).filter((entry) => entry.connection && !entry.connection.assistant), [shell?.people, sortedConnections]);
   const heldBy = (agentId: string) => tasksHeldBy(agentId, rows);
   const lastStopOf = (agentId: string) => agentStops.stops.find((item) => item.agent.id === agentId) ?? null;
+  // The pause in force on the task the agent holds now, if any (#160 AC-5, #763 AG-4).
+  const pauseIn = (agentId: string) => {
+    const held = heldBy(agentId)[0];
+    return held ? agentStops.pauses.find((item) => item.agent.id === agentId && item.taskId === held.id) ?? null : null;
+  };
   const leads = useMemo(() => leadKeys(listed, connections.now), [listed, connections.now]);
   const views = new Map(listed.map((entry) => [entry.key, rowView(entry, heldBy(entry.agentId), leads.has(entry.key), connections.now,
-    lastStopOf(entry.agentId), asked.find((question) => question.agent.id === entry.agentId) ?? null, me.user.id)]));
+    lastStopOf(entry.agentId), asked.find((question) => question.agent.id === entry.agentId) ?? null, me.user.id, pauseIn(entry.agentId))]));
   // The list is ordered by what needs the person first (P2-1); ties keep the order above.
   const entries = [...listed].sort((a, b) => views.get(a.key)!.rank - views.get(b.key)!.rank);
   const beside = useMediaQuery('(min-width: 1001px)');
@@ -873,7 +891,7 @@ function ProjectAgentsLoaded({ data }: { data: ProjectAgentsData }) {
             {entries.map((entry) => (
               <AgentRow key={entry.key} entry={entry} view={views.get(entry.key)!} now={connections.now} selected={latestDetail?.key === entry.key}
                 duplicate={listed.filter((other) => other.agentId === entry.agentId).length > 1} short={shortOwner(entry, me.user.id)}
-                dropping={dropping === entry.key} canDrop={canWrite && entry.ownerId === me.user.id} stop={leads.has(entry.key) ? stopOf(entry) : null} onOpen={() => open(entry.key)}
+                dropping={dropping === entry.key} canDrop={canWrite && entry.ownerId === me.user.id} onOpen={() => open(entry.key)}
                 onDropTask={(id) => dropTask(entry.agentId, id)} onDropping={(on) => setDropping((current) => on ? entry.key : current === entry.key ? null : current)} />
             ))}
           </ul>
@@ -881,14 +899,13 @@ function ProjectAgentsLoaded({ data }: { data: ProjectAgentsData }) {
           <p className="agents__no-connections">No agents here yet. Connect one below; people can still discuss tasks in Conversation.</p>
         )}
         <ul className="agents-links">
-          <li><RefLink className="agents-link" to={requests ? questionLink(projectId, requests) : '/inbox'}>
+          {/* Spokój rule 4 (#763 AG-7): the Requests row shows only while an agent asks you something. */}
+          {requests ? <li><RefLink className="agents-link" to={questionLink(projectId, requests)}>
             <span className="agents-link__icon"><Icon name="inbox" size={16} /></span>
-            <span className="agents-link__text">
-              {requests ? <><b>Agent questions</b> · {requests.agent.name} asks: “{briefly(requests.question)}”</> : <><b>Agent questions</b> · No open questions for you</>}
-            </span>
-            {asked.length ? <span className="agents-link__count">{asked.length}</span> : null}
+            <span className="agents-link__text"><b>Agent questions</b> · {requests.agent.name} asks: “{briefly(requests.question)}”</span>
+            <span className="agents-link__count">{asked.length}</span>
             <Icon name="chevron-right" size={14} />
-          </RefLink></li>
+          </RefLink></li> : null}
           <li><button type="button" className="agents-link" aria-expanded={policyOpen} aria-controls="agents-policy" onClick={() => setPolicyOpen((value) => !value)}>
             <span className="agents-link__icon"><Icon name="rule" size={16} /></span><span className="agents-link__text"><b>Project policy</b> · Agents read and propose; people accept. Assistants also edit for their owner, with Undo.</span><span className="agents-link__go">{policyOpen ? 'Hide' : shell?.project.access === 'manager' ? 'Edit' : 'Read'}<Icon name="chevron-right" size={14} /></span></button></li>
         </ul>
@@ -907,7 +924,8 @@ function ProjectAgentsLoaded({ data }: { data: ProjectAgentsData }) {
           <section className="agents-drag" aria-label="Open tasks to hand off">
             <p className="agents-drag__hint">Drag a task onto an agent to hand it off</p>
             <ul className="agents-drag__list">
-              {rows.filter((row) => row.owner?.kind !== 'agent').slice(0, 6).map((row) => (
+              {/* One dashed line as drawn (P9, #763 AG-7): the hint and the first few open tasks to drag. */}
+              {rows.filter((row) => row.owner?.kind !== 'agent').slice(0, 3).map((row) => (
                 <li key={row.id} className="agents-drag__task" draggable data-task-id={row.id}
                   onDragStart={(event) => { event.dataTransfer.setData(TASK_DRAG, row.id); event.dataTransfer.effectAllowed = 'move'; }}>
                   <StatusGlyph status={row.status} size={14} /><span className="ui-task-number">#{row.number}</span><span className="agents-drag__title">{row.title}</span>
@@ -933,7 +951,7 @@ function ProjectAgentsLoaded({ data }: { data: ProjectAgentsData }) {
             stops={agentStops.stops.filter((item) => item.agent.id === latestDetail.agentId)} stop={leads.has(latestDetail.key) ? stopOf(latestDetail) : null}
             pause={leads.has(latestDetail.key) ? pauseOf(latestDetail) : null}
             asking={asked.find((question) => question.agent.id === latestDetail.agentId) ?? null} refocus={refocusKey === latestDetail.key} onRefocused={() => setRefocusKey(null)}
-            canHandOff={canWrite && !!shell && latestDetail.ownerId === me.user.id} onHandOff={() => setHandOff({ agentId: latestDetail.agentId, task: null })} onThread={openThread} />
+            canHandOff={canWrite && !!shell && latestDetail.ownerId === me.user.id} manages={canWrite && latestDetail.ownerId === me.user.id && leads.has(latestDetail.key)} onHandOff={() => setHandOff({ agentId: latestDetail.agentId, task: null })} onThread={openThread} />
         </OwnedPanelContent>
       ) : null) : null}
       {!task && wanted && choices.read.phase === 'unavailable' ? (
