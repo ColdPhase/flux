@@ -21,9 +21,9 @@
 .people__notice { display: flex; align-items: flex-start; gap: 6px; margin: 0; padding: 8px 10px; border-radius: var(--r); background: var(--sub); font-size: var(--fs-sm) !important; color: var(--t2) !important; line-height: 1.45; overflow-wrap: anywhere; }
 .people__notice svg { flex: none; margin-top: 2px; color: var(--t3); }
 .people__notice button { flex: none; margin-left: auto; font-weight: 500; text-decoration: underline; color: var(--t1); }
-.people__done { display: flex; align-items: flex-start; gap: 6px; margin: 8px 0 0; font-size: var(--fs-sm) !important; color: var(--t2) !important; }
-.people__done:empty { display: none; }
-.people__done svg { flex: none; margin-top: 2px; color: var(--t1); }
+.people__done, .people__invite-status { display: flex; align-items: flex-start; gap: 6px; margin: 8px 0 0; font-size: var(--fs-sm) !important; color: var(--t2) !important; }
+.people__done:empty, .people__invite-status:empty { display: none; }
+.people__done svg, .people__invite-status svg { flex: none; margin-top: 2px; color: var(--t1); }
 .people__confirm { padding-top: 10px; border-top: 1px solid var(--line); }
 .people__confirm p { font-size: var(--fs-md); color: var(--t2); line-height: 1.5; }
 .people__remove.ui-btn { justify-self: start; margin-left: -8px; }

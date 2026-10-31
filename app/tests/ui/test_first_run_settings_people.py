@@ -417,7 +417,7 @@ class FirstRunSettingsPeople(unittest.TestCase):
         expect(stranger.get_by_role("heading", level=1, name="Home")).to_be_visible()
         add.get_by_label("Email").fill(newcomer)
         add.get_by_role("button", name=re.compile("^Add to ")).click()
-        expect(page.locator("section[aria-labelledby='people-here'] .people__done")).to_contain_text("Piotr Nowy joined Maria’s space as member.")
+        expect(page.locator(".people__done")).to_contain_text("Piotr Nowy joined Maria’s space as member.")
 
     # ---------------------------------------------------------------- mention chips (PE-4)
 

@@ -203,7 +203,7 @@ function SignUpLink({ email, workspace }: { email: string; workspace: string }) 
       <p className="ov-note">Send them a link to create their account{valid ? ` as ${email}` : ''}. Then add them here, to {workspace}, with the same address.</p>
       <div className="details__actions"><Button variant="secondary" onClick={() => void copy()}><Icon name="copy" size={14} />Copy sign-up link</Button></div>
       {state && !state.copied ? <input ref={fieldRef} className="ui-input people__invite-link" readOnly aria-label="Sign-up link" value={state.link} /> : null}
-      <p className="people__done" role="status">{state?.copied ? <><Icon name="check" size={13} />Sign-up link copied.</> : state ? 'Copy this link and send it to them.' : null}</p>
+      <p className="people__invite-status" role="status">{state?.copied ? <><Icon name="check" size={13} />Sign-up link copied.</> : state ? 'Copy this link and send it to them.' : null}</p>
     </section>
   );
 }
