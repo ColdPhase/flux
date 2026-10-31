@@ -72,7 +72,10 @@ services:
       - ./public-sim/screen-source.sh:/usr/local/bin/screen-source:ro,z
       - ./public-sim/firefox-ca.sh:/usr/local/bin/firefox-ca:ro,z
       - ./public-sim/allow-display.sh:/usr/local/bin/allow-display:ro,z
+      - ./public-sim/textcorpus.py:/usr/local/bin/textcorpus.py:ro,z
       - ${FLUX_SIM_CA_DIR:?}:/certs:ro,z
+      # The text profile's source grabs (screen-source grab), read by the driver.
+      - ${FLUX_SIM_CTL_DIR:?}:/ctl:z
     command: ["/bin/sh", "/client.sh", "10.213.1.2"]
     networks:
       lan-a: { ipv4_address: 10.213.1.10 }
@@ -85,6 +88,7 @@ services:
       - ./public-sim/screen-source.sh:/usr/local/bin/screen-source:ro,z
       - ./public-sim/firefox-ca.sh:/usr/local/bin/firefox-ca:ro,z
       - ./public-sim/allow-display.sh:/usr/local/bin/allow-display:ro,z
+      - ./public-sim/textcorpus.py:/usr/local/bin/textcorpus.py:ro,z
       - ${FLUX_SIM_CA_DIR:?}:/certs:ro,z
     command: ["/bin/sh", "/client.sh", "10.213.2.2"]
     networks:
@@ -98,6 +102,7 @@ services:
       - ./public-sim/screen-source.sh:/usr/local/bin/screen-source:ro,z
       - ./public-sim/firefox-ca.sh:/usr/local/bin/firefox-ca:ro,z
       - ./public-sim/allow-display.sh:/usr/local/bin/allow-display:ro,z
+      - ./public-sim/textcorpus.py:/usr/local/bin/textcorpus.py:ro,z
       - ${FLUX_SIM_CA_DIR:?}:/certs:ro,z
     command: ["/bin/sh", "/client.sh", "10.213.1.2"]
     networks:
@@ -111,6 +116,7 @@ services:
       - ./public-sim/screen-source.sh:/usr/local/bin/screen-source:ro,z
       - ./public-sim/firefox-ca.sh:/usr/local/bin/firefox-ca:ro,z
       - ./public-sim/allow-display.sh:/usr/local/bin/allow-display:ro,z
+      - ./public-sim/textcorpus.py:/usr/local/bin/textcorpus.py:ro,z
       - ${FLUX_SIM_CA_DIR:?}:/certs:ro,z
     command: ["/bin/sh", "/client.sh", "10.213.2.2"]
     networks:
@@ -128,6 +134,8 @@ services:
     volumes:
       - ./public-sim/driver.py:/sim/driver.py:ro,z
       - ./public-sim/profiles.py:/sim/profiles.py:ro,z
+      - ./public-sim/textprofile.py:/sim/textprofile.py:ro,z
+      - ./public-sim/textcorpus.py:/sim/textcorpus.py:ro,z
       - ${FLUX_SIM_CA_DIR:?}:/certs:ro,z
       - ${FLUX_SIM_CTL_DIR:?}:/ctl:z
     networks:

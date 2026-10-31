@@ -704,6 +704,62 @@ two "Microphone off" buttons match); the same failure was recorded on the branch
 | **WebKit over TURN/TLS** | — | Still **unattainable in software here**: libwebrtc's compiled-in TURN/TLS roots ([`rtc_base/ssl_roots.h`](https://webrtc.googlesource.com/src/+/main/rtc_base/ssl_roots.h), checked 2026-10-31) cannot include a local CA. LiveKit's own TURN offers only `turns:` over TCP (TLS) and `turn:` over UDP, so plain TURN over TCP is not a path a Flux deployment offers. Safari on Apple platforms uses its own TLS stack and was not tested |
 | **Screen publication in WebKit** | `webkit@turn-udp:chromium:connect,screen` | **Met, simulated (mock source).** Headed on the client's X display, WebKit 26.5 shows its own info bar "UserMedia request — Allow access to display device?" with No and Yes; `allow-display` presses Yes as the person would (xdotool). WebKit then shares Playwright's mock screen source ("Mock screen device 1", 1920×1080, `displaySurface: monitor`), not the X display, so the path through the app's button, WebKit's encoder, the SFU and a Chromium receiver is real but the picture is synthetic. Jonas received **1920×1080 at 9.5 fps**, 587 kbit/s (`cal4`, Sharp text). The desktop portal was not involved: a probe with a stub `org.freedesktop.portal.ScreenCast` service on D-Bus and PipeWire saw no ScreenCast call. The earlier "never settles" was this unanswered prompt |
 
+## 1440p code/text profile (#63 AC-2, 2026-10-31)
+
+Founder decision of 2026-10-31: close the code/text row before the release. Phase `text` of
+`check_public_sim.sh` ([`textprofile.py`](../../docker/public-sim/textprofile.py),
+[`textcorpus.py`](../../docker/public-sim/textcorpus.py)).
+
+**Profile.** Ada's computer (behind router A, TURN/TLS) runs its X display at 2560×1440 and shows an `xterm` over
+all of it: known code text (two statements per line, 131 to 193 characters, every line numbered), Liberation Mono
+10.5 pt at 96 dpi, **14 px**, light on dark. She shares it through the app's button in **Sharp text** (checked in the
+UI). Each receiver opens her screen and presses **1:1**. With four people Mia shares a second, moving 1920×1080 screen
+at the same time and Jonas and Tom both watch Ada's text.
+
+- *Static:* one screen of text. At each receiver the decoded `<video>` frame is drawn to a canvas at its natural size
+  5, 10 and 20 s after the share started, and compared with a grab of Ada's display: **SSIM** (8×8 blocks, luma) over
+  the text area, and **OCR** (tesseract 5, `--psm 6`, the crop of 40 lines inverted and doubled) of both, each read
+  line matched to its known source line by its number and scored with a character similarity ratio. A line with a
+  ratio ≥ 0.95 is a "good line".
+- *Scrolling:* the terminal prints 20 lines a second (a fast log or `tail -f`). `getStats()` over 15 s gives the
+  received size, frame rate, freezes and loss; five decoded frames per receiver are OCR-scored, with five source
+  grabs as the reference.
+
+**Sharp text encoding changed** (`media.ts`). With the earlier 3.5 Mbit/s and `contentHint: detail` (calibration
+`txt2`, three runs) scrolling arrived at 2560×1440 and 14.7 to 14.9 fps, but the sender sat at the cap and sampled
+frames were blurred: OCR mean ratio down to 0.74 (11 of 40 good lines) against 0.98 for the source. Now
+`contentHint: text` and **8 Mbit/s**: scrolling uses 6.7 to 7.2 Mbit/s and the sampled frames read like the source
+(`txt3`, `txt4`). Static text needs about 1 Mbit/s.
+
+**Calibration** (`FLUX_SIM_CALIBRATE=1`, record only, at the final encoding: `txt3` run 2 and `txt4`, five runs, two
+and four people, eight receiver measurements; host load average 8 to 15):
+
+| Measure | Observed | Source reference |
+| --- | --- | --- |
+| Scrolling: received size and frame rate | 2560×1440, **14.5 to 15.2 fps** (capture 15 fps), freezes ≤ 0.3 s, no loss, latency estimate 55 to 102 ms | — |
+| Scrolling: OCR per sampled frame | mean ratio 0.79 to 0.98; median of a receiver's three samples 0.936 to 0.981; good lines 0 to 41 (one soft frame read 0; medians 37 to 41) | 0.979 to 0.985, 38 to 41 good lines |
+| Static at 20 s | SSIM 0.974 to 0.984; OCR 0.983 to 0.984, 39 to 40 good lines | 0.983, 40 good lines |
+| Static at 10 s (recorded) | SSIM 0.912 to 0.962; OCR 0.92 to 0.98 | |
+| Static at 5 s (recorded) | SSIM 0.867 to 0.957; OCR 0.62 to 0.97 (the first frames after the share are soft) | |
+
+**Thresholds, set before the enforced run, with the reason for each** (`textprofile.THRESHOLDS`):
+
+| Gate | Value | Why |
+| --- | --- | --- |
+| Decoded width, static and scrolling | 2560 | 1:1 text needs every source pixel; Sharp text keeps its resolution, so a smaller frame is a regression |
+| Scrolling frame rate | ≥ 13.5 fps | AC-2 asks 15 to 30 fps; the app captures at 15. Observed 14.5 to 15.2; 13.5 leaves 1 fps for a 15 s window's counting and a loaded host, and still fails a real drop (the 3.5 Mbit/s cap never fell below 14.7, so the frame rate alone did not catch blur; OCR does) |
+| Scrolling freezes, loss | ≤ 2 s per 15 s, ≤ 1 % | As the other profiles; observed ≤ 0.3 s, 0 % |
+| Scrolling OCR, median of five frames | ≥ the sources' worst ratio − 0.07 | Readability while scrolling: the typical frame must read almost like the source. Observed medians 0.936 to 0.981 against a source worst of 0.979, so the gate (about 0.91) sits 0.027 below the lowest observation. It does not separate the old 3.5 Mbit/s encoding (medians 0.935 to 0.96 in `txt2`): what 8 Mbit/s improved is the typical frame (0.98 instead of 0.94 to 0.96) and the worst one (0.79 instead of 0.74), not a pass/fail line |
+| Scrolling OCR, worst frame | ≥ 0.70 | One soft frame among fifteen a second is tolerable, an unreadable stream is not. Observed worst 0.79 |
+| Scrolling good lines, median | ≥ 0.8 × the sources' fewest | Observed medians ≥ 37 of 38 to 41 |
+| Static at 20 s: SSIM over the text | ≥ 0.95 | Observed 0.974 to 0.984; 0.95 is where 2× zoomed glyphs still look like the source in the inspected frames, and the 10 s frames below it were visibly soft |
+| Static at 20 s: OCR | ≥ source − 0.02, good lines ≥ 0.95 × source | Observed equal to the source (0.983, 39 to 40 of 40) |
+
+Time to a clear frame is recorded, not gated: 5 s after sharing, static text can be unreadable (OCR 0.62), at 10 s
+it mostly reads (0.92 to 0.98), at 20 s it equals the source. The thresholds were written after inspecting the
+decoded and source PNGs (kept with each run's artifacts); they are gates for this simulation, not promises for other
+networks or devices. A separate reviewer checks them.
+
 ## #63 acceptance table (2026-10-31)
 
 Status of each part of [#63](https://github.com/ColdPhase/flux/issues/63)'s criteria. "Simulated" means met on

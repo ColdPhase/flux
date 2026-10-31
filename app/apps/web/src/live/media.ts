@@ -22,11 +22,13 @@ export type DeviceKind = 'mic' | 'camera' | 'screen';
 export type ScreenMode = 'text' | 'motion';
 
 /** Capture and publication of each screen mode. */
-const SCREEN_MODES: Record<ScreenMode, { resolution: VideoResolution; contentHint: 'detail' | 'motion'; publish: TrackPublishOptions }> = {
+const SCREEN_MODES: Record<ScreenMode, { resolution: VideoResolution; contentHint: 'text' | 'motion'; publish: TrackPublishOptions }> = {
   text: {
     resolution: { width: 2560, height: 1440, frameRate: 15 },
-    contentHint: 'detail',
-    publish: { degradationPreference: 'maintain-resolution', simulcast: false, screenShareEncoding: { maxBitrate: 3_500_000, maxFramerate: 15 } },
+    // "text" (sharp edges, the encoder's screen-content tuning) and up to 8 Mbit/s: at 3.5 Mbit/s 14 px code scrolling
+    // at 2560x1440 arrived at 15 fps but with blurred frames (OCR line accuracy down to 0.74; #63, 2026-10-31).
+    contentHint: 'text',
+    publish: { degradationPreference: 'maintain-resolution', simulcast: false, screenShareEncoding: { maxBitrate: 8_000_000, maxFramerate: 15 } },
   },
   motion: {
     resolution: { width: 1920, height: 1080, frameRate: 60 },

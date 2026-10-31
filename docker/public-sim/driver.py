@@ -5,7 +5,7 @@ https://flux.sim.test. Impairments and restarts are asked of scripts/check_publi
 Environment: FLUX_SIM_BROWSER_A (behind the restrictive router), FLUX_SIM_BROWSER_B (behind the open router), each
 BROWSER[+DEVICE] where DEVICE is pixel7, iphone13 or ipad (Playwright's device descriptors: viewport, user agent,
 touch); FLUX_SIM_PHASES (comma list of connect, ai-off, four, profiles, screen, drop, loss, weak, sfu-restart,
-sfu-update, api-restart, access; or "all"); FLUX_SIM_CALIBRATE=1 records the profile thresholds without enforcing them.
+sfu-update, api-restart, access, text; or "all"); FLUX_SIM_CALIBRATE=1 records the profile thresholds without enforcing them.
 Prints one JSON line per measurement prefixed "SIM " and writes /ctl/result-<run>.json.
 """
 from __future__ import annotations
@@ -20,6 +20,7 @@ import uuid
 from playwright.sync_api import Page, expect, sync_playwright
 
 import profiles
+import textprofile
 
 ORIGIN = "https://flux.sim.test"
 RUN = re.sub(r"[^a-z0-9-]", "", f"{os.environ['FLUX_SIM_BROWSER_A']}-{os.environ['FLUX_SIM_BROWSER_B']}-{int(time.time())}".replace("+", "-"))
@@ -153,7 +154,7 @@ def launch_options(browser: str, presenter: bool = False) -> dict:
     gets the simulation's CA in its profile through the `firefox-ca` wrapper and fake camera and microphone."""
     if browser == "chromium" and presenter:
         return {"headless": False, "args": ["--use-fake-ui-for-media-stream", "--auto-select-desktop-capture-source=Entire screen",
-                                            "--window-position=1920,0", "--window-size=1440,900", "--disable-backgrounding-occluded-windows"]}
+                                            "--window-position=2600,0", "--window-size=1440,900", "--disable-backgrounding-occluded-windows"]}
     if browser == "chromium":
         return {"args": ["--use-fake-device-for-media-stream", "--use-fake-ui-for-media-stream",
                          "--use-file-for-fake-video-capture=/media/camera-1080p30.y4m", "--use-file-for-fake-audio-capture=/media/speech.wav"]}
@@ -392,9 +393,21 @@ def watch_signal_tokens(page: Page, seen: list[str]) -> None:
 
 
 def main() -> None:
+    if "text" in PHASES:
+        # The text profile shares a 2560x1440 display; the others keep 1920x1080. Set before any browser opens on it.
+        ctl("screen a size 2560x1440")
+    try:
+        run_main()
+    finally:
+        if "text" in PHASES:
+            ctl("screen a off")
+            ctl("screen a size 1920x1080")
+
+
+def run_main() -> None:
     result = RESULT
     four = "four" in PHASES
-    presenting = bool(PHASES & {"profiles", "screen"})
+    presenting = bool(PHASES & {"profiles", "screen", "text"})
     with sync_playwright() as pw:
         DESCRIPTORS.update(pw.devices)
         (engine_a, device_a), (engine_b, device_b) = spec(os.environ["FLUX_SIM_BROWSER_A"]), spec(os.environ["FLUX_SIM_BROWSER_B"])
@@ -478,6 +491,8 @@ def main() -> None:
             assert set(result["phases"]["ai-off"]["participants"]) <= {ids["ada"], ids["jonas"]}, result["phases"]["ai-off"]
         if PHASES & {"profiles", "screen"}:
             profiles.run(PHASES, pages, result, ctl, log, RUN, engine_a, calibrate=os.environ.get("FLUX_SIM_CALIBRATE") == "1")
+        if "text" in PHASES:
+            textprofile.run(PHASES, pages, result, ctl, log, RUN, calibrate=os.environ.get("FLUX_SIM_CALIBRATE") == "1")
         _phases(ada, jonas, lee, ids, pid, sid, tokens, signal_tokens, result)
         for browser in browsers:
             browser.close()
@@ -548,7 +563,7 @@ def connect_phase(ada: Page, jonas: Page, url: str, result: dict) -> None:
     microphone_on(jonas)
     # A presenter's browser has no camera (it shares the real screen of its client instead).
     try:
-        if not PHASES & {"profiles", "screen"}:
+        if not PHASES & {"profiles", "screen", "text"}:
             camera_on(ada)
     except Exception as error:
         log("camera", who="ada", error=str(error)[:200])
