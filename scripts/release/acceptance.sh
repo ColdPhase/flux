@@ -261,6 +261,17 @@ done < <(steps)
   echo '| --- | --- | --- | --- | --- |'
   tail -n +2 "$status_file" | awk -F'\t' '{ printf "| %s | %s | %s | %s | %s |\n", $1, $2, $3, $4, $5 }'
   echo
+  echo 'Acceptance lines on #249 for this SHA (founder decision on #249, 2026-10-31; checked by'
+  echo '`scripts/release/verify_acceptance.py` in `final-release.yml`):'
+  echo
+  echo '```text'
+  echo "ACCEPTED RELEASE CANDIDATE $sha"
+  echo "INDEPENDENT RELEASE REVIEW $sha reviewer=<agent name> session=<reviewer's session id or URL>"
+  echo '```'
+  echo
+  echo 'The first is posted by PelikanFix16. The second by the independent reviewer (through a founder login),'
+  echo 'whose session must not appear in any commit message up to this SHA: the reviewer wrote none of it.'
+  echo
   echo 'Automated steps only. The rows that need a person or an independent look are in'
   echo '`docs/agents/release-acceptance/v0.1.0-rc.1.md`, "Manual and independent rows"; record their verdicts'
   echo 'against this SHA on #249. Logs are local evidence: link a summary, do not commit raw logs.'
