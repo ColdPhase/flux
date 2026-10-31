@@ -315,7 +315,9 @@ test('every associated write of a blocker save or a result rolls the whole unit 
   const replayed = expectStatus(await f.patch(f.writer, t.id, save, blocked.version), 200) as WorkItem;
   assert.deepEqual([replayed.version, replayed.blocker], [saved.version, saved.blocker]);
   const { creationUndo, ...currentFields } = await f.current(t.id);
-  assert.deepEqual(creationUndo, { eligible: false, reason: 'not_ai_origin' }, 'current GET rechecks eligibility of the genuine human creation');
+  // The creator's own task (#763 B1) is no longer undoable once it was changed and used.
+  assert.equal(creationUndo?.eligible, false, 'current GET rechecks eligibility of the genuine human creation');
+  assert.ok(['task_used', 'creation_changed'].includes(creationUndo!.reason), creationUndo!.reason);
   assert.equal(replayed.creationUndo, undefined, 'PATCH replay retains its original domain projection');
   assert.deepEqual(replayed, currentFields);
   assert.deepEqual(expectStatus(await f.result(f.writer, publish), 201), published);
