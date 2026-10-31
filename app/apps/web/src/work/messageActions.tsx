@@ -95,6 +95,7 @@ function useMenuItems(options: MessageActionOptions | DmActionOptions | null, to
   const handOff = () => { if (agentHere) onCreateWork(); else setNoAgent(true); };
   const extra = project && noAgent ? <HandOffDialog open onClose={() => setNoAgent(false)} project={project.project} /> : null;
   const items: MenuItem[] = [
+    // On a computer the toolbar already has Reply and Create task: its menu lists only what the toolbar lacks (#763 B4).
     ...(onReply && touch ? [{ id: 'reply', label: 'Reply in thread', icon: 'reply' as const, run: onReply }] : []),
     ...(touch ? [{ id: 'task', label: 'Create task', icon: 'plus-circle' as const, run: onCreateWork }] : []),
     ...(onAddToMap && !touch ? [{ id: 'map', label: 'Add to map', icon: 'map' as const, run: onAddToMap }] : []),

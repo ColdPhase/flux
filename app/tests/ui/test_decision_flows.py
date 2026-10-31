@@ -125,8 +125,9 @@ class DecisionFlows(unittest.TestCase):
                                                                                  "sources": [{"type": "message", "id": message}]}, status=201)
         bare = self.api(page, "POST", f"/api/v1/projects/{pid}/decisions", {"title": NO_SOURCE, "rationale": "Less evaporation"}, status=201)
         result = self.api(page, "POST", f"/api/v1/projects/{pid}/results", {"title": RESULT, "finding": "positive", "evidence": "Readings within 2 % for 21 days"}, status=201)
-        # The proposal without a source is also in a Wiki page: that link to it is not what it is based on (D2).
-        self.api(page, "POST", f"/api/v1/projects/{pid}/docs", {"title": "Watering", "from": {"type": "decision", "id": bare["id"]}}, status=201)
+        # The proposal without a source is also in a Wiki page: that link to it is not what it is based on (D2). A page mentions
+        # it in a sentence; "Add to a Wiki page" itself refuses a proposal (F-034).
+        self.api(page, "POST", f"/api/v1/projects/{pid}/docs", {"title": "Watering", "body": f"We may water at dawn: [{NO_SOURCE}](flux:decision/{bare['id']})."}, status=201)
         wiki = self.api(page, "POST", f"/api/v1/projects/{pid}/docs", {"title": PAGE, "body": "Why the garden runs as it does."}, status=201)
         type(self).ids = {"page": wiki["id"], "project": pid, "conversation": root["id"], "message": message, "rule": rule["id"], "sourced": sourced["id"], "bare": bare["id"], "result": result["id"]}
 

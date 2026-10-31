@@ -192,6 +192,8 @@ button.wd-link:active:not(:disabled) { background: var(--sub); }
 .wd-quote { margin-top: 6px; padding-left: 12px; border-left: 2px solid var(--line2); font-size: var(--fs-sm) !important; }
 .wd-audience { display: flex; align-items: center; gap: 6px; }
 .wd-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+/* A dimmed action with its reason (F-034): the hint is the button's caption, directly under it on its left edge. */
+.wd-actions--hint { flex-direction: column; align-items: flex-start; gap: 6px; }
 /* "Linked thoughts" picker in task Details (#289): a map select, then the map's thoughts as buttons. */
 .wd-pick { display: grid; gap: 10px; margin-top: 10px; padding: 12px; min-width: 0; border-radius: var(--r); background: var(--el); box-shadow: inset 0 0 0 1px var(--line); }
 .wd-pick label { font-size: var(--fs-sm); font-weight: 500; color: var(--t2); }
@@ -462,6 +464,11 @@ button.wd-link:active:not(:disabled) { background: var(--sub); }
 .wd-foot__note { margin: 8px 6px 0; }
 .wd-activity > .details__sec { margin-top: 14px; }
 .wd-activity > .details__sec .wd-link { font-size: var(--fs-sm); color: var(--t2); }
+/* A finger's 44 px on a touch screen, for the reference card in a bubble too (#763 A9). */
+@media (pointer: coarse) {
+  .message-bubble .ws-attach > .ws-chip,
+  :is(.thread__feed, :root:has(.ui-panel--docked:not(.is-leaving), .ui-panel--overlay) .project-convo__feed) .message-bubble .ws-attach > .ws-chip { min-height: 44px; }
+}
 
 /* A proposed decision's answer, as on its Inbox card (F-026 P4, S11; #763 D1): Accept / Not now / Discuss and who else can accept,
    directly under the reason, so a phone's half sheet shows it without scrolling. */

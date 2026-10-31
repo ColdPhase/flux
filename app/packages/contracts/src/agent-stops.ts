@@ -61,6 +61,8 @@ export interface OwnWorkingAgent {
   online: boolean;
   /** True when a client has ever opened a session for the agent; false means it was never signed in (#347 review N11). */
   signedIn: boolean;
+  /** A person's pause in force on this task (#160 AC-5), so every place that shows the agent says "Paused by …" (#763 AG-4). */
+  paused: { by: { id: string; name: string } } | null;
 }
 
 export interface OwnWorkingAgents {

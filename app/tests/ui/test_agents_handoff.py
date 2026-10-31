@@ -163,12 +163,13 @@ class HandOffJourney(unittest.TestCase):
             expect(claude).to_contain_text("for Ada Kowalska (you)")
             expect(claude).to_contain_text("Desk laptop")
             # No claimed unit on a live session here, so the handed task is not "working" (C-1; #347 P1-1).
-            expect(claude).to_contain_text("Handed #1 · not signed in yet")
+            expect(claude).to_contain_text("Has #1 · not signed in yet")
             expect(claude).not_to_have_attribute("data-working", "true")
             expect(rows.filter(has_text="Reader agent")).to_contain_text("Not signed in from your client yet")
             expect(page.get_by_text("2 in this project", exact=True)).to_be_visible()
-            # Requests, Policy and "Connect your own agent": one row each, below the list.
-            expect(page.get_by_role("link", name=re.compile("^Agent questions"))).to_have_attribute("href", "/inbox")
+            # Policy and "Connect your own agent": one row each, below the list.
+            # #763 AG-7: the Requests row appears only while an agent asks you something (Spokój rule 4).
+            expect(page.get_by_role("link", name=re.compile("^Agent questions"))).to_have_count(0)
             expect(page.get_by_role("button", name=re.compile("^Project policy"))).to_be_visible()
             expect(page.get_by_role("link", name=re.compile("^Connect your own agent"))).to_have_attribute("href", "/connect-agent")
             expect(page.get_by_role("button", name="Hand off a task")).to_have_count(1)
@@ -254,7 +255,7 @@ class HandOffJourney(unittest.TestCase):
         owner = self.task("label")["owner"]
         self.assertEqual(owner["id"], self.ids["agent_claude"])
         row = page.get_by_role("list", name="Agents in this project").get_by_role("listitem").filter(has_text="Claude Code agent")
-        expect(row).to_contain_text("Handed #1 · not signed in yet")
+        expect(row).to_contain_text("Has #1 · not signed in yet")
 
     def test_06_an_agent_without_write_access_is_explained_and_never_granted(self) -> None:
         page = self.open_agents()
@@ -699,7 +700,7 @@ class HandOffJourney(unittest.TestCase):
                 self.assertEqual(saved["version"], task["version"] + 1, "one confirmation changes one native version")
                 self.assertEqual(self.api(page, "GET", f"/api/v1/projects/{project}/grants", status=200), grants)
                 page.reload()
-                expect(page.locator(f'.agents-row[data-agent="{agent}"]')).to_contain_text("Handed #1")
+                expect(page.locator(f'.agents-row[data-agent="{agent}"]')).to_contain_text("Has #1")
                 readback = self.api(page, "GET", f"/api/v1/work/{task['id']}", status=200)
                 self.assertEqual((readback["owner"], readback["version"]), (saved["owner"], saved["version"]))
                 self.assertEqual(self.api(page, "GET", f"/api/v1/projects/{project}/grants", status=200), grants, "reload grants no access")
@@ -799,7 +800,7 @@ class HandOffJourney(unittest.TestCase):
         expect(rows).to_have_count(2)
         unsigned = rows.filter(has_text="Older unsigned laptop")
         live = rows.filter(has_text="Current planning laptop")
-        expect(unsigned).to_contain_text("Handed #1")
+        expect(unsigned).to_contain_text("Has #1")
         expect(unsigned).not_to_have_attribute("data-working", "true")
         expect(unsigned.locator(".agents-row__icon")).to_have_attribute("data-expression", "asleep")
         expect(live).to_contain_text('Working on “Plan the next moisture reading”')
@@ -985,7 +986,7 @@ class HandOffJourney(unittest.TestCase):
                         if scheme == "dark" and width == 2560 and source == "task":
                             opener.click()
                             page.get_by_role("dialog", name="Hand off a task").get_by_role("link", name="Connect your own agent").click()
-                            expect(page).to_have_url(re.compile(r"/connect-agent$"))
+                            expect(page).to_have_url(re.compile(r"/settings/agents/connect$"))  # #763 AG-2: /connect-agent leads into Settings
                             expect(page.get_by_role("dialog", name="Hand off a task")).to_have_count(0)
                         page.context.close()
         self.assertEqual(self.api(setup, "GET", f"/api/v1/projects/{project}/grants", status=200), before)

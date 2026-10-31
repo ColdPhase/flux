@@ -1,12 +1,14 @@
 import { useEffect, useId, useRef, useState, type FormEvent } from 'react';
 import { useNavigate, useRevalidator } from 'react-router';
-import { WORKSPACE_AI_POLICY_CHANGED_EVENT, type SetWorkspaceAiPolicyResult, type Workspace, type WorkspaceMember, type WorkspaceRole } from '@flux/contracts';
+import { INVITE_CREATED_EVENT, INVITE_DEFAULT_EXPIRY_DAYS, INVITE_REVOKED_EVENT, WORKSPACE_AI_POLICY_CHANGED_EVENT, type InviteExpiryDays, type InviteRole, type SetWorkspaceAiPolicyResult,
+  type Workspace, type WorkspaceInvite, type WorkspaceMember, type WorkspaceRole } from '@flux/contracts';
 import { ApiError } from '../api/client';
 import { whenPageLive } from '../api/pageLeaving';
 import { useStreamEvents } from '../api/stream';
 import { useShellData } from '../app/data';
 import { Avatar, Button, Icon, Input, Spinner, useRowMotion, useToast, Select, Option } from '../ui';
-import { ROLE_HINT, ROLE_LABEL, addMember, attemptKeys, changeRole, firstName, getWorkspace, isManagerRole, listMembers, problemText, removeMember, setWorkspaceAi } from './api';
+import { ROLE_HINT, ROLE_LABEL, addMember, attemptKeys, changeRole, createInvite, firstName, getWorkspace, isManagerRole, listInvites, listMembers, problemText, removeMember, revokeInvite,
+  setWorkspaceAi } from './api';
 import './people.css';
 
 const ROLES: WorkspaceRole[] = ['member', 'guest', 'admin', 'owner'];
@@ -53,8 +55,14 @@ export function WorkspacePeople({ workspaceId, onBack, page = false }: { workspa
     return () => { waiting(); controller.abort(); };
   }, [workspaceId, reload]);
   const load = () => setReload((n) => n + 1);
+  const [invitesSeen, setInvitesSeen] = useState(0);
   // Someone turned AI off or on here (F-029, #614): the row shows the state as it is now.
-  useStreamEvents(me.user.id, (event) => { if (event.kind === WORKSPACE_AI_POLICY_CHANGED_EVENT && event.objectId === workspaceId) load(); }, load);
+  useStreamEvents(me.user.id, (event) => {
+    if (event.objectId !== workspaceId) return;
+    if (event.kind === WORKSPACE_AI_POLICY_CHANGED_EVENT) load();
+    // Someone joined through a link, or a link was made or revoked elsewhere (F-035).
+    if (event.kind === 'workspace.member_added.v1' || event.kind === INVITE_CREATED_EVENT || event.kind === INVITE_REVOKED_EVENT) setInvitesSeen((n) => n + 1);
+  }, load);
 
   const changed = (message: string, editorClosed: boolean) => {
     setDone(message); setEditing(null);
@@ -97,7 +105,7 @@ export function WorkspacePeople({ workspaceId, onBack, page = false }: { workspa
       <h3 className="details__title">People</h3>
       <p className="details__lead">Being in {workspace.name} doesn’t open every project. Restricted projects show only to the people given access in the project itself.</p>
 
-      {manager && members ? <AddPerson workspace={workspace} members={members} myRole={myRole} onAdded={(member) => changed(`${member.name} joined ${workspace.name} as ${ROLE_LABEL[member.role].toLowerCase()}.`, false)} /> : null}
+      {manager && members ? <AddPerson workspace={workspace} members={members} myRole={myRole} invitesSeen={invitesSeen} onJoined={load} onAdded={(member) => changed(`${member.name} joined ${workspace.name} as ${ROLE_LABEL[member.role].toLowerCase()}.`, false)} /> : null}
 
       <section className="details__sec" aria-labelledby="people-here">
         <h4 id="people-here" ref={rosterRef} tabIndex={-1}>{ordered ? `In ${workspace.name} · ${ordered.length}` : `You in ${workspace.name}`}</h4>
@@ -131,11 +139,13 @@ export function WorkspacePeople({ workspaceId, onBack, page = false }: { workspa
   );
 }
 
-function AddPerson({ workspace, members, myRole, onAdded }: { workspace: Workspace; members: WorkspaceMember[]; myRole: WorkspaceRole; onAdded: (member: WorkspaceMember) => void }) {
+function AddPerson({ workspace, members, myRole, invitesSeen, onJoined, onAdded }: { workspace: Workspace; members: WorkspaceMember[]; myRole: WorkspaceRole;
+  invitesSeen: number; onJoined: () => void; onAdded: (member: WorkspaceMember) => void }) {
   const [email, setEmail] = useState('');
   const [role, setRole] = useState<WorkspaceRole>('member');
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState('');
+  const [newcomer, setNewcomer] = useState('');
   const keys = useRef(attemptKeys());
   const emailRef = useRef<HTMLInputElement>(null);
   const roleId = useId();
@@ -152,6 +162,7 @@ function AddPerson({ workspace, members, myRole, onAdded }: { workspace: Workspa
       setEmail(''); setRole('member');
       onAdded(member);
     } catch (error) {
+      if (error instanceof ApiError && error.code === 'ACCOUNT_NOT_FOUND') setNewcomer(address);
       const known = error instanceof ApiError && error.code === 'ALREADY_MEMBER' ? members.find((member) => member.email.toLowerCase() === address)?.name : undefined;
       setProblem(problemText(error, { workspace: workspace.name, email: address, who: known }));
       emailRef.current?.focus();
@@ -159,13 +170,14 @@ function AddPerson({ workspace, members, myRole, onAdded }: { workspace: Workspa
   }
 
   return (
+    <>
     <section className="details__sec" aria-labelledby="people-add">
       <h4 id="people-add">Add someone</h4>
       <form className="people__add" onSubmit={(event) => void submit(event)} noValidate>
         <Input ref={emailRef} id="people-add-email" label="Email" type="email" inputMode="email" autoComplete="off" spellCheck={false} placeholder="name@example.com" value={email}
           aria-invalid={problem ? true : undefined} aria-describedby={problem ? 'people-add-problem people-add-email-hint' : 'people-add-email-hint'}
           onChange={(event) => { setEmail(event.target.value); if (problem) setProblem(''); }}
-          hint="Their Flux account’s address. Someone new? Send them a sign-up link first." />
+          hint="Their Flux account’s address. Someone new? Create an invite link below." />
         <div className="people__field">
           <label htmlFor={roleId}>Role</label>
           <Select id={roleId} value={role} onChange={(next) => setRole(next as WorkspaceRole)} aria-describedby={`${roleId}-hint`}>
@@ -176,35 +188,10 @@ function AddPerson({ workspace, members, myRole, onAdded }: { workspace: Workspa
         {problem ? <p className="people__notice" id="people-add-problem" role="alert"><Icon name="alert" size={13} />{problem}</p> : null}
         <div className="details__actions"><Button type="submit" variant="primary" busy={busy}>Add to {workspace.name}</Button></div>
       </form>
-      <SignUpLink email={email.trim().toLowerCase()} workspace={workspace.name} />
     </section>
-  );
-}
-
-/**
- * Someone without an account (#763 PE-2): a sign-up link to this Flux, with their address filled in when it is typed
- * above, to copy and send however the person likes. Flux sends nothing itself, and the link grants nothing: once they
- * have an account, they are added here like anyone else. Where the clipboard is unavailable the link shows, selected.
- */
-function SignUpLink({ email, workspace }: { email: string; workspace: string }) {
-  const [state, setState] = useState<{ link: string; copied: boolean } | null>(null);
-  const fieldRef = useRef<HTMLInputElement>(null);
-  const valid = /^[^\s@]+@[^\s@]+$/.test(email);
-  const link = `${window.location.origin}/sign-up${valid ? `?email=${encodeURIComponent(email)}` : ''}`;
-  useEffect(() => { if (state && !state.copied) fieldRef.current?.select(); }, [state]);
-  async function copy() {
-    let copied = false;
-    try { await navigator.clipboard.writeText(link); copied = true; } catch { copied = false; }
-    setState({ link, copied });
-  }
-  return (
-    <section className="details__sec people__invite" aria-labelledby="people-invite">
-      <h4 id="people-invite">Someone new to Flux</h4>
-      <p className="ov-note">Send them a link to create their account{valid ? ` as ${email}` : ''}. Then add them here, to {workspace}, with the same address.</p>
-      <div className="details__actions"><Button variant="secondary" onClick={() => void copy()}><Icon name="copy" size={14} />Copy sign-up link</Button></div>
-      {state && !state.copied ? <input ref={fieldRef} className="ui-input people__invite-link" readOnly aria-label="Sign-up link" value={state.link} /> : null}
-      <p className="people__invite-status" role="status">{state?.copied ? <><Icon name="check" size={13} />Sign-up link copied.</> : state ? 'Copy this link and send it to them.' : null}</p>
-    </section>
+      {/* Someone without an account (#763 PE-2): the address Flux could not find is filled into the invite link (F-035). */}
+      <InviteLinks key={newcomer} prefill={newcomer} workspace={workspace} myRole={myRole} seen={invitesSeen} onJoined={onJoined} />
+    </>
   );
 }
 
@@ -296,6 +283,135 @@ function MemberEditor({ id, member, self, workspace, myRole, onClose, onChanged 
       ) : <Button variant="quiet" className="details__leave people__remove" onClick={() => setConfirmRemove(true)}>Remove from {workspace.name}</Button>) : null}
       {problem ? <p className="people__notice" role="alert"><Icon name="alert" size={13} />{problem}</p> : null}
     </div>
+  );
+}
+
+const expiryLabel: Record<InviteExpiryDays, string> = { 1: '1 day', 7: '7 days', 30: '30 days' };
+const until = new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short' });
+const inviteRoles = (mine: WorkspaceRole): InviteRole[] => (mine === 'owner' ? ['member', 'guest', 'admin'] : ['member', 'guest']);
+
+async function copyText(text: string): Promise<boolean> {
+  try { await navigator.clipboard.writeText(text); return true; } catch { return false; }
+}
+
+/**
+ * Invite links (F-035, #763 PE-2): an owner or admin makes a one-time link with a role, optionally for one address,
+ * and sends it themselves (Flux sends no email). The new link shows once at the top, ready to copy; every pending link
+ * stays listed with Copy and Revoke. Whoever opens it signs in or creates an account and joins with that role.
+ */
+function InviteLinks({ prefill, workspace, myRole, seen, onJoined }: { prefill: string; workspace: Workspace; myRole: WorkspaceRole; seen: number; onJoined: () => void }) {
+  const [invites, setInvites] = useState<WorkspaceInvite[] | null>(null);
+  const [role, setRole] = useState<InviteRole>('member');
+  const [email, setEmail] = useState(prefill);
+  const [days, setDays] = useState<InviteExpiryDays>(INVITE_DEFAULT_EXPIRY_DAYS);
+  const [busy, setBusy] = useState(false);
+  const [problem, setProblem] = useState('');
+  const [fresh, setFresh] = useState<WorkspaceInvite | null>(null);
+  const [status, setStatus] = useState('');
+  const keys = useRef(attemptKeys());
+  const roleId = useId();
+  const daysId = useId();
+  const linkRef = useRef<HTMLInputElement>(null);
+  const encrypted = workspace.encryption !== null && workspace.encryption !== undefined;
+
+  useEffect(() => {
+    const controller = new AbortController();
+    listInvites(workspace.id, controller.signal).then(setInvites, (error: unknown) => {
+      if (error instanceof DOMException && error.name === 'AbortError') return;
+      setInvites([]);
+    });
+    if (seen) onJoined();
+    return () => controller.abort();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- `seen` is the trigger; `onJoined` reloads the roster.
+  }, [workspace.id, seen]);
+
+  async function create(event: FormEvent) {
+    event.preventDefault();
+    if (busy) return;
+    const address = email.trim().toLowerCase();
+    if (address && !/^[^\s@]+@[^\s@]+$/.test(address)) { setProblem('Enter an email address, or leave it empty for anyone with the link.'); return; }
+    setBusy(true); setProblem(''); setStatus('');
+    try {
+      const invite = await createInvite(workspace.id, { role, email: address || null, expiresInDays: days }, keys.current.for(`${role}:${address}:${days}`));
+      keys.current.done();
+      setFresh(invite);
+      setInvites((list) => [invite, ...(list ?? []).filter((item) => item.id !== invite.id)]);
+      setEmail('');
+      const copied = await copyText(invite.link);
+      setStatus(copied ? 'Invite link created and copied. Send it to them yourself.' : 'Invite link created. Copy it and send it to them yourself.');
+      requestAnimationFrame(() => linkRef.current?.select());
+    } catch (error) {
+      setProblem(problemText(error, { workspace: workspace.name, email: address }));
+    } finally { setBusy(false); }
+  }
+
+  async function copy(invite: WorkspaceInvite) {
+    setStatus(await copyText(invite.link) ? 'Link copied.' : 'Copying isn’t allowed here. Select the link and copy it.');
+    if (fresh?.id !== invite.id) setFresh(invite);
+  }
+
+  async function revoke(invite: WorkspaceInvite) {
+    setProblem(''); setStatus('');
+    try {
+      await revokeInvite(workspace.id, invite.id);
+      setStatus('Invite link revoked. It no longer works.');
+    } catch (error) {
+      setProblem(problemText(error, { workspace: workspace.name }));
+    }
+    if (fresh?.id === invite.id) setFresh(null);
+    setInvites((list) => (list ?? []).filter((item) => item.id !== invite.id));
+  }
+
+  const who = (invite: WorkspaceInvite) => invite.email ?? 'Anyone with the link';
+  return (
+    <section className="details__sec" aria-labelledby="people-invite">
+      <h4 id="people-invite">Invite with a link</h4>
+      <form className="people__add" onSubmit={(event) => void create(event)} noValidate aria-label="Create an invite link">
+        <div className="people__field">
+          <label htmlFor={roleId}>Joins as</label>
+          <Select id={roleId} value={role} onChange={(next) => setRole(next as InviteRole)} aria-describedby={`${roleId}-hint`}>
+            {inviteRoles(myRole).map((option) => <Option key={option} value={option}>{ROLE_LABEL[option]}</Option>)}
+          </Select>
+          <p className="people__hint" id={`${roleId}-hint`}>{ROLE_HINT[role]}{encrypted && role === 'admin' ? ' To unlock this encrypted space, they also need an unlock password from someone who has one.' : ''}</p>
+        </div>
+        <Input id="people-invite-email" label="Only for (optional)" type="email" inputMode="email" autoComplete="off" spellCheck={false} placeholder="name@example.com" value={email}
+          onChange={(event) => { setEmail(event.target.value); if (problem) setProblem(''); }}
+          hint="Leave empty and anyone who opens the link first can join." />
+        <div className="people__field">
+          <label htmlFor={daysId}>Works for</label>
+          <Select id={daysId} value={String(days)} onChange={(next) => setDays(Number(next) as InviteExpiryDays)}>
+            {([1, 7, 30] as const).map((option) => <Option key={option} value={String(option)}>{expiryLabel[option]}</Option>)}
+          </Select>
+        </div>
+        {problem ? <p className="people__notice" role="alert"><Icon name="alert" size={13} />{problem}</p> : null}
+        <div className="details__actions"><Button type="submit" variant="secondary" busy={busy}><Icon name="link" size={14} />Create invite link</Button></div>
+      </form>
+      {fresh ? (
+        <div className="people__link" role="group" aria-label="New invite link">
+          <Input ref={linkRef} id="people-invite-link" label={`Link for ${fresh.email ?? 'anyone'} · ${ROLE_LABEL[fresh.role].toLowerCase()}`} readOnly value={fresh.link}
+            onFocus={(event) => event.currentTarget.select()} hint="It works once. Flux doesn’t send it: paste it into your message to them." />
+          <div className="details__actions"><Button variant="secondary" onClick={() => void copy(fresh)}><Icon name="copy" size={14} />Copy link</Button></div>
+        </div>
+      ) : null}
+      <p className="people__invite-status" role="status">{status ? <><Icon name="check" size={13} />{status}</> : null}</p>
+      {invites && invites.length ? (
+        <>
+          <h4 className="people__sub" id="people-invites-pending">Waiting to be used · {invites.length}</h4>
+          <ul className="people__list" aria-labelledby="people-invites-pending">
+            {invites.map((invite) => (
+              <li className="people__item" key={invite.id}>
+                <div className="people__row">
+                  <span className="people__who"><b>{who(invite)}</b><span>{ROLE_LABEL[invite.role]} · until {until.format(new Date(invite.expiresAt))} · by {invite.createdBy.name}</span></span>
+                  <Button variant="quiet" className="people__change" onClick={() => void copy(invite)}>Copy<span className="ui-vh"> link for {who(invite)}</span></Button>
+                  {invite.role !== 'admin' || myRole === 'owner'
+                    ? <Button variant="quiet" className="people__change" onClick={() => void revoke(invite)}>Revoke<span className="ui-vh"> link for {who(invite)}</span></Button> : null}
+                </div>
+              </li>
+            ))}
+          </ul>
+        </>
+      ) : null}
+    </section>
   );
 }
 

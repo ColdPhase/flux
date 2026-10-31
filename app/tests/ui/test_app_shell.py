@@ -184,8 +184,8 @@ def open_details(page: Page, tap: bool = False) -> None:
 
 
 def open_what_matters(page: Page, tap: bool = False) -> None:
-    """"What matters" (#133): on the computer "N needs you" in the header opens it, or More when nothing
-    needs you (#340); on the phone Details opens the project overview, then its What matters row (#341)."""
+    """"What matters" (#133): on the computer it is a row in More (#763 A2: "N needs you" opens the Inbox now);
+    on the phone Details opens the project overview, then its What matters row (#341)."""
     if page.viewport_size["width"] <= 640:
         open_details(page, tap=tap)
         overview = page.locator("#details")
@@ -197,10 +197,6 @@ def open_what_matters(page: Page, tap: bool = False) -> None:
     header = page.locator("header.top")
     header.locator("button[aria-label='More']").wait_for()
     more = header.get_by_role("button", name="More", exact=True)
-    chip = header.get_by_role("button", name=re.compile("needs you$"))
-    if chip.count():
-        chip.click()
-        return
     more.click()
     page.get_by_role("menu", name="More").get_by_role("menuitem", name="What matters").click()
 

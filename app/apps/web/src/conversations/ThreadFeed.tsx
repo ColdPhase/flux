@@ -56,12 +56,14 @@ export function ThreadFeed(props: Props) {
     const continued = sameMessageAuthor(previous, { authorId: me.user.id, createdAt: item.at });
     withDay(item.at, `day-pending-${item.id}`, [<ThreadReply key={`pending-${item.id}`} continued={continued} pending={item} name={me.user.name} onRetry={() => props.publicComposer.retry(item.id)} onRemove={() => props.publicComposer.remove(item.id)} />]);
   });
-  const list = rows.flatMap((row, index) => !row.items.length ? [] : day(row.at) !== (index ? day(rows[index - 1]!.at) : '')
+  // The first replies' day joins the root's "3 replies" line ("3 replies · Today", #763 A5): one separator, not two.
+  const firstDay = props.rootHeader && entries[0]?.type === 'message' && rows[0] ? day(rows[0].at) : null;
+  const list = rows.flatMap((row, index) => !row.items.length ? [] : day(row.at) !== (index ? day(rows[index - 1]!.at) : '') && !(index === 0 && firstDay)
     ? [<MessageDay key={row.key} label={day(row.at)} />, ...row.items] : row.items);
   return <div className={`thread__feed${revealed ? '' : ' is-opening'}`} ref={attachFeed} aria-busy={revealed ? undefined : true}>
     <div className="thread__lift" aria-hidden="true" ref={liftRef} />
     <div className="thread__in" ref={columnRef}>
-      {props.rootHeader?.({ preview: props.rootMessageId ? messageWork.previews?.get(props.rootMessageId) ?? null : null, taskRow: discussedRow })}
+      {props.rootHeader?.({ preview: props.rootMessageId ? messageWork.previews?.get(props.rootMessageId) ?? null : null, taskRow: discussedRow, firstDay })}
       <section aria-label="Replies to this message" className="project-convo__messages">
         {thread.olderCursor ? <Button variant="quiet" busy={thread.olderBusy} onClick={() => void thread.loadOlder()}>Load earlier replies</Button> : null}
         <ol className="thread__list">{list}

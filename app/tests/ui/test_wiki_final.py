@@ -329,6 +329,10 @@ class WikiFinal(unittest.TestCase):
             for theme in ("light", "dark"):
                 with self.subTest(width=size["width"], theme=theme):
                     page = self.open(size, theme, touch=True)
+                    if LIVE:
+                        # The shared reader's notice arrives with the live connection; measure the settled page, not one
+                        # that grows above the scrolled position after the scroll (it is about 70 px on a phone).
+                        expect(page.locator(".doc-notice[data-live-reader]")).to_be_visible()
                     errors = []
                     page.on("pageerror", lambda error: errors.append(str(error)))
                     self.addCleanup(lambda observed=errors: self.assertEqual(observed, [], "no uncaught reading errors"))

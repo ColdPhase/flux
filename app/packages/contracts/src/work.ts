@@ -38,7 +38,8 @@ export interface TaskDiscussion {
 }
 export const taskCreationUndoPath = (workId: string) => `/api/v1/work/${workId}/creation-undo`;
 export interface UndoTaskCreationCommand { clientCommandId: string; expectedVersion: number }
-export type TaskCreationUndoReason = 'eligible' | 'not_ai_origin' | 'eligibility_unknown' | 'task_used' | 'creation_changed' | 'not_authorized' | 'already_reverted';
+/** `own_creation` (#763 B1): a person's own unchanged, unused task, which the toast after creating it offers to undo. */
+export type TaskCreationUndoReason = 'eligible' | 'own_creation' | 'not_ai_origin' | 'eligibility_unknown' | 'task_used' | 'creation_changed' | 'not_authorized' | 'already_reverted';
 export interface TaskCreationUndoEligibility { eligible: boolean; reason: TaskCreationUndoReason }
 export type TaskLifecycle = { state: 'active' } | { state: 'creation_reverted'; noticeId: string; revertedAt: string; revertedBy: NamedPrincipal };
 export interface UndoTaskCreationResult { work: WorkItem; noticeId: string; clientCommandId: string }

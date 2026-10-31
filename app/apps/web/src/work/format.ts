@@ -48,6 +48,23 @@ export const decisionLine = (decision: Pick<Decision, 'status' | 'supersedes' | 
 
 export const resultLine = (result: Pick<WorkResult, 'finding' | 'createdBy'>) => stateText(resultPieces(result));
 
+/**
+ * What a blocked task waits for, composed the same way on the board, the list and the panel (#763 C1): "Waiting for
+ * <person> · <reason>". A reason alone reads as written when it is a sentence ("Needs the gateway first."), and after
+ * "Waiting for" when it is the thing waited for ("the sensor delivery"); never "Waiting for Needs …".
+ */
+export function blockedParts(item: { blocker: string | null; waitingFor?: { name: string } | null }) {
+  const reason = item.blocker?.trim() || null;
+  const thing = !!reason && /^\p{Ll}/u.test(reason);
+  return { person: item.waitingFor?.name ?? null, reason, thing };
+}
+
+export function blockedLine(item: { blocker: string | null; waitingFor?: { name: string } | null }) {
+  const { person, reason, thing } = blockedParts(item);
+  if (person) return reason ? `Waiting for ${person} · ${reason}` : `Waiting for ${person}`;
+  return reason && thing ? `Waiting for ${reason}` : reason;
+}
+
 /** The first line of a message, for prefilled titles. */
 export function firstLine(text: string, max = 200) {
   const line = text.trim().split('\n', 1)[0] ?? '';

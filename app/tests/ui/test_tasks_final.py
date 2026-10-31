@@ -247,7 +247,7 @@ class TasksFinalJourney(unittest.TestCase):
                 before = self.task(page, "supplier")
                 row.get_by_role("button", name="Open. Set to In progress").click()
                 toast = page.locator(".ui-toast")
-                expect(toast).to_contain_text(f"#{self.numbers['supplier']} in progress")
+                expect(toast).to_contain_text(f"#{self.numbers['supplier']} is now in progress")
                 self.assertEqual(self.task(page, "supplier")["status"], "in_progress")
                 expect(self.row(page, SUPPLIER).locator(".ws-task__glyph .ui-glyph--in_progress")).to_have_count(1)
                 # Undo is a click on the toast button, through the same versioned command.
@@ -434,7 +434,7 @@ class TasksFinalJourney(unittest.TestCase):
         page.reload()
         self.row(page, LABELS).locator(".ws-item").focus()
         page.keyboard.press("3")
-        expect(page.locator(".ui-toast")).to_contain_text(f"#{self.numbers['labels']} blocked")
+        expect(page.locator(".ui-toast")).to_contain_text(f"#{self.numbers['labels']} is now blocked")
         blocked = self.task(page, "labels")
         self.assertEqual((blocked["status"], blocked["blocker"]), ("blocked", None))
         page.keyboard.press("z")
@@ -541,7 +541,7 @@ class TasksFinalJourney(unittest.TestCase):
         page.reload()
         row = self.row(page, SCHOOL)
         row.locator(".ws-task__glyph").tap()
-        expect(page.locator(".ui-toast")).to_contain_text(f"#{self.numbers['school']} in progress")
+        expect(page.locator(".ui-toast")).to_contain_text(f"#{self.numbers['school']} is now in progress")
         self.assertEqual(self.task(page, "school")["status"], "in_progress")
         page.locator(".ui-toast").get_by_role("button", name="Undo").tap()
         expect(page.locator(".ui-toast").filter(has_text="back to open")).to_be_visible()
@@ -563,10 +563,13 @@ class TasksFinalJourney(unittest.TestCase):
         expect(spoken).to_contain_text("In progress.")
         page.keyboard.press("Space")
         expect(self.card(doing, LABELS)).to_be_visible()
-        expect(page.locator(".tb-note--ok")).to_contain_text(f"Moved “{LABELS}” to In progress.")
+        # The move is confirmed in the bottom toast with Undo, so no banner shifts the board (#763 C3).
+        expect(page.locator(".ui-toast").filter(has_text=f"#{self.numbers['labels']} is now in progress").get_by_role("button", name="Undo")).to_be_visible()
+        expect(page.locator(".tb-note--ok")).to_have_count(0)
         self.assertEqual(self.task(page, "labels")["status"], "in_progress")
-        # The mouse still drags a card into another column.
-        expect(page.locator(".tb-note--ok")).to_have_count(0, timeout=10000)  # its removal would shift the board mid-drag
+        # The mouse still drags a card into another column, once its arrival has settled.
+        expect(self.card(doing, LABELS)).not_to_have_class(re.compile("is-arrived"), timeout=5000)
+        page.wait_for_function("() => document.getAnimations().every((a) => a.playState !== 'running' || a.effect?.getComputedTiming().endTime === Infinity)")
         box = self.card(doing, LABELS).bounding_box()
         target = page.get_by_role("region", name="Done", exact=True).locator(".tb-col__cards").bounding_box()
         assert box and target
@@ -653,7 +656,7 @@ class TasksFinalJourney(unittest.TestCase):
                     before = self.task(page, 'supplier')
                     self.row(page, SUPPLIER).get_by_role('button', name='Open. Set to In progress').click()
                     self.wait_status(page, 'supplier', 'in_progress')
-                    toast = page.locator('.ui-toast').filter(has_text=f"#{self.numbers['supplier']} in progress")
+                    toast = page.locator('.ui-toast').filter(has_text=f"#{self.numbers['supplier']} is now in progress")
                     expect(toast.get_by_role('button', name='Undo', exact=True)).to_be_visible()
                     # The person scans the last task while feedback is shown; focusing it must
                     # preserve its title rather than let the overlay conceal a focused row.
@@ -711,7 +714,7 @@ class TasksFinalJourney(unittest.TestCase):
                 # Chromium's Fetch.disable against the state change's follow-up /me request
                 # (microsoft/playwright#41802); that request can disappear before reaching the API.
                 # Later requests pass through above, so only this first PATCH is held.
-                toast = page.locator('.ui-toast').filter(has_text=f"#{self.numbers['supplier']} in progress")
+                toast = page.locator('.ui-toast').filter(has_text=f"#{self.numbers['supplier']} is now in progress")
                 expect(toast).to_be_visible()
                 page.wait_for_timeout(300)
                 expect(middle).to_be_focused()

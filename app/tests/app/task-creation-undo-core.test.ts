@@ -43,3 +43,15 @@ test('every refusal reason is bounded and decided before authority', () => {
   // Negative control: the unchanged facts are eligible, so each refusal above comes from its one change.
   assert.equal(creationUndoEligibility(nativeTask, agent, true).eligible, true);
 });
+
+test('a person may undo only their own unchanged, unused task (#763 B1); everyone else reads not_ai_origin', () => {
+  const human = { kind: 'human' as const, id: 'creator' };
+  const other = { kind: 'human' as const, id: 'someone-else' };
+  const own: TaskCreationUndoFacts = { ...nativeTask, origin: 'human', createdBy: human, owner: other, creatorAgentOwnerUserId: null };
+  assert.deepEqual(creationUndoEligibility(own, human, true), { eligible: true, reason: 'own_creation' });
+  assert.deepEqual(creationUndoEligibility(own, other, true), { eligible: false, reason: 'not_ai_origin' }, 'its owner is not its creator');
+  assert.deepEqual(creationUndoEligibility(own, agent, true), { eligible: false, reason: 'not_ai_origin' });
+  assert.deepEqual(creationUndoEligibility({ ...own, used: true }, human, true), { eligible: false, reason: 'task_used' });
+  assert.deepEqual(creationUndoEligibility({ ...own, version: 2 }, human, true), { eligible: false, reason: 'creation_changed' });
+  assert.deepEqual(creationUndoEligibility(own, human, false), { eligible: false, reason: 'not_authorized' });
+});

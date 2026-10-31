@@ -9,7 +9,7 @@ import { WikiIcon } from './WikiParts';
 
 // The reading side of the wiki as drawn (F-026, #354): who edited the page, the "On this page"
 // outline from its headings, and the references the page holds, a task as its glyph, #number and
-// word, and a decision standing alone as a card. The page text itself is the server's sanitized
+// word, and a decision standing alone as a live card with its short reason (F-034). The page text itself is the server's sanitized
 // HTML; the references are read through the same bounded read as the conversation's.
 
 function Face({ who }: { who: NamedPrincipal }) {
@@ -171,6 +171,8 @@ export function useProse(el: HTMLElement | null, html: string, projectId: string
 
   return {
     headings,
+    /** Decision ids the page shows as cards (F-034), so the lists under the page need not repeat them. */
+    cards: new Set(marks.flatMap((mark) => (mark.kind === 'decision' ? [mark.row.id] : []))),
     marks: marks.map((mark) => createPortal(<RefMark mark={mark} owners={owners} />, mark.host, mark.key)),
   };
 }
@@ -194,6 +196,7 @@ function RefMark({ mark, owners }: { mark: Mark; owners: AgentOwners }) {
       <StatusGlyph status={DECISION_GLYPH[row.status]} size={18} className="doc-decision__ic" />
       <span className="doc-decision__t"><b><Morph value={row.status}>{DECISION_WORD[row.status]}</Morph></b><span className="doc-decision__title"><span className="doc-decision__sep"> · </span>{row.title}</span></span>
       <span className="doc-decision__meta">{shortDate(when)} · <WhoName who={who} owners={owners} /></span>
+      {row.reason ? <span className="doc-decision__reason">{row.reason}</span> : null}
     </>
   );
 }

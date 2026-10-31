@@ -85,6 +85,24 @@ function headings(lines: string[]) {
   return found;
 }
 
+const CARD_LINE = /^\[(?:\\.|[^\]\\])*\]\(flux:decision\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\)\s*$/i;
+
+/**
+ * F-034: a decision card (a decision reference standing on its own line, outside fenced code) after a section's
+ * `Source:` line is never part of that section, so rewriting the section keeps the cards that follow it.
+ */
+function cardAfter(lines: string[], from: number, end: number) {
+  let fence: string | null = null;
+  for (let at = from + 1; at < end; at++) {
+    const run = FENCE.exec(lines[at]!)?.[1];
+    if (run) {
+      if (!fence) fence = run;
+      else if (run[0] === fence[0] && run.length >= fence.length) fence = null;
+    } else if (!fence && CARD_LINE.test(lines[at]!)) return at;
+  }
+  return end;
+}
+
 /**
  * Adds the section of a result or decision to a doc text, or rewrites the section that already
  * cites it (its `Source:` line names the same reference). Earlier text stays in the earlier
@@ -101,10 +119,50 @@ export function upsertSection(text: string, source: DocSectionSource, section: s
     const kept = text.replace(/\s+$/, '');
     return { body: kept ? `${kept}\n\n${sectionLines.join('\n')}\n` : `${sectionLines.join('\n')}\n`, replaced: false };
   }
-  const end = all.find((heading) => heading.index > start.index && heading.level <= start.level)?.index ?? lines.length;
+  const next = all.find((heading) => heading.index > start.index && heading.level <= start.level)?.index ?? lines.length;
+  const end = cardAfter(lines, markerAt, next);
   const before = lines.slice(0, start.index);
   const after = lines.slice(end);
   // Only the section's own lines change; everything around it is kept byte for byte.
   const joined = [...before, ...sectionLines, ...(after.length ? ['', ...after] : [''])].join('\n');
   return { body: joined, replaced: true };
+}
+
+/** Escapes headings inside quoted text so a section keeps its shape. */
+export const quotedBlock = (markdown: string) => markdown.trim().split('\n').map((line) => (/^\s{0,3}#{1,6}\s/.test(line) ? `\\${line.trimStart()}` : line)).join('\n');
+
+/**
+ * F-034: the one line a decision is in a page, a reference standing alone, which the reader shows as the live
+ * decision card. Never a copy of its text.
+ */
+export function decisionReferenceLine(title: string, id: string) {
+  return `[${literal(title) || 'Decision'}](${docRef('decision', id)})`;
+}
+
+/** Whether the text already holds a decision's reference on a line of its own (outside fenced code). */
+export function hasDecisionReference(text: string, id: string) {
+  const marker = `](${docRef('decision', id)})`;
+  let fence: string | null = null;
+  for (const line of text.split('\n')) {
+    const run = FENCE.exec(line)?.[1];
+    if (run) {
+      if (!fence) fence = run;
+      else if (run[0] === fence[0] && run.length >= fence.length) fence = null;
+      continue;
+    }
+    const trimmed = line.trim();
+    if (!fence && trimmed.endsWith(marker) && /^\[(?:\\.|[^\]\\])*\]$/.test(trimmed.slice(0, -marker.length + 1))) return true;
+  }
+  return false;
+}
+
+/**
+ * "Add to docs" for a decision (F-034): nothing when its reference line is already there; otherwise the line goes at
+ * the end, after a blank line, so it stands alone and the reader shows it as the card.
+ */
+export function placeDecisionReference(text: string, id: string, title: string): { body: string; replaced: boolean } {
+  if (hasDecisionReference(text, id)) return { body: text, replaced: false };
+  const kept = text.replace(/\s+$/, '');
+  const line = decisionReferenceLine(title, id);
+  return { body: kept ? `${kept}\n\n${line}\n` : `${line}\n`, replaced: false };
 }
