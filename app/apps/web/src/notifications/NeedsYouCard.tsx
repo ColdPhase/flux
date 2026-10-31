@@ -114,8 +114,10 @@ export function WaitingLine({ item }: { item: NeedsYouItem }) {
  * "Needs you", the reason, what it rests on, then Accept / Not now / Discuss. The tray after the card
  * holds Not now and Done for a swipe left on a phone; on a computer they are quiet buttons.
  */
-export function NeedsYouCard({ item, variant = 'card', selected = false, compact = false, onSelect, handlers, menuOpen, onMenuOpen, children }: {
+export function NeedsYouCard({ item, variant = 'card', selected = false, compact = false, lead = true, onSelect, handlers, menuOpen, onMenuOpen, children }: {
   item: NeedsYouItem; variant?: 'card' | 'row'; selected?: boolean;
+  /** A row that carries the screen's one inverted primary (direction C, #763): Home's first row; the rest use text buttons. */
+  lead?: boolean;
   /** An Inbox card that is not the selected one: one line with its one action, as drawn (desktop-inbox, #763 LD-1). */
   compact?: boolean; onSelect?: () => void; handlers: CardHandlers;
   menuOpen: boolean; onMenuOpen: (open: boolean) => void; children?: ReactNode;
@@ -138,7 +140,7 @@ export function NeedsYouCard({ item, variant = 'card', selected = false, compact
   // An agent's question names the task it is about, as drawn ("Claude Code · Agent · on #8").
   const askedMeta = asked ? [asked.task ? `on #${asked.task.number}` : null, project].filter(Boolean).join(' · ') : null;
   const answers = asked && handlers.answer ? asked.options.map((option, index) => (
-    <Button key={option} variant="secondary" className="nyc__answer" onClick={() => handlers.answer?.(item, index)}>{option}</Button>
+    <Button key={option} variant="outline" className="nyc__answer" onClick={() => handlers.answer?.(item, index)}>{option}</Button>
   )) : null;
 
   // A compact card keeps one quiet action on its right; the selected card alone carries the inverted primary.
@@ -236,9 +238,9 @@ export function NeedsYouCard({ item, variant = 'card', selected = false, compact
           </div>
           {single}
           {variant === 'row' ? <div className="nyc__rowactions">{decision ? <>
-            <Button variant="primary" onClick={() => handlers.accept(item)}>Accept</Button>
+            <Button variant={lead ? 'primary' : 'secondary'} onClick={() => handlers.accept(item)}>Accept</Button>
             <NotNowButton buttonRef={notNow} open={menuOpen} onToggle={() => onMenuOpen(!menuOpen)} /></> : answers ? answers : item.proposal ? <Button variant="secondary" onClick={() => handlers.open(item)}>Review</Button> : item.assistantChanges
-              ? <Button variant="primary" onClick={() => handlers.applyChanges(item)}>{item.assistantChanges.verb}</Button>
+              ? <Button variant={lead ? 'primary' : 'secondary'} onClick={() => handlers.applyChanges(item)}>{item.assistantChanges.verb}</Button>
               : <Button variant="secondary" onClick={() => handlers.open(item)}>{item.assistantRequestIdentity ? 'Review' : item.kind === 'blocked' ? 'Open task' : item.reason === 'invitation' ? 'Open' : 'Reply'}</Button>}</div> : null}
           {children}
         </div>

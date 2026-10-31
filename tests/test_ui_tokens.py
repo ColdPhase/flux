@@ -84,5 +84,31 @@ class TypeUsesTheRamp(unittest.TestCase):
         self.assertIn("var(--fs-title)", sizes[".top__title h1"])
 
 
+class QuietButtons(unittest.TestCase):
+    """Direction C "quiet, one accent per screen" (founder, 2026-10-31, #763; docs/design/final/README.md §2):
+    buttons are flat, with radius 10 and no gradient or drop shadow."""
+
+    RETIRED = ("--grad-btn", "--sh-btn", "--sh-pri")
+
+    def test_shared_button_rules_have_no_shadow_or_gradient(self) -> None:
+        css = without_comments((UI / "ui.css").read_text(encoding="utf-8"))
+        found = [selector.strip() for selector, body in re.findall(r"([^{}]*\.ui-btn[^{}]*)\{([^}]*)\}", css)
+                 if re.search(r"box-shadow|gradient|--grad-", body)]
+        self.assertEqual(found, [])
+
+    def test_buttons_use_the_10px_radius(self) -> None:
+        tokens = without_comments((UI / "tokens.css").read_text(encoding="utf-8"))
+        self.assertRegex(tokens, r"--r-btn:\s*10px;")
+        css = without_comments((UI / "ui.css").read_text(encoding="utf-8"))
+        base = re.search(r"(?m)^\.ui-btn \{([^}]*)\}", css)
+        self.assertIsNotNone(base)
+        self.assertIn("border-radius: var(--r-btn)", base.group(1))
+
+    def test_retired_button_tokens_are_gone(self) -> None:
+        found = [f"{path.relative_to(WEB)}: {token}" for path in sorted(WEB.rglob("*.css"))
+                 for token in self.RETIRED if token in path.read_text(encoding="utf-8")]
+        self.assertEqual(found, [])
+
+
 if __name__ == "__main__":
     unittest.main()

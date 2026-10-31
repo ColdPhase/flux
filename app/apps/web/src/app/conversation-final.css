@@ -55,15 +55,16 @@ button.convo-notice__src:focus-visible { outline: 2px solid var(--t1); outline-o
 .convo-since__t:hover { text-decoration: underline; text-underline-offset: 3px; }
 .convo-since__t:focus-visible { outline: 2px solid var(--t1); outline-offset: 2px; border-radius: 4px; }
 /* "What matters" is the pill's primary (#763 H11-2); Jump is the quiet second. */
-.convo-since__recap { position: relative; flex: none; display: inline-flex; align-items: center; height: 28px; padding: 0 12px; border-radius: 999px; background-color: var(--inv);
-  background-image: var(--grad-inv); color: var(--oninv); font: inherit; font-size: var(--fs-sm); font-weight: 600; box-shadow: var(--sh-pri); cursor: pointer; }
+.convo-since__recap { position: relative; flex: none; display: inline-flex; align-items: center; height: 28px; padding: 0 12px; border-radius: 999px; background: var(--inv);
+  color: var(--oninv); font: inherit; font-size: var(--fs-sm); font-weight: 600; cursor: pointer; }
 .convo-since__recap::after { content: ""; position: absolute; inset: -8px -2px; }
 .convo-since__recap:focus-visible { outline: 2px solid var(--t1); outline-offset: 2px; }
 @media (max-width: 640px) { .convo-since__recap { display: none; } }
 .convo-since__t b { font-weight: 600; }
-.convo-since__jump { position: relative; flex: none; display: inline-flex; align-items: center; gap: 4px; height: 28px; padding: 0 10px 0 12px; border-radius: 999px; background: var(--sub);
-  color: var(--t1); font-size: var(--fs-sm); font-weight: 600; }
-@media (max-width: 640px) { .convo-since__jump { background-color: var(--inv); background-image: var(--grad-inv); color: var(--oninv); } }
+.convo-since__jump { position: relative; flex: none; display: inline-flex; align-items: center; gap: 4px; height: 28px; padding: 0 10px 0 12px; border-radius: 999px; background: transparent;
+  color: var(--t2); font-size: var(--fs-sm); font-weight: 600; }
+.convo-since__jump:hover { background: var(--hov); color: var(--t1); }
+@media (max-width: 640px) { .convo-since__jump { background: var(--inv); color: var(--oninv); } .convo-since__jump:hover { background: var(--inv-hov); color: var(--oninv); } }
 .convo-since__jump::after { content: ""; position: absolute; inset: -8px -2px; }
 .convo-since__jump:focus-visible { outline: 2px solid var(--t1); outline-offset: 2px; }
 .convo-since__x { flex: none; width: 28px; height: 28px; }

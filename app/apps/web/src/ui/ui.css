@@ -57,27 +57,32 @@ svg { flex: none; }
 }
 
 /* ---------- Button ----------
-   Soft volume (F-026): pills. The plain button is quiet; secondary is the raised white button;
-   primary is the inverted one. Pressing scales to .97 and springs back. */
+   Direction C "quiet, one accent per screen" (founder, 2026-10-31, #763; docs/design/final/README.md §2).
+   Buttons are flat, with radius 10 and no gradient or shadow. At most one primary (inverted) per screen or
+   region. Secondary is a text button; outline is a choice among a few options; danger is outlined in a
+   stronger line so a destructive action stays recognisable. Pressing scales to .97 and springs back. */
 .ui-btn {
   display: inline-flex; align-items: center; justify-content: center; gap: 6px;
-  min-height: var(--ctl); padding: 0 14px; border-radius: var(--r-pill);
-  font-size: var(--fs-base); font-weight: 500; line-height: 1.2; color: var(--t2); white-space: nowrap; text-decoration: none;
-  transition: var(--tr);
+  min-height: var(--ctl); padding: 0 14px; border-radius: var(--r-btn);
+  background: transparent; font-size: var(--fs-base); font-weight: 500; line-height: 1.2; color: var(--t2);
+  white-space: nowrap; text-decoration: none; transition: var(--tr);
 }
 .ui-btn:hover { background: var(--hov); color: var(--t1); }
 .ui-btn:disabled, .ui-btn[aria-disabled="true"] { cursor: default; }
 .ui-btn:disabled { color: var(--t3); background: transparent; }
-.ui-btn--primary { background-color: var(--inv); background-image: var(--grad-inv); color: var(--oninv); box-shadow: var(--sh-pri); }
-.ui-btn--primary:hover { background-color: var(--inv); background-image: var(--grad-inv); color: var(--oninv); filter: brightness(1.08); }
-.ui-btn--primary:disabled { background: var(--sub); color: var(--t2); box-shadow: none; filter: none; }
-.ui-btn--secondary { background-color: var(--el); background-image: var(--grad-btn); box-shadow: var(--sh-btn); color: var(--t1); }
-.ui-btn--secondary:hover { background-color: var(--el); background-image: var(--grad-btn); color: var(--t1); filter: brightness(.98); }
+.ui-btn--primary { background: var(--inv); color: var(--oninv); }
+.ui-btn--primary:hover { background: var(--inv-hov); color: var(--oninv); }
+.ui-btn--primary:disabled { background: var(--sub); color: var(--t2); }
+.ui-btn--outline { padding: 0 11px; border: 1px solid var(--choice); color: var(--t1); }
+.ui-btn--outline[aria-pressed="true"], .ui-btn--outline[aria-checked="true"] { border-color: var(--t1); }
+/* A composer's Send: a soft fill, never the screen's inverted primary. */
+.ui-btn--soft { background: var(--own); color: var(--t1); }
+.ui-btn--soft:hover { background: var(--hov); }
 .ui-btn--quiet { color: var(--t3); }
 .ui-btn--link { padding: 0 6px; color: var(--t1); text-decoration: underline; text-underline-offset: 3px; text-decoration-thickness: 1px; }
 .ui-btn--link:hover { background: transparent; text-decoration-thickness: 2px; }
-.ui-btn--danger { color: var(--t1); }
-.ui-btn--danger:hover { background: var(--hov); color: var(--t1); }
+.ui-btn--danger { padding: 0 13px; border: 1px solid var(--t2); color: var(--t1); }
+.ui-btn--danger:hover { background: var(--hov); border-color: var(--t1); color: var(--t1); }
 .ui-btn--lg { min-height: var(--ctl-lg); padding: 0 18px; font-size: var(--fs-base); }
 /* Small actions in a row (Spokój rule 1): the one control height, 44px on a touch screen. */
 .ui-btn--sm { min-height: var(--ctl); padding: 0 12px; font-size: var(--fs-sm); }
