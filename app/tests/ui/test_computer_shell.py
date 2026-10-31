@@ -213,17 +213,17 @@ class ComputerShell(unittest.TestCase):
     def test_05c_z_undoes_the_newest_visible_undo_toast_and_does_nothing_without_one(self) -> None:
         self.ensure_account()
         page = self.page()
+        # The task is made outside this page: a task made in the window has its own Undo toast (#768), and Z would take it back.
+        me = json.loads(page.request.get(f"{ORIGIN}/api/v1/me").text())["user"]["id"]
+        self.api(page, "POST", f"/api/v1/projects/{self.ids['projects'][0]}/work", {"title": "Order the soil probes", "owner": {"kind": "human", "id": me}})
         page.goto(f"/projects/{self.ids['projects'][0]}/tasks")
         expect(self.sidebar(page).get_by_role("button", name=re.compile("^New"))).to_be_visible()
-        page.locator("body").press("c")
-        window = page.get_by_role("dialog", name="New task")
-        expect(window.get_by_label("Title", exact=True)).to_be_focused()
-        window.get_by_label("Title", exact=True).fill("Order the soil probes")
-        window.get_by_role("button", name=re.compile("^Create task")).click()
-        expect(window).to_have_count(0)
-        page.locator("body").press("z")
-        expect(page.locator(".ui-toast").filter(has_text="back to")).to_have_count(0)
         row = page.get_by_role("button", name=re.compile("Order the soil probes")).first
+        expect(row).to_be_visible()
+        # Without an Undo toast Z does nothing.
+        page.locator("body").press("z")
+        expect(page.locator(".ui-toast")).to_have_count(0)
+        expect(row).to_be_visible()
         row.focus()
         page.keyboard.press("4")
         toast = page.locator(".ui-toast").filter(has_text="done")

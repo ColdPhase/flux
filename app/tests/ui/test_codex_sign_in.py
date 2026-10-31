@@ -211,7 +211,7 @@ class CodexSignIn(unittest.TestCase):
         for dark in (False, True):
             page, _ = self.stubbed(phone=True, script=[], status=SIGNED_IN, dark=dark)
             page.goto("/settings/agents")
-            block = page.get_by_label("Codex in Flux")
+            block = page.get_by_label("Codex in Flux", exact=True)
             expect(block).to_contain_text("Codex in Flux · signed in")
             expect(block).to_contain_text("ChatGPT · your subscription")
             expect(block.get_by_role("button", name="Sign out of ChatGPT")).to_be_visible()

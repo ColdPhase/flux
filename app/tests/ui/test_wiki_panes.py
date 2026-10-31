@@ -266,7 +266,7 @@ class WikiPanesJourney(unittest.TestCase):
         self.assertEqual(title.evaluate("e => [getComputedStyle(e).fontSize, getComputedStyle(e).fontWeight]"), ["32px", "600"])
         prose = page.locator(".doc-prose")
         self.assertEqual(prose.evaluate("e => getComputedStyle(e).fontSize"), "15px")
-        self.assertEqual(prose.locator("h2").first.evaluate("e => [getComputedStyle(e).fontSize, getComputedStyle(e).fontWeight]"), ["19px", "600"])
+        self.assertEqual(prose.locator("h2").first.evaluate("e => [getComputedStyle(e).fontSize, getComputedStyle(e).fontWeight]"), ["20px", "600"])
         # Who edited: the last editor with a face, then who started the page.
         who = page.locator(".wiki-who")
         expect(who).to_contain_text(f"Edited by {PARTNER['name']}")

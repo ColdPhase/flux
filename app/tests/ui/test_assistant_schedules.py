@@ -162,7 +162,8 @@ class AssistantSchedules(unittest.TestCase):
         page = self.page(signed_in=False)
         page.goto("/sign-up")
         page.get_by_label("Name").fill(ADA["name"])
-        page.get_by_label("Email").fill(ADA["email"])
+        # test_assistant_reactions borrows this test in the same run: each class signs up its own Ada.
+        page.get_by_label("Email").fill(ADA["email"].replace("@", f"-{type(self).__name__.lower()}@"))
         page.get_by_label("Password").fill(PASSWORD)
         page.get_by_role("button", name="Create account").click()
         expect(page.get_by_role("heading", level=1, name="Home")).to_be_visible()
