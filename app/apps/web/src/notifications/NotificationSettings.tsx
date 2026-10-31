@@ -16,7 +16,7 @@ import { clock } from '../app/focus';
 import { SwitchRow } from '../app/SettingsHome';
 import { SummaryByAssistant } from '../assistant/SummaryByAssistant';
 import { NotificationsButton } from '../pwa';
-import { getPushState } from '../pwa/push';
+import { getPushState, pushOnServer } from '../pwa/push';
 import { Button, ErrorState, Icon, Spinner, useToast, Select, Option, OptionGroup } from '../ui';
 import { PAUSE_CHANGED, addAddress, announcePauseChange, announcePauseUncertainty, getPreferences, removeAddress, resendVerification, setMute, unsubscribe, updatePreferences, verifyAddress, type PauseChange } from './api';
 import { captureNotificationSession, confirmedNotificationPauseSince, isCurrentNotificationSession, notificationPauseRevision, notificationPauseUncertain } from './session';
@@ -131,11 +131,16 @@ function AccountNotificationSettings() {
     window.addEventListener(PAUSE_CHANGED, changed);
     return () => window.removeEventListener(PAUSE_CHANGED, changed);
   }, [ownerId]);
-  // Push cannot reach anyone when the server has no VAPID keys or the browser has no push.
+  // Push cannot reach anyone when the server has no VAPID keys or the browser has no push. The server's reason comes
+  // first: a channel this server lacks is not offered at all, whatever the browser (#763 SG-3).
+  const [pushServerOff, setPushServerOff] = useState(false);
   const [pushOff, setPushOff] = useState<string | null>(null);
   useEffect(() => {
-    getPushState().then((push) => { if (mounted.current) setPushOff(push.state === 'unavailable' ? 'Push is not set up on this Flux server, so the Push column has no effect.'
-      : push.state === 'unsupported' ? 'This browser cannot receive push; choices apply to your other devices.' : null); }, () => undefined);
+    pushOnServer().then((on) => {
+      if (!mounted.current) return;
+      setPushServerOff(!on);
+      if (on) getPushState().then((push) => { if (mounted.current) setPushOff(push.state === 'unsupported' ? 'This browser cannot receive push; choices apply to your other devices.' : null); }, () => undefined);
+    }, () => undefined);
   }, []);
 
   // Saves run one after another in the order they were made, each numbered. Only the answer to
@@ -259,6 +264,11 @@ function AccountNotificationSettings() {
     (current) => ({ ...current, channels: { ...current.channels, [reason]: { ...current.channels[reason], [channel]: on } as ChannelChoice } }),
   );
   const emailOff = !prefs.email.available || prefs.email.destination === 'none';
+  // Only the channels this server has (#763 SG-3).
+  const columns = COLUMNS.filter((column) => !(column.id === 'push' && pushServerOff) && !(column.id === 'email' && !prefs.email.available));
+  const missing = pushServerOff && !prefs.email.available ? 'Push and email aren’t set up on this Flux server, so everything waits in your Inbox.'
+    : pushServerOff ? 'Push isn’t set up on this Flux server. Your inbox always works.'
+      : !prefs.email.available ? 'Email isn’t set up on this Flux server. Your inbox and push still work.' : '';
   const muted = new Set(prefs.muted.map((place) => `${place.type}:${place.id}`));
   const mutable = [
     ...projects.map((project) => ({ type: 'project' as const, id: project.id, name: project.name })),
@@ -327,18 +337,20 @@ function AccountNotificationSettings() {
         <MorningSummaryRow prefs={prefs} onChange={change} feedback={workingFeedback('morningSummary')} />
       </div>
 
+      {/* Channels this server lacks are not offered: one status line says so, and their columns and sections are gone (#763 SG-3). */}
+      {missing ? <p className="nset__problem nset__server" role="note"><Icon name="bell" size={14} /><span>{missing}</span></p> : null}
       <section className="nset__sec" aria-labelledby={ids.what}>
-        <h3 className="sset-sec" id={ids.what}>Push and email for each kind</h3>
+        <h3 className="sset-sec" id={ids.what}>{columns.length === COLUMNS.length ? 'Push and email for each kind' : columns.some((column) => column.id === 'push') ? 'Push for each kind' : columns.some((column) => column.id === 'email') ? 'Email for each kind' : 'Each kind'}</h3>
         {pushOff ? <p className="nset__problem" role="note"><Icon name="alert" size={14} /><span>{pushOff} Your inbox always works.</span></p> : null}
         <div className="sset-card nset__matrix">
           <table className="nset__table">
-            <thead><tr><th scope="col"><span className="ui-vh">Reason</span></th>{COLUMNS.map((column) => <th key={column.id} scope="col">{column.label}</th>)}</tr></thead>
+            <thead><tr><th scope="col"><span className="ui-vh">Reason</span></th>{columns.map((column) => <th key={column.id} scope="col">{column.label}</th>)}</tr></thead>
             <tbody>
               {NOTIFICATION_REASONS.map((reason) => (
                 <Fragment key={reason}><tr>
                   <th scope="row"><b>{ROWS[reason].label}</b><span>{ROWS[reason].hint}</span></th>
-                  {COLUMNS.map((column) => {
-                    const disabled = (column.id === 'email' && emailOff) || (column.id === 'push' && !!pushOff?.startsWith('Push is not'));
+                  {columns.map((column) => {
+                    const disabled = column.id === 'email' && emailOff;
                     return (
                       <td key={column.id}>
                         <label className={`nset__check${disabled ? ' is-off' : ''}`}>
@@ -349,30 +361,28 @@ function AccountNotificationSettings() {
                       </td>
                     );
                   })}
-                </tr>{refreshWarning === 'settings' && feedbackArea === reason ? <tr><td colSpan={4}>{workingFeedback(reason)}</td></tr> : null}</Fragment>
+                </tr>{refreshWarning === 'settings' && feedbackArea === reason ? <tr><td colSpan={columns.length + 1}>{workingFeedback(reason)}</td></tr> : null}</Fragment>
               ))}
             </tbody>
           </table>
         </div>
-        <p className="sset-note">{emailOff
-          ? prefs.email.available ? 'Email is off: you chose in-app only below.' : 'Email delivery unavailable on this server, so only the inbox and push are used.'
-          : 'Emails never contain messages or project details, only a link to open in Flux.'}</p>
-        <div className="sset-card sset-gap nset__device"><span className="sset-row__t"><Icon name="bell" size={14} />Push on this device</span><NotificationsButton /></div>
+        {prefs.email.available ? <p className="sset-note">{emailOff ? 'Email is off: you chose in-app only below.' : 'Emails never contain messages or project details, only a link to open in Flux.'}</p> : null}
+        {pushServerOff ? null : <div className="sset-card sset-gap nset__device"><span className="sset-row__t"><Icon name="bell" size={14} />Push on this device</span><NotificationsButton /></div>}
       </section>
 
-      <section className="nset__sec" aria-labelledby={ids.email}>
-        <h3 ref={emailHeadingRef} className="sset-sec" id={ids.email}>Where email goes</h3>
-        {emailNoticeAtHead ? emailReadNotice : null}
-        {!prefs.email.available ? (
-          <p className="nset__problem" role="note"><Icon name="alert" size={14} /><span><b>Email delivery unavailable.</b> This Flux server has no outgoing mail set up, so nothing is emailed. Your inbox and push still work; an administrator can configure SMTP.</span></p>
-        ) : prefs.email.lastFailureAt ? (
-          <p className="nset__problem" role="note"><Icon name="alert" size={14} /><span><b>A recent notification email could not be delivered.</b> Flux will retry for a while. Everything is in your inbox.</span></p>
-        ) : null}
-        <div className="sset-card nset__box">
-          <EmailDestinationChoice prefs={prefs} onChange={(destination) => change({ emailDestination: destination }, (current) => ({ ...current, email: { ...current.email, destination } }))} />
-          <ExtraAddress prefs={prefs} save={(run, done, onError, address) => save(run, done, onError, 'email', undefined, address)} readNotice={emailNoticeAtHead ? null : emailReadNotice} />
-        </div>
-      </section>
+      {prefs.email.available ? (
+        <section className="nset__sec" aria-labelledby={ids.email}>
+          <h3 ref={emailHeadingRef} className="sset-sec" id={ids.email}>Where email goes</h3>
+          {emailNoticeAtHead ? emailReadNotice : null}
+          {prefs.email.lastFailureAt ? (
+            <p className="nset__problem" role="note"><Icon name="alert" size={14} /><span><b>A recent notification email could not be delivered.</b> Flux will retry for a while. Everything is in your inbox.</span></p>
+          ) : null}
+          <div className="sset-card nset__box">
+            <EmailDestinationChoice prefs={prefs} onChange={(destination) => change({ emailDestination: destination }, (current) => ({ ...current, email: { ...current.email, destination } }))} />
+            <ExtraAddress prefs={prefs} save={(run, done, onError, address) => save(run, done, onError, 'email', undefined, address)} readNotice={emailNoticeAtHead ? null : emailReadNotice} />
+          </div>
+        </section>
+      ) : null}
 
       <MutedPlaces headingId={ids.mute} ownerId={ownerId} muted={prefs.muted}
         places={mutable} pending={pendingMute} receipt={activeMuteReceipt} onMute={onMute} onUnmute={onUnmute} onRetry={load} />
@@ -592,10 +602,12 @@ function QuietHoursRow({ prefs, onChange, feedback }: { prefs: NotificationPrefe
   const zones = useMemo(() => timeZones(quiet.timeZone), [quiet.timeZone]);
   const set = (next: Partial<typeof quiet>) => onChange({ quietHours: next }, (current) => ({ ...current, quietHours: { ...current.quietHours, ...next } }));
   const suggested = browserTimeZone();
+  // While off, the line names the zone turning it on will use, this browser's, not the stored UTC default (#763 SG-5).
+  const shownZone = !quiet.enabled && quiet.timeZone === 'UTC' ? suggested : quiet.timeZone;
   return (
     <div className="nset__group">
       <SwitchRow label="Quiet hours" checked={quiet.enabled}
-        detail={`${shortClock(quiet.start)} – ${shortClock(quiet.end)} · ${zoneLabel(quiet.timeZone)}`}
+        detail={`${shortClock(quiet.start)} – ${shortClock(quiet.end)} · ${zoneLabel(shownZone)}`}
         onChange={(on) => set(on && quiet.timeZone === 'UTC' && suggested !== 'UTC' ? { enabled: true, timeZone: suggested } : { enabled: on })} />
       {feedback}
       {quiet.enabled ? (

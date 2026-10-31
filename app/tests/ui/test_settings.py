@@ -26,7 +26,7 @@ if UI_BROWSER not in ("chromium", "webkit"):
 PASSWORD = "settings stay calm and findable"
 STAMP = int(time.time() * 1000)
 NAME, EMAIL = "Ada Kowalska", f"ada.settings+{STAMP}@example.test"
-SECTIONS = ["Account", "Appearance", "Notifications", "Agents and AI", "Keyboard shortcuts"]
+SECTIONS = ["Account", "People", "Appearance", "Notifications", "Agents and AI", "Keyboard shortcuts"]
 # The one sentence Agents and AI and the Background suggestions page use when the server does not run them (#513).
 BACKGROUND_OFF = "Off on this Flux server · not available until your admin turns it on"
 # Guide §4, in order: every shortcut and its action.
@@ -297,8 +297,7 @@ class SettingsJourney(unittest.TestCase):
             if path == "/settings/notifications":
                 # This route includes two async push-status reads. Finish the rendered
                 # state before the next hard navigation destroys its document in WebKit.
-                expect(page.get_by_text("Push is not set up on this Flux server, so the Push column has no effect. Your inbox always works.", exact=True)).to_be_visible()
-                expect(page.get_by_text("Notifications are not set up on this Flux server. New activity always appears in your Inbox.", exact=True)).to_be_visible()
+                expect(page.get_by_text("Push isn’t set up on this Flux server. Your inbox always works.", exact=True)).to_be_visible()
         expect(page.get_by_role("heading", name="This link did not work")).to_be_visible()
         # Back and history are kept across sections.
         page.goto("/settings/shortcuts")
@@ -334,7 +333,7 @@ class SettingsJourney(unittest.TestCase):
             # shortcuts show only with a keyboard, so not here. Agents and AI holds the assistant and background.
             expect(page.get_by_role("link", name=re.compile(f"^{NAME}"))).to_have_attribute("href", "/settings/account")
             rows = [text.split("\n")[0] for text in page.locator("ul.sset-card a.sset-row").all_inner_texts()]
-            self.assertEqual(rows, ["Appearance", "Notifications", "Agents and AI"])
+            self.assertEqual(rows, ["People", "Appearance", "Notifications", "Agents and AI"])
             expect(page.get_by_role("link", name=re.compile("^Keyboard shortcuts"))).to_have_count(0)
             expect(page.get_by_role("button", name=re.compile("^Sign out"))).to_be_visible()
             self.phone_targets(page)

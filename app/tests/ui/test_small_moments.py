@@ -208,6 +208,33 @@ class SmallMomentsJourney(unittest.TestCase):
                 if not reduced:
                     shot(page, "352-splash-phone")
 
+    def test_05b_the_dark_splash_is_dark_before_any_stylesheet_arrives(self) -> None:
+        """#763 FR-3: with the OS in dark (or Flux set to Dark) and no stylesheet yet, the page and the splash are dark
+        and the logo tile is light on them, from the inline critical CSS alone."""
+        self.ensure_account()
+        for stored in (None, "dark"):
+            with self.subTest(stored=stored):
+                page = self.page(phone=True, scheme="dark" if stored is None else "light", signed_in=False)
+                if stored:
+                    page.add_init_script(f"try {{ localStorage.setItem('flux.theme', '{stored}') }} catch (e) {{}}")
+                page.route(re.compile(r"\.(js|css)(\?.*)?$"), lambda route: route.abort())
+                page.goto("/", wait_until="commit")
+                splash = page.locator(".boot--moment")
+                expect(splash).to_be_visible()
+                colours = page.evaluate("""() => ({
+                  page: getComputedStyle(document.documentElement).backgroundColor,
+                  splash: getComputedStyle(document.querySelector('.boot--moment')).backgroundColor,
+                  tile: getComputedStyle(document.querySelector('.boot__tile')).fill,
+                })""")
+                self.assertEqual(colours["page"], "rgb(17, 17, 17)", colours)
+                self.assertEqual(colours["splash"], "rgb(17, 17, 17)", colours)
+                self.assertEqual(colours["tile"], "rgb(240, 240, 240)", colours)
+        # Light stays light.
+        page = self.page(phone=True, scheme="light", signed_in=False)
+        page.route(re.compile(r"\.(js|css)(\?.*)?$"), lambda route: route.abort())
+        page.goto("/", wait_until="commit")
+        self.assertEqual(page.evaluate("getComputedStyle(document.querySelector('.boot--moment')).backgroundColor"), "rgb(244, 244, 245)")
+
     def test_06_closing_a_task_winks_in_one_undo_toast_from_every_surface(self) -> None:
         self.ensure_account()
         project = self.ids["project"]

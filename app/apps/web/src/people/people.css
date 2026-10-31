@@ -81,3 +81,7 @@
 .people__ai-status { display: flex; align-items: flex-start; gap: 6px; margin: 8px 0 0; font-size: var(--fs-sm) !important; color: var(--t2) !important; }
 .people__ai-status:empty { display: none; }
 .people__ai-status svg { flex: none; margin-top: 2px; color: var(--t1); }
+/* Someone new to Flux (#763 PE-2): the link shows only where the clipboard could not take it. */
+.people__invite-link { width: 100%; margin-top: 8px; font-size: var(--fs-sm); }
+/* People as a Settings page (#763 PE-1): the panel's content in the page column. */
+.people--page { padding: 0; }

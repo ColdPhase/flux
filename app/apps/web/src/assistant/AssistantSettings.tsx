@@ -13,7 +13,7 @@ import { listBackgroundConnections } from '../proactive-comparison/api';
 import { enableAssistant, getAssistantStatus, pauseAssistant, removeAssistant, resumeAssistant, selectAssistantAgent, tellOperator, updateAssistant } from './api';
 import { ModelPicker } from './ModelPicker';
 import { fetchAssistantModel, refreshAssistantModel, useAssistantModel } from './model';
-import { dollars, micros, perMillion, runtimeNames, runtimePayerDetail, runtimePayerText, stateLine, unavailableText, type RuntimeClientName } from './format';
+import { dollars, micros, perMillion, runtimeNames, runtimePayerDetail, runtimePayerText, SERVER_AI_OFF_LINE, stateLine, unavailableText, type RuntimeClientName } from './format';
 import '../notifications/notifications.css';
 import './assistant.css';
 import { AssistantControls, AssistantHeader } from './AssistantScreen';
@@ -61,6 +61,16 @@ export function AssistantSettings() {
   }
   if (failed) return <div className="pane-scroll"><div className="pane-in"><ErrorState title="Your assistant settings couldn’t load" actions={<Button variant="secondary" onClick={load}>Try again</Button>}><p>Nothing changed. Human work goes on as usual.</p></ErrorState></div></div>;
   if (!status || !agents) return <div className="pane-scroll"><div className="pane-in"><p className="inbox__loading"><Spinner label="Loading your assistant" /></p></div></div>;
+  // Nothing can run an assistant on this server (no provider, no agent sign-in) and none is set up: one calm line and the
+  // way back, not a set-up form whose every step is disabled (#763 SG-2).
+  if (!status.enablement && status.setup.provider === 'off' && status.setup.runtime?.state === 'off') {
+    return (
+      <div className="pane-scroll"><div className="pane-in nset aset" data-assistant="server-off">
+        <div className="inbox__head"><div><h2>Your assistant</h2><p>{SERVER_AI_OFF_LINE}. Your own agent app, such as Claude Code or Codex, can still connect through <Link className="ui-link" to="/connect-agent">local co-work</Link>.</p></div></div>
+        <p className="nset__note"><Link className="ui-link" to="/settings/agents">Back to Agents and AI</Link></p>
+      </div></div>
+    );
+  }
   // The assistant's workspaces whose AI is on come first: the controls, schedules and choices below work in the first of them.
   const ordered = status.enablement ? [...status.enablement.agents.filter((agent) => !aiOff.has(agent.workspaceId)), ...status.enablement.agents.filter((agent) => aiOff.has(agent.workspaceId))] : [];
   const shown: PersonalAssistantStatus = status.enablement ? { ...status, enablement: { ...status.enablement, agents: ordered } } : status;

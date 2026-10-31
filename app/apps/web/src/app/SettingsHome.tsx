@@ -1,15 +1,17 @@
 import { getCapabilities, getLinkState, startLink, startSso } from '../api/auth';
 import { AiOffEverywhere, AiOffThere, useAllAiBlocked } from '../ai/workspaceAi';
 import { useEffect, useId, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
-import { Form, Link, Outlet, useLocation, useNavigation, useSearchParams } from 'react-router';
+import { Form, Link, Outlet, useLocation, useNavigate, useNavigation, useParams, useSearchParams } from 'react-router';
 import { aiConnectionLabel, PERSONAL_RUN_LIMITS, type AgentConnection, type BackgroundComputeConnection, type PersonalAssistantStatus, type IdentityCapabilities } from '@flux/contracts';
 import { listAgentConnections } from '../agent-connection/api';
 import { getAssistantStatus } from '../assistant/api';
 import { BACKGROUND_OFF_LINE, backgroundComparisonRuntime, listBackgroundConnections } from '../proactive-comparison/api';
-import { dollars } from '../assistant/format';
+import { dollars, SERVER_AI_OFF_LINE } from '../assistant/format';
 import { InstallFlux, NotificationsButton } from '../pwa';
 import { AgentTag, Avatar, Button, Icon, Kreska, MEDIA, Spinner, agentHue, setReduceMotion, useMediaQuery, useReduceMotion } from '../ui';
 import { RuntimeSection } from '../agent-runtime/RuntimeSection';
+import { WorkspacePeople } from '../people/WorkspacePeople';
+import { AccountEditing } from './AccountEditing';
 import '../agent-connection/connection.css';
 import { useShellData } from './data';
 import { setSmallMoments, useSmallMoments } from './smallMoments';
@@ -18,13 +20,15 @@ import { setTheme, useTheme, type ThemeChoice } from './theme';
 import './reading.css';
 import './settings.css';
 
-// Settings (F-026, #350; Spokój #513): one calm place with Account, Appearance, Notifications, Agents and AI
+// Settings (F-026, #350; Spokój #513): one calm place with Account, People (#763 PE-1), Appearance, Notifications, Agents and AI
 // and Keyboard shortcuts, in that order on every device. On the computer the section list sits beside the
 // page; on the phone Settings is that list (the account card, then the sections) and each section is a page.
 // Keyboard shortcuts appear only where there is a keyboard, so not on touch-only phones and tablets.
 
 const SECTIONS: { to: string; label: string; match: RegExp }[] = [
   { to: '/settings/account', label: 'Account', match: /^\/settings\/account$/ },
+  // Workspace people and roles have one stable place (#763 PE-1): read-only for members and guests.
+  { to: '/settings/people', label: 'People', match: /^\/settings\/people/ },
   { to: '/settings', label: 'Appearance', match: /^\/settings(\/appearance)?$/ },
   { to: '/settings/notifications', label: 'Notifications', match: /^\/settings\/notifications/ },
   { to: '/settings/agents', label: 'Agents and AI', match: /^\/settings\/(agents|assistant|background-compute|ai-connections)/ },
@@ -199,8 +203,23 @@ const THEME_LABEL: Record<ThemeChoice, string> = { light: 'Light', dark: 'Dark',
  */
 function AssistantCard({ userId, status }: { userId: string; status: PersonalAssistantStatus | null }) {
   // In-app AI off on this server (AC-3): the card says so in its one status line. Manage stays for an assistant
-  // that is set up; with nothing set up, Set up stays in its place, dimmed.
+  // that is set up; with nothing set up, Set up stays in its place, dimmed. With no way at all to run it on this
+  // server (no provider and no agent sign-in), the card is that one line and nothing to press (#763 SG-2, Spokój E04 ③).
   const off = status?.setup.provider === 'off';
+  const unavailable = off && status?.setup.runtime?.state === 'off' && !status.enablement;
+  if (unavailable) {
+    return (
+      <section className="sset-card sset-assistant" aria-labelledby="assistant-card" data-assistant="server-off">
+        <div className="sset-assistant__head">
+          <span className="sset-row__ic" aria-hidden="true"><Kreska size={26} expression="asleep" /></span>
+          <div className="sset-row__b">
+            <h4 className="sset-row__t" id="assistant-card"><span className="sset-row__identity">Your assistant <AgentTag /></span></h4>
+            <span className="sset-row__s">{SERVER_AI_OFF_LINE}</span>
+          </div>
+        </div>
+      </section>
+    );
+  }
   return (
     <section className="sset-card sset-assistant" aria-labelledby="assistant-card">
       <div className="sset-assistant__head">
@@ -267,6 +286,31 @@ function AgentsAndAi() {
   }, [allOff]);
   if (allOff) return <AiOffEverywhere />;
   const mine = (connections ?? []).filter((connection) => !connection.revokedAt && connection.ownerUserId === me.user.id);
+  // In-app AI off on this server (#763 SG-2): no provider, no agent sign-in and no background suggestions. The page is
+  // E04's three rows: local co-work, then one status line each; no set-up forms and no API keys nothing could use.
+  const serverOff = assistant?.setup.provider === 'off' && assistant.setup.runtime?.state === 'off' && !assistant.enablement && runtime === 'unavailable' && keys !== null && !keys.length;
+  const coWork = (
+    <ul className="sset-card" aria-busy={connections === null || undefined}>
+      <LinkRow to="/connect-agent" icon={<Icon name="monitor" size={16} />} title="Local co-work on this computer"
+        detail="Claude Code, Codex or another app · connect it to Flux" action="Manage" />
+      {mine.map((connection) => (
+        <LinkRow key={connection.id} to="/connect-agent" icon={<Kreska size={22} hue={agentHue(connection.agentId)} />}
+          title={<><span className="sset-row__identity">{connection.name}{' '}<AgentTag /></span><span className="sset-row__meta"> · for you · {DESIGNATION[connection.clientDesignation]} · connected</span></>} action="Manage" />
+      ))}
+    </ul>
+  );
+  if (serverOff) {
+    return (
+      <div data-ai-settings="server-off">
+        {coWork}
+        <AiOffThere />
+        {connections === null ? <p className="sset-note"><Spinner label="Loading your agents" /></p> : null}
+        {failed ? <p className="sset-note" role="note">Your connected agents could not be listed. Manage them under Local co-work.</p> : null}
+        <div className="sset-gap"><AssistantCard userId={me.user.id} status={assistant} /></div>
+        <ul className="sset-card sset-gap"><BackgroundRow runtime={runtime} /></ul>
+      </div>
+    );
+  }
   // Other ways to connect: the API key choices (F-027 AST-1.2: shown plainly when sign-in is off).
   const otherWays = (
     <>
@@ -299,14 +343,7 @@ function AgentsAndAi() {
       <section aria-labelledby="ai-agent-app">
         <h3 className="sset-sub" id="ai-agent-app">Your agent app</h3>
         <p className="sset-note sset-note--sub">Claude Code, Codex or another app on your own computer, with its own account. Flux never receives its credentials.</p>
-        <ul className="sset-card" aria-busy={connections === null || undefined}>
-          <LinkRow to="/connect-agent" icon={<Icon name="monitor" size={16} />} title="Local co-work on this computer"
-            detail="Claude Code, Codex or another app · connect it to Flux" action="Manage" />
-          {mine.map((connection) => (
-            <LinkRow key={connection.id} to="/connect-agent" icon={<Kreska size={22} hue={agentHue(connection.agentId)} />}
-              title={<><span className="sset-row__identity">{connection.name}{' '}<AgentTag /></span><span className="sset-row__meta"> · for you · {DESIGNATION[connection.clientDesignation]} · connected</span></>} action="Manage" />
-          ))}
-        </ul>
+        {coWork}
         <AiOffThere />
         {connections === null ? <p className="sset-note"><Spinner label="Loading your agents" /></p> : null}
         {failed ? <p className="sset-note" role="note">Your connected agents could not be listed. Manage them under Local co-work.</p> : null}
@@ -364,6 +401,7 @@ function PhoneSettings() {
           <Icon name="chevron-right" size={14} className="sset-row__go" />
         </Link>
         <ul className="sset-card sset-gap">
+          <LinkRow to="/settings/people" icon={<Icon name="people" size={16} />} title="People" detail="Who is in your workspaces, and their roles" />
           <LinkRow to="/settings/appearance" icon={<Icon name="sun" size={16} />} title="Appearance" detail={THEME_LABEL[theme]} />
           <LinkRow to="/settings/notifications" icon={<Icon name="bell" size={16} />} title="Notifications" detail="Needs you, quiet hours, morning summary" />
           <LinkRow to="/settings/agents" icon={<Icon name="spark" size={16} />} title="Agents and AI" detail={allOff ? 'AI is off' : assistant ? `Assistant ${ASSISTANT_STATE[assistant.state]}` : undefined} />
@@ -394,6 +432,46 @@ export function SettingsAgents() {
       <div className="pane-in sset-in" data-shift>
         <PageHead title="Agents and AI" lead={allOff ? undefined : 'Your agents work for you and are always marked as agents. Colours appear only here and in the Agents view.'} />
         <AgentsAndAi />
+      </div>
+    </div>
+  );
+}
+
+const ROLE_NAME: Record<string, string> = { owner: 'Owner', admin: 'Admin', member: 'Member', guest: 'Guest' };
+
+/**
+ * Settings → People (#763 PE-1): the people and roles of each workspace the person is in, in one stable place. With one
+ * workspace its people are the page; with several, a row for each leads to its people. Owners and admins add people,
+ * change roles and remove them; everyone else reads (the same panel as Home → Details → People).
+ */
+export function SettingsPeople() {
+  const { workspaces } = useShellData();
+  const { workspaceId } = useParams();
+  const navigate = useNavigate();
+  const phone = useMediaQuery(MEDIA.phone);
+  const chosen = workspaceId ?? (workspaces.length === 1 ? workspaces[0]!.id : undefined);
+  if (chosen) {
+    return (
+      <div className="pane-scroll">
+        <div className="pane-in sset-in" data-shift>
+          {workspaces.length > 1 ? <Link className="ui-link sset-back" to="/settings/people"><Icon name="chevron-left" size={12} />People</Link> : phone ? null : <PageHead title="People" />}
+          <WorkspacePeople key={chosen} workspaceId={chosen} page onBack={() => navigate('/settings/people')} />
+        </div>
+      </div>
+    );
+  }
+  return (
+    <div className="pane-scroll">
+      <div className="pane-in sset-in" data-shift>
+        {phone ? null : <PageHead title="People" lead="Who is in each of your workspaces. Owners and admins add people and change roles." />}
+        {workspaces.length ? (
+          <ul className="sset-card">
+            {workspaces.map((space) => (
+              <LinkRow key={space.id} to={`/settings/people/${space.id}`} icon={<Icon name="people" size={16} />} title={space.name}
+                detail={`You’re ${space.role === 'owner' || space.role === 'admin' ? 'an' : 'a'} ${ROLE_NAME[space.role ?? 'guest']!.toLowerCase()}`} />
+            ))}
+          </ul>
+        ) : <p className="sset-note">You’re not in a workspace yet. Your first project makes one, and its people appear here.</p>}
       </div>
     </div>
   );
@@ -460,7 +538,7 @@ function SingleSignOnLink() {
 
 const dateFormat = new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
 
-/** Settings → Account: who is signed in, this session and Sign out (on this device only). */
+/** Settings → Account: who is signed in, their name, address and password, where they are signed in, and Sign out (#763 SG-1). */
 export function SettingsAccount() {
   const { me } = useShellData();
   const navigation = useNavigation();
@@ -479,6 +557,7 @@ export function SettingsAccount() {
             <span className="sset-me__session">Signed in on this device until <time dateTime={me.session.expiresAt}>{Number.isNaN(expires.getTime()) ? me.session.expiresAt : dateFormat.format(expires)}</time></span>
           </div>
         </section>
+        <AccountEditing name={me.user.name} email={me.user.email} />
         <Form method="post" action="/sign-out" className="sset-card sset-gap">
           <button type="submit" className="sset-row sset-row--link" aria-disabled={signingOut || undefined}>
             <span className="sset-row__ic" aria-hidden="true">{signingOut ? <Spinner /> : <Icon name="sign-out" size={16} />}</span>

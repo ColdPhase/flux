@@ -67,7 +67,8 @@ if UI_BROWSER not in ("chromium", "webkit"):
 
 PASSWORD = "a lamp that listens to hands"
 NAMES = {"ada": "Ada Kowalska", "jonas": "Jonas Berg", "mia": "Mia Novak", "lee": "Lee Moreno"}
-WORKSPACE = "Riverside Makers"
+# Ada's first project makes her workspace quietly, named after her (#763 FR-1).
+WORKSPACE = "Ada’s space"
 MARKET = "Marketplace stall"
 LAMP = "Gesture lamp"
 MARKET_NOTE = "Stall plan: lamps on the left table, price tags on kraft paper."
@@ -445,7 +446,7 @@ class ScenarioJourney:
         else:
             page.get_by_role("complementary", name="Sidebar").get_by_role("button", name="New", exact=True).click()
             create_other(page, "Project")
-        page.get_by_label("Your space").fill(WORKSPACE)
+        expect(page.get_by_text(f"In {WORKSPACE}")).to_be_visible()
         page.get_by_label("What is it about?").fill(MARKET)
         self.tap(page.get_by_role("button", name="Create project"))
         expect(page).to_have_url(re.compile(r"/projects/[0-9a-f-]{36}\?new=1"))

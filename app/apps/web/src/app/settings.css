@@ -60,6 +60,15 @@
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .sset-switch[aria-checked="true"] > span { background: var(--oninv); } }
 .sset-switch:focus-visible { outline: 2px solid var(--t1); outline-offset: 2px; }
 .sset-switch:disabled { opacity: .45; cursor: not-allowed; }
+/* Touch (#763 SG-4): every switch takes at least 44 × 44 px, and the section list's rows are 44 px tall. */
+@media (pointer: coarse), (hover: none) {
+  .sset-switch { width: 44px; height: 28px; }
+  .sset-switch > span { width: 22px; height: 22px; }
+  .sset-switch[aria-checked="true"] > span { transform: translateX(16px); }
+  .sset-switch::after { content: ""; position: absolute; inset: -8px 0; }
+  .sset__link { min-height: 44px; }
+  .sset-row--link, .sset-row { min-height: 52px; }
+}
 /* A choice row: the whole row is the label; a filled check marks the chosen one. */
 .sset-choice { cursor: pointer; position: relative; }
 .sset-choice input { position: absolute; opacity: 0; width: 1px; height: 1px; margin: 0; }
@@ -167,3 +176,14 @@
 .proj-index__lead { flex: 1 1 16em; margin: 0; font-size: var(--fs-sm); color: var(--t3); line-height: 1.5; }
 .proj-index__dot { width: 8px; height: 8px; flex: none; border-radius: 50%; background: var(--inv); }
 .proj-index__empty { display: grid; gap: 12px; justify-items: start; padding: 20px 2px; color: var(--t2); font-size: var(--fs-md); }
+/* The way back from one workspace's people to the list (#763 PE-1). */
+.sset-back { display: inline-flex; align-items: center; gap: 2px; min-height: 32px; margin-bottom: 8px; font-size: var(--fs-sm); }
+@media (pointer: coarse), (hover: none) { .sset-back { min-height: 44px; } }
+/* Settings → Account (#763 SG-1): a fact with Change, its form under it. */
+.sset-acct__form { padding: 4px 18px 16px; }
+.sset-acct__fields { display: grid; gap: 12px; max-width: 420px; }
+.sset-acct__check { display: inline-flex; align-items: center; gap: 8px; min-height: 32px; font-size: var(--fs-sm); color: var(--t2); cursor: pointer; }
+.sset-acct__done { margin: 0; padding: 0 18px; font-size: var(--fs-sm); color: var(--t2); }
+.sset-acct__done:empty { display: none; }
+.sset-acct__done svg { vertical-align: -2px; margin-right: 4px; }
+@media (pointer: coarse), (hover: none) { .sset-acct__check { min-height: 44px; } }

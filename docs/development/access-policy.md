@@ -263,11 +263,12 @@ filtering. `limit` is 1–100 (default 50) and `offset` is 0–10000.
 **In the web app** ([#188](https://github.com/ColdPhase/flux/issues/188)) these routes back two
 places, with no change to the rules above:
 
-- **People** (Home's Details → People → a workspace) lists the members and roles. Owners and
-  admins add an existing account by email with a role, change roles and remove people; anyone
-  leaves. Guests, who may not read the roster, see only their own place. `ACCOUNT_NOT_FOUND`
-  asks for an account at this Flux address first (v1 sends no invitations), and `ALREADY_MEMBER`,
-  `OWNER_REQUIRED` and `LAST_OWNER` have their own sentences.
+- **People** (Settings → People, also from the account menu, and Home's Details → People → a workspace; #763 PE-1)
+  lists the members and roles. Owners and admins add an existing account by email with a role, change roles and remove
+  people; anyone leaves. Guests, who may not read the roster, see only their own place. `ACCOUNT_NOT_FOUND` asks for an
+  account at this Flux address first: v1 sends no invitations and has no join-by-link, so managers can copy a sign-up
+  link to this Flux with the address filled in (#763 PE-2). The link grants nothing; the person is added once their
+  account exists. `ALREADY_MEMBER`, `OWNER_REQUIRED` and `LAST_OWNER` have their own sentences.
 - **People** (a project's Details, also opened from the header's audience line and after
   creating a project) lists `listProjectPeople` with each person's role and says in one
   sentence who else can open the project. For managers, **Invite** gives a workspace member

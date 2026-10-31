@@ -322,7 +322,7 @@ class PhoneShellJourney(unittest.TestCase):
         # Spokój E04p: the account, then Appearance, Notifications and Agents and AI as rows; Keyboard shortcuts only with a keyboard.
         expect(page.locator('a[href="/settings/account"]')).to_have_count(1)
         self.assertEqual([text.split("\n")[0] for text in page.locator("ul.sset-card a.sset-row").all_inner_texts()],
-                         ["Appearance", "Notifications", "Agents and AI"])
+                         ["People", "Appearance", "Notifications", "Agents and AI"])
         page.get_by_role("link", name=re.compile("^Appearance")).click()
         expect(page).to_have_url(f"{ORIGIN}/settings/appearance")
         expect(page.get_by_role("radiogroup", name="Theme")).to_be_visible()

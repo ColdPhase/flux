@@ -66,3 +66,5 @@
   .rt p a.ui-link, .rt li a.ui-link, .rt-page p a.ui-link, .rt-page li a.ui-link { display: inline-flex; align-items: center; min-height: 28px; }
   .rt-page .aset__actions > .ui-link { display: inline-flex; align-items: center; min-height: 44px; }
 }
+/* Touch (#763 SG-4): the folded line is a 44 px target wherever it shows. */
+@media (pointer: coarse), (hover: none) { .rt-more > summary { display: flex; align-items: center; min-height: 44px; } }
