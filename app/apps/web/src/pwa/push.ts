@@ -55,6 +55,11 @@ async function fetchPublicKey(): Promise<string | null> {
   throw new Error(`Push status request failed (${response.status})`);
 }
 
+/** Whether this Flux server can send push at all (it has VAPID keys), whatever this browser supports (#763 SG-3). */
+export async function pushOnServer(): Promise<boolean> {
+  return (await fetchPublicKey()) !== null;
+}
+
 async function saveSubscription(subscription: PushSubscription, deviceLabel?: string | null) {
   const response = await send(PUSH_SUBSCRIPTIONS_PATH, { method: 'POST', body: { ...subscription.toJSON(), deviceLabel: deviceLabel ?? null } });
   if (!response.ok) throw new Error(`Saving the push subscription failed (${response.status})`);

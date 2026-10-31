@@ -63,7 +63,9 @@ export function InboxView() {
   const { me } = useShellData();
   const moments = useSmallMoments();
   const { actionSlot } = useShellActions();
-  const phone = useMediaQuery(MEDIA.navDrawer);
+  // Below the tablet width the header has no room for the summary and five filters beside the title and ⋯ (#763 NV-4):
+  // they head the list on their own row there, as on the phone, and ⋯ stays at the header's right edge.
+  const narrow = useMediaQuery(MEDIA.tablet);
   // A return to the Inbox shows the list it had at once, while it is read again (#592).
   const arrival = useArrival();
   const queue = useNeedsYou(me.user.id, !!arrival);
@@ -108,7 +110,7 @@ export function InboxView() {
 
   return (
     <div className="pane-scroll"><div className="pane-in nyq" ref={listRef}>
-      {/* On the computer the summary and the filters sit in the header row, as drawn; on a phone they head the list. */}
+      {/* On the computer the summary and the filters sit in the header row, as drawn; on a tablet or phone they head the list. */}
       {(() => {
         // An empty Inbox is only Kreska, one sentence and the settings link (E06): nothing to filter yet. Snoozed items keep the summary, which says how many are for later.
         const bar = queue.items?.length === 0 && filter === 'all' && !queue.later ? null : (
@@ -118,7 +120,7 @@ export function InboxView() {
           </>
         );
         if (!bar) return null;
-        return !phone && actionSlot ? createPortal(<div className="nyq__bar nyq__bar--head">{bar}</div>, actionSlot) : <div className="nyq__bar">{bar}</div>;
+        return !narrow && actionSlot ? createPortal(<div className="nyq__bar nyq__bar--head">{bar}</div>, actionSlot) : <div className="nyq__bar">{bar}</div>;
       })()}
       {/* F-030 (#655): security notices about encrypted spaces are rare and read first, above the queue. */}
       <SecurityNotices userId={me.user.id} />

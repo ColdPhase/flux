@@ -192,19 +192,14 @@ class SpokojHomeSearch(unittest.TestCase):
         thought = page.get_by_role("region", name="Results").locator(".sr").filter(has_text="Radio range along the hedge")
         expect(thought.locator(".sr__meta")).to_contain_text("Thought in “Bed layout”")
 
-    def test_07_on_the_phone_the_chip_row_shows_that_it_continues(self) -> None:
+    def test_07_on_the_phone_search_is_the_one_search_and_fits(self) -> None:
+        # The phone has one search (#763 SE-2): /search is the round Search sheet's body, with its scope chips.
         page = self.page(phone=True)
         page.goto("/search?q=radio")
-        expect(page.get_by_role("region", name="Results").get_by_role("link").first).to_be_visible()
-        row = page.locator(".search__filters")
-        expect(row.locator(".ui-select")).to_be_attached()
-        self.assertGreater(row.evaluate("(el) => el.scrollWidth - el.clientWidth"), 0, "the chips run past the screen")
-        expect(row).to_have_attribute("data-continues", "true")
-        self.assertNotEqual(row.evaluate("(el) => getComputedStyle(el).maskImage || getComputedStyle(el).webkitMaskImage"), "none")
+        expect(page.get_by_role("listbox", name="Results").locator("[role=option].sr").first).to_be_visible()
+        chips = page.get_by_role("group", name="Search in")
+        expect(chips.get_by_role("button", name="All")).to_have_attribute("aria-pressed", "true")
         shot(page, "spokoj-search-phone")
-        row.evaluate("(el) => { el.scrollLeft = el.scrollWidth; }")
-        expect(row).to_have_attribute("data-continues", "false")
-        expect(row.get_by_role("combobox", name="Place")).to_be_in_viewport()
         self.assertLessEqual(page.evaluate("document.documentElement.scrollWidth"), page.evaluate("window.innerWidth"))
 
     # ---------------------------------------------------------------- evidence for the visual review
@@ -223,7 +218,9 @@ class SpokojHomeSearch(unittest.TestCase):
                 expect(page.get_by_role("list", name="Your sketches")).to_contain_text("Bed layout")
                 shot(page, f"spokoj-sketchbook-{size}-{theme}")
                 page.goto("/search?q=radio")
-                expect(page.get_by_role("region", name="Results").get_by_role("link").first).to_be_visible()
+                # The phone's /search is its one search (#763 SE-2); the computer keeps the whole results page.
+                results = page.get_by_role("listbox", name="Results").locator("[role=option].sr") if phone else page.get_by_role("region", name="Results").get_by_role("link")
+                expect(results.first).to_be_visible()
                 shot(page, f"spokoj-search-{size}-{theme}")
 
 if __name__ == "__main__":

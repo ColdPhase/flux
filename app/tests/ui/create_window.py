@@ -56,10 +56,11 @@ def kind_tab(page: Page, name: str) -> Locator:
 
 
 def create_other(page: Page, name: str) -> None:
-    """From the open Create window: one of its other tabs (Thought, Message, Decision or Project, #521)."""
-    expect(dialog(page)).to_be_visible()
+    """From the open Create window: one of its other tabs (Thought, Message, Decision or Project, #521). With no project
+    yet the window opens on Project (#763 FR-2), so any tab may be showing."""
+    expect(window(page)).to_be_visible()
     kind_tab(page, name).click()
     expect(kind_tab(page, name)).to_have_attribute("aria-selected", "true")
     # A pointer on a tab goes on to its text one frame later (CreateWindow pointerOnTab). A fill into another field of
-    # the window (the first project's "Your space") must not start before that focus move, or WebKit types into the text (#491).
+    # the window must not start before that focus move, or WebKit types into the text (#491).
     page.evaluate("new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))")

@@ -5,11 +5,14 @@ import { ApiError } from '../api/client';
 import { useShellActions } from '../app/shellContext';
 import { useToast } from '../ui';
 import { updateWork } from '../work/api';
+import { useDiscussDecision } from '../work/discuss';
 import { acceptSuggestion, dismissSuggestion, applyRunChanges } from '../assistant/api';
 import { announceAcceptedInboxItem, announceInboxChange } from './api';
 import type { CardHandlers, SnoozeChoice } from './NeedsYouCard';
 import { nextWeek, tomorrowMorning } from './format';
-import { ACCEPT_UNDO_MS, flushAccepts, startAccept } from './pendingAccept';
+import { ACCEPT_UNDO_MS, flushAccepts, startAccept, startAnswer } from './pendingAccept';
+import { answerAgentQuestion } from '../agents/api';
+import { rememberQuestion } from '../agents/questions';
 import { restoreNeedsYou, resolveNeedsYou, type Queue } from './needsYou';
 
 const apiMessage = (error: unknown, fallback: string) => (error instanceof ApiError && error.message ? error.message : fallback);
@@ -25,6 +28,7 @@ export function useNeedsYouActions(queue: Queue): CardHandlers {
   // An item opens its source as a reference: the Inbox is where Back returns to (#592).
   const navigate = useFollow();
   const { openDetails } = useShellActions();
+  const discussDecision = useDiscussDecision();
   // The latest queue without re-creating the handlers (and the keys that use them) on every answer.
   const latest = useRef(queue);
   useEffect(() => { latest.current = queue; });
@@ -88,6 +92,28 @@ export function useNeedsYouActions(queue: Queue): CardHandlers {
       } } });
     },
 
+    answer(item: NeedsYouItem, optionIndex: number) {
+      const current = latest.current;
+      const question = item.agentQuestion;
+      const option = question?.options[optionIndex];
+      if (!question || option === undefined) return;
+      // An answer is the person's reply in the agent's thread and is given once, so Undo holds it back for the window (S14, rule 6).
+      const handle = startAnswer(question.id, async (key, keepalive) => { rememberQuestion(await answerAgentQuestion(question.id, { optionIndex }, key, keepalive)); }, (outcome) => {
+        if (outcome === 'accepted') announceAcceptedInboxItem(current.userId, item.key);
+        announceInboxChange();
+        if (outcome === 'accepted') return;
+        current.reload();
+        toast(outcome === 'conflict'
+          ? { message: 'This question was answered already, or you can no longer answer it. Open it to look again.', tone: 'danger' }
+          : { message: 'Your answer didn’t send. Nothing changed. Try again.', tone: 'danger' });
+      });
+      current.hide(item.key);
+      toast({ message: `Answered: ${option}`, tone: 'success', timeout: ACCEPT_UNDO_MS, action: { label: 'Undo', key: 'Z', onClick: () => {
+        if (handle.undo()) { current.show(item); return; }
+        toast({ message: 'Your answer was already sent. Reply in the thread to change it.' });
+      } } });
+    },
+
     open(item: NeedsYouItem) {
       if (item.kind === 'decision' && item.decision && item.project) openDetails({ kind: 'decision', id: item.decision.id, projectId: item.project.id });
       else if (item.kind === 'blocked' && item.blocked && item.project) openDetails({ kind: 'work', id: item.blocked.workId, projectId: item.project.id });
@@ -122,6 +148,8 @@ export function useNeedsYouActions(queue: Queue): CardHandlers {
     },
 
     discuss(item: NeedsYouItem) {
+      // A decision opens where it is talked about, ready to write (#763 D3); anything else opens its project.
+      if (item.decision && item.project) { void discussDecision(item.project.id, item.decision.id); return; }
       void navigate(item.project ? `/projects/${item.project.id}` : item.url);
     },
 
@@ -148,5 +176,5 @@ export function useNeedsYouActions(queue: Queue): CardHandlers {
         });
       } } });
     },
-  }), [resolve, toast, navigate, openDetails]);
+  }), [resolve, toast, navigate, openDetails, discussDecision]);
 }

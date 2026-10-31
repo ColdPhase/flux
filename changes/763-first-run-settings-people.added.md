@@ -1,0 +1,3 @@
+- Settings → Account changes your name, email address (with your current password) and password, and lists where you are signed in with Sign out per device ([#763](https://github.com/ColdPhase/flux/issues/763)).
+- Settings → People shows each workspace's people and roles in one place, also from the account menu; owners and admins can copy a sign-up link, with the address filled in, for someone who has no account yet ([#763](https://github.com/ColdPhase/flux/issues/763)).
+- Someone who manages two workspaces chooses where a new project goes with "In … ▾" ([#763](https://github.com/ColdPhase/flux/issues/763)).

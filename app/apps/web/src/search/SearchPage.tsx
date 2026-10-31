@@ -1,7 +1,8 @@
 import { useEffect, useId, useMemo, useRef, useState, type KeyboardEvent } from 'react';
-import { useLocation, useSearchParams } from 'react-router';
+import { useLocation, useNavigate, useSearchParams } from 'react-router';
 import { SEARCH_FILTER_TYPES, type SearchFilterType, type SearchKind, type SearchResponse, type SearchResult } from '@flux/contracts';
-import { Button, EmptyState, Icon, Spinner, Select, Option } from '../ui';
+import { Button, EmptyState, Icon, MEDIA, Spinner, Select, Option, useMediaQuery } from '../ui';
+import { PhoneSearchPage, type Scope } from './JumpTo';
 import { useShellData } from '../app/data';
 import { targetHref } from './api';
 import { useRecentSearches } from './recent';
@@ -36,12 +37,47 @@ function isFilter(value: string | null): value is SearchFilterType {
   return !!value && (SEARCH_FILTER_TYPES as readonly string[]).includes(value);
 }
 
+/** A page address's kind as the phone's chips name it; the other kinds are searched under All. */
+const CHIP_OF: Partial<Record<SearchFilterType, Scope>> = { work: 'tasks', doc: 'wiki', person: 'people' };
+
+/**
+ * `/search`: on the phone the one search the round Search button opens (#763 SE-2), with its chips, Cancel and recent places;
+ * on the computer the whole answer with its filters.
+ */
+export function SearchPage() {
+  const phone = useMediaQuery(MEDIA.phone);
+  return phone ? <PhoneSearch /> : <FullSearch />;
+}
+
+function PhoneSearch() {
+  const [params, setParams] = useSearchParams();
+  const location = useLocation();
+  const navigate = useNavigate();
+  const { me } = useShellData();
+  const type = params.get('type');
+  const place = params.get('place');
+  // The address is read once, as the page opens; afterwards the words typed keep it in step (replace, no new history).
+  const [start] = useState(() => ({
+    query: params.get('q') ?? '', chip: (isFilter(type) ? CHIP_OF[type] : undefined) ?? 'all' as Scope,
+    project: place?.startsWith('project:') ? place.slice('project:'.length) : null,
+  }));
+  return <PhoneSearchPage userId={me.user.id} start={{
+    ...start,
+    onQuery: (query) => setParams((current) => {
+      const next = new URLSearchParams(current);
+      if (query.trim()) next.set('q', query.trim()); else next.delete('q');
+      return next;
+    }, { replace: true, state: location.state }),
+    onCancel: () => { if (location.key !== 'default') void navigate(-1); else void navigate('/'); },
+  }} />;
+}
+
 /**
  * `/search?q=&type=&place=` (#114): the whole answer with filters for the kind of result and the
  * place. Counts beside the filters include only what the person may open. Results are ordinary
  * links; ↑ and ↓ move between them.
  */
-export function SearchPage() {
+function FullSearch() {
   const [params, setParams] = useSearchParams();
   // A replace on this page keeps the entry's state, so the origin it was followed from stays (#592).
   const location = useLocation();

@@ -566,7 +566,8 @@ class EncryptedWorkspaces(Base):
                 expect(start).to_be_visible()
                 start.click()
                 expect(page).to_have_url(re.compile(r"/projects/new\?in="))
-                expect(page.locator(".project-new__space")).to_have_text(f"In {name}")
+                # #770's picker opens with the new space chosen (Ada has two spaces here, plus Garden club).
+                expect(page.locator(".project-new__space > span").first).to_have_text(f"In {name}")
                 page.get_by_role("textbox", name="What is it about?").fill("Seed swap")
                 page.get_by_role("button", name="Create project").click()
                 expect(page).to_have_url(re.compile(r"/projects/[0-9a-f-]{36}"))

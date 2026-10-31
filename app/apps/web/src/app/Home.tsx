@@ -15,7 +15,7 @@ import { STATUS_LABEL } from '../work/format';
 import { useShellData } from './data';
 import { useShellActions } from './shellContext';
 import { useSmallMoments } from './smallMoments';
-import { HomeWorkingAgents, WorkingAgent } from './WorkingAgent';
+import { HomeWorkingAgents, WorkingAssistant } from './WorkingAgent';
 import '../notifications/needs-you.css';
 import './home.css';
 import { RefLink } from '../place/origin';
@@ -103,13 +103,13 @@ export function Home() {
 
   return (
     <div className="pane-scroll"><div className="pane-in home">
-      <HomeWorkingAgents />
       <p className="home__date">{dateFormat.format(now)}</p>
       <h2 className="home__hello">{greeting(now.getHours())}, {firstName}</h2>
       <MorningLine />
 
       {phone ? <ContinueCard userId={me.user.id} workspaceIds={workspaceIds} /> : null}
-      {phone ? <WorkingAgent /> : null}
+      {/* Without a sidebar (phone, narrow drawer) Home carries the working agents with Stop, under Continue as drawn (S13). */}
+      {phone ? <><WorkingAssistant /><HomeWorkingAgents /></> : null}
 
       <section className="home__need" aria-labelledby="home-need">
         <div className="home__sech">

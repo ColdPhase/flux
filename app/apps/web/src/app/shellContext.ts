@@ -91,8 +91,8 @@ export interface OwnedPanel {
 
 /** What the one Create window opens with (F-026 S3): everything is optional; the person completes the rest. */
 export interface CreateRequest {
-  /** `task` goes straight to the task form; without it the phone sheet first asks what to create. */
-  kind?: 'task';
+  /** `task` goes straight to the task form, `project` to the project form (#763 FR-2); without it the phone sheet first asks what to create. */
+  kind?: 'task' | 'project';
   projectId?: string;
   title?: string;
   status?: WorkStatus;

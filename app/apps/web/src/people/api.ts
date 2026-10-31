@@ -95,7 +95,7 @@ export function problemText(error: unknown, context: { workspace: string; email?
   const who = context.who ?? 'They';
   switch (error.code) {
     case 'ACCOUNT_NOT_FOUND':
-      return `No one has an account with ${context.email ?? 'that address'} at this Flux address yet. Ask them to create one at ${window.location.origin} first, then add them here. Flux doesn’t send invitations.`;
+      return `No one has an account with ${context.email ?? 'that address'} here yet. Copy a sign-up link for them below, then add them once they have one.`;
     case 'ALREADY_MEMBER':
       return `${context.who ?? context.email ?? 'This person'} is already in ${context.workspace}.`;
     case 'LAST_OWNER':

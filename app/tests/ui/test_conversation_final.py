@@ -349,7 +349,9 @@ class ConversationFinal(unittest.TestCase):
         menu = page.get_by_role("menu", name="Message actions")
         expect(menu).to_be_visible()
         names = menu.get_by_role("menuitem").all_inner_texts()
-        self.assertEqual(names[:5], ["Reply in thread", "Add to map", "Hand off to an agent", "Cite", "Copy text"])
+        # The menu lists only what the toolbar lacks (#763 B4): Reply in thread and Create task are on the toolbar.
+        self.assertEqual(names[:4], ["Add to map", "Hand off to an agent", "Cite", "Copy text"])
+        self.assertIn("Record a result", names)
         page.keyboard.press("ArrowDown")
         page.keyboard.press("Escape")
         expect(menu).to_have_count(0)
@@ -414,7 +416,7 @@ class ConversationFinal(unittest.TestCase):
         menu = page.get_by_role("menu", name="Message actions")
         expect(menu).to_be_visible()
         names = menu.get_by_role("menuitem").all_inner_texts()
-        self.assertEqual(names[:5], ["Reply in thread", "Create task", "Add to map", "Hand off to an agent", "Cite"])
+        self.assertEqual(names[:5], ["Reply in thread", "Create task", "Hand off to an agent", "Cite", "Copy text"])
         self.assertNotIn("Done", names, "a message that waits for nobody has no Done")
         for box in menu.get_by_role("menuitem").evaluate_all("items => items.map(el => el.getBoundingClientRect().height)"):
             self.assertGreaterEqual(box, 44)
@@ -435,7 +437,7 @@ class ConversationFinal(unittest.TestCase):
         page.keyboard.press("Enter")
         expect(menu).to_be_visible()
         names = menu.get_by_role("menuitem").all_inner_texts()
-        self.assertEqual(names[:5], ["Reply in thread", "Create task", "Add to map", "Hand off to an agent", "Cite"])
+        self.assertEqual(names[:5], ["Reply in thread", "Create task", "Hand off to an agent", "Cite", "Copy text"])
         page.keyboard.press("Escape")
         # A scroll gesture is not a long press: nothing opens.
         swipe_down = bubble.bounding_box()
@@ -461,7 +463,7 @@ class ConversationFinal(unittest.TestCase):
         menu = page.get_by_role("menu", name="Message actions")
         expect(menu.get_by_role("menuitem", name="Done")).to_be_visible()
         names = menu.get_by_role("menuitem").all_inner_texts()
-        self.assertEqual(names[:5], ["Reply in thread", "Create task", "Add to map", "Hand off to an agent", "Cite"])
+        self.assertEqual(names[:5], ["Reply in thread", "Create task", "Hand off to an agent", "Cite", "Copy text"])
         self.assertIn("Not now", names)
         shot(page, "conversation-final-messagemenu-inbox-phone")
         menu.get_by_role("menuitem", name="Done").click()
