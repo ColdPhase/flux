@@ -127,19 +127,9 @@ history, and the inbox labels it "Task creation undone".
 - On an existing database (ledger at 0054) the migrator applies the lower missing 0048 and then 0060;
   `FLUX_SCHEMA_VERSION` is 60.
 
-<a id="reversal"></a>**Reversal.** `reverse/0060_…down.sql` and `reverse/0048_…down.sql` are guarded: they refuse
-and change nothing once any feature fact exists (a baseline, which every task created after the upgrade has, a use
-latch, a reversion notice or receipt, or a `work.creation.revert` grant). After that, recover from the paired
-pre-upgrade database and files backup with the matching image. Before that, with the API and worker stopped:
-
-```
-FLUX_REVERSE_0048_QUIESCED=true node tooling/dist/reverse-task-creation-undo.js --execute
-```
-
-It holds the migrator's advisory lock, takes the affected tables `ACCESS EXCLUSIVE NOWAIT` (an active holder is
-refused), requires the exact ledger of this image, runs both downs and removes exactly the 60 and 48 ledger rows in
-one transaction. An uncertain COMMIT is reported as unknown and the client is destroyed. Without `--execute` it
-prints the plan. Start only the matching prior image afterwards.
+<a id="reversal"></a>**Reversal.** None since the v0.1 schema baseline (#779): the guarded pre-use reversal of 0048/0060
+and its `reverse-task-creation-undo` tool were removed with the pre-release migrations. Recovery is the paired
+database and files backup with the matching image.
 
 ## Live editing (#239)
 

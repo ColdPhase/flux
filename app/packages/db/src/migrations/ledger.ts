@@ -43,7 +43,8 @@ export async function readAppliedMigrationVersions(db: LedgerReader): Promise<nu
 export function assertKnownMigrationVersions(manifest: readonly MigrationFile[], applied: readonly number[]): void {
   const known = new Set(manifest.map((file) => file.version));
   const unknown = applied.filter((version) => !known.has(version));
-  if (unknown.length) throw new Error(`Flux migration ledger has versions without files in this image: ${unknown.join(', ')}. Restore the matching image or database backup; do not edit the ledger by hand.`);
+  if (unknown.length) throw new Error(`Flux migration ledger has versions without files in this image: ${unknown.join(', ')}. Restore the matching image or database backup; do not edit the ledger by hand. ` +
+    'A development database from before the v0.1 baseline (#779) cannot be upgraded: remove it with ./flux clean and start again.');
 }
 
 /** A running API/worker, or a completed migration run, needs every file recorded. */
@@ -54,7 +55,7 @@ export function assertExactMigrationLedger(manifest: readonly MigrationFile[], a
   if (missing.length) throw new Error(`Flux migration ledger is missing files: ${missing.map((file) => file.name).join(', ')}. Run the migrator before starting Flux.`);
 }
 
-/** SQL may self-record its own version, as old migrations do, but no other ledger change. */
+/** SQL may record its own version, but no other ledger change. */
 export function assertMigrationSqlLedgerChange(before: readonly number[], afterSql: readonly number[], file: MigrationFile): void {
   const allowed = new Set([...before, file.version]);
   const unexpected = afterSql.filter((version) => !allowed.has(version));

@@ -227,9 +227,8 @@ effects, atomicity, hooks and lock order apply; the file corrections remain for 
 - **Storage (migration 0040).** `project_messages.contribution_kind` (default `text`, so historical rows are
   truthfully plain text and nothing is inferred) and `result_id` with a scoped composite FK to the result and a check
   that the kind `result` and a result id go together; `native_command_receipts`, one row per real actor, project,
-  operation and client UUID with fingerprint, produced task version or result and the contribution message ids. The
-  guarded pre-use reversal is `app/packages/db/migrations/reverse/0040_native_contribution_effects.down.sql`: it is not
-  a numbered migration and refuses once a receipt or a non-text contribution exists.
+  operation and client UUID with fingerprint, produced task version or result and the contribution message ids. These
+  tables are part of the v0.1 schema baseline (#779), which has no reversal.
 - **Mandatory hook.** `WorkPorts.contributions` (`WorkContributions`) is required by type. Every work adapter composes
   it (`createWorkContributions`) over the same transaction and event session as the discussion use cases: ordinary
   HTTP, `nativeWorkInTransaction` (same-transaction agent execution), the helper proposal acceptance and the tests'
@@ -330,10 +329,8 @@ and actual contribution/result identity; it does not feed file bytes to a model.
 Search preserves the actor and raw body. [Portable export](../operations/export.md)
 includes exact bytes and manifests through both HTTP and the operator CLI.
 
-Migration0045 adds scoped file/message identity, optional relationship metadata
-and the body-or-attachments invariant without backfilling old messages. Its
-[guarded pre-use reversal](../../app/packages/db/migrations/reverse/0045_stored_files.down.sql)
-refuses file or deletion-queue use. Operational recovery uses paired DB/files
+The schema (since #779 the v0.1 baseline) holds scoped file/message identity, optional relationship metadata
+and the body-or-attachments invariant. Operational recovery uses paired DB/files
 backup. Shared composer drafts and rendered UI acceptance remain the separate
 final-design integration (#343); #152/#153 must compose real grant checks before agent file writes
 can be enabled. Real client and mobile evidence is still required for release.

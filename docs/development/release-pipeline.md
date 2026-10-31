@@ -96,8 +96,9 @@ The workflow's packaged smoke is a gate, not the whole release evaluation. It ru
 one platform (amd64), does not cover a bound slot's sign-out and reuse (they need a vendor login; the fake-CLI
 `scripts/check_agent_runtime.sh` covers them against the source stack), and does not run the upgrade leg
 (next section), a TLS reverse proxy, browsers, Web Push or SMTP. In particular, the first release has no
-previous version from which to exercise a real forward upgrade: publish a candidate `-rc.N` first and
-upgrade from it. Arm64 QEMU build and manifest inspection are not a native arm64 install test. Those
+previous version from which to exercise a real forward upgrade: its schema is the single v0.1 baseline
+(#779) and pre-release schemas cannot be upgraded, so `FLUX_DRYRUN_PREVIOUS` must name a revision with
+that baseline. From v0.1 on, publish a candidate `-rc.N` first and upgrade from it. Arm64 QEMU build and manifest inspection are not a native arm64 install test. Those
 results remain open until the independent artifact review records them. The source
 workspace and test stack continue using their own Compose path; the attached
 `compose.yaml` is the pull-only operator path.

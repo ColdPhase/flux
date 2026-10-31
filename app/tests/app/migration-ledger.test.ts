@@ -21,16 +21,20 @@ const late = { name: '0015_late.sql', version: 15 };
 const lowerGap = { name: '0014_lower_gap.sql', version: 14 };
 
 describe('exact Flux migration ledger (#118)', () => {
-  test('the shipped SQL manifest, embedded versions and running database agree', async () => {
+  test('the shipped manifest starts at the v0.1 baseline, no SQL writes the ledger, and the running database agrees', async () => {
     const manifest = await readMigrationManifest(migrationsDir, FLUX_SCHEMA_VERSION);
-    assert.ok(manifest.length >= 14);
+    // #779: one baseline holds the whole v0.1 schema; later changes are 0002 onwards.
+    assert.deepEqual(manifest[0], { name: '0001_v0_1_baseline.sql', version: 1 });
     for (const file of manifest) {
       const sql = await readFile(join(migrationsDir, file.name), 'utf8');
-      const embedded = [...sql.matchAll(/INSERT\s+INTO\s+flux_schema_version\s*\(version\)\s*VALUES\s*\((\d+)\)/gi)];
-      assert.ok(embedded.length <= 1, `${file.name} must not write multiple ledger versions`);
-      if (embedded.length) assert.equal(Number(embedded[0]![1]), file.version, `${file.name} writes a foreign ledger version`);
+      assert.doesNotMatch(sql, /INSERT\s+INTO\s+(public\.)?flux_schema_version/i, `${file.name} must leave the ledger to the migrator`);
     }
     assertExactMigrationLedger(manifest, await readAppliedMigrationVersions(pool));
+  });
+
+  test('a pre-release development ledger is refused with the way out', () => {
+    assert.throws(() => assertKnownMigrationVersions([{ name: '0001_v0_1_baseline.sql', version: 1 }], [1, 2, 3, 137]),
+      /versions without files in this image: 2, 3, 137.*before the v0\.1 baseline.*\.\/flux clean/);
   });
 
   test('duplicate numbers, invalid SQL names and a stale highest-version constant fail before execution', () => {
@@ -58,7 +62,7 @@ describe('exact Flux migration ledger (#118)', () => {
     assert.throws(() => assertExactMigrationLedger([first, lowerGap, late], [1, 15]), /0014_lower_gap.sql/);
   });
 
-  test('legacy self-recording is allowed; wrong embedded inserts or deletions fail within a transaction', async () => {
+  test('a migration may record only its own version; wrong embedded inserts or deletions fail within a transaction', async () => {
     const client = await pool.connect();
     try {
       // A session-local ledger shadows the application ledger without changing the live stack.

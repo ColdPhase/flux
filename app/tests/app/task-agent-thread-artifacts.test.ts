@@ -1,24 +1,19 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
-import { readFile } from 'node:fs/promises';
 import { test } from 'node:test';
-import { artifactResetRows,assertExactMigrationLedger,createDatabase,FLUX_SCHEMA_VERSION,readAppliedMigrationVersions,readMigrationManifest,sql,taskUseRows } from '@flux/db';
+import { artifactResetRows,createDatabase,sql,taskUseRows } from '@flux/db';
 import type { Doc,WorkItem,Decision } from '@flux/contracts';
-import { taskAgentThreadUseCases } from '@flux/core';
 import { docUseCases } from '../../apps/server/src/docs/adapters.js';
 import { wikiAuthority } from '../../apps/server/src/editing/authority.js';
 import type { SessionContext } from '../../apps/server/src/identity/session.js';
 import * as Y from 'yjs';
 import { nativeWorkInTransaction,workUseCases } from '../../apps/server/src/work/adapters.js';
-import { conversationStore } from '../../apps/server/src/conversation/store.js';
-import { diskFileStorage } from '../../apps/server/src/files/storage.js';
 import { actionScene } from './support/mcp-actions.js';
 import { expect,toolValue } from './support/mcp.js';
 import { db,pool,connectionString } from './support/db.js';
 import { fillThread,nativeThreadPost,threadBudget,threadCommand,turnLimit,type ThreadNativeScene } from './support/internal-agent-threads.js';
 import { backendPid,barrier,waitUntilBlockedBy } from './support/locks.js';
 import { person } from './support/people.js';
-import { guardFixturePool } from './support/fixture-database.js';
 
 async function setup(){const f=await actionScene(pool),grant=await f.grant('conversation.reply','execute',100);
   const task=async(title:string)=>expect(await f.owner.request('POST',`/api/v1/projects/${f.projectId}/work`,{body:{title}}),201) as unknown as WorkItem;
@@ -185,137 +180,6 @@ test('SQL refuses fresh title-only/no-op packets and an unrelated same-project t
   assert.equal(await threadBudget(a.id),5);assert.equal(await threadBudget(b.id),5);
 });
 
-test('retained88 admission still refuses a genuine verified file publication and reserved-kind packets',async()=>{
-  const f=await setup(),item=await f.task('Closed file producer');await fillThread(f,item.id,f.grantId);
-  const uploaded=await fetch(new URL(`/api/v1/projects/${f.projectId}/files?uploadId=${randomUUID()}&name=closed.txt`,f.owner.base),{
-    method:'POST',headers:{'content-type':'application/octet-stream',cookie:f.owner.cookieHeader(),origin:f.owner.defaultOrigin},body:Buffer.from('Actual ready original bytes'),
-  });assert.equal(uploaded.status,201);const file=await uploaded.json() as{id:string;sha256:string;size:number};
-  const ownerId=(expect(await f.owner.request('GET','/api/v1/me'),200).user as{id:string}).id;
-  const storage=await diskFileStorage(process.env.FLUX_TEST_FILES_DIR??'/data/files'),sentinel=new Error('Rollback real closed publication');
-  const retained88=await readFile('packages/db/migrations/0088_agent_thread_artifact_resets.sql','utf8');
-  const admission=retained88.slice(retained88.indexOf('CREATE FUNCTION flux_verify_artifact_boundary()'),retained88.indexOf('CREATE TRIGGER agent_thread_artifact_canonical'))
-    .replace('CREATE FUNCTION','CREATE OR REPLACE FUNCTION');
-  await assert.rejects(db.transaction(async tx=>{
-    // A component control for the retained88 admission, inside this transaction only;
-    // new89 production admission returns on outer rollback. No lower-schema startup claim.
-    await tx.execute(sql.raw(admission));
-    await assert.rejects(taskAgentThreadUseCases(conversationStore(tx,{storage})).post({kind:'human',id:ownerId},item.id,
-      {body:'An actual human file publication',clientMessageId:randomUUID(),attachmentIds:[file.id]}),pgConstraint('agent_thread_artifact_producer_closed'));
-    for(const kind of ['file','thought','github_pr'] as const){
-      await tx.execute(sql`SAVEPOINT closed_producer_packet`);
-      await assert.rejects(tx.execute(sql`INSERT INTO agent_thread_artifact_boundaries(workspace_id,project_id,kind,source_id,revision,content_identity,transaction_id)
-        VALUES(${f.workspaceId},${f.projectId},${kind},${file.id},'published',${file.sha256+':'+file.size},txid_current())`),pgConstraint('agent_thread_artifact_producer_closed'));
-      await tx.execute(sql`ROLLBACK TO SAVEPOINT closed_producer_packet`);
-    }
-    throw sentinel;
-  }),sentinel);
-  assert.equal(await threadBudget(item.id),5);
-  const row=(await pool.query('SELECT published_at,message_id FROM project_files WHERE id=$1',[file.id])).rows[0];
-  assert.equal(row.published_at,null);assert.equal(row.message_id,null);
-});
-
-test('actual retained native87 history upgrades to88 without pulses, seeds old bytes/versions, reverses before reset and refuses afterward',{timeout:120_000},async()=>{
-  const f=await setup(),item=await f.task('Retained native history'),d=await doc(f,'Existing artifact before guard upgrade');
-  expect(await link(f,{type:'work',id:item.id},{type:'doc',id:d.id}),201);
-  const uploaded=await fetch(new URL(`/api/v1/projects/${f.projectId}/files?uploadId=${randomUUID()}&name=retained.txt`,f.owner.base),{
-    method:'POST',headers:{'content-type':'application/octet-stream',cookie:f.owner.cookieHeader(),origin:f.owner.defaultOrigin},body:Buffer.from('Canonical retained original bytes'),
-  });assert.equal(uploaded.status,201);const file=await uploaded.json() as{id:string};
-  expect(await f.owner.request('POST',`/api/v1/work/${item.id}/agent-thread`,{body:{body:'Real original file publication',clientMessageId:randomUUID(),attachmentIds:[file.id]}}),201);
-  const firstCommand=threadCommand(f,item.id,f.grantId),first=await nativeThreadPost(f,firstCommand);
-  for(let i=0;i<4;i++)await nativeThreadPost(f,threadCommand(f,item.id,f.grantId));assert.equal(await threadBudget(item.id),5);
-  const ownerId=(expect(await f.owner.request('GET','/api/v1/me'),200).user as{id:string}).id;
-  const specs:[string,string,unknown[]][]=[
-    ['auth_users','id=$1',[ownerId]],['workspaces','id=$1',[f.workspaceId]],['workspace_members','workspace_id=$1',[f.workspaceId]],
-    ['projects','id=$1',[f.projectId]],['agents','id=$1',[f.agentId]],['project_grants','project_id=$1',[f.projectId]],
-    ['agent_connections','id=$1',[f.connectionId]],['agent_connection_projects','connection_id=$1',[f.connectionId]],
-    ['oauth_client','client_id IN (SELECT client_id FROM agent_oauth_bindings WHERE connection_id=$1)',[f.connectionId]],
-    ['agent_oauth_bindings','connection_id=$1',[f.connectionId]],['agent_runtime_sessions','connection_id=$1',[f.connectionId]],
-    ['agent_standing_grants','connection_id=$1',[f.connectionId]],['project_work_items','project_id=$1',[f.projectId]],
-    ['project_materials','project_id=$1',[f.projectId]],['project_material_versions','project_id=$1',[f.projectId]],
-    ['project_object_links','project_id=$1',[f.projectId]],['project_conversations','project_id=$1',[f.projectId]],
-    ['project_messages','project_id=$1',[f.projectId]],['project_files','project_id=$1',[f.projectId]],
-    ['agent_command_receipts','connection_id=$1',[f.connectionId]],['agent_thread_guard_events','project_id=$1',[f.projectId]],
-  ];
-  const retained=new Map<string,Record<string,unknown>[]>(),sourceSnapshot:Record<string,unknown[]>={};
-  for(const[table,where,args]of specs){
-    const rows=(await pool.query<{value:string}>(`SELECT row_to_json(r)::text AS value FROM ${table} r WHERE ${where} ORDER BY row_to_json(r)::text`,args)).rows;
-    sourceSnapshot[table]=rows;retained.set(table,rows.map(r=>JSON.parse(r.value) as Record<string,unknown>));
-  }
-  const taskSequence=(await pool.query<{last_value:string;is_called:boolean}>(`SELECT last_value,is_called FROM project_task_number_${f.projectId.replaceAll('-','')}`)).rows[0]!;
-  const guardSequence=(await pool.query<{last_value:string;is_called:boolean}>('SELECT last_value,is_called FROM agent_thread_guard_sequence')).rows[0]!;
-  const name=`flux_artifact_upgrade_${randomUUID().replaceAll('-','')}`,url=new URL(connectionString);url.pathname=`/${name}`;
-  const create={text:`CREATE DATABASE "${name}"`,query_timeout:60_000};await pool.query(create);
-  const fixture=createDatabase(url.toString()),guard=guardFixturePool(fixture.pool);
-  // An existing database is at main's ledger (0090-0094 included). The PR's late 0082/0087 then 0088 apply in
-  // migrator order (sorted, missing files only), so this legacy fixture is main's current ledger plus those.
-  const manifest=await readMigrationManifest('packages/db/migrations',FLUX_SCHEMA_VERSION);
-  const lateBefore88=manifest.filter(m=>m.version===82||m.version===87);
-  // Main's historical ledger stops at 97; later files (0098+) build on the thread tables.
-  const beforeManifest=[...manifest.filter(m=>![82,87,88,89].includes(m.version)&&m.version<=97),...lateBefore88];
-  const upTo88=[...beforeManifest,manifest.find(m=>m.version===88)!];
-  try{
-    for(const migration of beforeManifest){await fixture.pool.query(await readFile(`packages/db/migrations/${migration.name}`,'utf8'));await fixture.pool.query('INSERT INTO flux_schema_version(version) VALUES($1) ON CONFLICT DO NOTHING',[migration.version]);}
-    // The app code under test reads columns that migrations after 88 add (0102 waiting_for_user_id, 0112 due_on); this earlier fixture gets those two columns.
-    await fixture.pool.query('ALTER TABLE project_work_items ADD COLUMN waiting_for_user_id text, ADD COLUMN due_on date');
-    // 0115 added ai_epoch to agent_runtime_sessions. The retained row is copied whole, so this earlier fixture gets the column too, as 0115 leaves it: NOT NULL, no default.
-    await fixture.pool.query('ALTER TABLE agent_runtime_sessions ADD COLUMN ai_epoch bigint NOT NULL');
-    // 0119 (F-030) added workspaces.encrypted and creation_id, and project_files.key_version. The retained rows are copied whole and the
-    // code under test reads them, so this earlier fixture gets the three columns as 0119 leaves them; the key tables and triggers are not needed.
-    await fixture.pool.query('ALTER TABLE workspaces ADD COLUMN encrypted boolean NOT NULL DEFAULT false, ADD COLUMN creation_id uuid');
-    await fixture.pool.query('ALTER TABLE project_files ADD COLUMN key_version integer CHECK (key_version IS NULL OR key_version >= 1)');
-    // 0122 (#469) added what the bytes said at upload to project_files, which the retained rows carry too.
-    await fixture.pool.query('ALTER TABLE project_files ADD COLUMN page_count integer, ADD COLUMN row_count integer, ADD COLUMN duration_ms integer');
-    // 0129 (#68) added when the assistant's Undo removed a message; the retained message rows carry it.
-    await fixture.pool.query('ALTER TABLE project_messages ADD COLUMN removed_at timestamptz');
-    const client=await fixture.pool.connect();try{
-      await client.query('BEGIN');await client.query('SET CONSTRAINTS ALL DEFERRED');
-      // Restore only this isolated fixture's two guarded tables, preserving the ACTUAL
-      // canonical AS/native rows and provenance exactly, rather than re-authoring them.
-      await client.query('ALTER TABLE project_messages DISABLE TRIGGER USER');await client.query('ALTER TABLE agent_thread_guard_events DISABLE TRIGGER USER');
-      // A restore retains assigned numbers rather than allocating them in row-copy order.
-      await client.query('ALTER TABLE project_work_items DISABLE TRIGGER project_work_number');
-      for(const[table]of specs){
-        const jsonColumns=new Set((await client.query<{column_name:string}>(`SELECT column_name FROM information_schema.columns
-          WHERE table_schema='public' AND table_name=$1 AND data_type IN ('json','jsonb')`,[table])).rows.map(r=>r.column_name));
-        for(const row of retained.get(table)!){const columns=Object.keys(row);await client.query(`INSERT INTO ${table}(${columns.map(c=>`"${c}"`).join(',')}) VALUES(${columns.map((_,i)=>`$${i+1}`).join(',')})`,
-          columns.map(c=>jsonColumns.has(c)&&row[c]!==null?JSON.stringify(row[c]):row[c]));}
-      }
-      await client.query('SET CONSTRAINTS ALL IMMEDIATE');
-      await client.query('ALTER TABLE project_messages ENABLE TRIGGER USER');await client.query('ALTER TABLE agent_thread_guard_events ENABLE TRIGGER USER');
-      await client.query('ALTER TABLE project_work_items ENABLE TRIGGER project_work_number');
-      await client.query('SELECT setval(project_task_sequence($1::uuid),$2,$3)',[f.projectId,taskSequence.last_value,taskSequence.is_called]);
-      await client.query("SELECT setval('agent_thread_guard_sequence',$1,$2)",[guardSequence.last_value,guardSequence.is_called]);await client.query('COMMIT');
-    }finally{client.release();}
-    // The access check of the code under test reads the workspace's AI policy (0115) for every actor, and a missing row reads as blocked.
-    // Take that table and its backfill from the migration itself: its other statements alter AI work tables that this earlier schema does not have.
-    const policyMigration=await readFile('packages/db/migrations/0115_workspace_ai_policy.sql','utf8');
-    const policyStart=policyMigration.indexOf('CREATE TABLE workspace_ai_policies'),policyEnd=policyMigration.indexOf('CREATE FUNCTION workspace_ai_policy_create');
-    assert.ok(policyStart>=0&&policyEnd>policyStart,'0115 still defines workspace_ai_policies and its backfill before the creation trigger');
-    await fixture.pool.query(policyMigration.slice(policyStart,policyEnd));
-    assert.equal((await fixture.pool.query("SELECT count(*)::int n FROM workspace_ai_policies WHERE state='allowed'")).rows[0].n,1,'the restored workspace is allowed, as 0115 leaves an existing one');
-    const snapshots=async()=>{const rows:Record<string,unknown[]>={};for(const[table]of specs)rows[table]=(await fixture.pool.query(`SELECT row_to_json(r)::text AS value FROM ${table} r ORDER BY row_to_json(r)::text`)).rows;return rows;};
-    const original=await snapshots();assert.deepEqual(original,sourceSnapshot);
-    assertExactMigrationLedger(beforeManifest,await readAppliedMigrationVersions(fixture.pool));
-    const up=await readFile('packages/db/migrations/0088_agent_thread_artifact_resets.sql','utf8'),down=await readFile('packages/db/migrations/reverse/0088_agent_thread_artifact_resets.down.sql','utf8');
-    await fixture.pool.query(up);await fixture.pool.query('INSERT INTO flux_schema_version(version) VALUES(88)');
-    assertExactMigrationLedger(upTo88,await readAppliedMigrationVersions(fixture.pool));assert.deepEqual(await snapshots(),original);
-    assert.equal((await fixture.pool.query('SELECT count(*)::int n FROM agent_thread_artifact_resets WHERE sequence IS NOT NULL')).rows[0].n,0);
-    assert.equal((await fixture.pool.query('SELECT count(*)::int n FROM agent_thread_artifact_resets WHERE task_id=$1 AND content_identity IS NOT NULL',[item.id])).rows[0].n,1);
-    assert.deepEqual(await nativeThreadPost(f,firstCommand,fixture.db),{...first,replayed:true});
-    await assert.rejects(nativeThreadPost(f,threadCommand(f,item.id,f.grantId),fixture.db),turnLimit);
-    await fixture.pool.query(down);await fixture.pool.query('DELETE FROM flux_schema_version WHERE version=88');assert.deepEqual(await snapshots(),original);
-    assertExactMigrationLedger(beforeManifest,await readAppliedMigrationVersions(fixture.pool));
-    await fixture.pool.query(up);await fixture.pool.query('INSERT INTO flux_schema_version(version) VALUES(88)');
-    await docUseCases(fixture.db).updateDoc({kind:'human',id:ownerId},d.id,{body:'New canonical content after restored upgrade'},d.version);
-    assert.equal((await fixture.pool.query('SELECT count(*)::int n FROM agent_thread_artifact_resets WHERE sequence IS NOT NULL')).rows[0].n,1);
-    const check=await fixture.pool.connect();try{await check.query('BEGIN');await assert.rejects(check.query(down),/Cannot reverse 0088/);await check.query('ROLLBACK');}finally{check.release();}
-    assertExactMigrationLedger(upTo88,await readAppliedMigrationVersions(fixture.pool));
-  }finally{guard.cleanup();await fixture.pool.end();const drop={text:`DROP DATABASE "${name}" WITH (FORCE)`,query_timeout:60_000};await pool.query(drop);}
-  guard.assertNoEarlyErrors();
-});
-
-// #400 / live co-editing (#389): a shared wiki save is a canonical doc version like any other. The doc's own
-// save path (`commit` -> `replaceMentions`) records the reset, so a live save needs no separate adapter.
 async function liveContext(userId:string):Promise<SessionContext>{
   const [session]=(await pool.query('SELECT id,expires_at FROM auth_sessions WHERE user_id=$1 ORDER BY created_at DESC LIMIT 1',[userId])).rows;
   const [row]=(await pool.query('SELECT name,email FROM auth_users WHERE id=$1',[userId])).rows;

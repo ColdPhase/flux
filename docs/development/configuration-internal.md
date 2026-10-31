@@ -44,7 +44,6 @@ the wiring between services or enables test-only code.
 | `FLUX_OIDC_CLIENT_SECRET_FILE` | Set by Compose to `/run/secrets/flux_oidc_client_secret`; the host file is `FLUX_OIDC_CLIENT_SECRET_HOST_FILE`. |
 | `FLUX_OPENAI_MOCK_URL` | Browser-test profile only (mock provider). |
 | `FLUX_PUSH_ALLOW_PRIVATE_NETWORK` | Phone-emulation tests only: lets push reach a private test service. |
-| `FLUX_REVERSE_0048_QUIESCED` | One-off operator tooling for a historical migration. |
 | `FLUX_ROOT` | The launcher's own directory. |
 | `FLUX_RUNTIME_EGRESS_API` | Set by Compose: where the runtime egress proxy forwards `/mcp`. |
 | `FLUX_RUNTIME_EGRESS_INSTALL_LISTEN` | Listen address of the runtime installer proxy. |

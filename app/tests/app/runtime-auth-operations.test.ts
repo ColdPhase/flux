@@ -144,23 +144,6 @@ test('expiry between initial validation and final CAS rolls the complete transac
   assert.equal(await finish(operation),'accepted','failed settlement rolled all provisional changes back');
 }));
 
-test('paired reverse refuses unsafe active metadata and restores T4 after settled metadata is removed', () => fixture(async (target,operations) => {
-  const { readFile } = await import('node:fs/promises');
-  const reverse=await readFile('packages/db/migrations/reverse/0097_agent_runtime_auth_operations.down.sql','utf8');
-  const operation=claimed(await operations.claim(target));
-  const client=await pool.connect();
-  try {
-    await client.query('BEGIN');
-    await assert.rejects(client.query(reverse),/recovery\/admission\/history must be resolved/);
-    await client.query('ROLLBACK');
-    assert.equal(await finish(operation),'accepted');
-    await client.query('BEGIN');
-    await client.query(reverse);
-    assert.equal((await client.query("SELECT to_regclass('agent_runtime_auth_operations') present")).rows[0].present,null);
-    await client.query('ROLLBACK');
-  } finally { await client.query('ROLLBACK').catch(()=>undefined);client.release(); }
-}));
-
 test('held renewal SQL cannot revive a lease that expires after its initial validation', { timeout: 10_000 }, () => fixture(async (target,operations) => {
   const operation=claimed(await operations.claim({ ...target,leaseMs:1000 }));
   let reached!:()=>void, release!:()=>void;

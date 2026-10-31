@@ -20,7 +20,8 @@
 #   5. Back up the upgraded installation and restore it into fresh volumes with the candidate's files.
 #   6. Recovery path: restore the PRE-upgrade backup into fresh volumes with the PREVIOUS release's files,
 #      check it there, then upgrade that restored installation to the candidate and check it again.
-# The leg does not run in final-release.yml: the first release has no previous release. The independent
+# The leg does not run in final-release.yml: the first release (v0.1, whose schema is the single baseline of #779)
+# has no previous release. The independent
 # reviewer runs it with the previous release's downloaded assets and the candidate's draft assets.
 #
 # Ports default to 18081 (installation) and 18082 (restore); set FLUX_SMOKE_PORT and FLUX_SMOKE_RESTORE_PORT for

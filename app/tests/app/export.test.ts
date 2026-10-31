@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { createHash, randomUUID } from 'node:crypto';
 import { gunzipSync } from 'node:zlib';
 import { before, describe, test } from 'node:test';
-import { createDatabase } from '@flux/db';
+import { createDatabase, FLUX_SCHEMA_VERSION } from '@flux/db';
 import Fastify from 'fastify';
 import {
   NOTIFICATION_PREFERENCES_PATH,
@@ -185,7 +185,7 @@ describe('project export', () => {
     assert.deepEqual([data.format, data.formatVersion, data.provenance.reimportSupported], ['flux.project-export', 1, false]);
     assert.deepEqual(data.excluded, [...PROJECT_EXPORT_EXCLUDED]);
     assert.deepEqual([data.provenance.exportedBy.id, data.provenance.exportedBy.name], [owner.id, 'export-owner']);
-    assert.ok(data.provenance.schemaVersion >= 13);
+    assert.equal(data.provenance.schemaVersion, FLUX_SCHEMA_VERSION);
     assert.deepEqual([data.project.id, data.project.name, data.project.visibility, data.project.workspace.id], [lamp.id, lamp.name, 'restricted', ws.id]);
 
     const people = new Map(data.people.map((someone) => [someone.id, [someone.access, someone.workspaceRole]]));

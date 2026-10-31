@@ -417,19 +417,8 @@ upgrade acceptance.
 
 ### Same-volume rehearsal
 
-Run `./scripts/check_proactive_upgrade.sh` from this branch. It archives an
-immutable baseline (`origin/main`, or `FLUX_UPGRADE_FROM`) and the committed
-candidate into an isolated checkout, starts/seeds the baseline, then replaces
-only its source and starts the candidate on the same PostgreSQL/files volumes.
-`FLUX_PROACTIVE_UPGRADE_PORT` selects the base port; use a separate port for
-concurrent runs. Application execution and builds stay in Docker.
-Row snapshots compare the baseline's columns, so later migrations may add
-columns but not change recorded values. The baseline also stores an AI connection
-when it has that API, and the candidate must keep it as 0042 defines. After the
-upgrade the script injects #118 ledger faults on the same volume: a phantom row,
-an unrecorded 0035, and migration directories with a duplicate prefix, a misnamed
-file, a missing applied file or SQL that records another version. Each must fail
-closed with its operator error, and the retained rows must be unchanged afterwards.
+`scripts/check_proactive_upgrade.sh` was removed with the pre-release migrations (#779): v0.1 starts from one
+schema baseline and has no earlier installation to upgrade. The record below is historical.
 
 Observed 2026-09-29: baseline `9d27e994ce2b770e98139a14bedc51fd687cb76b`
 to rehearsal commit `4fb57c6ea6d0dc099834b51c6dbe980085739a7d` passed.
