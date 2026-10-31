@@ -74,6 +74,9 @@ const REPLACING = new Set(['owned', 'thought-tasks', 'work', 'decision', 'result
 const replaces = (view: DetailsView) => typeof view === 'object' && REPLACING.has(view.kind);
 const KIND_LABEL: Record<string, string> = { work: 'Task', decision: 'Decision', result: 'Result', 'thought-tasks': 'Tasks' };
 
+/** The place a panel's content belongs to (#763 H11-8): one project or direct message with all its views, else the page itself. */
+const panelPlace = (pathname: string) => /^\/(?:projects|dm|spaces)\/[^/]+/.exec(pathname)?.[0] ?? pathname.replace(/\/+$/, '');
+
 const NO_ORIGIN = { key: '', path: '/', label: '' };
 /** What a history entry keeps of its panel (#592): an object the panel shows over the page and the way back it left. A thread or an agent a view owns is kept by its own route. */
 interface DetailsPlace { open: boolean; view: DetailsView; trail: { label: string; view: DetailsView }[]; scroll: number; owned: boolean }
@@ -345,6 +348,13 @@ function AppLayoutContent() {
     // A link in the panel that leads to a thread or back to a task keeps the panel (its state says so).
     const keep = (location.state as { keepPanel?: boolean } | null)?.keepPanel === true;
     if (((panelMode !== 'docked' && !keep) || backgroundSettings || aiConnections) && detailsOpen) setDetailsOpen(false);
+    // A docked panel that shows an object or a form of the place being left does not follow the person to another place
+    // (#763 H11-8): it closes and its "‹ back" trail goes with it, so Details opened there is that place's. The place's
+    // own Details ('place') reads the new place by itself; a view-owned thread or agent is closed by its view.
+    if (!keep && typeof detailsView === 'object' && !isOwned(detailsView) && panelPlace(shownPath) !== panelPlace(location.pathname)) {
+      if (detailsOpen) setDetailsOpen(false);
+      setDetailsView('place'); setTrail([]);
+    }
   }
   // Back, Forward or the way back to an entry restores the object its panel showed, the way back it left, whether it was open
   // and how far it was scrolled (#592). A thread or an agent a view owns is kept by its own route, so it is not restored here.

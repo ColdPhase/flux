@@ -53,7 +53,7 @@ changes to it; agents implement it and do not re-decide it.
 | `--t1` | `#18181B` | `#F0F0F0` | Primary text |
 | `--t2` | `#4A4A4A` | `#BDBDBD` | Secondary text (APCA Lc at least 60 on `--bg`, `--el` and `--sub`) |
 | `--t3` | `#636363` | `#A1A1A1` | Meta text (at least 4.5:1 on `--bg`, `--el`, `--side`, `--sub` and `--hov`; APCA Lc at least 45) |
-| `--inv` / `--oninv` | `#18181B` / `#FFFFFF` | `#F0F0F0` / `#111111` | Inverted chips, the primary button |
+| `--inv` / `--oninv` | `#18181B` / `#FFFFFF` | `#F0F0F0` / `#111111` | Inverted chips, the one primary button per screen (2026-10-31) |
 | `--own` | `#E7E7EA` | `#313134` | Own message bubbles ([Spokój](../spokoj/README.md#token), 2026-10-15) |
 
 Founder direction (Maurycy, 2026-10-10): dark-theme secondary text raised for readability; APCA t2 ≥ 60, t3 ≥ 45
@@ -67,12 +67,29 @@ Founder direction (Maurycy, 2026-10-10): dark-theme secondary text raised for re
 - Dark mode uses inset 1 px light outlines plus deeper shadows. Layers get lighter as they rise.
 
 **Gradients**
-- Button: `linear-gradient(#FFFFFF, #F1F1F2)`.
-- Primary and inverted: `linear-gradient(#3B3B3F, #18181B)`. In dark mode it is
+- Own bubbles, toasts and inverted chips: `linear-gradient(#3B3B3F, #18181B)`. In dark mode it is
   `linear-gradient(#FFFFFF, #D9D9D9)` with dark text.
+- Buttons have no gradient (amendment 2026-10-31 below).
 
-**Radii:** 10 (small), 14 (rows, fields), 18–20 (cards, bubbles, panels) and full (pills,
-buttons). The phone sheet top corners are 26.
+**Radii:** 10 (small, buttons), 14 (rows, fields), 18–20 (cards, bubbles, panels) and full (pills,
+chips, avatars). The phone sheet top corners are 26.
+
+**Buttons: quiet, one accent per screen.** Founder decision (Hubert, 2026-10-31, comment on
+[#763](https://github.com/ColdPhase/flux/issues/763); mock-up board "C · Quiet") amends the Soft-volume
+buttons above, which read as too strong:
+- At most one primary button per screen or region: flat `--inv` with `--oninv` text
+  (hover `--inv-hov`, light `#2E2E33`, dark `#D9D9D9`). Where a list repeats an action, only the lead
+  item carries it (the Inbox's selected card keeps its Accept; on Home only the first row does).
+- Secondary actions are text buttons: transparent, `--t2` text, `--hov` fill on hover.
+- Choices among a few options (an agent's ready answers, a pick between settings) are thin outlines:
+  1 px `--choice` (light `rgba(0,0,0,.12)`, dark `rgba(255,255,255,.16)`), `--t1` text.
+- Destructive actions keep a clear style: a 1 px `--t2` outline with `--t1` text, never the inverted fill.
+- No gradient and no drop shadow on any button; `--grad-btn`, `--sh-btn` and `--sh-pri` are retired.
+- Button radius 10 (`--r-btn`); `--r-pill` stays for chips, avatars and segmented tracks.
+- Counters such as "2 needs you" are quiet text links, not inverted pills.
+- A composer's Send is a soft fill (`--own`) with the arrow icon.
+- The phone's one "+" stays the inverted primary, without a shadow.
+`tests/test_ui_tokens.py` (`QuietButtons`) guards the flat buttons, the radius and the retired tokens.
 
 **Concentric corners** (founder, 2026-10-08): a frame that tightly holds a tile or an avatar takes
 the inner radius plus the gap. A project tile (radius 6) inside a place picker with a 4 px inset sits

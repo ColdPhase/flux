@@ -368,25 +368,26 @@ function WorkPanel({ item, context, detail, relations, reload, commands }: { ite
   }
   useStateKeys(writable, (status) => void setState(status));
   const ownerValue = item.owner ? `${item.owner.kind}:${item.owner.id}` : '';
-  const people = context.members.length ? context.members.map((member) => ({ value: `human:${member.userId}`, label: member.userId === me.user.id ? `${member.name} (you)` : member.name }))
-    : [{ value: `human:${me.user.id}`, label: `${me.user.name} (you)` }];
-  if (item.owner && !people.some((person) => person.value === ownerValue) && item.owner.kind === 'human') people.push({ value: ownerValue, label: item.owner.name });
+  // The label says "(you)"; the face is drawn from the name alone, never from that label (#763 H11-9: "M(").
+  const people = context.members.length ? context.members.map((member) => ({ value: `human:${member.userId}`, name: member.name, label: member.userId === me.user.id ? `${member.name} (you)` : member.name }))
+    : [{ value: `human:${me.user.id}`, name: me.user.name, label: `${me.user.name} (you)` }];
+  if (item.owner && !people.some((person) => person.value === ownerValue) && item.owner.kind === 'human') people.push({ value: ownerValue, name: item.owner.name, label: item.owner.name });
   const waitingPeople = people.map((person) => ({ ...person, id: person.value.slice('human:'.length) }));
-  if (item.waitingFor && !waitingPeople.some((person) => person.id === item.waitingFor!.id)) waitingPeople.push({ value: `human:${item.waitingFor.id}`, id: item.waitingFor.id, label: item.waitingFor.name });
+  if (item.waitingFor && !waitingPeople.some((person) => person.id === item.waitingFor!.id)) waitingPeople.push({ value: `human:${item.waitingFor.id}`, id: item.waitingFor.id, name: item.waitingFor.name, label: item.waitingFor.name });
   // F-029 (#614): a workspace whose AI is off offers no agent as an owner; a task an agent already owns keeps showing its name.
   const aiOff = useWorkspaceAi(context.project.workspaceId).blocked;
   const agents = aiOff ? [] : context.agents.map((agent) => ({ value: `agent:${agent.id}`, label: `${agent.name} (agent)` }));
   if (!aiOff && item.owner?.kind === 'agent' && !agents.some((agent) => agent.value === ownerValue)) agents.push({ value: ownerValue, label: `${item.owner.name} (agent)` });
   const ownerOptions = [
     { value: '', label: 'Nobody yet', icon: <Icon name="person" size={16} /> },
-    ...people.map((person) => ({ ...person, group: 'People', icon: <Avatar name={person.label} size="sm" /> })),
+    ...people.map(({ name, ...person }) => ({ ...person, group: 'People', icon: <Avatar name={name} size="sm" /> })),
     ...agents.map((agent) => ({ ...agent, group: 'Agents', icon: <Kreska size={16} /> })),
   ];
   const shownOwner = ownerDraft ?? ownerValue;
   const ownerView = shownOwner
     ? (shownOwner.startsWith('agent:')
       ? <AgentIdentity name={(agents.find((agent) => agent.value === shownOwner)?.label ?? item.owner?.name ?? '').replace(/ \(agent\)$/, '')} owner={owners.get(shownOwner.slice('agent:'.length))} icon={16} />
-      : <><Avatar name={people.find((person) => person.value === shownOwner)?.label ?? item.owner?.name ?? ''} size="sm" tone={shownOwner === `human:${me.user.id}` ? 'me' : 'neutral'} /><span>{people.find((person) => person.value === shownOwner)?.label ?? item.owner?.name}</span></>)
+      : <><Avatar name={people.find((person) => person.value === shownOwner)?.name ?? item.owner?.name ?? ''} size="sm" tone={shownOwner === `human:${me.user.id}` ? 'me' : 'neutral'} /><span>{people.find((person) => person.value === shownOwner)?.label ?? item.owner?.name}</span></>)
     : <><Icon name="person" size={16} /><span className="wd-muted">{ownerDraft === '' ? 'Nobody yet' : 'Assign'}</span></>;
   const waitingOptions = [{ value: '', label: 'No one in particular' }, ...waitingPeople.map((person) => ({ value: person.id, label: person.label }))];
   const finished = isFinished(item);

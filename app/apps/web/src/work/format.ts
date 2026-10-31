@@ -5,6 +5,9 @@ export const STATUS_LABEL: Record<WorkStatus, string> = {
 };
 
 /** The name a task goes by on every surface (#276): its number in its project, "#12". */
+const dueFormat = new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+/** A calendar day (`YYYY-MM-DD`) as people read it, with no time zone shift. */
+export const dueLabel = (day: string) => dueFormat.format(new Date(Number(day.slice(0, 4)), Number(day.slice(5, 7)) - 1, Number(day.slice(8, 10))));
 export const taskNumber = (item: { number: number }) => `#${item.number}`;
 
 const day = new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric' });

@@ -11,7 +11,7 @@ import { getReturnSummary, saveReturnPoint } from '../returns/api';
 import { WaitingSpaces } from '../encryption/LockedSpace';
 import { SourceLink } from '../returns/SinceYouLeft';
 import { listAssignedWork } from '../work/api';
-import { STATUS_LABEL } from '../work/format';
+import { STATUS_LABEL, dueLabel } from '../work/format';
 import { useShellData } from './data';
 import { useShellActions } from './shellContext';
 import { useSmallMoments } from './smallMoments';
@@ -33,7 +33,8 @@ type Continue =
 
 /**
  * Where to continue (P1): the task you were last on (in progress, newest change), else the next step
- * "Since you left" suggests (F5: the return contract feeds this card), else nothing.
+ * "Since you left" suggests (F5: the return contract feeds this card; a task that became yours while you were away
+ * comes before a rule waiting for you, with its due day, #763 H11-5), else nothing.
  */
 function useContinue(userId: string, workspaceIds: string[]): { value: Continue | null; ready: boolean } {
   const [state, setState] = useState<{ userId: string; value: Continue | null } | null>(null);
@@ -82,7 +83,7 @@ function ContinueCard({ userId, workspaceIds }: { userId: string; workspaceIds: 
     <SourceLink source={step.source} className="home__card home__continue" onFollow={() => void saveReturnPoint({ type: 'home' }, mark).catch(() => undefined)}>
       <span className="home__k">Continue where you left off</span>
       <span className="home__t">{step.text}</span>
-      <span className="home__sub"><span>{step.reason}</span></span>
+      <span className="home__sub"><span>{step.reason}{step.dueOn ? ` Due ${dueLabel(step.dueOn)}.` : ''}</span></span>
       {arrow}
     </SourceLink>
   );
@@ -146,8 +147,8 @@ export function Home() {
         {queue.items === null ? <div className="home__card home__quiet" aria-busy="true">Looking at what needs you…</div>
           : top.length ? (
             <ul className="home__queue" aria-label="Top of your Inbox">
-              {top.map((item) => (
-                <NeedsYouCard key={item.key} item={item} variant="row" handlers={handlers} menuOpen={menu === item.key} onMenuOpen={(open) => setMenu(open ? item.key : null)} />
+              {top.map((item, index) => (
+                <NeedsYouCard key={item.key} item={item} variant="row" lead={index === 0} handlers={handlers} menuOpen={menu === item.key} onMenuOpen={(open) => setMenu(open ? item.key : null)} />
               ))}
             </ul>
           ) : (

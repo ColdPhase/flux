@@ -2,7 +2,7 @@ import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 import type { WorkStatus } from '@flux/contracts';
 import { WORK_STATUSES } from '@flux/contracts';
 import { Morph, StatusGlyph } from '../ui';
-import { STATUS_LABEL } from './format';
+import { STATUS_LABEL, dueLabel } from './format';
 import { PropertyMenu } from './PropertyMenu';
 
 // The parts of the task panel that are edited where they are read (F-026 S9, S10): the state with
@@ -43,9 +43,7 @@ export function StatusControl({ status, disabled, onChoose }: { status: WorkStat
   );
 }
 
-const dueFormat = new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
-/** A calendar day (`YYYY-MM-DD`) as people read it, with no time zone shift. */
-export const dueLabel = (day: string) => dueFormat.format(new Date(Number(day.slice(0, 4)), Number(day.slice(5, 7)) - 1, Number(day.slice(8, 10))));
+export { dueLabel } from './format';
 const todayKey = () => { const now = new Date(); return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`; };
 
 /**

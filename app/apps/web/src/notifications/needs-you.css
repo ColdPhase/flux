@@ -14,7 +14,7 @@
 .nyq__clear h2 { margin: 18px 0 0; font-size: var(--fs-xl); letter-spacing: -.02em; }
 .nyq__clear p { margin: 0; max-width: 420px; font-size: var(--fs-base); color: var(--t2); }
 .nyq__clear-actions { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 8px; margin-top: 12px; }
-.nyq__done { display: inline-flex; align-items: center; min-height: 34px; padding: 0 14px; border-radius: var(--r-pill); background: var(--el); box-shadow: var(--sh-btn); font-size: var(--fs-md); font-weight: 500; }
+.nyq__done { display: inline-flex; align-items: center; min-height: 34px; padding: 0 6px; font-size: var(--fs-md); font-weight: 500; color: var(--t2); }
 
 /* One item */
 .nyc { position: relative; list-style: none; }

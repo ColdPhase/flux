@@ -32,7 +32,7 @@
   --t1: #18181b;
   --t2: #4a4a4a;
   --t3: #636363;
-  /* Inverted: the primary button, chosen chips, toasts */
+  /* Inverted: the one primary button of a screen or region, chosen chips, toasts */
   --inv: #18181b;
   --oninv: #ffffff;
   --scrim: rgba(0, 0, 0, .28);
@@ -42,12 +42,14 @@
   --sh-card: 0 1px 2px rgba(0, 0, 0, .05), 0 6px 16px -6px rgba(0, 0, 0, .12);
   --sh-pop: 0 1px 2px rgba(0, 0, 0, .06), 0 12px 30px -10px rgba(0, 0, 0, .22);
   --sh-field: inset 0 0 0 1px rgba(0, 0, 0, .05), 0 1px 2px rgba(0, 0, 0, .05), 0 6px 16px -8px rgba(0, 0, 0, .12);
-  --sh-btn: inset 0 1px 0 #ffffff, 0 0 0 1px rgba(0, 0, 0, .08), 0 1px 2px rgba(0, 0, 0, .08);
-  --sh-pri: inset 0 1px 0 rgba(255, 255, 255, .16), 0 1px 2px rgba(0, 0, 0, .2), 0 4px 10px -4px rgba(0, 0, 0, .3);
   --sh-seg: inset 0 1px 2px rgba(0, 0, 0, .06);
   --sh-raise: 0 1px 2px rgba(0, 0, 0, .06), 0 4px 10px -6px rgba(0, 0, 0, .16);
-  --grad-btn: linear-gradient(#ffffff, #f1f1f2);
+  /* Inverted surfaces that are not buttons (own bubbles, toasts, chosen chips). Buttons are flat (direction C, #763). */
   --grad-inv: linear-gradient(#3b3b3f, #18181b);
+  /* Buttons, direction C "quiet, one accent per screen" (founder, 2026-10-31, #763): flat, no shadow, radius 10.
+     --choice is the 1 px outline of an option button (an agent's ready answers, a pick among a few). */
+  --choice: rgba(0, 0, 0, .12);
+  --inv-hov: #2e2e33;
   /* Agent colours (Agents section only): muted OKLCH at equal lightness, README §2 */
   --agent-clay: #9b6147; --agent-ochre: #886d32; --agent-sage: #4b8057; --agent-teal: #208181;
   --agent-indigo: #5e6fa4; --agent-plum: #886191; --agent-rose: #9c5c66;
@@ -85,7 +87,7 @@
   --sheet-inset: 8px;  /* the outer background around the panel: top, right and bottom */
 
   /* Radii: small, rows and fields, cards and bubbles, full; the phone sheet's top corners */
-  --r-sm: 10px; --r: 14px; --r-lg: 20px; --r-pill: 999px;
+  --r-sm: 10px; --r: 14px; --r-lg: 20px; --r-pill: 999px; --r-btn: 10px; /* buttons: 10, not pills (#763, 2026-10-31) */
   --r-card: 18px; --r-composer: 22px; --r-sheet: 26px; --r-panel: 20px; --r-tag: 999px;
 
   /* Sizes */
@@ -133,12 +135,10 @@
     --sh-card: inset 0 0 0 1px rgba(255, 255, 255, .06), 0 1px 2px rgba(0, 0, 0, .5), 0 8px 20px -8px rgba(0, 0, 0, .6);
     --sh-pop: inset 0 0 0 1px rgba(255, 255, 255, .08), 0 12px 30px -10px rgba(0, 0, 0, .7);
     --sh-field: inset 0 0 0 1px rgba(255, 255, 255, .09), 0 1px 2px rgba(0, 0, 0, .4);
-    --sh-btn: inset 0 1px 0 rgba(255, 255, 255, .07), 0 0 0 1px rgba(255, 255, 255, .08);
-    --sh-pri: inset 0 -1px 0 rgba(0, 0, 0, .15), 0 1px 2px rgba(0, 0, 0, .4);
     --sh-seg: inset 0 1px 2px rgba(0, 0, 0, .3);
     --sh-raise: 0 1px 2px rgba(0, 0, 0, .4), 0 4px 10px -6px rgba(0, 0, 0, .5);
-    --grad-btn: linear-gradient(#2a2a2a, #1e1e1e);
     --grad-inv: linear-gradient(#ffffff, #d9d9d9);
+    --choice: rgba(255, 255, 255, .16); --inv-hov: #d9d9d9;
     --agent-clay: #e8af96; --agent-ochre: #d4bb86; --agent-sage: #9ccca4; --agent-teal: #82cdcd;
     --agent-indigo: #abbcef; --agent-plum: #d4afdc; --agent-rose: #e9aab3;
   }
@@ -153,12 +153,10 @@
   --sh-card: inset 0 0 0 1px rgba(255, 255, 255, .06), 0 1px 2px rgba(0, 0, 0, .5), 0 8px 20px -8px rgba(0, 0, 0, .6);
   --sh-pop: inset 0 0 0 1px rgba(255, 255, 255, .08), 0 12px 30px -10px rgba(0, 0, 0, .7);
   --sh-field: inset 0 0 0 1px rgba(255, 255, 255, .09), 0 1px 2px rgba(0, 0, 0, .4);
-  --sh-btn: inset 0 1px 0 rgba(255, 255, 255, .07), 0 0 0 1px rgba(255, 255, 255, .08);
-  --sh-pri: inset 0 -1px 0 rgba(0, 0, 0, .15), 0 1px 2px rgba(0, 0, 0, .4);
   --sh-seg: inset 0 1px 2px rgba(0, 0, 0, .3);
   --sh-raise: 0 1px 2px rgba(0, 0, 0, .4), 0 4px 10px -6px rgba(0, 0, 0, .5);
-  --grad-btn: linear-gradient(#2a2a2a, #1e1e1e);
   --grad-inv: linear-gradient(#ffffff, #d9d9d9);
+  --choice: rgba(255, 255, 255, .16); --inv-hov: #d9d9d9;
   --agent-clay: #e8af96; --agent-ochre: #d4bb86; --agent-sage: #9ccca4; --agent-teal: #82cdcd;
   --agent-indigo: #abbcef; --agent-plum: #d4afdc; --agent-rose: #e9aab3;
 }

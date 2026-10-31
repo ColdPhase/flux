@@ -87,7 +87,7 @@ function list(names: string[]) {
 }
 
 /** An item plus the next step it would suggest (lower priority first). */
-type Built = ReturnItem & { step?: { priority: number; text: string; reason: string }; relevant?: boolean };
+type Built = ReturnItem & { step?: { priority: number; text: string; reason: string; dueOn?: string }; relevant?: boolean };
 
 function publicItem(item: Built): ReturnItem {
   const copy: Built = { ...item };
@@ -328,6 +328,13 @@ export function createReturnUseCases(ports: ReturnPorts) {
         if (!item || !inProject(item.projectId)) continue;
         const created = group.events.some((event) => event.kind === 'project.work_created.v1');
         const mine = item.ownerKey === me;
+        // It became yours in this period (#763 H11-5): made for you by someone else, or handed to you (`assignedTo`).
+        const handedTo = group.events.filter((event) => event.kind === 'project.work_updated.v1' && str(event.data.assignedTo) === userId)
+          .reduce<AudienceEvent | null>((a, b) => (!a || b.seq > a.seq ? b : a), null);
+        const madeForYou = created && item.createdByKey !== me;
+        const newForYou = mine && (madeForYou || !!handedTo);
+        const giver = handedTo && !madeForYou ? (automated(handedTo) ? 'GitHub rule' : nameOf(handedTo.actorId)) : actor;
+        const due = item.dueOn ? { dueOn: item.dueOn } : {};
         const finished = item.status === 'done' || item.status === 'not_pursued';
         const source: ReturnSource = { type: 'work', id: item.id, projectId: item.projectId };
         let text: string; let detail: string | null = null;
@@ -340,6 +347,7 @@ export function createReturnUseCases(ports: ReturnPorts) {
           detail = item.blocker?.trim() ? item.blocker.trim() : 'No reason was recorded.';
         } else if (item.status === 'done') { text = `Done: ${item.title}`; }
         else if (item.status === 'not_pursued') { text = `Not pursued: ${item.title}`; }
+        else if (newForYou && !madeForYou) { text = `${giver} gave you a task: ${item.title}`; }
         else if (created) {
           text = mine ? `${actor} added a task for you: ${item.title}` : `New task: ${item.title}`;
           const owner = nameOf(item.ownerKey);
@@ -350,10 +358,13 @@ export function createReturnUseCases(ports: ReturnPorts) {
           detail = owner ? `${owner} ${owner === 'You' ? 'are' : 'is'} on it` : null;
         } else { text = `Changed: ${item.title}`; }
         const needsYou = mine && !finished && !item.parkedByDecisionId;
+        // A task that became yours while you were away comes before rules waiting for a person (#763 H11-5): it is
+        // the work you now hold. Questions to you and results about your work come first.
         const step = !needsYou ? undefined : item.status === 'blocked'
-          ? { priority: 5, text: `See what blocks ${quote(item.title)}`, reason: `It is yours. ${detail}` }
-          : { priority: 6, text: `Pick up ${quote(item.title)}`, reason: created ? `${actor} added it for you.` : byRule ? 'It is yours, and its linked PRs changed it.' : `It is yours, and ${actor} changed it.` };
-        items.push({ ...base, kind: 'work', text, detail, needsYou, source, step, relevant: mine || item.createdByKey === me });
+          ? { priority: newForYou ? 3.5 : 5, text: `See what blocks ${quote(item.title)}`, reason: `It is yours. ${detail}`, ...due }
+          : { priority: newForYou ? 3.5 : 6, text: `Pick up ${quote(item.title)}`, ...due,
+            reason: madeForYou ? `${actor} added it for you.` : newForYou ? `${giver} gave it to you.` : byRule ? 'It is yours, and its linked PRs changed it.' : `It is yours, and ${actor} changed it.` };
+        items.push({ ...base, kind: 'work', text, detail, needsYou, source, step, relevant: mine || item.createdByKey === me, ...due });
         continue;
       }
 
@@ -520,7 +531,7 @@ export function createReturnUseCases(ports: ReturnPorts) {
    */
   function nextStep(items: Built[]): ReturnNextStep | null {
     const best = items.filter((item) => item.step).sort((a, b) => a.step!.priority - b.step!.priority || b.at.localeCompare(a.at))[0];
-    return best ? { text: best.step!.text, reason: best.step!.reason, item: best.id, source: best.source } : null;
+    return best ? { text: best.step!.text, reason: best.step!.reason, item: best.id, source: best.source, ...(best.step!.dueOn ? { dueOn: best.step!.dueOn } : {}) } : null;
   }
 
   return {

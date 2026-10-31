@@ -77,8 +77,8 @@ body:has(.app) { background: var(--side); }
 .side__toggle { color: var(--t2); }
 .side__actions { display: flex; gap: 6px; margin: 6px 0 10px; }
 .side__new, .side__search {
-  display: inline-flex; align-items: center; justify-content: center; gap: 6px; height: var(--ctl); padding: 0 12px; border-radius: 12px;
-  background-color: var(--el); background-image: var(--grad-btn); box-shadow: var(--sh-btn); color: var(--t1);
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px; height: var(--ctl); padding: 0 12px; border-radius: var(--r-btn);
+  border: 1px solid var(--choice); background: transparent; color: var(--t1);
   font-size: var(--fs-base); font-weight: 500; white-space: nowrap; transition: var(--tr);
 }
 .side__new { flex: 1; justify-content: flex-start; }
@@ -121,7 +121,7 @@ body:has(.app) { background: var(--side); }
 }
 .side__count {
   margin-left: auto; display: inline-flex; align-items: center; justify-content: center; min-width: 20px; height: 20px; padding: 0 7px;
-  border-radius: var(--r-pill); background-color: var(--inv); background-image: var(--grad-inv); color: var(--oninv);
+  border-radius: var(--r-pill); background: transparent; color: var(--t1);
   font-size: var(--fs-xs); font-weight: 600; font-variant-numeric: tabular-nums;
 }
 .side__dot { width: 6px; height: 6px; border-radius: 50%; background: var(--inv); margin-left: auto; flex: none; }
@@ -306,9 +306,11 @@ a.me__item { text-decoration: none; }
 .top.top--row .top__right { margin-left: auto; gap: 10px; padding-top: 0; }
 .top--row.top--focus .top__title { flex: 1; }
 .top__views { flex: 0 1 auto; }
-.top__needs { height: 24px; padding: 0 10px; gap: 6px; font-weight: 600; cursor: pointer; }
-.top__needs-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--oninv); }
-.top__needs[aria-expanded="true"] { box-shadow: 0 0 0 2px var(--bg), 0 0 0 3.5px var(--t1); }
+/* "N needs you" is a quiet text link (direction C, #763, 2026-10-31). */
+.top__needs { display: inline-flex; align-items: center; height: 24px; padding: 0 4px; border-radius: 6px; background: transparent; color: var(--t1);
+  font-size: var(--fs-md); font-weight: 500; white-space: nowrap; cursor: pointer; transition: var(--tr); }
+.top__needs:hover { text-decoration: underline; text-underline-offset: 3px; }
+.top__needs[aria-expanded="true"] { text-decoration: underline; text-underline-offset: 3px; }
 .top__audience.top__faces { max-width: none; min-height: 32px; margin: 0; padding: 0 4px; gap: 3px; border-radius: var(--r-pill); }
 .top__face { display: inline-flex; flex: none; border-radius: 50%; }
 .top__face .ui-avatar { background: var(--el); }
@@ -405,16 +407,16 @@ a.me__item { text-decoration: none; }
 .composer__box textarea::placeholder { color: var(--t3); opacity: 1; }
 .composer__box textarea:disabled { cursor: not-allowed; }
 /* The button keeps its full hit area; only its fill scales, so enabling reads as a soft arrival. */
-.composer__send { position: relative; isolation: isolate; display: grid; place-items: center; width: 31px; height: 31px; flex: none; border-radius: var(--r); color: var(--oninv);
+.composer__send { position: relative; isolation: isolate; display: grid; place-items: center; width: 31px; height: 31px; flex: none; border-radius: var(--r); color: var(--t1);
   transition: color var(--dur-2) var(--ease-out), outline-color var(--dur-1) var(--ease-out); }
-.composer__send::before { content: ""; position: absolute; inset: 0; z-index: -1; border-radius: inherit; background: var(--inv);
+.composer__send::before { content: ""; position: absolute; inset: 0; z-index: -1; border-radius: inherit; background: var(--own);
   transition: background-color var(--dur-2) var(--ease-out), transform var(--dur-2) var(--ease-sheet); }
 .composer__send svg { transition: transform var(--dur-2) var(--ease-sheet); }
 .composer__send[aria-disabled="true"] { color: var(--t3); cursor: default; }
-.composer__send[aria-disabled="true"]::before { background: var(--sub); transform: scale(.84); }
+.composer__send[aria-disabled="true"]::before { background: transparent; transform: scale(.84); }
 .composer__send[aria-disabled="true"] svg { transform: scale(.9); }
-.composer__send:not([aria-disabled="true"]):hover::before { filter: brightness(.95); }
-.composer__send:not([aria-disabled="true"]):active::before { filter: brightness(.9); }
+.composer__send:not([aria-disabled="true"]):hover::before { background: var(--hov); }
+.composer__send:not([aria-disabled="true"]):active::before { background: var(--pick); }
 /* Attach (#266 PF-3): a quiet paperclip among the composer's tools; staged files list above the box. */
 .composer__attach { display: grid; place-items: center; width: 32px; height: 32px; flex: none; border-radius: var(--r); color: var(--t3); transition: var(--tr); }
 .composer__attach:hover:not(:disabled) { background: var(--hov); color: var(--t1); }
@@ -626,7 +628,7 @@ kbd { display: inline-grid; place-items: center; min-width: 18px; height: 18px; 
 .phone-dock--solo { position: absolute; left: 0; right: 0; bottom: max(14px, env(safe-area-inset-bottom)); height: 0; padding: 0; }
 .phone-fab {
   position: absolute; right: 18px; bottom: calc(100% + 4px); width: 56px; height: 56px; border-radius: 50%;
-  display: grid; place-items: center; background: var(--inv); color: var(--oninv); box-shadow: var(--sh-pri), 0 10px 24px -8px rgba(0, 0, 0, .35);
+  display: grid; place-items: center; background: var(--inv); color: var(--oninv);
 }
 /* A phone on its side (short landscape, F-015): the header and the capsule step down to 44 px targets so
    the work keeps its room; the subtitle gives way (the view menu marks the current view). */
