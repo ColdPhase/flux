@@ -38,6 +38,7 @@ export { parsePage } from './access/validation.js';
 export type { DomainEventSink } from './access/common.js';
 export { createWorkspace, listWorkspaces, getWorkspace, type WorkspaceReadOptions } from './access/workspaces.js';
 export { listMembers, addMember, changeRole, removeMember } from './access/members.js';
+export { createInvite, listInvites, revokeInvite, previewInvite, acceptInvite, withLink, inviteToken, inviteIdOf, inviteTokenHash, type InviteSigner, type CreatedInvite } from './access/invites.js';
 export { setWorkspaceAiPolicy, sweepWorkspaceAi, WorkspaceAiSweepIncomplete, type WorkspaceAiSweepQueue } from './access/workspace-ai.js';
 export { createProject, addProjectView, listProjects, getProject, listProjectPeople } from './access/projects.js';
 export { listProjectGrants, grantProject, revokeProjectGrant } from './access/grants.js';

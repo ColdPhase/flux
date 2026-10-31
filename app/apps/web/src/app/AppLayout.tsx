@@ -137,7 +137,7 @@ function AppLayoutContent() {
   // A page inside Settings (#266 PF-5): on the phone its header leads back instead of opening the drawer.
   const settingsPage = /^\/settings\/./.test(location.pathname);
   // Back from a direct link goes to the page that leads there: the AI pages to Agents and AI (#513).
-  const settingsParent = /^\/settings\/(assistant|background-compute|ai-connections)(\/|$)/.test(location.pathname) ? '/settings/agents'
+  const settingsParent = /^\/settings\/(assistant|background-compute|ai-connections|agents\/connect)(\/|$)/.test(location.pathname) ? '/settings/agents'
     : /^\/settings\/people\/./.test(location.pathname) ? '/settings/people' : '/settings';
   const navDrawer = useMediaQuery(MEDIA.navDrawer);
   const tablet = useMediaQuery(MEDIA.tablet);
@@ -155,7 +155,7 @@ function AppLayoutContent() {
   // The phone's "+" sheet (#341) and the one Create window (#345) are separate: the sheet's Task opens the window.
   const [createOpen, setCreateOpen] = useState(false);
   const [create, setCreate] = useState<CreateRequest | null>(null);
-  const paneRef = useRef<HTMLDivElement>(null);
+  const paneRef = useRef<HTMLElement>(null);
   const sideRef = useRef<HTMLElement>(null);
   const drawerTitleId = useId();
 
@@ -821,12 +821,13 @@ function AppLayoutContent() {
         {/* The conversation and its one panel share a row under the one header (Spokój, F-026 layout per screen). */}
         <div className="app__body">
           <RouteProgress />
-          <div className="app__pane" id="content" ref={paneRef} tabIndex={-1}>
+          {/* The one main landmark, the skip link's target (#763 AX-1): a view's own header is then not a second banner. */}
+          <main className="app__pane" id="content" ref={paneRef} tabIndex={-1}>
             <Dissolve id={routeView(location.pathname)} direction={viewWay} host={paneRef} dress=".app" shift="--shift-view" time="--dur-view" layer={19} skip=".deferred-surface--stage">
               <Outlet />
               <DeferredLiveStage />
             </Dissolve>
-          </div>
+          </main>
           <SidePanel open={detailsOpen} onClose={closePanel} title={recapOpen ? 'What matters' : ownedShown ? ownedShown.label : 'Details'} closeLabel={ownedShown?.closeLabel} chip={objectChip} id="details" back={back} startFull={sheetStart ?? ownedShown?.startFull} onHeight={(full) => keepPlace('sheet', full)}
             contentKey={ownedShown ? `owned:${ownedShown.key}` : typeof detailsView === 'object' ? JSON.stringify(detailsView) : detailsView} depth={trail.length + (ownedShown?.back ? 1 : 0)}
             context={phone && (detailsView === 'place' || typeof detailsView === 'object' && detailsView.kind === 'overview') ? <OverviewContext message={typeof detailsView === 'object' && detailsView.kind === 'overview' && !!detailsView.messageId} /> : undefined}>

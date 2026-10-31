@@ -330,6 +330,9 @@ tokens or S/P rules above:
 - **References** to Flux objects are cards with the object icon, the kind, the title and the
   state: task, Wiki page, decision, map thought, cited message. In text they are inline chips
   aligned to the text baseline: `@person`, `#4`, a Wiki page.
+  Founder decision 2026-10-30 ([F-034](../../product/decisions.md)): a decision in a Wiki page is
+  the drawn one-line card with its short reason (the first sentence of the rationale) under it;
+  it opens the decision and shows its current state, and is never copied text.
 - **A link** shows a preview: the site icon, the domain, the title, the description and an
   optional image. Founder direction 2026-10-16 ([#469](https://github.com/ColdPhase/flux/issues/469)):
   the Flux server may fetch link previews. Decision [F-031](../../product/decisions.md): the card

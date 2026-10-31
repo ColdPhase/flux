@@ -5,7 +5,7 @@
 export class DomainError extends Error {
   /** Extra safe fields merged into the error body, e.g. the latest authorized version. */
   details?: Record<string, unknown>;
-  constructor(readonly status: 400 | 401 | 403 | 404 | 409 | 413 | 422 | 423 | 428 | 429 | 500 | 503, readonly code: string, message: string) {
+  constructor(readonly status: 400 | 401 | 403 | 404 | 409 | 410 | 413 | 422 | 423 | 428 | 429 | 500 | 503, readonly code: string, message: string) {
     super(message);
     this.name = new.target.name;
   }
@@ -51,6 +51,13 @@ export class RuleViolationError extends DomainError {
 export class ConflictError extends DomainError {
   constructor(message: string, code = 'CONFLICT') {
     super(409, code, message);
+  }
+}
+
+/** The object existed for this caller but no longer works (an invite link that was used, revoked or expired, F-035). */
+export class GoneError extends DomainError {
+  constructor(message: string, code: string) {
+    super(410, code, message);
   }
 }
 

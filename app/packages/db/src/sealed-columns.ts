@@ -57,7 +57,7 @@ const content = [
   'doc_live_replicas', 'map_live_presence', 'map_live_gestures', 'map_live_heads', 'map_live_journal', 'map_live_object_versions', 'map_live_undone',
   'live_editing_intents', 'notifications', 'notification_generation_failures', 'notification_emails', 'notification_mutes', 'needs_you_states',
   'events', 'event_audience', 'idempotency_keys', 'search_documents', 'search_changes', 'live_sessions', 'live_presentations', 'live_invitations',
-  'live_admissions',
+  'live_admissions', 'workspace_invites',
 ] as const;
 
 export const TABLE_CLASSES: Readonly<Record<string, TableClass>> = Object.freeze(Object.fromEntries([
@@ -139,6 +139,8 @@ export const VISIBLE_COLUMNS: Readonly<Record<string, Readonly<Record<string, st
   workspaces: { name: 'shown to members while locked ("Garden club is waiting to be unlocked")', created_by: 'a user id' },
   workspace_members: { user_id: 'a user id', role: 'an enum', created_by: 'a user id' },
   workspace_ai_policies: { state: 'an enum', changed_by: 'a user id' },
+  workspace_invites: { role: 'an enum', email: 'the invited address, as visible as a member\'s account address (people are metadata)',
+    token_hash: 'a SHA-256 of the link token, no content', created_by: 'a user id', revoked_by: 'a user id', accepted_by: 'a user id' },
   projects: { visibility: 'an enum', created_by: 'a user id', views: 'enum values' },
   project_grants: { user_id: 'a user id', role: 'an enum', created_by: 'a user id' },
   project_goals: { set_by: 'a user id', reached_by: 'a user id' },

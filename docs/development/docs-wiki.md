@@ -83,15 +83,40 @@ open in the app: docs, messages and sketches by route, work objects in the Detai
 
 ## Add to docs
 
-On a result or decision, **Add to docs** (Details panel) starts a doc from it or writes its
-section into an existing doc as a new version. The section is a `## Result: …` or
-`## Decision: …` heading with the finding or rule state, its evidence or rationale, and a
-`Source: [title](flux:result/<id>)` line. The doc also gets a `source` link to the object, which
-is kept across later edits. Adding the same object again rewrites **only its section** (found by
-its `Source:` line; other text is kept byte for byte) with the current state, for example
-"Earlier rule · replaced Sep 28 by [new rule]", as the next version with the reason "Updated the
-decision “…”". The earlier statement stays in the earlier version. Nothing to change makes no
-version. Headings inside quoted evidence are escaped so a section keeps its shape.
+On a result or decision, **Add to docs** (Details panel) starts a doc from it or adds it to an
+existing doc as a new version. The doc also gets a `source` link to the object, which is kept
+across later edits.
+
+A **result** is written as a section: a `## Result: …` heading with the finding, its evidence and a
+`Source: [title](flux:result/<id>)` line. Adding the same result again rewrites **only its
+section** (found by its `Source:` line; other text is kept byte for byte) with the current state,
+as the next version with the reason "Updated the result “…”". The earlier statement stays in the
+earlier version. Nothing to change makes no version. Headings inside quoted evidence are escaped so
+a section keeps its shape.
+
+### Decisions in the Wiki (F-034)
+
+Founder decision 2026-10-30 ([#763 E1](https://github.com/ColdPhase/flux/issues/763#issuecomment-6532915221)).
+A **decision** is never copied into a page. Add to docs inserts one reference line at the end of
+the page, `[title](flux:decision/<id>)` on its own line after a blank line (so it stands alone as
+the card), as the next version with the reason "Added the decision “…”". If the page already
+holds that line, nothing changes and no version is made.
+
+- **The card.** The reader shows a decision reference standing alone on its line as Prostota's one
+  line (`desktop-wiki.webp`): the state glyph and word ("Decision accepted", "Decision replaced"),
+  the title, the date and who, and under it the decision's short reason, the first sentence of its
+  rationale (`DecisionRowProjection.reason`, at most 160 characters). The whole card opens the
+  decision in the Details panel. A reference inside a sentence stays an inline link.
+- **Live.** The card is read from the decision as it is now (the reader's reference read on load,
+  focus and every 20 seconds), so accepting or replacing a decision changes no page text and adds
+  no version. A page's history holds the edits people make, and its outline its own headings.
+- **Proposed decisions stay out.** Adding a proposed decision is refused with 422
+  `DECISION_NOT_ACCEPTED` (also when starting a doc from it); the Details panel dims "Add to a Wiki page"
+  with "Accept it first to add it to the Wiki". A decision referenced earlier that is later
+  replaced shows "Decision replaced".
+- **Nothing to convert.** Founder direction 2026-10-31: Flux is pre-release with no installations
+  or data anywhere, so no page holds a section copied by the earlier "Add to docs" and there is no
+  conversion job, migration or schema change. The card needs only the decision's existing fields.
 
 ## Events
 
@@ -143,8 +168,8 @@ field is never covered. Targets are 44 px on touch.
 `app/tests/app/docs.test.ts` (API, two people, a viewer, an outsider and an agent principal:
 access, version immutability and citations, If-Match 428/409 and a concurrent race, idempotent
 retries, links and backlinks across all target types without cross-project leaks, sanitization,
-Add to docs with section rewrite, events and the workspace list filter), `app/tests/app/returns.test.ts`
-(doc items in the return view) and `app/tests/ui/test_docs.py` (Playwright: write with preview and a
+Add to docs with result section rewrite and decision references, the F-034 migration, events and the workspace list filter), `app/tests/app/returns.test.ts`
+(doc items in the return view), `app/tests/app/wiki-decision-cards.test.ts` (F-034: the reference line, the live card read, proposed decisions refused, the text rules and an encrypted workspace) and `app/tests/ui/test_wiki_decision_cards.py` (Chromium and WebKit: cards with their reason, the outline and history, Add to docs, a replaced decision, the phone) and `app/tests/ui/test_docs.py` (Playwright: write with preview and a
 link, publish, concurrent edit and conflict, history and diff at 1440 and 1280, add from a
 result, phone read/edit/compare, hostile text) and `app/tests/ui/test_wiki_panes.py` (the two panes,
 quiet selection and focus ring in every theme, search and its count, New page, Import .md with its

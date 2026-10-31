@@ -247,7 +247,7 @@ class AgentsTabStates(unittest.TestCase):
         expect(claude).to_contain_text("Work held on “Calibrate the soil probes”")
         expect(claude).to_contain_text("Offline · last seen")
         self.assertNotIn("Working", claude.inner_text())
-        expect(self.row(page, "lab")).to_contain_text("Handed #5 · not signed in yet")
+        expect(self.row(page, "lab")).to_contain_text("Has #5 · not signed in yet")
         self.assertNotIn("Working", self.row(page, "lab").inner_text())
         expect(page.locator(".agents__count")).to_contain_text("1 working")
         # Without a claim the held task is "Handed" even while the client's session is open (C-1), and the offline holder says so.
@@ -255,9 +255,9 @@ class AgentsTabStates(unittest.TestCase):
         self.stub_connections(handed, {self.ids["conn_codex"]: self.working("task1", "Fix the reconnect loop in the lamp firmware"),
                                        self.ids["conn_claude"]: open_session(), self.ids["conn_lab"]: offline(recorded_result(40))})
         handed.goto(f"/projects/{self.ids['project']}/agents")
-        expect(self.row(handed, "claude")).to_contain_text("Handed #3 · Calibrate the soil probes")
+        expect(self.row(handed, "claude")).to_contain_text("Has #3 · Calibrate the soil probes")
         expect(self.row(handed, "claude")).not_to_have_attribute("data-working", "true")
-        expect(self.row(handed, "lab")).to_contain_text("Handed #5 · offline · last seen")
+        expect(self.row(handed, "lab")).to_contain_text("Has #5 · offline · last seen")
         expect(handed.locator(".agents__count")).to_contain_text("1 working")
         # Negative control: with the same task claimed and the client's session open, the same row says "Working" and the count is 2
         # (reverting the online rule makes the offline row above say "Working", so the first assertions fail).
@@ -337,23 +337,31 @@ class AgentsTabStates(unittest.TestCase):
         jonas = self.page("jonas")
         self.stub_questions(jonas, [question])
         jonas.goto(f"/projects/{self.ids['project']}/agents")
-        expect(jonas.locator(".agents-links a").first).to_contain_text("Agent questions · No open questions for you")
+        # #763 AG-7 (Spokój rule 4): with nothing asked of Jonas, the Requests row is not shown at all.
+        expect(jonas.get_by_role("link", name=re.compile("^Agent questions"))).to_have_count(0)
 
     def test_05_take_back_a_held_task(self) -> None:
         ada = self.page("ada")
         ada.goto(f"/projects/{self.ids['project']}/agents")
         # #522: management controls belong to the connection's owner, so a colleague (even the workspace owner) has no Take back.
+        # #763 AG-5: Stop and Take back live in the agent's panel (P9 draws none on the row), never on the row.
         expect(self.row(ada, "jonas_claude")).to_be_visible()
-        expect(self.row(ada, "jonas_claude").get_by_role("button", name=re.compile("^Take back"))).to_have_count(0)
+        expect(self.row(ada, "jonas_claude").get_by_role("button", name=re.compile("^(Stop|Take back)"))).to_have_count(0)
+        self.row(ada, "jonas_claude").locator(".agents-row__btn").click()
+        expect(ada.get_by_role("region", name="Claude Code, details").get_by_role("button", name=re.compile("^(Stop|Take back|Pause)"))).to_have_count(0)
         self.assertIsNotNone(self.task("task2")["owner"])
         jonas = self.page("jonas")
         jonas.goto(f"/projects/{self.ids['project']}/agents")
-        self.row(jonas, "jonas_claude").get_by_role("button", name="Take back #2").click()
+        expect(self.row(jonas, "jonas_claude").get_by_role("button", name=re.compile("^Take back"))).to_have_count(0)
+        self.row(jonas, "jonas_claude").locator(".agents-row__btn").click()
+        jonas.get_by_role("region", name="Claude Code, details").get_by_role("button", name="Take back #2").click()
         expect(jonas.get_by_text("Took #2 back from Claude Code")).to_be_visible()
         self.assertIsNone(self.task("task2")["owner"])
-        # Negative control: an agent that holds nothing (Notes) has neither Stop nor Take back.
-        expect(self.row(ada, "notes")).to_be_visible()
-        expect(self.row(ada, "notes").get_by_role("button", name=re.compile("^(Stop|Take back)"))).to_have_count(0)
+        # Negative control: an agent that holds nothing (Notes) offers no Take back, and its Stop is dimmed in place (rule 7).
+        self.row(ada, "notes").locator(".agents-row__btn").click()
+        notes_panel = ada.get_by_role("region", name="Notes, details")
+        expect(notes_panel.get_by_role("button", name=re.compile("^Take back"))).to_have_count(0)
+        expect(notes_panel.get_by_role("button", name="Stop Notes")).to_be_disabled()
 
     def test_06_rows_read_cleanly(self) -> None:
         page = self.page("ada")
@@ -405,7 +413,8 @@ class AgentsTabStates(unittest.TestCase):
         # #347 review N1: the action is drawn in the toast's text colour (4.5:1 or better) and stays until it is used or dismissed.
         page = self.page("ada")
         page.goto(f"/projects/{self.ids['project']}/agents")
-        self.row(page, "lab").get_by_role("button", name="Stop Lab helper").click()
+        self.row(page, "lab").locator(".agents-row__btn").click()
+        page.get_by_role("region", name="Lab helper, details").get_by_role("button", name="Stop Lab helper").click()
         expect(page.get_by_text("Stopped Lab helper on #5")).to_be_visible()
         action = page.get_by_role("button", name="Hand back")
         expect(action).to_be_visible()
@@ -422,7 +431,7 @@ class AgentsTabStates(unittest.TestCase):
         # #347 review finding 1: on a phone the toast's Hand back is a touch target of at least 44 px high.
         phone = self.page("ada", phone=True)
         phone.goto(f"/projects/{self.ids['project']}/agents")
-        # On a phone the row's Stop is in the agent's panel (as Take back is, test_15).
+        # Stop is in the agent's panel (#763 AG-5), on the phone as on the computer.
         # Claude Code holds #3 (in progress, Ada's own); earlier tests stop Codex and Lab helper.
         self.row(phone, "claude").locator(".agents-row__btn").tap()
         phone.get_by_role("region", name="Claude Code, details").get_by_role("button", name="Stop Claude Code").tap()
@@ -528,7 +537,7 @@ class AgentsTabStates(unittest.TestCase):
         # Negative control: focus fell to the page body after Enter (the old unmount).
 
     def test_15_on_a_phone_take_back_waits_in_the_panel(self) -> None:
-        # #347 review N7: a row's Take back does not crowd a phone row; the agent's panel offers it.
+        # #347 review N7, #763 AG-5: no row carries Take back or Stop; the agent's panel offers it.
         ada = self.page("ada")
         notes = self.api(ada, "POST", f"/api/v1/projects/{self.ids['project']}/work", {"title": "Sort the seed packets", "owner": {"kind": "agent", "id": self.ids["notes"]}}, status=201)
         phone = self.page("ada", phone=True)
@@ -536,14 +545,10 @@ class AgentsTabStates(unittest.TestCase):
         row = self.row(phone, "notes")
         # Wait for the row to hold the new task first: a count of 0 before the read would pass trivially.
         expect(row).to_contain_text(f"#{notes['number']}")
-        # A hidden control is not in the accessibility tree, so the row's Take back is found by its class and checked as hidden.
-        take = row.locator(".agents-row__stop--take")
-        self.assertEqual(take.count(), 1, "the row has the Take back control")
-        self.assertEqual(take.get_attribute("aria-label"), f"Take back #{notes['number']}")
-        expect(take).to_be_hidden()
+        expect(row.locator(".agents-stop")).to_have_count(0)
         row.locator(".agents-row__btn").tap()
         expect(phone.get_by_role("region", name="Notes, details").get_by_role("button", name=f"Take back #{notes['number']}")).to_be_visible()
-        # Negative control: the old row showed the Take back pill, visible on the phone, so the hidden check fails.
+        # Negative control: the old row carried a (hidden) Take back pill, so the count is 1 there.
 
     def test_16_the_row_and_panel_say_stopped_by_you(self) -> None:
         # #347 review N9: after your own Stop the panel reads "Stopped by you", not your name.
@@ -563,9 +568,25 @@ class AgentsTabStates(unittest.TestCase):
         expect(page.get_by_role("heading", level=1, name="Home")).to_be_visible()
         # Only the first working agent is drawn in the card; this fixture's working agent is Ada's Claude Code (#3, no session).
         card = page.locator(".agentlive--agent").first
-        expect(card).to_contain_text("Handed #3 · not signed in yet")
+        expect(card).to_contain_text("Has #3 · not signed in yet")
         expect(card.locator("[data-expression]").first).to_have_attribute("data-expression", "asleep")
         # Negative control: the old card kept the thinking face for an offline holder.
+
+    def test_19_one_main_one_banner_and_a_one_line_drop_zone(self) -> None:
+        """#763 AX-1 and AG-7: the Agents view sits in the app's one main landmark (the skip link's target), its own header
+        is not a second banner, and the hand-off drop zone is one dashed line (P9), not a cloud of chips."""
+        page = self.page("ada")
+        page.goto(f"/projects/{self.ids['project']}/agents")
+        expect(self.row(page, "codex")).to_be_visible()
+        expect(page.get_by_role("main")).to_have_count(1)
+        expect(page.get_by_role("main")).to_have_attribute("id", "content")
+        expect(page.get_by_role("banner")).to_have_count(1)
+        expect(page.get_by_role("main").get_by_role("list", name="Agents in this project")).to_be_visible()
+        zone = page.get_by_role("region", name="Open tasks to hand off")
+        if zone.count():
+            self.assertLessEqual(zone.bounding_box()["height"], 64, "the drop zone is one line")
+            self.assertLessEqual(zone.locator(".agents-drag__task").count(), 3)
+        # Negative control: before, the pane was a div (no main) and the view's <header> was a second banner.
 
 
 CONTRAST = """() => {

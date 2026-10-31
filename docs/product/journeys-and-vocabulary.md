@@ -35,7 +35,7 @@ These terms are provisional until #8 and #13 settle the segment and domain bound
 | **Decision** | A choice with accountable human, reason, sources, and state: proposed, accepted, or superseded. | A suggestion does not become an agreement automatically. Supersession preserves the old choice. |
 | **Work item** | An assigned outcome with owner, inputs, state, blocker, and expected result. | Completion needs inspectable output or an explicit negative finding, beyond a status change. |
 | **Result** | Inspectable output or finding of work, including a failed experiment. | Preserve author, input versions, review state, and links to the work and decision. |
-| **Wiki / knowledge** | A revisable explanation that draws on results and sources without replacing their histories. | A citation retains the exact source revision and obeys current access. |
+| **Wiki / knowledge** | A revisable explanation that draws on results and sources without replacing their histories. | A citation retains the exact source revision and obeys current access. A decision appears in a page as one live card with its short reason, never as copied text ([F-034](decisions.md)). |
 | **Handoff** | Named next actor, current state, open question, sources, and next action attached to work. | A mention does not grant access; links use current permissions. |
 | **Agent run** | A bounded attempt by an identified agent to perform a scoped work item. | Show initiator, grant, execution state, input versions, cost source/limit, and proposed output. |
 

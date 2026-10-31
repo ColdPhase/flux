@@ -102,8 +102,10 @@ export const router = createBrowserRouter([
           { path: 'forgot-password', loader: forgotPasswordLoader, action: forgotPasswordAction, Component: ForgotPasswordPage },
           { path: 'reset-password', action: resetPasswordAction, Component: ResetPasswordPage },
           { path: 'claim', Component: ClaimPage },
+          // An invite link (F-035): `/join#<token>`, signed in or not.
+          { path: 'join', ...secondary(async () => ({ Component: (await import('./auth/JoinPage')).JoinPage })) },
           { path: 'sign-out', loader: signOutLoader, action: signOutAction, Component: SignOutPage },
-          { path: 'connect-agent', ...secondary(async () => { const page = await import('./agent-connection/pages'); return { Component: page.AgentConnectionPage, loader: page.agentConnectionLoader }; }) },
+          { path: 'connect-agent', ...secondary(async () => { const page = await import('./agent-connection/pages'); return { Component: page.AgentConnectionPage, loader: page.agentConnectionEntryLoader }; }) },
           { path: 'consent', ...secondary(async () => { const page = await import('./agent-connection/pages'); return { Component: page.AgentConsentPage, loader: page.agentConsentLoader }; }) },
           // Linked from notification email (#116); works without signing in.
           { path: 'unsubscribe', ...secondary(async () => ({ Component: (await import('./notifications/NotificationSettings')).UnsubscribePage })) },
@@ -187,6 +189,8 @@ export const router = createBrowserRouter([
               // F-022 T4: the console and terminal load only when this route opens.
               { path: 'agents/claude-code', ...secondary(async () => ({ Component: (await import('./agent-runtime/ClaudeCodeSignIn')).ClaudeCodeSignIn })) },
               { path: 'assistant/claude-code', element: <Navigate to="/settings/agents/claude-code" replace /> },
+              // #763 AG-2: managing your agent connections is a Settings page; `/connect-agent` without a client's sign-in leads here.
+              { path: 'agents/connect', ...secondary(async () => { const page = await import('./agent-connection/pages'); return { Component: page.AgentConnectionSettings, loader: page.agentConnectionLoader }; }) },
               { path: 'agents/codex', ...secondary(async () => ({ Component: (await import('./agent-runtime/CodexSignIn')).CodexSignIn })) },
               { path: 'shortcuts', ...secondary(async () => ({ Component: (await settingsPage()).KeyboardShortcuts })) },
               { path: 'assistant', ...secondary(async () => ({ Component: (await import('./assistant/AssistantSettings')).AssistantSettings })) },

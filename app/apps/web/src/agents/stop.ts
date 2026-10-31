@@ -105,6 +105,8 @@ export function usePauseAgent(projectId: string, onSettled: () => void) {
   const toast = useToast();
   const [busy, setBusy] = useState<string | null>(null);
   const attempts = useRef(new Map<string, string>());
+  // The confirmation's Resume (#763 AG-4) calls the current pause, so it never holds a stale one.
+  const latest = useRef<(agentId: string, task: { id: string; number: number }, agentName: string, paused: boolean) => Promise<void>>(async () => undefined);
   const pause = useCallback(async (agentId: string, task: { id: string; number: number }, agentName: string, paused: boolean) => {
     const key = `${agentId}:${task.id}:${paused}`;
     if (busy) return;
@@ -113,7 +115,9 @@ export function usePauseAgent(projectId: string, onSettled: () => void) {
     try {
       await pauseAgent(projectId, { agentId, taskId: task.id, paused }, attempts.current.get(key)!);
       attempts.current.delete(key);
-      toast({ message: paused ? `Pausing ${agentName} on #${task.number}` : `Resumed ${agentName} on #${task.number}`, tone: 'success' });
+      toast(paused
+        ? { message: `Paused ${agentName} on #${task.number}`, tone: 'success', action: { label: 'Resume', onClick: () => { void latest.current(agentId, task, agentName, false); } } }
+        : { message: `Resumed ${agentName} on #${task.number}`, tone: 'success' });
     } catch (cause) {
       if (cause instanceof ApiError) attempts.current.delete(key);
       let message = stopFailure(cause);
@@ -124,5 +128,6 @@ export function usePauseAgent(projectId: string, onSettled: () => void) {
       onSettled();
     }
   }, [busy, projectId, toast, onSettled]);
+  useEffect(() => { latest.current = pause; }, [pause]);
   return { pause, busy };
 }

@@ -39,6 +39,26 @@ export interface WorkspaceRepository {
   deleteMember(workspaceId: string, userId: string): Promise<void>;
 }
 
+/** A `workspace_invites` row (F-035). */
+export interface InviteRow {
+  id: string; workspaceId: string; role: 'admin' | 'member' | 'guest'; email: string | null; tokenHash: string; createdBy: string;
+  createdAt: Date; expiresAt: Date; revokedAt: Date | null; revokedBy: string | null; acceptedAt: Date | null; acceptedBy: string | null;
+}
+
+/** Invite link rows (F-035, `workspaceInviteRepository`). */
+export interface InviteRepository {
+  insert(row: { id: string; workspaceId: string; role: InviteRow['role']; email: string | null; tokenHash: string; createdBy: string; expiresAt: Date }): Promise<InviteRow>;
+  /** Pending invites with their creator's name, newest first. */
+  pending(workspaceId: string, now: Date): Promise<{ invite: InviteRow; creatorName: string }[]>;
+  pendingCount(workspaceId: string, now: Date): Promise<number>;
+  /** One invite with its workspace and creator; with `lock`, the invite row `FOR UPDATE`. */
+  get(inviteId: string, options?: { lock?: boolean }): Promise<{ invite: InviteRow; workspaceName: string; encrypted: boolean; creatorName: string } | null>;
+  /** The person's role in the workspace, or null. */
+  memberRole(workspaceId: string, userId: string): Promise<WorkspaceRole | null>;
+  revoke(inviteId: string, revokedBy: string, at: Date): Promise<void>;
+  markAccepted(inviteId: string, acceptedBy: string, at: Date): Promise<void>;
+}
+
 /** The rows of an encrypted workspace (F-030) that membership changes and workspace reads need (`workspaceEncryptionRows`). */
 export interface WorkspaceEncryptionRows {
   sealed(workspaceId: string): Promise<boolean>;
@@ -124,6 +144,7 @@ export type RecordReader = AccessReader<ProjectRecord, DraftRecord, AgentRecord>
  */
 export interface AccessPorts {
   workspaces(db: Executor): WorkspaceRepository;
+  invites(db: Executor): InviteRepository;
   projects(db: Executor): ProjectRepository;
   agents(db: Executor): AgentRepository;
   drafts(db: Executor): DraftRepository;

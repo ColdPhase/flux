@@ -58,6 +58,13 @@ export async function workspaceIdsOfOauthClient(db: DbExecutor, ownerUserId: str
   return rows.map((row) => row.workspaceId);
 }
 
+/** The name an enabled OAuth client gives itself (unverified; a recognition aid only), or null (#763 AG-6). */
+export async function oauthClientName(db: DbExecutor, clientId: string): Promise<string | null> {
+  const [client] = await db.select({ name: schema.oauthClient.name }).from(schema.oauthClient).where(and(
+    eq(schema.oauthClient.clientId, clientId), or(eq(schema.oauthClient.disabled, false), isNull(schema.oauthClient.disabled))));
+  return client?.name ?? null;
+}
+
 /** The workspace behind an OAuth grant reference (`flux-grant:<binding>` or an explicit historic connection id), or null. */
 export async function workspaceIdOfGrantReference(db: DbExecutor, ownerUserId: string, referenceId: string): Promise<string | null> {
   let connectionId: string | null = referenceId;

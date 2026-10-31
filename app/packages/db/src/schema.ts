@@ -429,6 +429,24 @@ export const workspaceMembers = pgTable('workspace_members', {
   index('workspace_members_user_idx').on(table.userId),
 ]);
 
+/** F-035 (#763 PE-2): a one-time invite link to a workspace. Only the SHA-256 of the token is stored (migration 0137). */
+export const workspaceInvites = pgTable('workspace_invites', {
+  id: uuid('id').primaryKey(),
+  workspaceId: uuid('workspace_id').notNull().references(() => workspaces.id, { onDelete: 'cascade' }),
+  role: text('role', { enum: ['admin', 'member', 'guest'] }).notNull(),
+  email: text('email'),
+  tokenHash: text('token_hash').notNull().unique(),
+  createdBy: text('created_by').notNull().references(() => authUsers.id, { onDelete: 'cascade' }),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+  revokedAt: timestamp('revoked_at', { withTimezone: true }),
+  revokedBy: text('revoked_by').references(() => authUsers.id, { onDelete: 'set null' }),
+  acceptedAt: timestamp('accepted_at', { withTimezone: true }),
+  acceptedBy: text('accepted_by').references(() => authUsers.id, { onDelete: 'set null' }),
+}, (table) => [
+  index('workspace_invites_pending_idx').on(table.workspaceId, table.createdAt.desc()).where(sql`revoked_at IS NULL AND accepted_at IS NULL`),
+]);
+
 export const projects = pgTable('projects', {
   id: uuid('id').primaryKey(),
   workspaceId: uuid('workspace_id').notNull().references(() => workspaces.id, { onDelete: 'cascade' }),

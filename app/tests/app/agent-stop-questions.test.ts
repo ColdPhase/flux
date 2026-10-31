@@ -320,6 +320,9 @@ test('#160 AC-5: Pause keeps the hold, refuses renew and claim with COWORK_PAUSE
   assert.equal((await f.unitRow(unitId)).state, 'claimed');
   const list = expectStatus(await f.marek.browser.request('GET', `/api/v1/projects/${f.p.id}/agent-stops`), 200) as AgentStops;
   assert.deepEqual(list.pauses.map((entry) => [entry.taskId, entry.taskNumber, entry.agent.id, entry.pausedBy.name]), [[item.id, 1, f.agent.id, 'Hubert']]);
+  // #763 AG-4: the owner's working-agent read (sidebar card, Home) names the pause too, and drops it on Resume (below).
+  const sidebar = (expectStatus(await f.hubert.browser.request('GET', '/api/v1/working-agents'), 200) as OwnWorkingAgents).items.find((entry) => entry.task.id === item.id);
+  assert.deepEqual(sidebar?.paused, { by: { id: f.hubert.id, name: 'Hubert' } });
 
   // The agent's next renewal is its safe point: refused with COWORK_PAUSED, and it can still release with a checkpoint.
   const renew = await f.connected.grant('cowork.renew', 'execute', 5, unitId);
@@ -339,6 +342,7 @@ test('#160 AC-5: Pause keeps the hold, refuses renew and claim with COWORK_PAUSE
   assert.equal((await pause(f.hubert, false)).status, 204);
   assert.equal((await pause(f.hubert, false)).status, 204);
   assert.equal((await pool.query('SELECT count(*)::int AS n FROM agent_pauses WHERE task_id=$1', [item.id])).rows[0].n, 0);
+  assert.equal((expectStatus(await f.hubert.browser.request('GET', '/api/v1/working-agents'), 200) as OwnWorkingAgents).items.find((entry) => entry.task.id === item.id)?.paused, null);
   const resumed = toolValue(await f.connected.tool('flux_claim_unit', { ...f.run(), grantId: claimAgain.id, clientCommandId: randomUUID(), unitId,
     expectedVersion: released.version })) as { state: string; checkpoint: { summary: string } | null };
   assert.deepEqual([resumed.state, resumed.checkpoint?.summary], ['claimed', 'Measured three corners.']);
