@@ -65,6 +65,12 @@ export function blockedLine(item: { blocker: string | null; waitingFor?: { name:
   return reason && thing ? `Waiting for ${reason}` : reason;
 }
 
+/** The first line of a message, for prefilled titles. */
+export function firstLine(text: string, max = 200) {
+  const line = text.trim().split('\n', 1)[0] ?? '';
+  return line.length > max ? `${line.slice(0, max - 1)}…` : line;
+}
+
 /**
  * A task title made from a message (#763 B5): a short first line as written; a long one (over `whole` characters) gives
  * its first clause, at most `max` characters, cut at a word. The message stays the task's quoted source.
