@@ -19,6 +19,9 @@ export interface JoinRateLimitOptions {
   windowMs?: number;
   maxUsers?: number;
   now?: () => number;
+  /** The refusal's message and code (default: the live join's). */
+  message?: string;
+  code?: string;
 }
 
 export const LIVE_JOIN_RATE_LIMIT = { limit: 20, windowMs: 60_000, maxUsers: 10_000 } as const;
@@ -28,6 +31,8 @@ export function joinRateLimiter(options: JoinRateLimitOptions = {}): JoinRateLim
   const windowMs = options.windowMs ?? LIVE_JOIN_RATE_LIMIT.windowMs;
   const maxUsers = options.maxUsers ?? LIVE_JOIN_RATE_LIMIT.maxUsers;
   const now = options.now ?? Date.now;
+  const message = options.message ?? 'Too many join attempts; try again shortly';
+  const code = options.code ?? 'LIVE_JOIN_RATE_LIMITED';
   if (!Number.isInteger(limit) || limit < 1 || !(windowMs > 0) || !Number.isInteger(maxUsers) || maxUsers < 1)
     throw new Error('Invalid live join rate limit');
   // Insertion order doubles as least-recently-used order: a person is re-inserted on each take.
@@ -48,7 +53,7 @@ export function joinRateLimiter(options: JoinRateLimitOptions = {}): JoinRateLim
       if (times.length >= limit) {
         attempts.set(userId, times);
         const retryAfterSeconds = Math.max(1, Math.ceil((times[0]! + windowMs - at) / 1000));
-        throw new RateLimitedError(retryAfterSeconds, 'Too many join attempts; try again shortly', 'LIVE_JOIN_RATE_LIMITED');
+        throw new RateLimitedError(retryAfterSeconds, message, code);
       }
       if (attempts.size >= maxUsers) prune(at);
       times.push(at);

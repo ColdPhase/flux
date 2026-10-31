@@ -1,4 +1,13 @@
 import {
+  INVITE_ACCEPT_PATH,
+  INVITE_PREVIEW_PATH,
+  workspaceInvitePath,
+  workspaceInvitesPath,
+  type AcceptInviteResult,
+  type InviteExpiryDays,
+  type InvitePreview,
+  type InviteRole,
+  type WorkspaceInvite,
   projectGrantPath,
   projectGrantsPath,
   workspaceMemberPath,
@@ -37,6 +46,14 @@ export const removeMember = (workspaceId: string, userId: string) => request<nul
  */
 export const setWorkspaceAi = (workspaceId: string, state: 'allowed' | 'blocked', version: number, idempotencyKey: string) =>
   request<SetWorkspaceAiPolicyResult>(workspaceAiPolicyPath(workspaceId), { method: 'PUT', body: { state }, headers: { 'if-match': `"${version}"`, ...key(idempotencyKey) } });
+
+/** Invite links (F-035): owners and admins create, list and revoke them; whoever has one previews and accepts it. */
+export const listInvites = (workspaceId: string, signal?: AbortSignal) => request<WorkspaceInvite[]>(workspaceInvitesPath(workspaceId), { signal });
+export const createInvite = (workspaceId: string, body: { role: InviteRole; email: string | null; expiresInDays: InviteExpiryDays }, idempotencyKey: string) =>
+  request<WorkspaceInvite>(workspaceInvitesPath(workspaceId), { method: 'POST', body, headers: key(idempotencyKey) });
+export const revokeInvite = (workspaceId: string, inviteId: string) => request<null>(workspaceInvitePath(workspaceId, inviteId), { method: 'DELETE' });
+export const previewInvite = (token: string, signal?: AbortSignal) => request<InvitePreview>(INVITE_PREVIEW_PATH, { method: 'POST', body: { token }, signal });
+export const acceptInvite = (token: string) => request<AcceptInviteResult>(INVITE_ACCEPT_PATH, { method: 'POST', body: { token } });
 
 export const listGrants = (projectId: string, signal?: AbortSignal) => request<ProjectGrant[]>(projectGrantsPath(projectId), { signal });
 /** Creates or replaces the one grant of this person on the project. */
@@ -95,7 +112,11 @@ export function problemText(error: unknown, context: { workspace: string; email?
   const who = context.who ?? 'They';
   switch (error.code) {
     case 'ACCOUNT_NOT_FOUND':
-      return `No one has an account with ${context.email ?? 'that address'} at this Flux address yet. Ask them to create one at ${window.location.origin} first, then add them here. Flux doesn’t send invitations.`;
+      return `No one has an account with ${context.email ?? 'that address'} here yet. Create an invite link for them below and send it yourself.`;
+    case 'INVITE_LIMIT':
+      return `${context.workspace} already has 50 invite links waiting. Revoke some you no longer need first.`;
+    case 'INVITE_NOT_FOUND':
+      return 'That invite link was already used, revoked or expired. The list shows it as it is now.';
     case 'ALREADY_MEMBER':
       return `${context.who ?? context.email ?? 'This person'} is already in ${context.workspace}.`;
     case 'LAST_OWNER':

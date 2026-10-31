@@ -1,5 +1,5 @@
 import type { PgBoss } from 'pg-boss';
-import type { ProcessKeys, ResourceRef } from '@flux/core';
+import type { InviteSigner, ProcessKeys, ResourceRef } from '@flux/core';
 import type { Database } from '@flux/db';
 import type { SessionResolver } from '../identity/index.js';
 import { commandRunner } from '../http/commands.js';
@@ -14,6 +14,8 @@ export interface AccessRouteOptions {
   verifiedEmailMembers?: boolean;
   /** F-030: this process's keys, so a workspace's `encryption.state` uses this API's keyring boot. */
   encryptionKeys?: ProcessKeys;
+  /** F-035: signs and finds invite links (the identity secret and the public origin). Without it no invite route is registered. */
+  inviteSigner?: InviteSigner;
 }
 
 /**
@@ -31,6 +33,7 @@ export function accessContext({ db, sessions, liveRevocation, verifiedEmailMembe
   };
   return {
     db,
+    sessions,
     verifiedEmailMembers,
     /** How this API reads a workspace's encryption state: its keyring boot (null while unreachable), or rows only. */
     readOptions: () => (encryptionKeys ? { bootId: encryptionKeys.openableBoot } : {}),

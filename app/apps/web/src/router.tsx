@@ -101,6 +101,8 @@ export const router = createBrowserRouter([
           { path: 'forgot-password', loader: forgotPasswordLoader, action: forgotPasswordAction, Component: ForgotPasswordPage },
           { path: 'reset-password', action: resetPasswordAction, Component: ResetPasswordPage },
           { path: 'claim', Component: ClaimPage },
+          // An invite link (F-035): `/join#<token>`, signed in or not.
+          { path: 'join', ...secondary(async () => ({ Component: (await import('./auth/JoinPage')).JoinPage })) },
           { path: 'sign-out', loader: signOutLoader, action: signOutAction, Component: SignOutPage },
           { path: 'connect-agent', ...secondary(async () => { const page = await import('./agent-connection/pages'); return { Component: page.AgentConnectionPage, loader: page.agentConnectionLoader }; }) },
           { path: 'consent', ...secondary(async () => { const page = await import('./agent-connection/pages'); return { Component: page.AgentConsentPage, loader: page.agentConsentLoader }; }) },
