@@ -88,7 +88,8 @@ buttons above, which read as too strong:
 - Button radius 10 (`--r-btn`); `--r-pill` stays for chips, avatars and segmented tracks.
 - Counters such as "2 needs you" are quiet text links, not inverted pills.
 - A composer's Send is a soft fill (`--own`) with the arrow icon.
-- The phone's one "+" stays the inverted primary, without a shadow.
+- The phone's floating "+" is a soft fill like Send (`--own`, `--t1` icon, 56 px, no shadow), so each
+  phone screen has at most one dark button (founder decision, 2026-10-31, follow-up on #763).
 `tests/test_ui_tokens.py` (`QuietButtons`) guards the flat buttons, the radius and the retired tokens.
 
 **Concentric corners** (founder, 2026-10-08): a frame that tightly holds a tile or an avatar takes
@@ -206,7 +207,7 @@ content and never nags.
 
 - **Tab bar.** Home · Projects · Inbox, in a floating capsule, with a separate round **Search**
   button. Direct messages live in Projects.
-- **One "+".** A floating button above the tab bar opens Create: Task, Thought, Message, Decision,
+- **One "+".** A floating soft-fill button above the tab bar opens Create: Task, Thought, Message, Decision,
   File or link, Sketch.
 - **Inside a project.**
   - The title is the view menu: Conversation, Tasks, Map, Wiki, Agents, then "Details, goal and

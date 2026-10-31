@@ -628,8 +628,11 @@ kbd { display: inline-grid; place-items: center; min-width: 18px; height: 18px; 
 .phone-dock--solo { position: absolute; left: 0; right: 0; bottom: max(14px, env(safe-area-inset-bottom)); height: 0; padding: 0; }
 .phone-fab {
   position: absolute; right: 18px; bottom: calc(100% + 4px); width: 56px; height: 56px; border-radius: 50%;
-  display: grid; place-items: center; background: var(--inv); color: var(--oninv);
+  display: grid; place-items: center; background: var(--own); color: var(--t1); transition: var(--tr);
 }
+/* The phone's "+" is a soft fill like Send, so a screen's one dark button is its own (founder, 2026-10-31, #763). */
+.phone-fab:hover { background: var(--hov); }
+.phone-fab:active { background: var(--pick); }
 /* A phone on its side (short landscape, F-015): the header and the capsule step down to 44 px targets so
    the work keeps its room; the subtitle gives way (the view menu marks the current view). */
 @media (max-width: 640px) and (max-height: 480px) {
