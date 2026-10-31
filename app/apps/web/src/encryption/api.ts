@@ -107,6 +107,8 @@ export function encryptionProblem(error: unknown, context: { workspace: string; 
       return `That password doesn’t unlock ${context.workspace}.`;
     case 'UNLOCK_RATE_LIMITED':
       return 'Too many tries. Try again in 15 minutes.';
+    case 'CREATION_RATE_LIMITED':
+      return 'You’ve made several encrypted spaces just now. Try again in 15 minutes.';
     case 'PASSWORD_TOO_WEAK':
       return 'Use at least 20 characters that are hard to guess, for example the six words suggested.';
     case 'ENCRYPTION_TAMPERED':

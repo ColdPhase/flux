@@ -91,7 +91,7 @@ export interface NewRecoveryCodeResult { recoveryCode: string }
 /** The refusal of every content read or write of a sealed workspace while it is locked. */
 export const WORKSPACE_LOCKED = 'WORKSPACE_LOCKED';
 export const ENCRYPTION_ERROR_CODES = [
-  'WORKSPACE_LOCKED', 'UNLOCK_INCORRECT', 'UNLOCK_RATE_LIMITED', 'UNLOCK_BUSY', 'NO_UNLOCK_PASSWORD', 'KEYRING_UNAVAILABLE',
+  'WORKSPACE_LOCKED', 'UNLOCK_INCORRECT', 'UNLOCK_RATE_LIMITED', 'CREATION_RATE_LIMITED', 'UNLOCK_BUSY', 'NO_UNLOCK_PASSWORD', 'KEYRING_UNAVAILABLE',
   'SWAP_UNSAFE', 'PASSWORD_TOO_WEAK', 'LAST_UNLOCK_PASSWORD', 'ALREADY_HAS_PASSWORD', 'UNLOCK_PASSWORD_GRANT_REQUIRED',
   'WORKSPACE_ENCRYPTION_ADMIN_REQUIRED', 'WORKSPACE_ENCRYPTED_AI_OFF', 'ENCRYPTION_TAMPERED', 'WORKSPACE_NOT_ENCRYPTED', 'WORKSPACE_ENCRYPTED_UNSUPPORTED',
 ] as const;
@@ -104,6 +104,9 @@ export const UNLOCK_PASSWORD_MIN_GUESSES_LOG10 = 17;
 /** Failed password or code checks per person and workspace, across every checking route, in the window. */
 export const UNLOCK_ATTEMPT_LIMIT = 5;
 export const UNLOCK_ATTEMPT_WINDOW_SECONDS = 15 * 60;
+/** Encrypted-space creations per person in the window (F-030 Password checks, S3 security review). */
+export const CREATION_LIMIT = 5;
+export const CREATION_WINDOW_SECONDS = 15 * 60;
 /** How long a holder's grant lets an owner or admin set a first password. */
 export const UNLOCK_GRANT_SECONDS = 60 * 60;
 

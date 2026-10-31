@@ -283,6 +283,20 @@ export function workspaceEncryptionRows(db: DbExecutor) {
     async releaseAttempt(id: string) {
       await db.execute(sql`DELETE FROM password_attempts WHERE id = ${id}`);
     },
+    async reserveCreation(userId: string, limit: number, windowSeconds: number): Promise<{ id: string } | { retryAfterSeconds: number }> {
+      await db.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${`flux-encrypted-creations:${userId}`}, 0))`);
+      await db.execute(sql`DELETE FROM encrypted_workspace_creations WHERE user_id = ${userId} AND at < now() - make_interval(secs => ${windowSeconds})`);
+      const [row] = await rowsOf<{ count: number; retry: number | null }>(db, sql`SELECT count(*)::int AS count,
+        ceil(extract(epoch FROM (min(at) + make_interval(secs => ${windowSeconds}) - now())))::int AS retry
+        FROM encrypted_workspace_creations WHERE user_id = ${userId}`);
+      if ((row?.count ?? 0) >= limit) return { retryAfterSeconds: Math.max(1, row?.retry ?? windowSeconds) };
+      const id = randomUUID();
+      await db.execute(sql`INSERT INTO encrypted_workspace_creations (id, user_id) VALUES (${id}, ${userId})`);
+      return { id };
+    },
+    async releaseCreation(id: string) {
+      await db.execute(sql`DELETE FROM encrypted_workspace_creations WHERE id = ${id}`);
+    },
     async grant(workspaceId: string, userId: string, options: { lock?: boolean } = {}): Promise<{ grantedBy: string; expiresAt: Date } | null> {
       const [row] = await rowsOf<{ grantedBy: string; expiresAt: Date }>(db, sql`SELECT granted_by AS "grantedBy", expires_at AS "expiresAt"
         FROM workspace_wrap_grants WHERE workspace_id = ${workspaceId} AND user_id = ${userId} AND expires_at > now()${options.lock ? sql` FOR UPDATE` : sql``}`);

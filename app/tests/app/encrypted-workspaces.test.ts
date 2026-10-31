@@ -276,6 +276,7 @@ describe('F-030 one password limiter for every checking route', () => {
     await addMember(owner, club.id, late, 'admin');
     expectStatus(await grant(owner, club.id, admin.id, passwords.owner), 201);
     expectStatus(await put(admin, club.id, { newPassword: passwords.admin }), 200);
+    await clearAttempts(club.id); // the setup grant's successful check counts (S3 review)
     const bad = 'wrong wrong wrong wrong wrong wrong';
     for (const response of [await grant(owner, club.id, late.id, bad), await put(owner, club.id, { currentPassword: bad, newPassword: passphrase() }),
       await newCode(owner, club.id, bad)]) {
@@ -296,6 +297,77 @@ describe('F-030 one password limiter for every checking route', () => {
     }
     await pool.query(`UPDATE password_attempts SET at = now() - interval '16 minutes' WHERE workspace_id = $1`, [club.id]);
     expectStatus(await grant(owner, club.id, late.id, passwords.owner), 201, 'older than 15 minutes no longer count');
+  });
+});
+
+describe('F-030 floods of derivations (S3 security review)', () => {
+  const create = (who: Person, name: string, password: string, creationId = randomUUID()) =>
+    who.browser.request('POST', ENCRYPTED_WORKSPACES_PATH, { body: { name, creationId, password } });
+
+  test('five creations per person in 15 minutes, then 429 CREATION_RATE_LIMITED with Retry-After; a retry still answers 200', async () => {
+    const kit = await person('Kit');
+    const password = passphrase();
+    const first = randomUUID();
+    for (let i = 0; i < 5; i += 1) expectStatus(await create(kit, `Kit club ${i}`, password, i === 0 ? first : randomUUID()), 201);
+    const limited = await create(kit, 'Kit club 5', password);
+    assert.equal(limited.status, 429, limited.text);
+    assert.equal(codeOf(limited), 'CREATION_RATE_LIMITED');
+    const retryAfter = Number(limited.headers.get('retry-after'));
+    assert.ok(retryAfter > 0 && retryAfter <= 900, `Retry-After ${retryAfter}`);
+    const retried = await create(kit, 'Kit club 0', password, first);
+    assert.equal(retried.status, 200, 'a retry of an earlier creationId is never limited');
+    assert.equal((retried.json as { recoveryCode: unknown }).recoveryCode, null);
+    assert.equal((await pool.query('SELECT count(*)::int AS n FROM workspaces WHERE created_by = $1', [kit.id])).rows[0].n, 5);
+    const other = await person('Lou');
+    expectStatus(await create(other, 'Lou club', passphrase()), 201, 'the limit is per person');
+    await pool.query(`UPDATE encrypted_workspace_creations SET at = now() - interval '16 minutes' WHERE user_id = $1`, [kit.id]);
+    expectStatus(await create(kit, 'Kit club 6', password), 201, 'older than 15 minutes no longer count');
+  });
+
+  test('one account flooding creations takes at most one derivation slot: another owner\'s unlock answers 200', async () => {
+    const mal = await person('Mal');
+    const ola = await person('Ola');
+    const olaPassword = passphrase();
+    const { workspace: club } = await createSealed(ola, 'Flood club', olaPassword);
+    await addMember(ola, club.id, mal, 'guest');
+    await lock(ola.browser, club.id);
+    const malPassword = passphrase();
+    const [creations, opened] = await Promise.all([
+      Promise.all(Array.from({ length: 16 }, (_, i) => create(mal, `Mal club ${i}`, malPassword))),
+      // Starts while Mal's derivations are already queued.
+      new Promise((resolve) => setTimeout(resolve, 20)).then(() => unlock(ola.browser, club.id, { password: olaPassword })),
+    ]);
+    expectStatus(opened, 200, 'the owner unlocks during the flood');
+    const outcomes = creations.map((response) => `${response.status}:${response.status === 201 ? '' : codeOf(response)}`);
+    assert.ok(outcomes.filter((o) => o === '201:').length <= 5, outcomes.join(' '));
+    assert.ok(outcomes.includes('503:UNLOCK_BUSY'), `a person's second derivation at the same moment is refused at once: ${outcomes.join(' ')}`);
+    assert.ok(outcomes.every((o) => ['201:', '503:UNLOCK_BUSY', '429:CREATION_RATE_LIMITED'].includes(o)), outcomes.join(' '));
+    // A busy refusal released its reservation: only created spaces count.
+    const counted = (await pool.query('SELECT count(*)::int AS n FROM encrypted_workspace_creations WHERE user_id = $1', [mal.id])).rows[0].n;
+    assert.equal(counted, outcomes.filter((o) => o === '201:').length);
+  });
+
+  test('new recovery codes with the right password: concurrent ones are refused, successes count, and another person still unlocks', async () => {
+    const ola = await person('Pia');
+    const rae = await person('Rae');
+    const passwords = { ola: passphrase(), rae: passphrase() };
+    const { workspace: mine } = await createSealed(ola, 'Code club', passwords.ola);
+    const { workspace: theirs } = await createSealed(rae, 'Other code club', passwords.rae);
+    await lock(rae.browser, theirs.id);
+    const [codes, opened] = await Promise.all([
+      Promise.all(Array.from({ length: 10 }, () => newCode(ola, mine.id, passwords.ola))),
+      new Promise((resolve) => setTimeout(resolve, 20)).then(() => unlock(rae.browser, theirs.id, { password: passwords.rae })),
+    ]);
+    expectStatus(opened, 200, 'another person unlocks while an owner repeats new recovery codes');
+    const outcomes = codes.map((response) => `${response.status}:${response.status === 200 ? '' : codeOf(response)}`);
+    assert.ok(outcomes.includes('503:UNLOCK_BUSY'), outcomes.join(' '));
+    assert.ok(outcomes.every((o) => ['200:', '503:UNLOCK_BUSY', '429:UNLOCK_RATE_LIMITED'].includes(o)), outcomes.join(' '));
+    await clearAttempts(mine.id);
+    for (let i = 0; i < 5; i += 1) expectStatus(await newCode(ola, mine.id, passwords.ola), 200);
+    const limited = await newCode(ola, mine.id, passwords.ola);
+    assert.equal(limited.status, 429, 'the sixth successful check in 15 minutes');
+    assert.equal(codeOf(limited), 'UNLOCK_RATE_LIMITED');
+    assert.ok(Number(limited.headers.get('retry-after')) > 0);
   });
 });
 
