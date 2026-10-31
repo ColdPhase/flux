@@ -154,5 +154,5 @@ did not verify speech intelligibility, camera/motion, physical captures/devices,
 weak individual receivers, public restrictive networks, k3s, or high-resolution
 impairment/recovery windows. Earlier legacy degradation/recovery evidence is
 separate and cannot be attributed to this 1440p corpus. Required #63 outcomes
-remain open. The [protocol](../../../live-code-calibration.md) and
-[k3s evidence](../../live-k3s/2026-09-30/ARCHIVE.md) describe their respective limits.
+remain open. The [protocol](../../../live-code-calibration.md) describes its limits
+(the k3s evidence was removed on 2026-10-31: Compose is the only supported install).

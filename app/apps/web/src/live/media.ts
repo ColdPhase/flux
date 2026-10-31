@@ -1,6 +1,6 @@
 import {
   ConnectionQuality, DisconnectReason, LocalAudioTrack, createLocalAudioTrack, createLocalScreenTracks, createLocalVideoTrack, type LocalTrack, LocalVideoTrack, RemoteAudioTrack, RemoteVideoTrack, Room, RoomEvent, Track,
-  type LocalTrackPublication, type Participant, type RemoteTrack, type RemoteTrackPublication, type TrackPublication,
+  type LocalTrackPublication, type Participant, type TrackPublishOptions, type VideoResolution, type RemoteTrack, type RemoteTrackPublication, type TrackPublication,
 } from 'livekit-client';
 import { canPublishScreen } from './capture.js';
 import { installIceServerNormalizer } from './ice-servers.js';
@@ -14,6 +14,34 @@ import { measurement as fmt, receiverReport, TrackDiagnostics } from './diagnost
  */
 
 export type DeviceKind = 'mic' | 'camera' | 'screen';
+/**
+ * How a screen is sent (#63). `text` keeps every pixel of code and documents sharp at up to
+ * 2560×1440 and 15 fps. `motion` is for a moving demo or video: up to 1920×1080 at 60 fps, and
+ * under a weak uplink the encoder lowers the resolution before the frame rate. Both are one layer.
+ */
+export type ScreenMode = 'text' | 'motion';
+
+/** Capture and publication of each screen mode. */
+const SCREEN_MODES: Record<ScreenMode, { resolution: VideoResolution; contentHint: 'detail' | 'motion'; publish: TrackPublishOptions }> = {
+  text: {
+    resolution: { width: 2560, height: 1440, frameRate: 15 },
+    contentHint: 'detail',
+    publish: { degradationPreference: 'maintain-resolution', simulcast: false, screenShareEncoding: { maxBitrate: 3_500_000, maxFramerate: 15 } },
+  },
+  motion: {
+    resolution: { width: 1920, height: 1080, frameRate: 60 },
+    contentHint: 'motion',
+    // One layer, frame rate kept over resolution. With simulcast (one or two smaller layers) the 1080p layer fell
+    // from 60 to about 12 fps in the simulation, where one layer kept 59 fps; at 6 Mbit/s a whole moving 1080p frame
+    // fell back to 720p, so the cap is 10 Mbit/s (#63, 2026-10-31).
+    publish: { degradationPreference: 'maintain-framerate', simulcast: false, screenShareEncoding: { maxBitrate: 10_000_000, maxFramerate: 60 } },
+  },
+};
+
+const SCREEN_MODE_KEY = 'flux.live.screenMode';
+function storedScreenMode(): ScreenMode {
+  try { return localStorage.getItem(SCREEN_MODE_KEY) === 'motion' ? 'motion' : 'text'; } catch { return 'text'; }
+}
 /** What a device is really doing. Only `on` means it is captured and published. */
 export type DeviceState = 'off' | 'starting' | 'on' | 'denied' | 'missing' | 'busy' | 'failed' | 'unsupported';
 
@@ -28,7 +56,10 @@ export type EndReason = 'left' | 'removed' | 'room-ended' | 'elsewhere' | 'lost'
 export type Quality = 'excellent' | 'good' | 'poor' | 'lost' | 'unknown';
 
 export interface VideoRef {
+  /** Stable for one person's camera or screen, also when its track is published again. */
   key: string;
+  /** The published track; a new one replaces the video in the same place. */
+  trackSid: string;
   userId: string;
   source: 'camera' | 'screen';
   local: boolean;
@@ -66,6 +97,8 @@ export interface MediaSnapshot {
   canPlayAudio: boolean;
   /** Incoming audio is on (quiet turns it off). */
   hearing: boolean;
+  /** How your screen is (or will next be) sent. */
+  screenMode: ScreenMode;
 }
 
 export interface DiagnosticRow {
@@ -149,6 +182,9 @@ export class LiveMediaConnection {
   private endReason: EndReason | null = null;
   private leaving = false;
   private trackDiagnostics = new TrackDiagnostics();
+  private screenMode: ScreenMode = storedScreenMode();
+  /** A screen being published again in another mode: its unpublication is not a stop. */
+  private republishing = false;
   private readonly stopDeviceWatch: () => void;
 
   constructor() {
@@ -160,7 +196,7 @@ export class LiveMediaConnection {
       stopLocalTrackOnUnpublish: true,
       disconnectOnPageLeave: true,
       audioCaptureDefaults: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
-      publishDefaults: { dtx: true, red: true, screenShareEncoding: { maxBitrate: 3_500_000, maxFramerate: 15 } },
+      publishDefaults: { dtx: true, red: true, screenShareEncoding: SCREEN_MODES.text.publish.screenShareEncoding },
     });
     this.audioHost = document.createElement('div');
     this.audioHost.hidden = true;
@@ -252,12 +288,14 @@ export class LiveMediaConnection {
       // Capture first, publish only if this request is still the latest: a late permission
       // answer after Quiet, off or leave must never reach anyone.
       if (kind === 'mic') captured = [await createLocalAudioTrack({ echoCancellation: true, noiseSuppression: true, autoGainControl: true })];
-      else if (kind === 'camera') captured = [await createLocalVideoTrack({ resolution: { width: 1280, height: 720, frameRate: 30 } })];
+      // Up to 1080p30; simulcast sends smaller layers too, and only the layers someone shows (#59 §7).
+      else if (kind === 'camera') captured = [await createLocalVideoTrack({ resolution: { width: 1920, height: 1080, frameRate: 30 } })];
       else {
+        const mode = SCREEN_MODES[this.screenMode];
         captured = (await createLocalScreenTracks({
           audio: false,
-          contentHint: 'detail',
-          resolution: { width: 2560, height: 1440, frameRate: 15 },
+          contentHint: mode.contentHint,
+          resolution: mode.resolution,
           selfBrowserSurface: 'exclude',
           surfaceSwitching: 'include',
         })).filter((track) => track.kind === Track.Kind.Video);
@@ -266,7 +304,8 @@ export class LiveMediaConnection {
       if (stale()) { captured.forEach((track) => track.stop()); return drop(stale()!); }
       const track = captured[0];
       if (!track) return this.set(kind, { state: 'off', note: kind === 'screen' ? 'Nothing was chosen, so nothing is shared.' : null });
-      await local.publishTrack(track, kind === 'screen' ? { degradationPreference: 'maintain-resolution', simulcast: false } : {});
+      // A camera keeps moving when the encoder is short of CPU or bandwidth (LiveKit would keep a 1080p camera's resolution).
+      await local.publishTrack(track, kind === 'screen' ? { ...SCREEN_MODES[this.screenMode].publish } : kind === 'camera' ? { degradationPreference: 'balanced' } : {});
       // Superseded while publishing: the track was already stopped; take the publication back too.
       if (stale()) { await this.unpublish(track); return drop(stale()!); }
       this.pending[kind].clear();
@@ -283,6 +322,41 @@ export class LiveMediaConnection {
       if (stale()) return drop(stale()!);
       await this.release(kind);
       return this.set(kind, failure(kind, error));
+    }
+  }
+
+  /**
+   * Chooses how your screen is sent; remembered for your next share on this browser. A screen
+   * being shared changes at once: the same capture is published again in the new mode, so
+   * nothing new is captured and nobody is asked to pick a screen again.
+   */
+  async setScreenMode(mode: ScreenMode): Promise<void> {
+    if (mode === this.screenMode) return;
+    this.screenMode = mode;
+    try { localStorage.setItem(SCREEN_MODE_KEY, mode); } catch { /* remembered for this session only */ }
+    this.emit();
+    const local = this.room.localParticipant;
+    const track = local.getTrackPublication(Track.Source.ScreenShare)?.track;
+    if (!(track instanceof LocalVideoTrack) || this.devices.screen.state !== 'on' || this.republishing) return;
+    const request = this.generation.screen;
+    const settings = SCREEN_MODES[mode];
+    this.republishing = true;
+    try {
+      track.mediaStreamTrack.contentHint = settings.contentHint;
+      const { width, height, frameRate } = settings.resolution;
+      await track.mediaStreamTrack.applyConstraints({ width: { max: width }, height: { max: height }, frameRate: { max: frameRate } }).catch(() => undefined);
+      await local.unpublishTrack(track, false);
+      // Stopped (Stop sharing, Quiet, leave) while switching: nothing is published again.
+      if (request !== this.generation.screen || this.connection !== 'connected') { track.stop(); return; }
+      await local.publishTrack(track, { ...settings.publish });
+      if (request !== this.generation.screen) await this.unpublish(track);
+    } catch {
+      track.stop();
+      await this.unpublish(track).catch(() => undefined);
+      this.set('screen', { state: 'off', note: 'The screen could not switch and stopped. Nothing is shared.' });
+    } finally {
+      this.republishing = false;
+      this.emit();
     }
   }
 
@@ -440,7 +514,7 @@ export class LiveMediaConnection {
     this.trackDiagnostics.forget(publication.trackSid);
     const kind: DeviceKind | null = publication.source === Track.Source.Microphone ? 'mic'
       : publication.source === Track.Source.Camera ? 'camera' : publication.source === Track.Source.ScreenShare ? 'screen' : null;
-    if (kind && this.devices[kind].state === 'on')
+    if (kind && this.devices[kind].state === 'on' && !(kind === 'screen' && this.republishing))
       this.devices = { ...this.devices, [kind]: { state: 'off', note: kind === 'screen' ? 'Screen sharing stopped.' : null } };
     this.emit();
   }
@@ -475,7 +549,8 @@ export class LiveMediaConnection {
     const userId = userIdOf(participant.identity) ?? participant.identity;
     const dims = publication.dimensions;
     return {
-      key: `${participant.identity}:${publication.trackSid}`,
+      key: `${participant.identity}:${source}`,
+      trackSid: publication.trackSid,
       userId, source, local,
       width: dims?.width ?? null,
       height: dims?.height ?? null,
@@ -538,6 +613,7 @@ export class LiveMediaConnection {
       devices: this.devices,
       canPlayAudio: this.room.canPlaybackAudio,
       hearing: this.hearing,
+      screenMode: this.screenMode,
     };
   }
 

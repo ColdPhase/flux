@@ -262,3 +262,14 @@
 /* Long titles stay on one line in the panel's Show button (visual review, #62). */
 .lv-panel__show { justify-content: flex-start; }
 .lv-panel__show > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* Screen mode in the sharing line, and one camera shown large on the camera stage (#63). */
+.lv-line__seg { flex: none; }
+.lv-line__seg .seg__b { min-height: 26px; padding: 0 11px; font-size: var(--fs-sm); }
+.lv-cam__enlarge { position: absolute; inset: 0; width: 100%; height: 100%; border-radius: inherit; background: none; cursor: zoom-in; }
+.lv-cam__enlarge[aria-pressed="true"] { cursor: zoom-out; }
+.lv-cam__enlarge:focus-visible { outline: 2px solid var(--t1); outline-offset: -2px; }
+.lv-cam.is-enlarged { background: var(--el); box-shadow: inset 0 0 0 1px var(--line); }
+.lv-cam__big { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; gap: 6px; font-size: var(--fs-sm); color: var(--t2); }
+.lv-stage__view--camera .lv-stage__video { object-fit: contain; }
+.lv-stage__video.is-mirror { transform: scaleX(-1); }

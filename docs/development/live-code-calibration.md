@@ -49,7 +49,7 @@ product diagnostic path and retained diagnostic failures. It is calibration
 evidence, not full #63 acceptance.
 
 Physical platforms, real speech/motion/camera quality, weak individual receivers,
-public restrictive networks and verified k3s remain required follow-up work.
+public restrictive networks remain required follow-up work.
 
 Method references checked 2026-09-30:
 [LiveKit publish options](https://docs.livekit.io/reference/client-sdk-js/interfaces/TrackPublishOptions.html)

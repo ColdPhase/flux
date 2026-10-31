@@ -73,7 +73,6 @@ live-sfu|LIVE-4|0|./scripts/check_live_sfu.sh
 live-turn|LIVE-1 LIVE-2|0|FLUX_LIVE_TURN_ARTIFACT_DIR="$EVIDENCE" ./scripts/check_live_turn.sh
 live-ui|LIVE-3 8.14a|0|FLUX_UI_SCREENSHOT_DIR="$EVIDENCE" ./scripts/check_live_ui.sh
 live-platforms|LIVE-3|0|FLUX_LIVE_UI_PATTERN=test_live_platforms.py ./scripts/check_live_ui.sh
-live-k3s|LIVE-1|0|./scripts/check_live_k3s.sh
 public-sim|LIVE-1 LIVE-2 LIVE-3 LIVE-4|0|FLUX_SIM_ARTIFACT_DIR="$EVIDENCE" ./scripts/check_public_sim.sh
 live-editing|LIVE-5|0|./scripts/check_live_editing.sh
 live-editing-two-api|LIVE-5|0|./scripts/check_live_editing.sh --two-api

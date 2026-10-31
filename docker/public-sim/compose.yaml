@@ -71,6 +71,7 @@ services:
       - ./public-sim/client.sh:/client.sh:ro,z
       - ./public-sim/screen-source.sh:/usr/local/bin/screen-source:ro,z
       - ./public-sim/firefox-ca.sh:/usr/local/bin/firefox-ca:ro,z
+      - ./public-sim/allow-display.sh:/usr/local/bin/allow-display:ro,z
       - ${FLUX_SIM_CA_DIR:?}:/certs:ro,z
     command: ["/bin/sh", "/client.sh", "10.213.1.2"]
     networks:
@@ -83,6 +84,7 @@ services:
       - ./public-sim/client.sh:/client.sh:ro,z
       - ./public-sim/screen-source.sh:/usr/local/bin/screen-source:ro,z
       - ./public-sim/firefox-ca.sh:/usr/local/bin/firefox-ca:ro,z
+      - ./public-sim/allow-display.sh:/usr/local/bin/allow-display:ro,z
       - ${FLUX_SIM_CA_DIR:?}:/certs:ro,z
     command: ["/bin/sh", "/client.sh", "10.213.2.2"]
     networks:
@@ -95,6 +97,7 @@ services:
       - ./public-sim/client.sh:/client.sh:ro,z
       - ./public-sim/screen-source.sh:/usr/local/bin/screen-source:ro,z
       - ./public-sim/firefox-ca.sh:/usr/local/bin/firefox-ca:ro,z
+      - ./public-sim/allow-display.sh:/usr/local/bin/allow-display:ro,z
       - ${FLUX_SIM_CA_DIR:?}:/certs:ro,z
     command: ["/bin/sh", "/client.sh", "10.213.1.2"]
     networks:
@@ -107,6 +110,7 @@ services:
       - ./public-sim/client.sh:/client.sh:ro,z
       - ./public-sim/screen-source.sh:/usr/local/bin/screen-source:ro,z
       - ./public-sim/firefox-ca.sh:/usr/local/bin/firefox-ca:ro,z
+      - ./public-sim/allow-display.sh:/usr/local/bin/allow-display:ro,z
       - ${FLUX_SIM_CA_DIR:?}:/certs:ro,z
     command: ["/bin/sh", "/client.sh", "10.213.2.2"]
     networks:

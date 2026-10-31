@@ -410,8 +410,50 @@ class LiveJourney(LiveBase):
         stage.get_by_role("button", name="Zoom in").click()
         expect(stage).to_contain_text("125%")
         shot(jonas, "live-desktop-1440-stage-one-screen")
+        # Smooth motion (#63): chosen in the sharing line while sharing; the same capture is sent again, no new
+        # picker, and Jonas keeps seeing the screen in the same place.
+        modes = self.bar(nia).get_by_role("radiogroup", name="How your screen is sent")
+        expect(modes.get_by_role("radio", name="Sharp text")).to_have_attribute("aria-checked", "true")
+        modes.get_by_role("radio", name="Smooth motion").click()
+        expect(modes.get_by_role("radio", name="Smooth motion")).to_have_attribute("aria-checked", "true")
+        expect(self.bar(nia).get_by_role("button", name="Stop sharing your screen")).to_have_attribute("aria-pressed", "true")
+        self.assertEqual(nia.evaluate("window.__live.gdm"), 1, "switching asks for no new screen")
+        jonas.wait_for_function("() => { const v = document.querySelector('video.lv-stage__video'); return v && v.videoWidth > 0 && !v.paused; }", timeout=20000)
+        expect(stage.locator("video.lv-stage__video")).to_have_count(1)
+        shot(nia, "live-desktop-1440-sharing-smooth-motion")
+        # Arrow keys move the choice back; it is remembered for the next share on this browser.
+        modes.get_by_role("radio", name="Smooth motion").press("ArrowLeft")
+        expect(modes.get_by_role("radio", name="Sharp text")).to_have_attribute("aria-checked", "true")
+        expect(modes.get_by_role("radio", name="Sharp text")).to_be_focused()
         jonas.keyboard.press("Escape")
         expect(stage).to_be_hidden()
+        self.bar(nia).get_by_role("button", name="Stop sharing your screen").click()
+        expect(self.bar(nia).get_by_role("button", name="Share a window, tab or screen")).to_be_visible()
+
+        # A larger camera (#63): on the camera stage a tile is its own toggle; the camera then fills the stage.
+        self.bar(nia).get_by_role("button", name=re.compile("^Camera off")).click()
+        expect(self.bar(nia).get_by_role("button", name=re.compile("^Camera on"))).to_be_visible()
+        # Nia's screen leaves Jonas's strip first; the same place then offers the cameras.
+        expect(self.bar(jonas).get_by_role("button", name="Cameras")).to_be_visible()
+        self.bar(jonas).get_by_role("button", name="Cameras").click()
+        stage = jonas.get_by_role("region", name="Shared screens and cameras")
+        large = stage.get_by_role("button", name=re.compile("^Show Nia.* camera large$"))
+        large.click()
+        expect(large).to_have_attribute("aria-pressed", "true")
+        big = stage.get_by_label(re.compile("^Nia.* camera, enlarged$"))
+        expect(big).to_be_visible()
+        jonas.wait_for_function("() => { const v = document.querySelector('.lv-stage__view--camera video'); return v && v.videoWidth > 0; }", timeout=20000)
+        tile = stage.locator(".lv-cam").first.bounding_box()["width"]
+        self.assertGreater(big.bounding_box()["width"], 2 * tile, "the enlarged camera fills the stage, far wider than a tile")
+        expect(stage.locator(".lv-cam.is-enlarged")).to_contain_text("Shown large")
+        shot(jonas, "live-desktop-1440-camera-large")
+        large.click()
+        expect(large).to_have_attribute("aria-pressed", "false")
+        expect(stage.locator(".lv-stage__view--camera")).to_have_count(0)
+        jonas.keyboard.press("Escape")
+        expect(stage).to_be_hidden()
+        self.bar(nia).get_by_role("button", name=re.compile("^Camera on")).click()
+        expect(self.bar(nia).get_by_role("button", name=re.compile("^Camera off"))).to_be_visible()
 
         # A persisted result through the ordinary task action, during the session (no reload).
         jonas.get_by_text(TASK).first.click()

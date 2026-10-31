@@ -104,7 +104,6 @@ are the only places that choose concrete adapters and wire them together.
 | Browser journeys in the web app (Playwright, Python) | `app/tests/ui/test_*.py` | `./scripts/check_ui.sh` |
 | The normal (non-test) deployment: fixture rollback header ignored, worker processes, restart keeps data | `scripts/check_runtime.sh` | `./scripts/check_runtime.sh` |
 | The agent runtime with fake CLIs through `./flux` (isolation, release, backup, restore, purge, reset) | `scripts/check_agent_runtime.sh`, `scripts/agent-runtime/` | `./scripts/check_agent_runtime.sh` |
-| k3s live-media chart values: render, Kubernetes schemas, route and Compose consistency | `docker/k3s/`, `scripts/live_k3s_render.mjs` | `./scripts/check_live_k3s.sh` |
 | Repository and agent tooling | `tests/test_*.py` | `python3 -m unittest discover -s tests -p 'test_*.py'` |
 
 Pure core use cases can be tested with in-memory port implementations

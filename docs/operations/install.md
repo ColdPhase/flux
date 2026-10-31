@@ -169,15 +169,10 @@ push. A certificate from your own CA works the same way.
 the integration-fixture endpoints used by the checks, only for a caller that holds that token. Keep
 `docker/.env` private; a release installation leaves the token empty.
 
-## Kubernetes and k3s
+## Kubernetes
 
-Flux ships no Kubernetes manifests or Helm chart for its own services in this version, and Docker
-Compose on one host is the only tested deployment. The design assumes one host: the `keyring` must be
+Kubernetes (including k3s and Helm) is not supported yet (founder decision, 2026-10-31): Docker Compose
+on one host is the only supported install. The design assumes one host: the `keyring` must be
 exactly one per deployment and share a private network with `api` and `worker` only, the containers
 need memory limits that forbid swap, and the `files` volume is shared by `api` and `worker`
 ([architecture](architecture.md)).
-
-What the repository does have for k3s is the optional live-media server: values for the official
-LiveKit chart in [`docker/k3s/`](../../docker/k3s/livekit-values.yaml) with a render check,
-`./scripts/check_live_k3s.sh`. It checks the rendered manifests; it is not an installation test. The
-[k3s media contract](../development/live-media-k3s.md) lists its inputs, ports and security rules.
