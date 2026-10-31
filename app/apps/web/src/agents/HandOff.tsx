@@ -228,7 +228,7 @@ function HandOffBody({ onClose, project, task: given, agentId, onDone }: {
       <footer className="handoff__foot">
         <span className="handoff__tip">The task stays yours until you hand it off.</span>
         <Button variant="secondary" onClick={onClose}>Cancel</Button>
-        <Link ref={(node) => { first.current = node; }} className="ui-btn ui-btn--primary" to="/connect-agent" onClick={onClose}>Connect an agent</Link>
+        <Link ref={(node) => { first.current = node; }} className="ui-btn ui-btn--primary" to="/connect-agent" onClick={onClose}>Connect your own agent</Link>
       </footer>
     </div>
   );

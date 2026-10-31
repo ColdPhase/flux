@@ -161,7 +161,7 @@ class DecisionAuthorityJourney(unittest.TestCase):
         panel = self.details(page)
         expect(panel.get_by_role("region", name="Who decides")).to_have_count(0)
         expect(panel).to_contain_text("Ada Lind")
-        panel.get_by_role("button", name="Accept decision").click()
+        panel.get_by_role("button", name="Accept", exact=True).click()
         expect(panel.locator(".wd-eyebrow")).to_contain_text("Current rule")
         expect(panel).to_contain_text("Kai Berg")
         stored = self.decision(page)

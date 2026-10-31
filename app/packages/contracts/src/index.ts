@@ -40,6 +40,11 @@ export const AUTH_SIGN_IN_SOCIAL_PATH = `${AUTH_BASE_PATH}/sign-in/social`;
 export const AUTH_SIGN_OUT_PATH = `${AUTH_BASE_PATH}/sign-out`;
 export const AUTH_REQUEST_PASSWORD_RESET_PATH = `${AUTH_BASE_PATH}/request-password-reset`;
 export const AUTH_RESET_PASSWORD_PATH = `${AUTH_BASE_PATH}/reset-password`;
+/** Settings → Account (#763 SG-1): the person's own name, password and address. */
+export const AUTH_UPDATE_USER_PATH = `${AUTH_BASE_PATH}/update-user`;
+export const AUTH_CHANGE_PASSWORD_PATH = `${AUTH_BASE_PATH}/change-password`;
+/** Also takes `currentPassword`; refused under single sign-on. */
+export const AUTH_CHANGE_EMAIL_PATH = `${AUTH_BASE_PATH}/change-email`;
 export const AUTH_OAUTH2_CONTINUE_PATH = `${AUTH_BASE_PATH}/oauth2/continue`;
 export const AUTH_OAUTH2_CONSENT_PATH = `${AUTH_BASE_PATH}/oauth2/consent`;
 /** An unverified account's pending address claim (#313) and provider linking (#315). */

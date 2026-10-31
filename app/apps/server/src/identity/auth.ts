@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { betterAuth } from 'better-auth';
-import { APIError, createAuthMiddleware, createEmailVerificationToken } from 'better-auth/api';
+import { APIError, createAuthMiddleware, createEmailVerificationToken, getSessionFromCtx } from 'better-auth/api';
 import { drizzleAdapter } from 'better-auth/adapters/drizzle';
 import { genericOAuth, jwt } from 'better-auth/plugins';
 import { cimd } from '@better-auth/cimd';
@@ -210,7 +210,10 @@ export function createAuth({ db, config, mailer, onMailError, oauthRequests, sig
         oauthClientAssertion: schema.oauthClientAssertion,
       },
     }),
-    user: { modelName: 'authUsers' },
+    // Settings → Account (#763 SG-1): a person changes their own address. An unverified address (no outgoing mail) changes
+    // at once; a verified one only after the link sent to the new address is opened. The hook below asks for the
+    // current password first, and single sign-on refuses it (the provider owns the address).
+    user: { modelName: 'authUsers', changeEmail: { enabled: true, updateEmailWithoutVerification: true } },
     // No cookie cache: every request reads the session row, so revocation applies immediately.
     session: { modelName: 'authSessions', cookieCache: { enabled: false } },
     // A new identity never acquires an existing account by asserting the same email (#113).
@@ -280,6 +283,18 @@ export function createAuth({ db, config, mailer, onMailError, oauthRequests, sig
         // With an active sole provider, ordinary authentication is single sign-on only (F-024 S5a, #313).
         if (ssoOnly && PASSWORD_ROUTES.includes(ctx.path)) {
           throw new APIError('FORBIDDEN', { message: 'Password sign-in and recovery are closed on this Flux server. Sign in with single sign-on', code: 'SSO_ONLY' });
+        }
+        if (ctx.path === '/change-email') {
+          if (ssoOnly || config.oidc) throw new APIError('FORBIDDEN', { message: 'Your email address comes from single sign-on on this Flux server', code: 'SSO_ONLY' });
+          // A change of address proves the person knows the password, like a change of password does, so a session left
+          // open on someone else's device cannot move the account to another address and then reset its password.
+          const password = typeof ctx.body?.currentPassword === 'string' ? ctx.body.currentPassword : '';
+          const session = await getSessionFromCtx(ctx);
+          const [credential] = session ? await db.select({ hash: schema.authAccounts.password }).from(schema.authAccounts)
+            .where(and(eq(schema.authAccounts.userId, session.user.id), eq(schema.authAccounts.providerId, 'credential'), isNotNull(schema.authAccounts.password))) : [];
+          if (!password || !credential?.hash || !await ctx.context.password.verify({ hash: credential.hash, password })) {
+            throw new APIError('BAD_REQUEST', { message: 'Your current password is not right', code: 'INVALID_PASSWORD' });
+          }
         }
         if (ctx.path === '/sign-in/email') {
           const email = typeof ctx.body?.email === 'string' ? ctx.body.email.trim().toLowerCase() : '';

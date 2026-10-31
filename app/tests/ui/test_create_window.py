@@ -395,7 +395,7 @@ class CreateWindow(unittest.TestCase):
         expect(window).to_have_count(0)
         message.hover()
         message.get_by_role("button", name="Create task", exact=True).click()
-        expect(title_field(page)).to_have_value("Lost response from a message: check the ESP32 kits")
+        expect(title_field(page)).to_have_value("Lost response from a message")  # its first clause (#763 B5)
         expect(window.get_by_label("Details")).to_have_value("Done when both kits are counted")
         expect_value(window.get_by_role("combobox", name="Status"), "in_progress")
         expect(window.get_by_role("button", name=re.compile("^Remove link to"))).to_have_count(1)
@@ -789,7 +789,7 @@ class CreateWindow(unittest.TestCase):
         expect(links).to_have_count(0)
         submit_button(page).click()
         expect(dialog(page)).to_have_count(0)
-        stored = [item for item in self.api(page, "GET", f"/api/v1/projects/{self.ids['other']}/work?limit=100", status=200)["items"] if item["title"] == "Sources stay home: label the bed rows"]
+        stored = [item for item in self.api(page, "GET", f"/api/v1/projects/{self.ids['other']}/work?limit=100", status=200)["items"] if item["title"] == "Sources stay home"]  # its first clause (#763 B5)
         self.assertEqual(len(stored), 1)
         self.assertEqual(stored[0]["links"], [])
 

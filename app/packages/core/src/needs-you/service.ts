@@ -17,7 +17,7 @@ import type { WorkRecord } from '../work/ports.js';
 import type { NeedsYouPorts, StoredNeedsYou } from './ports.js';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const KEY = /^(decision|blocked|note|assistant|proposal):[0-9a-f-]{36}$/i;
+const KEY = /^(decision|blocked|note|assistant|proposal|question):[0-9a-f-]{36}$/i;
 /** Mentions older than this no longer ask for an answer; they stay in the notification history. */
 const MENTION_DAYS = 14;
 /** Most items of the queue; a project with more proposals than this still has them in Details. */
@@ -33,6 +33,10 @@ const excerpt = (text: string, max = 200) => {
 };
 const ref = (work: Pick<WorkRecord, 'id' | 'number' | 'title'>): NeedsYouTaskRef => ({ id: work.id, number: work.number, title: work.title });
 const ORDER: Record<NeedsYouKind, number> = { decision: 0, question: 1, blocked: 2, mention: 3 };
+/** Most agent questions read for one person: the open ones and the recently answered ones. */
+const MAX_AGENT_QUESTIONS = 200;
+/** The notification that told the person about an agent question, so Done marks it read as a note's Done does. */
+const questionNotes = new WeakMap<NeedsYouItem, string>();
 
 function human(principal: Principal) {
   if (principal.kind !== 'human' || !principal.id) throw new ForbiddenError('Only a signed-in person has an Inbox', 'NEEDS_YOU_NEEDS_PERSON');
@@ -136,11 +140,38 @@ export function createNeedsYou(ports: NeedsYouPorts, now: () => Date = () => new
     // People's questions and mentions, still unread.
     const since = now().getTime() - MENTION_DAYS * 86_400_000;
     const inbox = await ports.inbox.listReadable(userId, 100);
+    // An agent's question with ready-made answers (S14, #763 IN-1/IN-2) is read from the question itself, not from the notification
+    // that announced it: it carries its answers and leaves the queue once it is answered, here, in the conversation or in Agents.
+    const asked = await ports.repository.agentQuestions(userId, [...projects], new Date(since), MAX_AGENT_QUESTIONS);
+    const askedByMessage = new Map(asked.map((question) => [question.messageId, question]));
+    const questionOf = (url: string | null) => { const id = /#message-([0-9a-f-]{36})$/i.exec(url ?? '')?.[1]?.toLowerCase(); return id ? askedByMessage.get(id) : undefined; };
+    const openAsked = asked.filter((question) => !question.answered);
+    if (openAsked.length) for (const [id, name] of await ports.access.projectNames([...new Set(openAsked.map((question) => question.projectId))])) projectNames.set(id, name);
+    const noteOfQuestion = new Map<string, string>();
+    for (const note of inbox.items) { const question = note.reason === 'question' ? questionOf(note.url) : undefined; if (question && !noteOfQuestion.has(question.id)) noteOfQuestion.set(question.id, note.id); }
+    for (const question of openAsked) {
+      if (ports.aiAllowed && !await ports.aiAllowed(question.projectId)) continue;
+      const task = question.taskId ? await work(question.taskId) : null;
+      const taskRef = task && task.projectId === question.projectId ? ref(task) : null;
+      const item: NeedsYouItem = {
+        key: `question:${question.id}`, kind: 'question', title: excerpt(question.question), detail: '',
+        project: { id: question.projectId, name: projectNames.get(question.projectId) ?? 'Project' },
+        from: { kind: 'agent', id: question.agent.id, name: question.agent.name }, at: iso(question.createdAt),
+        url: `/projects/${question.projectId}/conversations/${question.conversationId}#message-${question.messageId}`,
+        decision: null, blocked: null, reason: 'question', snoozeTask: taskRef && !OVER.has(task!.status) ? taskRef : null,
+        agentQuestion: { id: question.id, options: question.options, task: taskRef, conversationId: question.conversationId, messageId: question.messageId },
+      };
+      const noteId = noteOfQuestion.get(question.id);
+      if (noteId) questionNotes.set(item, noteId);
+      items.push(item);
+    }
     const noteProjectIds = inbox.items.filter((note) => note.reason === 'question' && note.source.type === 'project'
       && !!note.assistantRequestIdentity).map((note) => note.source.id);
     if (noteProjectIds.length) for (const [id, name] of await ports.access.projectNames(noteProjectIds)) projectNames.set(id, name);
     for (const note of inbox.items) {
       if ((note.reason !== 'mention' && note.reason !== 'question' && note.reason !== 'invitation') || note.readAt || note.createdAt.getTime() < since) continue;
+      // The question card above stands for it while open; once answered, nothing is left to do.
+      if (note.reason === 'question' && questionOf(note.url)) continue;
       // Someone asking you something, or to join them, is a question; a mention is a mention.
       const kind: NeedsYouKind = note.reason === 'mention' ? 'mention' : 'question';
       const assistantRequestIdentity = note.reason === 'question' ? note.assistantRequestIdentity ?? null : null;
@@ -244,7 +275,8 @@ export function createNeedsYou(ports: NeedsYouPorts, now: () => Date = () => new
       }
       await ports.repository.putState(userId, item.key, value);
       // Done is also "read" for a mention or question, so the notification history agrees.
-      if (item.key.startsWith('note:') && value.state !== 'snoozed') await ports.repository.setNotificationRead(userId, item.key.slice(5), true);
+      const noteId = item.key.startsWith('note:') ? item.key.slice(5) : questionNotes.get(item);
+      if (noteId && value.state !== 'snoozed') await ports.repository.setNotificationRead(userId, noteId, true);
       return { key: item.key, state: value.state, until: value.until ? iso(value.until) : null, untilWorkId: value.untilWorkId };
     },
 
@@ -257,6 +289,11 @@ export function createNeedsYou(ports: NeedsYouPorts, now: () => Date = () => new
       if (!own) return;
       await ports.repository.deleteStates(userId, [lower]);
       if (lower.startsWith('note:') && own.state !== 'snoozed') await ports.repository.setNotificationRead(userId, lower.slice(5), false);
+      if (lower.startsWith('question:') && own.state !== 'snoozed') {
+        const item = (await candidates(principal)).find((entry) => entry.key === lower);
+        const noteId = item ? questionNotes.get(item) : undefined;
+        if (noteId) await ports.repository.setNotificationRead(userId, noteId, false);
+      }
     },
   };
 }

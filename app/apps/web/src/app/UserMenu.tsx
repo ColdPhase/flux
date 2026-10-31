@@ -1,5 +1,4 @@
 import { useEffect, useId, useRef, useState, type KeyboardEvent } from 'react';
-import { useAllAiBlocked } from '../ai/workspaceAi';
 import { Form, Link, useLocation, useNavigation } from 'react-router';
 import { Avatar, Icon, Spinner, trapTab, usePop } from '../ui';
 import { NotificationsButton } from '../pwa';
@@ -39,8 +38,6 @@ function AccountLink({ name, email, onNavigate }: { name: string; email: string;
 
 function AccountMenu({ name, email, sessionExpiresAt, compact }: { name: string; email: string; sessionExpiresAt: string; compact: boolean }) {
   const [open, setOpen] = useState(false);
-  // F-029 (#614): with AI off in every workspace the person has, there is no assistant to open from here.
-  const allAiOff = useAllAiBlocked();
   const buttonRef = useRef<HTMLButtonElement>(null);
   const popRef = useRef<HTMLDivElement>(null);
   const popId = useId();
@@ -91,12 +88,11 @@ function AccountMenu({ name, email, sessionExpiresAt, compact }: { name: string;
             <div className="me__notify"><NotificationsButton /></div>
           </div>
           <AppearanceControls idPrefix={popId} />
+          {/* Settings and People, one way into each (#763 SG-7, PE-1): the assistant and background suggestions are in
+              Settings → Agents and AI, so the menu never lists a feature this server or workspace has turned off. */}
           <div className="me__sec">
             <Link to="/settings" className="me__item" onClick={follow}><Icon name="gear" />All settings</Link>
-            {allAiOff ? null : <Link to="/settings/assistant" className="me__item" data-ai-surface="user-menu-assistant" onClick={follow}><Icon name="spark" />Your assistant</Link>}
-            {allAiOff ? null : <Link className="me__item" style={{ textDecoration: 'none' }} to="/settings/background-compute" data-ai-surface="user-menu-background" onClick={follow}>
-              <Icon name="spark" />Your background suggestions
-            </Link>}
+            <Link to="/settings/people" className="me__item" onClick={follow}><Icon name="people" />People</Link>
           </div>
           <Form method="post" action="/sign-out" className="me__sec me__sec--end">
             <button type="submit" className="me__item" aria-disabled={signingOut || undefined}>

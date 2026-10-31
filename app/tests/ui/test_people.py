@@ -157,7 +157,7 @@ class PeopleJourney(unittest.TestCase):
         self.open_people(page, "Riverside Makers")
         people = page.get_by_role("list", name="People in Riverside Makers")
         expect(people.get_by_text("Ada Kowalska (you)")).to_be_visible()
-        expect(page.get_by_text("They need an account at this Flux address first. Flux doesn’t send invitations.")).to_be_visible()
+        expect(page.get_by_text("Their Flux account’s address. Someone new? Send them a sign-up link first.")).to_be_visible()
 
         # Keyboard only: type the address, Tab to the role (Member by default), Tab to the button, Enter.
         form = page.get_by_role("region", name="Add someone")
@@ -212,8 +212,8 @@ class PeopleJourney(unittest.TestCase):
         form = page.get_by_role("region", name="Add someone")
         self.add(page, NOBODY)
         alert = form.get_by_role("alert")
-        expect(alert).to_contain_text(f"No one has an account with {NOBODY} at this Flux address yet.")
-        expect(alert).to_contain_text(f"Ask them to create one at {ORIGIN} first, then add them here. Flux doesn’t send invitations.")
+        expect(alert).to_contain_text(f"No one has an account with {NOBODY} here yet.")
+        expect(alert).to_contain_text("Copy a sign-up link for them below, then add them once they have one.")
         expect(form.get_by_label("Email")).to_be_focused()
         shot(page, "people-desktop-1440-not-found")
 
@@ -298,7 +298,8 @@ class PeopleJourney(unittest.TestCase):
         page.goto("/")
         page.get_by_role("complementary", name="Sidebar").get_by_role("button", name="New", exact=True).click()
         create_other(page, "Project")
-        expect(page.get_by_text("You and the workspace’s owners and admins can see it until you invite someone")).to_be_visible()
+        # Lee is a member again (test_03), so Ada is Riverside's only owner or admin: the drawn sentence (#763 FR-5).
+        expect(page.get_by_text("Only you can see it until you invite someone")).to_be_visible()
         page.get_by_label("What is it about?").fill(RESTRICTED)
         page.get_by_role("button", name="Create project").click()
         expect(page).to_have_url(re.compile(r"/projects/[0-9a-f-]{36}\?new=1$"))
