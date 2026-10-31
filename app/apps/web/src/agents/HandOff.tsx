@@ -9,6 +9,8 @@ import { updateWork, listAgents } from '../work/api';
 import { getProjectWorkView } from '../work/read-api';
 import { contributeToTask } from '../composer/api';
 import { getAgentPolicy, getProjectAgents } from './api';
+import { createActionGrant, listActionGrants, requestAgentAccess } from '../agent-connection/api';
+import type { AgentOperation, AgentStandingGrant } from '@flux/contracts';
 import { agentEntries, connectionState, currentWorkLine, firstName, isAgentWorking, mayDo, tasksHeldBy, teammateOf, type AgentEntry } from './roster';
 import { useSessionClock } from './useSessionClock';
 import './handoff.css';
@@ -48,6 +50,27 @@ export function agentState(entry: AgentEntry, loaded: Loaded | null, now: number
   if (connection.some((item) => connectionState(item, now) === 'offline')) return 'offline';
   return 'not_signed_in';
 }
+
+/**
+ * What an agent needs to do a handed task (#763 FT-2): change that task and take it, then record results, talk in its thread
+ * and write Wiki docs in its project. The task-specific changes name the task; all of them end after a week.
+ */
+const WORK_GRANTS: { operation: AgentOperation; task?: true }[] = [
+  { operation: 'work.update', task: true }, { operation: 'cowork.unit.create', task: true }, { operation: 'cowork.claim' },
+  { operation: 'cowork.renew' }, { operation: 'cowork.release' }, { operation: 'cowork.unit.complete' }, { operation: 'result.record' },
+  { operation: 'conversation.reply' }, { operation: 'doc.create' },
+];
+const WORK_DAYS = 7;
+
+/** The work grants a connection still lacks for this task: each needs a live execute grant on the task or the whole project. */
+export function missingWorkGrants(grants: readonly AgentStandingGrant[], projectId: string, taskId: string, now: number) {
+  const live = grants.filter((grant) => grant.projectId === projectId && !grant.revokedAt && Date.parse(grant.expiresAt) > now
+    && grant.used < grant.maximumUses && grant.peerRequestClass === 'execute');
+  return WORK_GRANTS.filter((need) => !live.some((grant) => grant.operation === need.operation && (grant.objectId === null || grant.objectId === taskId)));
+}
+
+/** Where an own agent stands on doing the task: ready, missing grants (one click), missing the action scope, or not connected. */
+type Readiness = { kind: 'checking' } | { kind: 'ready' } | { kind: 'grants'; connectionIds: string[] } | { kind: 'scope' } | { kind: 'offline' } | { kind: 'unknown' };
 
 /** What a failed hand-off says to the person; shared with the Agents view's Hand back. */
 export function handOffFailure(cause: unknown): string {
@@ -139,6 +162,27 @@ function HandOffBody({ onClose, project, task: given, agentId, onDone }: {
   const teammate = !!entry && teammateOf(entry, me.user.id);
   const manager = project.access === 'manager';
   const free = useMemo(() => (loaded?.tasks ?? []).filter((row) => !row.owner || row.owner.kind !== 'agent'), [loaded]);
+  // #763 FT-2: your own agent must be able to change the task it is handed. Its connections' grants are read here (owner-only)
+  // and, when they are missing, the one button below grants exactly what the task needs before handing it off.
+  const own = !!entry && !teammate && entry.ownerId === me.user.id;
+  const ownConnections = useMemo(() => (loaded?.connections ?? []).filter((item) => item.own && !item.assistant && item.agent.id === entry?.agentId), [loaded, entry?.agentId]);
+  const [readiness, setReadiness] = useState<Readiness>({ kind: 'checking' });
+  const [readyKey, setReadyKey] = useState(0);
+  useEffect(() => {
+    if (step !== 2 || !own || !grant.canTake || !task || entry?.connection?.assistant) { setReadiness({ kind: 'unknown' }); return undefined; }
+    if (!ownConnections.length) { setReadiness({ kind: 'offline' }); return undefined; }
+    const acting = ownConnections.filter((item) => item.scopes.includes('flux.action.execute'));
+    if (!acting.length) { setReadiness({ kind: 'scope' }); return undefined; }
+    const controller = new AbortController();
+    setReadiness({ kind: 'checking' });
+    Promise.all(acting.map(async (item) => [item.id, missingWorkGrants(await listActionGrants(item.id, controller.signal), project.id, task.id, Date.now()).length] as const))
+      .then((rows) => {
+        if (controller.signal.aborted) return;
+        const lacking = rows.filter(([, missing]) => missing > 0).map(([id]) => id);
+        setReadiness(lacking.length === rows.length ? { kind: 'grants', connectionIds: lacking } : { kind: 'ready' });
+      }, () => { if (!controller.signal.aborted) setReadiness({ kind: 'unknown' }); });
+    return () => controller.abort();
+  }, [step, own, grant.canTake, task?.id, ownConnections, project.id, readyKey, entry?.connection?.assistant]);
 
   const append = (page: { rows: WorkRowProjection[]; next: string | null }) => {
     setLoaded((current) => current && { ...current, tasks: [...current.tasks, ...page.rows.filter((row) => !current.tasks.some((known) => known.id === row.id))] });
@@ -184,9 +228,43 @@ function HandOffBody({ onClose, project, task: given, agentId, onDone }: {
     } finally { setBusy(false); }
   };
 
+  // #763 FT-1: your own agent without access here can be asked in from the hand-off too.
+  const [asked, setAsked] = useState(false);
+  const askIn = async () => {
+    if (!entry) return;
+    try { await requestAgentAccess(project.id, entry.agentId, 'contributor'); setAsked(true); }
+    catch (cause) { if (cause instanceof ApiError && cause.code === 'AGENT_ALREADY_IN_PROJECT') setAsked(true); else setError(failure(cause)); }
+  };
+
+  /** Grants the task's work to each of your connections that lacks it (existing owner grant routes; retries reuse their ids). */
+  const grantWork = async (connectionIds: string[]) => {
+    if (!task) return;
+    const ends = new Date(Date.now() + WORK_DAYS * 86_400_000).toISOString();
+    for (const connectionId of connectionIds) {
+      const missing = missingWorkGrants(await listActionGrants(connectionId), project.id, task.id, Date.now());
+      for (const need of missing) {
+        await createActionGrant(connectionId, { clientCommandId: crypto.randomUUID(), projectId: project.id, operation: need.operation,
+          peerRequestClass: 'execute', ...(need.task ? { objectId: task.id } : {}), maximumUses: 100, expiresAt: ends });
+      }
+    }
+  };
+
   const submit = async () => {
     if (teammate) return ask();
     if (!task || !entry || !grant.canTake || busy) return;
+    if (readiness.kind === 'grants') {
+      setBusy(true); setError('');
+      try { await grantWork(readiness.connectionIds); }
+      catch (cause) {
+        setBusy(false);
+        setError(cause instanceof ApiError && cause.status === 403
+          ? `Flux couldn’t let ${entry.name} work here: a project manager must let it into ${project.name} first. Nothing was handed off.`
+          : `Flux couldn’t let ${entry.name} change #${task.number}. Nothing was handed off; try again.`);
+        setReadyKey((n) => n + 1);
+        return;
+      }
+      setBusy(false);
+    }
     const key = `${task.id}:${task.version}:${entry.agentId}`;
     if (attempt.current?.key !== key) attempt.current = { key, id: crypto.randomUUID() };
     setBusy(true); setError('');
@@ -302,17 +380,27 @@ function HandOffBody({ onClose, project, task: given, agentId, onDone }: {
                 <span className="handoff__who"><b>{entry.name}</b><small>{[entry.owner ? `for ${entry.owner}` : null, entry.connection?.name, entry.access ? loadLine(entry, held(entry.agentId), now, agentState(entry, loaded, now)) : 'no access here yet'].filter(Boolean).join(' · ')}</small></span>
               </div>
             ) : <p className="handoff__note" role="status">{status ?? 'That agent is no longer here. Go back and choose another.'}</p>}
-            {entry ? (
+            {entry && own && grant.canTake && readiness.kind === 'grants' ? (
+              <p className="handoff__can" data-needs-grants=""><b>{entry.name} can read {project.name}, but can’t work on #{task?.number} yet.</b>{' '}
+                Allow it to change #{task?.number}, take it, record results, write in its thread and start Wiki docs here, for {WORK_DAYS} days. Nothing else changes.</p>
+            ) : entry && own && grant.canTake && readiness.kind === 'scope' ? (
+              <p className="handoff__can" data-needs-scope=""><b>{entry.name} can read {project.name} and suggest, but can’t change tasks.</b>{' '}
+                Its connection was approved without “Run approved project actions”. Sign in to Flux again from your agent app (for Claude Code: <code>claude mcp login flux</code>) and keep that box ticked, then hand #{task?.number} off.</p>
+            ) : entry ? (
               <p className="handoff__can" data-allowed={grant.canTake || undefined}><b>{entry.name} will be able to</b> {grant.can}</p>
             ) : null}
             {entry && !grant.canTake ? (
               <p className="handoff__note" role="status">
                 {entry.access === null ? `${entry.name} has no access to ${project.name}, so it can’t take this task.` : `${entry.name} can only read ${project.name}, so it can’t take this task.`}{' '}
-                {manager ? <>You can give it access: <Link className="ui-link" to="/connect-agent">Connect an agent</Link>. Nothing is granted from here.</> : 'A project manager can give it access. Nothing is granted from here.'}
+                {manager ? <>You can give it access: <Link className="ui-link" to="/connect-agent">Connect an agent</Link>. Nothing is granted from here.</>
+                  : own && entry.access === null ? (asked ? `Asked a project manager to let ${entry.name} in. You’ll get a notice when they answer.`
+                    : <>A project manager lets it in. <button type="button" className="ui-link" onClick={() => void askIn()}>Ask a manager to let it in</button></>)
+                  : 'A project manager can give it access. Nothing is granted from here.'}
               </p>
             ) : null}
             {/* An agent that is not connected yet takes the task when it signs in (#763 WF-6). */}
-            {entry && grant.canTake && agentState(entry, loaded, now) !== 'online' ? <p className="handoff__note" role="status">{`${entry.name} isn’t connected right now; it picks up #${task?.number ?? ''} when it signs in.`}</p> : null}
+            {entry && own && grant.canTake && readiness.kind === 'offline' ? <p className="handoff__note" role="status">{`${entry.name} has no connection to Flux yet, so it can’t work on #${task?.number ?? ''}. `}<Link className="ui-link" to="/settings/agents/connect">Connect it</Link>{' with “Run approved project actions”, then hand the task off.'}</p>
+              : entry && grant.canTake && agentState(entry, loaded, now) !== 'online' ? <p className="handoff__note" role="status">{`${entry.name} isn’t connected right now; it picks up #${task?.number ?? ''} when it signs in.`}</p> : null}
             {entry && grant.canTake && loaded?.policy ? <p className="handoff__note">The project’s agent policy (revision {loaded.policy.revision}) applies to its work.</p> : null}
               </>
             )}
@@ -325,7 +413,7 @@ function HandOffBody({ onClose, project, task: given, agentId, onDone }: {
         {step === 2 ? <Button variant="secondary" onClick={() => { setStep(1); setError(''); }}>Back</Button> : <Button variant="secondary" onClick={onClose}>Cancel</Button>}
         {step === 1
           ? <Button type="submit" variant="primary" disabled={!chosen || !task}>Next</Button>
-          : <Button type="submit" variant="primary" busy={busy} disabled={!ready} ref={(node) => { if (ready) first.current = node; }}>{teammate ? `Ask ${firstName(entry?.owner ?? 'them')}` : 'Hand off'}<kbd className="handoff__kbd">Ctrl ↵</kbd></Button>}
+          : <Button type="submit" variant="primary" busy={busy} disabled={!ready || (own && readiness.kind === 'checking')} ref={(node) => { if (ready) first.current = node; }}>{teammate ? `Ask ${firstName(entry?.owner ?? 'them')}` : readiness.kind === 'grants' && own ? 'Allow and hand off' : 'Hand off'}<kbd className="handoff__kbd">Ctrl ↵</kbd></Button>}
       </footer>
     </form>
   );

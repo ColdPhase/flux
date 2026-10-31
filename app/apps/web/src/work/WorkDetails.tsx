@@ -18,6 +18,7 @@ import { useDiscussDecision } from './discuss';
 import { acceptDecision, createResult, listAgents, proposeDecision, undoTaskCreation, updateWork } from './api';
 import { STATUS_LABEL, decisionLine, firstClause, firstLine, isFinished, linked, resultLine, shortDate, taskNumber } from './format';
 import { docsLinking } from '../docs/AddToDoc';
+import { getDoc } from '../docs/api';
 import { useAgentOwners } from '../agents/owners';
 import { HandOffDialog } from '../agents/HandOff';
 import { useProjectShell } from '../project/data';
@@ -228,15 +229,53 @@ function OtherRelationships({ object, relations, project }: { object: WorkDetail
   return items.length ? <section className="details__sec" aria-label="Other relationships"><h4>Other relationships on this page</h4><ul className="wd-links">{items}</ul></section> : null;
 }
 
-function InDocs({ object, kind, project, relations, notYet }: { object: { id: string; title: string }; relations: DetailRelations; kind?: 'result' | 'decision'; project: Project; notYet?: string }) {
+const UUID_IN_TEXT = /\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/gi;
+
+/**
+ * #763 FT-6: the Wiki pages a result's text names by id (an agent writes "created doc <id>"). Each id is read as a doc of this
+ * project; ids that are not readable docs here stay plain text. At most five are read.
+ */
+function useNamedDocs(text: string | null | undefined, projectId: string) {
+  const [docs, setDocs] = useState<Map<string, string>>(new Map());
+  const ids = useMemo(() => [...new Set((text ?? '').match(UUID_IN_TEXT)?.map((id) => id.toLowerCase()) ?? [])].slice(0, 5), [text]);
+  useEffect(() => {
+    if (!ids.length) { setDocs(new Map()); return undefined; }
+    const controller = new AbortController();
+    Promise.all(ids.map((id) => getDoc(id, controller.signal).then((doc) => doc.audience.projectId === projectId ? [id, doc.title] as const : null, () => null)))
+      .then((found) => { if (!controller.signal.aborted) setDocs(new Map(found.filter((entry): entry is readonly [string, string] => !!entry))); });
+    return () => controller.abort();
+  }, [ids, projectId]);
+  return docs;
+}
+
+/** A result's text with every named Wiki page as a link by its title instead of a raw id (#763 FT-6). */
+function TextWithDocs({ text, docs, projectId }: { text: string; docs: Map<string, string>; projectId: string }) {
+  if (!docs.size) return <>{text}</>;
+  const parts: ReactNode[] = [];
+  let at = 0;
+  for (const match of text.matchAll(UUID_IN_TEXT)) {
+    const title = docs.get(match[0].toLowerCase());
+    if (!title) continue;
+    parts.push(text.slice(at, match.index));
+    parts.push(<RefLink key={`${match.index}`} className="ui-link" to={`/projects/${projectId}/docs/${match[0].toLowerCase()}`}>{title}</RefLink>);
+    at = match.index! + match[0].length;
+  }
+  parts.push(text.slice(at));
+  return <>{parts}</>;
+}
+
+function InDocs({ object, kind, project, relations, notYet, named }: { object: { id: string; title: string }; relations: DetailRelations; kind?: 'result' | 'decision'; project: Project; notYet?: string; named?: Map<string, string> }) {
   const { openDetails } = useShellActions();
-  const docs = docsLinking(relations.links, object.id);
+  const linkedDocs = docsLinking(relations.links, object.id);
+  // A page the result's own text names (it wrote it) is listed too, as "named here" (#763 FT-6).
+  const docs = [...linkedDocs, ...[...(named ?? new Map<string, string>())].filter(([id]) => !linkedDocs.some((doc) => doc.id === id))
+    .map(([id, title]) => ({ id, title, role: 'named' as const }))];
   const writable = project.access !== 'viewer';
   return (
     <section className="details__sec" aria-labelledby={`wd-docs-${object.id}`}>
       <h4 id={`wd-docs-${object.id}`}>In the Wiki</h4>
       {docs.length ? (
-        <ul className="wd-links">{docs.map((doc) => <li key={doc.id}><RefLink className="wd-link" to={`/projects/${project.id}/docs/${doc.id}`}><span>{doc.title}</span>{doc.role === 'source' ? <small>added</small> : <small>mentioned</small>}<Icon name="chevron-right" size={14} /></RefLink></li>)}</ul>
+        <ul className="wd-links">{docs.map((doc) => <li key={doc.id}><RefLink className="wd-link" to={`/projects/${project.id}/docs/${doc.id}`}><span>{doc.title}</span>{doc.role === 'source' ? <small>added</small> : doc.role === 'named' ? <small>named in this result</small> : <small>mentioned</small>}<Icon name="chevron-right" size={14} /></RefLink></li>)}</ul>
       ) : <p className="wd-muted">{emptyLinks(relations, 'Not in the Wiki yet.')}</p>}
       {writable && kind && notYet ? <div className="wd-actions wd-actions--hint"><Button variant="secondary" icon="doc" disabled aria-describedby={`wd-docs-hint-${object.id}`}>Add to a Wiki page</Button><small className="wd-muted" id={`wd-docs-hint-${object.id}`}>{notYet}</small></div> : null}
       {writable && kind && !notYet ? <div className="wd-actions"><Button variant="secondary" icon="doc" onClick={() => openDetails({ kind: 'add-to-doc', projectId: project.id, from: { type: kind, id: object.id, title: object.title }, inDocs: docs.filter((doc) => doc.role === 'source').map((doc) => doc.id), inDocsComplete: relations.complete })}>Add to a Wiki page</Button></div> : null}
@@ -771,11 +810,12 @@ function ResultPanel({ result, context, relations }: { result: OwnResult; contex
   useRegisterLiveHere(null, { ref: { type: 'result', id: result.id, version: 1 }, label: result.title, what: 'result' });
   const about = [...linked(relations.links, result.id, 'work', ['about']), ...linked(relations.links, result.id, 'decision', ['about'])];
   const related = relations.links.filter((link) => link.role === 'related');
+  const named = useNamedDocs(result.evidence, context.project.id);
   return (
     <div className="details wd" data-detail-kind="result" data-detail-id={result.id}>
       <p className={`details__eyebrow wd-eyebrow wd-finding--${result.finding}`}><Icon name="result" size={13} />{resultLine(result)} · {shortDate(result.createdAt)}</p>
       <h3 className="details__title">{result.title}</h3>
-      {result.evidence ? <p className="details__lead wd-evidence">{result.evidence}</p> : null}
+      {result.evidence ? <p className="details__lead wd-evidence"><TextWithDocs text={result.evidence} docs={named} projectId={context.project.id} /></p> : null}
       <RelationPages relations={relations} />
       {/* Empty sections are not drawn (#763 D2): the evidence text is the lead above, its sources are listed here. */}
       {relations.links.some((link) => link.from.id === result.id && link.role === 'source') ? (
@@ -792,7 +832,7 @@ function ResultPanel({ result, context, relations }: { result: OwnResult; contex
         </section>
       ) : null}
       <OtherRelationships object={result} relations={relations} project={context.project} />
-      <InDocs object={result} kind="result" project={context.project} relations={relations} />
+      <InDocs object={result} kind="result" project={context.project} relations={relations} named={named} />
       <Audience project={context.project} />
     </div>
   );

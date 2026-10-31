@@ -299,7 +299,7 @@ class PeopleJourney(unittest.TestCase):
         create_other(page, "Project")
         # Lee is a member again (test_03), so Ada is Riverside's only owner or admin: the drawn sentence (#763 FR-5).
         expect(page.get_by_text("Only you can see it until you invite someone")).to_be_visible()
-        page.get_by_label("What is it about?").fill(RESTRICTED)
+        page.get_by_label("Project name").fill(RESTRICTED)
         page.get_by_role("button", name="Create project").click()
         expect(page).to_have_url(re.compile(r"/projects/[0-9a-f-]{36}\?new=1$"))
         type(self).kiln = re.search(r"/projects/([0-9a-f-]{36})", page.url).group(1)

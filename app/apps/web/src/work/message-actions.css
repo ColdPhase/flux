@@ -60,9 +60,14 @@
 .msg-swipe[hidden] { display: none; }
 .msg-swipe.is-ready { color: var(--t1); }
 /* For keyboards and screen readers: the same menu, visible when focused. */
-.msg-touch__sr { position: absolute; top: 0; right: 0; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
-.msg-touch__sr:focus-visible { top: 0; right: 0; width: auto; height: 44px; padding: 0 14px; overflow: visible; clip-path: none; border-radius: 12px; background: var(--el);
-  box-shadow: var(--sh-pop), inset 0 0 0 1px var(--line); font-size: var(--fs-md); color: var(--t1); z-index: 2; }
+/* #763 FT-4: a visible, quiet "⋯" on each message opens the same menu as a long press, so the actions can be found by tapping.
+   The hit area is 32px; the label is for screen readers and shows beside the icon when focused from a keyboard. */
+.msg-touch__sr { position: absolute; top: 0; right: 0; display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  min-width: 32px; height: 32px; padding: 0; border: 0; border-radius: 10px; background: transparent; color: var(--t3); white-space: nowrap; z-index: 1; }
+.msg-touch__label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+.msg-touch__sr:focus-visible { height: 44px; padding: 0 14px; background: var(--el); box-shadow: var(--sh-pop), inset 0 0 0 1px var(--line);
+  font-size: var(--fs-md); color: var(--t1); z-index: 2; }
+.msg-touch__sr:focus-visible .msg-touch__label { position: static; width: auto; height: auto; clip-path: none; }
 /* A swipe moves its row up to 88px right while the finger is down: that drag, and only that, may not scroll the feed sideways.
    At rest nothing is laid out beyond its pane, so no feed needs overflow-x: hidden (#591). */
 :is(.project-convo__feed, .thread__feed, .dm__feed):has(.msg-touch.is-swiped) { overflow-x: hidden; }

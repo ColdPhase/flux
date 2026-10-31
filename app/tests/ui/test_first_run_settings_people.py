@@ -100,7 +100,7 @@ class FirstRunSettingsPeople(unittest.TestCase):
             page = self.page("maria", viewport=viewport)
             page.goto("/projects/new")
             form = page.get_by_role("form", name="New project")
-            expect(form.get_by_label("What is it about?")).to_be_focused()
+            expect(form.get_by_label("Project name")).to_be_focused()
             # No field asks for a workspace: the page says where the project goes, and that only Maria sees it.
             expect(form.get_by_label("Your space")).to_have_count(0)
             expect(form.get_by_role("textbox")).to_have_count(1)
@@ -111,9 +111,9 @@ class FirstRunSettingsPeople(unittest.TestCase):
         # An empty name says so in the form's own words, not with the browser's bubble.
         form.get_by_role("button", name="Create project").click()
         expect(form.get_by_text("Give the project a name.")).to_be_visible()
-        expect(form.get_by_label("What is it about?")).to_have_attribute("aria-invalid", "true")
+        expect(form.get_by_label("Project name")).to_have_attribute("aria-invalid", "true")
         self.assertEqual(self.workspaces(page), [], "nothing was made")
-        form.get_by_label("What is it about?").fill("Balcony herbs")
+        form.get_by_label("Project name").fill("Balcony herbs")
         form.get_by_role("button", name="Create project").click()
         expect(page).to_have_url(re.compile(r"/projects/[0-9a-f-]{36}\?new=1"))
         spaces = self.workspaces(page)
@@ -141,7 +141,7 @@ class FirstRunSettingsPeople(unittest.TestCase):
         expect(palette.get_by_role("option", name=re.compile("^New task"))).to_have_count(0)
         palette.get_by_role("option", name=re.compile("^New project “Seed swap”")).click()
         expect(window(page)).to_have_accessible_name("New project")
-        expect(window(page).get_by_label("What is it about?")).to_have_value("Seed swap")
+        expect(window(page).get_by_label("Project name")).to_have_value("Seed swap")
         # With a project the window starts on Task again (F-026 S3).
         window(page).get_by_role("button", name=re.compile("^Create project")).click()
         expect(page).to_have_url(re.compile(r"/projects/[0-9a-f-]{36}\?new=1"))
@@ -168,7 +168,7 @@ class FirstRunSettingsPeople(unittest.TestCase):
         choose(picker, label="Riverside Makers")
         expect(form).to_contain_text("In Riverside Makers")
         shot(page, f"763-new-project-two-places-1440-{UI_BROWSER}")
-        form.get_by_label("What is it about?").fill("Tool library")
+        form.get_by_label("Project name").fill("Tool library")
         form.get_by_role("button", name="Create project").click()
         expect(page).to_have_url(re.compile(r"/projects/[0-9a-f-]{36}\?new=1"))
         project_id = re.search(r"/projects/([0-9a-f-]{36})", page.url).group(1)

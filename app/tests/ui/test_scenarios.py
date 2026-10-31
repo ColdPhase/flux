@@ -447,7 +447,7 @@ class ScenarioJourney:
             page.get_by_role("complementary", name="Sidebar").get_by_role("button", name="New", exact=True).click()
             create_other(page, "Project")
         expect(page.get_by_text(f"In {WORKSPACE}")).to_be_visible()
-        page.get_by_label("What is it about?").fill(MARKET)
+        page.get_by_label("Project name").fill(MARKET)
         self.tap(page.get_by_role("button", name="Create project"))
         expect(page).to_have_url(re.compile(r"/projects/[0-9a-f-]{36}\?new=1"))
         market = re.search(r"/projects/([0-9a-f-]{36})", page.url).group(1)

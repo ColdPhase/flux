@@ -32,6 +32,7 @@ describe('the Inbox needs-you queue', () => {
   let partner: Person;
   let viewer: Person;
   let outsider: Person;
+  let second: Person;
   let ws: Workspace;
   let lamp: Project;
   let conversation: Conversation;
@@ -39,12 +40,13 @@ describe('the Inbox needs-you queue', () => {
 
   before(async () => {
     owner = await named('Needs Owner');
-    [partner, viewer, outsider] = await Promise.all(['ny-partner', 'ny-viewer', 'ny-outsider'].map(person));
+    [partner, viewer, outsider, second] = await Promise.all(['ny-partner', 'ny-viewer', 'ny-outsider', 'ny-second'].map(person));
     ws = await workspace(owner, 'Garden space');
-    for (const someone of [partner, viewer, outsider]) await addMember(owner, ws.id, someone, 'member');
+    for (const someone of [partner, viewer, outsider, second]) await addMember(owner, ws.id, someone, 'member');
     lamp = await createProject(owner, ws.id, 'Garden sensors', 'restricted');
     await grant(owner, lamp.id, partner, 'contributor');
     await grant(owner, lamp.id, viewer, 'viewer');
+    await grant(owner, lamp.id, second, 'contributor');
     conversation = json<Conversation>(await post(owner, `/api/v1/projects/${lamp.id}/conversations`,
       { body: 'Measure soil moisture or frost first?', clientMessageId: randomUUID() }), 201);
     material = json<Material>(await post(owner, `/api/v1/projects/${lamp.id}/materials`,
@@ -75,9 +77,9 @@ describe('the Inbox needs-you queue', () => {
     assert.ok(names.some(([name]) => name === 'ny-partner'));
     assert.ok(!names.some(([name]) => name === 'ny-viewer'), 'a viewer cannot accept');
 
-    // The contributor who proposed it can accept it too (DA-2); a viewer, a member without access and a
-    // stranger are never asked.
-    assert.ok(find(await queue(partner), key));
+    // The contributor who proposed it can accept it too (DA-2), but is not asked to while someone else can (#763 FT-8);
+    // a viewer, a member without access and a stranger are never asked.
+    assert.equal(find(await queue(partner), key), undefined, 'your own proposal waits for someone else');
     assert.equal(find(await queue(viewer), key), undefined);
     assert.equal(find(await queue(outsider), key), undefined);
 
@@ -94,7 +96,7 @@ describe('the Inbox needs-you queue', () => {
 
     json(await resolve(owner, key, { action: 'done' }), 200);
     assert.equal(find(await queue(owner), key), undefined, 'done leaves your queue');
-    assert.ok(find(await queue(partner), key), 'and nobody else\'s');
+    assert.ok(find(await queue(second), key), 'and nobody else\'s');
     assert.equal((await restore(owner, key)).status, 204);
     assert.ok(find(await queue(owner), key), 'Undo restores it');
     assert.equal((await restore(owner, key)).status, 204, 'undoing twice changes nothing');
@@ -128,7 +130,7 @@ describe('the Inbox needs-you queue', () => {
     // Decline for good removes it for you only; the decision stays proposed.
     json(await resolve(owner, key, { action: 'decline' }), 200);
     assert.equal(find(await queue(owner), key), undefined);
-    assert.ok(find(await queue(partner), key));
+    assert.ok(find(await queue(second), key));
     assert.equal(json<Decision>(await owner.browser.request('GET', `/api/v1/decisions/${proposed.id}`), 200).status, 'proposed');
   });
 
