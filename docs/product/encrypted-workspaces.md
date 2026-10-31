@@ -420,7 +420,7 @@ flood of creations held the semaphore so that owners' unlocks answered `503`).
   unlocking after a restart is never limited by earlier correct unlocks. Five in 15 minutes answer
   `429 UNLOCK_RATE_LIMITED` with `Retry-After` on all of them. The count is read and written in the
   checking transaction. A failure records its row before the answer is sent.
-- **Creation limit.** `encrypted_workspace_creations` (0135) counts creations per person: five in
+- **Creation limit.** `encrypted_workspace_creations` (0136) counts creations per person: five in
   15 minutes answer `429 CREATION_RATE_LIMITED` with `Retry-After`. A row is reserved under a
   per-person advisory lock before the derivations and kept when the space is created; a creation that
   fails (busy, keyring unavailable, a lost race) releases it. A retry with the same `creationId`
