@@ -139,8 +139,8 @@ export function Home() {
         {queue.items === null ? <div className="home__card home__quiet" aria-busy="true">Looking at what needs you…</div>
           : top.length ? (
             <ul className="home__queue" aria-label="Top of your Inbox">
-              {top.map((item) => (
-                <NeedsYouCard key={item.key} item={item} variant="row" handlers={handlers} menuOpen={menu === item.key} onMenuOpen={(open) => setMenu(open ? item.key : null)} />
+              {top.map((item, index) => (
+                <NeedsYouCard key={item.key} item={item} variant="row" lead={index === 0} handlers={handlers} menuOpen={menu === item.key} onMenuOpen={(open) => setMenu(open ? item.key : null)} />
               ))}
             </ul>
           ) : (

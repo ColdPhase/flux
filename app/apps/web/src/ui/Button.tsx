@@ -1,7 +1,7 @@
 import { forwardRef, type ButtonHTMLAttributes, type ReactNode } from 'react';
 import { Icon, type IconName } from './Icon';
 
-export type ButtonVariant = 'primary' | 'secondary' | 'quiet' | 'link' | 'danger';
+export type ButtonVariant = 'primary' | 'secondary' | 'outline' | 'soft' | 'quiet' | 'link' | 'danger';
 
 export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   variant?: ButtonVariant;
