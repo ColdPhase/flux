@@ -12,7 +12,8 @@
 # FLUX_DRYRUN_PREVIOUS builds that revision's application image the same way, renders ITS operator assets from its
 # own templates and script as the "previous release" (v0.1.0-rc.1; the candidate becomes v0.1.0-rc.2), installs it,
 # upgrades it to this commit's assets and restores backups of both (see smoke_artifacts.sh). The revision must have
-# the release asset set of #654 or later (a6e9851d1). Its agent-runtime digest and SBOMs are this commit's: the upgrade
+# the release asset set of #654 or later (a6e9851d1) and the v0.1 schema baseline (#779): pre-release schemas before it
+# cannot be upgraded, so v0.1 itself has no upgrade leg. Its agent-runtime digest and SBOMs are this commit's: the upgrade
 # leg never pulls the runtime image.
 #
 # FLUX_DRYRUN_PLATFORMS=linux/amd64,linux/arm64 builds both images (and the previous one) for those platforms like the
@@ -42,6 +43,10 @@ registry_port=$((base + 9))
 out=${1:-}
 run_id=${FLUX_DRYRUN_PROJECT:-fluxdry$$}
 previous_rev=${FLUX_DRYRUN_PREVIOUS:-}
+if [ -n "$previous_rev" ] && ! git -C "$root" cat-file -e "$previous_rev:app/packages/db/migrations/0001_v0_1_baseline.sql" 2>/dev/null; then
+  echo "dry_run: $previous_rev predates the v0.1 schema baseline (#779); pre-release schemas cannot be upgraded. Omit FLUX_DRYRUN_PREVIOUS." >&2
+  exit 2
+fi
 syft_image=${FLUX_DRYRUN_SYFT:-anchore/syft:v1.54.0}
 platforms=${FLUX_DRYRUN_PLATFORMS:-}
 smoke_platform=${FLUX_DRYRUN_SMOKE_PLATFORM:-}

@@ -16,15 +16,16 @@
 #     volumes are destroyed, a fresh checkout B restores the archive, and the fixture verifies
 #     through B's API: the same data, versions and links, sessions, sign-in, permissions and
 #     agent access as of the backup; restore --revoke-agent-connections then ends all of it.
-#  2. Upgrade: checkout U starts the previous main's version (the newest commit on main's
-#     first-parent history with other migrations than this tree, or FLUX_UPGRADE_FROM) with its demo, its files are replaced by this tree,
-#     ./flux upgrade migrates forward and the demo data is verified. The pre-upgrade backup (a
-#     subset of this image's migrations) is refused without --migrate and restored with it. A broken migration then
-#     makes ./flux upgrade fail with restore instructions, which are followed. Failures after the
-#     new version started (health probe, partial start) stop and confirm the writers and warn that
-#     work since the start is not in the backup; an unconfirmed stop is reported as such.
-#     When this tree adds #238's 0048, its guarded reversal (0060, then 0048) runs before any #238 fact exists, the
-#     previous image starts on the exact prior ledger with its data, and this tree upgrades again.
+#  2. Upgrade: checkout U starts the previous version with its demo, its files are replaced by the next version,
+#     ./flux upgrade migrates forward and the demo data is verified. The previous version is FLUX_UPGRADE_FROM, else
+#     the newest commit on main's first-parent history since the v0.1 baseline (#779) with other migrations than this
+#     tree. Before any such commit exists (v0.1 itself), it is this tree and the next version is this tree plus one
+#     synthetic migration (0002, or the next number), so the upgrade path is exercised on the real baseline. The
+#     pre-upgrade backup (a subset of the new image's migrations) is refused without --migrate and restored with it. A
+#     broken migration then makes ./flux upgrade fail with restore instructions, which are followed. Failures after the
+#     new version started (health probe, partial start) stop and confirm the writers and warn that work since the start
+#     is not in the backup; an unconfirmed stop is reported as such. Finally the previous version is restored from the
+#     pre-upgrade backup and upgraded again.
 #  3. AC-10 of F-030 (encrypted workspaces): checkout E, a test deployment (encrypted spaces are fixture-only until S3),
 #     seeds an encrypted space with a canary project name and a plain control, backs up, then changes the unlock
 #     password. The archive (database as SQL, files, env, manifest) holds the canary in no encoding and the control in
@@ -334,25 +335,53 @@ fixture "$B" agents-revoked "$state"
 flux_b clean -y >/dev/null
 flux_a clean -y >/dev/null
 
-step "Upgrade from the previous main's schema"
-current=$(schema_of_tree "$here")
+step "Upgrade from the previous version's schema"
+baseline=0001_v0_1_baseline.sql
 migrations_of_tree "$here" > "$work/migrations.now"
+grep -qx "$baseline" "$work/migrations.now" || fail "this tree has no $baseline"
 from=${FLUX_UPGRADE_FROM:-}
 if [ -z "$from" ]; then
   main_ref=$(git -C "$here" merge-base HEAD origin/main 2>/dev/null || git -C "$here" merge-base HEAD main)
   for commit in $(git -C "$here" rev-list --first-parent --max-count=200 "$main_ref"); do
     migrations_of_ref "$commit" > "$work/migrations.from"
+    # Pre-release schemas before the baseline cannot be upgraded (#779); stop at the first of them.
+    grep -qx "$baseline" "$work/migrations.from" || break
     if ! cmp -s "$work/migrations.from" "$work/migrations.now"; then from=$commit; break; fi
   done
 fi
-[ -n "$from" ] || fail "no main commit with other migrations than this tree; set FLUX_UPGRADE_FROM"
-migrations_of_ref "$from" > "$work/migrations.from"
-new_migrations=$(comm -13 "$work/migrations.from" "$work/migrations.now")
-[ -n "$new_migrations" ] || fail "$from has no migration that this tree adds"
-from_schema=$(schema_of_ref "$from")
-echo "upgrading from $(git -C "$here" log -1 --format='%h %s' "$from") (schema $from_schema) to this tree (schema $current); new migrations:" $new_migrations
-mkdir -p "$U"
-git -C "$here" archive "$from" | tar -xf - -C "$U"
+# The previous version's files, then the next version's: a commit and this tree, or this tree and this tree
+# plus one synthetic migration (its number in FLUX_SCHEMA_VERSION, as a real next migration would have it).
+from_tree() { # target
+  mkdir -p "$1"
+  if [ -n "$from" ]; then git -C "$here" archive "$from" | tar -xf - -C "$1"; else copy_tree "$1"; fi
+}
+to_tree() { # target
+  copy_tree "$1"
+  if [ -z "$from" ]; then
+    printf -- '-- check_backup.sh: a synthetic next migration over the v0.1 baseline.\nCREATE TABLE upgrade_check_marker (id integer PRIMARY KEY);\n' \
+      > "$1/app/packages/db/migrations/${synthetic}_upgrade_check.sql"
+    sed -i.orig "s/^export const FLUX_SCHEMA_VERSION = [0-9]*;/export const FLUX_SCHEMA_VERSION = $synthetic_version;/" "$1/app/packages/db/src/index.ts"
+    rm -f "$1/app/packages/db/src/index.ts.orig"
+    grep -q "^export const FLUX_SCHEMA_VERSION = $synthetic_version;" "$1/app/packages/db/src/index.ts" || fail "could not set the synthetic schema version"
+  fi
+}
+if [ -n "$from" ]; then
+  migrations_of_ref "$from" > "$work/migrations.from"
+  from_schema=$(schema_of_ref "$from") from_label=$(git -C "$here" log -1 --format='%h %s' "$from")
+else
+  cp "$work/migrations.now" "$work/migrations.from"
+  from_schema=$(schema_of_tree "$here") from_label="this tree (no main commit since the v0.1 baseline adds a migration)"
+  synthetic_version=$((from_schema + 1)); synthetic=$(printf '%04d' "$synthetic_version")
+fi
+mkdir -p "$work/next"
+to_tree "$work/next"
+current=$(schema_of_tree "$work/next")
+migrations_of_tree "$work/next" > "$work/migrations.next"
+rm -rf "$work/next"
+new_migrations=$(comm -13 "$work/migrations.from" "$work/migrations.next")
+[ -n "$new_migrations" ] || fail "the next version adds no migration"
+echo "upgrading from $from_label (schema $from_schema) to schema $current; new migrations:" $new_migrations
+from_tree "$U"
 (FLUX_PROJECT="flux-upgrade-check-$$"; export FLUX_PROJECT; flux_u up >/dev/null)
 flux_u demo >/dev/null
 run_u=$(project_of "$U")
@@ -362,16 +391,15 @@ env_relative=${original_env#"$U"/}
 original_env_hash=$(sha256 "$original_env")
 cp "$original_env" "$work/upgrade.env"
 find "$U" -mindepth 1 -maxdepth 1 -exec rm -rf {} +
-copy_tree "$U"
+to_tree "$U"
 mkdir -p "$(dirname "$U/$env_relative")"
 cp "$work/upgrade.env" "$U/$env_relative"
 chmod 600 "$U/$env_relative"
 if echo n | flux_u upgrade > "$work/upgrade-cancel.out" 2>&1; then fail "upgrade without confirmation succeeded"; fi
 flux_u upgrade -y > "$work/upgrade.out" 2>&1 || { cat "$work/upgrade.out"; fail "upgrade failed"; }
 tail -n 4 "$work/upgrade.out"
-[ "$(project_of "$U")" = "$run_u" ] || fail "layout upgrade changed the stored custom project"
-[ "$(sha256 "$U/docker/.env")" = "$original_env_hash" ] || fail "layout upgrade changed env bytes"
-[ ! -e "$U/.env" ] || fail "layout upgrade left an executable root .env"
+[ "$(project_of "$U")" = "$run_u" ] || fail "the upgrade changed the stored custom project"
+[ "$(sha256 "$U/$env_relative")" = "$original_env_hash" ] || fail "the upgrade changed env bytes"
 
 grep -q "Upgraded $run_u from schema $from_schema to $current" "$work/upgrade.out" || fail "upgrade did not report schema $from_schema -> $current"
 for migration in $new_migrations; do
@@ -381,45 +409,6 @@ upgrade_archive=$(sed -n 's/^Backup written: \(.*\.tar\) (.*/\1/p' "$work/upgrad
 [ -f "$upgrade_archive" ] || fail "upgrade wrote no backup"
 tar -xOf "$upgrade_archive" manifest.json | grep -q "\"schemaVersion\": $from_schema," || fail "the upgrade backup is not of schema $from_schema"
 fixture "$U" demo
-
-if printf '%s\n' $new_migrations | grep -qx '0048_unused_ai_task_creation_undo.sql'; then
-  # The reversal replaces U's checkout twice. Keep its pre-upgrade backup outside
-  # that directory so the later restore --migrate checks use the original pair.
-  cp "$upgrade_archive" "$work/pre-undo-upgrade.tar"
-  upgrade_archive="$work/pre-undo-upgrade.tar"
-  step "Guarded pre-use reversal of #238 (0060, then 0048) back to the previous image, which starts on its exact ledger"
-  # The upgraded data has no #238 fact yet (no task was created after the upgrade). The writers stop first.
-  compose_in "$U" stop api worker >/dev/null
-  if compose_in "$U" run --rm --no-deps -T migrate node tooling/dist/reverse-task-creation-undo.js --execute > "$work/reverse-unacknowledged.out" 2>&1; then
-    fail "the reversal ran without the stopped-writers acknowledgement"
-  fi
-  compose_in "$U" run --rm --no-deps -T -e FLUX_REVERSE_0048_QUIESCED=true migrate node tooling/dist/reverse-task-creation-undo.js --execute \
-    > "$work/reverse.out" 2>&1 || { cat "$work/reverse.out"; fail "the guarded #238 reversal failed"; }
-  grep -q 'Reversed 0060 and 0048' "$work/reverse.out" || fail "the reversal did not report its two versions: $(cat "$work/reverse.out")"
-  [ "$(compose_in "$U" exec -T db psql -X -tA -U flux -d flux -c 'SELECT count(*) FROM flux_schema_version WHERE version IN (48, 60)')" = 0 ] \
-    || fail "the reversal left a #238 ledger row"
-  cp "$(env_path "$U")" "$work/reverse.env"
-  find "$U" -mindepth 1 -maxdepth 1 -exec rm -rf {} +
-  git -C "$here" archive "$from" | tar -xf - -C "$U"
-  mkdir -p "$(dirname "$U/$env_relative")"
-  cp "$work/reverse.env" "$U/$env_relative"
-  chmod 600 "$U/$env_relative"
-  flux_u up > "$work/reverse-up.out" 2>&1 || { cat "$work/reverse-up.out"; fail "the previous image did not start on the reversed database"; }
-  curl -fsS "http://127.0.0.1:$port_u/api/v1/health" | grep -q "\"schemaVersion\":$from_schema" || fail "the previous image is not healthy on schema $from_schema"
-  flux_u demo | grep -q 'already exists; nothing new was seeded' || fail "the previous image lost data after the reversal"
-  # Forward again with this tree for the steps below.
-  cp "$(env_path "$U")" "$work/reverse.env"
-  find "$U" -mindepth 1 -maxdepth 1 -exec rm -rf {} +
-  copy_tree "$U"
-  mkdir -p "$(dirname "$U/$env_relative")"
-  cp "$work/reverse.env" "$U/$env_relative"
-  chmod 600 "$U/$env_relative"
-  flux_u upgrade -y > "$work/reupgrade-238.out" 2>&1 || { cat "$work/reupgrade-238.out"; fail "upgrading again after the reversal failed"; }
-  for migration in 0048_unused_ai_task_creation_undo.sql 0060_task_creation_undo_grant.sql; do
-    grep -q "Applied migration $migration" "$work/reupgrade-238.out" || fail "the second upgrade did not apply $migration"
-  done
-  fixture "$U" demo
-fi
 
 step "The pre-upgrade backup (a subset of this image's migrations) restores only with --migrate"
 if flux_u restore "$upgrade_archive" -y > "$work/subset.out" 2>&1; then fail "a backup lacking migrations was restored without --migrate"; fi
@@ -493,37 +482,29 @@ if (PATH="$work/shim-ps-after:$PATH"; export PATH; flux_u backup --output "$work
 grep -q 'Could not check whether API and worker stopped' "$work/backup-ps-after.out" || { cat "$work/backup-ps-after.out"; fail "no refusal after the stop"; }
 [ "$(archives)" = "$before_ps" ] || fail "an archive was written although the state after the stop was unknown"
 [ "$(running_u)" = "api worker" ] || fail "the writers that were running were not brought back: $(running_u)"
-step "Roll back the actual source layout, keep the original custom project, then upgrade again"
-# The pre-upgrade archive and historical launcher share a schema. Follow the reverse env
-# move printed by the current launcher before restoring with the old launcher.
-if git -C "$here" cat-file -e "$from:app/package.json" 2>/dev/null; then
-  rollback_env=docker/.env
-else
-  rollback_env=.env
-fi
-cp "$upgrade_archive" "$work/layout-rollback.tar"
+step "Go back to the previous version from the pre-upgrade backup, keep the custom project, then upgrade again"
+cp "$upgrade_archive" "$work/rollback.tar"
 compose_in "$U" stop api worker >/dev/null
 cp "$(env_path "$U")" "$work/rollback.env"
 find "$U" -mindepth 1 -maxdepth 1 -exec rm -rf {} +
-git -C "$here" archive "$from" | tar -xf - -C "$U"
-mkdir -p "$(dirname "$U/$rollback_env")"
-cp "$work/rollback.env" "$U/$rollback_env"
-chmod 600 "$U/$rollback_env"
-flux_u restore "$work/layout-rollback.tar" -y > "$work/layout-rollback.out" 2>&1 || { cat "$work/layout-rollback.out"; fail "old-source rollback failed"; }
+from_tree "$U"
+mkdir -p "$(dirname "$U/$env_relative")"
+cp "$work/rollback.env" "$U/$env_relative"
+chmod 600 "$U/$env_relative"
+flux_u restore "$work/rollback.tar" -y > "$work/rollback.out" 2>&1 || { cat "$work/rollback.out"; fail "restoring the previous version failed"; }
 [ "$(project_of "$U")" = "$run_u" ] || fail "rollback lost the custom project"
 flux_u demo | grep -q 'already exists; nothing new was seeded' || fail "rollback lost the original demo data"
 cp "$(env_path "$U")" "$work/rollback.env"
 find "$U" -mindepth 1 -maxdepth 1 -exec rm -rf {} +
-copy_tree "$U"
-mkdir -p "$(dirname "$U/$rollback_env")"
-cp "$work/rollback.env" "$U/$rollback_env"
-chmod 600 "$U/$rollback_env"
-flux_u upgrade -y > "$work/layout-reupgrade.out" 2>&1 || { cat "$work/layout-reupgrade.out"; fail "re-upgrade after old-source rollback failed"; }
+to_tree "$U"
+mkdir -p "$(dirname "$U/$env_relative")"
+cp "$work/rollback.env" "$U/$env_relative"
+chmod 600 "$U/$env_relative"
+flux_u upgrade -y > "$work/reupgrade.out" 2>&1 || { cat "$work/reupgrade.out"; fail "re-upgrade after the rollback failed"; }
 [ "$(project_of "$U")" = "$run_u" ] || fail "re-upgrade lost the custom project"
-[ ! -e "$U/.env" ] || fail "re-upgrade left two executable env locations"
 flux_u demo | grep -q 'already exists; nothing new was seeded' || fail "re-upgrade lost restored data"
 flux_u clean -y >/dev/null
 
 encryption_case
 
-step "PASS: backup, restore into a fresh project, agent access, export, upgrade from $(git -C "$here" rev-parse --short "$from") (+$(printf '%s\n' "$new_migrations" | wc -l | tr -d ' ') migrations) and failed-upgrade recovery"
+step "PASS: backup, restore into a fresh project, agent access, export, upgrade from ${from:+$(git -C "$here" rev-parse --short "$from")}${from:-this tree} (+$(printf '%s\n' "$new_migrations" | wc -l | tr -d ' ') migrations) and failed-upgrade recovery"

@@ -21,8 +21,13 @@ git pull --ff-only && ./flux upgrade      # or: ./flux upgrade --pull
 The downtime is the backup, the build and the migration. It prints
 `Upgraded <project> from schema A to B` and keeps the backup.
 
-The image checks the database's migration ledger before it migrates. If it refuses a partial,
-mixed or unsupported footprint, keep the backup and restore its matching image and database. Do not edit the ledger or rename a migration to make the check pass.
+The image checks the database's migration ledger before it migrates: every recorded version must
+be a file of the image. If it refuses, keep the backup and restore its matching image and database.
+Do not edit the ledger or rename a migration to make the check pass.
+
+v0.1 is the first release. Its schema is one baseline migration, `0001_v0_1_baseline.sql` (#779);
+later releases add `0002` onwards. Development databases from before the baseline (pre-release
+builds) cannot be upgraded: remove them with `./flux clean` and start again.
 
 ## When it fails
 
@@ -52,7 +57,8 @@ the old version on the partly migrated database.
 
 ## Tested with
 
-`./scripts/check_backup.sh` starts the previous schema of `main`, seeds it, upgrades it to this tree
-with `./flux upgrade -y`, and checks the applied migrations, the backup it made and the data through
-the API. It then adds a failing migration, checks that the upgrade fails with the restore
-instructions above, and follows them.
+`./scripts/check_backup.sh` starts the previous version (the newest `main` commit since the v0.1
+baseline with other migrations, or `FLUX_UPGRADE_FROM`; before such a commit exists, this tree, upgraded
+to this tree plus one synthetic next migration), seeds it, upgrades it with `./flux upgrade -y`, and
+checks the applied migrations, the backup it made and the data through the API. It then adds a failing
+migration, checks that the upgrade fails with the restore instructions above, and follows them.

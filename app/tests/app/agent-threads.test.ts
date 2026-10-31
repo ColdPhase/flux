@@ -1,6 +1,5 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
-import { readFile } from 'node:fs/promises';
 import { test } from 'node:test';
 import type { TaskAgentThread, ConversationMessage, WorkItem, Page, ConversationSummary, UndoTaskCreationResult, ProjectExport, SearchResponse, ReturnSummary, InboxResponse } from '@flux/contracts';
 import { createDatabase } from '@flux/db';
@@ -103,35 +102,6 @@ test('all new-space agent replies fail closed while an actual OAuth v1 people re
   const allowed = toolValue(await f.tool('flux_reply_in_conversation', { ...envelope, clientCommandId: randomUUID(), conversationId: people.id, message: { body: 'The existing v1 reply still works.' } }));
   assert.equal(allowed.conversationId, people.id); assert.equal(await f.used(replyGrant.id), 1);
   const row = (await pool.query('SELECT count(*)::int AS n FROM project_messages WHERE conversation_id=$1', [posted.conversationId])).rows[0]; assert.equal(row.n, 1);
-});
-
-test('0072 people/history survives upgrade; reversal refuses a thread and restores cleanly without one', async () => {
-  const f = await scene(); const old = expectStatus(await f.owner.browser.request('POST', `/api/v1/projects/${f.place.id}/conversations`, { body: { body: 'Historical people text', clientMessageId: randomUUID() } }), 201) as { id: string };
-  const client = await pool.connect();
-  try {
-    await client.query('BEGIN');
-    const remainingDown = await readFile('packages/db/migrations/reverse/0089_agent_thread_remaining_artifacts.down.sql', 'utf8');
-    const remainingUp = await readFile('packages/db/migrations/0089_agent_thread_remaining_artifacts.sql', 'utf8');
-    await client.query(remainingDown);
-    const resetDown = await readFile('packages/db/migrations/reverse/0088_agent_thread_artifact_resets.down.sql', 'utf8');
-    const resetUp = await readFile('packages/db/migrations/0088_agent_thread_artifact_resets.sql', 'utf8');
-    await client.query(resetDown);
-    const guardDown = await readFile('packages/db/migrations/reverse/0087_agent_thread_turn_guard.down.sql', 'utf8');
-    const guardUp = await readFile('packages/db/migrations/0087_agent_thread_turn_guard.sql', 'utf8');
-    await client.query(guardDown);
-    // Other tests may retain agent threads; only this private transaction removes them for reversal.
-    await client.query("DELETE FROM project_conversations WHERE space='agents'");
-    const down = await readFile('packages/db/migrations/reverse/0082_agent_threads.down.sql', 'utf8');
-    const up = await readFile('packages/db/migrations/0082_agent_threads.sql', 'utf8');
-    const ledger = (await client.query('SELECT version FROM flux_schema_version ORDER BY version')).rows;
-    await client.query(down); await client.query(up); await client.query(guardUp); await client.query(resetUp); await client.query(remainingUp);
-    assert.equal((await client.query('SELECT space FROM project_conversations WHERE id=$1', [old.id])).rows[0].space, 'people');
-    assert.equal((await client.query('SELECT body FROM project_messages WHERE conversation_id=$1', [old.id])).rows[0].body, 'Historical people text');
-    await client.query('INSERT INTO project_conversations(id,workspace_id,project_id,created_by,space,work_id) VALUES($1,$2,$3,$4,$5,$6)', [randomUUID(), f.ws.id, f.place.id, f.owner.id, 'agents', f.task.id]);
-    await client.query('SAVEPOINT reversal_refusal');
-    await assert.rejects(() => client.query(down), /Cannot reverse 0082/); await client.query('ROLLBACK TO SAVEPOINT reversal_refusal');
-    assert.deepEqual((await client.query('SELECT version FROM flux_schema_version ORDER BY version')).rows, ledger);
-  } finally { await client.query('ROLLBACK'); client.release(); }
 });
 
 test('a new thread post versus unused AI-task Undo has one winner under the shared real fence', async () => {
