@@ -44,8 +44,9 @@ Agents is one list with a row for each of Hubert's two agents' connections and M
 | 641–680 px | The work area runs edge to edge; Open navigation opens the 260 px drawer | viewport | `MEDIA.navDrawer`, `app/app.css` |
 | ≤ 900 px | The sidebar is the 64 px rail and its expand control opens the drawer. The project title is the view menu, so the views leave the header | viewport | `MEDIA.tablet`, `app/app.css`, `docs/design/spokoj` "Layout per screen" |
 | ≤ 1000 px | The one panel (Details, a thread) overlays the work from the right: 380 px at 820 | viewport | `MEDIA.panelOverlay`, `ui/ui.css` |
-| > 1000 px | The panel docks beside the work and replaces its content for the next object, never a third column: 380 px up to 1200, 420 px, 480 px from 1920. The conversation is at most 760 px from 1920 | viewport | `ui/tokens.css` `--panel-w`, `app/project-conversation.css` `.project-convo__in` |
-| Board < 700 px | Tasks shows a status overview with counts, blocked included, and one column at a time; wider, three columns, with cards in auto-fill tracks inside each column | container | `work/board.css` `@container tasks` |
+| > 1000 px | The panel docks beside the work and replaces its content for the next object, never a third column: 380 px up to 1200, then 420 px at every larger width (480 px from 1920 until the 2026-10-31 amendment). The conversation is at most 760 px (`--read-max`) | viewport | `ui/tokens.css` `--panel-w`, `app/project-conversation.css` `.project-convo__in` |
+| ≥ 1864 px | The work panel stops at `--content-max` (1600 px) and is centred beside the sidebar; wider screens gain only margin (F-015 amendment, 2026-10-31) | viewport | `ui/tokens.css` `--content-max`, `app/app.css` `.app__main` |
+| Board < 700 px | Tasks shows a status overview with counts, blocked included, and one column at a time; wider, three columns of at most `--board-col` (340 px) that never stretch, with cards in auto-fill tracks inside each column | container | `work/board.css` `@container tasks` |
 | Wiki 1000 / 860 / 720 / 499 px | The index narrows to 196 then 180 px; the outline goes below 860; history stacks below 720; below 499 one column with a page strip | container | `docs/docs.css` `@container wiki`, `wikimain` |
 | Thread feed < 400 px | A docked panel on a small laptop has no room beside a bubble: the three message actions sit in the bubble's corner | container | `work/message-actions.css` `@container thread-feed` |
 | Map pane ≤ 680 px, canvas ≤ 1080 px wide or ≤ 560 px tall | "Select several" is its icon alone; the zoom controls rise above the tools; the minimap goes | container | `sketch/sketch.css` `@container` |
@@ -105,11 +106,11 @@ compact 14 px type. Measured longest lines, 320–5120 px (re-measured 2026-10-2
 
 | Surface | Phone ≤ 640 | Tablet / split 641–1000 | Laptop 1001–1599 | Wide ≥ 1600 |
 | --- | --- | --- | --- | --- |
-| Conversation | One stream; no tab bar; the thread is a sheet (Replies) with Close replies | The stream beside the rail; the thread overlays as the 380 px panel | The thread docks beside the stream as the one panel; Details takes the same panel and a Thread button returns to it | The stream (≥ 600 px, at most 760 px from 1920) and one docked 480 px panel; extra width is margin, never a third column |
-| Map / list | Two card columns at full size; the tools in a grid; its own camera and zoom | The plane fills the pane; Details overlays | The plane; Details docks and narrows the pane | The plane fills its pane and grows with the screen: 1664, 2304 and 3584 px at 1920, 2560 and 3840 |
-| Tasks | The drawn Mine \| All list with state glyphs; no board | A board that shows the status overview (blocked count, one column) while it is under 700 px wide | Three columns; Details docks beside the board | Three columns beside docked Details; more cards per row (the Open column's three cards on one row at 3840 px, three rows at 1440) |
+| Conversation | One stream; no tab bar; the thread is a sheet (Replies) with Close replies | The stream beside the rail; the thread overlays as the 380 px panel | The thread docks beside the stream as the one panel; Details takes the same panel and a Thread button returns to it | The stream (≥ 600 px, at most 760 px) and one docked 420 px panel inside the 1600 px work panel; extra width is margin, never a third column |
+| Map / list | Two card columns at full size; the tools in a grid; its own camera and zoom | The plane fills the pane; Details overlays | The plane; Details docks and narrows the pane | The plane fills the 1600 px work panel; the same at 1920, 2560 and 3840 |
+| Tasks | The drawn Mine \| All list with state glyphs; no board | A board that shows the status overview (blocked count, one column) while it is under 700 px wide | Three columns; Details docks beside the board | Three fixed 340 px columns beside docked Details; the same cards per row as on a laptop (the Open column's three cards take three rows at 1440, 1920 and 3840 px) |
 | Wiki | One column, a page strip above the document | The index beside the document from 768 px | The index (180–196 px) and the 820 px page, 62ch prose | The same: extra width is margin |
-| Agents | One list; the composer below the thread | The same list | One 854 px column, the three connections as three rows, Details docks | The same column (WIDE_CAPS in the matrix; see Remaining) |
+| Agents | One list; the composer below the thread | The same list | One 854 px column, the three connections as three rows, Details docks | The same 854 px column inside the 1600 px work panel (amended 2026-10-31) |
 
 The same five tabs keep their names and order at every width. The same primary actions
 remain reachable. Own messages stay on the right and other people's on the left.
@@ -165,7 +166,7 @@ its pull request. The test covers:
 - system scaling: 3840×2160 at ratio 1, 2560×1440 at ratio 1.5 and 1920×1080 at ratio 2 give the same
   CSS boxes as ratio 1 for the pane, feed, map canvas, task board and Details, in four views;
 - the dark theme for the same journey at 390×844 and 3440×1440;
-- wide caps, measured at 1920, 2560 and 3840 px (below);
+- the same widths at 1920, 2560 and 3840 px (below);
 - a short stream, thread, direct message, direct message reply thread and Agents task thread on a tall screen: with two
   messages each, the newest message and its field are at most `MAX_STREAM_GAP` apart from 390×844 to 3840×2160 (test_08,
   test_09);
@@ -196,11 +197,12 @@ closed gap must be removed from the list.
 
 No gaps are open: `KNOWN_GAPS` is empty.
 
-**Wide caps.** `WIDE_CAPS` in the test names one ADAPT-2 cap, measured by `test_07`, which fails once the cap
-disappears. Measured in CSS px at 1920, 2560 and 3840: the map plane is 1664, 2304 and 3584 (it fills its pane); the
-Agents column is 854, 854 and 854 (`agents/agents.css`). [Spokój](spokoj/README.md) draws large screens as
-"conversation at most 760 px, panel 480 px; extra width is margin, never a third column". Whether the Agents list
-should use more of a wide screen is therefore a design decision for the founders, not something this record changes.
+**Wide screens (amended 2026-10-31).** Founder direction on [#763](https://github.com/ColdPhase/flux/issues/763#issuecomment-6549771863)
+settles the earlier open question: large screens keep the laptop composition and gain only margin. `test_07` measures, at
+1920, 2560 and 3840 CSS px, the work panel, the map plane, the Agents column, the conversation column, docked Details and the
+board's status columns, and asserts they are the same at each width (the work panel 1600 px, the Agents column 854 px).
+`test_03` asserts the Open column keeps three rows at 1440, 1920 and 3840 px. This replaces `WIDE_CAPS` and the earlier
+expectation that the map and the board's cards per row grow with the screen.
 
 **Independent evaluation, 2026-10-29, `main` `3f0311a26`** (a separate agent session from the one that wrote this page and
 PR #669, at Hubert's direction: the GitHub account is the same, so this is session independence, not account
@@ -217,7 +219,6 @@ map and list latency budgets above; a limited visual review of 72 screenshots wi
 
 **Remaining for #151** (open; this record does not deliver them):
 
-- the Agents column's cap (ADAPT-2), pending the design decision above;
 - safe areas in WebKit and on real devices (no simulation exists for them), real browser zoom and an operating system's own text-size setting (the emulations above
   stand in for them);
 - real 4K, ultrawide, Android, iPhone and iPad sessions (optional under #266 item 10).

@@ -58,6 +58,16 @@ body:has(.app) { background: var(--side); }
   margin-top: max(var(--sheet-inset), env(safe-area-inset-top)); margin-right: max(var(--sheet-inset), env(safe-area-inset-right));
   margin-bottom: max(var(--sheet-inset), env(safe-area-inset-bottom));
   background: var(--bg); border-radius: var(--r-panel); box-shadow: var(--sh-card);
+  max-width: var(--content-max);
+}
+/* F-015 amendment (2026-10-31, #763): once the sidebar, the 1600 px work panel and its insets fit (248 + 1600 + 2 × 8),
+   the panel is centred in the space beside the sidebar and a larger screen only gains margin. --content-gutter is that
+   margin, for the few popovers placed against the viewport's right edge. */
+.app { --side-now: var(--side-w); --content-gutter: var(--sheet-inset); }
+.app:has(> .app__side--rail) { --side-now: var(--rail-w); }
+@media (min-width: 1864px) {
+  .app__main { margin-left: auto; margin-right: auto; }
+  .app { --content-gutter: max(var(--sheet-inset), calc((100vw - var(--side-now) - var(--content-max)) / 2)); }
 }
 .app__pane { flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; outline: none; }
 #root:not([inert], [data-modal]) .app__pane { interactivity: auto; }
@@ -628,8 +638,11 @@ kbd { display: inline-grid; place-items: center; min-width: 18px; height: 18px; 
 .phone-dock--solo { position: absolute; left: 0; right: 0; bottom: max(14px, env(safe-area-inset-bottom)); height: 0; padding: 0; }
 .phone-fab {
   position: absolute; right: 18px; bottom: calc(100% + 4px); width: 56px; height: 56px; border-radius: 50%;
-  display: grid; place-items: center; background: var(--inv); color: var(--oninv);
+  display: grid; place-items: center; background: var(--own); color: var(--t1); transition: var(--tr);
 }
+/* The phone's "+" is a soft fill like Send, so a screen's one dark button is its own (founder, 2026-10-31, #763). */
+.phone-fab:hover { background: var(--hov); }
+.phone-fab:active { background: var(--pick); }
 /* A phone on its side (short landscape, F-015): the header and the capsule step down to 44 px targets so
    the work keeps its room; the subtitle gives way (the view menu marks the current view). */
 @media (max-width: 640px) and (max-height: 480px) {
