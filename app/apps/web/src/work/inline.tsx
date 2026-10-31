@@ -106,7 +106,7 @@ export function DiscussedTask({ task, row }: { task: { workId: string; title: st
   const { openDetails } = useShellActions();
   const item = row?.kind === 'work' && row.id === task.workId ? row : null;
   // The root carries the immutable number, so the chip does not grow when the reference row arrives (#367).
-  return <ObjectChip icon="tasks" number={item?.number ?? task.number} state={item ? workPieces(item) : [{ text: 'Task' }]} title={item?.title ?? task.title} label="Discussion of task"
+  return <ObjectChip icon="tasks" number={item?.number ?? task.number} state={item ? workPieces(item) : [{ text: 'Task' }]} title={item?.title ?? task.title} label={(item?.number ?? task.number) ? `Discussion of task #${item?.number ?? task.number}` : 'Discussion of task'}
     objectKind="work" objectId={task.workId} nativeRef={`work:${task.workId}`} onOpen={() => openDetails({ kind: 'work', id: task.workId })} />;
 }
 
@@ -139,7 +139,7 @@ export function MessageObjects({ message, projectId, preview, thread = null, thr
   return (
     <div className="ws-attach">
       {discussed ? <DiscussedTask task={discussed} row={threadRow} /> : null}
-      {items.map((item) => <ObjectChip key={`${item.kind}:${item.id}`} objectKind={item.kind} objectId={item.id} icon={item.kind === 'work' ? 'tasks' : item.kind === 'decision' ? 'rule' : 'result'} number={item.kind === 'work' ? item.number : undefined} state={item.kind === 'work' ? workPieces(item) : item.kind === 'decision' ? decisionPieces(item) : resultPieces(item)} title={item.title} need={item.kind === 'decision' && item.status === 'proposed'} label={item.kind === 'work' ? 'Work' : item.kind === 'decision' ? 'Decision' : 'Result'} onOpen={() => openDetails({ kind: item.kind, id: item.id })} />)}
+      {items.map((item) => <ObjectChip key={`${item.kind}:${item.id}`} objectKind={item.kind} objectId={item.id} icon={item.kind === 'work' ? 'tasks' : item.kind === 'decision' ? 'rule' : 'result'} number={item.kind === 'work' ? item.number : undefined} state={item.kind === 'work' ? workPieces(item) : item.kind === 'decision' ? decisionPieces(item) : resultPieces(item)} title={item.title} need={item.kind === 'decision' && item.status === 'proposed'} label={item.kind === 'work' ? `Task #${item.number}` : item.kind === 'decision' ? 'Decision' : 'Result'} onOpen={() => openDetails({ kind: item.kind, id: item.id })} />)}
       {items.length < total ? <button type="button" className="ws-attach__more" onClick={() => openDetails({ kind: 'overview', messageId: message.id, selection: { accountId: me.user.id, projectId, message } })}>{[counts.work ? `${counts.work} work` : null, counts.decisions ? `${counts.decisions} ${counts.decisions === 1 ? 'decision' : 'decisions'}` : null, counts.results ? `${counts.results} ${counts.results === 1 ? 'result' : 'results'}` : null].filter(Boolean).join(' · ')} · view linked objects</button> : null}
     </div>
   );

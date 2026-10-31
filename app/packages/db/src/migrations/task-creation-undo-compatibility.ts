@@ -123,7 +123,9 @@ export async function assertTaskCreationUndoMigrationCompatibility(db: Reader, a
     for (const [relation, name, definition] of UNDO_CONSTRAINTS) {
       const actual = constraints.find((constraint) => constraint.relation === relation && constraint.name === name);
       // F-030 (0121) relaxes the receipt fingerprint check so a sealed digest passes; the plain form keeps the old check.
-      const relaxed = name === 'task_creation_undo_receipts_request_fingerprint_check' ? `CHECK ((flux_is_sealed(request_fingerprint) OR ${definition.slice('CHECK ('.length, -1)}))` : null;
+      // #763 B1 (0135) admits origin 'human' in the reverted-row shape: a person's own new task is undone by its creator.
+      const relaxed = name === 'task_creation_undo_receipts_request_fingerprint_check' ? `CHECK ((flux_is_sealed(request_fingerprint) OR ${definition.slice('CHECK ('.length, -1)}))`
+        : name === 'task_creation_reversion_shape' ? definition.replace("'ai_proposal'::text]", "'ai_proposal'::text, 'human'::text]") : null;
       if (!actual?.validated || (compact(actual.definition) !== compact(definition) && (relaxed === null || compact(actual.definition) !== compact(relaxed)))) {
         problems.push(`mismatched Undo constraint ${relation}.${name}`);
       }

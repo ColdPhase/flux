@@ -157,6 +157,21 @@ class WaitingFor(unittest.TestCase):
                 page.goto(f"/projects/{self.project}")
                 expect(page.get_by_text(reason, exact=True)).to_have_count(1)
 
+    def test_06_the_board_and_the_list_say_who_and_why_as_the_panel_does(self):
+        # #763 C1: "Waiting for <person> · <reason>", or the reason alone, never "Waiting for <reason>".
+        named = self.block(self.task("Move the LoRa gateway to the fence post"), blocker="Needs the gateway in its new place first.", waitingFor={"kind": "human", "id": self.kai})
+        unnamed = self.block(self.task("Seal the probe cables"), blocker="Needs the heat-shrink delivery.")
+        page = self.page("ada"); page.goto(f"/projects/{self.project}/tasks")
+        page.get_by_role("radio", name="Board", exact=True).click()
+        card = page.locator(f".tb-card[data-card-id='{named['id']}'] .tb-card__blocker")
+        expect(card).to_have_text("Waiting for Kai Nowak · Needs the gateway in its new place first.")
+        expect(page.locator(f".tb-card[data-card-id='{unnamed['id']}'] .tb-card__blocker")).to_have_text("Needs the heat-shrink delivery.")
+        page.get_by_role("radio", name="List", exact=True).click()
+        row = page.locator(".ws-task").filter(has_text="Move the LoRa gateway to the fence post").first
+        expect(row).to_contain_text("waiting for Kai Nowak · Needs the gateway in its new place first.")
+        expect(row).not_to_contain_text("waiting for Needs")
+        expect(page.locator(".ws-task").filter(has_text="Seal the probe cables").first).not_to_contain_text("waiting for Needs")
+
 
 if __name__ == "__main__":
     unittest.main()

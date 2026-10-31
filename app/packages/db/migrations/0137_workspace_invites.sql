@@ -1,6 +1,6 @@
 -- F-035 (#763 PE-2, founder decision 2026-10-31): one-time invite links that join a workspace with a role
 -- (docs/development/access-policy.md#invite-links-f-035). Only the SHA-256 of the token is stored. Additive: no
--- existing row changes. Sparse after 0134 (0135 and 0136 belong to other open work).
+-- existing row changes. Sparse after 0135 (0136 belongs to other open work).
 CREATE TABLE workspace_invites (
   id uuid PRIMARY KEY,
   workspace_id uuid NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,

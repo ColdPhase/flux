@@ -132,6 +132,15 @@ class DetailPanelFinal(unittest.TestCase):
         undo.click()
         expect(status).to_contain_text("Open")
         self.assertEqual(self.stored(task)["status"], "open")
+        # Z takes a change back from the panel too, as on the board, and the toast says it in the board's words (#763 C2).
+        panel.locator(".ui-panel__body").focus()
+        page.keyboard.press("2")
+        expect(status).to_contain_text("In progress")
+        toast = page.locator(".ui-toast").filter(has_text=f"#{task['number']} is now in progress")
+        expect(toast.get_by_role("button", name="Undo")).to_have_attribute("aria-keyshortcuts", "Z")
+        page.keyboard.press("z")
+        expect(status).to_contain_text("Open")
+        self.assertEqual(self.stored(task)["status"], "open")
         # From the keyboard alone: open the menu with the arrow, choose with a digit.
         status.focus()
         page.keyboard.press("ArrowDown")
