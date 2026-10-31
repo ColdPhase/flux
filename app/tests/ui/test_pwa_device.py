@@ -133,8 +133,10 @@ class InstallAndLaunch(unittest.TestCase):
 
     def row_tops(self, page: Page) -> list[float]:
         """The top of every other settings row on the page: none may move when the install row comes or goes."""
-        return page.evaluate("""() => [...document.querySelectorAll('.sset-card > *')]
-          .filter((el) => el.getAttribute('data-testid') !== 'install-flux').map((el) => el.getBoundingClientRect().top)""")
+        # Measured from the page's own top, so scrolling the long Notifications page to the button moves nothing.
+        return page.evaluate("""() => { const top = document.querySelector('.pane-in').getBoundingClientRect().top;
+          return [...document.querySelectorAll('.sset-card > *')]
+          .filter((el) => el.getAttribute('data-testid') !== 'install-flux').map((el) => el.getBoundingClientRect().top - top); }""")
 
     def focused(self, page: Page) -> str:
         return page.evaluate("(() => { const el = document.activeElement; return el ? (el.getAttribute('role') || el.tagName.toLowerCase()) + ':' + el.textContent.trim() : ''; })()")
