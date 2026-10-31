@@ -52,6 +52,10 @@ services:
           udp_port: 7882
           use_external_ip: false
           node_ip: ${FLUX_LIVEKIT_PUBLIC_IP:?Set the public IP advertised to media clients}
+          # Only the media interface carries ICE (#63). On a host with several interfaces, set it to the
+          # media address (for example 203.0.113.20/32); the default keeps every IPv4 interface.
+          ips:
+            includes: ["${FLUX_LIVEKIT_MEDIA_CIDR:-0.0.0.0/0}"]
           stun_servers:
             - ${FLUX_LIVEKIT_DOMAIN:?Set the operator-owned media domain}:3478
         turn:
