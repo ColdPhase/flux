@@ -53,13 +53,13 @@ class InviteLinksJourney(unittest.TestCase):
         cls.browser = getattr(cls.pw, UI_BROWSER).launch()
         expect.set_options(timeout=10000)
         for key, (name, email) in PEOPLE.items():
-            context = cls.browser.new_context(base_url=ORIGIN)
+            context = cls.browser.new_context(base_url=ORIGIN, service_workers="block")
             response = context.request.post("/api/auth/sign-up/email", data={"email": email, "password": PASSWORD, "name": name}, headers={"origin": ORIGIN})
             assert response.status == 200, response.text()
             cls.ids[key] = context.request.get("/api/v1/me").json()["user"]["id"]
             cls.states[key] = context.storage_state()
             context.close()
-        context = cls.browser.new_context(base_url=ORIGIN, storage_state=cls.states["ada"])
+        context = cls.browser.new_context(base_url=ORIGIN, service_workers="block", storage_state=cls.states["ada"])
         created = context.request.post("/api/v1/workspaces", data={"name": "Riverside Makers"}, headers={"origin": ORIGIN})
         assert created.status == 201, created.text()
         cls.riverside = created.json()["id"]
@@ -73,7 +73,7 @@ class InviteLinksJourney(unittest.TestCase):
     # ---------------------------------------------------------------- helpers
 
     def page(self, who: str | None, *, phone: bool = False) -> Page:
-        options: dict = {"base_url": ORIGIN, "locale": "en-GB", "timezone_id": "Europe/Warsaw"}
+        options: dict = {"base_url": ORIGIN, "locale": "en-GB", "timezone_id": "Europe/Warsaw", "service_workers": "block"}
         if who:
             options["storage_state"] = self.states[who]
         if phone:
@@ -89,14 +89,14 @@ class InviteLinksJourney(unittest.TestCase):
         return page
 
     def roles(self, workspace_id: str) -> dict[str, str]:
-        context = self.browser.new_context(base_url=ORIGIN, storage_state=self.states["ada"])
+        context = self.browser.new_context(base_url=ORIGIN, service_workers="block", storage_state=self.states["ada"])
         self.addCleanup(context.close)
         response = context.request.get(f"/api/v1/workspaces/{workspace_id}/members")
         self.assertEqual(response.status, 200, response.text())
         return {member["email"]: member["role"] for member in response.json()}
 
     def pending(self, workspace_id: str) -> list[dict]:
-        context = self.browser.new_context(base_url=ORIGIN, storage_state=self.states["ada"])
+        context = self.browser.new_context(base_url=ORIGIN, service_workers="block", storage_state=self.states["ada"])
         self.addCleanup(context.close)
         response = context.request.get(f"/api/v1/workspaces/{workspace_id}/invites")
         self.assertEqual(response.status, 200, response.text())
@@ -143,6 +143,9 @@ class InviteLinksJourney(unittest.TestCase):
         page.goto(self.member_link)
         expect(page.get_by_role("heading", level=1, name="Join Riverside Makers")).to_be_visible()
         expect(page.get_by_text("Ada Kowalska invited you to Riverside Makers as a member.")).to_be_visible()
+        # The token is kept in this tab only: not in the address or the history (#776 review P3-2).
+        self.assertEqual(page.evaluate("location.hash"), "")
+        self.assertEqual(page.url, f"{ORIGIN}/join")
         shot(page, "invite-join-signed-out-phone-390")
         page.get_by_role("button", name="Create an account").click()
         expect(page).to_have_url(re.compile(r"/sign-up\?next=%2Fjoin$"))
@@ -208,8 +211,27 @@ class InviteLinksJourney(unittest.TestCase):
         visitor.reload()
         expect(visitor.get_by_role("heading", level=1, name="This invite link doesn’t work")).to_be_visible()
 
+    def test_04b_with_single_sign_on_the_first_sign_in_makes_the_account(self) -> None:
+        """#776 review P2: SSO-only reports sign-up off, yet the first single sign-on creates the account (F-024)."""
+        context = self.browser.new_context(base_url=ORIGIN, service_workers="block", storage_state=self.states["ada"])
+        self.addCleanup(context.close)
+        invite = context.request.post(f"/api/v1/workspaces/{self.riverside}/invites", data={"role": "member"}, headers={"origin": ORIGIN, "idempotency-key": str(uuid.uuid4())})
+        self.assertEqual(invite.status, 201, invite.text())
+        visitor = self.page(None)
+        visitor.route("**/api/v1/auth/capabilities", lambda route: route.fulfill(json={
+            "passwordReset": "unavailable", "signup": "off", "ssoOnly": True, "linkable": False,
+            "sso": {"providerId": "company", "label": "Company SSO", "reachable": True}}))
+        visitor.goto(invite.json()["link"])
+        expect(visitor.get_by_text("New here? Sign in with Company SSO; your account is made the first time.")).to_be_visible()
+        expect(visitor.get_by_text("New accounts are closed on this Flux server.")).to_have_count(0)
+        expect(visitor.get_by_role("button", name="Sign in to join")).to_be_visible()
+        # A tab without the token (a sign-in finished in another tab) asks for the link again (#776 review P3-3).
+        fresh = self.page(None)
+        fresh.goto("/join")
+        expect(fresh.get_by_role("heading", level=1, name="Open the invite link again in this tab")).to_be_visible()
+
     def test_05_an_admin_joining_an_encrypted_workspace_learns_how_keys_work(self) -> None:
-        context = self.browser.new_context(base_url=ORIGIN, storage_state=self.states["ada"])
+        context = self.browser.new_context(base_url=ORIGIN, service_workers="block", storage_state=self.states["ada"])
         self.addCleanup(context.close)
         created = context.request.post("/api/v1/encrypted-workspaces", data={"name": "Garden club", "creationId": str(uuid.uuid4()), "password": SEALED_PASSWORD},
                                        headers={"origin": ORIGIN, "authorization": f"Bearer {os.environ['FLUX_FIXTURE_TOKEN']}"})

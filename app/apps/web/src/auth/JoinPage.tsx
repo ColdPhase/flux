@@ -29,7 +29,7 @@ function forgetToken() { try { sessionStorage.removeItem(STORE); } catch { /* no
 type State =
   | { kind: 'loading' }
   | { kind: 'problem'; title: string; text: string }
-  | { kind: 'ready'; preview: InvitePreview; me: MeResponse | null; signup: IdentityCapabilities['signup'] }
+  | { kind: 'ready'; preview: InvitePreview; me: MeResponse | null; signup: IdentityCapabilities['signup']; sso: string | null }
   | { kind: 'joined'; result: AcceptInviteResult };
 
 function problemOf(error: unknown): { title: string; text: string } {
@@ -43,8 +43,11 @@ function problemOf(error: unknown): { title: string; text: string } {
   return { title: 'This invite link doesn’t work', text: 'Check that you opened the whole link, or ask whoever sent it for a new one.' };
 }
 
+/** No token in this tab: it was never opened here (signing in in another tab does not carry it). */
+const NO_TOKEN = { title: 'Open the invite link again in this tab', text: 'This tab doesn’t have the invite link. If you signed in in another tab, open the link you were sent again here.' };
+
 export function JoinPage() {
-  const [state, setState] = useState<State>(() => (readToken() ? { kind: 'loading' } : { kind: 'problem', ...problemOf(null) }));
+  const [state, setState] = useState<State>(() => (readToken() ? { kind: 'loading' } : { kind: 'problem', ...NO_TOKEN }));
   const [busy, setBusy] = useState(false);
   const [refusal, setRefusal] = useState('');
   const navigate = useNavigate();
@@ -53,10 +56,13 @@ export function JoinPage() {
   useEffect(() => {
     const token = readToken();
     if (!token) return undefined;
+    // The token is kept in this tab's session storage: take it out of the address and the browser's history.
+    if (window.location.hash) window.history.replaceState(window.history.state, '', window.location.pathname + window.location.search);
     const controller = new AbortController();
     Promise.all([getMe(controller.signal).catch(() => null), previewInvite(token, controller.signal),
-      getCapabilities(controller.signal).then((c) => c.signup, () => 'open' as const)])
-      .then(([me, preview, signup]) => setState({ kind: 'ready', preview, me, signup }), (error: unknown) => {
+      getCapabilities(controller.signal).catch(() => null)])
+      .then(([me, preview, capabilities]) => setState({ kind: 'ready', preview, me, signup: capabilities?.signup ?? 'open', sso: capabilities?.sso?.label ?? null }),
+        (error: unknown) => {
         if (error instanceof DOMException && error.name === 'AbortError') return;
         setState({ kind: 'problem', ...problemOf(error) });
       });
@@ -110,7 +116,7 @@ export function JoinPage() {
     );
   }
 
-  const { preview, me, signup } = state;
+  const { preview, me, signup, sso } = state;
   const already = preview.state !== 'pending';
   return (
     <>
@@ -142,7 +148,10 @@ export function JoinPage() {
         ) : (
           <>
             <Button variant="primary" size="lg" block onClick={() => navigate('/sign-in?next=%2Fjoin')}>Sign in to join</Button>
-            {signup === 'off'
+            {sso && signup === 'off'
+              // F-024: with single sign-on the first sign-in makes the account.
+              ? <p className="auth__alt">New here? Sign in with {sso}; your account is made the first time.</p>
+              : signup === 'off'
               ? <p className="auth__alt">New accounts are closed on this Flux server. Ask {preview.invitedBy} to have one made for you.</p>
               : <Button variant="secondary" size="lg" block onClick={() => navigate('/sign-up?next=%2Fjoin')}>Create an account</Button>}
             {signup === 'verified' ? <p className="auth__alt">After you confirm your email address, open this invite link again.</p> : null}

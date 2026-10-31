@@ -158,7 +158,7 @@ export async function buildApp(config: ServerConfig, migrationsDir = 'packages/d
   const lifecycle = liveMedia ? liveLifecycle(db, pool, liveMedia.media) : null;
   const liveRevocation = liveMedia ? liveRevocationCoordinator(db, pool, liveMedia.media, lifecycle!) : null;
   await app.register(accessRoutes, { db, sessions: identity, boss, liveRevocation, verifiedEmailMembers: identityConfig.oidc !== null, encryptionKeys,
-    inviteSigner: { secret: identityConfig.secret, publicOrigin: identityConfig.publicOrigin } });
+    inviteSigner: { secret: identityConfig.secret, publicOrigin: identityConfig.publicOrigin }, inviteVerifiedEmail: identityConfig.signup === 'verified' });
   // Live map/wiki editing (#228) is composed below, after media; native map routes reach its backend lazily.
   let editing: Awaited<ReturnType<typeof registerEditing>> = null;
   // F-030: an encrypted workspace's file objects are sealed as they arrive and opened only after their tag verifies.

@@ -319,8 +319,10 @@ or admin able to grant the role, is `410` with `INVITE_USED`, `INVITE_REVOKED` o
 
 **Joining.** `POST /api/v1/invites/accept { token }` needs a session. In one transaction it locks
 the workspace row (as `addMember`) and then the invite row, and rechecks everything above. An
-email lock that does not match the account's address, or (with single sign-on configured) an
-address the account has not verified, is `403 INVITE_WRONG_ACCOUNT`. Someone already in the
+email lock that does not match the account's address, or (with single sign-on configured, or
+`FLUX_SIGNUP=verified`) an address the account has not verified, is `403 INVITE_WRONG_ACCOUNT`.
+Otherwise the lock is only as strong as the install's proof of addresses: with `FLUX_SIGNUP=open`
+an account can name any address, exactly as for adding a member by email. Someone already in the
 workspace gets `200 { status: "already_member" }` and the link stays unused. Otherwise the
 membership is inserted with the link's role, the invite is marked used by this account, and
 `workspace.member_added.v1` (`{ userId, role, inviteId }`) is recorded by the person who joined;
@@ -330,7 +332,10 @@ nothing; another account gets `410 INVITE_USED`. Accepting has no idempotency ro
 idempotent by itself.
 
 **Sign-up rules stay as they are.** A signed-out visitor on `/join` is sent to sign in or to
-create an account and back. Creating an account follows `FLUX_SIGNUP` and single sign-on exactly
+create an account and back. The page keeps the token in that tab's session storage and removes it
+from the address and the browser history; a sign-in finished in another tab asks for the link to be
+opened again there. With single sign-on and password sign-up closed, the page says the first
+single sign-on makes the account (F-024). Creating an account follows `FLUX_SIGNUP` and single sign-on exactly
 as without a link: with sign-up closed or verified by mail, the page says what to do. An invite
 never opens closed sign-up, never verifies an address and never links an identity.
 

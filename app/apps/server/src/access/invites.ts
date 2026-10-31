@@ -22,7 +22,7 @@ const tokenBody = { type: 'object', required: ['token'], additionalProperties: f
  * owner or admin. Preview needs no session; accept needs one and is idempotent by itself (no Idempotency-Key row,
  * which would only store the token's answer). The token never reaches a stored answer, an event or a log.
  */
-export function inviteRoutes(app: FastifyInstance, { db, principal, command, sessions, workspaceScope, verifiedEmailMembers }: AccessContext,
+export function inviteRoutes(app: FastifyInstance, { db, principal, command, sessions, workspaceScope, inviteVerifiedEmail }: AccessContext,
   signer: InviteSigner, limits: InviteLimiters) {
   const who = async (request: FastifyRequest) => {
     const session = await sessions.resolveSession(request.headers);
@@ -62,6 +62,6 @@ export function inviteRoutes(app: FastifyInstance, { db, principal, command, ses
   app.post<{ Body: InviteTokenCommand }>(INVITE_ACCEPT_PATH, { schema: { body: tokenBody } }, async (request) => {
     const actor = await principal(request);
     limits.accept.take(`user:${actor.id}`);
-    return acceptInvite(actor, request.body.token, db, accessPorts, signer, { verifiedEmailOnly: verifiedEmailMembers });
+    return acceptInvite(actor, request.body.token, db, accessPorts, signer, { verifiedEmailOnly: inviteVerifiedEmail });
   });
 }
