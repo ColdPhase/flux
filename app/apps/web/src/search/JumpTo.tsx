@@ -13,6 +13,7 @@ import { targetHref } from './api';
 import { placeOfPath, useRecentPlaces, useRecentSearches, type RecentPlace } from './recent';
 import { ResultBody } from './ResultRow';
 import { useSearch } from './useSearch';
+import { UnsearchedSpaces } from '../encryption/LockedSpace';
 import './search.css';
 
 type Option =
@@ -341,6 +342,8 @@ function JumpBody({ onClose, userId, phone, page }: { onClose: () => void; userI
       <p className="ui-vh" id={statusId} role="status">{status}</p>
       <div className="jump__body">
         {!text && !places.length ? <p className="jump__hint">Find a message, a material and each of its versions, a task, a rule, a result, a thought or a person. Only what you can open is searched.</p> : null}
+        {/* What was not searched (F-030; UI audit LK-3): a space that waits to be unlocked, or one too large to search in memory. */}
+        {rest && scope === 'all' && state.status === 'ready' ? <UnsearchedSpaces tooLarge={state.answer.sealedUnavailable ?? []} /> : null}
         {list}{empty}
       </div>
       <p className="jump__foot" aria-hidden="true">{options.length ? <><span className="jump__keyhint"><kbd>↑</kbd><kbd>↓</kbd> move</span><span className="jump__keyhint"><kbd>↵</kbd> open</span></> : null}<span><kbd>#</kbd> task number</span><span><kbd>@</kbd> people and agents</span><span className="jump__keyhint"><kbd>Esc</kbd> close</span></p>

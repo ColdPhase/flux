@@ -626,12 +626,6 @@ class EncryptedWorkspaces(Base):
                     expect(page.locator("header.phead").get_by_role("button", name=re.compile("^Back"))).to_be_visible()
                     expect(page.get_by_role("navigation", name="Main places")).to_be_visible()
                     expect(page.get_by_role("button", name="Create")).to_have_count(0)
-                    page.goto(f"/projects/{world.a_project}/conversations/{world.a_conversation}")
-                    expect(page.get_by_role("heading", name=f"{A_NAME} is waiting to be unlocked")).to_be_visible()
-                    expect(page.get_by_role("navigation", name="Main places")).to_be_visible()
-                    # Opened as a link (no history inside the app), Back leads Home.
-                    page.locator("header.phead").get_by_role("button", name=re.compile("^Back")).click()
-                    expect(page.get_by_role("heading", level=1, name="Home")).to_be_visible()
                 page.goto(f"/projects/{world.a_project}/tasks")
                 expect(page.get_by_role("heading", name=f"{A_NAME} is waiting to be unlocked")).to_be_visible()
                 page.go_back()
@@ -639,6 +633,13 @@ class EncryptedWorkspaces(Base):
                 expect(page.get_by_role("heading", name=f"{A_NAME} is waiting to be unlocked")).to_be_visible()
                 page.go_back()
                 expect(page.get_by_role("heading", level=1, name="Home")).to_be_visible()
+                if phone:
+                    # A conversation's deep link too keeps the tab bar, and its Back leads Home (no history inside the app).
+                    page.goto(f"/projects/{world.a_project}/conversations/{world.a_conversation}")
+                    expect(page.get_by_role("heading", name=f"{A_NAME} is waiting to be unlocked")).to_be_visible()
+                    expect(page.get_by_role("navigation", name="Main places")).to_be_visible()
+                    page.locator("header.phead").get_by_role("button", name=re.compile("^Back")).click()
+                    expect(page.get_by_role("heading", level=1, name="Home")).to_be_visible()
 
     def test_12_an_owner_unlocks_with_her_password_and_errors_stay_in_place(self) -> None:
         for phone in (False, True):

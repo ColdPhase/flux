@@ -54,7 +54,8 @@ export function RecoveryCodeBlock({ workspaceId, workspaceName, code, lead, onDo
 
   // Esc and × on the panel ask first while the box is unchecked.
   useEffect(() => {
-    guardPanel(() => { if (keptRef.current) return false; setAskingPanel(true); return true; });
+    // The question opens after the Esc that asked for it has finished, so that same key never answers it.
+    guardPanel(() => { if (keptRef.current) return false; window.setTimeout(() => setAskingPanel(true), 0); return true; });
     return () => guardPanel(null);
   }, [guardPanel]);
   // Closing the tab asks the browser's own question.
