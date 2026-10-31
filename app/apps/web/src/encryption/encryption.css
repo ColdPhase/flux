@@ -42,10 +42,10 @@
 .recovery-sheet { display: none; }
 @media print {
   body:has(> .recovery-sheet) > *:not(.recovery-sheet) { display: none !important; }
-  .recovery-sheet { display: block !important; padding: 24mm 20mm; background: #fff; color: #000; font: 12pt/1.6 system-ui, sans-serif; }
-  .recovery-sheet h1 { margin: 0 0 12mm; font-size: 18pt; }
-  .recovery-sheet__meta { font-size: 10pt; }
-  .recovery-sheet__code { display: grid; gap: 2mm; margin: 0 0 12mm; font: 700 20pt/1.5 ui-monospace, Menlo, Consolas, monospace; letter-spacing: .06em; }
+  .recovery-sheet { display: block !important; padding: 24mm 20mm; background: #fff; color: #000; font: var(--fs-lg)/1.6 system-ui, sans-serif; } /* 16 px (12 pt) on paper */
+  .recovery-sheet h1 { margin: 0 0 12mm; font-size: 1.5em; }
+  .recovery-sheet__meta { font-size: .8333em; }
+  .recovery-sheet__code { display: grid; gap: 2mm; margin: 0 0 12mm; font: 600 1.6667em/1.5 ui-monospace, Menlo, Consolas, monospace; letter-spacing: .06em; }
 }
 
 /* ---------- The locked panel ---------- */
