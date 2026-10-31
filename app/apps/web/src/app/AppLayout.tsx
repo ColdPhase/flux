@@ -131,7 +131,8 @@ function AppLayoutContent() {
   // A page inside Settings (#266 PF-5): on the phone its header leads back instead of opening the drawer.
   const settingsPage = /^\/settings\/./.test(location.pathname);
   // Back from a direct link goes to the page that leads there: the AI pages to Agents and AI (#513).
-  const settingsParent = /^\/settings\/(assistant|background-compute|ai-connections)(\/|$)/.test(location.pathname) ? '/settings/agents' : '/settings';
+  const settingsParent = /^\/settings\/(assistant|background-compute|ai-connections)(\/|$)/.test(location.pathname) ? '/settings/agents'
+    : /^\/settings\/people\/./.test(location.pathname) ? '/settings/people' : '/settings';
   const navDrawer = useMediaQuery(MEDIA.navDrawer);
   const tablet = useMediaQuery(MEDIA.tablet);
   const phone = useMediaQuery(MEDIA.phone);
@@ -583,9 +584,11 @@ function AppLayoutContent() {
     { id: 'messages', label: 'Messages', to: `/dm/${activeDm.id}` },
     { id: 'sketches', label: 'Sketches', to: `/dm/${activeDm.id}/sketches`, end: false, ...(dmSketches ? { count: dmSketches, countLabel: `, ${dmSketches} ${dmSketches === 1 ? 'sketch' : 'sketches'}` } : {}) },
   ] : null;
+  const matches = useMatches();
+  const notFound = matches.some((match) => (match.handle as { notFound?: boolean } | undefined)?.notFound === true);
   const place = location.pathname === '/projects'
     ? { crumb: null, title: 'Projects', topic: 'Every project you can open', noDetails: true }
-    : /^\/settings(\/(appearance|account|notifications|agents|shortcuts)(\/.*)?)?$/.test(location.pathname)
+    : /^\/settings(\/(appearance|account|people|notifications|agents|shortcuts)(\/.*)?)?$/.test(location.pathname)
     ? { crumb: null, title: 'Settings', topic: 'Appearance, notifications, agents and AI', noDetails: true }
     : backgroundSettings
     ? { crumb: null, title: 'Background suggestions', topic: 'Your usage and project rules', noDetails: true }
@@ -605,7 +608,8 @@ function AppLayoutContent() {
     : where === 'inbox'
       ? location.pathname.startsWith('/settings/')
         ? { crumb: null, title: 'Notification settings', topic: 'What reaches you, where and when', noDetails: true }
-        : { crumb: null, title: 'Inbox', topic: 'What involves you, with a link to each source', noDetails: true }
+        // The count beside the title says what the Inbox holds ("Inbox · 6 need you", #763 IN-5); no second line repeats it.
+        : { crumb: null, title: 'Inbox', topic: '', noDetails: true }
     : where === 'dm'
       ? activeDm
         // A DM's header names its exact audience (design principle 5).
@@ -613,8 +617,17 @@ function AppLayoutContent() {
         : dmId === 'new'
           ? { crumb: null, title: 'New message', topic: 'Only the people you choose can read it', noDetails: true }
           : { crumb: null, title: 'Direct messages', topic: 'Conversations with people, outside any project', noDetails: true }
-      // Home's Tasks span every workspace, so no single workspace is named above them (#190).
-      : { crumb: location.pathname.startsWith('/tasks') ? null : workspace?.name ?? null, title: 'Home', topic: 'Your private notes and where you left off' };
+      // Pages reached from Home name themselves (#763 NV-1); only `/` is Home. Your tasks span every workspace, so no
+      // single workspace is named above them (#190).
+      : location.pathname === '/tasks'
+        ? { crumb: null, title: 'Your tasks', topic: 'Assigned to you, in every project' }
+      : location.pathname === '/docs'
+        ? { crumb: null, title: 'Wiki', topic: 'Pages of every space you are in', noDetails: true }
+      : location.pathname === '/projects/new'
+        ? { crumb: null, title: 'New project', topic: '', noDetails: true }
+      : notFound
+        ? { crumb: null, title: 'Page not found', topic: '', noDetails: true }
+      : { crumb: workspace?.name ?? null, title: 'Home', topic: 'What needs you and where you left off' };
   // The phone Wiki is drawn with its title as the view menu and no chip row of views (F-026 §4, #354).
   // A place without its own Details (Search, Inbox, the DM list) never keeps the generic panel open.
   if ('noDetails' in place && detailsOpen && detailsView === 'place') setDetailsOpen(false);
@@ -626,7 +639,6 @@ function AppLayoutContent() {
   // Inbox, Home. A project or conversation this account cannot open (the not-found page) is not remembered.
   const openable = projectId ? !!activeProject : dmId && dmId !== 'new' ? !!activeDm : true;
   // A Wiki page is remembered with its own title, read from the doc the reader loaded (its current title, for any version).
-  const matches = useMatches();
   const shownDoc = (matches[matches.length - 1]?.loaderData as { doc?: { title?: unknown } } | undefined)?.doc;
   const docTitle = typeof shownDoc?.title === 'string' && shownDoc.title.trim() ? shownDoc.title : undefined;
   useEffect(() => {

@@ -323,7 +323,7 @@ class UnifiedPanel(unittest.TestCase):
         expect(panel.get_by_role("group", name=re.compile("^Thoughts to link to"))).to_be_visible()
         page.keyboard.press("Escape")
         panel.get_by_role("button", name="Attach a result").click()
-        expect(panel.get_by_role("heading", name="Attach a result")).to_be_visible()
+        expect(panel.get_by_role("heading", name="Record a result")).to_be_visible()
         back = panel.get_by_role("button", name=re.compile(r"^Task #\d+$"))
         back.click()
         expect(panel.locator(".wd[data-detail-kind='work']")).to_be_visible()

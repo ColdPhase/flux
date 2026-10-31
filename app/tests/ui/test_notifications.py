@@ -262,9 +262,9 @@ class NotificationJourney(unittest.TestCase):
         expect(replies_email).not_to_be_checked()
         replies_email.check()
         expect(page.get_by_role("status").filter(has_text="Saved")).to_be_visible()
-        # This stack has no VAPID keys: the Push column says so and cannot be changed.
-        expect(page.get_by_text("Push is not set up on this Flux server")).to_be_visible()
-        expect(page.get_by_label("Direct messages: Push")).to_be_disabled()
+        # This stack has no VAPID keys: one line says so and there is no Push column to change (#763 SG-3).
+        expect(page.get_by_text("Push isn’t set up on this Flux server. Your inbox always works.")).to_be_visible()
+        expect(page.get_by_label("Direct messages: Push")).to_have_count(0)
         page.get_by_label("Reviews for you: Inbox").uncheck()
         expect(page.get_by_label("Reviews for you: Inbox")).not_to_be_checked()
 
@@ -374,7 +374,7 @@ class NotificationJourney(unittest.TestCase):
         page.get_by_role("heading", level=2, name="Notifications").scroll_into_view_if_needed()
         shot(page, "notifications-phone-390-settings")
         page.locator(".nset__sec").nth(1).scroll_into_view_if_needed()
-        check = page.get_by_label("Replies: Push")
+        check = page.get_by_label("Replies: Email")
         assert_touch_target(self, page, check)
         # The native input's associated label is the target. Shrinking that target fails
         # in either dimension even though the surrounding table row stays full height.

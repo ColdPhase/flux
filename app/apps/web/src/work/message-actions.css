@@ -88,3 +88,7 @@
   .thread .msg-acts__b { width: 24px; height: 24px; border-radius: 8px; }
   .thread .project-convo__message > .project-convo__message-meta, .thread .dm-msg__meta { padding-right: 90px; }
 }
+
+/* A long press lifts the pressed bubble above the blur; the menu sits directly under it (F-026 phone-messagemenu, #763 B3). */
+.msg-menu__lift { position: fixed; z-index: var(--z-menu); overflow: hidden; box-shadow: var(--sh-pop); pointer-events: auto; }
+.msg-menu__lift > * { pointer-events: none; }

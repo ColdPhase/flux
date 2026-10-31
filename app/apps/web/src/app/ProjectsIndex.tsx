@@ -1,6 +1,5 @@
 import { Link } from 'react-router';
-import { Icon, MEDIA, useMediaQuery } from '../ui';
-import { DmRows } from '../dm/DmIndex';
+import { Avatar, Icon, MEDIA, useMediaQuery } from '../ui';
 import { useShellData } from './data';
 import './settings.css';
 
@@ -24,7 +23,8 @@ export function ProjectsIndex() {
             {projects.map((project) => (
               <li key={project.id}>
                 <Link to={`/projects/${project.id}`} className="set-row" aria-label={project.hasNew ? `${project.name}, new activity` : undefined}>
-                  <span className="set-row__ic" aria-hidden="true"><Icon name="spark" size={16} /></span>
+                  {/* The same letter tile as the sidebar and Home (#763 NV-6); a sparkle would read as AI. */}
+                  <span className="set-row__ic proj-index__tile" aria-hidden="true">{(project.name.trim()[0] ?? '?').toUpperCase()}</span>
                   <span className="set-row__b">
                     <span className="set-row__t">{project.name}</span>
                     {project.workspaceName ? <span className="set-row__s">{project.workspaceName}</span> : null}
@@ -45,7 +45,23 @@ export function ProjectsIndex() {
         {phone ? (
           <section className="proj-index__dms" aria-labelledby="proj-index-dms">
             <h2 id="proj-index-dms">Direct messages</h2>
-            {directMessages.length ? <DmRows /> : <p className="proj-index__lead">No conversations yet. Only the people in each one can read it.</p>}
+            {/* The same card and grid as the projects, with a fixed time column, so a long preview never pushes the date out (#763 NV-5). */}
+            {directMessages.length ? (
+              <ul className="set-card proj-index__dmlist" aria-label="Conversations">
+                {directMessages.map((dm) => (
+                  <li key={dm.id}>
+                    <Link to={`/dm/${dm.id}`} className="set-row">
+                      <Avatar name={dm.kind === 'group' ? dm.title : dm.people[0] ?? dm.title} size="lg" />
+                      <span className="set-row__b">
+                        <span className="set-row__t proj-index__one">{dm.title}</span>
+                        <span className="set-row__s proj-index__one">{dm.preview ?? 'No messages yet'}</span>
+                      </span>
+                      {dm.lastAt ? <time className="proj-index__time" dateTime={dm.lastAt}>{new Date(dm.lastAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</time> : null}
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            ) : <p className="proj-index__lead">No conversations yet. Only the people in each one can read it.</p>}
             <Link to="/dm/new" className="ui-btn ui-btn--secondary"><Icon name="plus" />New message</Link>
           </section>
         ) : null}

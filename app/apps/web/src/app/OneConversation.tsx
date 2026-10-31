@@ -159,6 +159,14 @@ export function OneConversation({ data, Pane }: { data: ProjectData; Pane: Compo
     // Only a new arrival (a navigation) asks for it, never a re-render.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [location.key]);
+  // A link that asks to write (Discuss on a decision, #763 D3) focuses the field it lands on, also when that pane was already open.
+  useEffect(() => {
+    if (!state?.focusComposer) return;
+    const frame = requestAnimationFrame(() => document.getElementById(thread ? 'thread-composer' : 'project-composer')?.focus({ preventScroll: true }));
+    return () => cancelAnimationFrame(frame);
+    // Only a new arrival (a navigation) asks for it, never a re-render; the thread is the one the address names.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [location.key, thread?.id]);
   // A link from a task's "Came from" names the task: the message it arrived at is tagged "Source of #1" for two seconds.
   const sourceOf = arrived && state?.sourceOf ? { messageId: arrived, label: `Source of ${state.sourceOf}` } : null;
   return (

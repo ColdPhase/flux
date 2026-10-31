@@ -30,6 +30,8 @@ OWNER = {"name": "Ada Lind", "email": f"ada.lind+{STAMP}@example.test"}
 PARTNER = {"name": "Kai Berg", "email": f"kai.berg+{STAMP}@example.test"}
 IDEA = "Test the camera in low light before we commit to it"
 FINDING = "Camera caught 38% of gestures at 5 lux, so it fails in a dark bedroom"
+# A task made from a message is titled with its first clause (#763 B5).
+FINDING_TASK = "Camera caught 38% of gestures at 5 lux"
 PIVOT = "Switch to a ToF distance sensor"
 
 
@@ -191,7 +193,7 @@ class WorkDecisionsJourney(unittest.TestCase):
         expect(panel.locator(".wd-eyebrow")).to_contain_text("Proposed decision")
         self.assertEqual(self.work(page)["decisions"][0]["status"], "proposed")
         shot(page, "decision-desktop-1440-proposed")
-        panel.get_by_role("button", name="Accept decision").focus()
+        panel.get_by_role("button", name="Accept", exact=True).focus()
         page.keyboard.press("Enter")
         expect(panel.locator(".wd-eyebrow")).to_contain_text("Current rule")
         expect(panel).to_contain_text("Ada Lind")
@@ -207,9 +209,9 @@ class WorkDecisionsJourney(unittest.TestCase):
         page = self.open_conversation("partner")
         message = page.locator(f"#message-{self.messages['finding']}")
         # A reply sits in the thread beside the stream (UI116-1); its actions float over its corner on hover.
-        open_message_menu(message, phone=False).get_by_role("menuitem", name="Attach a result").click()
+        open_message_menu(message, phone=False).get_by_role("menuitem", name="Record a result").click()
         panel = self.details(page)
-        expect(panel.get_by_role("heading", name="Attach a result")).to_be_visible()
+        expect(panel.get_by_role("heading", name="Record a result")).to_be_visible()
         panel.get_by_label("Finding").fill("The camera cannot track gestures below 10 lux")
         panel.get_by_text("Negative", exact=True).click()
         panel.get_by_label("Evidence").fill("38% of 20 gestures at 5 lux")
@@ -259,7 +261,7 @@ class WorkDecisionsJourney(unittest.TestCase):
         panel.get_by_label("Why").fill("The camera failed in low light; a ToF sensor works in the dark and stores no images")
         choose(panel.get_by_label("Replaces"), label="Use a camera for gesture control")
         panel.get_by_role("button", name="Propose decision").click()
-        expect(panel.get_by_role("heading", name="Accept as a pivot")).to_be_visible()
+        expect(panel.get_by_role("heading", name="What happens to current work?")).to_be_visible()
         panel.get_by_role("radiogroup", name="Mount the camera in the lamp head").get_by_label("Park").check()
         panel.get_by_role("radiogroup", name="Design the diffuser").get_by_label("Still applies").check()
         shot(page, "decision-desktop-1440-pivot")
@@ -297,20 +299,20 @@ class WorkDecisionsJourney(unittest.TestCase):
         create = open_message_menu(message, phone=True).get_by_role("menuitem", name="Create task")
         self.assertGreaterEqual(create.bounding_box()["height"], 44, "touch target")
         create.tap()
-        expect(title_field(page)).to_have_value(FINDING)
+        expect(title_field(page)).to_have_value(FINDING_TASK)
         submit_button(page).tap()
         sheet = page.get_by_role("dialog", name="Details")
-        expect(sheet.get_by_role("heading", name=FINDING)).to_be_visible()
+        expect(sheet.get_by_role("heading", name=FINDING_TASK)).to_be_visible()
         expect(sheet).to_contain_text("Everyone in Gesture lamp")
         shot(page, "work-phone-390-details")
         # The task took the thread's place in the one sheet; the way back leads to the reply it was made from.
         sheet.get_by_role("button", name="Thread", exact=True).tap()
-        expect(message.get_by_role("button", name=re.compile(r"^Task #\d+: " + re.escape(FINDING) + "$"))).to_be_visible()
+        expect(message.get_by_role("button", name=re.compile(r"^Task #\d+: " + re.escape(FINDING_TASK) + "$"))).to_be_visible()
         view_tab(page, "Tasks", tap=True)
-        expect(page.get_by_role("region", name=re.compile("^Open"))).to_contain_text(FINDING)
+        expect(page.get_by_role("region", name=re.compile("^Open"))).to_contain_text(FINDING_TASK)
         shot(page, "tasks-phone-390")
         titles = [item["title"] for item in self.work(page)["work"]]
-        self.assertEqual(titles.count(FINDING), 1)
+        self.assertEqual(titles.count(FINDING_TASK), 1)
 
     # ---------------------------------------------------------------- beyond one page
 

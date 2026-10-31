@@ -3,11 +3,12 @@ import { whenPageLive, pageLeaving } from '../api/pageLeaving.js';
 import { acceptDecision } from '../work/api.js';
 
 /**
- * Accept with Undo (#342, F-026 S9/S11). A decision cannot be un-accepted (O-009 DA-3: a change of
- * direction is a new proposal), so "Accepted · Undo" is a delayed command: the card shows accepted at
- * once, the command is sent when the Undo window ends, and Undo within it simply never sends it.
- * Nothing is lost by leaving: leaving the page (navigation, hiding the tab, closing it) sends every
- * waiting accept at once, with `keepalive` so the browser finishes it after the page is gone.
+ * Accept and answer with Undo (#342, F-026 S9/S11/S14). A decision cannot be un-accepted (O-009 DA-3: a change of
+ * direction is a new proposal), and an agent's question is answered once (its reply is the person's message), so
+ * "Accepted · Undo" and "Answered · Undo" are delayed commands: the card leaves at once, the command is sent when the
+ * Undo window ends, and Undo within it simply never sends it. Nothing is lost by leaving: leaving the page (navigation,
+ * hiding the tab, closing it) sends every waiting command at once, with `keepalive` so the browser finishes it after the
+ * page is gone.
  */
 
 /** How long Undo is offered. */
@@ -16,9 +17,11 @@ export const ACCEPT_UNDO_MS = 6000;
 export type AcceptOutcome = 'accepted' | 'conflict' | 'failed';
 
 interface Waiting {
-  decision: { id: string; version: number };
-  /** One idempotency key per intent, so a resend after a lost answer never accepts twice. */
+  /** `decision:<id>` or `question:<id>`. */
+  id: string;
+  /** One idempotency key per intent, so a resend after a lost answer never applies twice. */
   key: string;
+  run: (key: string, keepalive: boolean) => Promise<unknown>;
   timer: ReturnType<typeof setTimeout>;
   /** Set while the Undo window has ended on a page being left: stops waiting for the page to be live. */
   held?: () => void;
@@ -26,58 +29,75 @@ interface Waiting {
 }
 
 const waiting = new Map<string, Waiting>();
-/** Decisions being accepted by this person, from the click until the server answered. */
+/** Decisions being accepted and questions being answered by this person, from the click until the server answered. */
 const accepting = new Set<string>();
+const answering = new Set<string>();
 export const acceptingIds = (): ReadonlySet<string> => accepting;
+export const answeringIds = (): ReadonlySet<string> => answering;
+
+const release = (id: string) => {
+  const [kind, value] = id.split(':') as [string, string];
+  (kind === 'decision' ? accepting : answering).delete(value);
+};
 
 /**
  * The Undo window ended. On a page being left the request would wait for the page to be live (#471), and
- * if the page is then unloaded it would be lost, so the accept stays listed: the leaving flush sends it
+ * if the page is then unloaded it would be lost, so the command stays listed: the leaving flush sends it
  * with `keepalive`, and a page that stays sends it once it is live again.
  */
 function dispatch(entry: Waiting) {
-  if (waiting.get(entry.decision.id) !== entry) return;
+  if (waiting.get(entry.id) !== entry) return;
   if (pageLeaving()) { entry.held = whenPageLive(() => dispatch(entry)); return; }
-  waiting.delete(entry.decision.id);
+  waiting.delete(entry.id);
   void send(entry, false);
 }
 
 async function send(entry: Waiting, keepalive: boolean) {
   try {
-    await acceptDecision(entry.decision, {}, entry.key, keepalive);
-    accepting.delete(entry.decision.id);
+    await entry.run(entry.key, keepalive);
+    release(entry.id);
     entry.settle('accepted');
   } catch (error) {
-    accepting.delete(entry.decision.id);
-    // Someone else decided first, or the decision changed: nothing was accepted by this click.
+    release(entry.id);
+    // Someone else decided first, the decision changed or the question was answered: nothing was applied by this click.
     entry.settle(error instanceof ApiError && (error.status === 409 || error.status === 404 || error.status === 403) ? 'conflict' : 'failed');
   }
 }
 
-/** Starts the delayed accept of one decision; `undo()` cancels it while it still waits. */
-export function startAccept(decision: { id: string; version: number }, settle: (outcome: AcceptOutcome) => void, delay = ACCEPT_UNDO_MS) {
-  const existing = waiting.get(decision.id);
-  if (existing) { clearTimeout(existing.timer); existing.held?.(); waiting.delete(decision.id); accepting.delete(decision.id); }
-  const entry: Waiting = {
-    decision, key: crypto.randomUUID(), settle,
-    timer: setTimeout(() => dispatch(entry), delay),
-  };
-  waiting.set(decision.id, entry);
-  accepting.add(decision.id);
+function start(id: string, run: Waiting['run'], settle: (outcome: AcceptOutcome) => void, delay: number) {
+  const existing = waiting.get(id);
+  if (existing) { clearTimeout(existing.timer); existing.held?.(); waiting.delete(id); release(id); }
+  const entry: Waiting = { id, key: crypto.randomUUID(), run, settle, timer: setTimeout(() => dispatch(entry), delay) };
+  waiting.set(id, entry);
+  const [kind, value] = id.split(':') as [string, string];
+  (kind === 'decision' ? accepting : answering).add(value);
   return {
-    /** True when the accept had not been sent yet and now never will be. */
+    /** True when the command had not been sent yet and now never will be. */
     undo(): boolean {
-      if (waiting.get(decision.id) !== entry) return false;
+      if (waiting.get(id) !== entry) return false;
       clearTimeout(entry.timer);
       entry.held?.();
-      waiting.delete(decision.id);
-      accepting.delete(decision.id);
+      waiting.delete(id);
+      release(id);
       return true;
     },
   };
 }
 
-/** Sends every waiting accept now. Called when the person leaves the place that showed them. */
+/** Starts the delayed accept of one decision; `undo()` cancels it while it still waits. */
+export function startAccept(decision: { id: string; version: number }, settle: (outcome: AcceptOutcome) => void, delay = ACCEPT_UNDO_MS) {
+  return start(`decision:${decision.id}`, (key, keepalive) => acceptDecision(decision, {}, key, keepalive), settle, delay);
+}
+
+/**
+ * Starts the delayed answer of an agent's question with one of its ready-made answers (S14): `answer` sends it with the
+ * intent's idempotency key. `undo()` cancels it while it waits.
+ */
+export function startAnswer(questionId: string, answer: (key: string, keepalive: boolean) => Promise<unknown>, settle: (outcome: AcceptOutcome) => void, delay = ACCEPT_UNDO_MS) {
+  return start(`question:${questionId}`, answer, settle, delay);
+}
+
+/** Sends every waiting command now. Called when the person leaves the place that showed them. */
 export function flushAccepts(keepalive = false) {
   for (const [id, entry] of [...waiting]) {
     clearTimeout(entry.timer);

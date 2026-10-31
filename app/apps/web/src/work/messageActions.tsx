@@ -7,6 +7,8 @@ import { useShellData } from '../app/data';
 import { useProjectAiBlocked } from '../ai/workspaceAi';
 import { useNeedsYou } from '../notifications/needsYou';
 import { useNeedsYouActions } from '../notifications/useNeedsYouActions';
+import { useProjectShell } from '../project/data';
+import { HandOffDialog } from '../agents/HandOff';
 import './message-actions.css';
 
 // Actions on one message (F-026 S6). On a computer they appear on hover and focus: reply in a thread,
@@ -53,13 +55,20 @@ const messageOf = (options: MessageActionOptions | DmActionOptions) => options.k
 
 interface MenuItem { id: string; label: string; icon: IconName | 'kreska'; run: () => void; disabled?: boolean; secondary?: boolean; ai?: boolean }
 
-/** The menu's items, in the drawn order: reply, task, hand off, cite, copy; then what makes objects. */
-function useMenuItems(options: MessageActionOptions | DmActionOptions | null, touch: boolean): MenuItem[] {
+/**
+ * The menu's items, in the drawn order: reply, task, hand off, cite, copy; then what makes objects. A phone's long press
+ * shows the five drawn items only (F-026 `phone-messagemenu.webp`, #763 B3): a decision is proposed with `/decide` or
+ * "+" Create, a result is recorded from its task. A computer's menu lists only what its toolbar lacks (#763 B4).
+ */
+function useMenuItems(options: MessageActionOptions | DmActionOptions | null, touch: boolean): { items: MenuItem[]; extra: ReactNode } {
   const { openDetails } = useShellActions();
   const { me } = useShellData();
   const toast = useToast();
   const aiOff = useProjectAiBlocked();
-  if (!options) return [];
+  const shell = useProjectShell();
+  // "Hand off to an agent" with no agent in the project explains that and offers Connect (#763 B2), never a plain task.
+  const [noAgent, setNoAgent] = useState(false);
+  if (!options) return { items: [], extra: null };
   const text = options.kind === 'dm' ? options.body : options.message.body;
   const copy = () => {
     const done = () => toast({ message: 'Copied', timeout: 2000 });
@@ -69,32 +78,40 @@ function useMenuItems(options: MessageActionOptions | DmActionOptions | null, to
   };
   const copyItem: MenuItem[] = text ? [{ id: 'copy', label: 'Copy text', icon: 'copy', run: copy }] : [];
   if (options.kind === 'dm') {
-    return [
+    return { extra: null, items: [
       ...(options.writable && options.onReply ? [{ id: 'reply', label: 'Reply in thread', icon: 'reply' as const, run: options.onReply }] : []),
       ...(options.writable ? [{ id: 'task', label: 'Create task', icon: 'plus-circle' as const, run: options.onCreateWork }] : []),
       ...copyItem,
-    ];
+    ] };
   }
   const { projectId, message, writable, onCreateWork, onReply, onCite, onAddToMap } = options;
   const source = { messageId: message.id, text: message.body };
   const details: MenuItem = { id: 'details', label: 'Details', icon: 'panel', secondary: true,
     run: () => openDetails({ kind: 'overview', messageId: message.id, selection: { accountId: me.user.id, projectId, message } }) };
-  if (!writable) return [...copyItem, details];
-  return [
+  if (!writable) return { items: touch ? copyItem : [...copyItem, details], extra: null };
+  const project = shell?.project.id === projectId ? shell : null;
+  // The project's people say whether an agent can be handed work here; unread people keep the task path.
+  const agentHere = !project?.people || project.people.some((person) => person.kind === 'agent');
+  const handOff = () => { if (agentHere) onCreateWork(); else setNoAgent(true); };
+  const extra = project && noAgent ? <HandOffDialog open onClose={() => setNoAgent(false)} project={project.project} /> : null;
+  const items: MenuItem[] = [
     // On a computer the toolbar already has Reply and Create task: its menu lists only what the toolbar lacks (#763 B4).
     ...(onReply && touch ? [{ id: 'reply', label: 'Reply in thread', icon: 'reply' as const, run: onReply }] : []),
     ...(touch ? [{ id: 'task', label: 'Create task', icon: 'plus-circle' as const, run: onCreateWork }] : []),
-    ...(onAddToMap ? [{ id: 'map', label: 'Add to map', icon: 'map' as const, run: onAddToMap }] : []),
+    ...(onAddToMap && !touch ? [{ id: 'map', label: 'Add to map', icon: 'map' as const, run: onAddToMap }] : []),
     // There is no hand-off command yet (#347): a hand-off is a task, so it is made and opened in Details,
     // where its owner is chosen.
     // Not offered while the project's workspace has AI off (F-029, #614).
-    ...(aiOff(projectId) ? [] : [{ id: 'handoff', label: 'Hand off to an agent', icon: 'kreska' as const, run: onCreateWork, ai: true }]),
+    ...(aiOff(projectId) ? [] : [{ id: 'handoff', label: 'Hand off to an agent', icon: 'kreska' as const, run: handOff, ai: true }]),
     ...(onCite ? [{ id: 'cite', label: 'Cite', icon: 'cite' as const, run: onCite }] : []),
     ...copyItem,
-    { id: 'decision', label: 'Propose a decision', icon: 'rule', secondary: true, run: () => openDetails({ kind: 'propose-decision', projectId, source }) },
-    { id: 'result', label: 'Attach a result', icon: 'result', secondary: true, run: () => openDetails({ kind: 'attach-result', projectId, source }) },
-    details,
+    ...(touch ? [] : [
+      { id: 'decision', label: 'Propose a decision', icon: 'rule', secondary: true, run: () => openDetails({ kind: 'propose-decision', projectId, source }) },
+      { id: 'result', label: 'Record a result', icon: 'result', secondary: true, run: () => openDetails({ kind: 'attach-result', projectId, source }) },
+      details,
+    ] satisfies MenuItem[]),
   ];
+  return { items, extra };
 }
 
 /**
@@ -118,12 +135,38 @@ function useWaiting(messageId: string | null): MenuItem[] {
 function MessageMenu({ items: own, anchor, press, onClose, label, messageId, popProps }: { items: MenuItem[]; anchor: HTMLElement; press: boolean; onClose: (restoreFocus: boolean) => void; label: string; messageId: string | null; popProps: ReturnType<typeof usePop>['props'] }) {
   const items = [...own, ...useWaiting(messageId)];
   const menu = useRef<HTMLDivElement>(null);
+  const lift = useRef<HTMLDivElement>(null);
   const [place, setPlace] = useState<CSSProperties>({ top: 0, left: 0, opacity: 0 });
+  const [lifted, setLifted] = useState<CSSProperties | null>(null);
+  // A long press lifts the pressed bubble above the blur and anchors the menu directly under it (F-026
+  // `phone-messagemenu.webp`, #763 B3): a copy of the bubble, so the stream itself never moves or re-stacks.
   useLayoutEffect(() => {
     const node = menu.current;
     if (!node) return;
-    const box = anchor.getBoundingClientRect();
     const { offsetWidth: width, offsetHeight: height } = node;
+    const bubble = press ? anchor.closest<HTMLElement>('.message-bubble, .dm-msg__bubble') ?? anchor : null;
+    if (bubble && lift.current) {
+      const box = bubble.getBoundingClientRect();
+      const copy = bubble.cloneNode(true) as HTMLElement;
+      copy.removeAttribute('id');
+      for (const element of copy.querySelectorAll('[id]')) element.removeAttribute('id');
+      for (const element of copy.querySelectorAll<HTMLElement>('a, button, input, textarea, select, [tabindex]')) element.setAttribute('tabindex', '-1');
+      // The copy leaves the rules that styled it through its ancestors behind, so it carries its own look.
+      const look = getComputedStyle(bubble);
+      for (const name of ['background-color', 'color', 'border-radius', 'padding', 'font', 'box-shadow', 'border', 'line-height'] as const) copy.style.setProperty(name, look.getPropertyValue(name));
+      copy.style.margin = '0';
+      copy.style.width = `${box.width}px`;
+      copy.style.maxWidth = 'none';
+      lift.current.replaceChildren(copy);
+      const tall = Math.min(box.height, Math.round(window.innerHeight * 0.4));
+      const gap = 8;
+      const top = Math.max(12, Math.min(box.top, window.innerHeight - 12 - tall - gap - height));
+      const left = Math.max(12, Math.min(box.left, window.innerWidth - width - 12));
+      setLifted({ top, left: box.left, width: box.width, height: tall, borderRadius: look.borderRadius });
+      setPlace({ top: top + tall + gap, left });
+      return;
+    }
+    const box = anchor.getBoundingClientRect();
     const left = Math.max(12, Math.min(press ? box.left : box.right - width, window.innerWidth - width - 12));
     const below = box.bottom + 8;
     const top = below + height > window.innerHeight - 12 ? Math.max(12, box.top - height - 8) : below;
@@ -152,6 +195,7 @@ function MessageMenu({ items: own, anchor, press, onClose, label, messageId, pop
   return createPortal(
     <>
       <div {...popProps} data-pop-fade="" className={`msg-menu__scrim${press ? ' is-press' : ''}`} onPointerDown={() => onClose(false)} />
+      {press ? <div {...popProps} data-pop-fade="" ref={lift} className="msg-menu__lift" aria-hidden="true" style={lifted ?? { opacity: 0 }} onPointerDown={() => onClose(false)} /> : null}
       <div {...popProps} ref={menu} className={`msg-menu${press ? ' is-press' : ''}`} role="menu" aria-label={label} style={place} onKeyDown={onKeyDown}>
         {primary.map(render)}
         {secondary.length && primary.length ? <div className="msg-menu__sep" role="separator" /> : null}
@@ -177,7 +221,7 @@ function MessageMenuHost({ open, ...props }: { open: boolean; items: MenuItem[];
  */
 export function MessageActions(options: MessageActionOptions | DmActionOptions) {
   const touch = useMediaQuery('(hover: none)');
-  const items = useMenuItems(options, touch);
+  const { items, extra } = useMenuItems(options, touch);
   const [anchor, setAnchor] = useState<HTMLElement | null>(null);
   const [open, setOpen] = useState(false);
   const more = useRef<HTMLButtonElement>(null);
@@ -205,6 +249,7 @@ export function MessageActions(options: MessageActionOptions | DmActionOptions) 
       <button ref={more} type="button" className="msg-acts__b" aria-label="More actions" data-tip="More actions" aria-haspopup="menu" aria-expanded={open} onClick={(event) => { if (open) setOpen(false); else { setAnchor(event.currentTarget); setOpen(true); } }}><Icon name="more" size={16} /></button>
       {anchor ? <MessageMenuHost open={open} items={items} anchor={anchor} press={false} label="Message actions" messageId={messageOf(options)}
         onClose={(restore) => { setOpen(false); if (restore) more.current?.focus(); }} /> : null}
+      {extra}
     </div>
   );
 }
@@ -236,7 +281,7 @@ interface TouchProps<E extends HTMLElement> {
  */
 export function useTouchActions<E extends HTMLElement = HTMLLIElement>(options: MessageActionOptions | DmActionOptions | null): { props: TouchProps<E>; node: ReactNode } {
   const touch = useMediaQuery('(hover: none)');
-  const items = useMenuItems(options, touch);
+  const { items, extra } = useMenuItems(options, touch);
   const ref = useRef<E>(null);
   // The last menu stays (inert) while it leaves; `menu` is the open one, if any.
   const [last, setLast] = useState<{ kind: 'press' | 'button'; anchor: HTMLElement } | null>(null);
@@ -313,6 +358,7 @@ export function useTouchActions<E extends HTMLElement = HTMLLIElement>(options: 
       <button type="button" className="msg-touch__sr" aria-haspopup="menu" aria-expanded={menu?.kind === 'button'} onClick={(event) => { opener.current = event.currentTarget; setMenu({ kind: 'button', anchor: event.currentTarget.parentElement?.querySelector<HTMLElement>('.message-bubble > .message-body, .dm-msg__body') ?? event.currentTarget }); }}>Message actions</button>
       {last ? <MessageMenuHost open={shown} items={items} anchor={last.anchor} press={last.kind === 'press'} label="Message actions" messageId={messageOf(options)}
         onClose={(restore) => { setMenu(null); if (restore) opener.current?.focus({ preventScroll: true }); }} /> : null}
+      {extra}
     </>
   );
   return { props, node };

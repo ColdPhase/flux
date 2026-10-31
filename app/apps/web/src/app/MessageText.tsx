@@ -1,6 +1,5 @@
 import { Fragment, type ReactNode } from 'react';
 import { LINK_URL_SOURCE, type ProjectPerson } from '@flux/contracts';
-// The same initials as every avatar of that person (#763 A6).
 import { Icon, Kreska, initials } from '../ui';
 import { useLinkPreviews } from './linkPreviews';
 import '../composer/attachments.css';

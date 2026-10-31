@@ -72,19 +72,20 @@ export function firstLine(text: string, max = 200) {
 }
 
 /**
- * A task title made from a message (#763 B5): a short first line as written; a long one (over `whole` characters) gives
- * its first clause, at most `max` characters, cut at a word. The message stays the task's quoted source.
+ * A task title made from a message (#763 B5): its first clause, at most `max` characters and cut at a word, so the
+ * title names the task and the message stays its quoted source. A clause shorter than 12 characters ("Hi,") reads on.
  */
-export function titleFrom(text: string, max = 60, whole = 80) {
-  const line = firstLine(text, 1000);
-  // A short message already reads as a task: it is the title as written.
-  if (line.length <= whole) return line;
-  const end = line.search(/[.!?;:](\s|$)/u);
-  const sentence = (end > 0 ? line.slice(0, end) : line).trim();
-  const clause = sentence.length <= max ? sentence : sentence.split(/,\s/u, 1)[0]!.trim();
-  if (clause.length <= max) return clause.replace(/[.,;:]$/u, '');
-  const cut = clause.slice(0, max + 1).replace(/\s+\S*$/u, '');
-  return (cut || clause.slice(0, max)).replace(/[.,;:]$/u, '');
+export function firstClause(text: string, max = 60) {
+  const line = text.trim().split('\n', 1)[0]?.trim() ?? '';
+  let clause = line;
+  for (const stop of line.matchAll(/[.!?;:,\u2013\u2014](?=\s|$)/g)) {
+    const head = line.slice(0, stop.index).trim();
+    if (head.length >= 12) { clause = head; break; }
+  }
+  if (clause.length <= max) return clause;
+  const cut = clause.slice(0, max + 1);
+  const space = cut.lastIndexOf(' ');
+  return (space > 20 ? cut.slice(0, space) : clause.slice(0, max)).replace(/[\s,;:\u2013\u2014-]+$/, '');
 }
 
 /** Links of `id` whose other end is of `type`, with the other end's id and title. */

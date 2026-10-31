@@ -31,7 +31,7 @@ async function fetchRoster(workspaceId: string, signal: AbortSignal): Promise<Ro
  * email, change roles and remove people; anyone can leave. Being here never opens a restricted
  * project: that takes access given in the project itself (#44).
  */
-export function WorkspacePeople({ workspaceId, onBack }: { workspaceId: string; onBack: () => void }) {
+export function WorkspacePeople({ workspaceId, onBack, page = false }: { workspaceId: string; onBack: () => void; page?: boolean }) {
   const { me } = useShellData();
   const [roster, setRoster] = useState<Roster | null>(null);
   const [failed, setFailed] = useState('');
@@ -70,10 +70,11 @@ export function WorkspacePeople({ workspaceId, onBack }: { workspaceId: string; 
   // People who join or leave grow in and collapse where they stood (#593 AC-4).
   const listRef = useRef<HTMLUListElement>(null);
   useRowMotion(listRef, '.people__item[data-row-key]', (el) => el.dataset.rowKey, `${workspaceId}|${roster ? 'ready' : 'loading'}`);
-  const back = <button type="button" className="details__back" aria-label="Back to Details" onClick={onBack}><Icon name="chevron-left" size={14} />Details</button>;
+  // In Settings → People (#763 PE-1) the page is its own place: no way back to a panel and no panel keys.
+  const back = page ? null : <button type="button" className="details__back" aria-label="Back to Details" onClick={onBack}><Icon name="chevron-left" size={14} />Details</button>;
   if (!roster) {
     return (
-      <div className="details people">
+      <div className={`details people${page ? ' people--page' : ''}`}>
         {back}
         <p className="details__eyebrow">Workspace</p>
         <h3 className="details__title">People</h3>
@@ -90,7 +91,7 @@ export function WorkspacePeople({ workspaceId, onBack }: { workspaceId: string; 
   const ordered = members ? [...members.filter((member) => member.userId === me.user.id), ...members.filter((member) => member.userId !== me.user.id)] : null;
 
   return (
-    <div className="details people">
+    <div className={`details people${page ? ' people--page' : ''}`}>
       {back}
       <p className="details__eyebrow">{workspace.name}</p>
       <h3 className="details__title">People</h3>
@@ -125,7 +126,7 @@ export function WorkspacePeople({ workspaceId, onBack }: { workspaceId: string; 
       <AiRow workspace={workspace} manager={manager} onChanged={() => { load(); revalidator.revalidate(); }} />
 
       <Leave workspace={workspace} soleOwner={myRole === 'owner' && owners <= 1} onLeft={onBack} meId={me.user.id} />
-      <p className="details__keys"><kbd>]</kbd> toggles this panel · <kbd>Esc</kbd> closes it</p>
+      {page ? null : <p className="details__keys"><kbd>]</kbd> toggles this panel · <kbd>Esc</kbd> closes it</p>}
     </div>
   );
 }
@@ -164,7 +165,7 @@ function AddPerson({ workspace, members, myRole, onAdded }: { workspace: Workspa
         <Input ref={emailRef} id="people-add-email" label="Email" type="email" inputMode="email" autoComplete="off" spellCheck={false} placeholder="name@example.com" value={email}
           aria-invalid={problem ? true : undefined} aria-describedby={problem ? 'people-add-problem people-add-email-hint' : 'people-add-email-hint'}
           onChange={(event) => { setEmail(event.target.value); if (problem) setProblem(''); }}
-          hint="They need an account at this Flux address first. Flux doesn’t send invitations." />
+          hint="Their Flux account’s address. Someone new? Send them a sign-up link first." />
         <div className="people__field">
           <label htmlFor={roleId}>Role</label>
           <Select id={roleId} value={role} onChange={(next) => setRole(next as WorkspaceRole)} aria-describedby={`${roleId}-hint`}>
@@ -175,6 +176,34 @@ function AddPerson({ workspace, members, myRole, onAdded }: { workspace: Workspa
         {problem ? <p className="people__notice" id="people-add-problem" role="alert"><Icon name="alert" size={13} />{problem}</p> : null}
         <div className="details__actions"><Button type="submit" variant="primary" busy={busy}>Add to {workspace.name}</Button></div>
       </form>
+      <SignUpLink email={email.trim().toLowerCase()} workspace={workspace.name} />
+    </section>
+  );
+}
+
+/**
+ * Someone without an account (#763 PE-2): a sign-up link to this Flux, with their address filled in when it is typed
+ * above, to copy and send however the person likes. Flux sends nothing itself, and the link grants nothing: once they
+ * have an account, they are added here like anyone else. Where the clipboard is unavailable the link shows, selected.
+ */
+function SignUpLink({ email, workspace }: { email: string; workspace: string }) {
+  const [state, setState] = useState<{ link: string; copied: boolean } | null>(null);
+  const fieldRef = useRef<HTMLInputElement>(null);
+  const valid = /^[^\s@]+@[^\s@]+$/.test(email);
+  const link = `${window.location.origin}/sign-up${valid ? `?email=${encodeURIComponent(email)}` : ''}`;
+  useEffect(() => { if (state && !state.copied) fieldRef.current?.select(); }, [state]);
+  async function copy() {
+    let copied = false;
+    try { await navigator.clipboard.writeText(link); copied = true; } catch { copied = false; }
+    setState({ link, copied });
+  }
+  return (
+    <section className="details__sec people__invite" aria-labelledby="people-invite">
+      <h4 id="people-invite">Someone new to Flux</h4>
+      <p className="ov-note">Send them a link to create their account{valid ? ` as ${email}` : ''}. Then add them here, to {workspace}, with the same address.</p>
+      <div className="details__actions"><Button variant="secondary" onClick={() => void copy()}><Icon name="copy" size={14} />Copy sign-up link</Button></div>
+      {state && !state.copied ? <input ref={fieldRef} className="ui-input people__invite-link" readOnly aria-label="Sign-up link" value={state.link} /> : null}
+      <p className="people__invite-status" role="status">{state?.copied ? <><Icon name="check" size={13} />Sign-up link copied.</> : state ? 'Copy this link and send it to them.' : null}</p>
     </section>
   );
 }

@@ -375,8 +375,10 @@ span.sk-li-img { width: 160px; height: 96px; }
 .sk-dock__row { pointer-events: auto; display: flex; align-items: center; gap: 6px; max-width: 100%; padding: 5px 8px 5px 5px; border-radius: var(--r-pill);
   background: var(--el); box-shadow: var(--sh-pop), inset 0 0 0 1px var(--line); }
 .sk-line { display: flex; flex-direction: column; align-items: center; gap: 2px; max-width: 100%; }
-/* The first-run hint steps aside while a thought lies under it (SketchMap measures it), instead of sitting on its text. */
-.sk-dock > .sk-hint[data-over-card] { visibility: hidden; }
+/* The first-run hint steps aside while a thought lies under it (SketchMap measures it), instead of sitting on its text.
+   It keeps its place in the line, so nothing moves; it fades rather than blinking while the view is dragged under it. */
+.sk-dock > .sk-line > .sk-hint { transition: opacity var(--dur-1) var(--ease-out), visibility 0s; }
+.sk-dock > .sk-line > .sk-hint[data-over-card] { opacity: 0; visibility: hidden; transition: opacity var(--dur-1) var(--ease-out), visibility 0s linear var(--dur-1); }
 .sk-hint, .sk--map .sk-status { margin: 0; padding: 0; flex: none; max-width: min(640px, 100%); font-size: var(--fs-sm); color: var(--t3); text-align: center; white-space: normal; overflow: visible; }
 .sk--map .sk-status:empty { display: none; }
 .sk-dock .sk-tools { gap: 4px; flex-wrap: wrap; justify-content: center; flex: 0 1 auto; min-width: 0; }

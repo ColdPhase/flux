@@ -29,3 +29,22 @@ export async function ensurePersonalSpace(userId: string, signal?: AbortSignal):
   await assertSignedInAs(userId, signal);
   return (await createWorkspace('Personal', `personal-space-v1:${userId}`)).id;
 }
+
+/** The name of the workspace Flux makes for someone who has none of their own: "Maria’s space" (#763 FR-1). */
+export function ownSpaceName(personName: string): string {
+  const first = personName.trim().split(/\s+/)[0] ?? '';
+  return (first ? `${first}’s space` : 'Your space').slice(0, 200);
+}
+
+/**
+ * The person's own workspace for a first project, made quietly when they manage none (#763 FR-1): nobody is asked to
+ * name a workspace before their project. The key is stable per account, so a double submit or two tabs make one.
+ */
+export async function ensureOwnSpace(user: { id: string; name: string }, signal?: AbortSignal): Promise<string> {
+  await assertSignedInAs(user.id, signal);
+  const spaces = await listWorkspaces(signal);
+  const own = spaces.find((space) => space.role === 'owner' || space.role === 'admin');
+  if (own) return own.id;
+  await assertSignedInAs(user.id, signal);
+  return (await createWorkspace(ownSpaceName(user.name), `own-space-v1:${user.id}`)).id;
+}
