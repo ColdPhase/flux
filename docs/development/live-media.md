@@ -502,6 +502,39 @@ screens, and quality at the receiver beyond the rows above.
    they reach `RTCPeerConnection` (`app/apps/web/src/live/ice-servers.ts`). Whether shipping Safari has the same
    check was not verified (no Apple device); the change is correct either way.
 
+## #63 acceptance table (2026-10-30)
+
+Status of each part of [#63](https://github.com/ColdPhase/flux/issues/63)'s criteria after the simulated public host.
+"Simulated" means met on `check_public_sim.sh` under the founder direction above, not on a rented host.
+
+| Criterion | Part | Status | Evidence, or what remains |
+| --- | --- | --- | --- |
+| AC-1 | DNS, TLS, public address, NAT, TURN on 443 and 3478, UDP-blocked fallback | **Met, simulated** | [Simulated public host](#simulated-public-host-63-2026-10-30). Not covered: ACME issuance, a Docker port-forwarded SFU, carrier-grade NAT |
+| AC-1 | Explicit ports, firewall and proxy behaviour, secret handling | **Met** | [Compose deployment](#compose-deployment) tables; the simulation uses only those ports; keys stay in the environment |
+| AC-1 | k3s topology | Partial | Render check only (`check_live_k3s.sh`, passed again 2026-10-30 after the `ips` change); no installation |
+| AC-1 | Pinned versions, health, metrics, room limit | **Met** | Digest-pinned LiveKit 1.13.7 and `livekit-client` 2.17.2; health probe; `/metrics` inside; 16-participant configured ceiling (a setting, not a measured capacity) |
+| AC-1 | Restart, update, rollback | Partial | SFU restart (Live again 20.2 s, devices off) and API restart (2.0 s, media unbroken) measured on the simulation; an update and a rollback are documented, not exercised |
+| AC-1 | CPU, memory, egress | Partial | Measured on the local four-person TURN run (2026-09-30, [evidence](#local-restrictive-network-proof)); not on the simulation |
+| AC-1 | Recording, egress and external inference off | **Met, simulated** | No egress, ingress or agent service in the stack; only the two people in the session |
+| AC-2 | Reproducible profiles with measured results | Partial | Code/text at 2560×1440 ([calibration](live-code-calibration.md)); loss, jitter and one weak receiver measured on the simulation (rows above) |
+| AC-2 | Motion 1080p60, camera 1080p30, continuous speech | **Open** | Fake devices only; no motion or speech profile yet |
+| AC-2 | Two then four participants, two screens | Partial | Four people and two screens on the local TURN harness (2026-09-28); two people on the simulation |
+| AC-2 | Weak receiver, loss, jitter, UDP-blocked TURN | **Met for two people, simulated** | Weak receiver isolated (sender unaffected, receiver halves fps and recovers); 5 % loss over TLS relay and direct UDP; relay over TLS for Chromium, over UDP for WebKit and Firefox |
+| AC-2 | Calibrated pass/fail thresholds, peer-recorded | **Open** | Provisional thresholds in [Receiver quality](#receiver-quality-measurement-slice); peer calibration not done |
+| AC-3 | Chromium, Firefox, WebKit desktop rows | Partial | All three join, recover from a 15 s drop and lose access correctly through the simulation; Firefox and WebKit over TURN/**TLS** unverified (the CA, above). Engines run on Linux in Docker; the Windows, macOS and Fedora/Wayland rows are engine rows, not those systems |
+| AC-3 | Emulated Android, iPhone, iPad rows: viewports, touch, fake media, visibility, rotation, device change, update, rejoin | **Met (emulated)** | [Platform rows](#emulated-platform-rows) and [device change, update and rejoin](#device-change-update-reload-and-rejoin-on-the-platform-rows-63-ac-3-2026-10-30); physical devices optional (#266) |
+| AC-3 | Network loss and recovery of the media path | **Met on desktop engines, simulated** | 15 s drop: media back in 1.3 to 2.3 s, Live in 2.3 to 3.3 s on all three engines; not on the emulated phone rows |
+| AC-3 | Denied or revoked permissions, no silent reactivation | **Met** | Camera denial on the platform rows; after an SFU restart the app rejoined with microphone and camera off |
+| AC-3 | Screen publication outside Chromium, system or tab audio | **Open** | Honest unsupported states on phones; desktop Firefox/WebKit screen publication not exercised |
+| AC-4 | Outsider non-discovery, active access removal, issued-token replay on the self-hosted setup | **Met, simulated** | 404 for a workspace member without the project; removal closes the peer connections in 0.10 to 0.20 s on all three engines; the issued token is refused at the public gate (401, WebSocket refused) |
+| AC-4 | Refreshed-token reconnect | Partial | Covered against the real SFU by `check_live_sfu.sh`; not on the simulation |
+| AC-4 | Encryption boundary, key distribution, downgrade | **Met** | [live-media-encryption.md](live-media-encryption.md): DTLS-SRTP to the SFU, not end-to-end; DTLS assertion with a negative control on relay and direct paths (Chromium) |
+| AC-4 | AI receives no media by default; human calls with AI off | Partial | No agent or processor in the room or the stack (simulated); a call with the workspace AI turned off was not run |
+| AC-4 | One release-candidate commit with the real journey and independent reviews | **Open** | This change is not a release candidate; no independent review yet |
+
+#63 stays open: the AC-2 profiles and calibration, four people on the simulation, Firefox and WebKit over TURN/TLS
+with a trusted certificate, a k3s installation and the release-candidate pass remain.
+
 ## Pointer reachability and camera state on phone and tablet (#63; 2026-10-10)
 
 Two stacking faults put conversation content over live controls on phone and tablet widths:
