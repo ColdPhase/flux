@@ -103,7 +103,8 @@ export function Home() {
   const workspaceIds = useMemo(() => workspaces.map((space) => space.id), [workspaces]);
   const news = useProjectNews(useMemo(() => projects.slice(0, 5).map((project) => project.id), [projects]));
   // A person with no project yet gets one first step, not an empty queue and links to empty pages (#763 FT-1, S21).
-  const firstRun = projects.length === 0 && !top.length;
+  // A space waiting to be unlocked is not a first run: its row stays in Projects (F-030, #655).
+  const firstRun = projects.length === 0 && !lockedWorkspaces.length && !top.length;
 
   return (
     <div className="pane-scroll"><div className="pane-in home">

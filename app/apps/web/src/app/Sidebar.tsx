@@ -182,8 +182,9 @@ export function Sidebar({ projects, directMessages, user, session, onClose, titl
           </Link>
         </nav>
 
-        {/* An empty section is not shown (Spokój rule 4, #763 FR-4); the narrow drawer keeps its heading for its "+". */}
-        {projects.length || onClose ? <nav className="side__sec" aria-labelledby="side-projects">
+        {/* An empty section is not shown (Spokój rule 4, #763 FR-4); the narrow drawer keeps its heading for its "+". A space
+            waiting to be unlocked is a row of it (F-030). */}
+        {projects.length || locked.length || onClose ? <nav className="side__sec" aria-labelledby="side-projects">
           <div className="side__head">
             <h2 className="side__h" id="side-projects">Projects</h2>
             {/* On the computer New (C) creates; the narrow-tablet drawer keeps its own "+". */}
