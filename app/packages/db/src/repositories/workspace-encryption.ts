@@ -64,6 +64,10 @@ export interface EncryptionViewRow {
   rotationProgress: { rowsDone: number; rowsEstimate: number; startedAt: Date; stalled: boolean } | null;
   rotationOpenFor: { userId: string | null; name: string | null; kind: 'password' | 'recovery' }[];
   rotationReason: { kind: string; userId: string | null; name: string | null } | null;
+  /** S3 UI audit LK-1: the last `workspace.locked.v1` while no unlock row exists (why it is locked, and who locked it). */
+  lastLock: { reason: string; at: Date; by: string | null; byName: string | null } | null;
+  /** Owners and admins with an unlock password (who can unlock it), by name. */
+  unlockers: { id: string; name: string }[];
 }
 
 /** A version list as a PostgreSQL integer[] literal (ints only). */
@@ -368,11 +372,21 @@ export function workspaceEncryptionRows(db: DbExecutor) {
           CASE WHEN k.rotation <> 'none' AND k.rotation_reason IS NOT NULL THEN json_build_object('kind', k.rotation_reason->>'kind',
             'userId', k.rotation_reason->>'userId', 'name', (SELECT a.name FROM auth_users a WHERE a.id = k.rotation_reason->>'userId')) END AS "rotationReason",
           CASE WHEN k.key_change_reason IS NOT NULL THEN json_build_object('kind', k.key_change_reason->>'kind',
-            'userId', k.key_change_reason->>'userId', 'name', (SELECT a.name FROM auth_users a WHERE a.id = k.key_change_reason->>'userId')) END AS "keyChangeReason"
+            'userId', k.key_change_reason->>'userId', 'name', (SELECT a.name FROM auth_users a WHERE a.id = k.key_change_reason->>'userId')) END AS "keyChangeReason",
+          (SELECT json_build_object('reason', e.data->>'reason', 'at', e.created_at, 'by', a.id, 'byName', a.name)
+             FROM events e LEFT JOIN auth_users a ON e.actor_id LIKE 'human:%' AND a.id = substr(e.actor_id, 7)
+             WHERE e.workspace_id = k.workspace_id AND e.kind = 'workspace.locked.v1'
+               AND NOT EXISTS (SELECT 1 FROM workspace_unlocks u WHERE u.workspace_id = k.workspace_id)
+             ORDER BY e.created_at DESC LIMIT 1) AS "lastLock",
+          (SELECT coalesce(json_agg(json_build_object('id', h.user_id, 'name', a.name) ORDER BY a.name), '[]'::json)
+             FROM workspace_holders h JOIN workspace_members m ON m.workspace_id = h.workspace_id AND m.user_id = h.user_id AND m.role IN ('owner', 'admin')
+             JOIN auth_users a ON a.id = h.user_id
+             WHERE h.workspace_id = k.workspace_id AND h.kind = 'password') AS "unlockers"
         FROM workspace_keys k JOIN workspaces w ON w.id = k.workspace_id WHERE w.encrypted AND k.workspace_id IN (${ids})`);
       return new Map(rows.map((row) => [row.workspaceId, { ...row, keyChangedAt: atOrNull(row.keyChangedAt), grantUntil: atOrNull(row.grantUntil),
         rotationProgress: row.rotationProgress ? { rowsDone: Number(row.rotationProgress.rowsDone), rowsEstimate: Number(row.rotationProgress.rowsEstimate),
           startedAt: at(row.rotationProgress.startedAt), stalled: row.rotationProgress.stalled === true } : null,
+        lastLock: row.lastLock ? { ...row.lastLock, at: new Date(row.lastLock.at as unknown as string) } : null, unlockers: row.unlockers ?? [],
         unlocks: (row.unlocks ?? []).map((unlock) => ({ ...unlock, unlockedAt: new Date(unlock.unlockedAt) })) }]));
     },
   };

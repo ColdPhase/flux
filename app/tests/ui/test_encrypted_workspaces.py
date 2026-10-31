@@ -59,6 +59,10 @@ UNLOCK_PASSWORD = "seven loud geese in a hat"       # Ada's unlock password in A
 NEW_PASSWORD = "twelve quiet lamps by the sea"       # a valid new password (29 characters)
 LOCKED_LINE = "Waiting to be unlocked"
 CODE = re.compile(r"^[A-Z0-9]{4}(-[A-Z0-9]{4}){7}$")
+# On screen the code is two lines of four groups in reading order (UI audit RC-3).
+CODE_LINE = re.compile(r"^[A-Z0-9]{4}(-[A-Z0-9]{4}){3}$")
+CODE_SHOWN = re.compile(r"^[A-Z0-9]{4}(-[A-Z0-9]{4}){3}[A-Z0-9]{4}(-[A-Z0-9]{4}){3}$")
+AT = r"(at \d\d:\d\d|on \d{1,2} \w{3} at \d\d:\d\d)"
 LINE = re.compile(r"^Encrypted · only people, no AI\. Unlocked by Ada Kowalska (at \d\d:\d\d|on \d{1,2} \w{3} at \d\d:\d\d)\.$")
 ROTATION = ("Garden club gets a new key, and everything in it is encrypted again in the background. When that finishes, Ben’s unlock password opens nothing "
             "made from then on. The recovery code stops working, and an owner makes a new one. A copy Ben may already have, such as an old backup, still opens "
@@ -310,10 +314,10 @@ class EncryptedWorkspaces(Base):
                 self.assertLessEqual(phrase.evaluate("el => el.scrollHeight - el.clientHeight"), 1)
                 # "What encryption protects" opens below the buttons, so none of them moves.
                 create = page.get_by_role("button", name="Create encrypted space", exact=True)
-                at = self.on_page(create)
+                at = self.place(create)
                 page.get_by_text("What encryption protects", exact=True).click()
                 expect(page.get_by_text("It doesn’t protect against someone who controls the server while this space is unlocked")).to_be_visible()
-                for edge, value in self.on_page(create).items():
+                for edge, value in self.place(create).items():
                     self.assertAlmostEqual(at[edge], value, delta=0.6)
                 shot(page, f"new-space-{'phone' if phone else 'computer'}")
                 box.uncheck()
@@ -374,8 +378,18 @@ class EncryptedWorkspaces(Base):
                 page.get_by_role("button", name="Create encrypted space").click()
                 expect(page.get_by_role("heading", name="Your recovery code")).to_be_focused()
                 code = page.locator("[data-recovery-code]")
-                expect(code).to_have_text(CODE)
+                expect(code).to_have_text(CODE_SHOWN)
                 expect(page.get_by_text("This code unlocks Riverside if every password is lost. It’s shown only now. Print it or write it down and keep it somewhere safe.")).to_be_visible()
+                expect(page.get_by_text("Keep this code apart from your unlock password.")).to_be_visible()
+                # RC-3: two lines of four groups, the second below the first and starting where it starts, so it reads one way only.
+                lines = code.locator("span")
+                expect(lines).to_have_count(2)
+                for index in range(2):
+                    expect(lines.nth(index)).to_have_text(CODE_LINE)
+                first_line, second_line = self.on_page(lines.nth(0)), self.on_page(lines.nth(1))
+                self.assertAlmostEqual(first_line["x"], second_line["x"], delta=0.6)
+                self.assertGreater(second_line["y"], first_line["y"] + first_line["height"] - 1)
+                self.assertLessEqual(first_line["x"] + first_line["width"], self.on_page(code)["x"] + self.on_page(code)["width"] + 0.6, "a line fits its box")
                 # No Copy button anywhere on the step; a Print button above the box; Done waits for the box.
                 expect(page.get_by_role("button", name=re.compile("copy", re.I))).to_have_count(0)
                 print_button = page.get_by_role("button", name="Print", exact=True)
@@ -387,18 +401,22 @@ class EncryptedWorkspaces(Base):
                 page.emulate_media(media="print")
                 expect(page.locator(".recovery-sheet")).to_be_visible()
                 expect(page.locator(".recovery-sheet")).to_contain_text("Recovery code for Riverside")
+                expect(page.locator(".recovery-sheet__meta")).to_contain_text(re.compile(r"^Made \d{1,2} \w{3} \d{4} · http"))
                 expect(page.locator("#details")).to_be_hidden()
                 page.emulate_media(media="screen")
                 expect(page.locator(".recovery-sheet")).to_be_hidden()
                 kept.check()
                 expect(done).to_be_enabled()
                 # Nothing about the password or the code is in the browser's storage.
-                shown = code.inner_text()
+                shown = "".join(code.inner_text().split())
                 stored = page.evaluate("() => JSON.stringify([Object.entries(localStorage), Object.entries(sessionStorage)])")
                 self.assertNotIn(shown.replace("-", ""), stored)
                 self.assertNotIn(shown, stored)
                 self.assertNotIn(words, stored)
                 done.click()
+                # NS-1: the next step's primary action starts the space's first project; People is beside it.
+                expect(page.get_by_role("button", name="Start the first project in Riverside")).to_be_visible()
+                page.get_by_role("button", name="People", exact=True).click()
                 expect(page.get_by_role("heading", name="People", exact=True)).to_be_visible()
                 expect(page.locator(".details__eyebrow", has_text="Riverside")).to_be_visible()
                 expect(self.section(page).locator(".people__enc-line")).to_have_text(LINE)
@@ -429,15 +447,18 @@ class EncryptedWorkspaces(Base):
                 self.open_new_space(page)
                 self.fill_new_space(page, "Lantern")
                 page.get_by_role("button", name="Create encrypted space").click()
-                expect(page.get_by_role("alert").filter(has_text="Flux can’t be reached")).to_be_visible()
+                # RC-4: the space may have been made, so nothing says "Nothing changed".
+                expect(page.get_by_role("alert").filter(has_text="Flux couldn’t be reached to finish making Lantern. Try again: if it was made, you’ll go on to its recovery code.")).to_be_visible()
+                expect(page.get_by_text("Nothing changed")).to_have_count(0)
                 page.get_by_role("button", name="Create encrypted space").click()
                 expect(page.get_by_role("heading", name="Your recovery code")).to_be_visible()
-                expect(page.get_by_text("The recovery code was shown once and can’t be shown again. Make a new one in People.")).to_be_visible()
+                expect(page.get_by_text("Lantern was made, but its recovery code didn’t reach this browser. Make a new one now.")).to_be_visible()
                 self.assertEqual([space["name"] for space in self.call(world, "ada", "GET", "/api/v1/workspaces")].count("Lantern"), 1, "one space, made once")
                 page.get_by_role("button", name="New recovery code").click()
-                expect(page.locator("[data-recovery-code]")).to_have_text(CODE)
+                expect(page.locator("[data-recovery-code]")).to_have_text(CODE_SHOWN)
                 page.get_by_role("checkbox", name=re.compile(r"I.ve kept")).check()
                 page.get_by_role("button", name="Done", exact=True).click()
+                page.get_by_role("button", name="People", exact=True).click()
                 expect(page.get_by_role("heading", name="People", exact=True)).to_be_visible()
 
     def test_06_a_server_without_its_key_service_says_so_in_place(self) -> None:
@@ -451,6 +472,107 @@ class EncryptedWorkspaces(Base):
         page.get_by_role("button", name="Create encrypted space").click()
         expect(page.get_by_role("alert").filter(has_text="Encrypted spaces aren’t available on this server right now")).to_be_visible()
         expect(page.get_by_role("button", name="Create encrypted space")).to_be_enabled()
+
+    def create_in_ui(self, page: Page, name: str) -> str:
+        """Makes an encrypted space with the generated words in the UI; returns the words (its owner's unlock password)."""
+        self.open_new_space(page)
+        self.fill_new_space(page, name)
+        words = page.get_by_role("textbox", name="Unlock password").input_value()
+        page.get_by_role("button", name="Create encrypted space").click()
+        expect(page.get_by_role("heading", name="Your recovery code")).to_be_focused()
+        return words
+
+    def test_07_closing_the_code_step_asks_first_and_people_says_the_code_was_not_kept(self) -> None:
+        """UI audit RC-1: Esc, × and leaving the page no longer skip "I've kept the recovery code"."""
+        for phone in (False, True):
+            with self.subTest(window="phone" if phone else "computer"):
+                world = self.make_world()
+                page = self.page(world, "ada", phone=phone)
+                words = self.create_in_ui(page, "Orchard")
+                ask = page.get_by_role("group", name="Close without keeping the recovery code")
+                # Esc asks in place; "Keep it open" keeps the code on show.
+                page.keyboard.press("Escape")
+                expect(ask).to_contain_text("Close without keeping the recovery code? You can make a new one in People.")
+                expect(ask.get_by_role("button", name="Keep it open")).to_be_focused()
+                ask.get_by_role("button", name="Keep it open").click()
+                expect(ask).to_have_count(0)
+                expect(page.locator("[data-recovery-code]")).to_have_text(CODE_SHOWN)
+                # The panel's × asks too.
+                page.locator("#details .ui-panel__close").click()
+                expect(ask).to_be_visible()
+                ask.get_by_role("button", name="Keep it open").click()
+                if not phone:
+                    # Leaving the page inside the app asks, and staying keeps the page.
+                    page.get_by_role("navigation", name="Places").get_by_role("link", name=re.compile(r"^Inbox")).click()
+                    expect(ask).to_be_visible()
+                    ask.get_by_role("button", name="Keep it open").click()
+                    expect(page.get_by_role("heading", level=1, name="Home")).to_be_visible()
+                    expect(page.locator("[data-recovery-code]")).to_have_text(CODE_SHOWN)
+                # Close anyway: the code is gone, and People tells the owner nobody confirmed keeping it.
+                page.keyboard.press("Escape")
+                ask.get_by_role("button", name="Close anyway").click()
+                expect(page.locator("[data-recovery-code]")).to_have_count(0)
+                made = next(space for space in self.call(world, "ada", "GET", "/api/v1/workspaces") if space["name"] == "Orchard")
+                self.assertTrue(made["encryption"]["recoveryCode"])
+                self.open_people(page, "Orchard")
+                section = self.section(page)
+                expect(section.locator("[data-unkept-recovery-code]")).to_have_text("Nobody confirmed keeping Orchard’s recovery code. Make a new one.")
+                stored = page.evaluate("() => JSON.stringify([Object.entries(localStorage), Object.entries(sessionStorage)])")
+                self.assertIn(made["id"], stored, "only the space's id is kept")
+                self.assertIsNone(re.search(r"[A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4}", stored), "no code in storage")
+                # A new code that is kept clears the line.
+                section.get_by_role("button", name="New recovery code", exact=True).click()
+                group = section.get_by_role("group", name="New recovery code")
+                group.get_by_role("textbox", name="Your unlock password").fill(words)
+                group.get_by_role("button", name="Make a new recovery code").click()
+                shown = section.get_by_role("group", name="Your new recovery code")
+                expect(shown.locator("[data-recovery-code]")).to_have_text(CODE_SHOWN)
+                shown.get_by_role("checkbox", name=re.compile(r"I.ve kept")).check()
+                shown.get_by_role("button", name="Done", exact=True).click()
+                expect(section.locator("[data-unkept-recovery-code]")).to_have_count(0)
+
+    def test_08_the_six_words_are_offered_to_a_password_manager_and_said_to_be_kept(self) -> None:
+        """UI audit RC-2: a password field with autocomplete=new-password and the account as its username, and a line to keep the words."""
+        for phone in (False, True):
+            with self.subTest(window="phone" if phone else "computer"):
+                world = self.make_world()
+                page = self.page(world, "ada", phone=phone)
+                self.open_new_space(page)
+                self.fill_new_space(page, "Meadow")
+                words = page.get_by_role("textbox", name="Unlock password").input_value()
+                saved = page.locator("input[type=password][autocomplete=new-password][data-new-password]")
+                expect(saved).to_have_value(words)
+                expect(page.locator("input[autocomplete=username]")).to_have_value(world.emails["ada"])
+                expect(page.locator("[data-keep-words]")).to_have_text("Write these six words down or save them in your password manager. You type them after every server restart.")
+                # Neither helper field is in the tab order or read out.
+                for field in (saved, page.locator("input[autocomplete=username]")):
+                    expect(field).to_have_attribute("tabindex", "-1")
+                    expect(field).to_have_attribute("aria-hidden", "true")
+                page.get_by_role("button", name="Other words").click()
+                expect(saved).to_have_value(page.get_by_role("textbox", name="Unlock password").input_value())
+                self.assertNotEqual(saved.input_value(), words)
+
+    def test_09_after_done_the_first_project_starts_in_the_new_space(self) -> None:
+        """UI audit NS-1: a new space can get a project: Done leads to New project in that space, and the project is made there."""
+        for phone in (False, True):
+            with self.subTest(window="phone" if phone else "computer"):
+                world = self.make_world()
+                page = self.page(world, "ada", phone=phone)
+                name = f"Allotment {'phone' if phone else 'computer'}"
+                self.create_in_ui(page, name)
+                page.get_by_role("checkbox", name=re.compile(r"I.ve kept")).check()
+                page.get_by_role("button", name="Done", exact=True).click()
+                start = page.get_by_role("button", name=f"Start the first project in {name}")
+                expect(start).to_be_visible()
+                start.click()
+                expect(page).to_have_url(re.compile(r"/projects/new\?in="))
+                expect(page.locator(".project-new__space")).to_have_text(f"In {name}")
+                page.get_by_role("textbox", name="What is it about?").fill("Seed swap")
+                page.get_by_role("button", name="Create project").click()
+                expect(page).to_have_url(re.compile(r"/projects/[0-9a-f-]{36}"))
+                space = next(item for item in self.call(world, "ada", "GET", "/api/v1/workspaces") if item["name"] == name)
+                projects = self.call(world, "ada", "GET", f"/api/v1/workspaces/{space['id']}/projects")
+                self.assertEqual([project["name"] for project in (projects["items"] if isinstance(projects, dict) else projects)], ["Seed swap"])
 
     # ---------------------------------------------------------------- a locked space
 
@@ -477,7 +599,8 @@ class EncryptedWorkspaces(Base):
                 row.click()
                 expect(page).to_have_url(re.compile(rf"/spaces/{world.a}$"))
                 expect(page.get_by_role("heading", name=f"{A_NAME} is waiting to be unlocked")).to_be_visible()
-                expect(page.get_by_text("Its content is encrypted. After the server restarted, an owner or admin needs to unlock it. You can come back then.")).to_be_visible()
+                # LK-1: the known reason, and who can unlock it (Ada is the only one with an unlock password).
+                expect(page.locator("[data-locked-reason]")).to_have_text(re.compile(rf"^Ada locked {A_NAME} {AT}\. Ada can unlock it\. You can come back then\.$"))
                 expect(page.get_by_role("textbox")).to_have_count(0)
                 expect(page.get_by_role("button", name="Unlock")).to_have_count(0)
                 self.assertEqual(page.locator("[data-ai-surface]").count(), 0)
@@ -497,6 +620,17 @@ class EncryptedWorkspaces(Base):
                 if not phone:
                     expect(page.locator("header.top")).to_contain_text(A_NAME)
                     expect(page.locator("header.top")).to_contain_text(LOCKED_LINE)
+                else:
+                    # LK-2: an installed app has no browser Back, so the locked panel keeps the header's Back and the tab bar.
+                    expect(page.locator("header.phead").get_by_role("button", name=re.compile("^Back"))).to_be_visible()
+                    expect(page.get_by_role("navigation", name="Main places")).to_be_visible()
+                    expect(page.get_by_role("button", name="Create")).to_have_count(0)
+                    page.goto(f"/projects/{world.a_project}/conversations/{world.a_conversation}")
+                    expect(page.get_by_role("heading", name=f"{A_NAME} is waiting to be unlocked")).to_be_visible()
+                    expect(page.get_by_role("navigation", name="Main places")).to_be_visible()
+                    # Opened as a link (no history inside the app), Back leads Home.
+                    page.locator("header.phead").get_by_role("button", name=re.compile("^Back")).click()
+                    expect(page.get_by_role("heading", level=1, name="Home")).to_be_visible()
                 page.goto(f"/projects/{world.a_project}/tasks")
                 expect(page.get_by_role("heading", name=f"{A_NAME} is waiting to be unlocked")).to_be_visible()
                 page.go_back()
@@ -513,6 +647,8 @@ class EncryptedWorkspaces(Base):
                 page = self.page(world, "ada", phone=phone)
                 page.goto(f"/projects/{world.a_project}")
                 expect(page.get_by_role("heading", name=f"Unlock {A_NAME}")).to_be_visible()
+                # LK-1: the holder reads why, and that she is the one to unlock it.
+                expect(page.locator("[data-locked-reason]")).to_have_text(re.compile(rf"^You locked {A_NAME} {AT}\. Type your unlock password to open it for everyone\.$"))
                 field = page.get_by_role("textbox", name="Your unlock password")
                 button = page.get_by_role("button", name="Unlock", exact=True)
                 expect(field).to_have_attribute("type", "password")
@@ -544,7 +680,7 @@ class EncryptedWorkspaces(Base):
                     expect(page.get_by_role("alert").filter(has_text="doesn’t unlock")).to_be_visible()
                 field.fill("and once more")
                 button.click()
-                expect(page.get_by_role("alert").filter(has_text="Too many tries. Try again in 15 minutes.")).to_be_visible()
+                expect(page.get_by_role("alert").filter(has_text=re.compile(r"Too many tries\. Try again at \d\d:\d\d\."))).to_be_visible()
                 self.assertEqual(self.encryption(world)["state"], "locked")
 
     def test_13_the_recovery_code_unlocks_and_an_admin_without_a_password_is_told(self) -> None:
@@ -555,7 +691,7 @@ class EncryptedWorkspaces(Base):
                 page = self.page(world, "ben", phone=phone)
                 page.goto(f"/spaces/{world.a}")
                 expect(page.get_by_role("heading", name=f"Unlock {A_NAME}")).to_be_visible()
-                expect(page.get_by_text(f"You don’t have an unlock password for {A_NAME} yet. Another owner or admin can unlock it, or you can use the recovery code.")).to_be_visible()
+                expect(page.locator("[data-locked-reason]")).to_have_text(re.compile(rf"^Ada locked {A_NAME} {AT}\. You don’t have an unlock password for {A_NAME} yet\. Ada can unlock it\. Or use the recovery code\.$"))
                 expect(page.get_by_role("textbox", name="Recovery code")).to_be_visible()
                 expect(page.get_by_role("textbox", name="Your unlock password")).to_have_count(0)
                 expect(page.get_by_role("button", name="Use the recovery code")).to_have_count(0)
@@ -693,6 +829,32 @@ class EncryptedWorkspaces(Base):
 
     # ---------------------------------------------------------------- People
 
+    def test_19_printing_another_page_after_home_prints_that_page(self) -> None:
+        """UI audit XC-1: the recovery sheet's print rule applies only while a code is on show, not to every page once Home loaded it."""
+        world = self.make_world()
+        page = self.page(world, "ada")
+        self.home(page)
+        page.goto(f"/projects/{world.b_project}")
+        expect(page.get_by_text(B_ROOT).first).to_be_visible()
+        page.emulate_media(media="print")
+        expect(page.locator("#content")).to_be_visible()
+        expect(page.get_by_text(B_ROOT).first).to_be_visible()
+        page.emulate_media(media="screen")
+
+    def test_32_a_former_members_messages_say_former_member(self) -> None:
+        """UI audit XC-2: a removed person's messages are named "Former member", the same in the conversation and its notices."""
+        world = self.make_world()
+        self.call(world, "ada", "POST", f"/api/v1/workspaces/{world.b}/members", {"email": world.emails["ben"], "role": "member"}, 201)
+        reply = "The new dock lights are in the shed"
+        self.call(world, "ben", "POST", f"/api/v1/conversations/{world.b_conversation}/messages", {"body": reply, "clientMessageId": str(uuid.uuid4())}, 201)
+        self.call(world, "ada", "DELETE", f"/api/v1/workspaces/{world.b}/members/{world.ids['ben']}", None, None)
+        page = self.page(world, "ada")
+        page.goto(f"/projects/{world.b_project}/conversations/{world.b_conversation}")
+        message = page.locator("[data-message-id]").filter(has_text=reply).last
+        expect(message).to_be_visible()
+        expect(message).to_contain_text("Former member")
+        expect(message).to_have_attribute("aria-label", "Former member’s message")
+
     def test_20_the_encryption_section_and_the_ai_row_sit_before_leave_in_every_state(self) -> None:
         for phone in (False, True):
             with self.subTest(window="phone" if phone else "computer"):
@@ -729,7 +891,7 @@ class EncryptedWorkspaces(Base):
                 admin = self.page(world, "ben", phone=phone)
                 self.open_people(admin)
                 section = self.section(admin)
-                expect(section.get_by_text("You don’t have an unlock password yet. Another owner or admin can let you set one, or use the recovery code.")).to_be_visible()
+                expect(section.get_by_text("You don’t have an unlock password yet. Another owner or admin can let you set one. If you have the recovery code, you can use it instead.")).to_be_visible()
                 # No holder has allowed it yet, so the way open to him is the recovery code (the contract's wording).
                 expect(section.get_by_role("button", name="Use the recovery code")).to_be_visible()
                 expect(section.get_by_role("button", name="Set your unlock password")).to_have_count(0)
@@ -775,18 +937,41 @@ class EncryptedWorkspaces(Base):
                 confirm.get_by_role("button", name=f"Lock {A_NAME}").click()
                 expect(section.locator(".people__enc-line")).to_have_text("Encrypted · only people, no AI. Waiting to be unlocked.")
                 expect(section.get_by_role("status")).to_have_text(f"{A_NAME} is locked.")
-                expect(lock).to_be_focused()
+                # EN-1: Lock now's slot now reads "Unlock…", and focus is on it.
+                unlock = section.get_by_role("button", name="Unlock…")
+                expect(unlock).to_be_focused()
+                expect(unlock).not_to_have_attribute("aria-disabled", "true")
+                self.same_corner(before["Lock now"], self.place(unlock), "Unlock… in Lock now's place")
                 self.assertEqual(self.encryption(world)["state"], "locked")
                 # Locked: the buttons that need it open are dimmed, still there and still where they were.
-                expect(lock).to_have_attribute("aria-disabled", "true")
                 expect(section.get_by_role("button", name="New recovery code")).to_have_attribute("aria-disabled", "true")
-                expect(section.get_by_text(f"These need {A_NAME} to be unlocked first.")).to_be_visible()
+                expect(section.get_by_text(f"Unlock {A_NAME} to change these.")).to_be_visible()
                 for name in names:
-                    self.same_place(before[name], self.place(section.get_by_role("button", name=name)), f"{name} (locked)")
+                    if name != "Lock now":
+                        self.same_place(before[name], self.place(section.get_by_role("button", name=name)), f"{name} (locked)")
                 self.same_place(before["heading"], self.place(section.get_by_role("heading", name="Encryption")), "heading (locked)")
-                lock.click(force=True)  # it is dimmed (aria-disabled), not disabled: a click does nothing
-                expect(section.get_by_role("group", name=f"Lock {A_NAME}")).to_have_count(0)
+                section.get_by_role("button", name="New recovery code").click(force=True)  # dimmed (aria-disabled), not disabled: a click does nothing
+                expect(section.get_by_role("group", name="New recovery code")).to_have_count(0)
                 shot(page, f"people-locked-{'phone' if phone else 'computer'}")
+                # Unlock in place: the field opens below the row; Esc closes it and returns to the button; the password unlocks.
+                unlock.focus()
+                page.keyboard.press("Enter")
+                field = section.get_by_role("textbox", name="Your unlock password")
+                expect(field).to_be_focused()
+                page.keyboard.press("Escape")
+                expect(field).to_have_count(0)
+                expect(unlock).to_be_focused()
+                page.keyboard.press("Enter")
+                field.fill("not the password at all")
+                page.keyboard.press("Enter")
+                expect(section.get_by_role("alert").filter(has_text=f"That password doesn’t unlock {A_NAME}.")).to_be_visible()
+                field.fill(UNLOCK_PASSWORD)
+                page.keyboard.press("Enter")
+                expect(section.get_by_role("status")).to_have_text(f"{A_NAME} is unlocked.")
+                expect(section.locator(".people__enc-line")).to_have_text(LINE)
+                expect(lock).to_be_focused()
+                self.same_place(before["Lock now"], self.place(lock), "Lock now (unlocked again)")
+                self.assertEqual(self.encryption(world)["state"], "unlocked")
 
     def test_23_a_holder_lets_an_admin_set_a_first_password_and_the_admin_sets_it(self) -> None:
         for phone in (False, True):
@@ -892,12 +1077,12 @@ class EncryptedWorkspaces(Base):
                 group = section.get_by_role("group", name="New recovery code")
                 expect(group).to_contain_text("The old code stops working.")
                 group.get_by_role("textbox", name="Your unlock password").fill("not my password at all")
-                group.get_by_role("button", name="Make a new code").click()
+                group.get_by_role("button", name="Make a new recovery code").click()
                 expect(group.get_by_role("alert")).to_have_text(f"That password doesn’t unlock {A_NAME}.")
                 group.get_by_role("textbox", name="Your unlock password").fill(UNLOCK_PASSWORD)
-                group.get_by_role("button", name="Make a new code").click()
+                group.get_by_role("button", name="Make a new recovery code").click()
                 shown = section.get_by_role("group", name="Your new recovery code")
-                expect(shown.locator("[data-recovery-code]")).to_have_text(CODE)
+                expect(shown.locator("[data-recovery-code]")).to_have_text(CODE_SHOWN)
                 new = shown.locator("[data-recovery-code]").inner_text()
                 expect(shown.get_by_role("button", name=re.compile("copy", re.I))).to_have_count(0)
                 expect(shown.get_by_role("button", name="Done", exact=True)).to_be_disabled()
@@ -1130,7 +1315,7 @@ class KeyRotation(Base):
                 self.open_people(ada)
                 section = self.section(ada)
                 expect(section.locator("[data-no-recovery-code]")).to_have_text(f"{A_NAME} has no recovery code. Make a new one and keep it safe.")
-                expect(section.get_by_role("button", name="Make a new recovery code")).to_be_visible()
+                expect(section.get_by_role("button", name="New recovery code", exact=True)).to_be_visible()
                 section.scroll_into_view_if_needed()
                 shot(ada, f"no-recovery-code-{'phone' if phone else 'computer'}")
                 ben = self.overlaid(world, "ben", phone, overlay)
@@ -1149,7 +1334,7 @@ class KeyRotation(Base):
                 expect(ada2.get_by_role("button", name="Use the recovery code")).to_have_count(0)
                 ben2 = self.overlaid(world, "ben", phone, overlay)
                 ben2.goto(f"/spaces/{world.a}")
-                expect(ben2.get_by_text(f"You don’t have an unlock password for {A_NAME} yet. Another owner or admin can unlock it.", exact=True)).to_be_visible()
+                expect(ben2.locator("[data-locked-reason]")).to_have_text(re.compile(rf"^Ada locked {A_NAME} {AT}\. You don’t have an unlock password for {A_NAME} yet\. Ada can unlock it\.$"))
                 expect(ben2.get_by_role("textbox")).to_have_count(0)
                 expect(ben2.get_by_role("button", name="Unlock")).to_have_count(0)
                 self.unlock(world)
@@ -1157,13 +1342,13 @@ class KeyRotation(Base):
                 ada3 = self.overlaid(world, "ada", phone, overlay)
                 self.open_people(ada3)
                 s3 = self.section(ada3)
-                s3.get_by_role("button", name="Make a new recovery code").click()
+                s3.get_by_role("button", name="New recovery code", exact=True).click()
                 group = s3.get_by_role("group", name="New recovery code")
                 expect(group).to_contain_text(f"{A_NAME} has no recovery code now. Enter your own unlock password to make one.")
                 group.get_by_role("textbox", name="Your unlock password").fill(UNLOCK_PASSWORD)
-                group.get_by_role("button", name="Make a new code").click()
+                group.get_by_role("button", name="Make a new recovery code").click()
                 shown = s3.get_by_role("group", name="Your new recovery code")
-                expect(shown.locator("[data-recovery-code]")).to_have_text(CODE)
+                expect(shown.locator("[data-recovery-code]")).to_have_text(CODE_SHOWN)
                 shown.get_by_role("checkbox", name=re.compile(r"I.ve kept")).check()
                 shown.get_by_role("button", name="Done", exact=True).click()
                 expect(s3.locator("[data-no-recovery-code]")).to_have_count(0)
@@ -1191,7 +1376,7 @@ class KeyRotation(Base):
                 expect(section.locator("[data-no-recovery-code]")).to_have_text(f"{A_NAME} has no recovery code. Make a new one and keep it safe.")
                 expect(section.locator("[data-key-rotation]")).to_have_text(f"Changing the key · 40%. It continues while {A_NAME} is unlocked.")
                 group.get_by_role("textbox", name="Your unlock password").fill(UNLOCK_PASSWORD)
-                group.get_by_role("button", name="Make a new code").click()
+                group.get_by_role("button", name="Make a new recovery code").click()
                 shown = section.get_by_role("group", name="Your new recovery code")
                 expect(shown.locator("[data-recovery-code]")).to_be_visible()
                 shown.get_by_role("checkbox", name=re.compile(r"I.ve kept")).check()

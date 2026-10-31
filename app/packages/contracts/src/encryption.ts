@@ -54,6 +54,13 @@ export interface WorkspaceEncryption {
    * (S3). Null for guests, while the creation key is current, and for a rotation that had none.
    */
   keyChangeReason: { kind: 'removed' | 'demoted' | 'holder_deleted'; userId: string | null; name: string | null } | null;
+  /**
+   * Why it is locked (S3 UI audit LK-1): the last `workspace.locked.v1` while no unlock row exists. `person` is Lock now
+   * (`by` names who, for everyone but guests); `restart` is a server or keyring restart. Null while unlocked or unknown.
+   */
+  lockedBecause: { reason: 'person' | 'restart'; at: string; by: { id: string; name: string } | null } | null;
+  /** The owners and admins with an unlock password ("Ada, Jonas or Ben can unlock it."); [] for guests. */
+  unlockers: { id: string; name: string }[];
 }
 
 export interface CreateEncryptedWorkspaceCommand {

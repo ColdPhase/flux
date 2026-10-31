@@ -5,7 +5,8 @@ import { Button, Icon, Input, Option, Select } from '../ui';
 import { encryptionProblem, grantUnlockPassword, isWrongPassword, lockWorkspace, newRecoveryCode, setUnlockPassword, type EncryptedWorkspace, type KeyRotation } from './api';
 import { checkPassword, generatePassphrase, loadWords } from './passphrase';
 import { PasswordLength, passwordRefusal } from './PasswordLength';
-import { RecoveryCodeBlock } from './RecoveryCode';
+import { RecoveryCodeBlock, useUnkeptCode } from './RecoveryCode';
+import { UnlockForm, whoCanUnlock } from './LockedSpace';
 
 const timeOnly = new Intl.DateTimeFormat('en-GB', { hour: '2-digit', minute: '2-digit' });
 const dayOnly = new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short' });
@@ -22,6 +23,7 @@ function when(iso: string): string {
 type Panel =
   | { kind: 'password'; via: 'current' | 'recovery' | 'grant' }
   | { kind: 'lock' }
+  | { kind: 'unlock' }
   | { kind: 'code' }
   | { kind: 'allow' }
   | { kind: 'shown'; code: string };
@@ -91,6 +93,7 @@ export function EncryptionSection({ workspace, members, meId, myRole, offerCode,
   const triggers = useRef<Record<string, HTMLButtonElement | null>>({});
   const headingId = useId();
   const lineId = useId();
+  const unkept = useUnkeptCode(workspace.id);
   if (!enc) return null;
 
   const manager = myRole === 'owner' || myRole === 'admin';
@@ -130,20 +133,27 @@ export function EncryptionSection({ workspace, members, meId, myRole, offerCode,
           <div className="people__enc-actions">
             <Button ref={(element) => { triggers.current.password = element; }} variant="quiet" {...dim(!canFirst)} aria-expanded={panel?.kind === 'password'}
               onClick={guard(() => toggle(firstPassword), !canFirst)}>{passwordLabel}</Button>
-            <Button ref={(element) => { triggers.current.lock = element; }} variant="quiet" {...dim()} aria-expanded={panel?.kind === 'lock'} onClick={guard(() => toggle({ kind: 'lock' }))}>Lock now</Button>
-            {owner ? <Button ref={(element) => { triggers.current.code = element; }} variant="quiet" {...dim()} aria-expanded={panel?.kind === 'code' || panel?.kind === 'shown'} onClick={guard(() => toggle({ kind: 'code' }))}>{noCode ? 'Make a new recovery code' : 'New recovery code'}</Button> : null}
+            {/* Lock now's slot reads "Unlock…" while locked, for whoever can unlock (UI audit EN-1); its place never changes. */}
+            {locked ? (
+              <Button ref={(element) => { triggers.current.lock = element; }} variant="quiet" {...(enc.canUnlock ? { className: 'people__enc-button' } : dim())}
+                aria-expanded={panel?.kind === 'unlock'} onClick={enc.canUnlock ? () => toggle({ kind: 'unlock' }) : undefined} data-encryption-unlock="">{enc.canUnlock ? 'Unlock…' : 'Lock now'}</Button>
+            ) : (
+              <Button ref={(element) => { triggers.current.lock = element; }} variant="quiet" {...dim()} aria-expanded={panel?.kind === 'lock'} onClick={guard(() => toggle({ kind: 'lock' }))}>Lock now</Button>
+            )}
+            {owner ? <Button ref={(element) => { triggers.current.code = element; }} variant="quiet" {...dim()} aria-expanded={panel?.kind === 'code' || panel?.kind === 'shown'} onClick={guard(() => toggle({ kind: 'code' }))}>New recovery code</Button> : null}
             {candidates.length ? (
               <Button ref={(element) => { triggers.current.allow = element; }} variant="quiet" {...dim()} aria-expanded={panel?.kind === 'allow'} onClick={guard(() => toggle({ kind: 'allow' }))}>
                 {candidates.length === 1 ? `Let ${first(candidates[0]!.name)} set an unlock password` : 'Let someone set an unlock password'}
               </Button>
             ) : null}
           </div>
-          {locked ? <p className="people__hint">These need {name} to be unlocked first.</p> : null}
+          {locked ? <p className="people__hint" data-locked-hint="">{enc.canUnlock ? `Unlock ${name} to change these.` : `These need ${name} to be unlocked first. ${whoCanUnlock(enc, meId)}`}</p> : null}
           {grantUntil ? <p className="people__hint" data-password-grant="">You can set an unlock password until {timeOnly.format(new Date(grantUntil))}.</p>
-            : !enc.myPassword ? <p className="people__hint">You don’t have an unlock password yet. Another owner or admin can let you set one{noCode ? '.' : ', or use the recovery code.'}</p> : null}
+            : !enc.myPassword ? <p className="people__hint">You don’t have an unlock password yet. Another owner or admin can let you set one{noCode ? '.' : '. If you have the recovery code, you can use it instead.'}</p> : null}
           {rotation ? <p className="people__hint" data-key-rotation={rotationState(rotation, locked)}>{rotationLine(rotation, locked, name)}</p>
             : changedOn ? <p className="people__hint" data-key-changed="">New key since {changedOn}{why(enc.keyChangeReason) ? `,${why(enc.keyChangeReason)}` : ''}.</p> : null}
           {rotation && openForLine(rotation) ? <p className="people__hint" data-key-open-for="">{openForLine(rotation)}</p> : null}
+          {owner && unkept && !noCode ? <p className="people__hint" data-unkept-recovery-code="">Nobody confirmed keeping {name}’s recovery code. Make a new one.</p> : null}
           {noCode ? <p className="people__hint" data-no-recovery-code="">{owner ? `${name} has no recovery code. Make a new one and keep it safe.` : `${name} has no recovery code. An owner can make a new one.`}</p> : null}
         </>
       ) : null}
@@ -152,15 +162,21 @@ export function EncryptionSection({ workspace, members, meId, myRole, offerCode,
         <PasswordEditor key={panel.via} workspace={workspace} start={panel.via} recoveryCode={!noCode} onClose={() => closeTo('password')}
           onSaved={(message) => saved(message, 'password')} />
       ) : null}
-      {panel?.kind === 'lock' ? (
-        <LockConfirm workspace={workspace} onClose={() => closeTo('lock')} onLocked={() => saved(`${name} is locked.`, 'lock')} />
+      {panel?.kind === 'lock' && !locked ? (
+        <LockConfirm workspace={workspace} holder={enc.myPassword} onClose={() => closeTo('lock')} onLocked={() => saved(`${name} is locked.`, 'lock')} />
+      ) : null}
+      {panel?.kind === 'unlock' && locked ? (
+        <div className="people__edit people__unlock" role="group" aria-label={`Unlock ${name}`}>
+          <UnlockForm workspaceId={workspace.id} name={name} encryption={enc} autoFocus onCancel={() => closeTo('lock')}
+            onUnlocked={() => saved(`${name} is unlocked.`, 'lock')} />
+        </div>
       ) : null}
       {panel?.kind === 'code' ? (
         <NewCodeConfirm workspace={workspace} none={noCode} onClose={() => closeTo('code')} onMade={(code) => { setPanel({ kind: 'shown', code }); onChanged(); }} />
       ) : null}
       {panel?.kind === 'shown' ? (
         <div className="people__edit people__code" role="group" aria-label="Your new recovery code">
-          <RecoveryCodeBlock workspaceName={name} code={panel.code} lead={`This code unlocks ${name} if every password is lost. The old code no longer works. It’s shown only now: print it or write it down and keep it somewhere safe.`}
+          <RecoveryCodeBlock workspaceId={workspace.id} workspaceName={name} code={panel.code} lead={`This code unlocks ${name} if every password is lost. The old code no longer works. It’s shown only now: print it or write it down and keep it somewhere safe.`}
             onDone={() => { setStatus('The new recovery code is in use.'); closeTo('code'); }} />
         </div>
       ) : null}
@@ -204,7 +220,7 @@ function ConfirmGroup({ label, line, field, action, busy, problem, onSubmit, onC
 }
 
 /** "Lock now": everyone loses access until an owner or admin unlocks it again. */
-function LockConfirm({ workspace, onClose, onLocked }: { workspace: EncryptedWorkspace; onClose: () => void; onLocked: () => void }) {
+function LockConfirm({ workspace, holder, onClose, onLocked }: { workspace: EncryptedWorkspace; holder: boolean; onClose: () => void; onLocked: () => void }) {
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState('');
   const first = useFocusFirst<HTMLButtonElement>();
@@ -216,7 +232,7 @@ function LockConfirm({ workspace, onClose, onLocked }: { workspace: EncryptedWor
   }
   return (
     <div className="details__confirm people__confirm people__edit" role="group" aria-label={`Lock ${workspace.name}`} onKeyDown={closeOnEscape(onClose)}>
-      <p>Everyone in {workspace.name} loses access until an owner or admin unlocks it again.</p>
+      <p>Everyone in {workspace.name} loses access until an owner or admin unlocks it again.{holder ? '' : ' You can’t unlock it yourself.'}</p>
       <div className="details__actions">
         <Button ref={first} variant="primary" busy={busy} onClick={() => void lock()}>Lock {workspace.name}</Button>
         <Button variant="quiet" onClick={onClose}>Keep it unlocked</Button>
@@ -235,7 +251,7 @@ function NewCodeConfirm({ workspace, none, onClose, onMade }: { workspace: Encry
     try { onMade((await newRecoveryCode(workspace.id, password)).recoveryCode); }
     catch (error) { setProblem(isWrongPassword(error) ? `That password doesn’t unlock ${workspace.name}.` : encryptionProblem(error, { workspace: workspace.name })); setBusy(false); }
   }
-  return <ConfirmGroup label="New recovery code" line={none ? `${workspace.name} has no recovery code now. Enter your own unlock password to make one.` : 'The old code stops working. Enter your own unlock password to make a new one.'} field="Your unlock password" action="Make a new code" busy={busy} problem={problem} onSubmit={(password) => void make(password)} onClose={onClose} />;
+  return <ConfirmGroup label="New recovery code" line={none ? `${workspace.name} has no recovery code now. Enter your own unlock password to make one.` : 'The old code stops working. Enter your own unlock password to make a new one.'} field="Your unlock password" action="Make a new recovery code" busy={busy} problem={problem} onSubmit={(password) => void make(password)} onClose={onClose} />;
 }
 
 /** "Let Ben set an unlock password": the holder's own password allows it for a short time; Ben's session alone could never add one. */

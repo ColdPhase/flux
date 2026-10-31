@@ -134,6 +134,11 @@ export interface ShellActions {
   hidePanel(key: string): void;
   /** Closes the panel as Esc and its close control do: a view-owned panel leaves its address first. */
   closePanel(): void;
+  /**
+   * A panel content that must not be dismissed by accident (the one-time recovery code, UI audit RC-1) holds Esc and ×:
+   * while its guard returns true, closing is refused and the content asks in place. Null releases it.
+   */
+  guardPanel(guard: (() => boolean) | null): void;
   /** Shows that view-owned panel again when something else closed or covered it while the view kept it open. */
   reopenPanel(key: string): void;
   /** The element inside the panel the owner renders into, while the panel shows the owned view. */
@@ -142,7 +147,7 @@ export interface ShellActions {
   panelKey: string | null;
 }
 
-export const ShellContext = createContext<ShellActions>({ openDetails: () => undefined, labelPanel: () => undefined, openCreate: () => undefined, openSearch: () => undefined, openNavigation: () => undefined, actionSlot: null, metadataSlot: null, toggleFocus: () => undefined, toggleSidebar: () => undefined, sidebarHidden: false, showPanel: () => undefined, hidePanel: () => undefined, reopenPanel: () => undefined, closePanel: () => undefined, panelSlot: null, panelKey: null });
+export const ShellContext = createContext<ShellActions>({ openDetails: () => undefined, labelPanel: () => undefined, openCreate: () => undefined, openSearch: () => undefined, openNavigation: () => undefined, actionSlot: null, metadataSlot: null, toggleFocus: () => undefined, toggleSidebar: () => undefined, sidebarHidden: false, showPanel: () => undefined, hidePanel: () => undefined, reopenPanel: () => undefined, closePanel: () => undefined, guardPanel: () => undefined, panelSlot: null, panelKey: null });
 
 export function useShellActions(): ShellActions {
   return useContext(ShellContext);

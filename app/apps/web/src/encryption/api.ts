@@ -98,6 +98,14 @@ export const setUnlockPassword = (workspaceId: string, body: SetUnlockPasswordCo
 export const newRecoveryCode = (workspaceId: string, password: string) => whileKeysSettle(() =>
   request<NewRecoveryCodeResult>(workspaceRecoveryCodePath(workspaceId), { method: 'POST', body: { password } satisfies NewRecoveryCodeCommand }));
 
+const clockTime = new Intl.DateTimeFormat('en-GB', { hour: '2-digit', minute: '2-digit' });
+/** "at 08:12" from the answer's `retryAfterSeconds` (UI audit LK-8); "in 15 minutes" when the answer does not say. */
+function tryAgainAt(error: ApiError): string {
+  const seconds = Number((error.body as { retryAfterSeconds?: unknown } | null)?.retryAfterSeconds);
+  if (!Number.isFinite(seconds) || seconds <= 0) return 'in 15 minutes';
+  return `at ${clockTime.format(new Date(Date.now() + Math.ceil(seconds / 60) * 60_000))}`;
+}
+
 /** A calm sentence for a refused encryption call; never the server's own message, and never an echo of what was typed. */
 export function encryptionProblem(error: unknown, context: { workspace: string; who?: string }): string {
   if (error instanceof NetworkError) return 'Flux can’t be reached right now. Nothing changed; try again in a moment.';
@@ -106,9 +114,9 @@ export function encryptionProblem(error: unknown, context: { workspace: string; 
     case 'UNLOCK_INCORRECT':
       return `That password doesn’t unlock ${context.workspace}.`;
     case 'UNLOCK_RATE_LIMITED':
-      return 'Too many tries. Try again in 15 minutes.';
+      return `Too many tries. Try again ${tryAgainAt(error)}.`;
     case 'CREATION_RATE_LIMITED':
-      return 'You’ve made several encrypted spaces just now. Try again in 15 minutes.';
+      return `You’ve made several encrypted spaces just now. Try again ${tryAgainAt(error)}.`;
     case 'PASSWORD_TOO_WEAK':
       return 'Use at least 20 characters that are hard to guess, for example the six words suggested.';
     case 'ENCRYPTION_TAMPERED':

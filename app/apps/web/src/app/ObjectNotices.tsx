@@ -1,4 +1,5 @@
 import type { ObjectNotice } from '@flux/contracts';
+import { FORMER_MEMBER } from '../docs/format';
 import { AgentIdentity, Icon } from '../ui';
 import { agentAuthorOwner, type AgentOwners } from '../agents/owners';
 import { AuthorFace, clock, when } from './messageParts';
@@ -16,7 +17,7 @@ export function ObjectNoticeItem({ notice, meId, owners, authorOf, inThread = fa
   hasMessage: (messageId: string) => boolean; onOpen: (target: ReturnType<typeof objectTarget>) => void; onOpenThread?: (conversationId: string) => void;
 }) {
   const by = notice.by;
-  const name = by.name ?? (by.kind === 'agent' ? 'Agent' : 'Member');
+  const name = by.name ?? (by.kind === 'agent' ? 'Agent' : FORMER_MEMBER);
   const mine = by.kind === 'human' && by.id === meId;
   const phrase = objectPhrase(notice, authorOf, inThread);
   const state = objectState(notice);

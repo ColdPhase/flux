@@ -3,7 +3,7 @@ import { Link, Navigate, useNavigate, useParams, useRevalidator, useRouteError }
 import { useShellData } from '../app/data';
 import { Button, EmptyState, Icon, Input } from '../ui';
 import { ApiError } from '../api/client';
-import { encryptionProblem, isWorkspaceLocked, lockedWorkspaceId, unlockWorkspace } from './api';
+import { encryptionProblem, isWorkspaceLocked, lockedWorkspaceId, unlockWorkspace, type WorkspaceEncryption } from './api';
 import { isManagerOf, setLockedPlace, useLockedWorkspaces, useSpace } from './state';
 import './encryption.css';
 
@@ -14,8 +14,37 @@ import './encryption.css';
  * unlock password, or with the recovery code. Unlocking changes the page back without a reload: the shell reads the
  * workspaces again, and every place that failed with `423` loads again.
  */
+const lockTime = new Intl.DateTimeFormat('en-GB', { hour: '2-digit', minute: '2-digit' });
+const lockDay = new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short' });
+/** "at 22:10" today, "on 21 Oct at 22:10" on another day. */
+function at(iso: string): string {
+  const time = new Date(iso);
+  if (Number.isNaN(time.getTime())) return '';
+  return time.toDateString() === new Date().toDateString() ? `at ${lockTime.format(time)}` : `on ${lockDay.format(time)} at ${lockTime.format(time)}`;
+}
+const firstName = (name: string) => name.trim().split(/\s+/)[0] || name;
+
+/** Why the space is locked (UI audit LK-1): "Ada locked Garden club at 22:10." or "The server restarted at 22:15." */
+export function lockedReason(encryption: WorkspaceEncryption | null, name: string, meId: string): string {
+  const because = encryption?.lockedBecause;
+  if (!because) return 'Its content is encrypted.';
+  const when = at(because.at);
+  if (because.reason === 'restart') return `The server restarted${when ? ` ${when}` : ''}.`;
+  const who = because.by ? (because.by.id === meId ? 'You' : firstName(because.by.name)) : 'Someone';
+  return `${who} locked ${name}${when ? ` ${when}` : ''}.`;
+}
+
+/** "Ada, Jonas or Ben can unlock it.": the owners and admins with an unlock password, by first name. */
+export function whoCanUnlock(encryption: WorkspaceEncryption | null, meId: string): string {
+  const names = (encryption?.unlockers ?? []).filter((person) => person.id !== meId).map((person) => firstName(person.name));
+  if (!names.length) return 'An owner or admin needs to unlock it.';
+  const list = names.length === 1 ? names[0]! : `${names.slice(0, -1).join(', ')} or ${names[names.length - 1]}`;
+  return `${list} can unlock it.`;
+}
+
 export function LockedSpace({ workspaceId }: { workspaceId: string | null }) {
   const space = useSpace(workspaceId);
+  const { me } = useShellData();
   const revalidator = useRevalidator();
   const name = space?.name ?? 'This space';
   const encryption = space?.encryption ?? null;
@@ -23,18 +52,8 @@ export function LockedSpace({ workspaceId }: { workspaceId: string | null }) {
   // `canUnlock` is the server's answer: an owner or admin with an unlock password, or with the recovery code while one exists.
   const unlocker = manager && !!encryption?.canUnlock;
   const hasPassword = !!encryption?.myPassword;
-  // A key rotation ends the old recovery code until an owner makes a new one (F-030, #655).
   const codeExists = !!encryption?.recoveryCode;
-  const [recovery, setRecovery] = useState(false);
-  const [secret, setSecret] = useState('');
-  const [busy, setBusy] = useState(false);
-  const [problem, setProblem] = useState('');
-  const inFlight = useRef(false);
-  const fieldRef = useRef<HTMLInputElement>(null);
-  const statusId = useId();
-  const usingRecovery = (recovery && codeExists) || !hasPassword;
-  // Nothing to type: no password of one's own, and no recovery code to use instead.
-  const nothingToType = !unlocker;
+  const reason = lockedReason(encryption, name, me.user.id);
 
   // The shell names this space in its header while the panel is on show.
   useLayoutEffect(() => {
@@ -46,9 +65,51 @@ export function LockedSpace({ workspaceId }: { workspaceId: string | null }) {
   const unlockedNow = !!space && encryption?.state !== 'locked';
   useEffect(() => { if (unlockedNow) void revalidator.revalidate(); }, [unlockedNow, revalidator]);
 
+  return (
+    <div className="pane-scroll"><div className="pane-in locked">
+      <div className="locked__card" data-locked-space={workspaceId ?? ''}>
+        {manager ? (
+          <EmptyState icon="lock" level={2} title={`Unlock ${name}`}>
+            <p data-locked-reason="">{reason}{' '}
+              {hasPassword ? 'Type your unlock password to open it for everyone.'
+                : unlocker ? `You don’t have an unlock password for ${name} yet. ${whoCanUnlock(encryption, me.user.id)}${codeExists ? ' Or use the recovery code.' : ''}`
+                  : `You don’t have an unlock password for ${name} yet. ${whoCanUnlock(encryption, me.user.id)}`}</p>
+            {unlocker && workspaceId ? <UnlockForm workspaceId={workspaceId} name={name} encryption={encryption} autoFocus /> : null}
+          </EmptyState>
+        ) : (
+          <EmptyState icon="lock" level={2} title={`${name} is waiting to be unlocked`}>
+            <p data-locked-reason="">{reason} {space?.role === 'guest' ? 'An owner or admin needs to unlock it.' : whoCanUnlock(encryption, me.user.id)} You can come back then.</p>
+          </EmptyState>
+        )}
+      </div>
+    </div></div>
+  );
+}
+
+/**
+ * The unlock field (F-030): the person's own unlock password, or the recovery code swapped in place. Used by the locked panel
+ * and, after Lock now, by People → Encryption in Lock now's slot (UI audit EN-1). Errors are shown below the buttons, so
+ * they never move.
+ */
+export function UnlockForm({ workspaceId, name, encryption, autoFocus = false, onUnlocked, onCancel }: {
+  workspaceId: string; name: string; encryption: WorkspaceEncryption | null; autoFocus?: boolean; onUnlocked?: () => void; onCancel?: () => void;
+}) {
+  const revalidator = useRevalidator();
+  const hasPassword = !!encryption?.myPassword;
+  // A key rotation ends the old recovery code until an owner makes a new one (F-030, #655).
+  const codeExists = !!encryption?.recoveryCode;
+  const [recovery, setRecovery] = useState(false);
+  const [secret, setSecret] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [problem, setProblem] = useState('');
+  const inFlight = useRef(false);
+  const fieldRef = useRef<HTMLInputElement>(null);
+  const statusId = useId();
+  const usingRecovery = (recovery && codeExists) || !hasPassword;
+
   async function unlock(event: FormEvent) {
     event.preventDefault();
-    if (busy || inFlight.current || !workspaceId) return;
+    if (busy || inFlight.current) return;
     if (!secret.trim()) {
       setProblem(usingRecovery ? 'Enter the recovery code.' : 'Enter your unlock password.');
       fieldRef.current?.focus();
@@ -60,6 +121,7 @@ export function LockedSpace({ workspaceId }: { workspaceId: string | null }) {
       await unlockWorkspace(workspaceId, usingRecovery ? { recoveryCode: secret.trim() } : { password: secret });
       setSecret('');
       await revalidator.revalidate();
+      onUnlocked?.();
     } catch (error) {
       setSecret('');
       setProblem(error instanceof ApiError && error.code === 'UNLOCK_INCORRECT' && usingRecovery
@@ -69,34 +131,20 @@ export function LockedSpace({ workspaceId }: { workspaceId: string | null }) {
   }
 
   return (
-    <div className="pane-scroll"><div className="pane-in locked">
-      <div className="locked__card" data-locked-space={workspaceId ?? ''}>
-        {manager ? (
-          <EmptyState icon="lock" level={2} title={`Unlock ${name}`}>
-            {hasPassword ? <p>Its content is encrypted. After the server restarted, an owner or admin needs to unlock it.</p>
-              : <p>You don’t have an unlock password for {name} yet. Another owner or admin can unlock it{codeExists ? ', or you can use the recovery code.' : '.'}</p>}
-            {nothingToType ? null : (
-              <form className="locked__form" onSubmit={(event) => void unlock(event)} noValidate>
-                <Input ref={fieldRef} label={usingRecovery ? 'Recovery code' : 'Your unlock password'} type={usingRecovery ? 'text' : 'password'}
-                  autoComplete={usingRecovery ? 'off' : 'current-password'} autoCapitalize="none" autoCorrect="off" spellCheck={false} autoFocus
-                  value={secret} aria-invalid={problem ? true : undefined} aria-describedby={problem ? statusId : undefined}
-                  onChange={(event) => { setSecret(event.target.value); if (problem) setProblem(''); }} />
-                <div className="locked__actions">
-                  <Button type="submit" variant="primary" busy={busy}>Unlock</Button>
-                  {hasPassword && codeExists ? <Button variant="quiet" onClick={() => { setRecovery(!recovery); setSecret(''); setProblem(''); requestAnimationFrame(() => fieldRef.current?.focus()); }}>{recovery ? 'Use my unlock password' : 'Use the recovery code'}</Button> : null}
-                </div>
-                {/* Below the buttons, so an error never moves them. */}
-                <p className="locked__status" id={statusId} role="alert">{problem}</p>
-              </form>
-            )}
-          </EmptyState>
-        ) : (
-          <EmptyState icon="lock" level={2} title={`${name} is waiting to be unlocked`}>
-            <p>Its content is encrypted. After the server restarted, an owner or admin needs to unlock it. You can come back then.</p>
-          </EmptyState>
-        )}
+    <form className="locked__form" onSubmit={(event) => void unlock(event)} noValidate aria-label={`Unlock ${name}`}
+      onKeyDown={onCancel ? (event) => { if (event.key === 'Escape') { event.stopPropagation(); onCancel(); } } : undefined}>
+      <Input ref={fieldRef} label={usingRecovery ? 'Recovery code' : 'Your unlock password'} type={usingRecovery ? 'text' : 'password'}
+        autoComplete={usingRecovery ? 'off' : 'current-password'} autoCapitalize="none" autoCorrect="off" spellCheck={false} autoFocus={autoFocus}
+        value={secret} aria-invalid={problem ? true : undefined} aria-describedby={problem ? statusId : undefined}
+        onChange={(event) => { setSecret(event.target.value); if (problem) setProblem(''); }} />
+      <div className="locked__actions">
+        <Button type="submit" variant="primary" busy={busy}>Unlock</Button>
+        {hasPassword && codeExists ? <Button variant="quiet" onClick={() => { setRecovery(!recovery); setSecret(''); setProblem(''); requestAnimationFrame(() => fieldRef.current?.focus()); }}>{recovery ? 'Use my unlock password' : 'Use the recovery code'}</Button> : null}
+        {onCancel ? <Button variant="quiet" onClick={onCancel}>Cancel</Button> : null}
       </div>
-    </div></div>
+      {/* Below the buttons, so an error never moves them. */}
+      <p className="locked__status" id={statusId} role="alert">{problem}</p>
+    </form>
   );
 }
 

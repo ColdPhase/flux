@@ -1,8 +1,9 @@
 import { useEffect, useId, useRef, useState, type FormEvent, type RefObject } from 'react';
-import { useRevalidator } from 'react-router';
+import { useNavigate, useRevalidator } from 'react-router';
 import { ApiError } from '../api/client';
 import { createWorkspace } from '../project/api';
 import { useShellActions } from '../app/shellContext';
+import { useShellData } from '../app/data';
 import { Button, Icon, Input } from '../ui';
 import { createEncryptedWorkspace, encryptionProblem, newRecoveryCode, type EncryptedWorkspace } from './api';
 import { MIN_PASSWORD_LENGTH, checkPassword, generatePassphrase, loadWords } from './passphrase';
@@ -20,8 +21,12 @@ import './encryption.css';
  * written to storage; the person prints it or writes it down.
  */
 export function NewSpace({ onBack }: { onBack: () => void }) {
-  const { openDetails } = useShellActions();
+  const { openDetails, closePanel } = useShellActions();
+  const { me } = useShellData();
+  const navigate = useNavigate();
   const revalidator = useRevalidator();
+  // The answer to create was lost: the space exists, but this browser has no code (RC-4).
+  const [lost, setLost] = useState(false);
   const [step, setStep] = useState<'form' | 'code'>('form');
   const [name, setName] = useState('');
   const [encrypt, setEncrypt] = useState(false);
@@ -101,6 +106,8 @@ export function NewSpace({ onBack }: { onBack: () => void }) {
       setWords(''); setOwn(''); setRepeat('');
       void revalidator.revalidate();
     } catch (error) {
+      // A create whose answer never arrived may have made the space: the retry (same creationId) says, so no "Nothing changed".
+      if (encrypt && !(error instanceof ApiError)) { setLost(true); setProblem(`Flux couldn’t be reached to finish making ${spaceName}. Try again: if it was made, you’ll go on to its recovery code.`); return; }
       if (error instanceof ApiError && error.code === 'PASSWORD_TOO_WEAK' && mode === 'own') fail('own', encryptionProblem(error, { workspace: spaceName }));
       else setProblem(error instanceof ApiError && error.status === 409 && error.code !== 'IDEMPOTENCY_CONFLICT' ? 'A space with that name already exists. Choose another name.' : encryptionProblem(error, { workspace: spaceName }));
     } finally {
@@ -113,9 +120,11 @@ export function NewSpace({ onBack }: { onBack: () => void }) {
 
   if (step === 'code' && created) {
     return (
-      <RecoveryStep workspace={created.workspace} initialCode={created.code} headingRef={headingRef}
+      <RecoveryStep workspace={created.workspace} initialCode={created.code} headingRef={headingRef} lost={lost}
         secret={() => secret.current} forgetSecret={() => { secret.current = ''; }}
-        onDone={() => { secret.current = ''; openDetails({ kind: 'people', workspaceId: created.workspace.id }); }} />
+        onDone={() => { secret.current = ''; openDetails({ kind: 'people', workspaceId: created.workspace.id }); }}
+        // NS-1: the space's first project, in that space.
+        onFirstProject={() => { secret.current = ''; closePanel(); void navigate(`/projects/new?in=${encodeURIComponent(created.workspace.id)}`); }} />
     );
   }
 
@@ -123,7 +132,7 @@ export function NewSpace({ onBack }: { onBack: () => void }) {
   return (
     <div className="details newspace">
       <button type="button" className="details__back" aria-label="Back to Details" onClick={onBack}><Icon name="chevron-left" size={14} />Details</button>
-      <p className="details__eyebrow">Workspace</p>
+      <p className="details__eyebrow">Space</p>
       <h3 className="details__title">New space</h3>
       <form className="newspace__form" onSubmit={(event) => void submit(event)} noValidate>
         <Input ref={nameRef} label="Name" value={name} maxLength={200} autoComplete="off" autoFocus placeholder="Garden club" error={nameError || null}
@@ -146,6 +155,10 @@ export function NewSpace({ onBack }: { onBack: () => void }) {
                   <Button variant="quiet" onClick={drawWords}>Other words</Button>
                   <Button variant="quiet" onClick={() => { setMode('own'); setOwn(''); setRepeat(''); setDrawn(''); requestAnimationFrame(() => ownRef.current?.focus()); }}>Use my own</Button>
                 </div>
+                {/* For a password manager (RC-2): the account as the username and the words as the new password. */}
+                <input className="ui-vh" type="text" autoComplete="username" value={me.user.email ?? ''} readOnly tabIndex={-1} aria-hidden="true" />
+                <input className="ui-vh" type="password" autoComplete="new-password" name="new-password" value={words} readOnly tabIndex={-1} aria-hidden="true" data-new-password="" />
+                <p className="newspace__keep" data-keep-words="">Write these six words down or save them in your password manager. You type them after every server restart.</p>
                 <p className="ui-vh" role="status">{drawn}</p>
               </div>
             ) : (
@@ -197,10 +210,11 @@ function WhatItProtects() {
  * The recovery code, once (F-030, #655). When the answer to the create call was lost and the space came back from a retry,
  * there is no code to show: the step says so and offers a new one.
  */
-function RecoveryStep({ workspace, initialCode, secret, forgetSecret, headingRef, onDone }: {
+function RecoveryStep({ workspace, initialCode, secret, forgetSecret, headingRef, lost, onDone, onFirstProject }: {
   workspace: EncryptedWorkspace; initialCode: string | null; secret: () => string; forgetSecret: () => void;
-  headingRef: RefObject<HTMLHeadingElement | null>; onDone: () => void;
+  headingRef: RefObject<HTMLHeadingElement | null>; lost: boolean; onDone: () => void; onFirstProject: () => void;
 }) {
+  const [kept, setKept] = useState(false);
   const [code, setCode] = useState(initialCode);
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState('');
@@ -221,13 +235,23 @@ function RecoveryStep({ workspace, initialCode, secret, forgetSecret, headingRef
     <div className="details newspace newspace--code" data-recovery-step="">
       <p className="details__eyebrow">{workspace.name}</p>
       <h3 className="details__title" ref={headingRef} tabIndex={-1}>Your recovery code</h3>
-      {code ? <RecoveryCodeBlock workspaceName={workspace.name} code={code} onDone={onDone} /> : (
+      {kept ? (
         <>
-          <p className="details__lead">The recovery code was shown once and can’t be shown again. Make a new one in People.</p>
+          <p className="details__lead">{workspace.name} is ready. Start its first project, or invite people in People.</p>
+          <div className="details__actions">
+            <Button variant="primary" onClick={onFirstProject} data-first-project="">Start the first project in {workspace.name}</Button>
+            <Button variant="secondary" onClick={onDone}>People</Button>
+          </div>
+        </>
+      ) : code ? <RecoveryCodeBlock workspaceId={workspace.id} workspaceName={workspace.name} code={code} onDone={() => setKept(true)} /> : (
+        <>
+          {/* RC-4: a create whose answer was lost made the space, but this browser never saw its code. */}
+          <p className="details__lead">{lost ? `${workspace.name} was made, but its recovery code didn’t reach this browser. Make a new one now.`
+            : 'The recovery code was shown once and can’t be shown again. Make a new one in People.'}</p>
           {problem ? <p className="people__notice" role="alert"><Icon name="alert" size={13} />{problem}</p> : null}
           <div className="details__actions">
-            <Button variant="primary" onClick={onDone}>Done</Button>
-            <Button variant="secondary" busy={busy} onClick={() => void makeNew()}>New recovery code</Button>
+            <Button variant="primary" busy={busy} onClick={() => void makeNew()}>New recovery code</Button>
+            <Button variant="secondary" onClick={onDone}>Done</Button>
           </div>
         </>
       )}

@@ -131,6 +131,22 @@ describe('F-030 unlock, Lock now and 423', () => {
     await clearAttempts(A);
   });
 
+  test('locked: why and by whom (Lock now names the person for all but guests), and who can unlock (S3 UI audit LK-1)', async () => {
+    expectStatus(await lock(ada.browser, A), 200);
+    const member = (await readWorkspace(cy.browser, A)).encryption!;
+    assert.equal(member.state, 'locked');
+    assert.equal(member.lockedBecause?.reason, 'person');
+    assert.deepEqual(member.lockedBecause?.by, { id: ada.id, name: 'Ada' });
+    assert.ok(Math.abs(Date.parse(member.lockedBecause!.at) - Date.now()) < 60_000);
+    assert.ok(member.unlockers.some((holder) => holder.id === ada.id), 'Ada can unlock it');
+    assert.ok(member.unlockers.every((holder) => holder.id !== cy.id && holder.id !== dee.id), 'only owners and admins with a password');
+    const guest = (await readWorkspace(dee.browser, A)).encryption!;
+    assert.deepEqual({ reason: guest.lockedBecause?.reason, by: guest.lockedBecause?.by, unlockers: guest.unlockers }, { reason: 'person', by: null, unlockers: [] });
+    expectStatus(await unlock(ada.browser, A, { password: pw.ada }), 200);
+    assert.equal((await readWorkspace(cy.browser, A)).encryption!.lockedBecause, null);
+    await clearAttempts(A);
+  });
+
   test('a member, a guest and an admin without a password are refused; the recovery code unlocks', async () => {
     await lock(ada.browser, A);
     for (const who of [cy, dee]) {

@@ -23,7 +23,11 @@ export const NEW_PROJECT_AUDIENCE = 'You and the workspace’s owners and admins
  * project. `create` resolves to the new project, or null after it has said why it could not.
  */
 export function useNewProject() {
-  const { workspace } = useShellData();
+  const { workspace, workspaces } = useShellData();
+  // `?in=<workspaceId>` (F-030 S3, UI audit NS-1): a new space's "Start the first project" opens New project in that space,
+  // when the person may create projects there (owners and admins). #770's picker replaces this with a choice.
+  const asked = typeof window === 'undefined' ? null : new URLSearchParams(window.location.search).get('in');
+  const named = workspaces.find((item) => item.id === asked && (item.role === 'owner' || item.role === 'admin'));
   const [spaceName, setSpaceName] = useState('');
   const [template, setTemplate] = useState<ProjectTemplate>('build');
   const [createdSpace, setCreatedSpace] = useState<{ id: string; name: string } | null>(null);
@@ -33,7 +37,7 @@ export function useNewProject() {
   const intents = useIntentKeys();
   // Set before the first await, so a second submit in the same tick never sends another command.
   const inFlight = useRef(false);
-  const space = workspace ?? createdSpace;
+  const space = named ?? workspace ?? createdSpace;
   const ready = (name: string) => !!name.trim() && (!!space || !!spaceName.trim());
   async function create(name: string): Promise<Project | null> {
     if (!ready(name) || busy || inFlight.current) return null;

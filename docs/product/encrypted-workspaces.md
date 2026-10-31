@@ -1231,7 +1231,10 @@ Details sheet on a phone):
   admin has their own. It's needed after every server restart. Every owner's and admin's password
   protects the whole space, and the weakest one counts. Your own needs at least 20 characters." Then
   one line: "If every unlock password and the recovery code are lost, everything in this space is gone
-  for good. Nobody can recover it, not even whoever runs this server." Then a quiet link, **What
+  for good. Nobody can recover it, not even whoever runs this server." The six words are offered to a
+  password manager (a password field with `autocomplete="new-password"` and the account e-mail as its
+  username) and the form says: "Write these six words down or save them in your password manager. You
+  type them after every server restart." (UI audit RC-2.) Then a quiet link, **What
   encryption protects**, which opens the [threat model](#threat-model) in plain words. It explains
   that it protects a copy of the data or a server taken away switched off, and not a running server,
   a hibernated host or a VM memory snapshot.
@@ -1242,12 +1245,21 @@ with the text "This code unlocks Garden club if every password is lost. It's sho
 it or write it down and keep it somewhere safe." A **Print** button sits above a checkbox "I've kept
 the recovery code", and **Done** is enabled only after it is checked. There is **no Copy button**: a
 copied code can stay in clipboard history and sync between devices. A person who selects the text
-and copies it themselves takes that choice. Nothing about the code is stored in the browser. If the answer to the create call was lost, a retry with the same
+and copies it themselves takes that choice. Nothing about the code is stored in the browser. The code is
+two lines of four groups in reading order ("20C6-E0PC-3VP2-GMT2" / "42B5-GDE4-CQNF-6STJ") on every width,
+so it cannot be read by columns (RC-3), with the line "Keep this code apart from your unlock password."
+**The step cannot be skipped by closing it (RC-1).** While the box is unchecked, Esc, ×, Back or leaving
+the page asks in place: "Close without keeping the recovery code? You can make a new one in People."
+with **Keep it open** and **Close anyway**. Closing anyway records, in this browser only and with the
+space's id alone, that the code was not kept, and People → Encryption then says to owners "Nobody
+confirmed keeping Garden club's recovery code. Make a new one." until a new code is kept. The same
+applies to a new code made in People. If the answer to the create call was lost, a retry with the same
 `creationId` returns the space without the code. The panel then says "The recovery code was shown
 once and can't be shown again. Make a new one in People." and offers **New recovery code**.
 
 Project setup's first space keeps its form and is never encrypted. The new space appears in the
-project picker and in Create like any other space.
+project picker and in Create like any other space. After Done the primary action is **Start the first
+project in Garden club**, which opens New project in that space (`/projects/new?in=<id>`; NS-1).
 
 ### Locked
 
@@ -1255,15 +1267,23 @@ project picker and in Create like any other space.
   "Garden club", and on the second line "Waiting to be unlocked". It opens the locked panel.
 - **The locked panel**, also used for every deep link into the workspace while it is locked (the URL
   is kept, Back works):
-  - For a member or guest: **Garden club is waiting to be unlocked** · "Its content is encrypted.
-    After the server restarted, an owner or admin needs to unlock it. You can come back then."
-  - For an owner or admin: **Unlock Garden club** · field **Your unlock password** · button **Unlock**
+  - The first line gives the known reason (`encryption.lockedBecause`, from the last `workspace.locked.v1`
+    while no unlock row exists): "Ada locked Garden club at 22:10." (`person`; "You locked…" for the
+    person who did) or "The server restarted at 22:15." (`restart`); otherwise "Its content is encrypted."
+    (UI audit LK-1.)
+  - For a member or guest: **Garden club is waiting to be unlocked** · the reason · "Ada, Jonas or Ben
+    can unlock it. You can come back then." (`encryption.unlockers`, the owners and admins with an
+    unlock password; "An owner or admin needs to unlock it." when the list is empty or for a guest).
+  - For an owner or admin: **Unlock Garden club** · the reason · "Type your unlock password to open it for
+    everyone." · field **Your unlock password** · button **Unlock**
     · quiet link **Use the recovery code**, which swaps the field in place. Errors are shown in place:
     "That password doesn't unlock Garden club." and "Too many tries. Try again in 15 minutes."
   - For an owner or admin without a password: "You don't have an unlock password for Garden club
     yet. Another owner or admin can unlock it, or you can use the recovery code."
 - An open page in that workspace turns into the locked panel on `workspace.locked.v1` or on any
   `423`, and back on `workspace.unlocked.v1`, without a reload.
+- **On a phone** the locked panel of a deep link keeps the header's ‹ Back and the tab bar, so an
+  installed app is never left without a way out (LK-2).
 - **Cross-workspace places.** Home's "Needs you" lists one quiet row per waiting space below its queue
   (lock, "Garden club", "Waiting to be unlocked"), and its empty line reads "Nothing needs you in your
   open spaces." while any space waits. The Inbox keeps its "Waiting to be unlocked" note. Search says
@@ -1279,6 +1299,9 @@ project picker and in Create like any other space.
 - **The People panel** gets an **Encryption** section, its own `details__sec` placed before the AI
   section and kept in place in every state:
   - "Encrypted · only people, no AI. Unlocked by Ada at 09:12."
+  - While locked, the slot of **Lock now** reads **Unlock…** for an owner or admin who can unlock, and opens
+    the unlock field in place (the same password and recovery-code group as the locked panel); the hint
+    reads "Unlock Garden club to change these." (UI audit EN-1.)
   - For holders (owners and admins with a password): **Change your unlock password**. An owner or admin
     without a password sees "You don't have an unlock password yet. Another owner or admin can let you
     set one, or use the recovery code." with **Use the recovery code**. Once a holder has allowed it,
@@ -1334,7 +1357,7 @@ answers `Cache-Control: no-store`, and does not use the Idempotency-Key store.
 | `POST /api/v1/workspaces/:id/unlock-password-grants` | `{ userId, password }` (the holder's own) | `201 { expiresAt }`, `400 UNLOCK_INCORRECT`, `403` (not a holder, or the target is not an owner or admin), `409 ALREADY_HAS_PASSWORD`, `423`. |
 | `PUT /api/v1/workspaces/:id/unlock-password` | `{ currentPassword?, recoveryCode?, newPassword }` | Changing needs `currentPassword` or `recoveryCode`. A first password needs a valid grant or `recoveryCode`, otherwise `403 UNLOCK_PASSWORD_GRANT_REQUIRED`. `200`, `400 UNLOCK_INCORRECT`, `400 PASSWORD_TOO_WEAK`, `423`. |
 | `POST /api/v1/workspaces/:id/recovery-code` | `{ password }` | `200 { recoveryCode }` (owner only), `423`. |
-| `GET /api/v1/workspaces[/:id]` | — | `Workspace.encryption`: `null`, or `{ state: 'locked' \| 'unlocked', unlockedAt, unlockedBy: { id, name } \| null, myPassword: boolean, canUnlock: boolean, passwordGrantUntil: string \| null, recoveryCode: boolean, rotation: null \| { percent, paused: boolean, startedAt }, keyChangedAt }`. `myPassword` and `canUnlock` are filled for owners and admins; others get `false`. `passwordGrantUntil` is when a holder's grant for the caller to set a first password ends (an owner or admin without a password, a valid grant only); otherwise `null`. `GET …/members` adds `unlockPassword: boolean` to owner and admin rows of an encrypted workspace for a reader who is an owner or admin, and nothing for anyone else. |
+| `GET /api/v1/workspaces[/:id]` | — | `Workspace.encryption`: `null`, or `{ state: 'locked' \| 'unlocked', unlockedAt, unlockedBy: { id, name } \| null, lockedBecause: { reason: 'person' \| 'restart', at, by: { id, name } \| null } \| null, unlockers: { id, name }[], myPassword: boolean, canUnlock: boolean, passwordGrantUntil: string \| null, recoveryCode: boolean, rotation: null \| { percent, paused: boolean, startedAt }, keyChangedAt }`. `lockedBecause` (S3 UI audit): while locked and no unlock row exists, the last `workspace.locked.v1`; `by` only for `person`, and null for guests. `unlockers`: owners and admins with an unlock password, for everyone but guests (`[]`). `myPassword` and `canUnlock` are filled for owners and admins; others get `false`. `passwordGrantUntil` is when a holder's grant for the caller to set a first password ends (an owner or admin without a password, a valid grant only); otherwise `null`. `GET …/members` adds `unlockPassword: boolean` to owner and admin rows of an encrypted workspace for a reader who is an owner or admin, and nothing for anyone else. |
 
 The new action `workspace.manage_encryption` in `WORKSPACE_ACTIONS` is allowed for a human owner or
 admin (`isManager`). `New recovery code` additionally needs the owner role. Events

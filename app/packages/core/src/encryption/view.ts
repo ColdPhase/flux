@@ -17,6 +17,10 @@ export interface EncryptionViewInput {
   rotationReason?: { kind: string; userId: string | null; name: string | null } | null;
   /** Why the key last changed: the finished rotation's reason (S3). */
   keyChangeReason?: { kind: string; userId: string | null; name: string | null } | null;
+  /** The last lock while no unlock row exists (S3 UI audit LK-1). */
+  lastLock?: { reason: string; at: Date; by: string | null; byName: string | null } | null;
+  /** Owners and admins with an unlock password. */
+  unlockers?: { id: string; name: string }[];
 }
 
 /** A sealed workspace whose key rows are missing reads as locked (fail closed). */
@@ -46,6 +50,8 @@ export function presentEncryption(input: EncryptionViewInput, role: WorkspaceRol
     rotation: rotationView(input, unlocked, role),
     keyChangedAt: input.keyChangedAt ? input.keyChangedAt.toISOString() : null,
     keyChangeReason: keyChangeReasonView(input, role),
+    lockedBecause: unlocked ? null : lockedBecauseView(input, role),
+    unlockers: role !== null && role !== 'guest' ? (input.unlockers ?? []).map((u) => ({ id: u.id, name: u.name })) : [],
   };
 }
 
@@ -65,6 +71,14 @@ function rotationView(input: EncryptionViewInput, unlocked: boolean, role: Works
     reason: role !== null && role !== 'guest' && input.rotationReason && ['removed', 'demoted', 'holder_deleted'].includes(input.rotationReason.kind)
       ? { kind: input.rotationReason.kind as 'removed' | 'demoted' | 'holder_deleted', userId: input.rotationReason.userId, name: input.rotationReason.name }
       : null };
+}
+
+/** Why it is locked (S3 UI audit LK-1): Lock now names who did it (everyone but guests); a restart names nobody. */
+function lockedBecauseView(input: EncryptionViewInput, role: WorkspaceRole | null): WorkspaceEncryption['lockedBecause'] {
+  const lock = input.lastLock;
+  if (!lock || role === null || (lock.reason !== 'person' && lock.reason !== 'restart') || Number.isNaN(lock.at.getTime())) return null;
+  const by = lock.reason === 'person' && role !== 'guest' && lock.by && lock.byName ? { id: lock.by, name: lock.byName } : null;
+  return { reason: lock.reason, at: lock.at.toISOString(), by };
 }
 
 const REASON_KINDS = ['removed', 'demoted', 'holder_deleted'] as const;
