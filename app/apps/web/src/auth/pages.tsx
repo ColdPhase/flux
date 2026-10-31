@@ -247,7 +247,7 @@ export function SignUpPage() {
         <Input label="Name" name="name" autoComplete="name" defaultValue={result?.values?.name} error={result?.fieldErrors?.name}
           hint="Shown to people you work with." autoFocus />
         <Input label="Email" name="email" type="email" autoComplete="email" inputMode="email" autoCapitalize="none" spellCheck={false}
-          defaultValue={result?.values?.email} error={result?.fieldErrors?.email} />
+          defaultValue={result?.values?.email ?? params.get('email') ?? undefined} error={result?.fieldErrors?.email} />
         <Input label="Password" name="password" type="password" autoComplete="new-password" error={passwordError}
           onChange={(event) => { setPasswordLength(event.target.value.length); setEditedAfter(result); }}
           hint={passwordLength >= PASSWORD_MIN_LENGTH ? undefined : `At least ${PASSWORD_MIN_LENGTH} characters. A short sentence works well.`} />
@@ -329,7 +329,6 @@ function ResetUnavailable() {
       <div>
         <p><strong>Password reset by email isn’t set up on this Flux server.</strong></p>
         <p>Ask the person who runs it to reset your password, or to connect an email service so you can do it yourself.</p>
-        <p className="auth__mono">For operators: set FLUX_SMTP_URL and FLUX_MAIL_FROM.</p>
       </div>
     </div>
   );
@@ -357,15 +356,15 @@ export function ForgotPasswordPage() {
 
   return (
     <>
-      <Heading title="Reset your password">Enter the email you use for Flux and we’ll send you a link to choose a new password.</Heading>
-      {unavailable ? <ResetUnavailable /> : null}
-      <Form method="post" className="auth__form" noValidate ref={formRef} aria-label="Request password reset">
+      <Heading title="Reset your password">{unavailable ? null : 'Enter the email you use for Flux and we’ll send you a link to choose a new password.'}</Heading>
+      {/* Without email there is nothing to fill in: the message and the way back only (#763 FR-6). */}
+      {unavailable ? <><ResetUnavailable /><p className="auth__alt"><Link className="ui-link" to="/sign-in">Back to sign in</Link></p></> : <><Form method="post" className="auth__form" noValidate ref={formRef} aria-label="Request password reset">
         <FormError message={result?.formError} />
         <Input label="Email" name="email" type="email" autoComplete="email" inputMode="email" autoCapitalize="none" spellCheck={false}
-          defaultValue={result?.values?.email} error={result?.fieldErrors?.email} autoFocus={!unavailable} disabled={unavailable} />
-        <Button type="submit" variant="primary" size="lg" block busy={submitting} disabled={unavailable}>{submitting ? 'Sending…' : 'Send reset link'}</Button>
+          defaultValue={result?.values?.email} error={result?.fieldErrors?.email} autoFocus />
+        <Button type="submit" variant="primary" size="lg" block busy={submitting}>{submitting ? 'Sending…' : 'Send reset link'}</Button>
       </Form>
-      <p className="auth__alt"><Link className="ui-link" to="/sign-in">Back to sign in</Link></p>
+      <p className="auth__alt"><Link className="ui-link" to="/sign-in">Back to sign in</Link></p></>}
     </>
   );
 }

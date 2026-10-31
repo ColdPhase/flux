@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { isQuestion, mentions } from '@flux/core';
+import { isQuestion, mentions, mentionsSomeone } from '@flux/core';
 
 // Pure addressing rules shared by notifications (#116) and the return view (#106). They pin today's
 // behaviour; a mention only selects a reason and never grants access (#220).
@@ -32,4 +32,14 @@ test('a question ends with a question mark (optionally an emoji) or has one befo
     ['No question.', false],
   ];
   for (const [body, expected] of cases) assert.equal(isQuestion(body), expected, `isQuestion(${JSON.stringify(body)})`);
+});
+
+test('a question that names someone with @ is theirs, not everyone in the thread (#763 A2)', () => {
+  const cases: [body: string, expected: boolean][] = [
+    ['@Jonas Berg can you check the gateway?', true],
+    ['Can you check it, @Maja?', true],
+    ['Mail ada@example.test about it?', false],
+    ['Can someone check the gateway?', false],
+  ];
+  for (const [body, expected] of cases) assert.equal(mentionsSomeone(body), expected, `mentionsSomeone(${JSON.stringify(body)})`);
 });

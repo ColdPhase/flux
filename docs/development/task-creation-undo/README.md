@@ -20,6 +20,19 @@ assigned lists, choosers and new targets. Direct links, existing references, the
 it and name it as undone history. Nothing it produced is deleted, and nothing brings it back: a retry of the
 original creation (HTTP cache, native receipt, MCP) gets a typed `TASK_CREATION_REVERTED` conflict.
 
+## A person's own new task (#763 B1, 2026-10-30)
+
+Prostota principle 6 ("Undo instead of confirmations") and the #763 audit (B1): creating a task shows the toast
+"Task #13 created · Undo · Z" on every create path, while the panel opens on the task. The toast's Undo is this same
+command and history, extended by one reason code: a task with origin `human` is undoable **only by its human creator**,
+while it is unchanged and unused and the creator still has project write. Its eligibility reads
+`{ eligible: true, reason: 'own_creation' }` for that person; everyone else (its owner, other writers, agents) still reads
+`not_ai_origin`. `eligible` stays the AI-origin reason, and only it shows **Undo task creation** in Details; a person's own
+task offers Undo in the toast instead, so Details gains no section. Migration 0135 lets the stored reverted-row shape
+(`task_creation_reversion_shape`) admit origin `human`; the migrator's #238 compatibility check accepts that form.
+Nothing else of AC-U1–AC-U5 changes: the reverted task
+stays as read-only history with its notices, and the use latch, version and baseline fences apply unchanged.
+
 ## Who may undo (AC-U1)
 
 `creationUndoEligibility` in `app/packages/core/src/work/creation-undo.ts` decides it, for reads and, again, inside
@@ -33,7 +46,7 @@ the command under the task fence:
   `work.creation.revert` standing grant, execute or plan; a `work.update` grant does not count), or a person who is
   its human creator, its current human owner, or the current owner of its creator agent. The agent that produced a
   proposal gains nothing from it.
-- **Reasons** returned with a task: `eligible`, `not_ai_origin`, `eligibility_unknown`, `task_used`,
+- **Reasons** returned with a task: `eligible`, `own_creation` (#763, above), `not_ai_origin`, `eligibility_unknown`, `task_used`,
   `creation_changed`, `not_authorized`, `already_reverted`. No owner, grant or helper detail is exposed.
 
 The command is `POST /api/v1/work/:workId/creation-undo` with `{ clientCommandId, expectedVersion }`, and the MCP

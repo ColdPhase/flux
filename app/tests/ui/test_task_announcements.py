@@ -214,7 +214,7 @@ class TaskAnnouncements(unittest.TestCase):
         expect(details.get_by_role("heading", name=FROM_MESSAGE)).to_be_visible()
         # The task made from the question also shows under the question itself, as before.
         question = page.locator(f"#message-{self.ids['question']}")
-        expect(question.get_by_role("button", name=f"Work: {FROM_MESSAGE}")).to_be_visible()
+        expect(question.get_by_role("button", name=re.compile(r"^Task #\d+: " + re.escape(FROM_MESSAGE) + "$"))).to_be_visible()
 
     def test_03_the_first_contribution_is_the_tasks_root(self) -> None:
         page = self.page("ada")
@@ -222,13 +222,13 @@ class TaskAnnouncements(unittest.TestCase):
         root = page.locator(f"#message-{self.ids['first']}")
         expect(root.locator(".project-convo__message-meta strong")).to_have_text("Jonas Berg")
         expect(root.locator(".message-body").first).to_have_text(FIRST_WORD)
-        chip = root.get_by_role("button", name=f"Discussion of task: {MEASURE}")
+        chip = root.get_by_role("button", name=re.compile(r"^Discussion of task #\d+: " + re.escape(MEASURE) + "$"))
         expect(chip).to_be_visible()
         expect(chip).to_contain_text("Open")
         root.get_by_role("button", name=re.compile("^1 reply")).click()
         thread = page.locator("#thread")
         expect(thread.locator(".project-convo__message", has_text=FIRST_REPLY)).to_be_visible()
-        header_chip = thread.get_by_role("button", name=f"Discussion of task: {MEASURE}")
+        header_chip = thread.get_by_role("button", name=re.compile(r"^Discussion of task #\d+: " + re.escape(MEASURE) + "$"))
         expect(header_chip).to_be_visible()
         shot(page, "task-announcements-thread")
         # A reply here is the task's discussion: the API's task thread has it under the same root.
@@ -282,7 +282,9 @@ class TaskAnnouncements(unittest.TestCase):
         later.hover()
         later.get_by_role("button", name="Create task").click()
         # The one Create window opens with the message as its source (#345); creating it opens the task.
-        expect(page.get_by_role("dialog", name="New task").get_by_label("Title", exact=True)).to_have_value(LATER)
+        # The title is the message's first clause (#763 B5); the journey keeps the whole question.
+        expect(page.get_by_role("dialog", name="New task").get_by_label("Title", exact=True)).to_have_value(LATER.rstrip("?"))
+        page.get_by_role("dialog", name="New task").get_by_label("Title", exact=True).fill(LATER)
         page.get_by_role("dialog", name="New task").get_by_role("button", name=re.compile("^Create task")).click()
         details = page.locator("#details")
         expect(details.get_by_role("heading", name=LATER)).to_be_visible()
@@ -484,7 +486,7 @@ class TaskAnnouncements(unittest.TestCase):
         self.assertEqual([message["body"] for message in discussion["messages"]], [text], "stored exactly once")
         self.assertEqual(discussion["root"]["authorId"], self.ids["ada"])
         root = page.locator(f"#message-{discussion['rootMessageId']}")
-        expect(root.get_by_role("button", name=f"Discussion of task: {FROM_MESSAGE}")).to_be_visible()
+        expect(root.get_by_role("button", name=re.compile(r"^Discussion of task #\d+: " + re.escape(FROM_MESSAGE) + "$"))).to_be_visible()
         self.assertEqual(self.counts(page), (before[0], before[1], before[2] + 1), "one new root; no announcement or task")
         cleared = page.evaluate("key => JSON.parse(localStorage.getItem(key))", key)
         self.assertEqual({field: cleared[field] for field in ('version', 'body', 'files', 'references', 'unconfirmed')},

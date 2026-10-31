@@ -462,6 +462,11 @@ button.wd-link:active:not(:disabled) { background: var(--sub); }
 .wd-foot__note { margin: 8px 6px 0; }
 .wd-activity > .details__sec { margin-top: 14px; }
 .wd-activity > .details__sec .wd-link { font-size: var(--fs-sm); color: var(--t2); }
+/* A finger's 44 px on a touch screen, for the reference card in a bubble too (#763 A9). */
+@media (pointer: coarse) {
+  .message-bubble .ws-attach > .ws-chip,
+  :is(.thread__feed, :root:has(.ui-panel--docked:not(.is-leaving), .ui-panel--overlay) .project-convo__feed) .message-bubble .ws-attach > .ws-chip { min-height: 44px; }
+}
 
 /* A proposed decision's answer, as on its Inbox card (F-026 P4, S11; #763 D1): Accept / Not now / Discuss and who else can accept,
    directly under the reason, so a phone's half sheet shows it without scrolling. */

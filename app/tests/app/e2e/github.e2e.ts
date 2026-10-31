@@ -147,7 +147,9 @@ test('real settings UI binds, verifies PR links and removes private projections 
   await page.getByLabel('Find task',{exact:true}).fill('');await expect(choices).toContainText('51–100 of 105 tasks');
   await page.getByLabel('Find task',{exact:true}).fill('Native repository task');await expect(choices).toContainText('51–100 of 104 tasks');
   await page.getByLabel('Find task',{exact:true}).fill(task.title);
-  await expect(page.getByLabel('Task',{exact:true}).locator('option')).toHaveCount(2);
+  // The app Select (#699) shows its options only while open: wait for the one-task page, then read the placeholder and that task.
+  await expect(choices).toContainText('1–1 of 1 tasks');
+  assert.deepEqual(await optionValues(page.getByLabel('Task',{exact:true})), ['', task.id]);
   await chooseOption(page.getByLabel('Task', { exact: true }), task.id);
   const noPulls = page.getByText('No pull requests are linked to this task yet.', { exact: true });
   await noPulls.waitFor(); // #218: a chosen task without links says so instead of staying blank.

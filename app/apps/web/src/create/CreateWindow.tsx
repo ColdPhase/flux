@@ -1,7 +1,7 @@
 import { useEffect, useId, useMemo, useRef, useState, type FormEvent, type MouseEvent, type ReactNode } from 'react';
 import { useWorkspaceAi } from '../ai/workspaceAi';
 import { useLocation, useNavigate, useRevalidator } from 'react-router';
-import { WORK_LIMITS, WORK_STATUSES, type Agent, type CreateWorkCommand, type ObjectRef, type Project, type WorkItem, type WorkspaceMember, type WorkStatus } from '@flux/contracts';
+import { WORK_LIMITS, WORK_STATUSES, type Agent, type CreateWorkCommand, type ObjectRef, type Project, type WorkspaceMember, type WorkStatus } from '@flux/contracts';
 import { ApiError } from '../api/client';
 import { openDm, sendDmMessage } from '../api/direct-messages';
 import { useIntentKeys } from '../api/intent-keys';
@@ -11,13 +11,14 @@ import { createPrivateDraft } from '../drafts/api';
 import { listWorkspaceMembers } from '../project/api';
 import { useShellData } from '../app/data';
 import { readDraft, useDraft, writeDraft } from '../drafts/store';
-import { NEW_PROJECT_AUDIENCE, TEMPLATES, useNewProject } from '../project/newProject';
+import { TEMPLATES, useNewProject } from '../project/newProject';
 import { AccountChangedError, assertSignedInAs, ensurePersonalSpace } from '../app/personalSpace';
 import { useShellActions, type CreateRequest } from '../app/shellContext';
 import { searchFlux } from '../search/api';
 import { Button, Icon, MEDIA, Overlay, Spinner, StatusGlyph, Tabs, useMediaQuery, useToast, Select, Option, OptionGroup } from '../ui';
 import { createWork, listAgents, proposeDecision } from '../work/api';
-import { STATUS_LABEL, taskNumber } from '../work/format';
+import { STATUS_LABEL } from '../work/format';
+import { useCreatedToast } from '../work/taskState';
 import './create.css';
 
 // The one Create window (F-026 S3, #345, #521): the computer's centred window and the phone's bottom sheet hold the
@@ -42,9 +43,12 @@ const KINDS: { id: Kind; label: string; name: string }[] = [
 /** Mounted once by the shell; `request` is what the person asked to create, or null while closed. */
 export function CreateHost({ request, onClose }: { request: CreateRequest | null; onClose: () => void }) {
   const phone = useMediaQuery(MEDIA.phone);
-  // Each opening starts on Task (F-026 S3); the window is named after the tab it shows, so no heading repeats the tab.
+  // Each opening starts on Task (F-026 S3), or on Project while the person has none, since a task needs one (#763 FR-2);
+  // the window is named after the tab it shows, so no heading repeats the tab.
+  const { projects } = useShellData();
+  const opening: Kind = request?.kind === 'project' || !projects.length ? 'project' : 'task';
   const [chosen, setChosen] = useState<{ request: CreateRequest | null; kind: Kind }>({ request: null, kind: 'task' });
-  const kind = chosen.request === request ? chosen.kind : 'task';
+  const kind = chosen.request === request ? chosen.kind : opening;
   return (
     <Overlay open={request !== null} onClose={onClose} placement={phone ? 'bottom' : 'center'} label={KINDS.find((item) => item.id === kind)!.name} className="create">
       {request ? <CreateBody request={request} phone={phone} kind={kind} onKind={(next) => setChosen({ request, kind: next })} onClose={onClose} /> : null}
@@ -220,7 +224,7 @@ function TaskForm({ ids, request, prefilled, phone, carried, projectId, onProjec
   const { me, projects } = useShellData();
   const { openDetails } = useShellActions();
   const revalidator = useRevalidator();
-  const toast = useToast();
+  const created = useCreatedToast(() => revalidator.revalidate());
   const noteId = useId();
   const titleRef = useRef<HTMLInputElement>(null);
   // A task made from a message, thoughts or a typed title starts from that; a blank one keeps its private draft.
@@ -327,8 +331,10 @@ function TaskForm({ ids, request, prefilled, phone, carried, projectId, onProjec
       }
       request.onCreated?.();
       revalidator.revalidate();
+      // Every way of creating a task says so and offers Undo (Z), with the panel still opening on it (#763 B1).
+      created(item);
       if (!mounted.current) return;
-      if (another) { done(item); return; }
+      if (another) { done(); return; }
       onClose();
       openDetails({ kind: 'work', id: item.id, projectId });
     } catch (cause) {
@@ -336,8 +342,7 @@ function TaskForm({ ids, request, prefilled, phone, carried, projectId, onProjec
     } finally { inFlight.current = false; if (mounted.current) setBusy(false); }
   }
   /** Create another: the next task starts empty in the same project, with the same status and owner. */
-  function done(item: WorkItem) {
-    toast({ message: `Created ${taskNumber(item)}`, tone: 'success', timeout: 3000 });
+  function done() {
     if (prefilled) carried.set('');
     setOutcome(''); setBlocker(''); setSources([]); setLinking(false);
     // The field is disabled while the command runs: focus it once it is enabled again.
@@ -590,7 +595,7 @@ function DecisionForm({ ids, phone, carried, projectId, onProject, onClose }: Pa
 /** Project: a name and a template in one step (S20), the same as New project; people and agents come later. */
 function ProjectForm({ ids, phone, carried, onClose }: PanelProps) {
   const go = useNavigate();
-  const { space, spaceName, setSpaceName, template, setTemplate, busy, error, ready, create } = useNewProject();
+  const { space, spaceName, places, choose, audience, template, setTemplate, busy, error, ready, create } = useNewProject();
   const aiOff = useWorkspaceAi(space?.id).blocked;
   const name = oneLine(carried.text);
   const chosen = TEMPLATES.find((item) => item.id === template) ?? TEMPLATES[0]!;
@@ -605,9 +610,14 @@ function ProjectForm({ ids, phone, carried, onClose }: PanelProps) {
     // A new project is restricted; its "Who can see this" opens next, to add people (#188).
     go(`/projects/${project.id}?new=1&open=people`);
   }
-  // The first project also names the person's space.
-  const where = space ? <span>In {space.name}</span>
-    : <input className="create__space" aria-label="Your space" value={spaceName} maxLength={200} disabled={busy} placeholder="Name your space first" onChange={(event) => setSpaceName(event.target.value)} />;
+  // Where it goes: nobody names a workspace first (#763 FR-1); "In … ▾" once there are two to choose from (PE-3).
+  const where = places.length > 1 && ids.active ? (
+    <label className="create__chip create__chip--quiet"><span>In {spaceName}</span><Icon name="chevron-down" size={12} />
+      <Select aria-label="Workspace" value={space?.id ?? ''} onChange={(next) => choose(next)}>
+        {places.map((item) => <Option key={item.id} value={item.id}>{item.name}</Option>)}
+      </Select>
+    </label>
+  ) : <span>In {spaceName}</span>;
   return (
     <Panel ids={ids} where={where} onSubmit={() => void submit()} foot={<><p className="create__note">Starts with {chosen.has} · invite people {aiOff ? '' : 'and agents '}later</p><Go label="Create project" busy={busy} ready={canCreate} phone={phone} /></>}>
       <input id={ids.field} className="create__name" aria-label="What is it about?" value={flat(carried.text)} maxLength={WORK_LIMITS.title} disabled={busy} placeholder="What is it about?"
@@ -617,7 +627,7 @@ function ProjectForm({ ids, phone, carried, onClose }: PanelProps) {
           {TEMPLATES.map((item) => <Option key={item.id} value={item.id}>{item.name} · {item.has}</Option>)}
         </PickChip>
       </div>
-      <p className="create__note">{NEW_PROJECT_AUDIENCE}</p>
+      <p className="create__note">{audience}</p>
       <TooLong text={name} limit={WORK_LIMITS.title} />
       {error ? <p className="create__error" role="alert">{error}</p> : null}
     </Panel>

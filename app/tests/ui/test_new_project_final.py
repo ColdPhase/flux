@@ -118,7 +118,8 @@ class NewProject(unittest.TestCase):
             card = page.get_by_role("form", name="New project")
             expect(card.get_by_role("heading", name="New project")).to_be_visible()
             expect(card).to_contain_text("One step — invite people and agents later")
-            expect(card).to_contain_text("You and the workspace’s owners and admins can see it until you invite someone")
+            # Ada is the only owner of Riverside Makers so far: the drawn sentence (#763 FR-5).
+            expect(card).to_contain_text("Only you can see it until you invite someone")
             # No "Who can see this" step before the project: a name and a template are all it asks.
             expect(card.get_by_role("textbox")).to_have_count(1)
             templates = card.get_by_role("radio")

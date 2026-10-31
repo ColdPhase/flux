@@ -24,7 +24,8 @@ const code = (expected: string) => (error: unknown) => error instanceof DomainEr
 function humanWorkFields(item: WorkItem): Omit<WorkItem, 'creationUndo'> {
   assert.equal(item.createdBy.kind, 'human');
   const { creationUndo, ...fields } = item;
-  if (creationUndo !== undefined) assert.deepEqual(creationUndo, { eligible: false, reason: 'not_ai_origin' });
+  // A person's task is never AI-undoable; its creator may take it back while unchanged and unused (#763 B1).
+  if (creationUndo !== undefined) assert.ok(creationUndo.reason !== 'eligible' && (!creationUndo.eligible || creationUndo.reason === 'own_creation'), JSON.stringify(creationUndo));
   return fields;
 }
 function sameHumanWork(actual: WorkItem, expected: WorkItem, message?: string) {
@@ -86,7 +87,12 @@ test('tasks carry bounded criteria, same-project prerequisites and an immutable 
   assert.deepEqual(planned.planIntent, intentOf(f));
   assert.equal(planned.createdBy.id, f.writer.id);
   assert.equal(planned.status, 'open');
-  assert.deepEqual(await f.read(planned.id), planned);
+  // Eligibility is per reader (#763 B1): its creator reads task_used (it has prerequisites), anyone else not_ai_origin.
+  const { creationUndo: createdUndo, ...plannedFields } = planned;
+  const { creationUndo: readUndo, ...readFields } = await f.read(planned.id);
+  assert.deepEqual(readFields, plannedFields);
+  assert.equal(createdUndo?.reason, 'task_used');
+  assert.notEqual(readUndo?.reason, 'eligible');
   const listed = expectStatus(await f.viewer.browser.request('GET', `${f.tasks}?limit=100`), 200) as Page<WorkItem>;
   assert.equal(listed.items.find((item) => item.id === planned.id)!.creationUndo, undefined);
   sameHumanWork(listed.items.find((item) => item.id === planned.id)!, planned, 'a viewer reads the same plan fields');
@@ -119,7 +125,7 @@ test('tasks carry bounded criteria, same-project prerequisites and an immutable 
   assert.deepEqual([cleared.criteria, cleared.dependencyIds, cleared.prerequisites], [[], [], []]);
   await f.patchFails(f.owner, cleared, { planIntent: null }, 400, 'PLAN_INTENT_IMMUTABLE');
   await f.patchFails(f.owner, cleared, { planIntent: { materialId: f.material.materialId, version: 1, intentKey: 'other' }, title: 'Hidden change' }, 400, 'PLAN_INTENT_IMMUTABLE');
-  assert.deepEqual((await f.read(planned.id)).creationUndo, { eligible: false, reason: 'not_ai_origin' });
+  assert.deepEqual((await f.read(planned.id)).creationUndo, { eligible: false, reason: 'not_ai_origin' }, 'the owner did not create it');
   sameHumanWork(await f.read(planned.id), cleared);
   assert.equal((expectStatus(await f.owner.browser.request('PATCH', `/api/v1/work/${planned.id}`, { body: { criteria: ['No precondition'] } }), 428) as ApiFailure).code, 'PRECONDITION_REQUIRED');
   const stale = expectStatus(await f.owner.browser.request('PATCH', `/api/v1/work/${planned.id}`,
@@ -327,7 +333,7 @@ test('concurrent planners creating one intent produce exactly one task, notice, 
   const ids = new Set(results.map((response) => (response.json as WorkItem).id));
   assert.equal(ids.size, 1);
   const task = await f.read([...ids][0]!);
-  assert.deepEqual(task.creationUndo, { eligible: false, reason: 'not_ai_origin' });
+  assert.notEqual(task.creationUndo?.reason, 'eligible', 'a person\'s planned task is never AI-undoable');
   for (const response of results) sameHumanWork(response.json as WorkItem, task);
   const after = await f.counts();
   assert.deepEqual({ ...after }, { ...before, work: before.work + 1, notices: before.notices + 1, edges: before.edges + 1, intents: before.intents + 1, created: before.created + 1 });

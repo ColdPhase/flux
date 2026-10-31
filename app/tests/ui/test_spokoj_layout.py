@@ -379,7 +379,8 @@ class SpokojLayout(unittest.TestCase):
                 toolbar = page.locator(".tb-bar")
                 names = {"Board": toolbar.get_by_role("radio", name="Board"), "List": toolbar.get_by_role("radio", name="List"),
                          "Mine": toolbar.get_by_role("button", name="Mine", exact=True), "Search": toolbar.get_by_label("Search tasks"),
-                         "New": toolbar.get_by_role("button", name="New Task", exact=True)}
+                         # The primary action: the header row's right where a panel docks (#763 C4), the toolbar's end on a tablet.
+                         "New": page.get_by_role("button", name="New Task", exact=True)}
                 controls = lambda: {name: self.box(locator) for name, locator in names.items()}  # noqa: E731
                 board = controls()
                 # [Board | List] [Mine] [Search tasks] … [+ Task], in reading and focus order.
@@ -387,8 +388,8 @@ class SpokojLayout(unittest.TestCase):
                 self.assertLess(board["List"]["x"], board["Mine"]["x"])
                 self.assertLess(board["Mine"]["x"], board["Search"]["x"])
                 self.assertGreater(board["New"]["x"], board["Search"]["x"] + board["Search"]["width"] + 40, "+ Task at the far end")
-                order = toolbar.locator("[role=radio][aria-checked=true], button.tb-mine, input, button.tb-add").evaluate_all("els => els.map(el => el.textContent.trim() || el.getAttribute('placeholder'))")
-                self.assertEqual(order, ["Board", "Mine", "Search tasks", "New Task"])
+                order = toolbar.locator("[role=radio][aria-checked=true], button.tb-mine, input").evaluate_all("els => els.map(el => el.textContent.trim() || el.getAttribute('placeholder'))")
+                self.assertEqual(order, ["Board", "Mine", "Search tasks"])
                 names["List"].click()
                 expect(names["List"]).to_have_attribute("aria-checked", "true")
                 self.assert_same_place(board, controls(), f"{size['width']} board to list")
@@ -414,6 +415,11 @@ class SpokojLayout(unittest.TestCase):
                 self.assert_same_place(board, controls(), f"{size['width']} back to the board")
                 if size is COMPUTER:
                     shot(page, "506-tasks-board-1440")
+                    # Opening a task docks the panel and narrows the board; "+ Task" keeps its place (#763 C4, rule 7).
+                    page.locator(".tb-card .tb-card__open").first.click()
+                    expect(page.locator(".ui-panel--docked")).to_be_visible()
+                    page.wait_for_function(SETTLED)
+                    self.assert_same_place({"New": board["New"]}, {"New": self.box(names["New"])}, "+ Task with a task open")
 
     def test_10_labels_have_one_meaning(self) -> None:
         page = self.page(COMPUTER)

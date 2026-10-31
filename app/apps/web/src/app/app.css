@@ -272,6 +272,8 @@ a.me__btn[aria-current="page"] { background: var(--sub); }
   font-size: var(--fs-md); color: var(--t2); text-align: left; transition: var(--tr);
 }
 .me__item:hover { background: var(--hov); color: var(--t1); }
+/* Links and buttons look the same in the menu (#763 SG-7). */
+a.me__item { text-decoration: none; }
 .seg { display: flex; gap: 2px; padding: 3px; border-radius: var(--r-pill); background: var(--sub); box-shadow: var(--sh-seg); }
 .seg__b {
   flex: 1; min-width: 0; display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 30px; padding: 0 13px;
