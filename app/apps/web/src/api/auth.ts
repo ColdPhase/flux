@@ -1,4 +1,5 @@
 import {
+  AUTH_CHANGE_EMAIL_PATH, AUTH_CHANGE_PASSWORD_PATH, AUTH_UPDATE_USER_PATH, REVOKE_OTHER_SESSIONS_PATH, SESSIONS_PATH, type SessionSummary,
   AUTH_REQUEST_PASSWORD_RESET_PATH, AUTH_RESET_PASSWORD_PATH, AUTH_SIGN_IN_EMAIL_PATH, AUTH_SIGN_IN_SOCIAL_PATH, AUTH_SIGN_UP_EMAIL_PATH,
   IDENTITY_CLAIM_PATH, IDENTITY_LINK_PATH, identityLinkPath, IDENTITY_CAPABILITIES_PATH, ME_PATH, ME_PROBE_HEADER, type IdentityCapabilities, type MeResponse,
 } from '@flux/contracts';
@@ -81,3 +82,30 @@ export function resetPassword(token: string, newPassword: string) {
 /** Minimum length enforced by the identity service (Better Auth default). */
 export const PASSWORD_MIN_LENGTH = 8;
 export const PASSWORD_MAX_LENGTH = 128;
+
+/** Settings → Account (#763 SG-1): the name people see. */
+export function updateName(name: string) {
+  return request<unknown>(AUTH_UPDATE_USER_PATH, { method: 'POST', body: { name } });
+}
+
+/** The current password proves it is the person; other devices are signed out when asked. */
+export function changePassword(currentPassword: string, newPassword: string, revokeOtherSessions: boolean) {
+  return request<unknown>(AUTH_CHANGE_PASSWORD_PATH, { method: 'POST', body: { currentPassword, newPassword, revokeOtherSessions } });
+}
+
+/** An unverified address changes at once; a verified one after the link mailed to the new address is opened. */
+export function changeEmail(newEmail: string, currentPassword: string) {
+  return request<unknown>(AUTH_CHANGE_EMAIL_PATH, { method: 'POST', body: { newEmail, currentPassword, callbackURL: '/settings/account?email=confirmed' } });
+}
+
+export function listSessions(signal?: AbortSignal) {
+  return request<SessionSummary[]>(SESSIONS_PATH, { signal });
+}
+
+export function endSession(id: string) {
+  return request<unknown>(`${SESSIONS_PATH}/${encodeURIComponent(id)}`, { method: 'DELETE' });
+}
+
+export function endOtherSessions() {
+  return request<{ revoked: number }>(REVOKE_OTHER_SESSIONS_PATH, { method: 'POST' });
+}

@@ -193,3 +193,5 @@
 .nset__mute[hidden] { display: none; }
 .nset__mute-pending { flex: 1 1 100%; margin: 0; font-size: var(--fs-sm); color: var(--t2); overflow-wrap: anywhere; }
 .nset__email-target { display: block; overflow-wrap: anywhere; font-weight: 500; color: var(--t1); }
+/* This device (#763 SG-8): no heading over an empty card (no push on this server and no install offer). */
+.nset__this-device:not(:has(.sset-card > *)) { display: none; }

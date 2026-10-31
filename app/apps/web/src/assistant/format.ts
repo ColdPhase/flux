@@ -196,3 +196,6 @@ export function askError(error: unknown): string {
     default: return error.status === 403 ? 'You can read this project, but cannot ask here.' : error.status === 404 ? 'This conversation is no longer available to you.' : 'Your assistant couldn’t start. Try again.';
   }
 }
+
+/** One status line for in-app AI this server does not run (Spokój E04 ③, #763 SG-2). */
+export const SERVER_AI_OFF_LINE = 'Off on this Flux server · ask your admin to turn it on';

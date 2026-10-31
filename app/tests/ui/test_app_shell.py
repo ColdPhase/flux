@@ -1083,7 +1083,11 @@ class AppShellJourney(unittest.TestCase):
         page.route("**/api/v1/auth/capabilities", lambda route: route.fulfill(json={"passwordReset": "unavailable"}))
         page.goto("/forgot-password")
         expect(page.get_by_text("Password reset by email isn’t set up on this Flux server.")).to_be_visible()
-        expect(page.get_by_role("button", name="Send reset link")).to_be_disabled()
+        # #763 FR-6: only the message and the way back; no form that cannot be used, no operator variables.
+        expect(page.get_by_role("button", name="Send reset link")).to_have_count(0)
+        expect(page.get_by_label("Email")).to_have_count(0)
+        expect(page.get_by_text("FLUX_SMTP_URL")).to_have_count(0)
+        expect(page.get_by_role("link", name="Back to sign in")).to_be_visible()
         shot(page, "reset-unavailable-desktop-light")
 
         late = self.page(signed_in=False, service_workers="block")
@@ -1196,8 +1200,8 @@ class AppShellJourney(unittest.TestCase):
 
     def test_12_real_project_capture_phone_and_revocation(self) -> None:
         """Real UI: create project, send, cite a saved version, reply, revisit on phone, revoke."""
-        # A fresh account without any space: its first project names the space (Jo's first note
-        # already created Jo's personal space, #190 HOME-3).
+        # A fresh account without any space: its first project makes "Mira’s space" quietly, nobody names it (#763 FR-1;
+        # Jo's first note already created Jo's personal space, #190 HOME-3).
         owner = self.page(signed_in=False, service_workers="block")
         owner.goto("/sign-up")
         owner.get_by_label("Name").fill("Mira Lamp")
@@ -1206,7 +1210,8 @@ class AppShellJourney(unittest.TestCase):
         owner.get_by_role("button", name="Create account").click()
         expect(owner.get_by_role("heading", level=1, name="Home")).to_be_visible()
         new_from_sidebar(owner, "Project")
-        owner.get_by_label("Your space").fill("Lamp lab")
+        expect(owner.get_by_label("Your space")).to_have_count(0)
+        expect(owner.get_by_text("In Mira’s space")).to_be_visible()
         owner.get_by_label("What is it about?").fill("Gesture lamp")
 
         def lose_first_committed(path: str):
@@ -1233,7 +1238,7 @@ class AppShellJourney(unittest.TestCase):
         lost_project = lose_first_committed("**/api/v1/workspaces/*/projects")
         owner.get_by_role("button", name="Create project").click()
         expect(owner.get_by_role("alert")).to_be_visible()
-        expect(owner.get_by_text("In Lamp lab")).to_be_visible()
+        expect(owner.get_by_text("In Mira’s space")).to_be_visible()
         owner.get_by_role("button", name="Create project").click()
         expect(owner.get_by_role("heading", level=1, name="Gesture lamp")).to_be_visible()
         owner.unroute("**/api/v1/workspaces/*/projects", lost_project)
@@ -1473,7 +1478,6 @@ class AppShellJourney(unittest.TestCase):
         owner.get_by_label("Password").fill(PASSWORD)
         owner.get_by_role("button", name="Create account").click()
         new_from_sidebar(owner, "Project")
-        owner.get_by_label("Your space").fill("Many ideas")
         owner.get_by_label("What is it about?").fill("Busy project")
         owner.get_by_role("button", name="Create project").click()
         project_id = owner.locator(".project-convo").get_attribute("data-project-id")
@@ -1591,7 +1595,6 @@ class AppShellJourney(unittest.TestCase):
         page.get_by_label("Password").fill(PASSWORD)
         page.get_by_role("button", name="Create account").click()
         new_from_sidebar(page, "Project")
-        page.get_by_label("Your space").fill("Research space")
         page.get_by_label("What is it about?").fill("Sensor study")
         page.get_by_role("button", name="Create project").click()
         expect(page.get_by_role("heading", level=1, name="Sensor study")).to_be_visible()
@@ -1645,7 +1648,6 @@ class AppShellJourney(unittest.TestCase):
         page.get_by_label("Password").fill(PASSWORD)
         page.get_by_role("button", name="Create account").click()
         new_from_sidebar(page, "Project")
-        page.get_by_label("Your space").fill("Research space")
         page.get_by_label("What is it about?").fill(name)
         page.get_by_role("button", name="Create project").click()
         expect(page.get_by_role("heading", level=1, name=name)).to_be_visible()
