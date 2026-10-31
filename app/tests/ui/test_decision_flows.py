@@ -326,7 +326,7 @@ class DecisionFlows(unittest.TestCase):
         menu = page.get_by_role("menu", name="Message actions")
         expect(menu).to_be_visible()
         items = [text.strip() for text in menu.get_by_role("menuitem").all_inner_texts()]
-        self.assertEqual(items, DRAWN, "the five drawn items, in order")
+        self.assertEqual(items, [*DRAWN, "More…"], "the five drawn items, in order, then More… (Add to map, Details; #763)")
         lifted = page.locator(".msg-menu__lift")
         expect(lifted).to_be_visible()
         expect(lifted).to_contain_text("The resistive probes in bed 5")

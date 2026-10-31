@@ -27,7 +27,7 @@ import { cite as citeMessage, messageCite } from './citeBus';
 import { foldEntries, foldSummary, firstUnread, noticeSource, rootAuthor, sinceLine, sourcePhrase } from './conversationEvents';
 import { GoalStreamEntry } from '../project/ProjectGoal';
 import { ObjectNoticeItem } from './ObjectNotices';
-import { objectTarget } from './objectNotices';
+import { followsProposal, objectTarget } from './objectNotices';
 import './conversation-final.css';
 import { RefLink } from '../place/origin';
 import { onFlush, remember } from '../place/memory';
@@ -61,6 +61,9 @@ export type StreamEntry =
   | { kind: 'notice'; key: string; at: string; notice: TaskCreationNotice }
   | { kind: 'object'; key: string; at: string; object: ObjectNotice; thread?: ConversationRoot }
   | { kind: 'goal'; key: string; at: string; goal: ProjectGoal };
+
+/** The decision or result an entry announces, for the line that follows it. */
+const previousObject = (entry: { kind: string } | undefined) => entry?.kind === 'object' ? (entry as Extract<StreamEntry, { kind: 'object' }>).object : null;
 
 const ORDER: Record<StreamEntry['kind'], number> = { notice: 0, object: 0, root: 1, goal: 2 };
 
@@ -683,6 +686,7 @@ export function ConversationStream({ project, meId, meName, roots: stream, notic
                   authorOf={authorOf} hasMessage={(id) => rootMessageIds.has(id)} onOpenTask={(id) => openDetails({ kind: 'work', id })} />;
                 if (entry.kind === 'notice') return [divider, noticeItem(entry.notice)];
                 if (entry.kind === 'object') return [divider, <ObjectNoticeItem key={entry.key} notice={entry.object} meId={meId} owners={owners} authorOf={authorOf} hasMessage={(id) => rootMessageIds.has(id)}
+                  follows={!divider && followsProposal(entry.object, previousObject(display[index - 1]))}
                   observeId={entry.thread && entry.thread.message.authorId !== meId ? entry.thread.message.id : undefined}
                   task={entry.thread?.task ? { number: entry.thread.task.number, title: entry.thread.task.title, replies: entry.thread.replyCount, open: entry.thread.conversationId === openId, onOpen: () => openRoot(entry.thread!, false) } : undefined}
                   onOpen={(target) => openDetails(target)} onOpenThread={(conversationId) => { const root = roots.find((item) => item.conversationId === conversationId); if (root) openRoot(root, false); }} />];

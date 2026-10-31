@@ -175,20 +175,24 @@ class DecisionTrace(unittest.TestCase):
         expect(j_panel.locator(".wd-eyebrow")).to_contain_text("Current rule")
         self.back_to_thread(jonas, phone)
 
-        # Both lines say where it stands now, and Jonas's acceptance is a line of its own.
-        accepted = j_thread.locator('.convo-object[data-object-kind="decision.accepted"]', has_text=title)
+        # The card says where it stands now, and Jonas's acceptance is a line of its own right under it: one card, not
+        # two identical ones (#763 H11-9).
+        decision_id = proposed.get_attribute("data-object-id")
+        accepted = j_thread.locator(f'.convo-object[data-object-kind="decision.accepted"][data-object-id="{decision_id}"]')
         expect(accepted).to_have_count(1)
+        expect(accepted).to_have_class(re.compile(r"\bis-follow\b"))
         expect(accepted.locator(".convo-notice__meta")).to_contain_text("Jonas Berg · you")
-        expect(accepted.locator(".convo-notice__meta")).to_contain_text("accepted a decision")
-        expect(j_thread.locator(".convo-object", has_text=title).locator(".convo-object__state")).to_have_text(["Accepted", "Accepted"])
+        expect(accepted.locator(".convo-notice__meta")).to_contain_text("accepted it")
+        expect(accepted.locator(".convo-object__card")).to_have_count(0)
+        expect(j_thread.locator(f'.convo-object[data-object-id="{decision_id}"] .convo-object__state')).to_have_text(["Accepted"])
         shot(jonas, f"decision-trace-{'phone' if phone else 'desktop'}-thread-accepted")
 
         # Ada, who did nothing since, sees the same change in her thread: the state moved and Jonas's line arrived.
-        a_accepted = a_thread.locator('.convo-object[data-object-kind="decision.accepted"]', has_text=title)
+        a_accepted = a_thread.locator(f'.convo-object[data-object-kind="decision.accepted"][data-object-id="{decision_id}"]')
         expect(a_accepted).to_have_count(1)
         expect(a_accepted.locator(".convo-notice__meta")).to_contain_text("Jonas Berg")
         expect(a_accepted.locator(".convo-notice__meta")).not_to_contain_text("you")
-        expect(a_thread.locator(".convo-object", has_text=title).locator(".convo-object__state")).to_have_text(["Accepted", "Accepted"])
+        expect(a_thread.locator(f'.convo-object[data-object-id="{decision_id}"] .convo-object__state')).to_have_text(["Accepted"])
         stored = [line for line in self.notices(ada) if line["title"] == title]
         self.assertEqual(sorted((line["kind"], line["status"]) for line in stored), [("decision.accepted", "accepted"), ("decision.proposed", "accepted")])
 
@@ -196,7 +200,8 @@ class DecisionTrace(unittest.TestCase):
         a_thread.get_by_role("button", name="Close replies").click()
         expect(self.thread(ada)).to_have_count(0)
         stream = ada.locator(".project-convo__message-list")
-        expect(stream.locator(".convo-object", has_text=title)).to_have_count(2)
+        expect(stream.locator(f'.convo-object[data-object-id="{decision_id}"]')).to_have_count(2)
+        expect(stream.locator(f'.convo-object[data-object-id="{decision_id}"] .convo-object__card')).to_have_count(1)
         # In the stream the line says where it came from: the thread's opening message, by its author.
         from_root = stream.locator('.convo-object[data-object-kind="decision.proposed"]', has_text=title)
         expect(from_root.locator(".convo-notice__what")).to_contain_text("proposed a decision from")
@@ -219,7 +224,8 @@ class DecisionTrace(unittest.TestCase):
         jonas.goto(self.thread_url("desktop"))
         thread = self.thread(jonas)
         expect(thread.locator(".thread__root")).to_be_visible()
-        expect(thread.locator(".convo-object", has_text=DECISION_DESKTOP)).to_have_count(2)
+        expect(thread.locator(".convo-object", has_text=DECISION_DESKTOP)).to_have_count(1)
+        expect(thread.locator(".convo-object.is-follow")).to_have_count(1)
         expect(thread.locator(".convo-object", has_text=DECISION_PHONE)).to_have_count(0)
         # A decision made without a message or thread (from "+") is announced in the stream only, live.
         made = self.api(ada, "POST", f"/api/v1/projects/{self.ids['project']}/decisions", {"title": SOURCELESS}, status=201)
