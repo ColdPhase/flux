@@ -3,7 +3,7 @@ import {
   agentActionGrantPath, agentConnectionPath, agentConnectionSelectPath, agentActionGrantsPath, agentMcpPolicyPath, projectGrantsPath, workspaceAgentsPath, type Agent, type AgentConnection,
   type AgentMcpEntry, type AgentMcpPolicy, type SaveAgentMcpPolicy, type AgentConnectionSetupFacts,
   type AgentScope, type AgentOauthConsentContext, type AgentStandingGrant, type CreateAgentCommand, type CreateAgentConnectionCommand,
-  type CreateAgentStandingGrantCommand, type GrantProjectCommand, type NarrowAgentStandingGrantCommand, type Page, type ProjectGrant,
+  type CreateAgentStandingGrantCommand, type ExternalClientDesignation, type GrantProjectCommand, type NarrowAgentStandingGrantCommand, type Page, type ProjectGrant,
 } from '@flux/contracts';
 import { request } from '../api/client';
 
@@ -105,9 +105,15 @@ export function getConsentContext(oauthQuery: string, signal?: AbortSignal) {
 
 /** The saved connection this client held before, or null (#312). A failure only means no preselection. */
 export async function getHeldConnection(oauthQuery: string, signal?: AbortSignal) {
+  return (await getOauthRequester(oauthQuery, signal)).connectionId;
+}
+
+/** The held connection and the client label its own name suggests (#763 AG-6). A failure only means no preselection. */
+export async function getOauthRequester(oauthQuery: string, signal?: AbortSignal): Promise<{ connectionId: string | null; clientDesignation: ExternalClientDesignation | null }> {
   try {
-    return (await request<{ connectionId: string | null }>(`${AGENT_OAUTH_HELD_CONNECTION_PATH}?oauth_query=${encodeURIComponent(oauthQuery)}`, { signal })).connectionId;
-  } catch { return null; }
+    const held = await request<{ connectionId: string | null; clientDesignation?: ExternalClientDesignation | null }>(`${AGENT_OAUTH_HELD_CONNECTION_PATH}?oauth_query=${encodeURIComponent(oauthQuery)}`, { signal });
+    return { connectionId: held.connectionId, clientDesignation: held.clientDesignation ?? null };
+  } catch { return { connectionId: null, clientDesignation: null }; }
 }
 
 interface OAuthRedirect { url?: string; redirect_uri?: string }

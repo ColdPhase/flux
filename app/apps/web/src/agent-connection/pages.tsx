@@ -8,7 +8,7 @@ import { listAccessibleProjects } from '../project/api';
 import { signInPath } from '../auth/logic';
 import { Button, Icon, Select, Option } from '../ui';
 import {
-  SCOPE_LABELS, continueAgentOAuth, getHeldConnection, createAgentConnection, createPersonalAgent, decideAgentConsent,
+  SCOPE_LABELS, continueAgentOAuth, getOauthRequester, createAgentConnection, createPersonalAgent, decideAgentConsent,
   followOAuthRedirect, getConsentContext, grantAgentProject, listActionGrants, listAgentConnections, listProjectGrants,
   revokeAgentConnection, selectAgentConnection,
   type ConsentContext,
@@ -37,6 +37,8 @@ interface ConnectionData {
   oauthQuery: string;
   /** The connection this client held before it had to authorize again; chosen first (F-024 S2, #312). */
   heldConnectionId: string | null;
+  /** The client label the asking client's own name suggests, for a new connection (#763 AG-6). */
+  requesterClient: ExternalClientDesignation | null;
   /** Each live action connection's standing grants (current and ended); null when they could not be read. */
   actionGrants: Record<string, AgentStandingGrant[] | null>;
 }
@@ -50,6 +52,18 @@ async function requirePerson(request: Request) {
     throw redirect(signInPath(`${url.pathname}${url.search}`));
   }
   return me;
+}
+
+/** Settings → Agents and AI → Connect your agent: where a person manages their connections inside the app (#763 AG-2). */
+export const CONNECT_AGENT_SETTINGS = '/settings/agents/connect';
+
+/**
+ * `/connect-agent`: an agent client's sign-in arrives here with its signed OAuth query and stays in the quiet frame. Without
+ * one, the person came to manage their connections, which happens in Settings (#763 AG-2).
+ */
+export async function agentConnectionEntryLoader(args: LoaderFunctionArgs): Promise<ConnectionData> {
+  if (!queryFrom(args.request)) throw redirect(CONNECT_AGENT_SETTINGS);
+  return agentConnectionLoader(args);
 }
 
 export async function agentConnectionLoader({ request }: LoaderFunctionArgs): Promise<ConnectionData> {
@@ -66,6 +80,7 @@ export async function agentConnectionLoader({ request }: LoaderFunctionArgs): Pr
       [project.id, await listProjectGrants(project.id, request.signal)] as const)),
   ]);
   const oauthQuery = queryFrom(request);
+  const requester = oauthQuery ? await getOauthRequester(oauthQuery, request.signal) : { connectionId: null, clientDesignation: null };
   // The grants are the owner's alone; the OAuth chooser does not show them.
   const actionGrants = oauthQuery ? [] : await Promise.all(connections
     .filter((connection) => !connection.revokedAt && connection.scopes.includes('flux.action.execute'))
@@ -84,7 +99,8 @@ export async function agentConnectionLoader({ request }: LoaderFunctionArgs): Pr
     ownerId: me.user.id,
     oauthQuery,
     // A held connection of a workspace whose AI is off is refused (F-029, #614): nothing is held then.
-    heldConnectionId: oauthQuery ? await getHeldConnection(oauthQuery, request.signal).catch((error: unknown) => (isAiBlocked(error) ? null : Promise.reject(error))) : null,
+    heldConnectionId: requester.connectionId,
+    requesterClient: requester.clientDesignation,
     actionGrants: Object.fromEntries(actionGrants),
   };
 }
@@ -146,7 +162,7 @@ function ConnectionSummary({ connection, agentName, projectNames, showScopes = t
 }
 
 export function AgentConnectionPage() {
-  const { connections, projects, workspaces: everyWorkspace, agents, grants, oauthQuery, heldConnectionId, actionGrants } = useLoaderData() as ConnectionData;
+  const { connections, projects, workspaces: everyWorkspace, agents, grants, oauthQuery, heldConnectionId, requesterClient, actionGrants } = useLoaderData() as ConnectionData;
   // F-029 (#614): a workspace whose AI is off is named once and not offered; its other work is unaffected.
   const aiOffSpaces = everyWorkspace.filter((workspace) => workspace.ai?.state === 'blocked');
   const workspaces = everyWorkspace.filter((workspace) => workspace.ai?.state !== 'blocked');
@@ -160,7 +176,7 @@ export function AgentConnectionPage() {
   const [creatingAgent, setCreatingAgent] = useState(agents.length === 0);
   const [agentName, setAgentName] = useState('');
   const [connectionName, setConnectionName] = useState('');
-  const [clientDesignation, setClientDesignation] = useState<ExternalClientDesignation>('other');
+  const [clientDesignation, setClientDesignation] = useState<ExternalClientDesignation>(requesterClient ?? 'other');
   const [workspaceId, setWorkspaceId] = useState(workspaces[0]?.id ?? '');
   const [currentGrants, setCurrentGrants] = useState(grants);
   const [grantRoles, setGrantRoles] = useState<Record<string, 'viewer' | 'contributor'>>({});
@@ -233,11 +249,22 @@ export function AgentConnectionPage() {
     finally { setBusy(false); }
   }
 
+  // During a client's sign-in there is one way on (#763 AG-6): Continue saves the new connection first when its form is open.
+  const formOpen = personalAgents.length > 0 && adding;
+  const formReady = formOpen && !!agentId && !!connectionName.trim() && projectIds.length > 0 && scopes.length > 0;
   async function connect() {
-    if (!selected || !oauthQuery) return;
+    if (!oauthQuery || (formOpen ? !formReady : !selected)) return;
     setBusy(true); setError(null);
     try {
-      await selectAgentConnection(selected, oauthQuery);
+      let chosen = selected;
+      if (formOpen) {
+        const connection = await createAgentConnection({ agentId, name: connectionName.trim(), clientDesignation, selectedProjectIds: projectIds, scopes });
+        setItems((current) => [...current, connection]);
+        setSelected(connection.id);
+        setAdding(false);
+        chosen = connection.id;
+      }
+      await selectAgentConnection(chosen!, oauthQuery);
       followOAuthRedirect(await continueAgentOAuth(oauthQuery));
     } catch (cause) { setError(describeError(cause)); setBusy(false); }
   }
@@ -258,7 +285,8 @@ export function AgentConnectionPage() {
           <ConnectionSummary connection={connection} agentName={agentNames.get(connection.agentId) ?? `Agent ${connection.agentId.slice(0, 8)}`} projectNames={projectNames} />
         </label>
         {!oauthQuery ? <StandingGrants connection={connection} projects={projectsById} initial={actionGrants[connection.id] ?? null} /> : null}
-        {revoking === connection.id ? <div className="connection__revoke"><span>Revoke this connection now? Its tools will stop working.</span>
+        {/* Revoking is managed in Settings, not on a client's way to consent (#763 AG-6). */}
+        {oauthQuery ? null : revoking === connection.id ? <div className="connection__revoke"><span>Revoke this connection now? Its tools will stop working.</span>
           <Button variant="secondary" onClick={() => { void revoke(connection.id); }}>Revoke now</Button>
           <Button variant="link" onClick={() => setRevoking(null)}>Cancel</Button></div>
           : <Button variant="link" onClick={() => setRevoking(connection.id)}>Revoke connection</Button>}
@@ -285,7 +313,7 @@ export function AgentConnectionPage() {
       </>}
     </form> : <Button variant="link" onClick={() => setCreatingAgent(true)}>Create personal agent</Button>}
     {!oauthQuery ? <ClientGuide origin={window.location.origin} /> : null}
-    {personalAgents.length > 0 && adding ? <form className="connection__create" onSubmit={(event) => { void addConnection(event); }}>
+    {personalAgents.length > 0 && adding ? <form className="connection__create" onSubmit={(event) => { if (oauthQuery) { event.preventDefault(); void connect(); } else void addConnection(event); }}>
       <h2>New connection</h2>
       <label className="connection__label" htmlFor="connection-name">Connection name</label>
       <input id="connection-name" value={connectionName} onChange={(event) => setConnectionName(event.target.value)} maxLength={120} disabled={busy} required placeholder="Research laptop" />
@@ -335,14 +363,26 @@ export function AgentConnectionPage() {
           <span><strong>{SCOPE_LABELS[scope].title}</strong><small>{SCOPE_LABELS[scope].description}</small></span>
         </label>)}</div>
       </fieldset>
-      <div className="connection__actions"><Button type="submit" variant="secondary" busy={busy} disabled={!agentId || !connectionName.trim() || !projectIds.length || !scopes.length}>Save connection</Button>
-        {items.length ? <Button onClick={() => setAdding(false)}>Cancel</Button> : null}</div>
+      <div className="connection__actions">{oauthQuery ? null : <Button type="submit" variant="secondary" busy={busy} disabled={!agentId || !connectionName.trim() || !projectIds.length || !scopes.length}>Save connection</Button>}
+        {items.length ? <Button onClick={() => setAdding(false)}>{oauthQuery ? 'Use a saved connection' : 'Cancel'}</Button> : null}</div>
     </form> : personalAgents.length ? <Button variant="link" onClick={() => setAdding(true)}>Create another selection</Button> : null}
     <div className="connection__footer">
-      {oauthQuery ? <Button variant="primary" size="lg" onClick={() => { void connect(); }} busy={busy} disabled={!selected}>Continue to consent</Button> : null}
-      <Link className="ui-link" to="/">Back to Flux</Link>
+      {oauthQuery ? <Button variant="primary" size="lg" onClick={() => { void connect(); }} busy={busy} disabled={formOpen ? !formReady : !selected}>Continue to consent</Button> : null}
+      {oauthQuery ? <Link className="ui-link" to="/">Back to Flux</Link> : null}
     </div>
   </section>;
+}
+
+/** The same page inside Settings, with the way back first on the left as on every Settings sub-page (Spokój). */
+export function AgentConnectionSettings() {
+  return (
+    <div className="pane-scroll">
+      <div className="pane-in sset-in connection-settings" data-shift>
+        <Link className="connection-settings__back" to="/settings/agents"><Icon name="chevron-left" size={14} />Agents and AI</Link>
+        <AgentConnectionPage />
+      </div>
+    </div>
+  );
 }
 
 /** Where an approved request goes (#287): the redirect host, the client_id host and a warning off this computer. */

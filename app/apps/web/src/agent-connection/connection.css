@@ -44,10 +44,10 @@
 .connection__guide { display: flex; flex-direction: column; gap: 9px; padding: 16px; border: 1px solid var(--line); border-radius: var(--r-lg); background: var(--sub); }
 .connection__guide h2 { font-size: var(--fs-lg); }
 .connection__guide p { color: var(--t3); font-size: var(--fs-sm); line-height: 1.5; }
-.connection__guide code { display: block; padding: 9px 11px; border-radius: var(--r-sm); background: var(--el); font: var(--fs-xs)/1.5 var(--mono); overflow-wrap: anywhere; user-select: all; }
-.connection__client { display: flex; flex-direction: column; gap: 6px; padding-top: 9px; border-top: 1px solid var(--line); }
-.connection__client h3 { font-size: var(--fs-md); }
-.connection__client h4 { font-size: var(--fs-sm); margin: 4px 0 -2px; }
+.connection__guide code { display: block; white-space: pre-wrap; padding: 9px 11px; border-radius: var(--r-sm); background: var(--el); font: var(--fs-xs)/1.5 var(--mono); overflow-wrap: anywhere; user-select: all; }
+.connection__client { display: flex; flex-direction: column; gap: 6px; }
+.connection__client h3 { font-size: var(--fs-sm); margin: 4px 0 -2px; }
+.connection__client p code { display: inline; padding: 1px 4px; }
 .connection__checks strong, .connection__checks small { display: block; }
 .connection__checks strong { font-weight: 500; }
 .connection__checks small { color: var(--t3); font-size: var(--fs-xs); }
@@ -179,3 +179,11 @@
 .mcp-permissions > .ui-btn { max-width: 100%; white-space: normal; text-align: start; }
 @media (pointer: coarse) { .mcp-permissions__row strong { font-size: 16px; } .mcp-permissions__row small { font-size: 13px; } }
 @media (max-width: 600px) { .mcp-permissions { padding: 12px 13px; } .mcp-permissions__actions { width: 100%; } }
+/* Inside Settings (#763 AG-2): the way back sits first, on the left. */
+.connection-settings__back { display: inline-flex; align-items: center; gap: 4px; min-height: 32px; margin-bottom: 12px; color: var(--t2); font-size: var(--fs-sm); text-decoration: none; }
+.connection-settings__back:hover { color: var(--t1); }
+@media (pointer: coarse) { .connection-settings__back { min-height: 44px; } }
+.connection-settings .connection__head h1 { font-size: var(--fs-xl); }
+/* Links on the page line up on the left, under the content they belong to (#763 AG-6). */
+.connection > .ui-btn--link, .connection__saved > .ui-btn--link { align-self: flex-start; }
+@media (max-width: 640px) { .connection-settings__back { display: none; } /* the phone header's Back leads to Agents and AI */ }

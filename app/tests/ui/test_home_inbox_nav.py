@@ -207,7 +207,8 @@ class HomeInboxNav(unittest.TestCase):
         expect(page.locator(f'.nyc[data-key="{key}"]')).to_have_count(0)
         # One source of truth with Agents: no open question there either.
         page.goto(f"/projects/{self.ids['project']}/agents")
-        expect(page.get_by_text("No open questions for you")).to_be_visible()
+        expect(page.get_by_role("link", name=re.compile("^Connect your own agent"))).to_be_visible()
+        expect(page.get_by_role("link", name=re.compile("^Agent questions"))).to_have_count(0)
 
     def test_02_question_answered_elsewhere_leaves_needs_you(self) -> None:
         asked = self.ask("Probe depth at 5 cm, or 10 cm?")
