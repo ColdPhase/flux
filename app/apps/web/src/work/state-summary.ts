@@ -43,11 +43,3 @@ export function summaryStateParts(summary: ProjectWorkSummary, canDecide: boolea
   }
   return parts;
 }
-
-export function summaryEmptyCaption(summary: ProjectWorkSummary) {
-  const objects = Object.values(summary.all).reduce((total, count) => total + count, 0);
-  if (!objects && !summary.state.history.decisionCount) return 'No decisions or work yet';
-  if (summary.workTotal) return `${summary.workTotal} ${summary.workTotal === 1 ? 'work item' : 'work items'}`;
-  if (!objects) return `${summary.state.history.decisionCount} earlier ${summary.state.history.decisionCount === 1 ? 'decision' : 'decisions'}`;
-  return `${objects} ${objects === 1 ? 'project object' : 'project objects'}`;
-}

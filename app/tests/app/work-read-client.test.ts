@@ -7,7 +7,7 @@ import {
   workAssociationReadUrl, workRelationReadUrl, workViewReadUrl, getWorkReferenceRows, workReferenceReadUrl,
 } from '../../apps/web/src/work/read-api.js';
 import { ProjectWorkFacetStore, readScopeKey, readStateForScope, ScopedReadStore, type ReadScope } from '../../apps/web/src/work/read-state.js';
-import { summaryEmptyCaption, summaryStateParts } from '../../apps/web/src/work/state-summary.js';
+import { summaryStateParts } from '../../apps/web/src/work/state-summary.js';
 
 const scope: ReadScope = { accountId: 'account-a', projectId: 'project-a', selector: '/view?group=all&limit=50' };
 function held<T>() {
@@ -102,14 +102,8 @@ test('same-scope passive refresh retains one observation until atomic replacemen
   next.resolve(page(1)); await nextRead;
 });
 
-test('summary state preserves distinct identical owner labels and captions actual open/parked/finished work', () => {
+test('summary state preserves distinct identical owner labels', () => {
   const observed = summary(105);
-  assert.equal(summaryEmptyCaption(observed), '105 work items');
-  assert.equal(summaryEmptyCaption(summary()), 'No decisions or work yet');
-  observed.all.open = 0; observed.all.parked = 105;
-  assert.equal(summaryEmptyCaption(observed), '105 work items');
-  observed.all.parked = 0; observed.all.finished = 105;
-  assert.equal(summaryEmptyCaption(observed), '105 work items');
   observed.state.active = { count: 12, first: { kind: 'work', id: 'native-work', title: 'Measure low-light noise' }, ownerTotal: 5,
     owners: [{ kind: 'human', id: 'one', name: 'Ada' }, { kind: 'human', id: 'two', name: 'Ada' }, { kind: 'agent', id: 'three', name: 'Ada' }] };
   const part = summaryStateParts(observed, true).find((value) => value.key === 'work');
