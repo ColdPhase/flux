@@ -340,6 +340,8 @@ class InboxFinal(unittest.TestCase):
         page.goto("/inbox")
         cards = page.locator(".nyc")
         expect(cards).to_have_count(4)
+        # The queue opens on its first item (#763); J moves from there once the list is in place.
+        expect(cards.nth(0)).to_have_attribute("aria-current", "true")
         page.keyboard.press("j")
         expect(cards.nth(1)).to_have_attribute("aria-current", "true")
         page.keyboard.press("k")
@@ -841,6 +843,8 @@ class InboxFinal(unittest.TestCase):
         question.locator(".nyc__tray").get_by_role("button", name="Not now").tap()
         menu = page.get_by_role("menu", name="Ask me again")
         expect(menu).to_be_visible()
+        # Measured once its opening motion has ended: mid-scale its items are a fraction of a pixel short.
+        menu.evaluate("el => Promise.all(el.getAnimations({ subtree: true }).map((a) => a.finished.catch(() => null)))")
         self.assertLessEqual(box(page, menu)["x"] + box(page, menu)["width"], PHONE["width"])
         for item in menu.get_by_role("menuitem").all():
             self.assertGreaterEqual(box(page, item)["height"], 44)

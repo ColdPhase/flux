@@ -27,6 +27,11 @@ from test_app_shell import DESKTOP, ORIGIN, PHONE, UPSTREAM, shot, start_forward
 from contrast import MEASURE
 from wiki_text import LIVE, existing_text, type_at_end, wait_until_shared
 
+# WebKit has no clipboard permission to grant (Playwright: "Unknown permission: clipboard-write"): there the page's clipboard is a
+# recorder that keeps what was written, so the test reads back exactly what the page copied.
+CLIPBOARD_RECORDER = """(() => { let text = ''; Object.defineProperty(navigator, 'clipboard', { configurable: true, value: {
+  writeText: async (value) => { text = String(value); }, readText: async () => text } }); })()"""
+
 PASSWORD = "wiki pages keep their place"
 STAMP = int(time.time() * 1000)
 OWNER = {"name": "Hubert Lis", "email": f"hubert.wiki+{STAMP}@example.test"}
@@ -125,7 +130,12 @@ class WikiPanesJourney(unittest.TestCase):
             options.update(viewport=viewport or DESKTOP, device_scale_factor=1)
         if who and who in self.states:
             options["storage_state"] = self.states[who]
+        clipboard = self.browser.browser_type.name == "webkit" and any(str(p).startswith("clipboard") for p in options.get("permissions", []))
+        if clipboard:
+            options["permissions"] = [p for p in options["permissions"] if not str(p).startswith("clipboard")]
         context = self.browser.new_context(service_workers="block", **options)
+        if clipboard:
+            context.add_init_script(CLIPBOARD_RECORDER)
         if theme:
             # The person's own remembered appearance on this device (#135/#148).
             context.add_init_script(f"localStorage.setItem('flux.theme', '{theme}')")
