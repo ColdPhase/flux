@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Restore BETWEEN in CHECK constraints of a pg_dump text (stdin -> stdout), for scripts/db_baseline.sh.
+"""Restore BETWEEN (and escape control characters in literals) in CHECK constraints of a pg_dump text (stdin -> stdout), for scripts/db_baseline.sh.
 
 PostgreSQL keeps `x BETWEEN l AND h AND y` as a nested AND whose left arm is the BETWEEN pair, but
 prints it as `(((x >= l) AND (x <= h)) AND y)`. Read back, that text is one flat AND, so a database
@@ -81,13 +81,23 @@ def between(term):
     return f"({low['x']} BETWEEN {low['l']} AND {high['h']})"
 
 
+def escape_controls(literal):
+    """A '...' literal holding tabs, carriage returns or newlines as an equal E'...' literal, so the file has no raw
+    control characters (pg_dump prints them raw; a CR or a trailing tab would not survive editors and git checks)."""
+    body = literal[1:-1]
+    if not any(c in body for c in '\t\r\n'):
+        return literal
+    body = body.replace('\\', '\\\\').replace('\t', '\\t').replace('\r', '\\r').replace('\n', '\\n')
+    return "E'" + body + "'"
+
+
 def rewrite(expr):
     """Rewrite every parenthesized group of expr, innermost first."""
     out, i = [], 0
     while i < len(expr):
         if expr[i] == "'":
             j = skip_quote(expr, i)
-            out.append(expr[i:j])
+            out.append(escape_controls(expr[i:j]))
             i = j
         elif expr[i] == '(':
             end = close_of(expr, i)

@@ -4824,8 +4824,7 @@ CREATE TABLE public.project_task_plan_intents (
     creation_fingerprint text NOT NULL,
     task_version integer NOT NULL,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
-    CONSTRAINT project_task_plan_intent_key CHECK (((length(intent_key) BETWEEN 1 AND 120) AND (intent_key = btrim(intent_key, ' 	
-'::text)))),
+    CONSTRAINT project_task_plan_intent_key CHECK (((length(intent_key) BETWEEN 1 AND 120) AND (intent_key = btrim(intent_key, E' \t\r\n'::text)))),
     CONSTRAINT project_task_plan_intents_creation_fingerprint_check CHECK ((public.flux_is_sealed(creation_fingerprint) OR (creation_fingerprint ~ '^[0-9a-f]{64}$'::text))),
     CONSTRAINT project_task_plan_intents_material_version_check CHECK ((material_version > 0)),
     CONSTRAINT project_task_plan_intents_task_version_check CHECK ((task_version > 0))
