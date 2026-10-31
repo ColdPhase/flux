@@ -35,4 +35,3 @@ export function inviteIdOf(signer: InviteSigner, token: unknown): string | null 
   const id = bytes.subarray(0, 16);
   return timingSafeEqual(bytes.subarray(16), macOf(signer, id)) ? uuidOf(id) : null;
 }
-
