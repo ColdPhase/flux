@@ -24,8 +24,6 @@
 .auth__form .ui-btn--primary { margin-top: 6px; }
 .auth__sso { display: flex; flex-direction: column; gap: 10px; }
 .auth__sso-error { margin: 0; font-size: var(--fs-sm); color: var(--t1, var(--t1)); }
-.auth__or { display: flex; align-items: center; gap: 12px; margin: 8px 0 0; font-size: var(--fs-sm); color: var(--t3); }
-.auth__or::before, .auth__or::after { content: ""; flex: 1; height: 1px; background: var(--line); }
 .auth__alt { font-size: 13px; color: var(--t3); margin: 0; }
 .auth__error, .auth__notice {
   display: flex; gap: 10px; align-items: flex-start; padding: 12px 14px; border-radius: var(--r-lg);
@@ -37,7 +35,6 @@
 .auth__error .ui-link { color: var(--t1); }
 .auth__notice { margin-bottom: 20px; box-shadow: inset 0 0 0 1px var(--line); color: var(--t2); }
 .auth__notice strong { font-weight: 500; color: var(--t1); }
-.auth__mono { font: 12px/1.5 var(--mono); color: var(--t3); letter-spacing: 0; }
 .auth__sent { display: flex; flex-direction: column; gap: 10px; font-size: var(--fs-base); color: var(--t2); }
 .auth__sent strong { font-weight: 500; color: var(--t1); }
 .auth__foot { padding: 20px 24px; padding-bottom: max(20px, env(safe-area-inset-bottom)); font-size: var(--fs-xs); color: var(--t3); text-align: center; }
@@ -116,13 +113,12 @@ body:has(.app) { background: var(--side); }
 .side__item[aria-current="page"], .side__project.is-open, .side__dm[aria-current="page"] {
   background: var(--el); color: var(--t1); box-shadow: var(--sh-raise);
 }
-.side__item[aria-current="page"] :is(.side__ic, .side__trail), .side__project.is-open .side__sub { color: var(--t1); }
+.side__item[aria-current="page"] .side__ic, .side__project.is-open .side__sub { color: var(--t1); }
 .side__ic { color: var(--t2); width: 18px; flex: none; }
 .side__pj {
   display: inline-flex; align-items: center; justify-content: center; flex: none; border-radius: 6px; background: var(--sub);
   box-shadow: inset 0 0 0 1px var(--line); font-size: .625rem; font-weight: 600; color: var(--t1);
 }
-.side__trail { margin-left: auto; color: var(--t2); }
 .side__count {
   margin-left: auto; display: inline-flex; align-items: center; justify-content: center; min-width: 20px; height: 20px; padding: 0 7px;
   border-radius: var(--r-pill); background-color: var(--inv); background-image: var(--grad-inv); color: var(--oninv);
@@ -230,7 +226,6 @@ a.me__btn[aria-current="page"] { background: var(--sub); }
 }
 .me__who { display: flex; flex-direction: column; padding: 8px 10px 10px; line-height: 1.35; }
 .me__who .me__session { margin-top: 4px; white-space: normal; }
-.me__hint { display: block; margin-top: 4px; color: var(--t3); font-size: var(--fs-xs); line-height: 1.45; }
 .me__label svg { margin-right: 6px; vertical-align: -1px; }
 .me__notify { padding: 0 6px 2px; }
 /* The PWA notification control (#41) and update prompt, drawn with the shell's tokens. */
@@ -301,8 +296,6 @@ a.me__item { text-decoration: none; }
 .top__crumb, .top__slash { color: var(--t2); font-size: var(--fs-md); white-space: nowrap; }
 .top__topic { min-width: 0; color: var(--t2); font-size: var(--fs-sm); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .top__right { display: flex; align-items: center; gap: 8px; flex: none; }
-.top__details { gap: 7px; padding: 0 9px; font-size: var(--fs-sm); }
-.top__details[aria-expanded="true"] { background: var(--sub); color: var(--t1); }
 /* The computer's one-row header (F-026 §4): the name, the segmented views, then what needs you, the
    people and agents, and More, over one hairline. Focus keeps the name, the view and the way out. */
 .top.top--row { height: auto; min-height: 64px; align-items: center; padding: 12px 16px 12px 20px; gap: 14px; border-bottom: 1px solid var(--line); }
@@ -361,27 +354,15 @@ a.me__item { text-decoration: none; }
 .views .ui-tabs__tab:hover { color: var(--t1); }
 /* The ring is drawn in place (no offset transition from the global 4px), so no frame of it is clipped. */
 .views .ui-tabs__tab, .views .ui-tabs__tab:focus-visible { outline-offset: -2px; }
-/* "What matters" (#133): one quiet entry at the end of the project's tabs, its count as plain text. */
-.views--project { display: flex; align-items: center; gap: 18px; padding-right: var(--space-page); }
-.views--project .views__tabs { flex: 1; min-width: 0; }
-.views__recap { flex: none; gap: 6px; min-height: 35px; padding: 6px 0 8px; font-size: var(--fs-sm); color: var(--t2); background: transparent; }
-.views__recap:hover { background: transparent; color: var(--t1); }
-.views__recap[aria-expanded="true"] { color: var(--t1); box-shadow: inset 0 -2px 0 var(--t1); }
-.views__recap-n { font-family: var(--mono); font-size: var(--fs-xs); font-weight: 500; color: var(--t2); font-variant-numeric: tabular-nums; }
 @media (max-width: 1200px) { .views .ui-tabs__bar { gap: 11px; } }
 @media (max-width: 1000px) { .views .ui-tabs__bar { gap: 8px; } }
 @media (max-width: 760px) { .views .ui-tabs__bar { gap: 4px; } }
-@media (max-width: 640px) { .views--project { padding-right: 8px; gap: 4px; } .views__recap { padding: 0 8px; gap: 4px; } }
-@media (pointer: coarse) { .views__recap { min-height: 44px; } .views .ui-tabs__tab { min-height: 44px; min-width: 44px; padding-inline: 6px; justify-content: center; } .views .ui-tabs__bar { gap: 12px; } }
+@media (pointer: coarse) { .views .ui-tabs__tab { min-height: 44px; min-width: 44px; padding-inline: 6px; justify-content: center; } .views .ui-tabs__bar { gap: 12px; } }
 
 /* ---------- Work area ---------- */
 .pane-scroll { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain; }
 .pane-in { max-width: calc(var(--col) + 48px); margin: 0 auto; padding: 20px 24px 40px; }
-.intro { padding: 16px 0 4px; }
-.intro h2 { font-size: var(--fs-xl); line-height: var(--lh-tight); letter-spacing: -0.015em; }
-.intro p { margin-top: 4px; font-size: var(--fs-md); color: var(--t3); }
 .view-empty { padding: 36px 0 32px; }
-.intro + .view-empty { margin-top: 24px; padding-top: 28px; border-top: 1px solid var(--line); }
 /* Home's Tasks (#190 HOME-2): your unfinished work grouped by project, in calm rows like "Since you left". */
 .home-tasks { padding: 24px 0 32px; }
 .home-tasks__h { margin: 0 0 4px; font-size: var(--fs-lg); letter-spacing: -.01em; }
@@ -407,7 +388,6 @@ a.me__item { text-decoration: none; }
 @media (max-width: 640px) { .home-tasks__status { min-width: 0; } }
 
 /* Conversation: column + pinned composer */
-.convo { flex: 1; min-height: 0; display: flex; flex-direction: column; }
 .composer { flex: none; padding: 8px 24px 16px; padding-bottom: max(16px, env(safe-area-inset-bottom)); }
 .composer__in { max-width: var(--col); margin: 0 auto; }
 .composer__box {
@@ -489,9 +469,6 @@ a.me__item { text-decoration: none; }
 .details__sec { margin-top: 28px; }
 .details__sec h4 { margin: 0 0 8px; font-size: var(--fs-xs); font-weight: 500; color: var(--t3); }
 .details__sec p { font-size: var(--fs-md); color: var(--t2); line-height: 1.6; }
-.details__dl { display: grid; grid-template-columns: 76px minmax(0, 1fr); gap: 8px 12px; margin: 0; font-size: var(--fs-md); }
-.details__dl dt { color: var(--t3); }
-.details__dl dd { margin: 0; color: var(--t2); overflow-wrap: break-word; min-width: 0; }
 .details__back { display: inline-flex; align-items: center; gap: 4px; min-height: var(--ctl); margin: -6px 0 10px -6px; padding: 0 6px; border-radius: var(--r-sm); font-size: var(--fs-sm); color: var(--t3); transition: var(--tr); }
 .details__back:hover { background: var(--hov); color: var(--t1); }
 .details__rows { list-style: none; margin: 0; padding: 0; }
@@ -524,7 +501,7 @@ kbd { display: inline-grid; place-items: center; min-width: 18px; height: 18px; 
 }
 /* ---------- Coarse pointers: 44px targets ---------- */
 @media (pointer: coarse) {
-  .side__item, .side__person { min-height: 44px; }
+  .side__item { min-height: 44px; }
   .side__new, .side__search { min-height: 44px; }
   .side__search { width: 44px; }
   .me__settings, .side__ib, .side__rail-project, .side__rail-dm, .newmenu--compact .side__new, .me--compact .me__btn { width: 44px; height: 44px; min-height: 44px; }

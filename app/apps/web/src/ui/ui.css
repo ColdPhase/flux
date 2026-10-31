@@ -37,9 +37,6 @@ svg { flex: none; }
 .ui-spin { display: inline-block; width: 14px; height: 14px; border-radius: 50%; border: 1.5px solid currentColor; border-right-color: transparent; animation: ui-spin .8s linear infinite; flex: none; }
 @keyframes ui-spin { to { transform: rotate(360deg); } }
 
-.ui-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--t3); display: inline-block; flex: none; }
-.ui-dot--ok { background: var(--t1); }
-
 /* Tooltips: only where a pointer can hover; they wait, then fade in. */
 @media (hover: hover) and (pointer: fine) {
   [data-tip] { position: relative; }
@@ -215,7 +212,7 @@ svg { flex: none; }
 .ui-drawer, .ui-drawer * { touch-action: pan-y pinch-zoom; }
 /* The phone sheet's header is its handle: a grabber shows it can be pulled down to close (#266 PF-4). */
 .ui-sheet .ui-panel__head { position: relative; touch-action: none; }
-.ui-sheet:not(.ui-sheet--detent) .ui-panel__head::before {
+.ui-sheet .ui-panel__head::before {
   content: ""; position: absolute; left: 50%; top: calc(env(safe-area-inset-top) + 6px); width: 36px; height: 5px; margin-left: -18px;
   border-radius: var(--r-pill); background: var(--line2);
 }

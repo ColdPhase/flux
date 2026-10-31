@@ -5,7 +5,7 @@ import { useMorph } from './motion';
  * A task's state as a shape, from the final design (F-026, guide §2 "Status glyphs"): Open is an
  * outline circle, In progress a half-filled circle, Blocked a filled rounded square, Done a filled
  * circle with a check, Not pursued a slashed circle. Colour never carries the meaning, so the glyph is
- * always shown with its word: next to it (`TaskState`), or in the row or column it sits in.
+ * always shown with its word, next to it or in the row or column it sits in.
  */
 export function StatusGlyph({ status, size = 16, className, changeKey }: { status: WorkStatus; size?: number; className?: string; changeKey?: string }) {
   // A changed state morphs in place (#593 AC-4): the new shape settles in from a soft fade and a slightly smaller size.
