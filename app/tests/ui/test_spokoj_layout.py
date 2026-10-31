@@ -1,7 +1,7 @@
 """Spokój layout and controls (#505, #506, #507; docs/design/spokoj "Layout per screen" and rule 7).
 
-Computer: one header row above the conversation and the one panel; the panel is 420 px at 1440 and 480 px
-from 1920; the conversation is at most 760 px; when the views leave too little room the people and Together move
+Computer: one header row above the conversation and the one panel; the panel is 420 px at 1440 and on larger screens
+(F-015 amendment, 2026-10-31); the conversation is at most 760 px; when the views leave too little room the people and Together move
 into More. A tablet folds the sidebar to its rail, makes the project title the view menu and overlays the panel.
 Controls keep their place: the rail order, the header's right-hand set in every project view, the Tasks toolbar in
 both views. Phone: Back · title (the view menu) · Together · Search in every project view and a direct message,
@@ -229,7 +229,7 @@ class SpokojLayout(unittest.TestCase):
             boxes[name] = self.box(header.get_by_role("navigation", name="Project views").get_by_role("link", name=re.compile(f"^{name}")))
         return boxes
 
-    def test_03_the_panel_is_420_at_1440_and_480_from_1920_and_the_conversation_is_at_most_760(self) -> None:
+    def test_03_the_panel_is_420_at_1440_and_on_large_screens_and_the_conversation_is_at_most_760(self) -> None:
         page = self.page(COMPUTER)
         self.goto_view(page, "")
         self.open_panel(page)
@@ -243,7 +243,7 @@ class SpokojLayout(unittest.TestCase):
                 page = self.page(size, dark=size is WIDE)
                 self.goto_view(page, "")
                 self.open_panel(page)
-                self.assertAlmostEqual(self.box(page.locator(".ui-panel--docked"))["width"], 480, delta=1)
+                self.assertAlmostEqual(self.box(page.locator(".ui-panel--docked"))["width"], 420, delta=1)
                 self.assertLessEqual(self.box(page.locator(".project-convo__in"))["width"], 760.5, "the conversation is at most 760 px")
                 # Exactly two content columns: the conversation pane and the panel.
                 self.assertEqual(page.locator(".app__body > *").count(), 2)

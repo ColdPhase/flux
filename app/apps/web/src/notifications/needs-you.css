@@ -1,6 +1,6 @@
 /* The Inbox "Needs you" queue and Home's top three (#342, F-026 S1/S11, P4). Cards rise from the
    screen on --el with --sh-card; the selected card is ringed, not tinted; no accent colour. */
-.pane-in.nyq { max-width: 808px; }
+.pane-in.nyq { max-width: calc(var(--read-max) + 48px); }
 .nyq__bar { display: flex; align-items: center; justify-content: space-between; gap: 12px 16px; flex-wrap: wrap; padding: 4px 0 16px; }
 .nyq__summary { margin: 0; font-size: var(--fs-sm); color: var(--t3); }
 .nyq__all { font: inherit; color: var(--t2); text-decoration: underline; text-underline-offset: 3px; }
