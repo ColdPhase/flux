@@ -267,7 +267,10 @@ test('owner-only background setup persists consent, clears keys and preserves an
   await page.waitForURL(/\/settings$/);
   assert.equal(await page.getByRole('dialog', { name: 'Account', exact: true }).count(), 0);
   await page.getByRole('link', { name: 'Agents and AI', exact: true }).first().click();
-  await page.getByRole('link', { name: /^Background suggestions/ }).click();
+  await page.waitForURL(/\/settings\/agents$/);
+  // The row is followed by keyboard, as the menu link was: its section settles in while its reads arrive.
+  await page.getByRole('link', { name: /^Background suggestions/ }).focus();
+  await page.keyboard.press('Enter');
   await page.getByRole('heading', { name: 'Your background suggestions', exact: true }).waitFor();
   assert.match(await page.getByRole('note').innerText(), /not available/);
   // #513: the connections and their form live on one AI connections page, linked beside the status line.
