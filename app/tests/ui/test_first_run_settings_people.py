@@ -398,9 +398,10 @@ class FirstRunSettingsPeople(unittest.TestCase):
         expected = f"{ORIGIN}/sign-up?email={newcomer.replace('@', '%40').replace('+', '%2B')}"
         copied = invite.get_by_role("status")
         expect(copied).to_have_text(re.compile("Sign-up link copied.|Copy this link and send it to them."))
-        # WebKit lets the page write the clipboard but not a test read it back.
-        if "copied" in copied.inner_text() and UI_BROWSER == "chromium":
-            self.assertEqual(page.evaluate("navigator.clipboard.readText()"), expected)
+        if "copied" in copied.inner_text():
+            # WebKit lets the page write the clipboard but not a test read it back.
+            if UI_BROWSER == "chromium":
+                self.assertEqual(page.evaluate("navigator.clipboard.readText()"), expected)
         else:
             expect(invite.get_by_label("Sign-up link")).to_have_value(expected)
         shot(page, f"763-people-sign-up-link-1440-{UI_BROWSER}")
