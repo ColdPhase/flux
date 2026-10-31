@@ -25,8 +25,9 @@ Memory in more detail. Compose limits each service, and memory and swap to the s
 | `db` | none | 69 MiB idle |
 
 Idle figures: `docker stats` on a fresh source install on 2026-10-31 (Docker Engine 29.4.2, Linux
-`x86_64`). Peaks: cgroup `memory.peak` during the checks of 2026-10-23
-([upgrade notes](upgrade.md#encrypted-workspaces-the-keyring-and-memory-limits-schema-119)).
+`x86_64`). Peaks: cgroup `memory.peak` on 2026-10-23 during the encryption check
+`scripts/check_encryption.sh` and the affected API suites of `check_application.sh` (the full suite
+was not measured).
 They are not a capacity measurement for many people; watch `docker stats` on your instance and raise
 a limit if a container is killed for memory.
 

@@ -21,37 +21,8 @@ git pull --ff-only && ./flux upgrade      # or: ./flux upgrade --pull
 The downtime is the backup, the build and the migration. It prints
 `Upgraded <project> from schema A to B` and keeps the backup.
 
-The compatibility guard for legacy ledger versions checks the actual catalog before migration
-SQL or queue startup. Composed sign-in 0096 and runtime-auth 0097 are admitted only with their own
-ledger versions; see [composition with sign-in 0096 / runtime-auth 0097](../development/task-creation-undo/composition-2026-10-08.md#composition-with-sign-in-0096--runtime-auth-0097-2026-10-15).
-If the image refuses a partial, mixed or unsupported footprint, keep the backup and restore its
-matching image/database. Do not edit the ledger or rename a migration to make the check pass.
-
-## Encrypted workspaces: the keyring and memory limits (schema 119)
-
-From schema 119 (F-030, [encrypted workspaces](../product/encrypted-workspaces.md), S1) every install
-runs a small `keyring` service next to `api` and `worker`, on an internal network that only these three
-join. `./flux upgrade` adds the keyring's `FLUX_KEYRING_TOKEN` to `docker/.env` when it is missing and
-never changes an existing one; without a token the keyring stays idle. From schema 130 (S2c) it also
-adds `FLUX_KEY_PIN_SECRET`, which pins every encrypted space's unlock passwords and key versions so rows
-planted in the database are refused. It is never changed afterwards and is not in the database: back it
-up with `docker/.env`. Without it (or with one shorter than 32 characters) the API and worker log a
-warning at start and encrypted spaces cannot be created or unlocked; changing it makes every encrypted
-space refuse to unlock as tampered. Encrypted workspaces cannot be
-created in a normal install before S3, so nothing else changes for people.
-
-`api`, `worker` and `keyring` now have memory limits with swap limited to the same value, so they
-cannot write memory to a swap device, and core dumps are off. The defaults are `FLUX_API_MEMORY=2g`,
-`FLUX_WORKER_MEMORY=1g` and `FLUX_KEYRING_MEMORY=128m`; raise them in `docker/.env` if a container is
-killed for memory. Measured peaks (cgroup `memory.peak`, 2026-10-23, this host, the S1 encryption
-check `scripts/check_encryption.sh` and the affected API suites of `check_application.sh`): `api` 431 MB,
-`worker` 111 MB, `keyring` 42 MB (its health check's second Node process included). The defaults are at
-least twice these peaks; the full suite was not measured.
-
-When swap is on and not limited for a container (an older kernel without swap accounting), the keyring
-refuses to start and the API logs a warning at start; encrypted spaces stay locked there. Turn swap off,
-or set `FLUX_SWAP_ACKNOWLEDGED=encrypted-swap` only if every swap device is encrypted with a key that
-is not stored on the disk.
+The image checks the database's migration ledger before it migrates. If it refuses a partial,
+mixed or unsupported footprint, keep the backup and restore its matching image and database. Do not edit the ledger or rename a migration to make the check pass.
 
 ## When it fails
 
@@ -79,10 +50,6 @@ A failed migration file rolls back its own transaction; earlier new migrations o
 upgrade stay applied, which is why the instructions restore the backup rather than restarting
 the old version on the partly migrated database.
 
-Migration 0089 takes its table locks with `NOWAIT`, so any conflicting lock, autovacuum
-included, fails it at once and leaves 0082, 0087 and 0088 recorded; run `./flux upgrade`
-again and it applies 0089 and the later files.
-
 ## Verified behavior
 
 `./scripts/check_backup.sh` starts a checkout of the **previous main's schema**: the newest
@@ -100,29 +67,3 @@ refused by restore without `--migrate` and restored with it, and through the API
 private note and sketch, a new doc, and the export. It then adds a failing migration, checks that
 the upgrade fails with the restore instruction for its backup, removes the migration and follows
 the instruction; the demo data is verified again.
-
-## Returning to a version before the app/docker layout
-
-Those versions read root `.env`, while the current launcher reads `docker/.env`.
-After checking out the prior version and before its restore command, move the
-same configuration back when the old tree has no `app/package.json`:
-
-```sh
-if [ ! -f app/package.json ] && { [ -e docker/.env ] || [ -L docker/.env ]; }; then
-  [ ! -L docker/.env ] && [ -f docker/.env ] || { echo 'Preserve the intended configuration as a private root .env before restore.' >&2; exit 1; }
-  [ ! -e .env ] && [ ! -L .env ] && mv docker/.env .env || exit 1
-fi
-./flux restore /absolute/path/to/the/pre-upgrade-backup.tar
-```
-
-Keep its stored project name, secrets and file permissions. If both files exist,
-choose the intended configuration before continuing; do not regenerate it. When
-returning to the current source, the launcher moves a regular root `.env` forward
-once. It refuses legacy symlinks before changing anything: moving a relative link
-would change its target. Preserve the intended target's contents and private
-permissions in `docker/.env`, verify its project and secrets, then remove the old
-root link. Existing dangling links at either path also require explicit resolution;
-the launcher never treats them as permission to generate replacement secrets.
-The layout upgrade/rollback check exercises the historical launcher and restored
-original project, followed by another upgrade; a same-version restore alone does
-not establish this transition.

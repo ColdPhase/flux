@@ -375,7 +375,7 @@ How often the worker reconciles slot bindings with the runtime manager.
 
 ## Encrypted spaces and the keyring
 
-See [operating encrypted spaces](encrypted-spaces.md). `./flux up` and `./flux upgrade` generate the secrets.
+See [operating encrypted spaces](encrypted-spaces.md). `./flux up` generates the secrets.
 
 ### `FLUX_KEYRING`
 

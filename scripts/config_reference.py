@@ -87,7 +87,7 @@ GROUPS = [
     ("runtime", "Agent runtime: the owner's own Claude Code or Codex",
      "Off by default. See the [agent runtime guide](agent-runtime.md); `./flux ai on` writes these for you."),
     ("encryption", "Encrypted spaces and the keyring",
-     "See [operating encrypted spaces](encrypted-spaces.md). `./flux up` and `./flux upgrade` generate the secrets."),
+     "See [operating encrypted spaces](encrypted-spaces.md). `./flux up` generates the secrets."),
     ("limits", "Memory limits",
      "Memory and swap are limited to the same value, so these containers cannot write memory to a swap device."),
     ("github", "GitHub App (optional)",
