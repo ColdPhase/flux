@@ -127,7 +127,7 @@ A database from before the baseline (a pre-release development build) is refused
 as having versions without files; remove it with `./flux clean` and start again.
 `scripts/db_baseline.sh diff <A> <B>` builds two migration sets (a directory or `git:<ref>`) in
 throwaway PostgreSQL and compares `pg_dump --schema-only`, every row and sequence; `generate` writes a
-baseline. The v0.1 baseline was generated from the 123 files at `1bef0cbdb` and compares identical.
+baseline. The v0.1 baseline was generated from the 123 files at `662c1110d` and compares identical.
 The API and worker also check the exact ledger before starting; API health checks
 it again on every request.
 
