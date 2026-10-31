@@ -22,6 +22,44 @@ export async function originalUndoFiles() {
     return { name: file.name, version: Number(file.name.slice(0, 4)), sql };
   }));
 }
+// A fixture at the current manifest applies every migration (130 and growing); built per test it took ~8 s, so a test
+// that needs a dozen of them ran past its budget (#752). The current schema is built once per process as a template
+// database and each fixture is a copy of it: the same ledger, catalog and rows as applying the files one by one.
+let currentTemplate: Promise<string> | undefined;
+let templateDropped = false;
+function currentSchemaTemplate(admin: ReturnType<typeof createDatabase>['pool']): Promise<string> {
+  currentTemplate ??= (async () => {
+    const name = `flux_undo_template_${randomUUID().replaceAll('-', '')}`;
+    await execute(admin, `CREATE DATABASE "${name}"`);
+    const pool = createDatabase(dbUrl(name)).pool;
+    try {
+      for (const file of await readMigrationManifest(directory, FLUX_SCHEMA_VERSION)) {
+        await execute(pool, await readFile(`${directory}/${file.name}`, 'utf8'));
+        await pool.query('INSERT INTO flux_schema_version(version) VALUES($1) ON CONFLICT DO NOTHING', [file.version]);
+      }
+    } catch (error) {
+      await pool.end();
+      await execute(admin, `DROP DATABASE IF EXISTS "${name}" WITH (FORCE)`);
+      throw error;
+    }
+    // A template is copied only while nobody is connected to it.
+    await pool.end();
+    process.once('beforeExit', () => {
+      if (templateDropped) return;
+      templateDropped = true;
+      const cleanup = createDatabase(process.env.DATABASE_URL!).pool;
+      void execute(cleanup, `DROP DATABASE IF EXISTS "${name}" WITH (FORCE)`).finally(() => cleanup.end());
+    });
+    return name;
+  })();
+  currentTemplate.catch(() => { currentTemplate = undefined; });
+  return currentTemplate;
+}
+/** Builds the current-schema template ahead of the tests (call it from a `before` hook), so no single test pays for it. */
+export async function prepareCurrentSchemaFixtures(): Promise<void> {
+  const admin = createDatabase(process.env.DATABASE_URL!).pool;
+  try { await currentSchemaTemplate(admin); } finally { await admin.end(); }
+}
 export async function fixtureDatabase(files?: Awaited<ReturnType<typeof originalUndoFiles>>, name = `flux_undo_legacy_${randomUUID().replaceAll('-', '')}`) {
   const admin = createDatabase(process.env.DATABASE_URL!).pool;
   let db: ReturnType<typeof createDatabase>['pool'] | undefined;
@@ -45,13 +83,13 @@ export async function fixtureDatabase(files?: Awaited<ReturnType<typeof original
     if (errors.length > 1) throw new AggregateError(errors, 'undo fixture cleanup failed');
   };
   try {
-    await execute(admin, `CREATE DATABASE "${name}"`);
+    const template = files ? undefined : await currentSchemaTemplate(admin);
+    await execute(admin, template ? `CREATE DATABASE "${name}" TEMPLATE "${template}"` : `CREATE DATABASE "${name}"`);
     created = true;
     const pool = createDatabase(dbUrl(name)).pool;
     db = pool;
     guard = guardFixturePool(pool);
-    const manifest = await readMigrationManifest(directory, FLUX_SCHEMA_VERSION);
-    for (const file of files ?? await Promise.all(manifest.map(async (file) => ({ ...file, sql: await readFile(`${directory}/${file.name}`, 'utf8') })))) {
+    for (const file of files ?? []) {
       await execute(pool, file.sql);
       await pool.query('INSERT INTO flux_schema_version(version) VALUES($1) ON CONFLICT DO NOTHING', [file.version]);
     }

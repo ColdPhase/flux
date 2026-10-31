@@ -204,15 +204,17 @@ BEGIN
   RETURN NEW;
 END $$;
 -- The AI class of S1 (S2a's TABLE_CLASSES replaces the patterns): every such table with a workspace path gets it.
+-- The schema being migrated, not a fixed 'public' (#752): the same tables in an ordinary install, and in a fixture schema the
+-- loop no longer reaches the public schema's tables (it met public.agent_pauses of 0131 there).
 DO $$
 DECLARE t text;
 BEGIN
   FOR t IN
     SELECT c.table_name FROM information_schema.tables c
-    WHERE c.table_schema = 'public' AND c.table_type = 'BASE TABLE'
+    WHERE c.table_schema = current_schema() AND c.table_type = 'BASE TABLE'
       AND (c.table_name LIKE 'agent%' OR c.table_name LIKE 'assistant%' OR c.table_name LIKE 'cowork%' OR c.table_name LIKE 'personal_run%'
         OR c.table_name LIKE 'proactive_comparison%' OR c.table_name = 'background_compute_connections')
-      AND EXISTS (SELECT 1 FROM information_schema.columns k WHERE k.table_schema = 'public' AND k.table_name = c.table_name
+      AND EXISTS (SELECT 1 FROM information_schema.columns k WHERE k.table_schema = current_schema() AND k.table_name = c.table_name
         AND (k.column_name IN ('workspace_id', 'project_id', 'agent_id') OR (c.table_name LIKE 'agent%' AND k.column_name = 'connection_id')))
     ORDER BY c.table_name
   LOOP

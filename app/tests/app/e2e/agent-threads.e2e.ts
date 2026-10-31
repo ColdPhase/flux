@@ -84,3 +84,20 @@ test('task Details links to the agents’ thread with its message count and open
     } finally { await context.close(); }
   }
 });
+
+// #752: under load the full check timed out waiting for this thread. The thread the address names waited for the
+// Agents task list page as well as its own read; a slow or failed list kept it closed. It opens on its own read now.
+test('a thread the address names opens on its own read while the Agents task list is still on its way (#752)', { timeout: 120_000 }, async () => {
+  const f = await fixture();
+  const context = await session(f.writer, 1440); const page = await context.newPage(); const errors: string[] = [];
+  page.on('pageerror', e => errors.push(e.message));
+  const held: { abort(): Promise<void> }[] = []; let listAsked = false;
+  try {
+    // The list page of open tasks is held for the whole visit; nothing else is.
+    await page.route((url) => url.searchParams.get('choice') === 'pivot_work', (route) => { listAsked = true; held.push({ abort: () => route.abort() }); });
+    await page.goto(`/projects/${f.place.id}/agents?thread=${f.task.id}`);
+    await page.getByRole('region', { name: `Agents’ thread of ${f.task.title}`, exact: true }).waitFor();
+    assert.ok(listAsked, 'the Agents list page was asked for and is still held');
+    assert.deepEqual(errors, []);
+  } finally { await page.unrouteAll({ behavior: 'ignoreErrors' }); for (const route of held) await route.abort().catch(() => undefined); await context.close(); }
+});

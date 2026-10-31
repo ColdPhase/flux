@@ -753,8 +753,9 @@ function ProjectAgentsLoaded({ data }: { data: ProjectAgentsData }) {
     && own.value.object.lifecycle?.state !== 'creation_reverted'
     ? { id: own.value.object.id, number: own.value.object.number, title: own.value.object.title, status: own.value.object.status } : null;
   // While that read (or the first page) is still on its way, nothing is chosen yet, so a
-  // thread never opens on a fallback task and then jumps.
-  const settling = (!!wanted && !onPage && (own.read.phase === 'loading' || !choices.page)) || (!wanted && !choices.page);
+  // thread never opens on a fallback task and then jumps. The task the address names opens as soon as
+  // its own read has it: it never waits for the list page, which can be slow or fail (#752).
+  const settling = (!!wanted && !onPage && !ownTask && (own.read.phase === 'loading' || !choices.page)) || (!wanted && !choices.page);
   // The thread is open only for a `?task=`; there is no task picker and no thread under the list.
   const task = wanted && !settling ? onPage ?? ownTask ?? tasks[0] ?? null : null;
   const names = useMemo(() => new Map((shell?.people ?? []).map((person) => [person.id, person.name])), [shell]);

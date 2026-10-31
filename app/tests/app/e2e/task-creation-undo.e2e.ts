@@ -634,8 +634,9 @@ test('desktop and phone-width history render readable actor and time, keyboard l
       await page.goto(`/projects/${f.place.id}?open=work:${item.id}`); await reverted(page, item);
       assert.match(await panel(page).innerText(), /Creation undone by Ari Task author on/);
       const activity = panel(page).getByRole('list', { name: 'Task activity', exact: true });
-      assert.equal(await activity.locator('time').first().getAttribute('datetime'), item.createdAt);
-      assert.equal(await activity.locator('time').last().getAttribute('datetime'), life.revertedAt);
+      // The timeline lists newest first (#601): the Undo line leads and the creation is the oldest line.
+      assert.equal(await activity.locator('time').first().getAttribute('datetime'), life.revertedAt);
+      assert.equal(await activity.locator('time').last().getAttribute('datetime'), item.createdAt);
       assert.match(await activity.innerText(), /Trial planning agent/);
       assert.match(await activity.innerText(), /Ari Task author/);
       assert.equal(await panel(page).locator('.wd-criteria li').count(), 2);
@@ -681,11 +682,12 @@ test('Agents, Map and live work never offer a task whose creation was undone, wh
   const context = await signedIn(f.author);
   await withContexts([context], async () => {
     const page = await context.newPage(); watchErrors(page);
-    // Agents: an undone ?task= falls back to the current open task, never the undone thread.
+    // Agents: an undone ?task= falls back to the current open task, never the undone thread. `?task=` opens a task's
+    // thread there (#582; the panel's thread section is named "Thread of <title>"), `?thread=` its agents' thread.
     await page.goto(`/projects/${f.place.id}/agents?task=${item.id}`);
-    const keptThread = page.getByRole('region', { name: `#${kept.number} · ${kept.title}`, exact: true });
+    const keptThread = page.getByRole('region', { name: `Thread of ${kept.title}`, exact: true });
     await keptThread.waitFor();
-    assert.equal(await page.getByRole('region', { name: `#${item.number} · ${item.title}`, exact: true }).count(), 0);
+    assert.equal(await page.getByRole('region', { name: `Thread of ${item.title}`, exact: true }).count(), 0);
     // The current task picker is in Hand Off; the undone task is absent, while the open task remains selectable.
     await page.getByRole('button', { name: 'Hand off a task', exact: true }).click();
     const taskChoice = page.getByLabel('Task', { exact: true }); await taskChoice.waitFor();
