@@ -12,7 +12,7 @@ on:
         required: true
         type: string
       acceptance_issue:
-        description: Issue with both agents' exact-SHA integrated acceptance comments
+        description: Issue with the owner's acceptance and an independent reviewer's exact-SHA review
         required: true
         type: string
 
@@ -73,8 +73,11 @@ jobs:
           gh api --paginate --slurp \
             "repos/$GITHUB_REPOSITORY/issues/$ACCEPTANCE_ISSUE/comments?per_page=100" \
             > "$RUNNER_TEMP/acceptance-comments.json"
+          # The reviewer's session must not be in the candidate's history (reviewer != author).
+          git log --format=%B "$CANDIDATE_SHA" > "$RUNNER_TEMP/commit-messages.txt"
           python3 scripts/release/verify_acceptance.py \
-            --comments "$RUNNER_TEMP/acceptance-comments.json" --source-sha "$CANDIDATE_SHA"
+            --comments "$RUNNER_TEMP/acceptance-comments.json" --source-sha "$CANDIDATE_SHA" \
+            --commit-messages "$RUNNER_TEMP/commit-messages.txt"
           echo "source_sha=$CANDIDATE_SHA" >> "$GITHUB_OUTPUT"
           echo "version=$RELEASE_VERSION" >> "$GITHUB_OUTPUT"
 
