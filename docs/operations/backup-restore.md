@@ -150,7 +150,7 @@ the ledger check, so a refused archive never asks.
 **Encrypted spaces** stay encrypted in the archive and come back **locked**. Each opens with an owner's
 or admin's unlock password as it was when the backup was taken, or the recovery code valid then; a
 password set later does not open it. `./flux restore` empties the unlock rows, so no space is open
-after a restore. See [Encrypted spaces](encrypted-spaces.md#backup-and-restore).
+after a restore. See [Encrypted spaces](encrypted-spaces.md#backups-restores-and-exports).
 
 Restore keeps everything in the dump, including private notes, direct messages, sessions,
 revoked sessions (they stay revoked), push subscriptions and notification rows. Access is
