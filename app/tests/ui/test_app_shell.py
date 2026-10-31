@@ -515,7 +515,8 @@ class AppShellJourney(unittest.TestCase):
         expect(page.get_by_role("heading", name="No docs yet")).to_be_visible()
         page.reload()
         expect(page).to_have_url(f"{ORIGIN}/docs")
-        expect(page.get_by_role("heading", level=1, name="Home")).to_be_visible()
+        # The Wiki reached from Home names itself (#763 NV-1).
+        expect(page.get_by_role("heading", level=1, name="Wiki")).to_be_visible()
         # A signed-in person who opens sign-in is taken to their work.
         page.goto("/sign-in")
         expect(page).to_have_url(f"{ORIGIN}/")
