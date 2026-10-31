@@ -131,8 +131,9 @@ class ReturnFixes(unittest.TestCase):
         panel.get_by_role("radio", name="Last 7 days").click()
         step = panel.locator(".since__next")
         expect(step).to_contain_text(f"Pick up “{TASK}”")
-        expect(step).to_contain_text(f"Tomasz gave it to you. Due {DUE}.")
-        given = panel.get_by_role("link", name=re.compile(f"^Tomasz gave you a task: {TASK}"))
+        # Seven days reach back past the task's creation by Tomasz: he made it, and it is hers.
+        expect(step).to_contain_text(re.compile(f"Tomasz (gave it to you|added it for you)\\. Due {DUE}\\."))
+        given = panel.get_by_role("link", name=re.compile(f"^Tomasz (gave you a task|added a task for you): {TASK}"))
         expect(given).to_have_count(0)  # the next step is not repeated in the list
         expect(panel.get_by_role("link", name=re.compile(f"Proposed rule: {OPEN_RULE}"))).to_be_visible()
         shot(page, "h11-what-matters-due")
