@@ -526,11 +526,17 @@ jitter-buffer delay per emitted sample; it is not glass-to-glass. Windows: speec
 address only), then 8 s after the link returns; last, 5 % loss with 40 ± 20 ms both ways at router A (the weak
 window runs first so that the loss window's after-effects on the TCP relay do not confound it).
 
-**Calibration.** Three runs with `FLUX_SIM_CALIBRATE=1` (record only) on 2026-10-31, at the branch, on a Linux host
-shared with other agents' Docker work (load average 7 to 15). The thresholds below sit outside every calibration
-observation with margin; they are gates for this simulation that catch regressions, not promises for other
-networks or devices. They are enforced by default (`profiles.THRESHOLDS`). Peer review of the thresholds is
-**not** done (no independent evaluator in this session).
+**Calibration.** Record-only runs with `FLUX_SIM_CALIBRATE=1` on 2026-10-31 (the first three, then `cal2` to
+`cal8`), at the branch, on a Linux host shared with other agents' Docker work (load average 7 to 15). Each threshold
+below was set beyond the worst observation behind it, with one exception: **Tom's speech on the weak link
+(≥ 10 kbit/s) is not shown to sit outside every observation** (see the weak-receiver row). The gates are for this
+simulation, not promises for other networks or devices, and several have large headroom over what was measured
+(Smooth motion latency 300 ms against ≤ 2 ms, speech jitter 30 ms against ≤ 1 ms, large camera 20 fps against 30,
+camera capture 15 fps against 30, speech latency 500 ms against 18 to 152 ms typical): they catch a collapse, not a
+slow degradation. They are enforced by default (`profiles.THRESHOLDS`) and have been unchanged since `c240a4282`. An
+independent review of them was done on 2026-10-31 ([#63 comment](https://github.com/ColdPhase/flux/issues/63#issuecomment-6546818488));
+its two P2 findings are corrected in this document, by the reviewer, so the corrected wording has not been reviewed
+again. Freeze these values for the release-candidate pass, which should run on a quiet host.
 
 **Enforced runs (2026-10-31).** `./scripts/check_public_sim.sh` with the default runs at `67083f94d` (17 runs): 15
 passed, including the two-person profiles (46 checks, no failure); the four-person profiles failed on gates that the
@@ -546,7 +552,7 @@ the Firefox screen run passed (`FLUX_SIM_RUNS` with those three runs, exit 0).
 | Motion screen (1920×1080, 60 fps source) | Received 1920×1080 at 8.9 to 10.6 fps (Chromium sender, target bitrate 3.5 Mbit/s, no quality limitation reported), 12.1 fps for the second share; up to 2.8 s frozen with four people; latency estimate ≤ 79 ms. A Firefox sender reached 15 fps (the app's cap) | ≥ 1080 rows, ≥ 7 fps, ≤ 4 s frozen, ≤ 1 % loss, ≤ 400 ms |
 | 1:1 | The stage shows the received 1920 px at 1920 display pixels | shown width = received width |
 | 5 % loss, 40 ± 20 ms, at the presenters' router | TURN/TLS turns loss into delay: no RTP loss at receivers on the clean network, speech concealed 0 to 5.7 %, latency estimate 0.4 to 1.7 s; the screen keeps 1920×1080 but falls to 1.0 to 2.6 fps with 3 to 12 s frozen. Behind the lossy router itself, Mia's received speech was 2.8 to 3 % concealed in one run and **51 to 58 %** in the next | Receivers outside router A: speech ≤ 15 % concealed (12 % until a later calibration run measured 12.5 %) and ≥ 16 kbit/s; screen ≥ 1080 rows and ≥ 0.5 fps. What people behind the lossy router receive is recorded, not gated |
-| One weak receiver of four | Tom: best speech track 11.5 to 48 kbit/s with up to 29 % concealed; Ada's screen about 0.5 fps (it is one 1080p layer, maintain-resolution, so the SFU cannot thin it for him). With the weak window first (enforced run): Ada sent at 134 % of her clean frame rate, the others received 100 to 103 % of theirs with no concealment. In calibration, where the weak window followed the loss window, the others received 57 to 59 %. 8 s after the link returned Tom received the screen at 14.8 to 15 fps | Ada's sending ≥ 80 % of clean; others ≥ 50 % of clean fps and ≤ 3 % concealed; Tom's speech ≥ 10 kbit/s; Tom ≥ 5 fps after |
+| One weak receiver of four | Tom: best speech track 11.5 to 48 kbit/s with up to 29 % concealed (30 October and the enforced run); in the record-only runs `cal4` to `cal8` his speech was 8 to 18 kbit/s with 68 to 86 % concealed (the record does not say whether 8 was his best track, which is what the gate reads); Ada's screen about 0.5 fps (it is one 1080p layer, maintain-resolution, so the SFU cannot thin it for him). With the weak window first (enforced run): Ada sent at 134 % of her clean frame rate, the others received 100 to 103 % of theirs with no concealment. In calibration, where the weak window followed the loss window, the others received 57 to 59 %. 8 s after the link returned Tom received the screen at 14.8 to 15 fps | Ada's sending ≥ 80 % of clean; others ≥ 50 % of clean fps and ≤ 3 % concealed; Tom's best speech track ≥ 10 kbit/s (a liveness check: audio bytes arrive; **not** intelligibility, and not shown to be outside every calibration observation); Tom ≥ 5 fps after |
 | Smooth motion (later, 2026-10-31) | 1280×720 at 59.5 to 59.7 fps of a 1920×1080, 60 fps capture; ≤ 2 ms latency estimate ([details](#smooth-motion-ac-2-motion-profile)) | ≥ 720 rows, ≥ 45 fps, ≤ 2 s frozen, ≤ 1 % loss, ≤ 300 ms |
 | Camera shown large (later, 2026-10-31) | 1920×1080 at 29.7 to 30.1 fps ([details](#a-larger-camera-ac-2-camera-profile)) | ≥ 1080 rows, ≥ 20 fps, ≤ 2 s frozen, ≤ 1 % loss |
 
@@ -564,12 +570,27 @@ What the thresholds do **not** claim, from the same data:
   5 % over TURN/TLS heard up to 58 % of the others' speech concealed in one run. Over TURN/TLS, 5 % loss gives a screen at 1 to 3 fps and audio up to
   1.7 s late; after the loss ends the jitter-buffer delay stayed high for the rest of the run (0.2 to 1.2 s on
   tracks relayed from router A). Direct UDP under the same profile (30 October) kept frames flowing.
-- **One weak receiver loses the screen.** Screens are a single 1080p layer, so a 400 kbit/s receiver gets about
-  0.5 fps of it; speech stays intelligible with gaps (up to 29 % concealed).
+- **One weak receiver loses the screen, and most of the speech.** Screens are a single 1080p layer, so a 400 kbit/s
+  receiver gets about 0.5 fps of it. His speech was 68 to 86 % concealed in the record-only runs with Sharp text and 84
+  to 98 % with Smooth motion; the earlier "up to 29 %" did not recur. No threshold gates his concealment (every
+  value that would sit outside the observations would be meaningless), so "the weak receiver still hears" is **not
+  claimed**; only that audio keeps arriving.
 - One weak receiver does not slow the others: with the weak window first, everyone else kept their clean frame rate
   and speech. The 40 % drop seen in calibration came with the weak window right after the loss window on Ada's
   and Mia's TCP relay (Mia's own sending fell from 12 to 7 fps on an untouched network); the order now keeps them apart.
-- Tom's best speech track was 11.5 kbit/s in the enforced run against a 10 kbit/s gate: a narrow margin.
+- Tom's best speech track was 11.5 kbit/s in the enforced run against a 10 kbit/s gate: a narrow margin, and the
+  gate passed in `full1` and in both `four2` runs. If 8 kbit/s was his best track in one of `cal4` to `cal8`, that
+  run would have failed it.
+- **Code and text at 14 to 16 px, 2560×1440, 15 to 30 fps, scrolling (AC-2's first target) has no gate and is not
+  claimed.** The simulation gates Sharp text only on `testsrc2` at 1920×1080 (≥ 1080 rows, ≥ 7 fps; 8.9 to 10.6 fps
+  observed). On a full-frame scrolling pattern Sharp text (capture capped at 15 fps, 3.5 Mbit/s) arrived at
+  1920×1080 and 2.6 to 4.3 fps (`cal5`, recorded in `profiles.py`, not gated). That pattern is a stress case, not
+  terminal scrolling, so it neither confirms nor refutes 15 fps for real text. The 2560×1440 evidence is
+  [the 2026-09-30 calibration](live-code-calibration.md) (commit `b17ae9e`), which predates Smooth motion, the 10
+  Mbit/s cap and the camera changes and states that no readability threshold was set. What would close it: a
+  1440p text profile in `check_public_sim.sh` (14 to 16 px monospace text scrolling at a known rate, shared through
+  the app's button over TURN/TLS, two and four people), receiver frame rate and decoded-pixel samples, and criteria
+  (fps, image error) set by a second reviewer who has inspected the original pixels before the enforced run.
 
 Resources (`resources.jsonl`, `docker stats` every ~4 s; `resources-summary.json` per window). In the four-person
 two-share window the SFU used 7.8 % CPU on average (9.7 to 11.3 % peak, one core = 100 %), 80 to 83 MB memory, and
@@ -700,11 +721,12 @@ later on 2026-10-31 (smooth motion, larger camera, WebKit, k3s dropped).
 | AC-1 | Restart, update, rollback | **Met, simulated** | SFU restart and SFU update to v1.13.11 then rollback to the pinned digest during a call: Live again in 20.0 to 20.2 s each, devices off; API restart: media unbroken, Live in 3.3 s. [Operations](#operations-and-access-ac-1-ac-4) |
 | AC-1 | CPU, memory, egress | **Met, simulated** | Per measured window in `resources-summary.json`: SFU 7.8 % CPU, 83 MB, 9.1 Mbit/s egress with four people and two shares. Local containers, not a capacity |
 | AC-1 | Recording, egress and external inference off | **Met, simulated** | No egress, ingress or agent service in the stack; only the people in the session |
-| AC-2 | Reproducible profiles with measured results | **Met, simulated** | [Measured profiles](#measured-profiles-and-calibrated-thresholds-ac-2): speech, camera, motion, two shares, 1:1, loss and jitter, one weak receiver; code/text at 2560×1440 in the [calibration](live-code-calibration.md) |
+| AC-2 | Reproducible profiles with measured results | **Met, simulated** | [Measured profiles](#measured-profiles-and-calibrated-thresholds-ac-2): speech, camera, motion, two shares, 1:1, loss and jitter, one weak receiver |
+| AC-2 | Code/text 14-16 px at 2560×1440, 15-30 fps, scrolling | **Open: not gated, not claimed** | The simulation gates 1080p Sharp text at ≥ 7 fps only; full-frame scrolling arrived at 2.6 to 4.3 fps (recorded). The 2560×1440 evidence is the [2026-09-30 calibration](live-code-calibration.md), before the current build, with no readability threshold. What would close it: see "What the thresholds do not claim" |
 | AC-2 | Motion 1080p60, camera 1080p30, continuous speech | **Met, simulated, with a recorded limit** | Speech met. **Camera:** shown large, 1920×1080 at 29.7 to 30.1 fps received ([larger camera](#a-larger-camera-ac-2-camera-profile)). **Motion:** Smooth motion captures 1920×1080 at 60 fps and delivers **59.5 to 59.7 fps at 1280×720** at its 10 Mbit/s cap for a frame that moves everywhere ([smooth motion](#smooth-motion-ac-2-motion-profile)); 1080p *and* 60 fps together at the receiver was not reached with Chromium's software encoder in Docker (target is "up to") |
 | AC-2 | Two then four participants, two screens | **Met, simulated** | Two, then four people with two simultaneous real screen shares, enforced thresholds |
 | AC-2 | Weak receiver, loss, jitter, UDP-blocked TURN | **Measured, simulated; quality limits recorded** | Gates pass. Recorded limits: a TCP relay under loss gives a 1 to 3 fps screen and late audio; a 400 kbit/s receiver of a one-layer screen loses the screen and most of its speech (Sharp text 68 to 86 % concealed, Smooth motion 84 to 98 %), while the other people are untouched. Simulcast screen layers were measured and rejected (they cut Smooth motion to 10 to 13 fps); LiveKit's `allow_pause` did not help |
-| AC-2 | Calibrated pass/fail thresholds, peer-recorded | **Calibrated and enforced; independent peer review not done** | Recalibrated on 2026-10-31 (calibration runs `cal2` to `cal8` and the enforced default run below) and enforced (`profiles.THRESHOLDS`). The coordinator did not ask for an independent threshold review in this change; it remains for the release-candidate review |
+| AC-2 | Calibrated pass/fail thresholds, peer-recorded | **Calibrated and enforced; independently reviewed 2026-10-31** | Recalibrated on 2026-10-31 (calibration runs `cal2` to `cal8` and the enforced default run below) and enforced (`profiles.THRESHOLDS`). The [review](https://github.com/ColdPhase/flux/issues/63#issuecomment-6546818488) found no P1 and two P2s (the code/text row above; the weak-receiver speech gate, which is a liveness check, not shown outside every observation, and not a claim of intelligibility). Both are corrected in this document by the reviewer; the corrected wording is not reviewed again. The thresholds cover the simulation's profiles, not code/text at 1440p |
 | AC-3 | Chromium, Firefox, WebKit desktop rows | **Met, simulated; WebKit TURN/TLS unattainable in software here** | Chromium and Firefox over TURN/TLS. WebKit relays over TURN/UDP and connects over ICE/TCP with UDP blocked ([WebKit rows](#webkit-rows-2026-10-31-later)); its ICE/TCP drop recovery is fixed (8 of 8 after `allow_tcp_fallback: false`). **WebKit over TURN/TLS: unattainable in software here** (libwebrtc's compiled-in roots, [`ssl_roots.h`](https://webrtc.googlesource.com/src/+/main/rtc_base/ssl_roots.h), checked 2026-10-31; `unknown certificate authority`). Engines run on Linux; Windows, macOS and Fedora/Wayland are engine rows, not those systems |
 | AC-3 | Emulated Android, iPhone, iPad rows: viewports, touch, fake media, visibility, rotation, device change, update, rejoin | **Met (emulated)** | [Platform rows](#emulated-platform-rows) and [device change, update and rejoin](#device-change-update-reload-and-rejoin-on-the-platform-rows-63-ac-3-2026-10-30); physical devices optional (#266) |
 | AC-3 | Network loss and recovery of the media path | **Met, simulated** | Desktop engines (30 October) and now phone rows: Pixel 7 over TURN/TLS and iPhone 13 over TURN/UDP back in 1.0 to 2.0 s after a 15 s cut |
@@ -716,10 +738,10 @@ later on 2026-10-31 (smooth motion, larger camera, WebKit, k3s dropped).
 | AC-4 | AI receives no media by default; human calls with AI off | **Met, simulated** | No agent or processor in the room or stack; a call with workspace AI blocked joined, carried audio and recovered |
 | AC-4 | One release-candidate commit with the real journey and independent reviews | **Open** | Unblock: an independent review of this change and the release-candidate pass |
 
-Left on #63: an independent review of the thresholds and of this change, and the release-candidate pass (AC-4's
-last row). Everything else is met, simulated, dropped by founder decision (k3s) or recorded as unattainable in
-software here with a dated source (WebKit TURN/TLS; 1080p and 60 fps together at the receiver with a software
-encoder).
+Left on #63: the release-candidate pass (AC-4's last row), a second look at the corrected threshold wording, and
+code/text at 2560×1440 (open, not gated). Everything else is met, simulated, dropped by founder decision (k3s) or
+recorded as unattainable in software here with a dated source (WebKit TURN/TLS; 1080p and 60 fps together at the
+receiver with a software encoder).
 
 ## Pointer reachability and camera state on phone and tablet (#63; 2026-10-10)
 
