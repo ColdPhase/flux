@@ -33,7 +33,7 @@ connection lookup is still `noPersonalConnections`.
 | `app/packages/core/src/personal-runs/` | Ports, input and output rules, use cases (`service.ts`), the worker processor (`processor.ts`) and assistant proposals (`proposals.ts`). |
 | `app/packages/core/src/access/personal-run-access.ts` | The access policy as the `PersonalRunAccess` port. |
 | `app/packages/core/src/access/policy.ts` | New agent action `agent.invoke`: only the person who owns the unrevoked agent. A workspace role never grants it. |
-| `app/packages/db/migrations/0024_personal_runs.sql`, `app/packages/db/src/repositories/personal-runs.ts` | Tables and rows. |
+| `app/packages/db/migrations/0001_v0_1_baseline.sql`, `app/packages/db/src/repositories/personal-runs.ts` | Tables and rows. |
 | `app/apps/server/src/personal-runs/` | Routes and the per-transaction composition. The server only queues runs. |
 | `app/apps/worker/src/personal-runs/` | The `personal-run.dispatch.v1` handler and its composition (`composition.ts`). The queue never retries a job (`PERSONAL_RUN_QUEUE`). |
 | `app/packages/core/src/personal-runs/progress.ts` | Owner-only progress events (`assistant_run.changed.v1`). |

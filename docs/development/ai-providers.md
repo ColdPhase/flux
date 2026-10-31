@@ -21,7 +21,7 @@ consent, caps and fail-closed rules are those of
 | `app/packages/agent-runtime/src/model-list.ts` | Keyless model listings and the provider price listing. |
 | `app/apps/server/src/proactive-comparison/ai-composition.ts` | The API's endpoint policy, save-time check and listings. |
 | `app/apps/worker/src/proactive-comparison/providers.ts`, `personal-runs/composition.ts` | The worker's adapter registry. |
-| `app/packages/db/migrations/0042_ai_provider_connections.sql` | The schema change, with a guarded pre-use reversal in `reverse/`. |
+| `app/packages/db/migrations/0001_v0_1_baseline.sql` | The schema (the v0.1 baseline, #779). |
 
 ## Provider kinds and wire formats
 

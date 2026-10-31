@@ -95,33 +95,13 @@ class ComposeKeyringTest(unittest.TestCase):
             self.assertIn("NODE_OPTIONS: --secure-heap=65536", services(text)["keyring"])
             self.assertNotIn("FLUX_KEY_PIN_SECRET", services(text)["keyring"])
 
-    def test_flux_generates_and_upgrade_adds_a_missing_token(self) -> None:
+    def test_flux_generates_the_keyring_token_and_pin_secret(self) -> None:
+        # Every docker/.env comes from ./flux up (no pre-F-030 installations exist, #779), so up writes both.
         launcher = (ROOT / "flux").read_text(encoding="utf-8")
         self.assertIn('set_env_line "$draft" FLUX_KEYRING_TOKEN "$(random_b64url)"', launcher)
-        upgrade = launcher[launcher.index("cmd_upgrade() {"):]
-        upgrade = upgrade[: upgrade.index("\n}\n")]
-        self.assertIn('ensure_keyring_token "$ENV_FILE"', upgrade)
         self.assertIn('set_env_line "$draft" FLUX_KEY_PIN_SECRET "$(random_b64url)"', launcher)
-        self.assertIn('ensure_key_pin_secret "$ENV_FILE"', upgrade)
+        self.assertRegex(launcher, r"(?m)^random_b64url\(\) \{ head -c 32 /dev/urandom ")
         self.assertIn("FLUX_KEY_PIN_SECRET=", (ROOT / "docker" / ".env.example").read_text(encoding="utf-8"))
-        functions = "\n".join(
-            re.search(rf"(?ms)^{name}\(\) \{{.*?^\}}\n" if name in ("set_env_line", "ensure_keyring_token") else rf"(?m)^{name}\(\) .*$", launcher).group(0)
-            for name in ("random_b64url", "set_env_line", "ensure_keyring_token")
-        )
-        with tempfile.TemporaryDirectory() as directory:
-            env = Path(directory) / ".env"
-            env.write_text("FLUX_AUTH_SECRET=keep\nFLUX_KEYRING_TOKEN=\n", encoding="utf-8")
-            script = f'say() {{ :; }}\nFLUX_ROOT={directory}\nENV_FILE={env}\n{functions}\nensure_keyring_token "$ENV_FILE"\nensure_keyring_token "$ENV_FILE"\n'
-            subprocess.run(["sh", "-c", script], check=True)
-            lines = env.read_text(encoding="utf-8").splitlines()
-            tokens = [line.split("=", 1)[1] for line in lines if line.startswith("FLUX_KEYRING_TOKEN=")]
-            self.assertEqual(len(tokens), 1, lines)
-            self.assertRegex(tokens[0], r"^[A-Za-z0-9_-]{43}$")
-            self.assertIn("FLUX_AUTH_SECRET=keep", lines)
-            first = tokens[0]
-            subprocess.run(["sh", "-c", script], check=True)
-            self.assertIn(f"FLUX_KEYRING_TOKEN={first}", env.read_text(encoding="utf-8"), "an existing token is never changed")
-
 
     def test_restore_takes_the_pin_secret_from_the_backup(self) -> None:
         launcher = (ROOT / "flux").read_text(encoding="utf-8")

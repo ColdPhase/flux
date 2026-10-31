@@ -1,6 +1,6 @@
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { assertAssistantMigrationCompatibility, assertExactMigrationLedger, assertKnownMigrationVersions, assertMigrationSqlLedgerChange, assertMigrationStepLedger, assertMorningSummaryMigrationCompatibility, assertTaskCreationUndoMigrationCompatibility, createDatabase, FLUX_SCHEMA_VERSION, readAppliedMigrationVersions, readMigrationManifest } from '@flux/db';
+import { assertExactMigrationLedger, assertKnownMigrationVersions, assertMigrationSqlLedgerChange, assertMigrationStepLedger, createDatabase, FLUX_SCHEMA_VERSION, readAppliedMigrationVersions, readMigrationManifest } from '@flux/db';
 import { PgBoss } from 'pg-boss';
 import { SEARCH_CHANGES_CLEANUP_JOB, WORKSPACE_AI_SWEEP_JOB, WORKSPACE_ENCRYPTION_RESUME_JOB } from '@flux/contracts';
 import { ASSISTANT_TICK_JOB, ASSISTANT_TICK_QUEUE, ASSISTANT_TICK_RETRY, COMPARISON_JOB_QUEUE, COMPARISON_JOB_RETRY, COMPARISON_RECOVERY_JOB, COMPARISON_TICK_JOB, NOTIFICATION_EMAIL_JOB, NOTIFICATION_EMAIL_QUEUE, PERSONAL_RUN_JOB, PERSONAL_RUN_QUEUE, PUSH_SEND_JOB, PUSH_SEND_QUEUE } from '@flux/core';
@@ -10,15 +10,13 @@ if (!connectionString) throw new Error('DATABASE_URL is required');
 const migrationsDir = 'packages/db/migrations';
 const { pool } = createDatabase(connectionString);
 try {
-  // Numbered files (NNNN_name.sql) apply once, in order, each in its own transaction.
+  // Numbered files (NNNN_name.sql) apply once, in order, each in its own transaction. 0001 is the
+  // v0.1 baseline (#779): the whole schema of a fresh install; later changes are 0002 onwards.
   const files = await readMigrationManifest(migrationsDir, FLUX_SCHEMA_VERSION);
   const client = await pool.connect();
   try {
     await client.query('SELECT pg_advisory_lock(hashtext($1))', ['flux-migrate']);
     let applied = await readAppliedMigrationVersions(client);
-    await assertMorningSummaryMigrationCompatibility(client, applied);
-    await assertTaskCreationUndoMigrationCompatibility(client, applied);
-    await assertAssistantMigrationCompatibility(client, applied);
     assertKnownMigrationVersions(files, applied);
     for (const file of files) {
       if (applied.includes(file.version)) continue;
@@ -39,7 +37,6 @@ try {
       console.log(`Applied migration ${file.name}`);
     }
     assertExactMigrationLedger(files, await readAppliedMigrationVersions(client));
-    await assertAssistantMigrationCompatibility(client, await readAppliedMigrationVersions(client));
   } finally {
     await client.query('SELECT pg_advisory_unlock(hashtext($1))', ['flux-migrate']).catch(() => undefined);
     client.release();

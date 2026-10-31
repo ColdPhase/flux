@@ -109,7 +109,7 @@ the question is about Flux's own role model.
 | Observation | Source |
 | --- | --- |
 | Acceptance needs project `write` through the policy with the access rows locked, then `principal.kind === 'human'` (`DECISION_NEEDS_PERSON`). Proposals need project `write`. | `app/packages/core/src/work/service.ts` (`acceptDecision`, `proposeDecision`) |
-| The database ties the status to a decider (`(status = 'proposed') = (decided_by IS NULL)`), and the decider is an `auth_users` row. | `app/packages/db/migrations/0008_work.sql` |
+| The database ties the status to a decider (`(status = 'proposed') = (decided_by IS NULL)`), and the decider is an `auth_users` row. | `app/packages/db/migrations/0001_v0_1_baseline.sql` |
 | The REST API resolves only browser session cookies, and only to `kind: 'human'`. MCP bearers resolve to `kind: 'agent'`. | `app/apps/server/src/identity/session.ts`, `app/apps/server/src/agent-connection/context.ts` |
 | MCP decision tools are `flux_list_decisions`, `flux_get_decision` and `flux_propose_decision`. `AGENT_OPERATIONS` has `decision.propose` and nothing else for decisions, and the standing-grant route validates against that list. | `app/apps/server/src/agent-connection/{domain-reads,work-actions,routes}.ts`, `app/packages/contracts/src/agent-execution.ts` |
 | Assistant proposals carry only a result (`change.type: 'result'`). Accepting one records a result as the accepting person and never touches decisions. | `app/packages/core/src/personal-runs/{proposals,validation}.ts` |

@@ -346,7 +346,6 @@ INTERNAL: dict[str, str] = {
     "FLUX_PUSH_ALLOW_PRIVATE_NETWORK": "Phone-emulation tests only: lets push reach a private test service.",
     "FLUX_OIDC_ALLOW_HTTP_ISSUER": "Isolated test identity provider only; never production.",
     "FLUX_LIVEKIT_ALLOW_INSECURE_LOCAL": "Development only; ignored when `NODE_ENV=production`.",
-    "FLUX_REVERSE_0048_QUIESCED": "One-off operator tooling for a historical migration.",
 }
 
 # Names that look like settings but are constants, output markers or prefixes.

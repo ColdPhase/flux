@@ -97,17 +97,12 @@ curl -fsS "$base/api/v1/health" | grep -q '"status":"ok"' || fail "health not ok
 
 step "A second ./flux up keeps .env byte for byte"
 before=$(cksum < "$copy/docker/.env")
-"$copy/flux" up >/dev/null
+second_up=$("$copy/flux" up)
 [ "$(cksum < "$copy/docker/.env")" = "$before" ] || fail ".env changed on the second up"
-curl -fsS "$base/api/v1/health" >/dev/null || fail "health after second up"
-
-step "A legacy root .env moves once without regenerating secrets or changing the project"
-mv "$copy/docker/.env" "$copy/.env"
-"$copy/flux" up >/dev/null
-[ ! -e "$copy/.env" ] || fail "legacy .env was not moved"
-[ "$(cksum < "$copy/docker/.env")" = "$before" ] || fail "legacy env migration changed bytes"
 [ ! -e "$copy/app/.env" ] || fail "application reference became an executable env"
-
+# Sign-up is open by default, so ./flux up invites the first account.
+printf '%s\n' "$second_up" | grep -q 'Create an account there' || fail "./flux up did not point to sign-up: $second_up"
+curl -fsS "$base/api/v1/health" >/dev/null || fail "health after second up"
 
 step "./flux demo seeds through the API and prints working logins"
 out=$(FLUX_DEMO_JSON=1 "$copy/flux" demo)
