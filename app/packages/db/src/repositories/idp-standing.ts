@@ -11,7 +11,6 @@ import type { DbExecutor } from './push.js';
 const s = schema.authIdpStanding;
 
 export type IdpStandingState = 'ok' | 'sign_in_required';
-export type IdpCheckOutcome = 'success' | 'sign_in_required' | 'unknown';
 
 export interface IdpStandingClaim { userId: string; providerId: string; refreshTokenEnc: string; leaseId: string }
 

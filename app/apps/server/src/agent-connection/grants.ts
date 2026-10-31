@@ -80,5 +80,3 @@ export function agentOperationTarget(operation: AgentOperation): 'work' | 'sketc
   if (operation === 'conversation.reply') return 'conversation';
   return MAP_CHANGES.includes(operation) ? 'sketch' : null;
 }
-
-export type AgentGrantInput = CreateAgentStandingGrantCommand;

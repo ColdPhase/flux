@@ -102,5 +102,3 @@ export function createAssistantProposalUseCases(uow: ProposalUnitOfWork) {
       decide(principal, proposalId, command, expected, 'dismissed'),
   };
 }
-
-export type AssistantProposalUseCases = ReturnType<typeof createAssistantProposalUseCases>;

@@ -524,5 +524,3 @@ export function createPersonalRunProcessor({ uow, connections, compute, stopPoll
     },
   };
 }
-
-export type PersonalRunProcessor = ReturnType<typeof createPersonalRunProcessor>;

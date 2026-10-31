@@ -1,4 +1,4 @@
-import { proactiveComparisonOutcomePath, proactiveComparisonProposalPath, proactiveComparisonProposalUsePath, proactiveComparisonOutcomesPath, proactiveComparisonProposalsPath,
+import { proactiveComparisonOutcomePath, proactiveComparisonProposalPath, proactiveComparisonProposalUsePath, proactiveComparisonOutcomesPath,
   type InsufficientComparisonOutcome, type Page, type ProactiveComparisonOutcome, type ProactiveComparisonProposal, type WorkItem } from '@flux/contracts';
 import { request } from '../api/client.js';
 
@@ -10,8 +10,6 @@ export function comparisonSourceHref(projectId: string, source: ProactiveCompari
   if (source.type === 'thought' && source.sketchId) return `/projects/${projectId}/map/${source.sketchId}#thought-${source.id}`;
   return null;
 }
-export const listComparisonProposals = (projectId: string, signal?: AbortSignal) =>
-  request<ProactiveComparisonProposal[]>(proactiveComparisonProposalsPath(projectId), { signal });
 /** Load every advertised page instead of silently hiding older quiet outcomes. */
 export async function listComparisonOutcomes(projectId: string, signal?: AbortSignal): Promise<ProactiveComparisonOutcome[]> {
   const items: ProactiveComparisonOutcome[] = [];

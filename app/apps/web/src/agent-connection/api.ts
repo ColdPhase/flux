@@ -103,11 +103,6 @@ export function getConsentContext(oauthQuery: string, signal?: AbortSignal) {
   return request<ConsentContext>(`${AGENT_OAUTH_CONSENT_CONTEXT_PATH}?oauth_query=${encodeURIComponent(oauthQuery)}`, { signal });
 }
 
-/** The saved connection this client held before, or null (#312). A failure only means no preselection. */
-export async function getHeldConnection(oauthQuery: string, signal?: AbortSignal) {
-  return (await getOauthRequester(oauthQuery, signal)).connectionId;
-}
-
 /** The held connection and the client label its own name suggests (#763 AG-6). A failure only means no preselection. */
 export async function getOauthRequester(oauthQuery: string, signal?: AbortSignal): Promise<{ connectionId: string | null; clientDesignation: ExternalClientDesignation | null }> {
   try {

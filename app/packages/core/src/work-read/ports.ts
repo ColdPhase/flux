@@ -22,13 +22,6 @@ export interface WorkThoughtTasksObservation {
   linkTotal: number;
   items: ThoughtTaskRow[];
 }
-export interface WorkAssociationObservation {
-  objects: WorkReadSlice<NativeWorkRow>;
-  sources: WorkReadSlice<SourceAssociationCounts>;
-  edges: WorkReadSlice<ObjectLink>;
-  edgeTotal: number;
-  observedAt: string;
-}
 export interface WorkReadRepository {
   /** Fixed-size digest covering ALL relevant native endpoint visibility, including counted unseen sources. */
   sourceVisibilityFingerprint(projectId: string, sources?: WorkAssociationSelection): Promise<string>;
@@ -53,7 +46,6 @@ export interface WorkReadRepository {
 export interface WorkReadPorts { access: WorkReadAccess; rows: WorkReadRepository }
 /** Every count/page/name/ref/policy query runs in ONE read-only REPEATABLE READ transaction. */
 export interface WorkReadUnitOfWork { run<T>(read: (ports: WorkReadPorts) => Promise<T>): Promise<T> }
-export interface WorkReadObservation<T> { value: T; sourceVisibility: string }
 /** Owned normalized selectors must still exist in this project before releasing the observation. */
 export interface WorkReadRequirements {
   sources?: WorkAssociationSelection;

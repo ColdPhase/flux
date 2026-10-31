@@ -89,4 +89,3 @@ export function editingRuntime() {
     close: async () => { admissionQueue.close(); await pool.close(); },
   };
 }
-export type EditingRuntime = ReturnType<typeof editingRuntime>;

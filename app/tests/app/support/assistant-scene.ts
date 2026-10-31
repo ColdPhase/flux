@@ -27,7 +27,6 @@ const sha256 = (value: string) => createHash('sha256').update(value).digest('hex
 export type Message = Record<string, unknown> | null;
 export const result = (message: Message) => message?.result as { isError?: boolean; content?: { text?: string }[] } | undefined;
 export const text = (message: Message) => result(message)?.content?.[0]?.text ?? '';
-export const refusalCode = (message: Message) => result(message)?.isError ? (JSON.parse(text(message)) as { code?: string }).code : undefined;
 export const DAY = 86_400_000;
 /** Backends of the database that are waiting on a row lock right now. */
 export const lockWaiters = async () => Number((await pool.query(

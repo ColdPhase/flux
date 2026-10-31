@@ -521,5 +521,4 @@ const ORDINARY = {
   pointer: (): void => {},
 };
 
-export type SketchDoc = ReturnType<typeof useSketchDoc>;
 export type { ThoughtLink };

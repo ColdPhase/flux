@@ -1,13 +1,10 @@
 import {
-  decisionAcceptPath, workspaceAgentsPath, decisionPath, taskActivityPath, projectDecisionsPath, projectLinksPath, projectResultsPath, projectWorkPath, resultPath, workItemPath, workspaceAssignedWorkPath, taskCreationUndoPath,
+  decisionAcceptPath, workspaceAgentsPath, taskActivityPath, projectDecisionsPath, projectLinksPath, projectResultsPath, projectWorkPath, resultPath, workItemPath, workspaceAssignedWorkPath, taskCreationUndoPath,
   type AcceptDecisionCommand, type CreateObjectLinkCommand, type CreateResultCommand, type CreateWorkCommand, type Decision, type ObjectLink, type Page,
   type ProposeDecisionCommand, type TaskActivityPage, type TaskActivityQuery, type UndoTaskCreationResult, type UpdateWorkCommand, type WorkItem, type WorkResult, type Agent,
 } from '@flux/contracts';
 import { request } from '../api/client.js';
 import { readAssignedAcross } from './assigned.js';
-
-/** Work, decisions and results of one project (#101); the project's audience is theirs. */
-export interface ProjectWork { work: WorkItem[]; decisions: Decision[]; results: WorkResult[] }
 
 /**
  * Work the caller owns across these workspaces (#190 HOME-2): up to `cap` items in all, with the sum
@@ -21,7 +18,6 @@ const key = (idempotencyKey: string) => ({ 'idempotency-key': idempotencyKey });
 const ifMatch = (version: number) => ({ 'if-match': `"${version}"` });
 
 export const getWork = (id: string, signal?: AbortSignal) => request<WorkItem>(workItemPath(id), { signal });
-export const getDecision = (id: string, signal?: AbortSignal) => request<Decision>(decisionPath(id), { signal });
 export const getResult = (id: string, signal?: AbortSignal) => request<WorkResult>(resultPath(id), { signal });
 /** Create commands carry an Idempotency-Key that the caller reuses when retrying the same submission. */
 export const createWork = (projectId: string, command: CreateWorkCommand, idempotencyKey: string) =>

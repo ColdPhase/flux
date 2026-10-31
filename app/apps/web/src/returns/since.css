@@ -1,24 +1,5 @@
 /* "Since you left" (#106), direction C `#since`: one slim line that expands into a short list. */
 .since { flex: none; border-bottom: 1px solid var(--line2); background: var(--bg); }
-.since__in { max-width: 1280px; margin: 0 auto; padding: 0 24px; }
-.since__btn {
-  display: flex; align-items: center; gap: 10px; width: calc(100% + 16px); min-height: 44px; padding: 0 8px; margin: 0 -8px; border: 0; background: none;
-  text-align: left; font: inherit; font-size: var(--fs-md); color: var(--t2); cursor: pointer;
-}
-.since__btn b { font-weight: 600; color: var(--t1); }
-.since__need { color: var(--t1); font-weight: 500; }
-.since__line { min-width: 0; }
-.since__chev { margin-left: auto; flex: none; color: var(--t3); transition: transform var(--dur-3) var(--ease-sheet); }
-.since__btn[aria-expanded="true"] .since__chev { transform: rotate(180deg); }
-.since__btn:focus-visible { outline: 2px solid var(--t1); outline-offset: -2px; border-radius: var(--r-sm); }
-
-/* Height expands with the grid-rows trick; the collapsed list is inert, so it is out of focus and AT. */
-.since__coll { display: grid; grid-template-rows: 0fr; visibility: hidden;
-  transition: grid-template-rows var(--dur-2) var(--ease-in), visibility 0s linear var(--dur-2); }
-.since__coll.is-open { grid-template-rows: 1fr; visibility: visible; transition: grid-template-rows var(--dur-3) var(--ease-sheet); }
-.since__clip { min-height: 0; overflow: hidden; }
-.since .since__clip > * { max-width: 760px; }
-.since__coll.is-open .since__clip { max-height: min(46vh, 420px); overflow-y: auto; overscroll-behavior: contain; }
 
 .since__dot { width: 7px; height: 7px; flex: none; border-radius: 50%; background: transparent; box-shadow: inset 0 0 0 1.5px var(--t3); }
 .since__dot--need { background: var(--inv); box-shadow: none; }
@@ -48,23 +29,16 @@
 .since__next-link:focus-visible { outline: 2px solid var(--t1); outline-offset: 2px; }
 .since__why { margin: 0; color: var(--t2); font-size: var(--fs-sm); }
 
-.since__foot { display: flex; flex-wrap: wrap; gap: 8px 16px; justify-content: space-between; align-items: center; padding: 0 0 12px; color: var(--t3); font-size: var(--fs-sm); }
-.since__more { min-height: 32px; padding: 0 10px; margin: 0 -10px; border: 0; border-radius: var(--r); background: none; font: inherit; font-weight: 500; color: var(--t1); cursor: pointer; }
-.since__more { display: block; margin: -4px -10px 8px; font-size: var(--fs-sm); }
-.since__failed { color: var(--t1); }
 /* After "I have the context" on Home (HOME-1): one calm line where the list was. */
-.since__more:hover { background: var(--hov); color: var(--t1); }
-.since__more:focus-visible { outline: 2px solid var(--t1); outline-offset: 0; }
 
 /* Home: the personal return view across places. */
 
 @media (max-width: 720px) {
-  .since__in { padding: 0 16px; }
   .since__when { display: none; }
   /* Without the time, each row's arrow still lines up at the right edge (#189). */
   .since__go { margin-left: auto; }
 }
 @media (pointer: coarse) {
   .since__item { min-height: 44px; }
-  .since__next-link, .since__more, .since__ack { min-height: 44px; }
+  .since__next-link { min-height: 44px; }
 }

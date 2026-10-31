@@ -150,8 +150,6 @@
   .sset-keys td { width: 112px; }
   .sset-row__go-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
 }
-/* The header's way back from a settings page to the list (#266 PF-5). */
-.top__back { flex: none; }
 /* Projects list (#266 PF-1). */
 /* #370 removed the shared settings list rules that this list still uses (#438): keep them here. */
 .set { max-width: 640px; padding-top: 24px; }

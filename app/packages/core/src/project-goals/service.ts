@@ -120,5 +120,3 @@ export function createProjectGoalUseCases(unit: ProjectGoalUnitOfWork) {
     },
   };
 }
-
-export type ProjectGoalUseCases = ReturnType<typeof createProjectGoalUseCases>;
