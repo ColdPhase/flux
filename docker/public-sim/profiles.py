@@ -19,6 +19,7 @@ import re
 import time
 
 from playwright.sync_api import Page, expect
+from playwright.sync_api import TimeoutError as PlaywrightTimeout
 
 # Calibrated pass/fail thresholds (docs/development/live-media.md, "Calibrated thresholds"). They come from the
 # calibration runs recorded there, with margin for a shared host; they are gates for this simulation, not promises
@@ -296,7 +297,19 @@ def run(phases: set, pages: dict[str, Page], result: dict, ctl, log, run_name: s
     large = stage(ada).get_by_role("button", name=re.compile(r"^Show Jonas.* camera large$"))
     large.click()
     expect(large).to_have_attribute("aria-pressed", "true")
-    time.sleep(6)
+    # Wait for the top layer instead of a fixed pause: automatic quality asks for it once the element is large and
+    # the SFU switches layers on a key frame, which takes longer on a loaded host. The wait is bounded and its length
+    # is recorded; a layer that never arrives still fails the height gate in the measured window below.
+    waited = time.monotonic()
+    try:
+        ada.wait_for_function(
+            "(rows) => [...document.querySelectorAll('video.lv-stage__video')].some((v) =>"
+            " (v.getAttribute('aria-label') || '').includes('camera, enlarged') && v.videoHeight >= rows)",
+            arg=THRESHOLDS["large"]["minHeight"], timeout=30_000)
+    except PlaywrightTimeout:
+        pass
+    out["cameraLargeLayerAfterS"] = round(time.monotonic() - waited, 1)
+    time.sleep(2)
     report = step("camera-large", {"ada": ada, "jonas": jonas})
     video_gate(gate, first(tracks(report, "ada", "video", "camera")), "clean: Jonas's camera shown large at Ada", THRESHOLDS["large"])
     out["cameraLargeSent"] = sent_video(report, "jonas")
