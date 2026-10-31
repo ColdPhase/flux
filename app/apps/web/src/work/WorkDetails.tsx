@@ -236,16 +236,17 @@ const UUID_IN_TEXT = /\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]
  * project; ids that are not readable docs here stay plain text. At most five are read.
  */
 function useNamedDocs(text: string | null | undefined, projectId: string) {
-  const [docs, setDocs] = useState<Map<string, string>>(new Map());
   const ids = useMemo(() => [...new Set((text ?? '').match(UUID_IN_TEXT)?.map((id) => id.toLowerCase()) ?? [])].slice(0, 5), [text]);
+  const key = `${projectId}:${ids.join(',')}`;
+  const [found, setFound] = useState<{ key: string; docs: Map<string, string> } | null>(null);
   useEffect(() => {
-    if (!ids.length) { setDocs(new Map()); return undefined; }
+    if (!ids.length) return undefined;
     const controller = new AbortController();
     Promise.all(ids.map((id) => getDoc(id, controller.signal).then((doc) => doc.audience.projectId === projectId ? [id, doc.title] as const : null, () => null)))
-      .then((found) => { if (!controller.signal.aborted) setDocs(new Map(found.filter((entry): entry is readonly [string, string] => !!entry))); });
+      .then((rows) => { if (!controller.signal.aborted) setFound({ key, docs: new Map(rows.filter((entry): entry is readonly [string, string] => !!entry)) }); });
     return () => controller.abort();
-  }, [ids, projectId]);
-  return docs;
+  }, [ids, projectId, key]);
+  return useMemo(() => (found?.key === key ? found.docs : new Map<string, string>()), [found, key]);
 }
 
 /** A result's text with every named Wiki page as a link by its title instead of a raw id (#763 FT-6). */

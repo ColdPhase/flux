@@ -225,7 +225,7 @@ manager) gets the same `404` as for a missing connection or grant:
 
 | Route | Rule |
 | --- | --- |
-| `POST /api/v1/agent-connections/:id/action-grants` | Create. Needs the connection's `flux.action.execute` scope, a selected project, the owner's current project management, a class the operation has, 1–1000 uses and an end within 30 days. A durable `clientCommandId` makes retries idempotent |
+| `POST /api/v1/agent-connections/:id/action-grants` | Create. Needs the connection's `flux.action.execute` scope, a selected project, the owner's current project management (or, proposed amendment #763 FT-2 in [access policy](access-policy.md#agent-access-requests-763-ft-1-2026-10-31): the owner's project write access plus the agent's own manager-given `contributor` grant), a class the operation has, 1–1000 uses and an end within 30 days. A durable `clientCommandId` makes retries idempotent |
 | `GET …/action-grants` | The owner's grant history, newest first, 50 per page, with no project or object titles |
 | `PATCH …/action-grants/:grantId` | Narrow (below) |
 | `DELETE …/action-grants/:grantId` | Revoke now; the generation is bumped |
@@ -283,6 +283,14 @@ label, so operations added later need no page change. A connection without
 `flux.action.execute` shows that it reads and suggests only. The project Agents
 view lists everyone's connections but has no grant controls. The OAuth chooser
 does not load grants.
+
+**Hand-off grants (#763 FT-2).** Handing a task to your own agent in the Hand off dialog reads that agent's
+connections' grants. When none can change the task, step 2 says what is missing and its button becomes
+"Allow and hand off": it creates, through the route above, execute-class grants for `work.update` and
+`cowork.unit.create` on that task and `cowork.claim`, `cowork.renew`, `cowork.release`,
+`cowork.unit.complete`, `result.record`, `conversation.reply` and `doc.create` in the project, 100 uses each,
+ending in 7 days, then hands the task off. A connection without `flux.action.execute` is named as such, with the
+way to sign in again. The consent page starts with exactly the scopes the client asked for ticked.
 
 Tests: `app/tests/app/agent-grant-controls.test.ts` (real OAuth bearer and MCP
 tools), `app/tests/app/e2e/agent-grant-controls.e2e.ts` (browser controls

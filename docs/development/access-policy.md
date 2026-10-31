@@ -331,6 +331,18 @@ needsUnlockPassword }`. Accepting again from the same account answers `joined` a
 nothing; another account gets `410 INVITE_USED`. Accepting has no idempotency row: it is
 idempotent by itself.
 
+**An invite made from a project (#763 FT-3, 2026-10-31).** `projectId` (optional) on create names a
+project the creator manages now (`project.manage`, else `404 PROJECT_NOT_FOUND`); the invite and
+its listing carry `project: { id, name }` (null without one; the column is cleared when the
+project is deleted) and the preview its `projectName`. Joining then also gives the new person a
+`contributor` grant on it, made as the invite's creator through the ordinary `grantProject` (it
+records `project.grant_set.v1`), only while the creator still manages the project and only when
+the new role does not already write there (a member of a workspace-visible project writes
+already; an admin manages it). The answer's `projectId` is where the web app lands: the invite's
+project when the person can open it, else null. In the same transaction the creator gets an Inbox
+notice "<name> joined <project>" (linking the project's People), or, for a link without a project,
+a Needs-you question "<name> joined your space" asking them to give access.
+
 **Sign-up rules stay as they are.** A signed-out visitor on `/join` is sent to sign in or to
 create an account and back. The page keeps the token in that tab's session storage and removes it
 from the address and the browser history; a sign-in finished in another tab asks for the link to be
@@ -356,6 +368,33 @@ guest reads the workspace while it is unlocked, like every member. An admin who 
 unlock password until a current holder grants one through the existing
 `unlock-password-grants` flow; the join page and the preview say this. AI stays off
 (F-029 and F-030 are unchanged).
+
+## Agent access requests (#763 FT-1, 2026-10-31)
+
+A person-owned agent enters a project only through a grant that a project manager makes
+([first-agent path](../product/first-agent-path.md): OAuth consent never grants a project the
+person cannot manage). The request lets a person who does not manage the project ask for that
+grant from inside Flux, and lets a manager make it in one step; it adds no new authority.
+
+| Route | Rule |
+| --- | --- |
+| `POST /api/v1/projects/:id/agent-requests { agentId, role? }` | The agent's owner, who can read the project, for their own active agent of the project's workspace (else `404`); workspace AI must be on (F-029). The role is never more than the owner has: `contributor` when the owner writes there (unless `viewer` is asked), else `viewer`. A manager is told to grant directly (`409 AGENT_REQUEST_MANAGER`); an agent that already has the role is `409 AGENT_ALREADY_IN_PROJECT`. One row per agent and project (`agent_access_requests`); a closed one reopens. A new or reopened request gives each current project manager except the asker a Needs-you question that opens the project's People (`?open=people&agentRequest=<id>`). Asking grants nothing. `201` with the request and `notified: [{ id, name }]` |
+| `GET /api/v1/projects/:id/agent-requests` | A reader of the project: managers see every pending request, anyone else only their own |
+| `POST /api/v1/projects/:id/agent-requests/:requestId { allow }` | A current project manager (`403` otherwise). Allow is the ordinary `grantProject` of the asked role, made by that manager under its own locks and checks (the agent must still be active); Decline only closes. Either way the managers' questions are marked read and the owner gets an Inbox notice. An answered request answers as it is |
+| `GET /api/v1/agents/:id/project-access` | The agent's owner only: for each project of the agent's workspace the owner can open, the agent's explicit grant and its open request. The consent page uses it to show "Ask a manager to let it in" and polls it while a request waits |
+
+The agent is still capped at its owner's current level and acts only through its own grant, so
+the request changes nothing about what an allowed agent may do. `agent_access_requests` is an
+`ai` table (F-030 refuses rows in an encrypted workspace).
+
+**Standing grants of a member's agent — proposed amendment of F-024 AC-4 (#763 FT-2, needs founder
+confirmation).** `POST /api/v1/agent-connections/:id/action-grants` needed the owner's current
+project management, so a member's agent could be let into a project but could never be given
+any action there. Proposed: the owner may also add standing grants when they can write in the
+project (`project.write`) and the agent holds its own explicit `contributor` grant there, which
+only a manager gives (`403 AGENT_GRANT_REQUIRED` otherwise). Every action still runs as the agent,
+capped by that grant, the owner's current level, the connection's consent and the grant's own
+limits. Managers are unchanged. Implemented in `app/apps/server/src/agent-connection/grants.ts`.
 
 ## Events
 

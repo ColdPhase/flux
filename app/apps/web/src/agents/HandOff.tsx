@@ -166,23 +166,25 @@ function HandOffBody({ onClose, project, task: given, agentId, onDone }: {
   // and, when they are missing, the one button below grants exactly what the task needs before handing it off.
   const own = !!entry && !teammate && entry.ownerId === me.user.id;
   const ownConnections = useMemo(() => (loaded?.connections ?? []).filter((item) => item.own && !item.assistant && item.agent.id === entry?.agentId), [loaded, entry?.agentId]);
-  const [readiness, setReadiness] = useState<Readiness>({ kind: 'checking' });
   const [readyKey, setReadyKey] = useState(0);
+  const acting = useMemo(() => ownConnections.filter((item) => item.scopes.includes('flux.action.execute')), [ownConnections]);
+  const taskId2 = task?.id ?? null;
+  const checkKey = step === 2 && own && grant.canTake && taskId2 && !entry?.connection?.assistant
+    ? `${taskId2}:${ownConnections.map((item) => item.id).join(',')}:${readyKey}` : null;
+  const [checked, setChecked] = useState<{ key: string; result: Readiness } | null>(null);
   useEffect(() => {
-    if (step !== 2 || !own || !grant.canTake || !task || entry?.connection?.assistant) { setReadiness({ kind: 'unknown' }); return undefined; }
-    if (!ownConnections.length) { setReadiness({ kind: 'offline' }); return undefined; }
-    const acting = ownConnections.filter((item) => item.scopes.includes('flux.action.execute'));
-    if (!acting.length) { setReadiness({ kind: 'scope' }); return undefined; }
+    if (!checkKey || !acting.length || !taskId2) return undefined;
     const controller = new AbortController();
-    setReadiness({ kind: 'checking' });
-    Promise.all(acting.map(async (item) => [item.id, missingWorkGrants(await listActionGrants(item.id, controller.signal), project.id, task.id, Date.now()).length] as const))
+    Promise.all(acting.map(async (item) => [item.id, missingWorkGrants(await listActionGrants(item.id, controller.signal), project.id, taskId2, Date.now()).length] as const))
       .then((rows) => {
         if (controller.signal.aborted) return;
         const lacking = rows.filter(([, missing]) => missing > 0).map(([id]) => id);
-        setReadiness(lacking.length === rows.length ? { kind: 'grants', connectionIds: lacking } : { kind: 'ready' });
-      }, () => { if (!controller.signal.aborted) setReadiness({ kind: 'unknown' }); });
+        setChecked({ key: checkKey, result: lacking.length === rows.length ? { kind: 'grants', connectionIds: lacking } : { kind: 'ready' } });
+      }, () => { if (!controller.signal.aborted) setChecked({ key: checkKey, result: { kind: 'unknown' } }); });
     return () => controller.abort();
-  }, [step, own, grant.canTake, task?.id, ownConnections, project.id, readyKey, entry?.connection?.assistant]);
+  }, [checkKey, acting, project.id, taskId2]);
+  const readiness: Readiness = !checkKey ? { kind: 'unknown' } : !ownConnections.length ? { kind: 'offline' } : !acting.length ? { kind: 'scope' }
+    : checked?.key === checkKey ? checked.result : { kind: 'checking' };
 
   const append = (page: { rows: WorkRowProjection[]; next: string | null }) => {
     setLoaded((current) => current && { ...current, tasks: [...current.tasks, ...page.rows.filter((row) => !current.tasks.some((known) => known.id === row.id))] });
