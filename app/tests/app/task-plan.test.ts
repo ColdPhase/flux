@@ -125,7 +125,7 @@ test('tasks carry bounded criteria, same-project prerequisites and an immutable 
   assert.deepEqual([cleared.criteria, cleared.dependencyIds, cleared.prerequisites], [[], [], []]);
   await f.patchFails(f.owner, cleared, { planIntent: null }, 400, 'PLAN_INTENT_IMMUTABLE');
   await f.patchFails(f.owner, cleared, { planIntent: { materialId: f.material.materialId, version: 1, intentKey: 'other' }, title: 'Hidden change' }, 400, 'PLAN_INTENT_IMMUTABLE');
-  assert.deepEqual((await f.read(planned.id)).creationUndo, { eligible: false, reason: 'creation_changed' });
+  assert.deepEqual((await f.read(planned.id)).creationUndo, { eligible: false, reason: 'not_ai_origin' }, 'the owner did not create it');
   sameHumanWork(await f.read(planned.id), cleared);
   assert.equal((expectStatus(await f.owner.browser.request('PATCH', `/api/v1/work/${planned.id}`, { body: { criteria: ['No precondition'] } }), 428) as ApiFailure).code, 'PRECONDITION_REQUIRED');
   const stale = expectStatus(await f.owner.browser.request('PATCH', `/api/v1/work/${planned.id}`,
