@@ -16,7 +16,7 @@ const secret = { type: 'string', minLength: 1, maxLength: 1024 } as const;
 const body = (properties: Record<string, unknown>, required: string[] = []) =>
   ({ type: 'object', additionalProperties: false, required, properties }) as const;
 
-export function encryptionRoutes(app: FastifyInstance, { sessions, encryption, fixtureCreation, productionCreation = false }: {
+export function encryptionRoutes(app: FastifyInstance, { sessions, encryption, fixtureCreation }: {
   sessions: SessionResolver;
   encryption: EncryptionComposition;
   /**
@@ -25,8 +25,6 @@ export function encryptionRoutes(app: FastifyInstance, { sessions, encryption, f
    * always has a fixture token, never gets it. S3 makes it the production route.
    */
   fixtureCreation: string | null;
-  /** Creation is a production route: any signed-in person, no fixture bearer. Off until the switch in `app.ts` is flipped. */
-  productionCreation?: boolean;
 }) {
   const { useCases } = encryption;
   const principal = async (request: Parameters<SessionResolver['requirePrincipal']>[0]) => (await sessions.requirePrincipal(request)).principal;
@@ -38,11 +36,11 @@ export function encryptionRoutes(app: FastifyInstance, { sessions, encryption, f
     throw error;
   });
 
-  if (productionCreation || fixtureCreation !== null) {
-    const token = productionCreation ? null : fixtureCreation;
+  if (fixtureCreation !== null) {
+    const token = fixtureCreation;
     app.post<{ Body: CreateEncryptedWorkspaceCommand }>(ENCRYPTED_WORKSPACES_PATH, {
       onRequest: async (request, reply) => {
-        if (token !== null && !bearerMatches(request.headers.authorization, token)) return reply.code(401).send({ error: 'Unauthorized' });
+        if (!bearerMatches(request.headers.authorization, token)) return reply.code(401).send({ error: 'Unauthorized' });
       },
       schema: { body: body({ name: { type: 'string', minLength: 1, maxLength: 400 }, creationId: { type: 'string', maxLength: 64 }, password: secret },
         ['name', 'creationId', 'password']) },

@@ -4,7 +4,6 @@ import { before, describe, test } from 'node:test';
 import { ENCRYPTED_WORKSPACES_PATH, workspaceRecoveryCodePath, workspaceUnlockGrantsPath, workspaceUnlockPasswordPath } from '@flux/contracts';
 import { createEncryptionUseCases, type EncryptionUseCaseDeps } from '@flux/core';
 import { pool } from './support/db.js';
-import { Browser } from './support/http.js';
 import { codeOf, contentCall, createSealed, fixtureBearer, lock, passphrase, readWorkspace, unlock } from './support/encryption.js';
 import { addMember, expectStatus, person, workspace, type Person } from './support/people.js';
 
@@ -64,12 +63,12 @@ describe('F-030 creation (fixture route)', () => {
     assert.equal(again.headers.get('cache-control'), 'no-store');
   });
 
-  test('creation is a production route (S3): a session alone makes the space, and no session is refused', async () => {
+  test('creation needs the fixture bearer as well as a session', async () => {
     const response = await eve.browser.request('POST', ENCRYPTED_WORKSPACES_PATH, { body: { name: 'No bearer club', creationId: randomUUID(), password: pw.eve } });
-    assert.equal(response.status, 201);
-    assert.equal(typeof (response.json as { recoveryCode?: unknown }).recoveryCode, 'string');
-    const signedOut = await new Browser().request('POST', ENCRYPTED_WORKSPACES_PATH, { body: { name: 'Nobody club', creationId: randomUUID(), password: pw.eve } });
-    assert.equal(signedOut.status, 401);
+    assert.equal(response.status, 401);
+    const wrong = await eve.browser.request('POST', ENCRYPTED_WORKSPACES_PATH, { body: { name: 'No bearer club', creationId: randomUUID(), password: pw.eve },
+      headers: { authorization: 'Bearer not-the-fixture-token' } });
+    assert.equal(wrong.status, 401);
   });
 
   test('own passwords: under 20 characters and "abcdefghabcdefghabcd" are too weak', async () => {
@@ -131,22 +130,6 @@ describe('F-030 unlock, Lock now and 423', () => {
     await clearAttempts(A);
   });
 
-  test('locked: why and by whom (Lock now names the person for all but guests), and who can unlock (S3 UI audit LK-1)', async () => {
-    expectStatus(await lock(ada.browser, A), 200);
-    const member = (await readWorkspace(cy.browser, A)).encryption!;
-    assert.equal(member.state, 'locked');
-    assert.equal(member.lockedBecause?.reason, 'person');
-    assert.deepEqual(member.lockedBecause?.by, { id: ada.id, name: 'Ada' });
-    assert.ok(Math.abs(Date.parse(member.lockedBecause!.at) - Date.now()) < 60_000);
-    assert.ok(member.unlockers.some((holder) => holder.id === ada.id), 'Ada can unlock it');
-    assert.ok(member.unlockers.every((holder) => holder.id !== cy.id && holder.id !== dee.id), 'only owners and admins with a password');
-    const guest = (await readWorkspace(dee.browser, A)).encryption!;
-    assert.deepEqual({ reason: guest.lockedBecause?.reason, by: guest.lockedBecause?.by, unlockers: guest.unlockers }, { reason: 'person', by: null, unlockers: [] });
-    expectStatus(await unlock(ada.browser, A, { password: pw.ada }), 200);
-    assert.equal((await readWorkspace(cy.browser, A)).encryption!.lockedBecause, null);
-    await clearAttempts(A);
-  });
-
   test('a member, a guest and an admin without a password are refused; the recovery code unlocks', async () => {
     await lock(ada.browser, A);
     for (const who of [cy, dee]) {
@@ -174,14 +157,6 @@ describe('F-030 first passwords, grants and changes', () => {
     const refused = await put(ben, A, { newPassword: pw.ben });
     assert.equal(refused.status, 403, refused.text);
     assert.equal(codeOf(refused), 'UNLOCK_PASSWORD_GRANT_REQUIRED');
-    // The wire the interface reads: who has a password (owners and admins see it for owners and admins), and the caller's grant.
-    const flags = async (who: Person, ws = A) => Object.fromEntries(((expectStatus(await who.browser.request('GET', `/api/v1/workspaces/${ws}/members`), 200)) as { userId: string; unlockPassword?: boolean }[])
-      .map((member) => [member.userId, member.unlockPassword ?? null]));
-    assert.deepEqual(await flags(ada), { [ada.id]: true, [ben.id]: false, [cy.id]: null, [dee.id]: null }, 'a holder sees who lacks a password');
-    assert.deepEqual(await flags(ben), { [ada.id]: true, [ben.id]: false, [cy.id]: null, [dee.id]: null }, 'so does an admin without one');
-    assert.deepEqual(Object.values(await flags(cy)), [null, null, null, null], 'a member sees no flag');
-    assert.deepEqual(Object.values(await flags(ada, B)), [null, null, null, null], 'a plain workspace has none');
-    assert.equal((await readWorkspace(ben.browser, A)).encryption?.passwordGrantUntil, null, 'no grant yet');
     const wrong = await grant(ada, A, ben.id, `${pw.ada}!`);
     assert.equal(wrong.status, 400);
     assert.equal(codeOf(wrong), 'UNLOCK_INCORRECT');
@@ -191,14 +166,9 @@ describe('F-030 first passwords, grants and changes', () => {
     assert.equal(granted.status, 201, granted.text);
     const expiresIn = Date.parse((granted.json as { expiresAt: string }).expiresAt) - Date.now();
     assert.ok(expiresIn > 55 * 60_000 && expiresIn <= 60 * 60_000, `one hour (${expiresIn} ms)`);
-    const until = (await readWorkspace(ben.browser, A)).encryption?.passwordGrantUntil;
-    assert.equal(until, (granted.json as { expiresAt: string }).expiresAt, 'the grantee reads when it ends');
-    assert.equal((await readWorkspace(ada.browser, A)).encryption?.passwordGrantUntil, null, 'the holder who granted has none of their own');
     const set = await put(ben, A, { newPassword: pw.ben });
     assert.equal(set.status, 200, set.text);
     assert.equal((set.json as { encryption: { myPassword: boolean } }).encryption.myPassword, true);
-    assert.equal((set.json as { encryption: { passwordGrantUntil: string | null } }).encryption.passwordGrantUntil, null, 'the grant is gone once used');
-    assert.equal((await flags(ada))[ben.id], true, 'Ben now has a password');
     assert.equal((await pool.query('SELECT count(*)::int AS n FROM workspace_wrap_grants WHERE workspace_id = $1', [A])).rows[0].n, 0, 'the grant is consumed');
     const notices = (await pool.query(`SELECT user_id, title, body FROM notifications WHERE workspace_id = $1 AND reason = 'security'`, [A])).rows;
     assert.deepEqual(notices, [{ user_id: ada.id, title: 'Ben now has an unlock password for Garden club', body: '' }]);
@@ -292,7 +262,6 @@ describe('F-030 one password limiter for every checking route', () => {
     await addMember(owner, club.id, late, 'admin');
     expectStatus(await grant(owner, club.id, admin.id, passwords.owner), 201);
     expectStatus(await put(admin, club.id, { newPassword: passwords.admin }), 200);
-    await clearAttempts(club.id); // the setup grant's successful check counts (S3 review)
     const bad = 'wrong wrong wrong wrong wrong wrong';
     for (const response of [await grant(owner, club.id, late.id, bad), await put(owner, club.id, { currentPassword: bad, newPassword: passphrase() }),
       await newCode(owner, club.id, bad)]) {
@@ -313,77 +282,6 @@ describe('F-030 one password limiter for every checking route', () => {
     }
     await pool.query(`UPDATE password_attempts SET at = now() - interval '16 minutes' WHERE workspace_id = $1`, [club.id]);
     expectStatus(await grant(owner, club.id, late.id, passwords.owner), 201, 'older than 15 minutes no longer count');
-  });
-});
-
-describe('F-030 floods of derivations (S3 security review)', () => {
-  const create = (who: Person, name: string, password: string, creationId = randomUUID()) =>
-    who.browser.request('POST', ENCRYPTED_WORKSPACES_PATH, { body: { name, creationId, password } });
-
-  test('five creations per person in 15 minutes, then 429 CREATION_RATE_LIMITED with Retry-After; a retry still answers 200', async () => {
-    const kit = await person('Kit');
-    const password = passphrase();
-    const first = randomUUID();
-    for (let i = 0; i < 5; i += 1) expectStatus(await create(kit, `Kit club ${i}`, password, i === 0 ? first : randomUUID()), 201);
-    const limited = await create(kit, 'Kit club 5', password);
-    assert.equal(limited.status, 429, limited.text);
-    assert.equal(codeOf(limited), 'CREATION_RATE_LIMITED');
-    const retryAfter = Number(limited.headers.get('retry-after'));
-    assert.ok(retryAfter > 0 && retryAfter <= 900, `Retry-After ${retryAfter}`);
-    const retried = await create(kit, 'Kit club 0', password, first);
-    assert.equal(retried.status, 200, 'a retry of an earlier creationId is never limited');
-    assert.equal((retried.json as { recoveryCode: unknown }).recoveryCode, null);
-    assert.equal((await pool.query('SELECT count(*)::int AS n FROM workspaces WHERE created_by = $1', [kit.id])).rows[0].n, 5);
-    const other = await person('Lou');
-    expectStatus(await create(other, 'Lou club', passphrase()), 201, 'the limit is per person');
-    await pool.query(`UPDATE encrypted_workspace_creations SET at = now() - interval '16 minutes' WHERE user_id = $1`, [kit.id]);
-    expectStatus(await create(kit, 'Kit club 6', password), 201, 'older than 15 minutes no longer count');
-  });
-
-  test('one account flooding creations takes at most one derivation slot: another owner\'s unlock answers 200', async () => {
-    const mal = await person('Mal');
-    const ola = await person('Ola');
-    const olaPassword = passphrase();
-    const { workspace: club } = await createSealed(ola, 'Flood club', olaPassword);
-    await addMember(ola, club.id, mal, 'guest');
-    await lock(ola.browser, club.id);
-    const malPassword = passphrase();
-    const [creations, opened] = await Promise.all([
-      Promise.all(Array.from({ length: 16 }, (_, i) => create(mal, `Mal club ${i}`, malPassword))),
-      // Starts while Mal's derivations are already queued.
-      new Promise((resolve) => setTimeout(resolve, 20)).then(() => unlock(ola.browser, club.id, { password: olaPassword })),
-    ]);
-    expectStatus(opened, 200, 'the owner unlocks during the flood');
-    const outcomes = creations.map((response) => `${response.status}:${response.status === 201 ? '' : codeOf(response)}`);
-    assert.ok(outcomes.filter((o) => o === '201:').length <= 5, outcomes.join(' '));
-    assert.ok(outcomes.includes('503:UNLOCK_BUSY'), `a person's second derivation at the same moment is refused at once: ${outcomes.join(' ')}`);
-    assert.ok(outcomes.every((o) => ['201:', '503:UNLOCK_BUSY', '429:CREATION_RATE_LIMITED'].includes(o)), outcomes.join(' '));
-    // A busy refusal released its reservation: only created spaces count.
-    const counted = (await pool.query('SELECT count(*)::int AS n FROM encrypted_workspace_creations WHERE user_id = $1', [mal.id])).rows[0].n;
-    assert.equal(counted, outcomes.filter((o) => o === '201:').length);
-  });
-
-  test('new recovery codes with the right password: concurrent ones are refused, successes count, and another person still unlocks', async () => {
-    const ola = await person('Pia');
-    const rae = await person('Rae');
-    const passwords = { ola: passphrase(), rae: passphrase() };
-    const { workspace: mine } = await createSealed(ola, 'Code club', passwords.ola);
-    const { workspace: theirs } = await createSealed(rae, 'Other code club', passwords.rae);
-    await lock(rae.browser, theirs.id);
-    const [codes, opened] = await Promise.all([
-      Promise.all(Array.from({ length: 10 }, () => newCode(ola, mine.id, passwords.ola))),
-      new Promise((resolve) => setTimeout(resolve, 20)).then(() => unlock(rae.browser, theirs.id, { password: passwords.rae })),
-    ]);
-    expectStatus(opened, 200, 'another person unlocks while an owner repeats new recovery codes');
-    const outcomes = codes.map((response) => `${response.status}:${response.status === 200 ? '' : codeOf(response)}`);
-    assert.ok(outcomes.includes('503:UNLOCK_BUSY'), outcomes.join(' '));
-    assert.ok(outcomes.every((o) => ['200:', '503:UNLOCK_BUSY', '429:UNLOCK_RATE_LIMITED'].includes(o)), outcomes.join(' '));
-    await clearAttempts(mine.id);
-    for (let i = 0; i < 5; i += 1) expectStatus(await newCode(ola, mine.id, passwords.ola), 200);
-    const limited = await newCode(ola, mine.id, passwords.ola);
-    assert.equal(limited.status, 429, 'the sixth successful check in 15 minutes');
-    assert.equal(codeOf(limited), 'UNLOCK_RATE_LIMITED');
-    assert.ok(Number(limited.headers.get('retry-after')) > 0);
   });
 });
 

@@ -106,9 +106,7 @@ export function opened(workspaceId: string, dek: Buffer, envelopes: StoredEnvelo
 }
 
 /** The workspace's file objects in the stack's files volume (read-only at FLUX_TEST_STACK_FILES in the test container), by file id. */
-// The files volume: read-only at FLUX_TEST_STACK_FILES under check_encryption.sh's overlay, and at FLUX_TEST_FILES_DIR in the plain
-// test service of check_application.sh (#670: without this fallback the full suite read a missing directory and found no object).
-export async function fileObjects(workspaceId: string, filesDir = process.env.FLUX_TEST_STACK_FILES ?? process.env.FLUX_TEST_FILES_DIR ?? '/data/stack-files'): Promise<Map<string, Buffer>> {
+export async function fileObjects(workspaceId: string, filesDir = process.env.FLUX_TEST_STACK_FILES ?? '/data/stack-files'): Promise<Map<string, Buffer>> {
   const ids = (await pool.query<{ id: string }>('SELECT id FROM project_files WHERE workspace_id = $1', [workspaceId])).rows.map((row) => row.id);
   const objects = new Map<string, Buffer>();
   const root = join(filesDir, 'attachments', 'objects');

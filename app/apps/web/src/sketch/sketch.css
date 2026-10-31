@@ -154,14 +154,14 @@
 .sk-canvas.is-wiring .sk-node:hover { box-shadow: 0 0 0 3px var(--sub), inset 0 0 0 1.5px var(--t1); }
 .sk-wire { fill: none; stroke: var(--t1); stroke-width: 1.5; stroke-dasharray: 4 4; }
 .sk-ghost { position: absolute; left: 0; top: 0; display: grid; place-items: center; border-radius: var(--r-lg); border: 1.5px dashed var(--t2);
-  color: var(--t2); font-size: .75rem; pointer-events: none; z-index: 1; }
+  color: var(--t2); font-size: var(--fs-xs); pointer-events: none; z-index: 1; }
 .sk-ghost--draft { color: var(--t3); border-color: var(--t3); }
 /* S15: on a phone the map is for viewing and adding; the way to connect and arrange is said on the screen. */
 .sk-phone__note { display: inline-flex; align-items: center; gap: 8px; margin: 0; padding: 6px 14px; border-radius: var(--r-pill); background: var(--el);
   box-shadow: var(--sh-card), inset 0 0 0 1px var(--line); font-size: var(--fs-md); color: var(--t2); }
 .sk-phone__note svg { flex: none; color: var(--t3); }
 .sk-fab { display: inline-flex; align-items: center; gap: 8px; min-height: 44px; padding: 0 22px 0 18px; border-radius: var(--r-pill);
-  background: var(--inv); color: var(--oninv); box-shadow: var(--sh-pop); font-size: var(--fs-lg, 1rem); font-weight: 500; }
+  background: var(--inv); color: var(--oninv); box-shadow: var(--sh-pop); font-size: var(--fs-lg); font-weight: 500; }
 @media (pointer: coarse) { .sk-dot { width: 16px; height: 16px; } .sk-dot::before { inset: -14px; } }
 @media (prefers-reduced-motion: reduce) { .sk-dot { transition: none; } }
 
@@ -303,7 +303,7 @@
   .sk-tools { display: flex; flex-wrap: nowrap; justify-content: space-between; gap: 0; overflow-x: auto; scrollbar-width: none; }
   .sk-tools::-webkit-scrollbar { display: none; }
   .sk-div { display: none; }
-  .sk-bar .sk-tools .ui-btn { flex: 1 0 auto; min-width: 44px; flex-direction: column; justify-content: center; gap: 1px; padding: 3px 2px; font-size: 10.5px; line-height: 1.2; }
+  .sk-bar .sk-tools .ui-btn { flex: 1 0 auto; min-width: 44px; flex-direction: column; justify-content: center; gap: 1px; padding: 3px 2px; font-size: var(--fs-glyph); line-height: 1.2; }
   .sk-status { flex: none; padding: 0 8px 6px; white-space: normal; }
   .sk-status:empty { display: none; }
   .sk-canvas { height: clamp(220px, calc(100dvh - 430px), 620px); }
@@ -476,7 +476,7 @@ span.sk-li-img { width: 160px; height: 96px; }
 /* The person's shape rides on the cursor tip, then leads the name label and the People chip entry. */
 .sk-peer__mark { position: absolute; left: 10px; top: -5px; margin: 0; }
 /* The name is always shown; the layout puts it clear of thoughts, other names and other cursors. */
-.sk-peer__label { position: absolute; display: flex; align-items: center; box-sizing: border-box; height: 20px; padding: 0 8px 0 7px; border-radius: 10px; color: var(--oninv); background: var(--inv); font-size: var(--fs-xs, 11px); line-height: 20px; white-space: nowrap; }
+.sk-peer__label { position: absolute; display: flex; align-items: center; box-sizing: border-box; height: 20px; padding: 0 8px 0 7px; border-radius: 10px; color: var(--oninv); background: var(--inv); font-size: var(--fs-xs); line-height: 20px; white-space: nowrap; }
 .sk-peer__label > b { min-width: 0; overflow: hidden; text-overflow: ellipsis; font-weight: 400; }
 .sk-here { position: absolute; top: 8px; right: 12px; z-index: 6; margin: 0; display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 2px 10px; max-width: calc(100% - 24px); font-size: var(--fs-sm); color: var(--t2); pointer-events: none; }
 .sk-here > span { display: inline-flex; align-items: center; min-width: 0; }

@@ -27,7 +27,7 @@
 /* ChatGPT's device sign-in card (F-027 A12, #281): the code large, one button, the terminal under "Show details". */
 .rt-device { display: grid; gap: 10px; justify-items: start; }
 .rt-device__lead { margin: 0; font-size: var(--fs-base); color: var(--t1); }
-.rt-device__code { margin: 0; font-family: var(--mono); font-size: 28px; font-weight: 600; letter-spacing: .08em; color: var(--t1); user-select: all; }
+.rt-device__code { margin: 0; font-family: var(--mono); font-size: var(--fs-2xl); font-weight: 600; letter-spacing: .08em; color: var(--t1); user-select: all; }
 .rt-device .rt-more { width: 100%; }
 .rt-device .rt-open { margin: 0; }
 .rt-device .rt-steps { margin: 0; }
@@ -55,7 +55,7 @@
 @media (pointer: coarse), (hover: none) { .rt-more > summary { display: flex; align-items: center; min-height: 44px; } }
 /* Agents and AI (#763 SG-6): the sign-in section's notes at the meta size of the other settings lines, and a chevron
    for its folded line instead of the browser's triangle. */
-.sset-in .rt > .nset__note { font-size: 12.5px; line-height: 1.45; color: var(--t3); }
+.sset-in .rt > .nset__note { font-size: var(--fs-xs); line-height: 1.45; color: var(--t3); }
 .rt-more > summary { list-style: none; display: inline-flex; align-items: center; gap: 4px; cursor: pointer; }
 .rt-more > summary::-webkit-details-marker { display: none; }
 .rt-more > summary::after { content: ""; width: 6px; height: 6px; border-right: 1.5px solid currentColor; border-bottom: 1.5px solid currentColor; transform: rotate(-45deg); transition: transform var(--dur-1) var(--ease-out); }

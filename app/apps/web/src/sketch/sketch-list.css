@@ -45,7 +45,7 @@
 .sk-outline-actions > button:hover, .sk-outline-menu > button:hover, .sk-outline-actions > button[aria-expanded="true"] { background: var(--hov); color: var(--t1); }
 .sk-outline-menu { display: flex; flex-wrap: wrap; gap: 2px 4px; margin: 4px 0 6px 30px; padding: 4px; border-radius: var(--r-lg); background: var(--el); box-shadow: var(--sh-card), inset 0 0 0 1px var(--line); width: fit-content; max-width: calc(100% - 30px); }
 .sk-outline-menu > button[aria-pressed="true"] { background: var(--sub); color: var(--t1); }
-.sk-outline-menu kbd, .sk-outline-keys kbd { padding: 0 5px; border: 1px solid var(--line2); border-radius: 5px; font: 500 11px/16px var(--mono); color: var(--t3); }
+.sk-outline-menu kbd, .sk-outline-keys kbd { padding: 0 5px; border: 1px solid var(--line2); border-radius: 5px; font: 500 var(--fs-glyph)/16px var(--mono); color: var(--t3); }
 .sk-outline-menu kbd { margin-left: 2px; }
 .sk-outline-body { margin: 0 0 4px 34px; min-width: 0; }
 .sk-outline-keys { display: flex; flex-wrap: wrap; gap: 6px 18px; margin: 10px 0 0; padding: 8px 10px; border-top: 1px solid var(--line); font-size: var(--fs-xs); color: var(--t3); }

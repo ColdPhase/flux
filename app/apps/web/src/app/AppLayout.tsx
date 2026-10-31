@@ -3,8 +3,6 @@ import { flushSync } from 'react-dom';
 import type { ProjectPerson } from '@flux/contracts';
 import { Outlet, useLocation, useMatches, useNavigate, useNavigationType, useParams, useRevalidator } from 'react-router';
 import { useStreamEvents } from '../api/stream';
-import { WORKSPACE_LOCKED_DOM_EVENT, isEncryptionEvent } from '../encryption/api';
-import { useLockedPlace } from '../encryption/state';
 import { Dissolve, Drawer, IconButton, MEDIA, SidePanel, SizeSwap, Tabs, flip, setTravelDirection, useMediaQuery, useToast, useSidePanelMode, viewDirection } from '../ui';
 import { routeView } from '../ui/motion-rules';
 import { useShellData } from './data';
@@ -121,11 +119,7 @@ export function AppLayout() {
 }
 
 function AppLayoutContent() {
-  const { me, workspace, workspaces, lockedWorkspaces, projects, directMessages } = useShellData();
-  // F-030 (#655): the workspaces that wait to be unlocked, as the latest read has them, for the handler of `423` below.
-  const lockedNow = useRef(lockedWorkspaces);
-  useLayoutEffect(() => { lockedNow.current = lockedWorkspaces; });
-  const lockedPlaceId = useLockedPlace();
+  const { me, workspace, projects, directMessages } = useShellData();
   const location = useLocation();
   const navType = useNavigationType();
   // The entry on show, for everything that keeps or finds a place (#592). Set while rendering, so effects of this
@@ -250,30 +244,16 @@ function AppLayoutContent() {
     const refresh = () => { last = Date.now(); void revalidate(); };
     const back = () => { if (document.visibilityState === 'visible' && Date.now() - last > 60_000) refresh(); };
     window.addEventListener('flux:workspace-ai-blocked', refresh);
-    // F-030 (#655): a place answered `423` because its encrypted workspace locked since the shell last read it. A workspace the
-    // shell already shows as locked teaches nothing new: the locked panel's own reads answer `423` again, and each answer must
-    // not start another read. A shell that still shows it unlocked is read again, at most once in a few seconds.
-    let lastRefusal = 0;
-    const locked = (event: Event) => {
-      const id = (event as CustomEvent<{ workspaceId: string | null }>).detail?.workspaceId;
-      if ((id && lockedNow.current.some((space) => space.id === id)) || Date.now() - lastRefusal < 3000) return;
-      lastRefusal = Date.now();
-      refresh();
-    };
-    window.addEventListener(WORKSPACE_LOCKED_DOM_EVENT, locked);
     window.addEventListener('focus', back);
     document.addEventListener('visibilitychange', back);
     return () => {
       window.removeEventListener('flux:workspace-ai-blocked', refresh);
-      window.removeEventListener(WORKSPACE_LOCKED_DOM_EVENT, locked);
       window.removeEventListener('focus', back);
       document.removeEventListener('visibilitychange', back);
     };
   }, [revalidate]);
   useStreamEvents(me.user.id, (event) => {
     if (event.kind === WORKSPACE_AI_POLICY_CHANGED_EVENT) { revalidator.revalidate(); return; }
-    // An encrypted workspace was unlocked or locked (F-030, #655): its places turn into the locked panel, or back, without a reload.
-    if (isEncryptionEvent(event.kind)) { revalidator.revalidate(); return; }
     // A project goal changed (#520): the open project's Details, view menu and conversation read it again.
     if (event.objectType === 'project' && event.kind.startsWith('project.goal_') && location.pathname.startsWith(`/projects/${event.objectId}`)) { revalidator.revalidate(); return; }
     // Someone saw a message (#534): only the open conversation shows it, and it asks for itself.
@@ -305,7 +285,6 @@ function AppLayoutContent() {
   const [actionSlot, setActionSlot] = useState<HTMLElement | null>(null);
   const [metadataSlot, setMetadataSlot] = useState<HTMLElement | null>(null);
   const [viewMenuMetadataSlot, setViewMenuMetadataSlot] = useState<HTMLElement | null>(null);
-  const panelGuard = useRef<(() => boolean) | null>(null);
   const shell = useMemo(() => ({
     openDetails(view: DetailsView = 'place', options?: { back?: 'push' | 'keep' }) {
       if (detailsScope.current !== detailsOwner) return;
@@ -324,7 +303,7 @@ function AppLayoutContent() {
     },
     /** The open object's name for "‹ back" from the next one ("Task #2"). */
     labelPanel(label: string | null) { panelLabel.current = label; },
-    showPanel, hidePanel, reopenPanel, closePanel: () => closeRef.current(), guardPanel(guard: (() => boolean) | null) { panelGuard.current = guard; }, panelSlot, panelKey: detailsOpen && isOwned(detailsView) ? owned?.key ?? null : null,
+    showPanel, hidePanel, reopenPanel, closePanel: () => closeRef.current(), panelSlot, panelKey: detailsOpen && isOwned(detailsView) ? owned?.key ?? null : null,
     /** On the phone a request that does not yet say what to create opens the "+" sheet first (#341). */
     openCreate(request: CreateRequest = {}) { setNavOpen(false); setJumpOpen(false); if (phone && !request.kind) setCreateOpen(true); else setCreate(request); },
     openSearch() { setNavOpen(false); setJumpOpen(true); },
@@ -589,7 +568,6 @@ function AppLayoutContent() {
     : ownedShown?.origin ? { label: ownedShown.origin.label, onClick: ownedShown.origin.run } : undefined;
   // Esc and × close the whole panel; a thread or an agent a view owns also leaves its address.
   const closePanel = () => {
-    if (panelGuard.current?.()) return;
     ownedShown?.onClose();
     toggleDetails(false);
   };
@@ -608,13 +586,7 @@ function AppLayoutContent() {
   ] : null;
   const matches = useMatches();
   const notFound = matches.some((match) => (match.handle as { notFound?: boolean } | undefined)?.notFound === true);
-  // A space that waits to be unlocked: the address of its row, or any place of it that turned into the locked panel (F-030, #655).
-  const lockedId = location.pathname.match(/^\/spaces\/([^/]+)/)?.[1] ?? lockedPlaceId;
-  const lockedSpace = lockedId ? [...workspaces, ...lockedWorkspaces].find((space) => space.id === lockedId) : undefined;
-  const lockedHere = !!lockedId && lockedSpace?.encryption?.state === 'locked';
-  const place = lockedHere
-    ? { crumb: null, title: lockedSpace.name, topic: 'Waiting to be unlocked', noDetails: true }
-    : location.pathname === '/projects'
+  const place = location.pathname === '/projects'
     ? { crumb: null, title: 'Projects', topic: 'Every project you can open', noDetails: true }
     : /^\/settings(\/(appearance|account|people|notifications|agents|shortcuts)(\/.*)?)?$/.test(location.pathname)
     ? { crumb: null, title: 'Settings', topic: 'Appearance, notifications, agents and AI', noDetails: true }
@@ -742,10 +714,7 @@ function AppLayoutContent() {
           <div className="phead__title"><h1><span className="ui-vh">Home</span><span className="phead__word" aria-hidden="true">flux</span></h1></div>
         </div>
       ) : (
-        // A place of a locked space opened at its own address (a deep link) keeps a way back on the phone (LK-2): an
-        // installed app has no browser Back. The sidebar row's own page (/spaces/:id) is a main place with the tab bar.
-        <>{routeOrigin ? <RouteOriginBack origin={routeOrigin} className="origin-back--phone" />
-            : lockedHere && !location.pathname.startsWith('/spaces/') ? <PhoneBack onBack={() => goBack('/')} /> : null}
+        <>{routeOrigin ? <RouteOriginBack origin={routeOrigin} className="origin-back--phone" /> : null}
           <div className="phead__id"><div className="phead__title"><h1>{place.title}</h1>{'topic' in place && place.topic ? <p className="phead__sub">{place.topic}</p> : null}</div></div></>
       )}
       <div className="phead__right">
@@ -762,7 +731,7 @@ function AppLayoutContent() {
     <ShellContext.Provider value={shell}>
     {/* One live session per tab, above the routes, so navigation keeps it (#62). */}
     <LiveProvider meId={me.user.id}>
-    <div className={`app${phone && !detailsOpen && !lockedHere && phoneOffersCreate(location.pathname) ? ' app--fab' : ''}`} ref={appRef}>
+    <div className={`app${phone && !detailsOpen && phoneOffersCreate(location.pathname) ? ' app--fab' : ''}`} ref={appRef}>
       <a className="ui-skip" href="#content">Skip to content</a>
       {phone ? null : navDrawer ? (
         <Drawer open={navOpen && navDrawer} onClose={() => setNavOpen(false)} labelledBy={drawerTitleId} id="nav-drawer" className="nav-drawer">
@@ -834,9 +803,8 @@ function AppLayoutContent() {
             {isOwned(detailsView) ? <div className="ui-panel__slot" ref={setPanelSlot} /> : <DeferredDetails view={detailsView} workspace={workspace} placeTitle={place.title} dm={activeDm ? { id: activeDm.id, kind: activeDm.kind, title: activeDm.title, me: me.user.name, people: activeDm.people, audience: activeDm.audience } : null} onBack={() => setDetailsView('place')} onClose={() => toggleDetails(false)} />}
           </SidePanel>
         </div>
-        {/* A locked space's place keeps the tab bar on the phone (LK-2), and offers no "+" there. */}
-        {phone && !detailsOpen && (lockedHere || !phoneHidesDock(location.pathname) || phoneOffersCreate(location.pathname)) ? (
-          <PhoneDock places={places} onSearch={shell.openSearch} onCreate={() => setCreateOpen(true)} create={!lockedHere && phoneOffersCreate(location.pathname)} capsule={lockedHere || !phoneHidesDock(location.pathname)} />
+        {phone && !detailsOpen && (!phoneHidesDock(location.pathname) || phoneOffersCreate(location.pathname)) ? (
+          <PhoneDock places={places} onSearch={shell.openSearch} onCreate={() => setCreateOpen(true)} create={phoneOffersCreate(location.pathname)} capsule={!phoneHidesDock(location.pathname)} />
         ) : null}
       </div>
 

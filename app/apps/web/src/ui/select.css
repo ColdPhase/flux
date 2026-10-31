@@ -15,7 +15,7 @@
 /* The soft field focus of the other inputs (--t1 hairline inside, --sub halo), not the heavy outline. */
 button.ui-select:focus-visible { outline: none; box-shadow: inset 0 0 0 1px var(--t1), 0 0 0 3px var(--sub); }
 @media (hover: hover) { .ui-select:hover:not(:disabled) { border-color: var(--t3); } }
-@media (pointer: coarse) { .ui-select { min-height: 44px; font-size: 16px; } }
+@media (pointer: coarse) { .ui-select { min-height: 44px; font-size: var(--fs-input-touch); } }
 /* The hidden field that carries a name or the browser's required check: it takes no room and no pointer. A form's own
    `> input { width: 100% }` must never size it, or it reaches past the page and scrolls it sideways (#763 AG-1). */
 input.ui-select__field {
@@ -50,5 +50,5 @@ input.ui-select__field {
 .ui-select-sheet__grab { display: block; flex: none; width: 36px; height: 5px; margin: 4px auto 10px; border-radius: 3px; background: var(--line2); }
 .ui-select-sheet__title { flex: none; margin: 0 0 6px; padding: 0 12px; color: var(--t2); font-size: var(--fs-md); font-weight: 500; }
 .ui-select__list--sheet { flex: 1; }
-.ui-select-sheet .ui-select__opt { min-height: 48px; padding: 8px 12px 8px 8px; font-size: 16px; border-radius: var(--r); }
+.ui-select-sheet .ui-select__opt { min-height: 48px; padding: 8px 12px 8px 8px; font-size: var(--fs-lg); border-radius: var(--r); }
 .ui-select-sheet .ui-select__group { padding: 12px 12px 4px; font-size: var(--fs-md); }

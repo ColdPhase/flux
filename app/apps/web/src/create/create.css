@@ -9,7 +9,7 @@
    and properties, and its foot with the one primary action. */
 .create__head { display: flex; align-items: center; gap: 8px; min-height: 52px; height: auto; padding: 10px 12px 0 16px; border: 0; flex: none; }
 .create__kinds { flex: 1; min-width: 0; }
-.create__go kbd { font: 500 11px var(--mono); background: transparent; color: inherit; opacity: .7; border-radius: 6px; padding: 1px 5px; margin-left: 4px; }
+.create__go kbd { font: 500 var(--fs-glyph) var(--mono); background: transparent; color: inherit; opacity: .7; border-radius: 6px; padding: 1px 5px; margin-left: 4px; }
 .create__panel { display: flex; flex-direction: column; min-height: 0; flex: 1; }
 .create__panel[hidden] { display: none; }
 .create__where { display: flex; align-items: center; gap: 8px; min-width: 0; min-height: 40px; padding: 10px 20px 0; flex: none; font-size: var(--fs-md); color: var(--t2); }
@@ -21,12 +21,12 @@
 .create__place { position: relative; min-width: 0; display: inline-flex; align-items: center; gap: 8px; max-width: 100%; min-height: 28px; padding: 4px 10px 4px 4px; border-radius: 10px; background: var(--sub); box-shadow: inset 0 0 0 1px var(--line); font-size: var(--fs-md); font-weight: 500; cursor: pointer; }
 .create__place:hover { background: var(--hov); }
 .create__place:focus-within, .create__chip:focus-within { outline: 2px solid var(--t1); outline-offset: 1px; }
-.create__tile { display: inline-grid; place-items: center; flex: none; width: 20px; height: 20px; border-radius: 6px; background: var(--el); box-shadow: inset 0 0 0 1px var(--line); font-size: 10px; font-weight: 600; }
+.create__tile { display: inline-grid; place-items: center; flex: none; width: 20px; height: 20px; border-radius: 6px; background: var(--el); box-shadow: inset 0 0 0 1px var(--line); font-size: var(--fs-glyph); font-weight: 600; }
 .create__place-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.create__place .ui-select, .create__chip .ui-select { position: absolute; inset: 0; width: 100%; height: 100%; min-height: 0; opacity: 0; cursor: pointer; font-size: 16px; }
+.create__place .ui-select, .create__chip .ui-select { position: absolute; inset: 0; width: 100%; height: 100%; min-height: 0; opacity: 0; cursor: pointer; font-size: var(--fs-input-touch); }
 
 /* The carried text's field: a task's title, a decision, a project's name (one line); a thought or a message (several). */
-.create__title, .create__name { width: 100%; border: 0; background: none; padding: 4px 0; font: inherit; font-size: 22px; font-weight: 600; letter-spacing: -.02em; line-height: 1.25; color: var(--t1); outline: none; }
+.create__title, .create__name { width: 100%; border: 0; background: none; padding: 4px 0; font: inherit; font-size: var(--fs-xl); font-weight: 600; letter-spacing: -.02em; line-height: 1.25; color: var(--t1); outline: none; }
 .create__title::placeholder, .create__name::placeholder, .create__details::placeholder { color: var(--t3); font-weight: 400; }
 .create__text { width: 100%; border: 0; background: none; resize: none; padding: 4px 0; font: inherit; font-size: var(--fs-lg); line-height: 1.45; color: var(--t1); outline: none; min-height: 76px; max-height: 40vh; field-sizing: content; }
 .create__text::placeholder { color: var(--t3); }
@@ -89,7 +89,7 @@
 .ui-overlay--bottom .create .create__another { order: -1; width: 100%; justify-content: space-between; min-height: 44px; font-size: var(--fs-base); color: var(--t1); }
 .ui-overlay--bottom .create .create__foot .create__note { order: 1; flex-basis: 100%; text-align: center; }
 .ui-overlay--bottom .create .create__go { order: 2; width: 100%; border-radius: var(--r-pill); min-height: 52px; }
-.ui-overlay--bottom .create :is(.create__title, .create__name) { font-size: 26px; }
+.ui-overlay--bottom .create :is(.create__title, .create__name) { font-size: var(--fs-2xl); }
 
 .create__place--plain { background: none; box-shadow: none; padding: 0; min-height: 28px; gap: 4px; font-size: var(--fs-base); color: var(--t2); }
 .create__place--plain:hover { background: none; }

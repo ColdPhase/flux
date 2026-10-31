@@ -12,9 +12,9 @@
 .sset__page { display: flex; flex: 1; min-width: 0; flex-direction: column; }
 .pane-in.sset-in { max-width: calc(640px + 88px); margin: 0; padding: 30px 44px 48px; }
 .sset-head { margin-bottom: 16px; }
-.sset-head h2 { font-size: 22px; font-weight: 600; letter-spacing: -.015em; line-height: 1.25; color: var(--t1); }
+.sset-head h2 { font-size: var(--fs-xl); font-weight: 600; letter-spacing: -.015em; line-height: 1.25; color: var(--t1); }
 .sset-head p { margin-top: 4px; font-size: var(--fs-base); line-height: 1.45; color: var(--t2); max-width: 600px; }
-.sset-sec { margin: 26px 0 10px; font-size: 16px; font-weight: 600; color: var(--t1); letter-spacing: -.005em; }
+.sset-sec { margin: 26px 0 10px; font-size: var(--fs-lg); font-weight: 600; color: var(--t1); letter-spacing: -.005em; }
 .sset-sub { margin: 22px 2px 4px; font-size: var(--fs-base); font-weight: 600; color: var(--t1); }
 .sset-note { margin: 10px 2px 0; font-size: var(--fs-sm); line-height: 1.45; color: var(--t3); }
 .sset-note--sub { margin: 0 2px 10px; }
@@ -39,9 +39,9 @@
 .sset-row__ic { display: grid; place-items: center; flex: none; width: 24px; color: var(--t1); }
 .sset-row__b { display: flex; flex: 1; flex-direction: column; min-width: 0; gap: 1px; cursor: inherit; }
 .sset-row__t { display: inline-flex; align-items: center; gap: 6px; font-size: var(--fs-base); font-weight: 500; line-height: 1.35; overflow-wrap: anywhere; }
-.sset-row__s { font-size: 12.5px; line-height: 1.4; color: var(--t3); }
-.sset-row__meta { font-size: 12.5px; font-weight: 400; color: var(--t3); }
-.sset-row__go { display: inline-flex; align-items: center; gap: 2px; flex: none; font-size: 12.5px; color: var(--t2); }
+.sset-row__s { font-size: var(--fs-xs); line-height: 1.4; color: var(--t3); }
+.sset-row__meta { font-size: var(--fs-xs); font-weight: 400; color: var(--t3); }
+.sset-row__go { display: inline-flex; align-items: center; gap: 2px; flex: none; font-size: var(--fs-xs); color: var(--t2); }
 .sset-row__t .sset-row__meta { display: contents; }
 .sset-row__identity { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 6px; }
 .sset-card.sset-gap, .sset-gap { margin-top: 20px; }
@@ -98,11 +98,11 @@
 .sset-theme[aria-checked="true"] .sset-radio { background: var(--t1); box-shadow: inset 0 0 0 4px var(--t1), inset 0 0 0 6px var(--el); }
 /* Account. */
 .sset-me { display: flex; align-items: center; gap: 14px; padding: 16px 18px; }
-.sset-me .ui-avatar--lg { width: 48px; height: 48px; font-size: 16px; }
+.sset-me .ui-avatar--lg { width: 48px; height: 48px; font-size: var(--fs-lg); }
 .sset-me__b { display: flex; flex-direction: column; min-width: 0; line-height: 1.35; }
 .sset-me__b b { font-size: var(--fs-lg); font-weight: 600; color: var(--t1); overflow-wrap: anywhere; }
 .sset-me__b span { font-size: var(--fs-sm); color: var(--t2); overflow-wrap: anywhere; }
-.sset-me__b .sset-me__session { margin-top: 2px; font-size: 12.5px; color: var(--t3); }
+.sset-me__b .sset-me__session { margin-top: 2px; font-size: var(--fs-xs); color: var(--t3); }
 /* The assistant card (Spokój E04): one head row, three facts, one primary step. */
 .sset-assistant { padding: 0; }
 /* Top-aligned, so Set up / Manage stays on the name's row whether one, two or three lines follow (rule 7). */
@@ -128,21 +128,21 @@
 .sset-keys th { padding: 10px 18px 10px 8px; text-align: left; font-weight: 400; font-size: var(--fs-base); color: var(--t1); }
 .sset-keys kbd {
   display: inline-grid; place-items: center; min-width: 24px; height: 24px; padding: 0 6px; margin-right: 4px; border-radius: 6px;
-  font-family: var(--mono, ui-monospace, monospace); font-size: 12px; color: var(--t1); background: var(--sub); box-shadow: inset 0 -1px 0 var(--line2);
+  font-family: var(--mono, ui-monospace, monospace); font-size: var(--fs-xs); color: var(--t1); background: var(--sub); box-shadow: inset 0 -1px 0 var(--line2);
 }
-.sset-keys__or { margin-right: 4px; font-size: 12.5px; color: var(--t3); }
+.sset-keys__or { margin-right: 4px; font-size: var(--fs-xs); color: var(--t3); }
 @media (max-width: 640px) {
   .pane-in.sset-in { padding: 6px 16px 32px; }
-  .sset-head h2 { font-size: 28px; letter-spacing: -.02em; }
-  .sset-head p { font-size: 15px; }
-  .sset-sec { margin: 22px 4px 8px; font-size: 13px; font-weight: 500; color: var(--t3); letter-spacing: 0; }
+  .sset-head h2 { font-size: var(--fs-xl); letter-spacing: -.02em; }
+  .sset-head p { font-size: var(--fs-base); }
+  .sset-sec { margin: 22px 4px 8px; font-size: var(--fs-md); font-weight: 500; color: var(--t3); letter-spacing: 0; }
   .sset-in > .sset-sec:first-child { margin-top: 6px; }
   .sset-row { min-height: 56px; padding: 10px 16px; }
-  .sset-row__t, .sset-row .pwa-steps { font-size: 16px; font-weight: 400; }
-  .sset-row__s, .sset-row__meta, .sset-row__go { font-size: 13px; }
+  .sset-row__t, .sset-row .pwa-steps { font-size: var(--fs-lg); font-weight: 400; }
+  .sset-row__s, .sset-row__meta, .sset-row__go { font-size: var(--fs-md); }
   .sset-themes { gap: 10px; }
   .sset-theme__art { height: auto; aspect-ratio: 1 / 1.05; border-radius: 16px; }
-  .sset-theme__label { justify-content: center; min-height: 44px; font-size: 15px; }
+  .sset-theme__label { justify-content: center; min-height: 44px; font-size: var(--fs-base); }
   .sset-switch { width: 44px; height: 28px; }
   .sset-switch > span { width: 22px; height: 22px; }
   .sset-switch[aria-checked="true"] > span { transform: translateX(16px); }

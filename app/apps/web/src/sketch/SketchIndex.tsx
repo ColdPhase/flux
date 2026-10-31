@@ -1,5 +1,4 @@
 import { useEffect, useRef, useState } from 'react';
-import { isWorkspaceLocked, type EncryptedWorkspace } from '../encryption/api';
 import { Link, useLocation, useNavigate, useRevalidator } from 'react-router';
 import type { Sketch } from '@flux/contracts';
 import { Button, EmptyState, Icon, Spinner, useToast } from '../ui';
@@ -36,19 +35,12 @@ async function loadSketches(pages: number, signal: AbortSignal): Promise<Loaded>
   const items: Listed[] = [];
   let total = 0;
   for (const workspace of workspaces) {
-    // F-030 (#655): an encrypted space that waits to be unlocked has nothing to list until it is (its row is in the sidebar).
-    if ((workspace as EncryptedWorkspace).encryption?.state === 'locked') continue;
-    try {
-      const names = await projectNames(workspace.id, signal);
-      for (let page = 0; page < pages; page += 1) {
-        const sketches = await api.listPrivateSketches(workspace.id, PAGE, page * PAGE, signal);
-        if (page === 0) total += sketches.total;
-        for (const sketch of sketches.items) items.push({ sketch, projectName: sketch.projectId ? names.get(sketch.projectId) ?? null : null });
-        if ((page + 1) * PAGE >= sketches.total) break;
-      }
-    } catch (error) {
-      // It locked since the list was read: the request raised the shell's re-read, and the other spaces are still listed.
-      if (!isWorkspaceLocked(error)) throw error;
+    const names = await projectNames(workspace.id, signal);
+    for (let page = 0; page < pages; page += 1) {
+      const sketches = await api.listPrivateSketches(workspace.id, PAGE, page * PAGE, signal);
+      if (page === 0) total += sketches.total;
+      for (const sketch of sketches.items) items.push({ sketch, projectName: sketch.projectId ? names.get(sketch.projectId) ?? null : null });
+      if ((page + 1) * PAGE >= sketches.total) break;
     }
   }
   items.sort((a, b) => b.sketch.updatedAt.localeCompare(a.sketch.updatedAt));

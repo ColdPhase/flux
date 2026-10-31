@@ -1,7 +1,7 @@
 /* Home (#342, F-026 §7): a date and a greeting, the top three that need you, where to continue, your projects. */
 .pane-in.home { max-width: 848px; padding-top: 40px; }
 .home__date { margin: 0; font-size: var(--fs-md); color: var(--t3); }
-.home__hello { margin: 2px 0 28px; font-size: var(--fs-page); line-height: 1.15; letter-spacing: -.03em; font-weight: 650; }
+.home__hello { margin: 2px 0 28px; font-size: var(--fs-page); line-height: 1.15; letter-spacing: -.03em; font-weight: 600; }
 .home__sech { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 0 20px 10px; }
 .home__sech h3 { display: flex; align-items: center; gap: 8px; margin: 0; font-size: var(--fs-lg); font-weight: 600; letter-spacing: -.01em; }
 .home__n { display: inline-grid; place-items: center; min-width: 22px; height: 22px; padding: 0 6px; border-radius: var(--r-pill); background: var(--inv); color: var(--oninv); font-size: var(--fs-xs); font-weight: 600; }
@@ -30,7 +30,7 @@
 .home__projects ul { list-style: none; margin: 8px 0 0; padding: 0; }
 .home__project { display: flex; align-items: center; gap: 10px; min-height: 32px; font-size: var(--fs-base); color: var(--t1); text-decoration: none; }
 .home__project:hover .home__pn { text-decoration: underline; text-underline-offset: 3px; }
-.home__tile { display: inline-grid; place-items: center; width: 20px; height: 20px; flex: none; border-radius: 6px; background: var(--sub); box-shadow: inset 0 0 0 1px var(--line); font-size: 10px; font-weight: 600; }
+.home__tile { display: inline-grid; place-items: center; width: 20px; height: 20px; flex: none; border-radius: 6px; background: var(--sub); box-shadow: inset 0 0 0 1px var(--line); font-size: var(--fs-glyph); font-weight: 600; }
 .home__pn { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .home__state { flex: none; font-size: var(--fs-sm); color: var(--t3); }
 .home__state.is-new { color: var(--t1); font-weight: 600; }
@@ -42,7 +42,7 @@
 @media (pointer: coarse), (hover: none) { .home__keys { display: none; } .home__go { width: 44px; height: 44px; } }
 @media (max-width: 680px) {
   .pane-in.home { padding-top: 20px; }
-  .home__hello { margin-bottom: 20px; font-size: 1.75rem; }
+  .home__hello { margin-bottom: 20px; font-size: var(--fs-2xl); }
   .home__pair { grid-template-columns: minmax(0, 1fr); }
   .home__continue { padding-right: 76px; margin-bottom: 12px; }
   .home__sech { padding-inline: 4px; }

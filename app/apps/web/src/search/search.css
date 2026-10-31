@@ -50,7 +50,7 @@
 .jump__ric { color: var(--t3); }
 .jump__sh { display: flex; align-items: center; justify-content: space-between; padding: 10px 10px 4px; font-size: var(--fs-xs); font-weight: 500; color: var(--t3); }
 .jump__keys { display: flex; gap: 4px; margin-left: auto; }
-.jump__key { font: 500 11px var(--mono); color: var(--t3); background: var(--sub); border-radius: 6px; padding: 1px 6px; }
+.jump__key { font: 500 var(--fs-glyph) var(--mono); color: var(--t3); background: var(--sub); border-radius: 6px; padding: 1px 6px; }
 .jump__side { margin-left: auto; padding-left: 12px; font-size: var(--fs-xs); color: var(--t3); white-space: nowrap; }
 .jump__opt:not(.sr) .jump__rtext { flex: 0 1 auto; }
 .jump__rtext, .jump__alltext { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -112,11 +112,11 @@
 }
 @media (max-width: 640px) {
   .jump__field { padding-top: env(safe-area-inset-top); min-height: calc(56px + env(safe-area-inset-top)); }
-  .jump__input { font-size: 16px; }
+  .jump__input { font-size: var(--fs-input-touch); }
   .jump__foot { display: none; }
   .jump__close { min-height: 44px; padding: 0 8px; }
   .search { padding-top: 12px; }
-  .search__input { font-size: 16px; }
+  .search__input { font-size: var(--fs-input-touch); }
   .search__filters { flex-wrap: nowrap; overflow-x: auto; margin: 10px -16px 8px; padding: 0 16px 2px; scrollbar-width: none; }
   .search__chip { flex: none; }
   .search__place { flex: none; }
@@ -125,7 +125,7 @@
 .sr__meta > .sr__place:not(:last-child)::after { margin-left: 3px; }
 
 /* The phone's Search (S-P-Search, S-P-NoResults): a title, scope chips, and a calm empty state. */
-.jump__title { margin: 0; padding: calc(12px + env(safe-area-inset-top)) 20px 0; font-size: var(--fs-page); font-weight: 600; letter-spacing: -.02em; }
+.jump__title { margin: 0; padding: calc(12px + env(safe-area-inset-top)) 20px 0; font-size: var(--fs-xl); font-weight: 600; letter-spacing: -.02em; }
 .jump__chips { display: flex; gap: 8px; padding: 10px 16px 4px; overflow-x: auto; scrollbar-width: none; flex: none; }
 .jump__chip { flex: none; min-height: 44px; padding: 0 16px; border-radius: var(--r-pill); background: var(--sub); color: var(--t2); font-size: var(--fs-base); font-weight: 500; }
 .jump__chip[aria-pressed="true"] { background: var(--inv); color: var(--oninv); }

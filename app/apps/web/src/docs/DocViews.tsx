@@ -1,5 +1,4 @@
 import { lazy, Suspense, useEffect, useMemo, useState, type MouseEvent, type ReactNode } from 'react';
-import { unlessLocked } from '../encryption/api';
 import { createPortal } from 'react-dom';
 import { useRegisterLiveHere } from '../live/LiveProvider';
 import { Link, redirect, useLoaderData, useNavigate, useRevalidator, useSearchParams, type LoaderFunctionArgs } from 'react-router';
@@ -123,8 +122,7 @@ export function WorkspaceDocs() {
   const ids = workspaces.map((space) => space.id).join(',');
   useEffect(() => {
     const controller = new AbortController();
-    // F-030 (#655): a space that locked since the shell read it lists nothing until it is unlocked; the others still do.
-    Promise.all(ids ? ids.split(',').map((id) => unlessLocked(listWorkspaceDocs(id, controller.signal), [])) : [])
+    Promise.all(ids ? ids.split(',').map((id) => listWorkspaceDocs(id, controller.signal)) : [])
       .then((lists) => setDocs(lists.flat().sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))), () => { if (!controller.signal.aborted) setFailed(true); });
     return () => controller.abort();
   }, [ids]);

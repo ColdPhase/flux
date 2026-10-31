@@ -202,8 +202,7 @@ serves static sites. Choose hosting with the application's architecture.
 Flux implements this as two explicit `workflow_dispatch` workflows on `main`, neither run
 by a PR or a push ([#77](https://github.com/ColdPhase/flux/issues/77)):
 [`final-release.yml`](../../.github/workflows/final-release.yml) checks the exact candidate
-SHA, the release owner's acceptance and an independent reviewer's review (a reviewer who wrote none of
-the code), builds the amd64/arm64 application and agent-runtime images by
+SHA and both agents' acceptance, builds the amd64/arm64 application and agent-runtime images by
 digest ([#358](https://github.com/ColdPhase/flux/issues/358)), packages the digest-pinned operator
 assets (including the optional runtime overlay), smoke-tests their install and paired
 backup/restore, and creates a draft Release;

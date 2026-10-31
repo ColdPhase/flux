@@ -238,6 +238,19 @@ class TasksBoardJourney(unittest.TestCase):
         self.no_sideways_scroll(page, DESKTOP["width"], "desktop")
         shot(page, "tasks-board-1440-light")
 
+        # Settings → Appearance → Text size reaches the board (#763 TY-1): Large scales the card titles, the column
+        # headers and the project name in the header by the same 112.5 % as the rest, and the name is larger than the tabs.
+        sizes = """() => Object.fromEntries([['card', '.tb-card__t'], ['column', '.tb-col__h'], ['project', '.top__title h1'],
+          ['tab', '.top__views .ui-tabs__tab, .views .ui-tabs__tab']].map(([key, sel]) => [key, parseFloat(getComputedStyle(document.querySelector(sel)).fontSize)]))"""
+        normal = page.evaluate(sizes)
+        self.assertEqual({key: normal[key] for key in ("card", "column", "project")}, {"card": 14, "column": 13, "project": 16}, "the type tokens at the default size")
+        self.assertGreater(normal["project"], normal["tab"], "the project name is larger than the view tabs (TY-3)")
+        page.evaluate("document.documentElement.dataset.textSize = 'large'")
+        large = page.evaluate(sizes)
+        page.evaluate("delete document.documentElement.dataset.textSize")
+        for key, size in normal.items():
+            self.assertAlmostEqual(large[key], size * 1.125, delta=0.05, msg=f"{key} follows Large text: {normal} → {large}")
+
         # A card opens its existing details.
         order.get_by_role("button", name=ORDER, exact=True).click()
         expect(page.locator("#details").get_by_role("heading", name=ORDER)).to_be_visible()

@@ -4,7 +4,7 @@
 .people__list { list-style: none; margin: 0; padding: 0; }
 .people__item + .people__item { border-top: 1px solid var(--line); }
 .people__row { display: flex; align-items: center; gap: 10px; min-height: 52px; padding: 8px 0; }
-.people__row .ui-avatar { flex: none; font-size: 12px; color: var(--t2); }
+.people__row .ui-avatar { flex: none; font-size: var(--fs-xs); color: var(--t2); }
 .people__who { display: flex; flex: 1; flex-direction: column; min-width: 0; font-size: var(--fs-md); line-height: 1.45; }
 .people__who b { font-weight: 500; color: var(--t1); overflow-wrap: anywhere; }
 .people__who span { font-size: var(--fs-sm); color: var(--t3); overflow-wrap: anywhere; }
@@ -67,7 +67,7 @@
 @media (pointer: coarse) {
   .people__change.ui-btn, .access__invite.ui-btn { min-height: 44px; }
   .access__change.ui-btn { min-height: 44px; display: inline-flex; align-items: center; }
-  .people__field .ui-select { min-height: 44px; font-size: 16px; }
+  .people__field .ui-select { min-height: 44px; font-size: var(--fs-input-touch); }
   .access__seg-b { min-height: 44px; }
   .promote__grant { min-height: 44px; }
 }

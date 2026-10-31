@@ -15,15 +15,9 @@ import { oneOf, ROLES } from './validation.js';
 type MemberPorts = Pick<AccessPorts, 'workspaces' | 'access' | 'events' | 'encryption'>;
 
 export async function listMembers(principal: Principal, workspaceId: string, db: Database, ports: MemberPorts): Promise<WorkspaceMember[]> {
-  const { actor } = enforce(await evaluateWorkspace(principal, 'workspace.read_members', workspaceId, ports.access(db)), 'workspace');
+  enforce(await evaluateWorkspace(principal, 'workspace.read_members', workspaceId, ports.access(db)), 'workspace');
   const rows = await ports.workspaces(db).members(workspaceId);
-  // F-030: an owner or admin of an encrypted workspace also learns which owners and admins have an unlock password, to offer
-  // "Let Ben set an unlock password" only to those who lack one. A plain workspace has no holders, so the field stays out.
-  const holders = isManager(actor.role) ? new Set(await ports.encryption(db).passwordHolders(workspaceId)) : new Set<string>();
-  return rows.map(({ member, email, name: memberName }) => ({
-    userId: member.userId, email, name: memberName, role: member.role, createdAt: member.createdAt.toISOString(),
-    ...(holders.size && isManager(member.role) ? { unlockPassword: holders.has(member.userId) } : {}),
-  }));
+  return rows.map(({ member, email, name: memberName }) => ({ userId: member.userId, email, name: memberName, role: member.role, createdAt: member.createdAt.toISOString() }));
 }
 
 /** Adds an existing account (by id or e-mail) to the workspace with a role. */

@@ -3,13 +3,12 @@
 # compose.source.yaml, compose.live.yaml and compose.live.turn.yaml exactly as an operator does;
 # scripts/check_public_sim.sh starts it. Local test infrastructure only: never deploy this file.
 #
-#   lan-a (10.213.1.0/24: client-a .10, client-c .11) -- router-a (NAT, restrictive: TCP/443 + DNS only) --+
-#   lan-b (10.213.2.0/24: client-b .10, client-d .11) -- router-b (NAT, open)                           --+-- internet (203.0.113.0/24)
+#   lan-a (10.213.1.0/24) -- router-a (NAT, restrictive: TCP/443 + DNS only) --+
+#   lan-b (10.213.2.0/24) -- router-b (NAT, open)                           --+-- internet (203.0.113.0/24)
 #                                                                               |   dns     203.0.113.53
 #                                                                               |   proxy   203.0.113.10 flux.sim.test :443
 #                                                                               |   livekit 203.0.113.20 turn.sim.test :443/tcp TURN/TLS, :3478/udp, ICE 7881/7882
-#                                                                               |   driver  203.0.113.200 (reaches clients only via the routers' TCP/3000 and 3001)
-# client-c and client-d carry the third and fourth people of a four-person run.
+#                                                                               |   driver  203.0.113.200 (reaches clients only via the routers' TCP/3000)
 #   proxy-net (10.213.0.0/24): proxy 10.213.0.10 -> api:8080
 x-sim-image: &infra flux-public-sim-infra:${FLUX_IMAGE_TAG:?}
 x-sim-client: &client flux-public-sim-client:${FLUX_IMAGE_TAG:?}
@@ -47,7 +46,7 @@ services:
     volumes:
       - ./public-sim/router.sh:/router.sh:ro,z
       - ./public-sim/impair.sh:/impair.sh:ro,z
-    command: ["/bin/sh", "/router.sh", "10.213.1.10", "${FLUX_SIM_PROFILE_A:-restrictive}", "10.213.1.11"]
+    command: ["/bin/sh", "/router.sh", "10.213.1.10", "${FLUX_SIM_PROFILE_A:-restrictive}"]
     networks:
       internet: { ipv4_address: 203.0.113.101 }
       lan-a: { ipv4_address: 10.213.1.2 }
@@ -58,7 +57,7 @@ services:
     volumes:
       - ./public-sim/router.sh:/router.sh:ro,z
       - ./public-sim/impair.sh:/impair.sh:ro,z
-    command: ["/bin/sh", "/router.sh", "10.213.2.10", "${FLUX_SIM_PROFILE_B:-open}", "10.213.2.11"]
+    command: ["/bin/sh", "/router.sh", "10.213.2.10", "${FLUX_SIM_PROFILE_B:-open}"]
     networks:
       internet: { ipv4_address: 203.0.113.102 }
       lan-b: { ipv4_address: 10.213.2.2 }
@@ -69,8 +68,6 @@ services:
     shm_size: 1gb
     volumes:
       - ./public-sim/client.sh:/client.sh:ro,z
-      - ./public-sim/screen-source.sh:/usr/local/bin/screen-source:ro,z
-      - ./public-sim/firefox-ca.sh:/usr/local/bin/firefox-ca:ro,z
       - ${FLUX_SIM_CA_DIR:?}:/certs:ro,z
     command: ["/bin/sh", "/client.sh", "10.213.1.2"]
     networks:
@@ -81,36 +78,10 @@ services:
     shm_size: 1gb
     volumes:
       - ./public-sim/client.sh:/client.sh:ro,z
-      - ./public-sim/screen-source.sh:/usr/local/bin/screen-source:ro,z
-      - ./public-sim/firefox-ca.sh:/usr/local/bin/firefox-ca:ro,z
       - ${FLUX_SIM_CA_DIR:?}:/certs:ro,z
     command: ["/bin/sh", "/client.sh", "10.213.2.2"]
     networks:
       lan-b: { ipv4_address: 10.213.2.10 }
-  client-c:
-    image: *client
-    cap_add: [NET_ADMIN]
-    shm_size: 1gb
-    volumes:
-      - ./public-sim/client.sh:/client.sh:ro,z
-      - ./public-sim/screen-source.sh:/usr/local/bin/screen-source:ro,z
-      - ./public-sim/firefox-ca.sh:/usr/local/bin/firefox-ca:ro,z
-      - ${FLUX_SIM_CA_DIR:?}:/certs:ro,z
-    command: ["/bin/sh", "/client.sh", "10.213.1.2"]
-    networks:
-      lan-a: { ipv4_address: 10.213.1.11 }
-  client-d:
-    image: *client
-    cap_add: [NET_ADMIN]
-    shm_size: 1gb
-    volumes:
-      - ./public-sim/client.sh:/client.sh:ro,z
-      - ./public-sim/screen-source.sh:/usr/local/bin/screen-source:ro,z
-      - ./public-sim/firefox-ca.sh:/usr/local/bin/firefox-ca:ro,z
-      - ${FLUX_SIM_CA_DIR:?}:/certs:ro,z
-    command: ["/bin/sh", "/client.sh", "10.213.2.2"]
-    networks:
-      lan-b: { ipv4_address: 10.213.2.11 }
   driver:
     image: *client
     profiles: ["sim-driver"]
@@ -120,10 +91,8 @@ services:
       FLUX_SIM_BROWSER_B: ${FLUX_SIM_BROWSER_B:-chromium}
       FLUX_SIM_PHASES: ${FLUX_SIM_PHASES:-all}
       FLUX_SIM_A_RELAY: ${FLUX_SIM_A_RELAY:-tls}
-      FLUX_SIM_CALIBRATE: ${FLUX_SIM_CALIBRATE:-0}
     volumes:
       - ./public-sim/driver.py:/sim/driver.py:ro,z
-      - ./public-sim/profiles.py:/sim/profiles.py:ro,z
       - ${FLUX_SIM_CA_DIR:?}:/certs:ro,z
       - ${FLUX_SIM_CTL_DIR:?}:/ctl:z
     networks:

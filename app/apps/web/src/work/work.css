@@ -42,7 +42,7 @@
 .ws-item__s { display: block; font-size: var(--fs-sm); color: var(--t3); line-height: 1.5; }
 .ws-item--muted .ws-item__t { color: var(--t2); font-weight: 400; }
 .ws-item__r { font-family: var(--mono); display: flex; align-items: center; gap: 8px; flex: none; font-size: var(--fs-sm); color: var(--t3); font-variant-numeric: tabular-nums; }
-.ws-av { display: grid; place-items: center; width: 24px; height: 24px; border-radius: 50%; background: var(--el); color: var(--t1); box-shadow: inset 0 0 0 1px var(--line), var(--sh-1); font-family: var(--font); font-size: 9px; font-weight: 600; }
+.ws-av { display: grid; place-items: center; width: 24px; height: 24px; border-radius: 50%; background: var(--el); color: var(--t1); box-shadow: inset 0 0 0 1px var(--line), var(--sh-1); font-family: var(--font); font-size: var(--fs-glyph); font-weight: 600; }
 
 /* ---------- Task rows (F-026 S-P-Tasks, S9): glyph that changes the state, swipe left for Done ---------- */
 .ws-task { position: relative; overflow: hidden; }
@@ -76,8 +76,8 @@ button.ws-task__glyph:active { background: var(--hov); }
   .ws-task__fg { min-height: 62px; padding-left: 4px; }
   .ws-tasks .ws-pages:not(:has(.ws-pages__actions button:not(:last-child):not(:disabled))) { display: none; }
   .ws-task .ws-item { padding: 8px 16px 8px 4px; border-radius: 0; }
-  .ws-task .ws-item__t { font-size: 15px; font-weight: 400; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .ws-task .ws-item__s { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; font-size: 12.5px; }
+  .ws-task .ws-item__t { font-size: var(--fs-base); font-weight: 400; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .ws-task .ws-item__s { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; font-size: var(--fs-xs); }
   /* Identity, named owner and the state word must all remain readable when an agent wraps. */
   .ws-task--agent .ws-item__s { display: block; -webkit-line-clamp: unset; overflow: visible; }
   .ws-task--agent .agent-id { max-width: 100%; vertical-align: middle; }
@@ -94,7 +94,8 @@ button.ws-task__glyph:active { background: var(--hov); }
 /* The Accept block is a section like the others: no surface of its own, the panel's rhythm inside it (#693). */
 .wd-accept > .wd-muted { margin-top: var(--s-2); }
 /* A form's primary action and its one line of help are a section: --s-2 between them, the section gap around (#692). */
-.wd-submit .wd-actions { margin-top: 0; }
+/* A form's primary sits at the bottom right, as in the Create window and the hand-off (SP-5, #763). */
+.wd-submit .wd-actions { margin-top: 0; justify-content: flex-end; }
 .wd-submit > .wd-muted { margin-top: var(--s-2); }
 /* "Proposed" and "Decided" are the task panel's rows (.wd-rows), a step under the lead. */
 .wd-rows.wd-decision-rows { margin-top: var(--s-3); }
@@ -217,8 +218,8 @@ button.wd-link:active:not(:disabled) { background: var(--sub); }
   .wd-pivot__c { min-height: 44px; }
   .wd-link { min-height: 44px; }
   .wd-seg__b { min-height: 44px; }
-  .wd-form .ui-select, .wd-pick .ui-select { min-height: 44px; font-size: 16px; }
-  .wd-form textarea { font-size: 16px; }
+  .wd-form .ui-select, .wd-pick .ui-select { min-height: 44px; font-size: var(--fs-input-touch); }
+  .wd-form textarea { font-size: var(--fs-input-touch); }
 }
 /* The message is only as wide as its own author line and bubble on a touch screen, so the bubble sits at its own
    width instead of floating at a fixed 260px measure beside a short message (#189). */
@@ -271,7 +272,7 @@ button.wd-link:active:not(:disabled) { background: var(--sub); }
 @media (pointer: coarse) {
   .ws-proposal__sources a, .ws-proposal__sources button, .ws-proposals__jumps button { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px; min-width: 44px; min-height: 44px; }
   .ws-proposal__evidence summary { min-height: 44px; }
-  .ws-proposal textarea { font-size: 16px; }
+  .ws-proposal textarea { font-size: var(--fs-input-touch); }
 }
 
 /* Task views (#136 AC-2): one row of whole labels with an unmistakable current view. On a phone
@@ -325,7 +326,7 @@ button.wd-link:active:not(:disabled) { background: var(--sub); }
 .message-bubble .ws-attach > .ws-chip { display: grid; grid-template-columns: 32px auto minmax(min(15ch, 100%), 1fr) auto; grid-template-rows: auto auto; align-items: center; gap: 1px 6px; width: 100%; min-height: 52px; padding: 8px 12px 8px 8px; border-radius: var(--r); background: var(--sub); box-shadow: none; }
 .message-bubble .ws-attach > .ws-chip:hover { background: var(--hov); }
 .message-bubble .ws-attach > .ws-chip > svg { grid-column: 1; grid-row: 1 / span 2; align-self: center; justify-self: center; box-sizing: content-box; padding: 8px; margin: 0 2px 0 -2px; border-radius: 10px; background: var(--el); color: var(--t1); }
-.message-bubble .ws-attach > .ws-chip::before { grid-column: 2 / 4; grid-row: 1; font-size: 10px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--t3); }
+.message-bubble .ws-attach > .ws-chip::before { grid-column: 2 / 4; grid-row: 1; font-size: var(--fs-glyph); font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--t3); }
 .message-bubble .ws-attach > .ws-chip[data-work-kind="work"]::before { content: "Task"; }
 .message-bubble .ws-attach > .ws-chip[data-work-kind="decision"]::before { content: "Decision"; }
 .message-bubble .ws-attach > .ws-chip[data-work-kind="result"]::before { content: "Result"; }
@@ -394,7 +395,7 @@ button.wd-link:active:not(:disabled) { background: var(--sub); }
 .wd-blocker__head { display: flex; align-items: center; gap: 10px; min-width: 0; }
 .wd-blocker__head .ui-pill { flex: none; }
 .wd-blocker .wd-blocker__text { flex: 1; min-width: 0; margin: 0; font-size: var(--fs-md); color: var(--t2); overflow-wrap: anywhere; }
-.wd-blocker__text b { font-weight: 550; color: var(--t1); }
+.wd-blocker__text b { font-weight: 600; color: var(--t1); }
 .wd-blocker__acts { display: flex; flex: none; gap: 2px; }
 .wd-blocker__resolve { color: var(--t1) !important; font-weight: 600; }
 .wd-blocker-form { display: flex; flex-direction: column; align-items: stretch; gap: 8px; margin-top: 10px; }
@@ -413,8 +414,9 @@ button.wd-link:active:not(:disabled) { background: var(--sub); }
 .wd-act__item { display: flex; align-items: flex-start; gap: 10px; min-width: 0; }
 .wd-act__item > .ui-avatar, .wd-act__face { flex: none; margin-top: 1px; }
 .wd-act__line { margin: 0; min-width: 0; font-size: var(--fs-md); line-height: 1.45; color: var(--t2); overflow-wrap: anywhere; }
-.wd-act__line b, .wd-act__who b { font-weight: 550; color: var(--t1); }
-.wd-act__line time, .wd-act__who time { color: var(--t3); font-size: var(--fs-sm); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.wd-act__line b, .wd-act__who b { font-weight: 600; color: var(--t1); }
+.wd-act__line time, .wd-act__who time { font-family: var(--font); color: var(--t3); font-size: var(--fs-sm); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.wd-act__clock { font-family: var(--mono); }
 .wd-act__body { flex: 1; min-width: 0; }
 .wd-act__who { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 8px; margin: 0 0 4px; font-size: var(--fs-md); color: var(--t2); }
 .wd-act__who .agent-id { flex-wrap: wrap; min-width: 0; }

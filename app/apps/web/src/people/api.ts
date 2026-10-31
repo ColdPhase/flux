@@ -121,8 +121,6 @@ export function problemText(error: unknown, context: { workspace: string; email?
       return `${context.who ?? context.email ?? 'This person'} is already in ${context.workspace}.`;
     case 'LAST_OWNER':
       return `${context.workspace} needs at least one owner. Make someone else an owner first.`;
-    case 'LAST_UNLOCK_PASSWORD':
-      return `${context.workspace} needs at least one unlock password. Ask another owner or admin to set theirs first.`;
     case 'OWNER_REQUIRED':
       return 'Only an owner can add, change or remove an owner.';
     case 'MEMBER_NOT_FOUND':

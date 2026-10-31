@@ -40,16 +40,9 @@ the publication workflow on the draft and again on the public downloads.
 
 ## Flow
 
-1. Finish integrated acceptance at one protected-main commit. The release owner
-   (PelikanFix16) and an independent agent reviewer who did not write the code under
-   review record their evidence in the acceptance issue (founder decision on
-   [#249](https://github.com/ColdPhase/flux/issues/249), 2026-10-31). The owner posts
-   `ACCEPTED RELEASE CANDIDATE <40-character source SHA>`; the reviewer posts, through a
-   founder login,
-   `INDEPENDENT RELEASE REVIEW <source SHA> reviewer=<agent name> session=<session id or URL>`.
-   `scripts/release/verify_acceptance.py` refuses a review whose session appears in any commit
-   message reachable from the SHA (agent commits carry it as a trailer such as
-   `Claude-Session:`), so an author cannot review their own code.
+1. Finish integrated acceptance at one protected-main commit. Both delegated
+   agents record their independent evidence in the acceptance issue. Each then
+   posts an exact line `ACCEPTED RELEASE CANDIDATE <40-character source SHA>`.
 2. Dispatch `Final release candidate` on `main` with that SHA, a fresh
    `vX.Y.Z` or `vX.Y.Z-rc.N` version and the acceptance issue number. The
    workflow requires the SHA to equal the dispatched main head, refuses a version whose
@@ -71,12 +64,11 @@ the publication workflow on the draft and again on the public downloads.
    `FLUX_SMOKE_PREVIOUS_ASSETS=<previous assets> bash scripts/release/smoke_artifacts.sh <draft assets> <state dir> <project> <restore project>`
    from a checkout of the candidate commit (see [the upgrade leg](#the-upgrade-leg)).
    Record run, commands, versions, digest, results, downtime and limits in #77.
-   A new build digest requires a new artifact review. An independent agent reviewer who did
-   not write the code posts this exact line in the review issue, through a founder login
-   (`verify_artifact_review.py` applies the same session rule as step 1):
+   A new build digest requires a new artifact review. The independent reviewer
+   posts this exact line in the review issue:
 
    ```text
-   ACCEPTED RELEASE ARTIFACT <version> <source SHA> <sha256: image digest> <SHA-256 of SHA256SUMS> reviewer=<agent name> session=<session id or URL>
+   ACCEPTED RELEASE ARTIFACT <version> <source SHA> <sha256: image digest> <SHA-256 of SHA256SUMS>
    ```
 
 4. Dispatch `Publish reviewed release` on `main` with those exact values and
@@ -192,8 +184,8 @@ this repository, and no release workflow has been dispatched.
 - **Actions policy.** The repository allows GitHub-owned and Marketplace-verified-creator actions
   and lists no other patterns. `docker/*` and `anchore/sbom-action` show as verified creators on
   their Marketplace pages; only a run proves that GitHub accepts them.
-- **Complete application acceptance.** The owner's exact-SHA `ACCEPTED RELEASE CANDIDATE` and an
-  independent reviewer's `INDEPENDENT RELEASE REVIEW` comments, including the Android/iPhone/iPad installation and push evidence required by
+- **Complete application acceptance.** Both agents' exact-SHA `ACCEPTED RELEASE CANDIDATE`
+  comments, including the Android/iPhone/iPad installation and push evidence required by
   [the mobile PWA contract](../product/mobile-pwa.md#acceptance-evidence).
 - **First candidate run.** Untested until dispatched: the amd64/arm64 build under QEMU within its
   150-minute limit for both images (a native arm64 runner is the alternative), the attestation push, the SBOM scope

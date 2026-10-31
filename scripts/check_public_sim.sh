@@ -6,19 +6,12 @@
 # them. See docs/development/live-media.md#simulated-public-host-63-2026-10-30.
 #
 # FLUX_SIM_RUNS: space-separated runs of BROWSER_A:BROWSER_B:PHASES; A is behind the restrictive router, B behind
-# the open one. BROWSER is chromium, firefox or webkit, optionally +pixel7, +iphone13 or +ipad (a device
-# descriptor); BROWSER@turn-udp also lets TURN/UDP out of router A. Phases: connect, ai-off, four (Mia and Tom join
-# from clients C and D), profiles (the measured AC-2 profiles and their thresholds), screen (screen publication by
-# browser A), drop, loss, weak, sfu-restart, sfu-update, api-restart, access, turn-tls-probe (what browser A sends
-# to TURN/TLS, captured on router A). The default runs the two- and
-# four-person profiles, every Chromium case, Firefox over TURN/TLS, WebKit over TURN/UDP (its Linux build cannot
-# speak TURN over TLS; see docs/development/live-media.md), screen publication in Firefox and WebKit, and phone rows
-# with a network drop. FLUX_SIM_CALIBRATE=1 records the profile thresholds without enforcing them.
-# FLUX_SIM_LIVEKIT_CANDIDATE is the image the sfu-update phase updates to before rolling back.
-# FLUX_SIM_ARTIFACT_DIR keeps the results (default: under FLUX_SIM_WORK_DIR or TMPDIR); resources.jsonl has the
-# SFU's, API's and proxy's CPU, memory and network every two seconds, and resources-summary.json per measured window.
-# FLUX_SIM_HOLD=1 keeps the stack up before the runs. Heavy and local: one simulation at a time (its subnets are
-# fixed).
+# the open one, and BROWSER@turn-udp also lets TURN/UDP out of router A. The default runs every Chromium case, then
+# WebKit and Firefox on the open network and relayed over TURN/UDP (Playwright's WebKit and Firefox cannot be made to
+# trust the simulation's CA for TURN/TLS; see docs/development/live-media.md). Phases: connect, drop, loss, weak,
+# sfu-restart, api-restart, access. FLUX_SIM_ARTIFACT_DIR keeps the results (default: under FLUX_SIM_WORK_DIR or
+# TMPDIR). FLUX_SIM_HOLD=1 keeps the stack up before the runs. Heavy and local: one simulation at a time (its
+# subnets are fixed).
 set -eu
 
 cd "$(dirname "$0")/.."
@@ -46,21 +39,18 @@ export FLUX_LIVEKIT_TURN_DOMAIN=turn.sim.test
 export FLUX_LIVEKIT_MEDIA_CIDR=203.0.113.20/32
 export FLUX_LIVEKIT_TURN_CERT_DIR="$work/certs/turn"
 export FLUX_VAPID_PUBLIC_KEY='' FLUX_VAPID_PRIVATE_KEY='' FLUX_VAPID_SUBJECT=''
-candidate=${FLUX_SIM_LIVEKIT_CANDIDATE:-livekit/livekit-server:v1.13.11@sha256:25cd902de7cacbd5f1f779f6a6ac1eae20ba8f56b0935934ce6b0ab80d1e3d20}
-runs=${FLUX_SIM_RUNS:-"chromium:chromium:connect,profiles chromium:chromium:connect,four,profiles chromium:chromium:connect,ai-off,drop,loss,weak,access chromium:chromium:connect,sfu-update chromium:chromium:connect,sfu-restart chromium:chromium:connect,api-restart firefox:chromium:connect,drop,access chromium:firefox:connect,drop,access chromium:webkit:connect,drop,access webkit@turn-udp:chromium:connect,drop firefox:chromium:connect,screen webkit@turn-udp:chromium:connect,screen chromium+pixel7:chromium:connect,drop webkit+iphone13@turn-udp:chromium:connect,drop chromium:webkit+ipad:connect,access webkit:chromium:turn-tls-probe"}
+runs=${FLUX_SIM_RUNS:-"chromium:chromium:connect,drop,loss,weak,access chromium:chromium:connect,sfu-restart chromium:chromium:connect,api-restart chromium:webkit:connect,drop,access chromium:firefox:connect,drop,access webkit@turn-udp:chromium:connect,drop firefox@turn-udp:chromium:connect,drop"}
 printf 'Public simulation %s, results in %s\n' "$project" "$artifacts"
 
 compose="docker compose -p $project -f docker/compose.source.yaml -f docker/compose.live.yaml -f docker/compose.live.turn.yaml -f docker/public-sim/compose.yaml"
 cleanup() {
   status=$?
   if [ -n "${ctl_pid:-}" ]; then kill "$ctl_pid" 2>/dev/null || true; fi
-  if [ -n "${sampler_pid:-}" ]; then kill "$sampler_pid" 2>/dev/null || true; fi
   if [ "$status" -ne 0 ]; then
     $compose logs --no-color --tail=200 api proxy router-a router-b dns > "$artifacts/compose-logs.txt" 2>&1 || true
     $compose logs --no-color livekit > "$artifacts/livekit.log" 2>&1 || true
   fi
   cp "$work"/ctl/*.json "$work"/ctl/*.png "$artifacts"/ 2>/dev/null || true
-  [ ! -f "$artifacts/resources.jsonl" ] || python3 -I docker/public-sim/resources.py "$artifacts/resources.jsonl" > "$artifacts/resources-summary.json" 2>&1 || true
   $compose --profile sim-driver down -v --remove-orphans >/dev/null 2>&1 || true
   docker image rm "flux-foundation:$project" "flux-public-sim-infra:$project" "flux-public-sim-client:$project" >/dev/null 2>&1 || true
   docker run --rm -v "$work:/work:z" alpine:3.21 rm -rf /work/certs /work/ca /work/ctl >/dev/null 2>&1 || true
@@ -71,14 +61,11 @@ trap cleanup EXIT HUP INT TERM
 
 $compose build migrate dns client-a
 # One local CA signs the Flux and the TURN name; the clients install only its certificate.
-# FLUX_SIM_TURN_IP_SAN=1 (diagnostic only) also names the media address in the TURN certificate, which a publicly
-# issued certificate for a DNS name does not do.
-docker run --rm --network none -e "TURN_IP_SAN=${FLUX_SIM_TURN_IP_SAN:+,IP:203.0.113.20}" -v "$work/certs:/certs:z" "flux-public-sim-infra:$project" sh -ec '
+docker run --rm --network none -v "$work/certs:/certs:z" "flux-public-sim-infra:$project" sh -ec '
   cd /certs
   openssl req -x509 -newkey rsa:2048 -nodes -days 2 -subj "/CN=Flux simulation CA" -keyout ca.key -out ca.crt 2>/dev/null
   for name in flux.sim.test turn.sim.test; do
-    san=; [ "$name" = turn.sim.test ] && san=$TURN_IP_SAN
-    printf "subjectAltName=DNS:%s%s\nbasicConstraints=critical,CA:FALSE\nextendedKeyUsage=serverAuth\nkeyUsage=digitalSignature,keyEncipherment\n" "$name" "$san" > "$name.ext"
+    printf "subjectAltName=DNS:%s\nbasicConstraints=critical,CA:FALSE\nextendedKeyUsage=serverAuth\nkeyUsage=digitalSignature,keyEncipherment\n" "$name" > "$name.ext"
     openssl req -newkey rsa:2048 -nodes -subj "/CN=$name" -keyout "$name.key" -out "$name.csr" 2>/dev/null
     openssl x509 -req -in "$name.csr" -CA ca.crt -CAkey ca.key -CAcreateserial -days 2 -extfile "$name.ext" -out "$name.crt" 2>/dev/null
   done
@@ -87,7 +74,7 @@ docker run --rm --network none -e "TURN_IP_SAN=${FLUX_SIM_TURN_IP_SAN:+,IP:203.0
 cp "$work/certs/ca.crt" "$work/ca/ca.crt"
 $compose up -d db migrate
 $compose --profile setup run --rm files-init
-$compose up -d --wait api worker livekit dns proxy router-a router-b client-a client-b client-c client-d
+$compose up -d --wait api worker livekit dns proxy router-a router-b client-a client-b
 $compose config --services > "$artifacts/services.txt"
 if grep -E -q 'egress|ingress|agent' "$artifacts/services.txt"; then echo 'unexpected media processor in the stack' >&2; exit 1; fi
 
@@ -106,18 +93,6 @@ if grep -E -q 'egress|ingress|agent' "$artifacts/services.txt"; then echo 'unexp
         "netem a "*|"netem b "*) side=$(printf '%s' "$command" | cut -d' ' -f2); out=$($compose exec -T "router-$side" /bin/sh /impair.sh netem ${command#netem ? } 2>&1) ;; # shellcheck disable=SC2086
         "restart livekit") out=$($compose restart livekit 2>&1) ;;
         "restart api") out=$($compose restart api 2>&1; $compose up -d --wait api 2>&1) ;;
-        # The documented SFU upgrade: a new pinned image, then back to the previous digest.
-        "update livekit") printf 'services:\n  livekit:\n    image: %s\n' "$candidate" > "$work/livekit-candidate.yaml"
-          out=$($compose -f "$work/livekit-candidate.yaml" up -d --wait --no-deps livekit 2>&1
-            docker inspect --format '{{.Config.Image}}' "$($compose ps -q livekit)") ;;
-        "rollback livekit") out=$($compose up -d --wait --no-deps livekit 2>&1
-            docker inspect --format '{{.Config.Image}}' "$($compose ps -q livekit)") ;;
-        "screen a on "*|"screen c on "*) side=$(printf '%s' "$command" | cut -d' ' -f2); out=$($compose exec -T "client-$side" screen-source on "${command#screen ? on }" 2>&1) ;;
-        "screen a off"|"screen c off") side=$(printf '%s' "$command" | cut -d' ' -f2); out=$($compose exec -T "client-$side" screen-source off 2>&1) ;;
-        "netem-host b 10.213.2.11 off") out=$($compose exec -T router-b /bin/sh /impair.sh netem-host 10.213.2.11 off 2>&1) ;;
-        "netem-host b 10.213.2.11 "*) out=$($compose exec -T router-b /bin/sh /impair.sh netem-host 10.213.2.11 ${command#netem-host b 10.213.2.11 } 2>&1) ;; # shellcheck disable=SC2086
-        "sniff a") out=$($compose exec -T router-a /bin/sh /impair.sh sniff 2>&1) ;;
-        "mark "*) printf '{"t": %s, "mark": "%s"}\n' "$(date +%s.%N)" "${command#mark }" >> "$artifacts/resources.jsonl"; out=marked ;;
         *) out="refused: $command" ;;
       esac
       printf '%s\n' "$out" > "$work/ctl/done-$name"
@@ -126,18 +101,6 @@ if grep -E -q 'egress|ingress|agent' "$artifacts/services.txt"; then echo 'unexp
   done
 ) &
 ctl_pid=$!
-# CPU, memory and cumulative network bytes of the SFU, API and proxy every two seconds (docker stats), with the
-# driver's window marks in the same file; summarized per window at the end.
-(
-  ids="$($compose ps -q livekit) $($compose ps -q api) $($compose ps -q proxy)"
-  while :; do
-    case " $($compose ps -q livekit) " in *" ${ids%% *} "*) ;; *) ids="$($compose ps -q livekit) $($compose ps -q api) $($compose ps -q proxy)" ;; esac
-    # shellcheck disable=SC2086
-    docker stats --no-stream --format '{{json .}}' $ids 2>/dev/null | sed "s/^/{\"t\": $(date +%s.%N), \"s\": /; s/\$/}/" >> "$artifacts/resources.jsonl"
-    sleep 2
-  done
-) &
-sampler_pid=$!
 
 # From the simulated Internet: names, TLS chain and hostnames, the proxy, and the TURN/TLS listener.
 $compose --profile sim-driver run --rm --entrypoint sh driver -ec '
@@ -170,13 +133,9 @@ for run in $runs; do
   log="$artifacts/driver-$a${turn_udp:+-turn-udp}-$b-$(printf '%s' "$phases" | tr ',' '-').log"
   printf '== run %s behind the restrictive router%s, %s behind the open one: %s\n' "$a" "${turn_udp:+ (TURN/UDP allowed)}" "$b" "$phases"
   [ -z "$turn_udp" ] || $compose exec -T router-a /bin/sh /impair.sh turn-udp on
-  since=$(date -u +%Y-%m-%dT%H:%M:%SZ)
   FLUX_SIM_A_RELAY=${turn_udp:+udp} FLUX_SIM_BROWSER_A=$a FLUX_SIM_BROWSER_B=$b FLUX_SIM_PHASES=$phases \
     $compose --profile sim-driver run --rm driver 2>&1 | tee "$log"
   [ -z "$turn_udp" ] || $compose exec -T router-a /bin/sh /impair.sh turn-udp off
-  $compose logs --no-color --since "$since" livekit > "${log%.log}.livekit.txt" 2>&1 || true
-  # The SFU's side of a TURN/TLS probe: why a handshake failed, as its TURN server logged it.
-  case "$phases" in *turn-tls-probe*) grep -m1 -o 'TLS handshake failed: .*' "${log%.log}.livekit.txt" || echo 'no failed TURN/TLS handshake logged' ;; esac
   for side in a b; do
     $compose exec -T "router-$side" /bin/sh /impair.sh counters > "${log%.log}.router-$side.txt" 2>&1 || true
   done

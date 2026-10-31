@@ -1,7 +1,7 @@
 import { Children, cloneElement, isValidElement, useMemo, type ReactElement, type ReactNode } from 'react';
 import { Link, useRouteLoaderData } from 'react-router';
 import { WORKSPACE_AI_BLOCKED, type WorkspaceAiPolicy } from '@flux/contracts';
-import type { ShellData, WorkspaceSummary } from '../app/data';
+import type { ShellData } from '../app/data';
 import { useShellActions } from '../app/shellContext';
 import { EmptyState, Button } from '../ui';
 
@@ -20,17 +20,11 @@ export interface WorkspaceAiView {
   /** The person's role there: owners and admins can turn AI back on. */
   manager: boolean;
   ai: WorkspaceAiPolicy | null;
-  /** F-030 (#655): the workspace is encrypted, so AI is off for good and nobody can turn it on. */
-  encrypted: boolean;
 }
 
 function useShell(): ShellData | undefined {
   return useRouteLoaderData('app') as ShellData | undefined;
 }
-
-/** An encrypted workspace is always without AI (F-030, #655): the server says so with `ai.fixed`, and `encryption` is set. */
-export const isEncryptedSpace = (space: WorkspaceSummary | undefined) =>
-  !!space?.encryption || space?.ai?.fixed === 'encrypted';
 
 /** Whether AI is off in one workspace, with what the blocked states need to say. */
 export function useWorkspaceAi(workspaceId: string | null | undefined): WorkspaceAiView {
@@ -40,7 +34,6 @@ export function useWorkspaceAi(workspaceId: string | null | undefined): Workspac
     name: workspace?.name ?? 'this workspace',
     manager: workspace?.role === 'owner' || workspace?.role === 'admin',
     ai: workspace?.ai ?? null,
-    encrypted: isEncryptedSpace(workspace),
   };
 }
 
@@ -53,10 +46,8 @@ export function useBlockedWorkspaceIds(): ReadonlySet<string> {
 
 /** True when AI is off in every workspace of the person (and they have at least one): nothing AI-shaped can start anywhere. */
 export function useAllAiBlocked(): boolean {
-  const shell = useShell();
-  const workspaces = shell?.workspaces ?? [];
-  // A locked encrypted workspace is without AI too, so it never keeps AI on for the person.
-  return workspaces.length + (shell?.lockedWorkspaces.length ?? 0) > 0 && workspaces.every((space) => space.ai?.state === 'blocked');
+  const workspaces = useShell()?.workspaces ?? [];
+  return workspaces.length > 0 && workspaces.every((space) => space.ai?.state === 'blocked');
 }
 
 /** The project's workspace, from the shell's project list. */
@@ -103,7 +94,7 @@ export const isAiBlocked = (error: unknown): boolean =>
  * off: nothing is launched, everything else works as usual. Owners and admins are pointed to People.
  */
 export function AiOffState({ workspaceId, backTo, backLabel = 'Back', level = 2 }: { workspaceId: string | null | undefined; backTo: string; backLabel?: string; level?: 2 | 3 }) {
-  const { name, manager, encrypted } = useWorkspaceAi(workspaceId);
+  const { name, manager } = useWorkspaceAi(workspaceId);
   const { openDetails } = useShellActions();
   return (
     <div className="pane-scroll"><div className="pane-in">
@@ -111,10 +102,9 @@ export function AiOffState({ workspaceId, backTo, backLabel = 'Back', level = 2 
       <EmptyState icon="lock" level={level} title={`AI is off in ${name}`}
         action={<>
           <Link className="ui-btn ui-btn--secondary" to={backTo}>{backLabel}</Link>
-          {manager && !encrypted && workspaceId ? <Button variant="quiet" onClick={() => openDetails({ kind: 'people', workspaceId })}>People</Button> : null}
+          {manager && workspaceId ? <Button variant="quiet" onClick={() => openDetails({ kind: 'people', workspaceId })}>People</Button> : null}
         </>}>
-        {encrypted ? <p>{name} is encrypted, so only people work there. Everything else works as usual.</p>
-          : <p>Its admins turned off agents and assistants here. Everything else works as usual.</p>}
+        <p>Its admins turned off agents and assistants here. Everything else works as usual.</p>
       </EmptyState>
     </div>
     </div></div>
@@ -124,27 +114,20 @@ export function AiOffState({ workspaceId, backTo, backLabel = 'Back', level = 2 
 /** "Not in Garden club: AI is off there." once per workspace whose AI is off, for the assistant card and the agent apps in Settings. */
 export function AiOffThere({ className = 'sset-note' }: { className?: string }) {
   const shell = useShell();
-  const spaces = [...(shell?.workspaces ?? []), ...(shell?.lockedWorkspaces ?? [])];
-  const off = spaces.filter((space) => space.ai?.state === 'blocked' || isEncryptedSpace(space));
-  if (!off.length || off.length === spaces.length) return null;
-  return <>{off.map((space) => (
-    <p key={space.id} className={`${className} ai-off-there`} data-ai-off-there={space.id}>
-      {isEncryptedSpace(space) ? `Not in ${space.name}: it is encrypted, so AI is off there for good.` : `Not in ${space.name}: AI is off there.`}
-    </p>
-  ))}</>;
+  const off = (shell?.workspaces ?? []).filter((space) => space.ai?.state === 'blocked');
+  if (!off.length || off.length === (shell?.workspaces.length ?? 0)) return null;
+  return <>{off.map((space) => <p key={space.id} className={`${className} ai-off-there`} data-ai-off-there={space.id}>Not in {space.name}: AI is off there.</p>)}</>;
 }
 
 /** Settings → Agents and AI while AI is off in every workspace: one line each, and where an owner or admin turns it back on. */
 export function AiOffEverywhere() {
   const shell = useShell();
   const { openDetails } = useShellActions();
-  const off = [...(shell?.workspaces ?? []), ...(shell?.lockedWorkspaces ?? [])].filter((space) => space.ai?.state === 'blocked' || isEncryptedSpace(space));
+  const off = (shell?.workspaces ?? []).filter((space) => space.ai?.state === 'blocked');
   return (
     <div className="ai-off-all" data-ai-off="">
       {off.map((space) => {
         const manager = space.role === 'owner' || space.role === 'admin';
-        // An encrypted workspace is always without AI: there is nothing to turn back on (F-030, #655).
-        if (isEncryptedSpace(space)) return <p key={space.id} className="sset-note ai-off-all__line"><b>AI is off in {space.name}.</b> It is encrypted, so only people work there and AI can’t be turned on.</p>;
         return (
           <p key={space.id} className="sset-note ai-off-all__line">
             <b>AI is off in {space.name}.</b> Its owners and admins can turn it back on{manager ? <> in <button type="button" className="ui-link" onClick={() => openDetails({ kind: 'people', workspaceId: space.id })}>People</button></> : null}.

@@ -73,12 +73,7 @@ if (phase === 'prepare') {
     [state.workspaceId, state.mark ?? 0]);
   assert.deepEqual(locks.map((row) => row.data), [{ reason: 'restart' }]);
   assert.equal((await query<{ n: number }>('SELECT count(*)::int AS n FROM workspace_unlocks WHERE workspace_id = $1', [state.workspaceId]))[0]!.n, 0);
-  // The locked panel says why (S3 UI audit LK-1): a restart, naming nobody.
-  const because = (await readWorkspace(browser, state.workspaceId)).encryption?.lockedBecause;
-  assert.equal(because?.reason, 'restart');
-  assert.equal(because?.by, null);
   assert.equal((await unlock(browser, state.workspaceId, { password: state.password })).status, 200);
-  assert.equal((await readWorkspace(browser, state.workspaceId)).encryption?.lockedBecause, null, 'unlocked: no reason');
   console.log(`encryption-restart: the keyring restart locked it within ${Date.now() - started - 6_000} ms, with one restart event`);
 } else {
   throw new Error(`unknown phase ${phase}`);
