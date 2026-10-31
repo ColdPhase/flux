@@ -421,7 +421,7 @@ explain_address_pools() {
       warn "Docker has no free network address pool left: every Compose project takes one per network (a Flux project"
       warn "takes 2, or 10 with the agent runtime on), and a stock Docker daemon has about 30. Stop projects you do not"
       warn "need with 'docker compose -p <project> down' (see 'docker network ls'), or give the daemon smaller pools"
-      warn "(default-address-pools in /etc/docker/daemon.json); see docs/operations/README.md#docker-address-pools." ;;
+      warn "(default-address-pools in /etc/docker/daemon.json); see docs/operations/troubleshooting.md#docker-address-pools." ;;
   esac
 }
 # Stops and removes the runtime containers; slot volumes (and so the owners' logins) stay.

@@ -119,3 +119,6 @@ site-search button[data-open-modal] { border-radius: var(--flux-r-sm); }
 .hero .tagline { color: var(--sl-color-gray-2); max-width: 36rem; }
 /* The README's small captions under its pictures. */
 .sl-markdown-content p[align='center'] sub { font-size: .8125rem; line-height: 1.4; vertical-align: baseline; color: var(--sl-color-gray-3); }
+/* Reference entries (the configuration reference): a variable's name as a compact heading, not a title. */
+.sl-markdown-content h3:has(> code:only-child) { font-size: var(--sl-text-lg); margin-top: 1.75rem; }
+.sl-markdown-content h3 > code:only-child { padding: .1em .35em; }

@@ -1,0 +1,113 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 600" width="960" height="600" role="img" aria-labelledby="t d" font-family="Geist, -apple-system, 'Segoe UI', sans-serif">
+  <title id="t">Flux for operators: what runs where</title>
+  <desc id="d">Browsers, phones and MCP clients reach one HTTPS reverse proxy, which forwards to the Flux API on the host's loopback port. The API and the worker share PostgreSQL and the files volume. The keyring sits on an internal network with only the API and the worker. The one-shot migrate service runs before them. Optional parts: the agent runtime services and LiveKit for live media, whose ICE and TURN ports are reached directly. The worker sends email, Web Push and AI provider requests out.</desc>
+  <style>
+    .bg { fill: #ffffff; }
+    .box { fill: #f6f6f7; stroke: #3f3f46; stroke-width: 1.4; }
+    .opt { fill: #ffffff; stroke: #71717a; stroke-width: 1.2; stroke-dasharray: 5 4; }
+    .host { fill: none; stroke: #a1a1aa; stroke-width: 1.2; }
+    .net { fill: none; stroke: #a1a1aa; stroke-width: 1; stroke-dasharray: 2 3; }
+    .t { fill: #18181b; font-size: 14px; font-weight: 600; }
+    .s { fill: #52525b; font-size: 12px; }
+    .l { fill: #52525b; font-size: 11.5px; }
+    .a { stroke: #3f3f46; stroke-width: 1.4; fill: none; marker-end: url(#arrow); }
+    .ao { stroke: #71717a; stroke-width: 1.2; fill: none; stroke-dasharray: 5 4; marker-end: url(#arrowo); }
+    .head { fill: #3f3f46; }
+    .heado { fill: #71717a; }
+    @media (prefers-color-scheme: dark) {
+      .bg { fill: #18181b; }
+      .box { fill: #27272a; stroke: #d4d4d8; }
+      .opt { fill: #18181b; stroke: #a1a1aa; }
+      .host, .net { stroke: #52525b; }
+      .t { fill: #fafafa; }
+      .s, .l { fill: #a1a1aa; }
+      .a { stroke: #d4d4d8; }
+      .ao { stroke: #a1a1aa; }
+      .head { fill: #d4d4d8; }
+      .heado { fill: #a1a1aa; }
+    }
+  </style>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="head" d="M0 0L10 5L0 10z"/></marker>
+    <marker id="arrowo" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="heado" d="M0 0L10 5L0 10z"/></marker>
+  </defs>
+  <rect class="bg" width="960" height="600"/>
+
+  <!-- People and clients -->
+  <rect class="box" x="24" y="40" width="176" height="62" rx="8"/>
+  <text class="t" x="40" y="66">Browsers and phones</text>
+  <text class="s" x="40" y="86">web app, installed PWA</text>
+  <rect class="box" x="24" y="128" width="176" height="62" rx="8"/>
+  <text class="t" x="40" y="154">MCP clients</text>
+  <text class="s" x="40" y="174">Claude Code, Codex, …</text>
+
+  <!-- Host -->
+  <rect class="host" x="236" y="20" width="700" height="560" rx="12"/>
+  <text class="l" x="252" y="42">One Docker host · Docker Compose project FLUX_PROJECT</text>
+
+  <rect class="box" x="256" y="70" width="170" height="80" rx="8"/>
+  <text class="t" x="272" y="96">Reverse proxy</text>
+  <text class="s" x="272" y="116">Caddy, nginx or Traefik</text>
+  <text class="s" x="272" y="134">TLS on 443</text>
+
+  <path class="a" d="M200 71 H246 V96 H254"/>
+  <path class="a" d="M200 159 H246 V124 H254"/>
+  <text class="l" x="112" y="214" text-anchor="middle">HTTPS + WSS to the proxy</text>
+
+  <rect class="box" x="490" y="70" width="190" height="80" rx="8"/>
+  <text class="t" x="506" y="96">api</text>
+  <text class="s" x="506" y="116">web app, API, /mcp, streams</text>
+  <text class="s" x="506" y="134">127.0.0.1:FLUX_PORT</text>
+  <path class="a" d="M426 110 H488"/>
+  <text class="l" x="434" y="102">HTTP</text>
+
+  <rect class="box" x="490" y="214" width="190" height="72" rx="8"/>
+  <text class="t" x="506" y="240">worker</text>
+  <text class="s" x="506" y="260">queued jobs: mail, push, AI</text>
+
+  <rect class="box" x="256" y="214" width="170" height="72" rx="8"/>
+  <text class="t" x="272" y="240">migrate</text>
+  <text class="s" x="272" y="260">one-shot, before api/worker</text>
+
+  <rect class="box" x="256" y="340" width="170" height="72" rx="8"/>
+  <text class="t" x="272" y="366">db · PostgreSQL</text>
+  <text class="s" x="272" y="386">volume pgdata</text>
+
+  <rect class="box" x="490" y="340" width="190" height="72" rx="8"/>
+  <text class="t" x="506" y="366">files volume</text>
+  <text class="s" x="506" y="386">uploads, mounted /data/files</text>
+
+  <path class="a" d="M500 150 V196 H446 V326 H400 V338"/>
+  <path class="a" d="M500 286 L420 338"/>
+  <path class="a" d="M341 286 V338"/>
+  <path class="a" d="M650 286 V338"/>
+  <path class="a" d="M672 150 C700 200 700 300 672 338"/>
+
+  <!-- keyring network -->
+  <rect class="net" x="474" y="58" width="452" height="244" rx="10"/>
+  <text class="l" x="736" y="292">internal network "keyring"</text>
+  <rect class="box" x="726" y="140" width="180" height="72" rx="8"/>
+  <text class="t" x="742" y="166">keyring</text>
+  <text class="s" x="742" y="186">boot key in RAM only</text>
+  <path class="a" d="M680 110 H716 V150 H724"/>
+  <path class="a" d="M680 250 H716 V200 H724"/>
+
+  <!-- Optional -->
+  <rect class="opt" x="726" y="340" width="180" height="72" rx="8"/>
+  <text class="t" x="742" y="366">agent runtime</text>
+  <text class="s" x="742" y="386">optional, profile runtime</text>
+  <path class="ao" d="M680 270 C710 290 760 310 790 338"/>
+
+  <rect class="opt" x="726" y="448" width="180" height="80" rx="8"/>
+  <text class="t" x="742" y="474">livekit</text>
+  <text class="s" x="742" y="494">optional live media</text>
+  <text class="s" x="742" y="512">ICE/TURN ports direct</text>
+  <path class="ao" d="M650 70 V48 H918 V488 H908"/>
+
+  <!-- Outbound -->
+  <rect class="box" x="256" y="470" width="420" height="70" rx="8"/>
+  <text class="t" x="272" y="496">Outbound HTTPS and SMTP</text>
+  <text class="s" x="272" y="516">mail server, Web Push services, AI providers, link cards (off by default)</text>
+  <path class="a" d="M490 276 H462 V468"/>
+  <text class="l" x="470" y="444">worker, api</text>
+</svg>

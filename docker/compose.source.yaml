@@ -116,6 +116,8 @@ services:
       FLUX_OIDC_STANDING: ${FLUX_OIDC_STANDING:-refresh}
       FLUX_OIDC_STANDING_INTERVAL_SECONDS: ${FLUX_OIDC_STANDING_INTERVAL_SECONDS:-900}
       FLUX_AUTH_RATE_LIMIT: ${FLUX_AUTH_RATE_LIMIT:-true}
+      # Who may create a password account: open, verified (needs email) or off. An invite link never opens closed sign-up.
+      FLUX_SIGNUP: ${FLUX_SIGNUP:-open}
       # Web Push (issue #41). The API only needs the public key; empty reports push unavailable.
       FLUX_VAPID_PUBLIC_KEY: ${FLUX_VAPID_PUBLIC_KEY:-}
       FLUX_STREAM_HEARTBEAT_MS: ${FLUX_STREAM_HEARTBEAT_MS:-25000}
