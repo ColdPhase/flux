@@ -76,7 +76,7 @@ class DecisionTrace(unittest.TestCase):
         for phone in ("phone=False", "phone=True"):
             self.assertIn(phone, journey)
         self.assertIn('os.environ.get("FLUX_UI_BROWSER", "chromium")', journey, "chromium by default, webkit through FLUX_UI_BROWSER")
-        for step in ("/decide", "Accept decision", "to_have_count(2)", "object-notices"):
+        for step in ("/decide", "name=\"Accept\", exact=True", "to_have_count(2)", "object-notices"):
             self.assertIn(step, journey)
         # Two people: the one who proposes and the one who has the thread open and is not touched.
         self.assertIn('self.page("ada", phone=phone), self.page("jonas", phone=phone)', journey)

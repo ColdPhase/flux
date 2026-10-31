@@ -958,7 +958,7 @@ class HandOffJourney(unittest.TestCase):
                         expect(dialog.get_by_role("heading", name="No agents in this project yet", exact=True)).to_be_visible()
                         expect(dialog.locator(".kreska")).to_have_count(1)
                         expect(dialog.get_by_text("Connect Claude Code, Codex or your assistant once. After that, handing off a task takes two clicks.", exact=True)).to_be_visible()
-                        connect = dialog.get_by_role("link", name="Connect an agent")
+                        connect = dialog.get_by_role("link", name="Connect your own agent")
                         expect(connect).to_have_attribute("href", "/connect-agent")
                         expect(connect).to_be_focused()
                         page.keyboard.press("Tab")
@@ -984,7 +984,7 @@ class HandOffJourney(unittest.TestCase):
                         expect(opener).to_be_focused()
                         if scheme == "dark" and width == 2560 and source == "task":
                             opener.click()
-                            page.get_by_role("dialog", name="Hand off a task").get_by_role("link", name="Connect an agent").click()
+                            page.get_by_role("dialog", name="Hand off a task").get_by_role("link", name="Connect your own agent").click()
                             expect(page).to_have_url(re.compile(r"/connect-agent$"))
                             expect(page.get_by_role("dialog", name="Hand off a task")).to_have_count(0)
                         page.context.close()

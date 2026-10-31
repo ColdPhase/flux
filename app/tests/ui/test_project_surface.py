@@ -495,9 +495,11 @@ class ProjectSurfaceJourney(unittest.TestCase):
         # Nothing sits under a message on the phone: its actions are a swipe left and a long press (F-026 S6).
         message = page.locator(f"#message-{self.ids['m4']}")
         expect(message.locator(".msg-acts")).to_have_count(0)
-        open_message_menu(message, phone=True).get_by_role("menuitem", name="Details").click()
-        expect(page.get_by_role("dialog", name="Details")).to_be_visible()
-        page.get_by_role("dialog", name="Details").get_by_role("button", name="Close details").click()
+        # The long press shows the five drawn items (#763 B3); Details is the computer's.
+        menu = open_message_menu(message, phone=True)
+        expect(menu.get_by_role("menuitem", name="Details")).to_have_count(0)
+        page.keyboard.press("Escape")
+        expect(menu).to_have_count(0)
         expect(page.locator("header.top").get_by_label("Current state")).to_have_count(0)
         expect(page.get_by_role("button", name=re.compile("open project details"))).to_have_count(0)
         expect(page.locator(".ws-state-row")).to_have_count(0)
@@ -506,10 +508,11 @@ class ProjectSurfaceJourney(unittest.TestCase):
         shot(page, "project-conversation-phone-390")
         open_details(page, tap=True)
         sheet = page.get_by_role("dialog", name="Details")
-        expect(sheet.get_by_role("region", name="Linked in this conversation").get_by_role("button", name=re.compile("Keep a manual off switch"))).to_be_visible()
+        # The project's Details list its decisions under what matters now (no message was opened in Details first, #763 B3).
+        expect(sheet.get_by_role("button", name=re.compile("Keep a manual off switch")).first).to_be_visible()
         expect(sheet.get_by_role("region", name="People", exact=True)).to_contain_text("Nia Okafor")
         shot(page, "project-details-phone-390")
-        sheet.get_by_role("region", name="Linked in this conversation").get_by_role("button", name=re.compile("Use a ToF sensor")).tap()
+        sheet.get_by_role("button", name=re.compile("Use a ToF sensor")).first.tap()
         expect(sheet.get_by_role("heading", name="Use a ToF sensor, not the camera, for gestures")).to_be_visible()
         sheet.get_by_role("button", name="Close details").tap()
         view_tab(page, "Map", tap=True)
