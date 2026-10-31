@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { test } from 'node:test';
-import type { Agent, AgentQuestion, AgentQuestions, AgentStop, AgentStops, Conversation, OwnWorkingAgents, WorkItem } from '@flux/contracts';
+import type { Agent, AgentQuestion, AgentQuestions, AgentStop, AgentStops, Conversation, NeedsYouResponse, OwnWorkingAgents, TaskDiscussion, WorkItem } from '@flux/contracts';
 import { pool } from './support/db.js';
 import { Browser, type ClientResponse } from './support/http.js';
 import { agentConnection, toolFailure } from './support/mcp-actions.js';
@@ -172,6 +172,48 @@ test('an agent asks with ready answers: one message, one card, a question notifi
   assert.equal((await answer(f.marek, { optionIndex: 1 })).json.answer?.messageId, done.answer!.messageId);
   assert.deepEqual([(await answer(f.marek, { optionIndex: 0 })).status, (await answer(f.marek, { text: 'Neither' })).json.code], [409, 'QUESTION_ANSWERED']);
   assert.equal((await pool.query('SELECT count(*)::int AS n FROM project_messages WHERE conversation_id=$1', [thread.id])).rows[0].n, 3, 'one reply, however often it is sent');
+});
+
+test('#763 IN-1/IN-2: Needs you lists an agent question from the question itself, with its answers and task, and drops it once answered', async () => {
+  const f = await scene();
+  const item = await f.task(f.hubert, 'Calibrate the bed offsets');
+  // The task's own thread: the question is about the task it is the discussion of.
+  const opened = await f.hubert.browser.request('POST', `/api/v1/work/${item.id}/discussion`, { body: { body: 'Offsets for the bed probe', clientMessageId: randomUUID() } });
+  assert.ok([200, 201].includes(opened.status), opened.text);
+  const conversationId = (expectStatus(await f.hubert.browser.request('GET', `/api/v1/work/${item.id}/discussion`), 200) as TaskDiscussion).conversationId!;
+  const reply = await f.connected.grant('conversation.reply', 'execute', 10);
+  const ask = (question: string) => f.connected.tool('flux_ask_question', { ...f.run(), grantId: reply.id, clientCommandId: randomUUID(), sources: [],
+    conversationId, question, options: ['Per bed', 'One value'], askUserId: f.marek.id });
+  const first = toolValue(await ask('Offsets per bed, or one value for all six?')) as { questionId: string; messageId: string };
+  const second = toolValue(await ask('Probe depth at 5 cm or 10 cm?')) as { questionId: string; messageId: string };
+  const queue = async (who: Person) => expectStatus(await who.browser.request('GET', '/api/v1/needs-you'), 200) as NeedsYouResponse;
+  // The notification arrives a moment later; it never shows as a second item beside the question.
+  await waitFor(async () => (expectStatus(await f.marek.browser.request('GET', '/api/v1/inbox'), 200) as { items: { url: string | null }[] }).items
+    .filter((entry) => entry.url?.endsWith(first.messageId) || entry.url?.endsWith(second.messageId)).length === 2, 'both question notifications');
+  const before = await queue(f.marek);
+  const asked = before.items.filter((entry) => entry.from?.kind === 'agent' && entry.kind === 'question');
+  assert.deepEqual(asked.map((entry) => entry.key).sort(), [`question:${first.questionId}`, `question:${second.questionId}`].sort(), 'one item per question, keyed by the question');
+  const card = asked.find((entry) => entry.key === `question:${first.questionId}`)!;
+  assert.deepEqual([card.title, card.agentQuestion?.options, card.agentQuestion?.task?.number, card.agentQuestion?.task?.id, card.from?.name, card.project?.id],
+    ['Offsets per bed, or one value for all six?', ['Per bed', 'One value'], item.number, item.id, 'Hubert Claude', f.p.id]);
+  assert.ok(card.url.endsWith(`#message-${first.messageId}`));
+  assert.equal(before.items.filter((entry) => entry.key.startsWith('note:') && entry.reason === 'question').length, 0, 'the notifications are not listed as well');
+  assert.equal((await queue(f.ada)).items.filter((entry) => entry.agentQuestion).length, 0, 'only the person asked has it');
+
+  // Answered anywhere (here: the question's own endpoint, as the conversation and Agents do), it is gone from Needs you at once.
+  expectStatus(await f.marek.browser.request('POST', `/api/v1/agent-questions/${first.questionId}/answer`, { body: { optionIndex: 0 } }), 200);
+  const after = await queue(f.marek);
+  assert.deepEqual(after.items.filter((entry) => entry.agentQuestion).map((entry) => entry.key), [`question:${second.questionId}`]);
+  assert.equal(after.count, before.count - 1);
+
+  // Done on the other one takes it out for Marek and marks its notification read; Undo brings both back.
+  expectStatus(await f.marek.browser.request('POST', `/api/v1/needs-you/${encodeURIComponent(`question:${second.questionId}`)}`, { body: { action: 'done' } }), 200);
+  const readAt = async () => (await pool.query(`SELECT read_at FROM notifications WHERE user_id=$1 AND url LIKE $2`, [f.marek.id, `%${second.messageId}`])).rows[0]?.read_at;
+  assert.ok(await readAt(), 'Done marks the question notification read');
+  assert.equal((await queue(f.marek)).items.filter((entry) => entry.agentQuestion).length, 0);
+  expectStatus(await f.marek.browser.request('DELETE', `/api/v1/needs-you/${encodeURIComponent(`question:${second.questionId}`)}`), 204);
+  assert.equal(await readAt(), null, 'Undo marks it unread again');
+  assert.deepEqual((await queue(f.marek)).items.filter((entry) => entry.agentQuestion).map((entry) => entry.key), [`question:${second.questionId}`]);
 });
 
 test('a free reply answers a question; invalid questions and people without access are refused and post nothing', async () => {

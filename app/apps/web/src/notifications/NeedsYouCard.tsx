@@ -16,6 +16,8 @@ export interface CardHandlers {
   unblock(item: NeedsYouItem): void;
   /** Applies your assistant's waiting changes of one request (F-027 AST-5.6), with the object's own verb. */
   applyChanges(item: NeedsYouItem): void;
+  /** Answers an agent's question with one of its ready-made answers (S14); Undo holds it back for a moment. */
+  answer?(item: NeedsYouItem, optionIndex: number): void;
   dismissChanges?(item: NeedsYouItem): void;
 }
 
@@ -130,6 +132,12 @@ export function NeedsYouCard({ item, variant = 'card', selected = false, handler
   const meta = (identity ? [`for ${identity.ownerName}`, KIND_WORD[item.kind], project]
     : decision ? ['Proposed decision', project] : item.kind === 'blocked' ? [item.blocked?.waitedBy ? 'Waiting on you' : 'Your task', project, ago(item.at)] : [KIND_WORD[item.kind], project]).filter(Boolean).join(' · ');
   const who = item.from?.name ?? null;
+  const asked = item.agentQuestion ?? null;
+  // An agent's question names the task it is about, as drawn ("Claude Code · Agent · on #8").
+  const askedMeta = asked ? [asked.task ? `on #${asked.task.number}` : null, project].filter(Boolean).join(' · ') : null;
+  const answers = asked && handlers.answer ? asked.options.map((option, index) => (
+    <Button key={option} variant="secondary" className="nyc__answer" onClick={() => handlers.answer?.(item, index)}>{option}</Button>
+  )) : null;
 
   const actions = (
     <div className="nyc__actions">
@@ -144,6 +152,8 @@ export function NeedsYouCard({ item, variant = 'card', selected = false, handler
           <Button variant="secondary" onClick={() => handlers.open(item)}>Open task</Button>
           {item.blocked?.waitedBy ? null : <Button variant="quiet" onClick={() => handlers.unblock(item)}>Unblock</Button>}
         </>
+      ) : answers ? (
+        <>{answers}</>
       ) : item.proposal ? (
         <>
           <Button variant="primary" onClick={() => handlers.done(item)}>Got it</Button>
@@ -178,7 +188,8 @@ export function NeedsYouCard({ item, variant = 'card', selected = false, handler
               </div>
             ) : (
               <p className="nyc__eyebrow">
-                {variant === 'row'
+                {asked ? <><b>{who}</b><AgentTag />{askedMeta ? <span className="nyc__meta">{[askedMeta, variant === 'card' ? when(item.at) : null].filter(Boolean).join(' · ')}</span> : null}</>
+                  : variant === 'row'
                   ? identity ? <><b>{identity.assistantName}</b><AgentTag /><span className="nyc__meta">{meta}</span></>
                     : [KIND_WORD[item.kind], who, project].filter(Boolean).join(' · ')
                   : <>{who ? <b>{who}</b> : null}{item.from?.kind === 'agent' ? <AgentTag /> : null}<span className="nyc__meta">{[meta, variant === 'card' && item.kind !== 'blocked' ? when(item.at) : null].filter(Boolean).join(' · ')}</span></>}
@@ -208,7 +219,7 @@ export function NeedsYouCard({ item, variant = 'card', selected = false, handler
           </div>
           {variant === 'row' ? <div className="nyc__rowactions">{decision ? <>
             <Button variant="primary" onClick={() => handlers.accept(item)}>Accept</Button>
-            <NotNowButton buttonRef={notNow} open={menuOpen} onToggle={() => onMenuOpen(!menuOpen)} /></> : item.proposal ? <Button variant="secondary" onClick={() => handlers.open(item)}>Review</Button> : item.assistantChanges
+            <NotNowButton buttonRef={notNow} open={menuOpen} onToggle={() => onMenuOpen(!menuOpen)} /></> : answers ? answers : item.proposal ? <Button variant="secondary" onClick={() => handlers.open(item)}>Review</Button> : item.assistantChanges
               ? <Button variant="primary" onClick={() => handlers.applyChanges(item)}>{item.assistantChanges.verb}</Button>
               : <Button variant="secondary" onClick={() => handlers.open(item)}>{item.assistantRequestIdentity ? 'Review' : item.kind === 'blocked' ? 'Open task' : item.reason === 'invitation' ? 'Open' : 'Reply'}</Button>}</div> : null}
           {children}

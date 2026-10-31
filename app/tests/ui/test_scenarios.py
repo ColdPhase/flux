@@ -67,7 +67,8 @@ if UI_BROWSER not in ("chromium", "webkit"):
 
 PASSWORD = "a lamp that listens to hands"
 NAMES = {"ada": "Ada Kowalska", "jonas": "Jonas Berg", "mia": "Mia Novak", "lee": "Lee Moreno"}
-WORKSPACE = "Riverside Makers"
+# Ada's first project makes her workspace quietly, named after her (#763 FR-1).
+WORKSPACE = "Ada’s space"
 MARKET = "Marketplace stall"
 LAMP = "Gesture lamp"
 MARKET_NOTE = "Stall plan: lamps on the left table, price tags on kraft paper."
@@ -445,7 +446,7 @@ class ScenarioJourney:
         else:
             page.get_by_role("complementary", name="Sidebar").get_by_role("button", name="New", exact=True).click()
             create_other(page, "Project")
-        page.get_by_label("Your space").fill(WORKSPACE)
+        expect(page.get_by_text(f"In {WORKSPACE}")).to_be_visible()
         page.get_by_label("What is it about?").fill(MARKET)
         self.tap(page.get_by_role("button", name="Create project"))
         expect(page).to_have_url(re.compile(r"/projects/[0-9a-f-]{36}\?new=1"))
@@ -1124,11 +1125,18 @@ class ScenarioJourney:
         dialog = page.get_by_role("dialog", name="Jump to")
         dialog.get_by_role("combobox", name="Jump to").fill("lux")
         expect(dialog.get_by_role("listbox", name="Results")).to_contain_text(RESULT)
-        self.tap(dialog.get_by_role("option", name=re.compile("See all results")))
-        expect(page).to_have_url(re.compile(r"/search\?q=lux"))
-        chips = page.get_by_role("group", name="Kind of result")
-        for kind in ("Messages", "Wiki", "Results", "Map"):
-            expect(chips.get_by_role("button", name=re.compile(f"^{kind}"))).to_be_visible()
+        if self.phone:
+            # The phone has one search (#763 SE-2): the sheet is the whole answer, and /search is the same search in place.
+            expect(dialog.get_by_role("option", name=re.compile("See all results"))).to_have_count(0)
+            page.keyboard.press("Escape")
+            page.goto("/search?q=lux")
+            expect(page.get_by_role("listbox", name="Results")).to_contain_text(RESULT)
+        else:
+            self.tap(dialog.get_by_role("option", name=re.compile("See all results")))
+            expect(page).to_have_url(re.compile(r"/search\?q=lux"))
+            chips = page.get_by_role("group", name="Kind of result")
+            for kind in ("Messages", "Wiki", "Results", "Map"):
+                expect(chips.get_by_role("button", name=re.compile(f"^{kind}"))).to_be_visible()
         self.shot(page, "5-search")
         kinds = lambda q: {item["kind"] for item in self.api("ada", "GET", f"/api/v1/search?q={urllib.parse.quote(q)}&limit=50", status=200)["items"]}  # noqa: E731
         self.assertTrue({"message", "result", "doc", "thought"} <= kinds("lux"), kinds("lux"))

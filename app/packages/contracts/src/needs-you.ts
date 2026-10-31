@@ -10,8 +10,8 @@ export const needsYouItemPath = (key: string) => `${NEEDS_YOU_PATH}/${encodeURIC
 
 /**
  * What kind of need an item is. `question` is a notification asking the person to respond, including an
- * assistant join request linked to its saved request-cycle identity. Agent questions with ready-made answers
- * remain outside this queue.
+ * assistant join request linked to its saved request-cycle identity, and an agent's open question with ready-made answers
+ * (`question:<id>`, F-026 S14): it is read from the question itself, so it leaves the queue once it is answered anywhere.
  */
 export const NEEDS_YOU_KINDS = ['decision', 'question', 'blocked', 'mention'] as const;
 export type NeedsYouKind = typeof NEEDS_YOU_KINDS[number];
@@ -74,8 +74,22 @@ export interface NeedsYouProposal {
   source: { materialId: string; title: string; version: number };
 }
 
+/** An agent's open question to you with ready-made answers (F-026 S14, #763 IN-1/IN-2). */
+export interface NeedsYouAgentQuestion {
+  id: string;
+  /** The answers offered, two to four; one of them is sent with `POST /api/v1/agent-questions/{id}/answer`. */
+  options: string[];
+  /** The task the question is about (its conversation is the task's thread), when there is one. */
+  task: NeedsYouTaskRef | null;
+  conversationId: string;
+  messageId: string;
+}
+
 export interface NeedsYouItem {
-  /** `decision:<id>`, `blocked:<id>`, `proposal:<id>`, `note:<notification id>` or `assistant:<run id>`. Stable while the need lasts. */
+  /**
+   * `decision:<id>`, `blocked:<id>`, `proposal:<id>`, `question:<agent question id>`, `note:<notification id>` or
+   * `assistant:<run id>`. Stable while the need lasts.
+   */
   key: string;
   kind: NeedsYouKind;
   title: string;
@@ -89,6 +103,8 @@ export interface NeedsYouItem {
   url: string;
   decision: NeedsYouDecision | null;
   blocked: NeedsYouBlocked | null;
+  /** Set for `question:<id>`: an agent asks you and offers answers (S14). */
+  agentQuestion?: NeedsYouAgentQuestion | null;
   /** Set for `proposal:<id>`: an agent you connected made a suggestion (#661). */
   proposal?: NeedsYouProposal | null;
   /** Why a notification-based item reached you (`mention`, `question` or `invitation`); null for the others. */
