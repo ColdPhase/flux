@@ -230,7 +230,7 @@ reduce everyone to the same quality. LiveKit supplies
 but actual results depend on publication layers, codecs, clients and hardware.
 
 **Screen mode and a larger camera (agent decision, #63, 2026-10-31).** A shared screen
-is sent as **Sharp text** by default: up to 2560×1440 at 15 fps and 8 Mbit/s (`contentHint: text`), one layer that keeps
+is sent as **Sharp text** by default: up to 2560×1440 at 15 fps, one layer that keeps
 its resolution. While sharing, the sharing line under the live strip offers **Sharp
 text · Smooth motion**; Smooth motion sends up to 1920×1080 at 60 fps (10 Mbit/s cap,
 frame rate kept over resolution), also one layer: with simulcast layers the browser's

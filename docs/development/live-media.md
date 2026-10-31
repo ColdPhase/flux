@@ -725,22 +725,28 @@ at the same time and Jonas and Tom both watch Ada's text.
   received size, frame rate, freezes and loss; five decoded frames per receiver are OCR-scored, with five source
   grabs as the reference.
 
-**Sharp text encoding changed** (`media.ts`). With the earlier 3.5 Mbit/s and `contentHint: detail` (calibration
-`txt2`, three runs) scrolling arrived at 2560×1440 and 14.7 to 14.9 fps, but the sender sat at the cap and sampled
-frames were blurred: OCR mean ratio down to 0.74 (11 of 40 good lines) against 0.98 for the source. Now
-`contentHint: text` and **8 Mbit/s**: scrolling uses 6.7 to 7.2 Mbit/s and the sampled frames read like the source
-(`txt3`, `txt4`). Static text needs about 1 Mbit/s.
+**Sharp text encoding: unchanged (3.5 Mbit/s, `contentHint: detail`).** At it scrolling text arrives at 2560×1440
+and 14.7 to 14.9 fps, at the bitrate cap, with sampled frames that read a little below the source (OCR medians 0.935
+to 0.96, worst frame 0.74; `txt2`). Raising it to 8 Mbit/s with `contentHint: text` was measured (`txt3`, `txt4`,
+`full3`): scrolling used 6.7 to 7.2 Mbit/s, typical frames read like the source (0.98) and every text gate passed,
+but the one weak receiver of four (400 kbit/s) then got 1 to 3.6 kbit/s of speech instead of the gated 10 (the
+screen it cannot carry is a single layer the SFU keeps sending). 5 Mbit/s still gave him 9.1 kbit/s, and LiveKit's
+`congestion_control` with `allow_pause` and `use_send_side_bwe` paused his video but did not bring his speech back
+(5.5 to 6 kbit/s, 86 to 93 % concealed; `bwe1`). Since 15 fps is reached at 3.5 Mbit/s, the encoding stays as it
+was and the faster one is a recorded option, not shipped. Static text needs about 1 Mbit/s either way.
 
-**Calibration** (`FLUX_SIM_CALIBRATE=1`, record only, at the final encoding: `txt3` run 2 and `txt4`, five runs, two
-and four people, eight receiver measurements; host load average 8 to 15):
+**Calibration** (`FLUX_SIM_CALIBRATE=1`, record only; host load average 8 to 15). The thresholds below were set from
+the 8 Mbit/s runs (`txt3` run 2 and `txt4`: five runs, two and four people, eight receiver measurements), the
+final sampling (static at 5, 10 and 20 s); the 3.5 Mbit/s runs (`txt2`, three runs) are in the last column. The
+encoding then returned to 3.5 Mbit/s; the thresholds were not changed for it:
 
-| Measure | Observed | Source reference |
-| --- | --- | --- |
-| Scrolling: received size and frame rate | 2560×1440, **14.5 to 15.2 fps** (capture 15 fps), freezes ≤ 0.3 s, no loss, latency estimate 55 to 102 ms | — |
-| Scrolling: OCR per sampled frame | mean ratio 0.79 to 0.98; median of a receiver's three samples 0.936 to 0.981; good lines 0 to 41 (one soft frame read 0; medians 37 to 41) | 0.979 to 0.985, 38 to 41 good lines |
-| Static at 20 s | SSIM 0.974 to 0.984; OCR 0.983 to 0.984, 39 to 40 good lines | 0.983, 40 good lines |
-| Static at 10 s (recorded) | SSIM 0.912 to 0.962; OCR 0.92 to 0.98 | |
-| Static at 5 s (recorded) | SSIM 0.867 to 0.957; OCR 0.62 to 0.97 (the first frames after the share are soft) | |
+| Measure | Observed at 8 Mbit/s (thresholds set from these) | Source reference | Observed at 3.5 Mbit/s (`txt2`) |
+| --- | --- | --- | --- |
+| Scrolling: received size and frame rate | 2560×1440, **14.5 to 15.2 fps** (capture 15 fps), freezes ≤ 0.3 s, no loss, latency estimate 55 to 102 ms | — | 2560×1440, 14.7 to 14.9 fps, freezes ≤ 0.84 s, no loss |
+| Scrolling: OCR per sampled frame | mean ratio 0.79 to 0.98; median of a receiver's three samples 0.936 to 0.981; good lines 0 to 41 (one soft frame read 0; medians 37 to 41) | 0.979 to 0.985, 38 to 41 good lines | 0.74 to 0.98; medians 0.935 to 0.959; good-line medians 38 to 39 |
+| Static at 20 s | SSIM 0.974 to 0.984; OCR 0.983 to 0.984, 39 to 40 good lines | 0.983, 40 good lines | not sampled at 20 s (one early frame: SSIM 0.92 to 0.96) |
+| Static at 10 s (recorded) | SSIM 0.912 to 0.962; OCR 0.92 to 0.98 | | |
+| Static at 5 s (recorded) | SSIM 0.867 to 0.957; OCR 0.62 to 0.97 (the first frames after the share are soft) | | |
 
 **Thresholds, set before the enforced run, with the reason for each** (`textprofile.THRESHOLDS`):
 
