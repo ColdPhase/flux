@@ -44,8 +44,8 @@ export const getOwnWorkingAgents = (signal?: AbortSignal) => request<OwnWorkingA
 export const getAgentQuestions = (projectId: string, signal?: AbortSignal) => request<AgentQuestions>(projectAgentQuestionsPath(projectId), { signal });
 
 /** The asked person's answer: an option or their own words. The same answer again returns the stored one (`409 QUESTION_ANSWERED` for another). */
-export const answerAgentQuestion = (questionId: string, command: AnswerAgentQuestionCommand, idempotencyKey: string) =>
-  request<AgentQuestion>(agentQuestionAnswerPath(questionId), { method: 'POST', body: command, headers: { 'idempotency-key': idempotencyKey } });
+export const answerAgentQuestion = (questionId: string, command: AnswerAgentQuestionCommand, idempotencyKey: string, keepalive = false) =>
+  request<AgentQuestion>(agentQuestionAnswerPath(questionId), { method: 'POST', body: command, headers: { 'idempotency-key': idempotencyKey }, keepalive });
 
 /** A task's request cards and review verdicts (#153, #400 AC-4); whoever can read the task reads them. */
 export const getTaskCoordination = (workId: string, signal?: AbortSignal) => request<TaskCoordination>(taskCoordinationPath(workId), { signal });

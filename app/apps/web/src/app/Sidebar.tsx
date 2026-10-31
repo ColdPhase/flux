@@ -43,8 +43,9 @@ export function Sidebar({ projects, directMessages, user, session, onClose, titl
   const projectId = location.pathname.match(/^\/projects\/([^/]+)/)?.[1];
   const navigate = onClose ? () => onClose() : undefined;
   const sketchbook = place === 'home' && /^\/map(\/|$)/.test(location.pathname);
-  // Home is current where the header says Home: not in the Sketchbook, Search or personal settings.
-  const home = place === 'home' && !sketchbook && !/^\/(search|settings|projects)(\/|$)/.test(location.pathname);
+  // Home is current only on Home (#763 NV-1): a page reached from it (Your tasks, the Wiki, New project, a missing page) is no
+  // place of the sidebar, so nothing is marked current there.
+  const home = location.pathname === '/';
   const inbox = /^\/inbox(\/|$)/.test(location.pathname);
   // Subtle navigation feedback (#155, UI116-5): the highlight travels to a chosen project at once, while
   // the project loads; the row becomes current (aria-current) when its content shows. A newer choice

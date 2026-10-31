@@ -354,7 +354,8 @@ class StopAndQuestions(unittest.TestCase):
         expect(jonas.locator(f'.agents-row[data-agent="{self.ids["agent"]}"]')).to_be_visible()
         expect(jonas.get_by_role("button", name=re.compile("^(Stop|Hand back)"))).to_have_count(0)
     def test_09_home_lists_the_working_agent_with_stop_at_every_width(self) -> None:
-        """AC-3: Home has its own Stop; the sidebar card steps aside there so the agent is listed once."""
+        """AC-3: the working agent and its Stop are on Home at every width, listed once: on the computer in the sidebar card,
+        which keeps its place on Home as everywhere (Spokój rule 7, #763 NV-2); on the phone, with no sidebar, in Home's own list."""
         title = "Log the soil moisture at dawn"
         self.new_working_task(title, "fourth")
         number = self.task("fourth")["number"]
@@ -362,7 +363,9 @@ class StopAndQuestions(unittest.TestCase):
             page = self.page("ada", phone=phone)
             page.goto("/")
             expect(page.get_by_role("heading", level=1, name="Home")).to_be_visible()
-            home = page.get_by_role("region", name="Your agents working now")
+            home = page.get_by_role("region", name="Your agents working now") if phone else page.locator("aside.app__side")
+            if not phone:
+                expect(page.get_by_role("region", name="Your agents working now")).to_have_count(0)
             # The fixture's agent is not signed in, so Home says it holds the task (#347 N12), not the task's title.
             expect(home.locator(".agentlive--agent")).to_contain_text(f"Handed #{number} · not signed in yet")
             expect(page.locator(".agentlive--agent")).to_have_count(1)

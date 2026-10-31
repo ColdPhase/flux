@@ -140,7 +140,8 @@ class SmallMomentsJourney(unittest.TestCase):
                 page = self.page(phone=phone, scheme="dark")
                 page.goto("/search?q=zzqxv")
                 expect(page.get_by_role("heading", name="Nothing matches “zzqxv”")).to_be_visible()
-                expect(page.locator(".ui-empty--mascot .kreska")).to_have_attribute("data-expression", "looking")
+                # The phone's /search is its one search (#763 SE-2), with the drawn no-results moment.
+                expect(page.locator(".jump__none .kreska" if phone else ".ui-empty--mascot .kreska")).to_have_attribute("data-expression", "looking")
                 shot(page, f"352-no-results-{'phone' if phone else 'desktop'}")
 
     def test_03_offline_line_has_the_sleeping_face_and_unreachable_does_not(self) -> None:
@@ -253,7 +254,8 @@ class SmallMomentsJourney(unittest.TestCase):
         self.ensure_account()
         page = self.page(phone=True)
         page.goto("/tasks")
-        expect(page.get_by_role("heading", name=re.compile("Your tasks|Nothing is waiting for you"))).to_be_visible()
+        # The header names the page "Your tasks" (#763 NV-1) beside the list's own heading.
+        expect(page.get_by_role("heading", name=re.compile("Your tasks|Nothing is waiting for you")).first).to_be_visible()
         reads = []
         page.on("request", lambda request: reads.append(request.url) if "/work" in request.url else None)
         cdp = page.context.new_cdp_session(page)
@@ -275,7 +277,7 @@ class SmallMomentsJourney(unittest.TestCase):
     def test_08_reduced_motion_leaves_every_moment_a_static_frame(self) -> None:
         self.ensure_account()
         page = self.page(phone=True, reduced=True)
-        for path, face in (("/inbox", ".nyq__clear .kreska"), ("/search?q=zzqxv", ".ui-empty--mascot .kreska")):
+        for path, face in (("/inbox", ".nyq__clear .kreska"), ("/search?q=zzqxv", ".jump__none .kreska")):
             page.goto(path)
             expect(page.locator(face)).to_be_visible()
             self.assertEqual(page.evaluate(KRESKA_ANIMATIONS), 0, path)
@@ -328,7 +330,8 @@ class SmallMomentsJourney(unittest.TestCase):
         self.ensure_account()
         page = self.page(phone=True)
         page.goto("/tasks")
-        expect(page.get_by_role("heading", name=re.compile("Your tasks|Nothing is waiting for you"))).to_be_visible()
+        # The header names the page "Your tasks" (#763 NV-1) beside the list's own heading.
+        expect(page.get_by_role("heading", name=re.compile("Your tasks|Nothing is waiting for you")).first).to_be_visible()
         page.wait_for_load_state("networkidle")
         reads: list[str] = []
         page.on("request", lambda request: reads.append(request.url) if "/work" in request.url else None)

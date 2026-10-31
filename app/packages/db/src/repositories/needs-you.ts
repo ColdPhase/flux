@@ -1,4 +1,4 @@
-import { and, desc, eq, inArray, sql } from 'drizzle-orm';
+import { and, desc, eq, gte, inArray, isNull, or, sql } from 'drizzle-orm';
 import * as schema from '../schema.js';
 import type { DbExecutor } from './push.js';
 import { toDecisionRecord } from './work.js';
@@ -54,6 +54,20 @@ export function needsYouRows(db: DbExecutor) {
         fact: row.proposal.fact, interpretation: row.proposal.interpretation, suggestedAction: row.proposal.suggestedAction,
         source: { materialId: row.proposal.sourceMaterialId, title: row.title, version: row.proposal.sourceMaterialVersion },
         createdAt: row.proposal.createdAt,
+      }));
+    },
+
+    /** Agent questions asked of this person in these (already readable) projects: open ones, and those answered since `since` (S14, #763). */
+    async agentQuestions(userId: string, projectIds: string[], since: Date, limit: number) {
+      if (!projectIds.length) return [];
+      const q = schema.agentQuestions;
+      const rows = await db.select({ q, agentName: schema.agents.name }).from(q)
+        .innerJoin(schema.agents, eq(schema.agents.id, q.agentId))
+        .where(and(eq(q.askedUserId, userId), inArray(q.projectId, projectIds), or(isNull(q.answeredAt), gte(q.createdAt, since))))
+        .orderBy(desc(q.createdAt), desc(q.id)).limit(limit);
+      return rows.map(({ q: row, agentName }) => ({
+        id: row.id, projectId: row.projectId, conversationId: row.conversationId, messageId: row.messageId, taskId: row.taskId,
+        agent: { id: row.agentId, name: agentName }, question: row.question, options: row.options, createdAt: row.createdAt, answered: row.answeredAt !== null,
       }));
     },
 

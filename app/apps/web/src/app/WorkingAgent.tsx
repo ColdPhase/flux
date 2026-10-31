@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { useLocation } from 'react-router';
 import { ASSISTANT_RUN_CHANGED_EVENT, type AssistantRun, type OwnWorkingAgent } from '@flux/contracts';
 import { onPageLive, pageLeaving } from '../api/pageLeaving';
 import { useStreamEvents } from '../api/stream';
@@ -213,8 +212,6 @@ export function WorkingAgent({ compact = false }: { compact?: boolean }) {
   const { me } = useShellData();
   const agents = useOwnWorkingAgents(me.user.id);
   const aiOff = useProjectAiBlocked();
-  // Home lists every working agent itself (HomeWorkingAgents), so the sidebar card steps aside there.
-  const onHome = useLocation().pathname === '/';
   // Agents of a workspace whose AI is off (#614) are not shown. Several at once: online ones first; the card shows the first with how many more are online, so the sidebar never grows.
   const items = agents.items.filter((item) => !aiOff(item.task.projectId));
   const ordered = [...items.filter((item) => item.working), ...items.filter((item) => !item.working)];
@@ -223,7 +220,7 @@ export function WorkingAgent({ compact = false }: { compact?: boolean }) {
   return (
     <>
       <WorkingAssistant compact={compact} />
-      {first && !onHome ? (
+      {first ? (
         <>
           <OwnAgentCard item={first} compact={compact} onChanged={agents.reload} />
           {workingCount > 1 && !compact ? <p className="agentlive__more">+{workingCount - 1} more working</p> : null}
@@ -234,7 +231,7 @@ export function WorkingAgent({ compact = false }: { compact?: boolean }) {
 }
 
 /** Own-assistant Stop uses its existing permission-backed command. */
-function WorkingAssistant({ compact = false }: { compact?: boolean }) {
+export function WorkingAssistant({ compact = false }: { compact?: boolean }) {
   const { me } = useShellData();
   const { run, stop, dismissFailure, stopping, failed } = useWorkingRun(me.user.id);
   const stopButton = useRef<HTMLButtonElement>(null);
@@ -280,7 +277,10 @@ function WorkingAssistant({ compact = false }: { compact?: boolean }) {
   );
 }
 
-/** Home's own list of the person's working external agents, each with Stop (S13), so Home shows them at every width. */
+/**
+ * Home's own list of the person's working external agents, each with Stop (S13), where no sidebar is shown (the phone and the
+ * narrow drawer layout). On the computer the sidebar card is the one place, on Home as everywhere (Spokój rule 7, #763 NV-2).
+ */
 export function HomeWorkingAgents() {
   const { me } = useShellData();
   const agents = useOwnWorkingAgents(me.user.id);

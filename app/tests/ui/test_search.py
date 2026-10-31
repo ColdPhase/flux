@@ -351,14 +351,16 @@ class SearchJourney(unittest.TestCase):
         options.filter(has_text="Mount the infrared sensor").first.click()
         expect(page).to_have_url(re.compile(rf"/projects/{self.ids['lamp']}/tasks$"))
         expect(page.get_by_role("dialog", name="Details")).to_contain_text("Mount the infrared sensor in the lamp base")
+        # /search on the phone is the same search as the sheet (#763 SE-2): its chips, its results, Cancel.
         page.goto("/search?q=sensor")
-        results = page.get_by_role("region", name="Results")
-        expect(results.get_by_role("link").first).to_be_visible()
+        results = page.get_by_role("listbox", name="Results")
+        expect(results.locator("[role=option].sr").first).to_be_visible()
+        expect(page.get_by_role("group", name="Search in")).to_be_visible()
         self.no_horizontal_scroll(page)
-        for index in range(3):
-            link_box = results.get_by_role("link").nth(index).bounding_box()
-            assert link_box is not None
-            self.assertGreaterEqual(link_box["height"], 44)
+        for index in range(min(results.locator("[role=option].sr").count(), 3)):
+            option_box = results.locator("[role=option].sr").nth(index).bounding_box()
+            assert option_box is not None
+            self.assertGreaterEqual(option_box["height"], 44)
         shot(page, "search-page-phone-390")
 
     def test_09_dark_desktop_page(self) -> None:
@@ -436,7 +438,8 @@ class SearchJourney(unittest.TestCase):
 
                 for number in (12, 26):
                     page.goto(f"/search?q=%23{number}&type=work&place=project:{place['id']}")
-                    result = page.locator("a.sr").first
+                    # The phone's /search is its one search (#763 SE-2): results are the sheet's options.
+                    result = page.locator("[role=option].sr" if phone else "a.sr").first
                     expect(result).to_contain_text(tasks[number - 1]["title"])
                     expect(result).to_contain_text(f"#{number}")
                     shot(page, f"task-number-{number}-search-{'phone-390' if phone else 'desktop-1440'}")
