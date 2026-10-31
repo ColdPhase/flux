@@ -47,10 +47,12 @@ services:
           tls_port: 443
           cert_file: /run/livekit-turn-certs/fullchain.pem
           key_file: /run/livekit-turn-certs/privkey.pem
-          # Docker bridge SFU is a private TURN peer. Production public media
+          # The SFU's Docker media address is a private TURN peer. Allow exactly that address (not a
+          # private range): Docker assigns bridge networks from 172.16.0.0/12 and then 192.168.0.0/16 when the
+          # first pool is used up, so a fixed range stops working on a busy host. Production public media
           # addresses must retain LiveKit's default deny for private peers.
           allow_restricted_peer_cidrs:
-            - 172.16.0.0/12
+            - FLUX_TEST_MEDIA_IP/32
   live-sfu-test:
     cap_add: [NET_ADMIN]
     environment:

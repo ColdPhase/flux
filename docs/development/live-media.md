@@ -124,9 +124,13 @@ the raw samples remain the measurement record. These are local-container
 measurements, not public-link capacity or a four-person service limit. Keep
 raw trace files with the tested commit when reporting performance results.
 
-The test overlay alone allows TURN to relay to Docker's `172.16.0.0/12`
-bridge network, because the SFU's test ICE address is private. LiveKit denies
-restricted TURN peers by default. Production keeps that denial with the public
+The test overlay alone allows TURN to relay to the SFU's own Docker media
+address (`allow_restricted_peer_cidrs` with that one `/32`), because the SFU's
+test ICE address is private. It is not a range: Docker takes bridge networks
+from `172.16.0.0/12` and then from `192.168.0.0/16` once the first pool is used
+up (a host running several Compose projects), and a fixed `172.16.0.0/12` made
+every relay check fail there (`turns:` ICE error 701, no pair ever succeeded,
+2026-10-31). LiveKit denies restricted TURN peers by default. Production keeps that denial with the public
 `node_ip`; an operator using a private SFU peer must design a narrow allowed
 CIDR and document that network boundary, rather than copy the test exception.
 
