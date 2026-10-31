@@ -20,25 +20,10 @@
 <p align="center">
   <a href="https://coldphase.github.io/flux/"><b>Documentation</b></a> ·
   <a href="#quick-start">Quick start</a> ·
+  <a href="#self-hosting">Self-hosting</a> ·
   <a href="#connect-your-own-agent">Connect your agent</a> ·
   <a href="docs/CONTRIBUTING.md">Contributing</a>
 </p>
-
-**Who it is for.** Small software teams, such as a product lead, a designer and an engineer, who
-already hand some work to coding agents like Claude Code or Codex. When you come back to a project
-after a break, Flux shows what changed, what was decided and what is next, so you do not have to ask
-around. It is pre-release: see [project status](#project-status) before you rely on it.
-
-**Try it** with Git and Docker (no host Node.js or PostgreSQL). The first start builds Flux and takes
-a few minutes ([measured times](docs/development/time-to-first-run.md)):
-
-```sh
-git clone --depth 1 https://github.com/ColdPhase/flux.git && cd flux
-./flux up      # builds and starts Flux, prints its address
-./flux demo    # sample project and two logins
-```
-
-Then open the printed address and [connect your own agent](#connect-your-own-agent) if you like.
 
 <p align="center">
   <img src="docs/assets/readme/conversation-desktop.png" width="74%" alt="The Community garden sensors project on a desktop: the conversation, with the task made from a message, and beside it the accepted decision to measure soil moisture first, with its reason and the message it is based on.">
@@ -48,8 +33,17 @@ Then open the printed address and [connect your own agent](#connect-your-own-age
 <p align="center"><sub>A project on a 1440&nbsp;px desktop and a 390&nbsp;px phone, captured from the running
 application on the fictional <code>./flux demo</code> data (<a href="docs/assets/readme/README.md">how these were made</a>).</sub></p>
 
-The [product foundation](docs/product/README.md) describes the direction: human and
-agent collaboration, continuity of project knowledge, self-hosting and extensibility.
+<!-- MEDIA SLOT (#780): the two stills above and the GIF below are recaptured with scripts/record_media.sh
+     from the release candidate after the #763 round-2 review, light and dark, desktop and phone. -->
+
+Flux keeps a team's conversations and the work that comes out of them in one place: tasks,
+decisions with their reasons, documents and sketches, each linked to the message it came from. The
+people on the team and the agents they connect, such as Claude Code or Codex, work in the same
+projects, with the same permissions model. You run it on your own server.
+
+**Who it is for.** Small software teams, such as a product lead, a designer and an engineer, who
+already hand some work to coding agents. When you come back to a project after a break, Flux shows
+what changed, what was decided and what is next, so you do not have to ask around.
 
 ## Highlights
 
@@ -64,7 +58,22 @@ agent collaboration, continuity of project knowledge, self-hosting and extensibi
 - **Everywhere you are.** One calm design on the computer and the phone, installable as a PWA, with
   Web Push notifications and an inbox.
 - **Yours to run.** One Docker Compose stack started with `./flux up`, with backups, restore,
-  project export, upgrades and single sign-on.
+  project export, upgrades, single sign-on, and spaces that can be AI-free or encrypted at rest.
+
+<!-- MEDIA SLOT (#780): one small image per highlight (task from a message, Home catch-up, connect an
+     agent, map and wiki, phone and push, encrypted space), captured after the #763 round-2 review. -->
+
+## Why Flux
+
+| Instead of | Flux gives you |
+| --- | --- |
+| A chat where decisions scroll away | Decisions and tasks made from messages, linked back to them, and a Home that tells you what changed |
+| A separate tracker, wiki and whiteboard | The project's conversation, tasks, wiki and map in one place, with one search |
+| Agents that see everything, or nothing | Each agent gets only the projects and actions you grant; what it suggests waits in your Inbox until you answer |
+| A hosted service holding your team's work | Your server, your database, open formats: [project export](docs/operations/export.md) is JSON plus files |
+
+Flux is open source under the AGPL-3.0. Its public API types and SDK are Apache-2.0, so agents and
+integrations can use them freely ([licensing](docs/product/licensing.md)).
 
 ## Project status
 
@@ -89,45 +98,42 @@ cd flux
 ./flux demo    # optional: sample workspace, project, conversation and note; prints two logins
 ```
 
-This shallow clone skips older commits and their review captures, which remain
-available through the [evidence archive](docs/agents/evidence/README.md). Run
-`git fetch --unshallow` when you need the full project history.
-
 <p align="center"><img src="docs/assets/demo/flux-demo.gif" width="88%" alt="The core journey on the ./flux demo data: Home shows what changed since Ada left, with Jonas's question as her next step; it opens the project conversation; the Map tab shows the shared sketch; one action turns a message into a task; a decision is proposed from a message with its reason, accepted, and shown under that message."></p>
 
 <p align="center"><sub>The <code>./flux demo</code> data in the running app: return view, conversation, sketch, task and
 decision (<a href="docs/assets/demo/README.md">how this was recorded</a>).</sub></p>
 
 Then open the URL that `./flux up` prints, <http://127.0.0.1:8081/> by default. If port 8081 is
-taken, start the first time with another free port, for example `FLUX_PORT=8090 ./flux up`. The first `./flux up` takes a few
-minutes, because it downloads the dependencies and builds Flux
+taken, start the first time with another free port, for example `FLUX_PORT=8090 ./flux up`. The first
+`./flux up` takes a few minutes, because it downloads the dependencies and builds Flux
 ([measured times](docs/development/time-to-first-run.md)). To connect your own MCP client, such
 as Claude Code or Codex, follow [Connect your own agent](#connect-your-own-agent).
 
-The first `./flux up` in a terminal also asks once whether people may sign in with their own ChatGPT and Claude subscriptions (Enter means yes, for Codex; Claude Code needs a typed `y` to Anthropic's Commercial Terms; a host that cannot run it gets one line saying why instead); `./flux ai on` asks later, and without a terminal nothing is asked ([operator guide](docs/operations/agent-runtime.md)). `./flux up` never overwrites an existing `docker/.env`. An older root `.env` is moved once with its secrets and project name intact; if both files exist, choose the intended one before continuing. `app/.env.example` documents variables and is never loaded.
-Other commands: `./flux dev` (hot reload in Docker), `./flux down`, `./flux logs`,
-`./flux reset` (deletes data after confirmation), `./flux clean` (also removes the
-images this checkout built) and `./flux help`. Backups, restore, project export and
-upgrades (`./flux backup`, `restore`, `export`, `upgrade`) are described in
-[operations](docs/operations/README.md). The
-[application foundation guide](docs/development/application-foundation.md) covers the
-launcher, configuration, backups and the integration fixture;
-[containers](docs/development/containers.md) describes every service and variable.
+The first `./flux up` in a terminal also asks once whether people may sign in with their own ChatGPT
+and Claude subscriptions (Enter means yes, for Codex; Claude Code needs a typed `y` to Anthropic's
+Commercial Terms; a host that cannot run it gets one line saying why instead); `./flux ai on` asks
+later, and without a terminal nothing is asked ([operator guide](docs/operations/agent-runtime.md)).
+`./flux up` never overwrites an existing `docker/.env`.
 
-Run the checks, all in Docker. Each run uses its own Compose project and removes only its
-own test data:
+Other commands: `./flux down`, `./flux logs`, `./flux reset` (deletes data after confirmation),
+`./flux clean` (also removes the images this checkout built) and `./flux help`. The shallow clone
+skips older commits and their review captures, which remain available through the
+[evidence archive](docs/agents/evidence/README.md); `git fetch --unshallow` brings the full history.
 
-```sh
-./scripts/check_application.sh   # build, type check, lint, API, architecture and end-to-end tests
-./scripts/check_ui.sh            # browser tests of the web app (Playwright)
-./scripts/check_runtime.sh       # production-mode stack: worker jobs, migration and restart keep data
-python3 scripts/check_agent_setup.py
-python3 -m unittest discover -s tests -p 'test_*.py'
-```
+## Self-hosting
 
-Changes to the launcher or operations also have `./scripts/check_flux_cli.sh` and
-`./scripts/check_backup.sh`. [Contributing](docs/CONTRIBUTING.md) says which checks fit
-which change.
+To run Flux for a team on your own domain, start with the
+[self-hosting guide](https://coldphase.github.io/flux/operate/) ([source](docs/operations/README.md)):
+
+| | |
+| --- | --- |
+| [Requirements](docs/operations/requirements.md) | Linux with Docker Compose, 4 GB of memory, a domain name |
+| [Installation](docs/operations/install.md) | A production server from a source checkout, step by step |
+| [HTTPS and reverse proxies](docs/operations/reverse-proxy.md) | Caddy, nginx and Traefik examples, each tested |
+| [Configuration reference](docs/operations/configuration.md) | Every setting with its type and default, generated from the code |
+| [Backup and restore](docs/operations/backup-restore.md), [upgrade](docs/operations/upgrade.md) | `./flux backup`, `./flux restore`, `./flux upgrade` |
+| [Administration in the app](docs/operations/administration.md) | Spaces, roles, invite links, the AI switch, encrypted spaces |
+| [Monitoring](docs/operations/monitoring.md), [hardening](docs/operations/hardening.md), [troubleshooting](docs/operations/troubleshooting.md) | Keeping it healthy and safe |
 
 ## Connect your own agent
 
@@ -191,7 +197,49 @@ against a clean clone on a loopback address, with a connection that grants only 
 and Claude Code with a model account answered step 6 3 min 49 s after `git clone`
 ([the run](docs/development/time-to-first-run.md#linux-x86_64-2026-10-30-evening-the-first-agent-reply-from-a-clean-clone-320)).
 
-## Repository layout
+## Documentation
+
+- [Documentation site](https://coldphase.github.io/flux/): getting started, self-hosting, integrating
+  and security, generated from the files in [`docs/`](docs/README.md).
+- [Integrating with Flux](docs/integrations/README.md): the MCP connection, permissions and the
+  project export format.
+- [Product foundation](docs/product/README.md): the direction, human and agent collaboration,
+  continuity of project knowledge, self-hosting and extensibility.
+- [Security policy](docs/SECURITY.md) and [encrypted spaces](docs/product/encrypted-workspaces.md).
+
+## Contribute
+
+Bug reports, documentation, accessibility feedback and focused fixes are welcome.
+Read [CONTRIBUTING.md](docs/CONTRIBUTING.md) first and discuss larger features or
+architecture changes in an issue before starting.
+
+- [Report a bug or propose a feature](https://github.com/ColdPhase/flux/issues/new/choose)
+- [Project board](https://github.com/orgs/ColdPhase/projects/1)
+- [Discussions](https://github.com/ColdPhase/flux/discussions)
+- [Report a security vulnerability privately](docs/SECURITY.md)
+
+Develop with hot reload in Docker with `./flux dev`. Run the checks, all in Docker; each run uses its
+own Compose project and removes only its own test data:
+
+```sh
+./scripts/check_application.sh   # build, type check, lint, API, architecture and end-to-end tests
+./scripts/check_ui.sh            # browser tests of the web app (Playwright)
+./scripts/check_runtime.sh       # production-mode stack: worker jobs, migration and restart keep data
+python3 scripts/check_agent_setup.py
+python3 -m unittest discover -s tests -p 'test_*.py'
+```
+
+Changes to the launcher or operations also have `./scripts/check_flux_cli.sh` and
+`./scripts/check_backup.sh`. [Contributing](docs/CONTRIBUTING.md) says which checks fit
+which change; the [application foundation guide](docs/development/application-foundation.md) and
+[containers](docs/development/containers.md) describe the launcher and every service.
+
+Much of the development is done by two coding agents (Codex and Claude) working
+through GitHub issues and pull requests with independent review; see
+[agent collaboration](docs/agents/README.md). The [documentation index](docs/README.md)
+lists everything else.
+
+### Repository layout
 
 | Path | Contents |
 | --- | --- |
@@ -217,22 +265,6 @@ and Claude Code with a model account answered step 6 3 min 49 s after `git clone
 
 Dependency directions between these are described and enforced in
 [architecture](docs/development/architecture.md).
-
-## Contribute
-
-Bug reports, documentation, accessibility feedback and focused fixes are welcome.
-Read [CONTRIBUTING.md](docs/CONTRIBUTING.md) first and discuss larger features or
-architecture changes in an issue before starting.
-
-- [Report a bug or propose a feature](https://github.com/ColdPhase/flux/issues/new/choose)
-- [Project board](https://github.com/orgs/ColdPhase/projects/1)
-- [Discussions](https://github.com/ColdPhase/flux/discussions)
-- [Report a security vulnerability privately](docs/SECURITY.md)
-
-Much of the development is done by two coding agents (Codex and Claude) working
-through GitHub issues and pull requests with independent review; see
-[agent collaboration](docs/agents/README.md). The [documentation index](docs/README.md)
-lists everything else.
 
 ## License
 

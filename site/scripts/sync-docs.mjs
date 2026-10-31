@@ -19,13 +19,25 @@ const MEDIA = join(SITE, 'public/media');
 
 /**
  * Every published page. `from` is a repository path; `sections` publishes only those headings of it
- * (with everything under them); `title` overrides the document's first heading.
+ * (with everything under them); `title` overrides the document's first heading; `tocDepth` limits the page's table
+ * of contents to headings up to that level.
  */
 export const PAGES = [
-  { route: '', from: 'README.md', sections: ['Highlights', 'Project status'], splash: true },
+  { route: '', from: 'README.md', sections: ['Highlights', 'Why Flux', 'Project status'], splash: true },
   { route: 'start/quick-start', from: 'README.md', sections: ['Quick start'], title: 'Quick start' },
   { route: 'start/connect-your-agent', from: 'README.md', sections: ['Connect your own agent'], title: 'Connect your own agent' },
   { route: 'operate', from: 'docs/operations/README.md' },
+  { route: 'operate/requirements', from: 'docs/operations/requirements.md' },
+  { route: 'operate/install', from: 'docs/operations/install.md' },
+  { route: 'operate/configuration', from: 'docs/operations/configuration.md', tocDepth: 2 },
+  { route: 'operate/administration', from: 'docs/operations/administration.md' },
+  { route: 'operate/architecture', from: 'docs/operations/architecture.md' },
+  { route: 'operate/encrypted-spaces', from: 'docs/operations/encrypted-spaces.md' },
+  { route: 'operate/monitoring', from: 'docs/operations/monitoring.md' },
+  { route: 'operate/scaling', from: 'docs/operations/scaling.md' },
+  { route: 'operate/hardening', from: 'docs/operations/hardening.md' },
+  { route: 'operate/troubleshooting', from: 'docs/operations/troubleshooting.md' },
+  { route: 'operate/mobile-and-push', from: 'docs/operations/mobile-and-push.md' },
   { route: 'operate/install-release', from: 'docs/operations/install-release.md' },
   { route: 'operate/release-guide', from: 'docs/operations/release-guide.md' },
   { route: 'operate/upgrade', from: 'docs/operations/upgrade.md' },
@@ -170,6 +182,8 @@ function build(page) {
   const title = page.title ?? (page.splash ? 'Flux' : h1?.heading[2].replace(/`/g, ''));
   if (!title) throw new Error(`${page.from}: no title`);
   const front = [`title: ${yaml(title)}`, `editUrl: ${yaml(`${REPO}/edit/main/${page.from}`)}`];
+  // A long reference lists only its sections in the page's table of contents.
+  if (page.tocDepth) front.push('tableOfContents:', '  minHeadingLevel: 2', `  maxHeadingLevel: ${page.tocDepth}`);
   if (page.splash) {
     const pitch = source.match(/<p align="center"><b>(.+?)<\/b><\/p>/);
     if (!pitch) throw new Error('README.md: no centred bold pitch under the header');
@@ -177,6 +191,7 @@ function build(page) {
       '    light: ../../../../docs/assets/brand/kreska-light.svg', '    dark: ../../../../docs/assets/brand/kreska-dark.svg',
       '  actions:', '    - text: Quick start', `      link: ${BASE}/start/quick-start/`, '      icon: right-arrow',
       '    - text: Connect your agent', `      link: ${BASE}/start/connect-your-agent/`, '      variant: minimal',
+      '    - text: Self-host', `      link: ${BASE}/operate/`, '      variant: minimal',
       '    - text: GitHub', `      link: ${REPO}`, '      variant: minimal', '      icon: github');
     // The screenshots under the README header lead the page too.
     const shots = source.match(/<p align="center">\s*<img[\s\S]*?<\/p>\s*\n\s*<p align="center"><sub>[\s\S]*?<\/sub><\/p>/);
