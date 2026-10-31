@@ -1,3 +1,6 @@
+import { useState } from 'react';
+import { Tabs, type TabItem } from '../ui';
+
 // Equal setup for every external MCP client (F-020 PROV-5): each gets its own add and login
 // commands, and all of them get the same OAuth consent, grants and presentation in Flux. The
 // client label a person picks below is a recognition aid, not a verified identity.
@@ -22,37 +25,43 @@ function isLoopbackOrigin(origin: string) {
   } catch { return false; }
 }
 
-export function ClientGuide({ origin }: { origin: string }) {
+type GuideClient = 'claude_code' | 'codex' | 'other';
+const GUIDE_TABS: TabItem[] = [
+  { id: 'claude_code', label: 'Claude Code' },
+  { id: 'codex', label: 'Codex' },
+  { id: 'other', label: 'Other client' },
+];
+
+/**
+ * One client at a time (#763 AG-2): a tab per client, each with its own add and login commands and how work starts. Release
+ * verification notes live in docs and the CHANGELOG, never on this page (#763 AG-3).
+ */
+export function ClientGuide({ origin, initial = 'claude_code' }: { origin: string; initial?: GuideClient }) {
   const url = `${origin}/mcp`;
+  const [client, setClient] = useState<GuideClient>(initial);
   return <div className="connection__guide">
     <h2>Connect your MCP client</h2>
-    <p>These client settings authorize access. The supplied Start/Resume host action appears with your saved connection and on its project’s Agents view.</p>
-    <p>Add this Flux address to the client you already use. Each client opens this page to ask for your consent, and each gets exactly the same access you approve here.</p>
+    <p>Add this Flux address to the client you already use. It opens Flux to ask for your consent, and gets only the access you approve.</p>
     {isLoopbackOrigin(origin)
       ? <p>This address works only on this computer. A client on another computer needs an HTTPS address for this Flux server, which its operator sets up.</p>
       : null}
-    <section className="connection__client" aria-labelledby="guide-claude-code">
-      <h3 id="guide-claude-code">Claude Code</h3>
-      <code>claude mcp add --transport http flux {url}</code>
-      <code>claude mcp login flux</code>
-      <h4>Start work</h4>
+    <Tabs items={GUIDE_TABS} value={client} onChange={(id) => setClient(id as GuideClient)} label="Your client" panelIdPrefix="guide" className="connection__tabs" />
+    {client === 'claude_code' ? <section className="connection__client" role="tabpanel" id="guide-claude_code" aria-labelledby="guide-tab-claude_code">
+      <code>{`claude mcp add --transport http flux ${url}\nclaude mcp login flux`}</code>
+      <h3>Start work</h3>
       <p>In Claude Code, type <code>/mcp__flux__start_work</code> and choose your project. Later, <code>/mcp__flux__resume_work</code> picks up where it left off and reads only what changed. Flux supplies the instructions; you write no prompt.</p>
-      <p>Verified with a real Claude Code 2.1.285 account on 30 October 2026: Start created the planned task, and Resume found the changed plan and recorded a result.</p>
-    </section>
-    <section className="connection__client" aria-labelledby="guide-codex">
-      <h3 id="guide-codex">Codex</h3>
-      <code>codex mcp add flux --url {url}</code>
-      <code>codex mcp login flux</code>
+    </section> : client === 'codex' ? <section className="connection__client" role="tabpanel" id="guide-codex" aria-labelledby="guide-tab-codex">
+      <code>{`codex mcp add flux --url ${url}\ncodex mcp login flux`}</code>
       <p>Codex starts signing in when it adds the server; run the login command if it asks you to.</p>
-      <h4>Start work</h4>
-      <p>After selecting your connection and project, use its supplied Start/Resume command. Resume continues the same saved native thread. Verified with a real Codex 0.160.1 account on 30 October 2026.</p>
-      <p>Flux is tested with Codex 0.160.1. A Codex that speaks MCP 2025-06-18 or 2026-07-28 connects; one that offers another version is refused with “Unsupported protocol version”. Update Codex to a tested version.</p>
-    </section>
-    <section className="connection__client" aria-labelledby="guide-other">
-      <h3 id="guide-other">Another MCP client</h3>
+      <h3>Start work</h3>
+      <p>Once your connection is saved, its Start and Resume commands appear with it below and on the project’s Agents view. Resume continues the same Codex thread.</p>
+      <p>If Codex answers “Unsupported protocol version”, update Codex.</p>
+    </section> : <section className="connection__client" role="tabpanel" id="guide-other" aria-labelledby="guide-tab-other">
       <p>Add a remote MCP server that uses streamable HTTP with this address. The client must support OAuth sign-in.</p>
       <code>{url}</code>
-    </section>
+      <h3>Start work</h3>
+      <p>Start it from your client: ask it to start work on your project in Flux.</p>
+    </section>}
     <p>Use your own client account for compute. Flux receives no provider credentials. A connection can do only what you allow on this page: read the selected projects, suggest next steps for review, and run only the actions you grant.</p>
   </div>;
 }

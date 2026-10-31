@@ -5,6 +5,7 @@ import { eventRepository } from './events.js';
 import { projectRepository } from './projects.js';
 import { workspaceAiSweepRows } from './workspace-ai.js';
 import { workspaceEncryptionRows } from './workspace-encryption.js';
+import { workspaceInviteRepository } from './workspace-invites.js';
 import { workspaceRepository } from './workspaces.js';
 
 /**
@@ -17,6 +18,7 @@ import { workspaceRepository } from './workspaces.js';
  */
 export const accessPorts = {
   workspaces: workspaceRepository,
+  invites: workspaceInviteRepository,
   projects: projectRepository,
   agents: agentRepository,
   drafts: draftRepository,

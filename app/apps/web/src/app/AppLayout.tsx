@@ -28,7 +28,6 @@ import { LiveBar } from '../live/LiveBar';
 import '../live/live.css';
 import { CreateHost } from '../create/CreateWindow';
 import './project-header.css';
-import { useNeedsYou } from '../returns/useNeedsYou';
 import { WorkReadProvider, useProjectWorkSummary } from '../work/WorkReadContext';
 import { OverviewContext } from '../project/OverviewContext';
 import { remember, remembered } from './remembered';
@@ -132,7 +131,7 @@ function AppLayoutContent() {
   // A page inside Settings (#266 PF-5): on the phone its header leads back instead of opening the drawer.
   const settingsPage = /^\/settings\/./.test(location.pathname);
   // Back from a direct link goes to the page that leads there: the AI pages to Agents and AI (#513).
-  const settingsParent = /^\/settings\/(assistant|background-compute|ai-connections)(\/|$)/.test(location.pathname) ? '/settings/agents'
+  const settingsParent = /^\/settings\/(assistant|background-compute|ai-connections|agents\/connect)(\/|$)/.test(location.pathname) ? '/settings/agents'
     : /^\/settings\/people\/./.test(location.pathname) ? '/settings/people' : '/settings';
   const navDrawer = useMediaQuery(MEDIA.navDrawer);
   const tablet = useMediaQuery(MEDIA.tablet);
@@ -150,7 +149,7 @@ function AppLayoutContent() {
   // The phone's "+" sheet (#341) and the one Create window (#345) are separate: the sheet's Task opens the window.
   const [createOpen, setCreateOpen] = useState(false);
   const [create, setCreate] = useState<CreateRequest | null>(null);
-  const paneRef = useRef<HTMLDivElement>(null);
+  const paneRef = useRef<HTMLElement>(null);
   const sideRef = useRef<HTMLElement>(null);
   const drawerTitleId = useId();
 
@@ -263,7 +262,8 @@ function AppLayoutContent() {
     if (!known || event.kind !== 'dm.message_sent.v1' || location.pathname === '/dm') revalidator.revalidate();
   }, () => revalidator.revalidate());
 
-  const inboxUnread = useInboxDot(me.user.id, location.pathname);
+  const inboxCounts = useInboxDot(me.user.id, location.pathname);
+  const inboxUnread = inboxCounts.count;
   // The computer's sidebar collapses to its 64px rail with "[" (F-026 S19), remembered on this device.
   const [railed, setRailed] = useState(() => { try { return localStorage.getItem(SIDEBAR_KEY) === 'rail'; } catch { return false; } });
   const toggleRail = useCallback(() => setRailed((current) => {
@@ -572,12 +572,10 @@ function AppLayoutContent() {
     toggleDetails(false);
   };
   useLayoutEffect(() => { closeRef.current = closePanel; });
-  // "What matters" (#133): a quiet count of what needs you; refreshed when the panel closes.
-  const needsYou = useNeedsYou(activeProject ? projectId ?? null : null, recapOpen);
-  const toggleRecap = () => {
-    if (!projectId) return;
-    if (recapOpen) toggleDetails(false); else shell.openDetails({ kind: 'recap', projectId });
-  };
+  // "N needs you" counts this project's items of the Inbox's one queue (#763 A2), as the sidebar counts them all; it
+  // opens the Inbox on them. "What matters" stays its own quiet entry in More.
+  const needsYou = activeProject && projectId ? inboxCounts.byProject.get(projectId) ?? 0 : 0;
+  const openNeedsYou = () => { if (projectId) navigate(`/inbox?project=${encodeURIComponent(projectId)}`); };
   const dmId = location.pathname.match(/^\/dm\/([^/]+)/)?.[1];
   const activeDm = directMessages.find((dm) => dm.id === dmId);
   // Messages · Sketches: a DM's sketches stay inside it, for exactly its people (#96).
@@ -779,7 +777,7 @@ function AppLayoutContent() {
             <span className="top__actions" ref={setActionSlot} />
             {focusing && focus.until ? <FocusPill until={focus.until} uncertain={focus.uncertain} onEnd={() => void focus.toggle()} /> : (
               <>
-                {activeProject && needsYou ? <NeedsYouChip count={needsYou} open={recapOpen} onToggle={toggleRecap} /> : null}
+                {activeProject && needsYou ? <NeedsYouChip count={needsYou} project={activeProject?.name ?? null} onOpen={openNeedsYou} /> : null}
                 {project?.people ? <HeaderFaces people={project.people} audience={audience} onOpen={openAudience} /> : null}
                 {activeProject ? <LiveEntry /> : null}
                 <MoreMenu items={moreItems} />
@@ -792,12 +790,13 @@ function AppLayoutContent() {
         {/* The conversation and its one panel share a row under the one header (Spokój, F-026 layout per screen). */}
         <div className="app__body">
           <RouteProgress />
-          <div className="app__pane" id="content" ref={paneRef} tabIndex={-1}>
+          {/* The one main landmark, the skip link's target (#763 AX-1): a view's own header is then not a second banner. */}
+          <main className="app__pane" id="content" ref={paneRef} tabIndex={-1}>
             <Dissolve id={routeView(location.pathname)} direction={viewWay} host={paneRef} dress=".app" shift="--shift-view" time="--dur-view" layer={19} skip=".deferred-surface--stage">
               <Outlet />
               <DeferredLiveStage />
             </Dissolve>
-          </div>
+          </main>
           <SidePanel open={detailsOpen} onClose={closePanel} title={recapOpen ? 'What matters' : ownedShown ? ownedShown.label : 'Details'} closeLabel={ownedShown?.closeLabel} chip={objectChip} id="details" back={back} startFull={sheetStart ?? ownedShown?.startFull} onHeight={(full) => keepPlace('sheet', full)}
             contentKey={ownedShown ? `owned:${ownedShown.key}` : typeof detailsView === 'object' ? JSON.stringify(detailsView) : detailsView} depth={trail.length + (ownedShown?.back ? 1 : 0)}
             context={phone && (detailsView === 'place' || typeof detailsView === 'object' && detailsView.kind === 'overview') ? <OverviewContext message={typeof detailsView === 'object' && detailsView.kind === 'overview' && !!detailsView.messageId} /> : undefined}>

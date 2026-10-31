@@ -76,7 +76,6 @@ export function parseClock(value: unknown, label = 'time'): number {
   return Number(match[1]) * 60 + Number(match[2]);
 }
 const pad = (value: number) => String(value).padStart(2, '0');
-export const clockText = (minutes: number) => `${pad(Math.floor(minutes / 60))}:${pad(minutes % 60)}`;
 /** "9:00": hours without a leading zero, as the app writes times everywhere. */
 export const shortClock = (minutes: number) => `${Math.floor(minutes / 60)}:${pad(minutes % 60)}`;
 

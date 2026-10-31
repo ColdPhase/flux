@@ -61,11 +61,6 @@ export function freeSpot(rects: Rect[], from: Rect | null, size: { w: number; h:
   return { x: from.x, y };
 }
 
-/** Reading order for the list view: top to bottom, then left to right, in bands. */
-export function readingOrder(thoughts: Thought[]): Thought[] {
-  return [...thoughts].sort((a, b) => (Math.round(a.y / 80) - Math.round(b.y / 80)) || (a.x - b.x) || (a.y - b.y));
-}
-
 export interface Projection {
   rects: Map<string, Rect>;
   /** Card width on the narrow layout. */

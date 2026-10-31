@@ -1,7 +1,7 @@
 import { request as httpRequest } from 'node:http';
 import { isSlotReport, isSupervisorResult, parseSupervisorFrame, SUPERVISOR_ERRORS, type RunFrame, type SlotReport, type SupervisorFrame, type SupervisorResult } from './frames.js';
 import { NdjsonReader } from './ndjson.js';
-import { RUNTIME_PORTS, SLOT_NAME, UUID } from './names.js';
+import { SLOT_NAME, UUID } from './names.js';
 import { requestBody, type SupervisorRequest } from './requests.js';
 import { arrayOf, object, oneOf, str, type Check } from './shape.js';
 import { RUN_FRAME_LIMITS, SUPERVISOR_TIMEOUTS_MS } from './supervisor-client.js';
@@ -66,8 +66,6 @@ async function readBounded(response: Response, limit: number): Promise<string | 
   } catch { return null; }
   return Buffer.concat(chunks).toString('utf8');
 }
-
-export const DEFAULT_MANAGER_URL = `http://runtime-manager-control:${RUNTIME_PORTS.manager}`;
 
 /** The API's and worker's client of the manager. Answers that are not exactly the API's shapes are `protocol`. */
 export function createRuntimeManagerClient({ url, secret, fetch: fetchImpl = fetch }: ManagerClientOptions): RuntimeManagerClient {

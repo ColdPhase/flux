@@ -131,10 +131,23 @@ export function agentStopRows(tx: DbExecutor) {
           .innerJoin(connections, eq(connections.id, schema.agentRuntimeSessions.connectionId))
           .where(inArray(connections.agentId, agentIds))) signed.add(row.agentId);
       }
-      return rows.map((row) => ({ agent: { id: row.agentId, name: row.agentName },
-        task: { id: row.taskId, projectId: row.projectId, projectName: row.projectName, number: row.number, title: row.title },
-        working: working.has(`${row.agentId}:${row.projectId}:${row.taskId}`),
-        online: live.has(row.agentId), signedIn: signed.has(row.agentId) }));
+      // #763 AG-4: a pause in force on the held task, so the sidebar card says "Paused by …" as the Agents view does.
+      const paused = new Map<string, { id: string; name: string }>();
+      if (rows.length) {
+        const p = schema.agentPauses;
+        for (const row of await tx.select({ taskId: p.taskId, agentId: p.agentId, byId: p.pausedBy, byName: schema.authUsers.name })
+          .from(p).innerJoin(schema.authUsers, eq(schema.authUsers.id, p.pausedBy))
+          .where(and(inArray(p.taskId, rows.map((item) => item.taskId)), inArray(p.agentId, agentIds)))) {
+          paused.set(`${row.agentId}:${row.taskId}`, { id: row.byId, name: row.byName });
+        }
+      }
+      return rows.map((row) => {
+        const by = paused.get(`${row.agentId}:${row.taskId}`);
+        return { agent: { id: row.agentId, name: row.agentName },
+          task: { id: row.taskId, projectId: row.projectId, projectName: row.projectName, number: row.number, title: row.title },
+          working: working.has(`${row.agentId}:${row.projectId}:${row.taskId}`),
+          online: live.has(row.agentId), signedIn: signed.has(row.agentId), paused: by ? { by } : null };
+      });
     },
     /** Pauses in force (#160 AC-5), newest first. */
     async pauses(projectId: string, limit = 50) {

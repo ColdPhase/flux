@@ -131,4 +131,3 @@ export function workspaceAiSweepRows(db: DbExecutor) {
     },
   };
 }
-export type WorkspaceAiSweepRows = ReturnType<typeof workspaceAiSweepRows>;

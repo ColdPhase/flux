@@ -160,7 +160,8 @@ class ConnectAiJourney(unittest.TestCase):
         self.assertTrue(self.above(card, flux.get_by_text(OFF_SENTENCE)), "the assistant card comes before the ways to connect")
         self.assertTrue(self.above(card, api_key))
         # Your agent app: mode (b) connections; no client guide with command-line words on this page.
-        expect(app.get_by_role("link", name=re.compile(f"^{CONNECTION}"))).to_have_attribute("href", "/connect-agent")
+        # #763 SG-6: the client and its Agent tag first, the device in the meta line ("Codex · for you · Ines desk laptop").
+        expect(app.get_by_role("link", name=re.compile(f"^Codex.*for you · {CONNECTION}"))).to_have_attribute("href", "/connect-agent")
         expect(app.get_by_role("link", name="Local co-work on this computer")).to_have_attribute("href", "/connect-agent")
         expect(app).not_to_contain_text("claude mcp add")
         for text in (page.locator("main, .pane-in").first.inner_text(),):

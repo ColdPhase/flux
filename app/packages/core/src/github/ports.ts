@@ -15,7 +15,6 @@ export interface GithubDelivery {
   origin: 'webhook' | 'reconcile'; providerObjectId: string | null;
   targetBindingId?: string | null;
 }
-export interface GithubProcessing { deliveryId: string; bindingId: string }
 export interface GithubAccess {
   requireProject(principal: Principal, action: 'read' | 'write' | 'manage', projectId: string): Promise<{ workspaceId: string }>;
 }

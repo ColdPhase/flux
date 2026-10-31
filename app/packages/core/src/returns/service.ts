@@ -4,7 +4,7 @@ import type {
   ReturnSummaryQuery, SaveReturnPointCommand,
 } from '@flux/contracts';
 import { InvalidInputError } from '../access/errors.js';
-import { isQuestion, mentions } from '../notifications/addressing.js';
+import { isQuestion, mentions, mentionsSomeone } from '../notifications/addressing.js';
 import type { Principal } from '../principal.js';
 import type { AudienceEvent, ResolvedPlace, ReturnMessage, ReturnPorts, ReturnSketch, StoredReturnPoint } from './ports.js';
 import { GITHUB_RULE_AUTOMATION } from '../github/rules.js';
@@ -456,7 +456,8 @@ export function createReturnUseCases(ports: ReturnPorts) {
       const answered = !!lastPost && lastPost > message.createdAt;
       const addressed = mentions(message.body, myName);
       const involved = (conversation.createdBy.kind === 'human' && conversation.createdBy.id === userId) || !!lastPost;
-      if (!answered && (addressed || (involved && isQuestion(message.body)))) {
+      // A question addressed to someone else by name is theirs, even in a conversation you are part of (#763 A2).
+      if (!answered && (addressed || (involved && isQuestion(message.body) && !mentionsSomeone(message.body)))) {
         const author = nameOf(`${message.author.kind}:${message.author.id}`)!;
         items.push({ ...base, kind: 'question', actor: author,
           text: addressed ? `${author} asked you: ${quote(excerpt(message.body))}` : `${author} asked: ${quote(excerpt(message.body))}`,
@@ -547,5 +548,3 @@ export function createReturnUseCases(ports: ReturnPorts) {
     },
   };
 }
-
-export type ReturnUseCases = ReturnType<typeof createReturnUseCases>;

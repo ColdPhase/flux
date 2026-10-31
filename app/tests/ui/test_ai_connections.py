@@ -214,20 +214,33 @@ class AiConnectionSettings(unittest.TestCase):
     def test_07_connect_guide_and_details_treat_every_client_and_provider_alike(self) -> None:
         page = self.page()
         page.goto("/connect-agent")
+        # #763 AG-2: managing connections is a Settings page; the way back is first, on the left.
+        expect(page).to_have_url(re.compile(r"/settings/agents/connect$"))
+        back = page.locator(".connection-settings__back")
+        expect(back).to_have_text("Agents and AI")
+        expect(back).to_have_attribute("href", "/settings/agents")
         guide = page.locator(".connection__guide")
         expect(guide.get_by_role("heading", name="Connect your MCP client")).to_be_visible()
-        for client in ("Claude Code", "Codex", "Another MCP client"):
-            expect(guide.get_by_role("heading", name=client, exact=True)).to_be_visible()
+        self.assertLess(back.bounding_box()["x"], guide.bounding_box()["x"] + 1, "the way back starts at the content's left edge")
+        # One client at a time (#763 AG-2): a tab each, with its own commands.
+        tabs = guide.get_by_role("tablist", name="Your client")
+        for client in ("Claude Code", "Codex", "Other client"):
+            expect(tabs.get_by_role("tab", name=client, exact=True)).to_be_visible()
         expect(guide).to_contain_text(f"claude mcp add --transport http flux {ORIGIN}/mcp")
+        expect(guide).to_contain_text("claude mcp login flux")
+        expect(guide).to_contain_text("/mcp__flux__start_work")
+        expect(guide).not_to_contain_text("codex mcp add")
+        tabs.get_by_role("tab", name="Codex", exact=True).click()
         expect(guide).to_contain_text(f"codex mcp add flux --url {ORIGIN}/mcp")
         expect(guide).to_contain_text("codex mcp login flux")
-        # #160 AC-2 / #460: Codex starts from Flux's playbook; the guide says how, and which Codex versions are tested.
-        expect(guide).not_to_contain_text("Start and Resume are pending")
-        expect(guide).to_contain_text("use its supplied Start/Resume command")
-        expect(guide).to_contain_text("Codex 0.160.1")
         expect(guide).to_contain_text("Unsupported protocol version")
-        expect(guide).to_contain_text("/mcp__flux__start_work")
-        expect(guide).to_contain_text("Verified with a real Claude Code 2.1.285 account on 30 October 2026")
+        expect(guide).not_to_contain_text("claude mcp add")
+        tabs.get_by_role("tab", name="Other client", exact=True).click()
+        expect(guide).to_contain_text("Start it from your client")
+        # #763 AG-3: no release-verification notes or tested-version claims on the page.
+        body = page.locator("body").inner_text()
+        for internal in ("Verified with a real", "is tested with", "pending native", "Flux checkout"):
+            self.assertNotIn(internal, body)
         # #320: the quick start's loopback http:// address is the one to use; HTTPS is needed only
         # for a client on another computer, so the guide must not ask for it here.
         self.assertRegex(ORIGIN, r"^http://(127\.\d+\.\d+\.\d+|localhost)(:\d+)?$", "this suite runs on a loopback http origin")
@@ -235,12 +248,12 @@ class AiConnectionSettings(unittest.TestCase):
         expect(guide).to_contain_text("This address works only on this computer.")
         expect(guide).not_to_contain_text("Use your self-hosted Flux HTTPS address")
         expect(guide).to_contain_text("run only the actions you grant")
+        tabs.get_by_role("tab", name="Claude Code", exact=True).click()
         shot(page, "ai-connection-1440-connect-guide")
-        # Claude Code and Codex each have their own "Start work" (#160 AC-2); this shot is Codex's.
-        guide.get_by_role("region", name="Codex").get_by_role("heading", name="Start work").scroll_into_view_if_needed()
+        tabs.get_by_role("tab", name="Codex", exact=True).click()
         shot(page, "ai-connection-1440-connect-guide-codex")
         page.set_viewport_size({"width": 390, "height": 844})
-        guide.get_by_role("heading", name="Codex", exact=True).scroll_into_view_if_needed()
+        guide.scroll_into_view_if_needed()
         shot(page, "ai-connection-390-connect-guide-codex")
         self.assertLessEqual(page.evaluate("document.documentElement.scrollWidth"), page.evaluate("window.innerWidth"))
         page.set_viewport_size({"width": 1440, "height": 900})
@@ -380,9 +393,9 @@ class AiConnectionSettings(unittest.TestCase):
             self.assertEqual(positions[f"unavailable-{device}"], positions[f"available-{device}"],
                              f"{device}: the status line, AI connections, usage, rules and Add a connection keep their places")
 
-    def test_11_a_codex_host_action_names_its_real_account_verification(self) -> None:
-        """#635/#160: the Codex Start/Resume host action names the real-account Start and exact-thread Resume recorded on
-        2026-10-30 (docs/development/evidence/160-workflow/README.md). The Codex connection is created through the API."""
+    def test_11_a_codex_host_action_speaks_to_the_person(self) -> None:
+        """#635/#160, #763 AG-3: the Codex Start/Resume host action gives its commands in plain words, without the release
+        verification notes (those stay in docs/development/evidence/160-workflow/README.md). The connection is created through the API."""
         page = self.page()
         headers = {"origin": ORIGIN, "content-type": "application/json"}
 
@@ -401,10 +414,13 @@ class AiConnectionSettings(unittest.TestCase):
         page.locator("label.connection__choice", has_text="Ada Codex laptop").locator("input").check()
         host = page.locator(".mcp-permissions .cowork-host-actions")
         expect(host).to_have_count(1)
-        expect(host.locator("summary")).to_have_text("Start / Resume on this computer")
-        expect(host).to_contain_text("Verified with a real Codex 0.160.1 account on 30 October 2026")
-        expect(page.locator(".connection__guide")).to_contain_text("Resume continues the same saved native thread")
-        expect(page.locator(".connection__guide")).not_to_contain_text("pending native verification")
+        expect(host.locator("summary")).to_have_text("Start / Resume in Codex")
+        host.locator("summary").click()
+        expect(host).to_contain_text("./flux cowork start --client codex")
+        expect(host).to_contain_text("in the folder where Flux was installed")
+        # #763 AG-3: words for the person, not release QA notes.
+        for internal in ("Verified with a real", "Flux checkout", "built Docker image", "0.160.1"):
+            expect(host).not_to_contain_text(internal)
         shot(page, "ai-connection-1440-codex-host-verified")
 
 

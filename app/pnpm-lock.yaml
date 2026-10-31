@@ -409,9 +409,6 @@ importers:
       '@flux/runtime-protocol':
         specifier: workspace:*
         version: link:../../packages/runtime-protocol
-      drizzle-orm:
-        specifier: 0.45.3
-        version: 0.45.3(patch_hash=c4464c575bb21b7d76a56f7c31ea0c5c7f6b3fca4e40581583dadd6e0944f9e3)(@types/pg@8.15.5)(kysely@0.29.6)(pg@8.23.0)
       nodemailer:
         specifier: 10.0.10
         version: 10.0.10

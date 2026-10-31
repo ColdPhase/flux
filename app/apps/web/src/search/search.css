@@ -109,7 +109,6 @@
 @media (pointer: coarse) {
   .search__chip, .search__place .ui-select, .search__again, .jump__opt:not(.sr) { min-height: 44px; }
   .sr { min-height: 44px; }
-  .side__jump { min-height: 44px; }
 }
 @media (max-width: 640px) {
   .jump__field { padding-top: env(safe-area-inset-top); min-height: calc(56px + env(safe-area-inset-top)); }

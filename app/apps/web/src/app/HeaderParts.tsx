@@ -23,10 +23,10 @@ export function HeaderFaces({ people, audience, onOpen }: { people: ProjectPerso
   );
 }
 
-/** "N needs you" as an inverted pill; it opens what needs you in this project. */
-export function NeedsYouChip({ count, open, onToggle }: { count: number; open: boolean; onToggle: () => void }) {
+/** "N needs you" as an inverted pill: this project's items of the Inbox's queue, and it opens the Inbox on them (#763 A2). */
+export function NeedsYouChip({ count, project, onOpen }: { count: number; project: string | null; onOpen: () => void }) {
   return (
-    <button type="button" className="ui-pill ui-pill--inv top__needs" aria-expanded={open} aria-controls={open ? 'details' : undefined} onClick={onToggle}>
+    <button type="button" className="ui-pill ui-pill--inv top__needs" onClick={onOpen} title={project ? `Open what needs you in ${project}, in the Inbox` : 'Open in the Inbox'}>
       <span className="top__needs-dot" aria-hidden="true" />{count} needs you
     </button>
   );

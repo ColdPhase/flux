@@ -10,7 +10,6 @@ export const RUNTIME_LOGIN_METHODS = {
   codex: ['device_code', 'api_key', 'access_token'],
 } as const satisfies Record<RuntimeClient, readonly string[]>;
 export type RuntimeLoginMethod = (typeof RUNTIME_LOGIN_METHODS)[RuntimeClient][number];
-export const ALL_LOGIN_METHODS = [...RUNTIME_LOGIN_METHODS.claude_code, ...RUNTIME_LOGIN_METHODS.codex] as const;
 
 /** `runtime-1` … `runtime-999`: the Compose service and network name of a slot. */
 export const SLOT_NAME = /^runtime-[1-9][0-9]{0,2}$/;
@@ -50,8 +49,7 @@ export function parseRuntimeSwitch(value: string | undefined): RuntimeClient[] {
   return RUNTIME_CLIENTS.filter((client) => clients.includes(client));
 }
 
-/** The minimum length of every runtime secret (slot secrets and the manager's service secret). */
-export const RUNTIME_SECRET_MIN_LENGTH = 32;
+/** Every runtime secret (slot secrets and the manager's service secret): 32 to 256 URL-safe characters. */
 export const RUNTIME_SECRET = /^[A-Za-z0-9_-]{32,256}$/;
 
 /** Fixed ports inside the runtime networks. */

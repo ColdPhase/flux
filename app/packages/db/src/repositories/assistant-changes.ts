@@ -265,4 +265,3 @@ export function assistantChangeRows(db: DbExecutor) {
     },
   };
 }
-export type AssistantChangeRows = ReturnType<typeof assistantChangeRows>;

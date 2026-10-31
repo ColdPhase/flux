@@ -241,6 +241,9 @@ forbidden action answers `403`. Error bodies are `{ error, code }`.
 | `GET /api/v1/workspaces/:id` | `getWorkspace` |
 | `GET/POST /api/v1/workspaces/:id/members` | `listMembers`, `addMember` (by `email` or `userId`) |
 | `PATCH/DELETE /api/v1/workspaces/:id/members/:userId` | `changeRole`, `removeMember` |
+| `GET/POST /api/v1/workspaces/:id/invites` | `listInvites`, `createInvite` ([invite links](#invite-links-f-035)) |
+| `DELETE /api/v1/workspaces/:id/invites/:inviteId` | `revokeInvite` |
+| `POST /api/v1/invites/preview`, `POST /api/v1/invites/accept` | `previewInvite` (no session needed), `acceptInvite` |
 | `GET/POST /api/v1/workspaces/:id/projects` | `listProjects` (`limit`, `offset`), `createProject` |
 | `GET /api/v1/projects/:id` | `getProject` |
 | `GET /api/v1/projects/:id/people` | `listProjectPeople` (#117): the people and agents who can read the project now, each with `access`. Needs `project.read`; every candidate's level comes from `evaluateProject`, so denied, removed and revoked principals are left out. Names only the project's audience, never the workspace roster. |
@@ -265,10 +268,10 @@ places, with no change to the rules above:
 
 - **People** (Settings → People, also from the account menu, and Home's Details → People → a workspace; #763 PE-1)
   lists the members and roles. Owners and admins add an existing account by email with a role, change roles and remove
-  people; anyone leaves. Guests, who may not read the roster, see only their own place. `ACCOUNT_NOT_FOUND` asks for an
-  account at this Flux address first: v1 sends no invitations and has no join-by-link, so managers can copy a sign-up
-  link to this Flux with the address filled in (#763 PE-2). The link grants nothing; the person is added once their
-  account exists. `ALREADY_MEMBER`, `OWNER_REQUIRED` and `LAST_OWNER` have their own sentences.
+  people; anyone leaves. Guests, who may not read the roster, see only their own place. `ACCOUNT_NOT_FOUND` points to an
+  [invite link](#invite-links-f-035) for someone without an account (#763 PE-2; Flux sends no invitation email), and
+  `ALREADY_MEMBER`, `OWNER_REQUIRED` and `LAST_OWNER` have their own sentences. Owners and admins also create, copy and
+  revoke invite links there.
 - **People** (a project's Details, also opened from the header's audience line and after
   creating a project) lists `listProjectPeople` with each person's role and says in one
   sentence who else can open the project. For managers, **Invite** gives a workspace member
@@ -277,6 +280,82 @@ places, with no change to the rules above:
   let them back in. Each change shows its exact consequence before it is confirmed (#512).
 
 Every POST and PATCH sends an `Idempotency-Key`, reused when the same change is retried.
+
+## Invite links (F-035)
+
+Founder decision 2026-10-31 ([F-035](../product/decisions.md), #763 PE-2). An invite link lets
+someone who has no account yet, or one Flux cannot find by address, join a workspace. Flux sends
+no invitation email: the owner or admin copies the link and sends it themselves.
+
+**Creating.** `POST /api/v1/workspaces/:id/invites` `{ role, email?, expiresInDays? }` needs
+`workspace.manage_members`. `role` is `member`, `guest` or `admin`; `admin` needs the creator to
+be an owner (`403 OWNER_REQUIRED`), and `owner` is never offered (`400`). `email` (optional)
+locks the link to that address, compared case-insensitively. `expiresInDays` is 1, 7 or 30
+(default 7). A workspace holds at most 50 pending links (`409 INVITE_LIMIT`). The answer `201`
+is the invite with its `link` (`<FLUX_PUBLIC_ORIGIN>/join#<token>`). The token is in the URL
+fragment, so it never reaches a server log or a `Referer`. An `Idempotency-Key` retry answers
+the same invite and link.
+
+**The token.** 40 bytes, base64url: the invite id (16 bytes) and the first 24 bytes of
+HMAC-SHA256 under a key derived from the identity secret (`FLUX_AUTH_SECRET`). Only
+SHA-256 of the token is stored (`workspace_invites.token_hash`); neither the idempotency store nor
+any event or log holds it. A database copy alone yields no link. The server can derive a pending
+invite's link again, so the People list offers **Copy link** for each one. Rotating the identity
+secret invalidates every link.
+
+**Listing and revoking.** `GET /api/v1/workspaces/:id/invites` (owners and admins) lists the
+pending links, newest first: role, email lock, creator, created and expiry time, and the link.
+`DELETE …/invites/:inviteId` revokes one (`204`; an already used, revoked or unknown one is
+`404 INVITE_NOT_FOUND`). Used, revoked and expired links are not listed.
+
+**Opening.** `POST /api/v1/invites/preview { token }` works without a session. It answers the
+workspace's name, who invited, the role, the expiry, whether the link is locked to an address
+(never the address itself) and whether the workspace is encrypted. An unknown, malformed or
+forged token is `404 INVITE_NOT_FOUND`, checked in constant time, so someone without the link
+learns nothing. A link that was used, revoked or expired, or whose creator is no longer an owner
+or admin able to grant the role, is `410` with `INVITE_USED`, `INVITE_REVOKED` or
+`INVITE_EXPIRED` and no workspace detail. For the account that used the link the preview says
+`joined`.
+
+**Joining.** `POST /api/v1/invites/accept { token }` needs a session. In one transaction it locks
+the workspace row (as `addMember`) and then the invite row, and rechecks everything above. An
+email lock that does not match the account's address, or (with single sign-on configured, or
+`FLUX_SIGNUP=verified`) an address the account has not verified, is `403 INVITE_WRONG_ACCOUNT`.
+Otherwise the lock is only as strong as the install's proof of addresses: with `FLUX_SIGNUP=open`
+an account can name any address, exactly as for adding a member by email. Someone already in the
+workspace gets `200 { status: "already_member" }` and the link stays unused. Otherwise the
+membership is inserted with the link's role, the invite is marked used by this account, and
+`workspace.member_added.v1` (`{ userId, role, inviteId }`) is recorded by the person who joined;
+the answer is `200 { status: "joined", workspaceId, workspaceName, role, encrypted,
+needsUnlockPassword }`. Accepting again from the same account answers `joined` again and writes
+nothing; another account gets `410 INVITE_USED`. Accepting has no idempotency row: it is
+idempotent by itself.
+
+**Sign-up rules stay as they are.** A signed-out visitor on `/join` is sent to sign in or to
+create an account and back. The page keeps the token in that tab's session storage and removes it
+from the address and the browser history; a sign-in finished in another tab asks for the link to be
+opened again there. With single sign-on and password sign-up closed, the page says the first
+single sign-on makes the account (F-024). Creating an account follows `FLUX_SIGNUP` and single sign-on exactly
+as without a link: with sign-up closed or verified by mail, the page says what to do. An invite
+never opens closed sign-up, never verifies an address and never links an identity.
+
+**Rate limits.** Each API process allows 30 previews and 10 accepts a minute per signed-in person
+(or per client address without a session), and 30 creates a minute per person (`429` with
+`retryAfterSeconds`). Like the live join limit, this is a guard per process, not a global count.
+
+**Events.** `workspace.invite_created.v1` (`{ inviteId, role }`) and
+`workspace.invite_revoked.v1` (`{ inviteId }`) are recorded for the workspace; the email lock is
+never in an event.
+
+**Encrypted workspaces (F-030).** Invites, like membership, are metadata (`workspace_invites` is a
+content table whose text columns are listed as visible: a role, an address, user ids), and the
+invite routes are in `LOCKED_ALLOWED_ROUTES`: listing, revoking and joining work while the
+workspace is locked, and creating answers `423 WORKSPACE_LOCKED` then because the command's stored
+answer is sealed. The person joins without any key: a member or
+guest reads the workspace while it is unlocked, like every member. An admin who joins has no
+unlock password until a current holder grants one through the existing
+`unlock-password-grants` flow; the join page and the preview say this. AI stays off
+(F-029 and F-030 are unchanged).
 
 ## Events
 

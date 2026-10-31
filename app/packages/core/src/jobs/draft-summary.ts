@@ -46,8 +46,6 @@ export interface DraftResultRepository {
   recordWait?(resultId: string, workspaceId: string): Promise<void>;
 }
 
-export type DraftResultStores = (db: Executor) => DraftResultRepository;
-
 /** Result rows, event storage and the access policy's reader, each bound to the transaction or connection a step runs in (#87, #89, #90). */
 export interface DraftSummaryPorts {
   results(db: Executor): DraftResultRepository;

@@ -42,8 +42,6 @@ export const createWorkspace = (name: string, idempotencyKey: string) =>
   request<Workspace>(WORKSPACES_PATH, { method: 'POST', body: { name }, headers: key(idempotencyKey) });
 export const listProjects = (workspaceId: string, offset: number, signal?: AbortSignal) =>
   request<Page<Project>>(`${workspaceProjectsPath(workspaceId)}?limit=100&offset=${offset}`, { signal });
-export const listSketches = (workspaceId: string, limit: number, offset: number, signal?: AbortSignal) =>
-  request<SketchPage>(`${workspaceSketchesPath(workspaceId)}?limit=${limit}&offset=${offset}`, { signal });
 /** The person's own sketchbook: private sketches only (#189), without empty ones (#508); shared ones live in their project or DM. */
 export const listPrivateSketches = (workspaceId: string, limit: number, offset: number, signal?: AbortSignal) =>
   request<SketchPage>(`${workspaceSketchesPath(workspaceId)}?limit=${limit}&offset=${offset}&scope=private&hideEmpty=true`, { signal });

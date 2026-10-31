@@ -102,7 +102,6 @@ export function personalRunTokenRows(db: DbExecutor) {
     },
   };
 }
-export type PersonalRunTokenRows = ReturnType<typeof personalRunTokenRows>;
 
 /** The owner's own Claude Code or Codex in their runtime slot, for a personal run (F-022 AIM-3, #280, #281). Display facts only. */
 export interface PersonalRuntimeRow {

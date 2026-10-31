@@ -297,5 +297,3 @@ export function createNeedsYou(ports: NeedsYouPorts, now: () => Date = () => new
     },
   };
 }
-
-export type NeedsYouUseCases = ReturnType<typeof createNeedsYou>;

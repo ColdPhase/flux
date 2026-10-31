@@ -252,5 +252,3 @@ export function createSearchUseCases<C>(ports: SearchPorts<C>) {
     },
   };
 }
-
-export type SearchUseCases = ReturnType<typeof createSearchUseCases>;

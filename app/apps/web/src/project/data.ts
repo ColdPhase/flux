@@ -81,9 +81,3 @@ export function audienceLine(people: ProjectPerson[] | null, meId: string, open 
         : `${others.slice(0, 2).join(', ')}, you and ${others.length - 2} others`;
   return agents ? `${humans} · ${agents} ${agents === 1 ? 'agent' : 'agents'}` : humans;
 }
-
-export const ACCESS_LABEL: Record<ProjectPerson['access'], string> = {
-  manager: 'Manages the space',
-  contributor: 'Can write',
-  viewer: 'Can read',
-};

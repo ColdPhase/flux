@@ -716,7 +716,9 @@ The worker reads standing from the database; it never calls the IdP.
   lapsed. Browser sessions that signed in with the provider are ended when it lapses (a password
   session of the same person is S5b's concern, not this check). The 401 and the
   refresh grant's `invalid_grant` use S4's "Sign in again with <label>." description. `GET /api/v1/agent-oauth/held-connection` names the
-  connection the client last held for `/connect-agent` to preselect.
+  connection the client last held for `/connect-agent` to preselect. Since #763 AG-6 (2026-10-31) it also returns
+  `clientDesignation` (`claude_code`, `codex` or null) read from the asking client's own registered name, which only
+  preselects a new connection's client label: a recognition aid that grants nothing and is not verified.
 - S2 lands only after S4. Without the standing check, nothing renews confirmation
   between sign-ins, and every managed account would have to re-authorize its
   clients every 7 days.

@@ -772,5 +772,3 @@ export function createWorkUseCases(uow: WorkUnitOfWork) {
     },
   };
 }
-
-export type WorkUseCases = ReturnType<typeof createWorkUseCases>;

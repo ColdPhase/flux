@@ -108,7 +108,7 @@ class AgentThreadJourney(unittest.TestCase):
         page = self.page("hubert")
         page.goto(f"/projects/{self.ids['project']}/tasks?open=work:{self.ids['task']}")
         link = page.get_by_role("link", name=re.compile("^Agents’ thread"))
-        expect(link).to_have_text(re.compile("Agents’ thread · 0 messages"))
+        expect(link).to_have_text(re.compile("^Agents’ thread$"))  # no zero counter (#763 C8)
         link.click()
         expect(page).to_have_url(re.compile(r"/agents\?thread="))
         thread = page.get_by_role("region", name=THREAD)

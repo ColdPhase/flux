@@ -95,6 +95,8 @@ export interface WorkRowProjection extends NativeRowBase {
 export interface DecisionRowProjection extends NativeRowBase {
   kind: 'decision';
   status: Decision['status'];
+  /** F-034: the decision's short reason, the first sentence of its rationale (at most 160 characters; empty for none). */
+  reason: string;
   proposedBy: NamedPrincipal;
   decidedBy: NamedPrincipal | null;
   decidedAt: string | null;

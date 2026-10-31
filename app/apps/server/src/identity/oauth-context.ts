@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { agentOauthUseCases } from '@flux/core';
-import { agentConnectionWorkspaceId, workspaceIdOfOauthFlow, workspaceIdsOfOauthClient, workspaceAi, type Database } from '@flux/db';
+import { agentConnectionWorkspaceId, oauthClientName, workspaceIdOfOauthFlow, workspaceIdsOfOauthClient, workspaceAi, type Database } from '@flux/db';
 import { createAgentConnectionStore } from '../agent-connection/store.js';
 import type { FluxAuth } from './auth.js';
 import { oauthFlow, verifiedOauthQuery } from './oauth-query.js';
@@ -49,6 +49,10 @@ export function registerAgentOauthContext(app: FastifyInstance, db: Database, se
     const connectionId = await connections.heldConnectionId(session.principal.id, flow.clientId);
     const workspaceId = connectionId ? await agentConnectionWorkspaceId(db, connectionId, session.principal.id) : null;
     if (workspaceId && (await workspaceAi(db, workspaceId)).state !== 'allowed') return aiOff(reply);
-    return { connectionId };
+    // #763 AG-6: the client's own name preselects the client label of a new connection. It is the client's claim, a
+    // recognition aid only, and grants nothing.
+    const name = (await oauthClientName(db, flow.clientId)) ?? '';
+    const clientDesignation = /claude/i.test(name) ? 'claude_code' : /codex/i.test(name) ? 'codex' : null;
+    return { connectionId, clientDesignation };
   });
 }

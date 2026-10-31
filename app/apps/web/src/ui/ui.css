@@ -37,9 +37,6 @@ svg { flex: none; }
 .ui-spin { display: inline-block; width: 14px; height: 14px; border-radius: 50%; border: 1.5px solid currentColor; border-right-color: transparent; animation: ui-spin .8s linear infinite; flex: none; }
 @keyframes ui-spin { to { transform: rotate(360deg); } }
 
-.ui-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--t3); display: inline-block; flex: none; }
-.ui-dot--ok { background: var(--t1); }
-
 /* Tooltips: only where a pointer can hover; they wait, then fade in. */
 @media (hover: hover) and (pointer: fine) {
   [data-tip] { position: relative; }
@@ -215,7 +212,7 @@ svg { flex: none; }
 .ui-drawer, .ui-drawer * { touch-action: pan-y pinch-zoom; }
 /* The phone sheet's header is its handle: a grabber shows it can be pulled down to close (#266 PF-4). */
 .ui-sheet .ui-panel__head { position: relative; touch-action: none; }
-.ui-sheet:not(.ui-sheet--detent) .ui-panel__head::before {
+.ui-sheet .ui-panel__head::before {
   content: ""; position: absolute; left: 50%; top: calc(env(safe-area-inset-top) + 6px); width: 36px; height: 5px; margin-left: -18px;
   border-radius: var(--r-pill); background: var(--line2);
 }
@@ -333,7 +330,6 @@ svg { flex: none; }
 .ui-glyph--parked { color: var(--t3); }
 .ui-glyph__knock { fill: var(--el); }
 .ui-glyph__knock-line { stroke: var(--el); }
-.ui-state { display: inline-flex; align-items: center; gap: 6px; font-size: var(--fs-sm); font-weight: 500; color: var(--t1); white-space: nowrap; }
 /* "Blocked" and "Needs you" also appear as inverted pills. */
 .ui-pill { display: inline-flex; align-items: center; gap: 5px; height: 22px; padding: 0 8px; border-radius: var(--r-pill); font-size: var(--fs-xs); font-weight: 500; white-space: nowrap; background: var(--sub); color: var(--t2); }
 .ui-pill--inv { background-color: var(--inv); background-image: var(--grad-inv); color: var(--oninv); }
@@ -363,8 +359,6 @@ svg { flex: none; }
 .flux-logo { display: block; flex: none; }
 .flux-logo__tile { fill: var(--inv); }
 .flux-logo__face { color: var(--oninv); }
-.flux-lockup { display: inline-flex; align-items: center; gap: 8px; color: var(--t1); }
-.flux-lockup b { font-size: 1.25rem; font-weight: 600; letter-spacing: -.04em; line-height: 1; }
 
 /* An agent: Kreska, its name, the "Agent" tag and "for <owner>" (AgentIdentity.tsx). */
 .agent-id { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; min-width: 0; font-family: var(--font); }

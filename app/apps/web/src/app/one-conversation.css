@@ -23,10 +23,6 @@
 .convo-replies .convo-replies__open { color: var(--t1); }
 .convo-replies .convo-replies__open:hover { color: var(--t1); }
 .convo-replies__when { color: var(--t3); font-weight: 400; }
-@media (hover: hover) {
-  .convo-replies__open + .convo-replies__reply { opacity: 0; transition: var(--tr); }
-  .project-convo__message:hover .convo-replies__reply, .project-convo__message.is-open .convo-replies__reply, .convo-replies__reply:focus-visible { opacity: 1; }
-}
 @media (pointer: coarse) { .convo-replies button { min-height: 44px; min-width: 44px; justify-content: center; } }
 /* The root whose thread is open, marked without colour alone: its control is also expanded. */
 /* Spokój marks the selected source with a quiet fill. */
@@ -39,7 +35,7 @@
 /* useMessageReadingPosition owns anchors; native anchoring cancels WebKit gestures
    when a retired association batch changes the content above the viewport (#540). */
 .thread__feed { flex: 1; min-height: 0; overflow: auto; overscroll-behavior: contain; overflow-anchor: none; }
-/* The pane is the container of its messages' toolbar: below 400px it is one button (work/message-actions.css). */
+/* The pane is the container of its messages' toolbar: below 520px it sits in the bubble's corner (work/message-actions.css). */
 .thread__feed { container: thread-feed / inline-size; }
 /* The conversation column is the container of its reference cards: below 760px (the reading column's own width: a phone, a tablet,
    a small window) a card is the one-row form of the Spokój boards, as in the thread (work/work.css, #665). */

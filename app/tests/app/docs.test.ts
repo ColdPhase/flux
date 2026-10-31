@@ -228,31 +228,30 @@ describe('project docs with immutable versions, links and backlinks', () => {
     const resultView = json<WorkResult>(await get(viewer, `/api/v1/results/${result.id}`), 200);
     assert.ok(resultView.links.some((link) => link.from.type === 'doc' && link.from.id === started.id && link.role === 'source'), 'the result shows the doc');
 
-    // A decision is added to the same doc, then rewritten after it is superseded.
+    // A decision is added to the same doc as one live reference line (F-034); replacing it rewrites nothing.
     const rule = json<Decision>(await post(owner, `/api/v1/projects/${lamp.id}/decisions`, { title: 'Use a camera', rationale: 'Richest gestures' }), 201);
-    json(await post(owner, `/api/v1/decisions/${rule.id}/accept`, {}, ifMatch(1)), 200);
     const section = `/api/v1/docs/${started.id}/sections`;
+    assert.equal(code(await post(owner, section, { from: { type: 'decision', id: rule.id } }, ifMatch(1))), 'DECISION_NOT_ACCEPTED', 'a proposal stays out');
+    json(await post(owner, `/api/v1/decisions/${rule.id}/accept`, {}, ifMatch(1)), 200);
     assert.equal((await post(owner, section, { from: { type: 'decision', id: rule.id } })).status, 428);
     assert.equal((await post(viewer, section, { from: { type: 'decision', id: rule.id } }, ifMatch(1))).status, 403);
     const added = json<Doc>(await post(owner, section, { from: { type: 'decision', id: rule.id } }, ifMatch(1)), 200);
     assert.deepEqual([added.version, added.reason], [2, 'Added the decision “Use a camera”']);
-    assert.match(added.body, /## Decision: Use a camera\n\n\*\*Current rule\*\* · accepted by docs-owner/);
-    assert.ok(added.body.startsWith(started.body.trimEnd()), 'the earlier section is untouched');
+    assert.equal(added.body, `${started.body.trimEnd()}\n\n[Use a camera](flux:decision/${rule.id})\n`, 'the earlier section is untouched and the decision is one line');
     const unchanged = json<Doc>(await post(owner, section, { from: { type: 'decision', id: rule.id } }, ifMatch(2)), 200);
     assert.equal(unchanged.version, 2, 'nothing new to add makes no version');
     assert.equal(code(await post(owner, section, { from: { type: 'decision', id: rule.id } }, ifMatch(1))), 'VERSION_CONFLICT');
 
     const replacement = json<Decision>(await post(owner, `/api/v1/projects/${lamp.id}/decisions`, { title: 'Use a ToF sensor', supersedes: rule.id }), 201);
     json(await post(owner, `/api/v1/decisions/${replacement.id}/accept`, {}, ifMatch(1)), 200);
-    const rewritten = json<Doc>(await post(partner, section, { from: { type: 'decision', id: rule.id } }, ifMatch(2)), 200);
-    assert.deepEqual([rewritten.version, rewritten.reason], [3, 'Updated the decision “Use a camera”']);
-    assert.match(rewritten.body, new RegExp(`\\*\\*Earlier rule\\*\\* · replaced [^\\n]+ by \\[Use a ToF sensor\\]\\(flux:decision/${replacement.id}\\)`));
-    assert.equal((rewritten.body.match(/## Decision: Use a camera/g) ?? []).length, 1, 'the section is rewritten, not duplicated');
-    const earlier = json<DocVersion>(await get(viewer, `/api/v1/docs/${started.id}/versions/2`), 200);
-    assert.match(earlier.body, /\*\*Current rule\*\*/, 'the past statement stays in its version');
+    const again = json<Doc>(await post(partner, section, { from: { type: 'decision', id: rule.id } }, ifMatch(2)), 200);
+    assert.deepEqual([again.version, again.body], [2, added.body], 'the card reads the replacement itself; the page is not rewritten');
+    // The result's section is still rewritten in place with its current state.
+    const rewritten = json<Doc>(await post(partner, section, { from: { type: 'result', id: result.id } }, ifMatch(2)), 200);
+    assert.equal(rewritten.version, 2, 'an unchanged result section makes no version');
 
     const elsewhere = json<WorkResult>(await post(owner, `/api/v1/projects/${other.id}/results`, { title: 'Other finding', finding: 'positive' }), 201);
-    assert.equal(code(await post(owner, section, { from: { type: 'result', id: elsewhere.id } }, ifMatch(3))), 'LINK_TARGET_NOT_FOUND');
+    assert.equal(code(await post(owner, section, { from: { type: 'result', id: elsewhere.id } }, ifMatch(2))), 'LINK_TARGET_NOT_FOUND');
     assert.equal(code(await post(owner, `/api/v1/projects/${lamp.id}/docs`, { title: 'x', from: { type: 'result', id: elsewhere.id } })), 'LINK_TARGET_NOT_FOUND');
   });
 

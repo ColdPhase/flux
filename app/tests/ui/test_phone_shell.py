@@ -344,9 +344,10 @@ class PhoneShellJourney(unittest.TestCase):
         page.get_by_role("link", name=re.compile("^Agents and AI")).click()
         expect(page.get_by_role("link", name=re.compile("^Local co-work on this computer"))).to_be_visible()
         page.get_by_role("link", name=re.compile("^Local co-work on this computer")).click()
-        expect(page).to_have_url(f"{ORIGIN}/connect-agent")
-        page.get_by_role("link", name="Settings").click()
-        expect(page).to_have_url(f"{ORIGIN}/settings")
+        # #763 AG-2: Connect your agent is a Settings page, with the way back to Agents and AI first on the left.
+        expect(page).to_have_url(f"{ORIGIN}/settings/agents/connect")
+        page.locator("header").get_by_role("button", name="Back", exact=True).click()
+        expect(page).to_have_url(f"{ORIGIN}/settings/agents")
         self.assertEqual(page.evaluate("document.documentElement.scrollWidth"), SE["width"])
         shot(page, "266-settings-phone")
 

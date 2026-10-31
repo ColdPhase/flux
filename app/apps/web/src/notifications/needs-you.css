@@ -3,6 +3,8 @@
 .pane-in.nyq { max-width: 808px; }
 .nyq__bar { display: flex; align-items: center; justify-content: space-between; gap: 12px 16px; flex-wrap: wrap; padding: 4px 0 16px; }
 .nyq__summary { margin: 0; font-size: var(--fs-sm); color: var(--t3); }
+.nyq__all { font: inherit; color: var(--t2); text-decoration: underline; text-underline-offset: 3px; }
+@media (pointer: coarse) { .nyq__all { min-height: 44px; } }
 .nyq__filters { max-width: 100%; }
 .nyq__list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 12px; }
 .nyq__keys { display: flex; flex-wrap: wrap; gap: 6px 14px; margin: 14px 4px 0; font-size: var(--fs-xs); color: var(--t3); }

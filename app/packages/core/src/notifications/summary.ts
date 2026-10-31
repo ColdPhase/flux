@@ -9,8 +9,6 @@ import { scheduledSummaryDay } from './summary-schedule.js';
 // item itself; the inbox already lists everything it counts.
 
 export const MORNING_SUMMARY_JOB = 'notification.morning-summary.v1';
-/** The scheduler ticks every 15 minutes; a summary missed by more than this waits for tomorrow. */
-export const MORNING_SUMMARY_LATE_MINUTES = 180;
 /** Unread inbox rows looked at per person; the count shows "50+" beyond it. */
 export const MORNING_SUMMARY_LOOKBACK = 50;
 

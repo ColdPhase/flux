@@ -347,8 +347,8 @@ test('actual owner setup stays pending, refreshes lost authorization, and keeps 
         try {
           const { page, panel } = await open(context, f.email);
           const setup = panel.getByRole('region', { name: 'Connection setup', exact: true });
-          await setup.getByRole('heading', { name: 'Client session open · activation pending', exact: true }).waitFor();
-          assert.equal(await setup.getByText("Flux cannot see whether your native client is online. Use its supplied host action to start or resume work on a selected project.", { exact: true }).count(), 1);
+          await setup.getByRole('heading', { name: 'Connected · start work from your client', exact: true }).waitFor();
+          assert.equal(await setup.getByText("Flux can’t see whether your client is open. Start or resume work on a selected project from your client.", { exact: true }).count(), 1);
           assert.equal(await page.getByRole('button', { name: /^(Start work|Resume work)$/ }).count(), 0, 'OAuth/bootstrap records do not manufacture a working launch control');
           const hostAction = setup.locator('.cowork-host-actions');
           if (width === 390) {
@@ -389,7 +389,7 @@ test('actual owner setup stays pending, refreshes lost authorization, and keeps 
           assert.equal((await f.settings()).setup.authorizationRecorded, false);
           await panel.getByRole('button', { name: 'Disable all', exact: true }).click();
           await panel.getByRole('button', { name: 'Save permissions', exact: true }).click();
-          await setup.getByRole('heading', { name: 'Permissions are Off', exact: true }).waitFor();
+          await setup.getByRole('heading', { name: 'Permissions are off', exact: true }).waitFor();
           await setup.evaluate(element => element.scrollIntoView({ block: 'start' }));
           await captureSetup(page, `connect-setup-${engine.name()}-${width}-off`);
           assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);

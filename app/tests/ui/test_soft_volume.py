@@ -148,13 +148,12 @@ class SoftVolume(unittest.TestCase):
                 self.assertEqual(page.evaluate("getComputedStyle(document.body).backgroundColor"), RGB(expected["--side"]))
                 self.assertEqual(page.locator(".app__main").evaluate("e => getComputedStyle(e).backgroundColor"), RGB(expected["--bg"]))
 
-    def test_02_there_is_no_accent_colour_and_old_choices_are_forgotten(self) -> None:
+    def test_02_there_is_no_accent_colour(self) -> None:
         self.ensure_account()
-        page = self.page(init="localStorage.setItem('flux.accent.light', 'copper'); localStorage.setItem('flux.accent.dark', 'sky'); localStorage.setItem('flux.accent', 'iris')")
+        page = self.page()
         page.goto("/settings")
         expect(page.get_by_role("radiogroup", name="Theme")).to_be_visible()
         self.assertIsNone(page.evaluate("document.documentElement.getAttribute('data-accent')"))
-        self.assertEqual(page.evaluate("['flux.accent', 'flux.accent.light', 'flux.accent.dark'].map(k => localStorage.getItem(k))"), [None, None, None])
         group = page.get_by_role("radiogroup", name="Theme")
         self.assertEqual([radio.inner_text().strip() for radio in group.get_by_role("radio").all()], ["Light", "Dark", "Match system"])
         expect(page.get_by_text("Accent", exact=True)).to_have_count(0)
