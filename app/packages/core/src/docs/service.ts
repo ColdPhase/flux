@@ -180,19 +180,6 @@ function place(body: string, source: DocSectionSource, composed: { section: stri
   return source.type === 'decision' ? text.placeDecisionReference(body, source.id, composed.title) : text.upsertSection(body, source, composed.section);
 }
 
-/** F-034 migration: who added the decisions a doc copied, for the one version that turns them into cards. */
-const ADDED_DECISION = /^(Added|Updated) the decision “|^Started from the decision “/;
-
-/** What the F-034 migration did with one doc. */
-export interface DecisionCardConversion {
-  status: 'converted' | 'unchanged' | 'busy' | 'gone';
-  /** Sections turned into reference lines, and copied sections left as they are (edited, or not the shape Flux wrote). */
-  converted: number;
-  kept: number;
-  fromVersion?: number;
-  toVersion?: number;
-}
-
 export interface DocUseCaseOptions {
   /**
    * Accept an agent principal as the author of a change. Only the #152 standing-grant composition sets it; the
@@ -389,62 +376,6 @@ export function createDocUseCases(uow: DocUnitOfWork, options: DocUseCaseOptions
         return commit(ports, principal, scope, row, false, taskFence);
       });
     },
-
-    /**
-     * F-034 migration, run by the API process for each doc once (no person asks for it, so no access check): turns
-     * copied decision sections still in the shape Flux wrote into reference lines, as one new version authored by the
-     * person who last added a decision to the doc. `busy` when the shared working copy holds unsaved typing (tried
-     * again later); `unchanged` when there is nothing to convert. Idempotent.
-     */
-    convertDecisionSections: (docId: string) => uow.run(async (ports): Promise<DecisionCardConversion> => {
-      const id = valid.id(docId, 'docId');
-      const current = await ports.docs.find(id, { lock: true });
-      if (!current) return { status: 'gone', converted: 0, kept: 0 };
-      const head = await ports.live.lock(id);
-      if (head && (head.savedVersion !== current.doc.currentVersion || head.body !== current.current.body)) return { status: 'busy', converted: 0, kept: 0 };
-      const before = current.current.body;
-      const decisions = new Map<string, { title: string; rationale: string; status: string }>();
-      for (const decisionId of text.legacyDecisionIds(before)) {
-        const found = await ports.work.findDecision(decisionId);
-        if (found && found.projectId === current.doc.projectId) decisions.set(decisionId, { title: found.title, rationale: found.rationale, status: found.status });
-      }
-      const { body, converted, kept } = text.convertDecisionSections(before, decisions);
-      const fromVersion = current.doc.currentVersion;
-      if (!converted.length) return { status: 'unchanged', converted: 0, kept, fromVersion };
-      const history = await ports.docs.versions(id, { limit: 100, offset: 0 });
-      const author = history.items.find((item) => ADDED_DECISION.test(item.reason))?.author ?? current.current.author;
-      const scope = { workspaceId: current.doc.workspaceId, projectId: current.doc.projectId };
-      const taskFence = await prepareDocBodyTaskUse(ports, current, [before, body]);
-      const reason = `Turned ${converted.length === 1 ? 'a copied decision' : `${converted.length} copied decisions`} into live ${converted.length === 1 ? 'card' : 'cards'}`;
-      const row = await ports.docs.append(id, { title: current.current.title, body, state: current.current.state, reason, author });
-      await ports.live.rebindSaved(row, randomUUID());
-      await commit(ports, { kind: author.kind, id: author.id }, scope, row, false, taskFence);
-      return { status: 'converted', converted: converted.length, kept, fromVersion, toVersion: row.doc.currentVersion };
-    }),
-
-    /**
-     * The F-034 migration's reversal for one doc: brings back the text of `fromVersion` (the copied sections) as a new
-     * version, only while the doc is still at the version the conversion made (`toVersion`) and its shared working
-     * copy has no unsaved typing. Later edits are never undone here; a person restores from the page's history instead.
-     */
-    restoreDecisionSections: (docId: string, fromVersion: number, toVersion: number) => uow.run(async (ports): Promise<'restored' | 'changed' | 'busy' | 'gone'> => {
-      const id = valid.id(docId, 'docId');
-      const current = await ports.docs.find(id, { lock: true });
-      if (!current) return 'gone';
-      if (current.doc.currentVersion !== toVersion) return 'changed';
-      const head = await ports.live.lock(id);
-      if (head && (head.savedVersion !== current.doc.currentVersion || head.body !== current.current.body)) return 'busy';
-      const earlier = await ports.docs.version(id, fromVersion);
-      if (!earlier) return 'gone';
-      const scope = { workspaceId: current.doc.workspaceId, projectId: current.doc.projectId };
-      const taskFence = await prepareDocBodyTaskUse(ports, current, [current.current.body, earlier.body]);
-      const author = current.current.author;
-      const row = await ports.docs.append(id, { title: current.current.title, body: earlier.body, state: current.current.state,
-        reason: `Brought back the copied decisions of version ${fromVersion}`, author });
-      await ports.live.rebindSaved(row, randomUUID());
-      await commit(ports, { kind: author.kind, id: author.id }, scope, row, false, taskFence);
-      return 'restored';
-    }),
 
     /** A deliberate immutable version of one confirmed live head; never a client-supplied body. */
     async saveLiveVersion(principal: Principal, docId: string, command: SaveLiveDocCommand, expected: number | undefined): Promise<Doc> {

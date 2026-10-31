@@ -1,9 +1,8 @@
 """Decisions in the Wiki are one live card with a short reason (F-034, #763 E1, founder decision 2026-10-30).
 
-A page whose decisions "Add to docs" used to copy as `## Decision:` sections is converted by the migration (the
-fixture route runs it for this page): the cards render as drawn with the reason under them, open the decision, and
-leave the outline and the history to the page's own headings and the edits people made. "Add to a Wiki page" inserts the
-card; a later change of the decision shows on the card without a new version; a proposed decision cannot be added.
+A page holding decision references standing on their own lines shows them as drawn, with the reason under each; a
+card opens its decision and leaves the outline and the history to the page's own headings and the edits people made.
+"Add to a Wiki page" inserts the card; a later change of the decision shows on the card without a new version; a proposed decision cannot be added.
 Runs on Chromium and WebKit (FLUX_UI_BROWSER), at 1440x900 and on a 390x844 touch phone.
 """
 
@@ -23,15 +22,6 @@ from test_app_shell import DESKTOP, ORIGIN, PHONE, UPSTREAM, shot, start_forward
 
 STAMP = int(time.time() * 1000)
 PASSWORD = "decisions are live cards"
-
-
-def legacy(decision: dict, status: str) -> str:
-    """The section "Add to docs" wrote before F-034, as `composeSection` made it."""
-    lines = [f"## Decision: {decision['title']}", "", status, ""]
-    if decision["rationale"]:
-        lines += [decision["rationale"], ""]
-    lines.append(f"Source: [{decision['title']}](flux:decision/{decision['id']})")
-    return "\n".join(lines)
 
 
 class WikiDecisionCards(unittest.TestCase):
@@ -69,20 +59,18 @@ class WikiDecisionCards(unittest.TestCase):
         cls.resistive = decide("Use resistive probes", "Cheap and easy to buy.")
         cls.capacitive = decide("Use capacitive probes", "They do not corrode in wet soil.", cls.resistive["id"])
         cls.proposal = decide("Add frost warnings", "Night frost killed two beds last May.", accept=False)
-        accepted = "**Current rule** · accepted by Ada Kowalska · Oct 6, 2026"
+        card = lambda decision: f"[{decision['title']}](flux:decision/{decision['id']})"
         body = "\n".join([
             "Six capacitive probes on ESP32 boards send readings over LoRa to one gateway in the shed.", "",
-            legacy(cls.moisture, accepted), "",
+            card(cls.moisture), "",
             "## Parts", "", "| Part | Qty |", "| --- | ---: |", "| Capacitive soil probe v2 | 6 |", "",
-            legacy(cls.gateway, accepted), "",
-            legacy(cls.resistive, f"**Earlier rule** · replaced Oct 7, 2026 by [{cls.capacitive['title']}](flux:decision/{cls.capacitive['id']})"), "",
+            card(cls.gateway), "",
+            card(cls.resistive), "",
             "## Range", "", "The far east bed sits 180 m from the shed behind a hedge.", "",
         ])
         sensors = api("POST", f"/api/v1/projects/{pid}/docs", {"title": "How the garden sensors work", "body": body, "state": "published"},
                       {"idempotency-key": str(uuid.uuid4())})
         cls.sensors_id = sensors["id"]
-        converted = api("POST", "/api/v1/test/doc-decision-cards", {"docIds": [sensors["id"]]}, {"authorization": f"Bearer {os.environ['FLUX_FIXTURE_TOKEN']}"})
-        assert converted == {"converted": 1, "unchanged": 0, "skipped": 0}, converted
         rules = api("POST", f"/api/v1/projects/{pid}/docs", {"title": "Decisions and why", "body": "The rules we keep.", "state": "published"},
                     {"idempotency-key": str(uuid.uuid4())})
         cls.rules_id = rules["id"]
@@ -113,7 +101,7 @@ class WikiDecisionCards(unittest.TestCase):
     def doc_url(self, doc_id):
         return f"/projects/{self.project_id}/docs/{doc_id}"
 
-    def test_01_converted_page_shows_live_cards_with_their_reason(self) -> None:
+    def test_01_the_page_shows_live_cards_with_their_reason(self) -> None:
         page = self.context(DESKTOP)
         page.goto(self.doc_url(self.sensors_id))
         expect(page.get_by_role("heading", level=2, name="How the garden sensors work")).to_be_visible()
@@ -148,14 +136,18 @@ class WikiDecisionCards(unittest.TestCase):
         expect(panel).to_contain_text(self.moisture["title"])
         expect(panel).to_contain_text("Frost comes in autumn")
 
-    def test_02_history_holds_the_one_conversion_and_the_earlier_copy(self) -> None:
+    def test_02_a_changed_decision_rewrites_no_page_and_leaves_history_to_people(self) -> None:
         page = self.context(DESKTOP)
+        replacement = self.call(page, "POST", f"/api/v1/projects/{self.project_id}/decisions",
+                                {"title": "Measure moisture and frost together", "rationale": "The new probes report both.", "supersedes": self.moisture["id"]})
+        self.call(page, "POST", f"/api/v1/decisions/{replacement['id']}/accept", {"expectedVersion": replacement["version"]})
+        page.goto(self.doc_url(self.sensors_id))
+        expect(page.locator("a.doc-decision").first).to_contain_text("Decision replaced")
+        expect(page.get_by_role("complementary", name="On this page").get_by_role("link")).to_have_text(["Parts", "Range"])
         page.goto(f"{self.doc_url(self.sensors_id)}/history")
         versions = page.locator(".doc-versions > li")
-        expect(versions).to_have_count(2)
-        expect(versions.first).to_contain_text("Turned 3 copied decisions into live cards")
-        page.goto(f"{self.doc_url(self.sensors_id)}/versions/1")
-        expect(page.locator(".doc-prose").get_by_role("heading", name=f"Decision: {self.gateway['title']}")).to_be_visible()
+        expect(versions).to_have_count(1)
+        expect(versions.first).to_contain_text("Started the doc")
 
     def test_03_add_to_docs_inserts_the_card_and_it_follows_the_decision(self) -> None:
         page = self.context(DESKTOP)

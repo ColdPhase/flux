@@ -98,9 +98,9 @@ a section keeps its shape.
 
 Founder decision 2026-10-30 ([#763 E1](https://github.com/ColdPhase/flux/issues/763#issuecomment-6532915221)).
 A **decision** is never copied into a page. Add to docs inserts one reference line at the end of
-the page, `[title](flux:decision/<id>)` on its own line, as the next version with the reason
-"Added the decision “…”". If the page already holds that line, nothing changes and no version is
-made; if it still holds an old copied section of that decision, only that section becomes the line.
+the page, `[title](flux:decision/<id>)` on its own line after a blank line (so it stands alone as
+the card), as the next version with the reason "Added the decision “…”". If the page already
+holds that line, nothing changes and no version is made.
 
 - **The card.** The reader shows a decision reference standing alone on its line as Prostota's one
   line (`desktop-wiki.webp`): the state glyph and word ("Decision accepted", "Decision replaced"),
@@ -114,33 +114,9 @@ made; if it still holds an old copied section of that decision, only that sectio
   `DECISION_NOT_ACCEPTED` (also when starting a doc from it); the Details panel dims "Add to a Wiki page"
   with "Accept it first to add it to the Wiki". A decision referenced earlier that is later
   replaced shows "Decision replaced".
-- **Migration of copied sections.** Pages written before F-034 hold `## Decision: …` sections. The
-  API process converts them once per doc (`apps/server/src/docs/decision-cards.ts`, at start and
-  every 10 minutes; tables `doc_decision_card_migrations` and `doc_decision_card_failures`,
-  migration 0136). A section is converted only when it is exactly what Flux wrote: the heading
-  `## Decision: <the decision's current title>`, one of the generated status lines whole
-  ("accepted by <name> · <date>", "proposed by <name> · <date> · not accepted yet", "replaced
-  <date>[ by <decision>]"), the copied rationale equal to the decision's rationale, and its
-  `Source:` line. It then becomes the reference line, with a blank line on each side where needed
-  so it stands alone as a card. Anything else is kept as it is: an edited heading, status line or
-  rationale, a renamed decision, a decision outside the project, and the old section of a decision
-  that is still proposed (proposals stay out). Text people wrote around sections is kept byte for
-  byte.
-- **One version per doc.** A doc with a conversion gets one version with the reason "Turned N
-  copied decisions into live cards", authored by the person who last added a decision to it. The
-  version before keeps the copied text. Running it again changes nothing. A doc whose shared
-  working copy has unsaved typing, or whose encrypted workspace is locked, is skipped and tried
-  again later.
-- **Failures.** Any other failure is logged with its error code only, never text, and recorded in
-  `doc_decision_card_failures`. The doc then waits 10 minutes, doubling each time. The same code
-  five times in a row stops its retries until an operator deletes the row.
-- **Encrypted workspaces.** They are converted through the same repositories, so the new version
-  is sealed like any other.
-- **Reversal.** `restoreDecisionCards` (same file) brings back each converted doc's `from_version`
-  text as a new version, "Brought back the copied decisions of version N". It does this only while
-  the doc is still at `to_version`, and records `restored_version` so the sweep never converts the
-  doc again. A doc edited since is restored by a person from its history (Restore vN). The reverse
-  file `reverse/0136_doc_decision_cards.down.sql` drops the tables after that.
+- **Nothing to convert.** Founder direction 2026-10-31: Flux is pre-release with no installations
+  or data anywhere, so no page holds a section copied by the earlier "Add to docs" and there is no
+  conversion job, migration or schema change. The card needs only the decision's existing fields.
 
 ## Events
 
@@ -193,7 +169,7 @@ field is never covered. Targets are 44 px on touch.
 access, version immutability and citations, If-Match 428/409 and a concurrent race, idempotent
 retries, links and backlinks across all target types without cross-project leaks, sanitization,
 Add to docs with result section rewrite and decision references, the F-034 migration, events and the workspace list filter), `app/tests/app/returns.test.ts`
-(doc items in the return view), `app/tests/app/wiki-decision-cards.test.ts` (F-034: the reference line, the live card read, proposed decisions refused, the migration's conservative conversion, idempotency, live working copy and an encrypted workspace) and `app/tests/ui/test_wiki_decision_cards.py` (Chromium and WebKit: cards with their reason, the outline and history, Add to docs, a replaced decision, the phone) and `app/tests/ui/test_docs.py` (Playwright: write with preview and a
+(doc items in the return view), `app/tests/app/wiki-decision-cards.test.ts` (F-034: the reference line, the live card read, proposed decisions refused, the text rules and an encrypted workspace) and `app/tests/ui/test_wiki_decision_cards.py` (Chromium and WebKit: cards with their reason, the outline and history, Add to docs, a replaced decision, the phone) and `app/tests/ui/test_docs.py` (Playwright: write with preview and a
 link, publish, concurrent edit and conflict, history and diff at 1440 and 1280, add from a
 result, phone read/edit/compare, hostile text) and `app/tests/ui/test_wiki_panes.py` (the two panes,
 quiet selection and focus ring in every theme, search and its count, New page, Import .md with its
