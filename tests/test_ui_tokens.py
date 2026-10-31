@@ -104,6 +104,13 @@ class QuietButtons(unittest.TestCase):
         self.assertIsNotNone(base)
         self.assertIn("border-radius: var(--r-btn)", base.group(1))
 
+    def test_the_phone_plus_is_a_soft_fill(self) -> None:
+        css = without_comments((WEB / "app" / "app.css").read_text(encoding="utf-8"))
+        body = re.search(r"(?m)^\.phone-fab \{([^}]*)\}", css)
+        self.assertIsNotNone(body)
+        self.assertIn("background: var(--own)", body.group(1))
+        self.assertNotRegex(body.group(1), r"--inv|box-shadow|gradient")
+
     def test_retired_button_tokens_are_gone(self) -> None:
         found = [f"{path.relative_to(WEB)}: {token}" for path in sorted(WEB.rglob("*.css"))
                  for token in self.RETIRED if token in path.read_text(encoding="utf-8")]
