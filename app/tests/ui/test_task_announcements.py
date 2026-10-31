@@ -282,7 +282,9 @@ class TaskAnnouncements(unittest.TestCase):
         later.hover()
         later.get_by_role("button", name="Create task").click()
         # The one Create window opens with the message as its source (#345); creating it opens the task.
-        expect(page.get_by_role("dialog", name="New task").get_by_label("Title", exact=True)).to_have_value(LATER)
+        # The title is the message's first clause (#763 B5); the journey keeps the whole question.
+        expect(page.get_by_role("dialog", name="New task").get_by_label("Title", exact=True)).to_have_value(LATER.rstrip("?"))
+        page.get_by_role("dialog", name="New task").get_by_label("Title", exact=True).fill(LATER)
         page.get_by_role("dialog", name="New task").get_by_role("button", name=re.compile("^Create task")).click()
         details = page.locator("#details")
         expect(details.get_by_role("heading", name=LATER)).to_be_visible()

@@ -222,7 +222,9 @@ class TaskEntries(unittest.TestCase):
         row = page.locator(f"#message-{message}")
         row.hover()
         row.get_by_role("button", name="Create task").click()
-        expect(title_field(page)).to_have_value(body)
+        # The title starts as the message's first clause (#763 B5); this journey keeps the whole message as the title.
+        expect(title_field(page)).to_have_value("Which driver fits the lamp")
+        title_field(page).fill(body)
         self.submit_with_recovery(page, body)
         return body
 
