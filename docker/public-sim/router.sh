@@ -1,10 +1,11 @@
 #!/bin/sh
-# NAT router of one simulated client network (#63). Usage: router.sh CLIENT_IP PROFILE
+# NAT router of one simulated client network (#63). Usage: router.sh CLIENT_IP PROFILE [SECOND_CLIENT_IP]
 #   restrictive: only TCP/443 and DNS to the simulation's resolver leave the network (a strict office or hotel);
 #   open: everything leaves (a home router).
-# The driver reaches the client's Playwright server through the one forwarded port, TCP/3000.
+# The driver reaches each client's Playwright server through one forwarded port: TCP/3000 for the first client,
+# TCP/3001 for the second (the third and fourth people of a four-person run).
 set -eu
-client=$1 profile=$2
+client=$1 profile=$2 second=${3:-}
 inet=$(ip -o -4 addr show | awk '$4 ~ /^203\.0\.113\./ { print $2; exit }')
 lan=$(ip -o -4 addr show | awk '$4 ~ /^10\.213\./ { print $2; exit }')
 test -n "$inet" && test -n "$lan"
@@ -14,6 +15,10 @@ iptables -t nat -A PREROUTING -i "$inet" -p tcp --dport 3000 -j DNAT --to-destin
 iptables -P FORWARD DROP
 iptables -A FORWARD -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
 iptables -A FORWARD -i "$inet" -o "$lan" -p tcp -d "$client" --dport 3000 -j ACCEPT
+if [ -n "$second" ]; then
+  iptables -t nat -A PREROUTING -i "$inet" -p tcp --dport 3001 -j DNAT --to-destination "$second:3000"
+  iptables -A FORWARD -i "$inet" -o "$lan" -p tcp -d "$second" --dport 3000 -j ACCEPT
+fi
 iptables -A FORWARD -i "$lan" -o "$inet" -p udp -d 203.0.113.53 --dport 53 -j ACCEPT
 case "$profile" in
   # Two rules so the counters tell TURN/TLS (the media host) from HTTPS (the proxy).
@@ -23,5 +28,5 @@ case "$profile" in
   *) echo "unknown profile $profile" >&2; exit 2 ;;
 esac
 iptables -A FORWARD -i "$lan" -j REJECT
-echo "router ready: $profile, client $client, internet $inet, lan $lan"
+echo "router ready: $profile, clients $client ${second:-}, internet $inet, lan $lan"
 exec sleep infinity
