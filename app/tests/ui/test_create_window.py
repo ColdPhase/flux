@@ -397,8 +397,7 @@ class CreateWindow(unittest.TestCase):
         expect(window).to_have_count(0)
         message.hover()
         message.get_by_role("button", name="Create task", exact=True).click()
-        # A title made from a message is its first clause (#763 B5); the message stays the source.
-        expect(title_field(page)).to_have_value("Lost response from a message")
+        expect(title_field(page)).to_have_value("Lost response from a message: check the ESP32 kits")
         expect(window.get_by_label("Details")).to_have_value("Done when both kits are counted")
         expect_value(window.get_by_role("combobox", name="Status"), "in_progress")
         expect(window.get_by_role("button", name=re.compile("^Remove link to"))).to_have_count(1)
@@ -1088,6 +1087,22 @@ class CreateWindow(unittest.TestCase):
         self.assertEqual(other["creationUndo"], {"eligible": True, "reason": "own_creation"})
         changed = self.api(page, "PATCH", f"/api/v1/work/{other['id']}", {"title": "Kept after a change, renamed", "expectedVersion": other["version"]}, status=200)
         self.assertEqual(self.api(page, "GET", f"/api/v1/work/{changed['id']}", status=200)["creationUndo"]["reason"], "creation_changed")
+
+    def test_28_a_long_message_gives_its_first_clause_as_the_title_selected(self) -> None:
+        """#763 B5: a long message prefills only its first clause (at most 60 characters), selected; it stays the source."""
+        self.ensure_account()
+        page = self.page()
+        body = ("The resistive probes in bed 5 read 92 % today, which cannot be right: the soil is dry on top. "
+                "I think they are corroding")
+        made = self.thread(page, body)
+        page.goto(f"/projects/{self.ids['project']}/conversations/{made['conversation']}")
+        message = page.locator(f"#message-{made['message']}")
+        message.hover()
+        message.get_by_role("button", name="Create task", exact=True).click()
+        expect(title_field(page)).to_have_value("The resistive probes in bed 5 read 92 % today")
+        self.assertEqual(title_field(page).evaluate("el => [el.selectionStart, el.selectionEnd]"), [0, len("The resistive probes in bed 5 read 92 % today")])
+        expect(dialog(page).get_by_role("button", name=re.compile("^Remove link to"))).to_have_count(1)
+        page.keyboard.press("Escape")
 
 
 if __name__ == "__main__":

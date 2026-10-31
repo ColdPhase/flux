@@ -28,7 +28,9 @@ command and history, extended by one reason code: a task with origin `human` is 
 while it is unchanged and unused and the creator still has project write. Its eligibility reads
 `{ eligible: true, reason: 'own_creation' }` for that person; everyone else (its owner, other writers, agents) still reads
 `not_ai_origin`. `eligible` stays the AI-origin reason, and only it shows **Undo task creation** in Details; a person's own
-task offers Undo in the toast instead, so Details gains no section. Nothing else of AC-U1–AC-U5 changes: the reverted task
+task offers Undo in the toast instead, so Details gains no section. Migration 0135 lets the stored reverted-row shape
+(`task_creation_reversion_shape`) admit origin `human`; the migrator's #238 compatibility check accepts that form.
+Nothing else of AC-U1–AC-U5 changes: the reverted task
 stays as read-only history with its notices, and the use latch, version and baseline fences apply unchanged.
 
 ## Who may undo (AC-U1)

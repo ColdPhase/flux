@@ -293,8 +293,6 @@ class ReturnViewJourney(unittest.TestCase):
         self.assertEqual(len([item for item in before["items"] if item["needsYou"]]), 3)
         self.have_context(page, self.open_recap(page))
         self.assertEqual(self.summary(page, "project")["items"], [], "the point moved to what was shown")
-        # Nothing needs Nia any more, so the chip that counted it is gone.
-        expect(entry).to_have_count(0)
 
     def test_06_closing_without_context_keeps_the_point_and_newer_changes_wait(self) -> None:
         page = self.page("nia")
@@ -332,8 +330,8 @@ class ReturnViewJourney(unittest.TestCase):
         # A conversation Nia is not part of: in the whole project, not in "relevant to me".
         self.api(ari, "POST", f"/api/v1/projects/{self.project_id}/conversations", {"body": "Which shade of grey for the base?", "clientMessageId": str(uuid.uuid4())}, status=201)
         page = self.page("nia")
-        # Load the project first (its header count asks the same whole-project question).
-        with page.expect_response(re.compile(r"/api/v1/return\?.*scope=all")):
+        # Load the project first ("Since you left" reads the project's summary as the stream opens, #763 A3).
+        with page.expect_response(re.compile(r"/api/v1/return\?place=project")):
             page.goto(f"/projects/{self.project_id}")
         held: list = []
         pattern = re.compile(r"/api/v1/return\?.*scope=all.*from=last-visit")

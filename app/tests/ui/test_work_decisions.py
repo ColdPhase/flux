@@ -152,7 +152,7 @@ class WorkDecisionsJourney(unittest.TestCase):
         page.get_by_role("menuitemradio", name="In progress").click()
         expect(panel.get_by_role("button", name="Status", exact=True)).to_contain_text("In progress")
         # One change, one toast, and Undo puts the state back at once (S9).
-        expect(page.get_by_role("status").get_by_role("button", name="Undo")).to_be_visible()
+        expect(page.locator(".ui-toast").filter(has_text=re.compile(r"is now in progress")).get_by_role("button", name="Undo")).to_be_visible()
         # Details names the task by its number in the project (#276), in the head beside the Task chip.
         expect(panel.locator(".wd__foot")).to_contain_text("Everyone in Gesture lamp")
         expect(page.locator(".ui-panel__meta")).to_have_text("#1")
@@ -493,11 +493,16 @@ class WorkDecisionsJourney(unittest.TestCase):
             message = page.locator(f"#message-{self.messages[key]}")
             message.hover()
             acts = message.locator(".msg-acts").bounding_box()
-            for part in (message.locator(".message-bubble"), message.locator(".message-time")):
+            # A docked thread puts the actions in the bubble's top corner, over no text (#763 A4); elsewhere beside it.
+            corner = message.evaluate("el => !!el.closest('.thread__feed') && el.closest('.thread__feed').clientWidth < 520")
+            for part in (message.locator(".message-time"),) if corner else (message.locator(".message-bubble"), message.locator(".message-time")):
                 box = part.bounding_box()
                 assert acts and box
                 apart = acts["x"] + acts["width"] <= box["x"] or box["x"] + box["width"] <= acts["x"] or acts["y"] + acts["height"] <= box["y"] or box["y"] + box["height"] <= acts["y"]
                 self.assertTrue(apart, f"{key}: actions clear of the meta line")
+            if corner:
+                bubble = message.locator(".message-bubble").bounding_box()
+                self.assertLessEqual(acts["y"] + acts["height"], bubble["y"] + 14, f"{key}: in the bubble's top corner")
         shot(page, "conversation-author-column-1440")
         # Details take the thread's place in the one panel, with the way back to the thread (#488).
         page.locator(f"#message-{self.messages['finding']}").get_by_role("button", name=re.compile(r"^Task #\d+: ")).first.click()

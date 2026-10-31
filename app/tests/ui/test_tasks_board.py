@@ -331,9 +331,10 @@ class TasksBoardJourney(unittest.TestCase):
     def test_04_a_drop_on_the_header_or_an_empty_column_persists(self) -> None:
         page = self.board("ada")
         doing = self.column(page, "In progress")
-        heads_before = [box["y"] for box in page.locator(".tb-col__head").evaluate_all("els => els.map(el => el.getBoundingClientRect().toJSON())")]
         self.lift(page, self.card(self.column(page, "Open"), ORDER))
         self.hover(page, doing.locator(".tb-col__head"), dy=10)
+        # Each header's place in the board's own scroll area: a banner above the columns would push them down.
+        heads_before = page.locator(".tb-col__head").evaluate_all("els => els.map(el => { const s = el.closest('.pane-scroll'); return el.getBoundingClientRect().top - s.getBoundingClientRect().top + s.scrollTop; })")
         with page.expect_response(lambda response: response.request.method == "PATCH" and response.url.endswith(f"/api/v1/work/{self.ids['order']}")) as moved:
             page.mouse.up()
         response = moved.value
@@ -347,7 +348,7 @@ class TasksBoardJourney(unittest.TestCase):
         toast = page.locator(".ui-toast").filter(has_text=re.compile(r"#\d+ is now in progress"))
         expect(toast.get_by_role("button", name="Undo")).to_be_visible()
         expect(page.locator(".tb-note--ok")).to_have_count(0)
-        heads_after = [box["y"] for box in page.locator(".tb-col__head").evaluate_all("els => els.map(el => el.getBoundingClientRect().toJSON())")]
+        heads_after = page.locator(".tb-col__head").evaluate_all("els => els.map(el => { const s = el.closest('.pane-scroll'); return el.getBoundingClientRect().top - s.getBoundingClientRect().top + s.scrollTop; })")
         self.assertEqual(heads_after, heads_before, "the drop's confirmation shifts no column")
         self.assertEqual(self.task(page, "order")["status"], "in_progress")
         page.reload()

@@ -50,31 +50,29 @@ export const resultLine = (result: Pick<WorkResult, 'finding' | 'createdBy'>) =>
 
 /**
  * What a blocked task waits for, composed the same way on the board, the list and the panel (#763 C1): "Waiting for
- * <person> · <reason>", the reason alone when nobody is named, and null when neither was written down.
+ * <person> · <reason>". A reason alone reads as written when it is a sentence ("Needs the gateway first."), and after
+ * "Waiting for" when it is the thing waited for ("the sensor delivery"); never "Waiting for Needs …".
  */
 export function blockedParts(item: { blocker: string | null; waitingFor?: { name: string } | null }) {
   const reason = item.blocker?.trim() || null;
-  return { person: item.waitingFor?.name ?? null, reason };
+  const thing = !!reason && /^\p{Ll}/u.test(reason);
+  return { person: item.waitingFor?.name ?? null, reason, thing };
 }
 
 export function blockedLine(item: { blocker: string | null; waitingFor?: { name: string } | null }) {
-  const { person, reason } = blockedParts(item);
+  const { person, reason, thing } = blockedParts(item);
   if (person) return reason ? `Waiting for ${person} · ${reason}` : `Waiting for ${person}`;
-  return reason;
-}
-
-/** The first line of a message, for prefilled titles. */
-export function firstLine(text: string, max = 200) {
-  const line = text.trim().split('\n', 1)[0] ?? '';
-  return line.length > max ? `${line.slice(0, max - 1)}…` : line;
+  return reason && thing ? `Waiting for ${reason}` : reason;
 }
 
 /**
- * A task title made from a message (#763 B5): its first clause, at most `max` characters, cut at a word. The message
- * itself stays the task's quoted source, so nothing of it is lost.
+ * A task title made from a message (#763 B5): a short first line as written; a long one (over `whole` characters) gives
+ * its first clause, at most `max` characters, cut at a word. The message stays the task's quoted source.
  */
-export function titleFrom(text: string, max = 60) {
+export function titleFrom(text: string, max = 60, whole = 80) {
   const line = firstLine(text, 1000);
+  // A short message already reads as a task: it is the title as written.
+  if (line.length <= whole) return line;
   const end = line.search(/[.!?;:](\s|$)/u);
   const sentence = (end > 0 ? line.slice(0, end) : line).trim();
   const clause = sentence.length <= max ? sentence : sentence.split(/,\s/u, 1)[0]!.trim();

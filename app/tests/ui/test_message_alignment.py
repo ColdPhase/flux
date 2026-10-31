@@ -552,7 +552,11 @@ class MessageAlignment(unittest.TestCase):
         if not page.evaluate("matchMedia('(hover: none)').matches"):
             last.hover()
             toolbar = last.locator(".msg-acts").bounding_box()
-            self.assertTrue(toolbar["x"] + toolbar["width"] <= b["x"] or b["x"] + b["width"] <= toolbar["x"], "hover controls stay beside the bubble")
+            if last.evaluate(f"el => !!el.closest('.thread__feed') && el.closest('.thread__feed').clientWidth < {NARROW_THREAD}"):
+                # A docked thread puts them in the bubble's top corner, over no line of text (#763 A4).
+                self.assertTrue(b["y"] - 30 <= toolbar["y"] and toolbar["y"] + toolbar["height"] <= b["y"] + 14, "hover controls sit in the bubble's top corner")
+            else:
+                self.assertTrue(toolbar["x"] + toolbar["width"] <= b["x"] or b["x"] + b["width"] <= toolbar["x"], "hover controls stay beside the bubble")
 
     def assert_reference_width(self, page, row):
         card = row.locator(".message-bubble .ws-chip").first

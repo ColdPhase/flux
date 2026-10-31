@@ -567,7 +567,9 @@ class TasksFinalJourney(unittest.TestCase):
         expect(page.locator(".ui-toast").filter(has_text=f"#{self.numbers['labels']} is now in progress").get_by_role("button", name="Undo")).to_be_visible()
         expect(page.locator(".tb-note--ok")).to_have_count(0)
         self.assertEqual(self.task(page, "labels")["status"], "in_progress")
-        # The mouse still drags a card into another column.
+        # The mouse still drags a card into another column, once its arrival has settled.
+        expect(self.card(doing, LABELS)).not_to_have_class(re.compile("is-arrived"), timeout=5000)
+        page.wait_for_function("() => document.getAnimations().every((a) => a.playState !== 'running' || a.effect?.getComputedTiming().endTime === Infinity)")
         box = self.card(doing, LABELS).bounding_box()
         target = page.get_by_role("region", name="Done", exact=True).locator(".tb-col__cards").bounding_box()
         assert box and target

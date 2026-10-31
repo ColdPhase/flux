@@ -122,6 +122,8 @@ function Toolbar({ mode, onMode, query, onQuery, mine, onMine, writable, onNew, 
   mine: boolean; onMine: (mine: boolean) => void; writable: boolean; onNew: () => void; phone: boolean;
 }) {
   const { actionSlot } = useShellActions();
+  // The header holds it where the panel docks beside the board (a computer); a tablet's panel overlays, so it stays here.
+  const docks = !useMediaQuery(MEDIA.panelOverlay);
   const searchId = useId();
   const radios = useRef<HTMLDivElement>(null);
   // One radio group: arrows choose and focus the other view, as the Map's Map | List does.
@@ -158,7 +160,7 @@ function Toolbar({ mode, onMode, query, onQuery, mine, onMine, writable, onNew, 
           the board narrows (#763 C4, Spokój rule 7). A phone keeps it in its toolbar. */}
       {writable ? (() => {
         const add = <Button variant="primary" icon="plus" className="tb-add" onClick={onNew}><span className="ui-vh">New </span>Task</Button>;
-        return !phone && actionSlot ? createPortal(add, actionSlot) : add;
+        return !phone && docks && actionSlot ? createPortal(add, actionSlot) : add;
       })() : null}
     </div>
   );

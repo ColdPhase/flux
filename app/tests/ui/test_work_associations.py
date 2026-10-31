@@ -142,7 +142,7 @@ class MessageWorkJourney(unittest.TestCase):
                         card = cards.nth(index)
                         kind, identity = card.get_attribute("data-work-kind"), card.get_attribute("data-work-id")
                         title = self.expected_titles[(kind, identity)]
-                        expect(card).to_have_accessible_name(f"{kind.capitalize()}: {title}")
+                        expect(card).to_have_accessible_name(re.compile(rf"^Task #\d+: {re.escape(title)}$") if kind == "work" else f"{kind.capitalize()}: {title}")
                         expect(card.locator(".ws-chip__t")).to_have_text(title)
                         layout = card.evaluate("""el => {
                           const t=el.querySelector('.ws-chip__t'), k=el.querySelector('.ws-chip__k');
