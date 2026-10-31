@@ -202,12 +202,38 @@ function RefMark({ mark, owners }: { mark: Mark; owners: AgentOwners }) {
 }
 
 /**
+ * A smooth outline jump that stopped short lands on its heading (#752). WebKit can end a smooth scroll of the reading
+ * pane early while the page is still settling after it opens: `scrollend` fired with the heading halfway down the page
+ * and the reader stayed there. Unless the reader scrolled meanwhile (wheel, touch, a key or a pointer press), the end of
+ * the motion puts the heading where it was asked to go. Returns how to stop watching.
+ */
+function landOn(scroller: HTMLElement, node: HTMLElement): () => void {
+  const inputs = ['wheel', 'touchstart', 'keydown', 'pointerdown'] as const;
+  const stop = () => {
+    scroller.removeEventListener('scrollend', land);
+    for (const name of inputs) scroller.removeEventListener(name, stop);
+  };
+  function land() {
+    stop();
+    if (!node.isConnected) return;
+    const off = node.getBoundingClientRect().top - scroller.getBoundingClientRect().top - (parseFloat(getComputedStyle(node).scrollMarginTop) || 0);
+    const top = Math.max(0, Math.min(scroller.scrollHeight - scroller.clientHeight, scroller.scrollTop + off));
+    if (Math.abs(top - scroller.scrollTop) > 1) scroller.scrollTo({ top, behavior: 'auto' });
+  }
+  scroller.addEventListener('scrollend', land);
+  for (const name of inputs) scroller.addEventListener(name, stop, { passive: true });
+  return stop;
+}
+
+/**
  * "On this page": the page's headings; the one being read is marked, and each moves focus to its heading.
  * In a wide reading pane it is the sticky column beside the page; in a narrower one the page toolbar's
  * chip opens it as a list instead (#511, AC-3). It is never placed below the page.
  */
 export function Outline({ headings, scroller, onOpen, list = false }: { headings: Heading[]; scroller: HTMLElement | null; onOpen?: () => void; list?: boolean }) {
   const [current, setCurrent] = useState<string | null>(null);
+  const landing = useRef<() => void>(() => undefined);
+  useEffect(() => () => landing.current(), []);
   useEffect(() => {
     if (!scroller || !headings.length) return;
     const measure = () => {
@@ -227,7 +253,10 @@ export function Outline({ headings, scroller, onOpen, list = false }: { headings
     const node = document.getElementById(id);
     if (!node) return;
     event.preventDefault();
-    node.scrollIntoView({ block: 'start', behavior: prefersReducedMotion() ? 'auto' : 'smooth' });
+    const smooth = !prefersReducedMotion();
+    landing.current();
+    node.scrollIntoView({ block: 'start', behavior: smooth ? 'smooth' : 'auto' });
+    if (smooth && scroller?.contains(node)) landing.current = landOn(scroller, node);
     node.focus({ preventScroll: true });
     setCurrent(id);
     onOpen?.();

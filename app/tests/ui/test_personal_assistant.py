@@ -105,6 +105,9 @@ class PersonalAssistantJourney(unittest.TestCase):
         page = self.page(who, **kwargs)
         page.goto(f"/projects/{self.ids['project']}/conversations/{self.ids['conversation']}")
         expect(self.opening(page)).to_contain_text(OPENING)
+        # The thread is drawn hidden until its opening reads settle (#155, `.is-opening`); until then nothing in it can
+        # take focus, so a test that starts at once focused nothing (#752).
+        expect(self.opening(page)).to_be_visible()
         return page
 
     def opening(self, page: Page):
@@ -604,7 +607,8 @@ class PersonalAssistantJourney(unittest.TestCase):
         box = self.composer(jo)
         box.focus()
         jo.keyboard.type("/ai Compare the sensors")
-        expect(jo.locator("#project-ask")).to_be_visible()
+        # Enter sends once the bar knows the assistant is ready; while it says "Checking your assistant…" Enter is refused (#752).
+        expect(jo.locator("#project-ask")).to_contain_text("Answer shown to")
         jo.keyboard.press("Enter")
         working = jo.locator(".assistant-working")
         expect(working).to_contain_text("Only you see this")
