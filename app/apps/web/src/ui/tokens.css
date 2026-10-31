@@ -98,6 +98,12 @@
   --rail-w: 64px;
   --panel-w: 420px;  /* Spokój: computer 1440 */
   --col: 790px;      /* reading column */
+  /* Large screens (F-015 amendment, founder direction 2026-10-31, #763): consistency before filling the width.
+     The work panel stops at --content-max and is centred beside the sidebar; reading columns stay at --read-max;
+     the board's status columns never grow past --board-col. 1440, 1920 and 4K look the same; more width is margin. */
+  --content-max: 1600px;
+  --read-max: 760px;
+  --board-col: 340px;
 
   /* Motion. Only colour, opacity and transform animate (a row's grow and collapse also animate its height).
      Pressing scales to .97 and springs back in about 250 ms. Every duration is 0ms under reduced motion.
@@ -179,8 +185,7 @@
   :root[data-text-size="large"] { font-size: 112.5%; }
 }
 @media (min-width: 1600px) { :root { --space-page: 44px; } }
-/* Spokój: large screens keep the panel at 480 px; the extra width is margin, never a third column. */
-@media (min-width: 1920px) { :root { --panel-w: 480px; } }
+/* Large screens keep the laptop's 420 px panel (F-015 amendment, 2026-10-31); the extra width is margin, never a third column. */
 
 @media (pointer: coarse) {
   :root { --ctl: 44px; --ctl-lg: 44px; }
