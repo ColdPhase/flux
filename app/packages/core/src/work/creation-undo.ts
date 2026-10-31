@@ -38,11 +38,15 @@ export function creationUndoEligibility(facts: TaskCreationUndoFacts, principal:
   const no = (reason: TaskCreationUndoEligibility['reason']): TaskCreationUndoEligibility => ({ eligible: false, reason });
   if (facts.reverted) return no('already_reverted');
   if (!facts.baselineVersion || !facts.origin) return no('eligibility_unknown');
-  if (facts.origin === 'human') return no('not_ai_origin');
+  // A person's own task (#763 B1, Prostota principle 6): its creator alone may take it back with the toast's Undo while it
+  // is unchanged and unused, through the same command and history. Anyone else still reads `not_ai_origin`.
+  const own = facts.origin === 'human' && principal.kind === 'human' && facts.createdBy.kind === 'human' && facts.createdBy.id === principal.id;
+  if (facts.origin === 'human' && !own) return no('not_ai_origin');
   if (facts.used) return no('task_used');
   if (facts.version !== facts.baselineVersion || !facts.baselineMatches) return no('creation_changed');
   // A current dependency is an additional invariant; an earlier, removed one is covered by the use latch.
   if (facts.prerequisites > 0) return no('task_used');
   if (!canWrite) return no('not_authorized');
+  if (own) return { eligible: true, reason: 'own_creation' };
   return mayUndoTaskCreation(facts, principal) ? { eligible: true, reason: 'eligible' } : no('not_authorized');
 }
