@@ -265,6 +265,8 @@ test('actual retained native87 history upgrades to88 without pulses, seeds old b
     await fixture.pool.query('ALTER TABLE project_files ADD COLUMN key_version integer CHECK (key_version IS NULL OR key_version >= 1)');
     // 0122 (#469) added what the bytes said at upload to project_files, which the retained rows carry too.
     await fixture.pool.query('ALTER TABLE project_files ADD COLUMN page_count integer, ADD COLUMN row_count integer, ADD COLUMN duration_ms integer');
+    // 0129 (#68) added when the assistant's Undo removed a message; the retained message rows carry it.
+    await fixture.pool.query('ALTER TABLE project_messages ADD COLUMN removed_at timestamptz');
     const client=await fixture.pool.connect();try{
       await client.query('BEGIN');await client.query('SET CONSTRAINTS ALL DEFERRED');
       // Restore only this isolated fixture's two guarded tables, preserving the ACTUAL
