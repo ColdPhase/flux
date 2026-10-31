@@ -173,8 +173,8 @@ class HomeInboxNav(unittest.TestCase):
         expect(row.locator(".nyc__face .kreska")).to_be_visible()
         expect(row.get_by_text("Agent", exact=True)).to_be_visible()
         expect(row).to_contain_text(f"on #{number}")
-        expect(row.get_by_role("button", name="Per bed")).to_be_visible()
-        expect(row.get_by_role("button", name="One value")).to_be_visible()
+        expect(row.get_by_role("button", name="Per bed", exact=True)).to_be_visible()
+        expect(row.get_by_role("button", name="One value", exact=True)).to_be_visible()
         expect(row.get_by_role("button", name="Reply")).to_have_count(0)
         shot(page, "home-question-1440")
 
@@ -184,7 +184,7 @@ class HomeInboxNav(unittest.TestCase):
         expect(card).to_contain_text(f"on #{number}")
         shot(page, "inbox-question-1440")
         # An answer leaves at once with Undo; Undo within the window sends nothing.
-        card.get_by_role("button", name="Per bed").click()
+        card.get_by_role("button", name="Per bed", exact=True).click()
         expect(card).to_have_count(0)
         toast = page.locator(".ui-toast").filter(has_text="Answered: Per bed")
         expect(toast).to_be_visible()
@@ -192,7 +192,7 @@ class HomeInboxNav(unittest.TestCase):
         expect(card).to_be_visible()
         self.assertIsNone(next(item for item in self.questions() if item["id"] == asked["questionId"])["answer"], "Undo sent nothing")
         # Answered for real once the window ends: the question itself holds the answer.
-        card.get_by_role("button", name="Per bed").click()
+        card.get_by_role("button", name="Per bed", exact=True).click()
         expect(card).to_have_count(0)
         for _ in range(60):
             answer = next(item for item in self.questions() if item["id"] == asked["questionId"])["answer"]
@@ -233,14 +233,14 @@ class HomeInboxNav(unittest.TestCase):
             card = page.locator(f'.nyc[data-key="{key}"]')
             expect(card).to_be_visible()
             for name in ("Per bed", "One value"):
-                box = card.get_by_role("button", name=name).bounding_box()
+                box = card.get_by_role("button", name=name, exact=True).bounding_box()
                 assert box
                 self.assertGreaterEqual(box["height"], 44, name)
                 self.assertLessEqual(box["x"] + box["width"], PHONE["width"], name)
             self.no_sideways_scroll(page)
             shot(page, f"inbox-question-390-{'dark' if dark else 'light'}")
             page.goto("/")
-            expect(page.locator(f'.nyc[data-key="{key}"]').get_by_role("button", name="Per bed")).to_be_visible()
+            expect(page.locator(f'.nyc[data-key="{key}"]').get_by_role("button", name="Per bed", exact=True)).to_be_visible()
             self.no_sideways_scroll(page)
 
     # ---------------------------------------------------------------- NV-1
@@ -362,6 +362,7 @@ class HomeInboxNav(unittest.TestCase):
         page.goto("/search?q=probes")
         expect(page.get_by_role("dialog", name="Jump to")).to_have_count(0)
         group = page.get_by_role("group", name="Search in")
+        expect(group.get_by_role("button")).to_have_count(len(sheet_chips))
         self.assertEqual([text.strip() for text in group.get_by_role("button").all_inner_texts()], sheet_chips, "the same chips")
         field = page.get_by_role("combobox", name="Jump to")
         expect(field).to_have_value("probes")
