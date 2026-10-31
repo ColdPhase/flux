@@ -586,6 +586,9 @@ def _phases(ada: Page, jonas: Page, lee: Page, ids: dict, pid: str, sid: str, to
         outcome.update(dropSeconds=15, barDuringDrop=during, selectedAfter=selected(ada),
                        restoredToFirstCheckS=round(time.time() - restored, 2))
         result["phases"]["drop"] = outcome
+        if outcome["automaticS"] is None and outcome.get("audioAtAS") is None:
+            diagnose(ada, "ada")
+            log("counters", out=ctl("counters a"))
         assert outcome["automaticS"] is not None or outcome.get("audioAtAS") is not None, "media back after the drop"
 
     for side, page in ((("a", ada), ("b", jonas)) if "loss" in PHASES else ()):

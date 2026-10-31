@@ -47,7 +47,7 @@ export FLUX_LIVEKIT_MEDIA_CIDR=203.0.113.20/32
 export FLUX_LIVEKIT_TURN_CERT_DIR="$work/certs/turn"
 export FLUX_VAPID_PUBLIC_KEY='' FLUX_VAPID_PRIVATE_KEY='' FLUX_VAPID_SUBJECT=''
 candidate=${FLUX_SIM_LIVEKIT_CANDIDATE:-livekit/livekit-server:v1.13.11@sha256:25cd902de7cacbd5f1f779f6a6ac1eae20ba8f56b0935934ce6b0ab80d1e3d20}
-runs=${FLUX_SIM_RUNS:-"chromium:chromium:connect,profiles chromium:chromium:connect,four,profiles chromium:chromium:connect,ai-off,drop,loss,weak,access chromium:chromium:connect,sfu-update chromium:chromium:connect,sfu-restart chromium:chromium:connect,api-restart firefox:chromium:connect,drop,access chromium:firefox:connect,drop,access chromium:webkit:connect,drop,access webkit@turn-udp:chromium:connect,drop webkit@ice-tcp:chromium:connect firefox:chromium:connect,screen webkit@turn-udp:chromium:connect,screen chromium+pixel7:chromium:connect,drop webkit+iphone13@turn-udp:chromium:connect,drop chromium:webkit+ipad:connect,access webkit:chromium:turn-tls-probe"}
+runs=${FLUX_SIM_RUNS:-"chromium:chromium:connect,profiles chromium:chromium:connect,four,profiles chromium:chromium:connect,ai-off,drop,loss,weak,access chromium:chromium:connect,sfu-update chromium:chromium:connect,sfu-restart chromium:chromium:connect,api-restart firefox:chromium:connect,drop,access chromium:firefox:connect,drop,access chromium:webkit:connect,drop,access webkit@turn-udp:chromium:connect,drop webkit@ice-tcp:chromium:connect,drop firefox:chromium:connect,screen webkit@turn-udp:chromium:connect,screen chromium+pixel7:chromium:connect,drop webkit+iphone13@turn-udp:chromium:connect,drop chromium:webkit+ipad:connect,access webkit:chromium:turn-tls-probe"}
 printf 'Public simulation %s, results in %s\n' "$project" "$artifacts"
 
 compose="docker compose -p $project -f docker/compose.source.yaml -f docker/compose.live.yaml -f docker/compose.live.turn.yaml -f docker/public-sim/compose.yaml"
@@ -118,6 +118,7 @@ if grep -E -q 'egress|ingress|agent' "$artifacts/services.txt"; then echo 'unexp
         "netem-host b 10.213.2.11 "*) out=$($compose exec -T router-b /bin/sh /impair.sh netem-host 10.213.2.11 ${command#netem-host b 10.213.2.11 } 2>&1) ;; # shellcheck disable=SC2086
         # The person presses Yes in WebKit's own screen-sharing prompt on client A (allow-display.sh).
         "allow-display a") out=$($compose exec -T client-a allow-display 2>&1) || out="allow-display failed: $out" ;;
+        "counters a") out=$($compose exec -T router-a /bin/sh /impair.sh counters 2>&1) ;;
         "sniff a") out=$($compose exec -T router-a /bin/sh /impair.sh sniff 2>&1) ;;
         "mark "*) printf '{"t": %s, "mark": "%s"}\n' "$(date +%s.%N)" "${command#mark }" >> "$artifacts/resources.jsonl"; out=marked ;;
         *) out="refused: $command" ;;
@@ -171,6 +172,8 @@ for run in $runs; do
   # SFU's ICE/TCP port out instead (UDP still blocked, no TLS).
   path=; case "$a" in *@turn-udp) path=turn-udp; a=${a%@turn-udp} ;; *@ice-tcp) path=ice-tcp; a=${a%@ice-tcp} ;; esac
   log="$artifacts/driver-$a${path:+-$path}-$b-$(printf '%s' "$phases" | tr ',' '-').log"
+  # The same run twice keeps both logs.
+  n=2; while [ -e "$log" ]; do log="${log%.log}"; log="${log%-run[0-9]*}-run$n.log"; n=$((n + 1)); done
   printf '== run %s behind the restrictive router%s, %s behind the open one: %s\n' "$a" "${path:+ ($path allowed)}" "$b" "$phases"
   [ -z "$path" ] || $compose exec -T router-a /bin/sh /impair.sh "$path" on
   since=$(date -u +%Y-%m-%dT%H:%M:%SZ)
