@@ -27,6 +27,11 @@ export interface WorkspaceEncryption {
   myPassword: boolean;
   /** The caller may unlock now: an owner or admin with a password, or with the recovery code while one exists. */
   canUnlock: boolean;
+  /**
+   * When a holder's permission for the caller to set a first unlock password ends; null when there is none, the caller
+   * already has a password, or the caller is not an owner or admin. The recovery code is the other way to a first password.
+   */
+  passwordGrantUntil: string | null;
   /** The workspace has a recovery code. */
   recoveryCode: boolean;
   /**
@@ -44,6 +49,18 @@ export interface WorkspaceEncryption {
   };
   /** When the key last changed by a rotation; null while the creation key is current. */
   keyChangedAt: string | null;
+  /**
+   * Why the key last changed ("New key since 23 Oct, after Ben left."): the finished rotation's reason, kept after it
+   * (S3). Null for guests, while the creation key is current, and for a rotation that had none.
+   */
+  keyChangeReason: { kind: 'removed' | 'demoted' | 'holder_deleted'; userId: string | null; name: string | null } | null;
+  /**
+   * Why it is locked (S3 UI audit LK-1): the last `workspace.locked.v1` while no unlock row exists. `person` is Lock now
+   * (`by` names who, for everyone but guests); `restart` is a server or keyring restart. Null while unlocked or unknown.
+   */
+  lockedBecause: { reason: 'person' | 'restart'; at: string; by: { id: string; name: string } | null } | null;
+  /** The owners and admins with an unlock password ("Ada, Jonas or Ben can unlock it."); [] for guests. */
+  unlockers: { id: string; name: string }[];
 }
 
 export interface CreateEncryptedWorkspaceCommand {
@@ -81,7 +98,7 @@ export interface NewRecoveryCodeResult { recoveryCode: string }
 /** The refusal of every content read or write of a sealed workspace while it is locked. */
 export const WORKSPACE_LOCKED = 'WORKSPACE_LOCKED';
 export const ENCRYPTION_ERROR_CODES = [
-  'WORKSPACE_LOCKED', 'UNLOCK_INCORRECT', 'UNLOCK_RATE_LIMITED', 'UNLOCK_BUSY', 'NO_UNLOCK_PASSWORD', 'KEYRING_UNAVAILABLE',
+  'WORKSPACE_LOCKED', 'UNLOCK_INCORRECT', 'UNLOCK_RATE_LIMITED', 'CREATION_RATE_LIMITED', 'UNLOCK_BUSY', 'NO_UNLOCK_PASSWORD', 'KEYRING_UNAVAILABLE',
   'SWAP_UNSAFE', 'PASSWORD_TOO_WEAK', 'LAST_UNLOCK_PASSWORD', 'ALREADY_HAS_PASSWORD', 'UNLOCK_PASSWORD_GRANT_REQUIRED',
   'WORKSPACE_ENCRYPTION_ADMIN_REQUIRED', 'WORKSPACE_ENCRYPTED_AI_OFF', 'ENCRYPTION_TAMPERED', 'WORKSPACE_NOT_ENCRYPTED', 'WORKSPACE_ENCRYPTED_UNSUPPORTED',
 ] as const;
@@ -94,6 +111,9 @@ export const UNLOCK_PASSWORD_MIN_GUESSES_LOG10 = 17;
 /** Failed password or code checks per person and workspace, across every checking route, in the window. */
 export const UNLOCK_ATTEMPT_LIMIT = 5;
 export const UNLOCK_ATTEMPT_WINDOW_SECONDS = 15 * 60;
+/** Encrypted-space creations per person in the window (F-030 Password checks, S3 security review). */
+export const CREATION_LIMIT = 5;
+export const CREATION_WINDOW_SECONDS = 15 * 60;
 /** How long a holder's grant lets an owner or admin set a first password. */
 export const UNLOCK_GRANT_SECONDS = 60 * 60;
 

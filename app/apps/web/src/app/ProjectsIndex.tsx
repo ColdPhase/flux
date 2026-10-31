@@ -11,7 +11,7 @@ import './settings.css';
  * Each row opens the project on its conversation; a dot says something is new there.
  */
 export function ProjectsIndex() {
-  const { projects, directMessages } = useShellData();
+  const { projects, directMessages, lockedWorkspaces } = useShellData();
   const news = useProjectNews(useMemo(() => projects.map((project) => project.id), [projects]));
   const phone = useMediaQuery(MEDIA.phone);
   return (
@@ -21,7 +21,7 @@ export function ProjectsIndex() {
           <p className="proj-index__lead">Each project has one conversation, a map, tasks, a wiki and its agents.</p>
           <Link to="/projects/new" className="ui-btn ui-btn--secondary"><Icon name="plus" />New project</Link>
         </div>
-        {projects.length ? (
+        {projects.length || lockedWorkspaces.length ? (
           <ul className="set-card" aria-label="Projects">
             {projects.map((project) => (
               <li key={project.id}>
@@ -33,6 +33,19 @@ export function ProjectsIndex() {
                     {project.workspaceName ? <span className="set-row__s">{project.workspaceName}</span> : null}
                   </span>
                   {news.has(project.id) ? <span className="proj-index__dot" aria-hidden="true" /> : null}
+                  <Icon name="chevron-right" size={14} className="set-row__go" />
+                </Link>
+              </li>
+            ))}
+            {/* An encrypted space that waits to be unlocked is one row in place of its projects (F-030, #655). */}
+            {lockedWorkspaces.map((space) => (
+              <li key={space.id}>
+                <Link to={`/spaces/${space.id}`} className="set-row" data-locked-space={space.id}>
+                  <span className="set-row__ic" aria-hidden="true"><Icon name="lock" size={16} /></span>
+                  <span className="set-row__b">
+                    <span className="set-row__t">{space.name}</span>
+                    <span className="set-row__s">Waiting to be unlocked</span>
+                  </span>
                   <Icon name="chevron-right" size={14} className="set-row__go" />
                 </Link>
               </li>

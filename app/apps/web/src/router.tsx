@@ -10,6 +10,7 @@ import { projectConversationLoader, shouldRevalidateProjectConversation } from '
 import { Booting, RouteCodeLoadError, RouteErrorPage } from './app/errors';
 import { NotFoundView } from './app/views';
 import { Home } from './app/Home';
+import { LockedBoundary, LockedSpacePage } from './encryption/LockedSpace';
 import { projectShellLoader } from './project/data';
 import {
   forgotPasswordAction,
@@ -116,8 +117,13 @@ export const router = createBrowserRouter([
         loader: appLoader,
         Component: AppLayout,
         ErrorBoundary: RouteErrorPage,
-        children: [
+        children: [{
+          // F-030 (#655): a place whose workspace waits to be unlocked shows the locked panel inside the shell, at the same
+          // address; any other error goes on to the page above.
+          ErrorBoundary: LockedBoundary,
+          children: [
           { index: true, Component: Home },
+          { path: 'spaces/:workspaceId', Component: LockedSpacePage },
           { path: 'projects', ...secondary(async () => ({ Component: (await import('./app/ProjectsIndex')).ProjectsIndex })) },
           { path: 'projects/new', ...secondary(async () => ({ Component: (await import('./project/ProjectSetup')).ProjectSetup })) },
           {
@@ -195,7 +201,8 @@ export const router = createBrowserRouter([
           },
           // The header names it as such (#763 NV-1): it is no place of the sidebar.
           { path: '*', Component: NotFoundView, handle: { notFound: true } },
-        ],
+          ],
+        }],
       },
     ],
   },

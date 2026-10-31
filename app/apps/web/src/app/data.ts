@@ -5,6 +5,7 @@ import { signInPath } from '../auth/logic';
 import { listAllDms } from '../api/direct-messages';
 import { audienceLine, dmTitle, othersIn } from '../dm/names';
 import { listAccessibleProjects } from '../project/api';
+import type { WorkspaceEncryption } from '../encryption/api';
 
 /**
  * Shapes the shell renders. Projects and direct messages come from the workspace, conversation
@@ -17,6 +18,8 @@ export interface WorkspaceSummary {
   role?: WorkspaceRole | null;
   /** F-029 (#614): whether agents and assistants may work here; the whole interface there is human-only while blocked. */
   ai?: WorkspaceAiPolicy;
+  /** F-030 (#655): null or absent for a plain workspace. A locked one is kept in `ShellData.lockedWorkspaces`. */
+  encryption?: WorkspaceEncryption | null;
 }
 /** A small, audience-specific project. Only projects the person belongs to are ever listed. */
 export interface ProjectSummary { id: string; name: string; workspaceId?: string; workspaceName?: string; hasNew?: boolean }
@@ -30,7 +33,10 @@ export interface DirectMessageSummary {
 export interface ShellData {
   me: MeResponse;
   workspace: WorkspaceSummary | null;
+  /** The workspaces whose content can be read now: plain ones and encrypted ones that are unlocked. */
   workspaces: WorkspaceSummary[];
+  /** Encrypted workspaces that wait to be unlocked (F-030, #655): drawn as one row each, never asked for content. */
+  lockedWorkspaces: WorkspaceSummary[];
   projects: ProjectSummary[];
   directMessages: DirectMessageSummary[];
 }
@@ -51,7 +57,8 @@ export async function projectAiBlocked(projectId: string | undefined): Promise<b
 export async function allAiBlocked(): Promise<boolean> {
   try {
     const shell = await latestShell;
-    return !!shell && shell.workspaces.length > 0 && shell.workspaces.every((space) => space.ai?.state === 'blocked');
+    // An encrypted workspace is always without AI, locked or not.
+    return !!shell && shell.workspaces.length + shell.lockedWorkspaces.length > 0 && shell.workspaces.every((space) => space.ai?.state === 'blocked');
   } catch { return false; }
 }
 
@@ -68,7 +75,7 @@ async function readShell({ request }: LoaderFunctionArgs): Promise<ShellData> {
     const url = new URL(request.url);
     throw redirect(signInPath(`${url.pathname}${url.search}`));
   }
-  const { workspaces, projects } = await listAccessibleProjects(request.signal);
+  const { workspaces, lockedWorkspaces, projects } = await listAccessibleProjects(request.signal);
   const nameCounts = new Map<string, number>();
   for (const project of projects) nameCounts.set(project.name, (nameCounts.get(project.name) ?? 0) + 1);
   const namedProjects = projects.map((project) => ({ ...project, workspaceName: nameCounts.get(project.name)! > 1 ? workspaces.find((space) => space.id === project.workspaceId)?.name : undefined }));
@@ -78,7 +85,7 @@ async function readShell({ request }: LoaderFunctionArgs): Promise<ShellData> {
     people: othersIn(dm, me.user.id).map((person) => person.name), participantIds: dm.audience.participantIds,
     audience: audienceLine(dm, me.user.id), preview: dm.lastMessageBody, lastAt: dm.lastMessageAt,
   }));
-  return { me, workspace: workspaces[0] ?? null, workspaces, projects: namedProjects, directMessages };
+  return { me, workspace: workspaces[0] ?? null, workspaces, lockedWorkspaces, projects: namedProjects, directMessages };
 }
 
 export function useShellData(): ShellData {

@@ -9,6 +9,7 @@ import { PromoteSketch } from '../sketch/PromoteSketch';
 import { WhatMatters } from '../returns/WhatMatters';
 import { useProjectShell } from '../project/data';
 import { WorkspacePeople } from '../people/WorkspacePeople';
+import { NewSpace } from '../encryption/NewSpace';
 import { useShellData, type WorkspaceSummary } from './data';
 import { useShellActions, type DetailsView, type OwnedView } from './shellContext';
 import { ThoughtTasksPanel } from '../sketch/ThoughtTasks';
@@ -34,6 +35,7 @@ export function Details({ view, workspace, placeTitle, dm = null, onBack, onClos
   if (typeof view === 'object' && view.kind === 'promote-sketch') return <PromoteSketch key={view.sketchId} view={view} dmTitle={dm?.title ?? null} onBack={onBack} />;
   if (typeof view === 'object' && view.kind === 'overview') return <ProjectOverview key={view.messageId ?? 'all'} messageId={view.messageId} selection={view.selection} focusPeople={view.focus === 'people' ? view : null} onBack={onBack} />;
   if (typeof view === 'object' && view.kind === 'people') return <WorkspacePeople key={view.workspaceId} workspaceId={view.workspaceId} onBack={onBack} />;
+  if (typeof view === 'object' && view.kind === 'new-space') return <NewSpace onBack={onBack} />;
   if (typeof view === 'object' && view.kind === 'thought-tasks') return <ThoughtTasksPanel key={view.thought.id} view={view} />;
   if (typeof view === 'object') return <WorkDetails view={view} />;
   // A project's Details start with its overview (#117).
@@ -89,27 +91,36 @@ const ROLE_LINE = {
 
 /** Each workspace's people (#188, AC-1), one step away from Home's Details. */
 function PeopleEntries() {
-  const { workspaces } = useShellData();
+  const { workspaces, lockedWorkspaces } = useShellData();
   const { openDetails } = useShellActions();
+  // A locked space is listed too: its people and roles are metadata, and its owners and admins reach People there (F-030, #655).
+  const spaces = [...workspaces, ...lockedWorkspaces];
   return (
     <section className="details__sec ov-sec" aria-labelledby="details-people">
       <h4 id="details-people">People</h4>
-      {workspaces.length ? (
-        <ul className="ov-rows">
-          {workspaces.map((space) => (
-            <li key={space.id}>
-              <button type="button" className="ov-row" onClick={() => openDetails({ kind: 'people', workspaceId: space.id })}>
-                <Icon name="people" size={16} className="ov-row__ic" />
-                <span className="ov-row__b">
-                  <span className="ov-row__t">{space.name}</span>
-                  {space.role ? <span className="ov-row__s">{ROLE_LINE[space.role]}</span> : null}
-                </span>
-                <Icon name="chevron-right" size={16} className="ov-row__go" />
-              </button>
-            </li>
-          ))}
-        </ul>
-      ) : <p className="ov-empty">Start a project to create your own space; then you can add people to it.</p>}
+      {spaces.length ? null : <p className="ov-empty">Start a project to create your own space; then you can add people to it.</p>}
+      <ul className="ov-rows">
+        {spaces.map((space) => (
+          <li key={space.id}>
+            <button type="button" className="ov-row" onClick={() => openDetails({ kind: 'people', workspaceId: space.id })}>
+              <Icon name={space.encryption ? 'lock' : 'people'} size={16} className="ov-row__ic" />
+              <span className="ov-row__b">
+                <span className="ov-row__t">{space.name}</span>
+                {space.role ? <span className="ov-row__s">{ROLE_LINE[space.role]}</span> : null}
+              </span>
+              <Icon name="chevron-right" size={16} className="ov-row__go" />
+            </button>
+          </li>
+        ))}
+        {/* The last row (F-030, #655): a new space, plain or encrypted. It stays last, whatever the number of spaces. */}
+        <li>
+          <button type="button" className="ov-row" onClick={() => openDetails({ kind: 'new-space' })}>
+            <Icon name="plus" size={16} className="ov-row__ic" />
+            <span className="ov-row__b"><span className="ov-row__t">New space</span></span>
+            <Icon name="chevron-right" size={16} className="ov-row__go" />
+          </button>
+        </li>
+      </ul>
     </section>
   );
 }

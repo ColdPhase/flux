@@ -11,9 +11,10 @@ This page is what the operator needs to know. Nobody who runs the server can rea
 or unlock it without a password, and nobody can recover one whose passwords and recovery code are
 all lost.
 
-Creating an encrypted space in the app arrives with its creation and locked-state interface
-([#670](https://github.com/ColdPhase/flux/pull/670)); the server side described here, the keyring and
-the operations below are in every installation already.
+People make one in the app: Home → Details → People → **New space** → **Encrypt this space**
+([#670](https://github.com/ColdPhase/flux/pull/670)). Each person can create five encrypted spaces in
+15 minutes, and at most one password check per person runs at a time, so one account cannot keep the
+others' spaces locked.
 
 ## What runs
 

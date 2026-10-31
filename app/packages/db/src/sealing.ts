@@ -227,21 +227,6 @@ export async function sealFor<T extends object>(executor: DbExecutor, table: str
 }
 
 /**
- * A stored digest of content (`request_fingerprint`, `request_hash` …): the SHA-256 hex as before in a plain workspace,
- * sealed in an encrypted one (F-030 Digests). `matches` compares in RAM.
- */
-export const storedDigest = {
-  store(seal: FieldSeal, table: string, column: string, identity: readonly string[], hex: string): string {
-    if (!seal.sealed) return hex;
-    return seal.seal(registry(table).columns[column]!.field, identity, hex);
-  },
-  matches(seal: FieldSeal, table: string, column: string, identity: readonly string[], stored: string, hex: string): boolean {
-    if (!seal.sealed) return stored === hex;
-    try { return seal.open(registry(table).columns[column]!.field, identity, stored) === hex; } catch { return false; }
-  },
-};
-
-/**
  * Opens one aliased sealed column of rows read by a join or raw SQL (`opening` of a conversation is `project_messages.body`
  * of its first message): each row names its workspace and the source row's identity (null when the join found none).
  */

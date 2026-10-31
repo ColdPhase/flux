@@ -123,6 +123,7 @@ function scene(options: Scene = {}, checked = true) {
     keys: async () => { log('encryption.keys(update)'); return {}; },
     dropUnlockPassword: async () => { log('encryption.dropUnlockPassword'); return options.drop ?? 'deleted'; },
     recordRemovals: async () => { log('encryption.recordRemovals'); return 1; },
+    passwordHolders: async () => { log('encryption.passwordHolders'); return []; },
   };
   const projects = {
     lockForGrantChange: async () => { log('projects.lockForGrantChange'); },

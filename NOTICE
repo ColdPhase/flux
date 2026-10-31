@@ -1,0 +1,24 @@
+Flux
+Copyright 2026 Flux contributors
+Licensed under AGPL-3.0-only. See LICENSE.
+
+Third-party material that ships in Flux's source and needs an attribution:
+
+EFF large wordlist for passphrases
+  Used by: the generated unlock passphrase of an encrypted workspace
+  (app/apps/web/src/encryption/eff-large-wordlist.ts).
+  Source: https://www.eff.org/files/2016/07/18/eff_large_wordlist.txt
+  Copyright Electronic Frontier Foundation.
+  Licensed under Creative Commons Attribution 3.0 United States
+  (https://creativecommons.org/licenses/by/3.0/us/). The five-dice numbers are
+  removed; the words and their order are unchanged.
+
+Geist and Geist Mono fonts, version 1.7.2
+  Used by: the web app's text and monospace type, bundled with its built assets
+  (app/apps/web/src/ui/fonts/Geist-Variable.woff2, GeistMono-Variable.woff2).
+  Source: https://github.com/vercel/geist-font
+  Copyright (c) 2023 Vercel, in collaboration with basement.studio.
+  Licensed under the SIL Open Font License, Version 1.1. The licence text ships
+  with the built web assets as fonts/OFL.txt (app/apps/web/public/fonts/OFL.txt).
+
+The dependency inventory of a release is published with it as THIRD_PARTY_NOTICES.json.

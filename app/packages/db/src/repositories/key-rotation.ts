@@ -244,7 +244,8 @@ export function keyRotationRows(db: DbExecutor) {
       await db.execute(sql`DELETE FROM workspace_key_versions WHERE workspace_id = ${workspaceId} AND key_version < ${current}`);
       await db.execute(sql`DELETE FROM workspace_removed_holders WHERE workspace_id = ${workspaceId}`);
       await db.execute(sql`DELETE FROM workspace_rotation_progress WHERE workspace_id = ${workspaceId}`);
-      await db.execute(sql`UPDATE workspace_keys SET live_versions = ARRAY[${current}::integer], rotation = 'none', rotation_reason = NULL
+      // Why the key changed outlives the rotation (S3): "New key since 23 Oct, after Ben left." Right-hand sides read the old row.
+      await db.execute(sql`UPDATE workspace_keys SET live_versions = ARRAY[${current}::integer], rotation = 'none', key_change_reason = rotation_reason, rotation_reason = NULL
         WHERE workspace_id = ${workspaceId}`);
     },
   };

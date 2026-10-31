@@ -1,6 +1,6 @@
 import { randomUUID, type KeyObject } from 'node:crypto';
 import {
-  UNLOCK_ATTEMPT_LIMIT, UNLOCK_ATTEMPT_WINDOW_SECONDS, UNLOCK_GRANT_SECONDS, WORKSPACE_LOCKED_EVENT,
+  CREATION_LIMIT, CREATION_WINDOW_SECONDS, UNLOCK_ATTEMPT_LIMIT, UNLOCK_ATTEMPT_WINDOW_SECONDS, UNLOCK_GRANT_SECONDS, WORKSPACE_LOCKED_EVENT,
   WORKSPACE_UNLOCK_PASSWORD_GRANTED_EVENT, WORKSPACE_UNLOCK_PASSWORD_SET_EVENT, WORKSPACE_UNLOCKED_EVENT,
   type CreateEncryptedWorkspaceCommand, type CreateEncryptedWorkspaceResult, type EncryptionStateResult, type GrantUnlockPasswordCommand,
   type GrantUnlockPasswordResult, type NewRecoveryCodeCommand, type NewRecoveryCodeResult, type SetUnlockPasswordCommand, type UnlockWorkspaceCommand,
@@ -31,7 +31,8 @@ import type { DekWrapRecord, RemovalRecord, EncryptionPorts, EncryptionUnitOfWor
  * fixture-only route until S3), unlock, Lock now, grants, unlock passwords and the recovery code.
  *
  * - Every route that checks a password or the recovery code shares one limiter (`password_attempts`, five per person
- *   and workspace in 15 minutes, counted with the checks in flight) and one derivation semaphore (two at once).
+ *   and workspace in 15 minutes, counted with the checks in flight; successful checks count too except for unlock) and
+ *   one derivation semaphore (two at once, one per person). Creation has its own limit (five per person in 15 minutes).
  * - No transaction waits on anything outside the database: Argon2id and the keyring calls run between short ones.
  * - A DEK is accepted through the holder's own confirmation when one exists (a mismatch is tampering), otherwise only
  *   through the commitment chain, and only if it opens its version's check value; every holder row's MAC must verify
@@ -106,9 +107,12 @@ export function createEncryptionUseCases({ unit, keys, semaphore, estimator, rea
 
   /**
    * One password or code check: the shared limiter, then Argon2id under the shared semaphore, then the private key.
-   * A wrong secret keeps its attempt row (400); a right one releases it. A public key that does not match is tampering.
+   * A wrong secret keeps its attempt row (400); a right one releases it unless `countSuccess` (a grant, a password change
+   * or a new recovery code: repeating them with the right secret still costs derivations, S3 security review). A public
+   * key that does not match is tampering.
    */
-  async function checkSecret(principal: Principal, m: Material, holder: HolderRecord, secret: string): Promise<{ privateKey: KeyObject; kek: Buffer; kdf: KdfParams }> {
+  async function checkSecret(principal: Principal, m: Material, holder: HolderRecord, secret: string,
+    { countSuccess = false }: { countSuccess?: boolean } = {}): Promise<{ privateKey: KeyObject; kek: Buffer; kdf: KdfParams }> {
     const workspaceId = m.keys.workspaceId;
     const reservation = await unit.run((ports) => ports.rows.reserveAttempt(workspaceId, principal.id, UNLOCK_ATTEMPT_LIMIT, UNLOCK_ATTEMPT_WINDOW_SECONDS));
     if ('retryAfterSeconds' in reservation) throw limited(reservation.retryAfterSeconds);
@@ -118,7 +122,7 @@ export function createEncryptionUseCases({ unit, keys, semaphore, estimator, rea
       return tampered(workspaceId, m.keys.name, m.holders);
     }
     let kek: Buffer;
-    try { kek = await semaphore.run(() => deriveKek(secret, kdf)); } catch (error) {
+    try { kek = await semaphore.run(principal.id, () => deriveKek(secret, kdf)); } catch (error) {
       await unit.run((ports) => ports.rows.releaseAttempt(reservation.id)); // a busy server is not a wrong guess
       throw error;
     }
@@ -128,7 +132,7 @@ export function createEncryptionUseCases({ unit, keys, semaphore, estimator, rea
       kek.fill(0);
       throw new UnlockIncorrectError(m.keys.name);
     }
-    await unit.run((ports) => ports.rows.releaseAttempt(reservation.id));
+    if (!countSuccess) await unit.run((ports) => ports.rows.releaseAttempt(reservation.id));
     try {
       return { privateKey: unwrapPrivateKey(kek, holder.wrappedPrivate, place(holder), holder.publicKey), kek, kdf };
     } catch (error) {
@@ -242,7 +246,7 @@ export function createEncryptionUseCases({ unit, keys, semaphore, estimator, rea
   }
 
   return {
-    /** `POST /api/v1/encrypted-workspaces` (fixture-only until S3). */
+    /** `POST /api/v1/encrypted-workspaces`. */
     async create(principal: Principal, command: CreateEncryptedWorkspaceCommand): Promise<{ status: 200 | 201; body: CreateEncryptedWorkspaceResult }> {
       if (principal.kind !== 'human' || !principal.id) throw new ForbiddenError('Only people can create workspaces');
       const name = typeof command?.name === 'string' ? command.name.trim() : '';
@@ -263,10 +267,18 @@ export function createEncryptionUseCases({ unit, keys, semaphore, estimator, rea
       const code = generateRecoveryCode();
       const ownerKdf = newKdfParams();
       const recoveryKdf = newKdfParams();
-      const ownerKek = await semaphore.run(() => deriveKek(password, ownerKdf));
-      const recoveryKek = await semaphore.run(() => deriveKek(normalizeRecoveryCode(code)!, recoveryKdf));
+      // Five creations per person in 15 minutes, reserved before the two derivations; a failed creation releases its row.
+      const creation = await unit.run((ports) => ports.rows.reserveCreation(principal.id, CREATION_LIMIT, CREATION_WINDOW_SECONDS));
+      if ('retryAfterSeconds' in creation) {
+        throw new RateLimitedError(creation.retryAfterSeconds, 'Too many new encrypted spaces. Try again in 15 minutes.', 'CREATION_RATE_LIMITED');
+      }
+      let created = false;
+      let ownerKek: Buffer | null = null;
+      let recoveryKek: Buffer | null = null;
       const deks: Deks = new Map([[1, newDek()]]);
       try {
+        ownerKek = await semaphore.run(principal.id, () => deriveKek(password, ownerKdf));
+        recoveryKek = await semaphore.run(principal.id, () => deriveKek(normalizeRecoveryCode(code)!, recoveryKdf));
         const key = WorkspaceKey.fromDek(workspaceId, 1, deks.get(1)!);
         const owner = holderMaterial(workspaceId, randomUUID(), 'password', principal.id, ownerKek, ownerKdf, generateHolderKeyPair(), deks, 1);
         const recovery = holderMaterial(workspaceId, randomUUID(), 'recovery', null, recoveryKek, recoveryKdf, generateHolderKeyPair(), deks, 1);
@@ -291,8 +303,10 @@ export function createEncryptionUseCases({ unit, keys, semaphore, estimator, rea
           if (raced) return raced;
           throw error;
         }
+        created = true;
       } finally {
-        zero(deks); ownerKek.fill(0); recoveryKek.fill(0);
+        zero(deks); ownerKek?.fill(0); recoveryKek?.fill(0);
+        if (!created) await unit.run((ports) => ports.rows.releaseCreation(creation.id)).catch(() => undefined);
       }
       return { status: 201, body: { workspace: await read(principal, workspaceId), recoveryCode: code } };
     },
@@ -325,7 +339,7 @@ export function createEncryptionUseCases({ unit, keys, semaphore, estimator, rea
         if (!accepted) return await tampered(workspaceId, m.keys.name, m.holders);
         if (!kdfIsCurrent(kdf)) {
           const fresh = newKdfParams();
-          upgrade = { kek: await semaphore.run(() => deriveKek(password ?? code!, fresh)), kdf: fresh };
+          upgrade = { kek: await semaphore.run(principal.id, () => deriveKek(password ?? code!, fresh)), kdf: fresh };
         }
         const sealed: { keyVersion: number; bootId: string; sealed: string }[] = [];
         for (const [keyVersion, dek] of accepted.deks) sealed.push({ keyVersion, ...(await keys.sealForUnlock(workspaceId, keyVersion, dek)) });
@@ -389,7 +403,7 @@ export function createEncryptionUseCases({ unit, keys, semaphore, estimator, rea
       }
       if (m.holders.some((row) => row.kind === 'password' && row.userId === target)) throw new ConflictError('They already have an unlock password', 'ALREADY_HAS_PASSWORD');
       if (!await unlockedRows(state, keys)) throw new WorkspaceLockedError(workspaceId, m.keys.name);
-      const { kek } = await checkSecret(principal, m, own, secret);
+      const { kek } = await checkSecret(principal, m, own, secret, { countSuccess: true });
       kek.fill(0);
       const expiresAt = await unit.run(async (ports) => {
         await ports.access.manager(principal, workspaceId, { lock: true });
@@ -421,7 +435,7 @@ export function createEncryptionUseCases({ unit, keys, semaphore, estimator, rea
           const secret = typedSecret(command.currentPassword);
           if (!own) throw new ConflictError(`You don't have an unlock password for ${m.keys.name} yet.`, 'NO_UNLOCK_PASSWORD');
           if (!secret) return await refuseCheck(principal, workspaceId, m.keys.name);
-          const checked = await checkSecret(principal, m, own, secret);
+          const checked = await checkSecret(principal, m, own, secret, { countSuccess: true });
           keks.push(checked.kek);
           const accepted = acceptDeks(m, own, checked.privateKey, checked.kek);
           if (!accepted) return await tampered(workspaceId, m.keys.name, m.holders);
@@ -430,7 +444,7 @@ export function createEncryptionUseCases({ unit, keys, semaphore, estimator, rea
         } else if (command.recoveryCode !== undefined) {
           const code = normalizeRecoveryCode(command.recoveryCode);
           if (!recovery || !code) return await refuseCheck(principal, workspaceId, m.keys.name);
-          const checked = await checkSecret(principal, m, recovery, code);
+          const checked = await checkSecret(principal, m, recovery, code, { countSuccess: true });
           keks.push(checked.kek);
           const accepted = acceptDeks(m, recovery, checked.privateKey, checked.kek);
           if (!accepted) return await tampered(workspaceId, m.keys.name, m.holders);
@@ -444,7 +458,7 @@ export function createEncryptionUseCases({ unit, keys, semaphore, estimator, rea
           grantPath = true;
         }
         const kdf = newKdfParams();
-        const kek = await semaphore.run(() => deriveKek(newPassword, kdf));
+        const kek = await semaphore.run(principal.id, () => deriveKek(newPassword, kdf));
         keks.push(kek);
         const holderId = own?.id ?? randomUUID();
         const pair = kept && own ? { publicKey: own.publicKey, privateKey: kept.privateKey } : generateHolderKeyPair();
@@ -494,13 +508,13 @@ export function createEncryptionUseCases({ unit, keys, semaphore, estimator, rea
       let deks: Deks | null = null;
       const code = generateRecoveryCode();
       try {
-        const checked = await checkSecret(principal, m, own, secret);
+        const checked = await checkSecret(principal, m, own, secret, { countSuccess: true });
         keks.push(checked.kek);
         const accepted = acceptDeks(m, own, checked.privateKey, checked.kek);
         if (!accepted) return await tampered(workspaceId, m.keys.name, m.holders);
         deks = accepted.deks;
         const kdf = newKdfParams();
-        const kek = await semaphore.run(() => deriveKek(normalizeRecoveryCode(code)!, kdf));
+        const kek = await semaphore.run(principal.id, () => deriveKek(normalizeRecoveryCode(code)!, kdf));
         keks.push(kek);
         const existing = m.holders.find((row) => row.kind === 'recovery');
         const fresh = holderMaterial(workspaceId, existing?.id ?? randomUUID(), 'recovery', null, kek, kdf, generateHolderKeyPair(), deks, m.keys.currentVersion);
