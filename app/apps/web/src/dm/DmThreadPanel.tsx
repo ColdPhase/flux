@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import type { DmMessage, DmPerson, DmThread } from '@flux/contracts';
-import { ApiError } from '../api/client';
 import { dmReceipts, getDmThread, observeDmMessages, olderDmReplies } from '../api/direct-messages';
 import { ComposerBox } from '../composer/ComposerBox';
 import { outboxView, useComposerDraft, useComposerScope } from '../composer/draft';
@@ -203,8 +202,4 @@ export function DmThreadPanel({ dmId, rootId, meId, meName, nameOf, audience, wr
       </div>
     </>
   );
-}
-
-export function isMissing(cause: unknown) {
-  return cause instanceof ApiError && (cause.status === 404 || cause.status === 401);
 }

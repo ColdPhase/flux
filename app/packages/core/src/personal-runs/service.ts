@@ -185,11 +185,6 @@ export async function usableConnection(connections: PersonalConnectionLookup, pr
   return { problem: null, connection, reservedMicros };
 }
 
-/** Why the owner's connection cannot be used now, or null when it can. */
-export async function connectionProblem(connections: PersonalConnectionLookup, providerEnabled: boolean, enablement: EnablementRecord): Promise<PersonalAssistantUnavailableReason | null> {
-  return (await usableConnection(connections, providerEnabled, enablement)).problem;
-}
-
 function unavailable(reason: PersonalAssistantUnavailableReason) {
   const error = new ServiceUnavailableError('Your assistant is unavailable. Human work continues; no other payer is used.', 'PERSONAL_RUN_UNAVAILABLE');
   error.details = { reason };
@@ -713,5 +708,3 @@ export function createPersonalRunUseCases({ uow, connections, providerEnabled, t
     },
   };
 }
-
-export type PersonalRunUseCases = ReturnType<typeof createPersonalRunUseCases>;

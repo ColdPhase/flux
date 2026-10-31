@@ -19,29 +19,7 @@ header.top:has(.wiki-header-actions) .top__right > .top__details { display: none
 .top__audience > span:not(.ui-vh) { min-width: 0; overflow-wrap: anywhere; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
 .top__audience svg { flex: none; width: 10px; height: 10px; }
 .top__audience:hover { background: var(--hov); color: var(--t1); }
-.top--project .ws-state { position: relative; flex-wrap: wrap; margin: 0; font-size: var(--fs-sm); line-height: 1.4; }
-.top--project .ws-state::before { content: ""; position: absolute; left: -13px; top: 2px; bottom: 2px; border-left: 1px solid var(--line); }
-.top--project .ws-part { display: contents; }
-
-/* Header meta reads as quiet secondary text on the title row's line (#431): no filled pill on
-   hover, the icon centred on the text and the same size as the audience line beside it. */
-.top--project .ws-seg { gap: 5px; min-height: 22px; flex: none; max-width: 100%; margin: 0; padding: 0 2px; color: var(--t2); line-height: inherit; }
-.top--project .ws-seg svg { width: 12px; height: 12px; }
-.top--project .ws-seg:hover { background: none; color: var(--t1); }
-.top--project .ws-seg:hover span:last-child { text-decoration: underline; text-underline-offset: 2px; text-decoration-color: var(--line); }
-.top--project .ws-seg--need { color: var(--t1); }
-/* One line (#435): the segment never shrinks, so the state line wraps as a whole onto its own row; a
-   segment wider than its container ellipsises instead of breaking "1 completed task" over two lines. */
-.top--project .ws-seg span:last-child { white-space: nowrap; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
-.top--project .ws-state--empty { overflow: hidden; text-overflow: ellipsis; }
 .top--project .top__right { padding-top: 2px; }
-
-/* ---------- Phone: the state line is one 44px row that opens Details ---------- */
-.ws-state-row { display: flex; align-items: center; gap: 8px; width: 100%; min-height: 44px; padding: 0 10px 0 16px; border-top: 1px solid var(--line); font-size: var(--fs-sm); color: var(--t3); text-align: left; white-space: nowrap; transition: var(--tr); }
-.ws-state-row__t { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
-.ws-state-row__blocked { flex: none; color: var(--t2); }
-.ws-state-row svg { flex: none; }
-.ws-state-row:active { background: var(--hov); }
 @media (max-width: 680px) {
   .top--project { min-height: calc(56px + env(safe-area-inset-top)); padding: max(18px, env(safe-area-inset-top)) 12px 0 8px; align-items: center; }
   .top--project .top__title--project { flex-direction: column; align-items: flex-start; gap: 0; text-align: left; line-height: 1.25; }

@@ -452,8 +452,6 @@ export function assistantChangeUseCases(db: Database, boss?: Pick<PgBoss, 'send'
     },
   };
 }
-export type AssistantChangeUseCases = ReturnType<typeof assistantChangeUseCases>;
-
 export function registerAssistantChangeRoutes(app: FastifyInstance, db: Database, sessions: SessionResolver, boss: Pick<PgBoss, 'send'>) {
   const changes = assistantChangeUseCases(db, boss);
   const who = async (request: Parameters<SessionResolver['requirePrincipal']>[0]) => (await sessions.requirePrincipal(request)).principal;

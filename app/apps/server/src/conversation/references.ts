@@ -103,5 +103,3 @@ export function messageReferences(db: DbExecutor) {
     save: (owner: { kind: 'project' | 'dm'; id: string }, workspaceId: string, references: readonly MessageReference[]) => rows.save(owner, workspaceId, references),
   };
 }
-
-export type MessageReferences = ReturnType<typeof messageReferences>;

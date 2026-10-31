@@ -8,7 +8,6 @@ import { beginOauth, expect, mcp, oauthToken, toolValue } from './mcp.js';
 // One owner, one restricted project with a contributor agent, an action-scoped OAuth connection and its
 // bootstrap runtime: the shared starting point of the native MCP action tests (#152).
 
-export const actionScope = 'flux.context.read flux.proposal.write flux.action.execute offline_access';
 const actionScopes = ['flux.context.read', 'flux.proposal.write', 'flux.action.execute'];
 
 /** A failed tool result carries only the domain code and message. */

@@ -1,5 +1,4 @@
 import type { WorkStatus } from '@flux/contracts';
-import { Morph } from './Morph';
 import { useMorph } from './motion';
 
 /**
@@ -29,13 +28,3 @@ export function StatusGlyph({ status, size = 16, className, changeKey }: { statu
 export const TASK_STATE_WORD: Record<WorkStatus, string> = {
   open: 'Open', in_progress: 'In progress', blocked: 'Blocked', done: 'Done', not_pursued: 'Not pursued',
 };
-
-/** The glyph with its word, for places where nothing else names the state. */
-export function TaskState({ status, className }: { status: WorkStatus; className?: string }) {
-  return (
-    <span className={`ui-state${className ? ` ${className}` : ''}`} data-status={status}>
-      <StatusGlyph status={status} size={14} />
-      <Morph value={status}>{TASK_STATE_WORD[status]}</Morph>
-    </span>
-  );
-}

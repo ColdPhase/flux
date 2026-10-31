@@ -212,5 +212,3 @@ export function createProjectExportUseCases(uow: ProjectExportUnitOfWork, contex
 
   return { exportProject, exportBundle };
 }
-
-export type ProjectExportUseCases = ReturnType<typeof createProjectExportUseCases>;

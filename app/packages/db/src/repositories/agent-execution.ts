@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { and, desc, eq, gt, isNull, sql } from 'drizzle-orm';
-import type { AgentJsonValue, AgentPostcondition, AgentStandingGrant, CreateAgentStandingGrantCommand } from '@flux/contracts';
+import type { AgentPostcondition, AgentStandingGrant, CreateAgentStandingGrantCommand } from '@flux/contracts';
 import * as schema from '../schema.js';
 import type { DbExecutor } from './push.js';
 
@@ -160,5 +160,3 @@ export function agentExecutionRows(tx: DbExecutor) {
     },
   };
 }
-
-export type AgentStoredOutcome = { value: AgentJsonValue; postconditions: AgentPostcondition[] };

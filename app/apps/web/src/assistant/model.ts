@@ -1,5 +1,5 @@
 import { useEffect, useSyncExternalStore } from 'react';
-import { ASSISTANT_PLAN_DEFAULT, ASSISTANT_MODEL_PATH, assistantModelName, type AssistantModelChoice, type AssistantModelOption } from '@flux/contracts';
+import { ASSISTANT_MODEL_PATH, assistantModelName, type AssistantModelChoice, type AssistantModelOption } from '@flux/contracts';
 import { ApiError, NetworkError, request } from '../api/client';
 import { isWorking, runModelName } from './format';
 import { listOwnRuns } from './api';
@@ -70,5 +70,3 @@ export function useAssistantModel(): { choice: AssistantModelChoice | null; load
   }, []);
   return { choice: current, loaded };
 }
-
-export const isPlanDefault = (id: string | undefined) => id === ASSISTANT_PLAN_DEFAULT;

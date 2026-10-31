@@ -1,20 +1,7 @@
 /* Work items, decisions and results (#101), 1px rules, one inverted mark for "needs you",
    status as a small dot with text, framed objects only for things attached to a message. */
 
-/* ---------- Calm state line ---------- */
-.ws-state { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 0; margin: 0 0 12px; font-size: var(--fs-sm); color: var(--t3); line-height: 1.5; }
-.ws-state--empty { padding: 4px 0; }
-.ws-part { display: inline-flex; align-items: center; min-width: 0; max-width: 100%; }
-.ws-sep { padding: 0 6px; color: var(--t3); }
-.ws-seg { display: inline-flex; align-items: center; gap: 6px; min-height: 28px; padding: 0 6px; margin: 0 -2px; border-radius: var(--r-sm); color: var(--t2); text-align: left; transition: var(--tr); }
-.ws-seg span:last-child { min-width: 0; overflow-wrap: anywhere; }
-.ws-seg svg { flex: none; color: var(--t3); }
-.ws-seg:hover { background: var(--hov); color: var(--t1); }
-.ws-seg--need { color: var(--t1); font-weight: 500; }
-.ws-seg--warn svg { color: var(--t2); }
 .ws-need { color: var(--t1); font-weight: 500; }
-.ws-dot { display: inline-block; flex: none; width: 8px; height: 8px; border-radius: 50%; }
-.ws-dot--need { box-shadow: none; background: var(--inv); }
 
 /* ---------- Actions and objects under a message ---------- */
 .ws-attach { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
@@ -232,17 +219,11 @@ button.wd-link:active:not(:disabled) { background: var(--sub); }
 .wd-pivot__c { display: inline-flex; align-items: center; gap: 5px; min-height: 28px; font-size: var(--fs-sm); color: var(--t2); }
 
 @media (pointer: coarse) {
-  .ws-seg, .wd-pivot__c { min-height: 44px; }
+  .wd-pivot__c { min-height: 44px; }
   .wd-link { min-height: 44px; }
   .wd-seg__b { min-height: 44px; }
   .wd-controls .ui-select, .wd-form .ui-select, .wd-pick .ui-select { min-height: 44px; font-size: 16px; }
   .wd-form textarea { font-size: 16px; }
-}
-@media (max-width: 640px) {
-  .ws-state { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; margin-right: -16px; padding-right: 16px; }
-  .ws-state::-webkit-scrollbar { display: none; }
-  .ws-part { flex: none; max-width: 80vw; }
-  .ws-seg span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 }
 /* The message is only as wide as its own author line and bubble on a touch screen, so the bubble sits at its own
    width instead of floating at a fixed 260px measure beside a short message (#189). */

@@ -14,16 +14,9 @@ export function isFinished(item: Pick<WorkItem, 'status'>) {
   return item.status === 'done' || item.status === 'not_pursued';
 }
 
-/** The quiet kind line of a work item: status, owner and parking, never colour alone. */
-export function workLine(item: Pick<WorkItem, 'status' | 'owner' | 'parked' | 'lifecycle'>) {
-  // A task whose creation was undone (#238) is named as history, never as current work.
-  if (item.lifecycle?.state === 'creation_reverted') return 'Work · creation undone';
-  return ['Work', STATUS_LABEL[item.status], item.owner?.name, item.parked ? 'parked' : null].filter(Boolean).join(' · ');
-}
-
 /**
- * A reference card's state as parts that read as the one line (`decisionLine`, `resultLine`, `workLine` without its
- * "Work" lead). A part marked `extra` only adds a name or a clause; the narrow one-row card hides it (#665) and keeps
+ * A reference card's state as parts that read as the one line (`decisionLine`, `resultLine`, or a work item's
+ * status, owner and parking). A part marked `extra` only adds a name or a clause; the narrow one-row card hides it (#665) and keeps
  * the state itself: "In progress", "accepted Oct 23", "Negative result".
  */
 export type StatePiece = { text: string; extra?: boolean };
@@ -96,9 +89,4 @@ export function linked(links: ObjectLink[], id: string, type: string, roles?: Ob
     if (link.to.id === id && link.from.type === type) return [{ id: link.from.id, title: link.fromTitle, link }];
     return [];
   });
-}
-
-/** Objects created from or based on a message. */
-export function fromMessage<T extends { id: string; links: ObjectLink[] }>(items: T[], messageId: string) {
-  return items.filter((item) => item.links.some((link) => link.from.id === item.id && link.role === 'source' && link.to.type === 'message' && link.to.id === messageId));
 }

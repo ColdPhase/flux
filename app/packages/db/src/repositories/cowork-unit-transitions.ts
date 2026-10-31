@@ -35,7 +35,6 @@ function unit(row: UnitRow) {
     checkpointId: row.checkpointId, transferredFromConnectionId: row.transferredFromConnectionId ?? null, outcomeRef: row.outcomeRef ?? null,
     lease: row.leaseId ? { id: row.leaseId, runtimeSessionId: row.leaseSessionId!, expiresAt: row.leaseExpiresAt! } : null };
 }
-export type CoWorkTransitionUnitRecord = ReturnType<typeof unit>;
 /** Requests addressed to the unit that can still be claimed or answered. An expired request no longer can. */
 function openRequestsOf(unitId: SQL) {
   return sql`SELECT 1 FROM cowork_requests open_request WHERE open_request.unit_id = ${unitId}

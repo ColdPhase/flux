@@ -15,5 +15,3 @@ export const CLAUDE_CODE = {
   signingKeyFingerprint: '31DDDE24DDFAB679F42D7BD2BAA929FF1A7ECACE',
   signingKeyFile: fileURLToPath(new URL('../../keys/claude-code-release.asc', import.meta.url)),
 } as const;
-
-export const CODEX = { version: 'rust-v0.160.1' } as const;
