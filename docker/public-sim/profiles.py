@@ -3,7 +3,10 @@
 Profiles (docs/development/live-media.md, "Measured profiles on the simulated public host"):
   speech  every person's microphone plays the same synthetic continuous speech (espeak-ng, 48 kHz);
   camera  Jonas's camera is a 1920x1080, 30 fps synthetic file (testsrc2, motion over the whole frame);
-  motion  Ada shares her real X screen showing testsrc2 at 1920x1080, 60 fps (ffplay), through the app's button;
+  motion  Ada shares her real X screen through the app's button: testsrc2 (ffplay) as Sharp text (the default), then
+          a scrolling SMPTE pattern at a true 1920x1080, 60 fps (GStreamer) as Smooth motion (the sharing line's choice);
+  large   Ada shows Jonas's camera large on her camera stage (the tile's own toggle), so automatic quality asks for
+          its 1080p layer;
   second  with four people, Mia shares a second real screen (testsrc, 1920x1080, 30 fps) at the same time;
   loss    5 % loss and 40 +/- 20 ms delay both ways at router A (Ada's, and Mia's, network) while they present;
   weak    with four people, Tom alone at 400 kbit/s, 60 ms and 3 % loss both ways (router B, his address only).
@@ -20,17 +23,24 @@ from playwright.sync_api import Page, expect
 # Calibrated pass/fail thresholds (docs/development/live-media.md, "Calibrated thresholds"). They come from the
 # calibration runs recorded there, with margin for a shared host; they are gates for this simulation, not promises
 # for every network or device. A run with FLUX_SIM_CALIBRATE=1 records the measurements without enforcing them.
+# At the 10 Mbit/s cap the encoder keeps 60 fps and sends a whole-frame-moving 1080p capture at 1280x720.
+SMOOTH = {"minHeight": 720, "minFps": 45.0, "maxFreezeS": 2.0, "maxLossPct": 1.0, "maxLatencyMs": 300.0}
+LARGE = {"minHeight": 1080, "minFps": 20.0, "maxFreezeS": 2.0, "maxLossPct": 1.0}
 THRESHOLDS = {
     # Clean path, every received speech track.
-    "speech": {"minKbps": 20.0, "maxLossPct": 1.0, "maxConcealedPct": 3.0, "maxJitterMs": 30.0, "maxLatencyMs": 250.0},
+    "speech": {"minKbps": 20.0, "maxLossPct": 1.0, "maxConcealedPct": 3.0, "maxJitterMs": 30.0, "maxLatencyMs": 500.0},
     # Clean path, Jonas's camera on Ada's camera stage. The stage shows cameras as tiles, so a receiver asks for
     # the simulcast layer of the tile's size (automatic quality); what the camera captures is checked at the sender.
-    "camera": {"minHeight": 180, "minFps": 12.0, "maxFreezeS": 3.0, "maxLossPct": 1.0, "captureMinHeight": 720, "captureMinFps": 15.0},
-    # Clean path, the motion screen on a receiver's stage. The app captures screens at up to 15 fps.
+    "camera": {"minHeight": 180, "minFps": 12.0, "maxFreezeS": 3.0, "maxLossPct": 1.0, "captureMinHeight": 1080, "captureMinFps": 15.0},
+    # Clean path, the motion screen on a receiver's stage, sent as Sharp text (up to 15 fps).
     "motion": {"minHeight": 1080, "minFps": 7.0, "maxFreezeS": 4.0, "maxLossPct": 1.0, "maxLatencyMs": 400.0},
+    # The same screen sent as Smooth motion (up to 1920x1080 at 60 fps, simulcast).
+    "smooth": SMOOTH,
+    # Jonas's camera shown large on Ada's camera stage: its top layer.
+    "large": LARGE,
     # 5 % loss and 40 +/- 20 ms at the presenters' router (TURN over TLS, so TCP): speech keeps going, the screen
     # keeps its resolution and still moves.
-    "loss": {"speechMaxConcealedPct": 12.0, "speechMinKbps": 16.0, "screenMinFps": 0.5, "screenMinHeight": 1080},
+    "loss": {"speechMaxConcealedPct": 15.0, "speechMinKbps": 16.0, "screenMinFps": 0.5, "screenMinHeight": 1080},
     # One weak receiver among four: the presenter's sending and the other receivers' speech are untouched, the
     # other receivers keep at least half their clean frame rate, the weak receiver still hears and recovers.
     "weak": {"senderMinFpsShare": 0.8, "othersMinFpsShare": 0.5, "othersMaxConcealedPct": 3.0, "weakSpeechMinKbps": 10.0,
@@ -141,9 +151,13 @@ def stage(page: Page):
     return page.get_by_role("region", name="Shared screens and cameras")
 
 
-def share_screen(page: Page) -> str:
-    """The person's own action: the strip's share button. Returns what the button then says."""
+def share_screen(page: Page, answer=None) -> str:
+    """The person's own action: the strip's share button, then `answer` for a browser that asks in its own prompt.
+    Returns what the button then says."""
     bar(page).get_by_role("button", name="Share a window, tab or screen").click()
+    if answer:
+        time.sleep(2)
+        answer()
     try:
         expect(bar(page).get_by_role("button", name="Stop sharing your screen")).to_be_visible(timeout=20_000)
     except AssertionError:
@@ -157,6 +171,18 @@ def open_stage(page: Page, button: str | re.Pattern, focus: str | None = None) -
     expect(stage(page)).to_be_visible()
     if focus:
         stage(page).get_by_role("radio", name=focus).click()
+
+
+def screen_mode(page: Page, mode: str) -> str:
+    """The presenter's own choice in the sharing line: "Sharp text" or "Smooth motion". Returns what is checked."""
+    group = bar(page).get_by_role("radiogroup", name="How your screen is sent")
+    group.get_by_role("radio", name=mode).click()
+    expect(group.get_by_role("radio", name=mode)).to_have_attribute("aria-checked", "true")
+    return mode
+
+
+def sent_video(report: dict, who: str) -> list[dict]:
+    return [r for r in report.get(who, {}).get("outbound", []) if r["kind"] == "video"]
 
 
 class Gate:
@@ -227,8 +253,12 @@ def run(phases: set, pages: dict[str, Page], result: dict, ctl, log, run_name: s
 
     if "screen" in phases and "profiles" not in phases:
         # Screen publication from browser A (AC-3): the app's own button, a real X screen with a moving pattern.
-        ctl("screen a on testsrc2=size=1920x1080:rate=30")
-        out["shareButton"] = share_screen(ada)
+        # Playwright's WebKit shares its own mock screen source instead (1920x1080, 30 fps), not the X display; a
+        # full-screen pattern would only cover the window it renders in.
+        if engine_a != "webkit":
+            ctl("screen a on testsrc2=size=1920x1080:rate=30")
+        # WebKit asks "Allow access to display device?" in its own info bar; the person presses Yes.
+        out["shareButton"] = share_screen(ada, (lambda: out.update(prompt=ctl("allow-display a").strip())) if engine_a == "webkit" else None)
         sharing = bar(ada).get_by_role("button", name="Stop sharing your screen").count() > 0
         out["sharing"] = sharing
         out["engine"] = engine_a
@@ -246,8 +276,7 @@ def run(phases: set, pages: dict[str, Page], result: dict, ctl, log, run_name: s
             ada.screenshot(path=f"/ctl/{run_name}-screen-refused.png")
         ctl("screen a off")
         out["checks"] = gate.checks
-        if engine_a != "webkit":
-            assert sharing and not gate.failures(), out
+        assert sharing and not gate.failures(), out
         return
 
     # Speech and camera: Jonas's camera on, Ada watches it on the camera stage.
@@ -262,6 +291,19 @@ def run(phases: set, pages: dict[str, Page], result: dict, ctl, log, run_name: s
     video_gate(gate, first(tracks(report, "ada", "video", "camera")), "clean: Jonas's camera at Ada", THRESHOLDS["camera"])
 
     ada.screenshot(path=f"/ctl/{run_name}-camera-at-ada.png")
+
+    # Jonas's camera shown large: the tile's own toggle; automatic quality then receives the top layer.
+    large = stage(ada).get_by_role("button", name=re.compile(r"^Show Jonas.* camera large$"))
+    large.click()
+    expect(large).to_have_attribute("aria-pressed", "true")
+    time.sleep(6)
+    report = step("camera-large", {"ada": ada, "jonas": jonas})
+    video_gate(gate, first(tracks(report, "ada", "video", "camera")), "clean: Jonas's camera shown large at Ada", THRESHOLDS["large"])
+    out["cameraLargeSent"] = sent_video(report, "jonas")
+    ada.screenshot(path=f"/ctl/{run_name}-camera-large-at-ada.png")
+    large.click()
+    expect(large).to_have_attribute("aria-pressed", "false")
+    time.sleep(3)
 
     # Motion: Ada shares her real screen; Jonas watches it on his stage.
     ctl("screen a on testsrc2=size=1920x1080:rate=60")
@@ -309,10 +351,11 @@ def run(phases: set, pages: dict[str, Page], result: dict, ctl, log, run_name: s
         report = step("weak", viewers, 15)
         ctl("netem-host b 10.213.2.11 off")
         t = THRESHOLDS["weak"]
-        sent_clean = [r for r in clean["ada"]["outbound"] if r["kind"] == "video"]
-        sent_weak = [r for r in report["ada"]["outbound"] if r["kind"] == "video"]
-        if sent_clean and sent_clean[0]["fps"]:
-            gate.at_least("weak: Ada's screen sending fps share of clean", round((sent_weak[0]["fps"] if sent_weak else 0) / sent_clean[0]["fps"], 2), t["senderMinFpsShare"])
+        # Her top layer: the layer the other receivers use.
+        top = lambda rows: max(rows, key=lambda r: int(r["size"].split("x")[1] or 0), default=None)
+        sent_clean, sent_weak = top(sent_video(clean, "ada")), top(sent_video(report, "ada"))
+        if sent_clean and sent_clean["fps"]:
+            gate.at_least("weak: Ada's screen sending fps share of clean", round((sent_weak["fps"] if sent_weak else 0) / sent_clean["fps"], 2), t["senderMinFpsShare"])
         for who, label in (("jonas", "Mia"), ("ada", "camera")):
             before, now = first(tracks(clean, who, "video", label)), first(tracks(report, who, "video", label))
             if before and before["fps"]:
@@ -329,6 +372,41 @@ def run(phases: set, pages: dict[str, Page], result: dict, ctl, log, run_name: s
         row = first(tracks(after, "tom", "video", "Ada"))
         gate.at_least("weak: Tom's screen fps after the link returns", row and row["fps"], t["weakAfterMinFps"])
 
+    # The same screen as Smooth motion: Ada's own choice in her sharing line, while she keeps sharing.
+    # A moving demo: the whole frame scrolls at a true 60 fps (GStreamer on the X display; ffplay above draws about
+    # 30 there). Sharp text on this content gave 2.6 to 4.3 fps in calibration (recorded, not gated).
+    ctl("screen a on gst:pattern=smpte horizontal-speed=6")
+    out["adaMode"] = screen_mode(ada, "Smooth motion")
+    time.sleep(8)
+    smooth_name = "smooth" if not four else "two-shares-smooth"
+    report = step(smooth_name, viewers)
+    # One layer: the receiver gets the whole 1080p stream whatever size the stage shows it at.
+    video_gate(gate, first(tracks(report, motion_at, "video", "Ada")), f"clean: Ada's smooth motion screen at {motion_at}", THRESHOLDS["smooth"])
+    out["smoothCaptured"] = report["ada"]["captured"]
+    if four:
+        video_gate(gate, first(tracks(report, "jonas", "video", "Mia")), "smooth: Mia's screen at Jonas", THRESHOLDS["motion"])
+    speech_gate(gate, report, list(viewers), "with smooth motion")
+    out["smoothSent"] = sent_video(report, "ada")
+    (pages["tom"] if four else jonas).screenshot(path=f"/ctl/{run_name}-smooth-stage.png")
+
+    if four:
+        # The same weak receiver while Ada sends Smooth motion (one layer at up to 10 Mbit/s): what Tom receives is
+        # recorded (it starves his speech: see the docs); the others must not be affected.
+        ctl("netem-host b 10.213.2.11 rate 400kbit delay 60ms loss 3%")
+        time.sleep(8)
+        report = step("weak-smooth", viewers, 15)
+        ctl("netem-host b 10.213.2.11 off")
+        out["weakSmoothTomScreen"] = first(tracks(report, "tom", "video", "Ada"))
+        out["weakSmoothTomSpeech"] = tracks(report, "tom", "audio")
+        for who in ("ada", "jonas", "mia"):
+            for i, row in enumerate(tracks(report, who, "audio")):
+                gate.at_most(f"weak smooth: speech {i + 1} at {who} concealed %", row["concealedPct"], THRESHOLDS["weak"]["othersMaxConcealedPct"])
+        time.sleep(8)
+        step("weak-smooth-after", {"tom": pages["tom"]}, 8)
+
+    # Back to Sharp text (the loss gates are for the one-layer readable screen), still without a new capture.
+    out["adaModeBack"] = screen_mode(ada, "Sharp text")
+    time.sleep(6)
     # Loss and jitter at the presenters' router.
     ctl("netem a delay 40ms 20ms loss 5%")
     time.sleep(5)

@@ -30,6 +30,8 @@ export function LiveStage() {
   };
   const [zoom, setZoom] = useState<Zoom>({ mode: 'fit' });
   const [showCameras, setShowCameras] = useState(true);
+  // One camera shown large on the camera stage (#63): automatic quality then receives its larger layer.
+  const [bigCamera, setBigCamera] = useState<string | null>(null);
   const [natural, setNatural] = useState<{ w: number; h: number } | null>(null);
   const rootRef = useRef<HTMLDivElement>(null);
   const viewportRef = useRef<HTMLDivElement>(null);
@@ -77,14 +79,17 @@ export function LiveStage() {
   };
   const onPointerUp = () => { drag.current = null; };
 
+  const big = focused ? null : cameras.find((video) => video.key === bigCamera) ?? null;
+  const cameraName = (video: VideoRef) => (video.local ? 'You' : live.nameOf(video.userId));
   const cameraTiles = showCameras && cameras.length ? (
     <ul className="lv-cams" aria-label="Cameras">
-      {cameras.map((video) => <CameraTile key={video.key} person={personOf(video)} video={video} name={video.local ? 'You' : live.nameOf(video.userId)} />)}
+      {cameras.map((video) => <CameraTile key={video.key} person={personOf(video)} video={video} name={cameraName(video)}
+        enlarged={big?.key === video.key} onEnlarge={focused ? undefined : () => setBigCamera(big?.key === video.key ? null : video.key)} />)}
     </ul>
   ) : null;
 
   return (
-    <div ref={rootRef} className={`lv-stage${focused ? '' : ' lv-stage--cams'}`} role="region" aria-label="Shared screens and cameras" onKeyDown={onKeyDown}>
+    <div ref={rootRef} className={`lv-stage${focused || big ? '' : ' lv-stage--cams'}`} role="region" aria-label="Shared screens and cameras" onKeyDown={onKeyDown}>
       <div className="lv-stage__bar">
         {screens.length > 1 ? (
           <div className="seg lv-stage__pick" role="radiogroup" aria-labelledby={groupId}>
@@ -119,6 +124,11 @@ export function LiveStage() {
               style={size ? { width: size.width, height: size.height, maxWidth: 'none', maxHeight: 'none' } : undefined}
               onDimensions={(w, h) => setNatural({ w, h })} />
           </div>
+        ) : big ? (
+          <div className="lv-stage__view is-fit lv-stage__view--camera">
+            <LiveVideo key={big.key} video={big} className={`lv-stage__video${big.local ? ' is-mirror' : ''}`}
+              aria-label={`${big.local ? 'Your' : `${cameraName(big)}’s`} camera, enlarged`} />
+          </div>
         ) : null}
         {cameraTiles}
       </div>
@@ -127,11 +137,24 @@ export function LiveStage() {
   );
 }
 
-function CameraTile({ person, video, name }: { person: MediaPerson | undefined; video: VideoRef; name: string }) {
+/**
+ * One camera. On the camera stage the tile is also its own enlarge toggle: pressed, the camera fills the stage and
+ * the tile says so instead of showing the picture twice; pressed again, every camera is a tile again.
+ */
+function CameraTile({ person, video, name, enlarged, onEnlarge }: {
+  person: MediaPerson | undefined; video: VideoRef; name: string; enlarged: boolean; onEnlarge?: () => void;
+}) {
+  const whose = name === 'You' ? 'Your' : `${name}’s`;
+  const label = <span className="lv-cam__name">{name}{!person?.mic ? <Icon name="mic-off" size={11} /> : null}</span>;
   return (
-    <li className={`lv-cam${person?.speaking ? ' is-speaking' : ''}`}>
-      <LiveVideo video={video} className={`lv-cam__video${video.local ? ' is-mirror' : ''}`} aria-label={`${name === 'You' ? 'Your' : `${name}’s`} camera`} />
-      <span className="lv-cam__name">{name}{!person?.mic ? <Icon name="mic-off" size={11} /> : null}</span>
+    <li className={`lv-cam${person?.speaking ? ' is-speaking' : ''}${enlarged ? ' is-enlarged' : ''}`}>
+      {enlarged ? <span className="lv-cam__big"><Icon name="video" size={14} />Shown large</span>
+        : <LiveVideo video={video} className={`lv-cam__video${video.local ? ' is-mirror' : ''}`} aria-label={`${whose} camera`} />}
+      {label}
+      {onEnlarge ? (
+        <button type="button" className="lv-cam__enlarge" aria-pressed={enlarged} onClick={onEnlarge}
+          aria-label={`Show ${name === 'You' ? 'your' : `${name}’s`} camera large`} data-tip={enlarged ? 'Back to all cameras' : 'Show large'} />
+      ) : null}
     </li>
   );
 }

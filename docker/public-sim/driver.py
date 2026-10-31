@@ -157,6 +157,10 @@ def launch_options(browser: str, presenter: bool = False) -> dict:
     if browser == "chromium":
         return {"args": ["--use-fake-device-for-media-stream", "--use-fake-ui-for-media-stream",
                          "--use-file-for-fake-video-capture=/media/camera-1080p30.y4m", "--use-file-for-fake-audio-capture=/media/speech.wav"]}
+    if browser == "webkit" and presenter:
+        # Headed on the client's X display: WebKit asks in its own info bar before sharing a screen, and the person
+        # answers it there (allow-display). Playwright's WebKit then shares its mock screen source (1920x1080, 30 fps).
+        return {"headless": False}
     if browser == "firefox":
         return {"headless": not presenter, "executablePath": "/usr/local/bin/firefox-ca",
                 "firefoxUserPrefs": {"media.navigator.streams.fake": True, "media.navigator.permission.disabled": True}}
@@ -556,7 +560,12 @@ def connect_phase(ada: Page, jonas: Page, url: str, result: dict) -> None:
                                    "selectedA": sel_a, "selectedB": sel_b, "statsA": stats(ada), "statsB": stats(jonas)}
     log("connect", seconds=connect_s, audioAtJonas=at_jonas, audioAtAda=at_ada, selectedA=sel_a, selectedB=sel_b)
     assert at_jonas is not None and at_ada is not None, "audio flows both ways"
-    relay = os.environ.get("FLUX_SIM_A_RELAY", "tls")
+    relay = os.environ.get("FLUX_SIM_A_RELAY") or "tls"
+    if relay == "ice-tcp":
+        # UDP blocked, TCP/7881 allowed: A reaches the SFU directly over ICE/TCP, without TURN or TLS.
+        assert sel_a and all(s["localType"] != "relay" and s["localProtocol"] == "tcp" and s["remotePort"] == 7881 for s in sel_a), f"A uses ICE/TCP: {sel_a}"
+        ada.screenshot(path=f"/ctl/{RUN}-connected-a.png")
+        return
     # WebKit leaves relayProtocol out of its stats; its candidate's TURN URL then names the transport.
     scheme = "turns:" if relay == "tls" else "turn:"
     assert sel_a and all(s["localType"] == "relay" and (s["relayProtocol"] == relay or (

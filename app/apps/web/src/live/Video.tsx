@@ -20,6 +20,7 @@ export function LiveVideo({ video, className, style, onDimensions, ...rest }: {
     element.addEventListener('loadedmetadata', report);
     element.addEventListener('resize', report);
     return () => { element.removeEventListener('loadedmetadata', report); element.removeEventListener('resize', report); detach(); };
-  }, [video.key]);
+  // A track published again (another screen mode) replaces the picture in the same element.
+  }, [video.key, video.trackSid]);
   return <video ref={ref} className={className} style={style} muted playsInline autoPlay disablePictureInPicture {...rest} />;
 }

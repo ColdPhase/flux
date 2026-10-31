@@ -9,7 +9,7 @@ import {
   discoverSessions, getSession, joinSession, leaveSession, listPresentations, liveCapability, pendingInvitations,
   presentInSession, replyToInvitation, startSession, type LiveCapability,
 } from './api';
-import type { DeviceKind, LiveMediaConnection, MediaSnapshot } from './media';
+import type { DeviceKind, LiveMediaConnection, MediaSnapshot, ScreenMode } from './media';
 
 /**
  * One live session per tab (#59 §2): it lives above the routes, so moving between the
@@ -56,6 +56,8 @@ export interface LiveValue {
   join(session: LiveSession, anchor?: LiveAnchor): Promise<void>;
   leave(): Promise<void>;
   setDevice(kind: DeviceKind, on: boolean): Promise<void>;
+  /** Sharp text or smooth motion for your screen; a screen being shared switches at once. */
+  setScreenMode(mode: ScreenMode): Promise<void>;
   setQuiet(on: boolean): void;
   startAudio(): Promise<void>;
   present(item: Presentable): Promise<boolean>;
@@ -451,18 +453,20 @@ export function LiveProvider({ meId, children }: { meId: string; children: React
     await current.setDevice(kind, on);
   }, []);
 
+  const setScreenMode = useCallback(async (mode: ScreenMode) => { await connectionRef.current?.setScreenMode(mode); }, []);
+
   const startAudio = useCallback(async () => { await connectionRef.current?.startAudio(); }, []);
 
   const value = useMemo<LiveValue>(() => ({
     capability, phase, session, anchor, notice, media, quiet, following, shown, invitation, nameOf, fullName, people, meId,
-    start, join, leave, setDevice, setQuiet, startAudio, present, view, follow, answerInvitation,
+    start, join, leave, setDevice, setScreenMode, setQuiet, startAudio, present, view, follow, answerInvitation,
     dismissNotice: () => setNotice(null),
     diagnostics: connection ? connection.diagnostics.bind(connection) : null,
     stage,
     openStage: (focus: string | null = null) => setStage({ open: true, focus }),
     closeStage: () => setStage((current) => ({ ...current, open: false })),
   }), [capability, phase, session, anchor, notice, media, quiet, following, shown, invitation, nameOf, fullName, people, meId,
-    start, join, leave, setDevice, setQuiet, startAudio, present, view, follow, answerInvitation, connection, stage]);
+    start, join, leave, setDevice, setScreenMode, setQuiet, startAudio, present, view, follow, answerInvitation, connection, stage]);
 
   // The registry of what the current views are about.
   const [entries, setEntries] = useState<{ id: number; entry: HereEntry }[]>([]);

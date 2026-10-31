@@ -51,6 +51,11 @@ case "$1" in
     # without TLS. Used where a browser cannot be made to trust the simulation's CA for TURN/TLS.
     if [ "$2" = on ]; then iptables -I FORWARD 2 -i "$lan" -o "$inet" -p udp -d 203.0.113.20 --dport 3478 -j ACCEPT
     else iptables -D FORWARD -i "$lan" -o "$inet" -p udp -d 203.0.113.20 --dport 3478 -j ACCEPT; fi ;;
+  ice-tcp)
+    # Also let ICE over TCP (7881, the media host only) leave: UDP stays blocked and no TLS is involved, so media
+    # must take the SFU's direct TCP path. Used for WebKit, whose TURN/TLS cannot trust the simulation's CA.
+    if [ "$2" = on ]; then iptables -I FORWARD 2 -i "$lan" -o "$inet" -p tcp -d 203.0.113.20 --dport 7881 -j ACCEPT
+    else iptables -D FORWARD -i "$lan" -o "$inet" -p tcp -d 203.0.113.20 --dport 7881 -j ACCEPT; fi ;;
   counters) iptables -L FORWARD -n -v ;;
   sniff)
     # The first data a client of this network sends to TURN/TLS (the media host's TCP/443): a TLS ClientHello

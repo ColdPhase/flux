@@ -7,11 +7,11 @@
 #
 # FLUX_SIM_RUNS: space-separated runs of BROWSER_A:BROWSER_B:PHASES; A is behind the restrictive router, B behind
 # the open one. BROWSER is chromium, firefox or webkit, optionally +pixel7, +iphone13 or +ipad (a device
-# descriptor); BROWSER@turn-udp also lets TURN/UDP out of router A. Phases: connect, ai-off, four (Mia and Tom join
+# descriptor); BROWSER@turn-udp also lets TURN/UDP out of router A, BROWSER@ice-tcp the SFU's ICE/TCP port 7881. Phases: connect, ai-off, four (Mia and Tom join
 # from clients C and D), profiles (the measured AC-2 profiles and their thresholds), screen (screen publication by
 # browser A), drop, loss, weak, sfu-restart, sfu-update, api-restart, access, turn-tls-probe (what browser A sends
 # to TURN/TLS, captured on router A). The default runs the two- and
-# four-person profiles, every Chromium case, Firefox over TURN/TLS, WebKit over TURN/UDP (its Linux build cannot
+# four-person profiles, every Chromium case, Firefox over TURN/TLS, WebKit over TURN/UDP and over ICE/TCP (its Linux build cannot
 # speak TURN over TLS; see docs/development/live-media.md), screen publication in Firefox and WebKit, and phone rows
 # with a network drop. FLUX_SIM_CALIBRATE=1 records the profile thresholds without enforcing them.
 # FLUX_SIM_LIVEKIT_CANDIDATE is the image the sfu-update phase updates to before rolling back.
@@ -47,7 +47,7 @@ export FLUX_LIVEKIT_MEDIA_CIDR=203.0.113.20/32
 export FLUX_LIVEKIT_TURN_CERT_DIR="$work/certs/turn"
 export FLUX_VAPID_PUBLIC_KEY='' FLUX_VAPID_PRIVATE_KEY='' FLUX_VAPID_SUBJECT=''
 candidate=${FLUX_SIM_LIVEKIT_CANDIDATE:-livekit/livekit-server:v1.13.11@sha256:25cd902de7cacbd5f1f779f6a6ac1eae20ba8f56b0935934ce6b0ab80d1e3d20}
-runs=${FLUX_SIM_RUNS:-"chromium:chromium:connect,profiles chromium:chromium:connect,four,profiles chromium:chromium:connect,ai-off,drop,loss,weak,access chromium:chromium:connect,sfu-update chromium:chromium:connect,sfu-restart chromium:chromium:connect,api-restart firefox:chromium:connect,drop,access chromium:firefox:connect,drop,access chromium:webkit:connect,drop,access webkit@turn-udp:chromium:connect,drop firefox:chromium:connect,screen webkit@turn-udp:chromium:connect,screen chromium+pixel7:chromium:connect,drop webkit+iphone13@turn-udp:chromium:connect,drop chromium:webkit+ipad:connect,access webkit:chromium:turn-tls-probe"}
+runs=${FLUX_SIM_RUNS:-"chromium:chromium:connect,profiles chromium:chromium:connect,four,profiles chromium:chromium:connect,ai-off,drop,loss,weak,access chromium:chromium:connect,sfu-update chromium:chromium:connect,sfu-restart chromium:chromium:connect,api-restart firefox:chromium:connect,drop,access chromium:firefox:connect,drop,access chromium:webkit:connect,drop,access webkit@turn-udp:chromium:connect,drop webkit@ice-tcp:chromium:connect,drop firefox:chromium:connect,screen webkit@turn-udp:chromium:connect,screen chromium+pixel7:chromium:connect,drop webkit+iphone13@turn-udp:chromium:connect,drop chromium:webkit+ipad:connect,access webkit:chromium:turn-tls-probe"}
 printf 'Public simulation %s, results in %s\n' "$project" "$artifacts"
 
 compose="docker compose -p $project -f docker/compose.source.yaml -f docker/compose.live.yaml -f docker/compose.live.turn.yaml -f docker/public-sim/compose.yaml"
@@ -116,6 +116,8 @@ if grep -E -q 'egress|ingress|agent' "$artifacts/services.txt"; then echo 'unexp
         "screen a off"|"screen c off") side=$(printf '%s' "$command" | cut -d' ' -f2); out=$($compose exec -T "client-$side" screen-source off 2>&1) ;;
         "netem-host b 10.213.2.11 off") out=$($compose exec -T router-b /bin/sh /impair.sh netem-host 10.213.2.11 off 2>&1) ;;
         "netem-host b 10.213.2.11 "*) out=$($compose exec -T router-b /bin/sh /impair.sh netem-host 10.213.2.11 ${command#netem-host b 10.213.2.11 } 2>&1) ;; # shellcheck disable=SC2086
+        # The person presses Yes in WebKit's own screen-sharing prompt on client A (allow-display.sh).
+        "allow-display a") out=$($compose exec -T client-a allow-display 2>&1) || out="allow-display failed: $out" ;;
         "sniff a") out=$($compose exec -T router-a /bin/sh /impair.sh sniff 2>&1) ;;
         "mark "*) printf '{"t": %s, "mark": "%s"}\n' "$(date +%s.%N)" "${command#mark }" >> "$artifacts/resources.jsonl"; out=marked ;;
         *) out="refused: $command" ;;
@@ -165,15 +167,17 @@ fi
 failed=
 for run in $runs; do
   a=${run%%:*} rest=${run#*:}; b=${rest%%:*} phases=${rest#*:}
-  # BROWSER@turn-udp: router A also lets TURN/UDP to the media host out for this run.
-  turn_udp=; case "$a" in *@turn-udp) turn_udp=1; a=${a%@turn-udp} ;; esac
-  log="$artifacts/driver-$a${turn_udp:+-turn-udp}-$b-$(printf '%s' "$phases" | tr ',' '-').log"
-  printf '== run %s behind the restrictive router%s, %s behind the open one: %s\n' "$a" "${turn_udp:+ (TURN/UDP allowed)}" "$b" "$phases"
-  [ -z "$turn_udp" ] || $compose exec -T router-a /bin/sh /impair.sh turn-udp on
+  # BROWSER@turn-udp: router A also lets TURN/UDP to the media host out for this run; BROWSER@ice-tcp lets the
+  # SFU's ICE/TCP port out instead (UDP still blocked, no TLS).
+  path=; case "$a" in *@turn-udp) path=turn-udp; a=${a%@turn-udp} ;; *@ice-tcp) path=ice-tcp; a=${a%@ice-tcp} ;; esac
+  log="$artifacts/driver-$a${path:+-$path}-$b-$(printf '%s' "$phases" | tr ',' '-').log"
+  printf '== run %s behind the restrictive router%s, %s behind the open one: %s\n' "$a" "${path:+ ($path allowed)}" "$b" "$phases"
+  [ -z "$path" ] || $compose exec -T router-a /bin/sh /impair.sh "$path" on
   since=$(date -u +%Y-%m-%dT%H:%M:%SZ)
-  FLUX_SIM_A_RELAY=${turn_udp:+udp} FLUX_SIM_BROWSER_A=$a FLUX_SIM_BROWSER_B=$b FLUX_SIM_PHASES=$phases \
+  relay=; case "$path" in turn-udp) relay=udp ;; ice-tcp) relay=ice-tcp ;; esac
+  FLUX_SIM_A_RELAY=$relay FLUX_SIM_BROWSER_A=$a FLUX_SIM_BROWSER_B=$b FLUX_SIM_PHASES=$phases \
     $compose --profile sim-driver run --rm driver 2>&1 | tee "$log"
-  [ -z "$turn_udp" ] || $compose exec -T router-a /bin/sh /impair.sh turn-udp off
+  [ -z "$path" ] || $compose exec -T router-a /bin/sh /impair.sh "$path" off
   $compose logs --no-color --since "$since" livekit > "${log%.log}.livekit.txt" 2>&1 || true
   # The SFU's side of a TURN/TLS probe: why a handshake failed, as its TURN server logged it.
   case "$phases" in *turn-tls-probe*) grep -m1 -o 'TLS handshake failed: .*' "${log%.log}.livekit.txt" || echo 'no failed TURN/TLS handshake logged' ;; esac

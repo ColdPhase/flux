@@ -1,10 +1,10 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState, type KeyboardEvent } from 'react';
 import { useNavigate } from 'react-router';
 import { Avatar, Button, duration, Icon, IconButton, MEDIA, Sheet, Spinner, useMediaQuery, useStripOnlyModal } from '../ui';
 import { anchorPath, KIND_WORD } from './anchors';
 import { useLive, useLiveHere, type LiveValue } from './LiveProvider';
 import { canPublishScreen } from './capture';
-import type { MediaPerson } from './media';
+import type { MediaPerson, ScreenMode } from './media';
 import { DeviceButton } from './DeviceButton';
 import { LivePanel } from './LivePanel';
 import { Popover } from './Popover';
@@ -146,6 +146,7 @@ export function LiveBar() {
         <div className="lv-line lv-line--sharing" role="status">
           <span className="lv-dot lv-dot--share" aria-hidden="true" />
           <span className="lv-line__text">You are sharing your screen. Everyone in the session can see it.</span>
+          <ScreenModeChoice live={live} />
           <Button variant="quiet" onClick={() => void live.setDevice('screen', false)}>Stop sharing</Button>
         </div>
       ) : null}
@@ -173,6 +174,37 @@ export function LiveBar() {
         <Popover open={moreOpen} onClose={() => setMoreOpen(false)} anchorRef={moreRef} label="Live session" className="lv-pop--panel">{panel}</Popover>
       )}
     </section>
+  );
+}
+
+const SCREEN_MODES: { id: ScreenMode; label: string; tip: string }[] = [
+  { id: 'text', label: 'Sharp text', tip: 'Code and documents stay readable: up to 2560×1440, 15 frames a second' },
+  { id: 'motion', label: 'Smooth motion', tip: 'For a moving demo or video: up to 1920×1080, 60 frames a second' },
+];
+
+/** How your screen is sent, chosen while you share; the next share starts the same way. */
+function ScreenModeChoice({ live }: { live: LiveValue }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const labelId = useId();
+  const mode = live.media?.screenMode ?? 'text';
+  const choose = (next: ScreenMode) => { if (next !== mode) void live.setScreenMode(next); };
+  const move = (event: KeyboardEvent<HTMLDivElement>) => {
+    const delta = event.key === 'ArrowRight' || event.key === 'ArrowDown' ? 1 : event.key === 'ArrowLeft' || event.key === 'ArrowUp' ? -1 : 0;
+    if (!delta) return;
+    event.preventDefault();
+    const index = SCREEN_MODES.findIndex((item) => item.id === mode);
+    const next = SCREEN_MODES[(index + delta + SCREEN_MODES.length) % SCREEN_MODES.length]!;
+    choose(next.id);
+    requestAnimationFrame(() => ref.current?.querySelector<HTMLElement>(`[data-screen-mode="${next.id}"]`)?.focus());
+  };
+  return (
+    <div ref={ref} className="seg lv-line__seg" role="radiogroup" aria-labelledby={labelId} onKeyDown={move}>
+      <span id={labelId} className="ui-vh">How your screen is sent</span>
+      {SCREEN_MODES.map((item) => (
+        <button key={item.id} type="button" role="radio" className="seg__b" data-screen-mode={item.id} data-tip={item.tip}
+          aria-checked={mode === item.id} tabIndex={mode === item.id ? 0 : -1} onClick={() => choose(item.id)}>{item.label}</button>
+      ))}
+    </div>
   );
 }
 
