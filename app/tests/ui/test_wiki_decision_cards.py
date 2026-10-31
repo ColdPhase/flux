@@ -194,10 +194,13 @@ class WikiDecisionCards(unittest.TestCase):
         hint = panel.get_by_text("Accept it first to add it to the Wiki.")
         expect(hint).to_be_visible()
         expect(button).to_have_attribute("aria-describedby", re.compile(r"^wd-docs-hint-"))
-        # The hint sits on the button's centre line.
+        # The hint is the button's own caption: directly under it, on the same left edge.
         b, h = button.bounding_box(), hint.bounding_box()
         assert b and h
-        self.assertLessEqual(abs((b["y"] + b["height"] / 2) - (h["y"] + h["height"] / 2)), 3)
+        self.assertLessEqual(abs(b["x"] - h["x"]), 1)
+        self.assertGreaterEqual(h["y"], b["y"] + b["height"] - 1)
+        self.assertLessEqual(h["y"] - (b["y"] + b["height"]), 10)
+        shot(page, "wiki-decision-cards-proposed-details-1440")
 
     def test_05_phone_reads_and_opens_the_cards(self) -> None:
         page = self.context(PHONE, touch=True, theme="dark")
