@@ -581,6 +581,7 @@ What the thresholds do **not** claim, from the same data:
 - Tom's best speech track was 11.5 kbit/s in the enforced run against a 10 kbit/s gate: a narrow margin, and the
   gate passed in `full1` and in both `four2` runs. If 8 kbit/s was his best track in one of `cal4` to `cal8`, that
   run would have failed it.
+*Superseded later on 2026-10-31 by the [1440p code/text profile](#1440p-codetext-profile-63-ac-2-2026-10-31), which gates it:*
 - **Code and text at 14 to 16 px, 2560×1440, 15 to 30 fps, scrolling (AC-2's first target) has no gate and is not
   claimed.** The simulation gates Sharp text only on `testsrc2` at 1920×1080 (≥ 1080 rows, ≥ 7 fps; 8.9 to 10.6 fps
   observed). On a full-frame scrolling pattern Sharp text (capture capped at 15 fps, 3.5 Mbit/s) arrived at
@@ -766,6 +767,15 @@ it mostly reads (0.92 to 0.98), at 20 s it equals the source. The thresholds wer
 decoded and source PNGs (kept with each run's artifacts); they are gates for this simulation, not promises for other
 networks or devices. A separate reviewer checks them.
 
+**Enforced run** (`full4`, at `54ccea89d`, 2026-10-31: the default runs, which now include
+`chromium:chromium:connect,text` and `chromium:chromium:connect,four,text`): both text runs passed (11 and 22 checks,
+no failure). Scrolling: 2560×1440 at 14.9 fps at all three receivers, no loss, freezes ≤ 0.29 s, 3.45 to 3.49 Mbit/s;
+OCR medians 0.932 to 0.960 against sources of 0.968 to 0.985, worst frames 0.741 and 0.770. Static at 20 s: SSIM
+0.975 to 0.982, OCR 0.983, 40 of 40 lines (5 s: 0.62 to 0.93; 10 s: 0.92 to 0.98). 18 of 19 runs passed; the
+four-person profiles failed one gate unrelated to text, "weak: Tom still receives speech kbps" at 9.9 against 10
+(the liveness check that the review marked narrow; Sharp text is unchanged from main). Re-run at the same commit
+(`four3`, two four-person profile runs): both passed, 234 checks each.
+
 ## #63 acceptance table (2026-10-31)
 
 Status of each part of [#63](https://github.com/ColdPhase/flux/issues/63)'s criteria. "Simulated" means met on
@@ -784,7 +794,7 @@ later on 2026-10-31 (smooth motion, larger camera, WebKit, k3s dropped).
 | AC-1 | CPU, memory, egress | **Met, simulated** | Per measured window in `resources-summary.json`: SFU 7.8 % CPU, 83 MB, 9.1 Mbit/s egress with four people and two shares. Local containers, not a capacity |
 | AC-1 | Recording, egress and external inference off | **Met, simulated** | No egress, ingress or agent service in the stack; only the people in the session |
 | AC-2 | Reproducible profiles with measured results | **Met, simulated** | [Measured profiles](#measured-profiles-and-calibrated-thresholds-ac-2): speech, camera, motion, two shares, 1:1, loss and jitter, one weak receiver |
-| AC-2 | Code/text 14-16 px at 2560×1440, 15-30 fps, scrolling | **Open: not gated, not claimed** | The simulation gates 1080p Sharp text at ≥ 7 fps only; full-frame scrolling arrived at 2.6 to 4.3 fps (recorded). The 2560×1440 evidence is the [2026-09-30 calibration](live-code-calibration.md), before the current build, with no readability threshold. What would close it: see "What the thresholds do not claim" |
+| AC-2 | Code/text 14-16 px at 2560×1440, 15-30 fps, scrolling | **Met, simulated** | [1440p code/text profile](#1440p-codetext-profile-63-ac-2-2026-10-31): 14 px Liberation Mono on a real 2560×1440 X screen shared as Sharp text over TURN/TLS, two and four people, 1:1. Enforced run `full4`: scrolling received at 2560×1440 and 14.9 fps, OCR median 0.93 to 0.96 against a source of 0.97 to 0.99; static text at 20 s SSIM 0.975 to 0.982 and OCR equal to the source. Thresholds set and reasoned before that run, from calibration. Recorded, not gated: the first 5 to 10 s of a share are soft (time to a clear frame) |
 | AC-2 | Motion 1080p60, camera 1080p30, continuous speech | **Met, simulated, with a recorded limit** | Speech met. **Camera:** shown large, 1920×1080 at 29.7 to 30.1 fps received ([larger camera](#a-larger-camera-ac-2-camera-profile)). **Motion:** Smooth motion captures 1920×1080 at 60 fps and delivers **59.5 to 59.7 fps at 1280×720** at its 10 Mbit/s cap for a frame that moves everywhere ([smooth motion](#smooth-motion-ac-2-motion-profile)); 1080p *and* 60 fps together at the receiver was not reached with Chromium's software encoder in Docker (target is "up to") |
 | AC-2 | Two then four participants, two screens | **Met, simulated** | Two, then four people with two simultaneous real screen shares, enforced thresholds |
 | AC-2 | Weak receiver, loss, jitter, UDP-blocked TURN | **Measured, simulated; quality limits recorded** | Gates pass. Recorded limits: a TCP relay under loss gives a 1 to 3 fps screen and late audio; a 400 kbit/s receiver of a one-layer screen loses the screen and most of its speech (Sharp text 68 to 86 % concealed, Smooth motion 84 to 98 %), while the other people are untouched. Simulcast screen layers were measured and rejected (they cut Smooth motion to 10 to 13 fps); LiveKit's `allow_pause` did not help |
@@ -800,10 +810,10 @@ later on 2026-10-31 (smooth motion, larger camera, WebKit, k3s dropped).
 | AC-4 | AI receives no media by default; human calls with AI off | **Met, simulated** | No agent or processor in the room or stack; a call with workspace AI blocked joined, carried audio and recovered |
 | AC-4 | One release-candidate commit with the real journey and independent reviews | **Open** | Unblock: an independent review of this change and the release-candidate pass |
 
-Left on #63: the release-candidate pass (AC-4's last row), a second look at the corrected threshold wording, and
-code/text at 2560×1440 (open, not gated). Everything else is met, simulated, dropped by founder decision (k3s) or
-recorded as unattainable in software here with a dated source (WebKit TURN/TLS; 1080p and 60 fps together at the
-receiver with a software encoder).
+Left on #63: the release-candidate pass (AC-4's last row, part of the release's integrated acceptance on #249) and
+a separate reviewer's check of the 1440p text thresholds. Everything else is met, simulated, dropped by founder
+decision (k3s) or recorded as unattainable in software here with a dated source (WebKit TURN/TLS; 1080p and 60 fps
+together at the receiver with a software encoder).
 
 ## Pointer reachability and camera state on phone and tablet (#63; 2026-10-10)
 
