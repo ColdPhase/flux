@@ -7,7 +7,7 @@
 
 <h1 align="center">Flux</h1>
 
-<p align="center"><b>An open source, self-hostable workspace where people and AI agents work on the same projects: conversations, and the tasks, documents and decisions that come out of them.</b></p>
+<p align="center"><b>An open source, self-hosted workspace where people and AI agents work on the same projects.</b></p>
 
 <p align="center">
   <a href="https://github.com/ColdPhase/flux/actions/workflows/application-checks.yml"><img src="https://github.com/ColdPhase/flux/actions/workflows/application-checks.yml/badge.svg?branch=main" alt="Application checks"></a>
@@ -89,7 +89,8 @@ reference for every UI change.
 
 ## Quick start
 
-Prerequisites: Git and Docker Engine (or Docker Desktop) with Compose. No host Node.js or PostgreSQL.
+Prerequisites: Git and Docker Engine (or Docker Desktop) with Compose. No host Node.js or PostgreSQL
+([requirements](docs/operations/requirements.md)).
 
 ```sh
 git clone --depth 1 https://github.com/ColdPhase/flux.git
@@ -109,8 +110,9 @@ taken, start the first time with another free port, for example `FLUX_PORT=8090 
 ([measured times](docs/development/time-to-first-run.md)). To connect your own MCP client, such
 as Claude Code or Codex, follow [Connect your own agent](#connect-your-own-agent).
 
-The first `./flux up` in a terminal also asks once whether people may sign in with their own ChatGPT
-and Claude subscriptions (Enter means yes, for Codex; Claude Code needs a typed `y` to Anthropic's
+Flux can also run Claude Code or Codex for people on the server, signed in with their own Claude or
+ChatGPT subscription. The first `./flux up` in a terminal asks once
+whether to allow it (Enter means yes, for Codex; Claude Code needs a typed `y` to Anthropic's
 Commercial Terms; a host that cannot run it gets one line saying why instead); `./flux ai on` asks
 later, and without a terminal nothing is asked ([operator guide](docs/operations/agent-runtime.md)).
 `./flux up` never overwrites an existing `docker/.env`.
@@ -125,7 +127,7 @@ skips older commits and their review captures, which remain available through th
 To run Flux for a team on your own domain, start with the
 [self-hosting guide](https://coldphase.github.io/flux/operate/) ([source](docs/operations/README.md)):
 
-| | |
+| Guide | Covers |
 | --- | --- |
 | [Requirements](docs/operations/requirements.md) | Linux with Docker Compose, 4 GB of memory, a domain name |
 | [Installation](docs/operations/install.md) | A production server from a source checkout, step by step |
@@ -191,11 +193,8 @@ computer needs an HTTPS address: the operator sets `FLUX_PUBLIC_ORIGIN` behind a
 ([agent connection](docs/development/agent-connection.md),
 [integrations for operators](docs/integrations/README.md#for-operators)). Flux accepts clients
 only through their public client metadata documents, so the server needs outbound HTTPS when a
-client signs in. On 2026-10-30 Claude Code 2.1.314 and Codex 0.163.0 both completed this sign-in
-against a clean clone on a loopback address, with a connection that grants only the two ticked actions
-([what was run](docs/development/time-to-first-run.md#readme-connect-your-own-agent-run-again-with-codex-and-claude-code-2026-10-30)),
-and Claude Code with a model account answered step 6 3 min 49 s after `git clone`
-([the run](docs/development/time-to-first-run.md#linux-x86_64-2026-10-30-evening-the-first-agent-reply-from-a-clean-clone-320)).
+client signs in. Both clients were run through these steps against a clean clone
+([record](docs/development/time-to-first-run.md)).
 
 ## Documentation
 

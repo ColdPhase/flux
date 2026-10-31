@@ -35,4 +35,4 @@ is not supported in this version:
 
 Several **independent** instances on one host are fine: each checkout gets its own Compose project,
 volumes and port. Watch Docker's address pools when you run many
-([operations overview](README.md#docker-address-pools)).
+([Docker address pools](troubleshooting.md#docker-address-pools)).

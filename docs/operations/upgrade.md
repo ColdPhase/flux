@@ -4,7 +4,7 @@
 git pull --ff-only && ./flux upgrade      # or: ./flux upgrade --pull
 ```
 
-`./flux upgrade` (issue #123) moves this checkout's instance to the code in the checkout:
+`./flux upgrade` moves this checkout's instance to the code in the checkout:
 
 1. It asks for confirmation (`-y` answers yes) and reads the current schema from the database.
 2. **Backup.** It runs [`./flux backup`](backup-restore.md) into `backups/` (or `--output
@@ -12,7 +12,7 @@ git pull --ff-only && ./flux upgrade      # or: ./flux upgrade --pull
    written between the backup and the new version, so going back to the backup loses nothing.
 3. **New version.** With `--pull` it runs `git pull --ff-only` and continues in the pulled
    launcher. It builds the image from the checkout (`FLUX_NO_CACHE=1` for a clean build).
-   Release images (#77) are not published yet; when they are, this step can pull them instead.
+   Release images are not published yet; when they are, this step can pull them instead.
 4. **Migrate forward.** `files-init`, then the one-shot migration applies every new
    `app/packages/db/migrations/NNNN_*.sql` in order, each in its own transaction.
 5. **Health.** It starts API and worker, waits for their health checks, and checks that the API
@@ -50,20 +50,9 @@ A failed migration file rolls back its own transaction; earlier new migrations o
 upgrade stay applied, which is why the instructions restore the backup rather than restarting
 the old version on the partly migrated database.
 
-## Verified behavior
+## Tested with
 
-`./scripts/check_backup.sh` starts a checkout of the **previous main's schema**: the newest
-commit on `main`'s first-parent history whose set of migrations differs from this tree's
-(`FLUX_UPGRADE_FROM=<ref>` picks another). Observed on 2026-09-28: with `main` at `f18c0cb`
-the previous main is `705ed25` (schema 13) and the upgrade applied `0015_notifications.sql`;
-an earlier run with `main` at `705ed25` started from `f1fa114`, which had `0013_docs.sql` but not
-the later-merged `0011_agent_connection.sql` and `0012_agent_oauth.sql`, and applied both, so
-migrations numbered below the current maximum are applied too. It seeds that version's `./flux demo`, replaces the
-checkout's files with this tree (as `git pull` would, keeping `.env` and the data), checks that
-`./flux upgrade` without confirmation does nothing, runs `./flux upgrade -y`, and verifies the
-reported schema change, an `Applied migration` line for every migration the old version lacked,
-the backup's schema, that this pre-upgrade backup (a subset of the new image's migrations) is
-refused by restore without `--migrate` and restored with it, and through the API the demo conversation, DM,
-private note and sketch, a new doc, and the export. It then adds a failing migration, checks that
-the upgrade fails with the restore instruction for its backup, removes the migration and follows
-the instruction; the demo data is verified again.
+`./scripts/check_backup.sh` starts the previous schema of `main`, seeds it, upgrades it to this tree
+with `./flux upgrade -y`, and checks the applied migrations, the backup it made and the data through
+the API. It then adds a failing migration, checks that the upgrade fails with the restore
+instructions above, and follows them.

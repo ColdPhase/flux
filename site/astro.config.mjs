@@ -35,7 +35,7 @@ export default defineConfig({
         {
           label: 'Self-hosting',
           items: [
-            { label: 'Overview', link: '/operate/' },
+            { label: 'Self-hosting overview', link: '/operate/' },
             { label: 'Requirements', link: '/operate/requirements/' },
             { label: 'Installation', link: '/operate/install/' },
             { label: 'HTTPS and reverse proxies', link: '/operate/reverse-proxy/' },
@@ -47,7 +47,7 @@ export default defineConfig({
                 { label: 'Upgrade', link: '/operate/upgrade/' },
                 { label: 'Backup and restore', link: '/operate/backup-restore/' },
                 { label: 'Project export', link: '/operate/export/' },
-                { label: 'Encrypted spaces', link: '/operate/encrypted-spaces/' },
+                { label: 'Encrypted spaces (operator)', link: '/operate/encrypted-spaces/' },
                 { label: 'Health, monitoring and logs', link: '/operate/monitoring/' },
                 { label: 'Capacity and scaling', link: '/operate/scaling/' },
                 { label: 'Security hardening', link: '/operate/hardening/' },

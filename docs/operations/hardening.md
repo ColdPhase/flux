@@ -33,15 +33,18 @@ described in the [security policy](../SECURITY.md).
 3. **Trust only your proxy.** Set `FLUX_TRUSTED_PROXIES` to the measured address of the proxy hop
    ([how](reverse-proxy.md#trust-only-the-measured-proxy-peer)); never a whole private range or
    `0.0.0.0/0`.
-4. **Decide who may sign up.** `FLUX_SIGNUP=verified` with email, or `off` with
-   [single sign-on](single-sign-on.md). `open` lets anyone who reaches the server create an account.
+4. **Decide who may sign up** ([the options](install.md#5-decide-who-can-sign-up)). `open` lets anyone
+   who reaches the server create an account. `verified` only proves that the person can read a
+   mailbox, not that they belong to your team. For a private team on the internet, use
+   [single sign-on](single-sign-on.md), or create your team's accounts and then set `FLUX_SIGNUP=off`
+   (open it briefly to add someone later). A new account sees no space until someone adds it.
 5. **Protect the settings file.** `docker/.env` (or the release `.env`) is mode `600` and holds the
    database password, `FLUX_AUTH_SECRET`, `FLUX_KEY_PIN_SECRET`, the VAPID private key and any
    provider secrets. Do not commit it, do not export its values in a shell, keep it with backups.
 6. **Keep secret files out of the checkout and the database backup**: the OIDC client secret
    (`FLUX_OIDC_CLIENT_SECRET_HOST_FILE`) and the background key (`FLUX_BACKGROUND_KEY_HOST_FILE`).
 7. **Encrypt backups that leave the machine.** An archive holds every message and document, password
-   hashes and the settings file ([backup schedule](README.md#backup-schedule)).
+   hashes and the settings file ([backup schedule](backup-restore.md#backup-schedule)).
 8. **Never run `./flux demo`** on a server, and leave `FLUX_DEMO_*_PASSWORD` empty there.
 9. **Turn on only what you use.** Link cards, the AI switches, the agent runtime, the GitHub App and
    live media are all off until you set them.

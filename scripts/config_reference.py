@@ -32,6 +32,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 PAGE = ROOT / "docs" / "operations" / "configuration.md"
+INTERNAL_PAGE = ROOT / "docs" / "development" / "configuration-internal.md"
 ENV_EXAMPLE = ROOT / "docker" / ".env.example"
 LAUNCHER = ROOT / "flux"
 
@@ -67,6 +68,10 @@ class Var:
     default: str = ""
     secret: bool = False
 
+
+# The settings most operators change, shown first on the page.
+COMMON = ["FLUX_PUBLIC_ORIGIN", "FLUX_SIGNUP", "FLUX_SMTP_URL", "FLUX_MAIL_FROM", "FLUX_TRUSTED_PROXIES",
+          "FLUX_VAPID_SUBJECT", "FLUX_API_MEMORY", "FLUX_WORKER_MEMORY"]
 
 GROUPS = [
     ("instance", "Instance and network",
@@ -128,10 +133,11 @@ VARIABLES: dict[str, Var] = {
         "Signs session cookies, invite-link tokens and cursors. Changing it signs everyone out and voids pending invite "
         "links.", secret=True),
     "FLUX_SIGNUP": Var("identity", "`open` · `verified` · `off`",
-        "Who may create a password account. `open`: anyone who reaches Flux. `verified`: a new account confirms its "
-        "address by mail before it can sign in (needs email; without it sign-up is closed). `off`: nobody; people join "
-        "through single sign-on only. A provider in `sso` mode closes password sign-up whatever this says, and an invite "
-        "link never opens closed sign-up.", "verified"),
+        "Who may create a password account. `open`: anyone who reaches Flux. `verified`: anyone who can confirm an "
+        "address by mail; it proves a mailbox, not membership of your team (needs email; without it sign-up is closed). "
+        "`off`: nobody, including you, so create your own account first. A provider in `sso` mode closes password "
+        "sign-up whatever this says, and an invite link never opens closed sign-up. See "
+        "[who can sign up](install.md#5-decide-who-can-sign-up).", "off"),
     "FLUX_PASSWORD_RESET_TTL_SECONDS": Var("identity", "integer, 60–86400 s",
         "Lifetime of a password reset link. Links are single use and stored hashed.", "3600"),
     "FLUX_AUTH_RATE_LIMIT": Var("identity", "`true` · `false`",
@@ -159,8 +165,10 @@ VARIABLES: dict[str, Var] = {
     # --- email
     "FLUX_SMTP_URL": Var("email", "SMTP URL",
         "Transport for password reset and notification email. TLS: `smtps://…:465` or `smtp://…:587?requireTLS=true`; "
-        "certificates are verified. Needs `FLUX_MAIL_FROM`.", "smtps://flux:password@mail.example.org:465"),
-    "FLUX_MAIL_FROM": Var("email", "address", "Sender of every mail. Required when `FLUX_SMTP_URL` is set.", "Flux <flux@example.org>"),
+        "certificates are verified. Percent-encode special characters in the user name and password. Needs "
+        "`FLUX_MAIL_FROM`.", "smtps://flux:password@mail.example.org:465", default="empty (`./flux dev`: `smtp://mailpit:1025`)"),
+    "FLUX_MAIL_FROM": Var("email", "address", "Sender of every mail. Required when `FLUX_SMTP_URL` is set.", "Flux <flux@example.org>",
+        default="empty (`./flux dev`: `Flux dev <flux-dev@localhost>`)"),
     # --- push
     "FLUX_VAPID_PUBLIC_KEY": Var("push", "base64url P-256 key",
         "Public VAPID key; the API gives it to browsers. Generate the pair once (`web-push generate-vapid-keys`, "
@@ -270,9 +278,9 @@ VARIABLES: dict[str, Var] = {
     "FLUX_COWORK_WATCHDOG_SECONDS": Var("launcher", "seconds", "Stops a native `./flux cowork` run after this long.", "600"),
     "FLUX_ENV_FILE": Var("launcher", "path", "Settings file the release `runtime.sh` reads.", "/srv/flux/.env",
         default="`.env` beside `runtime.sh`"),
-    "FLUX_DEV_PORT": Var("launcher", "port", "`./flux dev` only: port of the Vite dev server; the dev origin is `http://127.0.0.1:<port>`."),
+    "FLUX_DEV_PORT": Var("launcher", "port", "`./flux dev` only: port of the Vite dev server; the dev origin is `http://127.0.0.1:<port>`. Does nothing on a server."),
     "FLUX_DEV_POLL": Var("launcher", "`true` · `false`", "`./flux dev` only: watch files by polling, for file systems without change events.", "true"),
-    "FLUX_MAILPIT_PORT": Var("launcher", "port", "`./flux dev` and checks: port of the local mail catcher's web page."),
+    "FLUX_MAILPIT_PORT": Var("launcher", "port", "`./flux dev` and checks: port of the local mail catcher's web page. Does nothing on a server."),
     "FLUX_DEMO_OWNER_PASSWORD": Var("launcher", "secret",
         "Password `./flux demo` gives the demo owner. Leave empty on a real deployment and never run the demo there.", secret=True),
     "FLUX_DEMO_PARTNER_PASSWORD": Var("launcher", "secret", "Password `./flux demo` gives the second demo account.", secret=True),
@@ -473,7 +481,8 @@ def default_of(name: str, var: Var, uses: dict[str, Use], launcher: dict[str, st
             return f"**required** ({where}); release: {code(use.defaults[release])}"
         return "**required**"
     if name == "FLUX_PROJECT":
-        return f"`./flux`: generated; release: {code(use.defaults.get('docker/compose.yaml', ''))}" if use else "generated"
+        return (f"generated by `./flux up` (`flux-<directory>-<hash>`); release: {code(use.defaults.get('docker/compose.yaml', ''))}"
+                if use else "generated by `./flux up`")
     values = sorted(set(use.defaults.values())) if use else []
     # `./…-unavailable` is an empty placeholder file mounted while the feature is off.
     values = ["" if value.startswith("./") else value for value in values]
@@ -554,6 +563,15 @@ def render() -> str:
         "exists. A wrong value stops the service at start with a message that names the variable.",
         "",
     ]
+    titles = {key: title for key, title, _intro in GROUPS}
+    anchor = lambda name: name.lower()
+    out += ["## Settings you will probably change", ""]
+    out += [f"- [`{name}`](#{anchor(name)}): {VARIABLES[name].type.replace(' · ', ', ')}" for name in COMMON]
+    out += ["", "## All settings A–Z", "", "| Variable | Group | Default |", "| --- | --- | --- |"]
+    for name in sorted(VARIABLES):
+        var = VARIABLES[name]
+        out.append(f"| [`{name}`](#{anchor(name)}) | {titles[var.group]} | {cell(default_of(name, var, uses, launcher, template))} |")
+    out.append("")
     for key, title, intro in GROUPS:
         names = [name for name, var in VARIABLES.items() if var.group == key]
         out += [f"## {title}", ""]
@@ -568,16 +586,10 @@ def render() -> str:
     out += [
         "## Set by Flux, not by you",
         "",
-        "The services also read these. Compose, the launcher or the code sets them; changing them breaks the wiring",
-        "between services or turns on test behaviour. They are listed so that every name in the code is accounted for.",
-        "",
-        "| Variable | Why it exists |",
-        "| --- | --- |",
+        f"The services also read {len(INTERNAL) + len(OTHER_INTERNAL)} names that Compose, the launcher or the code sets: wiring",
+        "between services and test switches. Do not set them. They are listed for developers in",
+        "[internal configuration names](../development/configuration-internal.md).",
     ]
-    for name, (why, _source) in OTHER_INTERNAL.items():
-        out.append(f"| `{name}` | {cell(why)} |")
-    for name in sorted(INTERNAL):
-        out.append(f"| `{name}` | {cell(INTERNAL[name])} |")
     out += [
         "",
         "## Launcher commands",
@@ -590,6 +602,31 @@ def render() -> str:
         "```",
         "",
     ]
+    return "\n".join(out)
+
+
+def render_internal() -> str:
+    out = [
+        "# Internal configuration names",
+        "",
+        "<!-- Generated by scripts/config_reference.py. Do not edit by hand. -->",
+        "",
+        "Names the Flux services read that operators do not set: Compose, the launcher or the code sets them, or",
+        "they turn on test behaviour. They are listed so that every `FLUX_*` name in the code is accounted for; the",
+        "operator settings are in the [configuration reference](../operations/configuration.md). Changing one breaks",
+        "the wiring between services or enables test-only code.",
+        "",
+        "| Variable | Why it exists |",
+        "| --- | --- |",
+    ]
+    for name, (why, _source) in OTHER_INTERNAL.items():
+        out.append(f"| `{name}` | {cell(why)} |")
+    for name in sorted(INTERNAL):
+        out.append(f"| `{name}` | {cell(INTERNAL[name])} |")
+    out += ["", "Names in the code that are not settings at all:", "", "| Name | What it is |", "| --- | --- |"]
+    for name in sorted(NOT_SETTINGS):
+        out.append(f"| `{name}` | {cell(NOT_SETTINGS[name])} |")
+    out.append("")
     return "\n".join(out)
 
 
@@ -629,10 +666,10 @@ def problems() -> list[str]:
             errors.append(f"{name} is override only and needs `services` and `default` in scripts/config_reference.py")
         if var.group not in {key for key, _title, _intro in GROUPS}:
             errors.append(f"{name} has unknown group {var.group}")
-    expected = render()
-    current = PAGE.read_text(encoding="utf-8") if PAGE.exists() else ""
-    if current != expected:
-        errors.append(f"{PAGE.relative_to(ROOT)} is not what the code generates: run python3 scripts/config_reference.py")
+    for page, expected in ((PAGE, render()), (INTERNAL_PAGE, render_internal())):
+        current = page.read_text(encoding="utf-8") if page.exists() else ""
+        if current != expected:
+            errors.append(f"{page.relative_to(ROOT)} is not what the code generates: run python3 scripts/config_reference.py")
     return errors
 
 
@@ -649,10 +686,11 @@ def main(argv: list[str]) -> int:
         print(__doc__.strip().splitlines()[0], file=sys.stderr)
         return 2
     PAGE.write_text(render(), encoding="utf-8")
+    INTERNAL_PAGE.write_text(render_internal(), encoding="utf-8")
     remaining = [error for error in problems() if "is not what the code generates" not in error]
     for error in remaining:
         print(f"config_reference: {error}", file=sys.stderr)
-    print(f"config_reference: wrote {PAGE.relative_to(ROOT)}")
+    print(f"config_reference: wrote {PAGE.relative_to(ROOT)} and {INTERNAL_PAGE.relative_to(ROOT)}")
     return 1 if remaining else 0
 
 

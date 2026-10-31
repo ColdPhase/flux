@@ -87,6 +87,18 @@ The agent runtime's services already rotate at 10 MB times 3 files.
 
 ## Disk
 
-PostgreSQL keeps every version of every document, so the `pgdata` volume grows with use. Backups
-and exports land in the checkout (`backups/`, `exports/`) unless you move them. The
-[operations overview](README.md#disk-hygiene) has the commands to watch and reclaim space.
+- `./flux backup --keep N` keeps the newest `N` archives of this project in the output
+  directory and deletes older ones (and their `.sha256`). Without `--keep` nothing is deleted.
+- Backups go to `backups/` and exports to `exports/` in the checkout by default (both ignored
+  by git and by the Docker build context). `FLUX_BACKUP_DIR` or `--output` puts backups
+  elsewhere, for example on a separate disk.
+- A backup needs free space for about twice its size while it is written: the parts are staged
+  in a hidden `.flux-backup-*.partial` directory next to the archive and removed afterwards.
+- Docker keeps old images and the build cache. `./flux clean` removes this checkout's images
+  (and data); `docker system df` shows the rest, and `docker builder prune --filter until=72h`
+  reclaims build cache for the whole machine. Neither `backup`, `restore` nor `upgrade` prunes
+  anything shared by other projects.
+- The database volume grows with history (versions are never rewritten). Check it with
+  `docker system df -v | grep <project>_pgdata`.
+
+PostgreSQL keeps every version of every document, so the `pgdata` volume grows with use.

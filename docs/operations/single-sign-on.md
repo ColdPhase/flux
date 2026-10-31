@@ -1,15 +1,8 @@
 # Single sign-on
 
-**Implemented #240 baseline:** the setup and verified behavior below describe
-the current mixed-login implementation. The [required exclusive-mode target](#target-mode)
-and [bounded F-024 contract](../product/mcp-identity.md#exclusive-ordinary-sign-in-modes)
-supersede that ordinary login model; SSO-only mode and safe pre-cutover migration
-remain unimplemented.
-
 Flux can let people sign in with your organisation's OpenID Connect identity provider (Keycloak,
-Google Workspace, Okta, Authentik and others), next to email and password
-([#113](https://github.com/ColdPhase/flux/issues/113)). Flux supports **one** provider per
-instance. Flux works with one provider. Its mode is set by `FLUX_SSO_MODE`:
+Google Workspace, Okta, Authentik and others). Flux supports **one** provider per instance. Its mode
+is set by `FLUX_SSO_MODE`:
 
 - `prepare` keeps email/password sign-in, sign-up and reset, and lets each existing password account
   **link** the provider before cutover (see [Moving existing accounts](#moving-existing-accounts)).
@@ -54,8 +47,11 @@ instance. Flux works with one provider. Its mode is set by `FLUX_SSO_MODE`:
    value when the API starts with single sign-on on (`Single sign-on is on`, field `redirectUri`):
 
    ```sh
-   ./flux logs api | grep 'Single sign-on is on'
+   docker compose --env-file docker/.env -p "$(sed -n 's/^FLUX_PROJECT=//p' docker/.env)" \
+     -f docker/compose.source.yaml logs --no-log-prefix api | grep 'Single sign-on is on'
    ```
+
+   (Release: `docker compose --env-file .env -f compose.yaml logs --no-log-prefix api | grep …`.)
 
    The provider id is derived from the issuer URL, so changing the issuer creates a new identity
    namespace. Keep the issuer stable during normal operation; if it must change, use the explicit
@@ -95,8 +91,8 @@ instance. Flux works with one provider. Its mode is set by `FLUX_SSO_MODE`:
    keeps their access. It starts at each sign-in through the provider. After it, that person's
    provider browser sessions return to sign-in, their MCP requests get 401 `invalid_token`, and the
    refresh grant gets `invalid_grant` until they sign in through the provider again; the client then
-   authorizes again and `/connect-agent` offers the connection it held. Without the standing check
-   (S4), this age is the offboarding bound: a person disabled at the provider keeps access at most
+   authorizes again and `/connect-agent` offers the connection it held. Without the
+   [standing check](#standing-check), this age is the offboarding bound: a person disabled at the provider keeps access at most
    this long. People with only a Flux password cannot sign in while the provider is set (see above).
 
 5. **Restart:** `./flux up` (or `docker compose … up -d`). The sign-in page shows
@@ -110,13 +106,13 @@ until the next restart; password sign-in stays closed in the meantime.
 Flux asks the provider for `offline_access` at sign-in and keeps the refresh token it returns,
 sealed with a key derived from `FLUX_AUTH_SECRET`, in `auth_idp_standing`.
 
-*Revised 2026-10-09 by founder direction (Hubert).* The sign-in now takes two steps. The person signs
+The sign-in takes two steps. The person signs
 in with `openid email profile`. Flux then sends the browser back to the provider once more, silently,
 with `prompt=none` and `scope=openid offline_access`, to the same redirect URI. You register nothing
 new. The person sees only a second redirect.
 
 The reason is Keycloak 26.1 and later: when `offline_access` is the first request of a new Keycloak
-session, Keycloak deletes the browser session at the code exchange (keycloak PR #34346). The provider
+session, Keycloak deletes the browser session at the code exchange . The provider
 then never sends a back-channel logout to Flux, and other applications lose single sign-on.
 
 - **A refused silent step.** If the step answers `login_required` or another error, the sign-in is
@@ -130,7 +126,7 @@ then never sends a back-channel logout to Flux, and other applications lose sing
 `FLUX_OIDC_STANDING_INTERVAL_SECONDS` (default 900) the API uses that token for each person with a
 live session or agent connection. If the provider answers `invalid_grant` (a disabled user, a removed
 offline session), the person is in *sign-in required*: their browser sessions end, MCP requests answer
-`401 invalid_token` with "Sign in again with <label>", the refresh grant answers `invalid_grant`, and
+`401 invalid_token` with "Sign in again with" and your label, the refresh grant answers `invalid_grant`, and
 automation that acts for them stops. Nothing is revoked. A network error, timeout, 5xx or
 `invalid_client` changes nothing.
 
@@ -141,7 +137,7 @@ automation that acts for them stops. Nothing is revoked. A network error, timeou
   let the people use `offline_access` (Keycloak: the `offline_access` role; Okta: the Refresh Token
   grant). A sign-in that returns none is refused with a message, and the API logs
   `The identity provider returned no refresh token`. For a provider that cannot, set
-  `FLUX_OIDC_STANDING=off`: then only the confirmation age (S2) and back-channel logout end access.
+  `FLUX_OIDC_STANDING=off`: then only the confirmation age and back-channel logout end access.
 - **Backups and restores.** `./flux backup` keeps the table's rows out of the archive. After a
   restore, every person who signed in through the provider is in sign-in required until they sign in
   again.
@@ -157,73 +153,32 @@ automation that acts for them stops. Nothing is revoked. A network error, timeou
   with `Cache-Control: no-store`; an unknown session id is answered 200.
 - **Only the stored state is read per request;** an unreachable provider adds no latency to MCP calls.
 
-## Verified behavior
+## Tested with
 
-`./scripts/check_oidc.sh` runs a pinned, disposable Keycloak in Docker as the provider and drives
-the real browser flow against Flux: sign-in, the same subject keeping the person, grants and
-verified address across an email change, refused unverified and colliding identities, a replayed
-or forged callback, a session across an API restart, revoking and signing out a single sign-on
-session, mail to exactly the chosen mailboxes (account only, private address only, both, in-app
-only) for two people whose private addresses stay their own, email links that open only while
-the reader may see the source, and one message per actual mailbox through Mailpit.
-
-Keycloak never issues a bad ID token, so the same script also starts a small deterministic mock
-provider (`app/tests/app/support/oidc-mock.ts`, from the test image) and a second API replica
-configured with it. Through the same browser flow and callback it returns ID tokens with a wrong
-nonce, a signature by another key, another issuer or another audience; each is refused with no
-session, no linked or changed account, no grants and no notification address, and a valid
-token from the same mock still signs in.
-
-The confirmation age runs against Keycloak with `FLUX_OIDC_CONFIRMATION_MAX_AGE=12h`: a person
-whose last confirmation is moved back past it is refused at the browser, at MCP and on the refresh
-grant; one moved back less than it is not; signing in again through Keycloak restores access.
-
-It uses its own Compose project and ports (`FLUX_OIDC_TEST_PORT`, default 18095, and the next port
-for Mailpit) and removes everything afterwards.
-
-<a id="target-mode"></a>
-**Target mode, superseding amendment 2026-10-07:**
-[F-024](../product/mcp-identity.md) requires password-only ordinary login without
-active SSO or SSO-only with the installation's sole IdP. Under active SSO, no
-ordinary Flux password sign-in/signup/reset or password-only authority remains;
-new accounts come through the verified IdP flow. This needs real backend/UI/
-session enforcement; the current #240 baseline has not delivered that mode.
-
-Existing accounts migrate explicitly before cutover: prepared provider,
-authenticated existing account/session and a verified callback bound to that
-account and intent, preserving Flux IDs/data/roles/memberships/applicable grants.
-Duplicate identity, substitution and email auto-linking are refused. Audited host
-recovery/re-key handles stranded accounts; it does not add an ordinary password
-fallback under SSO. Selected-provider claims/offboarding/verification remain.
-#316's ordinary per-connection capability controls have no ten-minute guard,
-password replay or secondary SSO challenge; live rights/grants/OAuth ceilings
-still apply. Neither these switches nor exclusive mode are claimed implemented.
-#317 opaque MCP keys remain canceled; supported OAuth/SSH/callback paths stay.
+`./scripts/check_oidc.sh` runs a pinned, disposable Keycloak and a deterministic mock provider in
+Docker and drives the real browser flow: sign-in, a stable subject across email changes, refused
+unverified, colliding, replayed, forged, wrong-nonce, wrong-key, wrong-issuer and wrong-audience
+tokens, sessions across an API restart, sign-out, the confirmation age at the browser, MCP and the
+refresh grant, and notification mail. With `FLUX_OIDC_CLOSEOUT=1` it also signs Codex and Claude Code
+in as MCP clients through Keycloak. It uses its own Compose project and ports
+(`FLUX_OIDC_TEST_PORT`, default 18095) and removes everything afterwards.
 
 Not covered: SAML, SCIM provisioning, several providers at once, and a production provider's
 own policies (MFA, conditional access), which stay the provider's responsibility.
 
-- **Microsoft Entra ID (unverified, 2026-10-06).** Flux accepts an identity only when the ID token says
-  `email_verified: true`. Entra's ID token and optional-claims references and its `claims_supported`
-  list don't include `email_verified`, so Entra sign-in is expected to be refused until a provider
-  claim adapter for it exists (F-024 S5b, [#315](https://github.com/ColdPhase/flux/issues/315)). These
-  profiles describe provider compatibility, not personal profile pages. This is an
-  inference from Microsoft's documentation; it was not tested against a real Entra tenant.
-- **Agent (MCP) authorization ([#310](https://github.com/ColdPhase/flux/issues/310), F-024 S1).** The
-  page an agent client opens for authorization (`/login`, for example from `claude mcp login`) shows
-  **Sign in with <label>**, the only sign-in offered while the provider is set. Flux keeps the signed authorization request through
-  the provider round trip and continues to the connection choice and consent afterwards; the client only
-  ever receives Flux's own code and tokens, and an access or ID token issued by the provider is refused at
-  `/mcp`. If the provider step is cancelled or fails, the page returns to `/login` with the same request
-  and a message. If the provider's discovery document cannot be read, the button is disabled and says
-  `<label> is not reachable right now`. Flux keeps retrying a provider that was unavailable at startup.
-  The same signed login page enables sign-in when it recovers; no API restart or page reload is needed.
-  Pre-registered Codex clients: register the callback that Codex displays. It is the stable
-  `http://127.0.0.1/callback` when the server advertises the issuer response parameter, as Flux does.
-  `FLUX_OIDC_CLOSEOUT=1 ./scripts/check_oidc.sh` also verifies real official Codex0.160.1 and Claude
-  Code2.1.285 against Keycloak (2026-10-18): pre-registered clients and Claude default CIMD, genuine
-  OAuth/consent/PKCE and native authorized tools. Only their model endpoints are mocked; vendor-account
-  usability and the separate Start/Resume workflow are not certified. See the [pinned evidence](../agents/evidence/483-490-identity/README.md).
+## Agents (MCP clients) with single sign-on
+
+The page
+an agent client opens for authorization (`/login`, for example from `claude mcp login`) shows
+**Sign in with** and your `FLUX_OIDC_LABEL`, the only sign-in offered while the provider is set. Flux keeps the signed authorization request through
+the provider round trip and continues to the connection choice and consent afterwards; the client only
+ever receives Flux's own code and tokens, and an access or ID token issued by the provider is refused at
+`/mcp`. If the provider step is cancelled or fails, the page returns to `/login` with the same request
+and a message. If the provider's discovery document cannot be read, the button is disabled and says
+`<label> is not reachable right now`. Flux keeps retrying a provider that was unavailable at startup.
+The same signed login page enables sign-in when it recovers; no API restart or page reload is needed.
+Pre-registered Codex clients: register the callback that Codex displays. It is the stable
+`http://127.0.0.1/callback` when the server advertises the issuer response parameter, as Flux does.
 
 ## Moving existing accounts
 
@@ -256,7 +211,9 @@ refused when it is the account's last way in: always in SSO-only mode, and in pr
 password. A removal ends the sessions that signed in through it and the account's MCP authority, keeps the account's
 Flux data, and writes an audit row.
 
-**Provider claim rules.** Generic OpenID Connect providers use the verified `email_verified` claim. Microsoft Entra ID
+## Provider notes
+
+**Claim rules.** Generic OpenID Connect providers use the verified `email_verified` claim. Microsoft Entra ID
 requires the token's tenant (`tid`) to match its issuer, and an address counts as verified only with the
 `xms_edov` (email domain owner verified) claim. Google requires `email_verified`. These rules are unit-tested against
 documented claim shapes. **Real Entra and Google tenants have not been tested**; their compatibility stays unverified

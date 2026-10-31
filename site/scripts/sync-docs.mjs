@@ -175,6 +175,8 @@ function build(page) {
     body = all.filter((line) => line !== h1).map((line) => line.text).join('\n');
     body = shiftHeadings(body, 2);
   }
+  // Places reserved for screenshots that are not captured yet stay in the repository only.
+  body = body.replace(/<!--\s*MEDIA SLOT[\s\S]*?-->\n?/g, '');
   const anchorsHere = new Set(lines(body).filter((line) => line.heading).map((line) => slug(line.heading[2])));
   for (const match of body.matchAll(/<a\s+(?:id|name)="([^"]+)"/g)) anchorsHere.add(match[1]);
   body = rewriteLinks(body, page.from, anchorsHere).trim();

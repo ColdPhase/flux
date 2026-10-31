@@ -241,4 +241,4 @@ FLUX_PORT=8082 docker compose --env-file docker/.env -p flux28restore -f docker/
 ```
 
 The restore acceptance test with real data and project access is
-`./scripts/check_backup.sh` ([backup and restore](../operations/backup-restore.md#verified-behavior)).
+`./scripts/check_backup.sh` ([backup and restore](../operations/backup-restore.md#tested-with)).

@@ -20,11 +20,12 @@ For a release installation use `docker compose --env-file .env -f compose.yaml` 
 | Another `… must be …` line naming a variable | A value is out of range; the line names it and the accepted values. The [configuration reference](configuration.md) lists them all. |
 | `Set POSTGRES_PASSWORD …`, `Set FLUX_AUTH_SECRET …`, `Set FLUX_PUBLIC_ORIGIN …` | Compose stops before anything starts: fill in the required value in the settings file. |
 | `Bind for 127.0.0.1:8081 failed: port is already allocated` | Another program uses the port. Set another `FLUX_PORT` in the settings file (on the first run: `FLUX_PORT=8090 ./flux up`) and point the proxy at it. |
-| `all predefined address pools have been fully subnetted` | Docker ran out of networks on a shared host; see [Docker address pools](README.md#docker-address-pools). |
+| `all predefined address pools have been fully subnetted` | Docker ran out of networks on a shared host; see [Docker address pools](#docker-address-pools). |
 | `Compose project … belongs to another checkout` | The settings file names a project another checkout created, often a copied `.env`. Set a different `FLUX_PROJECT`, or pass `--force-project` if you really mean that project. |
 | `migrate` exited with an error, `api` waits | Read `dc logs migrate`. A ledger mismatch means the database belongs to another version: see [migration ledger mismatch](../development/application-foundation.md#migration-ledger-mismatch-118) and restore the matching backup rather than editing the ledger. |
 | `api` restarts with exit code 137, or `docker inspect` shows `OOMKilled` | It hit its memory limit. Raise `FLUX_API_MEMORY` (or `FLUX_WORKER_MEMORY`) and run `./flux up`. |
 | `/api/v1/health` answers `503` | Its warning in `dc logs api` says which check failed: migrations, the queue schema, or writing to the files volume (disk full or permissions). |
+| `FastifyWarning: … FSTWRN004` when the API starts | Harmless. Several route groups set their own error handler on purpose, and Fastify notes each override. |
 
 ## Signing in and browsers
 
@@ -48,6 +49,37 @@ For a release installation use `docker compose --env-file .env -f compose.yaml` 
 | An MCP client on another computer | It needs an `https` origin; `http://127.0.0.1` works only on the server itself. The server also needs outbound HTTPS to fetch the client's metadata. |
 | Encrypted spaces stay locked | Normal after a restart until an owner or admin unlocks. If unlocking fails with a swap message, see [swap and memory](encrypted-spaces.md#swap-and-memory). |
 | Live calls | `GET /api/v1/live-sessions/capabilities` says `configured` only with the [live-media overlay](../development/live-media.md). |
+
+## Docker address pools
+
+Every Compose network takes one subnet from the Docker daemon's address pools, and a stock daemon has
+about 31 (15 `/16` networks in `172.17.0.0/12` and 16 `/20` networks in `192.168.0.0/16`). A Flux project
+uses 2 networks (`default` and the internal `keyring`); with the agent runtime on it uses 10 (the runtime's
+control, API, install and egress networks and one per slot).
+
+When the pools are gone, `./flux up` stops with Compose's line
+`all predefined address pools have been fully subnetted` and then explains it. One instance on its own
+machine does not reach that; a shared host, a CI runner or a server with several instances (staging and
+production, one per team) can: stock pools hold about 14 Flux projects, or 2 with the agent runtime on.
+
+- Stop projects you no longer need: `docker network ls` shows the networks per project,
+  `docker compose -p <project> down` (or `./flux down` in that checkout) removes them. `./flux up` with the
+  runtime off also removes this project's runtime networks once nothing uses them.
+- Or give the daemon smaller subnets. In `/etc/docker/daemon.json` (Docker Desktop: Settings, Docker Engine):
+
+  ```json
+  {
+    "default-address-pools": [
+      { "base": "172.17.0.0/12", "size": 24 },
+      { "base": "192.168.0.0/16", "size": 24 }
+    ]
+  }
+  ```
+
+  then restart the daemon (`sudo systemctl restart docker`; it restarts running containers). That gives
+  4352 networks of 254 addresses each, plenty for a Flux project. Existing networks keep their subnets until
+  they are recreated. Pick bases that do not overlap your LAN or VPN routes.
+  ([dockerd reference](https://docs.docker.com/reference/cli/dockerd/#daemon-configuration-file), read 2026-10-30.)
 
 ## FAQ
 

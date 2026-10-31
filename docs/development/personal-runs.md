@@ -218,7 +218,7 @@ Each end has its own `end_reason` (0100); a dispatched runtime run costs nothing
 by "[removed: looked like a secret]" (`answer_redacted`). A `server` run on an API key is redacted the same
 way before its answer or proposal is committed (token patterns only: its context holds no run token;
 2026-10-16, #484). An enablement names its engine; a runtime
-enablement has no key connection and its own consent. Operator view: [agent runtime](../operations/agent-runtime.md#runs-f-022-t5-280).
+enablement has no key connection and its own consent. Operator view: [agent runtime](../operations/agent-runtime.md#runs).
 
 **Observed 2026-10-16 with the pinned real Claude Code 2.1.285** (`tests/app/e2e/runtime-run-claude.e2e.ts`, run in
 the `mcp-clients` image against the scripted local model, no account): started with the run template's exact argv and

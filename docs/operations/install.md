@@ -46,23 +46,25 @@ curl -fsS http://127.0.0.1:8081/api/v1/health    # {"status":"ok","schemaVersion
 Do not run `./flux demo` on a server: it creates accounts with printed passwords, and it refuses a
 non-loopback origin unless forced.
 
-### 2. Set the public address and the sign-up rule
+### 2. Set the public address and email
 
 Edit `docker/.env` (it is private, mode `600`; keep it that way):
 
 ```dotenv
 FLUX_PUBLIC_ORIGIN=https://flux.example.org
-# Who may create an account: open, verified (needs email below) or off (single sign-on only).
-FLUX_SIGNUP=verified
 FLUX_SMTP_URL=smtps://flux:app-password@mail.example.org:465
 FLUX_MAIL_FROM=Flux <flux@example.org>
 ```
 
 `FLUX_PUBLIC_ORIGIN` must be exactly the address people type, with `https` and no path. Flux refuses
-any non-loopback `http` origin. With `FLUX_SIGNUP=open` anyone who can reach the server can create an
-account; that is fine on a private network and not on the open internet. Invite links never open
-closed sign-up, so with `off` people join only through [single sign-on](single-sign-on.md). Every
-other setting is in the [configuration reference](configuration.md).
+any non-loopback `http` origin. Leave `FLUX_SIGNUP` as it is for now (`open`): you close sign-up in
+step 5, after your own account exists. Every other setting is in the
+[configuration reference](configuration.md).
+
+Email is optional, but without it nobody can reset a forgotten password. In the SMTP URL,
+percent-encode special characters of the user name and password (`@` is `%40`, `/` is `%2F`). Use
+`smtps://…:465` or `smtp://…:587?requireTLS=true`; plain `smtp://` without TLS is only for a mail
+relay on a trusted network.
 
 Apply the change:
 
@@ -85,29 +87,83 @@ flux.example.org {
 ```
 
 Caddy obtains and renews the certificate itself. [nginx](reverse-proxy.md#nginx) and
-[Traefik](reverse-proxy.md#traefik) work the same way. Then
+[Traefik](reverse-proxy.md#traefik) work the same way; on a network without public DNS see
+[private network or home lab](#private-network-or-home-lab). Then
 [trust only the proxy's address](reverse-proxy.md#trust-only-the-measured-proxy-peer) with
 `FLUX_TRUSTED_PROXIES`, so sign-in limits and session lists see real client addresses.
 
-### 4. Create your account and your first space
+### 4. Create your account and check mail
 
 Open `https://flux.example.org` and sign up. The first project you create also creates your first
-space (workspace), and you are its owner. Bring people in from **Settings → People** with an invite
-link; [administration](administration.md) covers roles, the AI switch and the rest.
+space (workspace), and you are its owner.
+
+Check that email works:
+
+```sh
+curl -fsS https://flux.example.org/api/v1/auth/capabilities
+# {"passwordReset":"available","signup":"open",…}
+```
+
+`passwordReset` must be `available`. Then sign out, choose **Forgot password** with your own address
+and check that the mail arrives. A send that fails is logged by the API as `Password reset mail
+failed`, with the SMTP server's answer.
+
+### 5. Decide who can sign up
+
+With `open`, anyone who can reach the server can create an account. Choose the rule for your
+instance in `docker/.env` and apply it with `./flux up`:
+
+| You want | Set | What happens |
+| --- | --- | --- |
+| Anyone who reaches the server may join | `FLUX_SIGNUP=open` | Fine on a private network; not on the open internet. |
+| Anyone with a working mailbox may join | `FLUX_SIGNUP=verified` (needs email) | A new account confirms its address by mail before it can sign in. This proves a mailbox, **not membership**: any address that can receive mail can sign up. Without email, sign-up is closed. |
+| Only your team, with your identity provider | [single sign-on](single-sign-on.md) | Only people your provider lets in can sign in. In `sso` mode password sign-up is closed whatever `FLUX_SIGNUP` says. |
+| Only the people you add, without single sign-on | `FLUX_SIGNUP=off` after their accounts exist | Nobody can create an account, **including you**. An invite link never opens closed sign-up. |
+
+A new account belongs to no space: it sees only the spaces someone adds it to, with **Add someone**
+or an invite link ([administration](administration.md#invite-links)). A stranger who signs up sees
+none of your team's work, but can still create their own projects on your server and use its storage.
+For a private team on the internet, use single sign-on, or create the accounts and then set `off`.
+
+**To add someone while sign-up is `off`**: set `FLUX_SIGNUP=verified` (or `open`), run `./flux up`,
+send them an invite link, and set it back to `off` with `./flux up` once they have joined.
+
+**Locked out?** If you closed sign-up before creating your own account, set `FLUX_SIGNUP=open`, run
+`./flux up`, create the account, then close it again. Flux has no command that creates an account or
+sets a password.
 
 <!-- MEDIA SLOT (#780, after #763 round 2): short video of sign-up, first project and copying an invite link. -->
 
-### 5. Finish the server
+### 6. Finish the server
 
-- **Backups.** Add the daily `./flux backup --keep 14` cron entry from the
-  [operations overview](README.md#backup-schedule) and copy archives off the machine.
+- **Backups.** Add the daily `./flux backup --keep 14` cron entry from
+  [backup and restore](backup-restore.md#backup-schedule) and copy archives off the machine.
 - **Push notifications.** `./flux up` generated VAPID keys with a placeholder contact. Set
   `FLUX_VAPID_SUBJECT=mailto:you@example.org` in `docker/.env` and run `./flux up`
   ([phones, tablets and push](mobile-and-push.md)).
 - **Monitoring.** Watch `/api/v1/health` and the containers' health ([monitoring](monitoring.md)).
 - **Hardening.** Go through the [hardening checklist](hardening.md).
 
-### What the source path leaves on
+## Private network or home lab
+
+Without public DNS, Caddy cannot get a public certificate. Use an internal name (for example
+`flux.home.arpa` in your router's DNS) and Caddy's own certificate authority:
+
+```caddyfile
+flux.home.arpa {
+	tls internal
+	reverse_proxy 127.0.0.1:8081
+}
+```
+
+Set `FLUX_PUBLIC_ORIGIN=https://flux.home.arpa`. Every device that opens Flux must trust Caddy's
+root certificate: copy it out with
+`docker cp <caddy container>:/data/caddy/pki/authorities/local/root.crt flux-root.crt` (the
+[Caddy example](reverse-proxy.md#local-https-example) shows the full commands) and install it as a
+trusted root on each computer, phone and tablet. Phones need it trusted for the installed app and
+push. A certificate from your own CA works the same way.
+
+## What the source path leaves on
 
 `./flux up` writes a random `FLUX_FIXTURE_TOKEN`, which the source Compose file requires. It enables
 the integration-fixture endpoints used by the checks, only for a caller that holds that token. Keep

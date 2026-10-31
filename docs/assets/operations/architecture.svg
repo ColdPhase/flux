@@ -77,7 +77,7 @@
   <text class="t" x="506" y="366">files volume</text>
   <text class="s" x="506" y="386">uploads, mounted /data/files</text>
 
-  <path class="a" d="M520 150 C430 180 360 300 350 338"/>
+  <path class="a" d="M500 150 V196 H446 V326 H400 V338"/>
   <path class="a" d="M500 286 L420 338"/>
   <path class="a" d="M341 286 V338"/>
   <path class="a" d="M650 286 V338"/>

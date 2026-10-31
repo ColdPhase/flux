@@ -5,26 +5,17 @@ code: Docker Engine with the Compose plugin pulls one image, `ghcr.io/coldphase/
 by its manifest digest, plus a digest-pinned PostgreSQL. No checkout, Node.js or build is
 needed. Running the checked-out source is a different path: [`./flux up`](README.md).
 
-**Status (2026-10-01).** No Flux release has been published yet. The operator files exist in
-the repository as [`docker/compose.yaml`](../../docker/compose.yaml) and
-[`docker/.env.example`](../../docker/.env.example) (issue
-[#76](https://github.com/ColdPhase/flux/issues/76), phase 1). The repository copy carries the
-marker `ghcr.io/coldphase/flux@sha256:RELEASE_DIGEST` on `api`, `worker` and `migrate`. The explicit
-release workflows of [#77](https://github.com/ColdPhase/flux/issues/77)
-([`final-release.yml`](../../.github/workflows/final-release.yml),
-[`publish-release.yml`](../../.github/workflows/publish-release.yml); see the
-[release pipeline](../development/release-pipeline.md)) replace the marker with the accepted digest
-and attach to the GitHub Release: `compose.yaml`, `env.example` (the template; GitHub drops a
-leading period from asset names, so `.env.example` is published as `env.example`), `INSTALL.md`
-(the [release installation guide](release-guide.md)), `release.json`, `sbom.spdx.json`,
-`THIRD_PARTY_NOTICES.json`, `LICENSE` and `SHA256SUMS`. The optional agent runtime
-([#358](https://github.com/ColdPhase/flux/issues/358)) adds `compose.runtime.yaml` (the overlay
-[`docker/compose.runtime.yaml`](../../docker/compose.runtime.yaml), with `RELEASE_DIGEST` and
-`RUNTIME_DIGEST` markers), `runtime.sh` ([`docker/runtime.sh`](../../docker/runtime.sh)),
-`sbom-agent-runtime.spdx.json` and `THIRD_PARTY_NOTICES.agent-runtime.json`; the runtime image is
-`ghcr.io/coldphase/flux-agent-runtime`. `compose.yaml` itself never mentions the runtime and the
-runtime stays off unless the operator opts in. Always use the files from the release you
-install: a newer `main` can need other migrations or variables than your image.
+Each GitHub Release carries these files: `compose.yaml` (the image pinned by digest), `env.example`
+(the settings template; GitHub drops the leading period of `.env.example`), `INSTALL.md` (the
+[release installation guide](release-guide.md)), `release.json`, software bills of materials,
+third-party notices, `LICENSE` and `SHA256SUMS`, plus `compose.runtime.yaml` and `runtime.sh` for the
+optional [agent runtime](agent-runtime.md#installing-from-a-release). Always use the files from the
+release you install: a newer `main` can need other migrations or variables than your image.
+
+No release has been published yet; until one is, install [from a source checkout](install.md). The
+repository copies, [`docker/compose.yaml`](../../docker/compose.yaml) and
+[`docker/.env.example`](../../docker/.env.example), carry a placeholder digest and do not start as
+they are.
 
 ## Clean installation
 
@@ -45,14 +36,14 @@ install: a newer `main` can need other migrations or variables than your image.
    | `FLUX_PUBLIC_ORIGIN` | yes | The exact URL people open, e.g. `https://flux.example.org`. Plain `http` only for a loopback trial. |
    | `FLUX_PROJECT` | kept | Compose project and volume prefix (`flux`). Keep it across upgrades. |
    | `FLUX_PORT` | kept | Loopback port of the API (`8081`) for the reverse proxy. |
+   | `FLUX_SIGNUP` | after your account | `open` until you have signed up; then decide [who can sign up](install.md#5-decide-who-can-sign-up). |
    | `FLUX_TRUSTED_PROXIES` | with a proxy | The proxy's IP/CIDR, so client addresses are taken from `X-Forwarded-For`. |
    | `FLUX_SMTP_URL`, `FLUX_MAIL_FROM` | optional | Password reset and notification mail. |
    | `FLUX_VAPID_*` | optional | Web Push, all three or none (step 3). |
    | `FLUX_LIVE_EDITING` | optional | Map/wiki collaboration: missing, empty or `on` enables it; `off` keeps ordinary saved views/editors. Other values stop startup. |
    | `FLUX_FIXTURE_TOKEN` | no | Smoke checks only; leave empty. |
 
-   The meaning of every variable is in [identity services](../development/containers.md#identity-services-and-variables)
-   and [PWA and Web Push](../development/containers.md#pwa-and-web-push). Empty required
+   Every variable is described in the [configuration reference](configuration.md). Empty required
    values stop Compose before anything starts.
 3. Optional Web Push keys, generated once with the release image; copy both values and a
    `mailto:` subject into `.env`:
@@ -140,7 +131,7 @@ a worker job and a restart, and removes the project, volumes and image. Ports de
 `python3 -m unittest tests.test_operator_compose` checks the file statically (pull-only, one
 marker on the three Flux services, digest pins, variables and placeholders), and
 `tests.test_release_assets` renders the real files into a release asset set. The real GHCR pull,
-both platforms and the downloaded release assets are verified by #77: its `final-release.yml`
+both platforms and the downloaded release assets are verified by the release workflow: its `final-release.yml`
 installs the packaged, digest-pinned release, creates an account and workspace, takes a paired
 backup and restores it into a second project (`scripts/release/smoke_artifacts.sh`), and an
 independent reviewer repeats that on both platforms before publication. The same workflow then
