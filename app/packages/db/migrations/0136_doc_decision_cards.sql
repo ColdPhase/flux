@@ -3,7 +3,7 @@
 -- and records it here: the version it read and, when it converted anything, the version it made. The copied text stays
 -- in `from_version`; `restoreDecisionCards` brings it back as a new version while the doc is still at `to_version`, and
 -- sets `restored_version` so the sweep never converts that doc again. Ids and numbers only, no content.
--- Sparse after 0134 (0133 belongs to other open work).
+-- Sparse after 0134: 0133 and 0135 belong to other open work (#768 adds 0135).
 CREATE TABLE doc_decision_card_migrations (
   doc_id uuid PRIMARY KEY REFERENCES project_materials(id) ON DELETE CASCADE,
   workspace_id uuid NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,

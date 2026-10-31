@@ -117,7 +117,7 @@ made; if it still holds an old copied section of that decision, only that sectio
 - **Migration of copied sections.** Pages written before F-034 hold `## Decision: …` sections. The
   API process converts them once per doc (`apps/server/src/docs/decision-cards.ts`, at start and
   every 10 minutes; tables `doc_decision_card_migrations` and `doc_decision_card_failures`,
-  migration 0135). A section is converted only when it is exactly what Flux wrote: the heading
+  migration 0136). A section is converted only when it is exactly what Flux wrote: the heading
   `## Decision: <the decision's current title>`, one of the generated status lines whole
   ("accepted by <name> · <date>", "proposed by <name> · <date> · not accepted yet", "replaced
   <date>[ by <decision>]"), the copied rationale equal to the decision's rationale, and its
@@ -140,7 +140,7 @@ made; if it still holds an old copied section of that decision, only that sectio
   text as a new version, "Brought back the copied decisions of version N". It does this only while
   the doc is still at `to_version`, and records `restored_version` so the sweep never converts the
   doc again. A doc edited since is restored by a person from its history (Restore vN). The reverse
-  file `reverse/0135_doc_decision_cards.down.sql` drops the tables after that.
+  file `reverse/0136_doc_decision_cards.down.sql` drops the tables after that.
 
 ## Events
 
