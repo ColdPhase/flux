@@ -359,7 +359,7 @@ test('actual owner setup stays pending, refreshes lost authorization, and keeps 
           assert.equal(commands.length, 2);
           for (const [index, command] of commands.entries()) assert.equal(command,
             `./flux cowork ${index === 0 ? 'start' : 'resume'} --client codex --origin ${origin} --connection ${f.connection.connectionId} --project ${f.projectId}`);
-          assert.equal(await hostAction.getByText('Resume from the same directory.', { exact: false }).count(), 1);
+          assert.equal(await hostAction.getByText('run it from the same folder.', { exact: false }).count(), 1);
 
           for (const theme of ['light', 'dark'] as const) {
             await page.emulateMedia({ colorScheme: theme });

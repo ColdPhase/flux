@@ -284,7 +284,8 @@ repack() { # name manifest-sed dump-append
 repack damaged 's/x/x/' 'tampered'
 if flux_a restore "$work/damaged.tar" -y > "$work/damaged.out" 2>&1; then fail "a damaged archive was restored"; fi
 grep -q 'database.dump does not match its checksum' "$work/damaged.out" || fail "no checksum refusal: $(cat "$work/damaged.out")"
-repack edited "s/\"appliedMigrations\": \[$ledger\]/\"appliedMigrations\": [${ledger%,*}]/" ''
+# The manifest names one version more than its dump (with only the v0.1 baseline, dropping one would leave the same list).
+repack edited "s/\"appliedMigrations\": \[$ledger\]/\"appliedMigrations\": [$ledger,$((schema + 1))]/" ''
 if flux_a restore "$work/edited.tar" --migrate -y > "$work/edited.out" 2>&1; then fail "a manifest that disagrees with its dump was restored"; fi
 grep -q "the dump's migration ledger {$ledger} differs from the manifest's" "$work/edited.out" || fail "no ledger/manifest refusal: $(cat "$work/edited.out")"
 repack newer "s/\"schemaVersion\": $schema,/\"schemaVersion\": $((schema + 1)),/" ''
@@ -292,6 +293,7 @@ if flux_a restore "$work/newer.tar" --migrate -y > "$work/newer.out" 2>&1; then 
 grep -q "newer than this checkout" "$work/newer.out" || fail "no newer-schema refusal: $(cat "$work/newer.out")"
 curl -fsS "http://127.0.0.1:$port_a/api/v1/health" >/dev/null || fail "refused restores stopped A"
 
+if [ "$(migrations_of_tree "$A" | wc -l)" -ge 2 ]; then
 step "A backup whose ledger has a version this image lacks is refused before any data is replaced"
 # The checkout loses a migration below the highest one: the backup's ledger now names a
 # version without a file here (same max(version)), as a backup from another branch would.
@@ -307,6 +309,11 @@ if grep -q 'Replacing the data' "$work/foreign.out"; then fail "the foreign-vers
 [ "$(compose_in "$A" exec -T db psql -X -tA -U flux -d flux -c 'SELECT count(*) FROM project_messages')" = "$messages_before" ] || fail "the refused restore changed A's data"
 curl -fsS "http://127.0.0.1:$port_a/api/v1/health" | grep -q '"status":"ok"' || fail "A is not healthy after the refused restore"
 mv "$work/$foreign" "$A/app/packages/db/migrations/$foreign"
+else
+  # v0.1: the only file is the baseline, so no backup can hold a lower version this tree lacks. The refusal itself is
+  # covered by migration-ledger.test.ts (phantom rows); this step returns with the first migration after the baseline.
+  step "SKIP: a foreign ledger version needs two migrations; this tree has only the v0.1 baseline"
+fi
 
 step "Destroy A's volumes, then restore the archive into a fresh checkout B"
 flux_a reset -y >/dev/null
