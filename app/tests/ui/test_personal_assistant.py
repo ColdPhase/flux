@@ -248,11 +248,11 @@ class PersonalAssistantJourney(unittest.TestCase):
 
     # ---------------------------------------------------------------- consent and caps
 
-    def test_04_owner_turns_it_on_from_the_account_menu(self) -> None:
+    def test_04_owner_turns_it_on_from_agents_and_ai(self) -> None:
+        # The account menu holds Settings and People only (#763 SG-7); the assistant is set up in Agents and AI.
         page = self.page("jo")
-        page.goto("/")
-        page.locator(".me__btn").click()
-        page.get_by_role("link", name="Your assistant").click()
+        page.goto("/settings/agents")
+        page.get_by_role("link", name="Set up", exact=True).click()
         expect(page).to_have_url(re.compile(r"/settings/assistant$"))
         expect(page.get_by_role("heading", name="Not set up")).to_be_visible()
         expect(page.get_by_text("Never your direct messages, private notes, private maps or other projects.")).to_be_visible()

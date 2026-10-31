@@ -171,7 +171,7 @@ class DecisionTrace(unittest.TestCase):
         proposed.get_by_role("button", name=re.compile("^Open decision")).click()
         j_panel = self.details(jonas, phone)
         expect(j_panel.get_by_role("heading", name=title)).to_be_visible()
-        j_panel.get_by_role("button", name="Accept decision").click()
+        j_panel.get_by_role("button", name="Accept", exact=True).click()
         expect(j_panel.locator(".wd-eyebrow")).to_contain_text("Current rule")
         self.back_to_thread(jonas, phone)
 

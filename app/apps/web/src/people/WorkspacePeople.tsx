@@ -33,7 +33,7 @@ async function fetchRoster(workspaceId: string, signal: AbortSignal): Promise<Ro
  * email, change roles and remove people; anyone can leave. Being here never opens a restricted
  * project: that takes access given in the project itself (#44).
  */
-export function WorkspacePeople({ workspaceId, onBack }: { workspaceId: string; onBack: () => void }) {
+export function WorkspacePeople({ workspaceId, onBack, page = false }: { workspaceId: string; onBack: () => void; page?: boolean }) {
   const { me } = useShellData();
   const [roster, setRoster] = useState<Roster | null>(null);
   const [failed, setFailed] = useState('');
@@ -78,10 +78,11 @@ export function WorkspacePeople({ workspaceId, onBack }: { workspaceId: string; 
   // People who join or leave grow in and collapse where they stood (#593 AC-4).
   const listRef = useRef<HTMLUListElement>(null);
   useRowMotion(listRef, '.people__item[data-row-key]', (el) => el.dataset.rowKey, `${workspaceId}|${roster ? 'ready' : 'loading'}`);
-  const back = <button type="button" className="details__back" aria-label="Back to Details" onClick={onBack}><Icon name="chevron-left" size={14} />Details</button>;
+  // In Settings → People (#763 PE-1) the page is its own place: no way back to a panel and no panel keys.
+  const back = page ? null : <button type="button" className="details__back" aria-label="Back to Details" onClick={onBack}><Icon name="chevron-left" size={14} />Details</button>;
   if (!roster) {
     return (
-      <div className="details people">
+      <div className={`details people${page ? ' people--page' : ''}`}>
         {back}
         <p className="details__eyebrow">Workspace</p>
         <h3 className="details__title">People</h3>
@@ -98,15 +99,13 @@ export function WorkspacePeople({ workspaceId, onBack }: { workspaceId: string; 
   const ordered = members ? [...members.filter((member) => member.userId === me.user.id), ...members.filter((member) => member.userId !== me.user.id)] : null;
 
   return (
-    <div className="details people">
+    <div className={`details people${page ? ' people--page' : ''}`}>
       {back}
       <p className="details__eyebrow">{workspace.name}</p>
       <h3 className="details__title">People</h3>
       <p className="details__lead">Being in {workspace.name} doesn’t open every project. Restricted projects show only to the people given access in the project itself.</p>
 
-      {manager && members ? <AddPerson workspace={workspace} members={members} myRole={myRole} onAdded={(member) => changed(`${member.name} joined ${workspace.name} as ${ROLE_LABEL[member.role].toLowerCase()}.`, false)} /> : null}
-
-      {manager && members ? <InviteLinks workspace={workspace} myRole={myRole} seen={invitesSeen} onJoined={load} /> : null}
+      {manager && members ? <AddPerson workspace={workspace} members={members} myRole={myRole} invitesSeen={invitesSeen} onJoined={load} onAdded={(member) => changed(`${member.name} joined ${workspace.name} as ${ROLE_LABEL[member.role].toLowerCase()}.`, false)} /> : null}
 
       <section className="details__sec" aria-labelledby="people-here">
         <h4 id="people-here" ref={rosterRef} tabIndex={-1}>{ordered ? `In ${workspace.name} · ${ordered.length}` : `You in ${workspace.name}`}</h4>
@@ -135,16 +134,18 @@ export function WorkspacePeople({ workspaceId, onBack }: { workspaceId: string; 
       <AiRow workspace={workspace} manager={manager} onChanged={() => { load(); revalidator.revalidate(); }} />
 
       <Leave workspace={workspace} soleOwner={myRole === 'owner' && owners <= 1} onLeft={onBack} meId={me.user.id} />
-      <p className="details__keys"><kbd>]</kbd> toggles this panel · <kbd>Esc</kbd> closes it</p>
+      {page ? null : <p className="details__keys"><kbd>]</kbd> toggles this panel · <kbd>Esc</kbd> closes it</p>}
     </div>
   );
 }
 
-function AddPerson({ workspace, members, myRole, onAdded }: { workspace: Workspace; members: WorkspaceMember[]; myRole: WorkspaceRole; onAdded: (member: WorkspaceMember) => void }) {
+function AddPerson({ workspace, members, myRole, invitesSeen, onJoined, onAdded }: { workspace: Workspace; members: WorkspaceMember[]; myRole: WorkspaceRole;
+  invitesSeen: number; onJoined: () => void; onAdded: (member: WorkspaceMember) => void }) {
   const [email, setEmail] = useState('');
   const [role, setRole] = useState<WorkspaceRole>('member');
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState('');
+  const [newcomer, setNewcomer] = useState('');
   const keys = useRef(attemptKeys());
   const emailRef = useRef<HTMLInputElement>(null);
   const roleId = useId();
@@ -161,6 +162,7 @@ function AddPerson({ workspace, members, myRole, onAdded }: { workspace: Workspa
       setEmail(''); setRole('member');
       onAdded(member);
     } catch (error) {
+      if (error instanceof ApiError && error.code === 'ACCOUNT_NOT_FOUND') setNewcomer(address);
       const known = error instanceof ApiError && error.code === 'ALREADY_MEMBER' ? members.find((member) => member.email.toLowerCase() === address)?.name : undefined;
       setProblem(problemText(error, { workspace: workspace.name, email: address, who: known }));
       emailRef.current?.focus();
@@ -168,6 +170,7 @@ function AddPerson({ workspace, members, myRole, onAdded }: { workspace: Workspa
   }
 
   return (
+    <>
     <section className="details__sec" aria-labelledby="people-add">
       <h4 id="people-add">Add someone</h4>
       <form className="people__add" onSubmit={(event) => void submit(event)} noValidate>
@@ -186,6 +189,9 @@ function AddPerson({ workspace, members, myRole, onAdded }: { workspace: Workspa
         <div className="details__actions"><Button type="submit" variant="primary" busy={busy}>Add to {workspace.name}</Button></div>
       </form>
     </section>
+      {/* Someone without an account (#763 PE-2): the address Flux could not find is filled into the invite link (F-035). */}
+      <InviteLinks key={newcomer} prefill={newcomer} workspace={workspace} myRole={myRole} seen={invitesSeen} onJoined={onJoined} />
+    </>
   );
 }
 
@@ -293,10 +299,10 @@ async function copyText(text: string): Promise<boolean> {
  * and sends it themselves (Flux sends no email). The new link shows once at the top, ready to copy; every pending link
  * stays listed with Copy and Revoke. Whoever opens it signs in or creates an account and joins with that role.
  */
-function InviteLinks({ workspace, myRole, seen, onJoined }: { workspace: Workspace; myRole: WorkspaceRole; seen: number; onJoined: () => void }) {
+function InviteLinks({ prefill, workspace, myRole, seen, onJoined }: { prefill: string; workspace: Workspace; myRole: WorkspaceRole; seen: number; onJoined: () => void }) {
   const [invites, setInvites] = useState<WorkspaceInvite[] | null>(null);
   const [role, setRole] = useState<InviteRole>('member');
-  const [email, setEmail] = useState('');
+  const [email, setEmail] = useState(prefill);
   const [days, setDays] = useState<InviteExpiryDays>(INVITE_DEFAULT_EXPIRY_DAYS);
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState('');
@@ -387,7 +393,7 @@ function InviteLinks({ workspace, myRole, seen, onJoined }: { workspace: Workspa
           <div className="details__actions"><Button variant="secondary" onClick={() => void copy(fresh)}><Icon name="copy" size={14} />Copy link</Button></div>
         </div>
       ) : null}
-      <p className="people__invite-done" role="status">{status ? <><Icon name="check" size={13} />{status}</> : null}</p>
+      <p className="people__invite-status" role="status">{status ? <><Icon name="check" size={13} />{status}</> : null}</p>
       {invites && invites.length ? (
         <>
           <h4 className="people__sub" id="people-invites-pending">Waiting to be used · {invites.length}</h4>

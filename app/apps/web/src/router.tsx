@@ -175,6 +175,8 @@ export const router = createBrowserRouter([
               { index: true, ...secondary(async () => ({ Component: (await settingsPage()).SettingsHome })) },
               { path: 'appearance', ...secondary(async () => ({ Component: (await settingsPage()).SettingsAppearance })) },
               { path: 'account', ...secondary(async () => ({ Component: (await settingsPage()).SettingsAccount })) },
+              { path: 'people', ...secondary(async () => ({ Component: (await settingsPage()).SettingsPeople })) },
+              { path: 'people/:workspaceId', ...secondary(async () => ({ Component: (await settingsPage()).SettingsPeople })) },
               { path: 'notifications', ...secondary(async () => ({ Component: (await import('./notifications/NotificationSettings')).NotificationSettings })) },
               { path: 'notifications/verify', ...secondary(async () => ({ Component: (await import('./notifications/NotificationSettings')).VerifyAddress })) },
               { path: 'agents', ...secondary(async () => ({ Component: (await settingsPage()).SettingsAgents })) },
@@ -189,7 +191,8 @@ export const router = createBrowserRouter([
               { path: 'ai-connections', ...secondary(async () => { const page = await import('./proactive-comparison/BackgroundComputeSettings'); return { Component: page.AiConnectionsSettings, loader: page.aiConnectionsLoader }; }) },
             ],
           },
-          { path: '*', Component: NotFoundView },
+          // The header names it as such (#763 NV-1): it is no place of the sidebar.
+          { path: '*', Component: NotFoundView, handle: { notFound: true } },
         ],
       },
     ],
