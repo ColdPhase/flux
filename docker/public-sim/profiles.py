@@ -43,9 +43,11 @@ THRESHOLDS = {
     # keeps its resolution and still moves.
     "loss": {"speechMaxConcealedPct": 15.0, "speechMinKbps": 16.0, "screenMinFps": 0.5, "screenMinHeight": 1080},
     # One weak receiver among four: the presenter's sending and the other receivers' speech are untouched, the
-    # other receivers keep at least half their clean frame rate, the weak receiver still hears and recovers.
-    "weak": {"senderMinFpsShare": 0.8, "othersMinFpsShare": 0.5, "othersMaxConcealedPct": 3.0, "weakSpeechMinKbps": 10.0,
-             "weakAfterMinFps": 5.0},
+    # other receivers keep at least half their clean frame rate. For the weak receiver: during the weak window only
+    # liveness (some speech still arrives; not intelligibility), and 8 s after the link returns every speech track is
+    # back at clean bitrate with little concealment, and his screen moves again.
+    "weak": {"senderMinFpsShare": 0.8, "othersMinFpsShare": 0.5, "othersMaxConcealedPct": 3.0, "weakSpeechMinKbps": 5.0,
+             "weakAfterMinFps": 5.0, "weakAfterSpeechMinKbps": 20.0, "weakAfterMaxConcealedPct": 5.0},
 }
 
 DETAIL = """
@@ -379,11 +381,16 @@ def run(phases: set, pages: dict[str, Page], result: dict, ctl, log, run_name: s
         sent = [r for r in report["ada"]["outbound"] if r["kind"] == "video"]
         out["weakAdaSends"] = sent
         weak_speech = tracks(report, "tom", "audio")
-        gate.at_least("weak: Tom still receives speech kbps", max((r["kbps"] for r in weak_speech), default=0), t["weakSpeechMinKbps"])
+        gate.at_least("weak: Tom still receives speech kbps (liveness)", max((r["kbps"] for r in weak_speech), default=0), t["weakSpeechMinKbps"])
         time.sleep(8)
         after = step("weak-after", {"tom": pages["tom"]}, 8)
         row = first(tracks(after, "tom", "video", "Ada"))
         gate.at_least("weak: Tom's screen fps after the link returns", row and row["fps"], t["weakAfterMinFps"])
+        after_speech = tracks(after, "tom", "audio")
+        gate.check("weak: Tom receives speech after the link returns", len(after_speech), ">= 1", len(after_speech) >= 1)
+        for i, speech in enumerate(after_speech):
+            gate.at_least(f"weak: speech {i + 1} at Tom after the link returns kbps", speech["kbps"], t["weakAfterSpeechMinKbps"])
+            gate.at_most(f"weak: speech {i + 1} at Tom after the link returns concealed %", speech["concealedPct"], t["weakAfterMaxConcealedPct"])
 
     # The same screen as Smooth motion: Ada's own choice in her sharing line, while she keeps sharing.
     # A moving demo: the whole frame scrolls at a true 60 fps (GStreamer on the X display; ffplay above draws about

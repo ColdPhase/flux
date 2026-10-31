@@ -9,9 +9,10 @@
 # the open one. BROWSER is chromium, firefox or webkit, optionally +pixel7, +iphone13 or +ipad (a device
 # descriptor); BROWSER@turn-udp also lets TURN/UDP out of router A, BROWSER@ice-tcp the SFU's ICE/TCP port 7881. Phases: connect, ai-off, four (Mia and Tom join
 # from clients C and D), profiles (the measured AC-2 profiles and their thresholds), screen (screen publication by
-# browser A), drop, loss, weak, sfu-restart, sfu-update, api-restart, access, turn-tls-probe (what browser A sends
-# to TURN/TLS, captured on router A). The default runs the two- and
-# four-person profiles, every Chromium case, Firefox over TURN/TLS, WebKit over TURN/UDP and over ICE/TCP (its Linux build cannot
+# browser A), text (the 1440p code/text profile: a 2560x1440 terminal shared as Sharp text, static then scrolling,
+# readability scored by SSIM and OCR against the source pixels), drop, loss, weak, sfu-restart, sfu-update,
+# api-restart, access, turn-tls-probe (what browser A sends to TURN/TLS, captured on router A). The default runs the two- and
+# four-person profiles, the two- and four-person 1440p text profiles, every Chromium case, Firefox over TURN/TLS, WebKit over TURN/UDP and over ICE/TCP (its Linux build cannot
 # speak TURN over TLS; see docs/development/live-media.md), screen publication in Firefox and WebKit, and phone rows
 # with a network drop. FLUX_SIM_CALIBRATE=1 records the profile thresholds without enforcing them.
 # FLUX_SIM_LIVEKIT_CANDIDATE is the image the sfu-update phase updates to before rolling back.
@@ -47,7 +48,7 @@ export FLUX_LIVEKIT_MEDIA_CIDR=203.0.113.20/32
 export FLUX_LIVEKIT_TURN_CERT_DIR="$work/certs/turn"
 export FLUX_VAPID_PUBLIC_KEY='' FLUX_VAPID_PRIVATE_KEY='' FLUX_VAPID_SUBJECT=''
 candidate=${FLUX_SIM_LIVEKIT_CANDIDATE:-livekit/livekit-server:v1.13.11@sha256:25cd902de7cacbd5f1f779f6a6ac1eae20ba8f56b0935934ce6b0ab80d1e3d20}
-runs=${FLUX_SIM_RUNS:-"chromium:chromium:connect,profiles chromium:chromium:connect,four,profiles chromium:chromium:connect,ai-off,drop,loss,weak,access chromium:chromium:connect,sfu-update chromium:chromium:connect,sfu-restart chromium:chromium:connect,api-restart firefox:chromium:connect,drop,access chromium:firefox:connect,drop,access chromium:webkit:connect,drop,access webkit@turn-udp:chromium:connect,drop webkit@ice-tcp:chromium:connect,drop firefox:chromium:connect,screen webkit@turn-udp:chromium:connect,screen chromium+pixel7:chromium:connect,drop webkit+iphone13@turn-udp:chromium:connect,drop chromium:webkit+ipad:connect,access webkit:chromium:turn-tls-probe"}
+runs=${FLUX_SIM_RUNS:-"chromium:chromium:connect,profiles chromium:chromium:connect,four,profiles chromium:chromium:connect,text chromium:chromium:connect,four,text chromium:chromium:connect,ai-off,drop,loss,weak,access chromium:chromium:connect,sfu-update chromium:chromium:connect,sfu-restart chromium:chromium:connect,api-restart firefox:chromium:connect,drop,access chromium:firefox:connect,drop,access chromium:webkit:connect,drop,access webkit@turn-udp:chromium:connect,drop webkit@ice-tcp:chromium:connect,drop firefox:chromium:connect,screen webkit@turn-udp:chromium:connect,screen chromium+pixel7:chromium:connect,drop webkit+iphone13@turn-udp:chromium:connect,drop chromium:webkit+ipad:connect,access webkit:chromium:turn-tls-probe"}
 printf 'Public simulation %s, results in %s\n' "$project" "$artifacts"
 
 compose="docker compose -p $project -f docker/compose.source.yaml -f docker/compose.live.yaml -f docker/compose.live.turn.yaml -f docker/public-sim/compose.yaml"
@@ -113,6 +114,10 @@ if grep -E -q 'egress|ingress|agent' "$artifacts/services.txt"; then echo 'unexp
         "rollback livekit") out=$($compose up -d --wait --no-deps livekit 2>&1
             docker inspect --format '{{.Config.Image}}' "$($compose ps -q livekit)") ;;
         "screen a on "*|"screen c on "*) side=$(printf '%s' "$command" | cut -d' ' -f2); out=$($compose exec -T "client-$side" screen-source on "${command#screen ? on }" 2>&1) ;;
+        # The 1440p text profile on client A: display size, the terminal text, and a grab of the source pixels.
+        "screen a size "*) out=$($compose exec -T client-a screen-source size "${command#screen a size }" 2>&1) || out="failed: $out" ;;
+        "screen a text "*) out=$($compose exec -T client-a screen-source text ${command#screen a text } 2>&1) || out="failed: $out" ;; # shellcheck disable=SC2086
+        "screen a grab "*) out=$($compose exec -T client-a screen-source grab "/ctl/${command#screen a grab }.png" 2>&1) || out="failed: $out" ;;
         "screen a off"|"screen c off") side=$(printf '%s' "$command" | cut -d' ' -f2); out=$($compose exec -T "client-$side" screen-source off 2>&1) ;;
         "netem-host b 10.213.2.11 off") out=$($compose exec -T router-b /bin/sh /impair.sh netem-host 10.213.2.11 off 2>&1) ;;
         "netem-host b 10.213.2.11 "*) out=$($compose exec -T router-b /bin/sh /impair.sh netem-host 10.213.2.11 ${command#netem-host b 10.213.2.11 } 2>&1) ;; # shellcheck disable=SC2086

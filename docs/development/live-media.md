@@ -528,8 +528,9 @@ window runs first so that the loss window's after-effects on the TCP relay do no
 
 **Calibration.** Record-only runs with `FLUX_SIM_CALIBRATE=1` on 2026-10-31 (the first three, then `cal2` to
 `cal8`), at the branch, on a Linux host shared with other agents' Docker work (load average 7 to 15). Each threshold
-below was set beyond the worst observation behind it, with one exception: **Tom's speech on the weak link
-(≥ 10 kbit/s) is not shown to sit outside every observation** (see the weak-receiver row). The gates are for this
+below was set beyond the worst observation behind it. (Until the review of #797, Tom's speech on the weak link was
+gated at ≥ 10 kbit/s, inside the observations; it is now a 5 kbit/s liveness check plus a recovery gate, see the
+weak-receiver row.) The gates are for this
 simulation, not promises for other networks or devices, and several have large headroom over what was measured
 (Smooth motion latency 300 ms against ≤ 2 ms, speech jitter 30 ms against ≤ 1 ms, large camera 20 fps against 30,
 camera capture 15 fps against 30, speech latency 500 ms against 18 to 152 ms typical): they catch a collapse, not a
@@ -552,7 +553,7 @@ the Firefox screen run passed (`FLUX_SIM_RUNS` with those three runs, exit 0).
 | Motion screen (1920×1080, 60 fps source) | Received 1920×1080 at 8.9 to 10.6 fps (Chromium sender, target bitrate 3.5 Mbit/s, no quality limitation reported), 12.1 fps for the second share; up to 2.8 s frozen with four people; latency estimate ≤ 79 ms. A Firefox sender reached 15 fps (the app's cap) | ≥ 1080 rows, ≥ 7 fps, ≤ 4 s frozen, ≤ 1 % loss, ≤ 400 ms |
 | 1:1 | The stage shows the received 1920 px at 1920 display pixels | shown width = received width |
 | 5 % loss, 40 ± 20 ms, at the presenters' router | TURN/TLS turns loss into delay: no RTP loss at receivers on the clean network, speech concealed 0 to 5.7 %, latency estimate 0.4 to 1.7 s; the screen keeps 1920×1080 but falls to 1.0 to 2.6 fps with 3 to 12 s frozen. Behind the lossy router itself, Mia's received speech was 2.8 to 3 % concealed in one run and **51 to 58 %** in the next | Receivers outside router A: speech ≤ 15 % concealed (12 % until a later calibration run measured 12.5 %) and ≥ 16 kbit/s; screen ≥ 1080 rows and ≥ 0.5 fps. What people behind the lossy router receive is recorded, not gated |
-| One weak receiver of four | Tom: best speech track 11.5 to 48 kbit/s with up to 29 % concealed (30 October and the enforced run); in the record-only runs `cal4` to `cal8` his speech was 8 to 18 kbit/s with 68 to 86 % concealed (the record does not say whether 8 was his best track, which is what the gate reads); Ada's screen about 0.5 fps (it is one 1080p layer, maintain-resolution, so the SFU cannot thin it for him). With the weak window first (enforced run): Ada sent at 134 % of her clean frame rate, the others received 100 to 103 % of theirs with no concealment. In calibration, where the weak window followed the loss window, the others received 57 to 59 %. 8 s after the link returned Tom received the screen at 14.8 to 15 fps | Ada's sending ≥ 80 % of clean; others ≥ 50 % of clean fps and ≤ 3 % concealed; Tom's best speech track ≥ 10 kbit/s (a liveness check: audio bytes arrive; **not** intelligibility, and not shown to be outside every calibration observation); Tom ≥ 5 fps after |
+| One weak receiver of four | Tom: best speech track 11.5 to 48 kbit/s with up to 29 % concealed (30 October and the enforced run); in the record-only runs `cal4` to `cal8` his speech was 8 to 18 kbit/s with 68 to 86 % concealed (the record does not say whether 8 was his best track, which is what the gate reads); Ada's screen about 0.5 fps (it is one 1080p layer, maintain-resolution, so the SFU cannot thin it for him). With the weak window first (enforced run): Ada sent at 134 % of her clean frame rate, the others received 100 to 103 % of theirs with no concealment. In calibration, where the weak window followed the loss window, the others received 57 to 59 %. 8 s after the link returned Tom received the screen at 14.8 to 15 fps | Ada's sending ≥ 80 % of clean; others ≥ 50 % of clean fps and ≤ 3 % concealed. **In the weak window:** Tom's best speech track ≥ 5 kbit/s, a liveness check only (audio bytes arrive; **not** intelligibility). Observed with Sharp text at the shipped 3.5 Mbit/s: 9.9 to 22.3 kbit/s over ten runs (`full1`, `four2`, `four3`, `cal4`/`5`/`7`/`8`, `full4`); the rejected 8 Mbit/s Sharp text gave 1.0 to 3.6, so the gate still catches a starving design; 5 Mbit/s (9.1) would pass it, so it does not arbitrate 3.5 against 5 Mbit/s. **8 s after the link returns** (recovery, Tom alone): every Tom speech track ≥ 20 kbit/s and ≤ 5 % concealed (observed in 11 of 11 runs: best track 79 to 96 kbit/s, every track ≥ 30.9 and ≥ 45.9 after `cal2`, concealed 0 % except 0.69 and 2.78 % in `cal5`), and Tom ≥ 5 fps of the screen |
 | Smooth motion (later, 2026-10-31) | 1280×720 at 59.5 to 59.7 fps of a 1920×1080, 60 fps capture; ≤ 2 ms latency estimate ([details](#smooth-motion-ac-2-motion-profile)) | ≥ 720 rows, ≥ 45 fps, ≤ 2 s frozen, ≤ 1 % loss, ≤ 300 ms |
 | Camera shown large (later, 2026-10-31) | 1920×1080 at 29.7 to 30.1 fps ([details](#a-larger-camera-ac-2-camera-profile)) | ≥ 1080 rows, ≥ 20 fps, ≤ 2 s frozen, ≤ 1 % loss |
 
@@ -578,9 +579,17 @@ What the thresholds do **not** claim, from the same data:
 - One weak receiver does not slow the others: with the weak window first, everyone else kept their clean frame rate
   and speech. The 40 % drop seen in calibration came with the weak window right after the loss window on Ada's
   and Mia's TCP relay (Mia's own sending fell from 12 to 7 fps on an untouched network); the order now keeps them apart.
-- Tom's best speech track was 11.5 kbit/s in the enforced run against a 10 kbit/s gate: a narrow margin, and the
-  gate passed in `full1` and in both `four2` runs. If 8 kbit/s was his best track in one of `cal4` to `cal8`, that
-  run would have failed it.
+- Tom's best speech track in the weak window ranged 9.9 to 22.3 kbit/s over ten runs (the "8 to 18" above is per
+  track; his best track was never below 12.8 before `full4`'s 9.9). A 10 kbit/s gate inside that spread failed about
+  one run in ten, so after the review of #797 it is a 5 kbit/s liveness check, and whether he hears again is gated
+  on the window after the link returns.
+  First run with the new gates (`weak1`, at `eaf0ff7c1`, four people): 241 checks, no failure. In the weak window Tom's
+  best track was **5.5 kbit/s**, below the earlier 9.9 to 22.3 and only 0.5 above the liveness gate, so that gate is
+  still close to the observations; after the link returned his three tracks were 46.2 to 92.7 kbit/s with 0.34 to
+  0.60 % concealed and the screen at 14.6 fps. The two-person profiles in the same invocation failed one clean-window gate unrelated to
+  this change (Ada's speech 6.0 % concealed against 3 %, with Jonas's camera capture at 11 fps: a loaded moment);
+  re-run (`weak2`): passed, 67 checks.
+*Superseded later on 2026-10-31 by the [1440p code/text profile](#1440p-codetext-profile-63-ac-2-2026-10-31), which gates it:*
 - **Code and text at 14 to 16 px, 2560×1440, 15 to 30 fps, scrolling (AC-2's first target) has no gate and is not
   claimed.** The simulation gates Sharp text only on `testsrc2` at 1920×1080 (≥ 1080 rows, ≥ 7 fps; 8.9 to 10.6 fps
   observed). On a full-frame scrolling pattern Sharp text (capture capped at 15 fps, 3.5 Mbit/s) arrived at
@@ -704,6 +713,77 @@ two "Microphone off" buttons match); the same failure was recorded on the branch
 | **WebKit over TURN/TLS** | — | Still **unattainable in software here**: libwebrtc's compiled-in TURN/TLS roots ([`rtc_base/ssl_roots.h`](https://webrtc.googlesource.com/src/+/main/rtc_base/ssl_roots.h), checked 2026-10-31) cannot include a local CA. LiveKit's own TURN offers only `turns:` over TCP (TLS) and `turn:` over UDP, so plain TURN over TCP is not a path a Flux deployment offers. Safari on Apple platforms uses its own TLS stack and was not tested |
 | **Screen publication in WebKit** | `webkit@turn-udp:chromium:connect,screen` | **Met, simulated (mock source).** Headed on the client's X display, WebKit 26.5 shows its own info bar "UserMedia request — Allow access to display device?" with No and Yes; `allow-display` presses Yes as the person would (xdotool). WebKit then shares Playwright's mock screen source ("Mock screen device 1", 1920×1080, `displaySurface: monitor`), not the X display, so the path through the app's button, WebKit's encoder, the SFU and a Chromium receiver is real but the picture is synthetic. Jonas received **1920×1080 at 9.5 fps**, 587 kbit/s (`cal4`, Sharp text). The desktop portal was not involved: a probe with a stub `org.freedesktop.portal.ScreenCast` service on D-Bus and PipeWire saw no ScreenCast call. The earlier "never settles" was this unanswered prompt |
 
+## 1440p code/text profile (#63 AC-2, 2026-10-31)
+
+Founder decision of 2026-10-31: close the code/text row before the release. Phase `text` of
+`check_public_sim.sh` ([`textprofile.py`](../../docker/public-sim/textprofile.py),
+[`textcorpus.py`](../../docker/public-sim/textcorpus.py)).
+
+**Profile.** Ada's computer (behind router A, TURN/TLS) runs its X display at 2560×1440 and shows an `xterm` over
+all of it: known code text (two statements per line, 131 to 193 characters, every line numbered), Liberation Mono
+10.5 pt at 96 dpi, **14 px**, light on dark. She shares it through the app's button in **Sharp text** (checked in the
+UI). Each receiver opens her screen and presses **1:1**. With four people Mia shares a second, moving 1920×1080 screen
+at the same time and Jonas and Tom both watch Ada's text.
+
+- *Static:* one screen of text. At each receiver the decoded `<video>` frame is drawn to a canvas at its natural size
+  5, 10 and 20 s after the share started, and compared with a grab of Ada's display: **SSIM** (8×8 blocks, luma) over
+  the text area, and **OCR** (tesseract 5, `--psm 6`, the crop of 40 lines inverted and doubled) of both, each read
+  line matched to its known source line by its number and scored with a character similarity ratio. A line with a
+  ratio ≥ 0.95 is a "good line".
+- *Scrolling:* the terminal prints 20 lines a second (a fast log or `tail -f`). `getStats()` over 15 s gives the
+  received size, frame rate, freezes and loss; five decoded frames per receiver are OCR-scored, with five source
+  grabs as the reference.
+
+**Sharp text encoding: unchanged (3.5 Mbit/s, `contentHint: detail`).** At it scrolling text arrives at 2560×1440
+and 14.7 to 14.9 fps, at the bitrate cap, with sampled frames that read a little below the source (OCR medians 0.935
+to 0.96, worst frame 0.74; `txt2`). Raising it to 8 Mbit/s with `contentHint: text` was measured (`txt3`, `txt4`,
+`full3`): scrolling used 6.7 to 7.2 Mbit/s, typical frames read like the source (0.98) and every text gate passed,
+but the one weak receiver of four (400 kbit/s) then got 1 to 3.6 kbit/s of speech instead of the gated 10 (the
+screen it cannot carry is a single layer the SFU keeps sending). 5 Mbit/s still gave him 9.1 kbit/s, and LiveKit's
+`congestion_control` with `allow_pause` and `use_send_side_bwe` paused his video but did not bring his speech back
+(5.5 to 6 kbit/s, 86 to 93 % concealed; `bwe1`). Since 15 fps is reached at 3.5 Mbit/s, the encoding stays as it
+was and the faster one is a recorded option, not shipped. Static text needs about 1 Mbit/s either way.
+
+**Calibration** (`FLUX_SIM_CALIBRATE=1`, record only; host load average 8 to 15). The thresholds below were set from
+the 8 Mbit/s runs (`txt3` run 2 and `txt4`: five runs, two and four people, eight receiver measurements), the
+final sampling (static at 5, 10 and 20 s); the 3.5 Mbit/s runs (`txt2`, three runs) are in the last column. The
+encoding then returned to 3.5 Mbit/s; the thresholds were not changed for it:
+
+| Measure | Observed at 8 Mbit/s (thresholds set from these) | Source reference | Observed at 3.5 Mbit/s (`txt2`) |
+| --- | --- | --- | --- |
+| Scrolling: received size and frame rate | 2560×1440, **14.5 to 15.2 fps** (capture 15 fps), freezes ≤ 0.3 s, no loss, latency estimate 55 to 102 ms | — | 2560×1440, 14.7 to 14.9 fps, freezes ≤ 0.84 s, no loss |
+| Scrolling: OCR per sampled frame | mean ratio 0.79 to 0.98; median of a receiver's three samples 0.936 to 0.981; good lines 0 to 41 (one soft frame read 0; medians 37 to 41) | 0.979 to 0.985, 38 to 41 good lines | 0.74 to 0.98; medians 0.935 to 0.959; good-line medians 38 to 39 |
+| Static at 20 s | SSIM 0.974 to 0.984; OCR 0.983 to 0.984, 39 to 40 good lines | 0.983, 40 good lines | not sampled at 20 s (one early frame: SSIM 0.92 to 0.96) |
+| Static at 10 s (recorded) | SSIM 0.912 to 0.962; OCR 0.92 to 0.98 | | |
+| Static at 5 s (recorded) | SSIM 0.867 to 0.957; OCR 0.62 to 0.97 (the first frames after the share are soft) | | |
+
+**Thresholds, set before the enforced run, with the reason for each** (`textprofile.THRESHOLDS`):
+
+| Gate | Value | Why |
+| --- | --- | --- |
+| Decoded width, static and scrolling | 2560 | 1:1 text needs every source pixel; Sharp text keeps its resolution, so a smaller frame is a regression |
+| Scrolling frame rate | ≥ 13.5 fps | AC-2 asks 15 to 30 fps; the app captures at 15. Observed 14.5 to 15.2; 13.5 leaves 1 fps for a 15 s window's counting and a loaded host, and still fails a real drop (the 3.5 Mbit/s cap never fell below 14.7, so the frame rate alone did not catch blur; OCR does) |
+| Scrolling freezes, loss | ≤ 2 s per 15 s, ≤ 1 % | As the other profiles; observed ≤ 0.3 s, 0 % |
+| Scrolling OCR, median of five frames | ≥ the sources' worst ratio − 0.07 | Readability while scrolling: the typical frame must read almost like the source. Observed medians 0.936 to 0.981 against a source worst of 0.979, so the gate (about 0.91) sits 0.027 below the lowest observation. It does not separate the old 3.5 Mbit/s encoding (medians 0.935 to 0.96 in `txt2`): what 8 Mbit/s improved is the typical frame (0.98 instead of 0.94 to 0.96) and the worst one (0.79 instead of 0.74), not a pass/fail line |
+| Scrolling OCR, worst frame | ≥ 0.70 | One soft frame among fifteen a second is tolerable, an unreadable stream is not. Observed worst 0.79 |
+| Scrolling good lines, median | ≥ 0.8 × the sources' fewest | Observed medians ≥ 37 of 38 to 41 |
+| Static at 20 s: SSIM over the text | ≥ 0.95 | Observed 0.974 to 0.984; 0.95 is where 2× zoomed glyphs still look like the source in the inspected frames, and the 10 s frames below it were visibly soft |
+| Static at 20 s: OCR | ≥ source − 0.02, good lines ≥ 0.95 × source | Observed equal to the source (0.983, 39 to 40 of 40) |
+
+Time to a clear frame is recorded, not gated: 5 s after sharing, static text can be unreadable (OCR 0.62), at 10 s
+it mostly reads (0.92 to 0.98), at 20 s it equals the source. The thresholds were written after inspecting the
+decoded and source PNGs (kept with each run's artifacts); they are gates for this simulation, not promises for other
+networks or devices. A separate reviewer checks them.
+
+**Enforced run** (`full4`, at `54ccea89d`, 2026-10-31: the default runs, which now include
+`chromium:chromium:connect,text` and `chromium:chromium:connect,four,text`): both text runs passed (11 and 22 checks,
+no failure). Scrolling: 2560×1440 at 14.9 fps at all three receivers, no loss, freezes ≤ 0.29 s, 3.45 to 3.49 Mbit/s;
+OCR medians 0.932 to 0.960 against sources of 0.968 to 0.985, worst frames 0.741 and 0.770. Static at 20 s: SSIM
+0.975 to 0.982, OCR 0.983, 40 of 40 lines (5 s: 0.62 to 0.93; 10 s: 0.92 to 0.98). 18 of 19 runs passed; the
+four-person profiles failed one gate unrelated to text, "weak: Tom still receives speech kbps" at 9.9 against 10
+(the liveness check that the review marked narrow; Sharp text is unchanged from main). Re-run at the same commit
+(`four3`, two four-person profile runs): both passed, 234 checks each.
+
 ## #63 acceptance table (2026-10-31)
 
 Status of each part of [#63](https://github.com/ColdPhase/flux/issues/63)'s criteria. "Simulated" means met on
@@ -722,7 +802,7 @@ later on 2026-10-31 (smooth motion, larger camera, WebKit, k3s dropped).
 | AC-1 | CPU, memory, egress | **Met, simulated** | Per measured window in `resources-summary.json`: SFU 7.8 % CPU, 83 MB, 9.1 Mbit/s egress with four people and two shares. Local containers, not a capacity |
 | AC-1 | Recording, egress and external inference off | **Met, simulated** | No egress, ingress or agent service in the stack; only the people in the session |
 | AC-2 | Reproducible profiles with measured results | **Met, simulated** | [Measured profiles](#measured-profiles-and-calibrated-thresholds-ac-2): speech, camera, motion, two shares, 1:1, loss and jitter, one weak receiver |
-| AC-2 | Code/text 14-16 px at 2560×1440, 15-30 fps, scrolling | **Open: not gated, not claimed** | The simulation gates 1080p Sharp text at ≥ 7 fps only; full-frame scrolling arrived at 2.6 to 4.3 fps (recorded). The 2560×1440 evidence is the [2026-09-30 calibration](live-code-calibration.md), before the current build, with no readability threshold. What would close it: see "What the thresholds do not claim" |
+| AC-2 | Code/text 14-16 px at 2560×1440, 15-30 fps, scrolling | **Met, simulated** | [1440p code/text profile](#1440p-codetext-profile-63-ac-2-2026-10-31): 14 px Liberation Mono on a real 2560×1440 X screen shared as Sharp text over TURN/TLS, two and four people, 1:1. Enforced run `full4`: scrolling received at 2560×1440 and 14.9 fps, OCR median 0.93 to 0.96 against a source of 0.97 to 0.99; static text at 20 s SSIM 0.975 to 0.982 and OCR equal to the source. Thresholds set and reasoned before that run, from calibration. Recorded, not gated: the first 5 to 10 s of a share are soft (time to a clear frame) |
 | AC-2 | Motion 1080p60, camera 1080p30, continuous speech | **Met, simulated, with a recorded limit** | Speech met. **Camera:** shown large, 1920×1080 at 29.7 to 30.1 fps received ([larger camera](#a-larger-camera-ac-2-camera-profile)). **Motion:** Smooth motion captures 1920×1080 at 60 fps and delivers **59.5 to 59.7 fps at 1280×720** at its 10 Mbit/s cap for a frame that moves everywhere ([smooth motion](#smooth-motion-ac-2-motion-profile)); 1080p *and* 60 fps together at the receiver was not reached with Chromium's software encoder in Docker (target is "up to") |
 | AC-2 | Two then four participants, two screens | **Met, simulated** | Two, then four people with two simultaneous real screen shares, enforced thresholds |
 | AC-2 | Weak receiver, loss, jitter, UDP-blocked TURN | **Measured, simulated; quality limits recorded** | Gates pass. Recorded limits: a TCP relay under loss gives a 1 to 3 fps screen and late audio; a 400 kbit/s receiver of a one-layer screen loses the screen and most of its speech (Sharp text 68 to 86 % concealed, Smooth motion 84 to 98 %), while the other people are untouched. Simulcast screen layers were measured and rejected (they cut Smooth motion to 10 to 13 fps); LiveKit's `allow_pause` did not help |
@@ -738,10 +818,10 @@ later on 2026-10-31 (smooth motion, larger camera, WebKit, k3s dropped).
 | AC-4 | AI receives no media by default; human calls with AI off | **Met, simulated** | No agent or processor in the room or stack; a call with workspace AI blocked joined, carried audio and recovered |
 | AC-4 | One release-candidate commit with the real journey and independent reviews | **Open** | Unblock: an independent review of this change and the release-candidate pass |
 
-Left on #63: the release-candidate pass (AC-4's last row), a second look at the corrected threshold wording, and
-code/text at 2560×1440 (open, not gated). Everything else is met, simulated, dropped by founder decision (k3s) or
-recorded as unattainable in software here with a dated source (WebKit TURN/TLS; 1080p and 60 fps together at the
-receiver with a software encoder).
+Left on #63: the release-candidate pass (AC-4's last row, part of the release's integrated acceptance on #249) and
+a separate reviewer's check of the 1440p text thresholds. Everything else is met, simulated, dropped by founder
+decision (k3s) or recorded as unattainable in software here with a dated source (WebKit TURN/TLS; 1080p and 60 fps
+together at the receiver with a software encoder).
 
 ## Pointer reachability and camera state on phone and tablet (#63; 2026-10-10)
 
