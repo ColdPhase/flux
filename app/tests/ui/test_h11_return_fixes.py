@@ -119,13 +119,16 @@ class ReturnFixes(unittest.TestCase):
 
     # ---------------------------------------------------------------- H11-5, H11-8: What matters
 
-    def test_01_what_matters_leads_to_the_given_task_with_its_due_day_and_closes_on_another_page(self) -> None:
+    def test_02_what_matters_leads_to_the_given_task_with_its_due_day_and_closes_on_another_page(self) -> None:
         page = self.page()
         page.goto(f"/projects/{self.ids['project']}")
-        expect(page.get_by_role("region", name="Since you left")).to_be_visible()
-        page.get_by_role("region", name="Since you left").get_by_role("button", name="What matters", exact=True).click()
+        # Home's card (test_01) took her into the project, which saved its point: the last 7 days show the same changes.
+        page.locator("header.top").get_by_role("button", name="More", exact=True).click()
+        page.get_by_role("menu", name="More").get_by_role("menuitem", name="What matters").click()
         panel = page.locator("#details")
         expect(panel.get_by_role("heading", name="What matters")).to_be_visible()
+        panel.get_by_role("button", name="Change").click()
+        panel.get_by_role("radio", name="Last 7 days").click()
         step = panel.locator(".since__next")
         expect(step).to_contain_text(f"Pick up “{TASK}”")
         expect(step).to_contain_text(f"Tomasz gave it to you. Due {DUE}.")
@@ -141,7 +144,7 @@ class ReturnFixes(unittest.TestCase):
 
     # ---------------------------------------------------------------- H11-5, H11-9, H11-8: Home and the task panel
 
-    def test_02_home_continues_with_the_given_task_and_its_panel_stays_within_the_project(self) -> None:
+    def test_01_home_continues_with_the_given_task_and_its_panel_stays_within_the_project(self) -> None:
         page = self.page()
         page.goto("/")
         card = page.get_by_role("link", name=re.compile("^Continue where you left off"))
