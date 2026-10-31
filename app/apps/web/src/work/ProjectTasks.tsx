@@ -159,7 +159,7 @@ function Toolbar({ mode, onMode, query, onQuery, mine, onMine, writable, onNew, 
       {/* The one primary action sits at the right of the header row, as drawn, so it keeps its place when a panel docks and
           the board narrows (#763 C4, Spokój rule 7). A phone keeps it in its toolbar. */}
       {writable ? (() => {
-        const add = <Button variant="primary" icon="plus" className="tb-add" onClick={onNew}><span className="ui-vh">New </span>Task</Button>;
+        const add = <Button variant="secondary" icon="plus" className="tb-add" onClick={onNew}><span className="ui-vh">New </span>Task</Button>;
         return !phone && docks && actionSlot ? createPortal(add, actionSlot) : add;
       })() : null}
     </div>

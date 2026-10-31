@@ -11,7 +11,7 @@
 @media (max-width: 680px) {
   .convo-object { padding-left: 42px; margin: 18px 0; }
   .convo-object + :is(.convo-object, .convo-notice), .convo-notice + .convo-object { margin-top: 12px; }
-  .convo-object .convo-notice__meta, .convo-object .convo-notice__task { font-size: 15px; }
+  .convo-object .convo-notice__meta, .convo-object .convo-notice__task { font-size: var(--fs-base); }
 }
 /* In a thread the line sits among the replies at the replies' own column. */
 .thread__list > .convo-object { margin: 14px 0; }

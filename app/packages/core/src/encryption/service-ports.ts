@@ -73,9 +73,6 @@ export interface EncryptionRepository extends SealStateReader {
   clearTampered(workspaceId: string): Promise<void>;
   reserveAttempt(workspaceId: string, userId: string, limit: number, windowSeconds: number): Promise<{ id: string } | { retryAfterSeconds: number }>;
   releaseAttempt(id: string): Promise<void>;
-  /** Encrypted-space creations per person (`encrypted_workspace_creations`), reserved before the derivations. */
-  reserveCreation(userId: string, limit: number, windowSeconds: number): Promise<{ id: string } | { retryAfterSeconds: number }>;
-  releaseCreation(id: string): Promise<void>;
   grant(workspaceId: string, userId: string, options?: { lock?: boolean }): Promise<{ grantedBy: string; expiresAt: Date } | null>;
   putGrant(workspaceId: string, userId: string, grantedBy: string, seconds: number): Promise<Date>;
   deleteGrant(workspaceId: string, userId: string): Promise<void>;

@@ -4,22 +4,16 @@ import {
   type MessageReceiptsResult, type ObserveMessagesResult, type Page, type SendDmMessageCommand, type Workspace, WORKSPACES_PATH,
 } from '@flux/contracts';
 import { request } from './client';
-import { isWorkspaceLocked } from '../encryption/api';
 
 /** Direct messages (#107): private conversations with people, outside any project. */
 export async function listAllDms(signal?: AbortSignal, workspaces?: Workspace[]) {
   const spaces = workspaces ?? await request<Workspace[]>(WORKSPACES_PATH, { signal });
   const items: DmSummary[] = [];
   for (const space of spaces) {
-    try {
-      for (let offset = 0; ; offset += 100) {
-        const page = await request<Page<DmSummary>>(`${workspaceDmsPath(space.id)}?limit=100&offset=${offset}`, { signal });
-        items.push(...page.items);
-        if (offset + page.items.length >= page.total || page.items.length === 0) break;
-      }
-    } catch (error) {
-      // An encrypted workspace that locked since the workspaces were read has no conversations to list until it is unlocked (F-030, #655).
-      if (!isWorkspaceLocked(error)) throw error;
+    for (let offset = 0; ; offset += 100) {
+      const page = await request<Page<DmSummary>>(`${workspaceDmsPath(space.id)}?limit=100&offset=${offset}`, { signal });
+      items.push(...page.items);
+      if (offset + page.items.length >= page.total || page.items.length === 0) break;
     }
   }
   return items.sort((a, b) => (b.lastMessageAt ?? b.createdAt).localeCompare(a.lastMessageAt ?? a.createdAt));

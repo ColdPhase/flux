@@ -45,8 +45,6 @@ export FLUX_SMTP_URL="smtp://mailpit:1025"
 export FLUX_MAIL_FROM="Flux <flux@example.test>"
 # The journey signs in several times from one address; rate limiting is covered by the API suite.
 export FLUX_AUTH_RATE_LIMIT=false
-# F-030 (#655): the keyring of encrypted workspaces, one random token per run (without it every encrypted workspace stays locked).
-export FLUX_KEYRING_TOKEN="$(head -c 32 /dev/urandom | base64 | tr '+/' '-_' | tr -d '=\n')"
 # TEST ONLY (#68): personal runs use fixture key connections and the real Anthropic adapter
 # against the Compose mock provider (tests/ui/anthropic_mock.py). Never set in production.
 export FLUX_TEST_FAILURE_INJECTION=true

@@ -9,7 +9,7 @@
 .cmenu__name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; }
 .cmenu__hint { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--t2); }
 .cmenu__name + .cmenu__hint { flex: none; margin-left: auto; color: var(--t3); font-size: var(--fs-sm); }
-.cmenu__kbd { flex: none; display: grid; place-items: center; min-width: 20px; height: 20px; border-radius: 5px; background: var(--sub); color: var(--t2); font: 500 11px/1 var(--mono); box-shadow: inset 0 -1px 0 var(--line2); }
+.cmenu__kbd { flex: none; display: grid; place-items: center; min-width: 20px; height: 20px; border-radius: 5px; background: var(--sub); color: var(--t2); font: 500 var(--fs-glyph)/1 var(--mono); box-shadow: inset 0 -1px 0 var(--line2); }
 .cmenu__o.is-active .cmenu__kbd { background: var(--el); }
 .cmenu__f { margin: 4px 4px 0; padding: 8px 6px 4px; border-top: 1px solid var(--line); color: var(--t3); font-size: var(--fs-sm); }
-@media (pointer: coarse) { .cmenu__o { min-height: 48px; font-size: 16px; } .cmenu { width: 100%; } }
+@media (pointer: coarse) { .cmenu__o { min-height: 48px; font-size: var(--fs-lg); } .cmenu { width: 100%; } }

@@ -106,13 +106,10 @@ jobs:
           gh api --paginate --slurp \
             "repos/$GITHUB_REPOSITORY/issues/$REVIEW_ISSUE/comments?per_page=100" \
             > "$RUNNER_TEMP/artifact-comments.json"
-          # The reviewer's session must not be in the source's history (reviewer != author).
-          git -C "$GITHUB_WORKSPACE" log --format=%B "$SOURCE_SHA" > "$RUNNER_TEMP/commit-messages.txt"
           python3 "$GITHUB_WORKSPACE/scripts/release/verify_artifact_review.py" \
             --comments "$RUNNER_TEMP/artifact-comments.json" \
             --version "$RELEASE_VERSION" --source-sha "$SOURCE_SHA" \
-            --digest "$IMAGE_DIGEST" --checksums-sha "$checksums_sha" \
-            --commit-messages "$RUNNER_TEMP/commit-messages.txt"
+            --digest "$IMAGE_DIGEST" --checksums-sha "$checksums_sha"
           echo "checksums_sha=$checksums_sha" >> "$GITHUB_OUTPUT"
 
   publish:

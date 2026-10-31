@@ -23,7 +23,7 @@ export function FileIcon({ name, size = 28 }: { name: string; size?: number }) {
       <path className="file-icon__fold" d="M14.75 1.25V6a1.25 1.25 0 001.25 1.25h4.75" />
       <g className="file-icon__glyph">{PICTOGRAM[kind]}</g>
       {band ? <rect className="file-icon__band" x="3.25" y="21.5" width="17.5" height="6" /> : null}
-      <text className={`file-icon__label${band ? ' is-band' : ''}`} x="12" y="26.4" textAnchor="middle">{label}</text>
+      <text className={`file-icon__label${band ? ' is-band' : ''}`} x="12" y="26.4" textAnchor="middle" fontSize="4.6">{label}</text>
     </svg>
   );
 }

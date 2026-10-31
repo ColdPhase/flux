@@ -408,29 +408,14 @@ started the rotation and the pass has finished.
 Four routes check a password or the recovery code: unlock, unlock-password grants (the holder's
 password), `PUT …/unlock-password` (`currentPassword` or `recoveryCode`) and `POST …/recovery-code`.
 Each of them is an online guessing oracle for a hijacked or impersonated session, and each costs an
-Argon2id derivation, so they share **one** limiter and **one** semaphore. Creating an encrypted space
-(`POST /api/v1/encrypted-workspaces`) checks nothing but runs two derivations, so it shares the
-semaphore and has its own limit (S3 security review: any signed-in person can create one, and a
-flood of creations held the semaphore so that owners' unlocks answered `503`).
+Argon2id derivation, so they share **one** limiter and **one** semaphore:
 
-- **Limiter.** `password_attempts` counts checks per person and workspace across all four routes.
-  Failures always count. A **successful** check counts too on the three routes that are deliberate,
-  rare changes (a grant, `PUT …/unlock-password`, `POST …/recovery-code`), because each repetition
-  costs derivations even with the right password; only a successful unlock releases its row, so
-  unlocking after a restart is never limited by earlier correct unlocks. Five in 15 minutes answer
-  `429 UNLOCK_RATE_LIMITED` with `Retry-After` on all of them. The count is read and written in the
-  checking transaction. A failure records its row before the answer is sent.
-- **Creation limit.** `encrypted_workspace_creations` (0136) counts creations per person: five in
-  15 minutes answer `429 CREATION_RATE_LIMITED` with `Retry-After`. A row is reserved under a
-  per-person advisory lock before the derivations and kept when the space is created; a creation that
-  fails (busy, keyring unavailable, a lost race) releases it. A retry with the same `creationId`
-  answers from the existing space before the limit, so it is never refused.
+- **Limiter.** `password_attempts` counts failed checks per person and workspace across all four
+  routes. Five failures in 15 minutes answer `429 UNLOCK_RATE_LIMITED` with `Retry-After` on all of
+  them. The count is read and written in the checking transaction. A failure records its row before
+  the answer is sent.
 - **Semaphore.** At most two derivations run at once per API process (64 MiB each), across all four
-  routes and creation. Others queue, and the ninth waiting request answers `503 UNLOCK_BUSY`.
-  **One per person:** a person has at most one derivation running or waiting at a time; another
-  of theirs at the same moment answers `503 UNLOCK_BUSY` at once (their reserved attempt or creation
-  is released). So one account cannot take both slots or the queue, and another person's unlock
-  always gets a slot after at most the derivations already running.
+  routes. Others queue, and the ninth waiting request answers `503 UNLOCK_BUSY`.
 
 ### Password strength
 
@@ -618,7 +603,7 @@ stateDiagram-v2
    old-version value that does not open stalls it the same way. In one transaction the worker then deletes the DEK
    wraps, unlock rows and `workspace_key_versions` rows (their check values are envelopes under the old DEKs) of
    every version below `current_version`, and the tombstones, sets `live_versions =
-   {current_version}` and `rotation = 'none'`, moves `rotation_reason` to `key_change_reason` (S3), deletes the progress row, and records
+   {current_version}` and `rotation = 'none'`, deletes the progress row, and records
    `workspace.key_rotated.v1`. Afterwards it runs `VACUUM` on the tables it touched, then
    `CHECKPOINT` (the Compose database role may; a failed one is retried by the next sweep). That makes the dead row versions holding old
    ciphertext reusable sooner and lets WAL segments be recycled.
@@ -1231,10 +1216,7 @@ Details sheet on a phone):
   admin has their own. It's needed after every server restart. Every owner's and admin's password
   protects the whole space, and the weakest one counts. Your own needs at least 20 characters." Then
   one line: "If every unlock password and the recovery code are lost, everything in this space is gone
-  for good. Nobody can recover it, not even whoever runs this server." The six words are offered to a
-  password manager (a password field with `autocomplete="new-password"` and the account e-mail as its
-  username) and the form says: "Write these six words down or save them in your password manager. You
-  type them after every server restart." (UI audit RC-2.) Then a quiet link, **What
+  for good. Nobody can recover it, not even whoever runs this server." Then a quiet link, **What
   encryption protects**, which opens the [threat model](#threat-model) in plain words. It explains
   that it protects a copy of the data or a server taken away switched off, and not a running server,
   a hibernated host or a VM memory snapshot.
@@ -1245,21 +1227,12 @@ with the text "This code unlocks Garden club if every password is lost. It's sho
 it or write it down and keep it somewhere safe." A **Print** button sits above a checkbox "I've kept
 the recovery code", and **Done** is enabled only after it is checked. There is **no Copy button**: a
 copied code can stay in clipboard history and sync between devices. A person who selects the text
-and copies it themselves takes that choice. Nothing about the code is stored in the browser. The code is
-two lines of four groups in reading order ("20C6-E0PC-3VP2-GMT2" / "42B5-GDE4-CQNF-6STJ") on every width,
-so it cannot be read by columns (RC-3), with the line "Keep this code apart from your unlock password."
-**The step cannot be skipped by closing it (RC-1).** While the box is unchecked, Esc, ×, Back or leaving
-the page asks in place: "Close without keeping the recovery code? You can make a new one in People."
-with **Keep it open** and **Close anyway**. Closing anyway records, in this browser only and with the
-space's id alone, that the code was not kept, and People → Encryption then says to owners "Nobody
-confirmed keeping Garden club's recovery code. Make a new one." until a new code is kept. The same
-applies to a new code made in People. If the answer to the create call was lost, a retry with the same
+and copies it themselves takes that choice. Nothing about the code is stored in the browser. If the answer to the create call was lost, a retry with the same
 `creationId` returns the space without the code. The panel then says "The recovery code was shown
 once and can't be shown again. Make a new one in People." and offers **New recovery code**.
 
 Project setup's first space keeps its form and is never encrypted. The new space appears in the
-project picker and in Create like any other space. After Done the primary action is **Start the first
-project in Garden club**, which opens New project in that space (`/projects/new?in=<id>`; NS-1).
+project picker and in Create like any other space.
 
 ### Locked
 
@@ -1267,60 +1240,30 @@ project in Garden club**, which opens New project in that space (`/projects/new?
   "Garden club", and on the second line "Waiting to be unlocked". It opens the locked panel.
 - **The locked panel**, also used for every deep link into the workspace while it is locked (the URL
   is kept, Back works):
-  - The first line gives the known reason (`encryption.lockedBecause`, from the last `workspace.locked.v1`
-    while no unlock row exists): "Ada locked Garden club at 22:10." (`person`; "You locked…" for the
-    person who did) or "The server restarted at 22:15." (`restart`); otherwise "Its content is encrypted."
-    (UI audit LK-1.)
-  - For a member or guest: **Garden club is waiting to be unlocked** · the reason · "Ada, Jonas or Ben
-    can unlock it. You can come back then." (`encryption.unlockers`, the owners and admins with an
-    unlock password; "An owner or admin needs to unlock it." when the list is empty or for a guest).
-  - For an owner or admin: **Unlock Garden club** · the reason · "Type your unlock password to open it for
-    everyone." · field **Your unlock password** · button **Unlock**
+  - For a member or guest: **Garden club is waiting to be unlocked** · "Its content is encrypted.
+    After the server restarted, an owner or admin needs to unlock it. You can come back then."
+  - For an owner or admin: **Unlock Garden club** · field **Your unlock password** · button **Unlock**
     · quiet link **Use the recovery code**, which swaps the field in place. Errors are shown in place:
     "That password doesn't unlock Garden club." and "Too many tries. Try again in 15 minutes."
   - For an owner or admin without a password: "You don't have an unlock password for Garden club
     yet. Another owner or admin can unlock it, or you can use the recovery code."
 - An open page in that workspace turns into the locked panel on `workspace.locked.v1` or on any
   `423`, and back on `workspace.unlocked.v1`, without a reload.
-- **On a phone** the locked panel of a deep link keeps the header's ‹ Back and the tab bar, so an
-  installed app is never left without a way out (LK-2).
-- **Cross-workspace places.** Home's "Needs you" lists one quiet row per waiting space below its queue
-  (lock, "Garden club", "Waiting to be unlocked"), and its empty line reads "Nothing needs you in your
-  open spaces." while any space waits. The Inbox keeps its "Waiting to be unlocked" note. Search says
-  above its results "Garden club isn't searched while it waits to be unlocked." and, for `sealedUnavailable`,
-  "Search isn't available in Garden club: it is too large to search in memory." A cross-workspace answer's
-  `lockedWorkspaces` naming a space the page still shows as open makes the shell read the workspaces again,
-  as a `423` does. Lists read space by space (Wiki, Sketchbook) skip a waiting space and list the others.
-- **Security notices** (`reason: 'security'`, Inbox only) are listed in the Inbox under "About your
-  encrypted spaces", each with its time and a quiet **Got it** that marks it read.
 
 ### Inside an encrypted space
 
 - **The People panel** gets an **Encryption** section, its own `details__sec` placed before the AI
   section and kept in place in every state:
   - "Encrypted · only people, no AI. Unlocked by Ada at 09:12."
-  - While locked, the slot of **Lock now** reads **Unlock…** for an owner or admin who can unlock, and opens
-    the unlock field in place (the same password and recovery-code group as the locked panel); the hint
-    reads "Unlock Garden club to change these." (UI audit EN-1.)
   - For holders (owners and admins with a password): **Change your unlock password**. An owner or admin
     without a password sees "You don't have an unlock password yet. Another owner or admin can let you
     set one, or use the recovery code." with **Use the recovery code**. Once a holder has allowed it,
-    they see **Set your unlock password** for the hour the grant lasts (`passwordGrantUntil`). With
-    neither a grant nor a recovery code the button stays, dimmed, in its place.
-  - For holders: each owner or admin without a password (the members list says which, with `unlockPassword`
-    on owner and admin rows, for a reader who is an owner or admin) is listed with **Let Ben set an unlock
+    they see **Set your unlock password** for 24 hours.
+  - For holders: each owner or admin without a password is listed with **Let Ben set an unlock
     password**, which asks for the holder's own unlock password in the inline confirm group.
   - While a rotation runs, one line below the first: "Changing the key · 62%. It continues while
     Garden club is unlocked." While locked: "Changing the key · paused until Garden club is
-    unlocked." Pending while unlocked (the worker starts it within seconds): "Changing the key · starting.
-    It continues while Garden club is unlocked." Stalled (`rotation.stalled`): "The key change can't finish:
-    some stored data doesn't open. Ask your server's operator." While one runs, the section reads the
-    state again every few seconds. While `rotation.reason` names the person, the progress line says why:
-    "Changing the key after Ben left · 62%…" (removed), "…after Ben's role changed" (demoted), "…after Ben's
-    account was deleted" (`holder_deleted`). The line below draws `rotation.openFor` ("The new key opens for
-    Ada, Cy and the recovery code."). Both exist only while the rotation runs. The finish moves the reason to
-    `workspace_keys.key_change_reason` (migration 0133, ids and a kind only), exposed as
-    `encryption.keyChangeReason` to everyone but guests, so after the finish, quietly: "New key since 23 Oct, after Ben left." Below it, from the start
+    unlocked." After the finish, quietly: "New key since 23 Oct, after Ben left." Below it, from the start
     onwards: "The new key opens for Ada and Cy." That is the holder set the start sealed to.
   - For owners and admins: a quiet **Lock now**, which uses the panel's inline confirm: "Everyone in
     Garden club loses access until an owner or admin unlocks it again." with **Lock Garden club** and
@@ -1351,13 +1294,13 @@ answers `Cache-Control: no-store`, and does not use the Idempotency-Key store.
 
 | Route | Body | Answers |
 | --- | --- | --- |
-| `POST /api/v1/encrypted-workspaces` | `{ name, creationId, password }` | `201 { workspace, recoveryCode }`. The same person and `creationId` again (`workspaces.creation_id`) gives `200 { workspace, recoveryCode: null }`; a different name with the same id gives `409 IDEMPOTENCY_CONFLICT`. `400 PASSWORD_TOO_WEAK`, `429 CREATION_RATE_LIMITED` (five in 15 minutes, [Password checks](#password-checks)), `503 KEYRING_UNAVAILABLE`, `SWAP_UNSAFE` or `UNLOCK_BUSY`. In S1 and S2 the route exists only in a test deployment (`FLUX_FIXTURE_TOKEN` set **and** `FLUX_TEST_FAILURE_INJECTION=true`) and needs the fixture bearer besides the session; a `./flux up` install, which always has a fixture token, never gets it. |
+| `POST /api/v1/encrypted-workspaces` | `{ name, creationId, password }` | `201 { workspace, recoveryCode }`. The same person and `creationId` again (`workspaces.creation_id`) gives `200 { workspace, recoveryCode: null }`; a different name with the same id gives `409 IDEMPOTENCY_CONFLICT`. `400 PASSWORD_TOO_WEAK`, `503 KEYRING_UNAVAILABLE` or `SWAP_UNSAFE`. In S1 and S2 the route exists only in a test deployment (`FLUX_FIXTURE_TOKEN` set **and** `FLUX_TEST_FAILURE_INJECTION=true`) and needs the fixture bearer besides the session; a `./flux up` install, which always has a fixture token, never gets it. |
 | `POST /api/v1/workspaces/:id/unlock` | `{ password }` or `{ recoveryCode }` | `200 { encryption }`, `400 UNLOCK_INCORRECT`, `403 WORKSPACE_ENCRYPTION_ADMIN_REQUIRED`, `409 NO_UNLOCK_PASSWORD`, `429 UNLOCK_RATE_LIMITED`, `503 KEYRING_UNAVAILABLE`, `SWAP_UNSAFE` or `UNLOCK_BUSY`. |
 | `POST /api/v1/workspaces/:id/lock` | — | `200 { encryption }`, `403`. |
 | `POST /api/v1/workspaces/:id/unlock-password-grants` | `{ userId, password }` (the holder's own) | `201 { expiresAt }`, `400 UNLOCK_INCORRECT`, `403` (not a holder, or the target is not an owner or admin), `409 ALREADY_HAS_PASSWORD`, `423`. |
 | `PUT /api/v1/workspaces/:id/unlock-password` | `{ currentPassword?, recoveryCode?, newPassword }` | Changing needs `currentPassword` or `recoveryCode`. A first password needs a valid grant or `recoveryCode`, otherwise `403 UNLOCK_PASSWORD_GRANT_REQUIRED`. `200`, `400 UNLOCK_INCORRECT`, `400 PASSWORD_TOO_WEAK`, `423`. |
 | `POST /api/v1/workspaces/:id/recovery-code` | `{ password }` | `200 { recoveryCode }` (owner only), `423`. |
-| `GET /api/v1/workspaces[/:id]` | — | `Workspace.encryption`: `null`, or `{ state: 'locked' \| 'unlocked', unlockedAt, unlockedBy: { id, name } \| null, lockedBecause: { reason: 'person' \| 'restart', at, by: { id, name } \| null } \| null, unlockers: { id, name }[], myPassword: boolean, canUnlock: boolean, passwordGrantUntil: string \| null, recoveryCode: boolean, rotation: null \| { percent, paused: boolean, startedAt }, keyChangedAt }`. `lockedBecause` (S3 UI audit): while locked and no unlock row exists, the last `workspace.locked.v1`; `by` only for `person`, and null for guests. `unlockers`: owners and admins with an unlock password, for everyone but guests (`[]`). `myPassword` and `canUnlock` are filled for owners and admins; others get `false`. `passwordGrantUntil` is when a holder's grant for the caller to set a first password ends (an owner or admin without a password, a valid grant only); otherwise `null`. `GET …/members` adds `unlockPassword: boolean` to owner and admin rows of an encrypted workspace for a reader who is an owner or admin, and nothing for anyone else. |
+| `GET /api/v1/workspaces[/:id]` | — | `Workspace.encryption`: `null`, or `{ state: 'locked' \| 'unlocked', unlockedAt, unlockedBy: { id, name } \| null, myPassword: boolean, canUnlock: boolean, recoveryCode: boolean, rotation: null \| { percent, paused: boolean, startedAt }, keyChangedAt }`. `myPassword` and `canUnlock` are filled for owners and admins; others get `false`. |
 
 The new action `workspace.manage_encryption` in `WORKSPACE_ACTIONS` is allowed for a human owner or
 admin (`isManager`). `New recovery code` additionally needs the owner role. Events
@@ -1377,7 +1320,7 @@ route.
 | AC | Slice | Test | Where |
 | --- | --- | --- | --- |
 | AC-1 | S1 | Crypto: envelope round trip. A ciphertext moved to another row, column, table or workspace fails, as do a tampered tag, a wrong key version and a wrong DEK. Wraps use the stored KDF parameters, and a wrong password fails the tag. Recovery code normalisation. A sealed digest round trip compares equal in RAM, and two equal inputs give different stored values. Sealing a DEK to a holder's public key and opening it with the private key; the wrong holder, the wrong version or a changed ephemeral key fails. Holder MAC, the public key in the private key's AAD, the confirmation and the commitment chain each reject a changed value. File object round trip, truncation and tampering refused before any byte is returned. | `tests/app/encryption-crypto.test.ts` |
-| AC-2 | S1 | Lifecycle: create, unlock with the right password (`200`), the wrong one (`400`), the sixth failure by one person (`429`) while another admin can still unlock, the recovery code. A non-holder admin gets `409`. A member, a guest and an agent get `403`. A promoted admin with only a session gets `403 UNLOCK_PASSWORD_GRANT_REQUIRED`; after a holder's grant (wrong holder password `400`) or with the recovery code they can set one, the grant is consumed, an expired grant is refused, and the other holders get the `security` notification. Change password (needs the current one), new recovery code (the old one stops working), demotion deletes the wrap, `409 LAST_UNLOCK_PASSWORD`, `PASSWORD_TOO_WEAK` under 20 characters and for `abcdefghabcdefghabcd`. **One limiter:** five wrong secrets spread over unlock, a grant, a password change and a new recovery code give `429` on all four; a third concurrent derivation waits for the shared semaphore, Lock now gives `423` on the next content call. The create retry with the same `creationId` has no code; a different name gives `409`. **Floods (S3 review):** the sixth creation by one person in 15 minutes gives `429 CREATION_RATE_LIMITED` with `Retry-After`, and a retry of an earlier `creationId` still answers `200`; a person's second derivation in flight gives `503 UNLOCK_BUSY` at once; while one account floods creations, and while an owner repeats new recovery codes with the right password (counted, so the sixth gives `429`), another owner's unlock answers `200`. | `tests/app/encrypted-workspaces.test.ts` |
+| AC-2 | S1 | Lifecycle: create, unlock with the right password (`200`), the wrong one (`400`), the sixth failure by one person (`429`) while another admin can still unlock, the recovery code. A non-holder admin gets `409`. A member, a guest and an agent get `403`. A promoted admin with only a session gets `403 UNLOCK_PASSWORD_GRANT_REQUIRED`; after a holder's grant (wrong holder password `400`) or with the recovery code they can set one, the grant is consumed, an expired grant is refused, and the other holders get the `security` notification. Change password (needs the current one), new recovery code (the old one stops working), demotion deletes the wrap, `409 LAST_UNLOCK_PASSWORD`, `PASSWORD_TOO_WEAK` under 20 characters and for `abcdefghabcdefghabcd`. **One limiter:** five wrong secrets spread over unlock, a grant, a password change and a new recovery code give `429` on all four; a third concurrent derivation waits for the shared semaphore, Lock now gives `423` on the next content call. The create retry with the same `creationId` has no code; a different name gives `409`. | `tests/app/encrypted-workspaces.test.ts` |
 | AC-2 | S1 | AI forced off: the policy is `blocked` at creation; `PUT ai-policy` gives `409`; a direct SQL update to `allowed` is refused by the trigger. A direct SQL insert into every AI-class table for A is refused by `sealed_workspace_no_ai`, while the same insert for B passes. The F-029 gated-route list gives `403 WORKSPACE_AI_BLOCKED` in A and works in B. | same, with `workspace-ai-routes.test.ts` cases |
 | AC-2 | S1 | Keyring and swap: a wrong token, a malformed or oversized body all get a fixed answer with nothing echoed or logged; token comparison is `timingSafeEqual`. The keyring refuses to start with swap possible (S1: the keyring process run with fake cgroup and `/proc/swaps` files under the test-only `FLUX_TEST_SWAP_ROOT`, because Docker refuses a mount over `/proc`; it gives no more power than `FLUX_SWAP_ACKNOWLEDGED`). An API that fails `swapSafety()` answers `503 SWAP_UNSAFE` for unlock and creation; `FLUX_SWAP_ACKNOWLEDGED=encrypted-swap` lets it pass. Every Compose file with `api` has the keyring or `FLUX_KEYRING: off`; `./flux upgrade` adds a missing token. | `tests/app/encryption-keyring.test.ts`, `tests/test_compose_keyring.py` |
 | AC-3 | S1 | **Restart is locked.** Unlock A and write. `docker compose restart` of the whole stack makes A's content routes answer `423` and `encryption.state = 'locked'`, and unlock works again. Restarting only `api` keeps A unlocked. Restarting only `keyring` locks A within 5 s, with one `workspace.locked.v1 { reason: 'restart' }`. | `app/tests/app/encryption-restart.check.ts`, called by `check_application.sh` |

@@ -40,7 +40,6 @@ that is not this checkout's.
 | Restore a backup, here or on a new machine | `./flux restore <archive> [--migrate] [--revoke-agent-connections] [-y]` | [Backup and restore](backup-restore.md#restore) |
 | Export one project as open JSON plus files | `./flux export <project> [--as EMAIL]`, `GET /api/v1/projects/:id/export` | [Project export](export.md) |
 | Move to a newer version | `./flux upgrade [--pull] [-y]` | [Upgrade](upgrade.md) |
-| Run encrypted spaces: restarts, backups, upgrades, swap and hibernation | Nothing to switch on; owners and admins unlock after a restart | [Encrypted spaces](encrypted-spaces.md) |
 | Let people sign in with your identity provider (OpenID Connect) | `FLUX_OIDC_*` in `docker/.env` | [Single sign-on](single-sign-on.md) |
 | Serve Flux through HTTPS, including MCP and WebSocket upgrades | Set the public origin and narrowly trusted proxy peer | [HTTPS and reverse proxies](reverse-proxy.md) |
 | Install Flux on phones and tablets and send push notifications | HTTPS at the origin root, `FLUX_VAPID_*`, outbound HTTPS to the push services | [Phones, tablets and push](mobile-and-push.md) |

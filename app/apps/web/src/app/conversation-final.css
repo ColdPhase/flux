@@ -6,7 +6,7 @@
 .convo-notice { position: relative; max-width: min(600px, 100%); padding-left: 44px; margin: 24px 0; list-style: none; }
 .convo-notice > :is(.ui-avatar, .author-face) { position: absolute; left: 0; top: 0; }
 .convo-notice__body { display: flex; flex-direction: column; align-items: stretch; gap: 8px; min-width: 0; container-name: task-notice; container-type: inline-size; }
-.convo-notice__meta { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 8px; min-width: 0; margin: 0; font-size: var(--fs-base); line-height: 20px; color: var(--t2); }
+.convo-notice__meta { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 8px; min-width: 0; margin: 0; font-size: var(--fs-base); line-height: var(--lh); color: var(--t2); }
 .convo-notice__meta strong { min-width: 0; max-width: 100%; overflow-wrap: anywhere; font-size: var(--fs-base); font-weight: 600; color: var(--t1); }
 .convo-notice__meta .agent-id { vertical-align: baseline; }
 .convo-notice__meta .agent-id__name { white-space: normal; overflow: visible; overflow-wrap: anywhere; }
@@ -77,7 +77,7 @@ button.convo-notice__src:focus-visible { outline: 2px solid var(--t1); outline-o
   .convo-notice + .convo-notice { margin-top: 12px; }
   .convo-fold__list { margin-left: -42px; }
   .convo-notice__owner-name { display: none; }
-  .convo-notice__meta, .convo-notice__task, .convo-fold__b { font-size: 15px; }
+  .convo-notice__meta, .convo-notice__task, .convo-fold__b { font-size: var(--fs-base); }
   .convo-since { top: 8px; }
 }
 @media (max-width: 680px) and (hover: none) { .project-convo__message { width: 100%; } }
@@ -86,12 +86,12 @@ button.convo-notice__src:focus-visible { outline: 2px solid var(--t1); outline-o
    It sits in the stream in its place, never over content. */
 .convo-goal { max-width: min(600px, 100%); margin: 24px 0; list-style: none; }
 .convo-goal .goal { padding: 24px 20px 20px; }
-.convo-goal__line { display: flex; align-items: baseline; gap: 8px; margin: 0; padding-left: 44px; color: var(--t2); font-size: var(--fs-sm); line-height: 20px; }
+.convo-goal__line { display: flex; align-items: baseline; gap: 8px; margin: 0; padding-left: 44px; color: var(--t2); font-size: var(--fs-sm); line-height: 1.67; }
 .convo-goal__line > svg { flex: none; align-self: center; margin-left: -22px; color: var(--t3); }
 .convo-goal__line > span { min-width: 0; overflow-wrap: anywhere; }
 .convo-goal__line b { font-weight: 600; color: var(--t1); }
 .convo-goal__line time { flex: none; font-size: var(--fs-xs); color: var(--t3); font-variant-numeric: tabular-nums; }
 
 /* Where the unread part of the stream begins (#763 A3): one quiet rule with a word, like a day line. */
-.convo-unread { display: flex; align-items: center; justify-content: center; gap: 12px; margin: 5px 0 27px; font-size: var(--fs-sm); font-weight: 550; color: var(--t2); list-style: none; }
+.convo-unread { display: flex; align-items: center; justify-content: center; gap: 12px; margin: 5px 0 27px; font-size: var(--fs-sm); font-weight: 600; color: var(--t2); list-style: none; }
 .convo-unread::before, .convo-unread::after { content: ""; flex: 0 0 25px; height: 1px; background: var(--line2, var(--line)); }

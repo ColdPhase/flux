@@ -8,7 +8,8 @@
 .file-icon__glyph circle { fill: var(--t1); stroke: none; }
 .file-icon--video .file-icon__glyph path { fill: var(--t1); }
 .file-icon__band { fill: var(--t1); }
-.file-icon__label { font-family: var(--mono); font-size: 4.6px; font-weight: 600; letter-spacing: .02em; fill: var(--t1); }
+/* The label's size is in the icon's own SVG units (fontSize on the <text>), so it scales with the icon. */
+.file-icon__label { font-family: var(--mono); font-weight: 600; letter-spacing: .02em; fill: var(--t1); }
 .file-icon__label.is-band { fill: var(--el); }
 
 /* A file row: icon, name, "type · size" and Download, on the quiet fill inside the bubble. */
@@ -17,7 +18,7 @@
 a.file-row:hover { background: var(--hov); }
 a.file-row:focus-visible, .voice-note__play:focus-visible, .photo-grid__open:focus-visible, .link-preview:focus-visible, .msg-link:focus-visible { outline: 2px solid var(--t1); outline-offset: 2px; }
 .file-row__text { display: flex; flex-direction: column; gap: 1px; min-width: 0; flex: 1; }
-.file-row__name { font-size: var(--fs-base); font-weight: 550; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.file-row__name { font-size: var(--fs-base); font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .file-row__text small { color: var(--t3); font-size: var(--fs-xs); }
 .file-row__act { flex: none; display: grid; place-items: center; width: 32px; height: 32px; border-radius: 50%; color: var(--t2); }
 a.file-row:hover .file-row__act { color: var(--t1); }
@@ -63,13 +64,13 @@ a.file-row:hover .file-row__act { color: var(--t1); }
 span.photo-grid__open { cursor: default; }
 .photo-grid__open:disabled { cursor: progress; }
 .photo-grid__open img { display: block; width: 100%; height: 100%; object-fit: cover; }
-.photo-grid__more { position: absolute; inset: 0; display: grid; place-items: center; background: rgba(0, 0, 0, .42); font-size: 1.5rem; font-weight: 600; color: #fff; }
+.photo-grid__more { position: absolute; inset: 0; display: grid; place-items: center; background: rgba(0, 0, 0, .42); font-size: var(--fs-xl); font-weight: 600; color: #fff; }
 .photo-grid:has(.photo-grid__file) + .photo-meta, .photo-grid:has(.photo-grid__file) + .message-bubble + .photo-meta, .photo-grid:has(.photo-grid__file) + .message-files + .photo-meta { display: none; }
 .project-convo__message > .photo-grid { width: min(100%, 340px); }
 .photo-meta { margin: 6px 2px 0; color: var(--t3); font-size: var(--fs-xs); overflow-wrap: anywhere; }
 .photo-grid__tile.is-unavailable { display: grid; place-items: center; padding: 12px; color: var(--t3); font-size: var(--fs-xs); text-align: center; }
 /* Sending, offline and failure show on the photo itself. */
-.photo-grid__state { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; padding: 8px; background: rgba(0, 0, 0, .28); color: #fff; font-size: var(--fs-xs); font-weight: 550; text-align: center; text-shadow: 0 1px 2px rgba(0, 0, 0, .4); }
+.photo-grid__state { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; padding: 8px; background: rgba(0, 0, 0, .28); color: #fff; font-size: var(--fs-xs); font-weight: 500; text-align: center; text-shadow: 0 1px 2px rgba(0, 0, 0, .4); }
 .photo-grid__ring { width: 26px; height: 26px; border-radius: 50%; border: 2.5px solid rgba(255, 255, 255, .35); border-top-color: #fff; animation: photo-spin 900ms linear infinite; }
 .photo-grid__meter { flex: none; }
 .photo-grid__meter-track { fill: none; stroke: rgba(255, 255, 255, .35); stroke-width: 2.5; }
@@ -112,14 +113,14 @@ span.photo-grid__open { cursor: default; }
 .composer-thumb__face { position: relative; flex: none; display: grid; place-items: center; width: 40px; height: 44px; }
 .composer-thumb.is-photo .composer-thumb__face { width: 64px; height: 64px; border-radius: 12px; overflow: hidden; background: var(--sub); }
 .composer-thumb.is-photo .composer-thumb__face img { width: 100%; height: 100%; object-fit: cover; }
-.composer-thumb.is-photo .composer-files__name { width: 64px; font-size: 10px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.composer-thumb.is-photo .composer-files__name { width: 64px; font-size: var(--fs-xs); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .composer-thumb.is-photo .composer-files__name small { overflow: hidden; text-overflow: ellipsis; }
-.composer-thumb .composer-files__name { font-family: inherit; font-weight: 550; max-width: 220px; }
+.composer-thumb .composer-files__name { font-family: inherit; font-weight: 500; max-width: 220px; }
 .composer-files .composer-thumb__x { position: absolute; top: -12px; right: -12px; display: grid; place-items: center; width: 32px; height: 32px; min-height: 0; padding: 0; border-radius: 50%; background: none; }
 .composer-thumb__xface { display: grid; place-items: center; width: 22px; height: 22px; border-radius: 50%; background: var(--inv); color: var(--oninv); box-shadow: 0 0 0 2px var(--el); }
 .composer-files .composer-thumb__retry { flex: none; }
 .composer-thumb.is-photo .composer-thumb__retry { padding: 0; }
-.composer-thumb__order { position: absolute; top: 4px; left: 4px; display: grid; place-items: center; min-width: 20px; height: 20px; padding: 0 5px; box-sizing: border-box; border-radius: var(--r-pill); background: var(--inv); color: var(--oninv); font-size: 11px; font-weight: 650; box-shadow: 0 0 0 1.5px var(--el); }
+.composer-thumb__order { position: absolute; top: 4px; left: 4px; display: grid; place-items: center; min-width: 20px; height: 20px; padding: 0 5px; box-sizing: border-box; border-radius: var(--r-pill); background: var(--inv); color: var(--oninv); font-size: var(--fs-glyph); font-weight: 600; box-shadow: 0 0 0 1.5px var(--el); }
 @media (hover: none), (max-width: 680px) {
   .composer-files .composer-thumb__x { top: -17px; right: -17px; width: 44px; height: 44px; min-width: 44px; }
 }
@@ -128,9 +129,9 @@ span.photo-grid__open { cursor: default; }
 .is-dropping { outline: 2px dashed var(--t2); outline-offset: -6px; border-radius: var(--r-lg); }
 
 /* Inline references in text: chips on the text baseline. */
-.ref-chip { display: inline-flex; align-items: baseline; gap: 4px; padding: 1px 7px; margin: 0 1px; border-radius: var(--r-pill); background: var(--sub); color: var(--t1); font-weight: 550; line-height: 1.35; white-space: nowrap; vertical-align: baseline; }
+.ref-chip { display: inline-flex; align-items: baseline; gap: 4px; padding: 1px 7px; margin: 0 1px; border-radius: var(--r-pill); background: var(--sub); color: var(--t1); font-weight: 500; line-height: 1.35; white-space: nowrap; vertical-align: baseline; }
 .ref-chip svg { align-self: center; flex: none; }
-.ref-chip__face { align-self: center; display: inline-grid; place-items: center; width: 16px; height: 16px; border-radius: 50%; background: var(--el); font-size: 7.5px; font-weight: 700; letter-spacing: .02em; }
+.ref-chip__face { align-self: center; display: inline-grid; place-items: center; width: 16px; height: 16px; border-radius: 50%; background: var(--el); font-size: var(--fs-glyph); font-weight: 600; letter-spacing: .02em; }
 .ref-chip__face::before { content: attr(data-initials); }
 .is-mine > .message-bubble .ref-chip { background: rgba(255, 255, 255, .14); color: var(--oninv); }
 .is-mine > .message-bubble .ref-chip__face { background: rgba(255, 255, 255, .2); }
@@ -147,14 +148,14 @@ span.photo-grid__open { cursor: default; }
 
 /* The phone picker for several files (#348 AC-4): numbered in tap order, every colour a token. */
 .photo-pick__head { padding: 18px 20px 4px; }
-.photo-pick__head h2 { margin: 0; color: var(--t1); font-size: 17px; font-weight: 600; }
+.photo-pick__head h2 { margin: 0; color: var(--t1); font-size: var(--fs-lg); font-weight: 600; }
 .photo-pick__head p { margin: 4px 0 0; color: var(--t3); font-size: var(--fs-xs); }
 .photo-pick__grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; margin: 0; padding: 10px 16px; list-style: none; overflow-y: auto; }
 .photo-pick__tile { position: relative; display: block; width: 100%; aspect-ratio: 1; min-height: 44px; padding: 0; border: 0; border-radius: 16px; overflow: hidden; background: var(--sub); color: var(--t3); cursor: pointer; }
 .photo-pick__face { position: absolute; inset: 0; display: grid; place-items: center; }
 .photo-pick__face img { width: 100%; height: 100%; object-fit: cover; }
 .photo-pick__tile.is-on::after { content: ''; position: absolute; inset: 0; border-radius: 16px; box-shadow: inset 0 0 0 3px var(--inv); pointer-events: none; }
-.photo-pick__num { position: absolute; top: 6px; right: 6px; display: grid; place-items: center; min-width: 26px; height: 26px; box-sizing: border-box; padding: 0 6px; border-radius: var(--r-pill); background: var(--el); box-shadow: inset 0 0 0 1.5px var(--line2); color: var(--t1); font-size: 13px; font-weight: 650; }
+.photo-pick__num { position: absolute; top: 6px; right: 6px; display: grid; place-items: center; min-width: 26px; height: 26px; box-sizing: border-box; padding: 0 6px; border-radius: var(--r-pill); background: var(--el); box-shadow: inset 0 0 0 1.5px var(--line2); color: var(--t1); font-size: var(--fs-md); font-weight: 600; }
 .photo-pick__tile.is-on .photo-pick__num { background: var(--inv); color: var(--oninv); box-shadow: 0 0 0 2px var(--el); }
 .photo-pick__foot { display: flex; justify-content: space-between; gap: 8px; padding: 12px 16px calc(12px + env(safe-area-inset-bottom, 0px)); }
 .photo-pick__foot button { min-height: 44px; min-width: 44px; padding: 0 18px; border: 0; border-radius: var(--r-pill); font: inherit; font-weight: 600; cursor: pointer; }

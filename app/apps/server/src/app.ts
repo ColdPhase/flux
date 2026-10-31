@@ -80,13 +80,6 @@ import { disabledEditingUpgrade } from './editing/disabled-upgrade.js';
 import { useJsonCompression } from './http/compress.js';
 import { useFramingProtection } from './http/framing.js';
 
-/**
- * S3 SWITCH (F-030, #655): encrypted-space creation is a production route, for any signed-in person (no fixture token or bearer).
- * Flipped in the change that merges S3, after S2a-2b-2, S2a-2c, S2b and S2c passed their acceptance criteria and the full AC-7 and
- * AC-13 passed on S2c's final head (docs/product/encrypted-workspaces.md, delivery slices).
- */
-const ENCRYPTED_CREATION_IN_PRODUCTION = true;
-
 declare module 'fastify' {
   interface FastifyInstance {
     /**
@@ -160,8 +153,7 @@ export async function buildApp(config: ServerConfig, migrationsDir = 'packages/d
   if (encryptionKeys.availability === 'swap_unsafe') app.log.warn('Encrypted workspaces stay locked here: this server can write memory to disk (swap is on and not limited). Turn swap off or set FLUX_SWAP_ACKNOWLEDGED=encrypted-swap if every swap device is encrypted.');
   await app.register(async (scope) => encryptionRoutes(scope, { sessions: identity, encryption,
     // S1/S2: creation exists only in a test deployment and with the fixture bearer (never on a ./flux up install).
-    fixtureCreation: testDeployment ? config.fixture.token : null,
-    productionCreation: ENCRYPTED_CREATION_IN_PRODUCTION }));
+    fixtureCreation: testDeployment ? config.fixture.token : null }));
   const liveMedia = createLiveMediaFromEnv(env, identityConfig.publicOrigin);
   const lifecycle = liveMedia ? liveLifecycle(db, pool, liveMedia.media) : null;
   const liveRevocation = liveMedia ? liveRevocationCoordinator(db, pool, liveMedia.media, lifecycle!) : null;

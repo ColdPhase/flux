@@ -1,6 +1,5 @@
 import { SEARCH_PATH, type SearchFilterType, type SearchResponse, type SearchTarget } from '@flux/contracts';
 import { request } from '../api/client';
-import { noteLockedWorkspaces } from '../encryption/api';
 
 /** Search across Flux (#114). The server answers only with what the person may open now. */
 export interface SearchParams { q: string; type?: SearchFilterType | null; place?: string | null; cursor?: string | null; limit?: number }
@@ -11,8 +10,7 @@ export function searchFlux(params: SearchParams, signal?: AbortSignal) {
   if (params.place) query.set('place', params.place);
   if (params.cursor) query.set('cursor', params.cursor);
   if (params.limit) query.set('limit', String(params.limit));
-  // F-030: an encrypted space locked here is left out and named (`lockedWorkspaces`); the shell shows it as waiting.
-  return request<SearchResponse>(`${SEARCH_PATH}?${query}`, { signal }).then(noteLockedWorkspaces);
+  return request<SearchResponse>(`${SEARCH_PATH}?${query}`, { signal });
 }
 
 /** Where a result opens: the exact message, version, thought or object. */

@@ -25,7 +25,7 @@
 .outbox-status.is-failed svg { flex: none; }
 .outbox-status__why { color: var(--t2); }
 .outbox-status__acts { display: inline-flex; gap: 4px; }
-.outbox-status__b { font: inherit; font-weight: 550; color: var(--t1); background: transparent; border: 0; border-radius: var(--r); min-height: 28px; padding: 2px 8px; cursor: pointer; text-decoration: underline; text-underline-offset: 2px; touch-action: manipulation; }
+.outbox-status__b { font: inherit; font-weight: 600; color: var(--t1); background: transparent; border: 0; border-radius: var(--r); min-height: 28px; padding: 2px 8px; cursor: pointer; text-decoration: underline; text-underline-offset: 2px; touch-action: manipulation; }
 .outbox-status__b:hover { background: var(--hov); }
 .outbox-status__b:active { background: var(--sub); }
 .outbox-status__b:focus-visible { outline: 2px solid var(--t1); outline-offset: 2px; }

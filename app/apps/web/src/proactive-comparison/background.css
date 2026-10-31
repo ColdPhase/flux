@@ -55,8 +55,8 @@
 /* On the phone the header already names the page: one title (#513). */
 @media (max-width: 640px) { .sset-in.background-settings .background-settings__head h2 { display: none; } }
 @media (pointer: coarse) {
-  .background-settings__fields input:not([type=checkbox]), .background-settings__price input { font-size: 16px; min-height: 44px; }
-  .background-settings__select input, .background-settings__select .ui-select, .background-settings__fields .ui-select { font-size: 16px; min-height: 44px; }
+  .background-settings__fields input:not([type=checkbox]), .background-settings__price input { font-size: var(--fs-input-touch); min-height: 44px; }
+  .background-settings__select input, .background-settings__select .ui-select, .background-settings__fields .ui-select { font-size: var(--fs-input-touch); min-height: 44px; }
   .background-settings__fields .background-settings__check, .background-settings__back { min-height: 44px; }
   .background-settings__agent-option summary { min-height: 44px; }
   .background-usage__history summary { min-height: 44px; }

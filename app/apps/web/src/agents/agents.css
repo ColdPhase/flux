@@ -10,7 +10,7 @@
   flex: 1 0 auto;
 }
 .agents__head { display: flex; align-items: baseline; gap: var(--s-3); flex-wrap: wrap; }
-.agents__title { margin: 0; font-size: var(--fs-2xl); font-weight: 600; letter-spacing: -0.025em; }
+.agents__title { margin: 0; font-size: var(--fs-xl); font-weight: 600; letter-spacing: -0.025em; }
 .agents__no-connections { margin: 0; color: var(--t3); font-size: var(--fs-sm); line-height: 1.5; }
 
 /* One list (P9): each agent with its owner and what it is doing now, then Requests, Policy and Connect. */
@@ -97,7 +97,7 @@
 .agents-msg > :is(.ui-avatar, .author-face) { position: absolute; left: 0; top: 0; }
 .agents-msg > :not(.ui-avatar, .author-face) { min-width: 0; max-width: 100%; }
 .agents-msg__meta { display: flex; flex-wrap: wrap; gap: 4px 9px; align-items: baseline; font-size: var(--fs-xs); color: var(--t3); }
-.agents-msg__meta b { min-width: 0; overflow-wrap: anywhere; font-size: var(--fs-sm); font-weight: 550; color: var(--t1); }
+.agents-msg__meta b { min-width: 0; overflow-wrap: anywhere; font-size: var(--fs-sm); font-weight: 600; color: var(--t1); }
 .agents-msg__meta .agent-id__name { white-space: normal; overflow: visible; overflow-wrap: anywhere; }
 .agents-msg__kind { color: var(--t3); }
 .message-bubble > .message-body.agents-msg__body { margin: 0; font-size: var(--fs-base); line-height: 1.7; white-space: pre-wrap; overflow-wrap: anywhere; }
@@ -121,7 +121,6 @@
   .agents-scroll { scroll-padding-bottom: calc(var(--ctl-lg) + var(--s-6)); }
   .agents-msg { padding-left: 42px; }
   .agents { padding: var(--s-4); gap: var(--s-4); }
-  .agents__title { font-size: var(--fs-xl); }
   /* The title and count stay on top; the one primary button waits above the navigation (phone-agents). */
   .agents__head { display: contents; }
   .agents__title { order: -2; }

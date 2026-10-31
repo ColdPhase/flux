@@ -33,7 +33,7 @@
 .nyc__chip { flex: none; display: inline-flex; align-items: center; height: 22px; padding: 0 10px; border-radius: var(--r-pill); background: var(--inv); color: var(--oninv); font-size: var(--fs-xs); font-weight: 500; }
 .nyc__eyebrow { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 6px; margin: 0; font-size: var(--fs-xs); color: var(--t3); }
 .nyc__eyebrow b { color: var(--t1); font-size: var(--fs-base); }
-.nyc__title { margin: 0; font-size: 1.0625rem; line-height: 1.35; font-weight: 600; letter-spacing: -.01em; overflow-wrap: anywhere; }
+.nyc__title { margin: 0; font-size: var(--fs-lg); line-height: 1.35; font-weight: 600; letter-spacing: -.01em; overflow-wrap: anywhere; }
 .nyc--note .nyc__title, .nyc--blocked .nyc__title, .nyc--mention .nyc__title, .nyc--question .nyc__title { font-size: var(--fs-lg); }
 .nyc__open { padding: 0; border: 0; background: none; color: inherit; font: inherit; letter-spacing: inherit; text-align: left; cursor: pointer; }
 .nyc__open:hover { text-decoration: underline; text-underline-offset: 3px; }
@@ -52,7 +52,7 @@
 .nyc__nn--quiet { background: transparent; box-shadow: none; color: var(--t2); }
 .nyc__waiting { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: var(--fs-sm); color: var(--t2); }
 .nyc__waiting b { font-weight: 600; color: var(--t1); }
-.nyc__waiting .ui-avatar { width: 20px; height: 20px; font-size: 8px; }
+.nyc__waiting .ui-avatar { width: 20px; height: 20px; font-size: var(--fs-glyph); }
 .nyc--note .nyc__actions, .nyc--blocked .nyc__actions, .nyc--mention .nyc__actions, .nyc--question .nyc__actions { margin-top: 2px; }
 @media (pointer: fine) {
   /* A quiet item shows its small buttons when it is the one you are on. */
