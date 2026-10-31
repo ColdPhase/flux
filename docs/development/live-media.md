@@ -583,6 +583,12 @@ What the thresholds do **not** claim, from the same data:
   track; his best track was never below 12.8 before `full4`'s 9.9). A 10 kbit/s gate inside that spread failed about
   one run in ten, so after the review of #797 it is a 5 kbit/s liveness check, and whether he hears again is gated
   on the window after the link returns.
+  First run with the new gates (`weak1`, at `eaf0ff7c1`, four people): 241 checks, no failure. In the weak window Tom's
+  best track was **5.5 kbit/s**, below the earlier 9.9 to 22.3 and only 0.5 above the liveness gate, so that gate is
+  still close to the observations; after the link returned his three tracks were 46.2 to 92.7 kbit/s with 0.34 to
+  0.60 % concealed and the screen at 14.6 fps. The two-person profiles in the same invocation failed one clean-window gate unrelated to
+  this change (Ada's speech 6.0 % concealed against 3 %, with Jonas's camera capture at 11 fps: a loaded moment);
+  re-run (`weak2`): passed, 67 checks.
 *Superseded later on 2026-10-31 by the [1440p code/text profile](#1440p-codetext-profile-63-ac-2-2026-10-31), which gates it:*
 - **Code and text at 14 to 16 px, 2560×1440, 15 to 30 fps, scrolling (AC-2's first target) has no gate and is not
   claimed.** The simulation gates Sharp text only on `testsrc2` at 1920×1080 (≥ 1080 rows, ≥ 7 fps; 8.9 to 10.6 fps
