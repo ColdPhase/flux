@@ -79,7 +79,7 @@ export function ProjectMap() {
         {typeof state === 'object' && !state.items.length ? (
           <div className="view-empty">
             <EmptyState icon="map" title={`Sketch ideas for ${project.name}`} action={action}>
-              <p>A map is for thinking out loud together: put thoughts down, connect one idea to several options, and move them around. Nothing on a map has to become work.</p>
+              <p>A map is for thinking out loud together: put thoughts down, connect one idea to several options, and move them around. Nothing on a map has to become a task.</p>
               <p>Everyone in {project.name} can see a sketch made here.</p>
             </EmptyState>
           </div>
@@ -106,7 +106,7 @@ export function ProjectMap() {
                 </li>
               ))}
             </ul>
-            <p className="pv-note">A sketch is for thinking out loud: one idea can link to several options, and nothing on it has to become work. Link a thought from work or a decision to see it in Details.</p>
+            <p className="pv-note">A sketch is for thinking out loud: one idea can link to several options, and nothing on it has to become a task. Link a thought from a task or a decision to see it in Details.</p>
             {state.items.length < state.total ? (
               <div className="sk-index-more">
                 <Button onClick={() => setPages((n) => n + 1)}>Show more sketches</Button>

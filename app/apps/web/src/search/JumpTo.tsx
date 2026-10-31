@@ -179,6 +179,9 @@ function JumpBody({ onClose, userId, phone, page }: { onClose: () => void; userI
   const create = (rest ? `New task “${rest.length > 40 ? `${rest.slice(0, 39)}…` : rest}”` : 'New task');
   const actions: Option[] = scope !== 'all' ? [] : [
     ...(rest && 'ask my assistant'.includes(rest.toLowerCase()) ? askMine : []),
+    // "What matters", the project's recap, is found by its name or "recap" (#763 H11-2).
+    ...(here && rest && rest.length >= 3 && ('what matters'.includes(rest.toLowerCase()) || /^(recap|summary|since)/i.test(rest))
+      ? [{ kind: 'command' as const, section: 'Actions', id: 'action-recap', label: 'What matters', icon: 'leaf' as const, run: () => openDetails({ kind: 'recap', projectId: here }) }] : []),
     // A task needs a project: with none yet, the same row makes the project (#763 FR-2).
     projects.length ? { kind: 'command', section: 'Create', id: 'create-task', label: create, icon: 'plus', keys: ['C'], run: () => openCreate({ kind: 'task', ...(here ? { projectId: here } : {}), ...(rest ? { title: rest } : {}) }) }
       : { kind: 'command', section: 'Create', id: 'create-project', label: rest ? `New project “${rest.length > 40 ? `${rest.slice(0, 39)}…` : rest}”` : 'New project', icon: 'plus', keys: ['C'], run: () => openCreate({ kind: 'project', ...(rest ? { title: rest } : {}) }) },

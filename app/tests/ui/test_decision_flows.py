@@ -223,6 +223,10 @@ class DecisionFlows(unittest.TestCase):
         page = self.page()
         page.goto("/inbox")
         card = page.locator(".nyc", has_text=FROM_MESSAGE)
+        expect(card).to_be_visible()
+        if "nyc--compact" in (card.get_attribute("class") or ""):  # #763 LD-1: only the selected item shows Discuss
+            frame = card.locator(".nyc__card").bounding_box()
+            page.mouse.click(frame["x"] + 10, frame["y"] + frame["height"] / 2)
         card.get_by_role("button", name="Discuss", exact=True).click()
         expect(page).to_have_url(re.compile(f"/conversations/{self.ids['conversation']}"))
         expect(page.locator("#thread-composer")).to_be_focused()

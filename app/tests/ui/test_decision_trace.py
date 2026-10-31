@@ -200,7 +200,8 @@ class DecisionTrace(unittest.TestCase):
         # In the stream the line says where it came from: the thread's opening message, by its author.
         from_root = stream.locator('.convo-object[data-object-kind="decision.proposed"]', has_text=title)
         expect(from_root.locator(".convo-notice__what")).to_contain_text("proposed a decision from")
-        expect(from_root.get_by_role("button", name="Ada’s message")).to_be_visible()
+        # #763 WF-2: Ada reads her own message as "your message".
+        expect(from_root.get_by_role("button", name="your message")).to_be_visible()
         shot(ada, f"decision-trace-{'phone' if phone else 'desktop'}-stream")
         # A card opens its decision.
         stream.locator(".convo-object__card", has_text=title).first.click()

@@ -106,12 +106,12 @@ class HomeInboxNav(unittest.TestCase):
     def no_sideways_scroll(self, page: Page) -> None:
         self.assertLessEqual(page.evaluate("document.documentElement.scrollWidth - document.documentElement.clientWidth"), 0, "no horizontal page scroll")
 
-    def ask(self, question: str) -> dict:
+    def ask(self, question: str, options: list[str] | None = None) -> dict:
         assert self.agent
         return self.agent.tool("flux_ask_question", {
             "projectId": self.ids["project"], "runtimeSessionId": self.agent.runtime, "peerRequestClass": "execute", "grantId": self.ids["reply_grant"],
             "clientCommandId": str(uuid.uuid4()), "sources": [], "conversationId": self.ids["thread"], "question": question,
-            "options": ["Per bed", "One value"], "askUserId": self.ids["ada"]})
+            "options": options or ["Per bed", "One value"], "askUserId": self.ids["ada"]})
 
     def questions(self) -> list[dict]:
         return self.api("ada", "GET", f"/api/v1/projects/{self.ids['project']}/agent-questions", status=200)["questions"]
@@ -243,6 +243,49 @@ class HomeInboxNav(unittest.TestCase):
             page.goto("/")
             expect(page.locator(f'.nyc[data-key="{key}"]').get_by_role("button", name="Per bed", exact=True)).to_be_visible()
             self.no_sideways_scroll(page)
+
+    def test_03b_long_answers_wrap_and_never_overlap(self) -> None:
+        """#763 H11-1: 80-character ready answers wrap inside their buttons and stack; they never overlap on a phone, and on
+        Home with the Details panel open the question keeps a readable width."""
+        long = ["Measure every bed separately at ten and thirty centimetres, then average per bed",
+                "Use one shared offset for all six beds, taken from the driest bed this morning"]
+        asked = self.ask("Which calibration should I apply before the dawn log?", long)
+        key = f"question:{asked['questionId']}"
+        self.wait_for_item(key)
+
+        def check(page: Page, card) -> None:
+            boxes = [card.get_by_role("button", name=text, exact=True).bounding_box() for text in long]
+            for text, rect in zip(long, boxes):
+                assert rect, text
+                self.assertLessEqual(rect["x"] + rect["width"], page.viewport_size["width"], text)
+                button = card.get_by_role("button", name=text, exact=True)
+                self.assertLessEqual(button.evaluate("el => el.scrollWidth - el.clientWidth"), 1, f"the answer wraps inside its button: {text}")
+            a, b = boxes
+            apart = a["x"] + a["width"] <= b["x"] + 1 or b["x"] + b["width"] <= a["x"] + 1 or a["y"] + a["height"] <= b["y"] + 1 or b["y"] + b["height"] <= a["y"] + 1
+            self.assertTrue(apart, f"the answers do not overlap: {boxes}")
+
+        for engine_page, where in ((lambda: self.page(phone=True), "/inbox"), (lambda: self.page(phone=True), "/")):
+            page = engine_page()
+            page.goto(where)
+            card = page.locator(f'.nyc[data-key="{key}"]')
+            expect(card).to_be_visible()
+            if "nyc--compact" in (card.get_attribute("class") or ""):
+                card.get_by_role("button", name="Answer").click()
+            check(page, card)
+            self.no_sideways_scroll(page)
+            shot(page, f"question-long-answers-390-{'inbox' if where == '/inbox' else 'home'}")
+        # Home on the computer with Details open: the question is not squeezed to a letter per line.
+        page = self.page()
+        page.goto("/")
+        page.locator("#content .home").get_by_role("button", name="Details", exact=True).click()
+        expect(page.get_by_role("complementary", name="Details")).to_be_visible()
+        row = page.locator(f'.nyc[data-key="{key}"]')
+        expect(row).to_be_visible()
+        self.assertGreater(row.locator(".nyc__title").bounding_box()["width"], 160, "the question keeps a readable width")
+        check(page, row)
+        shot(page, "question-long-answers-1440-home-details")
+        # Answer it so the next tests start from the same queue.
+        row.get_by_role("button", name=long[0], exact=True).click()
 
     # ---------------------------------------------------------------- NV-1
 

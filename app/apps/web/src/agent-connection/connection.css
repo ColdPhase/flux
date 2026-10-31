@@ -189,3 +189,20 @@
 /* Links on the page line up on the left, under the content they belong to (#763 AG-6). */
 .connection > .ui-btn--link, .connection__saved > .ui-btn--link { align-self: flex-start; }
 @media (max-width: 640px) { .connection-settings__back { display: none; } /* the phone header's Back leads to Agents and AI */ }
+
+/* A label sits close to its own field and apart from the one above (#763 SP-2). */
+.connection__create .connection__label { margin: 8px 0 -6px; }
+.connection__create .connection__label:first-of-type { margin-top: 0; }
+/* During a client's sign-in, what most people never change is folded (#763 WF-5). */
+.connection__more { border-top: 1px solid var(--line); padding-top: 10px; }
+.connection__more > summary { display: inline-flex; align-items: center; gap: 6px; min-height: 32px; cursor: pointer; list-style: none; color: var(--t2); font-size: var(--fs-sm); font-weight: 600; }
+.connection__more > summary::-webkit-details-marker { display: none; }
+.connection__more > summary svg { transition: transform .2s; transform: rotate(-90deg); }
+.connection__more[open] > summary svg { transform: none; }
+.connection__more-in { display: flex; flex-direction: column; gap: 12px; padding-top: 10px; }
+.connection__more-in > p { color: var(--t3); font-size: var(--fs-sm); line-height: 1.55; }
+.connection__more-in .ui-select, .connection__more-in > input:not(.ui-select__field) { width: 100%; min-height: var(--ctl-lg); padding: 7px 10px; border: 1px solid var(--line2); border-radius: var(--r); background: var(--el); color: var(--t1); }
+.connection__more-in .connection__label { margin: 8px 0 -6px; }
+.connection__create input::placeholder { color: var(--t3); font-style: italic; }
+.connection__missing { flex-basis: 100%; margin: 0; color: var(--t1); font-size: var(--fs-sm); }
+@media (pointer: coarse) { .connection__more > summary { min-height: 44px; } }

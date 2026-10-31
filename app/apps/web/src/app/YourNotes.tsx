@@ -300,7 +300,7 @@ function NotesSection() {
           </section>
         ) : !serverDrafts.length ? (
           <ViewEmpty icon="chat" title="Nothing here yet" level={3}>
-            <p>Write your first note below. When you’re added to a project or someone messages you, those conversations open from the sidebar.</p>
+            <p>Write your first note below. When you’re added to a project or someone messages you, those conversations appear under Projects and Messages.</p>
           </ViewEmpty>
         ) : null}
         <div ref={endRef} />

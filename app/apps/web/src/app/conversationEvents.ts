@@ -34,10 +34,19 @@ export function possessive(name: string): string {
   return `${first}’s`;
 }
 
+/**
+ * Whose message, said to the reader (#763 WF-2): the actor's own message is "your message" when the reader is the actor
+ * and "their own message" otherwise; anyone else's is "Jonas’s message".
+ */
+export function messageOf(author: string, actor?: { name: string; mine: boolean }): string {
+  if (actor && author === actor.name) return actor.mine ? 'your message' : 'their own message';
+  return `${possessive(author)} message`;
+}
+
 /** The part after the creator's name for one task: "made a task from", "added a task in Tasks", ... */
-export function sourcePhrase(source: NoticeSource): { lead: string; link?: string } {
+export function sourcePhrase(source: NoticeSource, actor?: { name: string; mine: boolean }): { lead: string; link?: string } {
   switch (source.kind) {
-    case 'message': return source.author ? { lead: 'made a task from', link: `${possessive(source.author)} message` } : { lead: 'made a task from', link: 'a message' };
+    case 'message': return source.author ? { lead: 'made a task from', link: messageOf(source.author, actor) } : { lead: 'made a task from', link: 'a message' };
     case 'map': return { lead: 'added a task on the Map' };
     case 'material': return { lead: 'made a task from a source' };
     default: return { lead: 'added a task' };
@@ -106,12 +115,15 @@ export function sinceLine(summary: Pick<ReturnSummary, 'items' | 'more'>): strin
 }
 
 /** The first thing unread that the stream can show, oldest first; items arrive newest first. */
-export function firstUnread(summary: Pick<ReturnSummary, 'items'>, roots: ConversationRoot[]): { messageId: string; conversationId: string | null } | { workId: string } | null {
+/** The first unread item; decisions and results count too (#763 H11-3), so Jump never lands after an accepted rule. */
+export type UnreadTarget = { messageId: string; conversationId: string | null } | { workId: string } | { objectKind: 'decision' | 'result'; objectId: string };
+export function firstUnread(summary: Pick<ReturnSummary, 'items'>, roots: ConversationRoot[]): UnreadTarget | null {
   const rootIds = new Set(roots.map((root) => root.message.id));
   for (const item of [...summary.items].reverse()) {
     const source = item.source;
     if (source.type === 'message') return { messageId: source.messageId, conversationId: rootIds.has(source.messageId) ? null : source.conversationId };
     if (source.type === 'work') return { workId: source.id };
+    if (source.type === 'decision' || source.type === 'result') return { objectKind: source.type, objectId: source.id };
   }
   return null;
 }

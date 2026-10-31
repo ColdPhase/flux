@@ -114,8 +114,10 @@ export function WaitingLine({ item }: { item: NeedsYouItem }) {
  * "Needs you", the reason, what it rests on, then Accept / Not now / Discuss. The tray after the card
  * holds Not now and Done for a swipe left on a phone; on a computer they are quiet buttons.
  */
-export function NeedsYouCard({ item, variant = 'card', selected = false, handlers, menuOpen, onMenuOpen, children }: {
-  item: NeedsYouItem; variant?: 'card' | 'row'; selected?: boolean; handlers: CardHandlers;
+export function NeedsYouCard({ item, variant = 'card', selected = false, compact = false, onSelect, handlers, menuOpen, onMenuOpen, children }: {
+  item: NeedsYouItem; variant?: 'card' | 'row'; selected?: boolean;
+  /** An Inbox card that is not the selected one: one line with its one action, as drawn (desktop-inbox, #763 LD-1). */
+  compact?: boolean; onSelect?: () => void; handlers: CardHandlers;
   menuOpen: boolean; onMenuOpen: (open: boolean) => void; children?: ReactNode;
 }) {
   // On a phone Not now and Done wait behind the card (a swipe left); elsewhere they are quiet buttons.
@@ -138,6 +140,19 @@ export function NeedsYouCard({ item, variant = 'card', selected = false, handler
   const answers = asked && handlers.answer ? asked.options.map((option, index) => (
     <Button key={option} variant="secondary" className="nyc__answer" onClick={() => handlers.answer?.(item, index)}>{option}</Button>
   )) : null;
+
+  // A compact card keeps one quiet action on its right; the selected card alone carries the inverted primary.
+  const single = compact ? (
+    <div className="nyc__rowactions">
+      {decision ? <Button variant="secondary" onClick={() => handlers.accept(item)}>Accept</Button>
+        : item.kind === 'blocked' ? <Button variant="secondary" onClick={() => handlers.open(item)}>Open task</Button>
+        : answers ? <Button variant="secondary" onClick={() => onSelect?.()}>Answer</Button>
+        : item.proposal ? <Button variant="secondary" onClick={() => handlers.open(item)}>Review</Button>
+        : item.assistantChanges ? <Button variant="secondary" onClick={() => handlers.applyChanges(item)}>{item.assistantChanges.verb}</Button>
+        : <Button variant="secondary" onClick={() => handlers.open(item)}>{item.assistantRequestIdentity ? 'Review' : item.reason === 'invitation' ? 'Open' : 'Reply'}</Button>}
+    </div>
+  ) : null;
+  const full = variant === 'card' && !compact;
 
   const actions = (
     <div className="nyc__actions">
@@ -173,18 +188,20 @@ export function NeedsYouCard({ item, variant = 'card', selected = false, handler
   );
 
   return (
-    <li className={`nyc nyc--${variant} nyc--${item.kind}${selected ? ' is-selected' : ''}`} data-key={item.key} data-ai-surface={item.from?.kind === 'agent' || item.key.startsWith('assistant:') ? 'needs-you-ai' : undefined} aria-current={selected ? 'true' : undefined} aria-label={label}>
+    <li className={`nyc nyc--${variant} nyc--${item.kind}${selected ? ' is-selected' : ''}${compact ? ' nyc--compact' : ''}`} data-key={item.key} data-ai-surface={item.from?.kind === 'agent' || item.key.startsWith('assistant:') ? 'needs-you-ai' : undefined} aria-current={selected ? 'true' : undefined} aria-label={label}>
       <div className="nyc__scroll">
-        <div className="nyc__card">
+        {/* A click on a compact card's free space selects it, and it opens up; its title and button keep their own actions. */}
+        <div className="nyc__card" onClick={compact && onSelect ? (event) => { if (!(event.target as HTMLElement).closest('button, a')) onSelect(); } : undefined}>
           <Face item={item} />
           <div className="nyc__body">
-            {variant === 'card' && decision ? (
+            {full && decision ? (
               <div className="nyc__head">
                 <span className="nyc__who">
                   <b>{who}</b>{item.from?.kind === 'agent' ? <AgentTag /> : null}
                   <span className="nyc__meta">{meta} · {when(item.at)}</span>
                 </span>
-                <span className="nyc__chip">Needs you</span>
+                {/* Every item here needs you; the pill marks only the one you are on, on the computer, as drawn. */}
+                {selected && !touch ? <span className="nyc__chip">Needs you</span> : null}
               </div>
             ) : (
               <p className="nyc__eyebrow">
@@ -199,10 +216,10 @@ export function NeedsYouCard({ item, variant = 'card', selected = false, handler
               <button type="button" className="nyc__open" onClick={() => item.assistantChanges?.suggestion ? setReview(!review) : handlers.open(item)} aria-haspopup={item.kind === 'decision' || item.kind === 'blocked' ? 'dialog' : undefined}>{item.title}</button>
             </h3>
             {review && item.assistantChanges?.suggestion ? <div className="nyc__reason" style={{ whiteSpace: 'pre-wrap' }}>{item.assistantChanges.changes.map((change) => <p key={change.id}>{change.phrase} {change.objectTitle}{'\n'}{change.preview}</p>)}</div> : null}
-            {item.assistantNote ? <p className="nyc__reason">Your assistant: {item.assistantNote}</p> : null}
-            {item.assistantDraft ? <p className="nyc__reason">Drafted by your assistant · ready to review in Reply</p> : null}
-            {variant === 'card' && item.detail && item.kind !== 'blocked' && !item.proposal ? <p className="nyc__reason">{item.detail}</p> : null}
-            {variant === 'card' && item.proposal ? (
+            {item.assistantNote && !compact ? <p className="nyc__reason">Your assistant: {item.assistantNote}</p> : null}
+            {item.assistantDraft && !compact ? <p className="nyc__reason">Drafted by your assistant · ready to review in Reply</p> : null}
+            {full && item.detail && item.kind !== 'blocked' && !item.proposal ? <p className="nyc__reason">{item.detail}</p> : null}
+            {full && item.proposal ? (
               <dl className="nyc__reason nyc__proposal" data-testid="agent-suggestion">
                 <dt>Seen</dt><dd>{item.proposal.fact}</dd>
                 <dt>Meaning</dt><dd>{item.proposal.interpretation}</dd>
@@ -210,13 +227,14 @@ export function NeedsYouCard({ item, variant = 'card', selected = false, handler
                 <dt>Based on</dt><dd>{item.proposal.source.title} (version {item.proposal.source.version})</dd>
               </dl>
             ) : null}
-            {variant === 'card' && item.blocked?.waitingFor ? <p className="nyc__reason">Waiting for #{item.blocked.waitingFor.number} {item.blocked.waitingFor.title}</p> : null}
-            {variant === 'card' && decision && item.decision?.basedOn.length ? <p className="nyc__based"><span>Based on</span> {item.decision.basedOn.join(' · ')}</p> : null}
-            {variant === 'card' && decision && item.decision?.supersedes ? <p className="nyc__based"><span>Would replace</span> {item.decision.supersedes}</p> : null}
-            {variant === 'card' && decision ? (
+            {full && item.blocked?.waitingFor ? <p className="nyc__reason">Waiting for #{item.blocked.waitingFor.number} {item.blocked.waitingFor.title}</p> : null}
+            {full && !touch && decision && item.decision?.basedOn.length ? <p className="nyc__based"><span>Based on</span> {item.decision.basedOn.join(' · ')}</p> : null}
+            {full && decision && item.decision?.supersedes ? <p className="nyc__based"><span>Would replace</span> {item.decision.supersedes}</p> : null}
+            {full && decision ? (
               <div className="nyc__foot">{actions}<WaitingLine item={item} /></div>
-            ) : variant === 'card' ? actions : null}
+            ) : full ? actions : null}
           </div>
+          {single}
           {variant === 'row' ? <div className="nyc__rowactions">{decision ? <>
             <Button variant="primary" onClick={() => handlers.accept(item)}>Accept</Button>
             <NotNowButton buttonRef={notNow} open={menuOpen} onToggle={() => onMenuOpen(!menuOpen)} /></> : answers ? answers : item.proposal ? <Button variant="secondary" onClick={() => handlers.open(item)}>Review</Button> : item.assistantChanges

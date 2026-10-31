@@ -1,11 +1,11 @@
 import type { ObjectNotice } from '@flux/contracts';
-import { noticeSource, possessive } from './conversationEvents';
+import { messageOf, noticeSource } from './conversationEvents';
 
 // What the conversation says about a decision or a result (#694, F-026 P5). Pure functions: the stream and the
 // open thread render the same lines, and the thread picks out the ones that came from it.
 
 /** The words of one line after the name: "proposed a decision from", with the part that links, "Jonas’s message". */
-export function objectPhrase(notice: ObjectNotice, authorOf: (messageId: string) => string | null, inThread: boolean): { lead: string; link?: string; linkTo?: 'message' | 'thread' } {
+export function objectPhrase(notice: ObjectNotice, authorOf: (messageId: string) => string | null, inThread: boolean, actor?: { name: string; mine: boolean }): { lead: string; link?: string; linkTo?: 'message' | 'thread' } {
   const what = notice.kind === 'result.recorded' ? `recorded a ${notice.finding === 'negative' ? 'negative ' : ''}result`
     : notice.kind === 'decision.accepted' ? 'accepted a decision' : 'proposed a decision';
   // Accepting is a person's step on the proposal, not a new origin: it names no source.
@@ -14,7 +14,7 @@ export function objectPhrase(notice: ObjectNotice, authorOf: (messageId: string)
   if (source.kind === 'message') {
     // In its own thread the line does not say where: it is already there.
     if (inThread) return { lead: what };
-    if (source.author) return { lead: `${what} from`, link: `${possessive(source.author)} message`, linkTo: 'message' };
+    if (source.author) return { lead: `${what} from`, link: messageOf(source.author, actor), linkTo: 'message' };
     return notice.conversationId ? { lead: `${what} in`, link: 'a thread', linkTo: 'thread' } : { lead: `${what} from`, link: 'a message' };
   }
   if (source.kind === 'map') return { lead: `${what} from a thought` };

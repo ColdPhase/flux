@@ -408,7 +408,6 @@ class FirstRunSettingsPeople(unittest.TestCase):
         stranger.get_by_label("Email").fill(newcomer)
         stranger.get_by_label("Password").fill(PASSWORD)
         stranger.get_by_role("button", name="Create account").click()
-        stranger.get_by_role("button", name="Join Maria’s space").click()
         expect(stranger.get_by_role("heading", level=1, name="You joined Maria’s space")).to_be_visible()
         stranger.get_by_role("button", name="Open Maria’s space").click()
         expect(stranger.get_by_role("heading", level=1, name="Home")).to_be_visible()

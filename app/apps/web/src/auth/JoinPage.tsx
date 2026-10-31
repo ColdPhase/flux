@@ -61,12 +61,21 @@ export function JoinPage() {
     const controller = new AbortController();
     Promise.all([getMe(controller.signal).catch(() => null), previewInvite(token, controller.signal),
       getCapabilities(controller.signal).catch(() => null)])
-      .then(([me, preview, capabilities]) => setState({ kind: 'ready', preview, me, signup: capabilities?.signup ?? 'open', sso: capabilities?.sso?.label ?? null }),
+      .then(([me, preview, capabilities]) => {
+        setState({ kind: 'ready', preview, me, signup: capabilities?.signup ?? 'open', sso: capabilities?.sso?.label ?? null });
+        // An account made from this link joins as it is made (#763 FT-3): the person said so when they chose "Create an account".
+        if (me && preview.state === 'pending' && new URLSearchParams(window.location.search).get('created') === '1') {
+          window.history.replaceState(window.history.state, '', window.location.pathname);
+          void join();
+        }
+      },
         (error: unknown) => {
         if (error instanceof DOMException && error.name === 'AbortError') return;
         setState({ kind: 'problem', ...problemOf(error) });
       });
     return () => controller.abort();
+    // Read once on arrival; `join` only reads this tab's token.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   async function join() {
@@ -153,7 +162,7 @@ export function JoinPage() {
               ? <p className="auth__alt">New here? Sign in with {sso}; your account is made the first time.</p>
               : signup === 'off'
               ? <p className="auth__alt">New accounts are closed on this Flux server. Ask {preview.invitedBy} to have one made for you.</p>
-              : <Button variant="secondary" size="lg" block onClick={() => navigate('/sign-up?next=%2Fjoin')}>Create an account</Button>}
+              : <Button variant="secondary" size="lg" block onClick={() => navigate(`/sign-up?next=${encodeURIComponent('/join?created=1')}`)}>Create an account</Button>}
             {signup === 'verified' ? <p className="auth__alt">After you confirm your email address, open this invite link again.</p> : null}
           </>
         )}

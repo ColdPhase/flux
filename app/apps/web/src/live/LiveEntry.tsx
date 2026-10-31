@@ -61,7 +61,7 @@ export function LiveEntry({ variant = 'header', anchor: given, onAction }: {
     </button>
   ) : variant === 'header' ? (
     <span className="lv-entry">
-      <Button variant="quiet" icon="together" className="lv-entry__btn" aria-disabled="true" aria-label="Together" aria-describedby={noteId}>
+      <Button variant="quiet" icon="together" className="lv-entry__btn" aria-disabled="true" aria-label="Together" aria-describedby={noteId} title={reason}>
         <span className="lv-entry__label">Together</span>
       </Button>
       <span id={noteId} className="ui-vh">{reason}</span>

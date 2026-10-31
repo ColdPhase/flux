@@ -16,7 +16,7 @@ import { NotNowButton, NotNowMenu, WaitingLine } from '../notifications/NeedsYou
 import '../notifications/needs-you.css';
 import { useDiscussDecision } from './discuss';
 import { acceptDecision, createResult, listAgents, proposeDecision, undoTaskCreation, updateWork } from './api';
-import { STATUS_LABEL, decisionLine, firstLine, isFinished, linked, resultLine, shortDate, taskNumber } from './format';
+import { STATUS_LABEL, decisionLine, firstClause, firstLine, isFinished, linked, resultLine, shortDate, taskNumber } from './format';
 import { docsLinking } from '../docs/AddToDoc';
 import { useAgentOwners } from '../agents/owners';
 import { HandOffDialog } from '../agents/HandOff';
@@ -809,7 +809,8 @@ function ProposeDecision({ view, context, contextStatus, revision, isCurrent }: 
   const candidates = useWorkChoices(me.user.id, view.projectId, { purpose: 'choices', choice: 'accepted_decisions' }, !!context, revision);
   const current = candidates.page?.items.filter((item) => item.kind === 'decision') ?? [];
   // Words typed after /decide win over the source's own: the source then says where they came from.
-  const [title, setTitle] = useState(view.title ?? (view.source ? firstLine(view.source.text) : ''));
+  // A short title from the message's first clause, not the whole message (#763 WF-3).
+  const [title, setTitle] = useState(view.title ?? (view.source ? firstClause(firstLine(view.source.text)) : ''));
   const [rationale, setRationale] = useState('');
   const [supersedes, setSupersedes] = useState('');
   const selected = useNativeOwn(me.user.id, view.projectId, 'decision', supersedes || undefined, !!context, revision);

@@ -45,6 +45,15 @@ def settled(page: Page) -> None:
     page.evaluate("() => new Promise((done) => requestAnimationFrame(() => setTimeout(done, 0)))")
 
 
+def open_card(card) -> None:
+    """Opens a compact Inbox card (#763 LD-1): a click on its free space, beside the face."""
+    if "nyc--compact" not in (card.get_attribute("class") or ""):
+        return
+    box = card.locator(".nyc__card").bounding_box()
+    card.page.mouse.click(box["x"] + 10, box["y"] + box["height"] / 2)
+    expect(card).to_have_class(re.compile(r"\bis-selected\b"))
+
+
 class InboxFinal(unittest.TestCase):
     """Tests run in name order; each one leaves the queue as the next expects it."""
 
@@ -709,6 +718,7 @@ class InboxFinal(unittest.TestCase):
         page = self.page()
         page.goto("/inbox")
         card = self.card(page, "is blocked")
+        open_card(card)  # #763 LD-1: only the selected item shows all its actions
         card.get_by_role("button", name="Unblock").click()
         expect(page.get_by_role("status").filter(has_text="Blocker cleared")).to_be_visible()
         expect(card).to_have_count(0)
@@ -723,6 +733,7 @@ class InboxFinal(unittest.TestCase):
         page = self.page()
         page.goto("/inbox")
         question = self.card(page, "asked you")
+        open_card(question)  # #763 LD-1
         question.get_by_role("button", name="Done").click()
         expect(question).to_have_count(0)
         def asked():

@@ -1,7 +1,7 @@
 import { Fragment, useCallback, useEffect, useState, type ReactNode } from 'react';
 import { Link } from 'react-router';
 import type { DecisionRowProjection, NamedPrincipal, NativeWorkRow, Project, WorkReadRef, WorkRowProjection, WorkStatus, ResultRowProjection } from '@flux/contracts';
-import { AgentIdentity, Icon, MEDIA, StatusGlyph, TASK_STATE_WORD, useMediaQuery, type IconName } from '../ui';
+import { AgentIdentity, Icon, StatusGlyph, TASK_STATE_WORD, type IconName } from '../ui';
 import { useShellData } from '../app/data';
 import { useShellActions, type DetailsView, type OverviewView } from '../app/shellContext';
 import { STATUS_LABEL, decisionLine } from '../work/format';
@@ -184,7 +184,6 @@ export function ProjectOverview({ messageId, selection, focusPeople = null, onBa
   const open = useOpenConversation();
   const { me, workspaces } = useShellData();
   const { openDetails } = useShellActions();
-  const phone = useMediaQuery(MEDIA.navDrawer);
   const read = useOverviewWork(me.user.id, shell?.project.id ?? null, open?.conversation?.id ?? null, messageId);
   const current = useProjectWorkSummary();
   const owners = useAgentOwners(shell?.project);
@@ -322,7 +321,8 @@ export function ProjectOverview({ messageId, selection, focusPeople = null, onBa
         <p className="ov-audience"><Icon name={project.visibility === 'workspace' ? 'people' : 'lock'} size={13} />{audienceLine(people, me.user.id, project.visibility === 'workspace')}</p>
         {messageMode ? null : goal.line}
       </>}
-      {phone && !messageMode ? <section className="details__sec ov-sec" aria-label="Project summary">
+      {/* "What matters" on every device, not only the phone (#763 H11-2). */}
+      {!messageMode ? <section className="details__sec ov-sec" aria-label="Project summary">
         <button type="button" className="ov-row" onClick={() => openDetails({ kind: 'recap', projectId: project.id })}>
           <Icon name="leaf" size={16} className="ov-row__ic" />
           <span className="ov-row__b"><span className="ov-row__t">What matters</span></span>
@@ -336,7 +336,7 @@ export function ProjectOverview({ messageId, selection, focusPeople = null, onBa
           {/* One page is not paginated (#512, AC-6). */}
           {multiPage(read.page) ? <WorkPagination page={read.page} busy={read.objectBusy} label="Overview object pages" onCursor={read.moveObjects} onRefresh={read.refreshObjects} /> : null}
         </> : undefined}
-        empty={read.page?.total === 0 ? (project.access !== 'viewer' ? 'Nothing linked yet. Any message can become work, a decision or a result.' : 'Nothing linked yet.') : read.page && !rows.length ? 'No linked objects on this page. Return to the previous page or refresh.' : undefined} />
+        empty={read.page?.total === 0 ? (project.access !== 'viewer' ? 'Nothing linked yet. Any message can become a task, a decision or a result.' : 'Nothing linked yet.') : read.page && !rows.length ? 'No linked objects on this page. Return to the previous page or refresh.' : undefined} />
       {projectMode
         ? <NowSection projectId={project.id} tasks={nowTasks} rule={summaryState?.rule ?? null} lines={nowLines} others={nowOthers} />
         : state.length ? <Rows label={conversation ? 'Elsewhere in this project' : 'Now in this project'} rows={state} /> : null}

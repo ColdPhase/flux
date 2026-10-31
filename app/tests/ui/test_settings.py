@@ -460,19 +460,19 @@ class SettingsJourney(unittest.TestCase):
         page.goto("/settings/appearance")
         switch = page.get_by_role("switch", name="Kreska in small moments")
         assert_touch_target(self, page, switch)
-        # Keep the decorative row unchanged while removing the button's actual extension.
-        # A row-only size check would still pass, but the 28 px native track must fail.
+        # Keep the decorative row unchanged while removing the button's actual extension (#763 SG-4: the switch box is
+        # 44 × 44 with a transparent border around its 28 px track). A row-only check would pass; the bare track must fail.
         row = switch.locator("xpath=..")
         self.assertTrue(has_minimum_touch_size(box(page, row)["height"]))
-        style = page.add_style_tag(content=".sset-switch::after { content: none !important; }")
+        style = page.add_style_tag(content=".sset-switch { border-width: 0 !important; height: 28px !important; }")
         with self.assertRaisesRegex(AssertionError, "44 × 44 px touch target"):
             assert_touch_target(self, page, switch)
         style.evaluate("el => el.remove()")
         assert_touch_target(self, page, switch)
 
-        # A declared 44 px halo that cannot receive events must not count either.
-        style = page.add_style_tag(content=".sset-switch::after { pointer-events: none !important; }")
-        with self.assertRaisesRegex(AssertionError, "44 × 44 px touch target"):
+        # A 44 px box that cannot receive events must not count either.
+        style = page.add_style_tag(content=".sset-switch { pointer-events: none !important; }")
+        with self.assertRaisesRegex(AssertionError, "the measured hit area belongs to"):
             assert_touch_target(self, page, switch)
         style.evaluate("el => el.remove()")
 

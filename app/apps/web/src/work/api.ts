@@ -25,8 +25,8 @@ export const createWork = (projectId: string, command: CreateWorkCommand, idempo
 /** A change carries a stable command UUID that the caller reuses when it retries the same change (#154). */
 export const updateWork = (item: Pick<WorkItem, 'id' | 'version'>, command: UpdateWorkCommand, clientCommandId: string) =>
   request<WorkItem>(workItemPath(item.id), { method: 'PATCH', body: { ...command, clientCommandId }, headers: ifMatch(item.version) });
-export const proposeDecision = (projectId: string, command: ProposeDecisionCommand, idempotencyKey: string) =>
-  request<Decision>(projectDecisionsPath(projectId), { method: 'POST', body: command, headers: key(idempotencyKey) });
+export const proposeDecision = (projectId: string, command: ProposeDecisionCommand, idempotencyKey: string, keepalive = false) =>
+  request<Decision>(projectDecisionsPath(projectId), { method: 'POST', body: command, headers: key(idempotencyKey), keepalive });
 export const acceptDecision = (decision: Pick<Decision, 'id' | 'version'>, command: AcceptDecisionCommand, idempotencyKey: string, keepalive = false) =>
   request<Decision>(decisionAcceptPath(decision.id), { method: 'POST', body: command, headers: { ...ifMatch(decision.version), ...key(idempotencyKey) }, keepalive });
 /** Connects a task to another object of its project (#289: a task made first in Tasks, linked to a map thought). */

@@ -91,7 +91,8 @@
 /* While a card is dragged only the target column's card area lights up, never the card under the pointer. */
 html.tb-is-dragging .tb-card:hover { box-shadow: var(--sh-card); }
 .tb-card:has(.tb-card__open:focus-visible) { outline: 2px solid var(--t1); outline-offset: 2px; }
-.tb-card:has(.tb-card__open[aria-current="true"]) { box-shadow: var(--sh-card), 0 0 0 1.5px var(--t1); }
+/* The task open in the panel is a soft fill, not a ring (#763 IN-3, Spokój rule 6); keyboard focus keeps its outline. */
+.tb-card:has(.tb-card__open[aria-current="true"]) { background: var(--pick); }
 .tb-card__top { display: flex; align-items: center; gap: 8px; min-height: 20px; margin: -4px -6px -2px 0; }
 .tb-card__top .ui-pill { height: 20px; }
 .tb-card__id { font-family: var(--mono); font-size: var(--fs-sm); color: var(--t3); font-variant-numeric: tabular-nums; }

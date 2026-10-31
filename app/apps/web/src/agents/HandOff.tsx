@@ -191,9 +191,15 @@ function HandOffBody({ onClose, project, task: given, agentId, onDone }: {
     if (attempt.current?.key !== key) attempt.current = { key, id: crypto.randomUUID() };
     setBusy(true); setError('');
     try {
-      await updateWork(task, { owner: { kind: 'agent', id: entry.agentId } }, attempt.current.id);
+      // Undo puts the owner it had back (#763 WF-6, principle 6).
+      const before = loaded?.tasks.find((row) => row.id === task.id)?.owner ?? null;
+      const handed = await updateWork(task, { owner: { kind: 'agent', id: entry.agentId } }, attempt.current.id);
       attempt.current = null;
-      toast({ message: `Handed #${task.number} to ${entry.name}`, tone: 'success' });
+      toast({ message: `Handed #${task.number} to ${entry.name}`, tone: 'success', timeout: 8000, action: { label: 'Undo', key: 'Z', onClick: () => {
+        void updateWork(handed, { owner: before ? { kind: before.kind, id: before.id } : null }, crypto.randomUUID()).then(
+          () => { toast({ message: `#${task.number} is back${before ? ` with ${before.kind === 'human' && before.id === me.user.id ? 'you' : before.name}` : ' without an owner'}` }); onDone?.(); },
+          () => toast({ tone: 'danger', message: `#${task.number} has changed since, so it stays with ${entry.name}. Take it back in Agents.` }));
+      } } });
       onClose();
       onDone?.();
     } catch (cause) {
@@ -305,6 +311,8 @@ function HandOffBody({ onClose, project, task: given, agentId, onDone }: {
                 {manager ? <>You can give it access: <Link className="ui-link" to="/connect-agent">Connect an agent</Link>. Nothing is granted from here.</> : 'A project manager can give it access. Nothing is granted from here.'}
               </p>
             ) : null}
+            {/* An agent that is not connected yet takes the task when it signs in (#763 WF-6). */}
+            {entry && grant.canTake && agentState(entry, loaded, now) !== 'online' ? <p className="handoff__note" role="status">{`${entry.name} isn’t connected right now; it picks up #${task?.number ?? ''} when it signs in.`}</p> : null}
             {entry && grant.canTake && loaded?.policy ? <p className="handoff__note">The project’s agent policy (revision {loaded.policy.revision}) applies to its work.</p> : null}
               </>
             )}
