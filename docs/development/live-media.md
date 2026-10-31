@@ -528,8 +528,9 @@ window runs first so that the loss window's after-effects on the TCP relay do no
 
 **Calibration.** Record-only runs with `FLUX_SIM_CALIBRATE=1` on 2026-10-31 (the first three, then `cal2` to
 `cal8`), at the branch, on a Linux host shared with other agents' Docker work (load average 7 to 15). Each threshold
-below was set beyond the worst observation behind it, with one exception: **Tom's speech on the weak link
-(≥ 10 kbit/s) is not shown to sit outside every observation** (see the weak-receiver row). The gates are for this
+below was set beyond the worst observation behind it. (Until the review of #797, Tom's speech on the weak link was
+gated at ≥ 10 kbit/s, inside the observations; it is now a 5 kbit/s liveness check plus a recovery gate, see the
+weak-receiver row.) The gates are for this
 simulation, not promises for other networks or devices, and several have large headroom over what was measured
 (Smooth motion latency 300 ms against ≤ 2 ms, speech jitter 30 ms against ≤ 1 ms, large camera 20 fps against 30,
 camera capture 15 fps against 30, speech latency 500 ms against 18 to 152 ms typical): they catch a collapse, not a
@@ -552,7 +553,7 @@ the Firefox screen run passed (`FLUX_SIM_RUNS` with those three runs, exit 0).
 | Motion screen (1920×1080, 60 fps source) | Received 1920×1080 at 8.9 to 10.6 fps (Chromium sender, target bitrate 3.5 Mbit/s, no quality limitation reported), 12.1 fps for the second share; up to 2.8 s frozen with four people; latency estimate ≤ 79 ms. A Firefox sender reached 15 fps (the app's cap) | ≥ 1080 rows, ≥ 7 fps, ≤ 4 s frozen, ≤ 1 % loss, ≤ 400 ms |
 | 1:1 | The stage shows the received 1920 px at 1920 display pixels | shown width = received width |
 | 5 % loss, 40 ± 20 ms, at the presenters' router | TURN/TLS turns loss into delay: no RTP loss at receivers on the clean network, speech concealed 0 to 5.7 %, latency estimate 0.4 to 1.7 s; the screen keeps 1920×1080 but falls to 1.0 to 2.6 fps with 3 to 12 s frozen. Behind the lossy router itself, Mia's received speech was 2.8 to 3 % concealed in one run and **51 to 58 %** in the next | Receivers outside router A: speech ≤ 15 % concealed (12 % until a later calibration run measured 12.5 %) and ≥ 16 kbit/s; screen ≥ 1080 rows and ≥ 0.5 fps. What people behind the lossy router receive is recorded, not gated |
-| One weak receiver of four | Tom: best speech track 11.5 to 48 kbit/s with up to 29 % concealed (30 October and the enforced run); in the record-only runs `cal4` to `cal8` his speech was 8 to 18 kbit/s with 68 to 86 % concealed (the record does not say whether 8 was his best track, which is what the gate reads); Ada's screen about 0.5 fps (it is one 1080p layer, maintain-resolution, so the SFU cannot thin it for him). With the weak window first (enforced run): Ada sent at 134 % of her clean frame rate, the others received 100 to 103 % of theirs with no concealment. In calibration, where the weak window followed the loss window, the others received 57 to 59 %. 8 s after the link returned Tom received the screen at 14.8 to 15 fps | Ada's sending ≥ 80 % of clean; others ≥ 50 % of clean fps and ≤ 3 % concealed; Tom's best speech track ≥ 10 kbit/s (a liveness check: audio bytes arrive; **not** intelligibility, and not shown to be outside every calibration observation); Tom ≥ 5 fps after |
+| One weak receiver of four | Tom: best speech track 11.5 to 48 kbit/s with up to 29 % concealed (30 October and the enforced run); in the record-only runs `cal4` to `cal8` his speech was 8 to 18 kbit/s with 68 to 86 % concealed (the record does not say whether 8 was his best track, which is what the gate reads); Ada's screen about 0.5 fps (it is one 1080p layer, maintain-resolution, so the SFU cannot thin it for him). With the weak window first (enforced run): Ada sent at 134 % of her clean frame rate, the others received 100 to 103 % of theirs with no concealment. In calibration, where the weak window followed the loss window, the others received 57 to 59 %. 8 s after the link returned Tom received the screen at 14.8 to 15 fps | Ada's sending ≥ 80 % of clean; others ≥ 50 % of clean fps and ≤ 3 % concealed. **In the weak window:** Tom's best speech track ≥ 5 kbit/s, a liveness check only (audio bytes arrive; **not** intelligibility). Observed with Sharp text at the shipped 3.5 Mbit/s: 9.9 to 22.3 kbit/s over ten runs (`full1`, `four2`, `four3`, `cal4`/`5`/`7`/`8`, `full4`); the rejected 8 Mbit/s Sharp text gave 1.0 to 3.6, so the gate still catches a starving design; 5 Mbit/s (9.1) would pass it, so it does not arbitrate 3.5 against 5 Mbit/s. **8 s after the link returns** (recovery, Tom alone): every Tom speech track ≥ 20 kbit/s and ≤ 5 % concealed (observed in 11 of 11 runs: best track 79 to 96 kbit/s, every track ≥ 30.9 and ≥ 45.9 after `cal2`, concealed 0 % except 0.69 and 2.78 % in `cal5`), and Tom ≥ 5 fps of the screen |
 | Smooth motion (later, 2026-10-31) | 1280×720 at 59.5 to 59.7 fps of a 1920×1080, 60 fps capture; ≤ 2 ms latency estimate ([details](#smooth-motion-ac-2-motion-profile)) | ≥ 720 rows, ≥ 45 fps, ≤ 2 s frozen, ≤ 1 % loss, ≤ 300 ms |
 | Camera shown large (later, 2026-10-31) | 1920×1080 at 29.7 to 30.1 fps ([details](#a-larger-camera-ac-2-camera-profile)) | ≥ 1080 rows, ≥ 20 fps, ≤ 2 s frozen, ≤ 1 % loss |
 
@@ -578,9 +579,10 @@ What the thresholds do **not** claim, from the same data:
 - One weak receiver does not slow the others: with the weak window first, everyone else kept their clean frame rate
   and speech. The 40 % drop seen in calibration came with the weak window right after the loss window on Ada's
   and Mia's TCP relay (Mia's own sending fell from 12 to 7 fps on an untouched network); the order now keeps them apart.
-- Tom's best speech track was 11.5 kbit/s in the enforced run against a 10 kbit/s gate: a narrow margin, and the
-  gate passed in `full1` and in both `four2` runs. If 8 kbit/s was his best track in one of `cal4` to `cal8`, that
-  run would have failed it.
+- Tom's best speech track in the weak window ranged 9.9 to 22.3 kbit/s over ten runs (the "8 to 18" above is per
+  track; his best track was never below 12.8 before `full4`'s 9.9). A 10 kbit/s gate inside that spread failed about
+  one run in ten, so after the review of #797 it is a 5 kbit/s liveness check, and whether he hears again is gated
+  on the window after the link returns.
 *Superseded later on 2026-10-31 by the [1440p code/text profile](#1440p-codetext-profile-63-ac-2-2026-10-31), which gates it:*
 - **Code and text at 14 to 16 px, 2560×1440, 15 to 30 fps, scrolling (AC-2's first target) has no gate and is not
   claimed.** The simulation gates Sharp text only on `testsrc2` at 1920×1080 (≥ 1080 rows, ≥ 7 fps; 8.9 to 10.6 fps
