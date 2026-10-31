@@ -15,9 +15,9 @@ import { useShellData } from '../app/data';
 import { clock } from '../app/focus';
 import { SwitchRow } from '../app/SettingsHome';
 import { SummaryByAssistant } from '../assistant/SummaryByAssistant';
-import { NotificationsButton } from '../pwa';
+import { InstallFlux, NotificationsButton } from '../pwa';
 import { getPushState, pushOnServer } from '../pwa/push';
-import { Button, ErrorState, Icon, Spinner, useToast, Select, Option, OptionGroup } from '../ui';
+import { Button, ErrorState, Icon, MEDIA, Spinner, useMediaQuery, useToast, Select, Option, OptionGroup } from '../ui';
 import { PAUSE_CHANGED, addAddress, announcePauseChange, announcePauseUncertainty, getPreferences, removeAddress, resendVerification, setMute, unsubscribe, updatePreferences, verifyAddress, type PauseChange } from './api';
 import { captureNotificationSession, confirmedNotificationPauseSince, isCurrentNotificationSession, notificationPauseRevision, notificationPauseUncertain } from './session';
 import './notifications.css';
@@ -73,6 +73,7 @@ function AccountNotificationSettings() {
   const { me, projects, directMessages } = useShellData();
   const ownerId = me.user.id;
   const mounted = useRef(false);
+  const phoneMedia = useMediaQuery(MEDIA.phone);
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
   const [prefs, setPrefs] = useState<NotificationPreferences | null>(null);
   const [failed, setFailed] = useState(false);
@@ -264,6 +265,7 @@ function AccountNotificationSettings() {
     (current) => ({ ...current, channels: { ...current.channels, [reason]: { ...current.channels[reason], [channel]: on } as ChannelChoice } }),
   );
   const emailOff = !prefs.email.available || prefs.email.destination === 'none';
+  const phone = phoneMedia;
   // Only the channels this server has (#763 SG-3).
   const columns = COLUMNS.filter((column) => !(column.id === 'push' && pushServerOff) && !(column.id === 'email' && !prefs.email.available));
   const missing = pushServerOff && !prefs.email.available ? 'Push and email aren’t set up on this Flux server, so everything waits in your Inbox.'
@@ -367,7 +369,6 @@ function AccountNotificationSettings() {
           </table>
         </div>
         {prefs.email.available ? <p className="sset-note">{emailOff ? 'Email is off: you chose in-app only below.' : 'Emails never contain messages or project details, only a link to open in Flux.'}</p> : null}
-        {pushServerOff ? null : <div className="sset-card sset-gap nset__device"><span className="sset-row__t"><Icon name="bell" size={14} />Push on this device</span><NotificationsButton /></div>}
       </section>
 
       {prefs.email.available ? (
@@ -386,6 +387,16 @@ function AccountNotificationSettings() {
 
       <MutedPlaces headingId={ids.mute} ownerId={ownerId} muted={prefs.muted}
         places={mutable} pending={pendingMute} receipt={activeMuteReceipt} onMute={onMute} onUnmute={onUnmute} onRetry={load} />
+
+      {/* This device (#763 SG-8): its notifications and installing Flux, last on the page, so an install offer that
+          arrives late never moves another row. The section shows only when it has a row. */}
+      <section className="nset__sec nset__this-device" aria-labelledby={`${ids.mute}-device`}>
+        <h3 className="sset-sec" id={`${ids.mute}-device`}>{phone ? 'This phone' : 'This device'}</h3>
+        <div className="sset-card">
+          {pushServerOff ? null : <div className="sset-row sset-row--stack"><span className="sset-row__t">{phone ? 'Notifications on this phone' : 'Push on this device'}</span><NotificationsButton installStepsBelow={phone} /></div>}
+          <InstallFlux title={phone ? 'Flux on this phone' : 'Install Flux'} phone={phone} />
+        </div>
+      </section>
     </div></div>
   );
 }

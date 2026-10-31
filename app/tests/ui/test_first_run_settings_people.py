@@ -316,6 +316,8 @@ class FirstRunSettingsPeople(unittest.TestCase):
         expect(page.get_by_role("columnheader", name="Push")).to_have_count(0)
         expect(page.get_by_role("columnheader", name="Email")).to_have_count(1)
         expect(page.get_by_text("Push on this device")).to_have_count(0)
+        # This device has no row here (no push, no install offer), so it shows no empty heading (#763 SG-8).
+        expect(page.get_by_role("heading", name="This device")).to_have_count(0)
         # While quiet hours are off, the line names this browser's zone, the one turning them on will use.
         quiet = page.get_by_role("switch", name="Quiet hours")
         expect(quiet).to_have_attribute("aria-checked", "false")

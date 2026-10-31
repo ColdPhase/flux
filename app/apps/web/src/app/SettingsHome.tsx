@@ -7,7 +7,6 @@ import { listAgentConnections } from '../agent-connection/api';
 import { getAssistantStatus } from '../assistant/api';
 import { BACKGROUND_OFF_LINE, backgroundComparisonRuntime, listBackgroundConnections } from '../proactive-comparison/api';
 import { dollars, SERVER_AI_OFF_LINE } from '../assistant/format';
-import { InstallFlux, NotificationsButton } from '../pwa';
 import { AgentTag, Avatar, Button, Icon, Kreska, MEDIA, Spinner, agentHue, setReduceMotion, useMediaQuery, useReduceMotion } from '../ui';
 import { RuntimeSection } from '../agent-runtime/RuntimeSection';
 import { WorkspacePeople } from '../people/WorkspacePeople';
@@ -295,7 +294,8 @@ function AgentsAndAi() {
         detail="Claude Code, Codex or another app · connect it to Flux" action="Manage" />
       {mine.map((connection) => (
         <LinkRow key={connection.id} to="/connect-agent" icon={<Kreska size={22} hue={agentHue(connection.agentId)} />}
-          title={<><span className="sset-row__identity">{connection.name}{' '}<AgentTag /></span><span className="sset-row__meta"> · for you · {DESIGNATION[connection.clientDesignation]} · connected</span></>} action="Manage" />
+          title={<><span className="sset-row__identity">{connection.clientDesignation === 'other' ? connection.name : DESIGNATION[connection.clientDesignation]}{' '}<AgentTag /></span></>}
+          detail={`for you · ${connection.clientDesignation === 'other' ? 'another app' : connection.name} · connected`} action="Manage" />
       ))}
     </ul>
   );
@@ -364,12 +364,10 @@ export function SettingsAppearance() {
         <ThemeChoices />
         {phone ? <p className="sset-note">One neutral palette. There is no accent color to pick.</p> : null}
         {phone ? <h2 className="sset-sec">This phone</h2> : null}
+        {/* Notifications and installing Flux on this device live under Notifications → This device (#763 SG-8). */}
         <div className="sset-card">
-          {phone ? <div className="sset-row sset-row--stack"><span className="sset-row__t">Notifications on this phone</span><NotificationsButton installStepsBelow /></div> : null}
           {phone ? <TextSizeFollowsPhone /> : <><TextSizeChoice /><ReduceMotionSwitch /></>}
           <KreskaSwitch />
-          {/* Last in the card: an install offer that arrives late, or goes away, never moves another row. */}
-          <InstallFlux title={phone ? 'Flux on this phone' : 'Install Flux'} phone={phone} />
         </div>
       </div>
     </div>

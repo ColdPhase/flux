@@ -68,3 +68,10 @@
 }
 /* Touch (#763 SG-4): the folded line is a 44 px target wherever it shows. */
 @media (pointer: coarse), (hover: none) { .rt-more > summary { display: flex; align-items: center; min-height: 44px; } }
+/* Agents and AI (#763 SG-6): the sign-in section's notes at the meta size of the other settings lines, and a chevron
+   for its folded line instead of the browser's triangle. */
+.sset-in .rt > .nset__note { font-size: 12.5px; line-height: 1.45; color: var(--t3); }
+.rt-more > summary { list-style: none; display: inline-flex; align-items: center; gap: 4px; cursor: pointer; }
+.rt-more > summary::-webkit-details-marker { display: none; }
+.rt-more > summary::after { content: ""; width: 6px; height: 6px; border-right: 1.5px solid currentColor; border-bottom: 1.5px solid currentColor; transform: rotate(-45deg); transition: transform var(--dur-1) var(--ease-out); }
+.rt-more[open] > summary::after { transform: rotate(45deg); }

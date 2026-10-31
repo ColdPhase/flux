@@ -346,7 +346,8 @@ class SettingsJourney(unittest.TestCase):
             self.assertEqual(themes.get_by_role("radio").all_inner_texts(), ["Light", "Dark", "System"])
             expect(page.get_by_text("One neutral palette. There is no accent color to pick.")).to_be_visible()
             expect(page.get_by_role("switch", name="Kreska in small moments")).to_be_visible()
-            expect(page.get_by_text("Notifications on this phone")).to_be_visible()
+            # This phone's notifications and install steps are under Notifications → This phone (#763 SG-8).
+            expect(page.get_by_text("Notifications on this phone")).to_have_count(0)
             self.no_colour_picker(page)
             self.phone_targets(page)
             themes.get_by_role("radio", name="Light" if dark else "Dark").tap()

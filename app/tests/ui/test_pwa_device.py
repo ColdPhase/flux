@@ -116,8 +116,10 @@ class InstallAndLaunch(unittest.TestCase):
         return page
 
     def appearance(self, page: Page) -> None:
-        page.goto("/settings/appearance")
-        expect(page.get_by_role("heading", name="Appearance").first).to_be_visible()
+        """Where the install row lives: Settings → Notifications → This device (#763 SG-8; Appearance before)."""
+        page.goto("/settings/notifications")
+        expect(page.get_by_role("heading", name="Notifications").first).to_be_visible()
+        expect(page.get_by_role("radiogroup", name="Notify me about")).to_be_visible()
 
     # ------------------------------------------------------------ install offers
 
@@ -130,7 +132,7 @@ class InstallAndLaunch(unittest.TestCase):
         expect(page.get_by_test_id("install-flux")).to_have_count(0)
 
     def row_tops(self, page: Page) -> list[float]:
-        """The top of every other row in the Appearance card: none may move when the install row comes or goes."""
+        """The top of every other settings row on the page: none may move when the install row comes or goes."""
         return page.evaluate("""() => [...document.querySelectorAll('.sset-card > *')]
           .filter((el) => el.getAttribute('data-testid') !== 'install-flux').map((el) => el.getBoundingClientRect().top)""")
 
