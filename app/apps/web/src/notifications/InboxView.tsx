@@ -83,7 +83,11 @@ export function InboxView() {
   // A decision accepted, a question answered or a task marked done collapses where it stood; the next one comes up (#593 AC-4).
   useRowMotion(listRef, '.nyc[data-key]', (el) => el.dataset.key, `${filter}|${queue.items === null ? 'loading' : 'ready'}`);
 
-  const all = useMemo(() => queue.items ?? [], [queue.items]);
+  // `?project=<id>`: the project header's "N needs you" opens the same queue on that project's items (#763 A2).
+  const projectId = asked.get('project');
+  const all = useMemo(() => (queue.items ?? []).filter((item) => !projectId || item.project?.id === projectId), [queue.items, projectId]);
+  const projectName = projectId ? queue.items?.find((item) => item.project?.id === projectId)?.project?.name ?? null : null;
+  const allProjects = () => setAsked((now) => { const next = new URLSearchParams(now); next.delete('project'); return next; }, { replace: true, state: location.state });
   const reviewing = all.find((item) => item.assistantRequestIdentity && item.project?.id === asked.get('assistantProject')
     && item.assistantRequestIdentity.joinRequestId === asked.get('assistantRequest')
     && String(item.assistantRequestIdentity.openingVersion) === asked.get('openingVersion'));
@@ -106,16 +110,18 @@ export function InboxView() {
   useQueueKeys(shown, current?.key ?? null, select, handlers, openMenu);
 
   const tabs: TabItem[] = FILTERS.map((entry) => ({ id: entry.id, label: entry.label, count: counts[entry.id], countLabel: `, ${counts[entry.id]}` }));
-  const summary = queue.items === null ? '' : counts.all ? `${counts.all} need${counts.all === 1 ? 's' : ''} you · all projects` : 'all clear · all projects';
+  const where = projectId ? projectName ?? 'this project' : 'all projects';
+  const summary = queue.items === null ? '' : counts.all ? `${counts.all} need${counts.all === 1 ? 's' : ''} you · ${where}` : `all clear · ${where}`;
 
   return (
     <div className="pane-scroll"><div className="pane-in nyq" ref={listRef}>
       {/* On the computer the summary and the filters sit in the header row, as drawn; on a tablet or phone they head the list. */}
       {(() => {
         // An empty Inbox is only Kreska, one sentence and the settings link (E06): nothing to filter yet. Snoozed items keep the summary, which says how many are for later.
-        const bar = queue.items?.length === 0 && filter === 'all' && !queue.later ? null : (
+        const bar = queue.items?.length === 0 && filter === 'all' && !queue.later && !projectId ? null : (
           <>
-            <p className="nyq__summary" aria-live="polite">{summary}{queue.later ? ` · ${queue.later} for later` : ''}</p>
+            <p className="nyq__summary" aria-live="polite">{summary}{queue.later ? ` · ${queue.later} for later` : ''}
+              {projectId ? <> · <button type="button" className="nyq__all" onClick={allProjects}>Show all projects</button></> : null}</p>
             <Tabs variant="segmented" className="nyq__filters" label="Show" items={tabs} value={filter} onChange={(id) => setFilter(id as Filter)} />
           </>
         );

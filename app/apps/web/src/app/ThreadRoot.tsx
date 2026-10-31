@@ -8,8 +8,10 @@ import { useProjectShell } from '../project/data';
 import { QuestionCard, WhenNoQuestion } from '../agents/QuestionCard';
 
 /** The message the thread answers, at its top: who said it, when, and what, with its cited source. */
-export function ThreadRoot({ message, projectId, body, author, agentOwner = null, meId, writable, replies, task = null, taskRow = null, preview = null, onDenied, photo }: {
+export function ThreadRoot({ message, projectId, body, author, agentOwner = null, meId, writable, replies, firstDay = null, task = null, taskRow = null, preview = null, onDenied, photo }: {
   message: ConversationMessage | null; projectId: string; body: string; author: string | null; agentOwner?: string | null; meId: string; writable: boolean; replies: number;
+  /** The day of the first reply below: "3 replies · Today" is the one line between the root and its replies (#763 A5). */
+  firstDay?: string | null;
   /** The task whose discussion this thread is (UI116-3), and its row from the thread's visible reference read (#155). */
   task?: { workId: string; title: string; number?: number } | null; taskRow?: NativeWorkRow | null;
   /** What was made from the root, from the thread's bounded association read (#155): the root is shown whole here. */
@@ -37,7 +39,7 @@ export function ThreadRoot({ message, projectId, body, author, agentOwner = null
         {message ? <MessageTime at={message.createdAt} /> : null}
         {message ? <QuestionCard projectId={projectId} messageId={message.id} meId={meId} writable={writable} /> : null}
       </article>
-      <p className="thread__hint">{replies ? `${replies} ${replies === 1 ? 'reply' : 'replies'}` : writable ? 'Reply to this message. No new topic needed.' : 'No replies yet.'}</p>
+      <p className="thread__hint">{replies ? `${replies} ${replies === 1 ? 'reply' : 'replies'}${firstDay ? ` · ${firstDay}` : ''}` : writable ? 'Reply to this message. No new topic needed.' : 'No replies yet.'}</p>
     </>
   );
 }

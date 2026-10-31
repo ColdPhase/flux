@@ -241,7 +241,7 @@ export function ActivityTimeline({ state, composer, item, project, me, writable,
 /** The one composer, at the bottom of the panel: it writes to the task's discussion, which shows in the timeline above. */
 export function TaskComposer({ state, composer, item, meId, writable, readOnly, id, audience }: {
   state: TaskActivityState; composer: TaskComposerDraft; item: Pick<WorkItem, 'id' | 'number'>; meId: string; writable: boolean; readOnly: boolean; id: string;
-  /** Who can see it, said under the box as in every composer: "Everyone in <project> · added by Ada · Sep 28". */
+  /** Who can see it, said under the box as in every composer: "Everyone in <project>" (who added it is in the activity). */
   audience: string;
 }) {
   const touch = useMediaQuery(MEDIA.touch);

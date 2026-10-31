@@ -114,7 +114,7 @@ class MessageWorkJourney(unittest.TestCase):
                 expect(objects).to_contain_text("1–50 of 68 objects")
                 expect(edges).to_contain_text("1–50 of 100 links")
                 expect(page.locator(f"#thread [data-message-id='{self.m0}'] .ws-attach__more")).to_contain_text("64 work · 3 decisions · 1 result")
-                expect(page.get_by_role("button", name="Work: Related only; not made from either message", exact=True)).to_have_count(0)
+                expect(page.get_by_role("button", name=re.compile(r"^Task #\d+: " + re.escape("Related only; not made from either message") + "$"))).to_have_count(0)
                 field = page.get_by_label("Reply", exact=True); field.fill("Keep this reply while checking the older measurement links")
                 first = self.chips(page); self.assertEqual(len(first), 50)
                 anchor = self.anchor(page)
@@ -142,7 +142,7 @@ class MessageWorkJourney(unittest.TestCase):
                         card = cards.nth(index)
                         kind, identity = card.get_attribute("data-work-kind"), card.get_attribute("data-work-id")
                         title = self.expected_titles[(kind, identity)]
-                        expect(card).to_have_accessible_name(f"{kind.capitalize()}: {title}")
+                        expect(card).to_have_accessible_name(re.compile(rf"^Task #\d+: {re.escape(title)}$") if kind == "work" else f"{kind.capitalize()}: {title}")
                         expect(card.locator(".ws-chip__t")).to_have_text(title)
                         layout = card.evaluate("""el => {
                           const t=el.querySelector('.ws-chip__t'), k=el.querySelector('.ws-chip__k');
@@ -241,11 +241,11 @@ class MessageWorkJourney(unittest.TestCase):
         page.on("request",lambda request:reads.append(parse_qs(urlsplit(request.url).query)) if self.thread_read(request.url) else None)
         page.goto(f"/projects/{self.project}/conversations/{self.long_conversation}#message-{self.long_messages[1]}")
         expect(page.locator(f"#thread [data-message-id='{self.long_messages[0]}']")).to_be_visible();self.ready(page)
-        expect(page.locator("#thread").get_by_role("button",name="Work: Revisit the first measurement",exact=True)).to_be_visible()
+        expect(page.locator("#thread").get_by_role("button",name=re.compile(r"^Task #\d+: " + re.escape("Revisit the first measurement") + "$"))).to_be_visible()
         self.assertGreater(page.locator("#thread [data-message-id]").count(),100)
         pane=page.locator(".thread__feed");pane.hover();page.mouse.wheel(0,100000)
         expect(page.locator(f"#thread [data-message-id='{self.long_messages[-1]}']")).to_be_visible();self.ready(page)
-        expect(page.locator("#thread").get_by_role("button",name="Work: Revisit the latest measurement",exact=True)).to_be_visible()
+        expect(page.locator("#thread").get_by_role("button",name=re.compile(r"^Task #\d+: " + re.escape("Revisit the latest measurement") + "$"))).to_be_visible()
         for query in reads:
             self.assertEqual(query["relation"],["source"])
             self.assertLessEqual(len(query["messageIds"][0].split(',')),100)
@@ -255,7 +255,7 @@ class MessageWorkJourney(unittest.TestCase):
         page=self.page();reads=[]
         page.on("request",lambda request:reads.append(parse_qs(urlsplit(request.url).query)["messageIds"][0]) if self.thread_read(request.url) else None)
         page.goto(f"/projects/{self.project}/conversations/{self.long_conversation}#message-{self.long_messages[1]}")
-        expect(page.locator("#thread").get_by_role("button",name="Work: Revisit the first measurement",exact=True)).to_be_visible();self.ready(page)
+        expect(page.locator("#thread").get_by_role("button",name=re.compile(r"^Task #\d+: " + re.escape("Revisit the first measurement") + "$"))).to_be_visible();self.ready(page)
         original_selector=reads[-1];held=[];paused=[]
         def hold_scope(route):
             if parse_qs(urlsplit(route.request.url).query)["messageIds"][0]==original_selector and not held:
@@ -283,7 +283,7 @@ class MessageWorkJourney(unittest.TestCase):
         # Context cleanup owns the route; later auth reads go to the real server.
         auth_holding=False
         route,response=paused.pop();route.fulfill(response=response)
-        self.ready(page);expect(page.locator("#thread").get_by_role("button",name="Work: Revisit the first measurement",exact=True)).to_be_visible()
+        self.ready(page);expect(page.locator("#thread").get_by_role("button",name=re.compile(r"^Task #\d+: " + re.escape("Revisit the first measurement") + "$"))).to_be_visible()
 
     def test_07_restored_feed_observes_older_and_newer_native_batches(self):
         page=self.page();material_reads=[];native_recoveries=[];holding=[True]
@@ -296,7 +296,7 @@ class MessageWorkJourney(unittest.TestCase):
         page.route(material_path,hold_material)
         page.on("response",lambda response:native_recoveries.append(response.status) if urlsplit(response.url).path==self.root else None)
         page.goto(f"/projects/{self.project}/conversations/{self.long_conversation}#message-{self.long_messages[1]}")
-        self.ready(page);expect(page.locator("#thread").get_by_role("button",name="Work: Revisit the first measurement",exact=True)).to_be_visible()
+        self.ready(page);expect(page.locator("#thread").get_by_role("button",name=re.compile(r"^Task #\d+: " + re.escape("Revisit the first measurement") + "$"))).to_be_visible()
         page.wait_for_function("window.__materialReadHeld===true")
         before=len(native_recoveries)
         page.evaluate("()=>{window.__originalFeedColumn=document.querySelector('.thread__feed').firstElementChild;window.__feedRemovalObserver=new MutationObserver(()=>{if(!window.__originalFeedColumn.isConnected)window.__feedWasRemoved=true;});window.__feedRemovalObserver.observe(document.body,{childList:true,subtree:true});}")
@@ -308,11 +308,11 @@ class MessageWorkJourney(unittest.TestCase):
         self.assertTrue(page.locator(".thread__feed").evaluate("el=>el.firstElementChild!==window.__originalFeedColumn"),"the observed message subtree was actually replaced")
         self.assertGreater(len(native_recoveries),before)
         self.assertTrue(all(status==200 for status in native_recoveries[before:]),"native project checks restore the mounted reader")
-        expect(page.locator("#thread").get_by_role("button",name="Work: Revisit the first measurement",exact=True)).to_be_visible()
+        expect(page.locator("#thread").get_by_role("button",name=re.compile(r"^Task #\d+: " + re.escape("Revisit the first measurement") + "$"))).to_be_visible()
         pane=page.locator(".thread__feed");pane.hover();page.mouse.wheel(0,100000)
-        expect(page.locator("#thread").get_by_role("button",name="Work: Revisit the latest measurement",exact=True)).to_be_visible();self.ready(page)
+        expect(page.locator("#thread").get_by_role("button",name=re.compile(r"^Task #\d+: " + re.escape("Revisit the latest measurement") + "$"))).to_be_visible();self.ready(page)
         page.mouse.wheel(0,-100000)
-        expect(page.locator("#thread").get_by_role("button",name="Work: Revisit the first measurement",exact=True)).to_be_visible();self.ready(page)
+        expect(page.locator("#thread").get_by_role("button",name=re.compile(r"^Task #\d+: " + re.escape("Revisit the first measurement") + "$"))).to_be_visible();self.ready(page)
         page.evaluate("window.__feedRemovalObserver.disconnect()")
         page.unroute_all(behavior="ignoreErrors")
 
@@ -320,7 +320,7 @@ class MessageWorkJourney(unittest.TestCase):
         page=self.page();reads=[]
         page.on("request",lambda request:reads.append(parse_qs(urlsplit(request.url).query)["messageIds"][0]) if self.thread_read(request.url) else None)
         page.goto(f"/projects/{self.project}/conversations/{self.long_conversation}#message-{self.long_messages[1]}")
-        expect(page.locator("#thread").get_by_role("button",name="Work: Revisit the first measurement",exact=True)).to_be_visible();self.ready(page)
+        expect(page.locator("#thread").get_by_role("button",name=re.compile(r"^Task #\d+: " + re.escape("Revisit the first measurement") + "$"))).to_be_visible();self.ready(page)
         original=reads[-1];pane=page.locator(".thread__feed")
         page.locator(f"#thread [data-message-id='{self.long_messages[100]}']").evaluate("row=>{const p=row.closest('.thread__feed');p.scrollTop+=row.getBoundingClientRect().top-p.getBoundingClientRect().bottom-20;}")
         page.wait_for_function("()=>new Promise(resolve=>{let last=-1,stable=0;const check=()=>{const p=document.querySelector('.thread__feed');stable=p.scrollTop===last?stable+1:0;last=p.scrollTop;if(stable>8)resolve(true);else requestAnimationFrame(check);};requestAnimationFrame(check);})")
@@ -364,7 +364,7 @@ class MessageWorkJourney(unittest.TestCase):
         page.on("request",lambda request:reads.append(parse_qs(urlsplit(request.url).query)["messageIds"][0]) if self.thread_read(request.url) else None)
         with page.expect_request(lambda request: self.thread_read(request.url) and self.long_messages[1] in parse_qs(urlsplit(request.url).query)["messageIds"][0].split(',') and len(parse_qs(urlsplit(request.url).query)["messageIds"][0].split(','))==100):
             page.goto(f"/projects/{self.project}/conversations/{self.long_conversation}#message-{self.long_messages[1]}")
-        expect(page.locator("#thread").get_by_role("button",name="Work: Revisit the first measurement",exact=True)).to_be_visible();self.ready(page)
+        expect(page.locator("#thread").get_by_role("button",name=re.compile(r"^Task #\d+: " + re.escape("Revisit the first measurement") + "$"))).to_be_visible();self.ready(page)
         original=reads[-1];pane=page.locator(".thread__feed")
         page.locator(f"#thread [data-message-id='{self.long_messages[100]}']").evaluate("row=>{const p=row.closest('.thread__feed');p.scrollTop+=row.getBoundingClientRect().top-p.getBoundingClientRect().bottom-20;}")
         page.wait_for_function("()=>new Promise(resolve=>{let last=-1,stable=0;const check=()=>{const p=document.querySelector('.thread__feed');stable=p.scrollTop===last?stable+1:0;last=p.scrollTop;if(stable>8)resolve(true);else requestAnimationFrame(check);};requestAnimationFrame(check);})")

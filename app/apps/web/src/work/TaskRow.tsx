@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type KeyboardEvent, type MouseEvent, type 
 import type { WorkRowProjection, WorkStatus } from '@flux/contracts';
 import { AgentIdentity, Icon, Kreska, Morph, StatusGlyph, initials } from '../ui';
 import type { AgentOwners } from '../agents/owners';
-import { STATUS_LABEL, isFinished, taskNumber } from './format';
+import { STATUS_LABEL, blockedParts, isFinished, taskNumber } from './format';
 import { STATE_KEYS, nextStatus, type StateTarget } from './taskState';
 
 // A task row as drawn (F-026 S-P-Tasks): the state glyph (one tap changes the state), the title, "#number" and
@@ -22,7 +22,8 @@ function meta(item: WorkRowProjection, meId: string, owners: AgentOwners) {
       ? <AgentIdentity icon={false} name={owner.name} owner={owners.get(owner.id)} />
       : owner.id === meId ? 'you' : owner.name;
   const rest = [
-    item.status === 'blocked' && item.blocker ? `waiting for ${item.blocker}` : null,
+    item.status === 'blocked' && item.waitingFor ? `waiting for ${item.waitingFor.name}` : null,
+    item.status === 'blocked' ? (({ person, reason, thing }) => reason && thing && !person ? `waiting for ${reason}` : reason)(blockedParts(item)) : null,
     waiting ? `waits for ${waiting} ${waiting === 1 ? 'task' : 'tasks'}` : null,
     parkedBy ? `Parked · was ${STATUS_LABEL[item.status].toLowerCase()}` : null,
     rule && !parkedBy ? `follows “${rule.title}”` : null,

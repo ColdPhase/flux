@@ -66,7 +66,8 @@ class DecisionTrace(unittest.TestCase):
     def test_a_card_never_decides_or_changes_anything(self) -> None:
         component = source("app/apps/web/src/app/ObjectNotices.tsx")
         # One button, and it only opens the object in Details; the line has no reply, accept or other action of its own.
-        self.assertEqual(len(re.findall(r"<button", component)), 3, "the source link, the thread link and the card")
+        # #763 A1 adds the task link of a result that opened a task's discussion ("on #9"), which opens that thread.
+        self.assertEqual(len(re.findall(r"<button", component)), 4, "the source link, the thread link, the task's discussion link and the card")
         code = re.sub(r"/\*.*?\*/", "", component, flags=re.S)
         self.assertNotRegex(code, r"accept|propose|fetch\(|request\(")
         self.assertIn("onOpen(target)", component)

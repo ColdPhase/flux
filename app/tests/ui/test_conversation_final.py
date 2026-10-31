@@ -696,6 +696,49 @@ class ConversationFinal(unittest.TestCase):
             expect(self.composer(page)).to_have_value(newer)
             self.assertEqual(self.work_titles(page).count(title), 1, "return and reload do not leave a duplicate command")
 
+    def test_16_leaving_the_conversation_is_what_since_you_left_counts_from(self) -> None:
+        """#763 A3: Jonas opens the project, leaves for Home, Ada writes, Jonas comes back: the line says so and a quiet
+        "Unread" divider sits right above Ada's message."""
+        ada = self.page("ada")
+        ada.goto("/")
+        page = self.page("jonas")
+        page.goto(f"/projects/{self.ids['old_project']}")
+        expect(page.locator(".project-convo__message").last).to_be_visible()
+        with page.expect_response(lambda r: r.request.method == "PUT" and r.url.endswith("/api/v1/return-points")) as saved:
+            page.get_by_role("link", name="Home").first.click()
+        self.assertEqual(saved.value.status, 200, saved.value.text())
+        expect(page).to_have_url(re.compile(r"/$"))
+        time.sleep(1.1)
+        body = "While you were away: the gateway rebooted twice."
+        posted = self.api(ada, "POST", f"/api/v1/projects/{self.ids['old_project']}/conversations", {"body": body, "clientMessageId": str(uuid.uuid4())})
+        page.go_back()
+        target = self.message(page, posted["messages"][0]["id"])
+        expect(target).to_be_visible()
+        line = page.get_by_role("region", name="Since you left")
+        expect(line).to_contain_text("1 message")
+        expect(line).not_to_contain_text("task update")
+        divider = page.get_by_role("separator", name="Unread")
+        expect(divider).to_have_count(1)
+        self.assertTrue(divider.evaluate("(el, id) => el.nextElementSibling?.id === `message-${id}`", posted["messages"][0]["id"]), "the divider is right above the first unread message")
+
+    def test_17_a_result_on_a_task_without_a_discussion_shows_once(self) -> None:
+        """#763 A1: a result recorded on a task that had no discussion yet is one line and one card in the stream; the
+        line names the task, which opens that task's discussion with the result in it."""
+        page = self.page("ada")
+        pid = self.api(page, "POST", f"/api/v1/workspaces/{self.ids['workspace']}/projects", {"name": "Results once", "visibility": "restricted"})["id"]
+        task = self.api(page, "POST", f"/api/v1/projects/{pid}/work", {"title": "Try the resistive probes from the old kit", "clientCommandId": str(uuid.uuid4())})
+        result = self.api(page, "POST", f"/api/v1/projects/{pid}/results", {"title": "Resistive probes corrode within three weeks", "finding": "negative", "work": [task["id"]]})
+        page.goto(f"/projects/{pid}")
+        line = page.locator(f'.convo-object[data-object-id="{result["id"]}"]')
+        expect(line).to_be_visible()
+        expect(page.get_by_role("button", name=re.compile(r"^Open result Resistive probes corrode"))).to_have_count(1)
+        expect(page.locator(".project-convo__message")).to_have_count(0)
+        expect(page.locator(".project-convo__contribution")).to_have_count(0)
+        expect(line.locator(".convo-notice__what")).to_have_text(f"recorded a negative result on #{task['number']}")
+        line.get_by_role("button", name=re.compile(rf"^Open the discussion of task #{task['number']}")).click()
+        thread = page.get_by_role("complementary", name="Replies").or_(page.get_by_role("dialog", name="Replies"))
+        expect(thread.get_by_text("Resistive probes corrode within three weeks").first).to_be_visible()
+
 
 if __name__ == "__main__":
     unittest.main()

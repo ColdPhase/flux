@@ -33,6 +33,17 @@ conversation points are deleted with their place.
   empty and viewing creates the point. A project or conversation with neither its own nor the
   enclosing point starts from its beginning (`since: null`, #133).
 
+## Since you left in the project conversation (S7, #763 A3, 2026-10-30)
+
+The project conversation's "Since you left: …" line (S7) counts from when the person last **left that conversation**.
+The #763 audit (A3) found the line never appeared: a project point was saved only by "I have the context", so ordinary
+visits never had one. Now the stream reads the project summary when it opens and, when the person leaves it for another
+view or place inside the app, saves the project's return point at a summary read at that moment (forward-only, the
+caller's own mark). A closed tab or a reload saves nothing, so its changes still count next time: never fewer than were
+missed. The line jumps to the first unread item and the stream draws a quiet "Unread" divider above it. This amends
+the What matters rule below: leaving the conversation moves the project's point as well, so its default `last-visit`
+period also means "since you left"; `24h` and `7d` are unchanged.
+
 ## Summary
 
 `GET /api/v1/return?place=home|project|conversation&id=` returns `ReturnSummary`
@@ -86,9 +97,12 @@ a person, blocked work of yours, and other work of yours. Examples: "Answer Ari'
 
 Accepted by the evaluator on [#133](https://github.com/ColdPhase/flux/issues/133#issuecomment-5901555136)
 (2026-09-30). It replaces the project's slim line with one compact **What matters** entry beside
-Details (a quiet count of `needsYou`), which opens a private view of the Details panel.
+Details, which opens a private view of the Details panel. Since #763 A2 (2026-10-30) the header's "N needs you" counts
+this project's items of the Inbox's one "Needs you" queue (S1) and opens the Inbox on them (`/inbox?project=<id>`);
+What matters is a row in the header's More.
 
-- **Only "I have the context" moves a project's return point**, to the mark of the snapshot shown.
+- **"I have the context" moves a project's return point**, to the mark of the snapshot shown (and, since #763 A3,
+  leaving the project conversation does too, above).
   Opening, reading, closing, choosing a scope or period and opening sources never move it. Chat
   read markers and Home's behaviour are independent of it.
 - **Interface (additive; a call without the new parameters behaves as before):**

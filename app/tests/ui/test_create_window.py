@@ -197,6 +197,8 @@ class CreateWindow(unittest.TestCase):
         expect(window).to_have_count(0)
         made = [item for item in self.work(page) if item["title"] == SEED]
         self.assertEqual(len(made), 1)
+        # Every way of creating a task says so with Undo (#763 B1).
+        expect(page.locator(".ui-toast").filter(has_text=f"Task #{made[0]['number']} created").get_by_role("button", name="Undo")).to_be_visible()
         self.assertEqual([(link["role"], link["to"]) for link in made[0]["links"]], [("source", {"type": "message", "id": self.ids["message"]})])
         expect(page.locator(".convo-notice")).to_have_count(before + 1)
         expect(page.locator(f'.convo-notice[data-work-id="{made[0]["id"]}"] .convo-notice__what')).to_contain_text("made a task from")
@@ -1058,6 +1060,50 @@ class CreateWindow(unittest.TestCase):
         expect(window(guest)).not_to_contain_text("Nobody else is in your spaces yet")
         expect(window(guest).get_by_role("button", name="Send message")).to_be_disabled()
         shot(guest, "555-create-message-guest-1440-light")
+    def test_27_a_new_task_offers_undo_and_z_takes_it_back(self) -> None:
+        """#763 B1, principle 6: "Task #N created" with Undo (Z) after creating, the panel still opening on the task."""
+        self.ensure_account()
+        page = self.page()
+        page.goto(f"/projects/{self.ids['project']}/tasks")
+        field = open_from_tasks(page)
+        field.fill("Undo me right after creating")
+        field.press("Enter")
+        expect(dialog(page)).to_have_count(0)
+        made = [item for item in self.work(page) if item["title"] == "Undo me right after creating"][0]
+        expect(page.locator("#details").get_by_role("heading", name="Undo me right after creating")).to_be_visible()
+        toast = page.locator(".ui-toast").filter(has_text=f"Task #{made['number']} created")
+        undo = toast.get_by_role("button", name="Undo")
+        expect(undo).to_have_attribute("aria-keyshortcuts", "Z")
+        # A person's own task does not also put "Undo task creation" in its Details: the toast is the one way.
+        expect(page.locator("#details").get_by_role("region", name="Undo task creation")).to_have_count(0)
+        page.locator("#details .ui-panel__body").focus()
+        page.keyboard.press("z")
+        expect(page.locator(".ui-toast").filter(has_text=f"#{made['number']} creation undone")).to_be_visible()
+        stored = self.api(page, "GET", f"/api/v1/work/{made['id']}", status=200)
+        self.assertEqual(stored["lifecycle"]["state"], "creation_reverted")
+        self.assertNotIn("Undo me right after creating", [item["title"] for item in self.work(page)])
+        # A changed task offers no Undo any more: the server decides (own_creation only while unchanged and unused).
+        other = self.api(page, "POST", f"/api/v1/projects/{self.ids['project']}/work", {"title": "Kept after a change", "clientCommandId": str(uuid.uuid4())}, status=201)
+        self.assertEqual(other["creationUndo"], {"eligible": True, "reason": "own_creation"})
+        changed = self.api(page, "PATCH", f"/api/v1/work/{other['id']}", {"title": "Kept after a change, renamed", "expectedVersion": other["version"]}, status=200)
+        self.assertFalse(self.api(page, "GET", f"/api/v1/work/{changed['id']}", status=200)["creationUndo"]["eligible"])
+
+    def test_29_a_long_message_gives_its_first_clause_as_the_title_selected(self) -> None:
+        """#763 B5: a long message prefills only its first clause (at most 60 characters), selected; it stays the source."""
+        self.ensure_account()
+        page = self.page()
+        body = ("The resistive probes in bed 5 read 92 % today, which cannot be right: the soil is dry on top. "
+                "I think they are corroding")
+        made = self.thread(page, body)
+        page.goto(f"/projects/{self.ids['project']}/conversations/{made['conversation']}")
+        message = page.locator(f"#message-{made['message']}")
+        message.hover()
+        message.get_by_role("button", name="Create task", exact=True).click()
+        expect(title_field(page)).to_have_value("The resistive probes in bed 5 read 92 % today")
+        self.assertEqual(title_field(page).evaluate("el => [el.selectionStart, el.selectionEnd]"), [0, len("The resistive probes in bed 5 read 92 % today")])
+        expect(dialog(page).get_by_role("button", name=re.compile("^Remove link to"))).to_have_count(1)
+        page.keyboard.press("Escape")
+
 
 if __name__ == "__main__":
     unittest.main()

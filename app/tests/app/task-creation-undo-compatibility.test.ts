@@ -1,11 +1,13 @@
 import assert from 'node:assert/strict';
 import { createHash, randomUUID } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
-import { test } from 'node:test';
+import { before as beforeAll, test } from 'node:test';
 import { assertExactMigrationLedger, assertKnownMigrationVersions, assertTaskCreationUndoMigrationCompatibility,
   FLUX_SCHEMA_VERSION, readAppliedMigrationVersions, readMigrationManifest } from '@flux/db';
-import { fixtureDatabase, legacyDirectory, legacySql, migrationCli, originalUndoFiles, refusedUnchanged, retainedHistory, retainedUndoHistory } from './support/undo-legacy-database.js';
+import { fixtureDatabase, legacyDirectory, prepareCurrentSchemaFixtures, legacySql, migrationCli, originalUndoFiles, refusedUnchanged, retainedHistory, retainedUndoHistory } from './support/undo-legacy-database.js';
 import { restoredConstraintShape } from './support/restored-catalog-shape.js';
+
+beforeAll(prepareCurrentSchemaFixtures);
 
 // Migration files below a version: the sign-in and runtime-auth fixtures start from this exact prefix.
 async function manifestBefore(version: number) {

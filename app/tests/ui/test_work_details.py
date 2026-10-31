@@ -227,7 +227,7 @@ class NativeDetailsJourney(unittest.TestCase):
         for title in ("Check the earlier command lifetime", "Check the intervening command lifetime"):
             work.append(api(self.ctx,"POST",self.root+"/work",{"title":title,"sources":[{"type":"message","id":thread["messages"][0]["id"]}]},201))
         page=self.page();page.goto(f"/projects/{self.project}/conversations/{thread['id']}")
-        chip=lambda item:page.locator(f"#message-{thread['messages'][0]['id']}").get_by_role("button",name=f"Work: {item['title']}",exact=True)
+        chip=lambda item:page.locator(f"#message-{thread['messages'][0]['id']}").get_by_role("button",name=re.compile(r"^Task #\d+: " + re.escape(item['title']) + "$"))
         chip(work[0]).click();panel=page.locator("#details .wd");self.ready(panel)
         panel.get_by_role("button",name="Attach a result",exact=True).click();self.choices_ready(panel,"Result work choices")
         panel.get_by_label("Finding",exact=True).fill("The old result really committed while its response waited")

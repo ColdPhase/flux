@@ -18,3 +18,6 @@ export function mentions(body: string, name: string) {
 
 /** A message that asks something: a question mark at the end or before a space. */
 export const isQuestion = (body: string) => /\?\s*(\p{Emoji_Presentation})?\s*$/u.test(body.trim()) || /\?\s/.test(body);
+
+/** Whether a message names someone with "@" (#763 A2): a question to "@Jonas" is his to answer, not everyone's in the thread. */
+export const mentionsSomeone = (body: string) => /(^|[^\p{L}\p{N}_])@\p{L}/u.test(body);
