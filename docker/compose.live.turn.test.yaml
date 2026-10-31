@@ -32,6 +32,10 @@ services:
           tcp_port: 7881
           udp_port: 7882
           use_external_ip: false
+          # No server-chosen fallback path after a short or failed connection (#63, 2026-10-31): LiveKit would
+          # offer the next session TURN/TLS only, which a browser that cannot use it (WebKit on Linux) never
+          # leaves. Without it every reconnect gathers all paths again (UDP, ICE/TCP, TURN/UDP, TURN/TLS).
+          allow_tcp_fallback: false
           node_ip: FLUX_TEST_MEDIA_IP
           ips:
             includes: [FLUX_TEST_MEDIA_IP/32]

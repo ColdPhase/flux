@@ -4,7 +4,7 @@ The live backend in #61 uses LiveKit `v1.13.7` (image digest in
 [`compose.live.yaml`](../../docker/compose.live.yaml)); the isolated browser proof
 uses `livekit-client` `2.17.2` from a lockfile. Both versions must be reviewed
 together before an upgrade. This page describes the TURN/TLS addition. It does
-not certify call quality, k3s installation or real device support.
+not certify call quality or real device support.
 
 ## Founder direction 2026-10-30: a simulated public host
 
@@ -66,13 +66,8 @@ then rolling back to the previous digest/config if the call fails. A restart
 interrupts current media; Flux's room-generation recovery is tested by
 `scripts/check_live_sfu.sh` but quality/recovery time is still unmeasured.
 
-For k3s, follow the separate
-[operator deployment contract](live-media-k3s.md). It records inputs, port
-ownership, security and external validation gates. It also holds the
-checked-in chart values in `docker/k3s/` and their Docker render check,
-`./scripts/check_live_k3s.sh`. That check validates the rendered manifests and
-their consistency with this Compose profile. It is not an installation, and
-#63 still requires a real deployment run.
+Kubernetes (k3s, Helm) is not supported yet: Docker Compose is the only supported install (founder decision,
+2026-10-31). The earlier k3s chart values and their render check were removed.
 
 What each hop encrypts, which parties can read media, and the DTLS evidence
 are recorded in [live-media-encryption.md](live-media-encryption.md). Media is
@@ -146,7 +141,7 @@ UDP packets and three rejected direct TCP/7881 packets. Those are local bridge
 measurements, not external-network or hardware quality results.
 
 The initial two-person proof does not cover four people, real microphones/screens/cameras,
-14–16px receiver text, real weak-link loss/jitter, Android/iOS devices, or k3s.
+14–16px receiver text, real weak-link loss/jitter, or Android/iOS devices.
 The later four-person synthetic-screen proof below extends only the local
 media and text evidence. The remaining conditions are tracked in
 [#63](https://github.com/ColdPhase/flux/issues/63).
@@ -250,7 +245,7 @@ jitter and 0% interval loss. The screenshot text is visually readable at
 original pixels, but the publishers use `canvas.captureStream()` marked as
 `screen_share`, not browser `getDisplayMedia()`. This is desktop Chromium on a
 local Docker bridge. It is not evidence that #62's final screen-selection/zoom UI,
-real device capture, tablets, external restricted networks or k3s deployment
+real device capture, tablets, or external restricted networks
 meet #63's acceptance criteria. The existing integrated diagnostic surface is now wired to the shared
 receiver measurement/classifier by #63; release quality calibration remains open.
 
@@ -271,7 +266,7 @@ the locked SDK audio projection's missing packet fields are not synthesized.
 ## Platform rows and direct-path DTLS (#63 AC-3, AC-4; 2026-10-10)
 
 Scope: emulated browser rows and a direct-path DTLS assertion in Docker. No
-physical device, public host, real network, k3s deployment or receiver-quality
+physical device, public host, real network or receiver-quality
 calibration is covered here; those remain open in #63.
 
 ### Direct-path DTLS
@@ -542,20 +537,25 @@ the Firefox screen run passed (`FLUX_SIM_RUNS` with those three runs, exit 0).
 
 | Profile | Observed in calibration (2 / 4 people) | Threshold (fails the check when not met) |
 | --- | --- | --- |
-| Speech, clean, every receiver and track | 55 to 95 kbit/s; 0 % loss; concealed 0 % (two) and up to 2.05 % (four, with two shares); jitter ≤ 1 ms; latency estimate 18 to 152 ms | ≥ 20 kbit/s, ≤ 1 % loss, ≤ 3 % concealed, ≤ 30 ms jitter, ≤ 250 ms, speech energy present |
-| Camera (Jonas, 1920×1080 30 fps source) | The app captures 1280×720 at 30 fps. The camera stage shows tiles (284 px wide at 1440×900), so automatic quality sends the 320×180 layer: 17.6 to 20 fps, up to 1.92 s frozen per 15 s with four people | Receiver ≥ 180 rows, ≥ 12 fps, ≤ 3 s frozen, ≤ 1 % loss; capture ≥ 720 rows at ≥ 15 fps (sender `media-source`; the first enforced four-person run measured 20 fps there, Chromium lowering capture under load) |
+| Speech, clean, every receiver and track | 55 to 95 kbit/s; 0 % loss; concealed 0 % (two) and up to 2.05 % (four, with two shares); jitter ≤ 1 ms; latency estimate 18 to 152 ms | ≥ 20 kbit/s, ≤ 1 % loss, ≤ 3 % concealed, ≤ 30 ms jitter, ≤ 500 ms (250 ms until a later calibration run measured 410 ms in a clean window), speech energy present |
+| Camera (Jonas, 1920×1080 30 fps source) | The app captures 1280×720 at 30 fps. The camera stage shows tiles (284 px wide at 1440×900), so automatic quality sends the 320×180 layer: 17.6 to 20 fps, up to 1.92 s frozen per 15 s with four people | Receiver ≥ 180 rows, ≥ 12 fps, ≤ 3 s frozen, ≤ 1 % loss; capture ≥ 1080 rows (720 before cameras captured 1080p) at ≥ 15 fps (sender `media-source`; the first enforced four-person run measured 20 fps there, Chromium lowering capture under load) |
 | Motion screen (1920×1080, 60 fps source) | Received 1920×1080 at 8.9 to 10.6 fps (Chromium sender, target bitrate 3.5 Mbit/s, no quality limitation reported), 12.1 fps for the second share; up to 2.8 s frozen with four people; latency estimate ≤ 79 ms. A Firefox sender reached 15 fps (the app's cap) | ≥ 1080 rows, ≥ 7 fps, ≤ 4 s frozen, ≤ 1 % loss, ≤ 400 ms |
 | 1:1 | The stage shows the received 1920 px at 1920 display pixels | shown width = received width |
-| 5 % loss, 40 ± 20 ms, at the presenters' router | TURN/TLS turns loss into delay: no RTP loss at receivers on the clean network, speech concealed 0 to 5.7 %, latency estimate 0.4 to 1.7 s; the screen keeps 1920×1080 but falls to 1.0 to 2.6 fps with 3 to 12 s frozen. Behind the lossy router itself, Mia's received speech was 2.8 to 3 % concealed in one run and **51 to 58 %** in the next | Receivers outside router A: speech ≤ 12 % concealed and ≥ 16 kbit/s; screen ≥ 1080 rows and ≥ 0.5 fps. What people behind the lossy router receive is recorded, not gated |
+| 5 % loss, 40 ± 20 ms, at the presenters' router | TURN/TLS turns loss into delay: no RTP loss at receivers on the clean network, speech concealed 0 to 5.7 %, latency estimate 0.4 to 1.7 s; the screen keeps 1920×1080 but falls to 1.0 to 2.6 fps with 3 to 12 s frozen. Behind the lossy router itself, Mia's received speech was 2.8 to 3 % concealed in one run and **51 to 58 %** in the next | Receivers outside router A: speech ≤ 15 % concealed (12 % until a later calibration run measured 12.5 %) and ≥ 16 kbit/s; screen ≥ 1080 rows and ≥ 0.5 fps. What people behind the lossy router receive is recorded, not gated |
 | One weak receiver of four | Tom: best speech track 11.5 to 48 kbit/s with up to 29 % concealed; Ada's screen about 0.5 fps (it is one 1080p layer, maintain-resolution, so the SFU cannot thin it for him). With the weak window first (enforced run): Ada sent at 134 % of her clean frame rate, the others received 100 to 103 % of theirs with no concealment. In calibration, where the weak window followed the loss window, the others received 57 to 59 %. 8 s after the link returned Tom received the screen at 14.8 to 15 fps | Ada's sending ≥ 80 % of clean; others ≥ 50 % of clean fps and ≤ 3 % concealed; Tom's speech ≥ 10 kbit/s; Tom ≥ 5 fps after |
+| Smooth motion (later, 2026-10-31) | 1280×720 at 59.5 to 59.7 fps of a 1920×1080, 60 fps capture; ≤ 2 ms latency estimate ([details](#smooth-motion-ac-2-motion-profile)) | ≥ 720 rows, ≥ 45 fps, ≤ 2 s frozen, ≤ 1 % loss, ≤ 300 ms |
+| Camera shown large (later, 2026-10-31) | 1920×1080 at 29.7 to 30.1 fps ([details](#a-larger-camera-ac-2-camera-profile)) | ≥ 1080 rows, ≥ 20 fps, ≤ 2 s frozen, ≤ 1 % loss |
 
 What the thresholds do **not** claim, from the same data:
 
 - **Motion at 60 fps is not met.** The app captures screens at up to 15 fps (`media.ts`, chosen for code
   readability), and in this environment Chromium's software capture and encoding delivered 9 to 12 fps. Reaching
   the #59 starting target needs a product decision (a motion mode or content-dependent frame rate), not a test change.
+  *Later the same day:* [Smooth motion](#smooth-motion-ac-2-motion-profile) delivers 60 fps (at 1280×720).
 - **Camera at 1080p is not delivered.** The app captures 1280×720, and the current stage shows cameras as tiles, so
   receivers ask for the smallest layer. #59's "up to 1080p30, smaller for thumbnails" holds only in its second half.
+  *Later the same day:* cameras capture 1080p30 and [a camera shown large](#a-larger-camera-ac-2-camera-profile)
+  arrives at 1920×1080 and 30 fps.
 - **Loss on the TCP relay is a slideshow, and can silence the people behind it.** A person whose own network loses
   5 % over TURN/TLS heard up to 58 % of the others' speech concealed in one run. Over TURN/TLS, 5 % loss gives a screen at 1 to 3 fps and audio up to
   1.7 s late; after the loss ends the jitter-buffer delay stayed high for the rest of the run (0.2 to 1.2 s on
@@ -580,8 +580,9 @@ The API, which carries every person's signalling WebSocket through the `/media` 
 | **Firefox 153.0 behind router A, TURN/TLS only** | `firefox:chromium:connect,drop,access` | **Relayed over TLS** (`relayProtocol=tls` from `turns:turn.sim.test:443`); drop recovery (two runs): media 1.5 to 1.8 s, Live 2.3 s; access removal closed its connections in 0.07 to 0.09 s. The CA is now in Firefox's trust store: `firefox-ca` imports it into the fresh profile's certificate database with `certutil` (as Settings → Certificates → Import does) before Firefox starts. Firefox pages no longer ignore certificate errors |
 | **WebKit 26.5 behind router A, TURN/TLS only** | `webkit:chromium:turn-tls-probe` | **Unattainable in software here.** WebKit sends a TLS ClientHello to turn.sim.test:443 (captured on router A), the SFU answers, WebKit aborts, and LiveKit logs `TLS handshake failed: remote error: tls: unknown certificate authority`. The same with the CA in the system store (which WebKit pages trust) and with the media address added to the certificate (`FLUX_SIM_TURN_IP_SAN=1`). Playwright's Linux WebKit runs WebRTC through libwebrtc with BoringSSL linked in, and its library carries a compiled-in root list (GlobalSign, DigiCert, Baltimore, COMODO, Go Daddy, Starfield, USERTrust names; no ISRG/Let's Encrypt), matching [libwebrtc's `rtc_base/ssl_roots.h`](https://webrtc.googlesource.com/src/+/main/rtc_base/ssl_roots.h) (checked 2026-10-31). **Inference:** its TURN/TLS trusts only that list, so no locally installed root can be tested; whether it accepts a publicly issued certificate depends on that list (a Let's Encrypt chain would likely fail). Safari on Apple platforms uses a different stack and is not covered. WebKit relays over TURN/UDP (below) |
 | WebKit 26.5 behind router A with TURN/UDP | `webkit@turn-udp:chromium:connect,drop` | Relayed; drop: media 1.0 s, Live 3.1 to 3.6 s |
+| **WebKit 26.5 behind router A with ICE/TCP** (UDP blocked, no TLS) | `webkit@ice-tcp:chromium:connect,drop` | See [WebKit rows, 2026-10-31 (later)](#webkit-rows-2026-10-31-later) |
 | **Screen publication in Firefox** | `firefox:chromium:connect,screen` | Ada shared her real X screen through the app's button; Jonas received 1920×1080 at 15.0 fps, 2.4 Mbit/s (Firefox's own "You are sharing your entire screen" bar is visible in the received frame) |
-| **Screen publication in WebKit** | `webkit@turn-udp:chromium:connect,screen` | **Unattainable in software here.** Headless WebKit rejects `getDisplayMedia` (`NotAllowedError`); the app then says "Screen sharing was cancelled or blocked by the browser. Nothing is shared." Under Xvfb the call never settles: WebKitGTK/WPE capture the screen through the xdg-desktop-portal ScreenCast interface and PipeWire ([WebKit bug 210926](https://bugs.webkit.org/show_bug.cgi?id=210926), "[GStreamer][Pipewire] Implement getDisplayMedia() backend"), and a container has no portal. Observed 2026-10-31 with a probe outside the app as well |
+| **Screen publication in WebKit** (superseded 2026-10-31, below) | `webkit@turn-udp:chromium:connect,screen` | First observed as unattainable: headless WebKit rejects `getDisplayMedia` (`NotAllowedError`), and under Xvfb the call never settled. The later finding: headed, WebKit was waiting for its own prompt, not for a desktop portal. See [WebKit rows, 2026-10-31 (later)](#webkit-rows-2026-10-31-later) |
 | **Media-path loss on phone rows** | `chromium+pixel7:chromium:connect,drop` (Android Chrome emulation, TURN/TLS), `webkit+iphone13@turn-udp:chromium:connect,drop` (iPhone emulation, TURN/UDP) | 15 s cut of every path through router A: media back by itself in 1.0 to 1.8 s (Pixel 7) and 1.0 to 2.0 s (iPhone 13); the phone strip shows Live again (its status word is for assistive technology only on a phone) |
 | iPad (WebKit) on the open network | `chromium:webkit+ipad:connect,access` | Joined in 3.1 s; access removal closed its connections in 0.14 to 0.15 s; issued and refreshed tokens refused |
 
@@ -601,41 +602,120 @@ The API, which carries every person's signalling WebSocket through the `/media` 
   `blocked`, version 2) before the call. The call joined over TURN/TLS, audio flowed both ways, recovered from the
   drop, and the session's participants were the two people only.
 
+## Smooth motion, a larger camera and WebKit (#63, 2026-10-31, later)
+
+Founder decision of 2026-10-31: finish the rest of #63 before the release. Product details are agent decisions
+within Prostota, recorded in [live collaboration §7](../product/live-collaboration.md#7-quality-that-can-be-checked).
+
+### Smooth motion (AC-2 motion profile)
+
+While sharing, the sharing line under the strip ("You are sharing your screen…") offers **Sharp text · Smooth
+motion** (a radio group; arrow keys move it; the choice is remembered for the next share on that browser). Sharp text
+is unchanged: up to 2560×1440, 15 fps, 3.5 Mbit/s, one layer that keeps its resolution. Smooth motion captures up to
+1920×1080 at 60 fps with `contentHint: motion` and sends **one layer** at up to **10 Mbit/s** that keeps its frame
+rate (`maintain-framerate`). Switching publishes the same capture again (no new picker, the receiver's stage keeps the
+screen in place; the UI test checks that no second `getDisplayMedia` call happens).
+
+How the settings were chosen, all in `check_public_sim.sh` with the presenter behind router A (TURN/TLS), Chromium
+151, its real X screen showing a scrolling SMPTE pattern drawn at a true 60 fps (`screen-source gst:…`; the earlier
+ffplay source drew about 30 fps on Xvfb, so no capture could exceed that):
+
+| Smooth motion variant (calibration run) | Captured at the sender | Received (fitted stage, 1440×900) |
+| --- | --- | --- |
+| Three simulcast layers 640×360 at 15, 1280×720 at 30, 1920×1080 at 60; 6 Mbit/s (`cal5`) | 1920×1080 at 59 to 60 fps | 720p layer at 22 fps; at 1:1 the 1080p layer at **10.4 to 12.2 fps** |
+| Two layers 640×360 at 15, 1920×1080 at 60 (`cal6`) | 1920×1080 at 59 to 60 fps | 1080p at **12.5 to 12.7 fps** |
+| One layer, 6 Mbit/s (`cal7`) | 1920×1080 at 60 fps | **1280×720 at 59.6 to 59.7 fps**, sender limited by `bandwidth` at the 6 Mbit/s cap |
+| One layer, 10 Mbit/s (`cal8`, `full1`; shipped) | 1920×1080 at 59 to 60 fps | **1280×720 at 59.4 to 59.7 fps**, 9.9 Mbit/s, latency estimate ≤ 2 ms, no freeze (two and four people) |
+| Sharp text on the same scrolling content (`cal5`) | 1920×1080 at 15 fps | 1920×1080 at 2.6 to 4.3 fps |
+
+A loopback probe outside the app (same image and source, no SFU) encoded one VP8 1080p layer at 59.4 fps; with
+three simulcast layers the source itself fell to 15 fps. **Inference:** Chromium's software VP8 encoder handles
+simulcast layers far more slowly than one layer, so simulcast would cost Smooth motion its purpose on machines
+without a hardware encoder. **Not met:** 1920×1080 *and* 60 fps together at the receiver for a frame that moves
+everywhere; at 10 Mbit/s the encoder keeps 60 fps and lowers the resolution to 1280×720 (its own choice under
+`maintain-framerate`). The loopback probe reached 1920×1080 at 59 fps at 6 Mbit/s without an SFU, so the size the
+encoder picks depends on its rate control in the call, not only on the cap; a real desktop with a hardware encoder
+was not available. The thresholds gate what was measured: ≥ 720 rows and ≥ 45 fps.
+
+Cost: one 1080p60 layer has no smaller layer for a weak receiver. With four people and Smooth motion, Tom on
+400 kbit/s received 1.6 to 8.5 kbit/s of speech, 84 to 98 % concealed (`cal7`, `cal8`, `full1`); with Sharp text the same
+window gave him 8 to 18 kbit/s, 68 to 86 % concealed (`cal4` to `cal8`; the 30 October figure "up to 29 %" did not
+recur). The other three people were untouched in both modes (no concealment, clean frame rates). LiveKit's
+`congestion_control.allow_pause: true` was tried (`cal8`) and did not change this, so it was not kept. Sharp text
+stays the default; Smooth motion is the presenter's explicit choice for a demo.
+
+### A larger camera (AC-2 camera profile)
+
+Cameras capture up to 1920×1080 at 30 fps with LiveKit's default simulcast (320×180, 640×360, 1920×1080) and
+`balanced` degradation. On the camera stage each tile is its own toggle, "Show Jonas Berg’s camera large": the
+camera then fills the stage and its tile says "Shown large"; pressed again, every camera is a tile. During a screen
+share cameras stay a side column (screens are primary, #59). Automatic quality asks for the layer the element
+shows, so the 1080p layer is sent only while someone shows a camera large (dynacast).
+
+Measured (`camera-large` window, seven calibration runs `cal2` to `cal8` and the enforced run `full1`, two and four people): Ada received Jonas's
+camera at **1920×1080, 29.7 to 30.1 fps**, 2.9 to 3.0 Mbit/s, no freeze, no loss; as a tile the same camera arrives
+at 320×180 and 20 fps. Thresholds: ≥ 1080 rows, ≥ 20 fps, ≤ 2 s frozen.
+
+**Enforced run.** `./scripts/check_public_sim.sh` with the default runs and thresholds at `c240a4282` (`full1`,
+17 runs, 2026-10-31): 16 passed, including the two-person profiles (67 checks) and the four-person profiles (234
+checks) with no failure, Firefox and WebKit screen publication and every Chromium, Firefox, WebKit and phone row.
+The one failure was `webkit@ice-tcp:chromium:connect,drop`, fixed below; the default runs it with the drop again.
+**After the fix** (`full2`, the 17 default runs plus seven more `webkit@ice-tcp` drop runs, at `cf9c98749`): 23 of
+24 passed, every WebKit ICE/TCP drop among them. The four-person profiles failed on a loaded host (load average 10;
+clean speech already 1.5 % concealed and 150 ms late, one sender's speech silent for a window, Jonas's camera still
+on its 180p layer 6 s after being shown large). Re-run at the same commit (`four2`, two four-person profile runs):
+both passed, 234 checks each, no failure.
+Run directories (`cal2` … `cal8`, `full1`, `wk1`) are local artifacts of `FLUX_SIM_ARTIFACT_DIR`, not committed.
+The UI journey (`./scripts/check_live_ui.sh`, `test_live_sessions.py` test_01) now also switches a shared screen to
+Smooth motion and back by click and arrow key (no second `getDisplayMedia`, the receiver keeps decoding) and shows a
+camera large and back; it passed. Its test_02 fails at the Quiet step (the More popover stays open after Escape, so
+two "Microphone off" buttons match); the same failure was recorded on the branch's base before this change.
+
+### WebKit rows (2026-10-31, later)
+
+| Row | Run | Result |
+| --- | --- | --- |
+| **WebKit 26.5 behind router A, UDP blocked, ICE/TCP allowed** (no TURN, no TLS) | `webkit@ice-tcp:chromium:connect,drop` (router A also lets TCP/7881 to the media host out) | Joins over local `prflx` **tcp** to the SFU's 203.0.113.20:**7881**. **Fixed defect:** before the fix, WebKit recovered from the 15 s drop in only three of five runs (`cal2`, `full1`, `wk1`); in the others it stayed "Reconnecting…" for the 120 s the driver waited. Cause (diagnosed in `wk3` from the page's peer connections and the SFU log): the resume failed, and because the ICE/TCP connection had been short, LiveKit's TCP fallback (`rtc.allow_tcp_fallback`, default on; [`transportmanager.go`](https://github.com/livekit/livekit/blob/v1.13.7/pkg/rtc/transportmanager.go), read 2026-10-31) set `ICT_TLS` for the participant's next sessions. Every full reconnect then got `iceTransportPolicy: relay` with only `turns:` servers, which WebKit on Linux cannot use, so ICE never started (no candidate reached the SFU; the client gave up every 15 s). Fix: `allow_tcp_fallback: false` in the Compose live layers, so a reconnect gathers every path again; a browser that needs TURN/TLS still finds it through ICE. After the fix: **8 of 8** drop recoveries, media back by itself in 1.5 to 2.6 s (`full2`). Chromium and Firefox drops, the SFU restart, update and rollback and the API restart passed in the same run |
+| **WebKit over TURN/TLS** | — | Still **unattainable in software here**: libwebrtc's compiled-in TURN/TLS roots ([`rtc_base/ssl_roots.h`](https://webrtc.googlesource.com/src/+/main/rtc_base/ssl_roots.h), checked 2026-10-31) cannot include a local CA. LiveKit's own TURN offers only `turns:` over TCP (TLS) and `turn:` over UDP, so plain TURN over TCP is not a path a Flux deployment offers. Safari on Apple platforms uses its own TLS stack and was not tested |
+| **Screen publication in WebKit** | `webkit@turn-udp:chromium:connect,screen` | **Met, simulated (mock source).** Headed on the client's X display, WebKit 26.5 shows its own info bar "UserMedia request — Allow access to display device?" with No and Yes; `allow-display` presses Yes as the person would (xdotool). WebKit then shares Playwright's mock screen source ("Mock screen device 1", 1920×1080, `displaySurface: monitor`), not the X display, so the path through the app's button, WebKit's encoder, the SFU and a Chromium receiver is real but the picture is synthetic. Jonas received **1920×1080 at 9.5 fps**, 587 kbit/s (`cal4`, Sharp text). The desktop portal was not involved: a probe with a stub `org.freedesktop.portal.ScreenCast` service on D-Bus and PipeWire saw no ScreenCast call. The earlier "never settles" was this unanswered prompt |
+
 ## #63 acceptance table (2026-10-31)
 
 Status of each part of [#63](https://github.com/ColdPhase/flux/issues/63)'s criteria. "Simulated" means met on
 `check_public_sim.sh` under the founder direction above, not on a rented host. "Unattainable in software here"
-names an engine limit observed in Docker with its source; it is **not** a pass and needs founder acceptance before
-#63 can close on it (none recorded yet).
+names an engine limit observed in Docker with its source. Founder decision of 2026-10-31: finish the rest of #63
+before the release; rows that software cannot reach here are closed as unattainable with dated sources. Updated
+later on 2026-10-31 (smooth motion, larger camera, WebKit, k3s dropped).
 
 | Criterion | Part | Status | Evidence, or what remains (unblock) |
 | --- | --- | --- | --- |
 | AC-1 | DNS, TLS, public address, NAT, TURN on 443 and 3478, UDP-blocked fallback | **Met, simulated** | [Simulated public host](#simulated-public-host-63-2026-10-30). Not covered: ACME issuance, a Docker port-forwarded SFU, carrier-grade NAT |
 | AC-1 | Explicit ports, firewall and proxy behaviour, secret handling | **Met** | [Compose deployment](#compose-deployment); the simulation uses only those ports; keys stay in the environment |
-| AC-1 | k3s topology | Partial | Render check only (`check_live_k3s.sh`). Unblock: install the chart on a k3s node (k3s in Docker would do) and run the simulation's clients against it |
+| AC-1 | k3s topology | **Dropped (founder decision, 2026-10-31)** | Kubernetes (k3s, Helm) is not supported yet; Docker Compose is the only supported install. The chart values, render check and k3s evidence were removed |
 | AC-1 | Pinned versions, health, metrics, room limit | **Met** | Digest-pinned LiveKit 1.13.7 and `livekit-client` 2.17.2; health probe; `/metrics` inside; 16-participant configured ceiling (a setting, not a measured capacity) |
 | AC-1 | Restart, update, rollback | **Met, simulated** | SFU restart and SFU update to v1.13.11 then rollback to the pinned digest during a call: Live again in 20.0 to 20.2 s each, devices off; API restart: media unbroken, Live in 3.3 s. [Operations](#operations-and-access-ac-1-ac-4) |
 | AC-1 | CPU, memory, egress | **Met, simulated** | Per measured window in `resources-summary.json`: SFU 7.8 % CPU, 83 MB, 9.1 Mbit/s egress with four people and two shares. Local containers, not a capacity |
 | AC-1 | Recording, egress and external inference off | **Met, simulated** | No egress, ingress or agent service in the stack; only the people in the session |
 | AC-2 | Reproducible profiles with measured results | **Met, simulated** | [Measured profiles](#measured-profiles-and-calibrated-thresholds-ac-2): speech, camera, motion, two shares, 1:1, loss and jitter, one weak receiver; code/text at 2560×1440 in the [calibration](live-code-calibration.md) |
-| AC-2 | Motion 1080p60, camera 1080p30, continuous speech | Partial | Speech met. Motion measured at 9 to 12 fps (app cap 15 fps); camera captured at 720p30 and shown as 180p tiles. Unblock: a product decision on a motion mode and a larger camera view, then the same profiles |
+| AC-2 | Motion 1080p60, camera 1080p30, continuous speech | **Met, simulated, with a recorded limit** | Speech met. **Camera:** shown large, 1920×1080 at 29.7 to 30.1 fps received ([larger camera](#a-larger-camera-ac-2-camera-profile)). **Motion:** Smooth motion captures 1920×1080 at 60 fps and delivers **59.5 to 59.7 fps at 1280×720** at its 10 Mbit/s cap for a frame that moves everywhere ([smooth motion](#smooth-motion-ac-2-motion-profile)); 1080p *and* 60 fps together at the receiver was not reached with Chromium's software encoder in Docker (target is "up to") |
 | AC-2 | Two then four participants, two screens | **Met, simulated** | Two, then four people with two simultaneous real screen shares, enforced thresholds |
-| AC-2 | Weak receiver, loss, jitter, UDP-blocked TURN | **Measured, simulated; quality limits recorded** | Gates pass, but the data show a TCP relay under loss gives a 1 to 3 fps screen and late audio, and a 400 kbit/s receiver gets about 0.5 fps of a 1080p screen. Unblock for better quality: simulcast or a lower layer for screens (product decision) |
-| AC-2 | Calibrated pass/fail thresholds, peer-recorded | Partial | Calibrated from three runs and enforced (`profiles.THRESHOLDS`). Unblock: independent peer review of the thresholds |
-| AC-3 | Chromium, Firefox, WebKit desktop rows | Partial | Chromium and **Firefox over TURN/TLS** met, simulated (CA in Firefox's profile). **WebKit over TURN/TLS: unattainable in software here** (libwebrtc's compiled-in roots; `unknown certificate authority`), relays over TURN/UDP. Unblock: founder acceptance of that limit, or a TURN certificate from a root in that list on a real host. Engines run on Linux; Windows, macOS and Fedora/Wayland are engine rows, not those systems |
+| AC-2 | Weak receiver, loss, jitter, UDP-blocked TURN | **Measured, simulated; quality limits recorded** | Gates pass. Recorded limits: a TCP relay under loss gives a 1 to 3 fps screen and late audio; a 400 kbit/s receiver of a one-layer screen loses the screen and most of its speech (Sharp text 68 to 86 % concealed, Smooth motion 84 to 98 %), while the other people are untouched. Simulcast screen layers were measured and rejected (they cut Smooth motion to 10 to 13 fps); LiveKit's `allow_pause` did not help |
+| AC-2 | Calibrated pass/fail thresholds, peer-recorded | **Calibrated and enforced; independent peer review not done** | Recalibrated on 2026-10-31 (calibration runs `cal2` to `cal8` and the enforced default run below) and enforced (`profiles.THRESHOLDS`). The coordinator did not ask for an independent threshold review in this change; it remains for the release-candidate review |
+| AC-3 | Chromium, Firefox, WebKit desktop rows | **Met, simulated; WebKit TURN/TLS unattainable in software here** | Chromium and Firefox over TURN/TLS. WebKit relays over TURN/UDP and connects over ICE/TCP with UDP blocked ([WebKit rows](#webkit-rows-2026-10-31-later)); its ICE/TCP drop recovery is fixed (8 of 8 after `allow_tcp_fallback: false`). **WebKit over TURN/TLS: unattainable in software here** (libwebrtc's compiled-in roots, [`ssl_roots.h`](https://webrtc.googlesource.com/src/+/main/rtc_base/ssl_roots.h), checked 2026-10-31; `unknown certificate authority`). Engines run on Linux; Windows, macOS and Fedora/Wayland are engine rows, not those systems |
 | AC-3 | Emulated Android, iPhone, iPad rows: viewports, touch, fake media, visibility, rotation, device change, update, rejoin | **Met (emulated)** | [Platform rows](#emulated-platform-rows) and [device change, update and rejoin](#device-change-update-reload-and-rejoin-on-the-platform-rows-63-ac-3-2026-10-30); physical devices optional (#266) |
 | AC-3 | Network loss and recovery of the media path | **Met, simulated** | Desktop engines (30 October) and now phone rows: Pixel 7 over TURN/TLS and iPhone 13 over TURN/UDP back in 1.0 to 2.0 s after a 15 s cut |
 | AC-3 | Denied or revoked permissions, no silent reactivation | **Met** | Camera denial on the platform rows; after an SFU restart or update the app rejoined with devices off |
-| AC-3 | Screen publication outside Chromium, system or tab audio | Partial | **Firefox met, simulated** (real X screen, 1920×1080 at 15 fps received). **WebKit: unattainable in software here** (portal/PipeWire capture; headless refuses). System or tab audio not exercised (the app requests none: `audio: false`). Unblock: founder acceptance of the WebKit limit |
+| AC-3 | Screen publication outside Chromium, system or tab audio | **Met, simulated** | Firefox: real X screen, 1920×1080 at 15 fps received. **WebKit:** through its own permission prompt (answered Yes), Playwright's mock screen source, 1920×1080 at 9.5 fps received ([WebKit rows](#webkit-rows-2026-10-31-later)). System or tab audio is not offered: the app requests none (`audio: false`), a recorded product scope, not a gap |
 | AC-4 | Outsider non-discovery, active access removal, issued-token replay | **Met, simulated** | 404 for a workspace member without the project; removal closes the connections in 0.07 to 0.15 s on all three engines; issued token refused at the public gate |
 | AC-4 | Refreshed-token reconnect | **Met, simulated** | SFU-refreshed token (same room, later expiry) captured from the signalling socket and refused after removal, in Chromium, Firefox and WebKit |
 | AC-4 | Encryption boundary, key distribution, downgrade | **Met** | [live-media-encryption.md](live-media-encryption.md): DTLS-SRTP to the SFU, not end-to-end |
 | AC-4 | AI receives no media by default; human calls with AI off | **Met, simulated** | No agent or processor in the room or stack; a call with workspace AI blocked joined, carried audio and recovered |
 | AC-4 | One release-candidate commit with the real journey and independent reviews | **Open** | Unblock: an independent review of this change and the release-candidate pass |
 
-#63 stays open. Left: the k3s installation; motion at 60 fps and a 1080p camera view (product decisions); peer
-review of the thresholds; founder acceptance (or a real-host run) for WebKit's TURN/TLS and screen publication;
-the independent review and release-candidate pass.
+Left on #63: an independent review of the thresholds and of this change, and the release-candidate pass (AC-4's
+last row). Everything else is met, simulated, dropped by founder decision (k3s) or recorded as unattainable in
+software here with a dated source (WebKit TURN/TLS; 1080p and 60 fps together at the receiver with a software
+encoder).
 
 ## Pointer reachability and camera state on phone and tablet (#63; 2026-10-10)
 

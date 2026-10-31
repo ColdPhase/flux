@@ -2,8 +2,8 @@
 
 **Status 2026-10-05:** record of what the current self-hosted live stack
 encrypts, for [#63](https://github.com/ColdPhase/flux/issues/63) AC-4 (T63-a).
-It applies to the Compose layers in [live-media.md](live-media.md) and the k3s
-values in [live-media-k3s.md](live-media-k3s.md). It is not an end-to-end
+It applies to the Compose layers in [live-media.md](live-media.md), the only
+supported install. It is not an end-to-end
 encryption (E2EE) claim; Flux makes none.
 
 **In one sentence:** media is encrypted on every network hop and decrypted in
@@ -23,7 +23,7 @@ check below), **inference** (Flux's conclusion from the others).
 | Browser ↔ TURN, UDP/3478 | TURN framing in clear; the relayed payload is the DTLS-SRTP above | TURN sees client address, allocation, peer, packet sizes and timing | standard |
 | Browser ↔ TURN, TLS/443 | TLS (LiveKit requires at least 1.2; the local run negotiated 1.3) around TURN and DTLS-SRTP | The TURN service, embedded in the SFU process: the SFU trust domain | source, observed |
 | Browser → Flux `/media` signaling | WSS: the operator's TLS proxy, then the Flux API | Proxy, Flux API, SFU. Carries SDP with the DTLS fingerprints, ICE credentials, identities and track metadata | source |
-| Flux API ↔ SFU signaling and room service (7880) | None. Plain WebSocket/HTTP on a private network: Compose `livekit-signal` (`internal: true`), or the k3s private bind address and Service | Anyone on that private network | source |
+| Flux API ↔ SFU signaling and room service (7880) | None. Plain WebSocket/HTTP on a private network: Compose `livekit-signal` (`internal: true`) | Anyone on that private network | source |
 | SFU → Flux API webhooks | None in transit (private HTTP). A JWT in `Authorization` carries a SHA-256 of the body | Anyone on that private network; integrity is protected | vendor, source |
 | SFU metrics (6789) | None; bound to the private address and loopback | Private network | source |
 

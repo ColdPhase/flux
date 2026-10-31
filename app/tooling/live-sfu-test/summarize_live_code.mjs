@@ -59,7 +59,7 @@ const result = { profile: report.profile, browserVersion: report.browserVersion,
   firstAuditableFrameMs: report.firstAuditableFrameMs,
   firstFrameMethod: 'from initiating isolated capture/publication to first attached receiver callback with decoded binary marker; clarity requires original-pixel peer inspection',
   sources: report.sources, stages: summaries, productDiagnosticPath: report.productDiagnosticPath,
-  limits: ['local Docker/Xvfb Chromium calibration', 'second share synthetic', 'no physical device/speech/motion/public network/k3s certification', 'quality thresholds remain provisional'] };
+  limits: ['local Docker/Xvfb Chromium calibration', 'second share synthetic', 'no physical device/speech/motion/public network certification', 'quality thresholds remain provisional'] };
 writeFileSync(join(directory, 'code-1440p-summary.json'), JSON.stringify(result, null, 2));
 console.log(JSON.stringify({ profile: result.profile, stages: summaries.map(({ peers, intervalMs, clients, markers }) =>
   ({ peers, intervalMs, clients, markers })) }));

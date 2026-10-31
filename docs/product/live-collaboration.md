@@ -229,6 +229,20 @@ reduce everyone to the same quality. LiveKit supplies
 [adaptive subscription mechanisms](https://docs.livekit.io/transport/media/subscribe/),
 but actual results depend on publication layers, codecs, clients and hardware.
 
+**Screen mode and a larger camera (agent decision, #63, 2026-10-31).** A shared screen
+is sent as **Sharp text** by default: up to 2560×1440 at 15 fps, one layer that keeps
+its resolution. While sharing, the sharing line under the live strip offers **Sharp
+text · Smooth motion**; Smooth motion sends up to 1920×1080 at 60 fps (10 Mbit/s cap,
+frame rate kept over resolution), also one layer: with simulcast layers the browser's
+software encoder delivered about 12 fps at 1080p in the #63 simulation instead of 59.
+Switching republishes the same capture: no new picker, and receivers keep
+the screen in the same place. The choice is remembered for the next share on that
+browser. Cameras capture up to 1920×1080 at 30 fps with simulcast; on the camera stage
+each tile is its own toggle that shows that camera large (pressed again, all tiles
+return), so the receiver asks for the 1080p layer only while it shows one. During a
+screen share cameras stay a side column. The controls appear only where they act (the
+sharing line, the camera tiles) and do not move other controls.
+
 Expose measured resolution, fps and a useful reason for degradation on demand.
 Record sender/receiver bitrate, jitter/loss, latency method, interruptions,
 reconnect time and SFU/relay resource use. Configured values and a local preview
@@ -238,12 +252,12 @@ separates browser and native platform paths.
 
 ## 8. Deployment and platform acceptance
 
-Use Docker/Compose for development and tests. Document the intended k3s topology
-with public reachability/NAT, HTTPS/WSS certificates, SFU UDP/TCP, relay addresses,
+Use Docker/Compose for development, tests and installation. Kubernetes (k3s, Helm) is
+not supported yet (founder decision, 2026-10-31); Docker Compose is the only supported
+install. Document the Compose topology with public reachability/NAT, HTTPS/WSS certificates, SFU UDP/TCP, relay addresses,
 TURN/TLS and explicit firewall/load-balancer behavior. A web ingress alone does
 not carry all media traffic. See the official
-[port requirements](https://docs.livekit.io/transport/self-hosting/ports-firewall/)
-and [Kubernetes host-network deployment](https://docs.livekit.io/transport/self-hosting/kubernetes/).
+[port requirements](https://docs.livekit.io/transport/self-hosting/ports-firewall/).
 Validate the chosen deployment, including restrictive networks with UDP blocked,
 instead of assuming a chart installs a working call.
 

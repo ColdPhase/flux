@@ -890,8 +890,7 @@ disk, and PostgreSQL must never see it.
   network `keyring` (`internal: true`) on **one Docker host**, joined only by `api`, `worker` and
   `keyring`. Runtime slots, LiveKit, mocks and the database are not on it. DEKs cross that network,
   which never leaves the host's kernel. **Sealed workspaces are supported only when `api`, `worker`
-  and `keyring` run on one host.** A deployment that spreads them over hosts (the `docker/k3s`
-  values today hold only live media) must add TLS with mutual authentication first. Until then such
+  and `keyring` run on one host.** A deployment that spreads them over hosts must add TLS with mutual authentication first. Until then such
   a deployment has no keyring, and every sealed workspace stays locked; creation answers
   `503 KEYRING_UNAVAILABLE`.
 - **Authentication.** Every request carries `Authorization: Bearer <FLUX_KEYRING_TOKEN>` (32 random

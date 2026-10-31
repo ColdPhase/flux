@@ -204,14 +204,10 @@ has its own accepted distribution contract.
 
 Do not include a Helm chart in the first public release. A chart adds values,
 secrets, upgrade hooks, storage and compatibility paths that must be tested for
-every version and platform. The required k3s/live collaboration deployment
-evidence in [milestone 2](../product/milestones/02-working-application.md)
-remains; #63 owns that operational path and may use bounded manifests. If k3s
-testing shows a maintained chart is the simplest reproducible distribution,
-create an owned chart issue with version mapping to the OCI digest, storage,
-secret and upgrade tests before publication. This decision should be revisited
-when k3s operators need repeatable multi-instance installation or maintained
-manifests become costlier than a chart.
+every version and platform. Kubernetes (k3s, Helm) is not supported yet
+(founder decision, 2026-10-31): Docker Compose is the only supported install, and
+the earlier k3s live-media values were removed. Revisit when operators need a
+repeatable multi-instance installation.
 
 ## Migration and verification gates
 
