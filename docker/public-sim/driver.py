@@ -2,12 +2,15 @@
 Playwright server only through that client's NAT router, and drives the real Flux web app at
 https://flux.sim.test. Impairments and restarts are asked of scripts/check_public_sim.sh through /ctl.
 
-Environment: FLUX_SIM_BROWSER_A (behind the restrictive router), FLUX_SIM_BROWSER_B (behind the open router),
-FLUX_SIM_PHASES (comma list of connect, drop, loss, weak, sfu-restart, api-restart, access; or "all").
+Environment: FLUX_SIM_BROWSER_A (behind the restrictive router), FLUX_SIM_BROWSER_B (behind the open router), each
+BROWSER[+DEVICE] where DEVICE is pixel7, iphone13 or ipad (Playwright's device descriptors: viewport, user agent,
+touch); FLUX_SIM_PHASES (comma list of connect, ai-off, four, profiles, screen, drop, loss, weak, sfu-restart,
+sfu-update, api-restart, access; or "all"); FLUX_SIM_CALIBRATE=1 records the profile thresholds without enforcing them.
 Prints one JSON line per measurement prefixed "SIM " and writes /ctl/result-<run>.json.
 """
 from __future__ import annotations
 
+import base64
 import json
 import os
 import re
@@ -16,10 +19,20 @@ import uuid
 
 from playwright.sync_api import Page, expect, sync_playwright
 
+import profiles
+
 ORIGIN = "https://flux.sim.test"
-RUN = f"{os.environ['FLUX_SIM_BROWSER_A']}-{os.environ['FLUX_SIM_BROWSER_B']}-{int(time.time())}"
+RUN = re.sub(r"[^a-z0-9-]", "", f"{os.environ['FLUX_SIM_BROWSER_A']}-{os.environ['FLUX_SIM_BROWSER_B']}-{int(time.time())}".replace("+", "-"))
 PHASES = os.environ.get("FLUX_SIM_PHASES", "all")
 PHASES = {"connect", "drop", "loss", "weak", "sfu-restart", "api-restart", "access"} if PHASES == "all" else set(PHASES.split(","))
+DEVICES = {"pixel7": "Pixel 7", "iphone13": "iPhone 13", "ipad": "iPad (gen 7)"}
+DESCRIPTORS: dict = {}  # Playwright's device descriptors, filled in main()
+
+
+def spec(value: str) -> tuple[str, str | None]:
+    """BROWSER[+DEVICE] of one person: the engine and an optional Playwright device descriptor."""
+    browser, _, device = value.partition("+")
+    return browser, (DEVICES[device] if device else None)
 PASSWORD = "simulated public host calm"
 RESULT: dict = {"run": RUN, "phases": {}}
 DOC = "Relay test notes"
@@ -130,26 +143,42 @@ def ctl(command: str, timeout: float = 120) -> str:
     raise TimeoutError(command)
 
 
-def launch_options(browser: str) -> dict:
+def launch_options(browser: str, presenter: bool = False) -> dict:
+    """How each simulated person's browser starts on its client.
+
+    A presenter shares a real screen: the browser runs headed on the client's X display, whose content
+    `screen-source` sets, and keeps its own window off that screen. Chromium then has no fake devices (its fake
+    display would replace the real screen), so its microphone is the client's PulseAudio speech source and it has
+    no camera. Everyone else in Chromium has fake devices fed by the synthetic camera and speech files. Firefox
+    gets the simulation's CA in its profile through the `firefox-ca` wrapper and fake camera and microphone."""
+    if browser == "chromium" and presenter:
+        return {"headless": False, "args": ["--use-fake-ui-for-media-stream", "--auto-select-desktop-capture-source=Entire screen",
+                                            "--window-position=1920,0", "--window-size=1440,900", "--disable-backgrounding-occluded-windows"]}
     if browser == "chromium":
-        return {"args": ["--use-fake-device-for-media-stream", "--use-fake-ui-for-media-stream"]}
+        return {"args": ["--use-fake-device-for-media-stream", "--use-fake-ui-for-media-stream",
+                         "--use-file-for-fake-video-capture=/media/camera-1080p30.y4m", "--use-file-for-fake-audio-capture=/media/speech.wav"]}
     if browser == "firefox":
-        return {"firefoxUserPrefs": {"media.navigator.streams.fake": True, "media.navigator.permission.disabled": True}}
+        return {"headless": not presenter, "executablePath": "/usr/local/bin/firefox-ca",
+                "firefoxUserPrefs": {"media.navigator.streams.fake": True, "media.navigator.permission.disabled": True}}
     return {}
 
 
-def connect(pw, browser: str, router: str):
+def connect(pw, browser: str, router: str, port: int = 3000, presenter: bool = False):
     kind = getattr(pw, browser)
-    return kind.connect(f"ws://{router}:3000/", headers={"x-playwright-launch-options": json.dumps(launch_options(browser))},
+    return kind.connect(f"ws://{router}:{port}/", headers={"x-playwright-launch-options": json.dumps(launch_options(browser, presenter))},
                         timeout=60_000)
 
 
-def new_page(browser, name: str) -> Page:
-    # Playwright's Firefox ignores the CA that the client installs for Chromium (NSS database) and WebKit (system
-    # store), so its pages accept the simulation's certificate without checking it. Recorded as a deviation.
-    lenient = browser.browser_type.name == "firefox"
-    context = browser.new_context(base_url=ORIGIN, viewport={"width": 1440, "height": 900}, locale="en-GB",
-                                  ignore_https_errors=lenient)
+def new_page(browser, name: str, device: str | None = None) -> Page:
+    # Every engine checks the simulation's certificate: Chromium through the client's NSS database, WebKit through
+    # the system store and Firefox through its profile database (firefox-ca).
+    options: dict = {"viewport": {"width": 1440, "height": 900}}
+    if device:
+        options = {k: v for k, v in DESCRIPTORS[device].items() if k != "default_browser_type"}
+        if browser.browser_type.name == "firefox":  # Playwright does not emulate is_mobile or touch for Firefox.
+            options.pop("is_mobile", None)
+            options.pop("has_touch", None)
+    context = browser.new_context(base_url=ORIGIN, locale="en-GB", **options)
     try:
         context.grant_permissions(["microphone", "camera"], origin=ORIGIN)
     except Exception as error:  # WebKit names permissions differently; the app then asks the browser.
@@ -176,13 +205,27 @@ def ok(page: Page, method: str, path: str, body: dict | None = None, status: int
 
 
 def sign_up(page: Page, name: str, email: str) -> str:
-    page.goto("/sign-up")
-    page.get_by_label("Name").fill(name)
-    page.get_by_label("Email").fill(email)
-    page.get_by_label("Password").fill(PASSWORD)
-    page.get_by_role("button", name="Create account").click()
-    expect(page.get_by_role("heading", level=1, name="Home")).to_be_visible()
-    return ok(page, "GET", "/api/v1/me")["user"]["id"]
+    """Creates the account through the sign-up page. Every simulated person behind one router shares its public
+    address, so many runs in a row can meet the sign-up rate limit of the authentication server (HTTP 429); the
+    person then waits and tries again, as a person would."""
+    for attempt in range(5):
+        statuses: list[int] = []
+        page.on("response", lambda r: statuses.append(r.status) if "/sign-up" in r.url and r.request.method == "POST" else None)
+        page.goto("/sign-up")
+        page.get_by_label("Name").fill(name)
+        page.get_by_label("Email").fill(email)
+        page.get_by_label("Password").fill(PASSWORD)
+        page.get_by_role("button", name="Create account").click()
+        try:
+            expect(page.get_by_role("heading", level=1, name="Home")).to_be_visible(timeout=20_000)
+            return ok(page, "GET", "/api/v1/me")["user"]["id"]
+        except AssertionError:
+            log("sign-up", who=name, attempt=attempt + 1, statuses=statuses, url=page.url)
+            page.screenshot(path=f"/ctl/{RUN}-sign-up-{name.split()[0].lower()}-{attempt + 1}.png")
+            if 429 not in statuses and attempt:
+                raise
+            time.sleep(12)
+    raise AssertionError(f"sign-up of {name} did not finish")
 
 
 def stats(page: Page) -> list[dict]:
@@ -252,7 +295,9 @@ def devices(page: Page) -> list[str]:
 
 def live_status(page: Page) -> str:
     try:
-        return bar(page).get_by_role("status").first.inner_text(timeout=1_000).strip()
+        # textContent, not innerText: on a phone the strip shows the state as a dot and keeps the word for
+        # assistive technology only.
+        return (bar(page).get_by_role("status").first.text_content(timeout=1_000) or "").strip()
     except Exception:
         return ""
 
@@ -325,36 +370,94 @@ def recover(name: str, page: Page, other: Page, timeout: float = 20) -> dict:
     log("recovery", phase=name, **outcome)
     return outcome
 
+JWT = re.compile(rb"eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}")
+
+
+def watch_signal_tokens(page: Page, seen: list[str]) -> None:
+    """Keeps every JWT the SFU sends this page over the signalling WebSocket: LiveKit refreshes the join token
+    there (its `refreshToken` message), so a refreshed token can be replayed after access is removed."""
+    def on_socket(socket) -> None:
+        def frame(payload) -> None:
+            data = payload if isinstance(payload, bytes) else str(payload).encode()
+            for match in JWT.findall(data):
+                token = match.decode()
+                if token not in seen:
+                    seen.append(token)
+        socket.on("framereceived", frame)
+    page.on("websocket", on_socket)
+
+
 def main() -> None:
     result = RESULT
+    four = "four" in PHASES
+    presenting = bool(PHASES & {"profiles", "screen"})
     with sync_playwright() as pw:
-        browser_a = connect(pw, os.environ["FLUX_SIM_BROWSER_A"], "203.0.113.101")
-        browser_b = connect(pw, os.environ["FLUX_SIM_BROWSER_B"], "203.0.113.102")
+        DESCRIPTORS.update(pw.devices)
+        (engine_a, device_a), (engine_b, device_b) = spec(os.environ["FLUX_SIM_BROWSER_A"]), spec(os.environ["FLUX_SIM_BROWSER_B"])
+        browser_a = connect(pw, engine_a, "203.0.113.101", presenter=presenting)
+        browser_b = connect(pw, engine_b, "203.0.113.102")
+        browsers = [browser_a, browser_b]
         result["versions"] = {"a": f"{os.environ['FLUX_SIM_BROWSER_A']} {browser_a.version}",
                               "b": f"{os.environ['FLUX_SIM_BROWSER_B']} {browser_b.version}"}
+        if four:
+            # Mia shares a second screen from client C (behind router A); Tom only receives, on client D (router B).
+            browser_c = connect(pw, "chromium", "203.0.113.101", 3001, presenter=True)
+            browser_d = connect(pw, "chromium", "203.0.113.102", 3001)
+            browsers += [browser_c, browser_d]
+            result["versions"].update(c=f"chromium {browser_c.version}", d=f"chromium {browser_d.version}")
         log("browsers", **result["versions"])
         expect.set_options(timeout=30_000)
         stamp = int(time.time() * 1000)
-        ada, jonas = new_page(browser_a, "ada"), new_page(browser_b, "jonas")
+        ada, jonas = new_page(browser_a, "ada", device_a), new_page(browser_b, "jonas", device_b)
         lee = new_page(browser_b, "lee")
-        ids = {"ada": sign_up(ada, "Ada Kowalska", f"ada.sim+{stamp}@example.test"),
-               "jonas": sign_up(jonas, "Jonas Berg", f"jonas.sim+{stamp}@example.test"),
-               "lee": sign_up(lee, "Lee Park", f"lee.sim+{stamp}@example.test")}
+        people = {"ada": ("Ada Kowalska", ada), "jonas": ("Jonas Berg", jonas), "lee": ("Lee Park", lee)}
+        if four:
+            people.update(mia=("Mia Novak", new_page(browser_c, "mia")), tom=("Tom Reyes", new_page(browser_d, "tom")))
+        ids = {who: sign_up(page, name, f"{who}.sim+{stamp}@example.test") for who, (name, page) in people.items()}
+        pages = {who: page for who, (_, page) in people.items()}
         ws = ok(ada, "POST", "/api/v1/workspaces", {"name": "Riverside Makers"}, 201)
-        for who in ("jonas", "lee"):
-            ok(ada, "POST", f"/api/v1/workspaces/{ws['id']}/members", {"email": f"{who}.sim+{stamp}@example.test", "role": "member"}, 201)
+        for who in people:
+            if who != "ada":
+                ok(ada, "POST", f"/api/v1/workspaces/{ws['id']}/members", {"email": f"{who}.sim+{stamp}@example.test", "role": "member"}, 201)
         pid = ok(ada, "POST", f"/api/v1/workspaces/{ws['id']}/projects", {"name": "Gesture lamp", "visibility": "restricted"}, 201)["id"]
-        ok(ada, "POST", f"/api/v1/projects/{pid}/grants", {"principal": {"kind": "human", "id": ids["jonas"]}, "role": "contributor"}, 201)
+        for who in people:
+            if who not in ("ada", "lee"):
+                ok(ada, "POST", f"/api/v1/projects/{pid}/grants", {"principal": {"kind": "human", "id": ids[who]}, "role": "contributor"}, 201)
         doc = ok(ada, "POST", f"/api/v1/projects/{pid}/docs", {"title": DOC, "body": "## Path\n\nTURN over TLS on 443.", "state": "published",
                                                                "reason": "Notes for the call"}, 201, {"idempotency-key": str(uuid.uuid4())})
         url = f"/projects/{pid}/docs/{doc['id']}"
+        if "ai-off" in PHASES:
+            # The workspace administrator turns AI off for the whole workspace before anyone calls (F-029).
+            version = ok(ada, "GET", f"/api/v1/workspaces/{ws['id']}").get("ai", {}).get("version", 1)
+            policy = ok(ada, "PUT", f"/api/v1/workspaces/{ws['id']}/ai-policy", {"state": "blocked", "expectedVersion": version})
+            result["phases"]["ai-off"] = {"policy": policy.get("ai"), "changed": policy.get("changed")}
+            log("ai-off", **result["phases"]["ai-off"])
+            assert (policy.get("ai") or {}).get("state") == "blocked", policy
         tokens: list[str] = []
         jonas.on("response", lambda r: tokens.append(r.json().get("token", "")) if re.search(r"/live-sessions/[^/]+/join$", r.url) and r.status == 200 else None)
+        signal_tokens: list[str] = []
+        watch_signal_tokens(jonas, signal_tokens)
 
+        if "turn-tls-probe" in PHASES:
+            turn_tls_probe(ada, jonas, url, result)
+            for browser in browsers:
+                browser.close()
+            with open(f"/ctl/result-{RUN}.json", "w") as handle:
+                json.dump(result, handle, indent=1)
+            log("done", run=RUN)
+            return
         try:
             connect_phase(ada, jonas, url, result)
+            if four:
+                for who in ("mia", "tom"):
+                    join_page(pages[who], url)
+                microphone_on(pages["mia"])
+                result["phases"]["four"] = {"live": {who: live_status(pages[who]) for who in ("ada", "jonas", "mia", "tom")},
+                                            "selectedMia": selected(pages["mia"]), "selectedTom": selected(pages["tom"])}
+                log("four", **result["phases"]["four"])
+                assert all(state == "Live" for state in result["phases"]["four"]["live"].values()), result["phases"]["four"]
         except Exception:
-            for who, page in (("a", ada), ("b", jonas)):
+            for who, page in pages.items():
                 try:
                     page.screenshot(path=f"/ctl/{RUN}-failed-{who}.png")
                 except Exception:
@@ -363,12 +466,70 @@ def main() -> None:
             diagnose(jonas, "jonas")
             raise
         sid = ok(ada, "GET", f"/api/v1/projects/{pid}/live-sessions")["items"][0]["id"]
-        _phases(ada, jonas, lee, ids, pid, sid, tokens, result)
-        browser_a.close()
-        browser_b.close()
+        if "ai-off" in PHASES:
+            session = ok(ada, "GET", f"/api/v1/live-sessions/{sid}")
+            current = ok(ada, "GET", f"/api/v1/workspaces/{ws['id']}")
+            result["phases"]["ai-off"].update(participants=sorted(p.get("userId") for p in session.get("participants", [])),
+                                              workspaceAi=current.get("ai"), callAudioBothWays=True)
+            assert set(result["phases"]["ai-off"]["participants"]) <= {ids["ada"], ids["jonas"]}, result["phases"]["ai-off"]
+        if PHASES & {"profiles", "screen"}:
+            profiles.run(PHASES, pages, result, ctl, log, RUN, engine_a, calibrate=os.environ.get("FLUX_SIM_CALIBRATE") == "1")
+        _phases(ada, jonas, lee, ids, pid, sid, tokens, signal_tokens, result)
+        for browser in browsers:
+            browser.close()
     with open(f"/ctl/result-{RUN}.json", "w") as handle:
         json.dump(result, handle, indent=1)
     log("done", run=RUN)
+
+
+def turn_tls_probe(ada: Page, jonas: Page, url: str, result: dict) -> None:
+    """What browser A sends to TURN/TLS when only TCP/443 leaves its network (an observation, not a pass).
+
+    Records whether the join relayed and the first bytes A's browser sent to the media host's TCP/443, captured on
+    router A: 0x16 is a TLS ClientHello, 0x0003 a plain TURN Allocate request."""
+    import threading
+    sniffed: dict = {}
+    thread = threading.Thread(target=lambda: sniffed.update(out=ctl("sniff a", timeout=60)))
+    thread.start()
+    time.sleep(1)
+    probe: dict = {}
+    try:
+        connect_phase(ada, jonas, url, result)
+        probe["relayed"] = True
+    except Exception as error:
+        probe["relayed"] = False
+        probe["error"] = str(error)[:300]
+        diagnose(ada, "ada")
+    thread.join()
+    packets: list[str] = []
+    for line in sniffed.get("out", "").splitlines():
+        line = line.strip()
+        if line.startswith("0x0000:"):
+            packets.append("")
+        if line.startswith("0x") and packets:
+            packets[-1] += "".join(line.split(":", 1)[1].split()[:8])
+    probe["packetsSeen"] = len(packets)
+    probe["packets"] = [re.sub(r"^\S+ ", "", line.strip())[:110] for line in sniffed.get("out", "").splitlines() if " IP " in f" {line}" and " > " in line][:12]
+    first_byte = ""
+    if packets:
+        raw = packets[0]
+        ihl = int(raw[1], 16) * 4
+        tcp = int(raw[2 * (ihl + 12)], 16) * 4
+        payload = raw[2 * (ihl + tcp):]
+        probe["firstPayloadHex"] = payload[:32]
+        first_byte = payload[:2]
+    probe["firstPayloadByte"] = first_byte
+    probe["looksLike"] = {"16": "TLS ClientHello", "00": "plain TURN (STUN) over TCP"}.get(first_byte, "unknown")
+    result["phases"]["turn-tls-probe"] = probe
+    log("turn-tls-probe", **probe)
+
+
+def join_page(page: Page, url: str) -> None:
+    page.goto(url)
+    join = page.locator("header.top, header.phead").get_by_role("button", name="Join")
+    expect(join).to_be_visible()
+    join.click()
+    expect(bar(page).get_by_role("status").first).to_contain_text("Live")
 
 
 def connect_phase(ada: Page, jonas: Page, url: str, result: dict) -> None:
@@ -378,15 +539,13 @@ def connect_phase(ada: Page, jonas: Page, url: str, result: dict) -> None:
     expect(ada.get_by_role("heading", name=DOC, level=2)).to_be_visible()
     ada.locator("header.top, header.phead").get_by_role("button", name="Together").click()
     expect(bar(ada).get_by_role("status").first).to_contain_text("Live")
-    jonas.goto(url)
-    join = jonas.locator("header.top, header.phead").get_by_role("button", name="Join")
-    expect(join).to_be_visible()
-    join.click()
-    expect(bar(jonas).get_by_role("status").first).to_contain_text("Live")
+    join_page(jonas, url)
     microphone_on(ada)
     microphone_on(jonas)
+    # A presenter's browser has no camera (it shares the real screen of its client instead).
     try:
-        camera_on(ada)
+        if not PHASES & {"profiles", "screen"}:
+            camera_on(ada)
     except Exception as error:
         log("camera", who="ada", error=str(error)[:200])
     at_jonas = flowing_since(jonas, 45)
@@ -406,7 +565,7 @@ def connect_phase(ada: Page, jonas: Page, url: str, result: dict) -> None:
     jonas.screenshot(path=f"/ctl/{RUN}-connected-b.png")
 
 
-def _phases(ada: Page, jonas: Page, lee: Page, ids: dict, pid: str, sid: str, tokens: list, result: dict) -> None:
+def _phases(ada: Page, jonas: Page, lee: Page, ids: dict, pid: str, sid: str, tokens: list, signal_tokens: list, result: dict) -> None:
 
     if "drop" in PHASES:
         ctl("drop a on")
@@ -468,6 +627,18 @@ def _phases(ada: Page, jonas: Page, lee: Page, ids: dict, pid: str, sid: str, to
         assert result["phases"]["sfu-restart"].get("audioAtAS") is not None or result["phases"]["sfu-restart"]["automaticS"] is not None
         result["phases"]["sfu-restart"]["selectedAfter"] = selected(ada)
 
+    if "sfu-update" in PHASES:
+        # The documented SFU upgrade (docs/development/live-media.md, Compose deployment): a new pinned image, then
+        # a rollback to the previous digest. Each recreates the SFU container, so the call rejoins as after a restart.
+        update: dict = {}
+        for step in ("update", "rollback"):
+            output = ctl(f"{step} livekit", timeout=240)
+            update[step] = recover(f"sfu-{step}", ada, jonas)
+            update[step]["image"] = output.strip().splitlines()[-1] if output.strip() else ""
+            update[step]["selectedAfter"] = selected(ada)
+            assert update[step].get("audioAtAS") is not None or update[step]["automaticS"] is not None, update
+        result["phases"]["sfu-update"] = update
+
     if "api-restart" in PHASES:
         ctl("restart api", timeout=180)
         result["phases"]["api-restart"] = recover("api-restart", ada, jonas)
@@ -485,6 +656,17 @@ def _phases(ada: Page, jonas: Page, lee: Page, ids: dict, pid: str, sid: str, to
         access["onlyHumans"] = set(access["participants"]) <= {ids["ada"], ids["jonas"]}
         issued = tokens[-1] if tokens else ""
         access["capturedIssuedToken"] = bool(issued)
+        # LiveKit sends a refreshed token over the signalling socket soon after the join; wait for it.
+        deadline = time.time() + 40
+        refreshed = ""
+        while time.time() < deadline and not refreshed:
+            refreshed = next((t for t in reversed(signal_tokens) if t not in tokens), "")
+            time.sleep(0.5)
+        access["capturedRefreshedToken"] = bool(refreshed)
+        if refreshed and issued:
+            claims = [json.loads(base64.urlsafe_b64decode(t.split(".")[1] + "==")) for t in (issued, refreshed)]
+            access["refreshedSameRoom"] = claims[0].get("video", {}).get("room") == claims[1].get("video", {}).get("room")
+            access["refreshedLaterExpiry"] = claims[1].get("exp", 0) >= claims[0].get("exp", 0)
         revoked_at = time.time()
         ok(ada, "POST", f"/api/v1/projects/{pid}/grants", {"principal": {"kind": "human", "id": ids["jonas"]}, "role": "denied"}, 201)
         gone = None
@@ -498,21 +680,25 @@ def _phases(ada: Page, jonas: Page, lee: Page, ids: dict, pid: str, sid: str, to
         access["revokedBar"] = bar_text(jonas)
         access["revokedJoin"] = answer(jonas, "POST", f"/api/v1/live-sessions/{sid}/join")
         access["revokedList"] = answer(jonas, "GET", f"/api/v1/projects/{pid}/live-sessions")
-        if issued:
-            access["replayValidate"] = jonas.evaluate(
-                "async (t) => (await fetch('/media/rtc/validate?access_token=' + encodeURIComponent(t))).status", issued)
-            access["replaySocket"] = jonas.evaluate("""(t) => new Promise((resolve) => {
+        for key, token in (("replay", issued), ("refreshedReplay", refreshed)):
+            if not token:
+                continue
+            access[f"{key}Validate"] = jonas.evaluate(
+                "async (t) => (await fetch('/media/rtc/validate?access_token=' + encodeURIComponent(t))).status", token)
+            access[f"{key}Socket"] = jonas.evaluate("""(t) => new Promise((resolve) => {
                 const s = new WebSocket('wss://flux.sim.test/media/rtc?access_token=' + encodeURIComponent(t) + '&protocol=16&sdk=js');
                 const timer = setTimeout(() => { s.close(); resolve('no answer in 10 s'); }, 10000);
                 s.onopen = () => { clearTimeout(timer); s.close(); resolve('opened'); };
                 s.onerror = () => { clearTimeout(timer); resolve('refused'); };
-            })""", issued)
+            })""", token)
         access["outsiderJoinAfter"] = answer(lee, "POST", f"/api/v1/live-sessions/{sid}/join")
         log("access", **access)
         result["phases"]["access"] = access
         assert access["outsiderList"].startswith("404") and access["outsiderJoin"].startswith("404"), access
         assert access["revokedJoin"].startswith("404") and access["revokedDisconnectedS"] is not None, access
         assert access.get("replayValidate") in (401, 403) and access.get("replaySocket") != "opened", access
+        assert access["capturedRefreshedToken"] and access.get("refreshedSameRoom"), access
+        assert access.get("refreshedReplayValidate") in (401, 403) and access.get("refreshedReplaySocket") != "opened", access
         assert access["onlyHumans"], access
     ada.screenshot(path=f"/ctl/{RUN}-end-a.png")
 
