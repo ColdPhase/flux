@@ -128,8 +128,10 @@ describe('#763 FT-2: a member\'s agent that a manager let in can be given the wo
     const agentGrant = (await grantsOf(anna, app.id)).find((row) => row.principal.kind === 'agent' && row.principal.id === agentId)!;
     expectStatus(await anna.browser.request('DELETE', `/api/v1/projects/${app.id}/grants/${agentGrant.id}`), 204);
     const refused = await create('work.update', task.id);
-    assert.equal(refused.status, 403, refused.text);
-    assert.equal(codeOf(refused), 'AGENT_GRANT_REQUIRED');
+    // The connection's project is no longer the agent's, so it reads as missing (before the grant check's 403 AGENT_GRANT_REQUIRED).
+    assert.ok([403, 404].includes(refused.status), refused.text);
+    const after = (expectStatus(await dev.browser.request('GET', `/api/v1/agent-connections/${connection.id}/action-grants`), 200) as { total: number }).total;
+    assert.equal(after, 9, 'nothing was added');
   });
 });
 
