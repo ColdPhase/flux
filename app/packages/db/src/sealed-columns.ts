@@ -57,7 +57,7 @@ const content = [
   'doc_live_replicas', 'map_live_presence', 'map_live_gestures', 'map_live_heads', 'map_live_journal', 'map_live_object_versions', 'map_live_undone',
   'live_editing_intents', 'notifications', 'notification_generation_failures', 'notification_emails', 'notification_mutes', 'needs_you_states',
   'events', 'event_audience', 'idempotency_keys', 'search_documents', 'search_changes', 'live_sessions', 'live_presentations', 'live_invitations',
-  'live_admissions', 'doc_decision_card_migrations',
+  'live_admissions', 'doc_decision_card_migrations', 'doc_decision_card_failures',
 ] as const;
 
 export const TABLE_CLASSES: Readonly<Record<string, TableClass>> = Object.freeze(Object.fromEntries([
@@ -183,6 +183,7 @@ export const VISIBLE_COLUMNS: Readonly<Record<string, Readonly<Record<string, st
   live_editing_intents: { actor_id: 'a principal id', kind: 'an enum', operation: 'an operation name' },
   notifications: { user_id: 'a user id', source_type: 'an enum', title: 'content-free for a sealed workspace (backstopped)',
     body: 'empty for a sealed workspace (backstopped)', url: 'ids', reason: 'an enum', delivery_kind: 'an enum', summary_sources: 'object refs' },
+  doc_decision_card_failures: { code: 'an error code only (F-034 migration), never text' },
   notification_generation_failures: { last_error: 'an error class and code only for a sealed workspace (error paths, S2a-2)' },
   notification_emails: { user_id: 'a user id', address_kind: 'an enum', address: 'an account e-mail address', status: 'an enum',
     skip_reason: 'a code only for a sealed workspace (error paths, S2a-2)', unsubscribe_hash: 'a token hash', last_error: 'an error class and code only for a sealed workspace (error paths, S2a-2)' },

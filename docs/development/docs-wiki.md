@@ -116,17 +116,31 @@ made; if it still holds an old copied section of that decision, only that sectio
   replaced shows "Decision replaced".
 - **Migration of copied sections.** Pages written before F-034 hold `## Decision: …` sections. The
   API process converts them once per doc (`apps/server/src/docs/decision-cards.ts`, at start and
-  every 10 minutes; table `doc_decision_card_migrations`, migration 0135). A section is converted
-  only when it is still in the shape Flux wrote (the heading, the generated status line, the copied
-  rationale equal to the decision's rationale, and its `Source:` line); it then becomes the
-  reference line. Text people wrote before, after or between sections is kept byte for byte; a
-  section whose copied text was edited is left as it is. A doc with a conversion gets one version
-  with the reason "Turned N copied decisions into live cards", authored by the person who last
-  added a decision to it; the version before keeps the copied text, and the table records both
-  versions (`from_version`, `to_version`) for reversal. Running it again changes nothing. A doc
-  whose shared working copy has unsaved typing, or whose encrypted workspace is locked, is skipped
-  and tried again later. Encrypted workspaces are converted through the same repositories, so the
-  new version is sealed like any other.
+  every 10 minutes; tables `doc_decision_card_migrations` and `doc_decision_card_failures`,
+  migration 0135). A section is converted only when it is exactly what Flux wrote: the heading
+  `## Decision: <the decision's current title>`, one of the generated status lines whole
+  ("accepted by <name> · <date>", "proposed by <name> · <date> · not accepted yet", "replaced
+  <date>[ by <decision>]"), the copied rationale equal to the decision's rationale, and its
+  `Source:` line. It then becomes the reference line, with a blank line on each side where needed
+  so it stands alone as a card. Anything else is kept as it is: an edited heading, status line or
+  rationale, a renamed decision, a decision outside the project, and the old section of a decision
+  that is still proposed (proposals stay out). Text people wrote around sections is kept byte for
+  byte.
+- **One version per doc.** A doc with a conversion gets one version with the reason "Turned N
+  copied decisions into live cards", authored by the person who last added a decision to it. The
+  version before keeps the copied text. Running it again changes nothing. A doc whose shared
+  working copy has unsaved typing, or whose encrypted workspace is locked, is skipped and tried
+  again later.
+- **Failures.** Any other failure is logged with its error code only, never text, and recorded in
+  `doc_decision_card_failures`. The doc then waits 10 minutes, doubling each time. The same code
+  five times in a row stops its retries until an operator deletes the row.
+- **Encrypted workspaces.** They are converted through the same repositories, so the new version
+  is sealed like any other.
+- **Reversal.** `restoreDecisionCards` (same file) brings back each converted doc's `from_version`
+  text as a new version, "Brought back the copied decisions of version N". It does this only while
+  the doc is still at `to_version`, and records `restored_version` so the sweep never converts the
+  doc again. A doc edited since is restored by a person from its history (Restore vN). The reverse
+  file `reverse/0135_doc_decision_cards.down.sql` drops the tables after that.
 
 ## Events
 

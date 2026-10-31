@@ -403,10 +403,10 @@ export function createDocUseCases(uow: DocUnitOfWork, options: DocUseCaseOptions
       const head = await ports.live.lock(id);
       if (head && (head.savedVersion !== current.doc.currentVersion || head.body !== current.current.body)) return { status: 'busy', converted: 0, kept: 0 };
       const before = current.current.body;
-      const decisions = new Map<string, { title: string; rationale: string }>();
+      const decisions = new Map<string, { title: string; rationale: string; status: string }>();
       for (const decisionId of text.legacyDecisionIds(before)) {
         const found = await ports.work.findDecision(decisionId);
-        if (found && found.projectId === current.doc.projectId) decisions.set(decisionId, { title: found.title, rationale: found.rationale });
+        if (found && found.projectId === current.doc.projectId) decisions.set(decisionId, { title: found.title, rationale: found.rationale, status: found.status });
       }
       const { body, converted, kept } = text.convertDecisionSections(before, decisions);
       const fromVersion = current.doc.currentVersion;
@@ -420,6 +420,30 @@ export function createDocUseCases(uow: DocUnitOfWork, options: DocUseCaseOptions
       await ports.live.rebindSaved(row, randomUUID());
       await commit(ports, { kind: author.kind, id: author.id }, scope, row, false, taskFence);
       return { status: 'converted', converted: converted.length, kept, fromVersion, toVersion: row.doc.currentVersion };
+    }),
+
+    /**
+     * The F-034 migration's reversal for one doc: brings back the text of `fromVersion` (the copied sections) as a new
+     * version, only while the doc is still at the version the conversion made (`toVersion`) and its shared working
+     * copy has no unsaved typing. Later edits are never undone here; a person restores from the page's history instead.
+     */
+    restoreDecisionSections: (docId: string, fromVersion: number, toVersion: number) => uow.run(async (ports): Promise<'restored' | 'changed' | 'busy' | 'gone'> => {
+      const id = valid.id(docId, 'docId');
+      const current = await ports.docs.find(id, { lock: true });
+      if (!current) return 'gone';
+      if (current.doc.currentVersion !== toVersion) return 'changed';
+      const head = await ports.live.lock(id);
+      if (head && (head.savedVersion !== current.doc.currentVersion || head.body !== current.current.body)) return 'busy';
+      const earlier = await ports.docs.version(id, fromVersion);
+      if (!earlier) return 'gone';
+      const scope = { workspaceId: current.doc.workspaceId, projectId: current.doc.projectId };
+      const taskFence = await prepareDocBodyTaskUse(ports, current, [current.current.body, earlier.body]);
+      const author = current.current.author;
+      const row = await ports.docs.append(id, { title: current.current.title, body: earlier.body, state: current.current.state,
+        reason: `Brought back the copied decisions of version ${fromVersion}`, author });
+      await ports.live.rebindSaved(row, randomUUID());
+      await commit(ports, { kind: author.kind, id: author.id }, scope, row, false, taskFence);
+      return 'restored';
     }),
 
     /** A deliberate immutable version of one confirmed live head; never a client-supplied body. */

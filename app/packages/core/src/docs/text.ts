@@ -167,7 +167,15 @@ export function placeDecisionReference(text: string, id: string, title: string):
 
 const UUID_TEXT = '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}';
 const LEGACY_HEADING = /^(#{1,6})[ \t]+Decision: \S/;
-const LEGACY_STATUS = /^\*\*(Current rule|Proposed decision|Earlier rule)\*\*( · |$)/;
+// The status lines `composeSection` generated before F-034, whole and anchored at the end of the line: a note a person
+// added to one (or any other change) keeps the section as it is.
+const DATE = '[A-Z][a-z]{2} \\d{1,2}, \\d{4}';
+const NAME = '[^·\\n]+';
+const LEGACY_STATUS = [
+  new RegExp(`^\\*\\*Current rule\\*\\* · accepted by ${NAME} · ${DATE}$`),
+  new RegExp(`^\\*\\*Proposed decision\\*\\* · proposed by ${NAME} · ${DATE} · not accepted yet$`),
+  new RegExp(`^\\*\\*Earlier rule\\*\\* · replaced ${DATE}(?: by \\[(?:\\\\.|[^\\]\\\\])*\\]\\(flux:decision/${UUID_TEXT}\\))?$`, 'i'),
+];
 const LEGACY_SOURCE = new RegExp(`^Source: \\[.*\\]\\(flux:decision/(${UUID_TEXT})\\)\\s*$`, 'i');
 
 /** The decision ids named by `Source:` lines of copied decision sections. */
@@ -187,7 +195,7 @@ export function legacyDecisionIds(text: string): string[] {
  * decision is one of `decisions` (the doc's project). Anything else is kept: text before, after or between sections
  * byte for byte, and a section whose copied text a person edited. Idempotent: its output has nothing left to convert.
  */
-export function convertDecisionSections(text: string, decisions: ReadonlyMap<string, { title: string; rationale: string }>): { body: string; converted: string[]; kept: number } {
+export function convertDecisionSections(text: string, decisions: ReadonlyMap<string, { title: string; rationale: string; status?: string }>): { body: string; converted: string[]; kept: number } {
   const lines = text.split('\n');
   const all = headings(lines);
   const converted: string[] = [];
@@ -203,11 +211,20 @@ export function convertDecisionSections(text: string, decisions: ReadonlyMap<str
     const id = LEGACY_SOURCE.exec(lines[source]!)![1]!.toLowerCase();
     const decision = decisions.get(id);
     const h = start.index;
-    const shaped = decision && lines[h + 1] === '' && LEGACY_STATUS.test(lines[h + 2] ?? '') && lines[h + 3] === '' && source >= h + 4;
+    // Exactly as Flux wrote it: the heading with the decision's current title, the whole generated status line, the
+    // copied rationale and the Source line. A proposed decision keeps its old section (proposals stay out, F-034).
+    const shaped = decision && decision.status !== 'proposed'
+      && lines[h]!.replace(/[ \t]+$/, '') === `## Decision: ${literal(decision.title)}`
+      && lines[h + 1] === '' && LEGACY_STATUS.some((form) => form.test(lines[h + 2] ?? '')) && lines[h + 3] === '' && source >= h + 4
+      && lines[source]!.replace(/[ \t]+$/, '') === sourceLine({ type: 'decision', id }, decision.title);
     const copied = lines.slice(h + 4, source).join('\n').replace(/\n+$/, '');
     const expected = decision?.rationale.trim() ? quotedBlock(decision.rationale) : '';
     if (!decision || !shaped || copied !== expected) { kept++; continue; }
-    lines.splice(h, source - h + 1, decisionReferenceLine(decision.title, id));
+    // The reference stands alone (a card, not an inline link): a blank line on each side where a neighbour is text.
+    const replacement = [decisionReferenceLine(decision.title, id)];
+    if (h > 0 && lines[h - 1]!.trim() !== '') replacement.unshift('');
+    if (source + 1 < lines.length && lines[source + 1]!.trim() !== '') replacement.push('');
+    lines.splice(h, source - h + 1, ...replacement);
     converted.unshift(id);
   }
   return { body: converted.length ? lines.join('\n') : text, converted, kept };

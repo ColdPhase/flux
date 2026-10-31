@@ -162,6 +162,27 @@ describe('F-034: decisions in the Wiki are live cards', () => {
     const plain = json<Doc>(await post(ada, `/api/v1/projects/${garden.id}/docs`, { title: 'Plain', body: '## Decision: just a heading\n\nWritten by hand.' }), 201);
     assert.deepEqual(await convert(ada, [plain.id]), { converted: 0, unchanged: 1, skipped: 0 });
     assert.equal(json<Doc>(await get(ada, `/api/v1/docs/${plain.id}`), 200).version, 1);
+
+    // The reversal brings back the copied text as a new version and the sweep never converts that doc again.
+    const restoring = json<Doc>(await post(ada, `/api/v1/projects/${garden.id}/docs`, { title: 'To restore', body: `Intro.\n\n${legacySection(bare, '**Current rule** · accepted by cards-ada · Oct 29, 2026')}\n` }), 201);
+    assert.deepEqual(await convert(ada, [restoring.id]), { converted: 1, unchanged: 0, skipped: 0 });
+    const restoredTally = json(await post(ada, '/api/v1/test/doc-decision-cards', { docIds: [restoring.id, doc.id], restore: true }, fixtureBearer()), 200);
+    assert.deepEqual(restoredTally, { restored: 1, changed: 0, skipped: 0 }, 'only the doc converted and unchanged since is restored; the other has no conversion left to undo');
+    const back = json<Doc>(await get(ada, `/api/v1/docs/${restoring.id}`), 200);
+    assert.deepEqual([back.version, back.body, back.reason], [3, restoring.body, 'Brought back the copied decisions of version 1']);
+    assert.deepEqual((await pool.query('SELECT restored_version FROM doc_decision_card_migrations WHERE doc_id = $1', [restoring.id])).rows, [{ restored_version: 3 }]);
+    assert.deepEqual(await convert(ada, [restoring.id]), { converted: 0, unchanged: 1, skipped: 0 }, 'a restored doc is not converted again');
+  });
+
+  test('a failing conversion logs its code, backs off, and stops after the same code five times', async () => {
+    const doc = json<Doc>(await post(ada, `/api/v1/projects/${garden.id}/docs`, { title: 'Failing', body: 'Text.' }), 201);
+    const fail = () => post(ada, '/api/v1/test/doc-decision-cards', { docIds: [doc.id], fail: 'INJECTED_FAILURE' }, fixtureBearer());
+    for (let attempt = 1; attempt <= 5; attempt++) assert.deepEqual(json(await fail(), 200), { converted: 0, unchanged: 0, skipped: 1 });
+    const [row] = (await pool.query("SELECT code, attempts, retry_after = 'infinity'::timestamptz AS stopped FROM doc_decision_card_failures WHERE doc_id = $1", [doc.id])).rows;
+    assert.deepEqual(row, { code: 'INJECTED_FAILURE', attempts: 5, stopped: true });
+    // A success clears the record.
+    assert.deepEqual(await convert(ada, [doc.id]), { converted: 0, unchanged: 1, skipped: 0 });
+    assert.equal((await pool.query('SELECT 1 FROM doc_decision_card_failures WHERE doc_id = $1', [doc.id])).rowCount, 0);
   });
 
   test('live co-editing: unsaved shared typing defers the conversion; a clean shared head is rebound to the new version', async () => {
@@ -192,6 +213,19 @@ describe('F-034: decisions in the Wiki are live cards', () => {
     assert.deepEqual(convertDecisionSections(once.body, map), { body: once.body, converted: [], kept: 0 }, 'idempotent');
     const extraLine = section.replace('**Current rule**', 'Jonas: we agreed.\n\n**Current rule**');
     assert.equal(convertDecisionSections(extraLine, map).kept, 1, 'a line a person put into the section keeps it');
+    // #774 review: only the exact generated heading and whole status line convert; an edit keeps the section and its text.
+    const renamedHeading = section.replace('## Decision: A', '## Decision: A (ask Bo before changing)');
+    assert.deepEqual(convertDecisionSections(renamedHeading, map), { body: renamedHeading, converted: [], kept: 1 }, 'an edited heading keeps the section');
+    const noted = section.replace('Oct 1, 2026', 'Oct 1, 2026 · Jonas: revisit after the June trial');
+    assert.deepEqual(convertDecisionSections(noted, map), { body: noted, converted: [], kept: 1 }, 'a note on the status line keeps the section');
+    assert.equal(convertDecisionSections(section, new Map([[id, { title: 'A renamed', rationale: 'Why.' }]])).kept, 1, 'a renamed decision keeps its section');
+    const proposedForm = section.replace('**Current rule** · accepted by X · Oct 1, 2026', '**Proposed decision** · proposed by X · Oct 1, 2026 · not accepted yet');
+    assert.equal(convertDecisionSections(proposedForm, new Map([[id, { title: 'A', rationale: 'Why.', status: 'proposed' }]])).kept, 1, 'a decision still proposed stays out');
+    assert.equal(convertDecisionSections(proposedForm, new Map([[id, { title: 'A', rationale: 'Why.', status: 'accepted' }]])).converted.length, 1, 'accepted since: its card');
+    const replacedForm = section.replace('**Current rule** · accepted by X · Oct 1, 2026', `**Earlier rule** · replaced Oct 2, 2026 by [B](flux:decision/${id.replace('1111', '3333')})`);
+    assert.equal(convertDecisionSections(replacedForm, map).converted.length, 1, 'the generated replaced form converts');
+    // The reference stands alone, so it renders as a card: blank lines where the neighbours are text.
+    assert.equal(convertDecisionSections(`Intro.\n${section}\nTail.`, map).body, `Intro.\n\n[A](flux:decision/${id})\n\nTail.`);
     assert.deepEqual(placeDecisionReference(once.body, id, 'A'), { body: once.body, replaced: false });
     // A result's section rewritten later keeps the cards after it (they are not part of the section).
     const result = { type: 'result' as const, id: '22222222-2222-4222-8222-222222222222' };

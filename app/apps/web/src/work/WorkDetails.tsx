@@ -224,7 +224,7 @@ function InDocs({ object, kind, project, relations, notYet }: { object: { id: st
       {docs.length ? (
         <ul className="wd-links">{docs.map((doc) => <li key={doc.id}><RefLink className="wd-link" to={`/projects/${project.id}/docs/${doc.id}`}><span>{doc.title}</span>{doc.role === 'source' ? <small>added</small> : <small>mentioned</small>}<Icon name="chevron-right" size={14} /></RefLink></li>)}</ul>
       ) : <p className="wd-muted">{emptyLinks(relations, 'Not in a doc yet.')}</p>}
-      {writable && kind && notYet ? <div className="wd-actions"><Button variant="secondary" icon="doc" disabled>Add to docs</Button><small className="wd-muted">{notYet}</small></div> : null}
+      {writable && kind && notYet ? <div className="wd-actions wd-actions--hint"><Button variant="secondary" icon="doc" disabled aria-describedby={`wd-docs-hint-${object.id}`}>Add to docs</Button><small className="wd-muted" id={`wd-docs-hint-${object.id}`}>{notYet}</small></div> : null}
       {writable && kind && !notYet ? <div className="wd-actions"><Button variant="secondary" icon="doc" onClick={() => openDetails({ kind: 'add-to-doc', projectId: project.id, from: { type: kind, id: object.id, title: object.title }, inDocs: docs.filter((doc) => doc.role === 'source').map((doc) => doc.id), inDocsComplete: relations.complete })}>Add to docs</Button></div> : null}
     </section>
   );
