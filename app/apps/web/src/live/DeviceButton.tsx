@@ -24,7 +24,8 @@ function deviceLabel(kind: DeviceKind, status: DeviceStatus, sending: boolean) {
 export function DeviceButton({ kind, live, compact = false }: { kind: DeviceKind; live: LiveValue; compact?: boolean }) {
   const status = live.media?.devices[kind] ?? { state: 'off', note: null };
   const me = live.media?.people.find((person) => person.local);
-  const sending = kind === 'mic' ? !!me?.mic : kind === 'camera' ? !!me?.camera : !!me?.screen;
+  // A screen switching mode is published again; it stays "on" (captured) meanwhile, so the button does not flicker.
+  const sending = kind === 'mic' ? !!me?.mic : kind === 'camera' ? !!me?.camera : !!me?.screen || status.state === 'on';
   const problem = ['denied', 'missing', 'busy', 'failed', 'unsupported'].includes(status.state);
   const label = deviceLabel(kind, status, sending);
   const connected = live.media?.connection === 'connected';

@@ -433,6 +433,8 @@ class LiveJourney(LiveBase):
         # A larger camera (#63): on the camera stage a tile is its own toggle; the camera then fills the stage.
         self.bar(nia).get_by_role("button", name=re.compile("^Camera off")).click()
         expect(self.bar(nia).get_by_role("button", name=re.compile("^Camera on"))).to_be_visible()
+        # Nia's screen leaves Jonas's strip first; the same place then offers the cameras.
+        expect(self.bar(jonas).get_by_role("button", name="Cameras")).to_be_visible()
         self.bar(jonas).get_by_role("button", name="Cameras").click()
         stage = jonas.get_by_role("region", name="Shared screens and cameras")
         large = stage.get_by_role("button", name=re.compile("^Show Nia.* camera large$"))
@@ -441,7 +443,8 @@ class LiveJourney(LiveBase):
         big = stage.get_by_label(re.compile("^Nia.* camera, enlarged$"))
         expect(big).to_be_visible()
         jonas.wait_for_function("() => { const v = document.querySelector('.lv-stage__view--camera video'); return v && v.videoWidth > 0; }", timeout=20000)
-        self.assertGreater(big.bounding_box()["width"], 700, "the enlarged camera fills the stage")
+        tile = stage.locator(".lv-cam").first.bounding_box()["width"]
+        self.assertGreater(big.bounding_box()["width"], 2 * tile, "the enlarged camera fills the stage, far wider than a tile")
         expect(stage.locator(".lv-cam.is-enlarged")).to_contain_text("Shown large")
         shot(jonas, "live-desktop-1440-camera-large")
         large.click()

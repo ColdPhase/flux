@@ -81,6 +81,8 @@ export function LiveBar() {
   const screens = media?.screens ?? [];
   const cameras = media?.cameras ?? [];
   const me = people.find((person) => person.local);
+  // Also while a shared screen switches mode (it is published again): the line and its choice stay in place.
+  const sharingScreen = !!me?.screen || media?.devices.screen.state === 'on';
   const soundBlocked = !!media && media.connection === 'connected' && !media.canPlayAudio && !live.quiet && others.some((person) => person.mic);
   const shown = live.shown;
   const followingName = live.following ? live.nameOf(live.following) : null;
@@ -142,7 +144,7 @@ export function LiveBar() {
         </span>
       </div>
 
-      {me?.screen ? (
+      {sharingScreen ? (
         <div className="lv-line lv-line--sharing" role="status">
           <span className="lv-dot lv-dot--share" aria-hidden="true" />
           <span className="lv-line__text">You are sharing your screen. Everyone in the session can see it.</span>
