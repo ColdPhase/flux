@@ -29,6 +29,8 @@ export function inviteRoutes(app: FastifyInstance, { db, principal, command, ses
   signer: InviteSigner, limits: InviteLimiters, boss: Pick<PgBoss, 'send'>) {
   // #763 FT-3: the person who made the link hears that it was used, in the same transaction as the join.
   const onJoined: InviteJoined = async (tx, joined) => {
+    // An encrypted workspace's notifications carry no content (F-030): the People list shows the new member instead.
+    if (joined.encrypted) return;
     const names = await agentAccessRequestRows(tx as Database).names([joined.userId]);
     const who = names.get(joined.userId) ?? 'Someone';
     const projectName = joined.projectId ? (await accessPorts.invites(tx as Database).projectName(joined.workspaceId, joined.projectId)) : null;

@@ -69,10 +69,11 @@ export function agentRequestUseCases(db: Database, boss: Pick<PgBoss, 'send'>) {
         return rows.view(await rows.pending(projectId, manager ? undefined : person.id));
       });
     },
-    respond(principal: Principal, projectId: string, requestId: string, command: RespondAgentAccessRequestCommand) {
+    /** `conn`: the connection a project change runs on (the media fence holds its lock there). */
+    respond(principal: Principal, projectId: string, requestId: string, command: RespondAgentAccessRequestCommand, conn: Database = db) {
       const manager = human(principal);
       if (!isUuid(projectId) || !isUuid(requestId)) throw missing();
-      return db.transaction(async (tx) => {
+      return conn.transaction(async (tx) => {
         await assertAuthorized(manager, 'project.manage', { type: 'project', id: projectId }, accessReader(tx));
         const rows = agentAccessRequestRows(tx);
         const request = await rows.find(projectId, requestId, true);
@@ -138,7 +139,7 @@ export function agentRequestRoutes(app: FastifyInstance, { db, principal, projec
     schema: { body: { type: 'object', required: ['allow'], additionalProperties: false, properties: { allow: { type: 'boolean' } } } },
   }, async (request) => {
     const actor = await principal(request);
-    return projectChange(request.params.projectId, () => cases.respond(actor, request.params.projectId, request.params.requestId, request.body));
+    return projectChange(request.params.projectId, (conn) => cases.respond(actor, request.params.projectId, request.params.requestId, request.body, conn));
   });
   app.get<{ Params: { agentId: string } }>(`${AGENTS_PATH}/:agentId/project-access`, async (request) =>
     cases.projectAccess(await principal(request), request.params.agentId));

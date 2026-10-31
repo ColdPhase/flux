@@ -23,7 +23,7 @@ export { inviteIdOf, inviteToken, inviteTokenHash, type InviteSigner };
 type InvitePorts = Pick<AccessPorts, 'workspaces' | 'invites' | 'access' | 'events' | 'projects'>;
 
 /** Told inside the joining transaction about a fresh join (#763 FT-3): the server notifies the inviter. */
-export type InviteJoined = (tx: Database, joined: { workspaceId: string; userId: string; inviterId: string; projectId: string | null }) => Promise<void>;
+export type InviteJoined = (tx: Database, joined: { workspaceId: string; userId: string; inviterId: string; projectId: string | null; encrypted: boolean }) => Promise<void>;
 
 const INVITE_ROLES: readonly InviteRole[] = ['admin', 'member', 'guest'];
 const MAX_PENDING = 50;
@@ -211,7 +211,7 @@ export async function acceptInvite(principal: Principal, token: unknown, db: Dat
         projectId = invite.projectId;
       }
     }
-    await options.onJoined?.(tx, { workspaceId: invite.workspaceId, userId: principal.id, inviterId: invite.createdBy, projectId });
+    await options.onJoined?.(tx, { workspaceId: invite.workspaceId, userId: principal.id, inviterId: invite.createdBy, projectId, encrypted: found.encrypted });
     // F-030: an admin of an encrypted workspace has no unlock password until a current holder grants one.
     return await result('joined', invite.role, found.encrypted && isManager(invite.role));
   });
