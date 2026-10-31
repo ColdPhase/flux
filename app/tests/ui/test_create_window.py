@@ -1082,11 +1082,11 @@ class CreateWindow(unittest.TestCase):
         stored = self.api(page, "GET", f"/api/v1/work/{made['id']}", status=200)
         self.assertEqual(stored["lifecycle"]["state"], "creation_reverted")
         self.assertNotIn("Undo me right after creating", [item["title"] for item in self.work(page)])
-        # Someone else's task, or a changed one, offers no Undo: the server decides (own_creation only while unchanged).
+        # A changed task offers no Undo any more: the server decides (own_creation only while unchanged and unused).
         other = self.api(page, "POST", f"/api/v1/projects/{self.ids['project']}/work", {"title": "Kept after a change", "clientCommandId": str(uuid.uuid4())}, status=201)
         self.assertEqual(other["creationUndo"], {"eligible": True, "reason": "own_creation"})
         changed = self.api(page, "PATCH", f"/api/v1/work/{other['id']}", {"title": "Kept after a change, renamed", "expectedVersion": other["version"]}, status=200)
-        self.assertEqual(self.api(page, "GET", f"/api/v1/work/{changed['id']}", status=200)["creationUndo"]["reason"], "creation_changed")
+        self.assertFalse(self.api(page, "GET", f"/api/v1/work/{changed['id']}", status=200)["creationUndo"]["eligible"])
 
     def test_28_a_long_message_gives_its_first_clause_as_the_title_selected(self) -> None:
         """#763 B5: a long message prefills only its first clause (at most 60 characters), selected; it stays the source."""

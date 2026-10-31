@@ -133,7 +133,7 @@ export function useCreatedToast(done?: () => void) {
     if (!item.creationUndo?.eligible) { toast({ message, tone: 'success', timeout: 4000 }); return; }
     const commandId = crypto.randomUUID();
     toast({
-      message, tone: 'neutral',
+      message, tone: 'neutral', timeout: 8000,
       action: {
         label: 'Undo', key: 'Z',
         onClick: () => {

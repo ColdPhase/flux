@@ -379,8 +379,8 @@ class SpokojLayout(unittest.TestCase):
                 toolbar = page.locator(".tb-bar")
                 names = {"Board": toolbar.get_by_role("radio", name="Board"), "List": toolbar.get_by_role("radio", name="List"),
                          "Mine": toolbar.get_by_role("button", name="Mine", exact=True), "Search": toolbar.get_by_label("Search tasks"),
-                         # The primary action is at the right of the header row, as drawn (#763 C4).
-                         "New": page.locator("header.top").get_by_role("button", name="New Task", exact=True)}
+                         # The primary action: the header row's right where a panel docks (#763 C4), the toolbar's end on a tablet.
+                         "New": page.get_by_role("button", name="New Task", exact=True)}
                 controls = lambda: {name: self.box(locator) for name, locator in names.items()}  # noqa: E731
                 board = controls()
                 # [Board | List] [Mine] [Search tasks] … [+ Task], in reading and focus order.
