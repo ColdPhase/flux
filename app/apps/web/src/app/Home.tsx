@@ -124,6 +124,8 @@ export function Home() {
         </section>
       ) : null}
       {/* Details (the space and its people, where invite links are made) stays reachable; the links to empty pages wait. */}
+      {/* Where to continue stays: it is empty for someone with nothing yet, and shows what a shared space already holds. */}
+      {firstRun && !phone ? <ContinueCard userId={me.user.id} workspaceIds={workspaceIds} /> : null}
       {firstRun && workspaces.length ? <p className="home__more"><button type="button" onClick={() => openDetails()}>Details</button></p> : null}
       {firstRun ? null : <>
       <section className="home__need" aria-labelledby="home-need">

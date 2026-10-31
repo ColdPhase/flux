@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useLocation } from 'react-router';
 import { getReturnSummary } from '../returns/api';
+import { useShellData } from './data';
 
 /**
  * Whether a project has something new for this person (#763 H11-4): what others did there since they last left its
@@ -12,15 +13,17 @@ const TTL = 60_000;
 const known = new Map<string, { at: number; news: boolean }>();
 const reading = new Map<string, Promise<boolean>>();
 
-function read(projectId: string): Promise<boolean> {
-  const cached = known.get(projectId);
+/** Kept per account: nothing one person read about a project is shown to the next one in this tab. */
+function read(userId: string, projectId: string): Promise<boolean> {
+  const id = `${userId}:${projectId}`;
+  const cached = known.get(id);
   if (cached && Date.now() - cached.at < TTL) return Promise.resolve(cached.news);
-  let pending = reading.get(projectId);
+  let pending = reading.get(id);
   if (!pending) {
     pending = getReturnSummary({ type: 'project', id: projectId })
       .then((summary) => summary.items.length > 0, () => false)
-      .then((news) => { known.set(projectId, { at: Date.now(), news }); reading.delete(projectId); return news; });
-    reading.set(projectId, pending);
+      .then((news) => { known.set(id, { at: Date.now(), news }); reading.delete(id); return news; });
+    reading.set(id, pending);
   }
   return pending;
 }
@@ -29,19 +32,20 @@ function read(projectId: string): Promise<boolean> {
 const LIMIT = 24;
 
 export function useProjectNews(projectIds: readonly string[]): ReadonlySet<string> {
+  const userId = useShellData().me.user.id;
   const here = useLocation().pathname.match(/^\/projects\/([^/]+)/)?.[1] ?? null;
   const key = projectIds.slice(0, LIMIT).join(',');
-  const [news, setNews] = useState<ReadonlySet<string>>(() => new Set(projectIds.filter((id) => known.get(id)?.news)));
+  const [news, setNews] = useState<ReadonlySet<string>>(() => new Set(projectIds.filter((id) => known.get(`${userId}:${id}`)?.news)));
   useEffect(() => {
     let live = true;
     const ids = key ? key.split(',') : [];
     // The open project is what the person is reading: it is not "new" now, nor for a minute after they leave it
     // (leaving saves its return point).
-    if (here) known.set(here, { at: Date.now(), news: false });
-    void Promise.all(ids.map(async (id) => (id !== here && await read(id) ? id : null))).then((found) => {
+    if (here) known.set(`${userId}:${here}`, { at: Date.now(), news: false });
+    void Promise.all(ids.map(async (id) => (id !== here && await read(userId, id) ? id : null))).then((found) => {
       if (live) setNews(new Set(found.filter((id): id is string => !!id)));
     });
     return () => { live = false; };
-  }, [key, here]);
+  }, [key, here, userId]);
   return news;
 }
