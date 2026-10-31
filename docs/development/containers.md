@@ -196,7 +196,7 @@ It is historical exploration material and is not the application environment.
 ## Identity services and variables
 
 Human login (issue #29) uses Better Auth inside the API container, on the same
-PostgreSQL database (migration `0002_identity.sql`). Sessions are rows in
+PostgreSQL database (the `auth_*` tables of the schema). Sessions are rows in
 `auth_sessions`, so they survive an API restart; a revoked session fails on the
 next request. The API reads these variables (see `docker/.env.example`):
 

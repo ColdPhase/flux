@@ -120,8 +120,14 @@ rejects ledger versions for which that image has no SQL file, then applies any
 missing files and requires the final ledger to contain exactly the file versions.
 A newly landed lower-numbered file may fill a gap in an existing installation;
 gaps in an active feature branch do not by themselves mark a database corrupt.
-Each SQL migration runs in one transaction. A legacy file may record its own
+Each SQL migration runs in one transaction. `0001_v0_1_baseline.sql` (#779) is the
+whole v0.1 schema; later changes are `0002` onwards. A file may record its own
 version, but inserting another version or deleting an earlier record rolls back.
+A database from before the baseline (a pre-release development build) is refused
+as having versions without files; remove it with `./flux clean` and start again.
+`scripts/db_baseline.sh diff <A> <B>` builds two migration sets (a directory or `git:<ref>`) in
+throwaway PostgreSQL and compares `pg_dump --schema-only`, every row and sequence; `generate` writes a
+baseline. The v0.1 baseline was generated from the 123 files at `662c1110d` and compares identical.
 The API and worker also check the exact ledger before starting; API health checks
 it again on every request.
 

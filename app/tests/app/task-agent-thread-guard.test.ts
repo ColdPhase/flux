@@ -1,8 +1,7 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
-import { readFile } from 'node:fs/promises';
 import { test } from 'node:test';
-import { sql, createDatabase, FLUX_SCHEMA_VERSION, readMigrationManifest, assertExactMigrationLedger, readAppliedMigrationVersions, type Database } from '@flux/db';
+import { sql, type Database } from '@flux/db';
 import { taskAgentThreadUseCases } from '@flux/core';
 import type { WorkItem } from '@flux/contracts';
 import { internalAgentThreadWriter } from './support/internal-agent-thread-writer.js';
@@ -16,7 +15,6 @@ import { apiUrl, publicOrigin, register, uniqueEmail } from './support/http.js';
 import { expect, toolValue } from './support/mcp.js';
 import { db, pool } from './support/db.js';
 import { backendPid, barrier, waitUntilBlockedBy } from './support/locks.js';
-import { guardFixturePool } from './support/fixture-database.js';
 
 const auth = createAuth({ db, config: loadIdentityConfig(), mailer: null, oauthRequests: createOauthRequests() });
 type Scene = Awaited<ReturnType<typeof actionScene>>;
@@ -240,32 +238,4 @@ test('forced native-post winner fences actual HTTP Undo, while forced Undo winne
       else{await assert.rejects(bounded(other));assert.deepEqual(await state(f.item.id),{threads:0,messages:0,boundaries:0,turns:0,used:false});assert.equal(await f.used(grant.id),0);}
     }finally{release.resolve();await bounded(Promise.all([first.catch(()=>undefined),other?.catch(()=>undefined)]));}
   }
-});
-
-test('fresh/current82 migration preserves exact ledger/history and reverses only before guarded retained effects', {timeout:60_000},async()=>{
-  const manifest=await readMigrationManifest('packages/db/migrations',FLUX_SCHEMA_VERSION),prior=manifest.filter(f=>f.version<87);
-  const name=`flux_thread_guard_${randomUUID().replaceAll('-','')}`,url=new URL(process.env.DATABASE_URL!);url.pathname=`/${name}`;
-  const createFixture={text:`CREATE DATABASE "${name}"`,query_timeout:60_000};
-  await pool.query(createFixture);const fixture=createDatabase(url.toString()).pool;
-  const fixtureGuard=guardFixturePool(fixture);
-  try{for(const file of prior){await fixture.query(await readFile(`packages/db/migrations/${file.name}`,'utf8'));await fixture.query('INSERT INTO flux_schema_version(version) VALUES($1) ON CONFLICT DO NOTHING',[file.version]);}
-    const [human,workspace,project,work,people,thread]=Array.from({length:6},()=>randomUUID());
-    await fixture.query("INSERT INTO auth_users(id,name,email) VALUES($1,'Retained human',$2)",[human,`${human}@example.test`]);
-    await fixture.query("INSERT INTO workspaces(id,name,created_by) VALUES($1,'Retained workspace',$2)",[workspace,human]);
-    await fixture.query("INSERT INTO projects(id,workspace_id,name,created_by) VALUES($1,$2,'Retained project',$3)",[project,workspace,human]);
-    await fixture.query("INSERT INTO project_work_items(id,workspace_id,project_id,title,outcome,status,created_by_kind,created_by_id) VALUES($1,$2,$3,'Retained task','Keep exact history','open','human',$4)",[work,workspace,project,human]);
-    await fixture.query("INSERT INTO project_conversations(id,workspace_id,project_id,created_by,space,work_id) VALUES($1,$2,$3,$4,'people',NULL),($5,$2,$3,$4,'agents',$6)",[people,workspace,project,human,thread,work]);
-    for(const conversation of [people,thread])await fixture.query("INSERT INTO project_messages(id,workspace_id,project_id,conversation_id,author_id,client_message_id,request_fingerprint,sequence,body) VALUES($1,$2,$3,$4,$5,$6,'retained-history',1,'Retain this exact human text')",[randomUUID(),workspace,project,conversation,human,randomUUID()]);
-    const history=()=>fixture.query('SELECT * FROM project_messages ORDER BY id');const oldHistory=(await history()).rows;
-    const up=await readFile('packages/db/migrations/0087_agent_thread_turn_guard.sql','utf8'),down=await readFile('packages/db/migrations/reverse/0087_agent_thread_turn_guard.down.sql','utf8');
-    const guardManifest=manifest.filter(f=>f.version<=87);
-    const before=await readAppliedMigrationVersions(fixture);await fixture.query(up);await fixture.query('INSERT INTO flux_schema_version(version) VALUES(87)');assertExactMigrationLedger(guardManifest,await readAppliedMigrationVersions(fixture));
-    assert.deepEqual((await history()).rows,oldHistory);await fixture.query(down);await fixture.query('DELETE FROM flux_schema_version WHERE version=87');assert.deepEqual(await readAppliedMigrationVersions(fixture),before);assert.deepEqual((await history()).rows,oldHistory);
-    assert.equal((await fixture.query("SELECT to_regclass('agent_thread_guard_events') AS guard")).rows[0].guard,null);assert.equal((await fixture.query("SELECT count(*)::int n FROM pg_trigger WHERE tgname='agent_thread_agent_writes_closed'")).rows[0].n,1);
-    await fixture.query(up);await fixture.query('INSERT INTO flux_schema_version(version) VALUES(87)');assertExactMigrationLedger(guardManifest,await readAppliedMigrationVersions(fixture));assert.deepEqual((await history()).rows,oldHistory);
-    const f=await actionScene(pool),item=await task(f),grant=await f.grant('conversation.reply','execute',20);await post(f,envelope(f,item.id,grant.id));
-    const client=await pool.connect();try{await client.query('BEGIN');const ledger=await readAppliedMigrationVersions(client);await assert.rejects(client.query(down),/Cannot reverse 0087/);await client.query('ROLLBACK');assert.deepEqual(await readAppliedMigrationVersions(client),ledger);}finally{client.release();}
-    assert.equal((await state(item.id)).messages,1);
-  }finally{fixtureGuard.cleanup();await fixture.end();const dropFixture={text:`DROP DATABASE "${name}" WITH (FORCE)`,query_timeout:60_000};await pool.query(dropFixture);}
-  fixtureGuard.assertNoEarlyErrors();
 });

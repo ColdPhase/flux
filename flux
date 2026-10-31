@@ -81,23 +81,6 @@ default_project() {
   base=$(basename -- "$FLUX_ROOT" | tr 'A-Z' 'a-z' | tr -c 'a-z0-9\n' '-' | tr -d '\n' | cut -c1-24 | sed 's/^-*//; s/-*$//')
   if [ -z "$base" ] || [ "$base" = flux ]; then printf 'flux-%s' "$(path_hash)"; else printf 'flux-%s-%s' "$base" "$(path_hash)"; fi
 }
-# A dangling symlink is an existing configuration path too.
-env_path_exists() { [ -e "$1" ] || [ -L "$1" ]; }
-
-# Upgrade regular pre-#76 configuration once; moving relative links changes their target.
-migrate_legacy_env() {
-  legacy="$FLUX_ROOT/.env"
-  [ ! -L "$legacy" ] || die "Legacy .env is a symlink and was left unchanged. Put the intended private configuration in docker/.env and remove the legacy link before continuing."
-  if env_path_exists "$legacy"; then
-    [ -f "$legacy" ] && [ -r "$legacy" ] || die "Legacy .env is not a readable regular file; it was left unchanged. Resolve its configuration before continuing."
-    ! env_path_exists "$ENV_FILE" || die "Both .env and docker/.env exist. Keep the intended configuration in docker/.env and remove the legacy .env before continuing."
-    mv "$legacy" "$ENV_FILE"
-    say "Moved existing .env to docker/.env; secrets and project name are unchanged."
-  elif env_path_exists "$ENV_FILE"; then
-    [ -f "$ENV_FILE" ] && [ -r "$ENV_FILE" ] || die "docker/.env exists but is not a readable regular file or a symlink to one; it was left unchanged. Resolve its configuration before continuing."
-  fi
-  return 0
-}
 
 resolve_project() {
   stored=''
@@ -164,20 +147,13 @@ random_hex() { od -An -N"${1:-32}" -tx1 /dev/urandom | tr -d ' \n'; }
 
 # 32 random bytes as base64url (43 characters): the keyring token of encrypted workspaces (F-030).
 random_b64url() { head -c 32 /dev/urandom | base64 | tr '+/' '-_' | tr -d '=\n'; }
-# Adds FLUX_KEYRING_TOKEN to an env file that lacks one (an install from before F-030); never changes an existing token.
-ensure_keyring_token() {
-  file=${1:-$ENV_FILE}
-  [ -n "$(sed -n 's/^FLUX_KEYRING_TOKEN=//p' "$file" | tail -n 1)" ] && return 0
-  set_env_line "$file" FLUX_KEYRING_TOKEN "$(random_b64url)"
-  say "Added FLUX_KEYRING_TOKEN (encrypted spaces' keyring) to ${file#"$FLUX_ROOT"/}."
-}
-# Adds FLUX_KEY_PIN_SECRET (F-030 S2c: the pin over encrypted spaces' holders and key versions, kept out of the
-# database) to an env file that lacks one; never changes an existing secret, because every pin is made with it.
-ensure_key_pin_secret() {
-  file=${1:-$ENV_FILE}
-  [ -n "$(sed -n 's/^FLUX_KEY_PIN_SECRET=//p' "$file" | tail -n 1)" ] && return 0
-  set_env_line "$file" FLUX_KEY_PIN_SECRET "$(random_b64url)"
-  say "Added FLUX_KEY_PIN_SECRET (encrypted spaces' key pin) to ${file#"$FLUX_ROOT"/}."
+
+# The private configuration must be a readable regular file (or a link to one) when it exists.
+check_env_file() {
+  if [ -e "$ENV_FILE" ] || [ -L "$ENV_FILE" ]; then
+    [ -f "$ENV_FILE" ] && [ -r "$ENV_FILE" ] || die "docker/.env exists but is not a readable regular file or a symlink to one; it was left unchanged. Resolve its configuration before continuing."
+  fi
+  return 0
 }
 
 # Writes KEY=value into an env file (replacing the line or appending it), via a temp file.
@@ -197,10 +173,6 @@ set_env_line() {
 ensure_env() {
   if [ -f "$ENV_FILE" ]; then
     say "Using existing ${ENV_FILE#"$FLUX_ROOT"/} (never overwritten)."
-    if ! env_file_has FLUX_PROJECT; then
-      # Adds the missing key only, so the project name stays stable and visible.
-      printf '# Added by ./flux: Compose project of this checkout.\nFLUX_PROJECT=%s\n' "$PROJECT" >> "$ENV_FILE"
-    fi
     return 0
   fi
   [ -f "$ENV_EXAMPLE" ] || die "Missing $ENV_EXAMPLE"
@@ -390,7 +362,7 @@ first_run_runtime_question() {
 # The slot services in this project's Compose files, in number order (runtime-1 … and override slots).
 runtime_slots() { compose_main --profile runtime config --services 2>/dev/null | grep -E '^runtime-[1-9][0-9]*$' | sort -t- -k2 -n | tr '\n' ' '; }
 runtime_services() { printf 'runtime-manager runtime-egress runtime-install %s' "$(runtime_slots)"; }
-# Adds any missing runtime secret (an older docker/.env, or a slot added by the override). Existing
+# Adds any missing runtime secret (a slot added by the override, or a hand-written docker/.env). Existing
 # values are never changed.
 ensure_runtime_secrets() {
   [ -n "$(env_value FLUX_RUNTIME_MANAGER_SECRET)" ] || set_env_line "$ENV_FILE" FLUX_RUNTIME_MANAGER_SECRET "$(random_hex 32)"
@@ -579,7 +551,12 @@ cmd_up() {
   start_main
   say ""
   say "Flux is running:  $(public_origin)"
-  say "Create an account there, or run ./flux demo for sample data and two logins."
+  if [ "$(env_value FLUX_SIGNUP | tr -d '[:space:]' | tr 'A-Z' 'a-z')" = off ]; then
+    say "Sign-up is closed (FLUX_SIGNUP=off): see \"Decide who can sign up\" in docs/operations/install.md to add people."
+    say "Or run ./flux demo for sample data and two logins."
+  else
+    say "Create an account there, or run ./flux demo for sample data and two logins."
+  fi
 }
 
 cmd_demo() {
@@ -985,7 +962,7 @@ open_archive() {
     [ "$actual" = "$expected" ] || die "restore: $part does not match its checksum in the manifest; the archive is damaged or was changed. Nothing was restored."
   done
   case "$(manifest_value "$manifest" schemaVersion)" in ''|*[!0-9]*) die "restore: the manifest has no valid schemaVersion." ;; esac
-  grep -q '^  "appliedMigrations": \[' "$manifest" || die "restore: the manifest has no appliedMigrations; it was written by an older ./flux. Nothing was restored."
+  grep -q '^  "appliedMigrations": \[' "$manifest" || die "restore: the manifest has no appliedMigrations. Nothing was restored."
 }
 
 # Writes a missing .env from the archive's copy, as this checkout's project. FLUX_PORT,
@@ -1184,11 +1161,6 @@ upgrade_failed() {
   else
     warn "  check out the Flux version you ran before (its commit was not recorded)"
   fi
-  warn "  # Pre-layout versions read root .env; move the same private configuration back first."
-  warn "  if [ ! -f app/package.json ] && { [ -e docker/.env ] || [ -L docker/.env ]; }; then"
-  warn "    [ ! -L docker/.env ] && [ -f docker/.env ] || { echo 'docker/.env is not a regular configuration file; preserve its target as a private root .env before restore.' >&2; exit 1; }"
-  warn "    [ ! -e .env ] && [ ! -L .env ] && mv docker/.env .env || { echo 'Both env paths exist; choose the intended configuration before restore.' >&2; exit 1; }"
-  warn "  fi"
   warn "  ./flux restore '$UPGRADE_ARCHIVE'"
   warn "Or fix the cause in this checkout and run ./flux restore '$UPGRADE_ARCHIVE' --migrate to retry the upgrade."
   exit 1
@@ -1226,9 +1198,6 @@ cmd_upgrade() {
   need_docker
   [ -f "$ENV_FILE" ] || die "No ${ENV_FILE#"$FLUX_ROOT"/}; for a first installation use ./flux up."
   check_owner "$PROJECT"
-  # F-030: an install from before encrypted workspaces gets its keyring token here (the upgrade restarts the keyring).
-  ensure_keyring_token "$ENV_FILE"
-  ensure_key_pin_secret "$ENV_FILE"
   docker volume inspect "${PROJECT}_pgdata" >/dev/null 2>&1 || die "Compose project $PROJECT has no data yet; use ./flux up."
   if [ "$pull" = 1 ] && [ "$(git_commit)" = unknown ]; then die "upgrade --pull needs a git checkout; update the files yourself and run ./flux upgrade."; fi
   compose_main up -d --wait --wait-timeout "$WAIT_TIMEOUT" db >/dev/null || die "The database of $PROJECT did not start."
@@ -1487,7 +1456,7 @@ command=${1:-help}
 case "$command" in
   _is-loopback-origin) is_loopback_origin "${1:-}"; exit ;;  # used by scripts/check_flux_cli.sh
   help|-h|--help) ;;
-  *) migrate_legacy_env
+  *) check_env_file
      resolve_project
      # Recorded as an image label and in backup manifests (issue #123).
      FLUX_GIT_COMMIT=${FLUX_GIT_COMMIT:-$(git_commit)}; export FLUX_GIT_COMMIT ;;

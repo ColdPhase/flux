@@ -171,7 +171,7 @@ test('ordinary owner switches persist, the same old MCP bearer loses wiki access
     await panel.getByRole('status').getByText('Permissions saved', { exact: true }).waitFor();
     assert.equal(toolFailure(await f.connection.tool('flux_get_doc', { projectId: f.projectId, id: f.doc.id })).code, 'MCP_ENTRY_UNAVAILABLE');
     assert.deepEqual((await f.settings()).connection, f.initial.connection, 'original consent is unchanged');
-    assert.equal(new URL(page.url()).pathname, '/connect-agent', 'ordinary save starts no extra login flow');
+    assert.equal(new URL(page.url()).pathname, '/settings/agents/connect', 'ordinary save starts no extra login flow (#777 moved Connect into Settings)');
     await page.reload(); await panel.getByRole('status').getByText('Showing saved permissions', { exact: true }).waitFor();
     assert.equal(await wiki.isChecked(), false); await capture(page, 'mcp-permissions-wiki-off-desktop');
     const playbook = panel.getByRole('switch', { name: /^Flux co-work instructions/ });
@@ -355,11 +355,11 @@ test('actual owner setup stays pending, refreshes lost authorization, and keeps 
             const target = await hostAction.locator('summary').boundingBox(); assert.ok(target && target.height >= 44, 'host action has a phone touch target');
           }
           await hostAction.locator('summary').click();
-          const commands = await hostAction.locator('code').allTextContents();
+          const commands = await hostAction.locator('code:not(.cowork-host-actions__inline)').allTextContents();
           assert.equal(commands.length, 2);
           for (const [index, command] of commands.entries()) assert.equal(command,
             `./flux cowork ${index === 0 ? 'start' : 'resume'} --client codex --origin ${origin} --connection ${f.connection.connectionId} --project ${f.projectId}`);
-          assert.equal(await hostAction.getByText('Resume from the same directory.', { exact: false }).count(), 1);
+          assert.equal(await hostAction.getByText('run it from the same folder.', { exact: false }).count(), 1);
 
           for (const theme of ['light', 'dark'] as const) {
             await page.emulateMedia({ colorScheme: theme });

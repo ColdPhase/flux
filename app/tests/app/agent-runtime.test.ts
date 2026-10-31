@@ -1,6 +1,5 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
-import { readFile } from 'node:fs/promises';
 import { describe, test } from 'node:test';
 import { sql } from 'drizzle-orm';
 import { AGENT_RUNTIME_BINDING_PATH, AGENT_RUNTIME_PATH } from '@flux/contracts';
@@ -210,52 +209,4 @@ describe('purge records confirmed and unconfirmed vendor logout', () => {
       }), (error) => error === rollback);
     });
   }
-});
-
-describe('migration 0056 reverses only before use', () => {
-  test('refused with a binding, and drops the runtime tables without one (inside a rolled-back transaction)', async () => {
-    const down = await readFile('packages/db/migrations/reverse/0056_agent_runtime.down.sql', 'utf8');
-    const client = await pool.connect();
-    try {
-      const owner = await insertedHuman('runtime-reverse');
-      await client.query('BEGIN');
-      await client.query(`INSERT INTO agent_runtime_slots(slot, state) VALUES ('runtime-999', 'held')`);
-      await client.query(`INSERT INTO agent_runtime_bindings(id, owner_user_id, slot, state) VALUES ($1, $2, 'runtime-999', 'active')`, [randomUUID(), owner.id]);
-      await client.query('SAVEPOINT before_reverse');
-      await assert.rejects(client.query(down), /0056 reversal refused/);
-      await client.query('ROLLBACK TO SAVEPOINT before_reverse');
-      await client.query('DELETE FROM agent_runtime_bindings');
-      await client.query('DELETE FROM agent_runtime_connections');
-      // Reverse new dependent schema first, preserving each migration's own refusal guards.
-      await client.query(await readFile('packages/db/migrations/reverse/0118_agent_runtime_client_history.down.sql','utf8'));
-      await client.query(await readFile('packages/db/migrations/reverse/0097_agent_runtime_auth_operations.down.sql','utf8'));
-      await client.query(await readFile('packages/db/migrations/reverse/0096_agent_runtime_sign_in.down.sql','utf8'));
-      await client.query(down);
-      const left = await client.query(`SELECT count(*)::int AS n FROM information_schema.tables WHERE table_name = ANY($1)`,
-        [['agent_runtime_slots', 'agent_runtime_bindings', 'agent_runtime_connections', 'agent_runtime_operator_statements']]);
-      assert.equal(left.rows[0].n, 0);
-    } finally {
-      await client.query('ROLLBACK').catch(() => undefined);
-      client.release();
-    }
-  });
-});
-
-describe('migration 0096 reverses to the T3 columns', () => {
-  test('drops only the sign-in notice columns (inside a rolled-back transaction)', async () => {
-    const down = await readFile('packages/db/migrations/reverse/0096_agent_runtime_sign_in.down.sql', 'utf8');
-    const client = await pool.connect();
-    const columns = async () => (await client.query<{ column_name: string }>(`SELECT column_name FROM information_schema.columns
-      WHERE table_name = 'agent_runtime_connections' ORDER BY ordinal_position`)).rows.map((row) => row.column_name);
-    try {
-      await client.query('BEGIN');
-      assert.ok((await columns()).includes('account_fingerprint'));
-      await client.query(down);
-      assert.deepEqual(await columns(), ['id', 'owner_user_id', 'binding_id', 'transport', 'client', 'state', 'sign_in_method', 'auth_method', 'plan_label',
-        'account_label', 'signed_in_at', 'created_at', 'revoked_at']);
-    } finally {
-      await client.query('ROLLBACK').catch(() => undefined);
-      client.release();
-    }
-  });
 });
