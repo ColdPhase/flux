@@ -3,6 +3,7 @@ import {
   type LocalTrackPublication, type Participant, type RemoteTrack, type RemoteTrackPublication, type TrackPublication,
 } from 'livekit-client';
 import { canPublishScreen } from './capture.js';
+import { installIceServerNormalizer } from './ice-servers.js';
 import { measurement as fmt, receiverReport, TrackDiagnostics } from './diagnostics.js';
 
 /**
@@ -151,6 +152,7 @@ export class LiveMediaConnection {
   private readonly stopDeviceWatch: () => void;
 
   constructor() {
+    installIceServerNormalizer();
     this.room = new Room({
       // Automatic quality: receivers request the size they show; hidden video is paused.
       adaptiveStream: true,

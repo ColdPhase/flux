@@ -1,0 +1,11 @@
+# The documented whole-origin proxy (docs/operations/reverse-proxy.md, "Public hostname"), with a
+# certificate from the simulation's CA in place of ACME, and the API reached on the proxy network.
+{
+	admin off
+	auto_https disable_redirects
+}
+
+flux.sim.test {
+	tls /certs/flux.sim.test.crt /certs/flux.sim.test.key
+	reverse_proxy api:8080
+}
