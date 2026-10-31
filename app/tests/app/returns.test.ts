@@ -340,3 +340,42 @@ describe('return view: work a pivot parked (#290, #44 scenario 3)', () => {
       assert.deepEqual(texts(back.items), ['New rule: Dim the lamp at night'], 'a plain acceptance is only a new rule');
   });
 });
+
+describe('return view: a task that became yours while you were away (#763 H11-5)', () => {
+  test('it is told as given to you, with its due day, and is the next step before a rule waiting for you', async () => {
+    const [tomasz, marta] = await Promise.all(['Tomasz', 'Marta'].map(person));
+    const ws = await workspace(tomasz, 'Food bank');
+    await addMember(tomasz, ws.id, marta, 'member');
+    const signup = await createProject(tomasz, ws.id, 'Volunteer sign-up', 'restricted');
+    await grant(tomasz, signup.id, marta, 'contributor');
+    const reminders = json<WorkItem>(await post(tomasz, `/api/v1/projects/${signup.id}/work`, { title: 'Design the reminder email' }), 201);
+    const place = { type: 'project' as const, id: signup.id };
+    await view(marta, place);
+    await view(marta, { type: 'home' });
+
+    // While Marta is away: the task is handed to her with a due day, then a rule is proposed (newer).
+    json(await patch(tomasz, `/api/v1/work/${reminders.id}`, { owner: { kind: 'human', id: marta.id }, dueOn: '2026-11-04' }, { 'if-match': `"${reminders.version}"` }), 200);
+    const proposal = json<Decision>(await post(tomasz, `/api/v1/projects/${signup.id}/decisions`, { title: 'Drop shift swapping', rationale: 'Few use it' }), 201);
+    // A task Marta makes for herself is not news to her.
+    const own = json<WorkItem>(await post(marta, `/api/v1/projects/${signup.id}/work`, { title: 'Sketch the email header', owner: { kind: 'human', id: marta.id }, dueOn: '2026-11-06' }), 201);
+
+    for (const back of [await summary(marta, place), await summary(marta, { type: 'home' })]) {
+      const given = back.items.find((item) => item.source.type === 'work' && item.source.id === reminders.id)!;
+      assert.deepEqual([given.text, given.needsYou, given.dueOn], ['Tomasz gave you a task: Design the reminder email', true, '2026-11-04'], texts(back.items).join('\n'));
+      assert.deepEqual(back.nextStep, { text: 'Pick up “Design the reminder email”', reason: 'Tomasz gave it to you.', item: `work:${reminders.id}`,
+        source: { type: 'work', id: reminders.id, projectId: signup.id }, dueOn: '2026-11-04' });
+      assert.ok(back.items.some((item) => item.source.type === 'decision' && item.source.id === proposal.id && item.needsYou), 'the newer rule still needs her');
+      assert.equal(back.items.some((item) => item.source.type === 'work' && item.source.id === own.id), false, 'her own task is not a change since she left');
+    }
+    // Tomasz handed it over: it is not new for him.
+    const giver = await summary(tomasz, place);
+    assert.equal(texts(giver.items).some((text) => text.includes('gave you')), false);
+
+    // Seen: the next return no longer calls it new.
+    await view(marta, place);
+    json(await post(tomasz, `/api/v1/projects/${signup.id}/work`, { title: 'Print flyers' }), 201);
+    const later = await summary(marta, place);
+    assert.deepEqual(texts(later.items), ['New task: Print flyers']);
+    assert.equal(later.nextStep, null);
+  });
+});
