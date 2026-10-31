@@ -75,7 +75,7 @@ export function NotNowMenu({ item, onChoose, onClose, anchors, popProps }: {
   );
 }
 
-function NotNowButton({ buttonRef, open, onToggle, className = '' }: { buttonRef: RefObject<HTMLButtonElement | null>; open: boolean; onToggle: () => void; className?: string }) {
+export function NotNowButton({ buttonRef, open, onToggle, className = '' }: { buttonRef: RefObject<HTMLButtonElement | null>; open: boolean; onToggle: () => void; className?: string }) {
   return (
     <button ref={buttonRef} type="button" className={`ui-btn ui-btn--secondary nyc__nn${className}`} aria-haspopup="menu" aria-expanded={open} aria-keyshortcuts="S" onClick={onToggle}>
       Not now<Icon name="chevron-down" size={14} />
@@ -90,7 +90,7 @@ function Face({ item }: { item: NeedsYouItem }) {
   return <span className="nyc__face nyc__face--icon"><Icon name={NOTE_ICON[item.kind === 'question' ? 'question' : 'mention']} size={16} /></span>;
 }
 
-function WaitingLine({ item }: { item: NeedsYouItem }) {
+export function WaitingLine({ item }: { item: NeedsYouItem }) {
   const decision = item.decision;
   if (!decision) return null;
   const you = decision.accepters.find((person) => person.you);

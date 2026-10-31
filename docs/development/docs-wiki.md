@@ -111,7 +111,7 @@ made; if it still holds an old copied section of that decision, only that sectio
   focus and every 20 seconds), so accepting or replacing a decision changes no page text and adds
   no version. A page's history holds the edits people make, and its outline its own headings.
 - **Proposed decisions stay out.** Adding a proposed decision is refused with 422
-  `DECISION_NOT_ACCEPTED` (also when starting a doc from it); the Details panel dims Add to docs
+  `DECISION_NOT_ACCEPTED` (also when starting a doc from it); the Details panel dims "Add to a Wiki page"
   with "Accept it first to add it to the Wiki". A decision referenced earlier that is later
   replaced shows "Decision replaced".
 - **Migration of copied sections.** Pages written before F-034 hold `## Decision: …` sections. The

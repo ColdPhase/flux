@@ -4,7 +4,7 @@ import { Icon } from '../ui';
 import { useShellActions } from '../app/shellContext';
 import { useShellData } from '../app/data';
 import type { ProjectWork } from './api';
-import { decisionPieces, firstLine, resultPieces, taskNumber, workPieces, type StatePiece } from './format';
+import { decisionPieces, firstClause, firstLine, resultPieces, taskNumber, workPieces, type StatePiece } from './format';
 import type { MessageWorkPreview } from './message-associations';
 import { summaryEmptyCaption, summaryStateParts, type StatePart } from './state-summary';
 import './work.css';
@@ -151,7 +151,7 @@ export function useCreateWorkFromMessage(project: Pick<Project, 'id'>) {
   /** Opens the Create window prefilled with this message as the task's source (F-026 S3, P5). */
   const create = useCallback((message: ConversationMessage) => {
     const preview = firstLine(messagePreview(message.body, message.files?.length));
-    openCreate({ kind: 'task', projectId: project.id, title: preview, sources: [{ ref: { type: 'message', id: message.id }, label: preview }] });
+    openCreate({ kind: 'task', projectId: project.id, title: firstClause(preview), sources: [{ ref: { type: 'message', id: message.id }, label: preview }] });
   }, [openCreate, project.id]);
   return { create };
 }

@@ -261,7 +261,9 @@ function TaskForm({ ids, request, prefilled, phone, carried, projectId, onProjec
   const attempt = useRef<{ payload: string; key: string } | null>(null);
   const mounted = useRef(true);
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
-  useEffect(() => { titleRef.current?.focus(); }, []);
+  // A title made from a message is its first clause, selected, so typing replaces it (#763 B5). Once, on open.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { titleRef.current?.focus(); if (request.sources?.some((source) => source.ref.type === 'message')) titleRef.current?.select(); }, []);
 
   useEffect(() => {
     if (!projectId) return undefined;

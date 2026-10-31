@@ -577,8 +577,14 @@ class ScenarioJourney:
         # Ada replies in the thread; the reply inherits the project audience without a checkbox.
         page = self.page("ada")
         page.goto(f"/projects/{lamp}")
-        menu = open_message_menu(page.locator(f"#message-{s['m1']}"), phone=self.phone)
-        self.tap(menu.get_by_role("menuitem", name="Reply in thread", exact=True))
+        if self.phone:
+            menu = open_message_menu(page.locator(f"#message-{s['m1']}"), phone=True)
+            self.tap(menu.get_by_role("menuitem", name="Reply in thread", exact=True))
+        else:
+            # On a computer Reply in thread is on the toolbar; the menu lists only what it lacks (#763 B4).
+            row = page.locator(f"#message-{s['m1']}")
+            row.hover()
+            self.tap(row.get_by_role("button", name="Reply in thread", exact=True).first)
         thread = page.get_by_role("complementary", name="Replies").or_(page.get_by_role("dialog", name="Replies"))
         expect(thread.locator(".thread__root")).to_contain_text(JONAS_ROOT)
         expect(thread.locator(".composer__audience")).to_contain_text("Jonas and you")
@@ -620,17 +626,21 @@ class ScenarioJourney:
 
         # A person proposes the first rule from Jonas's message and accepts it.
         page = self.page("ada")
-        page.goto(f"/projects/{lamp}")
-        message = page.locator(f"#message-{s['m1']}")
-        menu = open_message_menu(message, phone=self.phone)
-        self.tap(menu.get_by_role("menuitem", name="Propose a decision"))
+        if self.phone:
+            # A phone's long press shows the five drawn items (#763 B3): a decision starts from "+" Create.
+            page.goto(f"/projects/{lamp}?open=propose-decision")
+        else:
+            page.goto(f"/projects/{lamp}")
+            message = page.locator(f"#message-{s['m1']}")
+            menu = open_message_menu(message, phone=False)
+            self.tap(menu.get_by_role("menuitem", name="Propose a decision"))
         panel = self.details(page)
         expect(panel.get_by_role("heading", name="Propose a decision")).to_be_visible()
         panel.get_by_label("Decision").fill(D1)
         panel.get_by_label("Why").fill(WHY1)
         self.tap(panel.get_by_role("button", name="Propose decision", exact=True))
         expect(panel.locator(".wd-eyebrow")).to_contain_text("Proposed decision")
-        self.tap(panel.get_by_role("button", name="Accept decision"))
+        self.tap(panel.get_by_role("button", name="Accept", exact=True))
         expect(panel.locator(".wd-eyebrow")).to_contain_text("Current rule")
         d1 = self.decision_titled("ada", D1)
         self.assertEqual((d1["status"], d1["proposedBy"]["id"], d1["decidedBy"]["id"]), ("accepted", self.ids["ada"], self.ids["ada"]))
@@ -982,7 +992,7 @@ class ScenarioJourney:
         jonas.reload()
         self.tap(jonas.locator(".nyc", has_text=D2).get_by_role("button", name=D2))
         panel = self.details(jonas)
-        expect(panel.get_by_role("heading", name="Accept as a pivot")).to_be_visible()
+        expect(panel.get_by_role("heading", name="What happens to current work?")).to_be_visible()
         expect(panel.locator(".agent-tag").first).to_be_visible()
         panel.get_by_role("radiogroup", name=CAMERA_TASK).get_by_label("Park").check()
         panel.get_by_role("radiogroup", name=ORDER_TASK).get_by_label("Still applies").check()

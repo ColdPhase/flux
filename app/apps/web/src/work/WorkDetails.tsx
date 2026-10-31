@@ -4,12 +4,17 @@ import { useRevalidator } from 'react-router';
 import type { Agent, ObjectLink, Project, WorkspaceMember, WorkStatus, WorkDetailObject, WorkDetailProjection } from '@flux/contracts';
 import { ApiError } from '../api/client';
 import { useStreamEvents } from '../api/stream';
-import { AgentIdentity, Avatar, Button, Icon, Input, Kreska, Morph, PanelActions, PanelGlyph, PanelMeta, StatusGlyph, useToast, Select, Option } from '../ui';
+import { AgentIdentity, Avatar, Button, Icon, Input, Kreska, Morph, PanelActions, PanelGlyph, PanelMeta, StatusGlyph, useToast, usePop, Select, Option } from '../ui';
 import { getProject, listWorkspaceMembers } from '../project/api';
 import { useShellData } from '../app/data';
 import { useRegisterLiveHere } from '../live/LiveProvider';
 import { LiveEntry } from '../live/LiveEntry';
 import { useShellActions, type ObjectView, type WorkFormView } from '../app/shellContext';
+import { useNeedsYou, announceInboxChange } from '../notifications/needsYou';
+import { useNeedsYouActions } from '../notifications/useNeedsYouActions';
+import { NotNowButton, NotNowMenu, WaitingLine } from '../notifications/NeedsYouCard';
+import '../notifications/needs-you.css';
+import { useDiscussDecision } from './discuss';
 import { acceptDecision, createResult, listAgents, proposeDecision, undoTaskCreation, updateWork } from './api';
 import { STATUS_LABEL, decisionLine, firstLine, isFinished, linked, resultLine, shortDate, taskNumber } from './format';
 import { docsLinking } from '../docs/AddToDoc';
@@ -136,7 +141,15 @@ function emptyLinks(relations: DetailRelations, empty: string) {
   return relations.complete ? empty : relations.page ? 'No matching links on this page.' : relations.busy ? 'Loading relationships…' : 'Relationships are unavailable.';
 }
 
-function ChoicePages({ choices, label }: { choices: DetailChoices; label: string }) {
+/** Whether a picker's choices need their pager: another page, or a read that is not ready (Spokój rule 4, #763 B6). */
+function choicesPaged(choices: DetailChoices) {
+  const page = choices.page;
+  return !page || !!page.previousCursor || !!page.nextCursor || page.before > 0;
+}
+
+/** `quiet`: a complete single page shows no pager at all (Spokój rule 4: no pagination for three items, #763 B6). */
+function ChoicePages({ choices, label, quiet = false }: { choices: DetailChoices; label: string; quiet?: boolean }) {
+  if (quiet && !choicesPaged(choices) && choices.read.phase !== 'unavailable') return null;
   return <div><WorkPagination {...choices} label={label} noun="choices" />
     {choices.read.phase === 'unavailable' ? <p className="wd-error" role="alert">Choices could not be loaded. Your selection is kept. <button type="button" className="wd-inline" onClick={choices.onRefresh}>Refresh choices</button></p> : null}
   </div>;
@@ -185,7 +198,7 @@ function Sources({ links, id, project, of }: { links: ObjectLink[]; id: string; 
   );
 }
 
-/** Docs that include or mention this result or decision (#112), and "Add to docs". */
+/** Wiki pages that include or mention this result or decision (#112), and "Add to a Wiki page" (#763 D6: the view is the Wiki). */
 /** Every native role has a reachable destination, including links outside the named sections. */
 function OtherRelationships({ object, relations, project }: { object: WorkDetailObject; relations: DetailRelations; project: Project }) {
   const { openDetails } = useShellActions();
@@ -220,12 +233,12 @@ function InDocs({ object, kind, project, relations, notYet }: { object: { id: st
   const writable = project.access !== 'viewer';
   return (
     <section className="details__sec" aria-labelledby={`wd-docs-${object.id}`}>
-      <h4 id={`wd-docs-${object.id}`}>In docs</h4>
+      <h4 id={`wd-docs-${object.id}`}>In the Wiki</h4>
       {docs.length ? (
         <ul className="wd-links">{docs.map((doc) => <li key={doc.id}><RefLink className="wd-link" to={`/projects/${project.id}/docs/${doc.id}`}><span>{doc.title}</span>{doc.role === 'source' ? <small>added</small> : <small>mentioned</small>}<Icon name="chevron-right" size={14} /></RefLink></li>)}</ul>
-      ) : <p className="wd-muted">{emptyLinks(relations, 'Not in a doc yet.')}</p>}
-      {writable && kind && notYet ? <div className="wd-actions wd-actions--hint"><Button variant="secondary" icon="doc" disabled aria-describedby={`wd-docs-hint-${object.id}`}>Add to docs</Button><small className="wd-muted" id={`wd-docs-hint-${object.id}`}>{notYet}</small></div> : null}
-      {writable && kind && !notYet ? <div className="wd-actions"><Button variant="secondary" icon="doc" onClick={() => openDetails({ kind: 'add-to-doc', projectId: project.id, from: { type: kind, id: object.id, title: object.title }, inDocs: docs.filter((doc) => doc.role === 'source').map((doc) => doc.id), inDocsComplete: relations.complete })}>Add to docs</Button></div> : null}
+      ) : <p className="wd-muted">{emptyLinks(relations, 'Not in the Wiki yet.')}</p>}
+      {writable && kind && notYet ? <div className="wd-actions wd-actions--hint"><Button variant="secondary" icon="doc" disabled aria-describedby={`wd-docs-hint-${object.id}`}>Add to a Wiki page</Button><small className="wd-muted" id={`wd-docs-hint-${object.id}`}>{notYet}</small></div> : null}
+      {writable && kind && !notYet ? <div className="wd-actions"><Button variant="secondary" icon="doc" onClick={() => openDetails({ kind: 'add-to-doc', projectId: project.id, from: { type: kind, id: object.id, title: object.title }, inDocs: docs.filter((doc) => doc.role === 'source').map((doc) => doc.id), inDocsComplete: relations.complete })}>Add to a Wiki page</Button></div> : null}
     </section>
   );
 }
@@ -618,15 +631,30 @@ function DecisionPanel({ decision, context, detail, relations, reload, choices, 
   const { setBusy, setError, setAttempt, isCurrent } = commands;
   const pivot = decision.status === 'proposed' && !!decision.supersedes;
   const selectedCount = (choice: Choice) => Object.values(choices).filter((value) => value === choice).length;
+  // The panel is the Inbox's decision card first (F-026 P4, S11; #763 D1): Needs you, the reason, what it rests on,
+  // Accept / Not now / Discuss and who else can accept. Not now and the waiting line are the Inbox item's, when it has one.
+  const queue = useNeedsYou(me.user.id);
+  const handlers = useNeedsYouActions(queue);
+  const need = decision.status === 'proposed' ? queue.items?.find((entry) => entry.key === `decision:${decision.id}`) ?? null : null;
+  const [notNowOpen, setNotNowOpen] = useState(false);
+  const notNow = useRef<HTMLButtonElement>(null);
+  const notNowAnchors = useMemo(() => [notNow], []);
+  const notNowPop = usePop(notNowOpen);
+  const discuss = useDiscussDecision();
+  const sources = relations.links.filter((link) => link.from.id === decision.id && link.role === 'source');
+  const pivotRows = [...stillApplies.map((entry) => ({ key: entry.link.id, label: entry.title, hint: 'still applies', open: () => openDetails({ kind: 'work', id: entry.id, projectId: context.project.id }) })),
+    ...parked.map((item) => ({ key: item.id, label: item.title, hint: 'parked', open: () => openDetails({ kind: 'work', id: item.id, projectId: context.project.id }) }))];
 
-  async function accept(event: FormEvent) {
-    event.preventDefault();
-    if (pivot && !pivotChoices.page) return;
+  async function accept(event?: FormEvent) {
+    event?.preventDefault();
+    if (busy || (pivot && !pivotChoices.page)) return;
     if (selectedCount('keep') > 50 || selectedCount('park') > 50) { setError('A pivot can keep up to 50 work items and park up to 50.'); return; }
     setBusy(true); setError('');
     const pick = (choice: Choice) => Object.entries(choices).filter(([, value]) => value === choice).map(([id]) => id);
     try {
       await acceptDecision(decision, pivot ? { stillApplies: pick('keep'), park: pick('park') } : {}, attempt);
+      // The Inbox and Home read their queue again, so the decision leaves them too.
+      announceInboxChange();
       if (isCurrent()) reload();
     } catch (cause) {
       if (!isCurrent()) return;
@@ -638,10 +666,39 @@ function DecisionPanel({ decision, context, detail, relations, reload, choices, 
   return (
     <div className="details wd" data-detail-kind="decision" data-detail-id={decision.id}>
       <div className="wd-decision-identity">
-        <p className={`details__eyebrow wd-eyebrow${decision.status === 'proposed' ? ' wd-need' : ''}`}><Icon name="rule" size={13} /><Morph value={decision.status}>{decisionLine(decision)}</Morph></p>
+        <p className={`details__eyebrow wd-eyebrow${decision.status === 'proposed' ? ' wd-need' : ''}`}><Icon name="rule" size={13} /><Morph value={decision.status}>{decisionLine(decision)}</Morph>{need ? <span className="nyc__chip wd-need-chip">Needs you</span> : null}</p>
         <h3 className={`details__title${decision.status === 'superseded' ? ' wd-was' : ''}`}>{decision.title}</h3>
       </div>
       {decision.rationale ? <p className="details__lead">{decision.rationale}</p> : null}
+      {sources.length ? (
+        <section className="details__sec" aria-labelledby="wd-based">
+          <h4 id="wd-based">Based on</h4>
+          <Sources links={relations.links} id={decision.id} project={context.project} />
+        </section>
+      ) : null}
+      {decision.status === 'proposed' && writable ? (
+        <section className="wd-decide" aria-label="Your answer">
+          {pivot ? <p className="wd-muted">Accepting makes this the current rule in place of “{earlier?.title ?? 'the earlier rule'}”, which stays in the history. Choose below what happens to current work.</p> : null}
+          <div className="nyc__foot wd-decide__foot">
+            <div className="nyc__actions">
+              <Button variant="primary" busy={busy} disabled={pivot && !pivotChoices.page} onClick={() => void accept()}>{pivot ? 'Accept and pivot' : 'Accept'}</Button>
+              {need ? <NotNowButton buttonRef={notNow} open={notNowOpen} onToggle={() => setNotNowOpen(!notNowOpen)} /> : null}
+              <Button variant="quiet" onClick={() => void discuss(context.project.id, decision.id, relations.complete ? relations.links : undefined)}>Discuss</Button>
+            </div>
+            {need ? <WaitingLine item={need} /> : null}
+          </div>
+          {need && notNowPop.mounted ? <NotNowMenu item={need} anchors={notNowAnchors} popProps={notNowPop.props}
+            onChoose={(choice) => { setNotNowOpen(false); handlers.snooze(need, choice); }} onClose={() => setNotNowOpen(false)} /> : null}
+          {error ? <p className="wd-error" role="alert">{error}</p> : null}
+        </section>
+      ) : null}
+      {decision.status === 'proposed' && !writable ? (
+        // O-009 (#250): a reader without write access sees that the proposal is not binding and who decides it.
+        <section className="details__sec" aria-labelledby="wd-who-decides">
+          <h4 id="wd-who-decides">Who decides</h4>
+          <p>Not accepted yet. A person who can edit {context.project.name} accepts it; agents and assistants can only propose.</p>
+        </section>
+      ) : null}
       <dl className="wd-rows wd-decision-rows">
         <div className="wd-row"><dt>Proposed</dt><dd><span>{decision.proposedBy.kind === 'agent' ? <AgentIdentity name={decision.proposedBy.name} owner={owners.get(decision.proposedBy.id)} /> : decision.proposedBy.name} · {shortDate(decision.createdAt)}</span></dd></div>
         {decision.decidedBy ? <div className="wd-row"><dt>Decided</dt><dd><span>{decision.decidedBy.name} · {shortDate(decision.decidedAt!)}</span></dd></div> : null}
@@ -663,43 +720,27 @@ function DecisionPanel({ decision, context, detail, relations, reload, choices, 
       ) : null}
 
       <RelationPages relations={relations} />
-      <section className="details__sec" aria-labelledby="wd-based">
-        <h4 id="wd-based">Based on</h4>
-        <Sources links={relations.links} id={decision.id} project={context.project} />
-        {!relations.links.some((link) => link.role === 'source') ? <p className="wd-muted">{emptyLinks(relations, 'No source linked.')}</p> : null}
-      </section>
       {affected.length ? (
         <section className="details__sec" aria-labelledby="wd-affects">
           <h4 id="wd-affects">Affects</h4>
           <Linked items={affected.map((entry) => ({ key: entry.link.id, label: entry.title, open: () => openDetails({ kind: 'work', id: entry.id, projectId: context.project.id }) }))} />
         </section>
       ) : null}
-      {decision.status !== 'proposed' || stillApplies.length ? (
+      {/* Only after a pivot: what still applies and what was parked (#763 D2). */}
+      {pivotRows.length || (decision.status !== 'proposed' && !!parkedChoices.page && choicesPaged(parkedChoices)) ? (
         <section className="details__sec" aria-labelledby="wd-pivot">
           <h4 id="wd-pivot">At this pivot</h4>
-          {decision.status !== 'proposed' ? <ChoicePages choices={parkedChoices} label="Parked work pages" /> : null}
-          <Linked items={[
-            ...stillApplies.map((entry) => ({ key: entry.link.id, label: entry.title, hint: 'still applies', open: () => openDetails({ kind: 'work', id: entry.id, projectId: context.project.id }) })),
-            ...parked.map((item) => ({ key: item.id, label: item.title, hint: 'parked', open: () => openDetails({ kind: 'work', id: item.id, projectId: context.project.id }) })),
-          ]} />
+          {decision.status !== 'proposed' ? <ChoicePages choices={parkedChoices} label="Parked work pages" quiet /> : null}
+          <Linked items={pivotRows} />
         </section>
       ) : null}
 
-      {decision.status === 'proposed' && !writable ? (
-        // O-009 (#250): a reader without write access sees that the proposal is not binding and who decides it.
-        <section className="details__sec" aria-labelledby="wd-who-decides">
-          <h4 id="wd-who-decides">Who decides</h4>
-          <p>Not accepted yet. A person who can edit {context.project.name} accepts it; agents and assistants can only propose.</p>
-        </section>
-      ) : null}
-      {decision.status === 'proposed' && writable ? (
-        <form className="details__sec wd-accept" onSubmit={(event) => void accept(event)}>
-          <h4>{pivot ? 'Accept as a pivot' : 'Accept'}</h4>
-          <p>Accepting makes this the current rule{earlier ? ` in place of “${earlier.title}”, which stays in the history` : ''}. You are recorded as the person who decided.</p>
-          {pivot ? <ChoicePages choices={pivotChoices} label="Pivot work pages" /> : null}
-          {pivot && candidates.length ? (
-            <fieldset className="wd-pivot" disabled={busy}>
-              <legend>What happens to current work?</legend>
+      {pivot && writable ? (
+        <form className="details__sec wd-accept" aria-labelledby="wd-pivot-work" onSubmit={(event) => void accept(event)}>
+          <h4 id="wd-pivot-work">What happens to current work?</h4>
+          <ChoicePages choices={pivotChoices} label="Pivot work pages" quiet />
+          {candidates.length ? (
+            <fieldset className="wd-pivot" disabled={busy} aria-labelledby="wd-pivot-work">
               {candidates.map((item) => (
                 <div className="wd-pivot__row" key={item.id} role="radiogroup" aria-label={item.title}>
                   <span className="wd-pivot__t">{item.title}<small>{STATUS_LABEL[item.status]}{item.owner ? ` · ${item.owner.name}` : ''}</small></span>
@@ -710,13 +751,8 @@ function DecisionPanel({ decision, context, detail, relations, reload, choices, 
                 </div>
               ))}
             </fieldset>
-          ) : null}
-          <div className="wd-accept-finish">
-            {pivot ? <p className="wd-muted">{selectedCount('keep')} still apply · {selectedCount('park')} parked · selections stay across pages (up to 50 each).</p> : null}
-            {error ? <p className="wd-error" role="alert">{error}</p> : null}
-            <div className="wd-actions"><Button type="submit" variant="primary" busy={busy} disabled={pivot && !pivotChoices.page}>{pivot ? 'Accept and pivot' : 'Accept decision'}</Button></div>
-          </div>
-          <p className="wd-muted">Agents can propose decisions; only people accept them.</p>
+          ) : <p className="wd-muted">No open work to choose for.</p>}
+          <p className="wd-muted">{selectedCount('keep')} still apply · {selectedCount('park')} parked · selections stay across pages (up to 50 each).</p>
         </form>
       ) : null}
 
@@ -739,16 +775,20 @@ function ResultPanel({ result, context, relations }: { result: OwnResult; contex
       <h3 className="details__title">{result.title}</h3>
       {result.evidence ? <p className="details__lead wd-evidence">{result.evidence}</p> : null}
       <RelationPages relations={relations} />
-      <section className="details__sec" aria-labelledby="wd-evidence">
-        <h4 id="wd-evidence">Evidence</h4>
-        <Sources links={relations.links} id={result.id} project={context.project} />
-        {!relations.links.some((link) => link.role === 'source') && !result.evidence ? <p className="wd-muted">{emptyLinks(relations, 'No evidence linked.')}</p> : null}
-      </section>
-      <section className="details__sec" aria-labelledby="wd-about">
-        <h4 id="wd-about">Reports on</h4>
-        <Linked empty={emptyLinks(relations, 'Not linked to work or a decision.')} items={about.map((entry) => ({ key: entry.link.id, label: entry.title, hint: entry.link.to.type === 'decision' ? 'decision' : 'work', open: () => openDetails({ kind: entry.link.to.type as 'work' | 'decision', id: entry.id, projectId: context.project.id }) }))} />
-        {related.length ? <p className="wd-muted">{related.length} more {related.length === 1 ? 'link' : 'links'}</p> : null}
-      </section>
+      {/* Empty sections are not drawn (#763 D2): the evidence text is the lead above, its sources are listed here. */}
+      {relations.links.some((link) => link.from.id === result.id && link.role === 'source') ? (
+        <section className="details__sec" aria-labelledby="wd-evidence">
+          <h4 id="wd-evidence">Evidence</h4>
+          <Sources links={relations.links} id={result.id} project={context.project} />
+        </section>
+      ) : null}
+      {about.length || related.length ? (
+        <section className="details__sec" aria-labelledby="wd-about">
+          <h4 id="wd-about">Reports on</h4>
+          <Linked items={about.map((entry) => ({ key: entry.link.id, label: entry.title, hint: entry.link.to.type === 'decision' ? 'decision' : 'task', open: () => openDetails({ kind: entry.link.to.type as 'work' | 'decision', id: entry.id, projectId: context.project.id }) }))} />
+          {related.length ? <p className="wd-muted">{related.length} more {related.length === 1 ? 'link' : 'links'}</p> : null}
+        </section>
+      ) : null}
       <OtherRelationships object={result} relations={relations} project={context.project} />
       <InDocs object={result} kind="result" project={context.project} relations={relations} />
       <Audience project={context.project} />
@@ -801,7 +841,7 @@ function ProposeDecision({ view, context, contextStatus, revision, isCurrent }: 
 
   return (
     <form className="details wd" onSubmit={(event) => void submit(event)}>
-      <p className="details__eyebrow wd-eyebrow"><Icon name="rule" size={13} />New proposal</p>
+      {/* One title (#763 B6). */}
       <h3 className="details__title">Propose a decision</h3>
       {contextStatus}
       {context ? <SourcePreview view={view} /> : null}
@@ -818,7 +858,7 @@ function ProposeDecision({ view, context, contextStatus, revision, isCurrent }: 
           </Select>
         </>
       </fieldset>
-      <ChoicePages choices={candidates} label="Current rule choices" />
+      <ChoicePages choices={candidates} label="Current rule choices" quiet />
       {supersedes && (!chosen || chosen.status !== 'accepted') ? <p className="wd-muted">The selected rule must be currently available and accepted before this proposal can replace it.</p> : null}
       {error ? <p className="wd-error" role="alert">{error} <button type="button" className="wd-inline" onClick={(event) => void submit(event)}>Retry</button></p> : null}
       <SubmitSection help="A person with write access accepts it. The message stays where it is and links here."><Button type="submit" variant="primary" busy={busy} disabled={!canSubmit}>Propose decision</Button></SubmitSection>
@@ -874,8 +914,7 @@ function AttachResult({ view, context, contextStatus, reload, revision, isCurren
 
   return (
     <form className="details wd" onSubmit={(event) => void submit(event)}>
-      <p className="details__eyebrow wd-eyebrow"><Icon name="result" size={13} />New result</p>
-      <h3 className="details__title">Attach a result</h3>
+      <h3 className="details__title">Record a result</h3>
       {contextStatus}
       {context ? <SourcePreview view={view} /> : null}
       <fieldset className="wd-form" disabled={busy}>

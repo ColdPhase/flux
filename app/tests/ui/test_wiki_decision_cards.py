@@ -2,7 +2,7 @@
 
 A page whose decisions "Add to docs" used to copy as `## Decision:` sections is converted by the migration (the
 fixture route runs it for this page): the cards render as drawn with the reason under them, open the decision, and
-leave the outline and the history to the page's own headings and the edits people made. "Add to docs" inserts the
+leave the outline and the history to the page's own headings and the edits people made. "Add to a Wiki page" inserts the
 card; a later change of the decision shows on the card without a new version; a proposed decision cannot be added.
 Runs on Chromium and WebKit (FLUX_UI_BROWSER), at 1440x900 and on a 390x844 touch phone.
 """
@@ -161,11 +161,14 @@ class WikiDecisionCards(unittest.TestCase):
         page = self.context(DESKTOP)
         page.goto(f"/projects/{self.project_id}/tasks?open=decision:{self.gateway['id']}")
         panel = page.locator("#details")
-        panel.get_by_role("button", name="Add to docs").click()
+        panel.get_by_role("button", name="Add to a Wiki page").click()
         expect(panel).to_contain_text("one card with its reason")
-        choose(panel.get_by_label("Doc", exact=True), value=self.rules_id)
-        expect_value(panel.get_by_label("Doc", exact=True), self.rules_id)
+        choose(panel.get_by_label("Wiki page", exact=True), value=self.rules_id)
+        expect_value(panel.get_by_label("Wiki page", exact=True), self.rules_id)
         panel.get_by_role("button", name="Add the card").click()
+        # The form closes back to the decision with one toast; Open leads to the page (#763 D4).
+        expect(page.get_by_text("Added to “Decisions and why”")).to_be_visible()
+        page.get_by_role("button", name="Open", exact=True).click()
         expect(page.get_by_role("heading", level=2, name="Decisions and why")).to_be_visible()
         card = page.locator("a.doc-decision")
         expect(card).to_have_count(1)
@@ -186,8 +189,15 @@ class WikiDecisionCards(unittest.TestCase):
         page = self.context(DESKTOP)
         page.goto(f"/projects/{self.project_id}/tasks?open=decision:{self.proposal['id']}")
         panel = page.locator("#details")
-        expect(panel.get_by_role("button", name="Add to docs")).to_be_disabled()
-        expect(panel).to_contain_text("Accept it first to add it to the Wiki.")
+        button = panel.get_by_role("button", name="Add to a Wiki page")
+        expect(button).to_be_disabled()
+        hint = panel.get_by_text("Accept it first to add it to the Wiki.")
+        expect(hint).to_be_visible()
+        expect(button).to_have_attribute("aria-describedby", re.compile(r"^wd-docs-hint-"))
+        # The hint sits on the button's centre line.
+        b, h = button.bounding_box(), hint.bounding_box()
+        assert b and h
+        self.assertLessEqual(abs((b["y"] + b["height"] / 2) - (h["y"] + h["height"] / 2)), 3)
 
     def test_05_phone_reads_and_opens_the_cards(self) -> None:
         page = self.context(PHONE, touch=True, theme="dark")
