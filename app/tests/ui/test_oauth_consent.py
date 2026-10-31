@@ -241,7 +241,7 @@ class OauthConsentJourney(unittest.TestCase):
         expect(page.get_by_role("button", name="Revoke connection")).to_have_count(0)
         page.get_by_role("button", name="Create another selection").click()
         # The "Claude Code" fixture client asks: the new connection's label starts as Claude Code (a recognition aid only).
-        expect_value(page.get_by_label("Client label"), "claude_code")
+        expect_value(page.get_by_label("Client label", exact=True), "claude_code")
         expect(page.get_by_role("button", name="Save connection")).to_have_count(0)
         go = page.get_by_role("button", name="Continue to consent")
         expect(go).to_be_disabled()
