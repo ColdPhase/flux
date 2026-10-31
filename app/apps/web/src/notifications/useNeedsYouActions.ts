@@ -5,6 +5,7 @@ import { ApiError } from '../api/client';
 import { useShellActions } from '../app/shellContext';
 import { useToast } from '../ui';
 import { updateWork } from '../work/api';
+import { useDiscussDecision } from '../work/discuss';
 import { acceptSuggestion, dismissSuggestion, applyRunChanges } from '../assistant/api';
 import { announceAcceptedInboxItem, announceInboxChange } from './api';
 import type { CardHandlers, SnoozeChoice } from './NeedsYouCard';
@@ -25,6 +26,7 @@ export function useNeedsYouActions(queue: Queue): CardHandlers {
   // An item opens its source as a reference: the Inbox is where Back returns to (#592).
   const navigate = useFollow();
   const { openDetails } = useShellActions();
+  const discussDecision = useDiscussDecision();
   // The latest queue without re-creating the handlers (and the keys that use them) on every answer.
   const latest = useRef(queue);
   useEffect(() => { latest.current = queue; });
@@ -122,6 +124,8 @@ export function useNeedsYouActions(queue: Queue): CardHandlers {
     },
 
     discuss(item: NeedsYouItem) {
+      // A decision opens where it is talked about, ready to write (#763 D3); anything else opens its project.
+      if (item.decision && item.project) { void discussDecision(item.project.id, item.decision.id); return; }
       void navigate(item.project ? `/projects/${item.project.id}` : item.url);
     },
 
@@ -148,5 +152,5 @@ export function useNeedsYouActions(queue: Queue): CardHandlers {
         });
       } } });
     },
-  }), [resolve, toast, navigate, openDetails]);
+  }), [resolve, toast, navigate, openDetails, discussDecision]);
 }
