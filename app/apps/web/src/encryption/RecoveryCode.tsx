@@ -54,8 +54,7 @@ export function RecoveryCodeBlock({ workspaceId, workspaceName, code, lead, onDo
 
   // Esc and × on the panel ask first while the box is unchecked.
   useEffect(() => {
-    // The question opens after the Esc that asked for it has finished, so that same key never answers it.
-    guardPanel(() => { if (keptRef.current) return false; window.setTimeout(() => setAskingPanel(true), 0); return true; });
+    guardPanel(() => { if (keptRef.current) return false; setAskingPanel(true); return true; });
     return () => guardPanel(null);
   }, [guardPanel]);
   // Closing the tab asks the browser's own question.
@@ -72,7 +71,7 @@ export function RecoveryCodeBlock({ workspaceId, workspaceName, code, lead, onDo
 
   const keptBox = useRef<HTMLInputElement>(null);
   // Staying returns focus to the box, so Esc still reaches the panel (and asks again).
-  const stay = () => { if (blocker.state === 'blocked') blocker.reset(); setAskingPanel(false); requestAnimationFrame(() => keptBox.current?.focus({ preventScroll: true })); };
+  const stay = () => { if (blocker.state === 'blocked') blocker.reset(); setAskingPanel(false); keptBox.current?.focus({ preventScroll: true }); };
   const leave = () => {
     markUnkept(workspaceId);
     setAskingPanel(false);

@@ -509,6 +509,7 @@ class EncryptedWorkspaces(Base):
                     expect(page.get_by_role("heading", level=1, name="Home")).to_be_visible()
                     expect(page.locator("[data-recovery-code]")).to_have_text(CODE_SHOWN)
                 # Close anyway: the code is gone, and People tells the owner nobody confirmed keeping it.
+                expect(page.get_by_role("checkbox", name=re.compile(r"I.ve kept"))).to_be_focused()
                 page.keyboard.press("Escape")
                 ask.get_by_role("button", name="Close anyway").click()
                 expect(page.locator("[data-recovery-code]")).to_have_count(0)
@@ -776,7 +777,9 @@ class EncryptedWorkspaces(Base):
                 page.goto("/search?q=dock")
                 unsearched = page.locator("[data-unsearched]")
                 expect(unsearched).to_have_text(f"{A_NAME} isn’t searched while it waits to be unlocked.")
-                expect(page.get_by_role("region", name="Results").get_by_text(B_PROJECT).first).to_be_visible()
+                # The computer's Search page has a Results region; the phone's search is Jump to's Results list (#770).
+                results = page.get_by_role("listbox", name="Results") if phone else page.get_by_role("region", name="Results")
+                expect(results.get_by_text(B_PROJECT).first).to_be_visible()
                 expect(page.locator(".search__problem")).to_have_count(0)
                 shot(page, f"search-waiting-{'phone' if phone else 'computer'}")
                 for place in ("/docs", "/map", "/tasks"):
