@@ -1,5 +1,6 @@
 import { useEffect, useId, useRef, useState, type KeyboardEvent } from 'react';
 import { useLocation, useNavigate } from 'react-router';
+import { useArrival } from '../place/memory';
 import { useFollow } from '../place/origin';
 import type { Agent, SearchResult } from '@flux/contracts';
 import { getAssistantStatus } from '../assistant/api';
@@ -163,7 +164,12 @@ function JumpBody({ onClose, userId, phone, page }: { onClose: () => void; userI
   const aiHere = hereSpace ? !aiOff.has(hereSpace) : aiSpaces.length > 0;
   const agents = useAgents(aiSpaces.map((space) => space.id), aiHere && (scope === 'people' || scope === 'agents')).filter((agent) => agentProject(agent));
   const text = query.trim();
-  useEffect(() => { inputRef.current?.focus(); }, []);
+  // The phone's Search page met again by Back is a list to read on where it was left: focusing its field would raise the
+  // keyboard and lift the view bar, so the list is shorter than the place it is returned to. A first visit starts typing.
+  const returned = useArrival() !== null;
+  // Once, as the body opens.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { if (!(page && returned)) inputRef.current?.focus(); }, []);
 
   const shown = state.status === 'ready' ? state.items : state.status === 'loading' ? state.previous?.items ?? [] : [];
   // "Ask my assistant…" (F-027 AST-10.10): where an ask can be answered (a thread of a project conversation) and the assistant is ready.
