@@ -5,7 +5,7 @@
 .cowork-host-actions[open] summary svg { transform: none; }
 .cowork-host-actions__cmd { display: flex; align-items: flex-start; gap: 8px; }
 .cowork-host-actions__cmd code { flex: 1; min-width: 0; }
-.cowork-host-actions__copy { flex: none; min-height: 32px; padding: 0 12px; border-radius: var(--r-pill); background: var(--el); box-shadow: var(--sh-btn); color: var(--t1); font: inherit; cursor: pointer; }
+.cowork-host-actions__copy { flex: none; min-height: 32px; padding: 0 12px; border: 1px solid var(--choice); border-radius: var(--r-btn); background: transparent; color: var(--t1); font: inherit; cursor: pointer; }
 @media (pointer: coarse) { .cowork-host-actions__copy { min-height: 44px; } }
 .cowork-host-actions p { margin-block: 8px; }
 .cowork-host-actions code { display: block; padding: 10px; background: var(--sub); border-radius: 10px; overflow-wrap: anywhere; white-space: pre-wrap; font-size: var(--fs-md); color: var(--t1); }

@@ -414,7 +414,7 @@ function TaskThread({ kind, task, projectId, meId, names, canWrite, changingScop
         <div className="agents-composer__row">
           <AttachButton state={composer} disabled={blocked} />
           <span className="agents-composer__hint">{kind === 'agents' ? 'Goes to the agents’ thread' : 'Goes to the task thread'}<span className="composer__keys"> · Enter sends, Shift+Enter new line</span></span>
-          <Button type="submit" variant="primary" icon="send" disabled={!composer.canSend || blocked} aria-label={kind === 'agents' ? 'Send to the agents' : 'Send to task'}>Send</Button>
+          <Button type="submit" variant="soft" icon="send" disabled={!composer.canSend || blocked} aria-label={kind === 'agents' ? 'Send to the agents' : 'Send to task'}>Send</Button>
         </div>
       </form>
     </section>
