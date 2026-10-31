@@ -208,8 +208,10 @@ rmSync(OUT, { recursive: true, force: true });
 rmSync(MEDIA, { recursive: true, force: true });
 for (const page of PAGES) build(page);
 mkdirSync(join(SITE, 'public/fonts'), { recursive: true });
-for (const font of ['Geist-Variable.woff2', 'GeistMono-Variable.woff2', 'OFL.txt']) {
+for (const font of ['Geist-Variable.woff2', 'GeistMono-Variable.woff2']) {
   copyFileSync(join(ROOT, 'app/apps/web/src/ui/fonts', font), join(SITE, 'public/fonts', font));
 }
+// The fonts' licence ships with the web app's built assets (app/apps/web/public/fonts) and with the site.
+copyFileSync(join(ROOT, 'app/apps/web/public/fonts/OFL.txt'), join(SITE, 'public/fonts/OFL.txt'));
 copyFileSync(join(ROOT, 'docs/assets/brand/kreska-light.svg'), join(SITE, 'public/favicon.svg'));
 console.log(`sync-docs: ${PAGES.length} pages from ${new Set(PAGES.map((page) => page.from)).size} files into ${relative(ROOT, OUT)}`);
