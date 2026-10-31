@@ -84,6 +84,8 @@ export interface ReturnItem {
   source: ReturnSource;
   /** The project the item belongs to; `null` for a private sketch. */
   project: { id: string; name: string } | null;
+  /** Work only: the task's due day (`YYYY-MM-DD`, #763 H11-5); absent for none. */
+  dueOn?: string;
 }
 
 export interface ReturnNextStep {
@@ -93,6 +95,8 @@ export interface ReturnNextStep {
   reason: string;
   item: string;
   source: ReturnSource;
+  /** A task's due day (`YYYY-MM-DD`, #763 H11-5), for the client to say in the reader's words; absent for none. */
+  dueOn?: string;
 }
 
 /** One quoted message of the digest; it opens at the message. */

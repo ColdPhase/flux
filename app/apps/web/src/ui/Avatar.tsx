@@ -1,5 +1,6 @@
 export function initials(name: string): string {
-  const parts = name.trim().split(/\s+/).filter(Boolean);
+  // Only words that start with a letter or a digit: a "(you)" or "·" never becomes an initial (#763 H11-9).
+  const parts = name.trim().split(/\s+/).filter((part) => /^[\p{L}\p{N}]/u.test(part));
   if (!parts.length) return '?';
   const first = parts[0]!.charAt(0);
   const last = parts.length > 1 ? parts[parts.length - 1]!.charAt(0) : '';

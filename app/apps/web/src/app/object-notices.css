@@ -13,5 +13,7 @@
   .convo-object + :is(.convo-object, .convo-notice), .convo-notice + .convo-object { margin-top: 12px; }
   .convo-object .convo-notice__meta, .convo-object .convo-notice__task { font-size: var(--fs-base); }
 }
+/* An acceptance right under its proposal (#763 H11-9) is one quiet line beneath that card, never a second card. */
+.convo-object + .convo-object.is-follow { margin-top: 6px; }
 /* In a thread the line sits among the replies at the replies' own column. */
 .thread__list > .convo-object { margin: 14px 0; }

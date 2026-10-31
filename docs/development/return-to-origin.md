@@ -66,6 +66,11 @@ the [thread reading-position owner](thread-reading-position-2026-10-16.md), whic
    kept over the page that a link inside it led to** (a task's source message opens the thread in the panel on a
    tablet or phone, a sheet or an overlay) steps back to the page it was followed from, where its panel returns as it
    was: its "‹ Task #31" is that visible step (history back), not a navigation to the conversation.
+   **A panel does not follow the person to another place (#763 H11-8).** Going to another project, direct message or
+   page (Inbox, Your tasks, Home) by any path but a link that keeps the panel closes a docked panel that shows an object
+   or a form, and drops its trail; Details there opens on the new place. Moving between the views of one project
+   (Conversation, Tasks, Map, Wiki, Agents) keeps it. Back to the earlier page restores it as above. A link from another
+   place to a project's task, decision or result opens it there on arrival (`?open=`).
 
 ## Where the control sits (rule 7)
 

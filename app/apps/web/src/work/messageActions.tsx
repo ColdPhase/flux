@@ -54,12 +54,14 @@ export interface MessageActionOptions {
 
 const messageOf = (options: MessageActionOptions | DmActionOptions) => options.kind === 'dm' ? options.messageId ?? null : options.message.id;
 
-interface MenuItem { id: string; label: string; icon: IconName | 'kreska'; run: () => void; disabled?: boolean; secondary?: boolean; ai?: boolean }
+/** `more`: on a phone, under the menu's "More…" item (#763), so the long press keeps the five drawn items. */
+interface MenuItem { id: string; label: string; icon: IconName | 'kreska'; run: () => void; disabled?: boolean; secondary?: boolean; ai?: boolean; more?: boolean }
 
 /**
  * The menu's items, in the drawn order: reply, task, hand off, cite, copy; then what makes objects. A phone's long press
  * shows the five drawn items only (F-026 `phone-messagemenu.webp`, #763 B3): a decision is proposed with `/decide` or
- * "+" Create, a result is recorded from its task. A computer's menu lists only what its toolbar lacks (#763 B4).
+ * "+" Create, a result is recorded from its task. "Add to map" and "Details" wait under "More…" there (#763). A computer's
+ * menu lists only what its toolbar lacks (#763 B4).
  */
 function useMenuItems(options: MessageActionOptions | DmActionOptions | null, touch: boolean): { items: MenuItem[]; extra: ReactNode } {
   const { openDetails, openCreate } = useShellActions();
@@ -89,7 +91,7 @@ function useMenuItems(options: MessageActionOptions | DmActionOptions | null, to
   const source = { messageId: message.id, text: message.body };
   const details: MenuItem = { id: 'details', label: 'Details', icon: 'panel', secondary: true,
     run: () => openDetails({ kind: 'overview', messageId: message.id, selection: { accountId: me.user.id, projectId, message } }) };
-  if (!writable) return { items: touch ? copyItem : [...copyItem, details], extra: null };
+  if (!writable) return { items: touch ? [...copyItem, { ...details, more: true }] : [...copyItem, details], extra: null };
   const project = shell?.project.id === projectId ? shell : null;
   // The project's people say whether an agent can be handed work here; unread people keep the task path.
   const agentHere = !project?.people || project.people.some((person) => person.kind === 'agent');
@@ -106,7 +108,10 @@ function useMenuItems(options: MessageActionOptions | DmActionOptions | null, to
     ...(aiOff(projectId) ? [] : [{ id: 'handoff', label: 'Hand off to an agent', icon: 'kreska' as const, run: handOff, ai: true }]),
     ...(onCite ? [{ id: 'cite', label: 'Cite', icon: 'cite' as const, run: onCite }] : []),
     ...copyItem,
-    ...(touch ? [] : [
+    ...(touch ? [
+      ...(onAddToMap ? [{ id: 'map', label: 'Add to map', icon: 'map' as const, run: onAddToMap, more: true }] : []),
+      { ...details, more: true },
+    ] : [
       // The same Create window as Create task, on its Decision tab, with the message as the source and a short title
       // from its first clause, selected (#763 SP-5, WF-3).
       { id: 'decision', label: 'Propose a decision', icon: 'rule', secondary: true, run: () => {
@@ -139,7 +144,12 @@ function useWaiting(messageId: string | null): MenuItem[] {
 
 /** A menu under its anchor: arrow keys, Escape and a click outside close or move; focus returns to the opener. */
 function MessageMenu({ items: own, anchor, press, onClose, label, messageId, popProps }: { items: MenuItem[]; anchor: HTMLElement; press: boolean; onClose: (restoreFocus: boolean) => void; label: string; messageId: string | null; popProps: ReturnType<typeof usePop>['props'] }) {
-  const items = [...own, ...useWaiting(messageId)];
+  // A phone's "More…" shows the items kept under it in place of the menu's own (#763); the menu stays where it is.
+  const [expanded, setExpanded] = useState(false);
+  const all = [...own, ...useWaiting(messageId)];
+  const hidden = all.filter((item) => item.more);
+  const items = expanded ? hidden : [...all.filter((item) => !item.more),
+    ...(hidden.length ? [{ id: 'more', label: 'More…', icon: 'more' as const, secondary: true, run: () => setExpanded(true) }] : [])];
   const menu = useRef<HTMLDivElement>(null);
   const lift = useRef<HTMLDivElement>(null);
   const [place, setPlace] = useState<CSSProperties>({ top: 0, left: 0, opacity: 0 });
@@ -178,7 +188,7 @@ function MessageMenu({ items: own, anchor, press, onClose, label, messageId, pop
     const top = below + height > window.innerHeight - 12 ? Math.max(12, box.top - height - 8) : below;
     setPlace({ top, left });
   }, [anchor, items.length, press]);
-  useEffect(() => { menu.current?.querySelector<HTMLElement>('[role="menuitem"]:not(:disabled)')?.focus({ preventScroll: true }); }, []);
+  useEffect(() => { menu.current?.querySelector<HTMLElement>('[role="menuitem"]:not(:disabled)')?.focus({ preventScroll: true }); }, [expanded]);
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
     const buttons = [...menu.current!.querySelectorAll<HTMLElement>('[role="menuitem"]:not(:disabled)')];
     const at = buttons.indexOf(document.activeElement as HTMLElement);
@@ -194,7 +204,7 @@ function MessageMenu({ items: own, anchor, press, onClose, label, messageId, pop
   const secondary = items.filter((item) => item.secondary);
   const render = (item: MenuItem) => (
     <button key={item.id} type="button" role="menuitem" className="msg-menu__item" data-action={item.id} data-ai-surface={item.ai ? `message-${item.id}` : undefined} disabled={item.disabled}
-      onClick={() => { onClose(false); item.run(); }}>
+      aria-haspopup={item.id === 'more' ? 'menu' : undefined} onClick={() => { if (item.id !== 'more') onClose(false); item.run(); }}>
       {item.icon === 'kreska' ? <Kreska size={18} /> : <Icon name={item.icon} size={18} />}{item.label}
     </button>
   );

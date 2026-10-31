@@ -299,7 +299,7 @@ function MemberEditor({ id, member, self, workspace, myRole, onClose, onChanged 
         <p className="people__hint" id={`${id}-hint`}>{ROLE_HINT[role]}</p>
       </div>
       <div className="details__actions">
-        <Button variant="primary" busy={busy === 'role'} disabled={role === member.role} onClick={() => (demoting ? setConfirm('demote') : void saveRole())}>Save role</Button>
+        <Button variant={confirm === 'demote' ? 'secondary' : 'primary'} busy={busy === 'role'} disabled={role === member.role} onClick={() => (demoting ? setConfirm('demote') : void saveRole())}>Save role</Button>
         <Button variant="secondary" onClick={onClose}>Cancel</Button>
       </div>
       {confirm === 'demote' ? (
@@ -318,7 +318,7 @@ function MemberEditor({ id, member, self, workspace, myRole, onClose, onChanged 
             <p><b>Remove {first} from {workspace.name}?</b></p>
             <p>{rotationText}</p>
             <div className="details__actions">
-              <Button variant="primary" busy={busy === 'remove'} onClick={() => void remove()}>Remove {first}</Button>
+              <Button variant="danger" busy={busy === 'remove'} onClick={() => void remove()}>Remove {first}</Button>
               <Button variant="quiet" onClick={() => setConfirm(null)}>Keep {first}</Button>
             </div>
           </div>

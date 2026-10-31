@@ -495,9 +495,11 @@ class ProjectSurfaceJourney(unittest.TestCase):
         # Nothing sits under a message on the phone: its actions are a swipe left and a long press (F-026 S6).
         message = page.locator(f"#message-{self.ids['m4']}")
         expect(message.locator(".msg-acts")).to_have_count(0)
-        # The long press shows the five drawn items (#763 B3); Details is the computer's.
+        # The long press shows the five drawn items (#763 B3); Details waits under More… (#763).
         menu = open_message_menu(message, phone=True)
         expect(menu.get_by_role("menuitem", name="Details")).to_have_count(0)
+        menu.get_by_role("menuitem", name="More…").click()
+        expect(menu.get_by_role("menuitem", name="Details")).to_be_visible()
         page.keyboard.press("Escape")
         expect(menu).to_have_count(0)
         expect(page.locator("header.top").get_by_label("Current state")).to_have_count(0)

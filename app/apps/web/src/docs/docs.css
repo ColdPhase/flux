@@ -93,7 +93,7 @@
 @media (pointer: coarse) { .wiki-bar__primary { min-width: 44px; justify-content: center; } }
 .wiki-bar__back { gap: 4px; padding: 0 8px; font-size: var(--fs-sm); color: var(--t2); }
 /* The phone's primary action has its own space below the scrolling page. */
-.wiki-edit { justify-self: end; margin: 0 16px max(16px, env(safe-area-inset-bottom)) auto; min-height: 48px; padding: 0 20px; gap: 8px; font-size: var(--fs-base); box-shadow: var(--sh-pri), var(--sh-pop); }
+.wiki-edit { justify-self: end; margin: 0 16px max(16px, env(safe-area-inset-bottom)) auto; min-height: 48px; padding: 0 20px; gap: 8px; font-size: var(--fs-base); }
 .wiki-pop__item { text-decoration: none; }
 .wiki-empty__acts { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; margin-top: 16px; }
 

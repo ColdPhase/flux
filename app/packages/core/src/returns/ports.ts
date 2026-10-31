@@ -53,6 +53,8 @@ export interface ReturnAccess {
 export interface ReturnWork {
   id: string; projectId: string; title: string; status: string; blocker: string | null;
   ownerKey: string | null; createdByKey: string; parkedByDecisionId: string | null; createdAt: Date;
+  /** `YYYY-MM-DD` or null (#488). */
+  dueOn: string | null;
 }
 export interface ReturnDecision {
   id: string; projectId: string; title: string; rationale: string; status: string;
