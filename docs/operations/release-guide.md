@@ -7,10 +7,13 @@ can need other migrations or variables than your release.
 
 The release pins one OCI image, `ghcr.io/coldphase/flux`, by its manifest digest for `api`,
 `worker` and the one-shot `migrate` service, plus a separately digest-pinned PostgreSQL. The image
-is built for `linux/amd64` and `linux/arm64`. Docker Engine with the Compose plugin is required;
+is built for the platforms that `release.json` lists: `linux/amd64` (x86_64) for v0.1, with
+`linux/arm64` planned for v0.1.1. Docker Engine with the Compose plugin is required;
 the source code and the Node toolchain are not. The optional [agent runtime](#agent-runtime-optional)
-adds a second image, `ghcr.io/coldphase/flux-agent-runtime`, also pinned by digest and built for both
-platforms; an installation that never switches the runtime on never pulls it.
+adds a second image, `ghcr.io/coldphase/flux-agent-runtime`, also pinned by digest and built for the
+same platforms; an installation that never switches the runtime on never pulls it. Optional
+[calls and screen sharing](#calls-and-screen-sharing-optional) add the LiveKit media server, pinned by
+digest in `compose.live.yaml`; an installation that never loads that file runs no media server.
 
 ## Files
 
@@ -21,9 +24,11 @@ Download **every** asset of the release into an empty directory:
 | `compose.yaml` | The pull-only Compose file for this release. |
 | `compose.runtime.yaml` | Optional second Compose file for the [agent runtime](#agent-runtime-optional): off unless you switch it on. Pins the runtime image and the application image by digest. |
 | `runtime.sh` | Operator script for the runtime: `on`, `off`, `up`, `status`, `release`, `purge`. Run it with `sh`. |
+| `compose.live.yaml` | Optional Compose file for [calls and screen sharing](#calls-and-screen-sharing-optional): the LiveKit media server (SFU), pinned by digest. |
+| `compose.live.turn.yaml` | Optional addition to `compose.live.yaml`: TURN/TLS on TCP/443 for people behind restrictive networks. |
 | `env.example` | Settings template; you copy it to `.env`. GitHub does not keep a leading period in an asset name, so the repository's `.env.example` is published under this name. |
 | `INSTALL.md` | This guide. |
-| `release.json` | Version, source commit and both images (`ghcr.io/coldphase/flux@sha256:…`, `ghcr.io/coldphase/flux-agent-runtime@sha256:…`) with their platforms, and the pinned Codex release. |
+| `release.json` | Version, source commit and both images (`ghcr.io/coldphase/flux@sha256:…`, `ghcr.io/coldphase/flux-agent-runtime@sha256:…`) with their platforms, the pinned Codex release and the media server image (`live_media_image`). |
 | `sbom.spdx.json`, `THIRD_PARTY_NOTICES.json` | SPDX software bill of materials of the application image and the dependency notices derived from it. |
 | `sbom-agent-runtime.spdx.json`, `THIRD_PARTY_NOTICES.agent-runtime.json` | The same for the agent-runtime image; the notices also record the pinned official Codex (Apache-2.0). |
 | `LICENSE` | The Flux license. |
@@ -153,6 +158,81 @@ the slot. More than four slots are not covered by the release assets.
   machines). A restore reconciles the restored bindings with the slots when the worker starts. A disk or
   host snapshot does capture the slot volumes. Add `-f compose.runtime.yaml` to the backup, upgrade and restore
   commands below while the runtime is on, or use `sh runtime.sh up` instead of their last `up`.
+
+## Calls and screen sharing (optional)
+
+Calls, cameras and screen sharing in live sessions need a media server. The release ships it as
+`compose.live.yaml`: one LiveKit server (`livekit`), pinned by the digest that `release.json` names as
+`live_media_image`. Without this file everything else in Flux works; only calls are unavailable.
+
+How it connects. Browsers sign in to media through Flux itself, at `<FLUX_PUBLIC_ORIGIN>/media`: the API
+checks the session and project access, then forwards to LiveKit on an internal network. Your existing
+HTTPS reverse proxy already carries this path; it needs no change. The audio and video then flow
+**directly** between the browsers and this host's media ports, not through the reverse proxy. LiveKit's
+signaling port (TCP/7880) is never published. Media is encrypted in transit and decrypted in the media
+server; it is not end-to-end encrypted. A room holds at most 16 people (a configured ceiling, not a
+measured capacity).
+
+You need a public IPv4 address that browsers reach directly, and a DNS name for media that points to it.
+
+1. Add these settings to `.env` (they are not in `env.example`, because only this file uses them):
+
+   | Variable | Required | Value |
+   | --- | --- | --- |
+   | `FLUX_LIVEKIT_API_KEY` | yes | A name for the key, for example `media-key-1`. |
+   | `FLUX_LIVEKIT_API_SECRET` | yes | At least 32 random characters: `openssl rand -hex 32`. |
+   | `FLUX_LIVEKIT_PUBLIC_IP` | yes | The public IPv4 address browsers send media to. Behind NAT, the router's public address. |
+   | `FLUX_LIVEKIT_DOMAIN` | yes | DNS name of that address, for STUN and TURN/UDP, for example `media.example.org`. |
+   | `FLUX_LIVEKIT_MEDIA_CIDR` | with several interfaces | The media interface as `/32` (for example `203.0.113.20/32`). Empty keeps every IPv4 interface. |
+   | `FLUX_LIVEKIT_ICE_UDP_PORT`, `FLUX_LIVEKIT_ICE_TCP_PORT`, `FLUX_LIVEKIT_TURN_UDP_PORT` | optional | Host ports; defaults `7882`, `7881` and `3478`. |
+
+2. Open the media ports in the host firewall and any cloud security group, and with NAT forward them to
+   this host:
+
+   | Inbound | Purpose |
+   | --- | --- |
+   | UDP/7882 | Media (ICE over UDP). The main path. |
+   | TCP/7881 | Media over TCP, when UDP is blocked. |
+   | UDP/3478 | STUN and TURN over UDP. |
+   | TCP/443 on the TURN address | TURN/TLS, only with `compose.live.turn.yaml` (step 4). |
+
+   Do not open TCP/7880. The HTTPS port of your reverse proxy stays as it is.
+
+3. Check, pull and start with **both** files:
+
+   ```sh
+   docker compose --env-file .env -f compose.yaml -f compose.live.yaml config --quiet
+   docker compose --env-file .env -f compose.yaml -f compose.live.yaml pull
+   docker compose --env-file .env -f compose.yaml -f compose.live.yaml up -d --wait
+   docker compose --env-file .env -f compose.yaml -f compose.live.yaml ps livekit
+   ```
+
+   Then start a live session in a project and join it from a second device on another network (a
+   phone on mobile data). A healthy `livekit` proves only that it started, not that media reaches it
+   from outside.
+
+4. Optional, for people whose networks allow only HTTPS: add `compose.live.turn.yaml` after
+   `compose.live.yaml` in every command. It serves TURN/TLS on TCP/443 inside LiveKit, so it needs a
+   **second public IP address** (your reverse proxy already holds 443 on the first) or a layer-4 TCP
+   load balancer; an HTTP reverse proxy cannot carry it. Add to `.env`:
+
+   | Variable | Required | Value |
+   | --- | --- | --- |
+   | `FLUX_LIVEKIT_TURN_DOMAIN` | yes | A DNS name only for TURN, for example `turn.example.org`, pointing to the second address. |
+   | `FLUX_LIVEKIT_TURN_CERT_DIR` | yes | Absolute host directory with `fullchain.pem` and `privkey.pem` from a public CA for that name, readable by the container. Renew them and restart `livekit`. |
+   | `FLUX_LIVEKIT_TURN_TLS_BIND` | yes, in practice | The second public address. The default `0.0.0.0` collides with the reverse proxy on 443. |
+   | `FLUX_LIVEKIT_TURN_TLS_HOST_PORT` | optional | Keep `443`. |
+
+   With this file, STUN and TURN/UDP use `FLUX_LIVEKIT_TURN_DOMAIN` instead of `FLUX_LIVEKIT_DOMAIN`.
+
+Once calls are on, **pass `-f compose.live.yaml` (and `-f compose.live.turn.yaml` if you use it) to every
+command** in this guide, including backup, upgrade and restore, next to `-f compose.runtime.yaml` if the
+agent runtime is on. A plain `-f compose.yaml up` recreates `api` without the media settings, which
+switches calls off. To switch calls off on purpose, run
+`docker compose --env-file .env -f compose.yaml up -d --wait --remove-orphans`. The media server keeps no
+data, so a backup needs nothing more. Keep `FLUX_LIVEKIT_API_SECRET` as private as `.env`; to rotate it,
+change it and run `up` with both files: the API and LiveKit read the same value. A restart of `livekit`
+interrupts current calls; people rejoin.
 
 ## Consistent backup
 

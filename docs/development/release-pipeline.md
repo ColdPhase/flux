@@ -19,9 +19,10 @@ accepted digest, deterministically and without timestamps:
 | `compose.yaml` | [`docker/compose.yaml`](../../docker/compose.yaml) with the marker `ghcr.io/coldphase/flux@sha256:RELEASE_DIGEST` replaced by the accepted digest on `api`, `worker` and `migrate`. Only the leading repository-oriented header comment is replaced by a release header; every other line is unchanged. |
 | `compose.runtime.yaml` | [`docker/compose.runtime.yaml`](../../docker/compose.runtime.yaml): the optional agent-runtime overlay (#358). `ghcr.io/coldphase/flux@sha256:RELEASE_DIGEST` is replaced on `runtime-manager` and `runtime-egress`, `ghcr.io/coldphase/flux-agent-runtime@sha256:RUNTIME_DIGEST` on the slot anchor and `runtime-install`; the leading header comment is replaced. Off unless the operator opts in. |
 | `runtime.sh` | [`docker/runtime.sh`](../../docker/runtime.sh), unchanged: `on`, `off`, `up`, `status`, `release`, `purge`. |
+| `compose.live.yaml`, `compose.live.turn.yaml` | [`docker/compose.live.yaml`](../../docker/compose.live.yaml) and [`docker/compose.live.turn.yaml`](../../docker/compose.live.turn.yaml): the optional calls and screen-sharing overlays (#63). Only the leading header comment is replaced; the third-party LiveKit image is already pinned by digest in the repository file and recorded as `live_media_image` in `release.json`. `prepare_assets.py` refuses a build, an image not pinned by digest, a Flux image, a socket or a source path. Flux builds no image for them. |
 | `env.example` | [`docker/.env.example`](../../docker/.env.example), unchanged. GitHub stores a Release asset whose name begins with a period under another name (`.env.example` becomes `default.env.example`) and `actions/upload-artifact` skips hidden files, so the template is published without the period. |
 | `INSTALL.md` | [`docs/operations/release-guide.md`](../operations/release-guide.md). It must stay self-contained (no repository-relative links). |
-| `release.json` | Version, source SHA, both images (`ghcr.io/coldphase/flux@sha256:…`, `ghcr.io/coldphase/flux-agent-runtime@sha256:…`), their platforms, the pinned Codex tag and that Claude Code is not included. |
+| `release.json` | Version, source SHA, both images (`ghcr.io/coldphase/flux@sha256:…`, `ghcr.io/coldphase/flux-agent-runtime@sha256:…`), their platforms (the dispatch input `platforms`, `linux/amd64` by default), the pinned Codex tag, that Claude Code is not included, and the LiveKit image (`live_media_image`). |
 | `sbom.spdx.json`, `THIRD_PARTY_NOTICES.json` | SPDX SBOM generated from the pushed application image digest and the dependency notice inventory derived from it. |
 | `sbom-agent-runtime.spdx.json`, `THIRD_PARTY_NOTICES.agent-runtime.json` | The same for the agent-runtime image; the notices add the pinned official Codex (Apache-2.0, tag read from `docker/Dockerfile`) when the scanner does not list the vendor binary. |
 | `LICENSE`, `SHA256SUMS` | The repository license and the checksums of every other asset. |
@@ -34,8 +35,9 @@ with `app/` as the context, the same inputs as the source Compose and the PR che
 image is built from the same file and context with target `agent-runtime-release` (the slot supervisor,
 node-pty, the checksum-pinned official Codex and gpg for `runtime-install`; never Claude Code). Both
 are pushed by digest, untagged, attested, with SBOMs. `scripts/release/verify_assets.py` checks an asset
-directory (exact asset set, checksums, both digests in every file that pins them, platforms, no
-marker, build, floating tag or socket); the workflow runs it on the prepared assets and the draft, and
+directory (exact asset set, checksums, both digests in every file that pins them, platforms, the
+LiveKit digest in `compose.live.yaml`, no marker, build, floating tag, socket or Flux image in the
+live overlays); the workflow runs it on the prepared assets and the draft, and
 the publication workflow on the draft and again on the public downloads.
 
 ## Flow
@@ -54,16 +56,19 @@ the publication workflow on the draft and again on the public downloads.
    `vX.Y.Z` or `vX.Y.Z-rc.N` version and the acceptance issue number. The
    workflow requires the SHA to equal the dispatched main head, refuses a version whose
    remote tag exists (or cannot be read) and checks both acceptance comments. It builds
-   the pinned amd64/arm64 application and agent-runtime images and pushes only by digest, with BuildKit provenance and SBOM
+   the pinned application and agent-runtime images for the `platforms` input (default `linux/amd64`;
+   v0.1 ships amd64 only, v0.1.1 dispatches `linux/amd64,linux/arm64` and QEMU is set up only then)
+   and pushes only by digest, with BuildKit provenance and SBOM
    attestations and an `actions/attest` build provenance attestation for the index. It writes
    the assets above. The packaged image must then install, create account/workspace data and
    restore a paired PostgreSQL/files backup in fresh Compose volumes
    (`scripts/release/smoke_artifacts.sh`), and the packaged agent runtime must start, stay inside its
    limits and networks and purge cleanly (`scripts/release/smoke_runtime.sh`; the overlay is compared with
-   the source stack by `scripts/release/compare_runtime_overlay.py`) before the workflow creates a **draft** GitHub
+   the source stack by `scripts/release/compare_runtime_overlay.py`), and the live-media overlays must resolve on the
+   packaged `compose.yaml` (`scripts/release/check_live_overlay.sh`) before the workflow creates a **draft** GitHub
    Release. The draft job checks the asset set against `SHA256SUMS` first.
 3. Independently review that draft and its exact digest. Test downloaded assets
-   on both supported platforms, a real forward upgrade from the previous
+   on every published platform (`linux/amd64` for v0.1), a real forward upgrade from the previous
    supported version, backup/restore, the `gh attestation verify` command of
    `INSTALL.md` and user-facing behavior. The packaged install, upgrade and both backup/restore
    paths are one command per platform: download the previous release's assets and the draft's assets
@@ -145,6 +150,7 @@ proxy, or content created through the browser.
 
 ## Local multi-platform dry run
 
+v0.1 is amd64-only, so a plain `dry_run.sh` on an amd64 host matches its workflow run. For v0.1.1,
 `FLUX_DRYRUN_PLATFORMS=linux/amd64,linux/arm64` makes `dry_run.sh` build both images (and the previous one)
 the way the `image` job does: a `docker-container` builder with the workflow's pinned BuildKit, provenance
 `mode=max` and SBOM attestations with the workflow's pinned scanner, one index per image in the throwaway
@@ -196,19 +202,19 @@ this repository, and no release workflow has been dispatched.
 - **Complete application acceptance.** The owner's exact-SHA `ACCEPTED RELEASE CANDIDATE` and an
   independent reviewer's `INDEPENDENT RELEASE REVIEW` comments, including the Android/iPhone/iPad installation and push evidence required by
   [the mobile PWA contract](../product/mobile-pwa.md#acceptance-evidence).
-- **First candidate run.** Untested until dispatched: the amd64/arm64 build under QEMU within its
-  150-minute limit for both images (a native arm64 runner is the alternative), the attestation push, the SBOM scope
+- **First candidate run.** Untested until dispatched: the amd64 build of both images within the
+  150-minute limit (for v0.1.1, the arm64 build under QEMU; a native arm64 runner is the alternative), the attestation push, the SBOM scope
   (inferred, not observed: Syft resolves the multi-platform index for the amd64 runner, while
   BuildKit's per-platform SBOM attestations in the index cover each platform), the draft creation,
   and the public package link.
 - **Runtime smoke on the runner.** `smoke_runtime.sh` needs a runner kernel with `kernel.yama.ptrace_scope` of
-  1 or higher (assumed for `ubuntu-latest`, not observed) and the arm64 `docker run` checks of the runtime
+  1 or higher (assumed for `ubuntu-latest`, not observed); from v0.1.1 the arm64 `docker run` checks of the runtime
   image rely on the QEMU emulator. Neither has run on GitHub. Locally, the full `dry_run.sh` including `smoke_runtime.sh`
   passed in a Yama 1 KVM guest on 2026-10-30 (`scripts/agent-runtime/supported_guest.sh`; evidence in
   `docs/development/evidence/release-closeout-20261030/`). A bound slot's sign-out and reuse with real
   vendor CLIs and the Claude Code installation (`runtime-install` reaching `downloads.claude.ai`) are
   independent-review items on the downloaded draft (#358 AC-3).
-- **Packaged installation on amd64 and arm64, and a forward upgrade**, by the independent
+- **Packaged installation on amd64 (arm64 from v0.1.1), and a forward upgrade**, by the independent
   evaluator from the downloaded draft assets, following `INSTALL.md` literally; the upgrade leg of
   `smoke_artifacts.sh` is the checked command ([above](#the-upgrade-leg)). A local run of it on arm64
   and amd64 with locally built images is not this evidence: it is not the published digest.

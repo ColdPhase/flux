@@ -92,11 +92,14 @@ jobs:
           # The agent-runtime digest is not a dispatch input: release.json is covered by the SHA256SUMS
           # that the independent reviewer's ACCEPTED RELEASE ARTIFACT line binds. verify_assets.py checks
           # both images' digests in every file, the platforms and that Claude Code is not included.
+          # The platforms are release.json's (reviewed under SHA256SUMS): linux/amd64 for v0.1.
           python3 "$GITHUB_WORKSPACE/scripts/release/verify_assets.py" . \
             --version "$RELEASE_VERSION" --source-sha "$SOURCE_SHA" --digest "$IMAGE_DIGEST"
           runtime_digest=$(jq -r '.runtime_image | split("@")[1]' release.json)
           [[ "$runtime_digest" =~ ^sha256:[0-9a-f]{64}$ ]]
-          for platform in linux/amd64 linux/arm64; do
+          platforms=$(jq -r '.platforms | join(" ")' release.json)
+          [[ " $platforms " == *" linux/amd64 "* ]]
+          for platform in $platforms; do
             docker buildx imagetools inspect --raw "ghcr.io/coldphase/flux-agent-runtime@$runtime_digest" |
               jq -e --arg p "${platform#*/}" '[.manifests[].platform | select(.os == "linux" and .architecture == $p)] | length >= 1'
             docker buildx imagetools inspect --raw "ghcr.io/coldphase/flux@$IMAGE_DIGEST" |

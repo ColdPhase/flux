@@ -15,6 +15,12 @@ on:
         description: Issue with the owner's acceptance and an independent reviewer's exact-SHA review
         required: true
         type: string
+      platforms:
+        # v0.1 ships linux/amd64 only; v0.1.1 re-enables arm64 with linux/amd64,linux/arm64.
+        description: Image platforms, linux/amd64 or linux/amd64,linux/arm64
+        required: false
+        default: linux/amd64
+        type: string
 
 permissions:
   contents: read
@@ -34,6 +40,7 @@ jobs:
     outputs:
       source_sha: ${{ steps.check.outputs.source_sha }}
       version: ${{ steps.check.outputs.version }}
+      platforms: ${{ steps.check.outputs.platforms }}
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
@@ -46,9 +53,11 @@ jobs:
           CANDIDATE_SHA: ${{ inputs.candidate_sha }}
           RELEASE_VERSION: ${{ inputs.version }}
           ACCEPTANCE_ISSUE: ${{ inputs.acceptance_issue }}
+          RELEASE_PLATFORMS: ${{ inputs.platforms }}
         run: |
           set -euo pipefail
           test "$GITHUB_REF" = refs/heads/main
+          [[ "$RELEASE_PLATFORMS" =~ ^linux/amd64(,linux/arm64)?$ ]]
           [[ "$CANDIDATE_SHA" =~ ^[0-9a-f]{40}$ ]]
           [[ "$RELEASE_VERSION" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-rc\.[1-9][0-9]*)?$ ]]
           [[ "$ACCEPTANCE_ISSUE" =~ ^[1-9][0-9]*$ ]]
@@ -58,6 +67,8 @@ jobs:
           test -f docker/compose.runtime.yaml
           test -f docker/runtime.sh
           test -f docker/.env.example
+          test -f docker/compose.live.yaml
+          test -f docker/compose.live.turn.yaml
           # ls-remote --exit-code reports 2 only for an absent ref; another failure is not "free".
           tag_status=0
           git ls-remote --exit-code --tags --refs origin "refs/tags/$RELEASE_VERSION" >/dev/null ||
@@ -78,11 +89,14 @@ jobs:
           python3 scripts/release/verify_acceptance.py \
             --comments "$RUNNER_TEMP/acceptance-comments.json" --source-sha "$CANDIDATE_SHA" \
             --commit-messages "$RUNNER_TEMP/commit-messages.txt"
-          echo "source_sha=$CANDIDATE_SHA" >> "$GITHUB_OUTPUT"
-          echo "version=$RELEASE_VERSION" >> "$GITHUB_OUTPUT"
+          {
+            echo "source_sha=$CANDIDATE_SHA"
+            echo "version=$RELEASE_VERSION"
+            echo "platforms=$RELEASE_PLATFORMS"
+          } >> "$GITHUB_OUTPUT"
 
   image:
-    name: Build amd64 and arm64 OCI images
+    name: Build OCI images for ${{ needs.candidate.outputs.platforms }}
     needs: candidate
     runs-on: ubuntu-latest
     # Two images from one builder: the agent-runtime build reuses the application build's cached stages.
@@ -101,6 +115,8 @@ jobs:
           ref: ${{ needs.candidate.outputs.source_sha }}
           persist-credentials: false
       - uses: docker/setup-qemu-action@c7c53464625b32c7a7e944ae62b3e17d2b600130 # v3
+        # Only when arm64 is requested (v0.1 builds linux/amd64 natively and needs no emulator).
+        if: contains(needs.candidate.outputs.platforms, 'linux/arm64')
         with:
           # The action's default is the moving tonistiigi/binfmt:latest; pin the emulator that
           # builds the arm64 image (qemu-v10.2.3, the digest of the index) and install only arm64.
@@ -125,7 +141,7 @@ jobs:
           context: ./app
           file: ./docker/Dockerfile
           target: runtime
-          platforms: linux/amd64,linux/arm64
+          platforms: ${{ needs.candidate.outputs.platforms }}
           outputs: type=image,name=ghcr.io/coldphase/flux,push=true,push-by-digest=true,name-canonical=true
           provenance: mode=max
           # BuildKit's default scanner is the moving docker/buildkit-syft-scanner:stable-1; pin 1.12.0.
@@ -140,20 +156,22 @@ jobs:
           subject-name: ghcr.io/coldphase/flux
           subject-digest: ${{ steps.build.outputs.digest }}
           push-to-registry: true
-      - name: Confirm both platform manifests
+      - name: Confirm the platform manifests
         env:
           IMAGE_DIGEST: ${{ steps.build.outputs.digest }}
+          RELEASE_PLATFORMS: ${{ needs.candidate.outputs.platforms }}
         run: |
           docker buildx imagetools inspect --raw "ghcr.io/coldphase/flux@$IMAGE_DIGEST" \
             > "$RUNNER_TEMP/index.json"
-          python3 - "$RUNNER_TEMP/index.json" <<'PY'
+          python3 - "$RUNNER_TEMP/index.json" "$RELEASE_PLATFORMS" <<'PY'
           import json, sys
           index = json.load(open(sys.argv[1], encoding='utf-8'))
           platforms = {
               (item.get('platform', {}).get('os'), item.get('platform', {}).get('architecture'))
               for item in index.get('manifests', [])
           }
-          assert {('linux', 'amd64'), ('linux', 'arm64')} <= platforms, platforms
+          wanted = {tuple(p.split('/')) for p in sys.argv[2].split(',')}
+          assert wanted <= platforms, (wanted, platforms)
           PY
       - name: Generate image SPDX SBOM
         uses: anchore/sbom-action@006b7ce8314066bdf1765b4500370d40fa6917a3 # v0.24.2
@@ -172,7 +190,7 @@ jobs:
           context: ./app
           file: ./docker/Dockerfile
           target: agent-runtime-release
-          platforms: linux/amd64,linux/arm64
+          platforms: ${{ needs.candidate.outputs.platforms }}
           outputs: type=image,name=ghcr.io/coldphase/flux-agent-runtime,push=true,push-by-digest=true,name-canonical=true
           provenance: mode=max
           sbom: generator=docker/buildkit-syft-scanner@sha256:ae4f3b554449e7e25548e7d8ccc029d17357348e30c6e3df01b92bc93654d6a9
@@ -186,29 +204,32 @@ jobs:
           subject-name: ghcr.io/coldphase/flux-agent-runtime
           subject-digest: ${{ steps.build_runtime.outputs.digest }}
           push-to-registry: true
-      - name: Confirm both agent-runtime platform manifests
+      - name: Confirm the agent-runtime platform manifests
         env:
           RUNTIME_DIGEST: ${{ steps.build_runtime.outputs.digest }}
+          RELEASE_PLATFORMS: ${{ needs.candidate.outputs.platforms }}
         run: |
           docker buildx imagetools inspect --raw "ghcr.io/coldphase/flux-agent-runtime@$RUNTIME_DIGEST" \
             > "$RUNNER_TEMP/runtime-index.json"
-          python3 - "$RUNNER_TEMP/runtime-index.json" <<'PY'
+          python3 - "$RUNNER_TEMP/runtime-index.json" "$RELEASE_PLATFORMS" <<'PY'
           import json, sys
           index = json.load(open(sys.argv[1], encoding='utf-8'))
           platforms = {
               (item.get('platform', {}).get('os'), item.get('platform', {}).get('architecture'))
               for item in index.get('manifests', [])
           }
-          assert {('linux', 'amd64'), ('linux', 'arm64')} <= platforms, platforms
+          wanted = {tuple(p.split('/')) for p in sys.argv[2].split(',')}
+          assert wanted <= platforms, (wanted, platforms)
           PY
-      - name: Check the pinned Codex and the absence of Claude Code on both platforms
+      - name: Check the pinned Codex and the absence of Claude Code on every platform
         env:
           RUNTIME_DIGEST: ${{ steps.build_runtime.outputs.digest }}
+          RELEASE_PLATFORMS: ${{ needs.candidate.outputs.platforms }}
         run: |
           set -euo pipefail
           pinned=$(grep -o 'rust-v[0-9]*\.[0-9]*\.[0-9]*' docker/Dockerfile | sort -u)
           test "$(printf '%s\n' "$pinned" | wc -l)" = 1
-          for platform in linux/amd64 linux/arm64; do
+          for platform in ${RELEASE_PLATFORMS//,/ }; do
             image="ghcr.io/coldphase/flux-agent-runtime@$RUNTIME_DIGEST"
             version=$(docker run --rm --network none --platform "$platform" \
               --entrypoint /opt/flux-runtime/codex/bin/codex "$image" --version)
@@ -258,16 +279,18 @@ jobs:
           CANDIDATE_SHA: ${{ needs.candidate.outputs.source_sha }}
           IMAGE_DIGEST: ${{ needs.image.outputs.digest }}
           RUNTIME_DIGEST: ${{ needs.image.outputs.runtime_digest }}
+          RELEASE_PLATFORMS: ${{ needs.candidate.outputs.platforms }}
         run: |
           python3 scripts/release/prepare_assets.py \
             --version "$RELEASE_VERSION" --source-sha "$CANDIDATE_SHA" \
             --digest "$IMAGE_DIGEST" --sbom release-input/sbom.spdx.json \
             --runtime-digest "$RUNTIME_DIGEST" --runtime-sbom release-input/sbom-agent-runtime.spdx.json \
-            --destination release-assets
+            --platforms "$RELEASE_PLATFORMS" --destination release-assets
           cd release-assets
           sha256sum -c SHA256SUMS
           python3 ../scripts/release/verify_assets.py . \
-            --version "$RELEASE_VERSION" --source-sha "$CANDIDATE_SHA" --digest "$IMAGE_DIGEST"
+            --version "$RELEASE_VERSION" --source-sha "$CANDIDATE_SHA" --digest "$IMAGE_DIGEST" \
+            --platforms "$RELEASE_PLATFORMS"
       - uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
         with:
           registry: ghcr.io
@@ -284,6 +307,8 @@ jobs:
           docker compose -f release-assets/compose.yaml -f release-assets/compose.runtime.yaml --profile runtime config --format json \
             > "$RUNNER_TEMP/release-config.json"
           python3 scripts/release/compare_runtime_overlay.py "$RUNNER_TEMP/source-config.json" "$RUNNER_TEMP/release-config.json"
+      - name: Check the live-media overlays on the release compose.yaml
+        run: bash scripts/release/check_live_overlay.sh release-assets
       - name: Install the packaged agent runtime (switch-on, isolation, off, purge)
         run: bash scripts/release/smoke_runtime.sh release-assets "$RUNNER_TEMP/flux-runtime-smoke" "fluxruntime${{ github.run_id }}"
       # No asset name starts with a period (prepare_assets.py enforces it): upload-artifact skips
@@ -318,13 +343,15 @@ jobs:
           IMAGE_DIGEST: ${{ needs.image.outputs.digest }}
           RUNTIME_DIGEST: ${{ needs.image.outputs.runtime_digest }}
           ACCEPTANCE_ISSUE: ${{ inputs.acceptance_issue }}
+          RELEASE_PLATFORMS: ${{ needs.candidate.outputs.platforms }}
         run: |
           set -euo pipefail
           cd release-assets
           sha256sum -c SHA256SUMS
           python3 "$GITHUB_WORKSPACE/scripts/release/check_asset_set.py" .
           python3 "$GITHUB_WORKSPACE/scripts/release/verify_assets.py" . \
-            --version "$RELEASE_VERSION" --source-sha "$CANDIDATE_SHA" --digest "$IMAGE_DIGEST"
+            --version "$RELEASE_VERSION" --source-sha "$CANDIDATE_SHA" --digest "$IMAGE_DIGEST" \
+            --platforms "$RELEASE_PLATFORMS"
           jq -e --arg r "ghcr.io/coldphase/flux-agent-runtime@$RUNTIME_DIGEST" '.runtime_image == $r' release.json
           # Drafts have no tag yet, so a retry could add a second draft for the same version.
           existing=$(gh api --paginate "repos/$GITHUB_REPOSITORY/releases?per_page=100" \
@@ -339,12 +366,13 @@ jobs:
           Source: $CANDIDATE_SHA
           OCI candidate image: ghcr.io/coldphase/flux@$IMAGE_DIGEST
           Agent-runtime candidate image: ghcr.io/coldphase/flux-agent-runtime@$RUNTIME_DIGEST
-          Platforms (both images): linux/amd64, linux/arm64
+          Platforms (both images): ${RELEASE_PLATFORMS//,/, }
           Build: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID
           Integrated acceptance: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/issues/$ACCEPTANCE_ISSUE
 
           Install with the attached version-matched compose.yaml, env.example and INSTALL.md; check every file with SHA256SUMS first.
           The optional agent runtime is the attached compose.runtime.yaml with runtime.sh (off by default; Claude Code is not included in any image).
+          Calls and screen sharing: the attached compose.live.yaml (and compose.live.turn.yaml for TURN/TLS), which pin the LiveKit SFU by digest; see INSTALL.md.
           This draft requires independent packaged install, upgrade and restore review before the version tag and release are published.
           EOF
           release_flags=(--draft)

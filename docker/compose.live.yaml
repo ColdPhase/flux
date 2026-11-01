@@ -1,4 +1,6 @@
-# Optional self-hosted media profile for issues #61 and #128. Layer with compose.source.yaml.
+# Optional self-hosted media profile for issues #61 and #128. Layer with compose.source.yaml (source
+# checkout) or, as the release asset compose.live.yaml, with a release's compose.yaml
+# (docs/operations/release-guide.md, "Calls and screen sharing"). The release replaces this header.
 # Browsers signal only through the Flux API at <FLUX_PUBLIC_ORIGIN>/media, which checks the
 # media admission, the cookie session and project access before proxying (#128). The SFU's
 # signaling/room-service port listens only on the internal `livekit-signal` network shared

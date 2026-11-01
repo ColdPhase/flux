@@ -20,7 +20,9 @@ say so. See [Simulated public host](#simulated-public-host-63-2026-10-30).
 ## Compose deployment
 
 Layer `docker/compose.source.yaml`, `docker/compose.live.yaml`, then
-`docker/compose.live.turn.yaml`. Set all base live variables plus:
+`docker/compose.live.turn.yaml`. A release ships both overlays as `compose.live.yaml` and
+`compose.live.turn.yaml` to layer on its `compose.yaml`; its `INSTALL.md` has the operator steps
+([source](../operations/release-guide.md#calls-and-screen-sharing-optional)). Set all base live variables plus:
 
 | Variable | Operator value |
 | --- | --- |

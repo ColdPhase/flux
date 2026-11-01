@@ -310,7 +310,7 @@ Ping, session recheck and polling interval of the live WebSocket stream. Keep it
 
 ## Live media: LiveKit and TURN
 
-Only with the optional overlays `docker/compose.live.yaml` and `docker/compose.live.turn.yaml`, layered on the source Compose file. The release `compose.yaml` does not include live media yet.
+Only with the optional overlays `compose.live.yaml` and `compose.live.turn.yaml`, layered on the release `compose.yaml` (both ship with every release; the repository copies are in `docker/`) or on the source Compose file. Set them in `.env`; [INSTALL.md](release-guide.md#calls-and-screen-sharing-optional) has the ports and firewall.
 
 ### `FLUX_LIVEKIT_API_KEY`
 

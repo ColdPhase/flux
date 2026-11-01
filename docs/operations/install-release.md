@@ -9,7 +9,9 @@ Each GitHub Release carries these files: `compose.yaml` (the image pinned by dig
 (the settings template; GitHub drops the leading period of `.env.example`), `INSTALL.md` (the
 [release installation guide](release-guide.md)), `release.json`, software bills of materials,
 third-party notices, `LICENSE` and `SHA256SUMS`, plus `compose.runtime.yaml` and `runtime.sh` for the
-optional [agent runtime](agent-runtime.md#installing-from-a-release). Always use the files from the
+optional [agent runtime](agent-runtime.md#installing-from-a-release), and `compose.live.yaml` with
+`compose.live.turn.yaml` for optional [calls and screen sharing](#calls-and-screen-sharing). v0.1
+images are published for `linux/amd64` only; `linux/arm64` follows in v0.1.1. Always use the files from the
 release you install: a newer `main` can need other migrations or variables than your image.
 
 No release has been published yet; until one is, install [from a source checkout](install.md). The
@@ -91,8 +93,30 @@ With the optional `compose.runtime.yaml` (profile `runtime`, off by default) `ru
 [agent runtime](agent-runtime.md#installing-from-a-release).
 
 All Flux containers run as the image's non-root user; the image owns `/data/files`, so a new
-`files` volume is writable without a setup step. The optional self-hosted live-media overlay
-(`docker/compose.live.yaml`) is not part of this operator file yet.
+`files` volume is writable without a setup step.
+
+## Calls and screen sharing
+
+Calls, cameras and screen sharing need the optional `compose.live.yaml` of the same release, layered
+on `compose.yaml`. It adds one service, `livekit` (the LiveKit media server, pinned by digest and
+recorded as `live_media_image` in `release.json`), and joins the API to an internal signaling
+network. `compose.live.turn.yaml` adds TURN/TLS on TCP/443 for restrictive networks. Neither file
+builds anything or uses a source path.
+
+| Inbound to the media host | Purpose |
+| --- | --- |
+| UDP/7882 | Media (ICE over UDP) |
+| TCP/7881 | Media over TCP |
+| UDP/3478 | STUN and TURN over UDP |
+| TCP/443 on a second address | TURN/TLS, only with `compose.live.turn.yaml` |
+
+TCP/7880 (signaling) is never published: browsers reach it only through the API at
+`<FLUX_PUBLIC_ORIGIN>/media`, behind your existing reverse proxy. The settings
+(`FLUX_LIVEKIT_*`), the firewall, the start commands and switching off are in `INSTALL.md`
+([source](release-guide.md#calls-and-screen-sharing-optional)); every variable is in the
+[configuration reference](configuration.md#live-media-livekit-and-turn). Once calls are on, pass
+`-f compose.live.yaml` to every `docker compose` command. Design and measurements:
+[live media](../development/live-media.md).
 
 ## Upgrade, backup and restore
 
@@ -131,10 +155,13 @@ a worker job and a restart, and removes the project, volumes and image. Ports de
 `python3 -m unittest tests.test_operator_compose` checks the file statically (pull-only, one
 marker on the three Flux services, digest pins, variables and placeholders), and
 `tests.test_release_assets` renders the real files into a release asset set. The real GHCR pull,
-both platforms and the downloaded release assets are verified by the release workflow: its `final-release.yml`
+the published platforms (`linux/amd64` for v0.1) and the downloaded release assets are verified by the release workflow: its `final-release.yml`
 installs the packaged, digest-pinned release, creates an account and workspace, takes a paired
 backup and restores it into a second project (`scripts/release/smoke_artifacts.sh`), and an
-independent reviewer repeats that on both platforms before publication. The same workflow then
+independent reviewer repeats that before publication. The same workflow then
 installs the packaged agent runtime (`scripts/release/smoke_runtime.sh`: off by default, switch-on,
 `docker inspect` limits, no Claude Code in the image, off and purge) and
 `scripts/release/compare_runtime_overlay.py` checks the overlay against `docker/compose.source.yaml`.
+`scripts/release/check_live_overlay.sh` resolves the packaged `compose.live.yaml` (and the TURN file)
+on the packaged `compose.yaml` with `docker compose config` and checks the pinned media image, the
+networks and the published ports.

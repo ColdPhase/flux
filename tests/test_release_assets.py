@@ -14,8 +14,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts" / "release"))
 from prepare_assets import (  # noqa: E402
-    ASSET_NAME, IMAGE, MARKER, RUNTIME_IMAGE, RUNTIME_MARKER, codex_pin, prepare, render_compose,
-    render_runtime_compose,
+    ASSET_NAME, IMAGE, MARKER, RUNTIME_IMAGE, RUNTIME_MARKER, codex_pin, parse_platforms, prepare, render_compose,
+    render_live_compose, render_runtime_compose,
 )
 from verify_assets import EXPECTED, verify as verify_assets  # noqa: E402
 
@@ -25,6 +25,18 @@ GUIDE = ROOT / "docs" / "operations" / "release-guide.md"
 REAL_OVERLAY = ROOT / "docker" / "compose.runtime.yaml"
 REAL_SCRIPT = ROOT / "docker" / "runtime.sh"
 DOCKERFILE = ROOT / "docker" / "Dockerfile"
+REAL_LIVE = ROOT / "docker" / "compose.live.yaml"
+REAL_TURN = ROOT / "docker" / "compose.live.turn.yaml"
+SFU = "livekit/livekit-server:v1.13.7@sha256:" + "e" * 64
+LIVE = (
+    "# repository header: layer with compose.source.yaml\n"
+    "services:\n  api:\n    environment:\n      FLUX_LIVEKIT_API_URL: http://livekit:7880\n"
+    "  livekit:\n    image: " + SFU + "\n    ports:\n      - 7882:7882/udp\n"
+)
+TURN = (
+    "# repository header\nservices:\n  livekit:\n    volumes:\n"
+    "      - ${FLUX_LIVEKIT_TURN_CERT_DIR:?Set it}:/run/livekit-turn-certs:ro,z\n"
+)
 RUNTIME_DIGEST = "sha256:" + "c" * 64
 APP_DIGEST = "sha256:" + "b" * 64
 OVERLAY = (
@@ -52,6 +64,8 @@ class ReleaseAssetsTest(unittest.TestCase):
             "LICENSE": "AGPL-3.0\n",
             "compose.runtime.yaml": OVERLAY,
             "runtime.sh": "#!/bin/sh\necho runtime\n",
+            "compose.live.yaml": LIVE,
+            "compose.live.turn.yaml": TURN,
             "Dockerfile": "ADD https://github.com/openai/codex/releases/download/rust-v0.9.1/codex-x86_64.tar.gz /c.tgz\n",
             "sbom-agent-runtime.spdx.json": '{"packages":[{"name":"node","versionInfo":"24","licenseDeclared":"MIT"}]}\n',
             "sbom.spdx.json": '{"packages":[{"name":"postgres","versionInfo":"18.1","licenseDeclared":"PostgreSQL"}]}\n',
@@ -64,7 +78,8 @@ class ReleaseAssetsTest(unittest.TestCase):
         return dict(
             runtime_digest=RUNTIME_DIGEST, runtime_compose=self.sources["compose.runtime.yaml"],
             runtime_script=self.sources["runtime.sh"], runtime_sbom=self.sources["sbom-agent-runtime.spdx.json"],
-            dockerfile=self.sources["Dockerfile"],
+            dockerfile=self.sources["Dockerfile"], live_compose=self.sources["compose.live.yaml"],
+            live_turn_compose=self.sources["compose.live.turn.yaml"],
         )
 
     def build(self) -> Path:
@@ -196,6 +211,51 @@ class ReleaseAssetsTest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "exactly one"):
             self.build()
 
+    def test_platforms_default_to_amd64_and_arm64_can_be_named_again(self) -> None:
+        release = json.loads((self.build() / "release.json").read_text())
+        self.assertEqual((release["platforms"], release["runtime_platforms"]), (["linux/amd64"], ["linux/amd64"]))
+        self.assertEqual(verify_assets(self.root / "release", None, None, None, "linux/amd64")["platforms"], "linux/amd64")
+        with self.assertRaisesRegex(ValueError, "expected linux/amd64,linux/arm64"):
+            verify_assets(self.root / "release", None, None, None, "linux/amd64,linux/arm64")
+        output = self.root / "both"
+        prepare(
+            version="v1.2.3", source_sha="a" * 40, digest=APP_DIGEST,
+            compose=self.sources["compose.yaml"], env=self.sources[".env.example"],
+            instructions=self.sources["INSTALL.md"], license_file=self.sources["LICENSE"],
+            sbom=self.sources["sbom.spdx.json"], destination=output,
+            platforms="linux/arm64,linux/amd64", **self.runtime_args(),
+        )
+        self.assertEqual(json.loads((output / "release.json").read_text())["platforms"], ["linux/amd64", "linux/arm64"])
+        self.assertEqual(parse_platforms("linux/arm64"), ["linux/arm64"])
+        for bad in ("", "linux/amd64,", "linux/riscv64", "linux/amd64,linux/amd64", "amd64"):
+            with self.subTest(bad=bad), self.assertRaisesRegex(ValueError, "subset"):
+                parse_platforms(bad)
+
+    def test_live_overlays_ship_digest_pinned_with_a_release_header(self) -> None:
+        output = self.build()
+        live = (output / "compose.live.yaml").read_text()
+        self.assertTrue(live.startswith("# Flux v1.2.3 live-media overlay"))
+        self.assertNotIn("repository header", live)
+        self.assertIn("services:\n  api:\n", live)
+        self.assertEqual(json.loads((output / "release.json").read_text())["live_media_image"], SFU)
+        self.assertIn("TURN/TLS overlay", (output / "compose.live.turn.yaml").read_text())
+        self.assertEqual({path.name for path in output.iterdir()}, EXPECTED)
+
+    def test_rejects_live_overlays_that_build_float_or_point_into_a_checkout(self) -> None:
+        cases = {
+            "pull-only": LIVE + "    build: .\n",
+            "not pinned": LIVE.replace(SFU, "livekit/livekit-server:v1.13.7"),
+            "source path": LIVE + "    volumes:\n      - ./livekit.yaml:/etc/livekit.yaml\n",
+            "must not name": LIVE + "  x:\n    image: " + MARKER + "\n",
+        }
+        for message, text in cases.items():
+            with self.subTest(message):
+                with self.assertRaisesRegex(ValueError, message):
+                    render_live_compose("compose.live.yaml", text, version="v1.2.3", source_sha="a" * 40)
+        self.sources["compose.live.turn.yaml"].write_text(TURN + "  coturn:\n    image: " + SFU + "\n")
+        with self.assertRaisesRegex(ValueError, "compose.live.turn.yaml none"):
+            self.build()
+
     def test_verify_assets_accepts_the_prepared_set_and_refuses_each_tampering(self) -> None:
         output = self.build()
         self.assertEqual(verify_assets(output, "v1.2.3", "a" * 40, APP_DIGEST)["runtime"], f"{RUNTIME_IMAGE}@{RUNTIME_DIGEST}")
@@ -223,6 +283,10 @@ class ReleaseAssetsTest(unittest.TestCase):
             "source build": ("compose.yaml", lambda t: t + "  build: .\n", "source build"),
             "engine socket": ("runtime.sh", lambda t: t + "\n# /var/run/docker.sock\n", "socket"),
             "claude code claimed": ("release.json", lambda t: t.replace("not included", "bundled"), "Claude Code"),
+            "sfu swapped": ("compose.live.yaml", lambda t: t.replace(SFU, SFU.replace("e" * 64, "d" * 64)), "live_media_image"),
+            "sfu floating": ("compose.live.yaml", lambda t: t.replace(SFU, "livekit/livekit-server:latest"), "floating tag"),
+            "flux image in the overlay": ("compose.live.turn.yaml", lambda t: t + f"  x:\n    image: {IMAGE}@{APP_DIGEST}\n", "Flux image"),
+            "platforms differ": ("release.json", lambda t: t.replace('"runtime_platforms": [\n    "linux/amd64"', '"runtime_platforms": [\n    "linux/arm64"'), "same supported platforms"),
         }
         for label, (name, mutate, message) in cases.items():
             with self.subTest(label):
@@ -256,7 +320,7 @@ class RealOperatorAssetsTest(unittest.TestCase):
             compose=REAL_COMPOSE, env=REAL_ENV, instructions=GUIDE,
             license_file=ROOT / "LICENSE", sbom=sbom, destination=self.output,
             runtime_digest=RUNTIME_DIGEST, runtime_compose=REAL_OVERLAY, runtime_script=REAL_SCRIPT,
-            runtime_sbom=sbom, dockerfile=DOCKERFILE,
+            runtime_sbom=sbom, dockerfile=DOCKERFILE, live_compose=REAL_LIVE, live_turn_compose=REAL_TURN,
         )
 
     def test_asset_set_and_checksums(self) -> None:
@@ -294,6 +358,22 @@ class RealOperatorAssetsTest(unittest.TestCase):
         for stale in ("docs/operations", "./flux", "docker/", "placeholder", "repository"):
             self.assertNotIn(stale, header)
 
+    def test_live_overlays_ship_unchanged_but_for_the_header(self) -> None:
+        def body(text: str) -> str:
+            lines = text.splitlines(keepends=True)
+            return "".join(lines[next(i for i, line in enumerate(lines) if not line.startswith("#")):])
+
+        for name, source in (("compose.live.yaml", REAL_LIVE), ("compose.live.turn.yaml", REAL_TURN)):
+            with self.subTest(name):
+                packaged = (self.output / name).read_text(encoding="utf-8")
+                self.assertEqual(body(packaged), body(source.read_text(encoding="utf-8")))
+                header = packaged[: len(packaged) - len(body(packaged))]
+                self.assertIn("Flux v1.2.3-rc.1", header)
+                for stale in ("compose.source", "docker/", "./flux"):
+                    self.assertNotIn(stale, header)
+        release = json.loads((self.output / "release.json").read_text())
+        self.assertIn(f"image: {release['live_media_image']}\n", REAL_LIVE.read_text())
+
     def test_codex_pin_is_read_from_the_real_dockerfile(self) -> None:
         self.assertRegex(codex_pin(DOCKERFILE.read_text()), r"^rust-v\d+\.\d+\.\d+$")
 
@@ -326,6 +406,10 @@ class RealOperatorAssetsTest(unittest.TestCase):
     def test_installation_guide_variables_match_the_operator_files(self) -> None:
         keys = {line.partition("=")[0] for line in REAL_ENV.read_text().splitlines()
                 if line.strip() and not line.startswith("#")}
+        # The live-media settings belong to the optional overlays; INSTALL.md lists them for .env.
+        live = REAL_LIVE.read_text() + REAL_TURN.read_text()
+        live_keys = set(re.findall(r"\$\{(FLUX_LIVEKIT_[A-Z0-9_]+)", live))
+        keys |= live_keys
         guide = GUIDE.read_text(encoding="utf-8")
         mentioned = set(re.findall(r"`((?:FLUX|POSTGRES)_[A-Z0-9_]+)`", guide))
         self.assertEqual(sorted(mentioned - keys), [], "INSTALL.md names a variable the template lacks")
