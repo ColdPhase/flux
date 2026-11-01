@@ -27,9 +27,20 @@ export FLUX_SMTP_URL="smtp://mailpit:1025"
 export FLUX_MAIL_FROM="Flux <flux@example.test>"
 # The audit signs four people in more than once; rate limiting is covered by the API suite.
 export FLUX_AUTH_RATE_LIMIT=false
-# A link card in the conversation (#469): public.test is the Compose link-mock, as in check_ui.sh.
+# The same throwaway test configuration as scripts/check_ui.sh, so the audit sees what the browser tests see.
+# TEST ONLY: never set these in a deployment. The link card (#469) reaches the Compose link-mock as public.test.
+export FLUX_TEST_FAILURE_INJECTION=true
+export FLUX_TEST_PERSONAL_RUNS=anthropic-mock
+export FLUX_TEST_ANTHROPIC_URL=http://anthropic-mock:8090
+export FLUX_AI_PRIVATE_TARGETS=openai-mock
 export FLUX_LINK_PREVIEWS=on
 export FLUX_TEST_LINK_PREVIEW_HOSTS=public.test=link-mock:8098
+export FLUX_KEYRING_TOKEN="$(head -c 32 /dev/urandom | base64 | tr '+/' '-_' | tr -d '=\n')"
+export FLUX_KEY_PIN_SECRET="$(head -c 32 /dev/urandom | base64 | tr '+/' '-_' | tr -d '=\n')"
+background_secret_dir=$(mktemp -d)
+head -c 32 /dev/urandom > "$background_secret_dir/background_key"
+chmod 0444 "$background_secret_dir/background_key"
+export FLUX_BACKGROUND_KEY_HOST_FILE="$background_secret_dir/background_key"
 # No push keys from a developer's docker/.env reach this run.
 export FLUX_VAPID_PUBLIC_KEY='' FLUX_VAPID_PRIVATE_KEY='' FLUX_VAPID_SUBJECT=''
 export FLUX_UI_SCREENSHOT_DIR="$out"
@@ -45,6 +56,8 @@ cleanup() {
   fi
   $compose down -v >/dev/null 2>&1 || true
   remove_project_images
+  chmod 0600 "$background_secret_dir/background_key"
+  rm -rf "$background_secret_dir"
   exit $status
 }
 trap cleanup EXIT HUP INT TERM
