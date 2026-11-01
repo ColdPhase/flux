@@ -307,7 +307,7 @@ a.me__item { text-decoration: none; }
 .top--row.top--focus .top__title { flex: 1; }
 .top__views { flex: 0 1 auto; }
 /* "N needs you" is a quiet text link (direction C, #763, 2026-10-31). */
-.top__needs { display: inline-flex; align-items: center; height: 24px; padding: 0 4px; border-radius: 6px; background: transparent; color: var(--t1);
+.top__needs { display: inline-flex; align-items: center; height: var(--ctl); padding: 0 4px; border-radius: 6px; background: transparent; color: var(--t1);
   font-size: var(--fs-md); font-weight: 500; white-space: nowrap; cursor: pointer; transition: var(--tr); }
 .top__needs:hover { text-decoration: underline; text-underline-offset: 3px; }
 .top__needs[aria-expanded="true"] { text-decoration: underline; text-underline-offset: 3px; }

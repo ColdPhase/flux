@@ -475,10 +475,9 @@
 .doc-changes__page .wiki-chg--added { background: color-mix(in srgb, var(--t1) 8%, transparent); text-decoration: underline; text-decoration-color: color-mix(in srgb, var(--t1) 60%, transparent); text-underline-offset: 3px; border-radius: 4px; }
 .doc-changes__page .wiki-chg--removed, .doc-changes__page .wiki-chg--removed :is(td, th, li, strong, a, h1, h2, h3, h4) { color: var(--t3); text-decoration: line-through; text-decoration-color: var(--t3); }
 /* The primary action keeps one width in read, edit and history, so the controls before it never shift (#511, AC-4). */
-/* The primary is a toolbar button (#763): the icon buttons' 32 px, never stretched by the row, in every state; on touch its hit
-   area reaches 44 px around it without growing what is drawn. */
-.wiki-bar .wiki-bar__primary { position: relative; align-self: center; min-width: 96px; height: 32px; min-height: 32px; padding: 0 12px; justify-content: center; gap: 6px; font-size: var(--fs-sm); }
-@media (pointer: coarse) { .wiki-bar .wiki-bar__primary::after { content: ""; position: absolute; inset: -6px -2px; } }
+/* The primary is a toolbar button (#763): exactly the height of the icon buttons beside it (34 px with a mouse, 44 on touch),
+   never stretched by the row, in every state. */
+.wiki-bar .wiki-bar__primary { align-self: center; min-width: 96px; height: max(34px, var(--ctl)); min-height: max(34px, var(--ctl)); padding: 0 12px; justify-content: center; gap: 6px; font-size: var(--fs-sm); }
 /* In a narrow pane (a tablet with the page list open) the state takes the first row, the icons the second,
    and the primary is its icon alone; the same in every state, so nothing moves between them. */
 @container wikimain (max-width: 560px) {

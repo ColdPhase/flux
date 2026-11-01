@@ -332,15 +332,13 @@ class FinalCheck763(unittest.TestCase):
                         self.assertGreaterEqual(rect["height"], 44)
                         self.assertLessEqual(rect["height"], 46)
                     else:
-                        self.assertLessEqual(abs(rect["height"] - 32), 1, f"{name}/{theme}: the icon buttons' 32 px, not a block")
-                        self.assertLessEqual(rect["width"], 120, f"{name}/{theme}: compact width")
                         icon = page.locator(".wiki-bar .ui-icon-btn:visible").first.bounding_box()
+                        # Exactly the icon buttons' height (34 px with a mouse, 44 on touch), not a block.
+                        self.assertLessEqual(abs(rect["height"] - icon["height"]), 1, f"{name}/{theme}: one height with the icon buttons")
+                        self.assertLessEqual(rect["height"], 44)
+                        self.assertGreaterEqual(rect["height"], 44 if touch else 32, f"{name}/{theme}: a touch target on touch")
+                        self.assertLessEqual(rect["width"], 120, f"{name}/{theme}: compact width")
                         self.assertLessEqual(abs((rect["y"] + rect["height"] / 2) - (icon["y"] + icon["height"] / 2)), 1, "on the icons' centre line")
-                        if touch:
-                            # Its hit area reaches 44 px without growing what is drawn.
-                            reach = edit.evaluate("""el => { const r = el.getBoundingClientRect(); const x = r.left + r.width / 2;
-                              return [r.top - 5, r.bottom + 5].every((y) => el.contains(document.elementFromPoint(x, y))); }""")
-                            self.assertTrue(reach, f"{name}: a 44 px touch target")
                     shot(page, f"final-763-wiki-edit-{name}-{theme}-{UI_BROWSER}")
 
     def test_wiki_beside_a_panel_keeps_edit_in_its_toolbar(self) -> None:
@@ -352,7 +350,7 @@ class FinalCheck763(unittest.TestCase):
         expect(edit).to_be_visible()
         self.assertEqual(page.locator(".wiki-edit").count(), 0, "no floating Edit on a computer")
         self.assertEqual(edit.evaluate("el => !!el.closest('.wiki-bar')"), True, "Edit sits in the page's toolbar")
-        self.assertLessEqual(abs(edit.bounding_box()["height"] - 32), 1)
+        self.assertLessEqual(abs(edit.bounding_box()["height"] - 34), 1, "the toolbar's height with a mouse")
         bar = page.locator(".wiki-bar").bounding_box()
         title = page.locator(".doc-head__t").bounding_box()
         self.assertGreaterEqual(title["y"], bar["y"] + bar["height"] - 1, "the page title starts below the bar, not under it")
