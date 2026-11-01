@@ -54,6 +54,8 @@ export function useStopAgent(projectId: string, onSettled: () => void) {
       toast({
         message: inProgress ? `Stopped ${agentName} on #${task.number}` : `Took #${task.number} back from ${agentName}`, tone: 'success',
         action: offerHandBack ? { label: 'Hand back', onClick: () => { void handBack(agentId, task, agentName); } } : undefined,
+        // Hand back undoes the Stop: like Undo it waits for the person (#347 N1), unlike the Open-style actions that leave (CW-5).
+        ...(offerHandBack ? { timeout: null } : {}),
       });
     } catch (cause) {
       if (cause instanceof ApiError) attempts.current.delete(key);

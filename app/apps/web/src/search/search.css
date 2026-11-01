@@ -38,7 +38,7 @@
 .jump__in { display: flex; flex-direction: column; min-height: 0; max-height: inherit; flex: 1; }
 .jump__field { display: flex; align-items: center; gap: 10px; min-height: 52px; padding: 0 12px 0 16px; border-bottom: 1px solid var(--line); flex: none; }
 .jump__icon { color: var(--t3); flex: none; }
-.jump__input { flex: 1; min-width: 0; height: 50px; border: 0; background: none; font: inherit; font-size: var(--fs-lg); color: var(--t1); outline: none; }
+.jump__input { flex: 1; min-width: 0; height: var(--ctl); border: 0; background: none; font: inherit; font-size: var(--fs-lg); color: var(--t1); outline: none; }
 .jump__input::placeholder { color: var(--t3); }
 .jump__input::-webkit-search-cancel-button { display: none; }
 .jump__close { display: inline-flex; align-items: center; min-height: 32px; padding: 0 6px; border-radius: var(--r-sm); color: var(--t1); font-size: var(--fs-md); }

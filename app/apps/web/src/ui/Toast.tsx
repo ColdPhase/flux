@@ -17,8 +17,9 @@ export interface ToastAction {
 export interface ToastOptions {
   message: string;
   tone?: ToastTone;
-  /** Milliseconds before it leaves on its own; errors stay until dismissed. */
-  timeout?: number;
+  /** Milliseconds before it leaves on its own; errors stay until dismissed. `null` keeps an undo-like action (Hand back)
+   *  until it is used or dismissed, as Undo stays (#347 N1). */
+  timeout?: number | null;
   /** One quiet action beside the message, e.g. Undo or Hand back. Taking it closes the toast. */
   action?: ToastAction;
   /** A small moment: the wink after a task is closed. Shown only while Small moments is on; the message says it all. */
@@ -38,6 +39,8 @@ interface ToastEntry extends Required<Omit<ToastOptions, 'timeout' | 'action' | 
 const ACTION_TIMEOUT_MS = 8000;
 /** A toast's action ignores a tap this soon after the toasts moved: the tap was meant for what was there. */
 const ACTION_ARMED_MS = 600;
+/** How far the toasts must move for the tap guard: about half a toast, so a tap aimed elsewhere could land on one. */
+const MOVE_PX = 24;
 
 const ToastContext = createContext<(options: ToastOptions) => () => void>(() => () => {});
 const ToastScopeContext = createContext<() => boolean>(() => true);
@@ -133,6 +136,9 @@ function useModalLift(active: boolean): { inset: number; movedAt: number } {
   useLayoutEffect(() => {
     if (!active) return undefined;
     let frame = 0;
+    // The first measurement places toasts that just appeared; they did not move under a finger. Only a later change of
+    // MOVE_PX or more (a sheet opening while a toast shows) arms the tap guard, so an Undo tapped right away still works.
+    let placed = false;
     const measure = () => {
       cancelAnimationFrame(frame);
       frame = requestAnimationFrame(() => {
@@ -147,7 +153,11 @@ function useModalLift(active: boolean): { inset: number; movedAt: number } {
           }
         }
         const inset = Number.isFinite(top) ? Math.max(0, Math.round(window.innerHeight - top + 8)) : 0;
-        setLift((current) => current.inset === inset ? current : { inset, movedAt: performance.now() });
+        const settled = placed;
+        placed = true;
+        // A few pixels (a control re-rendering in the band) is not a move: a tap aimed at the toast still lands on it.
+        setLift((current) => current.inset === inset ? current
+          : { inset, movedAt: settled && Math.abs(inset - current.inset) >= MOVE_PX ? performance.now() : current.movedAt });
       });
     };
     const observer = new MutationObserver(measure);
@@ -186,7 +196,7 @@ export function ToastProvider({ children, scopeKey }: { children: ReactNode; sco
     const entry: ToastEntry = {
       id: nextId.current++, message: options.message, tone, action, mascot: options.mascot ?? null,
       // An action that is not Undo (Open, Open task…) leaves on its own too (CW-5); Undo keeps its own window, errors stay.
-      timeout: options.timeout ?? (tone === 'danger' || options.action?.key === 'Z' ? null : action ? ACTION_TIMEOUT_MS : 5000),
+      timeout: options.timeout !== undefined ? options.timeout : (tone === 'danger' || options.action?.key === 'Z' ? null : action ? ACTION_TIMEOUT_MS : 5000),
       leaving: false, sessionEpoch: actionEpoch,
     };
     setToasts((current) => [...current.slice(-2), entry]);

@@ -40,7 +40,7 @@ export function AttachButton({ state, disabled = false, className }: { state: Co
     <input ref={input} className="ui-vh" type="file" multiple tabIndex={-1} aria-hidden="true" disabled={blocked}
       onChange={(event) => { if (!blocked) picked.take([...event.currentTarget.files ?? []]); event.currentTarget.value = ''; }} />
     <button type="button" className={['composer__attach', className].filter(Boolean).join(' ')} disabled={blocked} onClick={() => input.current?.click()}
-      aria-label="Attach files" data-tip="Attach files · private until sent" data-tip-align="start"><Icon name="plus" size={17} /></button>
+      aria-label="Attach files" data-tip="Attach files · private until sent" data-tip-align="start"><Icon name="plus" size={16} /></button>
     {picked.sheet}
   </>;
 }

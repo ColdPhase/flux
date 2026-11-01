@@ -360,9 +360,14 @@ class SpokojLayout(unittest.TestCase):
                     boxes = self.header_boxes(page, views=size is COMPUTER)
                     if size is TABLET:
                         boxes["title"] = self.box(header.get_by_role("heading", level=1).get_by_role("button"))
-                    # Together is in every view; where nothing is open to work on together it is dimmed, not removed.
+                    # Together is in every view; where nothing is open to work on together it stays and says why on a click.
                     if path in ("/map", "/tasks", "/agents"):
-                        expect(header.get_by_role("button", name="Together", exact=True)).to_have_attribute("aria-disabled", "true")
+                        together = header.get_by_role("button", name="Together", exact=True)
+                        expect(together).not_to_have_attribute("aria-disabled", "true")
+                        together.click()
+                        expect(page.get_by_role("dialog", name="Together")).to_contain_text("Open a conversation, task, sketch or page")
+                        page.keyboard.press("Escape")
+                        expect(page.get_by_role("dialog", name="Together")).to_have_count(0)
                     if first is None:
                         first = boxes
                     else:
