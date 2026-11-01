@@ -5,7 +5,18 @@ administrator account: everything on this page is done in the app by a space's *
 **admins**, and the [settings file](configuration.md) is the operator's only lever over the whole
 instance.
 
-<!-- MEDIA SLOT (#780, after #763 round 2): Settings → People on a computer and a phone, light and dark. -->
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="../assets/screens/people-computer-dark.webp">
+    <img src="../assets/screens/people-computer-light.webp" width="62%" alt="Settings, People on a computer: Riverside Makers has four people, Ada Kowalska as Owner, Jonas Berg as Member, Basia Wrona as Admin and Tomasz Lis as Guest, each with a Change button, and the AI row below with Turn off AI.">
+  </picture>
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="../assets/screens/people-phone-dark.webp">
+    <img src="../assets/screens/people-phone-light.webp" width="22%" alt="The same page on a phone, scrolled to the list: the end of the invite form, the four people with their roles and Change buttons, and the AI row.">
+  </picture>
+</p>
+
+<p align="center"><sub>Settings → People on a 1440&nbsp;px computer and a 390&nbsp;px phone, in the light and the dark theme your browser asks for.</sub></p>
 
 ## Spaces
 
@@ -47,12 +58,17 @@ signs in or creates an account under the instance's sign-up rule: an invite neve
 `FLUX_SIGNUP` or [single sign-on](single-sign-on.md) has closed. Changing `FLUX_AUTH_SECRET` voids
 every pending link.
 
-<!-- MEDIA SLOT (#780, after #763 round 2): creating and copying an invite link; the join page. -->
+<p align="center">
+  <img src="../assets/screens/invite-link.webp" width="48%" alt="Invite with a link in People: Joins as Member, Works for 7 days, the Create invite link button, and the new link with a Copy link button and the note that it works once and Flux does not send it.">
+  <img src="../assets/screens/join-page.webp" width="48%" alt="The page the link opens: Join Riverside Makers, with the line that Ada Kowalska invited you as a member, a Sign in to join button and a Create an account button.">
+</p>
+
+<p align="center"><sub>Creating the link in People, and the page it opens for the person who receives it.</sub></p>
 
 ## AI in a space
 
-At the end of a space's People, **AI in <space>** shows whether agents and assistants may work
-there. Owners and admins turn it off or on for the whole space:
+At the end of a space's People, the **AI in** row, followed by the space's name,
+shows whether agents and assistants may work there. Owners and admins turn it off or on for the whole space:
 
 - **Off**: no agent, assistant or connected MCP client reads or acts in the space, including each
   member's own. Work they had started stops. People keep working as before.

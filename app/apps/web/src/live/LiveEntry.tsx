@@ -54,17 +54,22 @@ export function LiveEntry({ variant = 'header', anchor: given, onAction }: {
   const nameOf = (id: string) => projectPeople?.find((person) => person.id === id)?.name ?? live.nameOf(id);
 
   // Spokój rule 7: the header's Together keeps its place in every view. Where there is nothing to work on together
-  // (nothing open to anchor a session, a session already joined, or still checking) it is dimmed, not removed.
+  // (nothing open to anchor a session, a session already joined, or still checking) it stays, and a click says why
+  // (#763 sweep: a permanently greyed button read as broken).
   const dimmed = (reason: string) => variant === 'more' ? (
     <button type="button" role="menuitem" className="newmenu__item top__more-narrow" data-more-row aria-disabled="true" aria-describedby={noteId}>
       <span>Together</span><span id={noteId} className="ui-vh">{reason}</span>
     </button>
   ) : variant === 'header' ? (
     <span className="lv-entry">
-      <Button variant="quiet" icon="together" className="lv-entry__btn" aria-disabled="true" aria-label="Together" aria-describedby={noteId} title={reason}>
+      <Button ref={buttonRef} variant="quiet" icon="together" className="lv-entry__btn lv-entry__btn--why" aria-label="Together" aria-describedby={noteId}
+        aria-expanded={open} aria-haspopup="dialog" onClick={() => setOpen((value) => !value)}>
         <span className="lv-entry__label">Together</span>
       </Button>
       <span id={noteId} className="ui-vh">{reason}</span>
+      <Popover open={open} onClose={() => setOpen(false)} anchorRef={buttonRef} label="Together" className="lv-pop--narrow">
+        <p className="lv-pop__text">{reason}</p>
+      </Popover>
     </span>
   ) : null;
   if (live.capability === 'loading') return dimmed('Checking whether live sessions are available.');

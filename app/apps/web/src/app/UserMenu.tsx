@@ -110,7 +110,7 @@ function AccountMenu({ name, email, sessionExpiresAt, compact }: { name: string;
             : <span className="me__text"><b>{name}</b><span className="ui-vh">{email}</span></span>}
           <span className="ui-vh">, account and sign out</span>
         </button>
-        <Link to="/settings" className="me__settings" aria-label="Settings" title="Settings"><Icon name="gear" size={17} /></Link>
+        <Link to="/settings" className="me__settings" aria-label="Settings" title="Settings"><Icon name="gear" size={16} /></Link>
       </div>
     </div>
   );

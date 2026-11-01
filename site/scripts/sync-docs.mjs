@@ -195,8 +195,9 @@ function build(page) {
       '    - text: Connect your agent', `      link: ${BASE}/start/connect-your-agent/`, '      variant: minimal',
       '    - text: Self-host', `      link: ${BASE}/operate/`, '      variant: minimal',
       '    - text: GitHub', `      link: ${REPO}`, '      variant: minimal', '      icon: github');
-    // The screenshots under the README header lead the page too.
-    const shots = source.match(/<p align="center">\s*<img[\s\S]*?<\/p>\s*\n\s*<p align="center"><sub>[\s\S]*?<\/sub><\/p>/);
+    // The screenshots under the README header lead the page too: the one centred paragraph that holds the images of
+    // docs/assets/readme (a bare <img>, or a <picture> with a dark source), and the caption under it.
+    const shots = source.match(/<p align="center">(?:(?!<\/p>)[\s\S])*?docs\/assets\/readme\/(?:(?!<\/p>)[\s\S])*<\/p>\s*\n\s*<p align="center"><sub>[\s\S]*?<\/sub><\/p>/);
     if (shots) body = `${rewriteLinks(shots[0], page.from)}\n\n${body}`;
     // The promo animation at the top of the README (#780) leads the page above them.
     const promo = source.match(/<p align="center">\s*<picture>\s*<source[^>]*flux-promo[\s\S]*?<\/p>\s*\n\s*<p align="center"><sub>[\s\S]*?<\/sub><\/p>/);

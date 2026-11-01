@@ -36,15 +36,18 @@
 <a href="docs/assets/demo/flux-demo.gif">recording of the running app</a> and the screenshots below show the real thing.</sub></p>
 
 <p align="center">
-  <img src="docs/assets/readme/conversation-desktop.png" width="74%" alt="The Community garden sensors project on a desktop: the conversation, with the task made from a message, and beside it the accepted decision to measure soil moisture first, with its reason and the message it is based on.">
-  <img src="docs/assets/readme/home-phone.png" width="21%" alt="Home on a phone: under Needs you, Jonas's question with a Reply button; the project below is quiet; Home, Projects and Inbox sit in the bar at the bottom.">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/assets/readme/conversation-desktop-dark.webp">
+    <img src="docs/assets/readme/conversation-desktop.webp" width="74%" alt="The Community garden sensors project on a desktop: the conversation, with the task made from a message, and beside it the accepted decision to measure soil moisture first, with its reason and the message it is based on.">
+  </picture>
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/assets/readme/home-phone-dark.webp">
+    <img src="docs/assets/readme/home-phone.webp" width="21%" alt="Home on a phone: under Needs you, Jonas's question with a Reply button; the project below is quiet; Home, Projects and Inbox sit in the bar at the bottom.">
+  </picture>
 </p>
 
-<p align="center"><sub>A project on a 1440&nbsp;px desktop and a 390&nbsp;px phone, captured from the running
-application on the fictional <code>./flux demo</code> data (<a href="docs/assets/readme/README.md">how these were made</a>).</sub></p>
-
-<!-- MEDIA SLOT (#780): the two stills above and the GIF below are recaptured with scripts/record_media.sh
-     from the release candidate after the #763 round-2 review, light and dark, desktop and phone. -->
+<p align="center"><sub>A project on a 1440&nbsp;px desktop and a 390&nbsp;px phone, in your light or dark theme, captured from the
+running application on the fictional <code>./flux demo</code> data (<a href="docs/assets/readme/README.md">how these were made</a>).</sub></p>
 
 Flux keeps a team's conversations and the work that comes out of them in one place: tasks,
 decisions with their reasons, documents and sketches, each linked to the message it came from. The
@@ -70,8 +73,23 @@ what changed, what was decided and what is next, so you do not have to ask aroun
 - **Yours to run.** One Docker Compose stack started with `./flux up`, with backups, restore,
   project export, upgrades, single sign-on, and spaces that can be AI-free or encrypted at rest.
 
-<!-- MEDIA SLOT (#780): one small image per highlight (task from a message, Home catch-up, connect an
-     agent, map and wiki, phone and push, encrypted space), captured after the #763 round-2 review. -->
+<table>
+  <tr>
+    <td width="50%" valign="top"><img src="docs/assets/screens/highlight-task.webp" width="100%" alt="The Create window open on a message from Jonas: the title is the message, the task is Open with no owner, the message is linked as its source, and Create task is the one button."><br><sub><b>A message becomes a task.</b> One action on a message opens the Create window with that message as its source.</sub></td>
+    <td width="50%" valign="top"><img src="docs/assets/screens/highlight-home.webp" width="100%" alt="Home when Ada comes back: two questions under Needs you, a Continue where you left off card that says Answer Basia's question, and the project marked new."><br><sub><b>Come back and catch up.</b> Home shows what needs you and the next step where you left off.</sub></td>
+  </tr>
+  <tr>
+    <td width="50%" valign="top"><img src="docs/assets/screens/highlight-agent.webp" width="100%" alt="Settings, Agents and AI: the Connect your MCP client card with the Claude Code tab and the two commands that add Flux and sign in."><br><sub><b>Your own agent, with your permission.</b> Add the address to Claude Code, Codex or any MCP client, then choose the projects it may use.</sub></td>
+    <td width="50%" valign="top"><img src="docs/assets/screens/highlight-map.webp" width="100%" alt="The Map view of the Community garden sensors project: a sketch with one idea, Six sensors for twelve beds, linked to three others, with the project's Conversation, Map, Tasks, Wiki and Agents views above it."><br><sub><b>One project, three views.</b> The conversation, the map (here) and the wiki, plus tasks and agents, sit under one header.</sub></td>
+  </tr>
+  <tr>
+    <td width="50%" valign="top"><img src="docs/assets/screens/highlight-phone.webp" width="100%" alt="Two phone screens side by side: the Inbox with two questions waiting, and the notification settings with Inbox, Push and Email choices for each kind of event."><br><sub><b>Everywhere you are.</b> The Inbox and the push settings on a 390&nbsp;px phone, installable as a PWA.</sub></td>
+    <td width="50%" valign="top"><img src="docs/assets/screens/highlight-encrypted.webp" width="100%" alt="The Encryption section of a space's People: encrypted, only people, no AI, unlocked by Ada, with Change your unlock password, Lock now and New recovery code, and the AI row saying Off because the space is encrypted."><br><sub><b>An encrypted space.</b> It says so, locks on demand and keeps AI out of it for good.</sub></td>
+  </tr>
+</table>
+
+<p align="center"><sub>Captured from the running application on the same <code>./flux demo</code> data
+(<a href="docs/assets/screens/README.md">how these were made</a>).</sub></p>
 
 ## Why Flux
 

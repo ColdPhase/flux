@@ -144,7 +144,7 @@ stated as the template requires.
 >    and shows what it did, named as the author.
 > 4. *One design on the computer and the phone,* installable as a PWA, with an inbox that shows what needs you.
 >
-> ![The Community garden sensors project on a desktop and Home on a phone](https://raw.githubusercontent.com/ColdPhase/flux/main/docs/assets/readme/conversation-desktop.png)
+> ![The Community garden sensors project on a desktop and Home on a phone](https://raw.githubusercontent.com/ColdPhase/flux/main/docs/assets/readme/conversation-desktop.webp)
 >
 > **Try it.** You need Git and Docker.
 >

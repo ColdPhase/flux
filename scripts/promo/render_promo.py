@@ -1,6 +1,5 @@
-"""Render the promo SVG to frames: the animated WebP fallback, a contact sheet, and an <img> check (#780).
+"""Render the promo SVG to frames for review: a contact sheet and an <img> check (#780).
 
-  render_promo.py webp  <svg> <out.webp> [fps]        frame-exact capture (Web Animations currentTime) -> WebP
   render_promo.py sheet <svg> <out.png> <t1,t2,...>   frames at those seconds, side by side, for review
   render_promo.py img   <page.html> <out-dir> <browser> [width]
                                                       real-time capture of a page that shows the SVG as <img>
@@ -35,24 +34,6 @@ def frames_at(svg: Path, times: list[float], scale: float = 1.0) -> list[Image.I
             out.append(Image.open(io.BytesIO(page.screenshot(omit_background=False))).convert("RGB"))
         browser.close()
     return out
-
-
-def webp(svg: Path, dest: Path, fps: int) -> None:
-    n = int(LOOP * fps)
-    shots = frames_at(svg, [i / fps for i in range(n)])
-    frames: list[Image.Image] = []
-    durations: list[int] = []
-    size = int(__import__("os").environ.get("WIDTH", "640"))
-    shots = [im.resize((size, round(im.height * size / im.width)), Image.LANCZOS) for im in shots]
-    for im in shots:  # a held frame is stored once, with a longer duration
-        if frames and im.tobytes() == frames[-1].tobytes():
-            durations[-1] += round(1000 / fps)
-        else:
-            frames.append(im)
-            durations.append(round(1000 / fps))
-    frames[0].save(dest, save_all=True, append_images=frames[1:], duration=durations, loop=0,
-                   quality=int(__import__("os").environ.get("Q", "50")), method=6, minimize_size=True, allow_mixed=True)
-    print(f"{dest}: {n} frames ({len(frames)} distinct) at {fps} fps, {dest.stat().st_size} bytes")
 
 
 def sheet(svg: Path, dest: Path, times: list[float]) -> None:
@@ -93,9 +74,7 @@ def img_check(page_html: Path, out: Path, engine: str, width: int) -> None:
 
 def main(argv: list[str]) -> int:
     mode = argv[1]
-    if mode == "webp":
-        webp(Path(argv[2]), Path(argv[3]), int(argv[4]) if len(argv) > 4 else 10)
-    elif mode == "sheet":
+    if mode == "sheet":
         sheet(Path(argv[2]), Path(argv[3]), [float(t) for t in argv[4].split(",")])
     elif mode == "img":
         img_check(Path(argv[2]), Path(argv[3]), argv[4], int(argv[5]) if len(argv) > 5 else 1012)

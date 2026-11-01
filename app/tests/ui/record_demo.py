@@ -6,9 +6,10 @@ real browser: the return view with Jonas's new reply, the project conversation, 
 a decision made from messages. Every frame is a Playwright screenshot of the real app; only a pointer is drawn
 on top so the viewer can follow the clicks. The frames become one looping GIF with Pillow.
 
-After the journey it also takes the two stills at the top of the README (conversation-desktop.png and
-home-phone.png): the decision the journey made beside the conversation on a computer, and Home on a
-phone, with Jonas's question waiting for Ada.
+After the journey it also takes the two stills at the top of the README, each in the light and the dark theme, as
+lossless WebP (conversation-desktop.webp, conversation-desktop-dark.webp, home-phone.webp and home-phone-dark.webp): the
+decision the journey made beside the conversation on a computer, and Home on a phone, with Jonas's question waiting
+for Ada.
 
 Input (environment): FLUX_UI_ORIGIN, FLUX_UI_UPSTREAM, FLUX_DEMO_OWNER_PASSWORD,
 FLUX_DEMO_PARTNER_PASSWORD and FLUX_UI_SCREENSHOTS (the output directory, mounted from the host).
@@ -19,7 +20,13 @@ from __future__ import annotations
 import io
 import os
 import re
+import socket
+import ssl
+import subprocess
 import sys
+import tempfile
+import threading
+import urllib.parse
 import uuid
 from pathlib import Path
 
@@ -51,6 +58,71 @@ POINTER = """
   document.body.appendChild(el);
 })()
 """
+
+
+def start_recording_forwarder() -> None:
+    """Makes ORIGIN reachable in this container, whatever it is.
+
+    A loopback http origin is the tests' own forwarder. A public-looking https origin (scripts/record_demo.sh
+    uses https://flux.example.com, so invite links and agent commands read like a real install, not
+    127.0.0.1:38910) gets its name added to /etc/hosts and a listener on the origin's port that terminates TLS
+    with a throwaway self-signed certificate and forwards to the API. The recorders then trust that certificate
+    (`ignore_https_errors`). Nothing of this leaves the container."""
+    if not ORIGIN.startswith("https://"):
+        if UPSTREAM:
+            start_forwarder(ORIGIN, UPSTREAM)
+        return
+    parts = urllib.parse.urlsplit(ORIGIN)
+    host, port = parts.hostname or "", parts.port or 443
+    with open("/etc/hosts", "a", encoding="utf-8") as hosts:
+        hosts.write(f"127.0.0.1 {host}\n")
+    folder = tempfile.mkdtemp()
+    key, cert = f"{folder}/key.pem", f"{folder}/cert.pem"
+    subprocess.run(["openssl", "req", "-x509", "-newkey", "rsa:2048", "-nodes", "-keyout", key, "-out", cert, "-days", "1",
+                    "-subj", f"/CN={host}", "-addext", f"subjectAltName=DNS:{host}"], check=True, capture_output=True)
+    tls = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+    tls.load_cert_chain(cert, key)
+    upstream_host, _, upstream_port = UPSTREAM.partition(":")
+    server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    server.bind(("127.0.0.1", port))
+    server.listen(128)
+
+    def pipe(source: socket.socket, target: socket.socket) -> None:
+        try:
+            while data := source.recv(65536):
+                target.sendall(data)
+        except OSError:
+            pass
+        finally:
+            for end in (source, target):
+                try:
+                    end.shutdown(socket.SHUT_RDWR)
+                except OSError:
+                    pass
+
+    def handle(raw: socket.socket) -> None:
+        try:
+            client = tls.wrap_socket(raw, server_side=True)
+            remote = socket.create_connection((upstream_host, int(upstream_port or 80)), timeout=10)
+        except OSError:
+            raw.close()
+            return
+        remote.settimeout(None)
+        remote.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+        first = threading.Thread(target=pipe, args=(client, remote), daemon=True)
+        first.start()
+        pipe(remote, client)
+        first.join()
+        client.close()
+        remote.close()
+
+    def accept() -> None:
+        while True:
+            raw, _ = server.accept()
+            threading.Thread(target=handle, args=(raw,), daemon=True).start()
+
+    threading.Thread(target=accept, daemon=True).start()
 
 
 class Recorder:
@@ -157,30 +229,37 @@ def journey(page: Page, rec: Recorder) -> None:
     expect(order).to_be_visible()
     order.hover()
     rec.click(order.get_by_role("button", name=CREATE_TASK))
-    # The one Create window opens with the message as its source (#345).
+    # The one Create window opens with the message as its source (#345). It is not drawn in the GIF: a dimmed
+    # screen costs as many bytes as a whole new view, and the GIF has to stay within its allowlisted size.
     window = page.get_by_role("dialog", name="New task")
     expect(window).to_be_visible()
-    rec.hold(1200)
-    rec.click(window.get_by_role("button", name=re.compile("^Create task")))
+    window.get_by_role("button", name=re.compile("^Create task")).click()
     panel = page.locator("#details")
     expect(panel.get_by_role("button", name="Status", exact=True)).to_contain_text("Open")
     rec.hold(2400)
     # "Thread" in the panel's head goes back to the messages.
     rec.click(panel.get_by_role("button", name="Thread"))
 
-    # 5. A decision with its reason, proposed from a message and accepted.
+    # 5. A decision with its reason, proposed from a message in the one Create window and accepted.
     moisture = messages.filter(has_text="Moisture first")
     expect(moisture).to_be_visible()
     moisture.hover()
     rec.click(moisture.get_by_role("button", name="More actions"))
     rec.click(page.get_by_role("menuitem", name="Propose a decision"))
-    expect(panel.get_by_role("heading", name="Propose a decision")).to_be_visible()
-    rec.type(panel.get_by_label("Decision"), "Measure soil moisture first; frost warnings later")
-    rec.type(panel.get_by_label("Why"), "Volunteers overwater the raised beds; frost is a spring problem")
-    rec.click(panel.get_by_role("button", name="Propose decision"))
-    expect(panel.get_by_role("button", name="Accept decision")).to_be_visible()
+    window = page.get_by_role("dialog", name="New decision")
+    expect(window).to_be_visible()
+    rec.type(window.get_by_role("textbox", name="Decision", exact=True), "Measure soil moisture first; frost warnings later")
+    rec.type(window.get_by_label("Why", exact=True), "Volunteers overwater the raised beds; frost is a spring problem")
+    rec.click(window.get_by_role("button", name=re.compile("^Propose decision")))
+    # "Decision proposed" waits a few seconds for Undo; the card appears under the message when that window ends.
+    rec.hold(1200)
+    proposal = moisture.get_by_role("button", name=re.compile("^Decision: Measure soil moisture first"))
+    expect(proposal).to_be_visible(timeout=20000)
+    rec.click(proposal)
+    accept = panel.get_by_role("region", name="Your answer").get_by_role("button", name="Accept", exact=True)
+    expect(accept).to_be_visible()
     rec.hold(900)
-    rec.click(panel.get_by_role("button", name="Accept decision"))
+    rec.click(accept)
     expect(panel.locator(".wd-eyebrow")).to_contain_text("Decision · accepted")
     rec.hold(1400)
     # End on the rule where it was decided: under Jonas's message, linked to it.
@@ -190,29 +269,32 @@ def journey(page: Page, rec: Recorder) -> None:
 
 
 def readme_stills(browser, request: APIRequestContext) -> None:
-    """The two stills at the top of the README, after the journey: the accepted decision beside the
-    conversation on a 1440 px computer, and Home on a 390 px phone, with the question waiting for Ada."""
+    """The stills at the top of the README, after the journey, in the light and the dark theme: the accepted decision
+    beside the conversation on a 1440 px computer, and Home on a 390 px phone, with the question waiting for Ada."""
     path = f"/projects/{project_id(request)}"
     for name, options in (
         ("conversation-desktop", {"viewport": {"width": 1440, "height": 900}, "device_scale_factor": 1}),
         ("home-phone", {"viewport": {"width": 390, "height": 844}, "device_scale_factor": 3, "is_mobile": True, "has_touch": True}),
     ):
-        context = browser.new_context(base_url=ORIGIN, color_scheme="light", locale="en-GB", timezone_id="Europe/Warsaw", service_workers="block", **options)
-        sign_in(context.request, EMAIL, PASSWORD)
-        page = context.new_page()
-        if name == "conversation-desktop":
-            page.goto(path)
-            # The thread opens beside the conversation; its decision opens in the same panel.
-            page.get_by_role("button", name=re.compile(r"^\d+ replies")).first.click()
-            page.get_by_role("button", name=re.compile("^Decision: Measure soil moisture first")).first.click()
-            expect(page.locator("#details .wd-eyebrow")).to_contain_text("Decision · accepted")
-        else:
-            page.goto("/")
-            expect(page.get_by_text("asked you in Community garden sensors")).to_be_visible()
-        page.evaluate("document.fonts.ready.then(() => true)")
-        page.wait_for_timeout(800)
-        page.screenshot(path=str(SHOTS / f"{name}.png"))
-        context.close()
+        for scheme in ("light", "dark"):
+            context = browser.new_context(base_url=ORIGIN, ignore_https_errors=True, color_scheme=scheme, locale="en-GB", timezone_id="Europe/Warsaw", service_workers="block", **options)
+            sign_in(context.request, EMAIL, PASSWORD)
+            page = context.new_page()
+            if name == "conversation-desktop":
+                page.goto(path)
+                # The thread opens beside the conversation; its decision opens in the same panel.
+                page.get_by_role("button", name=re.compile(r"^\d+ replies")).first.click()
+                page.get_by_role("button", name=re.compile("^Decision: Measure soil moisture first")).first.click()
+                expect(page.locator("#details .wd-eyebrow")).to_contain_text("Decision · accepted")
+            else:
+                page.goto("/")
+                expect(page.get_by_text("asked you in Community garden sensors")).to_be_visible()
+            page.evaluate("document.fonts.ready.then(() => true)")
+            page.wait_for_timeout(800)
+            image = Image.open(io.BytesIO(page.screenshot(type="png"))).convert("RGB")
+            # Lossless WebP is less than half the size of the PNG for these flat greys, and keeps the text crisp.
+            image.save(SHOTS / f"{name}{'-dark' if scheme == 'dark' else ''}.webp", "WEBP", lossless=True, quality=100, method=6)
+            context.close()
 
 
 def drop_transition_frames(images: list[Image.Image], durations: list[int]) -> tuple[list[Image.Image], list[int]]:
@@ -234,6 +316,13 @@ def drop_transition_frames(images: list[Image.Image], durations: list[int]) -> t
     return kept, times
 
 
+# The README's demo GIF may not exceed this (scripts/docs-size-allowlist.txt, checked by scripts/check_agent_setup.py).
+GIF_LIMIT = 476206
+# Prostota's text ink, card white and page grey (docs/design/final/README.md §2, light theme). They are kept in the
+# palette whatever the median cut does, so the text stays black and the cards white in a palette this small.
+ANCHORS = ((24, 24, 27), (255, 255, 255), (244, 244, 245))
+
+
 def write_gif(frames: list[tuple[bytes, int]], path: Path) -> None:
     images, durations = drop_transition_frames([Image.open(io.BytesIO(png)).convert("RGB") for png, _ in frames], [ms for _, ms in frames])
     # One palette for every frame, so colours do not flicker and unchanged areas stay identical.
@@ -242,23 +331,29 @@ def write_gif(frames: list[tuple[bytes, int]], path: Path) -> None:
     sheet = Image.new("RGB", (width, height * len(sample)))
     for index, image in enumerate(sample):
         sheet.paste(image, (0, height * index))
-    # The interface is greys and one accent, so 48 colours read the same as 128 and keep the file within its
-    # allowlisted size (scripts/docs-size-allowlist.txt).
-    palette = sheet.quantize(colors=48, method=Image.Quantize.MEDIANCUT, dither=Image.Dither.NONE)
-    indexed = [image.quantize(palette=palette, dither=Image.Dither.NONE) for image in images]
     path.parent.mkdir(parents=True, exist_ok=True)
-    indexed[0].save(path, save_all=True, append_images=indexed[1:], duration=durations, loop=0, optimize=True, disposal=1)
+    # The interface is greys and one accent, so a small palette reads the same as a large one. Take the largest that
+    # keeps the file within its allowlisted size: how many bytes the dissolves between views cost varies from run to run.
+    for colors in (32, 28, 24, 20):
+        rest = sheet.quantize(colors=colors - len(ANCHORS), method=Image.Quantize.MEDIANCUT, dither=Image.Dither.NONE)
+        palette = Image.new("P", (1, 1))
+        palette.putpalette([channel for color in ANCHORS for channel in color] + rest.getpalette()[: 3 * (colors - len(ANCHORS))])
+        indexed = [image.quantize(palette=palette, dither=Image.Dither.NONE) for image in images]
+        indexed[0].save(path, save_all=True, append_images=indexed[1:], duration=durations, loop=0, optimize=True, disposal=1)
+        if path.stat().st_size <= GIF_LIMIT:
+            print(f"record_demo: GIF with {colors} colours, {path.stat().st_size} bytes (limit {GIF_LIMIT})")
+            return
+    sys.exit(f"record_demo: the GIF is {path.stat().st_size} bytes with 20 colours, above its {GIF_LIMIT}; drop a scene from the journey")
 
 
 def main() -> None:
     if not PASSWORD or not PARTNER[1]:
         sys.exit("record_demo: FLUX_DEMO_OWNER_PASSWORD and FLUX_DEMO_PARTNER_PASSWORD are required")
-    if UPSTREAM:
-        start_forwarder(ORIGIN, UPSTREAM)
+    start_recording_forwarder()
     expect.set_options(timeout=8000)
     with sync_playwright() as pw:
         browser = pw.chromium.launch()
-        context = browser.new_context(base_url=ORIGIN, viewport=VIEWPORT, device_scale_factor=1, color_scheme="light", locale="en-GB", timezone_id="Europe/Warsaw")
+        context = browser.new_context(base_url=ORIGIN, ignore_https_errors=True, viewport=VIEWPORT, device_scale_factor=1, color_scheme="light", locale="en-GB", timezone_id="Europe/Warsaw")
         page = context.new_page()
         sign_in(page.request, EMAIL, PASSWORD)
         # Ada's first visit sets where she left off; Jonas replies after it, so Home has news for her.
@@ -266,7 +361,7 @@ def main() -> None:
         expect(page.get_by_role("heading", level=1, name="Home")).to_be_visible()
         page.wait_for_load_state("networkidle")
         page.wait_for_timeout(1500)
-        partner = browser.new_context(base_url=ORIGIN)
+        partner = browser.new_context(base_url=ORIGIN, ignore_https_errors=True)
         sign_in(partner.request, *PARTNER)
         jonas_replies(partner.request)
         partner.close()

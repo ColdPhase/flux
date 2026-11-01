@@ -116,6 +116,17 @@ site-search button[data-open-modal] { border-radius: var(--flux-r-sm); }
 /* The README's centred screenshots: the desktop and the phone side by side, as on GitHub. */
 .sl-markdown-content p[align='center'] { text-align: center; }
 .sl-markdown-content p[align='center'] img { display: inline-block; vertical-align: top; margin: 0; }
+/* Light and dark pictures (<picture>) sit side by side like plain images, as on GitHub: the reset makes <picture> a
+   block, and `contents` lets its image take part in the line and resolve its percentage width against the paragraph.
+   The README's highlight grid keeps its images at the top of their cells. */
+.sl-markdown-content p[align='center'] picture { display: contents; }
+.sl-markdown-content td:has(> img) { vertical-align: top; }
+.sl-markdown-content td > img { display: inline-block; vertical-align: top; margin: 0 0 .25rem; }
+/* On a phone a pair of pictures and the highlight grid take one line each, so the text in them stays readable. */
+@media (max-width: 40rem) {
+  .sl-markdown-content p[align='center'] img { width: auto; max-width: 100%; margin-bottom: .75rem; }
+  .sl-markdown-content table:has(td > img) :is(tbody, tr, td) { display: block; width: 100%; }
+}
 .hero .tagline { color: var(--sl-color-gray-2); max-width: 36rem; }
 /* The README's small captions under its pictures. */
 .sl-markdown-content p[align='center'] sub { font-size: .8125rem; line-height: 1.4; vertical-align: baseline; color: var(--sl-color-gray-3); }

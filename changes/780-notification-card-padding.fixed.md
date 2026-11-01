@@ -1,0 +1,1 @@
+- Settings, Notifications: the per-kind table and the cards for the email address and muted places keep their padding again, instead of running to the card's edge when the settings styles load after the notification ones ([#810](https://github.com/ColdPhase/flux/pull/810)).

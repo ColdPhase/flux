@@ -23,13 +23,8 @@ by HarfBuzz and stored once each as paths, so GitHub can show the file through `
 The README picks the theme with `<picture>` and `prefers-color-scheme`. With reduced motion the animation stops
 on the end line. Each SVG stays under 150 KB.
 
-`flux-promo.webp` is the animated fallback for places that do not play SVG animation: the light SVG captured
-frame by frame (Playwright Chromium, each animation seeked to the frame's time) at 10 frames per second, scaled
-to 640 × 360, lossy WebP. The camera moves in almost every frame, so it is larger than other docs media and is
-on `scripts/docs-size-allowlist.txt`.
-
 ```sh
-./scripts/make_promo.sh      # in Docker: both SVGs, then the WebP
+./scripts/make_promo.sh      # in Docker: both SVGs
 ./scripts/make_promo.sh run python3 scripts/promo/render_promo.py sheet docs/assets/promo/flux-promo-dark.svg sheet.png 3,7,10.9,14.5
 ```
 

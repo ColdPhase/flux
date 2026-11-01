@@ -51,15 +51,17 @@
 .agents-link--connect { border-bottom: 0; }
 
 /* A task dragged onto an agent hands it off (computer only; the button does the same by keyboard and touch). */
-.agents-drag { display: flex; align-items: center; gap: var(--s-3); padding: var(--s-2) var(--s-3); border: 1px dashed var(--line2); border-radius: var(--r-card); min-width: 0; }
+/* In a narrow column (1024 px with the panel open) the tasks wrap under the hint instead of shrinking past their number (#763 sweep). */
+.agents-drag { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-2) var(--s-3); padding: var(--s-2) var(--s-3); border: 1px dashed var(--line2); border-radius: var(--r-card); min-width: 0; }
 .agents-drag__hint { flex: none; margin: 0; font-size: var(--fs-sm); color: var(--t2); }
-.agents-drag__list { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: nowrap; gap: var(--s-2); min-width: 0; overflow: hidden; }
+.agents-drag__list { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: var(--s-2); min-width: 0; }
 .agents-drag__list > li { flex: 0 1 auto; min-width: 0; max-width: 220px; }
 .agents-drag__task {
   display: inline-flex; align-items: center; gap: 6px; max-width: 100%; min-height: var(--ctl); padding: 0 var(--s-3);
   border-radius: var(--r-pill); background: var(--el); box-shadow: var(--sh-1), inset 0 0 0 1px var(--line); font-size: var(--fs-sm); cursor: grab;
 }
 .agents-drag__task:active { cursor: grabbing; }
+.agents-drag__task > svg, .agents-drag__task > .ui-task-number { flex: none; }
 .agents-drag__title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 @media (pointer: coarse), (hover: none) { .agents-drag { display: none; } }
 

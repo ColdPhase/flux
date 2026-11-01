@@ -89,7 +89,7 @@ body:has(.app) { background: var(--side); }
 .side__search { width: var(--ctl); padding: 0; flex: none; }
 .newmenu { position: relative; display: flex; flex: 1; }
 .newmenu--compact { flex: none; margin: 10px 0 6px; }
-.newmenu--compact .side__new { width: 40px; height: 40px; padding: 0; justify-content: center; }
+.newmenu--compact .side__new { width: var(--ctl); height: var(--ctl); padding: 0; justify-content: center; }
 .side__scroll { flex: 1; min-height: 0; overflow-y: auto; margin: 0 -12px; padding: 0 12px 12px; }
 .side__places { display: flex; flex-direction: column; gap: 2px; }
 .side__sec { margin-top: 10px; }
@@ -181,21 +181,21 @@ body:has(.app) { background: var(--side); }
 .side__rail-scroll { flex: 1; min-height: 0; width: var(--rail-w); padding: 4px; overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain; scrollbar-width: thin; }
 .side__rail-scroll::-webkit-scrollbar { width: 4px; }
 .side__rail-projects, .side__rail-dms { width: 44px; margin: 10px 0 0 6px; }
-.side__ib { position: relative; display: grid; place-items: center; width: 40px; height: 40px; border-radius: var(--r-pill); color: var(--t2); transition: var(--tr); }
+.side__ib { position: relative; display: grid; place-items: center; width: var(--ctl); height: var(--ctl); border-radius: var(--r-pill); color: var(--t2); transition: var(--tr); }
 .side__ib:hover { background: var(--hov); color: var(--t1); }
 .side__ib[aria-current="page"] { background: var(--el); color: var(--t1); box-shadow: var(--sh-1); }
 .side__count--rail { position: absolute; top: 0; right: 0; margin: 0; min-width: 18px; height: 18px; padding: 0 5px; }
-.side__rail-project { position: relative; display: grid; place-items: center; width: 36px; height: 36px; border-radius: 10px; text-decoration: none; }
+.side__rail-project { position: relative; display: grid; place-items: center; width: var(--ctl); height: var(--ctl); border-radius: 10px; text-decoration: none; }
 .side__rail-project.is-open { background: var(--el); box-shadow: var(--sh-1); }
 /* The same traveling highlight as the expanded list's (#155): one tile-sized mark that moves to the chosen project while it loads. */
 .side__rail-projects { position: relative; }
-.side__rail-glide { position: absolute; top: 0; left: 4px; width: 36px; height: 36px; border-radius: 10px; background: var(--el); box-shadow: var(--sh-1);
+.side__rail-glide { position: absolute; top: 0; left: calc((44px - var(--ctl)) / 2); width: var(--ctl); height: var(--ctl); border-radius: 10px; background: var(--el); box-shadow: var(--sh-1);
   opacity: 0; pointer-events: none; transition: transform var(--dur-2) var(--ease-out), opacity var(--dur-1) ease; }
 .side__rail-projects.has-glide .side__rail-project.is-open { background: transparent; box-shadow: none; }
 /* A touch screen's tiles fill the 44 px column (44 px targets), and so does the mark. */
 @media (pointer: coarse) { .side__rail-glide { left: 0; width: 44px; } }
 .side__rail-project .side__pj { font-size: var(--fs-xs); }
-.side__rail-dm { position: relative; display: grid; place-items: center; width: 40px; height: 40px; border-radius: var(--r-pill); }
+.side__rail-dm { position: relative; display: grid; place-items: center; width: var(--ctl); height: var(--ctl); border-radius: var(--r-pill); }
 .side__rail-dm:hover { background: var(--hov); }
 .side__rail-dm[aria-current="page"] { background: var(--el); box-shadow: var(--sh-1); }
 .side__rail-dm .side__dot { position: absolute; top: 2px; right: 1px; }
@@ -215,7 +215,7 @@ a.me__btn[aria-current="page"] { background: var(--sub); }
 .me__chev { color: var(--t3); }
 .me__row { display: flex; align-items: center; gap: 2px; }
 .me__row .me__btn { flex: 1; min-width: 0; }
-.me__settings { display: grid; place-items: center; flex: none; width: 36px; height: 36px; border-radius: 50%; color: var(--t2); transition: var(--tr); }
+.me__settings { display: grid; place-items: center; flex: none; width: var(--ctl); height: var(--ctl); border-radius: 50%; color: var(--t2); transition: var(--tr); }
 .me__settings:hover { background: var(--hov); color: var(--t1); }
 .me--compact { flex: none; margin: 0; padding: 0; }
 .me--compact .me__row { flex-direction: column; gap: 4px; }
@@ -301,11 +301,13 @@ a.me__item { text-decoration: none; }
 /* The computer's one-row header (F-026 §4): the name, the segmented views, then what needs you, the
    people and agents, and More, over one hairline. Focus keeps the name, the view and the way out. */
 .top.top--row { height: auto; min-height: 64px; align-items: center; padding: 12px 16px 12px 20px; gap: 14px; border-bottom: 1px solid var(--line); }
-.top--row .top__title { flex: 0 1 auto; min-width: min(7.5em, 30%); }
+.top--row .top__title { flex: 0 1 auto; min-width: min(7.5em, 20%); }
 .top--row .top__title h1 { letter-spacing: -0.2px; }
 .top.top--row .top__right { margin-left: auto; gap: 10px; padding-top: 0; }
 .top--row.top--focus .top__title { flex: 1; }
-.top__views { flex: 0 1 auto; }
+/* The views never shrink: a squeezed track cut "Agents" at 1024 px with "+ Task" beside it (#763 sweep). The name gives way instead. */
+.top__views { flex: none; }
+@container main (max-width: 760px) { .top--row .top__title { min-width: 4em; } }
 /* "N needs you" is a quiet text link (direction C, #763, 2026-10-31). */
 .top__needs { display: inline-flex; align-items: center; height: var(--ctl); padding: 0 4px; border-radius: 6px; background: transparent; color: var(--t1);
   font-size: var(--fs-md); font-weight: 500; white-space: nowrap; cursor: pointer; transition: var(--tr); }
@@ -341,9 +343,10 @@ a.me__item { text-decoration: none; }
 /* 641–680 px (the drawer, e.g. a Fold 5 unfolded): the project header's 22 px audience line must not shrink the faces control (#763). */
 @media (pointer: coarse) and (min-width: 641px) { header.top .top__audience.top__faces { min-height: 44px; } }
 /* Spokój rule 3: the header is one row at every width, with the panel open or closed (the panel sits under it).
-   When the views leave too little room, the people and Together move into "⋯"; the views and More stay put. */
+   When the views leave too little room, the people and Together move into "⋯"; the views and More stay put. In rem (860 px
+   at the default text size), so larger text moves them sooner instead of pushing the header past its edge (#763). */
 .top__more-narrow { display: none; }
-@container main (max-width: 860px) {
+@container main (max-width: 53.75rem) {
   .top--row:has(> .top__views) .top__right > :is(.top__faces, .lv-entry) { display: none; }
   .top--row:has(> .top__views) .top__more-narrow { display: flex; }
 }
@@ -409,14 +412,13 @@ a.me__item { text-decoration: none; }
 .composer__box textarea::placeholder { color: var(--t3); opacity: 1; }
 .composer__box textarea:disabled { cursor: not-allowed; }
 /* The button keeps its full hit area; only its fill scales, so enabling reads as a soft arrival. */
-.composer__send { position: relative; isolation: isolate; display: grid; place-items: center; width: 31px; height: 31px; flex: none; border-radius: var(--r); color: var(--t1);
+.composer__send { position: relative; isolation: isolate; display: grid; place-items: center; width: var(--ctl); height: var(--ctl); flex: none; border-radius: var(--r); color: var(--t1);
   transition: color var(--dur-2) var(--ease-out), outline-color var(--dur-1) var(--ease-out); }
 .composer__send::before { content: ""; position: absolute; inset: 0; z-index: -1; border-radius: inherit; background: var(--own);
   transition: background-color var(--dur-2) var(--ease-out), transform var(--dur-2) var(--ease-sheet); }
 .composer__send svg { transition: transform var(--dur-2) var(--ease-sheet); }
 .composer__send[aria-disabled="true"] { color: var(--t3); cursor: default; }
 .composer__send[aria-disabled="true"]::before { background: transparent; transform: scale(.84); }
-.composer__send[aria-disabled="true"] svg { transform: scale(.9); }
 .composer__send:not([aria-disabled="true"]):hover::before { background: var(--hov); }
 .composer__send:not([aria-disabled="true"]):active::before { background: var(--pick); }
 /* Attach (#266 PF-3): a quiet paperclip among the composer's tools; staged files list above the box. */
@@ -541,7 +543,7 @@ kbd { display: inline-grid; place-items: center; min-width: 18px; height: 18px; 
   .auth .brand .flux-logo { width: 52px; height: 52px; }
   .auth__lead { font-size: var(--fs-lg); line-height: var(--lh); }
   .auth__card, .auth__form { padding: 0; background: none; box-shadow: none; border-radius: 0; gap: 16px; }
-  .auth .ui-btn--lg, .auth .ui-input { min-height: 52px; }
+  .auth .ui-btn--lg, .auth .ui-input { min-height: var(--ctl-lg); }
   .auth .ui-input { border-radius: 16px; font-size: var(--fs-input-touch); padding: 0 16px; }
 }
 .note.is-arrived { box-shadow: inset 3px 0 0 var(--t1); padding-left: 12px; }
