@@ -1,1 +1,0 @@
-- Choosing a project in the narrow sidebar (a tablet's 64 px rail, or the rail a computer collapses to) moves the same quiet highlight to it at once, while the project loads, as the expanded list does ([#155](https://github.com/ColdPhase/flux/issues/155)).

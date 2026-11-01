@@ -1,1 +1,0 @@
-- `./flux clean` and `./flux reset` work after a first `./flux up` that stopped before the migration ran ([#671](https://github.com/ColdPhase/flux/pull/671)).

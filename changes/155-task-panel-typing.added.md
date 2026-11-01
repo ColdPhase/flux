@@ -1,1 +1,0 @@
-- A task's detail panel now shows who else is writing about the task, in the same quiet line and with the same rules as the task's thread in Conversation and in Agents: one person, never yourself, ended by leaving the field or sending, and never stored ([#155](https://github.com/ColdPhase/flux/issues/155)).

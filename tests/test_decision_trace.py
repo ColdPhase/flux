@@ -83,9 +83,9 @@ class DecisionTrace(unittest.TestCase):
         self.assertIn('self.page("ada", phone=phone), self.page("jonas", phone=phone)', journey)
 
     def test_the_change_is_in_the_changelog(self) -> None:
-        fragment = source("changes/694-decision-trace.added.md")
-        self.assertTrue(fragment.startswith("- "))
-        self.assertIn("issues/694", fragment)
+        # The entry was a changes/ fragment until release 0.1.0 moved it into the changelog.
+        changelog = source("CHANGELOG.md")
+        self.assertIn("[#694](https://github.com/ColdPhase/flux/issues/694)", changelog)
 
 
 if __name__ == "__main__":

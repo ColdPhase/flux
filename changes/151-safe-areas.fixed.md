@@ -1,1 +1,0 @@
-- On a notched phone the message field, Send and the map's Add a thought stay above the home indicator, and on a phone on its side the rail's controls no longer reach into the left or bottom safe area or below the window (Settings is in the account menu there) ([#151](https://github.com/ColdPhase/flux/issues/151)).

@@ -1,1 +1,0 @@
-- Owners sign in to Claude Code from a console in Flux (a terminal on the real CLI's own sign-in, with no key or token field), and signing out or removing the runtime also deletes the keyless Console profile Claude Code keeps outside its configuration directory ([#279](https://github.com/ColdPhase/flux/issues/279)).

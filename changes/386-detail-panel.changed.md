@@ -1,1 +1,0 @@
-- Mobile Details and Thread share a sheet with a grabber, half and full heights and a visible keyboard focus ring. Task details have label/value rows, a blocker card and Results; the title and chosen status save in place, with keyboard state shortcuts and truthful Undo ([#344](https://github.com/ColdPhase/flux/issues/344)).

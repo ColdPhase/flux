@@ -1,1 +1,0 @@
-- A connection can grant fewer permissions than an MCP client asks for. The consent page says what is and is not granted, the token carries exactly the granted permissions, tools outside them are not listed, a call to one says which permission is missing, and the Agents view names the permissions in plain words ([#571](https://github.com/ColdPhase/flux/pull/571)).

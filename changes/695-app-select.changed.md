@@ -1,1 +1,0 @@
-- Every dropdown is now Flux's own select instead of the browser's: a list in the app's colours and in dark mode, a sheet from the bottom on the phone, and the same keys everywhere (arrows, Home and End, type a few letters, Enter, Esc). Opening one never moves the control ([#695](https://github.com/ColdPhase/flux/issues/695)).

@@ -8,7 +8,7 @@ runs in containers, so the host needs only Docker and a few standard tools.
 | | Recommended for a small team | Notes |
 | --- | --- | --- |
 | **Operating system** | Linux with Docker Engine | macOS and Windows with Docker Desktop run Flux for trials and development; a server should be Linux. |
-| **CPU architecture** | `x86_64` (`amd64`) or `arm64` | Release images are built for `linux/amd64` and `linux/arm64`. Source builds were measured on Linux `x86_64` and macOS `arm64` ([time to first run](../development/time-to-first-run.md)). |
+| **CPU architecture** | `x86_64` (`amd64`) | Release images are published for `linux/amd64` only; `linux/arm64` follows in v0.1.1. Source builds were measured on Linux `x86_64` and macOS `arm64` ([time to first run](../development/time-to-first-run.md)). |
 | **CPU** | 2 cores | An idle instance uses well under one core. Building from source is the heaviest step. |
 | **Memory** | 4 GB | The default container limits add up to about 3.1 GB plus PostgreSQL (see below). |
 | **Disk** | 10 GB free, SSD | About 0.5 GB for the Flux image, 0.5 GB for PostgreSQL, the build cache when you build from source, then your data and backups. |
