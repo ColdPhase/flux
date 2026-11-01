@@ -126,18 +126,23 @@ function toDocumentBoundary(end: boolean, extend: boolean) {
   };
 }
 /**
- * A move by one character stays with the browser where CodeMirror has drawn that character, as
- * before. Only next to text it has not drawn (the end of such a line right after Ctrl+End) does
- * it come from the state. A state move enters the selection at once, so a keyboard selection
- * that the next typed character replaces a few milliseconds later could reach the 40 ms cursor
- * tick and show the other person a caret one character early (#228 Gate 4).
+ * A move by one character stays with the browser where CodeMirror has drawn the whole line, as
+ * before. On a line it draws only in part (its far end is replaced by one tall gap, as on a line
+ * longer than 20,000 characters) or next to text it has not drawn (the end of such a line right
+ * after Ctrl+End) it comes from the state: WebKit's own move there left the selection collapsed
+ * at the start of the line, so eight Shift+ArrowLeft presses at the end of a 100,000-character
+ * text selected nothing and the next Backspace removed nothing. A state move enters the
+ * selection at once, so a keyboard selection that the next typed character replaces a few
+ * milliseconds later could reach the 40 ms cursor tick and show the other person a caret one
+ * character early (#228 Gate 4).
  */
 function byCharacter(right: boolean, extend: boolean) {
   return (view: EditorView) => {
     const head = view.state.selection.main.head;
     const forward = right === (view.textDirectionAt(head) === Direction.LTR);
     const from = forward ? head : head - 1, to = forward ? head + 1 : head;
-    if (from < 0 || to > view.state.doc.length || view.visibleRanges.some((range) => range.from <= from && to <= range.to)) return false;
+    const drawn = (position: number) => { const line = view.lineBlockAt(position); return view.visibleRanges.some((range) => range.from <= line.from && line.to <= range.to); };
+    if (from < 0 || to > view.state.doc.length || (drawn(from) && drawn(to))) return false;
     const selection = EditorSelection.create(view.state.selection.ranges.map((range) => {
       if (extend) { const moved = view.moveByChar(range, forward); return EditorSelection.range(range.anchor, moved.head, moved.goalColumn, moved.bidiLevel ?? undefined); }
       return range.empty ? view.moveByChar(range, forward) : EditorSelection.cursor(forward ? range.to : range.from);
