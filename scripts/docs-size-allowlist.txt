@@ -4,3 +4,4 @@
 # "Evidence size"); a new entry needs the evaluator's explicit agreement in the PR.
 # Remove entries whose files are deleted.
 476206 docs/assets/demo/flux-demo.gif
+670900 docs/assets/promo/flux-promo.webp

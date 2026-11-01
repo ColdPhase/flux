@@ -28,7 +28,7 @@
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="docs/assets/promo/flux-promo-dark.svg">
-    <img src="docs/assets/promo/flux-promo-light.svg" width="100%" alt="A short looping animation of how Flux works. The Kreska logo draws itself beside the word flux. Jonas asks in a conversation: Should we measure soil moisture first? The message lifts into task #12. A decision, Measure moisture before buying sensors, is accepted. Kreska, as the agent Claude Code, picks up the task, and its result turns Positive. It ends on: People and agents, one project.">
+    <img src="docs/assets/promo/flux-promo-light.svg" width="100%" alt="A short looping animation of a Flux project, Community garden sensors. Jonas asks: Should we measure soil moisture first? Ada turns the message into task #12 and accepts the decision Measure moisture before buying sensors. Kreska, as the agent Claude Code, picks up the task, reads the beds and writes a positive result into the Wiki. The Map links the message, task, decision and result, and a phone shows the same work in the Inbox. It ends on: People and agents, one project.">
   </picture>
 </p>
 

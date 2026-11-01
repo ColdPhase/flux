@@ -17,14 +17,14 @@ from pathlib import Path
 from PIL import Image
 from playwright.sync_api import sync_playwright
 
-LOOP = 12.0
+LOOP = 16.0
 
 
 def frames_at(svg: Path, times: list[float], scale: float = 1.0) -> list[Image.Image]:
     out = []
     with sync_playwright() as p:
         browser = p.chromium.launch()
-        page = browser.new_page(viewport={"width": 800, "height": 450}, device_scale_factor=scale)
+        page = browser.new_page(viewport={"width": 960, "height": 540}, device_scale_factor=scale)
         page.goto(svg.resolve().as_uri())
         page.wait_for_timeout(300)
         for t in times:
@@ -42,6 +42,8 @@ def webp(svg: Path, dest: Path, fps: int) -> None:
     shots = frames_at(svg, [i / fps for i in range(n)])
     frames: list[Image.Image] = []
     durations: list[int] = []
+    size = int(__import__("os").environ.get("WIDTH", "640"))
+    shots = [im.resize((size, round(im.height * size / im.width)), Image.LANCZOS) for im in shots]
     for im in shots:  # a held frame is stored once, with a longer duration
         if frames and im.tobytes() == frames[-1].tobytes():
             durations[-1] += round(1000 / fps)
@@ -49,7 +51,7 @@ def webp(svg: Path, dest: Path, fps: int) -> None:
             frames.append(im)
             durations.append(round(1000 / fps))
     frames[0].save(dest, save_all=True, append_images=frames[1:], duration=durations, loop=0,
-                   quality=int(__import__("os").environ.get("Q", "55")), method=6, minimize_size=True, allow_mixed=True)
+                   quality=int(__import__("os").environ.get("Q", "50")), method=6, minimize_size=True, allow_mixed=True)
     print(f"{dest}: {n} frames ({len(frames)} distinct) at {fps} fps, {dest.stat().st_size} bytes")
 
 
@@ -57,9 +59,10 @@ def sheet(svg: Path, dest: Path, times: list[float]) -> None:
     frames = frames_at(svg, times)
     cols = 2
     rows = (len(frames) + cols - 1) // cols
-    canvas = Image.new("RGB", (800 * cols, 450 * rows), "white")
+    fw, fh = frames[0].size
+    canvas = Image.new("RGB", (fw * cols, fh * rows), "white")
     for i, im in enumerate(frames):
-        canvas.paste(im, ((i % cols) * 800, (i // cols) * 450))
+        canvas.paste(im, ((i % cols) * fw, (i // cols) * fh))
     canvas.save(dest)
     print(f"{dest}: {len(frames)} frames")
 
@@ -91,7 +94,7 @@ def img_check(page_html: Path, out: Path, engine: str, width: int) -> None:
 def main(argv: list[str]) -> int:
     mode = argv[1]
     if mode == "webp":
-        webp(Path(argv[2]), Path(argv[3]), int(argv[4]) if len(argv) > 4 else 12)
+        webp(Path(argv[2]), Path(argv[3]), int(argv[4]) if len(argv) > 4 else 10)
     elif mode == "sheet":
         sheet(Path(argv[2]), Path(argv[3]), [float(t) for t in argv[4].split(",")])
     elif mode == "img":

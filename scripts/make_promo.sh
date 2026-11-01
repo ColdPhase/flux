@@ -17,4 +17,4 @@ if [ "${1:-}" = run ]; then
   exit
 fi
 run python3 scripts/promo/build_promo.py
-run python3 scripts/promo/render_promo.py webp docs/assets/promo/flux-promo-light.svg docs/assets/promo/flux-promo.webp 12
+run python3 scripts/promo/render_promo.py webp docs/assets/promo/flux-promo-light.svg docs/assets/promo/flux-promo.webp 10
