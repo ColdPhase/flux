@@ -602,7 +602,7 @@ function DecisionForm({ ids, phone, carried, projectId, onProject, onClose, requ
         <button type="button" className="create__more" onClick={() => {
           onClose();
           openDetails({ kind: 'propose-decision', projectId: project.id, ...(title ? { title } : {}), ...(source ? { source: { messageId: source.ref.id, text: source.label } } : {}) });
-        }}>Replace a current rule…</button>
+        }}>Replace an accepted decision…</button>
       </> : <p className="create__note">There is no project yet. Make one in the Project tab, then propose its decisions here.</p>}
     </Panel>
   );

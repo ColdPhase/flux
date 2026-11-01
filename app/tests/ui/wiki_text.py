@@ -42,7 +42,10 @@ def has_text(text: Locator, snippet: str) -> None:
     if ordinary(text):
         expect(text).to_have_value(re.compile(re.escape(snippet)))
     else:
-        expect(text).to_contain_text(snippet)
+        # The shared editor draws a `flux:` reference as its kind ("Decision card", CW-4); the text itself still holds it,
+        # so it is read from the editor's own document, not from what is drawn.
+        text.page.wait_for_function("([node, snippet]) => (node.cmTile?.root?.view?.state.doc.toString() ?? node.textContent).includes(snippet)",
+                                    arg=[text.element_handle(), snippet])
 
 
 def type_at_end(page: Page, text: Locator, value: str) -> None:

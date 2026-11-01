@@ -73,7 +73,7 @@ describe('F-034: decisions in the Wiki are live cards', () => {
     const after = json<Doc>(await get(viewer, `/api/v1/docs/${doc.id}`), 200);
     assert.deepEqual([after.version, after.body], [added.version, added.body], 'replacing the decision rewrote nothing');
     const history = json<Page<DocVersionSummary>>(await get(viewer, `/api/v1/docs/${doc.id}/versions`), 200);
-    assert.deepEqual(history.items.map((item) => item.reason), [`Added the decision “${rule.title}”`, 'Started the doc'], 'history keeps only what people did');
+    assert.deepEqual(history.items.map((item) => item.reason), [`Added the decision “${rule.title}”`, 'Started the page'], 'history keeps only what people did');
     const [now] = await rows([rule.id]);
     assert.deepEqual(now && now.kind === 'decision' ? [now.status, now.supersededBy] : null, ['superseded', replacement.id], 'the same reference now reads as replaced');
   });
@@ -105,6 +105,12 @@ describe('F-034: decisions in the Wiki are live cards', () => {
     const fenced = ['```', card, '```'].join('\n');
     assert.equal(placeDecisionReference(fenced, id, 'A').body, `${fenced}\n\n${card}\n`);
     assert.equal(placeDecisionReference('x', id, 'A [draft] *v2*').body, `x\n\n[A \\[draft\\] \\*v2\\*](flux:decision/${id})\n`, 'the title is escaped');
+    // CW-9: under a chosen heading, the card closes that heading's section, before the next heading of its level.
+    const page = ['Intro.', '', '## Pickup', '', 'Codes.', '', '### Detail', '', 'More.', '', '## Still open', '', 'Lockers?', ''].join('\n');
+    assert.equal(placeDecisionReference(page, id, 'A', '## Pickup').body,
+      ['Intro.', '', '## Pickup', '', 'Codes.', '', '### Detail', '', 'More.', '', card, '', '## Still open', '', 'Lockers?', ''].join('\n'));
+    assert.equal(placeDecisionReference(page, id, 'A', '## Still open').body, `${page.trimEnd()}\n\n${card}\n`);
+    assert.equal(placeDecisionReference(page, id, 'A', '## Gone').body, `${page.trimEnd()}\n\n${card}\n`, 'a heading the page no longer has: the end');
     // A result's section rewritten later keeps the cards after it (they are not part of the section).
     const result = { type: 'result' as const, id: '22222222-2222-4222-8222-222222222222' };
     const resultText = ['## Result: R', '', 'Old.', '', `Source: [R](flux:result/${result.id})`, '', card, '', 'Tail.', ''].join('\n');

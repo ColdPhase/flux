@@ -174,8 +174,10 @@ export function createBoundedWorkReads(unit: WorkReadUnitOfWork, finalFence: Wor
         const edgeTotal = await rows.associationEdgeTotal(projectId, input.selection);
         requireFact(count(edgeTotal) && edges.total <= edgeTotal);
         for (const edge of edges.items) requireFact(edge.projectId === projectId && edge.to.type === 'message' && objects.some((object) => object.kind === edge.from.type && object.id === edge.from.id) && (input.selection.relation === 'any' || edge.role === 'source'));
+        const thoughts = rows.associationThoughts ? await rows.associationThoughts(projectId, input.selection) : [];
+        if ('messageIds' in input.selection) { const selected = new Set(input.selection.messageIds); requireFact(thoughts.every((thought) => selected.has(thought.messageId))); }
         return { ...page, observedAt, sources: sources.items, sourceTotal: sources.total,
-          sourceNextCursor: sources.nextCursor, sourcePreviousCursor: sources.previousCursor, edges, edgeTotal };
+          sourceNextCursor: sources.nextCursor, sourcePreviousCursor: sources.previousCursor, edges, edgeTotal, thoughts };
       }, { sources: input.selection });
       return response.value;
     },

@@ -41,7 +41,9 @@ export function nativeWorkSummaryRows(db: DbExecutor) {
       const actor = { ...caller };
       const at = await observedAt();
       const all = await counts(projectId, actor, false), mine = await counts(projectId, actor, true);
-      const [rule] = await opened(db, 'project_decisions', await db.select({ id: d.id, workspaceId: d.workspaceId, title: d.title }).from(d).where(and(eq(d.projectId, projectId), eq(d.status, 'accepted'))).orderBy(desc(d.createdAt), desc(d.id)).limit(1));
+      // CW-15: every current decision (newest first, up to 5), not only the latest.
+      const rules = await opened(db, 'project_decisions', await db.select({ id: d.id, workspaceId: d.workspaceId, title: d.title }).from(d).where(and(eq(d.projectId, projectId), eq(d.status, 'accepted'))).orderBy(desc(d.createdAt), desc(d.id)).limit(5));
+      const rule = rules[0];
       const [proposal] = await opened(db, 'project_decisions', await db.select({ id: d.id, workspaceId: d.workspaceId, title: d.title }).from(d).where(and(eq(d.projectId, projectId), eq(d.status, 'proposed'))).orderBy(desc(d.createdAt), desc(d.id)).limit(1));
       const [result] = await opened(db, 'project_results', await db.select({ id: r.id, workspaceId: r.workspaceId, title: r.title, finding: r.finding }).from(r).where(eq(r.projectId, projectId)).orderBy(desc(r.createdAt), desc(r.id)).limit(1));
       const activeFirst = await firstWork(projectId, 'in_progress'), blockedFirst = await firstWork(projectId, 'blocked');
@@ -65,7 +67,7 @@ export function nativeWorkSummaryRows(db: DbExecutor) {
       const names = await workRows(db).names(owners.rows);
       return { projectId, observedAt: at, all, mine, workTotal: all.in_progress + all.blocked + all.open + all.parked + all.finished,
         unfinishedTotal: all.in_progress + all.blocked + all.open,
-        state: { rule: rule ? { kind: 'decision', ...rule } : null, proposal: proposal ? { kind: 'decision', ...proposal } : null,
+        state: { rule: rule ? { kind: 'decision', ...rule } : null, rules: rules.map((item) => ({ kind: 'decision' as const, ...item })), proposal: proposal ? { kind: 'decision', ...proposal } : null,
           active: { count: all.in_progress, first: activeFirst, ownerTotal: total.rows[0].total,
             owners: owners.rows.map((owner) => ({ ...owner, name: names.get(`${owner.kind}:${owner.id}`) ?? (owner.kind === 'agent' ? 'Agent' : 'Former member') })) },
           blocked: { count: all.blocked, first: blockedFirst }, open: { count: all.open, first: openFirst },

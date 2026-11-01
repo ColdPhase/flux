@@ -58,29 +58,29 @@ export function ProjectMap() {
       attempt.current = crypto.randomUUID();
       navigate(`/projects/${project.id}/map/${sketch.id}`, { state: { fresh: true } });
     } catch {
-      toast({ message: 'The sketch couldn’t be created. Try again in a moment.', tone: 'danger' });
+      toast({ message: 'The map couldn’t be created. Try again in a moment.', tone: 'danger' });
       setCreating(false);
     }
   };
 
-  const action = writable ? <Button variant="primary" icon="plus" busy={creating} onClick={() => void start()}>New sketch</Button> : null;
+  const action = writable ? <Button variant="primary" icon="plus" busy={creating} onClick={() => void start()}>New map</Button> : null;
 
   return (
     <div className="sk-page">
       <div className="sk sk--index">
-        {state === 'loading' ? <div className="sk-page--center"><Spinner label="Loading sketches" /></div> : null}
+        {state === 'loading' ? <div className="sk-page--center"><Spinner label="Loading maps" /></div> : null}
         {state === 'failed' ? (
           <div className="view-empty">
-            <EmptyState icon="map" title="Sketches couldn’t be loaded" action={<Button onClick={() => setRefresh((n) => n + 1)}>Try again</Button>}>
+            <EmptyState icon="map" title="Maps couldn’t be loaded" action={<Button onClick={() => setRefresh((n) => n + 1)}>Try again</Button>}>
               <p>Flux could not be reached. Nothing was lost.</p>
             </EmptyState>
           </div>
         ) : null}
         {typeof state === 'object' && !state.items.length ? (
           <div className="view-empty">
-            <EmptyState icon="map" title={`Sketch ideas for ${project.name}`} action={action}>
+            <EmptyState icon="map" title={`Map ideas for ${project.name}`} action={action}>
               <p>A map is for thinking out loud together: put thoughts down, connect one idea to several options, and move them around. Nothing on a map has to become a task.</p>
-              <p>Everyone in {project.name} can see a sketch made here.</p>
+              <p>Everyone in {project.name} can see a map made here.</p>
             </EmptyState>
           </div>
         ) : null}
@@ -88,12 +88,12 @@ export function ProjectMap() {
           <>
             <div className="sk-index-head">
               <div>
-                <h2>Sketches</h2>
+                <h2>Maps</h2>
                 <p className="pv-lead"><Icon name="people" size={13} />Everyone in {project.name} can see these</p>
               </div>
               {action}
             </div>
-            <ul className="sk-index" aria-label={`Sketches in ${project.name}`}>
+            <ul className="sk-index" aria-label={`Maps in ${project.name}`}>
               {state.items.map((sketch) => (
                 <li key={sketch.id}>
                   <Link to={`/projects/${project.id}/map/${sketch.id}`} className="sk-index__item">

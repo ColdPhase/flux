@@ -1,11 +1,12 @@
-import type { NativeWorkRow, SourceAssociationCounts, WorkAssociations } from '@flux/contracts';
+import type { NativeWorkRow, SourceAssociationCounts, SourceThought, WorkAssociations } from '@flux/contracts';
 
-export interface MessageWorkPreview { counts: SourceAssociationCounts; items: NativeWorkRow[] }
+/** `thoughts`: the map thoughts made from the message (CW-2). */
+export interface MessageWorkPreview { counts: SourceAssociationCounts; items: NativeWorkRow[]; thoughts?: SourceThought[] }
 
 /** One globally bounded native object/edge observation; never a complete project graph. */
 export function messageWorkPreviews(page: WorkAssociations): Map<string, MessageWorkPreview> {
   const objects = new Map(page.items.map((item) => [`${item.kind}:${item.id}`, item]));
-  const previews = new Map(page.sources.map((counts) => [counts.messageId, { counts, items: [] as NativeWorkRow[] }]));
+  const previews = new Map<string, MessageWorkPreview>(page.sources.map((counts) => [counts.messageId, { counts, items: [] as NativeWorkRow[] }]));
   const seen = new Set<string>();
   for (const edge of page.edges.items) {
     if (edge.role !== 'source' || edge.to.type !== 'message') continue;
@@ -15,6 +16,10 @@ export function messageWorkPreviews(page: WorkAssociations): Map<string, Message
     const association = `${edge.to.id}:${key}`;
     if (!item || !preview || seen.has(association)) continue;
     seen.add(association); preview.items.push(item);
+  }
+  for (const thought of page.thoughts ?? []) {
+    const preview = previews.get(thought.messageId);
+    if (preview) (preview.thoughts ??= []).push(thought);
   }
   // Native row order is independent of relationship chronology.
   const order = new Map(page.items.map((item, index) => [`${item.kind}:${item.id}`, index]));

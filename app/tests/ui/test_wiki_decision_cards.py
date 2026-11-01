@@ -147,7 +147,7 @@ class WikiDecisionCards(unittest.TestCase):
         page.goto(f"{self.doc_url(self.sensors_id)}/history")
         versions = page.locator(".doc-versions > li")
         expect(versions).to_have_count(1)
-        expect(versions.first).to_contain_text("Started the doc")
+        expect(versions.first).to_contain_text("Started the page")
 
     def test_03_add_to_docs_inserts_the_card_and_it_follows_the_decision(self) -> None:
         page = self.context(DESKTOP)

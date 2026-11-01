@@ -1,5 +1,5 @@
 import {
-  conversationMessagesPath, conversationPath, projectConversationRootsPath, projectConversationsPath, projectObjectNoticesPath, projectTaskNoticesPath, type Conversation, type ConversationMessage, type ConversationRootWindow, type ConversationSummary, type Page, type SendMessageCommand, type TaskCreationNotice, projectObservationsPath, projectReceiptsPath, type MessageReceiptsResult, type ObserveMessagesResult, type ObjectNotice,
+  conversationMessagesPath, conversationPath, projectConversationRootsPath, projectConversationsPath, projectObjectNoticesPath, projectTaskNoticesPath, type Conversation, type ConversationMessage, type ConversationRootWindow, type ConversationSummary, type Page, type SendMessageCommand, type TaskCreationNotice, projectObservationsPath, projectReceiptsPath, type MessageReceiptsResult, type ObserveMessagesResult, type ObjectNotice, type MessagePlace, projectMessagePlacePath,
 } from '@flux/contracts';
 import { request } from '../api/client';
 
@@ -29,3 +29,8 @@ export const observeProjectMessages = (projectId: string, messageIds: string[]) 
   request<ObserveMessagesResult>(projectObservationsPath(projectId), { method: 'POST', body: { messageIds } });
 export const projectReceipts = (projectId: string, runs: string[][], signal?: AbortSignal) =>
   request<MessageReceiptsResult>(projectReceiptsPath(projectId), { method: 'POST', body: { runs }, signal });
+/** The conversation a project message belongs to (CW-2), for a link that knows only the message. */
+export const getMessagePlace = (projectId: string, messageId: string, signal?: AbortSignal) =>
+  request<MessagePlace>(projectMessagePlacePath(encodeURIComponent(projectId), encodeURIComponent(messageId)), { signal });
+/** A link to one project message by its id alone; the route below finds its thread. */
+export const projectMessageHref = (projectId: string, messageId: string) => `/projects/${projectId}/messages/${messageId}`;

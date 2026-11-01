@@ -87,7 +87,7 @@ class SketchJourney(unittest.TestCase):
     def open_sketch(self, **kwargs) -> Page:
         page = self.page(**kwargs)
         page.goto(self.sketch_url)
-        expect(page.get_by_role("group", name=re.compile("^Sketch: "))).to_be_visible()
+        expect(page.get_by_role("group", name=re.compile("^Map: "))).to_be_visible()
         return page
 
     # ---------------------------------------------------------------- start and add
@@ -111,7 +111,7 @@ class SketchJourney(unittest.TestCase):
         expect(name).to_be_focused()
         name.fill("Lamp ideas")
         name.press("Enter")
-        expect(page.get_by_role("button", name="Rename sketch Lamp ideas")).to_be_visible()
+        expect(page.get_by_role("button", name="Rename map Lamp ideas")).to_be_visible()
         expect(page.locator(".sk-aud")).to_have_text("Only you")
 
         # The toolbar's Thought adds a thought and edits it in place.
@@ -340,7 +340,7 @@ class SketchJourney(unittest.TestCase):
         page.reload()
         expect(page.get_by_role("tree", name="Thoughts in Lamp ideas")).to_be_visible()
         page.get_by_role("radio", name="Map").click()
-        expect(page.get_by_role("group", name="Sketch: Lamp ideas")).to_be_visible()
+        expect(page.get_by_role("group", name="Map: Lamp ideas")).to_be_visible()
         texts = [t["text"] for t in self.stored(page)["thoughts"]]
         self.assertIn("60 GHz radar through the shade", texts)
 
@@ -367,7 +367,7 @@ class SketchJourney(unittest.TestCase):
 
     def test_07_phone_route(self) -> None:
         page = self.open_sketch(phone=True)
-        expect(page.get_by_role("group", name="Sketch: Lamp ideas")).to_be_visible()
+        expect(page.get_by_role("group", name="Map: Lamp ideas")).to_be_visible()
         self.assertLessEqual(page.evaluate("document.documentElement.scrollWidth"), PHONE["width"], "no horizontal page scroll")
         shot(page, "sketch-phone-390-map")
         node = self.thought(page, "Gesture-controlled desk lamp")
@@ -434,7 +434,7 @@ class SketchJourney(unittest.TestCase):
         expect(edit).to_be_visible()
         expect(edit).to_have_text("Edit thought")
         self.assertGreaterEqual(box(page, edit)["height"], 44, "touch target")
-        expect(actions.get_by_role("button", name="Remove from sketch", exact=True)).to_be_visible()
+        expect(actions.get_by_role("button", name="Remove from map", exact=True)).to_be_visible()
         for label in ("Connect", "Change shape", "More actions", "Undo"):
             expect(actions.get_by_role("button", name=label, exact=True)).to_have_count(0)
         shot(page, "sketch-phone-390-select")
@@ -504,7 +504,7 @@ class SketchJourney(unittest.TestCase):
         expect(page.get_by_role("heading", level=1, name="Home")).to_be_visible()
         page.get_by_role("navigation", name="Places").get_by_role("link", name="Sketchbook").click()
         page.get_by_role("link", name=re.compile("Lamp ideas")).click()
-        expect(page.get_by_role("group", name="Sketch: Lamp ideas")).to_be_visible()
+        expect(page.get_by_role("group", name="Map: Lamp ideas")).to_be_visible()
         deadline = time.time() + 8
         while time.time() < deadline and not any(s["frames"] for s in sockets):
             page.wait_for_timeout(100)
@@ -521,7 +521,7 @@ class SketchJourney(unittest.TestCase):
         expect(page.get_by_role("heading", level=1, name="Home")).to_be_visible()
         page.get_by_role("navigation", name="Places").get_by_role("link", name="Sketchbook").click()
         page.get_by_role("link", name=re.compile("Noor’s map")).click()
-        expect(page.get_by_role("group", name="Sketch: Noor’s map")).to_be_visible()
+        expect(page.get_by_role("group", name="Map: Noor’s map")).to_be_visible()
 
         # A change from Noor's other session arrives live in this tab.
         page.wait_for_timeout(500)

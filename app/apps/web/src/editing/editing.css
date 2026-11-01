@@ -35,3 +35,5 @@
 .editing-selection[data-shape="square"] { border-bottom-style: dashed; }
 .editing-selection[data-shape="diamond"] { border-bottom-style: dotted; }
 .editing-selection[data-shape="triangle"] { border-bottom-style: double; border-bottom-width: 3px; }
+/* CW-4: a reference's kind word in place of its id, after the label. */
+.editing-ref { margin-left: 4px; padding: 0 6px; border-radius: var(--r-pill); background: var(--hov); color: var(--t2); font: 500 var(--fs-xs)/1.6 var(--font); white-space: nowrap; }

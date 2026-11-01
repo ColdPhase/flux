@@ -730,7 +730,7 @@ class ReturnToOrigin(unittest.TestCase):
                 message.hover()
                 message.get_by_role("button", name="More actions").click()
                 page.get_by_role("menuitem", name="Propose a decision").click()
-                page.get_by_role("dialog", name="New decision").get_by_role("button", name="Replace a current rule…").click()  # #763 SP-5
+                page.get_by_role("dialog", name="New decision").get_by_role("button", name="Replace an accepted decision…").click()  # #763 SP-5
                 expect(page.get_by_role("heading", name="Propose a decision")).to_be_visible()
                 page.wait_for_timeout(800)
                 kept = page.evaluate("() => Object.keys(sessionStorage).filter((key) => key.startsWith('flux:place:') && key !== 'flux:place:index')")

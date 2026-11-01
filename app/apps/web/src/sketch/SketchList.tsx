@@ -1,6 +1,8 @@
 import { Fragment, useId, useLayoutEffect, useRef, useState, type KeyboardEvent, type MouseEvent, type ReactNode } from 'react';
 import type { SketchDetail } from '@flux/contracts';
+import { Link } from 'react-router';
 import { Icon } from '../ui';
+import { projectMessageHref } from '../conversations/api';
 import { provenance, quote } from './format';
 import { ThoughtEditor } from './ThoughtEditor';
 import { ThoughtImage } from './ThoughtImage';
@@ -239,7 +241,9 @@ export function SketchList({ sketch, meId, selection, connectFrom, editing, canW
           </span>
           {/* The row's end: the date (on hover or focus, its room kept), the selected row's actions and, last, the task chip, so it never moves. */}
           <span className="sk-outline-end">
-          <span className="sk-li-s">{provenance(thought, meId)}</span>
+          {projectId && thought.source?.projectMessageId
+            ? <Link className="sk-li-s sk-li-s--source" to={projectMessageHref(projectId, thought.source.projectMessageId)} onClick={quiet} aria-label={`${provenance(thought, meId)}: open the message`}>{provenance(thought, meId)}</Link>
+            : <span className="sk-li-s">{provenance(thought, meId)}</span>}
           {acting ? <span className="sk-outline-actions" role="group" aria-label={`Actions for ${quote(thought.text)}`} onClick={quiet} onKeyDown={(event) => closeMore(event, thought.id)}>
             {canWrite ? <>
               <button type="button" onClick={() => on.onEdit(thought.id)}><Icon name="edit" size={12} />Edit</button>
@@ -260,6 +264,7 @@ export function SketchList({ sketch, meId, selection, connectFrom, editing, canW
           <button type="button" onClick={() => { setMoreId(null); reorder(row, 1); }}>Move down<kbd>⌥↓</kbd></button>
           {arrange && canWrite ? <button type="button" aria-pressed={connectFrom === thought.id} onClick={() => { setMoreId(null); on.onConnectFrom(thought.id); }}>Connect…</button> : null}
           <button type="button" onClick={() => { setMoreId(null); on.onConnections(thought.id); }}>Connections</button>
+          {projectId && thought.source?.projectMessageId ? <Link to={projectMessageHref(projectId, thought.source.projectMessageId)} onClick={() => setMoreId(null)}>Open message</Link> : null}
           {on.onCite ? <button type="button" onClick={() => { setMoreId(null); on.onCite?.(); }}>Cite in conversation</button> : null}
           {canWrite ? <button type="button" onClick={() => { setMoreId(null); on.onRemove(selection.includes(thought.id) ? selection : [thought.id]); }}>Remove</button> : null}
         </div> : null}

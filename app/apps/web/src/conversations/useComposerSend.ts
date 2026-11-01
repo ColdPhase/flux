@@ -4,6 +4,7 @@ import { ApiError } from '../api/client';
 import { useShellActions } from '../app/shellContext';
 import { getMaterialVersion } from '../materials/api';
 import { getProject } from '../project/api';
+import { useAddToMap } from '../project/addToMap';
 import type { useTyping } from '../typing/useTyping';
 import { sendsOnEnter } from '../ui';
 import { firstLine } from '../work/format';
@@ -21,17 +22,25 @@ interface Options {
   onPosted?: (conversation: Conversation) => void; onSending?: () => void;
 }
 
-// `/task …`, `/decide …` and `/handoff …` act when sent; the words after the command are the title.
-const COMMAND_EXAMPLE = { task: 'Order the probes', decide: 'Use the second supplier', handoff: 'Calibrate the probes' } as const;
+// `/task …`, `/decide …`, `/map …` and `/handoff …` act when sent; the words after the command are the title.
+const COMMAND_EXAMPLE = { task: 'Order the probes', decide: 'Use the second supplier', map: 'Lockers in the hallway', handoff: 'Calibrate the probes' } as const;
 
 /** What Send does in a pane (#264): a message joins the end at once and the field empties; a command opens its window. */
 export function useComposerSend({ project, conversation, writable, aiOff, composerId }: PaneCore, options: Options) {
   const { drafts, menu, ask, thread, typing, touch, rootMessageId, newestRootAt, scrollToEnd, hideIfDenied, closeSources, onPosted, onSending } = options;
   const { asking, publicComposer, draft, captureScope } = drafts;
   const { openDetails, openCreate } = useShellActions();
+  const addToMap = useAddToMap(project);
   // The stream has no assistant: `/ai …` there would post the prompt for the whole project.
   const assistantInStream = !aiOff && !conversation && /^\/ai(\s|$)/.test(draft.trimStart());
   async function runCommand(name: keyof typeof COMMAND_EXAMPLE, text: string) {
+    // `/map` alone in a thread puts its opening message on the map (CW-1), with that message as the thought's source.
+    if (name === 'map' && (text || (conversation && rootMessageId))) {
+      const opening = conversation && rootMessageId ? { messageId: rootMessageId, text: conversation.firstMessageBody } : null;
+      addToMap({ body: text || opening!.text, ...(opening ? { messageId: opening.messageId } : {}) });
+      publicComposer.consumeBody(publicComposer.draft);
+      return;
+    }
     if (!text) { menu.setCommandHint(`Say what it is after the command, for example /${name} ${COMMAND_EXAMPLE[name]}.`); document.getElementById(composerId)?.focus(); return; }
     // Consume that exact stored revision under its original key. Changing panes does not leave a
     // successful command ready to send again; words typed later or in another conversation stay.
@@ -50,7 +59,7 @@ export function useComposerSend({ project, conversation, writable, aiOff, compos
     if (asking) { await ask.sendToAssistant(); return; }
     // F-029 (#614): `/ai` and `/handoff` in a workspace whose AI is off are not messages for the people here: the words stay in the field.
     if (aiOff && writable && /^\/(ai|handoff)(\s|$)/.test(draft.trim())) { menu.setCommandHint('AI is off in this workspace. Remove the command to send these words as a message.'); return; }
-    const command = writable ? /^\/(task|decide|handoff)(?:\s+([\s\S]*))?$/.exec(draft.trim()) : null;
+    const command = writable ? /^\/(task|decide|map|handoff)(?:\s+([\s\S]*))?$/.exec(draft.trim()) : null;
     if (command) { await runCommand(command[1] as keyof typeof COMMAND_EXAMPLE, (command[2] ?? '').trim()); return; }
     // A private helper prompt is never published as a root (UI116-3); it stays in the private draft.
     if (!writable || assistantInStream) return;

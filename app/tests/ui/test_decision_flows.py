@@ -311,7 +311,7 @@ class DecisionFlows(unittest.TestCase):
         expect(panel).not_to_contain_text("New proposal")
         select = panel.get_by_label("Replaces", exact=True)
         expect(select).to_be_enabled()
-        expect(panel.get_by_role("navigation", name="Current rule choices")).to_have_count(0)
+        expect(panel.get_by_role("navigation", name="Choices it can replace")).to_have_count(0)
 
     # ---------------------------------------------------------------- B3 (phone)
 

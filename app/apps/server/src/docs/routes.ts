@@ -36,7 +36,7 @@ const version = { type: 'integer', minimum: 1 } as const;
 
 const createDoc = { type: 'object', required: ['title'], additionalProperties: false, properties: { title, body, state, reason, from: source } } as const;
 const updateDoc = { type: 'object', additionalProperties: false, minProperties: 1, properties: { title, body, state, reason, expectedVersion: version } } as const;
-const addSection = { type: 'object', required: ['from'], additionalProperties: false, properties: { from: source, expectedVersion: version } } as const;
+const addSection = { type: 'object', required: ['from'], additionalProperties: false, properties: { from: source, expectedVersion: version, under: { type: 'string', maxLength: 300 } } } as const;
 const preview = { type: 'object', required: ['body'], additionalProperties: false, properties: { body } } as const;
 
 /** A replay needs current read access to the project named in the stored response. */

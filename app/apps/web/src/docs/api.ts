@@ -39,8 +39,8 @@ export const createDoc = (projectId: string, command: CreateDocCommand, idempote
   request<Doc>(projectDocsPath(projectId), { method: 'POST', body: command, headers: key(idempotencyKey) });
 export const updateDoc = (id: string, version: number, command: UpdateDocCommand, idempotencyKey: string) =>
   request<Doc>(docPath(id), { method: 'PATCH', body: command, headers: { ...ifMatch(version), ...key(idempotencyKey) } });
-export const addDocSection = (id: string, version: number, from: DocSectionSource, idempotencyKey: string) =>
-  request<Doc>(docSectionsPath(id), { method: 'POST', body: { from }, headers: { ...ifMatch(version), ...key(idempotencyKey) } });
+export const addDocSection = (id: string, version: number, from: DocSectionSource, idempotencyKey: string, under?: string) =>
+  request<Doc>(docSectionsPath(id), { method: 'POST', body: { from, ...(under ? { under } : {}) }, headers: { ...ifMatch(version), ...key(idempotencyKey) } });
 
 export const docUrl = (projectId: string, docId: string) => `/projects/${projectId}/docs/${docId}`;
 

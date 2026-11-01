@@ -358,7 +358,7 @@ class ScenarioJourney:
     def open_map(self, page: Page) -> None:
         """The project map; the phone uses the List route, where every thought is a tappable row."""
         page.goto(f"/projects/{self.s['lamp']}/map/{self.s['map']}")
-        expect(page.get_by_role("group", name=re.compile("^Sketch: ")).or_(page.locator(".sk-outline-list"))).to_be_visible()
+        expect(page.get_by_role("group", name=re.compile("^Map: ")).or_(page.locator(".sk-outline-list"))).to_be_visible()
         if self.phone:
             show_map_as(page, "List", touch=True)
             expect(page.locator(".sk-outline-list")).to_be_visible()
@@ -414,7 +414,7 @@ class ScenarioJourney:
             text.press("Control+k")
         picker = page.get_by_role("dialog", name="Link to something in this project")
         choose(picker.get_by_label("Reference type"), kind)
-        query = picker.get_by_role("combobox", name="Find a doc, decision, result, work, sketch or message", exact=True)
+        query = picker.get_by_role("combobox", name="Find a Wiki page, decision, result, task, map or message", exact=True)
         query.fill(title[:40])
         option = picker.get_by_role("listbox", name="Matches").get_by_role("option").first
         expect(option).to_contain_text(title[:40])
@@ -636,7 +636,7 @@ class ScenarioJourney:
             menu = open_message_menu(message, phone=False)
             self.tap(menu.get_by_role("menuitem", name="Propose a decision"))
             # #763 SP-5: the message's Propose a decision opens the Create window; the full form (Replaces) is one step on.
-            self.tap(page.get_by_role("dialog", name="New decision").get_by_role("button", name="Replace a current rule…"))
+            self.tap(page.get_by_role("dialog", name="New decision").get_by_role("button", name="Replace an accepted decision…"))
         panel = self.details(page)
         expect(panel.get_by_role("heading", name="Propose a decision")).to_be_visible()
         panel.get_by_label("Decision").fill(D1)
@@ -644,7 +644,7 @@ class ScenarioJourney:
         self.tap(panel.get_by_role("button", name="Propose decision", exact=True))
         expect(panel.locator(".wd-eyebrow")).to_contain_text("Proposed decision")
         self.tap(panel.get_by_role("button", name="Accept", exact=True))
-        expect(panel.locator(".wd-eyebrow")).to_contain_text("Current rule")
+        expect(panel.locator(".wd-eyebrow")).to_contain_text("Decision · accepted")
         d1 = self.decision_titled("ada", D1)
         self.assertEqual((d1["status"], d1["proposedBy"]["id"], d1["decidedBy"]["id"]), ("accepted", self.ids["ada"], self.ids["ada"]))
         s["d1"] = d1["id"]
@@ -795,7 +795,7 @@ class ScenarioJourney:
         market_task = self.api("jonas", "POST", f"/api/v1/projects/{lamp}/work", {"title": MARKET_TASK, "sources": [{"type": "thought", "id": market}]}, status=201)
         self.open_map(page)
         self.tap(self.thought(page, market))
-        self.tap(page.get_by_role("button", name="Remove from sketch", exact=True))
+        self.tap(page.get_by_role("button", name="Remove from map", exact=True))
         self.wait_for("the placement to go", lambda: all(t["id"] != market for t in self.sketch("ada", s["map"])["thoughts"]))
         kept = self.api("ada", "GET", f"/api/v1/work/{market_task['id']}", status=200)
         self.assertEqual((kept["title"], kept["status"]), (MARKET_TASK, "open"), "the task outlives its map placement")
@@ -1003,7 +1003,7 @@ class ScenarioJourney:
         accept.scroll_into_view_if_needed()
         self.shot(jonas, "3-pivot")
         self.tap(accept)
-        expect(panel.locator(".wd-eyebrow")).to_contain_text("Current rule")
+        expect(panel.locator(".wd-eyebrow")).to_contain_text("Decision · accepted")
         expect(panel.get_by_role("region", name="At this pivot")).to_contain_text("parked")
         accepted = self.api("jonas", "GET", f"/api/v1/decisions/{s['d2']}", status=200)
         self.assertEqual((accepted["status"], accepted["decidedBy"]["id"], accepted["proposedBy"]["kind"]), ("accepted", self.ids["jonas"], "agent"))
@@ -1036,7 +1036,7 @@ class ScenarioJourney:
         card = page.get_by_role("link", name=re.compile("^Continue where you left off"))
         expect(card).to_be_visible()
         expect(card).to_contain_text("Answer Jonas's question")
-        changed = [item for item in self.api("ada", "GET", "/api/v1/return?place=home", status=200)["items"] if item["text"] == f"Current rule changed: {D2}"]
+        changed = [item for item in self.api("ada", "GET", "/api/v1/return?place=home", status=200)["items"] if item["text"] == f"Decision changed: {D2}"]
         self.assertEqual([item["detail"] for item in changed], [f"Previously: {D1}"])
         expect(page.get_by_role("button", name=re.compile("Mark all", re.I))).to_have_count(0)
         self.no_sideways_scroll(page)
@@ -1053,7 +1053,7 @@ class ScenarioJourney:
         self.tap(recap.get_by_role("button", name="Summarize"))
         expect(recap.locator("section[aria-labelledby=wm-digest]")).to_contain_text("No AI")
         self.shot(page, "4-what-matters")
-        self.tap(recap.get_by_role("link", name=re.compile(f"Current rule changed: {re.escape(D2)}")))
+        self.tap(recap.get_by_role("link", name=re.compile(f"Decision changed: {re.escape(D2)}")))
         panel = self.details(page)
         expect(panel.get_by_role("heading", name=D2)).to_be_visible()
         pivot = panel.get_by_role("region", name="At this pivot")
@@ -1067,7 +1067,7 @@ class ScenarioJourney:
         expect(page.get_by_role("region", name=re.compile("^Open"))).to_contain_text(ORDER_TASK)
         expect(page.get_by_role("region", name=re.compile("^(Decisions|Results)"))).to_have_count(0)
         page.goto(f"/projects/{lamp}/tasks?open=decision:{s['d1']}")
-        expect(self.details(page)).to_contain_text("Earlier rule")
+        expect(self.details(page)).to_contain_text("Decision · replaced")
         expect(self.details(page)).to_contain_text(D1)
         self.close_details(page)
         page.goto(f"/projects/{lamp}/tasks?open=result:{s['result']}")
@@ -1086,7 +1086,7 @@ class ScenarioJourney:
         page.goto("/")
         expect(page.get_by_role("heading", level=2, name=re.compile("^Good (morning|afternoon|evening), Ada$"))).to_be_visible()
         home = [item["text"] for item in self.api("ada", "GET", "/api/v1/return?place=home", status=200)["items"]]
-        self.assertIn(f"Current rule changed: {D2}", home)
+        self.assertIn(f"Decision changed: {D2}", home)
         self.assertIn(f"Parked: {CAMERA_TASK}", home, "Home's return summary names the parked work")
         items = self.api("ada", "GET", f"/api/v1/return?place=project&id={self.s['lamp']}", status=200)["items"]
         self.assertIn(f"Parked: {CAMERA_TASK}", [item["text"] for item in items], "the project's return summary names the parked work")
@@ -1159,7 +1159,7 @@ class ScenarioJourney:
         if LIVE:
             # The shared working copy keeps its version and stays on the editor; the page is one step back.
             expect(page.get_by_role("status").filter(has_text="Version 2 saved")).to_be_visible()
-            self.tap(page.get_by_role("link", name="Back to doc", exact=True))
+            self.tap(page.get_by_role("link", name="Back to the Wiki page", exact=True))
         expect(page.get_by_role("heading", level=2, name=DOC_TITLE)).to_be_visible()
         doc = self.wait_for("version 2 of the page", lambda: (lambda d: d if d["version"] == 2 else None)(self.api("ada", "GET", f"/api/v1/docs/{s['doc']}", status=200)))
         self.assertTrue(any(link["role"] == "mentions" and link["to"]["id"] == s["d2"] for link in doc["links"]))

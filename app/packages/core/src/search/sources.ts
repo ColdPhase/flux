@@ -20,7 +20,7 @@ const WORK_STATUS: Record<string, string> = {
   open: 'Task', in_progress: 'Task · in progress', blocked: 'Task · blocked', done: 'Task · done',
   not_pursued: 'Task · not pursued', parked: 'Task · parked',
 };
-const DECISION_STATUS: Record<string, string> = { accepted: 'Decision · current rule', proposed: 'Decision · proposed', superseded: 'Decision · replaced' };
+const DECISION_STATUS: Record<string, string> = { accepted: 'Decision · accepted', proposed: 'Decision · proposed', superseded: 'Decision · replaced' };
 const DRAFT_STATUS: Record<string, string> = { private: 'Private draft', project: 'Draft shared with the project', workspace: 'Draft shared with everyone' };
 
 function materialLabel(row: SearchRow) {
@@ -34,7 +34,7 @@ function docLabel(row: SearchRow) {
   const version = row.version ?? 1;
   const current = row.currentVersion ?? version;
   const state = row.status === 'draft' ? 'draft' : 'published';
-  return version >= current ? `Doc · ${state}` : `Doc · version ${version} of ${current}, ${state}`;
+  return version >= current ? `Wiki page · ${state}` : `Wiki page · version ${version} of ${current}, ${state}`;
 }
 
 const quote = (text: string) => `“${text}”`;
@@ -76,7 +76,7 @@ export const SEARCH_SOURCES: Record<SearchKind, SearchSource> = {
   },
   result: {
     filter: 'result', audience: 'project', textIsTitle: false,
-    label: (row) => (row.status === 'negative' ? 'Result · it did not work out' : 'Result · it worked'),
+    label: (row) => (row.status === 'negative' ? 'Negative result' : 'Positive result'),
     target: (row) => ({ type: 'result', projectId: inProject(row), id: row.objectId }),
   },
   sketch: {
@@ -85,7 +85,7 @@ export const SEARCH_SOURCES: Record<SearchKind, SearchSource> = {
   },
   thought: {
     filter: 'sketch', audience: 'sketch', textIsTitle: true,
-    label: (row) => (row.sketchTitle ? `Thought in ${quote(row.sketchTitle)}` : 'Thought'),
+    label: (row) => (row.sketchTitle ? `Thought on the map ${quote(row.sketchTitle)}` : 'Thought'),
     target: (row) => ({ type: 'thought', sketchId: row.parentId ?? '', thoughtId: row.objectId, dmId: row.dmId }),
   },
   draft: {

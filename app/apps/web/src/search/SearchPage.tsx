@@ -210,7 +210,7 @@ function FullSearch() {
             </section>
           ) : (
             <div className="view-empty"><EmptyState icon="search" title="Search everything you can open" level={2}>
-              <p>Messages in your projects and direct messages, materials and every version of them, tasks, rules, results, sketches, your private drafts and people.</p>
+              <p>Messages in your projects and direct messages, materials and every version of them, tasks, decisions, results, maps, your private drafts and people.</p>
             </EmptyState></div>
           )
         ) : state.status === 'failed' ? (

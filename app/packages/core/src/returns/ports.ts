@@ -88,6 +88,10 @@ export interface ReturnRepository {
   audienceSeqAt(recipient: string, at: Date): Promise<number>;
   /** The recipient's last audience row. */
   lastEvent(recipient: string): Promise<{ id: string; seq: number } | null>;
+  /** When the recipient's own rows for this project begin (their first one, CW-3), or null when they have none. */
+  firstProjectAudienceAt?(recipient: string, projectId: string): Promise<Date | null>;
+  /** The project's own events and its shared maps' events in [from, to), newest first (CW-3); unauthorized, like every row. */
+  projectEventsBetween?(projectId: string, from: Date, to: Date, limit: number): Promise<AudienceEvent[]>;
   projects(ids: string[]): Promise<Map<string, { id: string; name: string }>>;
   work(ids: string[]): Promise<Map<string, ReturnWork>>;
   /** Work in these projects that one of these decisions parks now (an accepted pivot, #290). */

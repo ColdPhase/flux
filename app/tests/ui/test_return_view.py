@@ -277,7 +277,7 @@ class ReturnViewJourney(unittest.TestCase):
         expect(panel.get_by_role("link", name=re.compile("New material: Low-light test plan"))).to_be_visible()
 
         # A decision opens in Details; "What matters" comes back with the same snapshot and digest.
-        panel.get_by_role("link", name=re.compile("Current rule changed")).click()
+        panel.get_by_role("link", name=re.compile("Decision changed")).click()
         expect(panel.get_by_role("heading", name="Exclude gestures in the dark; use the PIR sensor at night")).to_be_visible()
         self.open_recap(page)
         expect(panel.locator("section[aria-labelledby=wm-digest]")).to_contain_text("I ordered a PIR sensor too")

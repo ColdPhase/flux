@@ -43,6 +43,25 @@ These terms are provisional until #8 and #13 settle the segment and domain bound
 
 **Later amendment, 2026-10-05 ([O-009](decision-authority.md), proposed, #250):** in v0.1 the *decision owner* is any person whose current project access is contributor or manager; agents and the assistant never accept. Below, Jo's "delegation" to Ari means Ari keeps contributor access to the project, and Ari accepts D-2 on that basis. A separate delegation of decision authority with a scope and an expiry is out of v0.1 scope (DA-5).
 
+## Words on screen (CW-7, 2026-10-31)
+
+The [connected work flow study](../agents/release-acceptance/evidence/connected-work-flow.md) (#763 CW-7)
+found two to four names for one object across screens: map/sketch, Wiki/doc/page, task/work and
+decision/rule. A newcomer could not tell whether they were different things. The interface uses one
+noun per object, and its state words only after it:
+
+| Object | The word on screen | State words | Not used for it |
+| --- | --- | --- | --- |
+| Project map and its thoughts | **map**, **thought** ("Maps", "New map", "Remove from map", "On the map") | — | sketch, Sketches, Map (capitalised mid-sentence) |
+| Wiki page | **Wiki page** (the place is **the Wiki**) | draft, published | doc, Docs, page alone in lists |
+| Task | **task** | the status words | work, Work |
+| Decision | **decision** | accepted, proposed, replaced | rule, current rule, earlier rule |
+| Result | **result** | positive, negative | "it worked", "it did not work out" |
+
+The personal place drawn in the sidebar keeps its drawn name, **Sketchbook**, with its sketches, and so does the drawn phone Create item "Sketch"; DM
+sketches are unchanged. Storage names (`sketch`, `work`, `doc`), API fields and agent operations
+keep their technical names; only what people read changes.
+
 ## Synthetic scenario and source records
 
 Jo (returning project steward and initial decision owner), Ari (designer, support liaison, and delegated decision owner during Jo's absence), and Nia (engineer and work owner) maintain a small software product, **Tide**. Their project **Shared export** asks whether a CSV export should include archived work invisible to a guest. “Guest” and “member” are Tide's customer roles, not Flux access roles. Ari, who belongs to a restricted support group, redacts the original support report before publishing M-1 to the project. Jo accepts the initial choice D-1, then leaves for a week. During that absence Nia's permission test changes the choice; Ari accepts the correction under delegated authority and assigns the related work. Jo returns after those changes.

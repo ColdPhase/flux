@@ -2,7 +2,9 @@ import { Fragment, memo, type CSSProperties, type ReactNode, type RefObject, use
 import type { MapPresenceSource } from '../editing/map-presence';
 import { MapCursors, MapPeople } from './MapPresence';
 import { DEFAULT_THOUGHT_SIZE, SKETCH_LIMITS, type LiveMapPosition, type SketchDetail, type Thought } from '@flux/contracts';
+import { Link } from 'react-router';
 import { Icon, IconButton, Sheet, StatusGlyph } from '../ui';
+import { projectMessageHref } from '../conversations/api';
 import { STATUS_LABEL, taskNumber } from '../work/format';
 import { linkPath, PAD, PLANE_MARGIN, project, rectOf, type Rect } from './geometry';
 import { provenance, quote } from './format';
@@ -915,6 +917,9 @@ export function SketchMap(props: SketchMapProps) {
     </a>
   ) : null;
 
+  // CW-2: a thought from a project message opens that message in its thread, as a decision's "Based on" does.
+  const sourceMessage = last && lastThought && selection.length === 1 && projectId && lastThought.source?.projectMessageId ? projectMessageHref(projectId, lastThought.source.projectMessageId) : null;
+
   /** The actions of the selection float above the thought on a computer. */
   const selectionBar = (style?: CSSProperties, above?: boolean) => {
     if (!plus || !last || !lastThought) return null;
@@ -927,11 +932,12 @@ export function SketchMap(props: SketchMapProps) {
           {single && !compact ? <button type="button" className="sk-edit-btn" aria-label="Connect" aria-pressed={connectFrom === lastThought.id} onClick={() => props.onConnectFrom(lastThought.id)}>Connect</button> : null}
           {single && !compact ? <button type="button" className="sk-edit-btn" onClick={() => props.onConnections(lastThought.id)}>Connections</button> : null}
           {linkAnchor}
+          {sourceMessage && !compact ? <Link className="sk-edit-btn" to={sourceMessage} aria-label={`Open the message ${label} came from`}>Open message</Link> : null}
           <button type="button" className={`sk-plus${coarse ? ' sk-plus--labelled' : ''}`} aria-label={`Add a thought connected to ${label}`} onClick={() => props.onAdd(lastThought.id)}>
             <Icon name="plus" size={14} />{coarse ? <span aria-hidden="true">Add</span> : null}
           </button>
           {compact && props.bar.project ? <button type="button" className="sk-edit-btn sk-edit-btn--icon" aria-label="Create task from selected thoughts" aria-disabled={false} onClick={props.bar.onTask}><Icon name="tasks" size={16} /></button> : null}
-          <button type="button" className="sk-edit-btn sk-edit-btn--icon" aria-label="Remove from sketch" onClick={() => props.onRemove(selection)}><Icon name="trash" size={16} /></button>
+          <button type="button" className="sk-edit-btn sk-edit-btn--icon" aria-label="Remove from map" onClick={() => props.onRemove(selection)}><Icon name="trash" size={16} /></button>
           {compact ? null : (
             <>
               <button type="button" className="sk-edit-btn sk-edit-btn--icon" aria-label="More actions" aria-expanded={more} onClick={() => setMore(!more)}><Icon name="more" size={16} /></button>
@@ -993,7 +999,7 @@ export function SketchMap(props: SketchMapProps) {
     {props.presenceStore ? <MapPeople source={props.presenceStore} /> : null}
     <div data-layout={columns ? 'columns' : 'plane'} className={`sk-canvas${panning ? ' is-panning' : ''}${panMode ? ' is-hand' : ''}${connectFrom ? ' is-connecting' : ''}${wire ? ' is-wiring' : ''}`} ref={canvasRef} role="group" tabIndex={0}
       data-live-own-gesture={props.ownGesture?.id} data-live-own-sequence={props.ownGesture?.sequence} data-live-generation={props.ownGesture?.generation}
-      aria-label={`Sketch: ${sketch.title}`} aria-describedby={helpId} onKeyDown={onCanvasKeyDown}>
+      aria-label={`Map: ${sketch.title}`} aria-describedby={helpId} onKeyDown={onCanvasKeyDown}>
       <div className="sk-zoomed" ref={zoomedRef} data-origin-x={origin.x} data-origin-y={origin.y} style={{ width: width * zoom, height: height * zoom }}
         onPointerDown={onPlanePointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp} onPointerCancel={onPointerCancel} onPointerLeave={() => props.onPointer(null)}>
         <div className={`sk-plane${reframing ? ' is-reframing' : ''}`} style={{ width, height, transform: zoom === 1 ? undefined : `scale(${zoom})` }}>
@@ -1113,10 +1119,11 @@ export function SketchMap(props: SketchMapProps) {
           {phoneMenu === 'thought' && lastThought ? <>
             <p className="sk-options__thought">{lastThought.text}</p>
             {selection.length === 1 ? <button type="button" className="sk-options__action" onClick={() => phoneAction(() => props.onEdit(lastThought.id))}><Icon name="edit" size={18} />Edit thought</button> : null}
+            {sourceMessage ? <Link className="sk-options__action" to={sourceMessage} onClick={() => setPhoneMenuOpen(false)}><Icon name="chat" size={18} />Open message</Link> : null}
             {openLink ? <a className="sk-options__action" href={openLink.href} target="_blank" rel="noopener noreferrer"><Icon name="link" size={18} />Open link {openLink.host}</a> : null}
             {props.bar.project ? <button type="button" className="sk-options__action" aria-label="Create task from selected thoughts" aria-disabled={false} onClick={() => phoneAction(props.bar.onTask)}><Icon name="tasks" size={18} />Create task</button> : null}
             {props.bar.onCite ? <button type="button" className="sk-options__action" aria-label="Cite the selected thought in the conversation" onClick={() => phoneAction(props.bar.onCite!)}><Icon name="cite" size={18} />Cite in conversation</button> : null}
-            <button type="button" className="sk-options__action" aria-label="Remove from sketch" onClick={() => phoneAction(() => props.onRemove(selection))}><Icon name="trash" size={18} />Remove thought</button>
+            <button type="button" className="sk-options__action" aria-label="Remove from map" onClick={() => phoneAction(() => props.onRemove(selection))}><Icon name="trash" size={18} />Remove thought</button>
           </> : <>
             <p className="sk-options__thought">{sketch.title}</p>
             <div onClick={(event) => { if ((event.target as HTMLElement).closest('[role="radio"]')) setPhoneMenuOpen(false); }}>{props.viewModes}</div>

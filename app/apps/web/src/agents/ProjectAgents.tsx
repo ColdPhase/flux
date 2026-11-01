@@ -37,6 +37,7 @@ import { holdsLine, pausedLine } from './status';
 import { CoworkHostActions } from '../agent-connection/CoworkHostActions';
 import { useTyping } from '../typing/useTyping';
 import { TypingNotice } from '../typing/TypingNotice';
+import { RecentActivity } from './RecentActivity';
 import './agents.css';
 import { useCreateWorkFromMessage } from '../work/inline';
 import { RefLink, useOriginPanelBack } from '../place/origin';
@@ -61,7 +62,7 @@ const OPERATION_LABEL: Record<AgentOperation, string> = {
   'decision.propose': 'proposed a decision', 'map.create': 'created a map', 'map.rename': 'renamed a map',
   'map.thought.create': 'added a thought', 'map.thought.update': 'edited a thought', 'map.thought.delete': 'removed a thought',
   'map.positions.update': 'arranged the map', 'map.link.create': 'linked thoughts', 'map.link.delete': 'unlinked thoughts',
-  'doc.create': 'created a doc', 'doc.update': 'edited a doc',
+  'doc.create': 'created a Wiki page', 'doc.update': 'edited a Wiki page',
   'conversation.create': 'started a conversation', 'conversation.reply': 'replied in a conversation',
   'cowork.claim': 'took a task', 'cowork.renew': 'is still on a task', 'cowork.release': 'released a task', 'cowork.request': 'asked for help',
   'cowork.request.claim': 'picked up a request', 'cowork.request.respond': 'answered a request',
@@ -696,7 +697,8 @@ function AgentDetail({ entry, held, meId, projectId, now, asking, canHandOff, ma
         {(
           <ul className="agents-detail__recent">
             {stops.slice(0, 3).map((item) => <li key={item.id} data-stop={item.id}><span>Stopped by {item.stoppedBy.id === meId ? 'you' : item.stoppedBy.name} · <span className="ui-task-number">#{item.taskNumber}</span></span><time dateTime={item.stoppedAt}>{when(item.stoppedAt)}</time></li>)}
-            {last ? <li><span>{sentence(OPERATION_LABEL[last.operation])}</span><time dateTime={last.at}>{when(last.at)}</time></li> : null}
+            {entry.connection?.recentActivity?.length ? <RecentActivity projectId={projectId} items={entry.connection.recentActivity} label={OPERATION_LABEL} when={when} />
+              : last ? <li><span>{sentence(OPERATION_LABEL[last.operation])}</span><time dateTime={last.at}>{when(last.at)}</time></li> : null}
             {otherHeld.map((row) => <li key={row.id}><button type="button" className="agents-detail__thread" onClick={() => onThread(row.id)}>Also holds #{row.number} · {row.title}</button></li>)}
           </ul>
         )}

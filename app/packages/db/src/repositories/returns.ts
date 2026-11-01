@@ -1,5 +1,5 @@
 import { messagePreview } from '@flux/contracts';
-import { and, asc, desc, eq, gt, inArray, lt, lte, sql, type SQL } from 'drizzle-orm';
+import { and, asc, desc, eq, gt, gte, inArray, lt, lte, sql, type SQL } from 'drizzle-orm';
 import * as schema from '../schema.js';
 import type { DbExecutor } from './push.js';
 import { openAliased, openRows } from '../sealing.js';
@@ -99,6 +99,27 @@ export function returnRows(db: DbExecutor) {
       const [row] = await db.select({ id: schema.eventAudience.eventId, seq: schema.eventAudience.seq }).from(schema.eventAudience)
         .where(eq(schema.eventAudience.recipient, recipient)).orderBy(desc(schema.eventAudience.seq)).limit(1);
       return row ?? null;
+    },
+
+    /** When the recipient's own rows for this project begin (CW-3): the first project event they received, or null. */
+    async firstProjectAudienceAt(recipient: string, projectId: string) {
+      const [row] = await db.select({ at: sql<Date | string | null>`min(${schema.events.createdAt})` }).from(schema.eventAudience)
+        .innerJoin(schema.events, eq(schema.events.id, schema.eventAudience.eventId))
+        .where(and(eq(schema.eventAudience.recipient, recipient), eq(schema.events.objectId, projectId)));
+      return row?.at ? new Date(row.at) : null;
+    },
+
+    /**
+     * The project's events and its shared maps' events in [from, to), newest first (CW-3): what happened before a newcomer
+     * had access. Rows only: the caller authorizes each against what the reader can open now. `seq` is the event's own.
+     */
+    projectEventsBetween(projectId: string, from: Date, to: Date, limit: number) {
+      const e = schema.events;
+      return db.select({ id: e.id, seq: e.seq, kind: e.kind, workspaceId: e.workspaceId, objectId: e.objectId, actorId: e.actorId,
+        data: sql<Record<string, unknown>>`${e.data}`, createdAt: e.createdAt }).from(e)
+        .where(and(gte(e.createdAt, from), lt(e.createdAt, to), sql`(${e.objectId} = ${projectId}::uuid OR (${e.kind} LIKE 'sketch.%' AND ${e.objectId} IN (
+          SELECT ${schema.sketches.id} FROM ${schema.sketches} WHERE ${schema.sketches.projectId} = ${projectId}::uuid AND ${schema.sketches.scope} = 'project')))`))
+        .orderBy(desc(e.seq)).limit(limit);
     },
 
     /** Ids of the workspace's projects that pass `visible` (the policy's list condition). */

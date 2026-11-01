@@ -113,7 +113,7 @@ class MessageWorkJourney(unittest.TestCase):
                 edges = page.locator("#thread").get_by_role("navigation", name="Message link pages")
                 expect(objects).to_contain_text("1–50 of 68 objects")
                 expect(edges).to_contain_text("1–50 of 100 links")
-                expect(page.locator(f"#thread [data-message-id='{self.m0}'] .ws-attach__more")).to_contain_text("64 work · 3 decisions · 1 result")
+                expect(page.locator(f"#thread [data-message-id='{self.m0}'] .ws-attach__more")).to_contain_text("64 tasks · 3 decisions · 1 result")
                 expect(page.get_by_role("button", name=re.compile(r"^Task #\d+: " + re.escape("Related only; not made from either message") + "$"))).to_have_count(0)
                 field = page.get_by_label("Reply", exact=True); field.fill("Keep this reply while checking the older measurement links")
                 first = self.chips(page); self.assertEqual(len(first), 50)
