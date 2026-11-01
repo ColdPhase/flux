@@ -348,7 +348,14 @@ class MessageWorkJourney(unittest.TestCase):
 
     def scroll_until_settled(self, page, delta):
         pane=page.locator(".thread__feed")
-        pane.evaluate("el=>{window.__readerSettled=false;el.addEventListener('scrollend',()=>window.__readerSettled=true,{once:true});}")
+        # Only the scrollend that follows this wheel's own scroll settles it. A programmatic scroll before it (the feed following
+        # its end after a resize) also ends, and WebKit delivers that event after this listener exists but before the wheel's
+        # smooth scroll has begun, so the reader would be measured mid-gesture. A wheel with no room to move ends nothing.
+        pane.evaluate("(el,delta)=>{window.__readerSettled=false;let wheeled=false,scrolled=false;"
+            "const room=()=>delta>0?el.scrollHeight-el.clientHeight-el.scrollTop>1:el.scrollTop>0;"
+            "const done=()=>{window.__readerSettled=true;for(const [type,listener] of listeners)el.removeEventListener(type,listener,true);};"
+            "const listeners=[['wheel',()=>{if(wheeled)return;wheeled=true;if(!room())done();}],['scroll',()=>{if(wheeled)scrolled=true;}],['scrollend',()=>{if(scrolled)done();}]];"
+            "for(const [type,listener] of listeners)el.addEventListener(type,listener,true);}",delta)
         pane.hover();page.mouse.wheel(0,delta)
         page.wait_for_function("window.__readerSettled===true")
         page.mouse.move(0,0)
