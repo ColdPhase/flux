@@ -50,10 +50,33 @@ function applyInert() {
   root.style.setProperty('--app-inert', `${inertCount > 0 ? 1 : 0}-${++inertSeq}`);
 }
 
+// A strip that arrives or goes while a keeper is open (a session started from Details, #763 P2-1; Leave) changes what is
+// inert: the decision is taken again whenever the strip itself changes, not only when a surface opens or closes.
+let stripWatch: MutationObserver | null = null;
+let watchedStrip: HTMLElement | null = null;
+function watchStrip() {
+  const root = document.getElementById('root');
+  if (stripKeepers > 0 && root && !stripWatch) {
+    watchedStrip = liveStrip();
+    stripWatch = new MutationObserver(() => {
+      const strip = liveStrip();
+      if (strip === watchedStrip) return;
+      watchedStrip = strip;
+      applyInert();
+    });
+    stripWatch.observe(root, { childList: true, subtree: true });
+  } else if (stripKeepers === 0 && stripWatch) {
+    stripWatch.disconnect();
+    stripWatch = null;
+    watchedStrip = null;
+  }
+}
+
 function setAppInert(on: boolean, keepsStrip = false) {
   inertCount = Math.max(0, inertCount + (on ? 1 : -1));
   if (keepsStrip) stripKeepers = Math.max(0, stripKeepers + (on ? 1 : -1));
   applyInert();
+  watchStrip();
 }
 
 /** Keeps a component mounted while its exit animation runs. */
@@ -250,14 +273,25 @@ export function Overlay({ open, onClose, placement, label, labelledBy, initialFo
   // covers what is above the strip (the header's inert controls), by `--strip-top` and `--strip-bottom`.
   useLayoutEffect(() => {
     const frame = frameRef.current;
-    const first = keepLiveStrip && open && mounted ? liveStrip() : null;
     const clear = () => { for (const name of ['top', '--strip-top', '--strip-bottom', '--strip-left', '--strip-right']) frame?.style.removeProperty(name); };
-    if (!frame || !first) { clear(); return; }
-    const parent = first.parentElement;
+    if (!frame || !keepLiveStrip || !open || !mounted) { clear(); return; }
     const observer = new ResizeObserver(() => place());
+    // The strip whose surroundings are watched; it may not exist yet when the surface opens (a session started from
+    // Details, #763 P2-1) and then arrives under it.
+    let watched: HTMLElement | null | undefined;
+    function watch(strip: HTMLElement | null) {
+      if (strip === watched) return;
+      watched = strip;
+      observer.disconnect();
+      if (!strip) return;
+      observer.observe(strip);
+      // A move comes from a change above the strip as much as from the strip itself: watch its siblings too.
+      for (const sibling of strip.parentElement?.children ?? []) observer.observe(sibling);
+    }
     function place() {
       const strip = liveStrip();
       if (!frame) return;
+      watch(strip);
       if (!strip) {
         // Leave took the strip (and the focused button) away: the sheet takes the whole screen and the focus.
         clear();
@@ -270,14 +304,15 @@ export function Overlay({ open, onClose, placement, label, labelledBy, initialFo
       frame.style.setProperty('--strip-top', `${Math.max(0, Math.round(box.top))}px`);
       frame.style.setProperty('--strip-left', `${Math.round(box.left)}px`);
       frame.style.setProperty('--strip-right', `${Math.round(box.right)}px`);
-      observer.observe(strip);
     }
     place();
-    // A move comes from a change above the strip as much as from the strip itself: watch its siblings, the strip
-    // going or coming, and the window.
-    for (const sibling of parent?.children ?? []) observer.observe(sibling);
-    const changes = new MutationObserver(place);
-    if (parent) changes.observe(parent, { childList: true });
+    // The strip going or coming, anything entering beside it, and the window.
+    const changes = new MutationObserver((records) => {
+      const strip = liveStrip();
+      if (strip !== watched || (strip && records.some((record) => record.target === strip.parentElement))) place();
+    });
+    const root = document.getElementById('root');
+    if (root) changes.observe(root, { childList: true, subtree: true });
     window.addEventListener('resize', place);
     return () => { observer.disconnect(); changes.disconnect(); window.removeEventListener('resize', place); };
   }, [keepLiveStrip, open, mounted]);

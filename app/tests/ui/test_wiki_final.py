@@ -261,9 +261,10 @@ class WikiFinal(unittest.TestCase):
                     expect(dialog.get_by_role("button", name="Details, goal and people")).to_be_visible()
                     page.keyboard.press("Escape")
                     page.set_viewport_size(PHONE)
-                # Edit is the one primary action: the primary pill, never the page's own surface.
-                look = edit.evaluate("e => { const c = getComputedStyle(e); return [c.backgroundColor, c.backgroundImage, c.color, getComputedStyle(document.documentElement).getPropertyValue('--inv').trim()]; }")
-                self.assertNotEqual(look[1], "none", "the primary gradient")
+                # Edit is the page's one action: a soft fill (quiet buttons, #763), never the dark primary nor the page's own surface.
+                look = edit.evaluate("e => { const c = getComputedStyle(e); const p = document.createElement('i'); p.style.background = 'var(--inv)'; document.body.append(p); const inv = getComputedStyle(p).backgroundColor; p.remove(); return [c.backgroundColor, c.backgroundImage, c.color, inv]; }")
+                self.assertEqual(look[1], "none", "flat, no gradient")
+                self.assertNotEqual(look[0], look[3], "not the dark primary")
                 self.assertNotEqual(look[0], page.evaluate("getComputedStyle(document.body).backgroundColor"))
                 self.assertNotEqual(look[0], "rgba(0, 0, 0, 0)")
                 shot(page, f"wiki-final-phone-390-{theme}")

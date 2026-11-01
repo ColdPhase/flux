@@ -184,7 +184,7 @@ body:has(.app) { background: var(--side); }
 .side__ib { position: relative; display: grid; place-items: center; width: 40px; height: 40px; border-radius: var(--r-pill); color: var(--t2); transition: var(--tr); }
 .side__ib:hover { background: var(--hov); color: var(--t1); }
 .side__ib[aria-current="page"] { background: var(--el); color: var(--t1); box-shadow: var(--sh-1); }
-.side__count--rail { position: absolute; top: 0; right: -2px; margin: 0; min-width: 18px; height: 18px; padding: 0 5px; }
+.side__count--rail { position: absolute; top: 0; right: 0; margin: 0; min-width: 18px; height: 18px; padding: 0 5px; }
 .side__rail-project { position: relative; display: grid; place-items: center; width: 36px; height: 36px; border-radius: 10px; text-decoration: none; }
 .side__rail-project.is-open { background: var(--el); box-shadow: var(--sh-1); }
 /* The same traveling highlight as the expanded list's (#155): one tile-sized mark that moves to the chosen project while it loads. */
@@ -307,7 +307,7 @@ a.me__item { text-decoration: none; }
 .top--row.top--focus .top__title { flex: 1; }
 .top__views { flex: 0 1 auto; }
 /* "N needs you" is a quiet text link (direction C, #763, 2026-10-31). */
-.top__needs { display: inline-flex; align-items: center; height: 24px; padding: 0 4px; border-radius: 6px; background: transparent; color: var(--t1);
+.top__needs { display: inline-flex; align-items: center; height: var(--ctl); padding: 0 4px; border-radius: 6px; background: transparent; color: var(--t1);
   font-size: var(--fs-md); font-weight: 500; white-space: nowrap; cursor: pointer; transition: var(--tr); }
 .top__needs:hover { text-decoration: underline; text-underline-offset: 3px; }
 .top__needs[aria-expanded="true"] { text-decoration: underline; text-underline-offset: 3px; }
@@ -338,6 +338,8 @@ a.me__item { text-decoration: none; }
 .top__focus { display: inline-flex; align-items: center; gap: 8px; }
 .top__focus-pill { height: 28px; padding: 0 12px; gap: 6px; font-weight: 600; cursor: pointer; }
 @media (pointer: coarse) { .top__needs, .top__focus-pill { min-height: 44px; } .top__audience.top__faces { min-height: 44px; } }
+/* 641–680 px (the drawer, e.g. a Fold 5 unfolded): the project header's 22 px audience line must not shrink the faces control (#763). */
+@media (pointer: coarse) and (min-width: 641px) { header.top .top__audience.top__faces { min-height: 44px; } }
 /* Spokój rule 3: the header is one row at every width, with the panel open or closed (the panel sits under it).
    When the views leave too little room, the people and Together move into "⋯"; the views and More stay put. */
 .top__more-narrow { display: none; }
@@ -487,6 +489,8 @@ a.me__item { text-decoration: none; }
 .details__actions { display: flex; gap: 8px; }
 .details__keys { margin-top: 32px; padding-top: 12px; border-top: 1px solid var(--line); font-size: var(--fs-xs); color: var(--t3); }
 kbd { display: inline-grid; place-items: center; min-width: 18px; height: 18px; padding: 0 4px; border-radius: 4px; box-shadow: inset 0 0 0 1px var(--line2); font: 500 var(--fs-xs)/1 var(--mono); color: var(--t2); }
+/* A key hint on the dark primary ("Allow and hand off  Ctrl ↵") takes the button's own ink (#763). */
+.ui-btn--primary kbd { background: color-mix(in srgb, var(--oninv) 16%, transparent); box-shadow: none; color: inherit; }
 
 /* ---------- ≤680: the sidebar becomes a 260px drawer on the chrome ---------- */
 .ui-overlay--left .nav-drawer { width: min(260px, 100%); background: var(--side); }
@@ -593,7 +597,8 @@ kbd { display: inline-grid; place-items: center; min-width: 18px; height: 18px; 
 .phead__right { display: flex; align-items: center; gap: 8px; flex: none; }
 .phead__right > .top__actions:empty { display: none; }
 .phead__round.ui-icon-btn, .phead__avatar {
-  width: 44px; height: 44px; border-radius: 50%; background: var(--el); color: var(--t1); box-shadow: var(--sh-card);
+  /* Flat, as every button in direction C (#763): the fill alone sets it off the page. */
+  width: 44px; height: 44px; border-radius: 50%; background: var(--el); color: var(--t1); box-shadow: none;
   display: inline-grid; place-items: center;
 }
 .phead__avatar { text-decoration: none; }
@@ -645,8 +650,11 @@ kbd { display: inline-grid; place-items: center; min-width: 18px; height: 18px; 
 }
 @media (max-width: 640px) {
   .app__main { position: relative; }
-  /* Room under the work for the "+" that floats above the capsule. */
+  /* Room under the work for the "+" that floats above the capsule. A scrolling page keeps that room at the end of its
+     scroll instead, so its content runs on under the "+" rather than stopping at a hard line above it (#763). */
   .app--fab .app__pane { padding-bottom: 64px; }
+  .app--fab .app__pane:has(.pane-scroll) { padding-bottom: 0; }
+  .app--fab .app__pane .pane-scroll:not(.pane-scroll .pane-scroll) { padding-bottom: 72px; scroll-padding-bottom: 72px; }
 }
 /* The view menu: a card under the header. */
 .ui-overlay--center .phone-menu { top: calc(64px + env(safe-area-inset-top)); width: calc(100% - 24px); max-height: calc(100dvh - 96px); border-radius: 26px; padding: 18px 8px 8px; overflow-y: auto; }
@@ -693,6 +701,10 @@ kbd { display: inline-grid; place-items: center; min-width: 18px; height: 18px; 
 .top--bare .top__title { position: static; min-width: 0; }
 .top--bare .top__title h1 { position: absolute; width: 1px; height: 1px; min-width: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 .top--bare .top__topic, .top--bare .top__crumb, .top--bare .top__slash, .top--bare .top__right { display: none; }
+/* During a live session Home is a header row again, so the strip keeps the place it has everywhere else on the
+   computer and the tablet (Spokój: a control keeps its place, #763) instead of jumping 64 px up on Home. */
+.top.top--bare:has(~ .lv-bar:not(.lv-bar--invite, .lv-bar--ended)) { height: auto; min-height: 64px; padding: 12px 16px 12px 20px; border-bottom: 1px solid var(--line); }
+.top.top--bare:has(~ .lv-bar:not(.lv-bar--invite, .lv-bar--ended)) .top__title h1 { position: static; width: auto; height: auto; overflow: hidden; clip-path: none; }
 /* On touch, the "Create an account" style link under the form gets a 44 px tall hit area without moving the text (#434). */
 @media (pointer: coarse) {
   .auth__alt .ui-link { position: relative; }

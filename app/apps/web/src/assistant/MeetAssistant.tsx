@@ -33,7 +33,7 @@ export function MeetAssistantCard({ userId }: { userId: string }) {
         <p className="home__sub">{plan ? 'It works inside Flux with the Claude or ChatGPT plan you already have.' : 'It works inside Flux with your AI account.'}</p>
       </div>
       <div className="home__meet-a">
-        <Link className="ui-btn ui-btn--primary" to="/settings/assistant">Set up</Link>
+        <Link className="ui-btn ui-btn--soft" to="/settings/assistant">Set up</Link>
         <Button variant="quiet" onClick={() => { try { localStorage.setItem(key(userId), '1'); } catch { /* shown again next time */ } setHidden(true); }}>Not now</Button>
       </div>
     </section>

@@ -96,14 +96,17 @@ export function WaitingLine({ item }: { item: NeedsYouItem }) {
   const decision = item.decision;
   if (!decision) return null;
   const you = decision.accepters.find((person) => person.you);
-  const others = decision.accepters.filter((person) => !person.you);
-  const names = others.length > 2 ? `${others.slice(0, 2).map((person) => person.name).join(', ')} and ${others.length - 2} more` : others.map((person) => person.name).join(' and ');
+  const others = [...new Map(decision.accepters.filter((person) => !person.you).map((person) => [person.id, person])).values()];
+  // Two people may share a name: the line names two different names and counts everyone else, never "Basia, Basia" (#763).
+  const named = [...new Map(others.map((person) => [person.name, person])).values()].slice(0, 2);
+  const rest = others.length - named.length;
+  const names = rest > 0 ? `${named.map((person) => person.name).join(', ')} and ${rest} more` : named.map((person) => person.name).join(' and ');
   return (
     <span className="nyc__waiting">
-      {others.slice(0, 2).map((person) => <Avatar key={person.id} name={person.name} size="sm" />)}
-      {others.length ? <span>{names} can accept too</span> : null}
-      {others.length && you ? <span aria-hidden="true">·</span> : null}
-      {you ? <><Avatar name={you.name} size="sm" tone="me" /><b>waiting for you</b></> : null}
+      {named.map((person) => <Avatar key={person.id} name={person.name} size="sm" />)}
+      {/* The separator ends the first part, so a wrap never starts the next line with a lone "·". */}
+      {others.length ? <span>{names} can accept too{you ? <span aria-hidden="true"> ·</span> : null}</span> : null}
+      {you ? <span className="nyc__waiting-you"><Avatar name={you.name} size="sm" tone="me" /><b>waiting for you</b></span> : null}
     </span>
   );
 }
@@ -130,11 +133,14 @@ export function NeedsYouCard({ item, variant = 'card', selected = false, compact
   const anchors = useMemo(() => [notNow, trayNotNow], []);
   const pop = usePop(menuOpen);
   const decision = item.kind === 'decision';
-  const project = item.project?.name ?? null;
+  // A phone's one-line card has no room for the project: its title keeps the width, and the open card names the project (#763).
+  const phone = useMediaQuery(MEDIA.phone);
+  const short = compact && phone;
+  const project = short ? null : item.project?.name ?? null;
   const identity = item.assistantRequestIdentity;
   const label = identity ? `${KIND_WORD[item.kind]}: ${identity.assistantName}, Agent for ${identity.ownerName}: ${item.title}` : `${KIND_WORD[item.kind]}: ${item.title}`;
   const meta = (identity ? [`for ${identity.ownerName}`, KIND_WORD[item.kind], project]
-    : decision ? ['Proposed decision', project] : item.kind === 'blocked' ? [item.blocked?.waitedBy ? 'Waiting on you' : 'Your task', project, ago(item.at)] : [KIND_WORD[item.kind], project]).filter(Boolean).join(' · ');
+    : decision ? [short ? 'Decision' : 'Proposed decision', project] : item.kind === 'blocked' ? [item.blocked?.waitedBy ? 'Waiting on you' : 'Your task', project, ago(item.at)] : [KIND_WORD[item.kind], project]).filter(Boolean).join(' · ');
   const who = item.from?.name ?? null;
   const asked = item.agentQuestion ?? null;
   // An agent's question names the task it is about, as drawn ("Claude Code · Agent · on #8").
