@@ -17,8 +17,8 @@
 # The candidate is checked out once as a detached, clean worktree in .worktrees/acceptance-<sha12> (never /tmp,
 # which is RAM on the maintainers' hosts) and every step runs the CANDIDATE's own scripts there. Steps run one at
 # a time: concurrent Docker suites cause timeouts and false failures. Ports come from FLUX_ACCEPTANCE_PORT_BASE
-# (default 34000, next 99 ports), so a running ./flux dev stack is not touched. The VAPID variables of a dev
-# docker/.env are blanked. FLUX_ACCEPTANCE_OFFLINE=1 skips the steps that download the pinned real CLIs.
+# (default 34000, next 99 ports), so a running ./flux dev stack is not touched. The FLUX_VAPID_* variables
+# are unset. FLUX_ACCEPTANCE_OFFLINE=1 skips the steps that download the pinned real CLIs.
 # FLUX_DRYRUN_PLATFORMS / FLUX_DRYRUN_SMOKE_PLATFORM pass through to the release dry run (arm64 needs QEMU).
 #
 # Exit status: 0 when every selected step passed, 1 when one failed, 2 on a usage or checkout error.
@@ -126,8 +126,9 @@ mkdir -p "$out"
 status_file="$out/status.tsv"
 [ "$resume" = 1 ] && [ -f "$status_file" ] || printf 'step\tresult\tseconds\tstarted_utc\trows\n' > "$status_file"
 
-# Isolation from a developer's ./flux dev stack and docker/.env (VAPID leaks into check runs).
-export FLUX_VAPID_PUBLIC_KEY='' FLUX_VAPID_PRIVATE_KEY='' FLUX_VAPID_SUBJECT=''
+# Isolation from a developer's ./flux dev stack (VAPID leaks into check runs). Unset, not blank: an exported
+# empty value overrides the keys the launcher and backup checks generate into their own .env files.
+unset FLUX_VAPID_PUBLIC_KEY FLUX_VAPID_PRIVATE_KEY FLUX_VAPID_SUBJECT
 export FLUX_TEST_PORT=$((port)) FLUX_TEST_MAILPIT_PORT=$((port + 1))
 export FLUX_UI_PORT=$((port + 2)) FLUX_UI_MAILPIT_PORT=$((port + 3))
 export FLUX_RUNTIME_TEST_PORT=$((port + 4)) FLUX_OPERATOR_TEST_PORT=$((port + 5))

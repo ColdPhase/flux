@@ -49,7 +49,7 @@ docker build -q -f docker/Dockerfile -t "$image" app >/dev/null ||
   docker build -q -f docker/Dockerfile -t "$image" app >/dev/null
 
 count=$(grep -c "image: $marker\$" docker/compose.yaml) || true
-[ "$count" = 3 ] || fail "expected the release marker on 3 services, found $count"
+[ "$count" = 4 ] || fail "expected the release marker on 4 services (migrate, api, worker, keyring), found $count"
 sed "s#$marker#$image#" docker/compose.yaml > "$compose_file"
 ! grep -v '^ *#' "$compose_file" | grep -q RELEASE_DIGEST || fail "marker left in the temporary Compose file"
 
