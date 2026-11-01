@@ -117,15 +117,17 @@
 .sset-in .nset__head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
 .sset-in .nset__sec { padding: 0; border: 0; }
 .sset-in .nset__sec h3.sset-sec { margin-top: 30px; }
-.nset__matrix { padding: 10px 18px 4px; }
-.nset__box { padding: 14px 18px 16px; }
+/* On .sset-card too: settings.css (padding: 0) loads after this file on a direct visit, and one class each lost to it, so the
+   per-kind matrix and the boxes ran to the card's edge (found while recording the README media, #780). */
+.sset-card.nset__matrix { padding: 10px 18px 4px; }
+.sset-card.nset__box { padding: 14px 18px 16px; }
 .nset__box .nset__extra, .nset__box .nset__add { margin-top: 14px; }
 .nset__group .nset__times { margin: 0; padding: 0 18px 14px; }
 .nset__zone-note { align-self: end; padding-bottom: 8px; font-size: var(--fs-xs); color: var(--t3); }
 @media (max-width: 640px) {
   .sset-in .nset__head { position: static; pointer-events: auto; }
-  .nset__matrix { padding: 6px 12px 2px; }
-  .nset__box { padding: 12px 16px 14px; }
+  .sset-card.nset__matrix { padding: 6px 12px 2px; }
+  .sset-card.nset__box { padding: 12px 16px 14px; }
   .nset__group .nset__times { padding: 0 16px 14px; }
 }
 

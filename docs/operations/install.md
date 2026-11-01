@@ -16,8 +16,6 @@ When a release is published, the release path runs the same services from a sign
 Check the [requirements](requirements.md) first: a Linux host with Docker Engine and the Compose
 plugin, 4 GB of memory, and a DNS name pointing at the host.
 
-<!-- MEDIA SLOT (#780, after #763 round 2): screenshot of the first sign-up page at https://flux.example.org, light and dark. -->
-
 ## Production installation from a source checkout
 
 The example uses `/srv/flux` and `https://flux.example.org`; replace both.
@@ -97,6 +95,15 @@ Caddy obtains and renews the certificate itself. [nginx](reverse-proxy.md#nginx)
 Open `https://flux.example.org` and sign up. The first project you create also creates your first
 space (workspace), and you are its owner.
 
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="../assets/screens/signup-dark.webp">
+    <img src="../assets/screens/signup-light.webp" width="460" alt="The sign-up page of a new instance: Create your Flux account, with Name, Email and Password fields and a Create account button.">
+  </picture>
+</p>
+
+<p align="center"><sub>The sign-up page, in the light and the dark theme your browser asks for.</sub></p>
+
 Check that email works:
 
 ```sh
@@ -132,7 +139,14 @@ send them an invite link, and set it back to `off` with `./flux up` once they ha
 `./flux up`, create the account, then close it again. Flux has no command that creates an account or
 sets a password.
 
-<!-- MEDIA SLOT (#780, after #763 round 2): short video of sign-up, first project and copying an invite link. -->
+After you sign up, **New project** asks for one name (the people and agents come later). To bring in the
+rest of the team, open **Settings → People** and create an invite link
+([administration](administration.md#invite-links)):
+
+<p align="center">
+  <img src="../assets/screens/first-project.webp" width="49%" alt="The New project page: a Project name field, four starting points (Build something, Research, Plan an event, Blank) and a Create project button.">
+  <img src="../assets/screens/invite-link.webp" width="42%" alt="Invite with a link in Settings, People: Joins as Member, Works for 7 days, the Create invite link button and the link it made, with a Copy link button.">
+</p>
 
 ### 6. Finish the server
 
