@@ -389,6 +389,14 @@ build. Set `FLUX_UI_SCREENSHOT_DIR` to an absolute path (for example
 `FLUX_UI_MAILPIT_PORT` to avoid clashes with a concurrent run. It is kept separate from
 `check_application.sh` so the PR check stays fast.
 
+`./scripts/visual_audit.sh [output-dir]` is the visual consistency audit (#763), outside both suites. On the
+`./flux demo` data plus more multi-user content, it visits every screen and state at 360, 390, 430, 820, 1440 and
+1920 px, light and dark, in Chromium and WebKit, and measures every control. It flags rows of controls with different
+heights, buttons off `--ctl`, more than one inverted button in a region, type off the tokens, radii, clipped or covered
+content, uneven gaps, mixed icons and low contrast. It writes `findings.md`, annotated screenshots and contact sheets
+(default `visual-audit/`, ignored by git) and never fails on findings. `FLUX_AUDIT_SCREENS`, `FLUX_AUDIT_VIEWPORTS`,
+`FLUX_AUDIT_THEMES` and `FLUX_AUDIT_BROWSERS` narrow a run; see `app/tests/ui/visual_consistency_audit.py`.
+
 UI modules that stub responses with `page.route` or `context.route` create every browser context
 with `service_workers="block"`. A controlling service worker can send requests that those routes do
 not see (#297 measured it in `test_agents_view` test_04d), so a stub would answer some runs and not
