@@ -343,10 +343,10 @@ a.me__item { text-decoration: none; }
 /* 641–680 px (the drawer, e.g. a Fold 5 unfolded): the project header's 22 px audience line must not shrink the faces control (#763). */
 @media (pointer: coarse) and (min-width: 641px) { header.top .top__audience.top__faces { min-height: 44px; } }
 /* Spokój rule 3: the header is one row at every width, with the panel open or closed (the panel sits under it).
-   When the views leave too little room, the people and Together move into "⋯"; the views and More stay put. In em (860 px
-   at the default size), so larger text moves them sooner instead of pushing the header past its edge (#763). */
+   When the views leave too little room, the people and Together move into "⋯"; the views and More stay put. In rem (860 px
+   at the default text size), so larger text moves them sooner instead of pushing the header past its edge (#763). */
 .top__more-narrow { display: none; }
-@container main (max-width: 53.75em) {
+@container main (max-width: 53.75rem) {
   .top--row:has(> .top__views) .top__right > :is(.top__faces, .lv-entry) { display: none; }
   .top--row:has(> .top__views) .top__more-narrow { display: flex; }
 }
