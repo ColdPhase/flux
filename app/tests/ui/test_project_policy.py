@@ -313,6 +313,8 @@ class ProjectPolicyJourney(unittest.TestCase):
         # published later continues from the revision the lost publish made, not as a conflict with oneself.
         base = saved["revision"]
         page = self.open_agents("hubert")
+        # Flux goes unreachable once the policy is on screen: its first read is not one of the lost answers.
+        expect(self.policy(page).get_by_role("button", name="Show policy")).to_be_visible()
         self.lose_answers(page, state := {"lose": 1, "offline": True})
         policy = self.policy(page)
         policy.get_by_role("button", name="Show policy").click()

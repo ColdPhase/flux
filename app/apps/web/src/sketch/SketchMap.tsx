@@ -628,7 +628,10 @@ export function SketchMap(props: SketchMapProps) {
   // The first-run hint floats over the canvas above the dock; where a thought lies under it (a card at the bottom of the
   // view, as at 1440×900 opening at 90%), it steps aside, so it never sits on a card's text. Checked after a scroll,
   // a resize or a change of the thoughts, a frame later. The hint sits inside the status line (`.sk-dock > .sk-line`,
-  // #757); the drag hint, a direct child of the dock, is feedback for a gesture in progress and stays.
+  // #757); the drag hint, a direct child of the dock, is feedback for a gesture in progress and stays. The listeners are set up
+  // once per layout; a change of the thoughts or the zoom only asks for the check, so a peer's live preview (a new `rects` on
+  // every frame) never observes the canvas and the dock again (#228 Gate 4).
+  const hintCheck = useRef<() => void>(() => undefined);
   useEffect(() => {
     const canvas = canvasRef.current;
     const dock = dockRef.current;
@@ -646,13 +649,15 @@ export function SketchMap(props: SketchMapProps) {
       if (over) hint.setAttribute('data-over-card', ''); else hint.removeAttribute('data-over-card');
     };
     const later = () => { if (!frame) frame = requestAnimationFrame(check); };
+    hintCheck.current = later;
     later();
     canvas.addEventListener('scroll', later, { passive: true });
     const observer = new ResizeObserver(later);
     observer.observe(canvas);
     observer.observe(dock);
-    return () => { if (frame) cancelAnimationFrame(frame); canvas.removeEventListener('scroll', later); observer.disconnect(); };
-  }, [compact, rects, zoom]);
+    return () => { hintCheck.current = () => undefined; if (frame) cancelAnimationFrame(frame); canvas.removeEventListener('scroll', later); observer.disconnect(); };
+  }, [compact]);
+  useEffect(() => { hintCheck.current(); }, [rects, zoom]);
   // #509 AC-3: Ctrl/⌘ + wheel (a trackpad pinch arrives the same way) zooms smoothly around the
   // pointer; a plain wheel or two-finger scroll pans natively. React's wheel listener is passive, and
   // the zoom must be cancellable to replace the browser's page zoom.

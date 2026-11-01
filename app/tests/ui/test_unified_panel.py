@@ -207,7 +207,7 @@ class UnifiedPanel(unittest.TestCase):
                 actions = panel.get_by_role("group", name="Task actions")
                 for name in ("Hand off to an agent", "Attach a result", "Link thought"):
                     box = actions.get_by_role("button", name=name).bounding_box()
-                    self.assertAlmostEqual(box["height"], 30, delta=1, msg=f"{name} is a small 30px action")
+                    self.assertAlmostEqual(box["height"], 32, delta=1, msg=f"{name} is a small action at the 32 px control height (#789)")
                 # Empty sections are not shown, a single page has no pagination, and nothing is a select.
                 for gone in ("Results", "Decisions", "In docs", "Linked thoughts"):
                     expect(panel.get_by_role("heading", name=gone)).to_have_count(0)

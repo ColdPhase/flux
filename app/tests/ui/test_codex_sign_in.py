@@ -21,6 +21,10 @@ from playwright.sync_api import Browser, BrowserContext, Page, expect, sync_play
 from test_app_shell import DESKTOP, ORIGIN, PHONE, UPSTREAM, shot, start_forwarder
 
 UI_BROWSER = os.environ.get("FLUX_UI_BROWSER", "chromium")
+# WebKit has no clipboard permission to grant (Playwright: "Unknown permission: clipboard-write"): there the page's clipboard is a
+# recorder that keeps what was written, so the test reads back exactly what the page copied.
+CLIPBOARD_RECORDER = """(() => { let text = ''; Object.defineProperty(navigator, 'clipboard', { configurable: true, value: {
+  writeText: async (value) => { text = String(value); }, readText: async () => text } }); })()"""
 PASSWORD = "a chatgpt sign in of mine"
 STAMP = int(time.time() * 1000)
 ADA = {"name": "Ada Codex", "email": f"ada.codex+{STAMP}@example.test"}
@@ -164,7 +168,10 @@ class CodexSignIn(unittest.TestCase):
 
     def test_04_copy_and_open_opens_chatgpt_and_copies_the_code(self) -> None:
         page, _ = self.stubbed(phone=False, script=[{"t": "state", "state": "running"}, {"t": "device", "url": "https://auth.openai.com/codex/device", "code": CODE}])
-        page.context.grant_permissions(["clipboard-read", "clipboard-write"], origin=ORIGIN)
+        if UI_BROWSER == "webkit":
+            page.context.add_init_script(CLIPBOARD_RECORDER)
+        else:
+            page.context.grant_permissions(["clipboard-read", "clipboard-write"], origin=ORIGIN)
         # The vendor's page is stubbed: no request leaves the test.
         page.context.route("https://auth.openai.com/**", lambda route: route.fulfill(status=200, content_type="text/html", body="<title>stub</title>"))
         page.goto("/settings/agents/codex")
@@ -211,7 +218,7 @@ class CodexSignIn(unittest.TestCase):
         for dark in (False, True):
             page, _ = self.stubbed(phone=True, script=[], status=SIGNED_IN, dark=dark)
             page.goto("/settings/agents")
-            block = page.get_by_label("Codex in Flux")
+            block = page.get_by_label("Codex in Flux", exact=True)
             expect(block).to_contain_text("Codex in Flux · signed in")
             expect(block).to_contain_text("ChatGPT · your subscription")
             expect(block.get_by_role("button", name="Sign out of ChatGPT")).to_be_visible()

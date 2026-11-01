@@ -133,6 +133,13 @@ class WorkingAgentJourney(unittest.TestCase):
         return page, {"email": email, "user": me["user"]["id"], "workspace": ws["id"], "project": project["id"], "conversation": conversation["id"]}
 
     def start(self, page: Page, ids: dict, delay: float = 15) -> dict:
+        # The worker takes one personal run at a time: an earlier subtest's run, still held by the mock for its delay,
+        # would keep this one queued. Each run is stopped before the next starts (the cleanups run only after the test).
+        pending = self.__dict__.setdefault("_runs_to_stop", [])
+        if not pending:
+            self.addCleanup(lambda: [pending.pop(0)() for _ in list(pending)])
+        while pending:
+            pending.pop(0)()
         mock("/__script", {"reset": True, "delay": delay})
         run = self.api(page, "POST", f"/api/v1/conversations/{ids['conversation']}/assistant-runs", {
             "clientRunId": str(uuid.uuid4()), "kind": "ask", "prompt": "Compare the garden readings before tomorrow's sensor test."}, 202)
@@ -147,7 +154,7 @@ class WorkingAgentJourney(unittest.TestCase):
                 self.assertEqual(ended.status, 200)
             finally:
                 request.dispose()
-        self.addCleanup(cleanup_run)
+        pending.append(cleanup_run)
         page.evaluate("window.dispatchEvent(new Event('focus'))")
         expect(page.locator(".agentlive")).to_be_visible()
         self.wait_run(page, run["id"], lambda current: current["status"] == "dispatching")
@@ -214,6 +221,8 @@ class WorkingAgentJourney(unittest.TestCase):
                     rail = page.locator(".side--rail")
                     expect(rail).to_be_visible()
                     side = page.get_by_role("complementary", name="Sidebar")
+                    # The aside's width animates into the rail (SizeSwap, #720/#722): measure it once that has finished.
+                    side.evaluate("el => Promise.all(el.getAnimations().map((animation) => animation.finished.catch(() => null)))")
                     self.assertAlmostEqual(side.bounding_box()["width"], 64, delta=.001)
                     card = rail.locator(".agentlive")
                     link = card.get_by_role("link")

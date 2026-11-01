@@ -281,8 +281,9 @@ class SmallMomentsJourney(unittest.TestCase):
         self.ensure_account()
         page = self.page(phone=True)
         page.goto("/tasks")
-        # The header names the page "Your tasks" (#763 NV-1) beside the list's own heading.
-        expect(page.get_by_role("heading", name=re.compile("Your tasks|Nothing is waiting for you")).first).to_be_visible()
+        # The header names the page "Your tasks" (#763 NV-1) at once; the pull belongs to the list, so wait for the list's own
+        # heading (level 2), not the header's, before the gesture.
+        expect(page.get_by_role("heading", level=2, name=re.compile("Your tasks|Nothing is waiting for you")).first).to_be_visible()
         reads = []
         page.on("request", lambda request: reads.append(request.url) if "/work" in request.url else None)
         cdp = page.context.new_cdp_session(page)
@@ -357,8 +358,9 @@ class SmallMomentsJourney(unittest.TestCase):
         self.ensure_account()
         page = self.page(phone=True)
         page.goto("/tasks")
-        # The header names the page "Your tasks" (#763 NV-1) beside the list's own heading.
-        expect(page.get_by_role("heading", name=re.compile("Your tasks|Nothing is waiting for you")).first).to_be_visible()
+        # The header names the page "Your tasks" (#763 NV-1) at once; the pull belongs to the list, so wait for the list's own
+        # heading (level 2), not the header's, before the gesture.
+        expect(page.get_by_role("heading", level=2, name=re.compile("Your tasks|Nothing is waiting for you")).first).to_be_visible()
         page.wait_for_load_state("networkidle")
         reads: list[str] = []
         page.on("request", lambda request: reads.append(request.url) if "/work" in request.url else None)

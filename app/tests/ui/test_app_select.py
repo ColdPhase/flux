@@ -2,8 +2,8 @@
 
 Runs with the other tests/ui modules through scripts/check_ui.sh against the running Compose application.
 A native <select> opens the system's list, which ignores the Prostota tokens, the dark theme and the phone sheet.
-Nia has two projects; the search page's Place filter and the Create window's Project field are two of the places
-that use the shared select. The tests check what a person and a screen reader meet: the combobox and listbox
+Nia has two projects; the search page's Place filter, Settings' Place to mute and the Create window's Project field
+are places that use the shared select (the phone's /search is its one search sheet, without a Place select, #763 SE-2). The tests check what a person and a screen reader meet: the combobox and listbox
 semantics, every key of the select-only combobox pattern, that opening never moves a control, that it works inside
 a dialog (Esc closes the list, not the dialog), that it is the same bottom sheet as the other menus on a phone, the
 tokens in both themes, and axe. FLUX_UI_BROWSER selects chromium (default) or webkit.
@@ -86,6 +86,14 @@ class AppSelect(unittest.TestCase):
         page = self.page(**kwargs)
         page.goto("/search?q=lamp")
         place = page.get_by_role("combobox", name="Place")
+        expect(place).to_be_visible()
+        return page, place
+
+    def mute(self, **kwargs):
+        """Settings' "Place to mute": the same select at every width (the search page's Place filter is the computer's only)."""
+        page = self.page(**kwargs)
+        page.goto("/settings/notifications")
+        place = page.get_by_role("combobox", name="Place to mute", exact=True)
         expect(place).to_be_visible()
         return page, place
 
@@ -403,9 +411,9 @@ class AppSelect(unittest.TestCase):
     # ---------------------------------------------------------------- the phone
 
     def test_12_on_a_phone_it_is_the_same_bottom_sheet_as_the_other_menus(self) -> None:
-        page, place = self.search(phone=True)
+        page, place = self.mute(phone=True)
         place.tap()
-        sheet = page.get_by_role("dialog", name="Place")
+        sheet = page.get_by_role("dialog", name="Place to mute")
         expect(sheet).to_be_visible()
         box = listbox_of(place)
         expect(box).to_be_focused()
@@ -428,13 +436,13 @@ class AppSelect(unittest.TestCase):
         expect(place).to_be_focused()
         # A tap on an option chooses it; the scrim and Esc close without choosing.
         place.tap()
-        listbox_of(place).get_by_role("option", name="Only you", exact=True).tap()
-        expect(place).to_have_text("Only you")
+        listbox_of(place).get_by_role("option", name="# Gesture lamp", exact=True).tap()
+        expect(place).to_have_text("# Gesture lamp")
         place.tap()
         expect(sheet).to_be_visible()
         page.mouse.click(PHONE["width"] // 2, 40)
         expect(sheet).to_have_count(0)
-        expect(place).to_have_text("Only you")
+        expect(place).to_have_text("# Gesture lamp")
         expect(place).to_be_focused()
         place.tap()
         expect(sheet).to_be_visible()
@@ -460,14 +468,14 @@ class AppSelect(unittest.TestCase):
         expect(project).to_contain_text("Studio notes")
 
     def test_13b_an_open_list_follows_the_window_between_popover_and_sheet(self) -> None:
-        page, place = self.search()
+        page, place = self.mute()
         place.click()
         expect(page.locator(".ui-select__pop")).to_be_visible()
         page.keyboard.press("ArrowDown")
         page.keyboard.press("ArrowDown")
         # Narrowing to phone width turns the open popover into the phone's sheet, with the same option under the arrows.
         page.set_viewport_size(PHONE)
-        sheet = page.get_by_role("dialog", name="Place")
+        sheet = page.get_by_role("dialog", name="Place to mute")
         expect(sheet).to_be_visible()
         expect(page.locator(".ui-select__pop")).to_have_count(0)
         expect(place).to_have_attribute("aria-expanded", "true")
@@ -483,7 +491,7 @@ class AppSelect(unittest.TestCase):
         # A closed select that meets a narrow window opens as the sheet.
         page.set_viewport_size(PHONE)
         place.click()
-        expect(page.get_by_role("dialog", name="Place")).to_be_visible()
+        expect(page.get_by_role("dialog", name="Place to mute")).to_be_visible()
         page.keyboard.press("Escape")
         expect(place).to_have_attribute("aria-expanded", "false")
 
@@ -512,11 +520,12 @@ class AppSelect(unittest.TestCase):
     def test_14_axe_finds_nothing_on_the_control_or_its_list_at_both_widths_in_both_themes(self) -> None:
         for phone, dark in ((False, False), (False, True), (True, False), (True, True)):
             with self.subTest(phone=phone, dark=dark):
-                page, place = self.search(phone=phone, dark=dark)
-                self.axe(page, "the closed select", ".search__place")
+                page, place = self.mute(phone=True, dark=dark) if phone else self.search(dark=dark)
+                scope = ".nset__mute" if phone else ".search__place"
+                self.axe(page, "the closed select", scope)
                 place.click()
                 expect(place).to_have_attribute("aria-expanded", "true")
-                self.axe(page, "the open select", ".search__place", ".ui-select__pop" if not phone else ".ui-select-sheet")
+                self.axe(page, "the open select", scope, ".ui-select__pop" if not phone else ".ui-select-sheet")
 
 
 if __name__ == "__main__":

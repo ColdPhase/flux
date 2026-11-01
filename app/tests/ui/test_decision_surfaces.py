@@ -52,10 +52,10 @@ MEASURE = """(root) => {
   }
   const box = (el) => { if (!el) return null; const r = el.getBoundingClientRect(); return { left: r.left, top: r.top, right: r.right, bottom: r.bottom }; };
   const q = (sel) => root.querySelector(sel);
-  const edge = root.getBoundingClientRect().left;
+  const edge = root.getBoundingClientRect().left, end = root.getBoundingClientRect().right;
   // The left edge of every kind of content the panel shows: eyebrow, title, rows, headings, text, buttons.
   const lefts = [];
-  const note = (name, el) => { if (el) lefts.push({ name, left: el.getBoundingClientRect().left - edge }); };
+  const note = (name, el) => { if (el) lefts.push({ name, left: el.getBoundingClientRect().left - edge, right: end - el.getBoundingClientRect().right, submit: !!el.closest('.wd-submit') }); };
   note('eyebrow', q('.details__eyebrow')); note('title', q('.details__title')); note('lead', q('.details__lead'));
   root.querySelectorAll('.wd-rows dt').forEach((el) => note('row ' + el.textContent.trim(), el));
   root.querySelectorAll('.details__sec > h4').forEach((el) => note('heading ' + el.textContent.trim(), el));
@@ -191,7 +191,11 @@ class DecisionSurfaces(unittest.TestCase):
                     self.assertAlmostEqual(above, below, delta=1, msg="sections are as far apart above the button as below its help")
                     self.assertEqual(m["paints"], [], "no element paints a background other than the panel's surface")
                     for part in m["lefts"]:
-                        self.assertAlmostEqual(part["left"], 0, delta=1, msg=f"{part['name']} starts on the panel's left edge")
+                        if part["submit"]:
+                            # A panel form's primary sits at the right, under the fields it sends (#789 SP-5).
+                            self.assertAlmostEqual(part["right"], 0, delta=1, msg=f"{part['name']} ends on the panel's right edge")
+                        else:
+                            self.assertAlmostEqual(part["left"], 0, delta=1, msg=f"{part['name']} starts on the panel's left edge")
 
     # ---------------------------------------------------------------- #693: surfaces and one left edge
 
