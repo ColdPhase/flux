@@ -224,6 +224,7 @@ class Screen:
     steps: list = field(default_factory=list)
     only: str = ""          # "", "phone" (touch windows) or "wide" (mouse windows)
     needs: tuple = ()       # ids that must exist
+    isolated: bool = False  # the state persists in the browser (a collapsed sidebar): measure it in its own context
 
 
 SCREENS = [
@@ -275,7 +276,7 @@ SCREENS = [
     Screen("palette", "/", steps=[("press", "Control+k"), ("wait", "[role='dialog'], [role='combobox']")], only="wide"),
     Screen("create", "/", steps=[("press", "c"), ("wait", "[role='dialog']")], only="wide"),
     Screen("create-phone", "/", steps=[("click", ".phone-fab"), ("wait", "[role='dialog']")], only="phone"),
-    Screen("sidebar-rail", "/", steps=[("press", "[")], only="wide"),
+    Screen("sidebar-rail", "/", steps=[("press", "[")], only="wide", isolated=True),
     Screen("new-project", "/projects/new"),
     Screen("settings", "/settings"),
     Screen("settings-appearance", "/settings/appearance"),
@@ -898,6 +899,8 @@ def measure_combo(pw, engine: str, theme: str, data: dict) -> None:
                     continue
                 base = OUT / "shots" / f"{engine}-{theme}-{vp}"
                 record = {"screen": screen.name, "engine": engine, "theme": theme, "vp": vp, "shot": str((base / f"{screen.name}.png").relative_to(OUT))}
+                if screen.isolated and screen.who in contexts:
+                    contexts.pop(screen.who).close()
                 page = context_for(screen.who).new_page()
                 errors: list[str] = []
                 page.on("pageerror", lambda error: errors.append(str(error)[:200]))
@@ -949,6 +952,8 @@ def measure_combo(pw, engine: str, theme: str, data: dict) -> None:
                       + (f" UNREACHABLE {record['unreachable']}" if record.get("unreachable") else "")
                       + (f" FAILED {record['failed']}" if record.get("failed") else ""), flush=True)
                 page.close()
+                if screen.isolated:
+                    contexts.pop(screen.who).close()
             for c in contexts.values():
                 c.close()
     browser.close()
