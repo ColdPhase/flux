@@ -27,6 +27,16 @@
 
 <p align="center">
   <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/assets/promo/flux-promo-dark.svg">
+    <img src="docs/assets/promo/flux-promo-light.svg" width="100%" alt="A short looping animation of a Flux project, Community garden sensors. Jonas asks: Should we measure soil moisture first? Ada turns the message into task #12 and accepts the decision Measure moisture before buying sensors. Kreska, as the agent Claude Code, picks up the task, reads the beds and writes a positive result into the Wiki. The Map links the message, task, decision and result, and a phone shows the same work in the Inbox. It ends on: People and agents, one project.">
+  </picture>
+</p>
+
+<p align="center"><sub>An animated sketch of the idea (<a href="docs/assets/promo/README.md">how it is made</a>); the
+<a href="docs/assets/demo/flux-demo.gif">recording of the running app</a> and the screenshots below show the real thing.</sub></p>
+
+<p align="center">
+  <picture>
     <source media="(prefers-color-scheme: dark)" srcset="docs/assets/readme/conversation-desktop-dark.webp">
     <img src="docs/assets/readme/conversation-desktop.webp" width="74%" alt="The Community garden sensors project on a desktop: the conversation, with the task made from a message, and beside it the accepted decision to measure soil moisture first, with its reason and the message it is based on.">
   </picture>
@@ -116,11 +126,6 @@ cd flux
 ./flux up      # creates docker/.env with random secrets once, builds, migrates, starts, prints the URL
 ./flux demo    # optional: sample workspace, project, conversation and note; prints two logins
 ```
-
-<p align="center"><img src="docs/assets/demo/flux-demo.gif" width="88%" alt="The core journey on the ./flux demo data: Home shows what changed since Ada left, with Jonas's question as her next step; it opens the project conversation; the Map tab shows the shared sketch; one action turns a message into a task; a decision is proposed from a message with its reason, accepted, and shown under that message."></p>
-
-<p align="center"><sub>The <code>./flux demo</code> data in the running app: return view, conversation, sketch, task and
-decision (<a href="docs/assets/demo/README.md">how this was recorded</a>).</sub></p>
 
 Then open the URL that `./flux up` prints, <http://127.0.0.1:8081/> by default. If port 8081 is
 taken, start the first time with another free port, for example `FLUX_PORT=8090 ./flux up`. The first
@@ -278,7 +283,7 @@ lists everything else.
 | `scripts` | Check scripts, the demo seed and repository tooling |
 | `docs` | Product, design, development and agent documentation |
 | `site` | The [documentation site](https://coldphase.github.io/flux/) (Astro Starlight), generated from `docs` |
-| `docs/assets` | README screenshots and the demo GIF (each folder says how it was made) and `brand/`, the Kreska logo. The app icons are `app/apps/web/public/icons`, rendered from Kreska ([final design §3](docs/design/final/README.md#3-kreska-logo-agent-icon-and-mascot)) by `app/apps/web/scripts/generate-icons.ts` |
+| `docs/assets` | The README promo animation, screenshots and the demo GIF (each folder says how it was made) and `brand/`, the Kreska logo. The app icons are `app/apps/web/public/icons`, rendered from Kreska ([final design §3](docs/design/final/README.md#3-kreska-logo-agent-icon-and-mascot)) by `app/apps/web/scripts/generate-icons.ts` |
 
 Dependency directions between these are described and enforced in
 [architecture](docs/development/architecture.md).
