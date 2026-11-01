@@ -127,9 +127,11 @@ test('owner grant API is idempotent, bounded and management-gated; history and n
   expectStatus(await f.owner.browser.request('POST', `/api/v1/workspaces/${f.p.workspaceId}/members`, { body: { email: peer.email, role: 'owner' } }), 201);
   expectStatus(await f.owner.browser.request('POST', `/api/v1/projects/${f.p.id}/grants`, { body: { principal: { kind: 'human', id: f.owner.id }, role: 'contributor' } }), 201);
   expectStatus(await peer.browser.request('PATCH', `/api/v1/workspaces/${f.p.workspaceId}/members/${f.owner.id}`, { body: { role: 'member' } }), 200);
-  expectStatus(await f.owner.browser.request('POST', path, { body: { ...command, clientCommandId: randomUUID() } }), 403, 'project contributor cannot create standing authority');
+  // #763 FT-2 (F-024 AC-4 amendment, founder decision 2026-11-01): an owner who only writes in the project may add a grant while a
+  // manager's own contributor grant lets the agent in (the fixture gives it one). first-time-user.test.ts covers the refusal once it is gone.
+  expectStatus(await f.owner.browser.request('POST', path, { body: { ...command, clientCommandId: randomUUID() } }), 201, 'a project contributor adds standing authority within the agent\'s own contributor grant');
   const page = expectStatus(await f.owner.browser.request('GET', `${path}?limit=1`), 200) as { total: number; items: AgentStandingGrant[] };
-  assert.equal(page.total, 2); assert.equal(page.items.length, 1);
+  assert.equal(page.total, 3); assert.equal(page.items.length, 1);
   assert.ok(!JSON.stringify(page).includes(f.p.name), 'metadata history does not expose project or result titles');
   expectStatus(await f.owner.browser.request('DELETE', `${path}/${first.id}`), 204);
 });
