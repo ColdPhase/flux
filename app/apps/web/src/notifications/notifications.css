@@ -1,6 +1,8 @@
 /* Inbox and notification settings (#116), direction C: a calm reading column, 1 px lines, one
    mark for "new", no counts. */
 .inbox__head { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; flex-wrap: wrap; padding: 16px 0 14px; border-bottom: 1px solid var(--line); }
+/* A settings page's title (Your assistant, How your assistant works): the --fs-xl of the other settings titles, not the browser's 1.5em. */
+.inbox__head h2 { font-size: var(--fs-xl); font-weight: 600; letter-spacing: -.015em; line-height: 1.25; color: var(--t1); }
 .inbox__head p { max-width: 460px; font-size: var(--fs-sm); line-height: 1.45; color: var(--t3); }
 .inbox__head > div:first-child { flex: 1 1 320px; min-width: 0; }
 .inbox__loading { display: flex; justify-content: center; padding: 48px 0; }

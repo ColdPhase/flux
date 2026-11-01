@@ -868,7 +868,15 @@ class InboxFinal(unittest.TestCase):
     def test_14_undo_toast_cannot_cross_accounts(self) -> None:
         """A's live Undo must not run under B's cookie after a same-tab sign-out/sign-in."""
         title = f"Session-bound rule {uuid.uuid4().hex[:8]}"
-        decision = self.post("jonas", f"/api/v1/projects/{self.project_id}/decisions", {
+        # #763 FT-8: a proposal does not ask its own author when someone else can accept it. A third member proposes,
+        # so the same decision waits in both Ada's and Jonas's queues.
+        proposer = self.browser.new_context(base_url=ORIGIN, service_workers="block")
+        self.contexts["maja"] = proposer
+        response = proposer.request.post("/api/auth/sign-up/email", headers={"origin": ORIGIN}, data={
+            "email": f"maja.i+{STAMP}@example.test", "password": PASSWORD, "name": "Maja Nowak"})
+        assert response.status == 200, response.text()
+        self.post("ada", f"/api/v1/workspaces/{self.workspace_id}/members", {"email": f"maja.i+{STAMP}@example.test", "role": "member"})
+        decision = self.post("maja", f"/api/v1/projects/{self.project_id}/decisions", {
             "title": title, "rationale": "Keep each account's queue choice private.", "affects": [self.task["id"]],
         })
 

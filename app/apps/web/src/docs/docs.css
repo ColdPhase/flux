@@ -40,7 +40,7 @@
 }
 .wiki-index__head { display: flex; align-items: center; justify-content: space-between; padding: 0 0 8px 8px; }
 .wiki-index__eyebrow { margin: 0; font-size: var(--fs-sm); font-weight: 500; color: var(--t3); }
-.wiki-index__head .ui-icon-btn { width: 26px; height: 26px; }
+.wiki-index__head .ui-icon-btn { width: var(--ctl); height: var(--ctl); }
 /* Underline search; the rule uses the ≥3:1 field boundary and thickens to the primary ink on focus. */
 .wiki-search { display: flex; align-items: center; gap: 8px; min-height: 32px; margin: 0 0 8px; padding: 0 8px; box-shadow: inset 0 -1px 0 var(--line2); color: var(--t2); transition: var(--tr); }
 .wiki-search:focus-within { box-shadow: inset 0 -2px 0 var(--t1); }
@@ -75,25 +75,25 @@
   position: sticky; top: 0; z-index: 9; flex: none; display: flex; align-items: flex-start; gap: 12px; min-height: 42px; padding: 6px 16px 0 48px;
   background: var(--bg);
 }
-.wiki-bar__meta { flex: 1; min-width: 0; min-height: max(34px, var(--ctl)); display: flex; flex-wrap: wrap; align-items: center; align-content: center; gap: 2px 10px; font-size: var(--fs-sm); line-height: 1.35; color: var(--t3); }
+.wiki-bar__meta { flex: 1; min-width: 0; min-height: var(--ctl); display: flex; flex-wrap: wrap; align-items: center; align-content: center; gap: 2px 10px; font-size: var(--fs-sm); line-height: 1.35; color: var(--t3); }
 .wiki-bar__meta .doc-head__k { margin: 0; font-size: inherit; font-weight: 400; color: inherit; }
 .wiki-bar__title b { font-weight: 500; color: var(--t1); }
 .wiki-header-meta { font-size: var(--fs-md); color: var(--t3); white-space: nowrap; }
-.wiki-header-actions .ui-icon-btn { width: max(34px, var(--ctl)); height: max(34px, var(--ctl)); color: var(--t2); }
+.wiki-header-actions .ui-icon-btn { width: var(--ctl); height: var(--ctl); color: var(--t2); }
 .wiki-header-actions .wiki-pop { position: fixed; top: calc(60px + env(safe-area-inset-top)); left: auto; right: 12px; width: 300px; max-width: calc(100vw - 24px); max-height: calc(100dvh - 144px); overflow-y: auto; }
 .wiki-bar__kept { display: inline-flex; align-items: center; gap: 6px; color: var(--t2); font-weight: 500; text-decoration: underline; text-underline-offset: 3px; }
 .wiki-bar__kept::before { content: ""; width: 4px; height: 4px; border-radius: 50%; background: currentColor; }
 @media (pointer: coarse) { .wiki-bar__kept { min-height: 44px; } }
 /* The icons keep one row at one height however many lines the state on the left takes (#511, AC-4). */
-.wiki-bar__acts { flex: none; display: flex; align-items: center; gap: 2px; min-height: max(34px, var(--ctl)); }
-.wiki-bar .ui-icon-btn { width: max(34px, var(--ctl)); height: max(34px, var(--ctl)); color: var(--t2); }
+.wiki-bar__acts { flex: none; display: flex; align-items: center; gap: 2px; min-height: var(--ctl); }
+.wiki-bar .ui-icon-btn { width: var(--ctl); height: var(--ctl); color: var(--t2); }
 .wiki-bar .ui-icon-btn:hover, .wiki-bar .ui-icon-btn[aria-pressed="true"] { color: var(--t1); }
 .wiki-bar .ui-icon-btn[aria-pressed="true"] { background: var(--sub); }
 .wiki-bar__primary { margin-left: 6px; padding: 0 16px; font-size: var(--fs-md); }
 @media (pointer: coarse) { .wiki-bar__primary { min-width: 44px; justify-content: center; } }
 .wiki-bar__back { gap: 4px; padding: 0 8px; font-size: var(--fs-sm); color: var(--t2); }
 /* The phone's primary action has its own space below the scrolling page. */
-.wiki-edit { justify-self: end; margin: 0 16px max(16px, env(safe-area-inset-bottom)) auto; min-height: 48px; padding: 0 20px; gap: 8px; font-size: var(--fs-base); }
+.wiki-edit { justify-self: end; margin: 0 16px max(16px, env(safe-area-inset-bottom)) auto; min-height: var(--ctl); padding: 0 16px; gap: 8px; font-size: var(--fs-base); }
 .wiki-pop__item { text-decoration: none; }
 .wiki-empty__acts { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; margin-top: 16px; }
 
@@ -287,7 +287,7 @@
 .doc-edit__hint kbd, .doc-picker__keys kbd { display: inline-block; min-width: 18px; margin: 0 1px; padding: 0 4px; border-radius: 4px; box-shadow: inset 0 0 0 1px var(--line2); font-family: var(--font); font-size: var(--fs-glyph); text-align: center; }
 /* Segmented control: no track; the chosen option is filled, outlined and stronger. */
 .doc-seg { display: inline-flex; gap: 3px; }
-.doc-seg button { min-height: var(--ctl); padding: 0 10px; border-radius: 5px; font-size: var(--fs-sm); font-weight: 500; color: var(--t2); transition: var(--tr); }
+.doc-seg button { min-height: var(--ctl); padding: 0 10px; border-radius: var(--r-btn); font-size: var(--fs-sm); font-weight: 500; color: var(--t2); transition: var(--tr); }
 .doc-seg button:hover { background: var(--hov); color: var(--t1); }
 .doc-seg button[aria-pressed="true"], .doc-seg button[aria-checked="true"] { background: var(--sub); color: var(--t1); font-weight: 600; box-shadow: inset 0 0 0 1px var(--line2); }
 .doc-edit__panes { display: grid; gap: 20px; }
@@ -299,6 +299,8 @@
 .doc-edit__reason { flex: 1 1 260px; display: grid; gap: 6px; }
 .doc-edit__reason label { font-size: var(--fs-sm); font-weight: 500; color: var(--t2); }
 .doc-edit__reason label span { font-weight: 400; color: var(--t3); }
+/* One row with Draft/Published and Back: the field takes the control height there (#763 sweep). */
+.doc-edit__reason .ui-input { min-height: var(--ctl); height: var(--ctl); }
 .doc-edit__save .doc-seg { align-self: flex-end; }
 .doc-edit__acts { display: flex; gap: 8px; margin-left: auto; }
 .doc-edit__foot { margin-top: 12px; }
@@ -375,13 +377,16 @@
      Editors and history retain their existing single-column scrolling behavior. */
   .wiki:has(.wiki-main > .wiki-read) { overflow-y: hidden; }
   .wiki .wiki-main:has(> .wiki-read) { flex: 1; min-height: 0; overflow: hidden; display: grid; grid-template-rows: minmax(0, 1fr) auto; }
+  /* A narrow pane on a computer keeps its own bar (the phone moves it into its header): the bar is a row of its own above the
+     page, so it never sits over the page title (#763). */
+  .wiki .wiki-main:has(> .wiki-bar):has(> .wiki-read) { grid-template-rows: auto minmax(0, 1fr) auto; }
   .wiki-main > .wiki-read { min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
   /* The page's menu ends the row of page chips and stays with it at the top while the page is read (#507). The chips scroll in the
      room left of it; the wrapper is the sticky part, and is invisible to the layout wherever the wiki is not narrow. */
   .wiki-top { display: flex; align-items: flex-end; flex: none; position: sticky; top: 0; z-index: 20; background: var(--bg); }
   .wiki-top__menu { position: relative; flex: none; margin: 0 6px 10px 0; }
   .wiki-top__menu:empty { display: none; }
-  .wiki-top__menu .ui-icon-btn { width: max(34px, var(--ctl)); height: max(34px, var(--ctl)); color: var(--t2); }
+  .wiki-top__menu .ui-icon-btn { width: var(--ctl); height: var(--ctl); color: var(--t2); }
   .wiki-top__menu .wiki-pop { top: calc(100% + 2px); right: 0; left: auto; width: min(300px, calc(100vw - 24px)); max-width: none; max-height: calc(100dvh - 144px); overflow-y: auto; }
   .wiki--editing .wiki-top { display: none; }
   .wiki-index { flex: 1 1 auto; width: auto; min-width: 0; overflow: visible; padding: 4px 16px 0; border-right: 0; position: static; }
@@ -390,11 +395,11 @@
   .wiki-pages { flex-direction: row; align-items: center; gap: 6px; margin: 0 -16px; padding: 4px 16px 10px; overflow-x: auto; scrollbar-width: none; overscroll-behavior-x: contain; }
   .wiki-pages::-webkit-scrollbar { display: none; }
   .wiki-pages li { flex: none; max-width: 78%; }
-  .wiki-page { min-height: max(32px, var(--ctl)); padding: 0 14px; border-radius: var(--r-pill); background: var(--sub); color: var(--t2); white-space: nowrap; }
+  .wiki-page { min-height: var(--ctl); padding: 0 14px; border-radius: var(--r-pill); background: var(--sub); color: var(--t2); white-space: nowrap; }
   .wiki-page[aria-current="page"] { background: var(--inv); background-image: var(--grad-inv); color: var(--oninv); box-shadow: none; }
   .wiki-page__t { overflow: hidden; text-overflow: ellipsis; }
   .wiki-page__state { color: inherit; opacity: .75; }
-  .wiki-index__new { width: max(32px, var(--ctl)); height: max(32px, var(--ctl)); color: var(--t2); }
+  .wiki-index__new { width: var(--ctl); height: var(--ctl); color: var(--t2); }
   .wiki-bar { min-height: 44px; padding: 6px 12px 0 20px; gap: 6px; }
   .wiki-bar__title { font-size: var(--fs-md); }
   .wiki-bar__acts { gap: 0; }
@@ -416,7 +421,8 @@
   .doc-edit__text { min-height: 300px; }
   .doc-edit__preview { min-height: 200px; }
   .doc-edit__acts { width: 100%; margin-left: 0; }
-  .doc-edit__acts .ui-btn { flex: 1; justify-content: center; }
+  /* "Back to the Wiki page" wraps beside Save version on a 320 px phone instead of pushing it off the screen. */
+  .doc-edit__acts .ui-btn { flex: 1; min-width: 0; justify-content: center; white-space: normal; text-align: center; line-height: 1.25; }
   .doc-edit__save .doc-seg { width: 100%; }
   .doc-edit__save .doc-seg button { flex: 1; }
   /* Writing keeps the column: the page strip steps aside and the bar scrolls away with the page,
@@ -439,7 +445,7 @@
 .wiki-bar .ui-icon-btn:disabled, .wiki-bar .ui-btn:disabled, .wiki-bar__dim:disabled { opacity: .4; cursor: default; }
 .wiki-bar .ui-btn:disabled { color: var(--t3); }
 .wiki-outline-chip { position: relative; display: flex; }
-.wiki-outline-chip__btn { min-width: max(34px, var(--ctl)); height: max(34px, var(--ctl)); padding: 0 8px; color: var(--t2); font-size: var(--fs-sm); }
+.wiki-outline-chip__btn { min-width: var(--ctl); height: var(--ctl); padding: 0 8px; color: var(--t2); font-size: var(--fs-sm); }
 .wiki-outline-chip__btn:not(:disabled):hover, .wiki-outline-chip__btn[aria-expanded="true"] { color: var(--t1); }
 .wiki-outline-chip__label { display: none; white-space: nowrap; }
 .wiki-outline-pop { position: absolute; top: calc(100% + 6px); right: 0; z-index: 20; min-width: 240px; max-width: min(340px, 90vw); max-height: 60vh; overflow-y: auto; padding: 12px 14px; border-radius: var(--r); background: var(--el); box-shadow: 0 0 0 1px var(--line), 0 12px 32px rgb(0 0 0 / .18); }
@@ -472,7 +478,9 @@
 .doc-changes__page .wiki-chg--added { background: color-mix(in srgb, var(--t1) 8%, transparent); text-decoration: underline; text-decoration-color: color-mix(in srgb, var(--t1) 60%, transparent); text-underline-offset: 3px; border-radius: 4px; }
 .doc-changes__page .wiki-chg--removed, .doc-changes__page .wiki-chg--removed :is(td, th, li, strong, a, h1, h2, h3, h4) { color: var(--t3); text-decoration: line-through; text-decoration-color: var(--t3); }
 /* The primary action keeps one width in read, edit and history, so the controls before it never shift (#511, AC-4). */
-.wiki-bar .wiki-bar__primary { min-width: 136px; padding: 0 12px; justify-content: center; gap: 6px; }
+/* The primary is a toolbar button (#763): exactly the height of the icon buttons beside it (--ctl: 32 px with a mouse, 44 on
+   touch), never stretched by the row, in every state. 120 px fits "Save version", so read, edit and history keep one width. */
+.wiki-bar .wiki-bar__primary { align-self: center; min-width: 120px; height: var(--ctl); min-height: var(--ctl); padding: 0 12px; justify-content: center; gap: 6px; font-size: var(--fs-sm); }
 /* In a narrow pane (a tablet with the page list open) the state takes the first row, the icons the second,
    and the primary is its icon alone; the same in every state, so nothing moves between them. */
 @container wikimain (max-width: 560px) {
@@ -480,7 +488,7 @@
   .wiki-bar:has([data-slot="focus"]) .wiki-bar__meta { flex: 1 0 100%; }
   .wiki-bar:has([data-slot="focus"]) .wiki-bar__acts { margin-left: auto; }
   .wiki-bar:has([data-slot="focus"]) .wiki-bar__label { display: none; }
-  .wiki-bar:has([data-slot="focus"]) .wiki-bar__primary { min-width: max(34px, var(--ctl)); width: max(34px, var(--ctl)); padding: 0; }
+  .wiki-bar:has([data-slot="focus"]) .wiki-bar__primary { min-width: var(--ctl); width: var(--ctl); padding: 0; }
 }
 /* A quiet primary (Restore) keeps the primary's place and width. */
 .wiki-bar .wiki-bar__restore { color: var(--t2); }

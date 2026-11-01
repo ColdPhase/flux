@@ -89,7 +89,7 @@ body:has(.app) { background: var(--side); }
 .side__search { width: var(--ctl); padding: 0; flex: none; }
 .newmenu { position: relative; display: flex; flex: 1; }
 .newmenu--compact { flex: none; margin: 10px 0 6px; }
-.newmenu--compact .side__new { width: 40px; height: 40px; padding: 0; justify-content: center; }
+.newmenu--compact .side__new { width: var(--ctl); height: var(--ctl); padding: 0; justify-content: center; }
 .side__scroll { flex: 1; min-height: 0; overflow-y: auto; margin: 0 -12px; padding: 0 12px 12px; }
 .side__places { display: flex; flex-direction: column; gap: 2px; }
 .side__sec { margin-top: 10px; }
@@ -181,21 +181,21 @@ body:has(.app) { background: var(--side); }
 .side__rail-scroll { flex: 1; min-height: 0; width: var(--rail-w); padding: 4px; overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain; scrollbar-width: thin; }
 .side__rail-scroll::-webkit-scrollbar { width: 4px; }
 .side__rail-projects, .side__rail-dms { width: 44px; margin: 10px 0 0 6px; }
-.side__ib { position: relative; display: grid; place-items: center; width: 40px; height: 40px; border-radius: var(--r-pill); color: var(--t2); transition: var(--tr); }
+.side__ib { position: relative; display: grid; place-items: center; width: var(--ctl); height: var(--ctl); border-radius: var(--r-pill); color: var(--t2); transition: var(--tr); }
 .side__ib:hover { background: var(--hov); color: var(--t1); }
 .side__ib[aria-current="page"] { background: var(--el); color: var(--t1); box-shadow: var(--sh-1); }
-.side__count--rail { position: absolute; top: 0; right: -2px; margin: 0; min-width: 18px; height: 18px; padding: 0 5px; }
-.side__rail-project { position: relative; display: grid; place-items: center; width: 36px; height: 36px; border-radius: 10px; text-decoration: none; }
+.side__count--rail { position: absolute; top: 0; right: 0; margin: 0; min-width: 18px; height: 18px; padding: 0 5px; }
+.side__rail-project { position: relative; display: grid; place-items: center; width: var(--ctl); height: var(--ctl); border-radius: 10px; text-decoration: none; }
 .side__rail-project.is-open { background: var(--el); box-shadow: var(--sh-1); }
 /* The same traveling highlight as the expanded list's (#155): one tile-sized mark that moves to the chosen project while it loads. */
 .side__rail-projects { position: relative; }
-.side__rail-glide { position: absolute; top: 0; left: 4px; width: 36px; height: 36px; border-radius: 10px; background: var(--el); box-shadow: var(--sh-1);
+.side__rail-glide { position: absolute; top: 0; left: calc((44px - var(--ctl)) / 2); width: var(--ctl); height: var(--ctl); border-radius: 10px; background: var(--el); box-shadow: var(--sh-1);
   opacity: 0; pointer-events: none; transition: transform var(--dur-2) var(--ease-out), opacity var(--dur-1) ease; }
 .side__rail-projects.has-glide .side__rail-project.is-open { background: transparent; box-shadow: none; }
 /* A touch screen's tiles fill the 44 px column (44 px targets), and so does the mark. */
 @media (pointer: coarse) { .side__rail-glide { left: 0; width: 44px; } }
 .side__rail-project .side__pj { font-size: var(--fs-xs); }
-.side__rail-dm { position: relative; display: grid; place-items: center; width: 40px; height: 40px; border-radius: var(--r-pill); }
+.side__rail-dm { position: relative; display: grid; place-items: center; width: var(--ctl); height: var(--ctl); border-radius: var(--r-pill); }
 .side__rail-dm:hover { background: var(--hov); }
 .side__rail-dm[aria-current="page"] { background: var(--el); box-shadow: var(--sh-1); }
 .side__rail-dm .side__dot { position: absolute; top: 2px; right: 1px; }
@@ -215,7 +215,7 @@ a.me__btn[aria-current="page"] { background: var(--sub); }
 .me__chev { color: var(--t3); }
 .me__row { display: flex; align-items: center; gap: 2px; }
 .me__row .me__btn { flex: 1; min-width: 0; }
-.me__settings { display: grid; place-items: center; flex: none; width: 36px; height: 36px; border-radius: 50%; color: var(--t2); transition: var(--tr); }
+.me__settings { display: grid; place-items: center; flex: none; width: var(--ctl); height: var(--ctl); border-radius: 50%; color: var(--t2); transition: var(--tr); }
 .me__settings:hover { background: var(--hov); color: var(--t1); }
 .me--compact { flex: none; margin: 0; padding: 0; }
 .me--compact .me__row { flex-direction: column; gap: 4px; }
@@ -301,13 +301,15 @@ a.me__item { text-decoration: none; }
 /* The computer's one-row header (F-026 §4): the name, the segmented views, then what needs you, the
    people and agents, and More, over one hairline. Focus keeps the name, the view and the way out. */
 .top.top--row { height: auto; min-height: 64px; align-items: center; padding: 12px 16px 12px 20px; gap: 14px; border-bottom: 1px solid var(--line); }
-.top--row .top__title { flex: 0 1 auto; min-width: min(7.5em, 30%); }
+.top--row .top__title { flex: 0 1 auto; min-width: min(7.5em, 20%); }
 .top--row .top__title h1 { letter-spacing: -0.2px; }
 .top.top--row .top__right { margin-left: auto; gap: 10px; padding-top: 0; }
 .top--row.top--focus .top__title { flex: 1; }
-.top__views { flex: 0 1 auto; }
+/* The views never shrink: a squeezed track cut "Agents" at 1024 px with "+ Task" beside it (#763 sweep). The name gives way instead. */
+.top__views { flex: none; }
+@container main (max-width: 760px) { .top--row .top__title { min-width: 4em; } }
 /* "N needs you" is a quiet text link (direction C, #763, 2026-10-31). */
-.top__needs { display: inline-flex; align-items: center; height: 24px; padding: 0 4px; border-radius: 6px; background: transparent; color: var(--t1);
+.top__needs { display: inline-flex; align-items: center; height: var(--ctl); padding: 0 4px; border-radius: 6px; background: transparent; color: var(--t1);
   font-size: var(--fs-md); font-weight: 500; white-space: nowrap; cursor: pointer; transition: var(--tr); }
 .top__needs:hover { text-decoration: underline; text-underline-offset: 3px; }
 .top__needs[aria-expanded="true"] { text-decoration: underline; text-underline-offset: 3px; }
@@ -338,10 +340,13 @@ a.me__item { text-decoration: none; }
 .top__focus { display: inline-flex; align-items: center; gap: 8px; }
 .top__focus-pill { height: 28px; padding: 0 12px; gap: 6px; font-weight: 600; cursor: pointer; }
 @media (pointer: coarse) { .top__needs, .top__focus-pill { min-height: 44px; } .top__audience.top__faces { min-height: 44px; } }
+/* 641–680 px (the drawer, e.g. a Fold 5 unfolded): the project header's 22 px audience line must not shrink the faces control (#763). */
+@media (pointer: coarse) and (min-width: 641px) { header.top .top__audience.top__faces { min-height: 44px; } }
 /* Spokój rule 3: the header is one row at every width, with the panel open or closed (the panel sits under it).
-   When the views leave too little room, the people and Together move into "⋯"; the views and More stay put. */
+   When the views leave too little room, the people and Together move into "⋯"; the views and More stay put. In rem (860 px
+   at the default text size), so larger text moves them sooner instead of pushing the header past its edge (#763). */
 .top__more-narrow { display: none; }
-@container main (max-width: 860px) {
+@container main (max-width: 53.75rem) {
   .top--row:has(> .top__views) .top__right > :is(.top__faces, .lv-entry) { display: none; }
   .top--row:has(> .top__views) .top__more-narrow { display: flex; }
 }
@@ -407,14 +412,13 @@ a.me__item { text-decoration: none; }
 .composer__box textarea::placeholder { color: var(--t3); opacity: 1; }
 .composer__box textarea:disabled { cursor: not-allowed; }
 /* The button keeps its full hit area; only its fill scales, so enabling reads as a soft arrival. */
-.composer__send { position: relative; isolation: isolate; display: grid; place-items: center; width: 31px; height: 31px; flex: none; border-radius: var(--r); color: var(--t1);
+.composer__send { position: relative; isolation: isolate; display: grid; place-items: center; width: var(--ctl); height: var(--ctl); flex: none; border-radius: var(--r); color: var(--t1);
   transition: color var(--dur-2) var(--ease-out), outline-color var(--dur-1) var(--ease-out); }
 .composer__send::before { content: ""; position: absolute; inset: 0; z-index: -1; border-radius: inherit; background: var(--own);
   transition: background-color var(--dur-2) var(--ease-out), transform var(--dur-2) var(--ease-sheet); }
 .composer__send svg { transition: transform var(--dur-2) var(--ease-sheet); }
 .composer__send[aria-disabled="true"] { color: var(--t3); cursor: default; }
 .composer__send[aria-disabled="true"]::before { background: transparent; transform: scale(.84); }
-.composer__send[aria-disabled="true"] svg { transform: scale(.9); }
 .composer__send:not([aria-disabled="true"]):hover::before { background: var(--hov); }
 .composer__send:not([aria-disabled="true"]):active::before { background: var(--pick); }
 /* Attach (#266 PF-3): a quiet paperclip among the composer's tools; staged files list above the box. */
@@ -487,6 +491,8 @@ a.me__item { text-decoration: none; }
 .details__actions { display: flex; gap: 8px; }
 .details__keys { margin-top: 32px; padding-top: 12px; border-top: 1px solid var(--line); font-size: var(--fs-xs); color: var(--t3); }
 kbd { display: inline-grid; place-items: center; min-width: 18px; height: 18px; padding: 0 4px; border-radius: 4px; box-shadow: inset 0 0 0 1px var(--line2); font: 500 var(--fs-xs)/1 var(--mono); color: var(--t2); }
+/* A key hint on the dark primary ("Allow and hand off  Ctrl ↵") takes the button's own ink (#763). */
+.ui-btn--primary kbd { background: color-mix(in srgb, var(--oninv) 16%, transparent); box-shadow: none; color: inherit; }
 
 /* ---------- ≤680: the sidebar becomes a 260px drawer on the chrome ---------- */
 .ui-overlay--left .nav-drawer { width: min(260px, 100%); background: var(--side); }
@@ -537,7 +543,7 @@ kbd { display: inline-grid; place-items: center; min-width: 18px; height: 18px; 
   .auth .brand .flux-logo { width: 52px; height: 52px; }
   .auth__lead { font-size: var(--fs-lg); line-height: var(--lh); }
   .auth__card, .auth__form { padding: 0; background: none; box-shadow: none; border-radius: 0; gap: 16px; }
-  .auth .ui-btn--lg, .auth .ui-input { min-height: 52px; }
+  .auth .ui-btn--lg, .auth .ui-input { min-height: var(--ctl-lg); }
   .auth .ui-input { border-radius: 16px; font-size: var(--fs-input-touch); padding: 0 16px; }
 }
 .note.is-arrived { box-shadow: inset 3px 0 0 var(--t1); padding-left: 12px; }
@@ -593,7 +599,8 @@ kbd { display: inline-grid; place-items: center; min-width: 18px; height: 18px; 
 .phead__right { display: flex; align-items: center; gap: 8px; flex: none; }
 .phead__right > .top__actions:empty { display: none; }
 .phead__round.ui-icon-btn, .phead__avatar {
-  width: 44px; height: 44px; border-radius: 50%; background: var(--el); color: var(--t1); box-shadow: var(--sh-card);
+  /* Flat, as every button in direction C (#763): the fill alone sets it off the page. */
+  width: 44px; height: 44px; border-radius: 50%; background: var(--el); color: var(--t1); box-shadow: none;
   display: inline-grid; place-items: center;
 }
 .phead__avatar { text-decoration: none; }
@@ -645,8 +652,11 @@ kbd { display: inline-grid; place-items: center; min-width: 18px; height: 18px; 
 }
 @media (max-width: 640px) {
   .app__main { position: relative; }
-  /* Room under the work for the "+" that floats above the capsule. */
+  /* Room under the work for the "+" that floats above the capsule. A scrolling page keeps that room at the end of its
+     scroll instead, so its content runs on under the "+" rather than stopping at a hard line above it (#763). */
   .app--fab .app__pane { padding-bottom: 64px; }
+  .app--fab .app__pane:has(.pane-scroll) { padding-bottom: 0; }
+  .app--fab .app__pane .pane-scroll:not(.pane-scroll .pane-scroll) { padding-bottom: 72px; scroll-padding-bottom: 72px; }
 }
 /* The view menu: a card under the header. */
 .ui-overlay--center .phone-menu { top: calc(64px + env(safe-area-inset-top)); width: calc(100% - 24px); max-height: calc(100dvh - 96px); border-radius: 26px; padding: 18px 8px 8px; overflow-y: auto; }
@@ -693,6 +703,10 @@ kbd { display: inline-grid; place-items: center; min-width: 18px; height: 18px; 
 .top--bare .top__title { position: static; min-width: 0; }
 .top--bare .top__title h1 { position: absolute; width: 1px; height: 1px; min-width: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 .top--bare .top__topic, .top--bare .top__crumb, .top--bare .top__slash, .top--bare .top__right { display: none; }
+/* During a live session Home is a header row again, so the strip keeps the place it has everywhere else on the
+   computer and the tablet (Spokój: a control keeps its place, #763) instead of jumping 64 px up on Home. */
+.top.top--bare:has(~ .lv-bar:not(.lv-bar--invite, .lv-bar--ended)) { height: auto; min-height: 64px; padding: 12px 16px 12px 20px; border-bottom: 1px solid var(--line); }
+.top.top--bare:has(~ .lv-bar:not(.lv-bar--invite, .lv-bar--ended)) .top__title h1 { position: static; width: auto; height: auto; overflow: hidden; clip-path: none; }
 /* On touch, the "Create an account" style link under the form gets a 44 px tall hit area without moving the text (#434). */
 @media (pointer: coarse) {
   .auth__alt .ui-link { position: relative; }

@@ -29,3 +29,6 @@ coverage/
 /perf-results/
 # The operator's own Compose override (for example extra agent runtime slots); ./flux reads it.
 /docker/compose.override.yaml
+
+# Visual consistency audit output written by scripts/visual_audit.sh (#763).
+/visual-audit/

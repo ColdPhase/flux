@@ -186,7 +186,7 @@ button.project-convo__contribution { cursor: pointer; }
   .project-new__note { border-radius: 18px; font-size: var(--fs-base); }
   .project-new__foot { flex-wrap: wrap; }
   .project-new__foot span { flex-basis: 100%; order: 3; text-align: center; }
-  .project-new__foot .ui-btn { flex: 1; min-height: 52px; }
+  .project-new__foot .ui-btn { flex: 1; min-height: var(--ctl-lg); }
   .project-new__foot .ui-btn--secondary { display: none; }
 }
 

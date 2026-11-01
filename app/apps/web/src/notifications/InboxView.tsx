@@ -66,6 +66,8 @@ export function InboxView() {
   // Below the tablet width the header has no room for the summary and five filters beside the title and ⋯ (#763 NV-4):
   // they head the list on their own row there, as on the phone, and ⋯ stays at the header's right edge.
   const narrow = useMediaQuery(MEDIA.tablet);
+  // A very wide window (2560 and 4K) would put the header's right end far from the centred list: the bar heads the list there (#763).
+  const wide = useMediaQuery('(min-width: 2000px)');
   // A return to the Inbox shows the list it had at once, while it is read again (#592).
   const arrival = useArrival();
   const queue = useNeedsYou(me.user.id, !!arrival);
@@ -127,7 +129,7 @@ export function InboxView() {
           </>
         );
         if (!bar) return null;
-        return !narrow && actionSlot ? createPortal(<div className="nyq__bar nyq__bar--head">{bar}</div>, actionSlot) : <div className="nyq__bar">{bar}</div>;
+        return !narrow && !wide && actionSlot ? createPortal(<div className="nyq__bar nyq__bar--head">{bar}</div>, actionSlot) : <div className="nyq__bar">{bar}</div>;
       })()}
       {/* F-030 (#655): security notices about encrypted spaces are rare and read first, above the queue. */}
       <SecurityNotices userId={me.user.id} />

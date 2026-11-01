@@ -129,7 +129,7 @@ export function Home() {
           </> : <>
           <h3 id="home-first">Start with a project</h3>
           <p>A project is where people and agents talk, turn what is said into tasks and decisions, and keep what they learn.</p>
-          <Button variant="primary" size="lg" onClick={() => openCreate({ kind: 'project' })}>Start your first project</Button>
+          <Button variant="primary" onClick={() => openCreate({ kind: 'project' })}>Start your first project</Button>
           <p className="home__first-note">Got an invite link? Open it to join your team.</p>
           </>}
         </section>

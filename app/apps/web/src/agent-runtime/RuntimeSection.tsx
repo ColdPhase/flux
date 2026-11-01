@@ -5,6 +5,7 @@ import { ApiError } from '../api/client';
 import { Button, Icon, Spinner } from '../ui';
 import { checkRuntime, dismissNotice, getRuntime, removeRuntime, signOutRuntime } from './api';
 import { accountLabel, dateTime, PAYER } from './copy';
+import '../notifications/notifications.css';
 import './runtime.css';
 
 // The owner's own client sign-ins in Flux (F-022 AIM-3, T4 #279, T6 #281): each client uses its own

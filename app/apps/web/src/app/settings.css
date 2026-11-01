@@ -11,6 +11,8 @@
 .sset__link:focus-visible { outline: 2px solid var(--t1); outline-offset: 1px; }
 .sset__page { display: flex; flex: 1; min-width: 0; flex-direction: column; }
 .pane-in.sset-in { max-width: calc(640px + 88px); margin: 0; padding: 30px 44px 48px; }
+/* A very wide window centres the page in its area, as Home, Inbox and the conversation centre theirs (F-015, #763); no cap. */
+@media (min-width: 2000px) { .pane-in.sset-in { margin-inline: auto; } }
 .sset-head { margin-bottom: 16px; }
 .sset-head h2 { font-size: var(--fs-xl); font-weight: 600; letter-spacing: -.015em; line-height: 1.25; color: var(--t1); }
 .sset-head p { margin-top: 4px; font-size: var(--fs-base); line-height: 1.45; color: var(--t2); max-width: 600px; }
