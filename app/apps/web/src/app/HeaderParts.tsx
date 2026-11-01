@@ -16,7 +16,7 @@ export function HeaderFaces({ people, audience, onOpen }: { people: ProjectPerso
     <button type="button" className="top__audience top__faces" onClick={onOpen} aria-haspopup="dialog" title={audience}>
       <span className="ui-vh">{audience}, who can see this project</span>
       {shown.map((person) => person.kind === 'agent'
-        ? <Kreska key={person.id} size={22} className="top__face" />
+        ? <Kreska key={person.id} size={20} className="top__face" />
         : <span key={person.id} className="top__face"><Avatar name={person.name} size="sm" /></span>)}
       {more > 0 ? <span className="top__more-faces" aria-hidden="true">+{more}</span> : null}
     </button>

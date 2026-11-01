@@ -327,7 +327,8 @@ function JumpBody({ onClose, userId, phone, page }: { onClose: () => void; userI
     <div className="jump__in">
       {/* The page's own header already says Search. */}
       {phone && !page ? <h2 className="jump__title">Search</h2> : null}
-      <div className="jump__field">
+      {/* The field's row is its target: the input is a control's height inside the 52 px row (#763 sweep). */}
+      <div className="jump__field" onMouseDown={(event) => { if (event.target === event.currentTarget) { event.preventDefault(); inputRef.current?.focus(); } }}>
         <Icon name="search" size={16} className="jump__icon" />
         <input ref={inputRef} className="jump__input" type="search" value={query} placeholder="Search or create · # tasks · @ people"
           role="combobox" aria-expanded={options.length > 0} aria-controls={listId} aria-autocomplete="list" aria-label="Jump to"

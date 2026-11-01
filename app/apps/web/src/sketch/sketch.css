@@ -160,8 +160,9 @@
 .sk-phone__note { display: inline-flex; align-items: center; gap: 8px; margin: 0; padding: 6px 14px; border-radius: var(--r-pill); background: var(--el);
   box-shadow: var(--sh-card), inset 0 0 0 1px var(--line); font-size: var(--fs-md); color: var(--t2); }
 .sk-phone__note svg { flex: none; color: var(--t3); }
-.sk-fab { display: inline-flex; align-items: center; gap: 8px; min-height: 44px; padding: 0 22px 0 18px; border-radius: var(--r-pill);
-  background: var(--inv); color: var(--oninv); box-shadow: var(--sh-pop); font-size: var(--fs-lg); font-weight: 500; }
+/* A button like the others (#763, 2026-10-31): --r-btn corners and no drop shadow; the inverted fill sets it off the map. */
+.sk-fab { display: inline-flex; align-items: center; gap: 8px; min-height: 44px; padding: 0 22px 0 18px; border-radius: var(--r-btn);
+  background: var(--inv); color: var(--oninv); font-size: var(--fs-lg); font-weight: 500; }
 @media (pointer: coarse) { .sk-dot { width: 16px; height: 16px; } .sk-dot::before { inset: -14px; } }
 @media (prefers-reduced-motion: reduce) { .sk-dot { transition: none; } }
 

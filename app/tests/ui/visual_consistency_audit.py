@@ -415,7 +415,7 @@ MEASURE_JS = r"""
     else if (!text && svg) kind = 'icon';
     else if (tagName === 'a' && !/ui-btn|btn|button/.test(el.className) && (s.display === 'inline' || el.closest('p, li > p, td, blockquote, .prose, [class*="prose"], [class*="msg__text"], [class*="text"]'))) kind = 'link';
     else if (r.height > 80 || r.width > 520 && r.height > 48) kind = 'card';     // a whole row or card that is clickable
-    else if (!/\bui-(icon-)?btn\b/.test(el.className) && /card|row|item|tile|attach|ref|page|side__|crumb|result|thread|nyc__open|title|head/.test(el.className + ' ' + (el.parentElement ? el.parentElement.className : ''))) kind = 'row';
+    else if (!/\bui-(icon-)?btn\b/.test(el.className) && /card|row|item|tile|attach|ref|page|side__|crumb|result|thread|nyc__open|title|head|preview/.test(el.className + ' ' + (el.parentElement ? el.parentElement.className : ''))) kind = 'row';
     else if (el.closest('h1, h2, h3, h4, h5, h6')) kind = 'title';
     else if (/\btab\b|tabs__tab|seg/.test(el.className)) kind = 'tab';
     else kind = 'button';
@@ -740,7 +740,8 @@ OCCLUSION_JS = r"""
   const part = (e) => { const cls = [...e.classList].filter((c) => !/^(is-|has-)/.test(c)).slice(0, 3); return e.tagName.toLowerCase() + (cls.length ? '.' + cls.join('.') : ''); };
   const sig = (el) => { const parts = [part(el)]; let p = el.parentElement, n = 0; while (p && n < 2 && p !== document.body) { if (p.classList.length) { parts.unshift(part(p)); n++; } p = p.parentElement; } return parts.join(' '); };
   const label = (el) => ((el.getAttribute('aria-label') || '') || (el.innerText || el.value || el.placeholder || '')).trim().replace(/\s+/g, ' ').slice(0, 48);
-  const transient = (layer) => layer.matches('[role="status"], [role="alert"], [class*="toast"], [class*="Toast"]') || !!layer.closest('[role="status"], [role="alert"], [class*="toast"]');
+  // A toast, or the open menu the state itself is about (a menu covers what is under it by design, #763).
+  const transient = (layer) => layer.matches('[role="status"], [role="alert"], [class*="toast"], [class*="Toast"], [role="menu"]') || !!layer.closest('[role="status"], [role="alert"], [class*="toast"], [role="menu"]');
   const CONTROL = 'button, a[href], [role="button"], [role="tab"], input:not([type="hidden"]), select, textarea, [contenteditable="true"]';
   const check = (where) => {
     const found = [];

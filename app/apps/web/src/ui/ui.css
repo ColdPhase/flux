@@ -21,8 +21,8 @@ svg { flex: none; }
 [hidden] { display: none !important; }
 
 /* Task names use the shared mono face (F-026); #338 supplies Geist Mono. */
-.ui-task-number { font-family: var(--mono); font-size: max(12px, 1em); font-variant-numeric: tabular-nums; }
-@media (pointer: coarse) { .ui-task-number { font-size: max(12.5px, 1em); } }
+/* Never under the meta size: 12 px on the computer and tablet, the phone's 12.5 px under 680 px (#763 sweep: not by pointer). */
+.ui-task-number { font-family: var(--mono); font-size: max(var(--fs-xs), 1em); font-variant-numeric: tabular-nums; }
 
 /* Focus: a ring that fades in and settles 2px out, only for keyboard focus. */
 :root[data-theme-switching] *, :root[data-theme-switching] *::before, :root[data-theme-switching] *::after { transition: none !important; }
@@ -115,6 +115,9 @@ svg { flex: none; }
   box-shadow: var(--sh-field); transition: var(--tr);
 }
 .ui-input::placeholder { color: var(--t3); }
+/* Every field's placeholder, also those without .ui-input (the new-conversation search, Propose a decision, the AI connection
+   name): WebKit's own default is #a9a9a9, 2.4:1 on white (#763 sweep). */
+input::placeholder, textarea::placeholder { color: var(--t3); opacity: 1; }
 .ui-input:focus-visible, .ui-input:focus { outline: 2px solid var(--t1); outline-offset: 1px; }
 /* The error is said in words next to the field (shape, not colour); the field keeps a strong edge. */
 .ui-field--invalid .ui-input { box-shadow: inset 0 0 0 1.5px var(--t1), var(--sh-1); }
