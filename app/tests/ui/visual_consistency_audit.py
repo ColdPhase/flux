@@ -63,10 +63,12 @@ WINDOWS = {
     "390": {"width": 390, "height": 844, "touch": True, "mobile": True},
     "430": {"width": 430, "height": 932, "touch": True, "mobile": True},
     "820": {"width": 820, "height": 1180, "touch": True, "mobile": False},
+    "1024": {"width": 1024, "height": 768, "touch": False, "mobile": False},   # opt-in laptop widths (FLUX_AUDIT_VIEWPORTS)
+    "1280": {"width": 1280, "height": 800, "touch": False, "mobile": False},
     "1440": {"width": 1440, "height": 900, "touch": False, "mobile": False},
     "1920": {"width": 1920, "height": 1080, "touch": False, "mobile": False},
 }
-VIEWPORTS = [v for v in (os.environ.get("FLUX_AUDIT_VIEWPORTS") or ",".join(WINDOWS)).split(",") if v in WINDOWS]
+VIEWPORTS = [v for v in (os.environ.get("FLUX_AUDIT_VIEWPORTS") or "360,390,430,820,1440,1920").split(",") if v in WINDOWS]
 
 DEMO = {
     "ada": ("Ada Kowalska", "ada@demo.flux.test", os.environ.get("FLUX_DEMO_OWNER_PASSWORD", "")),
@@ -233,7 +235,7 @@ SCREENS = [
     Screen("home-newcomer", "/", who="piotr"),
     Screen("home-member", "/", who="jonas"),
     Screen("inbox", "/inbox"),
-    Screen("inbox-open", "/inbox/{inbox}", needs=("inbox",)),
+    Screen("inbox-gone", "/inbox/00000000-0000-4000-8000-000000000000"),   # the error state of a removed item
     Screen("inbox-empty", "/inbox", who="piotr"),
     Screen("projects", "/projects"),
     Screen("conversation", "/projects/{p}"),
@@ -253,6 +255,7 @@ SCREENS = [
     Screen("map", "/projects/{p}/map/{sketch}", needs=("sketch",)),
     Screen("wiki-index", "/projects/{p}/docs"),
     Screen("wiki-read", "/projects/{p}/docs/{doc}", needs=("doc",)),
+    Screen("wiki-with-panel", "/projects/{p}/docs/{doc}?open=work:{task}", needs=("doc", "task")),   # the Wiki narrowed by the one panel
     Screen("wiki-edit", "/projects/{p}/docs/{doc}/edit", needs=("doc",)),
     Screen("wiki-history", "/projects/{p}/docs/{doc}/history", needs=("doc",)),
     Screen("project-agents", "/projects/{p}/agents"),
