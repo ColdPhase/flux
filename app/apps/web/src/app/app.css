@@ -58,16 +58,6 @@ body:has(.app) { background: var(--side); }
   margin-top: max(var(--sheet-inset), env(safe-area-inset-top)); margin-right: max(var(--sheet-inset), env(safe-area-inset-right));
   margin-bottom: max(var(--sheet-inset), env(safe-area-inset-bottom));
   background: var(--bg); border-radius: var(--r-panel); box-shadow: var(--sh-card);
-  max-width: var(--content-max);
-}
-/* F-015 amendment (2026-10-31, #763): once the sidebar, the 1600 px work panel and its insets fit (248 + 1600 + 2 × 8),
-   the panel is centred in the space beside the sidebar and a larger screen only gains margin. --content-gutter is that
-   margin, for the few popovers placed against the viewport's right edge. */
-.app { --side-now: var(--side-w); --content-gutter: var(--sheet-inset); }
-.app:has(> .app__side--rail) { --side-now: var(--rail-w); }
-@media (min-width: 1864px) {
-  .app__main { margin-left: auto; margin-right: auto; }
-  .app { --content-gutter: max(var(--sheet-inset), calc((100vw - var(--side-now) - var(--content-max)) / 2)); }
 }
 .app__pane { flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; outline: none; }
 #root:not([inert], [data-modal]) .app__pane { interactivity: auto; }

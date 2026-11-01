@@ -80,7 +80,7 @@
 .wiki-bar__title b { font-weight: 500; color: var(--t1); }
 .wiki-header-meta { font-size: var(--fs-md); color: var(--t3); white-space: nowrap; }
 .wiki-header-actions .ui-icon-btn { width: max(34px, var(--ctl)); height: max(34px, var(--ctl)); color: var(--t2); }
-.wiki-header-actions .wiki-pop { position: fixed; top: calc(60px + env(safe-area-inset-top)); left: auto; right: max(12px, calc(var(--content-gutter, 8px) + 4px)); width: 300px; max-width: calc(100vw - 24px); max-height: calc(100dvh - 144px); overflow-y: auto; }
+.wiki-header-actions .wiki-pop { position: fixed; top: calc(60px + env(safe-area-inset-top)); left: auto; right: 12px; width: 300px; max-width: calc(100vw - 24px); max-height: calc(100dvh - 144px); overflow-y: auto; }
 .wiki-bar__kept { display: inline-flex; align-items: center; gap: 6px; color: var(--t2); font-weight: 500; text-decoration: underline; text-underline-offset: 3px; }
 .wiki-bar__kept::before { content: ""; width: 4px; height: 4px; border-radius: 50%; background: currentColor; }
 @media (pointer: coarse) { .wiki-bar__kept { min-height: 44px; } }
