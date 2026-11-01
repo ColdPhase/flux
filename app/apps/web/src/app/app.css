@@ -184,7 +184,7 @@ body:has(.app) { background: var(--side); }
 .side__ib { position: relative; display: grid; place-items: center; width: 40px; height: 40px; border-radius: var(--r-pill); color: var(--t2); transition: var(--tr); }
 .side__ib:hover { background: var(--hov); color: var(--t1); }
 .side__ib[aria-current="page"] { background: var(--el); color: var(--t1); box-shadow: var(--sh-1); }
-.side__count--rail { position: absolute; top: 0; right: -2px; margin: 0; min-width: 18px; height: 18px; padding: 0 5px; }
+.side__count--rail { position: absolute; top: 0; right: 0; margin: 0; min-width: 18px; height: 18px; padding: 0 5px; }
 .side__rail-project { position: relative; display: grid; place-items: center; width: 36px; height: 36px; border-radius: 10px; text-decoration: none; }
 .side__rail-project.is-open { background: var(--el); box-shadow: var(--sh-1); }
 /* The same traveling highlight as the expanded list's (#155): one tile-sized mark that moves to the chosen project while it loads. */
