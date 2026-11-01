@@ -752,7 +752,8 @@ class CreateWindow(unittest.TestCase):
         create_other(page, "Project")
         project = page.get_by_role("dialog", name="New project")
         expect(project.get_by_role("textbox", name="Project name", exact=True)).to_have_value(name)
-        expect(project.get_by_role("tabpanel").locator(".create__where")).to_have_text("In Garden sensors")
+        # Two workspaces to choose from: "In Garden sensors ▾" is a chip over the workspace choice (#763 PE-3).
+        expect(project.get_by_role("tabpanel").locator(".create__where").get_by_text("In Garden sensors", exact=True)).to_be_visible()
         choose(project.get_by_role("combobox", name="Start from"), "research")
         expect(project.get_by_role("tabpanel").locator(".create__foot")).to_contain_text("Starts with Conversation + Wiki")
         project.get_by_role("button", name=re.compile("^Create project")).click()

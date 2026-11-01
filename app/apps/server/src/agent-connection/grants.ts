@@ -15,7 +15,7 @@ export function agentStandingGrants(db: Database, domain: AgentGrantDomainChecks
         const connection = await createAgentConnectionStore(tx).resolve(ownerUserId, connectionId);
         if (!connection || !connection.scopes.includes('flux.action.execute') || !connection.selectedProjectIds.includes(command.projectId))
           throw new DomainError(404, 'CONNECTION_NOT_FOUND', 'Connection not found');
-        // A project manager may add grants to their own connection. #763 FT-2 (proposed amendment of F-024 AC-4): so may an
+        // A project manager may add grants to their own connection. #763 FT-2 (F-024 AC-4 amendment, founder decision 2026-11-01 on #806): so may an
         // owner who can write in the project when a manager has given this agent its own contributor grant there. Every
         // action still runs as the agent, capped by that grant and by the owner's current access.
         const owner = { kind: 'human' as const, id: ownerUserId };

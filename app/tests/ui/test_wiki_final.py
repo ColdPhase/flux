@@ -349,7 +349,13 @@ class WikiFinal(unittest.TestCase):
                     self.assertGreater(reader.evaluate("e => e.scrollTop"), 0, "the lower document is reached by scrolling")
                     last = page.locator(".doc-ids")
                     expect(last).to_be_visible()
-                    last_box, read_box = last.bounding_box(), reader.bounding_box()
+                    # Scrolled to the end and measured in one layout: the reader's foot may still grow after an earlier
+                    # scroll (late page data), which moves the end, not the place Edit leaves for it.
+                    last_box, read_box = reader.evaluate("""e => {
+                        e.scrollTop = e.scrollHeight - e.clientHeight;
+                        const box = (el) => { const r = el.getBoundingClientRect(); return { y: r.y, height: r.height }; };
+                        return [box(e.querySelector('.doc-ids')), box(e)];
+                    }""")
                     self.assertGreaterEqual(last_box["y"], read_box["y"] - 1)
                     self.assertLessEqual(last_box["y"] + last_box["height"], read_box["y"] + read_box["height"] + 1,
                                          "the final attribution is readable above Edit")

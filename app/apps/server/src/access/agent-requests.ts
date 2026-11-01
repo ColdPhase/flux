@@ -13,6 +13,7 @@ import type { AccessContext } from './context.js';
  * (docs/development/access-policy.md#agent-access-requests). Asking grants nothing. Allow is the ordinary agent grant
  * made by that manager (`project.manage`), so the agent is still capped at its owner's own access; Decline only closes.
  */
+const DECLINE_COOLDOWN_MS = 24 * 3_600_000;
 const missing = () => new NotFoundError('Agent access request', 'AGENT_REQUEST_NOT_FOUND');
 const human = (principal: Principal) => { if (principal.kind !== 'human') throw missing(); return principal; };
 /** The manager's notice links to the project's People, where the request is answered. */
@@ -37,6 +38,10 @@ export function agentRequestUseCases(db: Database, boss: Pick<PgBoss, 'send'>) {
         const current = await rows.grantOf(projectId, agent.id);
         if (current === 'contributor' || (current === 'viewer' && role === 'viewer'))
           throw new ConflictError('Your agent already has this access here', 'AGENT_ALREADY_IN_PROJECT');
+        // A declined request can be asked again only after a day, so a "no" is not answered with a fresh notice each minute.
+        const previous = await rows.current(agent.id, projectId);
+        if (previous?.state === 'declined' && Date.now() - previous.updatedAt.getTime() < DECLINE_COOLDOWN_MS)
+          throw new ConflictError('A project manager declined this a moment ago; you can ask again tomorrow', 'AGENT_REQUEST_DECLINED');
         const { row, created } = await rows.open({ workspaceId: project.workspaceId, projectId, agentId: agent.id, ownerUserId: owner.id, role });
         const notified: { id: string; name: string }[] = [];
         if (created) {

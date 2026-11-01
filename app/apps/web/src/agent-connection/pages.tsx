@@ -277,6 +277,8 @@ export function AgentConnectionPage() {
       if (cause instanceof ApiError && cause.code === 'AGENT_ALREADY_IN_PROJECT') {
         const rows = await getAgentProjectAccess(agentId).catch(() => null);
         if (rows) setAgentAccess((current) => ({ ...current, [agentId]: rows }));
+      } else if (cause instanceof ApiError && cause.code === 'AGENT_REQUEST_DECLINED') {
+        setError('A project manager declined this request a moment ago. You can ask again tomorrow, or talk to them first.');
       } else setError(describeError(cause));
     } finally { setAsking(null); }
   }

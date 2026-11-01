@@ -7,8 +7,10 @@ import { recordEvent } from '../events.js';
 import type { Database, Principal } from '../types.js';
 import { eventPorts } from './common.js';
 import { ConflictError, ForbiddenError, GoneError, InvalidInputError, NotFoundError } from './errors.js';
-import { enforce, evaluateProject, evaluateWorkspace, isManager, isUuid } from './policy.js';
-import { grantProject } from './grants.js';
+import { enforce, evaluateWorkspace, isManager, isUuid } from './policy.js';
+import { inviteLanding, inviteProjectName, openInviteProject, type InviteJoined } from './invite-projects.js';
+
+export type { InviteJoined };
 import { inviteIdOf, inviteToken, inviteTokenHash, type InviteSigner } from './invite-tokens.js';
 import type { AccessPorts, InviteRepository, InviteRow } from './repositories.js';
 
@@ -21,9 +23,6 @@ export { inviteIdOf, inviteToken, inviteTokenHash, type InviteSigner };
 // (as `addMember`), then the invite row `FOR UPDATE`, and rechecks everything there.
 
 type InvitePorts = Pick<AccessPorts, 'workspaces' | 'invites' | 'access' | 'events' | 'projects'>;
-
-/** Told inside the joining transaction about a fresh join (#763 FT-3): the server notifies the inviter. */
-export type InviteJoined = (tx: Database, joined: { workspaceId: string; userId: string; inviterId: string; projectId: string | null; encrypted: boolean }) => Promise<void>;
 
 const INVITE_ROLES: readonly InviteRole[] = ['admin', 'member', 'guest'];
 const MAX_PENDING = 50;
@@ -73,11 +72,7 @@ export async function createInvite(principal: Principal, workspaceId: string, co
     if (await invites.pendingCount(workspaceId, now) >= MAX_PENDING) throw new ConflictError(`A workspace holds at most ${MAX_PENDING} pending invite links`, 'INVITE_LIMIT');
     // An invite into a project needs its creator to manage that project now (#763 FT-3).
     let projectName: string | null = null;
-    if (projectId) {
-      const checked = await evaluateProject(principal, 'project.manage', projectId, ports.access(tx), { lock: true });
-      if (!checked.allowed || checked.project?.workspaceId !== workspaceId) throw new NotFoundError('Project', 'PROJECT_NOT_FOUND');
-      projectName = await invites.projectName(workspaceId, projectId);
-    }
+    if (projectId) projectName = await inviteProjectName(principal, workspaceId, projectId, tx, ports);
     const id = randomUUID();
     const row = await invites.insert({ id, workspaceId, role, email, tokenHash: inviteTokenHash(inviteToken(signer, id)), createdBy: principal.id,
       expiresAt: new Date(now.getTime() + days * DAY_MS), projectId: projectId?.toLowerCase() ?? null });
@@ -169,12 +164,9 @@ export async function acceptInvite(principal: Principal, token: unknown, db: Dat
     await ports.workspaces(tx).lock(first.invite.workspaceId);
     const found = await find(signer, token, ports.invites(tx), true);
     const { invite } = found;
-    // Where to land: the invite's project, when the person can open it now (#763 FT-3).
-    const landing = async () => invite.projectId
-      && (await evaluateProject(principal, 'project.read', invite.projectId, ports.access(tx))).allowed ? invite.projectId : null;
     const result = async (status: AcceptInviteResult['status'], role: WorkspaceRole, needsUnlockPassword = false): Promise<AcceptInviteResult> => ({
       status, workspaceId: invite.workspaceId, workspaceName: found.workspaceName, role, encrypted: found.encrypted, needsUnlockPassword,
-      projectId: await landing(),
+      projectId: await inviteLanding(principal, invite.projectId, tx, ports),
     });
     const gone = await goneReason(found, principal.id, ports, tx, now);
     if (gone) throw gone;
@@ -197,20 +189,7 @@ export async function acceptInvite(principal: Principal, token: unknown, db: Dat
     await invites.markAccepted(invite.id, principal.id, now);
     await recordEvent(eventPorts(ports, tx), principal, invite.workspaceId, 'workspace.member_added.v1', invite.workspaceId,
       { userId: principal.id, role: invite.role, inviteId: invite.id });
-    // #763 FT-3: an invite made from a project also opens it, as a grant its creator makes (they still manage it, or
-    // nothing is granted). A workspace member of a project everyone in the space opens already writes there.
-    let projectId: string | null = null;
-    if (invite.projectId) {
-      const inviter: Principal = { kind: 'human', id: invite.createdBy };
-      const manages = (await evaluateProject(inviter, 'project.manage', invite.projectId, ports.access(tx))).allowed;
-      if (manages) {
-        const level = await evaluateProject(principal, 'project.write', invite.projectId, ports.access(tx));
-        if (!level.allowed && !isManager(invite.role)) {
-          await grantProject(inviter, invite.projectId, { principal: { kind: 'human', id: principal.id }, role: 'contributor' }, tx, ports);
-        }
-        projectId = invite.projectId;
-      }
-    }
+    const projectId = await openInviteProject(principal, invite, tx, ports);
     await options.onJoined?.(tx, { workspaceId: invite.workspaceId, userId: principal.id, inviterId: invite.createdBy, projectId, encrypted: found.encrypted });
     // F-030: an admin of an encrypted workspace has no unlock password until a current holder grants one.
     return await result('joined', invite.role, found.encrypted && isManager(invite.role));

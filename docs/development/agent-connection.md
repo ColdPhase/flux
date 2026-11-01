@@ -225,7 +225,7 @@ manager) gets the same `404` as for a missing connection or grant:
 
 | Route | Rule |
 | --- | --- |
-| `POST /api/v1/agent-connections/:id/action-grants` | Create. Needs the connection's `flux.action.execute` scope, a selected project, the owner's current project management (or, proposed amendment #763 FT-2 in [access policy](access-policy.md#agent-access-requests-763-ft-1-2026-10-31): the owner's project write access plus the agent's own manager-given `contributor` grant), a class the operation has, 1–1000 uses and an end within 30 days. A durable `clientCommandId` makes retries idempotent |
+| `POST /api/v1/agent-connections/:id/action-grants` | Create. Needs the connection's `flux.action.execute` scope, a selected project, the owner's current project management (or, amendment #763 FT-2 accepted 2026-11-01 in [access policy](access-policy.md#agent-access-requests-763-ft-1-2026-10-31): the owner's project write access plus the agent's own manager-given `contributor` grant), a class the operation has, 1–1000 uses and an end within 30 days. A durable `clientCommandId` makes retries idempotent |
 | `GET …/action-grants` | The owner's grant history, newest first, 50 per page, with no project or object titles |
 | `PATCH …/action-grants/:grantId` | Narrow (below) |
 | `DELETE …/action-grants/:grantId` | Revoke now; the generation is bumped |

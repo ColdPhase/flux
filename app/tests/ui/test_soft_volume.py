@@ -218,8 +218,13 @@ class SoftVolume(unittest.TestCase):
         self.ensure_account()
         page = self.page()
         page.goto(f"/projects/{self.ids['project']}/tasks")
-        primary = page.locator(".ui-btn--primary").first
-        expect(primary).to_be_visible()
+        # The header's "+ Task" is the raised default now (#789 SP-5); a primary is the Create window's own button.
+        expect(page.get_by_role("heading", level=1)).to_be_visible()
+        page.locator("body").press("c")
+        window = page.get_by_role("dialog", name="New task")
+        window.get_by_label("Title", exact=True).fill("Calibrate the probes")
+        primary = window.locator(".ui-btn--primary").first
+        expect(primary).to_be_enabled()
         style = primary.evaluate("e => { const s = getComputedStyle(e); return [s.borderTopLeftRadius, s.backgroundImage.startsWith('linear-gradient'), s.boxShadow !== 'none']; }")
         self.assertEqual(style[1:], [True, True], "the primary button is the inverted gradient with volume")
         self.assertGreaterEqual(float(style[0].rstrip("px")), 17, "buttons are pills")

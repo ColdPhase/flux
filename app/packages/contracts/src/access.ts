@@ -285,8 +285,8 @@ export interface CreateInviteCommand {
   email?: string | null;
   expiresInDays?: InviteExpiryDays;
   /**
-   * A project the creator manages (#763 FT-3): joining also gives the new person access to it (a contributor grant,
-   * a viewer grant for a guest unless `projectRole` says otherwise). Null or absent: the space only.
+   * A project the creator manages (#763 FT-3): joining also gives the new person a contributor grant on it (also a
+   * guest), unless their role already writes there. Null or absent: the space only.
    */
   projectId?: string | null;
 }

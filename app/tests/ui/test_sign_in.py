@@ -61,7 +61,7 @@ class SignIn(_Browser):
         return context.new_page()
 
     def test_01_the_page_matches_the_drawn_sign_in(self) -> None:
-        for name, viewport, tile, word in (("1440", DESKTOP, 44, 30), ("390", PHONE, 52, 34)):
+        for name, viewport, tile, word in (("1440", DESKTOP, 44, 30), ("390", PHONE, 52, 30)):
             for scheme in ("light", "dark"):
                 page = self.page(scheme, viewport)
                 page.goto("/sign-in")
@@ -103,10 +103,11 @@ class SignIn(_Browser):
         page = self.page("light", DESKTOP)
         page.goto("/sign-in")
         expect(page.get_by_label("Email")).to_be_focused()
-        page.keyboard.press("Tab")
-        expect(page.get_by_role("link", name="Forgot password?")).to_be_focused()
+        # "Forgot password?" sits beside the Password label but follows the field in the tab order (#763 FR-8).
         page.keyboard.press("Tab")
         expect(page.get_by_label("Password", exact=True)).to_be_focused()
+        page.keyboard.press("Tab")
+        expect(page.get_by_role("link", name="Forgot password?")).to_be_focused()
         page.keyboard.press("Tab")
         expect(page.get_by_role("button", name="Sign in", exact=True)).to_be_focused()
         page.get_by_role("button", name="Sign in", exact=True).click()

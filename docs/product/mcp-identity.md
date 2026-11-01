@@ -880,7 +880,8 @@ threshold, or secondary SSO challenge is introduced.
 - On restores only settings permitted by still-valid consent, rights and bounded
   grants. It does not revive revoked connections/runtime, revoked/expired/used-up
   grants or removed owner/IdP authority. Actual new grants use the existing
-  disclosed owner plus `project.manage` routes; there is no hidden grant creation.
+  disclosed owner plus `project.manage` routes (amended 2026-11-01, #806: or the owner's write access plus
+  the agent's manager-given `contributor` grant); there is no hidden grant creation.
 - Outside the original consented scopes/places, normal explicit owner/OAuth
   authorization and an adequate token remain necessary. Refresh cannot enlarge
   the original scope (RFC 6749 §6); OAuth scope reconsent is not password step-up.
@@ -1381,7 +1382,7 @@ proof mutable switches already exist.
   consent, rights and bounded grants. Never revive revoked connection/runtime,
   revoked/expired/used-up grants or removed owner/IdP authority. New real bounded
   grants use existing disclosed owner plus `project.manage` routes; no hidden
-  grant creation. Preserve consent/receipt identities through a restrictive
+  grant creation. (Amended 2026-11-01 by founder decision on #806, #763 FT-2: the owner's project write access plus the agent's own manager-given `contributor` grant also suffices; see [access policy](../development/access-policy.md#agent-access-requests-763-ft-1-2026-10-31).) Preserve consent/receipt identities through a restrictive
   versioned policy overlay or an independently reviewed equivalent.
 - **AC-5 — Integrated evidence.** Docker API/browser checks cover owner vs
   other-owner/admin/agent refusal, reload/persistence, old-token Off/On and

@@ -378,7 +378,7 @@ grant from inside Flux, and lets a manager make it in one step; it adds no new a
 
 | Route | Rule |
 | --- | --- |
-| `POST /api/v1/projects/:id/agent-requests { agentId, role? }` | The agent's owner, who can read the project, for their own active agent of the project's workspace (else `404`); workspace AI must be on (F-029). The role is never more than the owner has: `contributor` when the owner writes there (unless `viewer` is asked), else `viewer`. A manager is told to grant directly (`409 AGENT_REQUEST_MANAGER`); an agent that already has the role is `409 AGENT_ALREADY_IN_PROJECT`. One row per agent and project (`agent_access_requests`); a closed one reopens. A new or reopened request gives each current project manager except the asker a Needs-you question that opens the project's People (`?open=people&agentRequest=<id>`). Asking grants nothing. `201` with the request and `notified: [{ id, name }]` |
+| `POST /api/v1/projects/:id/agent-requests { agentId, role? }` | The agent's owner, who can read the project, for their own active agent of the project's workspace (else `404`); workspace AI must be on (F-029). The role is never more than the owner has: `contributor` when the owner writes there (unless `viewer` is asked), else `viewer`. A manager is told to grant directly (`409 AGENT_REQUEST_MANAGER`); an agent that already has the role is `409 AGENT_ALREADY_IN_PROJECT`. One row per agent and project (`agent_access_requests`); a closed one reopens. A request declined less than a day ago cannot be reopened (`409 AGENT_REQUEST_DECLINED`). A new or reopened request gives each current project manager except the asker a Needs-you question that opens the project's People (`?open=people&agentRequest=<id>`). Asking grants nothing. `201` with the request and `notified: [{ id, name }]` |
 | `GET /api/v1/projects/:id/agent-requests` | A reader of the project: managers see every pending request, anyone else only their own |
 | `POST /api/v1/projects/:id/agent-requests/:requestId { allow }` | A current project manager (`403` otherwise). Allow is the ordinary `grantProject` of the asked role, made by that manager under its own locks and checks (the agent must still be active); Decline only closes. Either way the managers' questions are marked read and the owner gets an Inbox notice. An answered request answers as it is |
 | `GET /api/v1/agents/:id/project-access` | The agent's owner only: for each project of the agent's workspace the owner can open, the agent's explicit grant and its open request. The consent page uses it to show "Ask a manager to let it in" and polls it while a request waits |
@@ -387,14 +387,17 @@ The agent is still capped at its owner's current level and acts only through its
 the request changes nothing about what an allowed agent may do. `agent_access_requests` is an
 `ai` table (F-030 refuses rows in an encrypted workspace).
 
-**Standing grants of a member's agent — proposed amendment of F-024 AC-4 (#763 FT-2, needs founder
-confirmation).** `POST /api/v1/agent-connections/:id/action-grants` needed the owner's current
+**Standing grants of a member's agent — amendment of F-024 AC-4 (#763 FT-2), accepted by founder decision
+(Hubert, 2026-11-01, recorded on #806).** `POST /api/v1/agent-connections/:id/action-grants` needed the owner's current
 project management, so a member's agent could be let into a project but could never be given
 any action there. Proposed: the owner may also add standing grants when they can write in the
 project (`project.write`) and the agent holds its own explicit `contributor` grant there, which
 only a manager gives (`403 AGENT_GRANT_REQUIRED` otherwise). Every action still runs as the agent,
 capped by that grant, the owner's current level, the connection's consent and the grant's own
 limits. Managers are unchanged. Implemented in `app/apps/server/src/agent-connection/grants.ts`.
+An owner who gave their own agent a `contributor` grant while they managed the project, and was then demoted to a
+writer, can keep adding standing grants until a manager removes that agent grant; they stay within the owner's
+current write level, and a demotion below write stops both new grants and every existing grant's actions.
 
 ## Events
 

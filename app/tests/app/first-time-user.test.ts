@@ -93,6 +93,10 @@ describe('#763 FT-1: a member asks a manager to let their own agent in', () => {
     assert.equal(declined.state, 'declined');
     assert.equal((await grantsOf(anna, app.id)).some((row) => row.principal.kind === 'agent' && row.principal.id === agentId), false);
     assert.ok((await inbox(guest)).some((item) => item.title === 'Guest agent was not let into Volunteer sign-up app'));
+    // Asking again right after a "no" sends nobody a new notice: it waits a day.
+    const again = await ask(guest, app.id, agentId);
+    assert.equal(again.status, 409, again.text);
+    assert.equal(codeOf(again), 'AGENT_REQUEST_DECLINED');
     // Someone else's agent, and a project the asker cannot open, look missing.
     assert.equal((await ask(dev, app.id, agentId)).status, 404);
     const hidden = await project(anna, space, 'Board only', 'restricted');

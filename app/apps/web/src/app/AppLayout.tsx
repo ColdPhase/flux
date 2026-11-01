@@ -252,7 +252,11 @@ function AppLayoutContent() {
     let last = Date.now();
     const refresh = () => { last = Date.now(); void revalidate(); };
     const back = () => { if (document.visibilityState === 'visible' && Date.now() - last > 60_000) refresh(); };
-    window.addEventListener('flux:workspace-ai-blocked', refresh);
+    // A refusal for AI that the next read does not end (a place of a space that waits to be unlocked keeps answering 403 to its
+    // AI reads) must not start one read after another: at most one in a few seconds, as for `423` below.
+    let lastAiRefusal = 0;
+    const aiBlocked = () => { if (Date.now() - lastAiRefusal < 3000) return; lastAiRefusal = Date.now(); refresh(); };
+    window.addEventListener('flux:workspace-ai-blocked', aiBlocked);
     // F-030 (#655): a place answered `423` because its encrypted workspace locked since the shell last read it. A workspace the
     // shell already shows as locked teaches nothing new: the locked panel's own reads answer `423` again, and each answer must
     // not start another read. A shell that still shows it unlocked is read again, at most once in a few seconds.
@@ -267,7 +271,7 @@ function AppLayoutContent() {
     window.addEventListener('focus', back);
     document.addEventListener('visibilitychange', back);
     return () => {
-      window.removeEventListener('flux:workspace-ai-blocked', refresh);
+      window.removeEventListener('flux:workspace-ai-blocked', aiBlocked);
       window.removeEventListener(WORKSPACE_LOCKED_DOM_EVENT, locked);
       window.removeEventListener('focus', back);
       document.removeEventListener('visibilitychange', back);

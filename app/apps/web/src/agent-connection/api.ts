@@ -56,11 +56,12 @@ export function revokeAgentConnection(connectionId: string) {
 
 /**
  * Every standing grant of one of your connections, newest first: current ones and their history. The server
- * pages by 50; a connection rarely has more than a few pages, and the reading stops at 10 (500 grants).
+ * pages by 50; a connection rarely has more than a few pages, and the reading stops at 100 (5000 grants).
  */
 export async function listActionGrants(connectionId: string, signal?: AbortSignal) {
   const grants: AgentStandingGrant[] = [];
-  for (let offset = 0; offset < 500; offset += 50) {
+  // A long history pages on: a hand-off reads every grant before it adds any, so it never adds one twice (#763 FT-2).
+  for (let offset = 0; offset < 5000; offset += 50) {
     const page = await request<Page<AgentStandingGrant>>(`${agentActionGrantsPath(encodeURIComponent(connectionId))}?limit=50&offset=${offset}`, { signal });
     grants.push(...page.items);
     if (offset + page.items.length >= page.total || page.items.length === 0) break;

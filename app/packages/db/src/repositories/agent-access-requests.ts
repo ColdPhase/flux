@@ -48,6 +48,12 @@ export function agentAccessRequestRows(tx: DbExecutor) {
       const [row] = await tx.insert(schema.agentAccessRequests).values({ id: randomUUID(), ...input }).returning();
       return { row: row!, created: true };
     },
+    /** The agent's request in a project, whatever its state. */
+    async current(agentId: string, projectId: string) {
+      const [row] = await tx.select().from(schema.agentAccessRequests).where(and(
+        eq(schema.agentAccessRequests.agentId, agentId), eq(schema.agentAccessRequests.projectId, projectId)));
+      return row ?? null;
+    },
     async find(projectId: string, requestId: string, lock = false) {
       const query = tx.select().from(schema.agentAccessRequests).where(and(eq(schema.agentAccessRequests.id, requestId),
         eq(schema.agentAccessRequests.projectId, projectId)));

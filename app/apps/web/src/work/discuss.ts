@@ -17,7 +17,8 @@ export function decisionThread(links: readonly ObjectLink[], decisionId: string)
  * "Discuss" on a decision (F-026 P4, #763 D3): it opens where the decision is talked about, ready to write. A decision
  * made from a message opens that message's thread, where the decision stands among the replies, with its reply field
  * focused. One without a message source opens the project's conversation with the decision beside it (on a computer)
- * and the composer focused. `links` are the decision's relations when the caller already holds them.
+ * and the composer focused. Where the panel is an overlay (a tablet, a phone) it would cover that composer and the way
+ * back, so there the conversation opens alone. `links` are the decision's relations when the caller already holds them.
  */
 export function useDiscussDecision() {
   const follow = useFollow();
@@ -28,7 +29,7 @@ export function useDiscussDecision() {
       await follow(`/projects/${projectId}/conversations/${thread.conversationId}`, { state: { focusComposer: true, keepPanel: true } });
       return;
     }
-    const phone = window.matchMedia(MEDIA.phone).matches;
-    await follow(`/projects/${projectId}${phone ? '' : `?open=decision:${decisionId}`}`, { state: { focusComposer: true } });
+    const overlay = window.matchMedia(MEDIA.panelOverlay).matches;
+    await follow(`/projects/${projectId}${overlay ? '' : `?open=decision:${decisionId}`}`, { state: { focusComposer: true } });
   }, [follow]);
 }

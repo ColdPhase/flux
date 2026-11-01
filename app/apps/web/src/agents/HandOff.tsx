@@ -235,7 +235,11 @@ function HandOffBody({ onClose, project, task: given, agentId, onDone }: {
   const askIn = async () => {
     if (!entry) return;
     try { await requestAgentAccess(project.id, entry.agentId, 'contributor'); setAsked(true); }
-    catch (cause) { if (cause instanceof ApiError && cause.code === 'AGENT_ALREADY_IN_PROJECT') setAsked(true); else setError(failure(cause)); }
+    catch (cause) {
+      if (cause instanceof ApiError && cause.code === 'AGENT_ALREADY_IN_PROJECT') setAsked(true);
+      else if (cause instanceof ApiError && cause.code === 'AGENT_REQUEST_DECLINED') setError('A project manager declined this a moment ago. You can ask again tomorrow.');
+      else setError(failure(cause));
+    }
   };
 
   /** Grants the task's work to each of your connections that lacks it (existing owner grant routes; retries reuse their ids). */

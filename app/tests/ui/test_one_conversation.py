@@ -358,7 +358,7 @@ class OneConversationJourney(unittest.TestCase):
         expect(thread).to_be_visible()
         feed = thread.locator(".thread__feed")
         expect(feed).not_to_have_class(re.compile("is-opening"))
-        expect(thread.locator(".thread__hint")).to_have_text("8 replies")
+        expect(thread.locator(".thread__hint")).to_have_text(re.compile(r"^8 replies · "))  # the first reply's day follows (#768)
         page.wait_for_timeout(500)
         overflow = feed.evaluate("el => el.scrollHeight - el.clientHeight")
         self.assertGreater(overflow, 1, "the fixture thread overflows the desktop panel, so opening it could hide the root")

@@ -19,7 +19,7 @@ import unittest
 from playwright.sync_api import Browser, BrowserContext, Page, expect, sync_playwright
 
 from message_gestures import centre, long_press, swipe, touch
-from message_layout import assert_no_sideways_scroll, covered_parts, covered_text, showing, start_counting, stop_counting
+from message_layout import assert_no_sideways_scroll, covered_text, showing, start_counting, stop_counting
 from test_app_shell import DESKTOP, ORIGIN, PHONE, UI_BROWSER, UPSTREAM, shot, start_forwarder
 
 PASSWORD = "messages between friends"
@@ -471,7 +471,9 @@ class DmThreadsReceipts(unittest.TestCase):
                 page.wait_for_timeout(200)
                 bars = showing(page, "[data-dm-thread]")
                 self.assertEqual(len(bars), 1, f"{who}: reply {index} has the only toolbar")
-                self.assertEqual(covered_parts(page, "[data-dm-thread]", bars[0]), [], f"{who}: reply {index}: the toolbar covers nothing")
+                # A thread pane under 520 px keeps no room beside a bubble: the pill sits in the bubble's top corner, in the strip
+                # free of text (#763 A4), so it may overlap a bubble's padding but never any text.
+                self.assertEqual(covered_text(page, "[data-dm-thread]", bars[0]), [], f"{who}: reply {index}: the toolbar covers no text")
                 feed = page.locator("[data-dm-thread] .thread__feed").evaluate("el => ({left: el.getBoundingClientRect().left, right: el.getBoundingClientRect().left + el.clientWidth})")
                 self.assertTrue(feed["left"] - 0.5 <= bars[0]["left"] and bars[0]["right"] <= feed["right"] + 0.5, f"{who}: reply {index}: the toolbar is inside the pane")
             # A click leaves nothing behind and the hand-over from one reply to the next never shows two.
