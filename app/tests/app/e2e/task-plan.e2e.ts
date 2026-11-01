@@ -135,7 +135,7 @@ test('a planned task shows its criteria, prerequisite states and plan revision; 
   // The page never scrolls sideways and the text of every new part stays inside the panel (a row's hover highlight may bleed 6px, as elsewhere).
   const overflow = await view.evaluate(() => {
     const panel = (document.querySelector('.details.wd') as HTMLElement).getBoundingClientRect();
-    const outside = [...document.querySelectorAll('.details.wd .wd-criteria li, .details.wd .wd-plan, .details.wd .wd-waiting, .details.wd .wd-link > span, .details.wd .wd-link > small')]
+    const outside = [...document.querySelectorAll('.details.wd .wd-checks li, .details.wd .wd-plan, .details.wd .wd-waiting, .details.wd .wd-link > span, .details.wd .wd-link > small')]
       .filter((element) => element.getBoundingClientRect().right > panel.right + 0.5).map((element) => element.className || element.tagName);
     return { page: document.documentElement.scrollWidth - window.innerWidth, outside };
   });
