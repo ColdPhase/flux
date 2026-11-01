@@ -56,8 +56,7 @@
 .tb-note__x { flex: none; margin-left: auto; min-height: 24px; font-weight: 500; color: var(--t2); text-decoration: underline; text-underline-offset: 3px; }
 .tb-none { margin: 14px var(--space-page) 0; font-size: var(--fs-md); color: var(--t2); overflow-wrap: anywhere; }
 
-/* Fixed-width status columns (F-015 amendment, 2026-10-31): they narrow when Details is docked, never stretch. */
-.tb-board { flex: 1; display: grid; grid-template-columns: repeat(3, minmax(0, var(--board-col))); gap: 12px; padding: 12px var(--space-page) 32px; align-items: start; }
+.tb-board { flex: 1; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; padding: 12px var(--space-page) 32px; align-items: start; }
 .tb-col { display: flex; flex-direction: column; min-width: 0; }
 /* Every column header is as tall as the ones with a "+" button, so the three line up. */
 /* 40px = the 25px add button, the padding and the rule: a column without the button (Done, readers) lines up. */

@@ -41,38 +41,16 @@ stop fitting. A window on a 4K screen can need the phone or tablet composition.
 | Small phone / short landscape window | One main work surface; compact place/audience cue; essential actions visible. Navigation and related context open in a deliberate sheet/page with a clear close/back path. Compose fields and save/send remain reachable above the keyboard. |
 | Wide phone / tablet / split view | Keep the main surface readable and offer a related-context pane only when both fit. Portrait, landscape, browser chrome and split view can select different arrangements without changing object meaning or the task. |
 | Laptop / normal desktop | Stable place navigation, the primary workspace and useful contextual details when opened. Opening context must leave readable conversation, map/list or work content. |
-| Large desktop / 4K / ultrawide | Amended 2026-10-31 (below): the same composition as a 1600 px desktop, centred beside the sidebar; the extra width is margin. The map and board use the whole work panel; Details stays docked at its laptop width beside the work. Keep context relevant to the selected object and allow it to be closed; do not populate every empty area with dashboards. |
+| Large desktop / 4K / ultrawide | Use the extra area for more useful board columns/list rows, a larger usable canvas and an optional persistent/resizable source/details pane. A person can inspect a source alongside their work with fewer view changes. Keep context relevant to the selected object and allow it to be closed; do not populate every empty area with dashboards. |
 
-Constrain reading measure **inside** the workspace; on large screens the work panel
-itself also stops at `--content-max` (amendment below). Conversation bubbles retain readable
+Constrain reading measure **inside** the workspace, not by placing the entire
+application in a narrow fixed-width column. Conversation bubbles retain readable
 line lengths and own-right/others-left alignment; the surrounding pane can use
 more width. Wiki prose, forms and long settings text keep comfortable measures.
 Boards, tables, maps and relevant context can expand independently. Do not stretch
 cards or globally increase font/button size merely to fill a large display.
 A focused view on a large screen is a valid user choice. “More available” does
 not mean every panel must open automatically.
-
-### Large screens: consistency before filling the width (2026-10-31)
-
-Founder direction (Hubert, 2026-10-31, [#763](https://github.com/ColdPhase/flux/issues/763#issuecomment-6549771863)) amends F-015 and ADAPT-2 for
-large screens. It resolves the round-2 review finding SP-4 (at 3840 px the header
-controls sat about 1,400 px from the content they act on).
-
-- The work panel (header, views, the one docked panel) is at most `--content-max`
-  = 1600 px wide and is centred in the space beside the sidebar; the sidebar stays
-  at the screen's edge. Wider screens only gain margin around the panel.
-- Reading columns (the conversation stream, Wiki pages, Settings, the Inbox) stay
-  between 720 and 800 px (`--read-max` = 760 px for the conversation and the Inbox).
-- Tasks board status columns are at most `--board-col` = 340 px wide and never
-  stretch; they may narrow when Details is docked. The Open column's cards stay
-  one per row at 1440, 1920 and 3840 px.
-- The map fills the whole work panel, the widest area in the app.
-- Details keeps its laptop width, 420 px (380 px up to 1200 px), at every larger width.
-
-So 1440, 1920 and 3840 px show the same composition; from about 1864 px
-(sidebar + panel + insets) the work panel is the same 1600 px. ADAPT-2's gain on
-large screens is the panel beside the work and the map, not more board cards per row.
-`test_adaptive_matrix` asserts that 1920 and 3840 px render the same widths.
 
 Use existing object/detail/source surfaces first. A generic multi-window editor,
 arbitrary dashboard builder or simultaneous unrelated project workspace is not
