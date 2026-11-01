@@ -99,6 +99,7 @@ export function messageLinkUrls(body: string): string[] {
  */
 export interface LinkPreviewCard { url: string; title: string | null; description: string | null }
 /** `GET /api/v1/projects/:projectId/messages/:messageId/place` (CW-2): the conversation a project message belongs to. */
+export const projectMessagePlacePath = (projectId: string, messageId: string) => `/api/v1/projects/${projectId}/messages/${messageId}/place`;
 export interface MessagePlace { projectId: string; conversationId: string; messageId: string }
 
 export interface MessageLinkPreviews { status: 'ready' | 'off' | 'sealed' | 'busy'; cards: LinkPreviewCard[] }

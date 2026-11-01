@@ -1,5 +1,5 @@
 import type { FastifyInstance } from 'fastify';
-import type { MessagePlace } from '@flux/contracts';
+import { projectMessagePlacePath, type MessagePlace } from '@flux/contracts';
 import { evaluateProject, InvalidInputError, isUuid, NotFoundError } from '@flux/core';
 import { accessReader, messageReferenceRows, type Database } from '@flux/db';
 import type { SessionResolver } from '../identity/index.js';
@@ -12,7 +12,7 @@ interface Options { db: Database; sessions: SessionResolver }
  * and a message of another project is the same 404 as a missing one.
  */
 export async function messagePlaceRoutes(app: FastifyInstance, { db, sessions }: Options) {
-  app.get<{ Params: { projectId: string; messageId: string } }>('/api/v1/projects/:projectId/messages/:messageId/place', async (request): Promise<MessagePlace> => {
+  app.get<{ Params: { projectId: string; messageId: string } }>(projectMessagePlacePath(':projectId', ':messageId'), async (request): Promise<MessagePlace> => {
     const { principal } = await sessions.requirePrincipal(request);
     const { projectId, messageId } = request.params;
     if (!isUuid(projectId)) throw new InvalidInputError('projectId must be a UUID');
