@@ -90,6 +90,9 @@ export function createNeedsYou(ports: NeedsYouPorts, now: () => Date = () => new
       return works.get(id) ?? null;
     };
     for (const decision of decisions) {
+      // #763 FT-8: your own proposal waits for someone else; it asks you only when nobody else here can accept it.
+      if (decision.proposedBy.kind === 'human' && decision.proposedBy.id === userId
+        && (accepters.get(decision.projectId) ?? []).some((person) => !person.you)) continue;
       const related = links(decision.id).filter((link) => link.from.id === decision.id);
       const basedOn = related.filter((link) => link.role === 'source' && link.toTitle).map((link) => link.toTitle).slice(0, 4);
       const affects: NeedsYouTaskRef[] = [];

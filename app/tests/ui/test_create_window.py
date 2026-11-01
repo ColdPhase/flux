@@ -648,7 +648,7 @@ class CreateWindow(unittest.TestCase):
         # The keyboard: ←/→ move between the tabs and keep focus on them; the window and its text stay.
         kind_tab(page, "Task").focus()
         fields = (("Thought", "Thought", "New thought"), ("Message", "Message", "New message"), ("Decision", "Decision", "New decision"),
-                  ("Project", "What is it about?", "New project"))
+                  ("Project", "Project name", "New project"))
         for tab, label, name in fields:
             page.keyboard.press("ArrowRight")
             expect(kind_tab(page, tab)).to_be_focused()
@@ -751,7 +751,7 @@ class CreateWindow(unittest.TestCase):
         title_field(page).fill(name)
         create_other(page, "Project")
         project = page.get_by_role("dialog", name="New project")
-        expect(project.get_by_role("textbox", name="What is it about?", exact=True)).to_have_value(name)
+        expect(project.get_by_role("textbox", name="Project name", exact=True)).to_have_value(name)
         # Two workspaces to choose from: "In Garden sensors ▾" is a chip over the workspace choice (#763 PE-3).
         expect(project.get_by_role("tabpanel").locator(".create__where").get_by_text("In Garden sensors", exact=True)).to_be_visible()
         choose(project.get_by_role("combobox", name="Start from"), "research")
@@ -948,7 +948,7 @@ class CreateWindow(unittest.TestCase):
                     expect(page.get_by_role("dialog", name="New message").get_by_role("textbox", name="Message", exact=True)).to_be_visible()
                     shot(page, f"521-create-message-{size}-{scheme}-{engine}")
                     kind_tab(page, "Project").click()
-                    expect(page.get_by_role("dialog", name="New project").get_by_role("textbox", name="What is it about?", exact=True)).to_be_visible()
+                    expect(page.get_by_role("dialog", name="New project").get_by_role("textbox", name="Project name", exact=True)).to_be_visible()
                     shot(page, f"521-create-project-{size}-{scheme}-{engine}")
                     page.keyboard.press("Escape")
                     expect(window(page)).to_have_count(0)
@@ -1010,7 +1010,7 @@ class CreateWindow(unittest.TestCase):
         kind_tab(page, "Decision").click()
         expect(page.get_by_role("dialog", name="New decision").get_by_role("textbox", name="Decision", exact=True)).to_have_value("line one line two")
         kind_tab(page, "Project").click()
-        expect(page.get_by_role("dialog", name="New project").get_by_role("textbox", name="What is it about?", exact=True)).to_have_value("line one line two")
+        expect(page.get_by_role("dialog", name="New project").get_by_role("textbox", name="Project name", exact=True)).to_have_value("line one line two")
         kind_tab(page, "Thought").click()
         expect(thought).to_have_value("line one\nline two")
 

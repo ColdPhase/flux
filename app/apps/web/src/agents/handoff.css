@@ -50,7 +50,9 @@
 .ui-overlay--center .ui-overlay__surface.handoff-dialog { top: 50%; translate: -50% -50%; height: min(400px, 76dvh); }
 .ui-overlay--center .ui-overlay__surface.handoff-dialog:has(.handoff--empty) { height: min(312px, 76dvh); }
 .handoff__foot > .ui-btn { flex: none; width: 84px; }
-.handoff__foot > .ui-btn--primary { width: 144px; }
+/* #763 FT-9: one width for Next and Hand off, so the controls stay put between steps; a longer label ("Connect your own agent",
+   "Allow and hand off") grows the button instead of being clipped. */
+.handoff__foot > .ui-btn--primary { width: auto; min-width: 184px; white-space: nowrap; }
 .handoff__empty { align-items: center; justify-content: center; text-align: center; gap: var(--s-3); padding: var(--s-2) var(--s-5); }
 .handoff__empty .handoff__title { font-size: var(--fs-lg); }
 .handoff__empty p { max-width: 380px; margin: 0; font-size: var(--fs-base); line-height: 1.5; color: var(--t2); }

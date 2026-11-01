@@ -48,9 +48,22 @@ export function registerAgentPlaybook(server: McpServer, tools: AgentToolRegistr
     } catch (error) { return toolError(error); }
   });
 
-  /** Bind one selected, currently readable project; an omitted choice is valid only when it is unambiguous. */
-  async function bind(projectId: string | undefined) {
-    if (projectId !== undefined && !isUuid(projectId)) throw new DomainError(400, 'INVALID_INPUT', 'projectId must be a project UUID');
+  /**
+   * Bind one selected, currently readable project; an omitted choice is valid only when it is unambiguous. The choice may
+   * also be a selected project's exact name (case and surrounding spaces ignored), as the Connect guide says (#763 FT-5).
+   */
+  async function bind(projectId: string | undefined): Promise<{ connectionId: string; projects: { id: string; name: string }[] }> {
+    const given: string = projectId?.trim() ?? '';
+    const named = given !== '' && !isUuid(given as unknown);
+    if (named) {
+      const all = await bind(undefined);
+      const matches = all.projects.filter((project) => project.name.trim().toLowerCase() === given.toLowerCase());
+      if (matches.length === 1) return { ...all, projects: matches };
+      throw new DomainError(400, 'INVALID_INPUT', matches.length
+        ? `More than one selected project is named "${given}"; use its projectId: ${matches.map((project) => project.id).join(', ')}`
+        : `No selected project is named "${given}". Selected projects: ${all.projects.map((project) => `${project.name} (${project.id})`).join(', ') || 'none'}`);
+    }
+    projectId = given || undefined;
     return withAgentConnection(db, claims, 'flux.context.read', projectId ?? null, async ({ tx, connection, principal, requireProject }) => {
       const ids = projectId ? [projectId.toLowerCase()] : connection.selectedProjectIds;
       const readable = [];
@@ -69,7 +82,7 @@ export function registerAgentPlaybook(server: McpServer, tools: AgentToolRegistr
       description: action === 'start'
         ? 'Load Flux co-work instructions and start authorized work in a selected project.'
         : 'Load Flux co-work instructions and resume authorized work where you recorded it.',
-      argsSchema: z.object({ projectId: z.string().optional().describe('A selected project ID; optional when the connection has exactly one.') }),
+      argsSchema: z.object({ projectId: z.string().optional().describe('A selected project ID or its exact name; optional when the connection has exactly one.') }),
     }, ({ projectId }) => claims.dispatch.run('prompt', `${action}_work`, async () => {
       let text: string;
       try {

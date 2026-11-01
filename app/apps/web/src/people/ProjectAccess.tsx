@@ -7,6 +7,7 @@ import { useShellData } from '../app/data';
 import { useShellActions } from '../app/shellContext';
 import { AgentTag, Avatar, Button, Icon, Kreska, prefersReducedMotion, useRowMotion, Select, Option } from '../ui';
 import { ROLE_LABEL, attemptKeys, firstName, grantPerson, isManagerRole, levelFor, listGrants, listMembers, problemText, revokeGrant } from './api';
+import { AgentRequests } from './AgentRequests';
 import './people.css';
 import { useWorkspaceEncryption } from '../encryption/state';
 
@@ -145,7 +146,7 @@ export function ProjectAccess({ project, people, focusToken }: { project: Projec
   // Invite: someone already in the space is given access here; someone new is first added to the space.
   const invite = () => {
     if (!roster) return;
-    if (!candidates.length) { openDetails({ kind: 'people', workspaceId: project.workspaceId }); return; }
+    if (!candidates.length) { openDetails({ kind: 'people', workspaceId: project.workspaceId, project: { id: project.id, name: project.name } }); return; }
     setGiving((open) => !open);
   };
 
@@ -171,6 +172,9 @@ export function ProjectAccess({ project, people, focusToken }: { project: Projec
         </ul>
       ) : <p>Everyone with access to {project.name}.</p>}
 
+      {/* #763 FT-1: agents whose owners asked to bring them in; managers answer here. */}
+      <AgentRequests project={project} onChanged={changed} />
+
       {manager && managing && keptOut.length ? (
         <>
           <h4 className="access__sub" id="ov-kept-out">Kept out</h4>
@@ -184,6 +188,10 @@ export function ProjectAccess({ project, people, focusToken }: { project: Projec
         </>
       ) : null}
 
+      {/* #763 FT-7: Change access with nobody else here says so and offers Invite, instead of doing nothing. */}
+      {manager && managing && roster && !others.length && !keptOut.length ? (
+        <p className="access__alone">Nobody else can open {project.name} yet. <Button variant="link" onClick={invite}>Invite someone</Button></p>
+      ) : null}
       <p className="people__done" role="status">{done ? <><Icon name="check" size={13} />{done}</> : null}</p>
 
       {manager && rosterFailed && !roster ? (
@@ -193,7 +201,7 @@ export function ProjectAccess({ project, people, focusToken }: { project: Projec
         <GiveAccess project={project} candidates={candidates} workspaceName={workspaceName} open={giving}
           onClose={() => { setGiving(false); requestAnimationFrame(() => inviteRef.current?.focus()); }}
           onGranted={(member, role) => { setGiving(false); changed(`${firstName(member.name)} ${role === 'contributor' ? 'can now write in' : 'can now read'} ${project.name}.`); }}
-          onAddPeople={() => openDetails({ kind: 'people', workspaceId: project.workspaceId })} />
+          onAddPeople={() => openDetails({ kind: 'people', workspaceId: project.workspaceId, project: { id: project.id, name: project.name } })} />
       ) : null}
 
       {/* Who can open it, in one sentence; its managers change it from here. */}

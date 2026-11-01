@@ -10,15 +10,16 @@ import { isUuid } from './uuid.js';
 export function workspaceInviteRepository(db: DbExecutor) {
   const i = schema.workspaceInvites;
   return {
-    async insert(row: { id: string; workspaceId: string; role: 'admin' | 'member' | 'guest'; email: string | null; tokenHash: string; createdBy: string; expiresAt: Date }) {
+    async insert(row: { id: string; workspaceId: string; role: 'admin' | 'member' | 'guest'; email: string | null; tokenHash: string; createdBy: string; expiresAt: Date; projectId?: string | null }) {
       const [created] = await db.insert(i).values(row).returning();
       return created!;
     },
 
     /** The pending (not used, not revoked, not expired) invites with their creator's name, newest first. */
     pending(workspaceId: string, now: Date) {
-      return db.select({ invite: i, creatorName: schema.authUsers.name }).from(i)
+      return db.select({ invite: i, creatorName: schema.authUsers.name, projectName: schema.projects.name }).from(i)
         .innerJoin(schema.authUsers, eq(schema.authUsers.id, i.createdBy))
+        .leftJoin(schema.projects, eq(schema.projects.id, i.projectId))
         .where(and(eq(i.workspaceId, workspaceId), isNull(i.revokedAt), isNull(i.acceptedAt), gt(i.expiresAt, now)))
         .orderBy(desc(i.createdAt), desc(i.id));
     },
@@ -32,8 +33,10 @@ export function workspaceInviteRepository(db: DbExecutor) {
     /** One invite by id with its workspace and creator, optionally `FOR UPDATE` of the invite row. */
     async get(inviteId: string, options: { lock?: boolean } = {}) {
       if (!isUuid(inviteId)) return null;
-      const query = db.select({ invite: i, workspaceName: schema.workspaces.name, encrypted: schema.workspaces.encrypted, creatorName: schema.authUsers.name })
+      const query = db.select({ invite: i, workspaceName: schema.workspaces.name, encrypted: schema.workspaces.encrypted, creatorName: schema.authUsers.name,
+        projectName: schema.projects.name })
         .from(i).innerJoin(schema.workspaces, eq(schema.workspaces.id, i.workspaceId)).innerJoin(schema.authUsers, eq(schema.authUsers.id, i.createdBy))
+        .leftJoin(schema.projects, eq(schema.projects.id, i.projectId))
         .where(eq(i.id, inviteId));
       const [row] = options.lock ? await query.for('update', { of: i }) : await query;
       return row ?? null;
@@ -47,6 +50,12 @@ export function workspaceInviteRepository(db: DbExecutor) {
 
     async revoke(inviteId: string, revokedBy: string, at: Date) {
       await db.update(i).set({ revokedAt: at, revokedBy }).where(eq(i.id, inviteId));
+    },
+
+    async projectName(workspaceId: string, projectId: string): Promise<string | null> {
+      const [row] = await db.select({ name: schema.projects.name }).from(schema.projects)
+        .where(and(eq(schema.projects.workspaceId, workspaceId), eq(schema.projects.id, projectId)));
+      return row?.name ?? null;
     },
 
     async markAccepted(inviteId: string, acceptedBy: string, at: Date) {

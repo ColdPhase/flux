@@ -87,3 +87,10 @@
 .people__ai-status svg { flex: none; margin-top: 2px; color: var(--t1); }
 /* People as a Settings page (#763 PE-1): the panel's content in the page column. */
 .people--page { padding: 0; }
+/* #763 FT-1: Allow and Decline for an agent's request sit at the row's end. */
+.access__answer { display: inline-flex; gap: 6px; margin-left: auto; }
+/* #763 FT-3: "Also give access to <project>" on an invite link made from a project. */
+.people__check { display: flex; gap: 8px; align-items: flex-start; font-size: var(--fs-sm); color: var(--t1); }
+.people__check span { display: flex; flex-direction: column; gap: 2px; }
+.people__check small { color: var(--t3); }
+.access__alone { color: var(--t2); font-size: var(--fs-sm); margin: 0; }

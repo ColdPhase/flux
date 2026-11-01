@@ -1211,7 +1211,7 @@ class AppShellJourney(unittest.TestCase):
         new_from_sidebar(owner, "Project")
         expect(owner.get_by_label("Your space")).to_have_count(0)
         expect(owner.get_by_text("In Mira’s space")).to_be_visible()
-        owner.get_by_label("What is it about?").fill("Gesture lamp")
+        owner.get_by_label("Project name").fill("Gesture lamp")
 
         def lose_first_committed(path: str):
             # The server commits the first POST but its 201 never arrives (#29 AC-4): Retry must not duplicate it.
@@ -1477,7 +1477,7 @@ class AppShellJourney(unittest.TestCase):
         owner.get_by_label("Password").fill(PASSWORD)
         owner.get_by_role("button", name="Create account").click()
         new_from_sidebar(owner, "Project")
-        owner.get_by_label("What is it about?").fill("Busy project")
+        owner.get_by_label("Project name").fill("Busy project")
         owner.get_by_role("button", name="Create project").click()
         project_id = owner.locator(".project-convo").get_attribute("data-project-id")
         self.assertTrue(project_id)
@@ -1594,7 +1594,7 @@ class AppShellJourney(unittest.TestCase):
         page.get_by_label("Password").fill(PASSWORD)
         page.get_by_role("button", name="Create account").click()
         new_from_sidebar(page, "Project")
-        page.get_by_label("What is it about?").fill("Sensor study")
+        page.get_by_label("Project name").fill("Sensor study")
         page.get_by_role("button", name="Create project").click()
         expect(page.get_by_role("heading", level=1, name="Sensor study")).to_be_visible()
 
@@ -1647,7 +1647,7 @@ class AppShellJourney(unittest.TestCase):
         page.get_by_label("Password").fill(PASSWORD)
         page.get_by_role("button", name="Create account").click()
         new_from_sidebar(page, "Project")
-        page.get_by_label("What is it about?").fill(name)
+        page.get_by_label("Project name").fill(name)
         page.get_by_role("button", name="Create project").click()
         expect(page.get_by_role("heading", level=1, name=name)).to_be_visible()
 

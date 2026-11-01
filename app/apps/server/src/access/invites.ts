@@ -1,7 +1,10 @@
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { INVITE_ACCEPT_PATH, INVITE_EXPIRY_DAYS, INVITE_PREVIEW_PATH, WORKSPACES_PATH, type CreateInviteCommand, type InviteTokenCommand } from '@flux/contracts';
-import { acceptInvite, createInvite, listInvites, previewInvite, revokeInvite, withLink, type CreatedInvite, type InviteSigner } from '@flux/core';
-import { accessPorts } from '@flux/db';
+import type { PgBoss } from 'pg-boss';
+import { accessPorts, agentAccessRequestRows, type Database } from '@flux/db';
+import { acceptInvite, createInvite, createNotification, listInvites, NotFoundError, previewInvite, revokeInvite, withLink,
+  type CreatedInvite, type InviteJoined, type InviteSigner } from '@flux/core';
+import { notificationUnitOfWork, pgBossQueue } from '../push/adapters.js';
 import { joinRateLimiter, type JoinRateLimiter } from '../live/rate-limit.js';
 import { requires } from '../http/commands.js';
 import type { AccessContext } from './context.js';
@@ -23,7 +26,25 @@ const tokenBody = { type: 'object', required: ['token'], additionalProperties: f
  * which would only store the token's answer). The token never reaches a stored answer, an event or a log.
  */
 export function inviteRoutes(app: FastifyInstance, { db, principal, command, sessions, workspaceScope, inviteVerifiedEmail }: AccessContext,
-  signer: InviteSigner, limits: InviteLimiters) {
+  signer: InviteSigner, limits: InviteLimiters, boss: Pick<PgBoss, 'send'>) {
+  // #763 FT-3: the person who made the link hears that it was used, in the same transaction as the join.
+  const onJoined: InviteJoined = async (tx, joined) => {
+    // An encrypted workspace's notifications carry no content (F-030): the People list shows the new member instead.
+    if (joined.encrypted) return;
+    const names = await agentAccessRequestRows(tx as Database).names([joined.userId]);
+    const who = names.get(joined.userId) ?? 'Someone';
+    const projectName = joined.projectId ? (await accessPorts.invites(tx as Database).projectName(joined.workspaceId, joined.projectId)) : null;
+    try {
+      const notification = await createNotification(notificationUnitOfWork(tx as Database, pgBossQueue(boss)), {
+        userId: joined.inviterId, source: joined.projectId ? { type: 'project', id: joined.projectId } : { type: 'workspace', id: joined.workspaceId },
+        title: (projectName ? `${who} joined ${projectName}` : `${who} joined your space`).slice(0, 200),
+        body: projectName ? 'They can open the project now.' : 'Give them access to a project in People.',
+        url: joined.projectId ? `/projects/${joined.projectId}?open=people` : '/', aiOrigin: false,
+      });
+      // Without a project, giving access is the one thing left to do: it waits in Needs you.
+      if (!joined.projectId) await agentAccessRequestRows(tx as Database).markQuestion(notification.id);
+    } catch (error) { if (!(error instanceof NotFoundError)) throw error; }
+  };
   const who = async (request: FastifyRequest) => {
     const session = await sessions.resolveSession(request.headers);
     return { session, key: session ? `user:${session.principal.id}` : `ip:${request.ip}` };
@@ -35,7 +56,7 @@ export function inviteRoutes(app: FastifyInstance, { db, principal, command, ses
   app.post<{ Params: { workspaceId: string }; Body: CreateInviteCommand }>(`${WORKSPACES_PATH}/:workspaceId/invites`, {
     schema: { body: { type: 'object', required: ['role'], additionalProperties: false, properties: {
       role: { type: 'string', enum: ['admin', 'member', 'guest'] }, email: { type: ['string', 'null'], maxLength: 320 },
-      expiresInDays: { type: 'integer', enum: [...INVITE_EXPIRY_DAYS] } } } },
+      expiresInDays: { type: 'integer', enum: [...INVITE_EXPIRY_DAYS] }, projectId: { type: ['string', 'null'], maxLength: 64 } } } },
     // The stored idempotent answer has no link; it is derived again on every answer, replays included.
     preSerialization: async (_request: FastifyRequest, _reply: unknown, payload: unknown) =>
       payload && typeof payload === 'object' && 'expiresAt' in payload && !('link' in payload) ? withLink(signer, payload as CreatedInvite) : payload,
@@ -62,6 +83,6 @@ export function inviteRoutes(app: FastifyInstance, { db, principal, command, ses
   app.post<{ Body: InviteTokenCommand }>(INVITE_ACCEPT_PATH, { schema: { body: tokenBody } }, async (request) => {
     const actor = await principal(request);
     limits.accept.take(`user:${actor.id}`);
-    return acceptInvite(actor, request.body.token, db, accessPorts, signer, { verifiedEmailOnly: inviteVerifiedEmail });
+    return acceptInvite(actor, request.body.token, db, accessPorts, signer, { verifiedEmailOnly: inviteVerifiedEmail, onJoined });
   });
 }

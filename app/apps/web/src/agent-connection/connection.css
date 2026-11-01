@@ -206,3 +206,6 @@
 .connection__create input::placeholder { color: var(--t3); font-style: italic; }
 .connection__missing { flex-basis: 100%; margin: 0; color: var(--t1); font-size: var(--fs-sm); }
 @media (pointer: coarse) { .connection__more > summary { min-height: 44px; } }
+/* #763 FT-10: a created agent is confirmed in one line; the guide says it is the second step. */
+.connection__created { display: flex; align-items: center; gap: 6px; color: var(--t2); font-size: var(--fs-sm); margin: 0; }
+.connection__order { color: var(--t2); font-size: var(--fs-sm); margin: 0; }

@@ -636,7 +636,7 @@ function ProjectForm({ ids, phone, carried, onClose }: PanelProps) {
   ) : <span>In {spaceName}</span>;
   return (
     <Panel ids={ids} where={where} onSubmit={() => void submit()} foot={<><p className="create__note">Starts with {chosen.has} · invite people {aiOff ? '' : 'and agents '}later</p><Go label="Create project" busy={busy} ready={canCreate} phone={phone} /></>}>
-      <input id={ids.field} className="create__name" aria-label="What is it about?" value={flat(carried.text)} maxLength={WORK_LIMITS.title} disabled={busy} placeholder="What is it about?"
+      <input id={ids.field} className="create__name" aria-label="Project name" value={flat(carried.text)} maxLength={WORK_LIMITS.title} disabled={busy} placeholder="Project name, e.g. Volunteer sign-up app"
         onChange={(event) => carried.set(event.target.value)} />
       <div className="create__props">
         <PickChip label="Start from" icon={<Icon name="board" size={14} />} shown={chosen.name} value={template} onChange={(value) => setTemplate(value as typeof template)}>

@@ -35,7 +35,7 @@ export function ProjectSetup() {
               </Select>
             </label>
           ) : <p className="project-new__space">In {spaceName}</p>}
-          <Input label="What is it about?" value={projectName} onChange={(event) => { setProjectName(event.target.value); setMissing(false); }}
+          <Input label="Project name" placeholder="e.g. Volunteer sign-up app" value={projectName} onChange={(event) => { setProjectName(event.target.value); setMissing(false); }}
             maxLength={200} autoFocus error={missing ? 'Give the project a name.' : undefined} />
           <fieldset className="project-new__templates">
             <legend>Start from</legend>

@@ -51,7 +51,7 @@ describe('F-035 invite links', () => {
     const anonymous = new Browser();
     const seen = expectStatus(await preview(anonymous, token), 200) as InvitePreview;
     assert.deepEqual({ ...seen, expiresAt: undefined }, { workspaceName: 'Riverside Makers', invitedBy: 'Ada Invites', role: 'member', expiresAt: undefined,
-      emailLocked: false, encrypted: false, state: 'pending' });
+      emailLocked: false, encrypted: false, state: 'pending', projectName: null });
     assert.equal((await anonymous.request('POST', '/api/v1/invites/accept', { body: { token } })).status, 401, 'accept needs a session');
 
     const email = uniqueEmail('dan-invites');
@@ -59,7 +59,7 @@ describe('F-035 invite links', () => {
     const dan = { browser };
     const danId = ((await browser.request('GET', '/api/v1/me')).json as { user: { id: string } }).user.id;
     const joined = expectStatus(await accept(dan, token), 200) as AcceptInviteResult;
-    assert.deepEqual(joined, { status: 'joined', workspaceId: space, workspaceName: 'Riverside Makers', role: 'member', encrypted: false, needsUnlockPassword: false });
+    assert.deepEqual(joined, { status: 'joined', workspaceId: space, workspaceName: 'Riverside Makers', role: 'member', encrypted: false, needsUnlockPassword: false, projectId: null });
     assert.equal(await roleOf(ada, space, danId), 'member');
     // Idempotent for the account that used it; the preview says joined.
     assert.equal((expectStatus(await accept(dan, token), 200) as AcceptInviteResult).status, 'joined');

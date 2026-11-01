@@ -103,7 +103,7 @@ class NewProject(unittest.TestCase):
 
     def create(self, page: Page, name: str, template: str | None = None) -> str:
         page.goto("/projects/new")
-        page.get_by_label("What is it about?").fill(name)
+        page.get_by_label("Project name").fill(name)
         if template:
             page.get_by_role("radio", name=re.compile(f"^{template}")).check()
         page.get_by_role("button", name="Create project").click()
@@ -190,7 +190,7 @@ class NewProject(unittest.TestCase):
         for scheme in ("light", "dark"):
             page = self.page(scheme, PHONE)
             page.goto("/projects/new")
-            expect(page.get_by_label("What is it about?")).to_be_visible()
+            expect(page.get_by_label("Project name")).to_be_visible()
             for box in page.get_by_role("radio").all():
                 label = box.locator("xpath=..").bounding_box()
                 self.assertGreaterEqual(label["height"], 44)
@@ -199,7 +199,7 @@ class NewProject(unittest.TestCase):
             shot(page, f"351-newproject-390-{scheme}")
         page = self.page("light", PHONE)
         page.goto("/projects/new")
-        page.get_by_label("What is it about?").fill("Phone project")
+        page.get_by_label("Project name").fill("Phone project")
         page.get_by_role("radio", name=re.compile("^Blank")).check(force=True)
         page.get_by_role("button", name="Create project").tap()
         expect(page).to_have_url(re.compile(r"/projects/[0-9a-f-]{36}\?new=1"))

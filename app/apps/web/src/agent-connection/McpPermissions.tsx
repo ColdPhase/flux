@@ -6,7 +6,8 @@ import { Button } from '../ui';
 import { getMcpPermissions, saveMcpPermissions, type McpPermissionSettings } from './api';
 import { ConnectionSetup } from './ConnectionSetup';
 
-const LABEL: Partial<Record<AgentMcpCapabilityId, string>> = {
+/** Every capability has a name (#763 FT-2): the type makes a missing one a build error. */
+const LABEL: Record<AgentMcpCapabilityId, string> = {
   'project.identity.read': 'Project context and search', 'project.knowledge.read': 'Wiki and materials',
   'project.work.read': 'Tasks', 'project.decisions.read': 'Decisions', 'project.results.read': 'Results',
   'project.conversations.read': 'Conversations', 'project.maps.read': 'Maps', 'project.policy.read': 'Project instructions',
@@ -21,6 +22,7 @@ const LABEL: Partial<Record<AgentMcpCapabilityId, string>> = {
   'cowork.release': 'Release work units', 'cowork.unit.complete': 'Complete work units',
   'cowork.unit.transfer': 'Transfer work units', 'cowork.unit.decline': 'Decline transferred work units', 'cowork.request.claim': 'Take work requests',
   'cowork.request.respond': 'Respond to work requests',
+  'cowork.request': 'Ask other agents for work', 'work.creation.revert': 'Undo creating their own unused tasks',
 };
 const READ = new Set<AgentMcpCapabilityId>(AGENT_MCP_READ_CAPABILITIES);
 const CAPABILITIES = [...new Set(AGENT_MCP_ENTRIES.flatMap((entry) => entry.requiredCapabilities))];

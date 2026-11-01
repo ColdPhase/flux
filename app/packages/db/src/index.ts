@@ -31,7 +31,7 @@ export * from './repositories/idp-standing.js';
 export * from './repositories/idp-logout.js';
 export * from './migrations/ledger.js';
 // Highest numbered file in packages/db/migrations. The API refuses other versions.
-export const FLUX_SCHEMA_VERSION = 1;
+export const FLUX_SCHEMA_VERSION = 2;
 // pg-boss 12.35.0 declares schema 43. Update this with the pinned package.
 export const PG_BOSS_SCHEMA_VERSION = 43;
 
@@ -215,3 +215,4 @@ export { lockAssistantOwner } from './repositories/assistant-lock.js';
 export { assistantJoinRows, assistantJoinView } from './repositories/assistant-joins.js';
 export * from './repositories/agent-connection-setup.js';
 export { assistantReactionRows } from './repositories/assistant-reactions.js';
+export { agentAccessRequestRows } from './repositories/agent-access-requests.js';

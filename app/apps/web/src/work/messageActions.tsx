@@ -59,8 +59,8 @@ interface MenuItem { id: string; label: string; icon: IconName | 'kreska'; run: 
 
 /**
  * The menu's items, in the drawn order: reply, task, hand off, cite, copy; then what makes objects. A phone's long press
- * shows the five drawn items only (F-026 `phone-messagemenu.webp`, #763 B3): a decision is proposed with `/decide` or
- * "+" Create, a result is recorded from its task. "Add to map" and "Details" wait under "More…" there (#763). A computer's
+ * shows the five drawn items first (F-026 `phone-messagemenu.webp`, #763 B3); "Propose a decision", "Record a result",
+ * "Add to map" and "Details" wait under "More…" there (#763 FT-4). A computer's
  * menu lists only what its toolbar lacks (#763 B4).
  */
 function useMenuItems(options: MessageActionOptions | DmActionOptions | null, touch: boolean): { items: MenuItem[]; extra: ReactNode } {
@@ -96,6 +96,13 @@ function useMenuItems(options: MessageActionOptions | DmActionOptions | null, to
   // The project's people say whether an agent can be handed work here; unread people keep the task path.
   const agentHere = !project?.people || project.people.some((person) => person.kind === 'agent');
   const handOff = () => { if (agentHere) onCreateWork(); else setNoAgent(true); };
+  // The same Create window as Create task, on its Decision tab, with the message as the source and a short title
+  // from its first clause, selected (#763 SP-5, WF-3).
+  const decision: MenuItem = { id: 'decision', label: 'Propose a decision', icon: 'rule', secondary: true, run: () => {
+    const preview = firstLine(messagePreview(message.body, message.files?.length));
+    openCreate({ kind: 'decision', projectId, title: firstClause(preview), sources: [{ ref: { type: 'message', id: message.id }, label: preview }] });
+  } };
+  const result: MenuItem = { id: 'result', label: 'Record a result', icon: 'result', secondary: true, run: () => openDetails({ kind: 'attach-result', projectId, source }) };
   const extra = project && noAgent ? <HandOffDialog open onClose={() => setNoAgent(false)} project={project.project} /> : null;
   const items: MenuItem[] = [
     // On a computer the toolbar already has Reply and Create task: its menu lists only what the toolbar lacks (#763 B4).
@@ -109,18 +116,12 @@ function useMenuItems(options: MessageActionOptions | DmActionOptions | null, to
     ...(onCite ? [{ id: 'cite', label: 'Cite', icon: 'cite' as const, run: onCite }] : []),
     ...copyItem,
     ...(touch ? [
+      // #763 FT-4: a phone proposes a decision or records a result from the message too, with the same source link.
+      { ...decision, more: true },
+      { ...result, more: true },
       ...(onAddToMap ? [{ id: 'map', label: 'Add to map', icon: 'map' as const, run: onAddToMap, more: true }] : []),
       { ...details, more: true },
-    ] : [
-      // The same Create window as Create task, on its Decision tab, with the message as the source and a short title
-      // from its first clause, selected (#763 SP-5, WF-3).
-      { id: 'decision', label: 'Propose a decision', icon: 'rule', secondary: true, run: () => {
-        const preview = firstLine(messagePreview(message.body, message.files?.length));
-        openCreate({ kind: 'decision', projectId, title: firstClause(preview), sources: [{ ref: { type: 'message', id: message.id }, label: preview }] });
-      } },
-      { id: 'result', label: 'Record a result', icon: 'result', secondary: true, run: () => openDetails({ kind: 'attach-result', projectId, source }) },
-      details,
-    ] satisfies MenuItem[]),
+    ] : [decision, result, details] satisfies MenuItem[]),
   ];
   return { items, extra };
 }
@@ -371,7 +372,7 @@ export function useTouchActions<E extends HTMLElement = HTMLLIElement>(options: 
   const node = (
     <>
       <span className={`msg-swipe${offset >= REPLY_AT ? ' is-ready' : ''}`} aria-hidden="true" hidden={!offset}><Icon name="reply" size={20} /></span>
-      <button type="button" className="msg-touch__sr" aria-haspopup="menu" aria-expanded={menu?.kind === 'button'} onClick={(event) => { opener.current = event.currentTarget; setMenu({ kind: 'button', anchor: event.currentTarget.parentElement?.querySelector<HTMLElement>('.message-bubble > .message-body, .dm-msg__body') ?? event.currentTarget }); }}>Message actions</button>
+      <button type="button" className="msg-touch__sr" aria-haspopup="menu" aria-expanded={menu?.kind === 'button'} onClick={(event) => { opener.current = event.currentTarget; setMenu({ kind: 'button', anchor: event.currentTarget.parentElement?.querySelector<HTMLElement>('.message-bubble > .message-body, .dm-msg__body') ?? event.currentTarget }); }}><Icon name="more" size={16} /><span className="msg-touch__label">Message actions</span></button>
       {last ? <MessageMenuHost open={shown} items={items} anchor={last.anchor} press={last.kind === 'press'} label="Message actions" messageId={messageOf(options)}
         onClose={(restore) => { setMenu(null); if (restore) opener.current?.focus({ preventScroll: true }); }} /> : null}
       {extra}

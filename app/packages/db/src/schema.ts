@@ -443,6 +443,8 @@ export const workspaceInvites = pgTable('workspace_invites', {
   revokedBy: text('revoked_by').references(() => authUsers.id, { onDelete: 'set null' }),
   acceptedAt: timestamp('accepted_at', { withTimezone: true }),
   acceptedBy: text('accepted_by').references(() => authUsers.id, { onDelete: 'set null' }),
+  /** #763 FT-3: the project joining also opens; cleared when the project goes. */
+  projectId: uuid('project_id'),
 }, (table) => [
   index('workspace_invites_pending_idx').on(table.workspaceId, table.createdAt.desc()).where(sql`revoked_at IS NULL AND accepted_at IS NULL`),
 ]);
@@ -838,6 +840,22 @@ export const assistantJoinRequests = pgTable('assistant_join_requests', {
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(), updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 }, (table) => [unique().on(table.connectionId, table.projectId),
   foreignKey({ columns: [table.workspaceId, table.projectId], foreignColumns: [projects.workspaceId, projects.id] }).onDelete('cascade')]);
+
+/** #763 FT-1: an owner's request that a project's managers let their own agent in. Asking grants nothing. */
+export const agentAccessRequests = pgTable('agent_access_requests', {
+  id: uuid('id').primaryKey(),
+  workspaceId: uuid('workspace_id').notNull().references(() => workspaces.id, { onDelete: 'cascade' }),
+  projectId: uuid('project_id').notNull(),
+  agentId: uuid('agent_id').notNull(),
+  ownerUserId: text('owner_user_id').notNull().references(() => authUsers.id, { onDelete: 'cascade' }),
+  role: text('role', { enum: ['contributor', 'viewer'] }).notNull(),
+  state: text('state', { enum: ['pending', 'accepted', 'declined'] }).notNull().default('pending'),
+  decidedBy: text('decided_by').references(() => authUsers.id, { onDelete: 'set null' }),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+}, (table) => [unique('agent_access_requests_agent_project_key').on(table.agentId, table.projectId),
+  foreignKey({ name: 'agent_access_requests_project_fkey', columns: [table.workspaceId, table.projectId], foreignColumns: [projects.workspaceId, projects.id] }).onDelete('cascade'),
+  foreignKey({ name: 'agent_access_requests_agent_fkey', columns: [table.workspaceId, table.agentId], foreignColumns: [agents.workspaceId, agents.id] }).onDelete('cascade')]);
 
 export const agentConnectionProjects = pgTable('agent_connection_projects', {
   workspaceId: uuid('workspace_id').notNull(),
