@@ -30,6 +30,8 @@ export function policyNeedsYouAccess(db: Database): NeedsYouAccess {
       const people: { id: string; name: string }[] = [];
       for (const member of await rows.workspaceMembersOfProject(projectId, 50)) {
         if (people.length >= limit) break;
+        // One person once, however many membership rows reach them (#763).
+        if (people.some((person) => person.id === member.id)) continue;
         if ((await evaluateProject({ kind: 'human', id: member.id }, 'project.write', projectId, accessReader(db))).allowed) people.push(member);
       }
       return people;

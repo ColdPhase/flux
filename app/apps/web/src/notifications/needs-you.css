@@ -53,6 +53,7 @@
 .nyc__nn--quiet { background: transparent; box-shadow: none; color: var(--t2); }
 .nyc__waiting { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: var(--fs-sm); color: var(--t2); }
 .nyc__waiting b { font-weight: 600; color: var(--t1); }
+.nyc__waiting-you { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
 .nyc__waiting .ui-avatar { width: 20px; height: 20px; font-size: var(--fs-glyph); }
 .nyc--note .nyc__actions, .nyc--blocked .nyc__actions, .nyc--mention .nyc__actions, .nyc--question .nyc__actions { margin-top: 2px; }
 @media (pointer: fine) {
@@ -109,13 +110,28 @@
   /* Touch has no keys to press, and Accept · Not now · Discuss stay on one row (#763 IN-6). */
   .nyc__accept kbd { display: none; }
   .nyc__foot .nyc__actions { flex-wrap: nowrap; }
+  /* The row never sets the card's width: its buttons share what is there (#763 P2-4). */
+  .nyc__foot, .nyc__foot > *, .nyc__foot .nyc__actions > * { min-width: 0; }
   /* An agent's ready answers share the row evenly, as drawn (phone-inbox, S14). */
   .nyc__answer { flex: 1 1 calc(50% - 4px); min-width: 0; }
   .nyc--compact .nyc__card { grid-template-columns: 32px minmax(0, 1fr) auto; padding: 10px 12px 10px 16px; }
   .nyc--row .nyc__card { grid-template-columns: 32px minmax(0, 1fr); }
   .nyc--row .nyc__rowactions { grid-column: 2; margin-top: 8px; }
   .nyc--row .nyc__rowactions .ui-btn { flex: 1; }
+  /* A text action starts where the dark one does, on the same left edge, not centred in its half (#763). */
+  .nyc--row .nyc__rowactions .ui-btn:not(.ui-btn--primary) { justify-content: flex-start; padding-left: 0; }
   .nyc--row .nyc__rowactions .nyc__answer.ui-btn, .nyc__actions .nyc__answer.ui-btn { flex: 1 1 calc(50% - 4px); }
+}
+/* Under 375 px (a Fold cover, a Z Flip) three buttons don't fit one row: the primary pair stays on the first line and the
+   third takes the whole second line, inside the card (#763 P2-4). */
+/* A phone's compact card: the title takes up to two lines beside its one action, instead of "Water bed 3 at 6 a…" (#763). */
+@media (max-width: 640px) {
+  .nyc--compact .nyc__open { white-space: normal; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; overflow-wrap: anywhere; }
+  .nyc--compact .nyc__rowactions { align-self: center; }
+}
+@media (max-width: 374px) {
+  .nyc__foot .nyc__actions { flex-wrap: wrap; }
+  .nyc__card .nyc__foot .nyc__actions > * { flex: 1 1 calc(50% - 4px); }
 }
 @media (pointer: coarse) { .nyc__open { min-height: 44px; } .nym__item { min-height: 44px; } }
 

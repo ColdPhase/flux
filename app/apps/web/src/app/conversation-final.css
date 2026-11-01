@@ -38,7 +38,8 @@ button.convo-notice__src:focus-visible { outline: 2px solid var(--t1); outline-o
 .convo-fold__b:hover { background: var(--hov); }
 .convo-fold__b:focus-visible { outline: 2px solid var(--t1); outline-offset: 2px; }
 .convo-fold__faces { display: inline-flex; flex: none; }
-.convo-fold__faces > * + * { margin-left: -6px; }
+/* Side by side, not stacked: a stacked face hid the second initial ("JB" read "JI", #763). */
+.convo-fold__faces { gap: 3px; }
 .convo-fold__faces > * { box-shadow: 0 0 0 2px var(--sub); border-radius: 999px; }
 .convo-fold__faces > .kreska, .convo-fold__faces > svg { border-radius: 6px; }
 .convo-fold__t { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

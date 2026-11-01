@@ -93,7 +93,7 @@
 @media (pointer: coarse) { .wiki-bar__primary { min-width: 44px; justify-content: center; } }
 .wiki-bar__back { gap: 4px; padding: 0 8px; font-size: var(--fs-sm); color: var(--t2); }
 /* The phone's primary action has its own space below the scrolling page. */
-.wiki-edit { justify-self: end; margin: 0 16px max(16px, env(safe-area-inset-bottom)) auto; min-height: 48px; padding: 0 20px; gap: 8px; font-size: var(--fs-base); }
+.wiki-edit { justify-self: end; margin: 0 16px max(16px, env(safe-area-inset-bottom)) auto; min-height: var(--ctl); padding: 0 16px; gap: 8px; font-size: var(--fs-base); }
 .wiki-pop__item { text-decoration: none; }
 .wiki-empty__acts { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; margin-top: 16px; }
 
@@ -472,7 +472,10 @@
 .doc-changes__page .wiki-chg--added { background: color-mix(in srgb, var(--t1) 8%, transparent); text-decoration: underline; text-decoration-color: color-mix(in srgb, var(--t1) 60%, transparent); text-underline-offset: 3px; border-radius: 4px; }
 .doc-changes__page .wiki-chg--removed, .doc-changes__page .wiki-chg--removed :is(td, th, li, strong, a, h1, h2, h3, h4) { color: var(--t3); text-decoration: line-through; text-decoration-color: var(--t3); }
 /* The primary action keeps one width in read, edit and history, so the controls before it never shift (#511, AC-4). */
-.wiki-bar .wiki-bar__primary { min-width: 136px; padding: 0 12px; justify-content: center; gap: 6px; }
+/* The primary is a toolbar button (#763): the icon buttons' 32 px, never stretched by the row, in every state; on touch its hit
+   area reaches 44 px around it without growing what is drawn. */
+.wiki-bar .wiki-bar__primary { position: relative; align-self: center; min-width: 96px; height: 32px; min-height: 32px; padding: 0 12px; justify-content: center; gap: 6px; font-size: var(--fs-sm); }
+@media (pointer: coarse) { .wiki-bar .wiki-bar__primary::after { content: ""; position: absolute; inset: -6px -2px; } }
 /* In a narrow pane (a tablet with the page list open) the state takes the first row, the icons the second,
    and the primary is its icon alone; the same in every state, so nothing moves between them. */
 @container wikimain (max-width: 560px) {

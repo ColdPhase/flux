@@ -711,7 +711,10 @@ function AppLayoutContent() {
   // The phone's header (F-026 §4 Phone): inside a project or a conversation the round Back and the
   // title as the view menu with the view and who is here beneath it. The dock owns Search whenever
   // it is present; a conversation keeps header Search because it hides the dock.
-  const goBack = (fallback: string) => { if (location.key !== 'default') void navigate(-1); else void navigate(fallback); };
+  // An entry behind this one in the tab's history that Flux made (the router's index), not merely a non-initial key: opening
+  // a `?open=` link replaces the first entry, so its key changes while there is still nothing of Flux behind it (#763 P2-2).
+  const inAppBehind = () => { const index = (window.history.state as { idx?: unknown } | null)?.idx; return typeof index === 'number' && index > 0; };
+  const goBack = (fallback: string) => { if (inAppBehind()) void navigate(-1); else void navigate(fallback); };
   // CW-11: Back follows the way the person came (#341 AC-4), one place at a time: entries that only opened or changed a
   // sheet on the same page (`?open=…`, a #message) are stepped over together, so Back never walks through old sheets.
   const steps = useRef<{ key: string; path: string }[]>([]);
@@ -731,7 +734,7 @@ function AppLayoutContent() {
     while (to >= 0 && entries[to]!.path === location.pathname) to--;
     // Land on that page as it first opened, not on a sheet it showed later.
     while (to > 0 && entries[to - 1]!.path === entries[to]!.path) to--;
-    if (to >= 0 && location.key !== 'default') void navigate(to - here);
+    if (to >= 0 && inAppBehind()) void navigate(to - here);
     else goBack(fallback);
   };
   // An opened reference leads back to where it was followed from, in the place of the generic back (#592).
@@ -823,7 +826,7 @@ function AppLayoutContent() {
 
       <div className="app__main">
         {phone ? phoneHeader : (
-        <header className={`top${activeProject ? ' top--project' : ''} top--row${focusing ? ' top--focus' : ''}${homeRoot ? ' top--bare' : ''}`}>
+        <header className={`top${activeProject ? ' top--project' : ''} top--row${focusing ? ' top--focus' : ''}${homeRoot && !navDrawer ? ' top--bare' : ''}`}>
           {navDrawer ? (
             <IconButton icon="menu" label="Open navigation" size={18} aria-expanded={navOpen} aria-controls={navOpen ? 'nav-drawer' : undefined}
               aria-haspopup="dialog" data-tip-align="start" onClick={() => { setDetailsOpen(false); setNavOpen(true); }} className="top__menu" />
