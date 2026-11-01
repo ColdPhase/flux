@@ -26,7 +26,7 @@ cards white, and the rest from a median cut of the frames. The recorder takes th
 colours that keeps the file within its allowlisted size (`scripts/docs-size-allowlist.txt`, 476206 bytes) and
 stops with an error if even 20 do not.
 
-**Recorded at:** the application at `main` `c271a3e8b` (the audited build after the #763 fixes), 2026-11-01. The last
+**Recorded at:** the application at `main` `5f3d96c60` (the audited build after the last #763 UI cleanup, #814) with the notification-card padding fix of [#810](https://github.com/ColdPhase/flux/pull/810), 2026-11-01. The last
 frames show the thread panel with the accepted decision under Jonas's message, by:
 
 ```sh

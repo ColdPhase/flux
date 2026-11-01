@@ -17,7 +17,7 @@ The files are lossless WebP: a 1440 px capture is about 55 KB, less than half th
 stays crisp. The small images that go with each README highlight, and the screens of the documentation, are in
 [docs/assets/screens](../screens/README.md).
 
-**Captured at:** `main` `c271a3e8b`, 2026-11-01, with the demo GIF and the documentation screens, by:
+**Captured at:** `main` `5f3d96c60` with the notification-card padding fix of [#810](https://github.com/ColdPhase/flux/pull/810), 2026-11-01, with the demo GIF and the documentation screens, by:
 
 ```sh
 ./scripts/record_demo.sh docs/assets/demo/flux-demo.gif docs/assets/readme docs/assets/screens

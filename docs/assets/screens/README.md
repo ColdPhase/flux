@@ -29,7 +29,7 @@ Every file is a lossless WebP, which keeps the interface's text crisp and is the
 flat greys. Each is well below the 300 KB a screenshot may have under `docs/`
 ([evidence size](../../agents/evaluation.md#evidence-size)).
 
-**Recorded at:** the application at `main` `c271a3e8b`, 2026-11-01, by the one command that also records the demo GIF
+**Recorded at:** the application at `main` `5f3d96c60` with the notification-card padding fix of [#810](https://github.com/ColdPhase/flux/pull/810), 2026-11-01, by the one command that also records the demo GIF
 and the README stills:
 
 ```sh
