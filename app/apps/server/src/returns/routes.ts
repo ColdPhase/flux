@@ -32,7 +32,7 @@ export async function returnRoutes(app: FastifyInstance, { db, sessions }: Optio
     properties: {
       place: { type: 'string', enum: ['home', 'project', 'conversation'] }, id: { type: 'string', maxLength: 64 },
       scope: { type: 'string', enum: ['all', 'mine'] }, from: { type: 'string', enum: ['last-visit', '24h', '7d'] },
-      until: { type: 'string', maxLength: 64 }, digest: { type: 'string', enum: ['0', '1'] },
+      until: { type: 'string', maxLength: 64 }, digest: { type: 'string', enum: ['0', '1'] }, history: { type: 'string', enum: ['0', '1'] },
     },
   } } }, async (request, reply) => {
     const summary = await returns.summary(await principal(request), request.query);

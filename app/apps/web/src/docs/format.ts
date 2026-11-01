@@ -31,7 +31,7 @@ export const FORMER_MEMBER = 'Former member';
 export const authorLabel = (who: NamedPrincipal) => (who.kind === 'agent' ? agentAuthorLabel(who) : who.name);
 
 const KIND: Record<string, string> = {
-  doc: 'Page', work: 'Work', decision: 'Decision', result: 'Result', message: 'Message', thought: 'Thought', sketch: 'Sketch', material: 'Material',
+  doc: 'Wiki page', work: 'Task', decision: 'Decision', result: 'Result', message: 'Message', thought: 'Thought', sketch: 'Map', material: 'Material',
 };
 export const kindLabel = (type: string) => KIND[type] ?? type;
 
@@ -56,8 +56,8 @@ export function pathOfLink(projectId: string, link: ObjectLink, end: 'from' | 't
   const ref = end === 'from' ? link.from : link.to;
   if (ref.type === 'doc') return `/projects/${projectId}/docs/${ref.id}`;
   if (ref.type === 'message') return link.conversationId ? `/projects/${projectId}/conversations/${link.conversationId}#message-${ref.id}` : null;
-  if (ref.type === 'sketch') return `/map/${ref.id}`;
-  if (ref.type === 'thought') return link.sketchId ? `/map/${link.sketchId}` : null;
+  if (ref.type === 'sketch') return `/projects/${projectId}/map/${ref.id}`;
+  if (ref.type === 'thought') return link.sketchId ? `/projects/${projectId}/map/${link.sketchId}#thought-${ref.id}` : null;
   if (ref.type === 'material') return `/materials/${ref.id}/versions/${ref.version}`;
   return null;
 }

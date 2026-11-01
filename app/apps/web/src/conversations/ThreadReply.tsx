@@ -1,15 +1,13 @@
-import { useNavigate } from 'react-router';
 import type { ConversationMessage, Project, ProjectPerson } from '@flux/contracts';
 import type { PendingSend } from '../composer/draft';
 import { MessageContent } from '../composer/Files';
 import { LinkPreviews, MessageText } from '../app/MessageText';
 import { AgentAuthor, AuthorFace, ContributionMark, MessageTime, SourceCitation, SourceTag, pendingMessageRow } from '../app/messageParts';
 import { cite as citeMessage, messageCite } from '../app/citeBus';
-import { useToast } from '../ui';
 import { MessageObjects, useCreateWorkFromMessage } from '../work/inline';
 import { MessageActions, useTouchActions } from '../work/messageActions';
 import type { MessageWorkPreview } from '../work/message-associations';
-import { createProjectSketch, useProjectShell } from '../project/data';
+import { useAddToMap } from '../project/addToMap';
 import { agentAuthorOwner, type AgentOwners } from '../agents/owners';
 import { QuestionCard, WhenNoQuestion } from '../agents/QuestionCard';
 import { RefLink } from '../place/origin';
@@ -31,23 +29,14 @@ type QueuedReplyProps = { continued?: boolean; pending: PendingSend; name: strin
  * swipe, long press) and what was made from it.
  */
 export function ThreadReply(props: ThreadReplyProps | QueuedReplyProps) {
-  const projectShell = useProjectShell();
-  const navigate = useNavigate();
-  const toast = useToast();
   const stored = 'pending' in props ? null : props;
   const message = stored?.message;
+  const mapDraft = useAddToMap(stored?.project ?? null);
   const actions = stored && message ? {
     projectId: stored.project.id, message, writable: stored.writable, onCreateWork: () => void stored.makeWork.create(message),
     onReply: () => document.getElementById('thread-composer')?.focus(),
     onCite: () => citeMessage('thread', messageCite(message, stored.name)),
-    onAddToMap: () => {
-      const source = { messageId: message.id, projectId: stored.project.id, body: message.body };
-      const sketch = projectShell?.sketches?.items[0];
-      if (sketch) { navigate(`/projects/${stored.project.id}/map/${sketch.id}`, { state: { addThoughtFromMessage: source } }); return; }
-      void createProjectSketch(stored.project.workspaceId, stored.project.id, 'Untitled sketch', crypto.randomUUID())
-        .then((created) => navigate(`/projects/${stored.project.id}/map/${created.id}`, { state: { addThoughtFromMessage: source } }))
-        .catch(() => toast({ message: 'The map could not be opened. Try again.', tone: 'danger' }));
-    },
+    onAddToMap: () => mapDraft({ messageId: message.id, body: message.body }),
   } : null;
   const touch = useTouchActions(actions);
   if (!stored || !message || !actions) {

@@ -31,7 +31,7 @@ export function useComposerMenu({ me, people, conversation, writable, aiOff, com
   const activeIndex = Math.min(menuIndex, Math.max(0, options.length - 1));
   function changeDraft(input: string, position = input.length) {
     setCaret(position); setMenuIndex(0); setMenuClosedAt(null); setCommandHint('');
-    typing.input(Boolean(input.trim()) && !asking && !/^\/(ai|task|decide|handoff)(\s|$)/.test(input));
+    typing.input(Boolean(input.trim()) && !asking && !/^\/(ai|task|decide|map|handoff)(\s|$)/.test(input));
     // Private prompts keep their own draft; invoking /ai never overwrites a public task draft.
     if (!aiOff && !asking && conversation && writable && /^\/ai(\s|$)/.test(input)) {
       // Typed key by key, "/" and "/a" were the reply's draft a moment ago; they were the command, not words to keep.

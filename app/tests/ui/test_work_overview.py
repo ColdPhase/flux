@@ -137,7 +137,7 @@ class OverviewWorkJourney(unittest.TestCase):
                 expect(ov.locator(f'a[href="/projects/{self.project}/map/{self.sketch}#thought-{self.thought}"]').filter(has_text="Try the same shield")).to_have_count(1)
                 expect(ov.locator(f'a[href="/projects/{self.project}/docs/{self.doc}"]')).to_have_count(1)
                 shot(page, f"bounded-overview-mixed-{'phone' if phone else 'desktop'}")
-                ov.get_by_role("region", name="Docs").get_by_role("link", name=re.compile("What we learned about shielding")).scroll_into_view_if_needed()
+                ov.get_by_role("region", name="Wiki").get_by_role("link", name=re.compile("What we learned about shielding")).scroll_into_view_if_needed()
                 if phone:
                     context=page.locator(".ov-panel-context")
                     expect(context).to_be_visible()
@@ -166,7 +166,7 @@ class OverviewWorkJourney(unittest.TestCase):
         links.get_by_role("button", name="Refresh", exact=True).click()
         expect(ov.get_by_role("alert")).to_contain_text("Object links could not be loaded")
         expect(ov).not_to_contain_text("Nothing linked yet")
-        expect(ov).not_to_contain_text("No docs yet")
+        expect(ov).not_to_contain_text("No Wiki pages yet")
         self.assertEqual(len(self.identities(page)), 50)
         expect(field).to_have_value("Keep this reply while checking the sources")
         page.unroute("**/work-relations?**")

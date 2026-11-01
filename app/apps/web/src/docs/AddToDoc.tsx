@@ -4,7 +4,7 @@ import type { DocSummary, ObjectLink } from '@flux/contracts';
 import { ApiError } from '../api/client';
 import { Button, Icon, Input, Select, Option, useToast } from '../ui';
 import { useShellActions, type AddToDocView } from '../app/shellContext';
-import { addDocSection, createDoc, docUrl, listProjectDocs } from './api';
+import { addDocSection, createDoc, docUrl, getDoc, listProjectDocs } from './api';
 
 // "Add to a Wiki page" from a result or decision (#112), in the Details panel. A result is written as a
 // section; a decision is one live card, a reference line, never copied text (F-034). Each is a new
@@ -24,6 +24,10 @@ export function AddToDoc({ view }: { view: AddToDocView }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const selectId = useId();
+  const whereId = useId();
+  // CW-9: a decision card goes under a heading the person picks; the end of the page by default.
+  const [outline, setOutline] = useState<{ id: string; headings: string[] } | null>(null);
+  const [chosenUnder, setUnder] = useState('');
 
   useEffect(() => {
     const controller = new AbortController();
@@ -36,6 +40,17 @@ export function AddToDoc({ view }: { view: AddToDocView }) {
   }, [view.projectId, view.inDocs]);
 
   const chosen = docs?.find((doc) => doc.id === target) ?? null;
+  const decisionTarget = view.from.type === 'decision' ? chosen?.id ?? null : null;
+  useEffect(() => {
+    if (!decisionTarget) return undefined;
+    const controller = new AbortController();
+    getDoc(decisionTarget, controller.signal).then((doc) => {
+      setOutline({ id: decisionTarget, headings: doc.body.split('\n').map((line) => line.trim()).filter((line) => /^#{1,6}\s+\S/.test(line)) });
+    }, () => undefined);
+    return () => controller.abort();
+  }, [decisionTarget]);
+  const headings = outline && outline.id === decisionTarget ? outline.headings : [];
+  const under = headings.includes(chosenUnder) ? chosenUnder : '';
 
   async function submit(event: FormEvent) {
     event.preventDefault();
@@ -43,7 +58,7 @@ export function AddToDoc({ view }: { view: AddToDocView }) {
     setBusy(true); setError('');
     try {
       const saved = chosen
-        ? await addDocSection(chosen.id, chosen.version, view.from, attempt)
+        ? await addDocSection(chosen.id, chosen.version, view.from, attempt, under || undefined)
         : await createDoc(view.projectId, { title: title.trim() || view.from.title, from: view.from }, attempt);
       revalidator.revalidate();
       const where = chosen ? `Added to “${saved.title}”` : `Started “${saved.title}” in the Wiki`;
@@ -75,10 +90,17 @@ export function AddToDoc({ view }: { view: AddToDocView }) {
           {(docs ?? []).map((doc) => <Option key={doc.id} value={doc.id}>{doc.title}{view.inDocs.includes(doc.id) ? ' (linked source)' : ''}{doc.state === 'draft' ? ' · draft' : ''}</Option>)}
           <Option value="new">A new page…</Option>
         </Select>
+        {chosen && kind === 'decision' && headings.length ? <>
+          <label htmlFor={whereId}>Where</label>
+          <Select id={whereId} value={under} onChange={(next) => { setUnder(next); setAttempt(crypto.randomUUID()); }}>
+            <Option value="">End of page</Option>
+            {headings.map((heading, index) => <Option key={`${index}:${heading}`} value={heading}>{`Under “${heading.replace(/^#+\s+/, '')}”`}</Option>)}
+          </Select>
+        </> : null}
         {target === 'new' ? <Input label="Title of the new page" value={title} onChange={(event) => { setTitle(event.target.value); setAttempt(crypto.randomUUID()); }} maxLength={200} required /> : null}
       </fieldset>
       {target === null ? null : chosen ? <p className="wd-muted">{kind === 'decision'
-        ? `The card goes at the end of “${chosen.title}”. A page that already has it stays as it is.`
+        ? `The card goes ${under ? `at the end of “${under.replace(/^#+\s+/, '')}”` : 'at the end of the page'}. A page that already has it stays as it is.`
         : `An existing section in “${chosen.title}” is updated, or a new section is added. Changes are saved in a new version; unchanged content keeps its current version.`}</p> : <p className="wd-muted">The new page starts as a draft.</p>}
       {error ? <p className="wd-error" role="alert">{error}</p> : null}
       <div className="wd-actions">

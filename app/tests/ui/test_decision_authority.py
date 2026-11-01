@@ -162,7 +162,7 @@ class DecisionAuthorityJourney(unittest.TestCase):
         expect(panel.get_by_role("region", name="Who decides")).to_have_count(0)
         expect(panel).to_contain_text("Ada Lind")
         panel.get_by_role("button", name="Accept", exact=True).click()
-        expect(panel.locator(".wd-eyebrow")).to_contain_text("Current rule")
+        expect(panel.locator(".wd-eyebrow")).to_contain_text("Decision · accepted")
         expect(panel).to_contain_text("Kai Berg")
         stored = self.decision(page)
         self.assertEqual((stored["status"], stored["decidedBy"]["id"], stored["proposedBy"]["id"]), ("accepted", KAI["id"], ADA["id"]))
@@ -171,7 +171,7 @@ class DecisionAuthorityJourney(unittest.TestCase):
         viewer = self.page("vic")
         viewer.goto(f"/projects/{self.project_id}/tasks?open=decision:{self.decision_id}")
         sheet = self.details(viewer)
-        expect(sheet.locator(".wd-eyebrow")).to_contain_text("Current rule")
+        expect(sheet.locator(".wd-eyebrow")).to_contain_text("Decision · accepted")
         expect(sheet).to_contain_text("Kai Berg")
         expect(sheet.get_by_role("region", name="Who decides")).to_have_count(0)
         # Accepted, it has left everyone's Inbox.

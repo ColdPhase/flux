@@ -173,7 +173,7 @@ class DecisionSurfaces(unittest.TestCase):
                     page, panel = self.opened(f"/projects/{self.project_id}/tasks?open=propose-decision", phone=phone, scheme=scheme, view=view)
                     # One page of rules shows no pager (Spokój rule 4, #763 B6).
                     expect(panel.get_by_label("Replaces", exact=True)).to_be_enabled()
-                    expect(panel.get_by_role("navigation", name="Current rule choices")).to_have_count(0)
+                    expect(panel.get_by_role("navigation", name="Choices it can replace")).to_have_count(0)
                     panel.get_by_label("Decision", exact=True).fill("Keep a manual off switch")
                     expect(panel.get_by_role("button", name="Propose decision", exact=True)).to_be_enabled()
                     m = self.measure(panel)

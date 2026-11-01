@@ -1,4 +1,4 @@
-import type { NativeWorkRow, ObjectLink, ThoughtTaskRow, PrincipalRef, ProjectAccess, ProjectWorkSummary, SourceAssociationCounts, WorkDetailProjection } from '@flux/contracts';
+import type { NativeWorkRow, ObjectLink, ThoughtTaskRow, PrincipalRef, ProjectAccess, ProjectWorkSummary, SourceAssociationCounts, SourceThought, WorkDetailProjection } from '@flux/contracts';
 import type { Principal } from '../principal.js';
 import type { TaskCreationUndoFacts } from '../work/creation-undo.js';
 import type { WorkReadCursor } from '@flux/contracts';
@@ -39,6 +39,8 @@ export interface WorkReadRepository {
   associationSources(projectId: string, selection: WorkAssociationSelection, cursor?: WorkReadCursor): Promise<WorkReadSlice<SourceAssociationCounts>>;
   associationEdges(projectId: string, selection: WorkAssociationSelection, objects: readonly WorkReadObject[], limit: number, cursor?: WorkReadCursor): Promise<WorkReadSlice<ObjectLink>>;
   associationEdgeTotal(projectId: string, selection: WorkAssociationSelection): Promise<number>;
+  /** Thoughts on the project's own maps made from the selected messages (CW-2), at most 100. */
+  associationThoughts?(projectId: string, selection: WorkAssociationSelection): Promise<SourceThought[]>;
   /** Thoughts are validated structurally; missing/foreign ones are simply not visible. */
   thoughtTasks(projectId: string, thoughtIds: readonly string[]): Promise<WorkThoughtTasksObservation>;
   observedAt(): Promise<string>;

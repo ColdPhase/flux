@@ -181,7 +181,7 @@ def journey(page: Page, rec: Recorder) -> None:
     expect(panel.get_by_role("button", name="Accept decision")).to_be_visible()
     rec.hold(900)
     rec.click(panel.get_by_role("button", name="Accept decision"))
-    expect(panel.locator(".wd-eyebrow")).to_contain_text("Current rule")
+    expect(panel.locator(".wd-eyebrow")).to_contain_text("Decision · accepted")
     rec.hold(1400)
     # End on the rule where it was decided: under Jonas's message, linked to it.
     rec.click(panel.get_by_role("button", name="Thread"))
@@ -205,7 +205,7 @@ def readme_stills(browser, request: APIRequestContext) -> None:
             # The thread opens beside the conversation; its decision opens in the same panel.
             page.get_by_role("button", name=re.compile(r"^\d+ replies")).first.click()
             page.get_by_role("button", name=re.compile("^Decision: Measure soil moisture first")).first.click()
-            expect(page.locator("#details .wd-eyebrow")).to_contain_text("Current rule")
+            expect(page.locator("#details .wd-eyebrow")).to_contain_text("Decision · accepted")
         else:
             page.goto("/")
             expect(page.get_by_text("asked you in Community garden sensors")).to_be_visible()

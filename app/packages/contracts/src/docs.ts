@@ -118,6 +118,11 @@ export interface UpdateDocCommand extends VersionPrecondition {
 /** Needs `If-Match` with the version the caller saw, like any edit. */
 export interface AddDocSectionCommand extends VersionPrecondition {
   from: DocSectionSource;
+  /**
+   * A decision only (CW-9): the heading line of the page (`## Pickup`) whose section the card closes. Absent, or a heading
+   * the page no longer has: the end of the page.
+   */
+  under?: string;
 }
 
 export interface DocPreviewCommand {

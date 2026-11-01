@@ -6,7 +6,7 @@ import './composer-menu.css';
 // "@" mentions people and agents and "/" runs actions in the composer (F-026 S5), in place of separate
 // Ask and Cite buttons. The menu is a listbox the field controls; the field keeps focus throughout.
 
-export type SlashId = 'task' | 'decide' | 'handoff' | 'file' | 'source' | 'ai';
+export type SlashId = 'task' | 'decide' | 'map' | 'handoff' | 'file' | 'source' | 'ai';
 
 export interface ComposerOption {
   id: string;
@@ -37,6 +37,8 @@ export function composerTrigger(value: string, caret: number): ComposerTrigger |
 const ACTIONS: { id: SlashId; hint: string; here: 'any' | 'thread' }[] = [
   { id: 'task', hint: 'Create a task', here: 'any' },
   { id: 'decide', hint: 'Propose a decision', here: 'any' },
+  // CW-1: the words (in a thread, by default its opening message) become a thought on the project's map, with their source.
+  { id: 'map', hint: 'Add to map', here: 'any' },
   { id: 'handoff', hint: 'Hand off to an agent', here: 'any' },
   { id: 'file', hint: 'Attach a file or link', here: 'any' },
   // The two former buttons stay as commands: saved sources to cite, and the person's own assistant.

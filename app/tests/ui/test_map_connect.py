@@ -272,7 +272,7 @@ class MapConnectJourney(unittest.TestCase):
                 target = A if solo else C
                 page.locator('.sk-node', has_text=target).tap()
                 page.get_by_role('button', name='Thought actions', exact=True).tap()
-                page.get_by_role('dialog', name='Thought actions', exact=True).get_by_role('button', name='Remove from sketch', exact=True).tap()
+                page.get_by_role('dialog', name='Thought actions', exact=True).get_by_role('button', name='Remove from map', exact=True).tap()
                 expect(page.locator('.sk-node')).to_have_count(0 if solo else 2)
                 if solo:
                     expect(page.locator('.sk-first')).to_have_text('An empty sketch. Start with Add a thought.')
@@ -303,7 +303,7 @@ class MapConnectJourney(unittest.TestCase):
         undo = page.get_by_role('toolbar', name='Sketch tools').get_by_role('button', name='Undo', exact=True)
         expect(undo).to_have_attribute('aria-disabled', 'true')
         page.locator('.sk-node', has_text=B).click()
-        page.get_by_role('toolbar', name='Selection actions').get_by_role('button', name='Remove from sketch', exact=True).click()
+        page.get_by_role('toolbar', name='Selection actions').get_by_role('button', name='Remove from map', exact=True).click()
         expect(page.locator('.sk-node')).to_have_count(2)
         expect(undo).to_have_attribute('aria-disabled', 'false')
         undo.click()
@@ -368,7 +368,7 @@ class MapConnectJourney(unittest.TestCase):
         sheet = page.get_by_role('dialog', name='Thought actions', exact=True)
         expect(sheet).to_have_attribute('aria-modal', 'true')
         expect(sheet.get_by_role('button', name='Add a connected thought', exact=True)).to_have_count(0)
-        for name in ('Edit thought', 'Create task from selected thoughts', 'Remove from sketch'):
+        for name in ('Edit thought', 'Create task from selected thoughts', 'Remove from map'):
             row = sheet.get_by_role('button', name=name, exact=True)
             expect(row).to_be_visible()
             self.assertGreaterEqual(row.evaluate('el => parseFloat(getComputedStyle(el).minHeight)'), 44)

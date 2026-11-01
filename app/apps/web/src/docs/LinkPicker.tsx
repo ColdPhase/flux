@@ -28,7 +28,7 @@ async function candidates(projectId: string, workspaceId: string, selfId: string
   const line = (text: string) => { const first = text.trim().split('\n', 1)[0] ?? ''; return first.length > 90 ? `${first.slice(0, 89)}…` : first; };
   return [
     ...docs.filter((doc) => doc.id !== selfId).map((doc) => ({ type: 'doc' as const, id: doc.id, title: doc.title, hint: doc.state === 'draft' ? 'Draft page' : 'Page' })),
-    ...sketches.filter((sketch) => sketch.scope === 'project' && sketch.projectId === projectId).map((sketch) => ({ type: 'sketch' as const, id: sketch.id, title: sketch.title, hint: 'Sketch' })),
+    ...sketches.filter((sketch) => sketch.scope === 'project' && sketch.projectId === projectId).map((sketch) => ({ type: 'sketch' as const, id: sketch.id, title: sketch.title, hint: 'Map' })),
     ...recent.flatMap((thread) => thread ? [...thread.messages].reverse().map((message) => ({ type: 'message' as const, id: message.id, title: line(message.body), hint: 'Message' })) : []),
   ];
 }
@@ -37,8 +37,8 @@ const TYPES = ['all', 'doc', 'decision', 'result', 'work', 'sketch', 'message'] 
 type ReferenceType = typeof TYPES[number];
 function nativeCandidate(item: NativeWorkRow): Candidate {
   return { type: item.kind, id: item.id, title: item.title,
-    hint: item.kind === 'decision' ? item.status === 'accepted' ? 'Current rule' : item.status === 'proposed' ? 'Proposed decision' : 'Earlier rule'
-      : item.kind === 'result' ? item.finding === 'negative' ? 'Negative result' : 'Positive result' : 'Work' };
+    hint: item.kind === 'decision' ? item.status === 'accepted' ? 'Accepted decision' : item.status === 'proposed' ? 'Proposed decision' : 'Replaced decision'
+      : item.kind === 'result' ? item.finding === 'negative' ? 'Negative result' : 'Positive result' : 'Task' };
 }
 
 export function LinkPicker({ projectId, workspaceId, selfId, onPick, onClose }: {
@@ -103,7 +103,7 @@ export function LinkPicker({ projectId, workspaceId, selfId, onPick, onClose }: 
       <div className="doc-picker__search">
         <Icon name="search" size={14} />
         <input ref={inputRef} role="combobox" aria-expanded="true" aria-controls={listId} aria-activedescendant={shown[active] ? `${listId}-${active}` : undefined}
-          maxLength={200} aria-label="Find a doc, decision, result, work, sketch or message" placeholder={type === 'all' ? 'Find project objects…' : `Find ${kindLabel(type).toLowerCase()}…`} value={query}
+          maxLength={200} aria-label="Find a Wiki page, decision, result, task, map or message" placeholder={type === 'all' ? 'Find project objects…' : `Find ${kindLabel(type).toLowerCase()}…`} value={query}
           onChange={(event) => { setQuery(event.target.value); setActive(0); }} onKeyDown={onKey} />
       </div>
       <div className="doc-picker__type"><label htmlFor={`${listId}-type`}>Type</label><Select id={`${listId}-type`} aria-label="Reference type" value={type} onChange={(next) => setType(next as ReferenceType)}>

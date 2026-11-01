@@ -135,6 +135,8 @@ export const router = createBrowserRouter([
               // One conversation (UI116-1): the stream stays mounted while a root's thread opens beside it.
               { loader: projectConversationLoader, shouldRevalidate: shouldRevalidateProjectConversation, Component: ProjectConversation,
                 children: [{ index: true }, { path: 'conversations/:conversationId' }] },
+              // A message by its id alone (CW-2): the loader finds its thread and opens it there.
+              { path: 'messages/:messageId', ...secondary(async () => ({ loader: (await import('./conversations/messageRoute')).messageLoader })) },
               { path: 'github', ...secondary(async () => ({ Component: (await import('./github/GithubSettings')).GithubSettings })) },
               { path: 'tasks', ...secondary(async () => { const page = await import('./work/ProjectTasks'); return { Component: page.ProjectTasks, loader: page.projectTasksLoader }; }) },
               { path: 'map', ...secondary(async () => ({ Component: (await import('./project/ProjectViews')).ProjectMap })) },

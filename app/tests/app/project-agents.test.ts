@@ -37,7 +37,7 @@ test('project readers see every current connection with owner, client and truthf
   assert.deepEqual({ state: configured.state, name: configured.name, client: configured.clientDesignation, session: configured.session },
     { state: 'not_signed_in', name: 'Codex laptop', client: 'codex', session: null });
   // Nothing beyond identity and state reaches the browser.
-  assert.deepEqual(Object.keys(active).sort(), ['agent', 'clientDesignation', 'currentWork', 'id', 'lastActivity', 'name', 'own', 'owner', 'requests', 'scopes', 'session', 'state']);
+  assert.deepEqual(Object.keys(active).sort(), ['agent', 'clientDesignation', 'currentWork', 'id', 'lastActivity', 'name', 'own', 'owner', 'recentActivity', 'requests', 'scopes', 'session', 'state']);
   assert.deepEqual([active.currentWork, active.requests], [null, []], 'no unit or open request until one is created (#160 AC-5)');
 
   const workspaceId = f.workspaceId;
@@ -69,6 +69,9 @@ test('a completed native action becomes the last activity; closing the session l
   const activity = after.connections.find((item) => item.id === f.connectionId)!.lastActivity;
   assert.equal(activity?.operation, 'work.create');
   assert.ok(activity && Math.abs(Date.parse(activity.at) - Date.now()) < 60_000);
+  // CW-8: the recent list names the object the action made, for the reader's app to link.
+  const recent = after.connections.find((item) => item.id === f.connectionId)!.recentActivity;
+  assert.deepEqual(recent?.map((item) => [item.operation, item.object]), [['work.create', { kind: 'work', id: created.workId }]]);
 
   await pool.query('UPDATE agent_runtime_sessions SET revoked_at=now() WHERE connection_id=$1', [f.connectionId]);
   const closed = expectStatus(await f.owner.request('GET', `/api/v1/projects/${f.projectId}/agents`), 200) as ProjectAgents;

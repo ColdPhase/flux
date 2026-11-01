@@ -182,7 +182,7 @@ class WorkDecisionsJourney(unittest.TestCase):
         page.get_by_role("menuitem", name="Propose a decision").focus()
         page.keyboard.press("Enter")
         # #763 SP-5: the Create window's Decision tab; its full form in Details is one key away.
-        page.get_by_role("dialog", name="New decision").get_by_role("button", name="Replace a current rule…").focus()
+        page.get_by_role("dialog", name="New decision").get_by_role("button", name="Replace an accepted decision…").focus()
         page.keyboard.press("Enter")
         panel = self.details(page)
         expect(panel.get_by_role("heading", name="Propose a decision")).to_be_visible()
@@ -198,7 +198,7 @@ class WorkDecisionsJourney(unittest.TestCase):
         shot(page, "decision-desktop-1440-proposed")
         panel.get_by_role("button", name="Accept", exact=True).focus()
         page.keyboard.press("Enter")
-        expect(panel.locator(".wd-eyebrow")).to_contain_text("Current rule")
+        expect(panel.locator(".wd-eyebrow")).to_contain_text("Decision · accepted")
         expect(panel).to_contain_text("Ada Lind")
         decision = self.work(page)["decisions"][0]
         self.assertEqual((decision["status"], decision["decidedBy"]["id"]), ("accepted", OWNER["id"]))
@@ -261,7 +261,7 @@ class WorkDecisionsJourney(unittest.TestCase):
         page.goto(f"/projects/{self.project_id}/conversations/{self.conversation_id}")
         message = page.locator(f"#message-{self.messages['pivot']}")
         open_message_menu(message, phone=False).get_by_role("menuitem", name="Propose a decision").click()
-        page.get_by_role("dialog", name="New decision").get_by_role("button", name="Replace a current rule…").click()  # #763 SP-5
+        page.get_by_role("dialog", name="New decision").get_by_role("button", name="Replace an accepted decision…").click()  # #763 SP-5
         panel.get_by_label("Why").fill("The camera failed in low light; a ToF sensor works in the dark and stores no images")
         choose(panel.get_by_label("Replaces"), label="Use a camera for gesture control")
         panel.get_by_role("button", name="Propose decision").click()
@@ -270,7 +270,7 @@ class WorkDecisionsJourney(unittest.TestCase):
         panel.get_by_role("radiogroup", name="Design the diffuser").get_by_label("Still applies").check()
         shot(page, "decision-desktop-1440-pivot")
         panel.get_by_role("button", name="Accept and pivot").click()
-        expect(panel.locator(".wd-eyebrow")).to_contain_text("Current rule")
+        expect(panel.locator(".wd-eyebrow")).to_contain_text("Decision · accepted")
         expect(panel.get_by_role("region", name="At this pivot")).to_contain_text("parked")
 
         stored = self.work(page)
@@ -286,7 +286,7 @@ class WorkDecisionsJourney(unittest.TestCase):
         expect(page.get_by_role("region", name=re.compile("^Parked by a pivot"))).to_contain_text("Mount the camera in the lamp head")
         # The earlier rule and its reason stay in the decision's own details (S1: no archive).
         page.goto(f"/projects/{self.project_id}/tasks?open=decision:{rules['Use a camera for gesture control']['id']}")
-        expect(self.details(page)).to_contain_text("Earlier rule")
+        expect(self.details(page)).to_contain_text("Decision · replaced")
         expect(self.details(page).get_by_role("heading", name="Replaced by")).to_be_visible()
         page.keyboard.press("Escape")
         shot(page, "tasks-desktop-1440")
@@ -340,7 +340,7 @@ class WorkDecisionsJourney(unittest.TestCase):
         page.get_by_role("radio", name="List", exact=True).click()
         # The project's state is in Details (#340): the rule in force, found among 101 tasks.
         open_details(page)
-        expect(page.locator("#details").get_by_role("region", name="Now", exact=True).get_by_role("button", name=re.compile("^Current rule"))).to_contain_text("Oldest rule: battery powered")
+        expect(page.locator("#details").get_by_role("region", name="Now", exact=True).get_by_role("button", name=re.compile("^Decision"))).to_contain_text("Oldest rule: battery powered")
         page.get_by_role("button", name="Close details", exact=True).click()
         views=page.get_by_role("navigation",name="Task views")
         expect(views.get_by_role("button",name=re.compile("^Open"))).to_contain_text("101")

@@ -35,6 +35,8 @@ export interface ReturnSummaryQuery {
   from?: ReturnPeriod;
   until?: string;
   digest?: '1' | '0';
+  /** '1' (What matters, CW-3): also what happened in the project before the reader had access, within the period. */
+  history?: '1' | '0';
 }
 
 /** `PUT /api/v1/return-points`: saves the point after the person viewed the place. */
@@ -139,6 +141,11 @@ export interface ReturnSummary {
   period: ReturnPeriod;
   /** Where this summary starts: the return point's time, or the start of the chosen period; null from the beginning. */
   since: string | null;
+  /**
+   * CW-3: present when the summary also shows what happened in the project before the reader had access (a newcomer's
+   * first look, or a period reaching back before they joined). Items older than this are "Before you joined".
+   */
+  joinedAt?: string;
   /** Opaque: pass it to `PUT /api/v1/return-points` once the person has seen this summary. */
   mark: string | null;
   /** Newest first, at most 40 items. */

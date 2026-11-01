@@ -47,7 +47,7 @@ describe('project docs with immutable versions, links and backlinks', () => {
     const created = await post(owner, `/api/v1/projects/${lamp.id}/docs`, { title: 'How the lamp senses gestures', body: 'We use a **PIR** sensor.' });
     const doc = json<Doc>(created, 201);
     assert.equal(created.headers.get('etag'), '"1"');
-    assert.deepEqual([doc.version, doc.state, doc.reason, doc.author.id, doc.author.name], [1, 'draft', 'Started the doc', owner.id, 'docs-owner']);
+    assert.deepEqual([doc.version, doc.state, doc.reason, doc.author.id, doc.author.name], [1, 'draft', 'Started the page', owner.id, 'docs-owner']);
     assert.deepEqual(doc.audience, { kind: 'project', projectId: lamp.id });
     assert.equal(doc.html, '<p>We use a <strong>PIR</strong> sensor.</p>\n');
 
@@ -70,7 +70,7 @@ describe('project docs with immutable versions, links and backlinks', () => {
     assert.equal(cited.body, 'We use a **PIR** sensor.', 'the citation still reads what was cited');
     const history = json<Page<DocVersionSummary>>(await get(viewer, `/api/v1/docs/${doc.id}/versions`), 200);
     assert.deepEqual(history.items.map((item) => [item.version, item.reason, item.author.name]),
-      [[3, 'Shorter title', 'docs-owner'], [2, 'Published · Edited the text', 'docs-partner'], [1, 'Started the doc', 'docs-owner']]);
+      [[3, 'Shorter title', 'docs-owner'], [2, 'Published · Edited the text', 'docs-partner'], [1, 'Started the page', 'docs-owner']]);
     assert.ok(history.items.every((item) => !Number.isNaN(Date.parse(item.createdAt))));
     assert.equal((await get(viewer, `/api/v1/docs/${doc.id}/versions/9`)).status, 404);
 

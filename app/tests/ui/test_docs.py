@@ -163,9 +163,9 @@ class DocsJourney(unittest.TestCase):
         # The link picker: keyboard only, filtered to objects of this project.
         text.press("Control+k")
         picker = page.get_by_role("dialog", name="Link to something in this project")
-        picker.get_by_role("combobox", name="Find a doc, decision, result, work, sketch or message", exact=True).fill("ToF distance")
+        picker.get_by_role("combobox", name="Find a Wiki page, decision, result, task, map or message", exact=True).fill("ToF distance")
         expect(picker.get_by_role("listbox", name="Matches").get_by_role("option").first).to_contain_text(RULE)
-        picker.get_by_role("combobox", name="Find a doc, decision, result, work, sketch or message", exact=True).press("Enter")
+        picker.get_by_role("combobox", name="Find a Wiki page, decision, result, task, map or message", exact=True).press("Enter")
         expect(text).to_have_value(re.compile(re.escape(f"[{RULE}](flux:decision/{self.decision_id})")))
         # Both panes on a wide screen; the preview is rendered by the server.
         preview = page.get_by_label("Preview")
@@ -366,7 +366,7 @@ class DocsJourney(unittest.TestCase):
         page.get_by_role("button", name="Save version").tap()
         if LIVE:
             expect(page.get_by_role("status").filter(has_text="Version 5 saved")).to_be_visible()
-            page.get_by_role("link", name="Back to doc", exact=True).tap()
+            page.get_by_role("link", name="Back to the Wiki page", exact=True).tap()
         expect(page.get_by_role("heading", level=2, name=TITLE)).to_be_visible()
         expect(page.locator(".wiki-bar__title")).to_contain_text("Wiki ·")
         self.assertEqual(self.doc(page)["version"], 5)

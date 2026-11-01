@@ -160,9 +160,24 @@ export function hasDecisionReference(text: string, id: string) {
  * "Add to docs" for a decision (F-034): nothing when its reference line is already there; otherwise the line goes at
  * the end, after a blank line, so it stands alone and the reader shows it as the card.
  */
-export function placeDecisionReference(text: string, id: string, title: string): { body: string; replaced: boolean } {
+export function placeDecisionReference(text: string, id: string, title: string, under?: string): { body: string; replaced: boolean } {
   if (hasDecisionReference(text, id)) return { body: text, replaced: false };
-  const kept = text.replace(/\s+$/, '');
   const line = decisionReferenceLine(title, id);
+  // CW-9: at the end of the chosen heading's section, before the next heading of its level or above.
+  const heading = under?.trim();
+  if (heading) {
+    const lines = text.split('\n');
+    const at = lines.findIndex((value) => value.trim() === heading && /^#{1,6}\s/.test(value.trim()));
+    if (at >= 0) {
+      const level = /^(#+)/.exec(heading)![1]!.length;
+      let end = lines.findIndex((value, index) => index > at && /^(#{1,6})\s/.test(value) && /^(#+)/.exec(value)![1]!.length <= level);
+      if (end < 0) end = lines.length;
+      let last = end;
+      while (last > at + 1 && !lines[last - 1]!.trim()) last--;
+      const after = lines.slice(end);
+      return { body: [...lines.slice(0, last), '', line, ...(after.length ? ['', ...after] : [''])].join('\n'), replaced: false };
+    }
+  }
+  const kept = text.replace(/\s+$/, '');
   return { body: kept ? `${kept}\n\n${line}\n` : `${line}\n`, replaced: false };
 }

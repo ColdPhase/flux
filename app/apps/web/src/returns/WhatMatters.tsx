@@ -37,6 +37,8 @@ type Load = { key: string; summary: ReturnSummary } | { key: string; error: true
 
 function since(summary: ReturnSummary) {
   if (!summary.since) return 'From the beginning of the project';
+  // CW-3: a newcomer's first look also covers the week before they joined.
+  if (summary.joinedAt && summary.period === 'last-visit') return `Since ${dayTime.format(new Date(summary.since))}, before you joined`;
   const label = PERIODS.find((period) => period.id === summary.period)?.label;
   return summary.period === 'last-visit' ? `Since ${dayTime.format(new Date(summary.since))}` : label!;
 }
@@ -162,7 +164,11 @@ export function WhatMatters({ projectId, projectName, onDone }: { projectId: str
   };
 
   const needs = shown?.items.filter((item) => item.needsYou && item.id !== shown.nextStep?.item) ?? [];
-  const changes = shown?.items.filter((item) => !item.needsYou && item.id !== shown.nextStep?.item) ?? [];
+  const allChanges = shown?.items.filter((item) => !item.needsYou && item.id !== shown.nextStep?.item) ?? [];
+  // CW-3: what happened before the reader had access is its own section, so nothing reads as unseen news.
+  const joined = shown?.joinedAt ? Date.parse(shown.joinedAt) : null;
+  const changes = joined === null ? allChanges : allChanges.filter((item) => Date.parse(item.at) >= joined);
+  const before = joined === null ? [] : allChanges.filter((item) => Date.parse(item.at) < joined);
   const empty = !!shown && !shown.items.length && !shown.nextStep;
 
   // An overlaid panel or sheet gives way to the source a link opens, even in the same conversation
@@ -238,6 +244,18 @@ export function WhatMatters({ projectId, projectName, onDone }: { projectId: str
                 </div>
                 <ul className="since__list">{changes.slice(0, 20).map((item) => <Item key={item.id} item={item} />)}</ul>
                 {shown.more || changes.length > 20 ? <p className="wm-note">More happened than fits here. Open a conversation or the Tasks tab for everything.</p> : null}
+              </section>
+            ) : null}
+            {before.length ? (
+              <section className="wm-sec" aria-labelledby="wm-before">
+                <div className="wm-sec__head">
+                  <h3 id="wm-before" className="wm-h3">Before you joined</h3>
+                  {!digestOn && !changes.length ? (
+                    <Button variant="secondary" icon="leaf" className="wm-summarize" onClick={() => setDigestOn(true)}>Summarize</Button>
+                  ) : null}
+                </div>
+                <ul className="since__list">{before.slice(0, 20).map((item) => <Item key={item.id} item={item} />)}</ul>
+                {before.length > 20 ? <p className="wm-note">More happened than fits here. Open a conversation or the Tasks tab for everything.</p> : null}
               </section>
             ) : null}
             {digestOn ? (

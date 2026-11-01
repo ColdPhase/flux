@@ -14,7 +14,7 @@ export interface StatePart {
 export function summaryStateParts(summary: ProjectWorkSummary, canDecide: boolean): StatePart[] {
   const { rule, proposal, active, blocked, open, history, result } = summary.state;
   const parts: StatePart[] = [];
-  if (rule) parts.push({ key: 'rule', icon: 'rule', text: `Current rule: ${rule.title}`, short: `Rule: ${rule.title}`, title: rule.title, open: { kind: 'decision', id: rule.id } });
+  if (rule) parts.push({ key: 'rule', icon: 'rule', text: `Decision: ${rule.title}`, short: `Decision: ${rule.title}`, title: rule.title, open: { kind: 'decision', id: rule.id } });
   if (active.count && active.first) {
     // Server distinctness is native kind/id. Identical names remain separate owners.
     const names = active.owners.map((owner) => owner.name);

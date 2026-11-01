@@ -50,7 +50,7 @@ function parseOptions(query: Partial<ReturnSummaryQuery> | null | undefined) {
   if (period !== 'last-visit' && period !== '24h' && period !== '7d') throw new InvalidInputError('from must be last-visit, 24h or 7d', 'INVALID_PERIOD');
   const until = query?.until;
   if (until !== undefined && (typeof until !== 'string' || !UUID.test(until))) throw new InvalidInputError('until must be a mark from a summary', 'INVALID_MARK');
-  return { scope: scope as ReturnScope, period: period as ReturnPeriod, until: until?.toLowerCase() ?? null, digest: query?.digest === '1' };
+  return { scope: scope as ReturnScope, period: period as ReturnPeriod, until: until?.toLowerCase() ?? null, digest: query?.digest === '1', history: query?.history === '1' };
 }
 
 function human(principal: Principal) {
@@ -216,12 +216,39 @@ export function createReturnUseCases(ports: ReturnPorts) {
       before = page.at(-1)!.seq;
     }
 
+    // CW-3: a person's own rows start when they get access, so a newcomer's first look at a project (or a chosen period
+    // that reaches back before they joined) also reads the project's own events from that time, each authorized again
+    // against what the reader can open now. Nothing they cannot read today is shown, and nothing is counted as unseen.
+    let joinedAt: Date | null = null;
+    if (resolved.type === 'project' && options.history && (period || !own || own.previousSeq === null) && !enough && returns.firstProjectAudienceAt && returns.projectEventsBetween) {
+      const start = period ? since! : new Date(Date.now() - PERIOD_MS['7d']);
+      const first = await returns.firstProjectAudienceAt(recipient, resolved.projectId!);
+      const end = first ?? new Date();
+      if (end > start) {
+        const have = new Set(kept.map((event) => event.id));
+        const earlier = (await returns.projectEventsBetween(resolved.projectId!, start, end, SCAN))
+          .filter((event) => !have.has(event.id) && RELEVANT.has(event.kind) && (event.actorId !== recipient || automated(event)) && event.workspaceId);
+        const newSketches = [...new Set(earlier.filter((event) => event.kind.startsWith('sketch.') && !sketches.has(event.objectId)).map((event) => event.objectId))];
+        for (const [id, sketch] of await returns.sketches(newSketches)) sketches.set(id, sketch);
+        let added = 0;
+        for (const event of earlier) {
+          if (projectOf(event) !== resolved.projectId) continue;
+          const object = `${event.kind.split('.', 1)[0]}:${event.objectId}`;
+          if (!allowed.has(object)) allowed.set(object, await access.canReceive(principal, event));
+          if (!allowed.get(object)) continue;
+          kept.push(event); added++;
+        }
+        if (added) { joinedAt = end; if (!period) since = start; }
+      }
+    }
+
     const { items: all, digest } = await build(principal, userId, kept, projectOf, options.scope);
     const built = options.scope === 'mine' ? all.filter((item) => item.relevant || item.needsYou) : all;
     const needs = built.filter((item) => item.needsYou);
     const items = [...needs, ...built.filter((item) => !item.needsYou)].slice(0, MAX_ITEMS).map(publicItem);
     return {
       ...empty, items, needsYou: needs.length,
+      ...(joinedAt ? { since: since ? since.toISOString() : null, joinedAt: joinedAt.toISOString() } : {}),
       more: built.length > MAX_ITEMS || enough,
       nextStep: nextStep(built),
       ...(options.digest ? { digest } : {}),
@@ -385,11 +412,11 @@ export function createReturnUseCases(ports: ReturnPorts) {
           const next = decisionTitle(item.supersededById);
           detail = next ? `Now: ${next}` : reason;
         } else if (item.supersedesId) {
-          text = `Current rule changed: ${item.title}`;
+          text = `Decision changed: ${item.title}`;
           const previous = decisionTitle(item.supersedesId);
           detail = [previous ? `Previously: ${previous}` : null, reason].filter(Boolean).join(' · ') || null;
         } else {
-          text = `New rule: ${item.title}`;
+          text = `New decision: ${item.title}`;
           detail = reason;
         }
         const step = needsYou ? { priority: 4, text: 'Decide on the proposed rule',
@@ -438,8 +465,8 @@ export function createReturnUseCases(ports: ReturnPorts) {
         const count = new Set(versions).size;
         const since = created || earliest <= 1 ? null : earliest - 1;
         const reason = item.reason.trim();
-        items.push({ ...base, kind: 'doc', text: created ? `${who} started a doc: ${item.title}` : `Doc updated: ${item.title}`,
-          detail: created ? (reason && reason !== 'Started the doc' ? reason : null)
+        items.push({ ...base, kind: 'doc', text: created ? `${who} started a Wiki page: ${item.title}` : `Wiki page updated: ${item.title}`,
+          detail: created ? (reason && reason !== 'Started the page' ? reason : null)
             : [`${count > 1 ? `${count} new versions` : `Version ${item.version}`} by ${who}`, reason ? `latest: ${reason}` : null].filter(Boolean).join(' · '),
           needsYou: false, source: { type: 'doc', projectId: item.projectId, docId: item.id, version: item.version, since } });
         continue;

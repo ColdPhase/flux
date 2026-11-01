@@ -96,7 +96,7 @@ class NativeDetailsJourney(unittest.TestCase):
                     if re.search(r"/api/v1/(work|decisions|results)/[0-9a-f-]+$",response.url):legacy.append(response.url)
                 page.on("response",collect);panel=self.open(page,"work",self.target["id"])
                 expect(panel).to_contain_text(self.target["outcome"]);expect(panel.get_by_role("button",name="Owner",exact=True)).to_contain_text("Ada Kowalska")
-                expect(panel.get_by_role("region",name="Other relationships").get_by_role("link")).to_have_attribute("href",f"/projects/{self.project}/conversations/{self.conversation}#message-{self.message}")
+                expect(panel.get_by_role("region",name="Also linked").get_by_role("link")).to_have_attribute("href",f"/projects/{self.project}/conversations/{self.conversation}#message-{self.message}")
                 for version in (1,2):expect(panel.locator(f'a[href="/materials/{self.material}/versions/{version}"]')).to_have_count(1)
                 expect(panel.locator(f'a[href="/projects/{self.project}/map/{self.sketch}#thought-{self.thought}"]')).to_have_count(1)
                 nav=panel.get_by_role("navigation",name="Object relationship pages");union=set()
@@ -154,15 +154,15 @@ class NativeDetailsJourney(unittest.TestCase):
     def test_04_all_current_rules_reachable_and_selected_rule_persists_on_another_page(self):
         page=self.page();page.goto(f"/projects/{self.project}/conversations/{self.conversation}")
         message=page.locator(f"#message-{self.message}");open_message_menu(message,phone=False).get_by_role("menuitem",name="Propose a decision").click()
-        page.get_by_role("dialog",name="New decision").get_by_role("button",name="Replace a current rule…").click()  # #763 SP-5
-        panel=page.locator("#details .wd");self.choices_ready(panel,"Current rule choices")
+        page.get_by_role("dialog",name="New decision").get_by_role("button",name="Replace an accepted decision…").click()  # #763 SP-5
+        panel=page.locator("#details .wd");self.choices_ready(panel,"Choices it can replace")
         panel.get_by_label("Decision",exact=True).fill("Keep a manual off switch after measuring both shields")
         why=panel.get_by_label("Why",exact=True);why.fill("Retain the complete earlier measurements before changing the cable")
-        nav=panel.get_by_role("navigation",name="Current rule choices");select=panel.get_by_label("Replaces",exact=True);seen={value for value in values(select) if value}
-        nav.get_by_role("button",name="Next",exact=True).click();self.choices_ready(panel,"Current rule choices")
+        nav=panel.get_by_role("navigation",name="Choices it can replace");select=panel.get_by_label("Replaces",exact=True);seen={value for value in values(select) if value}
+        nav.get_by_role("button",name="Next",exact=True).click();self.choices_ready(panel,"Choices it can replace")
         seen.update(value for value in values(select) if value);self.assertEqual(seen,{item["id"] for item in self.rules})
         chosen=self.rules[0];choose(select, chosen["id"]);expect(panel.get_by_role("button",name="Propose decision",exact=True)).to_be_enabled()
-        nav.get_by_role("button",name="Previous",exact=True).click();self.choices_ready(panel,"Current rule choices")
+        nav.get_by_role("button",name="Previous",exact=True).click();self.choices_ready(panel,"Choices it can replace")
         expect_value(select, chosen["id"]);expect(why).to_have_value("Retain the complete earlier measurements before changing the cable")
         panel.get_by_role("button",name="Propose decision",exact=True).click()
         expect(page.locator('.wd[data-detail-kind="decision"]')).to_contain_text("Keep a manual off switch")
@@ -194,7 +194,7 @@ class NativeDetailsJourney(unittest.TestCase):
         self.assertLessEqual(mobile.locator(".wd-decide").bounding_box()["y"]+mobile.locator(".wd-decide").bounding_box()["height"],mobile.locator(".wd-pivot").bounding_box()["y"],"the answer comes before the phone's choice scrollport")
         shot(phone,"bounded-details-pivot-phone")
         panel.get_by_role("button",name="Accept and pivot",exact=True).click()
-        expect(panel).to_contain_text("Current rule")
+        expect(panel).to_contain_text("Decision · accepted")
         work=api(self.ctx,"GET",self.root+"/work?limit=100")["items"];kept=next(item for item in work if item["title"]==keep_name);parked=next(item for item in work if item["title"]==park_name)
         self.assertEqual(parked["parked"]["decisionId"],self.pivot["id"]);self.assertTrue(any(link["role"]=="still_applies" and link["to"]["id"]==kept["id"] for link in self.native("decision",self.pivot["id"])["links"]))
         expect(panel.get_by_role("region",name="At this pivot")).to_contain_text(park_name)
@@ -296,7 +296,7 @@ class NativeDetailsJourney(unittest.TestCase):
         expect(groups.first.get_by_role("radio",name="Still applies",exact=True)).to_be_enabled()
         groups.first.get_by_role("radio",name="Still applies",exact=True).check();groups.nth(1).get_by_role("radio",name="Park",exact=True).check()
         expect(panel).to_contain_text("50 still apply · 1 parked")
-        panel.get_by_role("button",name="Accept and pivot",exact=True).click();expect(panel).to_contain_text("Current rule")
+        panel.get_by_role("button",name="Accept and pivot",exact=True).click();expect(panel).to_contain_text("Decision · accepted")
         saved=self.native("decision",rule["id"])
         self.assertEqual(sum(link["role"]=="still_applies" for link in saved["links"]),50)
         parked=api(self.ctx,"GET",self.root+"/work?limit=100")["items"]

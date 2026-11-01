@@ -12,7 +12,7 @@ export function getReturnSummary(place: ReturnPlace, signal?: AbortSignal) {
 }
 /** "What matters" (#133): a project's private recap in a scope and period, at a snapshot `until` when given. */
 export function getRecap({ projectId, scope, period, until, digest }: { projectId: string; scope: ReturnScope; period: ReturnPeriod; until: string | null; digest: boolean }, signal?: AbortSignal) {
-  const query = new URLSearchParams({ place: 'project', id: projectId, scope, from: period });
+  const query = new URLSearchParams({ place: 'project', id: projectId, scope, from: period, history: '1' });
   if (until) query.set('until', until);
   if (digest) query.set('digest', '1');
   return request<ReturnSummary>(`${RETURN_SUMMARY_PATH}?${query}`, { signal });

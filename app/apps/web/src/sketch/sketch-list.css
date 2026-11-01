@@ -69,3 +69,6 @@
   .sk-outline-chip .sk-work--list { min-width: 44px; justify-content: center; }
   .sk-outline-body { margin-left: 42px; }
 }
+/* CW-2: a thought's source line opens its message. */
+a.sk-li-s--source { text-decoration: none; }
+a.sk-li-s--source:hover, a.sk-li-s--source:focus-visible { color: var(--t2); text-decoration: underline; }
