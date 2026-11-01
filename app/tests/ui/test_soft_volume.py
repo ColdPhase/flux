@@ -225,9 +225,13 @@ class SoftVolume(unittest.TestCase):
         window.get_by_label("Title", exact=True).fill("Calibrate the probes")
         primary = window.locator(".ui-btn--primary").first
         expect(primary).to_be_enabled()
-        style = primary.evaluate("e => { const s = getComputedStyle(e); return [s.borderTopLeftRadius, s.backgroundImage.startsWith('linear-gradient'), s.boxShadow !== 'none']; }")
-        self.assertEqual(style[1:], [True, True], "the primary button is the inverted gradient with volume")
-        self.assertGreaterEqual(float(style[0].rstrip("px")), 17, "buttons are pills")
+        # Direction C (#801, docs/design/final/README.md §2 amendment 2026-10-31): flat --inv, no gradient or shadow, radius 10.
+        inv = primary.evaluate("e => { const probe = document.createElement('span'); probe.style.backgroundColor = 'var(--inv)'; e.parentElement.append(probe); const c = getComputedStyle(probe).backgroundColor; probe.remove(); return c; }")
+        # The fill eases in from the disabled one (--tr): poll until it settles on --inv.
+        expect(primary).to_have_css("background-color", inv)
+        style = primary.evaluate("e => { const s = getComputedStyle(e); return [s.borderTopLeftRadius, s.backgroundImage, s.boxShadow]; }")
+        self.assertEqual(style[1:], ["none", "none"], "the primary button is the flat inverted fill without a shadow")
+        self.assertEqual(style[0], "10px", "buttons have radius 10 (--r-btn)")
         self.assertEqual(page.evaluate("getComputedStyle(document.documentElement).getPropertyValue('--press').trim()"), ".97")
         calm = self.page(reduced=True)
         calm.goto("/")

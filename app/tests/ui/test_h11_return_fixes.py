@@ -12,7 +12,8 @@ phone (390 x 844, touch):
   another page (Inbox); Back brings it back.
 * H11-9: a decision proposed and accepted together is one card with a line under it, not two
   identical cards; the owner's face in the task panel shows her initials, not "M(" from "(you)".
-* A phone's long press keeps the five drawn items and puts "Add to map" and "Details" under "More…".
+* A phone's long press keeps the five drawn items and puts "Propose a decision", "Record a result",
+  "Add to map" and "Details" under "More…" (#763 FT-4).
 """
 
 from __future__ import annotations
@@ -209,7 +210,9 @@ class ReturnFixes(unittest.TestCase):
         menu.get_by_role("menuitem", name="More…").click()
         expect(menu).to_be_visible()
         names = [text.strip() for text in menu.get_by_role("menuitem").all_inner_texts()]
-        self.assertEqual(names, ["Add to map", "Details"])
+        # #763 FT-4 (#806): a phone also proposes a decision or records a result from the message, under More…; as on a
+        # computer, Add to map leads and the object-making items follow the separator.
+        self.assertEqual(names, ["Add to map", "Propose a decision", "Record a result", "Details"])
         expect(menu.get_by_role("menuitem", name="Add to map")).to_be_focused()
         for box in menu.get_by_role("menuitem").evaluate_all("items => items.map(el => el.getBoundingClientRect().height)"):
             self.assertGreaterEqual(box, 44, "a touch target")

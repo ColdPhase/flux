@@ -348,8 +348,11 @@ class PeopleJourney(unittest.TestCase):
         for who in ("lee", "mia"):
             other = self.page(who)
             other.goto("/")
-            # No project of theirs: Home offers the first one and the sidebar has no empty Projects section (#763 FR-1).
-            expect(other.get_by_role("region", name="Start with a project")).to_be_visible()
+            # No project of theirs: Home says they joined Riverside and offers their own project (#763 FR-1, FT-3), and the
+            # sidebar has no empty Projects section.
+            first = other.get_by_role("region", name="You joined Riverside Makers")
+            expect(first).to_be_visible()
+            expect(first.get_by_role("button", name="Start your own project")).to_be_visible()
             expect(self.sidebar_projects(other)).to_have_count(0)
             expect(other.get_by_text(RESTRICTED)).to_have_count(0)
             self.assertEqual(self.api(other, f"/api/v1/projects/{self.kiln}")[0], 404)
@@ -416,7 +419,7 @@ class PeopleJourney(unittest.TestCase):
         status, grants = self.api(page, f"/api/v1/projects/{self.garden}/grants")
         self.assertEqual([(g["principal"]["id"], g["role"]) for g in grants], [(self.ids["lee"], "denied")])
         lee.goto("/")
-        expect(lee.get_by_role("region", name="Start with a project")).to_be_visible()
+        expect(lee.get_by_role("region", name="You joined Riverside Makers")).to_be_visible()
         expect(self.sidebar_projects(lee)).to_have_count(0)
         expect(lee.get_by_text(OPEN)).to_have_count(0)
 
