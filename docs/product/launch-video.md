@@ -9,7 +9,7 @@
 >
 > **Order of work (founder gate [#763](https://github.com/ColdPhase/flux/issues/763), 2026-10-30).** README, docs-site and
 > video media are recorded from the audited build, after the UI/UX fixes of that audit are merged. Nothing recorded
-> before then is kept or committed. When the gate is open, one command regenerates the README GIF and stills and the
+> before then is kept or committed. When the gate is open, one command regenerates the README GIF, stills and screens and the
 > scripted clips: `./scripts/record_media.sh` (see [the scripted shots](#the-scripted-shots-1-to-4-and-8)).
 
 **Length:** 60 to 90 seconds (the script below is 85 s).
@@ -52,7 +52,7 @@ than was checked:
 (`app/tests/ui/record_video.py`), in real time, once for English and once for Polish:
 
 ```sh
-./scripts/record_media.sh /path/to/out                              # the README GIF and stills, then the clips below
+./scripts/record_media.sh /path/to/out                              # the README GIF, stills and screens, then the clips below
 FLUX_VIDEO_VERSION=v0.1.0 ./scripts/record_video.sh /path/to/out    # the clips only, both languages
 FLUX_VIDEO_LANG=en ./scripts/record_video.sh /path/to/out           # one language
 FLUX_VIDEO_CAPTIONS=off ./scripts/record_video.sh /path/to/out      # no caption bar; use the .srt files
