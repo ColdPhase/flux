@@ -476,15 +476,24 @@ class ReturnToOrigin(unittest.TestCase):
 
     # ---- search, a result, and back ----
 
+    def search_rows(self, page, size):
+        """The results: the Results region's Messages group, or on the phone the one search's result options
+        (its `/search` is the round Search sheet's body in place, 20 results at once, #763 SE-2)."""
+        if size == "phone":
+            return page.get_by_role("listbox", name="Results").locator("[role=option].sr")
+        return page.get_by_role("region", name="Results").locator("section[aria-label='Messages']").locator("a.sr")
+
     def search_journey(self, engine, size):
         page = self.page(engine, size)
         tap = size != "desktop"
         page.goto("/search?q=shade")
-        group = page.get_by_role("region", name="Results").locator("section[aria-label='Messages']")
-        expect(group.locator("a.sr").first).to_be_visible()
-        self.activate(group.get_by_role("button", name=re.compile(r"^Show \d+ more")), tap)
-        expect(group.locator("a.sr")).to_have_count(20)
-        pick = group.locator("a.sr").nth(15)
+        rows = self.search_rows(page, size)
+        if size != "phone":
+            group = page.get_by_role("region", name="Results").locator("section[aria-label='Messages']")
+            expect(rows.first).to_be_visible()
+            self.activate(group.get_by_role("button", name=re.compile(r"^Show \d+ more")), tap)
+        expect(rows).to_have_count(20)
+        pick = rows.nth(15)
         pick.scroll_into_view_if_needed()
         page.locator("#content .pane-scroll").evaluate("el => { el.scrollTop += 30; }")
         page.wait_for_timeout(600)
@@ -507,10 +516,13 @@ class ReturnToOrigin(unittest.TestCase):
         shot(page, f"592-search-result-{engine}-{size}")
         self.activate(back, tap)
         expect(page).to_have_url(f"{ORIGIN}/search?q=shade")
-        group = page.get_by_role("region", name="Results").locator("section[aria-label='Messages']")
-        expect(group.locator("a.sr")).to_have_count(20)
-        expect(page.get_by_role("searchbox")).to_have_value("shade")
-        row = group.locator("a.sr").nth(15)
+        rows = self.search_rows(page, size)
+        expect(rows).to_have_count(20)
+        expect(page.get_by_role("combobox" if size == "phone" else "searchbox")).to_have_value("shade")
+        if size == "phone":
+            # Met again by Back, the phone's search is a list to read on: its field does not take focus (no keyboard).
+            expect(page.get_by_role("combobox")).not_to_be_focused()
+        row = rows.nth(15)
         self.assertEqual(row.inner_text(), label)
         page.wait_for_timeout(900)
         self.assert_same(before, self.row_offset(row), "the result stays where it was in the list")

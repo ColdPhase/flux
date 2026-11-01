@@ -1,5 +1,6 @@
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
+import { pageLeaving } from './api/pageLeaving';
 import { RouterProvider } from 'react-router/dom';
 import './ui/tokens.css';
 import './ui/ui.css';
@@ -23,7 +24,11 @@ installPress();
 // Chromium offers installation once per load, possibly before Settings is open (#20 MOB-1).
 watchInstallPrompt();
 
-createRoot(document.getElementById('root')!).render(
+// A render that failed and was recovered while the page is being left (its code download cut off by the leave, #471) is not
+// an error of the page the person sees next; any other recovered error is still reported as React reports it.
+createRoot(document.getElementById('root')!, {
+  onRecoverableError: (error) => { if (!pageLeaving()) reportError(error); },
+}).render(
   <StrictMode>
     <RouterProvider router={router} />
   </StrictMode>,

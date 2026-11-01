@@ -373,11 +373,11 @@ class PhoneFinal(unittest.TestCase):
         page.get_by_role("link", name="Settings and account").click()
         expect(page).to_have_url(f"{ORIGIN}/settings")
         expect(page.get_by_role("heading", level=1, name="Settings")).to_be_visible()
-        for link, path, shell_title, content_title in (("All my tasks", "/tasks", "Home", "Nothing is waiting for you"), ("Wiki", "/docs", "Home", "No docs yet"), ("Sketchbook", "/map", "Sketchbook", "Start a sketch")):
+        for link, path, shell_title, content_title in (("All my tasks", "/tasks", "Your tasks", "Nothing is waiting for you"), ("Wiki", "/docs", "Wiki", "No docs yet"), ("Sketchbook", "/map", "Sketchbook", "Start a sketch")):
             page.goto("/")
             page.locator(".home__more").get_by_role("link", name=link).click()
             expect(page).to_have_url(f"{ORIGIN}{path}")
-            # Tasks and Wiki are Home's content views (the shell heading stays Home); the Sketchbook names itself (#508).
+            # Each names itself in the header: Your tasks and Wiki (#763 NV-1), the Sketchbook (#508).
             expect(page.get_by_role("heading", level=1, name=shell_title, exact=True)).to_be_visible()
             expect(page.get_by_role("heading", level=2, name=content_title)).to_be_visible()
             page.get_by_role("button", name="Back", exact=True).click()

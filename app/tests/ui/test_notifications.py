@@ -210,6 +210,9 @@ class NotificationJourney(unittest.TestCase):
 
         # Done leaves the queue and reads the notification; Undo (Z) brings both back. Nothing is deleted.
         mention = page.locator(".nyc", has_text="mentioned you")
+        # The Inbox opens one item at a time (#763): the selected card carries Done; a click on a card's free space selects it.
+        mention.locator(".nyc__card > :first-child").click()  # its face: free space, not a link or button
+        expect(mention).to_have_attribute("aria-current", "true")
         mention.hover()
         mention.get_by_role("button", name="Done").click()
         expect(mention).to_have_count(0)

@@ -82,6 +82,9 @@ class HomeTasksJourney(unittest.TestCase):
         # More than one page of the assigned-work API (100 per request).
         for index in range(BATCH):
             work(lamp, f"Batch check {index:03}")
+        # Olek has a project of his own and no task: his Home is past the first run, so it links to his tasks (#763 FR-1).
+        bench = call("olek", "POST", "/api/v1/workspaces", {"name": "Olek's bench"})
+        call("olek", "POST", f"/api/v1/workspaces/{bench['id']}/projects", {"name": "Bench notes", "visibility": "restricted"})
         cls.ids.update(lamp=lamp["id"], bike=bike["id"], bike_grant=grant["id"])
         for context in contexts.values():
             context.close()
@@ -204,8 +207,8 @@ class HomeTasksJourney(unittest.TestCase):
         page.wait_for_timeout(800)
         self.assertNotIn("Mount the PIR sensor", page.content())
         expect(page.get_by_role("heading", name="Nothing is waiting for you")).to_be_visible()
-        # The sidebar offers the same link when there are no projects; this one is the empty state's.
-        expect(page.locator("#content").get_by_role("link", name="Create a project")).to_have_attribute("href", "/projects/new")
+        # Olek has a project (he reached this page from his Home), so the empty state does not offer to create one.
+        expect(page.locator("#content").get_by_role("link", name="Create a project")).to_have_count(0)
 
     # ---------------------------------------------------------------- phone
 
