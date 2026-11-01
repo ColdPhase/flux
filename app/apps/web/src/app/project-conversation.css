@@ -93,7 +93,7 @@ button.project-convo__contribution { cursor: pointer; }
 
 /* F-026: a 32px author face and 12px gap on the author's side. Each
    bubble is only as wide as its content (up to 560px), so its actions stay beside it. */
-.project-convo__in { max-width: min(calc(var(--col) + 2 * var(--space-page)), var(--read-max)); padding: 30px var(--space-page) 12px; }
+.project-convo__in { max-width: min(calc(var(--col) + 2 * var(--space-page)), 760px); padding: 30px var(--space-page) 12px; }
 /* A tablet keeps its reading measure inside the workspace (adaptive-layout-rules): the rail gives the column more width. */
 @media (min-width: 681px) and (max-width: 900px) { .project-convo__in { padding-left: calc(var(--space-page) + 56px); padding-right: calc(var(--space-page) + 56px); } }
 .project-convo__day { justify-content: center; gap: 12px; margin: 5px 0 27px; font-size: var(--fs-sm); font-weight: 400; color: var(--t3); }

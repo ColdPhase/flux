@@ -140,7 +140,7 @@ avatar and no name; time and "Seen by" sit under the last bubble of a run.
 | Phone 390 | One thing at a time. Task, thread and details are a sheet (half / full). A thread opened from a task replaces the sheet's content. |
 | Tablet 820 | Sidebar collapsed to the 64 px rail. The panel (380 px) slides over the conversation, which stays visible. Project title is the view menu. |
 | Computer 1440 | Sidebar 248 + conversation + panel 420, one header row above both. |
-| Large 1920–2560 | Conversation at most 760 px, panel 420 px (480 px until the [2026-10-31 amendment](https://github.com/ColdPhase/flux/issues/763#issuecomment-6549771863)); the work panel at most 1600 px, centred; extra width is margin. Never a third column. |
+| Large 1920–2560 | Conversation at most 760 px, panel 480 px; extra width is margin. Never a third column. |
 
 ## Boards
 

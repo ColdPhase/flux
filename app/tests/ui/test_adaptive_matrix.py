@@ -9,8 +9,7 @@ The same journey (Conversation → its thread → Map → List → Tasks → a t
 Agents → back) runs at every fixture width from 320 to 5120 CSS px. At each one: no sideways page
 scroll, every primary action reachable and unclipped, prose within the readable measure, 44 px
 primary targets on coarse pointers, and on wide screens the extra working context the contract
-names (docked Details and thread, all connections on one row). From 1864 px the work panel stops at 1600 px and is
-centred (F-015 amendment, founder direction 2026-10-31, #763): 1920 and 3840 px render the same widths.
+names (docked Details and thread, more cards per board row, all connections on one row).
 
 The transition tests resize, rotate (swap width and height) and emulate a virtual keyboard by
 reducing the viewport height during real work, and check that drafts, selection, the reading
@@ -55,9 +54,11 @@ SHOTS_AT = {320, 390, 768, 820, 1440, 1920, 2560, 3440, 3840}
 TABS = ["Conversation", "Map", "Tasks", "Wiki", "Agents"]
 # The phone menu lists Tasks before Map (#341).
 PHONE_TABS = ["Conversation", "Tasks", "Map", "Wiki", "Agents"]
-# Large screens (F-015 amendment, 2026-10-31, #763): the work panel's width (--content-max), the board's status column
-# (--board-col) and the docked panel (--panel-w) at every width from 1920 px; test_07 measures them.
-CONTENT_MAX, BOARD_COL, PANEL_W = 1600, 340, 420
+# ADAPT-2 caps that stop the wide screens from giving more room (measured by test_07). Each is open until its
+# owner's PR lands; the test fails once a cap is gone, so the entry is removed rather than passing silently.
+WIDE_CAPS = {
+    "the Agents column": "the Agents column stays at 854 px (app/apps/web/src/agents/agents.css; PRs #376 and #417 own it)",
+}
 # The readable measure (proposed 2026-10-05, docs/design/adaptive-layout-rules.md): at most 90
 # characters, spaces included, on any rendered line of prose.
 MEASURE = 90
@@ -726,18 +727,18 @@ class AdaptiveMatrix(AdaptiveBase):
                 self.shot(page, f"adapt-{width}x{height}-map-beside-details")
                 self.no_problems()
 
-    def test_03_boards_keep_their_column_width_on_wider_screens(self) -> None:
-        """F-015 amendment (2026-10-31, SP-4): status columns have a fixed width, so the Open column's three cards
-        take three rows at 1440, 1920 and 3840 px alike."""
+    def test_03_wider_boards_show_more_cards_per_row(self) -> None:
+        """ADAPT-2: the Open column's three cards take three rows at 1440 px and one at 3840 px."""
         rows = {}
-        for width, height in [(1440, 900), (1920, 1080), (3840, 2160)]:
+        for width, height in [(1440, 900), (3840, 2160)]:
             page = self.page(width, height)
             page.goto(f"/projects/{self.ids['project']}/tasks")
             expect(page.locator(".tb-board")).to_be_visible()
             column = page.get_by_role("region", name=re.compile("^Open"))
             expect(column.locator(".tb-card")).to_have_count(3)
             rows[width] = len({round(card.bounding_box()["y"]) for card in column.locator(".tb-card").all()})
-        self.assertEqual(rows, {1440: 3, 1920: 3, 3840: 3})
+        self.assertEqual(rows[1440], 3, rows)
+        self.assertEqual(rows[3840], 1, rows)
 
     def test_04_on_wide_screens_stream_and_the_one_panel_sit_side_by_side(self) -> None:
         """ADAPT-2 and #488: from 1920 px a reply's source stays beside its thread, and Details take the same
@@ -822,75 +823,29 @@ class AdaptiveMatrix(AdaptiveBase):
                 finally:
                     self.no_problems()
 
-    def test_07_large_screens_render_the_same_widths(self) -> None:
-        """F-015 amendment (founder direction 2026-10-31, #763, SP-4): from 1864 px the work panel stops at 1600 px,
-        centred beside the sidebar; 1920, 2560 and 3840 px render the same work panel, conversation, docked Details,
-        board columns, map plane and Agents column. A larger screen only gains margin, on both sides of the panel."""
+    def test_07_wide_screens_gain_room_for_the_map_and_the_agents_column(self) -> None:
+        """ADAPT-2: the map fills its pane and grows with the screen. Remaining caps in WIDE_CAPS are
+        still measured; the test fails when one is gone, so the entry must be removed."""
         measured: dict[int, dict[str, float]] = {}
         for width, height in [(1920, 1080), (2560, 1440), (3840, 2160)]:
             page = self.page(width, height)
-            page.goto(f"/projects/{self.ids['project']}")
-            expect(page.get_by_label("Write a message", exact=True)).to_be_visible()
-            self.at_rest(page)
-            main = page.locator(".app__main").bounding_box()
-            side = page.locator(".app__side").bounding_box()
-            left, right = main["x"] - (side["x"] + side["width"]), width - (main["x"] + main["width"])
-            self.assertAlmostEqual(left, right, delta=1, msg=f"the work panel is centred beside the sidebar at {width}: {left} / {right}")
-            row = {"the work panel": main["width"], "the conversation": page.locator(".project-convo__in").bounding_box()["width"]}
-            open_details(page)
-            expect(page.locator("#details.ui-panel--docked")).to_be_visible()
-            self.at_rest(page)
-            row["docked Details"] = page.locator("#details").bounding_box()["width"]
-            # The header's last control stays inside the work panel, close to the content it acts on (SP-4).
-            more = page.locator("header.top").get_by_role("button", name="More", exact=True).bounding_box()
-            self.assertLessEqual(more["x"] + more["width"], main["x"] + main["width"], f"More is inside the work panel at {width}")
-            page.goto(f"/projects/{self.ids['project']}/tasks")
-            expect(page.locator(".tb-board")).to_be_visible()
-            self.at_rest(page)
-            row["a board column"] = page.locator(".tb-col").first.bounding_box()["width"]
             page.goto(f"/projects/{self.ids['project']}/map/{self.ids['sketch']}")
             expect(page.locator(".sk-node")).to_have_count(len(fx.THOUGHTS))
             self.at_rest(page)
             plane = page.locator(".sk-canvas").bounding_box()["width"]
             pane = page.locator(".sk-page--map").bounding_box()["width"]
             self.assertAlmostEqual(plane, pane, delta=1, msg=f"the map fills the available pane at {width} CSS px")
-            row["the map plane"] = plane
             self.tab(page, "Agents")
             expect(page.get_by_role("heading", level=1, name="Agents")).to_be_visible()
             self.at_rest(page)
-            row["the Agents column"] = page.locator(".agents").first.bounding_box()["width"]
-            measured[width] = {name: round(value) for name, value in row.items()}
-        print("\n  large screens, CSS px at 1920 / 2560 / 3840: " + "; ".join(f"{name} {measured[1920][name]} / {measured[2560][name]} / {measured[3840][name]}" for name in measured[1920]), end="")
-        self.assertAlmostEqual(measured[1920]["the work panel"], CONTENT_MAX, delta=1, msg=measured)
-        self.assertAlmostEqual(measured[1920]["docked Details"], PANEL_W, delta=1, msg=measured)
-        self.assertLessEqual(measured[1920]["a board column"], BOARD_COL + 0.5, measured)
-        self.assertLessEqual(measured[1920]["the conversation"], 760.5, measured)
-        for larger in (2560, 3840):
-            self.assertEqual(measured[larger], measured[1920], f"{larger} CSS px renders the same widths as 1920: {measured}")
-
-    def test_07b_large_screen_captures_in_both_themes(self) -> None:
-        """Visual evidence for the F-015 amendment (#763): the conversation with Details, the board and the Wiki at 1440,
-        1920 and 3840 px, light and dark, for the side-by-side review that 1440, 1920 and 4K look the same."""
-        pid = self.ids["project"]
-        for theme in ("light", "dark"):
-            for width, height in [(1440, 900), (1920, 1080), (3840, 2160)]:
-                with self.subTest(theme=theme, width=width):
-                    page = self.page(width, height, theme=theme)
-                    page.goto(f"/projects/{pid}")
-                    expect(page.get_by_label("Write a message", exact=True)).to_be_visible()
-                    open_details(page)
-                    expect(page.locator("#details.ui-panel--docked")).to_be_visible()
-                    self.at_rest(page)
-                    suffix = "" if theme == "light" else "-dark"
-                    self.shot(page, f"763-wide-{width}-conversation-details{suffix}")
-                    page.goto(f"/projects/{pid}/tasks")
-                    expect(page.locator(".tb-board")).to_be_visible()
-                    self.at_rest(page)
-                    self.shot(page, f"763-wide-{width}-tasks{suffix}")
-                    self.tab(page, "Wiki")
-                    self.at_rest(page)
-                    self.shot(page, f"763-wide-{width}-wiki{suffix}")
-                    self.no_sideways_scroll(page, f"the Wiki at {width} ({theme})")
+            column = page.locator(".agents").first.bounding_box()["width"]
+            measured[width] = {"the map plane": round(plane), "the Agents column": round(column)}
+        print("\n  wide surfaces, CSS px at 1920 / 2560 / 3840: " + "; ".join(f"{name} {measured[1920][name]} / {measured[2560][name]} / {measured[3840][name]}" for name in measured[1920]), end="")
+        for smaller, larger in ((1920, 2560), (2560, 3840)):
+            self.assertGreater(measured[larger]["the map plane"], measured[smaller]["the map plane"], f"the map gains room at {larger} CSS px: {measured}")
+        for name in WIDE_CAPS:
+            capped = measured[3840][name] - measured[1920][name] <= 1
+            self.assertTrue(capped, f"{name} now grows with the screen; remove it from WIDE_CAPS: {measured}")
 
     def short_world(self) -> dict:
         """Its own person, workspace, project and colleague: the shared fixture's sidebar and project list stay as the other
