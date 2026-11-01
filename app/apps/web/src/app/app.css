@@ -597,7 +597,8 @@ kbd { display: inline-grid; place-items: center; min-width: 18px; height: 18px; 
 .phead__right { display: flex; align-items: center; gap: 8px; flex: none; }
 .phead__right > .top__actions:empty { display: none; }
 .phead__round.ui-icon-btn, .phead__avatar {
-  width: 44px; height: 44px; border-radius: 50%; background: var(--el); color: var(--t1); box-shadow: var(--sh-card);
+  /* Flat, as every button in direction C (#763): the fill alone sets it off the page. */
+  width: 44px; height: 44px; border-radius: 50%; background: var(--el); color: var(--t1); box-shadow: none;
   display: inline-grid; place-items: center;
 }
 .phead__avatar { text-decoration: none; }
@@ -653,7 +654,7 @@ kbd { display: inline-grid; place-items: center; min-width: 18px; height: 18px; 
      scroll instead, so its content runs on under the "+" rather than stopping at a hard line above it (#763). */
   .app--fab .app__pane { padding-bottom: 64px; }
   .app--fab .app__pane:has(.pane-scroll) { padding-bottom: 0; }
-  .app--fab .app__pane .pane-scroll { padding-bottom: 72px; scroll-padding-bottom: 72px; }
+  .app--fab .app__pane .pane-scroll:not(.pane-scroll .pane-scroll) { padding-bottom: 72px; scroll-padding-bottom: 72px; }
 }
 /* The view menu: a card under the header. */
 .ui-overlay--center .phone-menu { top: calc(64px + env(safe-area-inset-top)); width: calc(100% - 24px); max-height: calc(100dvh - 96px); border-radius: 26px; padding: 18px 8px 8px; overflow-y: auto; }

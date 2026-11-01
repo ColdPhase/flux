@@ -279,12 +279,14 @@ function DocReading({ live }: { live: LiveReadingState | null }) {
   const keptLink = kept ? <Link className="wiki-bar__kept" to={edit}>Unsaved changes in this tab</Link> : null;
   // An earlier version is read only: on the computer Edit stays in its place, dimmed (#511, AC-4).
   // Reading needs no dark primary (quiet buttons, #763): Edit is the toolbar's soft-fill button, one height with its icons.
+  // Only the phone floats Edit under the page; a narrow pane beside a panel on a computer or tablet keeps it in the toolbar (#763).
+  const phoneHeader = usePhoneHeader();
+  const floatEdit = compact && phoneHeader;
   const editButton = !writable ? null : current
-    ? <Link className={`ui-btn ui-btn--soft ${compact ? 'wiki-edit' : 'wiki-bar__primary'}`} data-slot="primary" to={edit} aria-label="Edit" aria-keyshortcuts="e"><Icon name="edit" size={16} /><span className="wiki-bar__label">Edit</span></Link>
-    : compact ? null : <button type="button" className="ui-btn ui-btn--soft wiki-bar__primary" data-slot="primary" aria-label="Edit" disabled><Icon name="edit" size={16} /><span className="wiki-bar__label">Edit</span></button>;
+    ? <Link className={`ui-btn ui-btn--soft ${floatEdit ? 'wiki-edit' : 'wiki-bar__primary'}`} data-slot="primary" to={edit} aria-label="Edit" aria-keyshortcuts="e"><Icon name="edit" size={16} /><span className="wiki-bar__label">Edit</span></Link>
+    : floatEdit ? null : <button type="button" className="ui-btn ui-btn--soft wiki-bar__primary" data-slot="primary" aria-label="Edit" disabled><Icon name="edit" size={16} /><span className="wiki-bar__label">Edit</span></button>;
   // The page's one menu: in the header of a narrow work area beside the computer's views, but never in the phone's header,
   // which is the same in every view (#507): there it ends the row of page chips, which stays at the top while the page is read.
-  const phoneHeader = usePhoneHeader();
   const inStrip = compact && phoneHeader;
   const pageMenu = compact ? (
     <PageMenu sharePath={current ? base : `${base}/versions/${shown.version}`} shareVersion={current ? null : shown.version}
@@ -294,7 +296,7 @@ function DocReading({ live }: { live: LiveReadingState | null }) {
   return (
     <>
       <WikiBar compactInHeader phoneMeta={<span className="wiki-bar__title"><b>Wiki</b> · {docs.length} {docs.length === 1 ? 'page' : 'pages'}</span>}
-        primary={compact ? undefined : editButton} meta={compact
+        primary={floatEdit ? undefined : editButton} meta={compact
           ? <span className="wiki-bar__title"><b>Wiki</b> · {docs.length} {docs.length === 1 ? 'page' : 'pages'}</span>
           : <><span className="doc-head__k">{STATE_LABEL[shown.state]} · version {shown.version}{current ? '' : ` of ${doc.version}`}</span>{keptLink}</>}>
         {compact ? (inStrip ? null : pageMenu) : (
@@ -339,7 +341,7 @@ function DocReading({ live }: { live: LiveReadingState | null }) {
         </article>
         {!compact && headings.length > 1 ? <Outline headings={headings} scroller={prose?.closest<HTMLElement>('.wiki-main') ?? null} /> : null}
       </div>
-      {compact ? editButton : null}
+      {floatEdit ? editButton : null}
     </>
   );
 }

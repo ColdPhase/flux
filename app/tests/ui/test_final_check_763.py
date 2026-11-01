@@ -227,6 +227,11 @@ class FinalCheck763(unittest.TestCase):
                     # The label is whole, not clipped by the button.
                     self.assertLessEqual(button.evaluate("el => el.scrollWidth - el.clientWidth"), 1, f"{name}: the label fits")
                 self.assertLessEqual(page.evaluate("document.scrollingElement.scrollWidth"), viewport["width"], "no sideways scroll")
+                # The filter tabs stay inside their track.
+                track = page.locator(".nyq__filters .ui-tabs__bar").first
+                self.assertLessEqual(track.evaluate("el => el.scrollWidth - el.clientWidth"), 1, f"{name}: the filters fit their track")
+                waiting = card.locator(".nyc__waiting").bounding_box()
+                self.assertLessEqual(waiting["x"] + waiting["width"], inner["x"] + inner["width"] - 8, f"{name}: the waiting line stays in the card")
                 # 390 keeps the three on one row (#763 IN-6); under 375 they wrap inside the card.
                 tops = {round(b.bounding_box()["y"]) for b in (card.get_by_role("button", name=re.compile("^Accept")), discuss)}
                 if viewport["width"] >= 375:
@@ -337,6 +342,22 @@ class FinalCheck763(unittest.TestCase):
                               return [r.top - 5, r.bottom + 5].every((y) => el.contains(document.elementFromPoint(x, y))); }""")
                             self.assertTrue(reach, f"{name}: a 44 px touch target")
                     shot(page, f"final-763-wiki-edit-{name}-{theme}-{UI_BROWSER}")
+
+    def test_wiki_beside_a_panel_keeps_edit_in_its_toolbar(self) -> None:
+        """1024x768 with a task's Details docked: the Wiki pane is narrow, but this is a computer, not a phone (visual sweep, #763)."""
+        page = self.page({"width": 1024, "height": 768}, touch=False)
+        page.goto(f"/projects/{self.project_id}/docs/{self.doc_id}?open=work:{self.task['id']}")
+        expect(page.locator("#details").get_by_text(TASK).first).to_be_visible()
+        edit = page.get_by_role("link", name="Edit", exact=True)
+        expect(edit).to_be_visible()
+        self.assertEqual(page.locator(".wiki-edit").count(), 0, "no floating Edit on a computer")
+        self.assertEqual(edit.evaluate("el => !!el.closest('.wiki-bar')"), True, "Edit sits in the page's toolbar")
+        self.assertLessEqual(abs(edit.bounding_box()["height"] - 32), 1)
+        bar = page.locator(".wiki-bar").bounding_box()
+        title = page.locator(".doc-head__t").bounding_box()
+        self.assertGreaterEqual(title["y"], bar["y"] + bar["height"] - 1, "the page title starts below the bar, not under it")
+        self.assertEqual(page.locator(".ui-btn--primary:visible").count(), 0)
+        shot(page, f"final-763-wiki-beside-panel-{UI_BROWSER}")
 
 
 if __name__ == "__main__":

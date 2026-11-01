@@ -375,6 +375,9 @@
      Editors and history retain their existing single-column scrolling behavior. */
   .wiki:has(.wiki-main > .wiki-read) { overflow-y: hidden; }
   .wiki .wiki-main:has(> .wiki-read) { flex: 1; min-height: 0; overflow: hidden; display: grid; grid-template-rows: minmax(0, 1fr) auto; }
+  /* A narrow pane on a computer keeps its own bar (the phone moves it into its header): the bar is a row of its own above the
+     page, so it never sits over the page title (#763). */
+  .wiki .wiki-main:has(> .wiki-bar):has(> .wiki-read) { grid-template-rows: auto minmax(0, 1fr) auto; }
   .wiki-main > .wiki-read { min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
   /* The page's menu ends the row of page chips and stays with it at the top while the page is read (#507). The chips scroll in the
      room left of it; the wrapper is the sticky part, and is invisible to the layout wherever the wiki is not narrow. */

@@ -53,6 +53,7 @@
 .nyc__nn--quiet { background: transparent; box-shadow: none; color: var(--t2); }
 .nyc__waiting { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: var(--fs-sm); color: var(--t2); }
 .nyc__waiting b { font-weight: 600; color: var(--t1); }
+.nyc__waiting > span { min-width: 0; overflow-wrap: anywhere; }
 .nyc__waiting-you { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
 .nyc__waiting .ui-avatar { width: 20px; height: 20px; font-size: var(--fs-glyph); }
 .nyc--note .nyc__actions, .nyc--blocked .nyc__actions, .nyc--mention .nyc__actions, .nyc--question .nyc__actions { margin-top: 2px; }
@@ -139,5 +140,7 @@
 @media (max-width: 640px) {
   .nyq__bar { flex-direction: column; align-items: stretch; gap: 8px; padding-bottom: 12px; }
   .nyq__filters .ui-tabs__bar { width: auto; max-width: 100%; }
+  /* The filters share the track instead of running past its end (360 px, #763). */
+  .nyq__filters .ui-tabs__bar .ui-tabs__tab { flex: 1 1 auto; min-width: 0; padding: 0 8px; --tab-pad: 8px; }
 }
 .nyq__bar--head { display: flex; align-items: center; gap: 14px; padding: 0; }
