@@ -20,7 +20,13 @@ from __future__ import annotations
 import io
 import os
 import re
+import socket
+import ssl
+import subprocess
 import sys
+import tempfile
+import threading
+import urllib.parse
 import uuid
 from pathlib import Path
 
@@ -52,6 +58,71 @@ POINTER = """
   document.body.appendChild(el);
 })()
 """
+
+
+def start_recording_forwarder() -> None:
+    """Makes ORIGIN reachable in this container, whatever it is.
+
+    A loopback http origin is the tests' own forwarder. A public-looking https origin (scripts/record_demo.sh
+    uses https://flux.example.com, so invite links and agent commands read like a real install, not
+    127.0.0.1:38910) gets its name added to /etc/hosts and a listener on the origin's port that terminates TLS
+    with a throwaway self-signed certificate and forwards to the API. The recorders then trust that certificate
+    (`ignore_https_errors`). Nothing of this leaves the container."""
+    if not ORIGIN.startswith("https://"):
+        if UPSTREAM:
+            start_forwarder(ORIGIN, UPSTREAM)
+        return
+    parts = urllib.parse.urlsplit(ORIGIN)
+    host, port = parts.hostname or "", parts.port or 443
+    with open("/etc/hosts", "a", encoding="utf-8") as hosts:
+        hosts.write(f"127.0.0.1 {host}\n")
+    folder = tempfile.mkdtemp()
+    key, cert = f"{folder}/key.pem", f"{folder}/cert.pem"
+    subprocess.run(["openssl", "req", "-x509", "-newkey", "rsa:2048", "-nodes", "-keyout", key, "-out", cert, "-days", "1",
+                    "-subj", f"/CN={host}", "-addext", f"subjectAltName=DNS:{host}"], check=True, capture_output=True)
+    tls = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+    tls.load_cert_chain(cert, key)
+    upstream_host, _, upstream_port = UPSTREAM.partition(":")
+    server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    server.bind(("127.0.0.1", port))
+    server.listen(128)
+
+    def pipe(source: socket.socket, target: socket.socket) -> None:
+        try:
+            while data := source.recv(65536):
+                target.sendall(data)
+        except OSError:
+            pass
+        finally:
+            for end in (source, target):
+                try:
+                    end.shutdown(socket.SHUT_RDWR)
+                except OSError:
+                    pass
+
+    def handle(raw: socket.socket) -> None:
+        try:
+            client = tls.wrap_socket(raw, server_side=True)
+            remote = socket.create_connection((upstream_host, int(upstream_port or 80)), timeout=10)
+        except OSError:
+            raw.close()
+            return
+        remote.settimeout(None)
+        remote.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+        first = threading.Thread(target=pipe, args=(client, remote), daemon=True)
+        first.start()
+        pipe(remote, client)
+        first.join()
+        client.close()
+        remote.close()
+
+    def accept() -> None:
+        while True:
+            raw, _ = server.accept()
+            threading.Thread(target=handle, args=(raw,), daemon=True).start()
+
+    threading.Thread(target=accept, daemon=True).start()
 
 
 class Recorder:
@@ -206,7 +277,7 @@ def readme_stills(browser, request: APIRequestContext) -> None:
         ("home-phone", {"viewport": {"width": 390, "height": 844}, "device_scale_factor": 3, "is_mobile": True, "has_touch": True}),
     ):
         for scheme in ("light", "dark"):
-            context = browser.new_context(base_url=ORIGIN, color_scheme=scheme, locale="en-GB", timezone_id="Europe/Warsaw", service_workers="block", **options)
+            context = browser.new_context(base_url=ORIGIN, ignore_https_errors=True, color_scheme=scheme, locale="en-GB", timezone_id="Europe/Warsaw", service_workers="block", **options)
             sign_in(context.request, EMAIL, PASSWORD)
             page = context.new_page()
             if name == "conversation-desktop":
@@ -278,12 +349,11 @@ def write_gif(frames: list[tuple[bytes, int]], path: Path) -> None:
 def main() -> None:
     if not PASSWORD or not PARTNER[1]:
         sys.exit("record_demo: FLUX_DEMO_OWNER_PASSWORD and FLUX_DEMO_PARTNER_PASSWORD are required")
-    if UPSTREAM:
-        start_forwarder(ORIGIN, UPSTREAM)
+    start_recording_forwarder()
     expect.set_options(timeout=8000)
     with sync_playwright() as pw:
         browser = pw.chromium.launch()
-        context = browser.new_context(base_url=ORIGIN, viewport=VIEWPORT, device_scale_factor=1, color_scheme="light", locale="en-GB", timezone_id="Europe/Warsaw")
+        context = browser.new_context(base_url=ORIGIN, ignore_https_errors=True, viewport=VIEWPORT, device_scale_factor=1, color_scheme="light", locale="en-GB", timezone_id="Europe/Warsaw")
         page = context.new_page()
         sign_in(page.request, EMAIL, PASSWORD)
         # Ada's first visit sets where she left off; Jonas replies after it, so Home has news for her.
@@ -291,7 +361,7 @@ def main() -> None:
         expect(page.get_by_role("heading", level=1, name="Home")).to_be_visible()
         page.wait_for_load_state("networkidle")
         page.wait_for_timeout(1500)
-        partner = browser.new_context(base_url=ORIGIN)
+        partner = browser.new_context(base_url=ORIGIN, ignore_https_errors=True)
         sign_in(partner.request, *PARTNER)
         jonas_replies(partner.request)
         partner.close()

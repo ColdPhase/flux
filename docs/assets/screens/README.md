@@ -40,4 +40,6 @@ and the README stills:
 The script needs only Docker. It starts its own Compose project on loopback ports (`FLUX_DEMO_RECORD_PORT`,
 `FLUX_DEMO_RECORD_MAILPIT_PORT`), gives it a keyring for the encrypted space and throwaway VAPID keys, so the
 notification settings show the Push column of a real install, and removes the project, its volumes and its images
-afterwards. Record these images again, and update the revision above, when the screens they show change noticeably.
+afterwards. The app is told it is served from `https://flux.example.com` (`FLUX_DEMO_RECORD_ORIGIN` changes it), so
+invite links and agent commands read like a real install instead of `127.0.0.1:<port>`; the recorder maps that name
+to itself and terminates TLS with a throwaway certificate inside its own container. Record these images again, and update the revision above, when the screens they show change noticeably.

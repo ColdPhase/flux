@@ -40,7 +40,7 @@ The same run takes the stills at the top of the README, in the light and the dar
 README highlights (see [docs/assets/screens](../screens/README.md)).
 
 The script needs only Docker. It builds the app and the pinned Playwright image, starts its
-own Compose project on loopback ports 18595/18596, gives it a keyring and throwaway VAPID keys, and seeds the demo with fresh random
+own Compose project on loopback ports 18595/18596, gives it a keyring and throwaway VAPID keys, tells the app it is served from `https://flux.example.com` (reached through a throwaway certificate inside the recorder's container; `FLUX_DEMO_RECORD_ORIGIN` changes it), and seeds the demo with fresh random
 passwords. It installs Pillow (pinned by hash in `app/tests/ui/demo-requirements.txt`) for
 that run only, then removes the project, its volumes and its images. Override the ports with
 `FLUX_DEMO_RECORD_PORT` and `FLUX_DEMO_RECORD_MAILPIT_PORT`.

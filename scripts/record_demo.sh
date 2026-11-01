@@ -21,7 +21,11 @@ export POSTGRES_PASSWORD="flux-rec-$$-$(date +%s)"
 export FLUX_FIXTURE_TOKEN="fixture-rec-$$-$(date +%s)"
 export FLUX_PORT="${FLUX_DEMO_RECORD_PORT:-18595}"
 export FLUX_MAILPIT_PORT="${FLUX_DEMO_RECORD_MAILPIT_PORT:-18596}"
-export FLUX_PUBLIC_ORIGIN="http://127.0.0.1:${FLUX_PORT}"
+# The address the app believes it is served from, which shows in invite links and the agent connection commands.
+# A public-looking https name keeps 127.0.0.1:<port> out of the pictures; the recorder (record_demo.py) makes it
+# reachable inside its own container with a throwaway certificate. FLUX_DEMO_RECORD_ORIGIN=http://127.0.0.1:18595
+# records over plain loopback instead.
+export FLUX_PUBLIC_ORIGIN="${FLUX_DEMO_RECORD_ORIGIN:-https://flux.example.com}"
 export FLUX_AUTH_SECRET="auth-rec-$$-$(date +%s)-$(od -An -N16 -tx1 /dev/urandom | tr -d ' \n')"
 export FLUX_SMTP_URL="smtp://mailpit:1025"
 export FLUX_MAIL_FROM="Flux <flux@example.test>"

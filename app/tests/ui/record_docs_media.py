@@ -26,8 +26,8 @@ import uuid
 from PIL import Image
 from playwright.sync_api import APIRequestContext, Browser, BrowserContext, Page, expect, sync_playwright
 
-from record_demo import EMAIL, PASSWORD, PARTNER, SHOTS, WORKSPACE, api, project_id, sign_in
-from test_app_shell import ORIGIN, UPSTREAM, start_forwarder
+from record_demo import EMAIL, PASSWORD, PARTNER, SHOTS, WORKSPACE, api, project_id, sign_in, start_recording_forwarder
+from test_app_shell import ORIGIN
 
 OUT = SHOTS / "docs"
 DESKTOP = {"width": 1440, "height": 900}
@@ -54,7 +54,7 @@ SIGNED_IN: dict = {}
 
 
 def context(browser: Browser, scheme: str = "light", *, phone: bool = False, signed: bool = True, size: dict | None = None) -> BrowserContext:
-    options: dict = {"base_url": ORIGIN, "color_scheme": scheme, "locale": "en-GB", "timezone_id": "Europe/Warsaw", "service_workers": "block"}
+    options: dict = {"base_url": ORIGIN, "ignore_https_errors": True, "color_scheme": scheme, "locale": "en-GB", "timezone_id": "Europe/Warsaw", "service_workers": "block"}
     if phone:
         options.update(viewport=PHONE, device_scale_factor=2, is_mobile=True, has_touch=True)
     else:
@@ -92,7 +92,7 @@ def setup(browser: Browser, request: APIRequestContext) -> dict:
     """Adds the two more people the People list shows, through the public API; returns the ids."""
     ws = next(item for item in api(request, "GET", "/api/v1/workspaces") if item["name"] == WORKSPACE)
     for name, email, role in EXTRA:
-        stranger = browser.new_context(base_url=ORIGIN)
+        stranger = browser.new_context(base_url=ORIGIN, ignore_https_errors=True)
         stranger.request.post(f"{ORIGIN}/api/auth/sign-up/email", data={"name": name, "email": email, "password": EXTRA_PASSWORD}, headers={"origin": ORIGIN})
         stranger.close()
         added = request.fetch(f"{ORIGIN}/api/v1/workspaces/{ws['id']}/members", method="POST", data={"email": email, "role": role}, headers={"origin": ORIGIN})
@@ -205,7 +205,7 @@ def highlights(browser: Browser, ids: dict, request: APIRequestContext) -> None:
     page.wait_for_load_state("networkidle")
     page.wait_for_timeout(1500)
     # Basia, the space's admin, asks her while she is away: Home then has news and a next step for her.
-    colleague = browser.new_context(base_url=ORIGIN)
+    colleague = browser.new_context(base_url=ORIGIN, ignore_https_errors=True)
     sign_in(colleague.request, EXTRA[0][1], EXTRA_PASSWORD)
     conversation = api(colleague.request, "GET", f"/api/v1/projects/{ids['project']}/conversations")["items"][0]
     api(colleague.request, "POST", f"/api/v1/conversations/{conversation['id']}/messages", {"body": ASK, "clientMessageId": str(uuid.uuid4())})
@@ -278,12 +278,11 @@ def highlights(browser: Browser, ids: dict, request: APIRequestContext) -> None:
 def main() -> None:
     if not PASSWORD or not PARTNER[1]:
         sys.exit("record_docs_media: FLUX_DEMO_OWNER_PASSWORD and FLUX_DEMO_PARTNER_PASSWORD are required")
-    if UPSTREAM:
-        start_forwarder(ORIGIN, UPSTREAM)
+    start_recording_forwarder()
     expect.set_options(timeout=10000)
     with sync_playwright() as pw:
         browser = pw.chromium.launch()
-        admin = browser.new_context(base_url=ORIGIN)
+        admin = browser.new_context(base_url=ORIGIN, ignore_https_errors=True)
         sign_in(admin.request, EMAIL, PASSWORD)
         SIGNED_IN["ada"] = admin.storage_state()
         ids = setup(browser, admin.request)
