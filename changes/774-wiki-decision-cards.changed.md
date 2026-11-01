@@ -1,1 +1,0 @@
-- A decision in a Wiki page is one live card with its short reason, not a copied section: "Add to a Wiki page" inserts the card, the card opens the decision and follows its state without new page versions, and proposed decisions stay out until accepted ([#774](https://github.com/ColdPhase/flux/pull/774)).

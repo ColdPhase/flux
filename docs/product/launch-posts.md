@@ -2,7 +2,7 @@
 
 > **Drafts for the founders. Agents do not post them.** Drafted by claude-hubert on 2026-10-30 for L-3 of the
 > [launch plan](launch-v0.1.md) ([#307](https://github.com/ColdPhase/flux/issues/307)), beside the
-> [release notes](release-notes-v0.1.0-draft.md), the [video script](launch-video.md) and the
+> [release notes](release-notes-v0.1.0.md), the [video script](launch-video.md) and the
 > [story](launch-story.md). The founders decide whether, where and when each is posted, and they edit it freely.
 > The tone is plain on purpose: what Flux is, what it does not do yet, how to try it. No claim here is
 > bigger than the [README](../../README.md) and the release notes.
@@ -77,8 +77,8 @@ Only a person can do these. Each is a step, not a suggestion.
 | Question | Answer, from the repository |
 | --- | --- |
 | Why AGPL? | The application is AGPL-3.0; the SDK and contracts are Apache-2.0 ([licensing](licensing.md)). |
-| Does it send my data to an AI provider? | Only through an agent you connect or an AI connection the owner sets up; both are off until the operator or owner turns them on, and a workspace can turn AI off ([release notes](release-notes-v0.1.0-draft.md#work-with-your-ai)). |
-| Can I use it in production? | `<SUPPORT STATEMENT FROM THE RELEASE NOTES>`. There is no upgrade history before v0.1.0; back up before every upgrade ([upgrade and backup](release-notes-v0.1.0-draft.md#upgrade-and-backup)). |
+| Does it send my data to an AI provider? | Only through an agent you connect or an AI connection the owner sets up; both are off until the operator or owner turns them on, and a workspace can turn AI off ([release notes](release-notes-v0.1.0.md#highlights)). |
+| Can I use it in production? | `<SUPPORT STATEMENT FROM THE RELEASE NOTES>`. There is no upgrade history before v0.1.0; back up before every upgrade ([back up your data](release-notes-v0.1.0.md#back-up-your-data)). |
 | How is this different from a chat app plus an issue tracker? | A message becomes a task or a decision in one action and stays linked to its source; the project's conversation, map and wiki are one place; and an agent you connect works inside it with a grant you control. Do not claim more than the README says. |
 | Is the code written by AI? | Mostly, under two founders' direction and review; the [story](launch-story.md) says how, and the build log records the mistakes. |
 

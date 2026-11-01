@@ -79,7 +79,7 @@ These are drafted in the repository and reviewed like code. Publication follows
   - upgrade and backup notes;
   - checksums.
 
-  The draft is in [release-notes-v0.1.0-draft.md](release-notes-v0.1.0-draft.md).
+  The final notes are in [release-notes-v0.1.0.md](release-notes-v0.1.0.md).
 - **README:**
   - refresh the demo GIF once the final design (#336) is on `main` and the pre-release audit
     ([#763](https://github.com/ColdPhase/flux/issues/763)) fixes are merged; `./scripts/record_media.sh` does it;

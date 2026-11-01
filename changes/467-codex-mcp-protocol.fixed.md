@@ -1,1 +1,0 @@
-- Codex, which offers MCP protocol revision `2025-06-18`, reaches Flux's tools: `/mcp` admits that revision beside `2026-07-28` with the same sign-in, grant and provenance checks, and refuses any other ([#467](https://github.com/ColdPhase/flux/pull/467)).

@@ -1,1 +1,0 @@
-- A short private reply thread in a direct message and a short task thread in Agents now sit against their reply field on tall screens, instead of leaving up to 940 px of empty space above it ([#151](https://github.com/ColdPhase/flux/issues/151)).

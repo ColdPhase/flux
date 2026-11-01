@@ -1,1 +1,0 @@
-- Undo of your assistant's run now also takes back a map, a recorded result, a proposed decision and a message it made, as long as nobody has used it since (edited, decided, replied to, cited or copied); when someone has, the item says why and stays ([#68](https://github.com/ColdPhase/flux/issues/68)).

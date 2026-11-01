@@ -1,1 +1,0 @@
-- `FLUX_SIGNUP` (`open`, `verified` or `off`) now reaches the API through both Compose files and the settings template, so operators can close or verify password sign-up ([#780](https://github.com/ColdPhase/flux/issues/780)).

@@ -1,1 +1,0 @@
-- In a private message, reply to a message in a private thread (the count stays under it), see who really saw your messages ("Seen by"), and copy a chosen part of a message into a project task after seeing the text, the project and who will see it (#534, #536, #537).

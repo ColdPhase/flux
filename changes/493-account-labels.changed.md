@@ -1,1 +1,0 @@
-- A signed-in OpenAI API key now reads "OpenAI · API key" on Connect AI, the same plain account labels as "Claude · your subscription", "ChatGPT · your subscription" and "Anthropic Console · API billing" ([#493](https://github.com/ColdPhase/flux/issues/493)).

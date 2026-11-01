@@ -1,1 +1,0 @@
-- A task can have a due date (a calendar day, no time zone) and keeps its history: every change of its state, owner, due date or title is recorded with who made it and when, and `GET /api/v1/work/:workId/activity` returns it newest first ([#488](https://github.com/ColdPhase/flux/issues/488)).

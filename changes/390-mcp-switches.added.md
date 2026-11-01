@@ -1,1 +1,0 @@
-- You can switch off single tools and projects of one of your MCP connections in Settings, within what the connection was granted. A connection none of whose selected projects is reachable any more is refused before any tool runs ([#390](https://github.com/ColdPhase/flux/pull/390)).

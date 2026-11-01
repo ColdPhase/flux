@@ -1,1 +1,0 @@
-- Own project messages now appear on the right, with other people and agents on the left. Map connections have visible controls to add, edit or remove a label, preserving drafts when a save fails or conflicts with another edit. [#482](https://github.com/ColdPhase/flux/pull/482)
