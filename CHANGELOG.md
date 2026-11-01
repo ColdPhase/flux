@@ -35,6 +35,9 @@ created on 2026-09-26.
 - Operator Compose files and versioned installation assets for released images
   ([#159](https://github.com/ColdPhase/flux/pull/159)), plus a gated, explicitly
   triggered OCI release workflow ([#104](https://github.com/ColdPhase/flux/pull/104)).
+- Calls and screen sharing in a release install: each release ships `compose.live.yaml` (the LiveKit media server,
+  pinned by digest) and `compose.live.turn.yaml` (TURN/TLS) to layer on its `compose.yaml`, with the ports and
+  firewall in `INSTALL.md` ([#249](https://github.com/ColdPhase/flux/issues/249)).
 - An exact migration-ledger check at install and startup. A database that does not
   match the image's migrations refuses to start ([#130](https://github.com/ColdPhase/flux/pull/130)).
 - Two public extension contracts with a written compatibility promise: MCP tool

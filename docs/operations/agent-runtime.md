@@ -333,7 +333,7 @@ A GitHub Release carries the runtime as two more assets next to
 
 - **Two images, both pinned by digest, no build.** `runtime-manager` and `runtime-egress` run the
   application image of the release; `runtime-install` and the slots run
-  `ghcr.io/coldphase/flux-agent-runtime`, built for `linux/amd64` and `linux/arm64` from the accepted
+  `ghcr.io/coldphase/flux-agent-runtime`, built for the release's platforms (`linux/amd64` for v0.1) from the accepted
   candidate by `final-release.yml` (target `agent-runtime-release` of `docker/Dockerfile`). It holds the
   supervisor with its process hardening, node-pty and the pinned official Codex (checked by SHA-256),
   and gpg so that the same digest also runs `runtime-install`. **The one difference from the source

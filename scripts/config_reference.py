@@ -84,8 +84,9 @@ GROUPS = [
     ("push", "Web Push", "Optional, all three or none. See [phones, tablets and push](mobile-and-push.md)."),
     ("collaboration", "Collaboration, link cards and the live stream", ""),
     ("media", "Live media: LiveKit and TURN",
-     "Only with the optional overlays `docker/compose.live.yaml` and `docker/compose.live.turn.yaml`, layered on the "
-     "source Compose file. The release `compose.yaml` does not include live media yet."),
+     "Only with the optional overlays `compose.live.yaml` and `compose.live.turn.yaml`, layered on the release "
+     "`compose.yaml` (both ship with every release; the repository copies are in `docker/`) or on the source Compose "
+     "file. Set them in `.env`; [INSTALL.md](release-guide.md#calls-and-screen-sharing-optional) has the ports and firewall."),
     ("ai", "AI providers",
      "Owners connect their own AI provider in **Settings → Agents and AI**. These switches decide what the instance allows. "
      "They are read by the source checkout's Compose file; the release `compose.yaml` does not pass them yet."),

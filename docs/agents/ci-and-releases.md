@@ -203,9 +203,10 @@ Flux implements this as two explicit `workflow_dispatch` workflows on `main`, ne
 by a PR or a push ([#77](https://github.com/ColdPhase/flux/issues/77)):
 [`final-release.yml`](../../.github/workflows/final-release.yml) checks the exact candidate
 SHA, the release owner's acceptance and an independent reviewer's review (a reviewer who wrote none of
-the code), builds the amd64/arm64 application and agent-runtime images by
+the code), builds the application and agent-runtime images for its `platforms` input (`linux/amd64`
+for v0.1; `linux/amd64,linux/arm64` from v0.1.1) by
 digest ([#358](https://github.com/ColdPhase/flux/issues/358)), packages the digest-pinned operator
-assets (including the optional runtime overlay), smoke-tests their install and paired
+assets (including the optional runtime and live-media overlays), smoke-tests their install and paired
 backup/restore, and creates a draft Release;
 [`publish-release.yml`](../../.github/workflows/publish-release.yml) publishes
 only after an independent exact artifact review. Their assets, flow, design notes and the gates

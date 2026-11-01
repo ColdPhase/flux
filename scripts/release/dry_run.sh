@@ -16,6 +16,7 @@
 # cannot be upgraded, so v0.1 itself has no upgrade leg. Its agent-runtime digest and SBOMs are this commit's: the upgrade
 # leg never pulls the runtime image.
 #
+# v0.1 ships linux/amd64 only (final-release.yml's `platforms` input); arm64 returns in v0.1.1.
 # FLUX_DRYRUN_PLATFORMS=linux/amd64,linux/arm64 builds both images (and the previous one) for those platforms like the
 # workflow: a docker-container builder with the workflow's pinned BuildKit, BuildKit provenance (mode=max) and SBOM
 # attestations with the workflow's pinned scanner, pushed to the throwaway registry as one index each. It then checks
@@ -216,8 +217,12 @@ for check_platform in $(printf '%s' "${platforms:-$platform}" | tr ',' ' '); do
   docker run --rm --platform "$check_platform" --network none --entrypoint node "127.0.0.1:$registry_port/flux@$app_digest" -e \
     'console.log(`application image: node ${process.version} ${process.arch}`)'
 done
-echo "arm64 Codex download checksum (BuildKit ADD --checksum, no emulation):"
-docker buildx build --platform linux/arm64 --target codex-arm64 -f docker/Dockerfile --progress plain --output type=cacheonly app 2>&1 | grep -E 'DONE|ERROR|checksum' | tail -n 3
+case ",${platforms}," in
+  *,linux/arm64,*)
+    echo "arm64 Codex download checksum (BuildKit ADD --checksum, no emulation):"
+    docker buildx build --platform linux/arm64 --target codex-arm64 -f docker/Dockerfile --progress plain --output type=cacheonly app 2>&1 | grep -E 'DONE|ERROR|checksum' | tail -n 3
+    ;;
+esac
 
 step "SBOMs: $syft_image on docker-archives (the workflow uses anchore/sbom-action on the pushed digests)"
 docker pull -q "$syft_image" >/dev/null
@@ -230,12 +235,14 @@ for image in flux flux-agent-runtime; do
 done
 
 step "Prepare and verify the release assets (digests are real manifest digests of the local registry)"
+built_platforms=${platforms:-$platform}
 python3 scripts/release/prepare_assets.py --version "$version" --source-sha "$sha" --digest "$app_digest" \
   --sbom "$work/sbom-flux.spdx.json" --runtime-digest "$runtime_digest" \
-  --runtime-sbom "$work/sbom-flux-agent-runtime.spdx.json" --destination "$work/release-assets"
+  --runtime-sbom "$work/sbom-flux-agent-runtime.spdx.json" --platforms "$built_platforms" --destination "$work/release-assets"
 ( cd "$work/release-assets" && ls -l && sha256 -c SHA256SUMS && python3 "$work/src/scripts/release/check_asset_set.py" . &&
-  python3 "$work/src/scripts/release/verify_assets.py" . --version "$version" --source-sha "$sha" --digest "$app_digest" )
-grep -n 'image:' "$work/release-assets/compose.runtime.yaml"
+  python3 "$work/src/scripts/release/verify_assets.py" . --version "$version" --source-sha "$sha" --digest "$app_digest" \
+    --platforms "$built_platforms" )
+grep -n 'image:' "$work/release-assets/compose.runtime.yaml" "$work/release-assets/compose.live.yaml"
 cat "$work/release-assets/release.json"
 echo "-- negative controls (each must fail)"
 refuses() { label=$1; shift; if "$@" >"$work/out" 2>&1; then fail "$label was accepted"; fi; echo "refused ($label): $(tail -n 1 "$work/out")"; }
@@ -257,6 +264,9 @@ step "Runtime overlay against the source stack (docker compose config)"
     --profile runtime config --format json > "$work/release-config.json"
   python3 scripts/release/compare_runtime_overlay.py "$work/source-config.json" "$work/release-config.json"
 )
+
+step "Live-media overlays resolve on the release compose.yaml (docker compose config, as in final-release.yml)"
+bash scripts/release/check_live_overlay.sh "$work/release-assets"
 
 localize() { # asset directory, destination: image names (not digests) to the local registry, SHA256SUMS regenerated
   mkdir "$2"
@@ -331,5 +341,6 @@ if [ -n "$out" ]; then
   cp "$work/release-assets/SHA256SUMS" "$out/SHA256SUMS.txt"
   cp "$work/release-assets/release.json" "$out/release.json.txt"
   cp "$work/release-assets/compose.runtime.yaml" "$out/compose.runtime.yaml.txt"
+  cp "$work/release-assets/compose.live.yaml" "$out/compose.live.yaml.txt"
 fi
 echo "DRY RUN COMPLETE: $sha, application $app_digest, agent-runtime $runtime_digest; nothing published."

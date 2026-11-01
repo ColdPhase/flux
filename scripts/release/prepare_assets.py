@@ -23,6 +23,17 @@ DIGEST = re.compile(r"sha256:[0-9a-f]{64}\Z")
 # docker/.env.example is therefore published as env.example, and every asset name must survive.
 ENV_ASSET = "env.example"
 ASSET_NAME = re.compile(r"[A-Za-z0-9](?:[A-Za-z0-9._-]*[A-Za-z0-9])?\Z")
+# The platforms both images are built for. v0.1 ships linux/amd64 only; linux/arm64 returns in v0.1.1 by passing
+# --platforms linux/amd64,linux/arm64 (final-release.yml's `platforms` input), with no other change here.
+SUPPORTED_PLATFORMS = ("linux/amd64", "linux/arm64")
+DEFAULT_PLATFORMS = "linux/amd64"
+# Third-party images (the live-media SFU) are pinned by digest in the repository file and shipped as they are.
+PINNED_IMAGE = re.compile(r"[a-z0-9][a-z0-9._/-]*(?::[A-Za-z0-9._-]+)?@sha256:[0-9a-f]{64}\Z")
+# The optional live-media overlays (calls and screen sharing, #63): asset name and what it is.
+LIVE_ASSETS = {
+    "compose.live.yaml": "live-media overlay (calls and screen sharing: the LiveKit SFU with ICE and TURN/UDP)",
+    "compose.live.turn.yaml": "TURN/TLS overlay for restrictive networks (layer it after compose.live.yaml)",
+}
 
 
 def release_header(version: str, source_sha: str) -> str:
@@ -62,6 +73,46 @@ def runtime_header(version: str, source_sha: str) -> str:
         "# Claude Code is never in an image: runtime-install installs the pinned, signature-checked official\n"
         "# release into the tools volume when the operator enables it. No service mounts a Docker socket.\n"
     )
+
+
+def parse_platforms(value: str) -> list[str]:
+    """A comma-separated subset of SUPPORTED_PLATFORMS (a local dry run on arm64 names only linux/arm64),
+    returned in canonical order. final-release.yml itself requires linux/amd64."""
+    found = [item.strip() for item in value.split(",")]
+    if any(item not in SUPPORTED_PLATFORMS for item in found) or len(set(found)) != len(found):
+        raise ValueError(f"platforms must be a comma-separated subset of {', '.join(SUPPORTED_PLATFORMS)}")
+    return [item for item in SUPPORTED_PLATFORMS if item in found]
+
+
+def live_header(name: str, version: str, source_sha: str) -> str:
+    return (
+        f"# Flux {version} {LIVE_ASSETS[name]}, built from source commit {source_sha}.\n"
+        "# Optional: an installation that never loads this file runs no media server. Use it with the\n"
+        "# compose.yaml, env.example, INSTALL.md and SHA256SUMS of the SAME GitHub Release. The SFU image is\n"
+        "# pinned by digest; release.json records it. Set the FLUX_LIVEKIT_* values (INSTALL.md, \"Calls and\n"
+        "# screen sharing\"), open the media ports in the firewall, then pass every overlay to every command:\n"
+        "#   docker compose --env-file .env -f compose.yaml -f compose.live.yaml config --quiet\n"
+        "#   docker compose --env-file .env -f compose.yaml -f compose.live.yaml up -d --wait\n"
+        "# Restrictive networks add -f compose.live.turn.yaml after compose.live.yaml (TURN/TLS on TCP/443).\n"
+    )
+
+
+def render_live_compose(name: str, template: str, *, version: str, source_sha: str) -> str:
+    """Ship a live-media overlay as it is, with a release header: digest-pinned third-party images only."""
+    if re.search(r"^\s*build\s*:", template, re.MULTILINE):
+        raise ValueError(f"{name} must be pull-only")
+    for forbidden in ("RELEASE_DIGEST", "RUNTIME_DIGEST", IMAGE, "docker.sock"):
+        if forbidden in template:
+            raise ValueError(f"{name} must not name {forbidden}")
+    for image in re.findall(r"^\s*image:\s*(\S+)\s*$", template, re.MULTILINE):
+        if not PINNED_IMAGE.fullmatch(image) or "latest" in image.lower():
+            raise ValueError(f"{name} image {image} is not pinned by digest")
+    lines = template.splitlines(keepends=True)
+    body = "".join(lines[next((i for i, line in enumerate(lines) if not line.startswith("#")), len(lines)):])
+    # The repository's leading comment block is replaced; the rest ships, so it must not point into a checkout.
+    if re.search(r"^\s*-\s*['\"]?\.{1,2}/", body, re.MULTILINE) or re.search(r"\bdocker/|compose\.source", body):
+        raise ValueError(f"{name} must not mount or name a source path")
+    return live_header(name, version, source_sha) + body
 
 
 def overlay_images(template: str) -> dict[str, str]:
@@ -138,6 +189,7 @@ def prepare(
     sbom: Path, destination: Path,
     runtime_digest: str, runtime_compose: Path, runtime_script: Path,
     runtime_sbom: Path, dockerfile: Path,
+    live_compose: Path, live_turn_compose: Path, platforms: str = DEFAULT_PLATFORMS,
 ) -> None:
     if not VERSION.fullmatch(version):
         raise ValueError("version must be vX.Y.Z or vX.Y.Z-rc.N")
@@ -149,6 +201,7 @@ def prepare(
         raise ValueError("runtime image digest must be a sha256 manifest digest")
     if runtime_digest == digest:
         raise ValueError("the application and runtime images must have different digests")
+    platform_list = parse_platforms(platforms)
     if destination.exists() and any(destination.iterdir()):
         raise ValueError("destination must be empty to prevent stale assets")
 
@@ -181,6 +234,13 @@ def prepare(
     if "docker.sock" in runtime_script.read_text(encoding="utf-8"):
         raise ValueError("runtime.sh must not use a container engine socket")
     codex = codex_pin(dockerfile.read_text(encoding="utf-8"))
+    live_rendered = {
+        name: render_live_compose(name, path.read_text(encoding="utf-8"), version=version, source_sha=source_sha)
+        for name, path in (("compose.live.yaml", live_compose), ("compose.live.turn.yaml", live_turn_compose))
+    }
+    live_images = sorted(set(re.findall(r"^\s*image:\s*(\S+)\s*$", live_rendered["compose.live.yaml"], re.MULTILINE)))
+    if len(live_images) != 1 or re.search(r"^\s*image:", live_rendered["compose.live.turn.yaml"], re.MULTILINE):
+        raise ValueError("compose.live.yaml must pin exactly one media server image and compose.live.turn.yaml none")
 
     def notices(spdx_file: Path, label: str) -> list[dict[str, str]]:
         spdx = json.loads(spdx_file.read_text(encoding="utf-8"))
@@ -215,6 +275,8 @@ def prepare(
     destination.mkdir(parents=True, exist_ok=True)
     (destination / "compose.yaml").write_text(rendered, encoding="utf-8")
     (destination / "compose.runtime.yaml").write_text(runtime_rendered, encoding="utf-8")
+    for name, text in live_rendered.items():
+        (destination / name).write_text(text, encoding="utf-8")
     for source, target in (
         (env, ENV_ASSET),
         (instructions, "INSTALL.md"),
@@ -234,11 +296,12 @@ def prepare(
         "version": version,
         "source_sha": source_sha,
         "image": f"{IMAGE}@{digest}",
-        "platforms": ["linux/amd64", "linux/arm64"],
+        "platforms": platform_list,
         "runtime_image": f"{RUNTIME_IMAGE}@{runtime_digest}",
-        "runtime_platforms": ["linux/amd64", "linux/arm64"],
+        "runtime_platforms": platform_list,
         "runtime_codex": codex,
         "runtime_claude_code": "not included; runtime-install installs Anthropic's signed release when the operator enables it",
+        "live_media_image": live_images[0],
     }
     (destination / "release.json").write_text(
         json.dumps(manifest, indent=2) + "\n", encoding="utf-8"
@@ -266,6 +329,10 @@ def main() -> None:
     parser.add_argument("--runtime-script", type=Path, default=Path("docker/runtime.sh"))
     parser.add_argument("--runtime-sbom", type=Path, required=True)
     parser.add_argument("--dockerfile", type=Path, default=Path("docker/Dockerfile"))
+    parser.add_argument("--live-compose", type=Path, default=Path("docker/compose.live.yaml"))
+    parser.add_argument("--live-turn-compose", type=Path, default=Path("docker/compose.live.turn.yaml"))
+    parser.add_argument("--platforms", default=DEFAULT_PLATFORMS,
+                        help="platforms both images were built for, comma-separated (default linux/amd64)")
     parser.add_argument("--destination", type=Path, required=True)
     args = parser.parse_args()
     prepare(
@@ -275,6 +342,7 @@ def main() -> None:
         destination=args.destination, runtime_digest=args.runtime_digest,
         runtime_compose=args.runtime_compose, runtime_script=args.runtime_script,
         runtime_sbom=args.runtime_sbom, dockerfile=args.dockerfile,
+        live_compose=args.live_compose, live_turn_compose=args.live_turn_compose, platforms=args.platforms,
     )
 
 

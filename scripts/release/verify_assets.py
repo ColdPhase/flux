@@ -15,13 +15,14 @@ import json
 import re
 from pathlib import Path
 
-from prepare_assets import DIGEST, IMAGE, RUNTIME_IMAGE, SHA, VERSION
+from prepare_assets import DIGEST, IMAGE, PINNED_IMAGE, RUNTIME_IMAGE, SHA, VERSION, parse_platforms
 from check_asset_set import verify as verify_asset_set
 
 EXPECTED = {
     "compose.yaml", "compose.runtime.yaml", "runtime.sh", "env.example", "INSTALL.md", "release.json",
     "sbom.spdx.json", "sbom-agent-runtime.spdx.json", "THIRD_PARTY_NOTICES.json",
     "THIRD_PARTY_NOTICES.agent-runtime.json", "LICENSE", "SHA256SUMS",
+    "compose.live.yaml", "compose.live.turn.yaml",
 }
 
 
@@ -29,7 +30,9 @@ def images(text: str) -> list[str]:
     return re.findall(r"^\s*image:\s*(\S+)\s*$", text, re.MULTILINE)
 
 
-def verify(directory: Path, version: str | None, source_sha: str | None, digest: str | None) -> dict[str, str]:
+def verify(
+    directory: Path, version: str | None, source_sha: str | None, digest: str | None, platforms: str | None = None,
+) -> dict[str, str]:
     verify_asset_set(directory)
     names = {path.name for path in directory.iterdir()}
     if names != EXPECTED:
@@ -54,8 +57,11 @@ def verify(directory: Path, version: str | None, source_sha: str | None, digest:
             raise ValueError(f"release.json {key} is {release[key]!r}, expected {expected!r}")
     if digest is not None and app != f"{IMAGE}@{digest}":
         raise ValueError("release.json image is not the accepted digest")
-    if release["platforms"] != ["linux/amd64", "linux/arm64"] or release["runtime_platforms"] != ["linux/amd64", "linux/arm64"]:
-        raise ValueError("release.json must name linux/amd64 and linux/arm64 for both images")
+    named = release["platforms"]
+    if not isinstance(named, list) or named != parse_platforms(",".join(named)) or release["runtime_platforms"] != named:
+        raise ValueError("release.json must name the same supported platforms, in canonical order, for both images")
+    if platforms is not None and named != parse_platforms(platforms):
+        raise ValueError(f"release.json platforms are {named}, expected {platforms}")
 
     compose = (directory / "compose.yaml").read_text(encoding="utf-8")
     overlay = (directory / "compose.runtime.yaml").read_text(encoding="utf-8")
@@ -68,6 +74,15 @@ def verify(directory: Path, version: str | None, source_sha: str | None, digest:
     found = images(overlay)
     if sorted(found) != sorted([app, app, runtime, runtime]):
         raise ValueError(f"compose.runtime.yaml images are {found}; expected the two release images only")
+    # The live-media overlays run one third-party SFU, pinned by digest, and no Flux image or source build.
+    live = (directory / "compose.live.yaml").read_text(encoding="utf-8")
+    turn = (directory / "compose.live.turn.yaml").read_text(encoding="utf-8")
+    for name, text in (("compose.live.yaml", live), ("compose.live.turn.yaml", turn)):
+        if re.search(r"RELEASE_DIGEST|RUNTIME_DIGEST|^\s*build\s*:|:latest|docker\.sock|coldphase/flux", text, re.MULTILINE):
+            raise ValueError(f"{name} holds a digest marker, a source build, a floating tag, a socket or a Flux image")
+    media = release.get("live_media_image", "")
+    if not PINNED_IMAGE.fullmatch(media) or images(live) != [media] or images(turn):
+        raise ValueError("compose.live.yaml must pin release.json's live_media_image, and compose.live.turn.yaml no image")
     if "docker.sock" in (directory / "runtime.sh").read_text(encoding="utf-8"):
         raise ValueError("runtime.sh must not use a container engine socket")
     if release["runtime_claude_code"].split(";")[0] != "not included":
@@ -78,7 +93,7 @@ def verify(directory: Path, version: str | None, source_sha: str | None, digest:
     notices = json.loads((directory / "THIRD_PARTY_NOTICES.agent-runtime.json").read_text(encoding="utf-8"))
     if not any(item["name"].lower() in ("codex", "codex-cli") for item in notices):
         raise ValueError("the agent-runtime notices must record the pinned Codex")
-    return {"app": app, "runtime": runtime}
+    return {"app": app, "runtime": runtime, "live_media": media, "platforms": ",".join(named)}
 
 
 def main() -> None:
@@ -87,10 +102,11 @@ def main() -> None:
     parser.add_argument("--version")
     parser.add_argument("--source-sha")
     parser.add_argument("--digest", help="accepted application image digest, sha256:...")
+    parser.add_argument("--platforms", help="the platforms the images were built for, for example linux/amd64")
     args = parser.parse_args()
     try:
-        result = verify(args.directory, args.version, args.source_sha, args.digest)
-    except (OSError, KeyError, ValueError, json.JSONDecodeError) as error:
+        result = verify(args.directory, args.version, args.source_sha, args.digest, args.platforms)
+    except (OSError, KeyError, TypeError, ValueError, json.JSONDecodeError) as error:
         raise SystemExit(f"verify_assets: {error}") from error
     print(json.dumps(result))
 

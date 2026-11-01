@@ -28,7 +28,7 @@ Documentation: <https://coldphase.github.io/flux/>. Flux is open source under th
   get Web Push notifications, including on iPhone and iPad. Web Push needs HTTPS and the three
   `FLUX_VAPID_*` settings ([guide](https://coldphase.github.io/flux/operate/mobile-and-push/)).
 - **Calls and screen sharing.** Join a live session from a project, follow someone and share a screen.
-  This is optional and not in the downloadable `compose.yaml` yet (see the limits).
+  The media server is optional: add the release's `compose.live.yaml` (see [Install](#install)).
 - **Encrypted workspaces.** When you create a workspace (a "space" in the app) you can encrypt it. Its
   content is encrypted in the database, the files and the search index, and the key lives only in memory.
   After every restart it stays locked until an owner or admin enters their unlock password. There is a
@@ -55,6 +55,11 @@ for HTTPS. The full guide is
 4. Put an HTTPS reverse proxy in front of `127.0.0.1:8081` (tested
    [Caddy, nginx and Traefik examples](https://coldphase.github.io/flux/operate/reverse-proxy/)), open your
    address and create the first account.
+5. Optional, for calls and screen sharing: add the `FLUX_LIVEKIT_*` settings to `.env`, open UDP/7882,
+   TCP/7881 and UDP/3478 to the server, and pass `-f compose.live.yaml` after `-f compose.yaml` in every
+   command. For networks that allow only HTTPS, `compose.live.turn.yaml` adds TURN/TLS on TCP/443 of a
+   second address. Both files pin the LiveKit media server by digest. The steps are in `INSTALL.md`,
+   section "Calls and screen sharing".
 
 The same steps are in `INSTALL.md`, attached to this release. To look around first, clone the
 repository and run `./flux up`, then `./flux demo` for sample data
@@ -81,8 +86,8 @@ it somewhere else before you rely on it.
 ## Known limits and what comes next
 
 - **No `linux/arm64` image yet.** It comes in v0.1.1.
-- **Calls and screen sharing need the optional live-media overlay** from a source checkout. The release
-  `compose.yaml` does not include it. Call quality was measured in a Docker simulation of a public host with
+- **Calls and screen sharing need the optional `compose.live.yaml`** of this release, public media ports and
+  a public IPv4 address that browsers reach directly. Call quality was measured in a Docker simulation of a public host with
   Chromium, Firefox and WebKit, not on real networks or devices. Phone browsers cannot share their screen, and Flux says so.
   See [live media](https://github.com/ColdPhase/flux/blob/main/docs/development/live-media.md).
 - **Agents do not wake up by themselves.** You start or resume work from your own Claude Code or Codex.

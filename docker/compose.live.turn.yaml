@@ -1,5 +1,5 @@
-# Operator-owned restrictive-network relay. Layer after compose.source.yaml and
-# compose.live.yaml. A separate DNS name/certificate is required for TURN/TLS.
+# Operator-owned restrictive-network relay. Layer after compose.source.yaml (or a release's
+# compose.yaml) and compose.live.yaml. A separate DNS name/certificate is required for TURN/TLS.
 services:
   livekit:
     environment:
