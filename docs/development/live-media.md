@@ -510,7 +510,8 @@ Same simulation, extended in [`docker/public-sim/`](../../docker/public-sim/) (`
 `screen-source.sh`, `firefox-ca.sh`) and `scripts/check_public_sim.sh`. Two more client computers (C behind router A,
 D behind router B) carry the third and fourth person. Every client has synthetic media made at start: a
 1920×1080, 30 fps camera file (`testsrc2`, motion over the whole frame), 40 s of continuous synthetic speech
-(espeak-ng, 48 kHz), a PulseAudio microphone playing the same speech, and an X display (1920×1080) that
+(espeak-ng, 48 kHz), a PulseAudio microphone playing the same speech (reset to full level before every run, because
+Chromium's automatic gain control changes that source's volume and the change outlives the browser), and an X display (1920×1080) that
 `screen-source` fills with a moving pattern. A presenter's browser runs headed on that display with its window
 off-screen and shares it through the app's own **Share a window, tab or screen** button: real `getDisplayMedia`,
 not Chromium's fake display (Xvfb runs without RandR, because Chromium's X11 capturer otherwise refuses the
