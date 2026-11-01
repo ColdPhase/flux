@@ -181,6 +181,14 @@ for run in $runs; do
   n=2; while [ -e "$log" ]; do log="${log%.log}"; log="${log%-run[0-9]*}-run$n.log"; n=$((n + 1)); done
   printf '== run %s behind the restrictive router%s, %s behind the open one: %s\n' "$a" "${path:+ ($path allowed)}" "$b" "$phases"
   [ -z "$path" ] || $compose exec -T router-a /bin/sh /impair.sh "$path" on
+  # Every run starts from a client microphone at full level. A presenter's microphone is the client's PulseAudio
+  # source, and Chromium's automatic gain control sets that source's volume, which outlives the browser: a run that
+  # ends with it turned down leaves the next presenter on that client sending near silence (Opus DTX at ~1.4 kbps)
+  # until the gain control climbs back (v0.1.0 acceptance, #249).
+  for client in client-a client-b client-c client-d; do
+    $compose exec -T "$client" sh -ec 'printf "%s speechmic before the run: %s\n" "$1" "$(pactl list sources | awk "/Name: speechmic/ { s = 1 } s && /Volume:/ { print \$5; exit }")"
+      pactl set-source-mute speechmic 0; pactl set-source-volume speechmic 100%' sh "$client"
+  done
   since=$(date -u +%Y-%m-%dT%H:%M:%SZ)
   relay=; case "$path" in turn-udp) relay=udp ;; ice-tcp) relay=ice-tcp ;; esac
   FLUX_SIM_A_RELAY=$relay FLUX_SIM_BROWSER_A=$a FLUX_SIM_BROWSER_B=$b FLUX_SIM_PHASES=$phases \
