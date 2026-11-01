@@ -3,7 +3,7 @@ import { COLLABORATION_INK, shapeOfSlot, type PeerShape } from './color';
 import { Link } from 'react-router';
 import * as Y from 'yjs';
 import { EditorSelection, EditorState, Prec, StateEffect, StateField, type Range } from '@codemirror/state';
-import { Decoration, Direction, EditorView, RectangleMarker, drawSelection, keymap, layer, type DecorationSet, type LayerMarker } from '@codemirror/view';
+import { Decoration, Direction, EditorView, MatchDecorator, RectangleMarker, ViewPlugin, WidgetType, drawSelection, keymap, layer, type DecorationSet, type LayerMarker, type ViewUpdate } from '@codemirror/view';
 import { yCollab, yUndoManagerKeymap } from 'y-codemirror.next';
 import { DOC_LIMITS, docRef, type Doc, type DocState, type Project } from '@flux/contracts';
 import { Button, Icon, useMediaQuery } from '../ui';
@@ -194,6 +194,34 @@ function carets(client: SharedWiki): RemoteCaret[] {
   return result;
 }
 
+/**
+ * CW-4: a reference to an object of the project, `[label](flux:<type>/<id>)`, reads as its label and a quiet kind word in
+ * the editor ("Decision card", "Thought", "Map"…), never as an id. The id is still the text (copy, paste and history keep
+ * it); the caret steps over it as one unit, and deleting the word deletes the reference's target with it.
+ */
+const REF_WORD: Record<string, string> = { decision: 'Decision', work: 'Task', result: 'Result', doc: 'Wiki page', message: 'Message', thought: 'Thought', sketch: 'Map' };
+class RefWord extends WidgetType {
+  constructor(readonly word: string) { super(); }
+  eq(other: RefWord) { return other.word === this.word; }
+  toDOM() { const span = document.createElement('span'); span.className = 'editing-ref'; span.textContent = this.word; span.setAttribute('aria-label', `(${this.word})`); return span; }
+  ignoreEvent() { return false; }
+}
+const refDecorator = new MatchDecorator({
+  regexp: /\]\((flux:([a-z]+)\/[0-9a-f-]{36})\)/gi,
+  decorate: (add, from, to, match, view) => {
+    const type = match[2]!.toLowerCase();
+    // A decision alone on its line is drawn as a card on the page.
+    const line = view.state.doc.lineAt(from);
+    const card = type === 'decision' && /^\s*\[[^\]]*$/.test(line.text.slice(0, from - line.from)) && line.to === to;
+    add(from + 1, to, Decoration.replace({ widget: new RefWord(card ? 'Decision card' : REF_WORD[type] ?? 'Link') }));
+  },
+});
+const readableRefs = ViewPlugin.fromClass(class {
+  decorations: DecorationSet;
+  constructor(view: EditorView) { this.decorations = refDecorator.createDeco(view); }
+  update(update: ViewUpdate) { this.decorations = refDecorator.updateDeco(update, this.decorations); }
+}, { decorations: (plugin) => plugin.decorations, provide: (plugin) => EditorView.atomicRanges.of((view) => view.plugin(plugin)?.decorations ?? Decoration.none) });
+
 interface EditorHandle { insert(text: string): void; focus(): void }
 function CollaborativeText({ client, handleRef }: { client: SharedWiki; handleRef: React.RefObject<EditorHandle | null> }) {
   const parent = useRef<HTMLDivElement>(null);
@@ -221,7 +249,7 @@ function CollaborativeText({ client, handleRef }: { client: SharedWiki; handleRe
         yCollab(client.text, null, { undoManager: client.undo }), keymap.of(yUndoManagerKeymap.map((binding) => ({ ...binding,
           run: (view: EditorView) => history(binding.run, view),
           shift: binding.shift ? (view: EditorView) => history(binding.shift, view) : undefined,
-        }))), stateMovement, drawSelection(), EditorView.lineWrapping, marked, remoteCarets, remoteCaretLayer, writableField,
+        }))), stateMovement, drawSelection(), EditorView.lineWrapping, readableRefs, marked, remoteCarets, remoteCaretLayer, writableField,
         EditorView.contentAttributes.of({ 'aria-label': 'Shared Markdown', role: 'textbox', 'aria-multiline': 'true', spellcheck: 'true' }),
         EditorState.transactionFilter.of((transaction) => {
           if (transaction.isUserEvent('input') || transaction.isUserEvent('delete') || transaction.isUserEvent('undo') || transaction.isUserEvent('redo')) {
@@ -352,7 +380,7 @@ export function LiveDocEditor({ doc, project, userId, fallback }: { doc: Doc; pr
           {(['draft', 'published'] as const).map((value) => <button key={value} type="button" role="radio" aria-checked={(client?.pendingSave?.state ?? state) === value} disabled={busySave} onClick={() => setState(value)}>{STATE_LABEL[value]}</button>)}
         </div>
         <div className="doc-edit__acts">
-          <Link className="ui-btn ui-btn--quiet" to={docUrl(project.id, doc.id)}>Back to doc</Link>
+          <Link className="ui-btn ui-btn--quiet" to={docUrl(project.id, doc.id)}>Back to the Wiki page</Link>
           {compact ? <Button type="submit" variant="primary" disabled={saveDisabled}>{busy ? 'Saving…' : 'Save version'}</Button> : null}
         </div>
       </div>

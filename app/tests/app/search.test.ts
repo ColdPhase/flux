@@ -120,11 +120,11 @@ describe('search: one query across Flux, only what you may read', () => {
     assert.ok(answer.items.filter((item) => item.kind !== 'work').every((item) => item.task === undefined), 'only tasks carry one');
     // The task's number in its project leads its text, so "#n" finds it (#276); the outcome follows.
     assert.equal(text(workHit.snippet), `#${work.number}\nNumbers for the low-light case`);
-    assert.equal(byKind('thought')[0]!.label, 'Thought in “Lamp shapes”');
+    assert.equal(byKind('thought')[0]!.label, 'Thought on the map “Lamp shapes”');
     assert.equal(byKind('draft')[0]!.label, 'Private draft');
     assert.deepEqual(byKind('draft')[0]!.target, { type: 'draft', draftId: niaDraft.id });
     assert.equal(byKind('decision')[0]!.label, 'Decision · proposed');
-    assert.equal(byKind('result')[0]!.label, 'Result · it worked');
+    assert.equal(byKind('result')[0]!.label, 'Positive result');
     // The matched word is marked, never as markup.
     const message = answer.items.find((item) => text(item.title).includes('5 lux'))!;
     assert.ok(message.title.some((part) => part.match && /sensor/i.test(part.text)), 'the match is highlighted');
@@ -246,15 +246,15 @@ describe('search: one query across Flux, only what you may read', () => {
     const draftHit = await search(nia, 'dimmer');
     assert.equal(draftHit.items.length, 1);
     assert.equal(draftHit.items[0]!.kind, 'doc');
-    assert.equal(draftHit.items[0]!.label, 'Doc · draft');
+    assert.equal(draftHit.items[0]!.label, 'Wiki page · draft');
     assert.deepEqual(draftHit.items[0]!.target, { type: 'doc', projectId: lamp.id, docId: created.id, version: 1 });
     json(await patch(ari, `/api/v1/docs/${created.id}`, { body: 'Fit the brass collar first, then the switch.', state: 'published' },
       { 'if-match': `"${created.version}"` }), 200, 'publish doc');
     const published = await search(nia, 'collar');
-    assert.equal(published.items[0]!.label, 'Doc · published');
+    assert.equal(published.items[0]!.label, 'Wiki page · published');
     assert.deepEqual(published.items[0]!.target, { type: 'doc', projectId: lamp.id, docId: created.id, version: 2 });
     const old = await search(nia, 'dimmer');
-    assert.equal(old.items[0]!.label, 'Doc · version 1 of 2, draft', 'the old text is found at its own version');
+    assert.equal(old.items[0]!.label, 'Wiki page · version 1 of 2, draft', 'the old text is found at its own version');
     const both = await search(nia, 'brass');
     assert.equal(both.items.filter((item) => item.kind === 'doc').length, 1, 'one result per doc');
     assert.equal(both.counts.doc, 1);

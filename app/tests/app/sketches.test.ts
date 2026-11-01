@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { before, describe, test } from 'node:test';
-import type { CreatedThought, MovedThoughts, PositionsConflict, Project, Sketch, SketchDetail, SketchPage, Thought, ThoughtLink, VersionConflict, Workspace } from '@flux/contracts';
+import type { CreatedThought, MessagePlace, MovedThoughts, WorkAssociations, PositionsConflict, Project, Sketch, SketchDetail, SketchPage, Thought, ThoughtLink, VersionConflict, Workspace } from '@flux/contracts';
 import { authorize, createAgent, grantProject, policySketchAccess, revokeAgent, ForbiddenError, NotFoundError, type Principal } from '@flux/core';
 import { accessPorts, accessReader } from '@flux/db';
 import { db, pool } from './support/db.js';
@@ -121,6 +121,27 @@ describe('sketch access', () => {
     expectStatus(await erin.browser.request('POST', `/api/v1/sketches/${sketch.id}/thoughts`, {
       body: { text: 'A viewer cannot cite into the map', x: 0, y: 0, sourceProjectMessageId: sourceId },
     }), 403, 'viewer cannot create a sourced thought');
+  });
+
+  test('a message and its thought link both ways (CW-2): the message names the thought, the thought finds its message', async () => {
+    const sketch = await createSketch(alice, ws.id, { title: 'Pickup ideas', scope: 'project', projectId: lamp.id });
+    const conversation = expectStatus(await bob.browser.request('POST', `/api/v1/projects/${lamp.id}/conversations`, {
+      body: { body: 'A 4-digit SMS code', clientMessageId: randomUUID() },
+    }), 201, 'message') as { id: string; messages: { id: string }[] };
+    const messageId = conversation.messages[0]!.id;
+    const made = await addThought(alice, sketch.id, { id: randomUUID(), text: 'SMS code', x: 0, y: 0, sourceProjectMessageId: messageId });
+    const read = expectStatus(await erin.browser.request('GET', `/api/v1/projects/${lamp.id}/work-associations?messageIds=${messageId}&relation=source`), 200, 'associations') as WorkAssociations;
+    assert.deepEqual(read.thoughts, [{ messageId, thoughtId: made.thought.id, sketchId: sketch.id, sketchTitle: 'Pickup ideas', text: 'SMS code' }]);
+    const place = expectStatus(await erin.browser.request('GET', `/api/v1/projects/${lamp.id}/messages/${messageId}/place`), 200, 'place') as MessagePlace;
+    assert.deepEqual(place, { projectId: lamp.id, conversationId: conversation.id, messageId });
+    expectStatus(await dave.browser.request('GET', `/api/v1/projects/${lamp.id}/messages/${messageId}/place`), 404, 'another workspace learns nothing');
+    const elsewhere = await project(alice, ws.id, 'Place elsewhere', 'workspace');
+    expectStatus(await alice.browser.request('GET', `/api/v1/projects/${elsewhere.id}/messages/${messageId}/place`), 404, 'a message of another project');
+    // A private sketch's thought from the same message is not the project's: the chip never names it.
+    const mine = await createSketch(alice, ws.id, { title: 'Mine', scope: 'private' });
+    expectStatus(await alice.browser.request('POST', `/api/v1/sketches/${mine.id}/thoughts`, { body: { text: 'private', x: 0, y: 0 } }), 201);
+    const again = expectStatus(await alice.browser.request('GET', `/api/v1/projects/${lamp.id}/work-associations?messageIds=${messageId}&relation=source`), 200) as WorkAssociations;
+    assert.equal(again.thoughts?.length, 1);
   });
 
   test('a private sketch is visible only to its author: never through the project, to admins or to agents', async () => {

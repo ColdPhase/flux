@@ -59,7 +59,7 @@ function readable(error: unknown) {
   if (error instanceof ApiError && error.code === 'VERSION_CONFLICT') return 'Someone changed this a moment ago. The latest version is shown; try again if it still applies.';
   if (error instanceof ApiError && error.code === 'TASK_PREREQUISITES_UNMET') return 'It can start or finish only when every task it waits for is done and not parked.';
   if (error instanceof ApiError && error.code === 'WORK_NOT_FINISHABLE') return 'That work was parked or set aside meanwhile, so this result cannot finish it. The latest state is shown.';
-  if (error instanceof ApiError && error.code === 'SUPERSEDED_DECISION_CHANGED') return 'The rule this would replace has already changed. Review the current rule first.';
+  if (error instanceof ApiError && error.code === 'SUPERSEDED_DECISION_CHANGED') return 'The decision this would replace has already changed. Review the accepted decision first.';
   if (error instanceof ApiError && error.status === 404) return 'This is no longer available to you.';
   if (error instanceof ApiError && error.status === 403) return 'You can read this project but not change it.';
   return error instanceof Error ? error.message : 'Could not save. Try again.';
@@ -201,6 +201,9 @@ function Sources({ links, id, project, of }: { links: ObjectLink[]; id: string; 
 
 /** Wiki pages that include or mention this result or decision (#112), and "Add to a Wiki page" (#763 D6: the view is the Wiki). */
 /** Every native role has a reachable destination, including links outside the named sections. */
+/** One word per object (CW-7, journeys-and-vocabulary.md). */
+const OBJECT_WORD: Record<string, string> = { work: 'Task', decision: 'Decision', result: 'Result', doc: 'Wiki page', message: 'Message', material: 'File', thought: 'Thought', sketch: 'Map' };
+
 function OtherRelationships({ object, relations, project }: { object: WorkDetailObject; relations: DetailRelations; project: Project }) {
   const { openDetails } = useShellActions();
   const items = relations.links.flatMap((link) => {
@@ -214,7 +217,7 @@ function OtherRelationships({ object, relations, project }: { object: WorkDetail
     if (object.kind === 'work' && other.type === 'thought') return [];
     if (object.kind === 'decision' && other.type === 'work' && ['affects', 'still_applies'].includes(link.role)) return [];
     if (object.kind === 'result' && ['work', 'decision'].includes(other.type) && link.role === 'about') return [];
-    const body = <><span>{other.type}: {title}</span><small>{link.role.replaceAll('_', ' ')}</small><Icon name="chevron-right" size={14} /></>;
+    const body = <><span>{OBJECT_WORD[other.type] ?? other.type}: {title}</span><small>{link.role.replaceAll('_', ' ')}</small><Icon name="chevron-right" size={14} /></>;
     if (other.type === 'work' || other.type === 'decision' || other.type === 'result') {
       const kind = other.type, id = other.id;
       return [<li key={link.id}><button type="button" className="wd-link" onClick={() => openDetails({ kind, id, projectId: project.id })}>{body}</button></li>];
@@ -225,7 +228,7 @@ function OtherRelationships({ object, relations, project }: { object: WorkDetail
           : other.type === 'doc' ? `/projects/${project.id}/docs/${other.id}` : other.type === 'sketch' ? `/projects/${project.id}/map/${other.id}` : null;
     return to ? [<li key={link.id}><RefLink className="wd-link" to={to}>{body}</RefLink></li>] : [];
   });
-  return items.length ? <section className="details__sec" aria-label="Other relationships"><h4>Other relationships on this page</h4><ul className="wd-links">{items}</ul></section> : null;
+  return items.length ? <section className="details__sec" aria-label="Also linked"><h4>Also linked</h4><ul className="wd-links">{items}</ul></section> : null;
 }
 
 function InDocs({ object, kind, project, relations, notYet }: { object: { id: string; title: string }; relations: DetailRelations; kind?: 'result' | 'decision'; project: Project; notYet?: string }) {
@@ -499,7 +502,7 @@ function WorkPanel({ item, context, detail, relations, reload, commands }: { ite
         {item.criteria.length ? (
           <section className="details__sec" aria-labelledby={`wd-criteria-${item.id}`}>
             <h4 id={`wd-criteria-${item.id}`}>Done when</h4>
-            <ul className="wd-criteria">{item.criteria.map((criterion) => <li key={criterion}>{criterion}</li>)}</ul>
+            <ul className="wd-checks">{item.criteria.map((criterion) => <li key={criterion}><span className="wd-check" role="img" aria-label="Not checked off" /><span>{criterion}</span></li>)}</ul>
             <p className="wd-muted">Written down by whoever planned it. Flux does not check them off.</p>
           </section>
         ) : null}
@@ -761,7 +764,7 @@ function DecisionPanel({ decision, context, detail, relations, reload, choices, 
       <OtherRelationships object={decision} relations={relations} project={context.project} />
       <InDocs object={decision} kind="decision" project={context.project} relations={relations} notYet={decision.status === 'proposed' ? 'Accept it first to add it to the Wiki.' : undefined} />
       <Audience project={context.project} />
-      <IdsLine>Version {decision.version}{decision.supersedes ? ' · supersedes an earlier rule' : ''}</IdsLine>
+      <IdsLine>Version {decision.version}{decision.supersedes ? ' · replaces an earlier decision' : ''}</IdsLine>
     </div>
   );
 }
@@ -771,11 +774,13 @@ function ResultPanel({ result, context, relations }: { result: OwnResult; contex
   useRegisterLiveHere(null, { ref: { type: 'result', id: result.id, version: 1 }, label: result.title, what: 'result' });
   const about = [...linked(relations.links, result.id, 'work', ['about']), ...linked(relations.links, result.id, 'decision', ['about'])];
   const related = relations.links.filter((link) => link.role === 'related');
+  const aboutTask = linked(relations.links, result.id, 'work', ['about'])[0] ?? null;
   return (
     <div className="details wd" data-detail-kind="result" data-detail-id={result.id}>
       <p className={`details__eyebrow wd-eyebrow wd-finding--${result.finding}`}><Icon name="result" size={13} />{resultLine(result)} · {shortDate(result.createdAt)}</p>
       <h3 className="details__title">{result.title}</h3>
       {result.evidence ? <p className="details__lead wd-evidence">{result.evidence}</p> : null}
+      {aboutTask ? <ResultCriteria projectId={context.project.id} taskId={aboutTask.id} title={aboutTask.title} /> : null}
       <RelationPages relations={relations} />
       {/* Empty sections are not drawn (#763 D2): the evidence text is the lead above, its sources are listed here. */}
       {relations.links.some((link) => link.from.id === result.id && link.role === 'source') ? (
@@ -795,6 +800,27 @@ function ResultPanel({ result, context, relations }: { result: OwnResult; contex
       <InDocs object={result} kind="result" project={context.project} relations={relations} />
       <Audience project={context.project} />
     </div>
+  );
+}
+
+/**
+ * CW-6: the done-when criteria of the task a result reports on, under its evidence, so the two are read side by side. Flux
+ * never checks a criterion off, and a result does not either: each one shows unchecked until a person says it is met in
+ * the evidence, so "Positive" never reads as "every criterion met".
+ */
+function ResultCriteria({ projectId, taskId, title }: { projectId: string; taskId: string; title: string }) {
+  const { me } = useShellData();
+  const task = useNativeOwn(me.user.id, projectId, 'work', taskId);
+  const item = task.value?.object.kind === 'work' ? task.value.object : null;
+  if (!item?.criteria.length) return null;
+  return (
+    <section className="details__sec" aria-labelledby={`wd-result-criteria-${taskId}`}>
+      <h4 id={`wd-result-criteria-${taskId}`}>Done when · {taskNumber(item)} {title}</h4>
+      <ul className="wd-checks">{item.criteria.map((criterion) => (
+        <li key={criterion}><span className="wd-check" role="img" aria-label="Not checked off" /><span>{criterion}</span></li>
+      ))}</ul>
+      <p className="wd-muted">Not checked off. Compare each one with the evidence above; Flux does not check them off.</p>
+    </section>
   );
 }
 
@@ -855,16 +881,16 @@ function ProposeDecision({ view, context, contextStatus, revision, isCurrent }: 
         <>
           <label htmlFor={replacesId}>Replaces</label>
           <Select id={replacesId} value={supersedes} disabled={!candidates.page} onChange={(next) => edit(setSupersedes)(next)}>
-            <Option value="">Nothing, this is a new rule</Option>
-            {supersedes && !current.some((item) => item.id === supersedes) ? <Option value={supersedes}>{chosen?.title ?? 'Selected rule (not loaded)'}</Option> : null}
+            <Option value="">Nothing, this is a new decision</Option>
+            {supersedes && !current.some((item) => item.id === supersedes) ? <Option value={supersedes}>{chosen?.title ?? 'Selected decision (not loaded)'}</Option> : null}
             {current.map((item) => <Option key={item.id} value={item.id}>{item.title}</Option>)}
           </Select>
         </>
       </fieldset>
-      <ChoicePages choices={candidates} label="Current rule choices" quiet />
+      <ChoicePages choices={candidates} label="Choices it can replace" quiet />
       {supersedes && (!chosen || chosen.status !== 'accepted') ? <p className="wd-muted">The selected rule must be currently available and accepted before this proposal can replace it.</p> : null}
       {error ? <p className="wd-error" role="alert">{error} <button type="button" className="wd-inline" onClick={(event) => void submit(event)}>Retry</button></p> : null}
-      <SubmitSection help="A person with write access accepts it. The message stays where it is and links here."><Button type="submit" variant="primary" busy={busy} disabled={!canSubmit}>Propose decision</Button></SubmitSection>
+      <SubmitSection help={view.source ? 'A person with write access accepts it. The message stays where it is and links here.' : 'A person with write access accepts it.'}><Button type="submit" variant="primary" busy={busy} disabled={!canSubmit}>Propose decision</Button></SubmitSection>
       {context ? <Audience project={context.project} /> : null}
     </form>
   );

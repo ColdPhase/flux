@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { createContext, type CSSProperties, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { Icon } from './Icon';
 import { Kreska, type KreskaExpression } from './Kreska';
@@ -34,6 +34,11 @@ interface ToastEntry extends Required<Omit<ToastOptions, 'timeout' | 'action' | 
   sessionEpoch: number;
 }
 
+/** How long a toast with an Open-style action stays (CW-5). */
+const ACTION_TIMEOUT_MS = 8000;
+/** A toast's action ignores a tap this soon after the toasts moved: the tap was meant for what was there. */
+const ACTION_ARMED_MS = 600;
+
 const ToastContext = createContext<(options: ToastOptions) => () => void>(() => () => {});
 const ToastScopeContext = createContext<() => boolean>(() => true);
 const ToastTopContext = createContext<number | null>(null);
@@ -50,7 +55,7 @@ export function useToastScope() {
   return useContext(ToastScopeContext);
 }
 
-function ToastItem({ toast, onDone, registerAction }: { toast: ToastEntry; onDone: (id: number) => void; registerAction: (id: number, run: (() => void) | null) => void }) {
+function ToastItem({ toast, onDone, registerAction, movedAt }: { toast: ToastEntry; onDone: (id: number) => void; registerAction: (id: number, run: (() => void) | null) => void; movedAt: number }) {
   const ref = useRef<HTMLDivElement>(null);
   const message = useRef<HTMLSpanElement>(null);
   const [scrollable, setScrollable] = useState(false);
@@ -59,15 +64,17 @@ function ToastItem({ toast, onDone, registerAction }: { toast: ToastEntry; onDon
   const ran = useRef(false);
   const moments = useSmallMoments();
   const dismiss = useCallback(() => setLeaving(true), []);
-  const act = useCallback(() => {
+  const act = useCallback((event?: { detail: number }) => {
     if (!toast.action || ran.current || leaving || toast.leaving) return;
+    // A pointer tap that lands just as the toasts moved (above a sheet that opened) was aimed at what was there (CW-5).
+    if (event && event.detail > 0 && performance.now() - movedAt < ACTION_ARMED_MS) return;
     ran.current = true;
     toast.action.onClick();
     dismiss();
-  }, [toast.action, leaving, toast.leaving, dismiss]);
+  }, [toast.action, leaving, toast.leaving, dismiss, movedAt]);
   useEffect(() => {
     if (!toast.action?.key || leaving || toast.leaving) return undefined;
-    registerAction(toast.id, act);
+    registerAction(toast.id, () => act());
     return () => registerAction(toast.id, null);
   }, [toast.action, toast.id, leaving, toast.leaving, act, registerAction]);
   const arm = useCallback(() => {
@@ -106,7 +113,7 @@ function ToastItem({ toast, onDone, registerAction }: { toast: ToastEntry; onDon
       {toast.action && !leaving && !toast.leaving ? (
         <>
           <span className="ui-toast__sep" aria-hidden="true" />
-          <button type="button" className="ui-toast__action" onClick={act} aria-keyshortcuts={toast.action.key} title={toast.action.key ? `${toast.action.label} (${toast.action.key})` : undefined}>
+          <button type="button" className="ui-toast__action" onClick={(event) => act(event)} aria-keyshortcuts={toast.action.key} title={toast.action.key ? `${toast.action.label} (${toast.action.key})` : undefined}>
             {toast.action.label}{toast.action.key ? <kbd aria-hidden="true">{toast.action.key}</kbd> : null}
           </button>
         </>
@@ -114,6 +121,42 @@ function ToastItem({ toast, onDone, registerAction }: { toast: ToastEntry; onDon
       <button type="button" className="ui-toast__close" onClick={dismiss} aria-label="Dismiss notification"><Icon name="x" size={14} /></button>
     </div>
   );
+}
+
+/**
+ * CW-5: while a dialog or sheet is open, toasts sit above its lowest controls (Next, Cancel, Save…), so a tap meant for
+ * them never lands on a toast. Measured from the open modal surfaces while any toast shows; `movedAt` is when that last
+ * changed, for the action's tap guard.
+ */
+function useModalLift(active: boolean): { inset: number; movedAt: number } {
+  const [lift, setLift] = useState({ inset: 0, movedAt: -Infinity });
+  useLayoutEffect(() => {
+    if (!active) return undefined;
+    let frame = 0;
+    const measure = () => {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(() => {
+        let top = Infinity;
+        for (const surface of document.querySelectorAll<HTMLElement>('[aria-modal="true"]')) {
+          const box = surface.getBoundingClientRect();
+          if (!box.height || box.bottom < window.innerHeight - 160) continue;
+          // The surface's footer actions, where they reach the band at the bottom of the screen that toasts use.
+          for (const control of surface.querySelectorAll<HTMLElement>('button, a[href], [role="button"], input, select, textarea')) {
+            const rect = control.getBoundingClientRect();
+            if (rect.height && rect.bottom > Math.max(box.bottom - 120, window.innerHeight - 160) && rect.top < window.innerHeight) top = Math.min(top, rect.top);
+          }
+        }
+        const inset = Number.isFinite(top) ? Math.max(0, Math.round(window.innerHeight - top + 8)) : 0;
+        setLift((current) => current.inset === inset ? current : { inset, movedAt: performance.now() });
+      });
+    };
+    const observer = new MutationObserver(measure);
+    observer.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['aria-modal', 'data-state', 'data-height'] });
+    window.addEventListener('resize', measure);
+    measure();
+    return () => { cancelAnimationFrame(frame); observer.disconnect(); window.removeEventListener('resize', measure); };
+  }, [active]);
+  return active ? lift : { inset: 0, movedAt: lift.movedAt };
 }
 
 /** Short confirmations and recoverable errors, announced politely, bottom centre, one at a time on top. */
@@ -142,7 +185,8 @@ export function ToastProvider({ children, scopeKey }: { children: ReactNode; sco
     } : null;
     const entry: ToastEntry = {
       id: nextId.current++, message: options.message, tone, action, mascot: options.mascot ?? null,
-      timeout: options.timeout ?? (tone === 'danger' || action ? null : 5000),
+      // An action that is not Undo (Open, Open task…) leaves on its own too (CW-5); Undo keeps its own window, errors stay.
+      timeout: options.timeout ?? (tone === 'danger' || options.action?.key === 'Z' ? null : action ? ACTION_TIMEOUT_MS : 5000),
       leaving: false, sessionEpoch: actionEpoch,
     };
     setToasts((current) => [...current.slice(-2), entry]);
@@ -167,6 +211,7 @@ export function ToastProvider({ children, scopeKey }: { children: ReactNode; sco
   }, []);
   const value = useMemo(() => show, [show]);
   const visible = toasts.filter((toast) => toast.sessionEpoch === sessionEpoch);
+  const lift = useModalLift(visible.length > 0);
   useLayoutEffect(() => {
     const node = stack.current;
     if (!node) return;
@@ -184,8 +229,8 @@ export function ToastProvider({ children, scopeKey }: { children: ReactNode; sco
     <ToastTopContext.Provider value={toastTop}><ToastScopeContext.Provider value={isCurrent}><ToastContext.Provider value={value}>
       {children}
       {createPortal(
-        <div ref={stack} className="ui-toasts" role="status" aria-live="polite" aria-relevant="additions text">
-          {visible.map((toast) => <ToastItem key={toast.id} toast={toast} onDone={remove} registerAction={registerAction} />)}
+        <div ref={stack} className="ui-toasts" style={lift.inset ? { '--toast-modal-inset': `${lift.inset}px` } as CSSProperties : undefined} role="status" aria-live="polite" aria-relevant="additions text">
+          {visible.map((toast) => <ToastItem key={toast.id} toast={toast} onDone={remove} registerAction={registerAction} movedAt={lift.movedAt} />)}
         </div>,
         document.body,
       )}

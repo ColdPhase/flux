@@ -456,3 +456,7 @@ button.wd-link:active:not(:disabled) { background: var(--sub); }
 .wd-decide__foot { padding-top: var(--s-3); }
 .wd-need-chip { margin-left: auto; }
 .wd-decide .wd-error { margin-top: var(--s-2); }
+/* CW-6: done-when criteria read as an unchecked list: Flux and a result never check one off. */
+.wd-checks { margin: 0 0 6px; padding: 0; list-style: none; font-size: var(--fs-md); line-height: 1.5; }
+.wd-checks li { display: flex; gap: 8px; align-items: flex-start; padding: 2px 0; overflow-wrap: anywhere; }
+.wd-check { flex: none; width: 14px; height: 14px; margin-top: 4px; border: 1.5px solid var(--t3); border-radius: 4px; }

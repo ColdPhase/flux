@@ -218,7 +218,7 @@ class Round2Flows(unittest.TestCase):
         self.assertEqual(found["status"], "proposed")
         # The full form with Replaces stays one step away.
         open_message_menu(message, phone=False).get_by_role("menuitem", name="Propose a decision").click()
-        page.get_by_role("dialog", name="New decision").get_by_role("button", name="Replace a current rule…").click()
+        page.get_by_role("dialog", name="New decision").get_by_role("button", name="Replace an accepted decision…").click()
         panel = page.locator("#details")
         expect(panel.get_by_role("heading", name="Propose a decision")).to_be_visible()
         expect(panel.get_by_label("Decision", exact=True)).to_have_value(CLAUSE)

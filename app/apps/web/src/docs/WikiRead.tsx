@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState, type MouseEvent } from 'react';
 import { createPortal } from 'react-dom';
 import type { NamedPrincipal, NativeWorkRow } from '@flux/contracts';
 import { AgentIdentity, Avatar, Icon, Kreska, Morph, prefersReducedMotion, StatusGlyph, TASK_STATE_WORD } from '../ui';
-import { getWorkReferenceRows } from '../work/read-api';
+import { getWorkReferenceRows, getWorkRelations } from '../work/read-api';
 import type { AgentOwners } from '../agents/owners';
 import { ago, longDate, shortDate } from './format';
 import { WikiIcon } from './WikiParts';
@@ -46,7 +46,7 @@ export function EditedBy({ editor, at, reason, starter, startedAt, owners }: {
 export interface Heading { id: string; text: string; level: number }
 
 type Mark = { key: string; host: HTMLElement } & (
-  { kind: 'glyph' | 'word' | 'decision'; row: NativeWorkRow } | { kind: 'page' }
+  { kind: 'glyph' | 'word'; row: NativeWorkRow } | { kind: 'decision'; row: NativeWorkRow; source?: string } | { kind: 'page' }
 );
 
 function headingsOf(html: string): Heading[] {
@@ -100,7 +100,7 @@ export function useProse(el: HTMLElement | null, html: string, projectId: string
       own.unwrap = null;
       anchors[index]!.classList.remove('doc-task', 'doc-decision', 'doc-page');
     };
-    const apply = (rows: Map<string, NativeWorkRow>) => {
+    const apply = (rows: Map<string, NativeWorkRow>, sources = new Map<string, string>()) => {
       const next: Mark[] = [];
       anchors.forEach((anchor, index) => {
         const row = rows.get(`${anchor.dataset.refType}:${anchor.dataset.refId}`);
@@ -136,7 +136,7 @@ export function useProse(el: HTMLElement | null, html: string, projectId: string
             own.unwrap = () => { anchor.append(...written.childNodes); written.remove(); };
             host('start', 'doc-decision__body');
           }
-          next.push({ key: `${index}d`, host: own.hosts[0]!, kind: 'decision', row });
+          next.push({ key: `${index}d`, host: own.hosts[0]!, kind: 'decision', row, source: sources.get(row.id) });
         } else if (own.hosts.length) clear(index);
       });
       setMarks(next);
@@ -146,9 +146,16 @@ export function useProse(el: HTMLElement | null, html: string, projectId: string
       window.clearTimeout(retry);
       controller = new AbortController();
       const signal = controller.signal;
-      Promise.all(chunks.map((chunk) => getWorkReferenceRows(projectId, chunk.join(','), signal))).then((reads) => {
+      // CW-16: a decision card also says where the decision came from (its first source message), as "Based on" does.
+      const decisions = refs.filter((ref) => ref.startsWith('decision:')).slice(0, 100);
+      const basedOn = decisions.length ? getWorkRelations(projectId, { objects: decisions.join(','), role: 'source', limit: 100 }, signal).then((page) => {
+        const found = new Map<string, string>();
+        for (const link of page.items) if (link.from.type === 'decision' && link.to.type === 'message' && !found.has(link.from.id) && link.toTitle) found.set(link.from.id, link.toTitle);
+        return found;
+      }, () => new Map<string, string>()) : Promise.resolve(new Map<string, string>());
+      Promise.all([Promise.all(chunks.map((chunk) => getWorkReferenceRows(projectId, chunk.join(','), signal))), basedOn]).then(([reads, sources]) => {
         if (signal.aborted || gone) return;
-        apply(new Map<string, NativeWorkRow>(reads.flatMap((read) => read.items).map((row) => [`${row.kind}:${row.id}`, row])));
+        apply(new Map<string, NativeWorkRow>(reads.flatMap((read) => read.items).map((row) => [`${row.kind}:${row.id}`, row])), sources);
       }, () => { if (!signal.aborted && !gone) retry = window.setTimeout(load, RETRY_MS); });
     };
     const refresh = () => { if (document.visibilityState === 'visible') load(); };
@@ -197,6 +204,7 @@ function RefMark({ mark, owners }: { mark: Mark; owners: AgentOwners }) {
       <span className="doc-decision__t"><b><Morph value={row.status}>{DECISION_WORD[row.status]}</Morph></b><span className="doc-decision__title"><span className="doc-decision__sep"> · </span>{row.title}</span></span>
       <span className="doc-decision__meta">{shortDate(when)} · <WhoName who={who} owners={owners} /></span>
       {row.reason ? <span className="doc-decision__reason">{row.reason}</span> : null}
+      {mark.kind === 'decision' && mark.source ? <span className="doc-decision__meta doc-decision__from">From the message “{mark.source}”</span> : null}
     </>
   );
 }

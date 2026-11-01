@@ -2,7 +2,7 @@ import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, use
 import { FORMER_MEMBER } from '../docs/format';
 import { useNavigate } from 'react-router';
 import type { Conversation, ConversationMessage, ConversationRoot, ConversationRootWindow, NativeWorkRow, ObjectNotice, Page, Project, ProjectGoal, ReturnSummary, TaskCreationNotice } from '@flux/contracts';
-import { AgentIdentity, Avatar, Button, EmptyState, Icon, IconButton, Kreska, Opening, StatusGlyph, useArrivals, useToast } from '../ui';
+import { AgentIdentity, Avatar, Button, EmptyState, Icon, IconButton, Kreska, Opening, StatusGlyph, useArrivals } from '../ui';
 import { newBelowText } from '../ui/motion-rules';
 import { useSpareHeight } from '../ui/spareHeight';
 import { MessageObjects, useCreateWorkFromMessage } from '../work/inline';
@@ -22,7 +22,8 @@ import { MessageContent } from '../composer/Files';
 import { LinkPreviews, MessageText } from './MessageText';
 import { onSent, outboxView, useComposerDraft, type PendingSend } from '../composer/draft';
 import { getReturnSummary, saveReturnPoint } from '../returns/api';
-import { createProjectSketch, useProjectShell } from '../project/data';
+import { useProjectShell } from '../project/data';
+import { useAddToMap } from '../project/addToMap';
 import { cite as citeMessage, messageCite } from './citeBus';
 import { foldEntries, foldSummary, firstUnread, noticeSource, rootAuthor, sinceLine, sourcePhrase } from './conversationEvents';
 import { GoalStreamEntry } from '../project/ProjectGoal';
@@ -903,20 +904,12 @@ type QueuedRootProps = { continued?: boolean; pending: PendingSend; name: string
 function RootItem(props: RootItemProps | QueuedRootProps) {
   const projectShell = useProjectShell();
   const people = projectShell?.people ?? null;
-  const navigate = useNavigate();
-  const toast = useToast();
   const stored = 'pending' in props ? null : props;
   const message = stored?.root.message;
   const name = stored && message ? stored.author(message) : '';
   const writable = !!stored && stored.project.access !== 'viewer';
-  const addToMap = stored && message ? () => {
-    const source = { messageId: message.id, projectId: stored.project.id, body: message.body };
-    const sketch = projectShell?.sketches?.items[0];
-    if (sketch) { navigate(`/projects/${stored.project.id}/map/${sketch.id}`, { state: { addThoughtFromMessage: source } }); return; }
-    void createProjectSketch(stored.project.workspaceId, stored.project.id, 'Untitled sketch', crypto.randomUUID())
-      .then((created) => navigate(`/projects/${stored.project.id}/map/${created.id}`, { state: { addThoughtFromMessage: source } }))
-      .catch(() => toast({ message: 'The map could not be opened. Try again.', tone: 'danger' }));
-  } : undefined;
+  const mapDraft = useAddToMap(stored?.project ?? null);
+  const addToMap = stored && message ? () => mapDraft({ messageId: message.id, body: message.body }) : undefined;
   const actions = stored && message ? {
     projectId: stored.project.id, message, writable, onCreateWork: () => void stored.makeWork.create(message),
     onReply: () => stored.onOpen(stored.root, true), onCite: () => citeMessage('stream', messageCite(message, name)), onAddToMap: addToMap,

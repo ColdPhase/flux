@@ -35,4 +35,9 @@ describe('search snippets without Markdown', () => {
     assert.equal(plainSnippet([]), null);
     assert.equal(plainSnippet([rest('  \n| --- |\n')]), null);
   });
+  test('a slice that starts or ends inside a link keeps its words, never the flux: target (CW-4)', () => {
+    assert.equal(plain([rest('Pickup ideas](flux:sketch/f4dd5c1e-0000-4000-8000-000000000000) '), hit('map'), rest('.')]),
+      JSON.stringify([rest('Pickup ideas '), hit('map'), rest('.')]));
+    assert.equal(plain([hit('Pickup'), rest(' with the [SMS code](flux:deci')]), JSON.stringify([hit('Pickup'), rest(' with the SMS code')]));
+  });
 });

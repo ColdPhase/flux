@@ -98,7 +98,7 @@ describe('return view: since you left', () => {
     assert.ok(back.point.savedAt);
     assert.ok(list.includes('Ari asked you: “Nia, can you check the camera at 5 lux before Friday?”'), list.join('\n'));
     assert.ok(list.includes('Ari replied in “Camera or sensor for the lamp?”'), 'other messages are grouped per conversation');
-    const changed = back.items.find((item) => item.text === 'Current rule changed: Use a PIR sensor')!;
+    const changed = back.items.find((item) => item.text === 'Decision changed: Use a PIR sensor')!;
     assert.equal(changed.detail, 'Previously: Use the camera · No reason was recorded.', 'the previous rule, and a missing reason is said');
     assert.ok(list.includes('Ari added a task for you: Mount the PIR sensor'));
     const lens = back.items.find((item) => item.text === 'Blocked: Order the lens')!;
@@ -172,13 +172,13 @@ describe('return view: since you left', () => {
     await view(nia, place);
     const doc = json<Doc>(await post(ari, `/api/v1/projects/${lamp.id}/docs`, { title: 'Lamp wiring', body: 'Mains to the driver.' }), 201);
     const started = (await summary(nia, place)).items.filter((item) => item.kind === 'doc');
-    assert.deepEqual(started.map((item) => [item.text, item.detail, item.needsYou]), [['Ari started a doc: Lamp wiring', null, false]]);
+    assert.deepEqual(started.map((item) => [item.text, item.detail, item.needsYou]), [['Ari started a Wiki page: Lamp wiring', null, false]]);
     assert.deepEqual(started[0]!.source, { type: 'doc', projectId: lamp.id, docId: doc.id, version: 1, since: null });
     await view(nia, place);
     json(await patch(ari, `/api/v1/docs/${doc.id}`, { body: 'Mains to the 24 V driver.', reason: 'Named the driver' }, { 'if-match': '"1"' }), 200);
     json(await patch(ari, `/api/v1/docs/${doc.id}`, { state: 'published' }, { 'if-match': '"2"' }), 200);
     const updated = (await summary(nia, place)).items.filter((item) => item.kind === 'doc');
-    assert.deepEqual(updated.map((item) => [item.text, item.detail]), [['Doc updated: Lamp wiring', '2 new versions by Ari · latest: Published']]);
+    assert.deepEqual(updated.map((item) => [item.text, item.detail]), [['Wiki page updated: Lamp wiring', '2 new versions by Ari · latest: Published']]);
     assert.deepEqual(updated[0]!.source, { type: 'doc', projectId: lamp.id, docId: doc.id, version: 3, since: 1 });
     // A person's own edits are not news to them.
     assert.equal((await summary(ari, place)).items.some((item) => item.kind === 'doc'), false);
@@ -308,7 +308,7 @@ describe('return view: work a pivot parked (#290, #44 scenario 3)', () => {
         [[parkedText, setAside, 'work', false, 'Ari']], texts(back.items).join('\n'));
       assert.deepEqual(parkedOf(back)[0]!.source, { type: 'work', id: mount.id, projectId: lamp.id });
       assert.deepEqual(parkedOf(back)[0]!.project, { id: lamp.id, name: 'Gesture lamp' });
-      assert.ok(texts(back.items).includes(`Current rule changed: ${tof}`), 'the pivot itself is told too');
+      assert.ok(texts(back.items).includes(`Decision changed: ${tof}`), 'the pivot itself is told too');
       assert.equal(texts(back.items).some((text) => text.includes(order.title)), false, 'work that still applies is not called parked');
       for (const secret of ['Wire the hidden prototype', hidden.id, 'Back room']) assert.equal(JSON.stringify(back).includes(secret), false, `no hint of ${secret}`);
     }
@@ -337,7 +337,7 @@ describe('return view: work a pivot parked (#290, #44 scenario 3)', () => {
     await view(nia, { type: 'home' });
     await accept(lamp.id, 'Dim the lamp at night');
     for (const back of [await summary(nia, lampPlace), await summary(nia, { type: 'home' })])
-      assert.deepEqual(texts(back.items), ['New rule: Dim the lamp at night'], 'a plain acceptance is only a new rule');
+      assert.deepEqual(texts(back.items), ['New decision: Dim the lamp at night'], 'a plain acceptance is only a new rule');
   });
 });
 
@@ -377,5 +377,32 @@ describe('return view: a task that became yours while you were away (#763 H11-5)
     const later = await summary(marta, place);
     assert.deepEqual(texts(later.items), ['New task: Print flyers']);
     assert.equal(later.nextStep, null);
+  });
+});
+
+// CW-3 (#763 connected work flow): a person's own rows start when they get access, so "What matters" also reads what the
+// project did before a newcomer joined, when it asks for that history, under what the newcomer can read now.
+describe('what matters for a newcomer', () => {
+  test('a newcomer sees the week before they joined as history, and only what they can open', async () => {
+    const [ola, lena] = await Promise.all(['Ola', 'Lena'].map(person));
+    const kitchen = await workspace(ola, 'Kitchen');
+    await addMember(ola, kitchen.id, lena, 'member');
+    const pickup = await createProject(ola, kitchen.id, 'Meal box pickup', 'restricted');
+    const talk = json<Conversation>(await post(ola, `/api/v1/projects/${pickup.id}/conversations`, { body: 'How should people pick up meal boxes?', clientMessageId: randomUUID() }), 201);
+    json<WorkItem>(await post(ola, `/api/v1/projects/${pickup.id}/work`, { title: 'Write the SMS text' }), 201, 'task before Lena joined');
+    // Lena joins after that; the project's earlier events are not in her own rows.
+    await grant(ola, pickup.id, lena, 'contributor');
+    await say(ola, talk.id, 'Welcome, Lena.');
+    const plain = await summary(lena, { type: 'project', id: pickup.id });
+    assert.equal(plain.joinedAt, undefined, 'without history=1 the summary is the reader’s own feed, as before');
+    const recap = json<ReturnSummary>(await lena.browser.request('GET', `/api/v1/return?place=project&id=${pickup.id}&from=7d&history=1`), 200, 'recap');
+    assert.ok(recap.joinedAt, 'the summary says where her own feed starts');
+    const before = recap.items.filter((item) => Date.parse(item.at) < Date.parse(recap.joinedAt!));
+    assert.ok(before.some((item) => item.kind === 'work' && /Write the SMS text/.test(item.text)), 'the task from before she joined is listed');
+    // Someone who cannot read the project gets nothing of it, history or not.
+    const olek = await person('Olek2');
+    await addMember(ola, kitchen.id, olek, 'member');
+    const refused = await olek.browser.request('GET', `/api/v1/return?place=project&id=${pickup.id}&from=7d&history=1`);
+    assert.ok([403, 404].includes(refused.status), 'no access, no history');
   });
 });

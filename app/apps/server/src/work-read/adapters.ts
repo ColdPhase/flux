@@ -1,5 +1,5 @@
 import type { IncomingHttpHeaders } from 'node:http';
-import { githubRows, nativeWorkReadKeys, nativeWorkObjectRows, nativeWorkReferenceRows, nativeWorkThoughtRows, nativeWorkVisibilityRows, nativeWorkSummaryRows, nativeWorkAssociationRows, workRows, type DbExecutor, type NativeReadKeyPage, type NativeWorkDetailObject, accessReader, type Database } from '@flux/db';
+import { githubRows, nativeWorkReadKeys, nativeWorkObjectRows, nativeWorkReferenceRows, nativeWorkThoughtRows, nativeSourceThoughtRows, nativeWorkVisibilityRows, nativeWorkSummaryRows, nativeWorkAssociationRows, workRows, type DbExecutor, type NativeReadKeyPage, type NativeWorkDetailObject, accessReader, type Database } from '@flux/db';
 import {
   accessName, createBoundedWorkReads, DomainError, enforce, evaluateProject, NotFoundError, presentGithubRule, type Principal, type WorkReadAccess, type WorkReadFinalFence,
   type WorkReadRepository, type WorkReadUnitOfWork,
@@ -120,6 +120,7 @@ export function nativeWorkReadRepository(db: DbExecutor): WorkReadRepository {
     associationSources: associations.sourceCounts,
     async associationEdges(projectId, selection, refs, limit, cursor) { return hydrateEdges(projectId, await associations.associationEdgeKeys(projectId, selection, refs, limit, cursor)); },
     associationEdgeTotal: associations.edgeTotal,
+    associationThoughts: (projectId, selection) => nativeSourceThoughtRows(db).forMessages(projectId, selection),
   };
 }
 

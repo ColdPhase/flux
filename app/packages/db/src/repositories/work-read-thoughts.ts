@@ -1,6 +1,7 @@
 import { and, eq, inArray, sql } from 'drizzle-orm';
 import type { NamedPrincipal, PrincipalRef, ThoughtTaskRow, WorkRowProjection } from '@flux/contracts';
 import * as schema from '../schema.js';
+import { openRows } from '../sealing.js';
 import type { DbExecutor } from './push.js';
 import { workRows } from './work.js';
 import { nativeWorkObjectRows } from './work-read-objects.js';
@@ -56,6 +57,28 @@ export function nativeWorkThoughtRows(db: DbExecutor) {
         return { ...(row as WorkRowProjection), createdBy: named({ kind: creator.kind, id: creator.by }) };
       });
       return { visible: thoughts, counts: counts.rows, links: links.rows, linkTotal: counts.rows.reduce((sum, entry) => sum + entry.tasks, 0), items };
+    },
+  };
+}
+
+/**
+ * Thoughts on this project's maps made from selected messages (CW-2): the message's "On the map" chip. At most 100, in
+ * message then thought order; a private or DM sketch never counts, and a thought whose source left the project has none.
+ */
+export function nativeSourceThoughtRows(db: DbExecutor) {
+  return {
+    async forMessages(projectId: string, selection: { messageIds: readonly string[] } | { conversationId: string }) {
+      const t = schema.sketchThoughts, s = schema.sketches, m = schema.projectMessages;
+      const where = 'messageIds' in selection
+        ? selection.messageIds.length ? inArray(t.sourceProjectMessageId, [...selection.messageIds]) : sql`false`
+        : sql`${t.sourceProjectMessageId} IN (SELECT ${m.id} FROM ${m} WHERE ${m.projectId} = ${projectId} AND ${m.conversationId} = ${selection.conversationId})`;
+      const rows = await db.select({ id: t.id, workspaceId: t.workspaceId, text: t.text, sketchId: s.id, sketchTitle: s.title, messageId: t.sourceProjectMessageId })
+        .from(t).innerJoin(s, eq(s.id, t.sketchId))
+        .where(and(eq(s.projectId, projectId), eq(s.scope, 'project'), where))
+        .orderBy(t.sourceProjectMessageId, t.createdAt, t.id).limit(WINDOW);
+      const texts = await openRows(db, 'sketch_thoughts', rows.map((row) => ({ id: row.id, workspaceId: row.workspaceId, text: row.text })));
+      const titles = await openRows(db, 'sketches', rows.map((row) => ({ id: row.sketchId, workspaceId: row.workspaceId, title: row.sketchTitle })));
+      return rows.map((row, index) => ({ messageId: row.messageId!, thoughtId: row.id, sketchId: row.sketchId, text: texts[index]!.text, sketchTitle: titles[index]!.title }));
     },
   };
 }

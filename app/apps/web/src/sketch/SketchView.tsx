@@ -15,7 +15,7 @@ import { DraftSaveNotSentError, useSketchDoc, type Op } from './doc';
 import { useLiveSketchDoc, type LiveSketchDoc } from './live-doc';
 import { useEditingCapability } from '../editing/capability';
 import { audience, quote, sketchHref, when } from './format';
-import { freeSpot, rectOf } from './geometry';
+import { freeSpot, freeSpotNear, rectOf, type Rect } from './geometry';
 import { SketchList } from './SketchList';
 import { SketchMap } from './SketchMap';
 import { ConnectionLabels, type ConnectionTarget } from './ConnectionLabels';
@@ -114,7 +114,7 @@ function SketchEditor({ sketchId, projectId, dmId, back = '/map', doc }: ViewPro
   const { me, directMessages } = useShellData();
   const location = useLocation();
   const navigate = useNavigate();
-  const routeState = location.state as { started?: number; addThoughtFromMessage?: { messageId: string; projectId: string; body: string } } | null;
+  const routeState = location.state as { started?: number; addThoughtFromMessage?: { messageId?: string; projectId: string; body: string } } | null;
   const started = routeState?.started;
   const { sketch } = doc;
   const personalOutline = useOutline(me.user.id, sketch);
@@ -340,21 +340,53 @@ function SketchEditor({ sketchId, projectId, dmId, back = '/map', doc }: ViewPro
     });
   };
 
+  /**
+   * Where a thought from a message lands (CW-12): in free space inside the part of the map in view, clear of the
+   * breadcrumb and the dock, measured from the drawn thoughts. With nothing drawn yet, or on the phone's columns, the
+   * first free place, and the map shows it.
+   */
+  const arrivalSpot = () => {
+    const size = { w: DEFAULT_THOUGHT_SIZE.width, h: DEFAULT_THOUGHT_SIZE.height + 60 };
+    const canvas = rootRef.current?.querySelector<HTMLElement>('.sk-canvas');
+    const nodes = [...(rootRef.current?.querySelectorAll<HTMLElement>('.sk-node[data-id]') ?? [])];
+    const byId = new Map((sketch?.thoughts ?? []).map((t) => [t.id, t]));
+    const drawn = nodes.flatMap((node) => { const t = byId.get(node.dataset.id!); return t ? [{ t, box: node.getBoundingClientRect() }] : []; });
+    if (!phone && canvas && drawn.length) {
+      const { t, box } = drawn[0]!;
+      const zoom = box.width / t.width || 1;
+      const view = canvas.getBoundingClientRect();
+      const plane = (px: number, py: number) => ({ x: t.x + (px - box.left) / zoom, y: t.y + (py - box.top) / zoom });
+      // The top 72 px hold the breadcrumb and view switch, the bottom 96 px the dock.
+      const topLeft = plane(view.left + 24, view.top + 72), bottomRight = plane(view.right - 24, view.bottom - 96);
+      const bounds: Rect = { x: topLeft.x, y: topLeft.y, w: bottomRight.x - topLeft.x, h: bottomRight.y - topLeft.y };
+      const rects = drawn.map(({ t: thought, box: drawnBox }) => ({ x: thought.x, y: thought.y, w: thought.width, h: Math.max(rectOf(thought, heights).h, drawnBox.height / zoom) }));
+      const spot = freeSpotNear(rects, plane(view.left + view.width / 2, view.top + view.height / 2), size, bounds)
+        ?? freeSpotNear(rects, plane(view.left + view.width / 2, view.top + view.height / 2), size);
+      if (spot) return spot;
+    }
+    // Nothing measurable yet: under everything on the map, at its left edge, which is always free.
+    const all = (sketch?.thoughts ?? []).map((t) => rectOf(t, heights));
+    if (!phone && all.length) return { x: Math.min(...all.map((r) => r.x)), y: Math.max(...all.map((r) => r.y + r.h)) + 48 };
+    return spots(null, 1, size)[0]!;
+  };
+
   useEffect(() => {
     const source = routeState?.addThoughtFromMessage;
     if (!source || !sketch || handledSource.current === location.key) return;
     handledSource.current = location.key;
     if (sketch.scope !== 'project' || sketch.projectId !== source.projectId || source.projectId !== projectId
-      || !/^[0-9a-f-]{36}$/i.test(source.messageId) || typeof source.body !== 'string') return;
+      || (source.messageId !== undefined && !/^[0-9a-f-]{36}$/i.test(source.messageId)) || typeof source.body !== 'string') return;
     if (capture.draft) {
       rootRef.current?.querySelector<HTMLElement>('.sk-draft textarea, .sk-draft input')?.focus();
       navigate(location.pathname, { replace: true, state: null });
       return;
     }
-    const spot = spots(null, 1, { w: DEFAULT_THOUGHT_SIZE.width, h: DEFAULT_THOUGHT_SIZE.height })[0]!;
+    const spot = arrivalSpot();
     capture.set({ id: doc.newId(), linkId: doc.newId(), key: doc.newId(), parentId: null,
-      text: source.body.slice(0, SKETCH_LIMITS.text).trim(), x: spot.x, y: spot.y, tracked: true, sourceProjectMessageId: source.messageId });
+      text: source.body.slice(0, SKETCH_LIMITS.text).trim(), x: spot.x, y: spot.y, tracked: true, ...(source.messageId ? { sourceProjectMessageId: source.messageId } : {}) });
     navigate(location.pathname, { replace: true, state: null });
+    // The map's camera may still settle after it opens: the new thought is brought to the middle of the view (CW-12).
+    requestAnimationFrame(() => requestAnimationFrame(() => rootRef.current?.querySelector('.sk-ghost--draft')?.scrollIntoView({ block: 'center', inline: 'center' })));
   // This consumes one route-state command after the destination sketch loads.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [location.key, location.pathname, routeState?.addThoughtFromMessage, sketch, projectId]);
@@ -597,7 +629,7 @@ function SketchEditor({ sketchId, projectId, dmId, back = '/map', doc }: ViewPro
     setSelection([]);
     setConnectFrom(null);
     const placed = thoughts.some((t) => t.placement);
-    say(`Removed ${thoughts.length === 1 ? quote(thoughts[0]!.text) : `${thoughts.length} thoughts`} from the sketch${placed ? '; the draft itself is kept' : ''}`, true);
+    say(`Removed ${thoughts.length === 1 ? quote(thoughts[0]!.text) : `${thoughts.length} thoughts`} from the map${placed ? '; the draft itself is kept' : ''}`, true);
     focusThought('.sk-node:not([aria-pressed="true"]), .sk-li-t, .sk-canvas');
   };
 
@@ -715,7 +747,7 @@ function SketchEditor({ sketchId, projectId, dmId, back = '/map', doc }: ViewPro
   const head = (
         <div className="sk-head">
           <p className="sk-lead">
-            <Link to={back} className="sk-back">Sketches</Link>
+            <Link to={back} className="sk-back">Maps</Link>
             <span aria-hidden="true" className="sk-sep">·</span>
             {renaming && canWrite ? (
               <TitleEditor sketch={sketch} onDone={(title) => {
@@ -723,7 +755,7 @@ function SketchEditor({ sketchId, projectId, dmId, back = '/map', doc }: ViewPro
                 if (title && title !== sketch.title) { doc.perform([{ kind: 'rename', title }], 'renamed the sketch'); say(`Renamed to ${quote(title)}`, true); }
               }} />
             ) : (
-              <button type="button" className="sk-title" disabled={!canWrite} aria-label={canWrite ? `Rename sketch ${sketch.title}` : undefined} onClick={() => setRenaming(true)}>{sketch.title}</button>
+              <button type="button" className="sk-title" disabled={!canWrite} aria-label={canWrite ? `Rename map ${sketch.title}` : undefined} onClick={() => setRenaming(true)}>{sketch.title}</button>
             )}
             <span className="sk-aud" title="Who can see this map"><Icon name={sketch.scope === 'project' ? 'people' : 'lock'} size={12} />{audience(sketch, me.user.id, projectName, dmAudience)}</span>
           </p>
@@ -917,7 +949,7 @@ function SketchEditor({ sketchId, projectId, dmId, back = '/map', doc }: ViewPro
             {/* #510 AC-4: Edit, + Child and Create task are the selected row's own actions on the phone too. */}
             <div className="sk-tools" role="toolbar" aria-label="Sketch tools">
             <button type="button" className="ui-btn ui-btn--quiet sk-add" onClick={() => add(selection[selection.length - 1] ?? null)}><Icon name="plus" size={14} />Thought</button>
-            <button type="button" className="ui-btn ui-btn--quiet" aria-disabled={!selection.length} onClick={() => remove(selection)} aria-label="Remove from sketch"><Icon name="trash" size={14} /><span className="sk-bl">Remove</span></button>
+            <button type="button" className="ui-btn ui-btn--quiet" aria-disabled={!selection.length} onClick={() => remove(selection)} aria-label="Remove from map"><Icon name="trash" size={14} /><span className="sk-bl">Remove</span></button>
             <span className="sk-div" aria-hidden="true" />
             <button type="button" className="ui-btn ui-btn--quiet" aria-disabled={!doc.canUndo} onClick={undo} aria-label="Undo"><Icon name="undo" size={14} /><span className="sk-bl">Undo</span></button>
             </div>

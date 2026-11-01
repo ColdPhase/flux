@@ -190,7 +190,7 @@ class SpokojHomeSearch(unittest.TestCase):
         # A map thought shows the sketch it is in.
         page.goto("/search?q=radio")
         thought = page.get_by_role("region", name="Results").locator(".sr").filter(has_text="Radio range along the hedge")
-        expect(thought.locator(".sr__meta")).to_contain_text("Thought in “Bed layout”")
+        expect(thought.locator(".sr__meta")).to_contain_text("Thought on the map “Bed layout”")
 
     def test_07_on_the_phone_search_is_the_one_search_and_fits(self) -> None:
         # The phone has one search (#763 SE-2): /search is the round Search sheet's body, with its scope chips.

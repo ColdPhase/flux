@@ -302,7 +302,7 @@ class MapPasteJourney(unittest.TestCase):
         shot(page, "map-paste-image-map-desktop")
         # Remove and Undo restore the same thought with the same image.
         node.click()
-        page.get_by_role("toolbar", name="Selection actions").get_by_role("button", name="Remove from sketch").click()
+        page.get_by_role("toolbar", name="Selection actions").get_by_role("button", name="Remove from map").click()
         self.wait_stored(self.owner, lambda current: len(current["thoughts"]) == 1)
         page.get_by_role("toolbar", name="Sketch tools").get_by_role("button", name="Undo", exact=True).click()
         restored = self.wait_stored(self.owner, lambda current: len(current["thoughts"]) == 2)
@@ -339,7 +339,7 @@ class MapPasteJourney(unittest.TestCase):
         # Stored files belong to a project: a private map refuses an image but still takes text.
         private = self.api(page, "POST", f"/api/v1/workspaces/{self.workspace}/sketches", {"title": "Jonas's notes", "scope": "private"}, 201)["id"]
         page.goto(f"/map/{private}")
-        expect(page.get_by_role('button', name="Rename sketch Jonas's notes", exact=True)).to_be_visible()
+        expect(page.get_by_role('button', name="Rename map Jonas's notes", exact=True)).to_be_visible()
         self.paste(page, None, self.image())
         expect(page.locator(".sk-status")).to_contain_text("Images can be added to a project’s maps only")
         self.assertEqual(writes, [])

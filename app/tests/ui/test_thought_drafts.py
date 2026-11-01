@@ -193,7 +193,7 @@ class ThoughtDraftJourney(unittest.TestCase):
         expect(page).to_have_url(re.compile(rf"/projects/{self.project}/map$"))
         page.locator(f'.sk-index a[href="/projects/{self.project}/map/{self.sketch}"]').click()
         expect(page).to_have_url(re.compile(rf"/projects/{self.project}/map/{self.sketch}$"))
-        expect(page.get_by_role("group", name=re.compile("^Sketch: ")).or_(page.locator(".sk-outline-list"))).to_be_visible()
+        expect(page.get_by_role("group", name=re.compile("^Map: ")).or_(page.locator(".sk-outline-list"))).to_be_visible()
 
     def test_01_cancel_empty_blur_and_composition_never_write(self):
         page = self.owner
@@ -545,7 +545,7 @@ class ThoughtDraftJourney(unittest.TestCase):
         page.wait_for_url(re.compile(rf"/projects/{self.project}/map(/{self.sketch})?$"))
         if not page.url.endswith(f"/map/{self.sketch}"):
             page.locator(f'.sk-index a[href="/projects/{self.project}/map/{self.sketch}"]').click()
-        expect(page.get_by_role("group", name=re.compile("^Sketch: ")).or_(page.locator(".sk-outline-list"))).to_be_visible()
+        expect(page.get_by_role("group", name=re.compile("^Map: ")).or_(page.locator(".sk-outline-list"))).to_be_visible()
         self.assertTrue(page.evaluate("window.sameVisit === true"), "no reload: only sign-out can have cleared the in-memory copy")
         expect(page.get_by_role("form", name="New thought draft")).to_have_count(0)
         self.assertEqual(self.stored_drafts(page), [])
@@ -659,7 +659,7 @@ class ThoughtDraftJourney(unittest.TestCase):
         page.wait_for_url(re.compile(rf"/projects/{self.project}/map(/{self.sketch})?$"))
         if not page.url.endswith(f"/map/{self.sketch}"):
             page.locator(f'.sk-index a[href="/projects/{self.project}/map/{self.sketch}"]').click()
-        expect(page.get_by_role("group", name=re.compile("^Sketch: ")).or_(page.locator(".sk-outline-list"))).to_be_visible()
+        expect(page.get_by_role("group", name=re.compile("^Map: ")).or_(page.locator(".sk-outline-list"))).to_be_visible()
 
     def round_trip_through_every_view(self, page, *, touch=False):
         """Map → Conversation → Agents → Tasks → Wiki → Map inside one page visit, as a person switches tabs."""
@@ -745,7 +745,7 @@ class ThoughtDraftJourney(unittest.TestCase):
         self.round_trip_through_every_view(page)
         expect(page.get_by_role("form", name="New thought draft")).to_have_count(0)
         page.reload()
-        expect(page.get_by_role("group", name=re.compile("^Sketch: ")).or_(page.locator(".sk-outline-list"))).to_be_visible()
+        expect(page.get_by_role("group", name=re.compile("^Map: ")).or_(page.locator(".sk-outline-list"))).to_be_visible()
         expect(page.get_by_role("form", name="New thought draft")).to_have_count(0)
         self.assertEqual((self.stored(page), self.project_work(page)), (before, work))
         self.assertEqual(writes, [], "a discarded draft never reaches the server")

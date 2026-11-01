@@ -131,14 +131,14 @@ export function WorkspaceDocs() {
   return (
     <div className="pane-scroll">
       <div className="pane-in doc-list" data-shift>
-        {failed ? <p className="doc-notice" role="alert"><Icon name="alert" size={14} />Docs could not be loaded. Check the connection and try again.</p> : null}
+        {failed ? <p className="doc-notice" role="alert"><Icon name="alert" size={14} />Wiki pages could not be loaded. Check the connection and try again.</p> : null}
         {docs === null && !failed ? <p className="doc-muted" aria-busy="true">Loading docs…</p> : null}
         {docs && !docs.length ? (
           <div className="view-empty"><EmptyState icon="doc" title="No docs yet">
             <p>Notes worth keeping, what you learned from an experiment, and how things work, written with the people in your projects, will collect here.</p>
           </EmptyState></div>
         ) : null}
-        {docs?.length ? <section className="doc-group" aria-labelledby="docs-all"><h2 className="doc-group__h" id="docs-all">Docs in your projects <span>{docs.length}</span></h2><ul className="doc-ul">{docs.map((doc) => <DocRow key={doc.id} doc={doc} showProject />)}</ul></section> : null}
+        {docs?.length ? <section className="doc-group" aria-labelledby="docs-all"><h2 className="doc-group__h" id="docs-all">Wiki pages in your projects <span>{docs.length}</span></h2><ul className="doc-ul">{docs.map((doc) => <DocRow key={doc.id} doc={doc} showProject />)}</ul></section> : null}
       </div>
     </div>
   );

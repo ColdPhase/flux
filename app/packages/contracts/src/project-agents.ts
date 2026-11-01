@@ -22,6 +22,13 @@ export const projectAgentsPath = (projectId: string) => `/api/v1/projects/${proj
  */
 export type ProjectAgentConnectionState = 'not_signed_in' | 'offline' | 'session_open' | 'unavailable';
 
+/** One action of an agent in a project (CW-8) and the object it touched; the reader's app names and links the object. */
+export interface ProjectAgentActivity {
+  operation: AgentOperation;
+  at: string;
+  object: { kind: 'work' | 'decision' | 'result' | 'doc' | 'map' | 'thought' | 'message'; id: string } | null;
+}
+
 export interface ProjectAgentConnection {
   id: string;
   /** Owner-chosen name, e.g. "Research laptop". */
@@ -41,6 +48,8 @@ export interface ProjectAgentConnection {
   session: { startedAt: string; expiresAt: string } | null;
   /** The connection's latest completed action in this project; lease renewals (heartbeats) are not activity. */
   lastActivity: { operation: AgentOperation; at: string } | null;
+  /** CW-8: its latest actions here (at most 6, newest first), each with the object it made or changed when there is one. */
+  recentActivity?: ProjectAgentActivity[];
   /** The task unit this connection holds in this project now; null when it holds none. */
   currentWork: { taskId: string; taskTitle: string; role: 'execute' | 'review' | 'plan'; state: 'pending' | 'claimed' | 'paused';
     /** Expiry only when the claimed lease matches this connection's current usable session and project ceiling. */

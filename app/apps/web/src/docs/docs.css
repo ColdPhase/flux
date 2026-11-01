@@ -217,6 +217,8 @@
 .doc-decision__meta { font-size: var(--fs-xs); color: var(--t3); white-space: nowrap; }
 /* F-034: the decision's short reason under its line, in the title's column, quieter than the title. */
 .doc-decision__reason { grid-column: 2 / -1; margin-top: -6px; font-size: var(--fs-sm); line-height: 1.45; color: var(--t3); overflow-wrap: anywhere; }
+/* CW-16: where the decision came from, under its reason. */
+.doc-decision__from { grid-column: 2 / -1; margin-top: -6px; white-space: normal; overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 1; -webkit-box-orient: vertical; }
 .doc-ref--missing { color: var(--t3); text-decoration: none; }
 .doc-ref--missing::after { content: " (not available)"; font-size: var(--fs-xs); }
 
@@ -410,7 +412,7 @@
   .doc-decision__t { display: flex; flex-direction: column; gap: 1px; white-space: normal; }
   .doc-decision__t b { font-weight: 600; }
   .doc-decision__title { font-size: var(--fs-sm); color: var(--t2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .doc-decision__sep, .doc-decision__meta { display: none; }
+  .doc-decision__sep, .doc-decision__meta:not(.doc-decision__from) { display: none; }
   .doc-edit__text { min-height: 300px; }
   .doc-edit__preview { min-height: 200px; }
   .doc-edit__acts { width: 100%; margin-left: 0; }

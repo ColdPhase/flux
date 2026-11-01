@@ -172,7 +172,7 @@ class DecisionTrace(unittest.TestCase):
         j_panel = self.details(jonas, phone)
         expect(j_panel.get_by_role("heading", name=title)).to_be_visible()
         j_panel.get_by_role("button", name="Accept", exact=True).click()
-        expect(j_panel.locator(".wd-eyebrow")).to_contain_text("Current rule")
+        expect(j_panel.locator(".wd-eyebrow")).to_contain_text("Decision · accepted")
         self.back_to_thread(jonas, phone)
 
         # The card says where it stands now, and Jonas's acceptance is a line of its own right under it: one card, not

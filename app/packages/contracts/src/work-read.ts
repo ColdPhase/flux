@@ -159,6 +159,8 @@ export interface ProjectWorkSummary {
   unfinishedTotal: number;
   state: {
     rule: WorkReadRef | null;
+    /** The project's current (accepted) decisions, newest first, at most 5 (CW-15); `rule` is the first. */
+    rules?: WorkReadRef[];
     proposal: WorkReadRef | null;
     active: { count: number; first: WorkReadRef | null; owners: NamedPrincipal[]; ownerTotal: number };
     blocked: { count: number; first: WorkReadRef | null };
@@ -200,8 +202,13 @@ export interface SourceAssociationCounts {
   edges: number;
 }
 
+/** A thought on one of the project's maps made from a selected message (CW-2): the message's "On the map" chip. */
+export interface SourceThought { messageId: string; thoughtId: string; sketchId: string; sketchTitle: string; text: string }
+
 export interface WorkAssociations extends WorkPage<NativeWorkRow> {
   observedAt: string;
+  /** Thoughts made from the selected messages, at most 100 (CW-2). */
+  thoughts?: SourceThought[];
   /** Exact scoped totals per selected message (or per returned conversation message window). */
   sources: SourceAssociationCounts[];
   sourceTotal: number;

@@ -43,7 +43,7 @@ export function verdictWords(verdict: Pick<TaskCoordinationVerdict, 'verdict' | 
 export function targetWords(card: Pick<TaskCoordinationRequest, 'target' | 'targetTitle' | 'targetAvailable'>): string {
   const ref: CoWorkSourceRef = card.target;
   if (ref.type === 'github_pr') return `Pull request at ${ref.headSha.slice(0, 7)}`;
-  const kind = { work: 'Task', material: 'Material', doc: 'Doc', result: 'Result', message: 'Message', thought: 'Thought' }[ref.type];
+  const kind = { work: 'Task', material: 'Material', doc: 'Wiki page', result: 'Result', message: 'Message', thought: 'Thought' }[ref.type];
   const version = 'version' in ref ? ` · version ${ref.version}` : '';
   if (!card.targetAvailable || !card.targetTitle) return `${kind}${version} (changed since)`;
   return `${ref.type === 'work' ? '' : `${kind} `}${ref.type === 'message' ? `“${card.targetTitle}”` : card.targetTitle}${ref.type === 'work' ? version : ''}`.trim();

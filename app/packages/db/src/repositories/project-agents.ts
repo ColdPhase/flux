@@ -1,5 +1,5 @@
 import { and, asc, desc, eq, gt, inArray, isNull, ne, or, sql } from 'drizzle-orm';
-import type { AgentOperation, ProjectAgentConnection, ProjectAgentRequest, ProjectAgents } from '@flux/contracts';
+import type { AgentOperation, AgentPostcondition, ProjectAgentActivity, ProjectAgentConnection, ProjectAgentRequest, ProjectAgents } from '@flux/contracts';
 import * as schema from '../schema.js';
 import { assistantJoinView } from './assistant-joins.js';
 import type { createDatabase } from '../index.js';
@@ -19,6 +19,9 @@ export interface ProjectAgentPolicy {
 
 /** Lease renewals are heartbeats: never shown as activity (#136 AC-1). */
 const QUIET_OPERATIONS: AgentOperation[] = ['cowork.renew'];
+/** How many of a connection's latest actions its Details lists (CW-8). */
+const RECENT_ACTIVITY = 6;
+const ACTIVITY_OBJECTS = new Set<string>(['work', 'decision', 'result', 'doc', 'map', 'thought', 'message']);
 
 /**
  * Agents view projection (UI116-2, #136): current connections selected for one project, with a
@@ -133,6 +136,21 @@ export function projectAgentRepository(db: Database, policy: ProjectAgentPolicy)
             ...QUIET_OPERATIONS.map((operation) => ne(schema.agentCommandReceipts.operation, operation))))
           .orderBy(schema.agentCommandReceipts.connectionId, desc(schema.agentCommandReceipts.completedAt))) activity.set(row.connectionId, row);
 
+        // CW-8: the last few actions per connection here, each with the object it produced or changed (from its postconditions).
+        const recent = new Map<string, ProjectAgentActivity[]>();
+        const recentRows = await tx.execute<{ connection_id: string; operation: AgentOperation; completed_at: Date | string; postconditions: AgentPostcondition[] }>(sql`
+          SELECT connection_id, operation, completed_at, postconditions FROM (
+            SELECT connection_id, operation, completed_at, postconditions, row_number() OVER (PARTITION BY connection_id ORDER BY completed_at DESC) AS n
+            FROM agent_command_receipts WHERE project_id = ${projectId}::uuid AND connection_id IN (${sql.join(ids.map((id) => sql`${id}::uuid`), sql`, `)})
+              AND operation NOT IN (${sql.join(QUIET_OPERATIONS.map((operation) => sql`${operation}`), sql`, `)})) r
+          WHERE n <= ${RECENT_ACTIVITY} ORDER BY connection_id, completed_at DESC`);
+        for (const row of recentRows.rows) {
+          const target = (row.postconditions ?? []).find((item) => ACTIVITY_OBJECTS.has(item.kind) && 'id' in item && typeof item.id === 'string') as { kind: NonNullable<ProjectAgentActivity['object']>['kind']; id: string } | undefined;
+          const list = recent.get(row.connection_id) ?? [];
+          list.push({ operation: row.operation, at: new Date(row.completed_at).toISOString(), object: target ? { kind: target.kind, id: target.id } : null });
+          recent.set(row.connection_id, list);
+        }
+
         // Work the connection holds here: one unit per (task, role) lives on its assignee, so a connection's units are its work.
         const units = await tx.select({ connectionId: schema.coworkUnits.assignmentConnectionId, taskId: schema.coworkUnits.taskId,
           taskTitle: schema.projectWorkItems.title, role: schema.coworkUnits.role, state: schema.coworkUnits.state,
@@ -193,6 +211,7 @@ export function projectAgentRepository(db: Database, policy: ProjectAgentPolicy)
             state: !usable.has(connection.id) ? 'unavailable' : session ? 'session_open' : authorized.has(connection.id) ? 'offline' : 'not_signed_in',
             session: session ? { startedAt: session.startedAt.toISOString(), expiresAt: session.expiresAt.toISOString() } : null,
             lastActivity: last ? { operation: last.operation, at: last.at.toISOString() } : null,
+            recentActivity: recent.get(connection.id) ?? [],
             currentWork: work.get(connection.id) ?? null,
             requests: requests.get(connection.id) ?? [],
           };

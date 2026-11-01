@@ -177,7 +177,7 @@ class SearchJourney(unittest.TestCase):
         expect(page).to_have_url(re.compile(rf"/materials/{self.ids['material']}/versions/1$"))
         # A rule opens in Details on its project.
         dialog, field = self.jump(page, "use the infrared")
-        expect(dialog.locator("[role=option].sr").first).to_contain_text("Decision · current rule")
+        expect(dialog.locator("[role=option].sr").first).to_contain_text("Decision · accepted")
         field.press("ArrowDown")
         field.press("ArrowUp")
         self.assertEqual(dialog.get_by_role("option").first.get_attribute("aria-selected"), "true")
@@ -186,7 +186,7 @@ class SearchJourney(unittest.TestCase):
         expect(page.get_by_role("complementary", name="Details").or_(page.get_by_role("dialog", name="Details"))).to_contain_text("Use the infrared sensor at night")
         # A thought opens its sketch with the thought selected; Esc closes Jump to without moving.
         dialog, field = self.jump(page, "walnut")
-        expect(dialog.locator("[role=option].sr").first).to_contain_text("Thought in “Sensing options”")
+        expect(dialog.locator("[role=option].sr").first).to_contain_text("Thought on the map “Sensing options”")
         dialog.locator("[role=option].sr").first.click()
         expect(page).to_have_url(re.compile(rf"/map/{self.ids['sketch']}#thought-{self.ids['thought']}$"))
         expect(page.locator(f'[data-id="{self.ids["thought"]}"][aria-pressed="true"]').first).to_be_visible()
@@ -207,7 +207,7 @@ class SearchJourney(unittest.TestCase):
         expect(page.locator(".dm-msg.is-arrived")).to_contain_text("spare sensor")
         dialog, field = self.jump(page, "brass collar")
         first = dialog.locator("[role=option].sr").first
-        expect(first).to_contain_text("Doc · published")
+        expect(first).to_contain_text("Wiki page · published")
         dialog.locator("[role=option].sr").first.click()
         expect(page).to_have_url(re.compile(rf"/projects/{self.ids['lamp']}/docs/{self.ids['doc']}(/versions/1)?$"))
         expect(page.get_by_role("heading", name="Lamp wiring guide").first).to_be_visible()

@@ -96,7 +96,7 @@ class DocReferenceJourney(unittest.TestCase):
         text.press("Control+End")
         text.press("Control+k")
         picker = page.get_by_role("dialog", name="Link to something in this project")
-        expect(picker.get_by_role("combobox", name="Find a doc, decision, result, work, sketch or message", exact=True)).to_be_visible()
+        expect(picker.get_by_role("combobox", name="Find a Wiki page, decision, result, task, map or message", exact=True)).to_be_visible()
         return picker
 
     def test_01_all_native_pages_remain_reachable_and_search_finds_off_page_identity(self):
@@ -104,7 +104,7 @@ class DocReferenceJourney(unittest.TestCase):
             with self.subTest(phone=phone):
                 page, text = self.scene(phone)
                 picker = self.picker(page, text)
-                query = picker.get_by_role("combobox", name="Find a doc, decision, result, work, sketch or message", exact=True)
+                query = picker.get_by_role("combobox", name="Find a Wiki page, decision, result, task, map or message", exact=True)
                 for kind in ("work", "decision", "result"):
                     choose(picker.get_by_label("Reference type"), kind)
                     query.fill("")
@@ -149,7 +149,7 @@ class DocReferenceJourney(unittest.TestCase):
             for kind, item in expected:
                 picker = self.picker(page, text)
                 choose(picker.get_by_label("Reference type"), kind)
-                query = picker.get_by_role("combobox", name="Find a doc, decision, result, work, sketch or message", exact=True)
+                query = picker.get_by_role("combobox", name="Find a Wiki page, decision, result, task, map or message", exact=True)
                 query.fill(item["title"])
                 expect(picker.get_by_role("listbox", name="Matches").get_by_role("option")).to_have_count(1)
                 if phone: picker.get_by_role("listbox", name="Matches").get_by_role("option").tap()
@@ -166,7 +166,7 @@ class DocReferenceJourney(unittest.TestCase):
         page, text = self.scene(self_doc=True)
         picker = self.picker(page, text)
         choose(picker.get_by_label("Reference type"), "doc")
-        picker.get_by_role("combobox", name="Find a doc, decision, result, work, sketch or message", exact=True).fill(self.self_doc["title"])
+        picker.get_by_role("combobox", name="Find a Wiki page, decision, result, task, map or message", exact=True).fill(self.self_doc["title"])
         expect(picker.get_by_role("listbox", name="Matches").get_by_role("option")).to_have_count(0)
 
     def test_03_required_failure_retries_without_publishing_partial_matches_or_erasing_editor(self):
@@ -184,7 +184,7 @@ class DocReferenceJourney(unittest.TestCase):
                 picker = self.picker(page, text)
                 expect(picker.get_by_role("alert")).to_contain_text("Could not load")
                 expect(picker.get_by_role("listbox", name="Matches").get_by_role("option")).to_have_count(0)
-                query = picker.get_by_role("combobox", name="Find a doc, decision, result, work, sketch or message", exact=True)
+                query = picker.get_by_role("combobox", name="Find a Wiki page, decision, result, task, map or message", exact=True)
                 query.fill("Native work reference 000")
                 expect(picker.get_by_role("alert")).to_be_visible()
                 fault["on"] = False
@@ -261,7 +261,7 @@ class DocReferenceJourney(unittest.TestCase):
                     else: route.continue_()
                 page.route("**/work-view?**", hold_old_account)
                 self.addCleanup(lambda page=page: page.unroute_all(behavior="ignoreErrors"))
-                picker.get_by_role("combobox", name="Find a doc, decision, result, work, sketch or message", exact=True).fill(self.native["work"][1]["title"])
+                picker.get_by_role("combobox", name="Find a Wiki page, decision, result, task, map or message", exact=True).fill(self.native["work"][1]["title"])
                 page.wait_for_function("window.oldReferenceHeld === true")
                 page.context.clear_cookies(); page.context.add_cookies(self.other_state["cookies"])
                 self.navigate_editor(page, self.project)
@@ -273,7 +273,7 @@ class DocReferenceJourney(unittest.TestCase):
                 text.fill("PRIVATE-DRAFT belonging only to Jonas")
                 picker = self.picker(page, text)
                 choose(picker.get_by_label("Reference type"), "work")
-                query = picker.get_by_role("combobox", name="Find a doc, decision, result, work, sketch or message", exact=True)
+                query = picker.get_by_role("combobox", name="Find a Wiki page, decision, result, task, map or message", exact=True)
                 query.fill(self.native["work"][0]["title"])
                 expect(picker.get_by_role("listbox", name="Matches").get_by_role("option")).to_have_count(1)
                 route, response = held.pop(); route.fulfill(response=response)
@@ -295,7 +295,7 @@ class DocReferenceJourney(unittest.TestCase):
                 page, text = self.scene(phone)
                 picker = self.picker(page, text)
                 choose(picker.get_by_label("Reference type"), "work")
-                query = picker.get_by_role("combobox", name="Find a doc, decision, result, work, sketch or message", exact=True)
+                query = picker.get_by_role("combobox", name="Find a Wiki page, decision, result, task, map or message", exact=True)
                 held = []
                 def hold(route):
                     q = parse_qs(urlsplit(route.request.url).query)
@@ -446,7 +446,7 @@ class DocReferenceJourney(unittest.TestCase):
                         route.continue_()
                 page.route(f"**/api/v1/projects/{self.project}/work-view?**", hold)
                 self.addCleanup(lambda page=page: page.unroute_all(behavior="ignoreErrors"))
-                query = picker.get_by_role("combobox", name="Find a doc, decision, result, work, sketch or message", exact=True)
+                query = picker.get_by_role("combobox", name="Find a Wiki page, decision, result, task, map or message", exact=True)
                 query.fill(target["title"])
                 waiting = picker.locator("p.doc-muted.doc-picker__empty[aria-busy='true']")
                 expect(waiting).to_have_text("Finding project objects…")

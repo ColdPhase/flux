@@ -706,6 +706,28 @@ function AppLayoutContent() {
   // title as the view menu with the view and who is here beneath it. The dock owns Search whenever
   // it is present; a conversation keeps header Search because it hides the dock.
   const goBack = (fallback: string) => { if (location.key !== 'default') void navigate(-1); else void navigate(fallback); };
+  // CW-11: Back follows the way the person came (#341 AC-4), one place at a time: entries that only opened or changed a
+  // sheet on the same page (`?open=…`, a #message) are stepped over together, so Back never walks through old sheets.
+  const steps = useRef<{ key: string; path: string }[]>([]);
+  useEffect(() => {
+    const entry = { key: location.key, path: location.pathname };
+    const at = steps.current.findIndex((item) => item.key === location.key);
+    if (at >= 0) steps.current = steps.current.slice(0, at + 1);
+    else if (navigationType === 'REPLACE' && steps.current.length) steps.current = [...steps.current.slice(0, -1), entry];
+    // A step back or forward to an entry this tab never recorded: start again from here.
+    else if (navigationType === 'POP') steps.current = [entry];
+    else steps.current = [...steps.current, entry].slice(-50);
+  }, [location.key, location.pathname, navigationType]);
+  const goBackAPlace = (fallback: string) => {
+    const entries = steps.current;
+    const here = entries.length - 1;
+    let to = here - 1;
+    while (to >= 0 && entries[to]!.path === location.pathname) to--;
+    // Land on that page as it first opened, not on a sheet it showed later.
+    while (to > 0 && entries[to - 1]!.path === entries[to]!.path) to--;
+    if (to >= 0 && location.key !== 'default') void navigate(to - here);
+    else goBack(fallback);
+  };
   // An opened reference leads back to where it was followed from, in the place of the generic back (#592).
   const phoneBack = (fallback: string) => routeOrigin ? <RouteOriginBack origin={routeOrigin} className="origin-back--phone" /> : <PhoneBack onBack={() => goBack(fallback)} />;
   const searchButton = <IconButton icon="search" label="Search" size={20} className="phead__round" onClick={shell.openSearch} />;
@@ -735,7 +757,7 @@ function AppLayoutContent() {
         <>{phoneBack(settingsPage ? settingsParent : homePage ? '/' : '/projects')}
           <div className="phead__id"><div className="phead__title"><h1>{location.pathname === '/projects/new' ? 'New project' : place.title}</h1></div></div></>
       ) : activeProject && projectViews ? (
-        <>{phoneBack('/projects')}
+        <>{routeOrigin ? phoneBack('/projects') : <PhoneBack onBack={() => goBackAPlace('/projects')} />}
           <PhoneTitleMenu title={place.title} items={projectMenu} onDetails={detailsEntry}
             goal={project?.project.goal && !project.project.goal.reachedAt ? project.project.goal.title : undefined}
             metadataSlot={onWiki || onAgents ? setMetadataSlot : undefined}

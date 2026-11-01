@@ -47,7 +47,7 @@ export function messageOf(author: string, actor?: { name: string; mine: boolean 
 export function sourcePhrase(source: NoticeSource, actor?: { name: string; mine: boolean }): { lead: string; link?: string } {
   switch (source.kind) {
     case 'message': return source.author ? { lead: 'made a task from', link: messageOf(source.author, actor) } : { lead: 'made a task from', link: 'a message' };
-    case 'map': return { lead: 'added a task on the Map' };
+    case 'map': return { lead: 'made a task from the map' };
     case 'material': return { lead: 'made a task from a source' };
     default: return { lead: 'added a task' };
   }
@@ -66,7 +66,7 @@ export function foldSummary(notices: TaskCreationNotice[], authorOf: (messageId:
       continue;
     }
     const source = noticeSource(notice, authorOf);
-    const where = source.kind === 'map' ? ' on the Map' : source.kind === 'none' ? '' : source.kind === 'message' ? ' from messages' : source.kind === 'material' ? ' from a source' : '';
+    const where = source.kind === 'map' ? ' from the map' : source.kind === 'none' ? '' : source.kind === 'message' ? ' from messages' : source.kind === 'material' ? ' from a source' : '';
     const name = nameOf(notice);
     const key = `${notice.createdBy.kind}:${notice.createdBy.id}:${where}`;
     const group = groups.get(key) ?? { name, count: 0, where };

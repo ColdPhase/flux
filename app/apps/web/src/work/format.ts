@@ -31,9 +31,9 @@ export function workPieces(item: Pick<WorkItem, 'status' | 'owner' | 'parked' | 
 }
 
 export function decisionPieces(decision: Pick<Decision, 'status' | 'supersedes' | 'decidedAt' | 'supersededAt'>): StatePiece[] {
-  if (decision.status === 'proposed') return decision.supersedes ? [{ text: 'Proposed decision' }, { text: ' · would replace the current rule', extra: true }] : [{ text: 'Proposed decision' }];
-  if (decision.status === 'accepted') return [{ text: 'Current rule · ', extra: true }, { text: `accepted ${shortDate(decision.decidedAt!)}` }];
-  return [{ text: 'Earlier rule · ', extra: true }, { text: `replaced ${shortDate(decision.supersededAt!)}` }];
+  if (decision.status === 'proposed') return decision.supersedes ? [{ text: 'Proposed decision' }, { text: ' · would replace an accepted decision', extra: true }] : [{ text: 'Proposed decision' }];
+  if (decision.status === 'accepted') return [{ text: 'Decision · ', extra: true }, { text: `accepted ${shortDate(decision.decidedAt!)}` }];
+  return [{ text: 'Decision · ', extra: true }, { text: `replaced ${shortDate(decision.supersededAt!)}` }];
 }
 
 export function resultPieces(result: Pick<WorkResult, 'finding' | 'createdBy'>): StatePiece[] {

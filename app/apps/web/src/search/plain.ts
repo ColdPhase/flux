@@ -19,6 +19,11 @@ function clean(text: string): string {
     .replace(/[ \t]*\|[ \t]*/g, ' · ')
     // Images and links keep their words; code, emphasis and strike-through markers go.
     .replace(/!?\[([^\]]*)\]\([^)]*\)/g, '$1')
+    // A slice can start or end inside a link (CW-4): its target goes, its words stay. `Pickup ideas](flux:sketch/…)` reads
+    // "Pickup ideas", and `[Pickup ideas](flux:ske` at the end too.
+    .replace(/\]\([^)\s]*\)?/g, '')
+    .replace(/!?\[([^\]\n]*)$/gm, '$1')
+    .replace(/\(?flux:[a-z]+\/[0-9a-f-]*\)?/gi, '')
     .replace(/`+/g, '')
     .replace(/(\*\*|__)(?=\S)([\s\S]*?\S)\1/g, '$2')
     .replace(/~~(?=\S)([\s\S]*?\S)~~/g, '$1')

@@ -54,8 +54,9 @@ function pathOf(projectId: string, type: DocMention['type'], id: string, found: 
   switch (type) {
     case 'doc': return `/projects/${projectId}/docs/${id}`;
     case 'message': return found.conversationId ? `/projects/${projectId}/conversations/${found.conversationId}#message-${id}` : null;
-    case 'thought': return found.sketchId ? `/map/${found.sketchId}` : null;
-    case 'sketch': return `/map/${id}`;
+    // CW-14: a thought opens its project map with that thought selected, as a task's "Came from" does.
+    case 'thought': return found.sketchId ? `/projects/${projectId}/map/${found.sketchId}#thought-${id}` : null;
+    case 'sketch': return `/projects/${projectId}/map/${id}`;
     default: return `/projects/${projectId}/tasks?open=${type}:${id}`;
   }
 }
@@ -176,8 +177,8 @@ async function composeSection(ports: DocPorts, projectId: string, source: DocSec
 }
 
 /** Writes what {@link composeSection} made into a doc text: a result's section, or a decision's one reference line. */
-function place(body: string, source: DocSectionSource, composed: { section: string; title: string }) {
-  return source.type === 'decision' ? text.placeDecisionReference(body, source.id, composed.title) : text.upsertSection(body, source, composed.section);
+function place(body: string, source: DocSectionSource, composed: { section: string; title: string }, under?: string) {
+  return source.type === 'decision' ? text.placeDecisionReference(body, source.id, composed.title, under) : text.upsertSection(body, source, composed.section);
 }
 
 export interface DocUseCaseOptions {
@@ -298,7 +299,7 @@ export function createDocUseCases(uow: DocUnitOfWork, options: DocUseCaseOptions
         const { workspaceId } = await ports.access.requireProject(principal, 'write', project, { lock: true });
         const scope = { workspaceId, projectId: project };
         let body = initial;
-        let reason = given || 'Started the doc';
+        let reason = given || 'Started the page';
         if (from) {
           const composed = await composeSection(ports, project, from);
           body = place(initial, from, composed).body;
@@ -357,7 +358,7 @@ export function createDocUseCases(uow: DocUnitOfWork, options: DocUseCaseOptions
         await fenceLegacy(ports, current);
         if (current.doc.currentVersion !== version) throw new VersionConflictError(current.doc.currentVersion, await present(ports, current));
         const composed = await composeSection(ports, projectId, from);
-        const { body, replaced } = place(current.current.body, from, composed);
+        const { body, replaced } = place(current.current.body, from, composed, typeof command?.under === 'string' ? command.under : undefined);
         const scope = { workspaceId, projectId };
         const taskFence = await prepareDocBodyTaskUse(ports, current, [current.current.body, body], [from]);
         await requireSourceStill(ports, projectId, from);

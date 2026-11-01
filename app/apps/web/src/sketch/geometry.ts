@@ -99,3 +99,23 @@ export function project(thoughts: Thought[], heights: Map<string, number>, canva
   }
   return { rects, nodeWidth, scaleX };
 }
+
+/**
+ * A free spot as near `center` as possible, inside `bounds` when given (CW-12): a thought that arrives from a message lands
+ * in empty space the person can see, never over another thought or under the map's breadcrumb. Rings of a 40 px grid
+ * around the centre; null when nothing within reach is free.
+ */
+export function freeSpotNear(rects: Rect[], center: { x: number; y: number }, size: { w: number; h: number }, bounds?: Rect): { x: number; y: number } | null {
+  const hits = (x: number, y: number) => rects.some((r) => x < r.x + r.w + 24 && x + size.w + 24 > r.x && y < r.y + r.h + 24 && y + size.h + 24 > r.y);
+  const inside = (x: number, y: number) => !bounds || (x >= bounds.x && y >= bounds.y && x + size.w <= bounds.x + bounds.w && y + size.h <= bounds.y + bounds.h);
+  const x0 = Math.round(center.x - size.w / 2), y0 = Math.round(center.y - size.h / 2);
+  for (let ring = 0; ring <= 30; ring++) {
+    const step = 40, found: { x: number; y: number; d: number }[] = [];
+    for (let i = -ring; i <= ring; i++) for (const [dx, dy] of [[i, -ring], [i, ring], [-ring, i], [ring, i]] as const) {
+      const x = x0 + dx * step, y = y0 + dy * step;
+      if (inside(x, y) && !hits(x, y)) found.push({ x, y, d: Math.hypot(dx, dy) });
+    }
+    if (found.length) { const best = found.sort((a, b) => a.d - b.d)[0]!; return { x: best.x, y: best.y }; }
+  }
+  return null;
+}
