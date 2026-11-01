@@ -136,9 +136,10 @@ function useModalLift(active: boolean): { inset: number; movedAt: number } {
   useLayoutEffect(() => {
     if (!active) return undefined;
     let frame = 0;
-    // The first measurement places toasts that just appeared; they did not move under a finger. Only a later change of
-    // MOVE_PX or more (a sheet opening while a toast shows) arms the tap guard, so an Undo tapped right away still works.
-    let placed = false;
+    // Toasts that just appeared did not move under a finger: their first placement, and its settling while the action that
+    // showed them re-lays the sheet (a phone's Resolve removes the blocker card, #249), do not arm the tap guard. Only a
+    // later change of MOVE_PX or more (a sheet opening while a toast shows) does, so an Undo tapped right away still works.
+    let placedAt: number | null = null;
     const measure = () => {
       cancelAnimationFrame(frame);
       frame = requestAnimationFrame(() => {
@@ -153,11 +154,12 @@ function useModalLift(active: boolean): { inset: number; movedAt: number } {
           }
         }
         const inset = Number.isFinite(top) ? Math.max(0, Math.round(window.innerHeight - top + 8)) : 0;
-        const settled = placed;
-        placed = true;
+        const now = performance.now();
+        const settled = placedAt !== null && now - placedAt >= ACTION_ARMED_MS;
+        placedAt ??= now;
         // A few pixels (a control re-rendering in the band) is not a move: a tap aimed at the toast still lands on it.
         setLift((current) => current.inset === inset ? current
-          : { inset, movedAt: settled && Math.abs(inset - current.inset) >= MOVE_PX ? performance.now() : current.movedAt });
+          : { inset, movedAt: settled && Math.abs(inset - current.inset) >= MOVE_PX ? now : current.movedAt });
       });
     };
     const observer = new MutationObserver(measure);

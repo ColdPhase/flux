@@ -258,7 +258,11 @@ class NativeDetailsJourney(unittest.TestCase):
         page=self.page();panel=self.open(page,"result",self.result["id"])
         # Main's #184 sidebar lists projects under its own "Projects" navigation ("Places" holds Home/Inbox).
         page.get_by_role("complementary",name="Sidebar").get_by_role("navigation",name="Projects").get_by_role("link",name="Neighbouring workshop",exact=True).click()
-        expect(page).to_have_url(re.compile(f"/projects/{second}$"));expect(panel).to_have_attribute("data-detail-id",self.result["id"])
+        # #763 H11-8 (#802, docs/development/return-to-origin.md): a docked object does not follow the person to another
+        # project; it closes there, and Back to the page it was opened on restores it with its own project's links.
+        expect(page).to_have_url(re.compile(f"/projects/{second}$"));expect(panel).to_have_count(0)
+        expect(page.locator(f"#details .wd[data-detail-id='{self.result['id']}']")).to_have_count(0)
+        page.go_back();expect(page).to_have_url(re.compile(f"/projects/{self.project}/tasks"));expect(panel).to_be_visible();self.ready(panel)
         panel.get_by_role("region",name="Reports on").get_by_role("button",name=re.compile("Compare both shielded")).click()
         panel=page.locator("#details .wd");expect(panel).to_have_attribute("data-detail-id",self.target["id"]);self.ready(panel)
         expect(panel).to_contain_text("Everyone in Library lighting measurements")

@@ -433,8 +433,9 @@ class LiveJourney(LiveBase):
         # A larger camera (#63): on the camera stage a tile is its own toggle; the camera then fills the stage.
         self.bar(nia).get_by_role("button", name=re.compile("^Camera off")).click()
         expect(self.bar(nia).get_by_role("button", name=re.compile("^Camera on"))).to_be_visible()
-        # Nia's screen leaves Jonas's strip first; the same place then offers the cameras.
-        expect(self.bar(jonas).get_by_role("button", name="Cameras")).to_be_visible()
+        # Nia's screen leaves Jonas's strip first; the same place then offers the cameras once her camera track reaches him
+        # through the SFU, which takes as long as the other media waits here under load (#249 acceptance run).
+        expect(self.bar(jonas).get_by_role("button", name="Cameras")).to_be_visible(timeout=20000)
         self.bar(jonas).get_by_role("button", name="Cameras").click()
         stage = jonas.get_by_role("region", name="Shared screens and cameras")
         large = stage.get_by_role("button", name=re.compile("^Show Nia.* camera large$"))
