@@ -639,11 +639,11 @@ test('desktop and phone-width history render readable actor and time, keyboard l
       assert.equal(await activity.locator('time').last().getAttribute('datetime'), item.createdAt);
       assert.match(await activity.innerText(), /Trial planning agent/);
       assert.match(await activity.innerText(), /Ari Task author/);
-      assert.equal(await panel(page).locator('.wd-criteria li').count(), 2);
+      assert.equal(await panel(page).getByRole('region', { name: 'Done when', exact: true }).locator('li').count(), 2);
       const overflow = await page.evaluate(() => {
         const bounds = document.querySelector('.details.wd')!.getBoundingClientRect();
         return { page: document.documentElement.scrollWidth - window.innerWidth,
-          outside: [...document.querySelectorAll('.details.wd .details__title,.details.wd .wd-criteria li,.details.wd .wd-muted,.details.wd .wd-ids')]
+          outside: [...document.querySelectorAll('.details.wd .details__title,.details.wd .wd-checks li,.details.wd .wd-muted,.details.wd .wd-ids')]
             .filter((element) => element.getBoundingClientRect().right > bounds.right + 1).map((element) => element.className) };
       });
       assert.ok(overflow.page <= 0 && overflow.outside.length === 0, JSON.stringify(overflow));
