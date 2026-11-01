@@ -198,6 +198,9 @@ function build(page) {
     // The screenshots under the README header lead the page too.
     const shots = source.match(/<p align="center">\s*<img[\s\S]*?<\/p>\s*\n\s*<p align="center"><sub>[\s\S]*?<\/sub><\/p>/);
     if (shots) body = `${rewriteLinks(shots[0], page.from)}\n\n${body}`;
+    // The promo animation at the top of the README (#780) leads the page above them.
+    const promo = source.match(/<p align="center">\s*<picture>\s*<source[^>]*flux-promo[\s\S]*?<\/p>\s*\n\s*<p align="center"><sub>[\s\S]*?<\/sub><\/p>/);
+    if (promo) body = `${rewriteLinks(promo[0], page.from)}\n\n${body}`;
   }
   const file = join(OUT, `${page.route || 'index'}.md`);
   mkdirSync(dirname(file), { recursive: true });
