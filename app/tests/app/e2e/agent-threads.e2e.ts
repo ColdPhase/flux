@@ -77,9 +77,15 @@ test('task Details links to the agents’ thread with its message count and open
       // The link shows at once; its count follows the read of the thread (AgentThreadLink), so this retries until the count is there.
       await expect(link, 'Details names the thread with its message count').toHaveText(/Agents’ thread · \d+ messages?/, { timeout: 15_000 });
       assert.equal(await page.locator('[data-agent-thread-task]').count(), 0, 'Details itself holds no thread panel');
+      // The thread's task comes a moment late (a busy server): a phone sheet that closed because its link was followed
+      // must not take the thread out of the address meanwhile, so the thread still opens and stays (#249).
+      await page.route((url) => url.pathname.endsWith(`/work-objects/work/${f.task.id}`) || url.searchParams.get('choice') === 'pivot_work',
+        async (route) => { await new Promise((resolve) => setTimeout(resolve, 1500)); await route.continue().catch(() => undefined); });
       await link.click();
       await page.waitForURL(new RegExp(`/agents\\?thread=${f.task.id}`));
       await page.getByRole('region', { name: /^Agents’ thread of/ }).waitFor();
+      assert.equal(await page.evaluate(() => new URLSearchParams(location.search).get('thread')), f.task.id, 'the address keeps the thread');
+      await page.unrouteAll({ behavior: 'ignoreErrors' });
       assert.deepEqual(errors, []);
     } finally { await context.close(); }
   }

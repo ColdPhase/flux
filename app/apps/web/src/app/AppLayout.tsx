@@ -401,12 +401,13 @@ function AppLayoutContent() {
   // Closing the Details panel by any path (Esc, the close control, a sheet's scrim, a toggle) while the agents' address names
   // a thread or a task leaves that param behind: a click during the hand-over closes the task's panel before the thread's
   // owner is registered, and nothing else clears the address (#709). Only the open-to-closed change counts, so a reload on
-  // `?thread=` (the panel not yet shown) keeps it.
-  const wasDetailsOpen = useRef(detailsOpen);
+  // `?thread=` (the panel not yet shown) keeps it. A sheet or an overlay that closes because a link in it was followed
+  // (the address changed in the same step) was not closed by the person: the thread that link names stays in the address.
+  const wasDetailsOpen = useRef({ open: detailsOpen, key: location.key });
   useEffect(() => {
     const was = wasDetailsOpen.current;
-    wasDetailsOpen.current = detailsOpen;
-    if (!was || detailsOpen || !/\/agents\/?$/.test(location.pathname)) return;
+    wasDetailsOpen.current = { open: detailsOpen, key: location.key };
+    if (!was.open || detailsOpen || was.key !== location.key || !/\/agents\/?$/.test(location.pathname)) return;
     const search = new URLSearchParams(location.search);
     if (!search.has('thread') && !search.has('task')) return;
     search.delete('thread');
