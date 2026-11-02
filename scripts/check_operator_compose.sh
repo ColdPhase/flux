@@ -64,7 +64,7 @@ set_env POSTGRES_PASSWORD "$(random_hex)"
 set_env FLUX_AUTH_SECRET "$(random_hex)"
 set_env FLUX_FIXTURE_TOKEN "$(random_hex)"
 $compose config --quiet
-[ "$($compose config --images | grep -c "^$image\$")" = 3 ] || fail "api, worker and migrate must use one image"
+[ "$($compose config --images | grep -c "^$image\$")" = 4 ] || fail "migrate, api, worker and keyring must use one image"
 
 # Web Push keys with the documented operator command, against the image in the Compose file.
 keys=$($compose run --rm --no-deps -T migrate apps/worker/node_modules/.bin/web-push generate-vapid-keys --json)
@@ -97,8 +97,8 @@ $compose logs --no-color migrate | grep -q "Flux schema $expected and pg-boss re
 [ "$($compose exec -T worker id -u)" != 0 ] || fail "worker runs as root"
 [ -z "$(docker port "$($compose ps -q db)")" ] || fail "database port is published"
 [ "$(docker port "$($compose ps -q api)")" = "8080/tcp -> 127.0.0.1:$port" ] || fail "API must be published on loopback only"
-[ "$($compose ps --status running --format '{{.Service}}' | sort | tr '\n' ' ')" = "api db worker " ] ||
-  fail "expected api, db and worker running"
+[ "$($compose ps --status running --format '{{.Service}}' | sort | tr '\n' ' ')" = "api db keyring worker " ] ||
+  fail "expected api, db, keyring and worker running"
 
 # A person signs up, creates a workspace and reads it back; the web app is served.
 jar="$work/cookies"
