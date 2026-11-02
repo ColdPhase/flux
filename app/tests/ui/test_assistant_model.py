@@ -16,6 +16,7 @@ from playwright.sync_api import Page, Route, expect
 
 import test_assistant_screen as base
 from test_app_shell import shot
+from touch_targets import has_minimum_touch_size
 
 FORBIDDEN = base.FORBIDDEN
 NOW = base.NOW
@@ -221,8 +222,9 @@ class AssistantModel(unittest.TestCase):
                 expect(bar).to_be_visible()
                 chip = bar.get_by_role("button", name="Model: Sonnet. Change")
                 expect(chip).to_have_text("Sonnet")
-                self.assertGreaterEqual(chip.bounding_box()["height"], 44)
-                self.assertGreaterEqual(chip.bounding_box()["width"], 44)
+                # 44 px CSS; Chromium can report 43.99994 at the bottom of a phone viewport (layout noise, #249).
+                self.assertTrue(has_minimum_touch_size(chip.bounding_box()["height"]), chip.bounding_box())
+                self.assertTrue(has_minimum_touch_size(chip.bounding_box()["width"]), chip.bounding_box())
                 shot(page, f"model-chip-{self.tag(phone, dark)}")
                 taps = 0
                 chip.click(); taps += 1                                                             # 1

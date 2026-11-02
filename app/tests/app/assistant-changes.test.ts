@@ -253,7 +253,6 @@ describe('the assistant\'s change log, run authority and "Ask me first" (F-027 A
     assert.match(text((await run.call('flux_update_task', { workId: theirsTask.id, expectedVersion: theirsTask.version, changes: { title: 'Solder it twice' } })).message), /^Waiting for/);
     assert.equal(text((await run.call('flux_update_doc', { docId: page.id, expectedVersion: page.version, changes: { body: 'Use Acme' } })).message),
       'I\'ll edit Suppliers when ac-jonas finishes typing.');
-    await stopTyping();
     // 3 handing work to another person: no run tool transfers or completes a unit or claims one; the one hand-off tool reaches the owner's own
     // agents only (a foreign agent is refused even after Apply: assistant-handoff.test.ts).
     for (const absent of ['flux_transfer_unit', 'flux_claim_unit', 'flux_complete_unit', 'flux_send_request']) assert.ok(!run.tools.includes(absent), absent);
@@ -272,6 +271,9 @@ describe('the assistant\'s change log, run authority and "Ask me first" (F-027 A
       ['others', 'ac-jonas\'s task: changing it waits for you'],
       ['live_wiki', 'I\'ll edit Suppliers when ac-jonas finishes typing.'],
     ]);
+    // Jonas keeps typing until the reasons are read: the API's 15-second live-Wiki sweep applies a deferral as soon as the
+    // page is free, which would turn this row into "Applied when the page was free" (v0.1.0 acceptance, #249).
+    await stopTyping();
     await complete(run.runId);
   });
 
