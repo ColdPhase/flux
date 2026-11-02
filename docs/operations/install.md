@@ -5,13 +5,14 @@ There are three ways to run Flux. All of them are Docker Compose on one host.
 | Path | For | Guide |
 | --- | --- | --- |
 | **Try it on your computer** | Seeing Flux with sample data, at `http://127.0.0.1:8081` | [Quick start](../../README.md#quick-start) |
-| **Your own server, from a source checkout** | A team instance on your domain, today | This page |
+| **Your own server, from a source checkout** | A team instance that builds on the server, for example on `arm64` | This page |
 | **Your own server, from a published release** | A team instance without the source or a build | [Install from a release](install-release.md) |
 
-No Flux release has been published yet, so a server today runs from a source checkout with the
-`./flux` launcher. The launcher builds the image on the server, keeps its settings in `docker/.env`,
-and gives you [backups](backup-restore.md), restores and [upgrades](upgrade.md) as single commands.
-When a release is published, the release path runs the same services from a signed image instead.
+Flux [v0.1.0](https://github.com/ColdPhase/flux/releases/tag/v0.1.0) is published, so a server can run from its digest-pinned image. That image is
+`linux/amd64` only; `linux/arm64` follows in v0.1.1. A source checkout uses the `./flux` launcher,
+which builds the image on the server, keeps its settings in `docker/.env`, and gives you
+[backups](backup-restore.md), restores and [upgrades](upgrade.md) as single commands. The release
+path runs the same services without the source or a build.
 
 Check the [requirements](requirements.md) first: a Linux host with Docker Engine and the Compose
 plugin, 4 GB of memory, and a DNS name pointing at the host.

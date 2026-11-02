@@ -400,8 +400,8 @@ Each Flux release pins the CLI versions its flag contract check passed: Claude C
 (`DISABLE_UPDATES=1`).
 
 The separate published runtime image and release-matched operator assets are built by the final release
-workflow ([Installing from a release](#installing-from-a-release)); until a release is published, a source-built slot is
-not a published runtime release.
+workflow ([Installing from a release](#installing-from-a-release)) and published with
+[v0.1.0](https://github.com/ColdPhase/flux/releases/tag/v0.1.0); a source-built slot is not a published runtime release.
 
 `./scripts/check_runtime_cli_contract.sh` is the opt-in flag contract check against these real CLIs
 (no account needed; internet access to github.com and downloads.claude.ai). Run it again whenever a pin
