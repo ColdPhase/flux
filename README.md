@@ -105,7 +105,7 @@ integrations can use them freely ([licensing](docs/product/licensing.md)).
 
 ## Project status
 
-**Flux [v0.1.0](https://github.com/ColdPhase/flux/releases/tag/v0.1.0) is published.** It is the first release, an early version: keep
+**Flux [v0.1.0](https://github.com/ColdPhase/flux/releases/tag/v0.1.0) is published.** It is the first release, an early version with no independent security review yet: keep
 [backups](docs/operations/backup-restore.md) from the start and read its
 [release notes](docs/product/release-notes-v0.1.0.md) for what is not in it yet. The image
 (`ghcr.io/coldphase/flux`) is built for `linux/amd64` only; `linux/arm64` follows in v0.1.1. To run it
