@@ -5,7 +5,7 @@
 #   FLUX_SMOKE_PREVIOUS_ASSETS=<previous release's assets> smoke_artifacts.sh ...   (adds the upgrade leg)
 #
 # Leg 1, always: a clean install of the candidate's assets, an account, workspace and content created
-# through the API, a paired PostgreSQL + files backup and its restore into fresh volumes.
+# through the API, an encrypted workspace (the keyring secrets of INSTALL.md), a paired PostgreSQL + files backup and its restore into fresh volumes.
 #
 # Leg 2, only when FLUX_SMOKE_PREVIOUS_ASSETS names the downloaded assets of the PREVIOUS release (its
 # compose.yaml, env.example, release.json, SHA256SUMS): INSTALL.md's upgrade, followed literally.
@@ -165,6 +165,7 @@ dc "$source_project" "$source_env" "$assets" up -d --wait --wait-timeout "$wait_
 health "$source_port" >/dev/null
 echo "running: api $(dc "$source_project" "$source_env" "$assets" exec -T api uname -m), db $(dc "$source_project" "$source_env" "$assets" exec -T db uname -m)"
 python3 "$root/scripts/release/smoke_data.py" seed --origin "http://127.0.0.1:$source_port" --state "$state_dir/account.json"
+python3 "$root/scripts/release/smoke_data.py" encrypted --origin "http://127.0.0.1:$source_port" --state "$state_dir/account.json"
 # The database holds the account; this file in the files volume proves the paired archive too.
 probe=$(python3 -c 'import secrets; print(secrets.token_hex(16))')
 write_probe "$source_project" "$source_env" "$assets" "$probe"

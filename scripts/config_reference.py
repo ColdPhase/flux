@@ -94,7 +94,9 @@ GROUPS = [
     ("runtime", "Agent runtime: the owner's own Claude Code or Codex",
      "Off by default. See the [agent runtime guide](agent-runtime.md); `./flux ai on` writes these for you."),
     ("encryption", "Encrypted spaces and the keyring",
-     "See [operating encrypted spaces](encrypted-spaces.md). `./flux up` generates the secrets."),
+     "See [operating encrypted spaces](encrypted-spaces.md). `./flux up` generates the secrets. A release install has "
+     "no `./flux`: set `FLUX_KEYRING_TOKEN` and `FLUX_KEY_PIN_SECRET` by hand, `openssl rand -hex 32` each "
+     "([release install](release-guide.md#clean-installation), step 1)."),
     ("limits", "Memory limits",
      "Memory and swap are limited to the same value, so these containers cannot write memory to a swap device."),
     ("github", "GitHub App (optional)",
@@ -247,7 +249,7 @@ VARIABLES: dict[str, Var] = {
         "every encrypted space locked.", secret=True),
     "FLUX_KEY_PIN_SECRET": Var("encryption", "secret, ≥ 32 characters",
         "Pins every unlock password and key version, so rows planted in the database are refused. Never change it; back "
-        "it up with `docker/.env`, not with the database.", secret=True),
+        "it up with the settings file (`docker/.env`, or `.env` of a release install), not with the database.", secret=True),
     "FLUX_SWAP_ACKNOWLEDGED": Var("encryption", "empty · `encrypted-swap`",
         "Declares that every swap device is encrypted with a key not stored on disk. Only then may keys be held where "
         "swap is on and not limited per container.", "encrypted-swap"),
