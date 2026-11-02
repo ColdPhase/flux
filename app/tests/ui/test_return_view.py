@@ -674,6 +674,9 @@ class ReturnViewJourney(unittest.TestCase):
     def test_09b_dark_renders_of_the_panel(self) -> None:
         """What matters in the dark theme at 1440x900 and 390x844, with the digest open."""
         ari = self.page("ari")
+        # A plain update next to the question, so "Changes" (and its Summarize) exists whatever point the earlier tests
+        # left: leaving the conversation in test_08 saves the project point unless a reload cuts that save short (#249).
+        self.say(ari, "I measured the dark room again this morning.")
         self.say(ari, "Nia, can you share the dark-room numbers before Friday?")
         for label, viewport, phone in (("desktop-1440", {"width": 1440, "height": 900}, False),
                                        ("phone-390", {"width": 390, "height": 844}, True)):
