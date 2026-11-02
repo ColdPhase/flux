@@ -120,10 +120,14 @@ test('all pages render quiet comparisons and insufficient evidence with current 
       if (!touch) {
         await page.evaluate(() => { document.documentElement.dataset.theme = 'dark'; });
         await page.waitForFunction(() => document.querySelector('.side__search')!.getAnimations().every((animation) => animation.playState !== 'running'));
-        const colors = await page.locator('.side__search').evaluate((node) => {
-          const style = getComputedStyle(node);
-          return { foreground: style.color, background: style.backgroundColor };
+        // The button is transparent since #801 (quiet buttons): its text sits on the nearest painted ancestor, the sidebar.
+        // rgba(0, 0, 0, 0) read as black gave 1.19:1 for #18181b text in light mode (v0.1.0 acceptance, #249).
+        const searchColors = () => page.locator('.side__search').evaluate((node) => {
+          let ground: Element | null = node;
+          while (ground && /^rgba\(.*,\s*0\)$|^transparent$/.test(getComputedStyle(ground).backgroundColor)) ground = ground.parentElement;
+          return { foreground: getComputedStyle(node).color, background: ground ? getComputedStyle(ground).backgroundColor : 'rgb(255, 255, 255)' };
         });
+        const colors = await searchColors();
         const luminance = (color: string) => {
           const channels = color.match(/[\d.]+/g)!.slice(0, 3).map((value) => { const n = Number(value) / 255; return n <= 0.04045 ? n / 12.92 : ((n + 0.055) / 1.055) ** 2.4; });
           return channels[0]! * 0.2126 + channels[1]! * 0.7152 + channels[2]! * 0.0722;
@@ -142,10 +146,7 @@ test('all pages render quiet comparisons and insufficient evidence with current 
         });
         await page.waitForFunction(() => document.querySelector('.side__search')!.getAnimations()
           .every((animation) => animation.playState !== 'running'));
-        const lightColors = await page.locator('.side__search').evaluate((node) => {
-          const style = getComputedStyle(node);
-          return { foreground: style.color, background: style.backgroundColor };
-        });
+        const lightColors = await searchColors();
         const [lightA, lightB] = [luminance(lightColors.foreground), luminance(lightColors.background)].sort((x, y) => y - x);
         const lightContrast = (lightA! + 0.05) / (lightB! + 0.05);
         assert.ok(lightContrast >= 4.5, `settled enlarged-text light search contrast is ${lightContrast.toFixed(2)}:1`);

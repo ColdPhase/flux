@@ -317,11 +317,20 @@ test('owner-only background setup persists consent, clears keys and preserves an
   await page.locator('.background-settings__help').first().click();
   await page.screenshot({ path: '/state/background-setup-1440-saved.png', fullPage: true });
   await assertBackgroundContrast();
+  // The theme switch has settled when a secondary button shows its token colour (--t2 since #801's quiet buttons; it was
+  // body text before, so the old wait never ended: v0.1.0 acceptance, #249). The probe has no transition.
+  const themeSettled = () => {
+    const probe = document.body.appendChild(document.createElement('span'));
+    probe.style.color = 'var(--t2)';
+    const settled = getComputedStyle(document.querySelector('.background-settings .ui-btn--secondary')!).color === getComputedStyle(probe).color;
+    probe.remove();
+    return settled;
+  };
   await page.evaluate(() => { document.documentElement.dataset.theme = 'dark'; });
-  await page.waitForFunction(() => getComputedStyle(document.querySelector('.background-settings .ui-btn--secondary')!).color === getComputedStyle(document.body).color);
+  await page.waitForFunction(themeSettled);
   await page.screenshot({ path: '/state/background-setup-1440-saved-dark.png', fullPage: true });
   await page.evaluate(() => { delete document.documentElement.dataset.theme; });
-  await page.waitForFunction(() => getComputedStyle(document.querySelector('.background-settings .ui-btn--secondary')!).color === getComputedStyle(document.body).color);
+  await page.waitForFunction(themeSettled);
 
   const ownerPage = page;
   const peerContext = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
