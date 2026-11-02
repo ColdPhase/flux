@@ -125,7 +125,8 @@ FLUX_BACKGROUND_KEY_HOST_FILE=/etc/flux/background.key
 Both switches also need a key file: exactly 32 random bytes made for this installation, kept outside the
 database backup and readable by user 1000, the user the containers run as. It seals the owners' AI keys.
 `compose.yaml` cannot mount a file that may not exist, so mount it from a small Compose file of your own,
-`compose.ai.yaml`, next to it:
+`compose.ai.yaml`, next to it. Compose reads a file named `compose.override.yaml` on its own only when no
+`-f` is given, so this file has a name and every command names it.
 
 ```sh
 install -d -m 700 /etc/flux && (umask 077 && openssl rand 32 > /etc/flux/background.key)

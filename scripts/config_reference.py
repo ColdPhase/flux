@@ -153,7 +153,8 @@ VARIABLES: dict[str, Var] = {
     "FLUX_OIDC_CLIENT_SECRET_HOST_FILE": Var("sso", "absolute host path",
         "File on the host holding the client secret, mounted read-only into the API at "
         "`/run/secrets/flux_oidc_client_secret`. The source Compose file mounts it; with the release `compose.yaml`, "
-        "mount the file at that path in an override ([how](single-sign-on.md#set-it-up)).", "/etc/flux/oidc-client-secret"),
+        "mount the file at that path from a Compose file of your own, passed after `compose.yaml` with `-f` "
+        "([how](single-sign-on.md#set-it-up)).", "/etc/flux/oidc-client-secret"),
     "FLUX_OIDC_LABEL": Var("sso", "text, ≤ 60 characters", "Name on the sign-in button. Empty shows “single sign-on”.", "Example ID"),
     "FLUX_SSO_MODE": Var("sso", "`sso` · `prepare`",
         "`prepare` keeps password sign-in while existing accounts link their provider identity; `sso` is the cutover, "
@@ -564,7 +565,10 @@ def render() -> str:
         "an **overlay** an optional extra Compose file, and `./flux` the launcher itself. **Override only** means the",
         "application reads it but no shipped Compose file passes it in:",
         "add it under the service's `environment:` in `docker/compose.override.yaml`, which `./flux` includes when it",
-        "exists. A wrong value stops the service at start with a message that names the variable.",
+        "exists. A release install has no such file: `docker compose -f compose.yaml` never reads an override on its",
+        "own, so put it in a Compose file of your own and name it after `compose.yaml` in every command",
+        "(`-f compose.yaml -f compose.local.yaml`). A wrong value stops the service at start with a message that names",
+        "the variable.",
         "",
     ]
     titles = {key: title for key, title, _intro in GROUPS}
