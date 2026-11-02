@@ -58,7 +58,8 @@ for HTTPS. The full guide is
 5. Optional, for calls and screen sharing: add the `FLUX_LIVEKIT_*` settings to `.env`, open UDP/7882,
    TCP/7881 and UDP/3478 to the server, and pass `-f compose.live.yaml` after `-f compose.yaml` in every
    command. For networks that allow only HTTPS, `compose.live.turn.yaml` adds TURN/TLS on TCP/443 of a
-   second address. Both files pin the LiveKit media server by digest. The steps are in `INSTALL.md`,
+   second address. `compose.live.yaml` pins the LiveKit media server by digest; `compose.live.turn.yaml` only
+   adds to that service and brings no image of its own. The steps are in `INSTALL.md`,
    section "Calls and screen sharing".
 
 The same steps are in `INSTALL.md`, attached to this release. To look around first, clone the

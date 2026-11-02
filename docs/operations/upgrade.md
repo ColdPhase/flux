@@ -25,8 +25,8 @@ The image checks the database's migration ledger before it migrates: every recor
 be a file of the image. If it refuses, keep the backup and restore its matching image and database.
 Do not edit the ledger or rename a migration to make the check pass.
 
-v0.1 is the first release. Its schema is one baseline migration, `0001_v0_1_baseline.sql` (#779);
-later releases add `0002` onwards. Development databases from before the baseline (pre-release
+v0.1 is the first release. Its schema is the baseline migration `0001_v0_1_baseline.sql` (#779) and
+`0002_first_time_user.sql` (#806), schema version 2; later releases add `0003` onwards. Development databases from before the baseline (pre-release
 builds) cannot be upgraded: remove them with `./flux clean` and start again.
 
 ## When it fails

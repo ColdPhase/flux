@@ -6,7 +6,7 @@ together: the image digest, the migrations and the settings in them match. A new
 can need other migrations or variables than your release.
 
 The release pins one OCI image, `ghcr.io/coldphase/flux`, by its manifest digest for `api`,
-`worker` and the one-shot `migrate` service, plus a separately digest-pinned PostgreSQL. The image
+`worker`, `keyring` and the one-shot `migrate` service, plus a separately digest-pinned PostgreSQL. The image
 is built for the platforms that `release.json` lists: `linux/amd64` (x86_64) for v0.1, with
 `linux/arm64` planned for v0.1.1. Docker Engine with the Compose plugin is required;
 the source code and the Node toolchain are not. The optional [agent runtime](#agent-runtime-optional)
@@ -100,7 +100,7 @@ gh attestation verify oci://ghcr.io/coldphase/flux-agent-runtime@sha256:<runtime
 4. Follow the tested [HTTPS reverse-proxy example](https://github.com/ColdPhase/flux/blob/f3a253ce860d7f22b6cd28fa0525a4589df3daf7/docs/operations/reverse-proxy.md)
    to put TLS in front of `127.0.0.1:<FLUX_PORT>` for `FLUX_PUBLIC_ORIGIN`, open that
    URL and create the first account. If startup fails, read
-   `docker compose --env-file .env -f compose.yaml logs migrate api worker` before changing data.
+   `docker compose --env-file .env -f compose.yaml logs migrate api worker keyring` before changing data.
 
    If `up` stops with `all predefined address pools have been fully subnetted`, the Docker daemon has no
    network subnet left: Flux takes 2 networks (10 with the agent runtime), and a stock daemon has about 31 for

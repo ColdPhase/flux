@@ -36,7 +36,7 @@ created on 2026-09-26.
   ([#159](https://github.com/ColdPhase/flux/pull/159)), plus a gated, explicitly
   triggered OCI release workflow ([#104](https://github.com/ColdPhase/flux/pull/104)).
 - Calls and screen sharing in a release install: each release ships `compose.live.yaml` (the LiveKit media server,
-  pinned by digest) and `compose.live.turn.yaml` (TURN/TLS) to layer on its `compose.yaml`, with the ports and
+  pinned by digest) and `compose.live.turn.yaml` (TURN/TLS, added to that same service) to layer on its `compose.yaml`, with the ports and
   firewall in `INSTALL.md` ([#249](https://github.com/ColdPhase/flux/issues/249)).
 - An exact migration-ledger check at install and startup. A database that does not
   match the image's migrations refuses to start ([#130](https://github.com/ColdPhase/flux/pull/130)).
@@ -233,7 +233,7 @@ created on 2026-09-26.
 - Light motion across the interface: dialogs and ⌘K, the detail panel and what it shows, menus, popovers and toasts fade and travel a few pixels in at most 180 ms and leave in 120 ms without delaying focus; switching a view or place crossfades the old content into the new in the content area only (and the detail panel's old content fades out over the new, which slides in from the side of travel); a task's state, a decision's outcome, rows that move between groups, rows added and rows removed change in place instead of jumping; every pressable control takes the one press (scale .97, spring back in 250 ms); nothing animates on first load or while the page is hidden, and reduced motion (system setting or Settings → Appearance) shows the static end state ([#593](https://github.com/ColdPhase/flux/issues/593), [PR #608](https://github.com/ColdPhase/flux/pull/608)).
 - Every dropdown is now Flux's own select instead of the browser's: a list in the app's colours and in dark mode, a sheet from the bottom on the phone, and the same keys everywhere (arrows, Home and End, type a few letters, Enter, Esc). Opening one never moves the control ([#695](https://github.com/ColdPhase/flux/issues/695)).
 - A decision in a Wiki page is one live card with its short reason, not a copied section: "Add to a Wiki page" inserts the card, the card opens the decision and follows its state without new page versions, and proposed decisions stay out until accepted ([#774](https://github.com/ColdPhase/flux/pull/774)).
-- The database schema starts from one v0.1 baseline migration (`0001_v0_1_baseline.sql`, schema version 1); databases of pre-release development builds are refused with the instruction to remove them (`./flux clean`), and the pre-release upgrade shims (root `.env` move, missing keyring secrets on upgrade, migration reversals) are gone ([#779](https://github.com/ColdPhase/flux/issues/779)).
+- The database schema starts from one v0.1 baseline migration (`0001_v0_1_baseline.sql`); v0.1.0 ships it with `0002_first_time_user.sql` (schema version 2); databases of pre-release development builds are refused with the instruction to remove them (`./flux clean`), and the pre-release upgrade shims (root `.env` move, missing keyring secrets on upgrade, migration reversals) are gone ([#779](https://github.com/ColdPhase/flux/issues/779)).
 - `./flux up` with `FLUX_SIGNUP=off` says sign-up is closed and points to "Decide who can sign up" in the install guide instead of inviting an account ([#779](https://github.com/ColdPhase/flux/issues/779)).
 
 ### Fixed

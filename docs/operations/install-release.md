@@ -69,7 +69,7 @@ they are.
 5. Follow the tested [HTTPS reverse-proxy example](reverse-proxy.md) to put TLS in front
    of `127.0.0.1:${FLUX_PORT}` for `FLUX_PUBLIC_ORIGIN`,
    open that URL and create the first account. If startup fails, read
-   `docker compose --env-file .env -f compose.yaml logs migrate api worker` before changing data.
+   `docker compose --env-file .env -f compose.yaml logs migrate api worker keyring` before changing data.
 
 `--env-file .env` is always passed explicitly, so the settings file is found from any shell
 directory and no other `.env` is read. A variable exported in the shell overrides the file
@@ -86,6 +86,7 @@ digest replaces the marker.
 | `migrate` | release digest | One-shot `node tooling/dist/migrate.js`: applies each new `app/packages/db/migrations/NNNN_*.sql` in its own transaction, then exits. |
 | `api` | release digest | HTTP API and web app on `127.0.0.1:${FLUX_PORT}`, volume `files`; its health check verifies the exact migration ledger, the queue schema and a write to the files volume. |
 | `worker` | release digest | Background jobs (notification mail, Web Push, runs), volume `files`. |
+| `keyring` | release digest | Holds the boot key of encrypted spaces in memory only; joins `api` and `worker` on an internal network and publishes no port. |
 
 With the optional `compose.runtime.yaml` (profile `runtime`, off by default) `runtime-manager` and
 `runtime-egress` run the release digest of the application image, and `runtime-install` and
