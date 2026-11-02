@@ -12,11 +12,12 @@ worker and one keyring on one Docker host, and that is the only deployment that 
 - **Database.** Each API and worker process keeps a pool of 10 PostgreSQL connections, and
   PostgreSQL keeps its default of 100. Give the host fast disk before more CPU: every write ends with
   an ordered event insert. PostgreSQL itself runs with its image defaults; tune it through a Compose
-  override only if you measure a need.
+  override file only if you measure a need (a source checkout reads `docker/compose.override.yaml`; a release
+  install passes its own file with `-f` after `compose.yaml`).
 - **Disk.** The database keeps every saved version. Watch the `pgdata` volume and keep room for a
   backup, which needs about twice its size while it is written.
 - **Agent runtime.** Four slots by default, each up to 2 GB while it runs. [More
-  slots](agent-runtime.md#more-slots) are added with a Compose override.
+  slots](agent-runtime.md#more-slots) are added with a Compose override in a source checkout.
 - **Live media.** Calls run in LiveKit with a configured limit of 16 people per room; CPU and
   bandwidth grow with each call. That limit is configured, not a measured capacity.
 

@@ -109,6 +109,51 @@ gh attestation verify oci://ghcr.io/coldphase/flux-agent-runtime@sha256:<runtime
    `{"default-address-pools": [{"base": "172.17.0.0/12", "size": 24}, {"base": "192.168.0.0/16", "size": 24}]}`,
    and restart the daemon ([reference](https://docs.docker.com/reference/cli/dockerd/#daemon-configuration-file)).
 
+## Assistant on your own AI key (optional)
+
+Owners connect their own AI provider in **Settings → Agents and AI**. Two switches decide whether this
+installation lets the assistant and background suggestions run; both are off while empty. Set them in
+`.env`; `compose.yaml` passes them to `api` and `worker`:
+
+```sh
+FLUX_PERSONAL_RUNS=on              # the assistant, on each owner's own AI connection
+FLUX_BACKGROUND_COMPARISONS=on     # optional: background suggestions
+FLUX_AI_PRIVATE_TARGETS=           # optional: private hosts a connection may use, for example ollama,10.0.0.0/8
+FLUX_BACKGROUND_KEY_HOST_FILE=/etc/flux/background.key
+```
+
+Both switches also need a key file: exactly 32 random bytes made for this installation, kept outside the
+database backup and readable by user 1000, the user the containers run as. It seals the owners' AI keys.
+`compose.yaml` cannot mount a file that may not exist, so mount it from a small Compose file of your own,
+`compose.ai.yaml`, next to it. Compose reads a file named `compose.override.yaml` on its own only when no
+`-f` is given, so this file has a name and every command names it.
+
+```sh
+install -d -m 700 /etc/flux && (umask 077 && openssl rand 32 > /etc/flux/background.key)
+chown 1000 /etc/flux/background.key
+```
+
+```yaml
+services:
+  api:
+    volumes:
+      - ${FLUX_BACKGROUND_KEY_HOST_FILE:?Set FLUX_BACKGROUND_KEY_HOST_FILE in .env}:/run/secrets/flux_background_key:ro,z
+  worker:
+    volumes:
+      - ${FLUX_BACKGROUND_KEY_HOST_FILE:?Set FLUX_BACKGROUND_KEY_HOST_FILE in .env}:/run/secrets/flux_background_key:ro,z
+```
+
+`z` lets the container read the file on an SELinux host (Fedora, RHEL); elsewhere it has no effect. Pass
+the file to every command in this guide, next to the other optional files:
+
+```sh
+docker compose --env-file .env -f compose.yaml -f compose.ai.yaml up -d --wait
+```
+
+A plain `-f compose.yaml up` recreates `api` and `worker` without the key, which makes the assistant
+unavailable again until you pass `compose.ai.yaml`. Back the key file up with `.env`, not with the
+database: without it the stored AI connections cannot be opened and each owner connects again.
+
 ## Agent runtime (optional)
 
 Off by default and not needed for Flux itself. It lets people on this Flux sign in with their own

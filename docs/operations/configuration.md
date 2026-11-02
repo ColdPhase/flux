@@ -17,7 +17,10 @@ Each variable lists its type, its default, the services that receive it and wher
 an **overlay** an optional extra Compose file, and `./flux` the launcher itself. **Override only** means the
 application reads it but no shipped Compose file passes it in:
 add it under the service's `environment:` in `docker/compose.override.yaml`, which `./flux` includes when it
-exists. A wrong value stops the service at start with a message that names the variable.
+exists. A release install has no such file: `docker compose -f compose.yaml` never reads an override on its
+own, so put it in a Compose file of your own and name it after `compose.yaml` in every command
+(`-f compose.yaml -f compose.local.yaml`). A wrong value stops the service at start with a message that names
+the variable.
 
 ## Settings you will probably change
 
@@ -218,7 +221,7 @@ Client id registered at the provider. Example: `flux`.
 
 **Type** absolute host path · **Default** empty · **Used by** api (source)
 
-File on the host holding the client secret, mounted read-only into the API at `/run/secrets/flux_oidc_client_secret`. The source Compose file mounts it; with the release `compose.yaml`, mount the file at that path in an override ([how](single-sign-on.md#set-it-up)). Example: `/etc/flux/oidc-client-secret`.
+File on the host holding the client secret, mounted read-only into the API at `/run/secrets/flux_oidc_client_secret`. The source Compose file mounts it; with the release `compose.yaml`, mount the file at that path from a Compose file of your own, passed after `compose.yaml` with `-f` ([how](single-sign-on.md#set-it-up)). Example: `/etc/flux/oidc-client-secret`.
 
 ### `FLUX_OIDC_LABEL`
 
@@ -386,29 +389,29 @@ Host port of TURN/TLS. Keep 443 for a public deployment.
 
 ## AI providers
 
-Owners connect their own AI provider in **Settings → Agents and AI**. These switches decide what the instance allows. They are read by the source checkout's Compose file; the release `compose.yaml` does not pass them yet.
+Owners connect their own AI provider in **Settings → Agents and AI**. These switches decide what the instance allows. Both Compose files pass the switches to `api` and `worker`; the assistant and background suggestions also need the key file `FLUX_BACKGROUND_KEY_HOST_FILE`, which the release `compose.yaml` does not mount (see below).
 
 ### `FLUX_BACKGROUND_KEY_HOST_FILE`
 
 **Type** absolute host path · **Default** empty · **Used by** api, worker (source)
 
-File with 32 random bytes that seals owners' AI keys for work the worker does on their behalf. Keep it outside the checkout and the database backup. Empty leaves the assistant and background suggestions unavailable. Example: `/etc/flux/background.key`.
+File with 32 random bytes that seals owners' AI keys for work the worker does on their behalf. Keep it outside the checkout and the database backup. Empty leaves the assistant and background suggestions unavailable. The source Compose file mounts it into `api` and `worker` at `/run/secrets/flux_background_key`; with the release `compose.yaml`, mount the file at that path in both services from a Compose file of your own ([how](release-guide.md#assistant-on-your-own-ai-key-optional)). Example: `/etc/flux/background.key`.
 
 ### `FLUX_PERSONAL_RUNS`
 
-**Type** empty, `off`, `on` · **Default** empty · **Used by** api, worker (source)
+**Type** empty, `off`, `on` · **Default** empty · **Used by** api, worker (release, source)
 
 `on` lets owners run their assistant on their own AI connection. Needs `FLUX_BACKGROUND_KEY_HOST_FILE`. Example: `on`.
 
 ### `FLUX_BACKGROUND_COMPARISONS`
 
-**Type** empty, `off`, `on` · **Default** empty · **Used by** api, worker (source)
+**Type** empty, `off`, `on` · **Default** empty · **Used by** api, worker (release, source)
 
 `on` lets owners enable background suggestions, which the worker runs on each owner's own AI connection. Needs `FLUX_BACKGROUND_KEY_HOST_FILE`. Example: `on`.
 
 ### `FLUX_AI_PRIVATE_TARGETS`
 
-**Type** list of hosts, IPs or CIDRs · **Default** empty · **Used by** api, worker (source)
+**Type** list of hosts, IPs or CIDRs · **Default** empty · **Used by** api, worker (release, source)
 
 Private addresses an OpenAI-compatible endpoint may use, such as a local model server. Empty allows public HTTPS endpoints only; cloud metadata addresses are always refused. Example: `ollama,10.0.0.0/8`.
 

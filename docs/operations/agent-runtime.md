@@ -168,6 +168,9 @@ the slot's secret. On the next `./flux up`, `./flux` adds `FLUX_RUNTIME_SECRET_<
 `scripts/check_agent_runtime.sh` checks that such a slot has exactly the settings of the others and is
 reachable by `runtime-manager` and `runtime-egress` and nothing else.
 
+This is the source checkout's flow, where `./flux` reads the override file on its own. The example file is
+not a release asset: a release install runs the four slots of `compose.runtime.yaml`.
+
 ## Bindings and releasing them
 
 An owner's first use binds a free slot to them (one slot holds both their Claude Code and Codex

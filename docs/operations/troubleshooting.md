@@ -44,7 +44,7 @@ For a release installation use `docker compose --env-file .env -f compose.yaml` 
 | --- | --- |
 | Push notifications | HTTPS origin, all three `FLUX_VAPID_*` set, outbound HTTPS to the push services ([push](mobile-and-push.md)). |
 | Installing on a phone | HTTPS at the root of its own origin; iPhone and iPad install from Safari's Share menu. |
-| Assistant, background suggestions | `FLUX_PERSONAL_RUNS=on` or `FLUX_BACKGROUND_COMPARISONS=on`, and a readable `FLUX_BACKGROUND_KEY_HOST_FILE`. Also the space's AI must be on. |
+| Assistant, background suggestions | `FLUX_PERSONAL_RUNS=on` or `FLUX_BACKGROUND_COMPARISONS=on`, and a readable `FLUX_BACKGROUND_KEY_HOST_FILE` (a release install mounts it itself, see [the guide](release-guide.md#assistant-on-your-own-ai-key-optional)). Also the space's AI must be on. |
 | Sign-in with Claude or ChatGPT subscriptions | `FLUX_AGENT_RUNTIME` set and applied with `./flux up`; `./flux runtime status` ([agent runtime](agent-runtime.md)). |
 | An MCP client on another computer | It needs an `https` origin; `http://127.0.0.1` works only on the server itself. The server also needs outbound HTTPS to fetch the client's metadata. |
 | Encrypted spaces stay locked | Normal after a restart until an owner or admin unlocks. If unlocking fails with a swap message, see [swap and memory](encrypted-spaces.md#swap-and-memory). |
