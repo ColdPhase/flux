@@ -51,21 +51,23 @@ gh attestation verify oci://ghcr.io/coldphase/flux-agent-runtime@sha256:<runtime
 
 ## Clean installation
 
-1. Create the private settings file and fill in the three required values:
+1. Create the private settings file and fill in the five required values:
 
    ```sh
    cp env.example .env && chmod 600 .env
-   openssl rand -hex 32    # once for POSTGRES_PASSWORD, once for FLUX_AUTH_SECRET
+   openssl rand -hex 32    # once each for POSTGRES_PASSWORD, FLUX_AUTH_SECRET, FLUX_KEYRING_TOKEN and FLUX_KEY_PIN_SECRET
    ```
 
    Without `openssl`: `od -An -N32 -tx1 /dev/urandom | tr -d ' \n'`. Keep `.env` private, outside
-   source control, and keep it across upgrades: the database password and `FLUX_AUTH_SECRET` must not
-   change. Do not use example secrets.
+   source control, and keep it across upgrades: the database password, `FLUX_AUTH_SECRET` and
+   `FLUX_KEY_PIN_SECRET` must not change. Do not use example secrets.
 
    | Variable | Required | Value |
    | --- | --- | --- |
    | `POSTGRES_PASSWORD` | yes | Random hex (it is part of the database URL). |
    | `FLUX_AUTH_SECRET` | yes | At least 32 random characters. Changing it signs everyone out. |
+   | `FLUX_KEYRING_TOKEN` | yes | Random hex. Authenticates the API and worker to the keyring; it opens nothing by itself. Empty leaves every [encrypted workspace](https://github.com/ColdPhase/flux/blob/main/docs/operations/encrypted-spaces.md) locked and none can be created. |
+   | `FLUX_KEY_PIN_SECRET` | yes | Random hex, at least 32 characters. Pins every unlock password and key version of an encrypted workspace. **Never change it**: every encrypted workspace made with it would refuse to unlock. Back it up with `.env`, not only with the database. |
    | `FLUX_PUBLIC_ORIGIN` | yes | The exact URL people open, for example `https://flux.example.org`. Plain `http` works only for a loopback trial (`http://127.0.0.1:8081`). |
    | `FLUX_PROJECT` | kept | Compose project name and prefix of the `pgdata` and `files` volumes (`flux`). Keep it across upgrades, or the new release starts with empty volumes. |
    | `FLUX_PORT` | kept | Loopback port of the API (`8081`); point the reverse proxy at it. |
@@ -75,7 +77,8 @@ gh attestation verify oci://ghcr.io/coldphase/flux-agent-runtime@sha256:<runtime
    | `FLUX_FIXTURE_TOKEN` | no | Enables a test-only endpoint. Leave it empty. |
 
    Every value is explained in the comments of `env.example`. Empty required values stop Compose
-   before anything starts. `--env-file .env` is always passed explicitly, and a variable exported in
+   before anything starts, except the two keyring secrets: without them Flux starts healthy but
+   cannot create or unlock an encrypted workspace. `--env-file .env` is always passed explicitly, and a variable exported in
    the shell overrides the file: do not export Flux variables on an operator host.
 
 2. Optional Web Push keys, generated once with the release image; copy both keys and a `mailto:`
@@ -283,7 +286,7 @@ interrupts current calls; people rejoin.
 
 Back up PostgreSQL and the uploaded files as a pair while the writers (`api` and `worker`) are
 stopped. Plan for downtime; do not run these commands during a live write. Keep the matching release
-files and `.env` (especially `FLUX_AUTH_SECRET` and the VAPID keys) with the backup, and restrict
+files and `.env` (especially `FLUX_AUTH_SECRET`, `FLUX_KEY_PIN_SECRET` and the VAPID keys) with the backup, and restrict
 access to it: it contains private workspace data.
 
 ```sh

@@ -7,7 +7,8 @@ attachment, a document with two versions, a work item and a private note. It rec
 wrote in a state file. `verify` signs in again on a restored or upgraded instance, possibly of ANOTHER
 release, and checks that every recorded item is still there (explicit fields and the exact attachment
 bytes, never whole responses, so a field a newer release adds does not matter). `verify --write` also
-proves the instance accepts a new message and reads it back.
+proves the instance accepts a new message and reads it back. `encrypted` signs in as the recorded account and
+creates an encrypted workspace, which needs the keyring secrets INSTALL.md names.
 
 Only routes that exist since the first release are used, because `seed` runs against the PREVIOUS
 release in the upgrade leg of smoke_artifacts.sh.
@@ -207,9 +208,20 @@ def verify(client: Client, state_file: Path, write: bool) -> None:
         print("A new message was accepted and reads back")
 
 
+def encrypted(client: Client, state_file: Path) -> None:
+    state = json.loads(state_file.read_text(encoding="utf-8"))
+    client.expect("POST", "/api/auth/sign-in/email", {"email": state["email"], "password": state["password"]}, (200,))
+    created = client.expect("POST", "/api/v1/encrypted-workspaces", {
+        "name": "Release encrypted probe", "creationId": str(uuid.uuid4()), "password": secrets.token_urlsafe(24),
+    }, (201,))
+    if not created.get("recoveryCode") or not created.get("workspace", {}).get("id"):
+        raise RuntimeError("encrypted workspace created without a workspace or recovery code")
+    print("Encrypted workspace created (recovery code returned)")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("mode", choices=("seed", "verify"))
+    parser.add_argument("mode", choices=("seed", "verify", "encrypted"))
     parser.add_argument("--origin", required=True)
     parser.add_argument("--state", type=Path, required=True)
     parser.add_argument("--write", action="store_true", help="verify: also write and read back a new message")
@@ -217,6 +229,8 @@ def main() -> None:
     client = Client(args.origin)
     if args.mode == "seed":
         seed(client, args.state)
+    elif args.mode == "encrypted":
+        encrypted(client, args.state)
     else:
         verify(client, args.state, args.write)
 

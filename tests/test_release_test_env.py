@@ -19,6 +19,7 @@ class TestEnvironmentTest(unittest.TestCase):
             destination = Path(directory) / ".env"
             source.write_text(
                 "POSTGRES_PASSWORD=replace\nFLUX_AUTH_SECRET=replace\n"
+                "FLUX_KEYRING_TOKEN=\nFLUX_KEY_PIN_SECRET=\n"
                 "FLUX_PUBLIC_ORIGIN=http://127.0.0.1:8081\nFLUX_FIXTURE_TOKEN=\n"
             )
             write(source, destination, 18081)
@@ -28,5 +29,8 @@ class TestEnvironmentTest(unittest.TestCase):
             self.assertIn("\nFLUX_FIXTURE_TOKEN=\n", value)
             self.assertIn("FLUX_PUBLIC_ORIGIN=http://127.0.0.1:18081", value)
             self.assertIn("FLUX_PORT=18081", value)
+            # INSTALL.md names the keyring secrets; without them no encrypted workspace can be created.
+            self.assertRegex(value, r"\nFLUX_KEYRING_TOKEN=[0-9a-f]{64}\n")
+            self.assertRegex(value, r"\nFLUX_KEY_PIN_SECRET=[0-9a-f]{64}\n")
             with self.assertRaisesRegex(ValueError, "overwrite"):
                 write(source, destination, 18082)

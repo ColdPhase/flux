@@ -31,7 +31,7 @@ def write_assets(directory: Path, image_digest: str, postgres: str = POSTGRES, s
         encoding="utf-8",
     )
     (directory / "env.example").write_text(
-        "POSTGRES_PASSWORD=\nFLUX_AUTH_SECRET=\nFLUX_PUBLIC_ORIGIN=http://127.0.0.1:8081\n", encoding="utf-8"
+        "POSTGRES_PASSWORD=\nFLUX_AUTH_SECRET=\nFLUX_KEYRING_TOKEN=\nFLUX_KEY_PIN_SECRET=\nFLUX_PUBLIC_ORIGIN=http://127.0.0.1:8081\n", encoding="utf-8"
     )
     (directory / "release.json").write_text(
         json.dumps({"version": "v0.1.0-rc.1", "image": f"ghcr.io/coldphase/flux@{image_digest}"}), encoding="utf-8"

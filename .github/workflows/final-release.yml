@@ -372,7 +372,7 @@ jobs:
 
           Install with the attached version-matched compose.yaml, env.example and INSTALL.md; check every file with SHA256SUMS first.
           The optional agent runtime is the attached compose.runtime.yaml with runtime.sh (off by default; Claude Code is not included in any image).
-          Calls and screen sharing: the attached compose.live.yaml (and compose.live.turn.yaml for TURN/TLS), which pin the LiveKit SFU by digest; see INSTALL.md.
+          Calls and screen sharing: the attached compose.live.yaml, which pins the LiveKit SFU by digest (compose.live.turn.yaml adds TURN/TLS to it); see INSTALL.md.
           This draft requires independent packaged install, upgrade and restore review before the version tag and release are published.
           EOF
           release_flags=(--draft)

@@ -20,6 +20,8 @@ def write(source: Path, destination: Path, port: int) -> None:
     replacements = {
         "POSTGRES_PASSWORD": secrets.token_hex(32),
         "FLUX_AUTH_SECRET": secrets.token_hex(32),
+        "FLUX_KEYRING_TOKEN": secrets.token_hex(32),
+        "FLUX_KEY_PIN_SECRET": secrets.token_hex(32),
         "FLUX_PORT": str(port),
         "FLUX_PUBLIC_ORIGIN": f"http://127.0.0.1:{port}",
     }
@@ -32,7 +34,7 @@ def write(source: Path, destination: Path, port: int) -> None:
             seen.add(key)
         else:
             lines.append(line)
-    missing = {"POSTGRES_PASSWORD", "FLUX_AUTH_SECRET", "FLUX_PUBLIC_ORIGIN"} - seen
+    missing = {"POSTGRES_PASSWORD", "FLUX_AUTH_SECRET", "FLUX_KEYRING_TOKEN", "FLUX_KEY_PIN_SECRET", "FLUX_PUBLIC_ORIGIN"} - seen
     if missing:
         raise ValueError(f"environment template is missing {', '.join(sorted(missing))}")
     lines.extend(f"{key}={value}" for key, value in replacements.items() if key not in seen)
