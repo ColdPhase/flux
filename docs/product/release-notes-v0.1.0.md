@@ -48,8 +48,9 @@ for HTTPS. The full guide is
 [Install from a release](https://coldphase.github.io/flux/operate/install-release/); in short:
 
 1. Download every file of this release into an empty folder and check them with `sha256sum -c SHA256SUMS`.
-2. Run `cp env.example .env && chmod 600 .env`, then set `POSTGRES_PASSWORD`, `FLUX_AUTH_SECRET` and
-   `FLUX_PUBLIC_ORIGIN`.
+2. Run `cp env.example .env && chmod 600 .env`, then set `POSTGRES_PASSWORD`, `FLUX_AUTH_SECRET`,
+   `FLUX_PUBLIC_ORIGIN`, `FLUX_KEYRING_TOKEN` and `FLUX_KEY_PIN_SECRET` (`openssl rand -hex 32` for each secret;
+   never change the pin secret and keep it with your `.env` backups).
 3. Run `docker compose --env-file .env -f compose.yaml pull`, then
    `docker compose --env-file .env -f compose.yaml up -d --wait`.
 4. Put an HTTPS reverse proxy in front of `127.0.0.1:8081` (tested
