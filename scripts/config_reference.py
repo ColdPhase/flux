@@ -89,7 +89,8 @@ GROUPS = [
      "file. Set them in `.env`; [INSTALL.md](release-guide.md#calls-and-screen-sharing-optional) has the ports and firewall."),
     ("ai", "AI providers",
      "Owners connect their own AI provider in **Settings → Agents and AI**. These switches decide what the instance allows. "
-     "They are read by the source checkout's Compose file; the release `compose.yaml` does not pass them yet."),
+     "Both Compose files pass the switches to `api` and `worker`; the assistant and background suggestions also need the "
+     "key file `FLUX_BACKGROUND_KEY_HOST_FILE`, which the release `compose.yaml` does not mount (see below)."),
     ("runtime", "Agent runtime: the owner's own Claude Code or Codex",
      "Off by default. See the [agent runtime guide](agent-runtime.md); `./flux ai on` writes these for you."),
     ("encryption", "Encrypted spaces and the keyring",
@@ -206,7 +207,10 @@ VARIABLES: dict[str, Var] = {
     # --- ai
     "FLUX_BACKGROUND_KEY_HOST_FILE": Var("ai", "absolute host path",
         "File with 32 random bytes that seals owners' AI keys for work the worker does on their behalf. Keep it outside "
-        "the checkout and the database backup. Empty leaves the assistant and background suggestions unavailable.",
+        "the checkout and the database backup. Empty leaves the assistant and background suggestions unavailable. The "
+        "source Compose file mounts it into `api` and `worker` at `/run/secrets/flux_background_key`; with the release "
+        "`compose.yaml`, mount the file at that path in both services from a Compose file of your own "
+        "([how](release-guide.md#assistant-on-your-own-ai-key-optional)).",
         "/etc/flux/background.key"),
     "FLUX_PERSONAL_RUNS": Var("ai", "empty · `off` · `on`",
         "`on` lets owners run their assistant on their own AI connection. Needs `FLUX_BACKGROUND_KEY_HOST_FILE`.", "on"),
