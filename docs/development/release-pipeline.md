@@ -16,7 +16,7 @@ accepted digest, deterministically and without timestamps:
 
 | Asset | Source |
 | --- | --- |
-| `compose.yaml` | [`docker/compose.yaml`](../../docker/compose.yaml) with the marker `ghcr.io/coldphase/flux@sha256:RELEASE_DIGEST` replaced by the accepted digest on `api`, `worker` and `migrate`. Only the leading repository-oriented header comment is replaced by a release header; every other line is unchanged. |
+| `compose.yaml` | [`docker/compose.yaml`](../../docker/compose.yaml) with the marker `ghcr.io/coldphase/flux@sha256:RELEASE_DIGEST` replaced by the accepted digest on `api`, `worker`, `keyring` and `migrate`. Only the leading repository-oriented header comment is replaced by a release header; every other line is unchanged. |
 | `compose.runtime.yaml` | [`docker/compose.runtime.yaml`](../../docker/compose.runtime.yaml): the optional agent-runtime overlay (#358). `ghcr.io/coldphase/flux@sha256:RELEASE_DIGEST` is replaced on `runtime-manager` and `runtime-egress`, `ghcr.io/coldphase/flux-agent-runtime@sha256:RUNTIME_DIGEST` on the slot anchor and `runtime-install`; the leading header comment is replaced. Off unless the operator opts in. |
 | `runtime.sh` | [`docker/runtime.sh`](../../docker/runtime.sh), unchanged: `on`, `off`, `up`, `status`, `release`, `purge`. |
 | `compose.live.yaml`, `compose.live.turn.yaml` | [`docker/compose.live.yaml`](../../docker/compose.live.yaml) and [`docker/compose.live.turn.yaml`](../../docker/compose.live.turn.yaml): the optional calls and screen-sharing overlays (#63). Only the leading header comment is replaced; the third-party LiveKit image is already pinned by digest in the repository file and recorded as `live_media_image` in `release.json`. `prepare_assets.py` refuses a build, an image not pinned by digest, a Flux image, a socket or a source path. Flux builds no image for them. |
@@ -101,9 +101,9 @@ The workflow's packaged smoke is a gate, not the whole release evaluation. It ru
 one platform (amd64), does not cover a bound slot's sign-out and reuse (they need a vendor login; the fake-CLI
 `scripts/check_agent_runtime.sh` covers them against the source stack), and does not run the upgrade leg
 (next section), a TLS reverse proxy, browsers, Web Push or SMTP. In particular, the first release has no
-previous version from which to exercise a real forward upgrade: its schema is the single v0.1 baseline
-(#779) and pre-release schemas cannot be upgraded, so `FLUX_DRYRUN_PREVIOUS` must name a revision with
-that baseline. From v0.1 on, publish a candidate `-rc.N` first and upgrade from it. Arm64 QEMU build and manifest inspection are not a native arm64 install test. Those
+previous version from which to exercise a real forward upgrade: its schema is the v0.1 baseline
+(#779) plus migration 0002 (#806), and pre-release schemas cannot be upgraded, so `FLUX_DRYRUN_PREVIOUS` must
+name a revision with that baseline. From v0.1 on, publish a candidate `-rc.N` first and upgrade from it. Arm64 QEMU build and manifest inspection are not a native arm64 install test. Those
 results remain open until the independent artifact review records them. The source
 workspace and test stack continue using their own Compose path; the attached
 `compose.yaml` is the pull-only operator path.
