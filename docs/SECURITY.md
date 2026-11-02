@@ -2,13 +2,13 @@
 
 ## Supported code
 
-Flux is in early development and has no released version. Security fixes are made
-on the latest `main` branch; historical commits do not have maintenance branches or
-promised backports.
+Flux [v0.1.0](https://github.com/ColdPhase/flux/releases/tag/v0.1.0) is the first release, an early version. Security fixes are made
+on the latest `main` branch; historical commits and earlier releases do not have
+maintenance branches or promised backports.
 
-The application on `main` has accounts, sessions and server-side authorization, but
-it has not had a security review or a release. Use sample data and do not expose it
-as a production service.
+The application has accounts, sessions and server-side authorization, but it has not
+had an independent security review. Read the [hardening guide](operations/hardening.md)
+before you expose an instance to the internet.
 
 ## Report a vulnerability
 

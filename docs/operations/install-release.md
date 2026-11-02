@@ -14,8 +14,10 @@ optional [agent runtime](agent-runtime.md#installing-from-a-release), and `compo
 images are published for `linux/amd64` only; `linux/arm64` follows in v0.1.1. Always use the files from the
 release you install: a newer `main` can need other migrations or variables than your image.
 
-No release has been published yet; until one is, install [from a source checkout](install.md). The
-repository copies, [`docker/compose.yaml`](../../docker/compose.yaml) and
+Flux [v0.1.0](https://github.com/ColdPhase/flux/releases/tag/v0.1.0) is published. Download its files and follow the `INSTALL.md` among them
+([the same guide](release-guide.md)). On a host that is not `linux/amd64`, install
+[from a source checkout](install.md). The repository copies,
+[`docker/compose.yaml`](../../docker/compose.yaml) and
 [`docker/.env.example`](../../docker/.env.example), carry a placeholder digest and do not start as
 they are.
 

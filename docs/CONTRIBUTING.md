@@ -1,6 +1,6 @@
 # Contributing to Flux
 
-Flux is in early development and not yet released. The application is a
+Flux is in early development; [v0.1.0](https://github.com/ColdPhase/flux/releases/tag/v0.1.0) is its first release. The application is a
 TypeScript monorepo run with Docker Compose (see the [README](../README.md) and
 [architecture](development/architecture.md)). Its UI follows one design, the
 [final design "Prostota"](design/final/README.md). Contributions to usability, accessibility,

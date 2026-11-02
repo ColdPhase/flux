@@ -6,8 +6,8 @@ separate worker, PostgreSQL 18, reviewed SQL migrations and a durable pg-boss qu
 
 ## Current state
 
-Flux is pre-release: no version has been published and there is no supported upgrade
-path yet. On this stack the application now provides accounts and sessions, workspace
+Flux v0.1.0, the first release, is published; there is nothing to upgrade from yet.
+On this stack the application now provides accounts and sessions, workspace
 and project access, project conversations with tasks, decisions, results, map and wiki,
 direct messages, search, the inbox with Web Push, connected MCP agents and an optional
 in-app assistant, optional live media, and `./flux` operations. The

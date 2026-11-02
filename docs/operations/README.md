@@ -6,7 +6,8 @@ small keyring, behind your HTTPS reverse proxy. These pages are for the person w
 | Start here | |
 | --- | --- |
 | [Requirements](requirements.md) | Host, Docker, memory, disk and network |
-| [Installation](install.md) | A production server on your domain, from a source checkout today |
+| [Install from a release](install-release.md) | A production server on your domain from the published v0.1.0 image, without the source |
+| [Installation](install.md) | A production server on your domain, from a source checkout |
 | [HTTPS and reverse proxies](reverse-proxy.md) | Caddy, nginx and Traefik, each tested |
 | [Configuration reference](configuration.md) | Every setting, generated from the code |
 | [Administration in the app](administration.md) | Spaces, people and roles, invite links, AI, encryption |

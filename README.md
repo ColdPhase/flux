@@ -12,7 +12,7 @@
 <p align="center">
   <a href="https://github.com/ColdPhase/flux/actions/workflows/application-checks.yml"><img src="https://github.com/ColdPhase/flux/actions/workflows/application-checks.yml/badge.svg?branch=main" alt="Application checks"></a>
   <a href="LICENSE"><img src="https://img.shields.io/github/license/ColdPhase/flux?color=18181b&amp;labelColor=636363" alt="License: AGPL-3.0"></a>
-  <a href="https://github.com/ColdPhase/flux/milestone/2"><img src="https://img.shields.io/badge/release-pre--release-18181b?labelColor=636363" alt="Release: pre-release"></a>
+  <a href="https://github.com/ColdPhase/flux/releases/tag/v0.1.0"><img src="https://img.shields.io/github/v/release/ColdPhase/flux?display_name=tag&amp;label=release&amp;color=18181b&amp;labelColor=636363" alt="Release: v0.1.0"></a>
   <a href="#quick-start"><img src="https://img.shields.io/badge/runs%20on-Docker%20Compose-18181b?logo=docker&amp;logoColor=white&amp;labelColor=636363" alt="Runs on Docker Compose"></a>
   <a href="https://coldphase.github.io/flux/"><img src="https://img.shields.io/badge/docs-coldphase.github.io%2Fflux-18181b?labelColor=636363" alt="Documentation"></a>
 </p>
@@ -105,11 +105,15 @@ integrations can use them freely ([licensing](docs/product/licensing.md)).
 
 ## Project status
 
-**Pre-release.** No version has been published yet, so there is no upgrade promise or
-supported deployment; do not use it for sensitive data or production teams.
+**Flux [v0.1.0](https://github.com/ColdPhase/flux/releases/tag/v0.1.0) is published.** It is the first release, an early version: keep
+[backups](docs/operations/backup-restore.md) from the start and read its
+[release notes](docs/product/release-notes-v0.1.0.md) for what is not in it yet. The image
+(`ghcr.io/coldphase/flux`) is built for `linux/amd64` only; `linux/arm64` follows in v0.1.1. To run it
+on a server, download every file of the release and follow its `INSTALL.md`
+([install from a release](docs/operations/install-release.md)). To look around first, use the quick
+start below.
 
-The [current milestone](https://github.com/ColdPhase/flux/milestone/2) tracks the rest of
-the first release, including installation and notifications on real phones and tablets.
+What comes next is tracked in the [milestones](https://github.com/ColdPhase/flux/milestones).
 
 The application follows one design for the computer and the phone, the
 [final design "Prostota"](docs/design/final/README.md). Its screens and guidelines are the
@@ -153,6 +157,7 @@ To run Flux for a team on your own domain, start with the
 | Guide | Covers |
 | --- | --- |
 | [Requirements](docs/operations/requirements.md) | Linux with Docker Compose, 4 GB of memory, a domain name |
+| [Install from a release](docs/operations/install-release.md) | A production server from the published image, without the source |
 | [Installation](docs/operations/install.md) | A production server from a source checkout, step by step |
 | [HTTPS and reverse proxies](docs/operations/reverse-proxy.md) | Caddy, nginx and Traefik examples, each tested |
 | [Configuration reference](docs/operations/configuration.md) | Every setting with its type and default, generated from the code |

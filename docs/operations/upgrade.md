@@ -12,7 +12,7 @@ git pull --ff-only && ./flux upgrade      # or: ./flux upgrade --pull
    written between the backup and the new version, so going back to the backup loses nothing.
 3. **New version.** With `--pull` it runs `git pull --ff-only` and continues in the pulled
    launcher. It builds the image from the checkout (`FLUX_NO_CACHE=1` for a clean build).
-   Release images are not published yet; when they are, this step can pull them instead.
+   A release installation pulls the release's image instead ([upgrade a release](release-guide.md#upgrade)).
 4. **Migrate forward.** `files-init`, then the one-shot migration applies every new
    `app/packages/db/migrations/NNNN_*.sql` in order, each in its own transaction.
 5. **Health.** It starts API and worker, waits for their health checks, and checks that the API

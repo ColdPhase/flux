@@ -1,6 +1,6 @@
 # Governance
 
-Flux is an early, pre-release project. This page says who decides what today and
+Flux is an early project; v0.1.0 is its first release. This page says who decides what today and
 how that is meant to open up. It describes current practice. It is not a promise
 of a foundation, a voting body or a commercial arrangement.
 
