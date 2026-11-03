@@ -23,6 +23,7 @@ For a release installation use `docker compose --env-file .env -f compose.yaml` 
 | `all predefined address pools have been fully subnetted` | Docker ran out of networks on a shared host; see [Docker address pools](#docker-address-pools). |
 | `Compose project … belongs to another checkout` | The settings file names a project another checkout created, often a copied `.env`. Set a different `FLUX_PROJECT`, or pass `--force-project` if you really mean that project. |
 | `migrate` exited with an error, `api` waits | Read `dc logs migrate`. A ledger mismatch means the database belongs to another version: see [migration ledger mismatch](../development/application-foundation.md#migration-ledger-mismatch-118) and restore the matching backup rather than editing the ledger. |
+| `migrate` exits 1 after about 5 s with `Error: Query read timeout`, `api` and `worker` never start (v0.1.0, a fresh database on a slow host) | v0.1.0 gave the migrator the 2 s request timeout, and its first migration takes longer on a slow disk or CPU ([#846](https://github.com/ColdPhase/flux/issues/846)). Fixed in the next release. On v0.1.0, apply the baseline by hand: [Install, the first migration on a slow host](#the-first-migration-on-a-slow-host-v010). |
 | `api` restarts with exit code 137, or `docker inspect` shows `OOMKilled` | It hit its memory limit. Raise `FLUX_API_MEMORY` (or `FLUX_WORKER_MEMORY`) and run `./flux up`. |
 | `/api/v1/health` answers `503` | Its warning in `dc logs api` says which check failed: migrations, the queue schema, or writing to the files volume (disk full or permissions). |
 | `FastifyWarning: … FSTWRN004` when the API starts | Harmless. Several route groups set their own error handler on purpose, and Fastify notes each override. |
@@ -49,6 +50,27 @@ For a release installation use `docker compose --env-file .env -f compose.yaml` 
 | An MCP client on another computer | It needs an `https` origin; `http://127.0.0.1` works only on the server itself. The server also needs outbound HTTPS to fetch the client's metadata. |
 | Encrypted spaces stay locked | Normal after a restart until an owner or admin unlocks. If unlocking fails with a swap message, see [swap and memory](encrypted-spaces.md#swap-and-memory). |
 | Live calls | `GET /api/v1/live-sessions/capabilities` says `configured` only with the [live-media overlay](../development/live-media.md). |
+
+## The first migration on a slow host (v0.1.0)
+
+Only v0.1.0, only on a fresh, empty database. `migrate` applies each migration file as one statement, and v0.1.0 gave
+it the API's 2 s timeout, so a host where the first file (the whole v0.1 schema) takes longer than 2 s rolls it back on
+every start. The next release gives the migrator its own long bound. To get past it on v0.1.0, apply that file the way
+`migrate` does, in one transaction, then start again (`migrate` then applies the second file and sets up the job queue itself).
+Run it in the directory of your `compose.yaml`; `IMG` is the `image` value of the release's `release.json`, and
+flux-db-1 is your database container (see docker compose ps):
+
+```sh
+IMG=<the "image" value from the release's release.json>
+docker run --rm --entrypoint cat "$IMG" /app/packages/db/migrations/0001_v0_1_baseline.sql \
+  | docker exec -i flux-db-1 sh -c 'cat > /tmp/0001.sql'
+docker exec flux-db-1 psql -q -v ON_ERROR_STOP=1 -U flux -d flux --single-transaction \
+  -f /tmp/0001.sql -c "INSERT INTO public.flux_schema_version(version) VALUES (1) ON CONFLICT DO NOTHING"
+docker exec flux-db-1 rm -f /tmp/0001.sql
+docker compose --env-file .env -f compose.yaml up -d --wait
+```
+
+The `migrate` log then reads `Applied migration 0002_first_time_user.sql` and `Flux schema 2 and pg-boss ready`.
 
 ## Docker address pools
 

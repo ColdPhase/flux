@@ -144,7 +144,8 @@ export async function buildApp(config: ServerConfig, migrationsDir = 'packages/d
     sessions: { resolveSession: (headers) => gateSessions!.resolveSession(headers), requirePrincipal: (request) => gateSessions!.requirePrincipal(request) } });
   const migrationManifest = await readMigrationManifest(migrationsDir, FLUX_SCHEMA_VERSION);
   assertExactMigrationLedger(migrationManifest, await readAppliedMigrationVersions(pool));
-  const boss = new PgBoss({ connectionString, migrate: false });
+  // The API only enqueues. The worker owns scheduling and maintenance, so this instance runs neither of their timers (#862).
+  const boss = new PgBoss({ connectionString, migrate: false, schedule: false, supervise: false });
   boss.on('error', (error) => app.log.error(error));
   await boss.start();
   app.addHook('onClose', async () => boss.stop());

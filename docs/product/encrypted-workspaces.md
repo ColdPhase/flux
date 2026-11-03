@@ -548,7 +548,7 @@ stateDiagram-v2
    the role check refuses them anyway. **No new DEK is made while locked.** Re-encryption needs the
    old DEK, so a new one made earlier would protect nothing and would have to trust unverified
    holder rows.
-   **Start** (pending to reencrypting) happens in the worker (S2c, 2026-10-29): its sweep (every 5 s) and the
+   **Start** (pending to reencrypting) happens in the worker (S2c, 2026-10-29): its sweep (every 15 s) and the
    resume job sent with every unlock start each `pending` rotation of an unlocked workspace. So a removal while
    unlocked, the first unlock after a removal while locked, a cascade and a worker restart take one code path. The
    removal's transaction already deleted the holders, so the seconds until the start change nothing for the removed
@@ -1039,7 +1039,7 @@ not only warned about.
   unauthenticated `/api/v1/health` does not report it.) The heartbeat runs the check again every 5 s and
   drops every key when it fails.
 - **Defaults that pass.** The shipped Compose files give `api` and `worker` `mem_limit` with
-  `memswap_limit` equal (`FLUX_API_MEMORY`, default `2g`; `FLUX_WORKER_MEMORY`, default `1g`;
+  `memswap_limit` equal (`FLUX_API_MEMORY`, default `1536m`; `FLUX_WORKER_MEMORY`, default `512m`;
   configurable, never unset), so case 1 holds wherever the kernel accounts swap. Elsewhere, case 2 or 3
   must hold.
 - **Core dumps** are off (`ulimits: core: 0`) for `api`, `worker` and `keyring`.
@@ -1144,7 +1144,7 @@ an **encrypted index at rest, decrypted into RAM**:
   `tests/app/sealed-search-heap.test.ts` fails when the estimate falls below the measured heap or exceeds 2.5 times it. Two bounds:
   `FLUX_SEALED_SEARCH_MAX_BYTES` per workspace (default 256 MiB estimated heap) and `FLUX_SEALED_SEARCH_PROCESS_MAX_BYTES` across every
   workspace of the API process. The process default is a quarter of the container's memory limit (cgroup `memory.max`, which is
-  `FLUX_API_MEMORY`, 2g by default), at most 512 MiB and at least 64 MiB, and 512 MiB when there is no limit; the workspace default is
+  `FLUX_API_MEMORY`, 1536m by default), at most 512 MiB and at least 64 MiB, and 512 MiB when there is no limit; the workspace default is
   256 MiB or the process bound if that is smaller. An out-of-memory kill drops every key the process holds and locks all its encrypted
   workspaces, which is why the total is bounded and not only each workspace. A build or catch-up that grows past either stops at once and the workspace answers with
   `sealedUnavailable: [workspaceId]` (S3 draws "Search isn't available in Garden club: it is too large to search in memory"); a chooser

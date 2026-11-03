@@ -60,12 +60,19 @@ export function databaseConnectTimeoutMs(env: NodeJS.ProcessEnv = process.env): 
  */
 export const DATABASE_SESSION_OPTIONS = `-c idle_in_transaction_session_timeout=${IDLE_IN_TRANSACTION_TIMEOUT_MS} -c jit=off`;
 
+/**
+ * How long an unused connection stays open. node-postgres closes it after 10 s by default, and the periodic work of an idle
+ * Flux (a minute tick, 15 to 30 s sweeps) is slower than that, so every run opened a new PostgreSQL process: 34 per minute
+ * with nobody signed in (#862). Longer than the slowest of those periods, so idle work reuses its connection.
+ */
+export const DATABASE_IDLE_CONNECTION_MS = 120_000;
+
 export function createDatabase(connectionString: string, connectTimeoutMs = databaseConnectTimeoutMs(),
   options: { queryTimeoutMs?: number; max?: number } = {}) {
   // A client whose BEGIN or ROLLBACK fails is destroyed by the drizzle-orm patch in app/patches (#234). The key
   // rotation's own small pool allows longer statements (whole-table scans, VACUUM, CHECKPOINT; F-030 S2c).
   const pool = new pg.Pool({ connectionString, connectionTimeoutMillis: connectTimeoutMs, query_timeout: options.queryTimeoutMs ?? 2000,
-    options: DATABASE_SESSION_OPTIONS, ...(options.max ? { max: options.max } : {}) });
+    idleTimeoutMillis: DATABASE_IDLE_CONNECTION_MS, options: DATABASE_SESSION_OPTIONS, ...(options.max ? { max: options.max } : {}) });
   const db = drizzle({ client: pool, schema });
   return { pool, db };
 }

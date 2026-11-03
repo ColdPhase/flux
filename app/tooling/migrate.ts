@@ -8,7 +8,10 @@ import { ASSISTANT_TICK_JOB, ASSISTANT_TICK_QUEUE, ASSISTANT_TICK_RETRY, COMPARI
 const connectionString = process.env.DATABASE_URL;
 if (!connectionString) throw new Error('DATABASE_URL is required');
 const migrationsDir = 'packages/db/migrations';
-const { pool } = createDatabase(connectionString);
+// A migration file is one statement that runs as long as the host needs: the v0.1 baseline takes 3 s on a slow disk or arm64 VPS (#846).
+// The 2 s request timeout of the API's and worker's pools would roll it back on every retry, so the migrator has its own, long bound.
+const MIGRATION_QUERY_TIMEOUT_MS = 30 * 60_000;
+const { pool } = createDatabase(connectionString, undefined, { queryTimeoutMs: MIGRATION_QUERY_TIMEOUT_MS });
 try {
   // Numbered files (NNNN_name.sql) apply once, in order, each in its own transaction. 0001 is the
   // v0.1 baseline (#779): the whole schema of a fresh install; later changes are 0002 onwards.
@@ -44,32 +47,36 @@ try {
   const boss = new PgBoss({ connectionString });
   boss.on('error', (error) => console.error(error));
   await boss.start();
+  // Every queue wakes its worker by NOTIFY when a job is ready (the worker listens, #862), so the worker only polls as a backstop.
+  // Existing queues keep their stored policy; updateQueue applies the reviewed retry bounds and the wake-up to them too.
+  const wake = { notify: true };
   for (const queue of ['sample.process', 'draft.summarize.v1', 'idempotency.cleanup.v1', 'notification.morning-summary.v1']) {
-    await boss.createQueue(queue);
+    await boss.createQueue(queue, wake);
+    await boss.updateQueue(queue, wake);
   }
-  // Existing queues keep their stored policy; updateQueue applies the reviewed retry bounds.
-  await boss.createQueue(PUSH_SEND_JOB, PUSH_SEND_QUEUE);
-  await boss.updateQueue(PUSH_SEND_JOB, PUSH_SEND_QUEUE);
-  await boss.createQueue(NOTIFICATION_EMAIL_JOB, NOTIFICATION_EMAIL_QUEUE);
-  await boss.updateQueue(NOTIFICATION_EMAIL_JOB, NOTIFICATION_EMAIL_QUEUE);
-  await boss.createQueue(PERSONAL_RUN_JOB, PERSONAL_RUN_QUEUE);
-  await boss.updateQueue(PERSONAL_RUN_JOB, PERSONAL_RUN_QUEUE);
+  await boss.createQueue(PUSH_SEND_JOB, { ...PUSH_SEND_QUEUE, ...wake });
+  await boss.updateQueue(PUSH_SEND_JOB, { ...PUSH_SEND_QUEUE, ...wake });
+  await boss.createQueue(NOTIFICATION_EMAIL_JOB, { ...NOTIFICATION_EMAIL_QUEUE, ...wake });
+  await boss.updateQueue(NOTIFICATION_EMAIL_JOB, { ...NOTIFICATION_EMAIL_QUEUE, ...wake });
+  await boss.createQueue(PERSONAL_RUN_JOB, { ...PERSONAL_RUN_QUEUE, ...wake });
+  await boss.updateQueue(PERSONAL_RUN_JOB, { ...PERSONAL_RUN_QUEUE, ...wake });
   // "On a schedule" (F-027 A8): the per-minute tick is one active job at a time across workers.
-  await boss.createQueue(ASSISTANT_TICK_JOB, ASSISTANT_TICK_QUEUE);
-  await boss.updateQueue(ASSISTANT_TICK_JOB, ASSISTANT_TICK_RETRY);
+  await boss.createQueue(ASSISTANT_TICK_JOB, { ...ASSISTANT_TICK_QUEUE, ...wake });
+  await boss.updateQueue(ASSISTANT_TICK_JOB, { ...ASSISTANT_TICK_RETRY, ...wake });
   // Background comparisons (#58): created always, scheduled only when the operator switches them on.
   for (const queue of [COMPARISON_TICK_JOB, COMPARISON_RECOVERY_JOB]) {
-    await boss.createQueue(queue, COMPARISON_JOB_QUEUE);
-    await boss.updateQueue(queue, COMPARISON_JOB_RETRY);
+    await boss.createQueue(queue, { ...COMPARISON_JOB_QUEUE, ...wake });
+    await boss.updateQueue(queue, { ...COMPARISON_JOB_RETRY, ...wake });
   }
   // F-029 (S2): the turn-off sweep, retried so a lost job cannot leave queued AI work behind (the sweep is idempotent).
-  await boss.createQueue(WORKSPACE_AI_SWEEP_JOB, { retryLimit: 5, retryDelay: 5 });
-  await boss.updateQueue(WORKSPACE_AI_SWEEP_JOB, { retryLimit: 5, retryDelay: 5 });
+  await boss.createQueue(WORKSPACE_AI_SWEEP_JOB, { retryLimit: 5, retryDelay: 5, ...wake });
+  await boss.updateQueue(WORKSPACE_AI_SWEEP_JOB, { retryLimit: 5, retryDelay: 5, ...wake });
   // F-030: sent with every unlock of an encrypted workspace; replays the work that waited while it was locked.
-  await boss.createQueue(WORKSPACE_ENCRYPTION_RESUME_JOB, { retryLimit: 5, retryDelay: 5 });
-  await boss.updateQueue(WORKSPACE_ENCRYPTION_RESUME_JOB, { retryLimit: 5, retryDelay: 5 });
+  await boss.createQueue(WORKSPACE_ENCRYPTION_RESUME_JOB, { retryLimit: 5, retryDelay: 5, ...wake });
+  await boss.updateQueue(WORKSPACE_ENCRYPTION_RESUME_JOB, { retryLimit: 5, retryDelay: 5, ...wake });
   // F-030 S2b: prunes the search change log of encrypted workspaces.
-  await boss.createQueue(SEARCH_CHANGES_CLEANUP_JOB);
+  await boss.createQueue(SEARCH_CHANGES_CLEANUP_JOB, wake);
+  await boss.updateQueue(SEARCH_CHANGES_CLEANUP_JOB, wake);
   await boss.stop();
   console.log(`Flux schema ${FLUX_SCHEMA_VERSION} and pg-boss ready`);
 } finally {

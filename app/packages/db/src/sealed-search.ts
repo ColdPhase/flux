@@ -22,7 +22,7 @@ import { openRows, sealOf } from './sealing.js';
  * a string and an array, so the heap measured 16 to 112 times the text on the test corpora). `tests/app/sealed-search-heap.test.ts`
  * measures the heap after a full GC against the estimate and fails when the estimate falls below it. Per workspace, and across every
  * workspace of the process: an out-of-memory kill of the API drops every key it holds and locks all its encrypted workspaces, so the
- * process total stays well inside the container's memory (`FLUX_API_MEMORY`, 2 GiB by default): at most a quarter of it, between
+ * process total stays well inside the container's memory (`FLUX_API_MEMORY`, 1.5 GiB by default): at most a quarter of it, between
  * 64 MiB and 512 MiB, unless `FLUX_SEALED_SEARCH_PROCESS_MAX_BYTES` says otherwise.
  */
 export const SEALED_SEARCH_DEFAULT_MAX_BYTES = 256 * 1024 * 1024;

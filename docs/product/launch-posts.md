@@ -99,8 +99,8 @@ stated as the template requires.
 > service. `./flux up` builds and starts it; `./flux demo` seeds a sample workspace. A published release
 > has a pull-only `compose.yaml`, checksums and an install guide
 > ([install from a release](https://github.com/ColdPhase/flux/blob/main/docs/operations/install-release.md)).
-> The compose file sets memory limits (`FLUX_API_MEMORY` 2g, `FLUX_WORKER_MEMORY` 1g, `FLUX_KEYRING_MEMORY`
-> 128m); I have not measured a minimum machine, so do not read those as sizing advice.
+> The compose file sets memory limits (`FLUX_DB_MEMORY` 768m, `FLUX_API_MEMORY` 1536m, `FLUX_WORKER_MEMORY` 512m,
+> `FLUX_KEYRING_MEMORY` 128m); I have not measured a minimum machine, so do not read those as sizing advice.
 >
 > **Operating it.** `./flux backup`, `restore`, `export` and `upgrade`; an HTTPS reverse-proxy guide with
 > Caddy; optional single sign-on with your own OpenID Connect provider; email through your SMTP server;

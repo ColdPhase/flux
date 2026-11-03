@@ -38,7 +38,12 @@ export class TypingHub {
   private timer: ReturnType<typeof setInterval>;
   constructor(readonly access: TypingAccessPorts, readonly notifications: TypingNotificationPort, readonly diagnostics?: TypingDiagnostics) {
     this.proofs = new TypingSenderProofs(access, (operation) => this.measure('sender', operation));
-    this.timer = setInterval(() => { for (const subscriber of this.subscribers) subscriber.heartbeat(); this.wake(); }, 1000);
+    this.timer = setInterval(() => {
+      // With nobody connected and nothing pending there is nothing to refresh: an idle server must not ask the database for its clock every second (#862).
+      if (!this.subscribers.size && !this.pending.size) return;
+      for (const subscriber of this.subscribers) subscriber.heartbeat();
+      this.wake();
+    }, 1000);
     this.timer.unref();
   }
   get generation() { return this.epoch; }

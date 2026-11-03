@@ -13,11 +13,13 @@ import { emailUnitOfWork, generatorUnitOfWork, smtpNotificationMailer } from './
 
 export { emailUnitOfWork, generatorUnitOfWork, pushPreferenceCheck, smtpNotificationMailer } from './adapters.js';
 
-const POLL_MS = 2000;
+// Only a backstop (#862): the LISTEN wakes the generator when an event commits and again when the listener reconnects, so an idle
+// generator looks every 30 s instead of every 2 s.
+const POLL_MS = 30_000;
 
 /**
  * Turns committed events into notifications (issue #116). A LISTEN on the event channel wakes
- * the generator right after a commit; a short poll catches anything a lost wake-up missed.
+ * the generator right after a commit; a slow poll catches anything a lost wake-up missed.
  * Runs are serialized in this process, and the cursor row lock serializes worker replicas.
  */
 export function startNotificationGenerator(options: { db: Database; boss: PgBoss; connectionString: string; emailAvailable: boolean; log?: (message: string, details?: Record<string, unknown>) => void }) {
@@ -83,8 +85,8 @@ export async function registerNotificationEmailWorker(boss: PgBoss, db: Database
     uow: emailUnitOfWork(db, boss),
     mailer: smtp ?? { send: async () => ({ kind: 'failed' as const, message: 'email unavailable' }) },
   };
-  // A few sends at once and a short poll: one slow SMTP answer never holds up everyone's mail.
-  await boss.work<EmailJob>(NOTIFICATION_EMAIL_JOB, { localConcurrency: 4, pollingIntervalSeconds: 0.5 }, async (jobs) => {
+  // A few sends at once: one slow SMTP answer never holds up everyone's mail. A queued email wakes them by NOTIFY.
+  await boss.work<EmailJob>(NOTIFICATION_EMAIL_JOB, { localConcurrency: 4 }, async (jobs) => {
     for (const job of jobs) {
       const result = await handleEmailJob(boss, options, job.data);
       console.log(JSON.stringify({ job: NOTIFICATION_EMAIL_JOB, id: job.id, emailId: job.data.emailId, ...result }));

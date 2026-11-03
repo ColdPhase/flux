@@ -43,7 +43,7 @@ const testNumber = (env: NodeJS.ProcessEnv, name: string) => {
 };
 
 /**
- * The rotation's pace: pages of 500 rows (20 files), 20 ms apart, a sweep every 5 s. A test deployment may make pages
+ * The rotation's pace: pages of 500 rows (20 files), 20 ms apart, a sweep every 15 s (an idle sweep is one query). A test deployment may make pages
  * smaller and the sweep faster, and hold the pass after a number of pages so a test can kill the worker mid-rotation.
  */
 export function rotationOptions(env: NodeJS.ProcessEnv): KeyRotationOptions & { sweepMs: number } {
@@ -52,7 +52,7 @@ export function rotationOptions(env: NodeJS.ProcessEnv): KeyRotationOptions & { 
     pageSize: testNumber(env, 'FLUX_TEST_ROTATION_PAGE_SIZE') ?? 500,
     filePageSize: 20,
     pauseMs: 20,
-    sweepMs: testNumber(env, 'FLUX_TEST_ROTATION_SWEEP_MS') ?? 5_000,
+    sweepMs: testNumber(env, 'FLUX_TEST_ROTATION_SWEEP_MS') ?? 15_000,
     afterPage: hold === null ? undefined : async (pages) => {
       if (pages < hold) return;
       console.log(JSON.stringify({ test: 'rotation held', pages }));

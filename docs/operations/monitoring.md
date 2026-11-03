@@ -18,11 +18,16 @@ too. It does not report the keyring, swap, email or push; those are below.
 
 | Service | Health check | Restart policy |
 | --- | --- | --- |
-| `db` | `pg_isready` every 2 s | `unless-stopped` |
+| `db` | `pg_isready` every 30 s | `unless-stopped` |
 | `migrate` | one-shot; must exit 0 before `api` and `worker` start | none |
-| `api` | `/api/v1/health` inside the container every 3 s | `unless-stopped` |
+| `api` | `/api/v1/health` inside the container every 30 s | `unless-stopped` |
 | `worker` | none; watch that it is running | `unless-stopped` |
-| `keyring` | its own boot-key route every 3 s (healthy and idle without a token) | `unless-stopped` |
+| `keyring` | its own boot-key route every 30 s (healthy and idle without a token) | `unless-stopped` |
+
+Each check is a small program of the image (`wget`, `nc`, `pg_isready`), not a Node process, and during
+the first minute after a start it runs every quarter of a second, so a start is reported healthy as soon as it
+is, and a slow first start (a new database, a long migration) is not counted as failing. After the
+minute, three failures in a row make a container `unhealthy`.
 
 `./flux up` and `docker compose … up --wait` wait for these. On a running instance:
 
