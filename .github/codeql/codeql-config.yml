@@ -1,0 +1,11 @@
+# CodeQL for the TypeScript code (#836): the security-extended query suite over the application's own source.
+name: Flux CodeQL
+queries:
+  - uses: security-extended
+paths:
+  - app/apps
+  - app/packages
+  - app/tooling
+paths-ignore:
+  - "**/dist"
+  - "**/node_modules"

@@ -1,0 +1,40 @@
+name: Dependency audit
+
+# #834: fails on a HIGH or CRITICAL advisory in the production dependencies (`pnpm audit --prod`) that
+# .github/security-allowlist.json does not name. It runs when a change can alter the answer (the lockfile, a manifest,
+# the audit or its allowlist) and once a week for advisories published since. One container, no install, about a minute.
+# Not a required check: a path filter must not strand one (docs/agents/ci-and-releases.md#security-scanning).
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - app/pnpm-lock.yaml
+      - app/pnpm-workspace.yaml
+      - "app/**/package.json"
+      - docker/Dockerfile
+      - scripts/security_scan.py
+      - .github/security-allowlist.json
+      - .github/workflows/dependency-audit.yml
+  schedule:
+    - cron: "17 5 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: dependency-audit-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  audit:
+    name: Dependency audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - name: Audit the production dependencies
+        run: python3 scripts/security_scan.py audit

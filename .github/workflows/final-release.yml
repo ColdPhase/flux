@@ -256,6 +256,37 @@ jobs:
             sbom-agent-runtime.spdx.json
           if-no-files-found: error
 
+  scan:
+    name: Scan the images for known vulnerabilities
+    needs: [candidate, image]
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    permissions:
+      contents: read
+      packages: read
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ needs.candidate.outputs.source_sha }}
+          persist-credentials: false
+      - name: Scan both images on every platform (HIGH/CRITICAL findings with a fix fail unless allowlisted)
+        env:
+          TRIVY_USERNAME: ${{ github.actor }}
+          TRIVY_PASSWORD: ${{ github.token }}
+          IMAGE_DIGEST: ${{ needs.image.outputs.digest }}
+          RUNTIME_DIGEST: ${{ needs.image.outputs.runtime_digest }}
+          RELEASE_PLATFORMS: ${{ needs.candidate.outputs.platforms }}
+        run: |
+          python3 scripts/security_scan.py image --platforms "$RELEASE_PLATFORMS" --report-dir security-reports \
+            --cache "$RUNNER_TEMP/trivy" --summary-file security-reports/summary.md \
+            "ghcr.io/coldphase/flux@$IMAGE_DIGEST" "ghcr.io/coldphase/flux-agent-runtime@$RUNTIME_DIGEST"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always()
+        with:
+          name: release-scan
+          path: security-reports/*
+          if-no-files-found: ignore
+
   package:
     name: Test packaged installation
     needs: [candidate, image]
@@ -321,7 +352,7 @@ jobs:
 
   draft:
     name: Create draft for independent artifact review
-    needs: [candidate, image, package]
+    needs: [candidate, image, package, scan]
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -368,6 +399,7 @@ jobs:
           Agent-runtime candidate image: ghcr.io/coldphase/flux-agent-runtime@$RUNTIME_DIGEST
           Platforms (both images): ${RELEASE_PLATFORMS//,/, }
           Build: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID
+          Image scan: job "Scan the images for known vulnerabilities" of that run (Trivy; no HIGH/CRITICAL finding with a fix, except the reviewed exceptions of .github/security-allowlist.json)
           Integrated acceptance: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/issues/$ACCEPTANCE_ISSUE
 
           Install with the attached version-matched compose.yaml, env.example and INSTALL.md; check every file with SHA256SUMS first.
