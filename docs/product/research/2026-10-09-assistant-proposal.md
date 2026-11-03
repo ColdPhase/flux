@@ -1,17 +1,17 @@
 # Assistant proposal: subscriptions, switches, edits and background work (2026-10-09)
 
 > **Answered 2026-10-09.** Hubert accepted all 18 recommendations in §7 as written.
-> The decision is recorded as [F-027](../assistant.md), and the affected records carry
+> The decision is recorded as [F-027](https://github.com/ColdPhase/flux/blob/a82ee012d0dc0a33e9ab14925f8f400c96f31e60/docs/product/assistant.md), and the affected records carry
 > a dated "Revised 2026-10-09 by founder direction (F-027)" note. This document stays
 > as the record of the options considered; F-027 is the governing text.
 
 **Status: proposal for Hubert's answers. Not a decision.** Written 2026-10-09 by
 @PelikanFix16 (`claude-hubert`) at Hubert's request. Following his process rule of
 the same day ("Regarding earlier decisions, you have to ask me questions"), this
-document changes no decision or contract. [F-022](../ai-modes.md),
-[F-020](../model-providers.md), [O-007](../background-compute.md),
-[O-008](../personal-runs-compute.md), [F-018](../cowork-workflow.md),
-[CO-1](../mcp-cowork.md#connections-and-owner-authorized-autonomy--co-1) and
+document changes no decision or contract. [F-022](https://github.com/ColdPhase/flux/blob/a82ee012d0dc0a33e9ab14925f8f400c96f31e60/docs/product/ai-modes.md),
+[F-020](../model-providers.md), [O-007](https://github.com/ColdPhase/flux/blob/a82ee012d0dc0a33e9ab14925f8f400c96f31e60/docs/product/background-compute.md),
+[O-008](https://github.com/ColdPhase/flux/blob/a82ee012d0dc0a33e9ab14925f8f400c96f31e60/docs/product/personal-runs-compute.md), [F-018](../cowork-workflow.md),
+[CO-1](https://github.com/ColdPhase/flux/blob/a82ee012d0dc0a33e9ab14925f8f400c96f31e60/docs/product/mcp-cowork.md#connections-and-owner-authorized-autonomy--co-1) and
 [S6](../mcp-identity.md#s6--owner-mcp-capability-switches) stay exactly as recorded.
 Each suggested change below names the record it would change, the options, and a
 recommendation. The [questions for Hubert](#7-questions-for-hubert) at the end decide

@@ -67,13 +67,13 @@ mode. Only how compute is attached differs. The two modes keep these roles meani
 | Artifact | Mode | Status (2026-10-04) | Note |
 | --- | --- | --- | --- |
 | O-005 [first agent path](../first-agent-path.md), #52 | 1 | Accepted, implemented | Claude Code → Flux MCP/OAuth |
-| F-016 [CO-1–CO-5](../mcp-cowork.md), #152 | 1 | #152 open; #193, #176, #174, #171 merged | Real Codex and Claude activation evidence still missing (#152 AC-4) |
-| F-018 [CW-1–CW-5](../cowork-workflow.md), #160 | 1 | Open; #175, #214 merged | Start/Resume through MCP prompts; addressed requests |
+| F-016 [CO-1–CO-5](https://github.com/ColdPhase/flux/blob/a82ee012d0dc0a33e9ab14925f8f400c96f31e60/docs/product/mcp-cowork.md), #152 | 1 | #152 open; #193, #176, #174, #171 merged | Real Codex and Claude activation evidence still missing (#152 AC-4) |
+| F-018 [CW-1–CW-5](https://github.com/ColdPhase/flux/blob/a82ee012d0dc0a33e9ab14925f8f400c96f31e60/docs/product/cowork-workflow.md), #160 | 1 | Open; #175, #214 merged | Start/Resume through MCP prompts; addressed requests |
 | #153 claims, handoffs, review | 1 | Open; #166 merged | "code/model execution stays in owner clients" |
 | PR #183 Agents view (#136) | 1 only | Merged 2026-10-04 as `7a683420` (after this audit's base) | Lists only `agent_connections`. The agent in Flux is absent from the Agents tab |
 | O-008 [personal runs](../personal-runs-compute.md), #68 | 2 (owner-invoked) | #68 open; #141 merged | On `main` production composes no connection and no compute, so mode 2 cannot run yet |
 | O-007 [background compute](../background-compute.md), #58 | 2 (unattended) | #58 open | Anthropic key only on `main` |
-| F-020 [PROV-1–PROV-6](../model-providers.md), #179 | 2 (PROV-1–4, 6) and 1 (PROV-5) | #179 open | PROV-4 sends subscriptions to mode 1 only |
+| F-020 [PROV-1–PROV-6](https://github.com/ColdPhase/flux/blob/a82ee012d0dc0a33e9ab14925f8f400c96f31e60/docs/product/model-providers.md), #179 | 2 (PROV-1–4, 6) and 1 (PROV-5) | #179 open | PROV-4 sends subscriptions to mode 1 only |
 | PR #192 provider adapters | 2 (+ mode-1 guide copy) | Open; takeover fix at `614049b3` awaits fresh review | Five API-key provider kinds; neutral UI; MCP client guide for Claude Code, Codex and other clients |
 | PR #212 comparison runtime switch | 2 (unattended) | Open, stacked on #192 | Operator switch `FLUX_BACKGROUND_COMPARISONS` |
 | [Own-AI feasibility](../own-ai-feasibility.md) | Defines A/B/C | Dated research, 2026-09-27 | B and C are both mode 2 |

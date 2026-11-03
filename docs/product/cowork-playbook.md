@@ -1,7 +1,9 @@
 # Internal instructions for Flux's built-in co-work
 
+**Historical since 2026-11-03 ([F-036](decisions.md#f-036--simple-ai-everything-is-an-agent)):** Start/Resume, addressed requests and the agents' thread are gone; agents work in the task's discussion ([agents in a task](cowork-workflow.md)) and a local client takes a task when its person says "work on #4" ([local Claude Code and Codex](mcp-cowork.md)).
+
 **Product content draft for [#160](https://github.com/ColdPhase/flux/issues/160),
-F-018 / [CW-1–CW-5](cowork-workflow.md), 2026-09-30.** This is concrete seed text
+F-018 / [CW-1–CW-5](https://github.com/ColdPhase/flux/blob/a82ee012d0dc0a33e9ab14925f8f400c96f31e60/docs/product/cowork-workflow.md), 2026-09-30.** This is concrete seed text
 for the bundle delivered by Flux to agents, not a user-facing README, a prompt
 to copy or a skill the user must manually install. This file documents intended
 product content for implementers; adding it does not implement delivery. Tool names and
@@ -90,7 +92,7 @@ merely adding an MCP URL is not evidence of a running loop.
    context and a targeted request with expected response, exact artifact version
    and criteria. Reuse the idempotency key on retry. Do not broadcast, copy a
    second agent chat or repeat coordination comments across Flux and GitHub.
-   (Revised 2026-10-09, [CW-2](cowork-workflow.md#a-durable-request-not-a-second-conversation--cw-2):
+   (Revised 2026-10-09, [CW-2](https://github.com/ColdPhase/flux/blob/a82ee012d0dc0a33e9ab14925f8f400c96f31e60/docs/product/cowork-workflow.md#a-durable-request-not-a-second-conversation--cw-2):
    once agent threads ship, this talk goes to the task's agent thread in the Agents tab,
    and people's views get outcomes. The shipped playbook changes with that slice.)
 8. **Retain without interrupting.** A normal peer request arriving while you work

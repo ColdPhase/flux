@@ -155,7 +155,7 @@ O-007 amendment (`docs/product/background-compute.md`) remains a pending peer de
 
 ## Deterministic human context snapshot
 
-The [accepted source amendment](../product/background-compute.md#source-and-outcome-amendment-accepted-2026-09-29)
+The [accepted source amendment](https://github.com/ColdPhase/flux/blob/a82ee012d0dc0a33e9ab14925f8f400c96f31e60/docs/product/background-compute.md#source-and-outcome-amendment-accepted-2026-09-29)
 now has a controlled selection implementation. The result transaction checks the
 standing rule owner's and personal agent's current project-write access through
 the shared policy before selecting metadata. Reservation, content collection,

@@ -1,5 +1,8 @@
 # F-030 — encrypted workspaces
 
+**Moving to per-space encryption under F-037 (2026-11-03):** see
+[the note below](#moving-to-per-space-encryption-f-037).
+
 **Status: proposed.** A security assessment of `d8b6e073` asked for changes
 ([PR #657 comment](https://github.com/ColdPhase/flux/pull/657#issuecomment-6369609716)); the next revision
 addressed them, and the re-check of `b5f33f22`
@@ -19,12 +22,44 @@ cannot be undone. Each encrypted workspace has its own key. Its content is encry
 database, in the files volume and in the search index, and nothing inside it is written to disk
 in plaintext. After every start of the server the workspace is **locked** until an owner or
 admin enters their unlock password. The key then lives only in RAM. An encrypted workspace is
-**always without AI**: the [F-029 AI lock](workspace-ai-lock.md) is forced on and cannot be
+**always without AI**: the [F-029 AI lock](https://github.com/ColdPhase/flux/blob/a82ee012d0dc0a33e9ab14925f8f400c96f31e60/docs/product/workspace-ai-lock.md) is forced on and cannot be
 turned off. Only people work there.
 
 The contract was written against `main` at `3bbae96a` (2026-10-23). File and function names are
 from that revision, and paths are relative to `app/`. An implementer who finds another column, job
 or path that carries workspace content adds it to the [inventory](#inventory) in the same PR.
+
+## Moving to per-space encryption (F-037)
+
+**Founder direction, Hubert (@PelikanFix16), 2026-11-03** ([#874](https://github.com/ColdPhase/flux/issues/874),
+[F-037](decisions.md#f-037--one-flux-per-company-with-spaces)); recorded in #852, independent review
+pending. One Flux is one company with a flat list of Spaces, so encryption moves from the workspace
+to the **space**:
+
+- "Encrypted" is a switch in the create-space window, off by default, and cannot be undone. When it
+  is on, the window asks for an unlock password and offers the recovery code to download.
+- An encrypted space never has AI and shows no AI switch ([AI in a space](assistant.md#ag-10--ai-in-a-space)).
+- After a server restart it stays locked until a **space admin** enters their unlock password.
+  Members see "Locked, waiting for an admin"; the rest of the company works normally, with AI.
+
+**Engineering option, to be confirmed** in the independent review of #852 and in #874: an encrypted
+space stays a **hidden internal workspace** that contains exactly one space. People never see that
+workspace; the company admin manages its people through the space's settings. The cryptography,
+the key per workspace, holders, unlock lifecycle, rotation, recovery code, inventory and locked
+behaviour below then stay as written, with "workspace" read as "encrypted space" in everything a
+person sees, and the space's admins (plus the recovery code) as its holders, so removing or demoting
+a space admin rotates the key. What changes is around it: the space list, search and Inbox across
+the company must include the hidden workspace's space for its members, and the company admin's
+rights must reach it. The alternative, a key per space inside the company workspace, would rework the
+[inventory](#inventory) and every sealed path; it is the fallback if the hidden-workspace option
+fails review.
+
+**Open:** whether the company admin, who "can change any space", is also a holder of every
+encrypted space (and so can unlock it and is covered by rotation), or manages its people without
+being able to read it. This is a product question for Hubert, not decided here.
+
+Until F-037 is implemented (#874), the rest of this contract describes the current, per-workspace
+behaviour.
 
 ## Threat model
 

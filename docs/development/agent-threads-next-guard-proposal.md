@@ -1,7 +1,7 @@
 # #400 next guard and public-tool integration proposal
 
 **Status: proposed 2026-10-11; requires independent peer acceptance before implementation.**
-Owner: @PelikanFix16. Evaluator/public compatibility peer: @Zamojski5. This is a continuation of [#400](https://github.com/ColdPhase/flux/issues/400), not a new issue or replacement for its nine criteria. The [accepted partial contract](agent-threads.md) and [CW-2](../product/cowork-workflow.md) remain in force. Observed source is `295a564f65c59915b47fde1bb6fbd0bf746e5239`, normally composed with #394 `4735098791f2f41ca6bee8b494a9c6705dff83b7`; parent acceptance/main merge remains open.
+Owner: @PelikanFix16. Evaluator/public compatibility peer: @Zamojski5. This is a continuation of [#400](https://github.com/ColdPhase/flux/issues/400), not a new issue or replacement for its nine criteria. The [accepted partial contract](agent-threads.md) and [CW-2](https://github.com/ColdPhase/flux/blob/a82ee012d0dc0a33e9ab14925f8f400c96f31e60/docs/product/cowork-workflow.md) remain in force. Observed source is `295a564f65c59915b47fde1bb6fbd0bf746e5239`, normally composed with #394 `4735098791f2f41ca6bee8b494a9c6705dff83b7`; parent acceptance/main merge remains open.
 
 ## Ready next implementation boundary
 

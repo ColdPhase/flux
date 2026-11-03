@@ -1,5 +1,7 @@
 # Managed native MCP binding — proposed public effect-fence amendment
 
+**Overtaken 2026-11-03 by [F-036](decisions.md#f-036--simple-ai-everything-is-an-agent):** capability switches, standing grants and co-work requests go; see [local Claude Code and Codex](mcp-cowork.md).
+
 **PROPOSED, 2026-10-10; independent public-contract acceptance pending.**
 Owner @PelikanFix16; #460/#152/#160, coordinated with #153/#154/#383 owners.
 No managed binding, companion/control endpoint or new MCP input is implemented

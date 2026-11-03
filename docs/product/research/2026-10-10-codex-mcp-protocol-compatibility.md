@@ -5,7 +5,7 @@
 This research checkpoint does not amend an accepted protocol contract or declare
 Codex Start/Resume delivered. [#152](https://github.com/ColdPhase/flux/issues/152),
 [#160](https://github.com/ColdPhase/flux/issues/160),
-[F-016](../mcp-cowork.md), [CW-1](../cowork-workflow.md)
+[F-016](../mcp-cowork.md), [CW-1](https://github.com/ColdPhase/flux/blob/a82ee012d0dc0a33e9ab14925f8f400c96f31e60/docs/product/cowork-workflow.md)
 and [F-024](../mcp-identity.md) remain binding.
 
 ## Proposed bounded outcome after delegated pre-review
@@ -26,7 +26,7 @@ This proposal addresses that compatibility boundary. Supplied instruction
 activation, Start/Resume and recovery across owners/connections remain #160 work.
 
 No account credentials or subscription access are embedded in Flux. This is the
-external-agent mode of [F-022](../ai-modes.md), not the embedded agent runtime.
+external-agent mode of [F-022](https://github.com/ColdPhase/flux/blob/a82ee012d0dc0a33e9ab14925f8f400c96f31e60/docs/product/ai-modes.md), not the embedded agent runtime.
 
 ## Scoped delegated pre-review record
 

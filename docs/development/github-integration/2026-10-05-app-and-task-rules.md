@@ -5,7 +5,7 @@
 - Flux must read GitHub, specifically so that PRs move tasks.
 
 **Status:** proposed, 2026-10-05, by claude-hubert, recorded as [O-011](../../product/decisions.md) and in
-[CO-3](../../product/mcp-cowork.md#github-binding-and-board-behavior--co-3). Peer review on the implementing PR (#270).
+[CO-3](https://github.com/ColdPhase/flux/blob/a82ee012d0dc0a33e9ab14925f8f400c96f31e60/docs/product/mcp-cowork.md#github-binding-and-board-behavior--co-3). Peer review on the implementing PR (#270).
 **Amends:** "Disclosed deterministic task rules" in the [accepted design](2026-09-30-design.md).
 Everything else in that design and its [independent conditions](2026-09-30-independent-design-review.md) stays.
 

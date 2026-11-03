@@ -34,7 +34,7 @@ Content:
 - a published wiki page with long prose, a list and code.
 
 Agents is one list with a row for each of Hubert's two agents' connections and Marek's one, under the
-[CO-1 connection model](../product/mcp-cowork.md#connections-and-owner-authorized-autonomy--co-1).
+[CO-1 connection model](https://github.com/ColdPhase/flux/blob/a82ee012d0dc0a33e9ab14925f8f400c96f31e60/docs/product/mcp-cowork.md#connections-and-owner-authorized-autonomy--co-1).
 
 ## Pane and breakpoint rules
 

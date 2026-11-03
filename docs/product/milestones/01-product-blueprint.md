@@ -14,7 +14,7 @@ bindings (#74), several external agents may belong to one person, and standing
 owner grants allow cooperation without routine approval prompts. Keep the
 embedded helper, existing Node stack, tenant/project access and review gates.
 
-The [delivery table](../mcp-cowork.md#delivery-and-evidence--co-5) maps connection,
+The [delivery table](https://github.com/ColdPhase/flux/blob/a82ee012d0dc0a33e9ab14925f8f400c96f31e60/docs/product/mcp-cowork.md#delivery-and-evidence--co-5) maps connection,
 co-work, task-thread and motion/presence slices. #336 owns the UI, #151
 phone-to-ultrawide and #149 map drafts. Required evidence includes
 real two-owner/three-connection work, task/PR/result review, no duplicate backlog,

@@ -9,7 +9,7 @@ Current dated assessment for the assistant: [subscriptions, switches, edits and
 background work, 2026-10-09](research/2026-10-09-assistant-subscriptions-and-edits.md)
 (vendor terms, OpenClaw and Hermes, precedent tools), with the
 [proposal and options](research/2026-10-09-assistant-proposal.md) that the founder
-answered; the decision is [F-027](assistant.md).
+answered; the decision is [F-027](https://github.com/ColdPhase/flux/blob/a82ee012d0dc0a33e9ab14925f8f400c96f31e60/docs/product/assistant.md).
 
 Current dated assessment: [owner MCP switches and SSO-only authentication, 2026-10-07](research/2026-10-07-mcp-switches-and-sso-only.md)
 records the superseding founder direction and independent source assessment.
@@ -32,7 +32,7 @@ its advertised offer; it cannot establish user success or the absence of a
 competitor's feature. Say whether a product was actually used, its code inspected,
 or only its public description read. Mark inaccessible sources as unavailable.
 
-For AI integrations assess the two [F-022](ai-modes.md) modes separately: the
+For AI integrations assess the two [F-022](https://github.com/ColdPhase/flux/blob/a82ee012d0dc0a33e9ab14925f8f400c96f31e60/docs/product/ai-modes.md) modes separately: the
 agent in Flux with each of its connections and transports, and your agent app over MCP. Record authentication, supported plans/capabilities,
 billing ownership, permissions, deployment constraints, and any required provider
 consent. Recheck changing terms before implementation and publication. The
