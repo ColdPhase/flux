@@ -5,9 +5,7 @@ Read `docs/product/FLUX-FOUNDATION.md` in full when first joining; then use
 `docs/product/README.md`, current decisions, and relevant sections per task.
 The [final design "Prostota"](docs/design/final/README.md) (F-026, founder
 direction 2026-10-07) is the only UI/UX direction on computer and phone:
-implement it as drawn and do not re-decide it. The v0.2 founder direction
-(F-036–F-038 in `docs/product/decisions.md`, 2026-11-03) overrides it where they
-conflict until #864 updates the guide. It works with
+implement it as drawn and do not re-decide it. It works with
 [agents and local Claude Code or Codex over MCP](docs/product/assistant.md) (F-036) and
 [adaptive workspaces](docs/design/adaptive-workspaces.md) (F-015).
 Recorded current decisions govern architecture, permissions and functionality.
