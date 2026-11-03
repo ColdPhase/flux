@@ -4,8 +4,8 @@
 ([#851](https://github.com/ColdPhase/flux/issues/851) point 9, [#859](https://github.com/ColdPhase/flux/issues/859)),
 recorded 2026-11-03 in [#852](https://github.com/ColdPhase/flux/issues/852); independent review
 pending ([F-036](decisions.md#f-036--simple-ai-everything-is-an-agent)). It replaces F-016's
-standing scoped autonomy (CO-1, CO-2 and CO-4) and keeps one Flux task and the GitHub binding
-(CO-3). The earlier text is at [`a82ee012`](https://github.com/ColdPhase/flux/blob/a82ee012d0dc0a33e9ab14925f8f400c96f31e60/docs/product/mcp-cowork.md).
+standing scoped autonomy (CO-1, CO-2) and its formal review gate (CO-4, see LC-3), and keeps one
+Flux task and the GitHub binding (CO-3). The earlier text is at [`a82ee012`](https://github.com/ColdPhase/flux/blob/a82ee012d0dc0a33e9ab14925f8f400c96f31e60/docs/product/mcp-cowork.md).
 
 A person's own Claude Code, Codex or other MCP client on their computer connects to Flux for code
 work. **It follows the same rules as their [agents](assistant.md).** The only difference is that
@@ -32,10 +32,14 @@ complicated or different").
 ## LC-2 — Same rules as agents
 
 - It sees exactly what the person sees, never more, and only in spaces with AI on; never in an
-  encrypted space (AG-3, AG-10). A DM between people it opens shows both people the line of AG-4.
+  encrypted space (AG-3, AG-10). A DM between people it opens shows both people the line of AG-4
+  ([coordinator default C-2](decisions.md#coordinator-defaults-and-inferences-not-founder-decisions-hubert-can-override)).
 - It has the same "What it may do" row: Only read, Do it and tell me or Ask me first. Deleting
   anything and other people's things wait for the person's OK, its changes carry Undo, and the
   never-list holds (AG-3).
+- **Only the person approves.** Approving, editing or skipping a waiting item, Approve all, and
+  accepting a decision come only from the person in a signed-in Flux session. The client's grant
+  has no tool for them, so a prompt-injected client cannot approve its own wait ([AG-3](assistant.md#ag-3--rights-what-it-may-do-approvals-and-undo)).
 - Only the person prompts it, from their editor. Flux never starts, wakes or prompts a local
   client, and nothing polls a model while it is idle (F-032).
 - Its messages and changes are labelled "Ada · via Claude Code".
@@ -45,6 +49,11 @@ complicated or different").
 - The person tells their client "work on #4". The client takes the task through MCP (Flux shows
   "Ada is on it via Claude Code"), reports in the task's discussion and finishes it under "What it
   may do": Done with Undo, or handed back for review.
+- **Review.** There is no separate Flux review verdict on a pull request head (F-016's and F-018's
+  review gate; [coordinator default C-9](decisions.md#coordinator-defaults-and-inferences-not-founder-decisions-hubert-can-override)). Review is the "What it may do" row: under Ask
+  me first, or Only read, the task is handed back to its person, "Ready for you to check". A
+  separate reviewer is optional, for example a subtask for a Reviewer agent. GitHub's own reviews and
+  checks stay GitHub's (LC-4).
 - Flux's MCP server gives the client its instructions and tools. The person never copies prompts,
   reads a playbook or installs files (F-018, kept in that sense).
 - Flux gets no new hand-off control for this, and a local client is not offered in the Owner
@@ -80,7 +89,8 @@ Kept from CO-3, [O-011](decisions.md) and [F-033](decisions.md):
 - The person, or the space admin, can Stop the client's work on a task: its next Flux call is
   refused ([AG-5](assistant.md#ag-5--tasks-reach-agents-through-their-owner)). Flux cannot kill a
   local process, so it shows "Stopped by Ada" (or by the admin's name), not that the client
-  stopped running, and the person is told who stopped it. Only the person prompts the client.
+  stopped running, and the person is told who stopped it. Only the person prompts the client. That
+  the space admin's Stop also reaches a local client is a [coordinator default C-6](decisions.md#coordinator-defaults-and-inferences-not-founder-decisions-hubert-can-override).
 - A local client may ask a person a question with ready answers, as an agent does (AG-6).
 
 ## What went away in v0.2

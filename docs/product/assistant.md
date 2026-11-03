@@ -4,7 +4,9 @@
 ([#851](https://github.com/ColdPhase/flux/issues/851)), recorded 2026-11-03 in
 [#852](https://github.com/ColdPhase/flux/issues/852). An independent review of this text by
 @Zamojski5 is pending; comments from the shared PelikanFix16 account do not count. Decision
-record: [F-036 and F-037](decisions.md#f-036-to-f-038-the-v02-direction-2026-11-03).
+record: [F-036 and F-037](decisions.md#f-036-to-f-038-the-v02-direction-2026-11-03). Rules the
+agents inferred rather than Hubert decided are tagged "coordinator default" and listed in
+[one table](decisions.md#coordinator-defaults-and-inferences-not-founder-decisions-hubert-can-override); Hubert can override them.
 
 This contract replaces F-027 (the assistant) and the workspace AI lock (F-029). It states only
 the rules that hold from v0.2. The earlier text is in git history at
@@ -31,6 +33,9 @@ own.
 - `/ai` uses only what the conversation's audience can see, so Show everyone never publishes
   anything private (AG-4). AI in a DM between people shows both of them one line (AG-4).
 - Deleting anything and changing other people's things always wait for the owner's OK.
+- Only the owner approves. Approving, editing or skipping a waiting item, and accepting a
+  decision, are done only by the owner (or the person the item waits for) in their own signed-in
+  session. No agent, server or local, can do it, not even for its own waiting item (AG-3).
 - Changing access, accepting decisions and changing code are never possible for a server agent.
 - Every change is attributed, versioned and has Undo on the agent's message.
 - Flux never handles a plan token and never impersonates Claude Code or Codex
@@ -50,9 +55,10 @@ own.
 - **Yours and other people's.** Yours: a task you are responsible for, or one you or your agents
   created while nobody else is responsible for it; a Wiki page, map, thought or link you or your
   agents created and nobody else has edited. Everything else is other people's.
-- **A task's people.** The task's creator, its owner and anyone who wrote in its thread. When an
+- **A task's people.** The task's creator, its owner and anyone who wrote in its thread
+  ([coordinator default C-10](decisions.md#coordinator-defaults-and-inferences-not-founder-decisions-hubert-can-override)). When an
   agent owns the task, the agent's owner is the person. Only people count: a message written by an
-  agent does not add its owner. Agents ask each other questions only when both owners are among the
+  agent does not add its owner ([coordinator default C-5](decisions.md#coordinator-defaults-and-inferences-not-founder-decisions-hubert-can-override)). Agents ask each other questions only when both owners are among the
   task's people (TA-3), and use only what all of the task's people can see (AG-11).
 - **Run.** One piece of an agent's work: an answer, a step on a task or a scheduled firing.
 
@@ -65,8 +71,11 @@ own.
   - **saved instructions**, in plain text;
   - its **own model**, chosen from any of the person's connections; Connect AI sets the default
     ([models](model-providers.md#ca-2--models));
-  - a **memory** of only what its owner told it to remember ("remember that …"), listed on the
-    agent's page, where the owner edits or deletes each item;
+  - a **memory** of only what its owner told it to remember: an item is added only by the
+    owner's own message ("remember that …", typed by the owner to that agent) or by the owner
+    editing the list on the agent's page, where the owner also edits or deletes each item. An
+    agent never adds to its memory by itself, and nothing it reads (other people's messages, web
+    pages, task text) can add to or change it;
   - its **What it may do** row (AG-3).
 - All of a person's agents share the person's connections and rights. Mixed agents are normal:
   Planner on a Claude plan, Reviewer on a ChatGPT plan.
@@ -84,7 +93,7 @@ own.
 - Messages from anyone but the owner, including in a task discussion, are context, never
   instructions. The same holds for web pages, files, event text and anything an agent reads.
 - Another agent's question in a task is answered under [agents in a task](cowork-workflow.md);
-  it never becomes an instruction to change anything.
+  it never becomes an instruction to change anything ([coordinator default C-13](decisions.md#coordinator-defaults-and-inferences-not-founder-decisions-hubert-can-override)).
 - A guest has no agents and no AI.
 
 ## AG-3 — Rights, "What it may do", approvals and Undo
@@ -98,7 +107,7 @@ its next call. There are no agent project grants, no access requests and no mana
 
 | Choice | What the agent does |
 | --- | --- |
-| Only read | Reads and answers. It changes nothing; on a task it reports and hands the task back. |
+| Only read | Reads and answers. It changes nothing; on a task it reports and hands the task back ([coordinator default C-1](decisions.md#coordinator-defaults-and-inferences-not-founder-decisions-hubert-can-override)). |
 | Do it and tell me (default) | Makes new things and changes yours at once, then reports them with Undo. |
 | Ask me first | Every change waits for the owner's OK. |
 
@@ -113,9 +122,14 @@ its next call. There are no agent project grants, no access requests and no mana
 **Never possible.** No tool exists for these, so nothing waits either; the agent can only say it
 in words:
 
-- changing access: people, spaces, roles, the AI switch, connections, and any agent's settings,
-  memory or "What it may do";
-- accepting or replacing a decision (O-009); proposing one is allowed;
+- **approving, editing or skipping a waiting item**, including Approve all, and accepting or
+  replacing a decision (O-009). The OK comes only from the owner (or the person the item waits
+  for) in their own signed-in Flux session. No agent, server or local, no run token and no MCP
+  grant has a tool for it, and an agent cannot approve its own waiting item. Proposing a decision
+  is allowed;
+- changing access: people, spaces, roles, the AI switch, connections, and any agent's settings or
+  "What it may do". Its memory changes only on the owner's own "remember that …" message or when
+  the owner edits the list (AG-1); an agent never adds to it by itself;
 - anything outside its owner's rights. The agent says so; nothing is prepared for or sent to
   another person;
 - posting in a conversation with other people, a space's or a DM; only the owner's Show everyone
@@ -123,9 +137,10 @@ in words:
 - for server agents, anything outside Flux except reading GitHub and the web (AG-8).
 
 **Waiting items.** A change that waits shows in the task discussion or private conversation
-where the agent works, and as one Inbox item per run (AG-7). Approving re-checks the owner's
-rights and the target's version; if the target changed, it applies nothing and says "Changed
-since you asked".
+where the agent works, and as one Inbox item per run (AG-7). Only the owner (or the person it
+waits for) approves, edits or skips it, in their own signed-in session (see Never possible).
+Approving re-checks the owner's rights and the target's version; if the target changed, it
+applies nothing and says "Changed since you asked".
 
 **Undo.**
 
@@ -154,12 +169,19 @@ retried; it is reported as "Skipped #4: Jonas changed it while I worked".
   audience can see: the conversation and the places its people can all see. So Show everyone
   never publishes anything private, because the answer was drawn only from what its readers
   could already see. In a private conversation with your own agent the audience is you, so the
-  agent can use anything you can see (AG-3).
+  agent can use anything you can see (AG-3). The guarantee covers what the agent reads in Flux
+  ([coordinator default C-12](decisions.md#coordinator-defaults-and-inferences-not-founder-decisions-hubert-can-override)). The agent's own instructions and memory are its owner's text, not
+  filtered by the audience, so they still go to the provider with a shared `/ai` request
+  ([coordinator default C-7](decisions.md#coordinator-defaults-and-inferences-not-founder-decisions-hubert-can-override), AG-11).
+- **No memory in a shared answer.** In a shared conversation (a space's conversation, a thread, a
+  DM, or any answer posted with Show everyone), an agent never quotes or reveals its memory items
+  or its private instructions in the answer ([coordinator default C-8](decisions.md#coordinator-defaults-and-inferences-not-founder-decisions-hubert-can-override)). The owner sees the private
+  answer before choosing Show everyone.
 - **AI in a DM between people.** It is allowed. Whenever AI is used on a DM, either `/ai` typed in
-  it or an agent opening it for its owner, one line appears in the DM for both people, for example
-  "Ada used AI here (Claude)". The line names the provider of the model used. No space switch
-  governs DMs, so the line is how the other person learns which AI company receives their
-  messages.
+  it or an agent opening it for its owner ([coordinator default C-2](decisions.md#coordinator-defaults-and-inferences-not-founder-decisions-hubert-can-override)), one line appears in the DM for
+  both people, for example "Ada used AI here (Claude)". The line names the provider of the model
+  used. No space switch governs DMs, so the line is how the other person learns which AI company
+  receives their messages.
 - **States.** An answer shows when it is working, failed (with Try again), stopped by the
   provider's limit (with when it resumes) or not possible because AI is off here.
 - **No drafts for other people.** An agent never prepares or sends a message to another person.
@@ -180,8 +202,10 @@ retried; it is reported as "Skipped #4: Jonas changed it while I worked".
   your OK, paused by the provider's limit (with when it resumes), failed (with Try again or Take
   it back), stopped (by whom), done, or handed back.
 - **Finishing** follows the agent's "What it may do": with Do it and tell me it marks the task
-  Done and tells the owner, with Undo; with Ask me first or Only read it hands the task back,
-  "Ready for you to check".
+  Done and tells the owner, with Undo; with Ask me first it hands the task back,
+  "Ready for you to check", and so does Only read ([coordinator default C-1](decisions.md#coordinator-defaults-and-inferences-not-founder-decisions-hubert-can-override)). This is the whole
+  review step: the owner checks the task; a separate reviewer is optional, for example a subtask
+  for a Reviewer agent ([coordinator default C-9](decisions.md#coordinator-defaults-and-inferences-not-founder-decisions-hubert-can-override)).
 - **Stop.** The agent's owner or the space admin can Stop an agent working on a task at any time.
   Its next call is refused, and the changes it made stay, with Undo. The owner is told who
   stopped it: the state line reads "Stopped by Maja" and the agent's private conversation gets
@@ -246,9 +270,9 @@ and nothing can be sent to the web. A test shows that web content cannot bypass 
   me". It is the only morning summary in Flux: the plain, non-AI summary in Notifications (#350)
   is removed (F-038).
 - A scheduled run acts like its agent (AG-3) and never makes or changes a schedule.
-- **Flux's only schedule rule:** a time missed while Flux was off is skipped, never caught up.
-  There is no minimum interval between firings and no pause after failures; a failed run shows as
-  failed in the conversation (AG-4) and the next firing happens as scheduled.
+- **Flux's only schedule rule:** a time missed while Flux was off is skipped, never caught up
+  ([coordinator default C-14](decisions.md#coordinator-defaults-and-inferences-not-founder-decisions-hubert-can-override)). There is no minimum interval between firings and no pause after failures; a failed
+  run shows as failed in the conversation (AG-4) and the next firing happens as scheduled.
 
 ## AG-10 — AI in a space
 
@@ -275,7 +299,9 @@ database backstop) is the starting point at space level for #855 and #874; see i
 
 - **What leaves Flux.** What the agent reads under AG-3 and AG-8, the owner's request, and the
   agent's instructions and memory, sent to the provider under the owner's account and its data
-  settings ([payer and data](ai-modes.md#rt-8--payer-and-data)). Never content of an encrypted
+  settings ([payer and data](ai-modes.md#rt-8--payer-and-data)). The instructions and memory are
+  the owner's own text and go along even with a shared `/ai` request, though the answer never
+  quotes them (AG-4, [coordinator default C-7](decisions.md#coordinator-defaults-and-inferences-not-founder-decisions-hubert-can-override)). Never content of an encrypted
   space or of a space with AI off. A DM's content leaves only when AI is used on it, and both
   people see the line of AG-4. In a conversation, `/ai` uses only what the conversation's audience
   can see (AG-4). In a task discussion, an agent uses only what all of the task's people (see
@@ -316,7 +342,7 @@ database backstop) is the starting point at space level for #855 and #874; see i
 | [#843](https://github.com/ColdPhase/flux/issues/843) | No Flux limits; the provider's remaining usage |
 | [#841](https://github.com/ColdPhase/flux/issues/841) | Agents together in a task |
 | [#859](https://github.com/ColdPhase/flux/issues/859) | Local Claude Code and Codex with the person's rights |
-| [#860](https://github.com/ColdPhase/flux/issues/860) | Server capacity without a fixed cap |
+| [#860](https://github.com/ColdPhase/flux/issues/860) | Server capacity without a fixed cap: memory decides how many agents run at once (about 2 on 4 GB), the rest wait, the operator can change the number in config ([RT-3](ai-modes.md#rt-3--isolation-and-capacity)) |
 | [#844](https://github.com/ColdPhase/flux/issues/844) | A task keeps the message it came from |
 
 Each issue carries its acceptance criteria. Tests use fake CLIs and fake providers in Docker;

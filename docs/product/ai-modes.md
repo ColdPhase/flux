@@ -70,11 +70,14 @@ not verify it. A paid hosting service run by the Flux project keeps plan sign-in
   environment, makes itself non-dumpable, and accepts only its own secret. Linux Yama
   `ptrace_scope` must be at least 1. A host that fails a runtime requirement stops the runtime with
   one clear message and the fix, never a restart loop (#860).
-- **No fixed cap.** The fixed pool of four slots goes: every person with Connect AI can have their
-  agents ready (#860). An idle agent costs close to nothing: no CLI process and no model calls
-  while it waits. Idle and per-run CPU and memory are measured against the 2 vCPU / 4 GB target
-  (#862), and the operator guide states what each active agent needs. When the server is busy, a
-  task shows "waiting for room on the server".
+- **No fixed per-person cap; memory decides how many run at once** (Hubert, 2026-11-03, #860). The
+  fixed pool of four slots goes: every person with Connect AI can have their agents ready. Flux
+  works out from the server's memory how many agents can run at the same time, about 2 on 4 GB.
+  The rest wait, and their task shows "Waiting for room on the server". The operator can change the
+  number in the config file; there is no setting in the app. An idle agent costs close to nothing:
+  no CLI process and no model calls while it waits. Idle and per-run CPU and memory are measured
+  against the 2 vCPU / 4 GB target (#862, [F-038](decisions.md#f-038--a-simpler-flux)), and the
+  operator guide states what each active agent needs.
 - **One lane per person and CLI.** Sign-in, status, runs and sign-out of one CLI never overlap,
   which also prevents refresh-token races.
 
@@ -165,8 +168,9 @@ not verify it. A paid hosting service run by the Flux project keeps plan sign-in
   release Compose file keeps it off, so a non-interactive deployment does not change.
 - Each Flux release pins the Claude Code and Codex versions its flag contract test passed;
   `./flux upgrade` reinstalls them. Nothing updates itself.
-- The operator guide states the resources each active agent needs (#860) and that host root can
-  read every person's vendor login.
+- The operator guide states the resources each active agent needs (#860), the number of agents
+  that run at once, which Flux computes from memory and the operator can change in the config file
+  (RT-3), and that host root can read every person's vendor login.
 
 ## Accepted risks
 

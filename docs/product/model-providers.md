@@ -19,14 +19,15 @@ A person connects AI once, in Settings › AI. Their connections power all of th
     own login ([where agents run](ai-modes.md#rt-6--sign-in)).
   - **ChatGPT plan.** Device sign-in in the official Codex CLI on the Flux server.
   - **API key.** Anthropic, OpenAI, OpenRouter, Gemini or an OpenAI-compatible endpoint,
-    including a self-hosted model (F-020). An Anthropic key from the Console organization linked
+    including a self-hosted model (F-020's list stays; [coordinator default C-11](decisions.md#coordinator-defaults-and-inferences-not-founder-decisions-hubert-can-override)). An Anthropic key from the Console organization linked
     to a Claude Max, Ultra or Team plan uses that plan's monthly API credits; Flux calls them
     "API credits", not the plan.
 - Each connection is made once and shows one line: its status and the provider's remaining usage
   (CA-3).
 - A connection belongs to one person. It is never shared with a team or the company, and nobody
   else's action spends it except through the person's own agents (F-019).
-- Removing a connection pauses the agents that use it until their owner picks another model.
+- Removing a connection pauses the agents that use it until their owner picks another model
+  ([coordinator default C-3](decisions.md#coordinator-defaults-and-inferences-not-founder-decisions-hubert-can-override)).
 
 ## CA-2 — Models
 
