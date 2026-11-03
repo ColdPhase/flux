@@ -147,7 +147,15 @@ the exact check name read from it, and an observed failing run that blocks. Unti
   required as they are (a required check that does not run on a PR blocks it). To require one, make it run on every pull
   request and decide inside the job whether there is anything to scan.
 - The release `scan` job gates the draft by dependency (`needs`), not by a branch rule.
-- Run links: see the pull request that introduced these workflows, #__PR__.
+- First runs, on the pull request that introduced them ([#879](https://github.com/ColdPhase/flux/pull/879), 2026-11-03):
+  [Dependency audit](https://github.com/ColdPhase/flux/actions/runs/41632810656) passed in 10 s,
+  [CodeQL](https://github.com/ColdPhase/flux/actions/runs/41632810632) in 1 min 56 s (1,223 files, 105 queries, no alerts), and
+  [Image scan](https://github.com/ColdPhase/flux/actions/runs/41632810750) in 27 s (it reported 125 findings with a fix and 13
+  allowlisted in the published v0.1.0 images, and did not fail the pull request run). Not yet run: the release `scan` job (it
+  needs a release dispatch; `scripts/release/dry_run.sh` runs the same script) and the issue-opening job of `Image scan` (a
+  schedule or dispatch on `main`). After merging, dispatch `CodeQL` and `Image scan` once on `main`
+  (`gh workflow run codeql.yml --ref main`): CodeQL warns that a workflow without a `push` trigger has no baseline for the
+  Security tab until a run on `main` exists, and the repository's rule against duplicate main-push runs keeps it on a schedule.
 
 ## 1. Design checks from the actual stack
 
