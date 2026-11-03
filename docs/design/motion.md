@@ -13,6 +13,10 @@ It supersedes two earlier rules:
 Until #863 lands its fixes, the application still differs from these rules in the places listed
 [below](#where-main-differs).
 
+Values marked **proposed** (a dialog's 8 px travel, the 64 px bound for a scaling control and the name of the
+highlight token) come from the motion audit and the coordinator's reading, not from Hubert's decision on #863.
+Tune them during #863; the rule that uses them stays as written.
+
 ## Rules
 
 1. **Feedback within 100 ms.** A press, tap or key shows a visible change within 100 ms, as a change of colour or fill.
@@ -23,13 +27,15 @@ Until #863 lands its fixes, the application still differs from these rules in th
 3. **Surfaces share one vocabulary.** Panels, dialogs, menus, popovers, sheets and the drawer all move the same way.
    - They enter in 180 ms on `--ease-out` and leave in 120 ms on `--ease-in`.
    - The motion is a fade plus a short travel from their edge or anchor: 16 px for a panel (`--shift-panel`), 4 px
-     for a menu or popover (`--shift-pop`), at most 8 px for a dialog, and from the screen edge for a sheet or drawer.
+     for a menu or popover (`--shift-pop`), a short travel for a dialog (proposed: at most 8 px) and from the screen
+     edge for a sheet or drawer.
    - There is no scale and no overshoot.
    - Leaving never delays focus or the next action. Closing while a surface opens, or the reverse, continues from
      where it is.
-4. **One motion per action.** An action makes one motion. The work area beside a panel, a sheet or the sidebar
-   reflows without animation. Indicators (the view switch's pill, a segmented control, the phone tab bar) move with
-   `transform` in `--dur-1` on `--ease-out`, or at once, and never animate `width`.
+4. **One motion per action.** An action makes one motion. The work area beside a panel or a sheet reflows without
+   animation. The sidebar's fold is the one exception (rule 8). Indicators (the view switch's pill, a segmented
+   control, the phone tab bar) move with `transform` in `--dur-1` on `--ease-out`, or at once, and never animate
+   `width`.
 5. **Nothing animates without a change by the person.** Nothing moves when it first appears (a view, its tabs, the
    cards on a map), on a refetch or live update, or on the server's echo of your own change. A state glyph morphs
    only from a known previous state. A highlight, such as a dropped card or a message you jumped to, lasts at most
@@ -38,9 +44,12 @@ Until #863 lands its fixes, the application still differs from these rules in th
    Never show a fallback that animates out, or a surface that opens empty and fills in afterwards. When a skeleton is
    needed, it has the final layout's heights, so nothing jumps when the content arrives.
 7. **Press is colour only.** A pressed control changes its fill or colour. Small controls (buttons and icon buttons
-   up to 64 px) may also scale to .98, with no spring. Rows, cards, list items and sidebar items never scale.
-8. **Only opacity and transform, from tokens.** Width, height and layout never animate. CSS and script take every
-   duration and easing from the tokens below; no literal values such as `ease`, `.2s` or 900 ms.
+   (proposed: up to 64 px) may also scale to .98, with no spring. Rows, cards, list items and sidebar items never scale.
+8. **Only opacity and transform, from tokens.** Width, height and layout never animate, with one named exception:
+   **the sidebar's fold to the rail and its unfold** ([#720](https://github.com/ColdPhase/flux/issues/720)) keeps its
+   smooth width animation, and the content beside it adapts during the fold (Hubert, 2026-11-03, on
+   [#863](https://github.com/ColdPhase/flux/issues/863)). CSS and script take every duration and easing from the
+   tokens below, the sidebar's width animation included; no literal values such as `ease`, `.2s` or 900 ms.
    `--ease-spring`, `--ease-glide` and `--ease-sheet` are retired.
 9. **Reduced motion sets every duration and delay to zero.** This applies to the system setting and to Settings →
    Appearance → Reduce motion alike, including animation delays, so the end state is there at once. A loop runs only
@@ -48,11 +57,14 @@ Until #863 lands its fixes, the application still differs from these rules in th
 
 ### How the rules apply to existing motion
 
-These follow from the rules above; they are the coordinator's reading, not separate founder decisions.
+These follow from the rules above. The sidebar is a founder decision; the others are the coordinator's reading, not
+separate founder decisions.
 
-- **The sidebar** ([#720](https://github.com/ColdPhase/flux/issues/720)) keeps a motion when it folds to the rail or
-  unfolds. Its content fades with a short travel from the left edge, as a surface does. Its width and the work area
-  change at once (rules 4 and 8), which replaces the width animation of `ui/SizeSwap.tsx`.
+- **The sidebar** ([#720](https://github.com/ColdPhase/flux/issues/720)) keeps its smooth width animation when it folds
+  to the rail and unfolds (Hubert, 2026-11-03). Its width goes to the new one over `--dur-in` on `--ease-out`, and the
+  work area beside it adapts while the width changes, so its top, bottom and far edge do not move. It is the one
+  named exception to rule 8, and it is unchanged from `ui/SizeSwap.tsx`. A change of window between the full sidebar and
+  the tablet's rail is not a fold and does not animate; reduced motion changes the width at once (rule 9).
 - **Rows** that move because of your own action (a state change in a list or on the board) may slide to their new
   place as that action's one motion, with `transform` (`ui/rowMotion.ts`). A row that moves far fades in at its new
   place instead. A row appears or goes without a height animation, and the server's answer never replays the motion.
@@ -68,7 +80,7 @@ The values after #863:
 | `--dur-1` | 120 ms | Press, fills, a view's fade-in, indicators |
 | `--dur-in` | 180 ms | A surface enters |
 | `--dur-out` | 120 ms | A surface leaves |
-| One highlight token | at most 600 ms | A highlight (rule 5) |
+| One highlight token (name proposed) | at most 600 ms | A highlight (rule 5) |
 | `--ease-out` | `cubic-bezier(.22, 1, .36, 1)` | Entering, a view's fade-in, indicators, the release of a press |
 | `--ease-in` | `cubic-bezier(.4, 0, 1, 1)` | Leaving |
 | `--press` | .98 | Small controls only |
@@ -120,6 +132,6 @@ The motion audit of main `a82ee012d` (2026-11-03, Chromium at 1440 and 390 px) f
   `document.getAnimations()` on every frame, and repeat with system reduced motion, the in-app setting, 4× CPU and a
   90 ms click. Each action shows its first change within 100 ms, runs one animation on the tokens, replays nothing on
   a refetch or the server's echo, and shifts no layout after its content arrives.
-- **Existing tests.** `app/tests/ui/test_view_switch.py`, `test_sidebar_motion.py` and `test_light_motion.py` still
-  assert the superseded crossfade, the held picture and the sidebar's width animation. #863 changes them together
-  with the code.
+- **Existing tests.** `app/tests/ui/test_view_switch.py` and `test_light_motion.py` still assert the superseded
+  crossfade and the held picture. #863 changes them together with the code. `test_sidebar_motion.py` keeps asserting the
+  sidebar's width animation, which stays.

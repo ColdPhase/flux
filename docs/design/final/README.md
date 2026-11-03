@@ -129,16 +129,25 @@ labels.
 **Motion:** one rule set, in [Motion in Flux](../motion.md). Feedback comes within 100 ms. A view
 switch shows the new screen at once. Panels, dialogs, menus and sheets enter in 180 ms and leave
 in 120 ms, with no scale and no overshoot. Press is colour only; small controls may scale to .98,
-with no spring. Reduced motion sets every duration and delay to zero. Nothing moves for its own
-sake.
+with no spring. Only opacity and transform move, with one named exception: the sidebar's fold to
+the rail and its unfold keep their smooth width animation, and the content beside it adapts during
+the fold (Hubert, 2026-11-03, #720). Reduced motion sets every duration and delay to zero. Nothing
+moves for its own sake.
 
 **Theme:** Light, Dark and Match system. There is no accent colour and no colour picker. The v0.2
 renders are light; dark comes from the tokens.
 
 ![Visual system](screens/reference-system.webp)
 
-The reference boards date from 2026-10-07. Their tokens, type and controls stand; their task
-words, "Needs you" pill and result card follow this guide instead.
+This board dates from 2026-10-07. Its palette, type and radii stand. What it draws and this guide
+has superseded:
+- gradient buttons (buttons are flat, 2026-10-31);
+- the press of 0.97 with a spring of about 250 ms ([motion](../motion.md));
+- the old text values: light `--t3` `#6B6B6B`, and dark `--t2` `#ACACAC` and `--t3` `#8C8C8C` (the
+  token table above);
+- the task words and objects: Open, In progress, Not pursued, the "Needs you" pill and the Result
+  card (status glyphs below, and P4 and P5);
+- "colour only in the Agents section" (each agent's colour shows everywhere, below).
 
 ### Status glyphs
 
@@ -148,11 +157,13 @@ is Done with a "dropped" note.
 
 ### Agent colours
 
-The palette is muted OKLCH with equal lightness: L 0.55 light, 0.80 dark. Each agent has one
-colour, and its Kreska carries it wherever the agent appears: Messages, Home, the Inbox, a task's
-owner and discussion, and Settings › AI. The v0.2 screens draw Assistant in ink (`--inv`) and
-Planner, Reviewer and Jonas's Fieldbot in Teal, Indigo and Ochre. Kreska's lines take the colour,
-and the face fill is the same colour at 12%. Everything else is monochrome.
+The palette is muted OKLCH with equal lightness: L 0.55 light, 0.80 dark. Each agent has its own
+calm Kreska face colour from it, either chosen when the agent is created or assigned automatically
+(Hubert, 2026-11-03). The colour shows everywhere the agent appears: Messages, the Owner picker, a
+task's owner and discussion, Home, the Inbox and Settings › AI. It replaces "agent colours only in
+the Agents section" of the first Prostota canvas. The v0.2 screens draw Assistant in ink (`--inv`)
+and Planner, Reviewer and Jonas's Fieldbot in Teal, Indigo and Ochre. Kreska's lines take the
+colour, and the face fill is the same colour at 12%. Everything else is monochrome.
 
 | Name | Light | Dark |
 | --- | --- | --- |
@@ -167,6 +178,15 @@ and the face fill is the same colour at 12%. Everything else is monochrome.
 ## 3. Kreska: logo, agent icon and mascot
 
 ![Kreska](screens/reference-kreska.webp)
+
+This board dates from 2026-10-07. The face, its construction, the sizes, the line weights and the
+palette stand. What it draws and this guide has superseded:
+- the card "Kolory agentów — tylko w sekcji Agents" and its line that an agent is black and white
+  outside that section (each agent's colour shows everywhere, section 2);
+- the expression "Świętuje · cel projektu osiągnięty" (goal reached), because the goal is gone and
+  the table below has 15 expressions;
+- the Agents section, as a place for agents (they live in Settings › AI and Messages);
+- the Polish names of the colours (section 2 gives Clay, Ochre, Sage, Teal, Indigo, Plum and Rose).
 
 Kreska is a monoline face in a squircle: one raised brow, two eyes and no mouth.
 
@@ -212,9 +232,16 @@ turn them off:
 - the toast after a task is closed.
 
 The mascot never appears in errors, security, payments, apologies or deletion. It never covers
-content and never nags. The "goal reached" moment on the board below is gone, with the goal.
+content and never nags.
 
 ![Small moments](screens/reference-smaczki.webp)
+
+This board dates from 2026-10-07. Its moments stand, apart from what this guide has superseded:
+- moment 11, "goal reached" (the goal is gone, and so is its moment);
+- moment 7, "No match in this project" with its "Search all projects" button (one search covers
+  everything you can see, S16; no results show the Looking face);
+- "project" as a word for a place (it is a Space), and agent labels such as "Claude Code for Ada"
+  (an agent carries one label, "Planner · Ada's agent").
 
 ## 4. Structure and navigation
 
@@ -230,7 +257,9 @@ content and never nags. The "goal reached" moment on the board below is gone, wi
   - **Messages**: your agents and people. Assistant is pinned first, then your other agents, then
     people. A dot marks an unread report or message;
   - your name at the bottom. It opens the account menu: your name, Settings and Sign out.
-- **Collapsed rail (64 px).** Icons only.
+- **Collapsed rail (64 px).** Icons only. Folding to the rail and unfolding animate the sidebar's
+  width smoothly, and the content beside it adapts during the fold. This is the one named exception
+  to "opacity and transform only" ([motion](../motion.md), Hubert, 2026-11-03, #720).
 - **Space header.** One row in which every item has a fixed slot, so nothing moves when a count
   or a face is absent: the space's name (a 220 px slot), the views **Conversation · Tasks · Map ·
   Wiki** as one segmented control with equal slots, the people's faces (with a working agent's
@@ -247,8 +276,9 @@ content and never nags. The "goal reached" moment on the board below is gone, wi
 
 - **Tab bar.** Home · Spaces · Inbox, in a floating capsule, with a separate round **Search**
   button. Spaces lists your spaces and then Messages, with Assistant pinned first.
-- **Home** adds one row, "My tasks (N)", under the waiting items, because the phone has no sidebar.
-  Your face at the top of Home opens Settings.
+- **Home** adds rows under the waiting items, because the phone has no sidebar: "My tasks (N)"
+  and, next to it, "My map" (Hubert, 2026-11-03). The tab bar stays at three tabs. Your face at the
+  top of Home opens Settings.
 - **One "+".** A floating soft-fill button above the tab bar opens Create: Task, Thought, Decision,
   Page, Space. These are the same five types as on the computer.
 - **Inside a space.**
@@ -302,7 +332,7 @@ The IDs come from the first Prostota canvas; rules that no longer apply are left
 | ID | Rule |
 | --- | --- |
 | S1 | **The Inbox is the one list of what needs you.** Each agent run is one item, with Approve all and Open. Home shows the top three with the same count. **There is no Decisions view and no archive,** and agent reports never go to the Inbox. |
-| S2 | The phone tab bar is Home · Spaces · Inbox plus Search. There is none in a conversation. |
+| S2 | The phone tab bar is Home · Spaces · Inbox plus Search. There is none in a conversation. My map is a row on Home, not a tab. |
 | S3 | **One Create.** New, `C` and "+" open the same window or sheet everywhere, with Task, Thought, Decision, Page and Space. In context there are only "+ Task" in Tasks, `/task` in the composer and Create task on a message. |
 | S4 | One detail panel on the computer and one sheet on the phone, for tasks, decisions and threads. At most two content columns. |
 | S5 | The composer has `@` to mention and `/` for actions (`/task`, `/decide`, `/ai`, `/file`), with no separate buttons. Attaching is a paperclip, because "+" means Create. The hint reads "Message · @ mention · / actions". |
@@ -311,7 +341,7 @@ The IDs come from the first Prostota canvas; rules that no longer apply are left
 | S9 | One tap on the state glyph (or `1`–`4`) changes the state. Swipe left, then Done, then a toast with **Undo**. |
 | S10 | Title and properties are edited in place. |
 | S11 | A decision shows who can accept it and who is still waiting. Not now is one button, with no menu. |
-| S12 | **Giving a task to an agent is its Owner field.** The picker lists people and then "Your agents", only your own. There is no hand-off window. |
+| S12 | **Giving a task to an agent is its Owner field.** The picker lists people and then "Your agents", only your own. In a space with AI off, "Your agents" disappear from the picker and it lists people only. Each agent shows its Kreska in its own colour. There is no hand-off window. |
 | S13 | A working agent is always visible: one state line under its last message in the task's discussion, with Stop, and its face in the space header while it works. The agent's owner or the space admin can Stop it. |
 | S14 | An agent's question is a message with two to four ready answers, and an Inbox item for the person asked. |
 | S15 | On the phone the map is for viewing and for adding a thought. Connecting and arranging happen on the computer. |
@@ -427,7 +457,8 @@ Community garden sensors, Rain barrel monitor and Tool library.
   without Accept; an agent run is one row, "Planner · Ada's agent · 3 things wait for you".
 - **Continue where you left off** holds what you last worked on, such as a task with its state
   ("Doing · #1 · Community garden sensors") or a Wiki page you edited.
-- On the phone, "My tasks (4)" is a row under the waiting items. Home has nothing else: no
+- On the phone, "My tasks (4)" is a row under the waiting items, with "My map" next to it. The
+  render draws "My tasks" only; the "My map" row follows this text. Home has nothing else: no
   spaces card, footer links, keyboard hints or assistant banner.
 
 ### Inbox
@@ -520,6 +551,8 @@ the composer. The right-hand phone above shows the sheet.
 - A selected thought offers Move to a space map and Copy link. The tools are Select, Move the
   map, + Thought and Undo, with zoom at the bottom right.
 - A space's Map uses the same canvas and tools; its thoughts can link tasks (section 5).
+- On the phone, My map is a row on Home, next to "My tasks (N)", and not a tab. The phone map
+  follows S15: view and add a thought.
 
 ### Settings
 
@@ -564,8 +597,9 @@ the composer. The right-hand phone above shows the sheet.
     the right, centred, and never overlaps the text.
   - The local client as one row: "Claude Code on Ada's laptop · For code on your computer. Same
     rules as your agents.", its "What it may do" tag and Disconnect.
-  - **Your agents**, with New agent. Each row has the agent's Kreska, its name, one line about its
-    job, its "What it may do" tag and its model with the connection ("Opus · Claude plan").
+  - **Your agents**, with New agent. Each row has the agent's Kreska in its own colour (chosen when
+    the agent is created, or assigned automatically), its name, one line about its job, its "What
+    it may do" tag and its model with the connection ("Opus · Claude plan").
     Assistant carries an "Answers /ai" tag. Under the list: "Agents never have more rights than
     you. Deleting and other people's things always wait for your OK."
   - **When someone assigns a task to me:** Do nothing / Give it to [agent ▾], with Do nothing as
@@ -612,8 +646,8 @@ the composer. The right-hand phone above shows the sheet.
   - Only the owner approves, in their own session.
 - **`/ai`** in a conversation is answered privately by Assistant in a card marked "Only you can see
   this". The card shows what you asked, then Dismiss and Show everyone, which posts the answer as
-  "Ada · via Assistant". In a space with AI off, `/ai` shows one line, "AI is off in this space".
-  In a DM both people see one line, "Ada used AI here (Claude)".
+  "Ada · via Assistant". In a space with AI off, `/ai` shows one line, "AI is off in this space",
+  and "Your agents" disappear from the task Owner picker, which lists people only. In a DM both people see one line, "Ada used AI here (Claude)".
 
 ![Assistant on the phone](screens/phone-assistant.webp)
 
@@ -661,7 +695,7 @@ On the phone the Assistant conversation is a normal conversation. Its header lis
 Compose these from the drawn components and rules, and get an independent review before reusing
 them ([design work](../README.md#brief-and-continuity)):
 
-- the phone's Spaces tab with Messages, and My map on the phone;
+- the phone's Spaces tab with Messages;
 - a space header on the phone and the tablet with the segmented views;
 - the Tasks List view, the Create task window and the phone task sheet;
 - a thread, a space's Map, the decision panel and the small moments in the v0.2 chrome;
