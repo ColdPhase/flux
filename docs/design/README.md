@@ -1,17 +1,19 @@
 # Design work in Flux
 
 **The design is decided: [final design "Prostota"](final/README.md) (F-026, founder direction
-2026-10-07).** It is the only UI and UX for Flux on the computer and the phone. It covers
-tokens, Kreska (logo, agent icon and mascot), structure, navigation, behaviour rules
-S1–S22 and P1–P12, files and photos, and a render of every screen. Implement it as drawn and
-match its renders. A change to the design itself needs a founder; agents do not re-decide it or
-compare alternative directions. Epic [#336](https://github.com/ColdPhase/flux/issues/336)
-tracks the implementation issues.
+2026-10-07, updated for v0.2 on 2026-11-03 under F-036 to F-038).** It is the only UI and UX for
+Flux on the computer and the phone. It covers tokens, Kreska (logo, agent icon and mascot),
+structure, navigation, the behaviour rules (S and P), files and photos, and a render of every v0.2
+screen. Implement it as drawn and match its renders. A change to the design itself needs a
+founder; agents do not re-decide it or compare alternative directions. Epic
+[#336](https://github.com/ColdPhase/flux/issues/336) tracked the first implementation; the v0.2
+issues are listed in the guide.
 
-How its motion rules are built (tokens, the one press, enter and exit, state changes, reduced motion) is
-recorded in [motion in the application](motion.md); a new surface takes its motion from there.
+The one motion rule set (F-038, [#863](https://github.com/ColdPhase/flux/issues/863)) is in
+[motion in Flux](motion.md); a new surface takes its motion from there.
 
-The design keeps the functional contracts: [F-016 local MCP co-work](../product/mcp-cowork.md),
+The design keeps the functional contracts: [agents](../product/assistant.md) and
+[local Claude Code and Codex](../product/mcp-cowork.md) (F-036),
 [F-015 adaptive workspaces](adaptive-workspaces.md), PWA and Web Push
 ([F-010](../product/mobile-pwa.md)), personal-agent ownership, access and the accepted
 architecture. Where a functional document describes appearance or placement, the final design
