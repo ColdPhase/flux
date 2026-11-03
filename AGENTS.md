@@ -5,8 +5,10 @@ Read `docs/product/FLUX-FOUNDATION.md` in full when first joining; then use
 `docs/product/README.md`, current decisions, and relevant sections per task.
 The [final design "Prostota"](docs/design/final/README.md) (F-026, founder
 direction 2026-10-07) is the only UI/UX direction on computer and phone:
-implement it as drawn and do not re-decide it. It works with required
-[local MCP co-work](docs/product/mcp-cowork.md) (F-016) and
+implement it as drawn and do not re-decide it. The v0.2 founder direction
+(F-036–F-038 in `docs/product/decisions.md`, 2026-11-03) overrides it where they
+conflict until #864 updates the guide. It works with
+[agents and local Claude Code or Codex over MCP](docs/product/assistant.md) (F-036) and
 [adaptive workspaces](docs/design/adaptive-workspaces.md) (F-015).
 Recorded current decisions govern architecture, permissions and functionality.
 The founder's later [delegation](docs/product/autonomy.md) assigns these decisions
@@ -32,7 +34,7 @@ Keep procedures in one place and use the guides below when relevant.
 | Mobile/tablet UX, PWA installation or push notifications | `docs/product/mobile-pwa.md` |
 | Ordinary contribution | `docs/CONTRIBUTING.md` |
 | Agent collaboration and task lifecycle | `docs/agents/workflow.md` |
-| Product co-work playbooks, agent inbox and onboarding | `docs/product/cowork-workflow.md`, `docs/product/cowork-playbook.md` (F-018; product contract, not this repo’s operating workflow) |
+| Product AI: agents, Connect AI, the runtime, agents in a task, local MCP clients | `docs/product/assistant.md` (F-036), `model-providers.md`, `ai-modes.md`, `cowork-workflow.md`, `mcp-cowork.md` (product contracts, not this repo’s operating workflow) |
 | Issue/PR messages, ownership, and handoffs | `docs/agents/github-protocol.md` |
 | Review, application verification, or release acceptance | `docs/agents/evaluation.md` |
 | GitHub Actions, required PR checks, packaging, or publication | `docs/agents/ci-and-releases.md` |

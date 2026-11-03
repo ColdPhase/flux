@@ -723,7 +723,7 @@ both native/onboarding modes, affected API-era checks, initial failures and head
 
 ## Stop and questions (#347, F-026 S13 and S14)
 
-The contract is [Stop and questions](../product/mcp-cowork.md#stop-and-questions--f-026-s13-and-s14). Migration `0065`
+The contract is [Stop and questions](https://github.com/ColdPhase/flux/blob/a82ee012d0dc0a33e9ab14925f8f400c96f31e60/docs/product/mcp-cowork.md#stop-and-questions--f-026-s13-and-s14). Migration `0065`
 adds `agent_stops` and `agent_questions` (reversal: `migrations/reverse/0065_agent_stops_questions.down.sql`).
 
 HTTP, all under `/api/v1`, `Idempotency-Key` accepted on the POSTs:

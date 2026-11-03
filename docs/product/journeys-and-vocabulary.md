@@ -21,6 +21,11 @@ This is a synthetic scenario. No customer interview, comparative trial, running 
 
 ## Working vocabulary (AC-1)
 
+**Note, 2026-11-03 ([F-036 to F-038](decisions.md#f-036-to-f-038-the-v02-direction-2026-11-03)):**
+the terms in this section and the journeys below are the 2026-09 and 2026-10 journey wording.
+On screen, Project is now Space, Sketch is a Thought on a Map, Result is no longer an object, and
+AI helpers are agents. The words people read are in [Words on screen](#words-on-screen-cw-7-2026-10-31-updated-by-f-038-2026-11-03).
+
 These terms are provisional until #8 and #13 settle the segment and domain boundaries. A participant should be able to use them without knowing a storage model.
 
 | Term | Working meaning | Ownership and visibility invariant |
@@ -43,24 +48,34 @@ These terms are provisional until #8 and #13 settle the segment and domain bound
 
 **Later amendment, 2026-10-05 ([O-009](decision-authority.md), proposed, #250):** in v0.1 the *decision owner* is any person whose current project access is contributor or manager; agents and the assistant never accept. Below, Jo's "delegation" to Ari means Ari keeps contributor access to the project, and Ari accepts D-2 on that basis. A separate delegation of decision authority with a scope and an expiry is out of v0.1 scope (DA-5).
 
-## Words on screen (CW-7, 2026-10-31)
+## Words on screen (CW-7, 2026-10-31; updated by F-038, 2026-11-03)
 
 The [connected work flow study](../agents/release-acceptance/evidence/connected-work-flow.md) (#763 CW-7)
 found two to four names for one object across screens: map/sketch, Wiki/doc/page, task/work and
 decision/rule. A newcomer could not tell whether they were different things. The interface uses one
-noun per object, and its state words only after it:
+noun per object, and its state words only after it.
+
+**Updated 2026-11-03 by [F-038](decisions.md#f-038--a-simpler-flux) and
+[F-037](decisions.md#f-037--one-flux-per-company-with-spaces)** (Hubert, @PelikanFix16). The table
+is the v0.2 vocabulary; it replaces the CW-7 words Sketchbook, Sketch, Result, Wiki
+draft/published and Project, and "Together":
 
 | Object | The word on screen | State words | Not used for it |
 | --- | --- | --- | --- |
-| Project map and its thoughts | **map**, **thought** ("Maps", "New map", "Remove from map", "On the map") | — | sketch, Sketches, Map (capitalised mid-sentence) |
-| Wiki page | **Wiki page** (the place is **the Wiki**) | draft, published | doc, Docs, page alone in lists |
-| Task | **task** | the status words | work, Work |
+| An idea | **Thought** | — | note, sketch, draft |
+| A canvas of thoughts | **Map** (the view; "map" in a sentence: "New map", "Add to map", "On the map") | — | sketch, Sketches, Project map |
+| A person's private canvas | **My map** (replaces the Sketchbook) | — | Sketchbook, Sketch, DM Sketches |
+| Wiki page | **Wiki page** (the place is **the Wiki**; pages are in the title switcher) | none: versions are saved automatically | doc, Docs, draft, published |
+| Task | **task** | To do, Doing, Blocked, Done | work, Work, Not pursued (a Done task with a "dropped" note) |
 | Decision | **decision** | accepted, proposed, replaced | rule, current rule, earlier rule |
-| Result | **result** | positive, negative | "it worked", "it did not work out" |
+| What came of a task | no Result object; Done takes an optional "what came of it" line | — | result, Record a result |
+| Where a team works | **Space** (replaces Project in every label; no workspace switching) | — | Project, workspace |
+| A live conversation | **Call** (replaces Together) | — | Together |
+| An AI helper | **agent** (the first is Assistant; there is no separate assistant concept) | — | assistant as a different thing |
 
-The personal place drawn in the sidebar keeps its drawn name, **Sketchbook**, with its sketches, and so does the drawn phone Create item "Sketch"; DM
-sketches are unchanged. Storage names (`sketch`, `work`, `doc`), API fields and agent operations
-keep their technical names; only what people read changes.
+The personal place in the sidebar is **My map**, and a note becomes a thought on it. Sketch, the DM
+Sketches tab, Drafts and Notes go (#866). Storage names (`sketch`, `work`, `doc`, `project`), API
+fields and agent operations keep their technical names; only what people read changes.
 
 ## Synthetic scenario and source records
 
@@ -109,7 +124,7 @@ Human handoff follows Journey A's return and uses the same in-progress W-1, D-2,
 | H3 | Ari comments and records a result or hands W-1 back to Nia. | Author, version, open question, and next owner remain on W-1/H-1. | Project. Nia can continue without treating Ari's comment as an accepted decision. |
 | H4 | Ari loses project membership. Authorized members reassign H-1. | Ari's old link shows no project content; search, files, and notification target do not reveal it. | Current membership is checked at read and action time. An old link or cached view cannot restore access. |
 
-An **optional agent path** could use an officially supported external tool or an approved embedded/API/local execution mode, depending on the independent [#9 O-005 decision](https://github.com/ColdPhase/flux/issues/9). No personal subscription, provider login, or embedded run is promised here. [F-022](ai-modes.md) (accepted 2026-10-05) now defines the two AI modes and how a subscription is connected.
+An **optional agent path** could use an officially supported external tool or an approved embedded/API/local execution mode, depending on the independent [#9 O-005 decision](https://github.com/ColdPhase/flux/issues/9). No personal subscription, provider login, or embedded run is promised here. [F-022](https://github.com/ColdPhase/flux/blob/a82ee012d0dc0a33e9ab14925f8f400c96f31e60/docs/product/ai-modes.md) (accepted 2026-10-05) now defines the two AI modes and how a subscription is connected.
 
 | Step | Actor, visible state, and source links | Authorization, cost, and failure boundary |
 | --- | --- | --- |

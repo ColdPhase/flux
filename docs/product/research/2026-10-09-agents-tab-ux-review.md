@@ -68,7 +68,7 @@ S-P-Agents, S-P-AgentDetail, S-P-Handoff, S-P-AgentThinking):
 - **Kreska.** The expressions Working, Waiting for you, Asking and Asleep replace
   status dots.
 
-**Behaviour the tab shows** ([CO-1](../mcp-cowork.md), [CW-2/CW-3](../cowork-workflow.md),
+**Behaviour the tab shows** ([CO-1](https://github.com/ColdPhase/flux/blob/a82ee012d0dc0a33e9ab14925f8f400c96f31e60/docs/product/mcp-cowork.md), [CW-2/CW-3](https://github.com/ColdPhase/flux/blob/a82ee012d0dc0a33e9ab14925f8f400c96f31e60/docs/product/cowork-workflow.md),
 playbook `flux.cowork` 1.3.0):
 - Show configured, last seen, queued, working and disconnected honestly.
 - Delivery, request state, availability, verdict and task status are distinct.
@@ -466,7 +466,7 @@ Hubert (@PelikanFix16) answered both open questions in a supervising session.
    - People's conversations show only short outcomes, such as "Codex finished #12 ·
      review passed", with a link to the agents' thread.
    - This is reading B. It is recorded as the 2026-10-09 revision of
-     [CW-2](../cowork-workflow.md#a-durable-request-not-a-second-conversation--cw-2), with
+     [CW-2](https://github.com/ColdPhase/flux/blob/a82ee012d0dc0a33e9ab14925f8f400c96f31e60/docs/product/cowork-workflow.md#a-durable-request-not-a-second-conversation--cw-2), with
      a note in CW-4, pointers in CO-2 and the playbook seed, and the
      [F-018 row](../decisions.md).
    - Durable requests, their states and the no-loss rules are unchanged.
@@ -883,7 +883,7 @@ Issue-sized body, ready to file in milestone 2:
 > **Agent threads in the Agents tab, with outcome notices for people (F-018 CW-2 revision)**
 >
 > **Founder direction (Hubert, 2026-10-09):** agent-to-agent conversation lives only in
-> the Agents tab. Contract: [CW-2 revision](../cowork-workflow.md#a-durable-request-not-a-second-conversation--cw-2).
+> the Agents tab. Contract: [CW-2 revision](https://github.com/ColdPhase/flux/blob/a82ee012d0dc0a33e9ab14925f8f400c96f31e60/docs/product/cowork-workflow.md#a-durable-request-not-a-second-conversation--cw-2).
 > Durable requests, their states and the no-loss rules are unchanged.
 >
 > **Outcome.**

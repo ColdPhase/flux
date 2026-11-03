@@ -78,7 +78,7 @@ shows whether agents and assistants may work there. Owners and admins turn it of
 The instance-wide switches for owners' AI connections, the assistant and background suggestions are
 the operator's ([AI providers](configuration.md#ai-providers)), and so is the
 [agent runtime](agent-runtime.md). The space switch can only narrow them. The contract is
-[F-029](../product/workspace-ai-lock.md).
+[F-029](https://github.com/ColdPhase/flux/blob/a82ee012d0dc0a33e9ab14925f8f400c96f31e60/docs/product/workspace-ai-lock.md).
 
 ## Encrypted spaces
 
@@ -101,7 +101,7 @@ agent](../../README.md#connect-your-own-agent) walks through it.
 
 Each person manages their own **Account** (name, email, password and signed-in sessions, which they
 can end), **Appearance** (light, dark or system; text size), **Notifications** (what reaches the
-Inbox, push and email, quiet hours, the morning summary) and **Keyboard shortcuts**. On a computer,
+Inbox, push and email, quiet hours, the morning summary until v0.2 removes it, F-038) and **Keyboard shortcuts**. On a computer,
 Settings opens from your name at the bottom left → **All settings**.
 
 ## What only the operator can do

@@ -22,7 +22,7 @@ authority/features/held races, native/platform Connect and actual #160 activatio
 remain runtime gates. The peer checked contracts, primary sources and static
 checks, not a new Docker pass.
 
-This is the accepted bounded contract amendment to [F-016](mcp-cowork.md), [CW-1](cowork-workflow.md)
+This is the accepted bounded contract amendment to [F-016](mcp-cowork.md), [CW-1](https://github.com/ColdPhase/flux/blob/a82ee012d0dc0a33e9ab14925f8f400c96f31e60/docs/product/cowork-workflow.md)
 and the wire admission of [EXT-1](extension-contracts.md#ext-1--mcp-tool-contract-1).
 It retains [F-024](mcp-identity.md), every existing #460/#152/#160 criterion,
 and the normal built-in **Connect → authorize → Start/Resume** outcome. The #466 record itself contains no application change. The pinned research main `97574742` rejected legacy `2025-06-18`. [PR #467](https://github.com/ColdPhase/flux/pull/467) implements PC-1–PC-5; its runtime and full-client acceptance is separate (see PC-5).

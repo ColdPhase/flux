@@ -3,7 +3,7 @@
 This guide is for the person who runs a Flux instance with [`./flux`](../../flux). It covers the
 optional agent runtime: people sign in with their own Claude or ChatGPT subscription, and Flux runs
 that CLI (Claude Code or Codex) for them in an isolated slot on your server
-([product contract](../product/ai-modes.md#aim-3--the-runtime-transport)).
+([product contract](https://github.com/ColdPhase/flux/blob/a82ee012d0dc0a33e9ab14925f8f400c96f31e60/docs/product/ai-modes.md#aim-3--the-runtime-transport)).
 
 **It is off by default.** With `FLUX_AGENT_RUNTIME` empty, no runtime service runs, the API reports the
 feature as not enabled, and nothing below applies. The published release `compose.yaml` does not
@@ -32,7 +32,7 @@ once ([Switch it on](#switch-it-on)), or from a release install with the release
 ### With the question (`./flux up` the first time, `./flux ai on` later)
 
 The launcher asks whether people on this Flux may sign in with their own ChatGPT and Claude
-subscriptions ([F-027 AST-1](../product/assistant.md#ast-1--subscriptions-are-the-normal-way-to-connect)):
+subscriptions ([F-027 AST-1](https://github.com/ColdPhase/flux/blob/a82ee012d0dc0a33e9ab14925f8f400c96f31e60/docs/product/assistant.md#ast-1--subscriptions-are-the-normal-way-to-connect)):
 
 ```text
 Let people on this Flux sign in with their own ChatGPT and Claude
@@ -80,7 +80,7 @@ organization). Have you accepted them?  [y/N]
   If the engine cannot answer (for example it cannot pull the base image), the line says the check could
   not be run. The check image is the one the build pulls anyway.
 - **Paid hosting never asks.** A hosting service run by the Flux project keeps the runtime off
-  ([AIM-3](../product/ai-modes.md#operator-switch-and-installation)). It deploys the release
+  ([AIM-3](https://github.com/ColdPhase/flux/blob/a82ee012d0dc0a33e9ab14925f8f400c96f31e60/docs/product/ai-modes.md#operator-switch-and-installation)). It deploys the release
   `compose.yaml`, where `FLUX_AGENT_RUNTIME` is empty and no launcher runs. The launcher has no
   paid-hosting setting; refusing runtime sign-in there is a server rule (F-027 AST-2.4).
 - **On a self-hosted Flux, Yes can be the default** because the operator is the owner, or someone the
@@ -266,7 +266,7 @@ runs their own Claude Code in their own slot:
   proves it holds the run with a one-time nonce whose hash it stored on the run row. Only the token's id,
   expiry and exact tools are kept; the token itself never reaches the database, a queue, a file or a log.
 - **What runs.** The slot runs the fixed `claude -p --output-format stream-json …` command of
-  [F-022 "Run"](../product/ai-modes.md#run) with the prompt on stdin. The token is only in the CLI's own
+  [F-022 "Run"](https://github.com/ColdPhase/flux/blob/a82ee012d0dc0a33e9ab14925f8f400c96f31e60/docs/product/ai-modes.md#run) with the prompt on stdin. The token is only in the CLI's own
   environment variable `FLUX_RUN_TOKEN`; the MCP configuration (on the slot's tmpfs `/tmp`) names it in
   the Flux server's `Authorization` header. The CLI reaches Flux only through `runtime-egress`'s `/mcp`
   forwarder.

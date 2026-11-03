@@ -1,5 +1,7 @@
 # F-024 — MCP sign-in with built-in accounts and external identity providers
 
+**Amended 2026-11-03 by [F-036](decisions.md#f-036--simple-ai-everything-is-an-agent):** S6 (owner MCP capability switches and selected projects) goes; a local client acts with its person's rights under one "What it may do" row ([local Claude Code and Codex](mcp-cowork.md)). Single-provider SSO, the standing check and offboarding stay, and SSO now also adds people to the company on first sign-in ([F-037](decisions.md#f-037--one-flux-per-company-with-spaces)).
+
 **Status: Accepted baseline, 2026-10-06:** @Zamojski5 approved `76ccc6ce` in
 [PR #274](https://github.com/ColdPhase/flux/pull/274#pullrequestreview-5423586804),
 merged as `a66bb72b240305fcf54c98f92d1634c849898c4e`, with N1–N5 carried by
@@ -38,7 +40,7 @@ item 6):
 In English: MCP needs an explicitly designed path for deployments where people
 sign in to Flux through OIDC (Keycloak or another identity provider).
 
-**Scope.** This is mode (b) of [F-022](ai-modes.md) (accepted 2026-10-05):
+**Scope.** This is mode (b) of [F-022](https://github.com/ColdPhase/flux/blob/a82ee012d0dc0a33e9ab14925f8f400c96f31e60/docs/product/ai-modes.md) (accepted 2026-10-05):
 Claude Code, Codex, Cursor or another MCP client on the person's computer
 connects to Flux's MCP endpoint. Standing also governs the person's automation in
 mode (a) ([MCPID-5](#standing-governs-all-of-the-persons-automation)). It builds on
@@ -532,7 +534,7 @@ using the defaults of Better Auth 1.7.6, whose source was read at `v1.7.6`.
 | MCP access token (JWT, `aud` = `<origin>/mcp`) | 1 hour; every request rechecks the connection and grants | Unchanged; every request also checks standing |
 | MCP refresh token | 30 days, rotated on every use, with a new 30-day expiry each time (sliding); 30-second retry window | Unchanged for unmanaged accounts. For a managed account, refused while it is in sign-in required or once the confirmation is older than the confirmation age |
 | Browser session | 7 days, extended on use (Better Auth default; not overridden) | Also ends with standing; back-channel logout ends the matching sessions |
-| F-022 run token | — (accepted, not built) | No longer than the run timeout ([AIM-3](ai-modes.md#agent-connection-and-permissions)); minting it and every request check standing |
+| F-022 run token | — (accepted, not built) | No longer than the run timeout ([AIM-3](https://github.com/ColdPhase/flux/blob/a82ee012d0dc0a33e9ab14925f8f400c96f31e60/docs/product/ai-modes.md#agent-connection-and-permissions)); minting it and every request check standing |
 | IdP ID and access tokens | #240 keeps Better Auth's default, which stores them in `auth_accounts` unencrypted (below) | Not kept: cleared after the callback; never used for MCP |
 | IdP refresh token (offline) | — | Kept only for the standing check, encrypted, in its own table that backups and exports leave out. Used only against that IdP's token and revocation endpoints. Never sent to a client or logged |
 
@@ -683,7 +685,7 @@ aktywnej automatyzacji" (also from running automation). Standing is therefore pa
 of "owner access" wherever Flux already rechecks it:
 
 - **Every `/mcp` request, whatever the bearer:** an OAuth access token or an F-022 mode (a) run token (`flux_run_id`), which uses the same route.
-- **Minting a run token** ([AIM-3](ai-modes.md#run)): the worker mints none for an
+- **Minting a run token** ([AIM-3](https://github.com/ColdPhase/flux/blob/a82ee012d0dc0a33e9ab14925f8f400c96f31e60/docs/product/ai-modes.md#run)): the worker mints none for an
   account without standing.
 - **Owner compute in the worker:** O-007 background comparisons recheck owner access
   "before dispatch and commit", and an O-008 personal run "stops before its next

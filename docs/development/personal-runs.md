@@ -1,7 +1,7 @@
 # Personal assistant runs (#68)
 
 This is the implementation contract of #68 (slices 1 and 2), under the accepted
-decision [O-008](../product/personal-runs-compute.md) and the
+decision [O-008](https://github.com/ColdPhase/flux/blob/a82ee012d0dc0a33e9ab14925f8f400c96f31e60/docs/product/personal-runs-compute.md) and the
 [interaction design](../design/personal-ai/README.md). A person enables their own
 assistant, invokes it in a project conversation, and gets an answer that the
 conversation's audience reads as "Jo's assistant · asked by Jo". A consequential
@@ -103,7 +103,7 @@ in [AI providers](ai-providers.md#provider-kinds-and-wire-formats).
 
 ## Tool loop (F-027 AST-8, #406 first part)
 
-Contract: [F-027 AST-8](../product/assistant.md#ast-8--engines-the-server-tool-loop-and-the-runtime).
+Contract: [F-027 AST-8](https://github.com/ColdPhase/flux/blob/a82ee012d0dc0a33e9ab14925f8f400c96f31e60/docs/product/assistant.md#ast-8--engines-the-server-tool-loop-and-the-runtime).
 This part is the provider side and the loop's limits; the tools themselves are the worker's MCP
 client of `/mcp` with the run token (below, #484). With the provider switched on the worker composes
 that `PersonalToolHost` and the API composes `toolTurns` (10); switched off, every run stays one request.
@@ -568,7 +568,7 @@ counted as a provider pass (model billing, provider compatibility and real-devic
 | 7 Proposal authority | "AC-7" and "#250 AC-3": only someone with authority accepts; the result records "drafted by X's assistant". Typed suggestions: `assistant-changes.test.ts` "A5 all typed kinds". |
 | 8 Browser check | `test_personal_assistant.py` (ask by `/ai`, working line and Stop, attributed answer, citations, proposal, paused, capped; computer and phone), `test_assistant_undo.py` and `test_assistant_changes.py` (the run's message, Undo, waiting changes), and the keyboard and modal-focus tests 08b to 08d and 10b. Each runs in Chromium and WebKit (`FLUX_UI_BROWSER`). |
 
-The workspace AI lock ([F-029](../product/workspace-ai-lock.md)) and encrypted workspaces ([F-030](../product/encrypted-workspaces.md))
+The workspace AI lock ([F-029](https://github.com/ColdPhase/flux/blob/a82ee012d0dc0a33e9ab14925f8f400c96f31e60/docs/product/workspace-ai-lock.md)) and encrypted workspaces ([F-030](../product/encrypted-workspaces.md))
 come first: `workspace-ai-runs.test.ts` (invoke, Retry and Continue refused while AI is off, a queued run ends `ai_off`),
 `encrypted-workspaces.test.ts` (a run in a sealed workspace is refused and leaves no row) and `test_workspace_ai_lock.py`
 (no `/ai`, no entry in a blocked workspace).

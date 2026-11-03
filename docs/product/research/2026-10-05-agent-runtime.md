@@ -3,7 +3,7 @@
 **Issues:** [#245](https://github.com/ColdPhase/flux/issues/245); founder direction
 [#266](https://github.com/ColdPhase/flux/issues/266) items 11 and 13.
 **Author:** @PelikanFix16 (`claude-hubert`). **Independent evaluator:** @Zamojski5.
-**Status:** research input to [F-022](../ai-modes.md), accepted 2026-10-05. It
+**Status:** research input to [F-022](https://github.com/ColdPhase/flux/blob/a82ee012d0dc0a33e9ab14925f8f400c96f31e60/docs/product/ai-modes.md), accepted 2026-10-05. It
 replaces the companion design and the vendor-inquiry gate of the
 [2026-10-04 research](2026-10-04-two-ai-modes.md); that document's audit (§1) and
 its MCP and OpenRouter evidence still apply.
@@ -319,7 +319,7 @@ The agents record these under founder direction #266. The founder directed the a
 
 ## 4. Recommended design for mode (a)
 
-[F-022 AIM-3](../ai-modes.md#aim-3--the-runtime-transport) is the contract. This section explains it.
+[F-022 AIM-3](https://github.com/ColdPhase/flux/blob/a82ee012d0dc0a33e9ab14925f8f400c96f31e60/docs/product/ai-modes.md#aim-3--the-runtime-transport) is the contract. This section explains it.
 
 ### 4.1 Shape
 
@@ -511,7 +511,7 @@ browser ──HTTPS──> api (Fastify) ──queue──> worker (personal-run
 | Option | Root-on-host exposure | Decision |
 | --- | --- | --- |
 | Label-filtering Docker socket proxy (first version of this document) | Off-the-shelf proxies filter by endpoint, not body or label: bind mounts of `/`, `Privileged`, `CapAdd`, host network or PID mode, devices, volume driver options, `exec`, and archive reads of every owner's credentials all pass [R] | Rejected |
-| Custom validating Docker API proxy for on-demand per-owner containers | Safe only with an exact endpoint allowlist and body validation; one gap is root on the host. The required list is kept in [F-022](../ai-modes.md#runtime-orchestration) | Rejected |
+| Custom validating Docker API proxy for on-demand per-owner containers | Safe only with an exact endpoint allowlist and body validation; one gap is root on the host. The required list is kept in [F-022](https://github.com/ColdPhase/flux/blob/a82ee012d0dc0a33e9ab14925f8f400c96f31e60/docs/product/ai-modes.md#runtime-orchestration) | Rejected |
 | Supervisor per runtime with a lifecycle-only manager | No `exec` or archive, but on-demand `containers/create` still carries a body that can mount `/` | Rejected |
 | **Fixed pool of Compose-declared slots with a supervisor** | None from Flux: no service has Docker API access | **Chosen.** Costs: fixed capacity, an idle supervisor per slot, and verified wipes when a slot changes owner |
 
@@ -544,7 +544,7 @@ browser ──HTTPS──> api (Fastify) ──queue──> worker (personal-run
 - [Zed blog, 2026-05-14, updated 2026-06-16](https://zed.dev/blog/anthropic-subscription-changes).
 
 **Flux, read only**
-- PR #247 at `b9ca6acb`: [F-022 proposal](../ai-modes.md), [2026-10-04 research](2026-10-04-two-ai-modes.md) and [plan](2026-10-04-two-ai-modes-plan.md).
+- PR #247 at `b9ca6acb`: [F-022 proposal](https://github.com/ColdPhase/flux/blob/a82ee012d0dc0a33e9ab14925f8f400c96f31e60/docs/product/ai-modes.md), [2026-10-04 research](2026-10-04-two-ai-modes.md) and [plan](2026-10-04-two-ai-modes-plan.md).
 - `main` on 2026-10-05: [model providers](../model-providers.md), [decisions](../decisions.md) (F-019, F-020), [MCP co-work](../mcp-cowork.md), [personal runs](../../development/personal-runs.md), `app/apps/server/src/agent-connection/mcp-route.ts`, `app/packages/db/migrations/0011_agent_connection.sql` and `0034_multiple_agent_connections.sql`, `docker/compose.yaml`, the `./flux` launcher (`backup`, `reset`, `clean`).
 
 **Not retrieved:** openai.com directly (HTTP 403; Wayback used); Hermes `dynamic_agent_client` usage (GitHub API rate limit); the OpenAI hosts Codex needs.

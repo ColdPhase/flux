@@ -1,6 +1,6 @@
 # Two AI modes: delivery plan (#245 AC-4)
 
-**Decision:** [F-022](../ai-modes.md), revised 2026-10-05 under founder direction
+**Decision:** [F-022](https://github.com/ColdPhase/flux/blob/a82ee012d0dc0a33e9ab14925f8f400c96f31e60/docs/product/ai-modes.md), revised 2026-10-05 under founder direction
 [#266](https://github.com/ColdPhase/flux/issues/266) and accepted 2026-10-05 after
 independent evaluation by claude-maurycy (N1–N4 applied in `ee216059`). **Evidence:** [agent runtime research](2026-10-05-agent-runtime.md)
 (2026-10-05) and [audit and research](2026-10-04-two-ai-modes.md) (2026-10-04).
@@ -142,7 +142,7 @@ T11 issue text updates                       after T0
     bindings with each slot's directory through the manager; `reset` and `clean`
     include the profile and sign out first; a runtime purge step for switching off
     for good.
-  - Operator guide in `docs/operations/` ([F-022 operator duties](../ai-modes.md#operator-duties)).
+  - Operator guide in `docs/operations/` ([F-022 operator duties](https://github.com/ColdPhase/flux/blob/a82ee012d0dc0a33e9ab14925f8f400c96f31e60/docs/product/ai-modes.md#operator-duties)).
   - Fake CLIs and the flag contract test (see [Docker test plan](#docker-test-plan)).
 - **Acceptance (Docker):**
   - Switch off: no runtime service starts and the API reports the feature disabled.
@@ -222,7 +222,7 @@ T11 issue text updates                       after T0
 
 - **Accepted operation correction (#279, 2026-10-07):** the
   [independently evaluated contract](https://github.com/ColdPhase/flux/issues/279#issuecomment-6045964415)
-  and [F-022 durable admission](../ai-modes.md#durable-auth-operations) supersede
+  and [F-022 durable admission](https://github.com/ColdPhase/flux/blob/a82ee012d0dc0a33e9ab14925f8f400c96f31e60/docs/product/ai-modes.md#durable-auth-operations) supersede
   instance-local ticket/console authority and instant replacement assumptions.
   Claim owner/binding/client/boot plus server operation UUID/revision durably;
   claim/renew/consume/finish use short PostgreSQL transactions, never CLI waits.
@@ -300,7 +300,7 @@ T11 issue text updates                       after T0
     `scope`, run, place; audience Flux MCP; lifetime ≤ timeout). The MCP route
     checks that the run is still running, limits every tool to the place, and
     lists exactly the run's tools to a run token.
-  - The hardened `claude -p` command from [F-022](../ai-modes.md#run), the
+  - The hardened `claude -p` command from [F-022](https://github.com/ColdPhase/flux/blob/a82ee012d0dc0a33e9ab14925f8f400c96f31e60/docs/product/ai-modes.md#run), the
     `system/init` read-back, the adapter to `assistant_run.changed.v1`, and the
     final text, redacted, through the personal-run path.
   - Read-only Flux MCP tools only, named exactly; no local tool.
@@ -344,7 +344,7 @@ T11 issue text updates                       after T0
     `forced_login_method`. The device code is shown only to the owner and never
     persisted.
   - `codex login status`, `codex logout`, and the hardened `codex exec --json`
-    command from [F-022](../ai-modes.md#run), with `--ignore-user-config`.
+    command from [F-022](https://github.com/ColdPhase/flux/blob/a82ee012d0dc0a33e9ab14925f8f400c96f31e60/docs/product/ai-modes.md#run), with `--ignore-user-config`.
   - The JSONL check: any `item.*` other than an agent message, reasoning, or an
     `mcp_tool_call` to `flux` with a listed tool stops the CLI and commits
     nothing. This is the authoritative check.
@@ -375,9 +375,9 @@ T11 issue text updates                       after T0
 
 ### T7 — Write tools and proposals in runtime runs (new issue)
 
-> **Replaced 2026-10-09 by founder direction ([F-027](../assistant.md)).** Never opened
+> **Replaced 2026-10-09 by founder direction ([F-027](https://github.com/ColdPhase/flux/blob/a82ee012d0dc0a33e9ab14925f8f400c96f31e60/docs/product/assistant.md)).** Never opened
 > as an issue. F-027 slices A2–A5 deliver write tools for both engines, with the
-> owner's switches and approval modes ([delivery](../assistant.md#delivery-slices-a1a11)).
+> owner's switches and approval modes ([delivery](https://github.com/ColdPhase/flux/blob/a82ee012d0dc0a33e9ab14925f8f400c96f31e60/docs/product/assistant.md#delivery-slices-a1a11)).
 
 - **Owner:** @Zamojski5. **Evaluator:** @PelikanFix16. **Depends on:** T5.
 - **Acceptance:** a runtime run uses the same Flux MCP write tools as mode (b),

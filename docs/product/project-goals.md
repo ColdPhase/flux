@@ -1,5 +1,7 @@
 # F-028: a project's optional goal
 
+**Superseded 2026-11-03 by [F-038](decisions.md#f-038--a-simpler-flux):** a space has no goal and no goal-reached moment; a goal can be written on its first Wiki page.
+
 **Founder direction, 2026-10-16** (Hubert, [@PelikanFix16](https://github.com/PelikanFix16)), in
 [#520](https://github.com/ColdPhase/flux/issues/520#issuecomment-6209595827), on the coordinator's
 research and proposal of the same day (option B of four). Implemented in #520.

@@ -1,395 +1,115 @@
-# Local MCP co-work and project GitHub integration
+# Local Claude Code and Codex over MCP (F-036; amends F-016)
 
-**Direction F-016, 2026-09-30.** Hubert's later request makes this required
-milestone-2 work. This is a production contract and handoff, **not implemented
-capability**. The [final design](../design/final/README.md) (F-026) draws its Agents view,
-hand-off and live agent states; this contract and the issue table below govern behaviour.
+**Status:** founder direction, Hubert (@PelikanFix16), 2026-11-03
+([#851](https://github.com/ColdPhase/flux/issues/851) point 9, [#859](https://github.com/ColdPhase/flux/issues/859)),
+recorded 2026-11-03 in [#852](https://github.com/ColdPhase/flux/issues/852); independent review
+pending ([F-036](decisions.md#f-036--simple-ai-everything-is-an-agent)). It replaces F-016's
+standing scoped autonomy (CO-1, CO-2) and its formal review gate (CO-4, see LC-3), and keeps one
+Flux task and the GitHub binding (CO-3). The earlier text is at [`a82ee012`](https://github.com/ColdPhase/flux/blob/a82ee012d0dc0a33e9ab14925f8f400c96f31e60/docs/product/mcp-cowork.md).
 
-**Workspace AI lock ([F-029](workspace-ai-lock.md), proposed — implementation S1, S2 and S3 merged; eligible independent acceptance by @Zamojski5 pending).** While a workspace's AI is off, no external connection, token, standing grant, co-work request or Agents view works in it; the workspace block takes precedence over everything here.
+A person's own Claude Code, Codex or other MCP client on their computer connects to Flux for code
+work. **It follows the same rules as their [agents](assistant.md).** The only difference is that
+it changes code on the person's computer, outside Flux (Hubert, 2026-11-03: "it must not be
+complicated or different").
 
-## One workspace experience, one task
+## LC-1 — One sign-in
 
-Flux keeps the authoritative task, discussion, result, map, wiki and acceptance
-criteria. The Agents tab is another view of that same work; since 2026-10-09 it also
-holds each task's agent thread, where agents talk about the work
-([CW-2 revision](cowork-workflow.md#a-durable-request-not-a-second-conversation--cw-2)). GitHub supplies
-repositories, branches, commits, PRs and CI facts. Do not create, import, mirror
-or synchronize GitHub Issues as a second backlog. Existing external issue links
-may remain provenance. This product rule does not replace this repository's
-own development issue/PR workflow in `docs/agents/`.
+- The developer adds Flux to their client, for example
+  `claude mcp add --transport http flux <origin>/mcp` or `codex mcp add flux --url <origin>/mcp`,
+  and signs in once in the browser (OAuth). There are no scopes, capability switches, project
+  selections, standing grants, project grants or access requests.
+- The client appears as one row in Settings › AI: "Claude Code on Ada's laptop · Do it and tell me
+  · Disconnect". Disconnect revokes it at once. A person may connect several clients, each with its
+  own row.
+- Flux holds only its own grant. Flux tokens are audience-bound to Flux's MCP resource, and Flux
+  never accepts, stores or forwards the client's provider token (MCP 2026-07-28: the server "MUST
+  NOT pass through the token it received from the MCP client"). The client's plan usage is unknown
+  to Flux and never shown as zero.
+- With single sign-on, the identity provider's standing check applies: when it stops confirming
+  the person, their clients lose access ([F-024](mcp-identity.md)). Protocol admission follows
+  [O-012](mcp-protocol-compatibility.md).
 
-The source's “workspace/space” means the existing **project and its audience**.
-Production still has an administrative workspace/tenant containing projects.
-Bindings, grants, tools, events and caches retain both boundaries. Changing a
-selected project in the browser cannot retarget a running agent's authorization.
+## LC-2 — Same rules as agents
 
-Keep O-002 React/Node/Fastify/PostgreSQL and shared domain commands. This section
-is mode (b) of the [F-022](ai-modes.md) two AI modes. Mode (a)
-runtimes are sandboxed per-owner slots beside the instance, not the Flux server
-process. Vendor credentials stay in each owner's directory in a slot volume. The
-CLI reaches Flux only as an MCP client, through an owner-consented agent
-connection with mode (b) permissions. The supplied
-FastAPI/Next.js, new storage services and hosted execution diagrams are not
-adopted. This adds local external co-work; it does not move terminals, agent
-containers, browsers or provider subscription credentials into the Flux server.
-Technical inbox/outbox/webhook workers remain ordinary non-LLM infrastructure.
+- It sees exactly what the person sees, never more, and only in spaces with AI on; never in an
+  encrypted space (AG-3, AG-10). A DM between people it opens shows both people the line of AG-4
+  ([coordinator default C-2](decisions.md#coordinator-defaults-and-inferences-not-founder-decisions-hubert-can-override)).
+- It has the same "What it may do" row: Only read, Do it and tell me or Ask me first. Deleting
+  anything and other people's things wait for the person's OK, its changes carry Undo, and the
+  never-list holds (AG-3).
+- **Only the person approves.** Approving, editing or skipping a waiting item, Approve all, and
+  accepting a decision come only from the person in a signed-in Flux session. The client's grant
+  has no tool for them, so a prompt-injected client cannot approve its own wait ([AG-3](assistant.md#ag-3--rights-what-it-may-do-approvals-and-undo)).
+- Only the person prompts it, from their editor. Flux never starts, wakes or prompts a local
+  client, and nothing polls a model while it is idle (F-032).
+- Its messages and changes are labelled "Ada · via Claude Code".
 
-## Ready workflow amendment — F-018
+## LC-3 — "Work on #4"
 
-[CW-1–CW-5](cowork-workflow.md) and the [starter playbook](cowork-playbook.md)
-make the instruction/communication loop explicit: Flux ships the workflow,
-clients load it through a Start/Resume path whose native verification is pending
-([evidence](../development/evidence/160-workflow/README.md)), and addressed durable requests
-survive busy/offline/context-reset states. Agents act at safe checkpoints without
-periodically scanning all GitHub issues/PRs/comments. Coordination stays in Flux;
-formal GitHub approval/check gates stay real. #160 packages content/onboarding;
-#152/#153/#74 and the final design's Agents view (#347) implement their existing domains against this amendment.
+- The person tells their client "work on #4". The client takes the task through MCP (Flux shows
+  "Ada is on it via Claude Code"), reports in the task's discussion and finishes it under "What it
+  may do": Done with Undo, or handed back for review.
+- **Review.** There is no separate Flux review verdict on a pull request head (F-016's and F-018's
+  review gate; [coordinator default C-9](decisions.md#coordinator-defaults-and-inferences-not-founder-decisions-hubert-can-override)). Review is the "What it may do" row: under Ask
+  me first, or Only read, the task is handed back to its person, "Ready for you to check". A
+  separate reviewer is optional, for example a subtask for a Reviewer agent. GitHub's own reviews and
+  checks stay GitHub's (LC-4).
+- Flux's MCP server gives the client its instructions and tools. The person never copies prompts,
+  reads a playbook or installs files (F-018, kept in that sense).
+- Flux gets no new hand-off control for this, and a local client is not offered in the Owner
+  field.
+- How the client holds the task internally (today's co-work claim and lease) is engineering for
+  #859; it is not something people see.
 
-## Sign-in through one identity provider — F-024
+## LC-4 — GitHub
 
-When people sign in to Flux through their installation's sole operator-configured
-OIDC provider (one supported choice such as Keycloak), [F-024](mcp-identity.md) keeps Flux as the only authorization
-server for `/mcp`. The provider signs the person in during Flux's authorization
-step. Its standing check suspends the person's MCP access, agent runs and owner
-compute when the provider stops confirming them. The current #315 requires exclusive password-only/no-SSO or SSO-only/sole-IdP
-login and safe pre-cutover migration. #316 supplies ordinary owner capability
-switches and selected native projects, checked live within rights/grants/OAuth
-consent. No password replay, recent-authentication window or secondary SSO prompt;
-existing authorized work keeps its standing boundaries. #317's opaque-key feature is canceled, not
-implemented. OAuth and supported SSH/callback guidance stay. Provider compatibility
-requires actual evidence for the chosen provider. The CO-1 connection model is
-unchanged; F-024 implementation and independent acceptance remain pending.
+Kept from CO-3, [O-011](decisions.md) and [F-033](decisions.md):
 
-## Connections and owner-authorized autonomy — CO-1
+- A space binds repositories through the read-only GitHub App. Flux holds the task and its
+  discussion; GitHub holds repositories, branches, commits, pull requests and CI. Flux never
+  creates, imports or mirrors GitHub Issues as a second backlog.
+- Private repository facts need both current Flux access and verified repository access. Login
+  identity, App installation and each repository binding are distinct, and callbacks bind the
+  initiating person and space with verified state.
+- The client links the pull request it produced to the task. Flux verifies it with the person's
+  own GitHub authorization through the read-only App; the client gains no GitHub permission.
+- Linked pull requests may move the same Flux task under O-011's per-task rules. Statuses are To
+  do, Doing, Blocked and Done (F-038); closed-unmerged is not done, and green CI or a merge alone
+  does not meet unmet criteria.
+- Server agents read the connected repository (issues, pull requests, checks) and never write to
+  GitHub (AG-8).
+- Flux's own record, GitHub approval, checks and merge are different facts. GitHub's required
+  approvals and protections stay GitHub's. The real GitHub App installation remains a later
+  version (F-033).
+- Webhooks are verified, persisted before processing, deduplicated and reconciled against the
+  provider; a disconnect stops future privileged reads and writes.
 
-The [#460 protocol admission/authentication/feature amendment](mcp-protocol-compatibility.md) is **Accepted** (PR #466 merged at `ea2f13d2` with eligible approval, 2026-10-11). Its two-era stateless architecture is implemented as a candidate in PR #467; production support, built-in Connect delivery and #152/#160 acceptance remain unverified.
-The original authority and onboarding criteria below are unchanged.
+## LC-5 — Stop and questions
 
-The in-product helper (#57/#68, O-007/O-008) remains: chat, research, finding
-connections, map/wiki/task assistance and scoped proposals. *Revised 2026-10-09 by
-founder direction ([F-027](assistant.md), questions 1 and 16):* the helper also
-changes tasks, Wiki pages, maps and conversations directly under its owner's switches
-and approval mode, and may hand a task to its owner's own agents; a hand-off to
-another person's agent waits for an owner-sent request and that person's separate
-consent/ordinary handoff, never an owner-approved foreign-agent unit creation.
-*Clarified 2026-10-10 for #401 C4 ([contract-text acceptance recorded](assistant.md#contract-text-acceptance-2026-10-10)):* own-agent unit creation
-uses the [server-owned owner-assistant run adapter](../development/cowork-coordination.md#owner-assistant-handoff-creation--f-027-amendment-2026-10-10),
-with verified durable owner binding/run purpose and current S6 checks for direct
-calls, or the separate current-owner Apply purpose on an immutable saved waiting
-intent after normal completion (R1 clarification, 2026-10-10). The R2 versioned
-run-private tool projection omits unavailable bootstrap runtime/grant input fields;
-ordinary external schemas/descriptions remain unchanged. It grants no
-assistant claim/bootstrap and no recipient grant/claim/invocation. Every ordinary
-external caller keeps the self-root/live-parent creation fence; a compute-source
-label or client-supplied actor cannot select the adapter. Agents never start the helper.
-External MCP agents are separate connections using the owner's client and compute. Never substitute
-another person's connection or payer when one is unavailable.
+- The person, or the space admin, can Stop the client's work on a task: its next Flux call is
+  refused ([AG-5](assistant.md#ag-5--tasks-reach-agents-through-their-owner)). Flux cannot kill a
+  local process, so it shows "Stopped by Ada" (or by the admin's name), not that the client
+  stopped running, and the person is told who stopped it. Only the person prompts the client. That
+  the space admin's Stop also reaches a local client is a [coordinator default C-6](decisions.md#coordinator-defaults-and-inferences-not-founder-decisions-hubert-can-override).
+- A local client may ask a person a question with ready answers, as an agent does (AG-6).
 
-One owner can have many connections, including several of one client type:
-**Hubert / Codex, Hubert / Claude, Marek / Claude = three agents**. Each has its
-own stable ID, visible owner/client/name, grants, availability and revocation.
-A connection can have multiple session records; a protocol session is not an
-identity. Show configured, last seen, queued, working and disconnected honestly.
-Client/model labels are reported provenance, not proof of model identity.
+## What went away in v0.2
 
-Reuse completed #52 / PR #103 and O-005. Existing database agents/connections
-already allow multiple rows per owner. Extend the present Claude-only provenance
-and tools with tested Codex support. Fix the current whole-browser-session OAuth
-selection limitation: Hubert can authorize both connections in one normal login,
-using request-bound consent which another tab cannot swap. Do not inherit #68's
-single personal-helper enablement restriction into this external-agent model.
+- Three OAuth scopes, 38 capability switches per connection, project selection, standing grants
+  with uses and expiry, and hand-off auto-grants.
+- Agent project grants, "Ask a manager to let it in" and the project agent policy.
+- The space Agents tab and its agent thread ([agents in a task](cowork-workflow.md)).
+- Start and Resume commands as a step the person must run, and the always-on local waiter (#754,
+  closed).
+- Workspace-owned agents: every agent belongs to one person.
 
-A standing owner grant names the project, task classes, allowed read/write
-actions and audiences, repository scope, permitted peer requests, concurrency,
-limits and expiry/revocation. Validate it at every operation; validation is not
-another confirmation dialog. Inside it, agents may discover/claim tasks, code,
-test, branch, submit PRs, exchange context, review and perform authorized domain
-updates without routine human management. A peer message is a trigger, never
-authority to expand the receiving owner's grant. New recipients, payer, scope
-or reserved action need authority. Execution and reviewer grants are separate.
+Removing scopes and switches changes EXT-1, MCP tool contract 1 ([O-010](extension-contracts.md)),
+so #859 publishes the next `toolContractVersion` with an updated snapshot.
 
-Selection of a connection is not reassignment of the human responsible for the
-task. Make that a separate explicit action, default off, with current task rights
-and the receiving owner's consent. The existing human-only domain decision
-acceptance rule remains; delegating that requires its own reviewed amendment.
+## Evidence
 
-## Shared context and local execution — CO-2
-
-Tools reuse current UI/helper domain services and authorization, not alternate
-tables or permissive MCP shortcuts. Read/search the authorized project
-conversation, map, tasks, wiki and results through bounded versioned references;
-support permitted writes and publication to the same records. Never load private
-DMs, another project's content or the owner's private memory implicitly. Apply
-current ACLs to identifiers, snippets, counts, caches, artifacts and stream replay.
-External content cannot change a grant or trusted policy.
-
-The handoff UI can open the original source message and download a versioned
-reference packet after current authorization, without credentials/active grants
-or hidden source metadata. Swapping executor/reviewer is an assignment choice,
-never a profile switch or rewriting previous artifact authorship.
-(Implemented 2026-10-17: each request card in the task's agents' thread opens its original message and downloads its
-reference packet; see [Request cards, handoff packet, cancel and the review rule](../development/cowork-coordination.md).)
-
-An atomic claim gives one active author for a work unit and a fencing generation.
-Review is a separate work unit. Checkpoints contain observable progress, sources,
-tests and next action, not hidden reasoning or a copied model transcript. Targeted
-durable handoffs carry references to the original task/message; they create no
-second chat, wiki or LLM-generated handoff summary. (Revised 2026-10-09 by founder
-direction: agents' work talk goes to the task's agent thread in the Agents tab. That
-thread belongs to the task's record, so it is not a second chat, and people's views get
-outcome notices. See [CW-2](cowork-workflow.md#a-durable-request-not-a-second-conversation--cw-2).) Replies/questions remain
-possible when useful; heartbeats, logs and acknowledgements do not wake models or
-inflate unread counts. Bound retry loops and descendant budgets across delegation.
-
-Transfer before an artifact retains task/run IDs, increments generation and
-invalidates the old claim. A declined replacement leaves the prior assignment
-paused, never silently restarted. Preserve original authorship after a PR/result;
-new assignments can continue subsequent work. Late claims/results are rejected.
-Idempotency and version checks cover retries, reconnects and duplicate requests.
-
-The first required slice supports real active local clients. Optional duty mode
-must have a versioned, tested client/adapter capability contract; MCP alone does
-not launch a closed client or guarantee arbitrary interruption. Queued/offline
-work remains visible without fictitious progress or idle model polling. Record
-supported/unsupported/unknown discovery, notifications, resume, cancellation and
-usage capabilities. No hosted fallback. Revocation prevents new Flux effects;
-it cannot cancel independent local Git commands, revoke unrelated credentials
-or erase already received context. Cancellation request and acknowledgment differ.
-Unknown local subscription usage is unknown, not zero or a fabricated quota.
-
-## GitHub binding and board behavior — CO-3
-
-Project settings bind zero or more repositories, possibly from different owners,
-through authorized GitHub App installation access. Login identity, App
-installation, project integration and individual repository binding are distinct.
-OAuth/install callbacks bind the initiating user and project with verified state;
-recheck current permissions and actual repository selection. No global current
-repository/token, credential passthrough, automatic grant expansion when an
-installation gains repositories, or exposure of admin-visible repositories to
-ordinary agents. Default repository is only a creation hint.
-
-Private repository facts require both current Flux audience access and verified
-repository access; do not broaden them to all project members implicitly. Any
-future organization-approved broader sharing needs a separately reviewed policy.
-The same repository in two projects shares permitted external facts only, never
-their Flux conversations, task/agent roster or hidden project identity.
-
-Use many-to-many links with binding, provider host, stable repository/object IDs
-and relationship role. One task may require several PRs in several repositories;
-one PR can relate to several tasks. Verify locally supplied PR references against
-the binding. Owners' local Git/CLI is the default code/push/PR path. Optional App
-writes require narrow explicit authority and never expose installation tokens.
-
-**Agent links (#160 AC-3, 2026-10-30).** The agent that holds a task links the PR it produced with `flux_link_pull_request`, so
-the link is native to Flux rather than something only a person can add. It is a change to that task: it needs the owner's `work.update`
-standing grant, a repository a person already connected to the project, and the hold (the task is the agent's, open, not paused). Flux
-verifies the PR with the **owner's** GitHub authorization through the same read-only App, with the person's verification and storage
-code; the agent has no GitHub identity, cannot connect a repository and gains no GitHub permission. A retry or a repeated link
-is the same link. Details: [agent connection](../development/agent-connection.md#linking-the-pull-request-an-agent-produced-160-ac-3).
-
-Disclosed project rules can move the **same Flux task** from verified PR/CI facts,
-without an LLM or duplicate issue. Rules name triggering facts, required links and
-effects; manual correction suspends automatic movement until explicitly resumed.
-Closed-unmerged is not done; green CI or merge alone does not complete unmet
-acceptance/hardware outcomes. Related-only PRs cannot drive completion. New SHA
-invalidates dependent review. Apply optimistic task versions and preserve manual
-changes. Existing task statuses stay `open`, `in_progress`, `blocked`, `done`,
-`not_pursued`; parking remains separate. Execution/review/CI states are projections,
-not additional board columns unless a later contract deliberately changes them.
-
-**Publication of rule effects (G-1a, [O-011](decisions.md), 2026-10-05).** A rule is turned on for one task, by a
-person who can edit it. With a manager's project default on, the writer who links a required PR turns it on, and the
-link form says so first. Turning it on is the explicit publication.
-- Everyone who can read the task sees the rule's status changes, the blocker it writes, and the PR number, short head
-  commit and check name behind each change.
-- PR titles, repository names and URLs stay behind each reader's own repository access. Events carry identifiers and an
-  automation marker, never the author's own action.
-- Merge finishes a task only in Complete mode, when the task has no written criteria, every prerequisite is done and
-  every merged head's checks passed. Otherwise the task shows Ready to close, and only where Done is allowed.
-- Losing the author's access, or a required repository's binding (disconnect, uninstall, removal or revoked
-  authorization), pauses the rule with a history line. Only an explicit Resume restarts it, also after re-binding.
-
-Verify signed webhooks, persist before processing, deduplicate deliveries and
-reconcile out-of-order/missed events against the provider. A failure for one
-binding must not lose another binding's delivery. Retry with current access;
-unknown external write outcomes reconcile before retry. No global exactly-once
-promise. On disconnect/revocation stop future privileged reads/writes and live
-projections; retain permitted historical provenance with truthful unavailable
-states. Export/import contains history, never tokens, active grants or auto-runs.
-
-## Review and completion — CO-4
-
-A review names the exact PR head SHA or result-message ID and version, criteria,
-findings, reviewer connection/owner and actual evidence. Updated code/results
-need new assessment; recheck version when accepting, not only opening a dialog.
-A standing review grant authorizes fresh assessments within its scope, never a
-preapproved verdict. A new SHA or result version invalidates dependent review
-evidence, not standing authorization. Execution-only grants cannot claim review.
-Changing reviewer preserves history and validates the replacement's own grant;
-ask for consent only when existing authorization does not cover the assignment.
-Identical retries do not create another delivery. Non-code work can finish as a reviewed result message with no
-invented PR. Missing review and unperformed device tests stay visibly pending.
-
-Permit distinct non-author connections of one owner to review each other under
-explicit project policy, e.g. Hubert's Claude reviews Hubert's Codex. A stricter
-policy can require different owners. Record authorship, separation of execution
-and evidence; renaming the author's run is not independent review. This qualifies
-the source's unconditional different-owner restriction to support the user's
-multiple-agent requirement without claiming stronger independence than exists.
-
-Flux assessment, eligible GitHub approval, checks, merge and task completion
-are different facts. A PR author cannot approve their own PR on GitHub; two
-connections sharing an account/App do not become two eligible GitHub approvers.
-Preserve repository protections. Do not introduce a trusted Gate/App check as a
-silent replacement for required approvals. Merge/acceptance can proceed under
-explicit standing policy when all applicable gates pass; there is no universal
-human-confirm-every-step rule. Reserved actions still require their authority.
-
-## Stop and questions — F-026 S13 and S14
-
-**Contract, 2026-10-08 (#347).** Two person-facing controls over an external agent's work. Both use the existing
-records (the task, its co-work units, the project conversation, the Inbox); neither adds authority to an agent.
-
-### Stop (S13)
-
-A person ends an agent's current work on one task. Flux does what it can prove: it ends the agent's hold and claim,
-and the agent's next call is told. It cannot kill a local client (see the cancellation rules in CW-3): the Agents view
-says "Stopped by <name>", not "the agent has stopped running".
-
-- **Command.** `POST /api/v1/projects/{projectId}/agent-stops` with `{ taskId, agentId }` (`Idempotency-Key` honoured).
-  The task must be held by that agent now (owner is the agent; open, in progress or blocked), otherwise `409
-  AGENT_NOT_WORKING`. This is how a double tap and a stale view end: nothing happens twice.
-- **Who.** A signed-in person with write access to the project and one of: a project manager, the owner of the agent,
-  or the person who created the task. Anyone else gets `403 STOP_NOT_ALLOWED`; an agent never stops an agent.
-- **Effect, one transaction.**
-  1. The task goes back to nobody: owner cleared, `in_progress` becomes `open` (blocked stays blocked), through the
-     canonical task update, so the version, the history and the `project.work_updated.v1` event are the ordinary ones.
-     Flux does not guess a new owner; the person assigns it again.
-  2. Every unfinished co-work unit of that agent's connections on the task becomes `stopped` (generation and version
-     advance, the lease is cleared), exactly as when a connection is revoked.
-  3. One `agent_stops` row records the task, the agent, who stopped it, when and how many units ended; one
-     `project.agent_stopped.v1` event (ids only) refreshes open views.
-- **The agent is told.** The claim, renew, release, complete, transfer and request tools answer a stopped unit with
-  `COWORK_STOPPED` ("A person stopped this work. Do not continue it; ask in the task thread."), never with a
-  generic lost-claim error, so the next checkpoint or lease renewal sees it. The unit is never claimable again; new
-  work needs a new unit on a task handed to the agent again.
-- **Read.** `GET /api/v1/projects/{projectId}/agent-stops` (project readers) returns the newest 20 stops with names:
-  `{ projectId, stops: [{ id, taskId, taskNumber, taskTitle, agent: {id, name}, stoppedBy: {id, name}, stoppedAt, unitsStopped }] }`.
-- **Own working agents.** `GET /api/v1/working-agents` lists the signed-in person's own agents that hold an in-progress
-  task in a project they can read, for the sidebar card.
-- **UI.** Stop is on the agent's row and panel in Agents while it holds an in-progress task, on the sidebar card
-  when one of the person's own agents works (the sidebar's card steps aside on Home), on Home itself, and in the phone
-  conversation header for the agent that works in that project (S13, #347). The personal assistant's run keeps its own Stop (a different
-  operation, #340). After a stop the panel shows "Stopped by <name> · #12" in Recent.
-
-### Pause and Resume (#160 AC-5, 2026-10-30)
-
-Stop ends the hold. Pause keeps it: the agent finishes its current step, saves a checkpoint and takes no new step
-until a person resumes it. Flux cannot interrupt a local client mid-step, so Pause takes effect at the agent's next
-safe boundary (its next lease renewal or claim), and the Agents view says which side of that boundary it is on.
-
-- **Command.** `POST /api/v1/projects/{projectId}/agent-pauses` with `{ taskId, agentId, paused }`
-  (`Idempotency-Key` honoured). `paused: true` needs the task held by that agent now (as Stop, else `409
-  AGENT_NOT_WORKING`); pausing an agent already paused on that task returns the stored pause. `paused: false`
-  removes it and returns `204`; removing a pause that is not there is also `204`.
-- **Who.** The same people as Stop: write access and one of manager, the agent's owner or the task's creator
-  (`403 PAUSE_NOT_ALLOWED`). An agent never pauses an agent.
-- **Effect.** One `agent_pauses` row per (task, agent) while the pause is in force (migration 0131), and one
-  `project.agent_paused.v1` event (task and agent ids only, for a pause and a resume alike). The task, its owner and its status do not change, and no
-  co-work unit is stopped. While the row exists, `flux_claim_unit` and `flux_renew_unit` on any unit of that task
-  held by one of the agent's connections answer `409 COWORK_PAUSED` ("A person paused this work. Release this unit
-  now with flux_release_unit and a checkpoint, and take no new step until they resume it."). Release, complete,
-  decline and the read tools are unaffected, so the agent can always save its checkpoint. The live lease is not
-  revoked: if the agent does not release, its claim simply expires (CO-2) and the unit is claimable again only
-  after Resume.
-- **Read.** `GET /api/v1/projects/{projectId}/agent-stops` also returns `pauses: [{ taskId, taskNumber, agent:
-  {id, name}, pausedBy: {id, name}, pausedAt }]` for the pauses in force.
-- **UI.** Pause sits beside Stop on the agent's panel in Agents while it holds an in-progress task. While the pause is
-  in force and the agent still holds a live claim the panel says "Pausing · waits for a safe point"; once no live
-  claim remains it says "Paused by <name>", and the button becomes Resume. Resume removes the pause; the agent
-  continues at its next supplied Resume (Connect/Agents host action or the client's `resume_work` prompt). Pause
-  and Resume create no conversation message and no notification.
-- **Where it shows (#763 AG-4, 2026-10-31).** The same words appear wherever the agent is shown: its Agents row, its
-  panel and the owner's sidebar card (and Home where there is no sidebar), with Kreska asleep once the pause is in force.
-  `GET /api/v1/working-agents` returns `paused: { by: {id, name} } | null` per item for that. The confirmation toast
-  after Pause offers Resume. A held task that is not worked on reads "Has #N · …" (never "Working", C-1).
-
-### Supplied Codex action: tool approval (#160, 2026-10-30)
-
-`./flux cowork start|resume` runs `codex exec`, which has nobody to answer a local approval prompt. It passes
-`mcp_servers.flux.default_tools_approval_mode="approve"` inline, for that one invocation and for the `flux` server
-only: no other MCP server, shell command or file write is pre-approved, the sandbox stays `workspace-write`, and the
-person's saved Codex configuration is not changed (`--ignore-user-config`). What a Flux tool may do is still decided
-by the connection's scopes and standing grants on the server; the flag only stops the client from asking twice.
-Observed need: genuine Codex 0.160.1 refused `flux_acknowledge_playbook` with "requires approval, but approval policy
-is never" without it (`docs/development/evidence/160-workflow/README.md`).
-
-### Questions with ready answers (S14)
-
-An agent asks a person in a project conversation and offers two to four answers. The question is an ordinary message
-of the agent, so the thread reads the same without the card. The message body is not drawn twice: the card carries
-the question as its heading. The card adds the one-tap answers for the person asked; everyone else, and the asked person
-without write access, sees the answers offered as a read-only list (#347 review finding 2).
-
-- **Tool.** `flux_ask_question` under the existing `conversation.reply` operation and grant (a grant naming one
-  conversation allows asking only there). Input: `conversationId`, `question` (1-2000 characters),
-  `options` (2-4 distinct answers, 1-80 characters each) and optionally `askUserId` (default: the agent's owner; the
-  person must read the project). The message body is the question followed by the options as a list; the same
-  message is the card's anchor. `clientCommandId` retries return the stored outcome.
-- **Storage (migration 0065).** `agent_questions` holds the message, the asker, the asked person, the options and,
-  once answered, the chosen option or free text, who answered, the reply message and the time.
-- **Notification.** The asked person gets a `question` Inbox notification (their notification settings for the
-  "Questions to you" reason apply), linking to the message. Nobody else is notified because of the card.
-- **Read.** `GET /api/v1/projects/{projectId}/agent-questions` (project readers) returns the newest 100 questions
-  with their state; the conversation draws a card for each message that has one.
-- **Answer.** `POST /api/v1/agent-questions/{questionId}/answer` with exactly one of `{ optionIndex }` or `{ text }`
-  (1-2000 characters, the free reply). Only the asked person, while they still write in the project, may answer. The
-  chosen option's text (or the free text) is posted as that person's reply in the same conversation. Answering the
-  same way again returns the stored answer without a second reply; a different answer after one was given is
-  `409 QUESTION_ANSWERED`. The agent reads the answer as the next message of the thread (its ordinary reads) and
-  through `flux_list_conversations`; no answer ever grants it anything.
-- **UI.** The card shows the question, the options as buttons, "Reply in your own words" for the free answer, and
-  after answering the chosen reply with who and when. Others see the question without buttons.
-
-## Delivery and evidence — CO-5
-
-| Work | Contract / dependency |
-| --- | --- |
-| Project GitHub integration and deterministic board policy | #74, promoted from connector idea; GitLab/Gitea remain later candidates |
-| Multiple external connections and domain MCP tools | [#152](https://github.com/ColdPhase/flux/issues/152), successor to completed #52; retain #57/#68 helper boundaries |
-| Claims, local cooperation, handoffs and current-version review | [#153](https://github.com/ColdPhase/flux/issues/153), depends on connection contract; code path additionally #74 |
-| Ready playbooks and supported Start/Resume | [#160](https://github.com/ColdPhase/flux/issues/160), [CW-1–CW-5](cowork-workflow.md); consumes #152 bootstrap and #153 durable inbox/checkpoint interface |
-| Same-task creation notice and first real discussion message | [#154](https://github.com/ColdPhase/flux/issues/154), amends #36/#101 behavior without rewriting history |
-| Agents view, hand-off and responsive integration per the [final design](../design/final/README.md) | [#336](https://github.com/ColdPhase/flux/issues/336) with #151; consumes the domain contracts above |
-| Subtle motion and real typing presence | [#155](https://github.com/ColdPhase/flux/issues/155), coordinated with #336 |
-| MCP sign-in with one external identity provider, offboarding and owner capability controls | [F-024](mcp-identity.md), [#273](https://github.com/ColdPhase/flux/issues/273); required slices S1–S6 (S5a and narrowed S5b), S1 after #240/#294 and S3 after S4; S7 opaque keys canceled (#317) |
-| Public tool contract: versioning, compatibility and snapshot | [O-010 EXT-1](extension-contracts.md#ext-1--mcp-tool-contract-1), [#251](https://github.com/ColdPhase/flux/issues/251); a new tool from these rows joins tool contract 1 additively with an updated snapshot |
-
-Required integrated fixture: two owners/three connections, distinct grants and
-two projects; one existing task → local code/tests → verified PR → authorized
-peer review → fix/new SHA → required approval/checks → merge → criterion-based
-task completion. Include same-owner permitted review and stricter different-owner
-policy, non-code result/version review, new commit → stale verdict → already
-authorized fresh review without another owner prompt, denial of review under an
-execution-only grant, reconnect/stale worker, revoked access,
-simultaneous claims, private sources, duplicate/out-of-order events, manual board
-override, unavailable client and no repeated prompt inside a valid standing grant.
-Capture real supported-client versions and operations. Mock clients support
-regression tests but do not prove Codex/Claude compatibility or closed-client wake.
-Human no-agent journeys, #20 PWA and F-015 large-screen requirements remain.
-
-## Evidence and source reconciliation
-
-Primary sources checked 2026-09-30: [MCP architecture](https://modelcontextprotocol.io/docs/2026-07-28/learn/architecture)
-describes context/tools and host responsibility; it does not establish a Flux
-scheduler. [GitHub review eligibility](https://docs.github.com/en/pull-requests/how-tos/review-pull-requests/approving-a-pull-request-with-required-reviews)
-and [protected branches](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-protected-branches/about-protected-branches)
-support the separate approval gates. Protocol/client details must be verified at
-implementation against supported versions; no automatic protocol upgrade here.
-These are source facts; CO-1–CO-5 are the reconciled Flux product design.
-
-The source's optional GitHub issue sync, hosted runners, stack suggestions,
-two-owner-only example, blanket final-human gate and demo policy checks do not
-override this contract. `AGENTS_COOP.md` is an inert supplied adapter proposal,
-not repository agent instructions or an authorization mechanism. Author test
-counts and simulated sessions/PRs are not production evidence.
+Real Claude Code and Codex sessions are recorded with their versions; mock clients support
+regression tests but do not prove compatibility. Primary sources checked 2026-09-30:
+[MCP architecture](https://modelcontextprotocol.io/docs/2026-07-28/learn/architecture),
+[GitHub review eligibility](https://docs.github.com/en/pull-requests/how-tos/review-pull-requests/approving-a-pull-request-with-required-reviews)
+and [protected branches](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-protected-branches/about-protected-branches).

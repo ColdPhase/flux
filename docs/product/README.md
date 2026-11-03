@@ -37,6 +37,12 @@ alongside active SSO; safe pre-cutover migration and current authority checks re
 the earlier appearance directions below. This amendment records required work,
 not implementation or release acceptance.
 
+**v0.2 direction, 2026-11-03:** [F-036 to F-038](decisions.md#f-036-to-f-038-the-v02-direction-2026-11-03)
+govern where they conflict with anything below. Everything AI is an agent that belongs to one person,
+acts with its owner's rights and is prompted only by its owner ([agents](assistant.md)); one Flux is one
+company with a flat list of Spaces; and Flux becomes simpler across its screens. The design guide follows
+after Hubert approves the mockups (#864). The paragraphs on F-016, F-018 and F-022 below are history.
+
 **Design, 2026-10-07:** the [final design "Prostota"](../design/final/README.md) (F-026) is
 the only UI and UX on the computer and the phone, tracked in
 [#336](https://github.com/ColdPhase/flux/issues/336). It governs every visual or placement
@@ -74,7 +80,7 @@ Flux has exactly two AI modes: (a) the agent in Flux with the owner's chosen
 connection, and (b) your agent app connecting over MCP. In mode (a) the owner can
 sign their own Claude or Codex subscription into the unmodified official CLI, which
 runs in their own runtime slot, as in a terminal. No vendor inquiry gates it.
-The accepted [F-022](ai-modes.md) maps foundation §9.2's three ways onto the two
+The accepted [F-022](https://github.com/ColdPhase/flux/blob/a82ee012d0dc0a33e9ab14925f8f400c96f31e60/docs/product/ai-modes.md) maps foundation §9.2's three ways onto the two
 modes (its second and third rows are both the agent in Flux).
 
 The [later founder delegation](autonomy.md) authorizes agents to choose and accept
@@ -164,7 +170,7 @@ The foundation does not authorize deleting existing code or changing the license
 | Problem, segment, personas, USP | 1–7, 14, 17 B/C; [research](research.md) |
 | Product areas and integrated journeys | 8, 18–19 |
 | Mobile/tablet UX, installability, offline recovery and push | [Mobile PWA requirements](mobile-pwa.md), including MOB-1 through MOB-7 |
-| Own agents, subscriptions, APIs, local models | 9, 11.3, 17 E; [provider-neutral Flux agent F-020](model-providers.md); [feasibility](own-ai-feasibility.md); dated primary-source research |
+| Own agents, subscriptions, APIs, local models | 9, 11.3, 17 E; [agents F-036](assistant.md), [Connect AI and models](model-providers.md), [where agents run](ai-modes.md); [feasibility](own-ai-feasibility.md); dated primary-source research |
 | Visual direction, density, accessible interactions | 10, 17 D1–D4, 21; [design workflow](../design/README.md) |
 | Architecture and operations | 11, 13, 18; [accepted O-002 architecture](application-architecture.md), [decision register](decisions.md) |
 | OSS and commercial direction | 3, 6, 12–13; existing [LICENSE](../../LICENSE) |
@@ -181,6 +187,7 @@ The [first milestone brief](milestones/01-product-blueprint.md) turns this visio
 into product, design, architecture, and release decisions. O-002 and O-004 are
 accepted; remaining decisions proceed alongside implementation in
 [milestone 2](milestones/02-working-application.md). Research and coding may overlap.
+The current milestone is [v0.2](milestones/04-v0.2.md).
 
 The [application behavior and release specification](application-specification.md)
 and [full-product coverage ledger](foundation-coverage.md) connect the accepted
