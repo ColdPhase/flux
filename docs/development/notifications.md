@@ -90,7 +90,11 @@ The settings page sends its saves one after another, numbered, and shows only th
   re-evaluates it. `{ until: null }` resumes; a pause that has ended reads as `null`. Jobs
   already deferred to `until` are not released early: they arrive by `until`, and the Inbox has
   everything meanwhile. Stored in `notification_preferences.paused_until` (migration 0059).
-- **Morning summary** (#350, S22; `morningSummary: { enabled, at }`, off by default,
+- **Morning summary** (#350, S22). **Removed in v0.2** by Hubert's answer of 2026-11-03
+  ([F-038](../product/decisions.md#f-038--a-simpler-flux), implemented in #872): the plain, non-AI
+  summary goes, and the only morning summary is a schedule you ask an agent for
+  ([AG-9](../product/assistant.md#ag-9--schedules)). The text below describes the current build
+  until #872 lands. (`morningSummary: { enabled, at }`, off by default,
   09:00 in the quiet-hours time zone): every 15 minutes the worker resolves the most recent
   scheduled local date and its three-hour elapsed-time delivery window, including across
   midnight. Repeated DST times use the first occurrence; a skipped time uses the first valid
@@ -176,7 +180,7 @@ The sidebar's **Inbox**, between Home and Sketchbook, shows how many items are u
 the 64 px rail shows the same number). `/inbox` lists "New" and "Earlier" items,
 each with its reason, title, excerpt and time; opening one marks it read and opens the source;
 "Mark all read" only quiets the dot. `/settings/notifications` (Settings → Notifications, #350)
-holds a running focus pause with Resume now, the level (Only "Needs you", Everything, Nothing), quiet hours, the morning summary, then
+holds a running focus pause with Resume now, the level (Only "Needs you", Everything, Nothing), quiet hours, the morning summary (both focus pause and morning summary go in v0.2, F-038), then
 the channel table, push on this device, email destination and extra address, and muted places. `/inbox/:id` (email link) and
 `/settings/notifications/verify` are routes of the signed-in app.
 

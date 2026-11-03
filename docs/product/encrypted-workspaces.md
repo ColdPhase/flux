@@ -44,19 +44,22 @@ to the **space**:
 
 **Engineering option, to be confirmed** in the independent review of #852 and in #874: an encrypted
 space stays a **hidden internal workspace** that contains exactly one space. People never see that
-workspace; the company admin manages its people through the space's settings. The cryptography,
+workspace; the space's admins manage its people through the space's settings. The cryptography,
 the key per workspace, holders, unlock lifecycle, rotation, recovery code, inventory and locked
 behaviour below then stay as written, with "workspace" read as "encrypted space" in everything a
 person sees, and the space's admins (plus the recovery code) as its holders, so removing or demoting
 a space admin rotates the key. What changes is around it: the space list, search and Inbox across
 the company must include the hidden workspace's space for its members, and the company admin's
-rights must reach it. The alternative, a key per space inside the company workspace, would rework the
+right to delete it must reach it. The alternative, a key per space inside the company workspace, would rework the
 [inventory](#inventory) and every sealed path; it is the fallback if the hidden-workspace option
 fails review.
 
-**Open:** whether the company admin, who "can change any space", is also a holder of every
-encrypted space (and so can unlock it and is covered by rotation), or manages its people without
-being able to read it. This is a product question for Hubert, not decided here.
+**Decided (Hubert, 2026-11-03): who holds the keys.** Only that space's admins and the recovery
+code. The company admin, who can change any other space, can **delete** an encrypted space but
+cannot read it unless a space admin adds them; they are then a holder like any space admin, and
+removing or demoting them rotates the key. Because a company admin who could add people to the
+space could add themselves, the right to change its people also stays with its admins (an
+inference to check in the independent review).
 
 Until F-037 is implemented (#874), the rest of this contract describes the current, per-workspace
 behaviour.

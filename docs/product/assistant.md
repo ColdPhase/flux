@@ -26,8 +26,10 @@ own.
 
 - An agent acts with exactly its owner's current rights, never more, and only in spaces where AI
   is on.
-- Only its owner prompts or configures it. Other people's messages, web pages and project content
-  are data, never instructions.
+- Only its owner prompts or configures it. Its owner or the space admin can Stop it on a task
+  (AG-5). Other people's messages, web pages and project content are data, never instructions.
+- `/ai` uses only what the conversation's audience can see, so Show everyone never publishes
+  anything private (AG-4). AI in a DM between people shows both of them one line (AG-4).
 - Deleting anything and changing other people's things always wait for the owner's OK.
 - Changing access, accepting decisions and changing code are never possible for a server agent.
 - Every change is attributed, versioned and has Undo on the agent's message.
@@ -48,6 +50,10 @@ own.
 - **Yours and other people's.** Yours: a task you are responsible for, or one you or your agents
   created while nobody else is responsible for it; a Wiki page, map, thought or link you or your
   agents created and nobody else has edited. Everything else is other people's.
+- **A task's people.** The task's creator, its owner and anyone who wrote in its thread. When an
+  agent owns the task, the agent's owner is the person. Only people count: a message written by an
+  agent does not add its owner. Agents ask each other questions only when both owners are among the
+  task's people (TA-3), and use only what all of the task's people can see (AG-11).
 - **Run.** One piece of an agent's work: an answer, a step on a task or a scheduled firing.
 
 ## AG-1 — Everything is an agent
@@ -71,7 +77,8 @@ own.
 
 ## AG-2 — Only the owner prompts an agent
 
-- Only its owner talks to, configures, schedules or pays for an agent (F-019).
+- Only its owner talks to, configures, schedules or pays for an agent (F-019). The space admin can
+  Stop an agent on a task (AG-5) but cannot prompt or configure it.
 - Other people reach someone's agent only by assigning a task to its owner (AG-5). Nobody can
   @mention or prompt another person's agent.
 - Messages from anyone but the owner, including in a task discussion, are context, never
@@ -83,9 +90,9 @@ own.
 ## AG-3 — Rights, "What it may do", approvals and Undo
 
 **Rights.** An agent reads and changes exactly what its owner can, now, and only in spaces where
-AI is on (AG-10). Every read and change is checked at the moment it happens; when the owner
-loses access, the agent loses it on its next call. There are no agent project grants, no access
-requests and no manager approvals.
+AI is on (AG-10). A DM between people is not in a space; AG-4 governs AI there. Every read and
+change is checked at the moment it happens; when the owner loses access, the agent loses it on
+its next call. There are no agent project grants, no access requests and no manager approvals.
 
 **What it may do.** One row on each agent's page:
 
@@ -111,7 +118,8 @@ in words:
 - accepting or replacing a decision (O-009); proposing one is allowed;
 - anything outside its owner's rights. The agent says so; nothing is prepared for or sent to
   another person;
-- posting in a space's main conversation; only the owner's Show everyone does that (AG-4);
+- posting in a conversation with other people, a space's or a DM; only the owner's Show everyone
+  does that (AG-4);
 - for server agents, anything outside Flux except reading GitHub and the web (AG-8).
 
 **Waiting items.** A change that waits shows in the task discussion or private conversation
@@ -140,8 +148,18 @@ retried; it is reported as "Skipped #4: Jonas changed it while I worked".
   arrive there with an unread dot.
 - **`/ai` everywhere.** In every conversation the person can write in (a space's conversation,
   threads and DMs), `/ai` asks their Assistant. Only the asker sees the answer. Show everyone
-  posts it, attributed "Ada · via Assistant". The agent may use the visible conversation as
-  context, for example to summarise it.
+  posts it, attributed "Ada · via Assistant". The agent may use the conversation as context, for
+  example to summarise it.
+- **What `/ai` may use.** Inside a conversation, `/ai` uses only what that conversation's
+  audience can see: the conversation and the places its people can all see. So Show everyone
+  never publishes anything private, because the answer was drawn only from what its readers
+  could already see. In a private conversation with your own agent the audience is you, so the
+  agent can use anything you can see (AG-3).
+- **AI in a DM between people.** It is allowed. Whenever AI is used on a DM, either `/ai` typed in
+  it or an agent opening it for its owner, one line appears in the DM for both people, for example
+  "Ada used AI here (Claude)". The line names the provider of the model used. No space switch
+  governs DMs, so the line is how the other person learns which AI company receives their
+  messages.
 - **States.** An answer shows when it is working, failed (with Try again), stopped by the
   provider's limit (with when it resumes) or not possible because AI is off here.
 - **No drafts for other people.** An agent never prepares or sends a message to another person.
@@ -160,12 +178,15 @@ retried; it is reported as "Skipped #4: Jonas changed it while I worked".
   shows one line per task event.
 - **One state line** in the task panel: waiting for room on the server, working, waiting for
   your OK, paused by the provider's limit (with when it resumes), failed (with Try again or Take
-  it back), stopped, done, or handed back.
+  it back), stopped (by whom), done, or handed back.
 - **Finishing** follows the agent's "What it may do": with Do it and tell me it marks the task
   Done and tells the owner, with Undo; with Ask me first or Only read it hands the task back,
   "Ready for you to check".
-- **Stop.** The owner can stop an agent's work at any time. Its next call is refused, and the
-  changes it made stay, with Undo.
+- **Stop.** The agent's owner or the space admin can Stop an agent working on a task at any time.
+  Its next call is refused, and the changes it made stay, with Undo. The owner is told who
+  stopped it: the state line reads "Stopped by Maja" and the agent's private conversation gets
+  the same line, not an Inbox item (AG-7). Stopping gives the admin no other power over the
+  agent: only the owner prompts or configures it (AG-2).
 - "Mine" and My tasks include tasks owned by your agents.
 
 ## AG-6 — Blocked tasks and questions
@@ -195,7 +216,7 @@ Server agents act only inside Flux, with their owner's rights:
 | Area | Allowed |
 | --- | --- |
 | Tasks | Create tasks for the owner or the owner's agents (tasks for others wait); change status; write in the task discussion |
-| Conversations | Read; write only in task discussions and the private conversation. The main conversation only through the owner's Show everyone |
+| Conversations | Read; write only in task discussions and the private conversation. A conversation with other people (a space's or a DM) only through the owner's Show everyone |
 | Wiki | Create and edit pages, with Undo. Deleting waits |
 | Map | Add thoughts and link them to tasks |
 | Decisions | Propose; never accept |
@@ -221,9 +242,13 @@ and nothing can be sent to the web. A test shows that web content cannot bypass 
 - Schedules are listed in that conversation, where the owner pauses, changes or deletes them,
   and their results arrive there. The Inbox is not used for schedules unless something needs the
   owner (AG-7).
-- The morning summary is one ready-made schedule.
+- The morning summary is one such schedule, for example "Every weekday at 9 summarise what needs
+  me". It is the only morning summary in Flux: the plain, non-AI summary in Notifications (#350)
+  is removed (F-038).
 - A scheduled run acts like its agent (AG-3) and never makes or changes a schedule.
-- A time missed while Flux was off is skipped, never caught up.
+- **Flux's only schedule rule:** a time missed while Flux was off is skipped, never caught up.
+  There is no minimum interval between firings and no pause after failures; a failed run shows as
+  failed in the conversation (AG-4) and the next firing happens as scheduled.
 
 ## AG-10 — AI in a space
 
@@ -251,8 +276,10 @@ database backstop) is the starting point at space level for #855 and #874; see i
 - **What leaves Flux.** What the agent reads under AG-3 and AG-8, the owner's request, and the
   agent's instructions and memory, sent to the provider under the owner's account and its data
   settings ([payer and data](ai-modes.md#rt-8--payer-and-data)). Never content of an encrypted
-  space or of a space with AI off. In a task discussion, an agent uses only what all of the
-  task's people can see.
+  space or of a space with AI off. A DM's content leaves only when AI is used on it, and both
+  people see the line of AG-4. In a conversation, `/ai` uses only what the conversation's audience
+  can see (AG-4). In a task discussion, an agent uses only what all of the task's people (see
+  Terms) can see.
 - **Redaction.** Token-shaped strings (`sk-ant-`, `sk-`, `eyJ…`, `refresh_token` and the run's
   own token) are replaced with "[removed: looked like a secret]" in everything an agent writes.
 - **Payer.** Each run records the connection that paid for it. An agent's owner always pays for

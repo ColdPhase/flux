@@ -101,7 +101,7 @@ agent](../../README.md#connect-your-own-agent) walks through it.
 
 Each person manages their own **Account** (name, email, password and signed-in sessions, which they
 can end), **Appearance** (light, dark or system; text size), **Notifications** (what reaches the
-Inbox, push and email, quiet hours, the morning summary) and **Keyboard shortcuts**. On a computer,
+Inbox, push and email, quiet hours, the morning summary until v0.2 removes it, F-038) and **Keyboard shortcuts**. On a computer,
 Settings opens from your name at the bottom left → **All settings**.
 
 ## What only the operator can do

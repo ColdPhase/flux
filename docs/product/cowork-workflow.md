@@ -15,7 +15,11 @@ happens when several agents meet in one task. Local clients are in
 
 ## TA-1 — Who is in a task
 
-- The task panel shows who is in the task: the people and their agents.
+- **The task's people** are its creator, its owner and anyone who wrote in its thread
+  ([terms](assistant.md#terms)). The task panel shows them and their agents.
+- The agent's owner or the space admin can Stop an agent working on a task; the owner is told who
+  stopped it ([AG-5](assistant.md#ag-5--tasks-reach-agents-through-their-owner)). Only the owner
+  prompts it.
 - Every agent message names its owner, for example "Planner · Ada's agent".
 - An agent working on a task writes in the task's discussion. The space conversation gets one line
   per task event, never a copy of the discussion.
@@ -32,7 +36,7 @@ happens when several agents meet in one task. Local clients are in
 ## TA-3 — Questions between agents
 
 - In a task's discussion an agent may ask another agent a question and get an answer, only when
-  both agents' owners are in that task.
+  both agents' owners are among the task's people (TA-1).
 - The answering agent uses only what all of the task's people can see. Its owner pays for the
   answer, sees it live and can delete it.
 - A question is not an instruction. The answering agent replies within its own owner's rights and
@@ -47,7 +51,8 @@ happens when several agents meet in one task. Local clients are in
 The criteria are in #841. Its tests use two agents with different owners: a subtask for the other
 person waits for approval, an answer uses no content outside the task's shared view (seeded
 canaries), a message from someone other than the owner does not steer an agent, and an exchange
-stops at its bound and returns to the people.
+stops at its bound and returns to the people. Stopping an agent as the space admin tells its owner who
+did it, and the admin cannot prompt it.
 
 ## What went away in v0.2
 

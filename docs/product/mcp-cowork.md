@@ -32,7 +32,7 @@ complicated or different").
 ## LC-2 — Same rules as agents
 
 - It sees exactly what the person sees, never more, and only in spaces with AI on; never in an
-  encrypted space (AG-3, AG-10).
+  encrypted space (AG-3, AG-10). A DM between people it opens shows both people the line of AG-4.
 - It has the same "What it may do" row: Only read, Do it and tell me or Ask me first. Deleting
   anything and other people's things wait for the person's OK, its changes carry Undo, and the
   never-list holds (AG-3).
@@ -77,8 +77,10 @@ Kept from CO-3, [O-011](decisions.md) and [F-033](decisions.md):
 
 ## LC-5 — Stop and questions
 
-- The person can stop the client's work on a task: its next Flux call is refused. Flux cannot
-  kill a local process, so it shows "Stopped by Ada", not that the client stopped running.
+- The person, or the space admin, can Stop the client's work on a task: its next Flux call is
+  refused ([AG-5](assistant.md#ag-5--tasks-reach-agents-through-their-owner)). Flux cannot kill a
+  local process, so it shows "Stopped by Ada" (or by the admin's name), not that the client
+  stopped running, and the person is told who stopped it. Only the person prompts the client.
 - A local client may ask a person a question with ready answers, as an agent does (AG-6).
 
 ## What went away in v0.2
