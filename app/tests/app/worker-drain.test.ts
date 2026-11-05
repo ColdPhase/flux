@@ -53,3 +53,21 @@ test('a finished handler wakes its queue at once; a failed one rethrows and wake
   await waitFor(async () => woken.length === 4, 'the delayed wake-up', 2_000);
   assert.deepEqual(woken, ['one', 'three', 'one', 'three']);
 });
+
+test('failures that overlap share one pending wake-up per queue, so several workers never compound', async () => {
+  const registered: ((jobs: unknown[]) => Promise<unknown>)[] = [];
+  const woken: string[] = [];
+  const fake = {
+    work: async (_name: string, ...args: unknown[]) => { registered.push(args.at(-1) as (jobs: unknown[]) => Promise<unknown>); return 'worker'; },
+    getWipData: () => [{ id: 'one', name: 'queue.a' }, { id: 'two', name: 'queue.a' }],
+    notifyWorker: (id: string) => { woken.push(id); },
+  };
+  drainBacklogs(fake as unknown as PgBoss, 40);
+  await (fake.work as (...args: unknown[]) => Promise<string>)('queue.a', async () => { throw new Error('boom'); });
+  for (let failure = 0; failure < 5; failure++) await assert.rejects(registered[0]!([{}]), /boom/);
+  await waitFor(async () => woken.length >= 2, 'the single wake-up', 2_000);
+  await new Promise((resolve) => setTimeout(resolve, 120));
+  assert.deepEqual(woken, ['one', 'two'], 'five failures inside the delay woke the queue once, not five times');
+  await assert.rejects(registered[0]!([{}]), /boom/);
+  await waitFor(async () => woken.length === 4, 'a later failure schedules a new wake-up', 2_000);
+});

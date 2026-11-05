@@ -14,7 +14,7 @@ import { emailUnitOfWork, generatorUnitOfWork, smtpNotificationMailer } from './
 export { emailUnitOfWork, generatorUnitOfWork, pushPreferenceCheck, smtpNotificationMailer } from './adapters.js';
 
 // Only a backstop (#862): the LISTEN wakes the generator when an event commits and again when the listener reconnects, so an idle
-// generator looks every 30 s instead of every 2 s.
+// generator looks every 30 s instead of every 2 s. A failed event is not left to this tick: its retry is scheduled itself.
 const POLL_MS = 30_000;
 
 /**
@@ -28,9 +28,11 @@ export function startNotificationGenerator(options: { db: Database; boss: PgBoss
   let running = false;
   let again = false;
   let stopped = false;
-  // After a failed event the generator does not look again for 2, 4, 8 … 60 s; the first wake-up or 30 s tick after that retries it.
+  // After a failed event the generator does not look again for 2, 4, 8 … 60 s (docs/development/notifications.md). Nothing else
+  // would retry it on time, so a timer does; it exists only after a failure, and a wake-up that arrives before it is dropped.
   let stalls = 0;
   let retryAt = 0;
+  let retry: ReturnType<typeof setTimeout> | undefined;
   const tick = async () => {
     if (stopped || Date.now() < retryAt) return;
     if (running) { again = true; return; }
@@ -45,7 +47,10 @@ export function startNotificationGenerator(options: { db: Database; boss: PgBoss
           if (result.created) console.log(JSON.stringify({ job: 'notification.generate', ...result }));
           if (result.stalled) {
             stalls += 1;
-            retryAt = Date.now() + Math.min(60_000, 1000 * 2 ** stalls);
+            const wait = Math.min(60_000, 1000 * 2 ** stalls);
+            retryAt = Date.now() + wait;
+            clearTimeout(retry);
+            retry = setTimeout(() => void tick(), wait + 5).unref();
             again = false;
             break;
           }
@@ -66,6 +71,7 @@ export function startNotificationGenerator(options: { db: Database; boss: PgBoss
     async stop() {
       stopped = true;
       clearInterval(timer);
+      clearTimeout(retry);
       await listener.close();
     },
   };

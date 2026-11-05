@@ -283,6 +283,40 @@ describe('notifications from committed events', () => {
     assert.equal((await inbox(cy)).items.filter((item) => item.url?.endsWith(second.id)).length, 0, 'push only: not listed in the inbox');
     await prefs(cy, { channels: { reply: { inApp: true, push: true } } });
   });
+
+  test('an event that fails is retried after 2 s, then 4 s, and the message behind it waits for exactly that (#862)', async (t) => {
+    const flaky = await person('Rhea Marsh');
+    await addMember(ada, workspaceId, flaky, 'member');
+    // The retry contract (docs/development/notifications.md) is 2, 4 … 60 s. The generator's own poll is 30 s, so only a retry
+    // timer meets it: a database trigger refuses Rhea's row on the first two attempts, and the worker is the real one.
+    const suffix = randomUUID().replaceAll('-', '');
+    const name = `refuse_retry_${suffix}`;
+    await pool.query(`CREATE FUNCTION ${name}() RETURNS trigger LANGUAGE plpgsql AS $body$ BEGIN
+      IF NEW.user_id = '${flaky.id}' AND coalesce((SELECT attempts FROM notification_generation_failures WHERE event_id = NEW.event_id), 0) < 2
+      THEN RAISE EXCEPTION 'refused by the retry test'; END IF; RETURN NEW; END $body$`);
+    await pool.query(`CREATE TRIGGER ${name} BEFORE INSERT ON notifications FOR EACH ROW EXECUTE FUNCTION ${name}()`);
+    try {
+      const started = Date.now();
+      const failing = await conversation(ada, projectId, '@Rhea Marsh the survey boat is ready');
+      const behind = await conversation(ada, projectId, '@Ben Oduya the survey boat is ready for you too');
+      const arrived = new Map<string, number>();
+      while (arrived.size < 2 && Date.now() - started < 30_000) {
+        if (!arrived.has('flaky') && (await inbox(flaky)).items.some((item) => item.url?.endsWith(failing.messages[0]!.id))) arrived.set('flaky', Date.now() - started);
+        if (!arrived.has('behind') && (await inbox(ben)).items.some((item) => item.url?.endsWith(behind.messages[0]!.id))) arrived.set('behind', Date.now() - started);
+        await sleep(100);
+      }
+      t.diagnostic(`retried event reached its inbox after ${arrived.get('flaky')} ms, the message behind it after ${arrived.get('behind')} ms`);
+      assert.equal(arrived.size, 2, 'both messages arrive within 30 s');
+      // Attempts at about 0.2, 2.2 and 6.3 s. A retry left to the 30 s poll arrives after about 60 s; a hot loop before 2 s.
+      assert.ok(arrived.get('flaky')! >= 5_000 && arrived.get('flaky')! < 15_000, 'attempts wait 2 s, then 4 s: not a tight loop, not the 30 s poll');
+      assert.ok(arrived.get('behind')! < 15_000);
+      const { rows } = await pool.query('SELECT attempts, dead_at FROM notification_generation_failures WHERE event_id = $1', [(await notificationRows(flaky.id))[0]!.event_id]);
+      assert.deepEqual(rows.map((row) => [row.attempts, row.dead_at]), [[2, null]]);
+    } finally {
+      await pool.query(`DROP TRIGGER IF EXISTS ${name} ON notifications`);
+      await pool.query(`DROP FUNCTION IF EXISTS ${name}()`);
+    }
+  });
 });
 
 describe('email and push delivery', () => {

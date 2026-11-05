@@ -304,7 +304,7 @@ All commands must succeed. Confirm that both archives are non-empty, copy them w
 
 ## Upgrade
 
-1. Take and verify a paired backup with the **old** release first.
+1. Check that the Docker Engine is 25 or newer (`docker version --format '{{.Server.Version}}'`), because Compose refuses the new files on an older one only after step 4 has stopped the writers. Then take and verify a paired backup with the **old** release.
 2. Download and verify the **new** release's assets into a new directory. Keep the old directory, its
    image digest and the backup.
 3. Copy your existing `.env` into the new directory, unchanged: the same `FLUX_PROJECT` keeps the same
