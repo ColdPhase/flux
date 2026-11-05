@@ -10,7 +10,7 @@ The same quick start and agent connection are on the
 
 - **Flux is pre-release.** There is no upgrade promise yet. Use a real project, but nothing
   sensitive: no customer data, secrets or private keys.
-- **What you need:** Git and Docker Engine (or Docker Desktop) with Compose, on a machine you
+- **What you need:** Git and Docker Engine 25 or newer (or Docker Desktop) with Compose, on a machine you
   control. Nothing else is installed on the host.
 - **Note the time.** Write down when you run `git clone` and when each step below works. That is
   the most useful number you can give us ([our own measurements](../development/time-to-first-run.md)).

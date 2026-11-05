@@ -8,7 +8,7 @@ can need other migrations or variables than your release.
 The release pins one OCI image, `ghcr.io/coldphase/flux`, by its manifest digest for `api`,
 `worker`, `keyring` and the one-shot `migrate` service, plus a separately digest-pinned PostgreSQL. The image
 is built for the platforms that `release.json` lists: `linux/amd64` (x86_64) for v0.1, with
-`linux/arm64` planned for v0.1.1. Docker Engine with the Compose plugin is required;
+`linux/arm64` planned for v0.1.1. Docker Engine 25 or newer with the Compose plugin is required (Compose refuses to start the services on an older engine);
 the source code and the Node toolchain are not. The optional [agent runtime](#agent-runtime-optional)
 adds a second image, `ghcr.io/coldphase/flux-agent-runtime`, also pinned by digest and built for the
 same platforms; an installation that never switches the runtime on never pulls it. Optional
@@ -304,7 +304,7 @@ All commands must succeed. Confirm that both archives are non-empty, copy them w
 
 ## Upgrade
 
-1. Take and verify a paired backup with the **old** release first.
+1. Check that the Docker Engine is 25 or newer (`docker version --format '{{.Server.Version}}'`), because Compose refuses the new files on an older one only after step 4 has stopped the writers. Then take and verify a paired backup with the **old** release.
 2. Download and verify the **new** release's assets into a new directory. Keep the old directory, its
    image digest and the backup.
 3. Copy your existing `.env` into the new directory, unchanged: the same `FLUX_PROJECT` keeps the same

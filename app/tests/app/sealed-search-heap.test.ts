@@ -88,7 +88,8 @@ test('the bounds come from the environment, and by default from the container me
   const MiB = 1024 * 1024;
   assert.deepEqual(sealedSearchLimits({}, null), { workspace: SEALED_SEARCH_DEFAULT_MAX_BYTES, process: SEALED_SEARCH_DEFAULT_PROCESS_MAX_BYTES, idleMs: 5 * 60_000 });
   assert.ok(SEALED_SEARCH_DEFAULT_PROCESS_MAX_BYTES <= 512 * MiB && SEALED_SEARCH_DEFAULT_MAX_BYTES <= SEALED_SEARCH_DEFAULT_PROCESS_MAX_BYTES);
-  // The default 2 GiB API container (FLUX_API_MEMORY) gets the 512 MiB cap; a smaller one a quarter of its memory; a tiny one the 64 MiB floor.
+  // The default 1.5 GiB API container (FLUX_API_MEMORY) gets 384 MiB, a 2 GiB one the 512 MiB cap; a smaller one a quarter of its memory; a tiny one the 64 MiB floor.
+  assert.equal(sealedSearchLimits({}, 1536 * MiB).process, 384 * MiB);
   assert.equal(sealedSearchLimits({}, 2048 * MiB).process, 512 * MiB);
   assert.equal(sealedSearchLimits({}, 8192 * MiB).process, 512 * MiB);
   assert.equal(sealedSearchLimits({}, 1024 * MiB).process, 256 * MiB);

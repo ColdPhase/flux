@@ -13,11 +13,13 @@ import { emailUnitOfWork, generatorUnitOfWork, smtpNotificationMailer } from './
 
 export { emailUnitOfWork, generatorUnitOfWork, pushPreferenceCheck, smtpNotificationMailer } from './adapters.js';
 
-const POLL_MS = 2000;
+// Only a backstop (#862): the LISTEN wakes the generator when an event commits and again when the listener reconnects, so an idle
+// generator looks every 30 s instead of every 2 s. A failed event is not left to this tick: its retry is scheduled itself.
+const POLL_MS = 30_000;
 
 /**
  * Turns committed events into notifications (issue #116). A LISTEN on the event channel wakes
- * the generator right after a commit; a short poll catches anything a lost wake-up missed.
+ * the generator right after a commit; a slow poll catches anything a lost wake-up missed.
  * Runs are serialized in this process, and the cursor row lock serializes worker replicas.
  */
 export function startNotificationGenerator(options: { db: Database; boss: PgBoss; connectionString: string; emailAvailable: boolean; log?: (message: string, details?: Record<string, unknown>) => void }) {
@@ -26,9 +28,11 @@ export function startNotificationGenerator(options: { db: Database; boss: PgBoss
   let running = false;
   let again = false;
   let stopped = false;
-  // After a failed event the generator waits 2, 4, 8 … 60 s before retrying it.
+  // After a failed event the generator does not look again for 2, 4, 8 … 60 s (docs/development/notifications.md). Nothing else
+  // would retry it on time, so a timer does; it exists only after a failure, and a wake-up that arrives before it is dropped.
   let stalls = 0;
   let retryAt = 0;
+  let retry: ReturnType<typeof setTimeout> | undefined;
   const tick = async () => {
     if (stopped || Date.now() < retryAt) return;
     if (running) { again = true; return; }
@@ -43,7 +47,10 @@ export function startNotificationGenerator(options: { db: Database; boss: PgBoss
           if (result.created) console.log(JSON.stringify({ job: 'notification.generate', ...result }));
           if (result.stalled) {
             stalls += 1;
-            retryAt = Date.now() + Math.min(60_000, 1000 * 2 ** stalls);
+            const wait = Math.min(60_000, 1000 * 2 ** stalls);
+            retryAt = Date.now() + wait;
+            clearTimeout(retry);
+            retry = setTimeout(() => void tick(), wait + 5).unref();
             again = false;
             break;
           }
@@ -64,6 +71,7 @@ export function startNotificationGenerator(options: { db: Database; boss: PgBoss
     async stop() {
       stopped = true;
       clearInterval(timer);
+      clearTimeout(retry);
       await listener.close();
     },
   };
@@ -83,8 +91,8 @@ export async function registerNotificationEmailWorker(boss: PgBoss, db: Database
     uow: emailUnitOfWork(db, boss),
     mailer: smtp ?? { send: async () => ({ kind: 'failed' as const, message: 'email unavailable' }) },
   };
-  // A few sends at once and a short poll: one slow SMTP answer never holds up everyone's mail.
-  await boss.work<EmailJob>(NOTIFICATION_EMAIL_JOB, { localConcurrency: 4, pollingIntervalSeconds: 0.5 }, async (jobs) => {
+  // A few sends at once: one slow SMTP answer never holds up everyone's mail. A queued email wakes them by NOTIFY.
+  await boss.work<EmailJob>(NOTIFICATION_EMAIL_JOB, { localConcurrency: 4 }, async (jobs) => {
     for (const job of jobs) {
       const result = await handleEmailJob(boss, options, job.data);
       console.log(JSON.stringify({ job: NOTIFICATION_EMAIL_JOB, id: job.id, emailId: job.data.emailId, ...result }));

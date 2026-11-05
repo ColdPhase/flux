@@ -5,8 +5,8 @@ worker and one keyring on one Docker host, and that is the only deployment that 
 
 ## Grow the one server
 
-- **Memory.** Raise `FLUX_API_MEMORY` (default `2g`) and `FLUX_WORKER_MEMORY` (`1g`) in the settings
-  file and apply them with `./flux up`. A container that reaches its limit is killed and restarted;
+- **Memory.** Raise `FLUX_API_MEMORY` (default `1536m`), `FLUX_WORKER_MEMORY` (`512m`) and
+  `FLUX_DB_MEMORY` (`768m`) in the settings file and apply them with `./flux up`. A container that reaches its limit is killed and restarted;
   for the API that also locks every [encrypted space](encrypted-spaces.md). `docker stats` shows how
   close each one runs.
 - **Database.** Each API and worker process keeps a pool of 10 PostgreSQL connections, and

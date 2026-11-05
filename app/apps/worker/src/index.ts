@@ -17,6 +17,7 @@ import { registerComparisonWorker } from './proactive-comparison/index.js';
 import { registerWorkspaceAiSweep } from './workspace-ai/index.js';
 import { startWorkspaceEncryption } from './workspace-encryption/index.js';
 import { comparisonProviders } from './proactive-comparison/providers.js';
+import { drainBacklogs } from './drain-backlogs.js';
 import { guardSealedJobs } from './sealed-jobs.js';
 
 // The worker's composition root (#82): environment, pool, pg-boss and signals; each job's
@@ -26,9 +27,15 @@ if (!connectionString) throw new Error('DATABASE_URL is required');
 const { pool, db } = createDatabase(connectionString);
 assertExactMigrationLedger(await readMigrationManifest('packages/db/migrations', FLUX_SCHEMA_VERSION), await readAppliedMigrationVersions(pool));
 pool.on('error', (error) => console.error('Database connection interrupted', error));
-const boss = new PgBoss({ connectionString, migrate: false });
+// Idle polling (#862): every queue is created with `notify` (tooling/migrate.ts), so a job wakes its worker over LISTEN/NOTIFY and a worker
+// polls only as a 30 s backstop for delayed jobs and retries. The scheduler's cron worker looks every 15 s (a schedule fires up to 15 s
+// late), and Flux uses no job flows, so pg-boss's flow resolver looks once a minute. The LISTEN connection is checked every 30 s.
+const boss = new PgBoss({ connectionString, migrate: false, useListenNotify: true, notifyHeartbeatIntervalMs: 30_000,
+  cronWorkerIntervalSeconds: 15, flowIntervalSeconds: 60 });
 boss.on('error', (error) => console.error(error));
 await boss.start();
+// A woken worker keeps fetching until its queue is empty (one NOTIFY per transaction would otherwise leave a backlog to the 30 s backstop).
+drainBacklogs(boss);
 // F-030 Error paths: a failing job of an encrypted workspace stores and logs only the redacted error.
 guardSealedJobs(boss, db, { injectFailures: !!process.env.FLUX_FIXTURE_TOKEN && process.env.FLUX_TEST_FAILURE_INJECTION === 'true' });
 await registerSampleWorker(boss, db, process.env.HOSTNAME ?? 'worker');

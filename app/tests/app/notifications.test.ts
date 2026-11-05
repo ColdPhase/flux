@@ -22,6 +22,7 @@ import { summaryUnitOfWork } from '../../apps/worker/src/jobs/morning-summary.js
 import { PgBoss } from 'pg-boss';
 import { createVapidAuthorizer, deliverPush } from '../../apps/worker/src/push/index.js';
 import { loadPushSenderConfig } from '@flux/core';
+import { EVENTS_CHANNEL } from '@flux/db';
 import { connectionString, db, pool } from './support/db.js';
 import { Browser, mailpitUrl, publicOrigin, register, signIn } from './support/http.js';
 import { addMember, expectStatus, password, person, project, removeMember, workspace, type Person } from './support/people.js';
@@ -102,6 +103,14 @@ async function notificationRows(userId: string) {
 
 async function emailRows(userId: string) {
   return (await pool.query('SELECT id, notification_id, address_kind, status, skip_reason, address FROM notification_emails WHERE user_id = $1 ORDER BY created_at', [userId])).rows as { id: string; notification_id: string; address_kind: string; status: string; skip_reason: string | null; address: string | null }[];
+}
+
+/**
+ * Wakes the generator as a committed event does. The generator looks on its own only every 30 s (#862), and a test that moves the
+ * cursor with a plain UPDATE commits no event, so it sends the wake-up the event trigger would have sent.
+ */
+async function wakeGenerator() {
+  await pool.query('SELECT pg_notify($1, $2)', [EVENTS_CHANNEL, '']);
 }
 
 /** Waits until the generator has passed every event committed so far. */
@@ -233,6 +242,7 @@ describe('notifications from committed events', () => {
     const { rows } = await pool.query("SELECT min(seq) AS seq FROM events WHERE workspace_id = $1", [workspaceId]);
     // Rewind the shared cursor over this workspace's events; the unique (user, event) row stops repeats.
     await pool.query("UPDATE notification_cursor SET seq = LEAST(seq, $1) WHERE id = 'generator'", [Number(rows[0].seq) - 1]);
+    await wakeGenerator();
     await generatorCaughtUp();
     const afterRows = await notificationRows(ben.id);
     assert.deepEqual(afterRows.map((row) => row.id).sort(), before.map((row) => row.id).sort());
@@ -272,6 +282,40 @@ describe('notifications from committed events', () => {
     await waitFor(async () => (await pool.query('SELECT in_inbox FROM notifications WHERE user_id = $1 AND url LIKE $2', [cy.id, `%${second.id}`])).rows[0], 'the push-only row');
     assert.equal((await inbox(cy)).items.filter((item) => item.url?.endsWith(second.id)).length, 0, 'push only: not listed in the inbox');
     await prefs(cy, { channels: { reply: { inApp: true, push: true } } });
+  });
+
+  test('an event that fails is retried after 2 s, then 4 s, and the message behind it waits for exactly that (#862)', async (t) => {
+    const flaky = await person('Rhea Marsh');
+    await addMember(ada, workspaceId, flaky, 'member');
+    // The retry contract (docs/development/notifications.md) is 2, 4 … 60 s. The generator's own poll is 30 s, so only a retry
+    // timer meets it: a database trigger refuses Rhea's row on the first two attempts, and the worker is the real one.
+    const suffix = randomUUID().replaceAll('-', '');
+    const name = `refuse_retry_${suffix}`;
+    await pool.query(`CREATE FUNCTION ${name}() RETURNS trigger LANGUAGE plpgsql AS $body$ BEGIN
+      IF NEW.user_id = '${flaky.id}' AND coalesce((SELECT attempts FROM notification_generation_failures WHERE event_id = NEW.event_id), 0) < 2
+      THEN RAISE EXCEPTION 'refused by the retry test'; END IF; RETURN NEW; END $body$`);
+    await pool.query(`CREATE TRIGGER ${name} BEFORE INSERT ON notifications FOR EACH ROW EXECUTE FUNCTION ${name}()`);
+    try {
+      const started = Date.now();
+      const failing = await conversation(ada, projectId, '@Rhea Marsh the survey boat is ready');
+      const behind = await conversation(ada, projectId, '@Ben Oduya the survey boat is ready for you too');
+      const arrived = new Map<string, number>();
+      while (arrived.size < 2 && Date.now() - started < 30_000) {
+        if (!arrived.has('flaky') && (await inbox(flaky)).items.some((item) => item.url?.endsWith(failing.messages[0]!.id))) arrived.set('flaky', Date.now() - started);
+        if (!arrived.has('behind') && (await inbox(ben)).items.some((item) => item.url?.endsWith(behind.messages[0]!.id))) arrived.set('behind', Date.now() - started);
+        await sleep(100);
+      }
+      t.diagnostic(`retried event reached its inbox after ${arrived.get('flaky')} ms, the message behind it after ${arrived.get('behind')} ms`);
+      assert.equal(arrived.size, 2, 'both messages arrive within 30 s');
+      // Attempts at about 0.2, 2.2 and 6.3 s. A retry left to the 30 s poll arrives after about 60 s; a hot loop before 2 s.
+      assert.ok(arrived.get('flaky')! >= 5_000 && arrived.get('flaky')! < 15_000, 'attempts wait 2 s, then 4 s: not a tight loop, not the 30 s poll');
+      assert.ok(arrived.get('behind')! < 15_000);
+      const { rows } = await pool.query('SELECT attempts, dead_at FROM notification_generation_failures WHERE event_id = $1', [(await notificationRows(flaky.id))[0]!.event_id]);
+      assert.deepEqual(rows.map((row) => [row.attempts, row.dead_at]), [[2, null]]);
+    } finally {
+      await pool.query(`DROP TRIGGER IF EXISTS ${name} ON notifications`);
+      await pool.query(`DROP FUNCTION IF EXISTS ${name}()`);
+    }
   });
 });
 
@@ -418,6 +462,32 @@ describe('email and push delivery', () => {
     assert.equal((await mailsTo(leaver.email)).length, 0);
     assert.equal((await recordedPushes(subscription.mockId)).length, 0);
     assert.equal((await inbox(leaver)).items.length, 0, 'the inbox hides what the person can no longer read');
+  });
+
+  test('one message that mentions six people reaches every device and mailbox within seconds, not one per backstop (#862)', async (t) => {
+    const names = ['Anya Brook', 'Bram Cole', 'Cleo Dunn', 'Dov Eames', 'Edda Frost', 'Finn Gale'];
+    const recipients = [];
+    for (const name of names) {
+      const member = await person(name);
+      await addMember(owner, workspaceId, member, 'member');
+      recipients.push({ member, ...(await subscribe(member.browser)) });
+    }
+    // The generator queues six push jobs and six e-mail jobs in one transaction each: one wake-up per queue, then a backlog.
+    const started = Date.now();
+    await conversation(owner, projectId, `${names.map((name) => `@${name}`).join(' ')} the seed list is ready`);
+    const pushAt = new Map<string, number>();
+    const mailAt = new Map<string, number>();
+    while ((pushAt.size < names.length || mailAt.size < names.length) && Date.now() - started < 20_000) {
+      await Promise.all(recipients.map(async ({ member, subscription }) => {
+        if (!pushAt.has(member.id) && (await recordedPushes(subscription.mockId)).length) pushAt.set(member.id, Date.now() - started);
+        if (!mailAt.has(member.id) && (await mailsTo(member.email)).length) mailAt.set(member.id, Date.now() - started);
+      }));
+      await sleep(100);
+    }
+    const seconds = (times: Map<string, number>) => [...times.values()].sort((a, b) => a - b).map((ms) => (ms / 1000).toFixed(1)).join(', ');
+    t.diagnostic(`push arrival, s: ${seconds(pushAt)}; e-mail arrival, s: ${seconds(mailAt)}`);
+    assert.equal(pushAt.size, names.length, 'every device got its push within 20 s (a 30 s backstop per job would deliver the second after 30 s)');
+    assert.equal(mailAt.size, names.length, 'every mailbox got its e-mail within 20 s');
   });
 
   test('push follows the same preferences: turned off for a reason, the device gets nothing', async () => {

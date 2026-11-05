@@ -262,8 +262,9 @@ VARIABLES: dict[str, Var] = {
     "FLUX_SEALED_SEARCH_IDLE_MS": Var("encryption", "integer, ms",
         "An index nobody searched for this long may be evicted for another space's.", override=True, services="api", default="`300000`"),
     # --- limits
-    "FLUX_API_MEMORY": Var("limits", "Compose memory size", "Memory of `api` (measured peak 431 MB in the encryption checks).", "3g"),
-    "FLUX_WORKER_MEMORY": Var("limits", "Compose memory size", "Memory of `worker` (measured peak 111 MB).", "2g"),
+    "FLUX_DB_MEMORY": Var("limits", "Compose memory size", "Memory of `db`, PostgreSQL (about 70 MiB idle; its page cache counts towards the limit and is given back under pressure).", "1g"),
+    "FLUX_API_MEMORY": Var("limits", "Compose memory size", "Memory of `api` (measured peak 431 MB in the encryption checks). A quarter of it (64 to 512 MiB) bounds the search index of unlocked encrypted spaces.", "3g"),
+    "FLUX_WORKER_MEMORY": Var("limits", "Compose memory size", "Memory of `worker` (measured peak 111 MB).", "1g"),
     "FLUX_KEYRING_MEMORY": Var("limits", "Compose memory size", "Memory of `keyring` (measured peak 42 MB).", "256m"),
     # --- github
     "FLUX_GITHUB_CLIENT_ID": Var("github", "string", "The App's OAuth client id."),

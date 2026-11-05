@@ -5,18 +5,22 @@ RUN apk add --no-cache gcc musl-dev
 COPY apps/runtime/native/protect.c /native/protect.c
 RUN cc -std=c11 -Wall -Wextra -Werror -fPIC -shared -I/usr/local/include/node /native/protect.c -o /native/protect.node
 
-FROM node@sha256:ebfe2f90462722a7a4de65e91990e97fe0d401c70e0e762c5b53302f905ec1c1 AS build
+# The toolchain shared by the build and the production dependencies: pnpm, the compiler node-pty needs, and the
+# lockfile with its patches. Each stage below downloads its own locked dependencies in a layer that source edits
+# do not invalidate.
+FROM node@sha256:ebfe2f90462722a7a4de65e91990e97fe0d401c70e0e762c5b53302f905ec1c1 AS toolchain
 WORKDIR /app
 RUN corepack enable && corepack install -g pnpm@12.6.0
 # node-pty (the agent runtime's sign-in console, F-022 T4 #279) has no Linux prebuild, so it compiles
-# here against this Node's own headers. Only this stage has the compiler; later images copy the addon.
+# here against this Node's own headers. Only these stages have the compiler; later images copy the addon.
 RUN apk add --no-cache python3 make g++ linux-headers
 ENV npm_config_nodedir=/usr/local
-# Cache the locked dependency download independently of source edits. No production-only
-# filter: the build/type/lint/test stages need the full locked workspace toolchain.
 COPY pnpm-lock.yaml pnpm-workspace.yaml ./
 # The pinned OAuth provider patch is part of the locked dependency graph (#152).
 COPY patches ./patches
+
+FROM toolchain AS build
+# No production-only filter: the build/type/lint/test stages need the full locked workspace toolchain.
 RUN pnpm fetch
 COPY . .
 RUN pnpm install --offline --frozen-lockfile
@@ -30,8 +34,19 @@ USER node
 # user-specific package-manager bootstrap mutating the root-owned build workspace.
 CMD ["sh", "-c", "exec node_modules/.bin/tsx --test --test-concurrency=1 tests/app/*.test.ts"]
 
-FROM build AS production-dependencies
-RUN pnpm install --prod --offline --frozen-lockfile
+# The application image's dependencies: installed from the lockfile into an empty tree, production only, and without the
+# browser app (@flux/web) and the SDK, which the server never loads (the browser code is already bundled in apps/web/dist).
+# Not derived from `build`: its virtual store would keep every build, lint and test package (about 195 MB, #862).
+FROM toolchain AS production-store
+# Only the production packages of the lockfile. `pnpm fetch` also lays out a virtual store under /app/node_modules
+# for everything it fetched, so only the content-addressed store and the metadata cache are taken from this stage.
+RUN pnpm fetch --prod
+
+FROM toolchain AS production-dependencies
+COPY --from=production-store /root/.local/share/pnpm /root/.local/share/pnpm
+COPY --from=production-store /root/.cache/pnpm /root/.cache/pnpm
+COPY . .
+RUN pnpm install --prod --offline --frozen-lockfile --filter '!@flux/web' --filter '!@flux/sdk' --filter '!@flux/example-external-agent'
 # The slot image needs node-pty's JavaScript, its licence and the addon built above, not its 60 MB of
 # Windows and macOS prebuilds and sources: the link becomes a directory with exactly those files, and
 # the store copy is dropped, so the application image does not carry it either.
@@ -39,6 +54,12 @@ RUN set -eu; d=apps/runtime/node_modules/node-pty; t=$(readlink -f "$d"); rm "$d
   cp "$t/package.json" "$t/LICENSE" "$d/"; cp -R "$t/lib" "$d/"; cp "$t/build/Release/pty.node" "$d/build/Release/"; \
   find "$d/lib" \( -name '*.test.js' -o -name '*.map' \) -delete; rm -rf "$t"; \
   node -e "require('/app/$d')"
+# Nothing the server loads: better-auth's optional peers (drizzle-kit and its esbuild for its CLI, React's DOM renderer for
+# its email templates; Flux uses neither), type declarations, source maps and Markdown. Licence files stay.
+RUN set -eu; cd node_modules; \
+  rm -rf .pnpm/drizzle-kit@* .pnpm/esbuild@* .pnpm/@esbuild+* .pnpm/@esbuild-kit+* .pnpm/esbuild-register@* .pnpm/react-dom@* .pnpm/react@* .pnpm/@types+*; \
+  find /app/node_modules /app/apps/*/node_modules /app/packages/*/node_modules -type f \( -name '*.map' -o -name '*.d.ts' -o -name '*.d.mts' -o -name '*.d.cts' \
+    -o \( -iname '*.md' ! -iname '*LICEN[CS]E*' ! -iname 'NOTICE*' \) \) -delete
 
 # Browser checks only (issue #41): the built workspace on the official Playwright image,
 # whose bundled Chromium matches the pinned playwright 1.63.0 package. Never deployed.
@@ -121,9 +142,21 @@ RUN apk add --no-cache gnupg
 USER node
 CMD ["node", "--disable-sigusr1", "apps/runtime/dist/supervisor/main.js"]
 
+# The Node the application image runs on: the pinned image without what only a build uses. npm, corepack and yarn
+# (24 MB, and their bundled dependencies, which an image scan reports for code that never runs) and Node's C headers
+# go. A RUN rm over the base would leave the files in its layer; `scratch` and one COPY make the removal real.
+FROM node@sha256:ebfe2f90462722a7a4de65e91990e97fe0d401c70e0e762c5b53302f905ec1c1 AS node-slim-files
+RUN rm -rf /usr/local/lib/node_modules /usr/local/include/node /usr/local/bin/npm /usr/local/bin/npx /usr/local/bin/corepack \
+  /usr/local/bin/yarn /usr/local/bin/yarnpkg /opt/yarn-v*
+FROM scratch AS node-slim
+COPY --from=node-slim-files / /
+ENV PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+ENTRYPOINT ["docker-entrypoint.sh"]
+CMD ["node"]
+
 # The application image. It stays the LAST stage: builds without --target (Compose's migrate, the
 # release workflow) produce it.
-FROM node@sha256:ebfe2f90462722a7a4de65e91990e97fe0d401c70e0e762c5b53302f905ec1c1 AS runtime
+FROM node-slim AS runtime
 WORKDIR /app
 ENV NODE_ENV=production
 COPY --from=production-dependencies /app/node_modules ./node_modules

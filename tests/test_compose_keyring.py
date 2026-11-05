@@ -82,7 +82,7 @@ class ComposeKeyringTest(unittest.TestCase):
             self.assertRegex(text, r"(?m)^  keyring:\n    internal: true", f"{name}: the keyring network is internal")
             members = [service for service, block in services(text).items() if re.search(r"networks:[^\n]*\bkeyring\b", block)]
             self.assertEqual(sorted(members), ["api", "keyring", "worker"], f"{name}: only api, worker and keyring join it")
-            for service, variable, default in (("api", "FLUX_API_MEMORY", "2g"), ("worker", "FLUX_WORKER_MEMORY", "1g")):
+            for service, variable, default in (("api", "FLUX_API_MEMORY", "1536m"), ("worker", "FLUX_WORKER_MEMORY", "512m")):
                 block = services(text)[service]
                 self.assertIn(f"mem_limit: ${{{variable}:-{default}}}\n    memswap_limit: ${{{variable}:-{default}}}", block, f"{name}: {service}")
                 self.assertIn("core: 0", block)

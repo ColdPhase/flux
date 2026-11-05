@@ -47,13 +47,21 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:-flux}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}
       POSTGRES_DB: ${POSTGRES_DB:-flux}
+    # Memory equal to memory+swap, like the other services. With the defaults here the base stack's limits add up to
+    # under 3 GiB, so it fits a 4 GB host with room for the system (#862).
+    mem_limit: ${FLUX_DB_MEMORY:-768m}
+    memswap_limit: ${FLUX_DB_MEMORY:-768m}
     volumes:
       - pgdata:/var/lib/postgresql
+    # Cheap probes (#862): a probe is an `exec` into the container, so it runs rarely. During the first minute it runs every
+    # quarter second, so a start does not wait for an interval and a slow first start (initdb, a big migration) is not counted as failing.
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
-      interval: 2s
-      timeout: 2s
-      retries: 20
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 60s
+      start_interval: 250ms
   migrate:
     build:
       context: ../app
@@ -152,8 +160,8 @@ services:
       FLUX_SWAP_ACKNOWLEDGED: ${FLUX_SWAP_ACKNOWLEDGED:-}
       PORT: 8080
     # Memory equal to memory+swap: this container cannot page keys or content to a swap device (F-030).
-    mem_limit: ${FLUX_API_MEMORY:-2g}
-    memswap_limit: ${FLUX_API_MEMORY:-2g}
+    mem_limit: ${FLUX_API_MEMORY:-1536m}
+    memswap_limit: ${FLUX_API_MEMORY:-1536m}
     ulimits:
       core: 0
     # `keyring` holds only api, worker and keyring. With the agent runtime on, compose.source.runtime.yaml adds
@@ -172,11 +180,15 @@ services:
         condition: service_completed_successfully
       keyring:
         condition: service_started
+    # `wget` of the image's busybox, not a Node process: starting Node costs about 70 ms of CPU per probe (#862). `-Y off`: a proxy variable of the
+    # environment must not send the loopback probe elsewhere.
     healthcheck:
-      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8080/api/v1/health',{signal:AbortSignal.timeout(3000)}).then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
-      interval: 3s
-      timeout: 2s
-      retries: 20
+      test: ["CMD", "wget", "-q", "-Y", "off", "-O", "/dev/null", "-T", "3", "http://127.0.0.1:8080/api/v1/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 60s
+      start_interval: 250ms
   worker:
     image: flux-foundation:${FLUX_IMAGE_TAG:-${COMPOSE_PROJECT_NAME:-local}}
     restart: unless-stopped
@@ -211,8 +223,8 @@ services:
       FLUX_KEYRING_TOKEN: ${FLUX_KEYRING_TOKEN:-}
       FLUX_KEY_PIN_SECRET: ${FLUX_KEY_PIN_SECRET:-}
       FLUX_SWAP_ACKNOWLEDGED: ${FLUX_SWAP_ACKNOWLEDGED:-}
-    mem_limit: ${FLUX_WORKER_MEMORY:-1g}
-    memswap_limit: ${FLUX_WORKER_MEMORY:-1g}
+    mem_limit: ${FLUX_WORKER_MEMORY:-512m}
+    memswap_limit: ${FLUX_WORKER_MEMORY:-512m}
     ulimits:
       core: 0
     # runtime-control comes from compose.source.runtime.yaml when the agent runtime is on.
@@ -252,11 +264,15 @@ services:
     depends_on:
       migrate:
         condition: service_completed_successfully
+    # The shell and `nc` of the image's busybox, not a Node process (#862). The token goes through the pipe, never an argument,
+    # so no process list shows it. Without a token the keyring is idle and healthy; with one, `/v1/boot` must answer 200.
     healthcheck:
-      test: ["CMD", "node", "-e", "const t=process.env.FLUX_KEYRING_TOKEN;if(!t)process.exit(0);fetch('http://127.0.0.1:8090/v1/boot',{headers:{authorization:'Bearer '+t},signal:AbortSignal.timeout(2000)}).then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
-      interval: 3s
-      timeout: 3s
-      retries: 20
+      test: ["CMD-SHELL", "[ -z \"$$FLUX_KEYRING_TOKEN\" ] || { printf 'GET /v1/boot HTTP/1.0\\r\\nAuthorization: Bearer %s\\r\\n\\r\\n' \"$$FLUX_KEYRING_TOKEN\" | nc -w 3 127.0.0.1 8090 | head -n 1 | grep -q ' 200 '; }"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 60s
+      start_interval: 250ms
   # --- Agent runtime services (profile `runtime`; see the x-runtime-* blocks at the top).
   runtime-install:
     # One-shot: installs the pinned, signature-checked Claude Code into the tools volume when

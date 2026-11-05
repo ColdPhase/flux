@@ -1,7 +1,7 @@
 # Install Flux from a release
 
 This is the path for an operator who runs a **published** Flux version without the source
-code: Docker Engine with the Compose plugin pulls one image, `ghcr.io/coldphase/flux`, pinned
+code: Docker Engine 25 or newer with the Compose plugin pulls one image, `ghcr.io/coldphase/flux`, pinned
 by its manifest digest, plus a digest-pinned PostgreSQL. No checkout, Node.js or build is
 needed. Running the checked-out source is a different path: [`./flux up`](README.md).
 

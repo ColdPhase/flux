@@ -10,19 +10,19 @@ runs in containers, so the host needs only Docker and a few standard tools.
 | **Operating system** | Linux with Docker Engine | macOS and Windows with Docker Desktop run Flux for trials and development; a server should be Linux. |
 | **CPU architecture** | `x86_64` (`amd64`) | Release images are published for `linux/amd64` only; `linux/arm64` follows in v0.1.1. Source builds were measured on Linux `x86_64` and macOS `arm64` ([time to first run](../development/time-to-first-run.md)). |
 | **CPU** | 2 cores | An idle instance uses well under one core. Building from source is the heaviest step. |
-| **Memory** | 4 GB | The default container limits add up to about 3.1 GB plus PostgreSQL (see below). |
-| **Disk** | 10 GB free, SSD | About 0.5 GB for the Flux image, 0.5 GB for PostgreSQL, the build cache when you build from source, then your data and backups. |
+| **Memory** | 4 GB | The default container limits of the base stack add up to 2.9 GB, PostgreSQL included (see below). |
+| **Disk** | 10 GB free, SSD | About 0.25 GB for the Flux image, 0.5 GB for PostgreSQL, the build cache when you build from source, then your data and backups. |
 | **Swap** | off, or encrypted | Only matters for [encrypted spaces](encrypted-spaces.md#swap-and-memory). |
 
 Memory in more detail. Compose limits each service, and memory and swap to the same value
-([`FLUX_API_MEMORY`, `FLUX_WORKER_MEMORY`, `FLUX_KEYRING_MEMORY`](configuration.md#memory-limits)):
+([`FLUX_API_MEMORY`, `FLUX_WORKER_MEMORY`, `FLUX_KEYRING_MEMORY`, `FLUX_DB_MEMORY`](configuration.md#memory-limits)):
 
 | Service | Limit | Observed |
 | --- | --- | --- |
-| `api` | 2 GB | 274 MiB idle; peak 431 MB in the encryption checks |
-| `worker` | 1 GB | 84 MiB idle; peak 111 MB |
+| `api` | 1.5 GB | 274 MiB idle; peak 431 MB in the encryption checks |
+| `worker` | 512 MB | 84 MiB idle; peak 111 MB |
 | `keyring` | 128 MB | 18 MiB idle; peak 42 MB |
-| `db` | none | 69 MiB idle |
+| `db` | 768 MB | 69 MiB idle |
 
 Idle figures: `docker stats` on a fresh source install on 2026-10-31 (Docker Engine 29.4.2, Linux
 `x86_64`). Peaks: cgroup `memory.peak` on 2026-10-23 during the encryption check
@@ -39,7 +39,7 @@ LiveKit server whose CPU and bandwidth grow with each call.
 
 | | Version | Notes |
 | --- | --- | --- |
-| **Docker Engine** | a current release with the Compose v2 plugin (`docker compose`) | Observed working: Engine 28.0.4 with Compose 2.38.2 (GitHub-hosted runner, 2026-10-10), Engine 29.1.2 with Compose 2.40.3 (Docker Desktop, macOS), Engine 29.4.2 with Compose 5.1.2 (Fedora 42). Older versions were not tested. |
+| **Docker Engine** | **25 or newer**, with the Compose v2 plugin (`docker compose`, 2.20.2 or newer) | Observed working: Engine 28.0.4 with Compose 2.38.2 (GitHub-hosted runner, 2026-10-10), Engine 29.1.2 with Compose 2.40.3 (Docker Desktop, macOS), Engine 29.4.2 with Compose 5.1.2 (Fedora 42). The health checks use `start_interval`, which Engine 25 introduced. **Engine 24 and older refuse to start Flux**: `docker compose up` stops with `can't set healthcheck.start_interval as feature require Docker Engine v25 or later` before it creates anything (observed on Engine 24.0.9 with Compose 2.29.1, 2026-11-05), and `./flux` refuses with one line before that. Update Docker Engine ([install](https://docs.docker.com/engine/install/)); Docker Desktop ships a current engine. |
 | **Git** | any | Source checkout only. |
 | **POSIX `sh`, `tar`, `sha256sum` or `shasum`** | | Used by the `./flux` launcher for backups and restores. |
 | **PostgreSQL, Node.js** | not on the host | They run inside the containers. Do not install them for Flux. |
