@@ -1,0 +1,141 @@
+name: Image scan
+
+# #835: a weekly scan of the images of the latest published release for vulnerabilities fixed since (the release
+# workflow scans them once, when they are built). Trivy, pinned by digest, in a container; HIGH/CRITICAL findings with a
+# fix fail the run unless .github/security-allowlist.json names them. On a schedule or a dispatch a failing run opens an
+# issue labelled `security-scan`, or updates the open one when the set of findings changed. Pull requests that change the
+# scan or its allowlist run it too (read-only, no issue), which is how a change to it is proven.
+# The script's exit code (scripts/security_scan.py): 0 clean, 10 findings, 2 the scan or its report was unusable, 3 the
+# script crashed. Only 10 is let through on a pull request; any other code, including the interpreter's 1 for an error
+# nothing caught and a missing or empty value, fails the job. The last step decides in shell: a `${{ }}` comparison would
+# turn a code that was never written (null) into 0.
+on:
+  schedule:
+    - cron: "23 5 * * 2"
+  workflow_dispatch:
+  pull_request:
+    branches: [main]
+    paths:
+      - scripts/security_scan.py
+      - .github/security-allowlist.json
+      - .github/workflows/image-scan.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: image-scan-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  scan:
+    name: Scan the latest release images
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: read
+    outputs:
+      failed: ${{ steps.scan.outputs.rc == '10' }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      # A malformed or expired exception is a fault of the change on a pull request: the scan below only reports it.
+      - name: Validate the allowlist
+        if: github.event_name == 'pull_request'
+        run: python3 scripts/security_scan.py allowlist
+      - name: Find the images of the latest release
+        id: release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          tag=$(gh release view --repo "$GITHUB_REPOSITORY" --json tagName --jq .tagName)
+          gh release download "$tag" --repo "$GITHUB_REPOSITORY" --pattern release.json --dir "$RUNNER_TEMP"
+          python3 - "$RUNNER_TEMP/release.json" "$tag" >> "$GITHUB_OUTPUT" <<'PY'
+          import json, re, sys
+          release = json.load(open(sys.argv[1], encoding='utf-8'))
+          assert release['version'] == sys.argv[2], (release['version'], sys.argv[2])
+          images = [release['image'], release['runtime_image']]
+          for image in images:
+              assert re.fullmatch(r'ghcr\.io/coldphase/flux(-agent-runtime)?@sha256:[0-9a-f]{64}', image), image
+          print(f"tag={sys.argv[2]}")
+          print(f"images={' '.join(images)}")
+          print(f"platforms={','.join(release['platforms'])}")
+          PY
+      - name: Scan both images on every platform
+        id: scan
+        env:
+          TRIVY_USERNAME: ${{ github.actor }}
+          TRIVY_PASSWORD: ${{ github.token }}
+          IMAGES: ${{ steps.release.outputs.images }}
+          PLATFORMS: ${{ steps.release.outputs.platforms }}
+        run: |
+          set +e
+          # shellcheck disable=SC2086  # two image references, no spaces inside
+          python3 scripts/security_scan.py image --platforms "$PLATFORMS" --report-dir security-reports \
+            --cache "$RUNNER_TEMP/trivy" --summary-file security-reports/summary.md --fingerprint-file security-reports/fingerprint.txt $IMAGES
+          rc=$?
+          set -e  # a code that cannot be written fails this step, so the job cannot pass without one
+          echo "rc=$rc" >> "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always()
+        with:
+          name: image-scan
+          path: security-reports/*
+          if-no-files-found: ignore
+          retention-days: 30
+      # On a pull request the findings (10) are shown and do not fail the run: they are a fact about the published release, not
+      # about the change. Nothing else passes: not a scan that did not run or whose report was unusable (2), not a crash (3),
+      # not any other or missing code. The step always runs (no `if:`) and lists what is let through, so an unknown or empty
+      # value fails it. The code goes through the environment, not into the script text.
+      - name: Fail on findings, on a scan that did not run, or on a crash
+        env:
+          RC: ${{ steps.scan.outputs.rc }}
+          EVENT: ${{ github.event_name }}
+        run: |
+          case "$RC:$EVENT" in
+            0:*|10:pull_request) ;;
+            *)
+              echo "The scan exited '$RC' (10: HIGH/CRITICAL findings with a fix; 2: the scan or its report was unusable; 3: the script crashed; empty: it wrote no code). See the summary and the log." >&2
+              exit 1
+              ;;
+          esac
+
+  report:
+    name: Open or update the findings issue
+    needs: scan
+    if: always() && github.event_name != 'pull_request' && needs.scan.outputs.failed == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: image-scan
+          path: security-reports
+      - name: Open the issue, or update it when the findings changed
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          fingerprint=$(cat security-reports/fingerprint.txt)
+          { cat security-reports/summary.md; printf '\nRun: %s\n' "$RUN_URL"; } > body.md
+          gh label create security-scan --repo "$GITHUB_REPOSITORY" --color B60205 \
+            --description "HIGH/CRITICAL findings in the released images" 2>/dev/null || true
+          existing=$(gh issue list --repo "$GITHUB_REPOSITORY" --label security-scan --state open --json number,body --jq '.[0] // empty')
+          if [ -z "$existing" ]; then
+            gh issue create --repo "$GITHUB_REPOSITORY" --label security-scan \
+              --title "Security: HIGH/CRITICAL findings in the released images" --body-file body.md
+          elif ! printf '%s' "$existing" | grep -q "$fingerprint"; then
+            number=$(printf '%s' "$existing" | jq -r .number)
+            gh issue edit "$number" --repo "$GITHUB_REPOSITORY" --body-file body.md
+            gh issue comment "$number" --repo "$GITHUB_REPOSITORY" --body "The set of findings changed (fingerprint \`$fingerprint\`). Details: $RUN_URL"
+          else
+            echo "The open issue already lists these findings."
+          fi

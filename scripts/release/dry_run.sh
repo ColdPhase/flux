@@ -217,6 +217,12 @@ for check_platform in $(printf '%s' "${platforms:-$platform}" | tr ',' ' '); do
   docker run --rm --platform "$check_platform" --network none --entrypoint node "127.0.0.1:$registry_port/flux@$app_digest" -e \
     'console.log(`application image: node ${process.version} ${process.arch}`)'
 done
+# The workflow's `scan` job (#835): the same script and pins, on the digests of the throwaway registry (plain HTTP on the host network).
+if [ -z "${FLUX_DRYRUN_SKIP_SCAN:-}" ]; then
+  step "Image scan: Trivy on both digests; a HIGH/CRITICAL finding with a fix fails unless .github/security-allowlist.json names it"
+  python3 scripts/security_scan.py image --network host --insecure --platforms "$platforms" --report-dir "$work/scan" \
+    "127.0.0.1:$registry_port/flux@$app_digest" "127.0.0.1:$registry_port/flux-agent-runtime@$runtime_digest" || fail "the image scan failed"
+fi
 case ",${platforms}," in
   *,linux/arm64,*)
     echo "arm64 Codex download checksum (BuildKit ADD --checksum, no emulation):"

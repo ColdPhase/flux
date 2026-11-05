@@ -66,7 +66,11 @@ the publication workflow on the draft and again on the public downloads.
    limits and networks and purge cleanly (`scripts/release/smoke_runtime.sh`; the overlay is compared with
    the source stack by `scripts/release/compare_runtime_overlay.py`), and the live-media overlays must resolve on the
    packaged `compose.yaml` (`scripts/release/check_live_overlay.sh`) before the workflow creates a **draft** GitHub
-   Release. The draft job checks the asset set against `SHA256SUMS` first.
+   Release. The draft job checks the asset set against `SHA256SUMS` first. The `scan` job (#835) scans both pushed
+   digests on every requested platform with the pinned Trivy of `scripts/security_scan.py`: a HIGH or CRITICAL
+   finding that has a fixed version fails the run unless `.github/security-allowlist.json` names it with a reason, a
+   tracking link and an expiry; the draft job needs it. Its summary is the job's summary and the `release-scan`
+   artifact, and the draft notes link the run.
 3. Independently review that draft and its exact digest. Test downloaded assets
    on every published platform (`linux/amd64` for v0.1), a real forward upgrade from the previous
    supported version, backup/restore, the `gh attestation verify` command of
@@ -75,6 +79,8 @@ the publication workflow on the draft and again on the public downloads.
    into two directories and run
    `FLUX_SMOKE_PREVIOUS_ASSETS=<previous assets> bash scripts/release/smoke_artifacts.sh <draft assets> <state dir> <project> <restore project>`
    from a checkout of the candidate commit (see [the upgrade leg](#the-upgrade-leg)).
+   Read the `scan` job's summary of that run (the digest it scanned must be the one under review, and every
+   allowlisted finding must still be justified); the scan covers known vulnerabilities, not the review.
    Record run, commands, versions, digest, results, downtime and limits in #77.
    A new build digest requires a new artifact review. An independent agent reviewer who did
    not write the code posts this exact line in the review issue, through a founder login
@@ -161,7 +167,10 @@ install, backup/restore and upgrade smokes with that platform's images (`DOCKER_
 A foreign platform needs QEMU binfmt on the engine; the script names the workflow's pinned
 `tonistiigi/binfmt` command (it registers `qemu-aarch64` in the host kernel until reboot or
 `--uninstall qemu-aarch64`). Emulated arm64 is not a native arm64 test, and the dry run never covers GHCR,
-`actions/attest` (Sigstore) or anonymous pulls.
+`actions/attest` (Sigstore) or anonymous pulls. The dry run ends its build with the workflow's scan:
+`scripts/security_scan.py image --network host --insecure` on the two digests in the throwaway registry (the scanner
+runs in a container, pinned by digest, and downloads its vulnerability database; set `FLUX_DRYRUN_SKIP_SCAN=1` to omit it
+offline).
 
 ```sh
 FLUX_DRYRUN_PLATFORMS=linux/amd64,linux/arm64 FLUX_DRYRUN_SMOKE_PLATFORM=linux/arm64 \

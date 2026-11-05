@@ -75,6 +75,106 @@ pages are generated from `README.md` and the user-facing files under `docs/` by
 `site/scripts/sync-docs.mjs`; internal agent, process and design documents are not published. A new
 user-facing document is published by adding it to `PAGES` there and to the workflow's paths.
 
+## Security scanning
+
+Four scanners watch the code, the dependencies and the images (v0.2: #834, #835, #836). None is a required check yet; the
+last section here says what proving them takes. All four are lightweight on pull requests: path filters, cancelled
+superseded runs, read-only tokens, and the scanner in a container pinned by digest.
+
+| Scanner | What it checks | When | Failure |
+| --- | --- | --- | --- |
+| [Dependabot](../../.github/dependabot.yml) | Version updates for the pnpm workspace (`app/`), the docs site (`site/`) and the test tooling with a lockfile (`app/tooling/`), GitHub Actions, Dockerfiles and Compose files | Weekly (Monday), batched (one PR per group and directory; a major update arrives alone), at most 3 to 5 open PRs per ecosystem; Playwright (the `playwright` package and the `mcr.microsoft.com/playwright` images) is ignored, since its pins must move together by hand | A PR, reviewed and merged like any other |
+| [Dependency audit](../../.github/workflows/dependency-audit.yml) | `pnpm audit --prod` on `app/pnpm-lock.yaml` through `scripts/security_scan.py audit` | Pull requests that touch a manifest, the lockfile, the audit or its allowlist; weekly on `main`; dispatch | A HIGH or CRITICAL advisory in a production dependency that the allowlist does not name |
+| [CodeQL](../../.github/workflows/codeql.yml) | `javascript-typescript`, `security-extended`, over `app/apps`, `app/packages` and `app/tooling` ([config](../../.github/codeql/codeql-config.yml)) | Same-repository pull requests that touch that source; weekly on `main`; dispatch | New alerts under Security > Code scanning; the run is red only when CodeQL itself fails |
+| Image scan | Trivy on both release images, every platform: [`final-release.yml`](../../.github/workflows/final-release.yml) job `scan` before the draft, and [`image-scan.yml`](../../.github/workflows/image-scan.yml) weekly on the latest published release | Each release candidate; weekly | The release run fails on a HIGH or CRITICAL finding that has a fixed version and is not allowlisted; the weekly run opens or updates an issue labelled `security-scan` |
+
+`scripts/security_scan.py` holds the policy for the audit and the image scan, and `scripts/release/dry_run.sh` runs the
+same image scan on its throwaway registry, so the release workflow's gate can be tried locally. The Node image and
+pnpm version of the audit are read from `docker/Dockerfile`; Trivy is pinned in the script. Findings without a fixed
+version are listed and do not fail an image scan; an advisory without a fix still needs an allowlist entry for the audit.
+
+The scans fail closed. A report that is empty, not JSON, not the scanner's report (`{}`, an error document) or lists no
+scanned target (`Results` empty for an image, no dependencies counted for the audit) is an error, never "clean", and a
+crash of the script is never "findings". The script's exit codes carry that, and the Image scan workflow relies on them
+(the other consumers fail on any non-zero code):
+
+| Exit | Meaning | On a pull request run of `Image scan` |
+| --- | --- | --- |
+| `0` | Clean | Passes |
+| `10` | Findings: HIGH/CRITICAL with a fix and not allowlisted, or an expired or malformed allowlist entry | Passes, shown in the summary: a fact about the published release, not about the change (the allowlist itself is validated by an earlier step that fails) |
+| `2` | The scan did not run or its report is unusable: no report, empty, unparsable, no scanned targets, unreadable allowlist, the registry or advisory database unreachable after three attempts | Fails |
+| `3` | The script crashed (the traceback is in the log) | Fails |
+| anything else | The interpreter's `1` for an error nothing caught (an import or syntax error), a killed process, a step that wrote no code (the scan step fails when it cannot write the code, and the step that fails the job always runs and decides in shell, so a missing code is not read as `0`) | Fails: the workflow lists what passes, so an unknown code does not |
+
+On a schedule or a dispatch every non-zero code fails the run, and only `10` opens or updates the `security-scan` issue.
+
+### The allowlist
+
+[`.github/security-allowlist.json`](../../.github/security-allowlist.json) is the one list of reviewed exceptions for the
+audit and the image scan. An entry names the `scanner` (`audit` or `image`), the advisory or CVE `id` (the audit uses
+GHSA identifiers, Trivy often CVE identifiers for the same advisory, so a package can need one entry in each), the
+`package` (required: an entry excuses one advisory in one package, and an entry without a package is malformed), a `reason`
+that says why the risk is accepted, a `tracking` link to the issue that removes it, the `reviewed` date and an
+`expires` date at most 90 days later. The reason is the reachability judgement, not "it is in the lockfile": which code
+path the advisory needs, that Flux does not have it (or that it is an availability problem for an authenticated user
+only), and the upgrade that removes the entry. An expired or malformed entry fails the scan until somebody
+reviews it again (new dates, a reason that still holds) or removes it; that is the point. Add an entry only in a PR whose
+description links the evidence (reachability, why the fix cannot land yet), and prefer the fix to the entry.
+`python3 scripts/security_scan.py allowlist` validates the file.
+
+### Triage
+
+- **Who.** The agent that holds the milestone's CI and release issue triages every new alert, scan failure or CodeQL
+  alert; the owner of the affected code fixes it, as an ordinary issue in the milestone with the advisory linked. Alerts
+  that need a decision about product behavior go to the release owner (`PelikanFix16`).
+- **Where alerts arrive.** Dependabot alerts and CodeQL alerts under the repository's Security tab (the Dependabot security
+  updates and secret scanning with push protection are enabled, see below); the `Dependency audit` and release `scan`
+  runs; the `security-scan` issue of the weekly image scan. An agent starting a session checks them with the issues it was assigned:
+  `gh api repos/ColdPhase/flux/dependabot/alerts --jq 'map(select(.state=="open"))'`,
+  `gh api 'repos/ColdPhase/flux/code-scanning/alerts?state=open'` and `gh issue list --label security-scan`.
+- **Service levels**, from the day the alert is first seen:
+
+  | Severity | Triage (reachable here or not, recorded in the issue) | Fixed, or an expiring allowlist entry |
+  | --- | --- | --- |
+  | Critical | 1 working day | 3 working days |
+  | High | 3 working days | 14 days |
+  | Moderate | the next weekly Dependabot batch | 30 days |
+  | Low | when the package is next touched | best effort |
+
+  A CRITICAL or HIGH finding in a release candidate is fixed or allowlisted (with its expiry) before the candidate is
+  accepted; the reviewer of the draft reads the `scan` job's summary (release pipeline, step 3). A P1 or P2 CodeQL alert becomes an issue; a dismissed one
+  records the reason in the alert.
+- **Not covered.** None of this replaces review or the application's own tests; `pnpm audit` and Trivy report known
+  advisories only, and CodeQL is static analysis.
+
+### Repository settings, read 2026-11-03
+
+`gh api repos/ColdPhase/flux`: Dependabot alerts on (`vulnerability-alerts` answers 204), Dependabot security updates
+`enabled`, secret scanning `enabled`, secret scanning push protection `enabled`; non-provider patterns and validity checks
+`disabled`. Code scanning default setup is `not-configured`: the CodeQL workflow is the advanced setup, and enabling the
+default setup as well would make GitHub refuse its uploads. The Actions policy allows GitHub-owned and verified-creator
+actions, which covers `github/codeql-action`; every action is pinned to a commit. Nothing was changed in the settings
+or in branch protection.
+
+### Rollout
+
+Proven first, required later (section 3): a scanner becomes a required check only after a real run on the default branch,
+the exact check name read from it, and an observed failing run that blocks. Until then each is advisory:
+
+- `Dependency audit`, `CodeQL` and the PR run of `Image scan` have path filters on pull requests, so they cannot be
+  required as they are (a required check that does not run on a PR blocks it). To require one, make it run on every pull
+  request and decide inside the job whether there is anything to scan.
+- The release `scan` job gates the draft by dependency (`needs`), not by a branch rule.
+- First runs, on the pull request that introduced them ([#879](https://github.com/ColdPhase/flux/pull/879), 2026-11-03):
+  [Dependency audit](https://github.com/ColdPhase/flux/actions/runs/41632810656) passed in 10 s,
+  [CodeQL](https://github.com/ColdPhase/flux/actions/runs/41632810632) in 1 min 56 s (1,223 files, 105 queries, no alerts), and
+  [Image scan](https://github.com/ColdPhase/flux/actions/runs/41632810750) in 27 s (it reported 125 findings with a fix and 13
+  allowlisted in the published v0.1.0 images, and did not fail the pull request run). Not yet run: the release `scan` job (it
+  needs a release dispatch; `scripts/release/dry_run.sh` runs the same script) and the issue-opening job of `Image scan` (a
+  schedule or dispatch on `main`). After merging, dispatch `CodeQL` and `Image scan` once on `main`
+  (`gh workflow run codeql.yml --ref main`): CodeQL warns that a workflow without a `push` trigger has no baseline for the
+  Security tab until a run on `main` exists, and the repository's rule against duplicate main-push runs keeps it on a schedule.
+
 ## 1. Design checks from the actual stack
 
 Once the application architecture is accepted, the planner creates pipeline tasks
