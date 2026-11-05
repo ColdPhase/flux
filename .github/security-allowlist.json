@@ -23,7 +23,7 @@
       "scanner": "audit",
       "id": "GHSA-46jr-4wx8-v453",
       "package": "@modelcontextprotocol/server",
-      "reason": "Authenticated denial of service only (availability, no data exposure): a holder of a valid MCP bearer can send one request of up to 4 MiB that exhausts memory while it is validated (the limit that fixes it, maxToolInputElements, exists from 2.3.0). Upgrade to @modelcontextprotocol/server 2.3.0 or later, tracked in #877.",
+      "reason": "Authenticated denial of service only (availability, no data exposure): a holder of a valid MCP bearer can send one request of up to 4 MiB that exhausts memory while it is validated (the limit that fixes it, maxToolInputElements, exists from 2.3.0 and is off by default, so the upgrade also has to set it, with a lower maxRequestBodySize). Upgrade to @modelcontextprotocol/server 2.3.0 or later and set both limits, tracked in #877.",
       "tracking": "https://github.com/ColdPhase/flux/issues/877",
       "reviewed": "2026-11-03",
       "expires": "2026-12-03"
@@ -113,7 +113,7 @@
       "scanner": "audit",
       "id": "GHSA-68fv-2mgg-jv7q",
       "package": "source-map-js",
-      "reason": "Denial of service at worst, by an authenticated member (availability, no data exposure): source-map-js is reached only through postcss, which sanitize-html runs on the th/td style values of the markdown that members write (docs/markdown.ts), so a crafted source map would have to arrive inside such a style value; that is not shown to work, and the effect would be a stalled event loop. Upgrade to source-map-js 1.2.2 or later, tracked in #877.",
+      "reason": "Not reachable: source-map-js is reached only through postcss, which sanitize-html runs on the th/td style values of the markdown that members write (docs/markdown.ts), and sanitize-html parses them with `{ map: false }`, so postcss reads no source map (its PreviousMap returns at once) and builds no SourceMapConsumer from that input. Upgrade to source-map-js 1.2.2 or later, tracked in #877.",
       "tracking": "https://github.com/ColdPhase/flux/issues/877",
       "reviewed": "2026-11-03",
       "expires": "2026-12-03"
@@ -140,7 +140,7 @@
       "scanner": "image",
       "id": "CVE-2026-111768",
       "package": "@modelcontextprotocol/server",
-      "reason": "Trivy's id for GHSA-46jr-4wx8-v453. Authenticated denial of service only (availability, no data exposure): a holder of a valid MCP bearer can send one request of up to 4 MiB that exhausts memory while it is validated (the limit that fixes it, maxToolInputElements, exists from 2.3.0). Upgrade to @modelcontextprotocol/server 2.3.0 or later, tracked in #877.",
+      "reason": "Trivy's id for GHSA-46jr-4wx8-v453. Authenticated denial of service only (availability, no data exposure): a holder of a valid MCP bearer can send one request of up to 4 MiB that exhausts memory while it is validated (the limit that fixes it, maxToolInputElements, exists from 2.3.0 and is off by default, so the upgrade also has to set it, with a lower maxRequestBodySize). Upgrade to @modelcontextprotocol/server 2.3.0 or later and set both limits, tracked in #877.",
       "tracking": "https://github.com/ColdPhase/flux/issues/877",
       "reviewed": "2026-11-03",
       "expires": "2026-12-03"
@@ -239,7 +239,7 @@
       "scanner": "image",
       "id": "CVE-2026-93749",
       "package": "source-map-js",
-      "reason": "Trivy's id for GHSA-68fv-2mgg-jv7q. Denial of service at worst, by an authenticated member (availability, no data exposure): source-map-js is reached only through postcss, which sanitize-html runs on the th/td style values of the markdown that members write (docs/markdown.ts), so a crafted source map would have to arrive inside such a style value; that is not shown to work, and the effect would be a stalled event loop. Upgrade to source-map-js 1.2.2 or later, tracked in #877.",
+      "reason": "Trivy's id for GHSA-68fv-2mgg-jv7q. Not reachable: source-map-js is reached only through postcss, which sanitize-html runs on the th/td style values of the markdown that members write (docs/markdown.ts), and sanitize-html parses them with `{ map: false }`, so postcss reads no source map (its PreviousMap returns at once) and builds no SourceMapConsumer from that input. Upgrade to source-map-js 1.2.2 or later, tracked in #877.",
       "tracking": "https://github.com/ColdPhase/flux/issues/877",
       "reviewed": "2026-11-03",
       "expires": "2026-12-03"

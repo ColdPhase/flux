@@ -9,9 +9,12 @@
 # update, where a group lists `update-types`) arrives alone, so it gets its own review.
 #
 # Coverage: every directory of the repository that holds a manifest, a lockfile, a Dockerfile or a Compose file
-# (tests/test_security_scan.py checks it), except two: app/tests/ui/requirements.txt (pip), whose Playwright pin must equal
-# the tag of the image in docker/ui-tests.Dockerfile, which a version-only PR would break, so that pair is moved by hand;
-# and the prototype Dockerfile under docs/product/research/evidence/460, which is research evidence and is never built.
+# (tests/test_security_scan.py checks it), except two: app/tests/ui/requirements.txt and demo-requirements.txt (pip), whose
+# Playwright pin must equal the tag of the image in docker/ui-tests.Dockerfile, which a version-only PR would break; and
+# the prototype Dockerfile under docs/product/research/evidence/460, which is research evidence and is never built.
+# Playwright is moved by hand on both sides of each pair, so it is ignored where Dependabot would move one side only: the
+# `playwright` npm package (app/package.json, which docker/Dockerfile's e2e image must match) and the
+# mcr.microsoft.com/playwright images (docker/Dockerfile, docker/ui-tests.Dockerfile, docker/public-sim/client.Dockerfile).
 version: 2
 updates:
   # The pnpm workspace. One lockfile at app/pnpm-lock.yaml governs every package under app/ (apps, packages, examples).
@@ -26,6 +29,8 @@ updates:
     labels: [dependencies]
     commit-message:
       prefix: "Deps"
+    ignore:
+      - dependency-name: "playwright"
     groups:
       # These carry a local patch (app/patches, patchedDependencies in pnpm-workspace.yaml) for one exact version. A bump
       # fails to install until the patch is ported, so they travel together in one PR that a person finishes.
@@ -82,6 +87,8 @@ updates:
     labels: [dependencies]
     commit-message:
       prefix: "Deps"
+    ignore:
+      - dependency-name: "mcr.microsoft.com/playwright*"
     groups:
       images:
         patterns: ["*"]

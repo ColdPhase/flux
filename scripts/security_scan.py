@@ -80,7 +80,7 @@ def load_allowlist(path: Path | None = None, today: dt.date | None = None) -> tu
     today = today or dt.date.today()
     try:
         document = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError) as error:
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as error:
         raise Problem(f"cannot read {path}: {error}") from error
     entries = document.get("exceptions")
     if not isinstance(entries, list):
@@ -146,6 +146,14 @@ def toolchain() -> tuple[str, str]:
     return image.group(1), pnpm.group(1)
 
 
+def read_report(path: Path, what: str) -> str:
+    """The text of a report file; one that cannot be read or is not UTF-8 is a Problem, like any other unusable report."""
+    try:
+        return path.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError) as error:
+        raise Problem(f"{what}: cannot read {path}: {error}") from error
+
+
 def parse_report(text: str, what: str) -> object:
     """The JSON of a scanner's report; an empty or unparsable one is a Problem."""
     if not text.strip():
@@ -162,8 +170,9 @@ def validate_audit_report(report: object, what: str = "pnpm audit") -> dict:
         raise Problem(f"{what}: not a pnpm audit report (no `advisories` object): {json.dumps(report)[:200]}")
     metadata = report.get("metadata")
     total = metadata.get("totalDependencies") if isinstance(metadata, dict) else None
-    if total is not None and not (isinstance(total, int) and total > 0):
-        raise Problem(f"{what}: the report counts {total!r} dependencies, so nothing was scanned")
+    # A report that does not say how many dependencies it covered is no proof of a scan (a missing count is not a zero to skip).
+    if isinstance(total, bool) or not isinstance(total, int) or total <= 0:
+        raise Problem(f"{what}: the report counts {total!r} dependencies (`metadata.totalDependencies`), so nothing was shown to be scanned")
     return report
 
 
@@ -224,8 +233,8 @@ def validate_trivy_report(report: object, reference: str) -> dict:
     if not isinstance(report, dict) or not report.get("ArtifactName"):
         raise Problem(f"{reference}: not a Trivy report (no `ArtifactName`): {json.dumps(report)[:200]}")
     results = report.get("Results")
-    if not isinstance(results, list) or not results:
-        raise Problem(f"{reference}: the report has no scanned targets (`Results` is missing or empty), so nothing was checked")
+    if not isinstance(results, list) or not any(isinstance(result, dict) and result.get("Target") for result in results):
+        raise Problem(f"{reference}: the report has no scanned targets (`Results` is missing, empty or names no `Target`), so nothing was checked")
     return report
 
 
@@ -258,7 +267,7 @@ def run_trivy(reference: str, report_file: Path, *, local: bool, platform: str, 
             else:
                 shutil.copy(report_path, report_file)  # kept for the run's artifact even when it is unusable
                 try:
-                    return validate_trivy_report(parse_report(report_path.read_text(encoding="utf-8"), reference), reference)
+                    return validate_trivy_report(parse_report(read_report(report_path, reference), reference), reference)
                 except Problem as error:
                     last = str(error)
             if attempt < 3:
@@ -323,11 +332,7 @@ def command_allowlist(_: argparse.Namespace) -> int:
 def command_audit(arguments: argparse.Namespace) -> int:
     entries, problems = load_allowlist()
     if arguments.json:
-        try:
-            text = Path(arguments.json).read_text(encoding="utf-8")
-        except OSError as error:
-            raise Problem(f"cannot read {arguments.json}: {error}") from error
-        report = validate_audit_report(parse_report(text, arguments.json), arguments.json)
+        report = validate_audit_report(parse_report(read_report(Path(arguments.json), arguments.json), arguments.json), arguments.json)
     else:
         report = run_audit()
     findings = audit_findings(report)

@@ -7,7 +7,8 @@ name: Image scan
 # scan or its allowlist run it too (read-only, no issue), which is how a change to it is proven.
 # The script's exit code (scripts/security_scan.py): 0 clean, 10 findings, 2 the scan or its report was unusable, 3 the
 # script crashed. Only 10 is let through on a pull request; any other code, including the interpreter's 1 for an error
-# nothing caught and an empty value, fails the job.
+# nothing caught and a missing or empty value, fails the job. The last step decides in shell: a `${{ }}` comparison would
+# turn a code that was never written (null) into 0.
 on:
   schedule:
     - cron: "23 5 * * 2"
@@ -77,8 +78,8 @@ jobs:
           python3 scripts/security_scan.py image --platforms "$PLATFORMS" --report-dir security-reports \
             --cache "$RUNNER_TEMP/trivy" --summary-file security-reports/summary.md --fingerprint-file security-reports/fingerprint.txt $IMAGES
           rc=$?
+          set -e  # a code that cannot be written fails this step, so the job cannot pass without one
           echo "rc=$rc" >> "$GITHUB_OUTPUT"
-          exit 0
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: always()
         with:
@@ -88,12 +89,20 @@ jobs:
           retention-days: 30
       # On a pull request the findings (10) are shown and do not fail the run: they are a fact about the published release, not
       # about the change. Nothing else passes: not a scan that did not run or whose report was unusable (2), not a crash (3),
-      # not any other or missing code. The condition lists what is let through, so an unknown value fails.
+      # not any other or missing code. The step always runs (no `if:`) and lists what is let through, so an unknown or empty
+      # value fails it. The code goes through the environment, not into the script text.
       - name: Fail on findings, on a scan that did not run, or on a crash
-        if: steps.scan.outputs.rc != '0' && (steps.scan.outputs.rc != '10' || github.event_name != 'pull_request')
+        env:
+          RC: ${{ steps.scan.outputs.rc }}
+          EVENT: ${{ github.event_name }}
         run: |
-          echo "The scan exited ${{ steps.scan.outputs.rc }} (10: HIGH/CRITICAL findings with a fix; 2: the scan or its report was unusable; 3: the script crashed). See the summary and the log." >&2
-          exit 1
+          case "$RC:$EVENT" in
+            0:*|10:pull_request) ;;
+            *)
+              echo "The scan exited '$RC' (10: HIGH/CRITICAL findings with a fix; 2: the scan or its report was unusable; 3: the script crashed; empty: it wrote no code). See the summary and the log." >&2
+              exit 1
+              ;;
+          esac
 
   report:
     name: Open or update the findings issue

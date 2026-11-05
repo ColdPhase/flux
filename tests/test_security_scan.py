@@ -198,12 +198,12 @@ class FailClosedTest(unittest.TestCase):
 
     # pnpm audit --json
 
-    def audit_file(self, text: str) -> tuple[int, str]:
+    def audit_file(self, text: str | bytes) -> tuple[int, str]:
         with tempfile.TemporaryDirectory() as directory, mock.patch.dict(os.environ), \
                 mock.patch.object(scan, "ALLOWLIST", allowlist_file(directory, [])):
             os.environ.pop("GITHUB_STEP_SUMMARY", None)
             report = Path(directory) / "audit.json"
-            report.write_text(text, encoding="utf-8")
+            report.write_bytes(text if isinstance(text, bytes) else text.encode("utf-8"))
             out, err = io.StringIO(), io.StringIO()
             with redirect_stdout(out), redirect_stderr(err):
                 code = scan.main(["audit", "--json", str(report)])
@@ -234,12 +234,30 @@ class FailClosedTest(unittest.TestCase):
             with self.subTest(report=report):
                 self.assertEqual(self.audit_file(json.dumps(report))[0], scan.EXIT_UNUSABLE)
 
+    def test_an_audit_report_that_does_not_count_its_dependencies_is_an_error(self) -> None:
+        # `advisories` alone is not proof of a scan: the count must be there and be a positive integer (not a bool, a string or null).
+        for report in ({"advisories": {}}, {"advisories": {}, "metadata": {}}, {"advisories": {}, "metadata": None},
+                       {"advisories": {}, "metadata": "x"}, {"advisories": {}, "metadata": {"totalDependencies": True}},
+                       {"advisories": {}, "metadata": {"totalDependencies": None}}, {"advisories": {}, "metadata": {"totalDependencies": "1234"}},
+                       {"advisories": {}, "metadata": {"totalDependencies": -1}}, {"advisories": {}, "metadata": {"totalDependencies": 1.5}},
+                       {"error": "boom", "advisories": {}}, {**audit_report(advisory(1, "GHSA-aaaa-bbbb-cccc", "x", "high")), "metadata": {}}):
+            with self.subTest(report=report):
+                code, output = self.audit_file(json.dumps(report))
+                self.assertEqual(code, scan.EXIT_UNUSABLE)
+                self.assertIn("nothing was shown to be scanned", output)
+
+    def test_an_audit_report_that_is_not_utf8_is_unusable_not_a_crash(self) -> None:
+        code, output = self.audit_file(b'\xff\xfe{"advisories": {}}')
+        self.assertEqual(code, scan.EXIT_UNUSABLE)
+        self.assertIn("cannot read", output)
+        self.assertNotIn("Traceback", output)
+
     def test_an_audit_report_with_no_advisories_is_clean(self) -> None:
         self.assertEqual(self.audit_file(json.dumps(audit_report()))[0], scan.EXIT_CLEAN)
 
     # Trivy
 
-    def trivy(self, report: str | None, returncode: int = 0) -> tuple[int, str, int, Path]:
+    def trivy(self, report: str | bytes | None, returncode: int = 0) -> tuple[int, str, int, Path]:
         """Runs `image` against a fake scanner that writes `report` (or nothing) and exits `returncode`."""
         calls: list[list[str]] = []
 
@@ -247,7 +265,7 @@ class FailClosedTest(unittest.TestCase):
             calls.append(command)
             work = next(part for part in command if part.endswith(":/work:z")).split(":")[0]
             if report is not None:
-                (Path(work) / "report.json").write_text(report, encoding="utf-8")
+                (Path(work) / "report.json").write_bytes(report if isinstance(report, bytes) else report.encode("utf-8"))
             return subprocess.CompletedProcess(command, returncode)
 
         with tempfile.TemporaryDirectory() as directory, mock.patch.dict(os.environ), \
@@ -259,7 +277,7 @@ class FailClosedTest(unittest.TestCase):
             with redirect_stdout(out), redirect_stderr(err):
                 code = scan.main(["image", "--report-dir", str(reports), "--cache", str(Path(directory) / "cache"), "ghcr.io/coldphase/flux@sha256:" + "0" * 64])
             kept = list(reports.glob("*.json"))
-            return code, out.getvalue() + err.getvalue(), len(calls), (kept[0].read_text(encoding="utf-8") if kept else None)
+            return code, out.getvalue() + err.getvalue(), len(calls), (kept[0].read_text(encoding="utf-8", errors="replace") if kept else None)
 
     def test_an_empty_trivy_report_is_an_error_after_three_attempts(self) -> None:
         for text in ("", "\n"):
@@ -288,6 +306,19 @@ class FailClosedTest(unittest.TestCase):
                 code, output, _, _ = self.trivy(json.dumps(report))
                 self.assertEqual(code, scan.EXIT_UNUSABLE)
                 self.assertIn("no scanned targets", output)
+
+    def test_a_trivy_report_whose_results_name_no_target_is_an_error(self) -> None:
+        for results in ([{}], [{}, {}], [None], ["x"], [{"Target": ""}], [{"Target": None, "Class": "os-pkgs"}], "text", {"Target": "x"}):
+            with self.subTest(results=results):
+                code, output, attempts, _ = self.trivy(json.dumps({"ArtifactName": "img", "Results": results}))
+                self.assertEqual((code, attempts), (scan.EXIT_UNUSABLE, 3))
+                self.assertIn("no scanned targets", output)
+
+    def test_a_trivy_report_that_is_not_utf8_is_unusable_not_a_crash(self) -> None:
+        code, output, attempts, _ = self.trivy(b'\xff\xfe{"ArtifactName": "img"}')
+        self.assertEqual((code, attempts), (scan.EXIT_UNUSABLE, 3))
+        self.assertIn("cannot read", output)
+        self.assertNotIn("Traceback", output)
 
     def test_a_trivy_report_that_is_not_a_report_is_an_error(self) -> None:
         for report in ([], "text", None, {"Results": [{"Target": "x"}]}, {"error": "boom"}):
@@ -333,30 +364,84 @@ class FailClosedTest(unittest.TestCase):
 
 
 class ImageScanWorkflowTest(unittest.TestCase):
-    """.github/workflows/image-scan.yml: a pull request lets the findings code through and nothing else."""
+    """.github/workflows/image-scan.yml: a pull request lets the findings code through and nothing else.
+
+    The decision is made in shell, where nothing coerces: a `${{ }}` comparison turns an output that was never written (null)
+    into 0, and `null != '0'` is false. The tests run the shell of the steps themselves.
+    """
 
     TEXT = (ROOT / ".github" / "workflows" / "image-scan.yml").read_text(encoding="utf-8")
 
-    def fails(self, rc: str, event: str) -> bool:
-        """Evaluates the `if:` of the step that fails the job, for the exit code `rc` of the scan step."""
-        condition = re.search(r"(?m)^\s+if: (steps\.scan\.outputs\.rc != .*)$", self.TEXT)
-        self.assertIsNotNone(condition, "the step that fails the job has no condition on the scan's exit code")
-        expression = condition.group(1).replace("steps.scan.outputs.rc", repr(rc)).replace("github.event_name", repr(event))
-        return bool(eval(expression.replace("&&", " and ").replace("||", " or "), {"__builtins__": {}}))  # the repository's own text
+    def step(self, name: str) -> str:
+        """The text of the step called `name`, up to the next step."""
+        found = re.search(rf"(?ms)^      - name: {re.escape(name)}\n(.*?)(?=^      - |^  \w|\Z)", self.TEXT)
+        self.assertIsNotNone(found, f"no step named {name!r}")
+        return found.group(1)
 
+    def script(self, name: str) -> str:
+        """The `run:` script of the step called `name`, dedented."""
+        found = re.search(r"(?ms)^        run: \|\n(.*?)(?=^      \S|^        \S|\Z)", self.step(name))
+        self.assertIsNotNone(found, f"step {name!r} has no run script")
+        return "\n".join(line[10:] for line in found.group(1).splitlines())
+
+    FAILING = "Fail on findings, on a scan that did not run, or on a crash"
+    SCANNING = "Scan both images on every platform"
+
+    def fails(self, rc: str | None, event: str) -> bool:
+        """Runs the shell of the step that fails the job with the environment the workflow gives it; None leaves RC unset."""
+        environment = {"PATH": os.environ.get("PATH", ""), "EVENT": event}
+        if rc is not None:
+            environment["RC"] = rc
+        result = subprocess.run(["bash", "-e", "-c", self.script(self.FAILING)], env=environment, capture_output=True, text=True)
+        self.assertIn(result.returncode, (0, 1), result.stderr)
+        return result.returncode != 0
+
+    @unittest.skipUnless(shutil.which("bash"), "bash is needed to run the workflow's shell")
     def test_on_a_pull_request_only_clean_and_findings_pass(self) -> None:
         for rc in (str(scan.EXIT_CLEAN), str(scan.EXIT_FINDINGS)):
             self.assertFalse(self.fails(rc, "pull_request"), rc)
         # 1 is the interpreter's code for an error nothing caught (an import or syntax error); 127 and 137 are a missing
-        # interpreter and a killed process; the empty string is a step that wrote no code.
-        for rc in (str(scan.EXIT_UNUSABLE), str(scan.EXIT_CRASH), "1", "127", "137", ""):
+        # interpreter and a killed process; the empty string is what `${{ }}` gives for an output that was never written.
+        for rc in (str(scan.EXIT_UNUSABLE), str(scan.EXIT_CRASH), "1", "127", "137", "", None, "0 ", " 10", "010", "null"):
             self.assertTrue(self.fails(rc, "pull_request"), rc)
 
+    @unittest.skipUnless(shutil.which("bash"), "bash is needed to run the workflow's shell")
     def test_on_a_schedule_or_a_dispatch_anything_but_clean_fails(self) -> None:
         for event in ("schedule", "workflow_dispatch"):
             self.assertFalse(self.fails(str(scan.EXIT_CLEAN), event), event)
-            for rc in (str(scan.EXIT_FINDINGS), str(scan.EXIT_UNUSABLE), str(scan.EXIT_CRASH), "1", ""):
+            for rc in (str(scan.EXIT_FINDINGS), str(scan.EXIT_UNUSABLE), str(scan.EXIT_CRASH), "1", "", None):
                 self.assertTrue(self.fails(rc, event), (event, rc))
+
+    def test_a_missing_exit_code_cannot_skip_the_step_that_fails_the_job(self) -> None:
+        failing = self.step(self.FAILING)
+        self.assertNotRegex(failing, r"(?m)^        if:", "a condition on the exit code reads a missing output (null) as 0 and skips the step")
+        self.assertNotIn("${{ steps.scan.outputs.rc }}", self.script(self.FAILING), "the code goes through the environment, not the script text")
+        self.assertIn("RC: ${{ steps.scan.outputs.rc }}", failing)
+
+    def scan_step(self, github_output: str, python_exit: int) -> subprocess.CompletedProcess:
+        """Runs the shell of the scan step with a `python3` that exits `python_exit` and `$GITHUB_OUTPUT` at `github_output`."""
+        with tempfile.TemporaryDirectory() as directory:
+            environment = {"PATH": os.environ.get("PATH", ""), "GITHUB_OUTPUT": github_output, "RUNNER_TEMP": directory,
+                           "IMAGES": "a@sha256:0 b@sha256:1", "PLATFORMS": "linux/amd64"}
+            # A function, not a file on PATH: it replaces the interpreter without executing anything.
+            script = f"python3() {{ return {python_exit}; }}\n" + self.script(self.SCANNING)
+            return subprocess.run(["bash", "-e", "-c", script], env=environment, cwd=directory, capture_output=True, text=True)
+
+    @unittest.skipUnless(shutil.which("bash"), "bash is needed to run the workflow's shell")
+    def test_the_scan_step_records_every_exit_code_and_still_passes(self) -> None:
+        for code in (0, 10, 2, 3, 1):
+            with self.subTest(code=code), tempfile.TemporaryDirectory() as directory:
+                output = Path(directory) / "output"
+                self.assertEqual(self.scan_step(str(output), code).returncode, 0)
+                self.assertEqual(output.read_text(encoding="utf-8"), f"rc={code}\n")
+
+    @unittest.skipUnless(shutil.which("bash") and Path("/dev/full").exists(), "bash and /dev/full are needed")
+    def test_the_scan_step_fails_when_the_exit_code_cannot_be_written(self) -> None:
+        # A full disk: the write of `rc` fails, the output stays unset, and a step that carried on would leave the job green.
+        for code in (0, 10, 2):
+            with self.subTest(code=code):
+                result = self.scan_step("/dev/full", code)
+                self.assertNotEqual(result.returncode, 0, result.stderr)
 
     def test_only_the_findings_code_opens_the_issue_and_a_pull_request_validates_the_allowlist(self) -> None:
         self.assertIn(f"failed: ${{{{ steps.scan.outputs.rc == '{scan.EXIT_FINDINGS}' }}}}", self.TEXT)
@@ -432,6 +517,12 @@ class WorkflowRulesTest(unittest.TestCase):
             names = listed.group(1).split(",") if listed else [single.group(1)] if single else []
             found.setdefault(ecosystem, []).extend(name.strip().strip('"') for name in names)
         return found
+
+    def test_dependabot_leaves_both_sides_of_the_playwright_pairs_to_a_person(self) -> None:
+        text = (ROOT / ".github" / "dependabot.yml").read_text(encoding="utf-8")
+        # The pip pins (app/tests/ui) are not configured; the npm package and the images that must match them are ignored.
+        self.assertRegex(text, r'(?s)package-ecosystem: npm\n.*?ignore:\n\s+- dependency-name: "playwright"')
+        self.assertRegex(text, r'(?s)package-ecosystem: docker\n.*?ignore:\n\s+- dependency-name: "mcr\.microsoft\.com/playwright\*"')
 
     def test_dependabot_covers_every_directory_with_a_manifest_a_lockfile_or_a_dockerfile(self) -> None:
         listing = subprocess.run(["git", "ls-files"], cwd=ROOT, capture_output=True, text=True) if shutil.which("git") else None
