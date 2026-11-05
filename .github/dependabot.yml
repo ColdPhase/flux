@@ -2,11 +2,21 @@
 # Weekly, grouped, a few open PRs at most: a PR here is a lockfile or pin change reviewed like any other and
 # merged through the normal checks. The first run on the default branch is the proof that each ecosystem works
 # (Insights > Dependency graph > Dependabot); docs/agents/ci-and-releases.md#security-scanning records it.
+#
+# Grouping. A group is a batch: Dependabot opens one pull request per group and directory with every dependency that
+# matches it (a dependency goes into the first group it matches). `group-by: dependency-name` is not used: it makes one
+# pull request per dependency across directories, which is the opposite of a batch. What no group matches (a major
+# update, where a group lists `update-types`) arrives alone, so it gets its own review.
+#
+# Coverage: every directory of the repository that holds a manifest, a lockfile, a Dockerfile or a Compose file
+# (tests/test_security_scan.py checks it), except two: app/tests/ui/requirements.txt (pip), whose Playwright pin must equal
+# the tag of the image in docker/ui-tests.Dockerfile, which a version-only PR would break, so that pair is moved by hand;
+# and the prototype Dockerfile under docs/product/research/evidence/460, which is research evidence and is never built.
 version: 2
 updates:
-  # The pnpm workspace. One lockfile at app/pnpm-lock.yaml governs every package under app/.
+  # The pnpm workspace. One lockfile at app/pnpm-lock.yaml governs every package under app/ (apps, packages, examples).
   - package-ecosystem: npm
-    directories: ["/app", "/app/apps/*", "/app/packages/*"]
+    directories: ["/app", "/app/apps/*", "/app/packages/*", "/app/examples/*"]
     schedule:
       interval: weekly
       day: monday
@@ -24,11 +34,26 @@ updates:
       production:
         dependency-type: production
         update-types: [minor, patch]
-        group-by: dependency-name
       development:
         dependency-type: development
         update-types: [minor, patch]
-        group-by: dependency-name
+  # The documentation site (Astro Starlight, package-lock.json) and the test tooling with a lockfile of their own
+  # (app/tooling: the live-editing calibration on pnpm, the SFU test on npm). Not part of the workspace above.
+  - package-ecosystem: npm
+    directories: ["/site", "/app/tooling/live-editing-calibration", "/app/tooling/live-sfu-test"]
+    schedule:
+      interval: weekly
+      day: monday
+      time: "05:15"
+      timezone: Europe/Warsaw
+    open-pull-requests-limit: 3
+    labels: [dependencies]
+    commit-message:
+      prefix: "Deps"
+    groups:
+      site-and-tooling:
+        patterns: ["*"]
+        update-types: [minor, patch]
   - package-ecosystem: github-actions
     directory: /
     schedule:
@@ -43,10 +68,11 @@ updates:
     groups:
       actions:
         patterns: ["*"]
-  # Dockerfiles and Compose files. Dependabot follows `image:tag@sha256:...` pins; an image pinned by digest alone
-  # (most of docker/) has no tag to follow and is updated by hand (docs/agents/ci-and-releases.md#security-scanning).
+  # Dockerfiles and Compose files (docker/, the public-network simulation, the promo renderer). Dependabot follows
+  # `image:tag@sha256:...` pins; an image pinned by digest alone (most of docker/) has no tag to follow and is updated
+  # by hand (docs/agents/ci-and-releases.md#security-scanning).
   - package-ecosystem: docker
-    directory: /docker
+    directories: ["/docker", "/docker/public-sim", "/scripts/promo"]
     schedule:
       interval: weekly
       day: monday
@@ -60,7 +86,7 @@ updates:
       images:
         patterns: ["*"]
   - package-ecosystem: docker-compose
-    directory: /docker
+    directories: ["/docker", "/docker/public-sim"]
     schedule:
       interval: weekly
       day: monday

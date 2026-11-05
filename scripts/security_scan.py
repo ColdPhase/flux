@@ -12,9 +12,21 @@ Policy (docs/agents/ci-and-releases.md, "Security scanning"):
   allowlist does not name. Fixed or not: an advisory without a fix needs an allowlist entry with its reason.
 - `image` fails on any HIGH or CRITICAL finding that HAS a fixed version and is not allowlisted. Findings without a fix
   are reported and do not fail.
-- An allowlist entry (`.github/security-allowlist.json`) names the scanner (`audit` or `image`), the advisory or CVE, a
-  reason, a tracking link, the review date and an expiry at most 90 days after it. An expired entry fails the scan until
-  somebody reviews it again or removes it; a malformed entry fails too.
+- An allowlist entry (`.github/security-allowlist.json`) names the scanner (`audit` or `image`), the advisory or CVE, the
+  package, a reason, a tracking link, the review date and an expiry at most 90 days after it. An expired entry fails the
+  scan until somebody reviews it again or removes it; a malformed entry (a missing `package` included) fails too.
+- The scan fails closed. A report that is empty, not JSON, not the scanner's report (`{}`, an error document) or lists no
+  scanned target is an error, never "clean".
+
+Exit codes (the Image scan workflow relies on them; anything not listed, such as the interpreter's 1 for an error that
+escapes this script, is a crash and fails the job):
+
+    0    clean
+    10   findings: a policy failure (HIGH/CRITICAL findings, an expired or malformed allowlist entry); the only code that a
+         pull request run of the Image scan lets through
+    2    the scan did not run or its report is unusable (registry or advisory database unreachable, no report, empty,
+         unparsable or without scanned targets, an unreadable allowlist)
+    3    the script crashed (an unexpected exception; the traceback is printed)
 
 The scanners run in containers pinned by digest, the same way the application's checks do: the Node image and pnpm
 version are read from docker/Dockerfile, so the audit uses the toolchain that builds the lockfile. Python standard library only.
@@ -33,6 +45,7 @@ import subprocess
 import sys
 import tempfile
 import time
+import traceback
 from pathlib import Path
 from typing import Iterable
 
@@ -45,12 +58,18 @@ FAILING = ("HIGH", "CRITICAL")
 MAX_EXCEPTION_DAYS = 90
 SCANNERS = ("audit", "image")
 ENTRY_KEYS = {"scanner", "id", "package", "reason", "tracking", "reviewed", "expires"}
-REQUIRED_KEYS = {"scanner", "id", "reason", "tracking", "reviewed", "expires"}
+REQUIRED_KEYS = ENTRY_KEYS  # every key; an entry without `package` would excuse the advisory in every package
+EXIT_CLEAN = 0
+EXIT_UNUSABLE = 2
+EXIT_CRASH = 3
+# Not 1: that is what the interpreter exits with for an exception nothing caught (an import error, a syntax error), which
+# must never look like "findings" to a workflow that lets findings through on a pull request.
+EXIT_FINDINGS = 10
 ID_PATTERN = re.compile(r"(GHSA(-[23456789cfghjmpqrvwx]{4}){3}|CVE-\d{4}-\d{4,})\Z")
 
 
 class Problem(Exception):
-    """A configuration or tool failure (exit 2), as opposed to a policy failure (exit 1)."""
+    """A configuration or tool failure (EXIT_UNUSABLE), as opposed to a policy failure (EXIT_FINDINGS)."""
 
 
 # --- the allowlist -------------------------------------------------------------------------------------------------
@@ -84,6 +103,8 @@ def load_allowlist(path: Path | None = None, today: dt.date | None = None) -> tu
             problems.append(f"{label}: scanner must be one of {', '.join(SCANNERS)}")
         if not isinstance(entry["id"], str) or not ID_PATTERN.match(entry["id"]):
             problems.append(f"{label}: id must be a GHSA or CVE identifier")
+        if not isinstance(entry["package"], str) or not entry["package"].strip():
+            problems.append(f"{label}: package must name the package the exception is for")
         if not isinstance(entry["reason"], str) or len(entry["reason"].strip()) < 30:
             problems.append(f"{label}: the reason must say why the risk is accepted, in at least 30 characters")
         if not isinstance(entry["tracking"], str) or not entry["tracking"].startswith(("https://github.com/", "#")):
@@ -100,7 +121,7 @@ def load_allowlist(path: Path | None = None, today: dt.date | None = None) -> tu
             problems.append(f"{label}: expires must be after reviewed and at most {MAX_EXCEPTION_DAYS} days later")
         if expires < today:
             problems.append(f"{label}: expired on {expires}; review it again (new dates) or remove it")
-        key = (entry["scanner"], entry["id"], entry.get("package", ""))
+        key = (entry["scanner"], entry["id"], entry["package"])
         if key in seen:
             problems.append(f"{label}: listed twice")
         seen.add(key)
@@ -108,8 +129,9 @@ def load_allowlist(path: Path | None = None, today: dt.date | None = None) -> tu
 
 
 def allowed(entries: Iterable[dict], scanner: str, finding_id: str, package: str) -> bool:
-    return any(entry.get("scanner") == scanner and entry.get("id") == finding_id and entry.get("package", package) == package
-               for entry in entries)
+    """An entry excuses one advisory in one package; an entry without a package excuses nothing."""
+    return bool(package) and any(entry.get("scanner") == scanner and entry.get("id") == finding_id and entry.get("package") == package
+                                 for entry in entries)
 
 
 # --- pnpm audit ----------------------------------------------------------------------------------------------------
@@ -124,6 +146,27 @@ def toolchain() -> tuple[str, str]:
     return image.group(1), pnpm.group(1)
 
 
+def parse_report(text: str, what: str) -> object:
+    """The JSON of a scanner's report; an empty or unparsable one is a Problem."""
+    if not text.strip():
+        raise Problem(f"{what}: the report is empty")
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError as error:
+        raise Problem(f"{what}: the report is not JSON ({error})") from error
+
+
+def validate_audit_report(report: object, what: str = "pnpm audit") -> dict:
+    """A `pnpm audit --json` report that scanned something. `{}` or an error document is not a clean report."""
+    if not isinstance(report, dict) or not isinstance(report.get("advisories"), dict):
+        raise Problem(f"{what}: not a pnpm audit report (no `advisories` object): {json.dumps(report)[:200]}")
+    metadata = report.get("metadata")
+    total = metadata.get("totalDependencies") if isinstance(metadata, dict) else None
+    if total is not None and not (isinstance(total, int) and total > 0):
+        raise Problem(f"{what}: the report counts {total!r} dependencies, so nothing was scanned")
+    return report
+
+
 def run_audit() -> dict:
     image, pnpm = toolchain()
     command = ["docker", "run", "--rm", "-v", f"{ROOT / 'app'}:/work:ro,z", "-w", "/work", image, "sh", "-c",
@@ -133,15 +176,12 @@ def run_audit() -> dict:
         result = subprocess.run(command, capture_output=True, text=True)
         # pnpm exits 1 when it found advisories and still prints the report; no report is a failure of the audit itself.
         try:
-            report = json.loads(result.stdout)
-            if isinstance(report, dict) and "advisories" in report:
-                return report
-        except json.JSONDecodeError:
-            pass
-        last = (result.stderr or result.stdout)[-400:]
+            return validate_audit_report(parse_report(result.stdout, "pnpm audit"))
+        except Problem as error:
+            last = f"{error}; {(result.stderr or '')[-300:]}"
         if attempt < 3:
             time.sleep(5 * attempt)
-    raise Problem(f"pnpm audit gave no report after 3 attempts (registry unreachable?): {last.strip()}")
+    raise Problem(f"pnpm audit gave no usable report after 3 attempts (registry unreachable?): {last.strip()}")
 
 
 def audit_findings(report: dict) -> list[dict]:
@@ -179,6 +219,16 @@ def image_findings(report: dict) -> list[dict]:
     return findings
 
 
+def validate_trivy_report(report: object, reference: str) -> dict:
+    """A Trivy report of an artifact with scanned targets. `{}` or a report without `Results` is not a clean image."""
+    if not isinstance(report, dict) or not report.get("ArtifactName"):
+        raise Problem(f"{reference}: not a Trivy report (no `ArtifactName`): {json.dumps(report)[:200]}")
+    results = report.get("Results")
+    if not isinstance(results, list) or not results:
+        raise Problem(f"{reference}: the report has no scanned targets (`Results` is missing or empty), so nothing was checked")
+    return report
+
+
 def run_trivy(reference: str, report_file: Path, *, local: bool, platform: str, cache: Path, network: str, insecure: bool) -> dict:
     report_file.parent.mkdir(parents=True, exist_ok=True)
     cache.mkdir(parents=True, exist_ok=True)
@@ -197,15 +247,23 @@ def run_trivy(reference: str, report_file: Path, *, local: bool, platform: str, 
                 arguments += ["--insecure"]
         command = ["docker", "run", "--rm", "--network", network, "-v", f"{work}:/work:z", "-v", f"{cache}:/root/.cache:z",
                    "-e", "TRIVY_USERNAME", "-e", "TRIVY_PASSWORD", TRIVY_IMAGE, *arguments]
+        last = ""
         for attempt in range(1, 4):
             result = subprocess.run(command)
             report_path = Path(work) / "report.json"
-            if result.returncode == 0 and report_path.exists():
-                shutil.copy(report_path, report_file)
-                return json.loads(report_path.read_text(encoding="utf-8"))
+            if result.returncode != 0:
+                last = f"Trivy exited {result.returncode}"
+            elif not report_path.exists():
+                last = "Trivy wrote no report"
+            else:
+                shutil.copy(report_path, report_file)  # kept for the run's artifact even when it is unusable
+                try:
+                    return validate_trivy_report(parse_report(report_path.read_text(encoding="utf-8"), reference), reference)
+                except Problem as error:
+                    last = str(error)
             if attempt < 3:
                 time.sleep(10 * attempt)  # the vulnerability database and registries answer 429 now and then
-        raise Problem(f"Trivy could not scan {reference}")
+        raise Problem(f"Trivy could not scan {reference} after 3 attempts: {last}")
 
 
 # --- reports -------------------------------------------------------------------------------------------------------
@@ -259,12 +317,19 @@ def command_allowlist(_: argparse.Namespace) -> int:
     for problem in problems:
         print(f"allowlist: {problem}", file=sys.stderr)
     print(f"allowlist: {len(entries)} exceptions, {len(problems)} problems")
-    return 1 if problems else 0
+    return EXIT_FINDINGS if problems else EXIT_CLEAN
 
 
 def command_audit(arguments: argparse.Namespace) -> int:
     entries, problems = load_allowlist()
-    report = json.loads(Path(arguments.json).read_text(encoding="utf-8")) if arguments.json else run_audit()
+    if arguments.json:
+        try:
+            text = Path(arguments.json).read_text(encoding="utf-8")
+        except OSError as error:
+            raise Problem(f"cannot read {arguments.json}: {error}") from error
+        report = validate_audit_report(parse_report(text, arguments.json), arguments.json)
+    else:
+        report = run_audit()
     findings = audit_findings(report)
     failing, excused, _ = judge(findings, "audit", entries, need_fix=False)
     lines = ["## Dependency audit (`pnpm audit --prod`)", "",
@@ -279,7 +344,7 @@ def command_audit(arguments: argparse.Namespace) -> int:
     if failing:
         print("\nTo accept a finding you have reviewed, add it to .github/security-allowlist.json with a reason, a tracking link and an expiry "
               "(docs/agents/ci-and-releases.md#security-scanning). Otherwise upgrade the package.", file=sys.stderr)
-    return 1 if failing or problems else 0
+    return EXIT_FINDINGS if failing or problems else EXIT_CLEAN
 
 
 def command_image(arguments: argparse.Namespace) -> int:
@@ -307,7 +372,7 @@ def command_image(arguments: argparse.Namespace) -> int:
     emit("\n".join(lines), arguments.summary_file)
     if arguments.fingerprint_file:
         Path(arguments.fingerprint_file).write_text(fingerprint(failed) + "\n", encoding="utf-8")
-    return 1 if failed or problems else 0
+    return EXIT_FINDINGS if failed or problems else EXIT_CLEAN
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -334,7 +399,11 @@ def main(argv: list[str] | None = None) -> int:
         return arguments.run(arguments)
     except Problem as error:
         print(f"security_scan: {error}", file=sys.stderr)
-        return 2
+        return EXIT_UNUSABLE
+    except Exception:  # a crash is neither clean nor findings: it gets its own code, and it fails the job everywhere
+        traceback.print_exc()
+        print("security_scan: crashed (see the traceback above); the scan did not complete", file=sys.stderr)
+        return EXIT_CRASH
 
 
 if __name__ == "__main__":

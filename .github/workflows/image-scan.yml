@@ -5,6 +5,9 @@ name: Image scan
 # fix fail the run unless .github/security-allowlist.json names them. On a schedule or a dispatch a failing run opens an
 # issue labelled `security-scan`, or updates the open one when the set of findings changed. Pull requests that change the
 # scan or its allowlist run it too (read-only, no issue), which is how a change to it is proven.
+# The script's exit code (scripts/security_scan.py): 0 clean, 10 findings, 2 the scan or its report was unusable, 3 the
+# script crashed. Only 10 is let through on a pull request; any other code, including the interpreter's 1 for an error
+# nothing caught and an empty value, fails the job.
 on:
   schedule:
     - cron: "23 5 * * 2"
@@ -32,12 +35,16 @@ jobs:
       contents: read
       packages: read
     outputs:
-      failed: ${{ steps.scan.outputs.rc == '1' }}
+      failed: ${{ steps.scan.outputs.rc == '10' }}
     steps:
       - name: Check out repository
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           persist-credentials: false
+      # A malformed or expired exception is a fault of the change on a pull request: the scan below only reports it.
+      - name: Validate the allowlist
+        if: github.event_name == 'pull_request'
+        run: python3 scripts/security_scan.py allowlist
       - name: Find the images of the latest release
         id: release
         env:
@@ -79,12 +86,13 @@ jobs:
           path: security-reports/*
           if-no-files-found: ignore
           retention-days: 30
-      # On a pull request the findings are shown and do not fail the run: they are a fact about the published release, not about
-      # the change. A scan that did not run (exit 2) fails everywhere.
-      - name: Fail on findings or on a scan that did not run
-        if: steps.scan.outputs.rc == '2' || (github.event_name != 'pull_request' && steps.scan.outputs.rc != '0')
+      # On a pull request the findings (10) are shown and do not fail the run: they are a fact about the published release, not
+      # about the change. Nothing else passes: not a scan that did not run or whose report was unusable (2), not a crash (3),
+      # not any other or missing code. The condition lists what is let through, so an unknown value fails.
+      - name: Fail on findings, on a scan that did not run, or on a crash
+        if: steps.scan.outputs.rc != '0' && (steps.scan.outputs.rc != '10' || github.event_name != 'pull_request')
         run: |
-          echo "The scan exited ${{ steps.scan.outputs.rc }} (1: HIGH/CRITICAL findings with a fix; 2: the scan itself failed). See the summary." >&2
+          echo "The scan exited ${{ steps.scan.outputs.rc }} (10: HIGH/CRITICAL findings with a fix; 2: the scan or its report was unusable; 3: the script crashed). See the summary and the log." >&2
           exit 1
 
   report:

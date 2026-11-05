@@ -83,7 +83,7 @@ superseded runs, read-only tokens, and the scanner in a container pinned by dige
 
 | Scanner | What it checks | When | Failure |
 | --- | --- | --- | --- |
-| [Dependabot](../../.github/dependabot.yml) | Version updates for the pnpm workspace (`app/`), GitHub Actions, Dockerfiles and Compose files | Weekly (Monday), grouped, at most 3 to 5 open PRs per ecosystem | A PR, reviewed and merged like any other |
+| [Dependabot](../../.github/dependabot.yml) | Version updates for the pnpm workspace (`app/`), the docs site (`site/`) and the test tooling with a lockfile (`app/tooling/`), GitHub Actions, Dockerfiles and Compose files | Weekly (Monday), batched (one PR per group and directory; a major update arrives alone), at most 3 to 5 open PRs per ecosystem | A PR, reviewed and merged like any other |
 | [Dependency audit](../../.github/workflows/dependency-audit.yml) | `pnpm audit --prod` on `app/pnpm-lock.yaml` through `scripts/security_scan.py audit` | Pull requests that touch a manifest, the lockfile, the audit or its allowlist; weekly on `main`; dispatch | A HIGH or CRITICAL advisory in a production dependency that the allowlist does not name |
 | [CodeQL](../../.github/workflows/codeql.yml) | `javascript-typescript`, `security-extended`, over `app/apps`, `app/packages` and `app/tooling` ([config](../../.github/codeql/codeql-config.yml)) | Same-repository pull requests that touch that source; weekly on `main`; dispatch | New alerts under Security > Code scanning; the run is red only when CodeQL itself fails |
 | Image scan | Trivy on both release images, every platform: [`final-release.yml`](../../.github/workflows/final-release.yml) job `scan` before the draft, and [`image-scan.yml`](../../.github/workflows/image-scan.yml) weekly on the latest published release | Each release candidate; weekly | The release run fails on a HIGH or CRITICAL finding that has a fixed version and is not allowlisted; the weekly run opens or updates an issue labelled `security-scan` |
@@ -93,13 +93,31 @@ same image scan on its throwaway registry, so the release workflow's gate can be
 pnpm version of the audit are read from `docker/Dockerfile`; Trivy is pinned in the script. Findings without a fixed
 version are listed and do not fail an image scan; an advisory without a fix still needs an allowlist entry for the audit.
 
+The scans fail closed. A report that is empty, not JSON, not the scanner's report (`{}`, an error document) or lists no
+scanned target (`Results` empty for an image, no dependencies counted for the audit) is an error, never "clean", and a
+crash of the script is never "findings". The script's exit codes carry that, and the Image scan workflow relies on them
+(the other consumers fail on any non-zero code):
+
+| Exit | Meaning | On a pull request run of `Image scan` |
+| --- | --- | --- |
+| `0` | Clean | Passes |
+| `10` | Findings: HIGH/CRITICAL with a fix and not allowlisted, or an expired or malformed allowlist entry | Passes, shown in the summary: a fact about the published release, not about the change (the allowlist itself is validated by an earlier step that fails) |
+| `2` | The scan did not run or its report is unusable: no report, empty, unparsable, no scanned targets, unreadable allowlist, the registry or advisory database unreachable after three attempts | Fails |
+| `3` | The script crashed (the traceback is in the log) | Fails |
+| anything else | The interpreter's `1` for an error nothing caught (an import or syntax error), a killed process, a step that wrote no code | Fails: the workflow lists what passes, so an unknown code does not |
+
+On a schedule or a dispatch every non-zero code fails the run, and only `10` opens or updates the `security-scan` issue.
+
 ### The allowlist
 
 [`.github/security-allowlist.json`](../../.github/security-allowlist.json) is the one list of reviewed exceptions for the
 audit and the image scan. An entry names the `scanner` (`audit` or `image`), the advisory or CVE `id` (the audit uses
 GHSA identifiers, Trivy often CVE identifiers for the same advisory, so a package can need one entry in each), the
-`package`, a `reason` that says why the risk is accepted, a `tracking` link to the issue that removes it, the `reviewed`
-date and an `expires` date at most 90 days later. An expired or malformed entry fails the scan until somebody
+`package` (required: an entry excuses one advisory in one package, and an entry without a package is malformed), a `reason`
+that says why the risk is accepted, a `tracking` link to the issue that removes it, the `reviewed` date and an
+`expires` date at most 90 days later. The reason is the reachability judgement, not "it is in the lockfile": which code
+path the advisory needs, that Flux does not have it (or that it is an availability problem for an authenticated user
+only), and the upgrade that removes the entry. An expired or malformed entry fails the scan until somebody
 reviews it again (new dates, a reason that still holds) or removes it; that is the point. Add an entry only in a PR whose
 description links the evidence (reachability, why the fix cannot land yet), and prefer the fix to the entry.
 `python3 scripts/security_scan.py allowlist` validates the file.
