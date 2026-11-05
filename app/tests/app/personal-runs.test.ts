@@ -61,7 +61,7 @@ describe('personal assistant runs (#68, fake compute: no provider pass is claime
   let thread: Conversation;
   let work: WorkItem;
   const agents: Record<string, string> = {};
-  const grants: Record<string, string> = {};
+  let keptOut = '';
   let projectSketch: { id: string; thoughtId: string };
   let privateSketch: { id: string; thoughtId: string };
   let dmSketch: { id: string; thoughtId: string };
@@ -71,11 +71,12 @@ describe('personal assistant runs (#68, fake compute: no provider pass is claime
   const ask = (someone: Person, prompt = 'Summarize where we are', extra: Record<string, unknown> = {}) =>
     runs.invoke(human(someone), thread.id, { clientRunId: randomUUID(), kind: 'ask', prompt, ...extra });
 
-  async function grantAgent(name: string) {
-    grants[name] = (await post<{ id: string }>(ada, `/api/v1/projects/${lamp.id}/grants`, { principal: { kind: 'agent', id: agents[name] }, role: 'contributor' })).id;
+  /** Hubert kept out of the project: his assistant loses it with him (F-036 AG-3). */
+  async function keepHubertOut() {
+    keptOut = (await post<{ id: string }>(ada, `/api/v1/projects/${lamp.id}/grants`, { principal: { kind: 'human', id: hubert.id }, role: 'denied' })).id;
   }
-  async function revokeAgentGrant(name: string) {
-    expectStatus(await ada.browser.request('DELETE', `/api/v1/projects/${lamp.id}/grants/${grants[name]}`), 204, 'revoke agent grant');
+  async function letHubertBack() {
+    expectStatus(await ada.browser.request('DELETE', `/api/v1/projects/${lamp.id}/grants/${keptOut}`), 204, 'let Hubert back in');
   }
   async function enable(someone: Person, name: string, connectionId: string) {
     connections.connect(someone.id, connectionId);
@@ -92,9 +93,7 @@ describe('personal assistant runs (#68, fake compute: no provider pass is claime
     await post(ada, `/api/v1/projects/${other.id}/grants`, { principal: { kind: 'human', id: hubert.id }, role: 'contributor' });
     for (const [name, someone] of [['hubert', hubert], ['maurycy', maurycy], ['lee', lee]] as const) {
       agents[name] = (await post<{ id: string }>(someone, `/api/v1/workspaces/${ws.id}/agents`, { name: `${name} assistant`, owner: 'self' })).id;
-      await grantAgent(name);
     }
-    await post(ada, `/api/v1/projects/${other.id}/grants`, { principal: { kind: 'agent', id: agents.hubert }, role: 'contributor' });
 
     thread = await post<Conversation>(kai, `/api/v1/projects/${lamp.id}/conversations`, { body: 'Camera fails below 5 lux in the low-light test', clientMessageId: randomUUID() });
     await post(hubert, `/api/v1/conversations/${thread.id}/messages`, { body: 'The ToF sensor kept working with swipe + hold', clientMessageId: randomUUID() });
@@ -288,9 +287,9 @@ describe('personal assistant runs (#68, fake compute: no provider pass is claime
 
     // Denied before read: the agent lost its grant.
     const denied = await ask(hubert);
-    await revokeAgentGrant('hubert');
+    await keepHubertOut();
     assert.equal(await processor.process(denied.run.id), 'denied');
-    await grantAgent('hubert');
+    await letHubertBack();
     // Paused: queued work ends at once; a paused assistant refuses new work.
     const paused = await ask(hubert);
     assert.equal((await runs.pause(human(hubert))).state, 'paused');
@@ -420,22 +419,22 @@ describe('personal assistant runs (#68, fake compute: no provider pass is claime
   });
 
   test('AC-6: revoking the grant or removing the member between read and commit commits nothing', async () => {
-    hooks.afterRead = async () => { await revokeAgentGrant('hubert'); };
+    hooks.afterRead = async () => { await keepHubertOut(); };
     const beforeDispatch = await ask(hubert);
     const dispatched = compute.dispatched.length;
     assert.equal(await processor.process(beforeDispatch.run.id), 'denied');
     assert.deepEqual([(await row(beforeDispatch.run.id)).stopped_at_stage, (await row(beforeDispatch.run.id)).charged_micros], ['before_dispatch', 0]);
     assert.equal(compute.dispatched.length, dispatched);
-    await grantAgent('hubert');
+    await letHubertBack();
 
     hooks.afterRead = undefined;
-    hooks.afterDispatch = async () => { await revokeAgentGrant('hubert'); };
+    hooks.afterDispatch = async () => { await keepHubertOut(); };
     const beforeCommit = await ask(hubert);
     assert.equal(await processor.process(beforeCommit.run.id), 'denied');
     const withheld = await row(beforeCommit.run.id);
     assert.deepEqual([withheld.stopped_at_stage, withheld.cost_state, withheld.answer_body], ['before_commit', 'observed', null]);
     assert.ok(withheld.charged_micros > 0, 'a dispatched request keeps its observed charge');
-    await grantAgent('hubert');
+    await letHubertBack();
 
     await enable(lee, 'lee', randomUUID());
     hooks.afterDispatch = async () => { await removeMember(ada, ws.id, lee); };
@@ -455,7 +454,7 @@ describe('personal assistant runs (#68, fake compute: no provider pass is claime
     const countsFor = (prompt: string) => compute.counted.filter((request) => request.input.includes(`Request: ${prompt}`)).length;
     const dispatched = compute.dispatched.length;
     const cases: [string, (runId: string) => Promise<unknown>, string, () => Promise<unknown>][] = [
-      ['grant revoked', () => revokeAgentGrant('hubert'), 'denied', () => grantAgent('hubert')],
+      ['grant revoked', () => keepHubertOut(), 'denied', () => letHubertBack()],
       ['stopped', (runId) => runs.stop(human(hubert), runId), 'stopped', async () => undefined],
       ['paused', () => runs.pause(human(hubert)), 'paused', () => runs.resume(human(hubert))],
     ];
@@ -475,12 +474,12 @@ describe('personal assistant runs (#68, fake compute: no provider pass is claime
     // Trimming sends one count per attempt: a change between two counts stops the next one.
     const prompt = `Preflight trimming ${randomUUID()}`;
     compute.count = () => 20_000;
-    compute.onCount = async (request) => { if (request.input.includes(prompt)) await revokeAgentGrant('hubert'); };
+    compute.onCount = async (request) => { if (request.input.includes(prompt)) await keepHubertOut(); };
     const trimmed = await ask(hubert, prompt);
     assert.equal(await processor.process(trimmed.run.id), 'denied');
     compute.count = (request) => Math.ceil(request.input.length / 4);
     compute.onCount = null;
-    await grantAgent('hubert');
+    await letHubertBack();
     assert.equal(countsFor(prompt), 1, 'the second count request was never sent');
     const stored = await row(trimmed.run.id);
     assert.deepEqual([stored.cost_state, stored.charged_micros, stored.answer_body], ['released', 0, null]);

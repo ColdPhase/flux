@@ -29,7 +29,6 @@ test('a connected real Claude Code is refused after AI is turned off and works a
     const workspace = expect(await owner.request('POST', '/api/v1/workspaces', { body: { name: 'Garden club' } }), 201) as unknown as Workspace;
     const projectId = String(expect(await owner.request('POST', `/api/v1/workspaces/${workspace.id}/projects`, { body: { name: 'Sensor study', visibility: 'restricted' } }), 201).id);
     const agentId = String(expect(await owner.request('POST', `/api/v1/workspaces/${workspace.id}/agents`, { body: { name: 'Owner Claude', owner: 'self' } }), 201).id);
-    expect(await owner.request('POST', `/api/v1/projects/${projectId}/grants`, { body: { principal: { kind: 'agent', id: agentId }, role: 'contributor' } }), 201);
     expect(await owner.request('POST', '/api/v1/agent-connections', { body: { name: spec.label, clientDesignation: spec.designation, agentId, selectedProjectIds: [projectId], scopes } }), 201);
     const clientId = await seedOauthClient(pool, spec);
     const home = cleanClientHome(spec);

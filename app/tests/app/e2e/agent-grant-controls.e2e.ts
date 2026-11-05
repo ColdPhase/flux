@@ -38,7 +38,6 @@ test('grants made, narrowed and revoked in the browser are what the agent\'s nex
     const project = expect(await owner.request('POST', `/api/v1/workspaces/${workspace.id}/projects`, { body: { name: 'Sensor study', visibility: 'restricted' } }), 201);
     const projectId = String(project.id);
     const agent = expect(await owner.request('POST', `/api/v1/workspaces/${workspace.id}/agents`, { body: { name: 'Owner agent', owner: 'self' } }), 201);
-    expect(await owner.request('POST', `/api/v1/projects/${projectId}/grants`, { body: { principal: { kind: 'agent', id: agent.id }, role: 'contributor' } }), 201);
     const connection = await agentConnection(pool, owner, String(agent.id), [projectId]);
     const createTask = (grantId: string, title: string) => connection.tool('flux_create_task', { projectId, runtimeSessionId: connection.runtimeSessionId,
       grantId, clientCommandId: randomUUID(), peerRequestClass: 'execute', sources: [], task: { title } });

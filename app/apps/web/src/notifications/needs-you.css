@@ -144,3 +144,9 @@
   .nyq__filters .ui-tabs__bar .ui-tabs__tab { flex: 1 1 auto; min-width: 0; padding: 0 8px; --tab-pad: 8px; }
 }
 .nyq__bar--head { display: flex; align-items: center; gap: 14px; padding: 0; }
+
+/* One agent run's waiting changes (F-036 AG-7, mockup AiPhone): what waits, and for whom. */
+.nyc__waits { display: grid; gap: 4px; margin: 6px 0 0; padding: 0; list-style: none; font-size: var(--fs-sm); color: var(--t1); }
+.nyc__waits li { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; min-width: 0; }
+.nyc__waits li > span:first-child { min-width: 0; overflow-wrap: anywhere; }
+.nyc__waits-for { flex: none; color: var(--t3); font-size: var(--fs-xs); }

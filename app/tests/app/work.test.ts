@@ -45,8 +45,7 @@ describe('work, decisions and results in a project', () => {
       { body: 'Camera or sensor? Let us test the camera in low light first.', clientMessageId: randomUUID() }), 201);
     material = json<Material>(await post(owner, `/api/v1/projects/${lamp.id}/materials`,
       { clientMutationId: randomUUID(), title: 'Low-light test plan', body: '5 lux, 20 gestures' }), 201);
-    agent = json<Agent>(await post(owner, `/api/v1/workspaces/${ws.id}/agents`, { name: 'Lab helper', owner: 'workspace' }), 201);
-    json(await post(owner, `/api/v1/projects/${lamp.id}/grants`, { principal: { kind: 'agent', id: agent.id }, role: 'contributor' }), 201);
+    agent = json<Agent>(await post(owner, `/api/v1/workspaces/${ws.id}/agents`, { name: 'Lab helper', owner: 'self' }), 201);
   });
 
   test('work is created from a message in one action and the message stays in place', async () => {

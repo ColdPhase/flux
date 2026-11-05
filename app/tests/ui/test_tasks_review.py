@@ -109,7 +109,6 @@ class TasksReviewJourney(unittest.TestCase):
         for key in ("jonas", "alex"):
             self.api(ada, "POST", f"/api/v1/projects/{pid}/grants", {"principal": {"kind": "human", "id": PEOPLE[key]["id"]}, "role": "contributor"}, status=201)
         agent = self.api(ada, "POST", f"/api/v1/workspaces/{ws['id']}/agents", {"name": "Alex", "owner": "self"}, status=201)
-        self.api(ada, "POST", f"/api/v1/projects/{pid}/grants", {"principal": {"kind": "agent", "id": agent["id"]}, "role": "contributor"}, status=201)
         base = f"/api/v1/projects/{pid}/work"
         me = lambda key: {"kind": "human", "id": PEOPLE[key]["id"]}  # noqa: E731
         many = self.api(ada, "POST", f"/api/v1/workspaces/{ws['id']}/projects", {"name": "Many chores", "visibility": "restricted"}, status=201)

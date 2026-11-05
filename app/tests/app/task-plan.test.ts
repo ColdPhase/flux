@@ -602,11 +602,9 @@ test('permissions: only people and agents who can write the project plan tasks; 
   const writerGrant = (await pool.query('SELECT id FROM project_grants WHERE project_id=$1 AND user_id=$2', [f.place.id, f.writer.id])).rows[0].id;
   expectStatus(await f.owner.browser.request('DELETE', `/api/v1/projects/${f.place.id}/grants/${writerGrant}`), 204);
   assert.notEqual((await f.writer.browser.request('POST', f.tasks, { body })).status, 201);
-  // A genuine agent with a contributor grant plans through the same command; without one it cannot.
+  // An agent plans through the same command, with its owner's rights (F-036 AG-3).
   const agent = expectStatus(await f.owner.browser.request('POST', `/api/v1/workspaces/${f.ws.id}/agents`, { body: { name: 'Planner agent', owner: 'self' } }), 201) as Agent;
   const agentActor = { kind: 'agent' as const, id: agent.id } as Principal;
-  await assert.rejects(workUseCases(db).createWork(agentActor, f.place.id, { title: 'Agent plan', dependencyIds: [prerequisite.id] }), (error: unknown) => error instanceof DomainError && error.status === 404);
-  expectStatus(await f.owner.browser.request('POST', `/api/v1/projects/${f.place.id}/grants`, { body: { principal: { kind: 'agent', id: agent.id }, role: 'contributor' } }), 201);
   const byAgent = await workUseCases(db).createWork(agentActor, f.place.id, { title: 'Agent plan', criteria: ['Agent criterion'], dependencyIds: [prerequisite.id], planIntent: intentOf(f, 'agent-plan') });
   assert.deepEqual([byAgent.createdBy.kind, byAgent.createdBy.id, byAgent.criteria, byAgent.dependencyIds], ['agent', agent.id, ['Agent criterion'], [prerequisite.id]]);
 });
@@ -625,7 +623,6 @@ function ordered(tx: Parameters<Parameters<typeof db.transaction>[0]>[0]) {
 
 async function execution(f: Scene, maximumUses = 3) {
   const agent = expectStatus(await f.owner.browser.request('POST', `/api/v1/workspaces/${f.ws.id}/agents`, { body: { name: 'Execution planner', owner: 'self' } }), 201) as Agent;
-  expectStatus(await f.owner.browser.request('POST', `/api/v1/projects/${f.place.id}/grants`, { body: { principal: { kind: 'agent', id: agent.id }, role: 'contributor' } }), 201);
   const connection = expectStatus(await f.owner.browser.request('POST', '/api/v1/agent-connections', { body: { agentId: agent.id, selectedProjectIds: [f.place.id],
     scopes: ['flux.context.read', 'flux.proposal.write', 'flux.action.execute'] } }), 201) as AgentConnection;
   const clientId = `plan-fixture-${randomUUID()}`; const bindingId = randomUUID();

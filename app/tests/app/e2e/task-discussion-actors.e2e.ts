@@ -214,9 +214,6 @@ test('agent root renders without a human DM link, real human reply persists, and
     const agent = expectStatus(await owner.browser.request('POST', `/api/v1/workspaces/${ws.id}/agents`, {
       body: { name: 'Trial analyst', owner: 'self' },
     }), 201) as { id: string };
-    const access = expectStatus(await owner.browser.request('POST', `/api/v1/projects/${place.id}/grants`, {
-      body: { principal: { kind: 'agent', id: agent.id }, role: 'contributor' },
-    }), 201) as { id: string };
     const actor = { kind: 'agent' as const, id: agent.id };
     const command = { body: 'The measured result needs a human counterexample.', clientMessageId: randomUUID() };
     const root = await taskDiscussionUseCases(db).contribute(actor, task.id, command);
@@ -277,7 +274,7 @@ test('agent root renders without a human DM link, real human reply persists, and
     assert.equal(await notice.locator('.convo-notice__meta strong').innerText(), 'Casey Human · you');
     const evidence = process.env.FLUX_E2E_EVIDENCE_DIR;
     if (evidence) { mkdirSync(evidence, { recursive: true }); await page.screenshot({ path: join(evidence, 'agent-root-desktop.png'), fullPage: true }); }
-    expectStatus(await owner.browser.request('DELETE', `/api/v1/projects/${place.id}/grants/${access.id}`), 204);
+    expectStatus(await owner.browser.request('DELETE', `/api/v1/agents/${agent.id}`), 200);
     for (const width of [1280, 390]) {
       const readerContext = await signedIn(reader, width);
       const view = await readerContext.newPage();
@@ -296,7 +293,7 @@ test('agent root renders without a human DM link, real human reply persists, and
       const thread = view.locator('#thread');
       await assertAuthorColumn(thread.locator(`#thread-root-${root.id}`), width);
       await thread.locator('.thread__root .agent-for').filter({ hasText: 'for Casey Human' }).waitFor();
-      await thread.getByText('You have read access to this project.', { exact: true }).waitFor();
+      await thread.getByText('You have read access to this space.', { exact: true }).waitFor();
       assert.equal(await view.getByRole('textbox', { name: 'Reply', exact: true }).count(), 0);
       assert.equal(await view.getByRole('button', { name: 'Send reply', exact: true }).count(), 0);
       const sources = thread.getByRole('button', { name: 'Sources', exact: true });
@@ -331,12 +328,9 @@ test('agent root renders without a human DM link, real human reply persists, and
     }
     assert.deepEqual((await pool.query('SELECT * FROM project_messages WHERE id=$1', [root.id])).rows[0], stored);
     const workspaceAgent = expectStatus(await owner.browser.request('POST', `/api/v1/workspaces/${ws.id}/agents`, {
-      body: { name: 'Workspace analyst', owner: 'workspace' },
+      body: { name: 'Workspace analyst', owner: 'self' },
     }), 201) as { id: string };
     const workspaceActor = { kind: 'agent' as const, id: workspaceAgent.id };
-    expectStatus(await owner.browser.request('POST', `/api/v1/projects/${place.id}/grants`, {
-      body: { principal: workspaceActor, role: 'contributor' },
-    }), 201);
     const workspaceTask = await workUseCases(db).createWork(workspaceActor, place.id, { title: 'Check the workspace trial' });
     const workspaceRoot = await taskDiscussionUseCases(db).contribute(workspaceActor, workspaceTask.id, {
       body: 'The workspace agent recorded this observation.', clientMessageId: randomUUID(),
@@ -354,12 +348,12 @@ test('agent root renders without a human DM link, real human reply persists, and
       await workspaceView.locator('#thread').waitFor({ state: 'detached' });
       const workspaceEvent = workspaceView.locator(`.convo-notice[data-work-id="${workspaceTask.id}"]`);
       await assertAuthorColumn(workspaceEvent, 390);
-      await workspaceEvent.locator('.agent-for').filter({ hasText: 'for the workspace' }).waitFor();
+      await workspaceEvent.locator('.agent-for').waitFor();
       assert.match(await workspaceEvent.innerText(), /Workspace analyst\s*Agent/);
       await captureVisibleAuthor(workspaceView, workspaceEvent, `workspace-agent-event-390-dark-text200${touch ? '-touch' : ''}`, evidence);
       const workspaceRow = workspaceView.locator(`#message-${workspaceRoot.id}`);
       await assertAuthorColumn(workspaceRow, 390);
-      await workspaceRow.locator('.agent-for').filter({ hasText: 'for the workspace' }).waitFor();
+      await workspaceRow.locator('.agent-for').waitFor();
       assert.equal(await workspaceRow.locator('a[href*="/dm/new"]').count(), 0);
       assert.equal(await workspaceView.evaluate(() => document.documentElement.scrollWidth - innerWidth), 0);
       await captureVisibleAuthor(workspaceView, workspaceRow, `workspace-agent-author-390-dark-text200${touch ? '-touch' : ''}`, evidence);
@@ -381,17 +375,17 @@ test('agent root renders without a human DM link, real human reply persists, and
 
 test('native agent owners retry failed reads, fence stale permission answers and survive same-tab account changes',
   { timeout: 90_000 }, async () => {
-    const [owner, guest] = await Promise.all(['Scoped Casey', 'Scoped Guest'].map(person));
+    const [owner, casey, guest] = await Promise.all(['Scoped Manager', 'Scoped Casey', 'Scoped Guest'].map(person));
     const ws = await workspace(owner, 'Owner projection');
+    await addMember(owner, ws.id, casey, 'member');
     await addMember(owner, ws.id, guest, 'guest');
     const place = await project(owner, ws.id, 'Owner scope', 'restricted');
+    await grant(owner, place.id, casey, 'contributor');
     await grant(owner, place.id, guest, 'viewer');
-    const agent = expectStatus(await owner.browser.request('POST', `/api/v1/workspaces/${ws.id}/agents`, {
+    // Casey's agent has Casey's rights (F-036 AG-3): the manager watching this page changes them by changing Casey's access.
+    const agent = expectStatus(await casey.browser.request('POST', `/api/v1/workspaces/${ws.id}/agents`, {
       body: { name: 'Scoped analyst', owner: 'self' },
     }), 201) as { id: string };
-    expectStatus(await owner.browser.request('POST', `/api/v1/projects/${place.id}/grants`, {
-      body: { principal: { kind: 'agent', id: agent.id }, role: 'contributor' },
-    }), 201);
     const work = workUseCases(db);
     const actor = { kind: 'agent' as const, id: agent.id };
     const task = await work.createWork({ kind: 'human', id: owner.id }, place.id, { title: 'Scoped owner task', owner: actor });
@@ -399,13 +393,9 @@ test('native agent owners retry failed reads, fence stale permission answers and
     await taskDiscussionUseCases(db).contribute(actor, task.id, { body: 'Current scoped agent reply', clientMessageId: randomUUID() });
     const elsewhere = await project(owner, ws.id, 'Other owner scope', 'restricted');
     await grant(owner, elsewhere.id, guest, 'viewer');
-    expectStatus(await owner.browser.request('POST', `/api/v1/projects/${elsewhere.id}/grants`, {
-      body: { principal: { kind: 'agent', id: agent.id }, role: 'contributor' },
-    }), 201);
+    await grant(owner, elsewhere.id, casey, 'contributor');
     const otherTask = await work.createWork({ kind: 'human', id: owner.id }, elsewhere.id, { title: 'Other scoped task', owner: actor });
-    expectStatus(await owner.browser.request('POST', `/api/v1/projects/${elsewhere.id}/grants`, {
-      body: { principal: { kind: 'agent', id: agent.id }, role: 'denied' },
-    }), 201);
+    await grant(owner, elsewhere.id, casey, 'denied');
     const context = await signedIn(owner, 1440);
     const page = await context.newPage();
     const capture = async (name: string, ownerSelector: string) => {
@@ -572,9 +562,7 @@ test('native agent owners retry failed reads, fence stale permission answers and
     try {
       await page.evaluate(() => window.dispatchEvent(new Event('focus')));
       await fixturePhase(gotHeld, 'authorized answer held');
-      expectStatus(await owner.browser.request('POST', `/api/v1/projects/${place.id}/grants`, {
-        body: { principal: { kind: 'agent', id: agent.id }, role: 'denied' },
-      }), 201);
+      await grant(owner, place.id, casey, 'denied');
       await page.waitForFunction((id) => !document.querySelector(`[data-work-id="${id}"] .agent-for`), task.id);
       await fixturePhase(gotCurrentRead, 'delivered current answer without agent');
       release();
@@ -596,20 +584,19 @@ test('native agent owners retry failed reads, fence stale permission answers and
     assert.equal(await row.locator('.agent-for').count(), 0, 'an old authorized response cannot reintroduce the relation');
     // The same live document signs into a guest account after permissions changed.
     await page.evaluate(() => { (window as unknown as { sameDocument: boolean }).sameDocument = true; });
-    await page.getByRole('button', { name: /Scoped Casey.*account and sign out/ }).click();
+    await page.getByRole('button', { name: /Scoped Manager.*account and sign out/ }).click();
     await page.getByRole('dialog', { name: 'Account', exact: true }).getByRole('button', { name: 'Sign out', exact: true }).click();
     await page.getByRole('heading', { name: 'Sign in' }).waitFor();
     await page.getByLabel('Email').fill(guest.email); await page.getByLabel('Password', { exact: true }).fill(password);
     await page.getByRole('button', { name: 'Sign in', exact: true }).click();
-    await page.getByRole('link', { name: 'Owner scope', exact: true }).click();
+    // A space the guest has not opened yet reads "Owner scope, new".
+    await page.getByRole('link', { name: /^Owner scope/ }).first().click();
     await page.locator(`a[data-tab="tasks"][href^="/projects/${place.id}/tasks"]`).click();
     await page.locator(`[data-card-id="${task.id}"]`).waitFor();
     assert.equal(await page.locator(`[data-card-id="${task.id}"] .agent-for`).count(), 0);
     assert.equal(await page.evaluate(() => (window as unknown as { sameDocument: boolean }).sameDocument), true);
     assert.equal((await context.request.get(`/api/v1/workspaces/${ws.id}/members`)).status(), 403, 'guest cannot request the roster');
-    expectStatus(await owner.browser.request('POST', `/api/v1/projects/${place.id}/grants`, {
-      body: { principal: { kind: 'agent', id: agent.id }, role: 'contributor' },
-    }), 201);
+    await grant(owner, place.id, casey, 'contributor');
     await page.locator(`[data-card-id="${task.id}"] .agent-for`).waitFor();
     assert.equal(await page.locator(`[data-card-id="${task.id}"] .agent-for`).innerText(), 'for Scoped Casey', 'guest sees only project-authorized identity');
     const evidence = process.env.FLUX_E2E_EVIDENCE_DIR;

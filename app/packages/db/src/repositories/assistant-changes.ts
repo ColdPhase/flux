@@ -1,11 +1,11 @@
-import { and, asc, desc, eq, inArray, sql } from 'drizzle-orm';
+import { and, asc, eq, inArray, sql } from 'drizzle-orm';
 import * as schema from '../schema.js';
 import type { DbExecutor } from './push.js';
 
 /**
- * Rows of the assistant's change log (migration 0104, F-027 A3 #403) and the few facts its classification
- * reads: the run, the owner's settings and enablement, who made a target object, a live Wiki typist and who
- * last changed an object. These rows make no access decision; the server's executor does.
+ * Rows of the agent change log (migration 0104, F-027 A3 #403; F-036 #855) and the few facts its classification
+ * reads: the run, the agent's "What it may do" and the owner's enablement, who made a target object and who last
+ * changed an object. These rows make no access decision; the server's executor does.
  */
 
 const c = schema.assistantChanges;
@@ -15,7 +15,7 @@ export type NewAssistantChangeRow = typeof c.$inferInsert;
 export interface AssistantRunRow {
   id: string; workspaceId: string; projectId: string; conversationId: string; ownerUserId: string; agentId: string;
   status: string; stopRequestedAt: Date | null; engine: 'server' | 'runtime'; completedAt: Date | null;
-  /** What started the run: the owner's request or one of their stored schedules or reactions (limits differ: 20 and 10). */
+  /** What started the run: the owner's request or one of their stored schedules or reactions. */
   authority: 'owner_request' | 'owner_schedule' | 'owner_reaction';
   reactionAction?: string | null;
 }
@@ -34,10 +34,11 @@ export function assistantChangeRows(db: DbExecutor) {
         completedAt: r.completedAt, authority: r.authority, reactionAction: sql<string | null>`(SELECT action FROM assistant_reaction_events WHERE run_id=personal_runs.id LIMIT 1)` }).from(r).where(eq(r.id, runId)).for('update');
       return row ?? null;
     },
+    /** The assistant and its "What it may do" (F-036 AG-3), read with the connection row `FOR SHARE`, so a concurrent change of it waits. */
     async settings(ownerUserId: string, workspaceId: string) {
-      const s = schema.assistantSettings;
-      const [row] = await db.select({ approvalMode: s.approvalMode, changesPerRun: s.changesPerRun, connectionId: s.connectionId, agentId: s.agentId })
-        .from(s).where(and(eq(s.ownerUserId, ownerUserId), eq(s.workspaceId, workspaceId))).for('share');
+      const s = schema.assistantSettings; const k = schema.agentConnections;
+      const [row] = await db.select({ mayDo: k.mayDo, connectionId: s.connectionId, agentId: s.agentId })
+        .from(s).innerJoin(k, eq(k.id, s.connectionId)).where(and(eq(s.ownerUserId, ownerUserId), eq(s.workspaceId, workspaceId))).for('share');
       return row ?? null;
     },
     async enablement(ownerUserId: string) {
@@ -66,16 +67,10 @@ export function assistantChangeRows(db: DbExecutor) {
       const [inserted] = await db.insert(c).values(row).returning();
       return inserted!;
     },
-    /** Every decision bumps the row's version, so a stale Apply or Not now is a version conflict. */
+    /** Every decision bumps the row's version, so a stale Approve or Skip is a version conflict. */
     async update(id: string, patch: Partial<NewAssistantChangeRow>): Promise<AssistantChangeRow> {
       const [updated] = await db.update(c).set({ ...patch, version: sql`${c.version} + 1`, updatedAt: new Date() }).where(eq(c.id, id)).returning();
       return updated!;
-    },
-    /** Automatic changes the run has used: applied at once, or reserved by a live-Wiki deferral (AST-5 case 5). */
-    async reserved(runId: string): Promise<number> {
-      const row = await first<{ count: string }>(db, sql`SELECT count(*)::text AS count FROM assistant_changes WHERE run_id = ${runId}
-        AND (state = 'applied' OR (state = 'waiting' AND wait_reason = 'live_wiki') OR authority = 'owner_deferred_change')`);
-      return Number(row?.count ?? 0);
     },
     async forRun(runId: string): Promise<AssistantChangeRow[]> {
       return db.select().from(c).where(eq(c.runId, runId)).orderBy(asc(c.createdAt), asc(c.id));
@@ -84,20 +79,6 @@ export function assistantChangeRows(db: DbExecutor) {
       const r = schema.personalRuns;
       const rows = await db.select({ change: c, conversationId: r.conversationId }).from(c).innerJoin(r, eq(r.id, c.runId))
         .where(and(eq(c.ownerUserId, ownerUserId), eq(r.conversationId, conversationId))).orderBy(asc(c.createdAt), asc(c.id)).limit(500);
-      return rows.map((row) => ({ ...row.change, conversationId: row.conversationId }));
-    },
-    async suggestions(userId: string, now: Date): Promise<(AssistantChangeRow & { conversationId: string })[]> {
-      const r = schema.personalRuns;
-      const rows = await db.select({ change: c, conversationId: r.conversationId }).from(c).innerJoin(r, eq(r.id, c.runId))
-        .where(and(eq(c.suggestToUserId, userId), eq(c.state, 'waiting'), eq(c.waitReason, 'outside_rights'), sql`${c.sentAt} IS NOT NULL`, sql`${c.expiresAt} > ${now}`))
-        .orderBy(asc(c.createdAt), asc(c.id)).limit(100);
-      return rows.map((row) => ({ ...row.change, conversationId: row.conversationId }));
-    },
-    /** The owner's latest changes across conversations, newest first (the assistant screen's Recent). */
-    async recent(ownerUserId: string, limit: number): Promise<(AssistantChangeRow & { conversationId: string })[]> {
-      const r = schema.personalRuns;
-      const rows = await db.select({ change: c, conversationId: r.conversationId }).from(c).innerJoin(r, eq(r.id, c.runId))
-        .where(eq(c.ownerUserId, ownerUserId)).orderBy(desc(c.createdAt), desc(c.id)).limit(limit);
       return rows.map((row) => ({ ...row.change, conversationId: row.conversationId }));
     },
     /** Every change of one conversation's runs, whoever owns them: the use case shows each viewer only what is theirs to see. */
@@ -122,45 +103,17 @@ export function assistantChangeRows(db: DbExecutor) {
         .orderBy(asc(schema.authUsers.name));
       return rows;
     },
-    /** What started each run: the owner's request, or a schedule or reaction of the owner (their limits differ). */
-    async runAuthorities(runIds: string[]): Promise<Map<string, string>> {
-      if (!runIds.length) return new Map();
-      const r = schema.personalRuns;
-      const rows = await db.select({ id: r.id, authority: r.authority }).from(r).where(inArray(r.id, runIds));
-      return new Map(rows.map((row) => [row.id, row.authority]));
-    },
     async conversationOf(runId: string): Promise<string | null> {
       const [row] = await db.select({ id: schema.personalRuns.conversationId }).from(schema.personalRuns).where(eq(schema.personalRuns.id, runId));
       return row?.id ?? null;
     },
-    /** A waiting change past its seven days becomes expired; its deadline is never extended. */
-    async expire(now: Date, ownerUserId?: string): Promise<number> {
-      const rows = await db.update(c).set({ state: 'expired', waitReason: null, version: sql`${c.version} + 1`, updatedAt: now })
-        .where(and(eq(c.state, 'waiting'), sql`${c.expiresAt} <= ${now}`, ...(ownerUserId ? [eq(c.ownerUserId, ownerUserId)] : []))).returning({ id: c.id });
-      return rows.length;
-    },
-    /** Live-Wiki deferrals to recheck, oldest first. */
-    async deferred(limit: number): Promise<AssistantChangeRow[]> {
-      return db.select().from(c).where(and(eq(c.state, 'waiting'), eq(c.waitReason, 'live_wiki'))).orderBy(asc(c.createdAt)).limit(limit);
-    },
-    /** The owner's undecided waiting changes that belong in Inbox now: promoted, or ten minutes past the run's end. */
-    async inbox(ownerUserId: string, now: Date, afterMinutes: number): Promise<(AssistantChangeRow & { conversationId: string; completedAt: Date | null })[]> {
+    /** The owner's waiting changes, oldest first: the Inbox shows one item per run (F-036 AG-7), as soon as something waits. */
+    async inbox(ownerUserId: string): Promise<(AssistantChangeRow & { conversationId: string })[]> {
       const r = schema.personalRuns;
-      const rows = await db.select({ change: c, conversationId: r.conversationId, completedAt: r.completedAt }).from(c).innerJoin(r, eq(r.id, c.runId))
-        .where(and(eq(c.ownerUserId, ownerUserId), eq(c.state, 'waiting'), sql`${c.waitReason} <> 'live_wiki'`, sql`${c.sentAt} IS NULL`,
-          sql`${c.expiresAt} > ${now}`,
-          sql`(${c.inboxAt} <= ${now} OR ${r.completedAt} + make_interval(mins => ${afterMinutes}) <= ${now})`))
+      const rows = await db.select({ change: c, conversationId: r.conversationId }).from(c).innerJoin(r, eq(r.id, c.runId))
+        .where(and(eq(c.ownerUserId, ownerUserId), eq(c.state, 'waiting')))
         .orderBy(asc(c.createdAt), asc(c.id)).limit(500);
-      return rows.map((row) => ({ ...row.change, conversationId: row.conversationId, completedAt: row.completedAt }));
-    },
-    async promote(runId: string, now: Date): Promise<number> {
-      const rows = await db.update(c).set({ inboxAt: now }).where(and(eq(c.runId, runId), eq(c.state, 'waiting'), sql`${c.inboxAt} IS NULL`)).returning({ id: c.id });
-      return rows.length;
-    },
-    /** Another person's open live session on a page (F-021 presence): the typist, or null. */
-    async liveTypist(docId: string, exceptUserId: string): Promise<{ id: string; name: string } | null> {
-      return first<{ id: string; name: string }>(db, sql`SELECT u.id, u.name FROM doc_live_presence p JOIN auth_users u ON u.id = p.actor_id
-        WHERE p.doc_id = ${docId} AND p.actor_id <> ${exceptUserId} AND p.expires_at > now() ORDER BY p.expires_at DESC LIMIT 1`);
+      return rows.map((row) => ({ ...row.change, conversationId: row.conversationId }));
     },
     /** A task with what Undo compares: done-when, who it waits for and its prerequisites (ascending). */
     async work(id: string) {
@@ -218,23 +171,15 @@ export function assistantChangeRows(db: DbExecutor) {
         WHERE e.created_at > now() - interval '1 day' AND (e.object_id = ${objectId} OR e.data->>'workId' = ${objectId}::text OR e.data->>'docId' = ${objectId}::text
           OR e.data->>'thoughtId' = ${objectId}::text) AND COALESCE(u.name, a.name) IS NOT NULL ORDER BY e.seq DESC LIMIT 1`);
     },
-    /** A page is yours only while every version of it is by you or your assistant ("Yours", F-027 Terms). */
-    async docEditedByOthers(docId: string, ownerUserId: string, agentId: string): Promise<boolean> {
-      const row = await first<{ others: boolean }>(db, sql`SELECT EXISTS (SELECT 1 FROM project_material_versions WHERE material_id = ${docId}
-        AND NOT (author_id IS NOT DISTINCT FROM ${ownerUserId} AND author_agent_id IS NULL) AND NOT (author_agent_id IS NOT DISTINCT FROM ${agentId}::uuid)) AS others`);
-      return !!row?.others;
+    /** Every agent of one person: what they made counts as the person's own ("Yours", F-036 Terms). */
+    async agentIdsOf(ownerUserId: string): Promise<string[]> {
+      return (await db.select({ id: schema.agents.id }).from(schema.agents).where(eq(schema.agents.ownerUserId, ownerUserId))).map((row) => row.id);
     },
-    /**
-     * Turning a switch off or narrowing the projects invalidates the affected waiting changes in the same transaction
-     * (F-027 R1): turning it on again never resurrects them.
-     */
-    async invalidateOutside(ownerUserId: string, workspaceId: string, stillAllowed: (tool: string, projectId: string) => boolean): Promise<number> {
-      const waiting = await db.select({ id: c.id, tool: c.tool, projectId: c.projectId }).from(c)
-        .where(and(eq(c.ownerUserId, ownerUserId), eq(c.workspaceId, workspaceId), eq(c.state, 'waiting'))).for('update');
-      const affected = waiting.filter((row) => !stillAllowed(row.tool, row.projectId)).map((row) => row.id);
-      if (affected.length) await db.update(c).set({ state: 'refused', waitReason: null, refusal: 'Your assistant\'s switches changed since. Ask again',
-        version: sql`${c.version} + 1`, updatedAt: new Date() }).where(inArray(c.id, affected));
-      return affected.length;
+    /** A page is yours only while every version of it is by you or your agents ("Yours", F-036 Terms). */
+    async docEditedByOthers(docId: string, ownerUserId: string, agentIds: readonly string[]): Promise<boolean> {
+      const v = schema.projectMaterialVersions;
+      const versions = await db.select({ authorId: v.authorId, authorAgentId: v.authorAgentId }).from(v).where(eq(v.materialId, docId));
+      return versions.some((row) => !(row.authorAgentId ? agentIds.includes(row.authorAgentId) : row.authorId === ownerUserId));
     },
     /** Where each hand-off unit stands (state and how often it was claimed), for the row of the run's message. */
     async unitStates(ids: string[]): Promise<Map<string, { state: string; generation: number }>> {
@@ -259,9 +204,6 @@ export function assistantChangeRows(db: DbExecutor) {
       if (!unique.length) return new Map();
       const rows = await db.select({ id: schema.authUsers.id, name: schema.authUsers.name }).from(schema.authUsers).where(inArray(schema.authUsers.id, unique));
       return new Map(rows.map((row) => [row.id, row.name]));
-    },
-    async markQuestion(notificationId: string): Promise<void> {
-      await db.update(schema.notifications).set({ reason: 'question' }).where(eq(schema.notifications.id, notificationId));
     },
   };
 }

@@ -66,8 +66,6 @@ describe('rule activation follows the switch', () => {
     project = await createProject(owner, ws.id, 'Night light', 'restricted');
     const agentId = (expectStatus(await owner.browser.request('POST', `/api/v1/workspaces/${ws.id}/agents`,
       { body: { name: 'Runtime agent', owner: 'self' } }), 201) as { id: string }).id;
-    expectStatus(await owner.browser.request('POST', `/api/v1/projects/${project.id}/grants`,
-      { body: { principal: { kind: 'agent', id: agentId }, role: 'contributor' } }), 201);
     rule = expectStatus(await owner.browser.request('POST', `/api/v1/projects/${project.id}/proactive-comparison-rules`, { body: ruleBody(agentId) }), 201) as ProactiveComparisonRule;
     expectStatus(await owner.browser.request('POST', '/api/v1/background-compute-connections', { body: connectionBody }), 201) as BackgroundComputeConnection;
   });
@@ -133,8 +131,6 @@ describe('switched on, the registered tick pays for a ready candidate exactly on
     const prj = await createProject(owner, ws.id, 'Tick lamp', 'restricted');
     const agentId = (expectStatus(await owner.browser.request('POST', `/api/v1/workspaces/${ws.id}/agents`,
       { body: { name: 'Tick agent', owner: 'self' } }), 201) as { id: string }).id;
-    expectStatus(await owner.browser.request('POST', `/api/v1/projects/${prj.id}/grants`,
-      { body: { principal: { kind: 'agent', id: agentId }, role: 'contributor' } }), 201);
     const rule = expectStatus(await owner.browser.request('POST', `/api/v1/projects/${prj.id}/proactive-comparison-rules`, { body: ruleBody(agentId) }), 201) as ProactiveComparisonRule;
     expectStatus(await owner.browser.request('POST', '/api/v1/background-compute-connections', { body: connectionBody }), 201);
     // The production enabling path with the switch on: every check, then a new enabled version.

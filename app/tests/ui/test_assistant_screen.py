@@ -1,8 +1,8 @@
 """Browser tests for the assistant screen and its journeys (F-027 A7, #407; AST-10).
 
-The check_ui.sh stack has no agent runtime, so the owner's enablement, switches and answers are stubbed
+The check_ui.sh stack has no agent runtime, so the owner's enablement, "What it may do" and answers are stubbed
 responses (as in test_assistant_runtime). This proves the words, the flow and the layout at both widths;
-tests/app/assistant-settings.test.ts proves the switches against the real store.
+tests/app/assistant-settings.test.ts proves "What it may do" against the real store.
 """
 
 from __future__ import annotations
@@ -89,28 +89,24 @@ class AssistantScreen(unittest.TestCase):
             stub.update(state="not_enabled", unavailableReason=None, enablement=None, today=None)
         return stub
 
-    def stub_assistant(self, page: Page, *, enabled: bool = True, runtime: str = "signed_in", member: bool | None = True) -> dict:
-        """Status, settings (GET and PATCH keep their own version), pause/resume and the project's view of the assistant's membership, all in memory."""
-        world = {"status": self.status(page, enabled=enabled, runtime=runtime), "patches": [], "pauses": [], "joins": [],
-                 "agents": {"projectId": self.ids["project"], "connections": [], "joinRequests": [],
-                            **({"assistantJoin": {"agentId": self.ids["agent"], "canRequest": not member}} if member is not None else {})},
-                 "settings": {"workspaceId": self.ids["workspace"], "ownerUserId": ADA["id"], "agentId": self.ids["agent"], "connectionId": "c", "approvalMode": "act",
-                              "changesPerRun": 20, "backgroundRunsPerDay": 24, "projectMode": "all", "version": 1, "createdAt": NOW, "updatedAt": NOW,
-                              "areas": {"tasks": "edit", "wiki": "edit", "maps": "edit", "conversations": "edit", "decisions": "edit"}, "policy": {}}}
+    def stub_assistant(self, page: Page, *, enabled: bool = True, runtime: str = "signed_in") -> dict:
+        """Status, settings, the one "What it may do" PATCH and pause/resume, all in memory."""
+        world = {"status": self.status(page, enabled=enabled, runtime=runtime), "patches": [], "pauses": [],
+                 "agents": {"projectId": self.ids["project"], "connections": []},
+                 "settings": {"workspaceId": self.ids["workspace"], "ownerUserId": ADA["id"], "agentId": self.ids["agent"], "connectionId": self.ids["agent"], "mayDo": "act",
+                              "backgroundRunsPerDay": 24, "version": 1, "createdAt": NOW, "updatedAt": NOW}}
 
         def status(route: Route) -> None:
             self.json(route, world["status"]) if route.request.method == "GET" else route.continue_()
 
         def settings(route: Route) -> None:
-            if route.request.method == "PATCH":
-                patch = json.loads(route.request.post_data or "{}")
-                world["patches"].append(patch)
-                current = world["settings"]
-                current["areas"].update(patch.get("areas", {}))
-                if "approvalMode" in patch:
-                    current["approvalMode"] = patch["approvalMode"]
-                current["version"] += 1
             self.json(route, world["settings"])
+
+        def may_do(route: Route) -> None:
+            patch = json.loads(route.request.post_data or "{}")
+            world["patches"].append(patch)
+            world["settings"]["mayDo"] = patch["mayDo"]
+            self.json(route, {"mayDo": patch["mayDo"]})
 
         def pause(route: Route) -> None:
             world["pauses"].append(route.request.url.rsplit("/", 1)[-1])
@@ -125,6 +121,7 @@ class AssistantScreen(unittest.TestCase):
         page.route("**/api/v1/personal-assistant/pause", pause)
         page.route("**/api/v1/personal-assistant/resume", pause)
         page.route(re.compile(r".*/api/v1/workspaces/[0-9a-f-]{36}/assistants/[0-9a-f-]{36}/settings$"), settings)
+        page.route(re.compile(r".*/api/v1/agent-connections/[0-9a-f-]{36}$"), may_do)
         return world
 
     def answer(self, owner: str, owner_name: str, label: str) -> dict:
@@ -190,7 +187,7 @@ class AssistantScreen(unittest.TestCase):
         expect(card).to_contain_text("It works inside Flux with your AI account.")
         expect(card).not_to_contain_text("plan you already have")
 
-    def test_04_the_screen_has_the_account_the_approval_choice_and_five_switches(self) -> None:
+    def test_04_the_screen_has_the_account_and_what_it_may_do(self) -> None:
         for phone, dark in ((False, False), (True, False), (False, True), (True, True)):
             with self.subTest(phone=phone, dark=dark):
                 page = self.page(phone=phone, dark=dark)
@@ -201,18 +198,16 @@ class AssistantScreen(unittest.TestCase):
                 expect(page.get_by_text("Claude · your subscription")).to_be_visible()
                 expect(page.get_by_text("Flux can't see your plan's limits.")).to_be_visible()
                 expect(page.get_by_role("switch", name="Your assistant is on")).to_have_attribute("aria-checked", "true")
-                group = page.get_by_role("radiogroup", name="When it changes something")
-                expect(group.get_by_role("radio", name="Do it and tell me")).to_have_attribute("aria-checked", "true")
-                expect(page.get_by_text("It asks before removing anything or changing things other people made or are responsible for.")).to_be_visible()
-                for label in ("Read and edit tasks", "Read and edit the Wiki", "Read and edit maps", "Read conversations and reply", "Read decisions and suggest new ones"):
-                    expect(page.get_by_role("switch", name=label)).to_have_attribute("aria-checked", "true")
-                can = page.get_by_test_id("assistant-can")
-                expect(can).to_have_text("Read and edit tasks, the Wiki and maps, reply in conversations, suggest decisions. Asks before removing anything or changing things other people made or are responsible for. Can't accept decisions or invite people.")
+                group = page.get_by_role("radiogroup", name="What it may do")
+                for label, checked in (("Only read", "false"), ("Do it and tell me", "true"), ("Ask me first", "false")):
+                    expect(group.get_by_role("radio", name=label)).to_have_attribute("aria-checked", checked)
+                expect(page.get_by_text("Makes new things and changes yours at once, then tells you, with Undo.")).to_be_visible()
+                expect(page.get_by_role("switch", name="Read and edit the Wiki")).to_have_count(0)
+                expect(page.get_by_test_id("assistant-can")).to_have_text("Agents never have more rights than you. Deleting and other people's things always wait for your OK.")
                 # Targets of at least 44 px, no horizontal scroll, the rest folded under More.
                 self.assertGreaterEqual(group.get_by_role("radio").first.bounding_box()["height"], 44)
-                for name in ("Read and edit the Wiki", "Your assistant is on"):
-                    row = page.get_by_role("switch", name=name).locator("xpath=ancestor::*[contains(@class,'sset-row')][1]")
-                    self.assertGreaterEqual(row.bounding_box()["height"], 44, name)
+                row = page.get_by_role("switch", name="Your assistant is on").locator("xpath=ancestor::*[contains(@class,'sset-row')][1]")
+                self.assertGreaterEqual(row.bounding_box()["height"], 44)
                 expect(page.locator("details.aset__more")).not_to_have_attribute("open", "")
                 self.no_horizontal_scroll(page)
                 shot(page, f"screen-{self.tag(phone, dark)}")
@@ -220,20 +215,16 @@ class AssistantScreen(unittest.TestCase):
                 text = page.locator(".pane-in").inner_text()
                 self.assertIsNone(FORBIDDEN.search(text), FORBIDDEN.search(text))
 
-    def test_05_allowing_wiki_edits_is_two_taps_and_the_can_sentence_follows(self) -> None:
+    def test_05_only_read_is_one_tap_and_the_hint_follows(self) -> None:
         page = self.page()
         world = self.stub_assistant(page)
-        world["settings"]["areas"]["wiki"] = "off"
         page.goto("/settings/assistant")
-        wiki = page.get_by_role("switch", name="Read and edit the Wiki")
-        expect(wiki).to_have_attribute("aria-checked", "false")
-        expect(page.get_by_test_id("assistant-can")).to_contain_text("Read and edit tasks and maps, reply in conversations")
-        wiki.click()
-        expect(wiki).to_have_attribute("aria-checked", "true")
-        expect(page.get_by_test_id("assistant-can")).to_contain_text("Read and edit tasks, the Wiki and maps")
-        self.assertEqual(world["patches"], [{"areas": {"wiki": "edit"}, "expectedVersion": 1}])
+        page.get_by_role("radio", name="Only read").click()
+        expect(page.get_by_role("radio", name="Only read")).to_have_attribute("aria-checked", "true")
+        expect(page.get_by_text("Reads and answers. It changes nothing.")).to_be_visible()
+        self.assertEqual(world["patches"], [{"mayDo": "read"}])
 
-    def test_06_the_approval_choice_is_a_radio_group_with_arrow_keys(self) -> None:
+    def test_06_what_it_may_do_is_a_radio_group_with_arrow_keys(self) -> None:
         page = self.page()
         world = self.stub_assistant(page)
         page.goto("/settings/assistant")
@@ -241,9 +232,9 @@ class AssistantScreen(unittest.TestCase):
         first.focus()
         page.keyboard.press("ArrowRight")
         expect(page.get_by_role("radio", name="Ask me first")).to_have_attribute("aria-checked", "true")
-        expect(page.get_by_test_id("assistant-can")).to_contain_text("Asks before changing anything.")
+        expect(page.get_by_text("Every change waits for your OK.")).to_be_visible()
         expect(page.get_by_role("radio", name="Ask me first")).to_be_focused()
-        self.assertEqual(world["patches"][-1]["approvalMode"], "ask")
+        self.assertEqual(world["patches"][-1], {"mayDo": "ask"})
 
     def test_07_one_switch_pauses_and_resumes_everything(self) -> None:
         page = self.page(phone=True)
@@ -309,9 +300,9 @@ class AssistantScreen(unittest.TestCase):
                 expect(header).to_contain_text("for you · Claude")
                 page.get_by_role("button", name="Ada's assistant", exact=True).click()
                 panel = page.get_by_role("group", name="Ada's assistant, details")
-                for heading in ("Now", "Recent", "Can"):
+                for heading in ("Now", "Recent", "What it may do"):
                     expect(panel.get_by_role("heading", name=heading, exact=True)).to_be_visible()
-                expect(panel.get_by_test_id("assistant-can")).to_have_text("Read and edit tasks, the Wiki and maps, reply in conversations, suggest decisions. Asks before removing anything or changing things other people made or are responsible for. Can't accept decisions or invite people.")
+                expect(panel.get_by_test_id("assistant-can")).to_have_text("Do it and tell me. Agents never have more rights than you. Deleting and other people's things always wait for your OK.")
                 shot(page, f"panel-{self.tag(phone)}")
                 expect(panel.get_by_role("button", name="Pause my assistant")).to_have_count(0)
                 panel.get_by_role("button", name="More").click()

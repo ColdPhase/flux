@@ -75,8 +75,6 @@ try {
     await grant(owner, prj.id, peer, 'contributor');
     const agentId = (expectStatus(await owner.browser.request('POST', `/api/v1/workspaces/${ws.id}/agents`,
       { body: { name: 'Sensor comparison helper', owner: 'self' } }), 201) as { id: string }).id;
-    expectStatus(await owner.browser.request('POST', `/api/v1/projects/${prj.id}/grants`,
-      { body: { principal: { kind: 'agent', id: agentId }, role: 'contributor' } }), 201);
     // The same marker check_application.sh looks for in the API, worker and provider-mock logs.
     const key = `local-${'owner-budget-key-'.repeat(3)}RT58`;
     const model = 'llama3.1:8b';

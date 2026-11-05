@@ -59,9 +59,7 @@ describe('decision acceptance authority (#250, O-009)', () => {
     await grant(ada, lamp.id, gus, 'contributor');
     await grant(ada, lamp.id, dee, 'denied');
     personalAgent = expectStatus(await ada.browser.request('POST', `/api/v1/workspaces/${ws.id}/agents`, { body: { name: 'Ada helper', owner: 'self' } }), 201) as Agent;
-    sharedAgent = expectStatus(await ada.browser.request('POST', `/api/v1/workspaces/${ws.id}/agents`, { body: { name: 'Lab agent', owner: 'workspace' } }), 201) as Agent;
-    for (const agent of [personalAgent, sharedAgent])
-      expectStatus(await ada.browser.request('POST', `/api/v1/projects/${lamp.id}/grants`, { body: { principal: { kind: 'agent', id: agent.id }, role: 'contributor' } }), 201);
+    sharedAgent = expectStatus(await ada.browser.request('POST', `/api/v1/workspaces/${ws.id}/agents`, { body: { name: 'Lab agent', owner: 'self' } }), 201) as Agent;
   });
 
   test('DA-2: a person with current project write accepts; viewers, people without access and agents are refused with nothing changed', async () => {

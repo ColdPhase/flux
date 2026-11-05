@@ -32,7 +32,6 @@ function serialize(row: Row): AgentProposal {
     audience: { kind: 'project', projectId: row.projectId },
     agentId: row.agentId, ownerUserId: row.ownerUserId,
     computeSource: row.computeSource,
-    agentGrant: { id: row.agentGrantId, role: row.agentGrantRole },
     source: { materialId: row.sourceMaterialId, version: row.sourceMaterialVersion },
     fact: row.fact, interpretation: row.interpretation, suggestedAction: row.suggestedAction,
     status: row.status, createdAt: row.createdAt.toISOString(), updatedAt: row.updatedAt.toISOString(),
@@ -74,18 +73,10 @@ export function agentProposalRepository(db: Database, policy: AgentProposalPolic
         const [existing] = await tx.select().from(schema.agentProposals).where(key);
         if (existing) return existing.requestFingerprint === input.fingerprint ? serialize(existing) : 'IDEMPOTENCY_CONFLICT';
 
-        // Keep an immutable grant snapshot even when the live grant is later removed.
-        // The policy lock holds the project and agent grant until this transaction commits.
-        const [grant] = await tx.select({ id: schema.projectGrants.id, role: schema.projectGrants.role })
-          .from(schema.projectGrants).where(and(
-            eq(schema.projectGrants.projectId, input.projectId),
-            eq(schema.projectGrants.agentId, connection.agentId),
-            eq(schema.projectGrants.role, 'contributor')));
-        if (!grant) throw new Error('Authorized agent proposal has no contributor grant');
         const [created] = await tx.insert(schema.agentProposals).values({
           id: randomUUID(), workspaceId, projectId: input.projectId,
           agentId: connection.agentId, ownerUserId: connection.ownerUserId,
-          computeSource: connection.computeSource, agentGrantId: grant.id, agentGrantRole: 'contributor',
+          computeSource: connection.computeSource,
           sourceMaterialId: input.source.materialId, sourceMaterialVersion: input.source.version,
           clientCommandId: input.clientCommandId, requestFingerprint: input.fingerprint,
           fact: input.fact, interpretation: input.interpretation, suggestedAction: input.suggestedAction,

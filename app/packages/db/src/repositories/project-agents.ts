@@ -1,7 +1,6 @@
 import { and, asc, desc, eq, gt, inArray, isNull, ne, or, sql } from 'drizzle-orm';
 import type { AgentOperation, AgentPostcondition, ProjectAgentActivity, ProjectAgentConnection, ProjectAgentRequest, ProjectAgents } from '@flux/contracts';
 import * as schema from '../schema.js';
-import { assistantJoinView } from './assistant-joins.js';
 import type { createDatabase } from '../index.js';
 
 type Database = Pick<ReturnType<typeof createDatabase>['db'], 'transaction'>;
@@ -40,46 +39,32 @@ export function projectAgentRepository(db: Database, policy: ProjectAgentPolicy)
           if (!decided.has(key)) decided.set(key, policy.allows(principal, action, project, tx));
           return decided.get(key)!;
         };
-        const candidates = await tx.select({ connection: schema.agentConnections, agentName: schema.agents.name, ownerName: schema.authUsers.name })
+        const listed = await tx.select({ connection: schema.agentConnections, agentName: schema.agents.name, ownerName: schema.authUsers.name })
           .from(schema.agentConnectionProjects)
           .innerJoin(schema.agentConnections, and(eq(schema.agentConnections.id, schema.agentConnectionProjects.connectionId),
-            isNull(schema.agentConnections.revokedAt),
-            or(ne(schema.agentConnections.computeSource, 'owner_assistant'), eq(schema.agentConnections.ownerUserId, reader.id))))
+            isNull(schema.agentConnections.revokedAt), ne(schema.agentConnections.computeSource, 'owner_assistant')))
           .innerJoin(schema.agents, and(eq(schema.agents.id, schema.agentConnections.agentId),
             eq(schema.agents.ownerUserId, schema.agentConnections.ownerUserId), isNull(schema.agents.revokedAt)))
           .innerJoin(schema.authUsers, eq(schema.authUsers.id, schema.agentConnections.ownerUserId))
-          .where(eq(schema.agentConnectionProjects.projectId, projectId))
-          .orderBy(asc(schema.authUsers.name), asc(schema.agentConnections.createdAt), asc(schema.agentConnections.id));
+          .where(eq(schema.agentConnectionProjects.projectId, projectId));
+        // The reader's own assistant is in every project of its workspace that its owner can read (F-036 AG-3): it has no list to join.
+        const assistant = await tx.select({ connection: schema.agentConnections, agentName: schema.agents.name, ownerName: schema.authUsers.name })
+          .from(schema.agentConnections)
+          .innerJoin(schema.projects, and(eq(schema.projects.id, projectId), eq(schema.projects.workspaceId, schema.agentConnections.workspaceId)))
+          .innerJoin(schema.agents, and(eq(schema.agents.id, schema.agentConnections.agentId),
+            eq(schema.agents.ownerUserId, schema.agentConnections.ownerUserId), isNull(schema.agents.revokedAt)))
+          .innerJoin(schema.authUsers, eq(schema.authUsers.id, schema.agentConnections.ownerUserId))
+          .where(and(eq(schema.agentConnections.computeSource, 'owner_assistant'), eq(schema.agentConnections.ownerUserId, reader.id),
+            isNull(schema.agentConnections.revokedAt)));
+        const candidates = [...listed, ...assistant].sort((a, b) => a.ownerName.localeCompare(b.ownerName)
+          || a.connection.createdAt.getTime() - b.connection.createdAt.getTime() || a.connection.id.localeCompare(b.connection.id));
         // A connection is listed only while both its agent and its owner can still read this project.
         const current = [];
         for (const row of candidates) {
           if (await allows({ kind: 'agent', id: row.connection.agentId }, 'project.read', projectId)
             && await allows({ kind: 'human', id: row.connection.ownerUserId }, 'project.read', projectId)) current.push(row);
         }
-        const asked = await tx.select({ request: schema.assistantJoinRequests, agentId: schema.assistantSettings.agentId })
-          .from(schema.assistantJoinRequests)
-          .innerJoin(schema.assistantSettings, and(eq(schema.assistantSettings.connectionId, schema.assistantJoinRequests.connectionId),
-            eq(schema.assistantSettings.ownerUserId, schema.assistantJoinRequests.ownerUserId), eq(schema.assistantSettings.workspaceId, schema.assistantJoinRequests.workspaceId)))
-          .innerJoin(schema.agentConnections, and(eq(schema.agentConnections.id, schema.assistantSettings.connectionId),
-            isNull(schema.agentConnections.revokedAt), eq(schema.agentConnections.computeSource, 'owner_assistant')))
-          .where(and(eq(schema.assistantJoinRequests.projectId, projectId), eq(schema.assistantJoinRequests.state, 'pending'),
-            eq(schema.assistantJoinRequests.ownerUserId, reader.id)))
-          .orderBy(schema.assistantJoinRequests.createdAt, schema.assistantJoinRequests.id);
-        const joinRequests = [];
-        for (const row of asked) if (await allows({ kind: 'human', id: row.request.ownerUserId }, 'project.read', projectId))
-          joinRequests.push(assistantJoinView(row.request, row.agentId));
-        const [ownAssistant] = await tx.select({ agentId: schema.assistantSettings.agentId }).from(schema.assistantSettings)
-          .innerJoin(schema.projects, and(eq(schema.projects.id, projectId), eq(schema.projects.workspaceId, schema.assistantSettings.workspaceId)))
-          .innerJoin(schema.agentConnections, and(eq(schema.agentConnections.id, schema.assistantSettings.connectionId),
-            eq(schema.agentConnections.computeSource, 'owner_assistant'), eq(schema.agentConnections.ownerUserId, reader.id), isNull(schema.agentConnections.revokedAt)))
-          .innerJoin(schema.agents, and(eq(schema.agents.id, schema.assistantSettings.agentId),
-            eq(schema.agents.ownerUserId, reader.id), isNull(schema.agents.revokedAt)))
-          .where(eq(schema.assistantSettings.ownerUserId, reader.id));
-        const joins = { ...(joinRequests.length ? { joinRequests } : {}), ...(ownAssistant ? { assistantJoin: {
-          agentId: ownAssistant.agentId, canRequest: !joinRequests.some((row) => row.ownerUserId === reader.id)
-            && !await allows({ kind: 'agent', id: ownAssistant.agentId }, 'project.read', projectId),
-        } } : {}) };
-        if (!current.length) return { projectId, connections: [], ...joins };
+        if (!current.length) return { projectId, connections: [] };
         const ids = current.map((row) => row.connection.id);
 
         // Usable now = what MCP requires of the whole connection: the level its scopes need on every
@@ -204,7 +189,7 @@ export function projectAgentRepository(db: Database, policy: ProjectAgentPolicy)
           const session = usable.has(connection.id) ? sessions.get(connection.id) : undefined;
           const last = activity.get(connection.id);
           return {
-            id: connection.id, name: connection.name, clientDesignation: connection.clientDesignation, scopes: [...connection.scopes],
+            id: connection.id, name: connection.name, clientDesignation: connection.clientDesignation, scopes: [...connection.scopes], mayDo: connection.mayDo,
             owner: { id: connection.ownerUserId, name: ownerName }, agent: { id: connection.agentId, name: agentName },
             own: connection.ownerUserId === reader.id,
             ...(connection.computeSource === 'owner_assistant' ? { assistant: true as const } : {}),
@@ -216,7 +201,7 @@ export function projectAgentRepository(db: Database, policy: ProjectAgentPolicy)
             requests: requests.get(connection.id) ?? [],
           };
         });
-        return { projectId, connections, ...joins };
+        return { projectId, connections };
       });
     },
   };

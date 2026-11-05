@@ -68,8 +68,6 @@ export async function actionScene(pool: Pool) {
   const projectId = String(project.id);
   const agent = expect(await owner.request('POST', `/api/v1/workspaces/${workspace.id}/agents`,
     { body: { name: 'Planning agent', owner: 'self' } }), 201);
-  expect(await owner.request('POST', `/api/v1/projects/${projectId}/grants`,
-    { body: { principal: { kind: 'agent', id: agent.id }, role: 'contributor' } }), 201);
   const plan = expect(await owner.request('POST', `/api/v1/projects/${projectId}/materials`,
     { body: { clientMutationId: randomUUID(), title: 'Release plan', body: 'Step one: measure. Step two: compare.' } }), 201);
   const source = { materialId: String(plan.materialId), version: Number(plan.version) };

@@ -333,7 +333,6 @@ describe('workspace AI lock: a comparison in flight and a comparison publish aga
     projectId = (await project(owner, ws.id, 'Low-light sensors', 'restricted')).id;
     await grant(owner, projectId, peer, 'contributor');
     const agentId = (expectStatus(await owner.browser.request('POST', `/api/v1/workspaces/${ws.id}/agents`, { body: { name: 'Comparison agent', owner: 'self' } }), 201) as { id: string }).id;
-    expectStatus(await owner.browser.request('POST', `/api/v1/projects/${projectId}/grants`, { body: { principal: { kind: 'agent', id: agentId }, role: 'contributor' } }), 201);
     const rule = expectStatus(await owner.browser.request('POST', `/api/v1/projects/${projectId}/proactive-comparison-rules`, { body: { agentId, trigger: 'human_negative_result',
       purpose: 'camera_sensor_comparison', dataScope: 'current_project_published', permittedEffect: 'quiet_project_proposal', maxRunsPerDay: 3, periodBudgetCents: 50, perRunCents: 5 } }), 201) as { id: string };
     expectStatus(await owner.browser.request('POST', '/api/v1/background-compute-connections', { body: {

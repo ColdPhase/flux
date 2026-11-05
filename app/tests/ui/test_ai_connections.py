@@ -407,7 +407,6 @@ class AiConnectionSettings(unittest.TestCase):
         ws = post("/api/v1/workspaces", {"name": "Codex label studio"})
         project = post(f"/api/v1/workspaces/{ws['id']}/projects", {"name": "Codex label", "visibility": "workspace"})
         agent = post(f"/api/v1/workspaces/{ws['id']}/agents", {"name": "Ada's Codex", "owner": "self"})
-        post(f"/api/v1/projects/{project['id']}/grants", {"principal": {"kind": "agent", "id": agent["id"]}, "role": "contributor"})
         post("/api/v1/agent-connections", {"agentId": agent["id"], "selectedProjectIds": [project["id"]], "name": "Ada Codex laptop",
              "scopes": ["flux.context.read", "flux.proposal.write"], "clientDesignation": "codex"})
         page.goto("/connect-agent")

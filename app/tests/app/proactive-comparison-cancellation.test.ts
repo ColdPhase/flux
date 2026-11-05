@@ -34,8 +34,6 @@ async function fixture() {
   await grant(admin, projectId, owner, 'contributor');
   const agentId = (expectStatus(await owner.browser.request('POST', `/api/v1/workspaces/${ws.id}/agents`,
     { body: { name: 'Comparison agent', owner: 'self' } }), 201) as { id: string }).id;
-  const agentGrantId = (expectStatus(await admin.browser.request('POST', `/api/v1/projects/${projectId}/grants`,
-    { body: { principal: { kind: 'agent', id: agentId }, role: 'contributor' } }), 201) as { id: string }).id;
   const rule = expectStatus(await owner.browser.request('POST', `/api/v1/projects/${projectId}/proactive-comparison-rules`,
     { body: { agentId, trigger: 'human_negative_result', purpose: 'camera_sensor_comparison',
       dataScope: 'current_project_published', permittedEffect: 'quiet_project_proposal',
@@ -62,7 +60,7 @@ async function fixture() {
       sources: [{ type: 'material', id: material.materialId, version: 1 }] } }), 201) as { id: string };
   const candidateId = (await pool.query('SELECT id FROM proactive_comparison_outbox WHERE result_id=$1', [result.id])).rows[0].id as string;
     await comparisonDispatchFixtureDue(pool, candidateId);
-  return { admin, owner, projectId, rule, connection, agentGrantId, material, work, sketch, thought, candidateId };
+  return { admin, owner, projectId, rule, connection, material, work, sketch, thought, candidateId };
 }
 
 type Fixture = Awaited<ReturnType<typeof fixture>>;
@@ -81,8 +79,6 @@ const changes: Array<{ name: string; phase: 'count' | 'message'; reason: string;
       { body: { expectedVersion: f.rule.version, status: 'revoked' } }), 200); } },
   { name: 'key connection revocation', phase: 'message', reason: 'AUTHORIZATION_CHANGED',
     async change(f) { expectStatus(await f.owner.browser.request('DELETE', `/api/v1/background-compute-connections/${f.connection.id}`), 204); } },
-  { name: 'agent grant removal', phase: 'message', reason: 'ACCESS_CHANGED',
-    async change(f) { expectStatus(await f.admin.browser.request('DELETE', `/api/v1/projects/${f.projectId}/grants/${f.agentGrantId}`), 204); } },
   { name: 'owner project access loss', phase: 'message', reason: 'ACCESS_CHANGED',
     async change(f) { await grant(f.admin, f.projectId, f.owner, 'denied'); } },
   { name: 'source revision', phase: 'message', reason: 'SOURCE_CHANGED',

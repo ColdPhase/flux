@@ -62,8 +62,8 @@ Migration `0003_access.sql` adds these tables. Every collaborative row carries
 | `workspaces` | A tenant. Its creator becomes its owner. |
 | `workspace_members` | One role per person: `owner`, `admin`, `member` or `guest`. |
 | `projects` | A work context. Its visibility is `workspace` (every member) or `restricted` (managers and grantees only). |
-| `agents` | An agent identity in one workspace. It is owned by a person (`owner_user_id`) or by the workspace (`NULL`). It is revocable (`revoked_at`) and is never a human login. |
-| `project_grants` | At most one grant per project and principal (person or agent). The grant is `contributor`, `viewer` or `denied`. |
+| `agents` | An agent identity in one workspace, always owned by a person (`owner_user_id`). It is revocable (`revoked_at`) and is never a human login. |
+| `project_grants` | At most one grant per project and person. The grant is `contributor`, `viewer` or `denied`. Agents hold none: they have their owner's rights. |
 | `drafts` | A minimal item: owner (person or agent), optional `project_id`, visibility `private` / `project` / `workspace`, and an integer `version`. |
 
 Migration `0004_stream_safe_writes.sql` adds `events.seq`, `draft_results` (worker
@@ -100,15 +100,15 @@ matching rule applies:
 3. An explicit `contributor` or `viewer` grant. A viewer grant also narrows a
    member's implicit access.
 4. A `member` is a **contributor** on `workspace`-visible projects.
-5. Otherwise the level is **none**. Guests and agents see only projects they were
-   explicitly granted. Nobody without a grant or a manager role sees a restricted project.
+5. Otherwise the level is **none**. Guests see only projects they were explicitly
+   granted. Nobody without a grant or a manager role sees a restricted project.
 
-An agent's level comes only from its own grants, and it acts only while not
-revoked. A person-owned agent is also capped at its owner's current level. It stops
-entirely when the owner leaves the workspace. A workspace-owned agent is not capped
-by any person.
+An agent's rights are exactly its owner's ([F-036](../product/assistant.md) AG-3): its level is
+its owner's current level, it holds no grant of its own, and it acts only while not revoked. It
+stops entirely when the owner leaves the workspace. Whatever the owner loses, the agent loses on
+its next call. "What it may do" narrows what an agent does inside those rights and never adds any.
 
-**An agent never works outside its current project grants**, including on drafts it
+**An agent never works outside its owner's current access**, including on drafts it
 authored:
 
 - It creates a draft only inside a project where its current level is contributor.
@@ -119,7 +119,7 @@ authored:
 - Reading any draft, its own private drafts included, needs the agent's current
   level viewer on the draft's project. Writing, sharing and moving need contributor.
   The same rule applies in `authorize` and in the `visibleFilter` list condition.
-  After a grant is revoked or replaced by `denied`, the agent's drafts in that project
+  After the owner's grant is revoked or replaced by `denied`, the agent's drafts in that project
   answer `404` and leave its lists and counts. A narrowing to viewer turns writes into `403`.
 - People keep the author path: a person always reads and writes their own private
   drafts, unless an explicit deny on the draft's project applies.
@@ -237,9 +237,8 @@ isolation. What is guaranteed:
 
 `app/tests/app/access-policy.test.ts` checks both orders on two real PostgreSQL
 connections, detecting the wait with `pg_blocking_pids` rather than timing. The
-cases are: revoking an agent's contributor grant; inserting a `denied` grant for a
-member who has no grant row, and replacing an agent grant with `denied`; narrowing a
-member's default access with a `viewer` grant; changing the member to guest; and
+cases are: revoking the contributor grant of an agent's owner; inserting a `denied` grant for a
+member who has no grant row; narrowing a member's default access with a `viewer` grant; changing the member to guest; and
 removing the member. In each case, a change that starts after an update decided waits
 until the update commits. An update that starts while the change is uncommitted waits,
 and is then refused with `404` or `403` without writing.
@@ -393,35 +392,25 @@ unlock password until a current holder grants one through the existing
 `unlock-password-grants` flow; the join page and the preview say this. AI stays off
 (F-029 and F-030 are unchanged).
 
-## Agent access requests (#763 FT-1, 2026-10-31)
+## Agents have their owner's rights (F-036 AG-3, #855)
 
-A person-owned agent enters a project only through a grant that a project manager makes
-([first-agent path](../product/first-agent-path.md): OAuth consent never grants a project the
-person cannot manage). The request lets a person who does not manage the project ask for that
-grant from inside Flux, and lets a manager make it in one step; it adds no new authority.
+There are no agent project grants, standing project policy or requests to let an agent in:
+`agent_access_requests`, `assistant_join_requests` and `agent_project_policies` are gone, and
+`project_grants` names people only. `POST /api/v1/projects/:id/grants` refuses an agent. OAuth
+consent selects which of the owner's projects a local client works in and can never add rights.
 
-| Route | Rule |
-| --- | --- |
-| `POST /api/v1/projects/:id/agent-requests { agentId, role? }` | The agent's owner, who can read the project, for their own active agent of the project's workspace (else `404`); workspace AI must be on (F-029). The role is never more than the owner has: `contributor` when the owner writes there (unless `viewer` is asked), else `viewer`. A manager is told to grant directly (`409 AGENT_REQUEST_MANAGER`); an agent that already has the role is `409 AGENT_ALREADY_IN_PROJECT`. One row per agent and project (`agent_access_requests`); a closed one reopens. A request declined less than a day ago cannot be reopened (`409 AGENT_REQUEST_DECLINED`). A new or reopened request gives each current project manager except the asker a Needs-you question that opens the project's People (`?open=people&agentRequest=<id>`). Asking grants nothing. `201` with the request and `notified: [{ id, name }]` |
-| `GET /api/v1/projects/:id/agent-requests` | A reader of the project: managers see every pending request, anyone else only their own |
-| `POST /api/v1/projects/:id/agent-requests/:requestId { allow }` | A current project manager (`403` otherwise). Allow is the ordinary `grantProject` of the asked role, made by that manager under its own locks and checks (the agent must still be active); Decline only closes. Either way the managers' questions are marked read and the owner gets an Inbox notice. An answered request answers as it is |
-| `GET /api/v1/agents/:id/project-access` | The agent's owner only: for each project of the agent's workspace the owner can open, the agent's explicit grant and its open request. The consent page uses it to show "Ask a manager to let it in" and polls it while a request waits |
+`POST /api/v1/agent-connections/:id/action-grants` needs the owner's current `project.write`. A
+standing grant still narrows what a local client does, and every action runs as the agent under
+the owner's current level, the connection's consent and the grant's own limits.
 
-The agent is still capped at its owner's current level and acts only through its own grant, so
-the request changes nothing about what an allowed agent may do. `agent_access_requests` is an
-`ai` table (F-030 refuses rows in an encrypted workspace).
+`PATCH /api/v1/agent-connections/:id { mayDo }` sets "What it may do" (`read`, `act`, `ask`). Only
+the owner, in their own signed-in session, can; everyone else gets `404`, and a bearer or run token
+never reaches it. How each mode behaves is in [personal runs](personal-runs.md).
 
-**Standing grants of a member's agent — amendment of F-024 AC-4 (#763 FT-2), accepted by founder decision
-(Hubert, 2026-11-01, recorded on #806).** `POST /api/v1/agent-connections/:id/action-grants` needed the owner's current
-project management, so a member's agent could be let into a project but could never be given
-any action there. Proposed: the owner may also add standing grants when they can write in the
-project (`project.write`) and the agent holds its own explicit `contributor` grant there, which
-only a manager gives (`403 AGENT_GRANT_REQUIRED` otherwise). Every action still runs as the agent,
-capped by that grant, the owner's current level, the connection's consent and the grant's own
-limits. Managers are unchanged. Implemented in `app/apps/server/src/agent-connection/grants.ts`.
-An owner who gave their own agent a `contributor` grant while they managed the project, and was then demoted to a
-writer, can keep adding standing grants until a manager removes that agent grant; they stay within the owner's
-current write level, and a demotion below write stops both new grants and every existing grant's actions.
+A local client's changes have nowhere to wait yet, because the change log belongs to the assistant's
+runs. Until they do, what would wait is refused instead and changes nothing: `AGENT_ONLY_READS`,
+`AGENT_ASKS_FIRST`, and `AGENT_CHANGE_WAITS` for a deletion, something of another person's or a task
+for another person.
 
 ## Events
 

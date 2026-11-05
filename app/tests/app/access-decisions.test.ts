@@ -45,7 +45,7 @@ interface World {
   writableProject: boolean;
   projects: Record<string, { project: ProjectFacts; levels: Record<string, number> }>;
   drafts: Record<string, DraftWorld>;
-  agents: Record<string, { id: string; workspaceId: string; ownerUserId: string | null; revokedAt: Date | null }>;
+  agents: Record<string, { id: string; workspaceId: string; ownerUserId: string; revokedAt: Date | null }>;
   sketches: Record<string, { sketch: SketchFacts; readable: string[]; levels: Record<string, number> }>;
   dms: Record<string, { id: string; workspaceId: string; kind: 'pair' | 'group'; pairKey: string | null; readable: string[]; participants: string[] }>;
   runs: Record<string, { id: string; workspaceId: string; ownerUserId: string }>;
@@ -175,7 +175,9 @@ function memoryReader(world: World) {
   return { reader, calls };
 }
 
-const WORKSPACE_ACTIONS = ['workspace.read', 'workspace.read_members', 'workspace.manage_members', 'workspace.rename', 'workspace.manage_agents', 'workspace.manage_ai', 'project.create', 'draft.create', 'agent.create', 'sketch.create', 'dm.create'] as const;
+/** Every agent belongs to one person (F-036); these decisions read only the facts the reader returns, so any owner id will do. */
+const OWNER_OF_AGENTS = 'agent-owner';
+const WORKSPACE_ACTIONS = ['workspace.read', 'workspace.read_members', 'workspace.manage_members', 'workspace.rename', 'workspace.manage_ai', 'project.create', 'draft.create', 'agent.create', 'sketch.create', 'dm.create'] as const;
 const workspaceRef = { type: 'workspace', id: WS } as const;
 
 async function workspaceDecisions(principal: Principal, actor: Actor | undefined, writableProject = false) {
@@ -207,7 +209,7 @@ describe('workspace decisions (pure)', () => {
 
   test('an agent reads the workspace and drafts only while it can write in some project', async () => {
     const bot = agentOf(randomUUID());
-    const active: Actor = { principal: bot, workspaceId: WS, role: null, agent: { ownerUserId: null, ownerRole: null }, active: true };
+    const active: Actor = { principal: bot, workspaceId: WS, role: null, agent: { ownerUserId: OWNER_OF_AGENTS, ownerRole: 'member' }, active: true };
     assert.deepEqual((await workspaceDecisions(bot, active, false)).allowed, ['workspace.read']);
     assert.deepEqual((await workspaceDecisions(bot, active, true)).allowed, ['workspace.read', 'draft.create']);
     assert.deepEqual(await workspaceDecisions(bot, { ...active, active: false, blockedBy: 'workspace_ai' }, true), { allowed: [], visible: false });
@@ -321,7 +323,7 @@ describe('draft decisions (pure)', () => {
 
   test('an agent reads at viewer level and changes only what it owns, or a project draft, at contributor level', async () => {
     const bot = agentOf(randomUUID());
-    const botActor: Actor = { principal: bot, workspaceId: WS, role: null, agent: { ownerUserId: null, ownerRole: null }, active: true };
+    const botActor: Actor = { principal: bot, workspaceId: WS, role: null, agent: { ownerUserId: OWNER_OF_AGENTS, ownerRole: 'member' }, active: true };
     const own = draftOf('private', { ownerUserId: null, ownerAgentId: bot.id });
     const asViewer = await decide(bot, own, [bot], { [key(bot)]: 1 }, [botActor]);
     assert.deepEqual(asViewer, { 'draft.read': true, 'draft.write': false, 'draft.share': false, 'draft.move': false, visible: true });
@@ -437,7 +439,7 @@ describe('event and AI decisions (pure)', () => {
   const world = () => {
     const w = emptyWorld();
     w.actors[key(owner)] = member(owner, 'owner');
-    w.actors[key(bot)] = { principal: bot, workspaceId: WS, role: null, agent: { ownerUserId: null, ownerRole: null }, active: true };
+    w.actors[key(bot)] = { principal: bot, workspaceId: WS, role: null, agent: { ownerUserId: OWNER_OF_AGENTS, ownerRole: 'member' }, active: true };
     w.projects[projectId] = { project: { id: projectId, workspaceId: WS, visibility: 'workspace' }, levels: { [key(owner)]: 3, [key(bot)]: 1 } };
     return w;
   };
@@ -547,7 +549,7 @@ describe('the order of the policy\'s reads and locks (pure)', () => {
     const botA = agentOf(randomUUID());
     const botB = agentOf(randomUUID());
     for (const bot of [botA, botB]) {
-      w.actors[key(bot)] = { principal: bot, workspaceId: WS, role: null, agent: { ownerUserId: null, ownerRole: null }, active: true };
+      w.actors[key(bot)] = { principal: bot, workspaceId: WS, role: null, agent: { ownerUserId: OWNER_OF_AGENTS, ownerRole: 'member' }, active: true };
       w.projects[projectId]!.levels[key(bot)] = 1;
     }
     const { reader, calls } = memoryReader(w);

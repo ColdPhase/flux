@@ -1,5 +1,4 @@
-import type { AssistantJoinRequest } from './assistant.js';
-import type { AgentScope, ExternalClientDesignation } from './agent-proposals.js';
+import type { AgentMayDo, AgentScope, ExternalClientDesignation } from './agent-proposals.js';
 import type { AgentOperation } from './agent-execution.js';
 import type { CoWorkRequestKind, CoWorkRequestState } from './cowork.js';
 
@@ -37,6 +36,8 @@ export interface ProjectAgentConnection {
   clientDesignation: ExternalClientDesignation;
   /** What the owner let this connection do: the exact scopes its tokens carry (#548). */
   scopes: AgentScope[];
+  /** "What it may do" (F-036 AG-3): Only read means it takes no task. */
+  mayDo: AgentMayDo;
   owner: { id: string; name: string };
   agent: { id: string; name: string };
   /** True when the caller owns the connection. */
@@ -72,8 +73,4 @@ export interface ProjectAgentRequest {
 export interface ProjectAgents {
   projectId: string;
   connections: ProjectAgentConnection[];
-  /** The requesting owner’s pending joins for their assistant settings; managers review explicit requests in Inbox (#522). */
-  joinRequests?: AssistantJoinRequest[];
-  /** Only the reader’s own active assistant in this project’s workspace; asking grants no access. */
-  assistantJoin?: { agentId: string; canRequest: boolean };
 }

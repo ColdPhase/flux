@@ -91,8 +91,6 @@ export interface AssistantJobRepository {
   acceptNote(ownerUserId: string, accountKey: string, version: string): Promise<void>;
   /** The assistant run's facts for a result line. */
   settledFacts(runId: string): Promise<SettledRunFacts>;
-  /** The owner's waiting changes of a run move to the Inbox now (one item, AST-7 "Output"). */
-  promoteWaiting(runId: string, now: Date): Promise<number>;
   /** The latest conversation of the project: where a silent run is anchored; null when the project has none. */
   anchorConversation(projectId: string): Promise<string | null>;
   /** A conversation of this project, for "post the result here" and "Do it at". */

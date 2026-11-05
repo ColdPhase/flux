@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate, useParams, useSearchParams } from 'react-router';
 import { assistantReactionDraftPath, type AssistantReplyDraft } from '@flux/contracts';
 import { request } from '../api/client';
-import type { InboxItem, NeedsYouItem, NeedsYouKind } from '@flux/contracts';
+import type { NeedsYouItem, NeedsYouKind } from '@flux/contracts';
 import { createPortal } from 'react-dom';
 import { Button, ErrorState, Icon, Kreska, MEDIA, Spinner, Tabs, useMediaQuery, useRowMotion, type TabItem } from '../ui';
 import { useShellActions } from '../app/shellContext';
@@ -10,7 +10,6 @@ import { useSmallMoments } from '../app/smallMoments';
 import { useShellData } from '../app/data';
 import { usePlaceState, useArrival } from '../place/memory';
 import { announceInboxChange, getInboxItem, markInboxRead } from './api';
-import { AssistantJoinReview } from './AssistantJoinReview';
 import { NeedsYouCard, type CardHandlers } from './NeedsYouCard';
 import { useNeedsYou } from './needsYou';
 import { LockedSpacesNote } from '../encryption/LockedSpace';
@@ -90,9 +89,6 @@ export function InboxView() {
   const all = useMemo(() => (queue.items ?? []).filter((item) => !projectId || item.project?.id === projectId), [queue.items, projectId]);
   const projectName = projectId ? queue.items?.find((item) => item.project?.id === projectId)?.project?.name ?? null : null;
   const allProjects = () => setAsked((now) => { const next = new URLSearchParams(now); next.delete('project'); return next; }, { replace: true, state: location.state });
-  const reviewing = all.find((item) => item.assistantRequestIdentity && item.project?.id === asked.get('assistantProject')
-    && item.assistantRequestIdentity.joinRequestId === asked.get('assistantRequest')
-    && String(item.assistantRequestIdentity.openingVersion) === asked.get('openingVersion'));
   const counts = useMemo(() => {
     const result: Record<Filter, number> = { all: all.length, decision: 0, question: 0, blocked: 0, mention: 0 };
     for (const item of all) result[item.kind] += 1;
@@ -165,10 +161,6 @@ export function InboxView() {
         </>
       )}
       <LockedSpacesNote />
-      {reviewing ? <AssistantJoinReview key={`${reviewing.key}:${reviewing.assistantRequestIdentity!.openingVersion}`} item={reviewing} onClose={() => {
-        const next = new URLSearchParams(asked); next.delete('assistantProject'); next.delete('assistantRequest'); next.delete('openingVersion');
-        setAsked(next, { replace: true, state: location.state }); announceInboxChange();
-      }} /> : null}
     </div></div>
   );
 }
@@ -185,27 +177,21 @@ export function InboxOpen() {
   const arrivalState = useLocation().state as unknown;
   const stateRef = useRef(arrivalState);
   const [gone, setGone] = useState(false);
-  const [notification, setNotification] = useState<InboxItem | null>(null);
   useEffect(() => {
     const controller = new AbortController();
     getInboxItem(id, controller.signal).then(async (item) => {
       if (controller.signal.aborted) return;
-      if (item.assistantRequestIdentity && item.source.type === 'project') { setNotification(item); return; }
       const draft = await request<AssistantReplyDraft>(assistantReactionDraftPath(id), { signal: controller.signal }).catch(() => null);
       if (controller.signal.aborted) return;
       if (draft) { navigate(draft.url, { replace: true, state: { focusComposer: true, assistantReplyDraft: { id, ownerId: draft.ownerUserId, body: draft.body, conversationId: draft.conversationId } } }); return; }
-      if (!item.assistantRequestIdentity) void markInboxRead(item.id).then(announceInboxChange, () => undefined);
+      void markInboxRead(item.id).then(announceInboxChange, () => undefined);
       navigate(item.url ?? '/inbox', { replace: true, state: stateRef.current });
     }, () => { if (!controller.signal.aborted) setGone(true); });
     return () => controller.abort();
   }, [id, navigate]);
   return (
     <div className="pane-scroll"><div className="pane-in">
-      {notification?.id === id && notification.assistantRequestIdentity && notification.source.type === 'project' ?
-        <AssistantJoinReview key={id} item={{ assistantRequestIdentity: notification.assistantRequestIdentity,
-          project: { id: notification.source.id, name: notification.body.replace(/ · Requested contributor access\.$/, '') } }}
-          onClose={() => { announceInboxChange(); void navigate('/inbox', { replace: true, state: stateRef.current }); }} />
-        : gone ? (
+      {gone ? (
         <div className="inbox-gone">
           <Icon name="lock" size={16} />
           <div>

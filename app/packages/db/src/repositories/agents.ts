@@ -25,7 +25,7 @@ export function visibleAgentIdentity(principal: AccessPrincipal, projectId?: str
 
 export function agentRepository(db: DbExecutor) {
   return {
-    async insert(row: { id: string; workspaceId: string; name: string; ownerUserId: string | null; createdBy: string }) {
+    async insert(row: { id: string; workspaceId: string; name: string; ownerUserId: string; createdBy: string }) {
       const [created] = await db.insert(schema.agents).values(row).returning();
       return created!;
     },

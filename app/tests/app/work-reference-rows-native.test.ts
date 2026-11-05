@@ -65,12 +65,11 @@ describe('selected native reference rows with exact sessions and current members
     assert.equal(JSON.stringify(observation).includes(foreignId), false);
     const onlyUnavailable = await read(`work:${missing},work:${foreign.id}`);
     assert.deepEqual(onlyUnavailable.items, []); assert.deepEqual(onlyUnavailable.unavailable, observation.unavailable);
-    const agent = await post<Agent>(owner, `/api/v1/workspaces/${workspaceId}/agents`, { name: 'Native reference agent', owner: 'workspace' });
-    await post(owner, `/api/v1/projects/${projectId}/grants`, { principal: { kind: 'agent', id: agent.id }, role: 'contributor' });
+    const agent = await post<Agent>(owner, `/api/v1/workspaces/${workspaceId}/agents`, { name: 'Native reference agent', owner: 'self' });
     const agentWork = await createWork('Actually agent-owned', projectId, { owner: { kind: 'agent', id: agent.id } });
     const agentRow = (await read(`work:${agentWork.id}`)).items[0]; assert.ok(agentRow?.kind === 'work');
-    // The agent is in the audience and workspace-owned, so its native row carries the scoped owner relation (#339 AC-2).
-    assert.deepEqual(agentRow.owner, { kind: 'agent', id: agent.id, name: agent.name, projectOwner: { kind: 'workspace' } });
+    // The agent's native row carries the scoped owner relation (#339 AC-2).
+    assert.deepEqual(agentRow.owner, { kind: 'agent', id: agent.id, name: agent.name, projectOwner: { kind: 'human', id: owner.id } });
     const changed = expectStatus(await owner.browser.request('PATCH', `/api/v1/work/${work.id}`, { body: { title: 'Changed current native title' }, headers: { 'if-match': `"${work.version}"` } }), 200) as WorkItem;
     const updated = (await read(`work:${work.id}`)).items[0]; assert.ok(updated?.kind === 'work');
     assert.equal(updated.title, changed.title); assert.equal(updated.version, changed.version);

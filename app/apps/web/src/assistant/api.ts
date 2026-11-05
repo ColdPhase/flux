@@ -2,7 +2,7 @@ import {
   ASSISTANT_RUNS_PATH, PERSONAL_ASSISTANT_AGENTS_PATH, PERSONAL_ASSISTANT_PATH, PERSONAL_ASSISTANT_PAUSE_PATH, PERSONAL_ASSISTANT_RESUME_PATH,
   assistantProposalAcceptPath, assistantProposalDismissPath, assistantRunPath, assistantRunRetryPath, assistantRunStopPath,
   conversationAssistantAnswersPath, conversationAssistantRunsPath, projectAssistantProposalsPath,
-  ASSISTANT_CHANGES_PATH, assistantChangeActionPath, assistantOperatorRequestPath, assistantRunChangesActionPath, conversationAssistantActivityPath, conversationAssistantChangesPath,
+  assistantChangeActionPath, assistantOperatorRequestPath, assistantRunChangesActionPath, conversationAssistantActivityPath, conversationAssistantChangesPath,
   type AssistantActivity, type AssistantChange, type AssistantChangeDecision, type AssistantChangesDecided, type AssistantRunUndone,
   type AssistantAnswer, type AssistantProposal, type AssistantRun, type EnablePersonalRunsCommand, type InvokeAssistantRunCommand,
   type Page, type PersonalAssistantStatus, type UpdatePersonalRunsCommand,
@@ -40,25 +40,26 @@ export const acceptProposal = (proposal: AssistantProposal) =>
 export const dismissProposal = (proposal: AssistantProposal) =>
   request<AssistantProposal>(assistantProposalDismissPath(proposal.id), { method: 'POST', body: { expectedVersion: proposal.version } });
 
-// Waiting changes (F-027 A3): only their owner sees or decides them.
+// An agent's changes (F-036 AG-3): the change line and Undo on its message, and what waits. Only their owner, in their own
+// signed-in session, approves, edits or skips a waiting change.
 export const listConversationChanges = (conversationId: string, signal?: AbortSignal) =>
   request<{ items: AssistantChange[] }>(conversationAssistantChangesPath(conversationId), { signal });
-export const listRecentChanges = (signal?: AbortSignal) => request<{ items: AssistantChange[] }>(`${ASSISTANT_CHANGES_PATH}?limit=20`, { signal });
+/** Approve one waiting change (Delete, for a deletion). */
 export const applyChange = (change: Pick<AssistantChange, 'id' | 'version'>) =>
   request<AssistantChangeDecision>(assistantChangeActionPath(change.id, 'apply'), { method: 'POST', body: { expectedVersion: change.version } });
-export const sendChange = (change: Pick<AssistantChange, 'id' | 'version'>) =>
-  request<AssistantChangeDecision>(assistantChangeActionPath(change.id, 'send'), { method: 'POST', body: { expectedVersion: change.version } });
+/** Skip one waiting change (Keep, for a deletion). */
+export const skipChange = (change: Pick<AssistantChange, 'id' | 'version'>) =>
+  request<AssistantChangeDecision>(assistantChangeActionPath(change.id, 'skip'), { method: 'POST', body: { expectedVersion: change.version } });
+/** Edit a task proposed for another person before approving it. */
+export const editChange = (change: Pick<AssistantChange, 'id' | 'version'>, title: string) =>
+  request<AssistantChangeDecision>(assistantChangeActionPath(change.id, 'edit'), { method: 'POST', body: { expectedVersion: change.version, title } });
+/** Approve all of one run's waiting changes. */
 export const applyRunChanges = (runId: string) => request<AssistantChangesDecided>(assistantRunChangesActionPath(runId, 'apply'), { method: 'POST', body: {} });
-export const notNowRunChanges = (runId: string) => request<AssistantChangesDecided>(assistantRunChangesActionPath(runId, 'not-now'), { method: 'POST', body: {} });
-export const moveRunChangesToInbox = (runId: string) => request<{ moved: number }>(assistantRunChangesActionPath(runId, 'inbox'), { method: 'POST', body: {} });
-// Undo (F-027 A4): one change, or the whole run's message. The server refuses cleanly when the object changed since.
+export const skipRunChanges = (runId: string) => request<AssistantChangesDecided>(assistantRunChangesActionPath(runId, 'skip'), { method: 'POST', body: {} });
+// Undo: one change, or the whole message. The server refuses cleanly when the object changed since.
 export const undoChange = (change: Pick<AssistantChange, 'id'>) =>
   request<AssistantChangeDecision>(assistantChangeActionPath(change.id, 'undo'), { method: 'POST', body: {} });
 export const undoRunChanges = (runId: string) => request<AssistantRunUndone>(assistantRunChangesActionPath(runId, 'undo'), { method: 'POST', body: {} });
 // Who has an assistant working in a conversation, for everyone who can read it: names only (AST-6 "Visible to everyone").
 export const getAssistantActivity = (conversationId: string, signal?: AbortSignal) =>
   request<AssistantActivity>(conversationAssistantActivityPath(conversationId), { signal });
-
-export const acceptSuggestion = (change: Pick<AssistantChange, 'id' | 'version'>) => request<AssistantChangeDecision>(assistantChangeActionPath(change.id, 'accept'), { method: 'POST', body: { expectedVersion: change.version } });
-
-export const dismissSuggestion = (change: Pick<AssistantChange, 'id' | 'version'>) => request<AssistantChangeDecision>(assistantChangeActionPath(change.id, 'dismiss'), { method: 'POST', body: { expectedVersion: change.version } });

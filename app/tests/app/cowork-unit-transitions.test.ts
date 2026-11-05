@@ -45,8 +45,6 @@ async function world() {
     const space = options.space ?? ws.id, projects = options.projects ?? [p.id];
     const agent = expectStatus(await who.browser.request('POST', `/api/v1/workspaces/${space}/agents`,
       { body: { name, owner: 'self' } }), 201) as Agent;
-    for (const id of projects) expectStatus(await hubert.browser.request('POST', `/api/v1/projects/${id}/grants`,
-      { body: { principal: { kind: 'agent', id: agent.id }, role: 'contributor' } }), 201);
     return expectStatus(await who.browser.request('POST', '/api/v1/agent-connections',
       { body: { agentId: agent.id, selectedProjectIds: projects, scopes: options.scopes ?? ['flux.context.read', 'flux.action.execute'] } }),
     201) as AgentConnection;

@@ -96,8 +96,7 @@ describe('project docs with immutable versions, links and backlinks', () => {
     assert.equal((await patch(outsider, `/api/v1/docs/${doc.id}`, { body: 'x' }, ifMatch(1))).status, 404);
     assert.equal((await post(outsider, `/api/v1/projects/${lamp.id}/docs/preview`, { body: 'x' })).status, 404);
 
-    const agent = json<Agent>(await post(owner, `/api/v1/workspaces/${ws.id}/agents`, { name: 'Doc reader', owner: 'workspace' }), 201);
-    json(await post(owner, `/api/v1/projects/${lamp.id}/grants`, { principal: { kind: 'agent', id: agent.id }, role: 'contributor' }), 201);
+    const agent = json<Agent>(await post(owner, `/api/v1/workspaces/${ws.id}/agents`, { name: 'Doc reader', owner: 'self' }), 201);
     const helper: Principal = { kind: 'agent', id: agent.id };
     assert.equal((await docUseCases(db).getDoc(helper, doc.id)).title, 'Wiring notes');
     await assert.rejects(docUseCases(db).updateDoc(helper, doc.id, { body: 'agent text' }, 1), (error: unknown) => error instanceof DomainError && error.code === 'DOC_NEEDS_PERSON');

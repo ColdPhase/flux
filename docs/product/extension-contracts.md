@@ -34,7 +34,6 @@ Before this decision no surface had all four, and nothing tested the promise.
   [O-005](first-agent-path.md) and [#152](https://github.com/ColdPhase/flux/issues/152).
   - 37 `flux_*` tools, the `start_work` and `resume_work` prompts, and the
     playbook resource `flux://playbook/flux.cowork/<version>`.
-  - The policy resource template `flux://policy/{projectId}/{revision}`.
   - The co-work playbook `flux.cowork` 1.1.0 already reports a
     `toolContractVersion` of 1, a content digest, and an acknowledgment check
     (`mcp-playbook.test.ts`).
@@ -181,6 +180,12 @@ delivered in v0.1. It returns when its condition holds.
 The coordination tools in flight under
 [#153](https://github.com/ColdPhase/flux/issues/153) are not deferred. When they
 merge they join contract 1 as additive tools, with an updated snapshot.
+
+**Contract 2 (F-036, #855).** An agent has exactly its owner's rights, so the approved project
+policy went: the resource template `flux://policy/{projectId}/{revision}` and bootstrap's
+`trusted.approvedPolicy` are removed, which breaks contract 1. Contract 2 is `mcp-tools.v2.json`;
+contract 1's snapshot stays. Contract 2 is not published until v0.2 ships, so later v0.2 changes
+to the same surface, such as #859's, change contract 2 instead of starting a third.
 
 ## Costs and limitations
 

@@ -1,10 +1,11 @@
-import { createProjectWithAssistant, grantProjectWithAssistant } from '../assistant/project-membership.js';
 import type { FastifyInstance } from 'fastify';
 import { PROJECT_VIEWS, PROJECTS_PATH, WORKSPACES_PATH, type AddProjectViewCommand, type CreateProjectCommand, type GrantProjectCommand, type PageQuery } from '@flux/contracts';
 import {
   addProjectView,
   assertAuthorized,
+  createProject,
   getProject,
+  grantProject,
   listProjectGrants,
   listProjectPeople,
   listProjects,
@@ -23,7 +24,7 @@ export function projectRoutes(app: FastifyInstance, { db, principal, command, ru
     schema: { body: { type: 'object', required: ['name'], additionalProperties: false, properties: { name: nameSchema, visibility: { type: 'string', enum: ['workspace', 'restricted'] } } } },
   }, async (request, reply) => command(request, reply, {
     operation: `POST ${WORKSPACES_PATH}/:workspaceId/projects`, scope: workspaceScope(request.params.workspaceId), status: 201,
-    run: (actor, conn) => createProjectWithAssistant(actor, request.params.workspaceId, request.body, conn),
+    run: (actor, conn) => createProject(actor, request.params.workspaceId, request.body, conn, accessPorts),
     replay: requires('project', 'project.read', bodyId),
   }));
   app.post<{ Params: { projectId: string }; Body: AddProjectViewCommand }>(`${PROJECTS_PATH}/:projectId/views`, {
@@ -44,7 +45,7 @@ export function projectRoutes(app: FastifyInstance, { db, principal, command, ru
       body: {
         type: 'object', required: ['principal', 'role'], additionalProperties: false,
         properties: {
-          principal: { type: 'object', required: ['kind', 'id'], additionalProperties: false, properties: { kind: { type: 'string', enum: ['human', 'agent'] }, id: { type: 'string', minLength: 1 } } },
+          principal: { type: 'object', required: ['kind', 'id'], additionalProperties: false, properties: { kind: { type: 'string', enum: ['human'] }, id: { type: 'string', minLength: 1 } } },
           role: { type: 'string', enum: ['manager', 'contributor', 'viewer', 'denied'] },
         },
       },
@@ -53,7 +54,7 @@ export function projectRoutes(app: FastifyInstance, { db, principal, command, ru
     await assertAuthorized(await principal(request), 'project.manage', projectScope(request.params.projectId), accessReader(db));
     const result = await projectChange(request.params.projectId, (conn) => runCommand(request, {
       operation: `POST ${PROJECTS_PATH}/:projectId/grants`, scope: projectScope(request.params.projectId), status: 201,
-      run: (actor, conn) => grantProjectWithAssistant(actor, request.params.projectId, request.body, conn),
+      run: (actor, conn) => grantProject(actor, request.params.projectId, request.body, conn, accessPorts),
       replay: requires('project', 'project.manage', () => request.params.projectId),
     }, conn));
     return sendCommand(reply, result);

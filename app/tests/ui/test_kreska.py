@@ -67,7 +67,6 @@ class KreskaJourney(unittest.TestCase):
         workspace = self.api(page, "POST", "/api/v1/workspaces", {"name": "Garden sensors"})
         project = self.api(page, "POST", f"/api/v1/workspaces/{workspace['id']}/projects", {"name": "Soil probes", "visibility": "restricted"})
         agent = self.api(page, "POST", f"/api/v1/workspaces/{workspace['id']}/agents", {"name": "Codex", "owner": "self"})
-        self.api(page, "POST", f"/api/v1/projects/{project['id']}/grants", {"principal": {"kind": "agent", "id": agent["id"]}, "role": "contributor"})
         self.api(page, "POST", f"/api/v1/projects/{project['id']}/work", {"title": "Calibrate the probes", "owner": {"kind": "agent", "id": agent["id"]}})
         self.api(page, "POST", f"/api/v1/projects/{project['id']}/work", {"title": "Order the enclosures", "owner": {"kind": "human", "id": self.me(page)}})
         type(self).ids = {"workspace": workspace["id"], "project": project["id"], "agent": agent["id"]}
@@ -197,13 +196,12 @@ class KreskaJourney(unittest.TestCase):
         page = self.page()
         project = self.api(page, "POST", f"/api/v1/workspaces/{self.ids['workspace']}/projects", {"name": "Retained owners", "visibility": "restricted"})
         agent = self.api(page, "POST", f"/api/v1/workspaces/{self.ids['workspace']}/agents", {"name": "Scout", "owner": "self"})
-        grant = self.api(page, "POST", f"/api/v1/projects/{project['id']}/grants", {"principal": {"kind": "agent", "id": agent["id"]}, "role": "contributor"})
         thread = self.api(page, "POST", f"/api/v1/projects/{project['id']}/conversations", {"body": "Keep the owner after the grant ends.", "clientMessageId": str(uuid.uuid4())})
         message = thread["messages"][0]["id"]
         self.api(page, "POST", f"/api/v1/projects/{project['id']}/work", {"title": "Check the retained owner", "owner": {"kind": "agent", "id": agent["id"]}, "sources": [{"type": "message", "id": message}]})
-        # Revoke only the agent's grant; the owner keeps the project and stays in the audience.
-        revoked = page.request.fetch(f"{ORIGIN}/api/v1/projects/{project['id']}/grants/{grant['id']}", method="DELETE", headers={"origin": ORIGIN})
-        self.assertEqual(revoked.status, 204, revoked.text())
+        # Revoke only the agent (it has no grant of its own, F-036); the owner keeps the project and stays in the audience.
+        revoked = page.request.fetch(f"{ORIGIN}/api/v1/agents/{agent['id']}", method="DELETE", headers={"origin": ORIGIN})
+        self.assertEqual(revoked.status, 200, revoked.text())
         page.goto(f"/projects/{project['id']}/conversations/{thread['id']}")
         expect(page.get_by_label("Reply", exact=True)).to_be_visible()
         page.locator("header.top").get_by_role("button", name="More", exact=True).click()

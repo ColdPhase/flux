@@ -2,24 +2,23 @@ import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { before, beforeEach, describe, test } from 'node:test';
 import {
-  assistantChangeActionPath, assistantMessageHeader, assistantRunChangesActionPath, assistantRunChangesPath, conversationAssistantActivityPath,
+  assistantChangeActionPath, assistantChangeLine, assistantRunChangesActionPath, assistantRunChangesPath, conversationAssistantActivityPath,
   conversationAssistantChangesPath, NEEDS_YOU_PATH, ASSISTANT_WORKING_EVENT, PERSONAL_RUN_CONSENT_VERSION, type AssistantActivity, type AssistantChange,
   type AssistantRun, type AssistantRunUndone, type NeedsYouResponse,
 } from '@flux/contracts';
 import { personalRunWorkerUnitOfWork } from '../../apps/worker/src/personal-runs/adapters.js';
-import { assistantChangeUseCases, reexecuteChange } from '../../apps/server/src/assistant/changes.js';
 import { db, pool } from './support/db.js';
 import { apiUrl } from './support/http.js';
 import { agentConnection } from './support/mcp-actions.js';
 import { expectStatus, type Person } from './support/people.js';
 import { StreamClient } from './support/stream.js';
-import { assistantScene, changesOf, DAY, human, text, type AssistantScene } from './support/assistant-scene.js';
+import { assistantScene, changesOf, human, text, type AssistantScene } from './support/assistant-scene.js';
 import { waitFor } from './support/wait.js';
 
-// F-027 A3/A4 (#403, #404), the parts the first slices left: who may decide a waiting change and who may undo what was done (negative controls),
-// what an Apply repeats and what it may not do (held races against Not now, expiry, Stop, S6 and a revoked grant), the Apply allowance, Undo of
-// done-when, prerequisites, waiting-for and a map's name, Undo by anyone who may edit, the owner's lane with a background run, and the working
-// line everyone sees. A fake clock and fake engines stand in for every vendor; no model, CLI or account is used.
+// F-027 A3/A4 (#403, #404), F-036 AG-3 (#855): who may decide a waiting change (only its owner, in their own session; never an agent or a
+// run token) and who may undo what was done; what an Approve repeats and what it may not do (held races against Skip, Stop and the owner
+// losing the project); Undo of done-when, prerequisites, waiting-for and a map's name; Undo by anyone who may edit; the owner's lane with a
+// background run; and the working line everyone sees. Fake engines stand in for every vendor; no model, CLI or account is used.
 
 const human_ = human;
 let scene: AssistantScene;
@@ -27,23 +26,15 @@ const run = (method: string, path: string, who: Person, body: unknown = {}) => w
 const apply = (who: Person, id: string, body: unknown = {}) => run('POST', assistantChangeActionPath(id, 'apply'), who, body);
 const code = (response: { json: unknown }) => (response.json as { code?: string } | null)?.code;
 const rowOf = async (id: string) => (await pool.query(`SELECT * FROM assistant_changes WHERE id = $1`, [id])).rows[0] as Awaited<ReturnType<typeof changesOf>>[number] & { expires_at: Date };
-/** The assistant's agent's own grant in the project, replaced by `role` (or removed) for the length of one check. */
-async function assistantGrant(role: 'denied' | null) {
-  const before = (await pool.query(`SELECT id, role FROM project_grants WHERE project_id = $1 AND agent_id = $2`, [scene.place.id, scene.agentId])).rows as { id: string; role: string }[];
-  await pool.query(`DELETE FROM project_grants WHERE project_id = $1 AND agent_id = $2`, [scene.place.id, scene.agentId]);
-  if (role) await pool.query(`INSERT INTO project_grants (id, workspace_id, project_id, agent_id, role, created_by) VALUES ($1, $2, $3, $4, $5, $6)`,
-    [randomUUID(), scene.ws.id, scene.place.id, scene.agentId, role, scene.owner.id]);
-  return async () => {
-    await pool.query(`DELETE FROM project_grants WHERE project_id = $1 AND agent_id = $2`, [scene.place.id, scene.agentId]);
-    for (const grant of before) await pool.query(`INSERT INTO project_grants (id, workspace_id, project_id, agent_id, role, created_by) VALUES ($1, $2, $3, $4, $5, $6)`,
-      [randomUUID(), scene.ws.id, scene.place.id, scene.agentId, grant.role, scene.owner.id]);
-  };
+/** The owner kept out of the project for the length of one check: the assistant has exactly the owner's rights (F-036 AG-3). */
+async function keepOwnerOut() {
+  await pool.query(`INSERT INTO project_grants (id, workspace_id, project_id, user_id, role, created_by) VALUES ($1, $2, $3, $4, 'denied', $4) ON CONFLICT (project_id, user_id) WHERE (user_id IS NOT NULL) DO UPDATE SET role = 'denied'`,
+    [randomUUID(), scene.ws.id, scene.place.id, scene.owner.id]);
+  return async () => { await pool.query(`DELETE FROM project_grants WHERE project_id = $1 AND user_id = $2`, [scene.place.id, scene.owner.id]); };
 }
 
-let assistantConnectionOfScene = '';
-const assistantConnectionOf = () => assistantConnectionOfScene;
 describe('the assistant\'s waiting changes and Undo: who may, and what may not happen (F-027 A3/A4, #403/#404)', () => {
-  before(async () => { scene = await assistantScene('aa'); assistantConnectionOfScene = await scene.assistantConnectionId(); });
+  before(async () => { scene = await assistantScene('aa'); });
   beforeEach(async () => { await scene.reset(); });
 
   /** One change waiting for the owner: Jonas's task, which the owner's assistant may not change without her OK. */
@@ -57,13 +48,14 @@ describe('the assistant\'s waiting changes and Undo: who may, and what may not h
     return { theirs, live, row: row! };
   }
 
-  test('AST-5.5: only the owner reads, applies, declines, sends or moves a waiting change; another member, an admin, a viewer, a guest, a stranger, an agent and a run token are refused', async () => {
+  test('AG-3: only the owner reads, approves, edits or skips a waiting change; another member, an admin, a viewer, a guest, a stranger, an agent and a run token are refused', async () => {
     const { theirs, live, row } = await waiting();
     const outside = [scene.peer, scene.outsider, scene.admin, scene.viewer, scene.guest, scene.stranger];
     for (const who of outside) {
-      for (const action of ['apply', 'not-now', 'send', 'undo'] as const)
+      for (const action of ['apply', 'skip', 'undo'] as const)
         assert.equal((await run('POST', assistantChangeActionPath(row.id, action), who)).status, 404, `${action} by someone else`);
-      for (const action of ['apply', 'not-now', 'inbox', 'undo'] as const)
+      assert.equal((await run('POST', assistantChangeActionPath(row.id, 'edit'), who, { expectedVersion: row.version, title: 'Theirs' })).status, 404, 'edit by someone else');
+      for (const action of ['apply', 'skip', 'undo'] as const)
         assert.equal((await run('POST', assistantRunChangesActionPath(live.runId, action), who)).status, 404, `${action} of the run by someone else`);
       assert.equal((await who.browser.request('GET', assistantRunChangesPath(live.runId))).status, 404);
       assert.ok(!(expectStatus(await who.browser.request('GET', NEEDS_YOU_PATH), 200) as NeedsYouResponse).items.some((item) => item.key === `assistant:${live.runId}`));
@@ -71,15 +63,19 @@ describe('the assistant\'s waiting changes and Undo: who may, and what may not h
       if (who === scene.stranger) assert.equal(listed.status, 404, 'not even a conversation of a project they cannot read');
       else assert.ok(!(expectStatus(listed, 200) as { items: AssistantChange[] }).items.some((change) => change.id === row.id), 'a waiting change is never in another person\'s list');
     }
-    // An agent's bearer and the run's own (closed) token are not a session: neither can decide anything.
+    // An agent's bearer and the run's own token are not a session: neither can decide anything, not even its own change (AG-3).
     const codexAgent = (expectStatus(await scene.owner.browser.request('POST', `/api/v1/workspaces/${scene.ws.id}/agents`, { body: { name: 'Ada Codex', owner: 'self' } }), 201) as { id: string }).id;
-    expectStatus(await scene.owner.browser.request('POST', `/api/v1/projects/${scene.place.id}/grants`, { body: { principal: { kind: 'agent', id: codexAgent }, role: 'contributor' } }), 201);
     const codex = await agentConnection(pool, scene.owner.browser, codexAgent, [scene.place.id]);
     for (const bearer of [codex.accessToken, live.token]) {
-      const response = await fetch(`${apiUrl}${assistantChangeActionPath(row.id, 'apply')}`, { method: 'POST',
-        headers: { authorization: `Bearer ${bearer}`, 'content-type': 'application/json' }, body: '{}' });
-      assert.ok(response.status === 401 || response.status === 403, `a bearer is refused (${response.status})`);
+      for (const path of [assistantChangeActionPath(row.id, 'apply'), assistantChangeActionPath(row.id, 'skip'), assistantChangeActionPath(row.id, 'edit'),
+        assistantRunChangesActionPath(live.runId, 'apply'), `/api/v1/agent-connections/${codex.connectionId}`]) {
+        const response = await fetch(`${apiUrl}${path}`, { method: path.includes('agent-connections') ? 'PATCH' : 'POST',
+          headers: { authorization: `Bearer ${bearer}`, 'content-type': 'application/json' }, body: JSON.stringify(path.includes('agent-connections') ? { mayDo: 'act' } : { expectedVersion: row.version, title: 'Agent edit' }) });
+        assert.ok(response.status === 401 || response.status === 403, `a bearer is refused at ${path} (${response.status})`);
+      }
     }
+    // And no tool of any agent approves, skips, edits or accepts: there is none to call.
+    for (const tools of [live.tools]) assert.ok(!tools.some((name) => /approve|apply|skip|accept|decide|grant|may_do|setting/.test(name)), 'no deciding tool');
     const after = await rowOf(row.id);
     assert.deepEqual([after.state, after.version], ['waiting', row.version], 'nothing moved');
     assert.notEqual((await scene.taskRow(theirs.id)).status, 'done');
@@ -115,9 +111,9 @@ describe('the assistant\'s waiting changes and Undo: who may, and what may not h
     assert.equal((await pool.query(`SELECT status FROM personal_runs WHERE id = $1`, [live.runId])).rows[0].status, 'completed', 'the source run was not revived');
   });
 
-  test('AST-5.4: a revoked grant, a narrowed project or a lost right refuses Apply, and getting it back cannot revive the saved change', async () => {
+  test('AG-3: when the owner loses the project, Approve is refused, and getting it back cannot revive the saved change', async () => {
     const { theirs, row } = await waiting();
-    const restore = await assistantGrant('denied');
+    const restore = await keepOwnerOut();
     try {
       const refused = await apply(scene.owner, row.id, { expectedVersion: row.version });
       assert.equal(refused.status, 403);
@@ -128,33 +124,26 @@ describe('the assistant\'s waiting changes and Undo: who may, and what may not h
     assert.notEqual((await scene.taskRow(theirs.id)).status, 'done');
   });
 
-  test('AST-5.4 held: Apply loses to a Not now, an expiry, a Stop, a narrowed project and a revoked grant that commit while it waits; none leaves an effect', async () => {
+  test('AST-5.4 held: Approve loses to a Skip, a Stop and the owner kept out of the project that commit while it waits; none leaves an effect', async () => {
     // Each rival commits inside a held lock that the Apply is queued behind; the Apply then repeats its checks and finds the loser's view.
     const cases: { name: string; hold: (id: string, runId: string) => Promise<Awaited<ReturnType<AssistantScene['holding']>>>;
       rival: (query: (statement: string, values?: unknown[]) => Promise<unknown>, id: string, runId: string) => Promise<unknown>; closed: string }[] = [
-      { name: 'Not now', closed: 'not_now', hold: (id) => scene.holding(`SELECT id FROM assistant_changes WHERE id = $1 FOR UPDATE`, [id]),
-        rival: (query, id) => query(`UPDATE assistant_changes SET state = 'not_now', wait_reason = NULL, decided_by = $2, decided_at = now(), version = version + 1 WHERE id = $1`, [id, scene.owner.id]) },
-      { name: 'expiry', closed: 'expired', hold: (id) => scene.holding(`SELECT id FROM assistant_changes WHERE id = $1 FOR UPDATE`, [id]),
-        rival: (query, id) => query(`UPDATE assistant_changes SET state = 'expired', wait_reason = NULL, version = version + 1 WHERE id = $1`, [id]) },
+      { name: 'Skip', closed: 'skipped', hold: (id) => scene.holding(`SELECT id FROM assistant_changes WHERE id = $1 FOR UPDATE`, [id]),
+        rival: (query, id) => query(`UPDATE assistant_changes SET state = 'skipped', wait_reason = NULL, decided_by = $2, decided_at = now(), version = version + 1 WHERE id = $1`, [id, scene.owner.id]) },
       { name: 'Stop', closed: 'refused', hold: (_id, runId) => scene.holding(`SELECT id FROM personal_runs WHERE id = $1 FOR UPDATE`, [runId]),
         rival: (query, _id, runId) => query(`UPDATE personal_runs SET stop_requested_at = now(), status = 'stopped' WHERE id = $1`, [runId]) },
-      { name: 'a narrowed project (S6)', closed: 'refused', hold: async () => scene.holding(`SELECT connection_id FROM agent_connection_mcp_policies WHERE connection_id = $1 FOR UPDATE`, [await scene.assistantConnectionId()]),
-        rival: (query) => query(`DELETE FROM agent_connection_mcp_projects WHERE connection_id = $1 AND project_id = $2`, [assistantConnectionOf(), scene.place.id]) },
-      { name: 'a revoked grant', closed: 'refused', hold: async () => {
-        const rows = (await pool.query(`SELECT id FROM project_grants WHERE project_id = $1 AND agent_id = $2`, [scene.place.id, scene.agentId])).rows;
-        assert.equal(rows.length, 1, 'the assistant holds one project grant');
-        return scene.holding(`SELECT id FROM project_grants WHERE project_id = $1 AND agent_id = $2 FOR UPDATE`, [scene.place.id, scene.agentId]);
-      }, rival: (query) => query(`UPDATE project_grants SET role = 'denied' WHERE project_id = $1 AND agent_id = $2`, [scene.place.id, scene.agentId]) },
+      // The owner kept out: the project row a grant change takes first is held, and the deny commits before the Approve decides.
+      { name: 'the owner kept out', closed: 'refused', hold: () => scene.holding(`SELECT id FROM projects WHERE id = $1 FOR NO KEY UPDATE`, [scene.place.id]),
+        rival: (query) => query(`INSERT INTO project_grants (id, workspace_id, project_id, user_id, role, created_by) VALUES ($1, $2, $3, $4, 'denied', $4) ON CONFLICT (project_id, user_id) WHERE (user_id IS NOT NULL) DO UPDATE SET role = 'denied'`,
+          [randomUUID(), scene.ws.id, scene.place.id, scene.owner.id]) },
     ];
-    const assistantConnection = await scene.assistantConnectionId();
     for (const entry of cases) {
       const { theirs, live, row } = await waiting(`Jonas held ${entry.name} ${randomUUID().slice(0, 4)}`);
       const held = await entry.hold(row.id, live.runId);
       let response: Awaited<ReturnType<typeof apply>>;
       try { response = await held.racing(() => apply(scene.owner, row.id, { expectedVersion: row.version }), (query) => entry.rival(query, row.id, live.runId)); }
       finally {
-        if (entry.name === 'a narrowed project (S6)') await pool.query(`INSERT INTO agent_connection_mcp_projects (workspace_id, connection_id, project_id) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING`, [scene.ws.id, assistantConnection, scene.place.id]);
-        if (entry.name === 'a revoked grant') await pool.query(`UPDATE project_grants SET role = 'contributor' WHERE project_id = $1 AND agent_id = $2`, [scene.place.id, scene.agentId]);
+        if (entry.name === 'the owner kept out') await pool.query(`DELETE FROM project_grants WHERE project_id = $1 AND user_id = $2`, [scene.place.id, scene.owner.id]);
       }
       assert.ok(response.status >= 400 && response.status < 500, `${entry.name}: the Apply loses (${response.status})`);
       assert.notEqual((await scene.taskRow(theirs.id)).status, 'done', `${entry.name}: no effect`);
@@ -165,90 +154,6 @@ describe('the assistant\'s waiting changes and Undo: who may, and what may not h
       // The winner's state is final: a later Apply cannot revive it.
       assert.equal((await apply(scene.owner, row.id)).status, 409);
     }
-  });
-
-  test('AST-5.7: the deferred-edit purpose belongs to one live-Wiki edit; no other waiting change can select it, a switched-off Wiki ends the deferral and turning it on cannot revive it', async () => {
-    const { theirs, row } = await waiting('Jonas cannot be changed by a deferral');
-    const stored = (await pool.query(`SELECT * FROM assistant_changes WHERE id = $1`, [row.id])).rows[0];
-    const camel = { ...stored, id: stored.id, runId: stored.run_id, ownerUserId: stored.owner_user_id, workspaceId: stored.workspace_id, preparedCommand: stored.prepared_command } as never;
-    const outcome = await reexecuteChange(db, camel, 'owner_deferred_change', null);
-    assert.equal(outcome.ok, false);
-    assert.notEqual((await scene.taskRow(theirs.id)).status, 'done', 'nothing was applied by a purpose it cannot select');
-    assert.equal((await rowOf(row.id)).state, 'waiting');
-    // A real deferral: the page is being typed in; then the Wiki is switched to Only read.
-    const page = await scene.doc(scene.owner, 'Deferred notes');
-    const stop = await scene.typing(scene.peer, page.id);
-    const live = await scene.liveRun();
-    assert.match(text((await live.call('flux_update_doc', { docId: page.id, expectedVersion: page.version, changes: { body: 'Edited later' } })).message), /when aa-jonas finishes typing\.$/);
-    await scene.complete(live.runId);
-    await scene.save({ areas: { wiki: 'read' } });
-    assert.equal((await changesOf(live.runId))[0]!.state, 'refused');
-    await scene.save({ areas: { wiki: 'edit' } });
-    await stop();
-    await assistantChangeUseCases(db).sweep();
-    assert.equal((await scene.docBody(page.id)).body, 'First text', 'switching it on again cannot revive the old edit');
-    // A deferral that does settle is an ordinary change afterwards: its receipt keeps the source, the actual purpose and a conditional Undo.
-    const later = await scene.doc(scene.owner, 'Settled notes');
-    const typist = await scene.typing(scene.peer, later.id);
-    const settled = await scene.liveRun();
-    await settled.call('flux_update_doc', { docId: later.id, expectedVersion: later.version, changes: { body: 'Edited after Jonas' } });
-    await scene.complete(settled.runId);
-    await typist();
-    await assistantChangeUseCases(db).sweep();
-    assert.equal((await scene.docBody(later.id)).body, 'Edited after Jonas');
-    const [done] = await changesOf(settled.runId);
-    assert.deepEqual([done!.state, done!.authority, done!.receipt!.runId, done!.receipt!.preparedBy], ['applied_after_wait', 'owner_deferred_change', settled.runId, scene.agentId]);
-    const undone = expectStatus(await run('POST', assistantRunChangesActionPath(settled.runId, 'undo'), scene.owner), 200) as AssistantRunUndone;
-    assert.equal(undone.undone, 1);
-    assert.equal((await scene.docBody(later.id)).body, 'First text');
-  });
-
-  test('AST-5.5: Apply just before the seventh day works and does not extend the deadline; at seven days the change is expired; a stale item stays closed', async () => {
-    const { theirs, row } = await waiting();
-    const before = await rowOf(row.id);
-    const justBefore = assistantChangeUseCases(db, undefined, () => new Date(before.expires_at.getTime() - 60_000));
-    await justBefore.apply(human_(scene.owner), row.id);
-    assert.equal((await scene.taskRow(theirs.id)).status, 'done');
-    const after = await rowOf(row.id);
-    assert.equal(after.state, 'applied_after_wait');
-    assert.equal(after.expires_at.getTime(), before.expires_at.getTime(), 'approval never renews the seven days');
-    const second = await waiting('Jonas expires');
-    const deadline = (await rowOf(second.row.id)).expires_at;
-    assert.equal(deadline.getTime() - (await rowOf(second.row.id) as unknown as { created_at: Date }).created_at.getTime(), 7 * DAY, 'seven days from preparation');
-    const atSeven = assistantChangeUseCases(db, undefined, () => deadline);
-    await assert.rejects(atSeven.apply(human_(scene.owner), second.row.id), (error: Error & { code?: string }) => error.code === 'ASSISTANT_CHANGE_EXPIRED');
-    assert.equal((await rowOf(second.row.id)).state, 'expired');
-    assert.notEqual((await scene.taskRow(second.theirs.id)).status, 'done');
-  });
-
-  test('AST-5.4 (allowance): Apply all is one write-only allowance of the owner\'s current limit; the surplus stays waiting for the next Apply and nothing runs a model', async () => {
-    await scene.save({ approvalMode: 'ask' });
-    const live = await scene.liveRun();
-    for (let i = 1; i <= 22; i += 1) assert.match(text((await live.call('flux_create_task', { task: { title: `Allowance task ${i}` } })).message), /^Waiting for /);
-    await scene.complete(live.runId);
-    const runsBefore = Number((await pool.query(`SELECT count(*)::int AS n FROM personal_runs`)).rows[0].n);
-    const first = expectStatus(await run('POST', assistantRunChangesActionPath(live.runId, 'apply'), scene.owner), 200) as { changes: { change: AssistantChange; message: string | null }[] };
-    assert.equal(first.changes.filter((entry) => entry.change.state === 'applied_after_wait').length, 20);
-    const surplus = first.changes.filter((entry) => entry.change.state === 'waiting');
-    assert.equal(surplus.length, 2);
-    assert.ok(surplus.every((entry) => /^Past 20 changes in one Apply\. Apply again for the rest$/.test(entry.message ?? '')));
-    assert.equal(Number((await pool.query(`SELECT count(*)::int AS n FROM project_work_items WHERE title LIKE 'Allowance task %'`)).rows[0].n), 20);
-    const second = expectStatus(await run('POST', assistantRunChangesActionPath(live.runId, 'apply'), scene.owner), 200) as { changes: { change: AssistantChange }[] };
-    assert.deepEqual(second.changes.map((entry) => entry.change.state), ['applied_after_wait', 'applied_after_wait']);
-    const log = await changesOf(live.runId);
-    assert.ok(log.every((item) => item.state === 'applied_after_wait' && item.authority === 'owner_approval' && item.decided_by === scene.owner.id));
-    assert.equal(Number((await pool.query(`SELECT count(*)::int AS n FROM personal_runs`)).rows[0].n), runsBefore, 'no new run, no model request');
-    // An approved change keeps its source history and is an ordinary conditional Undo.
-    const taken = expectStatus(await run('POST', assistantRunChangesActionPath(live.runId, 'undo'), scene.owner), 200) as AssistantRunUndone;
-    assert.equal(taken.undone, 22);
-    assert.equal(Number((await pool.query(`SELECT count(*)::int AS n FROM project_work_items WHERE title LIKE 'Allowance task %' AND creation_reverted_at IS NULL`)).rows[0].n), 0, 'every created task was taken back');
-    // The owner's lower limit binds the allowance too.
-    await scene.save({ approvalMode: 'ask', changesPerRun: 3 });
-    const next = await scene.liveRun();
-    for (let i = 1; i <= 5; i += 1) await next.call('flux_create_task', { task: { title: `Lower task ${i}` } });
-    await scene.complete(next.runId);
-    const lowered = expectStatus(await run('POST', assistantRunChangesActionPath(next.runId, 'apply'), scene.owner), 200) as { changes: { change: AssistantChange }[] };
-    assert.deepEqual(lowered.changes.map((entry) => entry.change.state), ['applied_after_wait', 'applied_after_wait', 'applied_after_wait', 'waiting', 'waiting']);
   });
 
   test('AST-6.2: Undo of done-when, prerequisites, who a task waits for and a map\'s name; each is a new version, and an edit since says "Changed since. Open it"', async () => {
@@ -276,7 +181,7 @@ describe('the assistant\'s waiting changes and Undo: who may, and what may not h
     assert.deepEqual([(await scene.taskRow(blockedTask.id)).status, (await scene.taskRow(blockedTask.id)).waiting_for_user_id], ['blocked', scene.peer.id]);
     assert.deepEqual([(await scene.taskRow(unblock.id)).status, (await scene.taskRow(unblock.id)).waiting_for_user_id, (await scene.taskRow(unblock.id)).blocker], ['in_progress', null, null]);
     const listed = (expectStatus(await scene.owner.browser.request('GET', assistantRunChangesPath(live.runId)), 200) as { items: AssistantChange[] }).items;
-    assert.equal(assistantMessageHeader(listed), 'Done: added done-when to 2 tasks, set prerequisites of 1 task, changed 2 tasks, renamed 1 map');
+    assert.ok(assistantChangeLine(listed).includes(`moved #${unblock.number} to In progress`), 'the change line names the status move');
     assert.ok(listed.every((change) => change.undoable), 'every one of them can be taken back');
     assert.deepEqual([listed[0]!.before, listed[0]!.after], ['no done-when', '2 done-when']);
     assert.deepEqual([listed[2]!.before, listed[2]!.after], ['no prerequisites', '1 prerequisite']);
@@ -313,7 +218,7 @@ describe('the assistant\'s waiting changes and Undo: who may, and what may not h
       const seen = await ofThisRun(who);
       assert.equal(seen.length, 3, 'three changes, nothing waiting');
       assert.ok(seen.every((change) => change.state === 'applied' && change.owner?.name === 'aa-ada' && change.line === null));
-      assert.equal(assistantMessageHeader(seen), 'Done: added 1 task, edited 1 page, renamed 1 task');
+      assert.equal(assistantChangeLine(seen), `Added task A fresh task · updated the Wiki page Wiring · renamed task #${renamed.number} Probes`);
     }
     assert.equal((await scene.stranger.browser.request('GET', conversationAssistantChangesPath(scene.thread.id))).status, 404);
     const undoable = (who: Person) => ofThisRun(who).then((items) => items.every((change) => change.undoable));
@@ -332,7 +237,7 @@ describe('the assistant\'s waiting changes and Undo: who may, and what may not h
     assert.deepEqual(byJonas.map((change) => [change.operation, change.undoable]), [['work.create', false], ['doc.update', true], ['work.update', true]]);
     const task = (await changesOf(live.runId))[0]!;
     const refusedCreation = expectStatus(await run('POST', assistantChangeActionPath(task.id, 'undo'), scene.peer), 200) as { message: string; change: AssistantChange };
-    assert.equal(refusedCreation.message, 'Only aa-ada can undo a task their assistant added');
+    assert.equal(refusedCreation.message, 'Only aa-ada can undo a task their agent added');
     assert.equal(refusedCreation.change.state, 'applied');
     const undone = expectStatus(await run('POST', assistantRunChangesActionPath(live.runId, 'undo'), scene.peer), 200) as AssistantRunUndone;
     assert.equal(undone.undone, 2);
@@ -350,23 +255,6 @@ describe('the assistant\'s waiting changes and Undo: who may, and what may not h
     // Ada can still take back her own assistant's creation.
     const rest = expectStatus(await run('POST', assistantRunChangesActionPath(live.runId, 'undo'), scene.owner), 200) as AssistantRunUndone;
     assert.equal(rest.undone, 1);
-  });
-
-  test('AST-6.5 (background): a background run may change ten things; the eleventh waits, and Apply all is held to the same ten', async () => {
-    const live = await scene.liveRun();
-    await pool.query(`UPDATE personal_runs SET authority = 'owner_schedule', background_label = 'Morning summary' WHERE id = $1`, [live.runId]);
-    for (let i = 1; i <= 10; i += 1) assert.ok(JSON.parse(text((await live.call('flux_create_task', { task: { title: `Background task ${i}` } })).message)).workId, `change ${i} applies`);
-    assert.match(text((await live.call('flux_create_task', { task: { title: 'Background task 11' } })).message), /^Waiting for aa-ada's OK: add task Background task 11\.$/);
-    assert.equal((await changesOf(live.runId)).at(-1)!.wait_reason, 'limit');
-    await scene.complete(live.runId);
-    const waitingRun = await scene.liveRun();
-    await scene.save({ approvalMode: 'ask' });
-    await pool.query(`UPDATE personal_runs SET authority = 'owner_reaction', background_label = 'Blocked-task watch' WHERE id = $1`, [waitingRun.runId]);
-    for (let i = 1; i <= 12; i += 1) await waitingRun.call('flux_create_task', { task: { title: `Reaction task ${i}` } });
-    await scene.complete(waitingRun.runId);
-    const all = expectStatus(await run('POST', assistantRunChangesActionPath(waitingRun.runId, 'apply'), scene.owner), 200) as { changes: { change: AssistantChange }[] };
-    assert.equal(all.changes.filter((entry) => entry.change.state === 'applied_after_wait').length, 10);
-    assert.equal(all.changes.filter((entry) => entry.change.state === 'waiting').length, 2);
   });
 
   test('AST-6.8: the owner\'s own request goes before background runs; behind one it says what it waits for; others see only that her assistant is working', async () => {

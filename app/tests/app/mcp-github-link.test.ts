@@ -67,7 +67,6 @@ async function scene() {
   /** One OAuth-connected agent of `who` with contributor rights on the project. */
   const makeAgent = async (who: Person, name: string) => {
     const agent = expectStatus(await who.browser.request('POST', `/api/v1/workspaces/${ws.id}/agents`, { body: { name, owner: 'self' } }), 201) as Agent;
-    expectStatus(await hubert.browser.request('POST', `/api/v1/projects/${p.id}/grants`, { body: { principal: { kind: 'agent', id: agent.id }, role: 'contributor' } }), 201);
     return { agent, connected: await agentConnection(pool, who.browser, agent.id, [p.id]) };
   };
   const mine = await makeAgent(hubert, 'Hubert Codex');

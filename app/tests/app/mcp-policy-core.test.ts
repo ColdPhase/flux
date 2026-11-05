@@ -7,7 +7,7 @@ import { DomainError, agentMcpPolicyUseCases, initialAgentMcpPolicy, mcpPolicyAd
 
 const connection = (): AgentConnection => ({ id: randomUUID(), workspaceId: randomUUID(), ownerUserId: randomUUID(),
   agentId: randomUUID(), name: 'Local assistant', clientDesignation: 'codex', selectedProjectIds: [randomUUID()],
-  scopes: ['flux.context.read', 'flux.action.execute'], computeSource: 'user_operated_external_client',
+  scopes: ['flux.context.read', 'flux.action.execute'], computeSource: 'user_operated_external_client', mayDo: 'act',
   revokedAt: null, createdAt: new Date().toISOString() });
 const off: SaveAgentMcpPolicy = { enabledCapabilityIds: [], enabledEntryIds: [], selectedProjectIds: [] };
 
@@ -15,7 +15,7 @@ test('initial captured entry membership follows original consent and does not ad
   const original = { ...connection(), scopes: ['flux.context.read'] as const };
   const policy = initialAgentMcpPolicy({ ...original, scopes: [...original.scopes] });
   assert.ok(policy.enabledEntryIds.includes('tool:flux_get_doc'));
-  assert.ok(policy.enabledEntryIds.includes('resource:flux_project_policy'));
+  assert.ok(!policy.enabledEntryIds.includes('resource:flux_project_policy'), 'the project agent policy is gone (F-036)');
   assert.ok(!policy.enabledEntryIds.includes('tool:flux_create_task'));
   // cowork.request is a supported action tool since #153 (2026-10-17); a read-only consent never captures it.
   assert.deepEqual(AGENT_MCP_ENTRIES.filter((entry) => entry.operation === 'cowork.request').map((entry) => [entry.name, entry.requiredScope]),

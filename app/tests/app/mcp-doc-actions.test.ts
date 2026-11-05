@@ -130,20 +130,20 @@ test('doc actions never reach a private draft, a guessed or other project doc, a
   assert.equal((await getDoc(f, docB.id)).author.kind, 'human');
 });
 
-test('a doc action refuses when its agent is only a viewer of the project now, with no version, event or debit', async () => {
+test('a doc action refuses when its owner lost the project, with no version, event or debit', async () => {
   const f = await actionScene(pool);
   const create = await f.grant('doc.create', 'plan');
   const update = await f.grant('doc.update', 'execute');
   const created = toolValue(await f.tool('flux_create_doc', { ...base(f, create.id, 'plan'), doc: { title: 'Wiring notes', body: 'First pass.' } }));
   const docId = String(created.docId);
-  // The owner narrows the agent to read-only: the standing grant no longer carries write authority.
-  expect(await f.owner.request('POST', `/api/v1/projects/${f.projectId}/grants`,
-    { body: { principal: { kind: 'agent', id: f.agentId }, role: 'viewer' } }), 201);
-  // A connection with write scopes needs write access to every selected project, so the MCP request
-  // itself is refused before any tool runs, as for a revoked connection.
+  // The owner is kept out: the agent has exactly what its owner has, so the standing grant carries nothing. No project is
+  // reachable, so the MCP request itself is refused before any tool runs, as for a revoked connection.
+  await pool.query(`INSERT INTO project_grants (id, workspace_id, project_id, user_id, role, created_by)
+    SELECT $1, a.workspace_id, $2, a.owner_user_id, 'denied', a.owner_user_id FROM agents a WHERE a.id = $3 ON CONFLICT (project_id, user_id) WHERE (user_id IS NOT NULL) DO UPDATE SET role = 'denied'`, [randomUUID(), f.projectId, f.agentId]);
   const refused = await f.raw('flux_update_doc', { ...base(f, update.id, 'execute'), docId, expectedVersion: 1,
     changes: { body: 'Second pass.' } });
   assert.equal(refused.status, 403);
   assert.deepEqual([await versions(docId), await docEvents(docId), await f.used(update.id)], [1, 1, 0]);
+  await pool.query('DELETE FROM project_grants WHERE project_id = $1', [f.projectId]);
   assert.equal((await getDoc(f, docId)).version, 1);
 });

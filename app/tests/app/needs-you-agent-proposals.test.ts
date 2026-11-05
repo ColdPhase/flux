@@ -24,7 +24,6 @@ test('an agent suggestion reaches its owner in Needs you, can be answered, and h
   expectStatus(await owner.browser.request('POST', `/api/v1/workspaces/${ws.id}/members`, { body: { email: other.email, role: 'member' } }), 201);
   const project = expectStatus(await owner.browser.request('POST', `/api/v1/workspaces/${ws.id}/projects`, { body: { name: 'Sensors', visibility: 'restricted' } }), 201) as Project;
   const agent = expectStatus(await owner.browser.request('POST', `/api/v1/workspaces/${ws.id}/agents`, { body: { name: 'Desk agent', owner: 'self' } }), 201) as { id: string };
-  expectStatus(await owner.browser.request('POST', `/api/v1/projects/${project.id}/grants`, { body: { principal: { kind: 'agent', id: agent.id }, role: 'contributor' } }), 201);
   const material = expectStatus(await owner.browser.request('POST', `/api/v1/projects/${project.id}/materials`,
     { body: { clientMutationId: randomUUID(), title: 'Low light', body: 'Sensor A misses dim scenes' } }), 201) as Material;
   const connection = expectStatus(await owner.browser.request('POST', '/api/v1/agent-connections',

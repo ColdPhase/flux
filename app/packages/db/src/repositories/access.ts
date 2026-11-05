@@ -13,10 +13,10 @@ import { keyGate } from './workspace-encryption.js';
  * core's `Principal`, `Actor` and `WorkspaceAi`; a mismatch fails to compile where an app passes
  * `accessReader(tx)` to a core function.
  *
- * Every statement here was moved unchanged from core's policy: the same locks, the same order of
- * statements inside one method, and the same `LEAST` cap for person-owned agents. The order between
- * methods is core's (the evaluators call them in the order documented there). Bind it to the transaction
- * that decides, so a `lock` holds until that transaction commits.
+ * Every statement here was moved from core's policy: the same locks and the same order of statements inside
+ * one method. An agent's level is exactly its owner's (F-036 AG-3, #855): agents have no grants of their own.
+ * The order between methods is core's (the evaluators call them in the order documented there). Bind it to
+ * the transaction that decides, so a `lock` holds until that transaction commits.
  */
 
 /** Core's `Principal`. */
@@ -30,7 +30,7 @@ export interface AccessActor {
   principal: AccessPrincipal;
   workspaceId: string;
   role: WorkspaceRole | null;
-  agent: { ownerUserId: string | null; ownerRole: WorkspaceRole | null } | null;
+  agent: { ownerUserId: string; ownerRole: WorkspaceRole | null } | null;
   active: boolean;
   blockedBy?: 'workspace_ai';
 }
@@ -76,9 +76,9 @@ export async function workspaceAi(db: DbExecutor, workspaceId: string, options: 
 
 /**
  * Locks the project row and every grant row that can contribute to the actor's level on
- * it (`FOR SHARE`). Grant and revoke take `FOR NO KEY UPDATE` on the project row first
- * and `FOR UPDATE` (or DELETE) on the grant row, so they conflict with these locks:
- * whichever transaction locks first finishes before the other decides.
+ * it (`FOR SHARE`): a person's own grant, or an agent's owner's grant. Grant and revoke take
+ * `FOR NO KEY UPDATE` on the project row first and `FOR UPDATE` (or DELETE) on the grant row,
+ * so they conflict with these locks: whichever transaction locks first finishes before the other decides.
  */
 async function lockProjectAccess(db: DbExecutor, actor: AccessActor, projectId: string): Promise<void> {
   if (!isUuid(projectId)) return;
@@ -89,14 +89,10 @@ async function lockProjectAccess(db: DbExecutor, actor: AccessActor, projectId: 
     JOIN workspaces w ON w.id = p.workspace_id WHERE p.id = ${projectId}`)).rows;
   if (located?.encrypted) await keyGate(db, located.workspace_id, 'shared');
   await db.execute(sql`SELECT 1 FROM projects WHERE id = ${projectId} FOR SHARE`);
-  const holders: SQL[] = [];
-  if (actor.principal.kind === 'human' && isUuid(actor.principal.id)) holders.push(sql`g.user_id = ${actor.principal.id}`);
-  if (actor.principal.kind === 'agent' && isUuid(actor.principal.id)) {
-    holders.push(sql`g.agent_id = ${actor.principal.id}`);
-    if (actor.agent?.ownerUserId) holders.push(sql`g.user_id = ${actor.agent.ownerUserId}`);
-  }
-  if (!holders.length) return;
-  await db.execute(sql`SELECT g.id FROM project_grants g WHERE g.project_id = ${projectId} AND (${sql.join(holders, sql` OR `)}) ORDER BY g.id FOR SHARE`);
+  const holder = actor.principal.kind === 'human' && isUuid(actor.principal.id) ? actor.principal.id
+    : actor.principal.kind === 'agent' && isUuid(actor.principal.id) ? actor.agent?.ownerUserId ?? null : null;
+  if (!holder) return;
+  await db.execute(sql`SELECT g.id FROM project_grants g WHERE g.project_id = ${projectId} AND g.user_id = ${holder} ORDER BY g.id FOR SHARE`);
 }
 
 async function memberRole(db: DbExecutor, workspaceId: string, userId: string, lock: boolean): Promise<WorkspaceRole | null> {
@@ -117,43 +113,42 @@ export async function loadActor(principal: AccessPrincipal, workspaceId: string,
   }
   if (principal.kind === 'agent') {
     if (!isUuid(principal.id)) return inactive;
-    // F-029: no agent acts in a workspace whose AI is off, whatever its grants (policy row first).
+    // F-029: no agent acts in a workspace whose AI is off (policy row first).
     if ((await workspaceAi(db, workspaceId, { lock })).state !== 'allowed') return { ...inactive, blockedBy: 'workspace_ai' };
     const query = db.select({ ownerUserId: schema.agents.ownerUserId, revokedAt: schema.agents.revokedAt }).from(schema.agents)
       .where(and(eq(schema.agents.id, principal.id), eq(schema.agents.workspaceId, workspaceId)));
     const [agent] = lock ? await query.for('share') : await query;
     if (!agent || agent.revokedAt) return inactive;
-    const ownerRole = agent.ownerUserId ? await memberRole(db, workspaceId, agent.ownerUserId, lock) : null;
-    const active = agent.ownerUserId === null || ownerRole !== null;
-    return { ...inactive, agent: { ownerUserId: agent.ownerUserId, ownerRole }, active };
+    // An agent acts only while its owner is a member, with exactly the owner's rights (F-036 AG-3).
+    const ownerRole = await memberRole(db, workspaceId, agent.ownerUserId, lock);
+    return { ...inactive, agent: { ownerUserId: agent.ownerUserId, ownerRole }, active: ownerRole !== null };
   }
   return inactive;
 }
 
-function grantExists(column: 'user_id' | 'agent_id', principalId: string, projectId: SQLWrapper, role: 'manager' | 'contributor' | 'viewer' | 'denied'): SQL {
-  return sql`EXISTS (SELECT 1 FROM project_grants g WHERE g.project_id = ${projectId} AND g.${sql.raw(column)} = ${principalId} AND g.role = ${role})`;
+function grantExists(userId: string, projectId: SQLWrapper, role: 'manager' | 'contributor' | 'viewer' | 'denied'): SQL {
+  return sql`EXISTS (SELECT 1 FROM project_grants g WHERE g.project_id = ${projectId} AND g.user_id = ${userId} AND g.role = ${role})`;
 }
 
 function humanLevel(userId: string, role: WorkspaceRole | null, projectId: SQLWrapper, visibility: SQLWrapper): SQL {
   if (!role) return sql`0`;
-  const denied = grantExists('user_id', userId, projectId, 'denied');
+  const denied = grantExists(userId, projectId, 'denied');
   if (isManager(role)) return sql`(CASE WHEN ${denied} THEN 0 ELSE 3 END)`;
   const implicit = role === 'member' ? sql` WHEN ${visibility} = 'workspace' THEN 2` : sql``;
   // F-037: a space admin's `manager` grant gives 3, a space member's `contributor` grant 2.
-  return sql`(CASE WHEN ${denied} THEN 0 WHEN ${grantExists('user_id', userId, projectId, 'manager')} THEN 3 WHEN ${grantExists('user_id', userId, projectId, 'contributor')} THEN 2 WHEN ${grantExists('user_id', userId, projectId, 'viewer')} THEN 1${implicit} ELSE 0 END)`;
+  return sql`(CASE WHEN ${denied} THEN 0 WHEN ${grantExists(userId, projectId, 'manager')} THEN 3 WHEN ${grantExists(userId, projectId, 'contributor')} THEN 2 WHEN ${grantExists(userId, projectId, 'viewer')} THEN 1${implicit} ELSE 0 END)`;
 }
 
 /**
  * SQL expression for the actor's access level (0–3) to the project identified by
  * `projectId` whose visibility column/expression is `visibility`. Composable into lists.
+ * An agent's level is its owner's current level, never more and never less (F-036 AG-3).
  */
 export function projectLevelSql(actor: AccessActor, projectId: SQLWrapper, visibility: SQLWrapper): SQL {
   if (!actor.active) return sql`0`;
   if (actor.principal.kind === 'human') return humanLevel(actor.principal.id, actor.role, projectId, visibility);
-  const id = actor.principal.id;
-  const own = sql`(CASE WHEN ${grantExists('agent_id', id, projectId, 'denied')} THEN 0 WHEN ${grantExists('agent_id', id, projectId, 'contributor')} THEN 2 WHEN ${grantExists('agent_id', id, projectId, 'viewer')} THEN 1 ELSE 0 END)`;
-  const owner = actor.agent?.ownerUserId;
-  return owner ? sql`LEAST(${own}, ${humanLevel(owner, actor.agent?.ownerRole ?? null, projectId, visibility)})` : own;
+  if (!actor.agent) return sql`0`;
+  return humanLevel(actor.agent.ownerUserId, actor.agent.ownerRole, projectId, visibility);
 }
 
 /** Whether the actor belongs to the space, not only reaches it: a company owner or admin without a grant does not (F-037). */
@@ -186,12 +181,12 @@ export function visibleDraftsSql(actor: AccessActor): SQL {
   if (!actor.active) return sql`false`;
   const d = schema.drafts;
   if (actor.principal.kind === 'agent') {
-    // An agent reads only inside its current project access, including its own drafts.
-    // A deny grant or a lost grant yields level 0, so no separate deny clause is needed.
+    // An agent reads only inside its owner's current project access, including its own drafts.
+    // The owner's deny or lost access yields level 0, so no separate deny clause is needed.
     return and(eq(d.workspaceId, actor.workspaceId), sql`${draftProjectLevel(actor)} >= 1`,
       or(isDraftOwner(actor), sql`${d.visibility} = 'project'`))!;
   }
-  const denied = sql`(${d.projectId} IS NOT NULL AND ${grantExists('user_id', actor.principal.id, d.projectId, 'denied')})`;
+  const denied = sql`(${d.projectId} IS NOT NULL AND ${grantExists(actor.principal.id, d.projectId, 'denied')})`;
   const audiences: SQL[] = [isDraftOwner(actor), sql`(${d.visibility} = 'project' AND ${draftProjectLevel(actor)} >= 1)`];
   if (actor.principal.kind === 'human' && actor.role !== 'guest') audiences.push(sql`${d.visibility} = 'workspace'`);
   return and(eq(d.workspaceId, actor.workspaceId), sql`NOT ${denied}`, or(...audiences))!;

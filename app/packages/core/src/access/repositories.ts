@@ -114,22 +114,21 @@ export interface ProjectRepository {
   /** The workspace's people. */
   members(workspaceId: string): Promise<{ id: string; name: string }[]>;
   /** The workspace's unrevoked agents this principal may see in the project. */
-  audienceAgents(principal: Principal, projectId: string, workspaceId: string): Promise<{ id: string; name: string; ownerUserId: string | null }[]>;
+  audienceAgents(principal: Principal, projectId: string, workspaceId: string): Promise<{ id: string; name: string; ownerUserId: string }[]>;
   member(workspaceId: string, userId: string): Promise<MemberRecord | null>;
   /** The workspace's unrevoked agent with this id. */
-  activeAgent(workspaceId: string, agentId: string): Promise<{ id: string } | null>;
   /** The principal's grant on the project `FOR UPDATE`. */
-  lockGrantOf(projectId: string, target: { kind: 'human' | 'agent'; id: string }): Promise<GrantRecord | null>;
+  lockGrantOf(projectId: string, userId: string): Promise<GrantRecord | null>;
   /** A grant of the project by id `FOR UPDATE`. */
   lockGrant(projectId: string, grantId: string): Promise<GrantRecord | null>;
   updateGrant(grantId: string, role: GrantRecord['role'], createdBy: string): Promise<GrantWrite>;
-  insertGrant(row: { id: string; workspaceId: string; projectId: string; role: GrantRecord['role']; createdBy: string; userId: string | null; agentId: string | null }): Promise<GrantWrite>;
+  insertGrant(row: { id: string; workspaceId: string; projectId: string; role: GrantRecord['role']; createdBy: string; userId: string }): Promise<GrantWrite>;
   memberRole(workspaceId: string, userId: string): Promise<WorkspaceRole | null>;
   deleteGrant(grantId: string): Promise<void>;
 }
 
 export interface AgentRepository {
-  insert(row: { id: string; workspaceId: string; name: string; ownerUserId: string | null; createdBy: string }): Promise<AgentRecord>;
+  insert(row: { id: string; workspaceId: string; name: string; ownerUserId: string; createdBy: string }): Promise<AgentRecord>;
   /** The workspace's agents this principal may see, oldest first. */
   listVisible(principal: Principal, workspaceId: string): Promise<AgentRecord[]>;
   revoke(agentId: string, revokedAt: Date): Promise<AgentRecord>;

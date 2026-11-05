@@ -6,7 +6,7 @@ import { pool } from './support/db.js';
 import { publicOrigin, register, uniqueEmail } from './support/http.js';
 import { beginOauth, expect, mcp, oauthToken, toolValue } from './support/mcp.js';
 
-// Switches narrow, never widen (#316 AC-2 with #548): owner rights ∩ agent grant ∩ connection scopes ∩ the token's
+// Switches narrow, never widen (#316 AC-2 with #548): owner rights ∩ connection scopes ∩ the token's
 // partial consent ∩ the saved switches. A read-only token on a connection that also holds write scopes stays
 // read-only whatever the switches say, and a switch Off removes even what the token carries.
 const ALL = ['flux.context.read', 'flux.proposal.write', 'flux.action.execute'];
@@ -16,7 +16,6 @@ async function scene() {
   const workspace = expect(await owner.request('POST', '/api/v1/workspaces', { body: { name: 'Switch partial' } }), 201);
   const project = expect(await owner.request('POST', `/api/v1/workspaces/${workspace.id}/projects`, { body: { name: 'P', visibility: 'restricted' } }), 201);
   const agent = expect(await owner.request('POST', `/api/v1/workspaces/${workspace.id}/agents`, { body: { name: 'Agent', owner: 'self' } }), 201);
-  expect(await owner.request('POST', `/api/v1/projects/${project.id}/grants`, { body: { principal: { kind: 'agent', id: agent.id }, role: 'contributor' } }), 201);
   const doc = expect(await owner.request('POST', `/api/v1/projects/${project.id}/docs`, { body: { title: 'Switch doc', body: 'Switch-secret-5521' } }), 201);
   const connection = expect(await owner.request('POST', '/api/v1/agent-connections',
     { body: { agentId: agent.id, selectedProjectIds: [project.id], scopes: ALL } }), 201);

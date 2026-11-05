@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { AGENT_SOURCE_KINDS, type AgentBootstrap, type AgentSourceCheckpoint } from '@flux/contracts';
-import { agentOrientationUseCases, agentPolicyReference, agentSourcePage, coworkPlaybookReference, DomainError, getProject } from '@flux/core';
-import { accessPorts, agentExecutionRows, agentOrientationRows, agentPlaybookRows, agentPolicyRows, coworkUnitRows, type Database } from '@flux/db';
+import { agentOrientationUseCases, agentSourcePage, coworkPlaybookReference, DomainError, getProject } from '@flux/core';
+import { accessPorts, agentExecutionRows, agentOrientationRows, agentPlaybookRows, coworkUnitRows, type Database } from '@flux/db';
 import { requireMcpSourceKinds, withAgentConnection, type FluxMcpClaims } from './context.js';
 import { agentRuntimeInTransaction } from './runtime.js';
 import type { AgentToolRegistry } from './tool-registry.js';
@@ -19,7 +19,7 @@ export const agentSourceCheckpointSchema = z.discriminatedUnion('kind', [
 export function registerAgentBootstrap(tools: AgentToolRegistry, db: Database, claims: FluxMcpClaims) {
   const read = tools.forScope('flux.context.read');
   read.registerTool('flux_bootstrap', { title: 'Recover authenticated project context',
-    description: 'Recover the original server runtime, current project, bounded grants/tool catalog and the trusted co-work playbook version. Missing policy, coordination and repository providers are explicit setup gaps; this does not prove instruction loading or grant action authority.',
+    description: 'Recover the original server runtime, current project, bounded grants/tool catalog and the trusted co-work playbook version. Missing coordination and repository providers are explicit setup gaps; this does not prove instruction loading or grant action authority.',
     inputSchema: z.strictObject({ clientSessionId: z.uuid(), projectId: z.uuid(), grantLimit: page.limit.optional(), grantOffset: page.offset.optional(),
       includeWorkRecovery: z.boolean().optional().describe('Recover this connection’s own open units for Start/Resume; also needs project.work.read.'),
       workLimit: page.limit.optional(), workOffset: page.offset.optional() }),
@@ -35,10 +35,8 @@ export function registerAgentBootstrap(tools: AgentToolRegistry, db: Database, c
         const observedAt = await rows.now();
         const grants = await rows.liveProjectGrants(runtime.ownerUserId, runtime.connectionId, projectId, observedAt,
           agentSourcePage({ limit: grantLimit, offset: grantOffset }));
-        // The playbook and the approved project policy are #160's; #153/#74 providers are not yet handed off.
-        // No client input or wiki prose fills these fields: only a manager's publish writes policy.
+        // The playbook is #160's; #153/#74 providers are not yet handed off. No client input or wiki prose fills these fields.
         const playbook = coworkPlaybookReference();
-        const policy = await agentPolicyRows(tx).current(projectId);
         const acknowledged = await agentPlaybookRows(tx).acknowledgment(runtime.id);
         const current = !!acknowledged && acknowledged.bundleId === playbook.bundleId && acknowledged.version === playbook.version
           && acknowledged.digest === playbook.digest;
@@ -49,12 +47,11 @@ export function registerAgentBootstrap(tools: AgentToolRegistry, db: Database, c
         const result: AgentBootstrap = { contractVersion: 1, observedAt: observedAt.toISOString(), runtime,
           project: { id: project.id, workspaceId: project.workspaceId, name: project.name }, grants,
           capabilities: tools.capabilities(runtime.scopes, mcpPolicy),
-          trusted: { playbook, approvedPolicy: policy ? agentPolicyReference(policy) : null,
+          trusted: { playbook,
             coordination: { activeClaimReference: active?.id ?? null, checkpointReference: checkpoint?.checkpointId ?? null,
               inboxContinuation: null, ...(work ? { work } : {}) }, repositoryReferences: null },
           playbookAcknowledgment: acknowledged ? { ...acknowledged, current } : null,
-          gaps: [...(policy ? [] : ['approved_policy_unavailable' as const]),
-            'verified_repository_context_unavailable', 'goal_plan_classification_unavailable', 'dependency_index_unavailable'],
+          gaps: ['verified_repository_context_unavailable', 'goal_plan_classification_unavailable', 'dependency_index_unavailable'],
           readiness: { state: 'pending', meaning: 'server_context_available_only' },
           coverage: { projectIndex: 'bounded_canonical_metadata', changesSince: 'supplied_references_only', instructionLoading: current ? 'client_acknowledged' : 'unverified', modelObedience: 'unverified' } };
         return result;

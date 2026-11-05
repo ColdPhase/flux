@@ -51,7 +51,6 @@ describe('personal runs on any provider through the same path (#179)', () => {
     ws = await createWorkspace(owner, 'Provider-neutral assistant');
     place = await createProject(owner, ws.id, 'Lamp sensor', 'workspace');
     agentId = (expectStatus(await owner.browser.request('POST', `/api/v1/workspaces/${ws.id}/agents`, { body: { name: 'My assistant', owner: 'self' } }), 201) as { id: string }).id;
-    expectStatus(await owner.browser.request('POST', `/api/v1/projects/${place.id}/grants`, { body: { principal: { kind: 'agent', id: agentId }, role: 'contributor' } }), 201);
     thread = expectStatus(await owner.browser.request('POST', `/api/v1/projects/${place.id}/conversations`,
       { body: { body: 'Camera fails below 5 lux in the low-light test', clientMessageId: randomUUID() } }), 201) as Conversation;
   });
@@ -121,7 +120,6 @@ describe('a personal run is never charged above its reservation (#179 PROV-3, #1
     const ws = await createWorkspace(owner, 'Bounded assistant charges');
     const place = await createProject(owner, ws.id, 'Lamp sensor bound', 'workspace');
     agentId = (expectStatus(await owner.browser.request('POST', `/api/v1/workspaces/${ws.id}/agents`, { body: { name: 'My assistant', owner: 'self' } }), 201) as { id: string }).id;
-    expectStatus(await owner.browser.request('POST', `/api/v1/projects/${place.id}/grants`, { body: { principal: { kind: 'agent', id: agentId }, role: 'contributor' } }), 201);
     thread = expectStatus(await owner.browser.request('POST', `/api/v1/projects/${place.id}/conversations`,
       { body: { body: 'Camera fails below 5 lux in the low-light test', clientMessageId: randomUUID() } }), 201) as Conversation;
   });
@@ -191,7 +189,6 @@ describe('the assistant\'s model on an API key (F-027 AST-11, #596)', () => {
     expectStatus(await owner.browser.request('POST', `/api/v1/workspaces/${ws.id}/members`, { body: { email: viewer.email, role: 'member' } }), 201);
     expectStatus(await owner.browser.request('POST', `/api/v1/projects/${place.id}/grants`, { body: { principal: { kind: 'human', id: viewer.id }, role: 'viewer' } }), 201);
     agentId = (expectStatus(await owner.browser.request('POST', `/api/v1/workspaces/${ws.id}/agents`, { body: { name: 'My assistant', owner: 'self' } }), 201) as { id: string }).id;
-    expectStatus(await owner.browser.request('POST', `/api/v1/projects/${place.id}/grants`, { body: { principal: { kind: 'agent', id: agentId }, role: 'contributor' } }), 201);
     thread = expectStatus(await owner.browser.request('POST', `/api/v1/projects/${place.id}/conversations`,
       { body: { body: 'Camera fails below 5 lux in the low-light test', clientMessageId: randomUUID() } }), 201) as Conversation;
     connections.connect(owner.id, sonnet5, { provider: 'anthropic', model: 'claude-sonnet-5', baseUrl: null });

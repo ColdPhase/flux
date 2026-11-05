@@ -24,8 +24,6 @@ async function fixture() {
   const prj = await project(owner, ws.id, 'Human low-light result', 'restricted');
   const agent = expectStatus(await owner.browser.request('POST', `/api/v1/workspaces/${ws.id}/agents`,
     { body: { name: 'Comparison assistant', owner: 'self' } }), 201) as { id: string };
-  expectStatus(await owner.browser.request('POST', `/api/v1/projects/${prj.id}/grants`,
-    { body: { principal: { kind: 'agent', id: agent.id }, role: 'contributor' } }), 201);
   const rule = expectStatus(await owner.browser.request('POST', `/api/v1/projects/${prj.id}/proactive-comparison-rules`,
     { body: { agentId: agent.id, trigger: 'human_negative_result', purpose: 'camera_sensor_comparison',
       dataScope: 'current_project_published', permittedEffect: 'quiet_project_proposal', maxRunsPerDay: 3, periodBudgetCents: 50, perRunCents: 5 } }), 201) as { id: string };

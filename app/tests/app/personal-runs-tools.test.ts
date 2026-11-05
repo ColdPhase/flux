@@ -61,7 +61,7 @@ async function row(runId: string) {
 
 describe('the server tool loop in the worker (AST-8.2, AST-8.3; fake provider and fake tools, no provider pass)', () => {
   let owner: Person; let ws: Workspace; let place: Project; let thread: Conversation;
-  let agentId: string; let grantId: string;
+  let agentId: string;
 
   /** The owner's assistant on a fresh connection with these per-run and daily ceilings. */
   async function useConnection(model: Parameters<FakeConnections['connect']>[2] = {}, perRunCents = 50) {
@@ -77,7 +77,6 @@ describe('the server tool loop in the worker (AST-8.2, AST-8.3; fake provider an
     ws = await createWorkspace(owner, 'Tool loop');
     place = await createProject(owner, ws.id, 'Lamp sensor', 'workspace');
     agentId = (expectStatus(await owner.browser.request('POST', `/api/v1/workspaces/${ws.id}/agents`, { body: { name: 'My assistant', owner: 'self' } }), 201) as { id: string }).id;
-    grantId = (expectStatus(await owner.browser.request('POST', `/api/v1/projects/${place.id}/grants`, { body: { principal: { kind: 'agent', id: agentId }, role: 'contributor' } }), 201) as { id: string }).id;
     thread = expectStatus(await owner.browser.request('POST', `/api/v1/projects/${place.id}/conversations`,
       { body: { body: 'Camera fails below 5 lux in the low-light test', clientMessageId: randomUUID() } }), 201) as Conversation;
   });
@@ -224,7 +223,8 @@ describe('the server tool loop in the worker (AST-8.2, AST-8.3; fake provider an
     await useConnection({}, 50);
     compute.respond = async () => toolUse(compute.dispatched.length);
     session.onCall = async () => {
-      expectStatus(await owner.browser.request('DELETE', `/api/v1/projects/${place.id}/grants/${grantId}`), 204, 'revoke the agent grant');
+      // The owner kept out of the project: their assistant loses it with them (F-036 AG-3).
+      await pool.query(`INSERT INTO project_grants (id, workspace_id, project_id, user_id, role, created_by) VALUES ($1, $2, $3, $4, 'denied', $4) ON CONFLICT (project_id, user_id) WHERE (user_id IS NOT NULL) DO UPDATE SET role = 'denied'`, [randomUUID(), ws.id, place.id, owner.id]);
     };
     const started = await ask();
     assert.equal(await processor.process(started.run.id), 'denied');
@@ -232,7 +232,7 @@ describe('the server tool loop in the worker (AST-8.2, AST-8.3; fake provider an
     assert.deepEqual([stored.stopped_at_stage, stored.cost_state, stored.charged_micros, stored.answer_body], ['before_dispatch', 'observed', 2_500, null]);
     assert.equal(compute.dispatched.length, 1, 'no request after the revocation');
     assert.equal(session.changes.length, 1);
-    grantId = (expectStatus(await owner.browser.request('POST', `/api/v1/projects/${place.id}/grants`, { body: { principal: { kind: 'agent', id: agentId }, role: 'contributor' } }), 201) as { id: string }).id;
+    await pool.query(`DELETE FROM project_grants WHERE project_id = $1 AND user_id = $2`, [place.id, owner.id]);
   });
 
   test('Stop during a call ends the run stopped: the charge so far is kept, no further request is sent', async () => {

@@ -3,7 +3,7 @@ import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { after, before, beforeEach, describe, test } from 'node:test';
 import Fastify from 'fastify';
 import type { PgBoss } from 'pg-boss';
-import { assistantRunChangesActionPath, personalRunTokenPath, type Conversation, type Material, type WorkResult } from '@flux/contracts';
+import { assistantRunChangesActionPath, PERSONAL_ASSISTANT_AGENTS_PATH, personalRunTokenPath, type Conversation, type Material, type WorkResult } from '@flux/contracts';
 import { assistantReactionTick, deliverNotificationEmail, settleAssistantSummaries, startAssistantSummary, type NotificationMailer } from '@flux/core';
 import { coworkUnitRows, personalRunTokenRows, pushDeliveryRepository, type Database } from '@flux/db';
 import { assistantUnitOfWork, startBackgroundOf } from '../../apps/worker/src/assistant/index.js';
@@ -239,11 +239,8 @@ describe('workspace AI lock: the remaining S1 surfaces', () => {
 
   test('an idempotent replay of a gated command is refused while AI is off', async () => {
     const key = randomUUID();
-    const path = `/api/v1/projects/${scene.place.id}/agent-policy`;
-    const current = (expectStatus(await scene.owner.browser.request('GET', path), 200) as { policy: { revision: number } | null }).policy?.revision ?? 0;
-    const body = { scope: 'Firmware only.', priorities: 'Low light.', reviewCriteria: 'Tests.', allowedWork: 'Tasks.', expectedRevision: current };
-    const ask = () => scene.owner.browser.request('PUT', path, { body, headers: { 'idempotency-key': key } });
-    assert.equal((await ask()).status, 201, 'the agent policy is published with an Idempotency-Key');
+    const ask = () => scene.owner.browser.request('PUT', PERSONAL_ASSISTANT_AGENTS_PATH, { body: { agentId: scene.agentId }, headers: { 'idempotency-key': key } });
+    assert.equal((await ask()).status, 200, 'the assistant is chosen with an Idempotency-Key');
     await setWorkspaceAi(scene.ws.id, 'blocked');
     const replay = await ask();
     assert.deepEqual([replay.status, code(replay.json)], [403, 'WORKSPACE_AI_BLOCKED']);
@@ -299,7 +296,6 @@ describe('workspace AI lock: background comparisons', () => {
     projectId = (await project(owner, ws.id, 'Low-light sensors', 'restricted')).id;
     await grant(owner, projectId, peer, 'contributor');
     const agentId = (expectStatus(await owner.browser.request('POST', `/api/v1/workspaces/${ws.id}/agents`, { body: { name: 'Comparison agent', owner: 'self' } }), 201) as { id: string }).id;
-    expectStatus(await owner.browser.request('POST', `/api/v1/projects/${projectId}/grants`, { body: { principal: { kind: 'agent', id: agentId }, role: 'contributor' } }), 201);
     const rule = expectStatus(await owner.browser.request('POST', `/api/v1/projects/${projectId}/proactive-comparison-rules`, { body: { agentId, trigger: 'human_negative_result',
       purpose: 'camera_sensor_comparison', dataScope: 'current_project_published', permittedEffect: 'quiet_project_proposal', maxRunsPerDay: 3, periodBudgetCents: 15, perRunCents: 5 } }), 201) as { id: string };
     expectStatus(await owner.browser.request('POST', '/api/v1/background-compute-connections', { body: {

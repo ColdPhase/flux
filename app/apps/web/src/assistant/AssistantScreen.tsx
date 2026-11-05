@@ -1,22 +1,15 @@
-import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
+import { useEffect, useState } from 'react';
 import { Link } from 'react-router';
-import { ASSISTANT_AREAS, ASSISTANT_REACTION_EVENTS, assistantReactionsHistoryPath, type AssistantReactionRecent, type AssistantChange, aiConnectionLabel, assistantCanSentence, assistantSettingsPath, type AssistantAreaId, type AssistantSettings, type PersonalAssistantStatus, type UpdateAssistantSettings } from '@flux/contracts';
+import { AGENT_ALWAYS_WAITS, aiConnectionLabel, assistantSettingsPath, type AssistantSettings, type PersonalAssistantStatus } from '@flux/contracts';
 import { ApiError, request } from '../api/client';
-import { SwitchRow } from '../app/SettingsHome';
-import { AgentTag, Button, Icon, Kreska, agentHue } from '../ui';
+import { AgentTag, Icon, Kreska, agentHue } from '../ui';
 import { runtimeNames } from './format';
-import { failure } from './WaitingChanges';
 import { AssistantModelControl } from './ModelPicker';
-import { listRecentChanges, undoChange } from './api';
+import { MayDoChoice } from '../agent-connection/MayDoChoice';
 
-// The assistant screen (F-027 AST-10, A7): a header with the one switch that stops everything, the account row
-// (who pays), "When it changes something", and the five switches. Every control saves as it is touched and
-// reads back what the server kept, so the screen never shows a setting that is not in force.
-
-const APPROVAL = [
-  { id: 'act', label: 'Do it and tell me' },
-  { id: 'ask', label: 'Ask me first' },
-] as const;
+// The assistant screen (F-036 AG-3): a header with the one switch that stops everything, the account row (who pays), and
+// one "What it may do" row. Every control saves as it is touched and reads back what the server kept, so the screen never
+// shows a setting that is not in force. Undo sits on the agent's own messages; there is no Activity list here.
 
 export function AssistantHeader({ name, userId, status, busy, onToggle }: {
   name: string; userId: string; status: PersonalAssistantStatus; busy: boolean; onToggle: (on: boolean) => void;
@@ -48,106 +41,32 @@ export function AssistantHeader({ name, userId, status, busy, onToggle }: {
   );
 }
 
+/** "What it may do" (F-036 AG-3): Only read, Do it and tell me (the default) or Ask me first, saved on the assistant's connection. */
 export function AssistantControls({ status, userId }: { status: PersonalAssistantStatus; userId: string }) {
   const workspaceId = status.enablement?.agents[0]?.workspaceId ?? null;
   const [settings, setSettings] = useState<AssistantSettings | null>(null);
   const [error, setError] = useState('');
-  const [saving, setSaving] = useState(false);
   const path = workspaceId ? assistantSettingsPath(workspaceId, userId) : null;
   useEffect(() => {
     if (!path) return;
     const controller = new AbortController();
-    request<AssistantSettings>(path, { signal: controller.signal }).then(setSettings, (cause) => { if (!controller.signal.aborted) setError(cause instanceof ApiError ? cause.message : 'The switches couldn\'t load.'); });
+    request<AssistantSettings>(path, { signal: controller.signal }).then(setSettings, (cause) => { if (!controller.signal.aborted) setError(cause instanceof ApiError ? cause.message : 'This couldn\'t load.'); });
     return () => controller.abort();
   }, [path]);
-  const group = useRef<HTMLDivElement>(null);
   if (!path) return null;
   if (!settings) return error ? <p className="nset__error" role="alert"><Icon name="alert" size={14} />{error}</p> : null;
 
-  const save = async (patch: UpdateAssistantSettings) => {
-    setSaving(true); setError('');
-    try { setSettings(await request<AssistantSettings>(path, { method: 'PATCH', body: { ...patch, expectedVersion: settings.version } })); return true; }
-    catch (cause) {
-      setError('Couldn\'t save. The latest settings are shown.');
-      try { setSettings(await request<AssistantSettings>(path)); } catch { /* keep what is shown */ }
-      void cause;
-      return false;
-    } finally { setSaving(false); }
-  };
-  const move = (event: KeyboardEvent<HTMLDivElement>) => {
-    const delta = event.key === 'ArrowRight' || event.key === 'ArrowDown' ? 1 : event.key === 'ArrowLeft' || event.key === 'ArrowUp' ? -1 : 0;
-    if (!delta) return;
-    event.preventDefault();
-    const next = APPROVAL[(APPROVAL.findIndex((item) => item.id === settings.approvalMode) + delta + APPROVAL.length) % APPROVAL.length]!;
-    // The selection is only ever what the server kept, so a failed save leaves it (and focus) where it was.
-    void save({ approvalMode: next.id }).then((ok) => requestAnimationFrame(() => group.current?.querySelector<HTMLElement>(ok ? `[data-approval="${next.id}"]` : `[data-approval="${settings.approvalMode}"]`)?.focus()));
-  };
   return (
     <>
-      <h3 className="aset-screen__h" id="aset-can">What it can do</h3>
+      <h3 className="aset-screen__h" id="aset-can">What it may do</h3>
       <section className="sset-card" aria-labelledby="aset-can">
         <div className="sset-row aset-screen__approval">
           <div className="sset-row__b">
-            <span className="sset-row__t" id="aset-approval">When it changes something</span>
-            <div ref={group} className="seg aset-screen__seg" role="radiogroup" aria-labelledby="aset-approval" onKeyDown={move}>
-              {APPROVAL.map((item) => (
-                <button key={item.id} type="button" role="radio" className="seg__b" data-approval={item.id} aria-checked={settings.approvalMode === item.id}
-                  tabIndex={settings.approvalMode === item.id ? 0 : -1} onClick={() => { if (settings.approvalMode !== item.id) void save({ approvalMode: item.id }); }}>{item.label}</button>
-              ))}
-            </div>
-            <span className="sset-row__s">It asks before removing anything or changing things other people made or are responsible for.</span>
+            <MayDoChoice connectionId={settings.connectionId} initial={settings.mayDo} labelledBy="aset-can" />
           </div>
         </div>
-        <div className="aset-screen__sw">
-        {ASSISTANT_AREAS.map((area) => (
-          <SwitchRow key={area.id} label={area.label} checked={settings.areas[area.id as AssistantAreaId] === 'edit'} disabled={saving}
-            detail={settings.areas[area.id as AssistantAreaId] === 'read' ? 'Only reads for now' : undefined}
-            onChange={(on) => void save({ areas: { [area.id]: on ? 'edit' : 'off' } })} />
-        ))}
-        </div>
       </section>
-      <p className="nset__note aset-screen__can" data-testid="assistant-can">{assistantCanSentence(settings.areas, settings.approvalMode)}</p>
-      {error ? <p className="nset__error" role="alert"><Icon name="alert" size={14} />{error}</p> : null}
-      <RecentChanges workspaceId={workspaceId} userId={userId} />
+      <p className="nset__note aset-screen__can" data-testid="assistant-can">{AGENT_ALWAYS_WAITS}</p>
     </>
-  );
-}
-
-const MADE = new Set<AssistantChange['state']>(['applied', 'applied_after_wait', 'undone']);
-const sameDay = (iso: string) => new Date(iso).toDateString() === new Date().toDateString();
-
-/** Recent (AST-10.7): everything the assistant changed, newest first, each with its own Undo. */
-function RecentChanges({ workspaceId, userId }: { workspaceId: string | null; userId: string }) {
-  const [background, setBackground] = useState<AssistantReactionRecent[]>([]);
-  useEffect(() => {
-    if (!workspaceId) return;
-    const controller = new AbortController();
-    request<{ items: AssistantReactionRecent[] }>(assistantReactionsHistoryPath(workspaceId, userId), { signal: controller.signal }).then((result) => setBackground(result.items), () => undefined);
-    return () => controller.abort();
-  }, [workspaceId, userId]);
-  const [items, setItems] = useState<AssistantChange[] | null>(null);
-  const [notes, setNotes] = useState<Record<string, string>>({});
-  const [busy, setBusy] = useState('');
-  const load = () => listRecentChanges().then((page) => setItems(page.items.filter((change) => MADE.has(change.state))), () => setItems([]));
-  useEffect(() => { void load(); }, []);
-  if (!items) return null;
-  const today = items.filter((change) => sameDay(change.createdAt)).length;
-  const undo = async (change: AssistantChange) => {
-    setBusy(change.id);
-    try { const result = await undoChange(change); setNotes((current) => ({ ...current, [change.id]: result.message ?? '' })); await load(); }
-    catch (cause) { setNotes((current) => ({ ...current, [change.id]: failure(cause) })); }
-    finally { setBusy(''); }
-  };
-  return (
-    <details className="aset-recent">
-      <summary>Recent · today: {today} {today === 1 ? 'change' : 'changes'}</summary>
-      {background.map((entry) => <p key={entry.id} className="sset-row__s">When {ASSISTANT_REACTION_EVENTS.find((event) => event.id === entry.name)?.label ?? 'your item changes'} · {entry.line || 'Working…'}</p>)}
-      {items.length ? <ul className="aset-recent__list">{items.map((change) => (
-        <li key={change.id}>
-          <span className="aset-recent__t">{change.state === 'undone' ? 'Undone' : 'Done'}: {change.phrase}{change.objectTitle ? ` ${change.objectTitle}` : ''}</span>
-          {notes[change.id] ? <span className="aset-recent__n" role="status">{notes[change.id]}</span> : null}
-          {change.undoable ? <Button variant="link" busy={busy === change.id} onClick={() => void undo(change)}>Undo</Button> : null}
-        </li>))}</ul> : background.length ? null : <p className="nset__note">Nothing yet.</p>}
-    </details>
   );
 }

@@ -28,14 +28,14 @@ async function objectsOf(scene: AssistantScene): Promise<Objects> {
   const run = await scene.runs.invoke(human(owner), thread.id, { clientRunId: randomUUID(), kind: 'ask', prompt: 'Look around' });
   await pool.query(`UPDATE personal_runs SET status = 'completed', completed_at = now(), cost_state = 'released', charged_micros = 0 WHERE id = $1`, [run.run.id]);
   const ids = { change: randomUUID(), proposal: randomUUID(), question: randomUUID(), rule: randomUUID(), comparison: randomUUID(),
-    outcome: randomUUID(), join: randomUUID(), job: randomUUID(), notification: randomUUID() };
+    outcome: randomUUID(), job: randomUUID(), notification: randomUUID() };
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
     // Test fixture only: foreign keys are not what these rows exercise (only their workspace is read).
     await client.query(`SET LOCAL session_replication_role = replica`);
     await client.query(`INSERT INTO assistant_changes (id, workspace_id, project_id, run_id, owner_user_id, agent_id, client_command_id, fingerprint, tool, operation,
-      object_type, state, policy_version, expires_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'flux_update_task', 'work.update', 'work', 'not_now', 1, now() + interval '1 day')`,
+      object_type, state, policy_version) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'flux_update_task', 'work.update', 'work', 'skipped', 1)`,
     [ids.change, ws.id, place.id, run.run.id, owner.id, agentId, randomUUID(), createHash('sha256').update(ids.change).digest('hex')]);
     await client.query(`INSERT INTO assistant_proposals (id, workspace_id, project_id, run_id, owner_user_id, fact, interpretation, change_type, result_title, result_finding)
       VALUES ($1, $2, $3, $4, $5, 'Fact', 'Meaning', 'result', 'Result', 'negative')`, [ids.proposal, ws.id, place.id, randomUUID(), owner.id]);
@@ -52,7 +52,7 @@ async function objectsOf(scene: AssistantScene): Promise<Objects> {
   } catch (error) { await client.query('ROLLBACK'); throw error; } finally { client.release(); }
   return { workspace: ws.id, project: place.id, conversation: thread.id, work: work.id, agent: agentId, connection: await scene.assistantConnectionId(),
     run: run.run.id, assistant_proposal: ids.proposal, assistant_change: ids.change, agent_question: ids.question, comparison_rule: ids.rule,
-    comparison_proposal: ids.comparison, comparison_outcome: ids.outcome, assistant_join: ids.join, assistant_job: ids.job, notification: ids.notification };
+    comparison_proposal: ids.comparison, comparison_outcome: ids.outcome, assistant_job: ids.job, notification: ids.notification };
 }
 
 /** The request a gated route answers to: its scope object in the path or body, the owner wherever an owner is named. */
@@ -84,7 +84,6 @@ describe('workspace AI lock: HTTP routes', () => {
     const counts = async () => (await pool.query(`SELECT
       (SELECT count(*) FROM personal_runs WHERE workspace_id = $1) AS runs, (SELECT count(*) FROM agent_connections WHERE workspace_id = $1) AS connections,
       (SELECT count(*) FROM assistant_jobs WHERE workspace_id = $1) AS jobs, (SELECT count(*) FROM assistant_reactions WHERE workspace_id = $1) AS reactions,
-      (SELECT count(*) FROM agent_project_policies p JOIN projects j ON j.id = p.project_id WHERE j.workspace_id = $1) AS policies,
       (SELECT count(*) FROM events WHERE workspace_id = $1) AS events`, [blocked.ws.id])).rows[0];
     await setWorkspaceAi(blocked.ws.id, 'blocked');
     const before = await counts();

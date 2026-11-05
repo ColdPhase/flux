@@ -1,9 +1,8 @@
-import { assistantSettingsRows, type AssistantAuthority, type DbExecutor, accessPorts, accessReader, type Transaction } from '@flux/db';
-import { ConflictError, assertAuthorized, evaluateProject, policyPersonalRunAccess, grantProject,
-  initialAgentMcpPolicy, mcpPolicyAdmissionActions, mcpPolicyWithinConsent } from '@flux/core';
-import type { TransactionEventSession } from '../work/transaction-events.js';
+import { assistantSettingsRows, type AssistantAuthority, type DbExecutor, accessReader, type Transaction } from '@flux/db';
+import { ConflictError, assertAuthorized, policyPersonalRunAccess, initialAgentMcpPolicy } from '@flux/core';
 
-export function assistantRows(tx: DbExecutor, events: TransactionEventSession) {
+/** The owner's assistant: no grants, switches or project list; it has exactly its owner's rights (F-036 AG-3). */
+export function assistantRows(tx: DbExecutor) {
   const authority: AssistantAuthority = {
     async requireWorkspace(ownerUserId, workspaceId, connection) {
       await assertAuthorized({ kind: 'human', id: ownerUserId }, 'workspace.read', { type: 'workspace', id: workspaceId }, accessReader(connection), { lock: true });
@@ -12,16 +11,8 @@ export function assistantRows(tx: DbExecutor, events: TransactionEventSession) {
       const allowed = await policyPersonalRunAccess(accessReader(connection)).requireInvoke({ kind: 'human', id: ownerUserId }, agentId, { lock: true });
       if (allowed.workspaceId !== workspaceId) throw new ConflictError('Choose an assistant in this company', 'ASSISTANT_WORKSPACE_MISMATCH');
     },
-    async allowsProject(principal, action, projectId, connection) {
-      return (await evaluateProject(principal, action, projectId, accessReader(connection), { lock: true })).allowed;
-    },
-    async grantProject(ownerUserId, projectId, agentId, connection) {
-      await grantProject({ kind: 'human', id: ownerUserId }, projectId, { principal: { kind: 'agent', id: agentId }, role: 'contributor' }, connection, accessPorts, events);
-    },
     identityChanged() { throw new ConflictError('This company already has its assistant identity; reuse that agent', 'ASSISTANT_IDENTITY_CHANGED'); },
     initialPolicy: initialAgentMcpPolicy,
-    withinConsent: mcpPolicyWithinConsent,
-    admissionActions: mcpPolicyAdmissionActions,
   };
   return assistantSettingsRows(tx as Transaction, authority);
 }

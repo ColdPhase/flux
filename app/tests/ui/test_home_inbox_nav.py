@@ -133,7 +133,6 @@ class HomeInboxNav(unittest.TestCase):
         project = self.api("ada", "POST", f"/api/v1/workspaces/{ws['id']}/projects", {"name": "Community garden sensors", "visibility": "workspace"}, status=201)
         self.api("ada", "POST", f"/api/v1/workspaces/{ws['id']}/projects", {"name": "Cargo bike co-op", "visibility": "workspace"}, status=201)
         agent = self.api("ada", "POST", f"/api/v1/workspaces/{ws['id']}/agents", {"name": "Ada's Claude Code", "owner": "self"}, status=201)
-        self.api("ada", "POST", f"/api/v1/projects/{project['id']}/grants", {"principal": {"kind": "agent", "id": agent["id"]}, "role": "contributor"}, status=201)
         connection = self.api("ada", "POST", "/api/v1/agent-connections", {"agentId": agent["id"], "name": "Desk laptop", "clientDesignation": "claude_code",
                                                                             "selectedProjectIds": [project["id"]], "scopes": ACTION_SCOPES}, status=201)
         ids.update(workspace=ws["id"], project=project["id"], agent=agent["id"], connection=connection["id"])

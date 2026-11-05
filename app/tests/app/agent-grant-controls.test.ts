@@ -160,7 +160,6 @@ test('another member, even a workspace owner and project manager, cannot see, ad
   }
   // Through the peer's own connection, the owner's grant is just as absent.
   const agent = expect(await peer.browser.request('POST', `/api/v1/workspaces/${f.workspaceId}/agents`, { body: { name: 'Peer agent', owner: 'self' } }), 201);
-  expect(await peer.browser.request('POST', `/api/v1/projects/${f.projectId}/grants`, { body: { principal: { kind: 'agent', id: agent.id }, role: 'contributor' } }), 201);
   const own = expect(await peer.browser.request('POST', '/api/v1/agent-connections', { body: { agentId: agent.id, selectedProjectIds: [f.projectId],
     scopes: ['flux.context.read', 'flux.action.execute'] } }), 201);
   const ownPath = `/api/v1/agent-connections/${own.id}/action-grants`;
@@ -190,7 +189,6 @@ test('a grant cannot go above the connection\'s ceiling: its action scope, selec
   await refused(String(readOnly.id), {}, 404, 'CONNECTION_NOT_FOUND');
   // A project the owner manages and the agent contributes to, but that this connection did not select.
   const other = expect(await f.owner.request('POST', `/api/v1/workspaces/${f.workspaceId}/projects`, { body: { name: 'Unselected project', visibility: 'restricted' } }), 201);
-  expect(await f.owner.request('POST', `/api/v1/projects/${other.id}/grants`, { body: { principal: { kind: 'agent', id: f.agentId }, role: 'contributor' } }), 201);
   await refused(f.connectionId, { projectId: other.id }, 404, 'CONNECTION_NOT_FOUND');
   // Classes an operation does not have, and operations that do not exist.
   await refused(f.connectionId, { peerRequestClass: 'review' }, 400);

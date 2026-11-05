@@ -27,8 +27,6 @@ async function owner(label: string) {
     { body: { name: 'Sensor study', visibility: 'restricted' } }), 201);
   const agent = expect(await browser.request('POST', `/api/v1/workspaces/${workspace.id}/agents`,
     { body: { name: 'Research agent', owner: 'self' } }), 201);
-  expect(await browser.request('POST', `/api/v1/projects/${project.id}/grants`,
-    { body: { principal: { kind: 'agent', id: agent.id }, role: 'contributor' } }), 201);
   const connection = expect(await browser.request('POST', '/api/v1/agent-connections', { body: { agentId: agent.id,
     selectedProjectIds: [project.id], scopes: ['flux.context.read', 'flux.proposal.write'] } }), 201);
   return { browser, userId, connectionId: String(connection.id) };

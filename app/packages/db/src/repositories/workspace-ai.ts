@@ -39,7 +39,6 @@ const SCOPE_SQL: Record<AiScopeKind, (id: string) => SQL> = {
   comparison_rule: (id) => sql`SELECT workspace_id AS id FROM proactive_comparison_rules WHERE id = ${id}`,
   comparison_proposal: (id) => sql`SELECT p.workspace_id AS id FROM proactive_comparison_proposals t JOIN projects p ON p.id = t.project_id WHERE t.id = ${id}`,
   comparison_outcome: (id) => sql`SELECT p.workspace_id AS id FROM proactive_comparison_insufficient_outcomes t JOIN projects p ON p.id = t.project_id WHERE t.id = ${id}`,
-  assistant_join: (id) => sql`SELECT workspace_id AS id FROM assistant_join_requests WHERE id = ${id}`,
   assistant_job: (id) => sql`SELECT workspace_id AS id FROM assistant_jobs WHERE id = ${id}`,
   notification: (id) => sql`SELECT workspace_id AS id FROM notifications WHERE id = ${id}`,
 };

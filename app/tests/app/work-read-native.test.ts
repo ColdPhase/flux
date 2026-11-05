@@ -41,8 +41,7 @@ describe('bounded native work reads through HTTP and current native fences', () 
     await addMember(owner, workspaceId, other, 'member'); await addMember(owner, workspaceId, viewer, 'member');
     projectId = (await project(owner, workspaceId, 'Native bounded projections', 'restricted')).id;
     await grant(owner, projectId, other, 'contributor'); await grant(owner, projectId, viewer, 'viewer');
-    const agents = await Promise.all([0, 1].map(() => post<Agent>(owner, `/api/v1/workspaces/${workspaceId}/agents`, { name: 'Ada', owner: 'workspace' })));
-    for (const agent of agents) await post(owner, `${base()}/grants`, { principal: { kind: 'agent', id: agent.id }, role: 'contributor' });
+    const agents = await Promise.all([0, 1].map(() => post<Agent>(owner, `/api/v1/workspaces/${workspaceId}/agents`, { name: 'Ada', owner: 'self' })));
     for (const ref of [{ kind: 'human', id: owner.id }, { kind: 'human', id: other.id }, ...agents.map(({ id }) => ({ kind: 'agent', id }))])
       await addWork(`Active ${ref.kind} ${ref.id}`, { status: 'in_progress', owner: ref });
     conversation = await post<Conversation>(owner, `${base()}/conversations`, { body: 'Actual source opening\nSecond line stays private to its body', clientMessageId: randomUUID() });

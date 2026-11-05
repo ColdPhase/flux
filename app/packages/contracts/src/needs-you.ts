@@ -1,16 +1,14 @@
 // "Needs you" (#342, F-026 S1/S11): the one queue of what asks something of the signed-in person.
 // It is computed for the person from current access rows, never stored; only what the person did
 // with an item (done, not now, declined) is stored, per person.
-import type { AssistantRequestIdentity } from './push.js';
-
 import type { LockedWorkspaceRef } from './encryption.js';
+import type { AssistantWaitReason } from './assistant.js';
 
 export const NEEDS_YOU_PATH = '/api/v1/needs-you';
 export const needsYouItemPath = (key: string) => `${NEEDS_YOU_PATH}/${encodeURIComponent(key)}`;
 
 /**
- * What kind of need an item is. `question` is a notification asking the person to respond, including an
- * assistant join request linked to its saved request-cycle identity, and an agent's open question with ready-made answers
+ * What kind of need an item is. `question` is a notification asking the person to respond, and an agent's open question with ready-made answers
  * (`question:<id>`, F-026 S14): it is read from the question itself, so it leaves the queue once it is answered anywhere.
  */
 export const NEEDS_YOU_KINDS = ['decision', 'question', 'blocked', 'mention'] as const;
@@ -109,13 +107,10 @@ export interface NeedsYouItem {
   proposal?: NeedsYouProposal | null;
   /** Why a notification-based item reached you (`mention`, `question` or `invitation`); null for the others. */
   reason: 'mention' | 'question' | 'invitation' | null;
-  /** Immutable request-cycle identity, only when the notification links a saved assistant join-question snapshot. */
-  assistantRequestIdentity?: AssistantRequestIdentity | null;
   /** The task "Not now: when #N is done" waits for; null when the item has none. */
   snoozeTask: NeedsYouTaskRef | null;
   /**
-   * Your assistant's undecided waiting changes of one request (F-027 AST-5.6), only for their owner: its
-   * button is the object's own verb (*Close*, *Remove*), *Apply* only for a mix.
+   * One agent run's waiting changes, only for the agent's owner (F-036 AG-7): "Assistant · 3 things wait for you · Approve all · Open".
    */
   assistantChanges?: NeedsYouAssistantChanges | null;
   assistantNote?: string;
@@ -124,10 +119,11 @@ export interface NeedsYouItem {
 
 export interface NeedsYouAssistantChanges {
   runId: string;
-  suggestion?: boolean;
-  verb: string;
+  /** The agent's name, as its owner calls it ("Assistant", later "Planner"). */
+  agentName: string;
   summary: string;
-  changes: { id: string; version: number; phrase: string; objectTitle: string; line: string | null; preview?: string }[];
+  changes: { id: string; version: number; phrase: string; verb: string; objectTitle: string; line: string | null;
+    waitReason: AssistantWaitReason | null; forPerson: { id: string; name: string } | null }[];
 }
 
 export interface NeedsYouResponse {

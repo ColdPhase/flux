@@ -16,7 +16,6 @@ test('each minted family keeps its authorizing facts across reauthorization, aba
   const workspace = expect(await browser.request('POST', '/api/v1/workspaces', { body: { name: 'Provenance control' } }), 201);
   const project = expect(await browser.request('POST', `/api/v1/workspaces/${workspace.id}/projects`, { body: { name: 'Provenance project', visibility: 'restricted' } }), 201);
   const agent = expect(await browser.request('POST', `/api/v1/workspaces/${workspace.id}/agents`, { body: { name: 'Provenance agent', owner: 'self' } }), 201);
-  expect(await browser.request('POST', `/api/v1/projects/${project.id}/grants`, { body: { principal: { kind: 'agent', id: agent.id }, role: 'contributor' } }), 201);
   const connection = expect(await browser.request('POST', '/api/v1/agent-connections', { body: { agentId: agent.id,
     selectedProjectIds: [project.id], scopes: ['flux.context.read', 'flux.proposal.write'] } }), 201);
   const clientId = `provenance-${randomUUID()}`; const redirectUri = 'http://127.0.0.1:19739/callback';

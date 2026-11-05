@@ -7,7 +7,7 @@ type AgentOauthGrant = { referenceId: string; clientId: string | null; connectio
 import * as schema from '../schema.js';
 import { idpStandingRepository } from './idp-standing.js';
 import type { createDatabase } from '../index.js';
-import { initializeAgentMcpPolicy, lockAgentMcpPolicy } from './agent-mcp-policy.js';
+import { assistantProjectIds, initializeAgentMcpPolicy, lockAgentMcpPolicy } from './agent-mcp-policy.js';
 import type { DbExecutor } from './push.js';
 
 type Database = Pick<ReturnType<typeof createDatabase>['db'], 'transaction'>;
@@ -23,7 +23,7 @@ function serialize(row: Row, selectedProjectIds: string[]): AgentConnection {
   return {
     id: row.id, workspaceId: row.workspaceId, ownerUserId: row.ownerUserId, agentId: row.agentId,
     name: row.name, clientDesignation: row.clientDesignation,
-    selectedProjectIds, scopes: [...row.scopes], computeSource: row.computeSource,
+    selectedProjectIds, scopes: [...row.scopes], computeSource: row.computeSource, mayDo: row.mayDo,
     revokedAt: row.revokedAt?.toISOString() ?? null, createdAt: row.createdAt.toISOString(),
   };
 }
@@ -79,7 +79,8 @@ export async function workspaceIdOfGrantReference(db: DbExecutor, ownerUserId: s
 }
 
 export function agentConnectionRepository(db: Database, policy: AgentConnectionPolicy) {
-  const projects = async (tx: Transaction, id: string) => (await tx.select({ id: schema.agentConnectionProjects.projectId })
+  // The assistant reaches every project of its workspace that its owner can (F-036 AG-3); others keep their consented list.
+  const projects = async (tx: Transaction, id: string) => await assistantProjectIds(tx, id) ?? (await tx.select({ id: schema.agentConnectionProjects.projectId })
     .from(schema.agentConnectionProjects).where(eq(schema.agentConnectionProjects.connectionId, id)))
     .map((row) => row.id);
 
@@ -106,7 +107,7 @@ export function agentConnectionRepository(db: Database, policy: AgentConnectionP
     if (!agent) return null;
     if (!selectedProjectIds.length) return null;
     const action = reach ?? (row.scopes.some((scope) => scope === 'flux.proposal.write' || scope === 'flux.action.execute') ? 'project.write' : 'project.read');
-    if (!mcp) {
+    if (!mcp && row.computeSource !== 'owner_assistant') {
       for (const projectId of selectedProjectIds.sort()) {
         if (await policy.authorizeProject(row.agentId, projectId, action, tx) !== row.workspaceId) return null;
       }
@@ -174,6 +175,19 @@ export function agentConnectionRepository(db: Database, policy: AgentConnectionP
         .set({ revokedAt: new Date(), updatedAt: new Date() })
         .where(and(eq(schema.agentConnections.id, connectionId), eq(schema.agentConnections.ownerUserId, ownerUserId),
           isNull(schema.agentConnections.revokedAt))).returning({ id: schema.agentConnections.id })).length > 0);
+    },
+
+    /**
+     * "What it may do" (F-036 AG-3). The row lock serializes it with every change the agent makes, which reads the
+     * connection `FOR SHARE`, so a change decided after this commits uses the new choice.
+     */
+    setMayDo(ownerUserId: string, connectionId: string, mayDo: AgentConnection['mayDo']): Promise<AgentConnection | null> {
+      return db.transaction(async (tx) => {
+        const [row] = await tx.update(schema.agentConnections).set({ mayDo, updatedAt: new Date() })
+          .where(and(eq(schema.agentConnections.id, connectionId), eq(schema.agentConnections.ownerUserId, ownerUserId),
+            isNull(schema.agentConnections.revokedAt))).returning();
+        return row ? serialize(row, await projects(tx, row.id)) : null;
+      });
     },
 
     resolve(ownerUserId: string, connectionId: string): Promise<AgentConnection | null> {

@@ -18,8 +18,6 @@ test('issued OAuth bearer reads and proposes through MCP, then connection revoca
   const agent = expect(await browser.request('POST', `/api/v1/workspaces/${workspaceId}/agents`,
     { body: { name: 'Test local agent', owner: 'self' } }), 201);
   const agentId = String(agent.id);
-  expect(await browser.request('POST', `/api/v1/projects/${projectId}/grants`,
-    { body: { principal: { kind: 'agent', id: agentId }, role: 'contributor' } }), 201);
   const material = expect(await browser.request('POST', `/api/v1/projects/${projectId}/materials`,
     { body: { clientMutationId: randomUUID(), title: 'Battery observation', body: 'Battery lasts four hours.' } }), 201);
   const materialId = String(material.materialId);
@@ -33,8 +31,6 @@ test('issued OAuth bearer reads and proposes through MCP, then connection revoca
   const hiddenMaterial = expect(await browser.request('POST', `/api/v1/projects/${hiddenProjectId}/materials`,
     { body: { clientMutationId: randomUUID(), title: 'Secret source title', body: 'Private content.' } }), 201);
   // The agent can read this other project via its domain grant; this connection still may not.
-  expect(await browser.request('POST', `/api/v1/projects/${hiddenProjectId}/grants`,
-    { body: { principal: { kind: 'agent', id: agentId }, role: 'contributor' } }), 201);
   const work = expect(await browser.request('POST', `/api/v1/projects/${projectId}/work`,
     { body: { title: 'Battery comparison', outcome: 'Compare current battery runtime' } }), 201);
   const decision = expect(await browser.request('POST', `/api/v1/projects/${projectId}/decisions`,
@@ -154,7 +150,7 @@ test('issued OAuth bearer reads and proposes through MCP, then connection revoca
   const repeatedBootstrap = toolValue((await mcp(bearer, 47, 'tools/call', { name: 'flux_bootstrap', arguments: { projectId, clientSessionId } })).message);
   assert.deepEqual(repeatedBootstrap.runtime, bootstrap.runtime, 'runtime retry preserves original identity and expiry');
   assert.equal((bootstrap.readiness as { state: string }).state, 'pending');
-  assert.deepEqual(bootstrap.trusted, { playbook: coworkPlaybookReference(), approvedPolicy: null,
+  assert.deepEqual(bootstrap.trusted, { playbook: coworkPlaybookReference(),
     coordination: { activeClaimReference: null, checkpointReference: null, inboxContinuation: null }, repositoryReferences: null });
   assert.ok(!(bootstrap.gaps as string[]).includes('trusted_playbook_unavailable'));
   assert.ok(!(bootstrap.gaps as string[]).includes('coordination_unavailable'), 'admission, the inbox and resolution exist (#153)');
@@ -229,20 +225,11 @@ test('issued OAuth bearer reads and proposes through MCP, then connection revoca
   assert.equal(created.status, 200);
   assert.equal(toolValue(created.message).status, 'proposed');
 
-  const grants = expect(await browser.request('GET', `/api/v1/projects/${projectId}/grants`), 200) as unknown as { id: string; principal: { kind: string; id: string } }[];
-  const agentGrant = grants.find((grant) => grant.principal.kind === 'agent' && grant.principal.id === agentId);
-  assert.ok(agentGrant);
-  expect(await browser.request('DELETE', `/api/v1/projects/${projectId}/grants/${agentGrant.id}`), 204);
-  const lostGrant = await mcp(bearer, 9, 'tools/call', { name: 'flux_list_materials', arguments: { projectId } });
-  assert.equal(lostGrant.status, 403, 'grant loss invalidates the bearer before tool dispatch');
-  assert.ok(!JSON.stringify(lostGrant.message).includes('Battery observation'));
-
-  const restoredGrant = expect(await browser.request('POST', `/api/v1/projects/${projectId}/grants`,
-    { body: { principal: { kind: 'agent', id: agentId }, role: 'contributor' } }), 201);
-  assert.notEqual(restoredGrant.id, agentGrant.id, 'the restored grant is a new authority');
-  const restoredSources = await mcp(bearer, 10, 'tools/call', { name: 'flux_list_materials', arguments: { projectId } });
-  assert.equal(restoredSources.status, 200, 'the original connection works again after a current grant is restored');
-  assert.equal(toolValue(restoredSources.message).total, 3);
+  // The agent has no project grant of its own (F-036 AG-3): a manager cannot list or remove one.
+  const grants = expect(await browser.request('GET', `/api/v1/projects/${projectId}/grants`), 200) as unknown as { principal: { kind: string; id: string } }[];
+  assert.equal(grants.some((grant) => grant.principal.kind === 'agent' || grant.principal.id === agentId), false);
+  assert.equal((await browser.request('POST', `/api/v1/projects/${projectId}/grants`,
+    { body: { principal: { kind: 'agent', id: agentId }, role: 'contributor' } })).status, 400, 'an agent cannot be given a grant');
 
   expect(await browser.request('DELETE', `/api/v1/agent-connections/${connectionId}`), 204);
   const revoked = await mcp(bearer, 11, 'tools/call', { name: 'flux_list_materials', arguments: { projectId } });
@@ -268,8 +255,6 @@ test('three named connections share one actual client; same-session choices, ref
       { body: { name: `${name} project`, visibility: 'restricted' } }), 201);
     const agent = expect(await browser.request('POST', `/api/v1/workspaces/${workspace.id}/agents`,
       { body: { name: `${name} agent`, owner: 'self' } }), 201);
-    expect(await browser.request('POST', `/api/v1/projects/${project.id}/grants`,
-      { body: { principal: { kind: 'agent', id: agent.id }, role: 'contributor' } }), 201);
     const saved = expect(await browser.request('POST', '/api/v1/agent-connections', { body: {
       name, clientDesignation, agentId: agent.id, selectedProjectIds: [project.id],
       scopes: ['flux.context.read', 'flux.proposal.write', ...(actions ? ['flux.action.execute'] : [])],

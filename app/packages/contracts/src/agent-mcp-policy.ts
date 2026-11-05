@@ -3,7 +3,7 @@ import type { AgentScope } from './agent-proposals.js';
 
 export const AGENT_MCP_READ_CAPABILITIES = [
   'project.identity.read', 'project.knowledge.read', 'project.work.read', 'project.decisions.read',
-  'project.results.read', 'project.conversations.read', 'project.maps.read', 'project.policy.read',
+  'project.results.read', 'project.conversations.read', 'project.maps.read',
   'cowork.playbook.read', 'connection.runtime.read',
 ] as const;
 export type AgentMcpCapabilityId = typeof AGENT_MCP_READ_CAPABILITIES[number] | AgentOperation | 'proposal.create';
@@ -41,7 +41,7 @@ export const AGENT_MCP_ENTRIES: readonly AgentMcpEntry[] = [
   // Actual source-kind dependencies are added before any query/count/projection.
   read('flux_search_project', 'project.identity.read'), read('flux_project_orientation', 'project.identity.read'),
   read('flux_changes_since', 'project.identity.read'),
-  read('flux_bootstrap', 'project.identity.read', 'connection.runtime.read', 'project.policy.read', 'cowork.playbook.read'),
+  read('flux_bootstrap', 'project.identity.read', 'connection.runtime.read', 'cowork.playbook.read'),
   read('flux_acknowledge_playbook', 'cowork.playbook.read', 'connection.runtime.read'),
   read('flux_coordination_inbox', 'project.identity.read', 'connection.runtime.read'),
   effect('flux_create_task', 'work.create'), effect('flux_update_task', 'work.update'),
@@ -63,7 +63,6 @@ export const AGENT_MCP_ENTRIES: readonly AgentMcpEntry[] = [
   { id: 'tool:flux_create_proposal', kind: 'tool', name: 'flux_create_proposal', requiredScope: 'flux.proposal.write',
     requiredCapabilities: ['proposal.create'], operation: null },
   alias('resource', 'flux_cowork_playbook', 'cowork.playbook.read'),
-  alias('resource', 'flux_project_policy', 'project.policy.read'),
   alias('prompt', 'start_work', 'cowork.playbook.read', 'project.identity.read'),
   alias('prompt', 'resume_work', 'cowork.playbook.read', 'project.identity.read'),
 ];

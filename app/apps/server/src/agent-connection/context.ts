@@ -64,6 +64,12 @@ export async function agentConnectionInTransaction(tx: Transaction, claims: Flux
     if (claims.run) await requireLiveRun(tx, { ownerUserId: claims.ownerUserId, connectionId: claims.connectionId, run: claims.run }, { newCall: true, lock: true });
     if (!claims.scopes.includes(scope) || !row.scopes.includes(scope))
       throw new DomainError(403, 'MCP_SCOPE_REQUIRED', 'The connection lacks the required scope');
+    // "What it may do" (F-036 AG-3): an agent set to Only read reads and answers, and changes nothing anywhere.
+    if (scope !== 'flux.context.read' && row.mayDo === 'read')
+      throw new DomainError(403, 'AGENT_ONLY_READS', 'This agent only reads: its owner set "What it may do" to Only read');
+    // A local client's changes have nowhere to wait yet (only the assistant's run does), so Ask me first fails closed: nothing is changed unasked.
+    if (scope !== 'flux.context.read' && row.mayDo === 'ask' && row.computeSource !== 'owner_assistant')
+      throw new DomainError(403, 'AGENT_ASKS_FIRST', 'Its owner set "What it may do" to Ask me first, and this client cannot wait for an OK yet: nothing was changed');
     const mcpPolicy = claims.dispatch ? await lockAgentMcpPolicy(tx, row.id) : null;
     if (claims.dispatch) {
       if (!mcpPolicy) throw new DomainError(403, 'MCP_ENTRY_UNAVAILABLE', 'This capability is unavailable');

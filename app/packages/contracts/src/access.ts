@@ -195,13 +195,14 @@ export interface ProjectPerson {
   name: string;
   access: ProjectAccess;
   /** Agent owner label: a human only when already in this project's current audience. No workspace roster. */
-  agentOwner?: { kind: 'workspace' } | { kind: 'human'; id: string; name: string };
+  agentOwner?: { kind: 'human'; id: string; name: string };
 }
 
+/** A person's explicit access to a project. Agents have no grants: an agent has exactly its owner's rights (F-036, #855). */
 export interface ProjectGrant {
   id: string;
   projectId: string;
-  principal: PrincipalRef;
+  principal: { kind: 'human'; id: string };
   role: ProjectGrantRole;
   createdBy: string;
   createdAt: string;
@@ -211,44 +212,11 @@ export interface Agent {
   id: string;
   workspaceId: string;
   name: string;
-  owner: { kind: 'human'; id: string } | { kind: 'workspace' };
+  /** The one person the agent belongs to; it acts with exactly their rights (F-036 AG-3). */
+  owner: { kind: 'human'; id: string };
   revokedAt: string | null;
   createdAt: string;
 }
-
-/**
- * A person's request that the managers of a project let their own agent in (#763 FT-1). Only the agent's owner asks;
- * only a current project manager allows (the ordinary agent grant) or declines. Asking grants nothing.
- */
-export interface AgentAccessRequest {
-  id: string;
-  workspaceId: string;
-  projectId: string;
-  agent: { id: string; name: string };
-  owner: { id: string; name: string };
-  /** The grant asked for; a person-owned agent is still capped at its owner's own access. */
-  role: 'contributor' | 'viewer';
-  state: 'pending' | 'accepted' | 'declined';
-  createdAt: string;
-  updatedAt: string;
-}
-export interface CreateAgentAccessRequestCommand { agentId: string; role?: 'contributor' | 'viewer' }
-export interface RespondAgentAccessRequestCommand { allow: boolean }
-/** GET (managers: pending requests; the owner: their own) and POST (the agent's owner asks). */
-export const projectAgentRequestsPath = (projectId: string) => `${projectPath(projectId)}/agent-requests`;
-/** POST `{ allow }`: a current project manager answers. */
-export const projectAgentRequestPath = (projectId: string, requestId: string) => `${projectAgentRequestsPath(projectId)}/${requestId}`;
-
-/** One project the owner can open and their agent's place in it (#763 FT-1): its grant and any open request. */
-export interface AgentProjectAccess {
-  projectId: string;
-  /** The agent's explicit grant, or null without one. */
-  grant: ProjectGrantRole | null;
-  /** The agent's open request here, or null. */
-  request: { id: string; role: 'contributor' | 'viewer' } | null;
-}
-/** GET: the owner's own agent, in every project of its workspace the owner can open. */
-export const agentProjectAccessPath = (agentId: string) => `${agentPath(agentId)}/project-access`;
 
 export interface Draft {
   id: string;
@@ -362,16 +330,16 @@ export interface AddProjectViewCommand {
   view: ProjectViewId;
 }
 
-/** Creates or replaces the single grant for this principal on the project. */
+/** Creates or replaces the single grant for this person on the project. */
 export interface GrantProjectCommand {
-  principal: PrincipalRef;
+  principal: { kind: 'human'; id: string };
   role: ProjectGrantRole;
 }
 
+/** An agent always belongs to the person who creates it (F-036); `owner` may be omitted. */
 export interface CreateAgentCommand {
   name: string;
-  /** `self` makes the caller the owner; `workspace` needs an owner or admin. */
-  owner: 'self' | 'workspace';
+  owner?: 'self';
 }
 
 /** New drafts are always private to their author. */

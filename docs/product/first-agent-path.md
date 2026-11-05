@@ -45,10 +45,9 @@ authorization-server metadata, issuer validation, client ID metadata documents
 where supported, optional pre-registration or DCR compatibility, and a
 resource/audience-bound token. At consent, the authenticated person creates or
 selects **their own** named `agents` row; a workspace-owned agent or another
-person's agent cannot be selected. Consent shows the selected projects and the
-agent's existing explicit per-project grants. Adding or changing those grants
-uses #29's manager-authorized grant flow; OAuth consent alone cannot grant a
-project the person cannot manage. The token binds that person, this agent ID and
+person's agent cannot be selected. Consent shows the selected projects. The agent has
+exactly its owner's rights there ([F-036](assistant.md) AG-3): consent adds none and there
+are no agent grants. The token binds that person, this agent ID and
 the approved project IDs, never the person's own policy principal. The only
 initial OAuth scopes are `flux.context.read` (list/read selected authorized
 project sources) and `flux.proposal.write` (create a sourced proposal in an
@@ -142,7 +141,7 @@ must use merged #29 policy and durable source/proposal objects. In Docker, start
 accounts and an independent DM/project, configure the real official Claude Code
 client against the self-hosted HTTPS Flux MCP endpoint, complete Flux OAuth,
 read an authorized lamp sketch revision and create a sourced proposal. Revoke
-the project or agent grant before a second read/write; no title, tool result or
+the owner's project access before a second read/write; no title, tool result or
 proposal may leak or commit. Repeat with the official client stopped and
 demonstrate a human continues the same conversation/work/result path. Test
 stale source, expired token, duplicate command, changed audience and client

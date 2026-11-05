@@ -106,7 +106,8 @@ export interface MessageLinkPreviews { status: 'ready' | 'off' | 'sealed' | 'bus
 export const messageLinkPreviewsPath = (projectId: string, messageId: string) => `/api/v1/projects/${projectId}/messages/${messageId}/link-previews`;
 
 /** Optional current-project display metadata; never changes a stored author or grants access. */
-export type AgentProjectOwner = { kind: 'workspace' } | { kind: 'human'; id: string };
+/** The person an agent belongs to (F-036: every agent has one owner). */
+export type AgentProjectOwner = { kind: 'human'; id: string };
 
 export type MessageIdentity =
   | { authorId: string; author?: never }

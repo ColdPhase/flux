@@ -37,8 +37,7 @@ export interface ProjectRecord extends ProjectFacts {
 export interface GrantRecord {
   id: string;
   projectId: string;
-  userId: string | null;
-  agentId: string | null;
+  userId: string;
   role: ProjectGrantRole;
   createdBy: string;
   createdAt: Date;

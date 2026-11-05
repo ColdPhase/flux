@@ -17,7 +17,6 @@ import { dollars, micros, perMillion, runtimeNames, runtimePayerDetail, runtimeP
 import '../notifications/notifications.css';
 import './assistant.css';
 import { AssistantControls, AssistantHeader } from './AssistantScreen';
-import { AssistantProjectAccess } from './AssistantProjectAccess';
 import { AssistantReactions } from './AssistantReactions';
 import { AssistantSchedules } from './AssistantSchedules';
 
@@ -269,8 +268,8 @@ function RuntimeSetup({ status, agents, workspaces, name, onEnabled, onAgent, on
       <h3 id="aset-ready" className="aset-ready__h"><Kreska size={36} />Your assistant is ready</h3>
       <ul className="aset-ready__list">
         <li>It can read and edit tasks, the Wiki and maps, reply in conversations and suggest decisions.</li>
-        <li>It does things and tells you what it did, with Undo. It asks before removing anything or changing things other people made or are responsible for.</li>
-        <li>It joins the projects you manage. In others, a manager adds it.</li>
+        <li>It does things and tells you what it did, with Undo. Deleting and other people&apos;s things always wait for your OK.</li>
+        <li>It has your rights: it can open and change only what you can.</li>
         <li>Others in the conversation see what you ask it and what it does.</li>
       </ul>
       <p className="nset__note">Uses your {names.plan} plan. Flux can&apos;t see its limits. What it reads goes to {company} under your account&apos;s settings.</p>
@@ -281,7 +280,7 @@ function RuntimeSetup({ status, agents, workspaces, name, onEnabled, onAgent, on
         <RuntimeDisclosure payer={payer} client={status.setup.runtime?.client} />
         {workspaces.map((space) => <AgentPicker key={space.id} workspace={space} agents={agents} name={name} value={chosen[space.id] ?? ''} disabled={busy}
           onAgent={onAgent} onChange={(agentId) => setChosen((current) => ({ ...current, [space.id]: agentId }))} />)}
-        <p className="nset__note">Every switch can be changed after it is on.</p>
+        <p className="nset__note">You can change what it may do after it is on.</p>
       </div> : null}
       {error ? <p className="nset__error" role="alert"><Icon name="alert" size={14} />{error}</p> : null}
       <div className="aset__actions">
@@ -465,12 +464,11 @@ function Enabled({ status, agents, workspaces, name, onChange, onRemoved, onAgen
       </section>}
       <section className="nset__sec" aria-labelledby="aset-agents">
         <h3 id="aset-agents">Your assistant in the company</h3>
-        <p className="nset__lead">It reads a project only where it has been given access, and never more than you can.</p>
+        <p className="nset__lead">It has exactly your rights: it reads and changes only what you can.</p>
         {workspaces.map((space) => <AgentPicker key={space.id} workspace={space} agents={agents} name={name} disabled={!!busy}
           value={enablement.agents.find((item) => item.workspaceId === space.id)?.agentId ?? ''} onAgent={onAgent}
           onChange={(agentId) => { if (agentId) void act(`agent-${space.id}`, () => selectAssistantAgent(agentId), 'Assistant chosen'); }} />)}
       </section>
-      <AssistantProjectAccess />
       <section className="nset__sec" aria-labelledby="aset-consent">
         <h3 id="aset-consent">What you agreed to</h3>
         <p className="nset__lead">On {new Date(enablement.consent.acceptedAt).toLocaleDateString(undefined, { dateStyle: 'medium' })} · disclosure {enablement.consent.version}</p>

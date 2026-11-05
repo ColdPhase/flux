@@ -86,6 +86,9 @@ class GrantControlsJourney(unittest.TestCase):
             self.assertEqual(response.status, status, f"{method} {path}: {response.text()}")
         return json.loads(response.text()) if response.text() else {}
 
+    def connection(self, page: Page, name: str) -> dict:
+        return next(item for item in self.api(page, "GET", "/api/v1/agent-connections", status=200) if item["id"] == self.ids[name])
+
     def grants(self, page: Page, connection: str) -> list[dict]:
         return self.api(page, "GET", f"/api/v1/agent-connections/{self.ids[connection]}/action-grants?limit=50", status=200)["items"]
 
@@ -120,7 +123,7 @@ class GrantControlsJourney(unittest.TestCase):
             self.ids[key] = self.api(hubert, "POST", f"/api/v1/workspaces/{workspace['id']}/projects", {"name": name, "visibility": "restricted"}, status=201)["id"]
         agent = self.api(hubert, "POST", f"/api/v1/workspaces/{workspace['id']}/agents", {"name": "Hubert's agent", "owner": "self"}, status=201)
         for key in ("sensor", "field", "archive"):
-            self.api(hubert, "POST", f"/api/v1/projects/{self.ids[key]}/grants", {"principal": {"kind": "agent", "id": agent["id"]}, "role": "contributor"}, status=201)
+            pass
         # "Archive" is granted to the agent but not selected by either connection, so it stays above their ceiling.
         self.ids["Desk laptop"] = self.api(hubert, "POST", "/api/v1/agent-connections", {"agentId": agent["id"], "name": "Desk laptop", "clientDesignation": "codex",
                                            "selectedProjectIds": [self.ids["sensor"], self.ids["field"]], "scopes": ACTION_SCOPES}, status=201)["id"]
@@ -128,7 +131,6 @@ class GrantControlsJourney(unittest.TestCase):
                                              "selectedProjectIds": [self.ids["sensor"]], "scopes": ["flux.context.read", "flux.proposal.write"]}, status=201)["id"]
         # Marek, a workspace admin, has his own agent, connection and one grant.
         mine = self.api(marek, "POST", f"/api/v1/workspaces/{workspace['id']}/agents", {"name": "Marek's agent", "owner": "self"}, status=201)
-        self.api(marek, "POST", f"/api/v1/projects/{self.ids['sensor']}/grants", {"principal": {"kind": "agent", "id": mine["id"]}, "role": "contributor"}, status=201)
         self.ids["Workshop PC"] = self.api(marek, "POST", "/api/v1/agent-connections", {"agentId": mine["id"], "name": "Workshop PC", "clientDesignation": "claude_code",
                                            "selectedProjectIds": [self.ids["sensor"]], "scopes": ACTION_SCOPES}, status=201)["id"]
         self.ids["marek-grant"] = self.api(marek, "POST", f"/api/v1/agent-connections/{self.ids['Workshop PC']}/action-grants", {
@@ -294,6 +296,23 @@ class GrantControlsJourney(unittest.TestCase):
         # And Hubert's page never shows Marek's connection or grant.
         own = self.open_connect("hubert")
         expect(own.get_by_text("Workshop PC")).to_have_count(0)
+
+    def test_05_each_connection_has_what_it_may_do_saved_by_its_owner(self) -> None:
+        for phone in (False, True):
+            with self.subTest(phone=phone):
+                page = self.page("hubert", phone=phone)
+                page.goto("/connect-agent")
+                row = page.locator(".connection__saved", has_text="Desk laptop")
+                group = row.get_by_role("radiogroup", name="What it may do")
+                expect(group.get_by_role("radio", name="Do it and tell me")).to_have_attribute("aria-checked", "true")
+                group.get_by_role("radio", name="Ask me first").click()
+                expect(group.get_by_role("radio", name="Ask me first")).to_have_attribute("aria-checked", "true")
+                expect(row).to_contain_text("this client can\u2019t wait for your OK yet")
+                self.assertEqual(self.connection(page, "Desk laptop")["mayDo"], "ask")
+                page.reload()
+                expect(page.locator(".connection__saved", has_text="Desk laptop").get_by_role("radiogroup", name="What it may do").get_by_role("radio", name="Ask me first")).to_have_attribute("aria-checked", "true")
+                self.api(page, "PATCH", f"/api/v1/agent-connections/{self.ids['Desk laptop']}", {"mayDo": "act"}, status=200)
+                self.assertLessEqual(page.evaluate("document.documentElement.scrollWidth"), page.evaluate("window.innerWidth"))
 
 
 if __name__ == "__main__":

@@ -37,7 +37,7 @@ test('project readers see every current connection with owner, client and truthf
   assert.deepEqual({ state: configured.state, name: configured.name, client: configured.clientDesignation, session: configured.session },
     { state: 'not_signed_in', name: 'Codex laptop', client: 'codex', session: null });
   // Nothing beyond identity and state reaches the browser.
-  assert.deepEqual(Object.keys(active).sort(), ['agent', 'clientDesignation', 'currentWork', 'id', 'lastActivity', 'name', 'own', 'owner', 'recentActivity', 'requests', 'scopes', 'session', 'state']);
+  assert.deepEqual(Object.keys(active).sort(), ['agent', 'clientDesignation', 'currentWork', 'id', 'lastActivity', 'mayDo', 'name', 'own', 'owner', 'recentActivity', 'requests', 'scopes', 'session', 'state']);
   assert.deepEqual([active.currentWork, active.requests], [null, []], 'no unit or open request until one is created (#160 AC-5)');
 
   const workspaceId = f.workspaceId;
@@ -80,7 +80,7 @@ test('a completed native action becomes the last activity; closing the session l
     { state: 'offline', session: null, operation: 'work.create' });
 });
 
-test('a revoked connection or an agent without project access is not listed', async () => {
+test('a revoked connection or a revoked agent is not listed', async () => {
   const f = await actionScene(pool);
   const other = expect(await f.owner.request('POST', '/api/v1/agent-connections', { body: { agentId: f.agentId,
     selectedProjectIds: [f.projectId], scopes: ['flux.context.read'], name: 'Spare client' } }), 201);
@@ -89,8 +89,7 @@ test('a revoked connection or an agent without project access is not listed', as
   assert.deepEqual(await list(), [f.connectionId, String(other.id)].sort());
   expectStatus(await f.owner.request('DELETE', `/api/v1/agent-connections/${other.id}`), 204);
   assert.deepEqual(await list(), [f.connectionId]);
-  expectStatus(await f.owner.request('POST', `/api/v1/projects/${f.projectId}/grants`,
-    { body: { principal: { kind: 'agent', id: f.agentId }, role: 'denied' } }), 201);
+  expectStatus(await f.owner.request('DELETE', `/api/v1/agents/${f.agentId}`), 200);
   assert.deepEqual(await list(), []);
 });
 
@@ -116,11 +115,17 @@ test('choosing a connection on the consent page is not an authorization; an expi
 
 test('a connection MCP would refuse is unavailable, never connected', async () => {
   const f = await actionScene(pool);
-  // The scene's connection writes (proposal and action scopes); narrowing its agent to viewer makes MCP refuse it.
-  expectStatus(await f.owner.request('POST', `/api/v1/projects/${f.projectId}/grants`,
-    { body: { principal: { kind: 'agent', id: f.agentId }, role: 'viewer' } }), 201);
+  const member = await person('Narrowed');
+  const ownerPerson = { id: (await pool.query('SELECT owner_user_id FROM agent_connections WHERE id=$1', [f.connectionId])).rows[0].owner_user_id as string, email: '', browser: f.owner };
+  await addMember(ownerPerson, f.workspaceId, member, 'member');
+  await grant(ownerPerson, f.projectId, member, 'contributor');
+  const agent = expect(await member.browser.request('POST', `/api/v1/workspaces/${f.workspaceId}/agents`, { body: { name: 'Narrowed agent', owner: 'self' } }), 201);
+  const writes = expect(await member.browser.request('POST', '/api/v1/agent-connections', { body: { agentId: agent.id,
+    selectedProjectIds: [f.projectId], scopes: ['flux.context.read', 'flux.proposal.write'], name: 'Writes', clientDesignation: 'claude_code' } }), 201);
+  // The connection writes; narrowing its owner to viewer narrows its agent too, so MCP refuses it.
+  await grant(ownerPerson, f.projectId, member, 'viewer');
   const listed = (expectStatus(await f.owner.request('GET', `/api/v1/projects/${f.projectId}/agents`), 200) as ProjectAgents)
-    .connections.find((item) => item.id === f.connectionId)!;
+    .connections.find((item) => item.id === String(writes.id))!;
   assert.deepEqual({ state: listed.state, session: listed.session }, { state: 'unavailable', session: null });
 });
 
@@ -128,8 +133,6 @@ test('only connections selected for this project, of owners who can still read i
   const f = await actionScene(pool);
   const other = expect(await f.owner.request('POST', `/api/v1/workspaces/${f.workspaceId}/projects`,
     { body: { name: 'Another project', visibility: 'restricted' } }), 201);
-  expectStatus(await f.owner.request('POST', `/api/v1/projects/${other.id}/grants`,
-    { body: { principal: { kind: 'agent', id: f.agentId }, role: 'contributor' } }), 201);
   const elsewhere = expect(await f.owner.request('POST', '/api/v1/agent-connections', { body: { agentId: f.agentId,
     selectedProjectIds: [String(other.id)], scopes: ['flux.context.read'], name: 'Only the other project' } }), 201);
   const ids = async (browser = f.owner) => (expectStatus(await browser.request('GET', `/api/v1/projects/${f.projectId}/agents`), 200) as ProjectAgents)
@@ -141,8 +144,6 @@ test('only connections selected for this project, of owners who can still read i
   await addMember(ownerPerson, f.workspaceId, member, 'member');
   await grant(ownerPerson, f.projectId, member, 'contributor');
   const agent = expect(await member.browser.request('POST', `/api/v1/workspaces/${f.workspaceId}/agents`, { body: { name: "Marek's agent", owner: 'self' } }), 201);
-  expectStatus(await f.owner.request('POST', `/api/v1/projects/${f.projectId}/grants`,
-    { body: { principal: { kind: 'agent', id: agent.id }, role: 'contributor' } }), 201);
   const his = expect(await member.browser.request('POST', '/api/v1/agent-connections', { body: { agentId: agent.id,
     selectedProjectIds: [f.projectId], scopes: ['flux.context.read'], name: 'Workshop PC', clientDesignation: 'claude_code' } }), 201);
   assert.ok((await ids()).includes(String(his.id)));

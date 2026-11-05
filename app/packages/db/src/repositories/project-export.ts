@@ -98,7 +98,7 @@ export function projectExportRows(db: DbExecutor) {
 
     async grants(projectId: string) {
       const rows = await db.select().from(schema.projectGrants).where(eq(schema.projectGrants.projectId, projectId)).orderBy(asc(schema.projectGrants.createdAt), asc(schema.projectGrants.id));
-      return rows.map((row) => ({ principal: creator(row.userId, row.agentId), role: row.role, createdAt: iso(row.createdAt) }));
+      return rows.map((row) => ({ principal: creator(row.userId, null), role: row.role, createdAt: iso(row.createdAt) }));
     },
 
     async workspaceRoles(workspaceId: string) {

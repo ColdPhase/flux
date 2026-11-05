@@ -16,8 +16,6 @@ async function fixture() {
   const place = await project(owner, ws.id, 'Original selected project', 'restricted');
   const agent = expectStatus(await owner.browser.request('POST', `/api/v1/workspaces/${ws.id}/agents`,
     { body: { name: 'Own local client', owner: 'self' } }), 201) as { id: string };
-  expectStatus(await owner.browser.request('POST', `/api/v1/projects/${place.id}/grants`,
-    { body: { principal: { kind: 'agent', id: agent.id }, role: 'contributor' } }), 201);
   const connection = expectStatus(await owner.browser.request('POST', '/api/v1/agent-connections',
     { body: { agentId: agent.id, selectedProjectIds: [place.id], scopes: ['flux.context.read'] } }), 201) as AgentConnection;
   const path = agentMcpPolicyPath(connection.id);

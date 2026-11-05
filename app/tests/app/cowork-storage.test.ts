@@ -25,7 +25,7 @@ async function fixture() {
   const connectionId = randomUUID();
   await db.insert(schema.authUsers).values({ id: owner, name: 'Storage owner', email: `${owner}@cowork.test` });
   await db.insert(schema.workspaces).values({ id: workspaceId, name: 'Storage fixture', createdBy: owner });
-  await db.insert(schema.agents).values({ id: agentId, workspaceId, name: 'Local client', createdBy: owner });
+  await db.insert(schema.agents).values({ id: agentId, workspaceId, name: 'Local client', ownerUserId: owner, createdBy: owner });
   await db.insert(schema.agentConnections).values({ id: connectionId, workspaceId, agentId, ownerUserId: owner, scopes: ['flux.context.read'] });
   const makeUnit = async (role: 'execute' | 'review' | 'plan' = 'execute', assigned = connectionId) => {
     const projectId = randomUUID();

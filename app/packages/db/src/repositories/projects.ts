@@ -79,9 +79,9 @@ export function projectRepository(db: DbExecutor) {
       return { total: counted?.count ?? 0, rows: rows.map((row, index) => ({ ...row, project: opened[index]! })) };
     },
 
-    /** The project's grants, leaving out the agents the principal may not see. */
-    listGrants(principal: AccessPrincipal, projectId: string) {
-      return db.select().from(schema.projectGrants).where(and(eq(schema.projectGrants.projectId, projectId), sql`(${schema.projectGrants.agentId} is null or ${visibleAgentIdentity(principal, projectId, sql`${schema.projectGrants.agentId}`)})`))
+    /** The project's grants: people only (an agent has its owner's rights, F-036). */
+    listGrants(_principal: AccessPrincipal, projectId: string) {
+      return db.select().from(schema.projectGrants).where(eq(schema.projectGrants.projectId, projectId))
         .orderBy(asc(schema.projectGrants.createdAt), asc(schema.projectGrants.id));
     },
 
@@ -105,18 +105,10 @@ export function projectRepository(db: DbExecutor) {
       return member ?? null;
     },
 
-    /** The workspace's unrevoked agent with this id, or null. */
-    async activeAgent(workspaceId: string, agentId: string) {
-      const [agent] = await db.select().from(schema.agents)
-        .where(and(eq(schema.agents.id, agentId), eq(schema.agents.workspaceId, workspaceId), isNull(schema.agents.revokedAt)));
-      return agent ?? null;
-    },
-
-    /** The principal's grant on the project `FOR UPDATE`. */
-    async lockGrantOf(projectId: string, target: { kind: 'human' | 'agent'; id: string }) {
-      const principalColumn = target.kind === 'human' ? schema.projectGrants.userId : schema.projectGrants.agentId;
+    /** The person's grant on the project `FOR UPDATE`. */
+    async lockGrantOf(projectId: string, userId: string) {
       const [existing] = await db.select().from(schema.projectGrants)
-        .where(and(eq(schema.projectGrants.projectId, projectId), eq(principalColumn, target.id))).for('update');
+        .where(and(eq(schema.projectGrants.projectId, projectId), eq(schema.projectGrants.userId, userId))).for('update');
       return existing ?? null;
     },
 
@@ -132,7 +124,7 @@ export function projectRepository(db: DbExecutor) {
         .where(eq(schema.projectGrants.id, grantId)).returning())[0]);
     },
 
-    insertGrant(row: { id: string; workspaceId: string; projectId: string; role: GrantRow['role']; createdBy: string; userId: string | null; agentId: string | null }): Promise<GrantWrite> {
+    insertGrant(row: { id: string; workspaceId: string; projectId: string; role: GrantRow['role']; createdBy: string; userId: string }): Promise<GrantWrite> {
       return writeGrant(async () => (await db.insert(schema.projectGrants).values(row).returning())[0]);
     },
 

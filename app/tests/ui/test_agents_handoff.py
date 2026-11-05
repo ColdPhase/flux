@@ -137,10 +137,10 @@ class HandOffJourney(unittest.TestCase):
         pid = project["id"]
         self.api(ada, "POST", f"/api/v1/projects/{pid}/grants", {"principal": {"kind": "human", "id": JONAS["id"]}, "role": "contributor"}, status=201)
         agents = {}
-        for key, name in (("claude", "Claude Code agent"), ("reader", "Reader agent"), ("outside", "Outside agent")):
+        for key, name in (("claude", "Claude Code agent"), ("reader", "Reader agent")):
             agents[key] = self.api(ada, "POST", f"/api/v1/workspaces/{ws['id']}/agents", {"name": name, "owner": "self"}, status=201)["id"]
-        self.api(ada, "POST", f"/api/v1/projects/{pid}/grants", {"principal": {"kind": "agent", "id": agents["claude"]}, "role": "contributor"}, status=201)
-        self.api(ada, "POST", f"/api/v1/projects/{pid}/grants", {"principal": {"kind": "agent", "id": agents["reader"]}, "role": "viewer"}, status=201)
+        # Jonas's agent has Jonas's rights (F-036 AG-3): where he only reads, it cannot own work.
+        agents["outside"] = self.api(self.page("jonas"), "POST", f"/api/v1/workspaces/{ws['id']}/agents", {"name": "Outside agent", "owner": "self"}, status=201)["id"]
         self.api(ada, "POST", "/api/v1/agent-connections", {"agentId": agents["claude"], "selectedProjectIds": [pid],
                  "scopes": ["flux.context.read", "flux.proposal.write"], "name": "Desk laptop", "clientDesignation": "claude_code"}, status=201)
         # A project roster lists MCP connections only (#522); a read-only agent still has its own connection.
@@ -167,10 +167,10 @@ class HandOffJourney(unittest.TestCase):
             expect(claude).not_to_have_attribute("data-working", "true")
             expect(rows.filter(has_text="Reader agent")).to_contain_text("Not signed in from your client yet")
             expect(page.get_by_text("2 in this project", exact=True)).to_be_visible()
-            # Policy and "Connect your own agent": one row each, below the list.
+            # "Connect your own agent": one row below the list.
             # #763 AG-7: the Requests row appears only while an agent asks you something (Spokój rule 4).
             expect(page.get_by_role("link", name=re.compile("^Agent questions"))).to_have_count(0)
-            expect(page.get_by_role("button", name=re.compile("^Project policy"))).to_be_visible()
+            expect(page.get_by_role("button", name=re.compile("^Project policy"))).to_have_count(0)
             expect(page.get_by_role("link", name=re.compile("^Connect your own agent"))).to_have_attribute("href", "/connect-agent")
             expect(page.get_by_role("button", name="Hand off a task")).to_have_count(1)
             self.assertEqual(page.locator(".agents .ui-btn--primary").count(), 1, "exactly one primary button")
@@ -178,17 +178,6 @@ class HandOffJourney(unittest.TestCase):
             expect(page.get_by_text("Working together")).to_have_count(0)
             expect(page.locator(".agents-conn")).to_have_count(0)
             shot(page, f"handoff-agents-desktop-{scheme}")
-
-    def test_03_policy_opens_from_its_row(self) -> None:
-        page = self.open_agents()
-        row = page.get_by_role("button", name=re.compile("^Project policy"))
-        expect(row).to_contain_text("Agents read and propose; people accept. Assistants also edit for their owner, with Undo.")
-        expect(row).to_have_attribute("aria-expanded", "false")
-        row.click()
-        expect(page.get_by_role("region", name="Agent policy")).to_be_visible()
-        expect(row).to_have_attribute("aria-expanded", "true")
-        row.click()
-        expect(page.get_by_role("region", name="Agent policy")).to_have_count(0)
 
     def test_04b_a_read_only_connection_says_it_can_only_read(self) -> None:
         page = self.open_agents()
@@ -265,14 +254,13 @@ class HandOffJourney(unittest.TestCase):
         page.get_by_role("button", name="Hand off a task").click()
         dialog = page.get_by_role("dialog", name="Hand off a task")
         choose(dialog.get_by_label("Task", exact=True), label="#3 · Ask the supplier for the probe drawing")
-        for name, note in (("Outside agent", "has no access to Garden sensors"), ("Reader agent", "can only read Garden sensors")):
-            dialog.locator("label.handoff__agent", has_text=name).click()
-            dialog.get_by_role("button", name="Next").click()
-            expect(dialog).to_contain_text(note)
-            expect(dialog).to_contain_text("Nothing is granted from here")
-            expect(dialog.get_by_role("link", name="Connect an agent")).to_have_attribute("href", "/connect-agent")
-            expect(dialog.get_by_role("button", name=re.compile("^Hand off"))).to_be_disabled()
-            dialog.get_by_role("button", name="Back").click()
+        dialog.locator("label.handoff__agent", has_text="Reader agent").click()
+        dialog.get_by_role("button", name="Next").click()
+        expect(dialog).to_contain_text("can only read Garden sensors")
+        expect(dialog).to_contain_text("An agent has exactly its owner’s rights.")
+        expect(dialog.get_by_role("link", name="Connect an agent")).to_have_attribute("href", "/settings/agents/connect")
+        expect(dialog.get_by_role("button", name=re.compile("^Hand off"))).to_be_disabled()
+        dialog.get_by_role("button", name="Back").click()
         self.assertIsNone(self.task("drag")["owner"])
         self.assertEqual(self.api(page, "GET", f"/api/v1/projects/{self.ids['project']}/grants", status=200), grants_before, "no access was granted")
 
@@ -420,7 +408,6 @@ class HandOffJourney(unittest.TestCase):
         ada, jonas = self.page("ada"), self.page("jonas")
         pid, ws = self.ids["project"], self.ids["workspace"]
         jonas_agent = self.api(jonas, "POST", f"/api/v1/workspaces/{ws}/agents", {"name": "Claude Code", "owner": "self"}, status=201)["id"]
-        self.api(ada, "POST", f"/api/v1/projects/{pid}/grants", {"principal": {"kind": "agent", "id": jonas_agent}, "role": "contributor"}, status=201)
         ask = self.api(ada, "POST", f"/api/v1/projects/{pid}/work", {"title": "Print a label for each of the six beds"}, status=201)
         page = self.open_agents()
         page.get_by_role("button", name="Hand off a task").click()
@@ -460,7 +447,6 @@ class HandOffJourney(unittest.TestCase):
         ada, jonas = self.page("ada"), self.page("jonas")
         pid, ws = self.ids["project"], self.ids["workspace"]
         jonas_agent = self.api(jonas, "POST", f"/api/v1/workspaces/{ws}/agents", {"name": "Claude Code", "owner": "self"}, status=201)["id"]
-        self.api(ada, "POST", f"/api/v1/projects/{pid}/grants", {"principal": {"kind": "agent", "id": jonas_agent}, "role": "contributor"}, status=201)
         ask = self.api(ada, "POST", f"/api/v1/projects/{pid}/work", {"title": "Label the compost bins"}, status=201)
         page = self.open_agents()
         page.get_by_role("button", name="Hand off a task").click()
@@ -477,10 +463,15 @@ class HandOffJourney(unittest.TestCase):
         # Negative control: the old message ended at the question mark, so Jonas was not told a yes hands the task over.
         self.assertTrue(newest["body"].endswith(f"? If yes, hand #{ask['number']} to it in Agents."), newest["body"])
 
+    def connect(self, page: Page, agent: str, project: str) -> dict:
+        """An agent is in a project once a connection of its owner chose that project (F-036 AG-3): there are no agent grants."""
+        return self.api(page, "POST", "/api/v1/agent-connections", {"agentId": agent, "selectedProjectIds": [project], "scopes": ["flux.context.read", "flux.proposal.write"],
+                        "name": "Field laptop", "clientDesignation": "claude_code"}, status=201)
+
     def seed_paged_project(self, page: Page, free_first: bool) -> tuple[str, str]:
         """A project with 55 tasks owned by an agent and one free task, created in the given order."""
         project = self.api(page, "POST", f"/api/v1/workspaces/{self.ids['workspace']}/projects", {"name": f"Paged {int(time.time() * 1000) % 100000}", "visibility": "restricted"}, status=201)["id"]
-        self.api(page, "POST", f"/api/v1/projects/{project}/grants", {"principal": {"kind": "agent", "id": self.ids["agent_claude"]}, "role": "contributor"}, status=201)
+        self.connect(page, self.ids["agent_claude"], project)
         owner = {"kind": "agent", "id": self.ids["agent_claude"]}
         free = None
         if free_first:
@@ -530,8 +521,6 @@ class HandOffJourney(unittest.TestCase):
         ada = self.page("ada")
         project = self.api(ada, "POST", f"/api/v1/workspaces/{self.ids['workspace']}/projects",
                            {"name": "Connection work", "visibility": "restricted"}, status=201)["id"]
-        self.api(ada, "POST", f"/api/v1/projects/{project}/grants",
-                 {"principal": {"kind": "agent", "id": self.ids["agent_claude"]}, "role": "contributor"}, status=201)
         connection = self.api(ada, "POST", "/api/v1/agent-connections",
                               {"agentId": self.ids["agent_claude"], "selectedProjectIds": [project],
                                "scopes": ["flux.context.read", "flux.proposal.write"], "name": "Unit laptop", "clientDesignation": "claude_code"}, status=201)
@@ -658,6 +647,10 @@ class HandOffJourney(unittest.TestCase):
         response = jonas.request.patch(f"{ORIGIN}/api/v1/work/{task_id}", headers=headers,
                                       data=json.dumps({"owner": {"kind": "agent", "id": self.ids["agent_outside"]}, "clientCommandId": str(uuid.uuid4())}))
         self.assertEqual(response.status, 403, response.text())
+        # An agent has its owner's rights: with Jonas kept out, his agent cannot own work here.
+        self.api(ada, "POST", f"/api/v1/projects/{project}/grants",
+                 {"principal": {"kind": "human", "id": JONAS["id"]}, "role": "denied"}, status=201)
+        grants = self.api(ada, "GET", f"/api/v1/projects/{project}/grants", status=200)
         response = ada.request.patch(f"{ORIGIN}/api/v1/work/{task_id}", headers=headers,
                                     data=json.dumps({"owner": {"kind": "agent", "id": self.ids["agent_outside"]}, "clientCommandId": str(uuid.uuid4())}))
         self.assertEqual(response.status, 422, response.text())
@@ -674,8 +667,6 @@ class HandOffJourney(unittest.TestCase):
                 project = self.api(page, "POST", f"/api/v1/workspaces/{workspace}/projects",
                                    {"name": "Phone field work", "visibility": "restricted"}, status=201)["id"]
                 agent = self.api(page, "POST", f"/api/v1/workspaces/{workspace}/agents", {"name": "Field agent", "owner": "self"}, status=201)["id"]
-                self.api(page, "POST", f"/api/v1/projects/{project}/grants",
-                         {"principal": {"kind": "agent", "id": agent}, "role": "contributor"}, status=201)
                 task = self.api(page, "POST", f"/api/v1/projects/{project}/work", {"title": "Check the probes after rain"}, status=201)
                 self.api(page, "POST", "/api/v1/agent-connections", {"agentId": agent, "selectedProjectIds": [project],
                          "scopes": ["flux.context.read", "flux.proposal.write"], "name": "Field laptop", "clientDesignation": "codex"}, status=201)
@@ -714,8 +705,7 @@ class HandOffJourney(unittest.TestCase):
                            {"name": "Phone containment", "visibility": "restricted"}, status=201)["id"]
         name = "Field calibration companion " + "X" * 95
         agent = self.api(api, "POST", f"/api/v1/workspaces/{workspace}/agents", {"name": name, "owner": "self"}, status=201)["id"]
-        self.api(api, "POST", f"/api/v1/projects/{project}/grants",
-                 {"principal": {"kind": "agent", "id": agent}, "role": "contributor"}, status=201)
+        self.connect(api, agent, project)
         self.api(api, "POST", f"/api/v1/projects/{project}/work", {"title": "Check the permission-step inset"}, status=201)
         problems: list[str] = []
         measurements = []
@@ -765,7 +755,6 @@ class HandOffJourney(unittest.TestCase):
         workspace = self.api(page, "POST", "/api/v1/workspaces", {"name": "Two connection facts"}, status=201)["id"]
         project = self.api(page, "POST", f"/api/v1/workspaces/{workspace}/projects", {"name": "Two connection facts", "visibility": "restricted"}, status=201)["id"]
         agent = self.api(page, "POST", f"/api/v1/workspaces/{workspace}/agents", {"name": "Shared field agent", "owner": "self"}, status=201)["id"]
-        self.api(page, "POST", f"/api/v1/projects/{project}/grants", {"principal": {"kind": "agent", "id": agent}, "role": "contributor"}, status=201)
         connections = []
         for name in ("Older unsigned laptop", "Current planning laptop"):
             connections.append(self.api(page, "POST", "/api/v1/agent-connections",
@@ -855,8 +844,6 @@ class HandOffJourney(unittest.TestCase):
         page = self.page("ada")
         project = self.api(page, "POST", f"/api/v1/workspaces/{self.ids['workspace']}/projects",
                            {"name": "Delayed expiry setup", "visibility": "restricted"}, status=201)["id"]
-        self.api(page, "POST", f"/api/v1/projects/{project}/grants",
-                 {"principal": {"kind": "agent", "id": self.ids["agent_claude"]}, "role": "contributor"}, status=201)
         connection = self.api(page, "POST", "/api/v1/agent-connections",
                               {"agentId": self.ids["agent_claude"], "selectedProjectIds": [project], "scopes": ["flux.context.read"],
                                "name": "Delayed laptop", "clientDesignation": "codex"}, status=201)
@@ -928,8 +915,7 @@ class HandOffJourney(unittest.TestCase):
         page = self.page("ada")
         project = self.api(page, "POST", f"/api/v1/workspaces/{self.ids['workspace']}/projects",
                            {"name": "Nothing to hand off", "visibility": "restricted"}, status=201)["id"]
-        self.api(page, "POST", f"/api/v1/projects/{project}/grants",
-                 {"principal": {"kind": "agent", "id": self.ids["agent_claude"]}, "role": "contributor"}, status=201)
+        self.connect(page, self.ids["agent_claude"], project)
         page.goto(f"/projects/{project}/agents")
         page.get_by_role("button", name="Hand off a task").click()
         dialog = page.get_by_role("dialog", name="Hand off a task")
@@ -998,8 +984,7 @@ class HandOffJourney(unittest.TestCase):
         setup = self.page("ada")
         project = self.api(setup, "POST", f"/api/v1/workspaces/{self.ids['workspace']}/projects",
                            {"name": "Native agent garden planning", "visibility": "restricted"}, status=201)["id"]
-        self.api(setup, "POST", f"/api/v1/projects/{project}/grants",
-                 {"principal": {"kind": "agent", "id": self.ids["agent_claude"]}, "role": "contributor"}, status=201)
+        self.connect(setup, self.ids["agent_claude"], project)
         grants = self.api(setup, "GET", f"/api/v1/projects/{project}/grants", status=200)
         for scheme in ("light", "dark"):
             for width, height in ((390, 844), (820, 1180), (1440, 900), (2560, 1440)):
@@ -1038,7 +1023,7 @@ class HandOffJourney(unittest.TestCase):
                         dialog.get_by_role("button", name="Next", exact=True).click()
                         confirm = dialog.get_by_role("button", name=re.compile("^Hand off"))
                         expect(confirm).to_be_focused()
-                        expect(dialog.locator(".handoff__can")).to_have_attribute("data-allowed", "true")
+                        expect(dialog.locator(".handoff__can")).to_have_attribute("data-needs-scope", "")
                         after = positions()
                         for old, new in zip(before, after, strict=True):
                             for key in old:
@@ -1070,8 +1055,7 @@ class HandOffJourney(unittest.TestCase):
         for index in range(8):
             agent = self.api(setup, "POST", f"/api/v1/workspaces/{self.ids['workspace']}/agents",
                              {"name": f"Garden planning assistant {index + 1}", "owner": "self"}, status=201)["id"]
-            self.api(setup, "POST", f"/api/v1/projects/{project}/grants",
-                     {"principal": {"kind": "agent", "id": agent}, "role": "contributor"}, status=201)
+            self.connect(setup, agent, project)
         task = self.api(setup, "POST", f"/api/v1/projects/{project}/work",
                         {"title": "Prepare the shared planting calendar"}, status=201)
         for phone in (False, True):
@@ -1109,8 +1093,7 @@ class HandOffJourney(unittest.TestCase):
                         {"title": "Prepare a readable watering handoff"}, status=201)
         for has_agent in (False, True):
             if has_agent:
-                self.api(setup, "POST", f"/api/v1/projects/{project}/grants",
-                         {"principal": {"kind": "agent", "id": self.ids["agent_claude"]}, "role": "contributor"}, status=201)
+                self.connect(setup, self.ids["agent_claude"], project)
             for scheme in ("light", "dark"):
                 for phone in (False, True):
                     with self.subTest(available=has_agent, scheme=scheme, phone=phone):

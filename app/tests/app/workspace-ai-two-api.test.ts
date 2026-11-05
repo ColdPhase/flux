@@ -47,7 +47,6 @@ describe('workspace AI lock across the api, api2 and worker containers', { skip:
     ws = await workspace(owner, 'Two API club');
     const place = await project(owner, ws.id, 'Lamp', 'workspace');
     agentId = (expectStatus(await owner.browser.request('POST', `/api/v1/workspaces/${ws.id}/agents`, { body: { name: 'Ada assistant', owner: 'self' } }), 201) as { id: string }).id;
-    expectStatus(await owner.browser.request('POST', `/api/v1/projects/${place.id}/grants`, { body: { principal: { kind: 'agent', id: agentId }, role: 'contributor' } }), 201);
     thread = expectStatus(await owner.browser.request('POST', `/api/v1/projects/${place.id}/conversations`,
       { body: { body: 'The camera fails below 5 lux', clientMessageId: randomUUID() } }), 201) as Conversation;
     const connectionId = (await testFixturePersonalConnections.resolve(owner.id))!.id;

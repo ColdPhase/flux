@@ -60,8 +60,6 @@ test('a genuine foreign agent exact grant cannot Undo another creator; revoked c
   const f = await fixture(); const item = await f.create();
   const other = expect(await f.owner.request('POST', `/api/v1/workspaces/${f.workspaceId}/agents`,
     { body: { name: 'Another genuine creator', owner: 'self' } }), 201);
-  expect(await f.owner.request('POST', `/api/v1/projects/${f.projectId}/grants`,
-    { body: { principal: { kind: 'agent', id: other.id }, role: 'contributor' } }), 201);
   const actor = await agentConnection(pool, f.owner, String(other.id), [f.projectId]);
   const authority = await actor.grant('work.creation.revert', 'plan', 5, item.id);
   const command = { projectId: f.projectId, runtimeSessionId: actor.runtimeSessionId, grantId: authority.id,

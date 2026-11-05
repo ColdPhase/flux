@@ -515,9 +515,9 @@ new public actor/authority parameter or endpoint.
   This purpose authorizes only calls while that run is live. A completed run/token
   is provenance for a saved waiting intent, never continuing model authority;
   later Apply requires the separate owner-approval transition below.
-- **Current limits.** Hold/recheck owner rights, live assistant project grant,
+- **Current limits.** Hold/recheck owner rights,
   original consent envelope, S6 Tasks read/operation and selected project, exact
-  run place, approval mode, run limits and Stop/revocation at execution and
+  run place, "What it may do", run limits and Stop/revocation at execution and
   receipt replay. An expired run token cannot create/replay under direct-run
   authority; stopped/cancelled source runs and Off/narrowed/revoked authority cannot
   authorize pending execution under either purpose. Background runs additionally require their still
@@ -640,10 +640,10 @@ the two wire schemas are identical.
 
 #### Authenticated owner Apply after preparation (R1)
 
-Waiting handoffs retain AST-5's ten-minute Inbox promotion and seven-day maximum
-from preparation. The owner may Apply while the source run is still live or after
+A waiting handoff is in its owner's Inbox at once and never expires (F-036 AG-7).
+The owner may Apply while the source run is still live or after
 it **normally completed** and its run token expired. Finishing normally with
-waiting items (including the required change-limit remainder) is not Stop/cancel;
+waiting items is not Stop/cancel;
 the durable completion/preparation outcome must distinguish those cases. A failed,
 interrupted or unconfirmed preparation supplies no new approval authority.
 
@@ -662,24 +662,17 @@ interrupted or unconfirmed preparation supplies no new approval authority.
   charge a provider. A later owner session may explicitly Apply after authenticating
   as the same current owner; it does not acquire the original run's autonomous power.
 - Recheck current durable assistant binding/enabled source authorization, original consent ceiling,
-  S6 Tasks read/operation and selected place, owner standing/rights, assistant project
-  grant, recipient ownership/access/role/grant eligibility, expected task/source
+  S6 Tasks read/operation and selected place, owner standing/rights, recipient ownership/access/role/grant eligibility, expected task/source
   versions, separation, task exclusion and native budgets. A changed mode never
   auto-applies an existing waiting item; an explicit Apply still needs these gates.
   The source run must be live without Stop requested or normally completed, not
-  stopped/cancelled/revoked. Off/narrowing, grant/binding revocation, Stop/cancel and
-  Not now invalidate affected unexecuted intent; enabling/On/new grants cannot revive
+  stopped/cancelled/revoked. Off, Only read, binding revocation, Stop/cancel and
+  Skip invalidate affected unexecuted intent; enabling/On/new grants cannot revive
   that old authority. Pause blocks pending Apply while paused, with no autonomous
   resume; after an explicit resume, an unchanged non-revoked item still requires
-  a fresh owner Apply and all checks. Expiry/stale targets say Ask again, never renew
-  the seven-day deadline or rebase the prepared payload silently.
-- An exhausted automatic-run allowance cannot authorize another autonomous write.
-  Explicit Apply has a fresh bounded **write-only approval batch allowance** capped
-  by the lower of the owner's current per-request change limit and the original
-  applicable limit (20 interactive/10 background by default); surplus items remain
-  waiting.
-  It can therefore approve the required limit-overflow remainder without enlarging
-  the old model run. Count each actual effect once in approval/native accounting and
+  a fresh owner Apply and all checks. Stale targets say Ask again, never rebase the
+  prepared payload silently.
+- Count each actual effect once in approval/native accounting and
   the original change history; no model request/day/money charge, native count refund
   or new unlimited lane. A new approval allowance requires that new explicit owner
   Apply; the model, a queue worker or a retry cannot split a batch into fresh
@@ -691,7 +684,7 @@ interrupted or unconfirmed preparation supplies no new approval authority.
   source run/engine/payer provenance and immutable change reference in the receipt/
   change log. UI says "Ada's assistant · approved by Ada"; provenance does not claim
   a model/provider ran or was charged at Apply. Do not impersonate the recipient.
-- Apply/CAS, Stop/Not now/expiry, binding/S6/grant/recipient revoke and native claim/
+- Apply/CAS, Stop/Skip, binding/S6/grant/recipient revoke and native claim/
   Undo serialize with the shared authority, intent and native-unit/task lock order.
   A winner commits either one authorized unit/receipt/accounting transition or the
   invalidation/refusal; none survives a refused transaction. Same approval/intent
@@ -724,11 +717,10 @@ validation through the real MCP route and unchanged public schema/description
 compatibility. Forced private inputs from ordinary OAuth/native/local callers,
 forged view/purpose/actor fields, missing public runtime/grant IDs and cross-purpose
 catalog caches must fail before adapter execution. Clock-controlled Apply succeeds
-after normal completion, token expiry and Inbox promotion within seven days, with
-zero CLI/provider calls. Test exact-version duplicate/CAS, cap-overflow approval,
+after normal completion and token expiry, with zero CLI/provider calls. Test exact-version duplicate/CAS, cap-overflow approval,
 foreign owner/admin/agent, failed/stopped/cancelled source, Off/Only read, pause,
-revoked/downgraded binding/grant/recipient, stale target, Not now and seven-day expiry.
-Hold approval versus each revoke/Stop/Not now/expiry and claim/Undo boundary; assert
+revoked/downgraded binding/recipient, stale target and Skip.
+Hold approval versus each revoke/Stop/Skip and claim/Undo boundary; assert
 persisted unit, receipt/actual actor/provenance and exactly-once accounting. Re-enable
 or a new token/grant cannot resurrect invalidated intent. Both engines prepare the
 same private intent; owner Apply runs the same checks without either engine.

@@ -55,13 +55,14 @@ test('standing map grants create and change a shared project map as the agent, o
   assert.equal(toolFailure(await f.tool('flux_add_thought', { ...base('map.thought.create', addA), mapId,
     thought: { text: 'Measure', x: 0, y: 0 } })).code, 'COMMAND_POSTSTATE_STALE');
 
-  toolValue(await f.tool('flux_unlink_thoughts', { ...base('map.link.delete'), mapId, linkId: b.linkId }));
-  toolValue(await f.tool('flux_remove_thought', { ...base('map.thought.delete'), mapId, thoughtId: b.thoughtId,
-    expectedVersion: (moved.thoughts as { id: string; version: number }[]).find((item) => item.id === b.thoughtId)!.version }));
+  // Deleting always waits for the owner (F-036 AG-3), and a local client has nowhere to wait yet: refused, whatever a grant says.
+  assert.equal(toolFailure(await f.tool('flux_unlink_thoughts', { ...base('map.link.delete'), mapId, linkId: b.linkId })).code, 'AGENT_CHANGE_WAITS');
+  assert.equal(toolFailure(await f.tool('flux_remove_thought', { ...base('map.thought.delete'), mapId, thoughtId: b.thoughtId,
+    expectedVersion: (moved.thoughts as { id: string; version: number }[]).find((item) => item.id === b.thoughtId)!.version })).code, 'AGENT_CHANGE_WAITS');
   const renamed = toolValue(await f.tool('flux_rename_map', { ...base('map.rename'), mapId, expectedVersion: created.version, title: 'Measured map' }));
   map = await detail(mapId);
-  assert.deepEqual([map.title, map.version, map.links.length, map.thoughts.map((item) => item.id)], ['Measured map', renamed.version, 0, [a.thoughtId]]);
-  assert.equal(await events(mapId), 8, 'create, two adds, update, move, unlink, remove and rename');
+  assert.deepEqual([map.title, map.version, map.links.length, map.thoughts.map((item) => item.id).sort()], ['Measured map', renamed.version, 1, [a.thoughtId, b.thoughtId].sort()]);
+  assert.equal(await events(mapId), 6, 'create, two adds, update, move and rename');
   assert.equal((await pool.query('SELECT count(*)::int n FROM map_live_heads WHERE sketch_id=$1', [mapId])).rows[0].n, 0,
     'ordinary MCP writes do not create a live room in the normal enabled installation or the opt-out lane');
   assert.equal((await pool.query('SELECT count(*)::int n FROM map_live_journal WHERE sketch_id=$1', [mapId])).rows[0].n, 0);

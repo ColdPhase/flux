@@ -10,7 +10,7 @@ import { ConnectionSetup } from './ConnectionSetup';
 const LABEL: Record<AgentMcpCapabilityId, string> = {
   'project.identity.read': 'Project context and search', 'project.knowledge.read': 'Wiki and materials',
   'project.work.read': 'Tasks', 'project.decisions.read': 'Decisions', 'project.results.read': 'Results',
-  'project.conversations.read': 'Conversations', 'project.maps.read': 'Maps', 'project.policy.read': 'Project instructions',
+  'project.conversations.read': 'Conversations', 'project.maps.read': 'Maps',
   'cowork.playbook.read': 'Flux co-work instructions', 'connection.runtime.read': 'Current agent session',
   'proposal.create': 'Suggest next steps', 'work.create': 'Create tasks', 'work.update': 'Change tasks',
   'result.record': 'Record results', 'decision.propose': 'Propose decisions', 'map.create': 'Create maps',

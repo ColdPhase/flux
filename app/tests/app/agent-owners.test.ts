@@ -11,19 +11,11 @@ test('agent owner labels use only the current project audience, including guest 
   const place = await project(manager, ws.id, 'Only project audience', 'restricted');
   await grant(manager, place.id, owner, 'contributor');
   await grant(manager, place.id, guest, 'viewer');
-  const create = async (actor: typeof owner, name: string, own: string) => expectStatus(await actor.browser.request('POST', `/api/v1/workspaces/${ws.id}/agents`, {
-    body: { name, owner: own },
-  }), 201) as { id: string };
-  const agent = await create(owner, 'Riley coding agent', 'self');
-  const shared = await create(manager, 'Workspace agent', 'workspace');
-  for (const id of [agent.id, shared.id]) expectStatus(await manager.browser.request('POST', `/api/v1/projects/${place.id}/grants`, {
-    body: { principal: { kind: 'agent', id }, role: 'contributor' },
-  }), 201);
+  const agent = expectStatus(await owner.browser.request('POST', `/api/v1/workspaces/${ws.id}/agents`, { body: { name: 'Riley coding agent', owner: 'self' } }), 201) as { id: string };
   const path = `/api/v1/projects/${place.id}/people`;
   const read = async () => expectStatus(await guest.browser.request('GET', path), 200) as ProjectPerson[];
   let listed = await read();
   assert.deepEqual(listed.find((item) => item.id === agent.id)?.agentOwner, { kind: 'human', id: owner.id, name: 'Riley Owner' });
-  assert.deepEqual(listed.find((item) => item.id === shared.id)?.agentOwner, { kind: 'workspace' });
   assert.equal(listed.some((item) => item.id === hidden.id), false);
   assert.ok(listed.filter((item) => item.kind === 'human').every((item) => item.agentOwner === undefined));
   expectStatus(await guest.browser.request('GET', `/api/v1/workspaces/${ws.id}/members`), 403);

@@ -1,7 +1,7 @@
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { INVITE_ACCEPT_PATH, INVITE_EXPIRY_DAYS, INVITE_PREVIEW_PATH, WORKSPACES_PATH, type CreateInviteCommand, type InviteTokenCommand } from '@flux/contracts';
 import type { PgBoss } from 'pg-boss';
-import { accessPorts, agentAccessRequestRows, type Database } from '@flux/db';
+import { accessPorts, inviteNoticeRows, type Database } from '@flux/db';
 import { ConflictError, acceptInvite, createInvite, createNotification, listInvites, NotFoundError, previewInvite, revokeInvite, withLink,
   type CreatedInvite, type InviteJoined, type InviteSigner } from '@flux/core';
 import { notificationUnitOfWork, pgBossQueue } from '../push/adapters.js';
@@ -32,7 +32,7 @@ export function inviteRoutes(app: FastifyInstance, { db, principal, command, ses
   const onJoined: InviteJoined = async (tx, joined) => {
     // An encrypted workspace's notifications carry no content (F-030): the People list shows the new member instead.
     if (joined.encrypted) return;
-    const names = await agentAccessRequestRows(tx as Database).names([joined.userId]);
+    const names = await inviteNoticeRows(tx as Database).names([joined.userId]);
     const who = names.get(joined.userId) ?? 'Someone';
     const company = (await accessPorts.workspaces(tx as Database).get(joined.workspaceId))?.name ?? 'the company';
     try {

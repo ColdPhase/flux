@@ -2,7 +2,7 @@ import { z } from 'zod';
 import type { AgentExecutionCommand, AgentJsonValue, AgentOperation, AgentPostcondition, AuthenticatedAgentRuntime,
   ObjectRef } from '@flux/contracts';
 import { sketchRows, type DbExecutor, type Database, type Transaction } from '@flux/db';
-import { agentExecutionUseCases, requestHash, type Principal } from '@flux/core';
+import { agentExecutionUseCases, DomainError, requestHash, type Principal } from '@flux/core';
 import { nativeConversationsInEventSession } from '../conversation/store.js';
 import { nativeDocsInEventSession } from '../docs/adapters.js';
 import { nativeMapRoomExists, prepareNativeMap } from '../editing/native-map-journal.js';
@@ -11,7 +11,7 @@ import { nativeWorkInEventSession } from '../work/adapters.js';
 import { transactionEventSession } from '../work/transaction-events.js';
 import type { FluxMcpClaims } from './context.js';
 import { agentExecutionInTransaction } from './execution.js';
-import { assistantChangeExecutor, type AssistantCall } from './assistant-changes.js';
+import { alwaysWaits, assistantChangeExecutor, type AssistantCall } from './assistant-changes.js';
 
 export const actionId = z.uuid();
 export const actionVersion = z.int().min(1).max(2_147_483_647);
@@ -83,6 +83,9 @@ function standingExecutor(db: Database, claims: FluxMcpClaims, privateTarget?: '
           replayed = true;
           return { value: scope.replay.value, postconditions: scope.replay.postconditions };
         }
+        // Deleting and other people's things always wait for the owner (F-036 AG-3), and a local client has nowhere to wait yet: refused, not made.
+        if (await alwaysWaits(tx, operation, objectId, (payload ?? {}) as Record<string, unknown>, claims.ownerUserId))
+          throw new DomainError(403, 'AGENT_CHANGE_WAITS', 'Deleting and other people\'s things wait for your owner\'s OK, and this client cannot wait yet: nothing was changed');
         return effect({ work: nativeWorkInEventSession(tx, session), maps: nativeSketchInEventSession(tx, session,{prepared:live,commandId:input.clientCommandId,operation:`native-agent:${operation}`,fingerprint:requestHash(command),retainUntil:release=>releases.add(release)}),
           docs: nativeDocsInEventSession(tx, session), conversations: nativeConversationsInEventSession(tx, session),
           transaction: tx, events: session, agent: { kind: 'agent', id: scope.context.agentId }, runtime: scope.context,

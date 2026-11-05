@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { after, before, beforeEach, describe, test } from 'node:test';
 import type { PgBoss } from 'pg-boss';
-import { INBOX_PATH, NEEDS_YOU_PATH, PERSONAL_RUN_CONSENT_VERSION, assistantChangeActionPath, assistantOperatorRequestPath, assistantSettingsPath, type AssistantSettings, type InboxResponse, type NeedsYouResponse, type Workspace, type Project, type Conversation } from '@flux/contracts';
+import { INBOX_PATH, NEEDS_YOU_PATH, assistantOperatorRequestPath, type InboxResponse, type NeedsYouResponse } from '@flux/contracts';
 import {
   DEFAULT_PREFERENCES, deliverNotificationEmail, deliverPlainSummary, generateNotifications, preferenceRepository,
   type GeneratorEvent, type GeneratorPorts, type NotificationFacts, type NotificationMailer, type ProjectMessageFacts, type ReviewFacts,
@@ -10,10 +10,10 @@ import {
 import { assistantJobRows, assistantReactionRows, morningSummaryRows, notificationGeneratorRows, pushDeliveryRepository } from '@flux/db';
 import { emailUnitOfWork } from '../../apps/worker/src/notifications/adapters.js';
 import { summaryUnitOfWork } from '../../apps/worker/src/jobs/morning-summary.js';
-import { assistantScene, human, type AssistantScene } from './support/assistant-scene.js';
+import { assistantScene, type AssistantScene } from './support/assistant-scene.js';
 import { db, pool } from './support/db.js';
 import { publicOrigin } from './support/http.js';
-import { addMember, expectStatus, grant, person, project as createProject, workspace as createWorkspace, type Person } from './support/people.js';
+import { expectStatus, type Person } from './support/people.js';
 import { ensureWorkspaceAiAllowed, setWorkspaceAi } from './support/workspace-ai.js';
 
 // F-029 follow-up (#642): the "AI origin" of a notification is written by whoever creates it, from the actor or the source, and the lock
@@ -258,59 +258,12 @@ describe('workspace AI lock: notifications by AI origin (#642)', () => {
     } finally { await setWorkspaceAi(ws.id, 'allowed'); }
   });
 
-  test('a join request from an assistant and an operator request', async () => {
-    const { owner, ws, place, peer, connections, runs } = scene;
-    // Jonas's assistant asks to join a project he cannot manage; Ada (owner) is asked.
-    const requester = await person('ai-notify-requester');
-    await addMember(owner, ws.id, requester, 'member');
-    const agent = expectStatus(await requester.browser.request('POST', `/api/v1/workspaces/${ws.id}/agents`, { body: { name: 'Requester assistant', owner: 'self' } }), 201) as { id: string };
-    connections.connect(requester.id, randomUUID());
-    await runs.enable(human(requester), { consentVersion: PERSONAL_RUN_CONSENT_VERSION, agentId: agent.id });
-    const target = await createProject(owner, ws.id, 'Join target', 'workspace');
-    expectStatus(await requester.browser.request('POST', `/api/v1/projects/${target.id}/assistant-join-requests`), 201);
-    const join = (await pool.query(`SELECT id FROM notifications WHERE user_id = $1 AND source_id = $2 AND assistant_join_request_id IS NOT NULL`, [owner.id, target.id])).rows[0].id as string;
-    await assertGated('assistant join request', owner, ws.id, join, { needsYou: true });
+  test('an operator request', async () => {
+    const { owner, ws, place, peer } = scene;
     const operator = expectStatus(await peer.browser.request('POST', assistantOperatorRequestPath(ws.id), { body: {} }), 201) as { sent: number };
     assert.ok(operator.sent >= 1, 'the owner was told');
     const note = (await pool.query(`SELECT id FROM notifications WHERE user_id = $1 AND title LIKE '% would like to use their % plan here' ORDER BY created_at DESC LIMIT 1`, [owner.id])).rows[0].id as string;
     await assertGated('operator request', owner, ws.id, note, { needsYou: true });
     assert.ok(place.id);
-  });
-});
-
-describe('workspace AI lock: an assistant suggestion to another person (#642)', () => {
-  let ada: Person; let jonas: Person; let jonasWs: Workspace; let shared: Project; let sharedThread: Conversation; let ctx: AssistantScene;
-  before(async () => {
-    ctx = await assistantScene('ai-notify-suggest');
-    ada = ctx.owner; jonas = ctx.peer;
-    jonasWs = await createWorkspace(jonas, 'Jonas lab');
-    await addMember(jonas, jonasWs.id, ada, 'member');
-    shared = await createProject(jonas, jonasWs.id, 'Shared rig', 'restricted');
-    await grant(jonas, shared.id, ada, 'contributor');
-    const jonasAgent = (expectStatus(await ada.browser.request('POST', `/api/v1/workspaces/${jonasWs.id}/agents`, { body: { name: 'Ada assistant', owner: 'self' } }), 201) as { id: string }).id;
-    await ctx.runs.selectAgent(human(ada), { agentId: jonasAgent });
-    expectStatus(await jonas.browser.request('POST', `/api/v1/projects/${shared.id}/grants`, { body: { principal: { kind: 'agent', id: jonasAgent }, role: 'contributor' } }), 201);
-    sharedThread = expectStatus(await jonas.browser.request('POST', `/api/v1/projects/${shared.id}/conversations`,
-      { body: { body: 'Rig notes', clientMessageId: randomUUID() } }), 201) as Conversation;
-    const path = assistantSettingsPath(jonasWs.id, ada.id);
-    const current = expectStatus(await ada.browser.request('GET', path), 200) as unknown as AssistantSettings;
-    if (!current.policy.selectedProjectIds.includes(shared.id))
-      expectStatus(await ada.browser.request('PATCH', path, { body: { projectMode: 'chosen', selectedProjectIds: [shared.id] }, headers: { 'if-match': `"${current.version}"` } }), 200);
-  });
-  after(async () => { await ensureWorkspaceAiAllowed(jonasWs.id); });
-
-  test('the suggestion Ada sends to Jonas', async () => {
-    const run = await ctx.liveRun(sharedThread);
-    await pool.query(`UPDATE project_grants SET role = 'viewer' WHERE project_id = $1 AND user_id = $2`, [shared.id, ada.id]);
-    try {
-      await run.call('flux_create_task', { task: { title: 'Recalibrate the bench' } });
-      const [row] = (await pool.query(`SELECT id, version FROM assistant_changes WHERE run_id = $1`, [run.runId])).rows as { id: string; version: number }[];
-      expectStatus(await ada.browser.request('POST', assistantChangeActionPath(row!.id, 'send'), { body: { expectedVersion: row!.version } }), 200);
-      const id = (await pool.query(`SELECT id FROM notifications WHERE user_id = $1 AND title LIKE '%assistant suggests%' ORDER BY created_at DESC LIMIT 1`, [jonas.id])).rows[0].id as string;
-      await assertGated('assistant suggestion', jonas, jonasWs.id, id);
-    } finally {
-      await pool.query(`UPDATE project_grants SET role = 'contributor' WHERE project_id = $1 AND user_id = $2`, [shared.id, ada.id]);
-      await ctx.complete(run.runId);
-    }
   });
 });

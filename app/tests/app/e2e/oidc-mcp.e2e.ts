@@ -155,7 +155,6 @@ test('setup: an identity-provider-only person has a Flux account and one agent c
   const project = await api<{ id: string }>(context, 'POST', `/api/v1/workspaces/${workspace.id}/projects`, { name: 'Selected project', visibility: 'restricted' }, 201);
   state.projectId = project.id;
   const agent = await api<{ id: string }>(context, 'POST', `/api/v1/workspaces/${workspace.id}/agents`, { name: 'Erin agent', owner: 'self' }, 201);
-  await api(context, 'POST', `/api/v1/projects/${project.id}/grants`, { principal: { kind: 'agent', id: agent.id }, role: 'contributor' }, 201);
   const connection = await api<{ id: string }>(context, 'POST', '/api/v1/agent-connections',
     { agentId: agent.id, selectedProjectIds: [project.id], scopes: ['flux.context.read', 'flux.proposal.write'] }, 201);
   state.connectionId = connection.id;
@@ -244,7 +243,6 @@ test('a grant authorized with a password records password, and keeps that after 
   const workspace = await api<{ id: string }>(context, 'POST', '/api/v1/workspaces', { name: 'Password lab' }, 201);
   const project = await api<{ id: string }>(context, 'POST', `/api/v1/workspaces/${workspace.id}/projects`, { name: 'Password project', visibility: 'restricted' }, 201);
   const agent = await api<{ id: string }>(context, 'POST', `/api/v1/workspaces/${workspace.id}/agents`, { name: 'Password agent', owner: 'self' }, 201);
-  await api(context, 'POST', `/api/v1/projects/${project.id}/grants`, { principal: { kind: 'agent', id: agent.id }, role: 'contributor' }, 201);
   const connection = await api<{ id: string }>(context, 'POST', '/api/v1/agent-connections',
     { agentId: agent.id, selectedProjectIds: [project.id], scopes: ['flux.context.read'] }, 201);
   const { verifier, challenge } = pkce();
@@ -818,7 +816,6 @@ test('standing: a deleted Keycloak user loses browser, MCP and refresh access wi
   const workspace = await api<{ id: string }>(context, 'POST', '/api/v1/workspaces', { name: 'Deleted identity proof' }, 201);
   const project = await api<{ id: string }>(context, 'POST', `/api/v1/workspaces/${workspace.id}/projects`, { name: 'Kept data', visibility: 'restricted' }, 201);
   const agent = await api<{ id: string }>(context, 'POST', `/api/v1/workspaces/${workspace.id}/agents`, { name: 'Kept identity agent', owner: 'self' }, 201);
-  await api(context, 'POST', `/api/v1/projects/${project.id}/grants`, { principal: { kind: 'agent', id: agent.id }, role: 'contributor' }, 201);
   const connection = await api<{ id: string }>(context, 'POST', '/api/v1/agent-connections',
     { agentId: agent.id, selectedProjectIds: [project.id], scopes: ['flux.context.read', 'flux.proposal.write'] }, 201);
   const client = await registerClient(loopback); const { verifier, challenge } = pkce();
