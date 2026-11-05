@@ -1,0 +1,26 @@
+/* The loading state of a screen a switch is going to (PendingView.tsx, #863 rule 2): quiet bars over the old view, which stays mounted
+   underneath but is not shown (draft and scroll place intact if the switch is cancelled). In the frame the switch is made on, no delay. */
+.app__pane.is-switching > :not(.pending-view, .lv-stage, .deferred-surface--stage) { visibility: hidden; }
+.pending-view { position: absolute; inset: 0; z-index: 1; overflow: hidden; background: var(--bg); pointer-events: none; }
+.pending-view b, .pending-view i { display: block; border-radius: var(--r-pill); background: var(--sub); }
+.pending-view b { height: 9px; }
+.pending-view__list { max-width: calc(var(--col) + 48px); margin: 0 auto; padding: 20px 24px; }
+.pending-view__row { display: flex; align-items: center; gap: 12px; height: 52px; }
+.pending-view__row + .pending-view__row { border-top: 1px solid var(--line); }
+.pending-view__row i { flex: none; width: 18px; height: 18px; border-radius: 50%; }
+.pending-view__row span { flex: 1; }
+.pending-view__cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 16px; max-width: calc(var(--col) + 220px); margin: 0 auto; padding: 20px 24px; }
+.pending-view__card { display: grid; align-content: center; gap: 12px; height: 132px; padding: 0 18px; border-radius: var(--r-card); background: var(--sub); }
+.pending-view__card b { background: var(--hov); }
+.pending-view__wiki { display: grid; grid-template-columns: 240px minmax(0, 1fr); height: 100%; }
+.pending-view__index { display: grid; align-content: start; gap: 18px; padding: 24px 20px; border-right: 1px solid var(--line); }
+.pending-view__page { display: grid; align-content: start; gap: 16px; max-width: calc(var(--col) + 48px); padding: 28px 24px; }
+.pending-view__title { height: 18px; width: 46%; margin-bottom: 8px; }
+@media (max-width: 640px) {
+  .pending-view__wiki { grid-template-columns: minmax(0, 1fr); }
+  .pending-view__index { display: none; }
+  .pending-view__list, .pending-view__cards { padding: 16px; }
+}
+@media (prefers-reduced-motion: no-preference) {
+  :root:not([data-motion="reduce"]) .pending-view__list, :root:not([data-motion="reduce"]) .pending-view__cards, :root:not([data-motion="reduce"]) .pending-view__wiki { animation: opening-pulse var(--dur-loop) var(--ease-loop) infinite; }
+}

@@ -29,6 +29,8 @@ export function HomeTasks() {
   const narrow = useMediaQuery(MEDIA.navDrawer);
   const [loaded, setLoaded] = useState<Loaded | null>(null);
   const [refresh, setRefresh] = useState(0);
+  // A pull to refresh waits for this read to end, so the mark runs as long as the work does.
+  const readEnded = useRef<(() => void) | null>(null);
   // A burst of project events (messages, assistant progress) reads once, not once per event.
   const soon = useRef<number | null>(null);
   const again = () => {
@@ -49,7 +51,7 @@ export function HomeTasks() {
     const userId = me.user.id;
     void (async () => {
       let read: Awaited<ReturnType<typeof listAssignedWork>>;
-      try { read = await listAssignedWork(workspaces.map((space) => space.id), CAP, controller.signal); } catch { return; }
+      try { read = await listAssignedWork(workspaces.map((space) => space.id), CAP, controller.signal); } catch { if (!controller.signal.aborted) { readEnded.current?.(); readEnded.current = null; } return; }
       const { items, total, failed } = read;
       // Project names as the sidebar shows them; a project granted after the shell loaded asks once.
       const names = new Map(projects.map((project) => [project.id, project.name]));
@@ -60,7 +62,7 @@ export function HomeTasks() {
           names.set(projectId, 'Space');
         }
       }
-      if (!controller.signal.aborted) setLoaded({ userId, items, total, failed, names });
+      if (!controller.signal.aborted) { setLoaded({ userId, items, total, failed, names }); readEnded.current?.(); readEnded.current = null; }
     })();
     return () => controller.abort();
   }, [me.user.id, workspaces, projects, refresh]);
@@ -69,7 +71,7 @@ export function HomeTasks() {
   if (!shown) return <div className="home-tasks__center"><Spinner label="Loading your tasks" /></div>;
 
   // On a touch screen, pulling the list down from the top reads again (the list also reads when shown again).
-  const pulling = (node: ReactNode) => <PullToRefresh onRefresh={() => setRefresh((n) => n + 1)}>{node}</PullToRefresh>;
+  const pulling = (node: ReactNode) => <PullToRefresh onRefresh={() => new Promise<void>((resolve) => { readEnded.current = resolve; setRefresh((n) => n + 1); })}>{node}</PullToRefresh>;
   const groups = new Map<string, WorkItem[]>();
   for (const item of shown.items) groups.set(item.projectId, [...(groups.get(item.projectId) ?? []), item]);
   const ordered = [...groups.entries()]

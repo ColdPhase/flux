@@ -127,12 +127,12 @@ export interface OverlayProps {
   children: ReactNode;
 }
 
-// Where each placement comes from and goes back to (#863, motion rule 3). One vocabulary: the floating dialog fades and travels 8 px, the
-// detail panel's overlay fades and travels --shift-panel, the drawer and the phone sheet travel from their screen edge. Nothing scales.
+// Where each placement comes from and goes back to (#863, motion rule 3). One vocabulary, a fade plus a travel: the floating dialog travels 8 px,
+// the detail panel's overlay --shift-panel, the drawer and the phone sheet come from their screen edge. Nothing scales.
 const offstage = (placement: OverlayPlacement): Pose => ({
-  left: { transform: 'translateX(calc(-100% - 24px))' },
+  left: { opacity: 0, transform: 'translateX(calc(-100% - 24px))' },
   right: { opacity: 0, transform: `translateX(${token('--shift-panel') || '16px'})` },
-  bottom: { transform: 'translateY(100%)' },
+  bottom: { opacity: 0, transform: 'translateY(100%)' },
   center: { opacity: 0, transform: 'translateY(-8px)' },
 })[placement];
 /** Enter and exit: every surface takes --dur-in (180 ms) on --ease-out and --dur-out (120 ms) on --ease-in, the drawer and the phone sheet included. */

@@ -24,6 +24,8 @@
   --own: #e7e7ea;
   --sub: #ebebec;
   --hov: #e3e3e5;
+  /* A pressed control's fill: one notch deeper than --hov, so a press with a mouse (hover and press at once) shows as well as a touch (#863 rule 1, 7) */
+  --act: #d6d6da;
   /* The fill of a chosen message row: clearly apart from the page, from other people's bubbles and from --own */
   --pick: #dcdce0;
   --line: rgba(0, 0, 0, .07);
@@ -50,6 +52,7 @@
      --choice is the 1 px outline of an option button (an agent's ready answers, a pick among a few). */
   --choice: rgba(0, 0, 0, .12);
   --inv-hov: #2e2e33;
+  --inv-act: #47474d;
   /* Agent colours (Agents section only): muted OKLCH at equal lightness, README §2 */
   --agent-clay: #9b6147; --agent-ochre: #886d32; --agent-sage: #4b8057; --agent-teal: #208181;
   --agent-indigo: #5e6fa4; --agent-plum: #886191; --agent-rose: #9c5c66;
@@ -128,7 +131,7 @@
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
     color-scheme: dark;
-    --side: #0b0b0b; --bg: #111111; --el: #1c1c1c; --own: #313134; --sub: #242424; --hov: #2c2c2c; --pick: #3d3d42;
+    --side: #0b0b0b; --bg: #111111; --el: #1c1c1c; --own: #313134; --sub: #242424; --hov: #2c2c2c; --act: #383838; --pick: #3d3d42;
     --line: rgba(255, 255, 255, .08); --line2: rgba(255, 255, 255, .16);
     --t1: #f0f0f0; --t2: #bdbdbd; --t3: #a1a1a1; --inv: #f0f0f0; --oninv: #111111;
     --scrim: rgba(0, 0, 0, .6); --dot: #2e2e2e;
@@ -139,14 +142,14 @@
     --sh-seg: inset 0 1px 2px rgba(0, 0, 0, .3);
     --sh-raise: 0 1px 2px rgba(0, 0, 0, .4), 0 4px 10px -6px rgba(0, 0, 0, .5);
     --grad-inv: linear-gradient(#ffffff, #d9d9d9);
-    --choice: rgba(255, 255, 255, .16); --inv-hov: #d9d9d9;
+    --choice: rgba(255, 255, 255, .16); --inv-hov: #d9d9d9; --inv-act: #c2c2c2;
     --agent-clay: #e8af96; --agent-ochre: #d4bb86; --agent-sage: #9ccca4; --agent-teal: #82cdcd;
     --agent-indigo: #abbcef; --agent-plum: #d4afdc; --agent-rose: #e9aab3;
   }
 }
 :root[data-theme="dark"] {
   color-scheme: dark;
-  --side: #0b0b0b; --bg: #111111; --el: #1c1c1c; --own: #313134; --sub: #242424; --hov: #2c2c2c; --pick: #3d3d42;
+  --side: #0b0b0b; --bg: #111111; --el: #1c1c1c; --own: #313134; --sub: #242424; --hov: #2c2c2c; --act: #383838; --pick: #3d3d42;
   --line: rgba(255, 255, 255, .08); --line2: rgba(255, 255, 255, .16);
   --t1: #f0f0f0; --t2: #bdbdbd; --t3: #a1a1a1; --inv: #f0f0f0; --oninv: #111111;
   --scrim: rgba(0, 0, 0, .6); --dot: #2e2e2e;
@@ -157,7 +160,7 @@
   --sh-seg: inset 0 1px 2px rgba(0, 0, 0, .3);
   --sh-raise: 0 1px 2px rgba(0, 0, 0, .4), 0 4px 10px -6px rgba(0, 0, 0, .5);
   --grad-inv: linear-gradient(#ffffff, #d9d9d9);
-  --choice: rgba(255, 255, 255, .16); --inv-hov: #d9d9d9;
+  --choice: rgba(255, 255, 255, .16); --inv-hov: #d9d9d9; --inv-act: #c2c2c2;
   --agent-clay: #e8af96; --agent-ochre: #d4bb86; --agent-sage: #9ccca4; --agent-teal: #82cdcd;
   --agent-indigo: #abbcef; --agent-plum: #d4afdc; --agent-rose: #e9aab3;
 }

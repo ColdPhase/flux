@@ -12,6 +12,7 @@ import { NotFoundView } from './app/views';
 import { Home } from './app/Home';
 import { LockedBoundary, LockedSpacePage } from './encryption/LockedSpace';
 import { projectShellLoader } from './project/data';
+import { agentsPage, docViewsPage, mapPage, tasksPage, wikiPage } from './app/viewChunks';
 import {
   forgotPasswordAction,
   forgotPasswordLoader,
@@ -48,7 +49,7 @@ function secondary(load: Extract<NonNullable<RouteObject['lazy']>, () => Promise
   };
 }
 const docReader = secondary(async () => {
-  const page = await import('./docs/DocViews');
+  const page = await docViewsPage();
   return { Component: page.DocReader, loader: page.docLoader };
 });
 const docEditor = secondary(async () => {
@@ -138,25 +139,25 @@ export const router = createBrowserRouter([
               // A message by its id alone (CW-2): the loader finds its thread and opens it there.
               { path: 'messages/:messageId', ...secondary(async () => ({ loader: (await import('./conversations/messageRoute')).messageLoader })) },
               { path: 'github', ...secondary(async () => ({ Component: (await import('./github/GithubSettings')).GithubSettings })) },
-              { path: 'tasks', ...secondary(async () => { const page = await import('./work/ProjectTasks'); return { Component: page.ProjectTasks, loader: page.projectTasksLoader }; }) },
-              { path: 'map', ...secondary(async () => ({ Component: (await import('./project/ProjectViews')).ProjectMap })) },
+              { path: 'tasks', ...secondary(async () => { const page = await tasksPage(); return { Component: page.ProjectTasks, loader: page.projectTasksLoader }; }) },
+              { path: 'map', ...secondary(async () => ({ Component: (await mapPage()).ProjectMap })) },
               { path: 'map/:sketchId', ...sketch },
               {
                 // The wiki (#112) as two panes (#136): the page index beside the open page.
                 id: 'wiki',
                 path: 'docs',
-                ...secondary(async () => { const page = await import('./docs/Wiki'); return { Component: page.WikiLayout, loader: page.wikiLoader, shouldRevalidate: page.wikiShouldRevalidate }; }),
+                ...secondary(async () => { const page = await wikiPage(); return { Component: page.WikiLayout, loader: page.wikiLoader, shouldRevalidate: page.wikiShouldRevalidate }; }),
                 children: [
-                  { index: true, ...secondary(async () => ({ Component: (await import('./docs/DocViews')).WikiHome })) },
+                  { index: true, ...secondary(async () => ({ Component: (await docViewsPage()).WikiHome })) },
                   { path: 'new', ...docEditor },
                   { path: ':docId', ...docReader },
                   { path: ':docId/versions/:version', ...docReader },
                   { path: ':docId/edit', ...docEditor },
-                  { path: ':docId/history', ...secondary(async () => { const page = await import('./docs/DocViews'); return { Component: page.DocHistory, loader: page.docHistoryLoader }; }) },
+                  { path: ':docId/history', ...secondary(async () => { const page = await docViewsPage(); return { Component: page.DocHistory, loader: page.docHistoryLoader }; }) },
                 ],
               },
               // Agents (UI116-2, #136): the project's connections and its task threads.
-              { path: 'agents', ...secondary(async () => { const page = await import('./agents/ProjectAgents'); return { Component: page.ProjectAgents, loader: page.projectAgentsLoader }; }) },
+              { path: 'agents', ...secondary(async () => { const page = await agentsPage(); return { Component: page.ProjectAgents, loader: page.projectAgentsLoader }; }) },
               // An invitation's link (#62): opens the session's work with the invitation card.
               { path: 'live/:sessionId', ...secondary(async () => ({ Component: (await import('./live/LiveOpen')).LiveOpen })) },
             ],
@@ -166,7 +167,7 @@ export const router = createBrowserRouter([
           { path: 'tasks', ...secondary(async () => ({ Component: (await import('./app/TasksView')).TasksView })) },
           { path: 'map', ...secondary(async () => ({ Component: (await import('./sketch/SketchIndex')).SketchIndex })) },
           { path: 'map/:sketchId', ...sketch },
-          { path: 'docs', ...secondary(async () => ({ Component: (await import('./docs/DocViews')).WorkspaceDocs })) },
+          { path: 'docs', ...secondary(async () => ({ Component: (await docViewsPage()).WorkspaceDocs })) },
           { path: 'search', ...secondary(async () => ({ Component: (await import('./search/SearchPage')).SearchPage })) },
           { path: 'dm', ...secondary(async () => ({ Component: (await import('./dm/DmIndex')).DmIndex })) },
           { path: 'dm/new', ...secondary(async () => ({ Component: (await import('./dm/DmIndex')).NewDm })) },

@@ -60,7 +60,7 @@ svg { flex: none; }
    Direction C "quiet, one accent per screen" (founder, 2026-10-31, #763; docs/design/final/README.md §2).
    Buttons are flat, with radius 10 and no gradient or shadow. At most one primary (inverted) per screen or
    region. Secondary is a text button; outline is a choice among a few options; danger is outlined in a
-   stronger line so a destructive action stays recognisable. Pressing scales to .97 and springs back. */
+   stronger line so a destructive action stays recognisable. Pressing changes the fill; a small button also scales to .98 (press.ts). */
 .ui-btn {
   display: inline-flex; align-items: center; justify-content: center; gap: 6px;
   min-height: var(--ctl); padding: 0 14px; border-radius: var(--r-btn);
@@ -242,7 +242,6 @@ input::placeholder, textarea::placeholder { color: var(--t3); opacity: 1; }
 /* The keyboard button is visually hidden; its focus ring is drawn on the visible handle. */
 .ui-detent-sheet:has(> .ui-vh:focus-visible) > .ui-grabber { outline: 2px solid var(--t1); outline-offset: -4px; border-radius: 12px; }
 .ui-detent-sheet:has(> .ui-vh:focus-visible) > .ui-grabber span { background: var(--t1); }
-@media (prefers-reduced-motion: reduce) { .ui-detent-sheet { transition: none; } }
 @media (max-width: 640px) { .ui-overlay--left .ui-overlay__surface { width: 100%; } }
 
 /* ---------- Side panel ---------- */
@@ -391,13 +390,20 @@ input::placeholder, textarea::placeholder { color: var(--t3); opacity: 1; }
 
 /* ---------- Press, hover and selection (#593 AC-5, #863) ----------
    A press is colour. Every pressable control answers with the same short fill transition (--tr-fill, the fill half of --tr):
-   hover and selection fills ease in and out instead of jumping, and a pressed row, link or item takes the hover fill at once
-   (`:active`), so a tap on a touch screen shows within one frame. Rows, cards and list items never scale; only a small button
-   scales to --press (.98) and back, in script (press.ts), because it has to cover every button without restyling each one.
-   The focus ring is not part of it. These are zero-specificity floors: a control that declares its own transition (most use
-   --tr) or fill keeps it. */
+   hover and selection fills ease in and out instead of jumping, and a pressed control takes a deeper fill than its hover (--act,
+   --inv-act for the inverted primary), so the press shows with a mouse, where the pointer is over the control and pressing it at
+   once, as well as on a touch screen. It is done by redefining the hover fills on the pressed control (`--hov` is `--act` while it is
+   pressed), so every rule that paints a hover with them paints the press, whatever its specificity. Rows, cards, list items and
+   sidebar items never scale; only a small button scales to --press (.98) and back, in script (press.ts), because it has to cover
+   every button without restyling each one. The focus ring is not part of it. The transition is a zero-specificity floor: a control that
+   declares its own transition (most use --tr) keeps it. */
 :where(button, a[href], [role="button"], [role="tab"], [role="menuitem"], [role="menuitemradio"], [role="menuitemcheckbox"], [role="option"], summary):where(:not(.sk-plane *, [data-no-press])) { transition: var(--tr-fill); }
-:where(button, a[href], [role="tab"], [role="menuitem"], [role="menuitemradio"], [role="menuitemcheckbox"], [role="option"], summary):where(:not(.ui-btn, .ui-icon-btn, .ui-link, .sk-plane *, [data-no-press], [aria-disabled="true"], :disabled)):active { background-color: var(--hov); }
+:where(button, a[href], [role="button"], [role="tab"], [role="menuitem"], [role="menuitemradio"], [role="menuitemcheckbox"], [role="option"], summary):where(:not([data-no-press], [aria-disabled="true"], :disabled, .sk-plane *)):active { --hov: var(--act); --inv-hov: var(--inv-act); }
+:where(button, a[href], [role="tab"], [role="menuitem"], [role="menuitemradio"], [role="menuitemcheckbox"], [role="option"], summary):where(:not(.ui-btn, .ui-icon-btn, .ui-link, .sk-plane *, [data-no-press], [aria-disabled="true"], :disabled)):active { background-color: var(--act); }
+/* Buttons: a touch has no hover to deepen, so the pressed fill is declared here for every variant. The link button only darkens its text. */
+.ui-btn:active:not(:disabled, [aria-disabled="true"], [data-no-press]), .ui-icon-btn:active:not(:disabled, [aria-disabled="true"], [data-no-press]) { background: var(--act); color: var(--t1); }
+.ui-btn--primary:active:not(:disabled, [aria-disabled="true"], [data-no-press]) { background: var(--inv-act); color: var(--oninv); }
+.ui-btn--link:active:not(:disabled, [aria-disabled="true"], [data-no-press]) { background: transparent; color: var(--t2); }
 
 /* A control that appears on hover or focus (the message toolbar, #591) fades and slides a few pixels in from its side.
    `.ui-reveal` is its hidden pose, `.is-shown` its shown one; `data-side="start"` (or `--reveal-x`) comes from the left. The

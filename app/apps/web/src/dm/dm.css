@@ -52,7 +52,7 @@
 .dm-msel svg { opacity: 0; transform: scale(.6); color: var(--oninv); transition: opacity var(--dur-1) var(--ease-out), transform var(--dur-1) var(--ease-out); }
 .dm-msel[aria-pressed="true"] i { background: var(--inv); box-shadow: none; }
 .dm-msel[aria-pressed="true"] svg { opacity: 1; transform: none; }
-.dm-msel:active i { transform: scale(.9); }
+.dm-msel:active:not([aria-pressed="true"]) i { background: var(--act); }
 .dm-selbar { flex: none; display: flex; flex-direction: column; justify-content: center; min-height: min(var(--dm-swap, 0px), 140px); border-top: 1px solid var(--line); background: var(--bg); padding: 10px 24px 16px; padding-bottom: max(16px, env(safe-area-inset-bottom)); animation: dm-rise var(--dur-in) var(--ease-out) backwards; }
 .dm-selbar__in { max-width: calc(var(--dm-w) - 48px); margin: 0 auto; display: flex; align-items: center; flex-wrap: wrap; gap: 8px 10px; }
 .dm-selbar__count { margin-right: auto; font-size: var(--fs-md); font-weight: 500; color: var(--t1); }

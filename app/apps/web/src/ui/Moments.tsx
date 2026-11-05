@@ -9,19 +9,28 @@ export function Mascot({ expression, size = 80, className }: { expression: Kresk
   return on ? <Kreska expression={expression} size={size} className={`mascot${className ? ` ${className}` : ''}`} /> : null;
 }
 
+const OPENING_WIDTHS = [62, 88, 74, 54];
+
+/** Quiet placeholder rows (a face and two lines each) where messages will be: the same rows stand in a stream and in a thread. */
+export function OpeningRows({ rows = OPENING_WIDTHS.length }: { rows?: number }) {
+  return (
+    <div className="opening__rows" aria-hidden="true">
+      {Array.from({ length: rows }, (_, index) => OPENING_WIDTHS[index % OPENING_WIDTHS.length]!).map((width, index) => <div key={index} className="opening__row"><i /><span><b style={{ width: `${width}%` }} /><b style={{ width: `${Math.round(width / 2)}%` }} /></span></div>)}
+    </div>
+  );
+}
+
 /**
  * "Opening <project>…" while a project's first reads arrive: the loading face (dots flow through its
- * eyes) above quiet placeholder rows. The text stays; it appears only after a beat, so a fast open never
- * flashes it. It sits over the hidden stream and is never part of the content.
+ * eyes) above quiet placeholder rows. The rows stand in the stream's place from the first frame (#863 rule 2, 6); the words
+ * appear after a beat, so a fast open never flashes them. It sits over the hidden stream and is never part of the content.
  */
 export function Opening({ name }: { name: string }) {
   const on = useSmallMoments();
   return (
     <div className="opening" role="status" aria-live="polite">
       <p className="opening__line">{on ? <Kreska expression="loading" size={20} /> : null}<span>Opening {name}…</span></p>
-      <div className="opening__rows" aria-hidden="true">
-        {[62, 88, 74, 54].map((width, index) => <div key={index} className="opening__row"><i /><span><b style={{ width: `${width}%` }} /><b style={{ width: `${Math.round(width / 2)}%` }} /></span></div>)}
-      </div>
+      <OpeningRows />
     </div>
   );
 }
@@ -43,7 +52,7 @@ function scroller(from: HTMLElement | null): HTMLElement | null {
  * edge (surprised once it is far enough); letting go refreshes. The text says the same, so nothing depends
  * on the face. A mouse or keyboard never needs it: the list also refreshes when shown again.
  */
-export function PullToRefresh({ onRefresh, children }: { onRefresh: () => void; children: ReactNode }) {
+export function PullToRefresh({ onRefresh, children }: { onRefresh: () => void | Promise<void>; children: ReactNode }) {
   const anchor = useRef<HTMLSpanElement>(null);
   const on = useSmallMoments();
   const [pull, setPull] = useState(0);
@@ -75,7 +84,8 @@ export function PullToRefresh({ onRefresh, children }: { onRefresh: () => void; 
       const go = distance >= THRESHOLD;
       distance = 0;
       setPull(0);
-      if (go) { setRefreshing(true); refresh.current(); window.setTimeout(() => setRefreshing(false), 900); }
+      // The mark runs as long as the refresh does: no longer, no shorter (a refresh that does not say when it is done ends at once).
+      if (go) { setRefreshing(true); void Promise.resolve(refresh.current()).finally(() => setRefreshing(false)); }
     };
     // A cancelled touch (the browser took the gesture) only resets the pull; it never refreshes.
     const cancel = () => {

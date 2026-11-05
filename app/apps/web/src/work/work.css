@@ -380,21 +380,6 @@ button.wd-link:active:not(:disabled) { background: var(--sub); }
 .wd__foot { flex: none; padding: 6px 16px 10px; padding-bottom: max(10px, env(safe-area-inset-bottom)); }
 .wd__foot .composer__audience > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .wd--task .details__title { margin: 2px 0 6px; font-size: var(--fs-xl); }
-/* The task panel while it loads (#863): the final layout's heights in quiet bars, so nothing jumps when the content arrives. */
-.wd-skeleton i { display: block; height: 12px; border-radius: var(--r-pill); background: var(--sub); }
-.wd-skeleton__title { display: grid; align-content: center; gap: 12px; height: 54px; margin: 2px 0 6px; }
-.wd-skeleton__title i { height: 15px; }
-.wd-skeleton__title i:last-child { width: 62%; }
-.wd-skeleton__rows { margin: 8px 0 0; }
-.wd-skeleton__row { display: grid; grid-template-columns: 96px minmax(0, 1fr); align-items: center; gap: 12px; height: 42px; }
-.wd-skeleton__row + .wd-skeleton__row { height: 43px; border-top: 1px solid var(--line); }
-.wd-skeleton__row i:first-child { width: 56px; }
-.wd-skeleton__row i:last-child { width: 55%; }
-.wd-skeleton__actions { display: flex; align-items: center; gap: 12px; height: 32px; margin-top: 14px; }
-.wd-skeleton__actions i { width: 72px; }
-.wd-skeleton__sec { display: grid; gap: 14px; margin-top: 28px; }
-.wd-skeleton__sec i:first-child { width: 80px; }
-.wd-skeleton__sec i:last-child { width: 70%; }
 .wd-row dd .ui-avatar { flex: none; }
 .wd-state.wd-due { max-width: 100%; }
 .wd-due-edit { display: inline-flex; align-items: center; gap: 4px; flex-wrap: wrap; margin-left: -8px; }

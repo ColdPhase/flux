@@ -125,9 +125,7 @@ html.tb-is-dragging .tb-card:hover { box-shadow: var(--sh-card); }
 .tb-card.is-dragging { opacity: .45; }
 .tb-card.is-lifted { box-shadow: var(--sh-card), 0 0 0 2px var(--t1); }
 .tb-card.has-menu { z-index: 3; }
-/* Brief placement feedback once the server confirmed the move (UI116-5, #863): the tint fades over --dur-highlight (600 ms at most); none under reduced motion. */
-.tb-card.is-arrived { animation: tb-arrive var(--dur-highlight) var(--ease-out); }
-@keyframes tb-arrive { from { background-color: color-mix(in srgb, var(--inv) 10%, var(--bg)); } to { background-color: var(--bg); } }
+/* A move has one motion, at the drop: the card slides to its place (ui/rowMotion.ts). The server's answer to it adds none (#863 rule 5). */
 @media (hover: hover) and (pointer: fine) {
   .tb-board--movable .tb-card, .tb-board--movable .tb-card__open { cursor: grab; }
 }
@@ -220,6 +218,5 @@ html.tb-is-dragging, html.tb-is-dragging * { cursor: grabbing !important; user-s
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .tb-card.is-arrived { animation: none; }
   .tb-card, .tb-col__cards, .tb-search { transition: none; }
 }

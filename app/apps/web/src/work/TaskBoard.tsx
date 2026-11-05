@@ -149,7 +149,7 @@ function MoveMenu({ item, column, busy, buttonRef, onMove, onOpen, onClose, popP
 interface CardProps {
   agentOwner?: string;
   item: BoardTask; from: Origin | null; column: ColumnId; meId: string; writable: boolean; hintId: string;
-  saving: boolean; dragged: boolean; lifted: boolean; arrived: boolean; menuOpen: boolean;
+  saving: boolean; dragged: boolean; lifted: boolean; menuOpen: boolean;
   onPointerDown: (event: ReactPointerEvent<HTMLLIElement>) => void;
   onClickCapture: (event: ReactMouseEvent) => void;
   onKeyDown: (event: ReactKeyboardEvent<HTMLButtonElement>) => void;
@@ -160,7 +160,7 @@ interface CardProps {
   onMove: (to: ColumnId) => void;
 }
 
-function Card({ item, agentOwner, from, column, meId, writable, hintId, saving, dragged, lifted, arrived, menuOpen, onPointerDown, onClickCapture, onKeyDown, onKeyUp, onBlur, onOpen, onMenu, onMove }: CardProps) {
+function Card({ item, agentOwner, from, column, meId, writable, hintId, saving, dragged, lifted, menuOpen, onPointerDown, onClickCapture, onKeyDown, onKeyUp, onBlur, onOpen, onMenu, onMove }: CardProps) {
   const menuButton = useRef<HTMLButtonElement>(null);
   const pop = usePop(menuOpen);
   const blocked = item.status === 'blocked';
@@ -169,7 +169,7 @@ function Card({ item, agentOwner, from, column, meId, writable, hintId, saving, 
   const owner = item.owner;
   const state = saving ? 'Saving…' : item.status === 'not_pursued' ? 'Not pursued' : null;
   const classes = ['tb-card', blocked && 'tb-card--blocked', item.status === 'not_pursued' && 'tb-card--set-aside',
-    dragged && 'is-dragging', lifted && 'is-lifted', arrived && 'is-arrived', saving && 'is-saving', menuOpen && 'has-menu'].filter(Boolean).join(' ');
+    dragged && 'is-dragging', lifted && 'is-lifted', saving && 'is-saving', menuOpen && 'has-menu'].filter(Boolean).join(' ');
   return (
     <li className={classes} data-card-id={item.id} aria-busy={saving || undefined}
       onPointerDown={onPointerDown} onClickCapture={onClickCapture} onDragStart={(event) => event.preventDefault()}>
@@ -274,7 +274,6 @@ export function TaskBoard({ project, openRead, meId, mine, query, writable, revi
   const [pending, setPending] = useState<Record<string, ColumnId>>({});
   const [confirmed, setConfirmed] = useState<Record<string, ConfirmedTask>>({});
   const [spoken, setSpoken] = useState('');
-  const [arrived, setArrived] = useState<string | null>(null);
   const [menuFor, setMenuFor] = useState<string | null>(null);
   const [picked, setPicked] = useState<ColumnId | null>(null);
   const [dragging, setDragging] = useState<{ id: string; number: number; title: string; width: number; x: number; y: number } | null>(null);
@@ -285,7 +284,6 @@ export function TaskBoard({ project, openRead, meId, mine, query, writable, revi
   const spaceLift = useRef(false);
   const focusCard = useRef<{ id: string; until: number } | null>(null);
   const attempts = useRef(new Map<string, string>());
-  const timers = useRef<{ arrived?: number }>({});
   const latest = useRef<BoardTask[]>([]);
   // The Open column is the Tasks tab's own read; the other groups are read here, each a bounded
   // first page that re-reads with the tab's refreshes and the router's revalidation.
@@ -315,9 +313,6 @@ export function TaskBoard({ project, openRead, meId, mine, query, writable, revi
   }, [confirmationScope]);
   const shownSaved = useCallback((saved: WorkItem) => {
     rememberSaved(saved, latest.current.find((row) => row.id === saved.id));
-    window.clearTimeout(timers.current.arrived);
-    setArrived(saved.id);
-    timers.current.arrived = window.setTimeout(() => setArrived(null), 1200);
   }, [rememberSaved]);
   const { change: changeState, offer: offerUndo } = useStateChanges(shownSaved, refresh);
   const [refusal, setRefusal] = useState<string | null>(null);
@@ -376,11 +371,6 @@ export function TaskBoard({ project, openRead, meId, mine, query, writable, revi
     return origins.get(id)!;
   };
 
-  useEffect(() => {
-    const pending = timers.current;
-    return () => { window.clearTimeout(pending.arrived); };
-  }, []);
-
   // After a keyboard or menu move the card is drawn in another column (and again if the move is
   // refused): keep focus on it for a moment, unless the person has moved on to something else.
   useLayoutEffect(() => {
@@ -431,9 +421,6 @@ export function TaskBoard({ project, openRead, meId, mine, query, writable, revi
       const saved = await updateWork(item, { status }, commandId);
       attempts.current.delete(key);
       rememberSaved(saved, item);
-      window.clearTimeout(timers.current.arrived);
-      setArrived(item.id);
-      timers.current.arrived = window.setTimeout(() => setArrived(null), 1200);
       // A drag or "Move to…" is confirmed like a key or a tap: the bottom toast with Undo (Z), so the board never shifts (#763 C3).
       offerUndo(item, saved, status);
     } catch (cause) {
@@ -671,7 +658,7 @@ export function TaskBoard({ project, openRead, meId, mine, query, writable, revi
                     {list.map((item) => (
                       <Card key={item.id} item={item} agentOwner={item.owner?.kind === 'agent' ? owners.get(item.owner.id) : undefined} from={originOf(item.id)} column={column.id} meId={meId} writable={writable} hintId={hintId}
                         saving={item.id in pending} dragged={dragging?.id === item.id} lifted={lifted?.id === item.id}
-                        arrived={arrived === item.id} menuOpen={menuFor === item.id}
+                        menuOpen={menuFor === item.id}
                         onPointerDown={(event) => startDrag(event, item, column.id)}
                         onClickCapture={(event) => { if (suppressClick.current) { event.preventDefault(); event.stopPropagation(); } }}
                         onKeyDown={(event) => onCardKey(event, item, column.id)} onKeyUp={onCardKeyUp}

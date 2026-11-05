@@ -11,7 +11,7 @@ It supersedes two earlier rules:
 - the press of the [final design](final/README.md) §2 before 2026-11-03: a scale to 0.97 that springs back in about 250 ms.
 
 The application follows these rules since #863 ([what changed](#what-863-changed)); the few places that
-still differ are listed there.
+still differ are listed there under [Still open](#still-open).
 
 Values marked **proposed** (a dialog's 8 px travel and the 64 px bound for a scaling control) come from the
 motion audit and the coordinator's reading, not from Hubert's decision on #863. #863 settled them as written below
@@ -22,9 +22,11 @@ motion audit and the coordinator's reading, not from Hubert's decision on #863. 
 1. **Feedback within 100 ms.** A press, tap or key shows a visible change within 100 ms, as a change of colour or fill.
 2. **A view switch shows the new screen at once.** Switching a space's view or going to another place (Home, Inbox,
    a space, Settings) puts the new screen in place at once. It may fade in over at most 120 ms on `--ease-out`. The
-   old view is never held and never crossfades with the new one. A screen whose content is still loading shows its
-   own calm loading state, in its final layout. The content of a panel that is replaced (a task by a thread) follows
-   the same rule.
+   old view is never shown while the new one loads and never crossfades with it. A screen whose content is still
+   loading shows its own calm loading state, in its final layout, from the frame the switch is made on. The content of
+   a panel that is replaced (a task by a thread) follows the same rule. The router still waits for a view's code and
+   reads before it commits the route (the old view stays mounted underneath, hidden, so a cancelled switch finds it
+   as it was); committing the new view before its reads are here is [Still open](#still-open).
 3. **Surfaces share one vocabulary.** Panels, dialogs, menus, popovers, sheets and the drawer all move the same way.
    - They enter in 180 ms on `--ease-out` and leave in 120 ms on `--ease-in`.
    - The motion is a fade plus a short travel from their edge or anchor: 16 px for a panel (`--shift-panel`), 4 px
@@ -37,12 +39,15 @@ motion audit and the coordinator's reading, not from Hubert's decision on #863. 
    control, the phone tab bar) move with `transform` in `--dur-1` on `--ease-out`, or at once, and never animate
    `width`.
 5. **Nothing animates without a change by the person.** Nothing moves when it first appears (a view, its tabs, the
-   cards on a map), on a refetch or live update, or on the server's echo of your own change. A state glyph morphs
-   only from a known previous state. A highlight, such as a dropped card or a message you jumped to, lasts at most
-   600 ms and takes its duration from one token.
+   notes and cards on a screen), on a refetch, on a live update of what is on screen, or on the server's echo of your
+   own change. The one arrival that animates is a new message at the end of the conversation you are reading (a short
+   fade, #155). A state glyph morphs only from a known previous state. A highlight, such as a message you jumped to,
+   lasts at most 600 ms and takes its duration from one token. A label that has to be read (the "Source of #1" tag, 2 s)
+   is text, not a highlight, and has no motion.
 6. **A surface opens with its content.** Preload what a surface shows, when the browser is idle or on pointer down.
    Never show a fallback that animates out, or a surface that opens empty and fills in afterwards. When a skeleton is
-   needed, it has the final layout's heights, so nothing jumps when the content arrives.
+   needed, it has the final layout's heights, so nothing jumps when the content arrives. A space for content that may
+   not come (Home's Continue card) is kept only for someone who had it the last time.
 7. **Press is colour only.** A pressed control changes its fill or colour. Small controls (a button or icon button up
    to 64 px on its longest side) may also scale to .98 and back over `--dur-1` on `--ease-out`, with no spring. Rows,
    cards, list items, links and sidebar items never scale.
@@ -68,8 +73,12 @@ separate founder decisions.
   the tablet's rail is not a fold and does not animate; reduced motion changes the width at once (rule 9).
 - **Rows** that move because of your own action (a state change in a list or on the board) may slide to their new
   place as that action's one motion, with `transform` (`ui/rowMotion.ts`). A row that moves far fades in at its new
-  place instead. A row appears or goes without a height animation, and the server's answer never replays the motion.
-- **The two-height phone sheet** moves between its half and full heights with `transform`, not `height`.
+  place instead. A row that is added fades in where it stands, a row that goes is gone, and the rows around it slide to
+  close or open the gap; no row animates its height, and the server's answer never replays the motion. A card dropped on
+  the board has this motion only: the card slides to its column at the drop, with no tint at the answer.
+- **The two-height phone sheet** moves between its half and full heights with `transform`, not `height`. Going up it
+  takes the full height at once and its top edge rises from where it was. Going down it keeps the full height while it
+  travels, so its bottom edge stays on the screen's edge, and takes the half height when it arrives.
 - **Toasts** follow the surface vocabulary of rule 3.
 
 ## Tokens (`app/apps/web/src/ui/tokens.css`)
@@ -88,6 +97,7 @@ The values after #863:
 | `--ease-in` | `cubic-bezier(.4, 0, 1, 1)` | Leaving |
 | `--ease-loop` / `--ease-linear` | `ease-in-out` / `linear` | A loop; a rotation |
 | `--press` | .98 | Small controls only |
+| `--act` / `--inv-act` | `#d6d6da` / `#47474d` (light), `#383838` / `#c2c2c2` (dark) | The fill of a pressed control, one notch deeper than `--hov` / `--inv-hov`; while a control is pressed its `--hov` is `--act` |
 | `--shift-panel` / `--shift-pop` / `--shift-toolbar` / `--shift-row` | 16 / 4 / 6 / 12 px | How far a panel, a menu, the message toolbar and a row travel |
 
 - `--tr-fill` uses `--ease-out` instead of `ease`, and `--tr` moves `transform` in `--dur-1` on `--ease-out`.
@@ -105,7 +115,8 @@ The values after #863:
 | Menus and popovers | `ui/pop.ts` (`usePop`) and `[data-pop]` in `ui/ui.css` |
 | Toasts | `ui/Toast.tsx` |
 | View and place switches | `ui/ViewFade.tsx` around the routes in `app/AppLayout.tsx`; `ui/motion-rules.ts` |
-| Surfaces that load their code | `app/DeferredSurfaces.tsx` (preloaded when idle and on the first press) |
+| Surfaces that load their code | `app/DeferredSurfaces.tsx` (preloaded when the browser is idle soon after the shell is up, and on the first pointer-down or ⌘/Ctrl); their skeletons in `app/SurfaceSkeletons.tsx` |
+| The loading state of a screen a switch goes to | `app/PendingView.tsx` over the old view, in `app/AppLayout.tsx`; the code of a project's other views is fetched when idle in `app/viewChunks.ts` |
 | The sidebar's fold and unfold | `ui/SizeSwap.tsx` in the `aside` of `app/AppLayout.tsx` |
 | State changes | `ui/StatusGlyph.tsx`, `ui/Morph.tsx`, `ui/motion.ts` |
 | Rows that come, go and move | `ui/rowMotion.ts` (one motion per input, `claimInput` in `ui/motion.ts`) |
@@ -119,18 +130,28 @@ Paths are under `app/apps/web/src/`.
 
 | Rule | What it was | Now |
 | --- | --- | --- |
-| 2 | The old view was held as a picture until the new one was ready (up to 500 ms), then faded 150 ms on `--ease-in` (`ui/Dissolve.tsx`) | `ui/ViewFade.tsx`: the new screen is in place at once and fades in over `--dur-1` on `--ease-out`; the picture, `--dur-view` and `--shift-view` are gone. A replaced panel content does the same (`ui/SidePanel.tsx`) |
-| 6 | The first ⌘K dimmed, undimmed and dimmed again; the first task panel opened empty, then "Loading…", then content | `app/DeferredSurfaces.tsx` loads Jump to… inside its one dialog and preloads it and Details; `work/WorkDetails.tsx` shows a skeleton at the task panel's heights |
+| 2 | The old view was held as a picture until the new one was ready (up to 500 ms), then faded 150 ms on `--ease-in` (`ui/Dissolve.tsx`) | `ui/ViewFade.tsx`: the new screen is in place at once and fades in over `--dur-1` on `--ease-out`; the picture, `--dur-view` and `--shift-view` are gone. While the router waits for the new route's code and reads, `app/PendingView.tsx` stands in the content area from the first frame (the old view stays mounted, hidden), and the stream's loading rows show at once, not after `--delay-wait`. A replaced panel content does the same (`ui/SidePanel.tsx`) |
+| 6 | The first ⌘K dimmed, undimmed and dimmed again; the first task panel opened empty, then "Loading…", then content; the thread panel opened empty | `app/DeferredSurfaces.tsx` loads Jump to… inside its one dialog and fetches it and Details when the browser is idle soon after the shell is up and on the first pointer-down or ⌘/Ctrl; their fallbacks are skeletons at the final heights (`app/SurfaceSkeletons.tsx`: a task, a decision or a result, the 341 px dialog), not a spinner; the thread shows loading rows from its first frame (`conversations/ThreadFeed.tsx`) |
 | 4, 7 | A tab tap ran five motions on four easings (the press spring, the pill glide on `width`, …); a panel and the work area moved on two curves | Indicators move with `transform` over `--dur-1` on `--ease-out` and never animate `width`; the work area reflows without animation (no FLIP) |
-| 5 | A task notice's status icon flipped on every visit; a dropped board card restarted on the server's echo; tab pills and map cards animated on first appearance | A state glyph morphs only from a known value; a list's rows move only as the answer to the person's own input, once (`claimInput`); the tab indicator and the map's cards do not animate when they first appear; highlights use `--dur-highlight` |
-| 7 | Rows, cards and sidebar items scaled to 0.97 with a 250 ms spring (`ui/press.ts`) | A press is colour; a small button scales to .98 and back over `--dur-1`, no spring |
-| 3 | Dialogs and toasts scaled; panels, sheets, dialogs, menus and toasts each entered differently; three switches used three timings | 180 ms in on `--ease-out`, 120 ms out on `--ease-in`, a fade plus a short travel, no scale; one switch rule (`--dur-1`) |
-| 6 | Phone Home shifted 0.50–0.62 when Continue arrived | `app/Home.tsx` keeps the card's space while it is read |
-| 8 | Literal durations and easings | Every duration and easing comes from a token; the two-height phone sheet moves with `transform` (`ui/DetentSheet.tsx`) |
+| 5 | A task notice's status icon flipped on every visit; a dropped board card restarted on the server's echo; tab pills and map cards animated on first appearance; notes rose on every visit | A state glyph morphs only from a known value; a list's rows move only as the answer to the person's own input, once (`claimInput`); the board has no tint at the server's answer; the tab indicator, the map's cards and the notes already on screen do not animate when they first appear (only the note just saved rises); highlights use `--dur-highlight` |
+| 7 | Rows, cards and sidebar items scaled to 0.97 with a 250 ms spring (`ui/press.ts`) | A press is colour (`--act`, `--inv-act`, in `ui/ui.css`), so it shows with a mouse as well as a touch; a small button also scales to .98 and back over `--dur-1`, no spring |
+| 3 | Dialogs and toasts scaled; panels, sheets, dialogs, menus and toasts each entered differently; three switches used three timings | 180 ms in on `--ease-out`, 120 ms out on `--ease-in`, a fade plus a short travel (the drawer and the phone sheet fade as well), no scale; one switch rule (`--dur-1`) |
+| 6 | Phone Home shifted 0.50–0.62 when Continue arrived | `app/Home.tsx` keeps the card's space, at the height it had, while it is read, for someone who had it the last time (nothing is kept for someone who has none) |
+| 8 | Literal durations and easings; rows grew and collapsed on `height` | Every duration and easing comes from a token; rows never animate `height` (`ui/rowMotion.ts`); the two-height phone sheet moves with `transform` in both directions (`ui/DetentSheet.tsx`) |
 | 9 | The in-app Reduce motion kept animation delays; two rules checked only the system setting | Both settings zero durations and delays |
 
-Still open: the Wiki text that moves 72 px and the thread's layout shift of 0.089 (rule 6) were not part of #863's
-first batch.
+## Still open
+
+What #863 does not close, and where it goes:
+
+- **Committing a view before its reads are here.** The router still runs a route's loader (the conversation, Tasks, the Wiki) before it commits the
+  route, so for the length of the reads the new screen is its loading state (`app/PendingView.tsx`), not the view itself,
+  and the old view is not usable meanwhile. Making the loaders non-blocking (the view commits at once and fills in, with the last
+  answer shown while it is read again) is the client data layer, live push and instant actions of the next wave
+  ([#862](https://github.com/ColdPhase/flux/issues/862)). Until then rule 2's "the new screen in place at once" is met by the loading state.
+- The Wiki text that moves 72 px, and the layout shift of phone Home when the Needs you rows arrive (0.17) (rule 6).
+- A single input answered by one motion is judged by `claimInput`, which accepts the first change within 2 s of any input, not the
+  input that caused it; an unrelated click could let a live update animate once.
 
 ## Verifying
 

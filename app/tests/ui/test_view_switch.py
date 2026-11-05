@@ -5,7 +5,9 @@ that runs on every animation frame (in the page itself, so it is the same in Chr
 area is made of on each one. From those frames:
 
 * the old view is never held as a picture and never crossfades with the new one: no frame has a picture of the old view;
-* no frame is blank: the content area always holds a view with something painted in it;
+* no frame is blank: the content area always holds a view with something painted in it, and a view whose stream is still hidden for its
+  first reads always has its loading rows up (never an empty feed);
+* a screen that is still loading shows its own loading state from the frame the switch is made on, and the old view is not shown meanwhile;
 * the content area changes from the old view to the new once (no flip back and forth, no second paint);
 * the new view may fade in over at most --dur-1 (120 ms) on --ease-out, opacity only, with no travel;
 * with reduced motion the switch is one frame with no animation at all.
@@ -46,7 +48,9 @@ RECORD = r"""
       const pictures = [...document.body.children].filter((el) => el.hasAttribute('data-dissolve'));
       window.__frames.push({
         t: performance.now(), pictures: pictures.length, busy: !!pane.querySelector(BUSY),
-        ink: (pane.innerText || '').trim().length > 0 || !!pane.querySelector('canvas, svg'),
+        ink: (pane.innerText || '').trim().length > 0 || !!pane.querySelector('canvas, svg, [data-pending-view]'),
+        pending: !!pane.querySelector('[data-pending-view]'),
+        empty: !!pane.querySelector('.is-opening') && !(pane.querySelector('.opening') && getComputedStyle(pane.querySelector('.opening')).opacity > 0.9),
         view: pane.firstElementChild ? String(pane.firstElementChild.className).split(' ')[0] : '', path: location.pathname,
         progress: !!document.querySelector('.route-progress'), click: window.__lastClick || 0,
       });
@@ -123,6 +127,7 @@ class ViewSwitch(unittest.TestCase):
             # The "Opening …" row is for a wait that lasts: a switch that is over within a few frames never shows it (it would flash over the view).
             self.assertFalse(frame["progress"] and frame["t"] - frame["click"] < ROUTE_PROGRESS_AFTER_MS - 10, f"no route progress row on a quick switch: {where}")
             self.assertTrue(frame["ink"], f"no blank frame: {where}")
+            self.assertFalse(frame["empty"], f"a feed hidden for its first reads always has its loading rows up: {where}")
         # What the page asked the browser to run: the new view fades in once, over at most --dur-1, opacity only, on --ease-out, no travel.
         # (The phone's title menu is a surface of its own: it enters and leaves on the surface vocabulary, not on the view's.)
         views_only = [entry for entry in recorded(page) if entry["kind"] == "script" and not re.search(r"ui-overlay|ui-scrim|ui-pop|ui-toast", entry["target"])]
@@ -228,30 +233,63 @@ class ViewSwitch(unittest.TestCase):
         self.assertFalse(rows[-1][1], "and then it goes")
 
 
-if __name__ == "__main__":
-    unittest.main()
+    # ------------------------------------------------------------------ a screen that is still loading
+    def hold_reads(self, page: Page, pattern: str) -> list[Route]:
+        """Holds every GET to the API matching `pattern` until the test lets it go."""
+        held: list[Route] = []
+        expression = re.compile(pattern)
 
+        def pause(route: Route) -> None:
+            if route.request.method == "GET":
+                held.append(route)
+            else:
+                route.fallback()
+        page.route(expression, pause)
 
-if __name__ == "__main__":
-    unittest.main()
+        def release() -> None:
+            page.unroute(expression, pause)
+            for route in held:
+                try:
+                    route.continue_()
+                except Exception:  # the page is gone
+                    pass
+            held.clear()
+        self.addCleanup(release)
+        return held
 
-
-    def test_09_a_screen_that_is_still_loading_shows_its_own_state_at_once(self):
-        """A view whose data has not come shows its own loading state in its place (#863): the old view is not kept up while it waits."""
+    def test_09_a_screen_that_is_still_loading_shows_its_own_state_at_once_and_the_old_view_is_not_shown(self):
+        """Tasks' reads are held for a second. From the frame the switch is made on, the content area holds Tasks' own loading state (not a blank,
+        not the conversation) and stays so until the reads answer; then the real view takes its place (#863 rule 2)."""
         page = self.page()
-        project_view(page, "Map")  # warm: its code is here
-        page.wait_for_function("() => document.querySelector('#content .sk-page')", timeout=8000)
+        project_view(page, "Tasks")  # warm: its code is here, so what is waited for is the reads
+        page.wait_for_function("() => document.querySelector('#content .tb-root, #content .ws-tasks, #content [class*=tb-], #content [class*=ws-]')", timeout=8000)
         project_view(page, "Conversation")
-        page.wait_for_function("() => document.querySelector('#content .project-page, #content .project-convo')", timeout=8000)
+        page.wait_for_function("() => document.querySelector('#content .project-convo')", timeout=8000)
+        # The Tasks view's loader reads the project (and the comparison outcomes) before it commits.
+        held = self.hold_reads(page, r"/api/v1/projects/[^/?]+(/comparison[^/?]*)?(\?.*)?$")
         page.evaluate("() => { window.__frames = []; }")
-        page.route(re.compile(r"/api/v1/projects/[^/]+/work(\?.*)?$"), lambda route: route.continue_())
         project_view(page, "Tasks")
-        page.wait_for_url(re.compile(PATH["Tasks"]))
-        page.wait_for_function(f"() => ({ROOT})() === 'tb-root' || ({ROOT})() === 'ws-tasks' || ({ROOT})() !== 'project-page'", timeout=8000)
+        page.wait_for_timeout(1000)
         frames = page.evaluate("() => { const frames = window.__frames; window.__frames = null; return frames; }")
+        self.assertTrue(held, "Tasks' reads are being waited for")
+        click = next(frame["click"] for frame in frames if frame["click"])
+        first = next((frame for frame in frames if frame["pending"]), None)
+        self.assertIsNotNone(first, f"the loading state was up: {frames[-1]}")
+        # Within a few frames of the click (about 30 ms in Chromium, up to about 150 ms in a loaded WebKit, whose render of the shell is slower), and so far
+        # before the 350 ms `--delay-wait` the stream's rows used to sit behind; the 120 ms of the pill and the press already answer the click itself.
+        self.assertLess(first["t"] - click, 200, "from the frame the switch is made on, not after a delay")
+        timeline = [(round(frame["t"] - click), frame["pending"]) for frame in frames[:12]]
         for frame in frames:
-            self.assertEqual(frame["pictures"], 0, f"no picture of the old view while the new one loads: {frame}")
-            self.assertTrue(frame["ink"], f"no blank frame: {frame}")
+            if frame["t"] < first["t"]:
+                continue
+            self.assertTrue(frame["pending"] and frame["ink"], f"the loading state stays up, never a blank frame: {frame} in {timeline}")
+        visible = page.evaluate("() => { const root = document.querySelector('#content > .project-page, #content > .project-convo'); return root ? getComputedStyle(root).visibility : 'gone'; }")
+        self.assertIn(visible, ("hidden", "gone"), "the old view is not shown while the new one loads")
+        # It is only hidden: the router still holds it, so a cancelled switch finds it as it was.
+        while held:
+            held.pop().continue_()
+        page.wait_for_url(re.compile(PATH["Tasks"]))
+        page.wait_for_function("() => !document.querySelector('[data-pending-view]') && document.querySelector('#content .tb-root, #content [class*=ws-], #content [class*=tb-]')", timeout=8000)
 
 
 if __name__ == "__main__":

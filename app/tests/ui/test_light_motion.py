@@ -2,7 +2,7 @@
 
 Dialogs and their scrim, the detail panel and what it shows, project views and places, menus, toasts, state changes, rows
 that come and go, and the press of every pressable control: what they animate, for how long and how, that nothing but
-opacity and transform moves (a row's height only grows or collapses it), that a view switch shows the new screen at once
+opacity and transform moves (a row never animates its height), that a view switch shows the new screen at once
 with no held picture, that a press is colour (only a small button scales, to .98, with no spring), that reduced motion gives the
 static end state, that exit motion never delays focus and that closing while opening settles on the latest state.
 
@@ -14,12 +14,13 @@ in WebKit. (`test_motion.py` is #155's module: the traveling highlight, arrivals
 from __future__ import annotations
 
 import re
+import time
 import unittest
 
 from playwright.sync_api import Page, expect, sync_playwright
 
 from create_window import add_task
-from light_motion_fixture import RECORDER, ROW_BOX, TRANSFORM_ONLY, LightMotion, clear, moved, numbers, ready, recorded, sample_while, settled
+from light_motion_fixture import RECORDER, TRANSFORM_ONLY, LightMotion, clear, moved, numbers, ready, recorded, sample_while, settled
 from test_app_shell import ORIGIN, UI_BROWSER, UPSTREAM, start_forwarder
 from test_work_pagination import api
 
@@ -203,6 +204,36 @@ class LightMotionJourney(unittest.TestCase):
         self.assertTrue(verdict["inert"], "and nothing in it can be reached")
         self.assertFalse(verdict["appInert"], "the app is live again at once")
         expect(page.get_by_role("dialog", name="Jump to")).to_have_count(0)
+
+    def test_04c_the_first_k_opens_one_dialog_and_its_content_loads_inside_it(self):
+        """Used to be a blink: the dialog opened, the scrim went away and came back when the code of the search arrived (#863 rule 6). One dialog, one scrim that only rises."""
+        page = self.page()
+        held: list = []
+        page.route(re.compile(r"/assets/JumpTo-[^/]+\.js"), lambda route: held.append(route))
+
+        def release() -> None:
+            for route in held:
+                try:
+                    route.abort()
+                except Exception:  # already continued
+                    pass
+        self.addCleanup(release)
+        self.open(page, self.fx.project_url())
+        clear(page)
+        page.keyboard.press("Control+k")
+        dialog = page.get_by_role("dialog", name="Jump to")
+        expect(dialog.locator(".jump-skeleton")).to_be_visible()
+        self.assertEqual(dialog.locator(".ui-spin").count(), 0, "bars at the dialog's size, not a spinner")
+        self.assertGreaterEqual(dialog.bounding_box()["height"], 340)
+        self.assertEqual(page.locator(".ui-scrim").count(), 1)
+        page.wait_for_timeout(300)
+        while held:
+            held.pop().continue_()
+        expect(dialog.get_by_role("combobox", name="Jump to")).to_be_visible()
+        self.assertEqual(page.get_by_role("dialog", name="Jump to").count(), 1, "still the one dialog")
+        self.assertEqual(page.locator(".ui-scrim").count(), 1, "and the one scrim")
+        scrim = self.by(page, r"ui-scrim", "script")
+        self.assertTrue(scrim and all((entry["to"] or {}).get("opacity") == 1 for entry in scrim), f"the scrim only rises: {scrim}")
 
     def test_05_rapid_open_and_close_settles_on_the_latest_state(self):
         page = self.page()
@@ -496,6 +527,67 @@ class LightMotionJourney(unittest.TestCase):
         self.assertEqual(back["copies"], 0, f"nor on Back: {back}")
         self.assertLessEqual(back["scoped"], 1, back)
 
+    SKELETON_MARKS = """() => { const top = (sel) => { const el = document.querySelector(sel); const base = document.querySelector('#details .wd__scroll'); return el && base ? Math.round((el.getBoundingClientRect().top - base.getBoundingClientRect().top) * 10) / 10 : null; };
+      return { rows: top('.wd-skeleton__rows, dl.wd-rows'), actions: top('.wd-skeleton__actions, .wd-acts'), section: top('.wd-skeleton__sec, section.details__sec'), title: top('.wd-skeleton__title, h3.wd-title') }; }"""
+
+    def test_10c_the_task_panel_opens_on_a_skeleton_with_the_final_heights_and_no_spinner(self):
+        """The first task panel waits for its reads behind quiet bars at the heights the content has, so nothing jumps when it arrives (#863 rule 6)."""
+        page = self.page()
+        self.open(page, self.fx.tasks_url())
+        settled(page)
+        held: list = []
+        gate = {"on": False}
+
+        def hold(route):
+            if gate["on"] and route.request.method == "GET" and "stream" not in route.request.url:
+                held.append(route)
+            else:
+                route.fallback()
+        page.route(re.compile(r"/api/v1/"), hold)
+        gate["on"] = True
+        page.locator(".ws-task .ws-item", has_text=self.fx.tasks[0]["title"]).first.click()
+        skeleton = page.locator("#details .wd-skeleton")
+        expect(skeleton).to_be_visible()
+        self.assertEqual(page.locator("#details .ui-spin").count(), 0, "a skeleton, not a spinner")
+        bars = page.evaluate(self.SKELETON_MARKS)
+        gate["on"] = False
+        while held:
+            held.pop().continue_()
+        expect(page.locator("#details .wd-rows")).to_be_visible()
+        settled(page)
+        real = page.evaluate(self.SKELETON_MARKS)
+        for part in ("title", "rows", "actions", "section"):
+            self.assertIsNotNone(bars[part], f"the skeleton draws the {part}")
+            self.assertLessEqual(abs(bars[part] - real[part]), 2, f"the {part} does not jump when the content arrives: skeleton {bars}, content {real}")
+
+    def test_10d_the_thread_panel_and_the_stream_never_open_empty_while_their_first_reads_settle(self):
+        """The replies are laid out but hidden until the first reads that decorate them have settled (at most a second, #155). They used to be
+        hidden with nothing in their place (the thread) or with the stream's rows still at opacity 0 behind the wait (#863 rule 6)."""
+        page = self.page()
+        held: list = []
+        page.route(re.compile(r"/work-associations|/work-reference-rows"), lambda route: held.append(route))
+
+        def release() -> None:
+            for route in held:
+                try:
+                    route.abort()
+                except Exception:  # the page already gave the request up
+                    pass
+        self.addCleanup(release)
+        page.goto(self.fx.thread_url())
+        stream_rows = page.locator(".convo-stream .opening .opening__row")
+        thread_rows = page.locator(".thread__opening .opening__row")
+        expect(thread_rows.first).to_be_visible()
+        expect(stream_rows.first).to_be_visible()
+        self.assertEqual(page.locator(".thread__feed.is-opening").count(), 1, "the replies are laid out but hidden")
+        self.assertEqual(page.locator(".convo-stream .opening").evaluate("el => getComputedStyle(el).opacity"), "1", "and the stream's rows are not waiting behind a delay")
+        self.assertGreaterEqual(thread_rows.count(), 2)
+        # The panel's frame and composer are there meanwhile; once the wait is over the rows give way to the replies.
+        expect(page.locator("#thread-composer")).to_be_visible()
+        expect(page.locator(".thread__feed.is-opening")).to_have_count(0, timeout=5000)
+        expect(page.locator(".thread__opening")).to_have_count(0)
+        expect(page.locator(".thread__feed")).to_contain_text("Moisture first")
+
     def test_11_a_view_switch_shows_the_new_screen_at_once_with_one_short_fade_and_nothing_else_moves(self):
         page = self.page()
         self.open(page, self.fx.project_url())
@@ -616,7 +708,22 @@ class LightMotionJourney(unittest.TestCase):
         self.assertTrue(slides, "the row, and the rows it moved past, slide in place")
         for entry in recorded(page):
             if entry["props"] != ["scale"]:
-                self.assertTrue(set(entry["props"]) <= TRANSFORM_ONLY | ROW_BOX, f"{entry['target']} animates {entry['props']}")
+                self.assertTrue(set(entry["props"]) <= TRANSFORM_ONLY, f"{entry['target']} animates {entry['props']}")
+
+    def test_13d_a_task_notice_does_not_morph_its_glyph_when_the_conversation_opens(self):
+        """The notice's state glyph used to flip from the open outline to its state on every visit; it morphs only from a state it knew (#863 rule 5)."""
+        page = self.page()
+        self.open(page, self.fx.project_url())
+        expect(page.locator(".convo-stream .ui-glyph").first).to_be_attached()
+        page.wait_for_timeout(800)
+        self.assertEqual(self.by(page, r"ui-glyph", "script"), [], f"no glyph morphs on the first view: {recorded(page)}")
+        page.locator(self.tab("tasks")).click()
+        expect(page.locator(self.tab("tasks"))).to_have_attribute("aria-current", "page")
+        clear(page)
+        page.locator(self.tab("")).first.click()
+        expect(page.locator(".convo-stream")).to_be_visible()
+        page.wait_for_timeout(800)
+        self.assertEqual(self.by(page, r"ui-glyph", "script"), [], f"nor when the conversation is visited again: {recorded(page)}")
 
     def test_13b_a_row_that_moves_across_the_list_comes_in_with_a_short_slide_not_a_long_flight(self):
         """Motion is short and calm (final design §2): a row sent to another group far down the list is not carried the whole way.
@@ -662,36 +769,72 @@ class LightMotionJourney(unittest.TestCase):
         self.assertLessEqual(arrivals[0]["duration"], 180)
         self.assertEqual(set(arrivals[0]["props"]), {"opacity", "transform"})
 
-    def test_14_an_added_row_grows_in(self):
+    def test_13c_a_board_move_has_its_one_motion_at_the_drop_and_the_servers_answer_adds_none(self):
+        """The card slides to its column when it is moved; the server's answer, 700 ms later, neither tints the card nor replays the slide (#863 rule 4, 5)."""
+        task = self.fx.new_task("Seal the gateway enclosure")
+        page = self.page()
+        self.open(page, self.fx.tasks_url("board"))
+        card = page.locator(".tb-card", has_text=task["title"])
+        expect(card).to_be_visible()
+        settled(page)
+        held: list = []
+        page.route(re.compile(rf"/api/v1/work/{task['id']}$"), lambda route: held.append(route) if route.request.method == "PATCH" else route.fallback())
+        clear(page)
+        card.get_by_role("button", name="Move to…").click()
+        page.get_by_role("menu").get_by_role("menuitemradio", name="Done").click()
+        expect(page.get_by_role("region", name="Done", exact=True).locator(".tb-card", has_text=task["title"])).to_be_visible()
+        page.wait_for_timeout(500)
+        settled(page)
+        self.assertEqual(len(held), 1, "the answer is held")
+        at_drop = len(recorded(page))
+        self.assertTrue([entry for entry in recorded(page) if "tb-card" in entry["target"]], f"the card moves at the drop: {recorded(page)}")
+        held.pop().continue_()
+        expect(page.locator(".ui-toast").filter(has_text=re.compile(r"done"))).to_be_visible()
+        page.wait_for_timeout(900)
+        later = recorded(page)[at_drop:]
+        self.assertEqual([entry for entry in later if "tb-" in entry["target"] or "arrive" in entry.get("name", "")], [], f"the answer adds no motion to the board: {later}")
+        self.assertEqual(page.locator(".tb-card.is-arrived").count(), 0)
+
+    def test_14_an_added_row_fades_in_where_it_stands_and_the_rows_below_slide_with_transform(self):
         page = self.page()
         self.open(page, self.fx.tasks_url())
         settled(page)
         clear(page)
         add_task(page, "Replace the cracked sensor housing")
-        grown = [entry for entry in recorded(page) if "ws-task" in entry["target"] and "height" in entry["props"]]
-        self.assertTrue(grown, f"the new row grows: {recorded(page)}")
-        self.assertLessEqual(grown[0]["duration"], 180)
-        self.assertIn("opacity", grown[0]["props"])
-        self.assertTrue(set(grown[0]["props"]) <= {"opacity"} | ROW_BOX)
+        expect(page.locator(".ws-task", has_text="Replace the cracked sensor housing")).to_be_visible()
+        entries = [entry for entry in recorded(page) if "ws-task" in entry["target"]]
+        faded = [entry for entry in entries if entry["props"] == ["opacity"]]
+        self.assertTrue(faded, f"the new row fades in: {recorded(page)}")
+        self.assertLessEqual(faded[0]["duration"], 180)
+        for entry in recorded(page):
+            self.assertNotIn("height", [prop.lower() for prop in entry["props"]], f"a row never animates its height: {entry}")
+            self.assertTrue(set(entry["props"]) <= TRANSFORM_ONLY, f"{entry['target']} animates {entry['props']}")
 
-    def test_15_an_accepted_decision_collapses_where_it_stood_and_the_card_below_stays_reachable(self):
+    def test_15_an_accepted_decision_goes_at_once_and_the_card_below_slides_up_and_stays_reachable(self):
         page = self.page()
         self.open(page, "/inbox")
-        card = page.locator(".nyc", has_text="Measure soil moisture first")
-        expect(card).to_be_visible()
-        other = page.locator(".nyc", has_text="Label every bed")
-        expect(other).to_be_visible()
+        cards = page.locator(".nyc")
+        expect(cards.nth(1)).to_be_visible()
+        first, below = cards.nth(0), cards.nth(1)
+        gone, stays = first.get_attribute("data-key"), below.get_attribute("data-key")
         settled(page)
         clear(page)
-        card.get_by_role("button", name=re.compile("^Accept")).click()
-        expect(page.locator(".nyc", has_text="Measure soil moisture first")).to_have_count(0)
-        collapsed = [entry for entry in recorded(page) if "nyc" in entry["target"] and "height" in entry["props"]]
-        self.assertTrue(collapsed, f"the card collapses: {recorded(page)}")
-        self.assertLessEqual(collapsed[0]["duration"], 140)
-        self.assertEqual(page.locator(".nyc[data-row-ghost]").count(), 0, "the outgoing copy is gone once it has collapsed")
-        expect(other.get_by_role("button", name=re.compile("^Accept"))).to_be_enabled()
+        count = cards.count()
+        first.get_by_role("button", name=re.compile("^Accept")).click()
+        expect(page.locator(f".nyc[data-key='{gone}']")).to_have_count(0)
+        expect(cards).to_have_count(count - 1)
+        for entry in recorded(page):
+            self.assertNotIn("height", [prop.lower() for prop in entry["props"]], f"a card never animates its height: {entry}")
+        slid = [entry for entry in recorded(page) if "nyc" in entry["target"] and "transform" in entry["props"]]
+        self.assertTrue(slid, f"the cards below slide up into the place it left: {recorded(page)}")
+        self.assertLessEqual(slid[0]["duration"], 180)
+        self.assertEqual(page.locator("[data-row-ghost]").count(), 0, "no outgoing copy is kept")
+        settled(page)
+        box = page.locator(f".nyc[data-key='{stays}']").bounding_box()
+        reachable = page.evaluate("([x, y, key]) => !!document.elementFromPoint(x, y)?.closest(`.nyc[data-key='${key}']`)", [box["x"] + box["width"] / 2, box["y"] + box["height"] / 2, stays])
+        self.assertTrue(reachable, "the card below is where it looks to be, and a pointer reaches it")
 
-    def test_15b_rows_that_leave_in_quick_succession_collapse_cleanly(self):
+    def test_15b_rows_that_leave_in_quick_succession_leave_cleanly(self):
         """Two decisions accepted within a tenth of a second and two states changed back to back: React and the collapsing copies coexist."""
         for title in ("Order spare batteries in bulk", "Keep the gateway indoors"):
             api(self.fx.contexts["jonas"], "POST", self.fx.root + "/decisions", {"title": title, "rationale": "Fewer site visits."}, 201)
@@ -703,7 +846,7 @@ class LightMotionJourney(unittest.TestCase):
           card.querySelector('.nyc__accept').click(); await new Promise((resolve) => setTimeout(resolve, 60)); } }""")
         expect(page.locator(".nyc", has_text=pair)).to_have_count(0)
         settled(page)
-        self.assertEqual(page.locator("[data-row-ghost]").count(), 0, "every collapsing copy is gone")
+        self.assertEqual(page.locator("[data-row-ghost]").count(), 0, "no outgoing copy is kept")
         extra = [self.fx.new_task(f"Stress the list {index}") for index in range(2)]
         tasks = self.page()
         self.open(tasks, self.fx.tasks_url())
@@ -755,6 +898,55 @@ class LightMotionJourney(unittest.TestCase):
         page.locator("#project-composer").fill("Probes arrive on Thursday")
         pressed, _ = self.press_scale(page, send)
         self.assertEqual(numbers(pressed), [0.98], pressed)
+
+    def fills(self, page: Page, target, hold: int = 260) -> dict[str, str]:
+        """A control's fill at rest, under the pointer and with the button held down on it (the pointer is over it and pressing it at once)."""
+        read = "el => getComputedStyle(el).backgroundColor"
+        page.mouse.move(2, 2)
+        page.wait_for_timeout(300)
+        rest = target.evaluate(read)
+        box = target.bounding_box()
+        page.mouse.move(box["x"] + box["width"] / 2, box["y"] + box["height"] / 2)
+        page.wait_for_timeout(300)
+        hover = target.evaluate(read)
+        page.mouse.down()
+        page.wait_for_timeout(hold)
+        pressed = target.evaluate(read)
+        page.mouse.move(2, 2)
+        page.mouse.up()
+        page.wait_for_timeout(300)
+        return {"rest": rest, "hover": hover, "pressed": pressed}
+
+    def test_16b_a_press_changes_the_fill_of_every_kind_of_control_and_not_only_the_hover_does(self):
+        """A mouse is over the control when it presses it, so the pressed fill must be one the hover is not (#863 rules 1 and 7); a wide button does not scale, so colour is all it has."""
+        page = self.page()
+        self.open(page, self.fx.tasks_url())
+        settled(page)
+        targets = {
+            "wide button": page.get_by_role("button", name=re.compile("^(New )?Task$")).first,
+            "small icon button": page.get_by_role("button", name="Collapse sidebar").first,
+            "row that opens something": page.locator(".ws-task .ws-item").first,
+            "sidebar row": page.get_by_role("navigation", name="Places").get_by_role("link", name="Inbox"),
+        }
+        for name, target in targets.items():
+            with self.subTest(control=name):
+                expect(target).to_be_visible()
+                fill = self.fills(page, target)
+                self.assertNotEqual(fill["pressed"], fill["rest"], f"{name}: the press changes the fill: {fill}")
+                self.assertNotEqual(fill["pressed"], fill["hover"], f"{name}: and it is not the hover's fill: {fill}")
+        primary = page.locator(".ui-btn--primary:visible").first
+        if primary.count():
+            with self.subTest(control="primary button"):
+                fill = self.fills(page, primary)
+                self.assertNotEqual(fill["pressed"], fill["hover"], f"the primary button: a press apart from the hover: {fill}")
+                self.assertNotEqual(fill["pressed"], fill["rest"], fill)
+        self.open(page, "/")
+        card = page.locator(".home__continue").first
+        expect(card).to_be_visible()
+        with self.subTest(control="Continue card"):
+            fill = self.fills(page, card)
+            self.assertNotEqual(fill["pressed"], fill["rest"], f"the Continue card: the press changes the fill: {fill}")
+            self.assertNotEqual(fill["pressed"], fill["hover"], fill)
 
     def test_17_the_message_toolbar_has_its_shared_reveal_pose(self):
         page = self.page()
@@ -982,6 +1174,122 @@ class LightMotionJourney(unittest.TestCase):
         calm.locator(".ws-task .ws-item").first.tap()
         expect(calm.get_by_role("dialog", name="Details")).to_be_visible()
         self.assertEqual([entry for entry in recorded(calm) if entry["kind"] == "script"], [])
+
+    SHEET_EDGES = """async (ms) => {
+      const sheet = document.querySelector('[data-detent-sheet]');
+      const frames = [];
+      const start = performance.now();
+      document.querySelector('.ui-grabber').click();
+      await new Promise((resolve) => { const step = () => {
+        const t = performance.now() - start; const box = sheet.getBoundingClientRect();
+        frames.push({ t, top: box.top, bottom: box.bottom, height: sheet.dataset.height, transform: getComputedStyle(sheet).transform, screen: window.innerHeight });
+        t < ms ? requestAnimationFrame(step) : resolve(); }; requestAnimationFrame(step); });
+      return frames;
+    }"""
+
+    def test_23b_the_two_height_sheet_keeps_its_bottom_on_the_screen_edge_while_it_travels_in_both_directions(self):
+        """Going from full to half the sheet used to take the half height at once and travel down from the old top, so for 150 ms its bottom floated
+        above the screen's edge with the page showing beneath (#863 rule 8, review of #891). Both ways the bottom edge must stay at or below the edge."""
+        page = self.page(phone=True)
+        self.open(page, self.fx.tasks_url())
+        settled(page)
+        page.locator(".ws-task .ws-item").first.tap()
+        sheet = page.locator("[data-detent-sheet]")
+        expect(sheet).to_be_visible()
+        expect(sheet).to_have_attribute("data-height", "half")
+        settled(page)
+        for label, expected in (("up to full", "full"), ("down to half", "half")):
+            with self.subTest(travel=label):
+                frames = page.evaluate(self.SHEET_EDGES, 450)
+                screen = frames[0]["screen"]
+                for frame in frames:
+                    self.assertGreaterEqual(frame["bottom"], screen - 1, f"{label}: the sheet's bottom edge stays on the screen's edge: {frame}")
+                tops = [frame["top"] for frame in frames]
+                self.assertTrue(all(b - a >= -1 for a, b in zip(tops, tops[1:])) if expected == "half" else all(a - b >= -1 for a, b in zip(tops, tops[1:])), f"{label}: one steady travel of the top edge: {tops}")
+                self.assertGreater(abs(tops[-1] - tops[0]), 100, f"{label}: the top edge really travelled")
+                expect(sheet).to_have_attribute("data-height", expected)
+                self.assertIn(frames[-1]["transform"], ("none", "matrix(1, 0, 0, 1, 0, 0)"), f"{label}: nothing is left on the sheet when it has arrived")
+
+    def test_23c_the_drawer_and_the_phone_sheet_fade_as_well_as_travel(self):
+        page = self.page(phone=True)
+        self.open(page, self.fx.tasks_url())
+        settled(page)
+        clear(page)
+        page.locator(".ws-task .ws-item").first.tap()
+        expect(page.get_by_role("dialog", name="Details")).to_be_visible()
+        entered = [entry for entry in self.by(page, r"ui-overlay__surface", "script") if (entry["to"] or {}).get("opacity") == 1]
+        self.assertTrue(entered, f"the sheet's surface enters: {recorded(page)}")
+        self.assertEqual(entered[0]["from"].get("opacity"), 0, "from transparent, with its travel from the screen's edge")
+        self.assertIn("translateY", entered[0]["from"].get("transform", ""))
+        self.assertEqual(set(entered[0]["props"]), {"opacity", "transform"})
+
+    def test_24_notes_do_not_rise_when_a_view_opens_only_the_note_just_saved_does(self):
+        page = self.page()
+        self.open(page, "/map")
+        field = page.get_by_placeholder("Write a note…")
+        expect(field).to_be_visible()
+        field.fill("Check the gate latch before the volunteers arrive")
+        clear(page)
+        page.get_by_role("button", name="Save note").click()
+        note = page.locator(".note", has_text="Check the gate latch")
+        expect(note).to_be_visible()
+        page.wait_for_timeout(400)
+        rose = [entry for entry in recorded(page) if entry["kind"] == "css" and entry.get("name") == "rise" and "note" in entry["target"]]
+        self.assertEqual(len(rose), 1, f"the note just saved rises in: {recorded(page)}")
+        self.assertIn("note--new", rose[0]["target"])
+        page.reload()
+        ready(page)
+        expect(page.locator(".note", has_text="Check the gate latch")).to_be_visible()
+        page.wait_for_timeout(500)
+        self.assertEqual([entry for entry in recorded(page) if "note" in entry["target"]], [], "notes already there do not rise on a visit, nor on a reload")
+        self.open(page, self.fx.project_url())
+        clear(page)
+        page.get_by_role("navigation", name="Places").get_by_role("link", name="Sketchbook").first.click()
+        expect(page.locator(".note", has_text="Check the gate latch")).to_be_visible()
+        page.wait_for_timeout(500)
+        self.assertEqual([entry for entry in recorded(page) if "note" in entry["target"]], [], "nor when the view is switched to")
+
+    SHIFT = """() => { const el = document.querySelector('.home__need, .home__first'); return el ? el.getBoundingClientRect().top : null; }"""
+
+    def home_tops(self, context, wait_for_card: bool) -> tuple[float, float, int]:
+        """Where the first section below Continue is while the two reads that decide the card are held, and after they answer."""
+        page = context.new_page()
+        self.addCleanup(page.close)
+
+        def slow(route):
+            time.sleep(0.35)
+            route.continue_()
+        page.route(re.compile(r"/api/v1/(return\?|workspaces/[^/]+/work/assigned)"), slow)
+        page.goto("/")
+        page.wait_for_function(f"() => ({self.SHIFT})() !== null", timeout=10000)
+        before = page.evaluate(self.SHIFT)
+        slot = page.locator(".home__continue-slot").count()
+        if wait_for_card:
+            expect(page.locator(".home__continue")).to_be_visible()
+        page.wait_for_timeout(1200)
+        return before, page.evaluate(self.SHIFT), slot
+
+    def test_25_home_keeps_the_continue_cards_space_only_for_someone_who_has_one(self):
+        """Phone Home: the section below Continue must not jump when the card arrives, nor leave a gap that closes when there is none (#863 rule 6)."""
+        ada = self.fx.context(phone=True)
+        self.addCleanup(ada.close)
+        first = ada.new_page()
+        first.goto("/")
+        expect(first.locator(".home__continue")).to_be_visible()
+        first.wait_for_timeout(400)
+        first.close()
+        # The next time Home opens it knows there is a card: the space is there while it is read, and the section below does not move.
+        before, after, slot = self.home_tops(ada, wait_for_card=True)
+        self.assertEqual(slot, 1, "the card's space is kept while it is read")
+        self.assertLess(abs(before - after), 1.5, f"the section below Continue did not move: {before} to {after}")
+        # Someone with nothing to continue from has no space kept for it: nothing to close up.
+        fresh = self.fx.browser.new_context(base_url=ORIGIN, service_workers="block", viewport={"width": 390, "height": 844}, is_mobile=True, has_touch=True)
+        self.addCleanup(fresh.close)
+        api(fresh, "POST", "/api/auth/sign-up/email", {"name": "Mara Nowak", "email": f"motion-mara-{self.fx.stamp}@example.test", "password": "light motion for a calm shared studio"})
+        for visit in range(2):
+            before, after, slot = self.home_tops(fresh, wait_for_card=False)
+            self.assertEqual(slot, 0, f"visit {visit + 1}: no space is kept for a card that is not there")
+            self.assertLess(abs(before - after), 1.5, f"visit {visit + 1}: nothing moved: {before} to {after}")
 
 
 if __name__ == "__main__":

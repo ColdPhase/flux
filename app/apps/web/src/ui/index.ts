@@ -22,5 +22,5 @@ export { PanelActions, PanelGlyph, PanelMeta, SidePanel, useSidePanelMode, type 
 export { BottomNav, Tabs, type BottomNavItem, type TabItem } from './Tabs';
 export { publishTopEdge } from './edgeInset';
 export { ToastProvider, useToast, useToastScope, useToastTop, type ToastAction, type ToastOptions } from './Toast';
-export { Mascot, Opening, PullToRefresh } from './Moments';
+export { Mascot, Opening, OpeningRows, PullToRefresh } from './Moments';
 export { Option, OptionGroup, Select, type OptionGroupProps, type OptionProps, type SelectProps } from './Select';

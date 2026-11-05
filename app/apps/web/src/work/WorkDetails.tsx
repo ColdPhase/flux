@@ -7,6 +7,7 @@ import { useStreamEvents } from '../api/stream';
 import { AgentIdentity, Avatar, Button, Icon, Input, Kreska, Morph, PanelActions, PanelGlyph, PanelMeta, StatusGlyph, useToast, usePop, Select, Option } from '../ui';
 import { getProject, listWorkspaceMembers } from '../project/api';
 import { useShellData } from '../app/data';
+import { DetailsSkeleton } from '../app/SurfaceSkeletons';
 import { useRegisterLiveHere } from '../live/LiveProvider';
 import { LiveEntry } from '../live/LiveEntry';
 import { useShellActions, type ObjectView, type WorkFormView } from '../app/shellContext';
@@ -121,30 +122,12 @@ export function WorkDetails({ view }: { view: ObjectView | WorkFormView }) {
   if (view.kind === 'propose-decision') return <ProposeDecision key={key} view={view} context={context} contextStatus={contextStatus} revision={tick} isCurrent={commands.isCurrent} />;
   if (view.kind === 'attach-result') return <AttachResult key={key} view={view} context={context} contextStatus={contextStatus} reload={reload} revision={tick} isCurrent={commands.isCurrent} />;
   if (!projectId || unavailable) return <div className="details"><p className="details__eyebrow">Details</p><h3 className="details__title">Not available</h3><p className="details__lead" role="alert">{contextRead.phase === 'unavailable' ? readable(contextRead.error) : own.read.phase === 'unavailable' ? readable(own.read.error) : 'Open this object in its space.'}</p><Button variant="secondary" onClick={reload}>Refresh details</Button></div>;
-  if (!context || !detail) return <DetailsSkeleton />;
+  if (!context || !detail) return <DetailsSkeleton kind={view.kind} />;
   const currentContext = { ...context, project: { ...context.project, access: detail.access } };
   const object = detail.object;
   if (object.kind === 'work') return <WorkPanel key={key} item={object} context={currentContext} detail={detail} relations={relations} reload={reload} commands={commands} />;
   if (object.kind === 'decision') return <DecisionPanel key={key} decision={object} context={currentContext} detail={detail} relations={relations} reload={reload} choices={choices} setChoices={setChoices} revision={tick} commands={commands} />;
   return <ResultPanel key={key} result={object} context={currentContext} relations={relations} />;
-}
-
-/**
- * What the panel shows while its object is read (#863 rule 6): the task panel's own layout in quiet bars (a two-line title, four
- * property rows, an action row and a section), at the heights the content will have, so nothing jumps when it arrives.
- */
-function DetailsSkeleton() {
-  return (
-    <div className="details wd wd--task wd-skeleton" aria-busy="true">
-      <div className="wd__scroll">
-        <span className="ui-vh" role="status">Loading…</span>
-        <div className="wd-skeleton__title"><i /><i /></div>
-        <div className="wd-skeleton__rows">{[0, 1, 2, 3].map((row) => <div key={row} className="wd-skeleton__row"><i /><i /></div>)}</div>
-        <div className="wd-skeleton__actions"><i /><i /><i /></div>
-        <div className="wd-skeleton__sec"><i /><i /><i /></div>
-      </div>
-    </div>
-  );
 }
 
 function RelationPages({ relations }: { relations: DetailRelations }) {

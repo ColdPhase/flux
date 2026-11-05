@@ -2,15 +2,14 @@ import { useEffect, useLayoutEffect, useRef, type RefObject } from 'react';
 import { MOTION_ID, claimInput, duration, motionAllowed, token } from './motion';
 
 /**
- * Rows that come, go and move keep the reader's place (#593 AC-4). An added row grows in (height and opacity), a removed
- * row collapses (height and opacity) where it stood, and a row that moved, or that other rows moved under, slides from
- * where it was to where it is (transform). It is the only animation that touches height, and only to collapse or grow
- * a row. A row that moves across the list instead of a few rows (to another group) is not carried the whole way: it fades in at
- * its new place with a short slide (`--row-travel-max`, `--shift-row`). Nothing here moves focus or scroll: the browser's own scroll anchoring keeps the reading position while the
- * rows around it change size, a row slides only by how far it moved relative to the rows the reader is anchored to (those
- * that moved with it do not move at all; a list at its top is not anchored and slides as a whole), a row that comes or goes outside what the reader sees changes at once
- * (nobody watches it, and the browser's scroll anchoring holds the rows the reader is on through a change that is not gradual),
- * and the outgoing row is an inert copy no one can reach.
+ * Rows that come, go and move keep the reader's place (#593 AC-4; #863 rule 8: no row animates `height`). An added row fades in where
+ * it stands, a removed row is simply gone, and every row that moved, or that other rows moved under (the ones below an added or a
+ * removed row), slides from where it was to where it is (transform). So the rows around a change close up or open up as one
+ * slide, and a row never grows or collapses. A row that moves across the list instead of a few rows (to another group) is not carried
+ * the whole way: it fades in at its new place with a short slide (`--row-travel-max`, `--shift-row`). Nothing here moves focus or scroll: the browser's
+ * own scroll anchoring keeps the reading position while the rows around it change size, a row slides only by how far it moved relative
+ * to the rows the reader is anchored to (those that moved with it do not move at all; a list at its top is not anchored and slides as a
+ * whole), and a row that comes, goes or moves outside what the reader sees changes at once (nobody watches it).
  *
  * A row moves only as the answer to the person's own input (`claimInput`, #863): the first change of the rows after it is the action's one
  * motion, and the server's echo of it, a refetch or a live update changes the rows without replaying it. A list that has just appeared
@@ -23,17 +22,13 @@ import { MOTION_ID, claimInput, duration, motionAllowed, token } from './motion'
  * touched), and in a commit that changed them it reads every position once, writes, reads the rows that stayed once
  * more and writes again: never a read between two writes per row.
  */
-interface Seen { el: HTMLElement; left: number; top: number; height: number; parent: HTMLElement; next: Element | null; prev: Element | null }
+interface Seen { el: HTMLElement; left: number; top: number; parent: HTMLElement }
 interface Last { scope: string; signature: string; seen: Map<string, Seen> }
 
-const GHOST = 'data-row-ghost';
 /** How long a list that has just mounted is still loading its rows (its groups arrive one by one): they take their places without motion. */
 const LOAD_MS = 700;
 /** The most rows that may arrive or leave in one change and still be animated one by one. */
 const MOST = 4;
-// Properties a row's own box adds to its height; they shrink with it so a padded row collapses to nothing.
-const BOX = ['paddingTop', 'paddingBottom', 'marginTop', 'marginBottom', 'borderTopWidth', 'borderBottomWidth'] as const;
-
 /** Where a row is in the layout, not where an animation currently draws it. */
 function place(el: HTMLElement): { left: number; top: number } {
   let left = 0;
@@ -68,23 +63,18 @@ export function useRowMotion(container: RefObject<HTMLElement | null>, rows: str
   useLayoutEffect(() => {
     mountedAt.current ??= performance.now();
     const root = container.current;
-    const out = duration('--dur-out');
     const inn = duration('--dur-in');
     // Under reduced motion nothing is read at all; the next change with motion on starts afresh.
-    if (!root || !out || !inn) { last.current = null; return; }
-    const elements = [...root.querySelectorAll<HTMLElement>(rows)].filter((el) => !el.hasAttribute(GHOST) && key(el) && el.parentElement);
+    if (!root || !inn) { last.current = null; return; }
+    const elements = [...root.querySelectorAll<HTMLElement>(rows)].filter((el) => key(el) && el.parentElement);
     const signature = elements.map((el) => `${key(el)}@${parentId(el.parentElement)}`).join('|');
     const before = last.current;
     if (before && before.scope === scope && before.signature === signature && !resized.current) return;
-    // A row that comes back while its outgoing copy is still collapsing (an undone removal) replaces it at once.
-    const present = new Set(elements.map((el) => key(el)));
-    for (const ghost of root.querySelectorAll(`[${GHOST}]`)) if (present.has(ghost.getAttribute(GHOST) ?? '')) ghost.remove();
-
     // The rows were changed: where every one of them is now, in one pass of reads.
     const seen = new Map<string, Seen>();
     for (const el of elements) {
       const at = place(el);
-      seen.set(key(el)!, { el, left: at.left, top: at.top, height: el.offsetHeight, parent: el.parentElement!, next: el.nextElementSibling, prev: el.previousElementSibling });
+      seen.set(key(el)!, { el, left: at.left, top: at.top, parent: el.parentElement! });
     }
     last.current = { scope, signature, seen };
     const fresh = resized.current;
@@ -100,57 +90,22 @@ export function useRowMotion(container: RefObject<HTMLElement | null>, rows: str
     // The person's input is answered once; what follows it (the echo, a refetch, a live update) only changes the rows.
     if (!claimInput()) return;
     const easeOut = token('--ease-out') || 'ease-out';
-    const easeIn = token('--ease-in') || 'ease-in';
     const writes: (() => void)[] = [];
-    // What the reader can see. A row that comes or goes outside it is not worth animating: nobody watches it, and growing or collapsing it
-    // gradually would only make the browser's scroll anchoring chase the rows the reader is on. It changes at once, which anchoring holds.
+    // What the reader can see. A row that comes outside it is not worth animating: nobody watches it. It changes at once, which the browser's
+    // scroll anchoring holds.
     const view = root.closest<HTMLElement>('.pane-scroll')?.getBoundingClientRect() ?? root.getBoundingClientRect();
     const unseen = (box: DOMRect) => box.bottom < view.top || box.top > view.bottom;
 
-    // Rows that left collapse where they stood: an inert copy of each goes back in and shrinks away.
-    if (!bulk) for (const id of left) {
-      const gone = before.seen.get(id)!;
-      if (!gone.parent.isConnected || gone.height <= 0 || gone.el.isConnected) continue;
-      // A copy, never the node React took out: React stays free to build and remove its own rows around it.
-      const ghost = gone.el.cloneNode(true) as HTMLElement;
-      ghost.removeAttribute('id');
-      for (const inner of ghost.querySelectorAll('[id]')) inner.removeAttribute('id');
-      ghost.setAttribute(GHOST, id);
-      ghost.setAttribute('inert', '');
-      ghost.setAttribute('aria-hidden', 'true');
-      const reference = gone.next && gone.next.parentNode === gone.parent ? gone.next : null;
-      if (reference) gone.parent.insertBefore(ghost, reference);
-      else if (gone.prev && gone.prev.parentNode === gone.parent) gone.prev.after(ghost);
-      else gone.parent.appendChild(ghost);
-      if (unseen(ghost.getBoundingClientRect())) { ghost.remove(); continue; }
-      const style = getComputedStyle(ghost);
-      const start: Keyframe = { height: `${gone.height}px`, opacity: 1 };
-      const end: Keyframe = { height: '0px', opacity: 0 };
-      for (const prop of BOX) { start[prop] = style[prop]; end[prop] = '0px'; }
-      ghost.style.overflow = 'hidden';
-      const collapse = ghost.animate([start, end], { duration: out, easing: easeIn, fill: 'forwards' });
-      collapse.id = MOTION_ID;
-      void collapse.finished.then(() => ghost.remove(), () => ghost.remove());
-    }
-
-    // Rows that arrived grow to their height.
+    // Rows that arrived fade in where they stand (the rows below them slide, below).
     if (!bulk) for (const id of arrived) {
       const row = seen.get(id)!;
       if (unseen(row.el.getBoundingClientRect())) continue;
-      const style = getComputedStyle(row.el);
-      const start: Keyframe = { height: '0px', opacity: 0 };
-      const end: Keyframe = { height: `${row.height}px`, opacity: 1 };
-      for (const prop of BOX) { start[prop] = '0px'; end[prop] = style[prop]; }
-      const previousOverflow = row.el.style.overflow;
-      row.el.style.overflow = 'hidden';
-      const grow = row.el.animate([start, end], { duration: inn, easing: easeOut });
-      grow.id = MOTION_ID;
-      const done = () => { row.el.style.overflow = previousOverflow; };
-      void grow.finished.then(done, done);
+      const fade = row.el.animate([{ opacity: 0 }, { opacity: 1 }], { duration: inn, easing: easeOut });
+      fade.id = MOTION_ID;
     }
 
     // Rows that stayed, or moved to another group, slide from where they were to where they are: read where each one is
-    // now (the copies and the growing rows are in place), then write every slide.
+    // now, then write every slide.
     const reach = view.height + 200;
     const slides: { el: HTMLElement; dx: number; dy: number }[] = [];
     // The reader's place. When the rows are scrolled (the browser anchors a scrolled list, never one at its top), the browser's own scroll
@@ -186,7 +141,7 @@ export function useRowMotion(container: RefObject<HTMLElement | null>, rows: str
       const farther = parseFloat(token('--row-travel-max')) || 160;
       const shift = parseFloat(token('--shift-row')) || 12;
       for (const { el, dx, dy } of slides) {
-        for (const running of el.getAnimations()) if (running.id === MOTION_ID && !(running.effect as KeyframeEffect | null)?.getKeyframes().some((frame) => 'height' in frame)) running.cancel();
+        for (const running of el.getAnimations()) if (running.id === MOTION_ID) running.cancel();
         const far = Math.hypot(dx, dy);
         const slide = far > farther
           ? el.animate([{ opacity: 0, transform: `translate(${(dx / far) * shift}px, ${(dy / far) * shift}px)` }, { opacity: 1, transform: 'none' }], { duration: duration('--dur-in'), easing: token('--ease-out') || 'ease-out' })

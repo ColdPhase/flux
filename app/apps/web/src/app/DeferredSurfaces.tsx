@@ -1,56 +1,85 @@
 import { Component, Suspense, createElement, lazy, useEffect, useLayoutEffect, useRef, useState, type ComponentProps, type ComponentType, type ReactNode } from 'react';
 import { Button, ErrorState, MEDIA, Overlay, Spinner, useMediaQuery, useSidePanelMode } from '../ui';
 import { pageLeaving, whenPageLive } from '../api/pageLeaving';
+import { useParams } from 'react-router';
 import { useLive } from '../live/LiveProvider';
 import type { Details } from './Details';
 import { ReloadRecovery } from './ReloadRecovery';
 import { useShellActions } from './shellContext';
+import { DetailsSkeleton, JumpSkeleton } from './SurfaceSkeletons';
+import { preloadProjectViews } from './viewChunks';
 
 /**
  * The code of one deferred surface. It is downloaded once, whoever asks first (the preload below or the surface being opened): a
  * second `import()` must not become a second request. `loaded()` is the component as soon as it has arrived, so a surface opened after
- * the preload renders at once; a `lazy` component always suspends once, and React then holds a fallback it has just shown for about
- * 300 ms before it puts the content in its place. `Lazy` is for a surface asked for before its code is here.
+ * the preload renders at once.
  */
 function deferred<P extends object>(load: () => Promise<ComponentType<P>>) {
   let component: ComponentType<P> | null = null;
   let loading: Promise<ComponentType<P>> | null = null;
   const download = () => (loading ??= load().then((loaded) => { component = loaded; return loaded; }, (error: unknown) => { loading = null; throw error; }));
-  const Lazy = lazy(async () => ({ default: await download() }));
-  return { download, loaded: () => component, Lazy };
+  return { download, loaded: () => component };
 }
 type Deferred<P extends object> = ReturnType<typeof deferred<P>>;
 const details = deferred<ComponentProps<typeof Details>>(async () => (await import('./Details')).Details);
 const search = deferred<{ onClose: () => void; userId: string }>(async () => (await import('../search/JumpTo')).JumpToBody);
-/** A deferred surface's component: put in at once when its code has arrived, else suspending until it does. */
-function Surface<P extends object>({ of, props }: { of: Deferred<P>; props: P }) {
-  return createElement((of.loaded() ?? of.Lazy) as ComponentType<P>, props);
+/**
+ * A deferred surface's component: put in at once when its code has arrived, else `fallback` until it does. It is not a `Suspense` boundary
+ * on purpose: React holds a fallback it has shown for about 300 ms before it reveals what replaces it, so a code download that takes
+ * 40 ms would still keep the skeleton up for 300. A failed download throws to the surface's boundary.
+ */
+function Surface<P extends object>({ of, props, fallback }: { of: Deferred<P>; props: P; fallback: ReactNode }) {
+  const [Loaded, setLoaded] = useState<ComponentType<P> | null>(() => of.loaded());
+  const [failure, setFailure] = useState<{ error: unknown } | null>(null);
+  useEffect(() => {
+    if (Loaded) return undefined;
+    let live = true;
+    of.download().then((component) => { if (live) setLoaded(() => component); }, (error: unknown) => { if (live) setFailure({ error }); });
+    return () => { live = false; };
+  }, [of, Loaded]);
+  if (failure) throw failure.error;
+  return Loaded ? createElement(Loaded, props) : fallback;
 }
 const StageContent = lazy(async () => ({ default: (await import('../live/LiveStage')).LiveStage }));
 
 /**
  * A surface opens with its content (#863 rule 6): the code of Details and Jump to… is fetched before it is asked for, so the panel
- * and ⌘K do not open on a fallback that is then replaced. It happens when the browser is idle a couple of seconds after the shell is up
- * (the first screen stays as light as it was and no action in the first seconds competes with it), and at once on ⌘ or Ctrl, which
- * is pressed a moment before the K that opens search.
+ * and ⌘K do not open on a fallback that is then replaced. It happens when the browser is idle soon after the shell is up (the first
+ * screen is already painted, and the first-load contract of `test_route_chunks` is about what that screen imports), and at once on
+ * the first press of anything: a pointer going down, or ⌘ or Ctrl, which is pressed a moment before the K that opens search. Inside a
+ * project the code of its other views (Tasks, Map, Wiki, Agents) comes the same way, so a switch finds it here.
  */
-const PRELOAD_AFTER_MS = 2000;
+const PRELOAD_AFTER_MS = 1200;
 const PRELOAD_IDLE_MS = 1000;
 let preloaded = false;
+let viewsPreloaded = false;
 function preloadSurfaces() {
   if (preloaded) return;
   preloaded = true;
   void details.download().catch(() => { preloaded = false; });
   void search.download().catch(() => { preloaded = false; });
 }
-function useSurfacePreload() {
+function preloadViews() {
+  if (viewsPreloaded) return;
+  viewsPreloaded = true;
+  void preloadProjectViews().catch(() => { viewsPreloaded = false; });
+}
+/** Runs `run` when the browser is idle, a moment after now. */
+function whenIdle(run: () => void) {
+  const idle = window.setTimeout(() => (window.requestIdleCallback ? window.requestIdleCallback(run, { timeout: PRELOAD_IDLE_MS }) : run()), PRELOAD_AFTER_MS);
+  return () => window.clearTimeout(idle);
+}
+function useSurfacePreload(inProject: boolean) {
   useEffect(() => {
-    if (preloaded) return undefined;
-    const idle = window.setTimeout(() => (window.requestIdleCallback ? window.requestIdleCallback(preloadSurfaces, { timeout: PRELOAD_IDLE_MS }) : preloadSurfaces()), PRELOAD_AFTER_MS);
-    const onKey = (event: KeyboardEvent) => { if (event.key === 'Control' || event.key === 'Meta') preloadSurfaces(); };
-    document.addEventListener('keydown', onKey, { capture: true, passive: true });
-    return () => { window.clearTimeout(idle); document.removeEventListener('keydown', onKey, { capture: true }); };
-  }, []);
+    if (preloaded && (viewsPreloaded || !inProject)) return undefined;
+    const stop = whenIdle(() => { preloadSurfaces(); if (inProject) preloadViews(); });
+    const onPress = () => { preloadSurfaces(); if (inProject) preloadViews(); };
+    const onKey = (event: KeyboardEvent) => { if (event.key === 'Control' || event.key === 'Meta') onPress(); };
+    const options = { capture: true, passive: true } as const;
+    document.addEventListener('pointerdown', onPress, options);
+    document.addEventListener('keydown', onKey, options);
+    return () => { stop(); document.removeEventListener('pointerdown', onPress, { capture: true }); document.removeEventListener('keydown', onKey, { capture: true }); };
+  }, [inProject]);
 }
 
 /** An optional surface failing to download must not unmount the surrounding work or live session. */
@@ -67,6 +96,7 @@ class SurfaceBoundary extends Component<{ label: string; children: ReactNode; wr
   }
 }
 
+/** The live stage's code is the one deferred surface with no fixed layout to stand in for: a quiet line in its place. */
 function Opening({ label }: { label: string }) {
   return <div className="deferred-surface"><p role="status"><Spinner />Opening {label.toLowerCase()}…</p></div>;
 }
@@ -84,14 +114,17 @@ function WhenPageLive({ children, fallback }: { children: ReactNode; fallback: R
 
 /** SidePanel itself owns mount/exit/focus; this content is never rendered while initially closed. */
 export function DeferredDetails(props: ComponentProps<typeof Details>) {
-  const opening = <Opening label="Details" />;
-  return <SurfaceBoundary label="Details"><Suspense fallback={opening}><WhenPageLive fallback={opening}><Surface of={details} props={props} /></WhenPageLive></Suspense></SurfaceBoundary>;
+  // The panel's own layout in quiet bars, at the heights the content will have (a task, a decision, a result; any other view a title and lines).
+  const kind = typeof props.view === 'object' && 'kind' in props.view && (props.view.kind === 'work' || props.view.kind === 'decision' || props.view.kind === 'result') ? props.view.kind : 'plain';
+  const opening = <DetailsSkeleton kind={kind} />;
+  return <SurfaceBoundary label="Details"><WhenPageLive fallback={opening}><Surface of={details} props={props} fallback={opening} /></WhenPageLive></SurfaceBoundary>;
 }
 
 export interface JumpToProps { open: boolean; onClose: () => void; userId: string }
 
 export function DeferredJumpTo({ open, onClose, userId }: JumpToProps) {
-  useSurfacePreload();
+  const inProject = !!useParams().projectId;
+  useSurfacePreload(inProject);
   const phone = useMediaQuery(MEDIA.phone);
   const [requested, setRequested] = useState(open);
   if (open && !requested) setRequested(true);
@@ -103,7 +136,7 @@ export function DeferredJumpTo({ open, onClose, userId }: JumpToProps) {
   return (
     <SurfaceBoundary label="Search" wrap={wrap}>
       <Overlay open={open} onClose={onClose} placement={phone ? 'bottom' : 'center'} label="Jump to" className="jump">
-        <Suspense fallback={<><Opening label="Search" />{closer}</>}>{open ? <Surface of={search} props={{ onClose, userId }} /> : null}</Suspense>
+        {open ? <Surface of={search} props={{ onClose, userId }} fallback={<><JumpSkeleton />{closer}</>} /> : null}
       </Overlay>
     </SurfaceBoundary>
   );

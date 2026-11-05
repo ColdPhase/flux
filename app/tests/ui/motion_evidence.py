@@ -143,7 +143,7 @@ class MotionEvidence(unittest.TestCase):
         self.harvest(page); page.go_back(); self.beat(page, 1000)
 
     def ac4(self, page: Page) -> None:
-        """A state change morphs and the row slides to its group; a row grows in; an accepted decision collapses."""
+        """A state change morphs and the row slides to its group; a new row fades in; an accepted decision goes and the card below slides up."""
         self.go(page, self.fx.tasks_url()); self.beat(page, 900)
         glyph = page.locator("button.ws-task__glyph")
         glyph.first.click(); self.beat(page, 1100)

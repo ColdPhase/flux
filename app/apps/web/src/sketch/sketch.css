@@ -232,7 +232,7 @@
 .sk-copies { list-style: none; margin: 0; padding: 0; }
 .sk-origin__short { display: none; }
 @media (max-width: 640px) { .sk-origin__short { display: inline; } }
-.sk-copies li, .sk-origin { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 6px; font-size: var(--fs-sm); color: var(--t3); animation: sk-note-in var(--dur-in) var(--ease-out) backwards; }
+.sk-copies li, .sk-origin { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 6px; font-size: var(--fs-sm); color: var(--t3); }
 .sk-copies svg { color: var(--t1); }
 .sk-copies a { color: var(--t2); font-weight: 500; }
 @keyframes sk-note-in { from { opacity: 0; transform: translateY(-4px); } }

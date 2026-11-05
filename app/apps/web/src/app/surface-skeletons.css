@@ -1,0 +1,36 @@
+/* The quiet bars of a deferred surface (SurfaceSkeletons.tsx, #863 rule 6). Self-contained: they stand in before the surface's own stylesheet is here. */
+.ui-panel__body:has(> .wd--task.wd-skeleton) { display: flex; padding: 0; overflow: hidden; }
+.wd-skeleton.wd--task { display: flex; flex: 1; flex-direction: column; min-width: 0; min-height: 0; }
+.wd-skeleton .wd__scroll { flex: 1; min-height: 0; padding: 18px 22px 20px; overflow: hidden; }
+.wd-skeleton i, .jump-skeleton i, .jump-skeleton b { display: block; border-radius: var(--r-pill); background: var(--sub); }
+.wd-skeleton i { height: 12px; }
+.wd-skeleton__title { display: flex; align-items: center; height: 31px; margin: 2px 0 6px; }
+.wd-skeleton__title i { width: 62%; height: 15px; }
+.wd-skeleton__rows { margin: 8px 0 0; }
+.wd-skeleton__row { display: grid; grid-template-columns: 96px minmax(0, 1fr); align-items: center; gap: 12px; height: 42px; }
+.wd-skeleton__row i:first-child { width: 56px; }
+.wd-skeleton__row i:last-child { width: 55%; }
+.wd-skeleton__actions { display: flex; align-items: center; gap: 12px; height: 32px; margin-top: 14px; }
+.wd-skeleton__actions i { width: 72px; }
+.wd-skeleton__sec { display: grid; gap: 14px; margin-top: 22px; }
+.wd-skeleton__sec i:first-child { width: 80px; }
+.wd-skeleton__sec i:last-child { width: 70%; }
+/* A decision or a result (the panel's own padding is the page's): identity 105, lead 42, the decide box 124, a row 42, a section 112. */
+.wd-skeleton--decision { display: block; }
+.wd-skeleton--decision .wd-skeleton__identity { display: grid; align-content: center; gap: 14px; height: 105px; }
+.wd-skeleton--decision .wd-skeleton__identity i:nth-child(1) { width: 38%; }
+.wd-skeleton--decision .wd-skeleton__identity i:nth-child(2) { width: 82%; height: 15px; }
+.wd-skeleton--decision .wd-skeleton__identity i:nth-child(3) { width: 56%; }
+.wd-skeleton__lead { display: grid; align-content: center; gap: 12px; height: 42px; }
+.wd-skeleton__lead i:last-child { width: 64%; }
+.wd-skeleton__box { height: 124px; margin-top: 12px; border-radius: var(--r-lg); background: var(--sub); }
+.wd-skeleton--decision .wd-skeleton__rows { margin: 12px 0 0; }
+.wd-skeleton--decision .wd-skeleton__sec { height: 112px; margin-top: 28px; align-content: start; }
+.jump-skeleton { display: flex; flex: 1; flex-direction: column; min-height: 341px; }
+.jump-skeleton__field { display: flex; align-items: center; gap: 10px; height: 53px; padding: 0 12px 0 16px; border-bottom: 1px solid var(--line); }
+.jump-skeleton__field i { width: 16px; height: 16px; }
+.jump-skeleton__field b { width: 44%; height: 12px; }
+.jump-skeleton__body { padding: 6px; }
+.jump-skeleton__row { display: flex; align-items: center; gap: 10px; height: 36px; padding: 0 10px; }
+.jump-skeleton__row i { flex: none; width: 15px; height: 15px; }
+.jump-skeleton__row b { height: 10px; }

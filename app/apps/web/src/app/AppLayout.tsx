@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { ProjectPerson } from '@flux/contracts';
-import { Outlet, useLocation, useMatches, useNavigate, useNavigationType, useParams, useRevalidator } from 'react-router';
+import { Outlet, useLocation, useMatches, useNavigate, useNavigation, useNavigationType, useParams, useRevalidator } from 'react-router';
 import { useStreamEvents } from '../api/stream';
 import { WORKSPACE_LOCKED_DOM_EVENT, isEncryptionEvent } from '../encryption/api';
 import { useLockedPlace } from '../encryption/state';
@@ -10,6 +10,8 @@ import { useShellData } from './data';
 import { registerServiceWorker, syncPushSubscription } from '../pwa';
 import { DeferredDetails, DeferredJumpTo, DeferredLiveStage } from './DeferredSurfaces';
 import { RouteProgress } from './RouteProgress';
+import { PendingView, useSwitching } from './PendingView';
+import './pending-view.css';
 import { useInboxDot } from '../notifications/dot';
 import { placeOf } from './place';
 import { placeOfPath, rememberPlace } from '../search/recent';
@@ -129,6 +131,7 @@ function AppLayoutContent() {
   useLayoutEffect(() => { lockedNow.current = lockedWorkspaces; });
   const lockedPlaceId = useLockedPlace();
   const location = useLocation();
+  const navigation = useNavigation();
   const navType = useNavigationType();
   // The entry on show, for everything that keeps or finds a place (#592). Set while rendering, so effects of this
   // render and its children already see their own entry.
@@ -520,9 +523,14 @@ function AppLayoutContent() {
     return () => { viewport.removeEventListener('resize', update); viewport.removeEventListener('scroll', update); app.style.removeProperty('--app-h'); app.style.removeProperty('--app-top'); };
   }, [touch]);
 
-  // Switching a project view, a place or a Settings section puts the new content in place at once, with at most a 120 ms fade-in (#863,
-  // `ViewFade` around the routes below): the old content is not held and nothing crossfades. Opening a thread beside the conversation
-  // or a page inside the Wiki is not a switch. The reading position is restored by its own owner and never animated.
+  // Switching a project view, a place or a Settings section puts the new screen in place at once, with at most a 120 ms fade-in (#863,
+  // `ViewFade` around the routes below): the old content is not held and nothing crossfades. The router keeps the old route until the
+  // new one's code and reads are here, so from the frame the switch is made on the content area shows the new screen's own loading
+  // state (`PendingView`) over the old view, which stays mounted but hidden (a draft and a scroll place survive a cancelled switch).
+  // Opening a thread beside the conversation or a page inside the Wiki is not a switch. The reading position is restored by its own
+  // owner and never animated.
+  const switching = useSwitching(navigation.state === 'loading' && navigation.location ? routeView(navigation.location.pathname) : null, routeView(location.pathname));
+  const switchingName = switching ? projects.find((project) => switching.startsWith(`/projects/${project.id}/`))?.name ?? directMessages.find((dm) => switching === `/dm/${dm.id}`)?.title ?? 'the conversation' : '';
 
   // In focus the rail shows no counts.
   const sidebarProps = { workspace, projects, directMessages, user: me.user, session: me.session, inboxUnread: focusing ? 0 : inboxUnread };
@@ -844,9 +852,10 @@ function AppLayoutContent() {
         <div className="app__body">
           <RouteProgress />
           {/* The one main landmark, the skip link's target (#763 AX-1): a view's own header is then not a second banner. */}
-          <main className="app__pane" id="content" ref={paneRef} tabIndex={-1}>
-            <ViewFade id={routeView(location.pathname)} host={paneRef} skip=".deferred-surface--stage">
+          <main className={`app__pane${switching ? ' is-switching' : ''}`} id="content" ref={paneRef} tabIndex={-1}>
+            <ViewFade id={switching ?? routeView(location.pathname)} host={paneRef} skip=".deferred-surface--stage, .lv-stage">
               <Outlet />
+              {switching ? <PendingView view={switching} name={switchingName} /> : null}
               <DeferredLiveStage />
             </ViewFade>
           </main>

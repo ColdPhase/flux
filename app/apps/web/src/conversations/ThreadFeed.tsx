@@ -8,7 +8,7 @@ import { ObjectNoticeItem } from '../app/ObjectNotices';
 import { followsProposal } from '../app/objectNotices';
 import type { ShellActions } from '../app/shellContext';
 import type { AgentOwners } from '../agents/owners';
-import { Button } from '../ui';
+import { Button, OpeningRows } from '../ui';
 import type { useCreateWorkFromMessage } from '../work/inline';
 import type { PaneProps } from '../app/OneConversation';
 import type { FeedEntry } from './feed';
@@ -62,7 +62,10 @@ export function ThreadFeed(props: Props) {
   const firstDay = props.rootHeader && entries[0]?.type === 'message' && rows[0] ? day(rows[0].at) : null;
   const list = rows.flatMap((row, index) => !row.items.length ? [] : day(row.at) !== (index ? day(rows[index - 1]!.at) : '') && !(index === 0 && firstDay)
     ? [<MessageDay key={row.key} label={day(row.at)} />, ...row.items] : row.items);
-  return <div className={`thread__feed${revealed ? '' : ' is-opening'}`} ref={attachFeed} aria-busy={revealed ? undefined : true}>
+  return <>
+  {/* The replies are laid out but hidden until their first reads settle (#155); quiet rows stand in their place from the first frame (#863 rule 6), so the panel never opens empty. */}
+  {revealed ? null : <div className="thread__opening"><OpeningRows rows={Math.min(4, Math.max(2, thread.messages.length))} /></div>}
+  <div className={`thread__feed${revealed ? '' : ' is-opening'}`} ref={attachFeed} aria-busy={revealed ? undefined : true}>
     <div className="thread__lift" aria-hidden="true" ref={liftRef} />
     <div className="thread__in" ref={columnRef}>
       {props.rootHeader?.({ preview: props.rootMessageId ? messageWork.previews?.get(props.rootMessageId) ?? null : null, taskRow: discussedRow, firstDay })}
@@ -82,5 +85,6 @@ export function ThreadFeed(props: Props) {
         </ol>
       </section>
     </div>
-  </div>;
+  </div>
+  </>;
 }

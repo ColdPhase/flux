@@ -193,7 +193,10 @@ class RouteChunksJourney(unittest.TestCase):
         def cleanup():
             page.unroute(pattern, pause)
             for route in held:
-                route.abort("aborted")
+                try:
+                    route.abort("aborted")
+                except Exception:  # the page already gave the request up (a navigation, a close)
+                    pass
             held.clear()
         self.addCleanup(cleanup)
         # A retained Route is released by the test, so the browser remains responsive to other input.
@@ -569,14 +572,21 @@ class RouteChunksJourney(unittest.TestCase):
                 self.assert_pending_is_still(page, before, page.locator('[data-route-pending="/settings"]'))
                 expect(page.locator('[data-route-pending="/settings"] [role="status"]')).to_have_text("Opening settings…")
                 self.request_is_held(page, held)
+                # The destination's own loading state stands in the content area from the first frame (#863 rule 2); the old view is not shown, but it
+                # is still mounted: the same element holds the draft, so a cancelled switch finds it as it was.
+                expect(page.locator("#content [data-pending-view]")).to_be_visible()
+                expect(page.get_by_role("heading", name="Your notes", exact=True)).to_be_hidden()
+                self.assertTrue(page.evaluate("window.__routeDraftElement === document.querySelector('#composer')"))
+                expect(field).to_have_value("Private work while the destination downloads")
+                shot(page, f"route-chunks-pending-{engine}-{'phone' if phone else 'desktop'}")
+                page.get_by_role("button", name="Cancel", exact=True).click()
+                expect(page.locator("[data-route-pending]")).to_have_count(0)
+                expect(page.locator("#content [data-pending-view]")).to_have_count(0)
+                expect(page).to_have_url(f"{ORIGIN}/map")
                 expect(page.get_by_role("heading", name="Your notes", exact=True)).to_be_visible()
                 expect(field).to_have_value("Private work while the destination downloads")
                 field.fill("Private work remains editable")
                 self.assertTrue(page.evaluate("window.__routeDraftElement === document.querySelector('#composer')"))
-                shot(page, f"route-chunks-pending-{engine}-{'phone' if phone else 'desktop'}")
-                page.get_by_role("button", name="Cancel", exact=True).click()
-                expect(page.locator("[data-route-pending]")).to_have_count(0)
-                expect(page).to_have_url(f"{ORIGIN}/map")
                 held.pop().continue_()
                 expect(field).to_have_value("Private work remains editable")
                 # A newer completed navigation stays current even after the canceled code arrives.
@@ -603,13 +613,16 @@ class RouteChunksJourney(unittest.TestCase):
         self.assert_pending_is_still(page, before, pending)
         expect(pending.get_by_role("status")).to_have_text("Opening tasks…")
         self.request_is_held(page, held)
-        expect(field).to_have_value("Private work while the destination downloads")
-        field.fill("Private work remains editable")
+        # Tasks' own loading state stands in the content area; the conversation is not shown but is still mounted (#863 rule 2).
+        expect(page.locator("#content [data-pending-view]")).to_be_visible()
         self.assertTrue(field.evaluate("el => window.__routeDraftElement === el"))
+        expect(field).to_have_value("Private work while the destination downloads")
         shot(page, "route-chunks-pending-webkit-phone")
         pending.get_by_role("button", name="Cancel", exact=True).click()
         expect(page.locator("[data-route-pending]")).to_have_count(0)
         expect(page).to_have_url(start)
+        expect(field).to_be_visible()
+        field.fill("Private work remains editable")
         route = held.pop()
         with page.expect_response(lambda response: response.url == route.request.url) as late:
             route.continue_()
@@ -680,6 +693,8 @@ class RouteChunksJourney(unittest.TestCase):
                 dialog = page.get_by_role("dialog", name="Jump to")
                 expect(dialog).to_contain_text("Opening search…")
                 self.request_is_held(page, held)
+                # The dialog stands at the height the real one has (341 px), not at a spinner's 84.
+                self.assertGreaterEqual(dialog.bounding_box()["height"], 340, "the held dialog is already its final size")
                 shot(page, f"route-chunks-search-pending-{engine}-desktop")
                 page.keyboard.press("Escape")
                 expect(dialog).to_have_count(0)
@@ -716,7 +731,9 @@ class RouteChunksJourney(unittest.TestCase):
                 held = self.hold(page, "Details")
                 self.home(page)
                 opener = self.open_details_by_keyboard(page)
-                expect(page.locator("#details")).to_contain_text("Opening details…")
+                # The panel's own layout in quiet bars, at its final heights, not a spinner (#863 rule 6).
+                expect(page.locator("#details .wd-skeleton")).to_be_visible()
+                expect(page.locator("#details .ui-spin")).to_have_count(0)
                 self.request_is_held(page, held)
                 shot(page, f"route-chunks-details-pending-{engine}-desktop")
                 page.keyboard.press("Escape")
@@ -779,8 +796,10 @@ class RouteChunksJourney(unittest.TestCase):
                 response = page.request.post(f"{ORIGIN}/api/v1/projects/{self.project_id}/work",
                     headers={"origin": ORIGIN, "content-type": "application/json"}, data=json.dumps({"title": title}))
                 self.assertEqual(response.status, 201, response.text())
-                requested = []
-                page.on("request", lambda request: requested.append(request.url))
+                # The Map's code may be fetched in the background (a press brings the project's other views, #863), so it is held here:
+                # the first Details render must not depend on it, and it has to stand with the Map's code still on the way.
+                self.hold(page, "ProjectViews")
+                self.hold(page, "SketchView")
                 page.goto(f"/projects/{self.project_id}")
                 expect(page.get_by_role("heading", name="Chunk boundaries", exact=True)).to_be_visible()
                 open_details(page)
@@ -802,9 +821,51 @@ class RouteChunksJourney(unittest.TestCase):
                 self.assertLessEqual(geometry["textRight"], geometry["actionLeft"])
                 self.assertGreaterEqual(geometry["left"], 0)
                 self.assertLessEqual(geometry["right"], page.viewport_size["width"])
-                self.assertFalse(any(re.search(r"/assets/(?:ProjectViews|SketchView)-[^/]+\.js", url) for url in requested),
-                                 "The first project/Details render never depends on Map code")
+                self.assertTrue(row.is_visible(), "The first project/Details render stands with the Map code still on the way")
                 shot(page, f"route-chunks-first-project-details-{engine}-phone")
+
+    CODE = {"Details": "Details", "JumpTo": "JumpTo", "ProjectTasks": "ProjectTasks", "ProjectViews": "ProjectViews", "Wiki": "Wiki", "ProjectAgents": "ProjectAgents"}
+
+    def wait_for_chunks(self, page: Page, requested: list, seconds: float) -> list[str]:
+        """The deferred code that has been asked for, waiting up to `seconds` for all of it."""
+        deadline = time.monotonic() + seconds
+        while True:
+            got = [name for name in self.CODE if any(re.search(rf"/assets/{name}-[^/]+\.js", url) for url in requested)]
+            if len(got) == len(self.CODE) or time.monotonic() > deadline:
+                return got
+            page.wait_for_timeout(50)
+
+    def test_10_a_press_fetches_the_deferred_code_before_it_is_asked_for(self):
+        """Rule 6: preload on pointer down. A press anywhere in a project brings the code of Details, Jump to… and the other views (#863)."""
+        for engine in self.browsers:
+            with self.subTest(engine=engine):
+                page = self.page(engine)
+                requested: list[str] = []
+                page.on("request", lambda request: requested.append(request.url))
+                page.goto(f"/projects/{self.project_id}")
+                expect(page.get_by_role("heading", name="Chunk boundaries", exact=True)).to_be_visible()
+                page.mouse.move(300, 400)
+                page.mouse.down()
+                page.mouse.up()
+                got = self.wait_for_chunks(page, requested, 6)
+                self.assertEqual(sorted(got), sorted(self.CODE), "a press brought all of it")
+
+    def test_11_an_idle_page_fetches_the_deferred_code_without_any_input(self):
+        """Rule 6: preload when idle. A person who only reads still finds the code here when a surface or a view is opened (#863)."""
+        for engine in self.browsers:
+            with self.subTest(engine=engine):
+                page = self.page(engine)
+                requested: list[str] = []
+                page.on("request", lambda request: requested.append(request.url))
+                page.goto(f"/projects/{self.project_id}")
+                expect(page.get_by_role("heading", name="Chunk boundaries", exact=True)).to_be_visible()
+                got = self.wait_for_chunks(page, requested, 8)
+                self.assertEqual(sorted(got), sorted(self.CODE), "the browser's idle time brought all of it")
+                # With the code here, the first ⌘K is one dialog with its content: no spinner, no placeholder that is replaced.
+                page.keyboard.press("Control+k")
+                dialog = page.get_by_role("dialog", name="Jump to")
+                expect(dialog.get_by_role("combobox", name="Jump to")).to_be_visible()
+                self.assertEqual(dialog.locator(".ui-spin, .jump-skeleton").count(), 0)
 
 
 if __name__ == "__main__":
