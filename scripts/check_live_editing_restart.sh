@@ -15,6 +15,8 @@ fixture="$project-client"
 export POSTGRES_USER=flux POSTGRES_DB=flux
 export POSTGRES_PASSWORD="flux-live-restart-$$-$(date +%s)"
 export FLUX_FIXTURE_TOKEN="fixture-live-restart-$$-$(date +%s)"
+# A test deployment: only it can create the isolated workspaces these checks start from (F-037).
+export FLUX_TEST_FAILURE_INJECTION=true
 export FLUX_PORT="${FLUX_LIVE_EDITING_PORT:-18691}"
 export FLUX_MAILPIT_PORT="${FLUX_LIVE_EDITING_MAILPIT_PORT:-18692}"
 export FLUX_PUBLIC_ORIGIN="http://127.0.0.1:$FLUX_PORT"

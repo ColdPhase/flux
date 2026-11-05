@@ -36,7 +36,7 @@ const keptKey = (userId: string, projectId: string) => `${userId}:${projectId}`;
 type Load = { key: string; summary: ReturnSummary } | { key: string; error: true } | null;
 
 function since(summary: ReturnSummary) {
-  if (!summary.since) return 'From the beginning of the project';
+  if (!summary.since) return 'From the beginning of the space';
   // CW-3: a newcomer's first look also covers the week before they joined.
   if (summary.joinedAt && summary.period === 'last-visit') return `Since ${dayTime.format(new Date(summary.since))}, before you joined`;
   const label = PERIODS.find((period) => period.id === summary.period)?.label;
@@ -187,7 +187,7 @@ export function WhatMatters({ projectId, projectName, onDone }: { projectId: str
           <div className="wm-seg" role="radiogroup" aria-label="Whose changes">
             {(['all', 'mine'] as const).map((value) => (
               <button key={value} type="button" role="radio" aria-checked={scope === value} className="wm-seg__b" onClick={() => setScope(value)}>
-                {value === 'all' ? 'Whole project' : 'Relevant to me'}
+                {value === 'all' ? 'Whole space' : 'Relevant to me'}
               </button>
             ))}
           </div>
@@ -274,7 +274,7 @@ export function WhatMatters({ projectId, projectName, onDone }: { projectId: str
       <div className="wm__foot">
         <Button variant="primary" size="lg" icon="check" block busy={done === 'busy'} disabled={!shown} onClick={() => void haveContext()}>I have the context</Button>
         <p className="wm-foot__note" role={done === 'failed' ? 'alert' : undefined}>
-          {done === 'failed' ? 'Could not save. Try again; nothing was changed.' : 'Only this project. Nothing is posted and the chat is not marked read.'}
+          {done === 'failed' ? 'Could not save. Try again; nothing was changed.' : 'Only this space. Nothing is posted and the chat is not marked read.'}
         </p>
       </div>
     </div>

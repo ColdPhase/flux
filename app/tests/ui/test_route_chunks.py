@@ -161,9 +161,9 @@ class RouteChunksJourney(unittest.TestCase):
         if phone:
             # The phone has no drawer (#341): Home's quiet "Sketchbook" link opens it.
             page.get_by_role("navigation", name="Main places").get_by_role("link", name="Home", exact=True).click()
-            page.get_by_role("link", name="Sketchbook", exact=True).click()
+            page.get_by_role("link", name="My map", exact=True).click()
         else:
-            page.locator(".app__side").get_by_role("link", name="Sketchbook").first.click()
+            page.locator(".app__side").get_by_role("link", name="My map").first.click()
         expect(page.get_by_role("heading", name="Your notes", exact=True)).to_be_visible()
 
     def settings(self, page: Page, *, phone=False):
@@ -357,7 +357,7 @@ class RouteChunksJourney(unittest.TestCase):
                 page.get_by_role("link", name="Go to Home", exact=True).click()
                 # Navigate through the public router, preserving the same document and visit copy.
                 page.locator(".app__side").get_by_role("link", name=re.compile("^Chunk boundaries(?:, new activity)?$")).click()
-                page.get_by_role("navigation", name="Project views").get_by_role("link", name="Wiki", exact=True).click()
+                page.get_by_role("navigation", name="Space views").get_by_role("link", name="Wiki", exact=True).click()
                 page.get_by_role("link", name=re.compile(rf"^{re.escape(doc['title'])}(?:\s*Draft)?$")).click()
                 page.locator(".wiki-bar").get_by_role("link", name="Edit", exact=True).click()
                 expect_text(latest)
@@ -514,7 +514,7 @@ class RouteChunksJourney(unittest.TestCase):
                 expect(page.get_by_role("heading", name="Home", exact=True)).to_be_visible()
                 # Through the router, not a document load: a load would clear this tab's visit copies anyway.
                 page.locator(".app__side").get_by_role("link", name=re.compile("^Chunk boundaries(?:, new activity)?$")).click()
-                page.get_by_role("navigation", name="Project views").get_by_role("link", name="Wiki", exact=True).click()
+                page.get_by_role("navigation", name="Space views").get_by_role("link", name="Wiki", exact=True).click()
                 page.get_by_role("link", name=re.compile(rf"^{re.escape(doc['title'])}(?:\s*Draft)?$")).click()
                 page.locator(".wiki-bar").get_by_role("link", name="Edit", exact=True).click()
                 expect(page.locator('[data-live-status="live"]')).to_be_visible()

@@ -78,7 +78,7 @@ function moveError(error: unknown, title: string) {
   if (error instanceof ApiError && error.code === 'VERSION_CONFLICT') return `“${title}” was changed by someone else a moment ago, so it was not moved. The board shows its current state.`;
   if (error instanceof ApiError && error.code === 'TASK_PREREQUISITES_UNMET') return `“${title}” was not moved: it can start or finish only when every task it waits for is done.`;
   if (error instanceof ApiError && error.status === 404) return `“${title}” is no longer available to you.`;
-  if (error instanceof ApiError && error.status === 403) return 'You can read this project but not change it.';
+  if (error instanceof ApiError && error.status === 403) return 'You can read this space but not change it.';
   if (error instanceof NetworkError) return `Flux could not be reached, so “${title}” was not moved. Try again when you are online.`;
   return `“${title}” could not be moved. Its current state is shown; try again.`;
 }

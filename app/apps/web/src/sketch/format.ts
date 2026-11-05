@@ -37,7 +37,7 @@ export function provenance(thought: Pick<Thought, 'source' | 'version' | 'create
  * message, the DM's own audience line ("Only you and Kai").
  */
 export function audience(sketch: Sketch, meId: string, projectName?: string | null, dmAudience?: string | null) {
-  if (sketch.scope === 'project') return projectName ? `Everyone in ${projectName}` : 'Everyone in the project';
+  if (sketch.scope === 'project') return projectName ? `Everyone in ${projectName}` : 'Everyone in the space';
   if (sketch.scope === 'dm') return dmAudience ? `${dmAudience}, in this direct message` : 'The people in this direct message';
   return sketch.createdBy.id === meId ? 'Only you' : `Only ${firstName(sketch.createdBy.name)}`;
 }

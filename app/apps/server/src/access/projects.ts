@@ -1,6 +1,6 @@
 import { createProjectWithAssistant, grantProjectWithAssistant } from '../assistant/project-membership.js';
 import type { FastifyInstance } from 'fastify';
-import { PROJECT_TEMPLATES, PROJECT_VIEWS, PROJECTS_PATH, WORKSPACES_PATH, type AddProjectViewCommand, type CreateProjectCommand, type GrantProjectCommand, type PageQuery } from '@flux/contracts';
+import { PROJECT_VIEWS, PROJECTS_PATH, WORKSPACES_PATH, type AddProjectViewCommand, type CreateProjectCommand, type GrantProjectCommand, type PageQuery } from '@flux/contracts';
 import {
   addProjectView,
   assertAuthorized,
@@ -20,7 +20,7 @@ export function projectRoutes(app: FastifyInstance, { db, principal, command, ru
   app.get<{ Params: { workspaceId: string }; Querystring: PageQuery }>(`${WORKSPACES_PATH}/:workspaceId/projects`, { schema: { querystring: pageQuery } }, async (request) =>
     listProjects(await principal(request), request.params.workspaceId, request.query, db, accessPorts));
   app.post<{ Params: { workspaceId: string }; Body: CreateProjectCommand }>(`${WORKSPACES_PATH}/:workspaceId/projects`, {
-    schema: { body: { type: 'object', required: ['name'], additionalProperties: false, properties: { name: nameSchema, visibility: { type: 'string', enum: ['workspace', 'restricted'] }, template: { type: 'string', enum: [...PROJECT_TEMPLATES] } } } },
+    schema: { body: { type: 'object', required: ['name'], additionalProperties: false, properties: { name: nameSchema, visibility: { type: 'string', enum: ['workspace', 'restricted'] } } } },
   }, async (request, reply) => command(request, reply, {
     operation: `POST ${WORKSPACES_PATH}/:workspaceId/projects`, scope: workspaceScope(request.params.workspaceId), status: 201,
     run: (actor, conn) => createProjectWithAssistant(actor, request.params.workspaceId, request.body, conn),
@@ -45,7 +45,7 @@ export function projectRoutes(app: FastifyInstance, { db, principal, command, ru
         type: 'object', required: ['principal', 'role'], additionalProperties: false,
         properties: {
           principal: { type: 'object', required: ['kind', 'id'], additionalProperties: false, properties: { kind: { type: 'string', enum: ['human', 'agent'] }, id: { type: 'string', minLength: 1 } } },
-          role: { type: 'string', enum: ['contributor', 'viewer', 'denied'] },
+          role: { type: 'string', enum: ['manager', 'contributor', 'viewer', 'denied'] },
         },
       },
     },

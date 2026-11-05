@@ -84,7 +84,7 @@ class AssistantFinish(unittest.TestCase):
                 self.stub_thread(page, [])
                 page.goto(f"{self.thread_url()}?ask=1")
                 bar = page.locator("#project-ask")
-                expect(bar).to_contain_text("I'm not in this project yet.")
+                expect(bar).to_contain_text("I'm not in this space yet.")
                 expect(bar).not_to_contain_text("A manager can add me")
                 add = bar.get_by_role("button", name="Add my assistant here")
                 if phone:
@@ -98,7 +98,7 @@ class AssistantFinish(unittest.TestCase):
                     self.json(route, {"id": str(uuid.uuid4())}, 201)
                 page.route(re.compile(r".*/api/v1/projects/[0-9a-f-]{36}/grants$"), grant)
                 add.click()
-                expect(bar).not_to_contain_text("I'm not in this project yet.")
+                expect(bar).not_to_contain_text("I'm not in this space yet.")
                 self.assertEqual(len(granted), 1)
 
     def test_04_a_member_who_does_not_manage_asks_the_manager_by_name(self) -> None:
@@ -118,7 +118,7 @@ class AssistantFinish(unittest.TestCase):
                 page.route(re.compile(r".*/api/v1/assistant-runs\?limit=\d+$"), lambda route: self.json(route, {"items": [], "total": 0, "limit": 10, "offset": 0}))
                 page.goto(f"/projects/{self.ids['jonas_project']}/conversations/{self.ids['jonas_conversation']}?ask=1")
                 bar = page.locator("#project-ask")
-                expect(bar).to_contain_text("I'm not in this project yet. A manager can add me.")
+                expect(bar).to_contain_text("I'm not in this space yet. A manager can add me.")
                 expect(page.get_by_role("group", name="Suggestions for your assistant")).to_have_count(0)
                 ask = bar.get_by_role("button", name="Ask Jonas to add me")
                 expect(ask).to_be_visible()
@@ -185,7 +185,7 @@ class AssistantFinish(unittest.TestCase):
         self.stub_ask(page, error={"code": "PERSONAL_RUN_NO_PROJECT_ACCESS", "message": "Your assistant has no access to this project"})
         page.goto(self.thread_url())
         page.get_by_role("group", name="Suggestions for your assistant").get_by_role("button", name="Catch me up").click()
-        expect(page.locator("#project-ask")).to_contain_text("I'm not in this project yet.")
+        expect(page.locator("#project-ask")).to_contain_text("I'm not in this space yet.")
         self.assertEqual(len(self.messages(page, self.ids["conversation"])), before)
 
     # ---------------------------------------------------------------- Journey 1 steps 8 and 9: Close

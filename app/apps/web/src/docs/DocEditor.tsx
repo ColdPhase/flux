@@ -188,7 +188,7 @@ function ScopedDocEditor({ project, doc, restore, accountId }: EditData & { proj
       if (cause instanceof ApiError && cause.code === 'VERSION_CONFLICT') {
         const latest = (cause.body as { current?: Doc } | null)?.current ?? null;
         setConflict(latest); setShowTheirs(false); setAttempt(crypto.randomUUID());
-      } else if (cause instanceof ApiError && cause.status === 403) setError('You can read this project but not change its pages.');
+      } else if (cause instanceof ApiError && cause.status === 403) setError('You can read this space but not change its pages.');
       else if (cause instanceof ApiError && cause.status === 404) setError('This page is no longer available to you.');
       else setError(cause instanceof Error ? `${cause.message}. Your text is kept; try again.` : 'Could not save. Your text is kept; try again.');
     } finally { if (mounted.current) setBusy(false); }
@@ -259,7 +259,7 @@ function ScopedDocEditor({ project, doc, restore, accountId }: EditData & { proj
             <button type="button" aria-pressed={mode === 'preview'} onClick={() => setMode('preview')}>Preview</button>
             {wide ? <button type="button" aria-pressed={mode === 'both'} onClick={() => setMode('both')}>Both</button> : null}
           </div>
-          <Button variant="quiet" icon="link" onClick={() => setPicker((open) => !open)} aria-expanded={picker} aria-keyshortcuts={isMac ? 'Meta+K' : 'Control+K'} data-tip={`Link to something in this project   ${mod} K`}>Link</Button>
+          <Button variant="quiet" icon="link" onClick={() => setPicker((open) => !open)} aria-expanded={picker} aria-keyshortcuts={isMac ? 'Meta+K' : 'Control+K'} data-tip={`Link to something in this space   ${mod} K`}>Link</Button>
           <span className="doc-edit__hint">Markdown · <kbd>{mod}</kbd><kbd>S</kbd> saves</span>
         </div>
         {picker ? <LinkPicker projectId={project.id} workspaceId={project.workspaceId} selfId={doc?.id ?? null} onPick={insert} onClose={() => { setPicker(false); textRef.current?.focus(); }} /> : null}
@@ -276,7 +276,7 @@ function ScopedDocEditor({ project, doc, restore, accountId }: EditData & { proj
           {mode !== 'write' ? (
             <div className="doc-edit__preview" aria-live="polite" aria-label="Preview">
               {preview ? <DocProse html={preview.html || '<p class="doc-muted">Nothing to preview yet.</p>'} /> : <p className="doc-muted" aria-busy="true">Rendering…</p>}
-              {preview?.missing ? <p className="doc-notice"><Icon name="alert" size={14} />{preview.missing === 1 ? 'One link does' : `${preview.missing} links do`} not point to anything in this project and will show as plain text.</p> : null}
+              {preview?.missing ? <p className="doc-notice"><Icon name="alert" size={14} />{preview.missing === 1 ? 'One link does' : `${preview.missing} links do`} not point to anything in this space and will show as plain text.</p> : null}
             </div>
           ) : null}
         </div>
@@ -298,7 +298,7 @@ function ScopedDocEditor({ project, doc, restore, accountId }: EditData & { proj
           </div>
         </div>
         {error ? <p className="doc-error" role="alert">{error}</p> : null}
-        <p className="doc-muted doc-edit__foot">Earlier versions never change. {fields.state === 'draft' ? 'A draft is visible to the project too; publishing marks it as ready.' : 'Published pages are marked as ready to rely on.'}</p>
+        <p className="doc-muted doc-edit__foot">Earlier versions never change. {fields.state === 'draft' ? 'A draft is visible to the space too; publishing marks it as ready.' : 'Published pages are marked as ready to rely on.'}</p>
       </form>
     </>
   );

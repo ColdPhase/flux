@@ -128,7 +128,7 @@ Prerequisites: Git and Docker Engine 25 or newer (or Docker Desktop) with Compos
 git clone --depth 1 https://github.com/ColdPhase/flux.git
 cd flux
 ./flux up      # creates docker/.env with random secrets once, builds, migrates, starts, prints the URL
-./flux demo    # optional: sample workspace, project, conversation and note; prints two logins
+./flux demo    # optional: a sample company, space, conversation and note; prints two logins
 ```
 
 Then open the URL that `./flux up` prints, <http://127.0.0.1:8081/> by default. If port 8081 is
@@ -170,11 +170,11 @@ To run Flux for a team on your own domain, start with the
 Your own MCP client, such as Claude Code or Codex, can read the projects you choose. It runs on your
 computer with your own model account, which Flux never sees. On the `./flux demo` data:
 
-1. Sign in as Ada, the workspace owner (`./flux demo` prints her password), and open the Connect page:
+1. Sign in as Ada, the company's owner (`./flux demo` prints her password), and open the Connect page:
    your name at the bottom left → **All settings** → **Agents and AI** → **Local co-work on this
    computer** → **Manage**, or go straight to <http://127.0.0.1:8081/connect-agent>. 8081 is the
    default port; use the one `./flux up` printed.
-2. **Create your personal agent.** Keep the workspace "Riverside Makers (demo)", give the agent a
+2. **Create your personal agent.** Keep the company "Riverside Makers (demo)", give the agent a
    name and choose **Create personal agent**. The form is already open on a first visit. The demo
    seeds no agent.
 3. **Grant it the project.** Under **New connection**, name the connection and pick your client.

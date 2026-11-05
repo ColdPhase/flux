@@ -427,11 +427,12 @@ describe('DM sketches', () => {
     await grant(olga, viewing.id, kai, 'viewer');
 
     const initial = expectStatus(await preview(kai, sketch.id), 200) as SketchPromotionPreview;
-    assert.equal(initial.canCreateProject, false);
-    assert.ok(initial.target?.kind === 'existing');
+    // F-037: everyone in the company but a guest starts spaces.
+    assert.equal(initial.canCreateProject, true);
+    assert.ok(initial.target?.kind === 'new', 'a member is offered a new space first');
     assert.ok(initial.projects.some((p) => p.id === open.id) && initial.projects.some((p) => p.id === closed.id));
     assert.ok(!initial.projects.some((p) => p.id === viewing.id), 'only projects they can change');
-    expectStatus(await preview(kai, sketch.id, '?target=new'), 403, 'members do not create projects');
+    expectStatus(await preview(kai, sketch.id, '?target=new'), 200, 'members start spaces');
     expectStatus(await preview(kai, sketch.id, `?projectId=${viewing.id}`), 403, 'a viewer cannot copy in');
 
     const bench = expectStatus(await preview(kai, sketch.id, `?projectId=${closed.id}`), 200) as SketchPromotionPreview;

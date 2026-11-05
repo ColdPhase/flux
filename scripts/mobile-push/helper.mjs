@@ -52,9 +52,12 @@ async function seed(directory, state) {
       state[person] = { id: (await client.request('GET', '/api/v1/me')).user.id };
     }
     const owner = clients.producer; const recipient = clients.recipient;
-    const workspace = await owner.request('POST', '/api/v1/workspaces', { name: 'Disposable mobile push verification' }, 201);
+    // F-037: the producer's first account set up this fresh fixture's company.
+    const [company] = await owner.request('GET', '/api/v1/workspaces');
+    const workspace = await owner.request('PATCH', `/api/v1/workspaces/${company.id}`, { name: 'Disposable mobile push verification' });
     await owner.request('POST', `/api/v1/workspaces/${workspace.id}/members`, { email: secret.recipient.email, role: 'member' }, 201);
-    const project = await owner.request('POST', `/api/v1/workspaces/${workspace.id}/projects`, { name: 'Phone push fixture', visibility: 'workspace' }, 201);
+    const project = await owner.request('POST', `/api/v1/workspaces/${workspace.id}/projects`, { name: 'Phone push fixture' }, 201);
+    await owner.request('POST', `/api/v1/projects/${project.id}/grants`, { principal: { kind: 'human', id: state.recipient.id }, role: 'contributor' }, 201);
     const conversation = await recipient.request('POST', `/api/v1/projects/${project.id}/conversations`, {
       body: 'Synthetic phone verification conversation. Reply here to exercise the normal notification pipeline.', clientMessageId: randomUUID() }, 201);
     state.workspaceId = workspace.id; state.projectId = project.id; state.conversationId = conversation.id; state.seeded = true;

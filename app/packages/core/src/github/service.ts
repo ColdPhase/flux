@@ -131,7 +131,7 @@ export function githubUseCases(uow: GithubUnitOfWork) {
         await requireHold(ports, work.id, agent.id);
         const binding = (await ports.rows.bindings(work.projectId)).find((row) => row.state === 'active' && row.workspaceId === work.workspaceId
           && sameName(row.owner, wanted.owner) && sameName(row.name, wanted.name));
-        if (!binding) throw new RuleViolationError('That repository is not connected to this project. A person connects it first in the project\'s GitHub settings.', 'GITHUB_REPOSITORY_NOT_BOUND');
+        if (!binding) throw new RuleViolationError('That repository is not connected to this space. A person connects it first in the space\'s GitHub settings.', 'GITHUB_REPOSITORY_NOT_BOUND');
         return linkVerified(ports, owner, work, binding, wanted.number, role, agent, () => requireHold(ports, work.id, agent.id));
       });
     },

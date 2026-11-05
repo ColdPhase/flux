@@ -7,6 +7,9 @@ import { test } from 'node:test';
 import WebSocket from 'ws';
 import * as Y from 'yjs';
 import type { Doc, LiveDocBootstrap, LiveMapBootstrap, WikiTextEnvelope } from '@flux/contracts';
+import { joinCompany } from '@flux/core';
+import { accessPorts } from '@flux/db';
+import { db } from './support/db.js';
 import { Browser, publicOrigin } from './support/http.js';
 import { expectStatus } from './support/people.js';
 
@@ -69,12 +72,14 @@ test('normal install live ACK survives off/native refusal, re-enable recovery/Sa
     expectStatus(await browser.request('POST', '/api/auth/sign-up/email', { body: { email: `promotion-${randomUUID()}@example.test`,
       password: 'retain the shared working text', name: 'Production writer' } }), 200);
     const me = expectStatus(await browser.request('GET', '/api/v1/me'), 200) as { user: { id: string } };
-    const ws = expectStatus(await browser.request('POST', '/api/v1/workspaces', { body: { name: 'Promotion recovery' } }), 201) as { id: string };
-    const project = expectStatus(await browser.request('POST', `/api/v1/workspaces/${ws.id}/projects`,
+    // A real server has no route to a workspace of one's own (F-037): this writer belongs to the one company.
+    await joinCompany(me.user.id, { sso: true }, db, accessPorts);
+    const [ws] = expectStatus(await browser.request('GET', '/api/v1/workspaces'), 200) as { id: string }[];
+    const project = expectStatus(await browser.request('POST', `/api/v1/workspaces/${ws!.id}/projects`,
       { body: { name: 'Normal collaboration', visibility: 'restricted' } }), 201) as { id: string };
     const doc = expectStatus(await browser.request('POST', `/api/v1/projects/${project.id}/docs`,
       { body: { title: 'Retained text', body: 'Saved version.' } }), 201) as Doc;
-    const map = expectStatus(await browser.request('POST', `/api/v1/workspaces/${ws.id}/sketches`,
+    const map = expectStatus(await browser.request('POST', `/api/v1/workspaces/${ws!.id}/sketches`,
       { body: { title: 'Normal live map', scope: 'project', projectId: project.id } }), 201) as { id: string };
     const mapHead = expectStatus(await browser.request('GET', `/api/v1/sketches/${map.id}/live`), 200) as LiveMapBootstrap;
     assert.equal(mapHead.resourceId, map.id); assert.equal(mapHead.canWrite, true);

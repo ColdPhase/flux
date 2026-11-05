@@ -198,6 +198,12 @@ if (phase === 'prepare') {
         return response.json as { id: string };
       };
       const workspace = await create('/api/v1/workspaces', { name: 'Cutover authority control' });
+      // While the provider is only being prepared, password accounts are still the way in: the company page offers Invite.
+      const company = await context.newPage();
+      await company.goto(`${origin}/settings/company`);
+      await company.getByRole('button', { name: 'Invite', exact: true }).waitFor({ timeout: 20_000 });
+      assert.equal(await company.locator('[data-people-sso]').count(), 0, 'the page does not say people join by signing in');
+      await company.close();
       const project = await create(`/api/v1/workspaces/${workspace.id}/projects`, { name: 'Cutover control', visibility: 'restricted' });
       const agent = await create(`/api/v1/workspaces/${workspace.id}/agents`, { name: 'Cutover control', owner: 'self' });
       await create(`/api/v1/projects/${project.id}/grants`, { principal: { kind: 'agent', id: agent.id }, role: 'contributor' });
@@ -349,6 +355,9 @@ if (phase === 'cutover') {
       const me = await api<{ user: { id: string; email: string } }>(context, 'GET', '/api/v1/me');
       assert.equal(me.status, 200, JSON.stringify(me.body));
       assert.equal(me.body!.user.id, patId, 'the same Flux account, with its data and memberships');
+      // F-037: an account that existed before it linked the provider joins the company on its first provider sign-in.
+      const companies = await api<{ company: boolean; role: string }[]>(context, 'GET', '/api/v1/workspaces');
+      assert.ok(companies.body!.some((item) => item.company && item.role === 'member'), JSON.stringify(companies.body));
       // The same subject keeps the same Flux account; a sign-in takes the provider's verified address (#113).
       assert.equal(me.body!.user.email, 'frank@acme.test', 'the account takes the verified provider address on sign-in');
     });

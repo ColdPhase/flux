@@ -12,9 +12,9 @@ import { Button, Icon, Spinner } from '../ui';
 const STORE = 'flux.invite-token';
 const ROLE_NAME: Record<InviteRole, string> = { admin: 'an admin', member: 'a member', guest: 'a guest' };
 const ROLE_SENTENCE: Record<InviteRole, string> = {
-  admin: 'Admins add and remove people and manage every project.',
-  member: 'Members see projects open to the workspace and the ones given to them.',
-  guest: 'Guests see only the projects given to them.',
+  admin: 'Admins add and remove people and can change every space.',
+  member: 'Members are in Everyone, start spaces and see the ones they’re added to.',
+  guest: 'Guests see only the spaces they’re added to.',
 };
 
 function readToken(): string {
@@ -106,8 +106,7 @@ export function JoinPage() {
   }
   if (state.kind === 'joined') {
     const { result } = state;
-    // #763 FT-3: an invite made from a project lands in it.
-    const open = () => { revalidator.revalidate(); navigate(result.projectId ? `/projects/${result.projectId}` : '/', { replace: true }); };
+    const open = () => { revalidator.revalidate(); navigate('/', { replace: true }); };
     return (
       <>
         <div className="auth__head"><h1 className="auth__title">{result.status === 'joined' ? `You joined ${result.workspaceName}` : `You’re in ${result.workspaceName}`}</h1>
@@ -121,7 +120,7 @@ export function JoinPage() {
             </div>
           </div>
         ) : null}
-        <div className="auth__card"><Button variant="primary" size="lg" block autoFocus onClick={open}>{result.projectId ? 'Open the project' : `Open ${result.workspaceName}`}</Button></div>
+        <div className="auth__card"><Button variant="primary" size="lg" block autoFocus onClick={open}>{`Open ${result.workspaceName}`}</Button></div>
       </>
     );
   }
@@ -133,7 +132,7 @@ export function JoinPage() {
       <div className="auth__head">
         <h1 className="auth__title">{already ? `You’re in ${preview.workspaceName}` : `Join ${preview.workspaceName}`}</h1>
         <p className="auth__lead">{already ? 'This invite link has nothing more to do for this account.'
-          : `${preview.invitedBy} invited you to ${preview.workspaceName} as ${ROLE_NAME[preview.role]}. ${ROLE_SENTENCE[preview.role]}${preview.projectName ? ` You start in ${preview.projectName}.` : ''}`}</p>
+          : `${preview.invitedBy} invited you to ${preview.workspaceName} as ${ROLE_NAME[preview.role]}. ${ROLE_SENTENCE[preview.role]}`}</p>
       </div>
       {!already && (preview.emailLocked || preview.encrypted) ? (
         <div className="auth__notice" role="note">

@@ -208,7 +208,7 @@ class HomeTasksJourney(unittest.TestCase):
         self.assertNotIn("Mount the PIR sensor", page.content())
         expect(page.get_by_role("heading", name="Nothing is waiting for you")).to_be_visible()
         # Olek has a project (he reached this page from his Home), so the empty state does not offer to create one.
-        expect(page.locator("#content").get_by_role("link", name="Create a project")).to_have_count(0)
+        expect(page.locator("#content").get_by_role("link", name="Create a space")).to_have_count(0)
 
     # ---------------------------------------------------------------- phone
 

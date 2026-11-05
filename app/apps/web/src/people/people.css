@@ -8,6 +8,13 @@
 .people__who { display: flex; flex: 1; flex-direction: column; min-width: 0; font-size: var(--fs-md); line-height: 1.45; }
 .people__who b { font-weight: 500; color: var(--t1); overflow-wrap: anywhere; }
 .people__who span { font-size: var(--fs-sm); color: var(--t3); overflow-wrap: anywhere; }
+.people__name { min-height: 44px; padding: 0; }
+.people__sso { display: flex; align-items: flex-start; gap: 10px; margin: 12px 0 0; padding: 12px; border-radius: var(--r); background: var(--sub); font-size: var(--fs-md); line-height: 1.45; }
+.people__sso svg { flex: none; margin-top: 3px; color: var(--t3); }
+.people__sso b { display: block; font-weight: 500; color: var(--t1); }
+.people__sso span span { font-size: var(--fs-sm); color: var(--t3); }
+.people__guests { display: flex; align-items: flex-start; gap: 6px; }
+.people__guests svg { flex: none; margin-top: 3px; }
 .people__role { flex: none; font-size: var(--fs-sm); color: var(--t2); }
 .people__change.ui-btn { flex: none; min-height: 28px; padding: 0 8px; color: var(--t2); }
 .people__change[aria-expanded="true"] { background: var(--sub); color: var(--t1); }

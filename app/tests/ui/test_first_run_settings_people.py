@@ -92,93 +92,68 @@ class FirstRunSettingsPeople(unittest.TestCase):
     def workspaces(self, page: Page) -> list[dict]:
         return self.api(page, "GET", "/api/v1/workspaces", status=200)
 
+    def grant_of(self, page: Page, project_id: str, who: str) -> str:
+        grants = self.api(page, "GET", f"/api/v1/projects/{project_id}/grants", status=200)
+        return next(grant["id"] for grant in grants if grant["principal"]["id"] == self.ids[who])
+
     # ---------------------------------------------------------------- first run (FR-1, FR-2, FR-5, FR-9)
 
-    def test_01_a_first_project_asks_only_its_name_and_makes_the_workspace_quietly(self) -> None:
+    def test_01_someone_nobody_invited_is_in_no_company_and_starts_no_space(self) -> None:
+        """F-037: one Flux is one company, set up by its first account; a later sign-up joins only through a link."""
         self.sign_up("maria", "Maria Nowak")
-        for viewport in (DESKTOP, PHONE):
-            page = self.page("maria", viewport=viewport)
-            page.goto("/projects/new")
-            form = page.get_by_role("form", name="New project")
-            expect(form.get_by_label("Project name")).to_be_focused()
-            # No field asks for a workspace: the page says where the project goes, and that only Maria sees it.
-            expect(form.get_by_label("Your space")).to_have_count(0)
-            expect(form.get_by_role("textbox")).to_have_count(1)
-            expect(form).to_contain_text("In Maria’s space")
-            expect(form).to_contain_text("Only you can see it until you invite someone")
-            expect(form.get_by_role("combobox", name="Workspace")).to_have_count(0)
-            shot(page, f"763-new-project-first-{'390' if viewport == PHONE else '1440'}-{UI_BROWSER}")
-        # An empty name says so in the form's own words, not with the browser's bubble.
-        form.get_by_role("button", name="Create project").click()
-        expect(form.get_by_text("Give the project a name.")).to_be_visible()
-        expect(form.get_by_label("Project name")).to_have_attribute("aria-invalid", "true")
+        page = self.page("maria")
+        page.goto("/projects/new")
+        form = page.get_by_role("form", name="New space")
+        expect(form.get_by_label("Space name")).to_be_focused()
+        expect(form.get_by_role("alert")).to_have_text("You’re not in a company on this Flux yet. Ask an admin for an invite link.")
+        expect(form.get_by_role("button", name="Create space")).to_be_disabled()
+        expect(form.get_by_role("combobox", name="Workspace")).to_have_count(0)
         self.assertEqual(self.workspaces(page), [], "nothing was made")
-        form.get_by_label("Project name").fill("Balcony herbs")
-        form.get_by_role("button", name="Create project").click()
+        page.goto("/")
+        expect(page.get_by_role("region", name="You’re not in a company here yet")).to_contain_text("Got an invite link? Open it to join your company.")
+        # The test deployment's fixture route gives Maria a company of her own for the tests below.
+        made = self.api(page, "POST", "/api/v1/workspaces", {"name": "Maria’s company"}, status=201)
+        type(self).ids["maria:space"] = made["id"]
+        page.goto("/projects/new")
+        form = page.get_by_role("form", name="New space")
+        # An empty name says so in the form's own words, not with the browser's bubble.
+        form.get_by_role("button", name="Create space").click()
+        expect(form.get_by_text("Give the space a name.")).to_be_visible()
+        expect(form.get_by_label("Space name")).to_have_attribute("aria-invalid", "true")
+        form.get_by_label("Space name").fill("Balcony herbs")
+        form.get_by_role("button", name="Create space").click()
         expect(page).to_have_url(re.compile(r"/projects/[0-9a-f-]{36}\?new=1"))
-        spaces = self.workspaces(page)
-        self.assertEqual([(space["name"], space["role"]) for space in spaces], [("Maria’s space", "owner")])
-        type(self).ids["maria:space"] = spaces[0]["id"]
+        self.assertEqual([(space["name"], space["role"]) for space in self.workspaces(page)], [("Maria’s company", "owner")], "starting a space makes no workspace")
 
-    def test_02_new_with_no_project_opens_on_project_and_command_k_offers_a_project(self) -> None:
+    def test_02_new_with_no_space_opens_on_space_and_command_k_offers_a_space(self) -> None:
         self.sign_up("nobody", "Nia Empty")
         page = self.page("nobody")
+        self.api(page, "POST", "/api/v1/workspaces", {"name": "Nia’s company"}, status=201)
         page.goto("/")
         expect(page.get_by_role("heading", level=1, name="Home")).to_be_visible()
         page.keyboard.press("c")
-        expect(window(page)).to_have_accessible_name("New project")
-        expect(kind_tab(page, "Project")).to_have_attribute("aria-selected", "true")
-        expect(window(page).get_by_role("tabpanel")).not_to_contain_text("There is no project yet")
-        expect(window(page)).to_contain_text("In Nia’s space")
+        expect(window(page)).to_have_accessible_name("New space")
+        expect(kind_tab(page, "Space")).to_have_attribute("aria-selected", "true")
+        expect(window(page).get_by_role("tabpanel")).not_to_contain_text("There is no space yet")
         page.keyboard.press("Escape")
         expect(window(page)).to_have_count(0)
         page.keyboard.press("Control+k")
         palette = page.get_by_role("dialog", name="Jump to")
         expect(palette).to_be_visible()
         expect(palette.get_by_role("option", name=re.compile("^New task"))).to_have_count(0)
-        expect(palette.get_by_role("option", name=re.compile("^New project"))).to_have_count(1)
+        expect(palette.get_by_role("option", name=re.compile("^New space"))).to_have_count(1)
         palette.get_by_role("combobox", name="Jump to").fill("Seed swap")
         expect(palette.get_by_role("option", name=re.compile("^New task"))).to_have_count(0)
-        palette.get_by_role("option", name=re.compile("^New project “Seed swap”")).click()
-        expect(window(page)).to_have_accessible_name("New project")
-        expect(window(page).get_by_label("Project name")).to_have_value("Seed swap")
-        # With a project the window starts on Task again (F-026 S3).
-        window(page).get_by_role("button", name=re.compile("^Create project")).click()
+        palette.get_by_role("option", name=re.compile("^New space “Seed swap”")).click()
+        expect(window(page)).to_have_accessible_name("New space")
+        expect(window(page).get_by_label("Space name")).to_have_value("Seed swap")
+        # With a space the window starts on Task again (F-026 S3).
+        window(page).get_by_role("button", name=re.compile("^Create space")).click()
         expect(page).to_have_url(re.compile(r"/projects/[0-9a-f-]{36}\?new=1"))
         page.goto("/")
         expect(page.get_by_role("heading", level=1, name="Home")).to_be_visible()
         page.keyboard.press("c")
         expect(kind_tab(page, "Task")).to_have_attribute("aria-selected", "true")
-
-    def test_03_someone_who_manages_two_workspaces_chooses_where_the_project_goes(self) -> None:
-        page = self.page("maria")
-        second = self.api(page, "POST", "/api/v1/workspaces", {"name": "Riverside Makers"}, status=201)
-        # A workspace where Maria is only a member is not offered: members do not create projects there.
-        self.sign_up("olek", "Olek Member")
-        olek = self.page("olek")
-        other = self.api(olek, "POST", "/api/v1/workspaces", {"name": "Olek’s club"}, status=201)
-        self.api(olek, "POST", f"/api/v1/workspaces/{other['id']}/members", {"email": self.ids["maria:email"], "role": "member"}, status=201)
-        page = self.page("maria")
-        page.goto("/projects/new")
-        form = page.get_by_role("form", name="New project")
-        picker = form.get_by_role("combobox", name="Workspace")
-        expect(picker).to_be_visible()
-        expect(form).to_contain_text(re.compile("In (Maria’s space|Riverside Makers)"))
-        self.assertEqual(sorted(app_labels(picker)), ["Maria’s space", "Riverside Makers"])
-        choose(picker, label="Riverside Makers")
-        expect(form).to_contain_text("In Riverside Makers")
-        shot(page, f"763-new-project-two-places-1440-{UI_BROWSER}")
-        form.get_by_label("Project name").fill("Tool library")
-        form.get_by_role("button", name="Create project").click()
-        expect(page).to_have_url(re.compile(r"/projects/[0-9a-f-]{36}\?new=1"))
-        project_id = re.search(r"/projects/([0-9a-f-]{36})", page.url).group(1)
-        self.assertEqual(self.api(page, "GET", f"/api/v1/projects/{project_id}", status=200)["workspaceId"], second["id"])
-        # The Create window's Project tab has the same picker.
-        page.goto("/")
-        expect(page.get_by_role("heading", level=1, name="Home")).to_be_visible()
-        page.keyboard.press("c")
-        kind_tab(page, "Project").click()
-        expect(window(page).get_by_role("combobox", name="Workspace")).to_be_visible()
 
     # ---------------------------------------------------------------- sign-up and sign-in (FR-7, FR-8)
 
@@ -296,15 +271,15 @@ class FirstRunSettingsPeople(unittest.TestCase):
         expect(page.locator("[data-assistant='server-off']")).to_contain_text("Off on this Flux server · ask your admin to turn it on")
         expect(page.locator("[data-assistant='server-off']").get_by_role("button")).to_have_count(0)
         expect(page.get_by_role("link", name="Back to Agents and AI")).to_be_visible()
-        # The account menu holds Settings and People, never features that may be off.
+        # The account menu holds Settings only (the company's people are in Settings › Company), never features that may be off.
         page.goto("/")
         page.locator(".me__btn").click()
         menu = page.get_by_role("dialog", name="Account")
         expect(menu.get_by_role("link", name="Your assistant")).to_have_count(0)
         expect(menu.get_by_role("link", name="Your background suggestions")).to_have_count(0)
         expect(menu.get_by_role("link", name="All settings")).to_be_visible()
-        expect(menu.get_by_role("link", name="People")).to_be_visible()
-        self.assertEqual(menu.get_by_role("link").evaluate_all("links => links.map((l) => getComputedStyle(l).textDecorationLine)"), ["none", "none"])
+        expect(menu.get_by_role("link", name="People")).to_have_count(0)
+        self.assertEqual(menu.get_by_role("link").evaluate_all("links => links.map((l) => getComputedStyle(l).textDecorationLine)"), ["none"])
 
     # ---------------------------------------------------------------- Notifications (SG-3, SG-5)
 
@@ -352,42 +327,53 @@ class FirstRunSettingsPeople(unittest.TestCase):
 
     # ---------------------------------------------------------------- People (PE-1, PE-2)
 
-    def test_10_people_have_one_place_in_settings_and_the_account_menu(self) -> None:
+    def test_10_the_company_has_one_place_in_settings(self) -> None:
+        """F-037: Settings › Company replaces People: the company's name and its people with their roles, no AI switch."""
         page = self.page("maria")
         page.goto("/settings")
         nav = page.get_by_role("navigation", name="Settings sections")
         expect(nav.get_by_role("link").first).to_be_visible()
-        self.assertEqual(nav.get_by_role("link").all_inner_texts()[:2], ["Account", "People"])
-        nav.get_by_role("link", name="People").click()
-        expect(page).to_have_url(re.compile(r"/settings/people$"))
-        expect(nav.get_by_role("link", name="People")).to_have_attribute("aria-current", "page")
-        # Maria is in three workspaces: one row each, with her role.
-        rows = page.locator(".sset-card").get_by_role("link")
-        expect(rows).to_have_count(3)
-        expect(page.get_by_role("link", name=re.compile("^Olek’s club"))).to_contain_text("You’re a member")
-        page.get_by_role("link", name=re.compile("^Riverside Makers")).click()
-        expect(page.get_by_role("heading", name="People", exact=True)).to_be_visible()
-        expect(page.get_by_role("list", name="People in Riverside Makers")).to_contain_text("Maria Nowak (you)")
+        self.assertEqual(nav.get_by_role("link").all_inner_texts()[:4], ["Account", "Appearance", "Notifications", "Agents and AI"])
+        expect(nav.get_by_role("link", name="People")).to_have_count(0)
+        nav.get_by_role("link", name="Company").click()
+        expect(page).to_have_url(re.compile(r"/settings/company$"))
+        expect(nav.get_by_role("link", name="Company")).to_have_attribute("aria-current", "page")
+        expect(page.get_by_role("heading", name="Company", exact=True)).to_be_visible()
+        expect(page.get_by_text("Everyone in Maria’s company works in this one Flux. Only admins can change this page.")).to_be_visible()
+        expect(page.get_by_role("list", name="People in Maria’s company")).to_contain_text("Maria Nowak (you)")
+        # The people come first; Invite opens the ways to add someone.
+        page.get_by_role("button", name="Invite", exact=True).click()
         expect(page.get_by_role("region", name="Add someone")).to_be_visible()
+        expect(page.get_by_text("Guests see only the spaces they’re added to and never have AI.")).to_be_visible()
+        expect(page.get_by_role("button", name=re.compile("Turn (off|on) AI"))).to_have_count(0)
         expect(page.get_by_role("button", name="Back to Details")).to_have_count(0)
-        shot(page, f"763-settings-people-1440-{UI_BROWSER}")
-        # A member reads the people of a workspace and cannot add anyone.
-        page.goto("/settings/people")
-        page.get_by_role("link", name=re.compile("^Olek’s club")).click()
-        expect(page.get_by_role("list", name="People in Olek’s club")).to_contain_text("Olek Member")
-        expect(page.get_by_role("region", name="Add someone")).to_have_count(0)
-        expect(page.get_by_text("Only owners and admins add people or change roles in Olek’s club.")).to_be_visible()
-        # On the phone Settings lists People under the account.
+        # The owner renames the company in place.
+        name = page.get_by_role("region", name="Name")
+        name.get_by_role("button", name=re.compile("^Change")).click()
+        name.get_by_label("Company name", exact=True).fill("Riverside Makers")
+        name.get_by_role("button", name="Save name").click()
+        expect(name).to_contain_text("Riverside Makers")
+        shot(page, f"874-settings-company-1440-{UI_BROWSER}")
+        # A member reads the company's people and cannot add anyone or rename it.
+        self.sign_up("olek", "Olek Member")
+        self.api(page, "POST", f"/api/v1/workspaces/{self.ids['maria:space']}/members", {"email": self.ids["olek:email"], "role": "member"}, status=201)
+        olek = self.page("olek")
+        olek.goto("/settings/company")
+        expect(olek.get_by_role("list", name="People in Riverside Makers")).to_contain_text("Maria Nowak")
+        expect(olek.get_by_role("button", name="Invite", exact=True)).to_have_count(0)
+        expect(olek.get_by_role("region", name="Name").get_by_role("button", name=re.compile("^Change"))).to_have_count(0)
+        expect(olek.get_by_text("Only owners and admins add people or change roles in Riverside Makers.")).to_be_visible()
+        # The account menu holds no People any more; on the phone Settings lists Company.
         phone = self.page("maria", viewport=PHONE)
         phone.goto("/settings")
-        phone.get_by_role("link", name=re.compile("^People")).click()
-        expect(phone).to_have_url(re.compile(r"/settings/people$"))
+        phone.get_by_role("link", name=re.compile("^Company")).click()
+        expect(phone).to_have_url(re.compile(r"/settings/company$"))
         self.assertLessEqual(phone.evaluate("document.documentElement.scrollWidth"), PHONE["width"])
 
     def test_11_someone_new_gets_an_invite_link_with_their_address(self) -> None:
-        """#763 PE-2 / F-035: the address Flux could not find is filled into an invite link that joins the workspace."""
+        """#763 PE-2 / F-035: the address Flux could not find is filled into an invite link that joins the company."""
         page = self.page("maria")
-        page.goto(f"/settings/people/{self.ids['maria:space']}")
+        page.goto("/settings/company?invite=1")
         add = page.get_by_role("region", name="Add someone")
         newcomer = f"piotr.new+{STAMP}@example.test"
         add.get_by_label("Email").fill(newcomer)
@@ -399,7 +385,7 @@ class FirstRunSettingsPeople(unittest.TestCase):
         field = invite.get_by_role("group", name="New invite link").get_by_role("textbox")
         expect(field).to_have_value(re.compile(f"^{re.escape(ORIGIN)}/join#[A-Za-z0-9_-]{{54}}$"))
         expect(invite.get_by_role("list", name=re.compile("^Waiting to be used"))).to_contain_text(newcomer)
-        shot(page, f"763-people-invite-link-1440-{UI_BROWSER}")
+        shot(page, f"874-company-invite-link-1440-{UI_BROWSER}")
         # The link opens the join page; Piotr creates his account there and joins as a member.
         stranger = self.page()
         stranger.goto(field.input_value())
@@ -408,12 +394,61 @@ class FirstRunSettingsPeople(unittest.TestCase):
         stranger.get_by_label("Email").fill(newcomer)
         stranger.get_by_label("Password").fill(PASSWORD)
         stranger.get_by_role("button", name="Create account").click()
-        expect(stranger.get_by_role("heading", level=1, name="You joined Maria’s space")).to_be_visible()
-        stranger.get_by_role("button", name="Open Maria’s space").click()
+        expect(stranger.get_by_role("heading", level=1, name="You joined Riverside Makers")).to_be_visible()
+        stranger.get_by_role("button", name="Open Riverside Makers").click()
         expect(stranger.get_by_role("heading", level=1, name="Home")).to_be_visible()
-        expect(page.get_by_role("list", name="People in Maria’s space")).to_contain_text("Piotr Nowy")
+        expect(page.get_by_role("list", name="People in Riverside Makers")).to_contain_text("Piotr Nowy")
 
     # ---------------------------------------------------------------- mention chips (PE-4)
+
+    def test_11_an_admin_lists_every_space_and_restores_someone_removed(self) -> None:
+        """Hubert, 2026-11-05: the sidebar holds a company admin's own spaces; Settings › Company holds every space and Restore."""
+        space = self.ids["maria:space"]
+        self.sign_up("wera", "Wera Removed")
+        page = self.page("maria")
+        self.api(page, "POST", f"/api/v1/workspaces/{space}/members", {"email": self.ids["wera:email"], "role": "member"}, status=201)
+        wera = self.page("wera")
+        hers = self.api(wera, "POST", f"/api/v1/workspaces/{space}/projects", {"name": "Wera’s corner"}, status=201)
+        page.goto("/settings/company")
+        sidebar = page.get_by_role("navigation", name="Spaces")
+        expect(sidebar.get_by_role("link", name=re.compile("Wera’s corner"))).to_have_count(0)
+        every = page.get_by_role("list", name="Every space in the company")
+        expect(every).to_contain_text("Wera’s corner")
+        every.get_by_role("button", name="Add me to Wera’s corner").click()
+        expect(sidebar.get_by_role("link", name=re.compile("Wera’s corner"))).to_be_visible()
+        expect(every.get_by_role("button", name="Add me to Wera’s corner")).to_have_count(0)
+        # A company admin opens a space from a link without belonging to it (F-037: they can change any space).
+        left = page.request.delete(f"{ORIGIN}/api/v1/projects/{hers['id']}/grants/{self.grant_of(page, hers['id'], 'maria')}", headers={"origin": ORIGIN})
+        self.assertEqual(left.status, 204, left.text())
+        page.goto(f"/projects/{hers['id']}")
+        expect(page.get_by_role("heading", level=1, name="Wera’s corner")).to_be_visible()
+        expect(page.get_by_role("navigation", name="Spaces").get_by_role("link", name=re.compile("Wera’s corner"))).to_have_count(0)
+        # Removed, then restored: back in the company's list, and the space stays out until it is added by hand.
+        removed_now = page.request.delete(f"{ORIGIN}/api/v1/workspaces/{space}/members/{self.ids['wera']}", headers={"origin": ORIGIN})
+        self.assertEqual(removed_now.status, 204, removed_now.text())
+        page.goto("/settings/company")
+        removed = page.get_by_role("list", name="People who were removed")
+        expect(removed).to_contain_text("Wera Removed")
+        removed.get_by_role("button", name="Restore").click()
+        expect(page.get_by_role("list", name=re.compile("^People in "))).to_contain_text("Wera Removed")
+        expect(page.get_by_role("list", name="People who were removed")).to_have_count(0)
+        shot(page, f"874-company-every-space-1440-{UI_BROWSER}")
+
+    def test_11b_the_sign_in_page_names_the_company(self) -> None:
+        """The guide: the company's name is on the sign-in page, and the name setup gave it says nothing."""
+        fresh = self.page()
+        fresh.goto("/sign-in")
+        expect(fresh.get_by_role("heading", level=1, name="Sign in")).to_be_visible()
+        expect(fresh.locator(".auth__company")).to_have_count(0)
+        owner = self.page()
+        owner.request.post(f"{ORIGIN}/api/auth/sign-in/email", headers={"origin": ORIGIN, "content-type": "application/json"},
+                           data=json.dumps({"email": "company-setup@example.test", "password": "company setup for the checks"}))
+        company = next(item for item in self.workspaces(owner) if item.get("company"))
+        self.api(owner, "PATCH", f"/api/v1/workspaces/{company['id']}", {"name": "Riverside Makers"}, status=200)
+        self.addCleanup(lambda: self.api(owner, "PATCH", f"/api/v1/workspaces/{company['id']}", {"name": "Company"}, status=200))
+        fresh.reload()
+        expect(fresh.locator(".auth__company")).to_have_text("Riverside Makers")
+        expect(fresh.get_by_role("heading", level=1, name="Sign in")).to_be_visible()
 
     def test_12_mention_chips_use_the_same_initials_as_avatars(self) -> None:
         page = self.page("maria")

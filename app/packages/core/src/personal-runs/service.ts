@@ -373,7 +373,7 @@ export function createPersonalRunUseCases({ uow, connections, providerEnabled, t
     if (usableNow?.problem) throw unavailable(usableNow.problem);
     const agentId = enablement.agents.find((agent) => agent.workspaceId === place.workspaceId)?.agentId;
     if (!agentId || !(await ports.access.canInvoke(principal, agentId, { lock: true })))
-      throw new ConflictError('Choose your assistant for this workspace first', 'PERSONAL_RUN_NO_AGENT');
+      throw new ConflictError('Choose your assistant for this company first', 'PERSONAL_RUN_NO_AGENT');
     const agent = { kind: 'agent' as const, id: agentId };
     if (!(await ports.access.canUseProject(agent, 'read', place.projectId, { lock: true })))
       throw new ConflictError('Your assistant has no access to this project', 'PERSONAL_RUN_NO_PROJECT_ACCESS');
@@ -433,7 +433,7 @@ export function createPersonalRunUseCases({ uow, connections, providerEnabled, t
     if (!place || place.projectId !== spec.projectId) return skipped('Skipped: this project has no conversation yet');
     // F-029: nothing starts in a workspace whose AI is off (the tick does not fire there; this is the backstop).
     const ai = await ports.access.workspaceAi(place.workspaceId, { lock: true });
-    if (ai.state !== 'allowed') return skipped('Skipped: AI is off in this workspace');
+    if (ai.state !== 'allowed') return skipped('Skipped: AI is off in this company');
     // The assistant changes things as the owner's: the owner must still be able to write here.
     if (!(await ports.access.canUseProject(principal, 'write', spec.projectId, { lock: true }))) return skipped('Skipped: you no longer have access to this project');
     const existing = await ports.runs.runByClientId(owner, spec.clientRunId);

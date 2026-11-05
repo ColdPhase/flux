@@ -353,7 +353,7 @@ export function AgentConnectionPage() {
   const formOpen = (personalAgents.length > 0 || quick) && adding;
   /** What Continue still needs, in words (#763 WF-5): it stays pressable and says this instead of greying out. */
   const lacking = !formOpen ? (selected ? null : 'Choose a saved connection, or create a new one.')
-    : quick && !workspaceId ? 'Your agent belongs to a workspace, and you are not in one yet.'
+    : quick && !workspaceId ? 'Your agent belongs to a company, and you are not in one yet.'
     : quick && !agentName.trim() ? 'Give your agent a name under More options.'
     : !connectionName.trim() ? 'Name this connection.'
     : !projectIds.length ? 'Choose at least one project the agent may use.'
@@ -412,7 +412,7 @@ export function AgentConnectionPage() {
   </fieldset>;
   const agentField = quick && !chosenAgent ? <>
     {workspaces.length > 1 ? <>
-      <label className="connection__label" htmlFor="agent-workspace">Workspace</label>
+      <label className="connection__label" htmlFor="agent-workspace">Company</label>
       <Select id="agent-workspace" value={workspaceId} onChange={(next) => { setWorkspaceId(next); setProjectIds([]); }} disabled={busy} required>
         {workspaces.map((workspace) => <Option key={workspace.id} value={workspace.id}>{workspace.name}</Option>)}
       </Select>
@@ -461,8 +461,8 @@ export function AgentConnectionPage() {
     </details> : null}
     {creatingAgent ? <form className="connection__create" onSubmit={(event) => { void addPersonalAgent(event); }}>
       <h2>Create your personal agent</h2><p>First step: this identity belongs only to you. A project manager must explicitly grant it project access; you can ask them when you choose its projects.</p>
-      {!workspaces.length ? <p className="connection__help" role="note">Your agent belongs to a workspace, and you are not in one yet. <Link to="/projects/new">Create a project</Link> to start one, or ask someone to add you to theirs.</p> : <>
-      <label className="connection__label" htmlFor="agent-workspace">Workspace</label>
+      {!workspaces.length ? <p className="connection__help" role="note">Your agent belongs to a company, and you are not in one yet. Ask an admin for an invite link.</p> : <>
+      <label className="connection__label" htmlFor="agent-workspace">Company</label>
       <Select id="agent-workspace" value={workspaceId} onChange={(next) => setWorkspaceId(next)} disabled={busy} required>
         {workspaces.map((workspace) => <Option key={workspace.id} value={workspace.id}>{workspace.name}</Option>)}
       </Select>
@@ -507,7 +507,7 @@ export function AgentConnectionPage() {
           </div> : null}</div>;
         })}</div>
         {projectIds.length >= 50 ? <p>One selection can include up to 50 projects.</p> : null}
-        {!eligibleProjects.length ? <p>No projects are available in this agent’s workspace.</p> : null}
+        {!eligibleProjects.length ? <p>No spaces are available to this agent.</p> : null}
       </fieldset>
       {oauthQuery ? <details className="connection__more">
         <summary><Icon name="chevron-down" size={14} />More options</summary>
@@ -573,7 +573,7 @@ export function AgentConsentPage() {
 /** The consent page for a connection whose workspace has AI off: nothing is asked of the person and nothing is granted. */
 function ConsentAiOff() {
   return <section className="connection connection--consent" aria-label="Agent access consent" data-ai-off="">
-    <FlowHeader step="Agent connection" title="AI is off in this workspace">
+    <FlowHeader step="Agent connection" title="AI is off here">
       Its admins turned off agents and assistants there, so this client cannot connect to it. Everything else works as usual.
     </FlowHeader>
     <div className="connection__footer"><Link className="ui-btn ui-btn--secondary ui-btn--lg" to="/">Back to Flux</Link></div>

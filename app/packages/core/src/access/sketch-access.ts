@@ -16,7 +16,7 @@ async function requireOpen(access: AccessReader, dmId: string, selfId: string) {
   const who = firstName(closed.recipient.name);
   const error = closed.reason === 'left'
     ? new ConflictError(`${who} left this conversation. They can reopen it by messaging you.`, 'DM_RECIPIENT_LEFT')
-    : new ConflictError(`${who} is no longer in this workspace, so this conversation has nobody to share with.`, 'DM_RECIPIENT_UNAVAILABLE');
+    : new ConflictError(`${who} is no longer in the company, so this conversation has nobody to share with.`, 'DM_RECIPIENT_UNAVAILABLE');
   error.details = { recipient: closed.recipient };
   throw error;
 }
@@ -49,13 +49,13 @@ export function policySketchAccess(access: AccessReader): SketchAccess {
       if (target.scope === 'project') {
         const { project } = enforce(await evaluateProject(principal, 'project.write', target.projectId, access, { lock: true }), 'project');
         // A project the caller can see in another workspace is still not a place in this one.
-        if (project!.workspaceId !== target.workspaceId) throw new RuleViolationError('The project belongs to another workspace', 'CROSS_WORKSPACE');
+        if (project!.workspaceId !== target.workspaceId) throw new RuleViolationError('The space belongs to another company', 'CROSS_WORKSPACE');
         return;
       }
       if (target.scope === 'dm') {
         // Only a current participant starts a sketch in a DM (#96); invisible DMs answer 404.
         const { dm } = enforce(await evaluateDm(principal, 'dm.write', target.dmId, access, { lock: true }), 'dm');
-        if (dm!.workspaceId !== target.workspaceId) throw new RuleViolationError('The direct message belongs to another workspace', 'CROSS_WORKSPACE');
+        if (dm!.workspaceId !== target.workspaceId) throw new RuleViolationError('The direct message belongs to another company', 'CROSS_WORKSPACE');
         await requireOpen(access, dm!.id, principal.id);
         return;
       }

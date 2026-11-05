@@ -93,7 +93,7 @@ export function WikiLayout() {
       toast({ message: `Imported “${doc.title}” as a draft page.`, tone: 'success' });
       navigate(docUrl(project.id, doc.id));
     } catch (cause) {
-      setImportError(cause instanceof ApiError && cause.status === 403 ? 'You can read this project but not add pages to it.'
+      setImportError(cause instanceof ApiError && cause.status === 403 ? 'You can read this space but not add pages to it.'
         : cause instanceof ApiError ? `“${file.name}” was not imported: ${cause.message.replace(/\.$/, '')}.`
           : `“${file.name}” was not imported. Check the connection and try again.`);
     } finally { setImporting(false); }

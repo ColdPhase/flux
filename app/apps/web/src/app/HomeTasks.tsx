@@ -52,12 +52,12 @@ export function HomeTasks() {
       try { read = await listAssignedWork(workspaces.map((space) => space.id), CAP, controller.signal); } catch { return; }
       const { items, total, failed } = read;
       // Project names as the sidebar shows them; a project granted after the shell loaded asks once.
-      const names = new Map(projects.map((project) => [project.id, project.workspaceName ? `${project.name} · ${project.workspaceName}` : project.name]));
+      const names = new Map(projects.map((project) => [project.id, project.name]));
       for (const projectId of new Set(items.map((item) => item.projectId))) {
         if (names.has(projectId)) continue;
         try { names.set(projectId, (await getProject(projectId, controller.signal)).name); } catch {
           if (controller.signal.aborted) return;
-          names.set(projectId, 'Project');
+          names.set(projectId, 'Space');
         }
       }
       if (!controller.signal.aborted) setLoaded({ userId, items, total, failed, names });
@@ -73,7 +73,7 @@ export function HomeTasks() {
   const groups = new Map<string, WorkItem[]>();
   for (const item of shown.items) groups.set(item.projectId, [...(groups.get(item.projectId) ?? []), item]);
   const ordered = [...groups.entries()]
-    .map(([projectId, items]) => ({ projectId, name: shown.names.get(projectId) ?? 'Project',
+    .map(([projectId, items]) => ({ projectId, name: shown.names.get(projectId) ?? 'Space',
       items: items.sort((a, b) => (ORDER[a.status] ?? 3) - (ORDER[b.status] ?? 3) || b.updatedAt.localeCompare(a.updatedAt)) }))
     .sort((a, b) => a.name.localeCompare(b.name) || a.projectId.localeCompare(b.projectId));
 
@@ -88,12 +88,12 @@ export function HomeTasks() {
       );
     }
     const action = !projects.length
-      ? <Link className="ui-btn ui-btn--secondary" to="/projects/new"><Icon name="plus" size={14} />Create a project</Link>
-      : narrow ? <Button onClick={openNavigation}>Open your projects</Button> : null;
+      ? <Link className="ui-btn ui-btn--secondary" to="/projects/new"><Icon name="plus" size={14} />Create a space</Link>
+      : narrow ? <Button onClick={openNavigation}>Open your spaces</Button> : null;
     return pulling(
       <div className="view-empty">
         <EmptyState icon="tasks" title="Nothing is waiting for you" action={action}>
-          <p>Tasks you own in your projects show up here: in progress, blocked and open. Nothing is due, and nothing needs clearing.</p>
+          <p>Tasks you own in your spaces show up here: in progress, blocked and open. Nothing is due, and nothing needs clearing.</p>
         </EmptyState>
       </div>,
     );
@@ -125,7 +125,7 @@ export function HomeTasks() {
         </div>
       ))}
       {shown.total > shown.items.length ? (
-        <p className="home-tasks__more">Showing {shown.items.length} of {shown.total}. Open a project’s Tasks for the rest.</p>
+        <p className="home-tasks__more">Showing {shown.items.length} of {shown.total}. Open a space’s Tasks for the rest.</p>
       ) : null}
     </section>,
   );

@@ -58,7 +58,7 @@ export function useComposerSend({ project, conversation, writable, aiOff, compos
     typing.stop();
     if (asking) { await ask.sendToAssistant(); return; }
     // F-029 (#614): `/ai` and `/handoff` in a workspace whose AI is off are not messages for the people here: the words stay in the field.
-    if (aiOff && writable && /^\/(ai|handoff)(\s|$)/.test(draft.trim())) { menu.setCommandHint('AI is off in this workspace. Remove the command to send these words as a message.'); return; }
+    if (aiOff && writable && /^\/(ai|handoff)(\s|$)/.test(draft.trim())) { menu.setCommandHint('AI is off here. Remove the command to send these words as a message.'); return; }
     const command = writable ? /^\/(task|decide|map|handoff)(?:\s+([\s\S]*))?$/.exec(draft.trim()) : null;
     if (command) { await runCommand(command[1] as keyof typeof COMMAND_EXAMPLE, (command[2] ?? '').trim()); return; }
     // A private helper prompt is never published as a root (UI116-3); it stays in the private draft.

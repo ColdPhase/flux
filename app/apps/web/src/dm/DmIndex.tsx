@@ -5,7 +5,7 @@ import { ApiError } from '../api/client';
 import { openDm } from '../api/direct-messages';
 import { listWorkspaceMembers } from '../project/api';
 import { useShellData } from '../app/data';
-import { Avatar, Button, EmptyState, Icon, Select, Option } from '../ui';
+import { Avatar, Button, EmptyState, Icon } from '../ui';
 import { audienceOf } from './names';
 import './dm.css';
 
@@ -35,7 +35,7 @@ export function DmIndex() {
       <div className="pane-scroll"><div className="pane-in">
         <div className="view-empty">
           <EmptyState icon="chat" title="No direct messages yet" action={<Link className="ui-btn ui-btn--primary" to="/dm/new"><Icon name="plus" size={14} />New message</Link>}>
-            <p>Talk with someone one to one, or with a few people, outside any project. Only the people in a conversation can see it, not workspace owners or admins.</p>
+            <p>Talk with someone one to one, or with a few people, outside any space. Only the people in a conversation can see it, not the company’s owners or admins.</p>
           </EmptyState>
         </div>
       </div></div>
@@ -57,12 +57,13 @@ export function DmIndex() {
  * `?workspace=<id>&with=<userId>` opens the 1:1 DM with that person directly, e.g. from a name.
  */
 export function NewDm() {
-  const { me, workspaces } = useShellData();
+  const { me, workspace } = useShellData();
   const navigate = useNavigate();
   const arrivalState = useLocation().state as unknown;
   const [params] = useSearchParams();
   const direct = params.get('with');
-  const [workspaceId, setWorkspaceId] = useState(params.get('workspace') ?? (workspaces.length === 1 ? workspaces[0]!.id : ''));
+  // Direct messages are with people in the company (F-037).
+  const workspaceId = params.get('workspace') ?? workspace?.id ?? '';
   const [loaded, setLoaded] = useState<{ workspaceId: string; list: WorkspaceMember[]; note: string } | null>(null);
   const members = loaded?.workspaceId === workspaceId ? loaded.list : null;
   const membersNote = loaded?.workspaceId === workspaceId ? loaded.note : '';
@@ -71,7 +72,7 @@ export function NewDm() {
   const [title, setTitle] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
-  /** The other person left the 1:1 (or the workspace): a calm explanation instead of a thread. */
+  /** The other person left the 1:1 (or the company): a calm explanation instead of a thread. */
   const [notice, setNotice] = useState('');
   const attempt = useRef<{ signature: string; key: string } | null>(null);
   const autoOpened = useRef(false);
@@ -106,8 +107,8 @@ export function NewDm() {
         setNotice(cause.message); setBusy(false); return;
       }
       setError(cause instanceof ApiError && cause.code === 'DM_PARTICIPANT_UNAVAILABLE'
-        ? 'Someone you chose is no longer in this workspace.'
-        : cause instanceof ApiError && cause.status === 403 ? 'You can’t start conversations in this workspace.' : 'Could not open the conversation. Try again.');
+        ? 'Someone you chose is no longer in the company.'
+        : cause instanceof ApiError && cause.status === 403 ? 'You can’t start conversations here.' : 'Could not open the conversation. Try again.');
       setBusy(false);
     }
   }
@@ -147,20 +148,15 @@ export function NewDm() {
   return (
     <div className="pane-scroll"><div className="pane-in dm-new">
       <h2>New message</h2>
-      <p className="dm-new__lead">Pick one person for a one-to-one conversation, or a few for a small group. It stays outside every project.</p>
-      {workspaces.length > 1 ? (
-        <label className="dm-new__space">People in <Select value={workspaceId} onChange={(next) => { setWorkspaceId(next); setSelected([]); }}>
-          <Option value="">Choose a space</Option>{workspaces.map((space) => <Option key={space.id} value={space.id}>{space.name}</Option>)}
-        </Select></label>
-      ) : null}
-      {!workspaces.length ? <p className="dm-new__note">Join or create a space first; direct messages are with people in the same space.</p> : null}
+      <p className="dm-new__lead">Pick one person for a one-to-one conversation, or a few for a small group. It stays outside every space.</p>
+      {!workspaceId ? <p className="dm-new__note">You’re not in a company on this Flux yet. Ask an admin for an invite link.</p> : null}
       {workspaceId ? (
         <>
           <label className="ui-vh" htmlFor="dm-people-search">Find people</label>
           <input id="dm-people-search" className="dm-new__search" type="search" placeholder="Find people by name or email" value={query} onChange={(event) => setQuery(event.target.value)} autoComplete="off" />
           {members === null ? <p className="dm-new__note" role="status">Loading people…</p> : null}
           {membersNote ? <p className="dm-new__note">{membersNote}</p> : null}
-          {members && !members.length && !membersNote ? <p className="dm-new__note">Nobody else is in this space yet.</p> : null}
+          {members && !members.length && !membersNote ? <p className="dm-new__note">Nobody else is in the company yet.</p> : null}
           <ul className="dm-new__people" aria-label="People">
             {shown.map((member) => {
               const checked = selected.includes(member.userId);

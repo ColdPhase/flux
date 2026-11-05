@@ -65,7 +65,7 @@ export function createProjectExportUseCases(uow: ProjectExportUnitOfWork, contex
     return uow.run(async ({ access, rows, files }) => {
       await access.requireManage(principal, projectId);
       const project = await rows.project(projectId);
-      if (!project) throw new NotFoundError('Project', 'PROJECT_NOT_FOUND');
+      if (!project) throw new NotFoundError('Space', 'PROJECT_NOT_FOUND');
       const [audience, grants, roles, conversations, materials, docs, sketches, work, decisions, results, links] = await Promise.all([
         access.audience(principal, projectId),
         rows.grants(projectId),

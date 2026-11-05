@@ -31,14 +31,15 @@ export function AuthLayout() {
           <Outlet />
         </div>
       </main>
-      <footer className="auth__foot">Open source workspace for people and agents</footer>
+      <footer className="auth__foot">Open source, for people and their agents</footer>
     </div>
   );
 }
 
-function Heading({ title, children }: { title: string; children?: ReactNode }) {
+function Heading({ title, company, children }: { title: string; company?: string | null; children?: ReactNode }) {
   return (
     <div className="auth__head">
+      {company ? <p className="auth__company">{company}</p> : null}
       <h1 className="auth__title">{title}</h1>
       {children ? <p className="auth__lead">{children}</p> : null}
     </div>
@@ -171,7 +172,7 @@ export function SignInPage() {
   if (sso && ssoOnly) {
     return (
       <>
-        <Heading title="Sign in">A shared workspace for people and their agents.</Heading>
+        <Heading title="Sign in" company={capabilities?.company}>One place for your company’s people and their agents.</Heading>
         <div className="auth__card">
           <SsoSignIn sso={sso} next={next} oauthQuery={oauthQuery} />
           <FormError message={ssoFailed ? ssoMessage : undefined} />
@@ -181,7 +182,7 @@ export function SignInPage() {
   }
   return (
     <>
-      <Heading title="Sign in">A shared workspace for people and their agents.</Heading>
+      <Heading title="Sign in" company={capabilities?.company}>One place for your company’s people and their agents.</Heading>
       <div className="auth__card">
         <Form method="post" className="auth__form" noValidate ref={formRef} aria-label="Sign in">
           <FormError message={result?.formError ?? (ssoFailed ? ssoMessage : undefined)} />

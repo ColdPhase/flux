@@ -175,7 +175,7 @@ function memoryReader(world: World) {
   return { reader, calls };
 }
 
-const WORKSPACE_ACTIONS = ['workspace.read', 'workspace.read_members', 'workspace.manage_members', 'workspace.manage_agents', 'workspace.manage_ai', 'project.create', 'draft.create', 'agent.create', 'sketch.create', 'dm.create'] as const;
+const WORKSPACE_ACTIONS = ['workspace.read', 'workspace.read_members', 'workspace.manage_members', 'workspace.rename', 'workspace.manage_agents', 'workspace.manage_ai', 'project.create', 'draft.create', 'agent.create', 'sketch.create', 'dm.create'] as const;
 const workspaceRef = { type: 'workspace', id: WS } as const;
 
 async function workspaceDecisions(principal: Principal, actor: Actor | undefined, writableProject = false) {
@@ -194,8 +194,9 @@ describe('workspace decisions (pure)', () => {
     const everything = [...WORKSPACE_ACTIONS];
     assert.deepEqual((await workspaceDecisions(ownerId, member(ownerId, 'owner'))).allowed, everything);
     assert.deepEqual((await workspaceDecisions(ownerId, member(ownerId, 'admin'))).allowed, everything);
+    // F-037: everyone in the company but a guest starts spaces; only owners and admins rename the company.
     assert.deepEqual((await workspaceDecisions(ownerId, member(ownerId, 'member'))).allowed,
-      ['workspace.read', 'workspace.read_members', 'draft.create', 'agent.create', 'sketch.create', 'dm.create']);
+      ['workspace.read', 'workspace.read_members', 'project.create', 'draft.create', 'agent.create', 'sketch.create', 'dm.create']);
     assert.deepEqual((await workspaceDecisions(ownerId, member(ownerId, 'guest'))).allowed, ['workspace.read', 'draft.create', 'sketch.create']);
   });
 

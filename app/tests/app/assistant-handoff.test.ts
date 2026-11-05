@@ -316,8 +316,7 @@ describe('hand-offs from the owner\'s assistant to the owner\'s own agents (F-02
     await scene.complete(live.runId);
     const [row] = await changesOf(live.runId);
     // An explicit deny wins over every role: Ada no longer has this project, though she still owns the workspace.
-    await pool.query(`INSERT INTO project_grants (id, workspace_id, project_id, user_id, role, created_by) VALUES ($1, $2, $3, $4, 'denied', $4)`,
-      [randomUUID(), scene.ws.id, scene.place.id, scene.owner.id]);
+    await pool.query(`UPDATE project_grants SET role = 'denied' WHERE project_id = $1 AND user_id = $2`, [scene.place.id, scene.owner.id]);
     try {
       const single = expectStatus(await scene.owner.browser.request('POST', assistantChangeActionPath(row!.id, 'undo'), { body: {} }), 200) as { change: AssistantChange; message: string | null };
       assert.equal(single.message, 'Changed since. Open it');

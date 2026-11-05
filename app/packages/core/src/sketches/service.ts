@@ -163,7 +163,7 @@ async function promotionPreview(ports: SketchPorts, principal: Principal, sketch
   ]);
   let choice = requested;
   if (!choice) choice = targets.canCreateProject ? { kind: 'new' } : targets.projects[0] ? { kind: 'existing', projectId: targets.projects[0].id } : null;
-  if (choice?.kind === 'new' && !targets.canCreateProject) throw new ForbiddenError('Only workspace owners and admins can create a project; copy it into a project you can change', 'PROJECT_CREATE_FORBIDDEN');
+  if (choice?.kind === 'new' && !targets.canCreateProject) throw new ForbiddenError('Guests do not start spaces; copy it into a space you can change', 'PROJECT_CREATE_FORBIDDEN');
   const { people, projectName } = choice ? await ports.promotion.audience(principal, sketch.workspaceId, grantees(participants, principal, grant), choice) : { people: [], projectName: null };
   const readers = new Set(people.map((person) => person.id));
   const fromMessages = thoughts.filter((thought) => thought.source?.messageId);
@@ -342,7 +342,7 @@ export function createSketchUseCases(uow: SketchUnitOfWork) {
           if (!message) throw new NotFoundError('Message', 'MESSAGE_NOT_FOUND');
           source = { authorId: message.authorId, authorKind: 'human', authorName: message.authorName, sentAt: message.createdAt, dmId: message.dmId, messageId: message.id, projectMessageId: null };
         } else if (sourceProjectMessageId) {
-          if (sketch.scope !== 'project' || !sketch.projectId) throw new RuleViolationError('Only a thought on a project map can quote a project message', 'NOT_A_PROJECT_SKETCH');
+          if (sketch.scope !== 'project' || !sketch.projectId) throw new RuleViolationError('Only a thought on a space map can quote a space message', 'NOT_A_PROJECT_SKETCH');
           const [message] = await ports.sketches.projectMessages(sketch.projectId, [sourceProjectMessageId]);
           if (!message) throw new NotFoundError('Message', 'MESSAGE_NOT_FOUND');
           source = { authorId: message.authorId, authorKind: message.authorKind, authorName: message.authorName, sentAt: message.createdAt,
@@ -351,14 +351,14 @@ export function createSketchUseCases(uow: SketchUnitOfWork) {
         if (placement) {
           const view = await ports.access.placement(principal, placement);
           if (!view.readable) throw new NotFoundError('Draft', 'DRAFT_NOT_FOUND');
-          if (view.workspaceId !== sketch.workspaceId) throw new RuleViolationError('A placed object must belong to the sketch’s workspace', 'CROSS_WORKSPACE');
+          if (view.workspaceId !== sketch.workspaceId) throw new RuleViolationError('A placed object must belong to the sketch’s company', 'CROSS_WORKSPACE');
         }
         if (await ports.sketches.thoughtExists(thoughtId)) throw new ConflictError('A thought with this id already exists', 'THOUGHT_EXISTS');
         if (linkFrom && await ports.sketches.linkExists(linkFrom.linkId)) throw new ConflictError('A link with this id already exists', 'LINK_EXISTS');
         await ports.live.before(principal,sketch,{thoughtIds:[thoughtId,...(linkFrom?[linkFrom.thoughtId]:[])],linkIds:linkFrom?[linkFrom.linkId]:[]});
         // #252: stored files belong to a project, so only a project sketch's thought can show one.
         if (fileId && (sketch.scope !== 'project' || !sketch.projectId))
-          throw new RuleViolationError('Images can be placed only on a project’s maps', 'IMAGES_NEED_A_PROJECT');
+          throw new RuleViolationError('Images can be placed only on a space’s maps', 'IMAGES_NEED_A_PROJECT');
         const preparedImage=fileId&&ports.files.preparePlace?await ports.files.preparePlace(principal,{projectId:sketch.projectId!,fileId,thoughtId}):null;
         const artifacts=await ports.artifacts?.prepare(sketch,[thoughtId,...(linkFrom?[linkFrom.thoughtId]:[])]);
         if (linkFrom) await lockedThought(ports, sketch.id, linkFrom.thoughtId);
@@ -495,7 +495,7 @@ export function createSketchUseCases(uow: SketchUnitOfWork) {
       const grant = participantChoice(query.participants);
       return uow.run(async (ports) => {
         const { sketch, access } = await authorized(ports, principal, 'sketch.read', sketchId);
-        if (sketch.scope !== 'dm') throw new RuleViolationError('Only a sketch in a direct message is copied into a project', 'NOT_A_DM_SKETCH');
+        if (sketch.scope !== 'dm') throw new RuleViolationError('Only a sketch in a direct message is copied into a space', 'NOT_A_DM_SKETCH');
         await ports.access.requireDmOpen(principal, sketch.dmId!);
         if (access !== 'write') throw new ForbiddenError('Not allowed to perform this action on the sketch');
         return promotionPreview(ports, principal, sketch, choice, await ports.sketches.dmParticipants(sketch.dmId!), grant);
@@ -527,7 +527,7 @@ export function createSketchUseCases(uow: SketchUnitOfWork) {
         const access = await ports.access.requireSketch(principal, 'sketch.read', sketchId, { lock: true });
         const sketch = await ports.sketches.findSketch(sketchId);
         if (!sketch) throw new NotFoundError('Sketch', 'SKETCH_NOT_FOUND');
-        if (sketch.scope !== 'dm') throw new RuleViolationError('Only a sketch in a direct message is copied into a project', 'NOT_A_DM_SKETCH');
+        if (sketch.scope !== 'dm') throw new RuleViolationError('Only a sketch in a direct message is copied into a space', 'NOT_A_DM_SKETCH');
         const locked = new Set(await ports.access.lockParticipants(sketch.dmId!));
         await ports.access.requireDmOpen(principal, sketch.dmId!);
         if (access !== 'write') throw new ForbiddenError('Not allowed to perform this action on the sketch');

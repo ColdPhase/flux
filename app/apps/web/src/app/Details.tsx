@@ -9,8 +9,7 @@ import { PromoteSketch } from '../sketch/PromoteSketch';
 import { WhatMatters } from '../returns/WhatMatters';
 import { useProjectShell } from '../project/data';
 import { WorkspacePeople } from '../people/WorkspacePeople';
-import { NewSpace } from '../encryption/NewSpace';
-import { useShellData, type WorkspaceSummary } from './data';
+import { useShellData } from './data';
 import { useShellActions, type DetailsView, type OwnedView } from './shellContext';
 import { ThoughtTasksPanel } from '../sketch/ThoughtTasks';
 
@@ -19,9 +18,8 @@ import { ThoughtTasksPanel } from '../sketch/ThoughtTasks';
  * selected message, task, decision or result joins it with conversations (#36). Account and
  * session details live in the account menu.
  */
-export function Details({ view, workspace, placeTitle, dm = null, onBack, onClose }: {
+export function Details({ view, placeTitle, dm = null, onBack, onClose }: {
   view: Exclude<DetailsView, OwnedView>;
-  workspace: WorkspaceSummary | null;
   placeTitle: string;
   /** The open direct message (#107): its other people and audience line. */
   dm?: { id: string; kind: 'pair' | 'group'; title: string; me: string; people: string[]; audience: string } | null;
@@ -34,8 +32,7 @@ export function Details({ view, workspace, placeTitle, dm = null, onBack, onClos
   if (typeof view === 'object' && view.kind === 'add-to-doc') return <AddToDoc key={`${view.from.type}:${view.from.id}`} view={view} />;
   if (typeof view === 'object' && view.kind === 'promote-sketch') return <PromoteSketch key={view.sketchId} view={view} dmTitle={dm?.title ?? null} onBack={onBack} />;
   if (typeof view === 'object' && view.kind === 'overview') return <ProjectOverview key={view.messageId ?? 'all'} messageId={view.messageId} selection={view.selection} focusPeople={view.focus === 'people' ? view : null} onBack={onBack} />;
-  if (typeof view === 'object' && view.kind === 'people') return <WorkspacePeople key={view.workspaceId} workspaceId={view.workspaceId} project={view.project} onBack={onBack} />;
-  if (typeof view === 'object' && view.kind === 'new-space') return <NewSpace onBack={onBack} />;
+  if (typeof view === 'object' && view.kind === 'people') return <WorkspacePeople key={view.workspaceId} workspaceId={view.workspaceId} onBack={onBack} />;
   if (typeof view === 'object' && view.kind === 'thought-tasks') return <ThoughtTasksPanel key={view.thought.id} view={view} />;
   if (typeof view === 'object') return <WorkDetails view={view} />;
   // A project's Details start with its overview (#117).
@@ -46,7 +43,7 @@ export function Details({ view, workspace, placeTitle, dm = null, onBack, onClos
         <p className="details__eyebrow">Direct message</p>
         <h3 className="details__title">{dm.title}</h3>
         <p className="details__lead"><b>{dm.audience}</b></p>
-        <p className="details__lead">A private conversation outside any project. Workspace owners and admins can’t read it unless they are in it.</p>
+        <p className="details__lead">A private conversation outside any space. The company’s owners and admins can’t read it unless they are in it.</p>
         <section className="details__sec" aria-labelledby="details-dm-people">
           <h4 id="details-dm-people">People in this conversation</h4>
           <ul className="details__rows">
@@ -56,14 +53,14 @@ export function Details({ view, workspace, placeTitle, dm = null, onBack, onClos
         </section>
         <section className="details__sec" aria-labelledby="details-dm-rules">
           <h4 id="details-dm-rules">What stays private</h4>
-          <p>Replies go to exactly these people. Someone who leaves, or leaves the workspace, stops seeing the conversation at once, including earlier messages.</p>
+          <p>Replies go to exactly these people. Someone who leaves, or leaves the company, stops seeing the conversation at once, including earlier messages.</p>
         </section>
         <LeaveDm id={dm.id} kind={dm.kind} />
       </div>
     );
   }
   // Home and the Sketchbook (#508) are private to you.
-  const home = placeTitle === 'Home' || placeTitle === 'Sketchbook';
+  const home = placeTitle === 'Home' || placeTitle === 'My map';
   return (
     <div className="details">
       <p className="details__eyebrow">{placeTitle}</p>
@@ -73,7 +70,7 @@ export function Details({ view, workspace, placeTitle, dm = null, onBack, onClos
       <section className="details__sec" aria-labelledby="details-audience">
         <h4 id="details-audience">Who can see {placeTitle}</h4>
         {home
-          ? <p>Only you. Notes you capture here stay private until you choose to share them{workspace ? ` in ${workspace.name}` : ''}.</p>
+          ? <p>Only you. Notes you capture here stay private until you choose to share them.</p>
           : <p>Only the people in each conversation.</p>}
       </section>
 
@@ -86,24 +83,38 @@ const ROLE_LINE = {
   owner: 'You’re an owner · add and manage people',
   admin: 'You’re an admin · add and manage people',
   member: 'You’re a member · see who’s here',
-  guest: 'You’re a guest · you see only projects given to you',
+  guest: 'You’re a guest · you see only the spaces you’re added to',
 } as const;
 
-/** Each workspace's people (#188, AC-1), one step away from Home's Details. */
+/**
+ * The company's people (F-037), one step away from Home's Details: they live in Settings › Company. An encrypted space
+ * (F-030, still its own internal workspace until per-space encryption lands) keeps its people and keys in this panel.
+ */
 function PeopleEntries() {
-  const { workspaces, lockedWorkspaces } = useShellData();
+  const { workspace, workspaces, lockedWorkspaces } = useShellData();
   const { openDetails } = useShellActions();
-  // A locked space is listed too: its people and roles are metadata, and its owners and admins reach People there (F-030, #655).
-  const spaces = [...workspaces, ...lockedWorkspaces];
+  const sealed = [...workspaces, ...lockedWorkspaces].filter((space) => space.encryption);
   return (
     <section className="details__sec ov-sec" aria-labelledby="details-people">
       <h4 id="details-people">People</h4>
-      {spaces.length ? null : <p className="ov-empty">Start a project to create your own space; then you can add people to it.</p>}
+      {workspace || sealed.length ? null : <p className="ov-empty">You’re not in a company on this Flux yet. Ask an admin for an invite link.</p>}
       <ul className="ov-rows">
-        {spaces.map((space) => (
+        {workspace && !workspace.encryption ? (
+          <li>
+            <Link className="ov-row" to="/settings/company">
+              <Icon name="people" size={16} className="ov-row__ic" />
+              <span className="ov-row__b">
+                <span className="ov-row__t">{workspace.name}</span>
+                {workspace.role ? <span className="ov-row__s">{ROLE_LINE[workspace.role]}</span> : null}
+              </span>
+              <Icon name="chevron-right" size={16} className="ov-row__go" />
+            </Link>
+          </li>
+        ) : null}
+        {sealed.map((space) => (
           <li key={space.id}>
             <button type="button" className="ov-row" onClick={() => openDetails({ kind: 'people', workspaceId: space.id })}>
-              <Icon name={space.encryption ? 'lock' : 'people'} size={16} className="ov-row__ic" />
+              <Icon name="lock" size={16} className="ov-row__ic" />
               <span className="ov-row__b">
                 <span className="ov-row__t">{space.name}</span>
                 {space.role ? <span className="ov-row__s">{ROLE_LINE[space.role]}</span> : null}
@@ -112,14 +123,6 @@ function PeopleEntries() {
             </button>
           </li>
         ))}
-        {/* The last row (F-030, #655): a new space, plain or encrypted. It stays last, whatever the number of spaces. */}
-        <li>
-          <button type="button" className="ov-row" onClick={() => openDetails({ kind: 'new-space' })}>
-            <Icon name="plus" size={16} className="ov-row__ic" />
-            <span className="ov-row__b"><span className="ov-row__t">New space</span></span>
-            <Icon name="chevron-right" size={16} className="ov-row__go" />
-          </button>
-        </li>
       </ul>
     </section>
   );
@@ -132,7 +135,7 @@ function ConnectAi({ onBack }: { onBack: () => void }) {
       <button type="button" className="details__back" aria-label="Back to Details" onClick={onBack}><Icon name="chevron-left" size={14} />Details</button>
       <p className="details__eyebrow">Optional</p>
       <h3 className="details__title">Connect your AI</h3>
-      <p className="details__lead">Flux works fully without AI. Your own MCP client can connect to selected projects, read context and suggest proposals for human review.</p>
+      <p className="details__lead">Flux works fully without AI. Your own MCP client can connect to selected spaces, read context and suggest proposals for human review.</p>
       <section className="details__sec" aria-labelledby="details-ai-ways">
         <h4 id="details-ai-ways">Ways to connect</h4>
         <ul className="details__rows">

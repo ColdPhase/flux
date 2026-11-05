@@ -133,8 +133,8 @@ export function LinkedThoughts({ links }: { links: ThoughtLinks }) {
             <Button variant="quiet" disabled={busy} onClick={close}>Cancel</Button>
           </div>
           {maps === null ? <p className="wd-muted" role="status">Loading maps…</p>
-            : maps === 'failed' ? <p className="wd-error" role="alert">Could not load this project’s maps.</p>
-              : !maps.items.length ? <p className="wd-muted">This project has no map yet. Add a thought on a map first.</p>
+            : maps === 'failed' ? <p className="wd-error" role="alert">Could not load this space’s maps.</p>
+              : !maps.items.length ? <p className="wd-muted">This space has no map yet. Add a thought on a map first.</p>
                 : (
                   <>
                     <div className="wd-pick__map">

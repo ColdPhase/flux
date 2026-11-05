@@ -1,7 +1,7 @@
 import { getCapabilities, getLinkState, startLink, startSso } from '../api/auth';
 import { AiOffEverywhere, AiOffThere, useAllAiBlocked } from '../ai/workspaceAi';
 import { useEffect, useId, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
-import { Form, Link, Outlet, useLocation, useNavigate, useNavigation, useParams, useSearchParams } from 'react-router';
+import { Form, Link, Outlet, useLocation, useNavigation, useSearchParams } from 'react-router';
 import { aiConnectionLabel, PERSONAL_RUN_LIMITS, type AgentConnection, type BackgroundComputeConnection, type PersonalAssistantStatus, type IdentityCapabilities } from '@flux/contracts';
 import { listAgentConnections } from '../agent-connection/api';
 import { getAssistantStatus } from '../assistant/api';
@@ -19,18 +19,18 @@ import { setTheme, useTheme, type ThemeChoice } from './theme';
 import './reading.css';
 import './settings.css';
 
-// Settings (F-026, #350; Spokój #513): one calm place with Account, People (#763 PE-1), Appearance, Notifications, Agents and AI
-// and Keyboard shortcuts, in that order on every device. On the computer the section list sits beside the
+// Settings (F-026, #350; Spokój #513): one calm place with Account, Appearance, Notifications, Agents and AI, Company (F-037,
+// #874) and Keyboard shortcuts, in that order on every device. On the computer the section list sits beside the
 // page; on the phone Settings is that list (the account card, then the sections) and each section is a page.
 // Keyboard shortcuts appear only where there is a keyboard, so not on touch-only phones and tablets.
 
 const SECTIONS: { to: string; label: string; match: RegExp }[] = [
   { to: '/settings/account', label: 'Account', match: /^\/settings\/account$/ },
-  // Workspace people and roles have one stable place (#763 PE-1): read-only for members and guests.
-  { to: '/settings/people', label: 'People', match: /^\/settings\/people/ },
   { to: '/settings', label: 'Appearance', match: /^\/settings(\/appearance)?$/ },
   { to: '/settings/notifications', label: 'Notifications', match: /^\/settings\/notifications/ },
   { to: '/settings/agents', label: 'Agents and AI', match: /^\/settings\/(agents|assistant|background-compute|ai-connections)/ },
+  // The company's name and people have one stable place (F-037, #763 PE-1): read-only for members and guests.
+  { to: '/settings/company', label: 'Company', match: /^\/settings\/company/ },
   { to: '/settings/shortcuts', label: 'Keyboard shortcuts', match: /^\/settings\/shortcuts$/ },
 ];
 
@@ -234,7 +234,7 @@ function AssistantCard({ userId, status }: { userId: string; status: PersonalAss
       {off ? null : (
         <>
           <ul className="sset-assistant__facts">
-            <li>Answers only when you ask it, in a project you choose.</li>
+            <li>Answers only when you ask it, in a space you choose.</li>
             <li>Uses your own AI connection. You pay your provider, never Flux.</li>
             <li>Stops at a daily cap you set (default {dollars(PERSONAL_RUN_LIMITS.dailyCapCents.default)}).</li>
           </ul>
@@ -379,7 +379,7 @@ export function SettingsAppearance() {
  * list (Keyboard shortcuts only with a keyboard, so not here), and Sign out.
  */
 function PhoneSettings() {
-  const { me } = useShellData();
+  const { me, workspace } = useShellData();
   const theme = useTheme();
   const allOff = useAllAiBlocked();
   const [assistant, setAssistant] = useState<PersonalAssistantStatus | null>(null);
@@ -399,10 +399,10 @@ function PhoneSettings() {
           <Icon name="chevron-right" size={14} className="sset-row__go" />
         </Link>
         <ul className="sset-card sset-gap">
-          <LinkRow to="/settings/people" icon={<Icon name="people" size={16} />} title="People" detail="Who is in your workspaces, and their roles" />
           <LinkRow to="/settings/appearance" icon={<Icon name="sun" size={16} />} title="Appearance" detail={THEME_LABEL[theme]} />
           <LinkRow to="/settings/notifications" icon={<Icon name="bell" size={16} />} title="Notifications" detail="Needs you, quiet hours, morning summary" />
           <LinkRow to="/settings/agents" icon={<Icon name="spark" size={16} />} title="Agents and AI" detail={allOff ? 'AI is off' : assistant ? `Assistant ${ASSISTANT_STATE[assistant.state]}` : undefined} />
+          <LinkRow to="/settings/company" icon={<Icon name="people" size={16} />} title="Company" detail={workspace ? `${workspace.name} · its people and their roles` : 'Its people and their roles'} />
         </ul>
         <Form method="post" action="/sign-out" className="sset-card sset-gap">
           <button type="submit" className="sset-row sset-row--link">
@@ -435,41 +435,20 @@ export function SettingsAgents() {
   );
 }
 
-const ROLE_NAME: Record<string, string> = { owner: 'Owner', admin: 'Admin', member: 'Member', guest: 'Guest' };
-
 /**
- * Settings → People (#763 PE-1): the people and roles of each workspace the person is in, in one stable place. With one
- * workspace its people are the page; with several, a row for each leads to its people. Owners and admins add people,
- * change roles and remove them; everyone else reads (the same panel as Home → Details → People).
+ * Settings › Company (F-037, #874; #763 PE-1): the company's name and its people with their roles, in one stable place.
+ * Owners and admins rename it, add people, change roles and remove them; everyone else reads. There is no AI switch here:
+ * AI is switched per space.
  */
-export function SettingsPeople() {
-  const { workspaces } = useShellData();
-  const { workspaceId } = useParams();
-  const navigate = useNavigate();
+export function SettingsCompany() {
+  const { workspace } = useShellData();
   const phone = useMediaQuery(MEDIA.phone);
-  const chosen = workspaceId ?? (workspaces.length === 1 ? workspaces[0]!.id : undefined);
-  if (chosen) {
-    return (
-      <div className="pane-scroll">
-        <div className="pane-in sset-in" data-shift>
-          {workspaces.length > 1 ? <Link className="ui-link sset-back" to="/settings/people"><Icon name="chevron-left" size={12} />People</Link> : phone ? null : <PageHead title="People" />}
-          <WorkspacePeople key={chosen} workspaceId={chosen} page onBack={() => navigate('/settings/people')} />
-        </div>
-      </div>
-    );
-  }
   return (
     <div className="pane-scroll">
       <div className="pane-in sset-in" data-shift>
-        {phone ? null : <PageHead title="People" lead="Who is in each of your workspaces. Owners and admins add people and change roles." />}
-        {workspaces.length ? (
-          <ul className="sset-card">
-            {workspaces.map((space) => (
-              <LinkRow key={space.id} to={`/settings/people/${space.id}`} icon={<Icon name="people" size={16} />} title={space.name}
-                detail={`You’re ${space.role === 'owner' || space.role === 'admin' ? 'an' : 'a'} ${ROLE_NAME[space.role ?? 'guest']!.toLowerCase()}`} />
-            ))}
-          </ul>
-        ) : <p className="sset-note">You’re not in a workspace yet. Your first project makes one, and its people appear here.</p>}
+        {phone ? null : <PageHead title="Company" />}
+        {workspace ? <WorkspacePeople key={workspace.id} workspaceId={workspace.id} page onBack={() => undefined} />
+          : <p className="sset-note">You’re not in a company on this Flux yet. Ask an admin for an invite link.</p>}
       </div>
     </div>
   );

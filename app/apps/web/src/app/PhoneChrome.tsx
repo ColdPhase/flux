@@ -20,7 +20,7 @@ export function phonePlaces(pathname: string, inboxUnread: number): BottomNavIte
   const projects = /^\/(projects|dm)(\/|$)/.test(pathname);
   return [
     { id: 'home', label: 'Home', to: '/', icon: 'home', current: home },
-    { id: 'projects', label: 'Projects', to: '/projects', icon: 'board', current: projects },
+    { id: 'projects', label: 'Spaces', to: '/projects', icon: 'board', current: projects },
     { id: 'inbox', label: 'Inbox', to: '/inbox', icon: 'inbox', current: inbox, ...(inboxUnread ? { countLabel: ', something new', dot: true } : {}) },
   ];
 }
@@ -77,12 +77,10 @@ export interface PhoneMenuItem { id: string; label: string; to: string; icon: Ic
 
 /**
  * The title is the view menu: it names the project (or Home, or the conversation) and the view
- * shown, and opens the places inside it. "Details, goal and people" is the last row.
+ * shown, and opens the places inside it. "Details and people" is the last row.
  */
-export function PhoneTitleMenu({ title, subtitle, items, onDetails, detailsLabel = 'Details, goal and people', lead, goal, adds = [], metadataSlot }: {
+export function PhoneTitleMenu({ title, subtitle, items, onDetails, detailsLabel = 'Details and people', lead, adds = [], metadataSlot }: {
   title: string; subtitle: ReactNode; items: PhoneMenuItem[]; onDetails: (() => void) | null; detailsLabel?: string; lead?: ReactNode;
-  /** The project's current goal under its name, as drawn (#520, phone-viewsmenu); nothing without one. */
-  goal?: string;
   /** "Add Map", "Add Wiki", "Add Agents" for a view the project has not added yet (#351), quiet at the end. */
   adds?: { label: string; run: () => void }[];
   /** Compact view metadata such as the Wiki page count, placed inline with the phone subtitle. */
@@ -105,7 +103,6 @@ export function PhoneTitleMenu({ title, subtitle, items, onDetails, detailsLabel
       </div>
       <Overlay open={open} onClose={() => setOpen(false)} placement="center" labelledBy={`${menuId}-t`} id={menuId} className="phone-menu" initialFocus={firstRef}>
         <h2 className="phone-menu__t" id={`${menuId}-t`}>{title}<span className="ui-vh">, views</span></h2>
-        {goal ? <p className="phone-menu__goal"><span className="ui-vh">Goal: </span>{goal}</p> : null}
         <ul className="phone-menu__list">
           {items.map((item, index) => (
             <li key={item.id}>
@@ -179,11 +176,11 @@ export function PhoneCreate({ open, onClose, projects, projectId, go, onThought 
     return () => input.removeEventListener('cancel', cancelled);
   });
   const tiles: Tile[] = [
-    { id: 'task', label: 'Task', icon: 'plus', run: chosen ? () => { onClose(); requestAnimationFrame(() => openCreate({ kind: 'task', projectId: chosen.id })); } : null, hint: 'needs a project' },
+    { id: 'task', label: 'Task', icon: 'plus', run: chosen ? () => { onClose(); requestAnimationFrame(() => openCreate({ kind: 'task', projectId: chosen.id })); } : null, hint: 'needs a space' },
     { id: 'thought', label: 'Thought', icon: 'edit', run: () => { onClose(); onThought(); } },
     { id: 'message', label: 'Message', icon: 'chat', run: to('/dm/new') },
-    { id: 'decision', label: 'Decision', icon: 'rule', run: to(inProject && `${inProject}?open=propose-decision`), hint: 'needs a project' },
-    { id: 'file', label: 'File or link', icon: 'clip', hint: 'needs a project', pick: true, run: inProject ? () => setPickerOpen(true) : null },
+    { id: 'decision', label: 'Decision', icon: 'rule', run: to(inProject && `${inProject}?open=propose-decision`), hint: 'needs a space' },
+    { id: 'file', label: 'File or link', icon: 'clip', hint: 'needs a space', pick: true, run: inProject ? () => setPickerOpen(true) : null },
     { id: 'sketch', label: 'Sketch', icon: 'shape', run: to(inProject ? `${inProject}/map` : '/map') },
   ];
   return (
@@ -194,7 +191,7 @@ export function PhoneCreate({ open, onClose, projects, projectId, go, onThought 
         {projects.length ? (
           <label className="phone-create__project">
             <span className="phone-create__tile" aria-hidden="true">{(chosen?.name.trim()[0] ?? '?').toUpperCase()}</span>
-            <Select aria-label="Project" value={chosen?.id ?? ''} onChange={(next) => selectedProject.setText(next)}>
+            <Select aria-label="Space" value={chosen?.id ?? ''} onChange={(next) => selectedProject.setText(next)}>
               {projects.map((project) => <Option key={project.id} value={project.id}>{project.name}</Option>)}
             </Select>
           </label>

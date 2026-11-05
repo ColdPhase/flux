@@ -1,11 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
 import { isWorkspaceLocked, type EncryptedWorkspace } from '../encryption/api';
-import { Link, useLocation, useNavigate, useRevalidator } from 'react-router';
+import { Link, useLocation, useNavigate } from 'react-router';
 import type { Sketch } from '@flux/contracts';
 import { Button, EmptyState, Icon, Spinner, useToast } from '../ui';
 import * as api from '../api/sketches';
 import { useShellData } from '../app/data';
-import { ensurePersonalSpace } from '../app/personalSpace';
 import { YourNotes } from '../app/YourNotes';
 import { useReadingPosition } from '../drafts/store';
 import { useStreamEvents } from '../api/stream';
@@ -52,7 +51,7 @@ async function loadSketches(pages: number, signal: AbortSignal): Promise<Loaded>
     }
   }
   items.sort((a, b) => b.sketch.updatedAt.localeCompare(a.sketch.updatedAt));
-  return { items, total, workspaceId: workspaces[0]?.id ?? null };
+  return { items, total, workspaceId: (workspaces.find((workspace) => workspace.company) ?? workspaces[0])?.id ?? null };
 }
 
 /**
@@ -62,7 +61,6 @@ async function loadSketches(pages: number, signal: AbortSignal): Promise<Loaded>
 export function SketchIndex() {
   const { me, directMessages } = useShellData();
   const navigate = useNavigate();
-  const revalidator = useRevalidator();
   const toast = useToast();
   // The Sketchbook keeps its reading position per account across view switches and reloads, as Home's views do.
   const scroller = useRef<HTMLDivElement>(null);
@@ -87,10 +85,9 @@ export function SketchIndex() {
     if (creating || typeof state !== 'object') return;
     setCreating(true);
     try {
-      // Nobody has to set up a workspace before thinking: the first sketch creates the personal space,
-      // the same one a first Home note would (#190 HOME-3), and the shell learns about it.
-      const workspaceId = state.workspaceId ?? (await ensurePersonalSpace(me.user.id)) ?? (await api.listWorkspaces())[0]!.id;
-      if (!state.workspaceId) revalidator.revalidate();
+      // A private sketch is kept in the company (F-037).
+      const workspaceId = state.workspaceId;
+      if (!workspaceId) { toast({ message: 'You’re not in a company on this Flux yet. Ask an admin for an invite link.', tone: 'danger' }); setCreating(false); return; }
       const sketch = await api.createPrivateSketch(workspaceId, 'Untitled sketch', crypto.randomUUID());
       navigate(`/map/${sketch.id}`, { state: { fresh: true } });
     } catch {
@@ -105,7 +102,7 @@ export function SketchIndex() {
     <div className="sk-page" ref={scroller}>
       <div className="sk sk--index">
         {/* The header names the Sketchbook; this is its one privacy line, at every width (#508). */}
-        <p className="sk-book__private"><Icon name="lock" size={13} />Only you can see this until you share or move something to a project.</p>
+        <p className="sk-book__private"><Icon name="lock" size={13} />Only you can see this until you share or move something to a space.</p>
         {state === 'loading' ? <div className="sk-page--center"><Spinner label="Loading sketches" /></div> : null}
         {state === 'failed' ? (
           <div className="view-empty">

@@ -12,7 +12,7 @@ export function nativeWorkReadAccess(db: DbExecutor): WorkReadAccess {
   return { requireProject: async (principal, projectId) => {
     const checked = enforce(await evaluateProject(principal, 'project.read', projectId, accessReader(db)), 'project');
     const access = accessName(checked.level);
-    if (!access || !checked.project) throw new NotFoundError('Project', 'PROJECT_NOT_FOUND');
+    if (!access || !checked.project) throw new NotFoundError('Space', 'PROJECT_NOT_FOUND');
     return { workspaceId: checked.project.workspaceId, access };
   } };
 }

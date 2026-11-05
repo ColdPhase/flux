@@ -116,7 +116,7 @@ class DocsJourney(unittest.TestCase):
         return self.api(page, "GET", f"/api/v1/docs/{self.doc_id}/versions", status=200)["items"]
 
     def tab(self, page: Page, name: str):
-        return page.get_by_role("navigation", name="Project views").get_by_role("link", name=name)
+        return page.get_by_role("navigation", name="Space views").get_by_role("link", name=name)
 
     # ---------------------------------------------------------------- set up
 
@@ -162,7 +162,7 @@ class DocsJourney(unittest.TestCase):
         text.press("End")
         # The link picker: keyboard only, filtered to objects of this project.
         text.press("Control+k")
-        picker = page.get_by_role("dialog", name="Link to something in this project")
+        picker = page.get_by_role("dialog", name="Link to something in this space")
         picker.get_by_role("combobox", name="Find a Wiki page, decision, result, task, map or message", exact=True).fill("ToF distance")
         expect(picker.get_by_role("listbox", name="Matches").get_by_role("option").first).to_contain_text(RULE)
         picker.get_by_role("combobox", name="Find a Wiki page, decision, result, task, map or message", exact=True).press("Enter")
@@ -391,7 +391,7 @@ class DocsJourney(unittest.TestCase):
         self.assertEqual(prose.locator("a").count(), 0, "no hostile link became clickable")
         expect(prose.locator(".doc-ref--missing")).to_have_text("missing")
         # The shared reader adds its own notice ("Shared working copy · last saved version N"); the one about the link is the other.
-        expect(page.locator(".doc-notice", has_text="not in this project or no longer exists")).to_be_visible()
+        expect(page.locator(".doc-notice", has_text="not in this space or no longer exists")).to_be_visible()
 
     # ---------------------------------------------------------------- history reads like the page (#511)
 

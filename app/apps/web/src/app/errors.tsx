@@ -90,7 +90,7 @@ function NearestAccessible({ pathname }: { pathname: string }) {
 function NearestProject({ pathname }: { pathname: string }) {
   const project = /^\/projects\/([0-9a-f-]{36})/i.exec(pathname)![1]!;
   const inside = !new RegExp(`^/projects/${project}/?$`, 'i').test(pathname);
-  const lost = { to: '/projects', note: 'That project is no longer available to you.' };
+  const lost = { to: '/projects', note: 'That space is no longer available to you.' };
   const [checked, setChecked] = useState<{ to: string; note: string } | null>(null);
   useEffect(() => {
     if (!inside) return;

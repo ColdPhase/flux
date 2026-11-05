@@ -78,7 +78,7 @@ function presentationView(row: PresentationRow): LivePresentation {
 async function lockAdmissionScope(tx: Executor, projectId: string): Promise<string> {
   const [located] = await tx.select({ workspaceId: schema.projects.workspaceId }).from(schema.projects)
     .where(eq(schema.projects.id, projectId));
-  if (!located) throw new NotFoundError('Project', 'PROJECT_NOT_FOUND');
+  if (!located) throw new NotFoundError('Space', 'PROJECT_NOT_FOUND');
   await tx.select({ id: schema.workspaces.id }).from(schema.workspaces)
     .where(eq(schema.workspaces.id, located.workspaceId)).for('share');
   await tx.select({ id: schema.projects.id }).from(schema.projects)

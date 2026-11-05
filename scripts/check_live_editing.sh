@@ -35,6 +35,8 @@ export POSTGRES_USER=flux
 export POSTGRES_DB=flux
 export POSTGRES_PASSWORD="flux-live-editing-$$-$(date +%s)"
 export FLUX_FIXTURE_TOKEN="fixture-live-editing-$$-$(date +%s)"
+# A test deployment: only it can create the isolated workspaces these checks start from (F-037).
+export FLUX_TEST_FAILURE_INJECTION=true
 export FLUX_PORT="${FLUX_LIVE_EDITING_PORT:-18691}"
 export FLUX_MAILPIT_PORT="${FLUX_LIVE_EDITING_MAILPIT_PORT:-18692}"
 export FLUX_PUBLIC_ORIGIN="http://127.0.0.1:${FLUX_PORT}"
@@ -98,6 +100,8 @@ $compose build migrate ui-test
 $compose up -d db migrate
 $compose --profile setup run --rm files-init
 $compose up -d --wait api
+# F-037: a setup account owns the company, so no test's own people take that role by being first.
+$compose run --rm --no-deps -w /work/tests/ui ui-test python3 company_setup.py
 
 if [ -z "$latency" ]; then
   [ "$#" -gt 0 ] || set -- test_live_editing test_live_map_projection test_live_map_selection test_live_map_delivery_order

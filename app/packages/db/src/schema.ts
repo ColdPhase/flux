@@ -401,6 +401,8 @@ export const workspaces = pgTable('workspaces', {
   // repositories/workspace-encryption.ts with plain SQL.
   encrypted: boolean('encrypted').notNull().default(false),
   creationId: uuid('creation_id'),
+  /** F-037 (#874, migration 0003): the one company workspace setup makes; at most one row has it. */
+  company: boolean('company').notNull().default(false),
 });
 
 /**
@@ -429,6 +431,14 @@ export const workspaceMembers = pgTable('workspace_members', {
   index('workspace_members_user_idx').on(table.userId),
 ]);
 
+/** People who left the company or were removed: Settings › Company lists them with Restore. Joining again clears the row. */
+export const workspaceRemovedPeople = pgTable('workspace_removed_people', {
+  workspaceId: uuid('workspace_id').notNull().references(() => workspaces.id, { onDelete: 'cascade' }),
+  userId: text('user_id').notNull().references(() => authUsers.id, { onDelete: 'cascade' }),
+  removedBy: text('removed_by').notNull(),
+  removedAt: timestamp('removed_at', { withTimezone: true }).notNull().defaultNow(),
+}, (table) => [primaryKey({ columns: [table.workspaceId, table.userId] })]);
+
 /** F-035 (#763 PE-2): a one-time invite link to a workspace. Only the SHA-256 of the token is stored (migration 0137). */
 export const workspaceInvites = pgTable('workspace_invites', {
   id: uuid('id').primaryKey(),
@@ -443,8 +453,6 @@ export const workspaceInvites = pgTable('workspace_invites', {
   revokedBy: text('revoked_by').references(() => authUsers.id, { onDelete: 'set null' }),
   acceptedAt: timestamp('accepted_at', { withTimezone: true }),
   acceptedBy: text('accepted_by').references(() => authUsers.id, { onDelete: 'set null' }),
-  /** #763 FT-3: the project joining also opens; cleared when the project goes. */
-  projectId: uuid('project_id'),
 }, (table) => [
   index('workspace_invites_pending_idx').on(table.workspaceId, table.createdAt.desc()).where(sql`revoked_at IS NULL AND accepted_at IS NULL`),
 ]);
@@ -461,22 +469,6 @@ export const projects = pgTable('projects', {
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 }, (table) => [unique().on(table.workspaceId, table.id)]);
-
-/** A project's optional goal (#520, migration 0099): at most one unreached row per project; reached rows are its history. */
-export const projectGoals = pgTable('project_goals', {
-  id: uuid('id').primaryKey(),
-  workspaceId: uuid('workspace_id').notNull(),
-  projectId: uuid('project_id').notNull(),
-  title: text('title').notNull(),
-  setBy: text('set_by').notNull().references(() => authUsers.id),
-  setAt: timestamp('set_at', { withTimezone: true }).notNull().defaultNow(),
-  reachedAt: timestamp('reached_at', { withTimezone: true }),
-  reachedBy: text('reached_by').references(() => authUsers.id),
-}, (table) => [
-  foreignKey({ columns: [table.workspaceId, table.projectId], foreignColumns: [projects.workspaceId, projects.id] }).onDelete('cascade'),
-  uniqueIndex('project_goals_current_idx').on(table.projectId).where(sql`${table.reachedAt} IS NULL`),
-  index('project_goals_reached_idx').on(table.projectId, table.reachedAt.desc()).where(sql`${table.reachedAt} IS NOT NULL`),
-]);
 
 export const agents = pgTable('agents', {
   id: uuid('id').primaryKey(),
@@ -496,7 +488,7 @@ export const projectGrants = pgTable('project_grants', {
   projectId: uuid('project_id').notNull(),
   userId: text('user_id'),
   agentId: uuid('agent_id'),
-  role: text('role', { enum: ['contributor', 'viewer', 'denied'] }).notNull(),
+  role: text('role', { enum: ['manager', 'contributor', 'viewer', 'denied'] }).notNull(),
   createdBy: text('created_by').notNull(),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),

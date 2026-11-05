@@ -1,18 +1,17 @@
 import { useEffect, useId, useRef, useState } from 'react';
 import { ApiError } from '../api/client';
 import { whenPageLive } from '../api/pageLeaving';
-import { useRevalidator } from 'react-router';
+import { useNavigate, useRevalidator } from 'react-router';
 import type { Project, ProjectAccess as Access, ProjectGrant, ProjectGrantRole, ProjectPerson, WorkspaceMember } from '@flux/contracts';
 import { useShellData } from '../app/data';
-import { useShellActions } from '../app/shellContext';
 import { AgentTag, Avatar, Button, Icon, Kreska, prefersReducedMotion, useRowMotion, Select, Option } from '../ui';
-import { ROLE_LABEL, attemptKeys, firstName, grantPerson, isManagerRole, levelFor, listGrants, listMembers, problemText, revokeGrant } from './api';
+import { attemptKeys, firstName, grantPerson, isManagerRole, levelFor, listGrants, listMembers, problemText, revokeGrant } from './api';
 import { AgentRequests } from './AgentRequests';
 import './people.css';
 import { useWorkspaceEncryption } from '../encryption/state';
 
-/** Each person's role in one or two words. */
-const ROLE_SHORT: Record<Access, string> = { manager: 'Manages', contributor: 'Can write', viewer: 'Can read' };
+/** Each person's role in a space (F-037): admin or member. */
+const ROLE_SHORT: Record<Access, string> = { manager: 'Admin', contributor: 'Member', viewer: 'Can read' };
 
 /** A change to one person's access: set a grant, or remove it. */
 type Change = { kind: 'grant'; role: ProjectGrantRole } | { kind: 'revoke' };
@@ -21,15 +20,14 @@ interface Option { id: string; label: string; change: Change; confirm: string; p
 interface Roster { members: WorkspaceMember[]; grants: ProjectGrant[] }
 
 /**
- * "People" for a project (#188, AC-2; #512, AC-5): exactly who can open it now, read from the server's
- * access policy, each with their role, and in one sentence who else can. Owners and admins of the workspace (the project's managers) give a
- * workspace member access as a writer or reader, change or remove it, or keep someone out with an
- * explicit deny. Each change names its exact consequence before it is confirmed; nothing is
- * granted implicitly. Everyone else sees the same list read-only.
+ * A space's people (F-037, #874; #188, AC-2): exactly who is in it now, read from the server's access policy, each as a
+ * member or an admin. The space's admins (and the company's owners and admins, who can change every space) add people
+ * from the company, make them admins or members, and remove them. Everyone in the company is in Everyone, so nobody is
+ * removed from it. Each change names its exact consequence before it is confirmed. Everyone else sees the list read-only.
  */
 export function ProjectAccess({ project, people, focusToken }: { project: Project; people: ProjectPerson[] | null; focusToken?: object | null }) {
-  const { me, workspaces } = useShellData();
-  const { openDetails } = useShellActions();
+  const { me, workspace } = useShellData();
+  const navigate = useNavigate();
   const revalidator = useRevalidator();
   const headingRef = useRef<HTMLHeadingElement>(null);
   const [roster, setRoster] = useState<Roster | null>(null);
@@ -40,9 +38,11 @@ export function ProjectAccess({ project, people, focusToken }: { project: Projec
   const inviteRef = useRef<HTMLButtonElement>(null);
   const [done, setDone] = useState('');
   const manager = project.access === 'manager';
-  const workspaceName = workspaces.find((space) => space.id === project.workspaceId)?.name ?? 'this workspace';
+  const workspaceName = workspace?.name ?? 'the company';
+  // Everyone in the company is in a space like Everyone; other spaces hold only the people added to them.
+  const everyone = project.visibility === 'workspace';
 
-  // Managers also read the workspace's members and the project's grants: who could be given access.
+  // Admins also read the company's people and the space's grants: who could be added.
   const [reload, setReload] = useState(0);
   useEffect(() => {
     if (!manager) return;
@@ -85,40 +85,35 @@ export function ProjectAccess({ project, people, focusToken }: { project: Projec
   const listRef = useRef<HTMLUListElement>(null);
   // Access given or taken back grows or collapses the row where it stands (#593 AC-4).
   useRowMotion(listRef, '.people__item[data-row-key]', (el) => el.dataset.rowKey, `${project.id}|${people ? 'ready' : 'loading'}`);
-  const keptOut = roster ? roster.grants.filter((grant) => grant.role === 'denied' && grant.principal.kind === 'human').map((grant) => ({ grant, member: memberOf(grant.principal.id) })).filter((row): row is { grant: ProjectGrant; member: WorkspaceMember } => !!row.member) : [];
   const candidates = roster ? roster.members.filter((member) => member.userId !== me.user.id && grantOf(member.userId)?.role !== 'denied'
     && levelFor(member.role, project.visibility, grantOf(member.userId)?.role ?? null) === null) : [];
 
   const optionsFor = (member: WorkspaceMember): Option[] => {
     const grant = grantOf(member.userId);
     const current = grant?.role ?? null;
-    if (member.userId === me.user.id || (member.role === 'owner' && myRole !== 'owner')) return [];
+    // The company's owners and admins can change every space already; nobody changes their own place here.
+    if (member.userId === me.user.id || isManagerRole(member.role)) return [];
     const name = member.name;
     const first = firstName(name);
-    const fallback = levelFor(member.role, project.visibility, null);
+    const admin: Option = { id: 'manager', label: 'Admin', change: { kind: 'grant', role: 'manager' }, confirm: `Make ${first} an admin`,
+      preview: `${name} will be an admin of ${project.name}: they add and remove its people and change it.` };
+    if (everyone && member.role !== 'guest') {
+      return current === 'manager'
+        ? [{ id: 'revoke', label: 'Member', change: { kind: 'revoke' }, confirm: `Make ${first} a member`, preview: `${name} stays in ${project.name} as a member, like everyone in ${workspaceName}.` }]
+        : [admin];
+    }
     const options: Option[] = [];
-    if (!isManagerRole(member.role)) {
-      if (current !== 'contributor' && !(current === null && fallback === 'contributor')) {
-        options.push({ id: 'contributor', label: 'Can write', change: { kind: 'grant', role: 'contributor' }, confirm: 'Change access', preview: `${name} will be able to read and write in ${project.name}: its conversations, tasks, map and wiki.` });
-      }
-      if (current !== 'viewer') {
-        options.push({ id: 'viewer', label: 'Can read', change: { kind: 'grant', role: 'viewer' }, confirm: 'Change access', preview: `${name} will be able to read ${project.name} but not write in it.` });
-      }
+    // A guest is never a space admin (F-037).
+    if (current !== 'manager' && member.role !== 'guest') options.push(admin);
+    if (current !== 'contributor') {
+      options.push({ id: 'contributor', label: 'Member', change: { kind: 'grant', role: 'contributor' }, confirm: `Make ${first} a member`,
+        preview: `${name} will be a member of ${project.name}: they read and write in its conversation, tasks, map and wiki.` });
     }
-    if (current && current !== 'denied') {
-      options.push(fallback
-        ? { id: 'revoke', label: 'Back to the workspace default', change: { kind: 'revoke' }, confirm: 'Change access', preview: `${name} can ${fallback === 'manager' ? 'manage' : 'write in'} ${project.name} like every ${member.role} of ${workspaceName}.` }
-        : { id: 'revoke', label: 'Remove access', change: { kind: 'revoke' }, confirm: 'Remove access', danger: true, preview: `${name} loses access to ${project.name} at once. ${project.visibility === 'restricted' ? 'They won’t see it at all, not even its name.' : ''}`.trim() });
+    if (current) {
+      options.push({ id: 'revoke', label: 'Remove', change: { kind: 'revoke' }, confirm: `Remove ${first}`, danger: true,
+        preview: `${name} is removed from ${project.name} at once and no longer sees it, not even its name.` });
     }
-    if (current === 'denied') {
-      options.push({ id: 'revoke', label: 'Let back in', change: { kind: 'revoke' }, confirm: `Let ${first} back in`, preview: fallback
-        ? `${name} can ${fallback === 'manager' ? 'manage' : 'write in'} ${project.name} again as ${member.role === 'admin' || member.role === 'owner' ? 'an' : 'a'} ${ROLE_LABEL[member.role].toLowerCase()} of ${workspaceName}.`
-        : `${name} is no longer kept out, but still can’t open ${project.name} until someone gives them access.` });
-    } else {
-      options.push({ id: 'denied', label: 'Keep out of this project', change: { kind: 'grant', role: 'denied' }, confirm: `Keep ${first} out`, danger: true, preview: `${name} is kept out of ${project.name} at once, whatever their role in ${workspaceName}.${isManagerRole(member.role) ? ' Only another owner or admin can let them back in.' : ''}` });
-    }
-    // For someone kept out, the safe first choice is letting them back in, not granting write access.
-    return current === 'denied' ? [options[options.length - 1]!, ...options.slice(0, -1)] : options;
+    return options;
   };
 
   const apply = async (member: WorkspaceMember, option: Option, key: string) => {
@@ -135,18 +130,18 @@ export function ProjectAccess({ project, people, focusToken }: { project: Projec
       throw error;
     }
     const first = firstName(member.name);
-    changed(option.id === 'denied' ? `${first} is kept out of ${project.name}.`
-      : option.id === 'revoke' ? (grant?.role === 'denied' ? `${first} is no longer kept out.` : `${first}’s access was removed.`)
-        : `${first} ${option.id === 'contributor' ? 'can now write in' : 'can now read'} ${project.name}.`);
+    changed(option.id === 'manager' ? `${first} is now an admin of ${project.name}.`
+      : option.id === 'contributor' || everyone ? `${first} is now a member of ${project.name}.`
+        : `${first} was removed from ${project.name}.`);
   };
 
-  const restricted = project.visibility === 'restricted';
   const encrypted = !!useWorkspaceEncryption(project.workspaceId);
   const meRow = <li className="people__item"><div className="people__row"><Avatar name={me.user.name} size="md" tone="me" /><span className="people__who"><b>{me.user.name} <span className="people__you">· you</span></b></span><span className="people__role">{ROLE_SHORT[project.access]}</span></div></li>;
-  // Invite: someone already in the space is given access here; someone new is first added to the space.
+  // Add people: someone in the company is added here; someone new is first invited to the company (Settings › Company).
+  const companyAdmin = isManagerRole(myRole);
   const invite = () => {
     if (!roster) return;
-    if (!candidates.length) { openDetails({ kind: 'people', workspaceId: project.workspaceId, project: { id: project.id, name: project.name } }); return; }
+    if (!candidates.length && companyAdmin) { navigate('/settings/company?invite=1'); return; }
     setGiving((open) => !open);
   };
 
@@ -154,7 +149,7 @@ export function ProjectAccess({ project, people, focusToken }: { project: Projec
     <section className="details__sec access" aria-labelledby="ov-people">
       <div className="access__head">
         <h4 id="ov-people" ref={headingRef} tabIndex={-1}>People</h4>
-        {manager ? <Button ref={inviteRef} variant="quiet" icon="plus" className="access__invite" disabled={!roster} aria-expanded={giving} onClick={invite}>Invite</Button> : null}
+        {manager ? <Button ref={inviteRef} variant="quiet" icon="plus" className="access__invite" disabled={!roster} aria-expanded={giving} onClick={invite}>Add people</Button> : null}
       </div>
       {people ? (
         <ul className="people__list" ref={listRef} aria-label={`People who can see ${project.name}`}>
@@ -175,40 +170,27 @@ export function ProjectAccess({ project, people, focusToken }: { project: Projec
       {/* #763 FT-1: agents whose owners asked to bring them in; managers answer here. */}
       <AgentRequests project={project} onChanged={changed} />
 
-      {manager && managing && keptOut.length ? (
-        <>
-          <h4 className="access__sub" id="ov-kept-out">Kept out</h4>
-          <ul className="people__list" aria-labelledby="ov-kept-out">
-            {keptOut.map(({ member }) => (
-              <AccessRow key={member.userId} name={member.name} label="Kept out" note={`${ROLE_LABEL[member.role]} of ${workspaceName}`} access={null}
-                options={optionsFor(member)} editing={editing === member.userId} onEdit={(open) => { setDone(''); setEditing(open ? member.userId : null); }}
-                onApply={(option, key) => apply(member, option, key)} workspaceName={workspaceName} />
-            ))}
-          </ul>
-        </>
-      ) : null}
-
-      {/* #763 FT-7: Change access with nobody else here says so and offers Invite, instead of doing nothing. */}
-      {manager && managing && roster && !others.length && !keptOut.length ? (
-        <p className="access__alone">Nobody else can open {project.name} yet. <Button variant="link" onClick={invite}>Invite someone</Button></p>
+      {/* #763 FT-7: Change people with nobody else here says so and offers Add people, instead of doing nothing. */}
+      {manager && managing && roster && !others.length ? (
+        <p className="access__alone">Nobody else is in {project.name} yet. <Button variant="link" onClick={invite}>Add people</Button></p>
       ) : null}
       <p className="people__done" role="status">{done ? <><Icon name="check" size={13} />{done}</> : null}</p>
 
       {manager && rosterFailed && !roster ? (
-        <p className="people__notice" role="alert"><Icon name="alert" size={13} />Who could be given access couldn’t be loaded.<button type="button" onClick={load}>Try again</button></p>
+        <p className="people__notice" role="alert"><Icon name="alert" size={13} />Who could be added couldn’t be loaded.<button type="button" onClick={load}>Try again</button></p>
       ) : null}
       {manager && roster ? (
-        <GiveAccess project={project} candidates={candidates} workspaceName={workspaceName} open={giving}
+        <GiveAccess project={project} candidates={candidates} workspaceName={workspaceName} open={giving} companyAdmin={companyAdmin}
           onClose={() => { setGiving(false); requestAnimationFrame(() => inviteRef.current?.focus()); }}
-          onGranted={(member, role) => { setGiving(false); changed(`${firstName(member.name)} ${role === 'contributor' ? 'can now write in' : 'can now read'} ${project.name}.`); }}
-          onAddPeople={() => openDetails({ kind: 'people', workspaceId: project.workspaceId, project: { id: project.id, name: project.name } })} />
+          onGranted={(member, role) => { setGiving(false); changed(`${firstName(member.name)} is now ${role === 'manager' ? 'an admin' : 'a member'} of ${project.name}.`); }}
+          onAddPeople={() => navigate('/settings/company?invite=1')} />
       ) : null}
 
-      {/* Who can open it, in one sentence; its managers change it from here. */}
+      {/* Who is in it, in one sentence; its admins change it from here. */}
       <p className="access__line">
-        <Icon name={restricted ? 'lock' : 'people'} size={13} />
-        <span>{restricted ? 'Only the people listed here can open it.' : `Everyone in ${workspaceName} can open it; guests only by invitation.`}
-          {manager ? <> <Button variant="link" className="access__change" aria-expanded={managing} onClick={() => { setManaging((on) => !on); setEditing(null); setDone(''); }}>Change access</Button></> : null}</span>
+        <Icon name={everyone ? 'people' : 'lock'} size={13} />
+        <span>{everyone ? `Everyone in ${workspaceName} is in this space; guests only when added.` : 'Only the people listed here can open it.'}
+          {manager ? <> <Button variant="link" className="access__change" aria-expanded={managing} onClick={() => { setManaging((on) => !on); setEditing(null); setDone(''); }}>Change people</Button></> : null}</span>
       </p>
       {/* F-030 (#655): an encrypted space says so in the audience section, in one line. */}
       {encrypted ? <p className="access__line" data-encrypted-line=""><Icon name="lock" size={13} /><span>Encrypted space · only people work here, no AI.</span></p> : null}
@@ -231,7 +213,7 @@ function AccessRow({ rowKey, name, agent = false, label, note, access, options, 
         <span className={`people__role${access === null ? ' access__out' : ''}`}>{label}</span>
         {options.length && onApply ? (
           <Button ref={changeRef} variant="quiet" className="people__change" aria-expanded={editing} aria-controls={editing ? editId : undefined} onClick={() => onEdit(!editing)}>
-            Change<span className="ui-vh"> access for {name}</span>
+            Change<span className="ui-vh"> {name}’s role</span>
           </Button>
         ) : null}
       </div>
@@ -270,10 +252,10 @@ function AccessEditor({ id, name, options, onApply, onClose, workspaceName }: {
   }
 
   return (
-    <div className="people__edit" id={id} role="group" aria-label={`Change access for ${name}`}
+    <div className="people__edit" id={id} role="group" aria-label={`Change ${name}’s role`}
       onKeyDown={(event) => { if (event.key === 'Escape') { event.stopPropagation(); onClose(); } }}>
       <div className="people__field">
-        <label htmlFor={`${id}-to`}>Access</label>
+        <label htmlFor={`${id}-to`}>Role</label>
         <Select ref={selectRef} id={`${id}-to`} value={option.id} onChange={(next) => setChoice(next)} aria-describedby={`${id}-preview`}>
           {options.map((item) => <Option key={item.id} value={item.id}>{item.label}</Option>)}
         </Select>
@@ -288,13 +270,13 @@ function AccessEditor({ id, name, options, onApply, onClose, workspaceName }: {
   );
 }
 
-/** Give one workspace member access, after naming exactly who gains it and what they can do. Invite opens it. */
-function GiveAccess({ project, candidates, workspaceName, open, onClose, onGranted, onAddPeople }: {
-  project: Project; candidates: WorkspaceMember[]; workspaceName: string; open: boolean; onClose: () => void;
-  onGranted: (member: WorkspaceMember, role: 'contributor' | 'viewer') => void; onAddPeople: () => void;
+/** Adds one person from the company to the space as a member or an admin, after naming exactly who is added. */
+function GiveAccess({ project, candidates, workspaceName, open, companyAdmin, onClose, onGranted, onAddPeople }: {
+  project: Project; candidates: WorkspaceMember[]; workspaceName: string; open: boolean; companyAdmin: boolean; onClose: () => void;
+  onGranted: (member: WorkspaceMember, role: 'contributor' | 'manager') => void; onAddPeople: () => void;
 }) {
   const [personId, setPersonId] = useState('');
-  const [role, setRole] = useState<'contributor' | 'viewer'>('contributor');
+  const [role, setRole] = useState<'contributor' | 'manager'>('contributor');
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState('');
   const keys = useRef(attemptKeys());
@@ -322,7 +304,7 @@ function GiveAccess({ project, candidates, workspaceName, open, onClose, onGrant
   if (!open) return null;
   return (
     <div className="access__give people__edit" role="group" aria-labelledby={`${formId}-h`} onKeyDown={(event) => { if (event.key === 'Escape') { event.stopPropagation(); close(); } }}>
-      <h4 id={`${formId}-h`} className="access__sub">Give someone access</h4>
+      <h4 id={`${formId}-h`} className="access__sub">Add people</h4>
       <div className="people__field">
         <label htmlFor={`${formId}-who`}>Person</label>
         <Select ref={selectRef} id={`${formId}-who`} value={personId} onChange={(next) => { setPersonId(next); setProblem(''); }}>
@@ -331,23 +313,24 @@ function GiveAccess({ project, candidates, workspaceName, open, onClose, onGrant
         </Select>
       </div>
       <fieldset className="access__seg">
-        <legend>Access</legend>
+        <legend>Role</legend>
         <div className="access__seg-track">
-          <label className="access__seg-b"><input type="radio" name={`${formId}-role`} value="contributor" checked={role === 'contributor'} onChange={() => setRole('contributor')} />Can write</label>
-          <label className="access__seg-b"><input type="radio" name={`${formId}-role`} value="viewer" checked={role === 'viewer'} onChange={() => setRole('viewer')} />Can read</label>
+          <label className="access__seg-b"><input type="radio" name={`${formId}-role`} value="contributor" checked={role === 'contributor'} onChange={() => setRole('contributor')} />Member</label>
+          <label className="access__seg-b"><input type="radio" name={`${formId}-role`} value="manager" checked={role === 'manager'} onChange={() => setRole('manager')} />Admin</label>
         </div>
       </fieldset>
       <p className="access__preview" aria-live="polite">
         {person
-          ? <><b>Only {person.name} gains access.</b> {firstName(person.name)} will be able to {role === 'contributor' ? 'read and write in' : 'read'} {project.name}{role === 'contributor' ? ': its conversations, tasks, map and wiki' : ', but not write in it'}. Nobody else is added.</>
-          : 'Choose who to give access. Only that person is added.'}
+          ? <><b>Only {person.name} is added.</b> {firstName(person.name)} will {role === 'manager' ? 'be an admin of' : 'read and write in'} {project.name}{role === 'manager' ? ', adding and removing its people' : ': its conversation, tasks, map and wiki'}.</>
+          : 'Choose who to add. Only that person is added.'}
       </p>
       <div className="details__actions">
-        <Button variant="primary" busy={busy} disabled={!person} onClick={() => void give()}>{person ? `Give ${firstName(person.name)} access` : 'Give access'}</Button>
+        <Button variant="primary" busy={busy} disabled={!person} onClick={() => void give()}>{person ? `Add ${firstName(person.name)}` : 'Add'}</Button>
         <Button variant="secondary" onClick={close}>Cancel</Button>
       </div>
       {problem ? <p className="people__notice" role="alert"><Icon name="alert" size={13} />{problem}</p> : null}
-      <Button variant="link" className="access__link" onClick={onAddPeople}>Someone new? Add them to {workspaceName} first</Button>
+      {companyAdmin ? <Button variant="link" className="access__link" onClick={onAddPeople}>Someone new? Invite them to {workspaceName} first</Button>
+        : <p className="access__preview">Someone new? Ask an admin of {workspaceName} to invite them first.</p>}
     </div>
   );
 }

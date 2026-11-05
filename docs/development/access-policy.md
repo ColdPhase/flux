@@ -170,7 +170,37 @@ owns the run, while they are active in its workspace. Workspace owners, admins, 
 and agents never see it, so its progress events (`assistant_run.changed.v1`) reach the owner
 alone. The committed answer is a separate project event for the conversation's audience.
 
-**Membership.** Owners and admins manage members and create projects. Only an owner
+**One company and its spaces (F-037, #874).** One Flux is one company: the first account sets
+it up (`joinCompany`, under a transaction-scoped advisory lock) as its owner, with the
+default space **Everyone** (visibility `workspace`, its creator holding a `manager` grant). The
+company is the one `workspaces` row with `company = true` (a partial unique index allows one).
+With single sign-on every later account the provider lets in joins the company as a `member` on
+its first sign-in; without it, people join through [invite links](#invite-links-f-035) or an
+owner or admin adding an existing account. `POST /api/v1/workspaces` is registered only on a test
+deployment (fixture token and failure injection), which keeps isolated workspaces for its tests.
+The one other route that makes a workspace is `POST /api/v1/encrypted-workspaces`, and only for the
+company's owners and admins (`requireCompanyAdmin`; the fixture bearer of a test deployment skips
+it), until a space itself can be encrypted. People call a project a *space*. Everyone in the
+company but a guest creates spaces (`project.create`); a new space is `restricted` and its creator
+gets a `manager` grant. A space's people are its grants: `manager` is a space admin (people only,
+never a guest, and an agent never holds it) and `contributor` a space member. Every member is in
+Everyone through its `workspace` visibility; guests are not. In the company, only setup makes a
+`workspace`-visible space (`SPACE_NOT_FOR_EVERYONE`) and nobody can be denied one
+(`EVERYONE_HOLDS_EVERYONE`).
+
+The company's owners and admins reach every space, so they can change any of them, but they
+belong only to the ones they were added to. A list says which with `member`: their sidebar shows
+those, and Settings › Company lists every space, where they add themselves. A space admin who is a
+plain member cannot deny a company admin (`COMPANY_ADMIN_PROTECTED`). Joining with a provider runs
+on every provider sign-in, so an account that linked it later joins too. Someone who leaves or is
+removed goes on `workspace_removed_people` and stays out, also on a provider sign-in, until an
+owner or admin restores them from Settings › Company. Restore brings them back as a `member`, in
+Everyone; leaving ended their grants, so other spaces are added by hand. With `FLUX_SIGNUP=verified`
+a password account sets up the company when its address is verified, not when it signs up. With
+single sign-on as the only way in, nobody makes an invite link (`INVITES_OFF_WITH_SSO`).
+Owners and admins rename the company (`PATCH /api/v1/workspaces/:id`, `workspace.rename`).
+
+**Membership.** Owners and admins manage members. Only an owner
 can grant, change or remove the owner role (`403 OWNER_REQUIRED`). The last owner
 cannot leave or step down (`409 LAST_OWNER`). Any member may leave. Members can
 create personal agents. Only owners and admins can create workspace-owned agents. An
@@ -218,7 +248,7 @@ and is then refused with `404` or `403` without writing.
 
 | Resource | Actions |
 | --- | --- |
-| workspace | `workspace.read`, `workspace.read_members`, `workspace.manage_members`, `workspace.manage_agents`, `project.create`, `draft.create`, `agent.create`, `sketch.create`, `dm.create` |
+| workspace | `workspace.read`, `workspace.read_members`, `workspace.manage_members`, `workspace.rename`, `workspace.manage_agents`, `project.create`, `draft.create`, `agent.create`, `sketch.create`, `dm.create` |
 | project | `project.read`, `project.write`, `project.manage` |
 | draft | `draft.read`, `draft.write`, `draft.share`, `draft.move` |
 | agent | `agent.read`, `agent.revoke`, `agent.invoke` (only the owning person, while the agent is not revoked; [personal runs](personal-runs.md)) |
@@ -237,8 +267,8 @@ forbidden action answers `403`. Error bodies are `{ error, code }`.
 
 | Method and path | Domain method |
 | --- | --- |
-| `GET/POST /api/v1/workspaces` | `listWorkspaces`, `createWorkspace` |
-| `GET /api/v1/workspaces/:id` | `getWorkspace` |
+| `GET /api/v1/workspaces` | `listWorkspaces` (`POST` `createWorkspace` only on a test deployment, F-037) |
+| `GET/PATCH /api/v1/workspaces/:id` | `getWorkspace`, `renameWorkspace` (owners and admins rename the company) |
 | `GET/POST /api/v1/workspaces/:id/members` | `listMembers`, `addMember` (by `email` or `userId`) |
 | `PATCH/DELETE /api/v1/workspaces/:id/members/:userId` | `changeRole`, `removeMember` |
 | `GET/POST /api/v1/workspaces/:id/invites` | `listInvites`, `createInvite` ([invite links](#invite-links-f-035)) |
@@ -331,17 +361,11 @@ needsUnlockPassword }`. Accepting again from the same account answers `joined` a
 nothing; another account gets `410 INVITE_USED`. Accepting has no idempotency row: it is
 idempotent by itself.
 
-**An invite made from a project (#763 FT-3, 2026-10-31).** `projectId` (optional) on create names a
-project the creator manages now (`project.manage`, else `404 PROJECT_NOT_FOUND`); the invite and
-its listing carry `project: { id, name }` (null without one; the column is cleared when the
-project is deleted) and the preview its `projectName`. Joining then also gives the new person a
-`contributor` grant on it, made as the invite's creator through the ordinary `grantProject` (it
-records `project.grant_set.v1`), only while the creator still manages the project and only when
-the new role does not already write there (a member of a workspace-visible project writes
-already; an admin manages it). The answer's `projectId` is where the web app lands: the invite's
-project when the person can open it, else null. In the same transaction the creator gets an Inbox
-notice "<name> joined <project>" (linking the project's People), or, for a link without a project,
-a Needs-you question "<name> joined your space" asking them to give access.
+**An invite joins the company only (F-037, 2026-11-03).** A link names no space (the FT-3
+`projectId` of #763 went with F-037); the new member is in Everyone at once and is added to other
+spaces from each space's people. In the same transaction the creator gets an Inbox notice
+"<name> joined <company>" linking Settings › Company. Settings › Company shows invite links only
+without single sign-on: with it, the provider decides who joins.
 
 **Sign-up rules stay as they are.** A signed-out visitor on `/join` is sent to sign in or to
 create an account and back. The page keeps the token in that tab's session storage and removes it

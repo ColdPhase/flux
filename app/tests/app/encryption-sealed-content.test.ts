@@ -22,7 +22,7 @@ import { addMember, expectStatus, person, workspace, type Person } from './suppo
 let ada: Person; let ben: Person; let cy: Person;
 let A: string; let B: string;
 const pw = passphrase();
-const kinds = ['project', 'goal', 'message', 'reply', 'large', 'dmTitle', 'dmMessage', 'decision', 'rationale', 'result', 'evidence', 'draft', 'draftBody', 'draftEdit', 'task', 'outcome', 'criterion', 'blocker', 'taskRename',
+const kinds = ['project', 'message', 'reply', 'large', 'dmTitle', 'dmMessage', 'decision', 'rationale', 'result', 'evidence', 'draft', 'draftBody', 'draftEdit', 'task', 'outcome', 'criterion', 'blocker', 'taskRename',
   'docTitle', 'docBody', 'docEdit', 'materialTitle', 'materialBody', 'materialUrl', 'mapTitle', 'thought', 'linkLabel', 'fileName', 'mention'] as const;
 type Kind = typeof kinds[number];
 const canaries: Record<'A' | 'B', Record<Kind, string>> = { A: {} as Record<Kind, string>, B: {} as Record<Kind, string> };
@@ -41,7 +41,6 @@ async function post(who: Person, path: string, body: unknown, status: number, he
 async function writeEverything(side: 'A' | 'B', ws: string) {
   const c = canaries[side];
   const project = await post(ada, `/api/v1/workspaces/${ws}/projects`, { name: c.project, visibility: 'workspace' }, 201) as unknown as Project;
-  expectStatus(await ada.browser.request('PUT', `/api/v1/projects/${project.id}/goal`, { body: { title: c.goal }, headers: { ...key(), 'if-match': `"${project.version}"` } }), 200, 'goal');
   const conversation = await post(ada, `/api/v1/projects/${project.id}/conversations`, { body: c.message, clientMessageId: randomUUID() }, 201);
   // #469: the reply cites the opening message, so the cards of a sealed workspace are covered by the same canary scan.
   const opening = (conversation.messages as { id: string }[])[0]!.id;
@@ -122,9 +121,8 @@ describe('F-030 S2a-1: sealed content in the repositories', () => {
   test('A reads back every canary through the API, as B does', async () => {
     for (const side of ['A', 'B'] as const) {
       const c = canaries[side]; const id = ids[side];
-      const project = expectStatus(await ben.browser.request('GET', `/api/v1/projects/${id.project}`), 200) as Project & { goal: { title: string } | null };
+      const project = expectStatus(await ben.browser.request('GET', `/api/v1/projects/${id.project}`), 200) as Project;
       assert.equal(project.name, c.project, side);
-      assert.equal(project.goal?.title, c.goal, side);
       const projects = expectStatus(await ben.browser.request('GET', `/api/v1/workspaces/${side === 'A' ? A : B}/projects`), 200) as { items: Project[] };
       assert.ok(projects.items.some((item) => item.name === c.project), `${side}: the project list`);
       const conversation = expectStatus(await ben.browser.request('GET', `/api/v1/conversations/${id.conversation}`), 200) as { firstMessageBody: string; messages: { body: string }[] };
@@ -532,11 +530,11 @@ describe('F-030 S2a-1: sealed content in the repositories', () => {
     const one = async (query: string, values: unknown[]) => (await pool.query(query, values)).rows[0] as Record<string, unknown>;
     for (const [side, ws] of [['A', A], ['B', B]] as const) {
       const sealed = side === 'A';
-      const row = await one(`SELECT flux_is_sealed(p.name) AS name, flux_is_sealed(g.title) AS goal, flux_is_sealed(d.title) AS decision,
+      const row = await one(`SELECT flux_is_sealed(p.name) AS name, flux_is_sealed(d.title) AS decision,
           flux_is_sealed(d.rationale) AS rationale, flux_is_sealed(r.title) AS result, flux_is_sealed(r.evidence) AS evidence
-        FROM projects p JOIN project_goals g ON g.project_id = p.id JOIN project_decisions d ON d.project_id = p.id JOIN project_results r ON r.project_id = p.id
+        FROM projects p JOIN project_decisions d ON d.project_id = p.id JOIN project_results r ON r.project_id = p.id
         WHERE p.workspace_id = $1`, [ws]);
-      assert.deepEqual(row, { name: sealed, goal: sealed, decision: sealed, rationale: sealed, result: sealed, evidence: sealed }, side);
+      assert.deepEqual(row, { name: sealed, decision: sealed, rationale: sealed, result: sealed, evidence: sealed }, side);
       const messages = (await pool.query(`SELECT bool_and(flux_is_sealed(body)) AS body, bool_and(flux_is_sealed(request_fingerprint)) AS fingerprint
         FROM project_messages WHERE workspace_id = $1`, [ws])).rows[0];
       assert.deepEqual(messages, { body: sealed, fingerprint: sealed }, side);

@@ -24,7 +24,7 @@ export function ProjectProposals({ outcomes, people, projectName, resultTitles, 
   const open = outcomes.flatMap((outcome) => outcome.kind === 'comparison' && outcome.proposal.status === 'proposed' ? [outcome] : []);
   const insufficient = outcomes.filter((outcome): outcome is InsufficientComparisonOutcome => outcome.kind === 'insufficient_evidence' && outcome.status === 'open');
   if (!open.length && !insufficient.length) return null;
-  const name = (id: string) => people?.find((person) => person.id === id)?.name ?? 'a project member';
+  const name = (id: string) => people?.find((person) => person.id === id)?.name ?? 'a space member';
   const beginEdit = (proposal: ProactiveComparisonProposal) => {
     setEditing(proposal.id); setFact(proposal.fact); setInterpretation(proposal.interpretation);
     setAction(proposal.suggestedAction); setError('');
@@ -51,10 +51,10 @@ export function ProjectProposals({ outcomes, people, projectName, resultTitles, 
   return (
     <section className="ws-group ws-proposals" aria-labelledby="g-comparison-proposals">
       <h2 className="ws-group__h" id="g-comparison-proposals">Suggestions and checks <span>{open.length + insufficient.length}</span></h2>
-      <nav className="ws-proposals__jumps" aria-label="Project work sections">
+      <nav className="ws-proposals__jumps" aria-label="Space work sections">
         {workCount ? <button type="button" onClick={() => jumpToSection(workJumpId)}>Work {workCount}</button> : null}
       </nav>
-      <p className="ws-proposals__intro">Quiet project suggestions. The agent has not changed any work or decision.</p>
+      <p className="ws-proposals__intro">Quiet space suggestions. The agent has not changed any work or decision.</p>
       {open.map(({ proposal, inspectedSources, unavailableSourcesCount }) => {
         const isEditing = editing === proposal.id;
         const isExpanded = expanded === proposal.id;
@@ -64,7 +64,7 @@ export function ProjectProposals({ outcomes, people, projectName, resultTitles, 
             onClick={() => { setExpanded(isExpanded ? null : proposal.id); setEditing(null); setError(''); }}>
             <span className="ws-proposal__action">{proposal.suggestedAction}</span>
             <span className="ws-proposal__expand">{isExpanded ? 'Hide details' : 'Review'}</span>
-            <span className="ws-proposal__source"><span className="ws-proposal__trigger">After: {resultTitles.get(proposal.resultId) ?? 'Project result'}</span><span className="ws-proposal__separator"> · </span><span className="ws-proposal__fact">{proposal.fact}</span></span>
+            <span className="ws-proposal__source"><span className="ws-proposal__trigger">After: {resultTitles.get(proposal.resultId) ?? 'Space result'}</span><span className="ws-proposal__separator"> · </span><span className="ws-proposal__fact">{proposal.fact}</span></span>
           </button>
           <p className="ws-proposal__origin">From {name(proposal.ownerUserId)}’s agent · visible to readers of {projectName}</p>
           {isExpanded ? <div id={`comparison-proposal-${proposal.id}`} className="ws-proposal__body">
@@ -90,8 +90,8 @@ export function ProjectProposals({ outcomes, people, projectName, resultTitles, 
                       ? <RefLink title={`Cited thought version ${source.version}; opens current thought`} to={comparisonSourceHref(proposal.projectId, source)!}>{source.title ?? `Thought ${source.id.slice(0, 8)}`} <small>· cited version {source.version}</small></RefLink>
                       : <span>Thought · cited version {source.version} (source unavailable)</span>
                   : source.conversationId
-                    ? <RefLink title={`Message ${source.id}, version ${source.version}`} to={comparisonSourceHref(proposal.projectId, source)!}>{source.title ?? `Project message ${source.id.slice(0, 8)}`}</RefLink>
-                    : <span title={`Message ${source.id}, version ${source.version}`}>Project message · {source.id.slice(0, 8)} (source unavailable)</span>}
+                    ? <RefLink title={`Message ${source.id}, version ${source.version}`} to={comparisonSourceHref(proposal.projectId, source)!}>{source.title ?? `Space message ${source.id.slice(0, 8)}`}</RefLink>
+                    : <span title={`Message ${source.id}, version ${source.version}`}>Space message · {source.id.slice(0, 8)} (source unavailable)</span>}
             </li>)}</ul>
           </div>
           <ComparisonEvidence projectId={proposal.projectId} sources={inspectedSources}

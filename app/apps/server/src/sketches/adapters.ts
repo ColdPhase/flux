@@ -84,8 +84,8 @@ export function sketchPromotion(tx: Database): SketchPromotion {
     async audience(principal, workspaceId, participants, target) {
       if (target.kind === 'existing') {
         const project = await getProject(principal, target.projectId, tx, accessPorts);
-        if (project.workspaceId !== workspaceId) throw new RuleViolationError('The project belongs to another workspace', 'CROSS_WORKSPACE');
-        if (project.access === 'viewer') throw new ForbiddenError('Not allowed to perform this action on the project');
+        if (project.workspaceId !== workspaceId) throw new RuleViolationError('The space belongs to another company', 'CROSS_WORKSPACE');
+        if (project.access === 'viewer') throw new ForbiddenError('Not allowed to perform this action on the space');
         const people = await listProjectPeople(principal, project.id, tx, accessPorts);
         return { people: people.map((p): PromotionPerson => ({ kind: p.kind, id: p.id, name: p.name, reason: 'project' })), projectName: project.name };
       }

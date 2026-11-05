@@ -12,12 +12,15 @@ import {
   projectGrantsPath,
   workspaceMemberPath,
   workspaceMembersPath,
+  workspaceRemovedPeoplePath,
+  workspaceRestorePath,
   workspaceAiPolicyPath,
   workspacePath,
   type ProjectAccess,
   type ProjectGrant,
   type ProjectGrantRole,
   type ProjectVisibility,
+  type RemovedPerson,
   type SetWorkspaceAiPolicyResult,
   type Workspace,
   type WorkspaceMember,
@@ -25,18 +28,24 @@ import {
 } from '@flux/contracts';
 import { ApiError, NetworkError, request } from '../api/client';
 
-// People in workspaces and projects (#188). Only the existing access routes (#29): add, change and
+// People in the company and its spaces (#188, F-037). Only the existing access routes (#29): add, change and
 // remove members, and set or revoke project grants. Every POST/PATCH carries an Idempotency-Key, so
 // a retry after a lost answer never applies twice; DELETE routes take none.
 
 const key = (idempotencyKey: string) => ({ 'idempotency-key': idempotencyKey });
 
 export const getWorkspace = (workspaceId: string, signal?: AbortSignal) => request<Workspace>(workspacePath(workspaceId), { signal });
+/** An owner or admin renames the company (Settings › Company, F-037). */
+export const renameCompany = (workspaceId: string, name: string, idempotencyKey: string) =>
+  request<Workspace>(workspacePath(workspaceId), { method: 'PATCH', body: { name }, headers: key(idempotencyKey) });
 export const listMembers = (workspaceId: string, signal?: AbortSignal) => request<WorkspaceMember[]>(workspaceMembersPath(workspaceId), { signal });
 export const addMember = (workspaceId: string, email: string, role: WorkspaceRole, idempotencyKey: string) =>
   request<WorkspaceMember>(workspaceMembersPath(workspaceId), { method: 'POST', body: { email, role }, headers: key(idempotencyKey) });
 export const changeRole = (workspaceId: string, userId: string, role: WorkspaceRole, idempotencyKey: string) =>
   request<WorkspaceMember>(workspaceMemberPath(workspaceId, userId), { method: 'PATCH', body: { role }, headers: key(idempotencyKey) });
+/** Who left the company or was removed, and bringing them back (Settings › Company). */
+export const listRemovedPeople = (workspaceId: string, signal?: AbortSignal) => request<RemovedPerson[]>(workspaceRemovedPeoplePath(workspaceId), { signal });
+export const restorePerson = (workspaceId: string, userId: string) => request<WorkspaceMember>(workspaceRestorePath(workspaceId, userId), { method: 'POST' });
 /** Removes someone, or leaves when `userId` is the caller. */
 export const removeMember = (workspaceId: string, userId: string) => request<null>(workspaceMemberPath(workspaceId, userId), { method: 'DELETE' });
 
@@ -49,7 +58,7 @@ export const setWorkspaceAi = (workspaceId: string, state: 'allowed' | 'blocked'
 
 /** Invite links (F-035): owners and admins create, list and revoke them; whoever has one previews and accepts it. */
 export const listInvites = (workspaceId: string, signal?: AbortSignal) => request<WorkspaceInvite[]>(workspaceInvitesPath(workspaceId), { signal });
-export const createInvite = (workspaceId: string, body: { role: InviteRole; email: string | null; expiresInDays: InviteExpiryDays; projectId?: string | null }, idempotencyKey: string) =>
+export const createInvite = (workspaceId: string, body: { role: InviteRole; email: string | null; expiresInDays: InviteExpiryDays }, idempotencyKey: string) =>
   request<WorkspaceInvite>(workspaceInvitesPath(workspaceId), { method: 'POST', body, headers: key(idempotencyKey) });
 export const revokeInvite = (workspaceId: string, inviteId: string) => request<null>(workspaceInvitePath(workspaceId, inviteId), { method: 'DELETE' });
 export const previewInvite = (token: string, signal?: AbortSignal) => request<InvitePreview>(INVITE_PREVIEW_PATH, { method: 'POST', body: { token }, signal });
@@ -79,9 +88,9 @@ export function attemptKeys() {
 export const ROLE_LABEL: Record<WorkspaceRole, string> = { owner: 'Owner', admin: 'Admin', member: 'Member', guest: 'Guest' };
 export const ROLE_HINT: Record<WorkspaceRole, string> = {
   owner: 'Everything an admin can do, and can add or remove owners.',
-  admin: 'Adds and removes people and manages every project.',
-  member: 'Sees projects open to the workspace and the ones given to them.',
-  guest: 'Sees only the projects given to them.',
+  admin: 'Adds and removes people and can change every space.',
+  member: 'Is in Everyone, starts spaces and sees the ones they’re added to.',
+  guest: 'Sees only the spaces they’re added to, and never has AI.',
 };
 export const isManagerRole = (role: WorkspaceRole | null | undefined) => role === 'owner' || role === 'admin';
 

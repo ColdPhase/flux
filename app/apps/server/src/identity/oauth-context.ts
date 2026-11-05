@@ -7,7 +7,7 @@ import { oauthFlow, verifiedOauthQuery } from './oauth-query.js';
 import type { SessionResolver } from './session.js';
 
 const aiOff = (reply: { code(status: number): { send(body: unknown): unknown } }) =>
-  reply.code(403).send({ error: 'AI is turned off in this workspace', code: 'WORKSPACE_AI_BLOCKED' });
+  reply.code(403).send({ error: 'AI is turned off in this company', code: 'WORKSPACE_AI_BLOCKED' });
 
 /** Only signed, current OAuth requests may supply the consent screen's display data. */
 export function registerAgentOauthContext(app: FastifyInstance, db: Database, sessions: SessionResolver, auth: FluxAuth, publicOrigin: string) {

@@ -64,10 +64,10 @@ describe('F-030 creation (fixture route)', () => {
     assert.equal(again.headers.get('cache-control'), 'no-store');
   });
 
-  test('creation is a production route (S3): a session alone makes the space, and no session is refused', async () => {
+  test('creation is for the company’s owners and admins (F-037): an account outside the company is refused, and no session is refused', async () => {
     const response = await eve.browser.request('POST', ENCRYPTED_WORKSPACES_PATH, { body: { name: 'No bearer club', creationId: randomUUID(), password: pw.eve } });
-    assert.equal(response.status, 201);
-    assert.equal(typeof (response.json as { recoveryCode?: unknown }).recoveryCode, 'string');
+    assert.equal(response.status, 403);
+    assert.equal(codeOf(response), 'COMPANY_ADMIN_REQUIRED');
     const signedOut = await new Browser().request('POST', ENCRYPTED_WORKSPACES_PATH, { body: { name: 'Nobody club', creationId: randomUUID(), password: pw.eve } });
     assert.equal(signedOut.status, 401);
   });
@@ -318,7 +318,7 @@ describe('F-030 one password limiter for every checking route', () => {
 
 describe('F-030 floods of derivations (S3 security review)', () => {
   const create = (who: Person, name: string, password: string, creationId = randomUUID()) =>
-    who.browser.request('POST', ENCRYPTED_WORKSPACES_PATH, { body: { name, creationId, password } });
+    who.browser.request('POST', ENCRYPTED_WORKSPACES_PATH, { body: { name, creationId, password }, headers: fixtureBearer() });
 
   test('five creations per person in 15 minutes, then 429 CREATION_RATE_LIMITED with Retry-After; a retry still answers 200', async () => {
     const kit = await person('Kit');

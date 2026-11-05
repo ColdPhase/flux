@@ -190,7 +190,7 @@ describe('identity server behaviour', () => {
   test('password reset reports unavailable when SMTP is not configured', async () => {
     const server = await app(config());
     try {
-      assert.deepEqual((await server.inject({ method: 'GET', url: '/api/v1/auth/capabilities' })).json(), { passwordReset: 'unavailable', signup: 'open', ssoOnly: false, linkable: false, sso: null });
+      assert.deepEqual((await server.inject({ method: 'GET', url: '/api/v1/auth/capabilities' })).json(), { company: null, passwordReset: 'unavailable', signup: 'open', ssoOnly: false, linkable: false, sso: null });
       const response = await server.inject({
         method: 'POST', url: '/api/auth/request-password-reset',
         headers: { origin: 'https://flux.example.org' },

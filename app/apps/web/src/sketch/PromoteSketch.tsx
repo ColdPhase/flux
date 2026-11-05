@@ -84,7 +84,7 @@ export function PromoteSketch({ view, dmTitle, onBack }: { view: PromoteSketchVi
 
   async function confirm() {
     if (!preview || !target || busy || loading) return;
-    if (target.kind === 'new' && !target.name) { setNotice('Give the project a name first.'); return; }
+    if (target.kind === 'new' && !target.name) { setNotice('Give the space a name first.'); return; }
     const signature = JSON.stringify([target, preview.token, mode]);
     if (attempt.current?.signature !== signature) attempt.current = { signature, key: crypto.randomUUID() };
     setBusy(true); setNotice('');
@@ -126,8 +126,8 @@ export function PromoteSketch({ view, dmTitle, onBack }: { view: PromoteSketchVi
     <div className="details promote" aria-busy={loading || undefined}>
       <button type="button" className="details__back" aria-label="Back to Details" onClick={onBack}><Icon name="chevron-left" size={14} />Details</button>
       <p className="details__eyebrow promote__eyebrow"><Icon name="lock" size={12} />{from}</p>
-      <h3 className="details__title">Make a project from this sketch</h3>
-      <p className="details__lead">A copy of “{view.title}” goes into a project. The sketch here and the conversation stay as they are.</p>
+      <h3 className="details__title">Make a space from this sketch</h3>
+      <p className="details__lead">A copy of “{view.title}” goes into a space. The sketch here and the conversation stay as they are.</p>
 
       {problem ? <p className="promote__problem" role="alert"><Icon name="alert" size={13} />{problem}<button type="button" onClick={() => setReload((n) => n + 1)}>Try again</button></p> : null}
       {!preview && !problem ? <div className="promote__loading"><Spinner label="Working out who could see it" /></div> : null}
@@ -136,9 +136,9 @@ export function PromoteSketch({ view, dmTitle, onBack }: { view: PromoteSketchVi
         <div className={`promote__body${loading ? ' is-loading' : ''}`}>
           {preview.canCreateProject && preview.projects.length ? (
             <div className="seg promote__seg" role="radiogroup" aria-label="Where the copy goes">
-              <button type="button" role="radio" className="seg__b" aria-checked={choice?.kind === 'new'} onClick={() => choose({ kind: 'new' })}>New project</button>
+              <button type="button" role="radio" className="seg__b" aria-checked={choice?.kind === 'new'} onClick={() => choose({ kind: 'new' })}>New space</button>
               <button type="button" role="radio" className="seg__b" aria-checked={choice?.kind === 'existing'}
-                onClick={() => choose({ kind: 'existing', projectId: preview.target?.kind === 'existing' ? preview.target.projectId : preview.projects[0]!.id })}>Existing project</button>
+                onClick={() => choose({ kind: 'existing', projectId: preview.target?.kind === 'existing' ? preview.target.projectId : preview.projects[0]!.id })}>Existing space</button>
             </div>
           ) : null}
           {preview.target?.kind === 'new' ? (
@@ -146,15 +146,15 @@ export function PromoteSketch({ view, dmTitle, onBack }: { view: PromoteSketchVi
           ) : null}
           {preview.target?.kind === 'existing' ? (
             <label className="promote__field">
-              <span>Project</span>
+              <span>Space</span>
               <Select value={preview.target.projectId} onChange={(next) => choose({ kind: 'existing', projectId: next })}>
                 {preview.projects.map((project) => <Option key={project.id} value={project.id}>{project.name}</Option>)}
               </Select>
             </label>
           ) : null}
-          {!preview.canCreateProject && preview.target ? <p className="promote__hint">Only workspace owners and admins create projects, so the copy goes into a project you can change.</p> : null}
+          {!preview.canCreateProject && preview.target ? <p className="promote__hint">Guests don’t start spaces, so the copy goes into a space you can change.</p> : null}
           {!preview.target ? (
-            <p className="promote__problem" role="status"><Icon name="lock" size={13} />There’s no project here you can change, and only workspace owners and admins create projects. Ask one of them to make a project for you.</p>
+            <p className="promote__problem" role="status"><Icon name="lock" size={13} />There’s no space here you can change, and guests don’t start spaces. Ask someone in the company to add you to one.</p>
           ) : (
             <>
               <section className="details__sec" aria-labelledby={audienceId}>
@@ -167,7 +167,7 @@ export function PromoteSketch({ view, dmTitle, onBack }: { view: PromoteSketchVi
                     <b>{audienceHeadline(people, me.user.id)}</b>
                     <span className="promote__why">
                       {preview.target.kind === 'new'
-                        ? `${managers.length ? `${joinNames(managers.map((p) => firstName(p.name)))} ${managers.length === 1 ? 'manages' : 'manage'} every project in this workspace, so they can open it too. ` : ''}${alsoGrant && invited.length ? `${joinNames(invited.map((p) => firstName(p.name)))} ${invited.length === 1 ? 'is' : 'are'} added because you chose to. Nobody else is.` : managers.length ? 'Nobody else is added.' : 'Nobody else is added. Other people in the workspace see nothing, not even that it exists.'}`
+                        ? `${managers.length ? `${joinNames(managers.map((p) => firstName(p.name)))} can change every space in the company, so they can open it too. ` : ''}${alsoGrant && invited.length ? `${joinNames(invited.map((p) => firstName(p.name)))} ${invited.length === 1 ? 'is' : 'are'} added because you chose to. Nobody else is.` : managers.length ? 'Nobody else is added.' : 'Nobody else is added. Other people in the company see nothing, not even that it exists.'}`
                         : `Everyone who can open ${preview.target.projectName} can open the copy.`}
                     </span>
                     {preview.leftOut.length ? (
@@ -183,7 +183,7 @@ export function PromoteSketch({ view, dmTitle, onBack }: { view: PromoteSketchVi
                     <input type="checkbox" checked={alsoGrant} onChange={(event) => { if (event.target.checked) setGrantList(invited); setAlsoGrant(event.target.checked); }} aria-labelledby={`${audienceId}-grant-l`} aria-describedby={`${audienceId}-grant`} />
                     <span>
                       <b id={`${audienceId}-grant-l`}>Also give {joinNames(invited.map((p) => firstName(p.name)))} access</b>
-                      <span id={`${audienceId}-grant`}>{joinNames(invited.map((p) => p.name))} can then read and write in the new project. Nobody else is added.</span>
+                      <span id={`${audienceId}-grant`}>{joinNames(invited.map((p) => p.name))} can then read and write in the new space. Nobody else is added.</span>
                     </span>
                   </label>
                 ) : null}
@@ -198,13 +198,13 @@ export function PromoteSketch({ view, dmTitle, onBack }: { view: PromoteSketchVi
               <section className="details__sec" aria-label="What stays in the conversation">
                 <h4>What stays in the conversation</h4>
                 <ul className="promote__inc">
-                  <li><Icon name="lock" size={14} /><span>{preview.staysInDm.messages === 1 ? 'The other message of the conversation' : preview.staysInDm.messages ? `The other ${plural(preview.staysInDm.messages, 'message', 'messages')} of the conversation` : 'The conversation itself'}, and everything written there later. Nothing is synced to the project.</span></li>
+                  <li><Icon name="lock" size={14} /><span>{preview.staysInDm.messages === 1 ? 'The other message of the conversation' : preview.staysInDm.messages ? `The other ${plural(preview.staysInDm.messages, 'message', 'messages')} of the conversation` : 'The conversation itself'}, and everything written there later. Nothing is synced to the space.</span></li>
                 </ul>
               </section>
               {notice ? <p className="promote__notice" role="alert"><Icon name="alert" size={13} />{notice}</p> : null}
               <div className="details__actions promote__acts">
                 <Button variant="primary" busy={busy} aria-disabled={loading || undefined} onClick={() => void confirm()}>
-                  {preview.target.kind === 'new' ? 'Create project' : `Copy into ${preview.target.projectName}`}
+                  {preview.target.kind === 'new' ? 'Create space' : `Copy into ${preview.target.projectName}`}
                 </Button>
                 <Button variant="quiet" onClick={onBack}>Cancel</Button>
               </div>

@@ -7,6 +7,8 @@ export POSTGRES_USER=flux
 export POSTGRES_DB=flux
 export POSTGRES_PASSWORD="flux-live-test-$$-$(date +%s)"
 export FLUX_FIXTURE_TOKEN="flux-live-fixture-$$-$(date +%s)"
+# A test deployment: only it can create the isolated workspaces these checks start from (F-037).
+export FLUX_TEST_FAILURE_INJECTION=true
 export FLUX_PORT="${FLUX_LIVE_TEST_PORT:-18761}"
 export FLUX_PUBLIC_ORIGIN="http://127.0.0.1:${FLUX_PORT}"
 export FLUX_AUTH_SECRET="auth-live-test-$$-$(date +%s)-$(od -An -N16 -tx1 /dev/urandom | tr -d ' \n')"

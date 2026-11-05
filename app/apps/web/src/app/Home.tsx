@@ -92,7 +92,7 @@ function ContinueCard({ userId, workspaceIds }: { userId: string; workspaceIds: 
 /** Home (F-026 §7, S1, P1): the date and a greeting, the top three that need you, where to continue, and your projects. */
 export function Home() {
   const moments = useSmallMoments();
-  const { me, workspaces, projects, lockedWorkspaces } = useShellData();
+  const { me, workspace, workspaces, projects, lockedWorkspaces } = useShellData();
   const { openDetails, openCreate } = useShellActions();
   const phone = useMediaQuery(MEDIA.navDrawer);
   const queue = useNeedsYou(me.user.id);
@@ -106,7 +106,7 @@ export function Home() {
   // A person with no project yet gets one first step, not an empty queue and links to empty pages (#763 FT-1, S21).
   // A space waiting to be unlocked is not a first run: its row stays in Projects (F-030, #655).
   const firstRun = projects.length === 0 && !lockedWorkspaces.length && !top.length;
-  const joinedSpace = workspaces.find((space) => space.role !== null && space.role !== 'owner') ?? null;
+  const joinedSpace = workspace;
 
   return (
     <div className="pane-scroll"><div className="pane-in home">
@@ -122,15 +122,15 @@ export function Home() {
         <section className="home__card home__first" aria-labelledby="home-first">
           {moments ? <Kreska size={56} expression="hello" /> : null}
           {joinedSpace ? <>
-            {/* #763 FT-3: someone who joined a space but has no project there yet is told so, not sent to an invite link. */}
-            <h3 id="home-first">You joined {joinedSpace.name}</h3>
-            <p>Nobody has added you to a project there yet. A project’s manager gives you access, and it appears here at once. You can also start your own.</p>
-            <Button variant="secondary" size="lg" onClick={() => openCreate({ kind: 'project' })}>Start your own project</Button>
+            {/* #763 FT-3, F-037: someone in the company with only Everyone is told how other spaces reach them. */}
+            <h3 id="home-first">You’re in {joinedSpace.name}</h3>
+            <p>When someone adds you to a space, it appears here at once. You can also start your own.</p>
+            {joinedSpace.role === 'guest' ? null : <Button variant="secondary" size="lg" onClick={() => openCreate({ kind: 'project' })}>Start a space</Button>}
           </> : <>
-          <h3 id="home-first">Start with a project</h3>
-          <p>A project is where people and agents talk, turn what is said into tasks and decisions, and keep what they learn.</p>
-          <Button variant="primary" onClick={() => openCreate({ kind: 'project' })}>Start your first project</Button>
-          <p className="home__first-note">Got an invite link? Open it to join your team.</p>
+          {/* F-037: an account nobody has invited yet joins through a link from the company's admin. */}
+          <h3 id="home-first">You’re not in a company here yet</h3>
+          <p>Flux is where a company’s people and agents talk, turn what is said into tasks and decisions, and keep what they learn.</p>
+          <p className="home__first-note">Got an invite link? Open it to join your company.</p>
           </>}
         </section>
       ) : null}
@@ -162,7 +162,7 @@ export function Home() {
       <div className="home__pair">
         {!phone ? <ContinueCard userId={me.user.id} workspaceIds={workspaceIds} /> : null}
         <section className="home__card home__projects" aria-labelledby="home-projects">
-          <h3 id="home-projects" className="home__k">Projects</h3>
+          <h3 id="home-projects" className="home__k">Spaces</h3>
           {projects.length || lockedWorkspaces.length ? (
             <ul>
               {projects.slice(0, 5).map((project) => (
@@ -174,7 +174,7 @@ export function Home() {
                   </Link>
                 </li>
               ))}
-              {/* An encrypted space that waits to be unlocked is one row in place of its projects (F-030, #655). */}
+              {/* An encrypted space that waits to be unlocked is one row in place of its spaces (F-030, #655). */}
               {lockedWorkspaces.map((space) => (
                 <li key={space.id}>
                   <Link to={`/spaces/${space.id}`} className="home__project home__project--locked" data-locked-space={space.id}>
@@ -185,13 +185,13 @@ export function Home() {
                 </li>
               ))}
             </ul>
-          ) : <p className="home__empty">No projects yet. When someone adds you to one, it appears here.</p>}
+          ) : <p className="home__empty">No spaces yet. When someone adds you to one, it appears here.</p>}
         </section>
       </div>
 
       <MeetAssistantCard userId={me.user.id} />
 
-      <p className="home__more"><Link to="/tasks">All my tasks</Link><Link to="/map">Sketchbook</Link><Link to="/docs">Wiki</Link><button type="button" onClick={() => openDetails()}>Details</button></p>
+      <p className="home__more"><Link to="/tasks">All my tasks</Link><Link to="/map">My map</Link><Link to="/docs">Wiki</Link><button type="button" onClick={() => openDetails()}>Details</button></p>
       </>}
 
       <p className="home__keys" aria-hidden="true">

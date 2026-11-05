@@ -421,7 +421,7 @@ function DmContent({ initial }: { initial: Dm }) {
               </span>
               <div className="dm__who">
                 <h2>{title}</h2>
-                <p><Icon name="lock" size={12} /> {audience} can read this conversation. It stays outside every project.</p>
+                <p><Icon name="lock" size={12} /> {audience} can read this conversation. It stays outside every space.</p>
               </div>
             </header>
           )}
@@ -455,7 +455,7 @@ function DmContent({ initial }: { initial: Dm }) {
             <span className="dm-selbar__count" role="status">{picked.length ? `${picked.length} ${picked.length === 1 ? 'message' : 'messages'} selected` : 'Choose the messages to sketch from'}</span>
             <Button variant="quiet" onClick={() => toggleSelecting(false)}>Cancel</Button>
             <Button variant="primary" icon="map" busy={starting} aria-disabled={!picked.length || undefined} onClick={() => void startSketch()}>Start sketch from these messages</Button>
-            <p className="dm-selbar__note"><Icon name="lock" size={12} />The sketch stays in this conversation: {audience.replace(/^Only /, 'only ')} can see it. No project is created.</p>
+            <p className="dm-selbar__note"><Icon name="lock" size={12} />The sketch stays in this conversation: {audience.replace(/^Only /, 'only ')} can see it. No space is created.</p>
           </div>
         </div>
       ) : null}

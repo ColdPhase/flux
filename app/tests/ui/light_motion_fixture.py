@@ -90,6 +90,8 @@ class LightMotion:
         api(ada, "POST", f"/api/v1/workspaces/{self.workspace}/members", {"email": f"motion-jonas-{self.stamp}@example.test", "role": "member"}, 201)
         self.project = api(ada, "POST", f"/api/v1/workspaces/{self.workspace}/projects", {"name": "Community garden sensors", "visibility": "restricted"}, 201)["id"]
         self.root = f"/api/v1/projects/{self.project}"
+        # The Agents view stays an added view until #873 retires it (a new space starts with Conversation, Tasks, Map and Wiki).
+        api(ada, "POST", f"{self.root}/views", {"view": "agents"}, 200)
         api(ada, "POST", self.root + "/grants", {"principal": {"kind": "human", "id": self.ids["jonas"]}, "role": "contributor"}, 201)
         self.thread = api(ada, "POST", self.root + "/conversations", {"body": "Should the first sensors measure soil moisture, or only temperature for the frost warnings?", "clientMessageId": str(uuid.uuid4())}, 201)
         for who, text in ((jonas, "Moisture first. The volunteers keep overwatering the raised beds."), (ada, "Agreed. I compared probes in the shortlist."),

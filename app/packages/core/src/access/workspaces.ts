@@ -1,22 +1,95 @@
 import { randomUUID } from 'node:crypto';
-import type { CreateWorkspaceCommand, Workspace, WorkspaceAiPolicy, WorkspaceEncryption, WorkspaceRole } from '@flux/contracts';
+import type { CreateWorkspaceCommand, RenameWorkspaceCommand, Workspace, WorkspaceAiPolicy, WorkspaceEncryption, WorkspaceRole } from '@flux/contracts';
 import { MISSING_ENCRYPTION_VIEW, presentEncryption } from '../encryption/view.js';
 import { recordEvent } from '../events.js';
 import type { Database, Executor, Principal } from '../types.js';
 import { eventPorts } from './common.js';
 import { ForbiddenError, NotFoundError } from './errors.js';
-import { enforce, evaluateWorkspace, isUuid } from './policy.js';
+import { enforce, evaluateWorkspace, isManager, isUuid } from './policy.js';
+import { insertSpace } from './projects.js';
 import type { AccessPorts } from './repositories.js';
 import type { WorkspaceRecord } from './records.js';
 import { name } from './validation.js';
 import { workspaceAiViews } from './workspace-ai.js';
 
-// Workspaces: create, list and read (issues #46, #91). Membership is in ./members.ts, the AI switch in ./workspace-ai.ts.
+// Workspaces: the company, list and read (issues #46, #91). Membership is in ./members.ts, the AI switch in ./workspace-ai.ts.
+//
+// F-037 (#874): one Flux is one company. The first account sets it up (`joinCompany`) as its owner, with the
+// Everyone space; with single sign-on every later account joins it on its first sign-in, and without single sign-on a
+// company admin invites people with links (./invites.ts). Nobody creates another workspace: `createWorkspace` serves
+// test deployments only, which keep isolated workspaces of their own.
 
 type WorkspacePorts = Pick<AccessPorts, 'workspaces' | 'access' | 'events' | 'encryption'>;
 
 function toWorkspace(row: WorkspaceRecord, role: WorkspaceRole | null, ai: WorkspaceAiPolicy, encryption: WorkspaceEncryption | null = null): Workspace {
-  return { id: row.id, name: row.name, role, version: row.version, createdAt: row.createdAt.toISOString(), ai: { ...ai, fixed: row.encrypted ? 'encrypted' : null }, encryption };
+  return { id: row.id, name: row.name, company: row.company, role, version: row.version, createdAt: row.createdAt.toISOString(),
+    ai: { ...ai, fixed: row.encrypted ? 'encrypted' : null }, encryption };
+}
+
+/** The name setup gives the company; an owner or admin changes it in Settings › Company. */
+export const COMPANY_NAME = 'Company';
+/** The default space that holds the whole company (F-037). */
+export const EVERYONE_SPACE_NAME = 'Everyone';
+
+/**
+ * F-037 setup and joining. The identity layer calls it for a new account, and again after each provider sign-in. The first
+ * account makes the company, as its owner, with the Everyone space. Later, whoever signs in with the provider joins as a
+ * member on their first sign-in, however the account came to exist; a password account joins only through an invite link.
+ * Someone who left or was removed stays out until an admin restores them. Returns what happened. Setup takes one lock, so
+ * two first sign-ups make one company.
+ */
+export async function joinCompany(userId: string, options: { sso: boolean }, db: Database,
+  ports: Pick<AccessPorts, 'workspaces' | 'projects' | 'access' | 'events'>): Promise<'created' | 'joined' | null> {
+  return db.transaction(async (tx) => {
+    const workspaces = ports.workspaces(tx);
+    await workspaces.lockCompanySetup();
+    const company = await workspaces.company();
+    const principal: Principal = { kind: 'human', id: userId };
+    if (!company) {
+      const id = randomUUID();
+      await workspaces.createWithOwner({ id, name: COMPANY_NAME, createdBy: userId, company: true });
+      await recordEvent(eventPorts(ports, tx), principal, id, 'workspace.created.v1', id, {});
+      const everyone = await insertSpace(tx, ports, { workspaceId: id, name: EVERYONE_SPACE_NAME, visibility: 'workspace', createdBy: userId });
+      await recordEvent(eventPorts(ports, tx), principal, id, 'project.created.v1', everyone.id, { visibility: 'workspace' });
+      return 'created';
+    }
+    if (!options.sso || await workspaces.isMember(company.id, userId) || await workspaces.isRemoved(company.id, userId)) return null;
+    await workspaces.lock(company.id);
+    const member = await workspaces.insertMember({ workspaceId: company.id, userId, role: 'member', createdBy: userId });
+    if (!member) return null;
+    await recordEvent(eventPorts(ports, tx), principal, company.id, 'workspace.member_added.v1', company.id, { userId, role: 'member' });
+    return 'joined';
+  });
+}
+
+/**
+ * The company's owners and admins, the only people who make an encrypted workspace until a space can be encrypted (F-037):
+ * any other account would otherwise own a second company.
+ */
+export async function requireCompanyAdmin(principal: Principal, db: Database, ports: Pick<AccessPorts, 'workspaces' | 'projects'>) {
+  const company = await ports.workspaces(db).company();
+  const role = company && principal.kind === 'human' && principal.id ? await ports.projects(db).memberRole(company.id, principal.id) : null;
+  if (!isManager(role)) throw new ForbiddenError('Only the company’s owners and admins can do this', 'COMPANY_ADMIN_REQUIRED');
+}
+
+/** The company's name for the sign-in page and for email: nothing before setup, or while it still has the name setup gave it. */
+export async function companyDisplayName(db: Database, ports: Pick<AccessPorts, 'workspaces'>): Promise<string | null> {
+  const company = await ports.workspaces(db).company();
+  return company && company.name !== COMPANY_NAME ? company.name : null;
+}
+
+/** An owner or admin renames the company (Settings › Company). */
+export async function renameWorkspace(principal: Principal, workspaceId: string, command: RenameWorkspaceCommand, db: Database, ports: WorkspacePorts,
+  options: WorkspaceReadOptions = {}): Promise<Workspace> {
+  const workspaceName = name(command?.name);
+  return db.transaction(async (tx) => {
+    await ports.workspaces(tx).lock(workspaceId);
+    const { actor } = enforce(await evaluateWorkspace(principal, 'workspace.rename', workspaceId, ports.access(tx), { lock: true }), 'workspace');
+    const row = await ports.workspaces(tx).rename(workspaceId, workspaceName);
+    await recordEvent(eventPorts(ports, tx), principal, workspaceId, 'workspace.renamed.v1', workspaceId, {});
+    return toWorkspace(row, actor.role, (await workspaceAiViews(tx, ports, [{ workspaceId, role: actor.role }])).get(workspaceId)!,
+      (await encryptionViews(tx, ports, principal, [{ row, role: actor.role }], options)).get(workspaceId) ?? null);
+  });
 }
 
 /** F-030 (#655): how a workspace is read; `bootId` is the boot under which the reading API can open keys (missing or null: locked). */
@@ -31,7 +104,7 @@ async function encryptionViews(db: Executor, ports: Pick<AccessPorts, 'encryptio
   return new Map(sealed.map(({ row, role }) => [row.id, presentEncryption(rows.get(row.id) ?? MISSING_ENCRYPTION_VIEW, role, options.bootId ?? null)]));
 }
 
-/** Creates a workspace; the creating person becomes its owner. Agents cannot create workspaces. */
+/** Test deployments only (F-037): an isolated workspace whose owner is the creating person. Agents cannot create workspaces. */
 export async function createWorkspace(principal: Principal, command: CreateWorkspaceCommand, db: Database, ports: WorkspacePorts): Promise<Workspace> {
   if (principal.kind !== 'human') throw new ForbiddenError('Only people can create workspaces');
   const workspaceName = name(command?.name);
@@ -67,7 +140,7 @@ export async function listWorkspaces(principal: Principal, db: Database, ports: 
 export async function getWorkspace(principal: Principal, workspaceId: string, db: Database, ports: WorkspacePorts, options: WorkspaceReadOptions = {}): Promise<Workspace> {
   const { actor } = enforce(await evaluateWorkspace(principal, 'workspace.read', workspaceId, ports.access(db)), 'workspace');
   const row = await ports.workspaces(db).get(workspaceId);
-  if (!row) throw new NotFoundError('Workspace', 'WORKSPACE_NOT_FOUND');
+  if (!row) throw new NotFoundError('Company', 'WORKSPACE_NOT_FOUND');
   return toWorkspace(row, actor.role, (await workspaceAiViews(db, ports, [{ workspaceId: row.id, role: actor.role }])).get(row.id)!,
     (await encryptionViews(db, ports, principal, [{ row, role: actor.role }], options)).get(row.id) ?? null);
 }

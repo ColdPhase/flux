@@ -29,13 +29,6 @@
 .pull__in { display: grid; justify-items: center; gap: 4px; padding-bottom: 8px; color: var(--t3); font-size: var(--fs-xs); }
 .pull[data-ready] .pull__in, .pull[data-refreshing] .pull__in { color: var(--t2); }
 
-/* Goal reached. */
-.goal { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 24px 16px; border-radius: var(--r-lg); background: var(--el); box-shadow: var(--sh-card); text-align: center; }
-.goal .kreska { margin-bottom: 12px; }
-.goal__title { font-size: var(--fs-lg); letter-spacing: var(--tracking-title); }
-.goal__sub { color: var(--t3); font-size: var(--fs-sm); }
-.goal__actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; margin-top: 14px; }
-
 /* The wink in the toast and Asleep in the offline line. */
 .ui-toast .kreska { color: var(--oninv); }
 .ui-toast .kreska__frame { fill: none; }

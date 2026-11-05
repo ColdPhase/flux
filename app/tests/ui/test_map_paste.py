@@ -341,7 +341,7 @@ class MapPasteJourney(unittest.TestCase):
         page.goto(f"/map/{private}")
         expect(page.get_by_role('button', name="Rename map Jonas's notes", exact=True)).to_be_visible()
         self.paste(page, None, self.image())
-        expect(page.locator(".sk-status")).to_contain_text("Images can be added to a project’s maps only")
+        expect(page.locator(".sk-status")).to_contain_text("Images can be added to a space’s maps only")
         self.assertEqual(writes, [])
         self.paste(page, "Private text still pastes")
         expect(page.get_by_role("form", name="New thought draft").get_by_label("Thought text")).to_have_value("Private text still pastes")

@@ -128,10 +128,12 @@ instance in `docker/.env` and apply it with `./flux up`:
 | Only your team, with your identity provider | [single sign-on](single-sign-on.md) | Only people your provider lets in can sign in. In `sso` mode password sign-up is closed whatever `FLUX_SIGNUP` says. |
 | Only the people you add, without single sign-on | `FLUX_SIGNUP=off` after their accounts exist | Nobody can create an account, **including you**. An invite link never opens closed sign-up. |
 
-A new account belongs to no space: it sees only the spaces someone adds it to, with **Add someone**
-or an invite link ([administration](administration.md#invite-links)). A stranger who signs up sees
-none of your team's work, but can still create their own projects on your server and use its storage.
-For a private team on the internet, use single sign-on, or create the accounts and then set `off`.
+One Flux is one company. The first account on the server sets it up and becomes its owner, so create
+your own account first. A later account with a password belongs to no company until an owner or admin
+adds it with **Add someone** or an invite link ([administration](administration.md#invite-links)): a
+stranger who signs up sees nothing and can start nothing. With single sign-on, everyone your provider
+lets in joins the company as a member on their first sign-in. Inside the company, a person sees only
+the spaces they were added to, and the default space Everyone.
 
 **To add someone while sign-up is `off`**: set `FLUX_SIGNUP=verified` (or `open`), run `./flux up`,
 send them an invite link, and set it back to `off` with `./flux up` once they have joined.

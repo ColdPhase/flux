@@ -3,8 +3,8 @@ import type { GrantProjectCommand, ProjectGrant } from '@flux/contracts';
 import { recordEvent } from '../events.js';
 import type { Database, Principal } from '../types.js';
 import { eventPorts, requireRoleAuthority, type DomainEventSink } from './common.js';
-import { ConflictError, InvalidInputError, NotFoundError, RuleViolationError } from './errors.js';
-import { enforce, evaluateProject, isUuid } from './policy.js';
+import { ConflictError, ForbiddenError, InvalidInputError, NotFoundError, RuleViolationError } from './errors.js';
+import { enforce, evaluateProject, isManager, isUuid } from './policy.js';
 import type { AccessPorts } from './repositories.js';
 import type { GrantRecord } from './records.js';
 import { GRANT_ROLES, oneOf } from './validation.js';
@@ -12,7 +12,7 @@ import { GRANT_ROLES, oneOf } from './validation.js';
 // Project grants (issues #46, #91): list, set and revoke. The project row is taken `FOR NO KEY UPDATE` first,
 // then the actor's project access under `lock`; the grant row is `FOR UPDATE` (or deleted); the event is the last write.
 
-type GrantPorts = Pick<AccessPorts, 'projects' | 'access' | 'events'>;
+type GrantPorts = Pick<AccessPorts, 'projects' | 'workspaces' | 'access' | 'events'>;
 
 function toGrant(row: GrantRecord): ProjectGrant {
   return {
@@ -39,6 +39,8 @@ export async function grantProject(principal: Principal, projectId: string, comm
   const role = oneOf(command?.role, GRANT_ROLES, 'role');
   const target = command.principal;
   if (!target || (target.kind !== 'human' && target.kind !== 'agent') || typeof target.id !== 'string' || !target.id) throw new InvalidInputError('principal must be { kind: "human" | "agent", id }');
+  // A space admin is always a person (F-037).
+  if (role === 'manager' && target.kind !== 'human') throw new InvalidInputError('Only a person can be a space admin');
   return db.transaction(async (tx) => {
     const projects = ports.projects(tx);
     await projects.lockForGrantChange(projectId);
@@ -46,11 +48,19 @@ export async function grantProject(principal: Principal, projectId: string, comm
     const workspaceId = project!.workspaceId;
     if (target.kind === 'human') {
       const member = await projects.member(workspaceId, target.id);
-      if (!member) throw new RuleViolationError('Grants can only name members of the project workspace', 'NOT_A_MEMBER');
+      if (!member) throw new RuleViolationError('Only people in the company can be added to a space', 'NOT_A_MEMBER');
       if (member.role === 'owner') requireRoleAuthority(actor!, 'owner');
+      if (role === 'manager' && member.role === 'guest') throw new RuleViolationError('A guest cannot be a space admin', 'GUEST_NOT_SPACE_ADMIN');
+      if (role === 'denied') {
+        // F-037: the company's owners and admins can change any space, so a space admin who is a plain member cannot shut one out.
+        if (isManager(member.role) && !isManager(actor!.role)) throw new ForbiddenError('Only a company owner or admin can keep a company admin out of a space', 'COMPANY_ADMIN_PROTECTED');
+        if (project!.visibility === 'workspace' && (await ports.workspaces(tx).company())?.id === workspaceId) {
+          throw new RuleViolationError('Everyone holds the whole company, so nobody can be kept out of it', 'EVERYONE_HOLDS_EVERYONE');
+        }
+      }
     } else {
       const agent = isUuid(target.id) ? await projects.activeAgent(workspaceId, target.id) : null;
-      if (!agent) throw new RuleViolationError('Grants can only name active agents of the project workspace', 'AGENT_NOT_IN_WORKSPACE');
+      if (!agent) throw new RuleViolationError('Grants can only name active agents of this company', 'AGENT_NOT_IN_WORKSPACE');
     }
     const existing = await projects.lockGrantOf(projectId, target);
     const written = existing ? await projects.updateGrant(existing.id, role, principal.id)
@@ -61,7 +71,7 @@ export async function grantProject(principal: Principal, projectId: string, comm
       });
     if ('conflict' in written) {
       if (written.conflict === 'GRANT_CONFLICT') throw new ConflictError('A concurrent grant for this principal was created', 'GRANT_CONFLICT');
-      throw new ConflictError('The grantee is no longer part of the workspace', 'GRANTEE_REMOVED');
+      throw new ConflictError('This person is no longer in the company', 'GRANTEE_REMOVED');
     }
     const row = written.grant;
     const event = { grantId: row.id, principal: target, role };

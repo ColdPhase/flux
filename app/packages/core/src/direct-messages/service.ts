@@ -90,7 +90,7 @@ async function requireCounterpart(ports: DmPorts, record: DmRecord, self: string
   if (!other || record.participants.some((p) => p.id === other.id)) return;
   const active = await ports.access.activePeople(record.workspaceId, [other.id]);
   if (!active.has(other.id)) {
-    const error = new ConflictError(`${firstName(other.name)} is no longer in this workspace, so this conversation has nobody to send to.`, 'DM_RECIPIENT_UNAVAILABLE');
+    const error = new ConflictError(`${firstName(other.name)} is no longer in the company, so this conversation has nobody to send to.`, 'DM_RECIPIENT_UNAVAILABLE');
     error.details = { recipient: other };
     throw error;
   }
@@ -195,7 +195,7 @@ export function createDmUseCases(uow: DmUnitOfWork) {
   async function sendMessage(principal: Principal, dmId: string, rootId: string | null, command: SendDmMessageCommand): Promise<DmMessage> {
     const authorId = person(principal);
     if (command && typeof command === 'object' && 'source' in command && (command as { source?: unknown }).source !== undefined)
-      throw new RuleViolationError('Direct messages cannot cite project material yet', 'DM_SOURCE_UNSUPPORTED');
+      throw new RuleViolationError('Direct messages cannot cite space material yet', 'DM_SOURCE_UNSUPPORTED');
     if (command && typeof command === 'object' && (command as { attachmentIds?: unknown }).attachmentIds !== undefined)
       throw new RuleViolationError('Direct messages cannot carry files yet', 'DM_ATTACHMENTS_UNSUPPORTED');
     const input = normalizeMessage(command);
@@ -259,7 +259,7 @@ export function createDmUseCases(uow: DmUnitOfWork) {
           // When both have left, the caller may take their own place again (and still cannot send).
           if (existing && existing.participants.length) await requireCounterpart(ports, existing, self);
           const active = await ports.access.activePeople(workspaceId, others);
-          if (!active.has(others[0]!)) throw new RuleViolationError('Everyone in a direct message must be a person in this workspace', 'DM_PARTICIPANT_UNAVAILABLE');
+          if (!active.has(others[0]!)) throw new RuleViolationError('Everyone in a direct message must be a person in the company', 'DM_PARTICIPANT_UNAVAILABLE');
           if (existing) {
             const rejoined = await ports.dms.addParticipant(workspaceId, existing.id, self);
             if (rejoined) await ports.dms.bumpVersion(existing.id);
@@ -274,7 +274,7 @@ export function createDmUseCases(uow: DmUnitOfWork) {
           return { dm, created: true };
         }
         const active = await ports.access.activePeople(workspaceId, others);
-        if (others.some((id) => !active.has(id))) throw new RuleViolationError('Everyone in a direct message must be a person in this workspace', 'DM_PARTICIPANT_UNAVAILABLE');
+        if (others.some((id) => !active.has(id))) throw new RuleViolationError('Everyone in a direct message must be a person in the company', 'DM_PARTICIPANT_UNAVAILABLE');
         const record = await ports.dms.insert({ id: randomUUID(), workspaceId, kind: 'group', pairKey: null, title: name, createdBy: self, participantIds: [self, ...others] });
         const dm = await detail(ports, record, self, window);
         await ports.events.record(principal, workspaceId, 'dm.created.v1', record.id, { kind: 'group' });

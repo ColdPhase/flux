@@ -47,10 +47,10 @@ export function useAgentOwners(project: Pick<Project, 'id' | 'workspaceId'> | nu
       setRead(null);
       void listProjectPeople(projectId, controller.signal).then((people) => {
         if (controller.signal.aborted) return;
-        const owners = new Map<string, string>([['owner:workspace', 'the workspace'], ...people.flatMap((person) => {
+        const owners = new Map<string, string>([['owner:workspace', 'the company'], ...people.flatMap((person) => {
           if (person.kind === 'human') return [[`human:${person.id}`, person.name] as const];
           if (person.kind !== 'agent' || !person.agentOwner) return [];
-          return [[person.id, person.agentOwner.kind === 'workspace' ? 'the workspace' : person.agentOwner.name] as const];
+          return [[person.id, person.agentOwner.kind === 'workspace' ? 'the company' : person.agentOwner.name] as const];
         })]);
         setRead({ scope, owners });
       }, () => { if (!controller.signal.aborted) setRead(null); });

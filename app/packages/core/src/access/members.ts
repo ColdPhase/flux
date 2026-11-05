@@ -1,4 +1,4 @@
-import type { AddMemberCommand, ChangeRoleCommand, WorkspaceMember, WorkspaceRole } from '@flux/contracts';
+import type { AddMemberCommand, ChangeRoleCommand, RemovedPerson, WorkspaceMember, WorkspaceRole } from '@flux/contracts';
 import { recordEvent } from '../events.js';
 import type { Database, Executor, Principal } from '../types.js';
 import { eventPorts, requireRoleAuthority } from './common.js';
@@ -24,6 +24,30 @@ export async function listMembers(principal: Principal, workspaceId: string, db:
     userId: member.userId, email, name: memberName, role: member.role, createdAt: member.createdAt.toISOString(),
     ...(holders.size && isManager(member.role) ? { unlockPassword: holders.has(member.userId) } : {}),
   }));
+}
+
+/** Who left the company or was removed and has not joined again (Settings › Company). */
+export async function listRemovedPeople(principal: Principal, workspaceId: string, db: Database, ports: MemberPorts): Promise<RemovedPerson[]> {
+  enforce(await evaluateWorkspace(principal, 'workspace.manage_members', workspaceId, ports.access(db)), 'workspace');
+  return (await ports.workspaces(db).removedPeople(workspaceId)).map((person) => ({ ...person, removedAt: person.removedAt.toISOString() }));
+}
+
+/**
+ * Brings someone back as a member (Hubert, 2026-11-05). They are in Everyone again and sign in as usual; other spaces are
+ * added by hand, because leaving ended their grants.
+ */
+export async function restoreMember(principal: Principal, workspaceId: string, userId: string, db: Database, ports: MemberPorts): Promise<WorkspaceMember> {
+  return db.transaction(async (tx) => {
+    const workspaces = ports.workspaces(tx);
+    await workspaces.lock(workspaceId);
+    enforce(await evaluateWorkspace(principal, 'workspace.manage_members', workspaceId, ports.access(tx), { lock: true }), 'workspace');
+    const person = (await workspaces.removedPeople(workspaceId)).find((entry) => entry.userId === userId);
+    if (!person) throw new NotFoundError('Person', 'REMOVED_PERSON_NOT_FOUND');
+    const member = await workspaces.insertMember({ workspaceId, userId, role: 'member', createdBy: principal.id });
+    if (!member) throw new ConflictError('Account is already a member', 'ALREADY_MEMBER');
+    await recordEvent(eventPorts(ports, tx), principal, workspaceId, 'workspace.member_added.v1', workspaceId, { userId, role: 'member' });
+    return { userId, email: person.email, name: person.name, role: 'member', createdAt: member.createdAt.toISOString() };
+  });
 }
 
 /** Adds an existing account (by id or e-mail) to the workspace with a role. */
@@ -88,9 +112,10 @@ export async function changeRole(principal: Principal, workspaceId: string, user
     const target = await workspaces.lockMember(workspaceId, userId);
     if (!target) throw new NotFoundError('Member', 'MEMBER_NOT_FOUND');
     requireRoleAuthority(actor, target.role, role);
-    if (target.role === 'owner' && role !== 'owner' && await workspaces.ownerCount(workspaceId) <= 1) throw new ConflictError('A workspace needs at least one owner', 'LAST_OWNER');
+    if (target.role === 'owner' && role !== 'owner' && await workspaces.ownerCount(workspaceId) <= 1) throw new ConflictError('The company needs at least one owner', 'LAST_OWNER');
     if (isManager(target.role) && !isManager(role)) await dropUnlockPassword(tx, ports, workspaceId, userId, sealedChange);
     const updated = await workspaces.setRole(workspaceId, userId, role);
+    if (role === 'guest') await workspaces.endSpaceAdmin(workspaceId, userId);
     // The trigger deleted their holder and the recovery holder; their removal records are pinned now, in this transaction.
     if (sealedChange) await ports.encryption(tx).recordRemovals(workspaceId);
     await recordEvent(eventPorts(ports, tx), principal, workspaceId, 'workspace.member_role_changed.v1', workspaceId, { userId, from: target.role, role });
@@ -115,9 +140,10 @@ export async function removeMember(principal: Principal, workspaceId: string, us
     const target = await workspaces.lockMember(workspaceId, userId);
     if (!target) throw new NotFoundError('Member', 'MEMBER_NOT_FOUND');
     if (!self) requireRoleAuthority(actor, target.role);
-    if (target.role === 'owner' && await workspaces.ownerCount(workspaceId) <= 1) throw new ConflictError('A workspace needs at least one owner', 'LAST_OWNER');
+    if (target.role === 'owner' && await workspaces.ownerCount(workspaceId) <= 1) throw new ConflictError('The company needs at least one owner', 'LAST_OWNER');
     if (isManager(target.role)) await dropUnlockPassword(tx, ports, workspaceId, userId, sealedChange);
     await workspaces.deleteMember(workspaceId, userId);
+    await workspaces.recordRemoved(workspaceId, userId, principal.id);
     if (sealedChange) await ports.encryption(tx).recordRemovals(workspaceId);
     await recordEvent(eventPorts(ports, tx), principal, workspaceId, 'workspace.member_removed.v1', workspaceId, { userId });
   });

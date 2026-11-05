@@ -175,8 +175,9 @@ test('after the refused tokens a valid one still signs in the same person with h
   const again = await me(context);
   assert.equal(again.status, 200);
   assert.deepEqual({ id: again.body!.user.id, email: again.body!.user.email, name: again.body!.user.name }, { id: state.erinId, email: erin.email, name: erin.name });
-  const workspaces = await api<{ id: string }[]>(context, 'GET', '/api/v1/workspaces');
-  assert.deepEqual(workspaces.map((item) => item.id), [state.workspace]);
+  // F-037: besides the company everyone the provider lets in joins, the person keeps what they had.
+  const workspaces = await api<{ id: string; company: boolean }[]>(context, 'GET', '/api/v1/workspaces');
+  assert.deepEqual(workspaces.filter((item) => !item.company).map((item) => item.id), [state.workspace]);
   const preferences = await api<{ email: { extra: { email: string; verified: boolean } | null } }>(context, 'GET', '/api/v1/notification-preferences');
   assert.deepEqual({ email: preferences.email.extra?.email, verified: preferences.email.extra?.verified }, { email: state.extra, verified: true });
   // Every token the provider issued in this file: the valid ones plus two refused ones per mode.

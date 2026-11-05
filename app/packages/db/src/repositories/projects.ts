@@ -1,8 +1,7 @@
 import { and, asc, eq, isNull, sql } from 'drizzle-orm';
 import * as schema from '../schema.js';
 import { visibleAgentIdentity } from './agents.js';
-import { projectGoalRows } from './project-goals.js';
-import { projectLevelSql, visibleProjectsSql, type AccessActor, type AccessPrincipal } from './access.js';
+import { projectLevelSql, projectMemberSql, visibleProjectsSql, type AccessActor, type AccessPrincipal } from './access.js';
 import type { DbExecutor } from './push.js';
 import { isUuid } from './uuid.js';
 import { openRows, sealFor, sealOf, openRow } from '../sealing.js';
@@ -64,8 +63,6 @@ export function projectRepository(db: DbExecutor) {
       return openRow('projects', row!, await sealOf(db, row!.workspaceId, { write: false }));
     },
 
-    /** The goal each project shows (#520): its current goal, or else its most recently reached one. */
-    shownGoals: (projectIds: string[]) => projectGoalRows(db).shown(projectIds),
 
     /** One page of the projects the actor can see, with their level; the filter applies before count and page. */
     async listVisible(actor: AccessActor, page: { limit: number; offset: number }) {
@@ -73,7 +70,8 @@ export function projectRepository(db: DbExecutor) {
       await sealOf(db, actor.workspaceId, { write: false });
       const filter = visibleProjectsSql(actor);
       const [counted] = await db.select({ count: sql<number>`count(*)::int` }).from(schema.projects).where(filter);
-      const rows = await db.select({ project: schema.projects, level: projectLevelSql(actor, schema.projects.id, schema.projects.visibility).mapWith(Number) })
+      const rows = await db.select({ project: schema.projects, level: projectLevelSql(actor, schema.projects.id, schema.projects.visibility).mapWith(Number),
+        member: projectMemberSql(actor, schema.projects.id, schema.projects.visibility).mapWith(Boolean) })
         .from(schema.projects).where(filter)
         .orderBy(asc(schema.projects.createdAt), asc(schema.projects.id))
         .limit(page.limit).offset(page.offset);

@@ -394,7 +394,7 @@ class OneConversationJourney(unittest.TestCase):
         expect(root).to_be_focused()
         expect(self.thread(page)).to_contain_text(NUMBERS_REPLY)
         # The Conversation tab returns to the open thread after another view.
-        tabs = page.get_by_role("navigation", name="Project views")
+        tabs = page.get_by_role("navigation", name="Space views")
         tabs.get_by_role("link", name=re.compile("^Tasks")).click()
         expect(page).to_have_url(re.compile(r"/tasks$"))
         tabs.get_by_role("link", name=re.compile("^Conversation")).click()
@@ -432,7 +432,7 @@ class OneConversationJourney(unittest.TestCase):
         composer.fill(body)
         expect(page.locator(".composer__audience")).to_contain_text("Ada, Lee and you")
         # The draft stays with the project across views.
-        tabs = page.get_by_role("navigation", name="Project views")
+        tabs = page.get_by_role("navigation", name="Space views")
         tabs.get_by_role("link", name=re.compile("^Tasks")).click()
         expect(page).to_have_url(re.compile(r"/tasks$"))
         tabs.get_by_role("link", name=re.compile("^Conversation")).click()
@@ -579,7 +579,7 @@ class OneConversationJourney(unittest.TestCase):
         owner.goto(f"/projects/{project['id']}")
         stream = self.stream(owner)
         expect(stream.get_by_role("heading", name="Where do we start?")).to_be_visible()
-        expect(stream).to_contain_text("Only you see it for now; people you add to the project will see it too.")
+        expect(stream).to_contain_text("Only you see it for now; people you add to the space will see it too.")
         self.assertEqual(self.api(owner, "GET", path, status=200)["roots"], [])
         member = self.page("jonas")
         self.api(member, "GET", path, status=404)

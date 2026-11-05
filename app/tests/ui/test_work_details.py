@@ -257,7 +257,7 @@ class NativeDetailsJourney(unittest.TestCase):
         second=api(self.ctx,"POST",f"/api/v1/workspaces/{self.workspace}/projects",{"name":"Neighbouring workshop","visibility":"restricted"},201)["id"]
         page=self.page();panel=self.open(page,"result",self.result["id"])
         # Main's #184 sidebar lists projects under its own "Projects" navigation ("Places" holds Home/Inbox).
-        page.get_by_role("complementary",name="Sidebar").get_by_role("navigation",name="Projects").get_by_role("link",name="Neighbouring workshop",exact=True).click()
+        page.get_by_role("complementary",name="Sidebar").get_by_role("navigation",name="Spaces").get_by_role("link",name="Neighbouring workshop",exact=True).click()
         # #763 H11-8 (#802, docs/development/return-to-origin.md): a docked object does not follow the person to another
         # project; it closes there, and Back to the page it was opened on restores it with its own project's links.
         expect(page).to_have_url(re.compile(f"/projects/{second}$"));expect(panel).to_have_count(0)

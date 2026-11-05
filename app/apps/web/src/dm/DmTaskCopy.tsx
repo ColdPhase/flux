@@ -74,9 +74,9 @@ export function DmTaskCopy({ dmId, message, excerpt, participants, onClose, onCr
             {preview.project ? (
               <>
                 <div className="dm-copy__row">
-                  <span className="dm-copy__label">Project</span>
+                  <span className="dm-copy__label">Space</span>
                   {preview.projects.length > 1 ? (
-                    <Select aria-label="Project" value={preview.project.id} disabled={busy} onChange={(next) => { setNotice(''); setError(''); setLoading(true); setProjectId(next); }}>
+                    <Select aria-label="Space" value={preview.project.id} disabled={busy} onChange={(next) => { setNotice(''); setError(''); setLoading(true); setProjectId(next); }}>
                       {preview.projects.map((project) => <Option key={project.id} value={project.id}>{project.name}</Option>)}
                     </Select>
                   ) : <b>{preview.project.name}</b>}
@@ -88,7 +88,7 @@ export function DmTaskCopy({ dmId, message, excerpt, participants, onClose, onCr
                 {outside.length ? <p className="dm-copy__warn">{outside.length === 1 ? `${outside[0]!.name} is` : `${outside.length} people are`} not in this conversation and will read this text.</p> : null}
                 <p className="dm-copy__muted">Only the text above is copied. The task does not link back to this conversation, and later changes here do not reach it.</p>
               </>
-            ) : <p className="dm-copy__warn">You can’t add tasks to any project yet, so this text can’t be copied.</p>}
+            ) : <p className="dm-copy__warn">You can’t add tasks to any space yet, so this text can’t be copied.</p>}
           </>
         ) : null}
         {notice ? <p className="dm-copy__notice" role="status">{notice}</p> : null}

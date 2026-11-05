@@ -5,7 +5,7 @@ import type { AgentFacts, DraftFacts, ProjectFacts } from './ports.js';
 // (whole table rows are assignable) and the use cases present them as the API's shapes. Keep this file
 // free of persistence imports.
 
-export interface WorkspaceRecord { id: string; name: string; version: number; encrypted: boolean; createdAt: Date }
+export interface WorkspaceRecord { id: string; name: string; version: number; encrypted: boolean; company: boolean; createdAt: Date }
 
 export interface MemberRecord { workspaceId: string; userId: string; role: WorkspaceRole; createdAt: Date }
 

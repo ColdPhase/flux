@@ -240,7 +240,7 @@ class UpdatePromptReach(unittest.TestCase):
         expect(page.get_by_role("navigation", name="Main places")).to_be_visible()
         self.offer_update(page)
         places = page.get_by_role("navigation", name="Main places")
-        for name, path in (("Home", "/"), ("Projects", "/projects"), ("Inbox", "/inbox")):
+        for name, path in (("Home", "/"), ("Spaces", "/projects"), ("Inbox", "/inbox")):
             places.get_by_role("link", name=re.compile(f"^{name}")).tap(timeout=5000)
             expect(page).to_have_url(f"{ORIGIN}{path}")
             expect(page.get_by_test_id(PROMPT)).to_be_visible()

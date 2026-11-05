@@ -12,7 +12,7 @@ import { notificationUnitOfWork, pgBossQueue } from '../push/adapters.js';
 export function assistantOperatorUseCases(db: Database, boss: Pick<PgBoss, 'send'>) {
   return {
     request(principal: Principal, workspaceId: string, plan: 'Claude' | 'ChatGPT') {
-      if (principal.kind !== 'human' || !isUuid(workspaceId)) throw new NotFoundError('Workspace', 'WORKSPACE_NOT_FOUND');
+      if (principal.kind !== 'human' || !isUuid(workspaceId)) throw new NotFoundError('Company', 'WORKSPACE_NOT_FOUND');
       return db.transaction(async (tx) => {
         await assertAuthorized(principal, 'workspace.read', { type: 'workspace', id: workspaceId }, accessReader(tx));
         const [asker] = await tx.select({ name: schema.authUsers.name }).from(schema.authUsers).where(eq(schema.authUsers.id, principal.id));

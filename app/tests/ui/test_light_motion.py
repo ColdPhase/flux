@@ -26,8 +26,8 @@ EASE_OUT = [0.22, 1, 0.36, 1]
 EASE_IN = [0.4, 0, 1, 1]
 EASE_SPRING = [0.34, 1.4, 0.64, 1]
 # What must not move while the content area or the panel's content changes (Spokój rule 7).
-CHROME = {"header": "header.top", "sidebar": ".app__side", "views": "nav[aria-label='Project views']"}
-PROJECT_TABS = "nav[aria-label='Project views']"
+CHROME = {"header": "header.top", "sidebar": ".app__side", "views": "nav[aria-label='Space views']"}
+PROJECT_TABS = "nav[aria-label='Space views']"
 # Kreska's moments, loading spinners, and the boot bar of index.html (a loading indicator that the first paint of the shell replaces).
 KRESKA = re.compile(r"kreska|opening|ui-spin|boot-run|boot__")
 
@@ -594,8 +594,8 @@ class LightMotionJourney(unittest.TestCase):
         self.open(page, self.fx.project_url())
         expect(page.locator(".project-convo").first).to_be_visible()
         settled(page)
-        verdict = page.evaluate(self.SWITCH, {"click": f"nav[aria-label='Project views'] a[href*='/tasks']", "count": [".project-convo", ".composer"],
-                                              "controls": ["nav[aria-label='Project views'] a[href*='/map']", ".app__side a, .app__side button", "header.top button, header.top a"]})
+        verdict = page.evaluate(self.SWITCH, {"click": f"nav[aria-label='Space views'] a[href*='/tasks']", "count": [".project-convo", ".composer"],
+                                              "controls": ["nav[aria-label='Space views'] a[href*='/map']", ".app__side a, .app__side button", "header.top button, header.top a"]})
         self.assertIsNotNone(verdict, "the view was switched")
         self.assertEqual(verdict["layers"], 1, f"the old view is still on screen as a picture on the frame the new one is put up: {verdict}")
         self.assertEqual((verdict["inert"], verdict["hidden"], verdict["events"]), (True, "true", "none"), f"inert, hidden from assistive technology, no pointer input: {verdict}")
@@ -931,7 +931,7 @@ class LightMotionJourney(unittest.TestCase):
         settled(page)
         verdict = page.evaluate("""async () => {
           const layers = () => [...document.body.children].filter((el) => el.hasAttribute('data-dissolve'));
-          document.querySelector("nav[aria-label='Project views'] a[href*='/tasks']").click();
+          document.querySelector("nav[aria-label='Space views'] a[href*='/tasks']").click();
           for (let i = 0; i < 400 && !layers().length; i++) await new Promise((resolve) => setTimeout(resolve, 5));
           // The pictures are in a shadow root, which not every engine lists in document.getAnimations(): the recorder kept every animation.
           // The fade starts on the first frame drawn after the swap.

@@ -37,7 +37,7 @@ function failure(cause: unknown) {
   if (cause instanceof ApiError && cause.code === 'VERSION_CONFLICT') return 'Someone changed this task a moment ago. The latest version is shown; try again.';
   if (cause instanceof ApiError && cause.code === 'GITHUB_RULE_NEEDS_REQUIRED_PR') return 'Link a required pull request first.';
   if (cause instanceof ApiError && cause.status === 403) return 'You can read this task but not change it.';
-  if (cause instanceof ApiError && (cause.status === 404 || cause.status === 503)) return 'Your GitHub access to a linked repository could not be confirmed. Reconnect GitHub in the project’s GitHub settings.';
+  if (cause instanceof ApiError && (cause.status === 404 || cause.status === 503)) return 'Your GitHub access to a linked repository could not be confirmed. Reconnect GitHub in the space’s GitHub settings.';
   return 'Could not save. Try again.';
 }
 

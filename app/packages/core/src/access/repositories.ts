@@ -1,6 +1,5 @@
 import type { WorkspaceRole } from '@flux/contracts';
 import type { EventRepository } from '../events.js';
-import type { ProjectGoalRecord } from '../project-goals/ports.js';
 import type { EncryptionViewInput } from '../encryption/view.js';
 import type { Executor } from '../types.js';
 import type { Actor, AccessReader } from './ports.js';
@@ -15,8 +14,14 @@ import type { AccountLookup, AccountRecord, AgentRecord, AiPolicyRecord, AiPolic
 // order its comments document. Keep this file free of persistence imports.
 
 export interface WorkspaceRepository {
-  /** The workspace, then its first owner. */
-  createWithOwner(row: { id: string; name: string; createdBy: string }): Promise<WorkspaceRecord>;
+  /** The workspace, then its first owner. `company` marks the one company workspace (F-037). */
+  createWithOwner(row: { id: string; name: string; createdBy: string; company?: boolean }): Promise<WorkspaceRecord>;
+  /** Serializes company setup (F-037): a transaction-scoped lock every first sign-in takes before it reads the company. */
+  lockCompanySetup(): Promise<void>;
+  /** The company workspace (F-037), or null before setup. */
+  company(): Promise<WorkspaceRecord | null>;
+  /** A new name, one version on. */
+  rename(workspaceId: string, name: string): Promise<WorkspaceRecord>;
   /** The person's workspaces with their role, oldest first. */
   forMember(userId: string): Promise<{ workspace: WorkspaceRecord; role: WorkspaceRole }[]>;
   workspaceOfAgent(agentId: string): Promise<string | null>;
@@ -33,6 +38,14 @@ export interface WorkspaceRepository {
   findAccount(lookup: AccountLookup): Promise<AccountRecord | null>;
   /** The new membership, or null when the account is already a member. */
   insertMember(row: { workspaceId: string; userId: string; role: WorkspaceRole; createdBy: string }): Promise<MemberRecord | null>;
+  /** Someone who became a guest is no longer a space admin: their `manager` grants become plain membership. */
+  endSpaceAdmin(workspaceId: string, userId: string): Promise<void>;
+  isMember(workspaceId: string, userId: string): Promise<boolean>;
+  /** Remembers someone who left or was removed, for Restore. */
+  recordRemoved(workspaceId: string, userId: string, removedBy: string): Promise<void>;
+  /** Everyone who left or was removed and has not joined again, newest first. */
+  removedPeople(workspaceId: string): Promise<{ userId: string; removedAt: Date; email: string; name: string }[]>;
+  isRemoved(workspaceId: string, userId: string): Promise<boolean>;
   /** A membership row `FOR UPDATE`. */
   lockMember(workspaceId: string, userId: string): Promise<MemberRecord | null>;
   setRole(workspaceId: string, userId: string, role: WorkspaceRole): Promise<MemberRecord>;
@@ -43,20 +56,16 @@ export interface WorkspaceRepository {
 export interface InviteRow {
   id: string; workspaceId: string; role: 'admin' | 'member' | 'guest'; email: string | null; tokenHash: string; createdBy: string;
   createdAt: Date; expiresAt: Date; revokedAt: Date | null; revokedBy: string | null; acceptedAt: Date | null; acceptedBy: string | null;
-  /** #763 FT-3: the project joining also opens, or null. */
-  projectId: string | null;
 }
 
 /** Invite link rows (F-035, `workspaceInviteRepository`). */
 export interface InviteRepository {
-  insert(row: { id: string; workspaceId: string; role: InviteRow['role']; email: string | null; tokenHash: string; createdBy: string; expiresAt: Date; projectId?: string | null }): Promise<InviteRow>;
-  /** Pending invites with their creator's name (and project name), newest first. */
-  pending(workspaceId: string, now: Date): Promise<{ invite: InviteRow; creatorName: string; projectName: string | null }[]>;
+  insert(row: { id: string; workspaceId: string; role: InviteRow['role']; email: string | null; tokenHash: string; createdBy: string; expiresAt: Date }): Promise<InviteRow>;
+  /** Pending invites with their creator's name, newest first. */
+  pending(workspaceId: string, now: Date): Promise<{ invite: InviteRow; creatorName: string }[]>;
   pendingCount(workspaceId: string, now: Date): Promise<number>;
   /** One invite with its workspace and creator; with `lock`, the invite row `FOR UPDATE`. */
-  get(inviteId: string, options?: { lock?: boolean }): Promise<{ invite: InviteRow; workspaceName: string; encrypted: boolean; creatorName: string; projectName: string | null } | null>;
-  /** A project's name inside the workspace, or null. */
-  projectName(workspaceId: string, projectId: string): Promise<string | null>;
+  get(inviteId: string, options?: { lock?: boolean }): Promise<{ invite: InviteRow; workspaceName: string; encrypted: boolean; creatorName: string } | null>;
   /** The person's role in the workspace, or null. */
   memberRole(workspaceId: string, userId: string): Promise<WorkspaceRole | null>;
   revoke(inviteId: string, revokedBy: string, at: Date): Promise<void>;
@@ -98,10 +107,8 @@ export interface ProjectRepository {
   get(projectId: string): Promise<ProjectRecord | null>;
   /** The views, one version on. */
   setViews(projectId: string, views: string[]): Promise<ProjectRecord>;
-  /** The goal each project shows: its current goal, or else its most recently reached one. */
-  shownGoals(projectIds: string[]): Promise<Map<string, ProjectGoalRecord>>;
   /** One page of the projects the actor can see with their level; the filter applies before count and page. */
-  listVisible(actor: Actor, page: { limit: number; offset: number }): Promise<{ total: number; rows: { project: ProjectRecord; level: number }[] }>;
+  listVisible(actor: Actor, page: { limit: number; offset: number }): Promise<{ total: number; rows: { project: ProjectRecord; level: number; member: boolean }[] }>;
   /** The project's grants, leaving out the agents the principal may not see. */
   listGrants(principal: Principal, projectId: string): Promise<GrantRecord[]>;
   /** The workspace's people. */

@@ -111,7 +111,7 @@ function readable(error: unknown): string {
     if (error.status === 404) return 'This session is no longer available to you.';
     if (error.status === 429) return 'Too many attempts. Wait a few seconds, then try again.';
     if (error.code === 'LIVE_SESSION_LIMIT')
-      return 'This project already has as many live sessions as it allows. Join one that is running.';
+      return 'This space already has as many live sessions as it allows. Join one that is running.';
     if (error.status === 503) return 'The media server is not reachable right now. Text work is unaffected.';
     if (error.code === 'LIVE_SESSION_ENDED' || error.code === 'LIVE_SESSION_UNAVAILABLE') return 'This session has ended.';
     return error.message;
@@ -416,7 +416,7 @@ export function LiveProvider({ meId, children }: { meId: string; children: React
       toast({ message: `Showing “${item.label}”. Others can open it or follow you; nobody is moved.`, tone: 'success' });
       return true;
     } catch (error) {
-      toast({ message: error instanceof ApiError && error.status === 404 ? 'This can’t be shown here: it is not part of this session’s project or changed meanwhile.' : readable(error), tone: 'danger' });
+      toast({ message: error instanceof ApiError && error.status === 404 ? 'This can’t be shown here: it is not part of this session’s space or changed meanwhile.' : readable(error), tone: 'danger' });
       return false;
     }
   }, [catchUp, toast]);

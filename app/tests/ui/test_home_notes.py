@@ -1,9 +1,9 @@
 """Browser tests for first notes (#190 HOME-3), now "Your notes" in the Sketchbook (#342).
 
 Runs with the other tests/ui modules through scripts/check_ui.sh against the running Compose
-application. A person without any space writes a first note: it creates one "Personal" space and is
-a private draft there. Notes an account once kept only in this browser are offered, explicitly, to
-move into that space, one draft per note, exactly once, across lost responses, two tabs and a
+application. F-037: one Flux is one company, so a person's notes are private drafts in their company (here a test
+deployment's own workspace, "Personal"). Notes an account once kept only in this browser are offered, explicitly, to
+move into their account, one draft per note, exactly once, across lost responses, two tabs and a
 same-tab account switch; another account is never offered them. Screenshots (home-notes-*.png) go
 to FLUX_UI_SCREENSHOTS.
 """
@@ -62,7 +62,7 @@ class HomeNotesJourney(unittest.TestCase):
         self.addCleanup(lambda: self.assertEqual(errors, [], "no uncaught page errors"))
         return page
 
-    def sign_up(self, context: BrowserContext, name: str) -> tuple[Page, dict]:
+    def sign_up(self, context: BrowserContext, name: str, company: bool = True) -> tuple[Page, dict]:
         email = f"{name.lower().replace(' ', '.')}+{STAMP}-{time.time_ns()}@example.test"
         page = self.watch(context.new_page())
         page.goto("/sign-up")
@@ -71,6 +71,9 @@ class HomeNotesJourney(unittest.TestCase):
         page.get_by_label("Password").fill(PASSWORD)
         page.get_by_role("button", name="Create account").click()
         expect(page.get_by_role("heading", level=1, name="Home")).to_be_visible()
+        if company:
+            made = page.request.post(f"{ORIGIN}/api/v1/workspaces", headers={"origin": ORIGIN}, data={"name": "Personal"})
+            assert made.status == 201, made.text()
         # The notes moved to the Sketchbook (#342): "Your notes" is a section of /map.
         page.goto("/map")
         expect(page.get_by_role("heading", level=2, name="Your notes")).to_be_visible()
@@ -97,12 +100,12 @@ class HomeNotesJourney(unittest.TestCase):
 
     # ---------------------------------------------------------------- the first note
 
-    def test_01_the_first_note_creates_one_personal_space(self) -> None:
+    def test_01_the_first_note_is_a_private_draft_in_the_company(self) -> None:
         context = self.context()
         page, _ = self.sign_up(context, "Nia First")
         composer = page.get_by_label("Private note", exact=True)
-        expect(page.locator(".composer__where")).to_have_text("private draft in your personal space")
-        # A double Enter and a second tab saving at the same moment still make one space.
+        expect(page.locator(".composer__where")).to_have_text("private draft only you can open")
+        # A double Enter and a second tab saving at the same moment still save each note once.
         other = self.watch(context.new_page())
         other.goto("/map")
         other.get_by_label("Private note", exact=True).fill("From the other tab")
@@ -114,16 +117,14 @@ class HomeNotesJourney(unittest.TestCase):
         expect(drafts.get_by_text("The first note")).to_be_visible()
         expect(other.get_by_role("region", name="Private drafts").get_by_text("From the other tab")).to_be_visible()
         spaces = self.spaces(page)
-        self.assertEqual([space["name"] for space in spaces], ["Personal"])
+        self.assertEqual([space["name"] for space in spaces], ["Personal"], "a note makes no workspace")
         self.assertEqual(self.drafts(page, spaces[0]["id"]), ["From the other tab", "The first note"], "each note saved once")
-        expect(page.locator(".composer__where")).to_have_text("private draft in Personal, which only you can open")
         shot(page, "home-notes-first-desktop-1440")
-        # A sketch afterwards uses the same space.
+        # A sketch afterwards is kept in the same company.
         page.get_by_role("button", name="New sketch").click()
         expect(page).to_have_url(re.compile(r"/map/[0-9a-f-]{36}$"))
-        self.assertEqual(len(self.spaces(page)), 1, "a sketch reuses the personal space")
-        # The open private sketch is in the Sketchbook.
-        expect(page.get_by_role("navigation", name="Places").get_by_role("link", name="Sketchbook")).to_have_attribute("aria-current", "page")
+        self.assertEqual(len(self.spaces(page)), 1, "a sketch makes no workspace either")
+        expect(page.get_by_role("navigation", name="Places").get_by_role("link", name="My map")).to_have_attribute("aria-current", "page")
         shot(page, "home-notes-first-sketch-desktop-1440")
 
     def test_02_a_first_save_that_fails_keeps_the_text(self) -> None:
@@ -153,7 +154,7 @@ class HomeNotesJourney(unittest.TestCase):
         page.reload()
         offer = self.offer(page)
         expect(offer.get_by_role("listitem")).to_have_count(3)
-        move = offer.get_by_role("button", name="Move 3 notes into Personal")
+        move = offer.get_by_role("button", name="Move 3 notes into your account")
         expect(offer).to_contain_text("They become private drafts only you can open")
         shot(page, "home-notes-offer-desktop-1440")
         # The second note's draft is created, but its answer never arrives.
@@ -175,8 +176,8 @@ class HomeNotesJourney(unittest.TestCase):
         expect(offer.get_by_role("status")).to_contain_text("Moved 2 of 3. The rest stay in this browser")
         self.assertEqual([item["id"] for item in self.in_browser(page, nia["id"])], ["lost-2"], "only the unconfirmed note stays")
         page.unroute(drafts_path, lose_second)
-        offer.get_by_role("button", name="Move 1 note into Personal").click()
-        expect(page.get_by_role("status").filter(has_text="Moved 1 note into Personal.")).to_be_visible()
+        offer.get_by_role("button", name="Move 1 note into your account").click()
+        expect(page.get_by_role("status").filter(has_text="Moved 1 note into your account.")).to_be_visible()
         expect(self.offer(page)).to_have_count(0)
         self.assertEqual(self.in_browser(page, nia["id"]), [])
         space = self.spaces(page)
@@ -197,9 +198,9 @@ class HomeNotesJourney(unittest.TestCase):
         self.offer(second).get_by_role("button", name=re.compile("Delete note: tabs note 2")).click()
         expect(self.offer(first).get_by_role("listitem")).to_have_count(3)
         # Both tabs move at the same moment: every note becomes exactly one draft.
-        first_move = self.offer(first).get_by_role("button", name=re.compile(r"^Move \d notes? into Personal$"))
-        second_move = self.offer(second).get_by_role("button", name=re.compile(r"^Move \d notes? into Personal$"))
-        expect(first_move).to_have_text("Move 3 notes into Personal")
+        first_move = self.offer(first).get_by_role("button", name=re.compile(r"^Move \d notes? into your account$"))
+        second_move = self.offer(second).get_by_role("button", name=re.compile(r"^Move \d notes? into your account$"))
+        expect(first_move).to_have_text("Move 3 notes into your account")
         first_move.click()
         second_move.click()
         expect(self.offer(first)).to_have_count(0)
@@ -222,9 +223,8 @@ class HomeNotesJourney(unittest.TestCase):
         page.reload()
         offer = self.offer(page)
         expect(offer.get_by_role("listitem")).to_have_count(3)
-        # The move's look at Nia's spaces is answered only after Olek has signed in to this tab, and as a real
-        # success ("no spaces yet"). Only the page dropping Nia's move keeps it from creating a space and
-        # drafts under Olek's session; the held request itself would otherwise just fail on the server.
+        # The move's check that Nia is still the one signed in is answered only after Olek has signed in to this tab.
+        # Only the page dropping Nia's move (or that check naming Olek) keeps it from writing drafts under his session.
         held: list = []
 
         def hold_first_list(route) -> None:
@@ -233,14 +233,14 @@ class HomeNotesJourney(unittest.TestCase):
                 return
             route.continue_()
 
-        spaces_path = re.compile(r"/api/v1/workspaces$")
+        spaces_path = re.compile(r"/api/v1/me$")
         page.route(spaces_path, hold_first_list)
-        offer.get_by_role("button", name="Move 3 notes into Personal").click()
+        offer.get_by_role("button", name="Move 3 notes into your account").click()
         for _ in range(60):
             if held:
                 break
             page.wait_for_timeout(50)
-        self.assertEqual(len(held), 1, "the move asked for Nia's spaces")
+        self.assertEqual(len(held), 1, "the move checked who is signed in")
         page.get_by_role("button", name=re.compile("Nia Switch")).click()
         page.get_by_role("dialog", name="Account").get_by_role("button", name="Sign out").click()
         expect(page).to_have_url(re.compile("/sign-in"))
@@ -251,7 +251,7 @@ class HomeNotesJourney(unittest.TestCase):
         page.goto("/map")
         expect(page.get_by_role("heading", level=2, name="Your notes")).to_be_visible()
         try:
-            held[0].fulfill(status=200, content_type="application/json", body="[]")
+            held[0].continue_()
         except Exception:  # the page already gave up on it when the account changed
             pass
         page.unroute(spaces_path)
@@ -259,7 +259,7 @@ class HomeNotesJourney(unittest.TestCase):
         # Olek is never offered Nia's notes, and nothing of hers was saved under his session.
         expect(self.offer(page)).to_have_count(0)
         self.assertNotIn("switch note", page.content())
-        self.assertEqual(self.spaces(page), [], "Olek has no space and so no drafts")
+        self.assertEqual(self.drafts(page, self.spaces(page)[0]["id"]), [], "nothing was saved under Olek's session")
         self.assertEqual(sorted(item["id"] for item in self.in_browser(page, nia["id"])), ["switch-1", "switch-2", "switch-3"],
                          "the move stopped with the account switch; every note is still Nia's, in this browser")
 
@@ -292,9 +292,9 @@ class HomeNotesJourney(unittest.TestCase):
         for stale in (moving, typing):
             expect(stale).to_have_url(re.compile("/sign-in"))
             expect(stale.get_by_text("Nia Stale", exact=True)).to_have_count(0)
-            expect(stale.get_by_role("button", name="Move 2 notes into Personal")).to_have_count(0)
+            expect(stale.get_by_role("button", name="Move 2 notes into your account")).to_have_count(0)
             expect(stale.get_by_role("button", name="Save note")).to_have_count(0)
-        self.assertEqual(self.spaces(switching), [], "nothing was created or saved for Olek")
+        self.assertEqual(self.drafts(switching, self.spaces(switching)[0]["id"]), [], "nothing was saved for Olek")
         self.assertEqual(sorted(item["id"] for item in self.in_browser(moving, nia["id"])), ["stale-1", "stale-2"],
                          "Nia's notes stay in this browser, still hers")
 
@@ -304,7 +304,7 @@ class HomeNotesJourney(unittest.TestCase):
         self.keep_in_browser(page, nia["id"], notes("phone", 2))
         page.reload()
         offer = self.offer(page)
-        move = offer.get_by_role("button", name="Move 2 notes into Personal")
+        move = offer.get_by_role("button", name="Move 2 notes into your account")
         box = move.bounding_box()
         assert box
         self.assertGreaterEqual(box["height"], 44, "touch target")
@@ -315,36 +315,8 @@ class HomeNotesJourney(unittest.TestCase):
         expect(offer.get_by_role("listitem")).to_have_count(2)
         # The offer returns on the next visit; nothing moved meanwhile.
         page.reload()
-        expect(self.offer(page).get_by_role("button", name="Move 2 notes into Personal")).to_be_visible()
-        self.assertEqual(self.spaces(page), [])
-
-    def test_07_spaces_created_after_home_loaded_can_be_chosen(self) -> None:
-        # Home loaded with no space; two arrive before the first note (another tab, an invitation).
-        # The server then has several, so no Personal space is made: the person chooses, and can (#211 review).
-        context = self.context()
-        page, _ = self.sign_up(context, "Nia Later")
-        expect(page.locator(".composer__where")).to_have_text("private draft in your personal space")
-        expect(page.locator(".composer__space .ui-select")).to_have_count(0)
-        for name in ("Lamp studio", "Bike club"):
-            created = page.evaluate("""name => fetch('/api/v1/workspaces', {method: 'POST', headers: {'content-type': 'application/json'},
-                                       body: JSON.stringify({name})}).then(r => r.status)""", name)
-            self.assertEqual(created, 201)
-        composer = page.get_by_label("Private note", exact=True)
-        composer.fill("Paper shade, second try")
-        composer.press("Enter")
-        expect(page.get_by_role("status").filter(has_text="Choose a space for this private draft.")).to_be_visible()
-        choice = page.locator(".composer__space .ui-select")
-        expect(choice).to_be_visible()
-        self.assertEqual(sorted(labels(choice)), ["Bike club", "Choose a space", "Lamp studio"])
-        expect(composer).to_have_value("Paper shade, second try")
-        choose(choice, label="Bike club")
-        expect(page.locator(".composer__where")).to_have_text("private draft in Bike club, which only you can open")
-        composer.press("Enter")
-        expect(page.get_by_role("region", name="Private drafts").get_by_text("Paper shade, second try")).to_be_visible()
-        spaces = {space["name"]: space["id"] for space in self.spaces(page)}
-        self.assertEqual(sorted(spaces), ["Bike club", "Lamp studio"], "no Personal space was added")
-        self.assertEqual(self.drafts(page, spaces["Bike club"]), ["Paper shade, second try"])
-        self.assertEqual(self.drafts(page, spaces["Lamp studio"]), [])
+        expect(self.offer(page).get_by_role("button", name="Move 2 notes into your account")).to_be_visible()
+        self.assertEqual(self.drafts(page, self.spaces(page)[0]["id"]), [])
 
 
 if __name__ == "__main__":

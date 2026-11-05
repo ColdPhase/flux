@@ -95,7 +95,7 @@ class ProjectStateJourney(unittest.TestCase):
         return page.locator("#details").get_by_role("region", name="Now", exact=True)
 
     def faces(self, page):
-        return page.locator("header.top").get_by_role("button", name=re.compile("who can see this project$"))
+        return page.locator("header.top").get_by_role("button", name=re.compile("who can see this space$"))
 
     def work(self, page, project, title, status="open"):
         return self.call(page, "POST", f"/api/v1/projects/{project['id']}/work", {"title": title, "status": status}, 201)
@@ -201,7 +201,7 @@ class ProjectStateJourney(unittest.TestCase):
                     open_details(page, tap=True)
                     panel = page.get_by_role("dialog", name="Details")
                     expect(panel.get_by_role("region", name="Now", exact=True)).to_contain_text("Open")
-                    expect(panel.get_by_role("region", name="In this project").get_by_role("link")).to_have_text([re.compile("^Map"), re.compile("^Wiki"), re.compile("^Tasks")])
+                    expect(panel.get_by_role("region", name="In this space").get_by_role("link")).to_have_text([re.compile("^Map"), re.compile("^Wiki"), re.compile("^Tasks")])
                     shot(page, f"136-state-overview-{width}")
                     panel.get_by_role("button", name=re.compile("Open.*Keep a manual switch available")).click()
                     expect(panel.get_by_role("heading", name="Keep a manual switch available", exact=True)).to_be_visible()
@@ -252,7 +252,7 @@ class ProjectStateJourney(unittest.TestCase):
         expect(reader.locator("#project-composer")).to_have_count(0)
         expect(reader.get_by_text("Unsent sensor notes remain mine", exact=True)).to_have_count(0)
         reader.get_by_role("button", name=re.compile("^Sources")).click()
-        tray = reader.get_by_role("region", name="Project materials")
+        tray = reader.get_by_role("region", name="Space materials")
         expect(tray.get_by_role("button", name="Discuss this version")).to_have_count(0)
         expect(tray.get_by_role("button", name="Add material")).to_have_count(0)
         source = tray.get_by_role("link", name=material["title"], exact=True)
@@ -293,7 +293,7 @@ class ProjectStateJourney(unittest.TestCase):
                     if width <= 900:
                         expect(title.get_by_role("button")).to_be_visible()
                     else:
-                        expect(header.get_by_role("navigation", name="Project views")).to_be_visible()
+                        expect(header.get_by_role("navigation", name="Space views")).to_be_visible()
                     expect(header.get_by_role("button", name="More", exact=True)).to_be_in_viewport()
                     self.assertLessEqual(page.locator("body").evaluate("el => el.scrollWidth"), width)
                     if width <= 900 or page.locator(".app__main").evaluate("el => el.clientWidth") > 860:
@@ -354,7 +354,7 @@ class ProjectStateJourney(unittest.TestCase):
         expect(reader.locator(".project-convo__read-only")).to_be_visible()
         reader.get_by_role("button", name=re.compile("^Sources")).click()
         expect(reader.locator(".project-convo__material-form")).to_have_count(0)
-        expect(reader.get_by_role("button", name="Save for this project", exact=True)).to_have_count(0)
+        expect(reader.get_by_role("button", name="Save for this space", exact=True)).to_have_count(0)
         self.assertEqual(self.call(owner, "GET", f"/api/v1/projects/{project['id']}/materials")["total"], 0)
         shot(reader, "136-state-material-reader-downgrade-390")
         self.call(owner, "POST", f"/api/v1/projects/{project['id']}/grants", {"principal": principal, "role": "contributor"}, 201)
@@ -362,7 +362,7 @@ class ProjectStateJourney(unittest.TestCase):
         expect(reader.get_by_label("Title", exact=True)).to_have_value("Unpublished calibration source")
         expect(reader.get_by_label("Text", exact=True)).to_have_value("Keep this source draft until I can contribute again.")
         with reader.expect_response(lambda r: r.request.method == "POST" and r.url.endswith(f"/projects/{project['id']}/materials")) as saved:
-            reader.get_by_role("button", name="Save for this project", exact=True).click()
+            reader.get_by_role("button", name="Save for this space", exact=True).click()
         self.assertEqual(saved.value.status, 201)
         material = self.call(owner, "GET", f"/api/v1/projects/{project['id']}/materials")["items"][0]
         self.assertEqual(material["title"], "Unpublished calibration source")

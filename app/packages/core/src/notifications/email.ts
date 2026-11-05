@@ -19,17 +19,17 @@ export function unsubscribeLinks(origin: string, token: string) {
 }
 
 /** The whole email: a fixed subject and body, an in-app link that rechecks access, and unsubscribe. */
-export function buildNotificationEmail(input: { origin: string; to: string; emailId: string; notificationId: string; token: string }): OutgoingMail {
-  const { origin, to, emailId, notificationId, token } = input;
+export function buildNotificationEmail(input: { origin: string; to: string; emailId: string; notificationId: string; token: string; company?: string | null }): OutgoingMail {
+  const { origin, to, emailId, notificationId, token, company } = input;
   const links = unsubscribeLinks(origin, token);
   const host = new URL(origin).hostname || 'flux.invalid';
   const text = [
-    'There is something new for you in Flux.',
+    company ? `There is something new for you in Flux at ${company}.` : 'There is something new for you in Flux.',
     '',
     'Open it in Flux (you may be asked to sign in):',
     `${origin}/inbox/${notificationId}`,
     '',
-    'Flux never puts messages or project details in email. Choose what reaches you by email:',
+    'Flux never puts messages or space details in email. Choose what reaches you by email:',
     `${origin}/settings/notifications`,
     '',
     'Stop these emails to this address:',
@@ -74,6 +74,8 @@ export interface EmailDeliveryOptions {
   origin: string;
   uow: EmailDeliveryUnitOfWork;
   mailer: NotificationMailer;
+  /** The company's name for the email (the guide), or null while it has the name setup gave it. */
+  company?: () => Promise<string | null>;
   now?: () => Date;
   /** SMTP attempts per row before a failure is permanent: the queue's retries plus the first try. */
   maxAttempts?: number;
@@ -95,7 +97,7 @@ export async function deliverNotificationEmail(options: EmailDeliveryOptions, jo
     if (row.status !== 'queued') return { skip: `already ${row.status}` } as const;
     const skip = async (reason: string) => { await ports.markSkipped(row.id, reason); return { skip: reason } as const; };
     if (row.lifecycleActive === false) return skip('task creation was undone');
-    if (row.aiOff) return skip('AI is off in this workspace');
+    if (row.aiOff) return skip('AI is off in this company');
     if (!options.available) return skip('email is not configured');
     const { notification } = row;
     if (!readsSource(await ports.authorizer.canRead(row.userId, notification.source), notification.source)) return skip('recipient can no longer read the source');
@@ -120,7 +122,8 @@ export async function deliverNotificationEmail(options: EmailDeliveryOptions, jo
   if ('defer' in claim) return { outcome: 'deferred', until: claim.defer! };
 
   const { row, address, token } = claim;
-  const mail = buildNotificationEmail({ origin: options.origin, to: address, emailId: row.id, notificationId: row.notification.id, token });
+  const company = await options.company?.() ?? null;
+  const mail = buildNotificationEmail({ origin: options.origin, to: address, emailId: row.id, notificationId: row.notification.id, token, company });
   const admission = await options.uow.admitSend(row.notification.id, () => options.mailer.send(mail));
   if (admission.status === 'unknown') {
     // SMTP may already have accepted it. A skipped row would free its mailbox for another copy.

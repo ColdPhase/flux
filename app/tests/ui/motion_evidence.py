@@ -31,7 +31,7 @@ from test_app_shell import ORIGIN, UI_BROWSER, UPSTREAM, start_forwarder
 
 OUT = Path(os.environ.get("FLUX_UI_SCREENSHOTS", "/screenshots"))
 BEAT = 650  # a pause long enough to see each motion finish before the next begins
-TABS = "nav[aria-label='Project views']"
+TABS = "nav[aria-label='Space views']"
 # Slows the page's own animations (the helpers' ones carry the id `flux-motion`) so a 260 ms slide can be seen in a 25 fps video (the slide's
 # own easing front-loads it: most of the distance is covered in the first third).
 # The durations in the animation log stay the real ones: this only stretches the picture.

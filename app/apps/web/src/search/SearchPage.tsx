@@ -17,7 +17,7 @@ import { currentEntry, onPlacesForgotten, useArrival, usePlaceState } from '../p
 const answers = new Map<string, { q: string; type: SearchFilterType | null; place: string | null; answer: SearchResponse; items: SearchResult[] }>();
 onPlacesForgotten(() => answers.clear());
 const FILTER_LABELS: Record<SearchFilterType, string> = {
-  project: 'Projects', message: 'Messages', doc: 'Wiki', material: 'Files', work: 'Tasks', decision: 'Decisions', result: 'Results',
+  project: 'Spaces', message: 'Messages', doc: 'Wiki', material: 'Files', work: 'Tasks', decision: 'Decisions', result: 'Results',
   sketch: 'Map', draft: 'Drafts', person: 'People',
 };
 
@@ -28,7 +28,7 @@ const GROUPS: { id: string; label: string; kinds: SearchKind[] }[] = [
   { id: 'map', label: 'Map', kinds: ['sketch', 'thought', 'draft'] },
   { id: 'message', label: 'Messages', kinds: ['message', 'dm_message'] },
   { id: 'material', label: 'Files', kinds: ['material'] },
-  { id: 'people', label: 'People and projects', kinds: ['project', 'person'] },
+  { id: 'people', label: 'People and spaces', kinds: ['project', 'person'] },
 ];
 /** Rows a group shows before "Show N more". */
 const GROUP_ROWS = 3;
@@ -210,7 +210,7 @@ function FullSearch() {
             </section>
           ) : (
             <div className="view-empty"><EmptyState icon="search" title="Search everything you can open" level={2}>
-              <p>Messages in your projects and direct messages, materials and every version of them, tasks, decisions, results, maps, your private drafts and people.</p>
+              <p>Messages in your spaces and direct messages, materials and every version of them, tasks, decisions, results, maps, your private drafts and people.</p>
             </EmptyState></div>
           )
         ) : state.status === 'failed' ? (

@@ -189,7 +189,7 @@ class ProjectSurfaceJourney(unittest.TestCase):
         self.assertNotIn(OUTSIDER["id"], [person["id"] for person in people])
         outsider = self.page("outsider")
         self.api(outsider, "GET", f"/api/v1/projects/{self.ids['project']}/people", status=404)
-        tabs = page.get_by_role("navigation", name="Project views")
+        tabs = page.get_by_role("navigation", name="Space views")
         # Studio 11.6 order and vocabulary (#136); quiet tabs without visible counts.
         self.assertEqual([text.split("\n")[0] for text in tabs.get_by_role("link").all_inner_texts()[:4]], ["Conversation", "Map", "Tasks", "Wiki"])
         expect(tabs.get_by_role("link", name="Tasks, 2 open")).to_be_visible()
@@ -213,7 +213,7 @@ class ProjectSurfaceJourney(unittest.TestCase):
         shot(page, "project-conversation-desktop-1440")
         small = self.page("ada", viewport={"width": 1280, "height": 800})
         small.goto(f"/projects/{self.ids['project']}/conversations/{self.ids['conversation']}")
-        expect(small.locator("header.top").get_by_role("navigation", name="Project views")).to_be_visible()
+        expect(small.locator("header.top").get_by_role("navigation", name="Space views")).to_be_visible()
         expect(small.locator(f"#message-{self.ids['m4']}")).to_be_visible()
         self.assert_whole_messages(small, latest=False)
         shot(small, "project-conversation-desktop-1280")
@@ -280,7 +280,7 @@ class ProjectSurfaceJourney(unittest.TestCase):
 
     def test_04_view_tabs_switch_between_the_project_surfaces(self) -> None:
         page = self.open_project("jonas")
-        tabs = page.get_by_role("navigation", name="Project views")
+        tabs = page.get_by_role("navigation", name="Space views")
         conversation_url = page.url
         tabs.get_by_role("link", name=re.compile("^Tasks")).click()
         expect(page).to_have_url(re.compile(r"/tasks$"))
@@ -360,7 +360,7 @@ class ProjectSurfaceJourney(unittest.TestCase):
         expect(panel.get_by_role("region", name="Linked in this conversation")).to_be_visible()
         panel.get_by_role("region", name="Maps").get_by_role("link", name=re.compile("Sensing options")).click()
         expect(page).to_have_url(re.compile(rf"/projects/{self.ids['project']}/map/{self.ids['sketch']}$"))
-        expect(page.get_by_role("navigation", name="Project views").get_by_role("link", name=re.compile("^Map"))).to_have_attribute("aria-current", "page")
+        expect(page.get_by_role("navigation", name="Space views").get_by_role("link", name=re.compile("^Map"))).to_have_attribute("aria-current", "page")
 
     def panel_shell(self, panel) -> dict:
         """What makes a panel the one shell: its card, its head's height and where its close button sits."""
@@ -380,11 +380,11 @@ class ProjectSurfaceJourney(unittest.TestCase):
         expect(panel.get_by_role("heading", name="Gesture lamp", exact=True)).to_be_visible()
         expect(panel.get_by_role("region", name="Now", exact=True)).to_be_visible()
 
-        # AC-2: the project's tile and name, then who is in it and its space.
+        # AC-2: the space's tile and name, then who is in it; the company is never named (F-037).
         head = panel.locator(".ov-head")
         expect(head.locator(".ov-tile")).to_have_text("G")
         expect(head).to_contain_text("Jonas")
-        expect(head).to_contain_text("Riverside Makers")
+        expect(head).not_to_contain_text("Riverside Makers")
 
         # AC-3: open and blocked tasks are one line each with their glyph and #number; the rule is one card with its date.
         now = panel.get_by_role("region", name="Now", exact=True)
@@ -404,24 +404,24 @@ class ProjectSurfaceJourney(unittest.TestCase):
         self.assertNotIn("Task in progress", text)
 
         # AC-4: Map, Wiki and Tasks are three rows with counts that open the views.
-        project = panel.get_by_role("region", name="In this project", exact=True)
+        project = panel.get_by_role("region", name="In this space", exact=True)
         rows = project.get_by_role("link")
         expect(rows).to_have_text([re.compile(r"^Map\s*1 map"), re.compile(r"^Wiki\s*1 page"), re.compile(r"^Tasks\s*2 open")])
         expect(panel.get_by_role("region", name="Maps", exact=True)).to_have_count(0)
         expect(panel.get_by_role("region", name="Wiki", exact=True)).to_have_count(0)
         self.assertEqual(self.api(page, "GET", f"/api/v1/projects/{self.ids['project']}/work-summary", status=200)["unfinishedTotal"], 2)
 
-        # AC-5: people with their role and Invite; who can see it in one sentence with Change access; GitHub under Connected.
+        # AC-5 (F-037): people with their role and Add people; who can see it in one sentence with Change people; GitHub under Connected.
         people = panel.get_by_role("region", name="People", exact=True)
-        expect(people.get_by_role("button", name="Invite")).to_be_visible()
+        expect(people.get_by_role("button", name="Add people")).to_be_visible()
         listed = people.get_by_role("list", name="People who can see Gesture lamp").get_by_role("listitem")
         expect(listed).to_have_count(3)
         expect(listed.filter(has_text="Ada Kowalska")).to_contain_text("· you")
-        expect(listed.filter(has_text="Ada Kowalska")).to_contain_text("Manages")
-        expect(listed.filter(has_text="Jonas Berg")).to_contain_text("Can write")
-        expect(people.locator(".access__line")).to_have_text(re.compile("^Only the people listed here can open it\\.\\s*Change access$"))
-        expect(people.get_by_role("button", name="Change access", exact=True)).to_be_visible()
-        expect(people.get_by_role("button", name=re.compile("^Change access for"))).to_have_count(0)
+        expect(listed.filter(has_text="Ada Kowalska")).to_contain_text("Admin")
+        expect(listed.filter(has_text="Jonas Berg")).to_contain_text("Member")
+        expect(people.locator(".access__line")).to_have_text(re.compile("^Only the people listed here can open it\\.\\s*Change people$"))
+        expect(people.get_by_role("button", name="Change people", exact=True)).to_be_visible()
+        expect(people.get_by_role("button", name=re.compile("’s role$"))).to_have_count(0)
         connected = panel.get_by_role("region", name="Connected", exact=True)
         expect(connected.get_by_role("link", name=re.compile("^GitHub repositories"))).to_have_attribute("href", f"/projects/{self.ids['project']}/github")
 
@@ -451,7 +451,7 @@ class ProjectSurfaceJourney(unittest.TestCase):
         page.go_back()
         page.emulate_media(color_scheme="dark")
         open_details(page)
-        expect(panel.get_by_role("region", name="In this project", exact=True)).to_be_visible()
+        expect(panel.get_by_role("region", name="In this space", exact=True)).to_be_visible()
         shot(page, "project-details-one-look-desktop-1440-dark")
 
         # The phone shows the same look in its sheet, in one column.
@@ -463,7 +463,7 @@ class ProjectSurfaceJourney(unittest.TestCase):
             sheet = phone.get_by_role("dialog", name="Details")
             expect(sheet.locator(".ov-head").get_by_role("heading", name="Gesture lamp", exact=True)).to_be_visible()
             expect(sheet.get_by_role("region", name="Now", exact=True).get_by_role("button", name=re.compile("^In progress: Test the camera"))).to_be_visible()
-            expect(sheet.get_by_role("region", name="In this project", exact=True).get_by_role("link")).to_have_count(3)
+            expect(sheet.get_by_role("region", name="In this space", exact=True).get_by_role("link")).to_have_count(3)
             self.assertLessEqual(phone.evaluate("document.documentElement.scrollWidth"), PHONE["width"])
             shot(phone, f"project-details-one-look-phone-390-{scheme}")
 
@@ -581,7 +581,7 @@ class ProjectSurfaceJourney(unittest.TestCase):
     def test_07c_a_keyboard_focus_ring_on_a_view_tab_is_whole(self) -> None:
         """#184 delta review S4: the tab strip scrolls sideways and clips anything outside it."""
         page = self.open_project("ada", viewport={"width": 1100, "height": 800})
-        tabs = page.get_by_role("navigation", name="Project views")
+        tabs = page.get_by_role("navigation", name="Space views")
         tabs.get_by_role("link", name="Conversation").focus()
         page.keyboard.press("Tab")
         # The first frame counts as much as the settled one: read the ring at once and after transitions.
@@ -624,7 +624,7 @@ class ProjectSurfaceJourney(unittest.TestCase):
         expect(page).to_have_url(f"{ORIGIN}/map/{private['id']}")
         expect(page.get_by_role("button", name="Rename map My private lamp doodles")).to_be_visible()
         expect(page.locator(".sk-aud")).to_contain_text("Only you")
-        expect(page.get_by_role("navigation", name="Project views")).to_have_count(0)
+        expect(page.get_by_role("navigation", name="Space views")).to_have_count(0)
         expect(page.locator("header.top h1")).not_to_have_text("Gesture lamp")
 
 
@@ -633,7 +633,7 @@ class ProjectSurfaceJourney(unittest.TestCase):
     def tasks(self, page: Page, project: str | None = None) -> None:
         # On the phone the views are the title menu (#341); its Tasks row is a link like the desktop tab.
         phone = page.viewport_size["width"] <= 640
-        views = phone_menu(page) if phone else page.get_by_role("navigation", name="Project views")
+        views = phone_menu(page) if phone else page.get_by_role("navigation", name="Space views")
         link = views.get_by_role("link", name=re.compile("^Tasks"))
         if project:
             expect(link).to_have_attribute("href", re.compile(rf"^/projects/{project}/tasks"))
@@ -715,7 +715,7 @@ class ProjectSurfaceJourney(unittest.TestCase):
         newest = "Newer text despite full browser storage"
         field.fill(newest)
         self.close_create(page)
-        page.get_by_role("navigation", name="Project views").get_by_role("link", name=re.compile("^Map")).click()
+        page.get_by_role("navigation", name="Space views").get_by_role("link", name=re.compile("^Map")).click()
         self.tasks(page)
         field = open_from_tasks(page)
         expect(field).to_have_value(newest)
@@ -725,7 +725,7 @@ class ProjectSurfaceJourney(unittest.TestCase):
         submit_button(page).click()
         expect(dialog(page)).to_have_count(0)
         expect(self.details(page).get_by_role("heading", name=newest)).to_be_visible()
-        page.get_by_role("navigation", name="Project views").get_by_role("link", name=re.compile("^Map")).click()
+        page.get_by_role("navigation", name="Space views").get_by_role("link", name=re.compile("^Map")).click()
         self.tasks(page)
         field = open_from_tasks(page)
         expect(field).to_have_value("")
@@ -755,7 +755,7 @@ class ProjectSurfaceJourney(unittest.TestCase):
         expect(dialog(page).get_by_role("alert")).to_have_text("The native response was lost")
         expect(field).to_have_value(draft)
         self.close_create(page)
-        page.get_by_role("navigation", name="Project views").get_by_role("link", name=re.compile("^Map")).click()
+        page.get_by_role("navigation", name="Space views").get_by_role("link", name=re.compile("^Map")).click()
         self.tasks(page)
         field = open_from_tasks(page)
         expect(field).to_have_value(draft)
@@ -784,7 +784,7 @@ class ProjectSurfaceJourney(unittest.TestCase):
         submit_button(page).click()
         expect(field).to_be_disabled()
         self.close_create(page)
-        page.get_by_role("navigation", name="Project views").get_by_role("link", name=re.compile("^Map")).click()
+        page.get_by_role("navigation", name="Space views").get_by_role("link", name=re.compile("^Map")).click()
         self.tasks(page)
         field = open_from_tasks(page)
         field.fill("A different private draft after returning")
@@ -797,7 +797,7 @@ class ProjectSurfaceJourney(unittest.TestCase):
         # Execute another real navigation after completion, not a fixed sleep.
         expect(field).to_have_value(newest)
         self.close_create(page)
-        page.get_by_role("navigation", name="Project views").get_by_role("link", name=re.compile("^Map")).click()
+        page.get_by_role("navigation", name="Space views").get_by_role("link", name=re.compile("^Map")).click()
         self.tasks(page)
         field = open_from_tasks(page)
         expect(field).to_have_value(newest)
@@ -894,7 +894,7 @@ class ProjectSurfaceJourney(unittest.TestCase):
         submit_button(page).click()
         expect(field).to_be_disabled()
         self.close_create(page)
-        page.get_by_role("navigation", name="Project views").get_by_role("link", name=re.compile("^Map")).click()
+        page.get_by_role("navigation", name="Space views").get_by_role("link", name=re.compile("^Map")).click()
         self.tasks(page)
         field = open_from_tasks(page)
         expect(field).to_have_value(title)
@@ -929,7 +929,7 @@ class ProjectSurfaceJourney(unittest.TestCase):
                 expect(field).to_be_disabled()
                 if unmounted:
                     self.close_create(page)
-                    page.get_by_role("navigation", name="Project views").get_by_role("link", name=re.compile("^Map")).click()
+                    page.get_by_role("navigation", name="Space views").get_by_role("link", name=re.compile("^Map")).click()
                 page.evaluate("""key => { window.observedDraftWrites = 0;
                   window.addEventListener('storage', event => { if(event.key === key) window.observedDraftWrites++; });
                 }""", key)
@@ -972,13 +972,13 @@ class ProjectSurfaceJourney(unittest.TestCase):
         page.context.clear_cookies()
         page.context.add_cookies(self.states["jonas"]["cookies"])
         # Same-route router navigation revalidates the mounted Home, without a document reload.
-        page.get_by_role("navigation", name="Places").get_by_role("link", name="Sketchbook", exact=True).click()
+        page.get_by_role("navigation", name="Places").get_by_role("link", name="My map", exact=True).click()
         expect(page.get_by_role("button", name=re.compile("^Jonas Berg .*account and sign out"))).to_be_visible()
         expect(field).to_have_value("")
         field.fill("Jonas's private Home draft")
         page.context.clear_cookies()
         page.context.add_cookies(self.states["ada"]["cookies"])
-        page.get_by_role("navigation", name="Places").get_by_role("link", name="Sketchbook", exact=True).click()
+        page.get_by_role("navigation", name="Places").get_by_role("link", name="My map", exact=True).click()
         expect(page.get_by_role("button", name=re.compile("^Ada Kowalska .*account and sign out"))).to_be_visible()
         expect(field).to_have_value("Ada's private Home draft before revalidation")
 

@@ -210,7 +210,7 @@ def journey(page: Page, rec: Recorder) -> None:
     rec.hold(2600)
 
     # 3. The shared sketch of where the sensors go.
-    tabs = page.get_by_role("navigation", name="Project views")
+    tabs = page.get_by_role("navigation", name="Space views")
     rec.click(tabs.get_by_role("link", name=re.compile("^Map")))
     rec.hold(900)
     # With one map in the project the Map tab opens it directly; with several it lists them first.

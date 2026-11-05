@@ -23,9 +23,9 @@ import { captureNotificationSession, confirmedNotificationPauseSince, isCurrentN
 import './notifications.css';
 
 const ROWS: Record<NotificationReason, { label: string; hint: string }> = {
-  mention: { label: 'Mentions', hint: '@you in a project conversation' },
+  mention: { label: 'Mentions', hint: '@you in a space conversation' },
   question: { label: 'Questions to you', hint: 'Someone asks you directly' },
-  dm: { label: 'Direct messages', hint: 'Messages to you, outside projects' },
+  dm: { label: 'Direct messages', hint: 'Messages to you, outside spaces' },
   reply: { label: 'Replies', hint: 'In conversations you started or joined' },
   assigned: { label: 'Work assigned to you', hint: 'Someone else makes you the owner, or says a blocked task is waiting for you' },
   review: { label: 'Reviews for you', hint: 'Decisions and results about your work or agent' },
@@ -368,7 +368,7 @@ function AccountNotificationSettings() {
             </tbody>
           </table>
         </div>
-        {prefs.email.available ? <p className="sset-note">{emailOff ? 'Email is off: you chose in-app only below.' : 'Emails never contain messages or project details, only a link to open in Flux.'}</p> : null}
+        {prefs.email.available ? <p className="sset-note">{emailOff ? 'Email is off: you chose in-app only below.' : 'Emails never contain messages or space details, only a link to open in Flux.'}</p> : null}
       </section>
 
       {prefs.email.available ? (
@@ -502,13 +502,13 @@ function MutedPlaceRows({ rows, receipt, pending, onUnmute, onRetry }: {
         <li key={`${place.type}:${place.id}`} data-place={`${place.type}:${place.id}`} className={receiptOnly ? 'nset__mute-result' : undefined}>
           {receipt && receipt.place.type === place.type && receipt.place.id === place.id ? (
             <p className="nset__mute-read" role="note"><span>
-              <span className="nset__place">{place.type === 'dm' ? <Icon name="chat" size={14} /> : <span className="nset__hash" aria-hidden="true">#</span>}{place.name}<span className="ui-vh">{place.type === 'dm' ? ', direct message' : ', project'}</span></span>
+              <span className="nset__place">{place.type === 'dm' ? <Icon name="chat" size={14} /> : <span className="nset__hash" aria-hidden="true">#</span>}{place.name}<span className="ui-vh">{place.type === 'dm' ? ', direct message' : ', space'}</span></span>
               <span className="nset__mute-state">{receipt.muted ? 'Muted' : 'Unmuted'}. Current settings unverified.</span>
               <span className="nset__mute-warning">Current notification settings could not be refreshed. Showing last confirmed settings.</span>
             </span><Button variant="quiet" aria-label="Retry current settings" onClick={onRetry}>Refresh</Button>
               {!receiptOnly ? <Button variant="quiet" onClick={() => onUnmute(place)}>Unmute</Button> : null}
             </p>
-          ) : <span className="nset__place">{place.type === 'dm' ? <Icon name="chat" size={14} /> : <span className="nset__hash" aria-hidden="true">#</span>}{place.name}<span className="ui-vh">{place.type === 'dm' ? ', direct message' : ', project'}</span></span>}
+          ) : <span className="nset__place">{place.type === 'dm' ? <Icon name="chat" size={14} /> : <span className="nset__hash" aria-hidden="true">#</span>}{place.name}<span className="ui-vh">{place.type === 'dm' ? ', direct message' : ', space'}</span></span>}
           {!receiptOnly && !(receipt && receipt.place.type === place.type && receipt.place.id === place.id)
             ? <Button variant="quiet" busy={!!pending && !pending.muted && pending.place.type === place.type && pending.place.id === place.id} onClick={() => onUnmute(place)}>Unmute</Button> : null}
         </li>
@@ -677,8 +677,8 @@ function MutePicker({ places, onMute, result, pending, hidden }: { places: Notif
       {result ?? <>
       <label className="ui-vh" htmlFor={selectId}>Place to mute</label>
       <Select id={selectId} value={choice} disabled={!!pending} onChange={(next) => { choiceVersion.current += 1; setChoice(next); }}>
-        <Option value="">Choose a project or conversation…</Option>
-        {places.some((item) => item.type === 'project') ? <OptionGroup label="Projects">{places.filter((item) => item.type === 'project').map((item) => <Option key={item.id} value={`project:${item.id}`}># {item.name}</Option>)}</OptionGroup> : null}
+        <Option value="">Choose a space or conversation…</Option>
+        {places.some((item) => item.type === 'project') ? <OptionGroup label="Spaces">{places.filter((item) => item.type === 'project').map((item) => <Option key={item.id} value={`project:${item.id}`}># {item.name}</Option>)}</OptionGroup> : null}
         {places.some((item) => item.type === 'dm') ? <OptionGroup label="Direct messages">{places.filter((item) => item.type === 'dm').map((item) => <Option key={item.id} value={`dm:${item.id}`}>{item.name}</Option>)}</OptionGroup> : null}
       </Select>
       <Button disabled={!place && !pending} busy={!!pending} onClick={() => {

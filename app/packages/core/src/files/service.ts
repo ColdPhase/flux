@@ -192,7 +192,7 @@ export function createFileUseCases(unit: FileUnitOfWork, storage: FileStorage, c
         // An abandoned reservation is replaced by a new row and id: its late finish cannot touch these bytes.
         if (existing) await ports.files.removeUnpublished(existing.id);
         if (await ports.files.stagedBytes(projectId, uploader, now) + FILE_LIMITS.fileBytes > FILE_LIMITS.stagedBytes)
-          throw new ConflictError('Too many files are waiting to be sent in this project. Send or remove some first.', 'UPLOAD_QUOTA_EXCEEDED');
+          throw new ConflictError('Too many files are waiting to be sent in this space. Send or remove some first.', 'UPLOAD_QUOTA_EXCEEDED');
         const reserved = await ports.files.reserve({ id: randomUUID(), workspaceId: project.workspaceId, projectId, uploader, uploadId,
           name, reservedBytes: FILE_LIMITS.fileBytes, expiresAt: new Date(now.getTime() + FILE_LIMITS.reservationMinutes * MINUTE) });
         return { reserved };

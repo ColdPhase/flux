@@ -57,6 +57,8 @@ export const SESSIONS_PATH = '/api/v1/sessions';
 export const REVOKE_OTHER_SESSIONS_PATH = '/api/v1/sessions/revoke-others';
 
 export interface IdentityCapabilities {
+  /** The company's name for the sign-in page (F-037), or null before setup and while it has the name setup gave it. */
+  company: string | null;
   passwordReset: 'available' | 'unavailable';
   /** Who can create a password account (#313): `verified` mails a link first; `off` is closed, including `verified` without email. */
   signup: 'open' | 'verified' | 'off';
@@ -87,7 +89,6 @@ export interface SessionSummary {
 export * from './access.js';
 export * from './ai-lock.js';
 export * from './encryption.js';
-export * from './project-goals.js';
 export * from './push.js';
 export * from './conversation.js';
 export * from './files.js';

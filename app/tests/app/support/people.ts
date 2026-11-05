@@ -47,7 +47,7 @@ export async function project(actor: Person, workspaceId: string, name: string, 
   return expectStatus(await actor.browser.request('POST', `/api/v1/workspaces/${workspaceId}/projects`, { body: { name, visibility } }), 201) as Project;
 }
 
-export async function grant(actor: Person, projectId: string, grantee: Person, role: 'contributor' | 'viewer' | 'denied') {
+export async function grant(actor: Person, projectId: string, grantee: Person, role: 'manager' | 'contributor' | 'viewer' | 'denied') {
   expectStatus(await actor.browser.request('POST', `/api/v1/projects/${projectId}/grants`, { body: { principal: { kind: 'human', id: grantee.id }, role } }), 201);
 }
 

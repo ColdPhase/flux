@@ -1,7 +1,7 @@
 import type { FastifyInstance, FastifyReply } from 'fastify';
 import { ENCRYPTED_WORKSPACES_PATH, WORKSPACES_PATH, type CreateEncryptedWorkspaceCommand, type GrantUnlockPasswordCommand,
   type NewRecoveryCodeCommand, type SetUnlockPasswordCommand, type UnlockWorkspaceCommand } from '@flux/contracts';
-import { RateLimitedError } from '@flux/core';
+import { RateLimitedError, type Principal } from '@flux/core';
 import { bearerMatches } from '../fixture/index.js';
 import type { SessionResolver } from '../identity/index.js';
 import type { EncryptionComposition } from './adapters.js';
@@ -16,7 +16,7 @@ const secret = { type: 'string', minLength: 1, maxLength: 1024 } as const;
 const body = (properties: Record<string, unknown>, required: string[] = []) =>
   ({ type: 'object', additionalProperties: false, required, properties }) as const;
 
-export function encryptionRoutes(app: FastifyInstance, { sessions, encryption, fixtureCreation, productionCreation = false }: {
+export function encryptionRoutes(app: FastifyInstance, { sessions, encryption, fixtureCreation, productionCreation = false, requireCompanyAdmin }: {
   sessions: SessionResolver;
   encryption: EncryptionComposition;
   /**
@@ -25,8 +25,10 @@ export function encryptionRoutes(app: FastifyInstance, { sessions, encryption, f
    * always has a fixture token, never gets it. S3 makes it the production route.
    */
   fixtureCreation: string | null;
-  /** Creation is a production route: any signed-in person, no fixture bearer. Off until the switch in `app.ts` is flipped. */
+  /** Creation is a production route, no fixture bearer. Off until the switch in `app.ts` is flipped. */
   productionCreation?: boolean;
+  /** F-037: refuses anyone but a company owner or admin. The fixture bearer of a test deployment skips it. */
+  requireCompanyAdmin: (principal: Principal) => Promise<void>;
 }) {
   const { useCases } = encryption;
   const principal = async (request: Parameters<SessionResolver['requirePrincipal']>[0]) => (await sessions.requirePrincipal(request)).principal;
@@ -47,7 +49,9 @@ export function encryptionRoutes(app: FastifyInstance, { sessions, encryption, f
       schema: { body: body({ name: { type: 'string', minLength: 1, maxLength: 400 }, creationId: { type: 'string', maxLength: 64 }, password: secret },
         ['name', 'creationId', 'password']) },
     }, async (request, reply) => {
-      const { status, body: result } = await useCases.create(await principal(request), request.body);
+      const creator = await principal(request);
+      if (fixtureCreation === null || !bearerMatches(request.headers.authorization, fixtureCreation)) await requireCompanyAdmin(creator);
+      const { status, body: result } = await useCases.create(creator, request.body);
       return reply.code(status).send(result);
     });
   }

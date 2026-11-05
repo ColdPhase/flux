@@ -59,7 +59,7 @@ describe('workspace AI lock: tokens, connections and runs', () => {
     }
     const refreshed = await refresh();
     assert.equal(refreshed.status, 400, 'the refresh grant is refused');
-    assert.match(JSON.stringify(await refreshed.json()), /invalid_grant.*AI is turned off in this workspace|AI is turned off in this workspace.*invalid_grant/);
+    assert.match(JSON.stringify(await refreshed.json()), /invalid_grant.*AI is turned off in this company|AI is turned off in this company.*invalid_grant/);
     await setWorkspaceAi(scene.ws.id, 'allowed');
     assert.ok(lists(await mcp(accessToken, 3, 'tools/list')), 'the connection works again once AI is on (standing configuration resumes)');
     const again = await refresh();

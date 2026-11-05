@@ -305,7 +305,7 @@ export interface SketchPromotionPreview {
   sketchId: string;
   /** null when the caller has nowhere to copy it (no project they can change and no right to create one). */
   target: { kind: 'new' } | { kind: 'existing'; projectId: string; projectName: string } | null;
-  /** Workspace owners and admins may create a project; others copy into a project they can change. */
+  /** Everyone in the company but a guest may start a space (F-037); a guest copies into a space they can change. */
   canCreateProject: boolean;
   /** Projects of the workspace the caller can change, by name. */
   projects: { id: string; name: string }[];

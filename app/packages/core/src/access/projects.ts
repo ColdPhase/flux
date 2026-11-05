@@ -1,42 +1,52 @@
 import { randomUUID } from 'node:crypto';
-import { PROJECT_TEMPLATES, PROJECT_VIEWS, TEMPLATE_VIEWS } from '@flux/contracts';
-import type { AddProjectViewCommand, CreateProjectCommand, Page, PageQuery, Project, ProjectPerson, ProjectViewId } from '@flux/contracts';
+import { NEW_SPACE_VIEWS, PROJECT_VIEWS } from '@flux/contracts';
+import type { AddProjectViewCommand, CreateProjectCommand, Page, PageQuery, Project, ProjectPerson, ProjectVisibility, ProjectViewId } from '@flux/contracts';
 import { recordEvent } from '../events.js';
-import { presentProjectGoal } from '../project-goals/service.js';
 import type { Database, Executor, Principal } from '../types.js';
 import { eventPorts, type DomainEventSink } from './common.js';
+import { RuleViolationError } from './errors.js';
 import { enforce, evaluateProject, evaluateWorkspace, accessName, LEVEL } from './policy.js';
 import type { AccessPorts } from './repositories.js';
 import type { ProjectRecord } from './records.js';
 import { oneOf, name, parsePage, PROJECT_VISIBILITIES } from './validation.js';
 
-// Projects: create, add a view, list, read and the audience (issues #46, #91). Grants are in ./grants.ts.
+// Projects, which people call spaces (F-037, #874): create, add a view, list, read and the audience (issues #46, #91).
+// A space's people are its grants (./grants.ts): `manager` is a space admin, `contributor` a space member.
 
-type ProjectPorts = Pick<AccessPorts, 'projects' | 'access' | 'events'>;
+type ProjectPorts = Pick<AccessPorts, 'projects' | 'workspaces' | 'access' | 'events'>;
 
-export function toProject(row: ProjectRecord, level: number, goal: Project['goal'] = null): Project {
+export function toProject(row: ProjectRecord, level: number): Project {
   const access = accessName(level);
   if (!access) throw new Error('Invisible project serialized');
-  return { id: row.id, workspaceId: row.workspaceId, name: row.name, visibility: row.visibility, access, views: row.views as ProjectViewId[], goal, version: row.version, createdAt: row.createdAt.toISOString() };
+  return { id: row.id, workspaceId: row.workspaceId, name: row.name, visibility: row.visibility, access, views: row.views as ProjectViewId[], version: row.version, createdAt: row.createdAt.toISOString() };
 }
 
-/** The goal each project shows (#520): its current goal, or else its most recently reached one. */
-async function shownGoals(db: Executor, ports: Pick<AccessPorts, 'projects'>, projectIds: string[]): Promise<Map<string, Project['goal']>> {
-  const rows = await ports.projects(db).shownGoals(projectIds);
-  return new Map([...rows].map(([id, row]) => [id, presentProjectGoal(row)]));
+/**
+ * Writes a new space and makes its creator its first space admin (F-037). Every space starts with Conversation, Tasks,
+ * Map and Wiki; there are no templates and no goal. The caller has authorized `project.create` in this transaction.
+ */
+export async function insertSpace(tx: Executor, ports: Pick<AccessPorts, 'projects'>, row: { workspaceId: string; name: string; visibility: ProjectVisibility; createdBy: string }): Promise<ProjectRecord> {
+  const projects = ports.projects(tx);
+  const project = await projects.insert({ id: randomUUID(), ...row, views: [...NEW_SPACE_VIEWS] });
+  const grant = await projects.insertGrant({ id: randomUUID(), workspaceId: row.workspaceId, projectId: project.id, role: 'manager', createdBy: row.createdBy,
+    userId: row.createdBy, agentId: null });
+  if ('conflict' in grant) throw new Error(`The creator of a new space could not be its admin (${grant.conflict})`);
+  return project;
 }
 
+/** Creates a space; only people who are not guests create spaces, and the creator is its first space admin (F-037). */
 export async function createProject(principal: Principal, workspaceId: string, command: CreateProjectCommand, db: Database, ports: ProjectPorts, eventSink?: DomainEventSink): Promise<Project> {
   const projectName = name(command?.name);
-  const visibility = command.visibility === undefined ? 'workspace' : oneOf(command.visibility, PROJECT_VISIBILITIES, 'visibility');
-  // Without a template (the API, agents, a promoted sketch) a project shows every view, as every project did before (#351).
-  const template = command.template === undefined ? null : oneOf(command.template, PROJECT_TEMPLATES, 'template');
+  const visibility = command.visibility === undefined ? 'restricted' : oneOf(command.visibility, PROJECT_VISIBILITIES, 'visibility');
   return db.transaction(async (tx) => {
     enforce(await evaluateWorkspace(principal, 'project.create', workspaceId, ports.access(tx), { lock: true }), 'workspace');
-    const id = randomUUID();
-    const row = await ports.projects(tx).insert({ id, workspaceId, name: projectName, visibility, views: [...(template ? TEMPLATE_VIEWS[template] : PROJECT_VIEWS)], createdBy: principal.id });
-    if (eventSink) await eventSink.record(principal, workspaceId, 'project.created.v1', id, { visibility });
-    else await recordEvent(eventPorts(ports, tx), principal, workspaceId, 'project.created.v1', id, { visibility });
+    // F-037: only Everyone holds the whole company, and setup makes it; any other space holds the people added to it.
+    if (visibility === 'workspace' && (await ports.workspaces(tx).company())?.id === workspaceId) {
+      throw new RuleViolationError('A new space holds only the people added to it', 'SPACE_NOT_FOR_EVERYONE');
+    }
+    const row = await insertSpace(tx, ports, { workspaceId, name: projectName, visibility, createdBy: principal.id });
+    if (eventSink) await eventSink.record(principal, workspaceId, 'project.created.v1', row.id, { visibility });
+    else await recordEvent(eventPorts(ports, tx), principal, workspaceId, 'project.created.v1', row.id, { visibility });
     return toProject(row, LEVEL.manager);
   });
 }
@@ -49,11 +59,10 @@ export async function addProjectView(principal: Principal, projectId: string, co
     // the second reads the first's array, instead of both holding FOR SHARE and deadlocking on the update.
     await ports.projects(tx).lockForGrantChange(projectId);
     const { project, level } = enforce(await evaluateProject(principal, 'project.write', projectId, ports.access(tx), { lock: true }), 'project');
-    const goal = (await shownGoals(tx, ports, [projectId])).get(projectId) ?? null;
-    if (project!.views.includes(view)) return toProject(project!, level, goal);
+    if (project!.views.includes(view)) return toProject(project!, level);
     const row = await ports.projects(tx).setViews(projectId, [...project!.views, view]);
     await recordEvent(eventPorts(ports, tx), principal, project!.workspaceId, 'project.view_added.v1', projectId, { view });
-    return toProject(row, level, goal);
+    return toProject(row, level);
   });
 }
 
@@ -62,13 +71,12 @@ export async function listProjects(principal: Principal, workspaceId: string, qu
   const page = parsePage(query);
   const { actor } = enforce(await evaluateWorkspace(principal, 'workspace.read', workspaceId, ports.access(db)), 'workspace');
   const { total, rows } = await ports.projects(db).listVisible(actor, page);
-  const goals = await shownGoals(db, ports, rows.map((row) => row.project.id));
-  return { items: rows.map((row) => toProject(row.project, row.level, goals.get(row.project.id) ?? null)), total, ...page };
+  return { items: rows.map((row) => ({ ...toProject(row.project, row.level), member: row.member })), total, ...page };
 }
 
 export async function getProject(principal: Principal, projectId: string, db: Database, ports: ProjectPorts): Promise<Project> {
   const { project, level } = enforce(await evaluateProject(principal, 'project.read', projectId, ports.access(db)), 'project');
-  return toProject(project!, level, (await shownGoals(db, ports, [projectId])).get(projectId) ?? null);
+  return toProject(project!, level);
 }
 
 /**

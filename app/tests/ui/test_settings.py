@@ -26,7 +26,7 @@ if UI_BROWSER not in ("chromium", "webkit"):
 PASSWORD = "settings stay calm and findable"
 STAMP = int(time.time() * 1000)
 NAME, EMAIL = "Ada Kowalska", f"ada.settings+{STAMP}@example.test"
-SECTIONS = ["Account", "People", "Appearance", "Notifications", "Agents and AI", "Keyboard shortcuts"]
+SECTIONS = ["Account", "Appearance", "Notifications", "Agents and AI", "Company", "Keyboard shortcuts"]
 # The one sentence Agents and AI and the Background suggestions page use when the server does not run them (#513).
 BACKGROUND_OFF = "Off on this Flux server · not available until your admin turns it on"
 # Guide §4, in order: every shortcut and its action.
@@ -333,7 +333,7 @@ class SettingsJourney(unittest.TestCase):
             # shortcuts show only with a keyboard, so not here. Agents and AI holds the assistant and background.
             expect(page.get_by_role("link", name=re.compile(f"^{NAME}"))).to_have_attribute("href", "/settings/account")
             rows = [text.split("\n")[0] for text in page.locator("ul.sset-card a.sset-row").all_inner_texts()]
-            self.assertEqual(rows, ["People", "Appearance", "Notifications", "Agents and AI"])
+            self.assertEqual(rows, ["Appearance", "Notifications", "Agents and AI", "Company"])
             expect(page.get_by_role("link", name=re.compile("^Keyboard shortcuts"))).to_have_count(0)
             expect(page.get_by_role("button", name=re.compile("^Sign out"))).to_be_visible()
             self.phone_targets(page)

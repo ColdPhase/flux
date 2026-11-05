@@ -41,7 +41,7 @@ export async function discoverLiveSessions(
   db: Database, media: Pick<LiveMedia, 'participants'>, principal: Principal,
   projectId: string, query: { limit?: number; before?: string } = {},
 ): Promise<LiveDiscoveryPage> {
-  if (!UUID.test(projectId)) throw new NotFoundError('Project', 'PROJECT_NOT_FOUND');
+  if (!UUID.test(projectId)) throw new NotFoundError('Space', 'PROJECT_NOT_FOUND');
   const limit = limitOf(query.limit);
   await liveAccess(db).requireProject(principal, projectId);
   const sessions = schema.liveSessions;

@@ -139,7 +139,8 @@ describe('workspace access policy over HTTP', () => {
     assert.equal(edited.body, 'contributor edit');
     assert.equal(edited.version, 3);
     const grants = expectStatus(await owner.browser.request('GET', `/api/v1/projects/${docs.id}/grants`), 200) as ProjectGrant[];
-    assert.deepEqual(grants.map((g) => [g.principal.id, g.role]), [[other.id, 'contributor']], 'grant replaced, not duplicated');
+    // F-037: the creator's own admin grant comes with the space.
+    assert.deepEqual(grants.filter((g) => g.principal.id !== owner.id).map((g) => [g.principal.id, g.role]), [[other.id, 'contributor']], 'grant replaced, not duplicated');
   });
 
   test('a guest sees only explicitly granted projects and no workspace-wide drafts', async () => {
@@ -175,7 +176,8 @@ describe('workspace access policy over HTTP', () => {
     expectStatus(await admin.browser.request('DELETE', `/api/v1/workspaces/${team.id}/members/${owner.id}`), 403, 'admin removes owner');
     expectStatus(await admin.browser.request('PATCH', `/api/v1/workspaces/${team.id}/members/${guest.id}`, { body: { role: 'member' } }), 200, 'admin promotes guest');
     expectStatus(await member.browser.request('POST', `/api/v1/workspaces/${team.id}/members`, { body: { email: other.email, role: 'member' } }), 403, 'member adds member');
-    expectStatus(await member.browser.request('POST', `/api/v1/workspaces/${team.id}/projects`, { body: { name: 'Member project' } }), 403, 'member creates project');
+    // F-037: a member starts spaces (and is their admin); guests do not.
+    expectStatus(await member.browser.request('POST', `/api/v1/workspaces/${team.id}/projects`, { body: { name: 'Member project' } }), 201, 'member creates a space');
     expectStatus(await admin.browser.request('POST', `/api/v1/workspaces/${team.id}/projects`, { body: { name: 'Admin project', visibility: 'restricted' } }), 201, 'admin creates project');
     expectStatus(await owner.browser.request('DELETE', `/api/v1/workspaces/${team.id}/members/${owner.id}`), 409, 'last owner cannot leave');
     expectStatus(await owner.browser.request('PATCH', `/api/v1/workspaces/${team.id}/members/${owner.id}`, { body: { role: 'admin' } }), 409, 'last owner cannot step down');
@@ -219,7 +221,7 @@ describe('workspace access policy over HTTP', () => {
     expectStatus(await member.browser.request('GET', `/api/v1/drafts/${narrow.id}`), 200);
 
     const grants = expectStatus(await owner.browser.request('GET', `/api/v1/projects/${room.id}/grants`), 200) as ProjectGrant[];
-    expectStatus(await owner.browser.request('DELETE', `/api/v1/projects/${room.id}/grants/${grants[0]!.id}`), 204);
+    expectStatus(await owner.browser.request('DELETE', `/api/v1/projects/${room.id}/grants/${grants.find((g) => g.principal.id === member.id)!.id}`), 204);
     expectStatus(await member.browser.request('GET', `/api/v1/drafts/${narrow.id}`), 404, 'grant revoked');
     expectStatus(await member.browser.request('GET', `/api/v1/projects/${room.id}`), 404, 'project hidden again');
 

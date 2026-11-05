@@ -38,6 +38,9 @@ first space with it. Each person can belong to several spaces with a different r
 Owners and admins add someone who already has an account with **Add someone** (by their email
 address), change a role, or remove a person. Anyone can **Leave** a space, except its last owner.
 Removing someone takes effect on their very next request; their own agents stop with them.
+**Settings › Company** lists people who left or were removed, with **Restore**: they sign in as usual
+and are in Everyone again, and other spaces are added by hand. Below that it lists every space, so
+an owner or admin can add themselves to one; their sidebar shows only the spaces they belong to.
 
 Inside a project, its managers (owners and admins) choose under **People** whether it is open to
 the whole space or only to the people listed, give one person **Can read** or **Can write**, or keep
@@ -45,8 +48,10 @@ someone out entirely. The full rules are in the [access policy](../development/a
 
 ## Invite links
 
-For someone who has no account yet, an owner or admin chooses **Invite with a link** in the space's
-People:
+For someone who has no account yet, a company owner or admin chooses **Invite with a link** in
+**Settings › Company**. A link joins the company, and the person is then added to spaces from each
+space's people. With [single sign-on](single-sign-on.md) there are no links: everyone the provider
+lets in joins on their first sign-in.
 
 - **Joins as**: member or guest, or admin when the creator is an owner. Never owner.
 - **Only for (optional)**: an email address. Empty means whoever opens the link first.

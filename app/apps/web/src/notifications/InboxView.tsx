@@ -113,7 +113,7 @@ export function InboxView() {
 
   // A filter with nothing in it is not offered (#763 LD-5, Spokój rule 4); All stays, and so does the one you are on.
   const tabs: TabItem[] = FILTERS.filter((entry) => entry.id === 'all' || entry.id === filter || counts[entry.id] > 0).map((entry) => ({ id: entry.id, label: entry.label, count: counts[entry.id], countLabel: `, ${counts[entry.id]}` }));
-  const where = projectId ? projectName ?? 'this project' : 'all projects';
+  const where = projectId ? projectName ?? 'this space' : 'all spaces';
   const summary = queue.items === null ? '' : counts.all ? `${counts.all} need${counts.all === 1 ? 's' : ''} you · ${where}` : `all clear · ${where}`;
 
   return (
@@ -124,7 +124,7 @@ export function InboxView() {
         const bar = queue.items?.length === 0 && filter === 'all' && !queue.later && !projectId ? null : (
           <>
             <p className="nyq__summary" aria-live="polite">{summary}{queue.later ? ` · ${queue.later} for later` : ''}
-              {projectId ? <> · <button type="button" className="nyq__all" onClick={allProjects}>Show all projects</button></> : null}</p>
+              {projectId ? <> · <button type="button" className="nyq__all" onClick={allProjects}>Show all spaces</button></> : null}</p>
             <Tabs variant="segmented" className="nyq__filters" label="Show" items={tabs} value={filter} onChange={(id) => setFilter(id as Filter)} />
           </>
         );

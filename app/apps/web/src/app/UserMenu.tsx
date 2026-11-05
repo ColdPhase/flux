@@ -88,11 +88,10 @@ function AccountMenu({ name, email, sessionExpiresAt, compact }: { name: string;
             <div className="me__notify"><NotificationsButton /></div>
           </div>
           <AppearanceControls idPrefix={popId} />
-          {/* Settings and People, one way into each (#763 SG-7, PE-1): the assistant and background suggestions are in
-              Settings → Agents and AI, so the menu never lists a feature this server or workspace has turned off. */}
+          {/* Settings, one way in (#763 SG-7): the company's people are in Settings › Company (F-037), and the assistant and
+              background suggestions in Settings → Agents and AI, so the menu never lists a feature this server has turned off. */}
           <div className="me__sec">
             <Link to="/settings" className="me__item" onClick={follow}><Icon name="gear" />All settings</Link>
-            <Link to="/settings/people" className="me__item" onClick={follow}><Icon name="people" />People</Link>
           </div>
           <Form method="post" action="/sign-out" className="me__sec me__sec--end">
             <button type="submit" className="me__item" aria-disabled={signingOut || undefined}>

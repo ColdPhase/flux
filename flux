@@ -548,7 +548,7 @@ print_logins() {
   say ""
   say "Flux demo is ready:  $url"
   say ""
-  say "  Ada Kowalska (workspace owner)  ada@demo.flux.test    $(env_value FLUX_DEMO_OWNER_PASSWORD)"
+  say "  Ada Kowalska (company owner)    ada@demo.flux.test    $(env_value FLUX_DEMO_OWNER_PASSWORD)"
   say "  Jonas Berg   (member)           jonas@demo.flux.test  $(env_value FLUX_DEMO_PARTNER_PASSWORD)"
   say ""
   say "Passwords are stored in ${ENV_FILE#"$FLUX_ROOT"/}. Demo data is for local development only."
@@ -1426,7 +1426,7 @@ Flux launcher. Flux runs in Docker; the external cowork action also needs the na
                          --migrate. --revoke-agent-connections ends every agent connection and
                          OAuth token from the backup (they need connecting again).
   ./flux export <project> [--as EMAIL] [--output FILE]
-                         Write a project's JSON-plus-files bundle to exports/ (as the workspace
+                         Write a space's JSON-plus-files bundle to exports/ (as the company
                          owner by default; the account needs project.manage).
   ./flux identity link <userId> --subject <sub> --reason "<why>" [--old-issuer <URL>] [--allow-sso]
                          Audited operator recovery by Flux account id; requires the running API.

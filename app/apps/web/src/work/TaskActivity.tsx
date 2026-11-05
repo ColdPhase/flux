@@ -231,7 +231,7 @@ export function ActivityTimeline({ state, composer, item, project, me, writable,
           );
         })}
       </ol>
-      {discussion && !discussion.root ? <p className="wd-muted wd-act__none">Nobody has written about this task yet. The first message starts its discussion in the project conversation.</p> : null}
+      {discussion && !discussion.root ? <p className="wd-muted wd-act__none">Nobody has written about this task yet. The first message starts its discussion in the space conversation.</p> : null}
       {state.hasEarlier ? <button type="button" className="wd-inline wd-act__earlier" disabled={state.busyEarlier} onClick={() => void state.loadEarlier()}>{state.busyEarlier ? 'Loading…' : 'Show earlier activity'}</button> : null}
       {empty}
       <AgentThreadLink workId={item.id} projectId={project.id} revision={state.lines.length} />

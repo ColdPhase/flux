@@ -1,7 +1,7 @@
-import type { ProjectGoal } from './project-goals.js';
 import type { WorkspaceEncryption } from './encryption.js';
 
-// Wire types for workspaces, projects, grants, agents and drafts (issue #29, AC-2).
+// Wire types for workspaces, projects, grants, agents and drafts (issue #29, AC-2). F-037 (#874): one Flux is one company,
+// the one workspace setup makes; people call it the company and a project a space. The paths keep their internal names.
 // Every route below requires a live session. An object the caller cannot see answers
 // 404; a visible object the caller may not change answers 403. Error bodies are ApiError.
 
@@ -13,6 +13,8 @@ export const AGENTS_PATH = '/api/v1/agents';
 export const workspacePath = (workspaceId: string) => `${WORKSPACES_PATH}/${workspaceId}`;
 export const workspaceMembersPath = (workspaceId: string) => `${workspacePath(workspaceId)}/members`;
 export const workspaceMemberPath = (workspaceId: string, userId: string) => `${workspaceMembersPath(workspaceId)}/${userId}`;
+export const workspaceRemovedPeoplePath = (workspaceId: string) => `${workspacePath(workspaceId)}/removed-people`;
+export const workspaceRestorePath = (workspaceId: string, userId: string) => `${workspaceRemovedPeoplePath(workspaceId)}/${userId}/restore`;
 export const workspaceProjectsPath = (workspaceId: string) => `${workspacePath(workspaceId)}/projects`;
 export const workspaceAgentsPath = (workspaceId: string) => `${workspacePath(workspaceId)}/agents`;
 export const workspaceDraftsPath = (workspaceId: string) => `${workspacePath(workspaceId)}/drafts`;
@@ -30,9 +32,12 @@ export const draftMovePath = (draftId: string) => `${draftPath(draftId)}/move`;
 
 export type WorkspaceRole = 'owner' | 'admin' | 'member' | 'guest';
 export type ProjectVisibility = 'workspace' | 'restricted';
-/** `denied` is an explicit deny: it wins over every role, grant and visibility rule. */
-export type ProjectGrantRole = 'contributor' | 'viewer' | 'denied';
-/** The caller's effective access to a project. `manager` is a workspace owner or admin. */
+/**
+ * A space's people (F-037): `manager` is a space admin and `contributor` a space member; only a person can be a space admin.
+ * `denied` is an explicit deny: it wins over every role, grant and visibility rule.
+ */
+export type ProjectGrantRole = 'manager' | 'contributor' | 'viewer' | 'denied';
+/** The caller's effective access to a project. `manager` is a space admin, or a company owner or admin. */
 export type ProjectAccess = 'manager' | 'contributor' | 'viewer';
 export type DraftVisibility = 'private' | 'project' | 'workspace';
 
@@ -90,6 +95,8 @@ export interface PageQuery {
 export interface Workspace {
   id: string;
   name: string;
+  /** F-037: the company, the one workspace setup makes. A test deployment may hold others for isolation. */
+  company: boolean;
   /** Caller's role; null for an agent principal, which acts only through project grants. */
   role: WorkspaceRole | null;
   version: number;
@@ -132,6 +139,14 @@ export const WORKSPACE_AI_POLICY_CHANGED_EVENT = 'workspace.ai_policy_changed.v1
 export const WORKSPACE_AI_SWEEP_JOB = 'workspace-ai.sweep.v1';
 export interface WorkspaceAiSweepJob { workspaceId: string; epoch: number }
 
+/** Someone who left the company or was removed; an owner or admin can restore them (Settings › Company). */
+export interface RemovedPerson {
+  userId: string;
+  email: string;
+  name: string;
+  removedAt: string;
+}
+
 export interface WorkspaceMember {
   userId: string;
   email: string;
@@ -148,11 +163,8 @@ export interface WorkspaceMember {
 /** The views a project shows only once it needs them (#351, F-026 S21). Conversation and Tasks are always there. */
 export const PROJECT_VIEWS = ['map', 'docs', 'agents'] as const;
 export type ProjectViewId = (typeof PROJECT_VIEWS)[number];
-/** What a new project starts from (#351, S20): the views it begins with. */
-export const PROJECT_TEMPLATES = ['build', 'research', 'event', 'blank'] as const;
-export type ProjectTemplate = (typeof PROJECT_TEMPLATES)[number];
-/** The optional views each template adds on top of Conversation and Tasks. */
-export const TEMPLATE_VIEWS: Record<ProjectTemplate, readonly ProjectViewId[]> = { build: [], research: ['docs'], event: [], blank: [] };
+/** F-037: every new space starts the same way, with Conversation, Tasks, Map and Wiki; there are no templates. */
+export const NEW_SPACE_VIEWS: readonly ProjectViewId[] = ['map', 'docs'];
 
 export interface Project {
   id: string;
@@ -160,13 +172,13 @@ export interface Project {
   name: string;
   visibility: ProjectVisibility;
   access: ProjectAccess;
-  /** Optional views added on purpose, by a template or from More. Use also shows a view (map with sketches, wiki with docs, agents with an agent). Existing projects have all of them. */
+  /** Optional views. A new space has Map and Wiki; use also shows a view (agents with an agent). */
   views: ProjectViewId[];
   /**
-   * The project's optional shared goal (#520): the current one, or the most recently reached one while
-   * no goal is current. Null for a project that never had one: nothing about goals shows then.
+   * On a list: whether the reader belongs to this space. False only for a company owner or admin who can reach it without
+   * being in it: Settings › Company lists it for them, and their sidebar does not (F-037).
    */
-  goal: ProjectGoal | null;
+  member?: boolean;
   version: number;
   createdAt: string;
 }
@@ -251,7 +263,13 @@ export interface Draft {
   updatedAt: string;
 }
 
+/** Test deployments only (F-037): production creates the one company at setup and has no route to create another. */
 export interface CreateWorkspaceCommand {
+  name: string;
+}
+
+/** `PATCH /api/v1/workspaces/:id`: a company owner or admin renames the company (Settings › Company). */
+export interface RenameWorkspaceCommand {
   name: string;
 }
 
@@ -284,11 +302,6 @@ export interface CreateInviteCommand {
   /** Locks the link to this address (compared case-insensitively). */
   email?: string | null;
   expiresInDays?: InviteExpiryDays;
-  /**
-   * A project the creator manages (#763 FT-3): joining also gives the new person a contributor grant on it (also a
-   * guest), unless their role already writes there. Null or absent: the space only.
-   */
-  projectId?: string | null;
 }
 
 /** A pending invite as its workspace's owners and admins see it. */
@@ -300,8 +313,6 @@ export interface WorkspaceInvite {
   createdBy: { id: string; name: string };
   createdAt: string;
   expiresAt: string;
-  /** The project joining also opens (#763 FT-3); null for the space only. */
-  project: { id: string; name: string } | null;
   /** The full link to copy: `<origin>/join#<token>`. */
   link: string;
 }
@@ -316,8 +327,6 @@ export interface InvitePreview {
   expiresAt: string;
   emailLocked: boolean;
   encrypted: boolean;
-  /** The project joining also opens (#763 FT-3), or null. */
-  projectName: string | null;
   /** `joined`: the signed-in account already used this link; `member`: it is already in the workspace. */
   state: 'pending' | 'joined' | 'member';
 }
@@ -330,8 +339,6 @@ export interface AcceptInviteResult {
   encrypted: boolean;
   /** An admin of an encrypted workspace without an unlock password: a current holder grants one (F-030). */
   needsUnlockPassword: boolean;
-  /** Where to land after joining (#763 FT-3): the invite's project when the person can open it now, else null. */
-  projectId: string | null;
 }
 
 export const INVITE_CREATED_EVENT = 'workspace.invite_created.v1';
@@ -343,10 +350,11 @@ export interface ChangeRoleCommand {
 
 export interface CreateProjectCommand {
   name: string;
-  /** Default `workspace`. A `restricted` project is visible only to managers and grantees. */
+  /**
+   * Default `restricted` (F-037): only the people added to the space, and company owners and admins, see it; its creator
+   * is its first space admin. `workspace` holds the whole company, as the Everyone space does.
+   */
   visibility?: ProjectVisibility;
-  /** What the project starts from (#351). Without one it shows every view, as projects always did. */
-  template?: ProjectTemplate;
 }
 
 /** Adds an optional view to a project. Adding one it already has changes nothing. */

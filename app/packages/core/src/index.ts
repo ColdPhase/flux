@@ -36,8 +36,8 @@ export type {
 } from './access/ports.js';
 export { parsePage } from './access/validation.js';
 export type { DomainEventSink } from './access/common.js';
-export { createWorkspace, listWorkspaces, getWorkspace, type WorkspaceReadOptions } from './access/workspaces.js';
-export { listMembers, addMember, changeRole, removeMember } from './access/members.js';
+export { companyDisplayName, createWorkspace, listWorkspaces, getWorkspace, joinCompany, renameWorkspace, requireCompanyAdmin, COMPANY_NAME, EVERYONE_SPACE_NAME, type WorkspaceReadOptions } from './access/workspaces.js';
+export { listMembers, addMember, changeRole, removeMember, listRemovedPeople, restoreMember } from './access/members.js';
 export { createInvite, listInvites, revokeInvite, previewInvite, acceptInvite, withLink, inviteToken, inviteIdOf, inviteTokenHash, type InviteSigner, type CreatedInvite, type InviteJoined } from './access/invites.js';
 export { setWorkspaceAiPolicy, sweepWorkspaceAi, WorkspaceAiSweepIncomplete, type WorkspaceAiSweepQueue } from './access/workspace-ai.js';
 export { createProject, addProjectView, listProjects, getProject, listProjectPeople } from './access/projects.js';
@@ -72,7 +72,6 @@ export type { LiveInvitation, LiveInvitationPorts, LiveInvitationTarget, LiveInv
   LiveInvitationCursor, LiveInvitationPage, LiveInvitationPageRow } from './live/invitations.js';
 export * from './agent-connection/proposals.js';
 export * from './returns/index.js';
-export * from './project-goals/index.js';
 export * from './needs-you/index.js';
 export * from './direct-messages/index.js';
 export { policyDmAccess } from './access/dm-access.js';

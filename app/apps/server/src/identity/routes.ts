@@ -41,11 +41,13 @@ export interface IdentityRouteOptions {
   linkable: boolean;
   /** Evaluated per request: the provider's reachability changes while Flux runs. */
   sso: () => Promise<IdentityCapabilities['sso']>;
+  /** Evaluated per request: an admin can rename the company at any time. */
+  company: () => Promise<string | null>;
 }
 
 /** Flux's own identity routes: capabilities, the current principal and session management. */
-export function registerIdentityRoutes(app: FastifyInstance, { sessions, store, passwordReset, signup, ssoOnly, linkable, sso }: IdentityRouteOptions) {
-  app.get(IDENTITY_CAPABILITIES_PATH, async (): Promise<IdentityCapabilities> => ({ passwordReset, signup, ssoOnly, linkable, sso: await sso() }));
+export function registerIdentityRoutes(app: FastifyInstance, { sessions, store, passwordReset, signup, ssoOnly, linkable, sso, company }: IdentityRouteOptions) {
+  app.get(IDENTITY_CAPABILITIES_PATH, async (): Promise<IdentityCapabilities> => ({ company: await company(), passwordReset, signup, ssoOnly, linkable, sso: await sso() }));
 
   app.get(ME_PATH, async (request, reply): Promise<MeResponse> => {
     if (request.headers[ME_PROBE_HEADER] === '1') {

@@ -36,7 +36,7 @@ TABLET = {"width": 820, "height": 1180}
 PHONES = ({"width": 390, "height": 844}, {"width": 375, "height": 667})
 VIEWS = ("", "/map", "/tasks", "/docs", "/agents")
 VIEW_NAMES = ("Conversation", "Map", "Tasks", "Wiki", "Agents")
-PEOPLE = re.compile("who can see this project$")
+PEOPLE = re.compile("who can see this space$")
 SETTLED = "() => document.getAnimations().every((a) => a.playState !== 'running')"
 
 
@@ -143,12 +143,12 @@ class SpokojLayout(unittest.TestCase):
         if views:
             for name in VIEW_NAMES:
                 # A view with a count has it in its name ("Tasks, 3 open").
-                boxes[name] = self.box(header.get_by_role("navigation", name="Project views").get_by_role("link", name=re.compile(f"^{name}")))
+                boxes[name] = self.box(header.get_by_role("navigation", name="Space views").get_by_role("link", name=re.compile(f"^{name}")))
         return boxes
 
     def open_panel(self, page: Page) -> None:
         page.locator("header.top").get_by_role("button", name="More", exact=True).click()
-        page.get_by_role("menu", name="More").get_by_role("menuitem", name="Project details").click()
+        page.get_by_role("menu", name="More").get_by_role("menuitem", name="Space details").click()
         expect(page.locator(".ui-panel--docked")).to_be_visible()
         # The panel slides in from 24 px to the right; measure it once the animation has landed.
         page.wait_for_function(SETTLED)
@@ -161,7 +161,7 @@ class SpokojLayout(unittest.TestCase):
         header = page.locator("header.top")
         self.assertLessEqual(self.box(header)["height"], 72, f"{label}: one row, not two")
         title = self.box(header.get_by_role("heading", level=1))
-        for control in [header.get_by_role("navigation", name="Project views"), header.get_by_role("button", name="More", exact=True)]:
+        for control in [header.get_by_role("navigation", name="Space views"), header.get_by_role("button", name="More", exact=True)]:
             other = self.box(control)
             self.assertLess(abs((title["y"] + title["height"] / 2) - (other["y"] + other["height"] / 2)), 4, f"{label}: the name, the views and More share the row")
         self.assertLessEqual(page.evaluate("document.documentElement.scrollWidth"), page.viewport_size["width"], f"{label}: no sideways scroll")
@@ -189,7 +189,7 @@ class SpokojLayout(unittest.TestCase):
                 self.assertGreaterEqual(panel["y"], head["y"] + head["height"] - 1, "the panel opens under the header")
                 # Moving between the views with the panel open moves nothing in the header.
                 for path, name in zip(VIEWS[1:], VIEW_NAMES[1:]):
-                    page.get_by_role("navigation", name="Project views").get_by_role("link", name=re.compile(f"^{name}")).click()
+                    page.get_by_role("navigation", name="Space views").get_by_role("link", name=re.compile(f"^{name}")).click()
                     expect(page).to_have_url(re.compile(re.escape(f"/projects/{self.project_id}{path}") + r"(\?|$|/)"))
                     page.wait_for_function(SETTLED)
                     self.assert_same_place(closed, self.header_boxes(page), f"{size['width']} view {name}")
@@ -211,10 +211,10 @@ class SpokojLayout(unittest.TestCase):
                 header.get_by_role("button", name="More", exact=True).click()
                 menu = page.get_by_role("menu", name="More")
                 items = [text.split("\n")[0].strip() for text in menu.locator("[role^=menuitem]:visible").all_inner_texts()]
-                self.assertEqual(items[:3], ["Who can see this", "Together", "Project details"], items)
+                self.assertEqual(items[:3], ["Who can see this", "Together", "Space details"], items)
                 # Live sessions are off on this test server: Together is dimmed in place, not removed.
                 expect(menu.get_by_role("menuitem", name="Together")).to_have_attribute("aria-disabled", "true")
-                menu.get_by_role("menuitem", name="Project details").click()
+                menu.get_by_role("menuitem", name="Space details").click()
                 expect(page.locator("#details")).to_be_visible()
                 page.wait_for_function(SETTLED)
                 self.assert_one_row(page, f"{size['width']} panel open")
@@ -226,7 +226,7 @@ class SpokojLayout(unittest.TestCase):
         header = page.locator("header.top")
         boxes = {"More": self.box(header.get_by_role("button", name="More", exact=True))}
         for name in VIEW_NAMES:
-            boxes[name] = self.box(header.get_by_role("navigation", name="Project views").get_by_role("link", name=re.compile(f"^{name}")))
+            boxes[name] = self.box(header.get_by_role("navigation", name="Space views").get_by_role("link", name=re.compile(f"^{name}")))
         return boxes
 
     def test_03_the_panel_is_420_at_1440_and_480_from_1920_and_the_conversation_is_at_most_760(self) -> None:
@@ -279,7 +279,7 @@ class SpokojLayout(unittest.TestCase):
         header = page.locator("header.top")
         self.assertLessEqual(self.box(header)["height"], 72)
         # The project title is the view menu (the phone's pattern); the people, Together and More keep the row.
-        expect(header.get_by_role("navigation", name="Project views")).to_have_count(0)
+        expect(header.get_by_role("navigation", name="Space views")).to_have_count(0)
         boxes = self.header_boxes(page, views=False)
         title = header.get_by_role("heading", level=1).get_by_role("button", name="Community garden sensors")
         boxes["title"] = self.box(title)
@@ -293,7 +293,7 @@ class SpokojLayout(unittest.TestCase):
         self.assert_same_place(boxes, {**self.header_boxes(page, views=False), "title": self.box(title)}, "820 Conversation to Tasks")
         # The panel (380 px) slides over the conversation, which stays visible beside it.
         header.get_by_role("button", name="More", exact=True).click()
-        page.get_by_role("menu", name="More").get_by_role("menuitem", name="Project details").click()
+        page.get_by_role("menu", name="More").get_by_role("menuitem", name="Space details").click()
         expect(page.locator(".ui-panel--overlay")).to_be_visible()
         page.wait_for_function(SETTLED)
         panel = self.box(page.locator(".ui-panel--overlay"))
@@ -328,7 +328,7 @@ class SpokojLayout(unittest.TestCase):
         rail = page.locator(".side--rail")
         expect(rail).to_be_visible()
         names = rail.locator("a, button").evaluate_all("els => els.map(el => el.getAttribute('aria-label') || el.getAttribute('title'))")
-        order = ["Expand sidebar", "New", "Search", "Home", "Inbox", "Sketchbook", "Community garden sensors", "Messages", "Kai Spokoj", "Ada Spokoj", "Settings"]
+        order = ["Expand sidebar", "New", "Search", "Home", "Inbox", "My tasks", "My map", "Community garden sensors", "Messages", "Kai Spokoj", "Ada Spokoj", "Settings"]
         positions = [next((index for index, name in enumerate(names) if name and name.startswith(item)), -1) for item in order]
         self.assertTrue(all(position >= 0 for position in positions), names)
         self.assertEqual(positions, sorted(positions), f"the sidebar's order, the account and its settings last: {names}")
@@ -431,7 +431,7 @@ class SpokojLayout(unittest.TestCase):
         page.goto(f"/projects/{self.project_id}")
         page.locator("header.top").get_by_role("button", name="More", exact=True).click()
         menu = page.get_by_role("menu", name="More")
-        expect(menu.get_by_role("menuitem", name="Project details")).to_be_visible()
+        expect(menu.get_by_role("menuitem", name="Space details")).to_be_visible()
         expect(menu.get_by_role("menuitem", name="Details", exact=True)).to_have_count(0)
         page.keyboard.press("Escape")
         page.goto(self.dm_path)

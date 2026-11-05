@@ -234,7 +234,7 @@ class WikiPanesJourney(unittest.TestCase):
     def test_02_wiki_tab_opens_a_page_with_a_quiet_accessible_selection(self) -> None:
         page = self.page("owner")
         page.goto(f"/projects/{self.project_id}")
-        page.get_by_role("navigation", name="Project views").get_by_role("link", name="Wiki").click()
+        page.get_by_role("navigation", name="Space views").get_by_role("link", name="Wiki").click()
         expect(page, "the Wiki tab opens the latest page").to_have_url(re.compile(re.escape(self.url("lamp")) + "$"))
         expect(page.get_by_role("heading", level=2, name=LAMP)).to_be_visible()
         index = self.index(page)
@@ -311,9 +311,9 @@ class WikiPanesJourney(unittest.TestCase):
         # The doc link inside the lamp page shows up as a backlink here.
         expect(page.get_by_role("region", name=re.compile("^Linked from"))).to_contain_text(LAMP)
         # Moving to another tab and back returns to the page last open here.
-        page.get_by_role("navigation", name="Project views").get_by_role("link", name=re.compile("^Tasks")).click()
+        page.get_by_role("navigation", name="Space views").get_by_role("link", name=re.compile("^Tasks")).click()
         expect(page).to_have_url(re.compile(r"/tasks"))
-        page.get_by_role("navigation", name="Project views").get_by_role("link", name="Wiki").click()
+        page.get_by_role("navigation", name="Space views").get_by_role("link", name="Wiki").click()
         expect(page).to_have_url(re.compile(re.escape(self.url("parts")) + "$"))
 
     def test_02b_long_page_labels_keep_one_line_full_names_and_targets(self) -> None:
@@ -595,7 +595,7 @@ class WikiPanesJourney(unittest.TestCase):
         page.locator(".wiki-bar").get_by_role("button", name="Download").click()
         shot(page, "wiki-download-desktop-1440")
         page.keyboard.press("Escape")
-        name, data = self.download(page, "^Export the whole project")
+        name, data = self.download(page, "^Export the whole space")
         self.assertRegex(name, rf"^flux-project-{self.project_id[:8]}-\d{{8}}T\d{{6}}Z\.tar\.gz$")
         with tarfile.open(fileobj=io.BytesIO(data), mode="r:gz") as bundle:
             names = bundle.getnames()
@@ -617,8 +617,8 @@ class WikiPanesJourney(unittest.TestCase):
         partner.locator(".wiki-bar").get_by_role("button", name="Download").click()
         dialog = partner.get_by_role("dialog", name="Download")
         expect(dialog.get_by_role("button", name="This page as Markdown")).to_be_visible()
-        expect(dialog.get_by_role("button", name=re.compile("Export the whole project"))).to_have_count(0)
-        expect(dialog).to_contain_text("People who manage this space can also export the whole project.")
+        expect(dialog.get_by_role("button", name=re.compile("Export the whole space"))).to_have_count(0)
+        expect(dialog).to_contain_text("People who manage this space can also export the whole space.")
         self.api(partner, "GET", f"/api/v1/projects/{self.project_id}/export?format=bundle", status=403)
         partner.keyboard.press("Escape")
         expect(dialog).to_have_count(0)

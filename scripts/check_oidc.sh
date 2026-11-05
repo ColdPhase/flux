@@ -113,6 +113,13 @@ $compose up -d --wait keycloak oidc-mock mailpit api api-mock worker
 
 e2e() { $compose run --rm -e FLUX_OIDC_PROVIDER_ID="$provider_id" e2e node_modules/.bin/tsx --test --test-concurrency=1 "$@"; }
 
+# F-037: the first account on a server sets up its company and owns its Everyone space. This one, made here while
+# password sign-up is still open, stays for the whole check, so the suites below can delete their own people.
+$compose run --rm e2e node -e "fetch(process.env.FLUX_API_URL + '/api/auth/sign-up/email', { method: 'POST',
+  headers: { origin: process.env.FLUX_PUBLIC_ORIGIN, 'content-type': 'application/json' },
+  body: JSON.stringify({ email: 'company-setup@example.test', password: 'company setup for the checks', name: 'Company Setup' }) })
+  .then(async (r) => { if (!r.ok) { console.error(r.status, await r.text()); process.exit(1); } })"
+
 # Link a password account before cutover, restart the API between the start and the finish, refuse held identities.
 link() { $compose run --rm -e FLUX_OIDC_PROVIDER_ID="$provider_id" -e FLUX_OIDC_OLD_ISSUER="$old_issuer" \
   -e FLUX_OIDC_OLD_PROVIDER_ID="$old_provider_id" -e FLUX_LINK_PHASE="$1" e2e node_modules/.bin/tsx --test --test-concurrency=1 --test-name-pattern "$2" tests/app/e2e/oidc-link.e2e.ts; }

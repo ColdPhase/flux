@@ -1,4 +1,4 @@
-import { and, asc, eq, inArray, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, sql } from 'drizzle-orm';
 import type { WorkspaceRole } from '@flux/contracts';
 import * as schema from '../schema.js';
 import type { DbExecutor } from './push.js';
@@ -16,11 +16,29 @@ export type AccountLookup = { userId: string } | { email: string };
 
 export function workspaceRepository(db: DbExecutor) {
   return {
-    /** The workspace and its first owner. */
-    async createWithOwner(row: { id: string; name: string; createdBy: string }) {
-      const [workspace] = await db.insert(schema.workspaces).values({ id: row.id, name: row.name, createdBy: row.createdBy }).returning();
+    /** The workspace and its first owner; `company` marks the one company workspace (F-037). */
+    async createWithOwner(row: { id: string; name: string; createdBy: string; company?: boolean }) {
+      const [workspace] = await db.insert(schema.workspaces).values({ id: row.id, name: row.name, createdBy: row.createdBy, company: row.company ?? false }).returning();
       await db.insert(schema.workspaceMembers).values({ workspaceId: row.id, userId: row.createdBy, role: 'owner', createdBy: row.createdBy });
       return workspace!;
+    },
+
+    /** F-037: company setup runs one at a time, under a transaction-scoped advisory lock. */
+    async lockCompanySetup(): Promise<void> {
+      await db.execute(sql`SELECT pg_advisory_xact_lock(hashtext('flux.company_setup'))`);
+    },
+
+    /** The company workspace (F-037), or null before setup. */
+    async company() {
+      const [row] = await db.select().from(schema.workspaces).where(eq(schema.workspaces.company, true));
+      return row ?? null;
+    },
+
+    /** A new name, one version on. */
+    async rename(workspaceId: string, name: string) {
+      const [row] = await db.update(schema.workspaces).set({ name, version: sql`${schema.workspaces.version} + 1`, updatedAt: new Date() })
+        .where(eq(schema.workspaces.id, workspaceId)).returning();
+      return row!;
     },
 
     /** The person's workspaces with their role, oldest first. */
@@ -97,7 +115,44 @@ export function workspaceRepository(db: DbExecutor) {
     /** The new membership, or null when the account is already a member. */
     async insertMember(row: { workspaceId: string; userId: string; role: WorkspaceRole; createdBy: string }) {
       const inserted = await db.insert(schema.workspaceMembers).values(row).onConflictDoNothing().returning();
+      // Joining again, by any path, takes the person off the company's removed list.
+      if (inserted[0]) await db.delete(schema.workspaceRemovedPeople).where(and(eq(schema.workspaceRemovedPeople.workspaceId, row.workspaceId), eq(schema.workspaceRemovedPeople.userId, row.userId)));
       return inserted[0] ?? null;
+    },
+
+    /** Someone who became a guest is no longer a space admin: their `manager` grants become plain membership. */
+    async endSpaceAdmin(workspaceId: string, userId: string) {
+      await db.update(schema.projectGrants).set({ role: 'contributor', updatedAt: new Date() })
+        .where(and(eq(schema.projectGrants.workspaceId, workspaceId), eq(schema.projectGrants.userId, userId), eq(schema.projectGrants.role, 'manager')));
+    },
+
+    /** Whether the account is in the workspace now. */
+    async isMember(workspaceId: string, userId: string) {
+      const [row] = await db.select({ userId: schema.workspaceMembers.userId }).from(schema.workspaceMembers)
+        .where(and(eq(schema.workspaceMembers.workspaceId, workspaceId), eq(schema.workspaceMembers.userId, userId)));
+      return !!row;
+    },
+
+    /** Remembers someone who left or was removed, for Restore. */
+    async recordRemoved(workspaceId: string, userId: string, removedBy: string) {
+      await db.insert(schema.workspaceRemovedPeople).values({ workspaceId, userId, removedBy })
+        .onConflictDoUpdate({ target: [schema.workspaceRemovedPeople.workspaceId, schema.workspaceRemovedPeople.userId], set: { removedBy, removedAt: new Date() } });
+    },
+
+    /** Everyone who left or was removed and has not joined again, newest first. */
+    async removedPeople(workspaceId: string) {
+      const rows = await db.select({ userId: schema.workspaceRemovedPeople.userId, removedAt: schema.workspaceRemovedPeople.removedAt,
+        email: schema.authUsers.email, name: schema.authUsers.name })
+        .from(schema.workspaceRemovedPeople).innerJoin(schema.authUsers, eq(schema.authUsers.id, schema.workspaceRemovedPeople.userId))
+        .where(eq(schema.workspaceRemovedPeople.workspaceId, workspaceId)).orderBy(desc(schema.workspaceRemovedPeople.removedAt));
+      return rows;
+    },
+
+    /** Whether this person is on the removed list. */
+    async isRemoved(workspaceId: string, userId: string) {
+      const [row] = await db.select({ userId: schema.workspaceRemovedPeople.userId }).from(schema.workspaceRemovedPeople)
+        .where(and(eq(schema.workspaceRemovedPeople.workspaceId, workspaceId), eq(schema.workspaceRemovedPeople.userId, userId)));
+      return !!row;
     },
 
     /** A membership row `FOR UPDATE`. */

@@ -70,7 +70,7 @@ export function createMcpRelay(db: Database, options: { onerror(error: Error): v
       // client keeps its sign-in for when AI is on again).
       if (!handedOver && !res.headersSent && aiOff) {
         res.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store' });
-        res.end(JSON.stringify({ jsonrpc: '2.0', error: { code: -32000, message: 'AI is turned off in this workspace', data: { code: 'WORKSPACE_AI_BLOCKED' } },
+        res.end(JSON.stringify({ jsonrpc: '2.0', error: { code: -32000, message: 'AI is turned off in this company', data: { code: 'WORKSPACE_AI_BLOCKED' } },
           id: requestId(parsedBody) }));
       } else if (!handedOver && !res.headersSent) { res.writeHead(403, { 'content-type': 'application/json' }); res.end(unavailable); }
       else res.destroy();

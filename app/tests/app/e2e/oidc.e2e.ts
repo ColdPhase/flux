@@ -133,11 +133,11 @@ async function inboxItem(context: BrowserContext, match: (item: { id: string; ur
   }, what);
 }
 
-const state: { aliceId?: string; bobId?: string; workspace?: string; extra?: string; bobExtra?: string } = {};
+const state: { aliceId?: string; bobId?: string; company?: string; workspace?: string; extra?: string; bobExtra?: string } = {};
 let aliceContext: BrowserContext;
 let bobContext: BrowserContext;
 
-test('a person signs in with the operator identity provider and gets a Flux account without any grants', async () => {
+test('a person signs in with the operator identity provider, gets a Flux account and joins the company (F-037)', async () => {
   aliceContext = await fresh();
   const page = await sso(aliceContext, 'alice');
   assert.equal(new URL(page.url()).pathname, '/', 'single sign-on lands on Home');
@@ -149,7 +149,15 @@ test('a person signs in with the operator identity provider and gets a Flux acco
   assert.equal(accounts.length, 1);
   assert.equal(accounts[0].provider_id, providerId, 'the account is keyed by the issuer-derived provider id');
   assert.match(accounts[0].account_id, /^[0-9a-f-]{36}$/, 'and the stable subject, not the email');
-  assert.deepEqual(await api(aliceContext, 'GET', '/api/v1/workspaces'), [], 'identity provider claims grant nothing in Flux');
+  // F-037: whoever the identity provider lets in joins the one company on the first sign-in, as a member, with no invite
+  // (the check's setup account owns it); that is all: the claims grant nothing else, and only Everyone opens.
+  const companies = await api<{ id: string; company: boolean; role: string }[]>(aliceContext, 'GET', '/api/v1/workspaces');
+  assert.equal(companies.length, 1, 'one company');
+  assert.equal(companies[0]!.company, true);
+  assert.equal(companies[0]!.role, 'member');
+  const spaces = await api<{ items: { name: string; visibility: string }[] }>(aliceContext, 'GET', `/api/v1/workspaces/${companies[0]!.id}/projects`);
+  assert.deepEqual(spaces.items.filter((space) => space.visibility === 'workspace').map((space) => space.name), ['Everyone']);
+  state.company = companies[0]!.id;
   const capabilities = await api<{ sso: { providerId: string; label: string; reachable: boolean } | null }>(aliceContext, 'GET', '/api/v1/auth/capabilities');
   assert.deepEqual(capabilities.sso, { providerId, label: 'Keycloak', reachable: true });
 });
@@ -158,6 +166,15 @@ test('mail goes to the chosen mailboxes of a single sign-on person', async () =>
   state.workspace = (await api<{ id: string }>(aliceContext, 'POST', '/api/v1/workspaces', { name: 'Acme lab' })).id;
   bobContext = await fresh();
   await sso(bobContext, 'bob');
+  // F-037: a second person the provider lets in joins the same company as a member, on their first sign-in.
+  const bobs = await api<{ id: string; company: boolean; role: string }[]>(bobContext, 'GET', '/api/v1/workspaces');
+  assert.deepEqual(bobs.map((item) => [item.id, item.company]), [[state.company, true]]);
+  assert.equal(bobs[0]!.role, 'member');
+  // F-035 as amended by F-037: with single sign-on people join by signing in, so nobody makes an invite link.
+  const invite = await aliceContext.request.post(`${origin}/api/v1/workspaces/${state.workspace}/invites`,
+    { headers: { origin, 'idempotency-key': randomUUID() }, data: { role: 'member' } });
+  assert.equal(invite.status(), 409, await invite.text());
+  assert.equal((await invite.json() as { code: string }).code, 'INVITES_OFF_WITH_SSO');
   // Bob creates the projects that mention Alice; only workspace admins create projects.
   await api(aliceContext, 'POST', `/api/v1/workspaces/${state.workspace}/members`, { email: 'bob@acme.test', role: 'admin' });
   state.extra = `alice.private-${randomUUID()}@gmail.test`;
@@ -313,7 +330,7 @@ test('a single sign-on session can be revoked or signed out, and an email link o
   await sso(aliceContext, 'alice');
   const alice = await me(aliceContext);
   assert.equal(alice.body!.user.id, state.aliceId);
-  assert.deepEqual((await api<{ id: string }[]>(aliceContext, 'GET', '/api/v1/workspaces')).map((entry) => entry.id), [state.workspace]);
+  assert.deepEqual((await api<{ id: string }[]>(aliceContext, 'GET', '/api/v1/workspaces')).map((entry) => entry.id).sort(), [state.company!, state.workspace!].sort());
   const preferences = await api<{ email: { destination: string; extra: { email: string; verified: boolean } | null } }>(aliceContext, 'GET', '/api/v1/notification-preferences');
   assert.deepEqual({ email: preferences.email.extra?.email, verified: preferences.email.extra?.verified }, { email: state.extra, verified: true });
   // Back to both mailboxes for the email-change check that follows.
@@ -330,7 +347,7 @@ test('the same subject keeps the same person, grants and verified address when t
   assert.equal(alice.body!.user.id, state.aliceId, 'the same Flux person');
   assert.equal(alice.body!.user.email, state.extra, 'with the provider\'s new verified email');
   const workspaces = await api<{ id: string }[]>(again, 'GET', '/api/v1/workspaces');
-  assert.deepEqual(workspaces.map((item) => item.id), [state.workspace], 'grants stay with the person');
+  assert.deepEqual(workspaces.map((item) => item.id).sort(), [state.company!, state.workspace!].sort(), 'grants stay with the person');
   const preferences = await api<{ email: { extra: { email: string; verified: boolean } | null } }>(again, 'GET', '/api/v1/notification-preferences');
   assert.deepEqual({ email: preferences.email.extra?.email, verified: preferences.email.extra?.verified }, { email: state.extra, verified: true });
   // Account and extra are now one mailbox: one message, not two.

@@ -358,7 +358,7 @@ class LiveJourney(LiveBase):
         jonas.keyboard.press("Escape")
 
         # AC-2: navigation keeps one connection; showing a doc does not move anybody.
-        tabs = nia.get_by_role("navigation", name="Project views")
+        tabs = nia.get_by_role("navigation", name="Space views")
         tabs.get_by_role("link", name=re.compile("^Wiki")).click()
         nia.get_by_role("link", name=re.compile(DOC)).click()
         expect(nia.get_by_role("heading", name=DOC, level=2)).to_be_visible()
@@ -389,7 +389,7 @@ class LiveJourney(LiveBase):
         expect(self.bar(jonas).get_by_role("button", name="Stop following")).to_be_visible()
         expect(jonas.locator(f'.sk-node[data-id="{self.ids["filter"]}"]')).to_have_attribute("aria-pressed", "true")
         # Independent navigation ends following, calmly.
-        jonas.get_by_role("navigation", name="Project views").get_by_role("link", name=re.compile("^Tasks")).click()
+        jonas.get_by_role("navigation", name="Space views").get_by_role("link", name=re.compile("^Tasks")).click()
         expect(jonas.get_by_text("Stopped following Nia Okafor")).to_be_visible()
         expect(self.bar(jonas).get_by_role("button", name="Stop following")).to_have_count(0)
         self.assertEqual(jonas.evaluate("window.__live.sockets"), 1)

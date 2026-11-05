@@ -91,8 +91,8 @@ class ComputerShell(unittest.TestCase):
             expect(side.get_by_role("button", name=re.compile("^New"))).to_have_attribute("aria-keyshortcuts", "C")
             expect(side.get_by_role("button", name="Search", exact=True)).to_be_visible()
             places = side.get_by_role("navigation", name="Places")
-            self.assertEqual([text.strip() for text in places.get_by_role("link").all_inner_texts()], ["Home", "Inbox", "Sketchbook"])
-            projects = side.get_by_role("navigation", name="Projects")
+            self.assertEqual([text.strip() for text in places.get_by_role("link").all_inner_texts()], ["Home", "Inbox", "My tasks", "My map"])
+            projects = side.get_by_role("navigation", name="Spaces")
             # Each project is a letter tile and its name, in the order the sidebar lists them.
             labels = projects.locator(".side__label").all_inner_texts()
             self.assertEqual(projects.locator(".side__pj").all_inner_texts(), [label.strip()[0].upper() for label in labels])
@@ -115,7 +115,7 @@ class ComputerShell(unittest.TestCase):
         self.assertEqual(self.settled_width(side), 64)
         rail = side.locator(".side--rail")
         expect(rail.get_by_role("link", name="Home")).to_have_attribute("aria-current", "page")
-        expect(rail.get_by_role("navigation", name="Projects").get_by_role("link")).to_have_count(2)
+        expect(rail.get_by_role("navigation", name="Spaces").get_by_role("link")).to_have_count(2)
         shot(page, "340-rail-1440")
         page.reload()
         expect(self.sidebar(page).locator(".side--rail")).to_have_count(1)
@@ -157,7 +157,7 @@ class ComputerShell(unittest.TestCase):
         # New opens the one Create window (#345) on Task; Thought, Message, Decision and Project are its tabs (F-026 S3, E02).
         expect(window.get_by_label("Title", exact=True)).to_be_focused()
         kinds = window.get_by_role("tablist", name="Create")
-        self.assertEqual([item.strip() for item in kinds.get_by_role("tab").all_inner_texts()], ["Task", "Thought", "Message", "Decision", "Project"])
+        self.assertEqual([item.strip() for item in kinds.get_by_role("tab").all_inner_texts()], ["Task", "Thought", "Message", "Decision", "Space"])
         expect(kinds.get_by_role("tab", name="Task", exact=True)).to_have_attribute("aria-selected", "true")
         page.keyboard.press("Escape")
         expect(window).to_have_count(0)
@@ -165,7 +165,7 @@ class ComputerShell(unittest.TestCase):
         expect(page.get_by_role("heading", level=1, name="Community garden sensors")).to_be_visible()
         page.locator("body").press("c")
         expect(window).to_be_visible()
-        expect_value(window.get_by_role("combobox", name="Project"), self.ids["projects"][0])
+        expect_value(window.get_by_role("combobox", name="Space"), self.ids["projects"][0])
 
     def test_04_g_then_i_goes_to_the_inbox(self) -> None:
         self.ensure_account()

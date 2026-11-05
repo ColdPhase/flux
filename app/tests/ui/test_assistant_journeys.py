@@ -136,7 +136,7 @@ class AssistantJourneys(unittest.TestCase):
                 page.get_by_role("button", name="Turn on", exact=True).click(); taps += 1                    # 2
                 expect(page.get_by_role("switch", name="Your assistant is on")).to_be_visible()
                 if phone:
-                    page.get_by_role("link", name="Projects").click(); taps += 1                             # 3 (tab bar)
+                    page.get_by_role("link", name="Spaces").click(); taps += 1                             # 3 (tab bar)
                     page.get_by_role("link", name="Gesture lamp").first.click(); taps += 1                   # 4
                 else:
                     page.get_by_role("link", name="Gesture lamp").first.click(); taps += 1                   # 3
@@ -302,7 +302,7 @@ class AssistantJourneys(unittest.TestCase):
         page = self.page()
         self.failed_ask(page, {}, status=409, error={"code": "PERSONAL_RUN_NO_PROJECT_ACCESS", "message": "Your assistant has no access to this project"})
         bar = page.locator("#project-ask")
-        expect(bar).to_contain_text("I'm not in this project yet.")
+        expect(bar).to_contain_text("I'm not in this space yet.")
         expect(bar.get_by_role("button", name="Add my assistant here")).to_be_visible()
         shot(page, "j6-not-in-project-1440-light")
 

@@ -222,7 +222,7 @@ class ReturnViewJourney(unittest.TestCase):
         page.get_by_role("menu", name="More").get_by_role("menuitem", name="What matters").click()
         panel = page.locator("#details")
         expect(panel.get_by_role("heading", name="What matters")).to_be_visible()
-        expect(panel.get_by_role("radio", name="Whole project")).to_have_attribute("aria-checked", "true")
+        expect(panel.get_by_role("radio", name="Whole space")).to_have_attribute("aria-checked", "true")
         expect(panel).to_contain_text(re.compile(r"Since \w+ \d+, \d\d:\d\d|Since \d+ \w+, \d\d:\d\d"))
         expect(panel.locator(".since__next")).to_contain_text("Answer Ari's question")
         needs = panel.locator("section[aria-labelledby=wm-needs] .since__item")
@@ -273,7 +273,7 @@ class ReturnViewJourney(unittest.TestCase):
         expect(panel.get_by_role("link", name=re.compile("added a task for you: Mount the PIR sensor"))).to_be_visible()
         panel.locator(".wm__scroll").evaluate("(el) => { el.scrollTop = 0; }")
         shot(page, "recap-project-desktop-1440-relevant-to-me")
-        panel.get_by_role("radio", name="Whole project").click()
+        panel.get_by_role("radio", name="Whole space").click()
         expect(panel.get_by_role("link", name=re.compile("New material: Low-light test plan"))).to_be_visible()
 
         # A decision opens in Details; "What matters" comes back with the same snapshot and digest.
@@ -353,7 +353,7 @@ class ReturnViewJourney(unittest.TestCase):
         expect(panel.get_by_role("radio", name="Relevant to me")).to_have_attribute("aria-checked", "true")
         expect(panel.get_by_role("link", name=re.compile("Which shade of grey"))).to_have_count(0)
         expect(panel.locator(".wm__body.is-loading")).to_have_count(0)
-        panel.get_by_role("radio", name="Whole project").click()
+        panel.get_by_role("radio", name="Whole space").click()
         expect(panel.get_by_role("link", name=re.compile("Which shade of grey"))).to_be_visible()
         page.keyboard.press("Escape")
 
@@ -391,7 +391,7 @@ class ReturnViewJourney(unittest.TestCase):
         page = self.page("nia")
         page.goto(f"/projects/{self.project_id}")
         panel = self.open_recap(page)
-        expect(panel.get_by_role("radio", name="Whole project")).to_have_attribute("aria-checked", "true")
+        expect(panel.get_by_role("radio", name="Whole space")).to_have_attribute("aria-checked", "true")
         # A whole-project change Nia is not part of, then hold the next background check (no `until`).
         other = self.api(ari, "POST", f"/api/v1/projects/{self.project_id}/conversations", {"body": "Which screws for the base plate?", "clientMessageId": str(uuid.uuid4())}, status=201)
         self.api(ari, "POST", f"/api/v1/conversations/{other['id']}/messages", {"body": "M3, 8 mm.", "clientMessageId": str(uuid.uuid4())}, status=201)
@@ -632,7 +632,7 @@ class ReturnViewJourney(unittest.TestCase):
         # The first screen has the scope, the period and the next step; no repeated setup copy.
         expect(panel.locator(".since__next")).to_be_in_viewport()
         expect(panel.get_by_role("button", name="I have the context")).to_be_in_viewport()
-        for control in (panel.get_by_role("radio", name="Whole project"), panel.get_by_role("radio", name="Relevant to me"),
+        for control in (panel.get_by_role("radio", name="Whole space"), panel.get_by_role("radio", name="Relevant to me"),
                         panel.get_by_role("button", name="Summarize"), panel.get_by_role("button", name="I have the context")):
             control_box = control.bounding_box()
             assert control_box is not None

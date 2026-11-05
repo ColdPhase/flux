@@ -32,9 +32,14 @@ is set by `FLUX_SSO_MODE`:
   password in password or `prepare` mode, and admins can find an account by email only when its address is verified. Setting
   `FLUX_SIGNUP=verified` makes new password accounts verify by mail before they can sign in; without
   email it behaves as `off`.
-- **No access from the provider.** Groups, roles and domains in the token are ignored. People join
-  workspaces and projects in Flux, through invitations and project access, exactly as with
-  password accounts.
+- **The provider decides who joins, Flux decides the rest.** Everyone the provider lets in joins the
+  company as a member on their first sign-in, with no invitation. Groups, roles and domains in the
+  token are ignored: a person's company role and their spaces are set in Flux. An account that
+  existed before it linked the provider joins on its first provider sign-in too. Someone an admin
+  removes in Flux does not rejoin by signing in again: **Settings › Company** lists them under
+  Removed, and Restore lets them back in, in Everyone. Other spaces are added again by hand.
+  In `sso` mode nobody makes an invite link; in `prepare` mode invites still work, because password
+  accounts are still the way in.
 - **Notification email** goes to the account email, a separately verified private address, both,
   or nowhere, as each person chooses ([notifications](../development/notifications.md#email)).
   When the two are the same mailbox, the person gets one message.

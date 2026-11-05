@@ -11,8 +11,8 @@ import { createPrivateDraft } from '../drafts/api';
 import { listWorkspaceMembers } from '../project/api';
 import { useShellData } from '../app/data';
 import { readDraft, useDraft, writeDraft } from '../drafts/store';
-import { TEMPLATES, useNewProject } from '../project/newProject';
-import { AccountChangedError, assertSignedInAs, ensurePersonalSpace } from '../app/personalSpace';
+import { useNewProject } from '../project/newProject';
+import { AccountChangedError, assertSignedInAs } from '../app/personalSpace';
 import { useShellActions, type CreateRequest } from '../app/shellContext';
 import { searchFlux } from '../search/api';
 import { Button, Icon, MEDIA, Overlay, Spinner, StatusGlyph, Tabs, useMediaQuery, useToast, Select, Option, OptionGroup } from '../ui';
@@ -38,7 +38,7 @@ const KINDS: { id: Kind; label: string; name: string }[] = [
   { id: 'thought', label: 'Thought', name: 'New thought' },
   { id: 'message', label: 'Message', name: 'New message' },
   { id: 'decision', label: 'Decision', name: 'New decision' },
-  { id: 'project', label: 'Project', name: 'New project' },
+  { id: 'project', label: 'Space', name: 'New space' },
 ];
 
 /** Mounted once by the shell; `request` is what the person asked to create, or null while closed. */
@@ -151,15 +151,15 @@ function TooLong({ text, limit }: { text: string; limit: number }) {
 function PlacePicker({ projectId, onChange, compact = false, plain = false }: { projectId: string; onChange: (id: string) => void; compact?: boolean; plain?: boolean }) {
   const { projects } = useShellData();
   const current = projects.find((project) => project.id === projectId);
-  const label = current ? current.name + (current.workspaceName ? ` · ${current.workspaceName}` : '') : 'Choose a project';
+  const label = current ? current.name : 'Choose a space';
   return (
     <label className={`create__place${plain ? ' create__place--plain' : ''}`}>
       <span className="create__tile" aria-hidden="true">{(current?.name.trim()[0] ?? '?').toUpperCase()}</span>
       <span className="create__place-name">{label}</span>
       {compact ? <Icon name="chevron-down" size={12} /> : null}
-      <Select aria-label="Project" value={projectId} onChange={(next) => onChange(next)}>
-        {current ? null : <Option value="">Choose a project</Option>}
-        {projects.map((project) => <Option key={project.id} value={project.id}>{project.name}{project.workspaceName ? ` · ${project.workspaceName}` : ''}</Option>)}
+      <Select aria-label="Space" value={projectId} onChange={(next) => onChange(next)}>
+        {current ? null : <Option value="">Choose a space</Option>}
+        {projects.map((project) => <Option key={project.id} value={project.id}>{project.name}</Option>)}
       </Select>
     </label>
   );
@@ -168,7 +168,7 @@ function PlacePicker({ projectId, onChange, compact = false, plain = false }: { 
 /** Where a task, a message or a decision goes: the project picker, shown only in the selected tab, so there is one. */
 function ProjectWhere({ ids, projectId, onProject, phone }: { ids: PanelIds; projectId: string; onProject: (id: string) => void; phone: boolean }) {
   const { projects } = useShellData();
-  if (!projects.length) return <span>No project yet</span>;
+  if (!projects.length) return <span>No space yet</span>;
   return ids.active ? <PlacePicker projectId={projectId} onChange={onProject} compact plain={phone} /> : null;
 }
 
@@ -339,7 +339,7 @@ function TaskForm({ ids, request, prefilled, phone, carried, projectId, onProjec
       onClose();
       openDetails({ kind: 'work', id: item.id, projectId });
     } catch (cause) {
-      if (mounted.current) setError(cause instanceof ApiError && cause.status === 403 ? 'You can read this project but not add tasks.' : cause instanceof Error ? cause.message : 'Could not create the task.');
+      if (mounted.current) setError(cause instanceof ApiError && cause.status === 403 ? 'You can read this space but not add tasks.' : cause instanceof Error ? cause.message : 'Could not create the task.');
     } finally { inFlight.current = false; if (mounted.current) setBusy(false); }
   }
   /** Create another: the next task starts empty in the same project, with the same status and owner. */
@@ -352,8 +352,8 @@ function TaskForm({ ids, request, prefilled, phone, carried, projectId, onProjec
   const where = <ProjectWhere ids={ids} projectId={projectId} onProject={onProject} phone={phone} />;
 
   if (noPlace) return (
-    <Panel ids={ids} where={where} onSubmit={() => undefined} foot={<><p className="create__note">A task belongs to a project</p><Go label="Create task" busy={false} ready={false} phone={phone} /></>}>
-      <p className="create__note">There is no project yet. Make one in the Project tab, then add its tasks here.</p>
+    <Panel ids={ids} where={where} onSubmit={() => undefined} foot={<><p className="create__note">A task belongs to a space</p><Go label="Create task" busy={false} ready={false} phone={phone} /></>}>
+      <p className="create__note">There is no space yet. Make one in the Space tab, then add its tasks here.</p>
     </Panel>
   );
   return (
@@ -399,7 +399,7 @@ function TaskForm({ ids, request, prefilled, phone, carried, projectId, onProjec
         <input className="ui-input" value={blocker} maxLength={WORK_LIMITS.blocker} onChange={(event) => setBlocker(event.target.value)} /></label> : null}
       {linking && projectId ? <LinkPicker projectId={projectId} taken={sources.map((s) => s.ref)} onPick={(ref, label) => { setSources([...sources, { ref, label }]); setLinking(false); }} onDone={() => setLinking(false)} /> : null}
       <TooLong text={text} limit={WORK_LIMITS.title} />
-      {viewer ? <p className="create__error" role="alert">You can read this project but not add tasks.</p> : null}
+      {viewer ? <p className="create__error" role="alert">You can read this space but not add tasks.</p> : null}
       {error ? <p className="create__error" role="alert">{error}</p> : null}
       {!prefilled && (draft.text || draft.storage === 'visit') ? <p id={noteId} className="create__draft" role="status">
         {draft.storage === 'visit' || (pending.text && pending.storage === 'visit')
@@ -411,15 +411,13 @@ function TaskForm({ ids, request, prefilled, phone, carried, projectId, onProjec
 
 /**
  * Thought: a private note in Your notes (the Sketchbook, HOME-3), the same as the phone's "+" Thought. It is saved in the
- * person's space: the only one, the one chosen here, or the personal space the first note creates.
+ * company (F-037), private to the person.
  */
-function ThoughtForm({ ids, phone, carried, projectId, onClose }: PanelProps) {
-  const { me, workspaces, projects } = useShellData();
-  const revalidator = useRevalidator();
+function ThoughtForm({ ids, phone, carried, onClose }: PanelProps) {
+  const { me, workspace } = useShellData();
   const toast = useToast();
   const go = useNavigate();
   const intents = useIntentKeys();
-  const [space, setSpace] = useState(() => projects.find((project) => project.id === projectId)?.workspaceId ?? workspaces[0]?.id ?? '');
   const [busy, setBusy] = useState(false);
   const inFlight = useRef(false);
   const [error, setError] = useState('');
@@ -431,9 +429,8 @@ function ThoughtForm({ ids, phone, carried, projectId, onClose }: PanelProps) {
     setBusy(true); setError('');
     const snapshot = carried.begin();
     try {
-      const target = workspaces.length === 1 ? workspaces[0]!.id : workspaces.length > 1 ? space : await ensurePersonalSpace(me.user.id);
-      if (!workspaces.length) revalidator.revalidate();
-      if (!target) { setError('Choose a space for this thought in the Sketchbook first.'); return; }
+      const target = workspace?.id;
+      if (!target) { setError('You’re not in a company on this Flux yet. Ask an admin for an invite link.'); return; }
       // One key per text and space (#178): a retry after a lost answer returns the same note.
       const intent = `draft:${target}:${body}`;
       await assertSignedInAs(me.user.id);
@@ -446,16 +443,9 @@ function ThoughtForm({ ids, phone, carried, projectId, onClose }: PanelProps) {
       setError(cause instanceof AccountChangedError ? cause.message : 'Could not save the thought. Your text is still here; try again.');
     } finally { inFlight.current = false; setBusy(false); }
   }
-  const spaceName = workspaces.find((item) => item.id === space)?.name ?? 'your space';
-  const where = workspaces.length > 1 && ids.active ? (
-    <label className="create__chip create__chip--quiet"><Icon name="lock" size={13} /><span>Only you · {spaceName}</span>
-      <Select aria-label="Space" value={space} onChange={(next) => setSpace(next)}>
-        {workspaces.map((item) => <Option key={item.id} value={item.id}>{item.name}</Option>)}
-      </Select>
-    </label>
-  ) : <span className="create__private"><Icon name="lock" size={13} />Only you</span>;
+  const where = <span className="create__private"><Icon name="lock" size={13} />Only you</span>;
   return (
-    <Panel ids={ids} where={where} onSubmit={() => void submit()} foot={<><p className="create__note">Saved to Your notes in the Sketchbook</p><Go label="Save thought" busy={busy} ready={ready} phone={phone} /></>}>
+    <Panel ids={ids} where={where} onSubmit={() => void submit()} foot={<><p className="create__note">Saved to Your notes in My map</p><Go label="Save thought" busy={busy} ready={ready} phone={phone} /></>}>
       <textarea id={ids.field} className="create__text" aria-label="Thought" rows={3} value={carried.text} disabled={busy} placeholder="What’s on your mind?"
         onChange={(event) => { carried.set(event.target.value); setError(''); }} />
       {error ? <p className="create__error" role="alert">{error}</p> : null}
@@ -469,12 +459,12 @@ function ThoughtForm({ ids, phone, carried, projectId, onClose }: PanelProps) {
  * A group starts on the Messages page; a project's conversation has its own composer.
  */
 function MessageForm({ ids, phone, carried, onClose }: PanelProps) {
-  const { me, workspaces } = useShellData();
+  const { me, workspace } = useShellData();
   const revalidator = useRevalidator();
   const toast = useToast();
   const go = useNavigate();
   const [people, setPeople] = useState<{ workspaceId: string; members: WorkspaceMember[] }[] | null>(null);
-  // A guest cannot list the members of a space (403): their people are none, and the copy says why.
+  // A guest cannot list the company's people (403): their people are none, and the copy says why.
   const [guest, setGuest] = useState(false);
   const [to, setTo] = useState('');
   const [busy, setBusy] = useState(false);
@@ -483,11 +473,11 @@ function MessageForm({ ids, phone, carried, onClose }: PanelProps) {
   // A retry reuses its keys: the same conversation opens once and a lost answer never sends the message twice.
   const opening = useRef<{ to: string; key: string } | null>(null);
   const attempt = useRef<{ payload: string; id: string } | null>(null);
-  // The people of the person's spaces, read when the tab is first shown.
+  // The company's people (F-037), read when the tab is first shown.
   useEffect(() => {
     if (!ids.active || people !== null) return undefined;
     const controller = new AbortController();
-    void Promise.all(workspaces.map(async (space) => {
+    void Promise.all((workspace ? [workspace] : []).map(async (space) => {
       const listed = await listWorkspaceMembers(space.id, controller.signal).then((members) => ({ members, denied: false }), (error: unknown) => {
         if (error instanceof ApiError && error.status === 403) return { members: [], denied: true };
         throw error;
@@ -497,7 +487,7 @@ function MessageForm({ ids, phone, carried, onClose }: PanelProps) {
       .then((lists) => { setGuest(lists.some((list) => list.denied)); setPeople(lists.filter((list) => list.members.length)); })
       .catch(() => { if (!controller.signal.aborted) setPeople([]); });
     return () => controller.abort();
-  }, [ids.active, people, workspaces, me.user.id]);
+  }, [ids.active, people, workspace, me.user.id]);
   const [toSpace, toUser] = to ? to.split(':') : [];
   const person = people?.find((list) => list.workspaceId === toSpace)?.members.find((member) => member.userId === toUser);
   const body = carried.text.trim();
@@ -520,19 +510,15 @@ function MessageForm({ ids, phone, carried, onClose }: PanelProps) {
       toast({ message: `Sent to ${person.name}`, tone: 'success', timeout: 4000, action: { label: 'Open', onClick: () => go(`/dm/${dm.id}`) } });
     } catch (cause) {
       setError(cause instanceof ApiError && (cause.code === 'DM_RECIPIENT_LEFT' || cause.code === 'DM_RECIPIENT_UNAVAILABLE') ? cause.message
-        : cause instanceof ApiError && cause.code === 'DM_PARTICIPANT_UNAVAILABLE' ? 'This person is no longer in this space.'
-          : cause instanceof ApiError && cause.status === 403 ? 'You can’t start conversations in this space.' : 'Could not send the message. Your text is still here; try again.');
+        : cause instanceof ApiError && cause.code === 'DM_PARTICIPANT_UNAVAILABLE' ? 'This person is no longer in the company.'
+          : cause instanceof ApiError && cause.status === 403 ? 'You can’t start conversations here.' : 'Could not send the message. Your text is still here; try again.');
     } finally { inFlight.current = false; setBusy(false); }
   }
-  const spaceName = (id: string) => workspaces.find((space) => space.id === id)?.name ?? 'Space';
-  const where = people === null ? <span>{ids.active ? 'Loading people…' : null}</span> : !people.length ? <span>{guest ? 'Guests can reply in conversations they are added to, but cannot start one.' : 'Nobody else is in your spaces yet'}</span> : (
+  const where = people === null ? <span>{ids.active ? 'Loading people…' : null}</span> : !people.length ? <span>{guest ? 'Guests can reply in conversations they are added to, but cannot start one.' : 'Nobody else is in the company yet'}</span> : (
     <label className="create__chip create__chip--quiet"><Icon name="person" size={13} /><span>{person ? `To ${person.name}` : 'Choose a person'}</span><Icon name="chevron-down" size={12} />
       <Select aria-label="To" value={to} onChange={(next) => { setTo(next); setError(''); }}>
         <Option value="">Choose a person</Option>
-        {people.map((list) => {
-          const options = list.members.map((member) => <Option key={member.userId} value={`${list.workspaceId}:${member.userId}`}>{member.name}</Option>);
-          return people.length > 1 ? <OptionGroup key={list.workspaceId} label={spaceName(list.workspaceId)}>{options}</OptionGroup> : options;
-        })}
+        {people.flatMap((list) => list.members.map((member) => <Option key={member.userId} value={`${list.workspaceId}:${member.userId}`}>{member.name}</Option>))}
       </Select>
     </label>
   );
@@ -589,7 +575,7 @@ function DecisionForm({ ids, phone, carried, projectId, onProject, onClose, requ
   }
   return (
     <Panel ids={ids} where={<ProjectWhere ids={ids} projectId={projectId} onProject={onProject} phone={phone} />} onSubmit={submit}
-      foot={<><p className="create__note">{project ? 'Goes to the Inbox of those who can accept it' : 'A decision belongs to a project'}</p><Go label="Propose decision" busy={busy} ready={ready} phone={phone} /></>}>
+      foot={<><p className="create__note">{project ? 'Goes to the Inbox of those who can accept it' : 'A decision belongs to a space'}</p><Go label="Propose decision" busy={busy} ready={ready} phone={phone} /></>}>
       {project ? <>
         <input ref={titleRef} id={ids.field} className="create__name" aria-label="Decision" value={flat(carried.text)} maxLength={WORK_LIMITS.title} disabled={busy} placeholder="What is being decided?"
           onChange={(event) => { carried.set(event.target.value); setError(''); }} />
@@ -603,18 +589,16 @@ function DecisionForm({ ids, phone, carried, projectId, onProject, onClose, requ
           onClose();
           openDetails({ kind: 'propose-decision', projectId: project.id, ...(title ? { title } : {}), ...(source ? { source: { messageId: source.ref.id, text: source.label } } : {}) });
         }}>Replace an accepted decision…</button>
-      </> : <p className="create__note">There is no project yet. Make one in the Project tab, then propose its decisions here.</p>}
+      </> : <p className="create__note">There is no space yet. Make one in the Space tab, then propose its decisions here.</p>}
     </Panel>
   );
 }
 
-/** Project: a name and a template in one step (S20), the same as New project; people and agents come later. */
+/** Space: a name in one step (F-037), the same as New space; every space starts with Conversation, Tasks, Map and Wiki. */
 function ProjectForm({ ids, phone, carried, onClose }: PanelProps) {
   const go = useNavigate();
-  const { space, spaceName, places, choose, audience, template, setTemplate, busy, error, ready, create } = useNewProject();
-  const aiOff = useWorkspaceAi(space?.id).blocked;
+  const { audience, busy, error, ready, create } = useNewProject();
   const name = oneLine(carried.text);
-  const chosen = TEMPLATES.find((item) => item.id === template) ?? TEMPLATES[0]!;
   const canCreate = ready(name) && name.length <= WORK_LIMITS.title && !busy;
   async function submit() {
     if (!canCreate) return;
@@ -623,27 +607,13 @@ function ProjectForm({ ids, phone, carried, onClose }: PanelProps) {
     if (!project) return;
     carried.made(snapshot);
     onClose();
-    // A new project is restricted; its "Who can see this" opens next, to add people (#188).
+    // Only its creator is in a new space; its people open next, to add others (#188).
     go(`/projects/${project.id}?new=1&open=people`);
   }
-  // Where it goes: nobody names a workspace first (#763 FR-1); "In … ▾" once there are two to choose from (PE-3).
-  const where = places.length > 1 && ids.active ? (
-    <label className="create__chip create__chip--quiet"><span>In {spaceName}</span><Icon name="chevron-down" size={12} />
-      <Select aria-label="Workspace" value={space?.id ?? ''} onChange={(next) => choose(next)}>
-        {places.map((item) => <Option key={item.id} value={item.id}>{item.name}</Option>)}
-      </Select>
-    </label>
-  ) : <span>In {spaceName}</span>;
   return (
-    <Panel ids={ids} where={where} onSubmit={() => void submit()} foot={<><p className="create__note">Starts with {chosen.has} · invite people {aiOff ? '' : 'and agents '}later</p><Go label="Create project" busy={busy} ready={canCreate} phone={phone} /></>}>
-      <input id={ids.field} className="create__name" aria-label="Project name" value={flat(carried.text)} maxLength={WORK_LIMITS.title} disabled={busy} placeholder="Project name, e.g. Volunteer sign-up app"
+    <Panel ids={ids} where={<span>{audience}</span>} onSubmit={() => void submit()} foot={<><p className="create__note">Starts with Conversation, Tasks, Map and Wiki</p><Go label="Create space" busy={busy} ready={canCreate} phone={phone} /></>}>
+      <input id={ids.field} className="create__name" aria-label="Space name" value={flat(carried.text)} maxLength={WORK_LIMITS.title} disabled={busy} placeholder="Space name, e.g. Volunteer sign-up app"
         onChange={(event) => carried.set(event.target.value)} />
-      <div className="create__props">
-        <PickChip label="Start from" icon={<Icon name="board" size={14} />} shown={chosen.name} value={template} onChange={(value) => setTemplate(value as typeof template)}>
-          {TEMPLATES.map((item) => <Option key={item.id} value={item.id}>{item.name} · {item.has}</Option>)}
-        </PickChip>
-      </div>
-      <p className="create__note">{audience}</p>
       <TooLong text={name} limit={WORK_LIMITS.title} />
       {error ? <p className="create__error" role="alert">{error}</p> : null}
     </Panel>
@@ -680,7 +650,7 @@ function LinkPicker({ projectId, taken, onPick, onDone }: { projectId: string; t
   const items = (current?.items ?? []).filter((f) => !taken.some((t) => t.type === f.ref.type && t.id === f.ref.id));
   return (
     <div className="create__picker">
-      <input className="ui-input" type="search" autoFocus aria-label="Search messages and thoughts" aria-controls={listId} placeholder="Search this project’s messages and thoughts" value={query}
+      <input className="ui-input" type="search" autoFocus aria-label="Search messages and thoughts" aria-controls={listId} placeholder="Search this space’s messages and thoughts" value={query}
         onChange={(event) => setQuery(event.target.value)}
         onKeyDown={(event) => {
           if (event.key === 'Escape') { event.stopPropagation(); onDone(); }

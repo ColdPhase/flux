@@ -37,7 +37,7 @@ try {
   const [space] = (await db.execute<{ name: string; encrypted: boolean }>(sql`SELECT name, encrypted FROM workspaces WHERE id = ${target.workspaceId}::uuid`)).rows;
   if (space?.encrypted) fail(`${space.name} is encrypted. Export it from the app.`);
   const userId = as ? await operator.findUserByEmail(as) : await operator.workspaceOwner(target.workspaceId);
-  if (!userId) fail(as ? `no account has the e-mail address ${as}` : 'the project workspace has no owner; pass --as <email>');
+  if (!userId) fail(as ? `no account has the e-mail address ${as}` : 'the company has no owner; pass --as <email>');
   const storage = await diskFileStorage(process.env.FLUX_FILES_DIR ?? '/data/files');
   const bundle = await exportUseCases(db, process.env.FLUX_PUBLIC_ORIGIN ?? null, storage).exportBundle({ kind: 'human', id: userId }, target.id);
   process.stderr.write(`Exported "${bundle.data.project.name}" (${target.id}) as ${bundle.data.provenance.exportedBy.name}: `
@@ -47,7 +47,7 @@ try {
   await pipeline(bundle.content, process.stdout);
 } catch (error) {
   if (error instanceof DomainError) fail(`${error.message} (${error.code})${error instanceof ForbiddenError
-    ? ': the account may not manage this project; pass --as <email> of a workspace owner or admin' : ''}`);
+    ? ': the account may not manage this space; pass --as <email> of a company owner or admin' : ''}`);
   throw error;
 } finally {
   await pool.end();
