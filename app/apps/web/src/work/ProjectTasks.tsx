@@ -425,7 +425,7 @@ export function ProjectTasks() {
             clearFilters={() => { setBoardSearch(''); setView({ mine: false }); }} />
         </div>
       ) : (
-      <div className="pane-in ws-tasks" data-shift data-work-observed-at={data?.summary.observedAt}>
+      <div className="pane-in ws-tasks" data-work-observed-at={data?.summary.observedAt}>
         {proposals}
         <div className="ws-task-controls">
           {phone ? (

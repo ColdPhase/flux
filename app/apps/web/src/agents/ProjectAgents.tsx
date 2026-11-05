@@ -15,7 +15,7 @@ import { ConnectionLine, OutboxStatus, PendingFiles, PendingSource } from '../co
 import { getTaskDiscussion } from '../composer/api';
 import { readAgentThread, type AgentThreadView } from './agentThread';
 import { useProjectShell } from '../project/data';
-import { AgentIdentity, AuthorFace, Button, Icon, Kreska, PanelMeta, StatusGlyph, agentHue, useMediaQuery, type KreskaExpression } from '../ui';
+import { AgentIdentity, AuthorFace, Button, Icon, Kreska, PanelMeta, StatusGlyph, agentHue, duration, useMediaQuery, type KreskaExpression } from '../ui';
 import { OwnedPanelContent, useOwnedPanel } from '../app/ownedPanel';
 import { STATUS_LABEL } from '../work/format';
 import { useNativeOwn, useWorkChoices } from '../work/useDetailReads';
@@ -302,8 +302,8 @@ function TaskThread({ kind, task, projectId, meId, names, canWrite, changingScop
     } catch { if (active()) setLoadError('Earlier messages could not be loaded.'); return false; }
   };
 
-  // "Open original message" of a request card (#400 AC-4): the message comes into view and fades its highlight after 2 s
-  // (Spokój rule 6). A message older than the page is reached by paging back, a bounded number of pages.
+  // "Open original message" of a request card (#400 AC-4): the message comes into view and its highlight fades over
+  // --dur-highlight, 600 ms at most (Spokój rule 6, #863). A message older than the page is reached by paging back, a bounded number of pages.
   const openMessage = async (messageId: string) => {
     for (let pages = 0; pages < 20; pages += 1) {
       const row = document.querySelector<HTMLElement>(`[data-message-id="${CSS.escape(messageId)}"]`);
@@ -311,7 +311,7 @@ function TaskThread({ kind, task, projectId, meId, names, canWrite, changingScop
         row.scrollIntoView({ block: 'center' });
         row.focus({ preventScroll: true });
         row.setAttribute('data-arrived', 'true');
-        window.setTimeout(() => row.removeAttribute('data-arrived'), 2000);
+        window.setTimeout(() => row.removeAttribute('data-arrived'), duration('--dur-highlight') || 600);
         return;
       }
       if (!shown.current?.messagePage.hasMoreBefore || !await earlier()) return;

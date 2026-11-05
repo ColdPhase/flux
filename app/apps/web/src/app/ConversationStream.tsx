@@ -658,7 +658,7 @@ export function ConversationStream({ project, meId, meName, roots: stream, notic
       data-associations-observed-at={messageWork.page?.observedAt} data-associations-phase={messageWork.state.phase}
       data-references-observed-at={referenceWork.observation?.observedAt} data-references-phase={referenceWork.state.phase}>
       <div className="project-convo__lift" aria-hidden="true" ref={liftRef} />
-      <div className="project-convo__in" data-shift ref={columnRef}>
+      <div className="project-convo__in" ref={columnRef}>
         <section aria-label="Messages" className="project-convo__messages">
           {stream.hasOlder ? <Button variant="quiet" busy={stream.olderBusy} onClick={() => void loadOlder()}>Load earlier messages</Button> : null}
           {failure ? <p className="project-convo__error" role="alert">{failure} <button type="button" onClick={() => void loadOlder()}>Retry</button></p> : null}
@@ -780,7 +780,7 @@ function NoticeItem({ notice, meId, owners, row, authorOf, hasMessage, onOpenTas
           <time dateTime={notice.createdAt} title={when(notice.createdAt)}>{clock(notice.createdAt)}</time>
         </p>
         <button type="button" className="convo-notice__task" data-native-ref={`work:${notice.workId}`} onClick={() => onOpenTask(notice.workId)} aria-label={`Open task #${notice.workNumber} ${title}`}>
-          <StatusGlyph status={current?.status ?? 'open'} size={16} />
+          <StatusGlyph status={current?.status} size={16} />
           {/* The immutable announcement number names the task before and after the current row arrives. */}
           <span className="convo-notice__num ui-task-number">#{notice.workNumber}</span>
           <span className="convo-notice__title">{title}</span>

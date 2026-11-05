@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, type RefObject } from 'react';
-import { MOTION_ID, duration, motionAllowed, token } from './motion';
+import { MOTION_ID, claimInput, duration, motionAllowed, token } from './motion';
 
 /**
  * Rows that come, go and move keep the reader's place (#593 AC-4). An added row grows in (height and opacity), a removed
@@ -12,6 +12,10 @@ import { MOTION_ID, duration, motionAllowed, token } from './motion';
  * (nobody watches it, and the browser's scroll anchoring holds the rows the reader is on through a change that is not gradual),
  * and the outgoing row is an inert copy no one can reach.
  *
+ * A row moves only as the answer to the person's own input (`claimInput`, #863): the first change of the rows after it is the action's one
+ * motion, and the server's echo of it, a refetch or a live update changes the rows without replaying it. A list that has just appeared
+ * (its first `LOAD_MS`) is still loading: rows that arrive in it are the view's first appearance, which never animates.
+ *
  * Call it with the list's container; `rows` selects the rows, `key` names a row (its id), and `scope` names the view
  * the rows belong to: when it changes (another filter, List to Board) the rows are simply replaced, never animated.
  *
@@ -23,6 +27,8 @@ interface Seen { el: HTMLElement; left: number; top: number; height: number; par
 interface Last { scope: string; signature: string; seen: Map<string, Seen> }
 
 const GHOST = 'data-row-ghost';
+/** How long a list that has just mounted is still loading its rows (its groups arrive one by one): they take their places without motion. */
+const LOAD_MS = 700;
 /** The most rows that may arrive or leave in one change and still be animated one by one. */
 const MOST = 4;
 // Properties a row's own box adds to its height; they shrink with it so a padded row collapses to nothing.
@@ -52,6 +58,7 @@ const parentId = (el: Element | null) => { if (!el) return -1; let id = parents.
 export function useRowMotion(container: RefObject<HTMLElement | null>, rows: string, key: (el: HTMLElement) => string | undefined, scope = '') {
   const last = useRef<Last | null>(null);
   const resized = useRef(false);
+  const mountedAt = useRef<number | null>(null);
   // After the window has been resized the rows are somewhere else than the last reading says.
   useEffect(() => {
     const stale = () => { resized.current = true; };
@@ -59,6 +66,7 @@ export function useRowMotion(container: RefObject<HTMLElement | null>, rows: str
     return () => window.removeEventListener('resize', stale);
   }, []);
   useLayoutEffect(() => {
+    mountedAt.current ??= performance.now();
     const root = container.current;
     const out = duration('--dur-out');
     const inn = duration('--dur-in');
@@ -82,13 +90,15 @@ export function useRowMotion(container: RefObject<HTMLElement | null>, rows: str
     const fresh = resized.current;
     resized.current = false;
     // What the first screen shows, a hidden page, another view or a resized window is only read: it is where the next change starts from.
-    if (!before || before.scope !== scope || fresh || !motionAllowed()) return;
+    if (!before || before.scope !== scope || fresh || !motionAllowed() || performance.now() - (mountedAt.current ?? 0) < LOAD_MS) return;
 
     // Rows that come and go a few at a time are changes the reader should follow; a screenful at once is a load, a
     // page or a new filter, which only replaces them.
     const arrived = [...seen.keys()].filter((id) => !before.seen.has(id));
     const left = [...before.seen.keys()].filter((id) => !seen.has(id));
     const bulk = arrived.length > MOST || left.length > MOST || before.seen.size === 0;
+    // The person's input is answered once; what follows it (the echo, a refetch, a live update) only changes the rows.
+    if (!claimInput()) return;
     const easeOut = token('--ease-out') || 'ease-out';
     const easeIn = token('--ease-in') || 'ease-in';
     const writes: (() => void)[] = [];
@@ -169,8 +179,8 @@ export function useRowMotion(container: RefObject<HTMLElement | null>, rows: str
       slides.push({ el: now.el, dx, dy });
     }
     writes.push(() => {
-      const ms = duration('--dur-3');
-      const easing = token('--ease-sheet') || 'ease-out';
+      const ms = duration('--dur-in');
+      const easing = token('--ease-out') || 'ease-out';
       // Motion is short and calm (final design §2): a row that moves a few rows slides there, a row that moves across the list (to another
       // group, far from where it was) is not carried the whole way: it comes in at its new place with a short slide from the side it came from.
       const farther = parseFloat(token('--row-travel-max')) || 160;

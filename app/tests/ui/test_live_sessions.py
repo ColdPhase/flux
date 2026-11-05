@@ -711,7 +711,7 @@ class LiveJourney(LiveBase):
         page.locator("#details").get_by_role("button", name=re.compile("Work on this together|Join")).click()
         bar = self.bar(page)
         expect(bar.get_by_role("status").first).to_contain_text("Live")
-        self.assertIn(page.evaluate("getComputedStyle(document.documentElement).getPropertyValue('--dur-2').trim()"), ("0ms", "0s"))
+        self.assertIn(page.evaluate("getComputedStyle(document.documentElement).getPropertyValue('--dur-in').trim()"), ("0ms", "0s"))
         # Every strip control is reachable with Tab and names its state.
         more = bar.get_by_role("button", name="Session details and more")
         more.focus()

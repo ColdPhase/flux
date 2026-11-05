@@ -419,7 +419,7 @@ export function AgentConnectionPage() {
 export function AgentConnectionSettings() {
   return (
     <div className="pane-scroll">
-      <div className="pane-in sset-in connection-settings" data-shift>
+      <div className="pane-in sset-in connection-settings">
         <Link className="connection-settings__back" to="/settings/agents"><Icon name="chevron-left" size={14} />Agents and AI</Link>
         <AgentConnectionPage />
       </div>

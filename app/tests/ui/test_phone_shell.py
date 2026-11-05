@@ -306,7 +306,7 @@ class PhoneShellJourney(unittest.TestCase):
     def test_07_reduced_motion_changes_state_without_animating(self):
         page = self.page(reduced=True)
         page.goto(f"/projects/{self.project['id']}")
-        self.assertIn(page.evaluate("getComputedStyle(document.documentElement).getPropertyValue('--dur-4').trim()"), ("0ms", "0s"))
+        self.assertIn(page.evaluate("getComputedStyle(document.documentElement).getPropertyValue('--dur-in').trim()"), ("0ms", "0s"))
         self.open_views(page).get_by_role("link", name="Map").click()
         expect(page).to_have_url(re.compile("/map$"))
         page.get_by_role("button", name="Create", exact=True).click()

@@ -1,25 +1,27 @@
 import { PRESS_ID, duration, motionAllowed, token } from './motion';
 
 /**
- * The one press (#593 AC-5, final design guide §2): a pressable control scales to --press (.97) as it is pressed and
- * springs back over --dur-press (250 ms, --ease-spring) as it is let go. Chips, rows that open something, icon buttons,
- * the send button, menu items and swipe actions all take it from here, so no screen restyles it and the scale is the same
- * everywhere. It animates the individual `scale` property, so it composes with a control's own `transform` (a swipe's
- * offset, a centring translate) instead of replacing it. Reduced motion zeroes the durations: nothing runs.
+ * The one press (#863, docs/design/motion.md rule 7): a press is colour. A pressed control changes its fill or colour (the
+ * `:hover` and `:active` rules of ui.css) within one frame, and rows, cards, list items, links and sidebar items never scale.
+ * Only a small button or icon button, up to `SMALL` px on its longest side, also scales to --press (.98) as it is pressed and
+ * returns to full size over --dur-1 on --ease-out, with no spring. It animates the individual `scale` property, so it composes
+ * with a control's own `transform` (a swipe's offset, a centring translate). Reduced motion zeroes --dur-1 and sets --press to 1:
+ * nothing runs.
  *
- * Pressable means a real control: a button, a link, or an element with a button-like role; not a disabled one, not text
- * flowing inline in a sentence, and not what opts out with `data-no-press` (a drag handle, the map's own nodes).
+ * It takes a real button, not a disabled one, and not what opts out with `data-no-press` (a drag handle, the map's own nodes).
  */
-const PRESSABLE = 'button, a[href], [role="button"], [role="tab"], [role="menuitem"], [role="menuitemradio"], [role="menuitemcheckbox"], [role="option"], summary';
+const PRESSABLE = 'button, [role="button"]';
 const SKIP = ':disabled, [aria-disabled="true"], [data-no-press], [data-no-press] *, .ui-vh, .sk-plane *';
+/** The longest side of a control that may scale, in px (proposed in docs/design/motion.md; rows and cards are larger or never scale at all). */
+const SMALL = 64;
 
 function pressTarget(node: EventTarget | null): HTMLElement | null {
   if (!(node instanceof Element)) return null;
   const el = node.closest<HTMLElement>(PRESSABLE);
   if (!el || el.matches(SKIP)) return null;
-  // An inline link inside a sentence has no box to scale.
-  const display = getComputedStyle(el).display;
-  return display === 'inline' ? null : el;
+  // Only a small control scales; a row that happens to be a button changes colour instead. An inline one has no box to scale.
+  if (getComputedStyle(el).display === 'inline') return null;
+  return Math.max(el.offsetWidth, el.offsetHeight) <= SMALL ? el : null;
 }
 
 const scaleNow = (el: Element) => getComputedStyle(el).scale;
@@ -39,9 +41,9 @@ function end(el: HTMLElement) {
   if (!running.length) return;
   const from = scaleNow(el);
   running.forEach((animation) => animation.cancel());
-  const ms = duration('--dur-press');
+  const ms = duration('--dur-1');
   if (!ms || !motionAllowed()) return;
-  const back = el.animate([{ scale: from }, { scale: '1' }], { duration: ms, easing: token('--ease-spring') || 'ease-out' });
+  const back = el.animate([{ scale: from }, { scale: '1' }], { duration: ms, easing: token('--ease-out') || 'ease-out' });
   back.id = PRESS_ID;
 }
 
@@ -62,7 +64,7 @@ export function installPress() {
   document.addEventListener('keydown', (event) => {
     if (event.repeat || (event.key !== ' ' && event.key !== 'Enter')) return;
     const el = pressTarget(event.target);
-    // Space presses a button, Enter a link or a button; a text field's keys are not a press.
+    // Space presses a button, Enter a button; a text field's keys are not a press.
     if (el && !(event.target as Element).matches('input, textarea, select, [role="combobox"], [contenteditable]')) press(el);
   }, { capture: true, passive: true });
   document.addEventListener('keyup', (event) => { if (event.key === ' ' || event.key === 'Enter') release(); }, { capture: true, passive: true });

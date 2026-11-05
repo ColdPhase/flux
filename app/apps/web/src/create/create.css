@@ -63,8 +63,8 @@
 .create__foot .create__note { flex: 1; min-width: 0; }
 .create__another { display: inline-flex; align-items: center; gap: 8px; position: relative; font-size: var(--fs-md); color: var(--t2); cursor: pointer; white-space: nowrap; }
 .create__another input { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; margin: 0; cursor: pointer; }
-.create__sw { position: relative; width: 36px; height: 22px; border-radius: var(--r-pill); background: var(--line2); flex: none; transition: background var(--dur-2) ease; }
-.create__sw::after { content: ""; position: absolute; top: 3px; left: 3px; width: 16px; height: 16px; border-radius: 50%; background: var(--bg); transition: transform var(--dur-2) var(--ease-out); }
+.create__sw { position: relative; width: 36px; height: 22px; border-radius: var(--r-pill); background: var(--line2); flex: none; transition: background-color var(--dur-1) var(--ease-out); }
+.create__sw::after { content: ""; position: absolute; top: 3px; left: 3px; width: 16px; height: 16px; border-radius: 50%; background: var(--bg); transition: transform var(--dur-1) var(--ease-out), background-color var(--dur-1) var(--ease-out); }
 .create__another input:checked + .create__sw { background: var(--inv); }
 .create__another input:checked + .create__sw::after { transform: translateX(14px); background: var(--oninv); }
 .create__another input:focus-visible + .create__sw { outline: 2px solid var(--t1); outline-offset: 2px; }

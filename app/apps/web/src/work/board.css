@@ -9,7 +9,7 @@
 }
 .tb-search {
   display: flex; align-items: center; gap: 8px; flex: 0 1 280px; min-width: 0; height: var(--ctl); color: var(--t3);
-  box-shadow: inset 0 -1px 0 var(--line2); transition: box-shadow var(--dur-1) ease, color var(--dur-1) ease;
+  box-shadow: inset 0 -1px 0 var(--line2); transition: box-shadow var(--dur-1) var(--ease-out), color var(--dur-1) var(--ease-out);
 }
 .tb-search:focus-within { box-shadow: inset 0 -2px 0 var(--t1); color: var(--t2); }
 /* The List has no search of its own: dimmed in place, so the toolbar keeps its controls where they are (rule 7). */
@@ -70,7 +70,7 @@
 /* The card-list area is the drop target that lights up; the header, title and count stay neutral. */
 .tb-col__cards {
   flex: 1; display: flex; flex-direction: column; min-height: 140px; margin: -6px; padding: 6px; border-radius: 10px;
-  transition: background-color var(--dur-2) ease, box-shadow var(--dur-2) ease;
+  transition: background-color var(--dur-in) var(--ease-out), box-shadow var(--dur-in) var(--ease-out);
 }
 /* The drop or keyboard target: a solid outline in the primary ink (at least 3:1) and a light tint. */
 .tb-col__cards.is-over { background: color-mix(in srgb, var(--inv) 8%, var(--bg)); box-shadow: 0 0 0 2px var(--t1); }
@@ -85,7 +85,7 @@
 .tb-card {
   position: relative; display: flex; flex-direction: column; gap: 8px; min-width: 0; padding: 12px;
   border-radius: 16px; background: var(--el); box-shadow: var(--sh-card);
-  transition: border-color var(--dur-1) ease, background-color var(--dur-1) ease, box-shadow var(--dur-1) ease, opacity var(--dur-1) ease;
+  transition: border-color var(--dur-1) var(--ease-out), background-color var(--dur-1) var(--ease-out), box-shadow var(--dur-1) var(--ease-out), opacity var(--dur-1) var(--ease-out);
 }
 .tb-card:hover { box-shadow: var(--sh-card), inset 0 0 0 1px var(--line2); }
 /* While a card is dragged only the target column's card area lights up, never the card under the pointer. */
@@ -125,8 +125,8 @@ html.tb-is-dragging .tb-card:hover { box-shadow: var(--sh-card); }
 .tb-card.is-dragging { opacity: .45; }
 .tb-card.is-lifted { box-shadow: var(--sh-card), 0 0 0 2px var(--t1); }
 .tb-card.has-menu { z-index: 3; }
-/* Brief placement feedback once the server confirmed the move (UI116-5); none under reduced motion. */
-.tb-card.is-arrived { animation: tb-arrive 900ms var(--ease-out); }
+/* Brief placement feedback once the server confirmed the move (UI116-5, #863): the tint fades over --dur-highlight (600 ms at most); none under reduced motion. */
+.tb-card.is-arrived { animation: tb-arrive var(--dur-highlight) var(--ease-out); }
 @keyframes tb-arrive { from { background-color: color-mix(in srgb, var(--inv) 10%, var(--bg)); } to { background-color: var(--bg); } }
 @media (hover: hover) and (pointer: fine) {
   .tb-board--movable .tb-card, .tb-board--movable .tb-card__open { cursor: grab; }
@@ -165,7 +165,7 @@ html.tb-is-dragging, html.tb-is-dragging * { cursor: grabbing !important; user-s
     text-align: left; color: var(--t2); transition: var(--tr);
   }
   /* A tab's underline, not a box around a 56 px button (#763 sweep). */
-  .tb-ov::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 2px; background: transparent; transition: background-color var(--dur-1) ease; }
+  .tb-ov::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 2px; background: transparent; transition: background-color var(--dur-1) var(--ease-out); }
   .tb-ov[aria-pressed="true"] { color: var(--t1); }
   .tb-ov[aria-pressed="true"]::after { background: var(--t1); }
   .tb-ov:focus-visible { outline-offset: -2px; }

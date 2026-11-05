@@ -157,15 +157,15 @@ class SidebarMotion(unittest.TestCase):
 
     def test_03_a_key_press_on_the_page_folds_it_too_and_focus_stays_where_it_is(self):
         page = self.page()
-        page.locator("nav[aria-label='Project views'] a[href*='/tasks']").focus()
+        page.locator("nav[aria-label='Space views'] a[href*='/tasks']").focus()
         clear(page)
         page.keyboard.press("[")
         expect(page.locator(".side--rail")).to_have_count(1)
         self.assertTrue([entry for entry in recorded(page) if entry["props"] == ["width"]], "the shortcut folds it with the same motion")
-        expect(page.locator("nav[aria-label='Project views'] a[href*='/tasks']")).to_be_focused()
+        expect(page.locator("nav[aria-label='Space views'] a[href*='/tasks']")).to_be_focused()
         page.keyboard.press("[")
         expect(page.locator(".side--rail")).to_have_count(0)
-        expect(page.locator("nav[aria-label='Project views'] a[href*='/tasks']")).to_be_focused()
+        expect(page.locator("nav[aria-label='Space views'] a[href*='/tasks']")).to_be_focused()
 
     def test_04_focus_goes_with_the_toggle_that_was_used(self):
         for reduced in (False, True):

@@ -12,22 +12,36 @@ export function token(name: string): string {
   return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
 }
 
-export type DurationToken = '--dur-1' | '--dur-2' | '--dur-3' | '--dur-4' | '--dur-in' | '--dur-out' | '--dur-view' | '--dur-press';
+export type DurationToken = '--dur-1' | '--dur-in' | '--dur-out' | '--dur-highlight';
 
 export function duration(name: DurationToken): number {
   if (prefersReducedMotion()) return 0;
   return cssTimeToMs(token(name));
 }
 
-export type Easing = '--ease-out' | '--ease-in' | '--ease-sheet' | '--ease-spring';
+export type Easing = '--ease-out' | '--ease-in';
 
 // Nothing moves on its own while the first screen is put up (#593 AC-6): the shell marks motion ready once it has
 // committed and painted. Motion that answers the person's own input is never held back: a press or a panel opened by a
 // click in the first moments still moves. A page that is hidden does not move either; what it was showing is its end state.
 let ready = false;
 let lastInput = -Infinity;
+/** How many inputs the person has made, and the one that a motion has answered (see `claimInput`). */
+let inputs = 0;
+let claimed = 0;
 const ANSWERS_INPUT = 1000;
+const CLAIM_WINDOW = 2000;
 export function markMotionReady() { ready = true; }
+/**
+ * One motion per action (#863 rule 4, 5): the person's latest input is answered by one motion. The first caller after it, within
+ * `CLAIM_WINDOW` (a change that waits on the server may take a while), gets true; every later one (the server's echo of the change, a refetch, a live update) and any change without an input
+ * get false and must not animate. A list asks it before it slides, grows or collapses its rows.
+ */
+export function claimInput(): boolean {
+  if (inputs === claimed || performance.now() - lastInput >= CLAIM_WINDOW) return false;
+  claimed = inputs;
+  return true;
+}
 /** Whether script-driven motion may run now: after first paint or answering input, with the page visible. */
 export function motionAllowed(): boolean {
   if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return false;
@@ -44,8 +58,8 @@ export function cancelMotion(el: Element | null, subtree = false) {
   el?.getAnimations({ subtree }).filter(ours).forEach((animation) => animation.cancel());
 }
 
-// Transient animations of ours that `document.getAnimations()` may not list: those on elements inside a shadow root (the pictures
-// of what was replaced, Dissolve.tsx) are not in every engine's list, and the hidden-page guard must still land them.
+// Transient animations of ours that `document.getAnimations()` may not list: those on elements inside a shadow root (the picture
+// of the old sidebar, SizeSwap.tsx) are not in every engine's list, and the hidden-page guard must still land them.
 const tracked = new Set<Animation>();
 export function track(animation: Animation) {
   tracked.add(animation);
@@ -91,29 +105,6 @@ export function settle(el: Element | null, to: Pose, ms: number, easing: Easing,
   return animation.finished.then(() => animation, () => null);
 }
 
-/**
- * Which way the person is travelling (#593 AC-2, AC-3): `back` after Back or the browser's history, otherwise
- * `forward`. Surfaces that slide in the direction of travel read it; the router and the panel set it.
- */
-export type TravelDirection = 'forward' | 'back';
-let travel: TravelDirection = 'forward';
-export const travelDirection = (): TravelDirection => travel;
-export function setTravelDirection(direction: TravelDirection) { travel = direction; }
-
-/** Remembers element positions, lets layout change, then animates them from where they were (FLIP). */
-export function flip(elements: (Element | null)[], ms = duration('--dur-in')) {
-  const items = elements.filter((el): el is Element => !!el).map((el) => ({ el, rect: el.getBoundingClientRect() }));
-  return () => {
-    if (!ms) return;
-    for (const { el, rect } of items) {
-      const now = el.getBoundingClientRect();
-      const dx = rect.left - now.left;
-      const dy = rect.top - now.top;
-      if (Math.abs(dx) + Math.abs(dy) >= 1) void play(el, [{ transform: `translate(${dx}px, ${dy}px)` }, { transform: 'none' }], ms, '--ease-sheet');
-    }
-  };
-}
-
 /** Whether a modal or an inert ancestor covers this element, so it can be neither seen nor reached. */
 export function isObscured(el: Element): boolean {
   if (el.closest('[inert]')) return true;
@@ -155,7 +146,7 @@ export function useLoopPause<T extends HTMLElement>(): (node: T | null) => void 
 }
 
 /**
- * Gives a feed's genuinely new entries a short arrival (opacity and a 4px rise over --dur-2) when the
+ * Gives a feed's genuinely new entries a short arrival (opacity and a 4px rise over --dur-in) when the
  * reader can see them arrive (#155, UI116-5). Restored history, earlier pages and refreshed entries never
  * move. Each arrived element records `data-arrival` ("animated" or "static"); `onArrived` hears the ids.
  * Call it after the feed's own layout effects, so visibility is measured where the reader now is.
@@ -169,7 +160,7 @@ export function useArrivals(feed: RefObject<HTMLElement | null>, ids: readonly s
     const arrived = arrivals(before, previous.current);
     const pane = feed.current;
     if (!arrived.length || !pane) return;
-    const ms = duration('--dur-2');
+    const ms = duration('--dur-in');
     const box = pane.getBoundingClientRect();
     // A reader at the end follows it (#170's position owner may scroll after this runs): entries that
     // only extend the feed below that reader arrive where they are looking (#266). Arrivals are always
@@ -199,7 +190,7 @@ export function useArrivals(feed: RefObject<HTMLElement | null>, ids: readonly s
 /**
  * One short traveling highlight within a list (#155, UI116-5 project selector). It goes to the first
  * item found for `selectors`, in order (e.g. the item being opened, then the current one), moving from
- * where it was (transform over --dur-2, 0 with reduced motion; its height is set at once). An interrupted move retargets
+ * where it was (transform over --dur-in, 0 with reduced motion; its height is set at once). An interrupted move retargets
  * from where it is, so it settles on the latest choice. It never takes focus or moves scroll, and hides
  * while the list is not shown. The list gets `has-glide` while the highlight stands in for the current
  * item's own background.
@@ -265,7 +256,7 @@ const endsWhenHidden = (animation: Animation) => typeof CSSAnimation !== 'undefi
 export function installMotionGuards() {
   if (guarded || typeof document === 'undefined') return;
   guarded = true;
-  for (const type of ['pointerdown', 'keydown', 'touchstart']) window.addEventListener(type, (event) => { if (event.isTrusted) lastInput = performance.now(); }, { capture: true, passive: true });
+  for (const type of ['pointerdown', 'pointerup', 'keydown', 'touchstart']) window.addEventListener(type, (event) => { if (event.isTrusted) { lastInput = performance.now(); inputs += 1; } }, { capture: true, passive: true });
   const paused = new Set<Animation>();
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'hidden') {
@@ -294,8 +285,9 @@ const justChanged = (key?: string) => !!key && performance.now() - (changed.get(
 
 /**
  * A value that changes in place morphs (#593 AC-4): the element it is drawn in settles in from `from` (a soft
- * fade, optionally a little smaller) instead of jumping. Nothing runs for the first value or with motion off. With
- * `key` (see `noteChange`), an element built for a value the person has just changed morphs on its first drawing too.
+ * fade, optionally a little smaller) instead of jumping. Nothing runs for the first value, for a value that was not known
+ * before (`undefined`: the thing is still loading, #863) or with motion off. With `key` (see `noteChange`), an element built
+ * for a value the person has just changed morphs on its first drawing too.
  */
 export function useMorph<T extends Element>(value: unknown, from: Pose = { opacity: 0.35 }, key?: string): RefObject<T | null> {
   const ref = useRef<T>(null);
@@ -303,7 +295,10 @@ export function useMorph<T extends Element>(value: unknown, from: Pose = { opaci
   useLayoutEffect(() => {
     const before = previous.current;
     previous.current = { value };
-    if (before ? Object.is(before.value, value) : !justChanged(key)) return;
+    // Only a change from a known state morphs: what was unknown a moment ago is not a change, whatever it turns out to be.
+    const earlier = before?.value;
+    if (earlier !== undefined ? Object.is(earlier, value) : !justChanged(key)) return;
+    if (value === undefined) return;
     void settle(ref.current, { opacity: 1, ...(from.transform ? { transform: 'none' } : {}) }, duration('--dur-in'), '--ease-out', { from });
     // `from` and `key` are constants of the call site.
     // eslint-disable-next-line react-hooks/exhaustive-deps

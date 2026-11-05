@@ -1,4 +1,5 @@
 import type { CSSProperties, ReactNode } from 'react';
+import { MARKS, SQUIRCLE, TILE, weights } from './kreska-geometry.js';
 import { useLoopPause } from './motion.js';
 
 /**
@@ -11,9 +12,6 @@ import { useLoopPause } from './motion.js';
 export type KreskaExpression =
   | 'idle' | 'working' | 'thinking' | 'writing' | 'reading' | 'waiting' | 'asking' | 'looking'
   | 'loading' | 'surprised' | 'done' | 'wink' | 'celebrate' | 'hello' | 'asleep' | 'worried';
-
-const SQUIRCLE = 'M8.6 2.6H15.4C19 2.6 21.4 5 21.4 8.6V15.4C21.4 19 19 21.4 15.4 21.4H8.6C5 21.4 2.6 19 2.6 15.4V8.6C2.6 5 5 2.6 8.6 2.6Z';
-const TILE = 'M7 0H17C21.2 0 24 2.8 24 7V17C24 21.2 21.2 24 17 24H7C2.8 24 0 21.2 0 17V7C0 2.8 2.8 0 7 0Z';
 
 type Extra = 'circles' | 'sparkle' | 'wave' | 'z' | 'dots' | 'pen';
 const FACES: Record<KreskaExpression, { eyes: string; brow: string; extra?: Extra }> = {
@@ -35,13 +33,6 @@ const FACES: Record<KreskaExpression, { eyes: string; brow: string; extra?: Extr
   writing: { eyes: 'M10.1 12.4V14.2M15.5 12.4V14.2', brow: 'M7.6 8.6 10.8 8.1', extra: 'pen' },
 };
 
-/** Frame, eyes and brow line weights for the drawn size (guide §3). */
-function weights(size: number): [number, number, number] {
-  if (size >= 64) return [1.15, 1.7, 1.3];
-  if (size >= 40) return [1.5, 2.0, 1.55];
-  return [1.8, 2.2, 1.7];
-}
-
 const line = (d: string, width: number, className?: string) => (
   <path d={d} className={className} fill="none" stroke="currentColor" strokeWidth={width} strokeLinecap="round" strokeLinejoin="round" />
 );
@@ -55,13 +46,13 @@ function extra(kind: Extra | undefined, size: number): ReactNode {
     case 'dots':
       return <g className="kreska__dots"><circle cx="8.6" cy="12.6" r="1.1" fill="currentColor" /><circle cx="12" cy="12.6" r="1.1" fill="currentColor" opacity=".55" /><circle cx="15.4" cy="12.6" r="1.1" fill="currentColor" opacity=".25" /></g>;
     case 'sparkle':
-      return <path className="kreska__extra" d="M19.4 .6V2.8M18.3 1.7H20.5M23 5.2V6.8M22.2 6H23.8" fill="none" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round" />;
+      return <path className="kreska__extra" d={MARKS.sparkle.d} fill="none" stroke="currentColor" strokeWidth={MARKS.sparkle.width} strokeLinecap="round" />;
     case 'wave':
-      return <path className="kreska__extra" d="M21.6 4.6C22.6 5.6 23.1 6.8 23.2 8.2M20.4 6C21 6.6 21.3 7.3 21.4 8.1" fill="none" stroke="currentColor" strokeWidth="1" strokeLinecap="round" />;
+      return <path className="kreska__extra" d={MARKS.wave.d} fill="none" stroke="currentColor" strokeWidth={MARKS.wave.width} strokeLinecap="round" />;
     case 'z':
-      return <path className="kreska__extra" d="M17.2 4.6H19.4L17.2 6.8H19.4M20.4 1.4H22L20.4 3H22" fill="none" stroke="currentColor" strokeWidth="1" strokeLinecap="round" strokeLinejoin="round" />;
+      return <path className="kreska__extra" d={MARKS.z.d} fill="none" stroke="currentColor" strokeWidth={MARKS.z.width} strokeLinecap="round" strokeLinejoin="round" />;
     case 'pen':
-      return <path className="kreska__extra" d="M17.4 18.2 19.8 15.8M15.6 18.6H17" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />;
+      return <path className="kreska__extra" d={MARKS.pen.d} fill="none" stroke="currentColor" strokeWidth={MARKS.pen.width} strokeLinecap="round" />;
   }
 }
 

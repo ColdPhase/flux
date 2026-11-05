@@ -17,10 +17,11 @@
 .opening__row b { display: block; height: 9px; border-radius: var(--r-pill); background: var(--sub); }
 /* It appears after a beat, so a fast open never flashes it. */
 @media (prefers-reduced-motion: no-preference) {
-  .opening { animation: opening-in var(--dur-3) var(--ease-out) 350ms both; }
-  .opening__rows { animation: opening-pulse 1.6s ease-in-out infinite; }
+  :root:not([data-motion="reduce"]) .opening { animation: opening-in var(--dur-in) var(--ease-out) var(--delay-wait) both; }
+  :root:not([data-motion="reduce"]) .opening__rows { animation: opening-pulse var(--dur-loop) var(--ease-loop) infinite; }
 }
 @media (prefers-reduced-motion: reduce) { .opening { opacity: 1; } }
+:root[data-motion="reduce"] .opening { opacity: 1; }
 @keyframes opening-in { to { opacity: 1; } }
 @keyframes opening-pulse { 50% { opacity: .55; } }
 

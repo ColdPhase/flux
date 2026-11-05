@@ -289,7 +289,7 @@ function NotesSection() {
         <div ref={endRef} />
       </div>
       <div className="composer">
-        <div className="composer__in" data-shift>
+        <div className="composer__in">
           <ComposerBox id="composer" label="Private note" fieldRef={textareaRef} value={draft.text} disabled={saving} placeholder={asking ? 'Ask your assistant…' : 'Write a note…'}
             fieldProps={{ 'aria-describedby': `${asking ? askId : audienceId} ${hintId}` }} onChange={(value) => { draft.setText(value); autosize(); }} onKeyDown={onKeyDown}
             sendLabel={asking ? 'Send to your assistant' : 'Save note'} sendDisabled={!canSend} onSend={() => void send()} />

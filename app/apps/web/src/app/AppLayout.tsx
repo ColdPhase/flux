@@ -1,11 +1,10 @@
 import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { flushSync } from 'react-dom';
 import type { ProjectPerson } from '@flux/contracts';
 import { Outlet, useLocation, useMatches, useNavigate, useNavigationType, useParams, useRevalidator } from 'react-router';
 import { useStreamEvents } from '../api/stream';
 import { WORKSPACE_LOCKED_DOM_EVENT, isEncryptionEvent } from '../encryption/api';
 import { useLockedPlace } from '../encryption/state';
-import { Dissolve, Drawer, IconButton, MEDIA, SidePanel, SizeSwap, Tabs, flip, setTravelDirection, useMediaQuery, useToast, useSidePanelMode, viewDirection } from '../ui';
+import { Drawer, IconButton, MEDIA, SidePanel, SizeSwap, Tabs, ViewFade, useMediaQuery, useToast, useSidePanelMode } from '../ui';
 import { routeView } from '../ui/motion-rules';
 import { useShellData } from './data';
 import { registerServiceWorker, syncPushSubscription } from '../pwa';
@@ -172,12 +171,9 @@ function AppLayoutContent() {
     if (open === detailsOpen) return;
     if (open) setNavOpen(false);
     if (!open) setTrail([]);
-    if (panelMode !== 'docked') { setDetailsOpen(open); return; }
-    // Docked: the work area shifts over smoothly instead of jumping (FLIP).
-    const finish = flip([...document.querySelectorAll('[data-shift]')]);
-    flushSync(() => setDetailsOpen(open));
-    finish();
-  }, [detailsOpen, panelMode]);
+    // The work area beside the panel reflows without animation: the panel's own fade is the action's one motion (#863).
+    setDetailsOpen(open);
+  }, [detailsOpen]);
 
   const ownedRef = useRef<OwnedPanel | null>(null);
   const closeRef = useRef<() => void>(() => undefined);
@@ -524,21 +520,9 @@ function AppLayoutContent() {
     return () => { viewport.removeEventListener('resize', update); viewport.removeEventListener('scroll', update); app.style.removeProperty('--app-h'); app.style.removeProperty('--app-top'); };
   }, [touch]);
 
-  // Switching a project view, a place or a Settings section dissolves the old content into the new in the content area only (#593
-  // AC-3, `Dissolve` around the routes below): the old content stays a moment as an inert picture of itself over the new, fades out
-  // and travels a few pixels the way the person came from; the new content, with its composer and toolbar, is live and in place from
-  // the first frame, and the header, the sidebar and the tab bar are not in it at all (Spokój rule 7). Opening a thread beside the
-  // conversation or a page inside the Wiki is not a switch. The reading position is restored by its own owner and never animated.
-  // The history sets the direction of travel the detail panel's content follows when it is not told by its depth.
-  const navigationType = useNavigationType();
-  const [pathway, setPathway] = useState({ from: location.pathname, to: location.pathname });
-  if (pathway.to !== location.pathname) setPathway({ from: pathway.to, to: location.pathname });
-  const viewWay = viewDirection(pathway.from, pathway.to, navigationType === 'POP');
-  useLayoutEffect(() => {
-    setTravelDirection(navigationType === 'POP' ? 'back' : 'forward');
-    // The view is the pathname's; the navigation type only says how it was reached.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [location.pathname]);
+  // Switching a project view, a place or a Settings section puts the new content in place at once, with at most a 120 ms fade-in (#863,
+  // `ViewFade` around the routes below): the old content is not held and nothing crossfades. Opening a thread beside the conversation
+  // or a page inside the Wiki is not a switch. The reading position is restored by its own owner and never animated.
 
   // In focus the rail shows no counts.
   const sidebarProps = { workspace, projects, directMessages, user: me.user, session: me.session, inboxUnread: focusing ? 0 : inboxUnread };
@@ -720,11 +704,11 @@ function AppLayoutContent() {
     const entry = { key: location.key, path: location.pathname };
     const at = steps.current.findIndex((item) => item.key === location.key);
     if (at >= 0) steps.current = steps.current.slice(0, at + 1);
-    else if (navigationType === 'REPLACE' && steps.current.length) steps.current = [...steps.current.slice(0, -1), entry];
+    else if (navType === 'REPLACE' && steps.current.length) steps.current = [...steps.current.slice(0, -1), entry];
     // A step back or forward to an entry this tab never recorded: start again from here.
-    else if (navigationType === 'POP') steps.current = [entry];
+    else if (navType === 'POP') steps.current = [entry];
     else steps.current = [...steps.current, entry].slice(-50);
-  }, [location.key, location.pathname, navigationType]);
+  }, [location.key, location.pathname, navType]);
   const goBackAPlace = (fallback: string) => {
     const entries = steps.current;
     const here = entries.length - 1;
@@ -841,7 +825,7 @@ function AppLayoutContent() {
             </div>
           )}
           {rowViews && !focusing && !tabletMenu ? <Tabs variant="segmented" className="top__views" label={rowViews.label} items={rowViews.items} /> : null}
-          <div className="top__right" data-shift>
+          <div className="top__right">
             {/* A view can put one quiet action here (a DM's Select, #96). */}
             <span className="top__actions" ref={setActionSlot} />
             {focusing && focus.until ? <FocusPill until={focus.until} uncertain={focus.uncertain} onEnd={() => void focus.toggle()} /> : (
@@ -861,13 +845,13 @@ function AppLayoutContent() {
           <RouteProgress />
           {/* The one main landmark, the skip link's target (#763 AX-1): a view's own header is then not a second banner. */}
           <main className="app__pane" id="content" ref={paneRef} tabIndex={-1}>
-            <Dissolve id={routeView(location.pathname)} direction={viewWay} host={paneRef} dress=".app" shift="--shift-view" time="--dur-view" layer={19} skip=".deferred-surface--stage">
+            <ViewFade id={routeView(location.pathname)} host={paneRef} skip=".deferred-surface--stage">
               <Outlet />
               <DeferredLiveStage />
-            </Dissolve>
+            </ViewFade>
           </main>
           <SidePanel open={detailsOpen} onClose={closePanel} title={recapOpen ? 'What matters' : ownedShown ? ownedShown.label : 'Details'} closeLabel={ownedShown?.closeLabel} chip={objectChip} id="details" back={back} startFull={sheetStart ?? ownedShown?.startFull} onHeight={(full) => keepPlace('sheet', full)}
-            contentKey={ownedShown ? `owned:${ownedShown.key}` : typeof detailsView === 'object' ? JSON.stringify(detailsView) : detailsView} depth={trail.length + (ownedShown?.back ? 1 : 0)}
+            contentKey={ownedShown ? `owned:${ownedShown.key}` : typeof detailsView === 'object' ? JSON.stringify(detailsView) : detailsView}
             context={phone && (detailsView === 'place' || typeof detailsView === 'object' && detailsView.kind === 'overview') ? <OverviewContext message={typeof detailsView === 'object' && detailsView.kind === 'overview' && !!detailsView.messageId} /> : undefined}>
             {isOwned(detailsView) ? <div className="ui-panel__slot" ref={setPanelSlot} /> : <DeferredDetails view={detailsView} placeTitle={place.title} dm={activeDm ? { id: activeDm.id, kind: activeDm.kind, title: activeDm.title, me: me.user.name, people: activeDm.people, audience: activeDm.audience } : null} onBack={() => setDetailsView('place')} onClose={() => toggleDetails(false)} />}
           </SidePanel>

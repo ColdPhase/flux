@@ -296,7 +296,7 @@ function AccountNotificationSettings() {
   </span></p> : null;
 
   return (
-    <div className="pane-scroll"><div className="pane-in sset-in nset" data-shift>
+    <div className="pane-scroll"><div className="pane-in sset-in nset">
       <div className="sset-head nset__head">
         <div>
           <h2>Notifications</h2>

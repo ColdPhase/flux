@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState, type KeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
+import { duration, settle } from './motion';
 
 /**
  * The handle of a two-height sheet: a real 44px target with a small bar for touch and mouse, and a
@@ -19,7 +20,8 @@ export function SheetGrabber({ full, onToggle }: { full: boolean; onToggle: () =
  * A drag up on the grabber or header opens the full height, a drag down steps back to half and from half
  * closes; Esc closes. Mouse input and the grabber's own buttons are not dragged. The content is the children:
  * a task, a decision, a thread, an agent or a thought's tasks, one after another in the same sheet, which keeps its
- * height while the content changes. It sits in a modal overlay.
+ * height while the content changes. It sits in a modal overlay. It takes its new height at once and its top edge travels there
+ * with `transform` over --dur-in on --ease-out, never by animating `height` (#863 rule 8).
  */
 export function DetentSheet({ onClose, startFull = false, onHeight, className, children, ...rest }: {
   onClose: () => void;
@@ -34,7 +36,19 @@ export function DetentSheet({ onClose, startFull = false, onHeight, className, c
   'aria-labelledby'?: string;
   children: ReactNode;
 }) {
-  const [full, setFull] = useState(startFull);
+  const [full, setFullNow] = useState(startFull);
+  const sheet = useRef<HTMLDivElement>(null);
+  // Where the top edge was when the person chose the other height: the sheet travels from there to where it is after the change.
+  const from = useRef<number | null>(null);
+  const setFull = (next: boolean | ((value: boolean) => boolean)) => { from.current = sheet.current?.getBoundingClientRect().top ?? null; setFullNow(next); };
+  useLayoutEffect(() => {
+    const el = sheet.current;
+    const before = from.current;
+    from.current = null;
+    if (!el || before === null) return;
+    const shift = before - el.getBoundingClientRect().top;
+    if (Math.abs(shift) >= 1) void settle(el, { transform: 'none' }, duration('--dur-in'), '--ease-out', { from: { transform: `translateY(${shift}px)` } });
+  }, [full]);
   const heard = useRef(onHeight);
   useEffect(() => { heard.current = onHeight; });
   useEffect(() => { heard.current?.(full); }, [full]);
@@ -67,7 +81,7 @@ export function DetentSheet({ onClose, startFull = false, onHeight, className, c
     onPointerCancel() { start.current = null; },
   };
   return (
-    <div {...rest} tabIndex={-1} className={['ui-detent-sheet', className].filter(Boolean).join(' ')}
+    <div {...rest} ref={sheet} tabIndex={-1} className={['ui-detent-sheet', className].filter(Boolean).join(' ')}
       data-detent-sheet="" data-height={full ? 'full' : 'half'} onKeyDown={onKeyDown} {...handlers}>
       <SheetGrabber full={full} onToggle={() => setFull((value) => !value)} />
       {children}

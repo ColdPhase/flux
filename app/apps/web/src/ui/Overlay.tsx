@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type KeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode, type RefObject } from 'react';
 import { createPortal } from 'react-dom';
-import { duration, settle, token, type Easing, type Pose } from './motion';
+import { duration, settle, token, type Pose } from './motion';
 
 const FOCUSABLE = 'a[href], button:not([disabled]), input:not([disabled]):not([type="hidden"]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
@@ -127,22 +127,16 @@ export interface OverlayProps {
   children: ReactNode;
 }
 
-// Where each placement comes from and goes back to. The floating dialog and the detail panel's overlay form
-// fade and move a few pixels (#593 AC-1); the drawer and the phone sheet travel from their edge.
+// Where each placement comes from and goes back to (#863, motion rule 3). One vocabulary: the floating dialog fades and travels 8 px, the
+// detail panel's overlay fades and travels --shift-panel, the drawer and the phone sheet travel from their screen edge. Nothing scales.
 const offstage = (placement: OverlayPlacement): Pose => ({
   left: { transform: 'translateX(calc(-100% - 24px))' },
-  right: { opacity: 0, transform: `translateX(${token('--shift-panel') || '14px'})` },
+  right: { opacity: 0, transform: `translateX(${token('--shift-panel') || '16px'})` },
   bottom: { transform: 'translateY(100%)' },
-  center: { opacity: 0, transform: 'translateY(-8px) scale(.98)' },
+  center: { opacity: 0, transform: 'translateY(-8px)' },
 })[placement];
-/**
- * Enter and exit: every surface takes --dur-in (180 ms) and --dur-out (120 ms), the drawer and the phone sheet included
- * (#593 AC-1); they travel from their edge on --ease-sheet, the dialog and the panel on --ease-out.
- */
-const timing = (placement: OverlayPlacement) => ({
-  enter: duration('--dur-in'), exit: duration('--dur-out'),
-  easeIn: (placement === 'center' || placement === 'right' ? '--ease-out' : '--ease-sheet') as Easing,
-});
+/** Enter and exit: every surface takes --dur-in (180 ms) on --ease-out and --dur-out (120 ms) on --ease-in, the drawer and the phone sheet included. */
+const timing = () => ({ enter: duration('--dur-in'), exit: duration('--dur-out') });
 
 /**
  * Touch dismissal (#266 PF-4): the drawer follows a finger dragging it back to the left and the
@@ -165,7 +159,7 @@ function useDismissDrag(placement: OverlayPlacement, surfaceRef: RefObject<HTMLD
   const springBack = () => {
     const surface = surfaceRef.current;
     const scrim = scrimRef.current;
-    const ms = duration('--dur-2');
+    const ms = duration('--dur-in');
     // From where the finger let go back to rest; the inline drag offset goes once the animation owns the pose.
     void settle(surface, { transform: 'none' }, ms, '--ease-out', { from: { transform: surface?.style.transform || 'none' } }).then(() => { if (surface) surface.style.transform = ''; });
     void settle(scrim, { opacity: 1 }, ms, '--ease-out', { from: { opacity: scrim?.style.opacity || '1' } }).then(() => { if (scrim) scrim.style.opacity = ''; });
@@ -237,9 +231,9 @@ export function Overlay({ open, onClose, placement, label, labelledBy, initialFo
     const scrim = scrimRef.current;
     setAppInert(true, !!keepLiveStrip);
     // A reopen during the exit continues from where the exit had got to (settle), never from a start pose.
-    const { enter, easeIn } = timing(placement);
+    const { enter } = timing();
     void settle(scrim, { opacity: 1 }, enter, '--ease-out', { from: { opacity: 0 } });
-    void settle(surface, { opacity: 1, transform: 'none' }, enter, easeIn, { from: offstage(placement) });
+    void settle(surface, { opacity: 1, transform: 'none' }, enter, '--ease-out', { from: offstage(placement) });
     (initialFocus?.current ?? surface)?.focus({ preventScroll: true });
     return () => {
       setAppInert(false, !!keepLiveStrip);
@@ -253,7 +247,7 @@ export function Overlay({ open, onClose, placement, label, labelledBy, initialFo
           if (target.isConnected && (!document.activeElement || document.activeElement === document.body)) target.focus({ preventScroll: true });
         });
       }
-      const { exit } = timing(placement);
+      const { exit } = timing();
       // A drag that closed the surface continues from where the finger let go (#266 PF-4); a close during the
       // enter continues from where the enter had got to.
       const dragged = !!surface?.style.transform;

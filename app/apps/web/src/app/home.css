@@ -25,13 +25,15 @@
 @media (max-width: 640px) { .home__first .ui-btn { align-self: stretch; } }
 .home__pair { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); gap: 16px; margin-top: 24px; align-items: stretch; }
 .home__pair > .home__projects:only-child { grid-column: 1 / -1; }
-.home__continue { position: relative; display: flex; flex-direction: column; gap: 8px; padding: 18px 64px 18px 20px; transition: transform var(--dur-press) var(--ease-out), box-shadow var(--dur-2) var(--ease-out); }
+.home__continue { position: relative; display: flex; flex-direction: column; gap: 8px; padding: 18px 64px 18px 20px; transition: box-shadow var(--dur-1) var(--ease-out); }
 .home__continue:hover { box-shadow: var(--sh-pop); }
+/* The space Continue takes while it is read: the card's usual height, so nothing below it jumps when it arrives (#863). */
+.home__continue-slot { min-height: 132px; }
 .home__continue:focus-visible { outline: 2px solid var(--t1); outline-offset: 3px; }
 .home__k { margin: 0; font-size: var(--fs-sm); font-weight: 400; color: var(--t3); }
 .home__t { font-size: var(--fs-lg); line-height: 1.35; font-weight: 600; letter-spacing: -.01em; overflow-wrap: anywhere; }
 .home__sub { display: flex; align-items: center; gap: 8px; font-size: var(--fs-sm); color: var(--t2); overflow-wrap: anywhere; }
-.home__go { position: absolute; right: 16px; bottom: 16px; display: grid; place-items: center; width: 36px; height: 36px; border-radius: 50%; background: var(--sub); color: var(--t1); transition: transform var(--dur-2) var(--ease-out), background var(--dur-2); }
+.home__go { position: absolute; right: 16px; bottom: 16px; display: grid; place-items: center; width: 36px; height: 36px; border-radius: 50%; background: var(--sub); color: var(--t1); transition: transform var(--dur-1) var(--ease-out), background-color var(--dur-1) var(--ease-out); }
 .home__continue:hover .home__go { background: var(--hov); transform: translateX(2px); }
 .home__projects { padding: 16px 20px; }
 .home__projects ul { list-style: none; margin: 8px 0 0; padding: 0; }
@@ -52,6 +54,7 @@
   .home__hello { margin-bottom: 20px; font-size: var(--fs-2xl); }
   .home__pair { grid-template-columns: minmax(0, 1fr); }
   .home__continue { padding-right: 76px; margin-bottom: 12px; }
+  .home__continue-slot { margin-bottom: 12px; }
   .home__sech { padding-inline: 4px; }
   .home__need { margin-top: 20px; }
   .home .agentlive { margin: 0 0 12px; padding: 12px 12px 12px 14px; border-radius: var(--r-card); }

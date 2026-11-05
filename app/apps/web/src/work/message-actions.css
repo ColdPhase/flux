@@ -55,7 +55,7 @@
    a long press, because that press opens the menu (Copy text is in it). */
 .msg-touch { touch-action: pan-y; -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
 .msg-touch.is-swiped { z-index: 1; }
-@media (prefers-reduced-motion: no-preference) { .msg-touch:not(.is-dragging) { transition: transform var(--dur-3) var(--ease-sheet); } }
+@media (prefers-reduced-motion: no-preference) { .msg-touch:not(.is-dragging) { transition: transform var(--dur-in) var(--ease-out); } }
 .msg-swipe { position: absolute; right: 100%; top: 0; bottom: 0; display: grid; place-items: center; width: 48px; color: var(--t3); }
 .msg-swipe[hidden] { display: none; }
 .msg-swipe.is-ready { color: var(--t1); }

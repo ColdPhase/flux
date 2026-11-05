@@ -36,7 +36,7 @@ THOUGHTS = (
     "Low light: below 10 lux the camera has to guess",
     "Variant C: a long, descriptive thought about the shade and the sensor so that its title wraps across several lines on a phone",
 )
-# A button's background and transform, as the press check reads them (HIG-16: Prostota presses to .97).
+# A button's background and scale, as the press check reads them (#863: a press is colour; rows never scale).
 PRESS_STYLE = "el => { const s = getComputedStyle(el); return { background: s.backgroundColor, scale: s.scale }; }"
 # The rows' type sizes beside the body and control tokens as they resolve now, each row's height, whether its title overflows,
 # its line count, and where the trailing glyph sits.
@@ -180,12 +180,12 @@ class TaskThoughtChooser(unittest.TestCase):
         page.get_by_role("button", name=THOUGHTS[2]).scroll_into_view_if_needed()
         shot(page, f"chooser-desktop-1440-light-{UI_BROWSER}")
 
-    def test_03_a_pressed_thought_choice_scales_and_reduced_motion_keeps_only_the_fill(self) -> None:
+    def test_03_a_pressed_thought_choice_takes_the_fill_and_never_scales(self) -> None:
         page = self.page(phone=True)
         choice = self.chooser(page, phone=True).get_by_role("button", name=THOUGHTS[0])
         rest, pressed = self.press_changes(page, choice)
         self.assertEqual(rest["scale"], "none", "a thought choice rests unscaled")
-        self.assertEqual(pressed["scale"], "0.97", "a pressed thought choice scales to --press (.97)")
+        self.assertEqual(pressed["scale"], "none", "a pressed thought choice is a row: it never scales (#863)")
         self.assertNotEqual(pressed["background"], rest["background"], "and takes the pressed fill")
         page = self.page(phone=True, reduced_motion=True)
         choice = self.chooser(page, phone=True).get_by_role("button", name=THOUGHTS[0])

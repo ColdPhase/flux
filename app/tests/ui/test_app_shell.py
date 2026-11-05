@@ -1044,7 +1044,7 @@ class AppShellJourney(unittest.TestCase):
 
         calm = self.page(reduced_motion="reduce")
         calm.goto("/")
-        self.assertEqual(calm.evaluate("parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--dur-3'))"), 0)
+        self.assertEqual(calm.evaluate("parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--dur-in'))"), 0)
         open_details(calm)
         panel = calm.get_by_role("complementary", name="Details")
         expect(panel).to_be_visible()

@@ -64,7 +64,9 @@ function useContinue(userId: string, workspaceIds: string[]): { value: Continue 
 function ContinueCard({ userId, workspaceIds }: { userId: string; workspaceIds: string[] }) {
   const { projects } = useShellData();
   const { value, ready } = useContinue(userId, workspaceIds);
-  if (!ready || !value) return null;
+  // While it is read the card's usual space is kept (#863 rule 6), so what is below does not jump down when it arrives.
+  if (!ready) return <div className="home__continue-slot" aria-hidden="true" />;
+  if (!value) return null;
   const arrow = <span className="home__go" aria-hidden="true"><Icon name="chevron-right" size={16} /></span>;
   if (value.kind === 'task') {
     const { item } = value;

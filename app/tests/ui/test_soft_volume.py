@@ -232,7 +232,7 @@ class SoftVolume(unittest.TestCase):
         style = primary.evaluate("e => { const s = getComputedStyle(e); return [s.borderTopLeftRadius, s.backgroundImage, s.boxShadow]; }")
         self.assertEqual(style[1:], ["none", "none"], "the primary button is the flat inverted fill without a shadow")
         self.assertEqual(style[0], "10px", "buttons have radius 10 (--r-btn)")
-        self.assertEqual(page.evaluate("getComputedStyle(document.documentElement).getPropertyValue('--press').trim()"), ".97")
+        self.assertEqual(page.evaluate("getComputedStyle(document.documentElement).getPropertyValue('--press').trim()"), ".98")
         calm = self.page(reduced=True)
         calm.goto("/")
         self.assertEqual(calm.evaluate("getComputedStyle(document.documentElement).getPropertyValue('--press').trim()"), "1")

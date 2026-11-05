@@ -91,7 +91,7 @@ export function WikiHome() {
   return (
     <>
       <WikiBar meta={<span>Wiki · {docs.length ? `${docs.length} ${docs.length === 1 ? 'page' : 'pages'}` : 'no pages yet'}</span>} />
-      <div className="wiki-doc" data-shift>
+      <div className="wiki-doc">
         {docs.length ? <p className="doc-muted">Choose a page from the list.</p> : (
           <div className="view-empty"><EmptyState icon="doc" title="No pages yet">
             <p>{writable
@@ -130,7 +130,7 @@ export function WorkspaceDocs() {
   }, [ids]);
   return (
     <div className="pane-scroll">
-      <div className="pane-in doc-list" data-shift>
+      <div className="pane-in doc-list">
         {failed ? <p className="doc-notice" role="alert"><Icon name="alert" size={14} />Wiki pages could not be loaded. Check the connection and try again.</p> : null}
         {docs === null && !failed ? <p className="doc-muted" aria-busy="true">Loading docs…</p> : null}
         {docs && !docs.length ? (
@@ -312,7 +312,7 @@ function DocReading({ live }: { live: LiveReadingState | null }) {
       </WikiBar>
       {inStrip && menuSlot ? createPortal(pageMenu, menuSlot) : null}
       <div className="wiki-read" key={doc.id}>
-        <article className="wiki-doc wiki-doc--read doc" data-shift aria-labelledby="doc-title">
+        <article className="wiki-doc wiki-doc--read doc" aria-labelledby="doc-title">
           {compact && keptLink ? <p className="doc-notice">{keptLink}</p> : null}
           {!current ? (
             <p className="doc-notice"><Icon name="undo" size={14} />{historical && shown.version === doc.version ? 'You are reading a saved version.' : 'You are reading an earlier version.'} It stays as it was written.
@@ -453,7 +453,7 @@ export function DocHistory() {
           <DimIcon slot="download" name="download" label="Download" />
         </>}
       </WikiBar>
-      <div className="wiki-doc wiki-doc--wide doc doc-history" data-shift>
+      <div className="wiki-doc wiki-doc--wide doc doc-history">
         <div className="doc-history__grid">
           <section className="doc-history__list" aria-labelledby="doc-versions-h">
             <h2 className="doc-group__h" id="doc-versions-h">Versions</h2>

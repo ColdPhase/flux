@@ -47,13 +47,13 @@
 .dm--selecting .dm-msg__face { visibility: hidden; }
 .dm-msg:not(.is-mine):not(.dm-msg--cont) { --dm-top: var(--dm-meta); }
 .dm-msel { position: absolute; left: 0; top: calc(var(--dm-top, 0px) + var(--dm-pad) + var(--dm-lead) + .5 * var(--dm-lh) * var(--fs-base) - var(--dm-check) / 2); display: grid; place-items: center start;
-  width: var(--dm-check); height: var(--dm-check); border-radius: var(--r); color: var(--t3); animation: dm-in var(--dur-2) var(--ease-out) backwards; }
+  width: var(--dm-check); height: var(--dm-check); border-radius: var(--r); color: var(--t3); animation: dm-in var(--dur-in) var(--ease-out) backwards; }
 .dm-msel i { display: grid; place-items: center; width: 18px; height: 18px; border-radius: 5px; box-shadow: inset 0 0 0 1.5px var(--t3); transition: var(--tr); }
 .dm-msel svg { opacity: 0; transform: scale(.6); color: var(--oninv); transition: opacity var(--dur-1) var(--ease-out), transform var(--dur-1) var(--ease-out); }
 .dm-msel[aria-pressed="true"] i { background: var(--inv); box-shadow: none; }
 .dm-msel[aria-pressed="true"] svg { opacity: 1; transform: none; }
 .dm-msel:active i { transform: scale(.9); }
-.dm-selbar { flex: none; display: flex; flex-direction: column; justify-content: center; min-height: min(var(--dm-swap, 0px), 140px); border-top: 1px solid var(--line); background: var(--bg); padding: 10px 24px 16px; padding-bottom: max(16px, env(safe-area-inset-bottom)); animation: dm-rise var(--dur-2) var(--ease-out) backwards; }
+.dm-selbar { flex: none; display: flex; flex-direction: column; justify-content: center; min-height: min(var(--dm-swap, 0px), 140px); border-top: 1px solid var(--line); background: var(--bg); padding: 10px 24px 16px; padding-bottom: max(16px, env(safe-area-inset-bottom)); animation: dm-rise var(--dur-in) var(--ease-out) backwards; }
 .dm-selbar__in { max-width: calc(var(--dm-w) - 48px); margin: 0 auto; display: flex; align-items: center; flex-wrap: wrap; gap: 8px 10px; }
 .dm-selbar__count { margin-right: auto; font-size: var(--fs-md); font-weight: 500; color: var(--t1); }
 .dm-selbar__note { flex-basis: 100%; display: flex; align-items: center; gap: 6px; font-size: var(--fs-sm); color: var(--t3); }

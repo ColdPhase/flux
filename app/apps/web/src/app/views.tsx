@@ -24,7 +24,7 @@ function Pane({ children }: { children: ReactNode }) {
   useReadingPosition(ref, me.user.id, useLocation().pathname);
   return (
     <div className="pane-scroll" ref={ref}>
-      <div className="pane-in" data-shift>{children}</div>
+      <div className="pane-in">{children}</div>
     </div>
   );
 }
