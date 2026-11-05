@@ -43,6 +43,8 @@ class ComposeResourcesTest(unittest.TestCase):
                     self.assertIn("interval: 30s", block)
                     self.assertRegex(block, r"start_period: \d+s")
                     self.assertRegex(block, r"start_interval: (250ms|500ms|1s)")
+                    if service == "api":
+                        self.assertIn('"-Y", "off"', block, "busybox wget follows http_proxy unless told not to, and the loopback probe would fail")
 
     def test_the_keyring_token_never_goes_into_a_process_argument(self) -> None:
         for name in FILES:

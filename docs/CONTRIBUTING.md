@@ -65,7 +65,7 @@ issue.
 
 ## Make a change
 
-You need Git, Docker Engine (or Docker Desktop) with Compose, and Python 3 for the
+You need Git, Docker Engine 25 or newer (or Docker Desktop) with Compose, and Python 3 for the
 repository checks. You do not need Node.js or PostgreSQL on your computer.
 
 1. Fork [ColdPhase/flux](https://github.com/ColdPhase/flux) to your GitHub account.

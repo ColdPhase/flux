@@ -81,7 +81,7 @@ after the edit (tsx restart), with no image rebuild.
 
 ## Manual Compose start
 
-Prerequisites: Git and Docker Engine with Compose. No host Node or PostgreSQL is
+Prerequisites: Git and Docker Engine 25 or newer with Compose. No host Node or PostgreSQL is
 needed. Clone the repository, copy `docker/.env.example` to `docker/.env`, and replace the three
 placeholder secrets (`FLUX_AUTH_SECRET` is described in [identity](containers.md#identity-services-and-variables)). Use a unique Compose project name and port for each worker.
 The project name also isolates its image tag, database and files volumes.

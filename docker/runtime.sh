@@ -40,9 +40,20 @@ set_env_line() { # KEY VALUE: replace the line or append it
 }
 random_hex() { od -An -N32 -tx1 /dev/urandom | tr -d ' \n'; }
 
+# Docker Engine 25 is the oldest that accepts the health checks' `start_interval` (older ones make `docker compose up` refuse).
+# Docker numbers its releases by year since 17.03, so a smaller number (Podman's 5.x) is not Docker Engine and is left to Compose.
+MIN_ENGINE_MAJOR=25
 need_docker() {
   command -v docker >/dev/null 2>&1 || die "Docker is required."
   docker compose version >/dev/null 2>&1 || die "Docker Compose v2 is required (docker compose)."
+  engine=$(docker version --format '{{.Server.Version}}' 2>/dev/null) || engine=
+  engine_major=${engine%%.*}
+  case "$engine_major" in
+    ''|*[!0-9]*) ;;
+    *) if [ "$engine_major" -ge 17 ] && [ "$engine_major" -lt "$MIN_ENGINE_MAJOR" ]; then
+         die "Docker Engine $MIN_ENGINE_MAJOR or newer is required; this one is $engine. Update it: https://docs.docker.com/engine/install/"
+       fi ;;
+  esac
   [ -f "$env_file" ] || die "No $env_file; follow INSTALL.md first (cp env.example .env)."
   if [ ! -f "$base_file" ] || [ ! -f "$runtime_file" ]; then die "compose.yaml and compose.runtime.yaml of ONE release must be beside this script."; fi
 }

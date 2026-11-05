@@ -17,6 +17,7 @@ import { registerComparisonWorker } from './proactive-comparison/index.js';
 import { registerWorkspaceAiSweep } from './workspace-ai/index.js';
 import { startWorkspaceEncryption } from './workspace-encryption/index.js';
 import { comparisonProviders } from './proactive-comparison/providers.js';
+import { drainBacklogs } from './drain-backlogs.js';
 import { guardSealedJobs } from './sealed-jobs.js';
 
 // The worker's composition root (#82): environment, pool, pg-boss and signals; each job's
@@ -33,6 +34,8 @@ const boss = new PgBoss({ connectionString, migrate: false, useListenNotify: tru
   cronWorkerIntervalSeconds: 15, flowIntervalSeconds: 60 });
 boss.on('error', (error) => console.error(error));
 await boss.start();
+// A woken worker keeps fetching until its queue is empty (one NOTIFY per transaction would otherwise leave a backlog to the 30 s backstop).
+drainBacklogs(boss);
 // F-030 Error paths: a failing job of an encrypted workspace stores and logs only the redacted error.
 guardSealedJobs(boss, db, { injectFailures: !!process.env.FLUX_FIXTURE_TOKEN && process.env.FLUX_TEST_FAILURE_INJECTION === 'true' });
 await registerSampleWorker(boss, db, process.env.HOSTNAME ?? 'worker');

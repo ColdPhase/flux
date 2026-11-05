@@ -8,7 +8,7 @@ can need other migrations or variables than your release.
 The release pins one OCI image, `ghcr.io/coldphase/flux`, by its manifest digest for `api`,
 `worker`, `keyring` and the one-shot `migrate` service, plus a separately digest-pinned PostgreSQL. The image
 is built for the platforms that `release.json` lists: `linux/amd64` (x86_64) for v0.1, with
-`linux/arm64` planned for v0.1.1. Docker Engine with the Compose plugin is required;
+`linux/arm64` planned for v0.1.1. Docker Engine 25 or newer with the Compose plugin is required (Compose refuses to start the services on an older engine);
 the source code and the Node toolchain are not. The optional [agent runtime](#agent-runtime-optional)
 adds a second image, `ghcr.io/coldphase/flux-agent-runtime`, also pinned by digest and built for the
 same platforms; an installation that never switches the runtime on never pulls it. Optional

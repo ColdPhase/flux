@@ -14,7 +14,7 @@ which builds the image on the server, keeps its settings in `docker/.env`, and g
 [backups](backup-restore.md), restores and [upgrades](upgrade.md) as single commands. The release
 path runs the same services without the source or a build.
 
-Check the [requirements](requirements.md) first: a Linux host with Docker Engine and the Compose
+Check the [requirements](requirements.md) first: a Linux host with Docker Engine 25 or newer and the Compose
 plugin, 4 GB of memory, and a DNS name pointing at the host.
 
 ## Production installation from a source checkout

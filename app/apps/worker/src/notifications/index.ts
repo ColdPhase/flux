@@ -28,7 +28,7 @@ export function startNotificationGenerator(options: { db: Database; boss: PgBoss
   let running = false;
   let again = false;
   let stopped = false;
-  // After a failed event the generator waits 2, 4, 8 … 60 s before retrying it.
+  // After a failed event the generator does not look again for 2, 4, 8 … 60 s; the first wake-up or 30 s tick after that retries it.
   let stalls = 0;
   let retryAt = 0;
   const tick = async () => {

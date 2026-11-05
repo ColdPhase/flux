@@ -18,6 +18,8 @@ git pull --ff-only && ./flux upgrade      # or: ./flux upgrade --pull
 5. **Health.** It starts API and worker, waits for their health checks, and checks that the API
    and the database report the checkout's schema.
 
+Update Docker Engine to 25 or newer **before** upgrading from v0.1.0 (the health checks need `start_interval`; `docker compose up` refuses an older engine, see [requirements](requirements.md#software)). v0.1.0's `./flux upgrade --pull` does not check the engine, so an old one is found only by the pulled launcher, after the backup has stopped API and worker; it then reports `UPGRADE FAILED` with the way back.
+
 The downtime is the backup, the build and the migration. It prints
 `Upgraded <project> from schema A to B` and keeps the backup.
 

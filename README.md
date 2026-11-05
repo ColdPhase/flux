@@ -121,7 +121,7 @@ reference for every UI change.
 
 ## Quick start
 
-Prerequisites: Git and Docker Engine (or Docker Desktop) with Compose. No host Node.js or PostgreSQL
+Prerequisites: Git and Docker Engine 25 or newer (or Docker Desktop) with Compose. No host Node.js or PostgreSQL
 ([requirements](docs/operations/requirements.md)).
 
 ```sh

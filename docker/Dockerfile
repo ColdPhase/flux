@@ -59,7 +59,7 @@ RUN set -eu; d=apps/runtime/node_modules/node-pty; t=$(readlink -f "$d"); rm "$d
 RUN set -eu; cd node_modules; \
   rm -rf .pnpm/drizzle-kit@* .pnpm/esbuild@* .pnpm/@esbuild+* .pnpm/@esbuild-kit+* .pnpm/esbuild-register@* .pnpm/react-dom@* .pnpm/react@* .pnpm/@types+*; \
   find /app/node_modules /app/apps/*/node_modules /app/packages/*/node_modules -type f \( -name '*.map' -o -name '*.d.ts' -o -name '*.d.mts' -o -name '*.d.cts' \
-    -o \( -iname '*.md' ! -iname 'LICENSE*' ! -iname 'NOTICE*' \) \) -delete
+    -o \( -iname '*.md' ! -iname '*LICEN[CS]E*' ! -iname 'NOTICE*' \) \) -delete
 
 # Browser checks only (issue #41): the built workspace on the official Playwright image,
 # whose bundled Chromium matches the pinned playwright 1.63.0 package. Never deployed.

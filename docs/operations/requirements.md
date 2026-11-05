@@ -15,7 +15,7 @@ runs in containers, so the host needs only Docker and a few standard tools.
 | **Swap** | off, or encrypted | Only matters for [encrypted spaces](encrypted-spaces.md#swap-and-memory). |
 
 Memory in more detail. Compose limits each service, and memory and swap to the same value
-([`FLUX_API_MEMORY`, `FLUX_WORKER_MEMORY`, `FLUX_KEYRING_MEMORY`](configuration.md#memory-limits)):
+([`FLUX_API_MEMORY`, `FLUX_WORKER_MEMORY`, `FLUX_KEYRING_MEMORY`, `FLUX_DB_MEMORY`](configuration.md#memory-limits)):
 
 | Service | Limit | Observed |
 | --- | --- | --- |
@@ -39,7 +39,7 @@ LiveKit server whose CPU and bandwidth grow with each call.
 
 | | Version | Notes |
 | --- | --- | --- |
-| **Docker Engine** | a current release with the Compose v2 plugin (`docker compose`) | Observed working: Engine 28.0.4 with Compose 2.38.2 (GitHub-hosted runner, 2026-10-10), Engine 29.1.2 with Compose 2.40.3 (Docker Desktop, macOS), Engine 29.4.2 with Compose 5.1.2 (Fedora 42). The health checks use `start_interval` (Docker Engine 25, Compose 2.20.2 or newer); an older engine ignores it and the first start waits for the first 30 s check. Older versions were not tested. |
+| **Docker Engine** | **25 or newer**, with the Compose v2 plugin (`docker compose`, 2.20.2 or newer) | Observed working: Engine 28.0.4 with Compose 2.38.2 (GitHub-hosted runner, 2026-10-10), Engine 29.1.2 with Compose 2.40.3 (Docker Desktop, macOS), Engine 29.4.2 with Compose 5.1.2 (Fedora 42). The health checks use `start_interval`, which Engine 25 introduced. **Engine 24 and older refuse to start Flux**: `docker compose up` stops with `can't set healthcheck.start_interval as feature require Docker Engine v25 or later` before it creates anything (observed on Engine 24.0.9 with Compose 2.29.1, 2026-11-05), and `./flux` refuses with one line before that. Update Docker Engine ([install](https://docs.docker.com/engine/install/)); Docker Desktop ships a current engine. |
 | **Git** | any | Source checkout only. |
 | **POSIX `sh`, `tar`, `sha256sum` or `shasum`** | | Used by the `./flux` launcher for backups and restores. |
 | **PostgreSQL, Node.js** | not on the host | They run inside the containers. Do not install them for Flux. |

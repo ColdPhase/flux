@@ -34,10 +34,22 @@ say() { printf '%s\n' "$*"; }
 warn() { printf 'flux: %s\n' "$*" >&2; }
 die() { warn "$*"; exit 1; }
 
+# Docker Engine 25 is the oldest that accepts the health checks' `start_interval`; an older engine makes `docker compose up`
+# refuse ("can't set healthcheck.start_interval as feature require Docker Engine v25 or later"). Docker numbers its releases
+# by year since 17.03, so a smaller number (Podman's 5.x) is not Docker Engine and is left to Compose.
+MIN_ENGINE_MAJOR=25
 need_docker() {
   command -v docker >/dev/null 2>&1 || die "Docker is required: https://docs.docker.com/get-docker/"
   docker compose version >/dev/null 2>&1 || die "Docker Compose v2 is required (docker compose)."
   docker info >/dev/null 2>&1 || die "The Docker daemon is not reachable. Start Docker and retry."
+  engine=$(docker version --format '{{.Server.Version}}' 2>/dev/null) || engine=
+  engine_major=${engine%%.*}
+  case "$engine_major" in
+    ''|*[!0-9]*) ;;
+    *) if [ "$engine_major" -ge 17 ] && [ "$engine_major" -lt "$MIN_ENGINE_MAJOR" ]; then
+         die "Docker Engine $MIN_ENGINE_MAJOR or newer is required; this one is $engine. Update it: https://docs.docker.com/engine/install/"
+       fi ;;
+  esac
 }
 
 # Compose for the production-mode stack (`up`, `demo`) or the hot-reload stack (`dev`).
@@ -1169,6 +1181,8 @@ upgrade_failed() {
 # The second half of an upgrade, after the backup (and, with --pull, in the pulled launcher).
 upgrade_apply() {
   UPGRADE_ARCHIVE=$1 UPGRADE_FROM_SCHEMA=$2 UPGRADE_FROM_COMMIT=$3
+  # The pulled launcher may require more of Docker than the one that started the upgrade (v0.1.0 did not check the engine).
+  (need_docker) || upgrade_failed "this version cannot run on this Docker (see above)"
   to_schema=$(code_schema)
   say "Building the new version (schema $to_schema, commit $(git_commit))..."
   build_main || upgrade_failed "the build failed"
