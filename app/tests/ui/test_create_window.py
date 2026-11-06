@@ -311,7 +311,8 @@ class CreateWindow(unittest.TestCase):
             expect(sheet).to_be_visible()
             expect(sheet.get_by_role("heading", name="Search")).to_be_visible()
             chips = sheet.get_by_role("group", name="Search in")
-            self.assertEqual([item.strip() for item in chips.get_by_role("button").all_inner_texts()], ["All", "Tasks", "People", "Agents", "Wiki"])
+            # The sheet opens on its skeleton (#863 rule 6), which already has the "Search" title: the chips are the loaded content, so wait for them.
+            expect(chips.get_by_role("button")).to_have_text(["All", "Tasks", "People", "Agents", "Wiki"])
             for chip in chips.get_by_role("button").all():
                 self.assertGreaterEqual(chip.bounding_box()["height"], 44)
             field = sheet.get_by_role("combobox", name="Jump to")
