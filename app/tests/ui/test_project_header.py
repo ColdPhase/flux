@@ -83,6 +83,8 @@ class ProjectHeader(unittest.TestCase):
         expect(page.get_by_role("heading", level=1, name="Home")).to_be_visible()
         workspace = self.api(page, "POST", "/api/v1/workspaces", {"name": "Garden sensors"})
         project = self.api(page, "POST", f"/api/v1/workspaces/{workspace['id']}/projects", {"name": PROJECT, "visibility": "restricted"})
+        # The Agents view stays an added view until #873 retires it (a new space starts with Conversation, Tasks, Map and Wiki).
+        self.api(page, "POST", f"/api/v1/projects/{project['id']}/views", {"view": "agents"}, status=200)
         type(self).ids["project"] = project["id"]
         type(self).state = page.context.storage_state()
 
@@ -102,7 +104,7 @@ class ProjectHeader(unittest.TestCase):
             page.goto(f"/projects/{self.ids['project']}")
             header = self.header(page)
             expect(header.get_by_role("heading", level=1, name=PROJECT)).to_be_visible()
-            views = header.get_by_role("navigation", name="Project views")
+            views = header.get_by_role("navigation", name="Space views")
             self.assertEqual([text.strip() for text in views.get_by_role("link").all_inner_texts()], ["Conversation", "Map", "Tasks", "Wiki", "Agents"])
             expect(views.get_by_role("link", name="Conversation")).to_have_attribute("aria-current", "page")
             # One row: the views sit beside the name, and no second toolbar row follows the header.
@@ -116,12 +118,12 @@ class ProjectHeader(unittest.TestCase):
             pill = views.locator(".ui-tabs__indicator").bounding_box()
             self.assertAlmostEqual(pill["width"], current["width"], delta=1.5)
             # People and agents as faces, which open "People".
-            faces = header.get_by_role("button", name=re.compile("who can see this project$"))
+            faces = header.get_by_role("button", name=re.compile("who can see this space$"))
             expect(faces.locator(".ui-avatar")).to_have_count(1)
             # Nothing needs Ada in a new project, so no chip claims it.
             expect(header.get_by_role("button", name=re.compile("needs you$"))).to_have_count(0)
             shot(page, f"340-header-1440-{scheme}")
-        page.get_by_role("link", name="Tasks").click()
+        page.get_by_role("link", name="Tasks", exact=True).click()
         expect(views.get_by_role("link", name="Tasks")).to_have_attribute("aria-current", "page")
         faces.click()
         expect(page.get_by_role("complementary", name="Details").get_by_role("region", name="People", exact=True)).to_be_visible()
@@ -135,7 +137,7 @@ class ProjectHeader(unittest.TestCase):
         menu = page.get_by_role("menu", name="More")
         # "Who can see this" is in More only where the header has no room for the faces (a narrow main column).
         items = menu.locator("[role^=menuitem]:visible")
-        self.assertEqual([text.strip() for text in items.locator("span").all_inner_texts()], ["Project details", "What matters", "Focus", "Hide the sidebar"])
+        self.assertEqual([text.strip() for text in items.locator("span").all_inner_texts()], ["Space details", "What matters", "Focus", "Hide the sidebar"])
         # Each key shows next to its action (S18) and is announced as its shortcut.
         self.assertEqual([items.nth(index).get_attribute("aria-keyshortcuts") for index in range(items.count())], [None, None, "F", "["])
         self.assertEqual(items.locator("kbd").all_inner_texts(), ["F", "["])
@@ -153,13 +155,13 @@ class ProjectHeader(unittest.TestCase):
         page = self.page()
         page.goto(f"/projects/{self.ids['project']}")
         header = self.header(page)
-        expect(header.get_by_role("navigation", name="Project views")).to_be_visible()
+        expect(header.get_by_role("navigation", name="Space views")).to_be_visible()
         page.locator("body").press("f")
         pill = header.get_by_role("button", name=re.compile(r"^Focus · notifications paused until \d\d:\d\d"))
         expect(pill).to_be_visible()
         expect(pill).to_have_attribute("aria-keyshortcuts", "F")
         # The header keeps the name and the view; the sidebar folds to its rail.
-        expect(header.get_by_role("navigation", name="Project views")).to_have_count(0)
+        expect(header.get_by_role("navigation", name="Space views")).to_have_count(0)
         expect(header.get_by_text("Conversation", exact=True)).to_be_visible()
         expect(header.get_by_role("button", name="More", exact=True)).to_have_count(0)
         side = page.get_by_role("complementary", name="Sidebar")
@@ -184,7 +186,7 @@ class ProjectHeader(unittest.TestCase):
         composer.blur()
         page.keyboard.press("f")
         expect(pill).to_have_count(0)
-        expect(header.get_by_role("navigation", name="Project views")).to_be_visible()
+        expect(header.get_by_role("navigation", name="Space views")).to_be_visible()
         expect(side.locator(".side--rail")).to_have_count(0)
         self.assertIsNone(self.api(page, "GET", "/api/v1/notification-preferences", status=200)["pause"]["until"])
 
@@ -192,7 +194,7 @@ class ProjectHeader(unittest.TestCase):
         self.ensure_project()
         page = self.page()
         page.goto(f"/projects/{self.ids['project']}")
-        expect(self.header(page).get_by_role("navigation", name="Project views")).to_be_visible()
+        expect(self.header(page).get_by_role("navigation", name="Space views")).to_be_visible()
         page.locator("body").press("f")
         expect(self.header(page).get_by_role("button", name=re.compile("^Focus"))).to_be_visible()
         # A phone reads the same pause (its own header has no F key).
@@ -243,7 +245,7 @@ class ProjectHeader(unittest.TestCase):
         page = self.page()
         page.goto(f"/projects/{self.ids['project']}")
         header = self.header(page)
-        views = header.get_by_role("navigation", name="Project views")
+        views = header.get_by_role("navigation", name="Space views")
         pill = header.get_by_role("button", name=re.compile("^Focus"))
         expect(views).to_be_visible()
         # A read made while nothing is paused arrives after Focus was turned on.
@@ -287,7 +289,7 @@ class ProjectHeader(unittest.TestCase):
         page.goto(f"/projects/{self.ids['project']}")
         header = self.header(page)
         pill = header.get_by_role("button", name=re.compile("^Focus"))
-        expect(header.get_by_role("navigation", name="Project views")).to_be_visible()
+        expect(header.get_by_role("navigation", name="Space views")).to_be_visible()
         page.locator("body").press("f")
         expect(pill).to_be_visible()
         # Move within the app (no reload, no window focus) to the settings and fail a first resume.

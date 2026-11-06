@@ -56,6 +56,8 @@ class WikiFinal(unittest.TestCase):
             return json.loads(response.text() or "{}")
         ws = api("POST", "/api/v1/workspaces", {"name": "Garden"})
         project = api("POST", f"/api/v1/workspaces/{ws['id']}/projects", {"name": "Community garden sensors", "visibility": "restricted"})
+        # The Agents view stays an added view until #873 retires it (a new space starts with Conversation, Tasks, Map and Wiki).
+        api("POST", f"/api/v1/projects/{project['id']}/views", {"view": "agents"})
         cls.project_id = project["id"]
         for title in PAGES:
             doc = api("POST", f"/api/v1/projects/{project['id']}/docs", {"title": title, "body": BODY, "state": "published"},
@@ -258,7 +260,7 @@ class WikiFinal(unittest.TestCase):
                     dialog = page.get_by_role("dialog").filter(has=page.locator(".phone-menu__list"))
                     expect(dialog.get_by_role("heading", level=2)).to_have_text(re.compile(r"^Community garden sensors\s*, views$"))
                     expect(dialog.get_by_role("link", name="Wiki")).to_have_attribute("aria-current", "page")
-                    expect(dialog.get_by_role("button", name="Details, goal and people")).to_be_visible()
+                    expect(dialog.get_by_role("button", name="Details and people")).to_be_visible()
                     page.keyboard.press("Escape")
                     page.set_viewport_size(PHONE)
                 # Edit is the page's one action: a soft fill (quiet buttons, #763), never the dark primary nor the page's own surface.
@@ -275,7 +277,7 @@ class WikiFinal(unittest.TestCase):
         page = self.open(PHONE, "light", touch=True)
         header = page.locator("header.phead")
         chips = page.get_by_role("navigation", name="Wiki pages")
-        expect(page.get_by_role("navigation", name="Project views")).to_have_count(0)
+        expect(page.get_by_role("navigation", name="Space views")).to_have_count(0)
         expect(page.locator(".views:not(.views--none)")).to_have_count(0)
         expect(chips.locator("a, button")).to_have_count(5)
         expect(chips.get_by_role("link", name="New page")).to_have_count(0)
@@ -298,7 +300,7 @@ class WikiFinal(unittest.TestCase):
         expect(views.get_by_role("link")).to_have_text(["Conversation", "Tasks", "Map", "Wiki", "Agents"])
         expect(views.get_by_role("link", name="Wiki")).to_have_attribute("aria-current", "page")
         expect(views.get_by_role("link", name="Conversation")).to_be_focused()
-        expect(dialog.get_by_role("button", name="Details, goal and people")).to_be_visible()
+        expect(dialog.get_by_role("button", name="Details and people")).to_be_visible()
         shot(page, "wiki-phone-390-view-menu")
         page.keyboard.press("Escape")
         expect(dialog).to_have_count(0)
@@ -322,7 +324,7 @@ class WikiFinal(unittest.TestCase):
         # And back to the Wiki on the computer: the row of views is unchanged there.
         page.set_viewport_size(DESKTOP)
         page.goto(f"/projects/{self.project_id}/docs/{self.doc_id}")
-        expect(page.get_by_role("navigation", name="Project views").get_by_role("link", name="Wiki")).to_have_attribute("aria-current", "page")
+        expect(page.get_by_role("navigation", name="Space views").get_by_role("link", name="Wiki")).to_have_attribute("aria-current", "page")
         expect(page.locator("header.top .top__viewmenu")).to_have_count(0)
 
     def test_phone_edit_keeps_lower_document_unobscured(self) -> None:
@@ -430,7 +432,7 @@ class WikiFinal(unittest.TestCase):
         expect(dialog.get_by_role("region", name="Live sessions", exact=True)).to_contain_text("Live sessions are not available here")
         self.assertTrue(page.evaluate("document.documentElement.scrollWidth <= innerWidth"))
         details = dialog.get_by_role("button", name=re.compile(r"^Details"))
-        expect(details).to_contain_text("Project, goal and people")
+        expect(details).to_contain_text("Space and people")
         details.click()
         expect(dialog).to_have_count(0)
         expect(page.locator("#details").get_by_role("heading", name="People", exact=True)).to_be_visible()

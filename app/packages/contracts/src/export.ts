@@ -363,7 +363,7 @@ const baseExportSchema = {
       kind: { enum: ['human', 'agent'] }, id, name: text, access: { enum: ['manager', 'contributor', 'viewer'] },
       workspaceRole: nullable({ enum: ['owner', 'admin', 'member', 'guest'] }),
     })),
-    grants: list(object({ principal: ref('actor'), role: { enum: ['contributor', 'viewer', 'denied'] }, createdAt: time })),
+    grants: list(object({ principal: ref('actor'), role: { enum: ['manager', 'contributor', 'viewer', 'denied'] }, createdAt: time })),
     actors: list(ref('namedActor')),
     conversations: list(ref('conversation')),
     agentThreads: list(ref('agentThread')),

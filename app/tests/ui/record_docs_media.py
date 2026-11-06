@@ -5,7 +5,7 @@ already has the task and the decision of the demo journey. It signs in as Ada Ko
 takes real screenshots of the running application with Playwright, in the Prostota look the app ships:
 
 * the first sign-up page, the first project and the join page (docs/operations/install.md, administration.md),
-* Settings > People on a 1440 px computer and a 390 px phone, light and dark, and creating an invite link
+* Settings › Company on a 1440 px computer and a 390 px phone, light and dark, and creating an invite link
   (docs/operations/administration.md),
 * one small image per README highlight (docs/assets/readme/highlight-*.webp).
 
@@ -124,7 +124,7 @@ def new_project(browser: Browser) -> None:
     window = context(browser)
     page = window.new_page()
     page.goto("/projects/new")
-    name = page.get_by_label("Project name")
+    name = page.get_by_label("Space name")
     expect(name).to_be_visible()
     name.fill("Seed library")
     shoot(page, "first-project", {"x": 484, "y": 96, "width": 712, "height": 470})
@@ -132,33 +132,33 @@ def new_project(browser: Browser) -> None:
 
 
 def people(browser: Browser, ids: dict) -> None:
-    """Settings > People: the list with the four roles and the AI row, on a computer and a phone, light and dark."""
+    """Settings › Company (F-037): the list with the four roles and the guests line, on a computer and a phone, light and dark."""
     for scheme in ("light", "dark"):
         window = context(browser, scheme, size={"width": 1440, "height": 1500})
         page = window.new_page()
-        page.goto(f"/settings/people/{ids['workspace']}")
-        listed = page.get_by_text(re.compile(r"^In Riverside Makers \(demo\) · 4"))
+        page.goto("/settings/company")
+        listed = page.get_by_role("heading", name="People · 4")
         expect(listed).to_be_visible()
-        ai = page.get_by_role("region", name=re.compile("^AI in Riverside Makers"))
-        expect(ai).to_be_visible()
+        guests = page.get_by_text("Guests see only the spaces they’re added to and never have AI.")
+        expect(guests).to_be_visible()
         top = box(listed)["y"] - 24
-        bottom = box(ai)["y"] + box(ai)["height"] + 16
+        bottom = box(guests)["y"] + box(guests)["height"] + 16
         shoot(page, f"people-computer-{scheme}", {"x": 496, "y": top, "width": 680, "height": bottom - top})
         window.close()
         window = context(browser, scheme, phone=True)
         page = window.new_page()
-        page.goto(f"/settings/people/{ids['workspace']}")
-        listed = page.get_by_text(re.compile(r"^In Riverside Makers \(demo\) · 4"))
+        page.goto("/settings/company")
+        listed = page.get_by_role("heading", name="People · 4")
         listed.evaluate("el => { el.style.scrollMarginTop = '88px'; el.scrollIntoView({ block: 'start' }); }")
         shoot(page, f"people-phone-{scheme}")
         window.close()
 
 
 def invite(browser: Browser, ids: dict) -> str:
-    """Creates an invite link in People and returns it; saves the form with the link, then the page it opens."""
+    """Creates an invite link in Settings › Company and returns it; saves the form with the link, then the page it opens."""
     window = context(browser, size={"width": 1440, "height": 1500})
     page = window.new_page()
-    page.goto(f"/settings/people/{ids['workspace']}")
+    page.goto("/settings/company?invite=1")
     heading = page.get_by_role("heading", name="Invite with a link")
     expect(heading).to_be_visible()
     page.get_by_role("button", name="Create invite link").click()
@@ -233,7 +233,7 @@ def highlights(browser: Browser, ids: dict, request: APIRequestContext) -> None:
     window = context(browser)
     page = window.new_page()
     page.goto(f"/projects/{ids['project']}")
-    page.get_by_role("navigation", name="Project views").get_by_role("link", name=re.compile("^Map")).click()
+    page.get_by_role("navigation", name="Space views").get_by_role("link", name=re.compile("^Map")).click()
     sketch = page.get_by_role("link", name=re.compile("^Where the sensors go"))
     if sketch.count():
         sketch.first.click()

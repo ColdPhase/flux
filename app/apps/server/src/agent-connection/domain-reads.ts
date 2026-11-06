@@ -65,9 +65,7 @@ export function registerAgentDomainReads(server: AgentToolRegistrar, db: Databas
     for (const id of [...connection.selectedProjectIds].sort()) {
       await requireProject(id);
       const project = await getProject(principal, id, tx, accessPorts);
-      // The project's goal is readable, never writable, through MCP (#520): one sentence, and whether a person marked it reached.
-      projects.push({ id: project.id, name: project.name, workspaceId: project.workspaceId,
-        goal: project.goal ? { title: project.goal.title, reachedAt: project.goal.reachedAt } : null });
+      projects.push({ id: project.id, name: project.name, workspaceId: project.workspaceId });
     }
     return { projects };
   }));

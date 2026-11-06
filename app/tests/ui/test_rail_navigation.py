@@ -107,7 +107,7 @@ class RailNavigation(unittest.TestCase):
                 with self.subTest(engine=engine, coarse=coarse):
                     page, ids = self.setup_owner(engine, coarse=coarse)
                     rail = page.locator(".side--rail")
-                    sketchbook = rail.get_by_role("link", name="Sketchbook", exact=True)
+                    sketchbook = rail.get_by_role("link", name="My map", exact=True)
                     self.assertEqual(sketchbook.count(), 1, "the rail must preserve Sketchbook")
                     self.assert_native_target(page, sketchbook, coarse)
                     sketchbook.press("Enter")

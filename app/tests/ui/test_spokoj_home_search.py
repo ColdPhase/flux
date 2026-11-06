@@ -107,7 +107,7 @@ class SpokojHomeSearch(unittest.TestCase):
             page.goto("/")
             expect(page.get_by_role("heading", level=2, name=re.compile("Good "))).to_be_visible()
             self.assertEqual(page.locator(".top__views").count(), 0)
-            for name in ("All my tasks", "Sketchbook", "Wiki"):
+            for name in ("All my tasks", "My map", "Wiki"):
                 expect(page.locator(".home__more").get_by_role("link", name=name, exact=True)).to_be_visible()
             self.assertLessEqual(page.evaluate("document.documentElement.scrollWidth"), page.evaluate("window.innerWidth"))
         page = self.page()
@@ -122,8 +122,8 @@ class SpokojHomeSearch(unittest.TestCase):
     def test_03_the_sketchbook_is_named_and_hides_empty_sketches(self) -> None:
         page = self.page()
         page.goto("/map")
-        expect(page.get_by_role("heading", level=1, name="Sketchbook", exact=True)).to_be_visible()
-        expect(page.get_by_text("Only you can see this until you share or move something to a project.")).to_be_visible()
+        expect(page.get_by_role("heading", level=1, name="My map", exact=True)).to_be_visible()
+        expect(page.get_by_text("Only you can see this until you share or move something to a space.")).to_be_visible()
         sketches = page.get_by_role("list", name="Your sketches")
         expect(sketches).to_contain_text("Bed layout")
         expect(sketches).to_contain_text("2 thoughts")
@@ -132,7 +132,7 @@ class SpokojHomeSearch(unittest.TestCase):
         shot(page, "spokoj-sketchbook-desktop")
         phone = self.page(phone=True)
         phone.goto("/map")
-        expect(phone.get_by_role("heading", level=1, name="Sketchbook", exact=True)).to_be_visible()
+        expect(phone.get_by_role("heading", level=1, name="My map", exact=True)).to_be_visible()
         expect(phone.get_by_role("list", name="Your sketches").get_by_role("link", name=re.compile("Untitled sketch"))).to_have_count(0)
         shot(phone, "spokoj-sketchbook-phone")
 
@@ -214,7 +214,7 @@ class SpokojHomeSearch(unittest.TestCase):
                 expect(page.get_by_role("heading", level=2, name=re.compile("Good "))).to_be_visible()
                 shot(page, f"spokoj-home-{size}-{theme}")
                 page.goto("/map")
-                expect(page.get_by_role("heading", level=1, name="Sketchbook", exact=True)).to_be_visible()
+                expect(page.get_by_role("heading", level=1, name="My map", exact=True)).to_be_visible()
                 expect(page.get_by_role("list", name="Your sketches")).to_contain_text("Bed layout")
                 shot(page, f"spokoj-sketchbook-{size}-{theme}")
                 page.goto("/search?q=radio")

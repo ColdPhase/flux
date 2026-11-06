@@ -1,6 +1,5 @@
-"""Sidebar project rows (Studio 11.6, #136): two projects with one name show their workspace on a
-compact second line, so the name stays readable and even identical long names stay distinguishable
-(independent delta reviews of #184, B3 and B2).
+"""Sidebar space rows (Studio 11.6, #136; F-037): one flat list of spaces, one line each, with no workspace or group line
+(one Flux is one company). A short name stays whole; a long one is cut with its full name as the row's title.
 
 Runs with the other tests/ui journeys through scripts/check_ui.sh against the running Compose app.
 """
@@ -20,12 +19,9 @@ EMAIL = f"ada.names+{int(time.time() * 1000)}@example.test"
 SHORT = "Gesture lamp"
 LONG = "Gesture lamp for the reading corner upstairs"
 ROWS = """(name) => [...document.querySelectorAll('.side__project')].filter((row) => row.querySelector('.side__label').textContent === name).map((row) => {
-  const label = row.querySelector('.side__label'), sub = row.querySelector('.side__sub');
-  const l = label.getBoundingClientRect(), w = sub.getBoundingClientRect(), r = row.getBoundingClientRect();
-  return { truncated: label.scrollWidth > label.clientWidth + 0.5, workspace: sub.textContent, workspaceCut: sub.scrollWidth > sub.clientWidth + 0.5,
-    belowName: w.top >= l.bottom - 1, height: r.height, fontSize: parseFloat(getComputedStyle(sub).fontSize), title: row.title };
+  const label = row.querySelector('.side__label'), r = row.getBoundingClientRect();
+  return { truncated: label.scrollWidth > label.clientWidth + 0.5, sub: !!row.querySelector('.side__sub'), height: r.height, title: row.title };
 })"""
-WORKSPACES = ("Northern design cooperative", "Lamp studio", "Lamp studio Berlin")
 
 
 class SidebarNames(unittest.TestCase):
@@ -59,7 +55,7 @@ class SidebarNames(unittest.TestCase):
         self.assertEqual(response.status, 201, response.text())
         return json.loads(response.text())
 
-    def test_01_the_name_stays_whole_and_the_workspace_line_tells_identical_names_apart(self) -> None:
+    def test_01_one_line_per_space_with_no_workspace_line(self) -> None:
         page = self.page()
         page.goto("/sign-up")
         page.get_by_label("Name").fill("Ada Names")
@@ -68,56 +64,23 @@ class SidebarNames(unittest.TestCase):
         page.get_by_role("button", name="Create account").click()
         expect(page.get_by_role("heading", level=1, name="Home")).to_be_visible()
         type(self).state = page.context.storage_state()
-        for workspace in WORKSPACES:
-            ws = self.api(page, "POST", "/api/v1/workspaces", {"name": workspace})
-            for name in (SHORT, LONG):
-                self.api(page, "POST", f"/api/v1/workspaces/{ws['id']}/projects", {"name": name, "visibility": "restricted"})
-        # The phone has no sidebar since #341; the 44px rows of its Projects list are in test_phone_final.
-        for phone, dark in ((False, False), (False, True)):
-            view = self.page(phone=phone, dark=dark)
+        ws = self.api(page, "POST", "/api/v1/workspaces", {"name": "Northern design cooperative"})
+        for name in (SHORT, LONG):
+            self.api(page, "POST", f"/api/v1/workspaces/{ws['id']}/projects", {"name": name, "visibility": "restricted"})
+        for dark in (False, True):
+            view = self.page(dark=dark)
             view.goto("/")
-            if phone:
-                view.get_by_role("button", name="Open navigation").tap()
-            expect(view.locator(".side__project .side__sub").first).to_be_visible()
+            side = view.get_by_role("navigation", name="Spaces")
+            expect(side.get_by_role("link", name=SHORT, exact=True)).to_be_visible()
             short, long = view.evaluate(ROWS, SHORT), view.evaluate(ROWS, LONG)
-            self.assertEqual([len(short), len(long)], [3, 3], "every project is listed")
+            self.assertEqual([len(short), len(long)], [1, 1], "every space is listed once")
             for row in short + long:
-                self.assertTrue(row["belowName"], f"the workspace is its own line under the name: {row}")
-                self.assertFalse(row["workspaceCut"], f"the whole workspace name is visible: {row}")
-                self.assertGreaterEqual(row["fontSize"], 10, "the workspace line keeps the metadata text size (--fs-xs)")
-                self.assertGreaterEqual(row["height"], 44 if phone else 40, f"one comfortable row: {row}")
-                self.assertIn(row["workspace"], row["title"], "the full name and workspace are the row's title")
-            for row in short:
-                self.assertFalse(row["truncated"], f"a short name is never cut: {row}")
-            # Identical long names differ by what is visible, not only by a hover title.
-            self.assertEqual(sorted(row["workspace"] for row in long), sorted(WORKSPACES))
-            shot(view, f"sidebar-same-names-{'phone' if phone else 'desktop'}{'-dark' if dark else ''}")
-            if phone and not dark:
-                # The longer list still scrolls inside the drawer: Messages below it stays reachable.
-                drawer = view.get_by_role("dialog")
-                messages = drawer.get_by_text("Messages", exact=True)
-                messages.scroll_into_view_if_needed()
-                expect(messages).to_be_in_viewport()
-        # A two-line row as the current project keeps its workspace line, and its raised pill (the row's
-        # own, or the travelling highlight once settled on it) covers exactly that row (F-026 §4).
-        current = self.page()
-        current.goto("/")
-        current.locator('.side__project[title="Gesture lamp · Lamp studio Berlin"]').click()
-        row = current.locator(".side__project.is-open")
-        expect(row).to_contain_text("Lamp studio Berlin")
-        measure = """el => { const r = el.getBoundingClientRect(), glide = el.closest('.side__list')?.querySelector('.side__glide');
-          const pill = glide && getComputedStyle(glide).opacity === '1' ? glide.getBoundingClientRect() : r;
-          return { top: r.top, row: r.height, pillTop: pill.top, pill: pill.height }; }"""
-        for _ in range(20):
-            marker = row.evaluate(measure)
-            if abs(marker["pillTop"] - marker["top"]) <= 1 and abs(marker["pill"] - marker["row"]) <= 1:
-                break
-            current.wait_for_timeout(100)
-        self.assertGreater(marker["row"], 40, f"a two-line row: {marker}")
-        self.assertAlmostEqual(marker["pillTop"], marker["top"], delta=1, msg=f"the pill sits on the row: {marker}")
-        self.assertAlmostEqual(marker["pill"], marker["row"], delta=1, msg=f"the pill covers the whole row: {marker}")
-        shot(current, "sidebar-same-names-current-desktop")
-
+                self.assertFalse(row["sub"], f"no workspace line under the name: {row}")
+                self.assertGreaterEqual(row["height"], 32, f"one comfortable row: {row}")
+            self.assertFalse(short[0]["truncated"], "a short name is never cut")
+            self.assertEqual(long[0]["title"], LONG, "the full name is the row's title")
+            expect(view.locator(".side__sub")).to_have_count(0)
+            shot(view, f"sidebar-spaces-desktop{'-dark' if dark else ''}")
 
 if __name__ == "__main__":
     unittest.main()

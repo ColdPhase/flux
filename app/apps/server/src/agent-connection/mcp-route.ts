@@ -24,7 +24,7 @@ import { requireLiveRun, runTokenClaims, type RunTokenClaims } from './run-token
 async function aiBlockedResponse(request: Request): Promise<Response> {
   const id = await request.clone().json().then((body: { id?: unknown }) => (typeof body?.id === 'string' || typeof body?.id === 'number' ? body.id : null))
     .catch(() => null);
-  return new Response(JSON.stringify({ jsonrpc: '2.0', error: { code: -32000, message: 'AI is turned off in this workspace',
+  return new Response(JSON.stringify({ jsonrpc: '2.0', error: { code: -32000, message: 'AI is turned off in this company',
     data: { code: 'WORKSPACE_AI_BLOCKED' } }, id }), { status: 200, headers: { 'content-type': 'application/json', 'cache-control': 'no-store' } });
 }
 

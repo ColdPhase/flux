@@ -219,7 +219,7 @@ export function createWorkContributions(ports: TaskDiscussionPorts): WorkContrib
       const rows: WorkRecord[] = [];
       for (const workId of prepared.workIds) {
         const row = await ports.work.findWork(workId);
-        if (!row || row.projectId !== prepared.projectId) throw new RuleViolationError('The work is not part of this project', 'LINK_TARGET_NOT_FOUND');
+        if (!row || row.projectId !== prepared.projectId) throw new RuleViolationError('The work is not part of this space', 'LINK_TARGET_NOT_FOUND');
         rows.push(row);
       }
       prepared.locked = rows;

@@ -53,7 +53,7 @@ function uploadProblem(error: unknown) {
   if (error instanceof ApiError) {
     if (error.status === 403 || error.status === 404) return 'You can no longer add to this map, so the image was not uploaded.';
     if (error.status === 413) return 'That image is larger than 5 MB, so it was not uploaded.';
-    if (error.code === 'UPLOAD_QUOTA_EXCEEDED') return 'Too many of your uploads are waiting in this project; unused ones expire after 7 days. Nothing was pasted.';
+    if (error.code === 'UPLOAD_QUOTA_EXCEEDED') return 'Too many of your uploads are waiting in this space; unused ones expire after 7 days. Nothing was pasted.';
   }
   if (error instanceof NetworkError) return 'Flux could not be reached, so the image was not uploaded. Paste it again.';
   return 'The image could not be uploaded, so nothing was pasted. Paste it again.';
@@ -439,7 +439,7 @@ function SketchEditor({ sketchId, projectId, dmId, back = '/map', doc }: ViewPro
 
   const pasteImage = async (file: Blob) => {
     if (!sketch) return;
-    if (sketch.scope !== 'project' || !sketch.projectId) { say('Images can be added to a project’s maps only. Paste text or a link here instead.'); return; }
+    if (sketch.scope !== 'project' || !sketch.projectId) { say('Images can be added to a space’s maps only. Paste text or a link here instead.'); return; }
     const refusal = imageRefusal(file);
     if (refusal) { say(refusal); return; }
     const projectId = sketch.projectId;
@@ -759,9 +759,9 @@ function SketchEditor({ sketchId, projectId, dmId, back = '/map', doc }: ViewPro
             )}
             <span className="sk-aud" title="Who can see this map"><Icon name={sketch.scope === 'project' ? 'people' : 'lock'} size={12} />{audience(sketch, me.user.id, projectName, dmAudience)}</span>
           </p>
-          {/* #96: a DM sketch can be copied into a project, after an exact preview in Details. */}
+          {/* #96: a DM sketch can be copied into a space, after an exact preview in Details. */}
           {sketch.scope === 'dm' && canWrite ? (
-            <Button variant="secondary" className="sk-promote" onClick={() => openDetails({ kind: 'promote-sketch', sketchId: sketch.id, title: sketch.title })}>Make it a project…</Button>
+            <Button variant="secondary" className="sk-promote" onClick={() => openDetails({ kind: 'promote-sketch', sketchId: sketch.id, title: sketch.title })}>Make it a space…</Button>
           ) : null}
           {!phone || !mapMode || (!sketch.thoughts.length && !canWrite) ? viewModes : null}
         </div>
@@ -785,7 +785,7 @@ function SketchEditor({ sketchId, projectId, dmId, back = '/map', doc }: ViewPro
     <>
         {doc.privateMovement ? <details className="editing-map-recovery"><summary>An unfinished movement is kept privately</summary><p>Compare these positions with the current thoughts before starting a new movement. This copy is not shared automatically.</p><ul>{doc.privateMovement.positions.map((position) => <li key={position.id}>{quote(find(position.id)?.text ?? 'Unavailable thought')} · x {Math.round(position.x)}, y {Math.round(position.y)}{position.width !== undefined ? ` · width ${Math.round(position.width)}, height ${Math.round(position.height ?? 0)}` : ''}</li>)}</ul><Button variant="quiet" onClick={doc.discardPrivateMovement}>Discard private movement copy</Button></details> : null}
         {sketch.copies.length ? (
-          <ul className="sk-copies" aria-label="Project copies">
+          <ul className="sk-copies" aria-label="Space copies">
             {sketch.copies.map((copy) => (
               <li key={copy.sketchId}><Icon name="check" size={12} />Copied to <RefLink to={`/projects/${copy.projectId}/map/${copy.sketchId}`}>{copy.projectName}</RefLink> · {when(copy.copiedAt)}<span className="sk-origin__long"> · later changes here stay in this conversation</span><span className="sk-origin__short"> · not synced</span></li>
             ))}
@@ -933,7 +933,7 @@ function SketchEditor({ sketchId, projectId, dmId, back = '/map', doc }: ViewPro
       <div className="sk">
         {head}
         {sketch.copies.length ? (
-          <ul className="sk-copies" aria-label="Project copies">
+          <ul className="sk-copies" aria-label="Space copies">
             {sketch.copies.map((copy) => (
               <li key={copy.sketchId}><Icon name="check" size={12} />Copied to <RefLink to={`/projects/${copy.projectId}/map/${copy.sketchId}`}>{copy.projectName}</RefLink> · {when(copy.copiedAt)}<span className="sk-origin__long"> · later changes here stay in this conversation</span><span className="sk-origin__short"> · not synced</span></li>
             ))}

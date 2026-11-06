@@ -1,5 +1,5 @@
 import {
-  WORKSPACES_PATH, projectPath, workspaceProjectsPath, type ProjectTemplate, type ProjectViewId, projectViewsPath, type WorkspaceMember, type Page, type Project, type Workspace, workspaceMembersPath, IDEMPOTENCY_KEY_HEADER,
+  WORKSPACES_PATH, projectPath, workspaceProjectsPath, type ProjectViewId, projectViewsPath, type WorkspaceMember, type Page, type Project, workspaceMembersPath, IDEMPOTENCY_KEY_HEADER,
 } from '@flux/contracts';
 import { request } from '../api/client';
 import { isWorkspaceLocked, type EncryptedWorkspace } from '../encryption/api';
@@ -33,11 +33,9 @@ export async function listAccessibleProjects(signal?: AbortSignal) {
   }
   return { workspaces, lockedWorkspaces, projects };
 }
-// First-run creations carry the intent's Idempotency-Key: a retry after a lost 201 replays it instead of duplicating.
-export const createWorkspace = (name: string, idempotencyKey: string) =>
-  request<Workspace>(WORKSPACES_PATH, { method: 'POST', body: { name }, headers: { [IDEMPOTENCY_KEY_HEADER]: idempotencyKey } });
-export const createProject = (workspaceId: string, name: string, template: ProjectTemplate, idempotencyKey: string) =>
-  request<Project>(workspaceProjectsPath(workspaceId), { method: 'POST', body: { name, visibility: 'restricted', template }, headers: { [IDEMPOTENCY_KEY_HEADER]: idempotencyKey } });
+// A new space carries the intent's Idempotency-Key: a retry after a lost 201 replays it instead of making a second one.
+export const createProject = (workspaceId: string, name: string, idempotencyKey: string) =>
+  request<Project>(workspaceProjectsPath(workspaceId), { method: 'POST', body: { name, visibility: 'restricted' }, headers: { [IDEMPOTENCY_KEY_HEADER]: idempotencyKey } });
 /** Adds Map, Wiki or Agents to a project (#351); adding one it has changes nothing. */
 export const addProjectView = (projectId: string, view: ProjectViewId) =>
   request<Project>(projectViewsPath(projectId), { method: 'POST', body: { view }, headers: { [IDEMPOTENCY_KEY_HEADER]: crypto.randomUUID() } });

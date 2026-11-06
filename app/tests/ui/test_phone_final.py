@@ -52,6 +52,8 @@ class PhoneFinal(unittest.TestCase):
         cls.call(page, "POST", f"/api/v1/workspaces/{cls.workspace['id']}/members", {"email": cls.kai_email, "role": "member"}, 201)
         cls.project = cls.call(page, "POST", f"/api/v1/workspaces/{cls.workspace['id']}/projects",
             {"name": "Community garden sensors", "visibility": "restricted"}, 201)
+        # The Agents view stays an added view until #873 retires it (a new space starts with Conversation, Tasks, Map and Wiki).
+        cls.call(page, "POST", f"/api/v1/projects/{cls.project['id']}/views", {"view": "agents"})
         cls.second_project = cls.call(page, "POST", f"/api/v1/workspaces/{cls.workspace['id']}/projects",
             {"name": "Riverside seed library", "visibility": "restricted"}, 201)
         for title, status in (("Order six capacitive probes", "in_progress"), ("Ask the school for two ESP32 kits", "open")):
@@ -132,7 +134,7 @@ class PhoneFinal(unittest.TestCase):
                 bar = page.get_by_role("navigation", name="Main places")
                 expect(bar).to_be_visible()
                 links = bar.get_by_role("link")
-                self.assertEqual([text.strip() for text in links.all_inner_texts()], ["Home", "Projects", "Inbox"])
+                self.assertEqual([text.strip() for text in links.all_inner_texts()], ["Home", "Spaces", "Inbox"])
                 expect(bar.get_by_role("link", name="Messages")).to_have_count(0)
                 capsule = self.box(bar)
                 self.assertGreaterEqual(capsule["height"], 56, "a capsule, not a thin bar")
@@ -146,7 +148,7 @@ class PhoneFinal(unittest.TestCase):
                 self.assertGreaterEqual(round_box["width"], 44)
                 self.assertAlmostEqual(round_box["y"], capsule["y"], delta=6, msg="beside the capsule")
                 self.assertGreater(round_box["x"], capsule["x"] + capsule["width"] - 2)
-                for name in ("Home", "Projects", "Inbox"):
+                for name in ("Home", "Spaces", "Inbox"):
                     item = self.box(bar.get_by_role("link", name=re.compile(f"^{name}")))
                     self.assertGreaterEqual(min(item["width"], item["height"]), 44, name)
                 expect(bar.locator('[aria-current="page"]')).to_contain_text("Home")
@@ -164,13 +166,13 @@ class PhoneFinal(unittest.TestCase):
                 page = self.page(size, dark)
                 page.goto("/")
                 bar = page.get_by_role("navigation", name="Main places")
-                for name, path in (("Inbox", "/inbox"), ("Projects", "/projects"), ("Home", "/")):
+                for name, path in (("Inbox", "/inbox"), ("Spaces", "/projects"), ("Home", "/")):
                     bar.get_by_role("link", name=re.compile(f"^{name}")).click()
                     expect(page).to_have_url(f"{ORIGIN}{path}")
                     expect(bar.get_by_role("link", name=re.compile(f"^{name}"))).to_have_attribute("aria-current", "page")
                     expect(bar.locator('[aria-current="page"]')).to_have_count(1)
                 page.goto("/projects")
-                expect(page.get_by_role("heading", level=1, name="Projects")).to_be_visible()
+                expect(page.get_by_role("heading", level=1, name="Spaces")).to_be_visible()
                 expect(page.get_by_role("heading", name="Direct messages")).to_be_visible()
                 row = page.get_by_role("link", name=re.compile("Kai Tanaka"))
                 expect(row).to_be_visible()
@@ -236,7 +238,7 @@ class PhoneFinal(unittest.TestCase):
         page.goto("/inbox")
         page.get_by_role("button", name="Create", exact=True).click()
         sheet = page.get_by_role("dialog", name="Create")
-        choose(sheet.get_by_label("Project"), self.project["id"])
+        choose(sheet.get_by_label("Space"), self.project["id"])
         sheet.get_by_role("button", name=re.compile("^Decision")).click()
         expect(page).to_have_url(f"{ORIGIN}/projects/{self.project['id']}")
         expect(page.get_by_role("heading", name="Propose a decision")).to_be_visible()
@@ -251,7 +253,7 @@ class PhoneFinal(unittest.TestCase):
         page.goto("/projects")
         page.get_by_role("button", name="Create", exact=True).click()
         sheet = page.get_by_role("dialog", name="Create")
-        choose(sheet.get_by_label("Project"), self.project["id"])
+        choose(sheet.get_by_label("Space"), self.project["id"])
         name = f"bed-map-{uuid.uuid4().hex[:6]}.txt"
         with page.expect_file_chooser() as chooser:
             sheet.get_by_role("button", name=re.compile("^File or link")).click()
@@ -278,7 +280,7 @@ class PhoneFinal(unittest.TestCase):
             with self.subTest(width=size["width"], dark=dark):
                 page = self.page(size, dark)
                 page.goto(f"/projects/{self.project['id']}/tasks")
-                expect(page.get_by_role("navigation", name="Project views")).to_have_count(0)
+                expect(page.get_by_role("navigation", name="Space views")).to_have_count(0)
                 expect(page.locator(".views, .state-row")).to_have_count(0)
                 heading = page.get_by_role("heading", level=1, name=re.compile("Community garden sensors"))
                 expect(heading).to_be_visible()
@@ -290,7 +292,7 @@ class PhoneFinal(unittest.TestCase):
                 menu = page.get_by_role("dialog", name=re.compile("Community garden sensors"))
                 expect(menu).to_be_visible()
                 labels = [text.strip().split("\n")[0] for text in menu.locator(".phone-menu__item").all_inner_texts()]
-                self.assertEqual(labels, ["Conversation", "Tasks", "Map", "Wiki", "Agents", "Details, goal and people"])
+                self.assertEqual(labels, ["Conversation", "Tasks", "Map", "Wiki", "Agents", "Details and people"])
                 expect(menu.get_by_text("Decisions")).to_have_count(0)
                 expect(menu.locator('[aria-current="page"]')).to_have_count(1)
                 expect(menu.locator('[aria-current="page"]')).to_contain_text("Tasks")
@@ -303,7 +305,7 @@ class PhoneFinal(unittest.TestCase):
                 menu.get_by_role("link", name=re.compile("^Map")).click()
                 expect(page).to_have_url(re.compile(r"/map$"))
                 page.get_by_role("heading", level=1).get_by_role("button").click()
-                page.get_by_role("button", name="Details, goal and people").click()
+                page.get_by_role("button", name="Details and people").click()
                 expect(page.get_by_role("dialog", name="Details")).to_be_visible()
                 details = page.get_by_role("dialog", name="Details")
                 details.get_by_role("button", name="What matters").click()
@@ -373,7 +375,7 @@ class PhoneFinal(unittest.TestCase):
         page.get_by_role("link", name="Settings and account").click()
         expect(page).to_have_url(f"{ORIGIN}/settings")
         expect(page.get_by_role("heading", level=1, name="Settings")).to_be_visible()
-        for link, path, shell_title, content_title in (("All my tasks", "/tasks", "Your tasks", "Nothing is waiting for you"), ("Wiki", "/docs", "Wiki", "No docs yet"), ("Sketchbook", "/map", "Sketchbook", "Start a sketch")):
+        for link, path, shell_title, content_title in (("All my tasks", "/tasks", "My tasks", "Nothing is waiting for you"), ("Wiki", "/docs", "Wiki", "No docs yet"), ("My map", "/map", "My map", "Start a sketch")):
             page.goto("/")
             page.locator(".home__more").get_by_role("link", name=link).click()
             expect(page).to_have_url(f"{ORIGIN}{path}")
@@ -438,7 +440,7 @@ class PhoneFinal(unittest.TestCase):
         page.reload()
         page.get_by_role("button", name="Create", exact=True).click()
         page.get_by_role("dialog", name="Create").get_by_role("button", name="Task", exact=True).click()
-        project_picker = page.get_by_role("dialog", name="New task").get_by_role("combobox", name="Project")
+        project_picker = page.get_by_role("dialog", name="New task").get_by_role("combobox", name="Space")
         expect_value(project_picker, self.second_project["id"])
         field = page.get_by_role("dialog", name="New task").get_by_label("Title", exact=True)
         expect(field).to_have_value(title)

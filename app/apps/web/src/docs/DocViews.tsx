@@ -52,7 +52,7 @@ function useRefresh() {
 }
 
 function Audience({ project }: { project: Project }) {
-  return <p className="doc-audience"><Icon name="lock" size={13} />{project.name} · Everyone with project access can read these pages</p>;
+  return <p className="doc-audience"><Icon name="lock" size={13} />{project.name} · Everyone with space access can read these pages</p>;
 }
 
 /** A doc of another project is not found here, whatever its id. */
@@ -135,10 +135,10 @@ export function WorkspaceDocs() {
         {docs === null && !failed ? <p className="doc-muted" aria-busy="true">Loading docs…</p> : null}
         {docs && !docs.length ? (
           <div className="view-empty"><EmptyState icon="doc" title="No docs yet">
-            <p>Notes worth keeping, what you learned from an experiment, and how things work, written with the people in your projects, will collect here.</p>
+            <p>Notes worth keeping, what you learned from an experiment, and how things work, written with the people in your spaces, will collect here.</p>
           </EmptyState></div>
         ) : null}
-        {docs?.length ? <section className="doc-group" aria-labelledby="docs-all"><h2 className="doc-group__h" id="docs-all">Wiki pages in your projects <span>{docs.length}</span></h2><ul className="doc-ul">{docs.map((doc) => <DocRow key={doc.id} doc={doc} showProject />)}</ul></section> : null}
+        {docs?.length ? <section className="doc-group" aria-labelledby="docs-all"><h2 className="doc-group__h" id="docs-all">Wiki pages in your spaces <span>{docs.length}</span></h2><ul className="doc-ul">{docs.map((doc) => <DocRow key={doc.id} doc={doc} showProject />)}</ul></section> : null}
       </div>
     </div>
   );
@@ -330,7 +330,7 @@ function DocReading({ live }: { live: LiveReadingState | null }) {
                   through the prose, so a tap on a card's text opens it in place instead of following its address (#763 P2-5). */}
               <span hidden onClick={onClick}>{marks}</span></>
             : <p className="doc-muted doc-empty">This page has no text yet.{writable && current ? <> <Link to={edit}>Start writing</Link></> : null}</p>}
-          {missing ? <p className="doc-notice"><Icon name="alert" size={14} />{missing === 1 ? 'One link points' : `${missing} links point`} to something that is not in this project or no longer exists. It shows as plain text.</p> : null}
+          {missing ? <p className="doc-notice"><Icon name="alert" size={14} />{missing === 1 ? 'One link points' : `${missing} links point`} to something that is not in this space or no longer exists. It shows as plain text.</p> : null}
           <div className="doc-foot">
             <LinkList title="Added from" links={sources} end="to" projectId={project.id} />
             {current ? <LinkList title="Links in this page" links={mentions} end="to" projectId={project.id} /> : null}

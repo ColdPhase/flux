@@ -281,7 +281,7 @@ SCREENS = [
     Screen("settings", "/settings"),
     Screen("settings-appearance", "/settings/appearance"),
     Screen("settings-account", "/settings/account"),
-    Screen("settings-people", "/settings/people/{ws}"),
+    Screen("settings-company", "/settings/company"),
     Screen("settings-notifications", "/settings/notifications"),
     Screen("settings-agents", "/settings/agents"),
     Screen("settings-connect", "/settings/agents/connect"),

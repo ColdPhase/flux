@@ -48,7 +48,7 @@ def add_task(page: Page, title: str) -> None:
 
 def window(page: Page) -> Locator:
     """The Create window whichever tab it shows: its name follows the tab ("New task", "New thought", …)."""
-    return page.get_by_role("dialog", name=re.compile(r"^New (task|thought|message|decision|project)$"))
+    return page.get_by_role("dialog", name=re.compile(r"^New (task|thought|message|decision|space)$"))
 
 
 def kind_tab(page: Page, name: str) -> Locator:

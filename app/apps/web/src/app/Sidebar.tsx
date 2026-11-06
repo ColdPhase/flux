@@ -26,7 +26,7 @@ export interface SidebarProps {
   onToggleCollapsed?: () => void;
 }
 
-/** A project's letter tile, as the final design draws projects (F-026 §4). */
+/** A space's letter tile, as the final design draws them (F-026 §4). */
 function ProjectTile({ name, size = 20 }: { name: string; size?: number }) {
   return <span className="side__pj" style={{ width: size, height: size }} aria-hidden="true">{(name.trim()[0] ?? '?').toUpperCase()}</span>;
 }
@@ -37,10 +37,10 @@ function LockTile({ size = 20 }: { size?: number }) {
 }
 
 /**
- * The sidebar (F-026 §4): the logo and the collapse control; New (C) and Search (⌘K); Home, Inbox
- * and Sketchbook; Projects, then Messages; the working agent with Stop; the account and Settings.
- * Collapsed, it is the 64px rail of icons. A project has one conversation (UI116-1): its roots and
- * threads live in its Conversation view, not in this list. A project never reveals another's contents.
+ * The sidebar (F-026 §4, F-037): the logo and the collapse control; New (C) and Search (⌘K); Home, Inbox, My tasks
+ * and My map; Spaces, one flat list of the spaces the person was added to; then Messages; the working agent with Stop;
+ * the account and Settings. Collapsed, it is the 64px rail of icons. A space has one conversation (UI116-1): its roots
+ * and threads live in its Conversation view, not in this list. A space never reveals another's contents.
  */
 export function Sidebar({ projects, directMessages, user, session, onClose, titleId, inboxUnread = 0, collapsed = false, onToggleCollapsed }: SidebarProps) {
   const { openSearch, openCreate } = useShellActions();
@@ -53,9 +53,10 @@ export function Sidebar({ projects, directMessages, user, session, onClose, titl
   const news = useProjectNews(useMemo(() => projects.map((project) => project.id), [projects]));
   const navigate = onClose ? () => onClose() : undefined;
   const sketchbook = place === 'home' && /^\/map(\/|$)/.test(location.pathname);
-  // Home is current only on Home (#763 NV-1): a page reached from it (Your tasks, the Wiki, New project, a missing page) is no
-  // place of the sidebar, so nothing is marked current there.
+  // Home is current only on Home (#763 NV-1): a page reached from it (the Wiki, New space, a missing page) is no place
+  // of the sidebar, so nothing is marked current there.
   const home = location.pathname === '/';
+  const myTasks = location.pathname === '/tasks';
   const inbox = /^\/inbox(\/|$)/.test(location.pathname);
   // Subtle navigation feedback (#155, UI116-5): the highlight travels to a chosen project at once, while
   // the project loads; the row becomes current (aria-current) when its content shows. A newer choice
@@ -114,10 +115,11 @@ export function Sidebar({ projects, directMessages, user, session, onClose, titl
           <Link to="/inbox" className="side__ib" aria-label={inboxUnread ? `Inbox, ${inboxUnread} new` : 'Inbox'} aria-current={inbox ? 'page' : undefined}>
             <Icon name="inbox" size={18} />{inboxUnread ? <span className="side__count side__count--rail" aria-hidden="true">{inboxUnread}</span> : null}
           </Link>
-          <Link to="/map" className="side__ib" aria-label="Sketchbook" title="Only you can see your sketchbook" aria-current={sketchbook ? 'page' : undefined}><Icon name="edit" size={18} /></Link>
+          <Link to="/tasks" className="side__ib" aria-label="My tasks" aria-current={myTasks ? 'page' : undefined}><Icon name="tasks" size={18} /></Link>
+          <Link to="/map" className="side__ib" aria-label="My map" title="Only you can see your map" aria-current={sketchbook ? 'page' : undefined}><Icon name="map" size={18} /></Link>
         </nav>
         <div className="side__rail-scroll">
-        <nav className="side__rail-projects" aria-label="Projects" ref={railProjects}>
+        <nav className="side__rail-projects" aria-label="Spaces" ref={railProjects}>
           <span className="side__rail-glide" ref={railGlide} aria-hidden="true" />
           {projects.map((project) => (
             <NavLink key={project.id} to={`/projects/${project.id}`} end={false} className={`side__rail-project${project.id === projectId ? ' is-open' : ''}`} aria-label={project.name} title={project.name}
@@ -177,8 +179,11 @@ export function Sidebar({ projects, directMessages, user, session, onClose, titl
             <Icon name="inbox" className="side__ic" /><span className="side__label">Inbox</span>
             {inboxUnread ? <span className="side__count" aria-hidden="true">{inboxUnread}</span> : null}
           </Link>
-          <Link to="/map" className="side__item" aria-current={sketchbook ? 'page' : undefined} onClick={navigate} title="Only you can see your sketchbook">
-            <Icon name="edit" className="side__ic" /><span className="side__label">Sketchbook</span>
+          <Link to="/tasks" className="side__item" aria-current={myTasks ? 'page' : undefined} onClick={navigate}>
+            <Icon name="tasks" className="side__ic" /><span className="side__label">My tasks</span>
+          </Link>
+          <Link to="/map" className="side__item" aria-current={sketchbook ? 'page' : undefined} onClick={navigate} title="Only you can see your map">
+            <Icon name="map" className="side__ic" /><span className="side__label">My map</span>
           </Link>
         </nav>
 
@@ -186,9 +191,9 @@ export function Sidebar({ projects, directMessages, user, session, onClose, titl
             waiting to be unlocked is a row of it (F-030). */}
         {projects.length || locked.length || onClose ? <nav className="side__sec" aria-labelledby="side-projects">
           <div className="side__head">
-            <h2 className="side__h" id="side-projects">Projects</h2>
+            <h2 className="side__h" id="side-projects">Spaces</h2>
             {/* On the computer New (C) creates; the narrow-tablet drawer keeps its own "+". */}
-            {onClose ? <Link to="/projects/new" className="side__add" aria-label="New project" onClick={navigate}><Icon name="plus" size={14} /></Link> : null}
+            {onClose ? <Link to="/projects/new" className="side__add" aria-label="New space" onClick={navigate}><Icon name="plus" size={14} /></Link> : null}
           </div>
           {projects.length || locked.length ? (
             <ul className="side__list" ref={projectList}>
@@ -199,15 +204,10 @@ export function Sidebar({ projects, directMessages, user, session, onClose, titl
                   <li key={project.id}>
                     <NavLink to={`/projects/${project.id}`} end={false} className={`side__item side__project${open ? ' is-open' : ''}`} onClick={(event) => { if (choosesInPlace(event)) glideTo(event.currentTarget); navigate?.(); }}
                       data-glide-id={project.id} data-pending={pendingProject === project.id && !open ? '' : undefined}
-                      title={project.workspaceName ? `${project.name} · ${project.workspaceName}` : project.name}
+                      title={project.name}
                       aria-label={news.has(project.id) ? `${project.name}, new activity` : undefined}>
                       <ProjectTile name={project.name} />
-                      {project.workspaceName ? (
-                        <span className="side__names">
-                          <span className="side__label">{project.name}</span>
-                          <span className="side__sub">{project.workspaceName}</span>
-                        </span>
-                      ) : <span className="side__label">{project.name}</span>}
+                      <span className="side__label">{project.name}</span>
                       {news.has(project.id) ? <span className="side__dot" aria-hidden="true" /> : null}
                     </NavLink>
                   </li>
@@ -226,7 +226,7 @@ export function Sidebar({ projects, directMessages, user, session, onClose, titl
               ))}
             </ul>
           ) : (
-            <p className="side__empty">No projects yet. Use + to start one, or it appears here when someone adds you to one.</p>
+            <p className="side__empty">No spaces yet. Use + to start one, or it appears here when someone adds you to one.</p>
           )}
         </nav> : null}
 

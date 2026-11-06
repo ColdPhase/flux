@@ -420,7 +420,7 @@ class AdaptiveBase(unittest.TestCase):
         """The project's views: the header's segmented control, or below 900 px the menu the title opens."""
         if self.title_menu(page):
             return page.get_by_role("dialog").filter(has=page.locator(".phone-menu__list"))
-        return page.get_by_role("navigation", name="Project views")
+        return page.get_by_role("navigation", name="Space views")
 
     def open_menu(self, page: Page) -> None:
         if self.title_menu(page) and not self.tabs(page).count():
@@ -1398,7 +1398,7 @@ class AdaptiveReflow(AdaptiveBase):
                 page.wait_for_timeout(600)  # the opening keeps settling while fonts and previews arrive
                 measured = page.evaluate("""() => {
                   const feed = document.querySelector('.project-convo__feed');
-                  const items = [...feed.querySelectorAll('.project-convo__message, .convo-notice, .convo-object, .convo-fold, .convo-goal')].filter((el) => el.getClientRects().length);
+                  const items = [...feed.querySelectorAll('.project-convo__message, .convo-notice, .convo-object, .convo-fold')].filter((el) => el.getClientRects().length);
                   const column = document.querySelector('.project-convo__in');
                   // The column's own padding, from a bare copy of it, against what the opening wrote inline.
                   const bare = column.cloneNode(false);
@@ -1505,7 +1505,7 @@ class AdaptiveReflow(AdaptiveBase):
                 self.assertTrue(scrolls["scrollable"] and scrolls["overflow"] == "auto", f"the rail's places and lists scroll as one band at {size}: {scrolls}")
                 fade = band.evaluate("el => ({marked: el.hasAttribute('data-scrolls'), mask: getComputedStyle(el).maskImage || getComputedStyle(el).webkitMaskImage})")
                 self.assertTrue(fade["marked"] and "gradient" in (fade["mask"] or ""), f"a band that scrolls fades softly at its lower edge at {size}: {fade}")
-                tiles = rail.get_by_role("navigation", name="Projects").get_by_role("link")
+                tiles = rail.get_by_role("navigation", name="Spaces").get_by_role("link")
                 expect(tiles).to_have_count(len(names))
                 for index, name in enumerate(names):
                     tile = tiles.nth(index)

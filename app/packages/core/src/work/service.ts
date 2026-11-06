@@ -190,7 +190,7 @@ async function authorized(ports: WorkPorts, principal: Principal, type: WorkObje
 async function requireTargets(ports: WorkPorts, projectId: string, targets: ObjectRef[]) {
   for (const target of targets) {
     if (!(await ports.work.targetExists(projectId, target)))
-      throw new RuleViolationError(`The linked ${target.type} is not part of this project`, 'LINK_TARGET_NOT_FOUND');
+      throw new RuleViolationError(`The linked ${target.type} is not part of this space`, 'LINK_TARGET_NOT_FOUND');
   }
 }
 
@@ -198,27 +198,27 @@ async function requireTargets(ports: WorkPorts, projectId: string, targets: Obje
 async function requireDependencyTargets(ports: WorkPorts, projectId: string, ids: readonly string[]) {
   for (const id of ids) {
     if ((await ports.work.locate('work', id))?.projectId !== projectId)
-      throw new RuleViolationError('Every prerequisite must be a task of this project', 'TASK_DEPENDENCY_NOT_FOUND');
+      throw new RuleViolationError('Every prerequisite must be a task of this space', 'TASK_DEPENDENCY_NOT_FOUND');
   }
 }
 
 /** Revalidate the current scope returned by the ONE complete sorted task pass. */
 function requireDependencyScope(projectIds: readonly string[], projectId: string) {
   if (projectIds.some((id) => id !== projectId))
-    throw new RuleViolationError('Every prerequisite must be a task of this project', 'TASK_DEPENDENCY_NOT_FOUND');
+    throw new RuleViolationError('Every prerequisite must be a task of this space', 'TASK_DEPENDENCY_NOT_FOUND');
 }
 
 async function requireOwner(ports: WorkPorts, projectId: string, owner: ActorRef | null) {
   // F-029: no task is handed to an agent while AI is off in the workspace (people stay assignable).
   if (owner?.kind === 'agent' && !(await ports.access.aiAllowed(projectId))) throw new WorkspaceAiBlockedError();
   if (owner && !(await ports.access.canRead(owner, projectId)))
-    throw new RuleViolationError('The owner needs current access to this project', 'OWNER_WITHOUT_ACCESS');
+    throw new RuleViolationError('The owner needs current access to this space', 'OWNER_WITHOUT_ACCESS');
 }
 
 /** The one person a blocked task waits for: a person who can read the project (#550). */
 async function requireWaitingFor(ports: WorkPorts, projectId: string, waitingFor: ActorRef | null) {
   if (waitingFor && !(await ports.access.canRead(waitingFor, projectId)))
-    throw new RuleViolationError('The person waited on needs current access to this project', 'WAITING_FOR_WITHOUT_ACCESS');
+    throw new RuleViolationError('The person waited on needs current access to this space', 'WAITING_FOR_WITHOUT_ACCESS');
 }
 
 const waitingForOf = (value: unknown): ActorRef | null => {
@@ -402,7 +402,7 @@ export function createWorkUseCases(uow: WorkUnitOfWork) {
         // The plan material's row lock precedes the command identity and the graph lock, like every source.
         if (planIntent) {
           const source = await ports.work.lockPlanSource(workspaceId, project, planIntent.materialId);
-          if (!source) throw new RuleViolationError('The plan source is not part of this project', 'PLAN_SOURCE_NOT_FOUND');
+          if (!source) throw new RuleViolationError('The plan source is not part of this space', 'PLAN_SOURCE_NOT_FOUND');
           if (source.currentVersion !== planIntent.version) {
             const error = new ConflictError('The plan changed since this revision; read it again before creating tasks', 'SOURCE_VERSION_CONFLICT');
             error.details = { materialId: planIntent.materialId, requestedVersion: planIntent.version, currentVersion: source.currentVersion };
@@ -580,7 +580,7 @@ export function createWorkUseCases(uow: WorkUnitOfWork) {
         if (supersedes) {
           const earlier = await ports.work.findDecision(supersedes);
           if (!earlier || earlier.projectId !== project || earlier.status !== 'accepted')
-            throw new RuleViolationError('Only an accepted decision of this project can be superseded', 'SUPERSEDES_NOT_CURRENT');
+            throw new RuleViolationError('Only an accepted decision of this space can be superseded', 'SUPERSEDES_NOT_CURRENT');
         }
         await requireTargets(ports, project, [...sources, ...affects]);
         await lockProjectGraphs(ports.work, [project]);
@@ -632,7 +632,7 @@ export function createWorkUseCases(uow: WorkUnitOfWork) {
         const parked: WorkRecord[] = [];
         for (const workId of [...stillApplies, ...park].sort()) {
           const work = await ports.work.findWork(workId);
-          if (!work || work.projectId !== projectId) throw new RuleViolationError('The work is not part of this project', 'LINK_TARGET_NOT_FOUND');
+          if (!work || work.projectId !== projectId) throw new RuleViolationError('The work is not part of this space', 'LINK_TARGET_NOT_FOUND');
           if (park.includes(workId)) {
             if (FINISHED.has(work.status)) throw new RuleViolationError('Finished work keeps its result and is not parked', 'WORK_ALREADY_FINISHED');
             parked.push(work);

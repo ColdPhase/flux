@@ -194,7 +194,7 @@ describe('project export', () => {
     assert.deepEqual(people.get(partner.id), ['contributor', 'member']);
     assert.deepEqual(people.get(viewer.id), ['viewer', 'member']);
     assert.equal(people.has(outsider.id), false);
-    assert.deepEqual(data.grants.map((item) => [item.principal.id, item.role]).sort(), [[agentId, 'contributor'], [partner.id, 'contributor'], [viewer.id, 'viewer']].sort());
+    assert.deepEqual(data.grants.map((item) => [item.principal.id, item.role]).sort(), [[agentId, 'contributor'], [owner.id, 'manager'], [partner.id, 'contributor'], [viewer.id, 'viewer']].sort());
     assert.deepEqual(data.people.find((someone) => someone.id === agentId), { kind: 'agent', id: agentId, name: 'export-agent', access: 'contributor', workspaceRole: null });
 
     // The ordinary thread, and the work item's own thread that the result linked to it (#154) created.

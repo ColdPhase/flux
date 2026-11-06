@@ -106,7 +106,7 @@ export function createNeedsYou(ports: NeedsYouPorts, now: () => Date = () => new
       const supersedes = decision.supersedesId ? (await ports.work.findDecision(decision.supersedesId))?.title ?? null : null;
       items.push({
         key: `decision:${decision.id}`, kind: 'decision', title: decision.title, detail: excerpt(decision.rationale),
-        project: { id: decision.projectId, name: projectNames.get(decision.projectId) ?? 'Project' },
+        project: { id: decision.projectId, name: projectNames.get(decision.projectId) ?? 'Space' },
         from: { kind: by.kind, id: by.id, name }, at: iso(decision.createdAt),
         url: `/projects/${decision.projectId}/tasks?open=decision:${decision.id}`,
         decision: {
@@ -131,7 +131,7 @@ export function createNeedsYou(ports: NeedsYouPorts, now: () => Date = () => new
         key: `blocked:${task.id}`, kind: 'blocked',
         title: waitedOn ? `${asker} is waiting for you: #${task.number} ${excerpt(task.title, 80)}${reason ? ` · ${reason}` : ''}`
           : reason ? `#${task.number} is blocked: ${reason}` : `#${task.number} ${task.title} is blocked`,
-        detail: waitedOn ? (reason ?? task.title) : task.title, project: { id: task.projectId, name: projectNames.get(task.projectId) ?? 'Project' },
+        detail: waitedOn ? (reason ?? task.title) : task.title, project: { id: task.projectId, name: projectNames.get(task.projectId) ?? 'Space' },
         from: null, at: iso(task.updatedAt), url: `/projects/${task.projectId}/tasks?open=work:${task.id}`,
         decision: null, reason: null,
         blocked: { workId: task.id, number: task.number, version: task.version, blocker: task.blocker, since: iso(task.updatedAt), waitingForUserId: task.waitingFor?.id ?? null, waitingFor: waitingTask ? ref(waitingTask) : null,
@@ -158,7 +158,7 @@ export function createNeedsYou(ports: NeedsYouPorts, now: () => Date = () => new
       const taskRef = task && task.projectId === question.projectId ? ref(task) : null;
       const item: NeedsYouItem = {
         key: `question:${question.id}`, kind: 'question', title: excerpt(question.question), detail: '',
-        project: { id: question.projectId, name: projectNames.get(question.projectId) ?? 'Project' },
+        project: { id: question.projectId, name: projectNames.get(question.projectId) ?? 'Space' },
         from: { kind: 'agent', id: question.agent.id, name: question.agent.name }, at: iso(question.createdAt),
         url: `/projects/${question.projectId}/conversations/${question.conversationId}#message-${question.messageId}`,
         decision: null, blocked: null, reason: 'question', snoozeTask: taskRef && !OVER.has(task!.status) ? taskRef : null,
@@ -181,7 +181,7 @@ export function createNeedsYou(ports: NeedsYouPorts, now: () => Date = () => new
       items.push({
         key: `note:${note.id}`, kind, title: note.title, detail: excerpt(note.body),
         project: assistantRequestIdentity && note.source.type === 'project'
-          ? { id: note.source.id, name: projectNames.get(note.source.id) ?? 'Project' } : null,
+          ? { id: note.source.id, name: projectNames.get(note.source.id) ?? 'Space' } : null,
         from: assistantRequestIdentity ? { kind: 'agent', id: assistantRequestIdentity.assistantId, name: assistantRequestIdentity.assistantName } : null,
         at: iso(note.createdAt), url: note.url ?? `/inbox/${note.id}`, decision: null, blocked: null, reason: note.reason, snoozeTask: null,
         ...(assistantRequestIdentity ? { assistantRequestIdentity } : {}),
@@ -193,7 +193,7 @@ export function createNeedsYou(ports: NeedsYouPorts, now: () => Date = () => new
       const names = await ports.access.projectNames([proposal.projectId]);
       items.push({
         key: `proposal:${proposal.id}`, kind: 'question', title: `${proposal.agentName} suggests: ${excerpt(proposal.suggestedAction, 100)}`,
-        detail: excerpt(proposal.fact), project: { id: proposal.projectId, name: names.get(proposal.projectId) ?? 'Project' },
+        detail: excerpt(proposal.fact), project: { id: proposal.projectId, name: names.get(proposal.projectId) ?? 'Space' },
         from: { kind: 'agent', id: proposal.agentId, name: proposal.agentName }, at: iso(proposal.createdAt),
         url: `/projects/${proposal.projectId}/agents`, decision: null, blocked: null, reason: 'question', snoozeTask: null,
         proposal: { id: proposal.id, fact: proposal.fact, interpretation: proposal.interpretation, suggestedAction: proposal.suggestedAction, source: proposal.source },
@@ -210,7 +210,7 @@ export function createNeedsYou(ports: NeedsYouPorts, now: () => Date = () => new
       items.push({
         key: `assistant:${runId}`, kind: 'question', title: suggestion ? `${head.owner?.name ?? 'Someone'}'s assistant suggests: ${head.phrase}${head.objectTitle ? ` ${head.objectTitle}` : ''}` : `Your assistant wants to ${summary}`,
         detail: suggestion ? `Drafted by ${head.owner?.name ?? 'Someone'}'s assistant` : excerpt(group.map((change) => change.line).find(Boolean) ?? ''),
-        project: { id: head.projectId, name: projectNames.get(head.projectId) ?? 'Project' }, from: null, at: head.createdAt,
+        project: { id: head.projectId, name: projectNames.get(head.projectId) ?? 'Space' }, from: null, at: head.createdAt,
         url: `/projects/${head.projectId}/conversations/${head.conversationId}`, decision: null, blocked: null, reason: 'question', snoozeTask: null,
         assistantChanges: { runId: head.runId, suggestion, verb: suggestion ? 'Accept' : assistantBatchVerb(group), summary,
           changes: group.map((change) => ({ id: change.id, version: change.version, phrase: change.phrase, objectTitle: change.objectTitle, line: change.line, preview: change.preview })) },

@@ -124,7 +124,7 @@ export function AppLayout() {
 }
 
 function AppLayoutContent() {
-  const { me, workspace, workspaces, lockedWorkspaces, projects, directMessages } = useShellData();
+  const { me, workspace, workspaces, lockedWorkspaces, projects, reachableSpaces, directMessages } = useShellData();
   // F-030 (#655): the workspaces that wait to be unlocked, as the latest read has them, for the handler of `423` below.
   const lockedNow = useRef(lockedWorkspaces);
   useLayoutEffect(() => { lockedNow.current = lockedWorkspaces; });
@@ -140,8 +140,7 @@ function AppLayoutContent() {
   // A page inside Settings (#266 PF-5): on the phone its header leads back instead of opening the drawer.
   const settingsPage = /^\/settings\/./.test(location.pathname);
   // Back from a direct link goes to the page that leads there: the AI pages to Agents and AI (#513).
-  const settingsParent = /^\/settings\/(assistant|background-compute|ai-connections|agents\/connect)(\/|$)/.test(location.pathname) ? '/settings/agents'
-    : /^\/settings\/people\/./.test(location.pathname) ? '/settings/people' : '/settings';
+  const settingsParent = /^\/settings\/(assistant|background-compute|ai-connections|agents\/connect)(\/|$)/.test(location.pathname) ? '/settings/agents' : '/settings';
   const navDrawer = useMediaQuery(MEDIA.navDrawer);
   const tablet = useMediaQuery(MEDIA.tablet);
   const phone = useMediaQuery(MEDIA.phone);
@@ -283,8 +282,6 @@ function AppLayoutContent() {
     if (isEncryptionEvent(event.kind)) { revalidator.revalidate(); return; }
     // Access was given or taken (#763 FT-8): Home, Projects and the sidebar list the person's projects again at once.
     if (event.kind === 'project.grant_set.v1' || event.kind === 'project.grant_revoked.v1') { revalidator.revalidate(); return; }
-    // A project goal changed (#520): the open project's Details, view menu and conversation read it again.
-    if (event.objectType === 'project' && event.kind.startsWith('project.goal_') && location.pathname.startsWith(`/projects/${event.objectId}`)) { revalidator.revalidate(); return; }
     // Someone saw a message (#534): only the open conversation shows it, and it asks for itself.
     if (event.objectType !== 'dm' || event.kind === 'dm.observed.v1') return;
     const known = directMessages.some((dm) => dm.id === event.objectId);
@@ -548,7 +545,7 @@ function AppLayoutContent() {
   const where = placeOf(location.pathname);
   // Home's computer layout has no header row; keep its name available to assistive technology.
   const homeRoot = where === 'home' && location.pathname === '/';
-  const activeProject = projects.find((project) => project.id === projectId);
+  const activeProject = reachableSpaces.find((project) => project.id === projectId);
   // F-029 (#614): a project of a workspace whose AI is off has no Agents view and offers none to add (Spokój rule 7: nothing else moves).
   const aiOff = useWorkspaceAi(activeProject?.workspaceId).blocked;
   // The Conversation tab returns to the conversation that was open before Tasks, Map, Docs or project
@@ -579,7 +576,7 @@ function AppLayoutContent() {
   ].filter((view) => !(aiOff && view.id === 'agents')).filter((view) => !(PROJECT_VIEWS as readonly string[]).includes(view.id) || !shownProjectViews || shownProjectViews.has(view.id as ProjectViewId)) : null;
   const places = phonePlaces(location.pathname, inboxUnread);
   const audienceOpen = project?.project.visibility === 'workspace';
-  const audience = project ? audienceLine(project.people, me.user.id, audienceOpen) : 'People with project access';
+  const audience = project ? audienceLine(project.people, me.user.id, audienceOpen) : 'People with space access';
   // The audience line leads to "Who can see this", where managers change it (#188).
   const openAudience = () => shell.openDetails({ kind: 'overview', focus: 'people' });
   const recapOpen = detailsOpen && typeof detailsView === 'object' && detailsView.kind === 'recap';
@@ -632,11 +629,11 @@ function AppLayoutContent() {
   const place = lockedHere
     ? { crumb: null, title: lockedSpace.name, topic: 'Waiting to be unlocked', noDetails: true }
     : location.pathname === '/projects'
-    ? { crumb: null, title: 'Projects', topic: 'Every project you can open', noDetails: true }
-    : /^\/settings(\/(appearance|account|people|notifications|agents|shortcuts)(\/.*)?)?$/.test(location.pathname)
+    ? { crumb: null, title: 'Spaces', topic: 'Every space you can open', noDetails: true }
+    : /^\/settings(\/(appearance|account|company|notifications|agents|shortcuts)(\/.*)?)?$/.test(location.pathname)
     ? { crumb: null, title: 'Settings', topic: 'Appearance, notifications, agents and AI', noDetails: true }
     : backgroundSettings
-    ? { crumb: null, title: 'Background suggestions', topic: 'Your usage and project rules', noDetails: true }
+    ? { crumb: null, title: 'Background suggestions', topic: 'Your usage and space rules', noDetails: true }
     : aiConnections
     ? { crumb: null, title: 'AI connections', topic: 'Your own keys, payers and allowances', noDetails: true }
     : location.pathname === '/search'
@@ -646,10 +643,10 @@ function AppLayoutContent() {
     : location.pathname === '/settings/assistant'
     ? { crumb: null, title: 'Your assistant', topic: 'Only you can use it · optional', noDetails: true }
     : activeProject
-    ? { crumb: activeProject.workspaceName ?? null, title: activeProject.name, topic: audience }
+    ? { crumb: null, title: activeProject.name, topic: audience }
     : location.pathname === '/map'
     // The Sketchbook is named as such (#508); its privacy line is the first line of the page, at every width.
-    ? { crumb: null, title: 'Sketchbook', topic: '' }
+    ? { crumb: null, title: 'My map', topic: '' }
     : where === 'inbox'
       ? location.pathname.startsWith('/settings/')
         ? { crumb: null, title: 'Notification settings', topic: 'What reaches you, where and when', noDetails: true }
@@ -661,15 +658,15 @@ function AppLayoutContent() {
         ? { crumb: null, title: activeDm.title, topic: activeDm.audience }
         : dmId === 'new'
           ? { crumb: null, title: 'New message', topic: 'Only the people you choose can read it', noDetails: true }
-          : { crumb: null, title: 'Direct messages', topic: 'Conversations with people, outside any project', noDetails: true }
-      // Pages reached from Home name themselves (#763 NV-1); only `/` is Home. Your tasks span every workspace, so no
-      // single workspace is named above them (#190).
+          : { crumb: null, title: 'Direct messages', topic: 'Conversations with people, outside any space', noDetails: true }
+      // Pages reached from Home name themselves (#763 NV-1); only `/` is Home. My tasks span every space, so no single
+      // space is named above them (#190).
       : location.pathname === '/tasks'
-        ? { crumb: null, title: 'Your tasks', topic: 'Assigned to you, in every project' }
+        ? { crumb: null, title: 'My tasks', topic: 'Assigned to you, in every space' }
       : location.pathname === '/docs'
         ? { crumb: null, title: 'Wiki', topic: 'Pages of every space you are in', noDetails: true }
       : location.pathname === '/projects/new'
-        ? { crumb: null, title: 'New project', topic: '', noDetails: true }
+        ? { crumb: null, title: 'New space', topic: '', noDetails: true }
       : notFound
         ? { crumb: null, title: 'Page not found', topic: '', noDetails: true }
       : { crumb: workspace?.name ?? null, title: 'Home', topic: 'What needs you and where you left off' };
@@ -692,7 +689,7 @@ function AppLayoutContent() {
     rememberPlace(me.user.id, opened.key.endsWith(':docs') && docTitle && /\/docs\/[^/]+$/.test(opened.path) ? { ...opened, title: docTitle } : opened);
   }, [location.pathname, openable, me.user.id, docTitle]);
   const rowViews = phone ? null
-    : activeProject && projectViews ? { items: projectViews, label: 'Project views' }
+    : activeProject && projectViews ? { items: projectViews, label: 'Space views' }
       : dmViews ? { items: dmViews, label: 'Direct message views' }
         : null;
   const viewName = activeProject ? PROJECT_VIEW_NAMES[Math.max(0, viewOrder(location.pathname))] : null;
@@ -702,7 +699,7 @@ function AppLayoutContent() {
     // A header with no room for them (Spokój rule 3) moves the people and Together here; the views stay in the row.
     ...(project?.people ? [{ label: 'Who can see this', run: openAudience, narrow: true }] : []),
     ...(activeProject ? [{ label: 'Together', node: <LiveEntry variant="more" /> }] : []),
-    ...('noDetails' in place ? [] : [{ label: activeProject ? 'Project details' : activeDm ? 'Message info' : 'Details', run: () => shell.openDetails('place') }]),
+    ...('noDetails' in place ? [] : [{ label: activeProject ? 'Space details' : activeDm ? 'Message info' : 'Details', run: () => shell.openDetails('place') }]),
     ...(activeProject && projectId ? [{ label: 'What matters', run: () => shell.openDetails({ kind: 'recap', projectId }) }] : []),
     ...addViewItems,
     { label: focus.uncertain ? 'Check notification pause' : 'Focus', keys: 'F', checked: focusing, run: () => void focus.toggle() },
@@ -765,11 +762,10 @@ function AppLayoutContent() {
     <header className={`phead${mainPlace ? ' phead--large' : ''}`}>
       {backOnly ? (
         <>{phoneBack(settingsPage ? settingsParent : homePage ? '/' : '/projects')}
-          <div className="phead__id"><div className="phead__title"><h1>{location.pathname === '/projects/new' ? 'New project' : place.title}</h1></div></div></>
+          <div className="phead__id"><div className="phead__title"><h1>{location.pathname === '/projects/new' ? 'New space' : place.title}</h1></div></div></>
       ) : activeProject && projectViews ? (
         <>{routeOrigin ? phoneBack('/projects') : <PhoneBack onBack={() => goBackAPlace('/projects')} />}
           <PhoneTitleMenu title={place.title} items={projectMenu} onDetails={detailsEntry}
-            goal={project?.project.goal && !project.project.goal.reachedAt ? project.project.goal.title : undefined}
             metadataSlot={onWiki || onAgents ? setMetadataSlot : undefined}
             adds={addViewItems.map((item) => ({ label: item.label, run: item.run }))}
             subtitle={onWiki ? peopleLine(project?.people ?? null) : <>{onAgents && aiOff ? 'AI is off' : PROJECT_VIEW_NAMES[Math.max(0, viewOrder(location.pathname))]}{project?.people ? <span className="phead__people"> · {peopleLine(project.people, !onAgents)}</span> : null}</>} /></>
@@ -793,7 +789,7 @@ function AppLayoutContent() {
       <div className="phead__right">
         <span className="top__actions" ref={setActionSlot} />
         {activeProject && /^\/projects\/[^/]+(\/conversations\/|\/?$)/.test(location.pathname) ? <ProjectAgentStop projectId={activeProject.id} /> : null}
-        {/* The same two controls in every project view and direct message (Spokój #507); Together is dimmed where it is unavailable. */}
+        {/* The same two controls in every space view and direct message (Spokój #507); Together is dimmed where it is unavailable. */}
         {activeProject || activeDm ? <><LiveEntry />{searchButton}</> : null}
         {!backOnly && !activeProject && !activeDm && location.pathname !== '/settings' ? <PhoneAvatar name={me.user.name} /> : null}
       </div>
@@ -873,7 +869,7 @@ function AppLayoutContent() {
           <SidePanel open={detailsOpen} onClose={closePanel} title={recapOpen ? 'What matters' : ownedShown ? ownedShown.label : 'Details'} closeLabel={ownedShown?.closeLabel} chip={objectChip} id="details" back={back} startFull={sheetStart ?? ownedShown?.startFull} onHeight={(full) => keepPlace('sheet', full)}
             contentKey={ownedShown ? `owned:${ownedShown.key}` : typeof detailsView === 'object' ? JSON.stringify(detailsView) : detailsView} depth={trail.length + (ownedShown?.back ? 1 : 0)}
             context={phone && (detailsView === 'place' || typeof detailsView === 'object' && detailsView.kind === 'overview') ? <OverviewContext message={typeof detailsView === 'object' && detailsView.kind === 'overview' && !!detailsView.messageId} /> : undefined}>
-            {isOwned(detailsView) ? <div className="ui-panel__slot" ref={setPanelSlot} /> : <DeferredDetails view={detailsView} workspace={workspace} placeTitle={place.title} dm={activeDm ? { id: activeDm.id, kind: activeDm.kind, title: activeDm.title, me: me.user.name, people: activeDm.people, audience: activeDm.audience } : null} onBack={() => setDetailsView('place')} onClose={() => toggleDetails(false)} />}
+            {isOwned(detailsView) ? <div className="ui-panel__slot" ref={setPanelSlot} /> : <DeferredDetails view={detailsView} placeTitle={place.title} dm={activeDm ? { id: activeDm.id, kind: activeDm.kind, title: activeDm.title, me: me.user.name, people: activeDm.people, audience: activeDm.audience } : null} onBack={() => setDetailsView('place')} onClose={() => toggleDetails(false)} />}
           </SidePanel>
         </div>
         {/* A locked space's place keeps the tab bar on the phone (LK-2), and offers no "+" there. */}

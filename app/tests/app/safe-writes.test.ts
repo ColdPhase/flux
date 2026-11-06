@@ -160,12 +160,16 @@ describe('idempotency keys', () => {
     assert.equal(replayed.headers.get('idempotent-replayed'), 'true', 'replays while still authorized');
 
     expectStatus(await owner.browser.request('PATCH', `/api/v1/workspaces/${space.id}/members/${admin.id}`, { body: { role: 'member' } }), 200);
+    // F-037: the creator is the new space's admin by its own grant; the owner removes them from the space as well.
+    const grants = expectStatus(await owner.browser.request('GET', `/api/v1/projects/${created.id}/grants`), 200) as { id: string; principal: { id: string } }[];
+    const own = grants.find((item) => item.principal.id === admin.id)!;
+    expectStatus(await owner.browser.request('DELETE', `/api/v1/projects/${created.id}/grants/${own.id}`), 204);
     expectStatus(await admin.browser.request('GET', `/api/v1/projects/${created.id}`), 404);
     const denied = await createProject();
     assert.equal(denied.status, 404, 'the replay is denied like a read of the project');
     assert.equal(denied.headers.get('idempotent-replayed'), null);
     assert.equal(denied.text.includes(created.id) || denied.text.includes(name), false, 'the stored body is not revealed');
-    assert.deepEqual(denied.json, { error: 'Project not found', code: 'PROJECT_NOT_FOUND' });
+    assert.deepEqual(denied.json, { error: 'Space not found', code: 'PROJECT_NOT_FOUND' });
     const projects = await pool.query('SELECT count(*)::int AS n FROM projects WHERE name = $1', [name]);
     assert.equal(projects.rows[0].n, 1, 'the denied replay did not create another project');
   });

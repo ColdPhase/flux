@@ -18,7 +18,7 @@ export type { AccessRouteOptions } from './context.js';
  */
 export async function accessRoutes(app: FastifyInstance, options: AccessRouteOptions) {
   const context = accessContext(options);
-  workspaceRoutes(app, context, options.boss);
+  workspaceRoutes(app, context, options.boss, { testDeployment: options.testDeployment });
   projectRoutes(app, context);
   agentRoutes(app, context);
   agentRequestRoutes(app, context, options.boss);

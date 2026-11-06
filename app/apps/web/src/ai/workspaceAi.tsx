@@ -37,7 +37,7 @@ export function useWorkspaceAi(workspaceId: string | null | undefined): Workspac
   const workspace = useShell()?.workspaces.find((space) => space.id === workspaceId);
   return {
     blocked: workspace?.ai?.state === 'blocked',
-    name: workspace?.name ?? 'this workspace',
+    name: workspace?.name ?? 'the company',
     manager: workspace?.role === 'owner' || workspace?.role === 'admin',
     ai: workspace?.ai ?? null,
     encrypted: isEncryptedSpace(workspace),

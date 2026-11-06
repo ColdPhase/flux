@@ -7,22 +7,22 @@ import { recordEvent } from '../events.js';
 import type { Database, Principal } from '../types.js';
 import { eventPorts } from './common.js';
 import { ConflictError, ForbiddenError, GoneError, InvalidInputError, NotFoundError } from './errors.js';
-import { enforce, evaluateWorkspace, isManager, isUuid } from './policy.js';
-import { inviteLanding, inviteProjectName, openInviteProject, type InviteJoined } from './invite-projects.js';
-
-export type { InviteJoined };
+import { enforce, evaluateWorkspace, isManager } from './policy.js';
 import { inviteIdOf, inviteToken, inviteTokenHash, type InviteSigner } from './invite-tokens.js';
 import type { AccessPorts, InviteRepository, InviteRow } from './repositories.js';
 
 export { inviteIdOf, inviteToken, inviteTokenHash, type InviteSigner };
 
-// Invite links (F-035, #763 PE-2; docs/development/access-policy.md#invite-links-f-035). An owner or admin creates a
-// one-time link with a role; whoever holds it signs in or signs up and joins. The token is the invite id and an HMAC
+/** Told inside the joining transaction about a fresh join: the server notifies the inviter. */
+export type InviteJoined = (tx: Database, joined: { workspaceId: string; userId: string; inviterId: string; encrypted: boolean; role: WorkspaceRole }) => Promise<void>;
+
+// Invite links (F-035, #763 PE-2; docs/development/access-policy.md#invite-links-f-035). A company owner or admin creates a
+// one-time link with a role (F-037: links join the company; a person is added to spaces afterwards); whoever holds it signs in or signs up and joins. The token is the invite id and an HMAC
 // of it under a key derived from the server's identity secret; only its SHA-256 is stored. Every unknown, malformed or
 // forged token is the same 404, so someone without the link learns nothing. Accepting takes the workspace row first
 // (as `addMember`), then the invite row `FOR UPDATE`, and rechecks everything there.
 
-type InvitePorts = Pick<AccessPorts, 'workspaces' | 'invites' | 'access' | 'events' | 'projects'>;
+type InvitePorts = Pick<AccessPorts, 'workspaces' | 'invites' | 'access' | 'events'>;
 
 const INVITE_ROLES: readonly InviteRole[] = ['admin', 'member', 'guest'];
 const MAX_PENDING = 50;
@@ -30,16 +30,15 @@ const DAY_MS = 86_400_000;
 
 const linkOf = (signer: InviteSigner, inviteId: string) => `${signer.publicOrigin}${INVITE_JOIN_PAGE}#${inviteToken(signer, inviteId)}`;
 
-function presentWithoutLink(row: InviteRow, creatorName: string, projectName: string | null): Omit<WorkspaceInvite, 'link'> {
+function presentWithoutLink(row: InviteRow, creatorName: string): Omit<WorkspaceInvite, 'link'> {
   return {
     id: row.id, workspaceId: row.workspaceId, role: row.role, email: row.email, createdBy: { id: row.createdBy, name: creatorName },
     createdAt: row.createdAt.toISOString(), expiresAt: row.expiresAt.toISOString(),
-    project: row.projectId && projectName !== null ? { id: row.projectId, name: projectName } : null,
   };
 }
 
-const present = (signer: InviteSigner, row: InviteRow, creatorName: string, projectName: string | null): WorkspaceInvite =>
-  ({ ...presentWithoutLink(row, creatorName, projectName), link: linkOf(signer, row.id) });
+const present = (signer: InviteSigner, row: InviteRow, creatorName: string): WorkspaceInvite =>
+  ({ ...presentWithoutLink(row, creatorName), link: linkOf(signer, row.id) });
 
 function normalizeEmail(value: unknown): string | null {
   if (value === undefined || value === null || value === '') return null;
@@ -61,24 +60,19 @@ export async function createInvite(principal: Principal, workspaceId: string, co
   const days = command.expiresInDays ?? INVITE_DEFAULT_EXPIRY_DAYS;
   if (!(INVITE_EXPIRY_DAYS as readonly number[]).includes(days)) throw new InvalidInputError('expiresInDays must be 1, 7 or 30');
   const email = normalizeEmail(command.email);
-  const projectId = command.projectId ?? null;
-  if (projectId !== null && !isUuid(projectId)) throw new InvalidInputError('projectId must be a project id');
   return db.transaction(async (tx) => {
     await ports.workspaces(tx).lock(workspaceId);
     const { actor } = enforce(await evaluateWorkspace(principal, 'workspace.manage_members', workspaceId, ports.access(tx), { lock: true }), 'workspace');
     // An invite never makes an owner, and only an owner may hand out admin.
     if (role === 'admin' && actor.role !== 'owner') throw new ForbiddenError('Only an owner can invite an admin', 'OWNER_REQUIRED');
     const invites = ports.invites(tx);
-    if (await invites.pendingCount(workspaceId, now) >= MAX_PENDING) throw new ConflictError(`A workspace holds at most ${MAX_PENDING} pending invite links`, 'INVITE_LIMIT');
-    // An invite into a project needs its creator to manage that project now (#763 FT-3).
-    let projectName: string | null = null;
-    if (projectId) projectName = await inviteProjectName(principal, workspaceId, projectId, tx, ports);
+    if (await invites.pendingCount(workspaceId, now) >= MAX_PENDING) throw new ConflictError(`At most ${MAX_PENDING} invite links can wait at once`, 'INVITE_LIMIT');
     const id = randomUUID();
     const row = await invites.insert({ id, workspaceId, role, email, tokenHash: inviteTokenHash(inviteToken(signer, id)), createdBy: principal.id,
-      expiresAt: new Date(now.getTime() + days * DAY_MS), projectId: projectId?.toLowerCase() ?? null });
+      expiresAt: new Date(now.getTime() + days * DAY_MS) });
     await recordEvent(eventPorts(ports, tx), principal, workspaceId, INVITE_CREATED_EVENT, workspaceId, { inviteId: id, role });
     const creator = await ports.workspaces(tx).findAccount({ userId: principal.id });
-    return presentWithoutLink(row, creator?.name ?? '', projectName);
+    return presentWithoutLink(row, creator?.name ?? '');
   });
 }
 
@@ -91,7 +85,7 @@ export async function listInvites(principal: Principal, workspaceId: string, db:
   now = new Date()): Promise<WorkspaceInvite[]> {
   enforce(await evaluateWorkspace(principal, 'workspace.manage_members', workspaceId, ports.access(db)), 'workspace');
   const rows = await ports.invites(db).pending(workspaceId, now);
-  return rows.map(({ invite, creatorName, projectName }) => present(signer, invite, creatorName, projectName));
+  return rows.map(({ invite, creatorName }) => present(signer, invite, creatorName));
 }
 
 /** Revokes a pending invite (owners and admins); anything else is `404 INVITE_NOT_FOUND`. */
@@ -150,7 +144,6 @@ export async function previewInvite(principal: Principal | null, token: unknown,
   return {
     workspaceName: found.workspaceName, invitedBy: found.creatorName, role: invite.role, expiresAt: invite.expiresAt.toISOString(),
     emailLocked: invite.email !== null, encrypted: found.encrypted, state: joined ? 'joined' : member ? 'member' : 'pending',
-    projectName: found.projectName ?? null,
   };
 }
 
@@ -164,9 +157,8 @@ export async function acceptInvite(principal: Principal, token: unknown, db: Dat
     await ports.workspaces(tx).lock(first.invite.workspaceId);
     const found = await find(signer, token, ports.invites(tx), true);
     const { invite } = found;
-    const result = async (status: AcceptInviteResult['status'], role: WorkspaceRole, needsUnlockPassword = false): Promise<AcceptInviteResult> => ({
+    const result = (status: AcceptInviteResult['status'], role: WorkspaceRole, needsUnlockPassword = false): AcceptInviteResult => ({
       status, workspaceId: invite.workspaceId, workspaceName: found.workspaceName, role, encrypted: found.encrypted, needsUnlockPassword,
-      projectId: await inviteLanding(principal, invite.projectId, tx, ports),
     });
     const gone = await goneReason(found, principal.id, ports, tx, now);
     if (gone) throw gone;
@@ -175,23 +167,22 @@ export async function acceptInvite(principal: Principal, token: unknown, db: Dat
     // The same account accepting again: the join it made (if it left since, the link stays used).
     if (invite.acceptedAt) {
       if (!currentRole) throw new GoneError('This invite link was already used', 'INVITE_USED');
-      return await result('joined', currentRole);
+      return result('joined', currentRole);
     }
     // Someone already here leaves the link unused for the person it was meant for.
-    if (currentRole) return await result('already_member', currentRole);
+    if (currentRole) return result('already_member', currentRole);
     const account = await ports.workspaces(tx).findAccount({ userId: principal.id });
     if (!account) throw new NotFoundError('Account', 'ACCOUNT_NOT_FOUND');
     if (invite.email !== null && (account.email.trim().toLowerCase() !== invite.email || (options.verifiedEmailOnly && !account.emailVerified))) {
       throw new ForbiddenError('This invite link is for a different email address', 'INVITE_WRONG_ACCOUNT');
     }
     const member = await ports.workspaces(tx).insertMember({ workspaceId: invite.workspaceId, userId: principal.id, role: invite.role, createdBy: invite.createdBy });
-    if (!member) return await result('already_member', invite.role);
+    if (!member) return result('already_member', invite.role);
     await invites.markAccepted(invite.id, principal.id, now);
     await recordEvent(eventPorts(ports, tx), principal, invite.workspaceId, 'workspace.member_added.v1', invite.workspaceId,
       { userId: principal.id, role: invite.role, inviteId: invite.id });
-    const projectId = await openInviteProject(principal, invite, tx, ports);
-    await options.onJoined?.(tx, { workspaceId: invite.workspaceId, userId: principal.id, inviterId: invite.createdBy, projectId, encrypted: found.encrypted });
+    await options.onJoined?.(tx, { workspaceId: invite.workspaceId, userId: principal.id, inviterId: invite.createdBy, encrypted: found.encrypted, role: invite.role });
     // F-030: an admin of an encrypted workspace has no unlock password until a current holder grants one.
-    return await result('joined', invite.role, found.encrypted && isManager(invite.role));
+    return result('joined', invite.role, found.encrypted && isManager(invite.role));
   });
 }

@@ -145,7 +145,7 @@ class HomeFinal(unittest.TestCase):
         self.assertEqual(card.evaluate("element => getComputedStyle(element.querySelector('.home__go')).borderRadius"), "50%")
 
         # Projects, with what is new, and the key hints.
-        projects = page.get_by_role("region", name="Projects")
+        projects = page.get_by_role("region", name="Spaces")
         expect(projects.get_by_role("link", name=re.compile("^Community garden sensors"))).to_be_visible()
         expect(projects.get_by_role("link", name=re.compile("^Cargo bike co-op"))).to_contain_text("quiet")
         hints = page.locator(".home__keys")

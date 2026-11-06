@@ -167,7 +167,7 @@ export function liveRevocationCoordinator(db: Database, pool: Pool, media: LiveM
     async withProjectChange<T>(projectId: string, mutation: () => Promise<T>): Promise<T> {
       const [project] = await db.select({ workspaceId: schema.projects.workspaceId }).from(schema.projects)
         .where(eq(schema.projects.id, projectId));
-      if (!project) throw new NotFoundError('Project', 'PROJECT_NOT_FOUND');
+      if (!project) throw new NotFoundError('Space', 'PROJECT_NOT_FOUND');
       return change({ workspaceId: project.workspaceId, projectId }, mutation);
     },
     withWorkspaceChange<T>(workspaceId: string, mutation: () => Promise<T>): Promise<T> {

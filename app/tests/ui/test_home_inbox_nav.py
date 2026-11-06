@@ -292,7 +292,7 @@ class HomeInboxNav(unittest.TestCase):
     def test_04_pages_reached_from_home_name_themselves(self) -> None:
         page = self.page()
         places = page.get_by_role("navigation", name="Places")
-        for path, title in (("/tasks", "Your tasks"), ("/docs", "Wiki"), ("/projects/new", "New project"), ("/no-such-page", "Page not found")):
+        for path, title in (("/tasks", "My tasks"), ("/docs", "Wiki"), ("/projects/new", "New space"), ("/no-such-page", "Page not found")):
             page.goto(path)
             expect(page.locator("header.top").get_by_role("heading", level=1)).to_have_text(title)
             expect(page.locator("header.top")).not_to_contain_text("Your private notes")
@@ -300,7 +300,7 @@ class HomeInboxNav(unittest.TestCase):
         page.goto("/")
         expect(places.get_by_role("link", name="Home")).to_have_attribute("aria-current", "page")
         phone = self.page(phone=True)
-        for path, title in (("/tasks", "Your tasks"), ("/docs", "Wiki"), ("/no-such-page", "Page not found")):
+        for path, title in (("/tasks", "My tasks"), ("/docs", "Wiki"), ("/no-such-page", "Page not found")):
             phone.goto(path)
             expect(phone.locator("header.phead").get_by_role("heading", level=1)).to_have_text(title)
             bar = phone.get_by_role("navigation", name="Main places")
@@ -362,7 +362,7 @@ class HomeInboxNav(unittest.TestCase):
         for dark in (False, True):
             page = self.page(phone=True, dark=dark)
             page.goto("/projects")
-            projects = page.get_by_role("list", name="Projects")
+            projects = page.get_by_role("list", name="Spaces")
             expect(projects.get_by_role("link", name=re.compile("Community garden sensors"))).to_be_visible()
             self.assertEqual(projects.locator(".proj-index__tile").first.inner_text().strip(), "C", "a letter tile, not a sparkle")
             dms = page.get_by_role("list", name="Conversations")

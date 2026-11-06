@@ -17,7 +17,7 @@ export class DomainError extends Error {
  */
 export class WorkspaceAiBlockedError extends DomainError {
   constructor() {
-    super(403, 'WORKSPACE_AI_BLOCKED', 'AI is turned off in this workspace');
+    super(403, 'WORKSPACE_AI_BLOCKED', 'AI is turned off in this company');
   }
 }
 

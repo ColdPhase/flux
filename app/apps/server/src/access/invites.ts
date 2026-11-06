@@ -2,7 +2,7 @@ import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { INVITE_ACCEPT_PATH, INVITE_EXPIRY_DAYS, INVITE_PREVIEW_PATH, WORKSPACES_PATH, type CreateInviteCommand, type InviteTokenCommand } from '@flux/contracts';
 import type { PgBoss } from 'pg-boss';
 import { accessPorts, agentAccessRequestRows, type Database } from '@flux/db';
-import { acceptInvite, createInvite, createNotification, listInvites, NotFoundError, previewInvite, revokeInvite, withLink,
+import { ConflictError, acceptInvite, createInvite, createNotification, listInvites, NotFoundError, previewInvite, revokeInvite, withLink,
   type CreatedInvite, type InviteJoined, type InviteSigner } from '@flux/core';
 import { notificationUnitOfWork, pgBossQueue } from '../push/adapters.js';
 import { joinRateLimiter, type JoinRateLimiter } from '../live/rate-limit.js';
@@ -21,28 +21,28 @@ export function inviteLimiters(): InviteLimiters {
 const tokenBody = { type: 'object', required: ['token'], additionalProperties: false, properties: { token: { type: 'string', maxLength: 128 } } } as const;
 
 /**
- * Invite links (F-035, #763 PE-2; docs/development/access-policy.md#invite-links-f-035). Create, list and revoke need an
- * owner or admin. Preview needs no session; accept needs one and is idempotent by itself (no Idempotency-Key row,
+ * Invite links (F-035, #763 PE-2; docs/development/access-policy.md#invite-links-f-035): they join the company (F-037).
+ * Create, list and revoke need a company owner or admin. Preview needs no session; accept needs one and is idempotent by itself (no Idempotency-Key row,
  * which would only store the token's answer). The token never reaches a stored answer, an event or a log.
  */
-export function inviteRoutes(app: FastifyInstance, { db, principal, command, sessions, workspaceScope, inviteVerifiedEmail }: AccessContext,
+export function inviteRoutes(app: FastifyInstance, { db, principal, command, sessions, workspaceScope, inviteVerifiedEmail, ssoOnly }: AccessContext,
   signer: InviteSigner, limits: InviteLimiters, boss: Pick<PgBoss, 'send'>) {
-  // #763 FT-3: the person who made the link hears that it was used, in the same transaction as the join.
+  // #763 FT-3: the person who made the link hears that it was used, in the same transaction as the join. F-037: a new
+  // member is in the company's Everyone space already; a guest is in nothing until a space adds them.
   const onJoined: InviteJoined = async (tx, joined) => {
     // An encrypted workspace's notifications carry no content (F-030): the People list shows the new member instead.
     if (joined.encrypted) return;
     const names = await agentAccessRequestRows(tx as Database).names([joined.userId]);
     const who = names.get(joined.userId) ?? 'Someone';
-    const projectName = joined.projectId ? (await accessPorts.invites(tx as Database).projectName(joined.workspaceId, joined.projectId)) : null;
+    const company = (await accessPorts.workspaces(tx as Database).get(joined.workspaceId))?.name ?? 'the company';
     try {
-      const notification = await createNotification(notificationUnitOfWork(tx as Database, pgBossQueue(boss)), {
-        userId: joined.inviterId, source: joined.projectId ? { type: 'project', id: joined.projectId } : { type: 'workspace', id: joined.workspaceId },
-        title: (projectName ? `${who} joined ${projectName}` : `${who} joined your space`).slice(0, 200),
-        body: projectName ? 'They can open the project now.' : 'Give them access to a project in People.',
-        url: joined.projectId ? `/projects/${joined.projectId}?open=people` : '/', aiOrigin: false,
+      await createNotification(notificationUnitOfWork(tx as Database, pgBossQueue(boss)), {
+        userId: joined.inviterId, source: { type: 'workspace', id: joined.workspaceId },
+        title: `${who} joined ${company}`.slice(0, 200),
+        body: joined.role === 'guest' ? 'They are a guest: they see only the spaces you add them to, in each space’s settings.'
+          : 'They are in Everyone now. Add them to other spaces in each space’s settings.',
+        url: '/settings/company', aiOrigin: false,
       });
-      // Without a project, giving access is the one thing left to do: it waits in Needs you.
-      if (!joined.projectId) await agentAccessRequestRows(tx as Database).markQuestion(notification.id);
     } catch (error) { if (!(error instanceof NotFoundError)) throw error; }
   };
   const who = async (request: FastifyRequest) => {
@@ -56,11 +56,13 @@ export function inviteRoutes(app: FastifyInstance, { db, principal, command, ses
   app.post<{ Params: { workspaceId: string }; Body: CreateInviteCommand }>(`${WORKSPACES_PATH}/:workspaceId/invites`, {
     schema: { body: { type: 'object', required: ['role'], additionalProperties: false, properties: {
       role: { type: 'string', enum: ['admin', 'member', 'guest'] }, email: { type: ['string', 'null'], maxLength: 320 },
-      expiresInDays: { type: 'integer', enum: [...INVITE_EXPIRY_DAYS] }, projectId: { type: ['string', 'null'], maxLength: 64 } } } },
+      expiresInDays: { type: 'integer', enum: [...INVITE_EXPIRY_DAYS] } } } },
     // The stored idempotent answer has no link; it is derived again on every answer, replays included.
     preSerialization: async (_request: FastifyRequest, _reply: unknown, payload: unknown) =>
       payload && typeof payload === 'object' && 'expiresAt' in payload && !('link' in payload) ? withLink(signer, payload as CreatedInvite) : payload,
   }, async (request, reply) => {
+    // F-035 as amended by F-037: with single sign-on people join by signing in, and only the provider says who can.
+    if (ssoOnly) throw new ConflictError('With single sign-on, people join by signing in', 'INVITES_OFF_WITH_SSO');
     limits.create.take(`user:${(await principal(request)).id}`);
     return command(request, reply, {
       operation: `POST ${WORKSPACES_PATH}/:workspaceId/invites`, scope: workspaceScope(request.params.workspaceId), status: 201,

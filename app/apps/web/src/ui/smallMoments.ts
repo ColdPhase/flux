@@ -1,7 +1,7 @@
 import { useSyncExternalStore } from 'react';
 
 // Kreska's small moments (F-026 §3): splash, loading, thinking, empty Inbox, offline, no results,
-// pull to refresh, goal reached and the task-closed toast. On by default; Settings → Appearance
+// pull to refresh and the task-closed toast. On by default; Settings → Appearance
 // turns them off on this device. Moments read `useSmallMoments()` (or `[data-kreska="off"]` on
 // the root in CSS) and show their plain text state when it is off (#352).
 

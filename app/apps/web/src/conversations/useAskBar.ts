@@ -31,7 +31,7 @@ export function useAskBar({ me, project, people, audienceShort }: PaneCore, assi
     run: () => { void grantAgentProject(project.id, ownAgent, 'viewer').then(joined).catch(() => setAskFailure('Couldn’t give it access. Try again.')); },
   } : null;
   const notInText = assistant.requested ? `Asked ${managerName} to add me. I'll do this when they do.`
-    : project.access === 'manager' ? 'I\'m not in this project yet.' : 'I\'m not in this project yet. A manager can add me.';
+    : project.access === 'manager' ? 'I\'m not in this space yet.' : 'I\'m not in this space yet. A manager can add me.';
   function onAction(action: string) {
     if (action === 'connect') openDetails('connect-ai');
     else if (action === 'resume') void assistant.resume().catch(() => setAskFailure('Couldn’t resume. Try again.'));

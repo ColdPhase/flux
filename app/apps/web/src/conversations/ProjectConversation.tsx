@@ -89,7 +89,7 @@ function ProjectConversationContent({ data, variant, feed, rootHeader, rootMessa
   const changes = useAssistantChanges(conversation?.id ?? null, `${assistant.run?.id ?? ''}:${assistant.run?.status ?? ''}:${assistant.answers.length}:${assistant.tick}`, !aiOff);
   useFocusOnOpen(focusComposer, composerId);
 
-  if (accessLost) return <div className="pane-scroll"><div className="pane-in project-setup" role="alert"><h2>Project unavailable</h2><p>Your access to this project may have changed. Reload to check current access.</p></div></div>;
+  if (accessLost) return <div className="pane-scroll"><div className="pane-in project-setup" role="alert"><h2>Space unavailable</h2><p>Your access to this space may have changed. Reload to check current access.</p></div></div>;
   // The root sits at the thread's top (and in the stream); the list holds its replies and answers.
   // What came of this thread (#694): the decisions and results made from it stand among its replies, in time order.
   const made = conversation ? threadObjects(conversation.id, new Set(messages.map((message) => message.id)), objects) : [];

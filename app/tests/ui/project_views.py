@@ -23,7 +23,7 @@ def project_views(page: Page) -> Locator:
         if opener.get_attribute("aria-expanded") != "true":
             opener.click()
         return page.get_by_role("dialog").filter(has=page.locator(".phone-menu__list")).locator(".phone-menu__list")
-    return page.get_by_role("navigation", name="Project views")
+    return page.get_by_role("navigation", name="Space views")
 
 
 def project_view(page: Page, name: str, *, touch: bool = False) -> None:

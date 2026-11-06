@@ -158,6 +158,8 @@ export const LOCKED_ALLOWED_ROUTES: Readonly<Record<string, string>> = {
   'POST /api/v1/workspaces/:workspaceId/members': 'Membership is metadata',
   'PATCH /api/v1/workspaces/:workspaceId/members/:userId': 'Roles are metadata; a demotion removes the person\'s unlock password',
   'DELETE /api/v1/workspaces/:workspaceId/members/:userId': 'Leaving and removal are metadata',
+  'GET /api/v1/workspaces/:workspaceId/removed-people': 'Who left is metadata',
+  'POST /api/v1/workspaces/:workspaceId/removed-people/:userId/restore': 'Membership is metadata',
   'GET /api/v1/workspaces/:workspaceId/invites': 'Invite links are metadata: a role, an address and who made them (F-035)',
   'POST /api/v1/workspaces/:workspaceId/invites': 'An invite link is metadata (F-035); with an Idempotency-Key it answers 423 itself, as its stored answer is sealed',
   'DELETE /api/v1/workspaces/:workspaceId/invites/:inviteId': 'Revoking an invite link is metadata (F-035)',
@@ -210,7 +212,7 @@ export interface LockedWorkspaceRef { id: string; name: string }
 export const EVENT_DATA_TOKENS = [
   'about', 'accepted', 'admin', 'affects', 'agent', 'assigned', 'blocked', 'contributor', 'conversation', 'copied_from_dm',
   'copied_to_project', 'creation_reverted', 'decision', 'denied', 'dm', 'doc', 'done', 'group', 'guest', 'human', 'in_progress',
-  'invitation', 'left', 'link_added', 'link_removed', 'link_updated', 'map', 'material', 'member', 'mention', 'mentions', 'message',
+  'invitation', 'left', 'link_added', 'link_removed', 'link_updated', 'manager', 'map', 'material', 'member', 'mention', 'mentions', 'message',
   'not_pursued', 'open', 'owner', 'pair', 'password', 'person', 'private', 'project', 'proposed', 'question', 'recovery', 'rejoined',
   'related', 'renamed', 'reply', 'restart', 'restricted', 'result', 'review', 'self', 'sketch', 'source', 'still_applies',
   'superseded', 'thought', 'thought_added', 'thought_removed', 'thought_updated', 'thoughts_moved', 'viewer', 'wiki', 'work',

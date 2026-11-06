@@ -152,7 +152,7 @@ class AgentsViewJourney(unittest.TestCase):
 
     def test_02_every_connection_is_its_own_entry_with_owner_and_state(self) -> None:
         page = self.open_agents("hubert", thread=False)
-        tabs = page.get_by_role("navigation", name="Project views")
+        tabs = page.get_by_role("navigation", name="Space views")
         expect(tabs.get_by_role("link", name=re.compile("^Agents"))).to_have_attribute("aria-current", "page")
         connections = page.get_by_role("list", name="Agents in this project").get_by_role("listitem")
         expect(connections).to_have_count(3)
@@ -446,8 +446,8 @@ class AgentsViewJourney(unittest.TestCase):
     def test_04_a_draft_survives_leaving_the_view(self) -> None:
         page = self.open_agents("hubert")
         page.get_by_label("Write to this task").fill("Half-written note about the firmware")
-        page.get_by_role("navigation", name="Project views").get_by_role("link", name=re.compile("^Tasks")).click()
-        page.get_by_role("navigation", name="Project views").get_by_role("link", name=re.compile("^Agents")).click()
+        page.get_by_role("navigation", name="Space views").get_by_role("link", name=re.compile("^Tasks")).click()
+        page.get_by_role("navigation", name="Space views").get_by_role("link", name=re.compile("^Agents")).click()
         expect(page.get_by_role("heading", level=1, name="Agents")).to_be_visible()
         page.evaluate("([url]) => { history.pushState({}, '', url); window.dispatchEvent(new PopStateEvent('popstate')); }", [f"/projects/{self.ids['project']}/agents?task={self.ids['task']}"])
         expect(page.get_by_label("Write to this task")).to_have_value("Half-written note about the firmware")

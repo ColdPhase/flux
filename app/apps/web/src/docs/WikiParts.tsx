@@ -111,7 +111,7 @@ function ProjectActions() {
   return <>
     <LiveEntry variant="menu" onAction={() => close()} />
     <button type="button" className="wiki-pop__item" onClick={() => { close(); openDetails('place'); }}>
-      <Icon name="panel" /><span><b>Details</b><small>Project, goal and people</small></span>
+      <Icon name="panel" /><span><b>Details</b><small>Space and people</small></span>
     </button>
   </>;
 }
@@ -246,8 +246,8 @@ function DownloadBody({ shown }: { shown: Shown }) {
       close();
       toast({ message: `Exported ${project.name} as ${file.fileName}.`, tone: 'success' });
     } catch (cause) {
-      setError(cause instanceof ApiError && cause.status === 403 ? 'Only people who manage this space can export the whole project.'
-        : cause instanceof ApiError && cause.status === 404 ? 'This project is no longer available to you.'
+      setError(cause instanceof ApiError && cause.status === 403 ? 'Only people who manage this space can export the whole space.'
+        : cause instanceof ApiError && cause.status === 404 ? 'This space is no longer available to you.'
           : 'The export could not be made. Check the connection and try again.');
     } finally { setBusy(false); }
   }
@@ -262,9 +262,9 @@ function DownloadBody({ shown }: { shown: Shown }) {
       {project.access === 'manager' ? (
         <button type="button" className="wiki-pop__item" onClick={() => void wholeProject()} aria-busy={busy || undefined} aria-disabled={busy || undefined}>
           {busy ? <Spinner /> : <WikiIcon name="archive" />}
-          <span><b>Export the whole project</b><small>A .tar.gz of every page, conversation, task and map, for people who manage {project.name}</small></span>
+          <span><b>Export the whole space</b><small>A .tar.gz of every page, conversation, task and map, for people who manage {project.name}</small></span>
         </button>
-      ) : <p className="wiki-pop__note">People who manage this space can also export the whole project.</p>}
+      ) : <p className="wiki-pop__note">People who manage this space can also export the whole space.</p>}
       {error ? <p className="wiki-pop__error" role="alert">{error}</p> : null}
     </>
   );

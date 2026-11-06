@@ -130,7 +130,7 @@ export async function loadActor(principal: AccessPrincipal, workspaceId: string,
   return inactive;
 }
 
-function grantExists(column: 'user_id' | 'agent_id', principalId: string, projectId: SQLWrapper, role: 'contributor' | 'viewer' | 'denied'): SQL {
+function grantExists(column: 'user_id' | 'agent_id', principalId: string, projectId: SQLWrapper, role: 'manager' | 'contributor' | 'viewer' | 'denied'): SQL {
   return sql`EXISTS (SELECT 1 FROM project_grants g WHERE g.project_id = ${projectId} AND g.${sql.raw(column)} = ${principalId} AND g.role = ${role})`;
 }
 
@@ -139,7 +139,8 @@ function humanLevel(userId: string, role: WorkspaceRole | null, projectId: SQLWr
   const denied = grantExists('user_id', userId, projectId, 'denied');
   if (isManager(role)) return sql`(CASE WHEN ${denied} THEN 0 ELSE 3 END)`;
   const implicit = role === 'member' ? sql` WHEN ${visibility} = 'workspace' THEN 2` : sql``;
-  return sql`(CASE WHEN ${denied} THEN 0 WHEN ${grantExists('user_id', userId, projectId, 'contributor')} THEN 2 WHEN ${grantExists('user_id', userId, projectId, 'viewer')} THEN 1${implicit} ELSE 0 END)`;
+  // F-037: a space admin's `manager` grant gives 3, a space member's `contributor` grant 2.
+  return sql`(CASE WHEN ${denied} THEN 0 WHEN ${grantExists('user_id', userId, projectId, 'manager')} THEN 3 WHEN ${grantExists('user_id', userId, projectId, 'contributor')} THEN 2 WHEN ${grantExists('user_id', userId, projectId, 'viewer')} THEN 1${implicit} ELSE 0 END)`;
 }
 
 /**
@@ -153,6 +154,15 @@ export function projectLevelSql(actor: AccessActor, projectId: SQLWrapper, visib
   const own = sql`(CASE WHEN ${grantExists('agent_id', id, projectId, 'denied')} THEN 0 WHEN ${grantExists('agent_id', id, projectId, 'contributor')} THEN 2 WHEN ${grantExists('agent_id', id, projectId, 'viewer')} THEN 1 ELSE 0 END)`;
   const owner = actor.agent?.ownerUserId;
   return owner ? sql`LEAST(${own}, ${humanLevel(owner, actor.agent?.ownerRole ?? null, projectId, visibility)})` : own;
+}
+
+/** Whether the actor belongs to the space, not only reaches it: a company owner or admin without a grant does not (F-037). */
+export function projectMemberSql(actor: AccessActor, projectId: SQLWrapper, visibility: SQLWrapper): SQL {
+  if (actor.principal.kind !== 'human' || !actor.active) return sql`true`;
+  const everyone = actor.role === 'guest' ? sql`false` : sql`${visibility} = 'workspace'`;
+  // Nested: Drizzle would write a column at the top level of a selected expression without its table, and `id` here would mean the grant's.
+  const added = sql`EXISTS (SELECT 1 FROM project_grants g WHERE g.project_id = ${projectId} AND g.user_id = ${actor.principal.id} AND g.role <> 'denied')`;
+  return sql`(${everyone} OR ${added})`;
 }
 
 const draftProjectVisibility = sql`(SELECT p.visibility FROM projects p WHERE p.id = ${schema.drafts.projectId})`;

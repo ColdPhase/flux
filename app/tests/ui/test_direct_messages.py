@@ -243,7 +243,7 @@ class DirectMessageJourney(unittest.TestCase):
         # Direct messages live inside Projects on the phone (#341): no Messages tab, no drawer.
         bar = page.get_by_role("navigation", name="Main places")
         expect(bar.get_by_role("link", name="Messages")).to_have_count(0)
-        bar.get_by_role("link", name="Projects").click()
+        bar.get_by_role("link", name="Spaces").click()
         expect(page).to_have_url(f"{ORIGIN}/projects")
         expect(page.get_by_role("heading", name="Direct messages")).to_be_visible()
         row = page.get_by_role("list", name="Conversations").get_by_role("link", name=re.compile("Ada Kowalska"))

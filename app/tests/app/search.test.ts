@@ -181,7 +181,7 @@ describe('search: one query across Flux, only what you may read', () => {
     const hit = found.items.find((item) => item.kind === 'project');
     assert.ok(hit, 'the restricted project is found by its name');
     assert.equal(text(hit.title), 'Gesture lamp');
-    assert.equal(hit.label, 'Project · restricted');
+    assert.equal(hit.label, 'Space');
     assert.deepEqual(hit.target, { type: 'project', projectId: lamp.id });
     assert.deepEqual(hit.place, { type: 'workspace', id: ws.id, name: 'Studio' });
     assert.equal(found.counts.project, 1);

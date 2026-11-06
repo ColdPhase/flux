@@ -100,18 +100,19 @@ $compose logs --no-color migrate | grep -q "Flux schema $expected and pg-boss re
 [ "$($compose ps --status running --format '{{.Service}}' | sort | tr '\n' ' ')" = "api db keyring worker " ] ||
   fail "expected api, db, keyring and worker running"
 
-# A person signs up, creates a workspace and reads it back; the web app is served.
+# A person signs up, which sets up the company (F-037), names it and reads it back; the web app is served.
 jar="$work/cookies"
 body="$work/body"
 code=$(curl -sS -o "$body" -w '%{http_code}' -c "$jar" -H "Origin: $origin" -H 'Content-Type: application/json' \
   -d "{\"email\":\"operator-$$@example.test\",\"password\":\"$(random_hex)\",\"name\":\"Operator check\"}" \
   "$origin/api/auth/sign-up/email")
 [ "$code" = 200 ] || { cat "$body" >&2; fail "sign-up returned $code"; }
-code=$(curl -sS -o "$body" -w '%{http_code}' -b "$jar" -H "Origin: $origin" -H 'Content-Type: application/json' \
-  -d '{"name":"Operator probe"}' "$origin/api/v1/workspaces")
-[ "$code" = 201 ] || { cat "$body" >&2; fail "workspace creation returned $code"; }
-workspace=$(sed -n 's/.*"id":"\([^"]*\)".*/\1/p' "$body" | head -n 1)
-[ -n "$workspace" ] || fail "no workspace id in $(cat "$body")"
+curl -fsS -b "$jar" "$origin/api/v1/workspaces" > "$body"
+workspace=$(sed -n 's/^\[{"id":"\([^"]*\)".*/\1/p' "$body")
+[ -n "$workspace" ] || fail "the first account has no company: $(cat "$body")"
+code=$(curl -sS -o "$body" -w '%{http_code}' -b "$jar" -X PATCH -H "Origin: $origin" -H 'Content-Type: application/json' \
+  -d '{"name":"Operator probe"}' "$origin/api/v1/workspaces/$workspace")
+[ "$code" = 200 ] || { cat "$body" >&2; fail "naming the company returned $code"; }
 curl -fsS -b "$jar" "$origin/api/v1/workspaces/$workspace" | grep -q '"name":"Operator probe"' || fail "workspace not readable"
 curl -fsS -H 'Accept: text/html' "$origin/" | grep -qi '<!doctype html' || fail "web app not served"
 curl -fsS "$origin/api/v1/push/public-key" -b "$jar" | grep -q "$(sed -n 's/^FLUX_VAPID_PUBLIC_KEY=//p' "$env_file")" ||

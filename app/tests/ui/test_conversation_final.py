@@ -312,7 +312,7 @@ class ConversationFinal(unittest.TestCase):
         expect(composer).to_have_value("")
         composer.fill("/source")
         page.keyboard.press("Enter")
-        expect(page.get_by_role("region", name="Project materials")).to_be_visible()
+        expect(page.get_by_role("region", name="Space materials")).to_be_visible()
         # "@" lists people and agents; the chosen name goes in as a chip that sits on the text baseline.
         composer.fill("Thanks @jo")
         people = page.get_by_role("listbox", name="Mention")

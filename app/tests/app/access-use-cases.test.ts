@@ -105,7 +105,7 @@ function scene(options: Scene = {}, checked = true) {
     readAgent: async () => { log('access.readAgent'); return { id: AGENT, workspaceId: WS, ownerUserId: null, revokedAt: null }; },
   };
   const workspaces = {
-    createWithOwner: async (row: { id: string; name: string }) => { log('workspaces.createWithOwner'); return { id: row.id, name: row.name, version: 1, encrypted: false, createdAt: now }; },
+    createWithOwner: async (row: { id: string; name: string }) => { log('workspaces.createWithOwner'); return { id: row.id, name: row.name, version: 1, encrypted: false, company: false, createdAt: now }; },
     aiPolicies: async () => { log('workspaces.aiPolicies'); return []; },
     lock: async () => { log('workspaces.lock'); },
     lockAiPolicy: async () => { log('workspaces.lockAiPolicy'); return { state: 'allowed' as const, epoch: 3, version: 1 }; },
@@ -116,6 +116,7 @@ function scene(options: Scene = {}, checked = true) {
     ownerCount: async () => { log('workspaces.ownerCount'); return options.ownerCount ?? 2; },
     setRole: async (_w: string, _u: string, role: WorkspaceRole) => { log('workspaces.setRole'); return memberRow(role); },
     deleteMember: async () => { log('workspaces.deleteMember'); },
+    recordRemoved: async () => { log('workspaces.recordRemoved'); },
   };
   const encryption = {
     sealed: async () => { log('encryption.sealed'); return options.sealed ?? false; },
@@ -139,7 +140,6 @@ function scene(options: Scene = {}, checked = true) {
       log('projects.insert');
       return { ...project, id: row.id, name: row.name, visibility: row.visibility, views: row.views };
     },
-    shownGoals: async () => { log('projects.shownGoals'); return new Map(); },
     setViews: async (_id: string, views: string[]) => { log('projects.setViews'); return { ...project, views, version: 2 }; },
   };
   const agents = {
@@ -273,12 +273,12 @@ describe('workspace and membership use cases over in-memory repositories', () =>
   test('removeMember: a person leaving needs only workspace.read; the same locks; the event last', async () => {
     const s = scene({ role: 'guest', targetRole: 'guest' });
     await removeMember(human(TARGET), WS, TARGET, s.db, s.ports);
-    assert.deepEqual(s.calls, ['begin', 'encryption.sealed', 'access.workspaceAi(lock)', 'workspaces.lock', 'access.loadActor(lock)', 'workspaces.lockMember', 'workspaces.deleteMember', ...EVENT_LAST, 'commit']);
+    assert.deepEqual(s.calls, ['begin', 'encryption.sealed', 'access.workspaceAi(lock)', 'workspaces.lock', 'access.loadActor(lock)', 'workspaces.lockMember', 'workspaces.deleteMember', 'workspaces.recordRemoved', ...EVENT_LAST, 'commit']);
     // S2c: an owner or admin removed from a sealed workspace: the key row first, the password dropped, the removal pinned.
     const sealed = scene({ sealed: true, targetRole: 'admin' });
     await removeMember(human(OWNER), WS, TARGET, sealed.db, sealed.ports);
     assert.deepEqual(sealed.calls, ['begin', 'encryption.sealed', 'encryption.memberRole', 'encryption.keys(update)', 'access.workspaceAi(lock)', 'workspaces.lock',
-      'access.loadActor(lock)', 'workspaces.lockMember', 'encryption.dropUnlockPassword', 'workspaces.deleteMember', 'encryption.recordRemovals', ...EVENT_LAST, 'commit']);
+      'access.loadActor(lock)', 'workspaces.lockMember', 'encryption.dropUnlockPassword', 'workspaces.deleteMember', 'workspaces.recordRemoved', 'encryption.recordRemovals', ...EVENT_LAST, 'commit']);
     const other = scene({ role: 'guest', targetRole: 'member' });
     await assert.rejects(removeMember(human(OWNER), WS, TARGET, other.db, other.ports), ForbiddenError, 'a guest cannot remove someone else');
   });
@@ -333,7 +333,7 @@ describe('grant, agent and draft use cases over in-memory repositories', () => {
   });
 
   test('grantProject: the constraint violations PostgreSQL reports become ConflictError, with no event', async () => {
-    for (const [conflict, message] of [['GRANT_CONFLICT', 'A concurrent grant for this principal was created'], ['GRANTEE_REMOVED', 'The grantee is no longer part of the workspace']] as const) {
+    for (const [conflict, message] of [['GRANT_CONFLICT', 'A concurrent grant for this principal was created'], ['GRANTEE_REMOVED', 'This person is no longer in the company']] as const) {
       const s = scene({ grantWrite: { conflict } });
       await assert.rejects(grantProject(human(OWNER), PROJECT, { principal: { kind: 'human', id: TARGET }, role: 'viewer' }, s.db, s.ports),
         (error: unknown) => error instanceof ConflictError && error.code === conflict && error.message === message);
@@ -413,23 +413,24 @@ describe('the remaining mutations, and the check that every port is bound to its
     const s = scene();
     const created = await createProject(human(OWNER), WS, { name: 'Lamp', visibility: 'restricted' }, s.db, s.ports);
     assert.deepEqual([created.name, created.visibility, created.access], ['Lamp', 'restricted', 'manager']);
-    assert.deepEqual(s.calls, ['begin', 'access.loadActor(lock)', 'projects.insert', ...EVENT_LAST, 'commit']);
+    // F-037: the creator becomes the new space's first admin in the same transaction.
+    assert.deepEqual(s.calls, ['begin', 'access.loadActor(lock)', 'projects.insert', 'projects.insertGrant', ...EVENT_LAST, 'commit']);
     const sunk = scene();
     const recorded: string[] = [];
     const sink: DomainEventSink = { record: async (_principal, _workspaceId, kind) => { recorded.push(kind); } };
     await createProject(human(OWNER), WS, { name: 'Lamp' }, sunk.db, sunk.ports, sink);
     assert.deepEqual(recorded, ['project.created.v1']);
-    assert.deepEqual(sunk.calls, ['begin', 'access.loadActor(lock)', 'projects.insert', 'commit'], 'the sink replaces the event ports');
+    assert.deepEqual(sunk.calls, ['begin', 'access.loadActor(lock)', 'projects.insert', 'projects.insertGrant', 'commit'], 'the sink replaces the event ports');
   });
 
   test('addProjectView: the project row for the change, the project under lock, the update, the event last; a view already shown writes nothing', async () => {
     const s = scene();
     const added = await addProjectView(human(OWNER), PROJECT, { view: 'map' }, s.db, s.ports);
     assert.deepEqual(added.views, ['map']);
-    assert.deepEqual(s.calls, ['begin', 'projects.lockForGrantChange', ...target, 'projects.shownGoals', 'projects.setViews', ...EVENT_LAST, 'commit']);
+    assert.deepEqual(s.calls, ['begin', 'projects.lockForGrantChange', ...target, 'projects.setViews', ...EVENT_LAST, 'commit']);
     const again = scene({ views: ['map'] });
     await addProjectView(human(OWNER), PROJECT, { view: 'map' }, again.db, again.ports);
-    assert.deepEqual(again.calls, ['begin', 'projects.lockForGrantChange', ...target, 'projects.shownGoals', 'commit']);
+    assert.deepEqual(again.calls, ['begin', 'projects.lockForGrantChange', ...target, 'commit']);
   });
 
   test('shareDraft: the draft row and its project, the version check, the target project under lock, the update, the event last', async () => {

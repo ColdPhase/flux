@@ -189,7 +189,7 @@ export function askError(error: unknown): string {
     case 'PERSONAL_RUN_NOT_ENABLED': return 'You haven’t set up your assistant.';
     case 'PERSONAL_RUN_PAUSED': return 'Your assistant is paused.';
     case 'PERSONAL_RUN_UNAVAILABLE': return 'Your assistant is unavailable right now. Nothing was sent.';
-    case 'PERSONAL_RUN_NO_AGENT': return 'Choose your assistant for this workspace in assistant settings first.';
+    case 'PERSONAL_RUN_NO_AGENT': return 'Choose your assistant in assistant settings first.';
     case 'PERSONAL_RUN_NO_PROJECT_ACCESS': return 'Your assistant can’t read this project yet.';
     case 'PERSONAL_RUN_IN_FLIGHT': return 'Your assistant is already working on a request.';
     case 'PERSONAL_RUN_CAPPED': return 'Stopped at today’s cap. It won’t use another payer.';

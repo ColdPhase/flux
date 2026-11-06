@@ -164,7 +164,7 @@ class ReturnFixes(unittest.TestCase):
         expect(panel.locator(".wd-row", has=page.locator("dt", has_text="Due"))).to_contain_text(DUE)
         shot(page, "h11-task-owner-face")
         # Another view of the same project keeps the task beside it.
-        page.locator("nav[aria-label='Project views']").get_by_role("link", name="Tasks").click()
+        page.locator("nav[aria-label='Space views']").get_by_role("link", name="Tasks").click()
         expect(page).to_have_url(re.compile(f"/projects/{self.ids['project']}/tasks"))
         expect(owner).to_be_visible()
         # Another page closes it, with no "‹ back" trail left in the panel.

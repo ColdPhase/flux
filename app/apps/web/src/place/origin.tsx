@@ -49,13 +49,13 @@ export function labelFor(pathname: string): string {
   if (/^\/projects\/[^/]+\/agents(\/|$)/.test(pathname)) return 'Agents';
   if (/^\/projects\/[^/]+\/github(\/|$)/.test(pathname)) return 'GitHub settings';
   if (/^\/projects\/[^/]+\/live\//.test(pathname)) return 'Live session';
-  if (pathname === '/projects') return 'Projects';
+  if (pathname === '/projects') return 'Spaces';
   if (/^\/projects\/[^/]+\/?$/.test(pathname)) return 'Conversation';
   if (pathname.startsWith('/search')) return 'Search';
   if (pathname.startsWith('/inbox')) return 'Inbox';
   if (/^\/dm\/[^/]+\/sketches/.test(pathname)) return 'Sketches';
   if (pathname === '/dm' || pathname.startsWith('/dm/')) return 'Messages';
-  if (pathname.startsWith('/map')) return 'Sketchbook';
+  if (pathname.startsWith('/map')) return 'My map';
   if (pathname.startsWith('/settings')) return 'Settings';
   return 'Home';
 }

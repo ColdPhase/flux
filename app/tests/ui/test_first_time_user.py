@@ -8,7 +8,7 @@ Anna owns a space with a restricted project "Volunteer sign-up app". Dev is a me
   "Allow and hand off" grants exactly the task's work, then hands it off.
 * FT-3: An invite link made from the project's People also opens the project; the new person lands in it.
 * FT-4: A phone's long-press menu offers "Propose a decision" under More…, and a visible ⋯ opens the same menu.
-* FT-7, FT-11, FT-13: Change access alone offers Invite; the project field is "Project name"; Revoke asks once.
+* FT-7, FT-11, FT-13: Change access alone offers Invite; the project field is "Space name"; Revoke asks once.
 """
 
 from __future__ import annotations
@@ -21,6 +21,7 @@ import uuid
 
 from playwright.sync_api import Browser, BrowserContext, Page, expect, sync_playwright
 
+from app_select import choose
 from message_gestures import long_press
 from test_app_shell import DESKTOP, ORIGIN, PHONE, UI_BROWSER, UPSTREAM, shot as save_shot, start_forwarder
 
@@ -188,19 +189,15 @@ class FirstTimeUser(unittest.TestCase):
         menu.get_by_role("menuitem", name="Propose a decision").click()
         expect(page.get_by_role("dialog").filter(has_text=re.compile("Should sign-up ask for a phone number"))).to_be_visible()
 
-    def test_05_an_invite_from_the_project_opens_it_and_the_new_person_lands_there(self) -> None:
+    def test_05_someone_new_joins_the_company_by_link_and_is_then_added_to_the_space(self) -> None:
+        """F-037: an invite link joins the company; the space's people are added from the company afterwards."""
         anna = self.page("anna")
         anna.goto(f"/projects/{self.ids['project']}?open=people")
-        anna.get_by_role("button", name="Invite").click()
-        # Everyone in the space already has access, so Invite opens the space's people with this project ticked.
-        give = anna.get_by_role("group", name=re.compile("Give someone access"))
-        if give.count():
-            give.get_by_role("button", name=re.compile("Add them to")).click()
-        check = anna.get_by_role("checkbox", name=re.compile("Also give access to Volunteer sign-up app"))
-        expect(check).to_be_checked()
+        # Everyone in the company is in the space already, so Add people leads to Settings › Company to invite someone new.
+        anna.get_by_role("button", name="Add people").click()
+        expect(anna).to_have_url(re.compile(r"/settings/company\?invite=1$"))
         anna.get_by_role("button", name="Create invite link").click()
         link = anna.locator("#people-invite-link").input_value()
-        expect(anna.get_by_text(re.compile("opens Volunteer sign-up app")).first).to_be_visible()
         basia = self.page(None)
         token = link.split("#", 1)[1]
         basia.goto(f"/join#{token}")
@@ -209,20 +206,27 @@ class FirstTimeUser(unittest.TestCase):
         basia.get_by_label("Email").fill(f"basia.ftu+{STAMP}@example.test")
         basia.get_by_label("Password").fill(PASSWORD)
         basia.get_by_role("button", name="Create account").click()
-        expect(basia.get_by_text(re.compile("You start in Volunteer sign-up app|You joined Volunteer space"))).to_be_visible()
-        if basia.get_by_role("button", name=re.compile("^Join")).count():
-            basia.get_by_role("button", name=re.compile("^Join")).click()
-        basia.get_by_role("button", name="Open the project").click()
-        expect(basia).to_have_url(re.compile(f"/projects/{self.ids['project']}"))
-        # The inviter hears it in the Inbox.
+        expect(basia.get_by_role("heading", level=1, name="You joined Volunteer space")).to_be_visible()
+        basia.get_by_role("button", name="Open Volunteer space").click()
+        expect(basia).to_have_url(re.compile(r"/$"))
+        # The inviter hears it in the Inbox, with the way to the company's people.
         items = self.api(anna, "GET", "/api/v1/inbox", status=200)["items"]
-        self.assertTrue(any(item["title"] == "Basia Wrona joined Volunteer sign-up app" for item in items))
+        self.assertTrue(any(item["title"] == "Basia Wrona joined Volunteer space" and item["url"] == "/settings/company" for item in items))
+        # The space stays closed to Basia until Anna adds her there.
+        self.api(basia, "GET", f"/api/v1/projects/{self.ids['project']}", status=404)
+        anna.goto(f"/projects/{self.ids['project']}?open=people")
+        anna.get_by_role("button", name="Add people").click()
+        add = anna.get_by_role("group", name="Add people")
+        choose(add.get_by_label("Person"), label=re.compile("^Basia Wrona"))
+        add.get_by_role("button", name="Add Basia").click()
+        expect(anna.get_by_text("Basia is now a member of Volunteer sign-up app.")).to_be_visible()
+        self.assertEqual(self.api(basia, "GET", f"/api/v1/projects/{self.ids['project']}", status=200)["access"], "contributor")
 
     def test_06_revoking_a_link_asks_once_and_project_name_is_the_label(self) -> None:
         anna = self.page("anna")
         invite = self.api(anna, "POST", f"/api/v1/workspaces/{self.ids['workspace']}/invites", {"role": "guest"}, status=201,
                           headers={"idempotency-key": str(uuid.uuid4())})
-        anna.goto(f"/settings/people/{self.ids['workspace']}")
+        anna.goto("/settings/company?invite=1")
         row = anna.locator(".people__item", has_text="Guest")
         row.get_by_role("button", name=re.compile("^Revoke")).first.click()
         confirm = anna.get_by_role("group", name=re.compile("^Revoke link"))
@@ -235,7 +239,7 @@ class FirstTimeUser(unittest.TestCase):
         expect(anna.get_by_text("Invite link revoked. It no longer works.")).to_be_visible()
         # FT-11: the new project's only field is its name.
         anna.goto("/projects/new")
-        expect(anna.get_by_label("Project name")).to_be_visible()
+        expect(anna.get_by_label("Space name")).to_be_visible()
 
 
 if __name__ == "__main__":

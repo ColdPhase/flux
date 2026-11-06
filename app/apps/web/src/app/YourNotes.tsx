@@ -2,10 +2,10 @@ import { useEffect, useId, useLayoutEffect, useRef, useState, type KeyboardEvent
 import { useAllAiBlocked } from '../ai/workspaceAi';
 import { useLocation, useRevalidator } from 'react-router';
 import type { Draft } from '@flux/contracts';
-import { Button, EmptyState, Icon, IconButton, MEDIA, duration, sendsOnEnter, useMediaQuery, type IconName, Select, Option } from '../ui';
+import { Button, EmptyState, Icon, IconButton, MEDIA, duration, sendsOnEnter, useMediaQuery, type IconName } from '../ui';
 import { createPrivateDraft, listDrafts } from '../drafts/api';
 import { captureExists, clearMoveTarget, moveKey, moveTarget, noteTitle, removeCapture, useCaptures } from '../captures/store';
-import { AccountChangedError, assertSignedInAs, ensurePersonalSpace } from './personalSpace';
+import { AccountChangedError, assertSignedInAs } from './personalSpace';
 import { useIntentKeys } from '../api/intent-keys';
 import { useShellData } from './data';
 import { useDraft } from '../drafts/store';
@@ -58,19 +58,14 @@ function NotesSection() {
   const hintId = useId();
   const audienceId = useId();
   const askId = useId();
-  const { me, workspaces } = useShellData();
+  const { me, workspace } = useShellData();
   const { openDetails } = useShellActions();
   const { items, remove } = useCaptures(me.user.id);
   const revalidator = useRevalidator();
   // Unsent text is kept per account and context, so a view switch or reload never loses it.
   const draft = useDraft(me.user.id, 'home');
-  const [selectedWorkspace, setSelectedWorkspace] = useState(workspaces.length === 1 ? workspaces[0]!.id : '');
-  // A space created by the first note (or a sketch) arrives with the shell's next answer.
-  const [spacesSeen, setSpacesSeen] = useState(workspaces);
-  if (spacesSeen !== workspaces) {
-    setSpacesSeen(workspaces);
-    if (!selectedWorkspace && workspaces.length === 1) setSelectedWorkspace(workspaces[0]!.id);
-  }
+  // Private drafts are kept in the company (F-037); an account nobody has invited yet keeps notes in this browser only.
+  const selectedWorkspace = workspace?.id ?? '';
   const [serverDrafts, setServerDrafts] = useState<Draft[]>([]);
   const [draftsTotal, setDraftsTotal] = useState(0);
   // The list API pages over every draft the person can read; only their own private ones are shown,
@@ -158,29 +153,18 @@ function NotesSection() {
   };
   // A restored draft gets its full height on the first paint.
   useLayoutEffect(autosize, []);
-  /**
-   * The space a note goes to: the chosen one, or the personal space (created on the first note).
-   * When the server already has several spaces the shell has not seen yet (created in another tab,
-   * or an invitation), the shell reads them again so the person can choose one (#211 HOME-3).
-   */
-  const spaceForNotes = async (signal: AbortSignal) => {
-    if (selectedWorkspace) return selectedWorkspace;
-    if (workspaces.length > 1) return null;
-    const space = await ensurePersonalSpace(me.user.id, signal);
-    if (!signal.aborted) revalidator.revalidate();
-    if (space) setSelectedWorkspace(space);
-    return space;
-  };
+  /** Where a note goes: the company (F-037), or nowhere before the person joins one. */
+  const spaceForNotes = () => selectedWorkspace || null;
   const send = async () => {
     if (!canSend) return;
-    if (workspaces.length > 1 && !selectedWorkspace) { setSaveState('Choose a space for this private draft.'); return; }
+    if (!selectedWorkspace) { setSaveState('You’re not in a company on this Flux yet. Ask an admin for an invite link.'); return; }
     const { signal } = work.current;
     setSaving(true); setSaveState('Saving…');
     try {
       const body = draft.text.trim();
-      const space = await spaceForNotes(signal);
+      const space = spaceForNotes();
       if (signal.aborted) return;
-      if (!space) { setSaveState('Choose a space for this private draft.'); return; }
+      if (!space) { setSaveState('You’re not in a company on this Flux yet. Ask an admin for an invite link.'); return; }
       // One stable key per text and space (#178): a retry after a lost answer returns the same draft.
       const intent = `draft:${space}:${body}`;
       await assertSignedInAs(me.user.id, signal);
@@ -211,8 +195,8 @@ function NotesSection() {
     let moved = 0;
     let failed = 0;
     try {
-      const space = await spaceForNotes(signal);
-      if (!space) { setMove({ state: 'idle', moved: 0, of: 0 }); setSaveState('Choose a space for these notes first.'); return; }
+      const space = spaceForNotes();
+      if (!space) { setMove({ state: 'idle', moved: 0, of: 0 }); setSaveState('You’re not in a company on this Flux yet. Ask an admin for an invite link.'); return; }
       for (const note of notes) {
         if (signal.aborted) return;
         // Another tab may have moved or deleted it meanwhile.
@@ -245,8 +229,7 @@ function NotesSection() {
     setMove({ state: failed ? 'partial' : 'done', moved, of: notes.length });
     setDraftsReload((n) => n + 1);
   };
-  const targetName = selectedWorkspace ? workspaces.find((space) => space.id === selectedWorkspace)?.name ?? 'your space'
-    : workspaces.length === 0 ? 'Personal' : null;
+  const targetName = workspace ? 'your account' : null;
   const stopAsking = () => { setAsking(false); textareaRef.current?.focus(); };
   const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
     if (event.key === 'Escape' && asking) { event.preventDefault(); event.stopPropagation(); stopAsking(); return; }
@@ -268,18 +251,18 @@ function NotesSection() {
             {draftsRead < draftsTotal ? <Button variant="quiet" busy={moreBusy} onClick={() => void loadMoreDrafts()}>Show more drafts</Button> : null}
           </section>
         ) : null}
-        {move.state === 'done' && !items.length ? <p className="notes__moved" role="status">Moved {move.moved} {move.moved === 1 ? 'note' : 'notes'} into {targetName ?? 'your space'}.</p> : null}
+        {move.state === 'done' && !items.length ? <p className="notes__moved" role="status">Moved {move.moved} {move.moved === 1 ? 'note' : 'notes'} into {targetName ?? 'your account'}.</p> : null}
         {items.length ? (
           <section className="notes" aria-label="Notes in this browser">
             <p className="notes__h"><Icon name="lock" size={13} />Only in this browser · only you can see these</p>
             {!notNow || move.state !== 'idle' ? (
               <div className="notes__move">
                 <p>{targetName
-                  ? <>Move {items.length} {items.length === 1 ? 'note' : 'notes'} from this browser into {targetName}. They become private drafts only you can open: not readable by other members, workspace owners or admins, or agents.</>
-                  : <>Choose a space below, then move these notes from this browser into your account as private drafts only you can open.</>}</p>
+                  ? <>Move {items.length} {items.length === 1 ? 'note' : 'notes'} from this browser into {targetName}. They become private drafts only you can open: not readable by anyone else in the company, its admins or agents.</>
+                  : <>Once you’re in a company on this Flux, move these notes from this browser into your account as private drafts only you can open.</>}</p>
                 <div className="notes__move-actions">
                   <Button variant="secondary" icon="send" busy={move.state === 'busy'} disabled={!targetName} onClick={() => void moveNotes()}>
-                    {`Move ${items.length} ${items.length === 1 ? 'note' : 'notes'} into ${targetName ?? 'a space'}`}</Button>
+                    {`Move ${items.length} ${items.length === 1 ? 'note' : 'notes'} into ${targetName ?? 'your account'}`}</Button>
                   {move.state === 'idle' ? <Button variant="quiet" onClick={() => setNotNow(true)}>Not now</Button> : null}
                 </div>
                 <p className="notes__move-state" role="status">{move.state === 'busy' ? `Moving ${move.moved + 1} of ${move.of}…`
@@ -300,7 +283,7 @@ function NotesSection() {
           </section>
         ) : !serverDrafts.length ? (
           <ViewEmpty icon="chat" title="Nothing here yet" level={3}>
-            <p>Write your first note below. When you’re added to a project or someone messages you, those conversations appear under Projects and Messages.</p>
+            <p>Write your first note below. When you’re added to a space or someone messages you, those conversations appear under Spaces and Messages.</p>
           </ViewEmpty>
         ) : null}
         <div ref={endRef} />
@@ -316,11 +299,11 @@ function NotesSection() {
               <span className="ask__who"><Icon name="spark" size={13} />Your assistant
                 <IconButton icon="x" size={12} label="Stop asking your assistant" className="ask__off" onClick={stopAsking} />
               </span>
-              <span className="ask__note">Your assistant answers in project conversations. Notes here stay private and are never sent.</span>
+              <span className="ask__note">Your assistant answers in space conversations. Notes here stay private and are never sent.</span>
               <button type="button" className="ui-link ask__connect" onClick={() => openDetails('connect-ai')}>Connect your AI</button>
             </div>
           ) : (
-            <p className="composer__audience" id={audienceId}><Icon name="lock" size={13} />Only you<span aria-hidden="true"> · </span><span className="composer__where">private draft in {selectedWorkspace ? `${workspaces.find((space) => space.id === selectedWorkspace)?.name ?? 'your space'}, which only you can open` : workspaces.length ? 'a space you choose' : 'your personal space'}</span></p>
+            <p className="composer__audience" id={audienceId}><Icon name="lock" size={13} />Only you<span aria-hidden="true"> · </span><span className="composer__where">private draft only you can open</span></p>
           )}
             {allAiOff ? null : <button type="button" className="composer__ask" data-ai-surface="notes-ask" aria-pressed={noAssistant ? undefined : asking} aria-label={noAssistant ? 'Connect your AI' : 'Ask my assistant'}
               data-tip={noAssistant ? 'Connect your AI' : 'Ask my assistant'} data-tip-align="start"
@@ -329,7 +312,6 @@ function NotesSection() {
             </button>}
 
           </div>
-          {workspaces.length > 1 ? <label className="composer__space">Save in <Select value={selectedWorkspace} onChange={(next) => { setSelectedWorkspace(next); setServerDrafts([]); setSaveState(''); }}><Option value="">Choose a space</Option>{workspaces.map((space) => <Option key={space.id} value={space.id}>{space.name}</Option>)}</Select></label> : null}
           <p className="composer__hint" id={hintId}>
             <span className="composer__keys">Enter saves · Shift+Enter for a new line · </span>
             <span className={`composer__state${hasDraft ? '' : ' composer__state--idle'}`} aria-live="polite">

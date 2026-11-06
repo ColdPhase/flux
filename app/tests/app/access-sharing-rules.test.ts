@@ -128,7 +128,7 @@ describe('grantees and grant writes through the SQL repositories', () => {
     await assert.rejects(grantProject(owner, room.id, { principal: { kind: 'human', id: outsider.id }, role: 'viewer' }, db, accessPorts),
       (error) => on(error, RuleViolationError, 422, 'NOT_A_MEMBER'));
     const [{ n }] = await db.select({ n: count() }).from(schema.projectGrants).where(eq(schema.projectGrants.projectId, room.id));
-    assert.equal(n, 0, 'no refused grant left a row');
+    assert.equal(n, 1, 'no refused grant left a row: only the creator\'s own admin grant (F-037)');
   });
 
   test('GRANT_CONFLICT: a grant for the same principal committed while this one waits on the unique index (23505)', async () => {

@@ -156,7 +156,7 @@ function AgentPicker({ workspace, agents, value, onChange, onAgent, name, disabl
     <div className="aset__agent">
       <label htmlFor={id}>In {workspace.name}</label>
       {own.length ? <Select id={id} value={value} disabled={disabled} onChange={(next) => onChange(next)}>
-        <Option value="">Not in this workspace</Option>
+        <Option value="">Not in this company</Option>
         {own.map((agent) => <Option key={agent.id} value={agent.id}>{agent.name}</Option>)}
       </Select> : <Button variant="secondary" icon="plus" busy={busy} disabled={disabled} onClick={() => void create()}>Create your assistant here</Button>}
       {error ? <p className="nset__error" role="alert"><Icon name="alert" size={14} />{error}</p> : null}
@@ -180,7 +180,7 @@ export function Disclosure({ status, perRun, daily, timeZone, payer: chosenPayer
     <ul className="aset__facts">
       {connection ? <li><b>Connection</b><span>{connection.name} · key ending {connection.keyLastFour}</span></li> : null}
       <li><b>Provider</b><span>{disclosure.provider && disclosure.model ? aiConnectionLabel(disclosure.provider, disclosure.model) : 'The provider and model of your own AI connection'}. Your request is sent from the Flux server, never from your browser.</span></li>
-      <li><b>Who pays</b><span>{payer ? `${payer.organization} · ${payer.workspace}, through your own API key.` : 'The organization of your own API key. Never another person or the workspace.'}</span></li>
+      <li><b>Who pays</b><span>{payer ? `${payer.organization} · ${payer.workspace}, through your own API key.` : 'The organization of your own API key. Never another person or the company.'}</span></li>
       <li><b>What leaves Flux</b><span>Excerpts from the one project conversation you ask in: its latest messages, its open work and a map thought you select. Never your direct messages, private notes, private maps or other projects.</span></li>
       <li><b>Who sees answers</b><span>The people in that conversation. They never see your cost, cap or key.</span></li>
       <li><b>Cost</b><span>Each request uses at most {disclosure.maxInputTokens.toLocaleString('en')} input and {disclosure.maxOutputTokens.toLocaleString('en')} output tokens{disclosure.maxRunMicros !== null ? ` and reserves the most that can cost, ${micros(disclosure.maxRunMicros)}` : ''}, never more than your {dollars(perRun)} per-request limit. It stops at {dollars(daily)} a day, reset at midnight in {timeZone}. The cap is a Flux limit, not a guarantee on the provider’s invoice. {price ? `Price ${perMillion(price.inputMicrosPerMTok)} input and ${perMillion(price.outputMicrosPerMTok)} output per 1M tokens, ${price.source === 'table' ? `from Flux’s price table, checked ${price.checkedOn}` : 'entered by you'}.` : 'No price is known for your connection yet, so it cannot be used.'}</span></li>
@@ -211,7 +211,7 @@ function RuntimeDisclosure({ payer, client }: { payer: AgentRuntimePayer | null 
   return (
     <ul className="aset__facts">
       <li><b>Account</b><span>Agent in Flux · {names.cli} · {runtimePayerText(payer, client)}. {names.cli} runs unchanged in your own place on this Flux server, signed in as you.</span></li>
-      <li><b>Who pays</b><span>{detail[0]!.toUpperCase()}{detail.slice(1)}. Flux can’t tell whether a request used your plan’s limits or paid extra usage. Never another person or the workspace.</span></li>
+      <li><b>Who pays</b><span>{detail[0]!.toUpperCase()}{detail.slice(1)}. Flux can’t tell whether a request used your plan’s limits or paid extra usage. Never another person or the company.</span></li>
       <li><b>What leaves Flux</b><span>What your request needs from the one project you ask in, read by {names.cli} through Flux and only from the areas you switched on, other members’ messages included. Never your direct messages, private notes, private maps or other projects.</span></li>
       <li><b>Where it goes</b><span>{codex ? 'To OpenAI, under your ChatGPT or OpenAI account’s settings. On personal ChatGPT plans OpenAI may train on it unless you turned that off in ChatGPT’s data controls.'
         : 'To Anthropic, under your Claude account’s settings. On personal Claude plans Anthropic may train on it unless you turned that off in Claude’s privacy settings.'}</span></li>
@@ -464,7 +464,7 @@ function Enabled({ status, agents, workspaces, name, onChange, onRemoved, onAgen
         <CapsForm key={`${enablement.perRunCents}:${enablement.dailyCapCents}`} status={status} busy={busy === 'caps'} onSave={(perRunCents, dailyCapCents) => act('caps', () => updateAssistant({ perRunCents, dailyCapCents, expectedVersion: enablement.version }), 'Limits saved')} />
       </section>}
       <section className="nset__sec" aria-labelledby="aset-agents">
-        <h3 id="aset-agents">Your assistant in each workspace</h3>
+        <h3 id="aset-agents">Your assistant in the company</h3>
         <p className="nset__lead">It reads a project only where it has been given access, and never more than you can.</p>
         {workspaces.map((space) => <AgentPicker key={space.id} workspace={space} agents={agents} name={name} disabled={!!busy}
           value={enablement.agents.find((item) => item.workspaceId === space.id)?.agentId ?? ''} onAgent={onAgent}

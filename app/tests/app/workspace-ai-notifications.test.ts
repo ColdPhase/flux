@@ -79,7 +79,7 @@ async function assertGated(label: string, recipient: Person, workspaceId: string
     const sent: string[] = [];
     const mailer = { send: async (message: { to: string }) => { sent.push(message.to); return { messageId: randomUUID() }; } } as unknown as NotificationMailer;
     const mail = await deliverNotificationEmail({ available: true, origin: publicOrigin, uow: emailUnitOfWork(db, fakeBoss().boss), mailer }, { emailId });
-    assert.equal((mail as { reason?: string }).reason, 'AI is off in this workspace', `${label}: ${JSON.stringify(mail)}`);
+    assert.equal((mail as { reason?: string }).reason, 'AI is off in this company', `${label}: ${JSON.stringify(mail)}`);
     assert.equal(sent.length, 0, `${label}: no e-mail left`);
     const off = await unreadIn(recipient);
     assert.ok(!off.items.some((item) => item.id === notificationId), `${label}: left out of the Inbox list`);

@@ -570,8 +570,8 @@ counted as a provider pass (model billing, provider compatibility and real-devic
 
 The workspace AI lock ([F-029](https://github.com/ColdPhase/flux/blob/a82ee012d0dc0a33e9ab14925f8f400c96f31e60/docs/product/workspace-ai-lock.md)) and encrypted workspaces ([F-030](../product/encrypted-workspaces.md))
 come first: `workspace-ai-runs.test.ts` (invoke, Retry and Continue refused while AI is off, a queued run ends `ai_off`),
-`encrypted-workspaces.test.ts` (a run in a sealed workspace is refused and leaves no row) and `test_workspace_ai_lock.py`
-(no `/ai`, no entry in a blocked workspace).
+and `encrypted-workspaces.test.ts` (a run in a sealed workspace is refused and leaves no row). The F-029 browser checks
+went with its company-wide switch (F-037, #874); the per-space AI switch brings its own.
 
 ## Not yet done
 

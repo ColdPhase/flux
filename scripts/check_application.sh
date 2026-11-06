@@ -100,6 +100,13 @@ if [ -z "$FLUX_VAPID_PUBLIC_KEY" ] || [ -z "$FLUX_VAPID_PRIVATE_KEY" ]; then
   exit 1
 fi
 
+# F-037: the first account on a server sets up its company and owns its Everyone space. One made here, before any test,
+# keeps every test's own people out of that role.
+$compose run --rm test node -e "fetch(process.env.FLUX_API_URL + '/api/auth/sign-up/email', { method: 'POST',
+  headers: { origin: process.env.FLUX_PUBLIC_ORIGIN, 'content-type': 'application/json' },
+  body: JSON.stringify({ email: 'company-setup@example.test', password: 'company setup for the checks', name: 'Company Setup' }) })
+  .then(async (r) => { if (!r.ok) { console.error(r.status, await r.text()); process.exit(1); } })"
+
 if [ "$#" -gt 0 ]; then
   $compose run --rm test node_modules/.bin/tsx --test --test-concurrency=1 "$@"
   if $compose logs --no-color api worker providermock | grep -F 'owner-budget-key-' >/dev/null; then

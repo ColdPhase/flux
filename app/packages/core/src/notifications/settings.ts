@@ -133,7 +133,7 @@ export function createNotificationSettings(ports: SettingsPorts) {
       const place = { type: command.type, id: command.id.toLowerCase() };
       if (command.muted) {
         const decision = await ports.authorizer.canRead(account.userId, place);
-        if (!decision.visible || !decision.allowed) throw new NotFoundError(command.type === 'dm' ? 'Direct message' : 'Project', 'PLACE_NOT_FOUND');
+        if (!decision.visible || !decision.allowed) throw new NotFoundError(command.type === 'dm' ? 'Direct message' : 'Space', 'PLACE_NOT_FOUND');
       }
       await ports.preferences.setMuted(account.userId, place, command.muted);
       return view(account);

@@ -158,7 +158,7 @@ async function authorized(ports: DocPorts, principal: Principal, docId: unknown,
  * which the reader shows as the live card. A proposed decision is refused.
  */
 async function composeSection(ports: DocPorts, projectId: string, source: DocSectionSource) {
-  const missing = () => new RuleViolationError(`The ${source.type} is not part of this project`, 'LINK_TARGET_NOT_FOUND');
+  const missing = () => new RuleViolationError(`The ${source.type} is not part of this space`, 'LINK_TARGET_NOT_FOUND');
   const actorName = async (ref: { kind: 'human' | 'agent'; id: string }) => (await ports.work.names([ref])).get(`${ref.kind}:${ref.id}`) ?? (ref.kind === 'agent' ? 'an agent' : 'a former member');
   if (source.type === 'result') {
     const result = await ports.work.findResult(source.id);
@@ -210,7 +210,7 @@ export function createDocUseCases(uow: DocUnitOfWork, options: DocUseCaseOptions
   /** Under the graph lock `prepareDocBodyTaskUse` took: the result or decision this doc is started from is still there (the assistant's Undo may have taken it back meanwhile, #68). */
   async function requireSourceStill(ports: DocPorts, projectId: string, source: DocSectionSource) {
     if (!(await ports.work.targetExists(projectId, { type: source.type, id: source.id } as ObjectRef)))
-      throw new RuleViolationError(`The ${source.type} is not part of this project`, 'LINK_TARGET_NOT_FOUND');
+      throw new RuleViolationError(`The ${source.type} is not part of this space`, 'LINK_TARGET_NOT_FOUND');
   }
 
   function linkSource(ports: DocPorts, scope: { workspaceId: string; projectId: string }, docId: string, source: DocSectionSource, by: ActorRef) {

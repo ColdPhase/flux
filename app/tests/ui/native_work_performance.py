@@ -467,7 +467,7 @@ def run_profile(browser,data,label,viewport,cpu,report):
         page.locator(".project-convo__feed").wait_for()
         if panel.get_by_role("button",name="Close details").is_visible():
             panel.get_by_role("button",name="Close details").click()
-        page.get_by_role("navigation",name="Project views").get_by_role("link",name=re.compile("^Tasks")).click()
+        page.get_by_role("navigation",name="Space views").get_by_role("link",name=re.compile("^Tasks")).click()
         stored = draft_value(page)
         item["continuity"]["sourceRoundTripPreservesDraft"] = stored==draft
         item["continuity"]["sourceRoundTripNativeRouteVerified"] = True

@@ -19,7 +19,7 @@ from test_app_shell import ORIGIN, UPSTREAM, shot as save_shot, start_forwarder
 from test_settings import UI_BROWSER
 
 VIEWS = ("Conversation", "Tasks", "Map", "Wiki", "Agents")
-PLACES = ("Home", "Projects", "Inbox")
+PLACES = ("Home", "Spaces", "Inbox")
 SE = {"width": 375, "height": 667}
 CDP_ONLY = "CDP touch gestures exist only in Chromium; the WebKit drawer/sheet drag is unverified"
 
@@ -49,6 +49,8 @@ class PhoneShellJourney(unittest.TestCase):
         ws = cls.call(page, "POST", "/api/v1/workspaces", {"name": "Riverside Makers"}, 201)
         cls.project = cls.call(page, "POST", f"/api/v1/workspaces/{ws['id']}/projects",
             {"name": "Community garden sensors", "visibility": "restricted"}, 201)
+        # The Agents view stays an added view until #873 retires it (a new space starts with Conversation, Tasks, Map and Wiki).
+        cls.call(page, "POST", f"/api/v1/projects/{cls.project['id']}/views", {"view": "agents"})
         for title, status in (("Order six capacitive probes", "in_progress"), ("Ask the school for two ESP32 kits", "open"),
                               ("Measure LoRa range through the hedge", "done"), ("Write the volunteer guide", "open")):
             cls.call(page, "POST", f"/api/v1/projects/{cls.project['id']}/work", {"title": title, "status": status}, 201)
@@ -133,7 +135,7 @@ class PhoneShellJourney(unittest.TestCase):
 
                 # Inside a project there is no capsule (#507 AC-2): Search is in the header, and the views are in the title.
                 page.goto(f"/projects/{self.project['id']}/tasks")
-                expect(page.get_by_role("navigation", name="Project views")).to_have_count(0)
+                expect(page.get_by_role("navigation", name="Space views")).to_have_count(0)
                 expect(page.get_by_role("navigation", name="Main places")).to_have_count(0)
                 expect(page.locator("header").get_by_role("button", name="Search", exact=True)).to_have_count(1)
                 header = self.box(page.locator("header"))
@@ -153,14 +155,14 @@ class PhoneShellJourney(unittest.TestCase):
         page = self.page()
         page.goto("/")
         bar = page.get_by_role("navigation", name="Main places")
-        for name, path in (("Inbox", "/inbox"), ("Projects", "/projects"), ("Home", "/")):
+        for name, path in (("Inbox", "/inbox"), ("Spaces", "/projects"), ("Home", "/")):
             bar.get_by_role("link", name=re.compile(f"^{name}")).click()
             expect(page).to_have_url(f"{ORIGIN}{path}")
             expect(bar.get_by_role("link", name=re.compile(f"^{name}"))).to_have_attribute("aria-current", "page")
             expect(bar.locator('[aria-current="page"]')).to_have_count(1)
         # Projects lists every project; one tap opens its conversation, which has the whole screen.
-        bar.get_by_role("link", name="Projects").click()
-        expect(page.get_by_role("heading", level=1, name="Projects")).to_be_visible()
+        bar.get_by_role("link", name="Spaces").click()
+        expect(page.get_by_role("heading", level=1, name="Spaces")).to_be_visible()
         page.get_by_role("link", name=re.compile("^Community garden sensors")).click()
         expect(page).to_have_url(re.compile(f"/projects/{self.project['id']}$"))
         expect(bar).to_have_count(0)
@@ -184,7 +186,7 @@ class PhoneShellJourney(unittest.TestCase):
             expect(menu.get_by_role("link", name=re.compile(f"^{name}"))).to_have_attribute("aria-current", "page")
             expect(menu.locator('[aria-current="page"]')).to_have_count(1)
             if name == "Wiki":
-                expect(page.get_by_role("navigation", name="Project views")).to_have_count(0)
+                expect(page.get_by_role("navigation", name="Space views")).to_have_count(0)
             page.keyboard.press("Escape")
             expect(page.get_by_role("dialog", name=re.compile(", views$"))).to_have_count(0)
         shot(page, "266-menu-after-switching")
@@ -199,7 +201,7 @@ class PhoneShellJourney(unittest.TestCase):
             size = self.box(button)
             self.assertGreaterEqual(min(size["width"], size["height"]), 44, name)
         expect(page.locator(".state-row, .views")).to_have_count(0)
-        self.open_views(page).get_by_role("button", name="Details, goal and people").click()
+        self.open_views(page).get_by_role("button", name="Details and people").click()
         sheet = page.get_by_role("dialog", name="Details")
         expect(sheet.get_by_role("region", name="Now", exact=True)).to_be_visible()
         expect(sheet.locator(".ov-line__t", has_text="Order six capacitive probes")).to_be_visible()
@@ -212,11 +214,11 @@ class PhoneShellJourney(unittest.TestCase):
     def test_04_desktop_view_pill_covers_the_whole_tab_and_slides(self):
         page = self.page({"width": 1440, "height": 900}, touch=False)
         page.goto(f"/projects/{self.project['id']}/tasks")
-        tabs = page.get_by_role("navigation", name="Project views")
+        tabs = page.get_by_role("navigation", name="Space views")
         current = tabs.get_by_role("link", name=re.compile("^Tasks"))
         expect(current).to_have_attribute("aria-current", "page")
         # The views are a segmented control in the header's one row (F-026 §4, #340).
-        expect(page.locator("header.top").get_by_role("navigation", name="Project views")).to_be_visible()
+        expect(page.locator("header.top").get_by_role("navigation", name="Space views")).to_be_visible()
         indicator = page.locator(".top__views .ui-tabs__indicator")
         self.settle(page)
         width = current.evaluate("el => el.getBoundingClientRect().width")
@@ -294,7 +296,7 @@ class PhoneShellJourney(unittest.TestCase):
         page.goto(f"/projects/{self.project['id']}")
         # The phone has no navigation drawer any more: places are the capsule and the title.
         expect(page.get_by_role("button", name="Open navigation")).to_have_count(0)
-        self.open_views(page).get_by_role("button", name="Details, goal and people").click()
+        self.open_views(page).get_by_role("button", name="Details and people").click()
         sheet = page.get_by_role("dialog", name="Details")
         expect(sheet).to_be_visible()
         self.settle(page)
@@ -322,7 +324,7 @@ class PhoneShellJourney(unittest.TestCase):
         # Spokój E04p: the account, then Appearance, Notifications and Agents and AI as rows; Keyboard shortcuts only with a keyboard.
         expect(page.locator('a[href="/settings/account"]')).to_have_count(1)
         self.assertEqual([text.split("\n")[0] for text in page.locator("ul.sset-card a.sset-row").all_inner_texts()],
-                         ["People", "Appearance", "Notifications", "Agents and AI"])
+                         ["Appearance", "Notifications", "Agents and AI", "Company"])
         page.get_by_role("link", name=re.compile("^Appearance")).click()
         expect(page).to_have_url(f"{ORIGIN}/settings/appearance")
         expect(page.get_by_role("radiogroup", name="Theme")).to_be_visible()
@@ -423,7 +425,7 @@ class PhoneShellJourney(unittest.TestCase):
         # #438: #370 dropped the list rules the Projects list used, leaving a bulleted, underlined 19 px link.
         page = self.page({"width": 390, "height": 844})
         page.goto("/projects")
-        row = page.get_by_role("list", name="Projects").get_by_role("link", name="Community garden sensors")
+        row = page.get_by_role("list", name="Spaces").get_by_role("link", name="Community garden sensors")
         expect(row).to_be_visible()
         look = row.evaluate("""(el) => ({ height: el.getBoundingClientRect().height,
           underline: getComputedStyle(el).textDecorationLine, bullet: getComputedStyle(el.closest('ul')).listStyleType })""")

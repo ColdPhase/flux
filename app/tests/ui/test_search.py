@@ -324,11 +324,12 @@ class SearchJourney(unittest.TestCase):
         page.goto("/")
         page.get_by_role("button", name="Search", exact=True).click()
         dialog = page.get_by_role("dialog", name="Jump to")
-        expect(dialog).to_be_visible()
+        # The sheet first opens around a loading line; the real one replaces it when the search code arrives.
+        field = dialog.get_by_role("combobox", name="Jump to")
+        expect(field).to_be_visible()
         box = dialog.bounding_box()
         assert box is not None
         self.assertEqual(round(box["width"]), PHONE["width"], "a full-screen sheet on the phone")
-        field = dialog.get_by_role("combobox", name="Jump to")
         field.fill("sensor")
         options = dialog.get_by_role("option")
         expect(options.first).to_be_visible()
@@ -486,7 +487,7 @@ class SearchJourney(unittest.TestCase):
         page.goto("/")
         expect(page.get_by_role("button", name="Search", exact=True)).to_be_visible()
         dialog, field = self.jump(page, "gesture lamp")
-        project = dialog.get_by_role("option").filter(has_text="Project · restricted").first
+        project = dialog.get_by_role("option").filter(has_text="Space").filter(has_text="Gesture lamp").first
         expect(project).to_contain_text("Gesture lamp")
         expect(dialog.get_by_role("option").first).to_contain_text("New task")
         shot(page, "search-project-jump-desktop-1440")
@@ -500,7 +501,7 @@ class SearchJourney(unittest.TestCase):
         expect(results.get_by_role("link")).to_have_count(1)
         expect(results).to_contain_text("Gesture lamp")
         chips = page.get_by_role("group", name="Kind of result")
-        expect(chips.get_by_role("button", name=re.compile("^Projects"))).to_have_attribute("aria-pressed", "true")
+        expect(chips.get_by_role("button", name=re.compile("^Spaces"))).to_have_attribute("aria-pressed", "true")
 
         # Olek is not in the restricted project: the name finds nothing, on the palette or the page.
         olek = self.page("olek")
@@ -508,7 +509,7 @@ class SearchJourney(unittest.TestCase):
         expect(olek.get_by_role("button", name="Search", exact=True)).to_be_visible()
         dialog, _ = self.jump(olek, "gesture lamp")
         expect(dialog).to_contain_text("Nothing you can open matches")
-        expect(dialog.get_by_role("option").filter(has_text="Project · restricted")).to_have_count(0)
+        expect(dialog.get_by_role("option").filter(has_text="Space").filter(has_text="Gesture lamp")).to_have_count(0)
         olek.goto("/search?q=gesture%20lamp")
         expect(olek.get_by_role("heading", name=re.compile("Nothing matches"))).to_be_visible()
         self.assertNotIn("Gesture lamp", olek.content())

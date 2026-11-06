@@ -143,7 +143,7 @@ export function OneConversation({ data, Pane }: { data: ProjectData; Pane: Compo
 
   const audience = audienceLine(people, me.user.id, project.visibility === 'workspace');
   const stream = (
-    <ConversationStream project={project} meId={me.user.id} meName={me.user.name} roots={roots} notices={notices} goals={data.goals} objects={objects} author={author}
+    <ConversationStream project={project} meId={me.user.id} meName={me.user.name} roots={roots} notices={notices} objects={objects} author={author}
       audience={audience} openId={thread?.id ?? null} reveal={reveal} arrived={arrived} endToken={endToken} restore={restore} onOpen={open} onDenied={onDenied} />
   );
   // Until the stream has the root (a link to an old one), the thread's newest sequence gives its size.

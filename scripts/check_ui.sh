@@ -87,6 +87,9 @@ $compose build migrate ui-test
 $compose up -d db migrate
 # The API writes uploaded files to the shared volume; give it to the runtime user first.
 $compose --profile setup run --rm files-init
+# F-037: the first account on a server sets up its company and owns its Everyone space. One made here, before any test,
+# keeps every test's own people out of that role.
+$compose run --rm -w /work/tests/ui ui-test python3 company_setup.py
 if [ "$#" -gt 0 ]; then
   $compose run --rm -e FLUX_UI_BROWSER -w /work/tests/ui ui-test python3 -m unittest -v "$@"
 else

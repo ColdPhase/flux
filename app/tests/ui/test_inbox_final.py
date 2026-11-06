@@ -283,7 +283,7 @@ class InboxFinal(unittest.TestCase):
         tabs = page.get_by_role("tablist", name="Show")
         for name in (r"^All\W+4$", r"^Decisions\W+1$", r"^Questions\W+1$", r"^Blocked\W+1$", r"^Mentions\W+1$"):
             expect(tabs.get_by_role("tab", name=re.compile(name))).to_be_visible()
-        expect(page.get_by_text("4 need you · all projects")).to_be_visible()
+        expect(page.get_by_text("4 need you · all spaces")).to_be_visible()
         cards = page.locator(".nyc")
         expect(cards).to_have_count(4)
         expect(cards.nth(0)).to_have_attribute("aria-current", "true")
@@ -411,7 +411,7 @@ class InboxFinal(unittest.TestCase):
         # It stays out of the queue after a reload, until the time comes.
         page.reload()
         expect(page.locator(".nyc")).to_have_count(3)
-        expect(page.get_by_text("3 need you · all projects · 1 for later")).to_be_visible()
+        expect(page.get_by_text("3 need you · all spaces · 1 for later")).to_be_visible()
         self.contexts["ada"].request.delete(f"/api/v1/needs-you/{requests_quote('decision:' + self.decision['id'])}", headers={"origin": ORIGIN})
         self.wait_for(lambda: self.queue(None)["later"] == 0, "the snooze to be undone")
         page.reload()
@@ -776,7 +776,7 @@ class InboxFinal(unittest.TestCase):
         expect(page.get_by_text(re.compile(r"^\d+ done today$"))).to_be_visible()
         # #437 / E06: an empty Inbox is Kreska, one sentence and the settings link; the filters wait for something to filter.
         expect(page.get_by_role("tab")).to_have_count(0)
-        expect(page.get_by_text("all clear · all projects")).to_have_count(0)
+        expect(page.get_by_text("all clear · all spaces")).to_have_count(0)
         expect(page.get_by_role("link", name="Notification settings").last).to_be_visible()
         expect(page.get_by_role("navigation", name="Places").get_by_role("link", name="Inbox", exact=True).locator(".side__count")).to_have_count(0)
         page.goto("/inbox?show=questions")
@@ -796,7 +796,7 @@ class InboxFinal(unittest.TestCase):
         self.wait_for(lambda: self.queue(None)["later"] == 1, "the snooze to be stored")
         page.reload()
         expect(page.get_by_role("heading", name="Nothing needs you right now")).to_be_visible()
-        expect(page.get_by_text("all clear · all projects · 1 for later")).to_be_visible()
+        expect(page.get_by_text("all clear · all spaces · 1 for later")).to_be_visible()
         self.contexts["ada"].request.delete(f"/api/v1/needs-you/{requests_quote('decision:' + snoozed['id'])}", headers={"origin": ORIGIN})
         self.wait_for(lambda: self.queue(None)["later"] == 0, "the snooze to be undone")
         page.reload()

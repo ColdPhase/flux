@@ -135,7 +135,7 @@ export function LiveEntry({ variant = 'header', anchor: given, onAction }: {
   if (variant === 'menu') return (
     <div className="lv-menu">
       {others.length && !joinable ? <>
-        <p className="lv-menu__note">Live in this project</p>
+        <p className="lv-menu__note">Live in this space</p>
         <ul className="lv-pop__list">{others.map((item) => <OtherSession key={item.id} session={item} nameOf={nameOf} meId={live.meId}
           onJoin={(resolved) => { onAction?.(); void live.join(item, resolved); }} />)}</ul>
       </> : null}
@@ -159,11 +159,11 @@ export function LiveEntry({ variant = 'header', anchor: given, onAction }: {
     <span className="lv-entry">
       {others.length && !joinable ? (
         <>
-          <Button ref={buttonRef} variant="quiet" className="lv-entry__live" aria-expanded={open} aria-haspopup="dialog" aria-label={`Live now, ${others.length} ${others.length === 1 ? 'session' : 'sessions'} in this project`} onClick={() => setOpen((v) => !v)}>
-            <span className="lv-dot" aria-hidden="true" /><span className="lv-entry__label">Live now</span><span className="ui-vh">, {others.length} {others.length === 1 ? 'session' : 'sessions'} in this project</span>
+          <Button ref={buttonRef} variant="quiet" className="lv-entry__live" aria-expanded={open} aria-haspopup="dialog" aria-label={`Live now, ${others.length} ${others.length === 1 ? 'session' : 'sessions'} in this space`} onClick={() => setOpen((v) => !v)}>
+            <span className="lv-dot" aria-hidden="true" /><span className="lv-entry__label">Live now</span><span className="ui-vh">, {others.length} {others.length === 1 ? 'session' : 'sessions'} in this space</span>
           </Button>
-          <Popover open={open} onClose={() => setOpen(false)} anchorRef={buttonRef} label="Live in this project">
-            <p className="lv-pop__title">Live in this project</p>
+          <Popover open={open} onClose={() => setOpen(false)} anchorRef={buttonRef} label="Live in this space">
+            <p className="lv-pop__title">Live in this space</p>
             <ul className="lv-pop__list">
               {others.map((item) => <OtherSession key={item.id} session={item} nameOf={nameOf} meId={live.meId} onJoin={(resolved) => { setOpen(false); void live.join(item, resolved); }} />)}
             </ul>

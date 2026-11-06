@@ -105,7 +105,7 @@ def open_sources(page: Page, scope=None) -> None:
     A writer types "/source" in the composer (F-026 S5: no Sources button); a reader has no composer, so
     its Sources button stays. With a thread open (UI116-1) pass the thread as `scope` to use its composer."""
     within = scope or page
-    region = within.get_by_role("region", name="Project materials")
+    region = within.get_by_role("region", name="Space materials")
     if not region.is_visible():
         button = within.get_by_role("button", name=re.compile("^Sources"))
         if button.count():
@@ -121,6 +121,16 @@ def open_sources(page: Page, scope=None) -> None:
 def thread_of(page: Page):
     """The open root's thread in the one panel: beside the stream on a computer, a sheet or overlay on a phone or tablet (UI116-1, #488)."""
     return page.get_by_role("complementary", name="Replies").or_(page.get_by_role("dialog", name="Replies"))
+
+
+def own_company(page: Page, name: str = "Own company") -> None:
+    """F-037: a server has one company, set up by its first account (check_ui.sh makes that one), so someone who signs up
+    later is in none. The test deployment's fixture route gives this person a company of their own to start spaces in."""
+    expect(page.get_by_role("heading", level=1, name="Home")).to_be_visible()
+    made = page.request.post(f"{ORIGIN}/api/v1/workspaces", headers={"origin": ORIGIN}, data={"name": name})
+    assert made.status == 201, made.text()
+    page.reload()
+    expect(page.get_by_role("heading", level=1, name="Home")).to_be_visible()
 
 
 def new_from_sidebar(page: Page, item: str) -> None:
@@ -155,13 +165,13 @@ def view_tab(page: Page, name: str, tap: bool = False) -> None:
     if page.viewport_size["width"] <= 900:
         link = phone_menu(page, tap).get_by_role("link", name=re.compile(f"^{name}"))
     else:
-        link = page.get_by_role("navigation", name="Project views").get_by_role("link", name=re.compile(f"^{name}"))
+        link = page.get_by_role("navigation", name="Space views").get_by_role("link", name=re.compile(f"^{name}"))
     link.tap() if tap else link.click()
 
 
 def open_details(page: Page, tap: bool = False) -> None:
     """Details: More, then Details, in the computer's one-row header (#340); Home has its own quiet
-    Details button (#342); on the phone a project's title menu ends with "Details, goal and people" (#341)."""
+    Details button (#342); on the phone a project's title menu ends with "Details and people" (#341)."""
     home = page.locator("#content .home").get_by_role("button", name="Details", exact=True)
     if page.viewport_size["width"] <= 640:
         page.locator("#content .home button:text-is('Details'), header .phead__menu").first.wait_for()
@@ -179,8 +189,8 @@ def open_details(page: Page, tap: bool = False) -> None:
         home.click()
         return
     header.get_by_role("button", name="More", exact=True).click()
-    # One meaning per word (#506 AC-4): "Project details" in a project, "Message info" in a direct message.
-    page.get_by_role("menu", name="More").get_by_role("menuitem", name=re.compile(r"^(Details|Project details|Message info)$")).click()
+    # One meaning per word (#506 AC-4): "Space details" in a project, "Message info" in a direct message.
+    page.get_by_role("menu", name="More").get_by_role("menuitem", name=re.compile(r"^(Details|Space details|Message info)$")).click()
 
 
 def open_what_matters(page: Page, tap: bool = False) -> None:
@@ -487,6 +497,11 @@ class AppShellJourney(unittest.TestCase):
         expect(page).to_have_url(f"{ORIGIN}/")
         expect(page.get_by_role("heading", level=1, name="Home")).to_be_visible()
         expect(page.get_by_role("button", name=re.compile(NAME))).to_be_visible()
+        # F-037: a server's company was set up by its first account (check_ui.sh makes that one); a person who signs up
+        # later is in no company until invited. The test deployment's fixture route gives this person their own.
+        made = page.request.post(f"{ORIGIN}/api/v1/workspaces", headers={"origin": ORIGIN}, data={"name": "Personal"})
+        self.assertEqual(made.status, 201, made.text())
+        page.reload()
         self.save_state(page)
 
         # The same email cannot register twice; the message offers a way forward.
@@ -530,7 +545,7 @@ class AppShellJourney(unittest.TestCase):
         expect(sidebar.get_by_role("img", name="Flux")).to_be_visible()
         places = sidebar.get_by_role("navigation", name="Places")
         expect(places.get_by_role("link", name="Home")).to_have_attribute("aria-current", "page")
-        self.assertEqual(places.get_by_role("link").all_inner_texts(), ["Home", "Inbox", "Sketchbook"])
+        self.assertEqual(places.get_by_role("link").all_inner_texts(), ["Home", "Inbox", "My tasks", "My map"])
         # Search and personal settings have their own header; Home is not current there (#184 delta review S1).
         for path, title in (("/search", "Search"), ("/settings/assistant", "Your assistant"), ("/settings/background-compute", "Background suggestions")):
             page.goto(path)
@@ -548,8 +563,8 @@ class AppShellJourney(unittest.TestCase):
         marker = places.get_by_role("link", name="Home").evaluate("el => [getComputedStyle(el).backgroundColor, getComputedStyle(el).boxShadow !== 'none']")
         self.assertEqual(marker, ["rgb(255, 255, 255)", True], "the current place is a raised white pill (F-026 §4)")
         # #763 FR-4: an empty section is not shown; Home carries the one first step instead.
-        expect(sidebar.get_by_text("No projects yet")).to_have_count(0)
-        expect(page.get_by_role("button", name="Start your first project")).to_be_visible()
+        expect(sidebar.get_by_text("No spaces yet")).to_have_count(0)
+        expect(page.get_by_role("button", name="Start a space")).to_be_visible()
         expect(sidebar.get_by_role("button", name=re.compile("^New"))).to_have_attribute("aria-keyshortcuts", "C")
         # Home has no views bar (#508); its quiet links lead to the personal pages. Project-header views are covered by
         # test_project_header.py and retain Conversation · Map · Tasks · Wiki · Agents (#340).
@@ -559,13 +574,13 @@ class AppShellJourney(unittest.TestCase):
         expect(page.locator(".home__more").get_by_role("link")).to_have_count(0)
         expect(page.get_by_role("heading", level=2, name=re.compile("^Good "))).to_be_visible()
         expect(page.get_by_role("region", name="Needs you")).to_have_count(0)
-        expect(page.get_by_role("region", name="Start with a project")).to_be_visible()
+        expect(page.get_by_role("region", name="You’re in Personal")).to_be_visible()
         shot(page, "desktop-1440-home-light")
 
         # Private notes moved from Home's former conversation into Your notes in the Sketchbook.
-        places.get_by_role("link", name="Sketchbook", exact=True).click()
+        places.get_by_role("link", name="My map", exact=True).click()
         expect(page).to_have_url(f"{ORIGIN}/map")
-        expect(page.get_by_role("heading", level=1, name="Sketchbook", exact=True)).to_be_visible()
+        expect(page.get_by_role("heading", level=1, name="My map", exact=True)).to_be_visible()
         expect(page.get_by_role("navigation", name="Views")).to_have_count(0)
         expect(page.get_by_role("heading", name="Start a sketch")).to_be_visible()
         composer = page.get_by_label("Private note", exact=True)
@@ -589,12 +604,12 @@ class AppShellJourney(unittest.TestCase):
         composer.fill("Lamp idea: wave to dim, but keep the camera off by default")
         expect(save).to_have_attribute("aria-disabled", "false")
         composer.press("Enter")
-        # The first note creates the personal space and is a private draft there (#190 HOME-3).
+        # The first note is a private draft in the person's company (F-037; #190 HOME-3).
         notes = page.get_by_role("region", name="Private drafts")
         expect(notes.get_by_text("Lamp idea: wave to dim")).to_be_visible()
         expect(composer).to_have_value("")
         spaces = page.evaluate("fetch('/api/v1/workspaces').then(r => r.json())")
-        self.assertEqual([space["name"] for space in spaces], ["Personal"], "one personal space, created by the first note")
+        self.assertEqual([space["name"] for space in spaces], ["Personal"], "the note made no space of its own")
         composer.fill("Try a PIR sensor first; compare with the camera in low light")
         save.click()
         expect(notes.get_by_text("Try a PIR sensor first")).to_be_visible()
@@ -614,8 +629,8 @@ class AppShellJourney(unittest.TestCase):
         expect(page.get_by_role("navigation", name="Views")).to_have_count(0)
         page.go_back()
         expect(page).to_have_url(f"{ORIGIN}/")
-        places.get_by_role("link", name="Sketchbook", exact=True).click()
-        expect(page.get_by_role("heading", level=1, name="Sketchbook", exact=True)).to_be_visible()
+        places.get_by_role("link", name="My map", exact=True).click()
+        expect(page.get_by_role("heading", level=1, name="My map", exact=True)).to_be_visible()
         shot(page, "desktop-1440-map-light")
 
         # Details is in More (#340); the header has no separate Details button on the computer.
@@ -766,7 +781,7 @@ class AppShellJourney(unittest.TestCase):
         # A view switch remounts the composer; the text comes back.
         page.get_by_role("link", name="Home", exact=True).first.click()
         expect(page.get_by_role("heading", level=2, name=re.compile("^Good ")) ).to_be_visible()
-        page.get_by_role("navigation", name="Places").get_by_role("link", name="Sketchbook").click()
+        page.get_by_role("navigation", name="Places").get_by_role("link", name="My map").click()
         expect(composer).to_have_value(unfinished)
         expect(state).to_have_text("Draft kept on this device")
 
@@ -816,7 +831,7 @@ class AppShellJourney(unittest.TestCase):
             self.assertIsNotNone(anchor)
             page.goto("/docs")
             expect(page.get_by_role("heading", name="No docs yet")).to_be_visible()
-            page.get_by_role("navigation", name="Places").get_by_role("link", name="Sketchbook").click()
+            page.get_by_role("navigation", name="Places").get_by_role("link", name="My map").click()
             expect(page.get_by_role("button", name=re.compile(r"^Move 40 notes"))).to_be_visible()
             page.wait_for_load_state("networkidle")
             # Restored by content, not pixels: a block that loads above the notes after the restore (drafts,
@@ -1134,7 +1149,7 @@ class AppShellJourney(unittest.TestCase):
         work = request.post(f"{ORIGIN}/api/v1/projects/{project.json()['id']}/work", data={"title": "Calibrate the dimmer curve", "outcome": "A fade that never flickers"}, headers=headers)
         self.assertEqual(work.status, 201, work.text())
         page.goto("/")
-        expect(page.get_by_role("navigation", name="Projects").get_by_role("link", name="Night light")).to_be_visible()
+        expect(page.get_by_role("navigation", name="Spaces").get_by_role("link", name="Night light")).to_be_visible()
         return page, project.json()["id"], work.json()["id"]
 
     def sign_out_while_loading(self, page: Page, name: str) -> None:
@@ -1175,7 +1190,7 @@ class AppShellJourney(unittest.TestCase):
         """A project link was followed and its page is still loading; signing out wins over it."""
         page, _, _ = self.person_with_a_task("Tove Berg")
         page.evaluate("window.__slow.arm()")
-        page.get_by_role("navigation", name="Projects").get_by_role("link", name="Night light").click()
+        page.get_by_role("navigation", name="Spaces").get_by_role("link", name="Night light").click()
         page.wait_for_function("window.__slow.held('A') > 0")
         expect(page).to_have_url(f"{ORIGIN}/")
         self.sign_out_while_loading(page, "Tove Berg")
@@ -1199,8 +1214,8 @@ class AppShellJourney(unittest.TestCase):
 
     def test_12_real_project_capture_phone_and_revocation(self) -> None:
         """Real UI: create project, send, cite a saved version, reply, revisit on phone, revoke."""
-        # A fresh account without any space: its first project makes "Mira’s space" quietly, nobody names it (#763 FR-1;
-        # Jo's first note already created Jo's personal space, #190 HOME-3).
+        # A fresh account in a company of its own (the test deployment's fixture route; F-037: one company per Flux,
+        # nobody names or picks it when starting a space).
         owner = self.page(signed_in=False, service_workers="block")
         owner.goto("/sign-up")
         owner.get_by_label("Name").fill("Mira Lamp")
@@ -1208,10 +1223,10 @@ class AppShellJourney(unittest.TestCase):
         owner.get_by_label("Password").fill(PASSWORD)
         owner.get_by_role("button", name="Create account").click()
         expect(owner.get_by_role("heading", level=1, name="Home")).to_be_visible()
-        new_from_sidebar(owner, "Project")
-        expect(owner.get_by_label("Your space")).to_have_count(0)
-        expect(owner.get_by_text("In Mira’s space")).to_be_visible()
-        owner.get_by_label("Project name").fill("Gesture lamp")
+        own_company(owner, "Mira’s company")
+        new_from_sidebar(owner, "Space")
+        expect(owner.get_by_role("dialog", name="New space").get_by_text("Mira’s company")).to_have_count(0)
+        owner.get_by_label("Space name").fill("Gesture lamp")
 
         def lose_first_committed(path: str):
             # The server commits the first POST but its 201 never arrives (#29 AC-4): Retry must not duplicate it.
@@ -1230,25 +1245,20 @@ class AppShellJourney(unittest.TestCase):
             owner.route(path, handler)
             return handler
 
-        lost_space = lose_first_committed("**/api/v1/workspaces")
-        owner.get_by_role("button", name="Create project").click()
-        expect(owner.get_by_role("alert")).to_be_visible()
-        owner.unroute("**/api/v1/workspaces", lost_space)
         lost_project = lose_first_committed("**/api/v1/workspaces/*/projects")
-        owner.get_by_role("button", name="Create project").click()
+        owner.get_by_role("button", name="Create space").click()
         expect(owner.get_by_role("alert")).to_be_visible()
-        expect(owner.get_by_text("In Mira’s space")).to_be_visible()
-        owner.get_by_role("button", name="Create project").click()
+        owner.get_by_role("button", name="Create space").click()
         expect(owner.get_by_role("heading", level=1, name="Gesture lamp")).to_be_visible()
         owner.unroute("**/api/v1/workspaces/*/projects", lost_project)
         project_id = owner.locator(".project-convo").get_attribute("data-project-id")
         self.assertTrue(project_id)
         spaces = owner.context.request.get(f"{ORIGIN}/api/v1/workspaces").json()
-        self.assertEqual(len(spaces), 1, "a retried space whose first response was lost is not created twice")
+        self.assertEqual(len(spaces), 1, "starting a space makes no workspace")
         ws = spaces[0]
         projects = owner.context.request.get(f"{ORIGIN}/api/v1/workspaces/{ws['id']}/projects?limit=100").json()
         self.assertEqual([p["id"] for p in projects["items"]], [project_id], "a retried project whose first response was lost is not created twice")
-        owner.get_by_role("link", name="Sketchbook").click()
+        owner.get_by_role("link", name="My map").click()
         owner.get_by_label("Private note", exact=True).fill("home address 123; PIR avoids storing images")
         lost_draft = lose_first_committed(f"**/api/v1/workspaces/{ws['id']}/drafts")
         owner.get_by_role("button", name="Save note").click()
@@ -1261,7 +1271,7 @@ class AppShellJourney(unittest.TestCase):
         owner.reload()
         expect(owner.get_by_role("region", name="Private drafts").get_by_text("home address 123; PIR avoids storing images")).to_be_visible()
         draft_id = owner.context.request.get(f"{ORIGIN}/api/v1/workspaces/{ws['id']}/drafts").json()["items"][0]["id"]
-        owner.get_by_role("navigation", name="Projects").get_by_role("link", name="Gesture lamp").click()
+        owner.get_by_role("navigation", name="Spaces").get_by_role("link", name="Gesture lamp").click()
         owner.get_by_label("Write a message").fill("Try a PIR sensor before considering a camera")
         owner.get_by_role("button", name="Send message").click()
         expect(owner.locator(".project-convo__message > .message-bubble > .message-body").filter(has_text="Try a PIR sensor before considering a camera")).to_be_visible()
@@ -1285,7 +1295,7 @@ class AppShellJourney(unittest.TestCase):
         expect(owner.get_by_label("Title")).to_have_value("Privacy options")
         expect(owner.get_by_label("Text")).to_have_value("PIR avoids storing images")
         expect_value(owner.get_by_label("Start from a private draft"), draft_id)
-        owner.get_by_role("button", name="Save for this project").press("Enter")
+        owner.get_by_role("button", name="Save for this space").press("Enter")
         expect(owner.get_by_text("Privacy options")).to_be_visible()
         owner.get_by_role("button", name="Discuss this version").click()
         expect(thread_of(owner).locator(".composer-files__ref")).to_contain_text("Source: Privacy options · v1")
@@ -1459,7 +1469,7 @@ class AppShellJourney(unittest.TestCase):
         # The open thread hears of the denial from the live stream (#733): without any action, the next read is refused and
         # the person lands on the nearest place they can open with one line saying why (#592). Before the live refresh this
         # waited for a read the person started ("Discuss this version"); now nothing of the project stays on screen meanwhile.
-        expect(phone.get_by_text("That project is no longer available to you.", exact=True)).to_be_visible(timeout=10000)
+        expect(phone.get_by_text("That space is no longer available to you.", exact=True)).to_be_visible(timeout=10000)
         expect(phone).to_have_url(re.compile(r"/projects$"))
         expect(phone.get_by_text("Agreed. Test low light too.", exact=True)).to_have_count(0)
         expect(phone.get_by_label("Reply", exact=True)).to_have_count(0)
@@ -1476,9 +1486,10 @@ class AppShellJourney(unittest.TestCase):
         owner.get_by_label("Email").fill(email)
         owner.get_by_label("Password").fill(PASSWORD)
         owner.get_by_role("button", name="Create account").click()
-        new_from_sidebar(owner, "Project")
-        owner.get_by_label("Project name").fill("Busy project")
-        owner.get_by_role("button", name="Create project").click()
+        own_company(owner)
+        new_from_sidebar(owner, "Space")
+        owner.get_by_label("Space name").fill("Busy project")
+        owner.get_by_role("button", name="Create space").click()
         project_id = owner.locator(".project-convo").get_attribute("data-project-id")
         self.assertTrue(project_id)
         request = owner.context.request
@@ -1578,7 +1589,7 @@ class AppShellJourney(unittest.TestCase):
             return actual(input, init);
           };
         }""")
-        owner.get_by_role("button", name="Save for this project").click()
+        owner.get_by_role("button", name="Save for this space").click()
         expect(owner.get_by_label("Title")).to_be_disabled()
         expect(owner.get_by_label("Text")).to_be_disabled()
         owner.evaluate("() => { window.releaseMaterial(); }")
@@ -1593,9 +1604,10 @@ class AppShellJourney(unittest.TestCase):
         page.get_by_label("Email").fill(email)
         page.get_by_label("Password").fill(PASSWORD)
         page.get_by_role("button", name="Create account").click()
-        new_from_sidebar(page, "Project")
-        page.get_by_label("Project name").fill("Sensor study")
-        page.get_by_role("button", name="Create project").click()
+        own_company(page)
+        new_from_sidebar(page, "Space")
+        page.get_by_label("Space name").fill("Sensor study")
+        page.get_by_role("button", name="Create space").click()
         expect(page.get_by_role("heading", level=1, name="Sensor study")).to_be_visible()
 
         page.goto("/connect-agent")
@@ -1646,9 +1658,10 @@ class AppShellJourney(unittest.TestCase):
         page.get_by_label("Email").fill(f"leaving+{int(time.time() * 1000)}@example.test")
         page.get_by_label("Password").fill(PASSWORD)
         page.get_by_role("button", name="Create account").click()
-        new_from_sidebar(page, "Project")
-        page.get_by_label("Project name").fill(name)
-        page.get_by_role("button", name="Create project").click()
+        own_company(page)
+        new_from_sidebar(page, "Space")
+        page.get_by_label("Space name").fill(name)
+        page.get_by_role("button", name="Create space").click()
         expect(page.get_by_role("heading", level=1, name=name)).to_be_visible()
 
     def hold_details_code(self, page: Page) -> list:

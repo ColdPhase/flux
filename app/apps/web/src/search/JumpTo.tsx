@@ -37,7 +37,7 @@ const PROJECT_VIEW: Record<string, { side: string; icon: IconName }> = {
 };
 const OWN_PLACE: Record<string, PlaceName> = {
   home: { label: 'Home', icon: 'home' }, 'home:tasks': { label: 'Home', side: 'Tasks', icon: 'tasks' }, 'home:docs': { label: 'Home', side: 'Wiki', icon: 'doc' },
-  sketchbook: { label: 'Sketchbook', icon: 'edit' }, inbox: { label: 'Inbox', icon: 'inbox' },
+  sketchbook: { label: 'My map', icon: 'map' }, inbox: { label: 'Inbox', icon: 'inbox' },
 };
 const placeName = (name: PlaceName) => (name.side ? `${name.label} · ${name.side}` : name.label);
 
@@ -194,7 +194,7 @@ function JumpBody({ onClose, userId, phone, page }: { onClose: () => void; userI
       ? [{ kind: 'command' as const, section: 'Actions', id: 'action-recap', label: 'What matters', icon: 'leaf' as const, run: () => openDetails({ kind: 'recap', projectId: here }) }] : []),
     // A task needs a project: with none yet, the same row makes the project (#763 FR-2).
     projects.length ? { kind: 'command', section: 'Create', id: 'create-task', label: create, icon: 'plus', keys: ['C'], run: () => openCreate({ kind: 'task', ...(here ? { projectId: here } : {}), ...(rest ? { title: rest } : {}) }) }
-      : { kind: 'command', section: 'Create', id: 'create-project', label: rest ? `New project “${rest.length > 40 ? `${rest.slice(0, 39)}…` : rest}”` : 'New project', icon: 'plus', keys: ['C'], run: () => openCreate({ kind: 'project', ...(rest ? { title: rest } : {}) }) },
+      : { kind: 'command', section: 'Create', id: 'create-project', label: rest ? `New space “${rest.length > 40 ? `${rest.slice(0, 39)}…` : rest}”` : 'New space', icon: 'plus', keys: ['C'], run: () => openCreate({ kind: 'project', ...(rest ? { title: rest } : {}) }) },
     { kind: 'command', section: 'Create', id: 'create-thought', label: 'New thought on the Map', icon: 'edit', run: () => navigate(mapHref) },
     ...(here ? [{ kind: 'command' as const, section: 'Create', id: 'create-decision', label: 'Propose a decision', icon: 'rule' as const, run: () => openDetails({ kind: 'propose-decision', projectId: here }) }] : []),
   ];
@@ -222,7 +222,7 @@ function JumpBody({ onClose, userId, phone, page }: { onClose: () => void; userI
     ...places.map(({ place, label, side, icon }): Option => ({ kind: 'place', id: `place-${place.key}`, place, label, side, icon })),
     ...lockedOptions(''),
     projects.length ? { kind: 'command', section: 'Actions', id: 'action-new-task', label: 'New task', icon: 'plus', keys: ['C'], run: () => openCreate({ kind: 'task', ...(here ? { projectId: here } : {}) }) }
-      : { kind: 'command', section: 'Actions', id: 'action-new-project', label: 'New project', icon: 'plus', keys: ['C'], run: () => openCreate({ kind: 'project' }) },
+      : { kind: 'command', section: 'Actions', id: 'action-new-project', label: 'New space', icon: 'plus', keys: ['C'], run: () => openCreate({ kind: 'project' }) },
     ...askMine,
     { kind: 'command', section: 'Actions', id: 'action-inbox', label: 'Go to Inbox', icon: 'inbox', keys: ['G', 'I'], run: () => navigate('/inbox') },
     ...(phone ? [] : [
@@ -300,9 +300,9 @@ function JumpBody({ onClose, userId, phone, page }: { onClose: () => void; userI
   const empty = noneHere ? (
           <div className="jump__none">
             <Kreska expression="looking" size={64} />
-            <h3>No match in this project</h3>
-            <p>{elsewhereCount ? `“${rest}” appears ${elsewhereCount === 1 ? 'once' : `${elsewhereCount} times`} in another project.` : `Nothing you can open matches “${rest}”.`}</p>
-            <Button variant="secondary" onClick={() => setWhere('all')}>Search all projects</Button>
+            <h3>No match in this space</h3>
+            <p>{elsewhereCount ? `“${rest}” appears ${elsewhereCount === 1 ? 'once' : `${elsewhereCount} times`} in another space.` : `Nothing you can open matches “${rest}”.`}</p>
+            <Button variant="secondary" onClick={() => setWhere('all')}>Search all spaces</Button>
           </div>
         ) : rest && state.status === 'ready' && !withResults.length ? (
           page ? (
@@ -345,8 +345,8 @@ function JumpBody({ onClose, userId, phone, page }: { onClose: () => void; userI
       ) : null}
       {inProject && rest ? (
         <div className="jump__chips" role="group" aria-label="Search where">
-          <button type="button" className="jump__chip" aria-pressed={where === 'here'} onClick={() => setWhere('here')}>This project</button>
-          <button type="button" className="jump__chip" aria-pressed={where === 'all'} onClick={() => setWhere('all')}>All projects</button>
+          <button type="button" className="jump__chip" aria-pressed={where === 'here'} onClick={() => setWhere('here')}>This space</button>
+          <button type="button" className="jump__chip" aria-pressed={where === 'all'} onClick={() => setWhere('all')}>All spaces</button>
         </div>
       ) : null}
       <p className="ui-vh" id={statusId} role="status">{status}</p>

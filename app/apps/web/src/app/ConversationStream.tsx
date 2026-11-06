@@ -1,7 +1,7 @@
 import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { FORMER_MEMBER } from '../docs/format';
 import { useNavigate } from 'react-router';
-import type { Conversation, ConversationMessage, ConversationRoot, ConversationRootWindow, NativeWorkRow, ObjectNotice, Page, Project, ProjectGoal, ReturnSummary, TaskCreationNotice } from '@flux/contracts';
+import type { Conversation, ConversationMessage, ConversationRoot, ConversationRootWindow, NativeWorkRow, ObjectNotice, Page, Project, ReturnSummary, TaskCreationNotice } from '@flux/contracts';
 import { AgentIdentity, Avatar, Button, EmptyState, Icon, IconButton, Kreska, Opening, StatusGlyph, useArrivals } from '../ui';
 import { newBelowText } from '../ui/motion-rules';
 import { useSpareHeight } from '../ui/spareHeight';
@@ -26,7 +26,6 @@ import { useProjectShell } from '../project/data';
 import { useAddToMap } from '../project/addToMap';
 import { cite as citeMessage, messageCite } from './citeBus';
 import { foldEntries, foldSummary, firstUnread, noticeSource, rootAuthor, sinceLine, sourcePhrase } from './conversationEvents';
-import { GoalStreamEntry } from '../project/ProjectGoal';
 import { ObjectNoticeItem } from './ObjectNotices';
 import { followsProposal, objectTarget } from './objectNotices';
 import './conversation-final.css';
@@ -54,26 +53,24 @@ function mergeNotices<T extends { id: string; createdAt: string }>(current: T[],
 
 /**
  * One entry of the stream, in time order: a root, or one compact task-created announcement (UI116-3)
- * linking its task, or a project goal a person marked reached (#520). An announcement is never a root and
+ * linking its task, or a decision or result. An announcement is never a root and
  * has no thread; the task's first genuine contribution is the root its discussion grows under.
  */
 export type StreamEntry =
   | { kind: 'root'; key: string; at: string; root: ConversationRoot }
   | { kind: 'notice'; key: string; at: string; notice: TaskCreationNotice }
-  | { kind: 'object'; key: string; at: string; object: ObjectNotice; thread?: ConversationRoot }
-  | { kind: 'goal'; key: string; at: string; goal: ProjectGoal };
+  | { kind: 'object'; key: string; at: string; object: ObjectNotice; thread?: ConversationRoot };
 
 /** The decision or result an entry announces, for the line that follows it. */
 const previousObject = (entry: { kind: string } | undefined) => entry?.kind === 'object' ? (entry as Extract<StreamEntry, { kind: 'object' }>).object : null;
 
-const ORDER: Record<StreamEntry['kind'], number> = { notice: 0, object: 0, root: 1, goal: 2 };
+const ORDER: Record<StreamEntry['kind'], number> = { notice: 0, object: 0, root: 1 };
 
 /**
- * Roots, announcements and reached goals by time; at the same instant the announcement comes first and the
- * goal last. While earlier roots are still unloaded, announcements and goals older than the first loaded root
- * wait with them, so the stream never shows one out of its place.
+ * Roots and announcements by time; at the same instant the announcement comes first. While earlier roots are still
+ * unloaded, announcements older than the first loaded root wait with them, so the stream never shows one out of its place.
  */
-export function streamEntries(roots: ConversationRoot[], notices: TaskCreationNotice[] = [], hasOlder = false, goals: ProjectGoal[] = [], objects: ObjectNotice[] = []): StreamEntry[] {
+export function streamEntries(roots: ConversationRoot[], notices: TaskCreationNotice[] = [], hasOlder = false, objects: ObjectNotice[] = []): StreamEntry[] {
   const from = hasOlder ? roots[0]?.message.createdAt ?? null : null;
   const shownObjects = objects.filter((object) => from === null || object.createdAt >= from);
   // A result recorded on a task with no discussion yet opens that task's thread with its contribution (#763 A1). The
@@ -90,8 +87,6 @@ export function streamEntries(roots: ConversationRoot[], notices: TaskCreationNo
       const thread = object.kind === 'result.recorded' ? threads.get(object.resultId) : undefined;
       return { kind: 'object' as const, key: `object-${object.id}`, at: object.createdAt, object, ...(thread ? { thread } : {}) };
     }),
-    ...goals.flatMap((goal) => goal.reachedAt && (from === null || goal.reachedAt >= from)
-      ? [{ kind: 'goal' as const, key: `goal-${goal.id}`, at: goal.reachedAt, goal }] : []),
   ];
   return entries.sort((a, b) => a.at.localeCompare(b.at) || ORDER[a.kind] - ORDER[b.kind]);
 }
@@ -296,8 +291,6 @@ export interface StreamProps {
   roots: ConversationRoots;
   /** The loaded task announcements (UI116-3), oldest first. */
   notices: TaskCreationNotice[];
-  /** The project's reached goals (#520). */
-  goals?: ProjectGoal[];
   /** The decisions and results the stream announces (#694). */
   objects?: ObjectNotice[];
   author: (message: ConversationMessage) => string;
@@ -317,7 +310,7 @@ export interface StreamProps {
 }
 
 /** The project's stream of roots, oldest first, with day dividers, each root's thread size and reply action. */
-export function ConversationStream({ project, meId, meName, roots: stream, notices, goals = [], objects = [], author, audience, openId, reveal, arrived, endToken, restore = null, onOpen, onDenied }: StreamProps) {
+export function ConversationStream({ project, meId, meName, roots: stream, notices, objects = [], author, audience, openId, reveal, arrived, endToken, restore = null, onOpen, onDenied }: StreamProps) {
   const owners = useAgentOwners(project);
   // Roots the person sent from the stream's composer (#264): queued ones at the end, and confirmed ones
   // shown at once in their place until the stream's own read includes them.
@@ -327,10 +320,10 @@ export function ConversationStream({ project, meId, meName, roots: stream, notic
   const outbox = outboxView(roots.map((root) => root.message), composer.pending, composer.sent, meId);
   const rootKey = (root: ConversationRoot) => { const key = outbox.keyOf(root.message.id); return key === root.message.id ? root.conversationId : key; };
   const domId = (root: ConversationRoot) => { const key = outbox.keyOf(root.message.id); return key === root.message.id ? `message-${root.message.id}` : key; };
-  const entries = streamEntries(roots, notices, stream.hasOlder, goals, objects);
+  const entries = streamEntries(roots, notices, stream.hasOlder, objects);
   const { summary: since, settled: sinceSettled } = useSinceYouLeft(project.id);
   const unread = since?.point.savedAt && since.items.length ? firstUnread(since, roots) : null;
-  const display = foldEntries<Extract<StreamEntry, { kind: 'root' | 'goal' | 'object' }>, Extract<StreamEntry, { kind: 'notice' }>>(entries);
+  const display = foldEntries<Extract<StreamEntry, { kind: 'root' | 'object' }>, Extract<StreamEntry, { kind: 'notice' }>>(entries);
   const authorOf = useMemo(() => rootAuthor(roots, author), [roots, author]);
   const rootMessageIds = useMemo(() => new Set(roots.map((root) => root.message.id)), [roots]);
   const navigate = useNavigate();
@@ -363,7 +356,7 @@ export function ConversationStream({ project, meId, meName, roots: stream, notic
   useEffect(() => { const timer = window.setTimeout(() => setOpeningTimedOut(true), OPENING_REVEAL_MS); return () => window.clearTimeout(timer); }, []);
   const [revealed, setRevealed] = useState(false);
   // #534: what this person observes in the stream, and who observed every root of their own whole runs. A task
-  // announcement, goal or fold between two roots separates runs; roots still being sent are not yet claimed.
+  // announcement or fold between two roots separates runs; roots still being sent are not yet claimed.
   const receiptLines = [...display.map((entry) => entry.kind === 'root'
     ? { id: entry.root.message.id as string | null, authorId: entry.root.message.authorId === null ? entry.root.message.author.id : entry.root.message.authorId, createdAt: entry.root.message.createdAt }
     : { id: null, authorId: `~${entry.key}`, createdAt: entry.at }),
@@ -405,7 +398,7 @@ export function ConversationStream({ project, meId, meName, roots: stream, notic
     const feed = feedRef.current;
     const column = columnRef.current;
     if (reveal || restore || !feed || !column) return;
-    return openOnWholeMessages(feed, column, '.project-convo__message, .convo-notice, .convo-object, .convo-fold, .convo-goal');
+    return openOnWholeMessages(feed, column, '.project-convo__message, .convo-notice, .convo-object, .convo-fold');
     // Once, when the stream opens; later arrivals are handled below.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -491,7 +484,6 @@ export function ConversationStream({ project, meId, meName, roots: stream, notic
   // Genuine arrivals (#155, UI116-5): a short rise for new entries the reader sees arrive. A reader who is
   // with earlier content is never moved; a quiet line says what is new below until they reach the end.
   const [newBelow, setNewBelow] = useState({ messages: 0, tasks: 0 });
-  // A reached goal is not a message or a task update: it never counts as "new below".
   const entryIds = [...entries.flatMap((entry) => entry.kind === 'root' ? [domId(entry.root)] : entry.kind === 'notice' ? [`notice-${entry.notice.id}`] : entry.kind === 'object' ? [`object-${entry.object.id}`] : []), ...outbox.pending.map((item) => `pending-${item.id}`)];
   useArrivals(feedRef, entryIds, (id) => document.getElementById(id), (arrived) => {
     const feed = feedRef.current;
@@ -578,7 +570,7 @@ export function ConversationStream({ project, meId, meName, roots: stream, notic
       }
       anchorRef.current = null;
       let anchorElement: HTMLElement | null = null;
-      for (const item of feed.querySelectorAll<HTMLElement>('.project-convo__message, .convo-notice, .convo-object, .convo-fold, .convo-goal')) {
+      for (const item of feed.querySelectorAll<HTMLElement>('.project-convo__message, .convo-notice, .convo-object, .convo-fold')) {
         const box = item.getBoundingClientRect();
         if (box.bottom > top + 1) { anchorRef.current = { id: item.id, offset: box.top - top }; anchorElement = item; break; }
       }
@@ -691,7 +683,6 @@ export function ConversationStream({ project, meId, meName, roots: stream, notic
                   observeId={entry.thread && entry.thread.message.authorId !== meId ? entry.thread.message.id : undefined}
                   task={entry.thread?.task ? { number: entry.thread.task.number, title: entry.thread.task.title, replies: entry.thread.replyCount, open: entry.thread.conversationId === openId, onOpen: () => openRoot(entry.thread!, false) } : undefined}
                   onOpen={(target) => openDetails(target)} onOpenThread={(conversationId) => { const root = roots.find((item) => item.conversationId === conversationId); if (root) openRoot(root, false); }} />];
-                if (entry.kind === 'goal') return [divider, <GoalStreamEntry key={entry.key} goal={entry.goal} project={project} meId={meId} />];
                 if (entry.kind === 'fold') {
                   const folded = entry.notices.map((item) => item.notice);
                   return [divider, <NoticeFold key={entry.key} fold={{ key: entry.key, notices: folded }} summary={foldSummary(folded, authorOf, (notice) => notice.createdBy.name?.split(/\s+/)[0] ?? 'Someone')}>{folded.map(noticeItem)}</NoticeFold>];
@@ -721,7 +712,7 @@ export function ConversationStream({ project, meId, meName, roots: stream, notic
           ) : null}
           {/* Until someone writes, the stream says so, below any task announcements: they are not messages. */}
           {roots.length || stream.hasOlder || outbox.pending.length ? null : writable
-            ? <EmptyState icon="chat" mascot="hello" title="Where do we start?"><p>Write a thought. You don’t need a topic or a ready plan. {audience === 'Only you' ? 'Only you see it for now; people you add to the project will see it too.' : `Everyone in ${project.name} sees it.`} Any message can later become a task, a decision or a thought on the map.</p></EmptyState>
+            ? <EmptyState icon="chat" mascot="hello" title="Where do we start?"><p>Write a thought. You don’t need a topic or a ready plan. {audience === 'Only you' ? 'Only you see it for now; people you add to the space will see it too.' : `Everyone in ${project.name} sees it.`} Any message can later become a task, a decision or a thought on the map.</p></EmptyState>
             : <EmptyState icon="chat" title="No messages yet"><p>You have read access to {project.name}. Messages appear here when someone writes. You can browse saved tasks, maps, docs and sources.</p></EmptyState>}
         </section>
       </div>
@@ -868,7 +859,7 @@ function SinceLine({ summary, roots, onJump, onRecap }: { summary: ReturnSummary
   return (
     <div className="convo-since" role="region" aria-label="Since you left">
       <Kreska size={22} />
-      {/* The line opens "What matters", the project's recap of what changed and what is next (#763 H11-2); on a phone it
+      {/* The line opens "What matters", the space's recap of what changed and what is next (#763 H11-2); on a phone it
           is also where the counts the cut line hides can be read in full (H11-6). Jump stays the second action. */}
       <button type="button" className="convo-since__t" title={`Since you left: ${line}`} aria-label={`Since you left: ${line}. Open What matters`} onClick={onRecap}>
         <b>Since you left:</b> {line}

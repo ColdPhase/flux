@@ -632,7 +632,7 @@ class ReturnToOrigin(unittest.TestCase):
                 # Back lands on the nearest place that still opens, with one line, never an error page.
                 page.go_back()
                 expect(page).to_have_url(f"{ORIGIN}/projects")
-                expect(page.get_by_text("That project is no longer available to you.")).to_be_visible()
+                expect(page.get_by_text("That space is no longer available to you.")).to_be_visible()
                 expect(page.get_by_role("heading", name="This place isn’t available")).to_have_count(0)
                 expect(page.get_by_role("heading", name="Something went wrong")).to_have_count(0)
 

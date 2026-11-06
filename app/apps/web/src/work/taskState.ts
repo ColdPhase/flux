@@ -27,7 +27,7 @@ export function changeError(error: unknown, item: Pick<StateTarget, 'number' | '
   if (error instanceof ApiError && error.code === 'VERSION_CONFLICT') return `${name} was changed by someone else a moment ago, so it was not changed.`;
   if (error instanceof ApiError && error.code === 'TASK_PREREQUISITES_UNMET') return `${name} can start or finish only when every task it waits for is done.`;
   if (error instanceof ApiError && error.status === 404) return `${name} is no longer available to you.`;
-  if (error instanceof ApiError && error.status === 403) return 'You can read this project but not change it.';
+  if (error instanceof ApiError && error.status === 403) return 'You can read this space but not change it.';
   if (error instanceof NetworkError) return `Flux could not be reached, so ${name} was not changed. Try again when you are online.`;
   return `${name} could not be changed. Its current state is shown; try again.`;
 }

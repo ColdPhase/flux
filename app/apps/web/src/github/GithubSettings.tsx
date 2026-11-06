@@ -49,7 +49,7 @@ function GithubProjectSettings({ shell }: { shell: ProjectShell }) {
   }
   return <div className="pane-scroll"><div className="pane-in github-settings">
     <div className="github-settings__head"><div><h2>GitHub repositories</h2><p>Connect repositories to {shell.project.name} and keep verified pull requests beside your existing tasks.</p></div>
-      <Link className="ui-link" to={`/projects/${projectId}`}>Back to project</Link></div>
+      <Link className="ui-link" to={`/projects/${projectId}`}>Back to space</Link></div>
     <p className="github-settings__note">Private repository details are shown only when your own GitHub account and Flux access both permit them.</p>
     {error ? <p role="alert" className="github-settings__error">{error}</p> : null}
     {!capabilities ? error ? <Button variant="secondary" onClick={() => void refresh()}>Check access again</Button> : <Spinner label="Loading GitHub settings" /> : capabilities.status === 'unavailable'
@@ -64,12 +64,12 @@ function GithubProjectSettings({ shell }: { shell: ProjectShell }) {
           <p className="github-settings__note" data-testid="github-delivery">Updates: {capabilities.delivery === 'poll' ? 'Every 2 minutes (no public address)' : 'Live (webhooks)'}</p>
           <section><h3>Connected repositories</h3>{bindings.length ? <ul className="github-settings__repos">{bindings.map((binding) => <li key={binding.id}>
             <a href={binding.url} target="_blank" rel="noreferrer">{binding.owner}/{binding.name}</a><span>{binding.private ? 'Private' : 'Public'}</span>
-            {shell.project.access === 'manager' ? <Button variant="secondary" disabled={busy} onClick={() => void disconnect(binding.id)}>Disconnect</Button> : null}</li>)}</ul> : <p>{error ? 'Repository access could not be verified. Refresh access or reconnect your account.' : 'No repositories connected to this project yet.'}</p>}</section>
+            {shell.project.access === 'manager' ? <Button variant="secondary" disabled={busy} onClick={() => void disconnect(binding.id)}>Disconnect</Button> : null}</li>)}</ul> : <p>{error ? 'Repository access could not be verified. Refresh access or reconnect your account.' : 'No repositories connected to this space yet.'}</p>}</section>
           {shell.project.access === 'manager' ? <RepositoryPicker projectId={projectId} onBound={refresh} /> : null}
           {shell.project.access === 'manager' && bindings.length ? <RuleDefault projectId={projectId} current={ruleDefault} onSaved={(value) => setSavedDefault({ value })} /> : null}
           {bindings.length ? <PullReferences projectId={projectId} bindings={bindings} canLink={shell.project.access !== 'viewer'} ruleDefault={ruleDefault} /> : null}
         </>}
-    <p className="github-settings__note">Linked PRs move a task only when someone who can edit it turns that on in the task’s Details, or links a required PR while this project’s default below is on. A merge never checks off written criteria. An agent that holds a task hears about its linked PRs at its next safe point.</p>
+    <p className="github-settings__note">Linked PRs move a task only when someone who can edit it turns that on in the task’s Details, or links a required PR while this space’s default below is on. A merge never checks off written criteria. An agent that holds a task hears about its linked PRs at its next safe point.</p>
   </div></div>;
 }
 /** A manager's default (#74 G-1a): whoever links a required PR to a task without a rule turns its rule on. */
@@ -142,7 +142,7 @@ function PullReferences({ projectId, bindings, canLink, ruleDefault }: { project
       <label htmlFor={`${id}-binding`}>Repository</label><Select id={`${id}-binding`} value={binding} disabled={busy} onChange={(next) => setBinding(next)}><Option value="">Choose repository…</Option>{bindings.map((row) => <Option key={row.id} value={row.id}>{row.owner}/{row.name}</Option>)}</Select>
       <label htmlFor={`${id}-number`}>Pull request number</label><input id={`${id}-number`} type="number" min="1" required disabled={busy} value={number} onChange={(event) => setNumber(event.target.value)} />
       <label htmlFor={`${id}-role`}>Relationship</label><Select id={`${id}-role`} value={role} disabled={busy} onChange={(next) => setRole(next as typeof role)}><Option value="required_output">Required output</Option><Option value="related">Related context</Option></Select>
-      {ruleDefault && role === 'required_output' ? <p className="github-settings__disclose" role="note">This project’s default turns on “Let linked PRs move this task” for a task without a rule, on your behalf. Everyone who can see the task then sees its status changes, with PR numbers, check names and commits.</p> : null}
+      {ruleDefault && role === 'required_output' ? <p className="github-settings__disclose" role="note">This space’s default turns on “Let linked PRs move this task” for a task without a rule, on your behalf. Everyone who can see the task then sees its status changes, with PR numbers, check names and commits.</p> : null}
       <Button type="submit" busy={busy} disabled={!task || !binding || !number || !canCommit}>Verify and link PR</Button>
     </form> : <div className="github-settings__form">{taskPicker}</div>}{error ? <p role="alert" className="github-settings__error">{error}</p> : null}
     {links.length ? <ul className="github-settings__pulls">{links.map((row) => <li key={row.id}><a href={row.facts.url} target="_blank" rel="noreferrer">#{row.facts.number} · {row.facts.title}</a>

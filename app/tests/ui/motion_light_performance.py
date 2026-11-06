@@ -147,7 +147,7 @@ class LightMotionPerformance(unittest.TestCase):
             else:
                 measure("dialog", lambda: page.keyboard.press("Control+k"), lambda: page.keyboard.press("Escape"), self.fx.project_url())
                 measure("panel", lambda: page.locator(".ws-task .ws-item").first.click(), lambda: (page.locator("aside.ui-panel .ui-panel__body").focus(), page.keyboard.press("Escape")), self.fx.tasks_url())
-                measure("view", lambda: page.locator("nav[aria-label='Project views'] a[href*='/tasks']").click(), lambda: page.locator("nav[aria-label='Project views'] a:first-of-type").click(), self.fx.project_url())
+                measure("view", lambda: page.locator("nav[aria-label='Space views'] a[href*='/tasks']").click(), lambda: page.locator("nav[aria-label='Space views'] a:first-of-type").click(), self.fx.project_url())
             measure("state", lambda: page.locator("button.ws-task__glyph").first.click(), lambda: page.locator("button.ws-task__glyph").first.click(), self.fx.tasks_url())
             target = page.get_by_role("button", name=re.compile("^(New )?Task$")).first if not phone else page.locator(".ws-task .ws-item").first
 

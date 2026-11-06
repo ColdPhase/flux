@@ -69,7 +69,7 @@ export function AddToDoc({ view }: { view: AddToDocView }) {
         setError(`Someone changed “${chosen?.title ?? 'the page'}” a moment ago. The list is refreshed; add it again to the latest version.`);
         setAttempt(crypto.randomUUID());
         setDocs(await listProjectDocs(view.projectId).catch(() => docs));
-      } else if (cause instanceof ApiError && cause.status === 403) setError('You can read this project but not change its Wiki.');
+      } else if (cause instanceof ApiError && cause.status === 403) setError('You can read this space but not change its Wiki.');
       else if (cause instanceof ApiError && cause.code === 'DECISION_NOT_ACCEPTED') setError('Accept the decision first; a proposed decision stays out of the Wiki.');
       else setError(cause instanceof Error ? cause.message : 'Could not add it. Try again.');
     } finally { setBusy(false); }

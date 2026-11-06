@@ -10,7 +10,7 @@ export interface AgentEntry {
   key: string;
   agentId: string;
   name: string;
-  /** "Ada", "Ada (you)" or "the workspace"; null when it cannot be told. */
+  /** "Ada", "Ada (you)" or "the company"; null when it cannot be told. */
   owner: string | null;
   /** The owning person's id; null for a workspace agent or when it cannot be told. */
   ownerId: string | null;
@@ -76,14 +76,14 @@ export function agentEntries(people: readonly ProjectPerson[] | null, connection
     if (seen.has(person.id)) continue;
     seen.add(person.id);
     entries.push({ key: `agent:${person.id}`, agentId: person.id, name: person.name, connection: null, via: null, access: person.access,
-      owner: person.agentOwner ? person.agentOwner.kind === 'workspace' ? 'the workspace' : person.agentOwner.name : null,
+      owner: person.agentOwner ? person.agentOwner.kind === 'workspace' ? 'the company' : person.agentOwner.name : null,
       ownerId: person.agentOwner?.kind === 'human' ? person.agentOwner.id : null });
   }
   for (const agent of workspaceAgents) {
     if (seen.has(agent.id) || agent.revokedAt) continue;
     seen.add(agent.id);
     entries.push({ key: `agent:${agent.id}`, agentId: agent.id, name: agent.name, connection: null, via: null, access: null,
-      owner: agent.owner.kind === 'workspace' ? 'the workspace' : humans.get(agent.owner.id) ?? null,
+      owner: agent.owner.kind === 'workspace' ? 'the company' : humans.get(agent.owner.id) ?? null,
       ownerId: agent.owner.kind === 'human' ? agent.owner.id : null });
   }
   return entries;

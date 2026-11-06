@@ -62,7 +62,7 @@ function readable(error: unknown) {
   if (error instanceof ApiError && error.code === 'WORK_NOT_FINISHABLE') return 'That work was parked or set aside meanwhile, so this result cannot finish it. The latest state is shown.';
   if (error instanceof ApiError && error.code === 'SUPERSEDED_DECISION_CHANGED') return 'The decision this would replace has already changed. Review the accepted decision first.';
   if (error instanceof ApiError && error.status === 404) return 'This is no longer available to you.';
-  if (error instanceof ApiError && error.status === 403) return 'You can read this project but not change it.';
+  if (error instanceof ApiError && error.status === 403) return 'You can read this space but not change it.';
   return error instanceof Error ? error.message : 'Could not save. Try again.';
 }
 
@@ -116,11 +116,11 @@ export function WorkDetails({ view }: { view: ObjectView | WorkFormView }) {
   const setChoices = (update: (current: Record<string, Choice>) => Record<string, Choice>) => { if (activeOwner.current === owner) setPicks((current) => ({ owner, values: update(current.owner === owner ? current.values : {}) })); };
   const unavailable = contextRead.phase === 'unavailable' || own.read.phase === 'unavailable';
   const contextStatus = contextRead.phase === 'unavailable'
-    ? <p className="wd-error" role="alert">Project context could not be loaded. Your draft is kept. <button type="button" className="wd-inline" onClick={reload}>Refresh context</button></p>
-    : !context ? <p className="wd-muted" role="status">Loading project context…</p> : null;
+    ? <p className="wd-error" role="alert">Space context could not be loaded. Your draft is kept. <button type="button" className="wd-inline" onClick={reload}>Refresh context</button></p>
+    : !context ? <p className="wd-muted" role="status">Loading space context…</p> : null;
   if (view.kind === 'propose-decision') return <ProposeDecision key={key} view={view} context={context} contextStatus={contextStatus} revision={tick} isCurrent={commands.isCurrent} />;
   if (view.kind === 'attach-result') return <AttachResult key={key} view={view} context={context} contextStatus={contextStatus} reload={reload} revision={tick} isCurrent={commands.isCurrent} />;
-  if (!projectId || unavailable) return <div className="details"><p className="details__eyebrow">Details</p><h3 className="details__title">Not available</h3><p className="details__lead" role="alert">{contextRead.phase === 'unavailable' ? readable(contextRead.error) : own.read.phase === 'unavailable' ? readable(own.read.error) : 'Open this object in its project.'}</p><Button variant="secondary" onClick={reload}>Refresh details</Button></div>;
+  if (!projectId || unavailable) return <div className="details"><p className="details__eyebrow">Details</p><h3 className="details__title">Not available</h3><p className="details__lead" role="alert">{contextRead.phase === 'unavailable' ? readable(contextRead.error) : own.read.phase === 'unavailable' ? readable(own.read.error) : 'Open this object in its space.'}</p><Button variant="secondary" onClick={reload}>Refresh details</Button></div>;
   if (!context || !detail) return <div className="details" aria-busy="true"><p className="details__lead">Loading…</p></div>;
   const currentContext = { ...context, project: { ...context.project, access: detail.access } };
   const object = detail.object;

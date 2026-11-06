@@ -38,8 +38,6 @@ const ifMatch = (version: number) => ({ 'if-match': `"${version}"` });
 const key = (idempotencyKey: string) => ({ 'idempotency-key': idempotencyKey });
 
 export const listWorkspaces = (signal?: AbortSignal) => request<Workspace[]>(WORKSPACES_PATH, { signal });
-export const createWorkspace = (name: string, idempotencyKey: string) =>
-  request<Workspace>(WORKSPACES_PATH, { method: 'POST', body: { name }, headers: key(idempotencyKey) });
 export const listProjects = (workspaceId: string, offset: number, signal?: AbortSignal) =>
   request<Page<Project>>(`${workspaceProjectsPath(workspaceId)}?limit=100&offset=${offset}`, { signal });
 /** The person's own sketchbook: private sketches only (#189), without empty ones (#508); shared ones live in their project or DM. */

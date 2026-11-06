@@ -8,12 +8,14 @@ import { listAccessibleProjects } from '../project/api';
 import type { WorkspaceEncryption } from '../encryption/api';
 
 /**
- * Shapes the shell renders. Projects and direct messages come from the workspace, conversation
- * and direct-message APIs (#29, #36, #107); the loader never returns sample data. The administrative workspace is only a data boundary: nobody has to pick
- * or build one before ordinary work, so the shell shows it at most as a quiet name.
+ * Shapes the shell renders. Projects (spaces) and direct messages come from the workspace, conversation
+ * and direct-message APIs (#29, #36, #107); the loader never returns sample data. F-037 (#874): one Flux is one company,
+ * its one workspace; nobody picks or makes a workspace, and the shell shows its spaces as one flat list.
  */
 export interface WorkspaceSummary {
   id: string; name: string;
+  /** The company (F-037); a test deployment may also hold isolated workspaces. */
+  company?: boolean;
   /** The person's role there (#188): owners and admins manage its people. */
   role?: WorkspaceRole | null;
   /** F-029 (#614): whether agents and assistants may work here; the whole interface there is human-only while blocked. */
@@ -21,8 +23,8 @@ export interface WorkspaceSummary {
   /** F-030 (#655): null or absent for a plain workspace. A locked one is kept in `ShellData.lockedWorkspaces`. */
   encryption?: WorkspaceEncryption | null;
 }
-/** A small, audience-specific project. Only projects the person belongs to are ever listed. */
-export interface ProjectSummary { id: string; name: string; workspaceId?: string; workspaceName?: string; hasNew?: boolean }
+/** A space (a project internally). `member` is false only where a company owner or admin reaches a space they are not in (F-037). */
+export interface ProjectSummary { id: string; name: string; workspaceId?: string; hasNew?: boolean; member?: boolean }
 /** A private conversation with one or more people, independent of any project. */
 export interface DirectMessageSummary {
   id: string; workspaceId: string; kind: 'pair' | 'group'; title: string; people: string[]; participantIds: string[];
@@ -32,12 +34,16 @@ export interface DirectMessageSummary {
 
 export interface ShellData {
   me: MeResponse;
+  /** The company (F-037), or null for an account nobody has invited yet. */
   workspace: WorkspaceSummary | null;
   /** The workspaces whose content can be read now: plain ones and encrypted ones that are unlocked. */
   workspaces: WorkspaceSummary[];
   /** Encrypted workspaces that wait to be unlocked (F-030, #655): drawn as one row each, never asked for content. */
   lockedWorkspaces: WorkspaceSummary[];
+  /** The spaces the person belongs to: everything that lists spaces lists these (F-037). */
   projects: ProjectSummary[];
+  /** Every space they can open. A company owner or admin reaches more than they belong to: Settings › Company lists those. */
+  reachableSpaces: ProjectSummary[];
   directMessages: DirectMessageSummary[];
 }
 
@@ -48,7 +54,7 @@ let latestShell: Promise<ShellData> | null = null;
 export async function projectAiBlocked(projectId: string | undefined): Promise<boolean> {
   try {
     const shell = await latestShell;
-    const workspaceId = shell?.projects.find((project) => project.id === projectId)?.workspaceId;
+    const workspaceId = shell?.reachableSpaces.find((project) => project.id === projectId)?.workspaceId;
     return shell?.workspaces.find((space) => space.id === workspaceId)?.ai?.state === 'blocked';
   } catch { return false; }
 }
@@ -75,17 +81,15 @@ async function readShell({ request }: LoaderFunctionArgs): Promise<ShellData> {
     const url = new URL(request.url);
     throw redirect(signInPath(`${url.pathname}${url.search}`));
   }
-  const { workspaces, lockedWorkspaces, projects } = await listAccessibleProjects(request.signal);
-  const nameCounts = new Map<string, number>();
-  for (const project of projects) nameCounts.set(project.name, (nameCounts.get(project.name) ?? 0) + 1);
-  const namedProjects = projects.map((project) => ({ ...project, workspaceName: nameCounts.get(project.name)! > 1 ? workspaces.find((space) => space.id === project.workspaceId)?.name : undefined }));
+  const { workspaces, lockedWorkspaces, projects: reachableSpaces } = await listAccessibleProjects(request.signal);
+  const projects = reachableSpaces.filter((project) => project.member !== false);
   const dms = await listAllDms(request.signal, workspaces);
   const directMessages = dms.map((dm) => ({
     id: dm.id, workspaceId: dm.workspaceId, kind: dm.kind, title: dmTitle(dm, me.user.id),
     people: othersIn(dm, me.user.id).map((person) => person.name), participantIds: dm.audience.participantIds,
     audience: audienceLine(dm, me.user.id), preview: dm.lastMessageBody, lastAt: dm.lastMessageAt,
   }));
-  return { me, workspace: workspaces[0] ?? null, workspaces, lockedWorkspaces, projects: namedProjects, directMessages };
+  return { me, workspace: workspaces.find((space) => space.company) ?? workspaces[0] ?? null, workspaces, lockedWorkspaces, projects, reachableSpaces, directMessages };
 }
 
 export function useShellData(): ShellData {

@@ -45,11 +45,11 @@ function requireVersion(draft: DraftRecord, expected: unknown) {
  * workspace is a rule violation; an invisible one is reported as not found.
  */
 async function requireTargetProject(principal: Principal, workspaceId: string, projectId: unknown, tx: Executor, ports: Pick<AccessPorts, 'access'>) {
-  if (!isUuid(projectId)) throw new NotFoundError('Project', 'PROJECT_NOT_FOUND');
+  if (!isUuid(projectId)) throw new NotFoundError('Space', 'PROJECT_NOT_FOUND');
   const evaluation = await evaluateProject(principal, 'project.write', projectId, ports.access(tx), { lock: true });
-  if (!evaluation.visible) throw new NotFoundError('Project', 'PROJECT_NOT_FOUND');
-  if (evaluation.project!.workspaceId !== workspaceId) throw new RuleViolationError('A draft can only link to a project in its own workspace', 'CROSS_WORKSPACE');
-  if (!evaluation.allowed) throw new ForbiddenError('Contributor access to the target project is required', 'PROJECT_WRITE_REQUIRED');
+  if (!evaluation.visible) throw new NotFoundError('Space', 'PROJECT_NOT_FOUND');
+  if (evaluation.project!.workspaceId !== workspaceId) throw new RuleViolationError('A draft can only link to a space in its own company', 'CROSS_WORKSPACE');
+  if (!evaluation.allowed) throw new ForbiddenError('Contributor access to the target space is required', 'PROJECT_WRITE_REQUIRED');
   return evaluation.project!;
 }
 
@@ -61,8 +61,8 @@ async function requireTargetProject(principal: Principal, workspaceId: string, p
 function requireAudience(actor: Actor, visibility: DraftVisibility, project: { visibility: ProjectVisibility } | null) {
   if (visibility === 'project' && !project) throw new InvalidInputError('projectId is required for project visibility');
   if (visibility === 'workspace') {
-    if (actor.principal.kind !== 'human' || actor.role === 'guest') throw new ForbiddenError('Only workspace members can share with the whole workspace', 'WORKSPACE_SHARE_FORBIDDEN');
-    if (project?.visibility === 'restricted') throw new RuleViolationError('A draft in a restricted project cannot be shared with the whole workspace', 'RESTRICTED_PROJECT');
+    if (actor.principal.kind !== 'human' || actor.role === 'guest') throw new ForbiddenError('Only company members can share with the whole company', 'WORKSPACE_SHARE_FORBIDDEN');
+    if (project?.visibility === 'restricted') throw new RuleViolationError('A draft in a restricted space cannot be shared with the whole company', 'RESTRICTED_PROJECT');
   }
 }
 
@@ -80,7 +80,7 @@ export async function createDraft(principal: Principal, workspaceId: string, com
   return db.transaction(async (tx) => {
     enforce(await evaluateWorkspace(principal, 'draft.create', workspaceId, ports.access(tx), { lock: true }), 'workspace');
     if (principal.kind === 'agent' && (command.projectId === undefined || command.projectId === null)) {
-      throw new RuleViolationError('An agent can only create drafts inside a project it contributes to', 'PROJECT_REQUIRED');
+      throw new RuleViolationError('An agent can only create drafts inside a space it contributes to', 'PROJECT_REQUIRED');
     }
     const projectId = command.projectId === undefined || command.projectId === null ? null
       : (await requireTargetProject(principal, workspaceId, command.projectId, tx, ports)).id;
@@ -158,7 +158,7 @@ export async function moveDraft(principal: Principal, draftId: string, command: 
     const { actor, draft } = enforce(await evaluateDraft(principal, 'draft.move', draftId, ports.access(tx), { lock: true }), 'draft');
     requireVersion(draft!, command.expectedVersion);
     if (principal.kind === 'agent' && command.projectId === null) {
-      throw new RuleViolationError('An agent cannot move a draft outside every project', 'PROJECT_REQUIRED');
+      throw new RuleViolationError('An agent cannot move a draft outside every space', 'PROJECT_REQUIRED');
     }
     const target = command.projectId === null ? null : await requireTargetProject(principal, draft!.workspaceId, command.projectId, tx, ports);
     requireAudience(actor!, visibility, target);

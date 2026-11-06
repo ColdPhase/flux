@@ -45,7 +45,7 @@ if (mode === 'seed') {
   const project = await expect('POST', `/api/v1/workspaces/${created.workspace.id}/projects`, { name: canary, visibility: 'workspace' }, [201], key());
   const workspaces = await expect('GET', '/api/v1/workspaces', undefined, [200]);
   const plain = (workspaces.items ?? workspaces).find((workspace) => !workspace.encrypted && workspace.id !== created.workspace.id);
-  await expect('POST', `/api/v1/workspaces/${plain.id}/projects`, { name: control, visibility: 'workspace' }, [201], key());
+  await expect('POST', `/api/v1/workspaces/${plain.id}/projects`, { name: control }, [201], key());
   console.log(`FLUX_ENCRYPTION ${JSON.stringify({ workspaceId: created.workspace.id, projectId: project.id, one, two: `vault two ${crypto.randomUUID()}`, canary, control })}`);
 } else if (mode === 'rekey') {
   await expect('PUT', `/api/v1/workspaces/${state.workspaceId}/unlock-password`, { currentPassword: state.one, newPassword: state.two }, [200, 204]);

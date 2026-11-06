@@ -6,8 +6,8 @@ import { genericOAuth, jwt } from 'better-auth/plugins';
 import { cimd } from '@better-auth/cimd';
 import { fetchClientMetadataResource } from '@better-auth/cimd/node';
 import { mcp } from '@better-auth/mcp';
-import { schema, workspaceIdOfGrantReference, workspaceIdOfOauthFlow, workspaceAi, type Database } from '@flux/db';
-import { agentOauthUseCases, DomainError } from '@flux/core';
+import { accessPorts, schema, workspaceIdOfGrantReference, workspaceIdOfOauthFlow, workspaceAi, type Database } from '@flux/db';
+import { agentOauthUseCases, companyDisplayName, DomainError, joinCompany } from '@flux/core';
 import { and, eq, isNotNull, sql } from 'drizzle-orm';
 import { createAgentConnectionStore } from '../agent-connection/store.js';
 import type { IdentityConfig, OidcConfig } from './config.js';
@@ -137,7 +137,7 @@ export function createAuth({ db, config, mailer, onMailError, oauthRequests, sig
   /** F-029: the authorization server issues nothing for a workspace whose AI is off. Nothing is revoked. */
   const refuseAiOff = async (workspaceId: string) => {
     if ((await workspaceAi(db, workspaceId)).state !== 'allowed')
-      throw new APIError('BAD_REQUEST', { error: 'invalid_grant', error_description: 'AI is turned off in this workspace' });
+      throw new APIError('BAD_REQUEST', { error: 'invalid_grant', error_description: 'AI is turned off in this company' });
   };
   /**
    * F-029, before the chosen connection is resolved (its agent is inactive while AI is off, so resolving it would throw):
@@ -146,7 +146,7 @@ export function createAuth({ db, config, mailer, onMailError, oauthRequests, sig
   const refuseAiOffFlow = async (userId: string, sessionId: string, fingerprint: string) => {
     const workspaceId = await workspaceIdOfOauthFlow(db, userId, sessionId, fingerprint);
     if (workspaceId && (await workspaceAi(db, workspaceId)).state !== 'allowed')
-      throw new APIError('FORBIDDEN', { error: 'access_denied', error_description: 'AI is turned off in this workspace', code: 'WORKSPACE_AI_BLOCKED' });
+      throw new APIError('FORBIDDEN', { error: 'access_denied', error_description: 'AI is turned off in this company', code: 'WORKSPACE_AI_BLOCKED' });
   };
   const connectionForGrant = async (userId: string, sessionId: string, scopes: readonly string[]) => {
     const request = oauthRequests.getStore();
@@ -172,6 +172,8 @@ export function createAuth({ db, config, mailer, onMailError, oauthRequests, sig
   // next time it signs in with a password once a provider is configured, so an administrator can find it by address.
   // One per address per minute; the link works once for a day and lands on the sign-in page.
   const lastVerificationMail = new Map<string, number>();
+  // The guide: the company's name is in its emails. Nothing is added before setup or while it has the name setup gave it.
+  const atCompany = async () => { const name = await companyDisplayName(db, accessPorts); return name ? ` at ${name}` : ''; };
   const sendVerification = async (email: string, url?: string) => {
     if (!mailer) return;
     const key = email.toLowerCase();
@@ -182,7 +184,7 @@ export function createAuth({ db, config, mailer, onMailError, oauthRequests, sig
     const link = url ?? `${config.publicOrigin}${AUTH_VERIFY_PATH}?token=${await createEmailVerificationToken(config.secret, key, undefined, 86_400)}&callbackURL=${encodeURIComponent('/sign-in?notice=email-verified')}`;
     try {
       await mailer.send({ to: email, subject: 'Verify your email for Flux',
-        text: `Confirm that this is your email address for Flux.\n\nOpen this link. It works once and expires in 24 hours:\n\n${link}\n\nIf you did not ask for this, ignore this message.\n` });
+        text: `Confirm that this is your email address for Flux${await atCompany()}.\n\nOpen this link. It works once and expires in 24 hours:\n\n${link}\n\nIf you did not ask for this, ignore this message.\n` });
     } catch (error) { onMailError?.(error); }
   };
   const verifiedSignUp = config.signup === 'verified';
@@ -321,13 +323,21 @@ export function createAuth({ db, config, mailer, onMailError, oauthRequests, sig
       autoSignInAfterVerification: false,
       expiresIn: 86_400,
       sendVerificationEmail: async ({ user, url }) => { await sendVerification(user.email, url); },
+      afterEmailVerification: async (user) => { await joinCompany(user.id, { sso: false }, db, accessPorts); },
     },
     databaseHooks: {
       user: {
         create: {
           after: async (user) => {
-            // A password sign-up while sign-up is `verified` cannot sign in until the address is verified.
-            if (verifiedSignUp && !signIns.getStore()?.providerId) await db.update(schema.authUsers).set({ verificationRequired: true }).where(eq(schema.authUsers.id, user.id));
+            const sso = !!signIns.getStore()?.providerId;
+            // A password sign-up while sign-up is `verified` cannot sign in until the address is verified, and sets up
+            // nothing before that: a mistyped address must not leave a company whose owner nobody can be.
+            if (verifiedSignUp && !sso) {
+              await db.update(schema.authUsers).set({ verificationRequired: true }).where(eq(schema.authUsers.id, user.id));
+              return;
+            }
+            // F-037: the first account sets up the company as its owner.
+            await joinCompany(user.id, { sso }, db, accessPorts);
           },
         },
       },
@@ -344,6 +354,9 @@ export function createAuth({ db, config, mailer, onMailError, oauthRequests, sig
             // The provider vouched for the person just now: keep its offline token for the standing check and
             // clear sign-in required (#311). The token never reaches auth_accounts or a log.
             if (sign?.providerId && sign.refreshToken && standing) await standing.recordSignIn(session.userId, sign.refreshToken, sign.idpSid);
+            // F-037: whoever the provider lets in joins on their first sign-in, also with an account that existed before
+            // they linked the provider. Last, so the standing check above is not kept waiting.
+            if (sign?.providerId) await joinCompany(session.userId, { sso: true }, db, accessPorts);
           },
         },
       },
@@ -369,7 +382,7 @@ export function createAuth({ db, config, mailer, onMailError, oauthRequests, sig
             await mailer.send({
               to: user.email,
               subject: 'Reset your Flux password',
-              text: `A password reset was requested for your Flux account.\n\nOpen this link to choose a new password. It works once and expires in ${Math.round(config.passwordResetTtlSeconds / 60)} minutes:\n\n${url}\n\nIf you did not ask for this, ignore this message.\n`,
+              text: `A password reset was requested for your Flux account${await atCompany()}.\n\nOpen this link to choose a new password. It works once and expires in ${Math.round(config.passwordResetTtlSeconds / 60)} minutes:\n\n${url}\n\nIf you did not ask for this, ignore this message.\n`,
             });
           } catch (error) {
             onMailError?.(error);

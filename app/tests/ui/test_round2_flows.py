@@ -3,7 +3,7 @@
 Runs through scripts/check_ui.sh against the running Compose application, on the engine named by FLUX_UI_BROWSER (run it
 with chromium and with webkit), on a computer (1440 x 900) and a phone (390 x 844, touch):
 
-* FT-1 / FR-4: a person with no project sees one first step on Home ("Start your first project") and no empty
+* FT-1 / FR-4 (F-037): a person in no company sees one calm first step on Home (how to join) and no empty
   "Needs you", "Enjoy the quiet" or empty sidebar Projects section; the step opens New project.
 * LD-1 / LD-5 / IN-3: the Inbox expands only the selected item; the others are one line with one quiet action; there is
   one inverted primary; a filter with nothing in it is not offered; the selection is not a ring; a click on a compact
@@ -120,23 +120,22 @@ class Round2Flows(unittest.TestCase):
 
     # ---------------------------------------------------------------- FT-1, FR-4
 
-    def test_01_a_person_with_no_project_gets_one_first_step(self) -> None:
+    def test_01_a_person_in_no_company_gets_one_calm_first_step(self) -> None:
+        """F-037: an account nobody has invited is in no company; Home says how to join and starts nothing."""
         for phone in (False, True):
             with self.subTest(phone=phone):
                 page = self.page("new", phone=phone)
                 page.goto("/")
-                start = page.get_by_role("button", name="Start your first project")
-                expect(start).to_be_visible()
+                first = page.get_by_role("region", name="You’re not in a company here yet")
+                expect(first).to_be_visible()
+                expect(first.get_by_text("Got an invite link? Open it to join your company.")).to_be_visible()
                 expect(page.get_by_text("Enjoy the quiet", exact=False)).to_have_count(0)
                 expect(page.get_by_role("heading", name="Needs you")).to_have_count(0)
                 expect(page.get_by_text("with the New button", exact=False)).to_have_count(0)
-                expect(page.get_by_text("Got an invite link? Open it to join your team.")).to_be_visible()
-                self.assertEqual(page.locator("#content .ui-btn--primary:visible").count(), 1, "one primary on the first screen")
+                self.assertEqual(page.locator("#content .ui-btn--primary:visible").count(), 0, "nothing to start before joining")
                 if not phone:
-                    expect(page.get_by_role("complementary", name="Sidebar").get_by_text("No projects yet")).to_have_count(0)
+                    expect(page.get_by_role("complementary", name="Sidebar").get_by_text("No spaces yet")).to_have_count(0)
                 shot(page, f"r2-first-home-{'390' if phone else '1440'}-{UI_BROWSER}")
-                start.click()
-                expect(page.get_by_role("dialog", name="New project")).to_be_visible()
 
     # ---------------------------------------------------------------- LD-1, LD-5, IN-3
 

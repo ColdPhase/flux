@@ -139,33 +139,24 @@ describe('#763 FT-2: a member\'s agent that a manager let in can be given the wo
   });
 });
 
-describe('#763 FT-3: an invite made from a project', () => {
-  test('carries the project: the new person can open it, lands there, and the inviter is told', async () => {
-    const [anna, ben] = await Promise.all(['FT3 Anna', 'FT3 Ben'].map(person));
+describe('F-037: an invite link joins the company only', () => {
+  test('a link carries no space; the new person lands in the company and the inviter is told', async () => {
+    const [anna] = await Promise.all(['FT3 Anna'].map(person));
     const space = (await workspace(anna, 'Invite space')).id;
-    await addMember(anna, space, ben, 'member');
-    const app = await project(anna, space, 'Sign-up app', 'restricted');
     const headers = () => ({ 'idempotency-key': randomUUID() });
-    // Only someone who manages the project can tie a link to it.
-    assert.equal((await ben.browser.request('POST', `/api/v1/workspaces/${space}/invites`, { body: { role: 'member', projectId: app.id }, headers: headers() })).status, 403);
-    const invite = expectStatus(await anna.browser.request('POST', `/api/v1/workspaces/${space}/invites`, { body: { role: 'member', projectId: app.id }, headers: headers() }), 201) as WorkspaceInvite;
-    assert.deepEqual(invite.project, { id: app.id, name: 'Sign-up app' });
-    const listed = expectStatus(await anna.browser.request('GET', `/api/v1/workspaces/${space}/invites`), 200) as WorkspaceInvite[];
-    assert.deepEqual(listed.find((item) => item.id === invite.id)?.project, { id: app.id, name: 'Sign-up app' });
-    const token = invite.link.split('#')[1]!;
-    const basia = await person('FT3 Basia');
-    assert.equal((expectStatus(await basia.browser.request('POST', '/api/v1/invites/preview', { body: { token } }), 200) as InvitePreview).projectName, 'Sign-up app');
-    const joined = expectStatus(await basia.browser.request('POST', '/api/v1/invites/accept', { body: { token }, headers: headers() }), 200) as AcceptInviteResult;
-    assert.equal(joined.projectId, app.id, 'lands in the project');
-    const seen = expectStatus(await basia.browser.request('GET', `/api/v1/projects/${app.id}`), 200) as Project;
-    assert.equal(seen.access, 'contributor');
-    assert.ok((await inbox(anna)).some((item) => item.title === 'FT3 Basia joined Sign-up app' && item.url === `/projects/${app.id}?open=people`));
-    // A link for the space only: the inviter is asked to give access, in Needs you.
+    // A link never names a space any more: the field is dropped like any unknown one.
+    const app = await project(anna, space, 'Sign-up app', 'restricted');
+    const named = expectStatus(await anna.browser.request('POST', `/api/v1/workspaces/${space}/invites`, { body: { role: 'member', projectId: app.id }, headers: headers() }), 201) as WorkspaceInvite;
+    assert.equal('project' in named, false);
     const plain = expectStatus(await anna.browser.request('POST', `/api/v1/workspaces/${space}/invites`, { body: { role: 'member' }, headers: headers() }), 201) as WorkspaceInvite;
-    assert.equal(plain.project, null);
+    assert.equal('project' in plain, false);
+    const token = plain.link.split('#')[1]!;
     const cleo = await person('FT3 Cleo');
-    const cleoJoined = expectStatus(await cleo.browser.request('POST', '/api/v1/invites/accept', { body: { token: plain.link.split('#')[1]! }, headers: headers() }), 200) as AcceptInviteResult;
-    assert.equal(cleoJoined.projectId, null);
-    assert.ok((await needsYou(anna)).items.some((item) => item.title === 'FT3 Cleo joined your space' && item.kind === 'question'));
+    assert.equal('projectName' in (expectStatus(await cleo.browser.request('POST', '/api/v1/invites/preview', { body: { token } }), 200) as InvitePreview), false);
+    const joined = expectStatus(await cleo.browser.request('POST', '/api/v1/invites/accept', { body: { token }, headers: headers() }), 200) as AcceptInviteResult;
+    assert.equal(joined.status, 'joined');
+    // A restricted space stays closed to the newcomer until someone adds them.
+    assert.equal((await cleo.browser.request('GET', `/api/v1/projects/${app.id}`)).status, 404);
+    assert.ok((await inbox(anna)).some((item) => item.title === 'FT3 Cleo joined Invite space' && item.url === '/settings/company'));
   });
 });

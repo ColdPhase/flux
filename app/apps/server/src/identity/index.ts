@@ -1,5 +1,6 @@
 import type { FastifyInstance } from 'fastify';
-import { createSessionRepository, type Database } from '@flux/db';
+import { accessPorts, createSessionRepository, type Database } from '@flux/db';
+import { companyDisplayName } from '@flux/core';
 import { sql } from 'drizzle-orm';
 import type { ApiError, IdentityCapabilities } from '@flux/contracts';
 import { createAuth, ensureOauthResource, type FluxAuth } from './auth.js';
@@ -153,7 +154,8 @@ export function registerIdentity(app: FastifyInstance, options: IdentityOptions)
     config.oidc && reachable ? { providerId: config.oidc.providerId, label: config.oidc.label, reachable: providerInstalled && await reachable() } : null;
   // Operators register this exact redirect URI with their identity provider (#113).
   if (config.oidc) app.log.info({ issuer: config.oidc.issuer, redirectUri: `${config.publicOrigin}/api/auth/callback/${config.oidc.providerId}` }, 'Single sign-on is on');
-  registerIdentityRoutes(app, { sessions, store: createSessionRepository(db), passwordReset, signup: config.signup, ssoOnly: config.ssoOnly, linkable: config.oidc !== null && config.ssoMode === 'prepare', sso });
+  registerIdentityRoutes(app, { sessions, store: createSessionRepository(db), passwordReset, signup: config.signup, ssoOnly: config.ssoOnly, linkable: config.oidc !== null && config.ssoMode === 'prepare', sso,
+    company: () => companyDisplayName(db, accessPorts) });
   registerLinkRoutes(app, { db, sessions, links, ssoMode: config.ssoMode, publicOrigin: config.publicOrigin,
     provider: config.oidc ? { providerId: config.oidc.providerId, issuer: config.oidc.issuer, label: config.oidc.label } : null });
   registerClaimRoutes(app, { claims, publicOrigin: config.publicOrigin });

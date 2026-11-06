@@ -164,7 +164,7 @@ export function registerAgentCoworkActions(tools: AgentToolRegistry, db: Databas
 
   register('cowork.unit.transfer').registerTool('flux_transfer_unit', {
     title: 'Hand your co-work unit to another connection under a standing grant',
-    description: 'Reassign your own unit, under your live claim, to another live connection of this workspace that has this '
+    description: 'Reassign your own unit, under your live claim, to another live connection of this company that has this '
       + 'project selected. The unit becomes pending for it and your claim ends; it claims the unit with its own owner\'s '
       + 'grant and receives the unit\'s last checkpoint. An author never hands review of its own work to itself '
       + '(COWORK_REVIEW_SEPARATION), and open requests on the unit refuse the transfer (COWORK_UNIT_REQUESTS_OPEN). Needs a live '

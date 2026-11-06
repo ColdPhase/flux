@@ -72,7 +72,7 @@ function join(names: string[]) {
  * "only" anyone's: whoever joins the workspace later can read it too (#188).
  */
 export function audienceLine(people: ProjectPerson[] | null, meId: string, open = false): string {
-  if (!people) return 'People with project access';
+  if (!people) return 'People with space access';
   const others = people.filter((person) => person.kind === 'human' && person.id !== meId).map((person) => firstName(person.name));
   const agents = people.filter((person) => person.kind === 'agent').length;
   const humans = !others.length ? (agents || open ? 'You' : 'Only you')

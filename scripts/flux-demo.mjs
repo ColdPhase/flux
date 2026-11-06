@@ -87,17 +87,24 @@ const ids = () => crypto.randomUUID();
 const owner = await account(people.owner);
 const partner = await account(people.partner);
 
-const existing = (await owner.session.expect('GET', '/api/v1/workspaces')).find((ws) => ws.name === WORKSPACE_NAME);
+// F-037: one Flux is one company, set up by its first account. On a fresh install the demo owner signs up first and
+// owns it; the demo names it and adds the partner. On a server someone else set up, the demo stops instead.
+const company = (await owner.session.expect('GET', '/api/v1/workspaces')).find((ws) => ws.company);
+if (!company || (company.role !== 'owner' && company.role !== 'admin')) {
+  fail('this Flux already belongs to another company. Run ./flux reset to start from empty data, then ./flux demo.');
+}
+const existing = company.name === WORKSPACE_NAME ? company : null;
 const summary = { workspace: WORKSPACE_NAME, seeded: [], skipped: [], alreadySeeded: Boolean(existing) };
 if (existing) {
-  console.log(`Demo workspace "${WORKSPACE_NAME}" already exists; nothing new was seeded.`);
+  console.log(`Demo company "${WORKSPACE_NAME}" already exists; nothing new was seeded.`);
 } else {
-  const ws = await owner.session.expect('POST', '/api/v1/workspaces', { name: WORKSPACE_NAME });
+  const ws = await owner.session.expect('PATCH', `/api/v1/workspaces/${company.id}`, { name: WORKSPACE_NAME });
   await owner.session.expect('POST', `/api/v1/workspaces/${ws.id}/members`, { email: partner.email, role: 'member' });
-  summary.seeded.push(`workspace "${ws.name}" with ${owner.name} (owner) and ${partner.name} (member)`);
+  summary.seeded.push(`company "${ws.name}" with ${owner.name} (owner) and ${partner.name} (member)`);
 
-  const project = await owner.session.expect('POST', `/api/v1/workspaces/${ws.id}/projects`, { name: 'Community garden sensors', visibility: 'workspace' });
-  summary.seeded.push(`project "${project.name}"`);
+  const project = await owner.session.expect('POST', `/api/v1/workspaces/${ws.id}/projects`, { name: 'Community garden sensors' });
+  await owner.session.expect('POST', `/api/v1/projects/${project.id}/grants`, { principal: { kind: 'human', id: partner.id }, role: 'contributor' });
+  summary.seeded.push(`space "${project.name}" with both of them`);
 
   const note = await owner.session.expect('POST', `/api/v1/workspaces/${ws.id}/drafts`, {
     title: 'Before Thursday (private)',

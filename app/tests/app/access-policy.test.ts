@@ -325,6 +325,8 @@ describe('database integrity', () => {
     const a = await createWorkspace(owner, { name: 'A' }, db, accessPorts);
     const b = await createWorkspace(owner, { name: 'B' }, db, accessPorts);
     const projectB = await createProject(owner, b.id, { name: 'B project' }, db, accessPorts);
+    // F-037: the creator's own admin grant would answer the inserts below with a duplicate first; only the keys are tested.
+    await pool.query('DELETE FROM project_grants WHERE project_id = $1', [projectB.id]);
     const draftA = await createDraft(owner, a.id, { title: 'A draft' }, db, accessPorts);
     const agentB = await createAgent(owner, b.id, { name: 'B agent', owner: 'workspace' }, db, accessPorts);
 

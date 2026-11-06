@@ -33,8 +33,8 @@ export function LiveOpen() {
   if (!failed) return <div className="sk-page--center"><Spinner label="Opening the session" /></div>;
   return (
     <div className="view-empty pane-in">
-      <EmptyState icon="together" title="This session is no longer open" action={<Link className="ui-btn ui-btn--secondary" to={`/projects/${projectId}`}>Open the project</Link>}>
-        <p>Everyone may have left, or you can no longer see where it took place. Anything people saved is in the project as usual.</p>
+      <EmptyState icon="together" title="This session is no longer open" action={<Link className="ui-btn ui-btn--secondary" to={`/projects/${projectId}`}>Open the space</Link>}>
+        <p>Everyone may have left, or you can no longer see where it took place. Anything people saved is in the space as usual.</p>
       </EmptyState>
     </div>
   );

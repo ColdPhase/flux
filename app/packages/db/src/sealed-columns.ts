@@ -48,7 +48,7 @@ const refused = [
   'github_task_rule_changes', 'github_task_rules',
 ] as const;
 const content = [
-  'workspaces', 'workspace_members', 'workspace_ai_policies', 'projects', 'project_grants', 'project_goals', 'project_conversations',
+  'workspaces', 'workspace_members', 'workspace_ai_policies', 'projects', 'project_grants', 'project_conversations',
   'project_messages', 'message_references', 'project_message_observations', 'dm_message_observations', 'return_points', 'dms', 'dm_participants', 'dm_messages',
   'project_materials', 'project_material_versions', 'project_work_items', 'project_task_activity', 'project_task_updates', 'project_task_notices',
   'project_task_plan_intents', 'project_task_dependencies', 'project_task_discussions', 'task_creation_undo_receipts', 'native_command_receipts',
@@ -57,7 +57,7 @@ const content = [
   'doc_live_replicas', 'map_live_presence', 'map_live_gestures', 'map_live_heads', 'map_live_journal', 'map_live_object_versions', 'map_live_undone',
   'live_editing_intents', 'notifications', 'notification_generation_failures', 'notification_emails', 'notification_mutes', 'needs_you_states',
   'events', 'event_audience', 'idempotency_keys', 'search_documents', 'search_changes', 'live_sessions', 'live_presentations', 'live_invitations',
-  'live_admissions', 'workspace_invites',
+  'live_admissions', 'workspace_invites', 'workspace_removed_people',
 ] as const;
 
 export const TABLE_CLASSES: Readonly<Record<string, TableClass>> = Object.freeze(Object.fromEntries([
@@ -103,7 +103,6 @@ const viaSketch = { column: 'sketch_id', table: 'sketches', key: 'id' } as const
 
 export const SEALED_COLUMNS: Readonly<Record<string, SealedTable>> = Object.freeze(Object.fromEntries([
   table('projects', ['id'], { name: 'text' }, 'S2a-1'),
-  table('project_goals', ['id'], { title: 'text' }, 'S2a-1'),
   table('project_messages', ['id'], { body: 'text', request_fingerprint: 'digest' }, 'S2a-1'),
   table('dms', ['id'], { title: 'text' }, 'S2a-1'),
   table('dm_messages', ['id'], { body: 'text', request_fingerprint: 'digest' }, 'S2a-1'),
@@ -138,12 +137,12 @@ export const SEALED_COLUMNS: Readonly<Record<string, SealedTable>> = Object.free
 export const VISIBLE_COLUMNS: Readonly<Record<string, Readonly<Record<string, string>>>> = Object.freeze({
   workspaces: { name: 'shown to members while locked ("Garden club is waiting to be unlocked")', created_by: 'a user id' },
   workspace_members: { user_id: 'a user id', role: 'an enum', created_by: 'a user id' },
+  workspace_removed_people: { user_id: 'a user id', removed_by: 'a user id' },
   workspace_ai_policies: { state: 'an enum', changed_by: 'a user id' },
   workspace_invites: { role: 'an enum', email: 'the invited address, as visible as a member\'s account address (people are metadata)',
     token_hash: 'a SHA-256 of the link token, no content', created_by: 'a user id', revoked_by: 'a user id', accepted_by: 'a user id' },
   projects: { visibility: 'an enum', created_by: 'a user id', views: 'enum values' },
   project_grants: { user_id: 'a user id', role: 'an enum', created_by: 'a user id' },
-  project_goals: { set_by: 'a user id', reached_by: 'a user id' },
   project_conversations: { created_by: 'a user id', space: 'an enum' },
   project_messages: { author_id: 'a user id', contribution_kind: 'an enum' },
   message_references: { kind: 'an enum (thought or message)' },

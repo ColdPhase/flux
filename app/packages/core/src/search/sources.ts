@@ -21,7 +21,7 @@ const WORK_STATUS: Record<string, string> = {
   not_pursued: 'Task · not pursued', parked: 'Task · parked',
 };
 const DECISION_STATUS: Record<string, string> = { accepted: 'Decision · accepted', proposed: 'Decision · proposed', superseded: 'Decision · replaced' };
-const DRAFT_STATUS: Record<string, string> = { private: 'Private draft', project: 'Draft shared with the project', workspace: 'Draft shared with everyone' };
+const DRAFT_STATUS: Record<string, string> = { private: 'Private draft', project: 'Draft shared with the space', workspace: 'Draft shared with everyone' };
 
 function materialLabel(row: SearchRow) {
   const version = row.version ?? 1;
@@ -44,10 +44,10 @@ function inProject(row: SearchRow) {
 }
 
 export const SEARCH_SOURCES: Record<SearchKind, SearchSource> = {
-  // A project is found by its name (#465) and opens its home; the policy's project audience gates it.
+  // A space is found by its name (#465) and opens its home; the policy's project audience gates it.
   project: {
     filter: 'project', audience: 'project', textIsTitle: false,
-    label: (row) => (row.status === 'restricted' ? 'Project · restricted' : 'Project'),
+    label: () => 'Space',
     target: (row) => ({ type: 'project', projectId: row.objectId }),
   },
   message: {

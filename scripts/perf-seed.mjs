@@ -103,7 +103,10 @@ if (existing) {
   process.exit(0);
 }
 
-const ws = await ada.session.expect('POST', '/api/v1/workspaces', { name: WORKSPACE_NAME });
+// F-037: on the fresh stack Ada's first account set up the company; the seed names it.
+const company = (await ada.session.expect('GET', '/api/v1/workspaces')).find((item) => item.company);
+if (!company) fail('Ada is not the first account here; start from a fresh stack');
+const ws = await ada.session.expect('PATCH', `/api/v1/workspaces/${company.id}`, { name: WORKSPACE_NAME });
 for (const person of [jonas, maya]) {
   await ada.session.expect('POST', `/api/v1/workspaces/${ws.id}/members`, { email: person.email, role: 'member' });
 }
@@ -111,7 +114,12 @@ const projectNames = [MAIN_PROJECT, 'School robotics club', 'Tool library', 'Rep
   'Rainwater barrels', 'Compost rota', 'Bike workshop', 'Pollinator strip', 'Winter market'];
 const projects = [];
 for (const name of projectNames) {
-  projects.push(await ada.session.expect('POST', `/api/v1/workspaces/${ws.id}/projects`, { name, visibility: 'workspace' }));
+  // Only Everyone holds the whole company (F-037): a space holds the people added to it.
+  const space = await ada.session.expect('POST', `/api/v1/workspaces/${ws.id}/projects`, { name });
+  for (const person of [jonas, maya]) {
+    await ada.session.expect('POST', `/api/v1/projects/${space.id}/grants`, { principal: { kind: 'human', id: person.id }, role: 'contributor' });
+  }
+  projects.push(space);
 }
 const main = projects[0];
 // Everyone last looked at Home and the main project now, before the busy period below, so

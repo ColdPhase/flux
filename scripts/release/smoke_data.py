@@ -85,9 +85,15 @@ def seed(client: Client, state_file: Path) -> None:
     password = secrets.token_urlsafe(32)
     client.expect("POST", "/api/auth/sign-up/email", {"email": email, "password": password, "name": "Release smoke user"}, (200,))
     user_id = client.expect("GET", "/api/v1/me")["user"]["id"]
-    workspace = client.expect("POST", "/api/v1/workspaces", {"name": WORKSPACE_NAME}, (201,))
+    # F-037: the first account on a fresh install owns the company and names it. A release before it has no company
+    # (the upgrade leg seeds on the previous release), and its account makes a workspace of its own.
+    company = next((item for item in client.expect("GET", "/api/v1/workspaces") if item.get("company")), None)
+    workspace = (client.expect("PATCH", f"/api/v1/workspaces/{company['id']}", {"name": WORKSPACE_NAME}) if company
+                 else client.expect("POST", "/api/v1/workspaces", {"name": WORKSPACE_NAME}, (201,)))
+    # Only Everyone holds the whole company (F-037); the release before it needs the visibility named.
     project = client.expect(
-        "POST", f"/api/v1/workspaces/{workspace['id']}/projects", {"name": PROJECT_NAME, "visibility": "workspace"},
+        "POST", f"/api/v1/workspaces/{workspace['id']}/projects",
+        {"name": PROJECT_NAME} if company else {"name": PROJECT_NAME, "visibility": "workspace"},
     )
     project_id = project["id"]
     status, upload = client.raw(

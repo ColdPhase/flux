@@ -40,7 +40,7 @@ export function AssistantProjectAccess() {
       </Select></div>
       {failed ? <p role="alert">Project access could not be checked. <Button variant="link" onClick={() => { setFailed(false); void load(); }}>Try again</Button></p>
         : !currentView ? <p role="status">Checking project access…</p>
-        : !currentView.assistantJoin ? <p>Choose your assistant for this project’s workspace above.</p>
+        : !currentView.assistantJoin ? <p>Choose your assistant above.</p>
         : <>
           {!currentView.assistantJoin.canRequest && !ownRequests.length ? <p role="status">Your assistant has access to this project.</p> : null}
           <AssistantJoinRequests key={projectId} projectId={projectId} meId={me.user.id} meName={me.user.name}

@@ -6,7 +6,7 @@ import Fastify, { type FastifyInstance } from 'fastify';
 import fastifyStatic from '@fastify/static';
 import websocket from '@fastify/websocket';
 import { PgBoss } from 'pg-boss';
-import { assertExactMigrationLedger, fileCipherOf, FLUX_SCHEMA_VERSION, readAppliedMigrationVersions, readMigrationManifest, sealResolverScope, sql as dbSql, type DbExecutor } from '@flux/db';
+import { accessPorts, assertExactMigrationLedger, fileCipherOf, FLUX_SCHEMA_VERSION, readAppliedMigrationVersions, readMigrationManifest, sealResolverScope, sql as dbSql, type DbExecutor } from '@flux/db';
 import { EDITING_CAPABILITIES_PATH, type EditingCapability } from '@flux/contracts';
 import { registerDatabase } from './plugins/database.js';
 import { aiRoutes } from './access/ai-gate.js';
@@ -46,7 +46,6 @@ import { agentMcpPolicyRoutes } from './agent-connection/mcp-policy-routes.js';
 import { proactiveComparisonRoutes } from './proactive-comparison/routes.js';
 import { registerMcpRoute } from './agent-connection/mcp-route.js';
 import { returnRoutes } from './returns/routes.js';
-import { projectGoalRoutes } from './project-goals/routes.js';
 import { needsYouRoutes } from './needs-you/routes.js';
 import { docRoutes } from './docs/routes.js';
 import { notificationRoutes } from './notifications/routes.js';
@@ -73,7 +72,7 @@ import { composeEncryption, encryptionUnitOfWork, installSeals, processKeysFromE
 import { encryptionRoutes } from './encryption/routes.js';
 import { registerLockGate } from './encryption/lock-gate.js';
 import { requestLogSerializer, SECRET_LOG_PATHS } from './http/log-serializers.js';
-import { dropStaleUnlocks } from '@flux/core';
+import { dropStaleUnlocks, requireCompanyAdmin } from '@flux/core';
 import { useDomainErrors } from './http/errors.js';
 import { registerUpgradeDispatcher } from './http/upgrades.js';
 import { registerEditing } from './editing/composition.js';
@@ -82,7 +81,7 @@ import { useJsonCompression } from './http/compress.js';
 import { useFramingProtection } from './http/framing.js';
 
 /**
- * S3 SWITCH (F-030, #655): encrypted-space creation is a production route, for any signed-in person (no fixture token or bearer).
+ * S3 SWITCH (F-030, #655): encrypted-space creation is a production route, for the company's owners and admins (F-037).
  * Flipped in the change that merges S3, after S2a-2b-2, S2a-2c, S2b and S2c passed their acceptance criteria and the full AC-7 and
  * AC-13 passed on S2c's final head (docs/product/encrypted-workspaces.md, delivery slices).
  */
@@ -163,12 +162,14 @@ export async function buildApp(config: ServerConfig, migrationsDir = 'packages/d
   await app.register(async (scope) => encryptionRoutes(scope, { sessions: identity, encryption,
     // S1/S2: creation exists only in a test deployment and with the fixture bearer (never on a ./flux up install).
     fixtureCreation: testDeployment ? config.fixture.token : null,
-    productionCreation: ENCRYPTED_CREATION_IN_PRODUCTION }));
+    productionCreation: ENCRYPTED_CREATION_IN_PRODUCTION,
+    requireCompanyAdmin: (principal) => requireCompanyAdmin(principal, db, accessPorts) }));
   const liveMedia = createLiveMediaFromEnv(env, identityConfig.publicOrigin);
   const lifecycle = liveMedia ? liveLifecycle(db, pool, liveMedia.media) : null;
   const liveRevocation = liveMedia ? liveRevocationCoordinator(db, pool, liveMedia.media, lifecycle!) : null;
   await app.register(accessRoutes, { db, sessions: identity, boss, liveRevocation, verifiedEmailMembers: identityConfig.oidc !== null, encryptionKeys,
-    inviteSigner: { secret: identityConfig.secret, publicOrigin: identityConfig.publicOrigin }, inviteVerifiedEmail: identityConfig.signup === 'verified' });
+    inviteSigner: { secret: identityConfig.secret, publicOrigin: identityConfig.publicOrigin }, inviteVerifiedEmail: identityConfig.signup === 'verified',
+    ssoOnly: identityConfig.ssoOnly, testDeployment });
   // Live map/wiki editing (#228) is composed below, after media; native map routes reach its backend lazily.
   let editing: Awaited<ReturnType<typeof registerEditing>> = null;
   // F-030: an encrypted workspace's file objects are sealed as they arrive and opened only after their tag verifies.
@@ -295,7 +296,6 @@ export async function buildApp(config: ServerConfig, migrationsDir = 'packages/d
   const githubRead = githubReadProvider ? createGithubUseCases(db, githubReadProvider) : null;
   registerPersonalRunTokenRoute(app, db, identity.auth, identityConfig.publicOrigin, githubRead ? currentGithubReactionFacts(githubRead) : undefined);
   await app.register(returnRoutes, { db, sessions: identity });
-  await app.register(projectGoalRoutes, { db, sessions: identity });
   await app.register(needsYouRoutes, { db, sessions: identity });
   await app.register(docRoutes, { db, sessions: identity });
   await app.register(notificationRoutes, { db, sessions: identity, smtp: identityConfig.smtp, publicOrigin: identityConfig.publicOrigin });

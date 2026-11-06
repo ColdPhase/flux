@@ -21,7 +21,7 @@ from playwright.sync_api import Browser, BrowserContext, Page, expect, sync_play
 
 from app_select import choose
 from app_select import labels as app_labels
-from test_app_shell import DESKTOP, ORIGIN, PHONE, UPSTREAM, open_details, start_forwarder
+from test_app_shell import DESKTOP, ORIGIN, PHONE, UPSTREAM, start_forwarder
 from test_settings import UI_BROWSER, shot
 
 PASSWORD = "invite links join the workspace"
@@ -103,11 +103,9 @@ class InviteLinksJourney(unittest.TestCase):
         return response.json()
 
     def open_people(self, page: Page) -> None:
-        page.goto("/")
-        expect(page.get_by_role("heading", level=1, name="Home")).to_be_visible()
-        open_details(page)
-        page.get_by_role("region", name="People").get_by_role("button", name=re.compile("^Riverside Makers")).click()
-        expect(page.get_by_role("heading", name="People", exact=True)).to_be_visible()
+        """Settings › Company (F-037): the company's people and its invite links."""
+        page.goto("/settings/company?invite=1")
+        expect(page.get_by_text(re.compile("works in this one Flux"))).to_be_visible()
 
     def make_link(self, page: Page, role: str, email: str = "") -> str:
         region = page.get_by_role("region", name="Invite with a link")
@@ -226,6 +224,16 @@ class InviteLinksJourney(unittest.TestCase):
         expect(visitor.get_by_text("New here? Sign in with Company SSO; your account is made the first time.")).to_be_visible()
         expect(visitor.get_by_text("New accounts are closed on this Flux server.")).to_have_count(0)
         expect(visitor.get_by_role("button", name="Sign in to join")).to_be_visible()
+        # F-037: with single sign-on, Settings › Company says who joins and offers no invite links.
+        owner = context.new_page()
+        owner.route("**/api/v1/auth/capabilities", lambda route: route.fulfill(json={
+            "passwordReset": "unavailable", "signup": "off", "ssoOnly": True, "linkable": False,
+            "sso": {"providerId": "company", "label": "Company SSO", "reachable": True}}))
+        owner.goto("/settings/company")
+        expect(owner.get_by_text("Everyone who signs in with Company SSO joins automatically")).to_be_visible()
+        expect(owner.get_by_role("region", name="Invite with a link")).to_have_count(0)
+        expect(owner.get_by_role("button", name="Invite", exact=True)).to_have_count(0)
+        expect(owner.get_by_role("region", name="Add someone")).to_have_count(0)
         # A tab without the token (a sign-in finished in another tab) asks for the link again (#776 review P3-3).
         fresh = self.page(None)
         fresh.goto("/join")

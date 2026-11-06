@@ -95,7 +95,7 @@ class DocReferenceJourney(unittest.TestCase):
         text.focus()
         text.press("Control+End")
         text.press("Control+k")
-        picker = page.get_by_role("dialog", name="Link to something in this project")
+        picker = page.get_by_role("dialog", name="Link to something in this space")
         expect(picker.get_by_role("combobox", name="Find a Wiki page, decision, result, task, map or message", exact=True)).to_be_visible()
         return picker
 
@@ -449,7 +449,7 @@ class DocReferenceJourney(unittest.TestCase):
                 query = picker.get_by_role("combobox", name="Find a Wiki page, decision, result, task, map or message", exact=True)
                 query.fill(target["title"])
                 waiting = picker.locator("p.doc-muted.doc-picker__empty[aria-busy='true']")
-                expect(waiting).to_have_text("Finding project objects…")
+                expect(waiting).to_have_text("Finding space objects…")
                 expect(waiting).to_be_visible()
                 expect(waiting).to_have_attribute("class", "doc-muted doc-picker__empty")
                 expect(waiting).to_have_attribute("aria-busy", "true")

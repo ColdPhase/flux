@@ -99,19 +99,19 @@ export function LinkPicker({ projectId, workspaceId, selfId, onPick, onClose }: 
   };
 
   return (
-    <div className="doc-picker" role="dialog" aria-label="Link to something in this project">
+    <div className="doc-picker" role="dialog" aria-label="Link to something in this space">
       <div className="doc-picker__search">
         <Icon name="search" size={14} />
         <input ref={inputRef} role="combobox" aria-expanded="true" aria-controls={listId} aria-activedescendant={shown[active] ? `${listId}-${active}` : undefined}
-          maxLength={200} aria-label="Find a Wiki page, decision, result, task, map or message" placeholder={type === 'all' ? 'Find project objects…' : `Find ${kindLabel(type).toLowerCase()}…`} value={query}
+          maxLength={200} aria-label="Find a Wiki page, decision, result, task, map or message" placeholder={type === 'all' ? 'Find space objects…' : `Find ${kindLabel(type).toLowerCase()}…`} value={query}
           onChange={(event) => { setQuery(event.target.value); setActive(0); }} onKeyDown={onKey} />
       </div>
       <div className="doc-picker__type"><label htmlFor={`${listId}-type`}>Type</label><Select id={`${listId}-type`} aria-label="Reference type" value={type} onChange={(next) => setType(next as ReferenceType)}>
         {TYPES.map((kind) => <Option key={kind} value={kind}>{kind === 'all' ? 'All types' : kindLabel(kind)}</Option>)}
       </Select></div>
       <p className="doc-picker__keys doc-picker__touch">Tap a match to insert its link.</p>
-      {failed ? <p className="doc-muted doc-picker__empty" role="alert">Could not load this project’s objects. <button type="button" className="ui-link" onClick={retry}>Retry objects</button></p> : null}
-      {busy && !failed ? <p className="doc-muted doc-picker__empty" aria-busy="true">Finding project objects…</p> : null}
+      {failed ? <p className="doc-muted doc-picker__empty" role="alert">Could not load this space’s objects. <button type="button" className="ui-link" onClick={retry}>Retry objects</button></p> : null}
+      {busy && !failed ? <p className="doc-muted doc-picker__empty" aria-busy="true">Finding space objects…</p> : null}
       {!busy && !failed && !shown.length ? <p className="doc-muted doc-picker__empty">Nothing matches “{query}”.</p> : null}
       {native ? <WorkPagination page={native.page} busy={busy || failed} label="Reference pages" noun="matches" onCursor={native.onCursor} onRefresh={native.onRefresh} /> : null}
       {type === 'all' && !busy && !failed ? <p className="doc-muted doc-picker__browse">Showing up to 40 matches. Choose a type to browse more.</p> : null}

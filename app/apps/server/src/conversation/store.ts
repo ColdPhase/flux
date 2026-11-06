@@ -266,7 +266,7 @@ export function conversationStore(db: Database, options: ConversationStoreOption
       return db.transaction(async (tx) => {
         const task = await locateThreadTask(principal, taskId, tx, true, true);
         if (input.projectId !== null && input.projectId !== task.projectId)
-          throw new InvalidInputError('The task does not belong to this project');
+          throw new InvalidInputError('The task does not belong to this space');
         if (principal.kind !== 'human')
           throw new ServiceUnavailableError('Agent-thread posting is not available to agents yet', 'AGENT_EXECUTION_UNAVAILABLE');
         const author = authorOf(principal, false);
@@ -605,7 +605,7 @@ export async function guardedAgentThreadInEventSession(tx: Transaction, session:
     const principal: Principal = { kind: 'agent', id: runtime.agentId };
     const task = await locateThreadTask(principal, taskId, tx, true, true);
     if (task.workspaceId !== runtime.workspaceId || input.projectId !== task.projectId)
-      throw new InvalidInputError('The task does not belong to this project');
+      throw new InvalidInputError('The task does not belong to this space');
     const author: Actor = { kind: 'agent', id: runtime.agentId };
     await lockIdempotency(tx, task.projectId, author, input.clientMessageId);
     if (await existingMessage(task.projectId, author, input.clientMessageId, tx))

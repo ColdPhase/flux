@@ -33,7 +33,8 @@ export type { Actor, LoadOptions, WorkspaceAi } from './ports.js';
  *   - An explicit `denied` grant gives none. **Explicit deny wins** over every role,
  *     grant, visibility and ownership rule for that project and its drafts.
  *   - Workspace owners and admins are managers of every project.
- *   - Otherwise an explicit `contributor` or `viewer` grant applies (a viewer grant also
+ *   - Otherwise an explicit `manager` (a space admin, people only, F-037), `contributor` (a
+ *     space member) or `viewer` grant applies (a viewer grant also
  *     narrows a member's implicit access).
  *   - Otherwise a `member` is a contributor on `workspace`-visible projects. Guests and
  *     agents see only projects they were explicitly granted; nobody without a grant or
@@ -67,7 +68,7 @@ export type { Actor, LoadOptions, WorkspaceAi } from './ports.js';
  *   does not leak; visible objects with a forbidden action get {@link ForbiddenError} (403).
  */
 
-export const WORKSPACE_ACTIONS = ['workspace.read', 'workspace.read_members', 'workspace.manage_members', 'workspace.manage_agents', 'workspace.manage_ai', 'workspace.manage_encryption', 'project.create', 'draft.create', 'agent.create', 'sketch.create', 'dm.create'] as const;
+export const WORKSPACE_ACTIONS = ['workspace.read', 'workspace.read_members', 'workspace.manage_members', 'workspace.rename', 'workspace.manage_agents', 'workspace.manage_ai', 'workspace.manage_encryption', 'project.create', 'draft.create', 'agent.create', 'sketch.create', 'dm.create'] as const;
 export const PROJECT_ACTIONS = ['project.read', 'project.write', 'project.manage'] as const;
 export const DRAFT_ACTIONS = ['draft.read', 'draft.write', 'draft.share', 'draft.move'] as const;
 export const AGENT_ACTIONS = ['agent.read', 'agent.revoke', 'agent.invoke'] as const;
@@ -210,6 +211,8 @@ export async function evaluateWorkspace(principal: Principal, action: ActionsByR
       allowed = human;
       break;
     case 'dm.create':
+    case 'project.create':
+      // F-037: everyone in the company starts spaces; guests only join the ones they are added to.
       allowed = human && actor.role !== 'guest';
       break;
     case 'workspace.read_members':
@@ -217,10 +220,10 @@ export async function evaluateWorkspace(principal: Principal, action: ActionsByR
       allowed = human && actor.role !== 'guest';
       break;
     case 'workspace.manage_members':
+    case 'workspace.rename':
     case 'workspace.manage_agents':
     case 'workspace.manage_ai':
     case 'workspace.manage_encryption':
-    case 'project.create':
       allowed = human && isManager(actor.role);
       break;
   }
@@ -458,11 +461,11 @@ export async function authorizeEvent(principal: Principal, event: EventRef, read
   return true;
 }
 
-const LABELS: Record<ResourceType, string> = { workspace: 'Workspace', project: 'Project', draft: 'Draft', agent: 'Agent', sketch: 'Sketch', dm: 'Direct message', assistant_run: 'Assistant run' };
+const LABELS: Record<ResourceType, string> = { workspace: 'Company', project: 'Space', draft: 'Draft', agent: 'Agent', sketch: 'Sketch', dm: 'Direct message', assistant_run: 'Assistant run' };
 
 /** Converts a decision into the non-leaking error contract. */
 export function enforce<D extends Decision>(decision: D, type: ResourceType): D {
   if (!decision.visible) throw new NotFoundError(LABELS[type], `${type.toUpperCase()}_NOT_FOUND`);
-  if (!decision.allowed) throw new ForbiddenError(`Not allowed to perform this action on the ${type}`);
+  if (!decision.allowed) throw new ForbiddenError(`Not allowed to perform this action on the ${LABELS[type].toLowerCase()}`);
   return decision;
 }

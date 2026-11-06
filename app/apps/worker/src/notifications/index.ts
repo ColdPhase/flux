@@ -1,8 +1,9 @@
 import type { PgBoss } from 'pg-boss';
-import { EVENTS_CHANNEL, listen, type Database } from '@flux/db';
+import { accessPorts, EVENTS_CHANNEL, listen, type Database } from '@flux/db';
 import {
   GENERATOR_BATCH,
   NOTIFICATION_EMAIL_JOB,
+  companyDisplayName,
   deliverNotificationEmail,
   generateNotifications,
   loadNotificationMailConfig,
@@ -89,6 +90,7 @@ export async function registerNotificationEmailWorker(boss: PgBoss, db: Database
     available: config.status === 'available',
     origin: config.status === 'available' ? config.origin : '',
     uow: emailUnitOfWork(db, boss),
+    company: () => companyDisplayName(db, accessPorts),
     mailer: smtp ?? { send: async () => ({ kind: 'failed' as const, message: 'email unavailable' }) },
   };
   // A few sends at once: one slow SMTP answer never holds up everyone's mail. A queued email wakes them by NOTIFY.

@@ -81,7 +81,7 @@ describe('workspace AI lock: the remaining S1 surfaces', () => {
     const mailer = { send: async (message: { to: string }) => { sent.push(message.to); return { messageId: randomUUID() }; } } as unknown as NotificationMailer;
     const options = { available: true, origin: publicOrigin, uow: emailUnitOfWork(db, fakeBoss().boss), mailer };
     const aiMail = await deliverNotificationEmail(options, { emailId: emails.ai });
-    assert.equal((aiMail as { reason?: string }).reason, 'AI is off in this workspace', JSON.stringify(aiMail));
+    assert.equal((aiMail as { reason?: string }).reason, 'AI is off in this company', JSON.stringify(aiMail));
     const personMail = await deliverNotificationEmail(options, { emailId: emails.person });
     assert.equal(personMail.outcome, 'sent', JSON.stringify(personMail));
     assert.equal(sent.length, 1, 'only the person\'s notification was e-mailed');
@@ -227,7 +227,7 @@ describe('workspace AI lock: the remaining S1 surfaces', () => {
     await setWorkspaceAi(scene.ws.id, 'blocked');
     const continued = await scene.owner.browser.request('POST', '/api/auth/oauth2/continue', { body: { postLogin: true, oauth_query: started.oauthQuery } });
     assert.equal(continued.status, 403, `the authorize step refuses, not a 500: ${continued.text}`);
-    assert.match(continued.text, /AI is turned off in this workspace/);
+    assert.match(continued.text, /AI is turned off in this company/);
     const context = await scene.owner.browser.request('GET', `/api/v1/agent-oauth/consent-context?oauth_query=${encodeURIComponent(started.oauthQuery)}`);
     assert.deepEqual([context.status, code(context.json)], [403, 'WORKSPACE_AI_BLOCKED']);
     const heldRefused = await held();

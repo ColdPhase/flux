@@ -49,10 +49,10 @@ export async function setWorkspaceAiPolicy(principal: Principal, workspaceId: st
   return db.transaction(async (tx) => {
     const current = isUuid(workspaceId) ? await ports.workspaces(tx).lockAiPolicy(workspaceId) : null;
     const decision = await evaluateWorkspace(principal, 'workspace.manage_ai', workspaceId, ports.access(tx), { lock: true });
-    if (!decision.visible || !current) throw new NotFoundError('Workspace', 'WORKSPACE_NOT_FOUND');
+    if (!decision.visible || !current) throw new NotFoundError('Company', 'WORKSPACE_NOT_FOUND');
     // F-030: AI is always off in an encrypted workspace, before any other check that could pass.
     if (await ports.encryption(tx).sealed(workspaceId)) throw new ConflictError('AI is always off in an encrypted workspace', 'WORKSPACE_ENCRYPTED_AI_OFF');
-    if (!decision.allowed) throw new ForbiddenError('Only workspace owners and admins can turn AI on or off', 'WORKSPACE_AI_ADMIN_REQUIRED');
+    if (!decision.allowed) throw new ForbiddenError('Only company owners and admins can turn AI on or off', 'WORKSPACE_AI_ADMIN_REQUIRED');
     const expected = command.expectedVersion;
     if (expected === undefined || expected === null) throw new PreconditionRequiredError();
     if (typeof expected !== 'number' || !Number.isInteger(expected) || expected < 1) throw new InvalidInputError('expectedVersion must be a positive integer');

@@ -130,7 +130,7 @@ class CreateWindow(unittest.TestCase):
         page = self.page()
         page.goto(f"/projects/{self.ids['project']}/tasks")
         field = open_from_tasks(page)
-        expect_value(dialog(page).get_by_role("combobox", name="Project"), self.ids["project"])
+        expect_value(dialog(page).get_by_role("combobox", name="Space"), self.ids["project"])
         page.keyboard.press("Escape")
         expect(dialog(page)).to_have_count(0)
         page.get_by_role("button", name="New task in In progress").click()
@@ -284,7 +284,7 @@ class CreateWindow(unittest.TestCase):
             expect(window).to_be_visible()
             # Type first, then pick another project: the typed title moves with the task (F2).
             title_field(page).fill("Print labels for the beds")
-            choose(window.get_by_role("combobox", name="Project"), self.ids["other"])
+            choose(window.get_by_role("combobox", name="Space"), self.ids["other"])
             expect(title_field(page)).to_have_value("Print labels for the beds")
             for control in (window.get_by_label("Details"), window.get_by_role("combobox", name="Status"), window.get_by_role("combobox", name="Owner"),
                             window.get_by_role("button", name="+ Link a message or thought"), window.get_by_role("switch"), submit_button(page)):
@@ -330,12 +330,12 @@ class CreateWindow(unittest.TestCase):
             chips.get_by_role("button", name="All").tap()
             field.fill("zzqxunmatched")
             none = sheet.locator(".jump__none")
-            expect(none.get_by_role("heading", name="No match in this project")).to_be_visible()
+            expect(none.get_by_role("heading", name="No match in this space")).to_be_visible()
             expect(none.locator(".kreska")).to_have_count(1)
             expect(sheet.get_by_role("option", name=re.compile("^New task “zzqxunmatched”"))).to_be_visible()
             shot(page, f"345-phone-search-nomatch-390-{scheme}")
-            none.get_by_role("button", name="Search all projects").tap()
-            expect(sheet.get_by_role("group", name="Search where").get_by_role("button", name="All projects")).to_have_attribute("aria-pressed", "true")
+            none.get_by_role("button", name="Search all spaces").tap()
+            expect(sheet.get_by_role("group", name="Search where").get_by_role("button", name="All spaces")).to_have_attribute("aria-pressed", "true")
             expect(none).to_have_count(0)
             # The create action opens the sheet with the text.
             sheet.get_by_role("option", name=re.compile("^New task “zzqxunmatched”")).tap()
@@ -348,7 +348,7 @@ class CreateWindow(unittest.TestCase):
         field = open_from_tasks(page)
         title = f"Picker moves this {uuid.uuid4().hex[:6]}"
         field.fill(title)
-        choose(dialog(page).get_by_role("combobox", name="Project"), self.ids["other"])
+        choose(dialog(page).get_by_role("combobox", name="Space"), self.ids["other"])
         expect(title_field(page)).to_have_value(title)
         submit_button(page).click()
         expect(dialog(page)).to_have_count(0)
@@ -450,33 +450,6 @@ class CreateWindow(unittest.TestCase):
         self.assertEqual(len(stored), 1)
         self.assertEqual((stored[0]["outcome"], stored[0]["status"]), ("Blank form details", "in_progress"))
 
-    def second_workspace(self, page: Page) -> dict:
-        if "b_project" not in self.ids:
-            workspace = self.api(page, "POST", "/api/v1/workspaces", {"name": "Bike co-op space"}, 201)
-            project = self.api(page, "POST", f"/api/v1/workspaces/{workspace['id']}/projects", {"name": "Frame builds", "visibility": "restricted"}, 201)
-            self.api(page, "POST", f"/api/v1/workspaces/{workspace['id']}/agents", {"name": "Gearbox helper", "owner": "self"}, 201)
-            self.ids["b_project"] = project["id"]
-        return self.ids
-
-    def test_11_an_agent_opens_in_its_own_workspace_from_home_and_from_another_project(self) -> None:
-        self.ensure_account()
-        page = self.page()
-        self.second_workspace(page)
-        a_projects = rf"/projects/({self.ids['project']}|{self.ids['other']})/agents$"
-        for start, query, expected in (("/", "@gearbox", rf"/projects/{self.ids['b_project']}/agents$"),
-                                       (f"/projects/{self.ids['project']}", "@gearbox", rf"/projects/{self.ids['b_project']}/agents$"),
-                                       (f"/projects/{self.ids['b_project']}", "@probe", a_projects),
-                                       ("/", "@probe", a_projects)):
-            with self.subTest(start=start, query=query):
-                page = self.page()
-                page.goto(start)
-                expect(page.get_by_role("button", name="Search", exact=True)).to_be_visible()
-                palette, field = self.jump(page, query)
-                option = palette.get_by_role("option", name=re.compile("(Gearbox|Probe) helper"))
-                expect(option).to_have_count(1)
-                field.press("Enter")
-                expect(page).to_have_url(re.compile(expected))
-
     def test_12_the_phone_chooser_proposes_a_decision_in_the_project_it_shows(self) -> None:
         self.ensure_account()
         page = self.page(phone=True)
@@ -487,7 +460,7 @@ class CreateWindow(unittest.TestCase):
                 page.goto(start)
                 page.get_by_role("button", name="Create", exact=True).tap()
                 sheet = page.get_by_role("dialog", name="Create")
-                choose(sheet.get_by_role("combobox", name="Project"), self.ids["other"])
+                choose(sheet.get_by_role("combobox", name="Space"), self.ids["other"])
                 tile = sheet.get_by_role("button", name="Decision", exact=True)
                 expect(tile).not_to_have_attribute("aria-disabled", "true")
                 tile.tap()
@@ -522,7 +495,7 @@ class CreateWindow(unittest.TestCase):
                 expect(sheet.get_by_role("button", name=re.compile("^Remove link to"))).to_be_visible()
                 page.evaluate("() => Promise.all(document.getAnimations().filter((a) => a.effect?.getTiming().iterations !== Infinity).map((a) => a.finished.catch(() => null)))")
                 targets = {"Close": sheet.get_by_role("button", name="Close"), "Project picker": sheet.locator(".create__place"),
-                           "Project": sheet.get_by_role("tablist", name="Create").get_by_role("tab", name="Project", exact=True),
+                           "Space": sheet.get_by_role("tablist", name="Create").get_by_role("tab", name="Space", exact=True),
                            "Remove link": sheet.get_by_role("button", name=re.compile("^Remove link to"))}
                 for name, target in targets.items():
                     box = target.bounding_box()
@@ -639,7 +612,7 @@ class CreateWindow(unittest.TestCase):
         page = self.page()
         self.open_window(page)
         tabs = window(page).get_by_role("tablist", name="Create")
-        expect(tabs.get_by_role("tab")).to_have_text(["Task", "Thought", "Message", "Decision", "Project"])
+        expect(tabs.get_by_role("tab")).to_have_text(["Task", "Thought", "Message", "Decision", "Space"])
         expect(kind_tab(page, "Task")).to_have_attribute("aria-selected", "true")
         expect(window(page).get_by_role("heading")).to_have_count(0)  # the window is named after its tab; no heading repeats it
         expect(window(page).get_by_role("tabpanel")).to_have_count(1)
@@ -648,7 +621,7 @@ class CreateWindow(unittest.TestCase):
         # The keyboard: ←/→ move between the tabs and keep focus on them; the window and its text stay.
         kind_tab(page, "Task").focus()
         fields = (("Thought", "Thought", "New thought"), ("Message", "Message", "New message"), ("Decision", "Decision", "New decision"),
-                  ("Project", "Project name", "New project"))
+                  ("Space", "Space name", "New space"))
         for tab, label, name in fields:
             page.keyboard.press("ArrowRight")
             expect(kind_tab(page, tab)).to_be_focused()
@@ -658,14 +631,14 @@ class CreateWindow(unittest.TestCase):
             self.assertEqual(panel.get_attribute("aria-labelledby"), kind_tab(page, tab).get_attribute("id"))
             expect(panel.get_by_role("textbox", name=label, exact=True)).to_have_value(text)
             if tab == "Decision":
-                expect_value(panel.get_by_role("combobox", name="Project"), self.ids["project"])
+                expect_value(panel.get_by_role("combobox", name="Space"), self.ids["project"])
             if tab == "Message":
-                expect(panel.get_by_role("combobox", name="Project")).to_have_count(0)  # a direct message, not a project's
+                expect(panel.get_by_role("combobox", name="Space")).to_have_count(0)  # a direct message, not a project's
         page.keyboard.press("ArrowRight")
         expect(kind_tab(page, "Task")).to_be_focused()
         expect(title_field(page)).to_have_value(text)
         page.keyboard.press("ArrowLeft")
-        expect(kind_tab(page, "Project")).to_have_attribute("aria-selected", "true")
+        expect(kind_tab(page, "Space")).to_have_attribute("aria-selected", "true")
         page.keyboard.press("Home")
         expect(kind_tab(page, "Task")).to_have_attribute("aria-selected", "true")
         expect(page.get_by_role("dialog")).to_have_count(1)
@@ -716,7 +689,7 @@ class CreateWindow(unittest.TestCase):
         message = page.get_by_role("dialog", name="New message")
         panel = message.get_by_role("tabpanel")
         expect(panel.get_by_role("textbox", name="Message", exact=True)).to_have_value("Who has the spare probe cables?")
-        expect(panel.locator(".create__where")).to_have_text("Nobody else is in your spaces yet")
+        expect(panel.locator(".create__where")).to_have_text("Nobody else is in the company yet")
         expect(panel.locator(".create__foot")).to_contain_text("only the two of you can read it")
         expect(panel.get_by_role("button", name=re.compile("^Send message"))).to_be_disabled()
 
@@ -743,24 +716,25 @@ class CreateWindow(unittest.TestCase):
         self.assertEqual(len(stored), 1)
         self.assertEqual(stored[0]["status"], "proposed")
 
-    def test_21_project_creates_one_from_the_typed_name_and_a_template(self) -> None:
+    def test_21_space_creates_one_from_the_typed_name(self) -> None:
+        """F-037: a space is a name in one step; there is no template and no place to choose (one company)."""
         self.ensure_account()
         page = self.page()
         self.open_window(page)
         name = f"Seed library {uuid.uuid4().hex[:6]}"
         title_field(page).fill(name)
-        create_other(page, "Project")
-        project = page.get_by_role("dialog", name="New project")
-        expect(project.get_by_role("textbox", name="Project name", exact=True)).to_have_value(name)
-        # Two workspaces to choose from: "In Garden sensors ▾" is a chip over the workspace choice (#763 PE-3).
-        expect(project.get_by_role("tabpanel").locator(".create__where").get_by_text("In Garden sensors", exact=True)).to_be_visible()
-        choose(project.get_by_role("combobox", name="Start from"), "research")
-        expect(project.get_by_role("tabpanel").locator(".create__foot")).to_contain_text("Starts with Conversation + Wiki")
-        project.get_by_role("button", name=re.compile("^Create project")).click()
+        create_other(page, "Space")
+        space = page.get_by_role("dialog", name="New space")
+        expect(space.get_by_role("textbox", name="Space name", exact=True)).to_have_value(name)
+        expect(space.get_by_role("combobox", name="Start from")).to_have_count(0)
+        expect(space.get_by_role("combobox", name="Workspace")).to_have_count(0)
+        expect(space.get_by_role("tabpanel").locator(".create__foot")).to_contain_text("Starts with Conversation, Tasks, Map and Wiki")
+        space.get_by_role("button", name=re.compile("^Create space")).click()
         expect(page.get_by_role("heading", level=1, name=name)).to_be_visible()
         expect(page).to_have_url(re.compile(r"/projects/[0-9a-f-]{36}"))
         made = [item for item in self.api(page, "GET", f"/api/v1/workspaces/{self.ids['workspace']}/projects?limit=100", status=200)["items"] if item["name"] == name]
         self.assertEqual(len(made), 1)
+        self.assertEqual((made[0]["views"], made[0]["access"]), (["map", "docs"], "manager"))
 
     def test_22_a_double_submit_sends_one_command_and_sources_stay_in_their_project(self) -> None:
         self.ensure_account()
@@ -794,7 +768,7 @@ class CreateWindow(unittest.TestCase):
         message.get_by_role("button", name="Create task", exact=True).click()
         links = dialog(page).get_by_role("button", name=re.compile("^Remove link to"))
         expect(links).to_have_count(1)
-        choose(dialog(page).get_by_role("combobox", name="Project"), self.ids["other"])
+        choose(dialog(page).get_by_role("combobox", name="Space"), self.ids["other"])
         expect(links).to_have_count(0)
         submit_button(page).click()
         expect(dialog(page)).to_have_count(0)
@@ -947,8 +921,8 @@ class CreateWindow(unittest.TestCase):
                     kind_tab(page, "Message").click()
                     expect(page.get_by_role("dialog", name="New message").get_by_role("textbox", name="Message", exact=True)).to_be_visible()
                     shot(page, f"521-create-message-{size}-{scheme}-{engine}")
-                    kind_tab(page, "Project").click()
-                    expect(page.get_by_role("dialog", name="New project").get_by_role("textbox", name="Project name", exact=True)).to_be_visible()
+                    kind_tab(page, "Space").click()
+                    expect(page.get_by_role("dialog", name="New space").get_by_role("textbox", name="Space name", exact=True)).to_be_visible()
                     shot(page, f"521-create-project-{size}-{scheme}-{engine}")
                     page.keyboard.press("Escape")
                     expect(window(page)).to_have_count(0)
@@ -978,7 +952,7 @@ class CreateWindow(unittest.TestCase):
                 expect(title_field(page)).to_be_visible()
                 title_field(page).fill("Order two spare capacitive probes")
                 boxes: dict[str, dict] = {}
-                for tab in ("Task", "Thought", "Message", "Decision", "Project", "Task"):
+                for tab in ("Task", "Thought", "Message", "Decision", "Space", "Task"):
                     kind_tab(page, tab).click()
                     expect(kind_tab(page, tab)).to_have_attribute("aria-selected", "true")
                     page.evaluate(settle)
@@ -1009,8 +983,8 @@ class CreateWindow(unittest.TestCase):
         expect(title_field(page)).to_have_value("line one line two")
         kind_tab(page, "Decision").click()
         expect(page.get_by_role("dialog", name="New decision").get_by_role("textbox", name="Decision", exact=True)).to_have_value("line one line two")
-        kind_tab(page, "Project").click()
-        expect(page.get_by_role("dialog", name="New project").get_by_role("textbox", name="Project name", exact=True)).to_have_value("line one line two")
+        kind_tab(page, "Space").click()
+        expect(page.get_by_role("dialog", name="New space").get_by_role("textbox", name="Space name", exact=True)).to_have_value("line one line two")
         kind_tab(page, "Thought").click()
         expect(thought).to_have_value("line one\nline two")
 
@@ -1064,7 +1038,7 @@ class CreateWindow(unittest.TestCase):
         create_other(guest, "Message")
         panel = window(guest).get_by_role("tabpanel")
         expect(panel.locator(".create__where")).to_contain_text("Guests can reply in conversations they are added to, but cannot start one.")
-        expect(window(guest)).not_to_contain_text("Nobody else is in your spaces yet")
+        expect(window(guest)).not_to_contain_text("Nobody else is in the company yet")
         expect(window(guest).get_by_role("button", name="Send message")).to_be_disabled()
         shot(guest, "555-create-message-guest-1440-light")
     def test_27_a_new_task_offers_undo_and_z_takes_it_back(self) -> None:

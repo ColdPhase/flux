@@ -12,6 +12,8 @@ export POSTGRES_USER=flux
 export POSTGRES_DB=flux
 export POSTGRES_PASSWORD="flux-live-ui-$$-$(date +%s)"
 export FLUX_FIXTURE_TOKEN="flux-live-ui-fixture-$$-$(date +%s)"
+# A test deployment: only it can create the isolated workspaces these modules start from (F-037).
+export FLUX_TEST_FAILURE_INJECTION=true
 export FLUX_PORT="${FLUX_LIVE_UI_PORT:-18781}"
 export FLUX_MAILPIT_PORT="${FLUX_LIVE_UI_MAILPIT_PORT:-18782}"
 export FLUX_PUBLIC_ORIGIN="http://127.0.0.1:${FLUX_PORT}"
@@ -46,4 +48,6 @@ $compose build migrate ui-test
 $compose up -d db migrate
 $compose --profile setup run --rm files-init
 $compose up -d --wait api worker livekit mailpit
+# F-037: a setup account owns the company, so no test's own people take that role by being first.
+$compose run --rm --no-deps -w /work/tests/ui ui-test python3 company_setup.py
 $compose run --rm -e FLUX_UI_LIVE=1 ui-test python3 -m unittest discover -s tests/ui -p "${FLUX_LIVE_UI_PATTERN:-test_live_sessions.py}" -v

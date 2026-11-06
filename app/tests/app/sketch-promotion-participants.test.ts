@@ -69,7 +69,7 @@ describe('DM sketch promotion with an explicit participant choice', () => {
     const people = expectStatus(await jo.browser.request('GET', `/api/v1/projects/${done.project.id}/people`), 200) as ProjectPerson[];
     assert.deepEqual(new Set(people.map((p) => p.id)), new Set(seen.audience.map((p) => p.id)), 'the preview was exact');
     const grants = expectStatus(await jo.browser.request('GET', `/api/v1/projects/${done.project.id}/grants`), 200) as ProjectGrant[];
-    assert.deepEqual(grants, [], 'nobody was granted');
+    assert.deepEqual(grants.map((g) => [g.principal.id, g.role]), [[jo.id, 'manager']], 'nobody but its creator, the first space admin');
     expectStatus(await kai.browser.request('GET', `/api/v1/projects/${done.project.id}`), 404, 'Kai cannot see the project');
     expectStatus(await kai.browser.request('GET', `/api/v1/sketches/${done.sketch.id}`), 404, 'nor the copy');
     expectStatus(await mo.browser.request('GET', `/api/v1/projects/${done.project.id}`), 404);
@@ -84,7 +84,7 @@ describe('DM sketch promotion with an explicit participant choice', () => {
     const seen = expectStatus(await preview(jo, sketch.id, { target: 'new', participants: 'grant' }), 200) as SketchPromotionPreview;
     const done = expectStatus(await promote(jo, sketch.id, { target: { kind: 'new', name: 'Desk sensor' }, token: seen.token, participants: 'grant' }), 201) as PromotedSketch;
     const grants = expectStatus(await jo.browser.request('GET', `/api/v1/projects/${done.project.id}/grants`), 200) as ProjectGrant[];
-    assert.deepEqual(grants.map((g) => [g.principal.id, g.role]), [[kai.id, 'contributor']]);
+    assert.deepEqual(new Map(grants.map((g) => [g.principal.id, g.role])), new Map([[jo.id, 'manager'], [kai.id, 'contributor']]));
     expectStatus(await kai.browser.request('GET', `/api/v1/sketches/${done.sketch.id}`), 200, 'Kai opens the copy');
     expectStatus(await mo.browser.request('GET', `/api/v1/projects/${done.project.id}`), 404, 'a member outside the DM does not');
   });

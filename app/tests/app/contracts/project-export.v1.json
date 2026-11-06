@@ -1226,6 +1226,7 @@
             },
             "role": {
               "enum": [
+                "manager",
                 "contributor",
                 "viewer",
                 "denied"

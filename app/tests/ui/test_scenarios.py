@@ -296,7 +296,7 @@ class ScenarioJourney:
         Projects); the desktop sidebar has Home, Inbox and Direct messages under Places, and the projects themselves."""
         if self.phone:
             bar = page.get_by_role("navigation", name="Main places")
-            tab = "Projects" if name == "Messages" else name
+            tab = "Spaces" if name == "Messages" else name
             bar.get_by_role("link", name=re.compile(f"^{tab}")).tap()
             expect(bar.get_by_role("link", name=re.compile(f"^{tab}"))).to_have_attribute("aria-current", "page")
             if name == "Messages":
@@ -308,10 +308,10 @@ class ScenarioJourney:
     def project_list(self, page: Page):
         """The projects a person can open: the sidebar on a desktop, the Projects place on a phone."""
         if self.phone:
-            self.go_to_place(page, "Projects")
-            expect(page.get_by_role("heading", level=1, name="Projects")).to_be_visible()
-            return page.get_by_role("list", name="Projects")
-        return page.get_by_role("navigation", name="Projects")
+            self.go_to_place(page, "Spaces")
+            expect(page.get_by_role("heading", level=1, name="Spaces")).to_be_visible()
+            return page.get_by_role("list", name="Spaces")
+        return page.get_by_role("navigation", name="Spaces")
 
     def no_sideways_scroll(self, page: Page) -> None:
         self.assertLessEqual(page.evaluate("document.documentElement.scrollWidth"), page.evaluate("window.innerWidth"), "no horizontal page scroll")
@@ -387,15 +387,18 @@ class ScenarioJourney:
         return new_id
 
     def give_access(self, page: Page, key: str, read_only: bool) -> None:
-        region = page.get_by_role("region", name="People", exact=True)
-        self.tap(region.get_by_role("button", name="Invite"))
-        give = region.get_by_role("group", name="Give someone access")
-        choose(give.get_by_label("Person"), value=self.ids[key])
         if read_only:
-            give.get_by_role("group", name="Access").get_by_text("Can read", exact=True).click()
+            # F-037: a space's people are members or admins; a read-only grant is made through the API only.
+            project_id = re.search(r"/projects/([0-9a-f-]{36})", page.url).group(1)
+            self.api("ada", "POST", f"/api/v1/projects/{project_id}/grants", {"principal": {"kind": "human", "id": self.ids[key]}, "role": "viewer"}, status=201)
+            return
+        region = page.get_by_role("region", name="People", exact=True)
+        self.tap(region.get_by_role("button", name="Add people"))
+        give = region.get_by_role("group", name="Add people")
+        choose(give.get_by_label("Person"), value=self.ids[key])
         first = NAMES[key].split()[0]
-        self.tap(give.get_by_role("button", name=f"Give {first} access"))
-        expect(region.locator(".people__done")).to_contain_text(f"{first} can now {'read' if read_only else 'write'}")
+        self.tap(give.get_by_role("button", name=f"Add {first}"))
+        expect(region.locator(".people__done")).to_contain_text(f"{first} is now a member")
 
     def send_message(self, page: Page, composer, button) -> None:
         if self.phone:
@@ -412,7 +415,7 @@ class ScenarioJourney:
             page.get_by_role("button", name="Link", exact=True).tap()
         else:
             text.press("Control+k")
-        picker = page.get_by_role("dialog", name="Link to something in this project")
+        picker = page.get_by_role("dialog", name="Link to something in this space")
         choose(picker.get_by_label("Reference type"), kind)
         query = picker.get_by_role("combobox", name="Find a Wiki page, decision, result, task, map or message", exact=True)
         query.fill(title[:40])
@@ -439,25 +442,28 @@ class ScenarioJourney:
         self.tap(page.get_by_role("button", name="Create account"))
         expect(page.get_by_role("heading", level=1, name="Home")).to_be_visible()
         self.keep("ada", page)
+        # F-037: one Flux is one company; the test deployment's fixture route gives Ada hers.
+        self.api("ada", "POST", "/api/v1/workspaces", {"name": WORKSPACE}, status=201)
+        page.reload()
         if self.phone:
-            self.go_to_place(page, "Projects")
-            expect(page.get_by_text("No projects yet.")).to_be_visible()
-            page.get_by_role("link", name="Create a project").tap()
+            self.go_to_place(page, "Spaces")
+            expect(page.get_by_text("No spaces yet.")).to_be_visible()
+            page.get_by_role("link", name="Create a space").tap()
         else:
             page.get_by_role("complementary", name="Sidebar").get_by_role("button", name="New", exact=True).click()
-            create_other(page, "Project")
-        expect(page.get_by_text(f"In {WORKSPACE}")).to_be_visible()
-        page.get_by_label("Project name").fill(MARKET)
-        self.tap(page.get_by_role("button", name="Create project"))
+            create_other(page, "Space")
+        page.get_by_label("Space name").fill(MARKET)
+        self.tap(page.get_by_role("button", name="Create space"))
         expect(page).to_have_url(re.compile(r"/projects/[0-9a-f-]{36}\?new=1"))
         market = re.search(r"/projects/([0-9a-f-]{36})", page.url).group(1)
         workspace = self.api("ada", "GET", f"/api/v1/projects/{market}", status=200)["workspaceId"]
 
-        # She adds the others to the space by email (Home → Details → People).
+        # She adds the others to the company by email (Home → Details → People → Settings › Company).
         page.goto("/")
         open_details(page, tap=self.phone)
-        self.tap(page.get_by_role("region", name="People").get_by_role("button", name=re.compile(f"^{WORKSPACE}")))
-        expect(page.get_by_role("heading", name="People", exact=True)).to_be_visible()
+        self.tap(page.get_by_role("region", name="People").get_by_role("link", name=re.compile(f"^{WORKSPACE}")))
+        expect(page).to_have_url(re.compile(r"/settings/company$"))
+        self.tap(page.get_by_role("button", name="Invite", exact=True))
         for key in ("jonas", "mia", "lee"):
             form = page.get_by_role("region", name="Add someone")
             form.get_by_label("Email").fill(self.emails[key])
@@ -475,7 +481,8 @@ class ScenarioJourney:
         for key, read_only in (("jonas", False), ("mia", True), ("lee", False)):
             self.give_access(page, key, read_only)
         grants = {grant["principal"]["id"]: grant["role"] for grant in self.api("ada", "GET", f"/api/v1/projects/{market}/grants", status=200)}
-        self.assertEqual(grants, {self.ids["jonas"]: "contributor", self.ids["mia"]: "viewer", self.ids["lee"]: "contributor"})
+        # F-037: Ada started the space, so she is its admin by her own grant.
+        self.assertEqual(grants, {self.ids["ada"]: "manager", self.ids["jonas"]: "contributor", self.ids["mia"]: "viewer", self.ids["lee"]: "contributor"})
         self.api("lee", "POST", f"/api/v1/projects/{market}/conversations", {"body": MARKET_NOTE, "clientMessageId": str(uuid.uuid4())}, status=201)
         s.update(market=market, workspace=workspace)
 
@@ -508,7 +515,7 @@ class ScenarioJourney:
         # Only the camera, sensor and privacy messages seed a shared sketch; no project yet.
         self.tap(page.get_by_role("button", name="Choose messages", exact=True))
         bar = page.get_by_role("region", name="Selected messages")
-        expect(bar).to_contain_text("No project is created.")
+        expect(bar).to_contain_text("No space is created.")
         for index in (1, 2, 3):
             self.tap(page.locator(f'.dm-msg[data-message-id="{message_ids[index]}"] .dm-msg__body'))
         expect(bar.get_by_role("status")).to_have_text("3 messages selected")
@@ -531,19 +538,19 @@ class ScenarioJourney:
         self.shot(page, "1-dm-sketch")
 
         # She makes a separate two-person project from the sketch; the preview names the content and readers.
-        self.tap(page.get_by_role("button", name="Make it a project…"))
+        self.tap(page.get_by_role("button", name="Make it a space…"))
         panel = self.details(page)
-        expect(panel.get_by_role("heading", name="Make a project from this sketch")).to_be_visible()
+        expect(panel.get_by_role("heading", name="Make a space from this sketch")).to_be_visible()
         panel.get_by_role("checkbox", name="Also give Jonas access").check()
         expect(panel.locator(".promote__aud b")).to_have_text("Jonas and you — only you two")
         expect(panel).to_contain_text("4 thoughts")
-        expect(panel).to_contain_text("Nothing is synced to the project.")
+        expect(panel).to_contain_text("Nothing is synced to the space.")
         preview = self.api("ada", "GET", f"/api/v1/sketches/{dm_sketch}/promotion?target=new&participants=grant", status=200)
         self.assertEqual({person["id"] for person in preview["audience"]}, {self.ids["ada"], self.ids["jonas"]})
         self.assertEqual(preview["staysInDm"]["messages"], 2, "the first and the unrelated message stay in the DM")
         panel.get_by_label("Name").fill(LAMP)
         self.shot(page, "1-promote")
-        self.tap(panel.get_by_role("button", name="Create project"))
+        self.tap(panel.get_by_role("button", name="Create space"))
         page.wait_for_url(re.compile(r"/projects/[0-9a-f-]{36}/map/[0-9a-f-]{36}$"))
         lamp, copy = re.findall(r"[0-9a-f-]{36}", page.url.split(ORIGIN, 1)[-1])
         project = self.api("ada", "GET", f"/api/v1/projects/{lamp}", status=200)
@@ -1242,7 +1249,7 @@ class ScenarioJourney:
             self.tap(page.locator(".wiki-bar").get_by_role("button", name="Download"))
             download = page.get_by_role("dialog", name="Download")
         with page.expect_download() as info:
-            self.tap(download.get_by_role("button", name=re.compile("^Export the whole project")))
+            self.tap(download.get_by_role("button", name=re.compile("^Export the whole space")))
         name, data = info.value.suggested_filename, Path(info.value.path()).read_bytes()
         self.assertRegex(name, rf"^flux-project-{lamp[:8]}-\d{{8}}T\d{{6}}Z\.tar\.gz$")
         root = name.removesuffix(".tar.gz")
