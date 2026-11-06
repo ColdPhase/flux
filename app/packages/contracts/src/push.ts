@@ -64,16 +64,6 @@ export interface NotificationSourceRef {
   id: string;
 }
 
-/** Immutable public identity recorded for one assistant join-request opening cycle. */
-export interface AssistantRequestIdentity {
-  joinRequestId: string;
-  openingVersion: number;
-  assistantId: string;
-  assistantName: string;
-  ownerId: string;
-  ownerName: string;
-}
-
 export interface InboxItem {
   id: string;
   source: NotificationSourceRef;
@@ -87,8 +77,6 @@ export interface InboxItem {
   url: string | null;
   createdAt: string;
   readAt: string | null;
-  /** Null for ordinary notifications and legacy assistant questions without trusted provenance. */
-  assistantRequestIdentity?: AssistantRequestIdentity | null;
 }
 
 export interface InboxResponse {

@@ -28,8 +28,6 @@ async function fixture() {
   await grant(owner, projectId, peer, 'contributor'); await grant(owner, projectId, viewer, 'viewer');
   const agentId = (expectStatus(await owner.browser.request('POST', `/api/v1/workspaces/${ws.id}/agents`,
     { body: { name: 'Comparison agent', owner: 'self' } }), 201) as { id: string }).id;
-  expectStatus(await owner.browser.request('POST', `/api/v1/projects/${projectId}/grants`,
-    { body: { principal: { kind: 'agent', id: agentId }, role: 'contributor' } }), 201);
   const rule = expectStatus(await owner.browser.request('POST', `/api/v1/projects/${projectId}/proactive-comparison-rules`,
     { body: { agentId, trigger: 'human_negative_result', purpose: 'camera_sensor_comparison',
       dataScope: 'current_project_published', permittedEffect: 'quiet_project_proposal',

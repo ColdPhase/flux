@@ -1,7 +1,7 @@
 import { eq, ne, sql } from 'drizzle-orm';
 import type { InspectedComparisonSource, NotificationSourceRef } from '@flux/contracts';
 import { pgTable, text, timestamp, date, uuid, integer, smallint, jsonb, boolean, bigserial, bigint, index, uniqueIndex, primaryKey, foreignKey, unique, check, type AnyPgColumn, type PgTableExtraConfigValue } from 'drizzle-orm/pg-core';
-import { AGENT_OPERATIONS, AGENT_PEER_REQUEST_CLASSES, type AgentJsonValue, type AgentPostcondition, type CoWorkSourceRef } from '@flux/contracts';
+import { AGENT_MAY_DO, AGENT_OPERATIONS, AGENT_PEER_REQUEST_CLASSES, type AgentJsonValue, type AgentPostcondition, type CoWorkSourceRef } from '@flux/contracts';
 import { AI_PROVIDER_KINDS, ASSISTANT_RUN_END_REASONS, BACKGROUND_CONSENT_VERSIONS, type AiProviderKind, type PersonalRunConsentVersion } from '@flux/contracts';
 
 export const samples = pgTable('samples', {
@@ -474,8 +474,8 @@ export const agents = pgTable('agents', {
   id: uuid('id').primaryKey(),
   workspaceId: uuid('workspace_id').notNull().references(() => workspaces.id, { onDelete: 'cascade' }),
   name: text('name').notNull(),
-  /** Null means the agent is owned by the workspace rather than a person. */
-  ownerUserId: text('owner_user_id').references(() => authUsers.id, { onDelete: 'cascade' }),
+  /** Every agent belongs to one person and acts with exactly that person's rights (F-036, #855). */
+  ownerUserId: text('owner_user_id').notNull().references(() => authUsers.id, { onDelete: 'cascade' }),
   createdBy: text('created_by').notNull(),
   revokedAt: timestamp('revoked_at', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
@@ -486,8 +486,7 @@ export const projectGrants = pgTable('project_grants', {
   id: uuid('id').primaryKey(),
   workspaceId: uuid('workspace_id').notNull(),
   projectId: uuid('project_id').notNull(),
-  userId: text('user_id'),
-  agentId: uuid('agent_id'),
+  userId: text('user_id').notNull(),
   role: text('role', { enum: ['manager', 'contributor', 'viewer', 'denied'] }).notNull(),
   createdBy: text('created_by').notNull(),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
@@ -495,7 +494,6 @@ export const projectGrants = pgTable('project_grants', {
 }, (table) => [
   foreignKey({ columns: [table.workspaceId, table.projectId], foreignColumns: [projects.workspaceId, projects.id] }).onDelete('cascade'),
   foreignKey({ columns: [table.workspaceId, table.userId], foreignColumns: [workspaceMembers.workspaceId, workspaceMembers.userId] }).onDelete('cascade'),
-  foreignKey({ columns: [table.workspaceId, table.agentId], foreignColumns: [agents.workspaceId, agents.id] }).onDelete('cascade'),
 ]);
 
 export const drafts = pgTable('drafts', {
@@ -539,17 +537,6 @@ export const pushSubscriptions = pgTable('push_subscriptions', {
   index('push_subscriptions_session_id_idx').on(table.sessionId),
 ]);
 
-export const assistantJoinQuestionIdentitySnapshots = pgTable('assistant_join_question_identity_snapshots', {
-  joinRequestId: uuid('join_request_id').notNull(),
-  openingVersion: integer('opening_version').notNull(),
-  assistantId: uuid('assistant_id').notNull(),
-  assistantName: text('assistant_name').notNull(),
-  ownerId: text('owner_id').notNull(),
-  ownerName: text('owner_name').notNull(),
-  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-  notificationLinkedAt: timestamp('notification_linked_at', { withTimezone: true }),
-}, (table) => [primaryKey({ columns: [table.joinRequestId, table.openingVersion] }), check('assistant_join_question_identity_version_check', sql`${table.openingVersion} > 0`)]);
-
 export const notifications = pgTable('notifications', {
   id: uuid('id').primaryKey(),
   userId: text('user_id').notNull().references(() => authUsers.id, { onDelete: 'cascade' }),
@@ -569,15 +556,11 @@ export const notifications = pgTable('notifications', {
   inInbox: boolean('in_inbox').notNull().default(true),
   deliveryKind: text('delivery_kind').$type<'ordinary' | 'morning_summary'>().notNull().default('ordinary'),
   summarySources: jsonb('summary_sources').$type<NotificationSourceRef[]>(),
-  assistantJoinRequestId: uuid('assistant_join_request_id'),
-  assistantJoinOpeningVersion: integer('assistant_join_opening_version'),
   // Migration 0117 (F-029): came from AI work, set by whoever writes the row (no default: a writer that forgets it fails). While the workspace's AI is off it is hidden and never sent.
   aiOrigin: boolean('ai_origin').notNull(),
 }, (table) => [
   index('notifications_user_created_idx').on(table.userId, table.createdAt.desc()),
   index('notifications_source_idx').on(table.sourceType, table.sourceId),
-  foreignKey({ columns: [table.assistantJoinRequestId, table.assistantJoinOpeningVersion], foreignColumns: [assistantJoinQuestionIdentitySnapshots.joinRequestId, assistantJoinQuestionIdentitySnapshots.openingVersion] }),
-  check('notifications_assistant_join_identity_pair_check', sql`(${table.assistantJoinRequestId} IS NULL) = (${table.assistantJoinOpeningVersion} IS NULL)`),
 ]);
 // What a person did with an item of their Inbox "Needs you" queue (migration 0063, #342).
 export const needsYouStates = pgTable('needs_you_states', {
@@ -798,6 +781,8 @@ export const agentConnections = pgTable('agent_connections', {
   clientDesignation: text('client_designation', { enum: ['claude_code', 'codex', 'other'] }).notNull().default('other'),
   computeSource: text('compute_source', { enum: ['user_operated_claude_code', 'user_operated_external_client', 'owner_assistant'] }).notNull().default('user_operated_external_client'),
   scopes: text('scopes', { enum: ['flux.context.read', 'flux.proposal.write', 'flux.action.execute'] }).array().notNull(),
+  /** "What it may do" (0003, F-036 AG-3, #855): Only read, Do it and tell me, or Ask me first. */
+  mayDo: text('may_do', { enum: AGENT_MAY_DO }).notNull().default('act'),
   revokedAt: timestamp('revoked_at', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
@@ -807,47 +792,18 @@ export const agentConnections = pgTable('agent_connections', {
   foreignKey({ columns: [table.workspaceId, table.agentId], foreignColumns: [agents.workspaceId, agents.id] }),
 ]);
 
-/** F-027 safety settings; area/project permission state is only in the S6 policy (0077). */
+/** The owner's assistant: its agent, its connection (which holds "What it may do", 0003/#855) and its background limit. */
 export const assistantSettings = pgTable('assistant_settings', {
   workspaceId: uuid('workspace_id').notNull().references(() => workspaces.id, { onDelete: 'cascade' }),
   ownerUserId: text('owner_user_id').notNull().references(() => authUsers.id, { onDelete: 'cascade' }),
   agentId: uuid('agent_id').notNull(), connectionId: uuid('connection_id').notNull().unique(),
-  approvalMode: text('approval_mode', { enum: ['act', 'ask'] }).notNull().default('act'),
-  changesPerRun: integer('changes_per_run').notNull().default(20),
   backgroundRunsPerDay: integer('background_runs_per_day').notNull().default(24),
-  projectMode: text('project_mode', { enum: ['all', 'chosen'] }).notNull().default('all'),
   version: integer('version').notNull().default(1),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 }, (table) => [primaryKey({ columns: [table.workspaceId, table.ownerUserId] }),
   foreignKey({ columns: [table.workspaceId, table.agentId], foreignColumns: [agents.workspaceId, agents.id] }),
   foreignKey({ columns: [table.workspaceId, table.connectionId], foreignColumns: [agentConnections.workspaceId, agentConnections.id] }).onDelete('cascade')]);
-
-export const assistantJoinRequests = pgTable('assistant_join_requests', {
-  id: uuid('id').primaryKey(), workspaceId: uuid('workspace_id').notNull().references(() => workspaces.id, { onDelete: 'cascade' }),
-  projectId: uuid('project_id').notNull(), ownerUserId: text('owner_user_id').notNull().references(() => authUsers.id, { onDelete: 'cascade' }),
-  connectionId: uuid('connection_id').notNull().references(() => assistantSettings.connectionId, { onDelete: 'cascade' }),
-  state: text('state', { enum: ['pending', 'accepted', 'declined'] }).notNull().default('pending'),
-  version: integer('version').notNull().default(1),
-  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(), updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
-}, (table) => [unique().on(table.connectionId, table.projectId),
-  foreignKey({ columns: [table.workspaceId, table.projectId], foreignColumns: [projects.workspaceId, projects.id] }).onDelete('cascade')]);
-
-/** #763 FT-1: an owner's request that a project's managers let their own agent in. Asking grants nothing. */
-export const agentAccessRequests = pgTable('agent_access_requests', {
-  id: uuid('id').primaryKey(),
-  workspaceId: uuid('workspace_id').notNull().references(() => workspaces.id, { onDelete: 'cascade' }),
-  projectId: uuid('project_id').notNull(),
-  agentId: uuid('agent_id').notNull(),
-  ownerUserId: text('owner_user_id').notNull().references(() => authUsers.id, { onDelete: 'cascade' }),
-  role: text('role', { enum: ['contributor', 'viewer'] }).notNull(),
-  state: text('state', { enum: ['pending', 'accepted', 'declined'] }).notNull().default('pending'),
-  decidedBy: text('decided_by').references(() => authUsers.id, { onDelete: 'set null' }),
-  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
-}, (table) => [unique('agent_access_requests_agent_project_key').on(table.agentId, table.projectId),
-  foreignKey({ name: 'agent_access_requests_project_fkey', columns: [table.workspaceId, table.projectId], foreignColumns: [projects.workspaceId, projects.id] }).onDelete('cascade'),
-  foreignKey({ name: 'agent_access_requests_agent_fkey', columns: [table.workspaceId, table.agentId], foreignColumns: [agents.workspaceId, agents.id] }).onDelete('cascade')]);
 
 export const agentConnectionProjects = pgTable('agent_connection_projects', {
   workspaceId: uuid('workspace_id').notNull(),
@@ -1006,20 +962,6 @@ export const agentPlaybookAcknowledgments = pgTable('agent_playbook_acknowledgme
   acknowledgedAt: timestamp('acknowledged_at', { withTimezone: true }).notNull().defaultNow(),
 });
 
-// The approved project policy for connected agents (migration 0044, #160 / CW-1): every published
-// revision, kept unchanged. Policy narrows work inside owner grants; it never grants anything.
-export const agentProjectPolicies = pgTable('agent_project_policies', {
-  projectId: uuid('project_id').notNull().references(() => projects.id, { onDelete: 'cascade' }),
-  revision: integer('revision').notNull(),
-  scope: text('scope').notNull(),
-  priorities: text('priorities').notNull(),
-  reviewCriteria: text('review_criteria').notNull(),
-  allowedWork: text('allowed_work').notNull(),
-  digest: text('digest').notNull(),
-  publishedByUserId: text('published_by_user_id').notNull().references(() => authUsers.id, { onDelete: 'restrict' }),
-  publishedAt: timestamp('published_at', { withTimezone: true }).notNull().defaultNow(),
-}, (table) => [primaryKey({ columns: [table.projectId, table.revision] })]);
-
 // A person paused an external agent's work on a task (migration 0131, #160 AC-5). Present while the pause is in force.
 export const agentPauses = pgTable('agent_pauses', {
   workspaceId: uuid('workspace_id').notNull(),
@@ -1094,6 +1036,8 @@ export const sketches = pgTable('sketches', {
   title: text('title').notNull(),
   createdByUserId: text('created_by_user_id').references(() => authUsers.id),
   createdByAgentId: uuid('created_by_agent_id'),
+  // Everyone who changed it after it was made, as `human:<id>` or `agent:<id>` (F-036 Terms "Yours").
+  editedBy: text('edited_by').array().notNull().default(sql`'{}'::text[]`),
   version: integer('version').notNull().default(1),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
@@ -1126,6 +1070,8 @@ export const sketchThoughts = pgTable('sketch_thoughts', {
   sourceProjectMessageId: uuid('source_project_message_id'),
   createdByUserId: text('created_by_user_id').references(() => authUsers.id),
   createdByAgentId: uuid('created_by_agent_id'),
+  // Everyone who changed it after it was made, as `human:<id>` or `agent:<id>` (F-036 Terms "Yours").
+  editedBy: text('edited_by').array().notNull().default(sql`'{}'::text[]`),
   version: integer('version').notNull().default(1),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
@@ -1403,8 +1349,6 @@ export const agentProposals = pgTable('agent_proposals', {
   agentId: uuid('agent_id').notNull(),
   ownerUserId: text('owner_user_id').notNull().references(() => authUsers.id),
   computeSource: text('compute_source', { enum: ['user_operated_claude_code', 'user_operated_external_client', 'owner_assistant'] }).notNull(),
-  agentGrantId: uuid('agent_grant_id').notNull(),
-  agentGrantRole: text('agent_grant_role', { enum: ['contributor'] }).notNull(),
   sourceMaterialId: uuid('source_material_id').notNull(),
   sourceMaterialVersion: integer('source_material_version').notNull(),
   clientCommandId: uuid('client_command_id').notNull(),
@@ -1967,9 +1911,9 @@ export const assistantProposals = pgTable('assistant_proposals', {
 ]);
 
 
-/** The assistant's change log (migration 0104, F-027 A3 #403): one row per effect call of a run. */
-export const ASSISTANT_CHANGE_STATES = ['applied', 'waiting', 'applied_after_wait', 'not_now', 'expired', 'undone', 'refused'] as const;
-export const ASSISTANT_WAIT_REASONS = ['ask', 'removal', 'others', 'live_wiki', 'limit', 'outside_rights', 'conflict'] as const;
+/** The agent change log (migration 0104, F-027 A3 #403; reasons and states of 0003, F-036 #855): one row per effect call of a run. */
+export const ASSISTANT_CHANGE_STATES = ['applied', 'waiting', 'applied_after_wait', 'skipped', 'undone', 'refused'] as const;
+export const ASSISTANT_WAIT_REASONS = ['ask', 'removal', 'others'] as const;
 export const assistantChanges = pgTable('assistant_changes', {
   id: uuid('id').primaryKey(),
   workspaceId: uuid('workspace_id').notNull(),
@@ -1986,22 +1930,19 @@ export const assistantChanges = pgTable('assistant_changes', {
   objectTitle: text('object_title').notNull().default(''),
   state: text('state', { enum: ASSISTANT_CHANGE_STATES }).notNull(),
   waitReason: text('wait_reason', { enum: ASSISTANT_WAIT_REASONS }),
-  authority: text('authority', { enum: ['owner_request', 'owner_approval', 'owner_deferred_change'] }),
+  authority: text('authority', { enum: ['owner_request', 'owner_approval'] }),
   preparedCommand: jsonb('prepared_command').$type<{ tool: string; args: Record<string, unknown> }>(),
   policyVersion: integer('policy_version').notNull(),
   beforeVersion: integer('before_version'),
   afterVersion: integer('after_version'),
   receipt: jsonb('receipt').$type<Record<string, unknown>>(),
   refusal: text('refusal'),
+  /** The other person: the maker of another person's thing, or the person a task is for. */
   otherUserId: text('other_user_id').references(() => authUsers.id, { onDelete: 'set null' }),
-  suggestToUserId: text('suggest_to_user_id').references(() => authUsers.id, { onDelete: 'set null' }),
-  sentAt: timestamp('sent_at', { withTimezone: true }),
-  inboxAt: timestamp('inbox_at', { withTimezone: true }),
   decidedBy: text('decided_by').references(() => authUsers.id, { onDelete: 'set null' }),
   decidedAt: timestamp('decided_at', { withTimezone: true }),
   version: integer('version').notNull().default(1),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 }, (table) => [
   unique().on(table.runId, table.clientCommandId),

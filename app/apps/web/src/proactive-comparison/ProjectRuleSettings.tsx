@@ -1,15 +1,15 @@
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import { Link, useSearchParams } from 'react-router';
-import { workspaceAgentsPath, type Agent, type BackgroundComputeConnection, type Project, type ProjectGrant, type ProactiveComparisonRule } from '@flux/contracts';
+import { workspaceAgentsPath, type Agent, type BackgroundComputeConnection, type Project, type ProactiveComparisonRule } from '@flux/contracts';
 import { ApiError, request } from '../api/client';
 import { listAccessibleProjects } from '../project/api';
 import { useShellData } from '../app/data';
 import { useAllAiBlocked, useBlockedWorkspaceIds } from '../ai/workspaceAi';
-import { createPersonalAgent, grantAgentProject, listProjectGrants } from '../agent-connection/api';
+import { createPersonalAgent } from '../agent-connection/api';
 import { Button, Spinner, Select, Option } from '../ui';
 import { backgroundComparisonRuntime, changeBackgroundRule, createBackgroundRule, listBackgroundRules } from './api';
 
-interface ProjectSetup { id: string; agents: Agent[]; grants: ProjectGrant[] | null; rules: ProactiveComparisonRule[] }
+interface ProjectSetup { id: string; agents: Agent[]; rules: ProactiveComparisonRule[] }
 const money = (cents: number) => `$${(cents / 100).toFixed(2)}`;
 
 /** Only the signed-in person's rules and agents are offered. The server checks every mutation again. */
@@ -61,10 +61,9 @@ export function ProjectRuleSettings({ connection }: { connection: BackgroundComp
       request<Agent[]>(workspaceAgentsPath(selected.workspaceId), { signal: controller.signal }).catch((cause) => {
         if (cause instanceof ApiError && cause.status === 403) return []; throw cause;
       }),
-      selected.access === 'manager' ? listProjectGrants(selected.id, controller.signal) : Promise.resolve(null),
-    ]).then(([rules, agents, grants]) => {
-      if (!controller.signal.aborted) setSetup({ id: selected.id, rules, grants,
-        agents: agents.filter((agent) => agent.owner.kind === 'human' && agent.owner.id === me.user.id && !agent.revokedAt) });
+    ]).then(([rules, agents]) => {
+      if (!controller.signal.aborted) setSetup({ id: selected.id, rules,
+        agents: agents.filter((agent) => agent.owner.id === me.user.id && !agent.revokedAt) });
     }, () => { if (!controller.signal.aborted) setError('This project or its agent access is no longer available. Choose a current project or reload.'); });
     return () => controller.abort();
   }, [selected, me.user.id, refresh]);
@@ -159,11 +158,6 @@ export function ProjectRuleSettings({ connection }: { connection: BackgroundComp
             <div className="background-settings__select"><label htmlFor="background-rule-agent">Your personal agent</label><Select id="background-rule-agent" value={agentId} required onChange={(next) => setAgentId(next)}>
               <Option value="">Choose your agent</Option>{ready.agents.map((agent) => <Option key={agent.id} value={agent.id}>{agent.name}</Option>)}
             </Select></div>
-            {selected.access === 'manager' && agentId && !ready.grants?.some((grant) => grant.principal.kind === 'agent' && grant.principal.id === agentId && grant.role === 'contributor') ?
-              <Button onClick={() => void mutate(async () => {
-                const grant = await grantAgentProject(selected.id, agentId, 'contributor');
-                setSetup({ ...ready, grants: [...(ready.grants ?? []).filter((item) => item.principal.kind !== 'agent' || item.principal.id !== agentId), grant] });
-              }, 'Your agent has contributor access to this project.')}>Grant project contributor access</Button> : null}
             <div className="background-settings__limits">
               <label>Rule maximum requests a day<input name="ruleDaily" type="number" required min={1} max={3} step={1} defaultValue={connection?.maxRunsPerDay ?? 1} /></label>
               <label>Rule 30-day allowance (USD)<input name="rulePeriod" type="number" required min="0.05" max="5.00" step="0.01" defaultValue={(Math.min(connection?.periodBudgetCents ?? 100, 500) / 100).toFixed(2)} /></label>

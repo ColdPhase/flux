@@ -91,7 +91,6 @@ async function connectedAgent(scopes = ['flux.context.read', 'flux.proposal.writ
   const ws = expect(await owner.request('POST', '/api/v1/workspaces', { body: { name: 'Contract pins' } }), 201);
   const agent = expect(await owner.request('POST', `/api/v1/workspaces/${ws.id}/agents`, { body: { name: 'Contract agent', owner: 'self' } }), 201);
   const place = expect(await owner.request('POST', `/api/v1/workspaces/${ws.id}/projects`, { body: { name: 'Contract project', visibility: 'restricted' } }), 201);
-  expect(await owner.request('POST', `/api/v1/projects/${place.id}/grants`, { body: { principal: { kind: 'agent', id: agent.id }, role: 'contributor' } }), 201);
   const connection = expect(await owner.request('POST', '/api/v1/agent-connections', { body: { agentId: agent.id, selectedProjectIds: [place.id], scopes } }), 201);
   const clientId = `flux-test-${randomUUID()}`;
   const redirectUri = 'http://127.0.0.1:19737/callback';
@@ -333,7 +332,7 @@ describe('public extension contracts (O-010)', () => {
     assert.match(contractReport('mcp-tools', 1, snapshot, added, compareMcp(snapshot, added))!, /^Additive change to mcp-tools version 1\. Replace /);
     assert.equal(contractReport('mcp-tools', 1, snapshot, structuredClone(snapshot), []), null, 'an equal contract passes');
     assert.match(contractReport('mcp-tools', 2, null, snapshot, [])!, /^No snapshot tests\/app\/contracts\/mcp-tools\.v2\.json/);
-    assert.throws(() => assertPinned('mcp-tools', 3, snapshot, compareMcp), /the snapshot of version 2 must stay/,
+    assert.throws(() => assertPinned('mcp-tools', 4, snapshot, compareMcp), /the snapshot of version 3 must stay/,
       'a bumped version keeps every older snapshot');
   });
 });

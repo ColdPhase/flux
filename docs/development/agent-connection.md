@@ -9,7 +9,7 @@ establish the new capabilities; do not copy #68 helper cardinality into MCP.
 
 This is the implementation contract for the accepted [O-005 path](../product/first-agent-path.md).
 The owner operates an official Claude Code client and its compute account. Flux owns
-OAuth consent, narrow MCP tools, current project policy and sourced proposals. No
+OAuth consent, narrow MCP tools and sourced proposals. No
 provider credential or model request passes through Flux.
 
 **Accepted F-024 baseline (#274), superseded in part on 2026-10-07:**
@@ -36,8 +36,8 @@ replay intersects current rights/grants, original signed OAuth scope/place
 consent and live settings. Off applies after its commit at the next check; held
 races must serialize around authorization/effect/delivery. Already committed
 history and bytes handed to transport cannot be retracted. On cannot resurrect
-revoked/expired/used-up authority. New actual bounded grants retain owner plus
-project.manage routes; no invisible grant or unsupported invoke/admin/private/DM
+revoked/expired/used-up authority. New actual bounded grants need the owner's
+current `project.write`; no invisible grant or unsupported invoke/admin/private/DM
 permission is created. Larger original consent needs ordinary explicit OAuth
 consent and a suitable token; refresh cannot widen the old scope.
 
@@ -65,7 +65,8 @@ The person creates a selection through `POST /api/v1/agent-connections`, lists
 their selections through `GET /api/v1/agent-connections`, and revokes one through
 `DELETE /api/v1/agent-connections/:id`. A selection names 1–50 distinct projects
 and one or both supported scopes. Creation checks that the person owns the agent
-and that its current explicit project grants permit the selected action. The
+and that the person's own current access permits the selected action (an agent has exactly
+its owner's rights, F-036 AG-3). The
 server stores an immutable connection ID, owner, agent, project set and scopes;
 it never stores a model credential. Revocation is immediate for new tool calls.
 The proposal commit rechecks that connection and its selected project under the
@@ -120,7 +121,7 @@ The browser setup presents personal-agent creation before client commands and
 reveals project selection after a personal agent exists. The
 consent review names the selected projects prominently, lists the requested
 actions once, and says whether those project actions match or narrow the saved
-selection. It explains that approval cannot add projects or agent grants. Any
+selection. It explains that approval adds no rights. Any
 extra OAuth permission, such as renewal access, remains visible in the requested
 permission list.
 
@@ -133,7 +134,7 @@ issuer, audience and expiry against its local JWKS, then reloads the selected
 connection and current grants before exposing tools and on every tool call.
 Revoking the Flux connection immediately denies subsequent tools, even while
 an access token has not yet expired. Bearer credentials never grant the user's
-broader human authority. DMs are outside this first agent grant model.
+broader human authority. DMs stay outside what an agent can reach.
 The provider cannot revoke one JWT access token independently through its OAuth
 revoke endpoint; use the Flux connection revoke action to stop access immediately.
 
@@ -192,9 +193,8 @@ private draft is never pulled in through a material's provenance.
 `flux_create_proposal` accepts a project material ID, expected current revision,
 one UUID retry key, and three separate fields: observed fact, interpretation,
 and suggested next action. The proposal keeps the project audience, source
-material ID/revision, agent ID, owner ID, immutable agent grant ID/role and the
-non-secret compute source (`user_operated_claude_code`). Grant provenance is a
-snapshot, not a grant that remains valid after revocation. It remains pending
+material ID/revision, agent ID, owner ID and the non-secret compute source
+(`user_operated_claude_code`). It remains pending
 human review; it cannot publish a material, accept a decision, assign work or
 change access. Its source must still be the current revision at commit. The same
 agent/key/payload returns the same proposal after a lost response; a changed
@@ -212,7 +212,7 @@ The human review API returns a bounded newest-first page (`limit` 1–100, defau
 
 Mutation authorization, source revision validation and insertion happen in one
 transaction with the project/grant rows locked. A later revocation hides the
-proposal through current project policy. Any published material derived from a
+proposal through the current access policy. Any published material derived from a
 proposal remains a separate human action.
 
 ## Standing grants and the owner's controls (#152)
@@ -225,7 +225,7 @@ manager) gets the same `404` as for a missing connection or grant:
 
 | Route | Rule |
 | --- | --- |
-| `POST /api/v1/agent-connections/:id/action-grants` | Create. Needs the connection's `flux.action.execute` scope, a selected project, the owner's current project management (or, amendment #763 FT-2 accepted 2026-11-01 in [access policy](access-policy.md#agent-access-requests-763-ft-1-2026-10-31): the owner's project write access plus the agent's own manager-given `contributor` grant), a class the operation has, 1–1000 uses and an end within 30 days. A durable `clientCommandId` makes retries idempotent |
+| `POST /api/v1/agent-connections/:id/action-grants` | Create. Needs the connection's `flux.action.execute` scope, a selected project, the owner's current `project.write` (F-036 AG-3; see [access policy](access-policy.md#agents-have-their-owners-rights-f-036-ag-3-855)), a class the operation has, 1–1000 uses and an end within 30 days. A durable `clientCommandId` makes retries idempotent |
 | `GET …/action-grants` | The owner's grant history, newest first, 50 per page, with no project or object titles |
 | `PATCH …/action-grants/:grantId` | Narrow (below) |
 | `DELETE …/action-grants/:grantId` | Revoke now; the generation is bumped |
@@ -249,7 +249,7 @@ re-granted. `PATCH /api/v1/agent-connections/:id/action-grants/:grantId` takes
   `400 GRANT_NOT_NARROWER`, as is a wider value; the route refuses those fields
   before AJV could strip them. A revoked or expired grant is `404 GRANT_NOT_FOUND`.
 - Like revocation, narrowing only removes authority, so it needs the owner but
-  not current project management.
+  not current write access.
 - Values are absolute, so a retried request is idempotent; there is no command ID.
 - The generation is **not** bumped. A receipt replay requires the grant's
   generation to match, so bumping it would turn every replay of an earlier
@@ -540,9 +540,7 @@ the MCP server registers, and every registered tool is declared by at least one
 module; `mcp-playbook.test.ts` pins both directions against `tools/list` and the
 bootstrap catalog. Where a provider does not exist
 yet (coordination, verified repository context), the text tells the agent to treat
-that step as unavailable rather than simulate it. Since 1.1.0 the orient/plan module
-tells the agent to read the approved project policy (below) before planning. Since
-1.2.0 every registered tool is declared by a module: orient/plan lists the wiki,
+that step as unavailable rather than simulate it. Since 1.2.0 every registered tool is declared by a module: orient/plan lists the wiki,
 conversation, map and result reads, and execute/checkpoint the doc, conversation and
 map writes with the standing-grant operation each needs. Since 1.3.0 (2026-10-06,
 #153) the execute/checkpoint module takes a task with `flux_create_unit`, then
@@ -595,53 +593,6 @@ the coordination and repository providers are missing. Still required:
 
 - #153 coordination;
 - tested Codex and Claude activation with pinned versions.
-
-## Approved project policy (#160, CW-1)
-
-A project manager publishes the policy that connected agents work under: four bounded plain-text
-fields (scope, priorities, review criteria, allowed work; each at most 4,000 characters, at least
-one non-empty). It narrows what an agent takes on inside its owner's grants and never grants
-anything; only this publish writes it, never message, PR, wiki or tool text.
-
-- `GET /api/v1/projects/:projectId/agent-policy` returns `{ policy }` (null before the first
-  publish) to anyone who can read the project.
-- `PUT …/agent-policy` `{ scope, priorities, reviewCriteria, allowedWork, expectedRevision }`
-  publishes the next revision from the one the manager saw (`0` for none): `project.manage`, a
-  person only (`POLICY_NEEDS_PERSON`), `409 VERSION_CONFLICT` with `currentVersion` on a stale
-  revision, `Idempotency-Key` accepted. Every revision is kept unchanged (migration 0044,
-  `agent_project_policies`), and `project.agent_policy_published.v1` carries only the revision.
-- Bootstrap's `trusted.approvedPolicy` names the newest revision with its `sha256:` digest and
-  `retrievalReference` `flux://policy/<projectId>/<revision>`, and drops
-  `approved_policy_unavailable` from `gaps`. That MCP resource returns any stored revision as
-  Markdown through the connection's current project read access, so a resumed agent can compare.
-  A connection reads only projects it selected and can still read; it lists no policies.
-- The narrowing is guidance the agent follows, not a server rule: every command is still decided by
-  the owner's grants and current project access alone, whatever the policy says. Policy text is
-  counted in characters (code points); the publisher's name in the resource is quoted as data.
-- **Editor (T160-b).** The project's Agents view shows the policy as one folded line (revision,
-  publisher, time) under the connections (`app/apps/web/src/agents/ProjectPolicy.tsx`).
-  - In every state, one line says what the policy is, who writes it and whether the reader needs
-    to act. Readers are told that only the named managers write it and that they need to do
-    nothing; managers are told it is optional and why they might write one.
-  - Project managers (workspace owners and admins) write or edit the four parts and publish the next
-    revision from the one they loaded, with one `Idempotency-Key` per attempt. The editor checks
-    the server's rules first (no part over 4,000 characters, at least one part written) and names
-    the part at fault.
-  - A `409 VERSION_CONFLICT` keeps the manager's text. A short line says who published which
-    revision, and the other revision's text appears under each field it changed, with "Use their
-    …". Publishing again replaces that revision knowingly.
-  - A publish whose answer is lost may have been saved, so the editor says only "Flux couldn't
-    confirm the publish". It then asks again. A newer revision that this person's own unconfirmed
-    publish made is recognised as theirs, never shown as someone else's: the edit ends, or carries
-    on from that revision if the text changed since.
-  - Everyone else who can read the project sees the parts read-only. The view refetches on
-    `project.agent_policy_published.v1`, so an open view, and an open editor, see a new revision.
-  - User text avoids internal words such as grants, checkpoints or bootstrap.
-  - On touch screens it follows the [Apple HIG checklist](../design/apple-hig-mobile.md): 16 px
-    fields, 44 px targets, press states, and no text under 11 px.
-  - It uses the existing API; nothing was added to it. Tests: `agent-policy.test.ts` (a publish
-    reaches the same session's next bootstrap; refusals and invalid policies change nothing; a
-    conflict carries the newer policy) and `tests/ui/test_project_policy.py` (1440, 390 and 320 px).
 
 ## Real-client onboarding (#160 AC-2, 2026-10-09)
 

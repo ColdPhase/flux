@@ -29,14 +29,16 @@ export function registerAgentWorkActions(tools: AgentToolRegistry, db: Database,
     inputSchema: z.strictObject({ ...execution(['execute', 'plan']), task: z.strictObject({
       title: text(WORK_LIMITS.title), outcome: z.string().max(WORK_LIMITS.outcome).optional(),
       status: z.enum(WORK_STATUSES).optional(), blocker: z.string().max(WORK_LIMITS.blocker).optional(),
+      ownerUserId: z.string().min(1).max(200).describe('Optional: the person responsible, by user id. A task for anyone but your owner waits for your owner\'s OK.').optional(),
       waitingForUserId: waitingForUserId.optional(),
       criteria: criteria.optional(), dependencyIds: dependencyIds.optional(),
       planIntent: z.strictObject({ materialId: id, version, intentKey: text(WORK_LIMITS.intentKey) }).optional(),
     }) }),
     annotations,
-  }, async ({ task: { waitingForUserId: waiting, ...task }, ...input }) => {
+  }, async ({ task: { waitingForUserId: waiting, ownerUserId, ...task }, ...input }) => {
     try {
-      const created: CreateWorkCommand = { ...task, ...(waiting ? { waitingFor: { kind: 'human', id: waiting } } : {}), ...materialSources(input) };
+      const created: CreateWorkCommand = { ...task, ...(ownerUserId ? { owner: { kind: 'human', id: ownerUserId } } : {}),
+        ...(waiting ? { waitingFor: { kind: 'human', id: waiting } } : {}), ...materialSources(input) };
       return toolResult(await execute(input, 'work.create', null, created as unknown as AgentJsonValue, async ({ work: native, agent }) => {
         const work = await native.createWork(agent, input.projectId, created);
         return { value: { workId: work.id, number: work.number, version: work.version }, postconditions: [{ kind: 'work', id: work.id, version: work.version }] };

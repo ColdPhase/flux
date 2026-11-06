@@ -108,8 +108,7 @@ export async function assistantReactionTick(deps: { uow: AssistantReactionUnitOf
       const agent = enabled.agents.find((item) => item.workspaceId === rule.workspaceId);
       if (!agent || !await ports.access.canUseProject({ kind: 'human', id: rule.ownerUserId }, 'read', rule.projectId, { lock: true })
         || !await ports.access.canUseProject({ kind: 'agent', id: agent.agentId }, 'read', rule.projectId, { lock: true })) { await end('Skipped: this project is no longer available'); return true; }
-      const areas = await ports.runs.assistantAreas?.(rule.ownerUserId, rule.workspaceId);
-      if (!areas || (rule.event === 'mentioned' ? areas.conversations : areas.tasks) === 'off') { await end('Skipped: this area is off'); return true; }
+      if (!await ports.runs.assistantMayDo?.(rule.ownerUserId, rule.workspaceId)) { await end('Skipped: your assistant is off'); return true; }
       if (await ports.reactions.running(rule.id)) { await end('Skipped: the last run is still working'); return true; }
       if (await ports.reactions.debounced(rule.ownerUserId, event.objectId, new Date(now.getTime() - 30 * 60_000))) { await end('Skipped: already checked in the last 30 minutes'); return true; }
       const limit = await ports.jobs.backgroundLimit(rule.ownerUserId, rule.workspaceId);
@@ -135,12 +134,11 @@ export async function assistantReactionTick(deps: { uow: AssistantReactionUnitOf
     const rule = await ports.reactions.find(event.reactionId, true);
     if (!rule) return;
     const ok = run.status === 'completed' || run.status === 'truncated';
-    // No delivery after access/owner/switch revocation. Output remains private in Recent.
-    const areas = await ports.runs.assistantAreas?.(rule.ownerUserId, rule.workspaceId);
+    // No delivery after access or owner revocation. Output remains private.
+    const assistant = await ports.runs.assistantMayDo?.(rule.ownerUserId, rule.workspaceId);
     const visible = await ports.access.canUseProject({ kind: 'human', id: rule.ownerUserId }, 'read', rule.projectId);
-    if (ok && rule.enabled && event.reactionVersion === rule.version && visible && areas && (rule.event === 'mentioned' ? areas.conversations : areas.tasks) !== 'off' && await ports.reactions.facts(event, rule)) {
+    if (ok && rule.enabled && event.reactionVersion === rule.version && visible && assistant && await ports.reactions.facts(event, rule)) {
       await ports.reactions.deliver(event, rule, redactSecrets(run.answerBody ?? '').text);
-      await ports.jobs.promoteWaiting(run.id, now);
     }
     await ports.reactions.updateEvent(event.id, { state: ok ? 'done' : 'failed', line: ok ? 'Done' : run.endReason === 'plan_limit' ? 'Paused: plan limit' : 'Could not finish. Open Recent to try again.', finishedAt: now });
   });

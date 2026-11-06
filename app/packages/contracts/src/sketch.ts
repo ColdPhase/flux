@@ -286,9 +286,8 @@ export interface LinkLabelConflict {
 /** Where a promotion copies the sketch: a new restricted project, or an existing project the caller can change. */
 export type PromotionTarget = { kind: 'new'; name: string } | { kind: 'existing'; projectId: string };
 
-/** One person (or agent) who could open the copy, and why. */
+/** One person who could open the copy, and why. Agents are not listed: an agent reads with exactly its owner's rights (F-036 AG-1, AG-3). */
 export interface PromotionPerson {
-  kind: 'human' | 'agent';
   id: string;
   name: string;
   /** `participant`: in the DM and given access; `manager`: a workspace owner or admin; `project`: already in the project. */

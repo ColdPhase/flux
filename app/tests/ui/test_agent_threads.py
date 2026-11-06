@@ -98,7 +98,6 @@ class AgentThreadJourney(unittest.TestCase):
         for person, role in ((MAREK, "contributor"), (VERA, "viewer")):
             self.api(hubert, "POST", f"/api/v1/projects/{pid}/grants", {"principal": {"kind": "human", "id": person["id"]}, "role": role}, status=201)
         agent = self.api(hubert, "POST", f"/api/v1/workspaces/{ws['id']}/agents", {"name": "Codex", "owner": "self"}, status=201)
-        self.api(hubert, "POST", f"/api/v1/projects/{pid}/grants", {"principal": {"kind": "agent", "id": agent["id"]}, "role": "contributor"}, status=201)
         self.api(hubert, "POST", "/api/v1/agent-connections", {"agentId": agent["id"], "selectedProjectIds": [pid],
                  "scopes": ["flux.context.read", "flux.proposal.write"], "name": "Desk laptop", "clientDesignation": "codex"}, status=201)
         task = self.api(hubert, "POST", f"/api/v1/projects/{pid}/work", {"title": TASK, "status": "in_progress", "owner": {"kind": "agent", "id": agent["id"]}}, status=201)

@@ -32,8 +32,6 @@ async function world() {
   const connect = async (who: Person, name: string, sender: boolean) => {
     const agent = expectStatus(await who.browser.request('POST', `/api/v1/workspaces/${ws.id}/agents`,
       { body: { name, owner: 'self' } }), 201) as Agent;
-    expectStatus(await hubert.browser.request('POST', `/api/v1/projects/${p.id}/grants`,
-      { body: { principal: { kind: 'agent', id: agent.id }, role: 'contributor' } }), 201);
     const connection = expectStatus(await who.browser.request('POST', '/api/v1/agent-connections',
       { body: { agentId: agent.id, selectedProjectIds: [p.id], scopes: ['flux.context.read', 'flux.action.execute'] } }), 201) as AgentConnection;
     if (!sender) return { who, connection, claims: null, runtimeId: null };

@@ -951,7 +951,6 @@ class ScenarioJourney:
         s, lamp = self.s, self.s["lamp"]
         # Ada's own external agent, selected for the lamp project only, connected through real OAuth consent.
         agent = self.api("ada", "POST", f"/api/v1/workspaces/{s['workspace']}/agents", {"name": "Ada's Claude Code", "owner": "self"}, status=201)
-        self.api("ada", "POST", f"/api/v1/projects/{lamp}/grants", {"principal": {"kind": "agent", "id": agent["id"]}, "role": "contributor"}, status=201)
         connection = self.api("ada", "POST", "/api/v1/agent-connections", {"agentId": agent["id"], "name": "Desk laptop", "clientDesignation": "claude_code",
                                                                             "selectedProjectIds": [lamp], "scopes": ACTION_SCOPES}, status=201)
         mcp = McpAgent(self, "ada", connection["id"], lamp)

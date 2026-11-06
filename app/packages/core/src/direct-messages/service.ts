@@ -186,7 +186,7 @@ async function taskCopyPreview(ports: DmPorts, principal: Principal, dm: DmRecor
   const { people, projectName } = await ports.taskCopy.audience(principal, dm.workspaceId, wanted);
   const token = createHash('sha256').update(JSON.stringify({
     by: principal.id, dm: dm.id, message: message.id, body: createHash('sha256').update(message.body).digest('hex'), excerpt, project: wanted,
-    readers: people.map((p) => `${p.kind}:${p.id}`).sort(),
+    readers: people.map((p) => p.id).sort(),
   })).digest('base64url');
   return { messageId, excerpt, project: { id: wanted, name: projectName }, projects, audience: people, token };
 }

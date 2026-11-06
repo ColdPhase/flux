@@ -30,7 +30,6 @@ import { useProjectQuestions, useQuestionList } from './questions';
 import { useLatestAgentLine } from './latest';
 import { useSpareHeight } from '../ui/spareHeight';
 import { agentAuthorOwner, useAgentOwners } from './owners';
-import { ProjectPolicy } from './ProjectPolicy';
 import { WORK_ROLE, agentEntries, connectionState, currentWorkLine, firstName, isAgentWorking, mayDo, shortOwner, tasksHeldBy, teammateOf, type AgentEntry } from './roster';
 import { useSessionClock } from './useSessionClock';
 import { holdsLine, pausedLine } from './status';
@@ -46,7 +45,7 @@ import { RefLink, useOriginPanelBack } from '../place/origin';
 const TASK_DRAG = 'application/x-flux-task';
 
 /**
- * Agents (F-026 P9): one list, each agent with its owner and what it is doing now, then Requests, Policy and
+ * Agents (F-026 P9): one list, each agent with its owner and what it is doing now, then Requests and
  * "Connect your own agent", and one primary button, "Hand off a task". A view of the project's existing work,
  * not a second backlog or chat: each person's connections are separate entries, so Hubert's Codex and Hubert's
  * Claude Code are two rows. A task's thread (`?task=`) is its one canonical discussion.
@@ -911,14 +910,10 @@ function ProjectAgentsLoaded({ data }: { data: ProjectAgentsData }) {
             <Icon name="chevron-right" size={14} />
           </RefLink></li> : null}
           <li><button type="button" className="agents-link" aria-expanded={policyOpen} aria-controls="agents-policy" onClick={() => setPolicyOpen((value) => !value)}>
-            <span className="agents-link__icon"><Icon name="rule" size={16} /></span><span className="agents-link__text"><b>Project policy</b> · Agents read and propose; people accept. Assistants also edit for their owner, with Undo.</span><span className="agents-link__go">{policyOpen ? 'Hide' : shell?.project.access === 'manager' ? 'Edit' : 'Read'}<Icon name="chevron-right" size={14} /></span></button></li>
+            <span className="agents-link__icon"><Icon name="rule" size={16} /></span><span className="agents-link__text"><b>Review rule</b> · Who checks an agent's work in this project.</span><span className="agents-link__go">{policyOpen ? 'Hide' : shell?.project.access === 'manager' ? 'Edit' : 'Read'}<Icon name="chevron-right" size={14} /></span></button></li>
         </ul>
         {policyOpen ? (
           <div id="agents-policy">
-            <AiSurface workspaceId={shell?.project.workspaceId} id="project-policy">
-              <ProjectPolicy key={projectId} projectId={projectId} meId={me.user.id} canEdit={shell?.project.access === 'manager'}
-                managers={(shell?.people ?? []).filter((person) => person.kind === 'human' && person.access === 'manager').map((person) => person.name)} />
-            </AiSurface>
             <AiSurface workspaceId={shell?.project.workspaceId} id="review-rule">
               <ReviewRule key={projectId} projectId={projectId} meId={me.user.id} canEdit={shell?.project.access === 'manager'} />
             </AiSurface>

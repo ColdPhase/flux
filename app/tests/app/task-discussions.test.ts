@@ -188,10 +188,8 @@ async function agentIn(f: Awaited<ReturnType<typeof scene>>) {
   const agent = expectStatus(await f.owner.browser.request('POST', `/api/v1/workspaces/${f.ws.id}/agents`, {
     body: { name: 'Trial analyst', owner: 'self' },
   }), 201) as { id: string; name: string };
-  const grant = expectStatus(await f.owner.browser.request('POST', `/api/v1/projects/${f.place.id}/grants`, {
-    body: { principal: { kind: 'agent', id: agent.id }, role: 'contributor' },
-  }), 201) as { id: string };
-  return { agent, grant, principal: { kind: 'agent' as const, id: agent.id } };
+  // The agent has exactly its owner's rights here (F-036 AG-3): no grant of its own.
+  return { agent, principal: { kind: 'agent' as const, id: agent.id } };
 }
 
 test('a genuine agent creates the canonical root; human and agent command identities remain distinct', async () => {
@@ -242,9 +240,6 @@ test('simultaneous first human/two-agent sends keep one root and kind-scoped rec
   await pool.query('INSERT INTO agents(id,workspace_id,name,owner_user_id,created_by) VALUES($1,$2,$3,$4,$4)',
     [f.writer.id, f.ws.id, 'root-writer', f.owner.id]);
   const collision = { kind: 'agent' as const, id: f.writer.id };
-  expectStatus(await f.owner.browser.request('POST', `/api/v1/projects/${f.place.id}/grants`, {
-    body: { principal: collision, role: 'contributor' },
-  }), 201);
   const clientMessageId = randomUUID();
   const humanCommand = { body: 'A human first contribution.', clientMessageId };
   const agentCommand = { body: 'A distinct agent first contribution.', clientMessageId };
@@ -315,9 +310,9 @@ test('real agent history reaches bounded helper context, search, export, notific
   assert.equal(JSON.stringify(back).includes(f.owner.id), false, 'agent owner is not fabricated as the author');
 });
 
-test('agent first-send rollback is atomic; current grant revocation blocks retries while genuine history stays readable', async () => {
+test('agent first-send rollback is atomic; revoking the agent blocks retries while genuine history stays readable', async () => {
   const f = await scene();
-  const { agent, principal, grant: access } = await agentIn(f);
+  const { agent, principal } = await agentIn(f);
   const before = await f.counts();
   const command = { body: 'Actual agent contribution.', clientMessageId: randomUUID() };
   const unit = taskDiscussionUnitOfWork(db);
@@ -334,16 +329,16 @@ test('agent first-send rollback is atomic; current grant revocation blocks retri
   }), 201) as { id: string };
   await assert.rejects(pool.query('UPDATE project_messages SET author_agent_id=$2 WHERE id=$1', [root.id, foreign.id]), /foreign key constraint/);
   await assert.rejects(pool.query('UPDATE project_messages SET author_id=$2 WHERE id=$1', [root.id, f.owner.id]), /check constraint/);
-  expectStatus(await f.owner.browser.request('DELETE', `/api/v1/projects/${f.place.id}/grants/${access.id}`), 204);
+  expectStatus(await f.owner.browser.request('DELETE', `/api/v1/agents/${agent.id}`), 200);
   await assert.rejects(taskDiscussionUseCases(db).contribute(principal, f.task.id, command), NotFoundError);
   await assert.rejects(taskDiscussionUseCases(db).contribute(principal, f.task.id,
     { ...command, clientMessageId: randomUUID() }), NotFoundError);
   assert.deepEqual((await f.read()).root, { ...root, author: { ...root.author!, projectOwner: { kind: 'human', id: f.owner.id } } },
-    'grant revocation preserves actual authorship and currently visible owner display');
+    'revocation preserves actual authorship and currently visible owner display');
   assert.deepEqual((await pool.query('SELECT * FROM project_messages WHERE id=$1', [root.id])).rows[0], old);
   await assert.rejects(pool.query('DELETE FROM agents WHERE id=$1', [agent.id]), /foreign key constraint/,
     'recorded authors cannot be deleted out of genuine history');
-  assert.deepEqual(await f.counts(), { bindings: 1, messages: 1, conversations: 1, events: before.events + 2 });
+  assert.deepEqual(await f.counts(), { bindings: 1, messages: 1, conversations: 1, events: before.events + 1 });
 });
 
 test('co-work composition rolls back actual agent contribution before and after its final event flush', async () => {

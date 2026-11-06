@@ -10,8 +10,6 @@ test('host binding narrows the bearer before discovery, reads, bootstrap and com
   const f = await actionScene(pool);
   const other = expect(await f.owner.request('POST', `/api/v1/workspaces/${f.workspaceId}/projects`,
     { body: { name: 'Other selected project', visibility: 'restricted' } }), 201);
-  const otherGrant = expect(await f.owner.request('POST', `/api/v1/projects/${other.id}/grants`,
-    { body: { principal: { kind: 'agent', id: f.agentId }, role: 'contributor' } }), 201);
   const connection = await agentConnection(pool, f.owner, f.agentId, [f.projectId, String(other.id)]);
   const query = (connectionId: string, projectId: string) => new URLSearchParams({ flux_connection: connectionId, flux_project: projectId }).toString();
   const call = (q: string, method: string, params: Record<string, unknown> = {}) => mcp(connection.accessToken, 1, method, params, { query: q });
@@ -38,7 +36,7 @@ test('host binding narrows the bearer before discovery, reads, bootstrap and com
   expect(await f.owner.request('PATCH', path, { body: { enabledCapabilityIds: policy.enabledCapabilityIds,
     enabledEntryIds: policy.enabledEntryIds, selectedProjectIds: [String(other.id)] }, headers: { 'if-match': `"mcp-policy-${policy.version}"` } }), 200);
   assert.equal((await call(own, 'resources/list')).status, 403, 'changed selection also ends discovery on Resume');
-  // Re-granting a selection cannot substitute for the project ACL: revoked access refuses even resource bytes.
-  expect(await f.owner.request('DELETE', `/api/v1/projects/${other.id}/grants/${otherGrant.id}`), 204);
+  // A selection cannot substitute for the agent itself: a revoked agent is refused even resource bytes.
+  expect(await f.owner.request('DELETE', `/api/v1/agents/${f.agentId}`), 200);
   assert.equal((await call(another, 'resources/list')).status, 403);
 });

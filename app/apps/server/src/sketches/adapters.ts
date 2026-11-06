@@ -65,7 +65,10 @@ const isManager = (role: string) => role === 'owner' || role === 'admin';
 /**
  * Promotion of a DM sketch (#96) through the core project use cases, so every check, grant and
  * event is theirs: `project.create` for a new project, `project.write` for an existing one, and
- * the project's people from `listProjectPeople` (the access policy per person).
+ * the project's people from `listProjectPeople` (the access policy per person). The audience is people
+ * only. An agent is no reader of its own: it is not a member of a space and reads with exactly its owner's
+ * rights (F-036 AG-1, AG-3), so naming the owner covers it. Another person's assistant is also private (#522),
+ * so a list of agents could never be whole.
  */
 export function sketchPromotion(tx: Database): SketchPromotion {
   return {
@@ -87,14 +90,14 @@ export function sketchPromotion(tx: Database): SketchPromotion {
         if (project.workspaceId !== workspaceId) throw new RuleViolationError('The space belongs to another company', 'CROSS_WORKSPACE');
         if (project.access === 'viewer') throw new ForbiddenError('Not allowed to perform this action on the space');
         const people = await listProjectPeople(principal, project.id, tx, accessPorts);
-        return { people: people.map((p): PromotionPerson => ({ kind: p.kind, id: p.id, name: p.name, reason: 'project' })), projectName: project.name };
+        return { people: people.filter((p) => p.kind === 'human').map((p): PromotionPerson => ({ id: p.id, name: p.name, reason: 'project' })), projectName: project.name };
       }
       // A new restricted project: read by its grantees (the participants) and by the workspace's
-      // owners and admins, who manage every project. No agent has a grant on it.
+      // owners and admins, who manage every project.
       const inDm = new Set(participants.map((p) => p.id));
       const people = (await listMembers(principal, workspaceId, tx, accessPorts))
         .filter((m) => inDm.has(m.userId) || isManager(m.role))
-        .map((m): PromotionPerson => ({ kind: 'human', id: m.userId, name: m.name, reason: inDm.has(m.userId) ? 'participant' : 'manager' }))
+        .map((m): PromotionPerson => ({ id: m.userId, name: m.name, reason: inDm.has(m.userId) ? 'participant' : 'manager' }))
         .sort((a, b) => Number(a.reason !== 'participant') - Number(b.reason !== 'participant') || a.name.localeCompare(b.name) || a.id.localeCompare(b.id));
       return { people, projectName: null };
     },

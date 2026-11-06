@@ -1,4 +1,4 @@
-import type { AssistantRequestIdentity, NotificationReason, NotificationSourceRef, NotificationSourceType, PushPayload } from '@flux/contracts';
+import type { NotificationReason, NotificationSourceRef, NotificationSourceType, PushPayload } from '@flux/contracts';
 
 /**
  * Ports of the notification and Web Push use cases (issues #41, #46). Core defines what it
@@ -42,8 +42,6 @@ export interface NotificationRecord {
   deliveryKind?: 'ordinary' | 'morning_summary';
   /** Every counted source, including repeated sources for distinct inbox items. */
   summarySources?: readonly NotificationSourceRef[] | null;
-  /** Request-time public identity, present only for assistant join questions with a saved snapshot. */
-  assistantRequestIdentity?: AssistantRequestIdentity | null;
 }
 
 /** `aiOrigin` (F-029) is required of every writer: whether the notification came from AI work, by its actor or source. */

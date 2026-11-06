@@ -14,13 +14,11 @@ async function connected() {
   const workspace = expect(await owner.request('POST', '/api/v1/workspaces', { body: { name: 'Switch tests' } }), 201);
   const agent = expect(await owner.request('POST', `/api/v1/workspaces/${workspace.id}/agents`,
     { body: { name: 'Owned external agent', owner: 'self' } }), 201);
-  const projects: string[] = []; const grants: string[] = [];
+  const projects: string[] = [];
   for (const name of ['Allowed project', 'Excluded project']) {
     const project = expect(await owner.request('POST', `/api/v1/workspaces/${workspace.id}/projects`,
       { body: { name, visibility: 'restricted' } }), 201);
-    const access = expect(await owner.request('POST', `/api/v1/projects/${project.id}/grants`,
-      { body: { principal: { kind: 'agent', id: agent.id }, role: 'contributor' } }), 201);
-    projects.push(String(project.id)); grants.push(String(access.id));
+    projects.push(String(project.id));
   }
   const projectId = projects[0]!;
   const doc = expect(await owner.request('POST', `/api/v1/projects/${projectId}/docs`,
@@ -56,7 +54,7 @@ async function connected() {
   let id = 100;
   const call = (method: string, params: Record<string, unknown>) => mcp(token, id++, method, params);
   const tool = (name: string, args: Record<string, unknown> = {}) => call('tools/call', { name, arguments: args });
-  return { owner, workspaceId: String(workspace.id), agentId: String(agent.id), projects, grants, projectId,
+  return { owner, workspaceId: String(workspace.id), agentId: String(agent.id), projects, projectId,
     doc, material, work, initial, connection, connectionId, token, get, save, input, call, tool };
 }
 
@@ -107,24 +105,16 @@ test('playbook resources and Start/Resume cannot bypass their shared switch, and
   for (const name of ['start_work', 'resume_work']) unavailable(await f.call('prompts/get', { name, arguments: { projectId: f.projectId } }));
   unavailable(await f.tool('flux_acknowledge_playbook', { clientSessionId: randomUUID(), bundleId: 'flux.cowork', version: '1.0.0', digest: 'unused' }));
   unavailable(await f.tool('flux_bootstrap', { projectId: f.projectId, clientSessionId: randomUUID() }));
-  expect(await f.owner.request('PUT', `/api/v1/projects/${f.projectId}/agent-policy`,
-    { body: { scope: 'Project policy secret', priorities: 'Observe', reviewCriteria: 'Evidence', allowedWork: 'Read', expectedRevision: 0 } }), 201);
-  const policyUri = `flux://policy/${f.projectId}/1`;
+  // The project agent policy is gone (F-036, #855): no policy resource is listed or read.
   await f.save(f.input(f.initial));
-  const current = await f.call('resources/read', { uri: policyUri });
-  assert.ok(JSON.stringify(current.message).includes('Project policy secret'));
-  const noPolicy = f.input(f.initial); noPolicy.enabledCapabilityIds = noPolicy.enabledCapabilityIds.filter((id) => id !== 'project.policy.read');
-  await f.save(noPolicy);
-  const denied = await f.call('resources/read', { uri: policyUri }); unavailable(denied);
-  assert.ok(!JSON.stringify(denied.message).includes('Project policy secret'));
+  unavailable(await f.call('resources/read', { uri: `flux://policy/${f.projectId}/1` }));
 });
 
-test('all Off stays manageable and an excluded inaccessible original project cannot poison a readable subset', async () => {
+test('all Off stays manageable and an excluded original project cannot poison a readable subset', async () => {
   const f = await connected();
   await f.save({ enabledCapabilityIds: [], enabledEntryIds: [], selectedProjectIds: [] });
   unavailable(await f.tool('flux_list_contexts'));
   assert.deepEqual((await f.get()).selectedProjectIds, []);
-  expect(await f.owner.request('DELETE', `/api/v1/projects/${f.projects[1]}/grants/${f.grants[1]}`), 204);
   const narrow: SaveAgentMcpPolicy = { enabledCapabilityIds: ['project.identity.read', 'project.work.read'],
     enabledEntryIds: ['tool:flux_list_contexts', 'tool:flux_get_work'], selectedProjectIds: [f.projectId] };
   await f.save(narrow);
@@ -247,10 +237,10 @@ test('two API processes: Off, narrowing and Off-then-On committed on one are enf
   assert.equal(narrowed.status, 403);
   await f.patchOn2(f.input(f.initial));
 
-  // Deleting the agent's project grant on the other API also refuses held bytes.
+  // Revoking the agent on the other API also refuses held bytes (it has no project grant of its own, F-036 AG-3).
   assert.equal(toolValue((await f.tool('flux_get_doc', doc)).message).title, 'Hidden knowledge reference');
   const grant = await f.held('flux_get_doc', doc, async () => {
-    expect(await f.second.request('DELETE', `/api/v1/projects/${f.projectId}/grants/${f.grants[0]}`), 204);
+    expect(await f.second.request('DELETE', `/api/v1/agents/${f.agentId}`), 200);
   });
   assert.equal(grant.status, 403);
   assert.ok(!JSON.stringify(grant.message).includes('Knowledge-secret-78419'));

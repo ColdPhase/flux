@@ -1,5 +1,5 @@
 import type { FastifyError, FastifyInstance } from 'fastify';
-import { AGENT_OPERATIONS, AGENT_PEER_REQUEST_CLASSES, type CreateAgentConnectionCommand, type CreateAgentStandingGrantCommand, type NarrowAgentStandingGrantCommand, type PageQuery } from '@flux/contracts';
+import { AGENT_MAY_DO, AGENT_OPERATIONS, AGENT_PEER_REQUEST_CLASSES, type UpdateAgentConnectionCommand, type CreateAgentConnectionCommand, type CreateAgentStandingGrantCommand, type NarrowAgentStandingGrantCommand, type PageQuery } from '@flux/contracts';
 import { agentProposalRepository, accessReader, type Database } from '@flux/db';
 import { agentConnectionUseCases, agentOauthUseCases, agentProposalUseCases, DomainError, enforce, evaluateProject, recordEvent } from '@flux/core';
 import type { SessionResolver } from '../identity/index.js';
@@ -74,6 +74,10 @@ export async function agentProposalRoutes(app: FastifyInstance, { db, sessions, 
     } } },
   }, async (request) => actionGrants.narrow((await sessions.requirePrincipal(request)).principal,
     request.params.connectionId, request.params.grantId, request.body));
+  // "What it may do" (F-036 AG-3): a browser session of the owner only; no bearer, run token or MCP client reaches it.
+  app.patch<{ Params: { connectionId: string }; Body: UpdateAgentConnectionCommand }>('/api/v1/agent-connections/:connectionId', {
+    schema: { body: { type: 'object', required: ['mayDo'], additionalProperties: false, properties: { mayDo: { type: 'string', enum: [...AGENT_MAY_DO] } } } },
+  }, async (request) => connections.update((await sessions.requirePrincipal(request)).principal, request.params.connectionId, request.body));
   app.delete<{ Params: { connectionId: string } }>('/api/v1/agent-connections/:connectionId', async (request, reply) => {
     await connections.revoke((await sessions.requirePrincipal(request)).principal, request.params.connectionId);
     return reply.code(204).send();

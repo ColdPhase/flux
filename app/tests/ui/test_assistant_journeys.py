@@ -1,7 +1,7 @@
 """Browser tests for the assistant journeys (F-027 A7, #407; AST-10.1, 10.6, 10.7, 10.9, 10.15).
 
 Same stubbed-engine approach as test_assistant_screen: this proves the words, the order and the flow at both widths;
-tests/app/assistant-changes.test.ts proves the Recent endpoint and Undo against the real store.
+tests/app/assistant-what-it-may-do.test.ts proves Undo against the real store.
 """
 
 from __future__ import annotations
@@ -55,7 +55,7 @@ class AssistantJourneys(unittest.TestCase):
     def change(self, **changes) -> dict:
         row = {"id": str(uuid.uuid4()), "runId": str(uuid.uuid4()), "projectId": self.ids["project"], "conversationId": self.ids["conversation"], "operation": "work.update",
                "objectType": "work", "objectId": str(uuid.uuid4()), "objectTitle": "#3 Calibrate the probes", "state": "applied", "waitReason": None, "phrase": "renamed task",
-               "verb": "Apply", "line": None, "suggestTo": None, "sent": False, "decidedBy": None, "runState": "done", "before": "Probes", "after": "Calibrate the probes",
+               "verb": "Apply", "line": None, "forPerson": None, "done": "renamed task #3 Calibrate the probes", "decidedBy": None, "owner": {"id": "ada", "name": "Ada"}, "runState": "done", "before": "Probes", "after": "Calibrate the probes",
                "undoable": True, "version": 1, "createdAt": datetime.now(timezone.utc).isoformat()}
         row.update(changes)
         return row
@@ -98,8 +98,8 @@ class AssistantJourneys(unittest.TestCase):
                 card = page.get_by_role("region", name="Your assistant is ready")
                 expect(card).to_be_visible()
                 expect(card).to_contain_text("It can read and edit tasks, the Wiki and maps, reply in conversations and suggest decisions.")
-                expect(card).to_contain_text("It does things and tells you what it did, with Undo. It asks before removing anything or changing things other people made or are responsible for.")
-                expect(card).to_contain_text("It joins the projects you manage. In others, a manager adds it.")
+                expect(card).to_contain_text("It does things and tells you what it did, with Undo. Deleting and other people's things always wait for your OK.")
+                expect(card).to_contain_text("It has your rights: it can open and change only what you can.")
                 expect(card).to_contain_text("Others in the conversation see what you ask it and what it does.")
                 expect(card).to_contain_text("Uses your Claude plan. Flux can't see its limits. What it reads goes to Anthropic under your account's settings.")
                 expect(card.get_by_role("button", name="Turn on", exact=True)).to_be_visible()
@@ -151,47 +151,6 @@ class AssistantJourneys(unittest.TestCase):
                 self.assertEqual(asked[0]["prompt"], "Tidy this project's tasks")
                 self.assertLessEqual(taps, 6, taps)
                 shot(page, f"working-{self.tag(phone)}")
-
-    # ---------------------------------------------------------------- AST-10.7: Recent with Undo
-
-    def test_04_recent_lists_changes_with_undo_and_offline_says_offline(self) -> None:
-        for phone in (False, True):
-            with self.subTest(phone=phone):
-                page = self.page(phone=phone)
-                self.stub_assistant(page)
-                first, second = self.change(), self.change(objectTitle="#9", phrase="added done-when to", before=None, after="drawing received", id=str(uuid.uuid4()))
-                listing = {"items": [first, second]}
-                undone: list[str] = []
-
-                def recent(route: Route) -> None:
-                    self.json(route, listing)
-
-                def undo(route: Route) -> None:
-                    if page.evaluate("!navigator.onLine"):
-                        route.abort("internetdisconnected")
-                        return
-                    undone.append(route.request.url)
-                    row = dict(first, state="undone")
-                    listing["items"] = [row, second]
-                    self.json(route, {"change": row, "message": None})
-                page.route(re.compile(r".*/api/v1/assistant-changes\?limit=\d+$"), recent)
-                page.route(re.compile(r".*/api/v1/assistant-changes/[0-9a-f-]{36}/undo$"), undo)
-                page.goto("/settings/assistant")
-                summary = page.get_by_text("Recent · today: 2 changes")
-                expect(summary).to_be_visible()
-                self.assertIn("›", page.evaluate("getComputedStyle(document.querySelector('.aset-recent > summary'), '::after').content"), "the closed row ends in the drawn ›")
-                summary.click()
-                row = page.locator(".aset-recent__list li").first
-                expect(row).to_contain_text("Done: renamed task #3 Calibrate the probes")
-                shot(page, f"recent-{self.tag(phone)}")
-                page.context.set_offline(True)
-                row.get_by_role("button", name="Undo").click()
-                expect(row.get_by_role("status")).to_have_text("Offline")
-                self.assertEqual(undone, [])
-                page.context.set_offline(False)
-                row.get_by_role("button", name="Undo").click()
-                expect(page.locator(".aset-recent__list li").first).to_contain_text("Undone: renamed task")
-                self.assertEqual(len(undone), 1)
 
     # ---------------------------------------------------------------- AST-10.6 / 10.15
 
@@ -298,13 +257,13 @@ class AssistantJourneys(unittest.TestCase):
         line.get_by_role("link", name="Sign in").click()
         expect(page).to_have_url(re.compile(r"/settings/agents$"))
 
-    def test_09_not_in_the_project_offers_to_add_my_assistant(self) -> None:
+    def test_09_an_owner_who_lost_the_project_is_told_so_and_offered_no_way_round(self) -> None:
         page = self.page()
         self.failed_ask(page, {}, status=409, error={"code": "PERSONAL_RUN_NO_PROJECT_ACCESS", "message": "Your assistant has no access to this project"})
         bar = page.locator("#project-ask")
-        expect(bar).to_contain_text("I'm not in this space yet.")
-        expect(bar.get_by_role("button", name="Add my assistant here")).to_be_visible()
-        shot(page, "j6-not-in-project-1440-light")
+        expect(bar).to_contain_text("You can't open this space any more, so neither can your assistant.")
+        expect(bar.get_by_role("button", name="Add my assistant here")).to_have_count(0)
+        shot(page, "j6-owner-lost-the-project-1440-light")
 
 
 if __name__ == "__main__":

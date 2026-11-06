@@ -6,7 +6,6 @@ import type { Project, ProjectAccess as Access, ProjectGrant, ProjectGrantRole, 
 import { useShellData } from '../app/data';
 import { AgentTag, Avatar, Button, Icon, Kreska, prefersReducedMotion, useRowMotion, Select, Option } from '../ui';
 import { attemptKeys, firstName, grantPerson, isManagerRole, levelFor, listGrants, listMembers, problemText, revokeGrant } from './api';
-import { AgentRequests } from './AgentRequests';
 import './people.css';
 import { useWorkspaceEncryption } from '../encryption/state';
 
@@ -166,9 +165,6 @@ export function ProjectAccess({ project, people, focusToken }: { project: Projec
           })}
         </ul>
       ) : <p>Everyone with access to {project.name}.</p>}
-
-      {/* #763 FT-1: agents whose owners asked to bring them in; managers answer here. */}
-      <AgentRequests project={project} onChanged={changed} />
 
       {/* #763 FT-7: Change people with nobody else here says so and offers Add people, instead of doing nothing. */}
       {manager && managing && roster && !others.length ? (

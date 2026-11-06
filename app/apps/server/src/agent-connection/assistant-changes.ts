@@ -1,8 +1,8 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { AGENT_MCP_ENTRIES, ASSISTANT_CHANGE_LIMITS, assistantChangeWords, assistantWorkChangeArgs, type AgentJsonValue, type AgentOperation, type AgentPostcondition,
   type AgentScope, type AssistantObjectType, type AuthenticatedAgentRuntime } from '@flux/contracts';
-import { assistantChangeRows, assistantRemovalRows, lockAgentMcpPolicy, needsYouRows, sketchRows, type AssistantChangeRow, type DbExecutor, loadActor, accessReader, type Database, type Transaction } from '@flux/db';
-import { changedParagraphs, classifyAssistantChange, DomainError, fieldWords, type UndoRecord, evaluateProject, redactSecrets } from '@flux/core';
+import { agentProjectObjectRows, assistantChangeRows, assistantRemovalRows, lockAgentMcpPolicy, sketchRows, type AssistantChangeRow, type DbExecutor, loadActor, accessReader, type Database, type Transaction } from '@flux/db';
+import { ASSISTANT_REFUSALS, changedParagraphs, classifyAssistantChange, DomainError, fieldWords, type UndoRecord, evaluateProject, redactSecrets } from '@flux/core';
 import { nativeConversationsInEventSession } from '../conversation/store.js';
 import { nativeDocsInEventSession } from '../docs/adapters.js';
 import { nativeMapRoomExists, prepareNativeMap } from '../editing/native-map-journal.js';
@@ -11,16 +11,17 @@ import { nativeWorkInEventSession } from '../work/adapters.js';
 import { transactionEventSession } from '../work/transaction-events.js';
 import type { ActionInput, NativeActions, Produced } from './action-execution.js';
 import { agentConnectionInTransaction, type FluxMcpClaims } from './context.js';
+import { agentOperationTarget } from './grants.js';
 import { createAgentConnectionStore } from './store.js';
 
-// The assistant's effect path (F-027 AST-5/AST-6, A3 #403). An assistant run's change tool reaches the same
-// native commands as a standing-grant client, but its authority is the run itself (`owner_request`): the run
-// is live, the change fits the switches, the mode, the run's limit and the owner's rights ∩ the assistant's
-// project grant. Each call is classified as applied, waiting, suggestion or refused and recorded in the
-// change log in the same transaction. A waiting change keeps its exact prepared tool call; the owner's Apply
-// (`owner_approval`) or the end of a live Wiki session (`owner_deferred_change`) re-executes exactly that
-// call through this executor, with every check repeated and the target's version compared. Neither revives
-// the run's token or calls a model.
+// The agent's effect path (F-036 AG-3, #855; F-027 A3 #403). An assistant run's change tool reaches the same native
+// commands as an external client, but its authority is the run itself (`owner_request`): the run is live and the change is
+// within its owner's current rights, which are exactly the agent's. Its "What it may do" decides the rest: Only read
+// changes nothing, Ask me first waits for everything, and deleting or other people's things always wait. Each call is
+// recorded in the change log in the same transaction, as applied, waiting or refused. A waiting change keeps its exact
+// prepared tool call; only the owner's Approve in their own session (`owner_approval`) re-executes exactly that call
+// through this executor, with every check repeated and the target's version compared. It never revives the run's token
+// or calls a model, and no agent has a tool or token for it.
 
 /** The prepared tool call a waiting change keeps: its tool and its run-private arguments, redacted. */
 export interface AssistantCall {
@@ -33,8 +34,8 @@ export interface AssistantText { assistantText: string }
 export const isAssistantText = (value: unknown): value is AssistantText =>
   !!value && typeof value === 'object' && typeof (value as AssistantText).assistantText === 'string';
 
-/** A server-owned purpose that re-executes one saved change (never a client claim). */
-export interface AssistantApproval { changeId: string; runId: string; purpose: 'owner_approval' | 'owner_deferred_change'; decidedBy: string | null; suggestion?: true }
+/** A server-owned purpose that re-executes one saved change on its owner's Approve (never a client claim or an agent's call). */
+export interface AssistantApproval { changeId: string; runId: string; purpose: 'owner_approval'; decidedBy: string }
 
 const stable = (value: unknown): unknown => Array.isArray(value) ? value.map(stable)
   : value && typeof value === 'object' ? Object.fromEntries(Object.entries(value as Record<string, unknown>).sort(([a], [b]) => a.localeCompare(b)).map(([k, v]) => [k, stable(v)]))
@@ -64,6 +65,7 @@ export function callSummary(call: AssistantCall): AssistantCall {
     .map(([key, value]) => [key, key === 'status' && typeof value === 'string' ? value : true])) } };
 }
 const invalidated = (message: string) => new DomainError(403, 'ASSISTANT_CHANGE_INVALIDATED', message);
+const outsideRunPlace = () => new DomainError(403, 'OUTSIDE_RUN_PLACE', 'An assistant run changes only the project it was asked in');
 export const SKIPPED = 'ASSISTANT_CHANGE_SKIPPED';
 const isVersionConflict = (error: unknown) => error instanceof DomainError && error.status === 409
   && /VERSION_CONFLICT|STALE|CHANGED/.test(error.code) && error.code !== 'IDEMPOTENCY_CONFLICT';
@@ -77,9 +79,11 @@ const OBJECT: Record<string, AssistantObjectType> = {
 
 interface Target {
   objectType: AssistantObjectType; objectId: string | null; title: string; mine: boolean; removal: boolean;
-  /** The other person who made it (a person only), for "Jonas's task" and as a suggestion's recipient. */
+  /** The other person who made it (a person only), for "Jonas's task", or the person a new task is for. */
   maker: string | null;
-  beforeVersion: number | null; typist: { id: string; name: string } | null;
+  /** A task created for another person: a proposal with [Approve] [Edit] [Skip] (F-036 AG-3). */
+  forOther: boolean;
+  beforeVersion: number | null;
   /** The owner's agent a hand-off goes to, in the owner's words ("Codex"). */
   recipient?: string;
   /** What Undo needs, read before the change (A4); null when the change cannot be taken back. */
@@ -126,17 +130,57 @@ async function removalUndo(tx: Transaction, operation: string, value: Record<str
   }
 }
 
+/** The thoughts a change names besides its map: they must be on that map. */
+function namedThoughts(operation: string, payload: Record<string, unknown>): string[] {
+  switch (operation) {
+    case 'map.thought.update': case 'map.thought.delete': return [String(payload.thoughtId)];
+    case 'map.link.create': return [String(payload.fromId), String(payload.toId)];
+    case 'map.positions.update': return ((payload.moves ?? []) as { id: string }[]).map((move) => move.id);
+    default: return [];
+  }
+}
+
+/**
+ * Whether every object a change names is in the run's place, on every change kind. This is the same boundary as a read's
+ * `requireObject`, and it comes before anything about the target is read or recorded: an agent's rights are its owner's, but one
+ * run reaches only the place it was asked in, so a prompt-injected run reaches one space, not all of them.
+ */
+async function withinRunPlace(tx: Transaction, operation: AgentOperation, objectId: string | null, payload: Record<string, unknown>,
+  place: { workspaceId: string; projectId: string }): Promise<boolean> {
+  const objects = agentProjectObjectRows(tx as DbExecutor);
+  const rows = assistantChangeRows(tx as DbExecutor);
+  const kind = agentOperationTarget(operation);
+  if (kind && (!objectId || !await objects.scopeOf(kind, objectId, place, false))) return false;
+  const finishes = operation === 'result.record' ? (payload.finishes as { id?: string } | undefined)?.id : undefined;
+  if (finishes && !await objects.scopeOf('work', finishes, place, false)) return false;
+  const thoughts = [...new Set(namedThoughts(operation, payload))];
+  const found = await rows.thoughts(thoughts);
+  if (found.length !== thoughts.length || found.some((thought) => thought.sketchId !== objectId)) return false;
+  return operation !== 'map.link.delete' || (await rows.link(String(payload.linkId)))?.sketchId === objectId;
+}
+
 /** Who made the target and how the change reads, read inside the change's transaction. */
 async function describe(tx: Transaction, operation: string, objectId: string | null, payload: Record<string, unknown>,
-  owner: string, agentId: string): Promise<Target> {
+  owner: string): Promise<Target> {
   const rows = assistantChangeRows(tx as DbExecutor);
-  const ours = (maker: { userId: string | null; agentId: string | null } | null) => !!maker && (maker.userId === owner || maker.agentId === agentId);
+  // "Yours" is what you or any of your agents made (F-036 Terms), not only this agent.
+  const agents = await rows.agentIdsOf(owner);
+  const ours = (maker: { userId: string | null; agentId: string | null } | null) => !!maker && (maker.userId === owner || (!!maker.agentId && agents.includes(maker.agentId)));
   const otherPerson = (maker: { userId: string | null; agentId: string | null } | null) => maker?.userId && maker.userId !== owner ? maker.userId : null;
-  const base = { objectType: OBJECT[operation] ?? 'work', objectId, title: '', mine: true, removal: false, maker: null, beforeVersion: null, typist: null,
+  // A map or thought stays yours only while nobody else has edited it (F-036 Terms), as a page does through `docEditedByOthers`.
+  const stillOurs = (object: { userId: string | null; agentId: string | null; editedBy: string[] } | null) => ours(object)
+    && !!object && object.editedBy.every((editor) => editor === `human:${owner}` || agents.some((agent) => editor === `agent:${agent}`));
+  const base = { objectType: OBJECT[operation] ?? 'work', objectId, title: '', mine: true, removal: false, maker: null, forOther: false, beforeVersion: null,
     undo: null as UndoRecord | null, words: assistantChangeWords(operation) } satisfies Target;
   const text = (value: unknown) => typeof value === 'string' ? value.slice(0, 200) : '';
   switch (operation) {
-    case 'work.create': case 'doc.create': case 'map.create': case 'decision.propose':
+    case 'work.create': {
+      // A task for another person waits for the owner's OK; one for the owner (or nobody) is created at once.
+      const assignee = payload.owner as { kind?: string; id?: string } | null | undefined;
+      const forOther = assignee?.kind === 'human' && typeof assignee.id === 'string' && assignee.id !== owner;
+      return { ...base, objectId: null, title: text(payload.title), forOther, maker: forOther ? assignee!.id! : null, undo: created(text(payload.title)) };
+    }
+    case 'doc.create': case 'map.create': case 'decision.propose':
       return { ...base, objectId: null, title: text(payload.title), undo: operation === 'decision.propose' || operation === 'map.create' ? null : created(text(payload.title)) };
     case 'result.record': {
       const finishes = payload.finishes as { id?: string } | undefined;
@@ -171,18 +215,18 @@ async function describe(tx: Transaction, operation: string, objectId: string | n
     case 'doc.update': {
       const doc = objectId ? await rows.doc(objectId) : null;
       if (!doc) return { ...base, mine: false };
-      const mine = ours(doc) && !await rows.docEditedByOthers(doc.id, owner, agentId);
+      const mine = ours(doc) && !await rows.docEditedByOthers(doc.id, owner, agents);
       const changes = (payload.changes ?? {}) as Record<string, unknown>;
       const names = (['title', 'body', 'state'] as const).filter((key) => typeof changes[key] === 'string' && changes[key] !== (doc as Record<string, unknown>)[key]);
       const words = names.includes('body') ? { before: null, after: (() => { const n = changedParagraphs(doc.body, String(changes.body));
         return `${n} paragraph${n === 1 ? '' : 's'} changed`; })() } : fieldWords(Object.fromEntries(names.map((key) => [key, { before: (doc as Record<string, unknown>)[key], after: changes[key] }])));
-      return { ...base, undo: names.length ? { plan: { kind: 'doc', fields: names }, ...words } : null, title: doc.title, mine, maker: otherPerson(doc), typist: await rows.liveTypist(doc.id, owner),
+      return { ...base, undo: names.length ? { plan: { kind: 'doc', fields: names }, ...words } : null, title: doc.title, mine, maker: otherPerson(doc),
         beforeVersion: typeof payload.expectedVersion === 'number' ? payload.expectedVersion : doc.version };
     }
     case 'map.rename': {
       const map = objectId ? await rows.map(objectId) : null;
       const fields = map && typeof payload.title === 'string' ? { title: { before: map.title, after: payload.title } } : null;
-      return { ...base, title: map?.title ?? '', mine: ours(map), maker: otherPerson(map), beforeVersion: map?.version ?? null,
+      return { ...base, title: map?.title ?? '', mine: stillOurs(map), maker: otherPerson(map), beforeVersion: map?.version ?? null,
         undo: fields ? { plan: { kind: 'fields', fields }, ...fieldWords(fields) } : null };
     }
     case 'map.thought.create': case 'map.link.create': {
@@ -196,13 +240,13 @@ async function describe(tx: Transaction, operation: string, objectId: string | n
         .map((key) => [key, { before: thought[key], after: changes[key] }])) : {};
       const undo: UndoRecord | null = operation === 'map.thought.update' && Object.keys(fields).length && Object.keys(changes).every((key) => key in fields)
         ? { plan: { kind: 'fields', fields }, ...fieldWords(fields) } : null;
-      return { ...base, undo, objectId: thought?.id ?? null, title: thought?.text.slice(0, 200) ?? '', mine: ours(thought ?? null), maker: otherPerson(thought ?? null),
+      return { ...base, undo, objectId: thought?.id ?? null, title: thought?.text.slice(0, 200) ?? '', mine: stillOurs(thought ?? null), maker: otherPerson(thought ?? null),
         removal: operation === 'map.thought.delete', beforeVersion: thought?.version ?? null };
     }
     case 'map.positions.update': {
       const moves = (payload.moves ?? []) as { id: string }[];
       const thoughts = await rows.thoughts(moves.map((move) => move.id));
-      const others = thoughts.filter((thought) => !ours(thought));
+      const others = thoughts.filter((thought) => !stillOurs(thought));
       const undo: UndoRecord | null = thoughts.length === moves.length ? { plan: { kind: 'positions', moves: moves.map((move) => {
         const old = thoughts.find((item) => item.id === move.id)!; const to = move as unknown as { x: number; y: number };
         return { id: move.id, before: { x: old.x, y: old.y }, after: { x: to.x, y: to.y } };
@@ -234,13 +278,24 @@ async function describe(tx: Transaction, operation: string, objectId: string | n
   }
 }
 
+/** What makes or changes a person's things. Coordination (claims, releases, units) touches none, so the waiting rule does not read it. */
+const CHANGES_THINGS: ReadonlySet<string> = new Set(['work.create', 'work.update', 'result.record', 'doc.update', 'map.rename', 'map.thought.create',
+  'map.thought.update', 'map.thought.delete', 'map.positions.update', 'map.link.create', 'map.link.delete']);
+
+/** Whether this change always waits for the owner's OK (F-036 AG-3): a deletion, or something of another person's. Read inside the change's transaction. */
+export async function alwaysWaits(tx: Transaction, operation: string, objectId: string | null, payload: Record<string, unknown>, owner: string): Promise<boolean> {
+  if (!CHANGES_THINGS.has(operation)) return false;
+  const target = await describe(tx, operation, objectId, payload, owner);
+  return target.removal || target.forOther || !target.mine;
+}
+
 /** The run's change tools use the canonical native commands, as the assistant agent, in this one transaction. */
 function natives(tx: Transaction, session: ReturnType<typeof transactionEventSession>, runtime: AuthenticatedAgentRuntime, live: boolean,
-  commandId: string, operation: string, fingerprint: string, releases: Set<() => void>, acceptedBy?: string): NativeActions {
+  commandId: string, operation: string, fingerprint: string, releases: Set<() => void>): NativeActions {
   return { work: nativeWorkInEventSession(tx, session),
     maps: nativeSketchInEventSession(tx, session, { prepared: live, commandId, operation: `native-agent:${operation}`, fingerprint, retainUntil: (release) => releases.add(release) }),
     docs: nativeDocsInEventSession(tx, session), conversations: nativeConversationsInEventSession(tx, session),
-    transaction: tx, events: session, agent: acceptedBy ? { kind: 'human', id: acceptedBy } : { kind: 'agent', id: runtime.agentId }, runtime,
+    transaction: tx, events: session, agent: { kind: 'agent', id: runtime.agentId }, runtime,
     async mapCheckpoint(mapId) {
       const map = await sketchRows(tx).findSketch(mapId);
       if (!map) throw new Error('A changed map vanished inside its transaction');
@@ -262,44 +317,41 @@ interface Authority {
   runtime: AuthenticatedAgentRuntime; workspaceId: string; agentId: string; policyVersion: number;
   run: NonNullable<Awaited<ReturnType<ReturnType<typeof assistantChangeRows>['lockRun']>>>;
   settings: NonNullable<Awaited<ReturnType<ReturnType<typeof assistantChangeRows>['settings']>>>;
+  /** The owner can make this change now: the agent's rights are exactly the owner's (F-036 AG-3). */
   ownerCanWrite: boolean;
   /** Who pays for the run, in the owner's consent's own words ("Your Claude plan"): recorded with the receipt (AST-6.6). */
   payer: string;
 }
 
-/** The checks every assistant change repeats, live: the binding, S6 entry and project, the grant and the owner's rights. */
+/** The checks every agent change repeats, live: the binding, the S6 entry, the run's place and the owner's current rights. */
 async function currentAuthority(tx: Transaction, claims: FluxMcpClaims, projectId: string, tool: string, run: Authority['run'] | null,
   approval: AssistantApproval | undefined, prepared: AssistantChangeRow | null): Promise<Authority> {
   const rows = assistantChangeRows(tx as DbExecutor);
   let agentId: string; let workspaceId: string;
-  // The owner's own rights now: a change outside them can only be prepared as a suggestion (AST-5).
+  // The owner's own rights now, which are the agent's: outside them nothing can be changed or prepared (AG-3).
   const ownerCanWrite = (await evaluateProject({ kind: 'human', id: claims.ownerUserId }, 'project.write', projectId, accessReader(tx), { lock: true })).allowed;
   if (!approval) {
-    // The run's own token: in flight, its place, the S6 entry admitted by the route's dispatch. The assistant's grant
-    // must allow the write itself; a suggestion (owner without write, so the assistant is capped too) needs only read.
+    // The run's own token: in flight, its place, the S6 entry admitted by the route's dispatch.
     const context = await agentConnectionInTransaction(tx, claims, 'flux.action.execute', null);
-    if (!context.connection.selectedProjectIds.includes(projectId)) throw new DomainError(403, 'OUTSIDE_RUN_PLACE', 'An assistant run changes only the project it was asked in');
-    if (!ownerCanWrite) enforceRead((await evaluateProject({ kind: 'human', id: claims.ownerUserId }, 'project.read', projectId, accessReader(tx), { lock: true })).allowed);
-    await context.requireProject(projectId, ownerCanWrite ? 'project.write' : 'project.read');
+    enforceRead((await evaluateProject({ kind: 'human', id: claims.ownerUserId }, 'project.read', projectId, accessReader(tx), { lock: true })).allowed);
+    if (!context.connection.selectedProjectIds.includes(projectId)) throw outsideRunPlace();
+    await context.requireProject(projectId, 'project.read');
     agentId = context.principal.id; workspaceId = context.workspaceId;
   } else {
     const grant = await createAgentConnectionStore(tx).grantForRun(claims.ownerUserId, claims.connectionId);
     if (!grant || grant.connection.id !== claims.connectionId || grant.connection.computeSource !== 'owner_assistant'
       || !grant.connection.scopes.includes('flux.action.execute') || !grant.connection.selectedProjectIds.includes(projectId))
-      throw invalidated('Your assistant no longer has this project');
+      throw invalidated('Your assistant can no longer reach this project');
     agentId = grant.connection.agentId; workspaceId = grant.connection.workspaceId;
     const actor = await loadActor({ kind: 'agent', id: agentId }, workspaceId, tx, { lock: true });
     if (!actor.active || actor.agent?.ownerUserId !== claims.ownerUserId) throw invalidated('Your assistant is no longer available');
-    const acting = approval.suggestion && approval.decidedBy ? { kind: 'human' as const, id: approval.decidedBy } : { kind: 'agent' as const, id: agentId };
-    if (approval.suggestion && (!prepared?.sentAt || prepared.waitReason !== 'outside_rights' || prepared.suggestToUserId !== approval.decidedBy))
-      throw invalidated('This suggestion is not addressed to you');
-    const checked = await evaluateProject(acting, 'project.write', projectId, accessReader(tx), { lock: true });
-    if (!checked.allowed || checked.project?.workspaceId !== workspaceId) throw invalidated('Your assistant can no longer change this project');
+    const checked = await evaluateProject({ kind: 'agent', id: agentId }, 'project.write', projectId, accessReader(tx), { lock: true });
+    if (!checked.allowed || checked.project?.workspaceId !== workspaceId) throw invalidated('You can no longer change this');
   }
   const policy = await lockAgentMcpPolicy(tx, claims.connectionId);
   const entry = AGENT_MCP_ENTRIES.find((item) => item.kind === 'tool' && item.name === tool);
   if (!policy || !entry || !policy.selectedProjectIds.includes(projectId) || !policy.enabledEntryIds.includes(entry.id)
-    || !entry.requiredCapabilities.every((id) => policy.enabledCapabilityIds.includes(id))) throw invalidated('This switch is off now');
+    || !entry.requiredCapabilities.every((id) => policy.enabledCapabilityIds.includes(id))) throw invalidated('This kind of change is unavailable now');
   if (!run || run.ownerUserId !== claims.ownerUserId || run.projectId !== projectId || run.agentId !== agentId) throw invalidated('This request is unavailable');
   if (approval) {
     // A normally completed or still live source supplies provenance; a stopped, cancelled or failed one supplies nothing.
@@ -309,7 +361,7 @@ async function currentAuthority(tx: Transaction, claims: FluxMcpClaims, projectI
   if (!settings || settings.connectionId !== claims.connectionId || settings.agentId !== agentId) throw invalidated('Your assistant is no longer available');
   const enablement = await rows.enablement(claims.ownerUserId);
   if (!enablement) throw invalidated('Your assistant is off');
-  if (approval && enablement.status !== 'active') throw new DomainError(409, 'ASSISTANT_PAUSED', 'Your assistant is paused. Resume it, then apply again');
+  if (approval && enablement.status !== 'active') throw new DomainError(409, 'ASSISTANT_PAUSED', 'Your assistant is paused. Resume it, then approve again');
   if (prepared && enablement.createdAt > prepared.createdAt) throw invalidated('Your assistant was turned off since. Ask again');
   const now = new Date();
   const runtime: AuthenticatedAgentRuntime = Object.freeze({ id: run.id, workspaceId, connectionId: claims.connectionId, ownerUserId: claims.ownerUserId,
@@ -319,8 +371,8 @@ async function currentAuthority(tx: Transaction, claims: FluxMcpClaims, projectI
 }
 
 /**
- * The executor of a run token's change tools and of a saved change's re-execution. Same call shape as the
- * standing-grant executor, so every tool's own native effect is reused unchanged.
+ * The executor of a run token's change tools and of a saved change's re-execution on its owner's Approve. Same call shape as
+ * the standing-grant executor, so every tool's own native effect is reused unchanged.
  */
 export function assistantChangeExecutor(db: Database, claims: FluxMcpClaims) {
   return async function execute<T extends { [key: string]: AgentJsonValue }>(input: ActionInput, operation: AgentOperation,
@@ -329,10 +381,8 @@ export function assistantChangeExecutor(db: Database, claims: FluxMcpClaims) {
     const approval = claims.approval;
     const runId = claims.run?.id ?? approval?.runId;
     if (!call || !runId) throw new DomainError(403, 'AGENT_EXECUTION_UNAVAILABLE', 'This change needs its assistant run');
-    // Anything outside the run's place has no tool to reach it (AST-5 case 8).
-    if (claims.run && input.projectId !== claims.run.projectId) throw new DomainError(403, 'OUTSIDE_RUN_PLACE', 'An assistant run changes only the project it was asked in');
-    if (approval?.suggestion && !['work.create', 'work.update', 'doc.create', 'doc.update', 'map.thought.create', 'map.thought.update', 'map.thought.delete', 'map.link.create', 'map.link.delete'].includes(operation))
-      throw invalidated('This kind of change cannot be sent as a suggestion');
+    // Anything outside the run's place has no tool to reach it.
+    if (claims.run && input.projectId !== claims.run.projectId) throw outsideRunPlace();
     const fingerprint = assistantCallFingerprint(call);
     const live = operation.startsWith('map.') && objectId !== null && await nativeMapRoomExists(db as DbExecutor, objectId);
     const releases = new Set<() => void>();
@@ -342,10 +392,8 @@ export function assistantChangeExecutor(db: Database, claims: FluxMcpClaims) {
       return await db.transaction(async (tx) => {
         const rows = assistantChangeRows(tx as DbExecutor);
         const session = transactionEventSession(tx);
-        // The run row first: concurrent calls of one run serialize here, so its change count is exact.
+        // The run row first: concurrent calls of one run serialize here.
         const runRow = await rows.lockRun(runId);
-        // The S6 policy before the saved change, in the order a settings save takes them (policy, then changes).
-        if (approval) await lockAgentMcpPolicy(tx, claims.connectionId);
         const prepared = approval ? await rows.lock(approval.changeId) : null;
         if (approval && (!prepared || prepared.state !== 'waiting' || prepared.fingerprint !== fingerprint || prepared.runId !== runId
           || prepared.ownerUserId !== claims.ownerUserId))
@@ -358,60 +406,51 @@ export function assistantChangeExecutor(db: Database, claims: FluxMcpClaims) {
             // The retry of a change that has since been decided says what became of it, not that it waits.
             return { assistantText: stored.state === 'undone' ? 'Your owner undid this change'
               : stored.state === 'applied_after_wait' ? 'Your owner approved this change and it was made'
-                : stored.state === 'not_now' ? 'Your owner said not now' : stored.refusal ?? 'This change is waiting for your OK' };
+                : stored.state === 'skipped' ? 'Your owner skipped this change' : stored.refusal ?? 'This change is waiting for your owner\'s OK' };
           }
         }
-        // The continuation purpose belongs to one exact edit: a page someone else was typing in. No other change can select it.
-        if (approval?.purpose === 'owner_deferred_change' && (prepared!.waitReason !== 'live_wiki' || operation !== 'doc.update'))
-          throw new DomainError(409, 'ASSISTANT_CHANGE_UNAVAILABLE', 'Only a deferred page edit continues by itself');
         authority = await currentAuthority(tx, claims, input.projectId, call.tool, runRow, approval, prepared);
-        if (approval?.suggestion && operation.startsWith('map.')) {
-          const snapshot = await rows.lockedMapSnapshot(String(call.args.mapId));
-          if (!snapshot || snapshot !== prepared?.receipt?.suggestionSnapshot) throw new DomainError(409, 'ASSISTANT_CHANGE_STALE', 'Changed since you asked. Ask again');
-        }
+        // Objects stay in their space: on Approve a miss means the target is gone, which reads "Changed since you asked".
+        if (!await withinRunPlace(tx, operation, objectId, (payload ?? {}) as Record<string, unknown>, { workspaceId: authority.workspaceId, projectId: input.projectId }))
+          throw approval ? new DomainError(404, 'OBJECT_NOT_FOUND', 'Project object not found') : outsideRunPlace();
         const ownerName = (await rows.names([claims.ownerUserId])).get(claims.ownerUserId) ?? 'your owner';
-        described = await describe(tx, operation, objectId, (payload ?? {}) as Record<string, unknown>, claims.ownerUserId, authority.agentId);
+        described = await describe(tx, operation, objectId, (payload ?? {}) as Record<string, unknown>, claims.ownerUserId);
         const target = described;
         const phrase = `${target.words.phrase} ${target.words.noun}`;
         if (!approval) {
-          if (authority.run.reactionAction && ['tell', 'draft_reply', 'check_task'].includes(authority.run.reactionAction)) throw invalidated('This request can only read');
-          const outcome = classifyAssistantChange({ mode: authority.run.reactionAction?.startsWith('suggest_') ? 'ask' : authority.settings.approvalMode, ownerCanWrite: authority.ownerCanWrite, removal: target.removal,
-            mine: target.mine, liveTypist: !!target.typist && operation === 'doc.update', reserved: await rows.reserved(runId), limit: authority.run.authority === 'owner_request' ? authority.settings.changesPerRun : Math.min(authority.settings.changesPerRun, ASSISTANT_CHANGE_LIMITS.backgroundChangesPerRun) });
+          // A reaction's read-only action, and an agent whose "What it may do" is Only read, change nothing (F-036 AG-3).
+          const readOnly = !!authority.run.reactionAction && ['tell', 'draft_reply', 'check_task'].includes(authority.run.reactionAction);
+          const outcome = classifyAssistantChange({ mayDo: readOnly ? 'read' : authority.run.reactionAction?.startsWith('suggest_') ? 'ask' : authority.settings.mayDo,
+            ownerCanWrite: authority.ownerCanWrite, removal: target.removal, mine: target.mine, forOther: target.forOther });
+          if (outcome.state === 'refused') {
+            // Nothing is prepared for or sent to another person; the agent says so in words (F-036 AG-3 "Never possible").
+            const refusal = ASSISTANT_REFUSALS[outcome.reason];
+            await rows.insert({ id: randomUUID(), workspaceId: authority.workspaceId, projectId: input.projectId, runId, ownerUserId: claims.ownerUserId,
+              agentId: authority.agentId, clientCommandId: input.clientCommandId, fingerprint, tool: call.tool, operation, objectType: target.objectType,
+              objectId: target.objectId, objectTitle: target.title, state: 'refused', refusal, preparedCommand: callSummary(call), otherUserId: null,
+              policyVersion: authority.policyVersion, beforeVersion: target.beforeVersion, createdAt: new Date() });
+            await session.flushEvents();
+            return { assistantText: `${refusal}: ${phrase}${target.title ? ` ${target.title}` : ''}.` };
+          }
           if (outcome.state === 'waiting') {
-            const createdAt = new Date();
-            // A suggestion names who can decide it: the person whose thing it is, otherwise someone who can write here.
-            let decider = outcome.reason === 'outside_rights' ? target.maker : null;
-            if (outcome.reason === 'outside_rights' && !decider)
-              for (const member of await needsYouRows(tx).workspaceMembersOfProject(input.projectId, 50))
-                if (member.id !== claims.ownerUserId && (await evaluateProject({ kind: 'human', id: member.id }, 'project.write', input.projectId, accessReader(tx))).allowed) { decider = member.id; break; }
             // Measured exactly as the column's CHECK measures it (jsonb text), before anything is written.
             if (await rows.preparedBytes(call) > ASSISTANT_CHANGE_LIMITS.preparedBytes)
               throw new DomainError(413, 'ASSISTANT_CHANGE_TOO_LARGE', 'This change is too large to keep for your OK');
             await rows.insert({ id: randomUUID(), workspaceId: authority.workspaceId, projectId: input.projectId, runId, ownerUserId: claims.ownerUserId,
               agentId: authority.agentId, clientCommandId: input.clientCommandId, fingerprint, tool: call.tool, operation, objectType: target.objectType,
               objectId: target.objectId, objectTitle: target.title, state: 'waiting', waitReason: outcome.reason, preparedCommand: call,
-              policyVersion: authority.policyVersion, beforeVersion: target.beforeVersion, otherUserId: outcome.reason === 'live_wiki' ? target.typist!.id : outcome.reason === 'outside_rights' ? decider : target.maker,
-              suggestToUserId: decider,
-              ...(outcome.reason === 'outside_rights' && operation.startsWith('map.') ? { receipt: { suggestionSnapshot: await rows.lockedMapSnapshot(String(call.args.mapId)) } } : {}),
-              createdAt, expiresAt: new Date(createdAt.getTime() + ASSISTANT_CHANGE_LIMITS.expiryDays * 86_400_000) });
+              policyVersion: authority.policyVersion, beforeVersion: target.beforeVersion, otherUserId: target.maker, createdAt: new Date() });
             await session.flushEvents();
-            const text = outcome.reason === 'live_wiki' ? `I'll edit ${target.title} when ${target.typist!.name} finishes typing.`
-              : outcome.reason === 'outside_rights' ? `Prepared as a suggestion: ${phrase}. ${ownerName} decides whether to send it.`
-              : `Waiting for ${ownerName}'s OK: ${phrase}${target.title ? ` ${target.title}` : ''}.`;
-            return { assistantText: text };
+            return { assistantText: `Waiting for ${ownerName}'s OK: ${phrase}${target.title ? ` ${target.title}` : ''}.` };
           }
-        } else if (approval.purpose === 'owner_deferred_change' && authority.settings.approvalMode !== 'act') {
-          throw new DomainError(409, 'ASSISTANT_NOW_ASKS', 'Your assistant now asks first');
-        } else if (approval.purpose === 'owner_approval' && !approval.suggestion && !authority.ownerCanWrite) {
-          throw invalidated('You can no longer change this. Ask again');
+        } else if (authority.settings.mayDo === 'read') {
+          throw invalidated('Its "What it may do" is Only read now. Ask again');
         }
-        const produced = await effect(natives(tx, session, authority.runtime, live, input.clientCommandId, operation, fingerprint, releases, approval?.suggestion ? approval.decidedBy ?? undefined : undefined));
+        const produced = await effect(natives(tx, session, authority.runtime, live, input.clientCommandId, operation, fingerprint, releases));
         // What the change really wrote (a redacted text differs from the call), so Undo compares with the truth.
-        // The accepted effect is a native human creation. Its existing creation-Undo contract excludes
-        // human-origin tasks; do not invent an AI origin or advertise an Undo that native commands refuse.
-        let undo = approval?.suggestion && operation === 'work.create' ? null : target.undo;
-        // A map, a result, a decision and a message are the assistant's own to take back (#68), but a suggestion a person accepted was made as that person.
-        if (!approval?.suggestion) undo = await removalUndo(tx, operation, produced.value as Record<string, unknown>, produced.postconditions, target, authority.agentId) ?? undo;
+        let undo = target.undo;
+        // A map, a result, a decision and a message are the agent's own to take back (#68).
+        undo = await removalUndo(tx, operation, produced.value as Record<string, unknown>, produced.postconditions, target, authority.agentId) ?? undo;
         if (undo?.plan.kind === 'fields' && objectId) {
           const fields = undo.plan.fields;
           const read: ((key: string) => unknown) | null = operation === 'work.update' ? await rows.work(objectId).then((work) => work && ((key: string) => workField(work, key)))
@@ -427,25 +466,23 @@ export function assistantChangeExecutor(db: Database, claims: FluxMcpClaims) {
         }
         const receipt = { value: produced.value, postconditions: produced.postconditions, ...(undo ? { undo } : {}), authority: approval?.purpose ?? 'owner_request', runId,
           engine: authority.run.engine, payer: authority.payer, ownerUserId: claims.ownerUserId, agentId: authority.agentId, assistantConnectionId: claims.connectionId, preparedBy: authority.agentId,
-          ...(approval?.decidedBy ? { approvedBy: approval.decidedBy } : {}), ...(approval?.suggestion ? { draftedByAssistant: authority.agentId, acceptedBy: approval.decidedBy } : {}) } as unknown as Record<string, unknown>;
+          ...(approval ? { approvedBy: approval.decidedBy } : {}) } as unknown as Record<string, unknown>;
         const after = afterVersion(produced.postconditions);
         const createdId = producedId(produced.value as Record<string, unknown>);
         if (prepared) {
           await rows.update(prepared.id, { state: 'applied_after_wait', waitReason: null, authority: approval!.purpose, receipt, afterVersion: after,
-            objectId: prepared.objectId ?? createdId, ...(approval!.decidedBy ? { decidedBy: approval!.decidedBy, decidedAt: new Date() } : {}) });
+            objectId: prepared.objectId ?? createdId, decidedBy: approval!.decidedBy, decidedAt: new Date() });
         } else {
-          const createdAt = new Date();
           await rows.insert({ id: randomUUID(), workspaceId: authority.workspaceId, projectId: input.projectId, runId, ownerUserId: claims.ownerUserId,
             agentId: authority.agentId, clientCommandId: input.clientCommandId, fingerprint, tool: call.tool, operation, objectType: target.objectType,
             objectId: target.objectId ?? createdId, objectTitle: target.title, state: 'applied', authority: 'owner_request', preparedCommand: callSummary(call), policyVersion: authority.policyVersion,
-            beforeVersion: target.beforeVersion, afterVersion: after, receipt, createdAt,
-            expiresAt: new Date(createdAt.getTime() + ASSISTANT_CHANGE_LIMITS.expiryDays * 86_400_000) });
+            beforeVersion: target.beforeVersion, afterVersion: after, receipt, createdAt: new Date() });
         }
         await session.flushEvents();
         return { ...(produced.value as T), replayed: false };
       });
     } catch (error) {
-      // A person changed the object between the run's read and its write: skipped, never retried (AST-6.7).
+      // A person changed the object between the run's read and its write: skipped, never retried (AG-3 "Attribution and conflicts").
       if (!approval && isVersionConflict(error) && described && authority) {
         const target = described as Target; const held = authority as Authority;
         const who = target.objectId ? await assistantChangeRows(db as DbExecutor).lastActor(target.objectId) : null;
@@ -454,11 +491,10 @@ export function assistantChangeExecutor(db: Database, claims: FluxMcpClaims) {
         await db.transaction(async (tx) => {
           const rows = assistantChangeRows(tx as DbExecutor);
           if (await rows.byCommand(runId, input.clientCommandId)) return;
-          const createdAt = new Date();
           await rows.insert({ id: randomUUID(), workspaceId: held.workspaceId, projectId: input.projectId, runId, ownerUserId: claims.ownerUserId,
             agentId: held.agentId, clientCommandId: input.clientCommandId, fingerprint, tool: call.tool, operation, objectType: target.objectType,
             objectId: target.objectId, objectTitle: target.title, state: 'refused', refusal, preparedCommand: callSummary(call), otherUserId: null, policyVersion: held.policyVersion, beforeVersion: target.beforeVersion,
-            createdAt, expiresAt: new Date(createdAt.getTime() + ASSISTANT_CHANGE_LIMITS.expiryDays * 86_400_000) });
+            createdAt: new Date() });
         });
         throw new DomainError(409, SKIPPED, refusal);
       }

@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode, type RefObject } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, type KeyboardEvent, type ReactNode, type RefObject } from 'react';
 import type { NeedsYouItem } from '@flux/contracts';
 import { AgentTag, Avatar, Button, Icon, Kreska, MEDIA, StatusGlyph, useMediaQuery, usePop, type IconName } from '../ui';
 import { ago, when } from './format';
@@ -14,11 +14,10 @@ export interface CardHandlers {
   open(item: NeedsYouItem): void;
   discuss(item: NeedsYouItem): void;
   unblock(item: NeedsYouItem): void;
-  /** Applies your assistant's waiting changes of one request (F-027 AST-5.6), with the object's own verb. */
+  /** Approve all: everything one agent run waits for (F-036 AG-7), in the owner's own session. */
   applyChanges(item: NeedsYouItem): void;
   /** Answers an agent's question with one of its ready-made answers (S14); Undo holds it back for a moment. */
   answer?(item: NeedsYouItem, optionIndex: number): void;
-  dismissChanges?(item: NeedsYouItem): void;
 }
 
 export const KIND_WORD = { decision: 'Decision', question: 'Question', blocked: 'Blocked', mention: 'Mention' } as const;
@@ -127,7 +126,6 @@ export function NeedsYouCard({ item, variant = 'card', selected = false, compact
 }) {
   // On a phone Not now and Done wait behind the card (a swipe left); elsewhere they are quiet buttons.
   const touch = useMediaQuery(MEDIA.touch);
-  const [review, setReview] = useState(false);
   const notNow = useRef<HTMLButtonElement>(null);
   const trayNotNow = useRef<HTMLButtonElement>(null);
   const anchors = useMemo(() => [notNow, trayNotNow], []);
@@ -137,11 +135,12 @@ export function NeedsYouCard({ item, variant = 'card', selected = false, compact
   const phone = useMediaQuery(MEDIA.phone);
   const short = compact && phone;
   const project = short ? null : item.project?.name ?? null;
-  const identity = item.assistantRequestIdentity;
-  const label = identity ? `${KIND_WORD[item.kind]}: ${identity.assistantName}, Agent for ${identity.ownerName}: ${item.title}` : `${KIND_WORD[item.kind]}: ${item.title}`;
-  const meta = (identity ? [`for ${identity.ownerName}`, KIND_WORD[item.kind], project]
+  // One agent run's waiting changes (F-036 AG-7): "Assistant · Your agent", then "3 things wait for you · Approve all · Open".
+  const run = item.assistantChanges ?? null;
+  const label = run ? `${run.agentName}, your agent: ${item.title}` : `${KIND_WORD[item.kind]}: ${item.title}`;
+  const meta = (run ? ['Your agent', project]
     : decision ? [short ? 'Decision' : 'Proposed decision', project] : item.kind === 'blocked' ? [item.blocked?.waitedBy ? 'Waiting on you' : 'Your task', project, ago(item.at)] : [KIND_WORD[item.kind], project]).filter(Boolean).join(' · ');
-  const who = item.from?.name ?? null;
+  const who = run?.agentName ?? item.from?.name ?? null;
   const asked = item.agentQuestion ?? null;
   // An agent's question names the task it is about, as drawn ("Claude Code · Agent · on #8").
   const askedMeta = asked ? [asked.task ? `on #${asked.task.number}` : null, project].filter(Boolean).join(' · ') : null;
@@ -156,8 +155,8 @@ export function NeedsYouCard({ item, variant = 'card', selected = false, compact
         : item.kind === 'blocked' ? <Button variant="secondary" onClick={() => handlers.open(item)}>Open task</Button>
         : answers ? <Button variant="secondary" onClick={() => onSelect?.()}>Answer</Button>
         : item.proposal ? <Button variant="secondary" onClick={() => handlers.open(item)}>Review</Button>
-        : item.assistantChanges ? <Button variant="secondary" onClick={() => handlers.applyChanges(item)}>{item.assistantChanges.verb}</Button>
-        : <Button variant="secondary" onClick={() => handlers.open(item)}>{item.assistantRequestIdentity ? 'Review' : item.reason === 'invitation' ? 'Open' : 'Reply'}</Button>}
+        : run ? <Button variant="secondary" onClick={() => handlers.applyChanges(item)}>Approve all</Button>
+        : <Button variant="secondary" onClick={() => handlers.open(item)}>{item.reason === 'invitation' ? 'Open' : 'Reply'}</Button>}
     </div>
   ) : null;
   const full = variant === 'card' && !compact;
@@ -182,14 +181,13 @@ export function NeedsYouCard({ item, variant = 'card', selected = false, compact
           <Button variant="primary" onClick={() => handlers.done(item)}>Got it</Button>
           <Button variant="quiet" onClick={() => handlers.snooze(item, 'decline')}>Decline</Button>
         </>
-      ) : item.assistantChanges ? (
+      ) : run ? (
         <>
-          <Button variant="primary" onClick={() => handlers.applyChanges(item)}>{item.assistantChanges.verb}</Button>
-          {item.assistantChanges.suggestion && handlers.dismissChanges ? <Button variant="quiet" onClick={() => handlers.dismissChanges?.(item)}>Dismiss</Button> : null}
-          <Button variant="secondary" aria-expanded={review} onClick={() => item.assistantChanges?.suggestion ? setReview(!review) : handlers.open(item)}>Review</Button>
+          <Button variant="primary" onClick={() => handlers.applyChanges(item)}>Approve all</Button>
+          <Button variant="secondary" onClick={() => handlers.open(item)}>Open</Button>
         </>
       ) : (
-        <Button variant="secondary" onClick={() => handlers.open(item)}>{item.assistantRequestIdentity ? 'Review' : item.reason === 'invitation' ? 'Open' : 'Reply'}</Button>
+        <Button variant="secondary" onClick={() => handlers.open(item)}>{item.reason === 'invitation' ? 'Open' : 'Reply'}</Button>
       )}
       {!decision && !item.proposal && !touch && variant === 'card' ? <span className="nyc__quiet"><NotNowButton buttonRef={notNow} open={menuOpen} onToggle={() => onMenuOpen(!menuOpen)} className=" nyc__nn--quiet" /><Button variant="quiet" aria-keyshortcuts="E" onClick={() => handlers.done(item)}>Done</Button></span> : null}
     </div>
@@ -215,18 +213,21 @@ export function NeedsYouCard({ item, variant = 'card', selected = false, compact
               <p className="nyc__eyebrow">
                 {asked ? <><b>{who}</b><AgentTag />{askedMeta ? <span className="nyc__meta">{[askedMeta, variant === 'card' ? when(item.at) : null].filter(Boolean).join(' · ')}</span> : null}</>
                   : variant === 'row'
-                  ? identity ? <><b>{identity.assistantName}</b><AgentTag /><span className="nyc__meta">{meta}</span></>
+                  ? run ? <><b>{run.agentName}</b><AgentTag /><span className="nyc__meta">{meta}</span></>
                     : [KIND_WORD[item.kind], who, project].filter(Boolean).join(' · ')
-                  : <>{who ? <b>{who}</b> : null}{item.from?.kind === 'agent' ? <AgentTag /> : null}<span className="nyc__meta">{[meta, variant === 'card' && item.kind !== 'blocked' ? when(item.at) : null].filter(Boolean).join(' · ')}</span></>}
+                  : <>{who ? <b>{who}</b> : null}{item.from?.kind === 'agent' || run ? <AgentTag /> : null}<span className="nyc__meta">{[meta, variant === 'card' && item.kind !== 'blocked' ? when(item.at) : null].filter(Boolean).join(' · ')}</span></>}
               </p>
             )}
             <h3 className="nyc__title">
-              <button type="button" className="nyc__open" onClick={() => item.assistantChanges?.suggestion ? setReview(!review) : handlers.open(item)} aria-haspopup={item.kind === 'decision' || item.kind === 'blocked' ? 'dialog' : undefined}>{item.title}</button>
+              <button type="button" className="nyc__open" onClick={() => handlers.open(item)} aria-haspopup={item.kind === 'decision' || item.kind === 'blocked' ? 'dialog' : undefined}>{item.title}</button>
             </h3>
-            {review && item.assistantChanges?.suggestion ? <div className="nyc__reason" style={{ whiteSpace: 'pre-wrap' }}>{item.assistantChanges.changes.map((change) => <p key={change.id}>{change.phrase} {change.objectTitle}{'\n'}{change.preview}</p>)}</div> : null}
+            {full && run ? <ul className="nyc__waits" aria-label="What waits for you">{run.changes.map((change) => (
+              <li key={change.id}><span>{change.waitReason === 'removal' ? `Delete ${change.objectTitle ? `“${change.objectTitle}”` : `the ${change.phrase.split(' ').pop()}`}` : `${change.verb} ${change.objectTitle}`.trim()}</span>
+                {change.forPerson ? <span className="nyc__waits-for">{change.forPerson.name}</span> : null}</li>))}</ul> : null}
+            {full && run ? <p className="nyc__reason">Deleting and other people&apos;s things always wait for your OK.</p> : null}
             {item.assistantNote && !compact ? <p className="nyc__reason">Your assistant: {item.assistantNote}</p> : null}
             {item.assistantDraft && !compact ? <p className="nyc__reason">Drafted by your assistant · ready to review in Reply</p> : null}
-            {full && item.detail && item.kind !== 'blocked' && !item.proposal ? <p className="nyc__reason">{item.detail}</p> : null}
+            {full && item.detail && item.kind !== 'blocked' && !item.proposal && !run ? <p className="nyc__reason">{item.detail}</p> : null}
             {full && item.proposal ? (
               <dl className="nyc__reason nyc__proposal" data-testid="agent-suggestion">
                 <dt>Seen</dt><dd>{item.proposal.fact}</dd>
@@ -245,9 +246,9 @@ export function NeedsYouCard({ item, variant = 'card', selected = false, compact
           {single}
           {variant === 'row' ? <div className="nyc__rowactions">{decision ? <>
             <Button variant={lead ? 'primary' : 'secondary'} onClick={() => handlers.accept(item)}>Accept</Button>
-            <NotNowButton buttonRef={notNow} open={menuOpen} onToggle={() => onMenuOpen(!menuOpen)} /></> : answers ? answers : item.proposal ? <Button variant="secondary" onClick={() => handlers.open(item)}>Review</Button> : item.assistantChanges
-              ? <Button variant={lead ? 'primary' : 'secondary'} onClick={() => handlers.applyChanges(item)}>{item.assistantChanges.verb}</Button>
-              : <Button variant="secondary" onClick={() => handlers.open(item)}>{item.assistantRequestIdentity ? 'Review' : item.kind === 'blocked' ? 'Open task' : item.reason === 'invitation' ? 'Open' : 'Reply'}</Button>}</div> : null}
+            <NotNowButton buttonRef={notNow} open={menuOpen} onToggle={() => onMenuOpen(!menuOpen)} /></> : answers ? answers : item.proposal ? <Button variant="secondary" onClick={() => handlers.open(item)}>Review</Button> : run
+              ? <Button variant={lead ? 'primary' : 'secondary'} onClick={() => handlers.applyChanges(item)}>Approve all</Button>
+              : <Button variant="secondary" onClick={() => handlers.open(item)}>{item.kind === 'blocked' ? 'Open task' : item.reason === 'invitation' ? 'Open' : 'Reply'}</Button>}</div> : null}
           {children}
         </div>
         {/* A swipe left on a phone: the card slides over this tray. Reachable by keyboard and touch alike. */}

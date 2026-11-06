@@ -118,8 +118,6 @@ async function fixture() {
   await grant(manager, place.id, author, 'contributor');
   const agent = expectStatus(await author.browser.request('POST', `/api/v1/workspaces/${ws.id}/agents`,
     { body: { name: 'Trial planning agent', owner: 'self' } }), 201) as { id: string };
-  expectStatus(await manager.browser.request('POST', `/api/v1/projects/${place.id}/grants`,
-    { body: { principal: { kind: 'agent', id: agent.id }, role: 'contributor' } }), 201);
   const connection = await agentConnection(pool, author.browser, agent.id, [place.id]);
   const authority = await connection.grant('work.create', 'execute', 5);
   expectStatus(await manager.browser.request('PATCH', `/api/v1/workspaces/${ws.id}/members/${author.id}`,

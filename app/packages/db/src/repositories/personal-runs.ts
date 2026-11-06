@@ -1,7 +1,7 @@
 import { prepareReferencedTaskUse } from './task-targets.js';
 import { fileRows } from './files.js';
 import { and, asc, desc, eq, inArray, isNotNull, notInArray, or, sql, type SQL } from 'drizzle-orm';
-import { assistantAreasFromPolicy, type AssistantAreas } from '@flux/contracts';
+import type { AgentMayDo } from '@flux/contracts';
 import * as schema from '../schema.js';
 import type { DbExecutor } from './push.js';
 
@@ -284,12 +284,12 @@ export function personalRunRows(db: DbExecutor) {
       return Boolean(row);
     },
 
-    async assistantAreas(ownerUserId: string, workspaceId: string): Promise<AssistantAreas | null> {
-      const policies = schema.agentConnectionMcpPolicies;
-      const [row] = await db.select({ capabilities: policies.enabledCapabilityIds, entries: policies.enabledEntryIds }).from(schema.assistantSettings)
-        .innerJoin(policies, eq(policies.connectionId, schema.assistantSettings.connectionId))
+    /** The assistant's "What it may do" (F-036 AG-3), or null without an assistant here. */
+    async assistantMayDo(ownerUserId: string, workspaceId: string): Promise<AgentMayDo | null> {
+      const [row] = await db.select({ mayDo: schema.agentConnections.mayDo }).from(schema.assistantSettings)
+        .innerJoin(schema.agentConnections, eq(schema.agentConnections.id, schema.assistantSettings.connectionId))
         .where(and(eq(schema.assistantSettings.ownerUserId, ownerUserId), eq(schema.assistantSettings.workspaceId, workspaceId)));
-      return row ? assistantAreasFromPolicy({ enabledCapabilityIds: [...row.capabilities] as never, enabledEntryIds: [...row.entries] }) : null;
+      return row?.mayDo ?? null;
     },
 
     async runtimeRunsToday(ownerUserId: string, timeZone: string, exceptRunId?: string) {

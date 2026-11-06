@@ -206,7 +206,6 @@ if (phase === 'prepare') {
       await company.close();
       const project = await create(`/api/v1/workspaces/${workspace.id}/projects`, { name: 'Cutover control', visibility: 'restricted' });
       const agent = await create(`/api/v1/workspaces/${workspace.id}/agents`, { name: 'Cutover control', owner: 'self' });
-      await create(`/api/v1/projects/${project.id}/grants`, { principal: { kind: 'agent', id: agent.id }, role: 'contributor' });
       const connection = await create('/api/v1/agent-connections', { agentId: agent.id, selectedProjectIds: [project.id], scopes: ['flux.context.read', 'flux.proposal.write'] });
       const clientId = `cutover-${randomUUID()}`; const redirectUri = 'http://127.0.0.1:19738/callback';
       await pool.query(`INSERT INTO oauth_client (id, client_id, name, redirect_uris, token_endpoint_auth_method,
@@ -266,7 +265,6 @@ if (phase === 'prepare') {
       const workspace = await create('/api/v1/workspaces', { name: 'Issuer recovery history' });
       const project = await create(`/api/v1/workspaces/${workspace.id}/projects`, { name: 'Kept recovery project', visibility: 'restricted' });
       const agent = await create(`/api/v1/workspaces/${workspace.id}/agents`, { name: 'Recovery agent', owner: 'self' });
-      await create(`/api/v1/projects/${project.id}/grants`, { principal: { kind: 'agent', id: agent.id }, role: 'contributor' });
       const connection = await create('/api/v1/agent-connections', { agentId: agent.id, selectedProjectIds: [project.id], scopes: ['flux.context.read', 'flux.proposal.write'] });
       const recoveryClientId = `issuer-recovery-${randomUUID()}`;
       const redirectUri = 'http://127.0.0.1:19739/callback';

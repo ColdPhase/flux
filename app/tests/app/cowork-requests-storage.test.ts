@@ -22,7 +22,7 @@ async function fixture() {
   await db.insert(schema.projects).values({ id: projectId, workspaceId, name: 'Native project', createdBy: owners[0]! });
   await db.insert(schema.projectWorkItems).values({ id: taskId, workspaceId, projectId, title: 'Native outcome', createdByKind: 'human', createdById: owners[0]! });
   const agentId = randomUUID();
-  await db.insert(schema.agents).values({ id: agentId, workspaceId, name: 'Fixture client', createdBy: owners[0]! });
+  await db.insert(schema.agents).values({ id: agentId, workspaceId, name: 'Fixture client', ownerUserId: owners[0]!, createdBy: owners[0]! });
   const connections = [randomUUID(), randomUUID(), randomUUID()];
   await db.insert(schema.agentConnections).values(connections.map((id, index) => ({ id, workspaceId, agentId,
     ownerUserId: owners[index === 1 ? 1 : 0]!, scopes: ['flux.context.read' as const] })));

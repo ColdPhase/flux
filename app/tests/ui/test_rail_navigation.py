@@ -207,7 +207,6 @@ class RailNavigation(unittest.TestCase):
                 page, ids = self.setup_owner(engine, coarse=True, many=True)
                 project = ids["projects"][0]["id"]
                 agent = self.api(page, "POST", f"/api/v1/workspaces/{ids['workspace']}/agents", {"name": "Garden analyst", "owner": "self"}, 201)
-                self.api(page, "POST", f"/api/v1/projects/{project}/grants", {"principal": {"kind": "agent", "id": agent["id"]}, "role": "viewer"}, 201)
                 self.api(page, "POST", "/api/v1/personal-assistant", {"consentVersion": "o-008-2026-10-02", "agentId": agent["id"],
                     "perRunCents": 8, "dailyCapCents": 100, "timeZone": "Europe/Warsaw"}, 201)
                 conversation = self.api(page, "POST", f"/api/v1/projects/{project}/conversations", {

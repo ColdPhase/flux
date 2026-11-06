@@ -82,9 +82,8 @@ describe('draft audience and target rules through the SQL repositories', () => {
       (error) => on(error, ForbiddenError, 403, 'WORKSPACE_SHARE_FORBIDDEN'));
 
     const room = await createProject(owner, ws.id, { name: 'Room', visibility: 'workspace' }, db, accessPorts);
-    const agent = await createAgent(owner, ws.id, { name: 'Helper', owner: 'workspace' }, db, accessPorts);
+    const agent = await createAgent(owner, ws.id, { name: 'Helper', owner: 'self' }, db, accessPorts);
     const bot: Principal = { kind: 'agent', id: agent.id };
-    await grantProject(owner, room.id, { principal: { kind: 'agent', id: agent.id }, role: 'contributor' }, db, accessPorts);
     const botDraft = await createDraft(bot, ws.id, { title: 'Agent notes', projectId: room.id }, db, accessPorts);
     await assert.rejects(shareDraft(bot, botDraft.id, { scope: 'workspace', expectedVersion: botDraft.version }, db, accessPorts),
       (error) => on(error, ForbiddenError, 403, 'WORKSPACE_SHARE_FORBIDDEN'));
@@ -117,12 +116,13 @@ describe('grantees and grant writes through the SQL repositories', () => {
     const { owner, ws } = await scene('grantee');
     const room = await createProject(owner, ws.id, { name: 'Room', visibility: 'restricted' }, db, accessPorts);
     const elsewhere = await createWorkspace(owner, { name: 'grantee-elsewhere' }, db, accessPorts);
-    const strangerAgent = await createAgent(owner, elsewhere.id, { name: 'Elsewhere', owner: 'workspace' }, db, accessPorts);
-    const retired = await createAgent(owner, ws.id, { name: 'Retired', owner: 'workspace' }, db, accessPorts);
+    const strangerAgent = await createAgent(owner, elsewhere.id, { name: 'Elsewhere', owner: 'self' }, db, accessPorts);
+    const retired = await createAgent(owner, ws.id, { name: 'Retired', owner: 'self' }, db, accessPorts);
     await revokeAgent(owner, retired.id, db, accessPorts);
+    // An agent has no grant of its own (F-036 AG-3): any agent principal is refused as input.
     for (const [label, id] of [['an agent of another workspace', strangerAgent.id], ['a revoked agent', retired.id], ['an id that is not a UUID', 'not-a-uuid']] as const) {
-      await assert.rejects(grantProject(owner, room.id, { principal: { kind: 'agent', id }, role: 'viewer' }, db, accessPorts),
-        (error) => on(error, RuleViolationError, 422, 'AGENT_NOT_IN_WORKSPACE'), label);
+      await assert.rejects(grantProject(owner, room.id, { principal: { kind: 'agent', id }, role: 'viewer' } as never, db, accessPorts),
+        (error) => (error as { code?: string }).code === 'INVALID_INPUT', label);
     }
     const outsider = await insertedHuman('grantee-outsider');
     await assert.rejects(grantProject(owner, room.id, { principal: { kind: 'human', id: outsider.id }, role: 'viewer' }, db, accessPorts),

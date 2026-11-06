@@ -20,12 +20,10 @@ const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one :
 
 /** "Jo, Kai — only you two" or "You, Kai and Ari": the exact readers, the caller first. */
 function audienceHeadline(people: PromotionPerson[], meId: string) {
-  const humans = [...people.filter((p) => p.id === meId), ...people.filter((p) => p.id !== meId && p.kind === 'human')];
-  const agents = people.filter((p) => p.kind === 'agent');
-  const names = [...humans.map((p) => (p.id === meId ? 'You' : firstName(p.name))), ...agents.map((p) => p.name)];
-  if (humans.length === 2 && !agents.length && humans[0]!.id === meId) return `${firstName(humans[1]!.name)} and you — only you two`;
-  if (humans.length === 1 && !agents.length && humans[0]!.id === meId) return 'Only you';
-  return joinNames(names);
+  const ordered = [...people.filter((p) => p.id === meId), ...people.filter((p) => p.id !== meId)];
+  if (ordered.length === 2 && ordered[0]!.id === meId) return `${firstName(ordered[1]!.name)} and you — only you two`;
+  if (ordered.length === 1 && ordered[0]!.id === meId) return 'Only you';
+  return joinNames(ordered.map((p) => (p.id === meId ? 'You' : firstName(p.name))));
 }
 
 /**

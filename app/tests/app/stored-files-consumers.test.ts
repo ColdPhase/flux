@@ -38,8 +38,6 @@ async function inboxItem(someone: Person, messageId: string, what: string) {
 }
 async function agent(owner: Person, workspaceId: string, projectId: string, name: string) {
   const created = expectStatus(await owner.browser.request('POST', `/api/v1/workspaces/${workspaceId}/agents`, { body: { name, owner: 'self' } }), 201) as { id: string };
-  expectStatus(await owner.browser.request('POST', `/api/v1/projects/${projectId}/grants`,
-    { body: { principal: { kind: 'agent', id: created.id }, role: 'contributor' } }), 201, 'agent grant');
   return created.id;
 }
 

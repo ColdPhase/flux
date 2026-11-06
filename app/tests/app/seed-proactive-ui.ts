@@ -13,8 +13,6 @@ try {
   const prj = await project(owner, ws.id, 'Bedroom gesture controller', 'restricted');
   const agent = expectStatus(await owner.browser.request('POST', `/api/v1/workspaces/${ws.id}/agents`,
     { body: { name: 'Sensor comparison assistant', owner: 'self' } }), 201) as { id: string };
-  expectStatus(await owner.browser.request('POST', `/api/v1/projects/${prj.id}/grants`,
-    { body: { principal: { kind: 'agent', id: agent.id }, role: 'contributor' } }), 201);
   const rule = expectStatus(await owner.browser.request('POST', `/api/v1/projects/${prj.id}/proactive-comparison-rules`,
     { body: { agentId: agent.id, trigger: 'human_negative_result', purpose: 'camera_sensor_comparison',
       dataScope: 'current_project_published', permittedEffect: 'quiet_project_proposal',

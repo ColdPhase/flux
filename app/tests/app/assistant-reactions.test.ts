@@ -2,8 +2,8 @@ import assert from 'node:assert/strict';
 import Fastify from 'fastify';
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { before, beforeEach, describe, test } from 'node:test';
-import { ASSISTANT_REACTION_EVENTS, assistantReactionDraftPath, assistantReactionPath, assistantReactionsPath, assistantSettingsPath, personalRunTokenPath, NEEDS_YOU_PATH, PERSONAL_RUN_CONSENT_VERSION,
-  type AssistantReaction, type AssistantReactionAction, type AssistantReactionEvent, type AssistantSettings, type GithubPullFacts, type Conversation, type NeedsYouResponse, type Project, type Workspace } from '@flux/contracts';
+import { ASSISTANT_REACTION_EVENTS, assistantReactionDraftPath, assistantReactionPath, assistantReactionsPath, personalRunTokenPath, NEEDS_YOU_PATH, PERSONAL_RUN_CONSENT_VERSION,
+  type AssistantReaction, type AssistantReactionAction, type AssistantReactionEvent, type GithubPullFacts, type Conversation, type NeedsYouResponse, type Project, type Workspace } from '@flux/contracts';
 import { assistantReactionTick, createPersonalRunProcessor, type PersonalComputeResult, type Principal } from '@flux/core';
 import type { PgBoss } from 'pg-boss';
 import { assistantUnitOfWork, startBackgroundOf } from '../../apps/worker/src/assistant/index.js';
@@ -200,7 +200,7 @@ describe('owner-only When sentences (F-027 A9, #409)', () => {
     expectStatus(await owner.browser.request('PUT',assistantReactionPath(ws.id,owner.id,readyRule.id),{body:{projectId:place.id,event:'pr_ready',action:'check_task',enabled:false,expectedVersion:readyRule.version}}),200,'unlinking GitHub must never prevent turning a sentence off');
   });
 
-  test('AST-9.1: other-project, DM and private-sketch canaries stay out of reaction compute; switch off stops input',async()=>{
+  test('AST-9.1: other-project, DM and private-sketch canaries stay out of reaction compute',async()=>{
     await make('blocked');
     const other=await makeProject(owner,ws.id,'PRIVATE_OTHER_PROJECT_CANARY','restricted');
     await owner.browser.request('POST',`/api/v1/projects/${other.id}/conversations`,{body:{body:'OTHER_PROJECT_PRIVATE_BODY_CANARY',clientMessageId:randomUUID()}});
@@ -211,10 +211,5 @@ describe('owner-only When sentences (F-027 A9, #409)', () => {
     await task(owner,'blocked','Connector loose'); await tick(future); await process();
     assert.ok(compute.dispatched.length>0);
     assert.doesNotMatch(JSON.stringify(compute.dispatched),/PRIVATE_OTHER_PROJECT_CANARY|OTHER_PROJECT_PRIVATE_BODY_CANARY|PRIVATE_SKETCH_CANARY|NEVER_MODEL_PRIVATE_SKETCH|PRIVATE_DM_CANARY/);
-    const settings=expectStatus(await owner.browser.request('GET',assistantSettingsPath(ws.id,owner.id)),200) as AssistantSettings;
-    expectStatus(await owner.browser.request('PATCH',assistantSettingsPath(ws.id,owner.id),{body:{expectedVersion:settings.version,areas:{tasks:'off'}}}),200);
-    const before=(await events()).filter((event)=>event.run_id).length;
-    await task(owner,'blocked','OFF_AREA_CANARY'); await tick(future);
-    assert.equal((await events()).filter((event)=>event.run_id).length,before);
   });
 });

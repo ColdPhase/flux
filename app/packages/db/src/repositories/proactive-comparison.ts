@@ -20,10 +20,10 @@ function view(row: RuleRow): ProactiveComparisonRule {
 /** Storage only; the core use case supplies today's project policy decision in the same transaction. */
 export function proactiveRuleRows(db: DbExecutor) {
   return {
+    /** The owner's own unrevoked agent of the project's workspace; it writes there with exactly the owner's rights (F-036). */
     async agentMayPropose(ownerId: string, projectId: string, agentId: string) {
       const [row] = await db.select({ id: schema.agents.id }).from(schema.agents)
-        .innerJoin(schema.projectGrants, and(eq(schema.projectGrants.agentId, schema.agents.id),
-          eq(schema.projectGrants.projectId, projectId), eq(schema.projectGrants.role, 'contributor')))
+        .innerJoin(schema.projects, and(eq(schema.projects.id, projectId), eq(schema.projects.workspaceId, schema.agents.workspaceId)))
         .where(and(eq(schema.agents.id, agentId), eq(schema.agents.ownerUserId, ownerId), isNull(schema.agents.revokedAt)));
       return Boolean(row);
     },

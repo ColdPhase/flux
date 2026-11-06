@@ -1,6 +1,6 @@
 import { useEffect, useId, useMemo, useRef, useState, type FormEvent, type KeyboardEvent } from 'react';
 import { Link } from 'react-router';
-import type { Agent, AgentProjectPolicy, Project, ProjectAgentConnection, ProjectPerson, WorkRowProjection } from '@flux/contracts';
+import type { Agent, Project, ProjectAgentConnection, ProjectPerson, WorkRowProjection } from '@flux/contracts';
 import { ApiError, NetworkError } from '../api/client';
 import { Button, Icon, Kreska, MEDIA, Overlay, Sheet, agentHue, useMediaQuery, useToast, type KreskaExpression, Select, Option } from '../ui';
 import { listProjectPeople } from '../project/data';
@@ -8,8 +8,8 @@ import { useShellData } from '../app/data';
 import { updateWork, listAgents } from '../work/api';
 import { getProjectWorkView } from '../work/read-api';
 import { contributeToTask } from '../composer/api';
-import { getAgentPolicy, getProjectAgents } from './api';
-import { createActionGrant, listActionGrants, requestAgentAccess } from '../agent-connection/api';
+import { getProjectAgents } from './api';
+import { createActionGrant, listActionGrants } from '../agent-connection/api';
 import type { AgentOperation, AgentStandingGrant } from '@flux/contracts';
 import { agentEntries, connectionState, currentWorkLine, firstName, isAgentWorking, mayDo, tasksHeldBy, teammateOf, type AgentEntry } from './roster';
 import { useSessionClock } from './useSessionClock';
@@ -23,7 +23,6 @@ interface Loaded {
   connections: ProjectAgentConnection[];
   workspaceAgents: Agent[];
   tasks: WorkRowProjection[];
-  policy: AgentProjectPolicy | null;
 }
 
 /** The Kreska of an agent: Working only for a claimed unit on a usable live session (C-1); asleep when paused or not live. */
@@ -130,15 +129,14 @@ function HandOffBody({ onClose, project, task: given, agentId, onDone }: {
   useEffect(() => {
     const controller = new AbortController();
     const { signal } = controller;
-    // The agents, who can read here, their load and the policy are one observation; a manager-only or failed read of
+    // The agents, who can read here, and their load are one observation; a manager-only or failed read of
     // the workspace's agents just means no "without access" rows, never a failed hand-off.
     Promise.all([
       listProjectPeople(project.id, signal), getProjectAgents(project.id, signal), listAgents(project.workspaceId, signal).catch(() => [] as Agent[]),
       getProjectWorkView(project.id, { purpose: 'choices', choice: 'pivot_work' }, signal).then((page) => ({ rows: page.items.filter((row): row is WorkRowProjection => row.kind === 'work'), next: page.nextCursor })),
-      getAgentPolicy(project.id, signal).then((read) => read.policy).catch(() => null),
-    ]).then(([people, agents, workspaceAgents, page, policy]) => {
+    ]).then(([people, agents, workspaceAgents, page]) => {
       if (signal.aborted) return;
-      setLoaded({ people, connections: agents.connections, workspaceAgents, tasks: page.rows, policy });
+      setLoaded({ people, connections: agents.connections, workspaceAgents, tasks: page.rows });
       setObservedNow(Date.now());
       setCursor(page.next);
     }, () => { if (!signal.aborted) setLoadFailed(true); });
@@ -160,7 +158,6 @@ function HandOffBody({ onClose, project, task: given, agentId, onDone }: {
   const grant = mayDo(entry?.access ?? null);
   // A teammate's agent is asked for, never handed work: its owner decides (#347 P1-3).
   const teammate = !!entry && teammateOf(entry, me.user.id);
-  const manager = project.access === 'manager';
   const free = useMemo(() => (loaded?.tasks ?? []).filter((row) => !row.owner || row.owner.kind !== 'agent'), [loaded]);
   // #763 FT-2: your own agent must be able to change the task it is handed. Its connections' grants are read here (owner-only)
   // and, when they are missing, the one button below grants exactly what the task needs before handing it off.
@@ -228,18 +225,6 @@ function HandOffBody({ onClose, project, task: given, agentId, onDone }: {
       setError(failure(cause));
       if (cause instanceof ApiError) attempt.current = null;
     } finally { setBusy(false); }
-  };
-
-  // #763 FT-1: your own agent without access here can be asked in from the hand-off too.
-  const [asked, setAsked] = useState(false);
-  const askIn = async () => {
-    if (!entry) return;
-    try { await requestAgentAccess(project.id, entry.agentId, 'contributor'); setAsked(true); }
-    catch (cause) {
-      if (cause instanceof ApiError && cause.code === 'AGENT_ALREADY_IN_PROJECT') setAsked(true);
-      else if (cause instanceof ApiError && cause.code === 'AGENT_REQUEST_DECLINED') setError('A project manager declined this a moment ago. You can ask again tomorrow.');
-      else setError(failure(cause));
-    }
   };
 
   /** Grants the task's work to each of your connections that lacks it (existing owner grant routes; retries reuse their ids). */
@@ -398,16 +383,13 @@ function HandOffBody({ onClose, project, task: given, agentId, onDone }: {
             {entry && !grant.canTake ? (
               <p className="handoff__note" role="status">
                 {entry.access === null ? `${entry.name} has no access to ${project.name}, so it can’t take this task.` : `${entry.name} can only read ${project.name}, so it can’t take this task.`}{' '}
-                {manager ? <>You can give it access: <Link className="ui-link" to="/connect-agent">Connect an agent</Link>. Nothing is granted from here.</>
-                  : own && entry.access === null ? (asked ? `Asked a project manager to let ${entry.name} in. You’ll get a notice when they answer.`
-                    : <>A project manager lets it in. <button type="button" className="ui-link" onClick={() => void askIn()}>Ask a manager to let it in</button></>)
-                  : 'A project manager can give it access. Nothing is granted from here.'}
+                {own ? <>An agent has exactly its owner’s rights. Choose {project.name} for its connection: <Link className="ui-link" to="/settings/agents/connect">Connect an agent</Link>.</>
+                  : 'An agent has exactly its owner’s rights.'}
               </p>
             ) : null}
             {/* An agent that is not connected yet takes the task when it signs in (#763 WF-6). */}
             {entry && own && grant.canTake && readiness.kind === 'offline' ? <p className="handoff__note" role="status">{`${entry.name} has no connection to Flux yet, so it can’t work on #${task?.number ?? ''}. `}<Link className="ui-link" to="/settings/agents/connect">Connect it</Link>{' with “Run approved project actions”, then hand the task off.'}</p>
               : entry && grant.canTake && agentState(entry, loaded, now) !== 'online' ? <p className="handoff__note" role="status">{`${entry.name} isn’t connected right now; it picks up #${task?.number ?? ''} when it signs in.`}</p> : null}
-            {entry && grant.canTake && loaded?.policy ? <p className="handoff__note">The project’s agent policy (revision {loaded.policy.revision}) applies to its work.</p> : null}
               </>
             )}
           </>

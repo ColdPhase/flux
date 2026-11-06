@@ -26,9 +26,9 @@ export type { Actor, LoadOptions, WorkspaceAi } from './ports.js';
  * membership, grant or agent applies to the very next call):
  *
  * - A principal acts inside one workspace. People act through their membership role
- *   (`owner`, `admin`, `member`, `guest`); an agent acts only through its own project
- *   grants and only while it is not revoked. A person-owned agent is also capped by its
- *   owner's current access and stops working when the owner leaves the workspace.
+ *   (`owner`, `admin`, `member`, `guest`). An agent has exactly its owner's current rights
+ *   (F-036 AG-3) and no grant of its own: its level is its owner's, it acts only while it is
+ *   not revoked, and it stops working when the owner leaves the workspace.
  * - Project access levels: none < viewer < contributor < manager.
  *   - An explicit `denied` grant gives none. **Explicit deny wins** over every role,
  *     grant, visibility and ownership rule for that project and its drafts.
@@ -36,9 +36,9 @@ export type { Actor, LoadOptions, WorkspaceAi } from './ports.js';
  *   - Otherwise an explicit `manager` (a space admin, people only, F-037), `contributor` (a
  *     space member) or `viewer` grant applies (a viewer grant also
  *     narrows a member's implicit access).
- *   - Otherwise a `member` is a contributor on `workspace`-visible projects. Guests and
- *     agents see only projects they were explicitly granted; nobody without a grant or
- *     manager role sees a `restricted` project.
+ *   - Otherwise a `member` is a contributor on `workspace`-visible projects. Guests see
+ *     only projects they were explicitly granted; nobody without a grant or manager role
+ *     sees a `restricted` project.
  * - Drafts are private to their author by default. Workspace membership alone never
  *   reveals a private draft. A `project` draft is readable at project level viewer and
  *   writable at contributor. A `workspace` draft is readable by owners, admins and
@@ -56,8 +56,8 @@ export type { Actor, LoadOptions, WorkspaceAi } from './ports.js';
  *   participant who is active in the workspace reads or writes it; workspace owners and admins
  *   who are not participants never see it, and agents never do in this slice. `dm.create` is
  *   for owners, admins and members (guests can take part when added, but not start a DM).
- * - An agent never works outside its current project grants, not even on drafts it
- *   authored: it creates drafts only inside a project where it is a contributor, and
+ * - An agent never works outside its owner's current access, not even on drafts it
+ *   authored: it creates drafts only inside a project where its owner is a contributor, and
  *   every read (viewer) or write, share and move (contributor) of any draft — its own
  *   private drafts included — needs its current level on the draft's project.
  * - With `lock: true` (inside a mutation transaction) the decision locks the rows it
@@ -68,7 +68,7 @@ export type { Actor, LoadOptions, WorkspaceAi } from './ports.js';
  *   does not leak; visible objects with a forbidden action get {@link ForbiddenError} (403).
  */
 
-export const WORKSPACE_ACTIONS = ['workspace.read', 'workspace.read_members', 'workspace.manage_members', 'workspace.rename', 'workspace.manage_agents', 'workspace.manage_ai', 'workspace.manage_encryption', 'project.create', 'draft.create', 'agent.create', 'sketch.create', 'dm.create'] as const;
+export const WORKSPACE_ACTIONS = ['workspace.read', 'workspace.read_members', 'workspace.manage_members', 'workspace.rename', 'workspace.manage_ai', 'workspace.manage_encryption', 'project.create', 'draft.create', 'agent.create', 'sketch.create', 'dm.create'] as const;
 export const PROJECT_ACTIONS = ['project.read', 'project.write', 'project.manage'] as const;
 export const DRAFT_ACTIONS = ['draft.read', 'draft.write', 'draft.share', 'draft.move'] as const;
 export const AGENT_ACTIONS = ['agent.read', 'agent.revoke', 'agent.invoke'] as const;
@@ -221,7 +221,6 @@ export async function evaluateWorkspace(principal: Principal, action: ActionsByR
       break;
     case 'workspace.manage_members':
     case 'workspace.rename':
-    case 'workspace.manage_agents':
     case 'workspace.manage_ai':
     case 'workspace.manage_encryption':
       allowed = human && isManager(actor.role);

@@ -5,7 +5,7 @@ import type { AddressInfo } from 'node:net';
 import { join } from 'node:path';
 import { after, before, beforeEach, describe, test } from 'node:test';
 import {
-  assistantChangeActionPath, assistantSettingsPath, ASSISTANT_UNIT_CREATE_VIEW, PERSONAL_RUNTIME_CONSENT_VERSION, type AssistantSettings, type Conversation, type Project,
+  agentConnectionPath, assistantChangeActionPath, assistantSettingsPath, ASSISTANT_UNIT_CREATE_VIEW, PERSONAL_RUNTIME_CONSENT_VERSION, type AssistantSettings, type Conversation, type Project,
   type Workspace,
 } from '@flux/contracts';
 import { createPersonalRunProcessor, noPersonalConnections, REDACTED_SECRET, sweepWorkspaceAi, type AgentRuntimeConfig, type Principal } from '@flux/core';
@@ -63,10 +63,6 @@ describe('a run on the owner\'s own Claude Code in the agent runtime (F-022 T5, 
       reserved_micros, engine, run_token_closed_at, provider, model FROM personal_runs WHERE id = $1`, [runId])).rows[0] as Record<string, unknown>;
   }
   const settings = async () => expectStatus(await owner.browser.request('GET', assistantSettingsPath(ws.id, owner.id)), 200) as unknown as AssistantSettings;
-  async function setWiki(mode: 'off' | 'edit') {
-    const current = await settings();
-    expectStatus(await owner.browser.request('PATCH', assistantSettingsPath(ws.id, owner.id), { body: { areas: { wiki: mode } }, headers: { 'if-match': `"${current.version}"` } }), 200);
-  }
   async function filesUnder(dir: string): Promise<string[]> {
     const out: string[] = [];
     for (const entry of await readdir(dir, { withFileTypes: true }).catch(() => [])) {
@@ -128,7 +124,6 @@ describe('a run on the owner\'s own Claude Code in the agent runtime (F-022 T5, 
       WHERE owner_user_id = $1 AND status IN ('queued', 'reading', 'dispatching')`, [owner.id]);
     // Each test starts a fresh day: this suite runs more than one day's 20 requests (the cap has its own test).
     await pool.query(`UPDATE personal_runs SET created_at = created_at - interval '2 days' WHERE owner_user_id = $1`, [owner.id]);
-    await setWiki('edit');
   });
 
   test('the consent names the owner\'s plan; a run reserves no money and needs no API key connection', async () => {
@@ -343,10 +338,11 @@ describe('a run on the owner\'s own Claude Code in the agent runtime (F-022 T5, 
     await runs.enable(human(owner), { consentVersion: PERSONAL_RUNTIME_CONSENT_VERSION, agentId, engine: 'runtime' });
   });
 
-  async function setMode(approvalMode: 'act' | 'ask') {
+  /** "What it may do" (F-036 AG-3), set by the owner on the assistant's connection. */
+  async function setMode(mayDo: 'act' | 'ask') {
     const current = await settings();
-    if (current.approvalMode !== approvalMode)
-      expectStatus(await owner.browser.request('PATCH', assistantSettingsPath(ws.id, owner.id), { body: { approvalMode }, headers: { 'if-match': `"${current.version}"` } }), 200);
+    if (current.mayDo !== mayDo)
+      expectStatus(await owner.browser.request('PATCH', agentConnectionPath(current.connectionId), { body: { mayDo } }), 200);
   }
   const changeRows = async (runId: string) => (await pool.query(`SELECT id, state, wait_reason, authority, receipt, prepared_command, version, decided_by FROM assistant_changes WHERE run_id = $1 ORDER BY created_at, id`, [runId])).rows as
     { id: string; state: string; wait_reason: string | null; authority: string | null; receipt: Record<string, unknown> | null; prepared_command: { tool: string; view?: string; args: Record<string, unknown> } | null; version: number; decided_by: string | null }[];
@@ -385,7 +381,6 @@ describe('a run on the owner\'s own Claude Code in the agent runtime (F-022 T5, 
 
   test('F-027 A3 on the runtime engine: a hand-off to the owner\'s own agent is prepared as the same private intent as on the server engine, and Apply opens one pending unit', async () => {
     const codexAgent = (expectStatus(await owner.browser.request('POST', `/api/v1/workspaces/${ws.id}/agents`, { body: { name: 'Ada Codex', owner: 'self' } }), 201) as { id: string }).id;
-    expectStatus(await owner.browser.request('POST', `/api/v1/projects/${place.id}/grants`, { body: { principal: { kind: 'agent', id: codexAgent }, role: 'contributor' } }), 201);
     const codex = await agentConnection(pool, owner.browser, codexAgent, [place.id]);
     const task = expectStatus(await owner.browser.request('POST', `/api/v1/projects/${place.id}/work`, { body: { title: 'Runtime hand-off' } }), 201) as { id: string; version: number };
     await setMode('ask');
@@ -404,31 +399,6 @@ describe('a run on the owner\'s own Claude Code in the agent runtime (F-022 T5, 
       assert.deepEqual(unit, [{ state: 'pending', generation: 0, role: 'review', assignment_connection_id: codex.connectionId }]);
       assert.equal((await calls()).length, cliCalls, 'Apply started no CLI');
     } finally { await setMode('act'); }
-  });
-
-  test('AST-4.2 (read part) and AST-4.4 on the runtime: an Off Wiki lists no Wiki tool and gets the S6 refusal, also mid-run', async () => {
-    await setWiki('off');
-    await script({ calls: [{ name: 'flux_list_contexts' }], probes: [{ name: 'flux_get_doc', args: { projectId: place.id, id: docId } }], answer: 'ok' });
-    let started = await ask();
-    assert.equal(await processor.process(started.run.id), 'completed');
-    let recorded = await calls();
-    const listed = recorded.find((entry) => entry.event === 'tools_list') as { tools: string[] };
-    assert.ok(!listed.tools.some((tool) => ['flux_get_doc', 'flux_list_docs', 'flux_list_materials', 'flux_read_material'].includes(tool)), 'no Wiki tool');
-    const probe = recorded.find((entry) => entry.event === 'tool_result' && entry.name === 'flux_get_doc') as { isError: boolean; text: string };
-    assert.ok(probe.isError && probe.text.includes('MCP_ENTRY_UNAVAILABLE') && !probe.text.includes(WIKI_CANARY), 'the S6 refusal');
-    // Mid-run: the Wiki is on at the start, then turned off; the same token's next Wiki read is refused.
-    await setWiki('edit');
-    await resetFake();
-    await script({ calls: [{ name: 'flux_get_doc', args: { projectId: place.id, id: docId } }, { name: 'flux_get_doc', args: { projectId: place.id, id: docId } }], delayMs: 3_000, answer: 'ok' });
-    started = await ask();
-    const processing = processor.process(started.run.id);
-    await waitFor(async () => (await calls()).some((entry) => entry.event === 'tool_result'), 'the first Wiki read');
-    await setWiki('off');
-    await processing;
-    recorded = await calls();
-    const reads = recorded.filter((entry) => entry.event === 'tool_result') as { isError: boolean; text: string }[];
-    assert.ok(reads[0]!.text.includes(WIKI_CANARY), 'the first read was allowed');
-    assert.ok(reads[1]!.isError && reads[1]!.text.includes('MCP_ENTRY_UNAVAILABLE') && !reads[1]!.text.includes(WIKI_CANARY), 'the next read is refused');
   });
 
   test('runs per day: the 21st request of the day is refused and the assistant shows it is at its daily limit; no API key is used', async () => {

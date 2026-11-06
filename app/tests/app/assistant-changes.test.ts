@@ -2,9 +2,9 @@ import assert from 'node:assert/strict';
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { before, beforeEach, describe, test } from 'node:test';
 import {
-  ASSISTANT_CHANGES_PATH, ASSISTANT_RUN_EFFECT_TOOLS, assistantChangeActionPath, assistantMessageHeader, assistantRunChangesPath, assistantRunChangesActionPath, assistantSettingsPath, conversationAssistantChangesPath,
+  agentConnectionPath, ASSISTANT_RUN_EFFECT_TOOLS, assistantChangeActionPath, assistantChangeLine, assistantRunChangesPath, assistantRunChangesActionPath, assistantSettingsPath, conversationAssistantChangesPath,
   NEEDS_YOU_PATH, PERSONAL_RUN_CONSENT_VERSION, PERSONAL_RUN_LIMITS, personalRunTokenPath,
-  type AssistantChange, type AssistantRunUndone, type AssistantSettings, type Conversation, type NeedsYouResponse, type Project, type Workspace,
+  type AgentMayDo, type AssistantChange, type AssistantRunUndone, type AssistantSettings, type Conversation, type NeedsYouResponse, type Project, type Workspace,
 } from '@flux/contracts';
 import { createPersonalRunProcessor, recoverPersonalRuns, type PersonalComputeResult, type Principal } from '@flux/core';
 import { personalRunTokenRows } from '@flux/db';
@@ -21,12 +21,11 @@ import { addMember, expectStatus, grant, person, project as createProject, works
 import { FakeCompute, FakeConnections, FakeQueue } from './support/personal-runs.js';
 import { ensureWorkspaceAiAllowed, setWorkspaceAi } from './support/workspace-ai.js';
 
-// F-027 A3 (#403): the change log, run authority and "Ask me first". An assistant run's change tool goes
-// through the real `/mcp` route with the run's own token (the `runtime` engine's path) and, for the
-// combination table, through the worker's tool loop with a FAKE provider (the `server` engine's path).
-// Every call is classified as applied, waiting, suggestion or refused and recorded in `assistant_changes`
-// in the same transaction. Waiting changes are applied by the owner only, with every check repeated.
-// No model, CLI or vendor account is used; the clock for expiry and Inbox is a fake one.
+// F-027 A3 (#403), F-036 AG-3 (#855): the change log, run authority and "What it may do". An assistant run's change tool goes
+// through the real `/mcp` route with the run's own token (the `runtime` engine's path) and, for "Ask me first", through the
+// worker's tool loop with a FAKE provider (the `server` engine's path). Every call is classified as applied, waiting or refused
+// and recorded in `assistant_changes` in the same transaction. Waiting changes are approved by the owner only, with every check
+// repeated. No model, CLI or vendor account is used. The F-036 rules themselves are in assistant-what-it-may-do.test.ts.
 
 const connections = new FakeConnections();
 const compute = new FakeCompute();
@@ -41,7 +40,6 @@ type Message = Record<string, unknown> | null;
 const result = (message: Message) => message?.result as { isError?: boolean; content?: { text?: string }[] } | undefined;
 const text = (message: Message) => result(message)?.content?.[0]?.text ?? '';
 const refusalCode = (message: Message) => result(message)?.isError ? (JSON.parse(text(message)) as { code?: string }).code : undefined;
-const DAY = 86_400_000;
 
 interface ChangeRow { id: string; state: string; wait_reason: string | null; authority: string | null; operation: string; object_id: string | null;
   receipt: Record<string, unknown> | null; refusal: string | null; decided_by: string | null; version: number; run_id: string }
@@ -54,9 +52,9 @@ describe('the assistant\'s change log, run authority and "Ask me first" (F-027 A
   let jonasWs: Workspace; let shared: Project; let sharedThread: Conversation;
 
   const settings = async (workspaceId = ws.id) => expectStatus(await owner.browser.request('GET', assistantSettingsPath(workspaceId, owner.id)), 200) as unknown as AssistantSettings;
-  async function save(body: Record<string, unknown>, workspaceId = ws.id) {
-    const current = await settings(workspaceId);
-    expectStatus(await owner.browser.request('PATCH', assistantSettingsPath(workspaceId, owner.id), { body, headers: { 'if-match': `"${current.version}"` } }), 200);
+  /** "What it may do" (F-036 AG-3), set on the assistant's connection by its owner. */
+  async function setMayDo(mayDo: AgentMayDo, workspaceId = ws.id) {
+    expectStatus(await owner.browser.request('PATCH', agentConnectionPath((await settings(workspaceId)).connectionId), { body: { mayDo } }), 200);
   }
   /** A run moved to `reading` (as the worker's claim does), with its token minted. */
   async function liveRun(conversation = thread, reactionAction?: string) {
@@ -94,14 +92,6 @@ describe('the assistant\'s change log, run authority and "Ask me first" (F-027 A
     expectStatus(await who.browser.request('POST', `/api/v1/sketches/${mapId}/thoughts`, { body: { text: textValue, x: 0, y: 0 } }), 201) as { thought?: { id: string; version: number }; id?: string; version?: number };
   const thoughtId = (created: Awaited<ReturnType<typeof thought>>) => (created.thought?.id ?? created.id)!;
   const thoughtVersion = (created: Awaited<ReturnType<typeof thought>>) => (created.thought?.version ?? created.version)!;
-  /** Another person's open live session on a page (F-021 presence), as PR #389's signal records it. */
-  async function typing(who: Person, docId: string) {
-    const session = (await pool.query(`SELECT id FROM auth_sessions WHERE user_id = $1 ORDER BY created_at DESC LIMIT 1`, [who.id])).rows[0] as { id: string };
-    const connection = randomUUID();
-    await pool.query(`INSERT INTO doc_live_presence (connection_id, doc_id, generation, actor_id, session_id, cursor, expires_at)
-      VALUES ($1, $2, $3, $4, $5, '{"anchor":"a","head":"a"}'::jsonb, now() + interval '5 minutes')`, [connection, docId, randomUUID(), who.id, session.id]);
-    return () => pool.query(`DELETE FROM doc_live_presence WHERE connection_id = $1`, [connection]);
-  }
 
   before(async () => {
     owner = await person('ac-ada');
@@ -127,45 +117,18 @@ describe('the assistant\'s change log, run authority and "Ask me first" (F-027 A
     await grant(peer, shared.id, owner, 'contributor');
     const jonasAgent = (expectStatus(await owner.browser.request('POST', `/api/v1/workspaces/${jonasWs.id}/agents`, { body: { name: 'Ada assistant', owner: 'self' } }), 201) as { id: string }).id;
     await runs.selectAgent(human(owner), { agentId: jonasAgent });
-    expectStatus(await peer.browser.request('POST', `/api/v1/projects/${shared.id}/grants`, { body: { principal: { kind: 'agent', id: jonasAgent }, role: 'contributor' } }), 201);
+    // The assistant reaches Shared rig because Ada does (F-036 AG-3): no join request, grant or project list.
     sharedThread = expectStatus(await peer.browser.request('POST', `/api/v1/projects/${shared.id}/conversations`,
       { body: { body: 'Rig notes', clientMessageId: randomUUID() } }), 201) as Conversation;
-    const jonasSettings = await settings(jonasWs.id);
-    if (!jonasSettings.policy.selectedProjectIds.includes(shared.id))
-      await save({ projectMode: 'chosen', selectedProjectIds: [shared.id] }, jonasWs.id);
   });
   beforeEach(async () => {
     compute.dispatched = []; compute.counted = [];
     await pool.query(`UPDATE personal_runs SET status = 'stopped', completed_at = now(), cost_state = 'released', charged_micros = 0
       WHERE owner_user_id = $1 AND status IN ('queued', 'reading', 'dispatching')`, [owner.id]);
-    const current = await settings();
-    if (current.approvalMode !== 'act' || current.areas.maps !== 'edit' || current.areas.wiki !== 'edit' || current.areas.tasks !== 'edit' || current.changesPerRun !== 20)
-      await save({ approvalMode: 'act', changesPerRun: 20, areas: { maps: 'edit', wiki: 'edit', tasks: 'edit' } });
+    if ((await settings()).mayDo !== 'act') await setMayDo('act');
   });
 
-  test('AST-4.3: with Only read for maps the map reads are listed and every map change tool is absent; edit lists them', async () => {
-    const mapTools = ['flux_create_map', 'flux_rename_map', 'flux_add_thought', 'flux_update_thought', 'flux_remove_thought', 'flux_move_thoughts', 'flux_link_thoughts', 'flux_unlink_thoughts'];
-    const edit = await liveRun();
-    for (const name of mapTools) assert.ok(edit.tools.includes(name), `${name} with maps on`);
-    await complete(edit.runId);
-    await save({ areas: { maps: 'read' } });
-    const read = await liveRun();
-    assert.ok(read.tools.includes('flux_list_maps') && read.tools.includes('flux_get_map'), 'map reads stay');
-    for (const name of mapTools) assert.ok(!read.tools.includes(name), `${name} is absent`);
-    const listed = ((await mcp(read.token, 99, 'tools/list')).message?.result as { tools: { name: string }[] }).tools.map((tool) => tool.name);
-    for (const name of mapTools) assert.ok(!listed.includes(name), `${name} is not listed`);
-    // Only read: a forced map change is refused; the change log records nothing.
-    assert.equal(refusalCode((await read.call('flux_create_map', { title: 'Sneaky' })).message), 'MCP_ENTRY_UNAVAILABLE');
-    assert.deepEqual(await changesOf(read.runId), []);
-    // Run-private view: no runtime, grant or class in a change tool's schema.
-    const create = ((await mcp(read.token, 98, 'tools/list')).message?.result as { tools: { name: string; inputSchema: { properties: Record<string, unknown>; required?: string[] } }[] }).tools
-      .find((tool) => tool.name === 'flux_create_task')!;
-    assert.ok(!('runtimeSessionId' in create.inputSchema.properties) && !('grantId' in create.inputSchema.properties) && !('peerRequestClass' in create.inputSchema.properties));
-    assert.ok(!(create.inputSchema.required ?? []).includes('projectId'), 'the project defaults to the run\'s place');
-    await complete(read.runId);
-  });
-
-  test('AST-5.2 (route): applied, waiting, suggestion and refused per row of the combination table, each in the change log', async () => {
+  test('AST-5.2 (route): applied and waiting per row of the table, each in the change log', async () => {
     const theirsTask = await task(peer, 'Jonas calibrates the probes');
     const mine = await task(owner, 'Order spare probes');
     const run = await liveRun();
@@ -179,10 +142,6 @@ describe('the assistant\'s change log, run authority and "Ask me first" (F-027 A
     const waiting = await run.call('flux_update_task', { workId: theirsTask.id, expectedVersion: theirsTask.version, changes: { status: 'done' } });
     assert.match(text(waiting.message), /^Waiting for ac-ada's OK: close task #\d+ Jonas calibrates the probes\.$/);
     assert.equal(result(waiting.message)?.isError, undefined, 'a plain tool result, not an error');
-    // Off: no tool; a forced call is refused before anything runs.
-    await save({ areas: { decisions: 'off' } });
-    assert.equal(refusalCode((await run.call('flux_propose_decision', { decision: { title: 'Use PIR' } })).message), 'MCP_ENTRY_UNAVAILABLE');
-    await save({ areas: { decisions: 'edit' } });
     const rows = await changesOf(run.runId);
     assert.deepEqual(rows.map((row) => [row.operation, row.state, row.wait_reason, row.authority]), [
       ['work.create', 'applied', null, 'owner_request'], ['work.update', 'applied', null, 'owner_request'], ['work.update', 'waiting', 'others', null]]);
@@ -202,7 +161,7 @@ describe('the assistant\'s change log, run authority and "Ask me first" (F-027 A
   });
 
   test('AST-5.2 ("Ask me first") and the server engine: the same effect tool waits; Apply after the run and token ended commits exactly once with no model call', async () => {
-    await save({ approvalMode: 'ask' });
+    await setMayDo('ask');
     // The `server` engine: a fake provider calls the same tool through the worker's loop and the real /mcp route.
     const replies: PersonalComputeResult[] = [
       { kind: 'completed' as const, text: 'adding', stopReason: 'tool_use', usage: { inputTokens: 300, outputTokens: 20 },
@@ -218,13 +177,12 @@ describe('the assistant\'s change log, run authority and "Ask me first" (F-027 A
     assert.deepEqual([row!.state, row!.wait_reason], ['waiting', 'ask']);
     assert.equal((await pool.query(`SELECT count(*)::int AS n FROM project_work_items WHERE title = 'Label the sensor cables'`)).rows[0].n, 0, 'nothing applied yet');
     assert.ok((await pool.query(`SELECT run_token_closed_at FROM personal_runs WHERE id = $1`, [started.run.id])).rows[0].run_token_closed_at, 'the run and its token ended');
-    // Ten minutes later it is an Inbox question with the object's own verb (fake clock).
-    const later = () => new Date(Date.now() + 11 * 60_000);
-    const inbox = await needsYouUseCases(db, { waiting: (userId) => assistantChangeUseCases(db, undefined, later).inbox(userId) }).list(human(owner));
+    // At once, the run is one Inbox item for its owner (F-036 AG-7), with Approve all.
+    const inbox = await needsYouUseCases(db, { waiting: (userId) => assistantChangeUseCases(db).inbox(userId) }).list(human(owner));
     const item = inbox.items.find((entry) => entry.key === `assistant:${started.run.id}`);
-    assert.equal(item?.title, 'Your assistant wants to add 1 task');
-    assert.equal(item?.assistantChanges?.verb, 'Add');
-    // Apply within seven days: exactly one task, under owner_approval, with no provider call.
+    assert.equal(item?.title, '1 thing waits for you');
+    assert.equal(item?.assistantChanges?.changes[0]?.waitReason, 'ask');
+    // Approve: exactly one task, under owner_approval, with no provider call.
     const dispatched = compute.dispatched.length;
     const applied = expectStatus(await owner.browser.request('POST', assistantChangeActionPath(row!.id, 'apply'), { body: { expectedVersion: row!.version } }), 200) as { change: AssistantChange };
     assert.equal(applied.change.state, 'applied_after_wait');
@@ -241,43 +199,7 @@ describe('the assistant\'s change log, run authority and "Ask me first" (F-027 A
     assert.equal((await pool.query(`SELECT status FROM personal_runs WHERE id = $1`, [started.run.id])).rows[0].status, 'completed', 'the source run is not revived');
   });
 
-  test('AST-5.3: each always-wait case waits in "Do it and tell me" with its reason; each never case has no tool and a forced call is refused', async () => {
-    const mapId = (await map(owner)).id;
-    const mineThought = await thought(owner, mapId, 'Lux threshold');
-    const theirsTask = await task(peer, 'Jonas solders the board');
-    const page = await doc(owner, 'Suppliers');
-    const stopTyping = await typing(peer, page.id);
-    const run = await liveRun();
-    // 1 removal, 2 other people's things, 4 a page someone is typing in.
-    assert.match(text((await run.call('flux_remove_thought', { mapId, thoughtId: thoughtId(mineThought), expectedVersion: thoughtVersion(mineThought) })).message), /^Waiting for ac-ada's OK: remove thought/);
-    assert.match(text((await run.call('flux_update_task', { workId: theirsTask.id, expectedVersion: theirsTask.version, changes: { title: 'Solder it twice' } })).message), /^Waiting for/);
-    assert.equal(text((await run.call('flux_update_doc', { docId: page.id, expectedVersion: page.version, changes: { body: 'Use Acme' } })).message),
-      'I\'ll edit Suppliers when ac-jonas finishes typing.');
-    // 3 handing work to another person: no run tool transfers or completes a unit or claims one; the one hand-off tool reaches the owner's own
-    // agents only (a foreign agent is refused even after Apply: assistant-handoff.test.ts).
-    for (const absent of ['flux_transfer_unit', 'flux_claim_unit', 'flux_complete_unit', 'flux_send_request']) assert.ok(!run.tools.includes(absent), absent);
-    // 5 past the run's limit: tested in AST-6.5. Never cases 6-8: no tool exists, a forced call is refused.
-    for (const never of ['flux_transfer_unit', 'flux_claim_unit', 'flux_bootstrap', 'flux_create_proposal']) {
-      assert.ok(!run.tools.includes(never), `${never} is not listed`);
-      assert.equal(refusalCode((await run.call(never, {})).message), 'MCP_ENTRY_UNAVAILABLE', `${never} is refused`);
-    }
-    assert.ok(!run.tools.some((name) => /grant|invite|accept|policy|setting/.test(name)), 'no access, acceptance or settings tool');
-    const elsewhere = await run.call('flux_create_task', { projectId: shared.id, task: { title: 'Outside the place' } });
-    assert.ok(result(elsewhere.message)?.isError || elsewhere.status === 403, 'another project is outside the run\'s place');
-    const reasons = (expectStatus(await owner.browser.request('GET', conversationAssistantChangesPath(thread.id)), 200) as { items: AssistantChange[] }).items
-      .filter((change) => change.runId === run.runId).map((change) => [change.waitReason, change.line]);
-    assert.deepEqual(reasons, [
-      ['removal', 'Removing a thought always waits for you'],
-      ['others', 'ac-jonas\'s task: changing it waits for you'],
-      ['live_wiki', 'I\'ll edit Suppliers when ac-jonas finishes typing.'],
-    ]);
-    // Jonas keeps typing until the reasons are read: the API's 15-second live-Wiki sweep applies a deferral as soon as the
-    // page is free, which would turn this row into "Applied when the page was free" (v0.1.0 acceptance, #249).
-    await stopTyping();
-    await complete(run.runId);
-  });
-
-  test('AST-5.4: Apply on a changed target applies nothing ("Changed since you asked"); lost write access, a switch off or Not now refuse it', async () => {
+  test('AST-5.4: Approve on a changed target applies nothing ("Changed since you asked"); lost write access, Only read or Skip refuse it', async () => {
     const lens = await task(peer, 'Jonas checks the lens', shared.id);
     const clean = await task(peer, 'Jonas cleans the lens', shared.id);
     const order = await task(peer, 'Jonas orders a lens', shared.id);
@@ -290,10 +212,10 @@ describe('the assistant\'s change log, run authority and "Ask me first" (F-027 A
     expectStatus(await peer.browser.request('PATCH', `/api/v1/work/${lens.id}`, { body: { title: 'Jonas checks the lens today' }, headers: { 'if-match': `"${lens.version}"` } }), 200);
     const refused = await owner.browser.request('POST', assistantChangeActionPath(stale!.id, 'apply'), { body: {} });
     assert.equal(refused.status, 409);
-    assert.equal((refused.json as { error: string }).error, 'Changed since you asked. Ask again');
+    assert.equal((refused.json as { error: string }).error, 'Changed since you asked');
     assert.equal((await pool.query(`SELECT title FROM project_work_items WHERE id = $1`, [lens.id])).rows[0].title, 'Jonas checks the lens today');
-    // Not now closes it; a later Apply cannot revive it.
-    expectStatus(await owner.browser.request('POST', assistantChangeActionPath(declined!.id, 'not-now'), { body: {} }), 200);
+    // Skip closes it; a later Approve cannot revive it.
+    expectStatus(await owner.browser.request('POST', assistantChangeActionPath(declined!.id, 'skip'), { body: {} }), 200);
     expectStatus(await owner.browser.request('POST', assistantChangeActionPath(declined!.id, 'apply'), { body: {} }), 409);
     // Ada lost write access: refused, nothing changes; getting it back cannot revive the saved change.
     await pool.query(`UPDATE project_grants SET role = 'viewer' WHERE project_id = $1 AND user_id = $2`, [shared.id, owner.id]);
@@ -301,21 +223,21 @@ describe('the assistant\'s change log, run authority and "Ask me first" (F-027 A
     await pool.query(`UPDATE project_grants SET role = 'contributor' WHERE project_id = $1 AND user_id = $2`, [shared.id, owner.id]);
     expectStatus(await owner.browser.request('POST', assistantChangeActionPath(lost!.id, 'apply'), { body: {} }), 409);
     assert.equal((await pool.query(`SELECT title FROM project_work_items WHERE id = $1`, [clean.id])).rows[0].title, 'Jonas cleans the lens');
-    assert.deepEqual((await changesOf(rig.runId)).map((row) => row.state), ['refused', 'refused', 'not_now']);
-    // A switch turned to Only read invalidates intent at once; switching it on again cannot resurrect it.
+    assert.deepEqual((await changesOf(rig.runId)).map((row) => row.state), ['refused', 'refused', 'skipped']);
+    // "What it may do" set to Only read since: an Approve is refused and closes it; nothing changes.
     const theirsTask = await task(peer, 'Jonas aligns the rig');
     const next = await liveRun();
     await next.call('flux_update_task', { workId: theirsTask.id, expectedVersion: theirsTask.version, changes: { title: 'Align it today' } });
     await complete(next.runId);
     const [switched] = await changesOf(next.runId);
-    await save({ areas: { tasks: 'read' } });
-    assert.deepEqual((await changesOf(next.runId)).map((row) => [row.state, row.refusal]), [['refused', 'Your assistant\'s switches changed since. Ask again']]);
-    await save({ areas: { tasks: 'edit' } });
+    await setMayDo('read');
+    assert.equal((await owner.browser.request('POST', assistantChangeActionPath(switched!.id, 'apply'), { body: {} })).status, 403);
+    await setMayDo('act');
     expectStatus(await owner.browser.request('POST', assistantChangeActionPath(switched!.id, 'apply'), { body: {} }), 409);
     assert.equal((await pool.query(`SELECT title FROM project_work_items WHERE id = $1`, [theirsTask.id])).rows[0].title, 'Jonas aligns the rig');
   });
 
-  test('AST-5.5: a waiting change is invisible to other members and expires after seven days with its Recent line (fake clock)', async () => {
+  test('AST-5.5: a waiting change is invisible to other members, and nobody else can approve or skip it', async () => {
     const theirsTask = await task(peer, 'Jonas tests at night');
     const run = await liveRun();
     await run.call('flux_update_task', { workId: theirsTask.id, expectedVersion: theirsTask.version, changes: { status: 'done' } });
@@ -323,138 +245,16 @@ describe('the assistant\'s change log, run authority and "Ask me first" (F-027 A
     const [row] = await changesOf(run.runId);
     for (const other of [peer, outsider]) {
       assert.equal((await other.browser.request('POST', assistantChangeActionPath(row!.id, 'apply'), { body: {} })).status, 404);
-      assert.equal((await other.browser.request('POST', assistantChangeActionPath(row!.id, 'not-now'), { body: {} })).status, 404);
+      assert.equal((await other.browser.request('POST', assistantChangeActionPath(row!.id, 'skip'), { body: {} })).status, 404);
       assert.equal((await other.browser.request('GET', `/api/v1/assistant-runs/${run.runId}/changes`)).status, 404);
       const listed = expectStatus(await other.browser.request('GET', conversationAssistantChangesPath(thread.id)), 200) as { items: AssistantChange[] };
       assert.ok(!listed.items.some((change) => change.id === row!.id), 'not in another member\'s list');
       const inbox = expectStatus(await other.browser.request('GET', NEEDS_YOU_PATH), 200) as NeedsYouResponse;
       assert.ok(!inbox.items.some((item) => item.key === `assistant:${run.runId}`));
     }
-    // Seven days later (fake clock): expired, never applied, with "Expired: … · Ask again".
-    const week = assistantChangeUseCases(db, undefined, () => new Date(Date.now() + 7 * DAY + 60_000));
-    await assert.rejects(week.apply(human(owner), row!.id), (error: Error & { code?: string }) => error.code === 'ASSISTANT_CHANGE_EXPIRED');
-    const [expired] = (await week.forRun(human(owner), run.runId)).items;
-    assert.equal(expired!.state, 'expired');
-    assert.equal(expired!.line, 'Expired: close task · Ask again');
+    // Nothing waiting expires (F-036): it still waits for its owner.
+    assert.equal((await changesOf(run.runId))[0]!.state, 'waiting');
     assert.notEqual((await pool.query(`SELECT status FROM project_work_items WHERE id = $1`, [theirsTask.id])).rows[0].status, 'done');
-  });
-
-  test('AST-5.6 (API): an undecided waiting change is one Inbox question when the owner leaves the conversation, with the object\'s verb', async () => {
-    const mapId = (await map(owner)).id;
-    const a = await thought(owner, mapId, 'Old idea');
-    const b = await thought(owner, mapId, 'Older idea');
-    const run = await liveRun();
-    await run.call('flux_remove_thought', { mapId, thoughtId: thoughtId(a), expectedVersion: thoughtVersion(a) });
-    await run.call('flux_remove_thought', { mapId, thoughtId: thoughtId(b), expectedVersion: thoughtVersion(b) });
-    const before = expectStatus(await owner.browser.request('GET', NEEDS_YOU_PATH), 200) as NeedsYouResponse;
-    assert.ok(!before.items.some((item) => item.key === `assistant:${run.runId}`), 'not in Inbox while the owner is still there');
-    expectStatus(await owner.browser.request('POST', assistantRunChangesActionPath(run.runId, 'inbox'), { body: {} }), 200);
-    const after = expectStatus(await owner.browser.request('GET', NEEDS_YOU_PATH), 200) as NeedsYouResponse;
-    const item = after.items.find((entry) => entry.key === `assistant:${run.runId}`)!;
-    assert.equal(item.title, 'Your assistant wants to remove 2 thoughts');
-    assert.equal(item.kind, 'question');
-    assert.equal(item.assistantChanges?.verb, 'Remove');
-    // Apply all from Inbox while the run is still live: both removals commit under owner_approval.
-    const all = expectStatus(await owner.browser.request('POST', assistantRunChangesActionPath(run.runId, 'apply'), { body: {} }), 200) as { changes: { change: AssistantChange; message: string | null }[] };
-    assert.deepEqual(all.changes.map((entry) => [entry.change.state, entry.message]), [['applied_after_wait', null], ['applied_after_wait', null]]);
-    const gone = expectStatus(await owner.browser.request('GET', NEEDS_YOU_PATH), 200) as NeedsYouResponse;
-    assert.ok(!gone.items.some((entry) => entry.key === `assistant:${run.runId}`), 'decided: no longer in Inbox');
-    await complete(run.runId);
-  });
-
-  test('AST-5.7: an edit of a page someone is typing in is deferred, applies when the session ends if the version matches, and otherwise waits', async () => {
-    const sweeper = assistantChangeUseCases(db);
-    const page = await doc(owner, 'Probe notes');
-    let stop = await typing(peer, page.id);
-    const run = await liveRun();
-    assert.equal(text((await run.call('flux_update_doc', { docId: page.id, expectedVersion: page.version, changes: { body: 'Calibrated at two depths' } })).message),
-      'I\'ll edit Probe notes when ac-jonas finishes typing.');
-    // The source run and its token end before the session does: the exact edit continues under its reserved allowance.
-    await complete(run.runId);
-    await sweeper.sweep();
-    assert.equal((await docBody(page.id)).body, 'First text', 'nothing while Jonas types');
-    await stop();
-    await sweeper.sweep();
-    assert.equal((await docBody(page.id)).body, 'Calibrated at two depths', 'applied once the session ended, version matching');
-    const [row] = await changesOf(run.runId);
-    assert.deepEqual([row!.state, row!.authority], ['applied_after_wait', 'owner_deferred_change']);
-    // The page changed while they typed: an ordinary waiting change.
-    const other = await doc(owner, 'Supplier list');
-    stop = await typing(peer, other.id);
-    const second = await liveRun();
-    await second.call('flux_update_doc', { docId: other.id, expectedVersion: other.version, changes: { body: 'Acme only' } });
-    expectStatus(await peer.browser.request('PATCH', `/api/v1/docs/${other.id}`, { body: { body: 'Jonas typed this' }, headers: { 'if-match': `"${other.version}"` } }), 200);
-    await stop();
-    await sweeper.sweep();
-    const [changed] = await changesOf(second.runId);
-    assert.deepEqual([changed!.state, changed!.wait_reason], ['waiting', 'conflict']);
-    assert.equal((await docBody(other.id)).body, 'Jonas typed this');
-    // "Ask me first" by the time the session ends: it waits for the owner's Apply.
-    const third = await doc(owner, 'Lux table');
-    stop = await typing(peer, third.id);
-    await second.call('flux_update_doc', { docId: third.id, expectedVersion: third.version, changes: { body: 'Below 5 lux fails' } });
-    await save({ approvalMode: 'ask' });
-    await stop();
-    await sweeper.sweep();
-    const thirdRow = (await changesOf(second.runId)).at(-1)!;
-    assert.deepEqual([thirdRow.state, thirdRow.wait_reason], ['waiting', 'ask']);
-    assert.equal((await docBody(third.id)).body, 'First text');
-    // Stop invalidates a deferral: the sweep refuses it.
-    await complete(second.runId);
-    await save({ approvalMode: 'act' });
-    const fourth = await doc(owner, 'Wiring');
-    stop = await typing(peer, fourth.id);
-    const stopped = await liveRun();
-    await stopped.call('flux_update_doc', { docId: fourth.id, expectedVersion: fourth.version, changes: { body: 'Red is live' } });
-    await pool.query(`UPDATE personal_runs SET stop_requested_at = now(), status = 'stopped', completed_at = now(), cost_state = 'released', charged_micros = 0 WHERE id = $1`, [stopped.runId]);
-    await stop();
-    await sweeper.sweep();
-    assert.equal((await changesOf(stopped.runId))[0]!.state, 'refused');
-    assert.equal((await docBody(fourth.id)).body, 'First text');
-  });
-
-  test('AST-5.8: a change outside the owner\'s rights reaches the other person only after "Send to Jonas"', async () => {
-    const run = await liveRun(sharedThread);
-    // Jonas makes Ada a viewer during the run: her change is now outside her rights (her assistant is capped too).
-    await pool.query(`UPDATE project_grants SET role = 'viewer' WHERE project_id = $1 AND user_id = $2`, [shared.id, owner.id]);
-    try {
-      const prepared = await run.call('flux_create_task', { task: { title: 'Recalibrate the bench' } });
-      assert.equal(text(prepared.message), 'Prepared as a suggestion: add task. ac-ada decides whether to send it.');
-      const [row] = await changesOf(run.runId);
-      assert.deepEqual([row!.state, row!.wait_reason], ['waiting', 'outside_rights']);
-      const notes = async () => (await pool.query(`SELECT count(*)::int AS n FROM notifications WHERE user_id = $1 AND title LIKE '%assistant suggests%'`, [peer.id])).rows[0].n as number;
-      assert.equal(await notes(), 0, 'no Needs-you item for Jonas before the tap');
-      const jonasBefore = expectStatus(await peer.browser.request('GET', NEEDS_YOU_PATH), 200) as NeedsYouResponse;
-      assert.ok(!jonasBefore.items.some((item) => item.title.includes('suggests')));
-      const listed = (expectStatus(await owner.browser.request('GET', conversationAssistantChangesPath(sharedThread.id)), 200) as { items: AssistantChange[] }).items;
-      assert.equal(listed.find((change) => change.id === row!.id)!.line, 'ac-jonas can decide this. Suggest this change to them? · Send to ac-jonas');
-      // Apply is not how a suggestion moves: only Send.
-      expectStatus(await owner.browser.request('POST', assistantChangeActionPath(row!.id, 'apply'), { body: {} }), 409);
-      const sent = expectStatus(await owner.browser.request('POST', assistantChangeActionPath(row!.id, 'send'), { body: { expectedVersion: row!.version } }), 200) as { change: AssistantChange };
-      assert.equal(sent.change.line, 'Sent to ac-jonas');
-      assert.equal(await notes(), 1);
-      const jonas = expectStatus(await peer.browser.request('GET', NEEDS_YOU_PATH), 200) as NeedsYouResponse;
-      const item = jonas.items.find((entry) => entry.title.includes('suggests'))!;
-      assert.equal(item.kind, 'question');
-      assert.equal(item.title, 'ac-ada\'s assistant suggests: add task Recalibrate the bench');
-      assert.equal((await pool.query(`SELECT count(*)::int AS n FROM project_work_items WHERE title = 'Recalibrate the bench'`)).rows[0].n, 0, 'nothing applied on Ada\'s side');
-    } finally {
-      await pool.query(`UPDATE project_grants SET role = 'contributor' WHERE project_id = $1 AND user_id = $2`, [shared.id, owner.id]);
-      await complete(run.runId);
-    }
-  });
-
-  test('AST-6.5: the 21st change in one run waits instead of applying', async () => {
-    const run = await liveRun();
-    for (let i = 1; i <= 20; i += 1) assert.ok(JSON.parse(text((await run.call('flux_create_task', { task: { title: `Batch task ${i}` } })).message)).workId, `change ${i} applies`);
-    const twentyFirst = await run.call('flux_create_task', { task: { title: 'Batch task 21' } });
-    assert.match(text(twentyFirst.message), /^Waiting for ac-ada's OK: add task Batch task 21\.$/);
-    const rows = await changesOf(run.runId);
-    assert.equal(rows.filter((row) => row.state === 'applied').length, 20);
-    assert.deepEqual([rows.at(-1)!.state, rows.at(-1)!.wait_reason], ['waiting', 'limit']);
-    const listed = expectStatus(await owner.browser.request('GET', conversationAssistantChangesPath(thread.id)), 200) as { items: AssistantChange[] };
-    assert.equal(listed.items.find((change) => change.id === rows.at(-1)!.id)!.line, 'Past this request\'s limit of 20 changes');
-    await complete(run.runId);
   });
 
   test('AST-6.7: a person\'s edit between the run\'s read and its write makes that write "Skipped #4: Jonas changed it while I worked"; nothing is retried', async () => {
@@ -511,7 +311,7 @@ describe('the assistant\'s change log, run authority and "Ask me first" (F-027 A
   const patchWork = async (who: Person, id: string, version: number, body: Record<string, unknown>) =>
     expectStatus(await who.browser.request('PATCH', `/api/v1/work/${id}`, { body, headers: { 'if-match': `"${version}"` } }), 200);
 
-  test('AST-6.1: "add two tasks and update the probes page" makes two tasks and one page version by the assistant, three change-log rows and one message "Done: added 2 tasks, edited 1 page" with Undo', async () => {
+  test('AST-6.1: "add two tasks and update the probes page" makes two tasks and one page version by the assistant, three change-log rows and one change line with Undo', async () => {
     const page = await doc(owner, 'Probes', 'Probe notes\n\nSecond paragraph');
     const run = await liveRun();
     await run.call('flux_create_task', { task: { title: 'Calibrate the probes' } });
@@ -524,28 +324,10 @@ describe('the assistant\'s change log, run authority and "Ask me first" (F-027 A
     assert.ok((await listRun(run.runId)).every((change) => change.runState === 'working'));
     await complete(run.runId);
     const items = await listRun(run.runId);
-    assert.equal(assistantMessageHeader(items), 'Done: added 2 tasks, edited 1 page');
+    assert.equal(assistantChangeLine(items), 'Added task Calibrate the probes · added task Order spare probes · updated the Wiki page Probes');
     assert.ok(items.every((change) => change.undoable && change.runState === 'done'));
     assert.equal(items.find((change) => change.operation === 'doc.update')!.after, '1 paragraph changed');
     assert.equal(items.find((change) => change.operation === 'work.create')!.after, 'Calibrate the probes');
-  });
-
-  test('AST-10.7 (API): Recent lists the owner\'s own changes across conversations, newest first, with their Undo; nobody else sees them', async () => {
-    const run = await liveRun();
-    await run.call('flux_create_task', { task: { title: 'Recent one' } });
-    await run.call('flux_create_task', { task: { title: 'Recent two' } });
-    await complete(run.runId);
-    const listed = expectStatus(await owner.browser.request('GET', `${ASSISTANT_CHANGES_PATH}?limit=2`), 200) as { items: AssistantChange[] };
-    assert.equal(listed.items.length, 2, 'the limit holds');
-    assert.deepEqual(listed.items.map((change) => change.objectTitle), ['Recent two', 'Recent one']);
-    assert.ok(listed.items.every((change) => change.undoable && change.runId === run.runId && change.conversationId === thread.id));
-    for (const other of [peer, outsider]) {
-      const theirs = expectStatus(await other.browser.request('GET', ASSISTANT_CHANGES_PATH), 200) as { items: AssistantChange[] };
-      assert.ok(!theirs.items.some((change) => change.runId === run.runId), 'never another person\'s changes');
-    }
-    // Undo from Recent is the same service as the message\'s Undo.
-    const undone = expectStatus(await owner.browser.request('POST', assistantChangeActionPath(listed.items[0]!.id, 'undo'), { body: {} }), 200) as { change: AssistantChange };
-    assert.equal(undone.change.state, 'undone');
   });
 
   test('AST-6.2: Undo restores the page as a new version and removes both tasks; field-level: a state change does not block a rename, an edit of the same title does', async () => {
@@ -616,10 +398,10 @@ describe('the assistant\'s change log, run authority and "Ask me first" (F-027 A
     const items = await listRun(run.runId);
     assert.equal(items.length, 2);
     assert.ok(items.every((change) => change.runState === 'failed' && change.undoable), 'a dead run still posts what it changed, with Undo');
-    assert.equal(assistantMessageHeader(items), 'Done: added 2 tasks');
+    assert.equal(assistantChangeLine(items), 'Added task Committed one · added task Committed two');
   });
 
-  test('AST-6.4: Stop makes the next tool call fail with 403, keeps the committed changes and the message says "Stopped after 2 changes"', async () => {
+  test('AST-6.4: Stop makes the next tool call fail with 403 and keeps the committed changes, with Undo', async () => {
     const run = await liveRun();
     await run.call('flux_create_task', { task: { title: 'Before the stop one' } });
     await run.call('flux_create_task', { task: { title: 'Before the stop two' } });
@@ -629,7 +411,7 @@ describe('the assistant\'s change log, run authority and "Ask me first" (F-027 A
     assert.equal((await pool.query(`SELECT count(*)::int AS n FROM project_work_items WHERE title = 'After the stop' AND project_id = $1`, [place.id])).rows[0].n, 0);
     const items = await listRun(run.runId);
     assert.equal(items.length, 2);
-    assert.equal(assistantMessageHeader(items), 'Stopped after 2 changes');
+    assert.ok(items.every((change) => change.runState === 'stopped'));
     assert.ok(items.every((change) => change.undoable));
   });
 
@@ -668,9 +450,6 @@ describe('the assistant\'s change log, run authority and "Ask me first" (F-027 A
     const scratch = await createProject(owner, ws.id, 'Scratch', 'workspace');
     const conversation = expectStatus(await owner.browser.request('POST', `/api/v1/projects/${scratch.id}/conversations`,
       { body: { body: 'Scratch thread', clientMessageId: randomUUID() } }), 201) as Conversation;
-    const current = await settings();
-    if (!current.policy.selectedProjectIds.includes(scratch.id))
-      await save({ projectMode: 'chosen', selectedProjectIds: [...new Set([...current.policy.selectedProjectIds, scratch.id])] });
     const run = await liveRun(conversation);
     assert.ok(JSON.parse(text((await run.call('flux_create_task', { task: { title: 'Scratch task' } })).message)).workId);
     assert.equal((await changesOf(run.runId)).length, 1);
@@ -684,127 +463,9 @@ describe('the assistant\'s change log, run authority and "Ask me first" (F-027 A
     const effects = new Set<string>(ASSISTANT_RUN_EFFECT_TOOLS);
     const listedEffects = run.tools.filter((name) => !name.startsWith('flux_list') && !name.startsWith('flux_get') && !['flux_read_material', 'flux_search_project', 'flux_project_orientation', 'flux_changes_since'].includes(name));
     for (const name of listedEffects) assert.ok(effects.has(name), name);
-    assert.equal(listedEffects.length, ASSISTANT_RUN_EFFECT_TOOLS.length, 'every switch on lists every change tool');
+    assert.equal(listedEffects.length, ASSISTANT_RUN_EFFECT_TOOLS.length, '"Do it and tell me" lists every change tool');
     await complete(run.runId);
   });
-  test('A5 all typed kinds: explicit Send, recipient-only Accept as human, exact replay, and drafted-by provenance', async () => {
-    const recipientViewer=await person('a5-viewer');
-    await addMember(peer,jonasWs.id,recipientViewer,'member'); await grant(peer,shared.id,recipientViewer,'viewer');
-    const sharedTask = await task(peer, 'Original task', shared.id);
-    const sharedDoc = expectStatus(await peer.browser.request('POST', `/api/v1/projects/${shared.id}/docs`, { body: { title: 'Bench guide', body: 'Original guide' } }), 201) as { id: string; version: number };
-    const sharedMap = expectStatus(await peer.browser.request('POST', `/api/v1/workspaces/${jonasWs.id}/sketches`, { body: { title: 'Bench map', scope: 'project', projectId: shared.id } }), 201) as { id: string };
-    const createThought = async (text: string) => {
-      const value = expectStatus(await peer.browser.request('POST', `/api/v1/sketches/${sharedMap.id}/thoughts`, { body: { text, x: 0, y: 0 } }), 201) as { thought: { id: string; version: number } };
-      return value.thought;
-    };
-    const one = await createThought('Power supply'); const two = await createThought('Sensor');
-    const removable = await createThought('Temporary note');
-    const removableLink=expectStatus(await peer.browser.request('POST', `/api/v1/sketches/${sharedMap.id}/links`, { body: { fromId:two.id,toId:removable.id,label:'temporary' } }),201) as {id:string};
-    const cases: { tool: string; args: Record<string, unknown>; operation: string }[] = [
-      { tool: 'flux_create_task', args: { task: { title: 'Accepted sensor task' } }, operation: 'work.create' },
-      { tool: 'flux_update_task', args: { workId: sharedTask.id, expectedVersion: sharedTask.version, changes: { title: 'Accepted revised task' } }, operation: 'work.update' },
-      { tool: 'flux_create_doc', args: { doc: { title: 'Accepted guide', body: 'Turn the power off before rewiring.' } }, operation: 'doc.create' },
-      { tool: 'flux_update_doc', args: { docId: sharedDoc.id, expectedVersion: sharedDoc.version, changes: { body: 'Accepted connector guide' } }, operation: 'doc.update' },
-      { tool: 'flux_add_thought', args: { mapId: sharedMap.id, thought: { text: 'Accepted calibration idea', x: 20, y: 20 } }, operation: 'map.thought.create' },
-      { tool: 'flux_update_thought', args: { mapId: sharedMap.id, thoughtId: one.id, expectedVersion: one.version, changes: { text: 'Check the power supply' } }, operation: 'map.thought.update' },
-      { tool: 'flux_link_thoughts', args: { mapId: sharedMap.id, fromId: one.id, toId: two.id, label: 'powers' }, operation: 'map.link.create' },
-      { tool: 'flux_unlink_thoughts', args:{mapId:sharedMap.id,linkId:removableLink.id}, operation:'map.link.delete' },
-      { tool: 'flux_remove_thought', args:{mapId:sharedMap.id,thoughtId:removable.id,expectedVersion:removable.version}, operation:'map.thought.delete' },
-    ];
-    for (const entry of cases) {
-      const run = await liveRun(sharedThread);
-      await pool.query(`UPDATE project_grants SET role='viewer' WHERE project_id=$1 AND user_id=$2`, [shared.id, owner.id]);
-      try {
-        const response = await run.call(entry.tool, entry.args);
-        assert.equal(result(response.message)?.isError, undefined, `${entry.operation}: ${text(response.message)}`);
-        const row = (await changesOf(run.runId))[0]!;
-        assert.equal(row.wait_reason, 'outside_rights');
-        expectStatus(await peer.browser.request('POST', assistantChangeActionPath(row.id, 'accept'), { body: { expectedVersion: row.version } }), 404, 'even the future recipient has no unsent access');
-        const sent = expectStatus(await owner.browser.request('POST', assistantChangeActionPath(row.id, 'send'), { body: { expectedVersion: row.version } }), 200) as { change: AssistantChange };
-        expectStatus(await owner.browser.request('POST', assistantChangeActionPath(row.id, 'accept'), { body: { expectedVersion: sent.change.version } }), 404);
-        expectStatus(await outsider.browser.request('POST', assistantChangeActionPath(row.id, 'accept'), { body: { expectedVersion: sent.change.version } }), 404);
-        // A distinct saved intent exercises each kind's live viewer refusal without reviving it for acceptance.
-        await run.call(entry.tool,entry.args);
-        const viewerRow=(await changesOf(run.runId)).find((candidate)=>candidate.id!==row.id)!;
-        const viewerSent=expectStatus(await owner.browser.request('POST',assistantChangeActionPath(viewerRow.id,'send'),{body:{expectedVersion:viewerRow.version}}),200) as {change:AssistantChange};
-        await pool.query(`UPDATE assistant_changes SET suggest_to_user_id=$2 WHERE id=$1`,[viewerRow.id,recipientViewer.id]);
-        expectStatus(await recipientViewer.browser.request('POST',assistantChangeActionPath(viewerRow.id,'accept'),{body:{expectedVersion:viewerSent.change.version}}),403,entry.operation+' viewer');
-        assert.equal((await changesOf(run.runId)).find((candidate)=>candidate.id===viewerRow.id)!.state,'refused');
-        await complete(run.runId); // No live token and no compute are needed for the human decision.
-        const before = compute.dispatched.length;
-        const accepted = expectStatus(await peer.browser.request('POST', assistantChangeActionPath(row.id, 'accept'), { body: { expectedVersion: sent.change.version } }), 200) as { change: AssistantChange };
-        assert.equal(accepted.change.state, 'applied_after_wait', entry.operation);
-        assert.match(accepted.change.line!, /Accepted by ac-jonas.*drafted by ac-ada's assistant/);
-        const saved = (await changesOf(run.runId))[0]!;
-        assert.equal(saved.receipt?.acceptedBy, peer.id); assert.equal(saved.receipt?.preparedBy, saved.receipt?.agentId);
-        assert.equal(compute.dispatched.length, before);
-        expectStatus(await peer.browser.request('POST', assistantChangeActionPath(row.id, 'accept'), { body: { expectedVersion: sent.change.version } }), 404);
-        if (entry.operation === 'work.create') assert.deepEqual((await pool.query(`SELECT created_by_kind,created_by_id FROM project_work_items WHERE id=$1`, [accepted.change.objectId])).rows[0], { created_by_kind: 'human', created_by_id: peer.id });
-        if (entry.operation.startsWith('doc.')) assert.equal((await pool.query(`SELECT author_id FROM project_material_versions WHERE material_id=$1 ORDER BY version DESC LIMIT 1`, [accepted.change.objectId])).rows[0].author_id, peer.id);
-        if(entry.operation==='work.create') {
-          assert.equal(accepted.change.undoable,false,'native human-origin task creation has no assistant Undo');
-          const ownerView=expectStatus(await owner.browser.request('GET',assistantRunChangesPath(run.runId)),200) as {items:AssistantChange[]};
-          assert.equal(ownerView.items.find((change)=>change.id===row.id)!.undoable,false,'drafting does not own the human-created task');
-          const native=(await pool.query(`SELECT creation_origin FROM project_work_items WHERE id=$1`,[accepted.change.objectId])).rows[0];
-          assert.equal(native.creation_origin,'human','acceptance does not forge a native-agent or legacy AI-proposal origin');
-        }
-      } finally { await pool.query(`UPDATE project_grants SET role='contributor' WHERE project_id=$1 AND user_id=$2`, [shared.id, owner.id]); await complete(run.runId); }
-    }
-  });
-
-  test('A5 refuses stale target and never operations without any effect', async () => {
-    const item = await task(peer, 'Versioned suggestion', shared.id);
-    const run = await liveRun(sharedThread);
-    await pool.query(`UPDATE project_grants SET role='viewer' WHERE project_id=$1 AND user_id=$2`, [shared.id, owner.id]);
-    try {
-      await run.call('flux_update_task', { workId: item.id, expectedVersion: item.version, changes: { title: 'Do not overwrite' } });
-      const row = (await changesOf(run.runId))[0]!;
-      const sent = expectStatus(await owner.browser.request('POST', assistantChangeActionPath(row.id, 'send'), { body: { expectedVersion: row.version } }), 200) as { change: AssistantChange };
-      await pool.query(`UPDATE project_work_items SET title='Person edited it',version=version+1 WHERE id=$1`,[item.id]);
-      expectStatus(await peer.browser.request('POST', assistantChangeActionPath(row.id,'accept'), { body:{ expectedVersion:sent.change.version } }),403);
-      assert.equal((await pool.query(`SELECT title FROM project_work_items WHERE id=$1`,[item.id])).rows[0].title,'Person edited it');
-      assert.equal((await changesOf(run.runId))[0]!.state,'refused');
-      assert.ok(!run.tools.some((tool)=>/invite|grant|accept_decision/.test(tool)));
-    } finally { await pool.query(`UPDATE project_grants SET role='contributor' WHERE project_id=$1 AND user_id=$2`,[shared.id,owner.id]); await complete(run.runId); }
-  });
-
-  test('A5 source and switch revocation cannot revive sent intent; recipient Dismiss and expired Send make no effect',async()=>{
-    for(const fence of ['area','source','dismiss','expiry']) {
-      const run=await liveRun(sharedThread);
-      await pool.query(`UPDATE project_grants SET role='viewer' WHERE project_id=$1 AND user_id=$2`,[shared.id,owner.id]);
-      const title=`Unchanged ${fence} suggestion`;
-      try {
-        await run.call('flux_create_task',{task:{title}});
-        const row=(await changesOf(run.runId))[0]!;
-        if(fence==='expiry') {
-          const later=assistantChangeUseCases(db,undefined,()=>new Date(Date.now()+8*DAY));
-          await assert.rejects(later.send(human(owner),row.id,row.version),/Expired/);
-          assert.equal((await changesOf(run.runId))[0]!.state,'expired');
-          continue;
-        }
-        const sent=expectStatus(await owner.browser.request('POST',assistantChangeActionPath(row.id,'send'),{body:{expectedVersion:row.version}}),200) as {change:AssistantChange};
-        if(fence==='dismiss') {
-          expectStatus(await owner.browser.request('POST',assistantChangeActionPath(row.id,'dismiss'),{body:{expectedVersion:sent.change.version}}),404);
-          expectStatus(await peer.browser.request('POST',assistantChangeActionPath(row.id,'dismiss'),{body:{expectedVersion:sent.change.version}}),200);
-        } else {
-          if(fence==='area') await save({areas:{tasks:'read'}},jonasWs.id);
-          else await pool.query(`UPDATE personal_runs SET status='stopped',stop_requested_at=now() WHERE id=$1`,[run.runId]);
-          expectStatus(await peer.browser.request('POST',assistantChangeActionPath(row.id,'accept'),{body:{expectedVersion:sent.change.version}}),fence==='area'?404:403);
-          if(fence==='area') {
-            await pool.query(`UPDATE project_grants SET role='contributor' WHERE project_id=$1 AND user_id=$2`,[shared.id,owner.id]);
-            await save({areas:{tasks:'edit'}},jonasWs.id);
-          }
-          else await complete(run.runId);
-        }
-        expectStatus(await peer.browser.request('POST',assistantChangeActionPath(row.id,'accept'),{body:{expectedVersion:sent.change.version}}),404);
-        assert.equal(Number((await pool.query(`SELECT count(*) AS n FROM project_work_items WHERE project_id=$1 AND title=$2`,[shared.id,title])).rows[0].n),0);
-      } finally {
-        await pool.query(`UPDATE project_grants SET role='contributor' WHERE project_id=$1 AND user_id=$2`,[shared.id,owner.id]);
-        await complete(run.runId);
-      }
-    }
-  });
-
   test('A9 chosen actions: tell/check/draft have read-only tokens; suggest-plan always waits even in act mode', async () => {
     for (const action of ['tell','draft_reply','check_task','suggest_plan']) {
       const run=await liveRun(thread,action);
@@ -1048,7 +709,7 @@ describe('the assistant\'s change log, run authority and "Ask me first" (F-027 A
     // Jonas may edit the project; Ada's assistant made these.
     const theirs = (expectStatus(await peer.browser.request('GET', conversationAssistantChangesPath(thread.id)), 200) as { items: AssistantChange[] }).items.filter((item) => item.runId === run.runId);
     assert.deepEqual(theirs.map((item) => item.undoable), [false, false], 'no Undo is offered to an editor who is not the owner');
-    assert.equal((await undoOne(mapChange!.id, peer)).message, 'Only ac-ada can take back what their assistant made');
+    assert.equal((await undoOne(mapChange!.id, peer)).message, 'Only ac-ada can take back what their agent made');
     const all = expectStatus(await peer.browser.request('POST', assistantRunChangesActionPath(run.runId, 'undo'), { body: {} }), 200) as AssistantRunUndone;
     assert.equal(all.undone, 0, 'the run Undo of an editor leaves them alone');
     assert.deepEqual([await count('sketches', made.mapId), (await pool.query(`SELECT removed_at FROM project_messages WHERE id = $1`, [said.messageId])).rows[0].removed_at], [1, null]);

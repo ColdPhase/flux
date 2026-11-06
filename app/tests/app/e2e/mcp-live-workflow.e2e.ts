@@ -49,20 +49,16 @@ test('real configured accounts: supplied Start and Resume reach the model and pr
         const plan = expect(await owner.request('POST', `/api/v1/projects/${projectId}/materials`, { body: {
           clientMutationId: randomUUID(), title: 'Current project plan', body: 'Outcome: compare the two proposed labels, Study and Research. '
             + 'Create one native task for this comparison, with criteria that the chosen label and reason are recorded. '
-            + 'Do not change software or contact anyone. The wiki explains the audience.' } }), 201);
-        expect(await owner.request('POST', `/api/v1/projects/${projectId}/docs`,
-          { body: { title: 'Audience', body: 'This workspace is for people recording small experiments; use familiar everyday language.' } }), 201);
-        expect(await owner.request('PUT', `/api/v1/projects/${projectId}/agent-policy`, { body: {
-          expectedRevision: 0, scope: 'Only this isolated non-code label-comparison study.', priorities: 'Read the current plan and relevant wiki, decisions, conversations and existing tasks first. '
-            + 'Create exactly one task for the plan with source-linked criteria and a stable plan intent; do not duplicate it on Resume.',
-          reviewCriteria: 'A sourced, concise comparison; no unsupported external claims.',
-          allowedWork: 'Within the granted actions, take and claim the task, then pause it with a checkpoint containing observed source coverage and missing context. '
+            + 'Do not change software or contact anyone. The wiki explains the audience. '
+            + 'Read the current plan and relevant wiki, decisions, conversations and existing tasks first. '
+            + 'Create exactly one task for the plan with source-linked criteria and a stable plan intent; do not duplicate it on Resume. '
+            + 'Within the granted actions, take and claim the task, then pause it with a checkpoint containing observed source coverage and missing context. '
             + 'Leave the task open for a later result. On Resume compare source versions, reread any changed plan, and record a native result explaining the current plan. '
             + 'Stop after that bounded step. Never use another account, modify software or send external messages.' } }), 201);
+        expect(await owner.request('POST', `/api/v1/projects/${projectId}/docs`,
+          { body: { title: 'Audience', body: 'This workspace is for people recording small experiments; use familiar everyday language.' } }), 201);
         const agent = expect(await owner.request('POST', `/api/v1/workspaces/${ws.id}/agents`,
           { body: { name: spec.label, owner: 'self' } }), 201);
-        expect(await owner.request('POST', `/api/v1/projects/${projectId}/grants`,
-          { body: { principal: { kind: 'agent', id: agent.id }, role: 'contributor' } }), 201);
         const connection = expect(await owner.request('POST', '/api/v1/agent-connections', { body: {
           name: spec.label, clientDesignation: spec.designation, agentId: agent.id, selectedProjectIds: [projectId], scopes } }), 201);
         for (const operation of ['work.create', 'cowork.unit.create', 'cowork.claim', 'cowork.release', 'result.record']) {

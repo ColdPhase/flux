@@ -110,7 +110,6 @@ class AgentsViewJourney(unittest.TestCase):
     def connect(self, page: Page, workspace: str, project: str, agent_name: str, connections: list[tuple[str, str]]) -> None:
         agent = self.api(page, "POST", f"/api/v1/workspaces/{workspace}/agents", {"name": agent_name, "owner": "self"}, status=201)
         hubert = self.page("hubert")
-        self.api(hubert, "POST", f"/api/v1/projects/{project}/grants", {"principal": {"kind": "agent", "id": agent["id"]}, "role": "contributor"}, status=201)
         for name, client in connections:
             self.api(page, "POST", "/api/v1/agent-connections", {"agentId": agent["id"], "selectedProjectIds": [project],
                      "scopes": ["flux.context.read", "flux.proposal.write"], "name": name, "clientDesignation": client}, status=201)

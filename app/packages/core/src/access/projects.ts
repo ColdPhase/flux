@@ -29,7 +29,7 @@ export async function insertSpace(tx: Executor, ports: Pick<AccessPorts, 'projec
   const projects = ports.projects(tx);
   const project = await projects.insert({ id: randomUUID(), ...row, views: [...NEW_SPACE_VIEWS] });
   const grant = await projects.insertGrant({ id: randomUUID(), workspaceId: row.workspaceId, projectId: project.id, role: 'manager', createdBy: row.createdBy,
-    userId: row.createdBy, agentId: null });
+    userId: row.createdBy });
   if ('conflict' in grant) throw new Error(`The creator of a new space could not be its admin (${grant.conflict})`);
   return project;
 }
@@ -107,11 +107,8 @@ export async function listProjectPeople(principal: Principal, projectId: string,
   for (const person of people) {
     if (person.kind !== 'agent') continue;
     const agent = agents.find((candidate) => candidate.id === person.id)!;
-    if (!agent.ownerUserId) person.agentOwner = { kind: 'workspace' };
-    else {
-      const name = visibleHumans.get(agent.ownerUserId);
-      if (name) person.agentOwner = { kind: 'human', id: agent.ownerUserId, name };
-    }
+    const name = visibleHumans.get(agent.ownerUserId);
+    if (name) person.agentOwner = { kind: 'human', id: agent.ownerUserId, name };
   }
   return people.sort((a, b) => (a.kind === b.kind ? a.name.localeCompare(b.name) || a.id.localeCompare(b.id) : a.kind === 'human' ? -1 : 1));
 }

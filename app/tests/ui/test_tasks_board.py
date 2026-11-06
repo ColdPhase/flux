@@ -156,7 +156,6 @@ class TasksBoardJourney(unittest.TestCase):
         self.api(ada, "POST", f"/api/v1/projects/{pid}/grants", {"principal": {"kind": "human", "id": KAI["id"]}, "role": "contributor"}, status=201)
         self.api(ada, "POST", f"/api/v1/projects/{pid}/grants", {"principal": {"kind": "human", "id": NIA["id"]}, "role": "viewer"}, status=201)
         agent = self.api(ada, "POST", f"/api/v1/workspaces/{ws['id']}/agents", {"name": "Codex", "owner": "self"}, status=201)
-        self.api(ada, "POST", f"/api/v1/projects/{pid}/grants", {"principal": {"kind": "agent", "id": agent["id"]}, "role": "contributor"}, status=201)
         thread = self.api(ada, "POST", f"/api/v1/projects/{pid}/conversations", {"body": "Should the lamp use a ToF sensor instead of the camera?", "clientMessageId": str(uuid.uuid4())}, status=201)
         message = self.api(kai, "POST", f"/api/v1/conversations/{thread['id']}/messages", {"body": MESSAGE, "clientMessageId": str(uuid.uuid4())}, status=201)
         sketch = self.api(ada, "POST", f"/api/v1/workspaces/{ws['id']}/sketches", {"title": "Sensing options", "scope": "project", "projectId": pid}, status=201, headers={"idempotency-key": str(uuid.uuid4())})

@@ -64,7 +64,7 @@ const project: ProjectRecord = { id: PROJECT, workspaceId: WS, name: 'Lamp', vis
 const draftRow = (over: Partial<DraftRecord> = {}): DraftRecord => ({ id: DRAFT, workspaceId: WS, projectId: null, ownerUserId: OWNER, ownerAgentId: null,
   title: 'Notes', body: '', visibility: 'private', version: 3, createdAt: now, updatedAt: now, ...over });
 const memberRow = (role: WorkspaceRole, userId = TARGET): MemberRecord => ({ workspaceId: WS, userId, role, createdAt: now });
-const grantRow = (userId: string | null = TARGET): GrantRecord => ({ id: GRANT, projectId: PROJECT, userId, agentId: null, role: 'contributor', createdBy: OWNER, createdAt: now });
+const grantRow = (userId: string = TARGET): GrantRecord => ({ id: GRANT, projectId: PROJECT, userId, role: 'contributor', createdBy: OWNER, createdAt: now });
 
 interface Scene {
   role?: WorkspaceRole;
@@ -102,7 +102,7 @@ function scene(options: Scene = {}, checked = true) {
       log(`access.readDraft${o.lock ? '(lock)' : ''}`);
       return { draft: options.draft ?? draftRow(), readable: true, level: 0, isOwner: true };
     },
-    readAgent: async () => { log('access.readAgent'); return { id: AGENT, workspaceId: WS, ownerUserId: null, revokedAt: null }; },
+    readAgent: async () => { log('access.readAgent'); return { id: AGENT, workspaceId: WS, ownerUserId: OWNER, revokedAt: null }; },
   };
   const workspaces = {
     createWithOwner: async (row: { id: string; name: string }) => { log('workspaces.createWithOwner'); return { id: row.id, name: row.name, version: 1, encrypted: false, company: false, createdAt: now }; },
@@ -143,11 +143,11 @@ function scene(options: Scene = {}, checked = true) {
     setViews: async (_id: string, views: string[]) => { log('projects.setViews'); return { ...project, views, version: 2 }; },
   };
   const agents = {
-    insert: async (row: { id: string; workspaceId: string; name: string; ownerUserId: string | null }) => {
+    insert: async (row: { id: string; workspaceId: string; name: string; ownerUserId: string }) => {
       log('agents.insert');
       return { id: row.id, workspaceId: row.workspaceId, name: row.name, ownerUserId: row.ownerUserId, revokedAt: null, createdAt: now };
     },
-    revoke: async (id: string, revokedAt: Date) => { log('agents.revoke'); return { id, workspaceId: WS, name: 'Helper', ownerUserId: null, revokedAt, createdAt: now }; },
+    revoke: async (id: string, revokedAt: Date) => { log('agents.revoke'); return { id, workspaceId: WS, name: 'Helper', ownerUserId: OWNER, revokedAt, createdAt: now }; },
   };
   const drafts = {
     insert: async (row: { id: string; workspaceId: string; projectId: string | null; title: string; body: string; ownerUserId: string | null; ownerAgentId: string | null }) => {

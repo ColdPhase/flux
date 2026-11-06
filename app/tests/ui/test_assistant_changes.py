@@ -1,10 +1,10 @@
-"""Browser tests for the assistant's waiting changes (F-027 A3, #403; AST-5.3, AST-5.6, AST-5.8).
+"""Browser tests for an agent's waiting changes (F-036 AG-3, AG-7, #855; mockups UndoApproval, AiPhone).
 
 The check_ui.sh stack runs no assistant, so the owner's change log is stubbed with the exact API shapes;
-tests/app/assistant-changes.test.ts proves the same states end to end through /mcp with a fake engine.
-This proves the conversation card ("Waiting for you: …" with the object's own verb, Review and Not now,
-the deferred and suggested lines), the move to Inbox when the owner leaves, and the Inbox question with
-its verb, at computer and phone width.
+tests/app/assistant-what-it-may-do.test.ts proves the same states end to end through /mcp with a fake engine.
+This proves the conversation cards (a deletion's [Delete] [Keep], a task for another person's [Approve] [Edit]
+[Skip], a group with Approve all), the change line with Undo and "Undone by", and the one Inbox item per run,
+at computer and phone width.
 """
 
 from __future__ import annotations
@@ -25,7 +25,6 @@ PASSWORD = "waiting for my ok"
 STAMP = int(time.time() * 1000)
 ADA = {"name": "Ada Brandt", "email": f"ada.changes+{STAMP}@example.test"}
 NOW = "2026-10-17T09:00:00.000Z"
-WEEK = "2026-10-24T09:00:00.000Z"
 
 
 class AssistantChanges(unittest.TestCase):
@@ -77,58 +76,47 @@ class AssistantChanges(unittest.TestCase):
 
     def change(self, **values) -> dict:
         change = {"id": str(uuid.uuid4()), "runId": self.ids["run"], "projectId": self.ids["project"], "conversationId": self.ids["conversation"],
-                  "operation": "work.create", "objectType": "work", "objectId": None, "objectTitle": "Label the sensor cables", "state": "waiting",
-                  "waitReason": "ask", "phrase": "add task", "verb": "Add", "line": "You asked me to check with you first", "suggestTo": None, "sent": False,
-                  "decidedBy": None, "runState": "done", "before": None, "after": None, "undoable": False, "version": 1, "createdAt": NOW, "expiresAt": WEEK}
+                  "operation": "work.update", "objectType": "work", "objectId": str(uuid.uuid4()), "objectTitle": "#8 Calibrate the probes", "state": "waiting",
+                  "waitReason": "ask", "phrase": "change task", "verb": "Change", "line": "Waits for your OK: you asked it to check with you first.",
+                  "forPerson": None, "done": "changed task #8 Calibrate the probes", "decidedBy": None, "owner": {"id": "ada", "name": ADA["name"]}, "runState": "done",
+                  "before": None, "after": None, "undoable": False, "version": 1, "createdAt": NOW}
         change.update(values)
         return change
 
-    def waiting_set(self) -> list[dict]:
-        return [
-            self.change(),
-            self.change(operation="map.thought.delete", objectType="thought", objectId=str(uuid.uuid4()), objectTitle="Old lux idea", waitReason="removal",
-                        phrase="remove thought", verb="Remove", line="Removing a thought always waits for you"),
-            self.change(operation="doc.update", objectType="doc", objectId=str(uuid.uuid4()), objectTitle="Suppliers", waitReason="live_wiki", phrase="edit page",
-                        verb="Edit", line="I’ll edit Suppliers when Jonas finishes typing."),
-            self.change(operation="work.update", objectType="work", objectId=str(uuid.uuid4()), objectTitle="#8 Calibrate the probes", waitReason="outside_rights",
-                        phrase="close task", verb="Close", line="Jonas owns #8 Calibrate the probes. Suggest this change to them? · Send to Jonas",
-                        suggestTo={"id": "jonas", "name": "Jonas"}),
-        ]
+    def deletion(self) -> dict:
+        return self.change(operation="map.thought.delete", objectType="thought", objectTitle="Old lux idea", waitReason="removal",
+                           phrase="remove thought", verb="Remove", line="Deleting always waits for your OK.", done="removed thought Old lux idea")
+
+    def proposal(self, title: str, name: str) -> dict:
+        return self.change(operation="work.create", objectId=None, objectTitle=title, waitReason="others", phrase="add task", verb="Add",
+                           line="Tasks for other people wait for your OK.", forPerson={"id": name.lower(), "name": name}, done=f"added task {title}")
 
     def stub_changes(self, page: Page, changes: list[dict], calls: list[tuple[str, str]]) -> dict:
         current = {"items": changes}
         page.route(re.compile(r".*/api/v1/conversations/[0-9a-f-]{36}/assistant-changes$"), lambda route: route.fulfill(
             status=200, content_type="application/json", body=json.dumps(current)))
 
-        def run_action(route: Route) -> None:
-            action = route.request.url.rsplit("/", 1)[1]
-            calls.append(("run", action))
-            if action == "inbox":
-                route.fulfill(status=200, content_type="application/json", body=json.dumps({"moved": 2}))
-                return
-            decided = []
-            for item in current["items"]:
-                if item["state"] == "waiting" and item["waitReason"] not in ("live_wiki", "outside_rights"):
-                    if action == "apply":
-                        item.update(state="applied_after_wait", waitReason=None, line="Approved by Ada Brandt", version=item["version"] + 1)
-                    else:
-                        item.update(state="not_now", waitReason=None, line="Not now", version=item["version"] + 1)
-                    decided.append({"change": item, "message": None})
-            route.fulfill(status=200, content_type="application/json", body=json.dumps({"changes": decided}))
-
         def one_action(route: Route) -> None:
             change_id, action = route.request.url.rsplit("/", 2)[1:]
             calls.append((change_id, action))
             item = next(entry for entry in current["items"] if entry["id"] == change_id)
-            if action == "send":
-                item.update(sent=True, line="Sent to Jonas", version=item["version"] + 1)
-            elif action == "apply":
-                item.update(state="applied_after_wait", waitReason=None, line="Approved by Ada Brandt", version=item["version"] + 1)
+            if action == "apply":
+                item.update(state="applied_after_wait", waitReason=None, line=f"Approved by {ADA['name']}", undoable=True, version=item["version"] + 1)
+            elif action == "edit":
+                item.update(objectTitle=json.loads(route.request.post_data or "{}")["title"], version=item["version"] + 1)
             else:
-                item.update(state="not_now", waitReason=None, line="Not now", version=item["version"] + 1)
+                item.update(state="skipped", line="Kept" if item["waitReason"] == "removal" else "Skipped", waitReason=None, version=item["version"] + 1)
             route.fulfill(status=200, content_type="application/json", body=json.dumps({"change": item, "message": None}))
-        page.route(re.compile(r".*/api/v1/assistant-runs/[0-9a-f-]{36}/changes/(apply|not-now|inbox)$"), run_action)
-        page.route(re.compile(r".*/api/v1/assistant-changes/[0-9a-f-]{36}/(apply|not-now|send)$"), one_action)
+
+        def undo_run(route: Route) -> None:
+            calls.append(("run", "undo"))
+            undone = [item for item in current["items"] if item["state"] in ("applied", "applied_after_wait")]
+            for item in undone:
+                item.update(state="undone", undoable=False, decidedBy={"id": "ada", "name": ADA["name"]})
+            route.fulfill(status=200, content_type="application/json", body=json.dumps({"changes": [{"change": item, "message": None} for item in undone],
+                          "undone": len(undone), "changedSince": [], "message": f"Undid {len(undone)} change{'' if len(undone) == 1 else 's'}"}))
+        page.route(re.compile(r".*/api/v1/assistant-changes/[0-9a-f-]{36}/(apply|skip|edit)$"), one_action)
+        page.route(re.compile(r".*/api/v1/assistant-runs/[0-9a-f-]{36}/changes/undo$"), undo_run)
         return current
 
     # ---------------------------------------------------------------- tests
@@ -152,60 +140,92 @@ class AssistantChanges(unittest.TestCase):
         expect(page.get_by_label("Message from you").get_by_text("Can you tidy the sensor tasks")).to_be_visible()
         expect(page.locator(".assistant-waiting")).to_have_count(0)
 
-    def test_02_the_card_says_what_waits_with_the_verb_review_and_not_now(self) -> None:
+    def open_conversation(self, page: Page) -> None:
+        page.goto(f"/projects/{self.ids['project']}/conversations/{self.ids['conversation']}")
+
+    def test_02_a_deletion_asks_delete_or_keep(self) -> None:
         page = self.page()
         calls: list[tuple[str, str]] = []
-        self.stub_changes(page, self.waiting_set(), calls)
-        page.goto(f"/projects/{self.ids['project']}/conversations/{self.ids['conversation']}")
-        card = page.locator(".assistant-waiting")
-        expect(card).to_contain_text("Waiting for you: add 1 task, remove 1 thought")
-        # A mix uses Apply; the reasons are in plain words; the deferral and the suggestion have their own lines.
-        expect(card.get_by_role("button", name="Apply", exact=True)).to_be_visible()
-        expect(card).to_contain_text("You asked me to check with you first · Removing a thought always waits for you")
-        expect(card).to_contain_text("I’ll edit Suppliers when Jonas finishes typing.")
-        expect(card).to_contain_text("Jonas owns #8 Calibrate the probes. Suggest this change to them?")
-        expect(card.get_by_role("button", name="Send to Jonas")).to_be_visible()
-        shot(page, "assistant-changes-1440-light-waiting")
-        # Review: each change with a check box; unticking the removal leaves the object's own verb.
-        card.get_by_role("button", name="Review").click()
-        boxes = card.get_by_role("checkbox")
-        expect(boxes).to_have_count(2)
-        card.get_by_role("checkbox", name=re.compile("remove thought")).uncheck()
-        expect(card.get_by_role("button", name="Add", exact=True)).to_be_visible()
-        card.get_by_role("button", name="Add", exact=True).click()
-        message = page.locator(".assistant-message")
-        expect(message).to_contain_text("Done: added 1 task")
-        expect(message).to_contain_text("Label the sensor cables")
-        expect(message).to_contain_text("Approved by Ada Brandt")
-        expect(card).to_contain_text("Waiting for you: remove 1 thought")
-        self.assertEqual([call[1] for call in calls], ["apply"])
-        # Send to Jonas: only now does the suggestion reach him.
-        card.get_by_role("button", name="Send to Jonas").click()
-        expect(card).to_contain_text("Sent to Jonas")
-        expect(card.get_by_role("button", name="Send to Jonas")).to_have_count(0)
-        self.assertEqual(calls[-1][1], "send")
-        # Not now closes what is left.
-        card.get_by_role("button", name="Not now").click()
-        expect(card).not_to_contain_text("Waiting for you")
+        kept, deleted = self.deletion(), self.deletion()
+        self.stub_changes(page, [kept, deleted], calls)
+        self.open_conversation(page)
+        card = page.locator(f'[data-change="{kept["id"]}"]')
+        expect(card).to_contain_text("Assistant wants to delete the thought Old lux idea")
+        expect(card).to_contain_text("Deleting always waits for your OK.")
+        expect(card.get_by_role("button", name="Approve")).to_have_count(0)
+        shot(page, "assistant-changes-1440-light-delete")
+        card.get_by_role("button", name="Keep", exact=True).click()
+        expect(page.locator(".assistant-waiting__done")).to_contain_text("Kept: remove thought Old lux idea")
+        expect(card).to_have_count(0)
+        page.locator(f'[data-change="{deleted["id"]}"]').get_by_role("button", name="Delete", exact=True).click()
+        expect(page.locator(".assistant-message__line")).to_contain_text("Removed thought Old lux idea")
+        self.assertEqual([call[1] for call in calls], ["skip", "apply"])
         self.no_horizontal_scroll(page)
 
-    def test_03_leaving_the_conversation_moves_undecided_changes_to_inbox(self) -> None:
+    def test_03_a_task_for_another_person_is_approved_edited_or_skipped(self) -> None:
         page = self.page()
         calls: list[tuple[str, str]] = []
-        self.stub_changes(page, self.waiting_set()[:2], calls)
-        page.goto(f"/projects/{self.ids['project']}/conversations/{self.ids['conversation']}")
-        expect(page.locator(".assistant-waiting")).to_contain_text("Waiting for you")
-        with page.expect_response(lambda response: response.request.method == "POST" and response.url.endswith(f"/assistant-runs/{self.ids['run']}/changes/inbox")):
-            # Leaving within the app (the sidebar's Inbox), as a person does.
-            page.get_by_role("navigation", name="Places").get_by_role("link", name=re.compile(r"^Inbox")).click()
-        self.assertIn(("run", "inbox"), calls)
+        task = self.proposal("Order 20 soil sensors", "Jonas")
+        self.stub_changes(page, [task], calls)
+        self.open_conversation(page)
+        card = page.locator(f'[data-change="{task["id"]}"]')
+        expect(card).to_contain_text("Assistant wants to create Order 20 soil sensors for Jonas")
+        expect(card).to_contain_text("Tasks for other people wait for your OK.")
+        shot(page, "assistant-changes-1440-light-proposal")
+        card.get_by_role("button", name="Edit", exact=True).click()
+        card.get_by_label("Task title").fill("Order 30 soil sensors")
+        card.get_by_role("button", name="Save", exact=True).click()
+        expect(card).to_contain_text("Assistant wants to create Order 30 soil sensors for Jonas")
+        card.get_by_role("button", name="Approve", exact=True).click()
+        expect(page.locator(".assistant-message__line")).to_contain_text("Added task Order 20 soil sensors")
+        self.assertEqual([call[1] for call in calls], ["edit", "apply"])
 
-    def test_04_inbox_shows_one_question_with_the_objects_verb(self) -> None:
+    def test_04_several_tasks_for_others_are_one_group_with_approve_all(self) -> None:
         page = self.page()
-        item = {"key": f"assistant:{self.ids['run']}", "kind": "question", "title": "Your assistant wants to remove 2 thoughts",
-                "detail": "Removing a thought always waits for you", "project": {"id": self.ids["project"], "name": "Gesture lamp"}, "from": None, "at": NOW,
+        calls: list[tuple[str, str]] = []
+        tasks = [self.proposal("Weigh the full barrel on Thursday", "Jonas"), self.proposal("Re-check the south barrel wiring", "Maja"), self.proposal("Print new labels", "Maja")]
+        self.stub_changes(page, tasks, calls)
+        self.open_conversation(page)
+        group = page.locator(".assistant-waiting__card").filter(has_text="wants to create 3 tasks for others")
+        expect(group).to_contain_text("for Jonas")
+        expect(group.get_by_role("button", name="Edit", exact=True)).to_have_count(3)
+        shot(page, "assistant-changes-1440-light-group")
+        group.locator(f'[data-change="{tasks[2]["id"]}"]').get_by_role("button", name="Skip", exact=True).click()
+        expect(page.locator(".assistant-waiting__card").filter(has_text="Re-check the south barrel wiring")).to_be_visible()
+        expect(page.locator(".assistant-waiting__done")).to_contain_text("Skipped: add task Print new labels")
+        # The two left stay one group with Approve all.
+        expect(page.locator(".assistant-waiting__card").filter(has_text="wants to create 2 tasks for others").get_by_role("button", name="Approve all")).to_be_visible()
+        page.get_by_role("button", name="Approve all").click()
+        expect(page.locator(".assistant-message__line")).to_contain_text("Added task Weigh the full barrel on Thursday")
+        self.assertEqual([call[1] for call in calls], ["skip", "apply", "apply"])
+
+    def test_05_the_change_line_carries_undo_and_then_says_who_undid_it(self) -> None:
+        page = self.page()
+        calls: list[tuple[str, str]] = []
+        done = dict(state="applied", waitReason=None, line=None, undoable=True)
+        self.stub_changes(page, [
+            self.change(**done, operation="doc.update", objectType="doc", objectTitle="Calibration", phrase="edit page", verb="Edit", done="updated the Wiki page Calibration"),
+            self.change(**done, operation="doc.update", objectType="doc", objectTitle="Calibration", phrase="edit page", verb="Edit", done="updated the Wiki page Calibration"),
+            self.change(**done, objectTitle="#4 Calibrate the overflow sensor", done="moved #4 to In progress"),
+        ], calls)
+        self.open_conversation(page)
+        line = page.locator(".assistant-message__line")
+        expect(line).to_contain_text("Updated the Wiki page Calibration (2 changes) · moved #4 to In progress")
+        shot(page, "assistant-changes-1440-light-change-line")
+        line.get_by_role("button", name="Undo", exact=True).click()
+        expect(line).to_contain_text(f"Undone by {ADA['name']}")
+        expect(line.get_by_role("button", name="Undo", exact=True)).to_have_count(0)
+        self.assertEqual(calls, [("run", "undo")])
+
+    def test_06_inbox_shows_one_item_per_run_with_approve_all_and_open(self) -> None:
+        page = self.page()
+        changes = [{"id": str(uuid.uuid4()), "version": 1, "phrase": "remove thought", "verb": "Remove", "objectTitle": "Old notes", "line": "Deleting always waits for your OK.", "waitReason": "removal", "forPerson": None},
+                   {"id": str(uuid.uuid4()), "version": 1, "phrase": "add task", "verb": "Add", "objectTitle": "Order 20 soil sensors", "line": "Tasks for other people wait for your OK.", "waitReason": "others", "forPerson": {"id": "jonas", "name": "Jonas"}},
+                   {"id": str(uuid.uuid4()), "version": 1, "phrase": "add task", "verb": "Add", "objectTitle": "Re-check the south barrel wiring", "line": "Tasks for other people wait for your OK.", "waitReason": "others", "forPerson": {"id": "maja", "name": "Maja"}}]
+        item = {"key": f"assistant:{self.ids['run']}", "kind": "question", "title": "3 things wait for you", "detail": "remove 1 thought, add 2 tasks",
+                "project": {"id": self.ids["project"], "name": "Gesture lamp"}, "from": None, "at": NOW,
                 "url": f"/projects/{self.ids['project']}/conversations/{self.ids['conversation']}", "decision": None, "blocked": None, "reason": "question",
-                "snoozeTask": None, "assistantChanges": {"runId": self.ids["run"], "verb": "Remove", "summary": "remove 2 thoughts", "changes": []}}
+                "snoozeTask": None, "assistantChanges": {"runId": self.ids["run"], "agentName": "Assistant", "summary": "remove 1 thought, add 2 tasks", "changes": changes}}
         queue = {"items": [item], "count": 1, "later": 0, "doneToday": 0}
         applied: list[str] = []
         page.route(re.compile(r".*/api/v1/needs-you(\?.*)?$"), lambda route: route.fulfill(status=200, content_type="application/json", body=json.dumps(queue)))
@@ -214,27 +234,29 @@ class AssistantChanges(unittest.TestCase):
             applied.append(route.request.url)
             queue["items"] = []
             queue["count"] = 0
-            route.fulfill(status=200, content_type="application/json", body=json.dumps({"changes": [{"change": {}, "message": None}, {"change": {}, "message": None}]}))
+            route.fulfill(status=200, content_type="application/json", body=json.dumps({"changes": [{"change": {}, "message": None} for _ in changes]}))
         page.route(re.compile(r".*/api/v1/assistant-runs/[0-9a-f-]{36}/changes/apply$"), apply)
         page.goto("/inbox")
         card = page.locator(f'[data-key="assistant:{self.ids["run"]}"]')
-        expect(card).to_contain_text("Your assistant wants to remove 2 thoughts")
-        expect(card.get_by_role("button", name="Remove", exact=True)).to_be_visible()
-        expect(card.get_by_role("button", name="Review")).to_be_visible()
+        expect(card).to_contain_text("Assistant")
+        expect(card).to_contain_text("3 things wait for you")
+        expect(card).to_contain_text("Delete “Old notes”")
+        expect(card).to_contain_text("Jonas")
+        expect(card.get_by_role("button", name="Open", exact=True)).to_be_visible()
         shot(page, "assistant-changes-1440-light-inbox")
-        card.get_by_role("button", name="Remove", exact=True).click()
-        expect(page.get_by_text("Done: remove 2 thoughts")).to_be_visible()
+        card.get_by_role("button", name="Approve all", exact=True).click()
+        expect(page.get_by_text("Approved: remove 1 thought, add 2 tasks")).to_be_visible()
         self.assertEqual(len(applied), 1)
 
-    def test_05_phone_reads_the_card_without_overflow(self) -> None:
+    def test_07_phone_reads_the_cards_without_overflow(self) -> None:
         for dark in (False, True):
             page = self.page(phone=True, dark=dark)
-            self.stub_changes(page, self.waiting_set(), [])
-            page.goto(f"/projects/{self.ids['project']}/conversations/{self.ids['conversation']}")
-            card = page.locator(".assistant-waiting")
-            expect(card).to_contain_text("Waiting for you: add 1 task, remove 1 thought")
+            self.stub_changes(page, [self.deletion(), self.proposal("Order 20 soil sensors", "Jonas")], [])
+            self.open_conversation(page)
+            card = page.locator(".assistant-waiting__card").first
+            expect(card).to_contain_text("Assistant wants to delete the thought")
             card.scroll_into_view_if_needed()
-            for name in ("Apply", "Review", "Not now"):
+            for name in ("Delete", "Keep"):
                 box = card.get_by_role("button", name=name, exact=True).bounding_box()
                 self.assertIsNotNone(box)
                 self.assertGreaterEqual(box["height"], 24, f"{name} is a comfortable target")

@@ -131,14 +131,11 @@ test('two owners and three connections stay isolated: grants, receipts, targets 
   // Hubert's two connections (one agent each) share his project; Marek's third connection has his own.
   const hubert = await actionScene(pool);
   const second = expect(await hubert.owner.request('POST', `/api/v1/workspaces/${hubert.workspaceId}/agents`, { body: { name: 'Review agent', owner: 'self' } }), 201);
-  expect(await hubert.owner.request('POST', `/api/v1/projects/${hubert.projectId}/grants`,
-    { body: { principal: { kind: 'agent', id: second.id }, role: 'contributor' } }), 201);
   const review = await agentConnection(pool, hubert.owner, String(second.id), [hubert.projectId]);
   const { browser: marek } = await register(uniqueEmail('mcp-marek'), 'correct horse battery staple', 'Marek');
   const space = expect(await marek.request('POST', '/api/v1/workspaces', { body: { name: 'Marek space' } }), 201);
   const own = expect(await marek.request('POST', `/api/v1/workspaces/${space.id}/projects`, { body: { name: 'Marek project', visibility: 'restricted' } }), 201);
   const third = expect(await marek.request('POST', `/api/v1/workspaces/${space.id}/agents`, { body: { name: 'Marek agent', owner: 'self' } }), 201);
-  expect(await marek.request('POST', `/api/v1/projects/${own.id}/grants`, { body: { principal: { kind: 'agent', id: third.id }, role: 'contributor' } }), 201);
   const marekAgent = await agentConnection(pool, marek, String(third.id), [String(own.id)]);
   assert.deepEqual(new Set([hubert.runtimeSessionId, review.runtimeSessionId, marekAgent.runtimeSessionId]).size, 3, 'three distinct runtimes');
 

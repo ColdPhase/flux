@@ -139,7 +139,6 @@ test('real official Codex and Claude Code authorize through Keycloak and execute
       const label = `${client} ${cimd ? 'CIMD' : 'pre-registered'}`;
       const spec: ClientSpec = { key: `oidc-${client}-${index}`, client, label: `Keycloak ${label}`, designation: client === 'codex' ? 'codex' : 'claude_code', port: 19841 + index };
       const agent = await api('POST', `/api/v1/workspaces/${workspace.id}/agents`, { name: spec.label, owner: 'self' });
-      await api('POST', `/api/v1/projects/${project.id}/grants`, { principal: { kind: 'agent', id: agent.id }, role: 'contributor' });
       const connection = await api('POST', '/api/v1/agent-connections', { name: spec.label, clientDesignation: spec.designation,
         agentId: agent.id, selectedProjectIds: [project.id], scopes });
       const home = cleanClientHome(spec); const clientId = cimd ? undefined : await seedOauthClient(pool, spec);

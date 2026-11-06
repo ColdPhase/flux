@@ -256,7 +256,6 @@ async function seed() {
 
   // Agent connections (#52): one revoked before the backup, one live (revoked after it).
   const agent = await ada.expect('POST', `/api/v1/workspaces/${workspaceId}/agents`, { name: 'Ada\'s laptop agent', owner: 'self' });
-  await ada.expect('POST', `/api/v1/projects/${projectId}/grants`, { principal: { kind: 'agent', id: agent.id }, role: 'contributor' });
   const connection = async () => (await ada.expect('POST', '/api/v1/agent-connections', { agentId: agent.id, selectedProjectIds: [projectId], scopes: ['flux.context.read'] })).id;
   const revokedConnection = await connection();
   const liveConnection = await connection();

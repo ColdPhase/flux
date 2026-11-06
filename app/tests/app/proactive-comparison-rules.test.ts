@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { randomUUID } from 'node:crypto';
 import { createDecipheriv } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { before, describe, test } from 'node:test';
@@ -36,7 +37,6 @@ describe('owner standing comparison rule', () => {
   let ws: Workspace;
   let project: Project;
   let agentId: string;
-  let agentGrantId: string;
   let rule: ProactiveComparisonRule;
 
   before(async () => {
@@ -48,8 +48,6 @@ describe('owner standing comparison rule', () => {
     await grant(owner, project.id, peer, 'contributor');
     agentId = (expectStatus(await owner.browser.request('POST', `/api/v1/workspaces/${ws.id}/agents`,
       { body: { name: 'My comparison agent', owner: 'self' } }), 201) as { id: string }).id;
-    agentGrantId = (expectStatus(await owner.browser.request('POST', `/api/v1/projects/${project.id}/grants`,
-      { body: { principal: { kind: 'agent', id: agentId }, role: 'contributor' } }), 201) as { id: string }).id;
   });
 
   test('owner alone persists a fixed audience, purpose, effect and bounded cost', async () => {
@@ -142,9 +140,9 @@ describe('owner standing comparison rule', () => {
     expectStatus(await owner.browser.request('DELETE', `${connectionPath}/${tooSmall.id}`), 204);
     rule = expectStatus(await change(owner, 1, 'paused'), 200) as ProactiveComparisonRule;
     assert.equal(rule.status, 'paused');
-    expectStatus(await owner.browser.request('DELETE', `/api/v1/projects/${project.id}/grants/${agentGrantId}`), 204);
-    assert.equal((await change(owner, 2, 'enabled')).status, 404,
-      'lost agent grant prevents enabling the rule again');
+    await pool.query(`INSERT INTO project_grants (id, workspace_id, project_id, user_id, role, created_by) SELECT $1, workspace_id, id, $2, 'denied', $2 FROM projects WHERE id = $3 ON CONFLICT (project_id, user_id) WHERE (user_id IS NOT NULL) DO UPDATE SET role = 'denied'`, [randomUUID(), owner.id, project.id]);
+    assert.equal((await change(owner, 2, 'enabled')).status, 404, 'the owner losing the project prevents enabling the rule again');
+    await pool.query(`DELETE FROM project_grants WHERE project_id = $1 AND user_id = $2`, [project.id, owner.id]);
     rule = expectStatus(await change(owner, 2, 'revoked'), 200) as ProactiveComparisonRule;
     assert.equal(rule.status, 'revoked');
     assert.equal((await change(owner, 3, 'enabled')).status, 409);
@@ -153,8 +151,6 @@ describe('owner standing comparison rule', () => {
 
   test('revocation preserves its row while concurrent fresh authorizations admit only one paused rule', async () => {
     const oldRow = (await pool.query('SELECT * FROM proactive_comparison_rules WHERE id=$1', [rule.id])).rows[0];
-    expectStatus(await owner.browser.request('POST', `/api/v1/projects/${project.id}/grants`,
-      { body: { principal: { kind: 'agent', id: agentId }, role: 'contributor' } }), 201);
     const attempts = await Promise.all([1, 2].map(() => owner.browser.request('POST', path(project.id), { body: body(agentId) })));
     assert.deepEqual(attempts.map((response) => response.status).sort(), [201, 409]);
     const fresh = expectStatus(attempts.find((response) => response.status === 201)!, 201) as ProactiveComparisonRule;

@@ -32,8 +32,8 @@ export async function settleOne(ports: AssistantJobPorts, jobRunId: string, now:
   }
   const facts = await ports.jobs.settledFacts(run.id);
   const result = resultOf(run, { applied: facts.appliedChanges, waiting: facts.waitingChanges }, job.timeZone, now);
-  // When something needs the owner, one Inbox item; otherwise the result stays in Recent (AST-7 "Output").
-  const needsYou = facts.waitingChanges > 0 && await ports.jobs.promoteWaiting(run.id, now) > 0;
+  // When something waits for the owner, the run is one Inbox item (F-036 AG-7).
+  const needsYou = facts.waitingChanges > 0;
   // A schedule that posts in a conversation never posts "Done: nothing to change" (AST-7.11).
   if (result.state === 'done' && !run.silent && nothingToChange(run.answerBody) && !facts.appliedChanges && !facts.waitingChanges)
     await ports.runs.updateRun(run.id, { silent: true });

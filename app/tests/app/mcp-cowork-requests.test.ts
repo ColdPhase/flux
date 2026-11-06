@@ -22,8 +22,6 @@ async function scene() {
   await grant(hubert, p.id, marek, 'contributor');
   const connect = async (who: Person, name: string) => {
     const agent = expectStatus(await who.browser.request('POST', `/api/v1/workspaces/${ws.id}/agents`, { body: { name, owner: 'self' } }), 201) as Agent;
-    expectStatus(await hubert.browser.request('POST', `/api/v1/projects/${p.id}/grants`,
-      { body: { principal: { kind: 'agent', id: agent.id }, role: 'contributor' } }), 201);
     const connected = await agentConnection(pool, who.browser, String(agent.id), [p.id], ACTION_SCOPES);
     const standing = async (operation: string, objectId: string | null, role: Role, maximumUses = 10) =>
       expectStatus(await who.browser.request('POST', `/api/v1/agent-connections/${connected.connectionId}/action-grants`, { body: {

@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict';
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import {
-  assistantSettingsPath, PERSONAL_RUN_CONSENT_VERSION, PERSONAL_RUN_LIMITS, personalRunTokenPath,
-  type AssistantChange, type AssistantSettings, type Conversation, type Project, type Workspace,
+  agentConnectionPath, assistantSettingsPath, PERSONAL_RUN_CONSENT_VERSION, PERSONAL_RUN_LIMITS, personalRunTokenPath,
+  type AgentMayDo, type AssistantChange, type AssistantSettings, type Conversation, type Project, type Workspace,
 } from '@flux/contracts';
 import type { Principal } from '@flux/core';
 import { personalRunTokenRows } from '@flux/db';
@@ -75,18 +75,16 @@ export async function assistantScene(label: string) {
   const settings = async () => expectStatus(await owner.browser.request('GET', assistantSettingsPath(ws.id, owner.id)), 200) as unknown as AssistantSettings;
   /** The assistant's own agent connection (the S6 policy and the run tokens belong to it). */
   const assistantConnectionId = async () => (await settings()).connectionId;
-  async function save(body: Record<string, unknown>) {
-    const current = await settings();
-    expectStatus(await owner.browser.request('PATCH', assistantSettingsPath(ws.id, owner.id), { body, headers: { 'if-match': `"${current.version}"` } }), 200);
+  /** "What it may do" (F-036 AG-3), set by the owner in their own session. */
+  async function setMayDo(mayDo: AgentMayDo) {
+    expectStatus(await owner.browser.request('PATCH', agentConnectionPath(await assistantConnectionId()), { body: { mayDo } }), 200);
   }
-  /** Back to the defaults every test starts from: Do it and tell me, every area on, the limit of 20, nothing in flight. */
+  /** Back to the defaults every test starts from: Do it and tell me, nothing in flight. */
   async function reset() {
     await pool.query(`UPDATE personal_runs SET status = 'stopped', completed_at = now(), cost_state = 'released', charged_micros = 0
       WHERE owner_user_id = $1 AND status IN ('queued', 'reading', 'dispatching')`, [owner.id]);
     await pool.query(`UPDATE personal_run_enablements SET status = 'active' WHERE owner_user_id = $1`, [owner.id]);
-    const current = await settings();
-    if (current.approvalMode !== 'act' || current.areas.maps !== 'edit' || current.areas.wiki !== 'edit' || current.areas.tasks !== 'edit' || current.changesPerRun !== 20)
-      await save({ approvalMode: 'act', changesPerRun: 20, areas: { maps: 'edit', wiki: 'edit', tasks: 'edit' } });
+    if ((await settings()).mayDo !== 'act') await setMayDo('act');
   }
   /** A run moved to `reading` (as the worker's claim does), with its token minted. */
   async function liveRun(conversation: Conversation = thread) {
@@ -118,14 +116,6 @@ export async function assistantScene(label: string) {
   const taskRow = async (id: string) => (await pool.query(`SELECT title, outcome, status, blocker, waiting_for_user_id, criteria, version FROM project_work_items WHERE id = $1`, [id])).rows[0] as
     { title: string; outcome: string; status: string; blocker: string | null; waiting_for_user_id: string | null; criteria: string[]; version: number };
   const dependencies = async (id: string) => (await pool.query(`SELECT prerequisite_id FROM project_task_dependencies WHERE task_id = $1 ORDER BY prerequisite_id`, [id])).rows.map((row) => row.prerequisite_id as string);
-  /** Another person's open live session on a page (F-021 presence), as PR #389's signal records it. */
-  async function typing(who: Person, docId: string) {
-    const session = (await pool.query(`SELECT id FROM auth_sessions WHERE user_id = $1 ORDER BY created_at DESC LIMIT 1`, [who.id])).rows[0] as { id: string };
-    const connection = randomUUID();
-    await pool.query(`INSERT INTO doc_live_presence (connection_id, doc_id, generation, actor_id, session_id, cursor, expires_at)
-      VALUES ($1, $2, $3, $4, $5, '{"anchor":"a","head":"a"}'::jsonb, now() + interval '5 minutes')`, [connection, docId, randomUUID(), who.id, session.id]);
-    return () => pool.query(`DELETE FROM doc_live_presence WHERE connection_id = $1`, [connection]);
-  }
   /**
    * A row lock held by this test, so that a request can be made to wait behind it at a chosen point and a rival write can win first.
    * `racing` starts the request, waits until it is really queued behind the lock, lets the rival commit inside the held transaction and
@@ -158,7 +148,7 @@ export async function assistantScene(label: string) {
   const listConversation = async (who: Person, conversation: Conversation = thread) =>
     (expectStatus(await who.browser.request('GET', `/api/v1/conversations/${conversation.id}/assistant-changes`), 200) as { items: AssistantChange[] }).items;
 
-  return { connections, queue, runs, compute, processor, assistantConnectionId, owner, peer, outsider, admin, viewer, stranger, guest, ws, place, agentId, thread, connectionId, settings, save, reset,
-    liveRun, complete, task, doc, docBody, map, patchWork, taskRow, dependencies, typing, holding, listConversation, changesOf };
+  return { connections, queue, runs, compute, processor, assistantConnectionId, owner, peer, outsider, admin, viewer, stranger, guest, ws, place, agentId, thread, connectionId, settings, setMayDo, reset,
+    liveRun, complete, task, doc, docBody, map, patchWork, taskRow, dependencies, holding, listConversation, changesOf };
 }
 export type AssistantScene = Awaited<ReturnType<typeof assistantScene>>;

@@ -104,7 +104,6 @@ class StopAndQuestions(unittest.TestCase):
         pid = project["id"]
         self.api(ada, "POST", f"/api/v1/projects/{pid}/grants", {"principal": {"kind": "human", "id": JONAS["id"]}, "role": "contributor"}, status=201)
         agent = self.api(ada, "POST", f"/api/v1/workspaces/{ws['id']}/agents", {"name": "Claude Code agent", "owner": "self"}, status=201)["id"]
-        self.api(ada, "POST", f"/api/v1/projects/{pid}/grants", {"principal": {"kind": "agent", "id": agent}, "role": "contributor"}, status=201)
         self.api(ada, "POST", "/api/v1/agent-connections", {"agentId": agent, "selectedProjectIds": [pid],
                  "scopes": ["flux.context.read", "flux.proposal.write"], "name": "Desk laptop", "clientDesignation": "claude_code"}, status=201)
         type(self).ids = {"workspace": ws["id"], "project": pid, "agent": agent}

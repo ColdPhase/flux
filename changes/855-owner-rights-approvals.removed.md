@@ -1,0 +1,1 @@
+- Agent grants on spaces, the approved agent policy, asking a space admin to let an assistant or an agent in, the assistant's list of spaces, its area switches, its change limits and its Recent list ([#855](https://github.com/ColdPhase/flux/issues/855)).

@@ -67,7 +67,6 @@ test('real pinned Codex and Claude Code clients: two owners, both native client 
     const agents: Record<string, string> = {};
     for (const [key, name] of [['codex', 'Owner Codex'], ['claude', 'Peer Claude'], ['ownerClaude', 'Owner Claude'], ['peerCodex', 'Peer Codex']] as const) {
       agents[key] = String(expect(await people[key].request('POST', `/api/v1/workspaces/${workspace.id}/agents`, { body: { name, owner: 'self' } }), 201).id);
-      for (const projectId of Object.values(projects)) expect(await owner.request('POST', `/api/v1/projects/${projectId}/grants`, { body: { principal: { kind: 'agent', id: agents[key] }, role: 'contributor' } }), 201);
     }
     const connections: Record<string, string> = {};
     for (const spec of specs) {

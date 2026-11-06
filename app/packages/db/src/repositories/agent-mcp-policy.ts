@@ -1,8 +1,8 @@
 import { and, eq, isNull } from 'drizzle-orm';
 import type { AgentConnection, AgentMcpCapabilityId, AgentMcpPolicy, SaveAgentMcpPolicy } from '@flux/contracts';
-import { lockAssistantOwner } from './assistant-lock.js';
 import * as schema from '../schema.js';
 import type { createDatabase } from '../index.js';
+import { loadActor, visibleProjectsSql } from './access.js';
 
 type Database = Pick<ReturnType<typeof createDatabase>['db'], 'transaction'>;
 type Transaction = Parameters<Parameters<Database['transaction']>[0]>[0];
@@ -22,13 +22,27 @@ interface McpPolicyRepository {
     | 'CONNECTION_NOT_FOUND' | 'POLICY_VERSION_CONFLICT' | 'MCP_POLICY_OUTSIDE_CONSENT' | 'MCP_POLICY_AUTHORITY_UNAVAILABLE'>;
 }
 
+/**
+ * The assistant's selection is every project its owner can see now, read fresh: no project list is stored for it, so its owner's
+ * current rights alone decide where it reaches (F-036 AG-3, #855), and a restricted project's id never reaches a caller's payload.
+ * Null for any other connection.
+ */
+export async function assistantProjectIds(tx: Transaction, connectionId: string): Promise<string[] | null> {
+  const [row] = await tx.select({ workspaceId: schema.agentConnections.workspaceId, ownerUserId: schema.agentConnections.ownerUserId,
+    source: schema.agentConnections.computeSource }).from(schema.agentConnections).where(eq(schema.agentConnections.id, connectionId));
+  if (row?.source !== 'owner_assistant') return null;
+  const owner = await loadActor({ kind: 'human', id: row.ownerUserId }, row.workspaceId, tx);
+  return (await tx.select({ id: schema.projects.id }).from(schema.projects).where(visibleProjectsSql(owner))
+    .orderBy(schema.projects.id)).map((project) => project.id);
+}
+
 /** Caller already holds the original owned connection; first seed captures explicit real entry membership. */
 export async function initializeAgentMcpPolicy(tx: Transaction, connection: AgentConnection,
   initialPolicy: (connection: AgentConnection) => AgentMcpPolicy): Promise<void> {
   const initial = initialPolicy(connection);
   const inserted = await tx.insert(schema.agentConnectionMcpPolicies).values({ connectionId: connection.id,
     enabledCapabilityIds: initial.enabledCapabilityIds, enabledEntryIds: initial.enabledEntryIds }).onConflictDoNothing().returning();
-  if (inserted.length && initial.selectedProjectIds.length) await tx.insert(schema.agentConnectionMcpProjects)
+  if (inserted.length && initial.selectedProjectIds.length && connection.computeSource !== 'owner_assistant') await tx.insert(schema.agentConnectionMcpProjects)
     .values(initial.selectedProjectIds.map((projectId) => ({ connectionId: connection.id, workspaceId: connection.workspaceId, projectId })));
 }
 
@@ -37,11 +51,11 @@ export async function lockAgentMcpPolicy(tx: Transaction, connectionId: string, 
   const [row] = await tx.select().from(schema.agentConnectionMcpPolicies)
     .where(eq(schema.agentConnectionMcpPolicies.connectionId, connectionId)).for(lock);
   if (!row) return null;
-  const projects = await tx.select({ id: schema.agentConnectionMcpProjects.projectId })
+  const projects = await assistantProjectIds(tx, connectionId) ?? (await tx.select({ id: schema.agentConnectionMcpProjects.projectId })
     .from(schema.agentConnectionMcpProjects).where(eq(schema.agentConnectionMcpProjects.connectionId, connectionId))
-    .orderBy(schema.agentConnectionMcpProjects.projectId);
+    .orderBy(schema.agentConnectionMcpProjects.projectId)).map((project) => project.id);
   return { connectionId, version: row.version, enabledCapabilityIds: [...row.enabledCapabilityIds] as AgentMcpCapabilityId[],
-    enabledEntryIds: [...row.enabledEntryIds], selectedProjectIds: projects.map((project) => project.id) };
+    enabledEntryIds: [...row.enabledEntryIds], selectedProjectIds: projects };
 }
 
 /** Structural owner management is available even with no enabled capability/project or active agent grant. */
@@ -50,11 +64,11 @@ export function agentMcpPolicyRepository(db: Database, authority: McpPolicyAutho
     const [row] = await tx.select().from(schema.agentConnections).where(and(eq(schema.agentConnections.id, id),
       eq(schema.agentConnections.ownerUserId, ownerUserId), isNull(schema.agentConnections.revokedAt))).for('share');
     if (!row) return null;
-    const selected = await tx.select({ id: schema.agentConnectionProjects.projectId }).from(schema.agentConnectionProjects)
-      .where(eq(schema.agentConnectionProjects.connectionId, id)).orderBy(schema.agentConnectionProjects.projectId);
+    const selected = await assistantProjectIds(tx, id) ?? (await tx.select({ id: schema.agentConnectionProjects.projectId }).from(schema.agentConnectionProjects)
+      .where(eq(schema.agentConnectionProjects.connectionId, id)).orderBy(schema.agentConnectionProjects.projectId)).map((project) => project.id);
     return { id: row.id, workspaceId: row.workspaceId, ownerUserId: row.ownerUserId, agentId: row.agentId, name: row.name,
-      clientDesignation: row.clientDesignation, scopes: [...row.scopes], computeSource: row.computeSource,
-      revokedAt: null, createdAt: row.createdAt.toISOString(), selectedProjectIds: selected.map((project) => project.id) };
+      clientDesignation: row.clientDesignation, scopes: [...row.scopes], computeSource: row.computeSource, mayDo: row.mayDo,
+      revokedAt: null, createdAt: row.createdAt.toISOString(), selectedProjectIds: selected };
   };
   return {
     get: (ownerUserId, id) => db.transaction(async (tx) => {
@@ -67,7 +81,8 @@ export function agentMcpPolicyRepository(db: Database, authority: McpPolicyAutho
     save: (ownerUserId, id, expectedVersion, input: SaveAgentMcpPolicy) => db.transaction(async (tx) => {
       const [owned] = await tx.select({ source: schema.agentConnections.computeSource }).from(schema.agentConnections)
         .where(and(eq(schema.agentConnections.id, id), eq(schema.agentConnections.ownerUserId, ownerUserId)));
-      if (owned?.source === 'owner_assistant') await lockAssistantOwner(tx, ownerUserId);
+      // The assistant has no switches or project list of its own: its owner's rights and "What it may do" decide (F-036).
+      if (owned?.source === 'owner_assistant') return 'CONNECTION_NOT_FOUND';
       const connection = await structural(tx, ownerUserId, id);
       if (!connection) return 'CONNECTION_NOT_FOUND';
       await initializeAgentMcpPolicy(tx, connection, authority.initialPolicy);
@@ -91,11 +106,6 @@ export function agentMcpPolicyRepository(db: Database, authority: McpPolicyAutho
       await tx.delete(schema.agentConnectionMcpProjects).where(eq(schema.agentConnectionMcpProjects.connectionId, id));
       if (input.selectedProjectIds.length) await tx.insert(schema.agentConnectionMcpProjects)
         .values(input.selectedProjectIds.map((projectId) => ({ connectionId: id, workspaceId: connection.workspaceId, projectId })));
-      if (connection.computeSource === 'owner_assistant') await tx.update(schema.assistantSettings)
-        .set({ version: row.version, updatedAt: new Date(),
-          ...(input.selectedProjectIds.length === previous.selectedProjectIds.length
-            && input.selectedProjectIds.every((projectId) => previous.selectedProjectIds.includes(projectId)) ? {} : { projectMode: 'chosen' as const }) })
-        .where(eq(schema.assistantSettings.connectionId, id));
       return { connectionId: id, version: row.version, enabledCapabilityIds: [...row.enabledCapabilityIds] as AgentMcpCapabilityId[],
         enabledEntryIds: [...row.enabledEntryIds], selectedProjectIds: [...input.selectedProjectIds] };
     }),

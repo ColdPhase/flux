@@ -22,14 +22,11 @@ export async function projectAuthorOwners(db: Executor, projectId: string, works
     .where(and(eq(schema.agents.workspaceId, workspaceId), inArray(schema.agents.id, ids)));
   const visible = new Map<string, boolean>();
   for (const agent of agents) {
-    if (agent.ownerUserId === null) owners.set(agent.id, { kind: 'workspace' });
-    else {
-      // Exactly the human candidate boundary of listProjectPeople, followed by the same policy.
-      if (agent.memberId === null) continue;
-      if (!visible.has(agent.ownerUserId)) visible.set(agent.ownerUserId,
-        (await evaluateProject({ kind: 'human', id: agent.ownerUserId }, 'project.read', projectId, accessReader(db))).allowed);
-      if (visible.get(agent.ownerUserId)) owners.set(agent.id, { kind: 'human', id: agent.ownerUserId });
-    }
+    // Exactly the human candidate boundary of listProjectPeople, followed by the same policy.
+    if (agent.memberId === null) continue;
+    if (!visible.has(agent.ownerUserId)) visible.set(agent.ownerUserId,
+      (await evaluateProject({ kind: 'human', id: agent.ownerUserId }, 'project.read', projectId, accessReader(db))).allowed);
+    if (visible.get(agent.ownerUserId)) owners.set(agent.id, { kind: 'human', id: agent.ownerUserId });
   }
   return owners;
 }

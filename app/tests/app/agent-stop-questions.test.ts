@@ -22,7 +22,6 @@ async function scene() {
   await grant(hubert, p.id, ada, 'contributor');
   await grant(hubert, p.id, eve, 'viewer');
   const agent = expectStatus(await hubert.browser.request('POST', `/api/v1/workspaces/${ws.id}/agents`, { body: { name: 'Hubert Claude', owner: 'self' } }), 201) as Agent;
-  expectStatus(await hubert.browser.request('POST', `/api/v1/projects/${p.id}/grants`, { body: { principal: { kind: 'agent', id: agent.id }, role: 'contributor' } }), 201);
   const connected = await agentConnection(pool, hubert.browser, agent.id, [p.id]);
   const run = (role: 'execute' | 'plan' = 'execute') => ({ projectId: p.id, runtimeSessionId: connected.runtimeSessionId, peerRequestClass: role });
   const task = async (who = hubert, title = 'Calibrate the bed') =>
@@ -110,7 +109,6 @@ test('the agent\'s owner and the task\'s creator may stop it; a task it does not
   assert.deepEqual([(await f.stop(f.hubert, idle.id)).status, (await f.stop(f.hubert, idle.id)).json.code], [409, 'AGENT_NOT_WORKING']);
   // A person who owns the agent, though not a manager and not the creator, can stop it. Marek owns a second agent here.
   const mine = expectStatus(await f.marek.browser.request('POST', `/api/v1/workspaces/${f.ws.id}/agents`, { body: { name: 'Marek Codex', owner: 'self' } }), 201) as Agent;
-  expectStatus(await f.hubert.browser.request('POST', `/api/v1/projects/${f.p.id}/grants`, { body: { principal: { kind: 'agent', id: mine.id }, role: 'contributor' } }), 201);
   const handed = await f.task(f.hubert, 'Handed to Marek\'s agent');
   expectStatus(await f.hubert.browser.request('PATCH', `/api/v1/work/${handed.id}`, { body: { owner: { kind: 'agent', id: mine.id }, status: 'in_progress' },
     headers: { 'if-match': `"${handed.version}"` } }), 200);
@@ -285,7 +283,6 @@ test('the sidebar card says whether a working agent was ever signed in (#347 rev
     headers: { 'if-match': `"${item.version}"` } }), 200);
   // A second agent has never opened a client session, and holds work: not signed in. Negative control: it must not read as signed in.
   const never = expectStatus(await f.hubert.browser.request('POST', `/api/v1/workspaces/${f.ws.id}/agents`, { body: { name: 'Never connected', owner: 'self' } }), 201) as Agent;
-  expectStatus(await f.hubert.browser.request('POST', `/api/v1/projects/${f.p.id}/grants`, { body: { principal: { kind: 'agent', id: never.id }, role: 'contributor' } }), 201);
   const second = await f.task(f.hubert, 'Never signed in task');
   expectStatus(await f.hubert.browser.request('PATCH', `/api/v1/work/${second.id}`, { body: { owner: { kind: 'agent', id: never.id }, status: 'in_progress' },
     headers: { 'if-match': `"${second.version}"` } }), 200);

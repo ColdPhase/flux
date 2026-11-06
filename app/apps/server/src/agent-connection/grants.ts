@@ -1,9 +1,9 @@
-import { agentAccessRequestRows, agentExecutionRows, agentProjectObjectRows, accessReader, type Database, type Transaction } from '@flux/db';
+import { agentExecutionRows, agentProjectObjectRows, accessReader, type Database, type Transaction } from '@flux/db';
 import { agentStandingGrantUseCases, DomainError, enforce, evaluateProject, type AgentStandingGrantPort } from '@flux/core';
 import type { AgentOperation, CreateAgentStandingGrantCommand } from '@flux/contracts';
 import { createAgentConnectionStore } from './store.js';
 
-/** Create/update authority comes from the central project-management policy, never an owner label. */
+/** Create/update authority comes from the owner's current write access in the central policy (F-036 AG-3), never an owner label. */
 export interface AgentGrantDomainChecks {
   coordinationTarget?(tx: Transaction, within: { workspaceId: string; projectId: string; connectionId: string },
     command: CreateAgentStandingGrantCommand): Promise<boolean>;
@@ -15,15 +15,8 @@ export function agentStandingGrants(db: Database, domain: AgentGrantDomainChecks
         const connection = await createAgentConnectionStore(tx).resolve(ownerUserId, connectionId);
         if (!connection || !connection.scopes.includes('flux.action.execute') || !connection.selectedProjectIds.includes(command.projectId))
           throw new DomainError(404, 'CONNECTION_NOT_FOUND', 'Connection not found');
-        // A project manager may add grants to their own connection. #763 FT-2 (F-024 AC-4 amendment, founder decision 2026-11-01 on #806): so may an
-        // owner who can write in the project when a manager has given this agent its own contributor grant there. Every
-        // action still runs as the agent, capped by that grant and by the owner's current access.
-        const owner = { kind: 'human' as const, id: ownerUserId };
-        if (!(await evaluateProject(owner, 'project.manage', command.projectId, accessReader(tx), { lock: true })).allowed) {
-          enforce(await evaluateProject(owner, 'project.write', command.projectId, accessReader(tx), { lock: true }), 'project');
-          if (await agentAccessRequestRows(tx).grantOf(command.projectId, connection.agentId) !== 'contributor')
-            throw new DomainError(403, 'AGENT_GRANT_REQUIRED', 'A project manager must let this agent into the project first');
-        }
+        // The owner adds grants to their own connection where they can write: the agent has exactly the owner's rights (F-036 AG-3).
+        enforce(await evaluateProject({ kind: 'human', id: ownerUserId }, 'project.write', command.projectId, accessReader(tx), { lock: true }), 'project');
         if (command.objectId) {
           const within = { workspaceId: connection.workspaceId, projectId: command.projectId, connectionId };
           const kind = agentOperationTarget(command.operation);

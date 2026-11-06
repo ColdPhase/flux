@@ -2,8 +2,7 @@
 
 Anna owns a space with a restricted project "Volunteer sign-up app". Dev is a member who writes there but does not manage it.
 
-* FT-1: Dev's own agent cannot be chosen for the project until a manager lets it in. Dev asks from Connect; Anna sees the
-  request in the project's People with Allow; Allow opens the row on Dev's page without a reload.
+* FT-1 as F-036 AG-3 changed it: Dev's own agent has Dev's rights, so Connect offers the project at once and nobody asks a manager.
 * FT-2: Handing a task to Dev's own agent, whose connection may act but has no grants yet, says what is missing and
   "Allow and hand off" grants exactly the task's work, then hands it off.
 * FT-3: An invite link made from the project's People also opens the project; the new person lands in it.
@@ -110,35 +109,20 @@ class FirstTimeUser(unittest.TestCase):
         type(self).ids.update(workspace=ws["id"], project=project["id"], message=conversation["messages"][0]["id"],
                               conversation=conversation["id"], task=task["id"], agent=agent["id"])
 
-    def test_02_a_member_asks_a_manager_and_allow_opens_the_project_for_their_agent(self) -> None:
+    def test_02_a_member_chooses_a_project_they_write_in_for_their_agent_without_asking_anyone(self) -> None:
+        # F-036 AG-3 (#855): the agent has exactly its owner's rights, so nobody asks a manager to let it in.
         dev = self.page("dev")
         dev.goto("/settings/agents/connect")
         dev.get_by_role("button", name="Create another selection").or_(dev.get_by_role("heading", name="New connection")).first.wait_for()
         if dev.get_by_role("button", name="Create another selection").count():
             dev.get_by_role("button", name="Create another selection").click()
         row = dev.locator(".connection__project", has_text="Volunteer sign-up app")
-        expect(row.get_by_role("checkbox")).to_be_disabled()
-        expect(row).to_contain_text("A project manager lets your agent in first")
-        row.get_by_role("button", name="Ask a manager to let it in").click()
-        expect(row).to_contain_text("Asked Anna to let your agent in")
-        shot(dev, "ftu-connect-asked")
-        # Anna has one question in Needs you that opens the project's People, with the request and Allow.
-        anna = self.page("anna")
-        anna.goto("/inbox")
-        item = anna.get_by_text(re.compile("Dev Patel asks to let their agent Dev's Claude Code into Volunteer sign-up app"))
-        expect(item.first).to_be_visible()
-        anna.goto(f"/projects/{self.ids['project']}?open=people")
-        requests = anna.locator("[data-agent-requests]")
-        expect(requests.get_by_role("heading", name="Agents asking to join")).to_be_visible()
-        expect(requests).to_contain_text("Dev's Claude Code")
-        shot(anna, "ftu-people-agent-request")
-        requests.get_by_role("button", name="Allow").click()
-        expect(anna.get_by_text("Dev's Claude Code can now work in Volunteer sign-up app.")).to_be_visible()
-        grants = self.api(anna, "GET", f"/api/v1/projects/{self.ids['project']}/grants", status=200)
-        self.assertTrue(any(g["principal"] == {"kind": "agent", "id": self.ids["agent"]} and g["role"] == "contributor" for g in grants))
-        # Dev's page opens the row by itself (it looks again while a request waits).
-        expect(row.get_by_role("checkbox")).to_be_enabled(timeout=15000)
-        expect(row).to_contain_text("Agent grant: read and propose")
+        expect(row.get_by_role("checkbox")).to_be_enabled()
+        expect(row).to_contain_text("Your agent can do here what you can")
+        expect(dev.get_by_role("button", name="Ask a manager to let it in")).to_have_count(0)
+        shot(dev, "ftu-connect-owner-rights")
+        grants = self.api(self.page("anna"), "GET", f"/api/v1/projects/{self.ids['project']}/grants", status=200)
+        self.assertFalse(any(g["principal"]["kind"] == "agent" for g in grants))
 
     def test_03_hand_off_to_your_own_agent_grants_exactly_the_tasks_work(self) -> None:
         dev = self.page("dev")

@@ -190,7 +190,7 @@ function promotionChoice(query: { target?: unknown; projectId?: unknown }): Prom
 
 export function createSketchUseCases(uow: SketchUnitOfWork) {
   const changed = (ports: SketchPorts, principal: Principal, sketch: SketchRecord, data: Record<string, unknown>) =>
-    ports.sketches.touchSketch(sketch.id).then(async () => {
+    ports.sketches.touchSketch(sketch.id, principal).then(async () => {
       await ports.live.commit(principal, sketch);
       await ports.events.record(principal, sketch.workspaceId, 'sketch.changed.v1', sketch.id, data);
     });
@@ -303,7 +303,7 @@ export function createSketchUseCases(uow: SketchUnitOfWork) {
         const version = valid.expectedVersion(command.expectedVersion);
         if (sketch.version !== version) throw new VersionConflictError(sketch.version, presentSketch(sketch, 'write'));
         await ports.live.before(principal,sketch,{thoughtIds:[],linkIds:[],sketch:true});
-        const renamed = await ports.sketches.renameSketch(sketch.id, title);
+        const renamed = await ports.sketches.renameSketch(sketch.id, title, principal);
         await ports.live.commit(principal,sketch);
         await ports.events.record(principal, sketch.workspaceId, 'sketch.changed.v1', sketch.id, { op: 'renamed' });
         return presentSketch(renamed, 'write');
@@ -393,7 +393,7 @@ export function createSketchUseCases(uow: SketchUnitOfWork) {
         const [currentView] = await presentThoughts(ports, principal, sketch, [current]);
         checkVersion(current, command.expectedVersion, currentView!);
         await ports.live.before(principal,sketch,{thoughtIds:[current.id],linkIds:[],leaseId:command.leaseId});
-        const updated = await ports.sketches.updateThought(sketch.id, current.id, changes);
+        const updated = await ports.sketches.updateThought(sketch.id, current.id, changes, principal);
         await artifacts?.thought(current,updated);
         const [view] = await presentThoughts(ports, principal, sketch, [updated]);
         await changed(ports, principal, sketch, { op: 'thought_updated', thoughtIds: [current.id], linkIds: [] });
@@ -422,7 +422,7 @@ export function createSketchUseCases(uow: SketchUnitOfWork) {
         }
         await ports.live.before(principal,sketch,{thoughtIds:parsed.map(move=>move.id),linkIds:[],leaseId:command.leaseId});
         const updated: ThoughtRecord[] = [];
-        for (const move of parsed) updated.push(await ports.sketches.updateThought(sketch.id, move.id, { x: move.x, y: move.y }));
+        for (const move of parsed) updated.push(await ports.sketches.updateThought(sketch.id, move.id, { x: move.x, y: move.y }, principal));
         const thoughts = await presentThoughts(ports, principal, sketch, updated);
         await changed(ports, principal, sketch, { op: 'thoughts_moved', thoughtIds: parsed.map((move) => move.id), linkIds: [] });
         return { thoughts };

@@ -14,8 +14,6 @@ async function scene(scopes: string[], request: { scope: string; prompt?: string
   const project = expect(await browser.request('POST', `/api/v1/workspaces/${workspace.id}/projects`,
     { body: { name: 'Granted project', visibility: 'restricted' } }), 201);
   const agent = expect(await browser.request('POST', `/api/v1/workspaces/${workspace.id}/agents`, { body: { name: 'Partial agent', owner: 'self' } }), 201);
-  expect(await browser.request('POST', `/api/v1/projects/${project.id}/grants`,
-    { body: { principal: { kind: 'agent', id: agent.id }, role: scopes.length > 1 ? 'contributor' : 'viewer' } }), 201);
   const connection = expect(await browser.request('POST', '/api/v1/agent-connections',
     { body: { name: 'Desk', clientDesignation: 'codex', agentId: agent.id, selectedProjectIds: [project.id], scopes } }), 201);
   const clientId = `flux-test-${randomUUID()}`;

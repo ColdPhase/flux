@@ -40,8 +40,6 @@ async function scene() {
   /** One OAuth-connected agent of `who`, with its MCP tools, bootstrap runtime and the bearer's claims for internal steps. */
   const connect = async (who: Person, name: string, scopes = ACTION_SCOPES) => {
     const agent = expectStatus(await who.browser.request('POST', `/api/v1/workspaces/${ws.id}/agents`, { body: { name, owner: 'self' } }), 201) as Agent;
-    expectStatus(await hubert.browser.request('POST', `/api/v1/projects/${p.id}/grants`,
-      { body: { principal: { kind: 'agent', id: agent.id }, role: 'contributor' } }), 201);
     const connected = await agentConnection(pool, who.browser, String(agent.id), [p.id], scopes);
     const binding = (await pool.query('SELECT id, client_id FROM agent_oauth_bindings WHERE connection_id=$1', [connected.connectionId])).rows;
     assert.equal(binding.length, 1);
@@ -91,7 +89,7 @@ test('the co-work tools are registered for the action scope, listed with their o
   for (const { name } of COWORK_TOOLS) assert.ok(COWORK_PLAYBOOK.modules.some((module) => module.tools.includes(name)), `${name} is declared`);
   const catalog = capabilities.map((item) => item.name);
   assert.deepEqual(coworkPlaybookTools().filter((name) => !catalog.includes(name)), []);
-  assert.equal(COWORK_PLAYBOOK.version, '1.10.0');
+  assert.equal(COWORK_PLAYBOOK.version, '1.11.0');
   assert.ok(!(codex.bootstrap.gaps as string[]).includes('coordination_unavailable'), 'admission, the inbox and resolution exist');
 
   // A connection without the action scope is not shown them (#548) and is refused before any effect.

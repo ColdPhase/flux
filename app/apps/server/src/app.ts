@@ -39,7 +39,6 @@ import { liveInvitationRoutes } from './live/invitation-routes.js';
 import { joinRateLimiter } from './live/rate-limit.js';
 import { agentProposalRoutes } from './agent-connection/routes.js';
 import { projectAgentRoutes } from './agent-connection/project-agents.js';
-import { agentPolicyRoutes } from './agent-connection/project-policy.js';
 import { agentStopRoutes } from './agent-connection/agent-stops.js';
 import { agentQuestionRoutes } from './agent-connection/agent-questions.js';
 import { agentMcpPolicyRoutes } from './agent-connection/mcp-policy-routes.js';
@@ -283,7 +282,6 @@ export async function buildApp(config: ServerConfig, migrationsDir = 'packages/d
   }
   await app.register(aiRoutes(agentProposalRoutes), { db, sessions: identity, oauthSecret: identityConfig.secret, publicOrigin: identityConfig.publicOrigin });
   await app.register(aiRoutes(projectAgentRoutes), { db, sessions: identity });
-  await app.register(aiRoutes(agentPolicyRoutes), { db, sessions: identity });
   await app.register(aiRoutes(agentStopRoutes), { db, sessions: identity });
   await app.register(aiRoutes(agentQuestionRoutes), { db, sessions: identity });
   await app.register(aiRoutes(agentMcpPolicyRoutes), { db, sessions: identity });

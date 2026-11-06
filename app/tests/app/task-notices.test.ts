@@ -88,12 +88,9 @@ test('no-source and legacy no-key creation are atomic; a genuine agent remains t
   const f = await scene();
   const legacy = expectStatus(await f.owner.browser.request('POST', f.path, { body: { title: 'Order a sample' } }), 201) as WorkItem;
   const agent = expectStatus(await f.owner.browser.request('POST', `/api/v1/workspaces/${f.ws.id}/agents`, {
-    body: { name: 'Measurement agent', owner: 'workspace' },
+    body: { name: 'Measurement agent', owner: 'self' },
   }), 201) as Agent;
   // Grants use an explicit typed principal, not a pretend human account.
-  expectStatus(await f.owner.browser.request('POST', `/api/v1/projects/${f.place.id}/grants`, {
-    body: { principal: { kind: 'agent', id: agent.id }, role: 'contributor' },
-  }), 201);
   const created = await workUseCases(db).createWork({ kind: 'agent', id: agent.id }, f.place.id,
     { title: 'Agent-created comparison', clientCommandId: randomUUID() });
   const page = await f.notices();

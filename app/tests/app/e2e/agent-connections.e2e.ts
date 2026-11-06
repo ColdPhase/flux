@@ -37,7 +37,6 @@ test('named connections and two tabs in one login complete distinct consent flow
     const workspace = await post('/api/v1/workspaces', { name: 'Agent research' });
     const project = await post(`/api/v1/workspaces/${workspace.id}/projects`, { name: 'Sensor study', visibility: 'restricted' });
     const agent = await post(`/api/v1/workspaces/${workspace.id}/agents`, { name: 'Research agent', owner: 'self' });
-    await post(`/api/v1/projects/${project.id}/grants`, { principal: { kind: 'agent', id: agent.id }, role: 'contributor' });
     const a = await post('/api/v1/agent-connections', { name: 'Research laptop', clientDesignation: 'codex', agentId: agent.id,
       selectedProjectIds: [project.id], scopes: ['flux.context.read', 'flux.proposal.write', 'flux.action.execute'] });
     const b = await post('/api/v1/agent-connections', { name: 'Delivery laptop', clientDesignation: 'claude_code', agentId: agent.id,

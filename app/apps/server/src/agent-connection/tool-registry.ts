@@ -10,7 +10,7 @@ import { isAssistantText, redactCall } from './assistant-changes.js';
  * says what the change does and that some changes wait for the owner. The public schema is unchanged.
  */
 const RUN_EFFECT_DESCRIPTIONS: Record<string, string> = {
-  flux_create_task: 'Add one task to this project.',
+  flux_create_task: 'Add one task to this project. A task for another person (ownerUserId) waits for your owner\'s OK.',
   flux_update_task: 'Change one task at the version you last read (title, outcome, status, blocker, done-when, prerequisites).',
   flux_record_result: 'Record one observed result, optionally finishing one of its tasks at the version you last read.',
   flux_propose_decision: 'Propose one decision. It stays proposed; people decide.',
@@ -20,10 +20,10 @@ const RUN_EFFECT_DESCRIPTIONS: Record<string, string> = {
   flux_rename_map: 'Rename one map at the version you last read.',
   flux_add_thought: 'Add one thought to a map, optionally linked from another thought.',
   flux_update_thought: 'Change one thought at the version you last read.',
-  flux_remove_thought: 'Remove one thought (this always waits for your owner\'s OK).',
+  flux_remove_thought: 'Remove one thought (deleting always waits for your owner\'s OK).',
   flux_move_thoughts: 'Move thoughts on a map, each at the version you last read.',
   flux_link_thoughts: 'Link two thoughts of one map.',
-  flux_unlink_thoughts: 'Remove one link (this always waits for your owner\'s OK).',
+  flux_unlink_thoughts: 'Remove one link (deleting always waits for your owner\'s OK).',
   flux_start_conversation: 'Start a conversation in this project.',
   flux_reply_in_conversation: 'Reply in one conversation of this project.',
   flux_create_unit: 'Hand one task to one of your owner\'s own agents (execute, review or plan) at the task version you last read. The authority is this run: '

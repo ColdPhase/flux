@@ -2,6 +2,23 @@ export type AgentScope = 'flux.context.read' | 'flux.proposal.write' | 'flux.act
 export type ExternalComputeSource = 'user_operated_claude_code' | 'user_operated_external_client' | 'owner_assistant';
 export type ExternalClientDesignation = 'claude_code' | 'codex' | 'other';
 
+/**
+ * "What it may do" (F-036 AG-3, #855): the one permission row of each agent, the assistant and every local client alike.
+ * Whatever it says, an agent has exactly its owner's rights, and deleting or changing other people's things always waits.
+ */
+export const AGENT_MAY_DO = ['read', 'act', 'ask'] as const;
+export type AgentMayDo = typeof AGENT_MAY_DO[number];
+export const AGENT_MAY_DO_LABELS: Readonly<Record<AgentMayDo, string>> = { read: 'Only read', act: 'Do it and tell me', ask: 'Ask me first' };
+export const AGENT_MAY_DO_HINTS: Readonly<Record<AgentMayDo, string>> = {
+  read: 'Reads and answers. It changes nothing.',
+  act: 'Makes new things and changes yours at once, then tells you, with Undo.',
+  ask: 'Every change waits for your OK.',
+};
+/** The line under every "What it may do" row. */
+export const AGENT_ALWAYS_WAITS = 'Agents never have more rights than you. Deleting and other people\'s things always wait for your OK.';
+/** `PATCH`: the owner, in their own signed-in session, sets one agent's "What it may do". No agent or client can. */
+export interface UpdateAgentConnectionCommand { mayDo: AgentMayDo }
+
 /** A person's server-owned consent selection; no model account or token is stored here. */
 export interface AgentConnection {
   id: string;
@@ -14,6 +31,8 @@ export interface AgentConnection {
   selectedProjectIds: string[];
   scopes: AgentScope[];
   computeSource: ExternalComputeSource;
+  /** "What it may do" (F-036 AG-3). */
+  mayDo: AgentMayDo;
   revokedAt: string | null;
   createdAt: string;
 }
@@ -62,7 +81,6 @@ export interface AgentProposal {
   ownerUserId: string;
   /** Immutable provenance; no provider credential or usage is stored. */
   computeSource: ExternalComputeSource;
-  agentGrant: { id: string; role: 'contributor' };
   source: { materialId: string; version: number };
   fact: string;
   interpretation: string;

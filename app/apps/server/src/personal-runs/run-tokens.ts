@@ -40,14 +40,14 @@ export function registerPersonalRunTokenRoute(app: FastifyInstance, db: Database
       if (ai.state !== 'allowed' || ai.epoch !== run.aiEpoch) return null;
       const connectionId = await rows.assistantConnectionId(run.ownerUserId, run.workspaceId);
       if (!connectionId) return null;
-      // The live connection, its owner's standing and its current selection, exactly as the MCP route checks them.
-      // A read-only run token needs read access to a selected project, not write (an assistant a manager let only read).
+      // The live connection and its owner's standing, exactly as the MCP route checks them. A read-only run token needs read
+      // access only: the assistant reaches what its owner can (F-036 AG-3).
       const grant = await createAgentConnectionStore(tx).grantForRun(run.ownerUserId, connectionId);
       if (!grant || grant.connection.id !== connectionId || grant.connection.agentId !== run.agentId || grant.connection.computeSource !== 'owner_assistant') return null;
       const policy = await lockAgentMcpPolicy(tx, connectionId);
       if (!policy) return null;
-      // The run's exact tools from the owner's switches (F-027 AST-4): reads, and changes of areas switched to edit (A3).
-      const readOnly = run.reactionAction && ['tell', 'draft_reply', 'check_task'].includes(run.reactionAction);
+      // The run's exact tools: reads, and the changes unless its "What it may do" is Only read (F-036 AG-3).
+      const readOnly = grant.connection.mayDo === 'read' || run.reactionAction && ['tell', 'draft_reply', 'check_task'].includes(run.reactionAction);
       const tools = assistantRunTools(policy, readOnly ? ['flux.context.read'] : grant.connection.scopes);
       let context: string | undefined;
       if (run.reactionTaskId) {

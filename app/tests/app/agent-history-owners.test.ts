@@ -8,7 +8,7 @@ import { taskDiscussionUseCases } from '../../apps/server/src/work/task-discussi
 import { db, pool } from './support/db.js';
 import { addMember, expectStatus, grant, person, project, removeMember, workspace } from './support/people.js';
 
-async function scene(ownerKind: 'self' | 'workspace' = 'self') {
+async function scene() {
   const [manager, owner, reader] = await Promise.all(['History manager', 'Visible historical owner', 'History guest'].map(person));
   const ws = await workspace(manager, 'Historical agent ownership');
   await addMember(manager, ws.id, owner, 'member');
@@ -16,11 +16,9 @@ async function scene(ownerKind: 'self' | 'workspace' = 'self') {
   const place = await project(manager, ws.id, 'Preserved authors', 'restricted');
   await grant(manager, place.id, owner, 'contributor');
   await grant(manager, place.id, reader, 'viewer');
-  const agent = expectStatus(await (ownerKind === 'self' ? owner : manager).browser.request('POST', `/api/v1/workspaces/${ws.id}/agents`, {
-    body: { name: 'Historical analyst', owner: ownerKind },
-  }), 201) as { id: string };
-  const access = expectStatus(await manager.browser.request('POST', `/api/v1/projects/${place.id}/grants`, {
-    body: { principal: { kind: 'agent', id: agent.id }, role: 'contributor' },
+  // The agent has exactly its owner's rights (F-036 AG-3): no grant of its own.
+  const agent = expectStatus(await owner.browser.request('POST', `/api/v1/workspaces/${ws.id}/agents`, {
+    body: { name: 'Historical analyst', owner: 'self' },
   }), 201) as { id: string };
   const task = expectStatus(await manager.browser.request('POST', `/api/v1/projects/${place.id}/work`, {
     body: { title: 'Preserve the measured history' },
@@ -34,7 +32,7 @@ async function scene(ownerKind: 'self' | 'workspace' = 'self') {
     const stream = expectStatus(await reader.browser.request('GET', `/api/v1/projects/${place.id}/conversation-roots`), 200) as ConversationRootWindow;
     return [discussion.root!, discussion.messages[0]!, conversation.messages[0]!, stream.roots[0]!.message];
   };
-  return { manager, owner, reader, ws, place, agent, access, task, actor, command, receipt, read };
+  return { manager, owner, reader, ws, place, agent, task, actor, command, receipt, read };
 }
 
 function unchangedIdentity(row: ConversationMessage, receipt: ConversationMessage) {
@@ -45,7 +43,7 @@ function unchangedIdentity(row: ConversationMessage, receipt: ConversationMessag
   assert.deepEqual({ ...row, author }, receipt, 'only the optional display metadata differs from the stored receipt');
 }
 
-test('current-project owner remains visible in genuine agent history after grant removal, but deny/member removal clears its ID', async () => {
+test('the current-project owner stays visible in genuine agent history; deny/member removal clears its ID', async () => {
   const f = await scene();
   const before = (await pool.query('SELECT * FROM project_messages WHERE id=$1', [f.receipt.id])).rows[0];
   const exactReceipt = JSON.stringify(f.receipt);
@@ -54,17 +52,16 @@ test('current-project owner remains visible in genuine agent history after grant
   for (const row of await f.read()) {
     unchangedIdentity(row, f.receipt);
   }
-  expectStatus(await f.manager.browser.request('DELETE', `/api/v1/projects/${f.place.id}/grants/${f.access.id}`), 204);
   const people = expectStatus(await f.reader.browser.request('GET', `/api/v1/projects/${f.place.id}/people`), 200) as ProjectPerson[];
-  assert.equal(people.some((person) => person.id === f.agent.id), false, 'history does not restore the revoked audience member');
   assert.ok(people.some((person) => person.kind === 'human' && person.id === f.owner.id));
   assert.equal((await f.reader.browser.request('GET', `/api/v1/workspaces/${f.ws.id}/members`)).status, 403);
   for (const row of await f.read()) {
     unchangedIdentity(row, f.receipt);
     assert.deepEqual(row.author!.projectOwner, { kind: 'human', id: f.owner.id });
   }
-  await assert.rejects(taskDiscussionUseCases(db).contribute(f.actor, f.task.id, f.command), NotFoundError);
   await grant(f.manager, f.place.id, f.owner, 'denied');
+  // The owner kept out, its agent is too (F-036 AG-3): it can no longer write here.
+  await assert.rejects(taskDiscussionUseCases(db).contribute(f.actor, f.task.id, { ...f.command, clientMessageId: randomUUID() }), NotFoundError);
   for (const row of await f.read()) {
     unchangedIdentity(row, f.receipt);
     assert.equal(Object.hasOwn(row.author!, 'projectOwner'), false, 'a hidden owner ID is omitted entirely');
@@ -76,18 +73,13 @@ test('current-project owner remains visible in genuine agent history after grant
   assert.deepEqual((await pool.query('SELECT * FROM project_messages WHERE id=$1', [f.receipt.id])).rows[0], before);
 });
 
-test('workspace-owned historical authors keep an explicit workspace relation; foreign/missing IDs never enter the bounded projection', async () => {
-  const f = await scene('workspace');
-  expectStatus(await f.manager.browser.request('DELETE', `/api/v1/projects/${f.place.id}/grants/${f.access.id}`), 204);
-  for (const row of await f.read()) {
-    unchangedIdentity(row, f.receipt);
-    assert.deepEqual(row.author!.projectOwner, { kind: 'workspace' });
-  }
+test('foreign or missing author IDs never enter the bounded owner projection', async () => {
+  const f = await scene();
   const other = await workspace(f.manager, 'Unrelated owners');
   const foreign = expectStatus(await f.manager.browser.request('POST', `/api/v1/workspaces/${other.id}/agents`, {
     body: { name: 'Foreign author', owner: 'self' },
   }), 201) as { id: string };
   const projected = await projectAuthorOwners(db, f.place.id, f.ws.id, [foreign.id, randomUUID(), f.agent.id, f.agent.id]);
-  assert.deepEqual([...projected], [[f.agent.id, { kind: 'workspace' }]]);
+  assert.deepEqual([...projected], [[f.agent.id, { kind: 'human', id: f.owner.id }]]);
   await assert.rejects(projectAuthorOwners(db, f.place.id, f.ws.id, Array.from({ length: 102 }, () => randomUUID())), /bounded message window/);
 });

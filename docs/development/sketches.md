@@ -12,8 +12,8 @@ participant list of its own.
 
 | Table | Holds |
 | --- | --- |
-| `sketches` | One map in a workspace. `scope` is `project` (with `project_id`) or `private` (owned by `created_by_user_id`, never by an agent). It also has a title and a version. |
-| `sketch_thoughts` | The text, an integer position (`x`, `y`), a size (`width`, `height`), a `shape` (`card`, `pill`, `circle`), an optional placement, and a version. |
+| `sketches` | One map in a workspace. `scope` is `project` (with `project_id`) or `private` (owned by `created_by_user_id`, never by an agent). It also has a title, a version and `edited_by`: everyone who changed it after it was made, as `human:<id>` or `agent:<id>` (whether it is still "yours", [F-036 Terms](../product/assistant.md#terms)). |
+| `sketch_thoughts` | The text, an integer position (`x`, `y`), a size (`width`, `height`), a `shape` (`card`, `pill`, `circle`), an optional placement, a version and `edited_by`, as on `sketches`. |
 | `sketch_links` | An undirected link between two thoughts of the same sketch, with an optional label. There is one link per pair; a thought links to any number of others. |
 
 Composite foreign keys keep every thought and link inside the sketch's
@@ -185,7 +185,9 @@ author and time from the message itself. `GET …/sketches?dmId=` lists one DM's
 
 - `GET /api/v1/sketches/:id/promotion[?target=new|?projectId=][&participants=grant|none]` changes nothing. It returns
   `SketchPromotionPreview`:
-  - `audience`: everyone who could open the copy.
+  - `audience`: every person who could open the copy. Agents are not listed: an agent is not a
+    member of a space and reads with exactly its owner's rights ([F-036](../product/assistant.md)
+    AG-1, AG-3), so naming the owner covers it, and another person's assistant is private (#522).
     - For a new project (owners and admins only, `project.create`), the project is
       restricted. With `participants=grant` (the default) it is granted to exactly the
       participants; with `participants=none` (#188) to nobody, so its readers are the caller and
@@ -197,7 +199,7 @@ author and time from the message itself. `GET …/sketches?dmId=` lists one DM's
       used by a request that omits `participants` gets `409 PROMOTION_CHANGED` if the default
       grant changes the previewed audience; when both audiences are equal the token still applies.
     - For an existing project the caller can change (`project.write`; a viewer gets `403`), the
-      readers are `listProjectPeople`.
+      readers are the people in `listProjectPeople`.
   - `leftOut`: participants who would not see the copy.
   - `content`: thoughts, links, and how many thoughts came from messages.
   - `staysInDm`: the messages not quoted.
@@ -228,7 +230,7 @@ author and time from the message itself. `GET …/sketches?dmId=` lists one DM's
   (`409`, fresh preview). A change that starts later waits until the copy has committed.
 - Placements and DM message ids are not copied. Later DM messages and changes to the DM sketch
   never reach the copy. A test checks that the preview's readers equal the project's people
-  afterwards.
+  afterwards, and that every agent listed there reads through one of them.
 - The DM sketch lists `copies` only when the caller can open them.
 
 **Web.**

@@ -113,7 +113,6 @@ class OauthConsentJourney(unittest.TestCase):
         workspace = self.api(page, "POST", "/api/v1/workspaces", {"name": "Lamp workshop"}, status=201)
         project = self.api(page, "POST", f"/api/v1/workspaces/{workspace['id']}/projects", {"name": "Sensor study", "visibility": "restricted"}, status=201)
         agent = self.api(page, "POST", f"/api/v1/workspaces/{workspace['id']}/agents", {"name": "Nora's agent", "owner": "self"}, status=201)
-        self.api(page, "POST", f"/api/v1/projects/{project['id']}/grants", {"principal": {"kind": "agent", "id": agent["id"]}, "role": "contributor"}, status=201)
         self.api(page, "POST", "/api/v1/agent-connections", {"agentId": agent["id"], "name": "Studio laptop", "clientDesignation": "claude_code",
                  "selectedProjectIds": [project["id"]], "scopes": ["flux.context.read", "flux.proposal.write"]}, status=201)
         # Her session cannot register a client; the test deployment's fixture token can.

@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { before, beforeEach, describe, test } from 'node:test';
 import {
-  assistantChangeActionPath, assistantMessageHeader, assistantRunChangesActionPath, assistantRunChangesPath, ASSISTANT_UNIT_CREATE_VIEW,
+  assistantChangeActionPath, assistantChangeLine, assistantRunChangesActionPath, assistantRunChangesPath, ASSISTANT_UNIT_CREATE_VIEW,
   type AssistantChange, type AssistantRunUndone,
 } from '@flux/contracts';
 import { assistantHandoffRunId, type PersonalComputeResult } from '@flux/core';
@@ -25,7 +25,6 @@ let codex: Recipient; let jonasAgent: Recipient;
 /** One of `who`'s own agents, authorized through the real OAuth consent, working in the project, named the way its owner calls it. */
 async function recipient(who: Person, name: string, designation: 'codex' | 'claude_code' | 'other' = 'codex') {
   const agent = (expectStatus(await who.browser.request('POST', `/api/v1/workspaces/${scene.ws.id}/agents`, { body: { name, owner: 'self' } }), 201) as { id: string }).id;
-  expectStatus(await scene.owner.browser.request('POST', `/api/v1/projects/${scene.place.id}/grants`, { body: { principal: { kind: 'agent', id: agent }, role: 'contributor' } }), 201);
   const connected = await agentConnection(pool, who.browser, agent, [scene.place.id]);
   await pool.query(`UPDATE agent_connections SET name = $2, client_designation = $3 WHERE id = $1`, [connected.connectionId, name, designation]);
   return { ...connected, agentId: agent };
@@ -67,11 +66,13 @@ describe('hand-offs from the owner\'s assistant to the owner\'s own agents (F-02
     assert.match(ordinary.description, /live cowork\.unit\.create grant/);
     assert.ok(!ordinary.description.includes('authority is this run'));
     await scene.complete(live.runId);
-    // Tasks on Only read: no hand-off tool, and a forced call is refused by the same switch.
-    await scene.save({ areas: { tasks: 'read' } });
+    // "What it may do" is Only read: no hand-off tool, and a forced call changes nothing (F-036 AG-3).
+    await scene.setMayDo('read');
     const read = await scene.liveRun();
     assert.ok(!read.tools.includes('flux_create_unit'));
-    assert.equal(JSON.parse(text((await handoff(read, { id: randomUUID(), version: 1 }, 'x')).message)).code, 'MCP_ENTRY_UNAVAILABLE');
+    const forced = await handoff(read, { id: randomUUID(), version: 1 }, 'x');
+    assert.ok(forced.status >= 400 || (forced.message?.result as { isError?: boolean } | undefined)?.isError, 'refused');
+    await scene.complete(read.runId);
   });
 
   test('AST-5.2/AST-6.2: the assistant opens a pending unit for the owner\'s own agent with no claim, the recipient needs its own grant to start, and the receipt keeps who did what', async () => {
@@ -95,10 +96,10 @@ describe('hand-offs from the owner\'s assistant to the owner\'s own agents (F-02
     assert.deepEqual((await units(task.id)).map((item) => [item.state, item.generation]), [['pending', 0]]);
     const grant = await codex.grant('cowork.claim', 'execute', 5, unit!.id);
     assert.equal(toolValue(await claim(codex, grant.id, unit!.id, 1)).state, 'claimed');
-    // The message: "Done: handed off 1 task", with where it stands, in the owner's words for the agent.
+    // The message's change line names the hand-off, with where it stands, in the owner's words for the agent.
     await scene.complete(live.runId);
     const listed = (expectStatus(await scene.owner.browser.request('GET', assistantRunChangesPath(live.runId)), 200) as { items: AssistantChange[] }).items;
-    assert.equal(assistantMessageHeader(listed), 'Done: handed off 1 task');
+    assert.match(assistantChangeLine(listed), /^Handed off task #\d+ /);
     assert.deepEqual([listed[0]!.after, listed[0]!.line], ['Handed to Codex', 'Codex started']);
   });
 
@@ -152,7 +153,7 @@ describe('hand-offs from the owner\'s assistant to the owner\'s own agents (F-02
     assert.deepEqual((await changesOf(live.runId)).map((item) => item.state), ['refused'], 'only the skipped one is in the log');
     // In "Ask me first" a foreign recipient is refused at once too: nothing waits that no Apply could ever do.
     await scene.complete(live.runId);
-    await scene.save({ approvalMode: 'ask' });
+    await scene.setMayDo('ask');
     const asking = await scene.liveRun();
     const fresh = await scene.task(scene.owner, 'Waits for nothing');
     assert.equal(JSON.parse(text((await handoff(asking, fresh, 'foreign-ask', { to: jonasAgent.connectionId })).message)).code, 'COWORK_ASSIGNEE_UNAVAILABLE');
@@ -179,13 +180,7 @@ describe('hand-offs from the owner\'s assistant to the owner\'s own agents (F-02
     await scene.complete(live.runId);
   });
 
-  test('AST-6.5/AST-6.4: a hand-off counts against the run\'s limit, and after Stop the next one is refused with 403 while independent recipient work goes on', async () => {
-    const live = await scene.liveRun();
-    for (let i = 1; i <= 20; i += 1) assert.ok(JSON.parse(text((await live.call('flux_create_task', { task: { title: `Limit task ${i}` } })).message)).workId);
-    const task = await scene.task(scene.owner, 'Twenty-first change');
-    assert.match(text((await handoff(live, task, 'limit')).message), /^Waiting for ah-ada's OK: hand off task #\d+ Twenty-first change\.$/);
-    assert.equal((await changesOf(live.runId)).at(-1)!.wait_reason, 'limit');
-    await scene.complete(live.runId);
+  test('AST-6.4: after Stop the next hand-off is refused with 403 while independent recipient work goes on', async () => {
     const running = await scene.liveRun();
     const mine = await scene.task(scene.owner, 'Stopped after one');
     const stopper = await recipient(scene.owner, 'Codex two');
@@ -200,7 +195,7 @@ describe('hand-offs from the owner\'s assistant to the owner\'s own agents (F-02
   });
 
   test('AST-5.2: "Ask me first" stores the exact private intent; Apply after the run and its token ended makes exactly one unit under owner_approval with no model or CLI call', async () => {
-    await scene.save({ approvalMode: 'ask' });
+    await scene.setMayDo('ask');
     const task = await scene.task(scene.owner, 'Hand me over later');
     const live = await scene.liveRun();
     const baseline = await unitCount();
@@ -233,7 +228,7 @@ describe('hand-offs from the owner\'s assistant to the owner\'s own agents (F-02
   });
 
   test('AST-5.4: a saved hand-off does not survive a revoked or narrowed recipient, an unknown stored view, an altered payload or a switch turned off', async () => {
-    await scene.save({ approvalMode: 'ask' });
+    await scene.setMayDo('ask');
     const live = await scene.liveRun();
     const prepare = async (title: string, key: string, to: Recipient) => {
       const task = await scene.task(scene.owner, title);
@@ -261,10 +256,11 @@ describe('hand-offs from the owner\'s assistant to the owner\'s own agents (F-02
       assert.equal((await units(task.id)).length, 0, `${name}: no unit`);
       assert.equal((await pool.query(`SELECT state FROM assistant_changes WHERE id = $1`, [row.id])).rows[0].state, 'refused', name);
     }
-    // The Tasks switch turned to Only read invalidates what was waiting, and turning it on again cannot revive it.
-    await scene.save({ areas: { tasks: 'read' } });
+    // "What it may do" turned to Only read refuses the Approve and closes what was waiting; turning it back cannot revive it.
+    await scene.setMayDo('read');
+    assert.equal((await scene.owner.browser.request('POST', assistantChangeActionPath(cases.off.row.id, 'apply'), { body: {} })).status, 403);
     assert.equal((await pool.query(`SELECT state FROM assistant_changes WHERE id = $1`, [cases.off.row.id])).rows[0].state, 'refused');
-    await scene.save({ areas: { tasks: 'edit' } });
+    await scene.setMayDo('act');
     expectStatus(await scene.owner.browser.request('POST', assistantChangeActionPath(cases.off.row.id, 'apply'), { body: {} }), 409);
     assert.equal((await units(cases.off.task.id)).length, 0);
   });
@@ -376,7 +372,7 @@ describe('hand-offs from the owner\'s assistant to the owner\'s own agents (F-02
   });
 
   test('AST-5.4 held: an Apply of a saved hand-off loses to a recipient revoked while it waits; no unit, no approval recorded', async () => {
-    await scene.save({ approvalMode: 'ask' });
+    await scene.setMayDo('ask');
     const doomed = await recipient(scene.owner, 'Codex thirteen');
     const task = await scene.task(scene.owner, 'Revoked during Apply');
     const live = await scene.liveRun();
@@ -393,7 +389,7 @@ describe('hand-offs from the owner\'s assistant to the owner\'s own agents (F-02
   });
 
   test('AST-3.2 (both engines): a fake provider on the `server` engine prepares the same private intent through the worker\'s tool loop, and the plain result reaches it', async () => {
-    await scene.save({ approvalMode: 'ask' });
+    await scene.setMayDo('ask');
     const task = await scene.task(scene.owner, 'Server engine hand-off');
     const input = { clientCommandId: randomUUID(), peerRequestClass: 'review', taskId: task.id, unitKey: 'server', expectedTaskVersion: task.version,
       assignmentConnectionId: codex.connectionId, parent: null };
@@ -436,7 +432,7 @@ describe('hand-offs from the owner\'s assistant to the owner\'s own agents (F-02
   });
 
   test('AST-3.2/AST-5.4: owner Apply and the run share the use cases; another owner, an admin or a stranger cannot approve a hand-off', async () => {
-    await scene.save({ approvalMode: 'ask' });
+    await scene.setMayDo('ask');
     const task = await scene.task(scene.owner, 'Only Ada approves');
     const live = await scene.liveRun();
     await handoff(live, task, 'k');

@@ -8,8 +8,8 @@ import { toolValue } from './support/mcp.js';
 import { addMember, expectStatus, grant, person, project, removeMember, workspace, type Person } from './support/people.js';
 
 /**
- * A self-owned agent with a project grant, and a viewer who reads the project lists (#339 AC-2). The owner is a
- * workspace admin, so it manages the project and can set up standing grants; ending its membership is the way its
+ * A self-owned agent with exactly its owner's rights (F-036 AG-3), and a viewer who reads the project lists (#339 AC-2). The
+ * owner is a workspace admin, so it manages the project and can set up standing grants; ending its membership is the way its
  * access ends, because a workspace owner or admin keeps project management whatever project grant it has.
  */
 async function scene() {
@@ -22,11 +22,8 @@ async function scene() {
   const agent = expectStatus(await owner.browser.request('POST', `/api/v1/workspaces/${ws.id}/agents`, {
     body: { name: 'List writer', owner: 'self' },
   }), 201) as { id: string };
-  const access = expectStatus(await manager.browser.request('POST', `/api/v1/projects/${place.id}/grants`, {
-    body: { principal: { kind: 'agent', id: agent.id }, role: 'contributor' },
-  }), 201) as { id: string };
   const connection = await agentConnection(pool, owner.browser, agent.id, [place.id]);
-  return { manager, owner, reader, ws, place, agent, access, connection };
+  return { manager, owner, reader, ws, place, agent, connection };
 }
 
 const expectedAgent = (f: Awaited<ReturnType<typeof scene>>, projectOwner?: { kind: 'human'; id: string }): NamedPrincipal =>
@@ -47,10 +44,6 @@ test('a doc an agent last changed names its owner in the project list while that
     return item;
   };
   assert.deepEqual((await listed()).updatedBy, expectedAgent(f, { kind: 'human', id: f.owner.id }), 'the authorized owner is named while the agent is in the audience');
-
-  expectStatus(await f.manager.browser.request('DELETE', `/api/v1/projects/${f.place.id}/grants/${f.access.id}`), 204);
-  const retained = (await listed()).updatedBy;
-  assert.deepEqual(retained, expectedAgent(f, { kind: 'human', id: f.owner.id }), 'the revoked agent keeps its name and its owner stays scoped');
 
   await removeMember(f.manager, f.ws.id, f.owner);
   const hidden = (await listed()).updatedBy;
@@ -76,9 +69,6 @@ test('a project sketch an agent created names its creator with the scoped owner,
     return item.createdBy;
   };
   assert.deepEqual(await listed(), expectedAgent(f, { kind: 'human', id: f.owner.id }), 'the authorized owner is named while the agent is in the audience');
-
-  expectStatus(await f.manager.browser.request('DELETE', `/api/v1/projects/${f.place.id}/grants/${f.access.id}`), 204);
-  assert.deepEqual(await listed(), expectedAgent(f, { kind: 'human', id: f.owner.id }), 'the revoked agent keeps its name and its owner stays scoped');
 
   await removeMember(f.manager, f.ws.id, f.owner);
   const hidden = await listed();

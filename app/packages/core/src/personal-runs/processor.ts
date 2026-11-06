@@ -111,7 +111,7 @@ async function recheck(ports: PersonalRunPorts, connections: PersonalConnectionL
   const connection = run.connectionId ? await connections.resolve(run.ownerUserId, run.connectionId) : null;
   if (!connection || connection.status !== 'active' || connection.ownerUserId !== run.ownerUserId
     || connection.id !== run.connectionId || connection.id !== enablement.connectionId) return { refusal: 'unavailable' };
-  // The sources are the intersection of the owner's rights and the agent grant in this project;
+  // The sources are what the owner can read in this project, as the agent;
   // the answer is posted to the place, so its owner must still be able to write there.
   if (!(await ports.access.canUseProject(owner, 'write', run.projectId, { lock })) || !(await ports.access.canUseProject(agent, 'read', run.projectId, { lock })))
     return { refusal: 'denied' };
@@ -141,13 +141,9 @@ async function readSources(ports: PersonalRunPorts, run: RunRecord): Promise<{ s
   await ports.access.requireProject(agent, 'read', run.projectId);
   const sources: SuppliedSource[] = [];
   const next = () => `S${sources.length + 1}`;
-  // The owner's switches (F-027 AST-4): an Off area is never assembled as ambient context. The owner's
-  // request itself is input, not permission to read its conversation (AST-4, #401 C2).
-  const areas = ports.runs.assistantAreas ? await ports.runs.assistantAreas(run.ownerUserId, run.workspaceId) : null;
-  const on = (area: 'tasks' | 'maps' | 'conversations') => !areas || areas[area] !== 'off';
   // The morning summary (F-027 AST-7) reads nothing of its own: Flux gives it the facts in its request.
   if (run.kind === 'morning_summary') return { sources, earlier: null };
-  if (run.targetSketchId && run.targetThoughtId && on('maps')) {
+  if (run.targetSketchId && run.targetThoughtId) {
     // Agents never see private sketches; the thought must be on a project sketch of this project.
     if (!(await ports.access.canReadSketch(agent, run.targetSketchId))) return null;
     const thought = await ports.runs.thought(run.targetSketchId, run.targetThoughtId);
@@ -155,12 +151,12 @@ async function readSources(ports: PersonalRunPorts, run: RunRecord): Promise<{ s
     sources.push({ label: next(), ref: { type: 'thought', id: thought.id, sketchId: thought.sketchId, revision: thought.version }, text: `Selected map thought: ${thought.text}` });
   }
   // A silent background run's conversation is only where it is anchored: its messages are not its context (AST-9).
-  for (const message of on('conversations') && !run.silent ? await ports.runs.messages(run.conversationId, MESSAGE_WINDOW) : [])
+  for (const message of !run.silent ? await ports.runs.messages(run.conversationId, MESSAGE_WINDOW) : [])
     sources.push({ label: next(), ref: { type: 'message', id: message.id, revision: 1 }, text: `Message ${message.sequence}${message.contribution ? ` (${message.contribution.kind}${message.contribution.kind === 'result' ? `; result ${message.contribution.resultId}` : ''})` : ''} by ${message.authorName}${message.author.kind === 'agent' ? ' (agent)' : ''}: ${message.body}${message.files?.length ? `\nAttached files (contents not included): ${message.files.map((file) => `${file.name} (${file.size} bytes; file ${file.id})`).join(', ')}` : ''}` });
-  for (const work of on('tasks') ? await ports.runs.openWork(run.projectId, WORK_WINDOW) : [])
+  for (const work of await ports.runs.openWork(run.projectId, WORK_WINDOW))
     sources.push({ label: next(), ref: { type: 'work', id: work.id, revision: work.version }, text: `Open work item "${work.title}" (${work.status})${work.outcome ? `: ${work.outcome}` : ''}` });
   let earlier: string | null = null;
-  if (run.continuesRunId && on('conversations')) {
+  if (run.continuesRunId) {
     const previous = await ports.runs.findRun(run.continuesRunId);
     if (previous?.ownerUserId === run.ownerUserId && previous.conversationId === run.conversationId) earlier = previous.answerBody;
   }

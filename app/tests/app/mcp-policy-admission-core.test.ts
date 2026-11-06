@@ -56,9 +56,9 @@ test('parallel callbacks keep their own trusted entry while delivery dependencie
 
 test('actual registration coverage refuses a missing resource, unsupported name and duplicate', () => {
   const dispatch = createMcpDispatch(1);
-  for (const item of AGENT_MCP_ENTRIES.filter((item) => item.name !== 'flux_project_policy')) dispatch.declare(item.kind, item.name);
+  for (const item of AGENT_MCP_ENTRIES.filter((item) => item.name !== 'flux_cowork_playbook')) dispatch.declare(item.kind, item.name);
   assert.throws(() => dispatch.verifyRegistrations());
   assert.throws(() => dispatch.declare('tool', 'future_alias'));
   assert.throws(() => dispatch.declare('tool', 'flux_get_doc'));
-  dispatch.declare('resource', 'flux_project_policy'); dispatch.verifyRegistrations();
+  dispatch.declare('resource', 'flux_cowork_playbook'); dispatch.verifyRegistrations();
 });

@@ -172,7 +172,6 @@ class TasksFinalJourney(unittest.TestCase):
         pid = project["id"]
         self.api(ada, "POST", f"/api/v1/projects/{pid}/grants", {"principal": {"kind": "human", "id": JONAS["id"]}, "role": "contributor"}, status=201)
         agent = self.api(ada, "POST", f"/api/v1/workspaces/{ws['id']}/agents", {"name": "Claude Code", "owner": "self"}, status=201)
-        self.api(ada, "POST", f"/api/v1/projects/{pid}/grants", {"principal": {"kind": "agent", "id": agent["id"]}, "role": "contributor"}, status=201)
         base = f"/api/v1/projects/{pid}/work"
         human = lambda person: {"kind": "human", "id": person["id"]}  # noqa: E731
         made = {

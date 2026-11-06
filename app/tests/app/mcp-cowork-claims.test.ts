@@ -32,8 +32,6 @@ async function scene() {
   await grant(hubert, p.id, marek, 'contributor');
   const connect = async (who: Person, name: string) => {
     const agent = expectStatus(await who.browser.request('POST', `/api/v1/workspaces/${ws.id}/agents`, { body: { name, owner: 'self' } }), 201) as Agent;
-    expectStatus(await hubert.browser.request('POST', `/api/v1/projects/${p.id}/grants`,
-      { body: { principal: { kind: 'agent', id: agent.id }, role: 'contributor' } }), 201);
     const connected = await agentConnection(pool, who.browser, String(agent.id), [p.id], SCOPES);
     const [binding] = (await pool.query('SELECT id, client_id FROM agent_oauth_bindings WHERE connection_id=$1', [connected.connectionId])).rows;
     /** The bearer's verified claims, for the one internal-only payload form (a release naming an existing checkpoint). */

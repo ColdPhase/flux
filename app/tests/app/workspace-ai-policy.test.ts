@@ -24,7 +24,6 @@ describe('workspace AI policy', () => {
     await addMember(owner!, ws.id, guest!, 'guest');
     place = await project(owner!, ws.id, 'Sensors', 'workspace');
     agentId = (expectStatus(await owner!.browser.request('POST', `/api/v1/workspaces/${ws.id}/agents`, { body: { name: 'Ada agent', owner: 'self' } }), 201) as { id: string }).id;
-    expectStatus(await owner!.browser.request('POST', `/api/v1/projects/${place.id}/grants`, { body: { principal: { kind: 'agent', id: agentId }, role: 'contributor' } }), 201);
   });
 
   test('a new workspace starts allowed and every member sees the state; who changed it is named to members only', async () => {

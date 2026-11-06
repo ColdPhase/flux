@@ -536,7 +536,6 @@ class WikiReferences(unittest.TestCase):
         parts = api("POST", f"/api/v1/projects/{pid}/docs", {"title": "Parts list", "body": "The bench list.", "state": "published"}, {"idempotency-key": str(uuid.uuid4())})
         foreign = api("POST", f"/api/v1/projects/{other['id']}/work", {"title": "Not in this project"})
         agent = api("POST", f"/api/v1/workspaces/{ws['id']}/agents", {"name": "Alex", "owner": "self"})
-        api("POST", f"/api/v1/projects/{pid}/grants", {"principal": {"kind": "agent", "id": agent["id"]}, "role": "contributor"})
         cls.agent_id = agent["id"]
         cls.task_id, cls.task_version = task["id"], task["version"]
         cls.proposed_id, cls.proposed_version = proposed["id"], proposed["version"]

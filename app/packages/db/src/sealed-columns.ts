@@ -17,13 +17,13 @@
 export type TableClass = 'content' | 'account' | 'system' | 'ai' | 'refused';
 
 const ai = [
-  'agent_access_requests', 'agent_command_receipts', 'agent_connection_mcp_policies', 'agent_connection_mcp_projects', 'agent_connection_projects', 'agent_connections',
-  'agent_oauth_bindings', 'agent_oauth_flows', 'agent_oauth_selections', 'agent_playbook_acknowledgments', 'agent_project_policies',
+  'agent_command_receipts', 'agent_connection_mcp_policies', 'agent_connection_mcp_projects', 'agent_connection_projects', 'agent_connections',
+  'agent_oauth_bindings', 'agent_oauth_flows', 'agent_oauth_selections', 'agent_playbook_acknowledgments',
   'agent_proposals', 'agent_questions', 'agent_runtime_auth_admission', 'agent_runtime_auth_operations', 'agent_runtime_bindings',
   'agent_runtime_client_history', 'agent_runtime_connections', 'agent_runtime_console_nonces', 'agent_runtime_operator_statements',
   'agent_runtime_sessions', 'agent_runtime_slots', 'agent_standing_grants', 'agent_stops', 'agent_pauses', 'agent_thread_artifact_boundaries',
   'agent_thread_artifact_mutations', 'agent_thread_artifact_resets', 'agent_thread_guard_events', 'agents', 'assistant_background_notes',
-  'assistant_changes', 'assistant_job_runs', 'assistant_jobs', 'assistant_join_question_identity_snapshots', 'assistant_join_requests',
+  'assistant_changes', 'assistant_job_runs', 'assistant_jobs',
   'assistant_morning_summaries', 'assistant_proposals', 'assistant_reaction_events', 'assistant_reaction_notes', 'assistant_reactions',
   'assistant_settings', 'background_compute_connections', 'cowork_checkpoints', 'cowork_connection_slots', 'cowork_delivery_intents',
   'cowork_request_lineages', 'cowork_requests', 'cowork_review_policies', 'cowork_review_verdicts', 'cowork_units', 'personal_run_agents',
@@ -168,8 +168,8 @@ export const VISIBLE_COLUMNS: Readonly<Record<string, Readonly<Record<string, st
   drafts: { owner_user_id: 'a user id', visibility: 'an enum', created_by: 'a user id' },
   draft_versions: { visibility: 'an enum' },
   draft_results: { principal_kind: 'an enum', principal_id: 'a principal id', status: 'an enum', denied_at_stage: 'an enum', job_id: 'a queue id' },
-  sketches: { scope: 'an enum', created_by_user_id: 'a user id', copied_by_user_id: 'a user id' },
-  sketch_thoughts: { shape: 'an enum', placement_type: 'an enum', created_by_user_id: 'a user id', source_author_id: 'a user id',
+  sketches: { scope: 'an enum', created_by_user_id: 'a user id', copied_by_user_id: 'a user id', edited_by: 'principal ids' },
+  sketch_thoughts: { shape: 'an enum', placement_type: 'an enum', created_by_user_id: 'a user id', edited_by: 'principal ids', source_author_id: 'a user id',
     source_author_name: 'a person\'s name (account data)' },
   sketch_links: { created_by_user_id: 'a user id' },
   project_files: { uploader_id: 'a user id', state: 'an enum' },

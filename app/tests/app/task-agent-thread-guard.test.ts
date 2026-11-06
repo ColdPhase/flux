@@ -49,7 +49,6 @@ test('real OAuth native posts share one lazy thread and fifth slot across two ow
   const me = expect(await peer.browser.request('GET', '/api/v1/me'), 200).user as { id: string; email: string };
   expect(await f.owner.request('POST', `/api/v1/workspaces/${f.workspaceId}/members`, { body: { email: me.email, role: 'admin' } }), 201);
   const agent = expect(await peer.browser.request('POST', `/api/v1/workspaces/${f.workspaceId}/agents`, { body: { name: 'Independent measurement', owner: 'self' } }), 201);
-  expect(await f.owner.request('POST', `/api/v1/projects/${f.projectId}/grants`, { body: { principal: { kind: 'agent', id: agent.id }, role: 'contributor' } }), 201);
   const second = await agentConnection(pool, peer.browser, String(agent.id), [f.projectId]);
   const peerGrant = await second.grant('conversation.reply', 'execute', 20);
   const firstCommand = envelope(f, item.id, grant.id);
@@ -145,11 +144,10 @@ test('current real source/runtime/grant/access authority is enforced on new effe
   assert.equal(receipt.messageId,first.messageId);
 });
 
-test('revoked project, owner, binding and connection block actual native effects/replay; invalid bearer creates nothing', async () => {
-  for (const axis of ['project','owner','binding','connection','grant','expiredGrant','runtime'] as const) {
+test('a revoked owner, binding and connection block actual native effects/replay; invalid bearer creates nothing', async () => {
+  for (const axis of ['owner','binding','connection','grant','expiredGrant','runtime'] as const) {
     const f = await actionScene(pool), item = await task(f), grant = await f.grant('conversation.reply','execute',20);
     const command=envelope(f,item.id,grant.id); await post(f,command);
-    if(axis==='project') expect(await f.owner.request('POST',`/api/v1/projects/${f.projectId}/grants`,{body:{principal:{kind:'agent',id:f.agentId},role:'denied'}}),201);
     if(axis==='owner') {
       const ownerId=(expect(await f.owner.request('GET','/api/v1/me'),200).user as {id:string}).id;
       expect(await f.owner.request('POST',`/api/v1/projects/${f.projectId}/grants`,{body:{principal:{kind:'human',id:ownerId},role:'denied'}}),201);

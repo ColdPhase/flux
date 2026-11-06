@@ -3,7 +3,6 @@ import { and, asc, desc, eq, inArray, isNull, lte, sql } from 'drizzle-orm';
 import type { AssistantJobSchedule } from '@flux/contracts';
 import * as schema from '../schema.js';
 import type { DbExecutor } from './push.js';
-import { assistantChangeRows } from './assistant-changes.js';
 import { notificationRows } from './push.js';
 
 // Drizzle rows of "On a schedule" and the morning summary written by the assistant (migration 0109, F-027 A8 #408). They
@@ -143,7 +142,6 @@ export function assistantJobRows(db: DbExecutor) {
       }).from(c).where(eq(c.runId, runId));
       return { appliedChanges: row?.applied ?? 0, waitingChanges: row?.waiting ?? 0 };
     },
-    promoteWaiting: (runId: string, now: Date) => assistantChangeRows(db).promote(runId, now),
 
     /** One Inbox item for the owner about their own assistant (a paused schedule), about a project they can read. */
     async notify(ownerUserId: string, projectId: string, title: string, body: string, url: string) {

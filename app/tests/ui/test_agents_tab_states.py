@@ -195,7 +195,6 @@ class AgentsTabStates(unittest.TestCase):
         for key, (name, owner, client, connection) in agents.items():
             agent = self.api(owner, "POST", f"/api/v1/workspaces/{ws['id']}/agents", {"name": name, "owner": "self"}, status=201)["id"]
             ids[key] = agent
-            self.api(ada, "POST", f"/api/v1/projects/{pid}/grants", {"principal": {"kind": "agent", "id": agent}, "role": "contributor"}, status=201)
             made = self.api(owner, "POST", "/api/v1/agent-connections", {"agentId": agent, "selectedProjectIds": [pid], "scopes": scopes,
                                                                          "name": connection, "clientDesignation": client}, status=201)
             ids[f"conn_{key}"] = made["id"]
@@ -365,8 +364,8 @@ class AgentsTabStates(unittest.TestCase):
 
     def test_06_rows_read_cleanly(self) -> None:
         page = self.page("ada")
-        travel = {"id": str(uuid.uuid4()), "name": "Travel laptop", "clientDesignation": "claude_code", "state": "offline", "session": None,
-                  "lastActivity": None, "currentWork": None, "requests": [],
+        travel = {"id": str(uuid.uuid4()), "name": "Travel laptop", "clientDesignation": "claude_code", "scopes": ["flux.context.read", "flux.proposal.write"], "mayDo": "act",
+                  "state": "offline", "session": None, "lastActivity": None, "currentWork": None, "requests": [],
                   "agent": {"id": self.ids["claude"], "name": "Claude Code"}, "owner": {"id": ADA["id"], "name": ADA["name"]}, "own": True}
         self.stub_connections(page, {self.ids["conn_notes"]: {**open_session(), "lastActivity": recorded_result(30)}}, extra=[travel])
         page.goto(f"/projects/{self.ids['project']}/agents")

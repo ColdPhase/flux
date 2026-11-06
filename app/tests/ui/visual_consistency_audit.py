@@ -175,7 +175,6 @@ def seed(browser: Browser) -> dict:
             call(who, "POST", f"/api/v1/dms/{dm}/messages", {"body": body, "clientMessageId": str(uuid.uuid4())})
         try:
             agent = call(ada, "POST", f"/api/v1/workspaces/{ws}/agents", {"name": "Ada's assistant", "owner": "self"})["id"]
-            call(ada, "POST", f"/api/v1/projects/{garden}/grants", {"principal": {"kind": "agent", "id": agent}, "role": "contributor"})
             call(ada, "POST", "/api/v1/agent-connections", {"agentId": agent, "selectedProjectIds": [garden],
                  "scopes": ["flux.context.read", "flux.proposal.write"], "name": "Desk laptop", "clientDesignation": "claude_code"})
         except RuntimeError as error:  # an agent is welcome, not required

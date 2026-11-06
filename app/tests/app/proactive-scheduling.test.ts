@@ -27,8 +27,6 @@ async function fixture() {
   const prj = await project(owner, ws.id, 'Human low-light evidence', 'restricted');
   const agent = expectStatus(await owner.browser.request('POST', `/api/v1/workspaces/${ws.id}/agents`,
     { body: { name: 'Comparison agent', owner: 'self' } }), 201) as { id: string };
-  const grant = expectStatus(await owner.browser.request('POST', `/api/v1/projects/${prj.id}/grants`,
-    { body: { principal: { kind: 'agent', id: agent.id }, role: 'contributor' } }), 201) as { id: string };
   const rule = expectStatus(await owner.browser.request('POST', `/api/v1/projects/${prj.id}/proactive-comparison-rules`,
     { body: { agentId: agent.id, trigger: 'human_negative_result', purpose: 'camera_sensor_comparison',
       dataScope: 'current_project_published', permittedEffect: 'quiet_project_proposal',
@@ -47,7 +45,7 @@ async function fixture() {
     workspaceScopedKeyConfirmed: true, payerAuthorityConfirmed: true, providerBillingAcknowledged: true,
     projectDataDisclosureAcknowledged: true, maxRunsPerDay: 3, periodDays: 30, periodBudgetCents: 50, perRunCents: 5,
   } }), 201);
-  return { owner, ws, prj, agent, grant, rule, material, negative, candidates, window, connect };
+  return { owner, ws, prj, agent, rule, material, negative, candidates, window, connect };
 }
 
 test('a committed result is not a grant to bypass quiet time; collection sees no uncommitted event', async () => {
@@ -199,7 +197,7 @@ test('paused or revoked-access rules are excluded before metadata selection', as
     const f = await fixture(); await f.negative(); const material = await f.material(); await collect(start);
     if (change === 'pause') expectStatus(await f.owner.browser.request('PATCH', `/api/v1/proactive-comparison-rules/${f.rule.id}`,
       { body: { expectedVersion: 1, status: 'paused' } }), 200);
-    else expectStatus(await f.owner.browser.request('DELETE', `/api/v1/projects/${f.prj.id}/grants/${f.grant.id}`), 204);
+    else expectStatus(await f.owner.browser.request('DELETE', `/api/v1/agents/${f.agent.id}`), 200);
     await collect(at(1)); await comparisonSchedulingTick(db, at(3));
     assert.equal((await f.candidates()).length, 1, `${change} creates no new candidate for ${material.materialId}`);
     assert.equal((await f.candidates())[0]!.inspected_sources, null);

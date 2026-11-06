@@ -138,7 +138,7 @@ export interface DmTaskCopyPreview {
   project: { id: string; name: string } | null;
   /** Projects the caller can change. */
   projects: { id: string; name: string }[];
-  /** Everyone who could open the task: its project's people, as the access policy lists them now. */
+  /** Every person who could open the task: its project's people, as the access policy lists them now. */
   audience: PromotionPerson[];
   /** Opaque; names this exact message version, excerpt, project and audience. */
   token: string;

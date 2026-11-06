@@ -16,7 +16,6 @@ describe('controlled background comparison dispatch (#58)', () => {
   let peer: Person;
   let outsider: Person;
   let projectId: string;
-  let agentGrantId: string;
   let material: Material;
   let conversation: Conversation;
   let mock: Server;
@@ -45,8 +44,6 @@ describe('controlled background comparison dispatch (#58)', () => {
     await grant(owner, projectId, peer, 'contributor');
     const agentId = (expectStatus(await owner.browser.request('POST', `/api/v1/workspaces/${ws.id}/agents`,
       { body: { name: 'Project comparison agent', owner: 'self' } }), 201) as { id: string }).id;
-    agentGrantId = (expectStatus(await owner.browser.request('POST', `/api/v1/projects/${projectId}/grants`,
-      { body: { principal: { kind: 'agent', id: agentId }, role: 'contributor' } }), 201) as { id: string }).id;
     const rule = expectStatus(await owner.browser.request('POST', `/api/v1/projects/${projectId}/proactive-comparison-rules`,
       { body: { agentId, trigger: 'human_negative_result', purpose: 'camera_sensor_comparison',
         dataScope: 'current_project_published', permittedEffect: 'quiet_project_proposal',
@@ -192,8 +189,8 @@ describe('controlled background comparison dispatch (#58)', () => {
     assert.deepEqual(await dispatchProactiveComparison({ db, candidateId: await candidates(stale.id), masterKey, provider }),
       { status: 'not_run', reason: 'SOURCE_CHANGED' });
     assert.equal(seen.length, afterOutage);
-    const accessLost = await negative('Trial before agent grant removed');
-    expectStatus(await owner.browser.request('DELETE', `/api/v1/projects/${projectId}/grants/${agentGrantId}`), 204);
+    const accessLost = await negative('Trial before the owner lost the project');
+    await pool.query(`INSERT INTO project_grants (id, workspace_id, project_id, user_id, role, created_by) SELECT $1, workspace_id, id, $2, 'denied', $2 FROM projects WHERE id = $3 ON CONFLICT (project_id, user_id) WHERE (user_id IS NOT NULL) DO UPDATE SET role = 'denied'`, [randomUUID(), owner.id, projectId]);
     assert.deepEqual(await dispatchProactiveComparison({ db, candidateId: await candidates(accessLost.id), masterKey, provider }),
       { status: 'not_run', reason: 'OWNER_OR_AGENT_ACCESS' });
     assert.equal(seen.length, afterOutage);

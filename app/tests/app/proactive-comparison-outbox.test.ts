@@ -20,7 +20,6 @@ describe('negative-result candidate and budget reservation (#58)', () => {
   let workspaceId: string;
   let ruleId: string;
   let agentId: string;
-  let grantId: string;
   let peerResultId: string;
 
   const result = async (actor: Person, finding: 'positive' | 'negative', title: string) =>
@@ -41,8 +40,6 @@ describe('negative-result candidate and budget reservation (#58)', () => {
     await grant(owner, projectId, peer, 'contributor');
     agentId = (expectStatus(await owner.browser.request('POST', `/api/v1/workspaces/${ws.id}/agents`,
       { body: { name: 'Comparison agent', owner: 'self' } }), 201) as { id: string }).id;
-    grantId = (expectStatus(await owner.browser.request('POST', `/api/v1/projects/${projectId}/grants`,
-      { body: { principal: { kind: 'agent', id: agentId }, role: 'contributor' } }), 201) as { id: string }).id;
     ruleId = (expectStatus(await owner.browser.request('POST', `/api/v1/projects/${projectId}/proactive-comparison-rules`,
       { body: { agentId, trigger: 'human_negative_result', purpose: 'camera_sensor_comparison',
         dataScope: 'current_project_published', permittedEffect: 'quiet_project_proposal',
@@ -125,10 +122,11 @@ describe('negative-result candidate and budget reservation (#58)', () => {
     // Re-enable only in this fixture; production activation remains fail-closed.
     await pool.query("UPDATE proactive_comparison_rules SET status='enabled' WHERE id=$1", [ruleId]);
     const accessLost = await result(owner, 'negative', 'Access loss after result');
-    expectStatus(await owner.browser.request('DELETE', `/api/v1/projects/${projectId}/grants/${grantId}`), 204);
+    await pool.query(`INSERT INTO project_grants (id, workspace_id, project_id, user_id, role, created_by) VALUES ($1, $2, $3, $4, 'denied', $4) ON CONFLICT (project_id, user_id) WHERE (user_id IS NOT NULL) DO UPDATE SET role = 'denied'`, [randomUUID(), workspaceId, projectId, owner.id]);
     assert.deepEqual(await reservations.reserve((await candidate(accessLost.id))!.id),
       { status: 'blocked', reason: 'OWNER_OR_AGENT_ACCESS' });
     assert.equal((await candidate(accessLost.id))!.status, 'not_run');
+    await pool.query('DELETE FROM project_grants WHERE project_id = $1 AND user_id = $2', [projectId, owner.id]);
   });
 
   test('an agent-origin result cannot be enqueued even when an agent ID is supplied', async () => {
@@ -144,8 +142,6 @@ describe('negative-result candidate and budget reservation (#58)', () => {
   test('a fresh rule after revocation cannot reset the owner’s unknown charges or daily use', async () => {
     const charged = (await pool.query("SELECT * FROM proactive_comparison_outbox WHERE owner_user_id=$1 AND status='unknown'", [owner.id])).rows[0];
     assert.ok(charged);
-    expectStatus(await owner.browser.request('POST', `/api/v1/projects/${projectId}/grants`,
-      { body: { principal: { kind: 'agent', id: agentId }, role: 'contributor' } }), 201);
     expectStatus(await owner.browser.request('PATCH', `/api/v1/proactive-comparison-rules/${ruleId}`,
       { body: { expectedVersion: 2, status: 'revoked' } }), 200);
     const fresh = expectStatus(await owner.browser.request('POST', `/api/v1/projects/${projectId}/proactive-comparison-rules`,

@@ -20,8 +20,6 @@ async function fixture() {
   const p = await project(owner, ws.id, 'Addressed native work', 'restricted'); await grant(owner, p.id, receiver, 'viewer');
   const agent = expectStatus(await receiver.browser.request('POST', `/api/v1/workspaces/${ws.id}/agents`,
     { body: { name: 'Recovery receiver', owner: 'self' } }), 201) as Agent;
-  expectStatus(await owner.browser.request('POST', `/api/v1/projects/${p.id}/grants`,
-    { body: { principal: { kind: 'agent', id: agent.id }, role: 'viewer' } }), 201);
   const connect = async () => {
     const connection = expectStatus(await receiver.browser.request('POST', '/api/v1/agent-connections',
       { body: { agentId: agent.id, selectedProjectIds: [p.id], scopes: ['flux.context.read'] } }), 201) as AgentConnection;
@@ -36,8 +34,6 @@ async function fixture() {
   const recipient = await connect();
   const senderAgent = expectStatus(await owner.browser.request('POST', `/api/v1/workspaces/${ws.id}/agents`,
     { body: { name: 'Native sender', owner: 'self' } }), 201) as Agent;
-  expectStatus(await owner.browser.request('POST', `/api/v1/projects/${p.id}/grants`,
-    { body: { principal: { kind: 'agent', id: senderAgent.id }, role: 'contributor' } }), 201);
   const senderConnection = expectStatus(await owner.browser.request('POST', '/api/v1/agent-connections',
     { body: { agentId: senderAgent.id, selectedProjectIds: [p.id], scopes: ['flux.context.read'] } }), 201) as AgentConnection;
   const work = expectStatus(await owner.browser.request('POST', `/api/v1/projects/${p.id}/work`,
@@ -171,11 +167,12 @@ test('current selected-project, client, scope, central access and revocation pre
   assert.ok(first.continuation);
   for (const claims of [{ ...f.recipient.claims, clientId: 'wrong-client' }, { ...f.recipient.claims, scopes: [] }])
     await assert.rejects(f.recover(claims, f.p.id, { cursor: first.continuation }), unavailable);
+  // The agent has what its owner has (F-036 AG-3).
   expectStatus(await f.owner.browser.request('POST', `/api/v1/projects/${f.p.id}/grants`,
-    { body: { principal: { kind: 'agent', id: f.agent.id }, role: 'denied' } }), 201);
+    { body: { principal: { kind: 'human', id: f.receiver.id }, role: 'denied' } }), 201);
   await assert.rejects(f.read({ cursor: first.continuation }), unavailable);
   expectStatus(await f.owner.browser.request('POST', `/api/v1/projects/${f.p.id}/grants`,
-    { body: { principal: { kind: 'agent', id: f.agent.id }, role: 'viewer' } }), 201);
+    { body: { principal: { kind: 'human', id: f.receiver.id }, role: 'contributor' } }), 201);
   assert.equal((await f.read({ cursor: first.continuation })).recovery, 'continuation');
   expectStatus(await f.receiver.browser.request('DELETE', `/api/v1/agent-connections/${f.recipient.connection.id}`), 204);
   await assert.rejects(f.read({ cursor: 'cw1.invalid' }), unavailable);

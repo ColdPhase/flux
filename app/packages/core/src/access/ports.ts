@@ -11,7 +11,8 @@ export interface Actor {
   workspaceId: string;
   /** Membership role of a person; null for agents and non-members. */
   role: WorkspaceRole | null;
-  agent: { ownerUserId: string | null; ownerRole: WorkspaceRole | null } | null;
+  /** An agent's owner and the owner's role; the agent acts with exactly the owner's rights (F-036 AG-3). */
+  agent: { ownerUserId: string; ownerRole: WorkspaceRole | null } | null;
   /** False for non-members, revoked agents, agents whose owner left, agents of a workspace whose AI is off, and fixtures. */
   active: boolean;
   /** Set when an agent is inactive only because AI is turned off in its workspace (F-029). */
@@ -44,7 +45,7 @@ export interface DraftFacts {
   version: number;
   visibility: 'private' | 'project' | 'workspace';
 }
-export interface AgentFacts { id: string; workspaceId: string; ownerUserId: string | null; revokedAt: Date | null }
+export interface AgentFacts { id: string; workspaceId: string; ownerUserId: string; revokedAt: Date | null }
 export interface SketchFacts { id: string; workspaceId: string; scope: 'project' | 'private' | 'dm'; projectId: string | null; dmId: string | null }
 export interface DmFacts { id: string; workspaceId: string }
 export interface AssistantRunFacts { id: string; workspaceId: string; ownerUserId: string }

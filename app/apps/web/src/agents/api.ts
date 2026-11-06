@@ -1,28 +1,12 @@
-import { agentProjectPolicyPath, agentQuestionAnswerPath, ownWorkingAgentsPath, projectAgentQuestionsPath, projectAgentPausesPath, projectAgentStopsPath, projectAgentsPath,
+import { agentQuestionAnswerPath, ownWorkingAgentsPath, projectAgentQuestionsPath, projectAgentPausesPath, projectAgentStopsPath, projectAgentsPath,
   projectReviewPolicyPath, taskCoordinationCancelPath, taskCoordinationPacketPath, taskCoordinationPath, type CoWorkReviewPolicy, type CoWorkReviewRule, type TaskCoordination, type TaskCoordinationRequest,
-  assistantJoinRequestAllowPath, assistantJoinRequestPath, type AssistantJoinRequest, type AgentProjectPolicy, type AgentQuestion, type AgentQuestions, type AgentStop, type AgentStops, type AnswerAgentQuestionCommand, type OwnWorkingAgents,
-  type ProjectAgents, type PublishAgentProjectPolicyCommand, type StopAgentCommand, type AgentPause, type PauseAgentCommand } from '@flux/contracts';
+  type AgentQuestion, type AgentQuestions, type AgentStop, type AgentStops, type AnswerAgentQuestionCommand, type OwnWorkingAgents,
+  type ProjectAgents, type StopAgentCommand, type AgentPause, type PauseAgentCommand } from '@flux/contracts';
 import { request, send } from '../api/client';
 
 /** The Agents view of a project (UI116-2, #136): current connections. */
 export const getProjectAgents = (projectId: string, signal?: AbortSignal) => request<ProjectAgents>(projectAgentsPath(projectId), { signal });
 
-/** The project's approved agent policy (#160, CW-1): null before the first publish. Every project reader may read it. */
-export const getAgentPolicy = (projectId: string, signal?: AbortSignal) =>
-  request<{ policy: AgentProjectPolicy | null }>(agentProjectPolicyPath(projectId), { signal });
-
-/**
- * A project manager publishes the next revision from the one they loaded (`expectedRevision`). A stale revision is
- * `409 VERSION_CONFLICT` with the newer policy as `current`; the key makes a retry after a lost answer publish once.
- */
-export const publishAgentPolicy = (projectId: string, command: PublishAgentProjectPolicyCommand, idempotencyKey: string) =>
-  request<AgentProjectPolicy>(agentProjectPolicyPath(projectId), { method: 'PUT', body: command, headers: { 'idempotency-key': idempotencyKey } });
-
-/** A request is durable but grants nothing; only a current project manager may allow it. */
-export const requestAssistantJoin = (projectId: string) =>
-  request<AssistantJoinRequest>(assistantJoinRequestPath(projectId), { method: 'POST' });
-export const allowAssistantJoin = (projectId: string, requestId: string, openingVersion?: number) =>
-  request<AssistantJoinRequest>(assistantJoinRequestAllowPath(projectId, requestId), { method: 'POST', headers: openingVersion === undefined ? undefined : { 'if-match': `"${openingVersion}"` } });
 /** Who stopped which agent's work in a project, newest first (S13, #347). */
 export const getAgentStops = (projectId: string, signal?: AbortSignal) => request<AgentStops>(projectAgentStopsPath(projectId), { signal });
 

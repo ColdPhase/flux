@@ -11,15 +11,14 @@ export type AgentOwners = ReadonlyMap<string, string>;
 const EMPTY: AgentOwners = new Map();
 
 /**
- * A historical author or a native row's agent may lose its grant; its owner name still needs a fresh
+ * A historical author or a native row's agent may lose its access; its owner name still needs a fresh
  * authorized audience, so the projected relation only selects a current audience entry, never a name.
  */
 export function agentAuthorOwner(author: { id: string; projectOwner?: AgentProjectOwner }, owners: AgentOwners): string | undefined {
   const current = owners.get(author.id);
   if (current) return current;
   const projected = author.projectOwner;
-  if (projected?.kind === 'workspace') return owners.get('owner:workspace');
-  return projected?.kind === 'human' ? owners.get(`human:${projected.id}`) : undefined;
+  return projected ? owners.get(`human:${projected.id}`) : undefined;
 }
 
 export function useAgentOwners(project: Pick<Project, 'id' | 'workspaceId'> | null | undefined): AgentOwners {
@@ -47,11 +46,11 @@ export function useAgentOwners(project: Pick<Project, 'id' | 'workspaceId'> | nu
       setRead(null);
       void listProjectPeople(projectId, controller.signal).then((people) => {
         if (controller.signal.aborted) return;
-        const owners = new Map<string, string>([['owner:workspace', 'the company'], ...people.flatMap((person) => {
+        const owners = new Map<string, string>(people.flatMap((person) => {
           if (person.kind === 'human') return [[`human:${person.id}`, person.name] as const];
           if (person.kind !== 'agent' || !person.agentOwner) return [];
-          return [[person.id, person.agentOwner.kind === 'workspace' ? 'the company' : person.agentOwner.name] as const];
-        })]);
+          return [[person.id, person.agentOwner.name] as const];
+        }));
         setRead({ scope, owners });
       }, () => { if (!controller.signal.aborted) setRead(null); });
     };

@@ -1,9 +1,9 @@
-"""Browser tests for the run's message, Undo and the queue line (F-027 A4, #404; AST-6.1, AST-6.2, AST-6.4, AST-6.8, AST-10.13).
+"""Browser tests for the agent's change line, Undo and the queue line (F-036 AG-3, #855; F-027 AST-6.8, AST-10.13; mockup UndoApproval).
 
 The check_ui.sh stack runs no assistant, so the owner's change log and runs are stubbed with the exact API shapes;
-tests/app/assistant-changes.test.ts proves the same Undo end to end through /mcp with a fake engine. This proves the
-one message per run (header with Undo, three rows and "+N more", before and after, per-item Undo, "Changed since"),
-the partial-Undo sentence, "Stopped after N changes" and "Next: …" with Cancel, at computer and phone width.
+tests/app/assistant-what-it-may-do.test.ts proves the same Undo end to end through /mcp with a fake engine. This proves the
+one line on the agent's message ("Updated the Wiki page Calibration (2 changes) · moved #4 to In progress · Undo", then
+"Undone by Ada"), the partial Undo, "Next: …" with Cancel, and what other people see, at computer and phone width.
 """
 
 from __future__ import annotations
@@ -26,7 +26,6 @@ ADA = {"name": "Ada Brandt", "email": f"ada.undo+{STAMP}@example.test"}
 JONAS = {"name": "Jonas Weber", "email": f"jonas.undo+{STAMP}@example.test"}
 LEE = {"name": "Lee Marsh", "email": f"lee.undo+{STAMP}@example.test"}
 NOW = "2026-10-17T09:00:00.000Z"
-WEEK = "2026-10-24T09:00:00.000Z"
 
 
 class AssistantUndo(unittest.TestCase):
@@ -81,58 +80,10 @@ class AssistantUndo(unittest.TestCase):
     def change(self, **values) -> dict:
         change = {"id": str(uuid.uuid4()), "runId": self.ids["run"], "projectId": self.ids["project"], "conversationId": self.ids["conversation"],
                   "operation": "work.create", "objectType": "work", "objectId": None, "objectTitle": "Label the sensor cables", "state": "waiting",
-                  "waitReason": "ask", "phrase": "add task", "verb": "Add", "line": "You asked me to check with you first", "suggestTo": None, "sent": False,
-                  "decidedBy": None, "runState": "done", "before": None, "after": None, "undoable": False, "version": 1, "createdAt": NOW, "expiresAt": WEEK}
+                  "waitReason": "ask", "phrase": "add task", "verb": "Add", "line": None, "forPerson": None, "done": "added task Label the sensor cables",
+                  "decidedBy": None, "owner": {"id": "ada", "name": ADA["name"]}, "runState": "done", "before": None, "after": None, "undoable": False, "version": 1, "createdAt": NOW}
         change.update(values)
         return change
-
-    def waiting_set(self) -> list[dict]:
-        return [
-            self.change(),
-            self.change(operation="map.thought.delete", objectType="thought", objectId=str(uuid.uuid4()), objectTitle="Old lux idea", waitReason="removal",
-                        phrase="remove thought", verb="Remove", line="Removing a thought always waits for you"),
-            self.change(operation="doc.update", objectType="doc", objectId=str(uuid.uuid4()), objectTitle="Suppliers", waitReason="live_wiki", phrase="edit page",
-                        verb="Edit", line="I’ll edit Suppliers when Jonas finishes typing."),
-            self.change(operation="work.update", objectType="work", objectId=str(uuid.uuid4()), objectTitle="#8 Calibrate the probes", waitReason="outside_rights",
-                        phrase="close task", verb="Close", line="Jonas owns #8 Calibrate the probes. Suggest this change to them? · Send to Jonas",
-                        suggestTo={"id": "jonas", "name": "Jonas"}),
-        ]
-
-    def stub_changes(self, page: Page, changes: list[dict], calls: list[tuple[str, str]]) -> dict:
-        current = {"items": changes}
-        page.route(re.compile(r".*/api/v1/conversations/[0-9a-f-]{36}/assistant-changes$"), lambda route: route.fulfill(
-            status=200, content_type="application/json", body=json.dumps(current)))
-
-        def run_action(route: Route) -> None:
-            action = route.request.url.rsplit("/", 1)[1]
-            calls.append(("run", action))
-            if action == "inbox":
-                route.fulfill(status=200, content_type="application/json", body=json.dumps({"moved": 2}))
-                return
-            decided = []
-            for item in current["items"]:
-                if item["state"] == "waiting" and item["waitReason"] not in ("live_wiki", "outside_rights"):
-                    if action == "apply":
-                        item.update(state="applied_after_wait", waitReason=None, line="Approved by Ada Brandt", version=item["version"] + 1)
-                    else:
-                        item.update(state="not_now", waitReason=None, line="Not now", version=item["version"] + 1)
-                    decided.append({"change": item, "message": None})
-            route.fulfill(status=200, content_type="application/json", body=json.dumps({"changes": decided}))
-
-        def one_action(route: Route) -> None:
-            change_id, action = route.request.url.rsplit("/", 2)[1:]
-            calls.append((change_id, action))
-            item = next(entry for entry in current["items"] if entry["id"] == change_id)
-            if action == "send":
-                item.update(sent=True, line="Sent to Jonas", version=item["version"] + 1)
-            elif action == "apply":
-                item.update(state="applied_after_wait", waitReason=None, line="Approved by Ada Brandt", version=item["version"] + 1)
-            else:
-                item.update(state="not_now", waitReason=None, line="Not now", version=item["version"] + 1)
-            route.fulfill(status=200, content_type="application/json", body=json.dumps({"change": item, "message": None}))
-        page.route(re.compile(r".*/api/v1/assistant-runs/[0-9a-f-]{36}/changes/(apply|not-now|inbox)$"), run_action)
-        page.route(re.compile(r".*/api/v1/assistant-changes/[0-9a-f-]{36}/(apply|not-now|send)$"), one_action)
-        return current
 
     def applied(self, **values) -> dict:
         values.setdefault("state", "applied")
@@ -142,13 +93,13 @@ class AssistantUndo(unittest.TestCase):
         return self.change(**values)
 
     def message_set(self, run_state: str = "done") -> list[dict]:
+        wiki = dict(operation="doc.update", objectType="doc", objectTitle="Probes", phrase="edit page", verb="Edit", done="updated the Wiki page Probes", runState=run_state)
         return [
-            self.applied(objectId=str(uuid.uuid4()), objectTitle="Calibrate the probes", after="Calibrate the probes", runState=run_state),
-            self.applied(objectId=str(uuid.uuid4()), objectTitle="Order spare probes", after="Order spare probes", runState=run_state),
-            self.applied(operation="doc.update", objectType="doc", objectId=str(uuid.uuid4()), objectTitle="Probes", phrase="edit page", verb="Edit",
-                         after="1 paragraph changed", runState=run_state),
-            self.applied(operation="work.update", objectType="work", objectId=str(uuid.uuid4()), objectTitle="#4 Probes", phrase="rename task", verb="Rename",
-                         before="Probes", after="Calibrate the probes at two depths", runState=run_state),
+            self.applied(objectId=str(uuid.uuid4()), objectTitle="Order spare probes", after="Order spare probes", done="added task Order spare probes", runState=run_state),
+            self.applied(objectId=str(uuid.uuid4()), **wiki),
+            self.applied(objectId=str(uuid.uuid4()), **wiki),
+            self.applied(operation="work.update", objectType="work", objectId=str(uuid.uuid4()), objectTitle="#4 Probes", phrase="move task", verb="Move",
+                         done="moved #4 to In progress", runState=run_state),
             self.change(state="refused", waitReason=None, operation="work.update", objectType="work", objectTitle="#7 Lamp driver", phrase="change task",
                         line="Skipped #7: Jonas changed it while I worked", runState=run_state),
         ]
@@ -173,17 +124,7 @@ class AssistantUndo(unittest.TestCase):
             sentence = f"Undid {undone} change{'s' if undone != 1 else ''}" + (f". {len(since)} changed since: {', '.join(since)}" if since else "")
             route.fulfill(status=200, content_type="application/json", body=json.dumps({"changes": results, "undone": undone, "changedSince": since, "message": sentence}))
 
-        def undo_one(route: Route) -> None:
-            change_id = route.request.url.rsplit("/", 2)[1]
-            calls.append((change_id, "undo"))
-            item = next(entry for entry in changes if entry["id"] == change_id)
-            if changed_since and item["objectTitle"] == changed_since:
-                route.fulfill(status=200, content_type="application/json", body=json.dumps({"change": item, "message": "Changed since. Open it"}))
-                return
-            item.update(state="undone", undoable=False, line="Undone by Ada Brandt", decidedBy={"id": "ada", "name": "Ada Brandt"})
-            route.fulfill(status=200, content_type="application/json", body=json.dumps({"change": item, "message": None}))
         page.route(re.compile(r".*/api/v1/assistant-runs/[0-9a-f-]{36}/changes/undo$"), undo_run)
-        page.route(re.compile(r".*/api/v1/assistant-changes/[0-9a-f-]{36}/undo$"), undo_one)
 
     def open_conversation(self, page: Page) -> None:
         page.goto(f"/projects/{self.ids['project']}/conversations/{self.ids['conversation']}")
@@ -207,35 +148,30 @@ class AssistantUndo(unittest.TestCase):
         self.open_conversation(page)
         expect(page.locator(".assistant-message")).to_have_count(0)
 
+    LINE = "Added task Order spare probes · updated the Wiki page Probes (2 changes) · moved #4 to In progress"
+
     def _message_journey(self, *, phone: bool, dark: bool) -> None:
         page = self.page(phone=phone, dark=dark)
         calls: list[tuple[str, str]] = []
-        changes = self.message_set()
-        self.stub_undo(page, changes, calls)
+        self.stub_undo(page, self.message_set(), calls)
         self.open_conversation(page)
         message = page.locator(".assistant-message")
-        # One message: header naming what changed with Undo, at most three rows and "+N more", no separate result line.
-        expect(message.locator(".assistant-message__head")).to_contain_text("Done: added 2 tasks, edited 1 page, renamed 1 task")
-        expect(message.get_by_role("button", name="Undo")).to_have_count(1)
-        expect(message.locator(".assistant-message__rows li")).to_have_count(3)
-        expect(message.get_by_role("button", name="+1 more")).to_be_visible()
+        # One line on the agent's message, with Undo beside it, and no list of the changes.
+        line = message.locator(".assistant-message__line")
+        expect(line).to_contain_text(self.LINE)
+        expect(line.get_by_role("button", name="Undo", exact=True)).to_have_count(1)
         expect(message).to_contain_text("Skipped #7: Jonas changed it while I worked")
+        expect(message.get_by_role("button", name="Show details")).to_have_count(0)
         self.no_horizontal_scroll(page)
         suffix = f"{'390' if phone else '1440'}-{'dark' if dark else 'light'}"
         shot(page, f"assistant-undo-{suffix}-message")
-        # Expanded: every row with its before and after, and its own Undo.
-        message.get_by_role("button", name="+1 more").click()
-        expect(message.locator(".assistant-message__rows li")).to_have_count(4)
-        expect(message.locator("s")).to_have_text("Probes")
-        expect(message).to_contain_text("Calibrate the probes at two depths")
-        expect(message).to_contain_text("1 paragraph changed")
-        self.no_horizontal_scroll(page)
-        shot(page, f"assistant-undo-{suffix}-expanded")
-        # One item's Undo leaves the others; the header follows.
-        row = message.locator(".assistant-message__rows li", has_text="Order spare probes")
-        row.get_by_role("button", name="Undo").click()
-        expect(message.locator(".assistant-message__head")).not_to_contain_text("added 2 tasks")
-        self.assertEqual(calls[-1][1], "undo")
+        line.get_by_role("button", name="Undo", exact=True).click()
+        expect(line).to_contain_text(f"Undone by {ADA['name']}")
+        # The guide: after Undo the line is struck through and ends "Undone by Ada".
+        struck = line.locator("s")
+        expect(struck).to_contain_text("Order spare probes")
+        expect(struck).to_have_css("text-decoration-line", "line-through")
+        self.assertEqual(calls, [("run", "undo")])
 
     def test_02_the_message_computer_light(self) -> None:
         self._message_journey(phone=False, dark=False)
@@ -243,92 +179,44 @@ class AssistantUndo(unittest.TestCase):
     def test_03_the_message_phone_dark(self) -> None:
         self._message_journey(phone=True, dark=True)
 
-    def test_04_undo_all_and_the_partial_sentence(self) -> None:
+    def test_04_a_partial_undo_says_what_stayed_and_opens_it(self) -> None:
         page = self.page()
+        work = self.api(page, "POST", f"/api/v1/projects/{self.ids['project']}/work", {"title": "Probes"}, status=201)
         calls: list[tuple[str, str]] = []
         changes = self.message_set()
-        self.stub_undo(page, changes, calls, changed_since="#4 Probes")
+        kept = changes[3]
+        kept.update(objectId=work["id"], objectTitle=f"#{work['number']} Probes", done=f"moved #{work['number']} to In progress")
+        self.stub_undo(page, changes, calls, changed_since=kept["objectTitle"])
         self.open_conversation(page)
         message = page.locator(".assistant-message")
-        message.locator(".assistant-message__head").get_by_role("button", name="Undo").click()
-        expect(message.locator(".assistant-message__note")).to_have_text("Undid 3 changes. 1 changed since: #4")
+        line = message.locator(".assistant-message__line")
+        line.get_by_role("button", name="Undo", exact=True).click()
+        note = message.locator(".assistant-message__note", has_text="Changed since.")
+        expect(note).to_contain_text("Changed since.")
         self.assertIn(("run", "undo"), calls)
-        # The item that could not be taken back says why in its own row, opened for the person, from the header's Undo too.
-        row = message.locator(".assistant-message__rows li", has_text="#4 Probes")
-        expect(row).to_contain_text("Changed since. Open it")
-        # It stays undoable and says the same when tried alone.
-        row.get_by_role("button", name="Undo").click()
-        expect(row).to_contain_text("Changed since. Open it")
+        # The line now names only what still stands, and its Undo stays.
+        expect(line).to_contain_text(f"Moved #{work['number']} to In progress")
+        expect(line).not_to_contain_text("Order spare probes")
+        expect(line.get_by_role("button", name="Undo", exact=True)).to_be_visible()
         shot(page, "assistant-undo-1440-light-partial")
+        note.get_by_role("button", name="Open it").click()
+        expect(page.get_by_role("complementary", name="Details")).to_contain_text("Probes")
 
-    def test_05_everything_undone_reads_undone_by(self) -> None:
+    def test_05_undo_by_keyboard_keeps_focus_in_the_message_once_the_button_is_gone(self) -> None:
         page = self.page()
-        changes = self.message_set()[:2]
-        self.stub_undo(page, changes, [])
+        self.stub_undo(page, self.message_set()[:2], [])
         self.open_conversation(page)
         message = page.locator(".assistant-message")
-        message.locator(".assistant-message__head").get_by_role("button", name="Undo").click()
-        expect(message.locator(".assistant-message__head")).to_contain_text("Undone by Ada Brandt")
-        expect(message.get_by_role("button", name="Undo")).to_have_count(0)
-
-    def test_05b_undo_by_keyboard_keeps_focus_in_the_message_once_the_button_is_gone(self) -> None:
-        page = self.page()
-        changes = self.message_set()[:2]
-        self.stub_undo(page, changes, [])
-        self.open_conversation(page)
-        message = page.locator(".assistant-message")
-        undo = message.locator(".assistant-message__head").get_by_role("button", name="Undo")
+        undo = message.get_by_role("button", name="Undo", exact=True)
         undo.focus()
         expect(undo).to_be_focused()
         page.keyboard.press("Enter")
-        expect(message.locator(".assistant-message__head")).to_contain_text("Undone by Ada Brandt")
-        expect(message.get_by_role("button", name="Undo")).to_have_count(0)
+        expect(message.locator(".assistant-message__line")).to_contain_text(f"Undone by {ADA['name']}")
+        expect(message.get_by_role("button", name="Undo", exact=True)).to_have_count(0)
         # The button that was pressed is gone; focus is on the message, not on the page (AC-8, keyboard).
         expect(message).to_be_focused()
 
-    def test_05c_a_map_a_result_a_decision_and_a_message_have_their_own_undo_and_say_why_when_used(self) -> None:
-        # #68 closeout: what no person can remove, the assistant's own Undo takes back while nobody used it (tests/app/assistant-changes.test.ts).
-        for phone in (False, True):
-            with self.subTest(phone=phone):
-                page = self.page(phone=phone)
-                calls: list[tuple[str, str]] = []
-                changes = [
-                    self.applied(operation="map.create", objectType="map", objectId=str(uuid.uuid4()), objectTitle="Probe layout", phrase="add map", verb="Add", after="Probe layout"),
-                    self.applied(operation="result.record", objectType="result", objectTitle="Camera fails below 5 lux", phrase="record result", verb="Record", after="Camera fails below 5 lux"),
-                    self.applied(operation="decision.propose", objectType="decision", objectTitle="Use the ToF sensor", phrase="propose decision", verb="Propose", after="Use the ToF sensor"),
-                    self.applied(operation="conversation.reply", objectType="message", objectId=str(uuid.uuid4()), objectTitle="Here is the summary", phrase="post message", verb="Post", after="Here is the summary"),
-                ]
-                self.stub_undo(page, changes, calls)
-                message_id = changes[3]["id"]
-
-                def answered_since(route: Route) -> None:
-                    if route.request.url.rsplit("/", 2)[1] == message_id:
-                        route.fulfill(status=200, content_type="application/json", body=json.dumps({"change": changes[3], "message": "Replies since. Open it"}))
-                    else:
-                        route.fallback()
-                page.route(re.compile(r".*/api/v1/assistant-changes/[0-9a-f-]{36}/undo$"), answered_since)
-                self.open_conversation(page)
-                message = page.locator(".assistant-message")
-                head = message.locator(".assistant-message__head")
-                for word in ("map", "result", "decision", "message"):
-                    expect(head).to_contain_text(word)
-                expect(head.get_by_role("button", name="Undo")).to_have_count(1)
-                message.get_by_role("button", name=re.compile(r"\+1 more|Show details")).click()
-                rows = message.locator(".assistant-message__rows li")
-                expect(rows).to_have_count(4)
-                for index in range(4):
-                    expect(rows.nth(index).get_by_role("button", name="Undo")).to_be_visible()
-                # The message was answered since: its Undo says so, in its own row, and stays.
-                rows.nth(3).get_by_role("button", name="Undo").click()
-                expect(rows.nth(3)).to_contain_text("Replies since. Open it")
-                expect(rows.nth(3).get_by_role("button", name="Undo")).to_be_visible()
-                # An untouched map goes at once.
-                rows.nth(0).get_by_role("button", name="Undo").click()
-                expect(head).not_to_contain_text("map")
-                self.no_horizontal_scroll(page)
-                shot(page, f"assistant-undo-{'390' if phone else '1440'}-light-removals")
-
-    def test_05d_a_message_the_assistant_took_back_keeps_its_place_and_reads_as_removed(self) -> None:
+    def test_05b_a_message_the_assistant_took_back_keeps_its_place_and_reads_as_removed(self) -> None:
         page = self.page()
 
         conversation_id = self.ids["conversation"]
@@ -368,14 +256,13 @@ class AssistantUndo(unittest.TestCase):
         # No handler may still be reading when the context closes: that would fail the next test's page, not this one.
         page.unroute_all(behavior="ignoreErrors")
 
-    def test_06_a_stopped_run_says_stopped_after_n_changes(self) -> None:
+    def test_06_a_stopped_run_keeps_its_line_and_undo(self) -> None:
         page = self.page(phone=True)
-        changes = self.message_set("stopped")[:2]
-        self.stub_undo(page, changes, [])
+        self.stub_undo(page, self.message_set("stopped")[:2], [])
         self.open_conversation(page)
         message = page.locator(".assistant-message")
-        expect(message.locator(".assistant-message__head")).to_contain_text("Stopped after 2 changes")
-        expect(message.get_by_role("button", name="Undo")).to_have_count(1)
+        expect(message.locator(".assistant-message__line")).to_contain_text("Added task Order spare probes · updated the Wiki page Probes")
+        expect(message.get_by_role("button", name="Undo", exact=True)).to_have_count(1)
         self.no_horizontal_scroll(page)
         shot(page, "assistant-undo-390-light-stopped")
 
@@ -445,7 +332,7 @@ class AssistantUndo(unittest.TestCase):
         """Another person's page: the same changes, as the server lists them for a reader (Undo only for someone who may edit)."""
         page = self.page(phone=phone, who=who)
         calls: list[tuple[str, str]] = []
-        changes = [{**item, "undoable": undoable, "owner": {"id": owner_id, "name": ADA["name"]}} for item in self.message_set()[:3]]
+        changes = [{**item, "undoable": undoable, "owner": {"id": owner_id, "name": ADA["name"]}} for item in self.message_set()[:2]]
         self.stub_undo(page, changes, calls)
         return page, changes, calls
 
@@ -454,13 +341,14 @@ class AssistantUndo(unittest.TestCase):
         self.open_conversation(page)
         message = page.get_by_role("region", name="What Ada’s assistant changed")
         expect(message.locator(".assistant-message__who")).to_have_text("Ada’s assistant")
-        expect(message.locator(".assistant-message__head")).to_contain_text("Done: added 2 tasks, edited 1 page")
-        expect(message.get_by_role("button", name="Undo")).to_have_count(1)
-        # Nothing of what waits for Ada is Jonas's to see: no card, no Apply.
+        line = message.locator(".assistant-message__line")
+        expect(line).to_contain_text("Added task Order spare probes · updated the Wiki page Probes")
+        expect(line.get_by_role("button", name="Undo", exact=True)).to_have_count(1)
+        # Nothing of what waits for Ada is Jonas's to see: no card, no Approve.
         expect(page.locator(".assistant-waiting")).to_have_count(0)
         shot(page, "assistant-undo-1440-light-jonas")
-        message.locator(".assistant-message__head").get_by_role("button", name="Undo").click()
-        expect(message.locator(".assistant-message__head")).to_contain_text("Undone by")
+        line.get_by_role("button", name="Undo", exact=True).click()
+        expect(line).to_contain_text("Undone by")
         self.assertIn(("run", "undo"), calls)
 
     def test_11_a_viewer_sees_the_message_without_undo(self) -> None:
@@ -468,10 +356,8 @@ class AssistantUndo(unittest.TestCase):
         self.open_conversation(page)
         message = page.get_by_role("region", name="What Ada’s assistant changed")
         expect(message.locator(".assistant-message__who")).to_have_text("Ada’s assistant")
-        expect(message.locator(".assistant-message__head")).to_contain_text("Done: added 2 tasks, edited 1 page")
-        expect(message.get_by_role("button", name="Undo")).to_have_count(0)
-        message.get_by_role("button", name="Show details").click()
-        expect(message.get_by_role("button", name="Undo")).to_have_count(0)
+        expect(message.locator(".assistant-message__line")).to_contain_text("Added task Order spare probes · updated the Wiki page Probes")
+        expect(message.get_by_role("button", name="Undo", exact=True)).to_have_count(0)
         self.no_horizontal_scroll(page)
         shot(page, "assistant-undo-390-light-viewer")
         self.assertEqual(calls, [])
@@ -511,62 +397,23 @@ class AssistantUndo(unittest.TestCase):
                 expect(page.locator(".project-convo__message").first).to_be_visible()
                 expect(line).to_have_count(0)
 
-    def test_13_the_closing_words_open_the_thing_that_changed(self) -> None:
-        page = self.page()
-        work = self.api(page, "POST", f"/api/v1/projects/{self.ids['project']}/work", {"title": "Calibrate the probes"}, status=201)
-        calls: list[tuple[str, str]] = []
-        changes = [self.applied(operation="work.update", objectType="work", objectId=work["id"], objectTitle=f"#{work['number']} Calibrate the probes",
-                                phrase="rename task", verb="Rename", before="Probes", after="Calibrate the probes at two depths", runState="done")]
-        self.stub_undo(page, changes, calls, changed_since=f"#{work['number']} Calibrate the probes")
-        self.open_conversation(page)
-        message = page.locator(".assistant-message")
-        message.get_by_role("button", name="Show details").click()
-        row = message.locator(".assistant-message__rows li")
-        row.get_by_role("button", name="Undo").click()
-        expect(row).to_contain_text("Changed since.")
-        row.get_by_role("button", name="Open it").click()
-        expect(page.get_by_role("complementary", name="Details")).to_contain_text("Calibrate the probes")
-
-    def test_14_a_hand_off_says_where_it_stands_and_why_undo_refuses_after_the_start(self) -> None:
-        page = self.page()
-        work = self.api(page, "POST", f"/api/v1/projects/{self.ids['project']}/work", {"title": "Review the lamp plan"}, status=201)
-        calls: list[tuple[str, str]] = []
-        item = self.applied(operation="cowork.unit.create", objectType="work", objectId=work["id"], objectTitle=f"#{work['number']} Review the lamp plan",
-                            phrase="hand off task", verb="Hand off", after="Handed to Codex", line="Codex started", runState="done")
-        self.stub_undo(page, [item], calls)
-        # The server refuses once the recipient started; the item keeps its Undo and says so in words.
-        page.route(re.compile(r".*/api/v1/assistant-changes/[0-9a-f-]{36}/undo$"), lambda route: route.fulfill(
-            status=200, content_type="application/json", body=json.dumps({"change": item, "message": "Your Codex already started. Open the task"})))
-        self.open_conversation(page)
-        message = page.locator(".assistant-message")
-        expect(message.locator(".assistant-message__head")).to_contain_text("Done: handed off 1 task")
-        message.get_by_role("button", name="Show details").click()
-        row = message.locator(".assistant-message__rows li")
-        expect(row).to_contain_text("Handed to Codex")
-        expect(row).to_contain_text("Codex started")
-        row.get_by_role("button", name="Undo").click()
-        expect(row).to_contain_text("Your Codex already started.")
-        row.get_by_role("button", name="Open the task").click()
-        expect(page.get_by_role("complementary", name="Details")).to_contain_text("Review the lamp plan")
-        shot(page, "assistant-undo-1440-light-handoff")
-
-    def test_14b_the_header_undo_reports_a_started_hand_off_in_its_row(self) -> None:
+    def test_14_a_started_hand_off_says_why_undo_refused_and_opens_the_task(self) -> None:
         page = self.page()
         work = self.api(page, "POST", f"/api/v1/projects/{self.ids['project']}/work", {"title": "Review the sensor plan"}, status=201)
         started = self.applied(operation="cowork.unit.create", objectType="work", objectId=work["id"], objectTitle=f"#{work['number']} Review the sensor plan",
-                               phrase="hand off task", verb="Hand off", after="Handed to Codex", line="Codex started", runState="done")
-        calls: list[tuple[str, str]] = []
-        self.stub_undo(page, [started], calls)
+                               phrase="hand off task", verb="Hand off", done=f"handed off task #{work['number']} Review the sensor plan", runState="done")
+        self.stub_undo(page, [started], [])
         page.route(re.compile(r".*/api/v1/assistant-runs/[0-9a-f-]{36}/changes/undo$"), lambda route: route.fulfill(
             status=200, content_type="application/json", body=json.dumps({
                 "changes": [{"change": started, "message": "Your Codex already started. Open the task"}], "undone": 0, "changedSince": [f"#{work['number']}"],
                 "message": f"Undid 0 changes. 1 changed since: #{work['number']}"})))
         self.open_conversation(page)
         message = page.locator(".assistant-message")
-        message.locator(".assistant-message__head").get_by_role("button", name="Undo").click()
-        row = message.locator(".assistant-message__rows li")
-        expect(row).to_contain_text("Your Codex already started.")
-        row.get_by_role("button", name="Open the task").click()
+        message.get_by_role("button", name="Undo", exact=True).click()
+        note = message.locator(".assistant-message__note")
+        expect(note).to_contain_text("Your Codex already started.")
+        shot(page, "assistant-undo-1440-light-handoff")
+        note.get_by_role("button", name="Open the task").click()
         expect(page.get_by_role("complementary", name="Details")).to_contain_text("Review the sensor plan")
 
     def test_15_a_request_behind_a_background_run_says_what_it_waits_for_and_can_stop_it(self) -> None:
@@ -637,13 +484,13 @@ class AssistantUndo(unittest.TestCase):
             body = working if calls["n"] < 2 else {**working, "status": "provider_failed", "endReason": "crashed", "completedAt": NOW}
             route.fulfill(status=200, content_type="application/json", body=json.dumps(body))
         page.route(re.compile(r".*/api/v1/assistant-runs/[0-9a-f-]{36}$"), read)
-        changes = [self.applied(objectId=str(uuid.uuid4()), objectTitle="Committed one", after="Committed one", runState="failed"),
-                   self.applied(objectId=str(uuid.uuid4()), objectTitle="Committed two", after="Committed two", runState="failed")]
+        changes = [self.applied(objectId=str(uuid.uuid4()), objectTitle="Committed one", done="added task Committed one", runState="failed"),
+                   self.applied(objectId=str(uuid.uuid4()), objectTitle="Committed two", done="added task Committed two", runState="failed")]
         self.stub_undo(page, changes, [])
         self.open_conversation(page)
         message = page.locator(".assistant-message")
-        expect(message.locator(".assistant-message__head")).to_contain_text("Done: added 2 tasks")
-        expect(message.get_by_role("button", name="Undo")).to_have_count(1)
+        expect(message.locator(".assistant-message__line")).to_contain_text("Added task Committed one · added task Committed two")
+        expect(message.get_by_role("button", name="Undo", exact=True)).to_have_count(1)
         ended = page.locator(".assistant-working")
         expect(ended).to_contain_text("2 changes were made before it ended.", timeout=20000)
         expect(ended).not_to_contain_text("Nothing was posted")

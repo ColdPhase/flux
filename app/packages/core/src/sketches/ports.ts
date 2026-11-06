@@ -185,9 +185,9 @@ export interface SketchRepository {
   findSketch(id: string): Promise<SketchRecord | null>;
   insertSketch(sketch: NewSketch): Promise<SketchRecord>;
   /** Sets the title and increments the version; the caller has checked the version. */
-  renameSketch(id: string, title: string): Promise<SketchRecord>;
-  /** Bumps `updated_at` so lists sort by the latest change. */
-  touchSketch(id: string): Promise<void>;
+  renameSketch(id: string, title: string, editor: Principal): Promise<SketchRecord>;
+  /** Bumps `updated_at` so lists sort by the latest change; `editor` is who changed the map, when someone did. */
+  touchSketch(id: string, editor?: Principal): Promise<void>;
   thoughts(sketchId: string, page?: Required<PageQuery>): Promise<ThoughtRecord[]>;
   mapCounts(sketchId: string): Promise<{ thoughts: number; links: number }>;
   /** These messages of the DM that exist, in conversation order. */
@@ -205,7 +205,7 @@ export interface SketchRepository {
   thoughtExists(id: string): Promise<boolean>;
   insertThought(thought: NewThought): Promise<ThoughtRecord>;
   /** Applies the changes and increments the version; the caller has checked the version. */
-  updateThought(sketchId: string, id: string, changes: ThoughtChanges): Promise<ThoughtRecord>;
+  updateThought(sketchId: string, id: string, changes: ThoughtChanges, editor: Principal): Promise<ThoughtRecord>;
   /** Deletes the thought and its links; never the placed object. */
   deleteThought(sketchId: string, id: string): Promise<void>;
   links(sketchId: string, page?: Required<PageQuery>): Promise<LinkRecord[]>;

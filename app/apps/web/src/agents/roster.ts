@@ -1,9 +1,9 @@
 import type { Agent, NativeWorkRow, ProjectAccess, ProjectAgentConnection, ProjectPerson, WorkRowProjection } from '@flux/contracts';
 
 /**
- * Who the Agents view and the hand-off dialog list (F-026 P9, S12): the agents that can read this
- * project now (its people), each external connection of one, and, for a hand-off, the workspace's
- * agents with no access here so the dialog can say so instead of silently leaving them out.
+ * Who the Agents view and the hand-off dialog list (F-026 P9, S12): each external connection chosen for
+ * this project and, for a hand-off, the other agents, so the dialog can say why they can't take a task
+ * instead of silently leaving them out.
  */
 export interface AgentEntry {
   /** One row: a connection, or an agent without one. */
@@ -17,7 +17,7 @@ export interface AgentEntry {
   /** The client and connection name, e.g. "Claude Code · Desk laptop". */
   via: string | null;
   connection: ProjectAgentConnection | null;
-  /** The agent's grant in this project; null when it has none (it cannot read it). */
+  /** What the agent can do in this project: its owner's level, narrowed by its connection; null with no connection here. */
   access: ProjectAccess | null;
 }
 
@@ -63,28 +63,32 @@ export const CLIENT_LABEL: Record<ProjectAgentConnection['clientDesignation'], s
   claude_code: 'Claude Code', codex: 'Codex', other: 'External client',
 };
 
+/** What the agent can do through a connection: its owner's level, or read only when the connection only reads (F-036 AG-3). */
+const throughConnection = (connection: ProjectAgentConnection, level: ProjectAccess | null): ProjectAccess | null =>
+  level && (connection.mayDo === 'read' || connection.scopes.every((scope) => scope === 'flux.context.read')) ? 'viewer' : level;
+
 export function agentEntries(people: readonly ProjectPerson[] | null, connections: readonly ProjectAgentConnection[], workspaceAgents: readonly Agent[] = [], humans: ReadonlyMap<string, string> = new Map()): AgentEntry[] {
   const accessOf = new Map((people ?? []).filter((person) => person.kind === 'agent').map((person) => [person.id, person]));
   const entries: AgentEntry[] = connections.map((connection) => ({
     key: `connection:${connection.id}`, agentId: connection.agent.id, name: connection.agent.name,
     owner: `${connection.owner.name}${connection.own ? ' (you)' : ''}`, ownerId: connection.owner.id,
     via: `${CLIENT_LABEL[connection.clientDesignation]} · ${connection.name}`,
-    connection, access: accessOf.get(connection.agent.id)?.access ?? null,
+    connection, access: throughConnection(connection, accessOf.get(connection.agent.id)?.access ?? null),
   }));
   const seen = new Set(entries.map((entry) => entry.agentId));
   for (const person of accessOf.values()) {
     if (seen.has(person.id)) continue;
     seen.add(person.id);
-    entries.push({ key: `agent:${person.id}`, agentId: person.id, name: person.name, connection: null, via: null, access: person.access,
-      owner: person.agentOwner ? person.agentOwner.kind === 'workspace' ? 'the company' : person.agentOwner.name : null,
-      ownerId: person.agentOwner?.kind === 'human' ? person.agentOwner.id : null });
+    // An agent works in a project only through a connection that chose it, whatever its owner's rights there.
+    entries.push({ key: `agent:${person.id}`, agentId: person.id, name: person.name, connection: null, via: null, access: null,
+      owner: person.agentOwner?.name ?? null, ownerId: person.agentOwner?.id ?? null });
   }
   for (const agent of workspaceAgents) {
     if (seen.has(agent.id) || agent.revokedAt) continue;
     seen.add(agent.id);
     entries.push({ key: `agent:${agent.id}`, agentId: agent.id, name: agent.name, connection: null, via: null, access: null,
-      owner: agent.owner.kind === 'workspace' ? 'the company' : humans.get(agent.owner.id) ?? null,
-      ownerId: agent.owner.kind === 'human' ? agent.owner.id : null });
+      owner: humans.get(agent.owner.id) ?? null,
+      ownerId: agent.owner.id });
   }
   return entries;
 }

@@ -40,7 +40,7 @@ export function MeetAssistantCard({ userId }: { userId: string }) {
   );
 }
 
-// Three suggestions for this place, shown only where the assistant is a member, until it has been used three times (Journey 1 step 5).
+// Three suggestions for this place, shown only where the assistant can work, until it has been used three times (Journey 1 step 5).
 const usesKey = (userId: string) => `flux.assistant-uses.${userId}`;
 export const assistantUses = (userId: string) => { try { return Number(localStorage.getItem(usesKey(userId))) || 0; } catch { return 0; } };
 export const noteAssistantUse = (userId: string) => { try { localStorage.setItem(usesKey(userId), String(assistantUses(userId) + 1)); } catch { /* shown again */ } };

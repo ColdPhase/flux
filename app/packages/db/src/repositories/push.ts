@@ -84,22 +84,10 @@ export function pushSubscriptionRepository(db: DbExecutor) {
 
 /** Notification rows; `audience` is an access-policy condition over `notifications` supplied by the caller. */
 export function notificationRows(db: DbExecutor) {
-  const identitySnapshots = schema.assistantJoinQuestionIdentitySnapshots;
-  const withHistoryAndAssistantIdentity = async (row: { notification: NotificationRow; identity: typeof identitySnapshots.$inferSelect | null }) => {
+  const withHistory = async (row: { notification: NotificationRow }) => {
     const record = toNotificationRecord(row.notification);
-    const history = await assignmentNotificationReverted(db, row.notification)
+    return await assignmentNotificationReverted(db, row.notification)
       ? { ...record, body: `${record.body}${record.body ? ' · ' : ''}Task creation undone` } : record;
-    return {
-      ...history,
-      assistantRequestIdentity: row.identity ? {
-        joinRequestId: row.identity.joinRequestId,
-        openingVersion: row.identity.openingVersion,
-        assistantId: row.identity.assistantId,
-        assistantName: row.identity.assistantName,
-        ownerId: row.identity.ownerId,
-        ownerName: row.identity.ownerName,
-      } : null,
-    };
   };
   return {
     async insert(record: { id: string; userId: string; source: { workspaceId: string; type: NotificationRow['sourceType']; id: string }; title: string; body: string; url: string | null; aiOrigin: boolean }) {
@@ -109,21 +97,19 @@ export function notificationRows(db: DbExecutor) {
       });
     },
     async findForRecipient(userId: string, id: string) {
-      const [row] = await db.select({ notification: n, identity: identitySnapshots }).from(n)
-        .leftJoin(identitySnapshots, and(eq(n.assistantJoinRequestId, identitySnapshots.joinRequestId), eq(n.assistantJoinOpeningVersion, identitySnapshots.openingVersion)))
+      const [row] = await db.select({ notification: n }).from(n)
         .where(and(eq(n.id, id), eq(n.userId, userId), sql`NOT ${hiddenWhileAiOff(n)}`));
-      return row ? withHistoryAndAssistantIdentity(row) : null;
+      return row ? withHistory(row) : null;
     },
     async workspaceIdsForRecipient(userId: string) {
       return (await db.selectDistinct({ id: n.workspaceId }).from(n).where(eq(n.userId, userId))).map((row) => row.id);
     },
     async listForRecipient(userId: string, audience: SQL, limit: number) {
       // Rows kept only for push or email (the person turned the inbox off for that reason) stay out.
-      const rows = await db.select({ notification: n, identity: identitySnapshots }).from(n)
-        .leftJoin(identitySnapshots, and(eq(n.assistantJoinRequestId, identitySnapshots.joinRequestId), eq(n.assistantJoinOpeningVersion, identitySnapshots.openingVersion)))
+      const rows = await db.select({ notification: n }).from(n)
         .where(and(eq(n.userId, userId), eq(n.inInbox, true), audience, sql`NOT ${hiddenWhileAiOff(n)}`))
         .orderBy(desc(n.createdAt), desc(n.id)).limit(limit);
-      return Promise.all(rows.map(withHistoryAndAssistantIdentity));
+      return Promise.all(rows.map(withHistory));
     },
     async countUnread(userId: string, audience: SQL) {
       const [row] = await db.select({ unread: count() }).from(n).where(and(eq(n.userId, userId), eq(n.inInbox, true), isNull(n.readAt), audience,

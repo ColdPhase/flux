@@ -248,6 +248,18 @@ describe('DM sketches', () => {
     expectStatus(await addThought(mo, sketch.id, 'Magnets?'), 201);
   });
 
+  /**
+   * Who reads a project, split as the contract splits them: the people the preview must name exactly, and their agents, which have no
+   * access of their own (F-036 AG-1, AG-3). Every agent listed must read through one of those people, so naming them leaves nobody out.
+   */
+  async function projectReaders(who: Person, projectId: string) {
+    const listed = expectStatus(await who.browser.request('GET', `/api/v1/projects/${projectId}/people`), 200) as ProjectPerson[];
+    const people = listed.filter((p) => p.kind === 'human');
+    const agents = listed.filter((p) => p.kind === 'agent');
+    for (const agent of agents) assert.ok(people.some((p) => p.id === agent.agentOwner?.id), `${agent.name} reads through a person the preview names`);
+    return { people, agents };
+  }
+
   test('promotion previews the exact audience, copies only the sketch, and never syncs the DM', async () => {
     const dm = await openDm(jo, ws.id, [lee]);
     const m1 = await say(lee, dm.id, 'Plant pot that tells you when to water');
@@ -274,6 +286,9 @@ describe('DM sketches', () => {
     assert.equal(fresh.content.thoughts, 3);
     assert.equal((await pool.query("SELECT count(*)::int AS n FROM projects WHERE workspace_id = $1 AND name = 'Smart pot'", [ws.id])).rows[0].n, 0, 'no project yet');
 
+    // An agent made after the preview adds no reader of its own, so the preview still holds.
+    const planner = await createAgent({ kind: 'human', id: jo.id }, ws.id, { name: 'Jo’s planner', owner: 'self' }, db, accessPorts);
+
     const key = randomUUID();
     const done = expectStatus(await promote(jo, sketch.id, { target: { kind: 'new', name: 'Smart pot' }, token: fresh.token }, { 'idempotency-key': key }), 201, 'promote') as PromotedSketch;
     const again = await promote(jo, sketch.id, { target: { kind: 'new', name: 'Smart pot' }, token: fresh.token }, { 'idempotency-key': key });
@@ -281,9 +296,10 @@ describe('DM sketches', () => {
     assert.equal((again.json as PromotedSketch).sketch.id, done.sketch.id, 'the retry returns the same copy');
     assert.equal((await pool.query("SELECT count(*)::int AS n FROM projects WHERE workspace_id = $1 AND name = 'Smart pot'", [ws.id])).rows[0].n, 1, 'one project');
 
-    // The preview was exact: the new project's readers are what it named.
-    const people = expectStatus(await jo.browser.request('GET', `/api/v1/projects/${done.project.id}/people`), 200) as ProjectPerson[];
+    // The preview was exact: the new project's people are what it named, and its agents read through them.
+    const { people, agents } = await projectReaders(jo, done.project.id);
     assert.deepEqual(new Set(people.map((p) => p.id)), new Set(fresh.audience.map((p) => p.id)));
+    assert.ok(agents.some((agent) => agent.id === planner.id), 'her agent reads it, with her rights');
     const projectRow = (await pool.query('SELECT visibility FROM projects WHERE id = $1', [done.project.id])).rows[0];
     assert.equal(projectRow.visibility, 'restricted');
     expectStatus(await get(mo, done.sketch.id), 404, 'a member outside the audience');
@@ -370,7 +386,7 @@ describe('DM sketches', () => {
     paused.release();
     const done = await running.promise;
     expectStatus(await leaving.promise, 204, 'the leave then completes');
-    const people = expectStatus(await jo.browser.request('GET', `/api/v1/projects/${done.project.id}/people`), 200) as ProjectPerson[];
+    const { people } = await projectReaders(jo, done.project.id);
     assert.deepEqual(new Set(people.map((p) => p.id)), new Set(seen.audience.map((p) => p.id)), 'granted exactly the audience that was checked');
 
     // 2. Kai leaves after the preview but before the promotion runs: nothing is created.
@@ -435,10 +451,12 @@ describe('DM sketches', () => {
     expectStatus(await preview(kai, sketch.id, '?target=new'), 200, 'members start spaces');
     expectStatus(await preview(kai, sketch.id, `?projectId=${viewing.id}`), 403, 'a viewer cannot copy in');
 
+    const helper = await createAgent({ kind: 'human', id: kai.id }, ws.id, { name: 'Kai’s helper', owner: 'self' }, db, accessPorts);
     const bench = expectStatus(await preview(kai, sketch.id, `?projectId=${closed.id}`), 200) as SketchPromotionPreview;
     assert.deepEqual(bench.leftOut.map((p) => p.id), [mo.id], 'Mo is not in the restricted project');
-    const people = expectStatus(await kai.browser.request('GET', `/api/v1/projects/${closed.id}/people`), 200) as ProjectPerson[];
+    const { people, agents } = await projectReaders(kai, closed.id);
     assert.deepEqual(new Set(bench.audience.map((p) => p.id)), new Set(people.map((p) => p.id)));
+    assert.ok(agents.some((agent) => agent.id === helper.id), 'an existing space lists his agent, and the preview names him');
 
     const lighting = expectStatus(await preview(kai, sketch.id, `?projectId=${open.id}`), 200) as SketchPromotionPreview;
     assert.deepEqual(lighting.leftOut, []);

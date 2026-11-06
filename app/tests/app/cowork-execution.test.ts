@@ -20,8 +20,6 @@ async function fixture(maximumUses = 1, seconds = 30) {
   const p = await project(owner, ws.id, 'Native co-work', 'restricted');
   const agent = expectStatus(await owner.browser.request('POST', `/api/v1/workspaces/${ws.id}/agents`,
     { body: { name: 'Co-work executor', owner: 'self' } }), 201) as Agent;
-  expectStatus(await owner.browser.request('POST', `/api/v1/projects/${p.id}/grants`,
-    { body: { principal: { kind: 'agent', id: agent.id }, role: 'contributor' } }), 201);
   const connection = expectStatus(await owner.browser.request('POST', '/api/v1/agent-connections',
     { body: { agentId: agent.id, selectedProjectIds: [p.id], scopes: ['flux.context.read', 'flux.action.execute'] } }), 201) as AgentConnection;
   const clientId = `cowork-fixture-${randomUUID()}`, bindingId = randomUUID();

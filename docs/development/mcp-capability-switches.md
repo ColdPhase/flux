@@ -40,7 +40,7 @@ initialization must be bounded, restart-safe and tested with concurrent creation
 ## Current, effective authority
 
 Keep configured switches distinct from effective availability. A configured On
-is insufficient when current owner rights, agent project grants, original JWT
+is insufficient when current owner rights, its "What it may do", original JWT
 and connection scopes, client/binding or exact bounded standing grant do not
 permit the operation. Show a safe refusal reason. No checkbox creates an agent,
 project/admin/private/DM grant, runtime, standing grant, owner-paid invocation or
@@ -163,7 +163,7 @@ one fixed playbook resource, one policy template and Start/Resume prompts. Actua
 registration verification remains required; source counts alone do not prove it.
 
 Use stable semantic read groups for project identity, knowledge (materials and
-wiki), tasks, decisions, results, conversations, maps, project policy and the
+wiki), tasks, decisions, results, conversations, maps and the
 supplied playbook; use the actual registered operation for each distinct effect
 and a separate sourced-proposal capability. Lists and body reads within a group
 share its switch. `flux_read_material` and `flux_get_doc` both require knowledge
@@ -190,7 +190,7 @@ must all have actual Off tests.
 Keep original connection.scopes/projects immutable in OAuth issuance/refresh,
 runtime snapshots and command fingerprints. Owner list/revoke and existing grant
 list/revoke/narrow remain structural management. A disabled connection can still
-be managed without an active agent/project grant; expose original IDs without
+be managed without active project access; expose original IDs without
 leaking inaccessible project names. New consent must independently validate its
 original envelope and live owner/client/binding conditions.
 
@@ -356,7 +356,7 @@ protected-main integration.
 ### No reachable selected project: the bearer is refused (decision 2026-10-08)
 
 Main's contract is kept. When the connection's agent has no current reachable
-selected project, because its project grant was deleted or its owner's workspace
+selected project, because its owner lost the project or their workspace
 membership was removed, the bearer is refused with HTTP 403 before any tool,
 resource or prompt dispatch, and the body carries no data. A project the agent
 cannot reach does not poison an authorized subset: while at least one selected

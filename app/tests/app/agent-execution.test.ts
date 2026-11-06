@@ -15,8 +15,6 @@ async function fixture(maximumUses = 1) {
   const owner = await person('execution-owner'); const ws = await workspace(owner, "Execution workspace"); const p = await project(owner, ws.id, 'Execution target', 'restricted');
   const agent = expectStatus(await owner.browser.request('POST', `/api/v1/workspaces/${ws.id}/agents`,
     { body: { name: 'Execution agent', owner: 'self' } }), 201) as Agent;
-  expectStatus(await owner.browser.request('POST', `/api/v1/projects/${p.id}/grants`,
-    { body: { principal: { kind: 'agent', id: agent.id }, role: 'contributor' } }), 201);
   const connection = expectStatus(await owner.browser.request('POST', '/api/v1/agent-connections',
     { body: { agentId: agent.id, selectedProjectIds: [p.id], scopes: ['flux.context.read', 'flux.proposal.write', 'flux.action.execute'] } }), 201) as AgentConnection;
   // Trusted bearer fixture for SQL/port checks; not a model or actual client activation.
@@ -138,11 +136,10 @@ test('owner grant API is idempotent, bounded and management-gated; history and n
 
 test('runtime expiry/revocation and lost current domain authority deny successful receipt observation', async () => {
   const f = await fixture(2); await f.run();
-  const grants = expectStatus(await f.owner.browser.request('GET', `/api/v1/projects/${f.p.id}/grants`), 200) as { id: string; principal: { kind: string; id: string } }[];
-  const agentGrant = grants.find((row) => row.principal.kind === 'agent' && row.principal.id === f.agent.id)!;
-  expectStatus(await f.owner.browser.request('DELETE', `/api/v1/projects/${f.p.id}/grants/${agentGrant.id}`), 204);
-  await assert.rejects(f.run(), (error: unknown) => error instanceof DomainError);
-  expectStatus(await f.owner.browser.request('POST', `/api/v1/projects/${f.p.id}/grants`, { body: { principal: { kind: 'agent', id: f.agent.id }, role: 'contributor' } }), 201);
+  // The owner kept out of the project: the agent has exactly what its owner has (F-036 AG-3).
+  await pool.query(`INSERT INTO project_grants (id, workspace_id, project_id, user_id, role, created_by) SELECT $1, workspace_id, id, $2, 'denied', $2 FROM projects WHERE id = $3 ON CONFLICT (project_id, user_id) WHERE (user_id IS NOT NULL) DO UPDATE SET role = 'denied'`, [randomUUID(), f.owner.id, f.p.id]);
+  await assert.rejects(f.run(), /Space not found/);
+  await pool.query('DELETE FROM project_grants WHERE project_id = $1 AND user_id = $2', [f.p.id, f.owner.id]);
   await pool.query("UPDATE agent_runtime_sessions SET expires_at=clock_timestamp()-interval '1 second' WHERE id=$1", [f.runtime.id]);
   await rejects(f.run(), 'AGENT_EXECUTION_UNAVAILABLE');
   await pool.query("UPDATE agent_runtime_sessions SET expires_at=clock_timestamp()+interval '1 hour', revoked_at=clock_timestamp() WHERE id=$1", [f.runtime.id]);

@@ -178,7 +178,8 @@ that `PersonalToolHost` and the API composes `toolTurns` (10); switched off, eve
   for its owner, the minted `jti`, not closed, not expired, not stopped, its place, and the owner's
   assistant connection. Each request lists exactly the run's tools that the live switches still allow
   (`restrictTo`); any other tool call gets the S6 refusal (`MCP_ENTRY_UNAVAILABLE`) before anything runs;
-  resources and prompts are not offered. Every tool reaches only the run's project. Results are bounded
+  resources and prompts are not offered. Every tool reaches only the run's project: a change that names
+  an object elsewhere is refused with `OUTSIDE_RUN_PLACE`, as a read of it is. Results are bounded
   (`boundRunResult`): over 16 KiB per result or 64 KiB per run, the result is replaced by an error and the
   run records `mcp_limit`; the processor ends it `cap_reached` with `end_reason = mcp_results_too_large`.
   The delivery fence rechecks the run, so nothing reaches a token after its run ended.
@@ -291,22 +292,27 @@ run starts working (`reading`) and when it stops (any end). Readers of the conve
 assistant is working there, and show "Ada's assistant is working…" with no detail and no Stop. Someone
 who cannot read the project gets the same 404 as for a conversation that does not exist.
 
-## Changes, Undo and the owner's lane (F-027 A3 and A4, #403, #404)
+## Changes, Undo and the owner's lane (F-036 AG-3, #855; F-027 A3 and A4, #403, #404)
 
 The run's change tools go through `assistantChangeExecutor`
-(`apps/server/src/agent-connection/assistant-changes.ts`): each call is applied, waiting, a suggestion or
-refused, and recorded in `assistant_changes` in the same transaction (migration 0104).
+(`apps/server/src/agent-connection/assistant-changes.ts`): each call is applied, waiting or refused, and
+recorded in `assistant_changes` in the same transaction. `classifyAssistantChange`
+(`packages/core/src/assistant/changes.ts`) decides from the agent's "What it may do" and the facts of the
+change, in this order: Only read refuses; a change the owner cannot make is refused and prepares nothing; a
+deletion waits (`removal`); something of another person's, or a task for another person, waits (`others`); Ask
+me first waits (`ask`); anything else is made at once. "Yours" is what you or any of your agents made and nobody
+else edited. Nothing that waits ever expires.
 
-- **Who decides.** A waiting change is the owner's alone: Apply, Apply all, Not now, Send and the move to Inbox
+- **Who decides.** A waiting change is the owner's alone: Approve (Delete), Edit, Skip (Keep) and Approve all
   answer everyone else with the same 404 as for a change that does not exist (another member, a workspace admin,
-  a viewer, a guest, a stranger, an agent's bearer or a run token). Apply re-executes the saved call with every
-  check under the server-owned `owner_approval` purpose: the source run must be live or normally completed (a
-  stopped, failed or cancelled one supplies nothing); Pause blocks it and a resume does not apply anything by
-  itself; Off, narrowing, a revoked grant or binding, Not now and expiry close the saved change for good. The seven
-  days are never extended. **Apply all is one write-only allowance**: at most the owner's current per-request limit,
-  never above the run's original one (20; 10 for a background run); the surplus stays waiting for the next Apply.
-  The continuation purpose `owner_deferred_change` belongs to one exact edit, a Wiki page someone else was typing in;
-  the executor refuses any other waiting change that tries to select it.
+  a viewer, a guest, a stranger). The routes take only a signed-in session, so an agent's bearer or a run token is
+  refused, and no tool of any agent decides anything, even its own item. Approve re-executes the saved call with
+  every check under the server-owned `owner_approval` purpose: the source run must be live or normally completed
+  (a stopped, failed or cancelled one supplies nothing); Pause blocks it and a resume does not apply anything by
+  itself; Off, Only read, the owner losing the rights, a revoked binding and Skip close the saved change for good.
+  Edit changes the title of a waiting new task and nothing else.
+- **Inbox.** One item per run with something waiting (`assistant:<runId>`, "3 things wait for you", with Approve
+  all and Open). A run that only made things reports on its message, not in the Inbox.
 - **Hand-off to the owner's own agent.** `flux_create_unit` is listed to a run under the Tasks switch with its own
   strict input (`assistant-unit-create/v1`: exactly `projectId`, `clientCommandId`, `peerRequestClass`, `taskId`,
   `unitKey`, `expectedTaskVersion`, `assignmentConnectionId` and the literal `parent: null`; no runtime session, no
@@ -327,7 +333,8 @@ refused, and recorded in `assistant_changes` in the same transaction (migration 
   `work.undoTaskCreation`), run as the person who undoes: the owner, or anyone who may edit in the project (a
   viewer gets 403, a stranger 404). What was done is the run's message for everyone who can read the conversation
   (`GET /api/v1/conversations/:id/assistant-changes`: the owner sees all of their own rows, others only what was
-  done); a waiting change, a suggestion or a refused Apply never leaves its owner. The restore is recorded as "Jonas
+  done); a waiting change or a refused Approve never leaves its owner. The web shows this as one line on the
+  message with Undo beside it (`assistantChangeLine`), then "Undone by Ada"; there is no Activity list. The restore is recorded as "Jonas
   undid Ada's assistant's change". Task fields come back where untouched since: title, outcome, status (with the
   blocker and who it waited for, when leaving Blocked), done-when, prerequisites and who a task waits for; a map's
   name; a page's text; a thought's text and position; created thoughts, links and tasks are removed, a created page
@@ -405,8 +412,7 @@ tokens:
   When it is removed, the status is `connection_changed` if the owner still has another
   connection (which needs its own consent) and `no_connection` otherwise.
 - `personal_run_agents` maps each workspace to the owner's assistant agent in it.
-  The agent's project grants, capped by the owner's own access, bound what a run
-  may read.
+  The owner's own access bounds what a run may read (F-036 AG-3).
 - `personal_runs` stores the request, place, agent and connection snapshot
   (with the connection's `provider` and `model`, shown as the answer's provenance),
   status, reservation (`reserved_micros`), `cost_state`, observed usage and
@@ -458,7 +464,7 @@ from the request.
 | `POST /api/v1/assistant-runs/:id/retry` | the run's owner | `{ clientRunId }`: a new, separately capped run with the same request (202). |
 | `GET /api/v1/conversations/:id/assistant-changes` | project readers | The run messages of the conversation: the owner's own rows in every state, everyone else's what was done (applied, approved, undone, skipped) with `undoable` true only for someone who may edit (F-027 A4). Non-readers get 404. |
 | `GET /api/v1/conversations/:id/assistant-activity` | project readers | `{ working: [{ ownerId, ownerName }] }`: whose assistant is working there now, nothing more (F-027 AST-6). |
-| `POST /api/v1/assistant-changes/:id/apply`, `…/not-now`, `…/send`; `POST /api/v1/assistant-runs/:id/changes/apply`, `…/not-now`, `…/inbox` | the owner only | Decide waiting changes (F-027 A3). Everyone else gets 404. Apply all is one allowance of at most the owner's limit (surplus stays waiting). |
+| `POST /api/v1/assistant-changes/:id/apply`, `…/skip`, `…/edit`; `POST /api/v1/assistant-runs/:id/changes/apply`, `…/skip` | the owner only, in their own session | Decide waiting changes (F-036 AG-3). Everyone else gets 404. |
 | `POST /api/v1/assistant-changes/:id/undo`, `POST /api/v1/assistant-runs/:id/changes/undo` | the owner, or anyone who may edit | Take back one change or the whole message (F-027 A4). A reader who may not edit gets 403, a non-reader 404; only the owner takes back a created task. |
 
 **Working-card document lifetime, 2026-10-11.** The bounded #380 repair was peer

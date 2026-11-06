@@ -42,29 +42,27 @@
 .assistant-proposal__done .ui-link { margin-left: 8px; }
 .assistant-proposal__done .ui-link { font-size: var(--fs-sm); min-height: 24px; }
 
-.assistant-waiting { margin-top: 10px; padding: 12px 14px; border-radius: var(--r-lg); background: var(--el); box-shadow: inset 0 0 0 1px var(--line2); }
+.assistant-waiting { margin-top: 10px; display: grid; gap: 8px; }
 .assistant-waiting-item { list-style: none; }
-.assistant-waiting__head { display: flex; align-items: center; gap: 7px; font-size: var(--fs-md); font-weight: 600; color: var(--t1); overflow-wrap: anywhere; }
-.assistant-waiting__why, .assistant-waiting__line, .assistant-waiting__done { margin-top: 6px; font-size: var(--fs-sm); line-height: 1.5; color: var(--t2); overflow-wrap: anywhere; }
+.assistant-waiting__cards { display: grid; gap: 8px; margin: 0; padding: 0; list-style: none; }
+/* One waiting change (F-036 AG-3, mockup UndoApproval): what the agent wants, why it waits, and the owner's choices. */
+.assistant-waiting__card { padding: 12px 14px; border-radius: var(--r-lg); background: var(--el); box-shadow: inset 0 0 0 1px var(--line2); }
+.assistant-waiting__what { margin: 0; font-size: var(--fs-md); color: var(--t1); overflow-wrap: anywhere; }
+.assistant-waiting__why, .assistant-waiting__done { margin: 4px 0 0; font-size: var(--fs-sm); line-height: 1.5; color: var(--t2); overflow-wrap: anywhere; }
 .assistant-waiting__done { color: var(--t3); }
-.assistant-waiting__line .ui-link { margin-left: 8px; font-size: var(--fs-sm); min-height: 24px; }
 .assistant-waiting__list { display: grid; gap: 6px; margin: 8px 0 0; padding: 0; list-style: none; font-size: var(--fs-sm); }
-.assistant-waiting__list label { display: flex; align-items: flex-start; gap: 8px; min-height: 24px; cursor: pointer; }
-.assistant-waiting__list input { margin-top: 3px; }
-.assistant-waiting__list small { display: block; color: var(--t3); font-size: var(--fs-xs); }
+.assistant-waiting__list > li { display: flex; align-items: center; gap: 8px; min-height: 28px; }
+.assistant-waiting__task { flex: 1; min-width: 0; display: flex; flex-direction: column; overflow-wrap: anywhere; }
+.assistant-waiting__task small { color: var(--t3); font-size: var(--fs-xs); }
+.assistant-waiting__edit { display: flex; align-items: center; gap: 8px; margin-top: 8px; flex-wrap: wrap; }
+.assistant-waiting__edit input { flex: 1; min-width: 12ch; min-height: var(--ctl); padding: 0 10px; border-radius: var(--r-md); border: 1px solid var(--line2); background: var(--bg); color: var(--t1); font: inherit; }
 
-.assistant-message { margin-top: 10px; padding: 12px 14px; border-radius: var(--r-lg); background: var(--el); box-shadow: inset 0 0 0 1px var(--line2); }
-.assistant-message__head { display: flex; align-items: center; justify-content: space-between; gap: 10px; font-size: var(--fs-md); font-weight: 600; color: var(--t1); overflow-wrap: anywhere; }
+/* The change line on an agent's message (F-036 AG-3): "Updated the Wiki page Calibration (3 changes) · moved #4 to In progress · Undo". */
+.assistant-message { margin-top: 6px; }
 .assistant-message__who { margin: 0 0 4px; font-size: var(--fs-xs); font-weight: 600; color: var(--t3); }
-.assistant-message__note, .assistant-message__skipped { margin-top: 6px; font-size: var(--fs-sm); line-height: 1.5; color: var(--t2); overflow-wrap: anywhere; }
-.assistant-message__rows { display: grid; gap: 8px; margin: 10px 0 0; padding: 0; list-style: none; font-size: var(--fs-sm); }
-.assistant-message__rows li { display: grid; grid-template-columns: auto 1fr; column-gap: 8px; row-gap: 2px; align-items: baseline; min-width: 0; }
-.assistant-message__kind { color: var(--t3); font-size: var(--fs-xs); }
-.assistant-message__title { color: var(--t1); overflow-wrap: anywhere; }
-.assistant-message__diff, .assistant-message__item { grid-column: 2; color: var(--t2); font-size: var(--fs-xs); overflow-wrap: anywhere; }
-.assistant-message__item { display: flex; align-items: center; gap: 8px; }
-.assistant-message__item .ui-link { font-size: var(--fs-sm); min-height: 24px; }
-.assistant-message > .ui-btn { margin-top: 6px; }
+.assistant-message__line { display: flex; align-items: center; flex-wrap: wrap; column-gap: 0; margin: 0; font-size: var(--fs-sm); line-height: 1.5; color: var(--t2); overflow-wrap: anywhere; }
+.assistant-message__line .ui-link { font-size: var(--fs-sm); min-height: 24px; }
+.assistant-message__note { margin: 4px 0 0; font-size: var(--fs-sm); line-height: 1.5; color: var(--t2); overflow-wrap: anywhere; }
 .assistant-queued { margin-top: 6px; font-size: var(--fs-sm); color: var(--t2); display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 
 .assistant-ask__blocked { color: var(--t2); }
@@ -117,13 +115,10 @@
 .aset-screen__head h2 { font-size: var(--fs-md); margin: 0; }
 .aset-screen__change { display: inline-flex; align-items: center; gap: 2px; min-height: 44px; padding: 0 4px; }
 .aset-screen__h { margin: 18px 0 8px; font-size: var(--fs-sm); font-weight: 600; color: var(--t2); }
-.aset-screen__seg { margin: 8px 0; align-self: flex-start; width: fit-content; max-width: 100%; }
-.aset-screen__seg .seg__b { min-height: 44px; }
 .aset-screen__can { margin: 10px 2px 18px; }
 .aset__more { margin-top: 18px; }
 .aset__more-hint { font-weight: 400; color: var(--t3); }
-.aset-screen__sw .sset-row { display: flex; }
-@media (max-width: 430px) { .aset-screen__sw .sset-row__t { font-size: var(--fs-md); } .aset__more-hint { display: none; } }
+@media (max-width: 430px) { .aset__more-hint { display: none; } }
 .aset__more > summary { min-height: 44px; display: flex; align-items: center; cursor: pointer; font-size: var(--fs-sm); font-weight: 600; color: var(--t2); }
 
 /* The assistant's panel: a dialog on the computer, a sheet on the phone; Settings tokens only. */
@@ -155,16 +150,6 @@
 .assistant-suggestions__chip { min-height: 44px; padding: 0 14px; border-radius: var(--r-pill); background: var(--sub); box-shadow: inset 0 0 0 1px var(--line); color: var(--t1); font: inherit; font-size: var(--fs-sm); cursor: pointer; }
 .assistant-suggestions__chip:hover { background: var(--hov); }
 
-.aset-recent { margin-top: 8px; }
-.aset-recent > summary { min-height: 44px; display: flex; align-items: center; justify-content: space-between; cursor: pointer; font-size: var(--fs-sm); font-weight: 600; color: var(--t2); }
-/* The closed row ends in "›", as drawn; it turns down when open. */
-.aset-recent > summary::after { content: '›'; content: '›' / ''; font-size: var(--fs-lg); line-height: 1; color: var(--t3); }
-.aset-recent[open] > summary::after { transform: rotate(90deg); }
-.aset-recent__list { display: grid; margin: 0; padding: 0; list-style: none; }
-.aset-recent__list li { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; min-height: 44px; padding: 6px 0; border-top: 1px solid var(--line); font-size: var(--fs-sm); }
-.aset-recent__t { flex: 1 1 200px; min-width: 0; overflow-wrap: anywhere; }
-.aset-recent__n { width: 100%; color: var(--t3); font-size: var(--fs-xs); }
-.aset-recent__list .ui-btn--link { min-height: 44px; }
 .assistant-working__actions .ui-btn { min-height: 44px; }
 
 /* The ask bar's text buttons (Add my assistant here, Tell whoever runs Flux …) get a 44 px target on a touch screen. */

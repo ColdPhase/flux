@@ -1,9 +1,8 @@
 """Browser tests for the rest of the assistant screen and journeys (F-027 A7, #407; AST-10.1, 10.5, 10.9 to 10.11).
 
 Same stubbed-engine approach as test_assistant_screen. This module covers: the request appearing in the stream as sent
-(Journey 1 step 6), Close on the waiting row (steps 8 and 9), "Ask my assistant…" outside a conversation (AST-10.10),
-suggestions only where the assistant is a member, the non-manager row that names the manager, turn-on that reuses what an
-earlier try made, the subscription-off row and axe on the assistant screens (AST-10.11). The Agents tab's policy row (AST-3.6) is test_agents_handoff's.
+(Journey 1 step 6), the waiting card with its Approve (steps 8 and 9), "Ask my assistant…" outside a conversation (AST-10.10),
+turn-on that reuses what an earlier try made, the subscription-off row and axe on the assistant screens (AST-10.11).
 """
 
 from __future__ import annotations
@@ -41,92 +40,13 @@ class AssistantFinish(unittest.TestCase):
         locals()[_name] = getattr(base.AssistantScreen, _name)
     del _name
 
-    def test_01_an_owner_with_a_project_and_a_colleague_who_manages_another(self) -> None:
+    def test_01_an_owner_with_a_project(self) -> None:
         original = base.ADA["email"]
         base.ADA["email"] = original.replace("ada.screen", "ada.finish")
         try:
             base.AssistantScreen.test_01_an_owner_with_a_project(self)
         finally:
             base.ADA["email"] = original
-        # Jonas manages a project of his own workspace and adds Ada as a member there: Ada is not a manager of it.
-        jonas = self.browser.new_context(service_workers="block", base_url=ORIGIN, viewport={"width": 1440, "height": 900})
-        self.addCleanup(jonas.close)
-        page = jonas.new_page()
-        page.goto("/sign-up")
-        page.get_by_label("Name").fill(JONAS["name"])
-        page.get_by_label("Email").fill(JONAS["email"])
-        page.get_by_label("Password").fill(PASSWORD)
-        page.get_by_role("button", name="Create account").click()
-        expect(page.get_by_role("heading", level=1, name="Home")).to_be_visible()
-        ws = self.api(page, "POST", "/api/v1/workspaces", {"name": "Garden sensors"}, status=201)
-        self.api(page, "POST", f"/api/v1/workspaces/{ws['id']}/members", {"email": original.replace("ada.screen", "ada.finish"), "role": "member"}, status=201)
-        project = self.api(page, "POST", f"/api/v1/workspaces/{ws['id']}/projects", {"name": "Soil probes", "visibility": "workspace"}, status=201)
-        thread = self.api(page, "POST", f"/api/v1/projects/{project['id']}/conversations", {"body": "The probes arrive Thursday", "clientMessageId": str(uuid.uuid4())}, status=201)
-        type(self).ids = {**self.ids, "jonas_project": project["id"], "jonas_conversation": thread["id"]}
-
-    # ---------------------------------------------------------------- suggestions and the non-manager row (AST-10, Journey 6)
-
-    def test_02_suggestions_show_only_where_the_assistant_is_a_member(self) -> None:
-        for member, shown in ((True, True), (False, False), (None, False)):
-            with self.subTest(member=member):
-                page = self.page()
-                self.stub_assistant(page, member=member)
-                self.stub_thread(page, [])
-                page.goto(self.thread_url())
-                expect(page.get_by_placeholder(re.compile("Reply in thread"))).to_be_visible()
-                expect(page.get_by_role("group", name="Suggestions for your assistant")).to_have_count(1 if shown else 0)
-
-    def test_03_a_manager_whose_assistant_is_not_in_the_project_is_told_before_asking_and_adds_it_in_one_tap(self) -> None:
-        for phone in (False, True):
-            with self.subTest(phone=phone):
-                page = self.page(phone=phone)
-                world = self.stub_assistant(page, member=False)
-                self.stub_thread(page, [])
-                page.goto(f"{self.thread_url()}?ask=1")
-                bar = page.locator("#project-ask")
-                expect(bar).to_contain_text("I'm not in this space yet.")
-                expect(bar).not_to_contain_text("A manager can add me")
-                add = bar.get_by_role("button", name="Add my assistant here")
-                if phone:
-                    self.assertGreaterEqual(add.bounding_box()["height"], 44)
-                shot(page, f"j6-not-in-project-proactive-{self.tag(phone)}")
-                granted: list[str] = []
-
-                def grant(route: Route) -> None:
-                    granted.append(route.request.url)
-                    world["agents"]["assistantJoin"]["canRequest"] = False
-                    self.json(route, {"id": str(uuid.uuid4())}, 201)
-                page.route(re.compile(r".*/api/v1/projects/[0-9a-f-]{36}/grants$"), grant)
-                add.click()
-                expect(bar).not_to_contain_text("I'm not in this space yet.")
-                self.assertEqual(len(granted), 1)
-
-    def test_04_a_member_who_does_not_manage_asks_the_manager_by_name(self) -> None:
-        for phone in (False, True):
-            with self.subTest(phone=phone):
-                page = self.page(phone=phone)
-                world = self.stub_assistant(page, member=False)
-                posted: list[str] = []
-
-                def join(route: Route) -> None:
-                    posted.append(route.request.url)
-                    world["agents"]["joinRequests"] = [{"id": str(uuid.uuid4()), "ownerUserId": base.ADA["id"], "state": "pending", "projectId": self.ids["jonas_project"]}]
-                    world["agents"]["assistantJoin"]["canRequest"] = False
-                    self.json(route, {"id": str(uuid.uuid4()), "state": "pending"}, 201)
-                page.route(re.compile(r".*/api/v1/projects/[0-9a-f-]{36}/assistant-join-requests$"), join)
-                page.route(re.compile(r".*/api/v1/conversations/[0-9a-f-]{36}/assistant-answers\?.*"), lambda route: self.json(route, {"items": [], "total": 0, "limit": 100, "offset": 0}))
-                page.route(re.compile(r".*/api/v1/assistant-runs\?limit=\d+$"), lambda route: self.json(route, {"items": [], "total": 0, "limit": 10, "offset": 0}))
-                page.goto(f"/projects/{self.ids['jonas_project']}/conversations/{self.ids['jonas_conversation']}?ask=1")
-                bar = page.locator("#project-ask")
-                expect(bar).to_contain_text("I'm not in this space yet. A manager can add me.")
-                expect(page.get_by_role("group", name="Suggestions for your assistant")).to_have_count(0)
-                ask = bar.get_by_role("button", name="Ask Jonas to add me")
-                expect(ask).to_be_visible()
-                shot(page, f"j6-not-in-project-member-{self.tag(phone)}")
-                ask.click()
-                expect(bar).to_contain_text("Asked Jonas to add me. I'll do this when they do.")
-                expect(bar.get_by_role("button", name=re.compile("to add me"))).to_have_count(0)
-                self.assertEqual(len(posted), 1)
 
     # ---------------------------------------------------------------- Journey 1 step 6: the request appears in the stream as sent
 
@@ -185,55 +105,52 @@ class AssistantFinish(unittest.TestCase):
         self.stub_ask(page, error={"code": "PERSONAL_RUN_NO_PROJECT_ACCESS", "message": "Your assistant has no access to this project"})
         page.goto(self.thread_url())
         page.get_by_role("group", name="Suggestions for your assistant").get_by_role("button", name="Catch me up").click()
-        expect(page.locator("#project-ask")).to_contain_text("I'm not in this space yet.")
+        expect(page.locator("#project-ask")).to_contain_text("You can't open this space any more, so neither can your assistant.")
         self.assertEqual(len(self.messages(page, self.ids["conversation"])), before)
 
-    # ---------------------------------------------------------------- Journey 1 steps 8 and 9: Close
+    # ---------------------------------------------------------------- Journey 1 steps 8 and 9: Approve
 
     def change(self, **values) -> dict:
         change = {"id": str(uuid.uuid4()), "runId": self.ids["run"], "projectId": self.ids["project"], "conversationId": self.ids["conversation"],
                   "operation": "work.update", "objectType": "work", "objectId": str(uuid.uuid4()), "objectTitle": "#3 Calibrate the probes", "state": "applied",
-                  "waitReason": None, "phrase": "rename task", "verb": "Rename", "line": None, "suggestTo": None, "sent": False, "decidedBy": None, "runState": "done",
-                  "before": "Probes", "after": "Calibrate the probes", "undoable": True, "version": 1, "createdAt": NOW, "expiresAt": "2026-10-24T09:00:00.000Z"}
+                  "waitReason": None, "phrase": "rename task", "verb": "Rename", "line": None, "forPerson": None, "done": "renamed task #3 Calibrate the probes", "decidedBy": None,
+                  "owner": {"id": base.ADA["id"], "name": base.ADA["name"]}, "runState": "done", "before": "Probes", "after": "Calibrate the probes", "undoable": True, "version": 1, "createdAt": NOW}
         change.update(values)
         return change
 
-    def test_07_waiting_to_close_two_tasks_is_one_tap_on_the_objects_own_verb(self) -> None:
+    def test_07_changing_what_jonas_made_waits_on_a_card_and_approve_adds_it_to_the_line(self) -> None:
         for phone in (False, True):
             with self.subTest(phone=phone):
                 type(self).ids = {**self.ids, "run": str(uuid.uuid4())}
                 page = self.page(phone=phone)
                 self.stub_assistant(page)
                 self.stub_thread(page, [])
-                items = [self.change(objectTitle=f"#{number} Task {number}", phrase="rename task") for number in (3, 5, 9)]
-                items += [self.change(state="waiting", waitReason="others", phrase="close task", verb="Close", objectTitle=f"#{number} Duplicate {number}", before=None, after=None,
-                                      undoable=False, line="Jonas made it, so I'm asking first") for number in (4, 11)]
+                items = [self.change(objectTitle=f"#{number} Task {number}", done=f"renamed task #{number} Task {number}") for number in (3, 5)]
+                items.append(self.change(state="waiting", waitReason="others", phrase="close task", verb="Close", objectTitle="#4 Duplicate", before=None, after=None,
+                                         undoable=False, line="Jonas's task: other people's things wait for your OK.", done="closed task #4 Duplicate"))
                 current = {"items": items}
                 applied: list[str] = []
                 page.route(re.compile(r".*/api/v1/conversations/[0-9a-f-]{36}/assistant-changes$"), lambda route: self.json(route, current))
 
                 def apply(route: Route) -> None:
                     applied.append(route.request.url.rsplit("/", 1)[1])
-                    decided = []
-                    for item in current["items"]:
-                        if item["state"] == "waiting":
-                            item.update(state="applied_after_wait", waitReason=None, line="Approved by Ada Brandt", version=2, undoable=True)
-                            decided.append({"change": item, "message": None})
-                    self.json(route, {"changes": decided})
-                page.route(re.compile(r".*/api/v1/assistant-runs/[0-9a-f-]{36}/changes/apply$"), apply)
+                    item = items[-1]
+                    item.update(state="applied_after_wait", waitReason=None, line="Approved by Ada Brandt", version=2, undoable=True)
+                    self.json(route, {"change": item, "message": None})
+                page.route(re.compile(r".*/api/v1/assistant-changes/[0-9a-f-]{36}/apply$"), apply)
                 page.goto(self.thread_url())
-                card = page.get_by_label("Your assistant's changes")
-                expect(card).to_contain_text("Waiting for you: close 2 tasks")
-                expect(card.get_by_role("button", name="Close", exact=True)).to_be_visible()
-                expect(card.get_by_role("button", name="Review")).to_be_visible()
-                shot(page, f"j1-waiting-close-{self.tag(phone)}")
-                card.get_by_role("button", name="Close", exact=True).click()
+                card = page.locator(".assistant-waiting__card")
+                expect(card).to_contain_text("Assistant wants to close task #4 Duplicate")
+                expect(card).to_contain_text("Jonas's task: other people's things wait for your OK.")
+                expect(card.get_by_role("button", name="Skip", exact=True)).to_be_visible()
+                shot(page, f"j1-waiting-{self.tag(phone)}")
+                card.get_by_role("button", name="Approve", exact=True).click()
                 self.assertEqual(applied, ["apply"])
-                message = page.get_by_label("What your assistant changed")
-                expect(message.get_by_role("status").first).to_contain_text("closed 2 tasks")
-                expect(message.get_by_role("button", name="Undo").first).to_be_visible()
-                expect(page.get_by_label("Your assistant's changes").get_by_text("Waiting for you")).to_have_count(0)
-                shot(page, f"j1-closed-{self.tag(phone)}")
+                line = page.get_by_label("What your assistant changed").locator(".assistant-message__line")
+                expect(line).to_contain_text("closed task #4 Duplicate")
+                expect(line.get_by_role("button", name="Undo", exact=True)).to_be_visible()
+                expect(page.locator(".assistant-waiting__card")).to_have_count(0)
+                shot(page, f"j1-approved-{self.tag(phone)}")
 
     # ---------------------------------------------------------------- AST-10.10: Ask my assistant… outside a conversation
 
@@ -323,7 +240,7 @@ class AssistantFinish(unittest.TestCase):
         for phone in (False, True):
             with self.subTest(phone=phone):
                 page = self.page(phone=phone)
-                world = self.stub_assistant(page, member=True)
+                world = self.stub_assistant(page)
                 world["status"].update(state="unavailable", unavailableReason="runtime_off")
                 self.stub_thread(page, [])
                 told: list[str] = []

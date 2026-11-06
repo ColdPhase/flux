@@ -1,4 +1,5 @@
 import { AGENT_MCP_ENTRIES, type AgentMcpCapabilityId, type AgentMcpPolicy } from './agent-mcp-policy.js';
+import type { AgentMayDo } from './agent-proposals.js';
 
 export const ASSISTANT_AREAS = [
   { id: 'tasks', label: 'Read and edit tasks', reads: ['project.work.read', 'project.results.read'],
@@ -16,11 +17,13 @@ export type AssistantAreas = Record<AssistantAreaId, AssistantAreaMode>;
 export const DEFAULT_ASSISTANT_AREAS: Readonly<AssistantAreas> = {
   tasks: 'edit', wiki: 'edit', maps: 'edit', conversations: 'edit', decisions: 'edit',
 };
-export const ASSISTANT_LIMITS = { changesPerRun: { min: 1, max: 20, default: 20 },
-  backgroundRunsPerDay: { min: 0, max: 24, default: 24 } } as const;
-const CONTEXT_CAPABILITIES: AgentMcpCapabilityId[] = ['project.identity.read', 'project.policy.read'];
+export const ASSISTANT_LIMITS = { backgroundRunsPerDay: { min: 0, max: 24, default: 24 } } as const;
+const CONTEXT_CAPABILITIES: AgentMcpCapabilityId[] = ['project.identity.read'];
 
-/** The one public area mapping. Membership is explicit: unrelated co-work/bootstrap entries stay off. */
+/**
+ * The assistant's tools cover these areas; it has no switches of its own (F-036): its owner's rights and its "What it may
+ * do" decide. Membership is explicit: unrelated co-work/bootstrap entries stay off.
+ */
 export function compileAssistantAreas(areas: Readonly<AssistantAreas>): Pick<AgentMcpPolicy, 'enabledCapabilityIds' | 'enabledEntryIds'> {
   const capabilityIds = new Set<AgentMcpCapabilityId>(CONTEXT_CAPABILITIES);
   for (const area of ASSISTANT_AREAS) {
@@ -39,11 +42,11 @@ export function compileAssistantAreas(areas: Readonly<AssistantAreas>): Pick<Age
 const NOT_FOR_RUNS = new Set<AgentMcpCapabilityId>(['cowork.playbook.read', 'connection.runtime.read']);
 
 /**
- * The change tools an assistant run may be listed (F-027 AST-4, A3 #403): the switch-mapped operations of
- * AST-4's table with their own run-private input (no runtime or standing grant; the run is the authority).
- * Not listed: undo of a created task (A4), the question card, and every other co-work unit tool (claim, renew, release, complete,
- * transfer, requests). The own-agent hand-off `flux_create_unit` is listed with its own run-private input (`assistant-unit-create/v1`) and
- * its own bounded adapter. Never listed (AST-5 6-8): access, decisions' acceptance and anything outside the run's place have no tool at all.
+ * The change tools an assistant run may be listed (A3 #403): its run-private input has no runtime or standing grant; the run
+ * is the authority. Not listed: undo of a created task, the question card, and every other co-work unit tool (claim, renew,
+ * release, complete, transfer, requests). The own-agent hand-off `flux_create_unit` is listed with its own run-private input
+ * (`assistant-unit-create/v1`) and its own bounded adapter. Never listed (F-036 AG-3 "Never possible"): approving, access,
+ * decisions' acceptance and anything outside the run's place have no tool at all.
  */
 export const ASSISTANT_RUN_EFFECT_TOOLS = [
   'flux_create_task', 'flux_update_task', 'flux_record_result', 'flux_propose_decision', 'flux_create_unit',
@@ -54,11 +57,10 @@ export const ASSISTANT_RUN_EFFECT_TOOLS = [
 ] as const;
 
 /**
- * The exact Flux tools of one assistant run, from the owner's switches (F-027 AST-4, A2/A3): every read tool
- * the saved S6 policy enables and, with `flux.action.execute` in `scopes`, every enabled change tool of
- * `ASSISTANT_RUN_EFFECT_TOOLS`, sorted. *Only read* lists the reads without the changes (AST-4.3). The same
- * list serves `server` and `runtime` runs, so both engines see the same tools and the MCP route lists
- * exactly these to the run's token.
+ * The exact Flux tools of one assistant run: every read tool the assistant's policy enables and, with `flux.action.execute` in
+ * `scopes`, every change tool of `ASSISTANT_RUN_EFFECT_TOOLS`, sorted. "Only read" passes only the read scope, so its run lists
+ * the reads without the changes (F-036 AG-3). The same list serves `server` and `runtime` runs, so both engines see the same
+ * tools and the MCP route lists exactly these to the run's token.
  */
 export function assistantRunTools(policy: Pick<AgentMcpPolicy, 'enabledCapabilityIds' | 'enabledEntryIds'>, scopes: readonly string[]): string[] {
   const effects = new Set<string>(ASSISTANT_RUN_EFFECT_TOOLS);
@@ -74,100 +76,34 @@ export function assistantRunScopes(tools: readonly string[]): string[] {
   return tools.some((name) => effects.has(name)) ? ['flux.context.read', 'flux.action.execute'] : ['flux.context.read'];
 }
 
-/** Projection only; the saved S6 policy remains the single authority store. */
-export function assistantAreasFromPolicy(policy: Pick<AgentMcpPolicy, 'enabledCapabilityIds' | 'enabledEntryIds'>): AssistantAreas {
-  const result = { ...DEFAULT_ASSISTANT_AREAS };
-  for (const area of ASSISTANT_AREAS) {
-    const reads = area.reads.every((id) => policy.enabledCapabilityIds.includes(id));
-    const effects = area.operations.some((id) => policy.enabledCapabilityIds.includes(id));
-    result[area.id] = !reads ? 'off' : effects ? 'edit' : 'read';
-  }
-  return result;
-}
-
-/** Only explicitly patched areas acquire the current entry set; approval/limit saves never admit new tools. */
-export function patchAssistantAreas(policy: AgentMcpPolicy, changes: Partial<AssistantAreas>) {
-  const capabilities = new Set(policy.enabledCapabilityIds);
-  const entries = new Set(policy.enabledEntryIds);
-  for (const area of ASSISTANT_AREAS) {
-    const mode = changes[area.id];
-    if (mode === undefined) continue;
-    const owned = new Set<AgentMcpCapabilityId>([...area.reads, ...area.operations]);
-    for (const id of owned) capabilities.delete(id);
-    for (const entry of AGENT_MCP_ENTRIES) if (entry.requiredCapabilities.some((id) => owned.has(id))) entries.delete(entry.id);
-    if (mode !== 'off') for (const id of area.reads) capabilities.add(id);
-    if (mode === 'edit') for (const id of area.operations) capabilities.add(id);
-    for (const entry of AGENT_MCP_ENTRIES) if (entry.requiredCapabilities.some((id) => owned.has(id))
-      && entry.requiredCapabilities.every((id) => capabilities.has(id))) entries.add(entry.id);
-  }
-  return { enabledCapabilityIds: [...capabilities].sort(), enabledEntryIds: [...entries].sort() };
-}
-
-/**
- * The one "Can" sentence (F-027 AST-10 Journey 3): the assistant screen, its panel, the hand-off picker and the
- * agent page all print this text, generated from the same switches, so it can never disagree with them.
- */
-export function assistantCanSentence(areas: Readonly<AssistantAreas>, approvalMode: 'act' | 'ask' = 'act'): string {
-  const named = (ids: AssistantAreaId[], mode: AssistantAreaMode) => ids.filter((id) => areas[id] === mode);
-  const words = { tasks: 'tasks', wiki: 'the Wiki', maps: 'maps' } as const;
-  const join = (items: string[]) => items.length < 2 ? items.join('') : `${items.slice(0, -1).join(', ')} and ${items[items.length - 1]}`;
-  const parts: string[] = [];
-  const edits = named(['tasks', 'wiki', 'maps'], 'edit').map((id) => words[id as keyof typeof words]);
-  const reads = named(['tasks', 'wiki', 'maps'], 'read').map((id) => words[id as keyof typeof words]);
-  if (edits.length) parts.push(`read and edit ${join(edits)}`);
-  if (reads.length) parts.push(`read ${join(reads)}`);
-  if (areas.conversations === 'edit') parts.push('reply in conversations');
-  else if (areas.conversations === 'read') parts.push('read conversations');
-  if (areas.decisions === 'edit') parts.push('suggest decisions');
-  else if (areas.decisions === 'read') parts.push('read decisions');
-  if (!parts.length) return "Can't do anything yet. Every switch is off.";
-  const head = parts.join(', ');
-  const ask = approvalMode === 'ask'
-    ? 'Asks before changing anything.'
-    : 'Asks before removing anything or changing things other people made or are responsible for.';
-  return `${head[0]!.toUpperCase()}${head.slice(1)}. ${ask} Can't accept decisions or invite people.`;
-}
-
+/** The owner's assistant settings. Its "What it may do" is the assistant connection's own row (`mayDo`), read here for the screen. */
 export interface AssistantSettings {
   workspaceId: string; ownerUserId: string; agentId: string; connectionId: string;
-  approvalMode: 'act' | 'ask'; changesPerRun: number; backgroundRunsPerDay: number;
-  areas: AssistantAreas; projectMode: 'all' | 'chosen'; policy: AgentMcpPolicy;
+  mayDo: AgentMayDo; backgroundRunsPerDay: number;
   version: number; createdAt: string; updatedAt: string;
 }
 export interface UpdateAssistantSettings {
-  approvalMode?: 'act' | 'ask'; changesPerRun?: number; backgroundRunsPerDay?: number;
-  areas?: Partial<AssistantAreas>; projectMode?: 'all' | 'chosen'; selectedProjectIds?: string[];
+  backgroundRunsPerDay?: number;
   expectedVersion?: number;
-}
-export interface AssistantJoinRequest {
-  id: string; workspaceId: string; projectId: string; ownerUserId: string; agentId: string; connectionId: string;
-  state: 'pending' | 'accepted' | 'declined'; version: number; createdAt: string; updatedAt: string;
 }
 export const assistantSettingsPath = (workspaceId: string, ownerUserId: string) =>
   `/api/v1/workspaces/${workspaceId}/assistants/${ownerUserId}/settings`;
-export const assistantJoinRequestPath = (projectId: string) => `/api/v1/projects/${projectId}/assistant-join-requests`;
-export const assistantJoinRequestAllowPath = (projectId: string, requestId: string) => `${assistantJoinRequestPath(projectId)}/${requestId}/allow`;
 /** "Tell whoever runs Flux" (F-027 Journey 6): one Needs-you item to the workspace's owners; the body may name the plan (`claude_code`, the default, or `codex`). */
 export const assistantOperatorRequestPath = (workspaceId: string) => `/api/v1/workspaces/${workspaceId}/assistant-operator-requests`;
-/** Project-scoped join questions lead to the manager's existing Agents request area. */
-export const assistantJoinInboxPath = (notificationId: string) => `/inbox/${notificationId}`;
 
-// --- The change log, waiting changes and suggestions (F-027 AST-5/AST-6, A3 #403) ---
+// --- The change log, waiting changes and Undo (F-036 AG-3, AG-7, #855) ---
 
 export const ASSISTANT_CHANGE_LIMITS = {
-  /** A waiting change can be applied for seven days, never longer (AST-5). */
-  expiryDays: 7,
-  /** Undecided waiting changes move to Inbox ten minutes after the run ends (UX review P2-4). */
-  inboxAfterMinutes: 10,
   /** The prepared tool call a waiting change keeps (the CHECK on `prepared_command`). */
   preparedBytes: 65_536,
-  /** A background run (a stored schedule or reaction) may change at most this much; an interactive request up to the owner's limit of 20 (AST-6 "Limits"). */
-  backgroundChangesPerRun: 10,
 } as const;
-export type AssistantChangeState = 'applied' | 'waiting' | 'applied_after_wait' | 'not_now' | 'expired' | 'undone' | 'refused';
-/** Why a change waits: Ask me first, a removal, another person's thing, a live Wiki typist, the run's limit,
- * outside the owner's rights (a suggestion), or a deferred edit whose page changed meanwhile. */
-export type AssistantWaitReason = 'ask' | 'removal' | 'others' | 'live_wiki' | 'limit' | 'outside_rights' | 'conflict';
+/** `skipped`: the owner chose Skip (or Keep, for a deletion). */
+export type AssistantChangeState = 'applied' | 'waiting' | 'applied_after_wait' | 'skipped' | 'undone' | 'refused';
+/**
+ * Why a change waits (F-036 AG-3): the agent's "What it may do" is Ask me first, it deletes something, or it changes another
+ * person's thing (including a task for another person). Nothing else waits, and nothing waiting expires.
+ */
+export type AssistantWaitReason = 'ask' | 'removal' | 'others';
 export type AssistantObjectType = 'work' | 'doc' | 'map' | 'thought' | 'link' | 'message' | 'result' | 'decision';
 
 /** One row of the change log, as its owner sees it. Nobody else sees a waiting change. */
@@ -186,38 +122,37 @@ export interface AssistantChange {
   /** The phrase and the object's own verb: "close task" and "Close". */
   phrase: string;
   verb: string;
-  /** Plain words for a waiting, deferred, suggested, refused or expired change, and where a hand-off stands; null for any other applied one. */
+  /** Plain words for a waiting or refused change, and where a hand-off stands; null for any other applied one. */
   line: string | null;
-  /** A suggestion's recipient, by name, and whether it was sent. */
-  suggestTo: { id: string; name: string } | null;
-  sent: boolean;
-  /** Saved user-facing words of a typed suggestion. */
-  preview?: string;
-  /** Who approved it ("approved by Ada"), for a change applied after a wait; who took it back, for an undone one. */
+  /** A task proposed for another person: who it is for. [Approve] [Edit] [Skip] (F-036 AG-3). */
+  forPerson: { id: string; name: string } | null;
+  /** Who approved it ("Approved by Ada"), for a change applied after a wait; who took it back, for an undone one. */
   decidedBy: { id: string; name: string } | null;
-  /** Whose assistant made it: the message reads "Ada's assistant" for everyone who can read the conversation. Optional for older servers. */
-  owner?: { id: string; name: string };
+  /** Whose agent made it: the message reads "Ada's assistant" for everyone who can read the conversation. */
+  owner: { id: string; name: string };
   /** Where the run is: its message (header, Undo) shows once it is no longer working. */
   runState: 'working' | 'done' | 'stopped' | 'failed';
+  /** What an applied change did, in past words for the message's change line: "updated the Wiki page Calibration", "moved #4 to In progress". */
+  done: string;
   /** Before and after of what the change did, in words ("Probes", "Calibrate the probes"); null when there is nothing to show. */
   before: string | null;
   after: string | null;
-  /** An applied change the assistant can still take back (the domain may still refuse: "Changed since"). */
+  /** An applied change the viewer can still take back (the domain may still refuse: "Changed since"). */
   undoable: boolean;
   version: number;
   createdAt: string;
-  expiresAt: string;
 }
 export interface AssistantChangeDecision {
   change: AssistantChange;
-  /** "Changed since you asked. Ask again", when Apply found the target changed and applied nothing. */
+  /** "Changed since you asked", when Approve found the target changed and applied nothing. */
   message: string | null;
 }
 export interface AssistantChangesDecided { changes: AssistantChangeDecision[] }
 /** Undo of a whole run's message: each item's result and the sentence "Undid 5 changes. 2 changed since: #4, #7". */
 export interface AssistantRunUndone { changes: AssistantChangeDecision[]; undone: number; changedSince: string[]; message: string }
+/** `POST …/edit`: the owner changes a task proposed for another person before approving it (F-036 AG-3 [Edit]). */
+export interface EditAssistantChangeCommand { expectedVersion: number; title: string }
 
-export const ASSISTANT_CHANGES_PATH = '/api/v1/assistant-changes';
 export const conversationAssistantChangesPath = (conversationId: string) => `/api/v1/conversations/${conversationId}/assistant-changes`;
 /**
  * Who has an assistant working in a conversation right now (F-027 AST-6 "Visible to everyone"): names and nothing else, so everyone who can
@@ -228,10 +163,13 @@ export interface AssistantActivity { working: { ownerId: string; ownerName: stri
 /** Project-audience event, identifiers only: an assistant started or stopped working in a conversation. Readers refetch the activity. */
 export const ASSISTANT_WORKING_EVENT = 'project.assistant_working.v1';
 export const assistantRunChangesPath = (runId: string) => `/api/v1/assistant-runs/${runId}/changes`;
-/** `apply` (Apply all), `not-now`, or `inbox` (the owner left the conversation) for a run's waiting changes. */
-export const assistantRunChangesActionPath = (runId: string, action: 'apply' | 'not-now' | 'inbox' | 'undo') => `/api/v1/assistant-runs/${runId}/changes/${action}`;
-/** `apply`, `not-now`, `send` (a suggestion) or `undo` for one change; the body names its `expectedVersion`. */
-export const assistantChangeActionPath = (changeId: string, action: 'apply' | 'not-now' | 'send' | 'undo' | 'accept' | 'dismiss') => `/api/v1/assistant-changes/${changeId}/${action}`;
+/**
+ * `apply` (Approve all), `skip` (Skip all) or `undo` (the Undo on the run's message). Only the owner, in their own signed-in session,
+ * approves or skips; no agent or client has a tool or token for it (F-036 AG-3).
+ */
+export const assistantRunChangesActionPath = (runId: string, action: 'apply' | 'skip' | 'undo') => `/api/v1/assistant-runs/${runId}/changes/${action}`;
+/** `apply` (Approve, or Delete for a deletion), `skip` (Skip, or Keep), `edit` (a task for another person) or `undo` for one change. */
+export const assistantChangeActionPath = (changeId: string, action: 'apply' | 'skip' | 'edit' | 'undo') => `/api/v1/assistant-changes/${changeId}/${action}`;
 
 const PHRASES: Record<string, { phrase: string; verb: string; noun: string }> = {
   'work.create': { phrase: 'add', verb: 'Add', noun: 'task' },
@@ -291,21 +229,38 @@ export function assistantChangeSummary(changes: readonly Pick<AssistantChange, '
   }).join(', ');
 }
 
-/** The button of a batch: the object's own verb when all agree, *Apply* only for a mix. */
-export function assistantBatchVerb(changes: readonly Pick<AssistantChange, 'verb'>[]): string {
-  const verbs = new Set(changes.map((change) => change.verb));
-  return verbs.size === 1 ? [...verbs][0]! : 'Apply';
-}
-
-/** The run message's header: "Done: added 2 tasks, edited 1 page", or "Stopped after 3 changes" (AST-6.4, AST-10.13). */
-export function assistantMessageHeader(changes: readonly Pick<AssistantChange, 'phrase' | 'runState'>[]): string {
-  if (changes.length && changes[0]!.runState === 'stopped') return `Stopped after ${changes.length} change${changes.length === 1 ? '' : 's'}`;
-  return `Done: ${assistantChangeSummary(changes.map((change) => ({ phrase: assistantPastPhrase(change.phrase) })))}`;
-}
 const PAST: Record<string, string> = { add: 'added', change: 'changed', close: 'closed', rename: 'renamed', record: 'recorded', propose: 'proposed',
   edit: 'edited', remove: 'removed', move: 'moved', post: 'posted', set: 'set', hand: 'handed' };
 /** "add task" becomes "added task" for a message about what already happened. */
 export function assistantPastPhrase(phrase: string): string {
   const space = phrase.indexOf(' ');
   return `${PAST[phrase.slice(0, space)] ?? phrase.slice(0, space)} ${phrase.slice(space + 1)}`;
+}
+
+const STATUS_WORDS: Record<string, string> = { open: 'Open', in_progress: 'In progress', blocked: 'Blocked', done: 'Done', not_pursued: 'Not pursued' };
+const DONE_NOUNS: Record<string, string> = { work: 'task', doc: 'the Wiki page', map: 'the map', thought: 'the thought', link: 'a link', message: 'a message',
+  result: 'the result', decision: 'the decision' };
+/**
+ * What one applied change did, in past words (F-036 AG-3 change line): "updated the Wiki page Calibration", "moved #4 to In progress",
+ * "added task #7 Order sensors". `status` is a task change's new status, when it changed one.
+ */
+export function assistantDoneWords(change: { operation: string; objectType: AssistantObjectType; objectTitle: string; status?: string | null; phrase: string }): string {
+  const title = change.objectTitle.trim();
+  const number = change.objectType === 'work' ? title.split(' ')[0] ?? '' : '';
+  if (change.operation === 'work.update' && change.status && change.status !== 'done') return `moved ${number || 'a task'} to ${STATUS_WORDS[change.status] ?? change.status}`;
+  if (change.operation === 'doc.update') return `updated ${DONE_NOUNS.doc} ${title}`.trim();
+  if (change.operation === 'doc.create') return `added ${DONE_NOUNS.doc} ${title}`.trim();
+  const past = assistantPastPhrase(change.phrase);
+  return title ? `${past} ${change.objectType === 'work' ? title : `${title}`}` : past;
+}
+
+/**
+ * The change line of an agent's message (F-036 AG-3): the same change words once, with the count of changes to one object,
+ * "Updated the Wiki page Calibration (3 changes) · moved #4 to In progress". The message adds "· Undo" or "· Undone by Ada".
+ */
+export function assistantChangeLine(changes: readonly Pick<AssistantChange, 'done'>[]): string {
+  const counts = new Map<string, number>();
+  for (const change of changes) counts.set(change.done, (counts.get(change.done) ?? 0) + 1);
+  const line = [...counts].map(([done, count]) => count > 1 ? `${done} (${count} changes)` : done).join(' · ');
+  return line ? `${line[0]!.toUpperCase()}${line.slice(1)}` : '';
 }

@@ -60,8 +60,6 @@ async function fixture() {
     const projectId = String(project.id);
     const agent = expect(await owner.request('POST', `/api/v1/workspaces/${ws.id}/agents`,
       { body: { name: 'Research partner', owner: 'self' } }), 201);
-    expect(await owner.request('POST', `/api/v1/projects/${projectId}/grants`,
-      { body: { principal: { kind: 'agent', id: agent.id }, role: 'contributor' } }), 201);
     const doc = expect(await owner.request('POST', `/api/v1/projects/${projectId}/docs`,
       { body: { title: 'Calibration notes', body: 'Private calibration observation' } }), 201);
     const connection = await agentConnection(pool, owner, String(agent.id), [projectId], undefined, 'codex');

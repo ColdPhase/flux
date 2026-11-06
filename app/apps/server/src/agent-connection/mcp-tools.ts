@@ -3,7 +3,6 @@ import { z } from 'zod';
 import { agentProposalRepository, accessReader, type Database } from '@flux/db';
 import { agentProposalUseCases, coworkServerInstructions, enforce, evaluateProject, recordEvent } from '@flux/core';
 import { registerAgentPlaybook } from './playbook.js';
-import { registerAgentPolicyResource } from './project-policy.js';
 import { agentToolRegistry } from './tool-registry.js';
 import { registerAgentBootstrap } from './bootstrap.js';
 import { registerAgentDomainReads } from './domain-reads.js';
@@ -51,7 +50,6 @@ export function createFluxMcpServer(db: Database, claims: FluxMcpClaims & { disp
   });
   const tools = agentToolRegistry(server, claims.dispatch, run ? (result) => boundRunResult(db, run.id, result as { content?: unknown }) : undefined, claims.scopes, run ? { projectId: run.projectId } : undefined);
   registerAgentPlaybook(run ? toolsOnly(server) : server, tools, db, claims);
-  registerAgentPolicyResource(run ? toolsOnly(server) : server, db, claims);
   registerAgentDomainReads(tools.forScope('flux.context.read'), db, claims, cursorSecret);
   registerAgentBootstrap(tools, db, claims);
   registerAgentWorkActions(tools, db, claims);

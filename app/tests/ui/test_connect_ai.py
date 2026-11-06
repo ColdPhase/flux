@@ -131,7 +131,6 @@ class ConnectAiJourney(unittest.TestCase):
         self.api(ines, "POST", f"/api/v1/workspaces/{ws['id']}/members", {"email": TOM["email"], "role": "member"}, status=201)
         project = self.api(ines, "POST", f"/api/v1/workspaces/{ws['id']}/projects", {"name": "Two ways", "visibility": "workspace"}, status=201)
         agent = self.api(ines, "POST", f"/api/v1/workspaces/{ws['id']}/agents", {"name": "Ines's coding agent", "owner": "self"}, status=201)
-        self.api(ines, "POST", f"/api/v1/projects/{project['id']}/grants", {"principal": {"kind": "agent", "id": agent["id"]}, "role": "contributor"}, status=201)
         connection = self.api(ines, "POST", "/api/v1/agent-connections", {"agentId": agent["id"], "selectedProjectIds": [project["id"]],
                               "scopes": ["flux.context.read", "flux.proposal.write"], "name": CONNECTION, "clientDesignation": "codex"}, status=201)
         type(self).ids = {"workspace": ws["id"], "project": project["id"], "agent": agent["id"], "connection": connection["id"]}
@@ -238,7 +237,7 @@ class ConnectAiJourney(unittest.TestCase):
         expect(ines.get_by_role("region", name="Assistant join requests")).to_have_count(0)
         expect(rows.filter(has_text=CONNECTION)).to_have_count(1)
         expect(rows.filter(has_text=CONNECTION)).to_contain_text("for Ines")
-        # Settings keeps the owner’s assistant, payer and permitted project access reachable.
+        # Settings keeps the owner’s assistant and payer reachable.
         ines.goto("/settings/agents")
         flux = ines.get_by_role("region", name=MODE_A, exact=True)
         expect(flux).to_contain_text("Paid by")
@@ -365,8 +364,7 @@ class ConnectAiJourney(unittest.TestCase):
                         page.goto("/settings/assistant")
                         expect(page.get_by_role("heading", name="Your assistant", exact=True)).to_be_visible()
                         page.locator("details.aset__more > summary").click()
-                        expect(page.get_by_role("region", name="Your assistant’s project access")).to_contain_text("Your assistant has access to this project.")
-                        page.get_by_role("region", name="Your assistant’s project access").scroll_into_view_if_needed()
+                        expect(page.get_by_role("region", name="Your assistant’s project access")).to_have_count(0)
                         shot(page, f"assistant-own-settings-{'phone-390' if phone else 'desktop-1440'}-{UI_BROWSER}")
 
     def stub_runtime_on(self, page: Page, status: dict | None = None) -> None:

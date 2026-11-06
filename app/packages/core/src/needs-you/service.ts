@@ -1,5 +1,4 @@
 import {
-  assistantBatchVerb,
   assistantChangeSummary,
   type AssistantChange,
   MAX_SNOOZE_DAYS,
@@ -168,23 +167,15 @@ export function createNeedsYou(ports: NeedsYouPorts, now: () => Date = () => new
       if (noteId) questionNotes.set(item, noteId);
       items.push(item);
     }
-    const noteProjectIds = inbox.items.filter((note) => note.reason === 'question' && note.source.type === 'project'
-      && !!note.assistantRequestIdentity).map((note) => note.source.id);
-    if (noteProjectIds.length) for (const [id, name] of await ports.access.projectNames(noteProjectIds)) projectNames.set(id, name);
     for (const note of inbox.items) {
       if ((note.reason !== 'mention' && note.reason !== 'question' && note.reason !== 'invitation') || note.readAt || note.createdAt.getTime() < since) continue;
       // The question card above stands for it while open; once answered, nothing is left to do.
       if (note.reason === 'question' && questionOf(note.url)) continue;
       // Someone asking you something, or to join them, is a question; a mention is a mention.
       const kind: NeedsYouKind = note.reason === 'mention' ? 'mention' : 'question';
-      const assistantRequestIdentity = note.reason === 'question' ? note.assistantRequestIdentity ?? null : null;
       items.push({
-        key: `note:${note.id}`, kind, title: note.title, detail: excerpt(note.body),
-        project: assistantRequestIdentity && note.source.type === 'project'
-          ? { id: note.source.id, name: projectNames.get(note.source.id) ?? 'Space' } : null,
-        from: assistantRequestIdentity ? { kind: 'agent', id: assistantRequestIdentity.assistantId, name: assistantRequestIdentity.assistantName } : null,
+        key: `note:${note.id}`, kind, title: note.title, detail: excerpt(note.body), project: null, from: null,
         at: iso(note.createdAt), url: note.url ?? `/inbox/${note.id}`, decision: null, blocked: null, reason: note.reason, snoozeTask: null,
-        ...(assistantRequestIdentity ? { assistantRequestIdentity } : {}),
       });
     }
     // Suggestions agents you connected made through MCP (#661), one question each.
@@ -199,21 +190,22 @@ export function createNeedsYou(ports: NeedsYouPorts, now: () => Date = () => new
         proposal: { id: proposal.id, fact: proposal.fact, interpretation: proposal.interpretation, suggestedAction: proposal.suggestedAction, source: proposal.source },
       });
     }
-    // Your assistant's undecided waiting changes, one question per request (F-027 AST-5.6).
+    // One item per agent run with what waits for you (F-036 AG-7): "Assistant · 3 things wait for you · Approve all · Open".
+    // Reports of what an agent did never come here; they stay on its message.
     const runs = new Map<string, AssistantChange[]>();
-    for (const change of ports.assistant ? await ports.assistant.waiting(userId) : []) { const key = change.owner?.id !== userId && change.sent ? `suggestion:${change.id}` : change.runId; runs.set(key, [...(runs.get(key) ?? []), change]); }
+    for (const change of ports.assistant ? await ports.assistant.waiting(userId) : []) runs.set(change.runId, [...(runs.get(change.runId) ?? []), change]);
     if (runs.size) for (const [id, name] of await ports.access.projectNames([...new Set([...runs.values()].map((group) => group[0]!.projectId))])) projectNames.set(id, name);
     for (const [runId, group] of runs) {
       const head = group[0]!;
-      const suggestion = head.owner?.id !== userId && head.sent;
-      const summary = assistantChangeSummary(group);
+      const count = group.length;
       items.push({
-        key: `assistant:${runId}`, kind: 'question', title: suggestion ? `${head.owner?.name ?? 'Someone'}'s assistant suggests: ${head.phrase}${head.objectTitle ? ` ${head.objectTitle}` : ''}` : `Your assistant wants to ${summary}`,
-        detail: suggestion ? `Drafted by ${head.owner?.name ?? 'Someone'}'s assistant` : excerpt(group.map((change) => change.line).find(Boolean) ?? ''),
+        key: `assistant:${runId}`, kind: 'question', title: `${count} ${count === 1 ? 'thing waits' : 'things wait'} for you`,
+        detail: excerpt(assistantChangeSummary(group)),
         project: { id: head.projectId, name: projectNames.get(head.projectId) ?? 'Space' }, from: null, at: head.createdAt,
         url: `/projects/${head.projectId}/conversations/${head.conversationId}`, decision: null, blocked: null, reason: 'question', snoozeTask: null,
-        assistantChanges: { runId: head.runId, suggestion, verb: suggestion ? 'Accept' : assistantBatchVerb(group), summary,
-          changes: group.map((change) => ({ id: change.id, version: change.version, phrase: change.phrase, objectTitle: change.objectTitle, line: change.line, preview: change.preview })) },
+        assistantChanges: { runId, agentName: 'Assistant', summary: assistantChangeSummary(group),
+          changes: group.map((change) => ({ id: change.id, version: change.version, phrase: change.phrase, verb: change.verb, objectTitle: change.objectTitle,
+            line: change.line, waitReason: change.waitReason, forPerson: change.forPerson })) },
       });
     }
     for (const note of await ports.assistant?.notes?.(userId) ?? []) {

@@ -2,8 +2,8 @@ import assert from 'node:assert/strict';
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { before, beforeEach, describe, test } from 'node:test';
 import {
-  ASSISTANT_RUN_EFFECT_TOOLS, assistantRunTools, assistantSettingsPath, compileAssistantAreas, DEFAULT_ASSISTANT_AREAS, PERSONAL_RUN_CONSENT_VERSION, PERSONAL_RUN_LIMITS,
-  personalRunTokenPath, RUN_TOKEN_LIMITS, type AssistantSettings, type Conversation, type Project, type Workspace,
+  agentConnectionPath, ASSISTANT_RUN_EFFECT_TOOLS, assistantRunTools, assistantSettingsPath, compileAssistantAreas, DEFAULT_ASSISTANT_AREAS, PERSONAL_RUN_CONSENT_VERSION, PERSONAL_RUN_LIMITS,
+  personalRunTokenPath, RUN_TOKEN_LIMITS, type AgentMayDo, type AssistantSettings, type Conversation, type Project, type Workspace,
 } from '@flux/contracts';
 import { createPersonalRunProcessor, type PersonalComputeResult, type PersonalToolCall, type Principal } from '@flux/core';
 import { personalRunTokenRows } from '@flux/db';
@@ -61,9 +61,9 @@ describe('the run token and the worker as an MCP client of /mcp (F-027 A2, A6; #
   const PRIVATE_CANARY = `private-sketch-canary-${randomBytes(4).toString('hex')}`;
 
   const settings = async () => expectStatus(await owner.browser.request('GET', assistantSettingsPath(ws.id, owner.id)), 200) as unknown as AssistantSettings;
-  async function setWiki(mode: 'off' | 'read' | 'edit') {
-    const current = await settings();
-    expectStatus(await owner.browser.request('PATCH', assistantSettingsPath(ws.id, owner.id), { body: { areas: { wiki: mode } }, headers: { 'if-match': `"${current.version}"` } }), 200);
+  /** "What it may do" (F-036 AG-3), set by the owner in their own session. */
+  async function setMayDo(mayDo: AgentMayDo) {
+    expectStatus(await owner.browser.request('PATCH', agentConnectionPath((await settings()).connectionId), { body: { mayDo } }), 200);
   }
   const ask = (prompt = 'What does the wiki say?') => runs.invoke(human(owner), thread.id, { clientRunId: randomUUID(), kind: 'ask', prompt });
   /** A run moved to `reading` (as the worker's claim does) and armed with a nonce, ready to mint. */
@@ -116,7 +116,7 @@ describe('the run token and the worker as an MCP client of /mcp (F-027 A2, A6; #
     compute.dispatched = []; compute.counted = [];
     await pool.query(`UPDATE personal_runs SET status = 'stopped', completed_at = now(), cost_state = 'released', charged_micros = 0
       WHERE owner_user_id = $1 AND status IN ('queued', 'reading', 'dispatching')`, [owner.id]);
-    await setWiki('edit');
+    if ((await settings()).mayDo !== 'act') await setMayDo('act');
   });
 
   test('F-024: provider suspension refuses run-token minting and held run tokens without revoking the assistant', async () => {
@@ -158,7 +158,7 @@ describe('the run token and the worker as an MCP client of /mcp (F-027 A2, A6; #
     assert.equal(signed.flux_run_id, runId);
     assert.deepEqual(signed.flux_place, { project: place.id, conversation: thread.id });
     assert.equal(signed.aud, `${publicOrigin}/mcp`);
-    assert.equal(signed.scope, 'flux.context.read flux.action.execute', 'reads, and changes of the areas switched to edit (A3)');
+    assert.equal(signed.scope, 'flux.context.read flux.action.execute', 'reads and changes (A3)');
     assert.ok((signed.exp as number) - (signed.iat as number) <= RUN_TOKEN_LIMITS.lifetimeSeconds, 'no longer than the run\'s clock');
     assert.deepEqual(grant.tools, assistantRunTools(compileAssistantAreas(DEFAULT_ASSISTANT_AREAS), ['flux.context.read', 'flux.action.execute']));
     const stored = await pool.query(`SELECT row_to_json(r)::text AS text FROM personal_runs r WHERE id = $1`, [runId]);
@@ -199,52 +199,14 @@ describe('the run token and the worker as an MCP client of /mcp (F-027 A2, A6; #
     assert.equal((await mcp(grant.token, 7, 'tools/call', { name: 'flux_list_contexts', arguments: {} })).status, 403, 'the token fails after the run ended');
   });
 
-  test('an assistant a manager let only read gets a read-only run token that reads the place', async () => {
-    const grants = expectStatus(await owner.browser.request('GET', `/api/v1/projects/${place.id}/grants`), 200) as { id: string; principal: { kind: string; id: string }; role: string }[];
-    const joined = grants.find((g) => g.principal.kind === 'agent' && g.principal.id === agentId)!;
-    expectStatus(await owner.browser.request('DELETE', `/api/v1/projects/${place.id}/grants/${joined.id}`), 204);
-    expectStatus(await owner.browser.request('POST', `/api/v1/projects/${place.id}/grants`, { body: { principal: { kind: 'agent', id: agentId }, role: 'viewer' } }), 201);
-    try {
-      const runId = await inFlight();
-      const grant = await token(runId);
-      const contexts = await mcp(grant.token, 1, 'tools/call', { name: 'flux_list_contexts', arguments: {} });
-      assert.equal(contexts.status, 200);
-      assert.ok(toolText(contexts.message).includes(place.id));
-      await end(runId);
-    } finally {
-      const now = expectStatus(await owner.browser.request('GET', `/api/v1/projects/${place.id}/grants`), 200) as { id: string; principal: { kind: string; id: string } }[];
-      const viewer = now.find((g) => g.principal.kind === 'agent' && g.principal.id === agentId)!;
-      expectStatus(await owner.browser.request('DELETE', `/api/v1/projects/${place.id}/grants/${viewer.id}`), 204);
-      expectStatus(await owner.browser.request('POST', `/api/v1/projects/${place.id}/grants`, { body: { principal: { kind: 'agent', id: agentId }, role: 'contributor' } }), 201);
-    }
-  });
-
-  test('AST-4.2 (read part): with the Wiki off the run lists no Wiki tool, flux_get_doc gets the S6 refusal and untyped search is refused', async () => {
-    await setWiki('off');
+  test('Only read gets a read-only run token that reads the place and lists no change tool', async () => {
+    await setMayDo('read');
     const runId = await inFlight();
     const grant = await token(runId);
-    for (const wiki of ['flux_get_doc', 'flux_list_docs', 'flux_list_materials', 'flux_read_material']) assert.ok(!grant.tools.includes(wiki), wiki);
-    const names = (((await mcp(grant.token, 1, 'tools/list')).message?.result as { tools: { name: string }[] }).tools).map((tool) => tool.name);
-    assert.ok(!names.some((name) => ['flux_get_doc', 'flux_list_docs', 'flux_list_materials', 'flux_read_material'].includes(name)), 'no Wiki tool is listed');
-    const doc = await mcp(grant.token, 2, 'tools/call', { name: 'flux_get_doc', arguments: { projectId: place.id, id: docId } });
-    assert.equal(refusal(doc.message)?.code, 'MCP_ENTRY_UNAVAILABLE', 'the S6 refusal');
-    assert.ok(!toolText(doc.message).includes(WIKI_CANARY));
-    const search = await mcp(grant.token, 3, 'tools/call', { name: 'flux_search_project', arguments: { projectId: place.id, q: 'sensor' } });
-    assert.ok(refusal(search.message) || search.status === 403, 'untyped search could return Wiki text, so it is refused');
-    assert.ok(!toolText(search.message).includes(WIKI_CANARY));
-    await end(runId);
-  });
-
-  test('AST-4.4: turning the Wiki off during a run refuses its next Wiki read with the run\'s existing token', async () => {
-    const runId = await inFlight();
-    const grant = await token(runId);
-    assert.ok(toolText((await mcp(grant.token, 1, 'tools/call', { name: 'flux_get_doc', arguments: { projectId: place.id, id: docId } })).message).includes(WIKI_CANARY));
-    await setWiki('off');
-    const again = await mcp(grant.token, 2, 'tools/call', { name: 'flux_get_doc', arguments: { projectId: place.id, id: docId } });
-    assert.equal(refusal(again.message)?.code, 'MCP_ENTRY_UNAVAILABLE');
-    assert.ok(!toolText(again.message).includes(WIKI_CANARY));
-    const names = (((await mcp(grant.token, 3, 'tools/list')).message?.result as { tools: { name: string }[] }).tools).map((tool) => tool.name);
-    assert.ok(!names.includes('flux_get_doc'), 'Off means off: the next listing drops the Wiki tools too');
+    assert.deepEqual(grant.tools.filter((name) => (ASSISTANT_RUN_EFFECT_TOOLS as readonly string[]).includes(name)), []);
+    const contexts = await mcp(grant.token, 1, 'tools/call', { name: 'flux_list_contexts', arguments: {} });
+    assert.equal(contexts.status, 200);
+    assert.ok(toolText(contexts.message).includes(place.id));
     await end(runId);
   });
 
@@ -319,7 +281,7 @@ describe('the run token and the worker as an MCP client of /mcp (F-027 A2, A6; #
     await restore();
   });
 
-  test('AST-9.1 and AST-4.2 (server part): a DM, a private map and another project never reach the provider or the tool results; with the Wiki off no Wiki text is sent', async () => {
+  test('AST-9.1: a DM, a private map and another project never reach the provider or the tool results', async () => {
     const calls: PersonalToolCall[] = [
       { id: 's1', name: 'flux_search_project', input: { projectId: place.id, q: 'canary', type: 'message' } },
       { id: 's2', name: 'flux_list_maps', input: { projectId: place.id } },
@@ -329,12 +291,10 @@ describe('the run token and the worker as an MCP client of /mcp (F-027 A2, A6; #
     compute.respond = async () => compute.dispatched.length === 1
       ? { kind: 'completed', text: 'looking', stopReason: 'tool_use', usage: { inputTokens: 800, outputTokens: 40 }, toolCalls: calls }
       : { kind: 'completed', text: 'Fact: nothing private here [S1].', stopReason: 'end_turn', usage: { inputTokens: 800, outputTokens: 40 } };
-    await setWiki('off');
     const started = await ask('Summarize the canary');
     assert.equal(await processor.process(started.run.id), 'completed');
     const sent = JSON.stringify(compute.dispatched);
-    for (const canary of [DM_CANARY, PRIVATE_CANARY, OTHER_CANARY, WIKI_CANARY]) assert.ok(!sent.includes(canary), `${canary} never reaches the provider`);
-    assert.ok(!(compute.dispatched[0]!.tools ?? []).some((tool) => tool.name === 'flux_get_doc'), 'no Wiki tool on the wire');
+    for (const canary of [DM_CANARY, PRIVATE_CANARY, OTHER_CANARY]) assert.ok(!sent.includes(canary), `${canary} never reaches the provider`);
     assert.ok(compute.dispatched[0]!.input.includes('Summarize the canary'), 'the owner\'s request is input');
     const stored = await row(started.run.id);
     assert.ok(stored.run_token_closed_at, 'the session closed the token');
@@ -357,18 +317,14 @@ describe('the run token and the worker as an MCP client of /mcp (F-027 A2, A6; #
     assert.equal(fullOutcome, 'cap_reached');
     assert.equal(compute.dispatched.length, PERSONAL_RUN_LIMITS.maxTurns, 'ten turns fit within the tool-run input bound with every tool on');
     compute.dispatched = [];
-    // Only the always-on project tools: a shorter list, the same ten turns.
-    const current = await settings();
-    expectStatus(await owner.browser.request('PATCH', assistantSettingsPath(ws.id, owner.id), { body: { areas: { tasks: 'off', wiki: 'off', maps: 'off', conversations: 'off', decisions: 'off' } },
-      headers: { 'if-match': `"${current.version}"` } }), 200);
+    // Only read: a shorter list, the same ten turns.
+    await setMayDo('read');
     compute.respond = async () => ({ kind: 'completed', text: 'again', stopReason: 'tool_use', usage: { inputTokens: 500, outputTokens: 20 },
       toolCalls: [{ id: `c${compute.dispatched.length}`, name: 'flux_list_contexts', input: {} }] });
     const started = await ask();
     const outcome = await processor.process(started.run.id);
     const sizes = compute.dispatched.map((request) => JSON.stringify(request.tools ?? []).length);
-    const restored = await settings();
-    expectStatus(await owner.browser.request('PATCH', assistantSettingsPath(ws.id, owner.id), { body: { areas: { tasks: 'edit', maps: 'edit', conversations: 'edit', decisions: 'edit' } },
-      headers: { 'if-match': `"${restored.version}"` } }), 200);
+    await setMayDo('act');
     assert.equal(outcome, 'cap_reached');
     assert.equal(compute.dispatched.length, PERSONAL_RUN_LIMITS.maxTurns, `tool definitions on the wire: ${sizes.join(', ')} bytes`);
     const last = compute.dispatched.at(-1)!;

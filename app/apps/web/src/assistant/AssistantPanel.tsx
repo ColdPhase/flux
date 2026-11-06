@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router';
-import { AI_PROVIDERS, assistantCanSentence, assistantSettingsPath, type AiProviderKind, type AssistantRun, type AssistantSettings } from '@flux/contracts';
+import { AGENT_ALWAYS_WAITS, AGENT_MAY_DO_LABELS, AI_PROVIDERS, assistantSettingsPath, type AiProviderKind, type AssistantRun, type AssistantSettings } from '@flux/contracts';
 import { request } from '../api/client';
 import { AgentTag, Button, Icon, Kreska, MEDIA, Overlay, agentHue, useMediaQuery, usePop } from '../ui';
 import { getAssistantStatus, listOwnRuns, pauseAssistant, resumeAssistant, stopRun } from './api';
@@ -50,7 +50,7 @@ function Body({ onClose, name, mine, ownerName, provider, userId, onMessage }: {
       const workspaceId = status.enablement?.agents[0]?.workspaceId;
       if (!workspaceId) return;
       const settings = await request<AssistantSettings>(assistantSettingsPath(workspaceId, userId), { signal: controller.signal });
-      setCan(assistantCanSentence(settings.areas, settings.approvalMode));
+      setCan(`${AGENT_MAY_DO_LABELS[settings.mayDo]}. ${AGENT_ALWAYS_WAITS}`);
     }).catch(() => setPaused((current) => current ?? false));
     return () => controller.abort();
   }, [mine, userId]);
@@ -85,7 +85,7 @@ function Body({ onClose, name, mine, ownerName, provider, userId, onMessage }: {
           {runs === null ? <p>Loading…</p> : recent.length ? <ul className="aset-panel__recent">{recent.map((run) => (
             <li key={run.id}><span>{RECENT_WORD[run.status] ?? 'Done'}: {run.prompt.length > 60 ? `${run.prompt.slice(0, 59)}…` : run.prompt}</span></li>))}</ul> : <p>Nothing yet.</p>}
         </section>
-        <section aria-labelledby="aset-panel-can"><h3 id="aset-panel-can">Can</h3><p data-testid="assistant-can">{can || 'Loading…'}</p></section>
+        <section aria-labelledby="aset-panel-can"><h3 id="aset-panel-can">What it may do</h3><p data-testid="assistant-can">{can || 'Loading…'}</p></section>
         <div className="aset-model-row"><AssistantModelControl variant="field" placement="up" /></div>
       </> : <p data-testid="assistant-others">Uses {companyName(provider)} through {ownerName}&apos;s account. What it reads here goes to {dataTo(provider)}.</p>}
       {error ? <p role="alert" className="nset__error">{error}</p> : null}

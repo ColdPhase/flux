@@ -2,7 +2,6 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { ASSISTANT_RUN_CHANGED_EVENT, type ConversationMessage, type AssistantActivity, type AssistantAnswer, type AssistantProposal, type AssistantRun, type AssistantRunKind, type PersonalAssistantStatus } from '@flux/contracts';
 import { useStreamEvents } from '../api/stream';
 import { reply } from '../conversations/api';
-import { getProjectAgents } from '../agents/api';
 import {
   acceptProposal, askAssistant, dismissProposal, getAssistantActivity, getAssistantStatus, getRun, listAnswers, listOwnRuns, listProposals, resumeAssistant, retryRun, stopRun,
 } from './api';
@@ -35,13 +34,6 @@ export interface ConversationAssistant {
   others: AssistantActivity['working'];
   /** Changes whenever the shared part of the conversation was refreshed: an assistant started or stopped working, an answer arrived. */
   tick: number;
-  /**
-   * Whether the person's assistant is a member of this project (F-027 AST-10 "Delight details": suggestions only where it
-   * is): null while unknown or when they have no assistant in this workspace. `requested`: they asked, a manager has not yet.
-   */
-  member: boolean | null;
-  requested: boolean;
-  refreshMembership(): void;
   ask(prompt: string, options?: { kind?: AssistantRunKind; continuesRunId?: string; clientRunId?: string }): Promise<AssistantRun>;
   stop(): Promise<void>;
   retry(runId: string): Promise<void>;
@@ -59,7 +51,6 @@ export function useConversationAssistant({ meId, meName, projectId, conversation
   onPosted?: (message: ConversationMessage) => void;
 }): ConversationAssistant {
   const [status, setStatus] = useState<PersonalAssistantStatus | null>(null);
-  const [membership, setMembership] = useState<{ member: boolean | null; requested: boolean }>({ member: null, requested: false });
   const [answers, setAnswers] = useState<AssistantAnswer[]>([]);
   const [proposals, setProposals] = useState(new Map<string, AssistantProposal>());
   const [run, setRun] = useState<AssistantRun | null>(null);
@@ -76,15 +67,6 @@ export function useConversationAssistant({ meId, meName, projectId, conversation
     if (!conversationId || !enabled) return;
     try { setOthers((await getAssistantActivity(conversationId)).working.filter((item) => item.ownerId !== meId)); } catch { /* the line is a courtesy; a missing one is not an error */ }
   }, [conversationId, meId, enabled]);
-  const hasAssistant = !!status?.enablement;
-  const refreshMembership = useCallback(() => {
-    if (!enabled) return;
-    getProjectAgents(projectId).then((view) => {
-      const requested = view.joinRequests?.some((item) => item.ownerUserId === meId && item.state === 'pending') ?? false;
-      setMembership({ member: view.assistantJoin ? !view.assistantJoin.canRequest && !requested : null, requested });
-    }, () => undefined);
-  }, [projectId, meId, enabled]);
-  useEffect(() => { if (hasAssistant) refreshMembership(); }, [hasAssistant, refreshMembership]);
   const refreshShared = useCallback(async () => {
     if (!conversationId) return;
     void refreshActivity();
@@ -166,7 +148,7 @@ export function useConversationAssistant({ meId, meName, projectId, conversation
   return {
     // Masked while AI is off: a run, a suggestion or a status read before the flip is not shown.
     status: enabled ? status : null, answers, proposals: enabled ? proposals : new Map<string, AssistantProposal>(), run: enabled ? run : null, queued: enabled ? queued : null,
-    others: enabled ? others : [], tick, refreshStatus, member: enabled ? membership.member : null, requested: enabled && membership.requested, refreshMembership,
+    others: enabled ? others : [], tick, refreshStatus,
     async cancelQueued() {
       if (!queued) return;
       track(await stopRun(queued.id));

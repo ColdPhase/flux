@@ -51,7 +51,6 @@ test('real Codex and Claude Code from clean configurations: supplied playbook re
     const connections: Record<string, { id: string; agentId: string; grantId: string; clientId: string }> = {};
     for (const spec of specs) {
       const agentId = String(expect(await owner.request('POST', `/api/v1/workspaces/${workspace.id}/agents`, { body: { name: `${spec.label} agent`, owner: 'self' } }), 201).id);
-      expect(await owner.request('POST', `/api/v1/projects/${projectId}/grants`, { body: { principal: { kind: 'agent', id: agentId }, role: 'contributor' } }), 201);
       const id = String(expect(await owner.request('POST', '/api/v1/agent-connections', { body: { name: spec.label, clientDesignation: spec.designation,
         agentId, selectedProjectIds: [projectId], scopes } }), 201).id);
       const grant = expect(await owner.request('POST', `/api/v1/agent-connections/${id}/action-grants`, { body: { clientCommandId: randomUUID(), projectId,

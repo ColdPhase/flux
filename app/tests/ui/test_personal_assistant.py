@@ -326,24 +326,11 @@ class PersonalAssistantJourney(unittest.TestCase):
         expect(kai.locator(".composer__ask")).to_have_accessible_name("Connect your AI")
         expect(kai.locator(".composer__ask")).not_to_have_attribute("aria-pressed", re.compile(".*"))
 
-    def test_05_a_manager_lets_their_assistant_read_the_project(self) -> None:
-        # F-027 AST-3.4: Turn on joined the project Jo manages, as a contributor, through an ordinary grant.
+    def test_05_the_assistant_has_its_owners_rights_with_no_grant_of_its_own(self) -> None:
+        # F-036 AG-3: the assistant reaches what its owner reaches; nobody lets it in and no grant names it.
         setup = self.page("jo")
-        agent = {"kind": "agent", "id": self.ids["agent"]}
-        joined = [g for g in self.api(setup, "GET", f"/api/v1/projects/{self.ids['project']}/grants", status=200) if g["principal"] == agent]
-        self.assertEqual([g["role"] for g in joined], ["contributor"], "Turn on joins the projects the owner manages")
-        # The project's manager keeps control: without that grant the assistant cannot read the project.
-        revoked = setup.request.delete(f"{ORIGIN}/api/v1/projects/{self.ids['project']}/grants/{joined[0]['id']}", headers={"origin": ORIGIN})
-        self.assertEqual(revoked.status, 204, revoked.text())
-        page = self.conversation("jo")
-        self.ask(page, "Summarize where we are")
-        bar = page.locator("#project-ask")
-        expect(bar).to_contain_text("I'm not in this space yet.")
-        bar.get_by_role("button", name="Add my assistant here").click()
-        expect(bar.get_by_role("alert")).to_have_count(0)
-        grants = self.api(page, "GET", f"/api/v1/projects/{self.ids['project']}/grants", status=200)
-        self.assertTrue(any(g["principal"] == {"kind": "agent", "id": self.ids["agent"]} and g["role"] == "viewer" for g in grants))
-        self.assertEqual(self.own_runs(page), [], "the refused ask wrote no run")
+        grants = self.api(setup, "GET", f"/api/v1/projects/{self.ids['project']}/grants", status=200)
+        self.assertEqual([g for g in grants if g["principal"]["kind"] != "human"], [], "people hold grants, agents do not")
 
     # ---------------------------------------------------------------- a run, its working line and the shared answer
 
@@ -401,8 +388,8 @@ class PersonalAssistantJourney(unittest.TestCase):
         self.assertEqual(sent[0]["retry_count"], "0")
         body = sent[0]["body"]
         self.assertEqual((body["model"], body["max_tokens"], body["output_config"]), ("claude-sonnet-5", 1500, {"effort": "low"}))
-        # F-027 A6 (#484) and A3 (#403): the run offers its exact switch-derived tools (reads, and the change tools of
-        # areas switched to edit), listed by /mcp to its run token; the mock answers without calling one, so the run
+        # F-027 A6 (#484) and A3 (#403): the run offers its exact tools (reads and change tools), listed by /mcp to its
+        # run token; the mock answers without calling one, so the run
         # stays one request. The co-work claim, transfer and request tools, bootstrap and proposal tools are never offered to a run.
         tools = sorted(tool["name"] for tool in body.get("tools", []))
         self.assertIn("flux_get_conversation", tools)

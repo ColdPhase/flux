@@ -1,6 +1,6 @@
 import type { MessageFile, MessageContribution } from '@flux/contracts';
 import type {
-  AiPrice, AiProviderKind, AgentRuntimePayer, AssistantAreas, AssistantEngine, AssistantProposalStatus, AssistantRunCostState, AssistantRunEndReason,
+  AiPrice, AiProviderKind, AgentRuntimePayer, AgentMayDo, AssistantEngine, AssistantProposalStatus, AssistantRunCostState, AssistantRunEndReason,
   AssistantRunKind, AssistantRunStatus, AssistantSourceRef, PersonalRunConsentVersion, PersonalRunEnablementStatus, PersonalRunTokenGrant, ResultFinding,
 } from '@flux/contracts';
 import type { AssistantIdentityPort } from '../assistant/ports.js';
@@ -208,11 +208,8 @@ export interface PersonalRunRepository {
   /** The schedule a run belongs to, for the answer a schedule posts in its conversation (F-027 A8). */
   needsCurrentGithubFacts?(runId: string): Promise<boolean>;
   jobOfRun?(runId: string): Promise<{ id: string; title: string } | null>;
-  /**
-   * The owner's switches in the workspace, from the assistant connection's S6 policy (F-027 AST-4). Null
-   * without an assistant connection. A `server` request never assembles an Off area as ambient context.
-   */
-  assistantAreas?(ownerUserId: string, workspaceId: string): Promise<AssistantAreas | null>;
+  /** The assistant's "What it may do" in the workspace (F-036 AG-3); null without an assistant connection. */
+  assistantMayDo?(ownerUserId: string, workspaceId: string): Promise<AgentMayDo | null>;
   /** The owner's `runtime` runs that started since the start of their local day (F-022 "Caps": runs per day). */
   runtimeRunsToday?(ownerUserId: string, timeZone: string, exceptRunId?: string): Promise<number>;
 }

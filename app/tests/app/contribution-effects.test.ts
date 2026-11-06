@@ -60,9 +60,6 @@ async function agentIn(f: Scene, name = 'Trial analyst') {
   const agent = expectStatus(await f.owner.browser.request('POST', `/api/v1/workspaces/${f.ws.id}/agents`, {
     body: { name, owner: 'self' },
   }), 201) as { id: string };
-  expectStatus(await f.owner.browser.request('POST', `/api/v1/projects/${f.place.id}/grants`, {
-    body: { principal: { kind: 'agent', id: agent.id }, role: 'contributor' },
-  }), 201);
   return { agent, principal: { kind: 'agent' as const, id: agent.id } };
 }
 
@@ -431,7 +428,6 @@ test('a generic reply to a task-bound conversation takes the task row before the
 async function agentFixture() {
   const f = await scene();
   const agent = expectStatus(await f.owner.browser.request('POST', `/api/v1/workspaces/${f.ws.id}/agents`, { body: { name: 'Ledger agent', owner: 'self' } }), 201) as { id: string };
-  expectStatus(await f.owner.browser.request('POST', `/api/v1/projects/${f.place.id}/grants`, { body: { principal: { kind: 'agent', id: agent.id }, role: 'contributor' } }), 201);
   const connection = expectStatus(await f.owner.browser.request('POST', '/api/v1/agent-connections', {
     body: { agentId: agent.id, selectedProjectIds: [f.place.id], scopes: ['flux.context.read', 'flux.proposal.write', 'flux.action.execute'] } }), 201) as AgentConnection;
   const clientId = `contribution-fixture-${randomUUID()}`; const bindingId = randomUUID();

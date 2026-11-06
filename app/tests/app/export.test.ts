@@ -147,10 +147,8 @@ describe('project export', () => {
       headers: { 'if-match': `"${doc.version}"` },
     }), 200, 'doc v2');
 
-    // An agent with a grant and an MCP connection selection (#52): the agent is part of the
-    // audience, its connection never leaves the instance.
+    // An agent with an MCP connection selection (#52): its connection never leaves the instance.
     agentId = json<{ id: string }>(await post(owner, `/api/v1/workspaces/${ws.id}/agents`, { name: 'export-agent', owner: 'self' }), 201, 'agent').id;
-    json(await post(owner, `/api/v1/projects/${lamp.id}/grants`, { principal: { kind: 'agent', id: agentId }, role: 'contributor' }), 201, 'agent grant');
     connectionId = json<{ id: string }>(await post(owner, '/api/v1/agent-connections',
       { agentId, selectedProjectIds: [lamp.id], scopes: ['flux.context.read'] }), 201, 'agent connection').id;
 
@@ -194,8 +192,8 @@ describe('project export', () => {
     assert.deepEqual(people.get(partner.id), ['contributor', 'member']);
     assert.deepEqual(people.get(viewer.id), ['viewer', 'member']);
     assert.equal(people.has(outsider.id), false);
-    assert.deepEqual(data.grants.map((item) => [item.principal.id, item.role]).sort(), [[agentId, 'contributor'], [owner.id, 'manager'], [partner.id, 'contributor'], [viewer.id, 'viewer']].sort());
-    assert.deepEqual(data.people.find((someone) => someone.id === agentId), { kind: 'agent', id: agentId, name: 'export-agent', access: 'contributor', workspaceRole: null });
+    assert.deepEqual(data.grants.map((item) => [item.principal.id, item.role]).sort(), [[owner.id, 'manager'], [partner.id, 'contributor'], [viewer.id, 'viewer']].sort());
+    assert.deepEqual(data.people.find((someone) => someone.id === agentId), { kind: 'agent', id: agentId, name: 'export-agent', access: 'manager', workspaceRole: null }, 'the agent has its owner\'s level (F-036 AG-3)');
 
     // The ordinary thread, and the work item's own thread that the result linked to it (#154) created.
     assert.equal(data.conversations.length, 2);

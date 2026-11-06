@@ -13,7 +13,7 @@ import { AGENT_RUNTIME_BINDING_PATH, AGENT_RUNTIME_CHECK_PATH, AGENT_RUNTIME_CON
   AGENT_RUNTIME_NOTICE_PATH, AGENT_RUNTIME_PATH, AGENT_RUNTIME_SIGN_OUT_PATH } from './agent-runtime.js';
 
 export type AiScopeKind = 'workspace' | 'project' | 'conversation' | 'work' | 'agent' | 'connection' | 'run' | 'assistant_proposal'
-  | 'assistant_change' | 'agent_question' | 'comparison_rule' | 'comparison_proposal' | 'comparison_outcome' | 'assistant_join'
+  | 'assistant_change' | 'agent_question' | 'comparison_rule' | 'comparison_proposal' | 'comparison_outcome'
   | 'assistant_job' | 'notification';
 
 export type AiRouteRule =
@@ -39,12 +39,12 @@ export const AI_HTTP_ROUTES: Readonly<Record<string, AiRouteRule>> = {
   'GET /api/v1/agent-connections/:connectionId/action-grants': exempt('The owner\'s own grants, so they can see and remove them'),
   'DELETE /api/v1/agent-connections/:connectionId/action-grants/:grantId': exempt(REDUCES),
   'PATCH /api/v1/agent-connections/:connectionId/action-grants/:grantId': gated('params', 'connectionId', 'connection'),
+  // "What it may do" (F-036 #855): a setting of the agent itself, changed only while AI is on.
+  'PATCH /api/v1/agent-connections/:connectionId': gated('params', 'connectionId', 'connection'),
   'DELETE /api/v1/agent-connections/:connectionId': exempt(REDUCES),
   'POST /api/v1/agent-connections/:connectionId/select-for-oauth': gated('params', 'connectionId', 'connection'),
   'GET /api/v1/projects/:projectId/agent-proposals': gated('params', 'projectId', 'project'),
   'GET /api/v1/projects/:projectId/agents': gated('params', 'projectId', 'project'),
-  'GET /api/v1/projects/:projectId/agent-policy': gated('params', 'projectId', 'project'),
-  'PUT /api/v1/projects/:projectId/agent-policy': gated('params', 'projectId', 'project'),
   'GET /api/v1/working-agents': useCase('The person\'s working agents across workspaces; agents of a workspace with AI off are left out'),
   'GET /api/v1/projects/:projectId/agent-stops': gated('params', 'projectId', 'project'),
   'POST /api/v1/projects/:projectId/agent-stops': exempt(REDUCES),
@@ -74,24 +74,17 @@ export const AI_HTTP_ROUTES: Readonly<Record<string, AiRouteRule>> = {
   // The assistant (F-027).
   'GET /api/v1/workspaces/:workspaceId/assistants/:ownerUserId/settings': gated('params', 'workspaceId', 'workspace'),
   'PATCH /api/v1/workspaces/:workspaceId/assistants/:ownerUserId/settings': gated('params', 'workspaceId', 'workspace'),
-  'POST /api/v1/projects/:projectId/assistant-join-requests': gated('params', 'projectId', 'project'),
-  'POST /api/v1/projects/:projectId/assistant-join-requests/:requestId/allow': gated('params', 'projectId', 'project'),
-  'POST /api/v1/projects/:projectId/assistant-join-requests/:requestId/decline': exempt(REDUCES),
   'POST /api/v1/workspaces/:workspaceId/assistant-operator-requests': gated('params', 'workspaceId', 'workspace'),
   'GET /api/v1/conversations/:conversationId/assistant-changes': gated('params', 'conversationId', 'conversation'),
-  'GET /api/v1/assistant-changes': exempt(`${OWN_HISTORY}: the change log, from which the owner can Undo`),
   'GET /api/v1/conversations/:conversationId/assistant-activity': gated('params', 'conversationId', 'conversation'),
   'GET /api/v1/assistant-runs/:runId/changes': exempt(`${OWN_HISTORY}: one run's changes, from which the owner can Undo`),
   'POST /api/v1/assistant-runs/:runId/changes/apply': gated('params', 'runId', 'run'),
-  'POST /api/v1/assistant-runs/:runId/changes/not-now': gated('params', 'runId', 'run'),
+  'POST /api/v1/assistant-runs/:runId/changes/skip': exempt(REDUCES),
   'POST /api/v1/assistant-runs/:runId/changes/undo': exempt('A human compensating write as the owner; the owner can always reverse AI output'),
-  'POST /api/v1/assistant-runs/:runId/changes/inbox': gated('params', 'runId', 'run'),
   'POST /api/v1/assistant-changes/:changeId/apply': gated('params', 'changeId', 'assistant_change'),
-  'POST /api/v1/assistant-changes/:changeId/not-now': gated('params', 'changeId', 'assistant_change'),
+  'POST /api/v1/assistant-changes/:changeId/skip': exempt(REDUCES),
+  'POST /api/v1/assistant-changes/:changeId/edit': gated('params', 'changeId', 'assistant_change'),
   'POST /api/v1/assistant-changes/:changeId/undo': exempt('A human compensating write as the owner; the owner can always reverse AI output'),
-  'POST /api/v1/assistant-changes/:changeId/dismiss': gated('params', 'changeId', 'assistant_change'),
-  'POST /api/v1/assistant-changes/:changeId/accept': gated('params', 'changeId', 'assistant_change'),
-  'POST /api/v1/assistant-changes/:changeId/send': gated('params', 'changeId', 'assistant_change'),
   'GET /api/v1/workspaces/:workspace/people/:owner/assistant/when': gated('params', 'workspace', 'workspace'),
   'GET /api/v1/workspaces/:workspace/people/:owner/assistant/when/history': gated('params', 'workspace', 'workspace'),
   'POST /api/v1/workspaces/:workspace/people/:owner/assistant/when': gated('params', 'workspace', 'workspace'),
