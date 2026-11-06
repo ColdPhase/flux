@@ -134,8 +134,12 @@ Give every finding a severity, so that review rounds converge:
 | Severity | Meaning | Effect on the verdict |
 | --- | --- | --- |
 | P1 | Data loss, incorrect access, security, a broken primary workflow, or a failing required check | Blocks |
-| P2 | A required criterion fails or is unverified, or an agreed constraint is broken | Blocks |
+| P2 | A required criterion fails or is unverified, or an agreed constraint is broken | Blocks only if it is a regression from `main` or breaks a recorded decision; otherwise it becomes a milestone issue |
 | P3 | Wording, naming, style, optional evidence, a pre-existing defect the PR does not touch, or a later improvement | Never blocks |
+
+A P2 that does not block is filed as an issue in the milestone before the merge
+(founder direction, 2026-11-06). The release stays blocked until those issues are
+closed, so this moves the fix to later and does not lower the bar.
 
 When only P3 findings remain, approve and list them in the review. Do not require
 a new head or another review for P3. Keep optional follow-ups in the existing task.
@@ -144,15 +148,15 @@ a new head or another review for P3. Keep optional follow-ups in the existing ta
 (founder direction, 2026-10-18). The first round reports all observed P1/P2 findings
 together. Before handing back a fix, the author verifies every finding and supplies
 the resulting evidence. The second round checks only that delta and the open findings;
-approve when no P1/P2 remains. Do not restart a full review after a rebase, switch of
+approve when no blocking finding remains. Do not restart a full review after a rebase, switch of
 reviewer or new commit, or add preferences/P3 findings on already reviewed code.
 
-If a P1/P2 remains or is newly demonstrated in the second round, record the concrete
+If a blocking finding remains or is newly demonstrated in the second round, record the concrete
 blocker and return ownership to the author. Stop the review loop and continue other
 ready work; do not start a third round automatically or approve a known failure to
 meet the round limit. Merge follows the fast mode in
 [workflow §5](workflow.md#5-review-fix-and-merge): required checks, the author's
-own recorded checks and no open P1/P2. A reviewer's code change makes them an implementer; it does not
+own recorded checks and no open blocking finding. A reviewer's code change makes them an implementer; it does not
 reset this budget.
 
 A PR may deliver part of an issue. It then declares its scope against the issue's
