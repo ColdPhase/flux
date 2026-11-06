@@ -32,7 +32,7 @@ export function PaneComposer({ core, drafts, menu, actions, ask, askBar, materia
   const trayOpen = materials.trayOpen;
   const title = conversation ? conversation.firstMessageBody.split('\n')[0] || 'Conversation' : project.name;
   const sourcesId = `${conversation ? 'thread' : 'project'}-sources`;
-  return <div className="composer project-convo__composer"><div className="composer__in" data-shift={conversation ? undefined : true}>
+  return <div className="composer project-convo__composer"><div className="composer__in">
     {trayOpen ? <MaterialTray materials={materials} projectName={project.name} writable={writable} inThread={!!conversation} composerId={composerId} author={author} onCite={(material: Material) => void actions.cite(material)} /> : null}
     {writable ? <ConnectionLine /> : null}
     {/* On the phone "Replying to" and the audience share one line, keeping the composer compact. */}

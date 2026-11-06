@@ -27,8 +27,8 @@
   .rcard__action { min-height: 44px; display: inline-flex; align-items: center; }
 }
 
-/* The message a card points to: a soft fill that fades after 2 s (Spokój rule 6), no ring or bar. */
+/* The message a card points to: a soft fill that fades over --dur-highlight (Spokój rule 6, #863), no ring or bar. */
 .agents-msg:focus-visible { outline: none; }
-.agents-msg[data-arrived] { background: var(--sub); border-radius: var(--r-card); animation: agents-arrived 2s ease-out forwards; }
+.agents-msg[data-arrived] { background: var(--sub); border-radius: var(--r-card); animation: agents-arrived var(--dur-highlight) var(--ease-out) forwards; }
 @keyframes agents-arrived { from { background: var(--sub); } to { background: transparent; } }
 @media (prefers-reduced-motion: reduce) { .agents-msg[data-arrived] { animation: none; } }

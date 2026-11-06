@@ -1,6 +1,6 @@
 import { Component, type ReactNode, type RefObject } from 'react';
 import { MOTION_ID, duration, motionAllowed, token, track } from './motion';
-import { copyOf, groundOf, restoreScrolls, scrolls, styles } from './Dissolve';
+import { copyOf, groundOf, restoreScrolls, scrolls, styles } from './picture';
 
 /**
  * A host that takes another size when its content changes between two renderings, the sidebar between its full width and its 64 px
@@ -11,7 +11,7 @@ import { copyOf, groundOf, restoreScrolls, scrolls, styles } from './Dissolve';
  * (the person asked for that change; its top, bottom and far edge do not move). A switch in a viewport (the tablet's rail) is not a
  * change of the content and is never animated. Reduced motion, a hidden page and the first screen simply swap.
  *
- * The picture is as `Dissolve`'s: no ids, `inert`, `aria-hidden`, no pointer input, inside a closed shadow root that wears the page's
+ * The picture is a plain copy: no ids, `inert`, `aria-hidden`, no pointer input, inside a closed shadow root that wears the page's
  * style sheets, so no query of the page finds a second copy of the sidebar. Where the control that had focus was replaced, its
  * counterpart in the new rendering (`keep`) has it, with or without motion.
  */

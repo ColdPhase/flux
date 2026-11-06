@@ -80,7 +80,7 @@ export function Tabs({ items, value, onChange, label, className, panelIdPrefix, 
     const indicator = indicatorRef.current;
     if (!bar || !indicator) return;
     const current = chosen ?? bar.querySelector<HTMLElement>('[data-pending]') ?? bar.querySelector<HTMLElement>('[aria-current="page"], [aria-selected="true"]');
-    if (!current) { indicator.style.opacity = '0'; return; }
+    if (!current) { indicator.style.opacity = '0'; placedRef.current = false; return; }
     // When the strip scrolls sideways (five tabs at 320px), bring a newly current tab into view
     // once; later renders leave the person's own scrolling alone.
     if (shownRef.current !== current) {
@@ -96,10 +96,13 @@ export function Tabs({ items, value, onChange, label, className, panelIdPrefix, 
     const style = getComputedStyle(current);
     const padLeft = parseFloat(style.paddingLeft) || 0;
     const padRight = parseFloat(style.paddingRight) || 0;
-    if (!animate) indicator.style.transition = 'none';
+    // The first placement, wherever the current tab turns up (a bar whose tabs are not current yet when it first renders), does
+    // not animate: the mark is there, it does not grow out of nothing (#863 rule 5).
+    if (!animate || !placedRef.current) indicator.style.transition = 'none';
+    placedRef.current = true;
     indicator.style.opacity = '1';
     if (segmented) {
-      // The raised pill covers the whole current tab and slides to the next one.
+      // The raised pill covers the whole current tab and slides to the next one with `transform` only; its width changes at once.
       indicator.style.transform = `translateX(${current.offsetLeft}px)`;
       indicator.style.width = `${current.offsetWidth}px`;
     } else {
@@ -108,13 +111,12 @@ export function Tabs({ items, value, onChange, label, className, panelIdPrefix, 
       indicator.style.transform = `translateX(${current.offsetLeft + padLeft}px) scaleX(${Math.max(1, current.offsetWidth - padLeft - padRight)})`;
     }
     indicator.dataset.target = current.dataset.tab ?? '';
-    if (!animate) { void indicator.offsetWidth; indicator.style.transition = ''; }
+    if (indicator.style.transition === 'none') { void indicator.offsetWidth; indicator.style.transition = ''; }
   }, [segmented]);
 
   // Re-measure after every render: the route (aria-current) or the value may have changed.
   useLayoutEffect(() => {
-    place(placedRef.current);
-    placedRef.current = true;
+    place(true);
   });
 
   useLayoutEffect(() => {

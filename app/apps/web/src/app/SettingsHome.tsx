@@ -357,7 +357,7 @@ export function SettingsAppearance() {
   const phone = useMediaQuery(MEDIA.phone);
   return (
     <div className="pane-scroll">
-      <div className="pane-in sset-in" data-shift>
+      <div className="pane-in sset-in">
         {phone ? <h2 className="sset-sec">Appearance</h2> : (
           <PageHead title="Appearance" lead="Flux uses one neutral palette. Status is shown by shape and words, so it reads the same in both themes." />
         )}
@@ -391,7 +391,7 @@ function PhoneSettings() {
   }, [allOff]);
   return (
     <div className="pane-scroll">
-      <div className="pane-in sset-in" data-shift>
+      <div className="pane-in sset-in">
         {/* The header already says "Settings": one title on the phone. */}
         <Link to="/settings/account" className="sset-card sset-me sset-me--link">
           <Avatar name={me.user.name} tone="me" size="lg" />
@@ -427,7 +427,7 @@ export function SettingsAgents() {
   const allOff = useAllAiBlocked();
   return (
     <div className="pane-scroll">
-      <div className="pane-in sset-in" data-shift>
+      <div className="pane-in sset-in">
         <PageHead title="Agents and AI" lead={allOff ? undefined : 'Your agents work for you and are always marked as agents. Colours appear only here and in the Agents view.'} />
         <AgentsAndAi />
       </div>
@@ -445,7 +445,7 @@ export function SettingsCompany() {
   const phone = useMediaQuery(MEDIA.phone);
   return (
     <div className="pane-scroll">
-      <div className="pane-in sset-in" data-shift>
+      <div className="pane-in sset-in">
         {phone ? null : <PageHead title="Company" />}
         {workspace ? <WorkspacePeople key={workspace.id} workspaceId={workspace.id} page onBack={() => undefined} />
           : <p className="sset-note">You’re not in a company on this Flux yet. Ask an admin for an invite link.</p>}
@@ -523,7 +523,7 @@ export function SettingsAccount() {
   const expires = new Date(me.session.expiresAt);
   return (
     <div className="pane-scroll">
-      <div className="pane-in sset-in" data-shift>
+      <div className="pane-in sset-in">
         <PageHead title="Account" />
         <SingleSignOnLink />
         <section className="sset-card sset-me" aria-label="Signed in as">
@@ -567,7 +567,7 @@ export const SHORTCUTS: { keys: string[]; action: string }[] = [
 export function KeyboardShortcuts() {
   return (
     <div className="pane-scroll">
-      <div className="pane-in sset-in" data-shift>
+      <div className="pane-in sset-in">
         <PageHead title="Keyboard shortcuts" lead="On a computer, or a tablet with a keyboard. The keys also show next to their actions in menus." />
         <table className="sset-card sset-keys">
           <caption className="ui-vh">Keyboard shortcuts</caption>

@@ -31,7 +31,10 @@
 /* ---------- The thread ---------- */
 /* The thread's content sits in the one panel's slot (F-026 S4): the panel brings the card, the head and the close. */
 .thread { display: flex; flex: 1; flex-direction: column; min-width: 0; min-height: 0; outline: none; }
-.thread__pane { display: flex; flex: 1; flex-direction: column; min-height: 0; }
+.thread__pane { position: relative; display: flex; flex: 1; flex-direction: column; min-height: 0; }
+/* Quiet rows where the replies will be, from the first frame; the replies under them are laid out but hidden until their first reads settle (#155, #863 rule 6). */
+.thread__opening { position: absolute; inset: 0 0 auto 0; z-index: 1; padding: 18px 20px 12px; pointer-events: none; }
+.thread__opening .opening__rows { margin-top: 0; }
 /* useMessageReadingPosition owns anchors; native anchoring cancels WebKit gestures
    when a retired association batch changes the content above the viewport (#540). */
 .thread__feed { flex: 1; min-height: 0; overflow: auto; overscroll-behavior: contain; overflow-anchor: none; }

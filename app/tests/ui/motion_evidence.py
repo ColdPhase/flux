@@ -143,7 +143,7 @@ class MotionEvidence(unittest.TestCase):
         self.harvest(page); page.go_back(); self.beat(page, 1000)
 
     def ac4(self, page: Page) -> None:
-        """A state change morphs and the row slides to its group; a row grows in; an accepted decision collapses."""
+        """A state change morphs and the row slides to its group; a new row fades in; an accepted decision goes and the card below slides up."""
         self.go(page, self.fx.tasks_url()); self.beat(page, 900)
         glyph = page.locator("button.ws-task__glyph")
         glyph.first.click(); self.beat(page, 1100)
@@ -153,7 +153,7 @@ class MotionEvidence(unittest.TestCase):
         page.locator(".nyc").first.get_by_role("button", name=re.compile("^Accept")).click(); self.beat(page, 1300)
 
     def ac5(self, page: Page) -> None:
-        """Every kind of pressable control scales to .97 and springs back; hover fills ease."""
+        """A press is colour (a small button also scales to .98, no spring; rows never scale); hover fills ease."""
         self.go(page, self.fx.tasks_url()); self.beat(page, 900)
         targets = [page.get_by_role("button", name="Collapse sidebar").first, page.get_by_role("button", name=re.compile("^(New )?Task$")).first,
                    page.locator("button.ws-task__glyph").first, page.locator(".ws-task .ws-item").first, page.locator(".side__project").first]
@@ -349,7 +349,7 @@ class MotionEvidence(unittest.TestCase):
         return project, task("Long list: in progress", "in_progress")
 
     def clip_press(self, page: Page) -> None:
-        """AC-5: a pressed control scales to .97 and springs back."""
+        """AC-5: a pressed row changes colour and never scales."""
         self.go(page, self.fx.tasks_url()); self.beat(page, 900)
         row = page.locator(".ws-task .ws-item").first
         box = row.bounding_box()

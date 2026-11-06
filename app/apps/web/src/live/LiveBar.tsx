@@ -1,6 +1,6 @@
 import { useEffect, useId, useRef, useState, type KeyboardEvent } from 'react';
 import { useNavigate } from 'react-router';
-import { Avatar, Button, duration, Icon, IconButton, MEDIA, Sheet, Spinner, useMediaQuery, useStripOnlyModal } from '../ui';
+import { Avatar, Button, duration, Icon, IconButton, MEDIA, Sheet, Spinner, play, useMediaQuery, useStripOnlyModal } from '../ui';
 import { anchorPath, KIND_WORD } from './anchors';
 import { useLive, useLiveHere, type LiveValue } from './LiveProvider';
 import { canPublishScreen } from './capture';
@@ -217,7 +217,7 @@ function ShownLine({ live }: { live: LiveValue }) {
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
     // Arrives calmly: a short fade and rise, no sound and no focus change.
-    ref.current?.animate?.([{ opacity: 0, transform: 'translateY(-4px)' }, { opacity: 1, transform: 'none' }], { duration: duration('--dur-2'), easing: 'ease-out' });
+    void play(ref.current, [{ opacity: 0, transform: 'translateY(-4px)' }, { opacity: 1, transform: 'none' }], duration('--dur-in'), '--ease-out');
   }, [shown.presentation.id]);
   const following = live.following === shown.presentation.createdBy;
   return (

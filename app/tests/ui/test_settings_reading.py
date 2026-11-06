@@ -116,9 +116,9 @@ class ReadingAndMotion(unittest.TestCase):
         return page.evaluate("getComputedStyle(document.documentElement).fontSize")
 
     def script_duration_ms(self, page: Page) -> float:
-        """The --dur-2 token the scripts read, in ms (browsers serialise 0ms as 0s and 180ms as .18s)."""
+        """The --dur-in token the scripts read, in ms (browsers serialise 0ms as 0s and 180ms as .18s)."""
         return page.evaluate(
-            "() => { const v = getComputedStyle(document.documentElement).getPropertyValue('--dur-2').trim();"
+            "() => { const v = getComputedStyle(document.documentElement).getPropertyValue('--dur-in').trim();"
             " return v.endsWith('ms') ? parseFloat(v) : parseFloat(v) * 1000; }"
         )
 

@@ -12,8 +12,11 @@ import { RefLink } from '../place/origin';
 /** The message a task came from, while a link from the task's panel has just arrived at it (Spokój A08): its tag reads "Source of #1". */
 export const SourceOfContext = createContext<{ messageId: string; label: string } | null>(null);
 
+/** How long the "Source of #1" tag stays: it is text to be read, not a highlight, so it is not bound by the highlight's 600 ms (#863 rule 5). */
+const SOURCE_TAG_MS = 2000;
+
 /**
- * "Source of #1": a quiet tag on the message a task came from. It stays two seconds and then goes, with the soft fill,
+ * "Source of #1": a quiet tag on the message a task came from. It stays two seconds and then goes, without motion,
  * so nothing is left marked on the conversation (Spokój rule 6).
  */
 export function SourceTag({ messageId }: { messageId: string }) {
@@ -22,7 +25,7 @@ export function SourceTag({ messageId }: { messageId: string }) {
   const mine = source?.messageId === messageId;
   useEffect(() => {
     if (!mine) return;
-    const timer = window.setTimeout(() => setShown(false), 2000);
+    const timer = window.setTimeout(() => setShown(false), SOURCE_TAG_MS);
     return () => window.clearTimeout(timer);
   }, [mine]);
   return mine && shown ? <span className="convo-source-tag" data-source-tag>{source.label}</span> : null;

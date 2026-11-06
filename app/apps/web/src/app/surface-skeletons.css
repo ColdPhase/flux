@@ -1,0 +1,29 @@
+/* The quiet bars of a deferred surface (SurfaceSkeletons.tsx, #863 rule 6). Self-contained: they stand in before the surface's own stylesheet is here. */
+.ui-panel__body:has(> .wd-skeleton--task) { display: flex; padding: 0; overflow: hidden; }
+.wd-skeleton--task { display: flex; flex: 1; flex-direction: column; min-width: 0; min-height: 0; }
+.wd-skeleton .wd__scroll { flex: 1; min-height: 0; padding: 18px 22px 20px; overflow: hidden; }
+.wd-skeleton i { display: block; height: 12px; border-radius: var(--r-pill); background: var(--sub); }
+/* The title as the task panel sets it (work/work.css .wd--task .details__title and .wd-title__text), so it takes as many lines as the real one. */
+.wd-skeleton .wd-skeleton__name { margin: 2px 0 6px; overflow-wrap: anywhere; }
+.wd-skeleton__name span { display: block; margin: 0 -8px; padding: 2px 8px; font: inherit; letter-spacing: inherit; line-height: inherit; overflow-wrap: anywhere; }
+.wd-skeleton__bar { display: flex; align-items: center; height: 31px; }
+.wd-skeleton__bar i { width: 62%; height: 15px; }
+.wd-skeleton__rows { margin: 8px 0 0; }
+.wd-skeleton__row { display: grid; grid-template-columns: 96px minmax(0, 1fr); align-items: center; gap: 12px; height: 42px; }
+.wd-skeleton__row i:first-child { width: 56px; }
+.wd-skeleton__row i:last-child { width: 55%; }
+.wd-skeleton__actions { display: flex; align-items: center; gap: 12px; height: 32px; margin-top: 14px; }
+.wd-skeleton__actions i { width: 72px; }
+/* A touch screen's 44 px targets (work/work.css: `.wd-state`, the small buttons) make a property row 47 px and the action row 44 px high. */
+@media (pointer: coarse) { .wd-skeleton__row { height: 47px; } .wd-skeleton__actions { height: 44px; } }
+.wd-skeleton__sec { display: grid; gap: 14px; margin-top: 22px; }
+.wd-skeleton__sec i:first-child { width: 80px; }
+.wd-skeleton__sec i:last-child { width: 70%; }
+/* Jump to… while its code arrives: the dialog's own classes (search/search.css) give its size; these are the bars. */
+.jump-skeleton__input { display: flex; align-items: center; flex: 1; min-width: 0; height: var(--ctl); }
+.jump-skeleton__input b { width: 44%; }
+.jump-skeleton b, .jump-skeleton i { display: block; border-radius: var(--r-pill); background: var(--sub); }
+.jump-skeleton b { height: 10px; }
+.jump-skeleton__opt i { flex: none; width: 15px; height: 15px; }
+.jump-skeleton__chip { display: inline-flex; align-items: center; }
+.jump-skeleton__chip b { width: 30px; }

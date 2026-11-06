@@ -1,15 +1,88 @@
-import { Component, Suspense, lazy, useEffect, useLayoutEffect, useRef, useState, type ComponentProps, type ReactNode } from 'react';
+import { Component, Suspense, createElement, lazy, useEffect, useLayoutEffect, useRef, useState, type ComponentProps, type ComponentType, type ReactNode } from 'react';
 import { Button, ErrorState, MEDIA, Overlay, Spinner, useMediaQuery, useSidePanelMode } from '../ui';
 import { pageLeaving, whenPageLive } from '../api/pageLeaving';
+import { useLocation, useParams } from 'react-router';
 import { useLive } from '../live/LiveProvider';
 import type { Details } from './Details';
-import type { JumpTo } from '../search/JumpTo';
 import { ReloadRecovery } from './ReloadRecovery';
 import { useShellActions } from './shellContext';
+import { useShellData } from './data';
+import { placeOfPath, useRecentPlaces } from '../search/recent';
+import { DetailsSkeleton, JumpSkeleton } from './SurfaceSkeletons';
+import { preloadProjectViews } from './viewChunks';
 
-const DetailsContent = lazy(async () => ({ default: (await import('./Details')).Details }));
-const SearchContent = lazy(async () => ({ default: (await import('../search/JumpTo')).JumpTo }));
+/**
+ * The code of one deferred surface. It is downloaded once, whoever asks first (the preload below or the surface being opened): a
+ * second `import()` must not become a second request. `loaded()` is the component as soon as it has arrived, so a surface opened after
+ * the preload renders at once.
+ */
+function deferred<P extends object>(load: () => Promise<ComponentType<P>>) {
+  let component: ComponentType<P> | null = null;
+  let loading: Promise<ComponentType<P>> | null = null;
+  const download = () => (loading ??= load().then((loaded) => { component = loaded; return loaded; }, (error: unknown) => { loading = null; throw error; }));
+  return { download, loaded: () => component };
+}
+type Deferred<P extends object> = ReturnType<typeof deferred<P>>;
+const details = deferred<ComponentProps<typeof Details>>(async () => (await import('./Details')).Details);
+const search = deferred<{ onClose: () => void; userId: string }>(async () => (await import('../search/JumpTo')).JumpToBody);
+/**
+ * A deferred surface's component: put in at once when its code has arrived, else `fallback` until it does. It is not a `Suspense` boundary
+ * on purpose: React holds a fallback it has shown for about 300 ms before it reveals what replaces it, so a code download that takes
+ * 40 ms would still keep the skeleton up for 300. A failed download throws to the surface's boundary.
+ */
+function Surface<P extends object>({ of, props, fallback }: { of: Deferred<P>; props: P; fallback: ReactNode }) {
+  const [Loaded, setLoaded] = useState<ComponentType<P> | null>(() => of.loaded());
+  const [failure, setFailure] = useState<{ error: unknown } | null>(null);
+  useEffect(() => {
+    if (Loaded) return undefined;
+    let live = true;
+    of.download().then((component) => { if (live) setLoaded(() => component); }, (error: unknown) => { if (live) setFailure({ error }); });
+    return () => { live = false; };
+  }, [of, Loaded]);
+  if (failure) throw failure.error;
+  return Loaded ? createElement(Loaded, props) : fallback;
+}
 const StageContent = lazy(async () => ({ default: (await import('../live/LiveStage')).LiveStage }));
+
+/**
+ * A surface opens with its content (#863 rule 6): the code of Details and Jump to… is fetched before it is asked for, so the panel
+ * and ⌘K do not open on a fallback that is then replaced. It happens when the browser is idle soon after the shell is up (the first
+ * screen is already painted, and the first-load contract of `test_route_chunks` is about what that screen imports), and at once on
+ * the first press of anything: a pointer going down, or ⌘ or Ctrl, which is pressed a moment before the K that opens search. Inside a
+ * project the code of its other views (Tasks, Map, Wiki, Agents) comes the same way, so a switch finds it here.
+ */
+const PRELOAD_AFTER_MS = 1200;
+const PRELOAD_IDLE_MS = 1000;
+let preloaded = false;
+let viewsPreloaded = false;
+function preloadSurfaces() {
+  if (preloaded) return;
+  preloaded = true;
+  void details.download().catch(() => { preloaded = false; });
+  void search.download().catch(() => { preloaded = false; });
+}
+function preloadViews() {
+  if (viewsPreloaded) return;
+  viewsPreloaded = true;
+  void preloadProjectViews().catch(() => { viewsPreloaded = false; });
+}
+/** Runs `run` when the browser is idle, a moment after now. */
+function whenIdle(run: () => void) {
+  const idle = window.setTimeout(() => (window.requestIdleCallback ? window.requestIdleCallback(run, { timeout: PRELOAD_IDLE_MS }) : run()), PRELOAD_AFTER_MS);
+  return () => window.clearTimeout(idle);
+}
+function useSurfacePreload(inProject: boolean) {
+  useEffect(() => {
+    if (preloaded && (viewsPreloaded || !inProject)) return undefined;
+    const stop = whenIdle(() => { preloadSurfaces(); if (inProject) preloadViews(); });
+    const onPress = () => { preloadSurfaces(); if (inProject) preloadViews(); };
+    const onKey = (event: KeyboardEvent) => { if (event.key === 'Control' || event.key === 'Meta') onPress(); };
+    const options = { capture: true, passive: true } as const;
+    document.addEventListener('pointerdown', onPress, options);
+    document.addEventListener('keydown', onKey, options);
+    return () => { stop(); document.removeEventListener('pointerdown', onPress, { capture: true }); document.removeEventListener('keydown', onKey, { capture: true }); };
+  }, [inProject]);
+}
 
 /** An optional surface failing to download must not unmount the surrounding work or live session. */
 class SurfaceBoundary extends Component<{ label: string; children: ReactNode; wrap?: (content: ReactNode) => ReactNode }, { failed: boolean }> {
@@ -25,6 +98,7 @@ class SurfaceBoundary extends Component<{ label: string; children: ReactNode; wr
   }
 }
 
+/** The live stage's code is the one deferred surface with no fixed layout to stand in for: a quiet line in its place. */
 function Opening({ label }: { label: string }) {
   return <div className="deferred-surface"><p role="status"><Spinner />Opening {label.toLowerCase()}…</p></div>;
 }
@@ -42,20 +116,43 @@ function WhenPageLive({ children, fallback }: { children: ReactNode; fallback: R
 
 /** SidePanel itself owns mount/exit/focus; this content is never rendered while initially closed. */
 export function DeferredDetails(props: ComponentProps<typeof Details>) {
-  const opening = <Opening label="Details" />;
-  return <SurfaceBoundary label="Details"><Suspense fallback={opening}><WhenPageLive fallback={opening}><DetailsContent {...props} /></WhenPageLive></Suspense></SurfaceBoundary>;
+  // The panel's own layout where it is known, quiet bars where it is not (app/SurfaceSkeletons.tsx): a task opened from its row knows its title.
+  const opening = <DetailsSkeleton title={typeof props.view === 'object' && 'kind' in props.view && props.view.kind === 'work' && 'title' in props.view ? props.view.title : undefined} />;
+  return <SurfaceBoundary label="Details"><WhenPageLive fallback={opening}><Surface of={details} props={props} fallback={opening} /></WhenPageLive></SurfaceBoundary>;
 }
 
-export function DeferredJumpTo(props: ComponentProps<typeof JumpTo>) {
+export interface JumpToProps { open: boolean; onClose: () => void; userId: string }
+
+export function DeferredJumpTo({ open, onClose, userId }: JumpToProps) {
+  const inProject = !!useParams().projectId;
+  useSurfacePreload(inProject);
   const phone = useMediaQuery(MEDIA.phone);
-  const [requested, setRequested] = useState(props.open);
-  if (props.open && !requested) setRequested(true);
+  const { projects, directMessages, lockedWorkspaces } = useShellData();
+  const recent = useRecentPlaces(userId);
+  const here = placeOfPath(useLocation().pathname)?.key;
+  const [requested, setRequested] = useState(open);
+  if (open && !requested) setRequested(true);
+  // A body of its own each time the dialog opens, kept through its exit: the content stays mounted while the dialog fades out, so it
+  // leaves at the size it had (it used to collapse to nothing on the first frame of its exit), and one that opens again before the exit
+  // is over starts afresh.
+  const [opens, setOpens] = useState(open ? 1 : 0);
+  const [wasOpen, setWasOpen] = useState(open);
+  if (open !== wasOpen) { setWasOpen(open); if (open) setOpens(opens + 1); }
   if (!requested) return null;
-  // Once requested, leave JumpTo mounted so its own exit animation and focus restoration stay intact.
-  const wrap = (content: ReactNode) => <Overlay open={props.open} onClose={props.onClose} placement={phone ? 'bottom' : 'center'} label="Jump to" className="jump">
-    {content}<Button variant="quiet" onClick={props.onClose}>Close search</Button>
-  </Overlay>;
-  return <SurfaceBoundary label="Search" wrap={wrap}><Suspense fallback={wrap(<Opening label="Search" />)}><SearchContent {...props} /></Suspense></SurfaceBoundary>;
+  const closer = <Button variant="quiet" onClick={onClose}>Close search</Button>;
+  // The recent places the dialog will list (up to four, not the one in view, only those that still exist): what sizes its first list.
+  const places = recent.filter((place) => place.key !== here && (!place.key.startsWith('project:') || projects.some((project) => project.id === place.key.split(':')[1]))
+    && (!place.key.startsWith('dm:') || directMessages.some((dm) => dm.id === place.key.split(':')[1]))).slice(0, 4).length;
+  // One dialog, once: the code of Jump to… loads inside it, so ⌘K never dims, undims and dims again. Once requested it stays
+  // mounted, so its own exit animation and focus restoration stay intact.
+  const wrap = (content: ReactNode) => <Overlay open={open} onClose={onClose} placement={phone ? 'bottom' : 'center'} label="Jump to" className="jump">{content}{closer}</Overlay>;
+  return (
+    <SurfaceBoundary label="Search" wrap={wrap}>
+      <Overlay open={open} onClose={onClose} placement={phone ? 'bottom' : 'center'} label="Jump to" className="jump">
+        <Surface key={opens} of={search} props={{ onClose, userId }} fallback={<JumpSkeleton places={places} locked={lockedWorkspaces.length} phone={phone} onClose={onClose} />} />
+      </Overlay>
+    </SurfaceBoundary>
+  );
 }
 
 export function DeferredLiveStage() {

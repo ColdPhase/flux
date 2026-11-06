@@ -40,7 +40,7 @@ export function LiveStage() {
 
   useLayoutEffect(() => {
     if (!open) return;
-    void play(rootRef.current, [{ opacity: 0, transform: 'scale(.985)' }, { opacity: 1, transform: 'none' }], duration('--dur-3'), '--ease-sheet', { fill: 'backwards' });
+    void play(rootRef.current, [{ opacity: 0, transform: 'translateY(4px)' }, { opacity: 1, transform: 'none' }], duration('--dur-in'), '--ease-out', { fill: 'backwards' });
     rootRef.current?.querySelector<HTMLElement>('[data-autofocus]')?.focus({ preventScroll: true });
   }, [open]);
   // A different screen starts fitted again.

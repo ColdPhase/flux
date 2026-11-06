@@ -197,9 +197,10 @@ button.project-convo__contribution { cursor: pointer; }
 .project-convo__message.is-continued > .project-convo__message-meta { display: none; }
 .project-convo__message.is-open, .project-convo__message.is-arrived, .project-convo__message.is-mine.is-arrived { box-shadow: none; background: none; }
 .project-convo__message.is-arrived > .message-bubble { background: var(--sub); }
-/* Spokój rule 6: an arrived message is marked by a soft fill that fades after 2 s, never by a ring or a bar; while its thread
-   is open it keeps the fill as the open root. "Source of #1" is the same two seconds. */
-.project-convo__message.is-arrived:not(.is-open) > .message-bubble { animation: convo-arrived var(--dur-3) var(--ease-out) 2s forwards; }
+/* Spokój rule 6, #863: an arrived message is marked by a soft fill that fades over --dur-highlight (600 ms at most), never by a
+   ring or a bar; while its thread is open it keeps the fill as the open root. The "Source of #1" tag below is a label, not a fill: it
+   is text to be read, so it stays two seconds (messageParts.tsx) and then goes without any motion. */
+.project-convo__message.is-arrived:not(.is-open) > .message-bubble { animation: convo-arrived var(--dur-highlight) var(--ease-out) forwards; }
 @keyframes convo-arrived { to { background: transparent; } }
 .convo-source-tag { align-self: flex-start; margin-bottom: 4px; padding: 2px 9px; border-radius: var(--r-pill); background: var(--sub); color: var(--t2); font-size: var(--fs-xs); font-weight: 500; line-height: 1.4; }
 .project-convo__message.is-mine > .convo-source-tag { align-self: flex-end; }

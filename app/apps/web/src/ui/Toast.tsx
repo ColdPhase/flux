@@ -96,7 +96,7 @@ function ToastItem({ toast, onDone, registerAction, movedAt }: { toast: ToastEnt
   }, []);
 
   useEffect(() => {
-    void settle(ref.current, { opacity: 1, transform: 'none' }, duration('--dur-in'), '--ease-out', { from: { opacity: 0, transform: 'translateY(8px) scale(.98)' } });
+    void settle(ref.current, { opacity: 1, transform: 'none' }, duration('--dur-in'), '--ease-out', { from: { opacity: 0, transform: 'translateY(8px)' } });
     arm();
     return disarm;
   }, [arm]);
@@ -104,7 +104,7 @@ function ToastItem({ toast, onDone, registerAction, movedAt }: { toast: ToastEnt
   useEffect(() => {
     if (!leaving && !toast.leaving) return;
     // A toast dismissed while it arrives leaves from where it is; it is gone in --dur-out and never held.
-    void settle(ref.current, { opacity: 0, transform: 'translateY(4px)' }, duration('--dur-out'), '--ease-in', { from: { opacity: 1, transform: 'none' }, fill: 'forwards' })
+    void settle(ref.current, { opacity: 0, transform: 'translateY(8px)' }, duration('--dur-out'), '--ease-in', { from: { opacity: 1, transform: 'none' }, fill: 'forwards' })
       .then(() => onDone(toast.id));
   }, [leaving, toast.leaving, toast.id, onDone]);
 

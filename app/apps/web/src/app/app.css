@@ -30,7 +30,7 @@
   display: flex; gap: 10px; align-items: flex-start; padding: 12px 14px; border-radius: var(--r-lg);
   font-size: var(--fs-md); line-height: 1.5; outline: none;
 }
-.auth__error { background: var(--sub); color: var(--t1); animation: rise var(--dur-2) var(--ease-out) both; }
+.auth__error { background: var(--sub); color: var(--t1); animation: rise var(--dur-in) var(--ease-out) both; }
 .auth__error svg, .auth__notice svg { margin-top: 3px; }
 .auth__error p + p, .auth__notice p + p { margin-top: 6px; }
 .auth__error .ui-link { color: var(--t1); }
@@ -102,7 +102,7 @@ body:has(.app) { background: var(--side); }
 .side__add:hover { background: var(--hov); color: var(--t1); }
 .side__list { position: relative; list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
 .side__glide { position: absolute; top: 0; left: 0; right: 0; height: 34px; border-radius: 8px; background: var(--el); box-shadow: var(--sh-raise);
-  opacity: 0; pointer-events: none; transition: transform var(--dur-2) var(--ease-out), opacity var(--dur-1) ease; }
+  opacity: 0; pointer-events: none; transition: transform var(--dur-in) var(--ease-out), opacity var(--dur-1) var(--ease-out); }
 .side__list.has-glide .side__project.is-open { background: transparent; box-shadow: none; }
 .side__item {
   position: relative; display: flex; align-items: center; gap: 10px; width: 100%; min-height: 34px; padding: 6px 10px;
@@ -191,7 +191,7 @@ body:has(.app) { background: var(--side); }
 /* The same traveling highlight as the expanded list's (#155): one tile-sized mark that moves to the chosen project while it loads. */
 .side__rail-projects { position: relative; }
 .side__rail-glide { position: absolute; top: 0; left: calc((44px - var(--ctl)) / 2); width: var(--ctl); height: var(--ctl); border-radius: 10px; background: var(--el); box-shadow: var(--sh-1);
-  opacity: 0; pointer-events: none; transition: transform var(--dur-2) var(--ease-out), opacity var(--dur-1) ease; }
+  opacity: 0; pointer-events: none; transition: transform var(--dur-in) var(--ease-out), opacity var(--dur-1) var(--ease-out); }
 .side__rail-projects.has-glide .side__rail-project.is-open { background: transparent; box-shadow: none; }
 /* A touch screen's tiles fill the 44 px column (44 px targets), and so does the mark. */
 @media (pointer: coarse) { .side__rail-glide { left: 0; width: 44px; } }
@@ -249,7 +249,7 @@ a.me__btn[aria-current="page"] { background: var(--sub); }
 .pwa-update__card {
   display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 0 12px; box-sizing: border-box; width: 100%; max-width: 560px; margin: 0 auto;
   padding: 4px 6px 4px 16px; border-radius: var(--r-lg); background: var(--el);
-  box-shadow: var(--sh-card), inset 0 0 0 1px var(--line); animation: rise var(--dur-3) var(--ease-out) both;
+  box-shadow: var(--sh-card), inset 0 0 0 1px var(--line); animation: rise var(--dur-in) var(--ease-out) both;
 }
 .pwa-update__text { flex: 1 1 10rem; min-width: 0; padding: 6px 0; line-height: 1.4; }
 .pwa-update__actions { display: flex; flex: none; gap: 4px; margin-left: auto; }
@@ -414,10 +414,9 @@ a.me__item { text-decoration: none; }
 .composer__box textarea:disabled { cursor: not-allowed; }
 /* The button keeps its full hit area; only its fill scales, so enabling reads as a soft arrival. */
 .composer__send { position: relative; isolation: isolate; display: grid; place-items: center; width: var(--ctl); height: var(--ctl); flex: none; border-radius: var(--r); color: var(--t1);
-  transition: color var(--dur-2) var(--ease-out), outline-color var(--dur-1) var(--ease-out); }
+  transition: color var(--dur-1) var(--ease-out), outline-color var(--dur-1) var(--ease-out); }
 .composer__send::before { content: ""; position: absolute; inset: 0; z-index: -1; border-radius: inherit; background: var(--own);
-  transition: background-color var(--dur-2) var(--ease-out), transform var(--dur-2) var(--ease-sheet); }
-.composer__send svg { transition: transform var(--dur-2) var(--ease-sheet); }
+  transition: background-color var(--dur-1) var(--ease-out), transform var(--dur-1) var(--ease-out); }
 .composer__send[aria-disabled="true"] { color: var(--t3); cursor: default; }
 .composer__send[aria-disabled="true"]::before { background: transparent; transform: scale(.84); }
 .composer__send:not([aria-disabled="true"]):hover::before { background: var(--hov); }
@@ -433,7 +432,7 @@ a.me__item { text-decoration: none; }
 .composer__ask { display: grid; place-items: center; width: 32px; height: 32px; flex: none; margin-left: -8px; border-radius: var(--r); color: var(--t3); transition: var(--tr); }
 .composer__ask:hover { background: var(--hov); color: var(--t1); }
 .composer__ask[aria-pressed="true"] { background: var(--sub); color: var(--t1); }
-.ask { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 10px; margin: 0 2px 6px; font-size: var(--fs-xs); line-height: 1.5; color: var(--t3); animation: rise var(--dur-2) var(--ease-out) both; }
+.ask { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 10px; margin: 0 2px 6px; font-size: var(--fs-xs); line-height: 1.5; color: var(--t3); animation: rise var(--dur-in) var(--ease-out) both; }
 .ask__who { display: inline-flex; align-items: center; gap: 6px; min-height: 24px; padding: 0 2px 0 9px; border-radius: var(--r-pill); background: var(--sub); color: var(--t1); font-weight: 500; }
 .ask__off.ui-icon-btn { width: 22px; height: 22px; min-height: 22px; border-radius: 50%; color: var(--t1); }
 .ask__connect { font-size: var(--fs-xs); }
@@ -458,7 +457,8 @@ a.me__item { text-decoration: none; }
 .notes__move-state:empty { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
 .notes__moved { margin-top: 18px; color: var(--t2); font-size: var(--fs-sm); }
 .notes__list { list-style: none; margin: 8px 0 0; padding: 0; }
-.note { padding: 10px 0; animation: rise var(--dur-3) var(--ease-out) both; }
+.note { padding: 10px 0; }
+.note--new { animation: rise var(--dur-in) var(--ease-out) both; }
 .note + .note { border-top: 1px solid var(--line); }
 .note__text { color: var(--t1); white-space: pre-wrap; overflow-wrap: anywhere; max-width: 64ch; }
 .note__meta { display: flex; align-items: center; gap: 8px; margin-top: 2px; font-size: var(--fs-xs); color: var(--t3); font-variant-numeric: tabular-nums; }

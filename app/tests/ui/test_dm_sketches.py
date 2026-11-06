@@ -290,7 +290,7 @@ class DmSelectionMode(unittest.TestCase):
                 button.click()
                 bar = page.get_by_role("region", name="Selected messages")
                 expect(bar).to_be_visible()
-                token = page.evaluate("getComputedStyle(document.documentElement).getPropertyValue('--dur-2').trim()")
+                token = page.evaluate("getComputedStyle(document.documentElement).getPropertyValue('--dur-in').trim()")
                 measured = page.evaluate("""() => ({bar: getComputedStyle(document.querySelector('.dm-selbar')), check: getComputedStyle(document.querySelector('.dm-msel'))})
                   && ({bar: [getComputedStyle(document.querySelector('.dm-selbar')).animationName, getComputedStyle(document.querySelector('.dm-selbar')).animationDuration],
                        check: [getComputedStyle(document.querySelector('.dm-msel')).animationName, getComputedStyle(document.querySelector('.dm-msel')).animationDuration],

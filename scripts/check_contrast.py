@@ -41,6 +41,9 @@ PAIRS = [
     ("--oninv", "--grad-inv@1", 4.5, "own bubble and toast text, bottom of their gradient"),
     # Direction C (#763, 2026-10-31): buttons are flat; the primary's hover, a composer's soft Send and option outlines.
     ("--oninv", "--inv-hov", 4.5, "primary button label on hover"),
+    ("--oninv", "--inv-act", 4.5, "primary button label while pressed"),
+    ("--t1", "--act", 4.5, "text on a pressed control"),
+    ("--t2", "--act", 4.5, "secondary text on a pressed control"),
     ("--t1", "--own", 4.5, "soft Send and its icon"),
     ("--inv", "--bg", 3.0, "primary button and inverted pill on the screen"),
     ("--t1", "--bg", 3.0, "focus ring and filled state glyphs"),

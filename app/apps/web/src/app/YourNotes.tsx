@@ -67,6 +67,8 @@ function NotesSection() {
   // Private drafts are kept in the company (F-037); an account nobody has invited yet keeps notes in this browser only.
   const selectedWorkspace = workspace?.id ?? '';
   const [serverDrafts, setServerDrafts] = useState<Draft[]>([]);
+  // The note this person has just saved: the only one that rises in. Notes shown when the view opens, on every visit, do not (#863 rule 5).
+  const [justSaved, setJustSaved] = useState<string | null>(null);
   const [draftsTotal, setDraftsTotal] = useState(0);
   // The list API pages over every draft the person can read; only their own private ones are shown,
   // so the next page starts after all drafts read so far, not after the shown ones.
@@ -174,6 +176,7 @@ function NotesSection() {
       saves.current += 1;
       savedHere.current = [{ draft: created, seq: saves.current }, ...savedHere.current.filter((saved) => saved.draft.id !== created.id)];
       setServerDrafts((current) => [created, ...current.filter((item) => item.id !== created.id)]);
+      setJustSaved(created.id);
       draft.clear();
       setSaveState('Saved privately to your space');
       requestAnimationFrame(() => { autosize(); endRef.current?.scrollIntoView({ block: 'end', behavior: duration('--dur-1') ? 'smooth' : 'auto' }); });
@@ -247,7 +250,7 @@ function NotesSection() {
         {serverDrafts.length ? (
           <section className="notes" aria-label="Private drafts">
             <p className="notes__h"><Icon name="lock" size={13} />Private drafts · saved in your space</p>
-            <ol className="notes__list">{serverDrafts.map((item) => <li className={`note${arrivedDraft === item.id ? ' is-arrived' : ''}`} key={item.id} id={`draft-${item.id}`} tabIndex={-1}><p className="note__text">{item.body}</p><div className="note__meta"><time dateTime={item.updatedAt}><Figures text={when(item.updatedAt)} /></time></div></li>)}</ol>
+            <ol className="notes__list">{serverDrafts.map((item) => <li className={`note${justSaved === item.id ? ' note--new' : ''}${arrivedDraft === item.id ? ' is-arrived' : ''}`} key={item.id} id={`draft-${item.id}`} tabIndex={-1}><p className="note__text">{item.body}</p><div className="note__meta"><time dateTime={item.updatedAt}><Figures text={when(item.updatedAt)} /></time></div></li>)}</ol>
             {draftsRead < draftsTotal ? <Button variant="quiet" busy={moreBusy} onClick={() => void loadMoreDrafts()}>Show more drafts</Button> : null}
           </section>
         ) : null}
@@ -289,7 +292,7 @@ function NotesSection() {
         <div ref={endRef} />
       </div>
       <div className="composer">
-        <div className="composer__in" data-shift>
+        <div className="composer__in">
           <ComposerBox id="composer" label="Private note" fieldRef={textareaRef} value={draft.text} disabled={saving} placeholder={asking ? 'Ask your assistant…' : 'Write a note…'}
             fieldProps={{ 'aria-describedby': `${asking ? askId : audienceId} ${hintId}` }} onChange={(value) => { draft.setText(value); autosize(); }} onKeyDown={onKeyDown}
             sendLabel={asking ? 'Send to your assistant' : 'Save note'} sendDisabled={!canSend} onSend={() => void send()} />

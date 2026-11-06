@@ -160,7 +160,7 @@ function FullSearch() {
 
   return (
     <div className="pane-scroll">
-      <div className="pane-in search" data-shift onKeyDown={moveFocus}>
+      <div className="pane-in search" onKeyDown={moveFocus}>
         <form className="search__form" role="search" onSubmit={(event) => { event.preventDefault(); recent.remember(draft); set('type', type); }}>
           <label className="ui-vh" htmlFor={inputId}>Search Flux</label>
           <div className="search__field">

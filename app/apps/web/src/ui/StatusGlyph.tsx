@@ -7,10 +7,11 @@ import { useMorph } from './motion';
  * circle with a check, Not pursued a slashed circle. Colour never carries the meaning, so the glyph is
  * always shown with its word, next to it or in the row or column it sits in.
  */
-export function StatusGlyph({ status, size = 16, className, changeKey }: { status: WorkStatus; size?: number; className?: string; changeKey?: string }) {
-  // A changed state morphs in place (#593 AC-4): the new shape settles in from a soft fade and a slightly smaller size.
+export function StatusGlyph({ status, size = 16, className, changeKey }: { status: WorkStatus | undefined; size?: number; className?: string; changeKey?: string }) {
+  // A changed state morphs in place (#593 AC-4): the new shape settles in from a soft fade and a slightly smaller size. A state that is
+  // not known yet (`undefined`, the task is still being read) draws the open outline and never morphs: only a change from a known state does (#863).
   const ref = useMorph<SVGSVGElement>(status, { opacity: 0.35, transform: 'scale(.78)' }, changeKey);
-  const common = { ref, width: size, height: size, viewBox: '0 0 16 16', 'aria-hidden': true as const, className: `ui-glyph ui-glyph--${status}${className ? ` ${className}` : ''}` };
+  const common = { ref, width: size, height: size, viewBox: '0 0 16 16', 'aria-hidden': true as const, className: `ui-glyph ui-glyph--${status ?? 'open'}${className ? ` ${className}` : ''}` };
   switch (status) {
     case 'in_progress':
       return <svg {...common}><circle cx="8" cy="8" r="6" fill="none" stroke="currentColor" strokeWidth="1.5" /><path d="M8 4a4 4 0 0 1 0 8z" fill="currentColor" /></svg>;

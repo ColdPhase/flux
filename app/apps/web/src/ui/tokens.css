@@ -24,6 +24,8 @@
   --own: #e7e7ea;
   --sub: #ebebec;
   --hov: #e3e3e5;
+  /* A pressed control's fill: one notch deeper than --hov, so a press with a mouse (hover and press at once) shows as well as a touch (#863 rule 1, 7) */
+  --act: #d6d6da;
   /* The fill of a chosen message row: clearly apart from the page, from other people's bubbles and from --own */
   --pick: #dcdce0;
   --line: rgba(0, 0, 0, .07);
@@ -50,6 +52,7 @@
      --choice is the 1 px outline of an option button (an agent's ready answers, a pick among a few). */
   --choice: rgba(0, 0, 0, .12);
   --inv-hov: #2e2e33;
+  --inv-act: #47474d;
   /* Agent colours (Agents section only): muted OKLCH at equal lightness, README §2 */
   --agent-clay: #9b6147; --agent-ochre: #886d32; --agent-sage: #4b8057; --agent-teal: #208181;
   --agent-indigo: #5e6fa4; --agent-plum: #886191; --agent-rose: #9c5c66;
@@ -99,25 +102,26 @@
   --panel-w: 420px;  /* Spokój: computer 1440 */
   --col: 790px;      /* reading column */
 
-  /* Motion. Only colour, opacity and transform animate (a row's grow and collapse also animate its height).
-     Pressing scales to .97 and springs back in about 250 ms. Every duration is 0ms under reduced motion.
-     The meaning tokens (#593): something enters in --dur-in (at most 180 ms) and leaves in --dur-out (at most
-     140 ms, and never before focus has returned); a view's content crossfades in --dur-view (at most 160 ms);
-     the content leaving a panel travels --shift-panel, a view --shift-view and a menu --shift-pop. */
-  --dur-1: 120ms; --dur-2: 180ms; --dur-3: 260ms; --dur-4: 340ms; --dur-press: 250ms;
-  --dur-in: var(--dur-2); --dur-out: var(--dur-1); --dur-view: 150ms;
-  --shift-panel: 16px; --shift-view: 10px; --shift-pop: 4px; --shift-toolbar: 6px; --shift-row: 12px; --row-travel-max: 160px;
-  --press: .97;
+  /* Motion (#863, docs/design/motion.md). One vocabulary: only colour, opacity and transform animate (the sidebar's fold
+     animates its width, the one named exception). Every duration is 0ms under reduced motion, delays included.
+     Feedback and a view's fade-in take --dur-1 (120 ms); a surface (panel, sheet, dialog, menu, toast) enters in --dur-in
+     (180 ms) on --ease-out and leaves in --dur-out (120 ms) on --ease-in, a fade plus a short travel (--shift-*), with no
+     scale and no overshoot. A highlight lasts --dur-highlight at most. Pressing is colour; only a small control may scale
+     to --press (.98), with no spring. */
+  --dur-1: 120ms; --dur-in: 180ms; --dur-out: 120ms; --dur-highlight: 600ms;
+  /* Loops run only while real work is in progress: a spinner turns in --dur-spin, a calm pulse takes --dur-loop. */
+  --dur-spin: 800ms; --dur-loop: 1600ms;
+  /* Waits before something shows, so a quick change never flashes it: a skeleton, a tooltip. */
+  --delay-wait: 350ms; --delay-tip: 450ms;
+  --shift-panel: 16px; --shift-pop: 4px; --shift-toolbar: 6px; --shift-row: 12px; --row-travel-max: 160px;
+  --press: .98;
   --ease-out: cubic-bezier(.22, 1, .36, 1);
   --ease-in: cubic-bezier(.4, 0, 1, 1);
-  --ease-sheet: cubic-bezier(.32, .72, 0, 1);
-  --ease-spring: cubic-bezier(.34, 1.4, .64, 1);
-  /* Indicators glide into place with a barely perceptible settle (≤2% past the target, no bounce). */
-  --ease-glide: cubic-bezier(.3, 1.25, .5, 1);
-  --tr-fill: background-color var(--dur-1) ease, color var(--dur-1) ease, border-color var(--dur-1) ease,
-        box-shadow var(--dur-1) ease, opacity var(--dur-1) ease;
-  --tr: var(--tr-fill), outline-color var(--dur-1) ease,
-        outline-offset var(--dur-1) ease, transform var(--dur-press) var(--ease-spring);
+  --ease-loop: ease-in-out; --ease-linear: linear;
+  --tr-fill: background-color var(--dur-1) var(--ease-out), color var(--dur-1) var(--ease-out), border-color var(--dur-1) var(--ease-out),
+        box-shadow var(--dur-1) var(--ease-out), opacity var(--dur-1) var(--ease-out);
+  --tr: var(--tr-fill), outline-color var(--dur-1) var(--ease-out),
+        outline-offset var(--dur-1) var(--ease-out), transform var(--dur-1) var(--ease-out);
 
   /* Layers */
   --z-panel: 20; --z-scrim: 30; --z-overlay: 40; --z-menu: 50; --z-toast: 60;
@@ -127,7 +131,7 @@
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
     color-scheme: dark;
-    --side: #0b0b0b; --bg: #111111; --el: #1c1c1c; --own: #313134; --sub: #242424; --hov: #2c2c2c; --pick: #3d3d42;
+    --side: #0b0b0b; --bg: #111111; --el: #1c1c1c; --own: #313134; --sub: #242424; --hov: #2c2c2c; --act: #383838; --pick: #3d3d42;
     --line: rgba(255, 255, 255, .08); --line2: rgba(255, 255, 255, .16);
     --t1: #f0f0f0; --t2: #bdbdbd; --t3: #a1a1a1; --inv: #f0f0f0; --oninv: #111111;
     --scrim: rgba(0, 0, 0, .6); --dot: #2e2e2e;
@@ -138,14 +142,14 @@
     --sh-seg: inset 0 1px 2px rgba(0, 0, 0, .3);
     --sh-raise: 0 1px 2px rgba(0, 0, 0, .4), 0 4px 10px -6px rgba(0, 0, 0, .5);
     --grad-inv: linear-gradient(#ffffff, #d9d9d9);
-    --choice: rgba(255, 255, 255, .16); --inv-hov: #d9d9d9;
+    --choice: rgba(255, 255, 255, .16); --inv-hov: #d9d9d9; --inv-act: #c2c2c2;
     --agent-clay: #e8af96; --agent-ochre: #d4bb86; --agent-sage: #9ccca4; --agent-teal: #82cdcd;
     --agent-indigo: #abbcef; --agent-plum: #d4afdc; --agent-rose: #e9aab3;
   }
 }
 :root[data-theme="dark"] {
   color-scheme: dark;
-  --side: #0b0b0b; --bg: #111111; --el: #1c1c1c; --own: #313134; --sub: #242424; --hov: #2c2c2c; --pick: #3d3d42;
+  --side: #0b0b0b; --bg: #111111; --el: #1c1c1c; --own: #313134; --sub: #242424; --hov: #2c2c2c; --act: #383838; --pick: #3d3d42;
   --line: rgba(255, 255, 255, .08); --line2: rgba(255, 255, 255, .16);
   --t1: #f0f0f0; --t2: #bdbdbd; --t3: #a1a1a1; --inv: #f0f0f0; --oninv: #111111;
   --scrim: rgba(0, 0, 0, .6); --dot: #2e2e2e;
@@ -156,7 +160,7 @@
   --sh-seg: inset 0 1px 2px rgba(0, 0, 0, .3);
   --sh-raise: 0 1px 2px rgba(0, 0, 0, .4), 0 4px 10px -6px rgba(0, 0, 0, .5);
   --grad-inv: linear-gradient(#ffffff, #d9d9d9);
-  --choice: rgba(255, 255, 255, .16); --inv-hov: #d9d9d9;
+  --choice: rgba(255, 255, 255, .16); --inv-hov: #d9d9d9; --inv-act: #c2c2c2;
   --agent-clay: #e8af96; --agent-ochre: #d4bb86; --agent-sage: #9ccca4; --agent-teal: #82cdcd;
   --agent-indigo: #abbcef; --agent-plum: #d4afdc; --agent-rose: #e9aab3;
 }
@@ -187,7 +191,7 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  :root { --dur-1: 0ms; --dur-2: 0ms; --dur-3: 0ms; --dur-4: 0ms; --dur-press: 0ms; --dur-view: 0ms; --press: 1; }
+  :root { --dur-1: 0ms; --dur-in: 0ms; --dur-out: 0ms; --dur-highlight: 0ms; --dur-spin: 0ms; --dur-loop: 0ms; --delay-wait: 0ms; --delay-tip: 0ms; --press: 1; }
 }
 /* The person's own reduce-motion choice (Settings → Appearance) gives the same durations. */
-:root[data-motion="reduce"] { --dur-1: 0ms; --dur-2: 0ms; --dur-3: 0ms; --dur-4: 0ms; --dur-press: 0ms; --dur-view: 0ms; --press: 1; }
+:root[data-motion="reduce"] { --dur-1: 0ms; --dur-in: 0ms; --dur-out: 0ms; --dur-highlight: 0ms; --dur-spin: 0ms; --dur-loop: 0ms; --delay-wait: 0ms; --delay-tip: 0ms; --press: 1; }

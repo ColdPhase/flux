@@ -18,7 +18,7 @@
 .people__role { flex: none; font-size: var(--fs-sm); color: var(--t2); }
 .people__change.ui-btn { flex: none; min-height: 28px; padding: 0 8px; color: var(--t2); }
 .people__change[aria-expanded="true"] { background: var(--sub); color: var(--t1); }
-.people__edit { display: grid; gap: 10px; margin: 0 0 12px; padding: 12px; border-radius: var(--r-lg); box-shadow: inset 0 0 0 1px var(--line2); animation: rise var(--dur-2) var(--ease-out) both; }
+.people__edit { display: grid; gap: 10px; margin: 0 0 12px; padding: 12px; border-radius: var(--r-lg); box-shadow: inset 0 0 0 1px var(--line2); animation: rise var(--dur-in) var(--ease-out) both; }
 .people__edit .details__actions { flex-wrap: wrap; }
 .people__field { display: grid; gap: 6px; }
 .people__field label, .access__seg legend { font-size: var(--fs-sm); font-weight: 500; color: var(--t2); }

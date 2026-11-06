@@ -10,9 +10,9 @@ export const ROUTE_PROGRESS_AFTER_MS = 200;
 export const ROUTE_PROGRESS_AT_LEAST_MS = 300;
 
 /**
- * Navigation waits for route code/data while the current Outlet and its draft stay mounted. The row that says so floats over the
- * work and appears only when the wait is long enough to need saying (#719): a switch of view that finishes within a few frames
- * shows nothing, instead of a row that flashes in and out over the old view just before it dissolves.
+ * Navigation waits for route code/data while the current Outlet and its draft stay mounted (hidden under the destination's own loading
+ * state, `PendingView`, #863). The row that says so, with Cancel, floats over the work and appears only when the wait is long enough to
+ * need saying (#719): a switch of view that finishes within a few frames shows nothing, instead of a row that flashes in and out.
  */
 export function RouteProgress() {
   const navigation = useNavigation();

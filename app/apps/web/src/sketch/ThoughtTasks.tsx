@@ -213,7 +213,7 @@ function Chooser({ anchor, labelledBy, onClose, children }: { anchor: RefObject<
       pop.style.top = `${down ? at.bottom + 6 : Math.max(margin, at.top - 6 - Math.min(natural, room))}px`;
     };
     place();
-    void play(pop, [{ opacity: 0, transform: 'translateY(-4px) scale(.98)' }, { opacity: 1, transform: 'none' }], duration('--dur-2'), '--ease-out', { fill: 'backwards' });
+    void play(pop, [{ opacity: 0, transform: 'translateY(-4px)' }, { opacity: 1, transform: 'none' }], duration('--dur-in'), '--ease-out', { fill: 'backwards' });
     pop?.focus({ preventScroll: true });
     const onPointer = (event: PointerEvent) => {
       const target = event.target as Node;

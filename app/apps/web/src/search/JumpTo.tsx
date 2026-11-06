@@ -8,7 +8,7 @@ import { AskWhere } from '../assistant/AskWhere';
 import { useBlockedWorkspaceIds } from '../ai/workspaceAi';
 import { useShellData, type WorkspaceSummary } from '../app/data';
 import { useShellActions } from '../app/shellContext';
-import { Button, Icon, Kreska, MEDIA, Overlay, Spinner, useMediaQuery, type IconName } from '../ui';
+import { Button, Icon, Kreska, MEDIA, Spinner, useMediaQuery, type IconName } from '../ui';
 import { listAgents } from '../work/api';
 import { targetHref } from './api';
 import { placeOfPath, useRecentPlaces, useRecentSearches, type RecentPlace } from './recent';
@@ -88,17 +88,13 @@ export function useOpenResult() {
 }
 
 /**
- * Jump to… (⌘K / Ctrl+K, direction C): one field that searches everything the person may open,
- * as they type. Arrow keys move through the results, Enter opens one, and the last option opens
- * the full search page. A floating dialog on desktop, a full-screen sheet on the phone.
+ * What Jump to… (⌘K / Ctrl+K, direction C) shows: one field that searches everything the person may open, as they type. Arrow keys
+ * move through the results, Enter opens one, and the last option opens the full search page. `DeferredJumpTo` puts it in one
+ * dialog on the computer (a floating one) or a full-screen sheet on the phone, so the dialog opens once and its content loads in it.
  */
-export function JumpTo({ open, onClose, userId }: { open: boolean; onClose: () => void; userId: string }) {
+export function JumpToBody({ onClose, userId }: { onClose: () => void; userId: string }) {
   const phone = useMediaQuery(MEDIA.phone);
-  return (
-    <Overlay open={open} onClose={onClose} placement={phone ? 'bottom' : 'center'} label="Jump to" className="jump">
-      {open ? <JumpBody onClose={onClose} userId={userId} phone={phone} /> : null}
-    </Overlay>
-  );
+  return <JumpBody onClose={onClose} userId={userId} phone={phone} />;
 }
 
 /** What the phone's Search page (`/search`) starts with: its address's words, scope and project (#763 SE-2). */
@@ -117,7 +113,7 @@ export interface SearchPageStart {
  */
 export function PhoneSearchPage({ userId, start }: { userId: string; start: SearchPageStart }) {
   return (
-    <div className="pane-scroll"><div className="pane-in jump jump--page" data-shift>
+    <div className="pane-scroll"><div className="pane-in jump jump--page">
       <JumpBody onClose={() => undefined} userId={userId} phone page={start} />
     </div></div>
   );

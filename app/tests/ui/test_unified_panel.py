@@ -344,7 +344,8 @@ class UnifiedPanel(unittest.TestCase):
         items = menu.get_by_role("menuitemradio")
         expect(items).to_have_count(5)
         for index in range(5):
-            self.assertGreaterEqual(items.nth(index).bounding_box()["height"], 44, "a real 44px target")
+            # The menu may still be on its short travel in: a box read from a moving, fractionally placed element is 44 to within a rounding error.
+            self.assertGreaterEqual(round(items.nth(index).bounding_box()["height"], 2), 44, "a real 44px target")
         shot(page, "unified-panel-status-menu-phone")
         items.nth(1).tap()
         expect(status).to_contain_text("In progress")

@@ -83,7 +83,7 @@ CAMERA, SENSOR, PRIVACY, LEFT_OUT = DM[1][1], DM[2][1], DM[3][1], DM[4][1]
 LOW_LIGHT = "Low light: below 10 lux the camera has to guess"
 VARIANT_B = "Variant B: a VL53L1X sensor behind the shade"
 GONE_THOUGHT = "Variant A: a photodiode, dropped before the review"
-# A button's background and transform, as the press check reads them (HIG-16: Prostota presses to .97).
+# A button's background and scale, as the press check reads them (#863: a press is colour; rows never scale).
 PRESS_STYLE = "el => { const s = getComputedStyle(el); return { background: s.backgroundColor, scale: s.scale }; }"
 JONAS_ROOT = "Copied our lamp sketch here. Tonight I test the camera in a dark bedroom."
 ADA_REPLY = "Good, note the lux level so we can compare later."
@@ -908,7 +908,7 @@ class ScenarioJourney:
                  headers={"if-match": f'"{gone_thought["version"]}"'})
         rest, pressed = self.press_changes(jonas, choice)
         self.assertEqual(rest["scale"], "none", "a thought choice rests unscaled")
-        self.assertEqual(pressed["scale"], "0.97", "a pressed thought choice scales to --press (.97)")
+        self.assertEqual(pressed["scale"], "none", "a pressed thought choice is a row: it never scales (#863)")
         self.assertNotEqual(pressed["background"], rest["background"], "and takes the pressed fill")
         if self.phone:
             self.tap(dropped)

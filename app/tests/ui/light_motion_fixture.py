@@ -55,11 +55,9 @@ RECORDER = r"""
 })();
 """
 
-# What may animate. Opacity and transform (including its individual properties) always; the height family only when a row
-# is added or collapses (#593 AC-4).
+# What may animate: opacity and transform (including its individual properties), and nothing else (#863 rule 8; the sidebar's
+# fold is the one named exception and has its own module, test_sidebar_motion).
 TRANSFORM_ONLY = {"opacity", "transform", "translate", "scale", "rotate"}
-ROW_BOX = {"height", "paddingTop", "paddingBottom", "marginTop", "marginBottom", "borderTopWidth", "borderBottomWidth",
-           "padding-top", "padding-bottom", "margin-top", "margin-bottom", "border-top-width", "border-bottom-width"}
 
 NUMBER = re.compile(r"-?\d*\.?\d+")
 

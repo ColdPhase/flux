@@ -16,7 +16,7 @@ export function ProjectsIndex() {
   const phone = useMediaQuery(MEDIA.phone);
   return (
     <div className="pane-scroll">
-      <div className="pane-in set" data-shift>
+      <div className="pane-in set">
         <div className="proj-index__head">
           <p className="proj-index__lead">Each space has one conversation, a map, tasks, a wiki and its agents.</p>
           <Link to="/projects/new" className="ui-btn ui-btn--secondary"><Icon name="plus" />New space</Link>

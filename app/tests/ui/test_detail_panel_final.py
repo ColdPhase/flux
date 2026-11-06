@@ -457,7 +457,7 @@ class DetailPanelFinal(unittest.TestCase):
         still.goto(f"/projects/{self.project}/conversations/{self.thread['id']}")
         expect(still.locator("#details")).to_be_visible()
         self.assertEqual(still.evaluate("document.getAnimations().filter((a) => a.effect && a.effect.target && a.effect.target.closest('.ui-overlay')).length"), 0)
-        self.assertIn(still.evaluate("getComputedStyle(document.documentElement).getPropertyValue('--dur-3').trim()"), ("0ms", "0s"))
+        self.assertIn(still.evaluate("getComputedStyle(document.documentElement).getPropertyValue('--dur-in').trim()"), ("0ms", "0s"))
 
 
 if __name__ == "__main__":

@@ -195,7 +195,7 @@
 .connection__more { border-top: 1px solid var(--line); padding-top: 10px; }
 .connection__more > summary { display: inline-flex; align-items: center; gap: 6px; min-height: 32px; cursor: pointer; list-style: none; color: var(--t2); font-size: var(--fs-sm); font-weight: 600; }
 .connection__more > summary::-webkit-details-marker { display: none; }
-.connection__more > summary svg { transition: transform .2s; transform: rotate(-90deg); }
+.connection__more > summary svg { transition: transform var(--dur-1) var(--ease-out); transform: rotate(-90deg); }
 .connection__more[open] > summary svg { transform: none; }
 .connection__more-in { display: flex; flex-direction: column; gap: 12px; padding-top: 10px; }
 .connection__more-in > p { color: var(--t3); font-size: var(--fs-sm); line-height: 1.55; }

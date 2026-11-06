@@ -61,10 +61,30 @@ function useContinue(userId: string, workspaceIds: string[]): { value: Continue 
   return { value: state?.userId === userId ? state.value : null, ready: state?.userId === userId };
 }
 
+/**
+ * The height of the card to continue from the last time Home was read on this device, 0 when there was none. Home paints before the
+ * two reads that decide it have answered, so this is all it can know then: the card's space is kept while it is read only for someone
+ * who is expected to have one, at the height it had. Someone who has nothing to continue from (a first visit) gets no empty gap that
+ * closes up again.
+ */
+const cardKey = (userId: string) => `flux.home-continue.${userId}`;
+function expectedCard(userId: string): number {
+  try { return Number(localStorage.getItem(cardKey(userId))) || 0; } catch { return 0; }
+}
+function rememberCard(userId: string, height: number) {
+  try { localStorage.setItem(cardKey(userId), String(height)); } catch { /* private mode: Home opens without the reserved space */ }
+}
+
 function ContinueCard({ userId, workspaceIds }: { userId: string; workspaceIds: string[] }) {
   const { projects } = useShellData();
   const { value, ready } = useContinue(userId, workspaceIds);
-  if (!ready || !value) return null;
+  const [expected] = useState(() => expectedCard(userId));
+  useEffect(() => {
+    if (ready) rememberCard(userId, value ? Math.round(document.querySelector('.home__continue')?.getBoundingClientRect().height ?? 0) : 0);
+  }, [ready, value, userId]);
+  // While it is read the card's usual space is kept for someone who has one (#863 rule 6), so what is below does not jump down when it arrives.
+  if (!ready) return expected ? <div className="home__continue-slot" style={{ minHeight: expected }} aria-hidden="true" /> : null;
+  if (!value) return null;
   const arrow = <span className="home__go" aria-hidden="true"><Icon name="chevron-right" size={16} /></span>;
   if (value.kind === 'task') {
     const { item } = value;

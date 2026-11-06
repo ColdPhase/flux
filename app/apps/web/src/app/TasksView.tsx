@@ -9,5 +9,5 @@ export function TasksView() {
   const ref = useRef<HTMLDivElement>(null);
   const { me } = useShellData();
   useReadingPosition(ref, me.user.id, useLocation().pathname);
-  return <div className="pane-scroll" ref={ref}><div className="pane-in" data-shift><HomeTasks /></div></div>;
+  return <div className="pane-scroll" ref={ref}><div className="pane-in"><HomeTasks /></div></div>;
 }

@@ -51,7 +51,7 @@
    its icon lines up with the headings, and it was cut to 77 % by overflow: hidden (#763 sweep). */
 .ws-task { position: relative; clip-path: inset(0 0 0 -8px); }
 .ws-task .ws-av { width: 20px; height: 20px; }
-.ws-task__fg { position: relative; display: flex; align-items: center; background: var(--task-bg, var(--bg)); touch-action: pan-y; transition: transform var(--dur-2) var(--ease-out); }
+.ws-task__fg { position: relative; display: flex; align-items: center; background: var(--task-bg, var(--bg)); touch-action: pan-y; transition: transform var(--dur-in) var(--ease-out); }
 .ws-task.is-dragging .ws-task__fg { transition: none; }
 .ws-task__acts { position: absolute; inset: 0 0 0 auto; display: flex; width: 76px; visibility: hidden; }
 .ws-task.is-dragging .ws-task__acts, .ws-task.is-open .ws-task__acts { visibility: visible; }
@@ -60,7 +60,7 @@
   background: var(--inv); color: var(--oninv);
 }
 .ws-task__done:focus-visible { outline-color: var(--oninv); outline-offset: -3px; }
-.ws-task__glyph { display: grid; place-items: center; flex: none; width: 30px; height: 30px; margin: 0 2px 0 -7px; border-radius: 50%; transition: background-color var(--dur-1) ease; }
+.ws-task__glyph { display: grid; place-items: center; flex: none; width: 30px; height: 30px; margin: 0 2px 0 -7px; border-radius: 50%; transition: background-color var(--dur-1) var(--ease-out); }
 button.ws-task__glyph:hover, button.ws-task__glyph:focus-visible { background: var(--sub); }
 button.ws-task__glyph:active { background: var(--hov); }
 .ws-task .ws-item { flex: 1; min-width: 0; width: auto; margin: 0; }

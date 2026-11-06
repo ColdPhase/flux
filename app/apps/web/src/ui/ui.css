@@ -36,7 +36,7 @@ svg { flex: none; }
 .ui-skip { position: absolute; left: 12px; top: 12px; z-index: 100; padding: 8px 12px; border-radius: var(--r-pill); background: var(--el); color: var(--t1); box-shadow: var(--sh-pop); transform: translateY(-200%); opacity: 0; text-decoration: none; font-size: var(--fs-md); }
 .ui-skip:focus-visible { transform: none; opacity: 1; }
 
-.ui-spin { display: inline-block; width: 14px; height: 14px; border-radius: 50%; border: 1.5px solid currentColor; border-right-color: transparent; animation: ui-spin .8s linear infinite; flex: none; }
+.ui-spin { display: inline-block; width: 14px; height: 14px; border-radius: 50%; border: 1.5px solid currentColor; border-right-color: transparent; animation: ui-spin var(--dur-spin) var(--ease-linear) infinite; flex: none; }
 @keyframes ui-spin { to { transform: rotate(360deg); } }
 
 /* Tooltips: only where a pointer can hover; they wait, then fade in. */
@@ -52,7 +52,7 @@ svg { flex: none; }
   [data-tip-align="start"]::after { right: auto; left: 0; }
   [data-tip]:hover::after {
     opacity: 1; transform: none;
-    transition: opacity var(--dur-2) var(--ease-out) 450ms, transform var(--dur-2) var(--ease-out) 450ms;
+    transition: opacity var(--dur-in) var(--ease-out) var(--delay-tip), transform var(--dur-in) var(--ease-out) var(--delay-tip);
   }
 }
 
@@ -60,7 +60,7 @@ svg { flex: none; }
    Direction C "quiet, one accent per screen" (founder, 2026-10-31, #763; docs/design/final/README.md §2).
    Buttons are flat, with radius 10 and no gradient or shadow. At most one primary (inverted) per screen or
    region. Secondary is a text button; outline is a choice among a few options; danger is outlined in a
-   stronger line so a destructive action stays recognisable. Pressing scales to .97 and springs back. */
+   stronger line so a destructive action stays recognisable. Pressing changes the fill; a small button also scales to .98 (press.ts). */
 .ui-btn {
   display: inline-flex; align-items: center; justify-content: center; gap: 6px;
   min-height: var(--ctl); padding: 0 14px; border-radius: var(--r-btn);
@@ -138,7 +138,7 @@ input::placeholder, textarea::placeholder { color: var(--t3); opacity: 1; }
 /* Hover previews the mark in a neutral tone; the current tab's own mark is the sliding indicator. */
 .ui-tabs__tab::after {
   content: ""; position: absolute; left: var(--tab-pad, 8px); right: var(--tab-pad, 8px); bottom: 0; height: 2px; border-radius: var(--r-pill);
-  background: var(--line2); opacity: 0; transform: scaleX(.6); transition: opacity var(--dur-1) ease, transform var(--dur-2) var(--ease-out);
+  background: var(--line2); opacity: 0; transform: scaleX(.6); transition: opacity var(--dur-1) var(--ease-out), transform var(--dur-in) var(--ease-out);
 }
 .ui-tabs__tab:hover { color: var(--t1); }
 .ui-tabs__tab:hover:not([aria-current="page"], [aria-selected="true"])::after { opacity: 1; transform: none; }
@@ -150,7 +150,7 @@ input::placeholder, textarea::placeholder { color: var(--t3); opacity: 1; }
 .ui-tabs__count { font-family: var(--mono); font-size: var(--fs-xs); color: var(--t3); font-variant-numeric: tabular-nums; }
 .ui-tabs__indicator {
   position: absolute; left: 0; bottom: 0; width: 1px; height: 2px; border-radius: var(--r-pill); background: var(--inv);
-  transform-origin: 0 0; pointer-events: none; opacity: 0; transition: transform var(--dur-3) var(--ease-glide), opacity var(--dur-1) ease;
+  transform-origin: 0 0; pointer-events: none; opacity: 0; transition: transform var(--dur-1) var(--ease-out), opacity var(--dur-1) var(--ease-out);
 }
 @media (pointer: coarse) { .ui-tabs__tab { min-height: 44px; padding: 0 12px; --tab-pad: 12px; } }
 /* Segmented views (F-026 §4): a soft pill track; the current view is a raised white pill that slides. */
@@ -162,7 +162,7 @@ input::placeholder, textarea::placeholder { color: var(--t3); opacity: 1; }
 .ui-tabs--seg .ui-tabs__tab, .ui-tabs--seg .ui-tabs__tab:focus-visible { outline-offset: -2px; }
 .ui-tabs--seg .ui-tabs__indicator {
   top: 3px; bottom: 3px; height: auto; width: 0; border-radius: var(--r-pill); background: var(--el); box-shadow: var(--sh-raise);
-  transition: transform var(--dur-3) var(--ease-glide), width var(--dur-3) var(--ease-glide), opacity var(--dur-1) ease;
+  transition: transform var(--dur-1) var(--ease-out), opacity var(--dur-1) var(--ease-out);
 }
 @media (pointer: coarse) { .ui-tabs--seg .ui-tabs__tab { min-height: 44px; } }
 
@@ -170,7 +170,7 @@ input::placeholder, textarea::placeholder { color: var(--t3); opacity: 1; }
 .ui-bottomnav {
   display: flex; flex: none; position: relative; z-index: 2;
   padding: 4px 4px max(4px, env(safe-area-inset-bottom)); border-top: 1px solid var(--line); background: var(--bg);
-  transition: transform var(--dur-3) var(--ease-sheet), opacity var(--dur-2) ease;
+  transition: transform var(--dur-in) var(--ease-out), opacity var(--dur-in) var(--ease-out);
 }
 .ui-bottomnav__item {
   /* Equal shares, but never narrower than the label: "Conversation" takes what Map and Wiki don't need. */
@@ -180,16 +180,15 @@ input::placeholder, textarea::placeholder { color: var(--t3); opacity: 1; }
   /* The labels follow the text size (rem tokens) only as far as the four places fit the phone's width (#437):
      at 320 px with doubled text they stop near 16 px instead of 28 px and are never clipped (HIG-11, HIG-19). */
   font-size: clamp(12.5px, 5vw, var(--fs-md));
-  -webkit-tap-highlight-color: transparent; transition: color var(--dur-1) ease;
+  -webkit-tap-highlight-color: transparent; transition: color var(--dur-1) var(--ease-out);
 }
 .ui-bottomnav__item:focus-visible { outline-offset: -3px; }
 .ui-bottomnav__pill { position: relative; display: grid; place-items: center; width: 56px; height: 30px; border-radius: var(--r-pill); }
 .ui-bottomnav__pill::before {
   content: ""; position: absolute; inset: 0; z-index: -1; border-radius: inherit; background: var(--sub);
-  opacity: 0; transform: scaleX(.45); transition: transform var(--dur-3) var(--ease-glide), opacity var(--dur-2) ease;
+  opacity: 0; transform: scaleX(.45); transition: transform var(--dur-1) var(--ease-out), opacity var(--dur-1) var(--ease-out);
 }
 .ui-bottomnav__pill { isolation: isolate; }
-.ui-bottomnav__pill svg { transition: transform var(--dur-3) var(--ease-glide); }
 .ui-bottomnav__label { white-space: nowrap; letter-spacing: -.05px; }
 @media (max-width: 340px) { .ui-bottomnav__pill { width: 52px; } }
 .ui-bottomnav__item:is([aria-current="page"], [data-pending]) { color: var(--t1); font-weight: 600; }
@@ -234,17 +233,15 @@ input::placeholder, textarea::placeholder { color: var(--t3); opacity: 1; }
   /* Half is 56% of the screen, but never so short that a footer (the composer) leaves the content under a row's height: a
      short landscape phone gets 300 px, so the fields above the composer can be scrolled clear of it (adaptive ADAPT-2). */
   height: min(calc(100% - 12px), max(56%, 300px)); border-radius: var(--r-sheet) var(--r-sheet) 0 0; background: var(--el); box-shadow: var(--sh-pop);
-  transition: height var(--dur-3) var(--ease-sheet), border-radius var(--dur-3) var(--ease-sheet);
 }
 .ui-detent-sheet[data-height="full"] { height: calc(100% - 12px); }
 .ui-grabber { position: relative; flex: none; display: grid; place-items: center; align-self: center; width: 120px; max-width: 100%; height: 44px; margin: 0 auto -16px; z-index: 1; padding: 0; touch-action: none; }
-.ui-grabber span { width: 36px; height: 5px; border-radius: var(--r-pill); background: var(--line2); transition: width var(--dur-2) ease; }
+.ui-grabber span { width: 36px; height: 5px; border-radius: var(--r-pill); background: var(--line2); transition: transform var(--dur-1) var(--ease-out); }
 .ui-grabber, .ui-grabber *, .ui-detent-sheet .ui-panel__head, .ui-detent-sheet .ui-panel__head * { touch-action: none; }
-.ui-grabber:hover span { width: 44px; }
+.ui-grabber:hover span { transform: scaleX(1.22); }
 /* The keyboard button is visually hidden; its focus ring is drawn on the visible handle. */
 .ui-detent-sheet:has(> .ui-vh:focus-visible) > .ui-grabber { outline: 2px solid var(--t1); outline-offset: -4px; border-radius: 12px; }
 .ui-detent-sheet:has(> .ui-vh:focus-visible) > .ui-grabber span { background: var(--t1); }
-@media (prefers-reduced-motion: reduce) { .ui-detent-sheet { transition: none; } }
 @media (max-width: 640px) { .ui-overlay--left .ui-overlay__surface { width: 100%; } }
 
 /* ---------- Side panel ---------- */
@@ -354,13 +351,13 @@ input::placeholder, textarea::placeholder { color: var(--t3); opacity: 1; }
 .kreska--rose { color: var(--agent-rose); }
 .kreska[class*="kreska--"] .kreska__frame { fill: currentColor; fill-opacity: .12; }
 /* Motion only where it says something true: the brow waves while thinking, dots flow while loading,
-   the eyes blink slowly while working. Reduced motion shows the static frame (see the end of this file). */
+   the eyes blink slowly while working. Reduced motion, the system's or the person's own, shows the static frame (see the end of this file). */
 @media (prefers-reduced-motion: no-preference) {
-  .kreska[data-expression="thinking"] .kreska__brow { animation: kreska-wave 1.6s var(--ease-out) infinite; transform-origin: 9px 7px; }
-  .kreska[data-expression="loading"] .kreska__dots circle { animation: kreska-dot 1.2s ease-in-out infinite; }
-  .kreska[data-expression="loading"] .kreska__dots circle:nth-child(2) { animation-delay: .2s; }
-  .kreska[data-expression="loading"] .kreska__dots circle:nth-child(3) { animation-delay: .4s; }
-  .kreska[data-expression="working"] .kreska__eyes { animation: kreska-blink 4s ease-in-out infinite; transform-origin: 12px 12.7px; }
+  :root:not([data-motion="reduce"]) .kreska[data-expression="thinking"] .kreska__brow { animation: kreska-wave var(--dur-loop) var(--ease-out) infinite; transform-origin: 9px 7px; }
+  :root:not([data-motion="reduce"]) .kreska[data-expression="loading"] .kreska__dots circle { animation: kreska-dot calc(var(--dur-loop) * .75) var(--ease-loop) infinite; }
+  :root:not([data-motion="reduce"]) .kreska[data-expression="loading"] .kreska__dots circle:nth-child(2) { animation-delay: calc(var(--dur-loop) / 8); }
+  :root:not([data-motion="reduce"]) .kreska[data-expression="loading"] .kreska__dots circle:nth-child(3) { animation-delay: calc(var(--dur-loop) / 4); }
+  :root:not([data-motion="reduce"]) .kreska[data-expression="working"] .kreska__eyes { animation: kreska-blink calc(var(--dur-loop) * 2.5) var(--ease-loop) infinite; transform-origin: 12px 12.7px; }
 }
 @keyframes kreska-wave { 0%, 100% { transform: none; } 50% { transform: translateY(-.8px) rotate(-4deg); } }
 @keyframes kreska-dot { 0%, 100% { opacity: .25; } 50% { opacity: 1; } }
@@ -391,12 +388,22 @@ input::placeholder, textarea::placeholder { color: var(--t3); opacity: 1; }
 .ui-avatar--lg { width: 32px; height: 32px; font-size: var(--fs-xs); }
 .ui-avatar--me { background: var(--el); color: var(--t1); }
 
-/* ---------- Press, hover and selection (#593 AC-5) ----------
-   Every pressable control answers with the same short fill transition (--tr-fill, the fill half of --tr): hover and
-   selection fills ease in and out instead of jumping. The focus ring is not part of it. This is the zero-specificity
-   floor: a control that declares its own transition (most use --tr) keeps it. The press itself (scale to --press, spring back over --dur-press) is script (press.ts), because it has to cover
-   every pressable control without restyling each one. */
+/* ---------- Press, hover and selection (#593 AC-5, #863) ----------
+   A press is colour. Every pressable control answers with the same short fill transition (--tr-fill, the fill half of --tr):
+   hover and selection fills ease in and out instead of jumping, and a pressed control takes a deeper fill than its hover (--act,
+   --inv-act for the inverted primary), so the press shows with a mouse, where the pointer is over the control and pressing it at
+   once, as well as on a touch screen. It is done by redefining the hover fills on the pressed control (`--hov` is `--act` while it is
+   pressed), so every rule that paints a hover with them paints the press, whatever its specificity. Rows, cards, list items and
+   sidebar items never scale; only a small button scales to --press (.98) and back, in script (press.ts), because it has to cover
+   every button without restyling each one. The focus ring is not part of it. The transition is a zero-specificity floor: a control that
+   declares its own transition (most use --tr) keeps it. */
 :where(button, a[href], [role="button"], [role="tab"], [role="menuitem"], [role="menuitemradio"], [role="menuitemcheckbox"], [role="option"], summary):where(:not(.sk-plane *, [data-no-press])) { transition: var(--tr-fill); }
+:where(button, a[href], [role="button"], [role="tab"], [role="menuitem"], [role="menuitemradio"], [role="menuitemcheckbox"], [role="option"], summary):where(:not([data-no-press], [aria-disabled="true"], :disabled, .sk-plane *)):active { --hov: var(--act); --inv-hov: var(--inv-act); }
+:where(button, a[href], [role="tab"], [role="menuitem"], [role="menuitemradio"], [role="menuitemcheckbox"], [role="option"], summary):where(:not(.ui-btn, .ui-icon-btn, .ui-link, .sk-plane *, [data-no-press], [aria-disabled="true"], :disabled)):active { background-color: var(--act); }
+/* Buttons: a touch has no hover to deepen, so the pressed fill is declared here for every variant. The link button only darkens its text. */
+.ui-btn:active:not(:disabled, [aria-disabled="true"], [data-no-press]), .ui-icon-btn:active:not(:disabled, [aria-disabled="true"], [data-no-press]) { background: var(--act); color: var(--t1); }
+.ui-btn--primary:active:not(:disabled, [aria-disabled="true"], [data-no-press]) { background: var(--inv-act); color: var(--oninv); }
+.ui-btn--link:active:not(:disabled, [aria-disabled="true"], [data-no-press]) { background: transparent; color: var(--t2); }
 
 /* A control that appears on hover or focus (the message toolbar, #591) fades and slides a few pixels in from its side.
    `.ui-reveal` is its hidden pose, `.is-shown` its shown one; `data-side="start"` (or `--reveal-x`) comes from the left. The
@@ -427,12 +434,12 @@ input::placeholder, textarea::placeholder { color: var(--t3); opacity: 1; }
 [data-motion-paused], [data-motion-paused] *, [data-motion-paused]::before, [data-motion-paused]::after,
 [data-motion-paused] *::before, [data-motion-paused] *::after { animation-play-state: paused !important; }
 @media (prefers-reduced-motion: reduce) {
-  *, *::before, *::after { animation-duration: 0s !important; animation-iteration-count: 1 !important; transition-duration: 0s !important; transition-delay: 0s !important; scroll-behavior: auto !important; }
+  *, *::before, *::after { animation-duration: 0s !important; animation-delay: 0s !important; animation-iteration-count: 1 !important; transition-duration: 0s !important; transition-delay: 0s !important; scroll-behavior: auto !important; }
 }
 /* The person's own reduce-motion choice (Settings → Appearance; ui/motion-preference.ts) switches off CSS motion
    exactly as the system setting does. It only adds reduction: the system setting is never overridden. */
 :root[data-motion="reduce"] *, :root[data-motion="reduce"] *::before, :root[data-motion="reduce"] *::after {
-  animation-duration: 0s !important; animation-iteration-count: 1 !important; transition-duration: 0s !important; transition-delay: 0s !important; scroll-behavior: auto !important;
+  animation-duration: 0s !important; animation-delay: 0s !important; animation-iteration-count: 1 !important; transition-duration: 0s !important; transition-delay: 0s !important; scroll-behavior: auto !important;
 }
 /* Centered dialog (the Jump to… palette): `translate` positions it so the entry animation can own `transform`. */
 .ui-overlay--center .ui-overlay__surface {

@@ -71,7 +71,7 @@ span.photo-grid__open { cursor: default; }
 .photo-grid__tile.is-unavailable { display: grid; place-items: center; padding: 12px; color: var(--t3); font-size: var(--fs-xs); text-align: center; }
 /* Sending, offline and failure show on the photo itself. */
 .photo-grid__state { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; padding: 8px; background: rgba(0, 0, 0, .28); color: #fff; font-size: var(--fs-xs); font-weight: 500; text-align: center; text-shadow: 0 1px 2px rgba(0, 0, 0, .4); }
-.photo-grid__ring { width: 26px; height: 26px; border-radius: 50%; border: 2.5px solid rgba(255, 255, 255, .35); border-top-color: #fff; animation: photo-spin 900ms linear infinite; }
+.photo-grid__ring { width: 26px; height: 26px; border-radius: 50%; border: 2.5px solid rgba(255, 255, 255, .35); border-top-color: #fff; animation: photo-spin var(--dur-spin) var(--ease-linear) infinite; }
 .photo-grid__meter { flex: none; }
 .photo-grid__meter-track { fill: none; stroke: rgba(255, 255, 255, .35); stroke-width: 2.5; }
 .photo-grid__meter-bar { fill: none; stroke: #fff; stroke-width: 2.5; stroke-linecap: round; }

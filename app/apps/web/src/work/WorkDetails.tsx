@@ -7,6 +7,7 @@ import { useStreamEvents } from '../api/stream';
 import { AgentIdentity, Avatar, Button, Icon, Input, Kreska, Morph, PanelActions, PanelGlyph, PanelMeta, StatusGlyph, useToast, usePop, Select, Option } from '../ui';
 import { getProject, listWorkspaceMembers } from '../project/api';
 import { useShellData } from '../app/data';
+import { DetailsSkeleton } from '../app/SurfaceSkeletons';
 import { useRegisterLiveHere } from '../live/LiveProvider';
 import { LiveEntry } from '../live/LiveEntry';
 import { useShellActions, type ObjectView, type WorkFormView } from '../app/shellContext';
@@ -121,7 +122,7 @@ export function WorkDetails({ view }: { view: ObjectView | WorkFormView }) {
   if (view.kind === 'propose-decision') return <ProposeDecision key={key} view={view} context={context} contextStatus={contextStatus} revision={tick} isCurrent={commands.isCurrent} />;
   if (view.kind === 'attach-result') return <AttachResult key={key} view={view} context={context} contextStatus={contextStatus} reload={reload} revision={tick} isCurrent={commands.isCurrent} />;
   if (!projectId || unavailable) return <div className="details"><p className="details__eyebrow">Details</p><h3 className="details__title">Not available</h3><p className="details__lead" role="alert">{contextRead.phase === 'unavailable' ? readable(contextRead.error) : own.read.phase === 'unavailable' ? readable(own.read.error) : 'Open this object in its space.'}</p><Button variant="secondary" onClick={reload}>Refresh details</Button></div>;
-  if (!context || !detail) return <div className="details" aria-busy="true"><p className="details__lead">Loading…</p></div>;
+  if (!context || !detail) return <DetailsSkeleton title={view.kind === 'work' ? view.title : undefined} />;
   const currentContext = { ...context, project: { ...context.project, access: detail.access } };
   const object = detail.object;
   if (object.kind === 'work') return <WorkPanel key={key} item={object} context={currentContext} detail={detail} relations={relations} reload={reload} commands={commands} />;
@@ -130,10 +131,14 @@ export function WorkDetails({ view }: { view: ObjectView | WorkFormView }) {
 }
 
 function RelationPages({ relations }: { relations: DetailRelations }) {
-  // Pagination shows only when there is another page (Spokój rule 4); a pending or failed read stays visible.
+  // Pagination shows only when there is another page (Spokój rule 4); a failed read stays visible. While the first read is pending its status
+  // is still there for a screen reader, but it takes no room: a row that stood for the length of the read pushed the sections below it down
+  // by 61 px and took them back when the page arrived (#863 rule 6).
   const paged = !relations.page || !!relations.page.previousCursor || !!relations.page.nextCursor || relations.page.before > 0;
+  const pending = !relations.page && relations.read.phase !== 'unavailable';
   return <div data-detail-relations-phase={relations.read.phase} data-detail-relations-observed-at={relations.page?.observedAt}>
-    {paged ? <WorkPagination {...relations} page={relations.page} label="Object relationship pages" noun="links" stepsWhenPaged /> : null}
+    {paged ? pending ? <nav className="ui-vh" aria-label="Object relationship pages" aria-busy="true"><span role="status">Loading work…</span></nav>
+      : <WorkPagination {...relations} page={relations.page} label="Object relationship pages" noun="links" stepsWhenPaged /> : null}
     {relations.read.phase === 'unavailable' ? <p className="wd-error" role="alert">Relationships could not be loaded. <button type="button" className="wd-inline" onClick={relations.onRefresh}>Refresh relationships</button></p> : null}
     {relations.page && !relations.complete ? <p className="wd-muted">Linked sections show this page of relationships. Browse all pages to explore every link.</p> : null}
   </div>;
